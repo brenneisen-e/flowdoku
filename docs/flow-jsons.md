@@ -2718,6 +2718,216 @@ zurückfallen.
 
 Danach den aktuellen Flow-JSON hier einpflegen.
 
+### UI-Anleitung 2026-08-25 (v29.54) — Beschäftigt/Frei durch den Organizer + Korrektur zu sensitivity/responseRequested
+
+**Teil A — `showAs` wird einstellbar.**
+
+`showAs` stand in beiden Flows fest auf `busy`. Bei ganztägigen Terminen heisst
+das: ein kompletter Arbeitstag gilt als belegt, auch wenn man nur zeitweise
+dazukommt. Der Organizer entscheidet das jetzt selbst (Haken
+„Termin blockiert den Kalender" in Schritt 1, Default an).
+
+Die App schreibt dafür die Spalte **`ShowAsFree`** (Ja/Nein) in `DEX_Events` —
+**negativ** benannt. Grund: Eine nachträglich angelegte Ja/Nein-Spalte liefert
+für alle bestehenden Einträge leer bzw. `false`. Bei einer Spalte `ShowAsBusy`
+hiesse das „nicht beschäftigt", und jeder Alt-Termin würde beim
+nächsten Update auf „frei" kippen. So heisst leer = `false` =
+„nicht frei" = beschäftigt, also unverändert.
+
+In **beiden** Flows dieselbe Ersetzung:
+
+`DEX_CreateOutlookEvent` → „Create event (V4)" → Feld **`item/showAs`**:
+```
+@if(equals(coalesce(triggerBody()?['ShowAsFree'], false), true), 'free', 'busy')
+```
+
+`DEX_Outlook_Einladungen` → Compose **`Build_Update_Body`** → Zeile `"showAs"`:
+```
+"showAs": "@{if(equals(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['ShowAsFree'], false), true), 'free', 'busy')}"
+```
+Hier ist `"@{...}"` richtig — `showAs` ist ein String, kein Boolean (anders als
+`isAllDay`).
+
+**Stand der Action `Create_event_(V4)` NACH allen Änderungen (im Tenant verifiziert 2026-08-25):**
+```json
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "table": "<Kalender-Id der Shared Mailbox>",
+      "item/subject": "@coalesce(triggerBody()?['OutlookSubject'], triggerBody()?['Title'])",
+      "item/start": "@if(equals(coalesce(triggerBody()?['AllDay'], false), true), concat(formatDateTime(convertFromUtc(coalesce(triggerBody()?['OutlookStart'], triggerBody()?['StartDate']), 'W. Europe Standard Time'), 'yyyy-MM-dd'), 'T00:00:00'), convertFromUtc(coalesce(triggerBody()?['OutlookStart'], triggerBody()?['StartDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'))",
+      "item/end": "@if(equals(coalesce(triggerBody()?['AllDay'], false), true), concat(formatDateTime(addDays(convertFromUtc(coalesce(triggerBody()?['OutlookEnd'], triggerBody()?['EndDate'], triggerBody()?['StartDate']), 'W. Europe Standard Time'), 1), 'yyyy-MM-dd'), 'T00:00:00'), convertFromUtc(coalesce(triggerBody()?['OutlookEnd'], triggerBody()?['EndDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'))",
+      "item/timeZone": "(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna",
+      "item/requiredAttendees": "@last(split(replace(coalesce(triggerBody()?['OrganizerEmail'], ''), '</div>', ''), '\">'))",
+      "item/body": "<p class=\"editor-paragraph\">@{replace(replace(coalesce(triggerBody()?['OutlookBody'], ''), '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image'))}</p>",
+      "item/location": "@triggerBody()?['OutlookLocation']",
+      "item/isAllDay": "@coalesce(triggerBody()?['AllDay'], false)",
+      "item/showAs": "@if(equals(coalesce(triggerBody()?['ShowAsFree'], false), true), 'free', 'busy')",
+      "item/responseRequested": true,
+      "item/sensitivity": "normal"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+      "connection": "shared_office365",
+      "operationId": "V4CalendarPostItem"
+    }
+  },
+  "runAfter": { "Compose_Image": ["Succeeded"] }
+}
+```
+Merke fuer die beiden neuen Felder: `isAllDay` braucht das **einfache** `@`
+(Boolean), `showAs` ebenfalls das einfache `@` (liefert den String `free`
+bzw. `busy`). Im Compose `Build_Update_Body` ist es umgekehrt gemischt — dort
+bleibt `isAllDay` beim einfachen `@`, `showAs` steht aber in `"@{...}"`, weil
+es dort als JSON-String-Wert eingesetzt wird.
+
+**Teil B — `sensitivity` und `responseRequested` angleichen (Korrektur).**
+
+Beide Flows liefen auseinander: Create auf `responseRequested: true` /
+`sensitivity: "normal"`, der Update-Body auf `false` / `"private"`. Ein Termin
+wurde also angelegt und beim ersten Update umgestellt.
+
+Richtig sind die Create-Werte, aus zwei Gründen:
+
+1. **`responseRequested: true` ist Voraussetzung für die Absage-Automatik.**
+   `DEX_OutlookDeclineHandler` und die Option „Absage = Auto-Abmeldung"
+   (`AutoDeregisterOnDecline`) bauen darauf, dass Teilnehmer den Outlook-Termin
+   absagen können. Bei `false` fragt Outlook nicht nach einer Antwort.
+2. **`sensitivity: "private"` ist seit `PATCH_DONOTFORWARD` überflüssig.** Der
+   Wert wurde in v11.88 gesetzt, um Weiterleiten zu verhindern — was er nicht
+   leistet (siehe Abschnitt `PATCH_DONOTFORWARD`: „sensitivity: private alleine reicht dafür nicht — die Extended Property ist die offizielle Mechanik").
+   Übrig bleibt nur der Nebeneffekt: Kollegen mit Kalender-Einsicht sehen
+   „Privat — Beschäftigt" ohne Titel, sehen also nicht mehr, warum
+   jemand geblockt ist.
+
+Im `Build_Update_Body` deshalb setzen:
+```json
+"responseRequested": true,
+"sensitivity": "normal",
+```
+
+Der Abschnitt **„Stand 2026-05-22 (v11.88)"** weiter unten begründet noch die
+alte Kombination `responseRequested: false` + `sensitivity: private` — er ist
+damit überholt.
+
+**Prüfen:** Event ohne Haken anlegen → im Kalender der eingeladenen Person muss
+die Zeit als **frei** erscheinen (kein farbiger Belegt-Balken). Gegenprobe mit
+Haken → wie bisher belegt.
+
+### UI-Anleitung 2026-08-25 (v29.52) — Ganztägige Termine als echte Ganztags-Einträge
+
+**Hintergrund:** Ein Termin ohne sinnvolle Uhrzeit wurde bisher als
+`00:00–23:59` angelegt. In Outlook ist das ein **normaler** Termin, der über den
+ganzen Tag läuft: Er steht als Block in der Tagesspalte und setzt die
+Verfügbarkeit auf „gebucht". Ein echter Ganztags-Eintrag steht dagegen oben im
+Kalenderkopf und lässt die Verfügbarkeit frei. Der Unterschied ist das Feld
+`isAllDay`, das die App nicht über Start/Ende erzwingen kann.
+
+Betroffen war vor allem der Kalender-Modus: Erzeugte Tage fallen auf
+`00:00–23:59` zurück, sobald sich aus dem Zeitraum des Hauptevents keine
+Uhrzeit ableiten lässt (z.B. Klammer `01.09. 00:00 – 25.09. 17:00`). Genau
+diese Ganztags-Blocker haben Organizer gemeldet.
+
+Die App schreibt dafür seit v29.52 eine neue Spalte **`AllDay`** (Ja/Nein) in
+`DEX_Events` — für Haupt- UND Sub-Events, gesetzt über den Haken
+„Ganztägiger Termin" in Schritt 1. `StartDate`/`EndDate` bleiben unverändert
+(`00:00` / `23:59`); die Umrechnung auf die Ganztags-Grenzen macht bewusst der
+Flow, damit sich bis zu dieser Änderung **nichts** am bisherigen Verhalten
+ändert.
+
+**Wichtig:** Outlook verlangt bei `isAllDay = true`, dass Start und Ende exakt
+auf Mitternacht liegen und das **Ende der Folgetag** ist. Ein eintägiger
+Ganztags-Termin am 28.09. läuft also von `28.09. 00:00` bis `29.09. 00:00`.
+Deshalb reicht das Setzen von `isAllDay` allein nicht — Start und Ende müssen
+mit.
+
+**Schritte in `DEX_CreateOutlookEvent` → Aktion „Create event (V4)":**
+
+1. Aktion aufklappen → **Erweiterte Optionen anzeigen** → Feld
+   **„Ist ganztägiges Ereignis?" (`isAllDay`)** → **fx / Expression**:
+   ```
+   coalesce(triggerBody()?['AllDay'], false)
+   ```
+2. Feld **Start time** auf die Fallunterscheidung umstellen:
+   ```
+   if(equals(coalesce(triggerBody()?['AllDay'], false), true), concat(formatDateTime(convertFromUtc(coalesce(triggerBody()?['OutlookStart'], triggerBody()?['StartDate']), 'W. Europe Standard Time'), 'yyyy-MM-dd'), 'T00:00:00'), convertFromUtc(coalesce(triggerBody()?['OutlookStart'], triggerBody()?['StartDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'))
+   ```
+3. Feld **End time** ebenso — beim Ganztags-Fall **einen Tag weiter**:
+   ```
+   if(equals(coalesce(triggerBody()?['AllDay'], false), true), concat(formatDateTime(addDays(convertFromUtc(coalesce(triggerBody()?['OutlookEnd'], triggerBody()?['EndDate'], triggerBody()?['StartDate']), 'W. Europe Standard Time'), 1), 'yyyy-MM-dd'), 'T00:00:00'), convertFromUtc(coalesce(triggerBody()?['OutlookEnd'], triggerBody()?['EndDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'))
+   ```
+   `addDays(..., 1)` auf `23:59` desselben Tages ergibt den Folgetag;
+   `formatDateTime(..., 'yyyy-MM-dd')` schneidet die Uhrzeit weg, `concat`
+   hängt die Mitternacht als **Text** an. Das `concat` ist kein Schönheits-
+   fehler: In .NET-Formatstrings ist `0` ein Ziffern-Platzhalter und `:` der
+   Zeittrenner — `'yyyy-MM-ddT00:00:00'` als Format würde also NICHT die
+   Zeichenfolge `T00:00:00` erzeugen. Literale gehören außerhalb von
+   `formatDateTime`.
+4. **Speichern.**
+
+**Schritte in `DEX_Outlook_Einladungen` (Pfad `UpdateEvent`):** Dort wird der
+bestehende Termin per Graph-PATCH aktualisiert (`Build_Update_Body`). Damit ein
+nachträglich gesetzter Haken auch bei bestehenden Terminen ankommt, dieselben
+drei Werte in den PATCH-Body aufnehmen:
+```
+"isAllDay": @{coalesce(first(outputs('Get_Event_Details')?['body/value'])?['AllDay'], false)},
+"start": { "dateTime": "…", "timeZone": "W. Europe Standard Time" },
+"end":   { "dateTime": "…", "timeZone": "W. Europe Standard Time" }
+```
+mit denselben `if(...)`-Ausdrücken wie oben, nur mit
+`first(outputs('Get_Event_Details')?['body/value'])?['AllDay']` statt
+`triggerBody()?['AllDay']`.
+
+**Solange diese Änderung nicht gemacht ist:** Die Spalte `AllDay` wird
+geschrieben und vom Flow ignoriert — die Termine bleiben `00:00–23:59` wie
+bisher. Es geht also nichts kaputt, der Haken hat nur noch keine Wirkung.
+
+**Vollständiger Stand `Build_Update_Body` NACH der Änderung** (Compose, Code-View):
+```json
+{
+  "type": "Compose",
+  "inputs": {
+    "subject": "@{coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookSubject'], first(outputs('Get_Event_Details')?['body/value'])?['Title'])}",
+    "isAllDay": "@coalesce(first(outputs('Get_Event_Details')?['body/value'])?['AllDay'], false)",
+    "start": {
+      "dateTime": "@{if(equals(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['AllDay'], false), true), concat(formatDateTime(convertFromUtc(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookStart'], first(outputs('Get_Event_Details')?['body/value'])?['StartDate']), 'W. Europe Standard Time'), 'yyyy-MM-dd'), 'T00:00:00'), convertFromUtc(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookStart'], first(outputs('Get_Event_Details')?['body/value'])?['StartDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'))}",
+      "timeZone": "W. Europe Standard Time"
+    },
+    "end": {
+      "dateTime": "@{if(equals(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['AllDay'], false), true), concat(formatDateTime(addDays(convertFromUtc(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookEnd'], first(outputs('Get_Event_Details')?['body/value'])?['EndDate'], first(outputs('Get_Event_Details')?['body/value'])?['StartDate']), 'W. Europe Standard Time'), 1), 'yyyy-MM-dd'), 'T00:00:00'), convertFromUtc(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookEnd'], first(outputs('Get_Event_Details')?['body/value'])?['EndDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'))}",
+      "timeZone": "W. Europe Standard Time"
+    },
+    "showAs": "busy",
+    "responseRequested": false,
+    "sensitivity": "private",
+    "body": {
+      "contentType": "html",
+      "content": "@{replace(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookBody'], ''), '{{ORB_URL}}', coalesce(first(outputs('Get_Event_Details')?['body/value'])?['EmailImageBase64'], ''))}"
+    }
+  }
+}
+```
+
+**Achtung `isAllDay` in diesem Compose:** `"@coalesce(...)"` mit **einfachem `@`**
+und OHNE geschweifte Klammern. `"@{...}"` ist String-Interpolation und würde
+`"true"` als Text liefern — Graph erwartet an dieser Stelle einen echten
+Boolean. Bei `start.dateTime`/`end.dateTime` ist `"@{...}"` dagegen richtig,
+das sind Strings.
+
+`Get_Event_Details` ist ein `GetItems` **ohne** `$select` (nur `$filter` auf die
+ID) — die neue Spalte `AllDay` kommt also automatisch mit, dort ist nichts
+nachzuziehen.
+
+**Prüfen:** Ein Testevent mit Haken anlegen, im Kalender der eingeladenen Person
+schauen — der Eintrag muss **oben im Kalenderkopf** stehen (nicht als Block in
+der Tagesspalte) und die Verfügbarkeit auf „Frei" lassen. Gegenprobe: Ein Event
+OHNE Haken muss unverändert als Zeitblock erscheinen.
+
+**Zurückrollen:** `item/isAllDay` auf `false` setzen (oder die Zeile entfernen)
+und Start/Ende auf die alten `convertFromUtc(...)`-Ausdrücke zurückstellen. Die
+Spalte `AllDay` darf stehen bleiben, sie stört dann niemanden.
+
 ### UI-Anleitung 2026-06-02 (v18.34) — Ort in den Outlook-Termin übernehmen
 
 **Hintergrund:** Das „Ort"-Feld des Outlook-Termins blieb bisher leer, weil
@@ -2818,7 +3028,11 @@ COMPOSE_IMAGE (Event-Bild oder Default-Bild):
   "runAfter": { "Compose_Logo": ["SUCCEEDED"] }
 }
 
-CREATE_EVENT_V4 (Outlook-Termin mit Deloitte-Design Body) — Stand 2026-06-02 (v18.42/v18.44):
+CREATE_EVENT_V4 — **veralteter Stand 2026-06-02** (v18.42/v18.44). Aktueller
+Stand siehe Abschnitt „UI-Anleitung 2026-08-25 (v29.52)" weiter oben: dort sind
+`item/isAllDay` ergaenzt, `item/start`/`item/end` auf die Ganztags-Fallunter-
+scheidung umgestellt, und im Tenant stehen inzwischen `responseRequested: true`
+und `sensitivity: "normal"` statt der hier gezeigten Werte.
 {
   "type": "OpenApiConnection",
   "inputs": {

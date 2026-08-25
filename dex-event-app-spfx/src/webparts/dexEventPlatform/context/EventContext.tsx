@@ -703,6 +703,10 @@ export interface CreateEventInput {
   registrationLanguage?: 'de' | 'en';
   /** v18.40: manueller Outlook-Termin-Ort; leer = Auto aus Veranstaltungsort + Adresse. */
   outlookLocation?: string;
+  /** v29.52: ganztägiger Termin — der Outlook-Flow macht daraus isAllDay. */
+  allDay?: boolean;
+  /** v29.54: Termin als „Frei" statt „Beschäftigt" anzeigen. */
+  showAsFree?: boolean;
   /** v18.42: Betreff des Outlook-Termins; leer = Event-Titel. */
   outlookSubject?: string;
   /** v18.44: abweichende Outlook-Start/-Ende (ISO); leer = Event-Datum. */
@@ -1327,6 +1331,9 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       subsiteUrl: e.SubsiteUrl || '',
       outlookBody: e.OutlookBody || '',
       outlookSubject: e.OutlookSubject || undefined,
+      // v29.52: ganztägiger Termin — der Outlook-Flow macht daraus isAllDay.
+      allDay: !!e.AllDay,
+      showAsFree: !!e.ShowAsFree,
       outlookStart: e.OutlookStart || undefined,
       outlookEnd: e.OutlookEnd || undefined,
       outlookLocation: e.OutlookLocation || undefined,
