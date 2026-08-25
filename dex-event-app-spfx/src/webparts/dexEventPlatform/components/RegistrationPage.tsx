@@ -30,7 +30,8 @@ import OrganizerList from './OrganizerList';
 import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
 import { UserFieldPicker } from './UserFieldPicker';
-import StayRangePicker from './StayRangePicker';
+// v29.51: nachgeladen — zieht react-datepicker + date-fns aus dem Boot-Bundle.
+import StayRangePicker from './StayRangePickerLazy';
 // v28.95: Platzhalter fuer Events ohne eigenes Foto. Zuerst das im Admin
 // Center unter „Logo & Branding" hinterlegte DEX-Orb (DefaultImageBase64 im
 // _Config-Eintrag von DEX_EmailTemplates) — das ist die Stelle, an der es

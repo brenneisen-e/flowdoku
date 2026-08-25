@@ -27,7 +27,6 @@ import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useLanguage } from '../context/LanguageContext';
-import { getManualSections } from './manual/handbookContent';
 import { ManualSection } from './manual/types';
 import { DeloitteEvent } from '../types';
 import { useIsMobile } from '../utils/useIsMobile';
@@ -191,18 +190,40 @@ export default function GlobalSearch(): React.ReactElement | null {
 
   // Handbuch-Heuhaufen einmal pro Sprache/Rolle vorberechnen (Text-Extraktion
   // ist teuer — nicht bei jedem Tastendruck wiederholen).
-  const manualIndex = React.useMemo(() => {
-    if (!visible) return [] as Array<{ s: ManualSection; hay: string; words: string[] }>;
-    try {
-      const sections = getManualSections(isDe ? 'de' : 'en').filter(s =>
-        adminLike ? true
-          : role === 'Organizer'
-            ? (s.visibleFor.indexOf('Organizer') >= 0 || s.visibleFor.indexOf('User') >= 0)
-            : s.visibleFor.indexOf('User') >= 0,
-      );
-      return sections.map(s => { const hay = manualHaystack(s); return { s, hay, words: words(hay) }; });
-    } catch { return []; }
-  }, [isDe, adminLike, role, visible]);
+  //
+  // v29.51: Das Handbuch wird DYNAMISCH nachgeladen, und erst wenn die Suche
+  // aufgeklappt wird. Der statische `import { getManualSections } from
+  // './manual/handbookContent'` hier war der teuerste Import der ganzen App:
+  // Die Handbuch-Sektionen rendern Live-Vorschauen der echten Seiten
+  // (`sections/createEvent.tsx` importiert EventCreationPage,
+  // `sections/idReorder.tsx` importiert AdminPage, …). Über diese eine Zeile
+  // landeten EventCreationPage (1,25 MB), AdminPage (1,06 MB), CheckInPage,
+  // SettingsPage, HotelPlanningPanel, HotelSetupWizard und der Rich-Text-Editor
+  // im BOOT-Bundle — obwohl sie seit v20.0 alle an `React.lazy` hängen. Die
+  // Chunks gab es also, sie wurden nur zusätzlich mitgeliefert.
+  //
+  // `utils/manualSearch.ts` macht es seit jeher richtig (`await import(...)`,
+  // mit genau diesem Kommentar); GlobalSearch hat die Absicht unterlaufen.
+  const [manualIndex, setManualIndex] = React.useState<Array<{ s: ManualSection; hay: string; words: string[] }>>([]);
+  React.useEffect(() => {
+    if (!visible || !expanded) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mod: any = await import('./manual/handbookContent');
+        if (cancelled) return;
+        const sections: ManualSection[] = (mod.getManualSections(isDe ? 'de' : 'en') || []).filter((s: ManualSection) =>
+          adminLike ? true
+            : role === 'Organizer'
+              ? (s.visibleFor.indexOf('Organizer') >= 0 || s.visibleFor.indexOf('User') >= 0)
+              : s.visibleFor.indexOf('User') >= 0,
+        );
+        setManualIndex(sections.map(s => { const hay = manualHaystack(s); return { s, hay, words: words(hay) }; }));
+      } catch { if (!cancelled) setManualIndex([]); }
+    })().catch(() => { /* Chunk nicht ladbar — Suche läuft ohne Handbuch-Treffer */ });
+    return () => { cancelled = true; };
+  }, [isDe, adminLike, role, visible, expanded]);
 
   // Teilnehmer der verwaltbaren Events lazy laden, sobald getippt wird. Quelle
   // sind die Event-Teilnehmerlisten (Full Control auf der Subsite) — NICHT die
