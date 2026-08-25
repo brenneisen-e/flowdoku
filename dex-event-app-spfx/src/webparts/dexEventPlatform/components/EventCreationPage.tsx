@@ -877,6 +877,12 @@ export default function EventCreationPage(): React.ReactElement {
   );
   // Hat der Organizer die Entscheidung selbst getroffen? Dann nie ueberschreiben.
   const orgInvitesTouchedRef = React.useRef<boolean>(!!editEvent);
+  // v29.56: Stand beim Oeffnen — daraus leitet sich beim Speichern ab, ob die
+  // Organizer an BESTEHENDEN Outlook-Terminen nachtraeglich an- oder
+  // abgemeldet werden muessen. SkipOrganizerInvite wirkt naemlich nur beim
+  // ANLEGEN (requiredAttendees); ein bestehender Termin behaelt seine
+  // Teilnehmerliste, bis jemand Einladen/Ausladen queued.
+  const initialOrgGetsSubInvitesRef = React.useRef<boolean>(editEvent ? !editEvent.skipOrganizerInvite : true);
   const [outlookStartOverride, setOutlookStartOverride] = React.useState<string>(editEvent?.outlookStart || '');
   const [outlookEndOverride, setOutlookEndOverride] = React.useState<string>(editEvent?.outlookEnd || '');
   // Modal-State für den HTML-Editor (Outlook-Body + E-Mail-Templates)
@@ -5096,6 +5102,39 @@ export default function EventCreationPage(): React.ReactElement {
             }
           } catch { /* Sub-Outlook-Updates optional */ }
         }
+        // v29.56: Hat der Organizer die Einladungs-Entscheidung umgestellt,
+        // reicht das neue Flag NICHT — es steuert nur `requiredAttendees` beim
+        // ANLEGEN. Bestehende Termine behalten ihre Teilnehmerliste. Also die
+        // Organizer ueber die normale Queue an- bzw. abmelden, Event fuer Event.
+        if (orgGetsSubInvites !== initialOrgGetsSubInvitesRef.current) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const ctx = (window as any).__dexSpfxContext;
+            // Dieselbe Bereinigung wie beim Speichern (sanitizeOrganizerPairs),
+            // damit hier nicht eine Rohadresse aus dem State landet.
+            const orgMails = (sanitizeOrganizerPairs().orgEmailString || '')
+              .split(';').map(x => x.trim()).filter(Boolean);
+            if (ctx && orgMails.length > 0) {
+              const svc = new EventService(ctx);
+              const action: 'Einladen' | 'Ausladen' = orgGetsSubInvites ? 'Einladen' : 'Ausladen';
+              // Klammer + alle gespeicherten Sub-Events. Ohne Outlook-Termin
+              // (disableOutlook) ist der Eintrag wirkungslos, aber harmlos.
+              const targets: Array<{ id: string; title: string }> = [
+                { id: String(selectedEventId), title },
+                ...subEventsRef.current
+                  .filter(se => !!se.dbId && !se.disableOutlook)
+                  .map(se => ({ id: se.dbId as string, title: se.title || '' })),
+              ];
+              for (const tgt of targets) {
+                for (const mail of orgMails) {
+                  try { await svc.queueOutlookEvent(mail, tgt.id, tgt.title, action); }
+                  catch { /* einzelne Queue-Fehler nicht eskalieren */ }
+                }
+              }
+              initialOrgGetsSubInvitesRef.current = orgGetsSubInvites;
+            }
+          } catch { /* Organizer-Nachzug ist best-effort */ }
+        }
         // v11.63: Sub-Events, die im Modal waren aber NICHT angehakt wurden,
         // bekommen OutlookDirty=true, damit beim nächsten Wizard-Lauf der
         // Hinweis erscheint. Aus pendingOutlookDirtyWriteRefs lesen — Top-
@@ -7282,6 +7321,32 @@ export default function EventCreationPage(): React.ReactElement {
   const setScEnd = (d: Date | null): void => { const v = clampAllDay(d, true); if (scopeSub) patchScopeSub({ endDate: subDateToIso(v) }); else setEndDate(dateToLocalStr(v)); };
   // v29.52: „Ganztägig" hängt am selben Scope wie Start/Ende — der Haken gilt
   // also für den oben gewählten Reiter, nicht global.
+  // v29.56: Sammel-Schalter fuer alle Termine. Bei einer Reihe ueber zwanzig
+  // Tage ist die Einzel-Einstellung zwar richtig, aber nicht zumutbar — man
+  // muesste jeden Reiter anfassen. Die beiden Schalter setzen den Wert auf
+  // ALLE Sub-Events; die Einzel-Haken bleiben und koennen danach abweichen.
+  const setAllSubsAllDay = (v: boolean): void => {
+    setSubEvents(prev => prev.map(se => {
+      if (!!se.allDay === v) return se;
+      const next: SubEventDraft = { ...se, allDay: v };
+      if (v) {
+        // Gleiche Klemmung wie beim Einzel-Haken: ohne Tagesgrenzen stuende in
+        // DEX_Events spaeter eine Spanne, die keinen ganzen Tag abdeckt.
+        const st = subIsoToDate(se.startDate);
+        const en = subIsoToDate(se.endDate) || st;
+        if (st) {
+          const s0 = new Date(st); s0.setHours(0, 0, 0, 0);
+          const e0 = new Date(en || st); e0.setHours(23, 59, 0, 0);
+          next.startDate = subDateToIso(s0);
+          next.endDate = subDateToIso(e0);
+        }
+      }
+      return next;
+    }));
+  };
+  const setAllSubsShowAsFree = (v: boolean): void => {
+    setSubEvents(prev => prev.map(se => (!!se.showAsFree === v ? se : { ...se, showAsFree: v })));
+  };
   const scShowAsFree = scopeSub ? !!scopeSub.showAsFree : showAsFree;
   const setScShowAsFree = (v: boolean): void => {
     if (scopeSub) patchScopeSub({ showAsFree: v }); else setShowAsFree(v);
@@ -11359,6 +11424,53 @@ export default function EventCreationPage(): React.ReactElement {
                       </span>
                     </span>
                   </label>
+                  {/* v29.56: Sammel-Schalter. Der Einzel-Haken je Termin bleibt
+                      (Schritt 1, Reiter des Tages) — hier setzt man alle auf
+                      einmal, weil niemand einundzwanzig Reiter durchklickt.
+                      Dreizustand: an = alle, aus = keiner, gestrichelt =
+                      gemischt (dann hat jemand einzelne abweichend gesetzt). */}
+                  {subEventsOptIn && subEvents.length > 0 && (() => {
+                    const nAll = subEvents.filter(se => se.allDay).length;
+                    const nBusy = subEvents.filter(se => !se.showAsFree).length;
+                    const n = subEvents.length;
+                    const row = (
+                      key: string, checked: boolean, mixed: boolean,
+                      onChange: (v: boolean) => void, title: string, desc: React.ReactNode,
+                    ): JSX.Element => (
+                      <label key={key} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          ref={el => { if (el) el.indeterminate = mixed; }}
+                          onChange={e => onChange(e.target.checked)}
+                          style={{ width: 18, height: 18, marginTop: 1, flexShrink: 0, cursor: 'pointer' }}
+                        />
+                        <span style={{ fontSize: '0.9rem' }}>
+                          <strong>{title}</strong>
+                          {mixed && (
+                            <span style={{ marginLeft: 8, fontSize: '0.75rem', color: 'var(--dex-orange, #ed8b00)', fontWeight: 600 }}>
+                              {isDe ? 'gemischt' : 'mixed'}
+                            </span>
+                          )}
+                          <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400 }}>{desc}</span>
+                        </span>
+                      </label>
+                    );
+                    return (
+                      <>
+                        {row('bulk-allday', nAll === n, nAll > 0 && nAll < n, setAllSubsAllDay,
+                          isDe ? 'Alle Termine sind Ganztagestermine' : 'All dates are all-day entries',
+                          isDe
+                            ? <>Setzt den Ganztags-Status für <strong>alle {n} Termine</strong> auf einmal. Einzelne Tage kannst du danach über ihren Reiter abweichend einstellen.</>
+                            : <>Sets the all-day flag for <strong>all {n} dates</strong> at once. You can still change individual days on their own tab afterwards.</>)}
+                        {row('bulk-busy', nBusy === n, nBusy > 0 && nBusy < n, (v) => setAllSubsShowAsFree(!v),
+                          isDe ? 'Alle Termine blockieren den Kalender' : 'All dates block the calendar',
+                          isDe
+                            ? <>Setzt <strong>alle {n} Termine</strong> auf Beschäftigt. Ohne Haken erscheinen sie als Frei — bei ganztägigen Terminen meist die bessere Wahl, sonst gilt jeder Tag als komplett belegt.</>
+                            : <>Marks <strong>all {n} dates</strong> as busy. Without it they show as free — usually the better choice for all-day entries, otherwise every day counts as fully booked.</>)}
+                      </>
+                    );
+                  })()}
                   {/* v29.55: Bekommen die Organizer die Outlook-Termine ALLER
                       Termine? Der Flow traegt sie als Teilnehmer ein (aus
                       OrganizerEmail, und die steht auf jeder Sub-Event-Zeile) —
