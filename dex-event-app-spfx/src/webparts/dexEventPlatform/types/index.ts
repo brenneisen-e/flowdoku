@@ -164,6 +164,15 @@ export interface DeloitteEvent {
    *  Outlook-Flow (siehe docs/flow-jsons.md, Abschnitt v29.52). Gilt für
    *  Haupt- UND Sub-Events. */
   allDay?: boolean;
+  /** v29.54: Termin NICHT als „Beschäftigt" anzeigen (Outlook `showAs: free`).
+   *
+   *  Absichtlich negativ gespeichert (`ShowAsFree`), nicht als `ShowAsBusy`:
+   *  Eine nachtraeglich angelegte Ja/Nein-Spalte liefert fuer alle BESTEHENDEN
+   *  Eintraege leer bzw. false. Bei `ShowAsBusy` hiesse das „nicht beschäftigt" —
+   *  jeder Alt-Termin wuerde beim naechsten Update auf „frei" kippen. So heisst
+   *  leer = false = „nicht frei" = beschaeftigt, also genau das bisherige
+   *  Verhalten. Die Umkehrung passiert einmal, sichtbar, in der Oberflaeche. */
+  showAsFree?: boolean;
   /** v18.34/v18.40: Ort für das Location-Feld des Outlook-Termins. Standard =
    *  Veranstaltungsort + Adresse (automatisch gebaut), im Wizard überschreibbar. */
   outlookLocation?: string;

@@ -2718,6 +2718,69 @@ zurückfallen.
 
 Danach den aktuellen Flow-JSON hier einpflegen.
 
+### UI-Anleitung 2026-08-25 (v29.54) — Beschäftigt/Frei durch den Organizer + Korrektur zu sensitivity/responseRequested
+
+**Teil A — `showAs` wird einstellbar.**
+
+`showAs` stand in beiden Flows fest auf `busy`. Bei ganztägigen Terminen heisst
+das: ein kompletter Arbeitstag gilt als belegt, auch wenn man nur zeitweise
+dazukommt. Der Organizer entscheidet das jetzt selbst (Haken
+„Termin blockiert den Kalender" in Schritt 1, Default an).
+
+Die App schreibt dafür die Spalte **`ShowAsFree`** (Ja/Nein) in `DEX_Events` —
+**negativ** benannt. Grund: Eine nachträglich angelegte Ja/Nein-Spalte liefert
+für alle bestehenden Einträge leer bzw. `false`. Bei einer Spalte `ShowAsBusy`
+hiesse das „nicht beschäftigt", und jeder Alt-Termin würde beim
+nächsten Update auf „frei" kippen. So heisst leer = `false` =
+„nicht frei" = beschäftigt, also unverändert.
+
+In **beiden** Flows dieselbe Ersetzung:
+
+`DEX_CreateOutlookEvent` → „Create event (V4)" → Feld **`item/showAs`**:
+```
+@if(equals(coalesce(triggerBody()?['ShowAsFree'], false), true), 'free', 'busy')
+```
+
+`DEX_Outlook_Einladungen` → Compose **`Build_Update_Body`** → Zeile `"showAs"`:
+```
+"showAs": "@{if(equals(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['ShowAsFree'], false), true), 'free', 'busy')}"
+```
+Hier ist `"@{...}"` richtig — `showAs` ist ein String, kein Boolean (anders als
+`isAllDay`).
+
+**Teil B — `sensitivity` und `responseRequested` angleichen (Korrektur).**
+
+Beide Flows liefen auseinander: Create auf `responseRequested: true` /
+`sensitivity: "normal"`, der Update-Body auf `false` / `"private"`. Ein Termin
+wurde also angelegt und beim ersten Update umgestellt.
+
+Richtig sind die Create-Werte, aus zwei Gründen:
+
+1. **`responseRequested: true` ist Voraussetzung für die Absage-Automatik.**
+   `DEX_OutlookDeclineHandler` und die Option „Absage = Auto-Abmeldung"
+   (`AutoDeregisterOnDecline`) bauen darauf, dass Teilnehmer den Outlook-Termin
+   absagen können. Bei `false` fragt Outlook nicht nach einer Antwort.
+2. **`sensitivity: "private"` ist seit `PATCH_DONOTFORWARD` überflüssig.** Der
+   Wert wurde in v11.88 gesetzt, um Weiterleiten zu verhindern — was er nicht
+   leistet (siehe Abschnitt `PATCH_DONOTFORWARD`: „sensitivity: private alleine reicht dafür nicht — die Extended Property ist die offizielle Mechanik").
+   Übrig bleibt nur der Nebeneffekt: Kollegen mit Kalender-Einsicht sehen
+   „Privat — Beschäftigt" ohne Titel, sehen also nicht mehr, warum
+   jemand geblockt ist.
+
+Im `Build_Update_Body` deshalb setzen:
+```json
+"responseRequested": true,
+"sensitivity": "normal",
+```
+
+Der Abschnitt **„Stand 2026-05-22 (v11.88)"** weiter unten begründet noch die
+alte Kombination `responseRequested: false` + `sensitivity: private` — er ist
+damit überholt.
+
+**Prüfen:** Event ohne Haken anlegen → im Kalender der eingeladenen Person muss
+die Zeit als **frei** erscheinen (kein farbiger Belegt-Balken). Gegenprobe mit
+Haken → wie bisher belegt.
+
 ### UI-Anleitung 2026-08-25 (v29.52) — Ganztägige Termine als echte Ganztags-Einträge
 
 **Hintergrund:** Ein Termin ohne sinnvolle Uhrzeit wurde bisher als

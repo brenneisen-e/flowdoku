@@ -862,6 +862,10 @@ export default function EventCreationPage(): React.ReactElement {
   // Outlook den Tag als normalen Termin statt als Ganztags-Eintrag im Kopf —
   // der Unterschied fällt erst im Kalender des Teilnehmers auf.
   const [allDay, setAllDay] = React.useState<boolean>(!!(editEvent && editEvent.allDay));
+  // v29.54: Der Termin blockiert den Kalender (Outlook `showAs`). Default ist
+  // beschaeftigt; bei Ganztags-Terminen ist das oft nicht gewollt, weil dann
+  // ein ganzer Arbeitstag als belegt gilt.
+  const [showAsFree, setShowAsFree] = React.useState<boolean>(!!(editEvent && editEvent.showAsFree));
   const [outlookStartOverride, setOutlookStartOverride] = React.useState<string>(editEvent?.outlookStart || '');
   const [outlookEndOverride, setOutlookEndOverride] = React.useState<string>(editEvent?.outlookEnd || '');
   // Modal-State für den HTML-Editor (Outlook-Body + E-Mail-Templates)
@@ -1336,6 +1340,8 @@ export default function EventCreationPage(): React.ReactElement {
     endDate: string;
     /** v29.52: ganztägiger Termin — der Outlook-Flow macht daraus isAllDay. */
     allDay?: boolean;
+    /** v29.54: Termin als „Frei" statt „Beschäftigt" anzeigen. */
+    showAsFree?: boolean;
     maxParticipants?: number;
     registrationDeadline?: string;
     /** v24.64: Pflicht-Sub-Event — Teilnehmer MUSS dieses Sub-Event auswählen. */
@@ -1384,6 +1390,8 @@ export default function EventCreationPage(): React.ReactElement {
     initialTitle?: string;
     /** v29.52: „Ganztägig" beim Laden — Vergleichswert für den Outlook-Detektor. */
     initialAllDay?: boolean;
+    /** v29.54: Anzeige-Status beim Laden — ebenfalls Outlook-relevant. */
+    initialShowAsFree?: boolean;
     initialStartDate?: string;
     initialEndDate?: string;
     initialOutlookBody?: string;
@@ -1527,6 +1535,7 @@ export default function EventCreationPage(): React.ReactElement {
       outlookEnd: k.outlookEnd || '',
       outlookLocation: k.outlookLocation || '',
       allDay: !!k.allDay,
+      showAsFree: !!k.showAsFree,
       // v11.57: Snapshot der initialen Outlook-relevanten Felder
       initialOutlookEventId: k.outlookEventId || '',
       // v11.61: CalendarLink (iCalUId) als Outlook-Existenz-Indikator. Der
@@ -1535,6 +1544,7 @@ export default function EventCreationPage(): React.ReactElement {
       initialCalendarLink: k.calendarLink || '',
       initialTitle: k.title || '',
       initialAllDay: !!k.allDay,
+      initialShowAsFree: !!k.showAsFree,
       initialStartDate: k.startDate || '',
       initialEndDate: k.endDate || '',
       initialOutlookBody: k.outlookBody || '',
@@ -2039,7 +2049,8 @@ export default function EventCreationPage(): React.ReactElement {
   // Werten verglichen — Änderung löst das Update-Confirm-Modal aus.
   // Im Ref, weil wir das einmal beim Mount fixieren und nicht bei Re-Renders
   // neu setzen wollen.
-  const initialOutlookSnapshot = React.useRef<{ title: string; startDate: string; endDate: string; outlookBody: string; outlookLocation: string; outlookSubject: string; outlookStart: string; outlookEnd: string; organizers: string; outlookLogo: string; allDay: boolean }>({
+  const initialOutlookSnapshot = React.useRef<{ title: string; startDate: string; endDate: string; outlookBody: string; outlookLocation: string; outlookSubject: string; outlookStart: string; outlookEnd: string; organizers: string; outlookLogo: string; allDay: boolean; showAsFree: boolean }>({
+    showAsFree: !!(editEvent && editEvent.showAsFree), // v29.54
     // v29.52: „Ganztägig" gehört in den Snapshot. Der Haken ändert weder Titel
     // noch Start/Ende (die stehen ohnehin auf 00:00/23:59) — ohne diesen
     // Vergleich bliebe er für den Detektor unsichtbar, es würde KEIN
@@ -3585,6 +3596,7 @@ export default function EventCreationPage(): React.ReactElement {
         outlookLocation: (draft.outlookLocation || '') || undefined,
         // v29.52: ganztägig mitschreiben — sonst kippt der Haken beim Speichern zurück.
         allDay: !!draft.allDay,
+        showAsFree: !!draft.showAsFree,
         agenda: draftAgendaJson,
         transfers: draftTransfersJson,
         documents: '[]',
@@ -3810,6 +3822,7 @@ export default function EventCreationPage(): React.ReactElement {
           // v29.52: ganztägig auch beim UPDATE bestehender Sub-Events — genau
           // die Klasse Fehler, die v19.32/v20.0/v29.20 schon dreimal hatten.
           'AllDay': !!draft.allDay,
+          'ShowAsFree': !!draft.showAsFree, // v29.54
           'EmailLanguage': childPayload.emailLanguage,
           // v29.42: Fußzeilen-Link auch auf dem direkten Sub-Event-Schreibweg
           // normalisieren (der läuft nicht über EventService.updateEvent).
@@ -4462,6 +4475,7 @@ export default function EventCreationPage(): React.ReactElement {
       updates['OutlookStart'] = outlookStartOverride || null;
       updates['OutlookEnd'] = outlookEndOverride || null;
       updates['AllDay'] = !!allDay; // v29.52
+      updates['ShowAsFree'] = !!showAsFree; // v29.54
       updates['Agenda'] = JSON.stringify(agenda);
       updates['Transfers'] = JSON.stringify(transferTimes);
       updates['FunZone'] = JSON.stringify(quiz);
@@ -5206,6 +5220,7 @@ export default function EventCreationPage(): React.ReactElement {
         outlookStart: outlookStartOverride || undefined,
         outlookEnd: outlookEndOverride || undefined,
         allDay, // v29.52
+        showAsFree, // v29.54
         locationFilter,
         audience,
         audienceResolvedEmails: audienceResolved,
@@ -5836,6 +5851,9 @@ export default function EventCreationPage(): React.ReactElement {
     if ((outlookEndOverride || '') !== (snap.outlookEnd || '') && topChangedFields.indexOf('endDate') < 0) topChangedFields.push('endDate');
     // v29.52: Umschalten auf/von „ganztägig" ist eine Termin-Änderung.
     if (!!allDay !== !!snap.allDay && topChangedFields.indexOf('startDate') < 0) topChangedFields.push('startDate');
+    // v29.54: Wechsel zwischen Beschaeftigt und Frei aendert den bestehenden
+    // Termin ebenfalls — ohne diesen Vergleich bliebe er im Kalender stehen.
+    if (!!showAsFree !== !!snap.showAsFree && topChangedFields.indexOf('startDate') < 0) topChangedFields.push('startDate');
     // v11.61: Beide Pointer prüfen — DEX_CreateOutlookEvent setzt nur
     // CalendarLink auf Erfolg, OutlookEventId bleibt leer. Wer beides
     // leer hat, hatte nie einen Outlook-Termin.
@@ -5883,6 +5901,7 @@ export default function EventCreationPage(): React.ReactElement {
       if (!sameInstant(s.endDate || '', initEnd)) subChangedFields.push('endDate');
       // v29.52: dasselbe für den Ganztags-Haken je Sub-Event.
       if (!!s.allDay !== !!s.initialAllDay && subChangedFields.indexOf('startDate') < 0) subChangedFields.push('startDate');
+      if (!!s.showAsFree !== !!s.initialShowAsFree && subChangedFields.indexOf('startDate') < 0) subChangedFields.push('startDate'); // v29.54
       if (curBodyStripped !== initBodyStripped) subChangedFields.push('outlookBody');
       // v19.20: globale Header-Bild-Layout-Änderung betrifft auch die
       // Sub-Event-Outlook-Termine (gleicher Hero-Bild-Kopf) — als eigenes
@@ -7219,6 +7238,10 @@ export default function EventCreationPage(): React.ReactElement {
   const setScEnd = (d: Date | null): void => { if (scopeSub) patchScopeSub({ endDate: subDateToIso(d) }); else setEndDate(dateToLocalStr(d)); };
   // v29.52: „Ganztägig" hängt am selben Scope wie Start/Ende — der Haken gilt
   // also für den oben gewählten Reiter, nicht global.
+  const scShowAsFree = scopeSub ? !!scopeSub.showAsFree : showAsFree;
+  const setScShowAsFree = (v: boolean): void => {
+    if (scopeSub) patchScopeSub({ showAsFree: v }); else setShowAsFree(v);
+  };
   const scAllDay = scopeSub ? !!scopeSub.allDay : allDay;
   const setScAllDay = (v: boolean): void => {
     // Beim Einschalten die Zeiten auf die Tagesgrenzen legen. Der Flow rechnet
@@ -8590,6 +8613,27 @@ export default function EventCreationPage(): React.ReactElement {
                     {isDe
                       ? 'Der Outlook-Termin erscheint dann oben im Kalenderkopf statt als Block über den Tag — und lässt die Verfügbarkeit der Teilnehmer frei. Ohne Haken bucht ein Termin von 00:00 bis 23:59 den kompletten Tag als belegt.'
                       : 'The Outlook entry then appears in the calendar header instead of as a block across the day — and leaves attendees shown as free. Without it, a 00:00–23:59 entry books the whole day as busy.'}
+                  </span>
+                </span>
+              </label>
+              {/* v29.54: Kalender blockieren ja/nein. Der Haken ist ANGEHAKT =
+                  beschaeftigt (Default, bisheriges Verhalten); gespeichert wird
+                  der umgekehrte Wert `showAsFree` — siehe Kommentar an
+                  DeloitteEvent.showAsFree. Die Umkehrung passiert genau hier,
+                  an einer Stelle, und nirgends sonst. */}
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginTop: 10 }}>
+                <input
+                  type="checkbox"
+                  checked={!scShowAsFree}
+                  onChange={e => setScShowAsFree(!e.target.checked)}
+                  style={{ width: 18, height: 18, marginTop: 1, flexShrink: 0, cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: '0.9rem' }}>
+                  <strong>{isDe ? 'Termin blockiert den Kalender' : 'Entry blocks the calendar'}</strong>
+                  <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400 }}>
+                    {isDe
+                      ? <>Der Termin steht bei den Teilnehmern auf <strong>Beschäftigt</strong> — Kollegen sehen sie als nicht verfügbar. {scAllDay ? <>Bei einem ganztägigen Termin gilt damit der <strong>komplette Arbeitstag</strong> als belegt; für ein Angebot, zu dem man nur zeitweise dazukommt, nimmst du den Haken besser raus.</> : <>Ohne Haken erscheint der Termin als <strong>Frei</strong> und blockiert nichts.</>}</>
+                      : <>The entry shows as <strong>busy</strong> for attendees — colleagues see them as unavailable. {scAllDay ? <>For an all-day entry that marks the <strong>entire working day</strong> as taken; for something people only drop into, better untick it.</> : <>Without it the entry shows as <strong>free</strong> and blocks nothing.</>}</>}
                   </span>
                 </span>
               </label>
