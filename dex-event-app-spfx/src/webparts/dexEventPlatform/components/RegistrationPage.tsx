@@ -7,7 +7,7 @@
 
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
-import { useEvents, collectCcEmailsFromFields } from '../context/EventContext';
+import { useEvents, collectCcEmailsFromFields, formatOrganizerList } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 // v22.10: Sub-Sections nach ihrer EIGENEN Sichtbarkeit filtern (gleiche Logik
@@ -39,7 +39,7 @@ import StayRangePicker from './StayRangePickerLazy';
 // gebuendelte PNG ist nur der Rueckfall, solange der Cache noch nicht
 // geladen ist (frischer Tab, erster Render).
 import { DEX_ORB_PNG } from '../data/brandLogos';
-import { getCachedOrbBase64 } from '../services/EmailTemplates';
+import { getCachedOrbBase64, replacePlaceholders } from '../services/EmailTemplates';
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -3727,7 +3727,35 @@ export default function RegistrationPage(): React.ReactElement {
                   // Plain-Text als auch für HTML — Emails in bereits
                   // verlinktem Text (innerhalb von href="...") werden
                   // übersprungen.
-                  const raw = event.description || '';
+                  // v29.59 BUG-FIX: Die Beschreibung wurde ROH gerendert — die
+                  // Variablen, die der Editor anbietet ({{EventTitle}},
+                  // {{Organizer}}, {{Name}}, {{AppUrl}}, {{ContactEmail}}),
+                  // standen auf der Anmeldeseite als Text da. In der
+                  // Live-Vorschau des Editors waren sie ersetzt, also sah der
+                  // Organizer beim Schreiben nie, was Teilnehmer bekommen.
+                  //
+                  // {{WaitlistPosition}} bleibt bewusst aussen vor: Vor der
+                  // Anmeldung gibt es keine Position, und eine erfundene Zahl
+                  // waere schlimmer als der sichtbare Platzhalter. Der Editor
+                  // bietet die Variable fuer die MAIL-Texte an; in der
+                  // Beschreibung ergibt sie keinen Sinn.
+                  const raw = ((): string => {
+                    const src = event.description || '';
+                    if (src.indexOf('{{') < 0) return src;
+                    const orgNames = (event.organizers || [])
+                      .reduce<string[]>((acc, o) => [...acc, ...o.split(';')], [])
+                      .map(o => o.trim()).filter(Boolean);
+                    const orgHidden = !!event.hideOrganizer && !event.hideOrganizerIndividualOnly;
+                    return replacePlaceholders(src, {
+                      EventTitle: event.title || '',
+                      // Ausgeblendete Organizer duerfen ueber die Beschreibung
+                      // nicht doch wieder sichtbar werden (v29.48-Logik).
+                      Organizer: orgHidden ? '' : formatOrganizerList(orgNames, locale === 'de' ? 'DE' : 'EN'),
+                      Name: `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim(),
+                      AppUrl: `${window.location.origin}${window.location.pathname}`,
+                      ContactEmail: event.contactEmail || '',
+                    });
+                  })();
                   const isHtml = /<[a-z][\s\S]*>/i.test(raw);
                   const base = isHtml
                     ? raw
