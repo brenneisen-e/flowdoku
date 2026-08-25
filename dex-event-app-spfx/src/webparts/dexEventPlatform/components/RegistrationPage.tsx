@@ -2053,6 +2053,10 @@ export default function RegistrationPage(): React.ReactElement {
       let anySuccess = false;
       let parentOk = true;
       let lastSubReason: string | undefined;
+      // v29.48: Schatten-/Klammer-Zeile konnte nicht angelegt werden (s.
+      // doParentRegistration). Die Sub-Event-Anmeldungen bleiben gültig, aber
+      // die übergreifenden Hauptevent-Antworten fehlen — das muss gesagt werden.
+      let shadowParentFailed = false;
       // v23.10: Assistenz-Proxy-Anmeldung — der Client hat (Picker-Greyout +
       // Submit-Validierung oben) bereits sichergestellt, dass eine Assistenz nur
       // Partner/Director anmeldet. Dieses Flag wird der Registrierung als
@@ -2199,7 +2203,15 @@ export default function RegistrationPage(): React.ReactElement {
         );
         if (bestEffort) {
           // Schatten-Klammer: Erfolg zählt mit, aber kein Fehler-Durchschlag.
-          if (parentResult.ok) anySuccess = true;
+          if (parentResult.ok) { anySuccess = true; return; }
+          // v29.48: … der Fehlschlag darf aber auch nicht spurlos verschwinden.
+          // Genau hier entsteht „Fehlende Klammer-Anmeldung" im Organizer
+          // Center: Die Schattenzeile ist der LETZTE Schreibvorgang einer
+          // Anmeldung, also der, bei dem das SharePoint-Kontingent am ehesten
+          // erschöpft ist (HTTP 429, s. utils/spThrottle). Bis v29.47 wurde das
+          // Ergebnis verworfen, der Teilnehmer sah „Anmeldung erfolgreich",
+          // und die übergreifenden Hauptevent-Antworten fehlten still.
+          shadowParentFailed = true;
           return;
         }
         parentOk = parentResult.ok;
@@ -2351,6 +2363,24 @@ export default function RegistrationPage(): React.ReactElement {
         setSubmitProgress(92);
         setSubmitProgressLabel(locale === 'de' ? 'Hauptevent-Daten werden gespeichert…' : 'Saving main-event data…');
         await doParentRegistration(true);
+        // v29.48: Ein zweiter Versuch, bevor wir aufgeben. Der erste scheitert
+        // fast immer an der Drosselung; withThrottleRetry hat dann schon
+        // gewartet, das Kontingent ist wieder frei.
+        if (shadowParentFailed) {
+          shadowParentFailed = false;
+          await doParentRegistration(true);
+        }
+      }
+      // v29.48: Bleibt die Klammer-Zeile aus, ist die Anmeldung gültig, aber
+      // unvollständig — die übergreifenden Antworten (Verpflegung, Hotel,
+      // Anreise) haben keine Zeile, in der sie stehen könnten. Bisher war das
+      // für den Teilnehmer unsichtbar und tauchte erst beim Organizer als
+      // „Fehlende Klammer-Anmeldung" auf.
+      if (shadowParentFailed) {
+        showAlert(locale === 'de'
+          ? `Deine Anmeldung für ${childTermPlural || 'die Sub-Events'} ist gespeichert — die übergreifenden Angaben zum Event konnten wir gerade nicht sichern (SharePoint hat den letzten Schreibvorgang abgelehnt). Öffne die Anmeldung in ein paar Minuten noch einmal und speichere sie erneut, dann sind auch diese Angaben hinterlegt.`
+          : `Your registration for the ${childTermPlural || 'sub-events'} is saved — we could not store the cross-cutting event details just now (SharePoint rejected the last write). Please open the registration again in a few minutes and save it once more so those details are recorded.`,
+          { variant: 'error' });
       }
       setSubmitProgress(95);
       setSubmitProgressLabel(locale === 'de' ? 'Bestätigungen werden versandt…' : 'Confirmations are being queued…');
