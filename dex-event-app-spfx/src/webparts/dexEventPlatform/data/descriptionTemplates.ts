@@ -1,5 +1,5 @@
 /**
- * v28.94: Aus `EventCreationPage` herausgeloest. Vorschlagstexte fuer die
+ * v28.94: Aus `EventCreationPage` herausgeloest. Vorschlagstexte für die
  * Event-Beschreibung — reine Daten, die im Editor-Dialog als Chips angeboten
  * werden (v28.7).
  */

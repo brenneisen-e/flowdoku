@@ -1,5 +1,5 @@
 /**
- * v28.94: Aus `EventCreationPage` herausgeloest. Kleiner Editor fuer die
+ * v28.94: Aus `EventCreationPage` herausgeloest. Kleiner Editor für die
  * Beschreibung eines Abfragefelds.
  */
 import * as React from 'react';

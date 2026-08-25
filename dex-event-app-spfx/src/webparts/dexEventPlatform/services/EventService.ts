@@ -19,7 +19,7 @@
 
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions, SPHttpClientConfiguration } from '@microsoft/sp-http';
-// v29.48: Alle SharePoint-Requests dieser Klasse laufen ueber _sp (s.u.) und
+// v29.48: Alle SharePoint-Requests dieser Klasse laufen über _sp (s.u.) und
 // damit durch den 429-Retry.
 import { withThrottleRetry } from '../utils/spThrottle';
 import { wrapTemplateForStorage, buildEmailFromTemplate, normalizeMadeWithLink } from './EmailTemplates';
@@ -1452,7 +1452,7 @@ export class EventService {
 
   /**
    * v28.38: Spalten für die Hotel-Zuordnung auf einer Teilnehmerliste anlegen.
-   * Die Zuordnung gehoert bewusst an die TEILNEHMERZEILE und nicht ans Event:
+   * Die Zuordnung gehört bewusst an die TEILNEHMERZEILE und nicht ans Event:
    * so steht sie in der Teilnehmertabelle, läuft in jeden bestehenden Export
    * mit und blaeht den Event-Datensatz nicht auf (2-MB-Grenze, s. v28.31).
    * Idempotent — vorhandene Spalten liefern 500/400 und werden ignoriert.
@@ -3812,11 +3812,11 @@ export class EventService {
       // triggerBody()?['AllDay'] lesen muss — JSON parsen kann er dort nicht.
       { title: 'AllDay', type: 8, metaType: 'SP.Field' },
       // v29.54: Boolean - Termin als „Frei" statt „Beschäftigt" anzeigen.
-      // NEGATIV benannt, damit bestehende Eintraege (leer/false) weiter
-      // beschaeftigt bleiben — siehe Kommentar an DeloitteEvent.showAsFree.
+      // NEGATIV benannt, damit bestehende Einträge (leer/false) weiter
+      // beschäftigt bleiben — siehe Kommentar an DeloitteEvent.showAsFree.
       { title: 'ShowAsFree', type: 8, metaType: 'SP.Field' },
       // v29.55: Boolean - Organizer nicht in requiredAttendees des Outlook-
-      // Termins. Ebenfalls negativ, damit Bestandsevents unveraendert bleiben.
+      // Termins. Ebenfalls negativ, damit Bestandsevents unverändert bleiben.
       { title: 'SkipOrganizerInvite', type: 8, metaType: 'SP.Field' },
       { title: 'EmailLanguage', type: 2 }, // DE oder EN
       { title: 'RegistrationLanguage', type: 2 }, // v18.35: erzwungene Anmeldeseiten-Sprache ('de'|'en'|'')
@@ -5613,7 +5613,7 @@ export class EventService {
 
   /**
    * Teilnehmerliste auf einer Subsite erstellen.
-   * Liste heisst immer "Teilnehmer".
+   * Liste heißt immer "Teilnehmer".
    */
   private async createRegistrationList(
     subsiteUrl: string,
@@ -6312,7 +6312,7 @@ export class EventService {
       // Counter wird bei Bedarf on-demand angelegt + geseeded.
       //
       // v9.10: Der alte race-anfällige Fallback "max+1" wurde entfernt — bei
-      // Massen-Anmeldungen (Go-Live grosse Events) hat er Duplikate produziert,
+      // Massen-Anmeldungen (Go-Live große Events) hat er Duplikate produziert,
       // weil zwei Clients gleichzeitig den gleichen Max-Wert lesen und beide
       // mit Max+1 schreiben. Wenn der atomare Counter ausnahmsweise gar nicht
       // erreichbar ist, lassen wir TeilnehmerID undefined und der Admin
@@ -8107,7 +8107,7 @@ export class EventService {
    * Genau so sortieren beide Stellen, die nachrücken: `promoteFirstWaitlistItem`
    * in der App UND der Flow `DEX_IDReorder_TeilnehmerIDs` (Order By
    * `TeilnehmerID asc`, s. docs/flow-jsons.md). Eine zusätzliche Prioritaets-
-   * spalte wuerde der Flow ignorieren und weiter den Falschen nachrücken
+   * spalte würde der Flow ignorieren und weiter den Falschen nachrücken
    * lassen — deshalb wird hier die TeilnehmerID selbst umsortiert. Damit zieht
    * die neue Reihenfolge in beiden Pfaden.
    *
@@ -12182,8 +12182,8 @@ export class EventService {
   }
 
   // ==================== Ticketsystem (v26.0.0) ====================
-  // v28.95: Der Inhalt liegt in services/tickets.ts. Die Klasse behaelt ihre
-  // Methoden — so aendert sich an keiner der Aufrufstellen etwas, und der
+  // v28.95: Der Inhalt liegt in services/tickets.ts. Die Klasse behält ihre
+  // Methoden — so ändert sich an keiner der Aufrufstellen etwas, und der
   // Compiler prueft den Weg von hier bis in das Modul.
 
   /** v28.95: delegiert an services/tickets.ts (siehe dort). */

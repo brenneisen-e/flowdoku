@@ -1,5 +1,5 @@
 /**
- * v28.94: Aus `EventCreationPage` herausgeloest. Multi-Select fuer den
+ * v28.94: Aus `EventCreationPage` herausgeloest. Multi-Select für den
  * Standortfilter (loeste in v8.0 die Pillen-Buttons ab).
  */
 import * as React from 'react';

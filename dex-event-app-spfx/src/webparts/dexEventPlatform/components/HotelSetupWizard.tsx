@@ -225,7 +225,7 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
    *  fälschlich als „kein Hotel" gelesen. */
   const needsRoom = React.useCallback((p: SPRegistration): boolean | null => {
     // v28.63: Das Zeitraum-Feld beantwortet beides in einem: ein Zeitraum
-    // heisst „Zimmer ja", das Häkchen „kein Hotel" heisst nein.
+    // heißt „Zimmer ja", das Häkchen „kein Hotel" heißt nein.
     if (fields.range) {
       const fs = formStay(p);
       if (!fs) return null;

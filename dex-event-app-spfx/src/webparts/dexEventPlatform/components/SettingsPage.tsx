@@ -720,7 +720,7 @@ export default function SettingsPage(): React.ReactElement {
                       </div>
                       {/* v11.75: explizite „Keine Treffer"-Box wenn die Suche
                           fertig ist und 0 Treffer hat — sonst wirkt der Picker
-                          stumm und der Admin weiss nicht, ob die Suche lief. */}
+                          stumm und der Admin weiß nicht, ob die Suche lief. */}
                       {!isSearching && newEmail && newEmail.length >= 2 && suggestions.length === 0 && (
                         <div style={{
                           marginTop: 6, padding: '8px 12px', borderRadius: 'var(--dex-radius)',

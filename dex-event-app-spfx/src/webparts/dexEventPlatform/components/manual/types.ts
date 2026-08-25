@@ -13,7 +13,7 @@ export type ManualPerspective = 'organizer' | 'user' | 'admin';
 export type ManualCategory = 'general' | 'organizer' | 'admin' | 'architecture';
 
 export interface ManualStep {
-  /** 1-basierte Schrittnummer (zeigt sich als grosse Zahl im UI) */
+  /** 1-basierte Schrittnummer (zeigt sich als große Zahl im UI) */
   number: number;
   title: string;
   /** Beschreibung — darf JSX enthalten (Code-Snippets, Links, Hervorhebungen) */

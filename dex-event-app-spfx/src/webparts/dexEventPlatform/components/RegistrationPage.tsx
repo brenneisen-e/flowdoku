@@ -7,7 +7,7 @@
 
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
-import { useEvents, collectCcEmailsFromFields } from '../context/EventContext';
+import { useEvents, collectCcEmailsFromFields, formatOrganizerList } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 // v22.10: Sub-Sections nach ihrer EIGENEN Sichtbarkeit filtern (gleiche Logik
@@ -32,14 +32,14 @@ import InternationalSearchToggle from './InternationalSearchToggle';
 import { UserFieldPicker } from './UserFieldPicker';
 // v29.51: nachgeladen — zieht react-datepicker + date-fns aus dem Boot-Bundle.
 import StayRangePicker from './StayRangePickerLazy';
-// v28.95: Platzhalter fuer Events ohne eigenes Foto. Zuerst das im Admin
+// v28.95: Platzhalter für Events ohne eigenes Foto. Zuerst das im Admin
 // Center unter „Logo & Branding" hinterlegte DEX-Orb (DefaultImageBase64 im
 // _Config-Eintrag von DEX_EmailTemplates) — das ist die Stelle, an der es
-// ausgetauscht wird, und dann soll der Tausch ueberall greifen. Das
+// ausgetauscht wird, und dann soll der Tausch überall greifen. Das
 // gebuendelte PNG ist nur der Rueckfall, solange der Cache noch nicht
 // geladen ist (frischer Tab, erster Render).
 import { DEX_ORB_PNG } from '../data/brandLogos';
-import { getCachedOrbBase64 } from '../services/EmailTemplates';
+import { getCachedOrbBase64, replacePlaceholders } from '../services/EmailTemplates';
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -3415,15 +3415,15 @@ export default function RegistrationPage(): React.ReactElement {
                   boxShadow: '0 2px 12px rgba(0,0,0,0.10)',
                   alignSelf: 'center',
                   // v28.97: Exakt dasselbe Layout wie ein rundes EVENT-Bild
-                  // (imgCircleNotch): der Kreis haengt zur Haelfte in der
+                  // (imgCircleNotch): der Kreis hängt zur Haelfte in der
                   // Kartenkante. In v28.95 hatte ich den negativen Rand
                   // herausgenommen, weil der Kreis oben abgeschnitten wirkte —
                   // damit sah der Platzhalter aber als EINZIGER anders aus als
                   // alle anderen Kreis-Bilder, mit einer Luecke darunter. Zwei
-                  // Darstellungen fuer dieselbe Stelle sind schlechter als
+                  // Darstellungen für dieselbe Stelle sind schlechter als
                   // eine; deshalb zurueck auf das gemeinsame Layout. Sollte
                   // der Zuschnitt wieder auftreten, liegt die Ursache im
-                  // Container darueber und gehoert dort behoben, nicht hier.
+                  // Container darüber und gehört dort behoben, nicht hier.
                   marginTop: -(circleSize / 2 + 16),
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   padding: 14,
@@ -3727,7 +3727,35 @@ export default function RegistrationPage(): React.ReactElement {
                   // Plain-Text als auch für HTML — Emails in bereits
                   // verlinktem Text (innerhalb von href="...") werden
                   // übersprungen.
-                  const raw = event.description || '';
+                  // v29.59 BUG-FIX: Die Beschreibung wurde ROH gerendert — die
+                  // Variablen, die der Editor anbietet ({{EventTitle}},
+                  // {{Organizer}}, {{Name}}, {{AppUrl}}, {{ContactEmail}}),
+                  // standen auf der Anmeldeseite als Text da. In der
+                  // Live-Vorschau des Editors waren sie ersetzt, also sah der
+                  // Organizer beim Schreiben nie, was Teilnehmer bekommen.
+                  //
+                  // {{WaitlistPosition}} bleibt bewusst aussen vor: Vor der
+                  // Anmeldung gibt es keine Position, und eine erfundene Zahl
+                  // waere schlimmer als der sichtbare Platzhalter. Der Editor
+                  // bietet die Variable fuer die MAIL-Texte an; in der
+                  // Beschreibung ergibt sie keinen Sinn.
+                  const raw = ((): string => {
+                    const src = event.description || '';
+                    if (src.indexOf('{{') < 0) return src;
+                    const orgNames = (event.organizers || [])
+                      .reduce<string[]>((acc, o) => [...acc, ...o.split(';')], [])
+                      .map(o => o.trim()).filter(Boolean);
+                    const orgHidden = !!event.hideOrganizer && !event.hideOrganizerIndividualOnly;
+                    return replacePlaceholders(src, {
+                      EventTitle: event.title || '',
+                      // Ausgeblendete Organizer duerfen ueber die Beschreibung
+                      // nicht doch wieder sichtbar werden (v29.48-Logik).
+                      Organizer: orgHidden ? '' : formatOrganizerList(orgNames, locale === 'de' ? 'DE' : 'EN'),
+                      Name: `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim(),
+                      AppUrl: `${window.location.origin}${window.location.pathname}`,
+                      ContactEmail: event.contactEmail || '',
+                    });
+                  })();
                   const isHtml = /<[a-z][\s\S]*>/i.test(raw);
                   const base = isHtml
                     ? raw

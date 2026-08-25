@@ -664,7 +664,7 @@ function AppContent(): React.ReactElement {
               {/* v28.34: Der Boot-Loader nutzte dieselbe .landing__orb-Huelle wie
                   die Landing Page — seit v28.33 zeichnet dort aber das DexLogo-
                   Canvas statt des Farbverlaufs, die Huelle allein blieb also leer
-                  (grosse weisse Flaeche über „Welcome to DEX"). Jetzt rendert der
+                  (große weisse Flaeche über „Welcome to DEX"). Jetzt rendert der
                   Boot-Loader dasselbe Logo, der Übergang bleibt fluessig. */}
               <div className="landing__orb">
                 <DexLogo title="DEX" motion="oscillate" style={{ width: '100%' }} />

@@ -361,7 +361,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'create.subevents.location.placeholder': 'z.B. Deloitte Köln, Magnusstraße 13',
     'create.subevents.start': 'Start',
     'create.subevents.end': 'Ende',
-    // v28.66: Sub-Event-Zeiten sind optional — leer heisst „wie Hauptevent".
+    // v28.66: Sub-Event-Zeiten sind optional — leer heißt „wie Hauptevent".
     'create.subevents.time.placeholder': 'Leer = wie Hauptevent',
     'create.subevents.deadline': 'Anmeldeschluss (optional)',
     'create.subevents.max': 'Max. Teilnehmer (0 = ∞)',

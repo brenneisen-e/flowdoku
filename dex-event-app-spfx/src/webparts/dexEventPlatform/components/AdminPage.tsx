@@ -53,10 +53,10 @@ import ImageCropModal from './ImageCropModal';
 import { InfoTooltip } from './InfoTooltip';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 import Modal from './Modal';
-// v28.95: Platzhalter fuer Events ohne eigenes Foto. Zuerst das im Admin
+// v28.95: Platzhalter für Events ohne eigenes Foto. Zuerst das im Admin
 // Center unter „Logo & Branding" hinterlegte DEX-Orb (DefaultImageBase64 im
 // _Config-Eintrag von DEX_EmailTemplates) — das ist die Stelle, an der es
-// ausgetauscht wird, und dann soll der Tausch ueberall greifen. Das
+// ausgetauscht wird, und dann soll der Tausch überall greifen. Das
 // gebuendelte PNG ist nur der Rueckfall, solange der Cache noch nicht
 // geladen ist (frischer Tab, erster Render).
 import { DEX_ORB_PNG } from '../data/brandLogos';
@@ -1032,7 +1032,7 @@ export default function AdminPage(): React.ReactElement {
   const [invitedLc, setInvitedLc] = React.useState<Set<string> | null>(null);
   // v28.37: Vom Organizer von Hand angepasste Empfaengerliste. null = keine
   // Anpassung, es gilt die per Radio gewählte Liste. Sobald etwas entfernt
-  // oder ergaenzt wird, übernimmt diese Liste.
+  // oder ergänzt wird, übernimmt diese Liste.
   const [inviteCustomEmails, setInviteCustomEmails] = React.useState<string[] | null>(null);
   const [inviteAddInput, setInviteAddInput] = React.useState('');
   const [inviteSending, setInviteSending] = React.useState(false);
@@ -5249,7 +5249,7 @@ export default function AdminPage(): React.ReactElement {
       // Sub-Event-Teilnehmerliste (renderTable, maxHeight 70vh). Vorher hatte
       // der Klammer-View nur overflowX, lief also über die volle Zeilenhöhe
       // inline mit: Bei 400+ Teilnehmern musste man an der ganzen Tabelle
-      // vorbeiscrollen, und der sticky-thead haette keinen Bezugsrahmen.
+      // vorbeiscrollen, und der sticky-thead hätte keinen Bezugsrahmen.
       <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
         {/* v23.7: Unvollständige Klammer-Anmeldungen (nur Klammer, kein Sub-Event)
             sichtbar machen — mit Erinnerungs- oder Entfernen-Option, damit eine
@@ -6732,7 +6732,7 @@ export default function AdminPage(): React.ReactElement {
                             padding: '10px 16px', cursor: 'pointer', textAlign: 'left',
                             border: `1.5px solid ${(pActive || evTabHover === parentTab.id) ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
                             borderRadius: '10px 10px 0 0',
-                            // v28.86: Ruhezustand weiss (s. Wizard).
+                            // v28.86: Ruhezustand weiß (s. Wizard).
                             background: pActive
                               ? 'var(--dex-green, #86bc25)'
                               : (evTabHover === parentTab.id ? 'rgba(134,188,37,0.14)' : '#fff'),
