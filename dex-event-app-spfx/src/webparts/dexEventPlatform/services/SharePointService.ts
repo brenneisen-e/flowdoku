@@ -15,12 +15,24 @@ export class SharePointService {
   private context: WebPartContext;
   private siteUrl: string;
 
-  /** v29.48: wie in EventService — jeder Request mit 429-Retry (utils/spThrottle). */
+    /**
+   * v29.48/v29.50: Ersatz für `this.context.spHttpClient` — gleiche Signatur.
+   *
+   * **Nur `post` wiederholt.** Die Drosselung, um die es ging, trifft das
+   * SPEICHERN (21 Sub-Events in einem Save). Lesezugriffe hier ebenfalls durch
+   * die Schranke zu schicken, war ein Fehler: Der Start der App besteht fast
+   * nur aus GETs, und ein einziges 429 legte damit den gesamten Bootvorgang
+   * still — die Seite stand bei 8 %, der Browser meldete „reagiert nicht".
+   * Ein abgelehnter Lesezugriff war vorher ein fehlendes Stück Anzeige; das
+   * ist unschön, aber die App lebt. Deshalb geht `get` wieder direkt raus.
+   *
+   * Wer neu dazuschreibt, nimmt `this._sp`.
+   */
   private _sp = {
     get: (url: string, cfg: SPHttpClientConfiguration, options?: ISPHttpClientOptions): Promise<SPHttpClientResponse> =>
-      withThrottleRetry(() => this._sp.get(url, cfg, options), url),
+      this.context.spHttpClient.get(url, cfg, options),
     post: (url: string, cfg: SPHttpClientConfiguration, options?: ISPHttpClientOptions): Promise<SPHttpClientResponse> =>
-      withThrottleRetry(() => this._sp.post(url, cfg, options), url),
+      withThrottleRetry(() => this.context.spHttpClient.post(url, cfg, options), url),
   };
 
   constructor(context: WebPartContext) {

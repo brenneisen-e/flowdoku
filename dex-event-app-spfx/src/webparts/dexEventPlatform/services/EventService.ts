@@ -427,18 +427,22 @@ export class EventService {
   // solche Cross-Web-Schreibzugriffe holen wir den Digest des Ziel-Webs.
   private _digestByWeb: Map<string, string> = new Map();
 
-  /**
-   * v29.48: Ersatz für `this.context.spHttpClient` — gleiche Signatur, aber
-   * mit Wiederholung bei SharePoint-Drosselung (429/503, s. utils/spThrottle).
+    /**
+   * v29.48/v29.50: Ersatz für `this.context.spHttpClient` — gleiche Signatur.
    *
-   * Der Umweg über ein eigenes Feld ist Absicht: die Klasse hat rund 200
-   * Aufrufstellen, und es darf keine geben, die am Retry vorbeigeht. Wer neu
-   * dazuschreibt, nimmt `this._sp` — `this.context.spHttpClient` kommt in
-   * dieser Datei nicht mehr vor.
+   * **Nur `post` wiederholt.** Die Drosselung, um die es ging, trifft das
+   * SPEICHERN (21 Sub-Events in einem Save). Lesezugriffe hier ebenfalls durch
+   * die Schranke zu schicken, war ein Fehler: Der Start der App besteht fast
+   * nur aus GETs, und ein einziges 429 legte damit den gesamten Bootvorgang
+   * still — die Seite stand bei 8 %, der Browser meldete „reagiert nicht".
+   * Ein abgelehnter Lesezugriff war vorher ein fehlendes Stück Anzeige; das
+   * ist unschön, aber die App lebt. Deshalb geht `get` wieder direkt raus.
+   *
+   * Wer neu dazuschreibt, nimmt `this._sp`.
    */
   private _sp = {
     get: (url: string, cfg: SPHttpClientConfiguration, options?: ISPHttpClientOptions): Promise<SPHttpClientResponse> =>
-      withThrottleRetry(() => this.context.spHttpClient.get(url, cfg, options), url),
+      this.context.spHttpClient.get(url, cfg, options),
     post: (url: string, cfg: SPHttpClientConfiguration, options?: ISPHttpClientOptions): Promise<SPHttpClientResponse> =>
       withThrottleRetry(() => this.context.spHttpClient.post(url, cfg, options), url),
   };

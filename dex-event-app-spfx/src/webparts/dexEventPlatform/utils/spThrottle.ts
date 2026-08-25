@@ -34,10 +34,17 @@ import { SPHttpClientResponse } from '@microsoft/sp-http';
  */
 
 /** Maximale Zahl der Wiederholungen je Request. */
-const MAX_RETRIES = 4;
+const MAX_RETRIES = 3;
 
-/** Obergrenze je Wartezeit — ein `Retry-After: 300` würde die App sonst einfrieren. */
-const MAX_WAIT_MS = 30000;
+/**
+ * Obergrenze je Wartezeit. v29.50 von 30 s auf 6 s gesenkt: Mit vier Versuchen
+ * à 30 s konnte EIN Request zwei Minuten warten — das ist keine Verzögerung
+ * mehr, das ist ein Hänger.
+ */
+const MAX_WAIT_MS = 6000;
+
+/** Obergrenze für das Warten an der gemeinsamen Schranke (v29.50). */
+const MAX_GATE_WAIT_MS = 8000;
 
 /**
  * Zeitpunkt, bis zu dem ALLE Requests warten. Wird gesetzt, sobald irgendein
@@ -47,12 +54,22 @@ let gateUntil = 0;
 
 const sleep = (ms: number): Promise<void> => new Promise<void>(r => setTimeout(r, ms));
 
-/** Wartet, bis die gemeinsame Schranke offen ist (max. ~2 min, dann durchlassen). */
+/**
+ * Wartet, bis die gemeinsame Schranke offen ist — höchstens MAX_GATE_WAIT_MS,
+ * danach läuft der Request trotzdem los.
+ *
+ * v29.50: Vorher waren es 60 Runden à 2 s. Das war als „lieber warten als
+ * scheitern" gedacht und ist in der Praxis das Gegenteil: ein einziges 429
+ * legte jeden folgenden Request für bis zu zwei Minuten still. Lieber ein
+ * abgelehnter Request als eine Anwendung, die sich tot stellt.
+ */
 async function waitForGate(): Promise<void> {
-  for (let i = 0; i < 60; i++) {
-    const rest = gateUntil - Date.now();
+  const deadline = Date.now() + MAX_GATE_WAIT_MS;
+  for (;;) {
+    const now = Date.now();
+    const rest = Math.min(gateUntil, deadline) - now;
     if (rest <= 0) return;
-    await sleep(Math.min(rest, 2000));
+    await sleep(Math.min(rest, 1000));
   }
 }
 
