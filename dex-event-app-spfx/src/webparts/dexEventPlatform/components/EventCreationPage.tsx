@@ -866,6 +866,17 @@ export default function EventCreationPage(): React.ReactElement {
   // beschaeftigt; bei Ganztags-Terminen ist das oft nicht gewollt, weil dann
   // ein ganzer Arbeitstag als belegt gilt.
   const [showAsFree, setShowAsFree] = React.useState<boolean>(!!(editEvent && editEvent.showAsFree));
+  // v29.55: Bekommen die Organizer den Outlook-Termin JEDES Sub-Events? Der
+  // Flow setzt requiredAttendees aus OrganizerEmail, und die steht auf jeder
+  // Sub-Event-Zeile — bei 21 Tagen sind das 21 Blocker im Kalender, fuer Tage
+  // ohne eigene Buchung. Positiv im UI, negativ gespeichert (skipOrganizerInvite).
+  // Die Einstellung gilt event-weit: Klammer und alle Sub-Events bekommen
+  // denselben Wert. Bestandsevents kommen mit false an und bleiben unveraendert.
+  const [orgGetsSubInvites, setOrgGetsSubInvites] = React.useState<boolean>(
+    editEvent ? !editEvent.skipOrganizerInvite : true,
+  );
+  // Hat der Organizer die Entscheidung selbst getroffen? Dann nie ueberschreiben.
+  const orgInvitesTouchedRef = React.useRef<boolean>(!!editEvent);
   const [outlookStartOverride, setOutlookStartOverride] = React.useState<string>(editEvent?.outlookStart || '');
   const [outlookEndOverride, setOutlookEndOverride] = React.useState<string>(editEvent?.outlookEnd || '');
   // Modal-State für den HTML-Editor (Outlook-Body + E-Mail-Templates)
@@ -3597,6 +3608,7 @@ export default function EventCreationPage(): React.ReactElement {
         // v29.52: ganztägig mitschreiben — sonst kippt der Haken beim Speichern zurück.
         allDay: !!draft.allDay,
         showAsFree: !!draft.showAsFree,
+        skipOrganizerInvite: !orgGetsSubInvites, // v29.55
         agenda: draftAgendaJson,
         transfers: draftTransfersJson,
         documents: '[]',
@@ -3823,6 +3835,7 @@ export default function EventCreationPage(): React.ReactElement {
           // die Klasse Fehler, die v19.32/v20.0/v29.20 schon dreimal hatten.
           'AllDay': !!draft.allDay,
           'ShowAsFree': !!draft.showAsFree, // v29.54
+          'SkipOrganizerInvite': !orgGetsSubInvites, // v29.55
           'EmailLanguage': childPayload.emailLanguage,
           // v29.42: Fußzeilen-Link auch auf dem direkten Sub-Event-Schreibweg
           // normalisieren (der läuft nicht über EventService.updateEvent).
@@ -4476,6 +4489,7 @@ export default function EventCreationPage(): React.ReactElement {
       updates['OutlookEnd'] = outlookEndOverride || null;
       updates['AllDay'] = !!allDay; // v29.52
       updates['ShowAsFree'] = !!showAsFree; // v29.54
+      updates['SkipOrganizerInvite'] = !orgGetsSubInvites; // v29.55
       updates['Agenda'] = JSON.stringify(agenda);
       updates['Transfers'] = JSON.stringify(transferTimes);
       updates['FunZone'] = JSON.stringify(quiz);
@@ -5221,6 +5235,7 @@ export default function EventCreationPage(): React.ReactElement {
         outlookEnd: outlookEndOverride || undefined,
         allDay, // v29.52
         showAsFree, // v29.54
+        skipOrganizerInvite: !orgGetsSubInvites, // v29.55
         locationFilter,
         audience,
         audienceResolvedEmails: audienceResolved,
@@ -6558,6 +6573,16 @@ export default function EventCreationPage(): React.ReactElement {
   // schaltet der Effekt einmalig automatisch auf „ja" (Ref verhindert, dass
   // er ein bewusstes Abschalten sofort wieder überschreibt).
   const [subEventsOptIn, setSubEventsOptIn] = React.useState<boolean>(false);
+  // v29.55: Ein einzelner Termin gehoert in den Kalender des Organizers — das
+  // bleibt der Default. Sobald es eine Reihe wird, kippt er: Bei zwanzig Tagen
+  // sind zwanzig Blocker fuer Tage ohne eigene Buchung genau das, worueber sich
+  // Organizer beschwert haben. Hat der Organizer selbst entschieden
+  // (orgInvitesTouchedRef) oder wird ein bestehendes Event bearbeitet, bleibt
+  // sein Wert stehen.
+  React.useEffect(() => {
+    if (orgInvitesTouchedRef.current) return;
+    setOrgGetsSubInvites(!(subEventsOptIn && subEvents.length > 0));
+  }, [subEventsOptIn, subEvents.length]);
   // v28.2 SOFT-DISABLE: Der Toggle verwirft keine Drafts mehr (v27.11-Stash
   // entfällt) — `subEventsOptIn === false` bei vorhandenen Drafts heißt nur
   // noch „deaktiviert": beim Speichern wird das Piggyback-Flag
@@ -6912,7 +6937,17 @@ export default function EventCreationPage(): React.ReactElement {
         if (!title) errors.push('title');
         if (!startDate) errors.push('startDate');
         if (!endDate) errors.push('endDate');
-        if (startDate && endDate && new Date(endDate) <= new Date(startDate)) errors.push('endBeforeStart');
+        // v29.55 BUG-FIX: Bei einem ganztaegigen Termin ist die Uhrzeit
+        // bedeutungslos — die DatePicker liefern ohne Zeitauswahl beide Male
+        // 00:00, und `<=` meldete dann bei Start = Ende denselben Tag als
+        // Fehler. Ganztaegig wird deshalb tagesgenau verglichen: Fehler nur,
+        // wenn der End-TAG vor dem Start-TAG liegt.
+        if (startDate && endDate) {
+          const bad = allDay
+            ? endDate.slice(0, 10) < startDate.slice(0, 10)
+            : new Date(endDate) <= new Date(startDate);
+          if (bad) errors.push('endBeforeStart');
+        }
         // v9.14: description ist optional — kein Pflichtfeld mehr
         // v28.87: Die Sub-Events stehen seit dem Wegfall von Schritt 3 in
         // Grundlagen — also wird ihre Datumsprüfung hier mitgeführt (v18.36:
@@ -7233,9 +7268,18 @@ export default function EventCreationPage(): React.ReactElement {
   const scTitle = scopeSub ? (scopeSub.title || '') : title;
   const setScTitle = (v: string): void => { if (scopeSub) patchScopeSub({ title: v }); else setTitle(v); };
   const scStart = scopeSub ? subIsoToDate(scopeSub.startDate) : localStrToDate(startDate);
-  const setScStart = (d: Date | null): void => { if (scopeSub) patchScopeSub({ startDate: subDateToIso(d) }); else setStartDate(dateToLocalStr(d)); };
+  // v29.55: Ganztaegig legt die Zeiten auf die Tagesgrenzen — sonst steht in
+  // DEX_Events 00:00/00:00 und jede spaetere Auswertung haelt den Termin fuer
+  // null Minuten lang.
+  const clampAllDay = (d: Date | null, end: boolean): Date | null => {
+    if (!d || !scAllDay) return d;
+    const c = new Date(d);
+    if (end) c.setHours(23, 59, 0, 0); else c.setHours(0, 0, 0, 0);
+    return c;
+  };
+  const setScStart = (d: Date | null): void => { const v = clampAllDay(d, false); if (scopeSub) patchScopeSub({ startDate: subDateToIso(v) }); else setStartDate(dateToLocalStr(v)); };
   const scEnd = scopeSub ? subIsoToDate(scopeSub.endDate) : localStrToDate(endDate);
-  const setScEnd = (d: Date | null): void => { if (scopeSub) patchScopeSub({ endDate: subDateToIso(d) }); else setEndDate(dateToLocalStr(d)); };
+  const setScEnd = (d: Date | null): void => { const v = clampAllDay(d, true); if (scopeSub) patchScopeSub({ endDate: subDateToIso(v) }); else setEndDate(dateToLocalStr(v)); };
   // v29.52: „Ganztägig" hängt am selben Scope wie Start/Ende — der Haken gilt
   // also für den oben gewählten Reiter, nicht global.
   const scShowAsFree = scopeSub ? !!scopeSub.showAsFree : showAsFree;
@@ -8589,7 +8633,7 @@ export default function EventCreationPage(): React.ReactElement {
               {!scopeSub && fieldHasError('endBeforeStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>{t('create.error.endBeforeStart')}</p>}
               {/* v28.89: Ende-vor-Start je Sub-Event — dieselbe Prüfung, die
                   bisher an der Sub-Event-Karte hing. */}
-              {scopeSub && scStart && scEnd && scEnd <= scStart && (
+              {scopeSub && scStart && scEnd && (scAllDay ? dayKeyOfDate(scEnd) < dayKeyOfDate(scStart) : scEnd <= scStart) && (
                 <p style={{ color: 'var(--dex-red, #c00)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>
                   {isDe
                     ? 'Das Enddatum dieses Sub-Events liegt vor dem Startdatum — bitte korrigieren.'
@@ -11315,6 +11359,30 @@ export default function EventCreationPage(): React.ReactElement {
                       </span>
                     </span>
                   </label>
+                  {/* v29.55: Bekommen die Organizer die Outlook-Termine ALLER
+                      Termine? Der Flow traegt sie als Teilnehmer ein (aus
+                      OrganizerEmail, und die steht auf jeder Sub-Event-Zeile) —
+                      bei einer Reihe ueber zwanzig Tage sind das zwanzig
+                      Blocker fuer Tage ohne eigene Buchung. Genau die
+                      Beschwerde aus der Rueckmeldung. */}
+                  {subEventsOptIn && subEvents.length > 0 && (
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
+                      <input
+                        type="checkbox"
+                        checked={orgGetsSubInvites}
+                        onChange={e => { orgInvitesTouchedRef.current = true; setOrgGetsSubInvites(e.target.checked); }}
+                        style={{ width: 18, height: 18, marginTop: 1, flexShrink: 0, cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: '0.9rem' }}>
+                        <strong>{isDe ? 'Organizer bekommen alle Outlook-Termine' : 'Organizers receive every Outlook entry'}</strong>
+                        <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400 }}>
+                          {isDe
+                            ? <>Ohne Haken stehen die Termine nur in den Kalendern der <strong>angemeldeten Teilnehmer</strong>. Mit Haken landet <strong>jeder einzelne Termin</strong> auch bei euch als Organizer — bei {subEvents.length} {subEvents.length === 1 ? 'Termin' : 'Terminen'} also {subEvents.length} {subEvents.length === 1 ? 'Eintrag' : 'Einträge'}, auch für Tage, an denen ihr nicht dabei seid.</>
+                            : <>Without it, the entries only appear in the calendars of <strong>registered attendees</strong>. With it, <strong>every single entry</strong> also lands with you as organizers — {subEvents.length} {subEvents.length === 1 ? 'entry' : 'entries'} for {subEvents.length} {subEvents.length === 1 ? 'date' : 'dates'}, including days you are not attending.</>}
+                        </span>
+                      </span>
+                    </label>
+                  )}
                   {subEventCalendar && (() => {
                     // v29.22: DREI Zustände, drei Farben. Vorher war alles
                     // ein Grün — und ein abgewählter Tag bekam obendrein die

@@ -173,6 +173,22 @@ export interface DeloitteEvent {
    *  leer = false = „nicht frei" = beschaeftigt, also genau das bisherige
    *  Verhalten. Die Umkehrung passiert einmal, sichtbar, in der Oberflaeche. */
   showAsFree?: boolean;
+  /** v29.55: Organizer NICHT als Teilnehmer in den Outlook-Termin dieses Events
+   *  eintragen. Der Flow setzt `item/requiredAttendees` aus `OrganizerEmail` —
+   *  bei einer Terminreihe mit 21 Tagen bekommt der Organizer damit 21 Blocker
+   *  im Kalender, fuer Tage, an denen er nichts gebucht hat. Genau das war die
+   *  gemeldete Beschwerde.
+   *
+   *  Wie `showAsFree` NEGATIV gespeichert: leer/false = eintragen = bisheriges
+   *  Verhalten.
+   *
+   *  Gilt fuer ALLE Termine des Events, Klammer wie Sub-Events. Die Klammer
+   *  auszunehmen waere die naheliegende Idee (ein Termin ueber das Gesamtevent
+   *  bleibt), macht die Spalte aber zweideutig: Auf der Klammer waere sie
+   *  reiner Speicher, auf den Kindern Verhalten. Der Flow liest beide Zeilen
+   *  gleich — also bedeutet sie ueberall dasselbe. Wer einen Sammeltermin
+   *  will, legt ihn sich selbst an. */
+  skipOrganizerInvite?: boolean;
   /** v18.34/v18.40: Ort für das Location-Feld des Outlook-Termins. Standard =
    *  Veranstaltungsort + Adresse (automatisch gebaut), im Wizard überschreibbar. */
   outlookLocation?: string;

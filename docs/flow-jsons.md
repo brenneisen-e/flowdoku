@@ -2718,6 +2718,34 @@ zurückfallen.
 
 Danach den aktuellen Flow-JSON hier einpflegen.
 
+### UI-Anleitung 2026-08-25 (v29.55) — Organizer nicht in jeden Sub-Event-Termin eintragen
+
+**Hintergrund:** `item/requiredAttendees` wird aus `OrganizerEmail` gebildet, und
+diese Spalte steht auf **jeder** Sub-Event-Zeile (seit v29.20 auch beim Update).
+Bei einer Terminreihe mit 21 Tagen legt der Flow also 21 Outlook-Termine an und
+traegt die Organizer in jeden davon ein — 21 Blocker im Kalender, auch fuer
+Tage ohne eigene Buchung. Das ist die gemeldete Beschwerde
+(„wenn man sich nur für einen Event anmeldet, wird für jeden Tag ein Blocker gesetzt").
+
+Neue Spalte **`SkipOrganizerInvite`** (Ja/Nein) in `DEX_Events`, wieder negativ:
+leer/`false` = eintragen = bisheriges Verhalten. Der Assistent fragt es ab,
+sobald ein Event Sub-Events hat (Haken „Organizer bekommen alle Outlook-Termine",
+Default AUS bei mehreren Terminen, AN beim einzelnen Event).
+
+**`DEX_CreateOutlookEvent` → „Create event (V4)" → Feld `item/requiredAttendees`:**
+```
+@if(equals(coalesce(triggerBody()?['SkipOrganizerInvite'], false), true), '', last(split(replace(coalesce(triggerBody()?['OrganizerEmail'], ''), '</div>', ''), '">')))
+```
+
+Ein Termin ohne Teilnehmer ist zulaessig — er liegt dann im Kalender der
+Shared Mailbox, und die angemeldeten Teilnehmer kommen wie bisher ueber die
+`Einladen`-Zeilen aus `DEX_Outlook` dazu. Im Update-Pfad ist nichts zu tun:
+`Build_Update_Body` fasst `attendees` nicht an.
+
+**Prüfen:** Kalender-Event mit mehreren Tagen anlegen, Haken aus → im eigenen
+Kalender darf **kein** Termin erscheinen. Gegenprobe mit Haken → alle Tage
+erscheinen, wie bisher.
+
 ### UI-Anleitung 2026-08-25 (v29.54) — Beschäftigt/Frei durch den Organizer + Korrektur zu sensitivity/responseRequested
 
 **Teil A — `showAs` wird einstellbar.**
@@ -2883,7 +2911,7 @@ mit denselben `if(...)`-Ausdrücken wie oben, nur mit
 geschrieben und vom Flow ignoriert — die Termine bleiben `00:00–23:59` wie
 bisher. Es geht also nichts kaputt, der Haken hat nur noch keine Wirkung.
 
-**Vollständiger Stand `Build_Update_Body` NACH der Änderung** (Compose, Code-View):
+**Vollständiger Stand `Build_Update_Body` — im Tenant verifiziert 2026-08-25** (Compose, Code-View):
 ```json
 {
   "type": "Compose",
@@ -2898,9 +2926,9 @@ bisher. Es geht also nichts kaputt, der Haken hat nur noch keine Wirkung.
       "dateTime": "@{if(equals(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['AllDay'], false), true), concat(formatDateTime(addDays(convertFromUtc(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookEnd'], first(outputs('Get_Event_Details')?['body/value'])?['EndDate'], first(outputs('Get_Event_Details')?['body/value'])?['StartDate']), 'W. Europe Standard Time'), 1), 'yyyy-MM-dd'), 'T00:00:00'), convertFromUtc(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookEnd'], first(outputs('Get_Event_Details')?['body/value'])?['EndDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'))}",
       "timeZone": "W. Europe Standard Time"
     },
-    "showAs": "busy",
-    "responseRequested": false,
-    "sensitivity": "private",
+    "showAs": "@{if(equals(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['ShowAsFree'], false), true), 'free', 'busy')}",
+    "responseRequested": true,
+    "sensitivity": "normal",
     "body": {
       "contentType": "html",
       "content": "@{replace(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookBody'], ''), '{{ORB_URL}}', coalesce(first(outputs('Get_Event_Details')?['body/value'])?['EmailImageBase64'], ''))}"
@@ -2912,8 +2940,15 @@ bisher. Es geht also nichts kaputt, der Haken hat nur noch keine Wirkung.
 **Achtung `isAllDay` in diesem Compose:** `"@coalesce(...)"` mit **einfachem `@`**
 und OHNE geschweifte Klammern. `"@{...}"` ist String-Interpolation und würde
 `"true"` als Text liefern — Graph erwartet an dieser Stelle einen echten
-Boolean. Bei `start.dateTime`/`end.dateTime` ist `"@{...}"` dagegen richtig,
+Boolean. Bei `start.dateTime`/`end.dateTime`/`showAs` ist `"@{...}"` dagegen richtig,
 das sind Strings.
+
+Der Designer schreibt beim Einfügen über die **Parameters**-Ansicht manchmal
+`"@expr"` zu `"@{expr}"` um. Bei allen anderen Feldern ist das folgenlos, bei
+`isAllDay` nicht: Graph bekäme dann den Text `"true"` statt des Wahrheitswerts
+und lehnt den PATCH mit 400 ab. Nach dem Einfügen deshalb einmal in die
+**Code view** schauen und prüfen, dass dort `"@coalesce(` ohne geschweifte
+Klammern steht. In der Code-Ansicht bleibt das einfache `@` erhalten.
 
 `Get_Event_Details` ist ein `GetItems` **ohne** `$select` (nur `$filter` auf die
 ID) — die neue Spalte `AllDay` kommt also automatisch mit, dort ist nichts
