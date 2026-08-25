@@ -626,10 +626,23 @@ export default function RegistrationPage(): React.ReactElement {
    */
   const childOneDe = React.useMemo(() => {
     const term = childTermSingular || 'Sub-Event';
-    return /(session|veranstaltung|einheit|runde|reihe|tour|führung|schicht|woche|gruppe|stunde|session)$/i.test(term)
+    // v29.60: Gepflegtes Geschlecht schlaegt die Heuristik. Und: Alle Saetze,
+    // in denen childOneDe vorkommt, brauchen den AKKUSATIV
+    // („Bitte wähle mindestens … aus") — maskulin heisst das
+    // „einen", nicht „ein". Genau daran ist
+    // „mindestens ein Office-Tag" aufgefallen.
+    const g = event && event.childEventTermGender;
+    if (g === 'm') return `einen ${term}`;
+    if (g === 'f') return `eine ${term}`;
+    if (g === 'n') return `ein ${term}`;
+    // Ohne Angabe wie bisher raten. Die Liste bleibt unveraendert, damit sich
+    // an bestehenden Events nichts still verschiebt; maskuline Begriffe
+    // liefern hier weiterhin „ein" — dafuer gibt es jetzt die Auswahl
+    // im Assistenten.
+    return /(session|veranstaltung|einheit|runde|reihe|tour|führung|schicht|woche|gruppe|stunde)$/i.test(term)
       ? `eine ${term}`
       : `ein ${term}`;
-  }, [childTermSingular]);
+  }, [childTermSingular, event]);
   // v24.58: Anzeige-Präfix des Haupt-Events in der Sub-Event-Auswahl.
   // 'none' → kein Präfix (null), 'custom' → freier Text, sonst der mitgegebene
   // Default („Haupt-Event"/„Main event").
@@ -5360,11 +5373,12 @@ export default function RegistrationPage(): React.ReactElement {
                   };
                   return (
                     <div style={{ marginTop: 12 }}>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', fontWeight: 600, marginBottom: 8 }}>
-                        {locale === 'de'
-                          ? 'Termine auswählen — angebotene Tage sind hervorgehoben.'
-                          : 'Pick your dates — offered days are highlighted.'}
-                      </div>
+                      {/* v29.60: Die Zeile „Termine auswählen — angebotene Tage sind hervorgehoben"
+                          stand direkt unter der Ueberschrift des Blocks (z.B.
+                          „Office-Tage auswählen") und sagte dasselbe noch
+                          einmal. Zwei Aufforderungen hintereinander lesen sich
+                          wie zwei Schritte. Der Hinweis auf die Hervorhebung
+                          ist ueberfluessig, weil man sie sieht. */}
                       {monthKeys.map(mk => {
                         const [my, mm] = mk.split('-').map(n => parseInt(n, 10));
                         const first = new Date(my, mm - 1, 1);
