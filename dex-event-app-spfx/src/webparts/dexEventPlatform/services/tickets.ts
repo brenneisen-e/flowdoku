@@ -2,9 +2,9 @@
  * v28.95: Ticketsystem aus `EventService` herausgeloest — der erste Schnitt
  * der Klasse nach Thema (v26.0.0 eingefuehrt, 463 Zeilen).
  *
- * Das Rezept, das auch fuer die weiteren Themen gilt: Die Klasse behaelt ihre
+ * Das Rezept, das auch für die weiteren Themen gilt: Die Klasse behält ihre
  * oeffentlichen Methoden, sie delegieren nur noch. Hier stehen freie
- * Funktionen, die den Service als ersten Parameter bekommen — dadurch aendert
+ * Funktionen, die den Service als ersten Parameter bekommen — dadurch ändert
  * sich an keiner Aufrufstelle etwas, und der Compiler prueft den ganzen Weg.
  *
  * `TicketsHost` beschreibt genau, was diese Funktionen vom Service brauchen:

@@ -5,7 +5,7 @@
  * Warteschlange stellt (Outlook-Absage, Nachruecken, Team-Ereignisse,
  * Zimmerwunsch, Gruppenwechsel, Ueberbuchungs-Entschuldigung). Reine Daten:
  * `wrapTemplateForStorage` legt den Deloitte-Rahmen drumherum, der Flow
- * ersetzt spaeter nur noch {{LOGO_URL}} und {{ORB_URL}}.
+ * ersetzt später nur noch {{LOGO_URL}} und {{ORB_URL}}.
  *
  * Sie standen bisher vor der Klasse und machten den Einstieg in die Datei zu
  * 400 Zeilen Mailtext, bevor die erste Methode kam.

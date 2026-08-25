@@ -14,7 +14,7 @@ export const DELOITTE_LOGO_HEADER = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEU
 
 /**
  * v28.91: DEX-Orb als statisches PNG (Repo-Asset assets/dex-orb.png).
- * Platzhalter fuer Events ohne eigenes Foto — im Organizer Center und auf
+ * Platzhalter für Events ohne eigenes Foto — im Organizer Center und auf
  * der Anmeldeseite. Bewusst das BILD und nicht die animierte Canvas-Version
  * (DexLogo): Ein sich drehendes Logo an der Stelle eines Event-Fotos zieht
  * den Blick auf sich, obwohl es nur sagt „hier ist kein Bild".

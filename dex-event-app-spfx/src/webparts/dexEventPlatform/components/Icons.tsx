@@ -229,7 +229,7 @@ export const RefreshCw = ({ size = 18 }: IconProps): React.ReactElement => (
   </svg>
 );
 
-// v29.39: Kamera — Teilnahme-Knopf fuer ein Teams-Meeting.
+// v29.39: Kamera — Teilnahme-Knopf für ein Teams-Meeting.
 export const Video = ({ size = 18, strokeWidth = 2 }: IconProps): React.ReactElement => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
     <path d="m22 8-6 4 6 4V8Z" /><rect x="2" y="6" width="14" height="12" rx="2" ry="2" />

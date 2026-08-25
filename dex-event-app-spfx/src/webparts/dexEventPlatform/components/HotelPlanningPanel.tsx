@@ -225,7 +225,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   // v28.49: Import einer bestehenden Hotel-Liste.
   // v28.51: Ganzes Sub-Event in EIN Hotel. Bei einer Klammer sitzt die
   // Hotel-Zuordnung auf den Schattenzeilen der Klammer (eine Zeile je Person) —
-  // wer zu welchem Sub-Event gehoert, steht aber in der Teilnehmerliste des
+  // wer zu welchem Sub-Event gehört, steht aber in der Teilnehmerliste des
   // Sub-Events. Die Mail-Adressen holen wir deshalb bei Bedarf dort und cachen
   // sie, statt beim Öffnen des Panels alle Sub-Listen zu laden.
   const [subPick, setSubPick] = React.useState('');
@@ -582,7 +582,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   );
 
   /** v28.48: Hat die Person im Anmeldeformular eine Unterkunft angefragt?
-   *  Die Hotel-Frage heisst pro Event anders („Hotel room", „Hotel (24-25 Sept)",
+   *  Die Hotel-Frage heißt pro Event anders („Hotel room", „Hotel (24-25 Sept)",
    *  „Room required …"), deshalb eine Heuristik über die Antwortwerte statt
    *  einer festen Feld-ID. Ergebnis: true = ja, false = nein, null = keine
    *  Hotel-Frage im Formular. */
@@ -648,7 +648,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     const prev = staysLocal;
     setStaysLocal(next);
     setBusy('stays');
-    // v28.60: Ein leeres Array wuerde den Schlüssel löschen — genau das ist
+    // v28.60: Ein leeres Array würde den Schlüssel löschen — genau das ist
     // beim Entfernen des letzten Zeitraums gewollt, deshalb explizit `[]`
     // durchreichen und den Sonderfall nicht als Fehler werten.
     const res = await svc.patchEventOverridesValueEx(Number(event.id), '_hotelStays', next);
@@ -1182,7 +1182,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                 : <>Create the hotels, define stay templates and assign attendees. The assignment then lives in the participant list and is part of every export.</>}
             </p>
             {/* v28.58: Der Assistent ist der empfohlene Einstieg — bei einem
-                leeren Event als grosse Karte, danach als unauffälliger Link. */}
+                leeren Event als große Karte, danach als unauffälliger Link. */}
             {hotels.length > 0 && (
               <button type="button" onClick={() => setWizardOpen(true)}
                 style={{ marginTop: 8, border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '0.8rem', color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline' }}>

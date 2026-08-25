@@ -1,6 +1,6 @@
 /**
  * v28.94: Aus `EventCreationPage` herausgeloest (dort 380 der 18.198 Zeilen).
- * Reiter-Leiste fuer die Ebene, auf der gerade gearbeitet wird — Klammer/
+ * Reiter-Leiste für die Ebene, auf der gerade gearbeitet wird — Klammer/
  * Haupt-Event plus die Sub-Events. Die Komponente kennt nichts vom Wizard-
  * State: Sie bekommt Tabs, aktiven Index und einen onChange.
  */
@@ -177,10 +177,10 @@ export function StickyTabStrip(props: {
         display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, minWidth: 0,
         // v28.82: Im fixierten Zustand loeste sich der Reiter-Block bisher als
         // WEISSER Kasten aus der getoenten Scope-Karte — die Karte blieb
-        // zurueck, der Block schwebte darueber und schnitt den gruenen
-        // Schritt-Kopf an. Jetzt traegt der fixierte Zustand dieselbe Flaeche
+        // zurueck, der Block schwebte darüber und schnitt den gruenen
+        // Schritt-Kopf an. Jetzt trägt der fixierte Zustand dieselbe Flaeche
         // wie die Karte (deckend, damit nichts durchscheint), sitzt buendig
-        // ueber die volle Breite und schliesst mit einem klaren Rand ab.
+        // über die volle Breite und schliesst mit einem klaren Rand ab.
         ...(pin ? {
           position: 'fixed', top: pin.top, left: pin.left, width: pin.width,
           zIndex: 800, background: '#f2f7e8', boxSizing: 'border-box',

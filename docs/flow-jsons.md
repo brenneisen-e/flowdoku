@@ -1026,9 +1026,9 @@ aktualisiere ich den Flow-Block unten in dieser Datei.
 
 ### UI-Anleitung 2026-09-XX (v17.15) — Nachrueck-Audit (PromotedDate / ReplacedParticipantEmail / ReplacedByParticipantEmail)
 
-**Hintergrund:** seit App-Version v17.15 gibt es drei neue Spalten in jeder Subsite-Teilnehmerliste, mit denen wir nachvollziehen wann ein Wartelistler nachgerueckt ist und wessen Abmeldung den Promote ausgeloest hat. Die App-Logik in `EventService.promoteFirstWaitlistItem` setzt diese Felder bereits — fuer den **User-Self-Cancel-Pfad**, der durch den Power-Automate-Flow promotet, muessen die gleichen Felder hier zusaetzlich gesetzt werden. Sonst sind die App-Spalten nur halb gefuellt (nur Admin-Cancels haben das Audit).
+**Hintergrund:** seit App-Version v17.15 gibt es drei neue Spalten in jeder Subsite-Teilnehmerliste, mit denen wir nachvollziehen wann ein Wartelistler nachgerueckt ist und wessen Abmeldung den Promote ausgelöst hat. Die App-Logik in `EventService.promoteFirstWaitlistItem` setzt diese Felder bereits — für den **User-Self-Cancel-Pfad**, der durch den Power-Automate-Flow promotet, müssen die gleichen Felder hier zusaetzlich gesetzt werden. Sonst sind die App-Spalten nur halb gefuellt (nur Admin-Cancels haben das Audit).
 
-**Was sich aendert (auf Hoch-Level):**
+**Was sich ändert (auf Hoch-Level):**
 
 1. Im Flow gibt es bereits eine Variable mit der Item-Id des cancelnden Eintrags (`triggerOutputs()` → DEX_IDReorder enthaelt `ParticipantEmail`, oder via `Get_Item` der Teilnehmerliste). Falls nicht: einen `Get_item`-Step ergaenzen, der die cancelnde Person aus der Subsite-Teilnehmerliste laed (Filter `Status eq 'Abgemeldet' and modified desc top 1` — am bequemsten anhand der `Cancel_ItemId` aus der DEX_IDReorder-Trigger-Zeile).
 2. In den drei `Promote_*`-Update-Actions (Promote_Waitlist, Promote_Durchstarter, Promote_Funstarter) zwei neue Felder mitschreiben:
@@ -1058,7 +1058,7 @@ aktualisiere ich den Flow-Block unten in dieser Datei.
      - `ReplacedByParticipantEmail` → Expression `body('Get_Waitlist_First')?['ParticipantEmail']` (bzw. `Get_Waitlist_First_Durchstarter` im B2Run-Split-Zweig)
    - Die Action **`Mark_Cancelled_Replaced`** nennen.
 5. Run-after von `Mark_Cancelled_Replaced` auf `Succeeded` des jeweiligen `Promote_*`-Steps setzen (nicht parallel — sonst Race-Condition wenn der Promote fehlschlaegt).
-6. Speichern. Teste mit einem Event das eine Warteliste hat: melde dich als Wartelistler an, lasse einen Aktiven sich abmelden. In der App-Teilnehmer-Tabelle muessen jetzt die Spalten `Nachgerueckt am` und `Ersetzt` gesetzt sein, in der Abgemeldet-Liste die Spalte `Ersetzt durch`.
+6. Speichern. Teste mit einem Event das eine Warteliste hat: melde dich als Wartelistler an, lasse einen Aktiven sich abmelden. In der App-Teilnehmer-Tabelle müssen jetzt die Spalten `Nachgerueckt am` und `Ersetzt` gesetzt sein, in der Abgemeldet-Liste die Spalte `Ersetzt durch`.
 
 **Verifikation:**
 - Event mit 2 Plaetzen Cap, 2 Aktiven, 1 Wartelistler.
@@ -1155,7 +1155,7 @@ Get_EventDetails
 
 **Wichtige Details:**
 - Im B2Run-Split-Zweig werden **beide Typen nacheinander** geprüft (Durchstarter zuerst, dann Funstarter). Wenn beide freie Plätze + passende Warteliste-Einträge haben, werden in einem einzigen Flow-Run zwei Teilnehmer nachgerückt.
-- Filterung pro Starter-Typ läuft seit 2026-05-08 (v11.25-Iteration des Flow-Cleanups) über **zwei `Filter array`-Actions** (`Filter_Active_Durchstarter` / `Filter_Active_Funstarter`) statt über inline-`filter()`-Expressions im Compose. Hintergrund: das Template-Function `filter` ist in vielen Power-Automate-Tenants nicht verfügbar (`The template function 'filter' is not defined or not valid`). Die `Filter array`-Action ist eine echte Action und funktioniert ueberall.
+- Filterung pro Starter-Typ läuft seit 2026-05-08 (v11.25-Iteration des Flow-Cleanups) über **zwei `Filter array`-Actions** (`Filter_Active_Durchstarter` / `Filter_Active_Funstarter`) statt über inline-`filter()`-Expressions im Compose. Hintergrund: das Template-Function `filter` ist in vielen Power-Automate-Tenants nicht verfügbar (`The template function 'filter' is not defined or not valid`). Die `Filter array`-Action ist eine echte Action und funktioniert überall.
 - Die Filter-Bedingung ist:
   - **Durchstarter:** `@and(equals(item()?['StarterType'], 'Durchstarter'), not(equals(item()?['Status'], 'Warteliste')))`
   - **Funstarter:** `@and(equals(item()?['StarterType'], 'Funstarter'), not(equals(item()?['Status'], 'Warteliste')))`
@@ -2723,7 +2723,7 @@ Danach den aktuellen Flow-JSON hier einpflegen.
 **Hintergrund:** `item/requiredAttendees` wird aus `OrganizerEmail` gebildet, und
 diese Spalte steht auf **jeder** Sub-Event-Zeile (seit v29.20 auch beim Update).
 Bei einer Terminreihe mit 21 Tagen legt der Flow also 21 Outlook-Termine an und
-traegt die Organizer in jeden davon ein — 21 Blocker im Kalender, auch fuer
+trägt die Organizer in jeden davon ein — 21 Blocker im Kalender, auch für
 Tage ohne eigene Buchung. Das ist die gemeldete Beschwerde
 („wenn man sich nur für einen Event anmeldet, wird für jeden Tag ein Blocker gesetzt").
 
@@ -2737,8 +2737,8 @@ Default AUS bei mehreren Terminen, AN beim einzelnen Event).
 @if(equals(coalesce(triggerBody()?['SkipOrganizerInvite'], false), true), '', last(split(replace(coalesce(triggerBody()?['OrganizerEmail'], ''), '</div>', ''), '">')))
 ```
 
-Ein Termin ohne Teilnehmer ist zulaessig — er liegt dann im Kalender der
-Shared Mailbox, und die angemeldeten Teilnehmer kommen wie bisher ueber die
+Ein Termin ohne Teilnehmer ist zulässig — er liegt dann im Kalender der
+Shared Mailbox, und die angemeldeten Teilnehmer kommen wie bisher über die
 `Einladen`-Zeilen aus `DEX_Outlook` dazu. Im Update-Pfad ist nichts zu tun:
 `Build_Update_Body` fasst `attendees` nicht an.
 
@@ -2750,7 +2750,7 @@ erscheinen, wie bisher.
 
 **Teil A — `showAs` wird einstellbar.**
 
-`showAs` stand in beiden Flows fest auf `busy`. Bei ganztägigen Terminen heisst
+`showAs` stand in beiden Flows fest auf `busy`. Bei ganztägigen Terminen heißt
 das: ein kompletter Arbeitstag gilt als belegt, auch wenn man nur zeitweise
 dazukommt. Der Organizer entscheidet das jetzt selbst (Haken
 „Termin blockiert den Kalender" in Schritt 1, Default an).
@@ -2758,8 +2758,8 @@ dazukommt. Der Organizer entscheidet das jetzt selbst (Haken
 Die App schreibt dafür die Spalte **`ShowAsFree`** (Ja/Nein) in `DEX_Events` —
 **negativ** benannt. Grund: Eine nachträglich angelegte Ja/Nein-Spalte liefert
 für alle bestehenden Einträge leer bzw. `false`. Bei einer Spalte `ShowAsBusy`
-hiesse das „nicht beschäftigt", und jeder Alt-Termin würde beim
-nächsten Update auf „frei" kippen. So heisst leer = `false` =
+hieße das „nicht beschäftigt", und jeder Alt-Termin würde beim
+nächsten Update auf „frei" kippen. So heißt leer = `false` =
 „nicht frei" = beschäftigt, also unverändert.
 
 In **beiden** Flows dieselbe Ersetzung:
@@ -2804,7 +2804,7 @@ Hier ist `"@{...}"` richtig — `showAs` ist ein String, kein Boolean (anders al
   "runAfter": { "Compose_Image": ["Succeeded"] }
 }
 ```
-Merke fuer die beiden neuen Felder: `isAllDay` braucht das **einfache** `@`
+Merke für die beiden neuen Felder: `isAllDay` braucht das **einfache** `@`
 (Boolean), `showAs` ebenfalls das einfache `@` (liefert den String `free`
 bzw. `busy`). Im Compose `Build_Update_Body` ist es umgekehrt gemischt — dort
 bleibt `isAllDay` beim einfachen `@`, `showAs` steht aber in `"@{...}"`, weil
@@ -3065,7 +3065,7 @@ COMPOSE_IMAGE (Event-Bild oder Default-Bild):
 
 CREATE_EVENT_V4 — **veralteter Stand 2026-06-02** (v18.42/v18.44). Aktueller
 Stand siehe Abschnitt „UI-Anleitung 2026-08-25 (v29.52)" weiter oben: dort sind
-`item/isAllDay` ergaenzt, `item/start`/`item/end` auf die Ganztags-Fallunter-
+`item/isAllDay` ergänzt, `item/start`/`item/end` auf die Ganztags-Fallunter-
 scheidung umgestellt, und im Tenant stehen inzwischen `responseRequested: true`
 und `sensitivity: "normal"` statt der hier gezeigten Werte.
 {
@@ -3124,7 +3124,7 @@ die Extended Property ist die offizielle Mechanik.
 WICHTIG zur URI: der Termin liegt im Kalender des Connection-Users
 (der Power-Automate-Connection-Owner), nicht in der Shared-Mailbox
 no_reply.events@deloitte.de. Letztere ist nur die Send-As-Identitaet
-fuer `organizer`. Deshalb funktioniert `/me/events/{id}` — beim
+für `organizer`. Deshalb funktioniert `/me/events/{id}` — beim
 ersten Versuch mit `/users/no_reply.events@.../events/{id}` kam HTTP
 404 „The specified object was not found in the store."
 
@@ -3317,7 +3317,7 @@ Ablauf:
 - `UpdateEvent` — Titel, Start, Ende **und Body** des Outlook-Termins aktualisieren
   (seit 2026-04-17 wird `OutlookBody` aus DEX_Events mit aufgeloestem
   `{{ORB_URL}}` per Graph PATCH gesetzt — vorher blieb der Body vom
-  initialen Create unveraendert)
+  initialen Create unverändert)
 - `DeleteEvent` — kompletten Outlook-Termin loeschen. Das DEX_Outlook-Queue-Item
   enthaelt `CalendarLink` (iCalUId) direkt, weil das zugehoerige DEX_Events-Item
   bereits geloescht ist, wenn der Flow laeuft.
@@ -3417,7 +3417,7 @@ schicken, damit der vollständige Stand hier in `docs/flow-jsons.md` eingepflegt
 werden kann.
 
 **UpdateEvent-Pattern** (seit 2026-04-17): String-Concat mit `json()` ist nicht
-robust genug fuer beliebige HTML-Inhalte (Quotes/Newlines/Sonderzeichen brechen
+robust genug für beliebige HTML-Inhalte (Quotes/Newlines/Sonderzeichen brechen
 das Parsing). Stattdessen wird der Body via Compose-Action vorgebaut und im
 HTTP-PATCH referenziert — Logic Apps escaped die `@{...}`-Tokens automatisch.
 
@@ -3461,13 +3461,13 @@ Outlook-relevant und füllt `OutlookLocation` in `DEX_Events` automatisch nach.
 **Stand 2026-05-22 (v11.88):** der Body schreibt zusaetzlich `showAs: busy`
 + `responseRequested: false` + `sensitivity: private`. Damit landet der
 Termin direkt im Kalender der Teilnehmer (kein Akzeptieren-Klick noetig),
-ist als Beschaeftigt markiert UND kann nicht an Dritte weitergeleitet
+ist als Beschäftigt markiert UND kann nicht an Dritte weitergeleitet
 werden (Outlook deaktiviert den Forward-Button bei privater
 Vertraulichkeitsstufe). Im `DEX_CreateOutlookEvent`-Flow sind die gleichen
 drei Parameter in der `Create_event_(V4)`-Action gesetzt.
 
-**Hinweis fuer Teilnehmer:** „Privat" beschraenkt nur Weiterleitung und
-Free/Busy-Anzeige fuer Dritte (Kollegen sehen nur „Privat — Beschaeftigt",
+**Hinweis für Teilnehmer:** „Privat" beschraenkt nur Weiterleitung und
+Free/Busy-Anzeige für Dritte (Kollegen sehen nur „Privat — Beschäftigt",
 keine Titel). Der eingeladene Teilnehmer selbst sieht den Termin ganz
 normal mit allen Details.
 
@@ -3567,7 +3567,7 @@ Wichtig: `Get_Event_Details` hat nach Einfuegen dieser Condition `runAfter = { "
 
 ### SharePoint-Liste DEX_Outlook
 
-Fuer `DeleteEvent` muessen folgende Schema-Aenderungen vorgenommen werden (werden bei neuen Listen automatisch von `ensureOutlookList()` angelegt, bei bestehenden muss der Admin sie manuell ergaenzen):
+Fuer `DeleteEvent` müssen folgende Schema-Aenderungen vorgenommen werden (werden bei neuen Listen automatisch von `ensureOutlookList()` angelegt, bei bestehenden muss der Admin sie manuell ergaenzen):
 
 - **Choice `ActionType`** erweitern um `DeleteEvent`
 - **Neue Spalte** `CalendarLink` (Multiple lines of text, plain) — enthaelt die iCalUId, damit der Flow das Outlook-Event auch ohne Zugriff auf DEX_Events finden kann.
@@ -4128,7 +4128,7 @@ Alle weiteren Schritte im **If yes**-Zweig; **If no** bleibt leer.
 ### 11a. `Assistant_Forward_Mailto` (Compose, nach `Get_Reminder_Template`)
 
 - **Data Operation — Compose**.
-- **Inputs (fx):** Baut die `mailto:`-URL fuer den Assistant-Forward-Button im
+- **Inputs (fx):** Baut die `mailto:`-URL für den Assistant-Forward-Button im
   OnBehalfOf-Template — vorausgefuellt mit Event-Organizer-Adressen, Subject
   und Body, der den Partner-Namen + Event-Titel enthaelt:
   ```

@@ -2,9 +2,9 @@
  * v28.94: Aus `AdminPage` herausgeloest (547 Zeilen von 16.076).
  *
  * Das Aktionen-Menue des Organizer Centers: Die einzelnen Kacheln
- * (`ActionTile`) melden sich beim Mount ueber einen Context an, das
+ * (`ActionTile`) melden sich beim Mount über einen Context an, das
  * Dropdown (`ActionsDropdown`) liest die Registrierung und baut daraus die
- * gruppierte Liste. Die Gruppe haengt zusammen und ist deshalb EINE Datei —
+ * gruppierte Liste. Die Gruppe hängt zusammen und ist deshalb EINE Datei —
  * sie kennt nichts vom Seiten-State ausser dem, was sie als Props bekommt.
  */
 import * as React from 'react';
@@ -77,7 +77,7 @@ export function ActionTile(props: ActionTileProps): React.ReactElement | null {
   const bg = isFilled ? filledBg : (greenAccent ? 'rgba(134,188,37,0.06)' : '#fff');
   // v9.20: bei pastell-gefüllten Tiles Text/Icon dunkel halten — auf
   // hellem Pastell-Hintergrund gut lesbar (im Gegensatz zum vorherigen
-  // weiss auf saturated-Color).
+  // weiß auf saturated-Color).
   const filledIconColor = props.accent === 'green' ? 'var(--dex-green-dark, #4a7c1f)' : props.accent === 'red' ? '#a01e15' : 'var(--dex-gray-500, #6b7280)';
   const iconColor = isFilled ? filledIconColor : (greenAccent ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500, #6b7280)');
   const filledTextColor = isFilled

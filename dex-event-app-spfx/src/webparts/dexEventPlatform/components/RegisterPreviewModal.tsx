@@ -1,5 +1,5 @@
 /**
- * Register-Page-Preview-Modal — v7.24 grosse Vorschau:
+ * Register-Page-Preview-Modal — v7.24 große Vorschau:
  *
  * Vorher: hand-gebaute Mockup-Cards (links Event-Info, rechts Form-Mock).
  * Jetzt: das ECHTE <RegistrationPage>-Component wird gerendert, mit einem

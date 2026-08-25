@@ -177,7 +177,7 @@ function buildGeometry(contourCount: number, particleCount: number, seed: number
   // dort wie ein Loch aus. Deshalb wird sie mit Linien im Abstand der
   // aeussersten gemessenen Staffel aufgefüllt. Die Vorderseite in Ruhelage
   // bleibt dabei unverändert, weil ausschliesslich JENSEITS von maxAlpha
-  // ergaenzt wird.
+  // ergänzt wird.
   const lastGap = spread * (Math.pow(1, falloff) - Math.pow((steps - 1) / steps, falloff));
   const capStep = lastGap > 0.005 ? lastGap : 0.05;
   const capLimit = Math.PI - 0.02;

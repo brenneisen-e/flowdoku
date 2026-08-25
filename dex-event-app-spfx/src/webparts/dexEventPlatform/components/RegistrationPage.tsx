@@ -32,10 +32,10 @@ import InternationalSearchToggle from './InternationalSearchToggle';
 import { UserFieldPicker } from './UserFieldPicker';
 // v29.51: nachgeladen — zieht react-datepicker + date-fns aus dem Boot-Bundle.
 import StayRangePicker from './StayRangePickerLazy';
-// v28.95: Platzhalter fuer Events ohne eigenes Foto. Zuerst das im Admin
+// v28.95: Platzhalter für Events ohne eigenes Foto. Zuerst das im Admin
 // Center unter „Logo & Branding" hinterlegte DEX-Orb (DefaultImageBase64 im
 // _Config-Eintrag von DEX_EmailTemplates) — das ist die Stelle, an der es
-// ausgetauscht wird, und dann soll der Tausch ueberall greifen. Das
+// ausgetauscht wird, und dann soll der Tausch überall greifen. Das
 // gebuendelte PNG ist nur der Rueckfall, solange der Cache noch nicht
 // geladen ist (frischer Tab, erster Render).
 import { DEX_ORB_PNG } from '../data/brandLogos';
@@ -3415,15 +3415,15 @@ export default function RegistrationPage(): React.ReactElement {
                   boxShadow: '0 2px 12px rgba(0,0,0,0.10)',
                   alignSelf: 'center',
                   // v28.97: Exakt dasselbe Layout wie ein rundes EVENT-Bild
-                  // (imgCircleNotch): der Kreis haengt zur Haelfte in der
+                  // (imgCircleNotch): der Kreis hängt zur Haelfte in der
                   // Kartenkante. In v28.95 hatte ich den negativen Rand
                   // herausgenommen, weil der Kreis oben abgeschnitten wirkte —
                   // damit sah der Platzhalter aber als EINZIGER anders aus als
                   // alle anderen Kreis-Bilder, mit einer Luecke darunter. Zwei
-                  // Darstellungen fuer dieselbe Stelle sind schlechter als
+                  // Darstellungen für dieselbe Stelle sind schlechter als
                   // eine; deshalb zurueck auf das gemeinsame Layout. Sollte
                   // der Zuschnitt wieder auftreten, liegt die Ursache im
-                  // Container darueber und gehoert dort behoben, nicht hier.
+                  // Container darüber und gehört dort behoben, nicht hier.
                   marginTop: -(circleSize / 2 + 16),
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   padding: 14,

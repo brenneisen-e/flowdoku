@@ -167,26 +167,26 @@ export interface DeloitteEvent {
   /** v29.54: Termin NICHT als „Beschäftigt" anzeigen (Outlook `showAs: free`).
    *
    *  Absichtlich negativ gespeichert (`ShowAsFree`), nicht als `ShowAsBusy`:
-   *  Eine nachtraeglich angelegte Ja/Nein-Spalte liefert fuer alle BESTEHENDEN
-   *  Eintraege leer bzw. false. Bei `ShowAsBusy` hiesse das „nicht beschäftigt" —
-   *  jeder Alt-Termin wuerde beim naechsten Update auf „frei" kippen. So heisst
-   *  leer = false = „nicht frei" = beschaeftigt, also genau das bisherige
-   *  Verhalten. Die Umkehrung passiert einmal, sichtbar, in der Oberflaeche. */
+   *  Eine nachträglich angelegte Ja/Nein-Spalte liefert für alle BESTEHENDEN
+   *  Einträge leer bzw. false. Bei `ShowAsBusy` hieße das „nicht beschäftigt" —
+   *  jeder Alt-Termin würde beim nächsten Update auf „frei" kippen. So heißt
+   *  leer = false = „nicht frei" = beschäftigt, also genau das bisherige
+   *  Verhalten. Die Umkehrung passiert einmal, sichtbar, in der Oberfläche. */
   showAsFree?: boolean;
   /** v29.55: Organizer NICHT als Teilnehmer in den Outlook-Termin dieses Events
    *  eintragen. Der Flow setzt `item/requiredAttendees` aus `OrganizerEmail` —
    *  bei einer Terminreihe mit 21 Tagen bekommt der Organizer damit 21 Blocker
-   *  im Kalender, fuer Tage, an denen er nichts gebucht hat. Genau das war die
+   *  im Kalender, für Tage, an denen er nichts gebucht hat. Genau das war die
    *  gemeldete Beschwerde.
    *
    *  Wie `showAsFree` NEGATIV gespeichert: leer/false = eintragen = bisheriges
    *  Verhalten.
    *
-   *  Gilt fuer ALLE Termine des Events, Klammer wie Sub-Events. Die Klammer
-   *  auszunehmen waere die naheliegende Idee (ein Termin ueber das Gesamtevent
-   *  bleibt), macht die Spalte aber zweideutig: Auf der Klammer waere sie
+   *  Gilt für ALLE Termine des Events, Klammer wie Sub-Events. Die Klammer
+   *  auszunehmen wäre die naheliegende Idee (ein Termin über das Gesamtevent
+   *  bleibt), macht die Spalte aber zweideutig: Auf der Klammer wäre sie
    *  reiner Speicher, auf den Kindern Verhalten. Der Flow liest beide Zeilen
-   *  gleich — also bedeutet sie ueberall dasselbe. Wer einen Sammeltermin
+   *  gleich — also bedeutet sie überall dasselbe. Wer einen Sammeltermin
    *  will, legt ihn sich selbst an. */
   skipOrganizerInvite?: boolean;
   /** v18.34/v18.40: Ort für das Location-Feld des Outlook-Termins. Standard =
@@ -265,10 +265,10 @@ export interface DeloitteEvent {
    *  mit eigener Teilnehmerliste, Kapazität und Outlook-Termin.
    *  Piggyback `_subEventCalendar` in EmailTemplateOverrides. */
   subEventCalendar?: boolean;
-  /** v28.97: Teilnehmer duerfen sich fuer GENAU EIN Sub-Event anmelden statt
-   *  fuer beliebig viele. Aendert nur die Auswahl auf der Anmeldeseite (Liste
+  /** v28.97: Teilnehmer duerfen sich für GENAU EIN Sub-Event anmelden statt
+   *  für beliebig viele. Aendert nur die Auswahl auf der Anmeldeseite (Liste
    *  wie Kalender verhalten sich dann wie Radio-Buttons) — an den Sub-Events
-   *  selbst, ihren Teilnehmerlisten und Kapazitaeten aendert sich nichts.
+   *  selbst, ihren Teilnehmerlisten und Kapazitaeten ändert sich nichts.
    *  Piggyback `_subEventSingleChoice` in EmailTemplateOverrides. */
   subEventSingleChoice?: boolean;
   /** v28.11: URL des unbeschnittenen Querformat-ORIGINALS (Attachment

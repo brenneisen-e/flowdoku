@@ -74,7 +74,7 @@ registerLocale('de', de);
  * Outlook-Kopfbild steckt dieser Base64-String DREIMAL im selben Save-Payload
  * (OutlookBody, _eventLogo, _outlookLogo) — damit riss ein einziges Event die
  * SharePoint-Grenze von 2 MB, und „Speichern" tat nichts mehr. Der Mail-Kopf
- * steht ohnehin auf Weiss, transparente Ecken werden also korrekt weiss
+ * steht ohnehin auf Weiss, transparente Ecken werden also korrekt weiß
  * gefüllt (ohne den weissen Grund wuerden sie bei JPEG schwarz).
  */
 async function compressImage(file: File, maxWidth: number = 1200, quality: number = 0.8, flattenToJpeg: boolean = false): Promise<File> {
@@ -95,7 +95,7 @@ async function compressImage(file: File, maxWidth: number = 1200, quality: numbe
       // (z.B. die per Kreis-Zuschnitt freigeschnittenen Ecken) bei der
       // JPEG-Konvertierung verloren und werden SCHWARZ gefüllt. Nur Nicht-PNG
       // (Fotos) werden zu JPEG komprimiert. v28.31: `flattenToJpeg` sticht das
-      // — dann wird vorher weiss grundiert, die Ecken bleiben also sauber.
+      // — dann wird vorher weiß grundiert, die Ecken bleiben also sauber.
       const isPng = (file.type || '').toLowerCase() === 'image/png';
       const outType = (isPng && !flattenToJpeg) ? 'image/png' : 'image/jpeg';
       const outExt = outType === 'image/png' ? '.png' : '.jpg';
@@ -863,24 +863,24 @@ export default function EventCreationPage(): React.ReactElement {
   // der Unterschied fällt erst im Kalender des Teilnehmers auf.
   const [allDay, setAllDay] = React.useState<boolean>(!!(editEvent && editEvent.allDay));
   // v29.54: Der Termin blockiert den Kalender (Outlook `showAs`). Default ist
-  // beschaeftigt; bei Ganztags-Terminen ist das oft nicht gewollt, weil dann
+  // beschäftigt; bei Ganztags-Terminen ist das oft nicht gewollt, weil dann
   // ein ganzer Arbeitstag als belegt gilt.
   const [showAsFree, setShowAsFree] = React.useState<boolean>(!!(editEvent && editEvent.showAsFree));
   // v29.55: Bekommen die Organizer den Outlook-Termin JEDES Sub-Events? Der
   // Flow setzt requiredAttendees aus OrganizerEmail, und die steht auf jeder
-  // Sub-Event-Zeile — bei 21 Tagen sind das 21 Blocker im Kalender, fuer Tage
+  // Sub-Event-Zeile — bei 21 Tagen sind das 21 Blocker im Kalender, für Tage
   // ohne eigene Buchung. Positiv im UI, negativ gespeichert (skipOrganizerInvite).
   // Die Einstellung gilt event-weit: Klammer und alle Sub-Events bekommen
-  // denselben Wert. Bestandsevents kommen mit false an und bleiben unveraendert.
+  // denselben Wert. Bestandsevents kommen mit false an und bleiben unverändert.
   const [orgGetsSubInvites, setOrgGetsSubInvites] = React.useState<boolean>(
     editEvent ? !editEvent.skipOrganizerInvite : true,
   );
-  // Hat der Organizer die Entscheidung selbst getroffen? Dann nie ueberschreiben.
+  // Hat der Organizer die Entscheidung selbst getroffen? Dann nie überschreiben.
   const orgInvitesTouchedRef = React.useRef<boolean>(!!editEvent);
   // v29.56: Stand beim Oeffnen — daraus leitet sich beim Speichern ab, ob die
-  // Organizer an BESTEHENDEN Outlook-Terminen nachtraeglich an- oder
-  // abgemeldet werden muessen. SkipOrganizerInvite wirkt naemlich nur beim
-  // ANLEGEN (requiredAttendees); ein bestehender Termin behaelt seine
+  // Organizer an BESTEHENDEN Outlook-Terminen nachträglich an- oder
+  // abgemeldet werden müssen. SkipOrganizerInvite wirkt nämlich nur beim
+  // ANLEGEN (requiredAttendees); ein bestehender Termin behält seine
   // Teilnehmerliste, bis jemand Einladen/Ausladen queued.
   const initialOrgGetsSubInvitesRef = React.useRef<boolean>(editEvent ? !editEvent.skipOrganizerInvite : true);
   const [outlookStartOverride, setOutlookStartOverride] = React.useState<string>(editEvent?.outlookStart || '');
@@ -1743,7 +1743,7 @@ export default function EventCreationPage(): React.ReactElement {
    * musste. Jetzt macht der Knopf genau das: fehlende Zeiten aus dem
    * Hauptevent übernehmen (v28.66), Recreate erzwingen, speichern.
    * Das Hauptevent selbst wird bewusst NICHT neu angelegt — seine Item-Id
-   * steht in ParentEventId aller Sub-Events, ein Recreate wuerde die Kinder
+   * steht in ParentEventId aller Sub-Events, ein Recreate würde die Kinder
    * zu Waisen machen.
    */
   const createMissingOutlookAppointments = async (): Promise<void> => {
@@ -3434,8 +3434,8 @@ export default function EventCreationPage(): React.ReactElement {
     const keptDbIds = new Set<string>();
     const failedSubTitles: string[] = [];
     // v29.57: Einmal je Save auswerten, nicht je Sub-Event — die Schranke
-    // haengt nur am Hauptevent. Bei einem NEUEN Event (kein Snapshot) wird nie
-    // uebersprungen; dort gibt es ohnehin nichts zu vergleichen.
+    // hängt nur am Hauptevent. Bei einem NEUEN Event (kein Snapshot) wird nie
+    // übersprungen; dort gibt es ohnehin nichts zu vergleichen.
     const subGateUnchanged = !!editEvent
       && subTopGateInitialRef.current !== ''
       && subTopGateInitialRef.current === subTopGateKey();
@@ -3508,7 +3508,7 @@ export default function EventCreationPage(): React.ReactElement {
       // v28.29: eigenes Bild des Sub-Events gewinnt, sonst erbt es das
       // Kopfbild des Hauptevents (statt still auf den Orb zu fallen).
       // v29.20 (Audit): auch das EIGENE Sub-Logo verkleinern — der
-      // v28.10-Schutz lief nur ueber die geerbten Parent-Logos. Ein auf dem
+      // v28.10-Schutz lief nur über die geerbten Parent-Logos. Ein auf dem
       // Sub-Reiter hochgeladenes unkomprimiertes Foto steckte bis zu dreimal
       // im Payload und riss das Sub-Event ins SharePoint-2-MB-Limit.
       // v29.32: Zwischen eigenem Logo und geerbtem Parent-Logo steht jetzt das
@@ -3780,9 +3780,9 @@ export default function EventCreationPage(): React.ReactElement {
           }
         }
         keptDbIds.add(draft.dbId);
-        // v29.57: Unveraendertes Sub-Event ueberspringen — spart bei einer
-        // Terminreihe die grosse Mehrheit der Schreibvorgaenge (s. Kommentar
-        // an subPersistKey). Nur wenn BEIDES unveraendert ist: der Entwurf
+        // v29.57: Unverändertes Sub-Event überspringen — spart bei einer
+        // Terminreihe die große Mehrheit der Schreibvorgänge (s. Kommentar
+        // an subPersistKey). Nur wenn BEIDES unverändert ist: der Entwurf
         // selbst UND alles am Hauptevent, was ein Sub-Event erbt.
         if (subGateUnchanged && !draft.imageFile && !draft.imageRemoved) {
           const before = initialSubPersistRef.current[draft.dbId];
@@ -3929,7 +3929,7 @@ export default function EventCreationPage(): React.ReactElement {
         : `${failedSubTitles.length} sub-event${failedSubTitles.length === 1 ? '' : 's'} could not be saved: ${failedSubTitles.join(', ')}. All other changes are saved — please save again to retry.`, { variant: 'error' });
     }
     // v29.57: Nach dem Save ist der aktuelle Stand der neue Vergleichspunkt —
-    // sonst wuerde ein zweiter Save in derselben Sitzung alles erneut schreiben.
+    // sonst würde ein zweiter Save in derselben Sitzung alles erneut schreiben.
     {
       const map: Record<string, string> = {};
       for (const se of subEventsRef.current) if (se.dbId) map[se.dbId] = subPersistKey(se);
@@ -3937,7 +3937,7 @@ export default function EventCreationPage(): React.ReactElement {
       subTopGateInitialRef.current = subTopGateKey();
       if (skippedSubCount > 0) {
         // eslint-disable-next-line no-console
-        console.log(`[DEX] ${skippedSubCount} unveraenderte Sub-Events uebersprungen (kein Schreibvorgang).`);
+        console.log(`[DEX] ${skippedSubCount} unveränderte Sub-Events übersprungen (kein Schreibvorgang).`);
       }
     }
     if (failedDeleteTitles.length > 0) {
@@ -4498,7 +4498,7 @@ export default function EventCreationPage(): React.ReactElement {
       const orgNames = formatOrganizerList([organizer], effEmailLanguage);
       const escHtml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
       // v9.8: Default-Body enthält jetzt auch den Abmelde-Hinweis analog zur
-      // Anmeldebestätigungs-Mail. Sonst weiss der Empfänger nicht, wie er
+      // Anmeldebestätigungs-Mail. Sonst weiß der Empfänger nicht, wie er
       // sich abmelden kann — die Outlook-Decline-Funktion triggert zwar einen
       // Reminder-Flow, aber der eigentliche App-Abmelde-Pfad ist sauberer.
       const APP_URL_OL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
@@ -4604,7 +4604,7 @@ export default function EventCreationPage(): React.ReactElement {
       const noSelfCancelConfig = !userCancelAllowed ? { _noSelfCancel: true } : {};
       const noCancelAfterDeadlineConfig = (userCancelAllowed && noCancelAfterDeadline) ? { _noCancelAfterDeadline: true } : {};
       // v29.38: Teams-Link nur speichern, wenn er wie ein Link aussieht — ein
-      // halb eingefuegter Text wuerde sonst als toter Knopf im Termin landen.
+      // halb eingefuegter Text würde sonst als toter Knopf im Termin landen.
       const teamsLinkConfig = /^https?:\/\//i.test(teamsLink.trim()) ? { _teamsLink: teamsLink.trim() } : {};
       // v28.11: Bestehende Original-Bild-URL beim Edit-Save WEITERTRAGEN —
       // sonst würde der frisch zusammengebaute Overrides-Blob sie wegwerfen.
@@ -5137,7 +5137,7 @@ export default function EventCreationPage(): React.ReactElement {
         // v29.56: Hat der Organizer die Einladungs-Entscheidung umgestellt,
         // reicht das neue Flag NICHT — es steuert nur `requiredAttendees` beim
         // ANLEGEN. Bestehende Termine behalten ihre Teilnehmerliste. Also die
-        // Organizer ueber die normale Queue an- bzw. abmelden, Event fuer Event.
+        // Organizer über die normale Queue an- bzw. abmelden, Event für Event.
         if (orgGetsSubInvites !== initialOrgGetsSubInvitesRef.current) {
           try {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -5221,7 +5221,7 @@ export default function EventCreationPage(): React.ReactElement {
         setError(msg);
         // v28.31: Die Fehlerzeile steht ganz oben im Wizard — beim Speichern aus
         // Schritt 6/7 war sie ausserhalb des Sichtfelds, der Klick sah aus, als
-        // wuerde schlicht nichts passieren. Zusätzlich als Dialog zeigen.
+        // würde schlicht nichts passieren. Zusätzlich als Dialog zeigen.
         showAlert(msg, { variant: 'error' });
       }
     } else {
@@ -5937,7 +5937,7 @@ export default function EventCreationPage(): React.ReactElement {
     if ((outlookEndOverride || '') !== (snap.outlookEnd || '') && topChangedFields.indexOf('endDate') < 0) topChangedFields.push('endDate');
     // v29.52: Umschalten auf/von „ganztägig" ist eine Termin-Änderung.
     if (!!allDay !== !!snap.allDay && topChangedFields.indexOf('startDate') < 0) topChangedFields.push('startDate');
-    // v29.54: Wechsel zwischen Beschaeftigt und Frei aendert den bestehenden
+    // v29.54: Wechsel zwischen Beschäftigt und Frei ändert den bestehenden
     // Termin ebenfalls — ohne diesen Vergleich bliebe er im Kalender stehen.
     if (!!showAsFree !== !!snap.showAsFree && topChangedFields.indexOf('startDate') < 0) topChangedFields.push('startDate');
     // v11.61: Beide Pointer prüfen — DEX_CreateOutlookEvent setzt nur
@@ -6644,9 +6644,9 @@ export default function EventCreationPage(): React.ReactElement {
   // schaltet der Effekt einmalig automatisch auf „ja" (Ref verhindert, dass
   // er ein bewusstes Abschalten sofort wieder überschreibt).
   const [subEventsOptIn, setSubEventsOptIn] = React.useState<boolean>(false);
-  // v29.55: Ein einzelner Termin gehoert in den Kalender des Organizers — das
+  // v29.55: Ein einzelner Termin gehört in den Kalender des Organizers — das
   // bleibt der Default. Sobald es eine Reihe wird, kippt er: Bei zwanzig Tagen
-  // sind zwanzig Blocker fuer Tage ohne eigene Buchung genau das, worueber sich
+  // sind zwanzig Blocker für Tage ohne eigene Buchung genau das, worüber sich
   // Organizer beschwert haben. Hat der Organizer selbst entschieden
   // (orgInvitesTouchedRef) oder wird ein bestehendes Event bearbeitet, bleibt
   // sein Wert stehen.
@@ -6656,43 +6656,43 @@ export default function EventCreationPage(): React.ReactElement {
   }, [subEventsOptIn, subEvents.length]);
 
   /**
-   * v29.57 — Unveraenderte Sub-Events beim Speichern ueberspringen.
+   * v29.57 — Unveränderte Sub-Events beim Speichern überspringen.
    *
    * Ein Save schrieb bisher IMMER alle Sub-Events. Bei einer Terminreihe mit 21
    * Tagen sind das 21 MERGE-Requests plus Bild-Uploads, auch wenn der Organizer
-   * nur an einem Tag die Frist geaendert hat — und genau diese Masse hat die
-   * SharePoint-Drosselung (HTTP 429) ausgeloest, die in v29.48 abgefangen
-   * werden musste. Weniger schreiben ist die bessere Loesung als schneller
+   * nur an einem Tag die Frist geändert hat — und genau diese Masse hat die
+   * SharePoint-Drosselung (HTTP 429) ausgelöst, die in v29.48 abgefangen
+   * werden musste. Weniger schreiben ist die bessere Lösung als schneller
    * wiederholen.
    *
    * Uebersprungen wird nur, wenn ZWEI Bedingungen zusammenkommen:
    *
-   *  1. Der Entwurf ist Zeichen fuer Zeichen der, der beim Oeffnen geladen
+   *  1. Der Entwurf ist Zeichen für Zeichen der, der beim Oeffnen geladen
    *     wurde (`subPersistKey`, ohne die reinen Snapshot-/UI-Felder).
-   *  2. Am Hauptevent hat sich NICHTS geaendert (`subTopGateKey`).
+   *  2. Am Hauptevent hat sich NICHTS geändert (`subTopGateKey`).
    *
    * Punkt 2 ist der wichtige: Ein Sub-Event erbt eine Menge vom Hauptevent —
    * Organizer, Zeiten (bei leeren Sub-Zeiten), Mail-Logo, Kopfbild-Layout,
    * Teams-Link, Sprache, Zweisprachigkeit der Felder. Aendert sich davon etwas,
-   * aendert sich der Schreibvorgang JEDES Sub-Events, obwohl kein einziger
+   * ändert sich der Schreibvorgang JEDES Sub-Events, obwohl kein einziger
    * Entwurf angefasst wurde. Deshalb ist die Schranke bewusst UEBERINKLUSIV:
    * Sie nimmt den kompletten Formular-Snapshot plus alles, was der nicht
    * abdeckt. Zu oft schreiben kostet Zeit, zu selten schreiben verliert Daten.
    *
-   * WER HIER ETWAS ERGAENZT, das vom Hauptevent in ein Sub-Event fliesst, muss
+   * WER HIER ETWAS ERGAENZT, das vom Hauptevent in ein Sub-Event fließt, muss
    * es in `subTopGateKey` aufnehmen — sonst wird die Aenderung still verworfen.
    */
   const subPersistKey = (d: SubEventDraft): string => {
     const out: Record<string, unknown> = {};
     for (const k of Object.keys(d).sort()) {
       // `id` ist eine Client-ID, `initial*` sind Vergleichs-Snapshots — beide
-      // sagen nichts darueber aus, was in SharePoint landet.
+      // sagen nichts darüber aus, was in SharePoint landet.
       if (k === 'id' || k.indexOf('initial') === 0) continue;
       const v = (d as unknown as Record<string, unknown>)[k];
-      // WICHTIG: `JSON.stringify(File)` liefert `{}`. Ein frisch ausgewaehltes
-      // Bild waere in diesem Schluessel also unsichtbar, das Sub-Event wuerde
-      // als unveraendert gelten und der Upload fiele still aus. Deshalb Datei-
-      // Werte ueber ihre Kennzeichen vergleichen.
+      // WICHTIG: `JSON.stringify(File)` liefert `{}`. Ein frisch ausgewähltes
+      // Bild wäre in diesem Schlüssel also unsichtbar, das Sub-Event würde
+      // als unverändert gelten und der Upload fiele still aus. Deshalb Datei-
+      // Werte über ihre Kennzeichen vergleichen.
       out[k] = (typeof File !== 'undefined' && v instanceof File)
         ? `file:${v.name}:${v.size}:${v.lastModified}`
         : v;
@@ -6715,8 +6715,8 @@ export default function EventCreationPage(): React.ReactElement {
     });
   };
   // v29.57: Die Schimmer-Keyframes werden sonst nur im Boot-Bildschirm
-  // eingehaengt (DexEventPlatform). Wer den Wizard nach einem gecachten Start
-  // oeffnet, haette den Balken ohne Animation. Idempotent ueber die id.
+  // eingehängt (DexEventPlatform). Wer den Wizard nach einem gecachten Start
+  // öffnet, hätte den Balken ohne Animation. Idempotent über die id.
   React.useEffect(() => {
     if (typeof document === 'undefined') return;
     if (document.getElementById('dex-progress-pulse-keyframes')) return;
@@ -6726,7 +6726,7 @@ export default function EventCreationPage(): React.ReactElement {
     document.head.appendChild(style);
   }, []);
 
-  /** Entwuerfe, wie sie beim Oeffnen geladen wurden (Schluessel = dbId). */
+  /** Entwürfe, wie sie beim Oeffnen geladen wurden (Schlüssel = dbId). */
   const initialSubPersistRef = React.useRef<Record<string, string>>({});
   const subTopGateInitialRef = React.useRef<string>('');
   React.useEffect(() => {
@@ -6735,7 +6735,7 @@ export default function EventCreationPage(): React.ReactElement {
     for (const se of subEventsRef.current) if (se.dbId) map[se.dbId] = subPersistKey(se);
     initialSubPersistRef.current = map;
     subTopGateInitialRef.current = subTopGateKey();
-    // Absichtlich nur beim Mount — spaetere Aenderungen sind genau das, was
+    // Absichtlich nur beim Mount — spätere Aenderungen sind genau das, was
     // erkannt werden soll.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -7093,10 +7093,10 @@ export default function EventCreationPage(): React.ReactElement {
         if (!title) errors.push('title');
         if (!startDate) errors.push('startDate');
         if (!endDate) errors.push('endDate');
-        // v29.55 BUG-FIX: Bei einem ganztaegigen Termin ist die Uhrzeit
+        // v29.55 BUG-FIX: Bei einem ganztägigen Termin ist die Uhrzeit
         // bedeutungslos — die DatePicker liefern ohne Zeitauswahl beide Male
         // 00:00, und `<=` meldete dann bei Start = Ende denselben Tag als
-        // Fehler. Ganztaegig wird deshalb tagesgenau verglichen: Fehler nur,
+        // Fehler. Ganztägig wird deshalb tagesgenau verglichen: Fehler nur,
         // wenn der End-TAG vor dem Start-TAG liegt.
         if (startDate && endDate) {
           const bad = allDay
@@ -7326,7 +7326,7 @@ export default function EventCreationPage(): React.ReactElement {
     if (!subTransfer) return;
     // v28.80: Die Kommunikationsfelder (Logo, Outlook-Text, Betreff …) stehen
     // NICHT laufend im Draft — sie leben im UI-State und werden erst beim
-    // Reiterwechsel in den Slot geschrieben. Ohne diesen Flush wuerde man den
+    // Reiterwechsel in den Slot geschrieben. Ohne diesen Flush würde man den
     // Stand VOR der letzten Bearbeitung kopieren. Der Flush schreibt synchron
     // in subEventsRef, deshalb wird von dort gelesen.
     flushActiveCommTabToState();
@@ -7342,8 +7342,8 @@ export default function EventCreationPage(): React.ReactElement {
       for (const f of fields) {
         const v = src[f];
         // v28.80: Objekte (z.B. emailTemplateOverrides) klonen — sonst teilen
-        // sich alle Ziel-Sub-Events dieselbe Referenz und eine spaetere
-        // Aenderung an einem wuerde die anderen mitziehen.
+        // sich alle Ziel-Sub-Events dieselbe Referenz und eine spätere
+        // Aenderung an einem würde die anderen mitziehen.
         patch[f] = (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v;
       }
       return { ...s, ...(patch as unknown as Partial<SubEventDraft>) };
@@ -7364,7 +7364,7 @@ export default function EventCreationPage(): React.ReactElement {
    * Schrittwechsel wieder auf der Klammer und musste sein Sub-Event neu
    * suchen. Und weil der Umschalter im weissen Inhaltsbereich stand, las er
    * sich als Teil des Schritts statt als das, was er ist: die Ebene, auf der
-   * gerade gearbeitet wird — sie traegt durch den ganzen Assistenten.
+   * gerade gearbeitet wird — sie trägt durch den ganzen Assistenten.
    *
    * Ein gemeinsamer Index bedeutet: Wer auf „Di. 08.09." steht, bleibt auf
    * „Di. 08.09.", auch wenn er von Kapazität zu Feldern wechselt.
@@ -7424,8 +7424,8 @@ export default function EventCreationPage(): React.ReactElement {
   const scTitle = scopeSub ? (scopeSub.title || '') : title;
   const setScTitle = (v: string): void => { if (scopeSub) patchScopeSub({ title: v }); else setTitle(v); };
   const scStart = scopeSub ? subIsoToDate(scopeSub.startDate) : localStrToDate(startDate);
-  // v29.55: Ganztaegig legt die Zeiten auf die Tagesgrenzen — sonst steht in
-  // DEX_Events 00:00/00:00 und jede spaetere Auswertung haelt den Termin fuer
+  // v29.55: Ganztägig legt die Zeiten auf die Tagesgrenzen — sonst steht in
+  // DEX_Events 00:00/00:00 und jede spätere Auswertung hält den Termin für
   // null Minuten lang.
   const clampAllDay = (d: Date | null, end: boolean): Date | null => {
     if (!d || !scAllDay) return d;
@@ -7438,17 +7438,17 @@ export default function EventCreationPage(): React.ReactElement {
   const setScEnd = (d: Date | null): void => { const v = clampAllDay(d, true); if (scopeSub) patchScopeSub({ endDate: subDateToIso(v) }); else setEndDate(dateToLocalStr(v)); };
   // v29.52: „Ganztägig" hängt am selben Scope wie Start/Ende — der Haken gilt
   // also für den oben gewählten Reiter, nicht global.
-  // v29.56: Sammel-Schalter fuer alle Termine. Bei einer Reihe ueber zwanzig
+  // v29.56: Sammel-Schalter für alle Termine. Bei einer Reihe über zwanzig
   // Tage ist die Einzel-Einstellung zwar richtig, aber nicht zumutbar — man
-  // muesste jeden Reiter anfassen. Die beiden Schalter setzen den Wert auf
-  // ALLE Sub-Events; die Einzel-Haken bleiben und koennen danach abweichen.
+  // müsste jeden Reiter anfassen. Die beiden Schalter setzen den Wert auf
+  // ALLE Sub-Events; die Einzel-Haken bleiben und können danach abweichen.
   const setAllSubsAllDay = (v: boolean): void => {
     setSubEvents(prev => prev.map(se => {
       if (!!se.allDay === v) return se;
       const next: SubEventDraft = { ...se, allDay: v };
       if (v) {
-        // Gleiche Klemmung wie beim Einzel-Haken: ohne Tagesgrenzen stuende in
-        // DEX_Events spaeter eine Spanne, die keinen ganzen Tag abdeckt.
+        // Gleiche Klemmung wie beim Einzel-Haken: ohne Tagesgrenzen stünde in
+        // DEX_Events später eine Spanne, die keinen ganzen Tag abdeckt.
         const st = subIsoToDate(se.startDate);
         const en = subIsoToDate(se.endDate) || st;
         if (st) {
@@ -8843,7 +8843,7 @@ export default function EventCreationPage(): React.ReactElement {
                 </span>
               </label>
               {/* v29.54: Kalender blockieren ja/nein. Der Haken ist ANGEHAKT =
-                  beschaeftigt (Default, bisheriges Verhalten); gespeichert wird
+                  beschäftigt (Default, bisheriges Verhalten); gespeichert wird
                   der umgekehrte Wert `showAsFree` — siehe Kommentar an
                   DeloitteEvent.showAsFree. Die Umkehrung passiert genau hier,
                   an einer Stelle, und nirgends sonst. */}
@@ -11003,7 +11003,7 @@ export default function EventCreationPage(): React.ReactElement {
                   v15.0: vorgezogen vor „Ort & Programm", damit die folgenden
                   Steps pro-Sub-Event-Tabs anbieten können. */}
               {/* v28.87: Frueher Schritt 3 („Sub-Events"). Der Schritt ist
-                  entfallen; sein Inhalt haengt jetzt unten an Schritt 1
+                  entfallen; sein Inhalt hängt jetzt unten an Schritt 1
                   (Grundlagen). Der Block bleibt als Ganzes bestehen — nur
                   seine Anzeige-Bedingung zeigt auf Schritt 1.
                   v28.89: …und nur auf der Klammer-/Hauptevent-Ebene. Die Liste
@@ -11136,7 +11136,7 @@ export default function EventCreationPage(): React.ReactElement {
               </div>{/* Ende Kachel: Schalter + Erklaerung */}
 
               {/* v28.84: Bezeichnung und Anmelde-Modus gehoeren zur
-                  Grundsatzfrage aus dem Schalter darueber — nicht in einen
+                  Grundsatzfrage aus dem Schalter darüber — nicht in einen
                   spaeteren Schritt. Beide standen bisher in Schritt 3.
                   Sichtbar nur, wenn Sub-Events aktiv sind. */}
               {subEventsOptIn && (<>
@@ -11339,9 +11339,9 @@ export default function EventCreationPage(): React.ReactElement {
               {subEventsOptIn && (<>
               {/* v28.97: Wie VIELE Sub-Events darf jemand waehlen? Das ist eine
                   eigene Frage neben „welche Ebenen sind buchbar" (Anmelde-Modus
-                  darueber): Bei einer Workshop-Reihe soll man sich oft fuer
+                  darüber): Bei einer Workshop-Reihe soll man sich oft für
                   genau einen Termin entscheiden, bei einem Programm mit
-                  Abendessen fuer beliebig viele. Aendert ausschliesslich die
+                  Abendessen für beliebig viele. Aendert ausschliesslich die
                   Auswahl auf der Anmeldeseite — Teilnehmerlisten, Kapazitaeten
                   und Fristen der Sub-Events bleiben, wie sie sind. */}
               <div style={{
@@ -11589,11 +11589,11 @@ export default function EventCreationPage(): React.ReactElement {
                     );
                   })()}
                   {/* v29.55: Bekommen die Organizer die Outlook-Termine ALLER
-                      Termine? Der Flow traegt sie als Teilnehmer ein (aus
+                      Termine? Der Flow trägt sie als Teilnehmer ein (aus
                       OrganizerEmail, und die steht auf jeder Sub-Event-Zeile) —
-                      bei einer Reihe ueber zwanzig Tage sind das zwanzig
-                      Blocker fuer Tage ohne eigene Buchung. Genau die
-                      Beschwerde aus der Rueckmeldung. */}
+                      bei einer Reihe über zwanzig Tage sind das zwanzig
+                      Blocker für Tage ohne eigene Buchung. Genau die
+                      Beschwerde aus der Rückmeldung. */}
                   {subEventsOptIn && subEvents.length > 0 && (
                     <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
                       <input
@@ -12076,11 +12076,11 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
                 )}
               </>)}{/* close subEventsOptIn */}
-              {/* v28.96: Das Zuschnitt-Modal fuer Sub-Event-Bilder lag IM
+              {/* v28.96: Das Zuschnitt-Modal für Sub-Event-Bilder lag IM
                   Listen-Block. Der wird auf einem Sub-Event-Reiter gar nicht
                   gerendert (activeScopeIdx === 0) — „Bild editieren" dort
                   setzte also den Index, ohne dass je ein Dialog aufging.
-                  Jetzt haengt es am Wrapper und ist von beiden Wegen aus da. */}
+                  Jetzt hängt es am Wrapper und ist von beiden Wegen aus da. */}
                 {subImageCropIdx !== null && subEvents[subImageCropIdx] && (
                   <ImageCropModal
                     open
@@ -12818,7 +12818,7 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                   )}
                 </div>
-                {/* v28.31: Die Abmeldefrist gehoert bei einer Klammer zu den
+                {/* v28.31: Die Abmeldefrist gehört bei einer Klammer zu den
                     Sub-Events — hier wäre sie wirkungslos. Nur dieses eine Feld
                     ausgrauen, die Klammer-Anmeldefrist links bleibt bedienbar. */}
                 {/* v29.25: Ohne Selbst-Abmeldung gibt es keine Abmeldefrist —
@@ -13310,7 +13310,7 @@ export default function EventCreationPage(): React.ReactElement {
                       auf eine Split-Gruppe einschränken. Das ersetzt den
                       hartkodierten B2Run-Leistungsnachweis-Sonderfall durch
                       ein generisches Pro-Gruppe-Feld-Konzept. Hinweis steht
-                      hier, damit der Organizer beim Migrieren weiss wo das
+                      hier, damit der Organizer beim Migrieren weiß wo das
                       Feature jetzt liegt. */}
                   <div style={{ marginTop: 12, padding: '10px 12px', background: 'rgba(21,101,192,0.06)', border: '1px solid rgba(21,101,192,0.4)', borderRadius: 8, fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
                     <div style={{ fontWeight: 700, color: 'var(--dex-blue, #1565c0)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -17231,9 +17231,9 @@ export default function EventCreationPage(): React.ReactElement {
                 {/* v29.57: Derselbe Schimmer wie im Boot-Balken (v29.41). Beim
                     Speichern eines Events mit vielen Terminen steht der Balken
                     zwischen zwei Abschnitten sekundenlang fast still — ohne
-                    Lebenszeichen liest sich das als Haenger, und Organizer
+                    Lebenszeichen liest sich das als Hänger, und Organizer
                     klicken dann ein zweites Mal auf Speichern. Bewusst schwach
-                    (weiss auf Gruen, 45 %) und langsam, kein Blinken. */}
+                    (weiß auf Grün, 45 %) und langsam, kein Blinken. */}
                 <div style={{
                   width: `${progress}%`, height: '100%',
                   background: progress === 100
