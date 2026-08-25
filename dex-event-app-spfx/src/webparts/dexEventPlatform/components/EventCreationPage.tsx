@@ -3433,6 +3433,13 @@ export default function EventCreationPage(): React.ReactElement {
   ): Promise<void> => {
     const keptDbIds = new Set<string>();
     const failedSubTitles: string[] = [];
+    // v29.57: Einmal je Save auswerten, nicht je Sub-Event — die Schranke
+    // haengt nur am Hauptevent. Bei einem NEUEN Event (kein Snapshot) wird nie
+    // uebersprungen; dort gibt es ohnehin nichts zu vergleichen.
+    const subGateUnchanged = !!editEvent
+      && subTopGateInitialRef.current !== ''
+      && subTopGateInitialRef.current === subTopGateKey();
+    let skippedSubCount = 0;
     const stepTotal = subEventsRef.current.filter(d => !!(d.title || '').trim()).length;
     let stepDone = 0;
     // v11.87: Sub-Event-Progress-Callback aus dem aufrufenden handleSubmit
@@ -3773,6 +3780,19 @@ export default function EventCreationPage(): React.ReactElement {
           }
         }
         keptDbIds.add(draft.dbId);
+        // v29.57: Unveraendertes Sub-Event ueberspringen — spart bei einer
+        // Terminreihe die grosse Mehrheit der Schreibvorgaenge (s. Kommentar
+        // an subPersistKey). Nur wenn BEIDES unveraendert ist: der Entwurf
+        // selbst UND alles am Hauptevent, was ein Sub-Event erbt.
+        if (subGateUnchanged && !draft.imageFile && !draft.imageRemoved) {
+          const before = initialSubPersistRef.current[draft.dbId];
+          if (before !== undefined && before === subPersistKey(draft)) {
+            skippedSubCount++;
+            stepDone++;
+            if (onStep) onStep(stepDone, stepTotal, shortSubEventTitle(draft.title, title) || draft.title);
+            continue;
+          }
+        }
         // Update bestehender Sub-Event: nur geänderte Felder patchen. CustomFields
         // werden als JSON-String serialisiert — v17.22: zentraler
         // serializeCustomFields-Helper, damit der Sub-Event-Pfad dieselben
@@ -3907,6 +3927,18 @@ export default function EventCreationPage(): React.ReactElement {
       showAlert(isDe
         ? `${failedSubTitles.length} Sub-Event${failedSubTitles.length === 1 ? '' : 's'} konnte${failedSubTitles.length === 1 ? '' : 'n'} nicht gespeichert werden: ${failedSubTitles.join(', ')}. Die übrigen Änderungen sind gespeichert — bitte speichere erneut, um es nochmal zu versuchen.`
         : `${failedSubTitles.length} sub-event${failedSubTitles.length === 1 ? '' : 's'} could not be saved: ${failedSubTitles.join(', ')}. All other changes are saved — please save again to retry.`, { variant: 'error' });
+    }
+    // v29.57: Nach dem Save ist der aktuelle Stand der neue Vergleichspunkt —
+    // sonst wuerde ein zweiter Save in derselben Sitzung alles erneut schreiben.
+    {
+      const map: Record<string, string> = {};
+      for (const se of subEventsRef.current) if (se.dbId) map[se.dbId] = subPersistKey(se);
+      initialSubPersistRef.current = map;
+      subTopGateInitialRef.current = subTopGateKey();
+      if (skippedSubCount > 0) {
+        // eslint-disable-next-line no-console
+        console.log(`[DEX] ${skippedSubCount} unveraenderte Sub-Events uebersprungen (kein Schreibvorgang).`);
+      }
     }
     if (failedDeleteTitles.length > 0) {
       showAlert(isDe
@@ -6622,6 +6654,91 @@ export default function EventCreationPage(): React.ReactElement {
     if (orgInvitesTouchedRef.current) return;
     setOrgGetsSubInvites(!(subEventsOptIn && subEvents.length > 0));
   }, [subEventsOptIn, subEvents.length]);
+
+  /**
+   * v29.57 — Unveraenderte Sub-Events beim Speichern ueberspringen.
+   *
+   * Ein Save schrieb bisher IMMER alle Sub-Events. Bei einer Terminreihe mit 21
+   * Tagen sind das 21 MERGE-Requests plus Bild-Uploads, auch wenn der Organizer
+   * nur an einem Tag die Frist geaendert hat — und genau diese Masse hat die
+   * SharePoint-Drosselung (HTTP 429) ausgeloest, die in v29.48 abgefangen
+   * werden musste. Weniger schreiben ist die bessere Loesung als schneller
+   * wiederholen.
+   *
+   * Uebersprungen wird nur, wenn ZWEI Bedingungen zusammenkommen:
+   *
+   *  1. Der Entwurf ist Zeichen fuer Zeichen der, der beim Oeffnen geladen
+   *     wurde (`subPersistKey`, ohne die reinen Snapshot-/UI-Felder).
+   *  2. Am Hauptevent hat sich NICHTS geaendert (`subTopGateKey`).
+   *
+   * Punkt 2 ist der wichtige: Ein Sub-Event erbt eine Menge vom Hauptevent —
+   * Organizer, Zeiten (bei leeren Sub-Zeiten), Mail-Logo, Kopfbild-Layout,
+   * Teams-Link, Sprache, Zweisprachigkeit der Felder. Aendert sich davon etwas,
+   * aendert sich der Schreibvorgang JEDES Sub-Events, obwohl kein einziger
+   * Entwurf angefasst wurde. Deshalb ist die Schranke bewusst UEBERINKLUSIV:
+   * Sie nimmt den kompletten Formular-Snapshot plus alles, was der nicht
+   * abdeckt. Zu oft schreiben kostet Zeit, zu selten schreiben verliert Daten.
+   *
+   * WER HIER ETWAS ERGAENZT, das vom Hauptevent in ein Sub-Event fliesst, muss
+   * es in `subTopGateKey` aufnehmen — sonst wird die Aenderung still verworfen.
+   */
+  const subPersistKey = (d: SubEventDraft): string => {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(d).sort()) {
+      // `id` ist eine Client-ID, `initial*` sind Vergleichs-Snapshots — beide
+      // sagen nichts darueber aus, was in SharePoint landet.
+      if (k === 'id' || k.indexOf('initial') === 0) continue;
+      const v = (d as unknown as Record<string, unknown>)[k];
+      // WICHTIG: `JSON.stringify(File)` liefert `{}`. Ein frisch ausgewaehltes
+      // Bild waere in diesem Schluessel also unsichtbar, das Sub-Event wuerde
+      // als unveraendert gelten und der Upload fiele still aus. Deshalb Datei-
+      // Werte ueber ihre Kennzeichen vergleichen.
+      out[k] = (typeof File !== 'undefined' && v instanceof File)
+        ? `file:${v.name}:${v.size}:${v.lastModified}`
+        : v;
+    }
+    return JSON.stringify(out);
+  };
+  const subTopGateKey = (): string => {
+    const pair = sanitizeOrganizerPairs();
+    return JSON.stringify({
+      form: computeFormSnapshot(),
+      org: `${pair.orgString}|${pair.orgEmailString}`,
+      orgInvites: orgGetsSubInvites,
+      start: startDate, end: endDate,
+      bilingual: bilingualFields,
+      emailLang: emailLanguage,
+      header: headerImageLayout,
+      teams: teamsLink,
+      allDay, showAsFree,
+      logos: `${(emailLogoPreview || '').length}:${(outlookLogoPreview || '').length}`,
+    });
+  };
+  // v29.57: Die Schimmer-Keyframes werden sonst nur im Boot-Bildschirm
+  // eingehaengt (DexEventPlatform). Wer den Wizard nach einem gecachten Start
+  // oeffnet, haette den Balken ohne Animation. Idempotent ueber die id.
+  React.useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (document.getElementById('dex-progress-pulse-keyframes')) return;
+    const style = document.createElement('style');
+    style.id = 'dex-progress-pulse-keyframes';
+    style.textContent = '@keyframes dexProgressShimmer { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }';
+    document.head.appendChild(style);
+  }, []);
+
+  /** Entwuerfe, wie sie beim Oeffnen geladen wurden (Schluessel = dbId). */
+  const initialSubPersistRef = React.useRef<Record<string, string>>({});
+  const subTopGateInitialRef = React.useRef<string>('');
+  React.useEffect(() => {
+    if (!editEvent) return;
+    const map: Record<string, string> = {};
+    for (const se of subEventsRef.current) if (se.dbId) map[se.dbId] = subPersistKey(se);
+    initialSubPersistRef.current = map;
+    subTopGateInitialRef.current = subTopGateKey();
+    // Absichtlich nur beim Mount — spaetere Aenderungen sind genau das, was
+    // erkannt werden soll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // v28.2 SOFT-DISABLE: Der Toggle verwirft keine Drafts mehr (v27.11-Stash
   // entfällt) — `subEventsOptIn === false` bei vorhandenen Drafts heißt nur
   // noch „deaktiviert": beim Speichern wird das Piggyback-Flag
@@ -17111,6 +17228,12 @@ export default function EventCreationPage(): React.ReactElement {
                 width: '100%', height: 8, background: 'var(--dex-gray-200)',
                 borderRadius: 4, overflow: 'hidden',
               }}>
+                {/* v29.57: Derselbe Schimmer wie im Boot-Balken (v29.41). Beim
+                    Speichern eines Events mit vielen Terminen steht der Balken
+                    zwischen zwei Abschnitten sekundenlang fast still — ohne
+                    Lebenszeichen liest sich das als Haenger, und Organizer
+                    klicken dann ein zweites Mal auf Speichern. Bewusst schwach
+                    (weiss auf Gruen, 45 %) und langsam, kein Blinken. */}
                 <div style={{
                   width: `${progress}%`, height: '100%',
                   background: progress === 100
@@ -17118,7 +17241,17 @@ export default function EventCreationPage(): React.ReactElement {
                     : 'linear-gradient(90deg, var(--dex-green), #0076a8)',
                   borderRadius: 4,
                   transition: 'width 0.5s ease',
-                }} />
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}>
+                  {progress < 100 && (
+                    <div style={{
+                      position: 'absolute', top: 0, bottom: 0, left: 0, width: '35%',
+                      background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.45) 50%, rgba(255,255,255,0) 100%)',
+                      animation: 'dexProgressShimmer 2.1s ease-in-out infinite',
+                    }} />
+                  )}
+                </div>
               </div>
             </div>
           )}
