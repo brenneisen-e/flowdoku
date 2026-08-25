@@ -2718,6 +2718,34 @@ zurückfallen.
 
 Danach den aktuellen Flow-JSON hier einpflegen.
 
+### UI-Anleitung 2026-08-25 (v29.55) — Organizer nicht in jeden Sub-Event-Termin eintragen
+
+**Hintergrund:** `item/requiredAttendees` wird aus `OrganizerEmail` gebildet, und
+diese Spalte steht auf **jeder** Sub-Event-Zeile (seit v29.20 auch beim Update).
+Bei einer Terminreihe mit 21 Tagen legt der Flow also 21 Outlook-Termine an und
+traegt die Organizer in jeden davon ein — 21 Blocker im Kalender, auch fuer
+Tage ohne eigene Buchung. Das ist die gemeldete Beschwerde
+(„wenn man sich nur für einen Event anmeldet, wird für jeden Tag ein Blocker gesetzt").
+
+Neue Spalte **`SkipOrganizerInvite`** (Ja/Nein) in `DEX_Events`, wieder negativ:
+leer/`false` = eintragen = bisheriges Verhalten. Der Assistent fragt es ab,
+sobald ein Event Sub-Events hat (Haken „Organizer bekommen alle Outlook-Termine",
+Default AUS bei mehreren Terminen, AN beim einzelnen Event).
+
+**`DEX_CreateOutlookEvent` → „Create event (V4)" → Feld `item/requiredAttendees`:**
+```
+@if(equals(coalesce(triggerBody()?['SkipOrganizerInvite'], false), true), '', last(split(replace(coalesce(triggerBody()?['OrganizerEmail'], ''), '</div>', ''), '">')))
+```
+
+Ein Termin ohne Teilnehmer ist zulaessig — er liegt dann im Kalender der
+Shared Mailbox, und die angemeldeten Teilnehmer kommen wie bisher ueber die
+`Einladen`-Zeilen aus `DEX_Outlook` dazu. Im Update-Pfad ist nichts zu tun:
+`Build_Update_Body` fasst `attendees` nicht an.
+
+**Prüfen:** Kalender-Event mit mehreren Tagen anlegen, Haken aus → im eigenen
+Kalender darf **kein** Termin erscheinen. Gegenprobe mit Haken → alle Tage
+erscheinen, wie bisher.
+
 ### UI-Anleitung 2026-08-25 (v29.54) — Beschäftigt/Frei durch den Organizer + Korrektur zu sensitivity/responseRequested
 
 **Teil A — `showAs` wird einstellbar.**
