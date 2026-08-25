@@ -5125,8 +5125,11 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       })));
       const needsAccess = accessChecks.filter(c => c.hasAccess !== true).map(c => c.email);
       if (needsAccess.length === 0) return;
-      const admins = await eventService.getRoleEmails('Admin');
-      if (admins.length === 0) return;
+      // v29.64: Empfaenger ist das Funktionspostfach, nicht die Liste der
+      // Admin-Konten. getRoleEmails('Admin') liefert die PERSOENLICHEN
+      // Adressen — genau das, was seit v29.43 nicht mehr sein soll. In v29.43
+      // wurden nur zwei von vier Stellen umgestellt; diese hier und die
+      // Organizer-Antrags-Mail blieben stehen.
       const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const permissionsUrl = `${eventService.siteUrl}/_layouts/15/user.aspx`;
       // v26.59: Der Button vergibt die Leserechte DIREKT (grantaccess-Deep-Link
@@ -5150,7 +5153,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       const body = wrapTemplate('#ed8b00', 'SharePoint-Zugriff benötigt', esc(eventTitle || '—'), inner);
       await eventService.queueEmail(
         `SharePoint-Zugriff benötigt: ${unique.length} ${unique.length === 1 ? 'Person' : 'Personen'} außerhalb @deloitte.de (${eventTitle || 'Event'})`,
-        admins.join('; '), 'Admins', body, 'Info', eventTitle || '', '0', undefined, undefined, 'High'
+        DEX_TEAM_RECIPIENTS, 'DEX-Team', body, 'Info', eventTitle || '', '0', undefined, undefined, 'High'
       );
     } catch (e) {
       console.warn('[DEX] notifyAdminsExternalAudienceAccess failed:', e);
@@ -5696,8 +5699,8 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       if (!created.ok) return { ok: false, reason: 'create-failed' };
       // Admins per Mail informieren — mit Deep-Link zum Bestätigen (greift nur als Admin).
       try {
-        const admins = await eventService.getRoleEmails('Admin');
-        if (admins.length > 0) {
+        {
+          // v29.64: an das Funktionspostfach, nicht an die Admin-Konten (s.o.).
           const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
           const appBase = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`;
           const approveUrl = created.itemId ? buildHashDeepLink(appBase, { action: 'approveorg', request: created.itemId }) : appBase;
@@ -5714,7 +5717,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
             <p style="margin:0;color:#777;font-size:13px;">Bestätigen geht nur als Admin. Du findest offene Anträge auch direkt nach dem Öffnen der App oben als Hinweis.</p>
           `;
           const body = wrapTemplate('#86bc25', 'Neuer Organizer-Antrag', esc(name || mail), inner);
-          await eventService.queueEmail(`Organizer-Antrag: ${name || mail}`, admins.join('; '), 'Admins', body, 'OrganizerRequest', '', '0');
+          await eventService.queueEmail(`Organizer-Antrag: ${name || mail}`, DEX_TEAM_RECIPIENTS, 'DEX-Team', body, 'OrganizerRequest', '', '0');
         }
       } catch (e) { console.warn('[DEX] requestOrganizerRole admin mail failed:', e); }
       return { ok: true, reason: created.itemId ? undefined : 'no-id' };
