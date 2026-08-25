@@ -659,6 +659,12 @@ export default function RegistrationPage(): React.ReactElement {
   // Warteliste = WaitlistTaken) ist für alle lesbar und liefert die korrekten
   // Werte. Wird beim Öffnen + bei Fenster-Fokus leise nachgeladen (kein
   // sichtbares Nachladen — nur die Zahl ändert sich). Der Live-Push folgt in v24.74.
+  // v29.62: Hover-Zustand der Tages-Kacheln im Anmelde-Kalender. Inline-Styles
+  // koennen kein :hover (CLAUDE.md) — ohne diesen State lesen sich die Kacheln
+  // wie Beschriftungen, nicht wie etwas Anklickbares. Schluessel ist der
+  // Tagesschluessel (YYYY-MM-DD), nicht der Index: Der Index waere ueber
+  // mehrere Monatsraster hinweg mehrdeutig.
+  const [dayHoverKey, setDayHoverKey] = React.useState<string>('');
   const [liveStats, setLiveStats] = React.useState<{ active: number; waitlist: number } | null>(null);
   React.useEffect(() => {
     if (!event || !event.id || !(event.maxParticipants > 0)) { setLiveStats(null); return undefined; }
@@ -5442,18 +5448,31 @@ export default function RegistrationPage(): React.ReactElement {
                                     key={key}
                                     type="button"
                                     onClick={() => pickDay(ce, isSel, disabled)}
+                                    onMouseEnter={() => { if (!disabled) setDayHoverKey(key); }}
+                                    onMouseLeave={() => setDayHoverKey(h => (h === key ? '' : h))}
+                                    onFocus={() => { if (!disabled) setDayHoverKey(key); }}
+                                    onBlur={() => setDayHoverKey(h => (h === key ? '' : h))}
                                     disabled={disabled}
                                     title={title}
                                     aria-pressed={isSel}
                                     style={{
                                       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                                       gap: 1, padding: '6px 0 5px', borderRadius: 8, minHeight: 46,
-                                      border: `1px solid ${isSel ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-                                      background: isSel ? 'var(--dex-green, #86bc25)' : '#fff',
+                                      // v29.62: Hover/Fokus sichtbar machen. Ein gewaehlter Tag ist
+                                      // schon voll gruen — der wird beim Ueberfahren nur leicht
+                                      // dunkler, damit „abwaehlen" ebenfalls als Aktion lesbar ist.
+                                      border: `1px solid ${isSel
+                                        ? 'var(--dex-green, #86bc25)'
+                                        : (dayHoverKey === key ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)')}`,
+                                      background: isSel
+                                        ? (dayHoverKey === key ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-green, #86bc25)')
+                                        : (dayHoverKey === key ? 'rgba(134,188,37,0.10)' : '#fff'),
                                       color: isSel ? '#fff' : (disabled ? 'var(--dex-gray-400)' : 'var(--dex-gray-800, #333)'),
                                       cursor: disabled ? 'not-allowed' : 'pointer',
                                       opacity: disabled ? 0.55 : 1,
                                       fontWeight: 700, fontSize: '0.82rem',
+                                      transition: 'background 120ms ease, border-color 120ms ease, transform 120ms ease',
+                                      transform: (dayHoverKey === key && !disabled) ? 'translateY(-1px)' : 'none',
                                     }}
                                   >
                                     <span>{dayNum}</span>
