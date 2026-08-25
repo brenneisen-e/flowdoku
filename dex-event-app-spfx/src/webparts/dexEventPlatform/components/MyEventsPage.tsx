@@ -998,6 +998,12 @@ export default function MyEventsPage(): React.ReactElement {
     waitlistEnabled?: boolean;
     waitlistCount?: number;
     unlimited?: boolean;
+    // v29.48: „Organizer ausblenden" galt auf diesem Erfolgs-Screen nicht —
+    // hier standen die Namen weiter, obwohl das Event sie überall sonst
+    // versteckt. Die drei Flags kommen deshalb mit in den Screen-State.
+    hideOrganizer?: boolean;
+    hideOrganizerIndividualOnly?: boolean;
+    hiddenOrganizerEmails?: string[];
   }>(null);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editData, setEditData] = React.useState<Record<string, string>>({});
@@ -1443,6 +1449,9 @@ export default function MyEventsPage(): React.ReactElement {
           waitlistCount: entry.event.waitlistCount || 0,
           unlimited: !(entry.event.maxParticipants > 0)
             && !(((entry.event.durchstarterCapacity || 0) + (entry.event.funstarterCapacity || 0)) > 0),
+          hideOrganizer: !!entry.event.hideOrganizer,
+          hideOrganizerIndividualOnly: !!entry.event.hideOrganizerIndividualOnly,
+          hiddenOrganizerEmails: entry.event.hiddenOrganizerEmails || [],
         });
       }
     }
@@ -1589,10 +1598,15 @@ export default function MyEventsPage(): React.ReactElement {
                 : <>If you change your mind, you can register again anytime via the registration area.</>}
             </p>
           </div>
-          {orgs.length > 0 && (
+          {orgs.length > 0 && !(cancelSuccess.hideOrganizer && !cancelSuccess.hideOrganizerIndividualOnly) && (
             <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
               <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>Organizer</div>
-              <OrganizerList names={orgs} emails={cancelSuccess.organizerEmails} size="md" />
+              <OrganizerList
+                names={orgs}
+                emails={cancelSuccess.organizerEmails}
+                hiddenEmails={(cancelSuccess.hideOrganizer && cancelSuccess.hideOrganizerIndividualOnly) ? (cancelSuccess.hiddenOrganizerEmails || []) : []}
+                size="md"
+              />
             </div>
           )}
           <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>

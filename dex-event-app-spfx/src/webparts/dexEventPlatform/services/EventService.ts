@@ -18,7 +18,10 @@
  */
 
 import { WebPartContext } from '@microsoft/sp-webpart-base';
-import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions } from '@microsoft/sp-http';
+import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions, SPHttpClientConfiguration } from '@microsoft/sp-http';
+// v29.48: Alle SharePoint-Requests dieser Klasse laufen ueber _sp (s.u.) und
+// damit durch den 429-Retry.
+import { withThrottleRetry } from '../utils/spThrottle';
 import { wrapTemplateForStorage, buildEmailFromTemplate, normalizeMadeWithLink } from './EmailTemplates';
 // v28.95: Die Mail-Koerper liegen jetzt in ./mailBodies — die Datei begann
 // sonst mit 400 Zeilen HTML, bevor die erste Methode kam.
@@ -424,6 +427,22 @@ export class EventService {
   // solche Cross-Web-Schreibzugriffe holen wir den Digest des Ziel-Webs.
   private _digestByWeb: Map<string, string> = new Map();
 
+  /**
+   * v29.48: Ersatz für `this.context.spHttpClient` — gleiche Signatur, aber
+   * mit Wiederholung bei SharePoint-Drosselung (429/503, s. utils/spThrottle).
+   *
+   * Der Umweg über ein eigenes Feld ist Absicht: die Klasse hat rund 200
+   * Aufrufstellen, und es darf keine geben, die am Retry vorbeigeht. Wer neu
+   * dazuschreibt, nimmt `this._sp` — `this.context.spHttpClient` kommt in
+   * dieser Datei nicht mehr vor.
+   */
+  private _sp = {
+    get: (url: string, cfg: SPHttpClientConfiguration, options?: ISPHttpClientOptions): Promise<SPHttpClientResponse> =>
+      withThrottleRetry(() => this.context.spHttpClient.get(url, cfg, options), url),
+    post: (url: string, cfg: SPHttpClientConfiguration, options?: ISPHttpClientOptions): Promise<SPHttpClientResponse> =>
+      withThrottleRetry(() => this.context.spHttpClient.post(url, cfg, options), url),
+  };
+
   constructor(context: WebPartContext) {
     this.context = context;
     this.siteUrl = context.pageContext.web.absoluteUrl;
@@ -443,7 +462,7 @@ export class EventService {
     const cached = this._digestByWeb.get(key);
     if (cached) return cached;
     try {
-      const r = await this.context.spHttpClient.post(
+      const r = await this._sp.post(
         `${webUrl}/_api/contextinfo`, SPHttpClient.configurations.v1,
         { headers: { 'Accept': 'application/json;odata=nometadata' } }
       );
@@ -477,7 +496,7 @@ export class EventService {
   ): Promise<number> {
     try {
       const digest = await this._webDigest(this._webOf(listBase));
-      const resp = await this.context.spHttpClient.post(
+      const resp = await this._sp.post(
         listBase, SPHttpClient.configurations.v1,
         {
           headers: {
@@ -547,7 +566,7 @@ export class EventService {
 
       // Berechtigungen prüfen
       try {
-        const listInfo = await this.context.spHttpClient.get(
+        const listInfo = await this._sp.get(
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=HasUniqueRoleAssignments`,
           SPHttpClient.configurations.v1
         );
@@ -620,7 +639,7 @@ export class EventService {
    */
   private async setRecipientFieldPlainText(listName: string): Promise<void> {
     const fieldUrl = `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('Recipient')`;
-    const resp = await this.context.spHttpClient.get(
+    const resp = await this._sp.get(
       `${fieldUrl}?$select=FieldTypeKind,RichText`,
       SPHttpClient.configurations.v1
     );
@@ -648,7 +667,7 @@ export class EventService {
    */
   private async ensureCcFieldExists(listName: string): Promise<void> {
     const probeUrl = `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('Cc')?$select=Id`;
-    const probe = await this.context.spHttpClient.get(probeUrl, SPHttpClient.configurations.v1);
+    const probe = await this._sp.get(probeUrl, SPHttpClient.configurations.v1);
     if (probe.ok) return;
     await this._post(
       `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`,
@@ -665,7 +684,7 @@ export class EventService {
 
   private async ensureBccFieldExists(listName: string): Promise<void> {
     const probeUrl = `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('Bcc')?$select=Id`;
-    const probe = await this.context.spHttpClient.get(probeUrl, SPHttpClient.configurations.v1);
+    const probe = await this._sp.get(probeUrl, SPHttpClient.configurations.v1);
     if (probe.ok) return;
     await this._post(
       `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`,
@@ -684,7 +703,7 @@ export class EventService {
   // DEX_SEND_MAIL-Flow liest sie und sendet bei „High" mit hoher Wichtigkeit.
   private async ensureImportanceFieldExists(listName: string): Promise<void> {
     const probeUrl = `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('Importance')?$select=Id`;
-    const probe = await this.context.spHttpClient.get(probeUrl, SPHttpClient.configurations.v1);
+    const probe = await this._sp.get(probeUrl, SPHttpClient.configurations.v1);
     if (probe.ok) return;
     await this._post(
       `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`,
@@ -706,7 +725,7 @@ export class EventService {
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`,
         {}
       );
-      const ownersResp = await this.context.spHttpClient.get(
+      const ownersResp = await this._sp.get(
         `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`, SPHttpClient.configurations.v1
       );
       if (ownersResp.ok) {
@@ -737,7 +756,7 @@ export class EventService {
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`,
         {}
       );
-      const ownersResp = await this.context.spHttpClient.get(
+      const ownersResp = await this._sp.get(
         `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`, SPHttpClient.configurations.v1
       );
       if (ownersResp.ok) {
@@ -808,7 +827,7 @@ export class EventService {
           if (itemId > 0) {
             const buf = new TextEncoder().encode(attachment.content);
             const safeName = attachment.fileName.replace(/[^a-zA-Z0-9._@-]+/g, '_');
-            await this.context.spHttpClient.post(
+            await this._sp.post(
               `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items(${itemId})/AttachmentFiles/add(FileName='${encodeURIComponent(safeName)}')`,
               SPHttpClient.configurations.v1,
               { headers: { 'Accept': 'application/json;odata=nometadata' }, body: buf.buffer as ArrayBuffer }
@@ -834,7 +853,7 @@ export class EventService {
       const safeType = (emailType || '').replace(/'/g, "''");
       const safeId = (eventId || '').replace(/'/g, "''");
       const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items?$select=Id&$filter=EmailType eq '${safeType}' and EventId eq '${safeId}'&$top=1`;
-      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
       if (!resp.ok) return false;
       const data = await resp.json();
       const items = data.value || data.d?.results || [];
@@ -852,7 +871,7 @@ export class EventService {
     try {
       const safeType = (emailType || '').replace(/'/g, "''");
       const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items?$select=Id&$filter=EmailType eq '${safeType}' and Created ge datetime'${encodeURIComponent(sinceIso)}'&$top=1`;
-      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
       if (!resp.ok) return false;
       const data = await resp.json();
       const items = data.value || data.d?.results || [];
@@ -870,7 +889,7 @@ export class EventService {
     try {
       let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items?$select=EventId,Created&$filter=EmailType eq 'ParticipantDeletionWarning'&$top=5000`;
       while (url) {
-        const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
         if (!resp.ok) break;
         const data = await resp.json();
         const items = data.value || data.d?.results || [];
@@ -906,7 +925,7 @@ export class EventService {
     try {
       while (url && guard < 25) {
         guard++;
-        const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
         if (!resp.ok) { console.warn('[DEX restore] versions HTTP', resp.status, 'für Item', itemId); break; }
         const data = await resp.json();
         const items = data.value || data.d?.results || [];
@@ -1039,7 +1058,7 @@ export class EventService {
     while (url && guard < 20) {
       guard++;
       let resp: SPHttpClientResponse;
-      try { resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1); }
+      try { resp = await this._sp.get(url, SPHttpClient.configurations.v1); }
       catch { break; }
       if (!resp.ok) break;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1616,7 +1635,7 @@ export class EventService {
       // in der Konsole. Gleiches Muster wie ensureEventsList bei den
       // Event-Permissions.
       try {
-        const listInfo = await this.context.spHttpClient.get(
+        const listInfo = await this._sp.get(
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=HasUniqueRoleAssignments`,
           SPHttpClient.configurations.v1
         );
@@ -1631,7 +1650,7 @@ export class EventService {
         {}
       );
       // 2. Owners (Admin-Group) → Full Control
-      const ownersResp = await this.context.spHttpClient.get(
+      const ownersResp = await this._sp.get(
         `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`, SPHttpClient.configurations.v1
       );
       if (ownersResp.ok) {
@@ -1643,7 +1662,7 @@ export class EventService {
       // 3. Members (Organizer-Group typischerweise) → Contribute (sollen
       //    auch schreiben können, damit Organizer-Aktionen wie Event-
       //    Updates protokolliert werden).
-      const membersResp = await this.context.spHttpClient.get(
+      const membersResp = await this._sp.get(
         `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`, SPHttpClient.configurations.v1
       );
       if (membersResp.ok) {
@@ -1727,7 +1746,7 @@ export class EventService {
         },
         body: JSON.stringify(payload),
       };
-      await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, options);
+      await this._sp.post(url, SPHttpClient.configurations.v1, options);
     } catch (err) {
       console.warn('[DEX] writeChangeLog failed:', err);
     }
@@ -1765,7 +1784,7 @@ export class EventService {
     ];
     for (let i = 0; i < candidates.length; i++) {
       try {
-        const resp = await this.context.spHttpClient.get(candidates[i], SPHttpClient.configurations.v1);
+        const resp = await this._sp.get(candidates[i], SPHttpClient.configurations.v1);
         if (!resp.ok) continue;
         const data = await resp.json();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1798,7 +1817,7 @@ export class EventService {
     // ReplacedParticipantEmail auf der nachrückenden Person).
     for (const fieldTitle of ['CancelledName', 'CancelledEmail']) {
       try {
-        const resp = await this.context.spHttpClient.get(
+        const resp = await this._sp.get(
           `${this.siteUrl}/_api/web/lists/getbytitle('DEX_IDReorder')/fields/getbytitle('${fieldTitle}')?$select=Id`,
           SPHttpClient.configurations.v1
         );
@@ -1831,7 +1850,7 @@ export class EventService {
       // ListItemEntityTypeFullName dynamisch ermitteln
       let listItemType = 'SP.Data.DEX_x005f_IDReorderListItem';
       try {
-        const typeResp = await this.context.spHttpClient.get(
+        const typeResp = await this._sp.get(
           `${this.siteUrl}/_api/web/lists/getbytitle('DEX_IDReorder')?$select=ListItemEntityTypeFullName`,
           SPHttpClient.configurations.v1
         );
@@ -2021,7 +2040,7 @@ export class EventService {
 
     let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
     try {
-      const typeResp = await this.context.spHttpClient.get(
+      const typeResp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=ListItemEntityTypeFullName`,
         SPHttpClient.configurations.v1
       );
@@ -2090,7 +2109,7 @@ export class EventService {
 
     let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
     try {
-      const typeResp = await this.context.spHttpClient.get(
+      const typeResp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=ListItemEntityTypeFullName`,
         SPHttpClient.configurations.v1
       );
@@ -2103,7 +2122,7 @@ export class EventService {
     for (const t of newTemplates) {
       try {
         // Existiert das Template bereits? (TemplateType + Language)
-        const checkResp = await this.context.spHttpClient.get(
+        const checkResp = await this._sp.get(
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$filter=TemplateType eq '${t.TemplateType}' and Language eq '${t.Language}'&$top=1&$select=Id`,
           SPHttpClient.configurations.v1
         );
@@ -2246,7 +2265,7 @@ export class EventService {
 
     let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
     try {
-      const typeResp = await this.context.spHttpClient.get(
+      const typeResp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=ListItemEntityTypeFullName`,
         SPHttpClient.configurations.v1
       );
@@ -2260,7 +2279,7 @@ export class EventService {
       const label = `${t.TemplateType}_${t.Language}`;
       try {
         // Bestehendes Item finden
-        const checkResp = await this.context.spHttpClient.get(
+        const checkResp = await this._sp.get(
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$filter=TemplateType eq '${t.TemplateType}' and Language eq '${t.Language}'&$top=1&$select=Id,BodyHtml`,
           SPHttpClient.configurations.v1
         );
@@ -2359,7 +2378,7 @@ export class EventService {
       ];
       for (const f of logoFields) {
         try {
-          const check = await this.context.spHttpClient.get(
+          const check = await this._sp.get(
             `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('${f.title}')`,
             SPHttpClient.configurations.v1
           );
@@ -2375,7 +2394,7 @@ export class EventService {
       }
 
       // 2. _Config Zeile prüfen und ggf. anlegen
-      const configResp = await this.context.spHttpClient.get(
+      const configResp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id`,
         SPHttpClient.configurations.v1
       );
@@ -2386,7 +2405,7 @@ export class EventService {
           // _Config Zeile fehlt - anlegen
           let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
           try {
-            const typeResp = await this.context.spHttpClient.get(
+            const typeResp = await this._sp.get(
               `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=ListItemEntityTypeFullName`,
               SPHttpClient.configurations.v1
             );
@@ -2415,7 +2434,7 @@ export class EventService {
    */
   public async getKpiCache(): Promise<{ participants: number; events: number } | null> {
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id,TotalParticipantsCount,TotalEventsCount`,
         SPHttpClient.configurations.v1,
       );
@@ -2488,7 +2507,7 @@ export class EventService {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       let getResp: SPHttpClientResponse;
       try {
-        getResp = await this.context.spHttpClient.get(itemUrl, SPHttpClient.configurations.v1);
+        getResp = await this._sp.get(itemUrl, SPHttpClient.configurations.v1);
       } catch { return null; }
       if (!getResp.ok) return null;
       const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
@@ -2539,7 +2558,7 @@ export class EventService {
     while (url && guard < 20) {
       guard++;
       let resp: SPHttpClientResponse;
-      try { resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1); }
+      try { resp = await this._sp.get(url, SPHttpClient.configurations.v1); }
       catch { break; }
       if (!resp.ok) break;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2609,7 +2628,7 @@ export class EventService {
    */
   public async getParticipantsListCount(): Promise<number | null> {
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')?$select=ItemCount`,
         SPHttpClient.configurations.v1,
       );
@@ -2628,7 +2647,7 @@ export class EventService {
    */
   public async getAppViewCount(): Promise<number | null> {
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id,AppViewCount`,
         SPHttpClient.configurations.v1,
       );
@@ -2654,7 +2673,7 @@ export class EventService {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       let getResp: SPHttpClientResponse;
       try {
-        getResp = await this.context.spHttpClient.get(itemUrl, SPHttpClient.configurations.v1);
+        getResp = await this._sp.get(itemUrl, SPHttpClient.configurations.v1);
       } catch { return null; }
       if (!getResp.ok) return null;
       const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
@@ -2681,7 +2700,7 @@ export class EventService {
    */
   private async getConfigItemUrl(): Promise<string | null> {
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id`,
         SPHttpClient.configurations.v1,
       );
@@ -2702,7 +2721,7 @@ export class EventService {
   public async ensureLogosInConfig(): Promise<void> {
     try {
       // 1. _Config Zeile lesen
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1`,
         SPHttpClient.configurations.v1
       );
@@ -2730,7 +2749,7 @@ export class EventService {
       if (logoBase64) updatePayload['LogoBase64'] = logoBase64;
       if (orbBase64) updatePayload['DefaultImageBase64'] = orbBase64;
 
-      await this.context.spHttpClient.post(
+      await this._sp.post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items(${configId})`,
         SPHttpClient.configurations.v1,
         {
@@ -2758,7 +2777,7 @@ export class EventService {
       const fileUrl = `${this.siteUrl}/_api/web/GetFileByServerRelativeUrl('${serverRelativeUrl}/SiteAssets/${path}')/$value`;
 
       // SPHttpClient mit binaryStringResponseBody für Binary-Downloads
-      const resp = await this.context.spHttpClient.get(fileUrl, SPHttpClient.configurations.v1, {
+      const resp = await this._sp.get(fileUrl, SPHttpClient.configurations.v1, {
         headers: { 'Accept': '*/*' },
       } as ISPHttpClientOptions);
       if (!resp.ok) {
@@ -2792,7 +2811,7 @@ export class EventService {
   // -Organizer-Usern Test-Events zu sehen + sich anzumelden.
   public async getTestTeamEmails(): Promise<string[]> {
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=TestTeamEmails`,
         SPHttpClient.configurations.v1
       );
@@ -2810,7 +2829,7 @@ export class EventService {
       const cleaned = (emails || []).map(s => (s || '').trim()).filter(s => !!s && s.includes('@'));
       const value = cleaned.join(';');
       // _Config-Item-ID lookup
-      const lookup = await this.context.spHttpClient.get(
+      const lookup = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id`,
         SPHttpClient.configurations.v1
       );
@@ -2829,7 +2848,7 @@ export class EventService {
 
   public async getEmailTemplate(templateType: string, language: string = 'EN'): Promise<{ subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string } | null> {
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '${templateType.replace(/'/g, "''")}' and Language eq '${language.replace(/'/g, "''")}'&$select=Subject,HeadingColor,Heading,Subheading,BodyHtml&$top=1`,
         SPHttpClient.configurations.v1
       );
@@ -2858,7 +2877,7 @@ export class EventService {
    */
   public async getAllEmailTemplates(): Promise<Array<{ id: number; templateType: string; language: string; subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string }>> {
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$select=Id,TemplateType,Language,Subject,HeadingColor,Heading,Subheading,BodyHtml&$orderby=TemplateType,Language&$top=500`,
         SPHttpClient.configurations.v1
       );
@@ -2970,7 +2989,7 @@ export class EventService {
   private async ensureParticipantsIndexes(listName: string): Promise<void> {
     try {
       const url = `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('Email')`;
-      const resp = await this.context.spHttpClient.get(`${url}?$select=Indexed`, SPHttpClient.configurations.v1);
+      const resp = await this._sp.get(`${url}?$select=Indexed`, SPHttpClient.configurations.v1);
       if (!resp.ok) return;
       const data = await resp.json();
       if (data && data.Indexed === true) return;
@@ -2991,7 +3010,7 @@ export class EventService {
     ];
 
     try {
-      const response = await this.context.spHttpClient.get(
+      const response = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName,Title&$filter=Hidden eq false&$top=200`,
         SPHttpClient.configurations.v1
       );
@@ -3018,7 +3037,7 @@ export class EventService {
    */
   public async getParticipantByEmail(email: string): Promise<SPParticipant | null> {
     try {
-      const response = await this.context.spHttpClient.get(
+      const response = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items?$filter=Email eq '${email.replace(/'/g, "''")}'&$select=Id,Title,Vorname,Nachname,Email,EventRegistered,EventOnWaitlist&$top=1`,
         SPHttpClient.configurations.v1
       );
@@ -3269,7 +3288,7 @@ export class EventService {
       const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items`
         + `?$select=Id,EventNumber&$filter=Id gt ${lastId}&$orderby=Id asc&$top=${PAGE}`;
       // eslint-disable-next-line no-await-in-loop
-      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
       if (!resp.ok) throw new Error(`DEX_Events nicht vollständig lesbar (HTTP ${resp.status}).`);
       // eslint-disable-next-line no-await-in-loop
       const data = await resp.json();
@@ -3411,7 +3430,7 @@ export class EventService {
         + `&$orderby=Id&$top=${PAGE}&$filter=${encodeURIComponent(`Id gt ${lastId}`)}`;
       let items: SPParticipant[] = [];
       try {
-        const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        const response = await this._sp.get(url, SPHttpClient.configurations.v1);
         if (!response.ok) {
           if (strict) {
             throw new Error(`DEX_Participants nicht lesbar (HTTP ${response.status}). Bei mehr als 5000 Einträgen braucht die Spalte „Email" einen Index — die App versucht ihn beim Start automatisch zu setzen (erfordert „Listen verwalten").`);
@@ -3561,7 +3580,7 @@ export class EventService {
         if (!m.ok) { failed += 1; done += 1; if (onProgress) onProgress(done, groups.length); continue; }
         for (const r of recs.slice(1)) {
           try {
-            const resp = await this.context.spHttpClient.post(
+            const resp = await this._sp.post(
               `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items(${r.Id})`,
               SPHttpClient.configurations.v1,
               { headers: { 'IF-MATCH': '*', 'X-HTTP-Method': 'DELETE', 'Accept': 'application/json;odata=nometadata' } },
@@ -3663,7 +3682,7 @@ export class EventService {
         'style': { 'max-height': '60px', 'max-width': '120px', 'border-radius': '6px', 'box-shadow': '0 1px 3px rgba(0,0,0,0.15)' },
       });
       try {
-        const listInfo = await this.context.spHttpClient.get(
+        const listInfo = await this._sp.get(
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=HasUniqueRoleAssignments`,
           SPHttpClient.configurations.v1
         );
@@ -3846,7 +3865,7 @@ export class EventService {
     const requiredFields = this.getEventsFieldDefinitions();
 
     try {
-      const response = await this.context.spHttpClient.get(
+      const response = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName&$filter=Hidden eq false&$top=200`,
         SPHttpClient.configurations.v1
       );
@@ -3904,7 +3923,7 @@ export class EventService {
     const listName = 'DEX_Events';
     try {
       // 1. TypeAsString abfragen
-      const fieldResp = await this.context.spHttpClient.get(
+      const fieldResp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('Audience')?$select=TypeAsString,FieldTypeKind`,
         SPHttpClient.configurations.v1
       );
@@ -3923,7 +3942,7 @@ export class EventService {
       }
 
       // 2. Alle Event-Werte laden und backuppen
-      const itemsResp = await this.context.spHttpClient.get(
+      const itemsResp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$select=Id,Audience&$top=2000`,
         SPHttpClient.configurations.v1
       );
@@ -4050,7 +4069,7 @@ export class EventService {
     try {
       let login = `i:0#.f|membership|${mail.toLowerCase()}`;
       try {
-        const resp = await this.context.spHttpClient.get(
+        const resp = await this._sp.get(
           `${this.siteUrl}/_api/web/siteusers?$filter=Email eq '${encodeURIComponent(mail.replace(/'/g, "''"))}'&$select=LoginName&$top=1`,
           SPHttpClient.configurations.v1
         );
@@ -4060,7 +4079,7 @@ export class EventService {
           if (item && item.LoginName) login = item.LoginName;
         }
       } catch { /* Fallback auf membership-Claim */ }
-      const permResp = await this.context.spHttpClient.get(
+      const permResp = await this._sp.get(
         `${this.siteUrl}/_api/web/getusereffectivepermissions(@u)?@u='${encodeURIComponent(login.replace(/'/g, "''"))}'`,
         SPHttpClient.configurations.v1
       );
@@ -4089,7 +4108,7 @@ export class EventService {
   private async _upgradeTextFieldToNote(listName: string, fieldName: string): Promise<void> {
     const tag = `_upgradeTextFieldToNote(${listName}.${fieldName})`;
     try {
-      const fieldResp = await this.context.spHttpClient.get(
+      const fieldResp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('${fieldName}')?$select=TypeAsString,FieldTypeKind`,
         SPHttpClient.configurations.v1
       );
@@ -4103,7 +4122,7 @@ export class EventService {
         return;
       }
 
-      const itemsResp = await this.context.spHttpClient.get(
+      const itemsResp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$select=Id,${fieldName}&$top=2000`,
         SPHttpClient.configurations.v1
       );
@@ -4174,7 +4193,7 @@ export class EventService {
         {}
       );
 
-      const ownersResponse = await this.context.spHttpClient.get(
+      const ownersResponse = await this._sp.get(
         `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`,
         SPHttpClient.configurations.v1
       );
@@ -4224,7 +4243,7 @@ export class EventService {
       // bereits vorhandene Felder und senden den fehlschlagenden Request gar
       // nicht erst ab.
       try {
-        const existingResponse = await this.context.spHttpClient.get(
+        const existingResponse = await this._sp.get(
           `${url}/_api/web/lists/getbytitle('${listName}')/defaultview/viewfields`,
           SPHttpClient.configurations.v1
         );
@@ -4255,7 +4274,7 @@ export class EventService {
    */
   private async setColumnFormatting(listName: string, fieldName: string, formatJson: object): Promise<void> {
     try {
-      const response = await this.context.spHttpClient.get(
+      const response = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$filter=InternalName eq '${fieldName}'&$select=Id`,
         SPHttpClient.configurations.v1
       );
@@ -4302,7 +4321,7 @@ export class EventService {
   public async seedEvents(): Promise<void> {
     try {
       // Prüfen ob "Assistenz Meeting 2026" schon existiert
-      const check = await this.context.spHttpClient.get(
+      const check = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=Title eq 'Assistenz Meeting 2026'&$top=1&$select=Id`,
         SPHttpClient.configurations.v1
       );
@@ -4352,7 +4371,7 @@ export class EventService {
    */
   public async getEvents(): Promise<SPEvent[]> {
     try {
-      const response = await this.context.spHttpClient.get(
+      const response = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=${EventService.EVENT_SELECT}&$orderby=StartDate desc&$top=100`,
         SPHttpClient.configurations.v1
       );
@@ -4369,7 +4388,7 @@ export class EventService {
    */
   public async getEvent(eventId: number): Promise<SPEvent | null> {
     try {
-      const response = await this.context.spHttpClient.get(
+      const response = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})?$select=${EventService.EVENT_SELECT}`,
         SPHttpClient.configurations.v1
       );
@@ -4388,7 +4407,7 @@ export class EventService {
   public async getEventBySelfCheckInToken(token: string): Promise<SPEvent | null> {
     try {
       const safe = token.replace(/'/g, "''");
-      const response = await this.context.spHttpClient.get(
+      const response = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=${EventService.EVENT_SELECT}&$filter=SelfCheckInToken eq '${safe}'&$top=1`,
         SPHttpClient.configurations.v1
       );
@@ -4407,7 +4426,7 @@ export class EventService {
    */
   public async getEventByEventNumber(eventNumber: number): Promise<SPEvent | null> {
     try {
-      const response = await this.context.spHttpClient.get(
+      const response = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=${EventService.EVENT_SELECT}&$filter=EventNumber eq ${eventNumber}&$top=1`,
         SPHttpClient.configurations.v1
       );
@@ -4570,7 +4589,7 @@ export class EventService {
       // 0. Nächste EventNumber ermitteln
       let nextEventNumber = 1;
       try {
-        const enResp = await this.context.spHttpClient.get(
+        const enResp = await this._sp.get(
           `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=EventNumber&$orderby=EventNumber desc&$top=1`,
           SPHttpClient.configurations.v1
         );
@@ -4792,7 +4811,7 @@ export class EventService {
       // SharePoint OData Filter: Active + EndDate < jetzt
       const nowIso = new Date().toISOString();
       const filter = `EventStatus eq 'Active' and EndDate lt datetime'${nowIso}'`;
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=${encodeURIComponent(filter)}&$select=Id,Title,EndDate&$top=500`,
         SPHttpClient.configurations.v1
       );
@@ -4836,7 +4855,7 @@ export class EventService {
   }>> {
     try {
       const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/versions?$select=VersionLabel,Modified,CustomFields`;
-      const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1, {
+      const response = await this._sp.get(url, SPHttpClient.configurations.v1, {
         headers: { 'Accept': 'application/json;odata=nometadata' },
       });
       if (!response.ok) {
@@ -4945,7 +4964,7 @@ export class EventService {
         return true;
       }
 
-      const response = await this.context.spHttpClient.post(
+      const response = await this._sp.post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})`,
         SPHttpClient.configurations.v1,
         {
@@ -5026,7 +5045,7 @@ export class EventService {
   ): Promise<Array<{ internalName: string; title: string; length: number; intendedNote: boolean }>> {
     const out: Array<{ internalName: string; title: string; length: number; intendedNote: boolean }> = [];
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName,Title,TypeAsString&$filter=Hidden eq false&$top=300`,
         SPHttpClient.configurations.v1
       );
@@ -5217,7 +5236,7 @@ export class EventService {
     // Nur fehlende Felder anlegen (idempotent): bestehende Internal-Names holen.
     const have = new Set<string>();
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName&$top=200`,
         SPHttpClient.configurations.v1,
       );
@@ -5244,7 +5263,7 @@ export class EventService {
       if (!(await this.listExists(EventService.EVENTSTATS_LIST))) return out;
       let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.EVENTSTATS_LIST}')/items?$select=EventNumber&$top=5000`;
       while (url) {
-        const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
         if (!resp.ok) break;
         const data = await resp.json();
         const items = data.value || data.d?.results || [];
@@ -5279,7 +5298,7 @@ export class EventService {
       const sel = 'Id,EventNumber,EventTitle,EventType,EventLocation,EventStart,EventEnd,MaxParticipants,RegisteredCount,QRSentCount,CheckedInCount,NoShowCount,WaitlistCount,DeregisteredCount,Organizer,ArchivedByEmail,ArchivedDate';
       let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.EVENTSTATS_LIST}')/items?$select=${sel}&$orderby=ArchivedDate desc&$top=5000`;
       while (url) {
-        const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
         if (!resp.ok) break;
         const data = await resp.json();
         const items = data.value || data.d?.results || [];
@@ -5359,7 +5378,7 @@ export class EventService {
   public async deleteEventStatsRow(eventNumber: number): Promise<boolean> {
     try {
       const url = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.EVENTSTATS_LIST}')/items?$select=Id&$filter=EventNumber eq ${eventNumber}&$top=50`;
-      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
       if (!resp.ok) return false;
       const data = await resp.json();
       const items = data.value || data.d?.results || [];
@@ -5751,7 +5770,7 @@ export class EventService {
     const emails = organizerEmails.split(/[;,]/).map(s => s.trim()).filter(Boolean);
     for (const em of emails) {
       try {
-        const userResponse = await this.context.spHttpClient.get(
+        const userResponse = await this._sp.get(
           `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(em)}')?$select=Id`,
           SPHttpClient.configurations.v1
         );
@@ -5783,7 +5802,7 @@ export class EventService {
   private async setSubsitePermissions(subsiteUrl: string, organizerEmail: string): Promise<void> {
     try {
       // Owners der Hauptsite: Full Control auf der Subsite
-      const ownersResponse = await this.context.spHttpClient.get(
+      const ownersResponse = await this._sp.get(
         `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`,
         SPHttpClient.configurations.v1
       );
@@ -5812,7 +5831,7 @@ export class EventService {
         const emails = organizerEmail.split(/[;,]/).map(s => s.trim()).filter(Boolean);
         for (const em of emails) {
           try {
-            const userResponse = await this.context.spHttpClient.get(
+            const userResponse = await this._sp.get(
               `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(em)}')?$select=Id`,
               SPHttpClient.configurations.v1
             );
@@ -5899,7 +5918,7 @@ export class EventService {
   private async trySetItemAuthor(subsiteUrl: string, listName: string, itemId: number, participantEmail: string): Promise<void> {
     try {
       // 1. Teilnehmer als SP-User der Subsite sicherstellen + dessen Id holen.
-      const ensureResp = await this.context.spHttpClient.post(
+      const ensureResp = await this._sp.post(
         `${subsiteUrl}/_api/web/ensureuser`,
         SPHttpClient.configurations.v1,
         {
@@ -5976,7 +5995,7 @@ export class EventService {
     // nur ein KLARER numerischer Wert ungleich 2 zählt als unsicher.
     const readSecurity = async (): Promise<{ rs: number; ws: number } | null> => {
       try {
-        const resp = await this.context.spHttpClient.get(
+        const resp = await this._sp.get(
           `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')?$select=ReadSecurity,WriteSecurity`,
           SPHttpClient.configurations.v1,
           { headers: { 'Accept': 'application/json;odata=nometadata' } }
@@ -6014,7 +6033,7 @@ export class EventService {
     const items: Row[] = [];
     let url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,ParticipantEmail,RegisteredByEmail,Author/EMail&$expand=Author&$top=500`;
     while (url) {
-      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
       if (!resp.ok) break;
       const data = await resp.json();
       const arr: Row[] = data.value || data.d?.results || [];
@@ -6041,7 +6060,7 @@ export class EventService {
       try {
         let uid = userIdCache[pe] || 0;
         if (!uid) {
-          const er = await this.context.spHttpClient.post(
+          const er = await this._sp.post(
             `${subsiteUrl}/_api/web/ensureuser`,
             SPHttpClient.configurations.v1,
             {
@@ -6087,7 +6106,7 @@ export class EventService {
       );
 
       // Site Owners der Hauptsite: Full Control
-      const ownersResponse = await this.context.spHttpClient.get(
+      const ownersResponse = await this._sp.get(
         `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`,
         SPHttpClient.configurations.v1
       );
@@ -6114,7 +6133,7 @@ export class EventService {
         const emails = organizerEmail.split(/[;,]/).map(s => s.trim()).filter(Boolean);
         for (const em of emails) {
           try {
-            const userResponse = await this.context.spHttpClient.get(
+            const userResponse = await this._sp.get(
               `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(em)}')?$select=Id`,
               SPHttpClient.configurations.v1
             );
@@ -6188,7 +6207,7 @@ export class EventService {
       let eventOrganizerEmails: string[] = [];
       try {
         const subsiteEsc = encodeURIComponent(subsiteUrl.replace(/'/g, "''"));
-        const evResp = await this.context.spHttpClient.get(
+        const evResp = await this._sp.get(
           `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=SubsiteUrl eq '${subsiteEsc}'&$top=1&$select=RegistrationDeadline,OrganizerEmail`,
           SPHttpClient.configurations.v1
         );
@@ -6227,7 +6246,7 @@ export class EventService {
           let isAdmin = false;
           try {
             const esc = sessionEmail.replace(/'/g, "''");
-            const roleResp = await this.context.spHttpClient.get(
+            const roleResp = await this._sp.get(
               `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=Title eq '${encodeURIComponent(esc)}'&$top=1&$select=Role`,
               SPHttpClient.configurations.v1
             );
@@ -6379,7 +6398,7 @@ export class EventService {
       // So bleiben die zuerst eingetroffenen Anmeldungen stabil.
       if (typeof nextId === 'number' && nextId > 0 && insertedId > 0) {
         try {
-          const dupResp = await this.context.spHttpClient.get(
+          const dupResp = await this._sp.get(
             `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,TeilnehmerID&$filter=TeilnehmerID eq ${nextId}&$top=10`,
             SPHttpClient.configurations.v1
           );
@@ -6526,7 +6545,7 @@ export class EventService {
     if (!teamId) return [];
     try {
       const tidEsc = teamId.replace(/'/g, "''");
-      const response = await this.context.spHttpClient.get(
+      const response = await this._sp.get(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=TeamId eq '${tidEsc}'&$top=100&$orderby=TeamLead desc,Id asc`,
         SPHttpClient.configurations.v1
       );
@@ -6601,7 +6620,7 @@ export class EventService {
       const statusClause = blockingStatuses.map(s => `Status eq '${s}'`).join(' or ');
       const filter = `(ParticipantEmail eq '${emEsc}') and (${statusClause})`;
       const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=${encodeURIComponent(filter)}&$top=1&$select=Id,Status,ParticipantEmail`;
-      const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      const response = await this._sp.get(url, SPHttpClient.configurations.v1);
       if (!response.ok) return false;
       const data = await response.json();
       const items = data.value || data.d?.results || [];
@@ -6699,7 +6718,7 @@ export class EventService {
     ];
     for (const f of wanted) {
       try {
-        const resp = await this.context.spHttpClient.get(
+        const resp = await this._sp.get(
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('${f.title}')?$select=Id`,
           SPHttpClient.configurations.v1
         );
@@ -6934,7 +6953,7 @@ export class EventService {
     const esc = me.replace(/'/g, "''");
     const filter = `Status eq 'Active' and (ParticipantEmail eq '${esc}' or AssistantEmail eq '${esc}' or OwnerEmail eq '${esc}')`;
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_AssistantAccess')/items?$select=Id,SubsiteUrl,ItemId,EventId,EventTitle,ParticipantEmail,ParticipantName,AssistantEmail,AssistantName,OwnerEmail,LinkType,Status,RequestType,RequestNote,RequestedByEmail,RequestedByName,RequestStatus,Created&$filter=${encodeURIComponent(filter)}&$orderby=Created desc&$top=500`,
         SPHttpClient.configurations.v1
       );
@@ -7005,7 +7024,7 @@ export class EventService {
   public async setAssistantLinkStatusForRegistration(itemId: number, subsiteUrl: string, status: 'Cancelled'): Promise<void> {
     try {
       const esc = (subsiteUrl || '').replace(/'/g, "''");
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_AssistantAccess')/items?$select=Id&$filter=ItemId eq ${itemId} and SubsiteUrl eq '${esc}' and Status eq 'Active'&$top=20`,
         SPHttpClient.configurations.v1
       );
@@ -7058,7 +7077,7 @@ export class EventService {
     const out = new Set<string>();
     try {
       const esc = (eventId || '').replace(/'/g, "''");
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_InactiveNotices')/items?$select=ParticipantEmail&$filter=EventId eq '${esc}'&$top=500`,
         SPHttpClient.configurations.v1
       );
@@ -7119,7 +7138,7 @@ export class EventService {
       if (!(await this.listExists('DEX_PostEventMails'))) return out;
       let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_PostEventMails')/items?$select=EventId&$top=5000`;
       while (url) {
-        const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
         if (!resp.ok) break;
         const data = await resp.json();
         for (const it of (data.value || data.d?.results || [])) { const e = String(it.EventId || '').trim(); if (e) out.add(e); }
@@ -7200,7 +7219,7 @@ export class EventService {
       const sel = 'Id,EventId,Subject,BodyHtml,EmailType,SentByName,SentByEmail,Created';
       let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EventComms')/items?$select=${sel}&$filter=EventId eq '${esc}'&$orderby=Created desc&$top=500`;
       while (url) {
-        const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
         if (!resp.ok) break;
         const data = await resp.json();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -7249,7 +7268,7 @@ export class EventService {
     try {
       if (!(await this.listExists('DEX_EventComms'))) return false;
       const esc = String(eventId).replace(/'/g, "''");
-      const resp = await this.context.spHttpClient.get(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_EventComms')/items?$select=Id,EmailType&$filter=EventId eq '${esc}'&$top=200`, SPHttpClient.configurations.v1);
+      const resp = await this._sp.get(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_EventComms')/items?$select=Id,EmailType&$filter=EventId eq '${esc}'&$top=200`, SPHttpClient.configurations.v1);
       if (!resp.ok) return false;
       const data = await resp.json();
       const items = (data.value || data.d?.results || []) as Array<{ EmailType?: string }>;
@@ -7368,7 +7387,7 @@ export class EventService {
       clauses.push(`Status eq '${args.status || 'Pending'}'`);
       const filter = clauses.join(' and ');
       const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_TeamJoinRequests')/items?$filter=${encodeURIComponent(filter)}&$top=200&$orderby=Created asc`;
-      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
       if (!resp.ok) return [];
       const data = await resp.json();
       return data.value || data.d?.results || [];
@@ -7431,7 +7450,7 @@ export class EventService {
       // Autor-Set am Ende (stellvertretende Re-Anmeldung) sie nutzen kann.
       let reactivateParticipantEmail = '';
       try {
-        const itemResp = await this.context.spHttpClient.get(
+        const itemResp = await this._sp.get(
           `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items(${itemId})?$select=ParticipantEmail,TeilnehmerID`,
           SPHttpClient.configurations.v1
         );
@@ -7456,7 +7475,7 @@ export class EventService {
 
         // Check B: Deadline-Check (Event über SubsiteUrl finden)
         const subsiteEsc = encodeURIComponent(subsiteUrl.replace(/'/g, "''"));
-        const evResp = await this.context.spHttpClient.get(
+        const evResp = await this._sp.get(
           `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=SubsiteUrl eq '${subsiteEsc}'&$top=1&$select=RegistrationDeadline,OrganizerEmail`,
           SPHttpClient.configurations.v1
         );
@@ -7474,7 +7493,7 @@ export class EventService {
                 let isAdmin = false;
                 try {
                   const esc = sessionEmail.replace(/'/g, "''");
-                  const roleResp = await this.context.spHttpClient.get(
+                  const roleResp = await this._sp.get(
                     `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=Title eq '${encodeURIComponent(esc)}'&$top=1&$select=Role`,
                     SPHttpClient.configurations.v1
                   );
@@ -7568,7 +7587,7 @@ export class EventService {
       // fresh ID.
       if (typeof nextId === 'number' && nextId > 0) {
         try {
-          const dupResp = await this.context.spHttpClient.get(
+          const dupResp = await this._sp.get(
             `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,TeilnehmerID&$filter=TeilnehmerID eq ${nextId}&$top=10`,
             SPHttpClient.configurations.v1
           );
@@ -7697,7 +7716,7 @@ export class EventService {
       // ChangeLog anhängen (bestehenden Log behalten)
       if (changeEntry) {
         try {
-          const existing = await this.context.spHttpClient.get(
+          const existing = await this._sp.get(
             `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})?$select=ChangeLog`,
             SPHttpClient.configurations.v1
           );
@@ -7785,7 +7804,7 @@ export class EventService {
       // ChangeLog anhängen (bestehenden Log behalten, neuestes oben)
       if (changeEntry) {
         try {
-          const existing = await this.context.spHttpClient.get(
+          const existing = await this._sp.get(
             `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})?$select=ChangeLog`,
             SPHttpClient.configurations.v1
           );
@@ -7824,7 +7843,7 @@ export class EventService {
       // (Alt-Duplikate) IMMER die neueste nehmen. Vorher konnte $top=1 ohne
       // Sortierung eine alte 'Abgemeldet'-Zeile erwischen und den
       // Reaktivierungs-Pfad statt des Duplikat-Blocks auslösen.
-      const response = await this.context.spHttpClient.get(
+      const response = await this._sp.get(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=ParticipantEmail eq '${email.trim().replace(/'/g, "''")}'&$orderby=Id desc&$top=1`,
         SPHttpClient.configurations.v1
       );
@@ -7863,7 +7882,7 @@ export class EventService {
     let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=RegisteredByEmail eq '${esc}'&$orderby=Id asc&$top=5000`;
     while (url) {
       try {
-        const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        const response = await this._sp.get(url, SPHttpClient.configurations.v1);
         if (!response.ok) break;
         const data = await response.json();
         const page: SPRegistration[] = data.value || data.d?.results || [];
@@ -7886,7 +7905,7 @@ export class EventService {
     try {
       const emailLc = (participantEmail || '').trim().toLowerCase();
       if (!emailLc) return false;
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,ParticipantEmail,Status&$orderby=Id desc&$top=200`,
         SPHttpClient.configurations.v1
       );
@@ -7912,7 +7931,7 @@ export class EventService {
     try {
       const emailLc = (participantEmail || '').trim().toLowerCase();
       if (!emailLc || !emlContent) return 0;
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,ParticipantEmail,Status&$orderby=Id desc&$top=500`,
         SPHttpClient.configurations.v1
       );
@@ -7924,14 +7943,14 @@ export class EventService {
       const fileName = 'dxinvite--Einladung.eml';
       // Vorherige Version best-effort löschen (sonst 409 bei erneuter Anmeldung).
       try {
-        await this.context.spHttpClient.post(
+        await this._sp.post(
           `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${hit.Id})/AttachmentFiles/getByFileName('${encodeURIComponent(fileName)}')`,
           SPHttpClient.configurations.v1,
           { headers: { 'IF-MATCH': '*', 'X-HTTP-Method': 'DELETE', 'Accept': 'application/json;odata=nometadata' } }
         );
       } catch { /* gab es noch nicht */ }
       const buf = new TextEncoder().encode(emlContent);
-      const add = await this.context.spHttpClient.post(
+      const add = await this._sp.post(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${hit.Id})/AttachmentFiles/add(FileName='${encodeURIComponent(fileName)}')`,
         SPHttpClient.configurations.v1,
         { headers: { 'Accept': 'application/json;odata=nometadata' }, body: buf.buffer as ArrayBuffer }
@@ -7945,7 +7964,7 @@ export class EventService {
   public async getInviteEmlByItem(subsiteUrl: string, itemId: number): Promise<{ fileName: string; content: string } | null> {
     try {
       if (!subsiteUrl || !itemId) return null;
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${Number(itemId)})/AttachmentFiles/getByFileName('${encodeURIComponent('dxinvite--Einladung.eml')}')/$value`,
         SPHttpClient.configurations.v1,
         { headers: { 'Accept': 'application/json;odata=nometadata' } }
@@ -8006,7 +8025,7 @@ export class EventService {
 
     while (url) {
       try {
-        const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        const response = await this._sp.get(url, SPHttpClient.configurations.v1);
         if (!response.ok) { if (onHttpError) onHttpError(response.status); break; }
         const data = await response.json();
         // Beide OData-Formate abdecken: nometadata (data.value) UND verbose
@@ -8067,7 +8086,7 @@ export class EventService {
       const allItems: Array<{ Id: number; Status: string; TeilnehmerID: number | null }> = [];
       let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,Status,TeilnehmerID&$orderby=Id asc&$top=5000`;
       while (url) {
-        const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        const response = await this._sp.get(url, SPHttpClient.configurations.v1);
         if (!response.ok) return fail(`Teilnehmerliste konnte nicht gelesen werden (HTTP ${response.status}).`);
         const data = await response.json();
         allItems.push(...(data.value || data.d?.results || []));
@@ -8127,7 +8146,7 @@ export class EventService {
 
     while (url) {
       try {
-        const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        const response = await this._sp.get(url, SPHttpClient.configurations.v1);
         if (!response.ok) break;
         const data = await response.json();
         allItems.push(...(data.value || data.d?.results || []));
@@ -8218,7 +8237,7 @@ export class EventService {
    */
   private async getListItemCount(subsiteUrl: string, listName: string): Promise<number> {
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${subsiteUrl}/_api/web/lists/getbytitle('${listName}')?$select=ItemCount`,
         SPHttpClient.configurations.v1
       );
@@ -8320,7 +8339,7 @@ export class EventService {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       let getResp: SPHttpClientResponse;
       try {
-        getResp = await this.context.spHttpClient.get(counterItemUrl, SPHttpClient.configurations.v1);
+        getResp = await this._sp.get(counterItemUrl, SPHttpClient.configurations.v1);
       } catch {
         return 'error';
       }
@@ -8401,7 +8420,7 @@ export class EventService {
       : { SeatsTaken: counts.total, WaitlistTaken: counts.waitlist };
     for (let attempt = 0; attempt < 6; attempt++) {
       try {
-        const getResp = await this.context.spHttpClient.get(counterItemUrl, SPHttpClient.configurations.v1);
+        const getResp = await this._sp.get(counterItemUrl, SPHttpClient.configurations.v1);
         if (!getResp.ok) return false;
         const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
         if (!etag) return false;
@@ -8430,7 +8449,7 @@ export class EventService {
     const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
     for (let attempt = 0; attempt < 8; attempt++) {
       try {
-        const getResp = await this.context.spHttpClient.get(counterItemUrl, SPHttpClient.configurations.v1);
+        const getResp = await this._sp.get(counterItemUrl, SPHttpClient.configurations.v1);
         if (!getResp.ok) return;
         const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
         if (!etag) return;
@@ -8529,7 +8548,7 @@ export class EventService {
     const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
     for (let attempt = 0; attempt < 8; attempt++) {
       try {
-        const getResp = await this.context.spHttpClient.get(counterItemUrl, SPHttpClient.configurations.v1);
+        const getResp = await this._sp.get(counterItemUrl, SPHttpClient.configurations.v1);
         if (!getResp.ok) return;
         const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
         if (!etag) return;
@@ -8561,7 +8580,7 @@ export class EventService {
     if (!subsiteUrl) return null;
     const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
     try {
-      const resp = await this.context.spHttpClient.get(counterItemUrl, SPHttpClient.configurations.v1);
+      const resp = await this._sp.get(counterItemUrl, SPHttpClient.configurations.v1);
       if (!resp.ok) return null;
       const data = await resp.json();
       const num = (v: unknown): number => typeof v === 'number' ? v : (parseInt(String(v ?? ''), 10) || 0);
@@ -8666,7 +8685,7 @@ export class EventService {
       let changeLog = '';
       let origDate = '';
       try {
-        const ex = await this.context.spHttpClient.get(
+        const ex = await this._sp.get(
           `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})?$select=ChangeLog,RegistrationDate`,
           SPHttpClient.configurations.v1
         );
@@ -8731,7 +8750,7 @@ export class EventService {
       const stamp = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
       let changeLog = '';
       try {
-        const ex = await this.context.spHttpClient.get(
+        const ex = await this._sp.get(
           `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})?$select=ChangeLog`,
           SPHttpClient.configurations.v1
         );
@@ -8839,7 +8858,7 @@ export class EventService {
     // Bestehende Felder laden — InternalName + Title beide nehmen, damit wir per Title
     // dedupen können (siehe v11.56: alte Builds haben durch fehlgeschlagene Existenz-
     // checks beim wiederholten "Spalten fixen" pro Custom-Field 50+ Duplikate angelegt).
-    const fieldsResp = await this.context.spHttpClient.get(
+    const fieldsResp = await this._sp.get(
       `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields?$filter=Hidden eq false&$top=500&$select=InternalName,Title`,
       SPHttpClient.configurations.v1
     );
@@ -8909,7 +8928,7 @@ export class EventService {
           }
           try {
             const checkUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=${candidate.internalName} ne null&$top=1&$select=ID`;
-            const checkResp = await this.context.spHttpClient.get(checkUrl, SPHttpClient.configurations.v1);
+            const checkResp = await this._sp.get(checkUrl, SPHttpClient.configurations.v1);
             if (checkResp.ok) {
               const data = await checkResp.json();
               const items = data.value || data.d?.results || [];
@@ -9269,7 +9288,7 @@ export class EventService {
    */
   private async ensureQuizColumnsOnRegList(subsiteUrl: string): Promise<void> {
     try {
-      const fieldsResp = await this.context.spHttpClient.get(
+      const fieldsResp = await this._sp.get(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields?$filter=Hidden eq false&$top=200&$select=InternalName`,
         SPHttpClient.configurations.v1
       );
@@ -9369,7 +9388,7 @@ export class EventService {
         const esc = onlyWithPreferredType.replace(/'/g, "''");
         filter += ` and PreferredStarterType eq '${esc}'`;
       }
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=${encodeURIComponent(filter)}&$orderby=TeilnehmerID asc&$top=1`,
         SPHttpClient.configurations.v1
       );
@@ -9462,7 +9481,7 @@ export class EventService {
   ): Promise<Array<{ fileName: string; serverRelativeUrl: string }>> {
     try {
       const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})/AttachmentFiles`;
-      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1, {
+      const resp = await this._sp.get(url, SPHttpClient.configurations.v1, {
         headers: { 'Accept': 'application/json;odata=nometadata' },
       });
       if (!resp.ok) return [];
@@ -9500,7 +9519,7 @@ export class EventService {
       const ts = new Date().toISOString().replace(/[:.]/g, '-').replace(/T/, '_').slice(0, 19);
       const finalName = `${fieldPrefix}${ts}_${safeName}`;
       const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})/AttachmentFiles/add(FileName='${encodeURIComponent(finalName)}')`;
-      const resp = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
+      const resp = await this._sp.post(url, SPHttpClient.configurations.v1, {
         headers: { 'Accept': 'application/json;odata=nometadata' },
         body: buf,
       });
@@ -9522,7 +9541,7 @@ export class EventService {
   ): Promise<boolean> {
     try {
       const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})/AttachmentFiles/getByFileName('${encodeURIComponent(fileName)}')`;
-      const resp = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
+      const resp = await this._sp.post(url, SPHttpClient.configurations.v1, {
         headers: { 'IF-MATCH': '*', 'X-HTTP-Method': 'DELETE', 'Accept': 'application/json;odata=nometadata' },
       });
       return resp.ok;
@@ -9613,7 +9632,7 @@ export class EventService {
       // immer sichtbar) — für die additive Counter-Pflege unten.
       let prevStatus = '';
       try {
-        const ownResp = await this.context.spHttpClient.get(
+        const ownResp = await this._sp.get(
           `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})?$select=Status`,
           SPHttpClient.configurations.v1
         );
@@ -9922,7 +9941,7 @@ export class EventService {
     email: string
   ): Promise<SPRegistration | null> {
     try {
-      const response = await this.context.spHttpClient.get(
+      const response = await this._sp.get(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=ParticipantEmail eq '${email.replace(/'/g, "''")}'&$select=Id,Title,Vorname,Nachname,ParticipantName,ParticipantEmail,Status,RegistrationDate,RegisteredByName,RegisteredByEmail,CancellationDate,CancelledByName,CancelledByEmail,CustomData,Department,JobTitle,Location,Company&$top=1`,
         SPHttpClient.configurations.v1
       );
@@ -9949,7 +9968,7 @@ export class EventService {
 
     while (url) {
       try {
-        const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        const response = await this._sp.get(url, SPHttpClient.configurations.v1);
         if (!response.ok) break;
         const data = await response.json();
         allItems.push(...(data.value || data.d?.results || []));
@@ -9975,7 +9994,7 @@ export class EventService {
     let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,ParticipantEmail,Status&$top=5000`;
     while (url) {
       try {
-        const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        const response = await this._sp.get(url, SPHttpClient.configurations.v1);
         if (!response.ok) break;
         const data = await response.json();
         allItems.push(...(data.value || data.d?.results || []));
@@ -10034,7 +10053,7 @@ export class EventService {
     for (const folder of folders) {
       const folderUrl = `${baseUrl}/SiteAssets/${folder}`;
       try {
-        const check = await this.context.spHttpClient.get(
+        const check = await this._sp.get(
           `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderUrl}')`,
           SPHttpClient.configurations.v1
         );
@@ -10070,7 +10089,7 @@ export class EventService {
     let logoBase64 = '';
     let orbBase64 = '';
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id,LogoBase64,DefaultImageBase64`,
         SPHttpClient.configurations.v1
       );
@@ -10094,7 +10113,7 @@ export class EventService {
     for (const ext of ['mp4', 'webm', 'mov']) {
       const name = `${EventService.BRANDING_VIDEO_BASENAME}.${ext}`;
       try {
-        const check = await this.context.spHttpClient.get(
+        const check = await this._sp.get(
           `${this.siteUrl}/_api/web/GetFileByServerRelativeUrl('${serverRel}/SiteAssets/DEX_Logos/${name}')?$select=Exists,ServerRelativeUrl`,
           SPHttpClient.configurations.v1
         );
@@ -10116,7 +10135,7 @@ export class EventService {
     let ok = false;
     try {
       const listName = 'DEX_EmailTemplates';
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id`,
         SPHttpClient.configurations.v1
       );
@@ -10145,7 +10164,7 @@ export class EventService {
       const bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       const serverRel = this.context.pageContext.web.serverRelativeUrl;
-      await this.context.spHttpClient.post(
+      await this._sp.post(
         `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${serverRel}/SiteAssets/DEX_Logos')/Files/add(url='dex-orb.png',overwrite=true)`,
         SPHttpClient.configurations.v1,
         { headers: { 'Accept': 'application/json;odata=nometadata' }, body: bytes.buffer as ArrayBuffer }
@@ -10162,7 +10181,7 @@ export class EventService {
     try {
       // _Config-Zeile finden bzw. anlegen, dann MERGE.
       const listName = 'DEX_EmailTemplates';
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id`,
         SPHttpClient.configurations.v1
       );
@@ -10191,7 +10210,7 @@ export class EventService {
       const bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       const serverRel = this.context.pageContext.web.serverRelativeUrl;
-      await this.context.spHttpClient.post(
+      await this._sp.post(
         `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${serverRel}/SiteAssets/DEX_Logos')/Files/add(url='Deloitte_Logo.png',overwrite=true)`,
         SPHttpClient.configurations.v1,
         { headers: { 'Accept': 'application/json;odata=nometadata' }, body: bytes.buffer as ArrayBuffer }
@@ -10210,7 +10229,7 @@ export class EventService {
       const name = `${EventService.BRANDING_VIDEO_BASENAME}.${safeExt}`;
       const serverRel = this.context.pageContext.web.serverRelativeUrl;
       const buf = await file.arrayBuffer();
-      const resp = await this.context.spHttpClient.post(
+      const resp = await this._sp.post(
         `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${serverRel}/SiteAssets/DEX_Logos')/Files/add(url='${name}',overwrite=true)`,
         SPHttpClient.configurations.v1,
         { headers: { 'Accept': 'application/json;odata=nometadata' }, body: buf }
@@ -10232,7 +10251,7 @@ export class EventService {
     try {
       // 1. Bestehende Bild-Attachments löschen (nur __eventimage__-Präfixe)
       try {
-        const listResp = await this.context.spHttpClient.get(
+        const listResp = await this._sp.get(
           `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles`,
           SPHttpClient.configurations.v1
         );
@@ -10256,7 +10275,7 @@ export class EventService {
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
       const safeName = `${IMAGE_PREFIX}${Date.now().toString(36)}.${ext}`;
 
-      const response = await this.context.spHttpClient.post(
+      const response = await this._sp.post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/add(FileName='${encodeURIComponent(safeName)}')`,
         SPHttpClient.configurations.v1,
         {
@@ -10295,7 +10314,7 @@ export class EventService {
   /** v28.11: Alle Original-Bild-Attachments eines Events löschen (best-effort). */
   public async deleteEventOrigImageAttachment(eventId: number): Promise<void> {
     try {
-      const listResp = await this.context.spHttpClient.get(
+      const listResp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles`,
         SPHttpClient.configurations.v1
       );
@@ -10322,7 +10341,7 @@ export class EventService {
       await this.deleteEventOrigImageAttachment(eventId);
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
       const safeName = `${EventService.ORIG_IMAGE_PREFIX}${Date.now().toString(36)}.${ext}`;
-      const response = await this.context.spHttpClient.post(
+      const response = await this._sp.post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/add(FileName='${encodeURIComponent(safeName)}')`,
         SPHttpClient.configurations.v1,
         {
@@ -10355,7 +10374,7 @@ export class EventService {
    *  Attachment-URL des Original-Bilds). */
   public async patchEventOverridesKey(eventId: number, key: string, value: string): Promise<void> {
     try {
-      const getResp = await this.context.spHttpClient.get(
+      const getResp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})?$select=EmailTemplateOverrides`,
         SPHttpClient.configurations.v1
       );
@@ -10408,7 +10427,7 @@ export class EventService {
   ): Promise<{ ok: boolean; status: number; detail: string }> {
     const run = async (): Promise<{ ok: boolean; status: number; detail: string }> => {
       const attempt = async (): Promise<{ ok: boolean; status: number; detail: string }> => {
-        const getResp = await this.context.spHttpClient.get(
+        const getResp = await this._sp.get(
           `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})?$select=EmailTemplateOverrides`,
           SPHttpClient.configurations.v1
         );
@@ -10497,7 +10516,7 @@ export class EventService {
     try {
       const fileName = file.name.replace(/[#%&*:<>?/\\|]/g, '_');
 
-      const response = await this.context.spHttpClient.post(
+      const response = await this._sp.post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/add(FileName='${encodeURIComponent(fileName)}')`,
         SPHttpClient.configurations.v1,
         {
@@ -10545,7 +10564,7 @@ export class EventService {
    */
   public async getEventAttachments(eventId: number): Promise<Array<{ name: string; url: string; size: number }>> {
     try {
-      const response = await this.context.spHttpClient.get(
+      const response = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles`,
         SPHttpClient.configurations.v1
       );
@@ -10606,7 +10625,7 @@ export class EventService {
     //    Organizer vor — deshalb hier Admin UND Organizer akzeptieren.
     try {
       const esc = sessionEmail.replace(/'/g, "''");
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=Title eq '${encodeURIComponent(esc)}'&$top=1&$select=Role`,
         SPHttpClient.configurations.v1
       );
@@ -10627,7 +10646,7 @@ export class EventService {
     //    splitten und Haupt- + Co-Organizer kombiniert gegen ALLE
     //    Session-Identitäten matchen.
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=SubsiteUrl eq '${encodeURIComponent(subsiteUrl.replace(/'/g, "''"))}'&$top=1&$select=OrganizerEmail,EmailTemplateOverrides`,
         SPHttpClient.configurations.v1
       );
@@ -10691,7 +10710,7 @@ export class EventService {
   public async getCurrentUserProfile(): Promise<{ department: string; location: string; jobTitle: string; phone: string; firstName: string; lastName: string; displayName: string; company: string }> {
     const empty = { department: '', location: '', jobTitle: '', phone: '', firstName: '', lastName: '', displayName: '', company: '' };
     try {
-      const response = await this.context.spHttpClient.get(
+      const response = await this._sp.get(
         `${this.siteUrl}/_api/SP.UserProfiles.PeopleManager/GetMyProperties`,
         SPHttpClient.configurations.v1
       );
@@ -10747,7 +10766,7 @@ export class EventService {
     const sleep = (ms: number): Promise<void> => new Promise(res => setTimeout(res, ms));
     if (!subsiteUrl) return { scanned, updated, failedLookups };
     try {
-      const listResp = await this.context.spHttpClient.get(
+      const listResp = await this._sp.get(
         `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$select=Id,ParticipantEmail,Vorname,Nachname,ParticipantName,JobTitle,Department,Location,Phone&$orderby=RegistrationDate desc&$top=${n}`,
         SPHttpClient.configurations.v1
       );
@@ -10819,7 +10838,7 @@ export class EventService {
       for (const evt of events) {
         if (!evt.SubsiteUrl) continue;
         try {
-          const listResp = await this.context.spHttpClient.get(
+          const listResp = await this._sp.get(
             `${evt.SubsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$select=Id,ParticipantEmail,JobTitle,Department,Location,Phone&$orderby=RegistrationDate desc&$top=${n}`,
             SPHttpClient.configurations.v1
           );
@@ -10913,7 +10932,7 @@ export class EventService {
     // 1) Direkter Claim per SMTP-Email (schnell, funktioniert für Standard-Tenants)
     try {
       const directUrl = `${this.siteUrl}/_api/SP.UserProfiles.PeopleManager/GetPropertiesFor(accountName=@v)?@v='i:0%23.f|membership|${encodeURIComponent(email)}'`;
-      const response = await this.context.spHttpClient.get(directUrl, SPHttpClient.configurations.v1);
+      const response = await this._sp.get(directUrl, SPHttpClient.configurations.v1);
       if (response.ok) {
         const data = await response.json();
         const props: Array<{ Key: string; Value: string }> = data.UserProfileProperties || [];
@@ -10928,14 +10947,14 @@ export class EventService {
     // Deckt UPN != SMTP, Guest-Accounts und Alias-SMTP-Adressen ab.
     try {
       const siteUserUrl = `${this.siteUrl}/_api/web/siteusers/getbyemail('${email.replace(/'/g, "''")}')?$select=LoginName`;
-      const siteUserResp = await this.context.spHttpClient.get(siteUserUrl, SPHttpClient.configurations.v1);
+      const siteUserResp = await this._sp.get(siteUserUrl, SPHttpClient.configurations.v1);
       if (!siteUserResp.ok) return empty;
       const siteUserData = await siteUserResp.json();
       const loginName: string = siteUserData.LoginName || siteUserData.d?.LoginName || '';
       if (!loginName) return empty;
 
       const profileUrl = `${this.siteUrl}/_api/SP.UserProfiles.PeopleManager/GetPropertiesFor(accountName=@v)?@v='${encodeURIComponent(loginName)}'`;
-      const profileResp = await this.context.spHttpClient.get(profileUrl, SPHttpClient.configurations.v1);
+      const profileResp = await this._sp.get(profileUrl, SPHttpClient.configurations.v1);
       if (!profileResp.ok) return empty;
       const profileData = await profileResp.json();
       const props: Array<{ Key: string; Value: string }> = profileData.UserProfileProperties || [];
@@ -11065,7 +11084,7 @@ export class EventService {
 
   public async listExists(listName: string): Promise<boolean> {
     try {
-      const response = await this.context.spHttpClient.get(
+      const response = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(listName)}')`,
         SPHttpClient.configurations.v1
       );
@@ -11084,7 +11103,7 @@ export class EventService {
    */
   private async getVisitorsGroupId(): Promise<number | null> {
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/associatedvisitorgroup?$select=Id`,
         SPHttpClient.configurations.v1
       );
@@ -11105,7 +11124,7 @@ export class EventService {
       },
       body: JSON.stringify(body),
     };
-    return this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, options);
+    return this._sp.post(url, SPHttpClient.configurations.v1, options);
   }
 
   /**
@@ -11125,7 +11144,7 @@ export class EventService {
       },
       body: JSON.stringify(body),
     };
-    const response = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, options);
+    const response = await this._sp.post(url, SPHttpClient.configurations.v1, options);
     // 406: SharePoint hat den MERGE ausgeführt, kann aber nicht im
     // gewünschten Format antworten. Daten sind trotzdem gespeichert.
     if (response.status === 406) {
@@ -11150,7 +11169,7 @@ export class EventService {
       },
       body: JSON.stringify(body),
     };
-    const response = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, options);
+    const response = await this._sp.post(url, SPHttpClient.configurations.v1, options);
     if (response.status === 406) {
       return { ok: true, status: 204, statusText: 'No Content' } as unknown as SPHttpClientResponse;
     }
@@ -11196,7 +11215,7 @@ export class EventService {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       let getResp: SPHttpClientResponse;
       try {
-        getResp = await this.context.spHttpClient.get(counterItemUrl, SPHttpClient.configurations.v1);
+        getResp = await this._sp.get(counterItemUrl, SPHttpClient.configurations.v1);
       } catch {
         return undefined;
       }
@@ -11279,7 +11298,7 @@ export class EventService {
     const wanted = ['NextValue', 'SeatsTaken', 'SeatsTakenDurch', 'SeatsTakenFun', 'WaitlistTaken'];
     for (const name of wanted) {
       try {
-        const probe = await this.context.spHttpClient.get(
+        const probe = await this._sp.get(
           `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/fields/getbytitle('${name}')`,
           SPHttpClient.configurations.v1
         );
@@ -11301,7 +11320,7 @@ export class EventService {
   // name 1:1 in den Type übernommen, was bei Unterstrich stillschweigend
   // zu HTTP 400 führt → leere Counter-Liste.
   private async ensureCounterList(subsiteUrl: string): Promise<{ created: boolean; seededValue?: number }> {
-    const probe = await this.context.spHttpClient.get(
+    const probe = await this._sp.get(
       `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')`,
       SPHttpClient.configurations.v1
     );
@@ -11331,7 +11350,7 @@ export class EventService {
       // resetCounterToMax. Bestehende Events können damit per Admin-Klick
       // geheilt werden, neue Events bekommen ihre Permissions im
       // create-Branch unten gesetzt.
-      const itemListResp = await this.context.spHttpClient.get(
+      const itemListResp = await this._sp.get(
         `${itemsUrl}?$top=1`,
         SPHttpClient.configurations.v1
       );
@@ -11389,7 +11408,7 @@ export class EventService {
         `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`,
         {}
       );
-      const ownersResp = await this.context.spHttpClient.get(
+      const ownersResp = await this._sp.get(
         `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`,
         SPHttpClient.configurations.v1
       );
@@ -11415,7 +11434,7 @@ export class EventService {
       // Organizer optional → Full Control
       if (organizerEmail) {
         try {
-          const userResp = await this.context.spHttpClient.get(
+          const userResp = await this._sp.get(
             `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(organizerEmail)}')?$select=Id`,
             SPHttpClient.configurations.v1
           );
@@ -11456,7 +11475,7 @@ export class EventService {
   // funktioniert unabhängig von SP-NULL-Sortier-Konventionen.
   private async getCurrentMaxTeilnehmerId(subsiteUrl: string): Promise<number> {
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=TeilnehmerID&$filter=TeilnehmerID gt 0&$orderby=TeilnehmerID desc&$top=1`,
         SPHttpClient.configurations.v1
       );
@@ -11504,7 +11523,7 @@ export class EventService {
     // ETag-CAS-Loop, falls jemand parallel inserted und den Counter inkrementiert.
     for (let attempt = 0; attempt < 8; attempt++) {
       try {
-        const getResp = await this.context.spHttpClient.get(counterItemUrl, SPHttpClient.configurations.v1);
+        const getResp = await this._sp.get(counterItemUrl, SPHttpClient.configurations.v1);
         if (!getResp.ok) break;
         const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
         if (!etag) break;
@@ -11541,7 +11560,7 @@ export class EventService {
       const liveMax = await this.getCurrentMaxTeilnehmerId(subsiteUrl);
       let getResp: SPHttpClientResponse;
       try {
-        getResp = await this.context.spHttpClient.get(counterItemUrl, SPHttpClient.configurations.v1);
+        getResp = await this._sp.get(counterItemUrl, SPHttpClient.configurations.v1);
       } catch {
         return;
       }
@@ -11686,7 +11705,7 @@ export class EventService {
     // nicht greift (Format/Stale/Rechte).
     const readIls = async (listBase: string, label: string): Promise<{ rs: number; ws: number; raw: string; status: number } | null> => {
       try {
-        const resp = await this.context.spHttpClient.get(
+        const resp = await this._sp.get(
           `${listBase}?$select=ReadSecurity,WriteSecurity`, SPHttpClient.configurations.v1,
           { headers: { 'Accept': 'application/json;odata=nometadata' } }
         );
@@ -11796,7 +11815,7 @@ export class EventService {
     let guard = 0;
     while (url && guard < 20) {
       guard++;
-      const resp: SPHttpClientResponse = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } });
+      const resp: SPHttpClientResponse = await this._sp.get(url, SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } });
       if (!resp.ok) { if (guard === 1) throw new Error(`roleassignments ${resp.status}`); break; }
       const d = await resp.json();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -11830,7 +11849,7 @@ export class EventService {
     // v26.81: Digest des Ziel-Webs mitschicken (Cross-Web-Schreibzugriff auf
     // Subsites würde sonst mit 403 abgelehnt).
     const digest = await this._webDigest(this._webOf(scopeBase));
-    return this.context.spHttpClient.post(
+    return this._sp.post(
       `${scopeBase}/roleassignments/getbyprincipalid(${principalId})`,
       SPHttpClient.configurations.v1,
       { headers: { 'Accept': 'application/json;odata=verbose', 'Content-Type': 'application/json;odata=verbose', 'odata-version': '', 'IF-MATCH': '*', 'X-HTTP-Method': 'DELETE', ...(digest ? { 'X-RequestDigest': digest } : {}) } }
@@ -11841,7 +11860,7 @@ export class EventService {
    *  Securable der Liste. Titel mit Sonderzeichen werden für getbytitle escaped. */
   private async _listSecurables(webUrl: string): Promise<Array<{ title: string; hidden: boolean; unique: boolean; base: string }>> {
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${webUrl}/_api/web/lists?$select=Title,Hidden,HasUniqueRoleAssignments&$top=1000`,
         SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } }
       );
@@ -11863,7 +11882,7 @@ export class EventService {
    *  unter dem Root). */
   private async _childWebs(webUrl: string): Promise<Array<{ url: string; serverRel: string; title: string; unique: boolean }>> {
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${webUrl}/_api/web/webs?$select=Url,ServerRelativeUrl,Title,HasUniqueRoleAssignments&$top=1000`,
         SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } }
       );
@@ -11929,13 +11948,13 @@ export class EventService {
       onProgress?.(`Prüfe „${w.title || w.serverRel}" …`, i, candidates.length);
       let created = '';
       try {
-        const wr = await this.context.spHttpClient.get(`${w.url}/_api/web?$select=Created,Title`, SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } });
+        const wr = await this._sp.get(`${w.url}/_api/web?$select=Created,Title`, SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } });
         if (wr.ok) { const wd = await wr.json(); created = wd.Created || wd.d?.Created || ''; }
       } catch { /* */ }
       let hasParticipantList = false;
       let participantCount = 0;
       try {
-        const lr = await this.context.spHttpClient.get(`${w.url}/_api/web/lists/getbytitle('${REG_LIST_NAME}')?$select=ItemCount`, SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } });
+        const lr = await this._sp.get(`${w.url}/_api/web/lists/getbytitle('${REG_LIST_NAME}')?$select=ItemCount`, SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } });
         if (lr.ok) { const ld = await lr.json(); hasParticipantList = true; participantCount = Number(ld.ItemCount ?? ld.d?.ItemCount) || 0; }
       } catch { /* Liste fehlt → kein Event-Rest oder anders strukturiert */ }
       result.orphans.push({ url: w.url, serverRel: w.serverRel, title: w.title, created, hasParticipantList, participantCount });
@@ -11950,7 +11969,7 @@ export class EventService {
   public async deleteSubsiteWeb(webUrl: string): Promise<boolean> {
     try {
       const digest = await this._webDigest(webUrl);
-      const resp = await this.context.spHttpClient.post(
+      const resp = await this._sp.post(
         `${webUrl}/_api/web`, SPHttpClient.configurations.v1,
         { headers: { 'Accept': 'application/json;odata=verbose', 'Content-Type': 'application/json;odata=verbose', 'odata-version': '', 'IF-MATCH': '*', 'X-HTTP-Method': 'DELETE', ...(digest ? { 'X-RequestDigest': digest } : {}) } }
       );
@@ -12034,7 +12053,7 @@ export class EventService {
   private async setArchiveListPermissions(listName: string): Promise<void> {
     try {
       await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`, {});
-      const ownersResp = await this.context.spHttpClient.get(`${this.siteUrl}/_api/web/associatedownergroup?$select=Id`, SPHttpClient.configurations.v1);
+      const ownersResp = await this._sp.get(`${this.siteUrl}/_api/web/associatedownergroup?$select=Id`, SPHttpClient.configurations.v1);
       if (ownersResp.ok) {
         const d = await ownersResp.json();
         await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741829)`, {});
@@ -12076,7 +12095,7 @@ export class EventService {
     // Bericht noch Entwürfe waren) — idempotent nachziehen, auch auf Bestands-
     // Listen. So erkennt der nächste Bericht „Entwurf ist live gegangen".
     try {
-      const fieldsResp = await this.context.spHttpClient.get(
+      const fieldsResp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName&$filter=InternalName eq 'DraftEventIds'&$top=1`,
         SPHttpClient.configurations.v1
       );
@@ -12093,7 +12112,7 @@ export class EventService {
   /** Letzter Bericht: Created (Versandzeit) + PeriodTo + Entwurfs-Snapshot. */
   public async getLastWeeklyReport(): Promise<{ created: string; periodTo: string; draftEventIds: string[] } | null> {
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_WeeklyReports')/items?$select=Created,PeriodTo,DraftEventIds&$orderby=Created desc&$top=1`,
         SPHttpClient.configurations.v1
       );
@@ -12252,7 +12271,7 @@ export class EventService {
     try {
       const e = (email || '').replace(/'/g, "''");
       if (!e) return out;
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerArchived')/items?$select=Id,EventId,OrganizerEmail&$filter=OrganizerEmail eq '${e}'&$top=2000`,
         SPHttpClient.configurations.v1);
       if (resp.ok) {
@@ -12281,7 +12300,7 @@ export class EventService {
     try {
       const e = (email || '').replace(/'/g, "''");
       const idEsc = String(eventId).replace(/'/g, "''");
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerArchived')/items?$select=Id&$filter=OrganizerEmail eq '${e}' and EventId eq '${idEsc}'&$top=50`,
         SPHttpClient.configurations.v1);
       if (!resp.ok) return false;
@@ -12313,7 +12332,7 @@ export class EventService {
   public async getOrganizerRequests(onlyPending: boolean = true): Promise<Array<{ id: number; email: string; name: string; location: string; message: string; status: string; created: string }>> {
     try {
       const filter = onlyPending ? `&$filter=Status eq 'Pending'` : '';
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerRequests')/items?$select=Id,RequesterEmail,RequesterName,RequesterLocation,Message,Status,Created&$orderby=Created desc&$top=200${filter}`,
         SPHttpClient.configurations.v1
       );
@@ -12330,7 +12349,7 @@ export class EventService {
    *  („bereits freigegeben durch X am Y" statt kommentarlos Landing Page). */
   public async getOrganizerRequestDetails(id: number): Promise<{ id: number; email: string; name: string; status: string; decidedByEmail: string; decidedDate: string } | null> {
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerRequests')/items(${id})?$select=Id,RequesterEmail,RequesterName,Status,DecidedByEmail,DecidedDate`,
         SPHttpClient.configurations.v1
       );
@@ -12368,7 +12387,7 @@ export class EventService {
       const loginName = String(ud?.d?.LoginName ?? ud?.LoginName ?? '') || `i:0#.f|membership|${mail}`;
       if (!userId) return false;
       try {
-        const vg = await this.context.spHttpClient.get(
+        const vg = await this._sp.get(
           `${this.siteUrl}/_api/web/associatedvisitorgroup?$select=Id`,
           SPHttpClient.configurations.v1
         );
@@ -12384,7 +12403,7 @@ export class EventService {
           }
         }
       } catch { /* Fallback unten */ }
-      const rd = await this.context.spHttpClient.get(
+      const rd = await this._sp.get(
         `${this.siteUrl}/_api/web/roledefinitions?$filter=RoleTypeKind eq 2&$select=Id&$top=1`,
         SPHttpClient.configurations.v1
       );
@@ -12435,7 +12454,7 @@ export class EventService {
    *  Mails wie den Wochenbericht — „Hallo <Name>" statt generisch „Admin"). */
   public async getRoleRecipients(role: string): Promise<Array<{ email: string; name: string }>> {
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=${this.roleFilter(role)}&$select=Title,UserName&$top=5000`,
         SPHttpClient.configurations.v1
       );
@@ -12458,7 +12477,7 @@ export class EventService {
 
   public async getRoleEmails(role: string): Promise<string[]> {
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=${this.roleFilter(role)}&$select=Title&$top=5000`,
         SPHttpClient.configurations.v1
       );
@@ -12475,7 +12494,7 @@ export class EventService {
   public async getRoleItemsCreatedSince(role: string, fromIso: string): Promise<Array<{ email: string; created: string }>> {
     try {
       const esc = role.replace(/'/g, "''");
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=Role eq '${encodeURIComponent(esc)}' and Created ge '${fromIso}'&$select=Title,Created&$orderby=Created desc&$top=500`,
         SPHttpClient.configurations.v1
       );
@@ -12490,7 +12509,7 @@ export class EventService {
    *  (SP-Author) + Titel. */
   public async getEventsCreatedSince(fromIso: string): Promise<Array<{ title: string; author: string; created: string; isDraft: boolean }>> {
     try {
-      const resp = await this.context.spHttpClient.get(
+      const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=Title,Created,IsFictive,Author/Title&$expand=Author&$filter=Created ge '${fromIso}'&$orderby=Created desc&$top=500`,
         SPHttpClient.configurations.v1
       );
@@ -12515,7 +12534,7 @@ export class EventService {
     while (url && guard < 50) {
       guard++;
       try {
-        const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
         if (!resp.ok) break;
         const data = await resp.json();
         const items = data.value || data.d?.results || [];
@@ -12540,7 +12559,7 @@ export class EventService {
     let guard = 0;
     while (url && guard < 500) {
       guard++;
-      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1, {
+      const resp = await this._sp.get(url, SPHttpClient.configurations.v1, {
         headers: { 'Accept': 'application/json;odata=nometadata' },
       });
       if (!resp.ok) break;
@@ -12762,6 +12781,6 @@ export class EventService {
         'X-HTTP-Method': 'DELETE',
       },
     };
-    return this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, options);
+    return this._sp.post(url, SPHttpClient.configurations.v1, options);
   }
 }
