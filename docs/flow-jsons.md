@@ -2754,16 +2754,19 @@ mit.
    ```
 2. Feld **Start time** auf die Fallunterscheidung umstellen:
    ```
-   if(equals(coalesce(triggerBody()?['AllDay'], false), true), formatDateTime(convertFromUtc(coalesce(triggerBody()?['OutlookStart'], triggerBody()?['StartDate']), 'W. Europe Standard Time'), 'yyyy-MM-ddT00:00:00'), convertFromUtc(coalesce(triggerBody()?['OutlookStart'], triggerBody()?['StartDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'))
+   if(equals(coalesce(triggerBody()?['AllDay'], false), true), concat(formatDateTime(convertFromUtc(coalesce(triggerBody()?['OutlookStart'], triggerBody()?['StartDate']), 'W. Europe Standard Time'), 'yyyy-MM-dd'), 'T00:00:00'), convertFromUtc(coalesce(triggerBody()?['OutlookStart'], triggerBody()?['StartDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'))
    ```
 3. Feld **End time** ebenso — beim Ganztags-Fall **einen Tag weiter**:
    ```
-   if(equals(coalesce(triggerBody()?['AllDay'], false), true), formatDateTime(addDays(convertFromUtc(coalesce(triggerBody()?['OutlookEnd'], triggerBody()?['EndDate'], triggerBody()?['StartDate']), 'W. Europe Standard Time'), 1), 'yyyy-MM-ddT00:00:00'), convertFromUtc(coalesce(triggerBody()?['OutlookEnd'], triggerBody()?['EndDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'))
+   if(equals(coalesce(triggerBody()?['AllDay'], false), true), concat(formatDateTime(addDays(convertFromUtc(coalesce(triggerBody()?['OutlookEnd'], triggerBody()?['EndDate'], triggerBody()?['StartDate']), 'W. Europe Standard Time'), 1), 'yyyy-MM-dd'), 'T00:00:00'), convertFromUtc(coalesce(triggerBody()?['OutlookEnd'], triggerBody()?['EndDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'))
    ```
-   `addDays(..., 1)` auf `23:59` desselben Tages ergibt den Folgetag — die
-   anschließende Formatierung auf `T00:00:00` schneidet die Uhrzeit weg. Bei
-   einem mehrtägigen Ganztags-Termin (`EndDate` = letzter Tag) stimmt das
-   ebenfalls.
+   `addDays(..., 1)` auf `23:59` desselben Tages ergibt den Folgetag;
+   `formatDateTime(..., 'yyyy-MM-dd')` schneidet die Uhrzeit weg, `concat`
+   hängt die Mitternacht als **Text** an. Das `concat` ist kein Schönheits-
+   fehler: In .NET-Formatstrings ist `0` ein Ziffern-Platzhalter und `:` der
+   Zeittrenner — `'yyyy-MM-ddT00:00:00'` als Format würde also NICHT die
+   Zeichenfolge `T00:00:00` erzeugen. Literale gehören außerhalb von
+   `formatDateTime`.
 4. **Speichern.**
 
 **Schritte in `DEX_Outlook_Einladungen` (Pfad `UpdateEvent`):** Dort wird der
@@ -2783,11 +2786,50 @@ mit denselben `if(...)`-Ausdrücken wie oben, nur mit
 geschrieben und vom Flow ignoriert — die Termine bleiben `00:00–23:59` wie
 bisher. Es geht also nichts kaputt, der Haken hat nur noch keine Wirkung.
 
+**Vollständiger Stand `Build_Update_Body` NACH der Änderung** (Compose, Code-View):
+```json
+{
+  "type": "Compose",
+  "inputs": {
+    "subject": "@{coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookSubject'], first(outputs('Get_Event_Details')?['body/value'])?['Title'])}",
+    "isAllDay": "@coalesce(first(outputs('Get_Event_Details')?['body/value'])?['AllDay'], false)",
+    "start": {
+      "dateTime": "@{if(equals(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['AllDay'], false), true), concat(formatDateTime(convertFromUtc(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookStart'], first(outputs('Get_Event_Details')?['body/value'])?['StartDate']), 'W. Europe Standard Time'), 'yyyy-MM-dd'), 'T00:00:00'), convertFromUtc(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookStart'], first(outputs('Get_Event_Details')?['body/value'])?['StartDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'))}",
+      "timeZone": "W. Europe Standard Time"
+    },
+    "end": {
+      "dateTime": "@{if(equals(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['AllDay'], false), true), concat(formatDateTime(addDays(convertFromUtc(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookEnd'], first(outputs('Get_Event_Details')?['body/value'])?['EndDate'], first(outputs('Get_Event_Details')?['body/value'])?['StartDate']), 'W. Europe Standard Time'), 1), 'yyyy-MM-dd'), 'T00:00:00'), convertFromUtc(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookEnd'], first(outputs('Get_Event_Details')?['body/value'])?['EndDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'))}",
+      "timeZone": "W. Europe Standard Time"
+    },
+    "showAs": "busy",
+    "responseRequested": false,
+    "sensitivity": "private",
+    "body": {
+      "contentType": "html",
+      "content": "@{replace(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookBody'], ''), '{{ORB_URL}}', coalesce(first(outputs('Get_Event_Details')?['body/value'])?['EmailImageBase64'], ''))}"
+    }
+  }
+}
+```
+
+**Achtung `isAllDay` in diesem Compose:** `"@coalesce(...)"` mit **einfachem `@`**
+und OHNE geschweifte Klammern. `"@{...}"` ist String-Interpolation und würde
+`"true"` als Text liefern — Graph erwartet an dieser Stelle einen echten
+Boolean. Bei `start.dateTime`/`end.dateTime` ist `"@{...}"` dagegen richtig,
+das sind Strings.
+
+`Get_Event_Details` ist ein `GetItems` **ohne** `$select` (nur `$filter` auf die
+ID) — die neue Spalte `AllDay` kommt also automatisch mit, dort ist nichts
+nachzuziehen.
+
 **Prüfen:** Ein Testevent mit Haken anlegen, im Kalender der eingeladenen Person
 schauen — der Eintrag muss **oben im Kalenderkopf** stehen (nicht als Block in
-der Tagesspalte) und die Verfügbarkeit auf „Frei" lassen.
+der Tagesspalte) und die Verfügbarkeit auf „Frei" lassen. Gegenprobe: Ein Event
+OHNE Haken muss unverändert als Zeitblock erscheinen.
 
-Danach den aktuellen Flow-JSON hier einpflegen.
+**Zurückrollen:** `item/isAllDay` auf `false` setzen (oder die Zeile entfernen)
+und Start/Ende auf die alten `convertFromUtc(...)`-Ausdrücke zurückstellen. Die
+Spalte `AllDay` darf stehen bleiben, sie stört dann niemanden.
 
 ### UI-Anleitung 2026-06-02 (v18.34) — Ort in den Outlook-Termin übernehmen
 
@@ -2889,7 +2931,11 @@ COMPOSE_IMAGE (Event-Bild oder Default-Bild):
   "runAfter": { "Compose_Logo": ["SUCCEEDED"] }
 }
 
-CREATE_EVENT_V4 (Outlook-Termin mit Deloitte-Design Body) — Stand 2026-06-02 (v18.42/v18.44):
+CREATE_EVENT_V4 — **veralteter Stand 2026-06-02** (v18.42/v18.44). Aktueller
+Stand siehe Abschnitt „UI-Anleitung 2026-08-25 (v29.52)" weiter oben: dort sind
+`item/isAllDay` ergaenzt, `item/start`/`item/end` auf die Ganztags-Fallunter-
+scheidung umgestellt, und im Tenant stehen inzwischen `responseRequested: true`
+und `sensitivity: "normal"` statt der hier gezeigten Werte.
 {
   "type": "OpenApiConnection",
   "inputs": {
