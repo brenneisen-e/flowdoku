@@ -2748,6 +2748,40 @@ In **beiden** Flows dieselbe Ersetzung:
 Hier ist `"@{...}"` richtig — `showAs` ist ein String, kein Boolean (anders als
 `isAllDay`).
 
+**Stand der Action `Create_event_(V4)` NACH allen Änderungen (im Tenant verifiziert 2026-08-25):**
+```json
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "table": "<Kalender-Id der Shared Mailbox>",
+      "item/subject": "@coalesce(triggerBody()?['OutlookSubject'], triggerBody()?['Title'])",
+      "item/start": "@if(equals(coalesce(triggerBody()?['AllDay'], false), true), concat(formatDateTime(convertFromUtc(coalesce(triggerBody()?['OutlookStart'], triggerBody()?['StartDate']), 'W. Europe Standard Time'), 'yyyy-MM-dd'), 'T00:00:00'), convertFromUtc(coalesce(triggerBody()?['OutlookStart'], triggerBody()?['StartDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'))",
+      "item/end": "@if(equals(coalesce(triggerBody()?['AllDay'], false), true), concat(formatDateTime(addDays(convertFromUtc(coalesce(triggerBody()?['OutlookEnd'], triggerBody()?['EndDate'], triggerBody()?['StartDate']), 'W. Europe Standard Time'), 1), 'yyyy-MM-dd'), 'T00:00:00'), convertFromUtc(coalesce(triggerBody()?['OutlookEnd'], triggerBody()?['EndDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'))",
+      "item/timeZone": "(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna",
+      "item/requiredAttendees": "@last(split(replace(coalesce(triggerBody()?['OrganizerEmail'], ''), '</div>', ''), '\">'))",
+      "item/body": "<p class=\"editor-paragraph\">@{replace(replace(coalesce(triggerBody()?['OutlookBody'], ''), '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image'))}</p>",
+      "item/location": "@triggerBody()?['OutlookLocation']",
+      "item/isAllDay": "@coalesce(triggerBody()?['AllDay'], false)",
+      "item/showAs": "@if(equals(coalesce(triggerBody()?['ShowAsFree'], false), true), 'free', 'busy')",
+      "item/responseRequested": true,
+      "item/sensitivity": "normal"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+      "connection": "shared_office365",
+      "operationId": "V4CalendarPostItem"
+    }
+  },
+  "runAfter": { "Compose_Image": ["Succeeded"] }
+}
+```
+Merke fuer die beiden neuen Felder: `isAllDay` braucht das **einfache** `@`
+(Boolean), `showAs` ebenfalls das einfache `@` (liefert den String `free`
+bzw. `busy`). Im Compose `Build_Update_Body` ist es umgekehrt gemischt — dort
+bleibt `isAllDay` beim einfachen `@`, `showAs` steht aber in `"@{...}"`, weil
+es dort als JSON-String-Wert eingesetzt wird.
+
 **Teil B — `sensitivity` und `responseRequested` angleichen (Korrektur).**
 
 Beide Flows liefen auseinander: Create auf `responseRequested: true` /
