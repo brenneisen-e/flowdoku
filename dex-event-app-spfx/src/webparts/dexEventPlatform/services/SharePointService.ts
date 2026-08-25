@@ -8,11 +8,20 @@
  */
 
 import { WebPartContext } from '@microsoft/sp-webpart-base';
-import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions } from '@microsoft/sp-http';
+import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions, SPHttpClientConfiguration } from '@microsoft/sp-http';
+import { withThrottleRetry } from '../utils/spThrottle';
 
 export class SharePointService {
   private context: WebPartContext;
   private siteUrl: string;
+
+  /** v29.48: wie in EventService — jeder Request mit 429-Retry (utils/spThrottle). */
+  private _sp = {
+    get: (url: string, cfg: SPHttpClientConfiguration, options?: ISPHttpClientOptions): Promise<SPHttpClientResponse> =>
+      withThrottleRetry(() => this._sp.get(url, cfg, options), url),
+    post: (url: string, cfg: SPHttpClientConfiguration, options?: ISPHttpClientOptions): Promise<SPHttpClientResponse> =>
+      withThrottleRetry(() => this._sp.post(url, cfg, options), url),
+  };
 
   constructor(context: WebPartContext) {
     this.context = context;
@@ -24,7 +33,7 @@ export class SharePointService {
    */
   public async listExists(listName: string): Promise<boolean> {
     try {
-      const response: SPHttpClientResponse = await this.context.spHttpClient.get(
+      const response: SPHttpClientResponse = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(listName)}')`,
         SPHttpClient.configurations.v1
       );
@@ -60,7 +69,7 @@ export class SharePointService {
 
       // Choice-Werte des Role-Feldes auf neue Benennung migrieren
       try {
-        await this.context.spHttpClient.post(
+        await this._sp.post(
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('Role')`,
           SPHttpClient.configurations.v1,
           {
@@ -186,7 +195,7 @@ export class SharePointService {
    */
   private async ensureRolesListPermissions(listName: string): Promise<void> {
     try {
-      const response = await this.context.spHttpClient.get(
+      const response = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=HasUniqueRoleAssignments`,
         SPHttpClient.configurations.v1
       );
@@ -218,7 +227,7 @@ export class SharePointService {
       );
 
       // 2. Site-Owners-Gruppe: Full Control (1073741829)
-      const ownersResponse = await this.context.spHttpClient.get(
+      const ownersResponse = await this._sp.get(
         `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`,
         SPHttpClient.configurations.v1
       );
@@ -388,7 +397,7 @@ export class SharePointService {
         'X-HTTP-Method': 'DELETE',
       };
 
-      await this.context.spHttpClient.post(
+      await this._sp.post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/roleassignments/getbyprincipalid(${userId})`,
         SPHttpClient.configurations.v1,
         { headers }
@@ -411,7 +420,7 @@ export class SharePointService {
         'X-HTTP-Method': 'DELETE',
       };
 
-      await this.context.spHttpClient.post(
+      await this._sp.post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/roleassignments/getbyprincipalid(${userId})`,
         SPHttpClient.configurations.v1,
         { headers }
@@ -462,7 +471,7 @@ export class SharePointService {
 
     // Versuch 3: direkt per Email suchen
     try {
-      const response = await this.context.spHttpClient.get(
+      const response = await this._sp.get(
         `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(email)}')?$select=Id`,
         SPHttpClient.configurations.v1
       );
@@ -484,7 +493,7 @@ export class SharePointService {
    */
   private async ensureListHasUniquePermissions(listName: string): Promise<void> {
     try {
-      const response = await this.context.spHttpClient.get(
+      const response = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=HasUniqueRoleAssignments`,
         SPHttpClient.configurations.v1
       );
@@ -510,7 +519,7 @@ export class SharePointService {
    */
   private async getRoleDefinitionId(roleName: string): Promise<number | null> {
     try {
-      const response = await this.context.spHttpClient.get(
+      const response = await this._sp.get(
         `${this.siteUrl}/_api/web/roledefinitions/getbyname('${encodeURIComponent(roleName)}')?$select=Id`,
         SPHttpClient.configurations.v1
       );
@@ -545,13 +554,13 @@ export class SharePointService {
     // Select OHNE IsPowerUser.
     const baseSelect = 'Id,Title,UserName,Role,UserLocation,AssignedBy,AssignedDate';
     try {
-      let response = await this.context.spHttpClient.get(
+      let response = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$select=${baseSelect},IsPowerUser&$orderby=Role,UserName`,
         SPHttpClient.configurations.v1
       );
       if (!response.ok) {
         // Retry ohne IsPowerUser (Spalte existiert evtl. noch nicht).
-        response = await this.context.spHttpClient.get(
+        response = await this._sp.get(
           `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$select=${baseSelect}&$orderby=Role,UserName`,
           SPHttpClient.configurations.v1
         );
@@ -593,7 +602,7 @@ export class SharePointService {
       if (looksLikeClaim(r.AssignedBy || '')) patch['AssignedBy'] = '';
       if (Object.keys(patch).length === 0) continue;
       try {
-        const resp = await this.context.spHttpClient.post(
+        const resp = await this._sp.post(
           `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items(${r.Id})`,
           SPHttpClient.configurations.v1,
           {
@@ -618,7 +627,7 @@ export class SharePointService {
    */
   public async setPowerUser(itemId: number, isPowerUser: boolean): Promise<boolean> {
     try {
-      const response = await this.context.spHttpClient.post(
+      const response = await this._sp.post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items(${itemId})`,
         SPHttpClient.configurations.v1,
         {
@@ -643,7 +652,7 @@ export class SharePointService {
    */
   public async getUserRole(email: string): Promise<string | null> {
     try {
-      const response = await this.context.spHttpClient.get(
+      const response = await this._sp.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=Title eq '${encodeURIComponent(email)}'&$select=Role&$top=1`,
         SPHttpClient.configurations.v1
       );
@@ -715,7 +724,7 @@ export class SharePointService {
         body: JSON.stringify(payload),
       };
 
-      const response = await this.context.spHttpClient.post(
+      const response = await this._sp.post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items(${itemId})`,
         SPHttpClient.configurations.v1,
         options
@@ -732,7 +741,7 @@ export class SharePointService {
    */
   public async updateRoleLocation(itemId: number, location: string): Promise<boolean> {
     try {
-      const response = await this.context.spHttpClient.post(
+      const response = await this._sp.post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items(${itemId})`,
         SPHttpClient.configurations.v1,
         {
@@ -770,7 +779,7 @@ export class SharePointService {
         headers: headers,
       };
 
-      const response = await this.context.spHttpClient.post(
+      const response = await this._sp.post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items(${itemId})`,
         SPHttpClient.configurations.v1,
         options
@@ -853,7 +862,7 @@ export class SharePointService {
 
     // 1) Direkter Lookup per SMTP
     try {
-      const directResp = await this.context.spHttpClient.get(
+      const directResp = await this._sp.get(
         `${this.siteUrl}/_api/SP.UserProfiles.PeopleManager/GetPropertiesFor(accountName=@v)?@v='i:0%23.f|membership|${encodeURIComponent(email)}'&$select=DisplayName,UserProfileProperties`,
         SPHttpClient.configurations.v1
       );
@@ -870,7 +879,7 @@ export class SharePointService {
 
     // 2) Fallback: echten LoginName (UPN-Claim) via siteusers/getbyemail
     try {
-      const siteUserResp = await this.context.spHttpClient.get(
+      const siteUserResp = await this._sp.get(
         `${this.siteUrl}/_api/web/siteusers/getbyemail('${email.replace(/'/g, "''")}')?$select=LoginName,Title`,
         SPHttpClient.configurations.v1
       );
@@ -880,7 +889,7 @@ export class SharePointService {
         const fallbackDisplayName: string = su.Title || su.d?.Title || '';
         if (loginName) {
           try {
-            const profileResp = await this.context.spHttpClient.get(
+            const profileResp = await this._sp.get(
               `${this.siteUrl}/_api/SP.UserProfiles.PeopleManager/GetPropertiesFor(accountName=@v)?@v='${encodeURIComponent(loginName)}'&$select=DisplayName,UserProfileProperties`,
               SPHttpClient.configurations.v1
             );
@@ -1213,7 +1222,7 @@ export class SharePointService {
       try {
         const refinementFilter = encodeURIComponent(`OfficeNumber:equals("${location}")`);
         const queryUrl = `${this.siteUrl}/_api/search/query?querytext='*'&sourceid='b09a7990-05ea-4af9-81ef-edfab16c4e31'&refinementfilters='${refinementFilter}'&rowlimit=500&selectproperties='WorkEmail,PreferredName,FirstName,LastName,JobTitle,BaseOfficeLocation,Office'`;
-        const resp = await this.context.spHttpClient.get(queryUrl, SPHttpClient.configurations.v1);
+        const resp = await this._sp.get(queryUrl, SPHttpClient.configurations.v1);
         if (resp.ok) {
           const data = await resp.json();
           const rows = data?.PrimaryQueryResult?.RelevantResults?.Table?.Rows
@@ -1378,6 +1387,6 @@ export class SharePointService {
       body: JSON.stringify(body),
     };
 
-    return this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, options);
+    return this._sp.post(url, SPHttpClient.configurations.v1, options);
   }
 }

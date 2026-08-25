@@ -704,7 +704,7 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
 
 export default function MyEventsPage(): React.ReactElement {
   const { navigate, selectedEventId, navIntent, clearIntent } = useNavigation();
-  const { topLevelEvents, childEventsOf, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, cancelTeamMember, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, registerForEvent, getAllRegistrations, getTeamMembers, addTeamMember, listTeamJoinRequestsForEvent, decideTeamJoinRequest, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, getEventComms } = useEvents();
+  const { topLevelEvents, childEventsOf, isEventsLoading, ensureEventDocuments, getMyRegistration, getMyEventNumbers, cancelRegistration, cancelTeamMember, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, registerForEvent, getAllRegistrations, getTeamMembers, addTeamMember, listTeamJoinRequestsForEvent, decideTeamJoinRequest, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, getEventComms } = useEvents();
   const { currentUser } = useCurrentUser();
   const currentUserEmail = (currentUser?.email || '').toLowerCase();
   // v24.41: Assistenz-Verknüpfungen — INFO-Ansicht für Anmeldungen, die jemand
@@ -930,6 +930,19 @@ export default function MyEventsPage(): React.ReactElement {
   };
 
   const { t, locale } = useLanguage();
+
+  // v29.47: Dokumente werden beim Start nicht mehr für ALLE Events geladen
+  // (das war ein Request je Event und einer der Gründe für den langen Boot).
+  // Hier braucht die Seite sie wirklich — also für die sichtbaren Events
+  // nachholen, sobald sie feststehen. `ensureEventDocuments` merkt sich, was
+  // schon geladen wurde, und bündelt parallele Aufrufe.
+  React.useEffect(() => {
+    const ids = (topLevelEvents || []).map(e => e.id).filter(Boolean);
+    if (ids.length === 0) return;
+    void ensureEventDocuments(ids);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topLevelEvents.length]);
+
   // v20.4: App-Modals statt nativer Browser-Dialoge.
   const { confirmDialog, showAlert, promptDialog } = useDialog();
   // v20.7: Persönlicher Check-in-QR-Code unter „Meine Events" — gleicher
@@ -985,6 +998,12 @@ export default function MyEventsPage(): React.ReactElement {
     waitlistEnabled?: boolean;
     waitlistCount?: number;
     unlimited?: boolean;
+    // v29.48: „Organizer ausblenden" galt auf diesem Erfolgs-Screen nicht —
+    // hier standen die Namen weiter, obwohl das Event sie überall sonst
+    // versteckt. Die drei Flags kommen deshalb mit in den Screen-State.
+    hideOrganizer?: boolean;
+    hideOrganizerIndividualOnly?: boolean;
+    hiddenOrganizerEmails?: string[];
   }>(null);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editData, setEditData] = React.useState<Record<string, string>>({});
@@ -1430,6 +1449,9 @@ export default function MyEventsPage(): React.ReactElement {
           waitlistCount: entry.event.waitlistCount || 0,
           unlimited: !(entry.event.maxParticipants > 0)
             && !(((entry.event.durchstarterCapacity || 0) + (entry.event.funstarterCapacity || 0)) > 0),
+          hideOrganizer: !!entry.event.hideOrganizer,
+          hideOrganizerIndividualOnly: !!entry.event.hideOrganizerIndividualOnly,
+          hiddenOrganizerEmails: entry.event.hiddenOrganizerEmails || [],
         });
       }
     }
@@ -1576,10 +1598,15 @@ export default function MyEventsPage(): React.ReactElement {
                 : <>If you change your mind, you can register again anytime via the registration area.</>}
             </p>
           </div>
-          {orgs.length > 0 && (
+          {orgs.length > 0 && !(cancelSuccess.hideOrganizer && !cancelSuccess.hideOrganizerIndividualOnly) && (
             <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
               <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>Organizer</div>
-              <OrganizerList names={orgs} emails={cancelSuccess.organizerEmails} size="md" />
+              <OrganizerList
+                names={orgs}
+                emails={cancelSuccess.organizerEmails}
+                hiddenEmails={(cancelSuccess.hideOrganizer && cancelSuccess.hideOrganizerIndividualOnly) ? (cancelSuccess.hiddenOrganizerEmails || []) : []}
+                size="md"
+              />
             </div>
           )}
           <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>

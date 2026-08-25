@@ -338,7 +338,7 @@ async function resolveAudienceMembersToCsv(
 
 export default function EventCreationPage(): React.ReactElement {
   const { goBack, selectedEventId, currentPage, setNavigationGuard, navigate } = useNavigation();
-  const { events, childEventsOf, createEvent, updateEvent, getLastEventUpdateError, deleteEvent, deleteEventItemOnly, refreshEvents, requestCoOrganizerApprovals, notifyNewCoOrganizers, notifyAdminsExternalAudienceAccess } = useEvents();
+  const { events, childEventsOf, ensureEventDocuments, createEvent, updateEvent, getLastEventUpdateError, deleteEvent, deleteEventItemOnly, refreshEvents, requestCoOrganizerApprovals, notifyNewCoOrganizers, notifyAdminsExternalAudienceAccess } = useEvents();
   const { currentUser } = useCurrentUser();
   // searchGroups + searchUsersByLocation werden seit v19.x ausschließlich im
   // ausgelagerten <AudiencePicker> verwendet (eigener useRoles-Hook dort).
@@ -739,6 +739,16 @@ export default function EventCreationPage(): React.ReactElement {
   type ImgView = { zoom: number; posY: number; height?: number };
   const [imageDisplay, setImageDisplay] = React.useState<{ card?: ImgView; hero?: ImgView }>(editEvent && editEvent.imageDisplay ? editEvent.imageDisplay : {});
   const [imageDisplayOpen, setImageDisplayOpen] = React.useState(false);
+
+  // v29.47: Der Boot lädt die Anhänge nicht mehr mit. Beim Bearbeiten braucht
+  // der Wizard sie (Schritt „Dokumente") — hier für das bearbeitete Event
+  // nachholen, damit die Liste nicht fälschlich leer aussieht und ein Save die
+  // bestehenden Dateien nicht als „entfernt" behandelt.
+  React.useEffect(() => {
+    if (editEvent?.id) void ensureEventDocuments([editEvent.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editEvent?.id]);
+
   // v28.5: Bild als Banner über den Event-Infos (statt kompakt links) —
   // Organizer-Wahl, sinnvoll für breite Querformat-Fotos. Piggyback _imageBanner.
   const [imageBanner, setImageBanner] = React.useState<boolean>(!!(editEvent && editEvent.imageBanner));
@@ -3819,9 +3829,23 @@ export default function EventCreationPage(): React.ReactElement {
     }
     // Entfernte Sub-Events aufräumen: deleteEvent löscht kaskadierend auch
     // die Subsite (Teilnehmerliste) und queued einen Outlook-DeleteEvent.
+    //
+    // v29.48 BUG-FIX: Das Ergebnis wurde hier verworfen („Delete-Fehler darf
+    // Save nicht blockieren") — deleteEvent WIRFT aber gar nicht, es liefert
+    // false. Ein abgelehntes Löschen (typisch: HTTP 429, SharePoint drosselt
+    // nach 20 Sub-Event-Schreibvorgängen) war damit unsichtbar: der Wizard
+    // meldete „Änderungen gespeichert!", und der abgewählte Tag stand nach dem
+    // Neuladen wieder in der Liste. Genau das war der Kalender-Fall aus der
+    // Rückmeldung — 28.09. und 30.09. blieben stehen, obwohl sie abgewählt
+    // waren, während der dazwischenliegende 29.09. verschwand.
+    const failedDeleteTitles: string[] = [];
     for (const oldId of initialSubEventDbIds) {
       if (!keptDbIds.has(oldId)) {
-        try { await deleteEvent(oldId); } catch { /* Delete-Fehler darf Save nicht blockieren */ }
+        const gone = await deleteEvent(oldId).catch(() => false);
+        if (!gone) {
+          const stored = childEventsOf(parentEventId).find(k => k.id === oldId);
+          failedDeleteTitles.push(stored ? (shortSubEventTitle(stored.title, title) || stored.title) : `#${oldId}`);
+        }
       }
     }
     // v29.21 (Audit): gescheiterte Sub-Events benennen statt still erfolgreich
@@ -3830,6 +3854,11 @@ export default function EventCreationPage(): React.ReactElement {
       showAlert(isDe
         ? `${failedSubTitles.length} Sub-Event${failedSubTitles.length === 1 ? '' : 's'} konnte${failedSubTitles.length === 1 ? '' : 'n'} nicht gespeichert werden: ${failedSubTitles.join(', ')}. Die übrigen Änderungen sind gespeichert — bitte speichere erneut, um es nochmal zu versuchen.`
         : `${failedSubTitles.length} sub-event${failedSubTitles.length === 1 ? '' : 's'} could not be saved: ${failedSubTitles.join(', ')}. All other changes are saved — please save again to retry.`, { variant: 'error' });
+    }
+    if (failedDeleteTitles.length > 0) {
+      showAlert(isDe
+        ? `${failedDeleteTitles.length} abgewählte${failedDeleteTitles.length === 1 ? 'r Termin konnte' : ' Termine konnten'} nicht gelöscht werden: ${failedDeleteTitles.join(', ')}. ${failedDeleteTitles.length === 1 ? 'Er steht' : 'Sie stehen'} deshalb weiterhin in der Liste — bitte speichere erneut.`
+        : `${failedDeleteTitles.length} deselected date${failedDeleteTitles.length === 1 ? '' : 's'} could not be deleted: ${failedDeleteTitles.join(', ')}. ${failedDeleteTitles.length === 1 ? 'It is' : 'They are'} therefore still in the list — please save again.`, { variant: 'error' });
     }
   };
 
@@ -11202,6 +11231,59 @@ export default function EventCreationPage(): React.ReactElement {
                           // einen Oktober-Tag will, blättert mit dem Pfeil.
                           calendarClassName="dex-datepicker-calendar dex-termin-calendar"
                         />
+                        {/* v29.48: Termine außerhalb des Event-Zeitraums benennen.
+                            Der Kalender lässt jeden Tag zu, der Zeitraum des
+                            Hauptevents wandert aber nicht mit — in der Rückmeldung
+                            standen deshalb der 28.09. und der 30.09. in der Liste,
+                            während oben „Zeitraum bis 25.09." stand. Der Organizer
+                            sieht beide Angaben nie nebeneinander; hier tun sie es. */}
+                        {(() => {
+                          const dayOfLocal = (v: string): string => (v || '').slice(0, 10);
+                          const from = dayOfLocal(startDate);
+                          const to = dayOfLocal(endDate) || from;
+                          if (!from) return null;
+                          const outside = subEvents
+                            .map(se => dayKeyOfSub(se))
+                            .filter(Boolean)
+                            .filter(k => k < from || k > to)
+                            .sort();
+                          if (outside.length === 0) return null;
+                          const fmt = (k: string): string => {
+                            const [y, m, d] = k.split('-');
+                            return `${d}.${m}.${y}`;
+                          };
+                          const newFrom = [from, ...outside].sort()[0];
+                          const newTo = [to, ...outside].sort()[outside.length];
+                          return (
+                            <div style={{
+                              marginTop: 10, padding: '10px 12px', borderRadius: 8,
+                              background: 'rgba(237,139,0,0.10)', border: '1px solid var(--dex-orange, #ed8b00)',
+                              fontSize: '0.82rem', color: 'var(--dex-gray-800)',
+                            }}>
+                              {isDe
+                                ? <>{outside.length === 1 ? 'Ein Termin liegt' : `${outside.length} Termine liegen`} <strong>außerhalb des Event-Zeitraums</strong> ({fmt(from)} – {fmt(to)}): {outside.map(fmt).join(', ')}. Teilnehmer sehen sie trotzdem im Anmelde-Kalender. Entweder den Tag oben abwählen oder den Zeitraum erweitern.</>
+                                : <>{outside.length === 1 ? 'One date is' : `${outside.length} dates are`} <strong>outside the event period</strong> ({fmt(from)} – {fmt(to)}): {outside.map(fmt).join(', ')}. Attendees still see them in the registration calendar. Either deselect the day above or extend the period.</>}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  // Nur den Tagesteil ersetzen — die Uhrzeiten des
+                                  // Hauptevents bleiben, wie der Organizer sie gesetzt hat.
+                                  setStartDate(`${newFrom}${(startDate || '').slice(10) || 'T00:00'}`);
+                                  setEndDate(`${newTo}${(endDate || '').slice(10) || 'T23:59'}`);
+                                }}
+                                style={{
+                                  display: 'block', marginTop: 8, background: 'transparent',
+                                  border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit',
+                                  color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700, fontSize: '0.82rem',
+                                }}
+                              >
+                                {isDe
+                                  ? `Zeitraum auf ${fmt(newFrom)} – ${fmt(newTo)} erweitern`
+                                  : `Extend period to ${fmt(newFrom)} – ${fmt(newTo)}`}
+                              </button>
+                            </div>
+                          );
+                        })()}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '10px 0 0' }}>
                           <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', margin: 0 }}>
                             {marked.length === 0 && removedDays.length === 0

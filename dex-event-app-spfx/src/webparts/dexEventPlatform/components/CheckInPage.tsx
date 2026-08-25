@@ -609,11 +609,15 @@ export default function CheckInPage(): React.ReactElement {
             {ev.location ? ` · ${ev.location}` : ''}
           </div>
           {/* v15.3: Organizer-Chips mit Hover-Profilfoto (gleiches OrganizerList wie auf der Registrierungsseite). */}
-          {!isChild && (ev.organizers && ev.organizers.length > 0) && (
+          {/* v29.48: „Organizer ausblenden" wurde hier nicht ausgewertet — die
+              Selbst-Check-in-Seite ist teilnehmersichtbar, also gilt die
+              Einstellung auch hier (gleiche Prüfung wie Anmeldeseite/Kachel). */}
+          {!isChild && (ev.organizers && ev.organizers.length > 0) && !(ev.hideOrganizer && !ev.hideOrganizerIndividualOnly) && (
             <div style={{ marginTop: 6 }}>
               <OrganizerList
                 names={ev.organizers}
                 emails={ev.organizerEmails || []}
+                hiddenEmails={(ev.hideOrganizer && ev.hideOrganizerIndividualOnly) ? (ev.hiddenOrganizerEmails || []) : []}
                 size="sm"
                 compact
               />
