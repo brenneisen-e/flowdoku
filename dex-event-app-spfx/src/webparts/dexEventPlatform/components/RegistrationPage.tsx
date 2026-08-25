@@ -40,6 +40,7 @@ import StayRangePicker from './StayRangePickerLazy';
 // geladen ist (frischer Tab, erster Render).
 import { DEX_ORB_PNG } from '../data/brandLogos';
 import { getCachedOrbBase64, replacePlaceholders } from '../services/EmailTemplates';
+import { formatAllDayPeriod } from '../utils/eventFormat';
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -3613,7 +3614,10 @@ export default function RegistrationPage(): React.ReactElement {
                   <span>
                     {/* v11.94: kompaktes Range-Format („–" statt „until"),
                         bei gleichem Tag nur einmal Datum + „HH:MM - HH:MM". */}
-                    {formatDateRange(event.startDate, event.endDate)}
+                    {/* v29.61: ganztägig zeigt keine Uhrzeiten. */}
+                    {event.allDay
+                      ? formatAllDayPeriod(event.startDate, event.endDate, locale === 'de')
+                      : formatDateRange(event.startDate, event.endDate)}
                   </span>
                 </div>
                 {(event.location || (event.locationAddress && (event.locationAddress.street || event.locationAddress.city))) && (() => {
