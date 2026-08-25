@@ -2718,6 +2718,77 @@ zurückfallen.
 
 Danach den aktuellen Flow-JSON hier einpflegen.
 
+### UI-Anleitung 2026-08-25 (v29.52) — Ganztägige Termine als echte Ganztags-Einträge
+
+**Hintergrund:** Ein Termin ohne sinnvolle Uhrzeit wurde bisher als
+`00:00–23:59` angelegt. In Outlook ist das ein **normaler** Termin, der über den
+ganzen Tag läuft: Er steht als Block in der Tagesspalte und setzt die
+Verfügbarkeit auf „gebucht". Ein echter Ganztags-Eintrag steht dagegen oben im
+Kalenderkopf und lässt die Verfügbarkeit frei. Der Unterschied ist das Feld
+`isAllDay`, das die App nicht über Start/Ende erzwingen kann.
+
+Betroffen war vor allem der Kalender-Modus: Erzeugte Tage fallen auf
+`00:00–23:59` zurück, sobald sich aus dem Zeitraum des Hauptevents keine
+Uhrzeit ableiten lässt (z.B. Klammer `01.09. 00:00 – 25.09. 17:00`). Genau
+diese Ganztags-Blocker haben Organizer gemeldet.
+
+Die App schreibt dafür seit v29.52 eine neue Spalte **`AllDay`** (Ja/Nein) in
+`DEX_Events` — für Haupt- UND Sub-Events, gesetzt über den Haken
+„Ganztägiger Termin" in Schritt 1. `StartDate`/`EndDate` bleiben unverändert
+(`00:00` / `23:59`); die Umrechnung auf die Ganztags-Grenzen macht bewusst der
+Flow, damit sich bis zu dieser Änderung **nichts** am bisherigen Verhalten
+ändert.
+
+**Wichtig:** Outlook verlangt bei `isAllDay = true`, dass Start und Ende exakt
+auf Mitternacht liegen und das **Ende der Folgetag** ist. Ein eintägiger
+Ganztags-Termin am 28.09. läuft also von `28.09. 00:00` bis `29.09. 00:00`.
+Deshalb reicht das Setzen von `isAllDay` allein nicht — Start und Ende müssen
+mit.
+
+**Schritte in `DEX_CreateOutlookEvent` → Aktion „Create event (V4)":**
+
+1. Aktion aufklappen → **Erweiterte Optionen anzeigen** → Feld
+   **„Ist ganztägiges Ereignis?" (`isAllDay`)** → **fx / Expression**:
+   ```
+   coalesce(triggerBody()?['AllDay'], false)
+   ```
+2. Feld **Start time** auf die Fallunterscheidung umstellen:
+   ```
+   if(equals(coalesce(triggerBody()?['AllDay'], false), true), formatDateTime(convertFromUtc(coalesce(triggerBody()?['OutlookStart'], triggerBody()?['StartDate']), 'W. Europe Standard Time'), 'yyyy-MM-ddT00:00:00'), convertFromUtc(coalesce(triggerBody()?['OutlookStart'], triggerBody()?['StartDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'))
+   ```
+3. Feld **End time** ebenso — beim Ganztags-Fall **einen Tag weiter**:
+   ```
+   if(equals(coalesce(triggerBody()?['AllDay'], false), true), formatDateTime(addDays(convertFromUtc(coalesce(triggerBody()?['OutlookEnd'], triggerBody()?['EndDate'], triggerBody()?['StartDate']), 'W. Europe Standard Time'), 1), 'yyyy-MM-ddT00:00:00'), convertFromUtc(coalesce(triggerBody()?['OutlookEnd'], triggerBody()?['EndDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'))
+   ```
+   `addDays(..., 1)` auf `23:59` desselben Tages ergibt den Folgetag — die
+   anschließende Formatierung auf `T00:00:00` schneidet die Uhrzeit weg. Bei
+   einem mehrtägigen Ganztags-Termin (`EndDate` = letzter Tag) stimmt das
+   ebenfalls.
+4. **Speichern.**
+
+**Schritte in `DEX_Outlook_Einladungen` (Pfad `UpdateEvent`):** Dort wird der
+bestehende Termin per Graph-PATCH aktualisiert (`Build_Update_Body`). Damit ein
+nachträglich gesetzter Haken auch bei bestehenden Terminen ankommt, dieselben
+drei Werte in den PATCH-Body aufnehmen:
+```
+"isAllDay": @{coalesce(first(outputs('Get_Event_Details')?['body/value'])?['AllDay'], false)},
+"start": { "dateTime": "…", "timeZone": "W. Europe Standard Time" },
+"end":   { "dateTime": "…", "timeZone": "W. Europe Standard Time" }
+```
+mit denselben `if(...)`-Ausdrücken wie oben, nur mit
+`first(outputs('Get_Event_Details')?['body/value'])?['AllDay']` statt
+`triggerBody()?['AllDay']`.
+
+**Solange diese Änderung nicht gemacht ist:** Die Spalte `AllDay` wird
+geschrieben und vom Flow ignoriert — die Termine bleiben `00:00–23:59` wie
+bisher. Es geht also nichts kaputt, der Haken hat nur noch keine Wirkung.
+
+**Prüfen:** Ein Testevent mit Haken anlegen, im Kalender der eingeladenen Person
+schauen — der Eintrag muss **oben im Kalenderkopf** stehen (nicht als Block in
+der Tagesspalte) und die Verfügbarkeit auf „Frei" lassen.
+
+Danach den aktuellen Flow-JSON hier einpflegen.
+
 ### UI-Anleitung 2026-06-02 (v18.34) — Ort in den Outlook-Termin übernehmen
 
 **Hintergrund:** Das „Ort"-Feld des Outlook-Termins blieb bisher leer, weil

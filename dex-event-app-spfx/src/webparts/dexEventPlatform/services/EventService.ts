@@ -163,6 +163,7 @@ export interface SPEvent {
   OutlookStart?: string; // v18.44: abweichende Start-Zeit des Outlook-Termins (ISO, leer = Event-Start)
   OutlookEnd?: string;   // v18.44: abweichende End-Zeit des Outlook-Termins (ISO, leer = Event-Ende)
   OutlookLocation?: string; // v18.34: lesbarer Ort für das Location-Feld des Outlook-Termins
+  AllDay?: boolean; // v29.52: ganztägiger Termin — der Outlook-Flow setzt daraus isAllDay
   EmailLanguage: string; // DE oder EN
   RegistrationLanguage?: string; // v18.35: erzwungene Sprache der Anmeldeseite ('de' | 'en' | '')
   EmailTemplateOverrides: string; // JSON mit Event-spezifischen Template-Anpassungen
@@ -3804,6 +3805,10 @@ export class EventService {
       { title: 'OutlookStart', type: 4 }, // v18.44: DateTime - abweichende Start-Zeit (leer = Event-Start)
       { title: 'OutlookEnd', type: 4 },   // v18.44: DateTime - abweichende End-Zeit (leer = Event-Ende)
       { title: 'OutlookLocation', type: 2 }, // v18.34: Single line - lesbarer Ort für den Outlook-Termin
+      // v29.52: Boolean - ganztägiger Termin. Echte Spalte (kein Piggyback in
+      // EmailTemplateOverrides), weil der Outlook-Flow den Wert direkt über
+      // triggerBody()?['AllDay'] lesen muss — JSON parsen kann er dort nicht.
+      { title: 'AllDay', type: 8, metaType: 'SP.Field' },
       { title: 'EmailLanguage', type: 2 }, // DE oder EN
       { title: 'RegistrationLanguage', type: 2 }, // v18.35: erzwungene Anmeldeseiten-Sprache ('de'|'en'|'')
       { title: 'EmailTemplateOverrides', type: 3 }, // JSON mit Event-spezifischen Template-Anpassungen
@@ -4299,7 +4304,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,CurrentParticipants,WaitlistEnabled,MandatoryRegistration,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactOrganizerEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,OutlookSubject,OutlookStart,OutlookEnd,OutlookLocation,EmailLanguage,RegistrationLanguage,EmailTemplateOverrides,DisableEmails,DisableRegistrationEmail,DisableCancellationEmail,AutoDeregisterOnDecline,InactiveHandling,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitDescA,SplitDescB,SplitHelpText,SplitSectionTitle,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,ConfirmDialogEnabled,ConfirmDialogMode,ConfirmDialogText,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl,Modified,Created';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,CurrentParticipants,WaitlistEnabled,MandatoryRegistration,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactOrganizerEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,OutlookSubject,OutlookStart,OutlookEnd,OutlookLocation,AllDay,EmailLanguage,RegistrationLanguage,EmailTemplateOverrides,DisableEmails,DisableRegistrationEmail,DisableCancellationEmail,AutoDeregisterOnDecline,InactiveHandling,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitDescA,SplitDescB,SplitHelpText,SplitSectionTitle,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,ConfirmDialogEnabled,ConfirmDialogMode,ConfirmDialogText,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl,Modified,Created';
 
   /**
    * Strip SharePoint-Note-Field-Wrapper.
@@ -4472,6 +4477,7 @@ export class EventService {
     outlookStart?: string; // v18.44: abweichende Start-Zeit (ISO, leer = Event-Start)
     outlookEnd?: string;   // v18.44: abweichende End-Zeit (ISO, leer = Event-Ende)
     outlookLocation?: string; // v18.40: manueller Outlook-Ort (leer = Auto aus Ort + Adresse)
+    allDay?: boolean; // v29.52: ganztägiger Termin (Flow setzt daraus isAllDay)
     locationFilter: string;
     audience: string;
     /** v16.4: Vor-aufgelöste E-Mails der Audience-DLs, ';'-separiert, lowercase. */
@@ -4692,6 +4698,10 @@ export class EventService {
         // v18.44: abweichendes Outlook-Datum (leer = Flow nutzt StartDate/EndDate).
         'OutlookStart': event.outlookStart || null,
         'OutlookEnd': event.outlookEnd || null,
+        // v29.52: ganztägig. Start/Ende bleiben bewusst wie gesetzt (00:00/23:59)
+        // — die Umrechnung auf die Ganztags-Grenzen macht der Flow. Solange der
+        // Flow das Feld noch nicht liest, verhält sich alles wie bisher.
+        'AllDay': !!event.allDay,
         // v18.34/v18.40: Outlook-Ort = manuelle Überschreibung, sonst
         // automatisch aus Veranstaltungsort + Adresse. Flow mappt OutlookLocation 1:1.
         // v26.54: hart auf 255 kappen (einzeilige Text-Spalte — s. updateEvent).

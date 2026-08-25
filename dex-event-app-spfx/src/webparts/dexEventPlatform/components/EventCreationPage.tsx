@@ -858,6 +858,10 @@ export default function EventCreationPage(): React.ReactElement {
   const [outlookSubject, setOutlookSubject] = React.useState<string>(editEvent?.outlookSubject || '');
   // v18.44: abweichendes Outlook-Datum (Top-Level). Leer = Event-Start/-Ende.
   // Als ISO gespeichert (wie Sub-Event-Datum); DatePicker konvertiert via isoToLocal.
+  // v29.52: Ganztägiger Termin (Hauptevent). Die Krücke 00:00–23:59 blockiert in
+  // Outlook den Tag als normalen Termin statt als Ganztags-Eintrag im Kopf —
+  // der Unterschied fällt erst im Kalender des Teilnehmers auf.
+  const [allDay, setAllDay] = React.useState<boolean>(!!(editEvent && editEvent.allDay));
   const [outlookStartOverride, setOutlookStartOverride] = React.useState<string>(editEvent?.outlookStart || '');
   const [outlookEndOverride, setOutlookEndOverride] = React.useState<string>(editEvent?.outlookEnd || '');
   // Modal-State für den HTML-Editor (Outlook-Body + E-Mail-Templates)
@@ -1330,6 +1334,8 @@ export default function EventCreationPage(): React.ReactElement {
     location?: string;
     startDate: string;
     endDate: string;
+    /** v29.52: ganztägiger Termin — der Outlook-Flow macht daraus isAllDay. */
+    allDay?: boolean;
     maxParticipants?: number;
     registrationDeadline?: string;
     /** v24.64: Pflicht-Sub-Event — Teilnehmer MUSS dieses Sub-Event auswählen. */
@@ -1518,6 +1524,7 @@ export default function EventCreationPage(): React.ReactElement {
       outlookStart: k.outlookStart || '',
       outlookEnd: k.outlookEnd || '',
       outlookLocation: k.outlookLocation || '',
+      allDay: !!k.allDay,
       // v11.57: Snapshot der initialen Outlook-relevanten Felder
       initialOutlookEventId: k.outlookEventId || '',
       // v11.61: CalendarLink (iCalUId) als Outlook-Existenz-Indikator. Der
@@ -3567,6 +3574,8 @@ export default function EventCreationPage(): React.ReactElement {
         outlookStart: (draft.outlookStart || '') || undefined,
         outlookEnd: (draft.outlookEnd || '') || undefined,
         outlookLocation: (draft.outlookLocation || '') || undefined,
+        // v29.52: ganztägig mitschreiben — sonst kippt der Haken beim Speichern zurück.
+        allDay: !!draft.allDay,
         agenda: draftAgendaJson,
         transfers: draftTransfersJson,
         documents: '[]',
@@ -3789,6 +3798,9 @@ export default function EventCreationPage(): React.ReactElement {
           'OutlookStart': (draft.outlookStart || '') || null,
           'OutlookEnd': (draft.outlookEnd || '') || null,
           'OutlookLocation': (draft.outlookLocation || '') || '',
+          // v29.52: ganztägig auch beim UPDATE bestehender Sub-Events — genau
+          // die Klasse Fehler, die v19.32/v20.0/v29.20 schon dreimal hatten.
+          'AllDay': !!draft.allDay,
           'EmailLanguage': childPayload.emailLanguage,
           // v29.42: Fußzeilen-Link auch auf dem direkten Sub-Event-Schreibweg
           // normalisieren (der läuft nicht über EventService.updateEvent).
@@ -4440,6 +4452,7 @@ export default function EventCreationPage(): React.ReactElement {
       // v18.44: abweichendes Outlook-Datum mit-persistieren (leer = Event-Datum via Flow-Fallback).
       updates['OutlookStart'] = outlookStartOverride || null;
       updates['OutlookEnd'] = outlookEndOverride || null;
+      updates['AllDay'] = !!allDay; // v29.52
       updates['Agenda'] = JSON.stringify(agenda);
       updates['Transfers'] = JSON.stringify(transferTimes);
       updates['FunZone'] = JSON.stringify(quiz);
@@ -5183,6 +5196,7 @@ export default function EventCreationPage(): React.ReactElement {
         outlookSubject: effOutlookSubject.trim() || undefined,
         outlookStart: outlookStartOverride || undefined,
         outlookEnd: outlookEndOverride || undefined,
+        allDay, // v29.52
         locationFilter,
         audience,
         audienceResolvedEmails: audienceResolved,
@@ -7190,6 +7204,39 @@ export default function EventCreationPage(): React.ReactElement {
   const setScStart = (d: Date | null): void => { if (scopeSub) patchScopeSub({ startDate: subDateToIso(d) }); else setStartDate(dateToLocalStr(d)); };
   const scEnd = scopeSub ? subIsoToDate(scopeSub.endDate) : localStrToDate(endDate);
   const setScEnd = (d: Date | null): void => { if (scopeSub) patchScopeSub({ endDate: subDateToIso(d) }); else setEndDate(dateToLocalStr(d)); };
+  // v29.52: „Ganztägig" hängt am selben Scope wie Start/Ende — der Haken gilt
+  // also für den oben gewählten Reiter, nicht global.
+  const scAllDay = scopeSub ? !!scopeSub.allDay : allDay;
+  const setScAllDay = (v: boolean): void => {
+    // Beim Einschalten die Zeiten auf die Tagesgrenzen legen. Der Flow rechnet
+    // daraus die Ganztags-Grenzen; leer lassen wäre falsch, weil ein Sub-Event
+    // ohne Zeiten seit v28.66 die Zeiten des Hauptevents erbt.
+    const dayOf = (d: Date | null): Date | null => d;
+    if (scopeSub) {
+      const st = subIsoToDate(scopeSub.startDate);
+      const en = subIsoToDate(scopeSub.endDate) || st;
+      const patch: Partial<SubEventDraft> = { allDay: v };
+      if (v && st) {
+        const s0 = new Date(st); s0.setHours(0, 0, 0, 0);
+        const e0 = new Date((dayOf(en) || st)); e0.setHours(23, 59, 0, 0);
+        patch.startDate = subDateToIso(s0);
+        patch.endDate = subDateToIso(e0);
+      }
+      patchScopeSub(patch);
+      return;
+    }
+    setAllDay(v);
+    if (v) {
+      const st = localStrToDate(startDate);
+      const en = localStrToDate(endDate) || st;
+      if (st) {
+        const s0 = new Date(st); s0.setHours(0, 0, 0, 0);
+        const e0 = new Date((en || st)); e0.setHours(23, 59, 0, 0);
+        setStartDate(dateToLocalStr(s0));
+        setEndDate(dateToLocalStr(e0));
+      }
+    }
+  };
   const scDescription = scopeSub ? (scopeSub.description || '') : description;
   const setScDescription = (v: string): void => { if (scopeSub) patchScopeSub({ description: v }); else setDescription(v); };
   const scImagePreview = scopeSub ? (scopeSub.imagePreview || '') : imagePreview;
@@ -7316,7 +7363,16 @@ export default function EventCreationPage(): React.ReactElement {
       const usable = !!startTime && !!endTime && endTime > startTime;
       const start = berlinLocalToUtcIso(`${key}T${usable ? startTime : '00:00'}`);
       const end = berlinLocalToUtcIso(`${key}T${usable ? endTime : '23:59'}`);
-      return prev.concat([makeSubEventDraft({ title: dayLabel(d), startDate: start, endDate: end })]);
+      // v29.52: Der erzeugte Tag erbt „ganztägig" vom Hauptevent — und ist es
+      // auch dann, wenn sich aus dem Zeitraum keine Uhrzeit ableiten ließ
+      // (`!usable`, z.B. Klammer 01.09. 00:00 – 25.09. 17:00). Genau dieser
+      // Fall hat die ganztägigen Blocker erzeugt, über die sich Organizer
+      // beschwert haben: 00:00–23:59 sieht in Outlook aus wie ein Tag
+      // Vollsperrung, ist aber technisch ein normaler Termin.
+      return prev.concat([makeSubEventDraft({
+        title: dayLabel(d), startDate: start, endDate: end,
+        allDay: allDay || !usable,
+      })]);
     });
   };
 
@@ -8438,11 +8494,13 @@ export default function EventCreationPage(): React.ReactElement {
                   <DatePicker
                     selected={scStart}
                     onChange={setScStart}
-                    showTimeSelect
+                    // v29.52: Bei „ganztägig" gibt es nichts zu wählen — die
+                    // Uhrzeit-Spalte stehen zu lassen lädt zum Widerspruch ein.
+                    showTimeSelect={!scAllDay}
                     timeFormat="HH:mm"
                     timeIntervals={15}
                     timeCaption="Uhrzeit"
-                    dateFormat="dd.MM.yyyy, HH:mm"
+                    dateFormat={scAllDay ? 'dd.MM.yyyy' : 'dd.MM.yyyy, HH:mm'}
                     locale="de"
                     // v28.66: Beim Sub-Event heißt leer „Zeit des Hauptevents".
                     placeholderText={scopeSub ? t('create.subevents.time.placeholder') : 'Datum und Uhrzeit wählen'}
@@ -8472,11 +8530,13 @@ export default function EventCreationPage(): React.ReactElement {
                   <DatePicker
                     selected={scEnd}
                     onChange={setScEnd}
-                    showTimeSelect
+                    // v29.52: Bei „ganztägig" gibt es nichts zu wählen — die
+                    // Uhrzeit-Spalte stehen zu lassen lädt zum Widerspruch ein.
+                    showTimeSelect={!scAllDay}
                     timeFormat="HH:mm"
                     timeIntervals={15}
                     timeCaption="Uhrzeit"
-                    dateFormat="dd.MM.yyyy, HH:mm"
+                    dateFormat={scAllDay ? 'dd.MM.yyyy' : 'dd.MM.yyyy, HH:mm'}
                     locale="de"
                     placeholderText={scopeSub ? t('create.subevents.time.placeholder') : 'Datum und Uhrzeit wählen'}
                     className="form-input"
@@ -8500,12 +8560,36 @@ export default function EventCreationPage(): React.ReactElement {
                     : 'The end date of this sub-event is before the start date — please correct it.'}
                 </p>
               )}
+              {/* v29.52: Ganztägiger Termin. Bisher gab es dafür nur 00:00–23:59
+                  — in Outlook ist das ein normaler Termin über den ganzen Tag,
+                  der die Verfügbarkeit auf „gebucht" setzt, statt oben im
+                  Kalenderkopf als Ganztags-Eintrag zu stehen. */}
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginTop: 10 }}>
+                <input
+                  type="checkbox"
+                  checked={scAllDay}
+                  onChange={e => setScAllDay(e.target.checked)}
+                  style={{ width: 18, height: 18, marginTop: 1, flexShrink: 0, cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: '0.9rem' }}>
+                  <strong>{isDe ? 'Ganztägiger Termin' : 'All-day event'}</strong>
+                  <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400 }}>
+                    {isDe
+                      ? 'Der Outlook-Termin erscheint dann oben im Kalenderkopf statt als Block über den Tag — und lässt die Verfügbarkeit der Teilnehmer frei. Ohne Haken bucht ein Termin von 00:00 bis 23:59 den kompletten Tag als belegt.'
+                      : 'The Outlook entry then appears in the calendar header instead of as a block across the day — and leaves attendees shown as free. Without it, a 00:00–23:59 entry books the whole day as busy.'}
+                  </span>
+                </span>
+              </label>
               <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: 8, marginBottom: 0 }}>
-                {scopeSub
+                {scAllDay
                   ? (isDe
-                    ? 'Leer lassen heißt: Dieses Sub-Event übernimmt die Zeiten des Hauptevents. Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.'
-                    : 'Leaving these empty means the sub-event inherits the main event’s times. The time is used for the attendees’ Outlook entry.')
-                  : 'Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.'}
+                    ? 'Ganztägig: Es zählt nur das Datum — die Uhrzeit spielt für den Outlook-Termin keine Rolle mehr.'
+                    : 'All-day: only the date matters — the time is no longer used for the Outlook entry.')
+                  : scopeSub
+                    ? (isDe
+                      ? 'Leer lassen heißt: Dieses Sub-Event übernimmt die Zeiten des Hauptevents. Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.'
+                      : 'Leaving these empty means the sub-event inherits the main event’s times. The time is used for the attendees’ Outlook entry.')
+                    : 'Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.'}
               </p>
               </div>
 
@@ -11340,7 +11424,12 @@ export default function EventCreationPage(): React.ReactElement {
                                 const active = activeScopeIdx === idx + 1;
                                 const st = timeOfIso(se.startDate);
                                 const en = timeOfIso(se.endDate);
-                                const span = (st && en) ? `${st}–${en}` : (isDe ? 'ganztägig' : 'all day');
+                                // v29.52: Der Haken schlägt die Uhrzeiten — sonst
+                                // steht in der Liste „00:00–23:59" bei einem
+                                // Termin, der ganztägig gebucht wird.
+                                const span = se.allDay
+                                  ? (isDe ? 'ganztägig' : 'all day')
+                                  : (st && en) ? `${st}–${en}` : (isDe ? 'ganztägig' : 'all day');
                                 const cap = (se.maxParticipants || 0) > 0
                                   ? `${se.maxParticipants} ${isDe ? 'Plätze' : 'seats'}`
                                   : (isDe ? 'unbegrenzt' : 'unlimited');
