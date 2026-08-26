@@ -1398,6 +1398,17 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       })(),
       // v28.91: Sub-Events sind Termine → Kalender-Auswahl (Piggyback
       // _subEventCalendar). Ohne Flag bleibt die Anmeldeseite bei der Liste.
+      // v29.67: Freischalt-Regel der Kalender-Termine (s. types/index.ts).
+      subEventOpenRule: ((): { mode: 'day' | 'week'; days: number } | undefined => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          const r = ov && ov._subEventOpenRule;
+          if (r && (r.mode === 'day' || r.mode === 'week') && typeof r.days === 'number' && r.days > 0) {
+            return { mode: r.mode, days: r.days };
+          }
+        } catch { /* */ }
+        return undefined;
+      })(),
       subEventCalendar: ((): boolean => {
         try {
           const ov = JSON.parse(e.EmailTemplateOverrides || '{}');

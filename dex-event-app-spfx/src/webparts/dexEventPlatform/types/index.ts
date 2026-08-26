@@ -265,6 +265,12 @@ export interface DeloitteEvent {
    *  mit eigener Teilnehmerliste, Kapazität und Outlook-Termin.
    *  Piggyback `_subEventCalendar` in EmailTemplateOverrides. */
   subEventCalendar?: boolean;
+  /** v29.67: Freischalt-Regel fuer Kalender-Termine — Anmeldung erst X Tage
+   *  vor dem Termin (mode 'day') bzw. X Tage vor dem MONTAG der Woche des
+   *  Termins (mode 'week', dann oeffnet die ganze KW gemeinsam). Vorher sind
+   *  die Tage ausgegraut und zeigen „Anmeldung ab …". Piggyback
+   *  `_subEventOpenRule` in EmailTemplateOverrides der Klammer. */
+  subEventOpenRule?: { mode: 'day' | 'week'; days: number };
   /** v28.97: Teilnehmer duerfen sich für GENAU EIN Sub-Event anmelden statt
    *  für beliebig viele. Aendert nur die Auswahl auf der Anmeldeseite (Liste
    *  wie Kalender verhalten sich dann wie Radio-Buttons) — an den Sub-Events
