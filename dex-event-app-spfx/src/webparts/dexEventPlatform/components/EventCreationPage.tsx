@@ -12143,11 +12143,6 @@ export default function EventCreationPage(): React.ReactElement {
                     const openTo = startDate ? new Date(startDate) : undefined;
                     return (
                       <div style={{ marginTop: 12 }}>
-                        <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', margin: '0 0 8px' }}>
-                          {isDe
-                            ? <>Klick auf einen Tag legt ihn als Termin an, ein erneuter Klick nimmt ihn zurück. Titel und Zeiten werden gesetzt — jeder Tag übernimmt die <strong>Uhrzeit des Hauptevents</strong> (ohne Uhrzeit dort: ganztägig). Das ist nur die Vorbelegung: In der <strong>Liste unter dem Kalender</strong> öffnest du einen Termin mit &bdquo;Bearbeiten&ldquo; und änderst <strong>Start und Ende genau dort</strong> — ebenso Titel, Beschreibung und Bild; Plätze und Frist in Schritt 4.</>
-                            : <>Clicking a day creates it as a date, clicking again removes it. Title and times are filled in — each day takes the <strong>main event&rsquo;s time of day</strong> (all-day if none is set there). That is only the starting point: in the <strong>list below the calendar</strong> open a date via &ldquo;Edit&rdquo; and change <strong>its start and end right there</strong> — as well as title, description and image; seats and deadline in step 4.</>}
-                        </p>
                         {/* v29.22: Legende — drei Farben, drei Zustände. Der
                             Organizer muss VOR dem Speichern sehen, was das
                             Speichern tun wird. */}
@@ -12165,25 +12160,38 @@ export default function EventCreationPage(): React.ReactElement {
                             {isDe ? 'abgewählt — wird beim Speichern endgültig gelöscht (samt Teilnehmerliste); erneut anklicken stellt ihn wieder her' : 'deselected — permanently deleted on save (incl. attendee list); click again to restore'}
                           </span>
                         </div>
-                        <DatePicker
-                          inline
-                          selected={null}
-                          onChange={toggleDaySubEvent}
-                          highlightDates={[
-                            { 'dex-day-picked': savedDays },
-                            { 'dex-day-new': newDays },
-                            { 'dex-day-removed': removedDays },
-                          ]}
-                          openToDate={openTo}
-                          locale="de"
-                          // v29.17: dex-termin-calendar blendet die Nachbarmonats-
-                          // Tage aus (CSS). In diesem Kalender ist ein Klick eine
-                          // AKTION (Termin anlegen/entfernen), kein Datums-Pick —
-                          // der Klick auf den „01.10." unten im September-Raster
-                          // legte den Tag an UND sprang in den Oktober um. Wer
-                          // einen Oktober-Tag will, blättert mit dem Pfeil.
-                          calendarClassName="dex-datepicker-calendar dex-termin-calendar"
-                        />
+                        {/* v30.2: Erklärtext RECHTS neben dem Kalender statt
+                            eingeklemmt darüber — rechts vom Raster war bisher
+                            nur Leerraum. Auf schmalen Spalten bricht der Text
+                            per flexWrap wieder unter den Kalender. */}
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+                          <div style={{ flexShrink: 0 }}>
+                            <DatePicker
+                              inline
+                              selected={null}
+                              onChange={toggleDaySubEvent}
+                              highlightDates={[
+                                { 'dex-day-picked': savedDays },
+                                { 'dex-day-new': newDays },
+                                { 'dex-day-removed': removedDays },
+                              ]}
+                              openToDate={openTo}
+                              locale="de"
+                              // v29.17: dex-termin-calendar blendet die Nachbarmonats-
+                              // Tage aus (CSS). In diesem Kalender ist ein Klick eine
+                              // AKTION (Termin anlegen/entfernen), kein Datums-Pick —
+                              // der Klick auf den „01.10." unten im September-Raster
+                              // legte den Tag an UND sprang in den Oktober um. Wer
+                              // einen Oktober-Tag will, blättert mit dem Pfeil.
+                              calendarClassName="dex-datepicker-calendar dex-termin-calendar"
+                            />
+                          </div>
+                          <p style={{ flex: '1 1 260px', minWidth: 240, fontSize: '0.8rem', color: 'var(--dex-gray-600)', margin: 0, lineHeight: 1.6 }}>
+                            {isDe
+                              ? <>Klick auf einen Tag legt ihn als Termin an, ein erneuter Klick nimmt ihn zurück. Titel und Zeiten werden gesetzt — jeder Tag übernimmt die <strong>Uhrzeit des Hauptevents</strong> (ohne Uhrzeit dort: ganztägig). Das ist nur die Vorbelegung: In der <strong>Liste unter dem Kalender</strong> öffnest du einen Termin mit &bdquo;Bearbeiten&ldquo; und änderst <strong>Start und Ende genau dort</strong> — ebenso Titel, Beschreibung und Bild; Plätze und Frist in Schritt 4.</>
+                              : <>Clicking a day creates it as a date, clicking again removes it. Title and times are filled in — each day takes the <strong>main event&rsquo;s time of day</strong> (all-day if none is set there). That is only the starting point: in the <strong>list below the calendar</strong> open a date via &ldquo;Edit&rdquo; and change <strong>its start and end right there</strong> — as well as title, description and image; seats and deadline in step 4.</>}
+                          </p>
+                        </div>
                         {/* v29.75: Die Freischalt-Regel („Termine erst kurz
                             vorher zur Anmeldung freischalten") stand bis
                             v29.74 HIER im Kalender-Block. Sie ist aber eine
@@ -12726,6 +12734,11 @@ export default function EventCreationPage(): React.ReactElement {
                     {subEvents.length > 1 && (() => {
                       const diffs = SUB_TRANSFER_GROUPS
                         .filter(g => g.key !== 'times')
+                        // v30.2: Bei aktiver rollierender Regel (v29.76) hat
+                        // JEDER Termin planmaessig eine ANDERE Frist — „bei 18
+                        // von 18 anders" ist dann der Soll-Zustand, keine
+                        // meldenswerte Abweichung.
+                        .filter(g => !(g.key === 'regDeadline' && regRuleEnabled) && !(g.key === 'deregDeadline' && cancelRuleEnabled))
                         .map(g => ({ g, n: subGroupDiffCount(seIdx, g.fields) }))
                         .filter(x => x.n > 0);
                       if (diffs.length === 0) return null;
@@ -13238,6 +13251,45 @@ export default function EventCreationPage(): React.ReactElement {
                 cardBgSecondary={(locationFilter || audience) ? zebraS3Bg() : '#fff'}
               />
 
+              {/* v30.2: Verteiler aus den Sub-Events uebernehmen — der
+                  haeufige Fall: EIN Sub-Event traegt bereits den echten
+                  Verteiler (z.B. 113 Eintraege), die Klammer nur eine
+                  Handvoll Personen. Der Knopf zieht die VEREINIGUNG aller
+                  Sub-Event-Verteiler auf die Klammer hoch (Duplikate
+                  case-insensitiv gefiltert, bestehende Klammer-Eintraege
+                  bleiben). Er erscheint nur, wenn es dort tatsaechlich
+                  Eintraege gibt, die der Klammer fehlen. */}
+              {subEvents.length > 0 && (() => {
+                const split = (s2: string): string[] => (s2 || '').split(',').map(x => x.trim()).filter(Boolean);
+                const parentLc = new Set(split(audience).map(x => x.toLowerCase()));
+                const missing: string[] = [];
+                const seen = new Set<string>();
+                subEvents.forEach(sd => split(sd.audience || '').forEach(a => {
+                  const lc = a.toLowerCase();
+                  if (parentLc.has(lc) || seen.has(lc)) return;
+                  seen.add(lc);
+                  missing.push(a);
+                }));
+                if (missing.length === 0) return null;
+                return (
+                  <div style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 8, background: '#fff8e6', border: '1px solid #e0b34d', fontSize: '0.8rem', color: '#7a5a12', lineHeight: 1.5 }}>
+                    {isDe
+                      ? <>In den {childTermPlural || 'Sub-Events'} stehen <strong>{missing.length} Verteiler/Personen</strong>, die der Klammer fehlen. Der Zugang läuft immer über die Klammer — wer hier fehlt, sieht das Event nicht.</>
+                      : <>The {childTermPlural || 'sub-events'} contain <strong>{missing.length} lists/people</strong> missing from the bracket. Access always goes through the bracket — anyone missing here cannot see the event.</>}
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      style={{ display: 'block', fontSize: '0.8rem', padding: '5px 12px', marginTop: 8 }}
+                      onClick={() => setAudience(split(audience).concat(missing).join(', '))}
+                    >
+                      {isDe
+                        ? `Verteiler aus den ${childTermPlural || 'Sub-Events'} übernehmen (+${missing.length})`
+                        : `Adopt audience from the ${childTermPlural || 'sub-events'} (+${missing.length})`}
+                    </button>
+                  </div>
+                );
+              })()}
+
               {/* v29.75: „Sichtbarkeit gilt für alle Sub-Events" — der Haken
                   spiegelt Standortfilter + Verteiler + Verknüpfung der Klammer
                   laufend in alle Sub-Event-Drafts (Effect bei den States) und
@@ -13394,13 +13446,17 @@ export default function EventCreationPage(): React.ReactElement {
                   style={{ marginBottom: 12 }}
                 >
                   <div>
+                    {/* v30.2: Text an die rollierenden Fristen (v29.76/77)
+                        angepasst — der alte Stand behauptete, Fristen wuerden
+                        „weiterhin je Tab" gepflegt, und kannte weder
+                        „Anmeldung ab" noch die zentrale Uebernahme. */}
                     {isDe ? (
                       <>
-                        Die Klammer selbst ist <strong>nicht buchbar</strong>. Du kannst ihr aber <strong>optional eine eigene Anmeldefrist</strong> geben: Ist sie gesetzt und abgelaufen, ist die Anmeldung für das <strong>gesamte Event geschlossen</strong> — auch wenn einzelne {childTermPlural || 'Sub-Events'} noch offen wären. <strong>Ohne</strong> Klammer-Frist gilt: Die Anmeldung bleibt offen, solange mindestens ein {childTermSingular || 'Sub-Event'} offen ist — effektiv bis zur <strong>spätesten {childTermSingular || 'Sub-Event'}-Frist</strong>. Die An-/Abmeldefristen der einzelnen {childTermPlural || 'Sub-Events'} stellst du weiterhin <strong>je {childTermSingular || 'Sub-Event'}-Tab</strong> ein.
+                        Die Klammer selbst ist <strong>nicht buchbar</strong> — hier stellst du die Anmelde-Logik für <strong>alle {childTermPlural || 'Sub-Events'}</strong> zentral ein: <strong>&bdquo;Anmeldung ab&ldquo;</strong> (festes Datum oder rollierend), <strong>&bdquo;Anmeldung bis&ldquo;</strong> und <strong>&bdquo;Abmeldung bis&ldquo;</strong> (jeweils festes Datum, das in alle {childTermPlural || 'Sub-Events'} übernommen wird, oder rollierend — dann wird die Frist <strong>je Termin automatisch ausgerechnet</strong>, auch für später hinzugefügte). Eine gesetzte feste Klammer-Anmeldefrist wirkt zusätzlich als <strong>harter Schluss fürs gesamte Event</strong>; ohne sie bleibt die Anmeldung offen, solange mindestens ein {childTermSingular || 'Sub-Event'} offen ist. Feste Fristen kannst du im jeweiligen Reiter pro {childTermSingular || 'Sub-Event'} anpassen — bei aktiver <strong>rollierender</strong> Regel sind die Felder dort gesperrt, weil die Regel sie berechnet.
                       </>
                     ) : (
                       <>
-                        The bracket itself is <strong>not bookable</strong>, but you can <strong>optionally give it its own registration deadline</strong>: once set and passed, registration for the <strong>entire event is closed</strong> — even if individual {childTermPlural || 'sub-events'} would still be open. <strong>Without</strong> a bracket deadline the previous rule applies: registration stays open as long as at least one {childTermSingular || 'sub-event'} is open — effectively until the <strong>latest {childTermSingular || 'sub-event'} deadline</strong>. You still set the registration/cancellation deadlines of the individual {childTermPlural || 'sub-events'} <strong>per {childTermSingular || 'sub-event'} tab</strong>.
+                        The bracket itself is <strong>not bookable</strong> — here you configure the registration logic for <strong>all {childTermPlural || 'sub-events'}</strong> centrally: <strong>“registration opens”</strong> (fixed date or rolling), <strong>“registration until”</strong> and <strong>“cancellation until”</strong> (a fixed date copied to all {childTermPlural || 'sub-events'}, or rolling — then the deadline is <strong>computed per date automatically</strong>, including dates added later). A fixed bracket registration deadline additionally acts as a <strong>hard cutoff for the entire event</strong>; without one, registration stays open as long as at least one {childTermSingular || 'sub-event'} is open. Fixed deadlines remain adjustable per {childTermSingular || 'sub-event'} in its tab — with an active <strong>rolling</strong> rule those fields are locked there, because the rule computes them.
                       </>
                     )}
                   </div>
@@ -13421,25 +13477,13 @@ export default function EventCreationPage(): React.ReactElement {
                   {/* v29.75: User-Wortlaut — die drei Felder heissen
                       „Anmeldung ab" / „Anmeldung bis" / „Abmeldung bis". */}
                   <label className="form-label">{isDe ? 'Anmeldung ab' : 'Registration opens'}</label>
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={openRuleEnabled}
-                      onChange={e => setOpenRuleEnabled(e.target.checked)}
-                      style={{ width: 18, height: 18, marginTop: 1, flexShrink: 0, cursor: 'pointer' }}
-                    />
-                    <span style={{ fontSize: '0.9rem' }}>
-                      <strong>{isDe ? 'Termine rollierend freischalten' : 'Open dates on a rolling basis'}</strong>
-                      <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400 }}>
-                        {isDe
-                          ? 'Entweder ein festes Datum (unten, leer = sofort anmeldbar) — oder mit Haken rollierend: Jeder Termin öffnet erst X Tage vorher. Noch nicht freigeschaltete Tage sind auf der Anmeldeseite ausgegraut und zeigen, ab wann die Anmeldung möglich ist.'
-                          : 'Either a fixed date (below, empty = open immediately) — or, when checked, rolling: each date opens only X days beforehand. Days not yet open appear greyed out on the registration page and show when registration becomes possible.'}
-                      </span>
-                    </span>
-                  </label>
-                  {/* v29.76: fester Modus — ein Datum fuer ALLE Termine. */}
+                  {/* v30.2: Datum ZUERST (direkt unter der Ueberschrift),
+                      Checkbox darunter — dieselbe Reihenfolge und derselbe
+                      Wortlaut („Rollierend je Termin") wie bei „Anmeldung
+                      bis"/„Abmeldung bis". Das Datumsfeld verschwindet,
+                      sobald rollierend gewaehlt ist. */}
                   {!openRuleEnabled && (
-                    <div style={{ marginTop: 10, paddingLeft: 28, maxWidth: 340 }}>
+                    <div style={{ maxWidth: 340 }}>
                       <DatePicker
                         selected={openRuleFixedDate ? new Date(openRuleFixedDate) : null}
                         onChange={(date: Date | null) => setOpenRuleFixedDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
@@ -13466,8 +13510,17 @@ export default function EventCreationPage(): React.ReactElement {
                       )}
                     </div>
                   )}
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.85rem', margin: '8px 0' }}>
+                    <input
+                      type="checkbox"
+                      checked={openRuleEnabled}
+                      onChange={e => setOpenRuleEnabled(e.target.checked)}
+                      style={{ width: 16, height: 16, cursor: 'pointer' }}
+                    />
+                    <span>{isDe ? 'Rollierend je Termin' : 'Rolling per date'}</span>
+                  </label>
                   {openRuleEnabled && (
-                    <div style={{ marginTop: 10, paddingLeft: 28 }}>
+                    <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.88rem' }}>
                         {isDe ? 'Anmeldung möglich ab' : 'Registration opens'}
                         <input
@@ -13498,6 +13551,10 @@ export default function EventCreationPage(): React.ReactElement {
                           : (isDe
                             ? `Jeder Termin öffnet einzeln: ${openRuleDays} ${openRuleDays === 1 ? 'Tag' : 'Tage'} vor seinem Datum.`
                             : `Each date opens individually: ${openRuleDays} ${openRuleDays === 1 ? 'day' : 'days'} before its date.`)}
+                        {' '}
+                        {isDe
+                          ? 'Noch nicht freigeschaltete Termine sind auf der Anmeldeseite ausgegraut und zeigen, ab wann die Anmeldung möglich ist.'
+                          : 'Dates not yet open appear greyed out on the registration page and show when registration becomes possible.'}
                       </p>
                     </div>
                   )}
@@ -13532,7 +13589,9 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               )}
               <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div className="form-group" style={{ marginBottom: 0 }}>
+                {/* v30.2: gleiche weisse Karte wie „Anmeldung ab" — die drei
+                    Fristen sollen als EINE Familie lesbar sein. */}
+                <div className="form-group" style={{ marginBottom: 0, background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: '10px 12px' }}>
                   <label className="form-label">
                     {/* v29.75: User-Wortlaut „Anmeldung bis" statt „Anmeldefrist". */}
                     {isDe ? 'Anmeldung bis' : 'Registration until'}
@@ -13573,9 +13632,53 @@ export default function EventCreationPage(): React.ReactElement {
                       Beim Umschalten auf rollierend wird das feste Datum
                       geleert — zwei gleichzeitig wirkende Fristen wuerde
                       niemand mehr nachvollziehen koennen.
-                      v29.77: fuer ALLE Sub-Event-Events, nicht nur Kalender. */}
+                      v29.77: fuer ALLE Sub-Event-Events, nicht nur Kalender.
+                      v30.2: Datum ZUERST, Checkbox darunter — konsistent
+                      zu „Anmeldung ab". */}
+                  {!(subEventsOptIn && regRuleEnabled) && (
+                  <DatePicker
+                    // v28.20: Im Klammer-Modus ist die Frist jetzt EDITIERBAR
+                    // (eigener State klammerDeadline, Piggyback) — gesetzt +
+                    // abgelaufen schließt das GESAMTE Event. Leer = wie bisher
+                    // offen bis zur spätesten Sub-Event-Frist.
+                    selected={subEventsOnlyMode
+                      ? (klammerDeadline ? new Date(klammerDeadline) : null)
+                      : (registrationDeadline ? new Date(registrationDeadline) : null)}
+                    onChange={(date: Date | null) => {
+                      const v = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '';
+                      if (subEventsOnlyMode) {
+                        setKlammerDeadline(v);
+                        // v28.20: Klammer-Frist in ALLE Sub-Event-Tabs
+                        // übernehmen (dort pro Sub-Event weiter anpassbar,
+                        // z.B. auf einen früheren Schluss). Beim Leeren der
+                        // Klammer-Frist bleiben die Sub-Fristen unberührt.
+                        if (v) {
+                          const iso = berlinLocalToUtcIso(v) || '';
+                          setSubEvents(prev => prev.map(s => ({ ...s, registrationDeadline: iso })));
+                        }
+                      } else {
+                        setRegistrationDeadline(v);
+                      }
+                    }}
+                    showTimeSelect
+                    timeFormat="HH:mm"
+                    timeIntervals={15}
+                    timeCaption="Uhrzeit"
+                    dateFormat="dd.MM.yyyy, HH:mm"
+                    locale="de"
+                    placeholderText={subEventsOnlyMode
+                      ? (isDe ? 'Optional — sonst automatisch aus Sub-Events' : 'Optional — otherwise automatic from sub-events')
+                      : 'Anmelde-Deadline'}
+                    className="form-input"
+                    wrapperClassName="dex-datepicker-wrapper"
+                    calendarClassName="dex-datepicker-calendar"
+                    popperPlacement="bottom-start"
+                    isClearable
+                    autoComplete="off"
+                  />
+                  )}
                   {subEventsOptIn && (
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.85rem', marginBottom: 8 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.85rem', margin: '8px 0' }}>
                       <input
                         type="checkbox"
                         checked={regRuleEnabled}
@@ -13622,48 +13725,6 @@ export default function EventCreationPage(): React.ReactElement {
                       </p>
                     </div>
                   )}
-                  {!(subEventsOptIn && regRuleEnabled) && (
-                  <DatePicker
-                    // v28.20: Im Klammer-Modus ist die Frist jetzt EDITIERBAR
-                    // (eigener State klammerDeadline, Piggyback) — gesetzt +
-                    // abgelaufen schließt das GESAMTE Event. Leer = wie bisher
-                    // offen bis zur spätesten Sub-Event-Frist.
-                    selected={subEventsOnlyMode
-                      ? (klammerDeadline ? new Date(klammerDeadline) : null)
-                      : (registrationDeadline ? new Date(registrationDeadline) : null)}
-                    onChange={(date: Date | null) => {
-                      const v = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '';
-                      if (subEventsOnlyMode) {
-                        setKlammerDeadline(v);
-                        // v28.20: Klammer-Frist in ALLE Sub-Event-Tabs
-                        // übernehmen (dort pro Sub-Event weiter anpassbar,
-                        // z.B. auf einen früheren Schluss). Beim Leeren der
-                        // Klammer-Frist bleiben die Sub-Fristen unberührt.
-                        if (v) {
-                          const iso = berlinLocalToUtcIso(v) || '';
-                          setSubEvents(prev => prev.map(s => ({ ...s, registrationDeadline: iso })));
-                        }
-                      } else {
-                        setRegistrationDeadline(v);
-                      }
-                    }}
-                    showTimeSelect
-                    timeFormat="HH:mm"
-                    timeIntervals={15}
-                    timeCaption="Uhrzeit"
-                    dateFormat="dd.MM.yyyy, HH:mm"
-                    locale="de"
-                    placeholderText={subEventsOnlyMode
-                      ? (isDe ? 'Optional — sonst automatisch aus Sub-Events' : 'Optional — otherwise automatic from sub-events')
-                      : 'Anmelde-Deadline'}
-                    className="form-input"
-                    wrapperClassName="dex-datepicker-wrapper"
-                    calendarClassName="dex-datepicker-calendar"
-                    popperPlacement="bottom-start"
-                    isClearable
-                    autoComplete="off"
-                  />
-                  )}
                   {subEventsOnlyMode && !klammerDeadline && effectiveKlammerDeadline && (
                     <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
                       {isDe
@@ -13685,7 +13746,7 @@ export default function EventCreationPage(): React.ReactElement {
                 {/* v29.25: Ohne Selbst-Abmeldung gibt es keine Abmeldefrist —
                     statt des Datumsfelds steht der Grund. */}
                 {!userCancelAllowed ? (
-                  <div className="form-group" style={{ marginBottom: 0 }}>
+                  <div className="form-group" style={{ marginBottom: 0, background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: '10px 12px' }}>
                     <label className="form-label">{isDe ? 'Abmeldung bis' : 'Cancellation until'}</label>
                     <div style={{
                       padding: '10px 12px', borderRadius: 8, fontSize: '0.8rem', lineHeight: 1.5,
@@ -13705,7 +13766,7 @@ export default function EventCreationPage(): React.ReactElement {
                    anpassbar. Anders als die Anmeldefrist hat die Klammer
                    KEINEN eigenen Durchgriff — die Wirkung kommt allein ueber
                    die kopierten Sub-Werte. */
-                <div className="form-group" style={{ marginBottom: 0 }}>
+                <div className="form-group" style={{ marginBottom: 0, background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: '10px 12px' }}>
                   <label className="form-label">
                     {/* v29.75: User-Wortlaut „Abmeldung bis". */}
                     {isDe ? 'Abmeldung bis' : 'Cancellation until'}
@@ -13727,9 +13788,40 @@ export default function EventCreationPage(): React.ReactElement {
                       </>
                     )} />
                   </label>
-                  {/* v29.76: wie „Anmeldung bis" — festes Datum ODER rollierend. */}
+                  {/* v29.76: wie „Anmeldung bis" — festes Datum ODER rollierend.
+                      v30.2: Datum ZUERST, Checkbox darunter — konsistent
+                      zu „Anmeldung ab". */}
+                  {!(subEventsOptIn && cancelRuleEnabled) && (
+                  <DatePicker
+                    selected={lastDeregisterDate ? new Date(lastDeregisterDate) : null}
+                    onChange={(date: Date | null) => {
+                      const v = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '';
+                      setLastDeregisterDate(v);
+                      // v29.75: Wie die Klammer-Anmeldefrist (v28.20) — in alle
+                      // Sub-Event-Tabs uebernehmen. Beim Leeren bleiben die
+                      // Sub-Fristen unberuehrt (bewusst gleiches Verhalten).
+                      if (subEventsOnlyMode && v) {
+                        const iso = berlinLocalToUtcIso(v) || '';
+                        setSubEvents(prev => prev.map(s => ({ ...s, lastDeregisterDate: iso })));
+                      }
+                    }}
+                    showTimeSelect
+                    timeFormat="HH:mm"
+                    timeIntervals={15}
+                    timeCaption="Uhrzeit"
+                    dateFormat="dd.MM.yyyy, HH:mm"
+                    locale="de"
+                    placeholderText="Abmeldefrist"
+                    className="form-input"
+                    wrapperClassName="dex-datepicker-wrapper"
+                    calendarClassName="dex-datepicker-calendar"
+                    popperPlacement="bottom-start"
+                    isClearable
+                    autoComplete="off"
+                  />
+                  )}
                   {subEventsOptIn && (
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.85rem', marginBottom: 8 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.85rem', margin: '8px 0' }}>
                       <input
                         type="checkbox"
                         checked={cancelRuleEnabled}
@@ -13783,35 +13875,6 @@ export default function EventCreationPage(): React.ReactElement {
                           : 'The deadline is computed per date and written into its settings — including dates added later.'}
                       </p>
                     </div>
-                  )}
-                  {!(subEventsOptIn && cancelRuleEnabled) && (
-                  <DatePicker
-                    selected={lastDeregisterDate ? new Date(lastDeregisterDate) : null}
-                    onChange={(date: Date | null) => {
-                      const v = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '';
-                      setLastDeregisterDate(v);
-                      // v29.75: Wie die Klammer-Anmeldefrist (v28.20) — in alle
-                      // Sub-Event-Tabs uebernehmen. Beim Leeren bleiben die
-                      // Sub-Fristen unberuehrt (bewusst gleiches Verhalten).
-                      if (subEventsOnlyMode && v) {
-                        const iso = berlinLocalToUtcIso(v) || '';
-                        setSubEvents(prev => prev.map(s => ({ ...s, lastDeregisterDate: iso })));
-                      }
-                    }}
-                    showTimeSelect
-                    timeFormat="HH:mm"
-                    timeIntervals={15}
-                    timeCaption="Uhrzeit"
-                    dateFormat="dd.MM.yyyy, HH:mm"
-                    locale="de"
-                    placeholderText="Abmeldefrist"
-                    className="form-input"
-                    wrapperClassName="dex-datepicker-wrapper"
-                    calendarClassName="dex-datepicker-calendar"
-                    popperPlacement="bottom-start"
-                    isClearable
-                    autoComplete="off"
-                  />
                   )}
                 </div>
                 )}

@@ -284,7 +284,10 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
           alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center',
         }}>
           <div style={{ color: '#fff', fontWeight: 700, fontSize: '1rem', marginBottom: 4 }}>
-            {isWaitlisted ? t('status.waitlist') : t('status.registered')}
+            {/* v30.2: „Angemeldet" gewinnt. Bei einer Termin-Reihe ist man oft
+                für viele Tage angemeldet und nur bei EINEM auf der Warteliste —
+                die Kachel behauptete dann pauschal „Warteliste". */}
+            {(isWaitlisted && !isRegistered) ? t('status.waitlist') : t('status.registered')}
           </div>
           <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem', marginBottom: 16 }}>
             {event.title}
@@ -297,7 +300,11 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
             >
               {t('myevents.title')}
             </button>
-            {canCreateEvents && (
+            {/* v30.2: auch per-Event-Organizer (isOwnOrganizer) — der Listen-
+                View kann das seit v24.90, das Kachel-Overlay sperrte sie aus:
+                Ein Organizer auf der Warteliste kam von hier aus nicht mehr
+                an „Für andere Person registrieren". */}
+            {(canCreateEvents || isOwnOrganizer) && (
               <button
                 className="btn btn-secondary"
                 style={{ fontSize: '0.8rem', padding: '6px 16px' }}
