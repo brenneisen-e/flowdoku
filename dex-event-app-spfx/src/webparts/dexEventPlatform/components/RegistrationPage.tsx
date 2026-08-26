@@ -267,7 +267,10 @@ export default function RegistrationPage(): React.ReactElement {
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
   const { events, isEventsLoading, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration, uploadFieldDocument, delegateRegistrationToAssistant, recordProxyDelegation, getLiveCounterStats, subscribeEventRealtime, getEventNumbersForEmail } = useEvents();
   const { currentUser, groupEmails } = useCurrentUser();
-  const { searchUsers, searchUser, isAdmin } = useRoles();
+  // v30.3: previewAsUser = „Übersicht als User sehen" (Organizer-/Admin-
+  // Vorschau). isAdmin kommt aus dem RoleContext bereits absenkt zurück;
+  // nur der per-Event-Organizer-Check unten muss lokal mitziehen.
+  const { searchUsers, searchUser, isAdmin, previewAsUser, setPreviewAsUser } = useRoles();
   const { locale: appLocale } = useLanguage();
   // v20.4: App-Modal statt nativem Browser-Alert.
   const { showAlert, confirmDialog } = useDialog();
@@ -368,10 +371,14 @@ export default function RegistrationPage(): React.ReactElement {
   // nicht, obwohl er das Event mitorganisiert. Serverseitig wird derselbe
   // Personenkreis in canRegisterForOthers() akzeptiert.
   const currentEmailLc = (currentUser.email || '').toLowerCase();
-  const isEventOrganizer = !!event && (
+  // v30.3: In der User-Vorschau zählt auch die per-Event-Organizer-
+  // Eigenschaft nicht — sonst blieben Frist-/Freischalt-Bypässe aktiv
+  // und die Seite sähe eben NICHT aus wie für reguläre User.
+  const isEventOrganizerReal = !!event && (
     event.organizerEmails.some(e => (e || '').toLowerCase() === currentEmailLc) ||
     (event.coOrganizerEmails || []).some(e => (e || '').toLowerCase() === currentEmailLc)
   );
+  const isEventOrganizer = !previewAsUser && isEventOrganizerReal;
   const isOrganizer = isEventOrganizer; // alten Namen behalten für Referenzen unten
   const canCreateEvents = isEventOrganizer || isAdmin; // statt tenant-weitem Organizer
 
@@ -1220,6 +1227,62 @@ export default function RegistrationPage(): React.ReactElement {
   const [userSearchIncludeIntl, setUserSearchIncludeIntl] = React.useState(false);
   const searchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // v30.4: Die folgenden Hooks standen bis v30.3 weiter unten — HINTER den
+  // bedingten Returns (!event, notYetActive, isFullyClosed). Das ging nur gut,
+  // solange diese Bedingungen während eines Seitenbesuchs konstant blieben;
+  // die neue User-Vorschau kippt isOrganizer/isAdmin aber zur LAUFZEIT und
+  // damit die Return-Bedingungen → React #300/#310 (weißer Bildschirm, siehe
+  // v30.3). Deshalb: In dieser Komponente stehen ALLE Hooks oberhalb von
+  // `if (!event)` — keine Ausnahme.
+  // v9.22: Warning-Modal für externe Email-Anmeldung (durch Organizer für
+  // Drittpersonen die noch kein Deloitte-Postfach haben). Default: nicht
+  // erlaubt; Organizer kann nach Bestätigung trotzdem fortfahren — die
+  // Bestätigungsmail geht dann nicht an die externe Adresse, sondern an
+  // den Organizer mit Datenschutz-Hinweis-Header.
+  const [externalEmailWarning, setExternalEmailWarning] = React.useState(false);
+  // v18.75: Sicherheitshinweis vor dem Absenden (pro Event konfiguriert). Der
+  // Dialog erscheint nach dem „Anmelden"-Klick und vor der eigentlichen
+  // (Normal-)Anmeldung. confirmDraft* halten die — in der Auswahl-Übersicht
+  // editierbare — Auswahl, bis der User bestätigt.
+  const [confirmDialogOpen, setConfirmDialogOpen] = React.useState(false);
+  const [confirmDialogAck, setConfirmDialogAck] = React.useState(false);
+  const [confirmDraftParent, setConfirmDraftParent] = React.useState(true);
+  const [confirmDraftSessions, setConfirmDraftSessions] = React.useState<Set<string>>(new Set());
+  const confirmDialogConfirmedRef = React.useRef(false);
+  const externalEmailConfirmedRef = React.useRef(false);
+  // v19.6: Bei stellvertretender Anmeldung einer INTERNEN Person (Deloitte)
+  // fragt nach dem „Anmelden"-Klick ein Modal, ob der/die Anmeldende (Organizer,
+  // Co-Organizer oder Assistenz) selbst auf CC der Bestätigungs-Mail gesetzt
+  // werden soll. ccSelfDecidedRef merkt sich, dass die Frage in diesem
+  // Submit-Durchlauf bereits beantwortet wurde (analog confirmDialogConfirmedRef);
+  // ccSelfRef hält die Entscheidung (true = auf CC).
+  const [ccSelfModalOpen, setCcSelfModalOpen] = React.useState(false);
+  const ccSelfDecidedRef = React.useRef(false);
+  const ccSelfRef = React.useRef(false);
+  // v24.48: Assistenz-Abfrage als Modal beim Register-Klick (Partner/Director).
+  const [assistantModalOpen, setAssistantModalOpen] = React.useState(false);
+  const assistantModalDecidedRef = React.useRef(false);
+  // v24.49: Auswahl SYNCHRON im Ref festhalten — der Re-Submit aus dem Modal
+  // läuft sonst mit dem alten State-Wert (setState ist async) und die CC würde
+  // verloren gehen. { enabled, value } wird beim Klick im Modal gesetzt.
+  const delegateChoiceRef = React.useRef<{ enabled: boolean; value: string } | null>(null);
+  /**
+   * v29.40: Personensuche, die nur Personen aus dem Verteilerkreis des Events
+   * liefert — für Felder mit `audienceOnly` (typisch: Zimmerpartner). Es ist
+   * dieselbe Prüfung wie beim Anmelden für andere (`isEventVisibleForUser`),
+   * damit Feld und Anmeldung nicht unterschiedlich urteilen.
+   *
+   * Die Treffer liefern Standort und Position mit; ohne diese Angaben kann ein
+   * reiner Standortfilter nicht greifen — dann bleibt die Person draußen, was
+   * die sichere Richtung ist (lieber jemanden zu wenig anbieten als eine
+   * Person, die gar nicht eingeladen ist).
+   */
+  const searchUsersInAudience = React.useCallback(async (q: string, includeIntl?: boolean) => {
+    const res = await searchUsers(q, includeIntl);
+    if (!event) return res;
+    return res.filter(u => isEventVisibleForUser(event, u.email, u.location || '', [], u.jobTitle || ''));
+  }, [searchUsers, event]);
+
   if (!event) {
     // v28.7: Beim Browser-Refresh restauriert der NavigationContext die
     // Anmeldeseite SOFORT, während die Events noch aus SharePoint laden —
@@ -1397,39 +1460,6 @@ export default function RegistrationPage(): React.ReactElement {
   const nothingToSubmit = !willRegisterParent && !registerForOther && !isTeamMode
     && !pendingJoinTeam && selectedSessions.size === 0 && !sessionsChanged;
 
-  // v9.22: Warning-Modal für externe Email-Anmeldung (durch Organizer für
-  // Drittpersonen die noch kein Deloitte-Postfach haben). Default: nicht
-  // erlaubt; Organizer kann nach Bestätigung trotzdem fortfahren — die
-  // Bestätigungsmail geht dann nicht an die externe Adresse, sondern an
-  // den Organizer mit Datenschutz-Hinweis-Header.
-  const [externalEmailWarning, setExternalEmailWarning] = React.useState(false);
-  // v18.75: Sicherheitshinweis vor dem Absenden (pro Event konfiguriert). Der
-  // Dialog erscheint nach dem „Anmelden"-Klick und vor der eigentlichen
-  // (Normal-)Anmeldung. confirmDraft* halten die — in der Auswahl-Übersicht
-  // editierbare — Auswahl, bis der User bestätigt.
-  const [confirmDialogOpen, setConfirmDialogOpen] = React.useState(false);
-  const [confirmDialogAck, setConfirmDialogAck] = React.useState(false);
-  const [confirmDraftParent, setConfirmDraftParent] = React.useState(true);
-  const [confirmDraftSessions, setConfirmDraftSessions] = React.useState<Set<string>>(new Set());
-  const confirmDialogConfirmedRef = React.useRef(false);
-  const externalEmailConfirmedRef = React.useRef(false);
-  // v19.6: Bei stellvertretender Anmeldung einer INTERNEN Person (Deloitte)
-  // fragt nach dem „Anmelden"-Klick ein Modal, ob der/die Anmeldende (Organizer,
-  // Co-Organizer oder Assistenz) selbst auf CC der Bestätigungs-Mail gesetzt
-  // werden soll. ccSelfDecidedRef merkt sich, dass die Frage in diesem
-  // Submit-Durchlauf bereits beantwortet wurde (analog confirmDialogConfirmedRef);
-  // ccSelfRef hält die Entscheidung (true = auf CC).
-  const [ccSelfModalOpen, setCcSelfModalOpen] = React.useState(false);
-  const ccSelfDecidedRef = React.useRef(false);
-  const ccSelfRef = React.useRef(false);
-  // v24.48: Assistenz-Abfrage als Modal beim Register-Klick (Partner/Director).
-  const [assistantModalOpen, setAssistantModalOpen] = React.useState(false);
-  const assistantModalDecidedRef = React.useRef(false);
-  // v24.49: Auswahl SYNCHRON im Ref festhalten — der Re-Submit aus dem Modal
-  // läuft sonst mit dem alten State-Wert (setState ist async) und die CC würde
-  // verloren gehen. { enabled, value } wird beim Klick im Modal gesetzt.
-  const delegateChoiceRef = React.useRef<{ enabled: boolean; value: string } | null>(null);
-
   // v29.27: Sub-Event-Fragen INLINE in der Sub-Event-Karte — nicht mehr im
   // Bestätigen-Modal. Der Teilnehmer sieht damit direkt an der Kachel, welche
   // Frage zu welchem Termin gehört (die Hauptevent-Fragen stehen darunter mit
@@ -1579,6 +1609,15 @@ export default function RegistrationPage(): React.ReactElement {
   );
 
   const handleSubmit = async (): Promise<void> => {
+    // v30.4: User-Vorschau ist NUR zum Ansehen — hier ist die letzte
+    // gemeinsame Stelle vor jeder echten Anmeldung (selbst, für Dritte,
+    // Team), deshalb sitzt die Sperre hier statt an jedem Button.
+    if (previewAsUser) {
+      setError(locale === 'de'
+        ? 'Vorschau-Modus: Du siehst die Anmeldemaske gerade so, wie reguläre User sie sehen — Anmelden ist hier deaktiviert. Beende die Vorschau über den blauen Balken oben, um dich anzumelden.'
+        : 'Preview mode: you are viewing the form as regular users see it — registering is disabled here. End the preview via the blue bar at the top to register.');
+      return;
+    }
     // v17.25: Demo-Showcase-Event — keine echte Anmeldung. Freundlicher
     // Hinweis statt SP-Roundtrip; der Context-Guard würde ohnehin no-oppen.
     if (event?.isDemoShowcase) {
@@ -2561,6 +2600,13 @@ export default function RegistrationPage(): React.ReactElement {
   // nötig — der User signalisiert nur, dass er nicht kommt.
   const handleDecline = async (): Promise<void> => {
     if (!event || isDeclining) return;
+    // v30.4: Auch die Absage ist ein Schreibvorgang — in der Vorschau gesperrt.
+    if (previewAsUser) {
+      setError(locale === 'de'
+        ? 'Vorschau-Modus: nur zum Ansehen — auch Absagen ist deaktiviert. Beende die Vorschau über den blauen Balken oben.'
+        : 'Preview mode: view only — declining is disabled as well. End the preview via the blue bar at the top.');
+      return;
+    }
     if (event.isDemoShowcase) {
       setError(locale === 'de'
         ? 'Dies ist ein Demo-Event — es wird nichts gespeichert.'
@@ -2681,29 +2727,6 @@ export default function RegistrationPage(): React.ReactElement {
     setMassImportProgress('');
     setMassImportResult({ ok, failed });
   };
-
-  /**
-   * v29.40: Personensuche, die nur Personen aus dem Verteilerkreis des Events
-   * liefert — für Felder mit `audienceOnly` (typisch: Zimmerpartner). Es ist
-   * dieselbe Prüfung wie beim Anmelden für andere (`isEventVisibleForUser`),
-   * damit Feld und Anmeldung nicht unterschiedlich urteilen.
-   *
-   * Die Treffer liefern Standort und Position mit; ohne diese Angaben kann ein
-   * reiner Standortfilter nicht greifen — dann bleibt die Person draußen, was
-   * die sichere Richtung ist (lieber jemanden zu wenig anbieten als eine
-   * Person, die gar nicht eingeladen ist).
-   *
-   * v30.3: VOR die frühen Returns (declined/submitted) verschoben. Als
-   * LETZTER Hook hinter ihnen riss er beim Umschalten auf den Erfolgs-
-   * screen die Hook-Reihenfolge (React #300, „Rendered fewer hooks") —
-   * die ganze App stand danach weiß. Hooks dürfen in dieser Komponente
-   * nur oberhalb dieser Zeile stehen.
-   */
-  const searchUsersInAudience = React.useCallback(async (q: string, includeIntl?: boolean) => {
-    const res = await searchUsers(q, includeIntl);
-    if (!event) return res;
-    return res.filter(u => isEventVisibleForUser(event, u.email, u.location || '', [], u.jobTitle || ''));
-  }, [searchUsers, event]);
 
   if (declined) {
     return (
@@ -2890,9 +2913,21 @@ export default function RegistrationPage(): React.ReactElement {
                     const full = (ce.title || '').trim();
                     const pipe = full.lastIndexOf('|');
                     const name = (pipe >= 0 ? full.substring(pipe + 1).trim() : full) || (locale === 'de' ? 'ohne Titel' : 'untitled');
-                    const date = ce.startDate ? formatDate(ce.startDate) : '';
+                    // v30.4: Kalender-Tage tragen das Datum bereits im Titel
+                    // („Di. 01.09.2026") — „Titel | Datum" verdoppelte dieselbe
+                    // Angabe, und die 00:00-Uhrzeit eines ganztägigen Termins
+                    // sagt nichts. Nennt der Titel den Tag schon, hängen wir
+                    // höchstens eine echte Uhrzeit an.
+                    const d = ce.startDate ? new Date(ce.startDate) : null;
+                    const valid = !!d && isFinite(d.getTime());
+                    const dayStr = valid ? d!.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+                    const timeStr = valid ? d!.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '';
+                    const titleHasDate = !!dayStr && name.indexOf(dayStr) >= 0;
+                    const label = titleHasDate
+                      ? (timeStr && timeStr !== '00:00' ? `${name} | ${timeStr}` : name)
+                      : (valid ? `${name} | ${formatDate(ce.startDate)}` : name);
                     return (
-                      <li key={ce.id} style={{ marginBottom: 3 }}>{date ? `${name} | ${date}` : name}</li>
+                      <li key={ce.id} style={{ marginBottom: 3 }}>{label}</li>
                     );
                   })}
                 </ul>
@@ -3314,6 +3349,33 @@ export default function RegistrationPage(): React.ReactElement {
 
   return (
     <div className="page-container">
+      {/* v30.4: „Übersicht als User sehen" — Vorschau-Einstieg für Organizer
+          dieses Events UND Admins. In der aktiven Vorschau sind die Rollen
+          abgesenkt (isEventOrganizerReal bleibt als echte Eigenschaft), die
+          Leiste blendet sich über !previewAsUser aus; beendet wird die
+          Vorschau über den globalen blauen Banner ganz oben. */}
+      {(isEventOrganizerReal || isAdmin) && !previewAsUser && (
+        <div style={{
+          padding: '10px 16px', marginBottom: 16, borderRadius: 'var(--dex-radius-md)',
+          background: 'rgba(0,118,168,0.08)', border: '1px solid var(--dex-blue, #0076a8)',
+          color: 'var(--dex-gray-800)', fontSize: '0.85rem',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+        }}>
+          <span>
+            {locale === 'de'
+              ? <>Du siehst diese Seite mit <strong>Organizer-/Admin-Hinweisen und -Rechten</strong>. Mit der Vorschau prüfst du, wie die Anmeldemaske für reguläre User aussieht — <strong>nur zum Ansehen, Anmelden ist dort deaktiviert</strong>.</>
+              : <>You are viewing this page with <strong>organizer/admin notices and rights</strong>. The preview shows the registration form exactly as regular users see it — <strong>view only, registering is disabled there</strong>.</>}
+          </span>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ fontSize: '0.8rem', padding: '6px 14px', whiteSpace: 'nowrap', flexShrink: 0 }}
+            onClick={() => setPreviewAsUser(true)}
+          >
+            {locale === 'de' ? 'Übersicht als User sehen' : 'View as user'}
+          </button>
+        </div>
+      )}
       {showLocationBanner && (
         <div style={{
           padding: '10px 16px', marginBottom: 16, borderRadius: 'var(--dex-radius-md)',

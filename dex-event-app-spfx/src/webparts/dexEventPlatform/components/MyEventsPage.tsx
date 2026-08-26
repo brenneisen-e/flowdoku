@@ -3872,7 +3872,11 @@ function MyEventSubEvents(props: {
   // aktive Anmeldungen bleiben IMMER sichtbar (verwalten/abmelden); Organizer
   // des Events und Admins sehen weiterhin alles.
   const { currentUser, groupEmails } = useCurrentUser();
-  const { isAdmin } = useRoles();
+  // v30.4: previewAsUser = „Übersicht als User sehen" — isAdmin kommt aus dem
+  // RoleContext bereits abgesenkt, der per-Event-Organizer-Check unten zieht
+  // lokal mit; An-/Abmelden ist in der Vorschau gesperrt (handleToggle).
+  const { isAdmin, previewAsUser } = useRoles();
+  const { showAlert } = useDialog();
   const [busyId, setBusyId] = React.useState<string | null>(null);
   // v15.21: Voll-Bild-Progress-Modal beim (Peer-)Cancel + Anmeldung. Vorher
   // war nur die einzelne Karte mit „…" markiert — bei Peer-Cancels haben die
@@ -3961,6 +3965,13 @@ function MyEventSubEvents(props: {
   };
 
   const handleToggle = async (childEventId: string, currentlyRegistered: boolean): Promise<void> => {
+    // v30.4: User-Vorschau ist nur zum Ansehen — An- UND Abmelden gesperrt.
+    if (previewAsUser) {
+      await showAlert(isDe
+        ? 'Vorschau-Modus: Du siehst die Ansicht gerade so, wie reguläre User sie sehen — An- und Abmelden ist hier deaktiviert. Beende die Vorschau über den blauen Balken oben.'
+        : 'Preview mode: you are viewing this as regular users see it — registering and cancelling are disabled here. End the preview via the blue bar at the top.');
+      return;
+    }
     // v29.25: Backstop zur Button-Sperre — Selbst-Abmeldung nach der Frist
     // deaktiviert (Organizer-Option auf dem Parent).
     if (currentlyRegistered && selfCancelLocked(props.childEvents.find(ce => ce.id === childEventId), props.parentEvent)) return;
@@ -4062,7 +4073,9 @@ function MyEventSubEvents(props: {
   // v22.13: nur Sub-Events zeigen, die der User laut Sub-Event-Sichtbarkeit
   // sehen darf — ODER in denen er bereits aktiv angemeldet ist.
   const myEmailLc = (currentUser.email || '').toLowerCase();
-  const isParentOrganizer = (props.parentEvent.organizerEmails || []).some(e => (e || '').toLowerCase() === myEmailLc);
+  // v30.4: In der User-Vorschau zählt auch die per-Event-Organizer-Eigenschaft
+  // nicht — sonst blieben Sichtbarkeit und Freischalt-Bypässe die des Organizers.
+  const isParentOrganizer = !previewAsUser && (props.parentEvent.organizerEmails || []).some(e => (e || '').toLowerCase() === myEmailLc);
   const visibleChildren = (isAdmin || isParentOrganizer)
     ? props.childEvents
     : props.childEvents.filter(ce =>
