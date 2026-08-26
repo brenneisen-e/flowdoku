@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.12.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.13.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -385,13 +385,23 @@ EventService nach dem Auszug prüfen — tsc meldet ungenutzte Importe NICHT
 (ESLint erst im bundle), und ein privater Helfer der Sektion kann
 Aufrufer außerhalb haben (`loadFileAsBase64` → public Stub).
 
-**Stufe 3 — die Render-Bäume (offen, teuer).** In `EventCreationPage` stecken
-~16k Zeilen in EINER Funktion; die neun Schritte lesen aus rund 200
-State-Variablen. Ein Schritt als eigene Komponente braucht einen echten
-Props-Vertrag (oder einen Wizard-Context) — sonst schiebt man 200 Props durch.
-Das ist genau der Umbau, der laut „Fallen" schon einmal die Tag-Balance
-zerriss. **Nicht ohne Browser-Verifikation anfangen**, und immer nur EINEN
-Schritt pro Release.
+**Stufe 3 — die Render-Bäume (BEGONNEN, v30.13).** Vier in sich geschlossene
+Schritte sind als Komponenten in `components/wizard/steps/` — `BillingStep`
+(Index 9), `DocumentsStep` (7), `FunZoneStep` (8), `TeamStep` (6). Rezept,
+das die Tag-Balance-Falle umgeht: (1) Blockgrenzen über die
+`currentStep === N`-Marker und den `close Step`-Kommentar bestimmen, (2)
+Ident-Inventar des Blocks (grep auf Bezeichner) → Props-Vertrag NUR aus dem,
+was der Block wirklich liest, (3) JSX per Skript 1:1 verschieben — erlaubte
+Transformationen sind genau drei: dedent, `currentStep === N` → `visible`,
+Schluss-Kommentar weg, (4) Audit-Diff des Komponenten-Bodys gegen den
+HEAD-Stand (muss IDENTISCH melden), (5) tsc + bundle. `t`/`isDe` und
+`confirmDialog`/`showAlert` holen sich die Komponenten selbst über
+`useLanguage()`/`useDialog()`; `visible` steuert display:none statt unmount
+(Eingaben überleben den Schrittwechsel — wie vorher). Lokale IIFE-Helfer
+eines Blocks (Fun-Zone: handleDrop, renderQuestionCard) wandern mit. Die
+verbleibenden Schritte 0–5 sind scope-fähig (`scopeSub`/`patchScopeSub`,
+~200 States) — dort NICHT ohne Browser-Verifikation weiterschneiden, und
+immer nur EINEN Schritt pro Release.
 
 ## Offene Arbeit
 
