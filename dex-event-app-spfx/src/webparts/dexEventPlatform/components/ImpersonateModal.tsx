@@ -41,12 +41,18 @@ export default function ImpersonateModal({ open, onClose }: ImpersonateModalProp
   const { events } = useEvents();
   const isDe = locale === 'de';
   const [location, setLocation] = React.useState('');
+  // v29.73: Demo-User gehoert zum Verteilerkreis. Events mit Verteiler-
+  // Sichtbarkeit waren im Demo-Modus unsichtbar bzw. gesperrt — der
+  // synthetische demo.user steht in keinem Verteiler. Damit liess sich die
+  // Anmeldemaske solcher Events nie aus Teilnehmersicht ansehen.
+  const [isAudienceMember, setIsAudienceMember] = React.useState(false);
   const [isCheckInTeam, setIsCheckInTeam] = React.useState(false);
   const [checkInEventId, setCheckInEventId] = React.useState('');
 
   React.useEffect(() => {
     if (!open) {
       setLocation('');
+      setIsAudienceMember(false);
       setIsCheckInTeam(false);
       setCheckInEventId('');
     }
@@ -64,6 +70,7 @@ export default function ImpersonateModal({ open, onClose }: ImpersonateModalProp
       firstName: 'Demo',
       surname: 'User',
       location: location.trim(),
+      audienceMember: isAudienceMember,
       checkInEventId: isCheckInTeam ? checkInEventId : '',
     });
     try { window.localStorage.setItem(STORAGE_KEY, payload); }
@@ -99,6 +106,36 @@ export default function ImpersonateModal({ open, onClose }: ImpersonateModalProp
             ))}
           </select>
         </label>
+        {/* v29.73: Verteilerkreis-Simulation. Ohne sie sind Events mit
+            Verteiler-Sichtbarkeit im Demo-Modus unsichtbar — demo.user steht
+            in keinem Verteiler, die Anmeldemaske solcher Events liess sich
+            also nie aus Teilnehmersicht pruefen. Der STANDORT-Filter bleibt
+            bewusst aktiv, sonst waere die Auswahl oben wirkungslos. */}
+        <div style={{
+          padding: '10px 12px',
+          background: 'var(--dex-gray-50, #f7f7f7)',
+          border: '1px solid var(--dex-gray-200)',
+          borderRadius: 10,
+        }}>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: '0.85rem', color: 'var(--dex-gray-700)', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={isAudienceMember}
+              onChange={e => setIsAudienceMember(e.target.checked)}
+              style={{ cursor: 'pointer', marginTop: 2 }}
+            />
+            <span>
+              {isDe
+                ? 'Ich gehöre zum Verteilerkreis der Events'
+                : 'I belong to the audience of the events'}
+              <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                {isDe
+                  ? 'Die Verteiler-Sichtbarkeit gilt für dich als erfüllt — du siehst die Anmeldemaske so, wie sie ein Mitglied des Verteilers sieht. Der Standortfilter bleibt aktiv.'
+                  : 'Audience visibility counts as satisfied for you — you see the registration page as an audience member would. The location filter stays active.'}
+              </span>
+            </span>
+          </label>
+        </div>
         <div style={{
           padding: '10px 12px',
           background: 'var(--dex-gray-50, #f7f7f7)',

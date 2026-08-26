@@ -110,6 +110,23 @@ function normalizeAudience(audience: string[]): string[] {
 // Logik filtern kann (eine Sub-Section nur zeigen, wenn der User sie laut ihrer
 // EIGENEN Sichtbarkeit sehen darf — vorher sah jeder Hauptevent-Teilnehmer alle
 // Sub-Events).
+/**
+ * v29.73: Demo-Modus — „Ich gehöre zum Verteilerkreis". Einmal pro Seitenladen
+ * gelesen (der Demo-Modus startet und endet ohnehin mit einem Reload). Bewusst
+ * NUR die Verteiler-Prüfung: Der Standortfilter bleibt aktiv, sonst wäre die
+ * Standort-Auswahl im Demo-Dialog wirkungslos.
+ */
+let _demoAudienceMember: boolean | null = null;
+function demoAudienceMember(): boolean {
+  if (_demoAudienceMember === null) {
+    try {
+      const raw = typeof window !== 'undefined' ? window.localStorage?.getItem('dex_demo_impersonation') : null;
+      _demoAudienceMember = !!(raw && JSON.parse(raw).audienceMember === true);
+    } catch { _demoAudienceMember = false; }
+  }
+  return _demoAudienceMember;
+}
+
 export function isEventVisibleForUser(
   event: DeloitteEvent,
   userEmail: string,
@@ -141,7 +158,11 @@ export function isEventVisibleForUser(
   if (!hasLocationFilter && !hasAudienceFilter) return true;
 
   const locMatch = matchesLocation(userLocation, event.locationAudience);
-  const audMatch = matchesAudience(userEmail, userLocation, normalizedAud, userGroupEmails, event.audienceResolvedEmails || []);
+  // v29.73: Im Demo-Modus mit Verteilerkreis-Haken gilt der Verteiler als
+  // erfüllt — der Standortfilter (locMatch) bleibt unangetastet.
+  const audMatch = demoAudienceMember()
+    ? true
+    : matchesAudience(userEmail, userLocation, normalizedAud, userGroupEmails, event.audienceResolvedEmails || []);
 
   // Default = AND. Nur wenn explizit OR konfiguriert wird Union genutzt.
   if (event.filterMode === 'OR') {
