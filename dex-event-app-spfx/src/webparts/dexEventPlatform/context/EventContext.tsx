@@ -500,7 +500,7 @@ interface EventContextType {
    *  `DEX_CreateOutlookEvent`-Flow triggert — die alte Subsite mit
    *  Anmeldungen bleibt erhalten. */
   deleteEventItemOnly: (eventId: string) => Promise<boolean>;
-  updateEvent: (eventId: string, updates: Record<string, unknown>) => Promise<boolean>;
+  updateEvent: (eventId: string, updates: Record<string, unknown>, opts?: { skipReload?: boolean }) => Promise<boolean>;
   /** v26.51: Klartext-Grund, warum das letzte updateEvent fehlschlug — für die
    *  Fehlermeldung im Wizard (vorher stand der Grund nur in der Konsole). */
   getLastEventUpdateError: () => string;
@@ -1266,17 +1266,10 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     try {
       if (e.CustomFields) customFields = JSON.parse(e.CustomFields);
     } catch { /* ungültig */ }
-    // v11.18: Debug-Trace für den helpText-Roundtrip — den rohen SP-String
-    // logge ich direkt aus, damit wir sehen können ob helpText/onlyForGroup
-    // tatsächlich in dem zurückkommenden JSON drin sind. Wenn ja → das
-    // Wizard-Loadmapping verschluckt sie. Wenn nicht → SP hat sie beim
-    // Save gar nicht erst gespeichert.
-    if (typeof e.CustomFields === 'string' && e.CustomFields.indexOf('helpText') >= 0) {
-      // Nur ausführlich loggen wenn das Event tatsächlich helpText
-      // beinhaltet — sonst lautes Logging für alle alten Events.
-      // eslint-disable-next-line no-console
-      console.log('[DEX][load] Raw CustomFields for event', e.Id, e.Title, ':\n', e.CustomFields);
-    }
+    // v29.77: Der v11.18-Debug-Trace („Raw CustomFields for event …") ist
+    // entfernt — er druckte bei JEDEM loadEvents die CustomFields fremder
+    // Events in die Konsole (las sich wie fremde Daten im falschen Event)
+    // und stringifizierte megabyteweise JSON.
 
     return {
       id: e.Id.toString(),
@@ -4262,7 +4255,15 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     try { return eventService.lastUpdateEventError || ''; } catch { return ''; }
   }
 
-  async function updateEvent(eventId: string, updates: Record<string, unknown>): Promise<boolean> {
+  // v29.77: opts.skipReload — der Wizard schreibt beim Speichern eines
+  // Kalender-Events VIELE Items nacheinander (je Sub-Event Update + Outlook-
+  // Dirty-Flags). Bis jetzt zog JEDER dieser Schreibvorgaenge ein volles
+  // loadEvents nach sich: alle ~94 Events (28 MB JSON) + Teilnehmerzaehler
+  // ueber alle Subsites. Bei 19 Terminen waren das ~20 Komplett-Reloads —
+  // DAS hat das Request-Kontingent verbrannt und die 429-Drossel (bis hin
+  // zur Nutzer-Sperre) ausgeloest, nicht die 19 kleinen POSTs. Schleifen
+  // setzen skipReload und laden am Ende EINMAL.
+  async function updateEvent(eventId: string, updates: Record<string, unknown>, opts?: { skipReload?: boolean }): Promise<boolean> {
     // v19.33: Roh-Stand VOR dem Update holen, damit das Audit-Log nur die
     // WIRKLICH geänderten Felder protokolliert (Vorher → Nachher). Vorher loggte
     // es alle Payload-Keys — der Wizard schreibt aber immer den kompletten Payload.
@@ -4293,7 +4294,9 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       // ein frisch erstellter Sibling) fehlschlägt, soll das den updateEvent-
       // Erfolg nicht zu einem white-screen-blow-up führen. allSettled in loadEvents
       // selbst sollte das auch schon abfangen, hier nur belt-and-suspenders.
-      try { await loadEvents(); } catch (err) { console.warn('[DEX] post-update loadEvents fehlgeschlagen:', err); }
+      if (!opts?.skipReload) {
+        try { await loadEvents(); } catch (err) { console.warn('[DEX] post-update loadEvents fehlgeschlagen:', err); }
+      }
     }
     return success;
   }
