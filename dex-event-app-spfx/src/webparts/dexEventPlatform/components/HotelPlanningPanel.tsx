@@ -1012,11 +1012,12 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
       toDay(r.HotelTo),
       String(nightsBetween(toDay(r.HotelFrom), toDay(r.HotelTo))),
     ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(';'))).join('\r\n');
-    // BOM, damit Excel die Umlaute richtig liest.
-    const blob = new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8;' });
+    // BOM, damit Excel die Umlaute richtig liest — als Escape-Sequenz statt
+    // als unsichtbares Literal-Zeichen (no-irregular-whitespace).
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `Rooming_${(hotelName || 'alle').replace(/[^\w\-]+/g, '_')}.csv`;
+    a.download = `Rooming_${(hotelName || 'alle').replace(/[^\w-]+/g, '_')}.csv`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   };

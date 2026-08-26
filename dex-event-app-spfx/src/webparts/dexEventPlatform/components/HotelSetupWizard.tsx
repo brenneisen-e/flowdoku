@@ -619,17 +619,17 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
           <div style={{ fontSize: '0.86rem', lineHeight: 1.6 }}>
             {isDe
               ? <><strong>{people.length}</strong> Personen sind angemeldet.{fields.main
-                ? <> Die Frage „{fields.main.label}" haben <strong>{asked}</strong> mit Ja beantwortet{declined > 0 ? <>, <strong>{declined}</strong> mit Nein</> : ''}.</>
+                ? <> Die Frage „{fields.main.label}&ldquo; haben <strong>{asked}</strong> mit Ja beantwortet{declined > 0 ? <>, <strong>{declined}</strong> mit Nein</> : ''}.</>
                 : <> Im Anmeldeformular gibt es keine Hotel-Frage — der Assistent geht davon aus, dass grundsätzlich alle ein Zimmer brauchen können.</>}</>
               : <><strong>{people.length}</strong> people are registered.{fields.main
-                ? <> <strong>{asked}</strong> answered „{fields.main.label}" with yes{declined > 0 ? <>, <strong>{declined}</strong> with no</> : ''}.</>
+                ? <> <strong>{asked}</strong> answered „{fields.main.label}&ldquo; with yes{declined > 0 ? <>, <strong>{declined}</strong> with no</> : ''}.</>
                 : <> There is no hotel question in the registration form — the wizard assumes anyone may need a room.</>}</>}
           </div>
           {fields.extra && (
             <div style={{ fontSize: '0.86rem', lineHeight: 1.6, marginTop: 6, color: 'var(--dex-green-dark, #4a7c1f)' }}>
               {isDe
-                ? <>Außerdem fragt euer Formular unter „{fields.extra.label}" nach Zusatznächten — <strong>{withExtra}</strong> Person(en) haben dort etwas angegeben. Der Assistent liest das aus und rechnet die Extranächte daraus.</>
-                : <>Your form also asks about additional nights under „{fields.extra.label}" — <strong>{withExtra}</strong> person(s) answered there. The wizard reads that and derives the extra nights from it.</>}
+                ? <>Außerdem fragt euer Formular unter „{fields.extra.label}&ldquo; nach Zusatznächten — <strong>{withExtra}</strong> Person(en) haben dort etwas angegeben. Der Assistent liest das aus und rechnet die Extranächte daraus.</>
+                : <>Your form also asks about additional nights under „{fields.extra.label}&ldquo; — <strong>{withExtra}</strong> person(s) answered there. The wizard reads that and derives the extra nights from it.</>}
             </div>
           )}
         </div>
@@ -655,8 +655,8 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
         <div style={{ ...box, background: 'rgba(134,188,37,0.07)', borderColor: 'var(--dex-green, #86bc25)' }}>
           <div style={{ fontSize: '0.82rem', lineHeight: 1.55 }}>
             {isDe
-              ? <>Du kannst jederzeit zurückgehen und alles ändern. <strong>Gespeichert wird nichts</strong>, bevor du am Ende auf „Übernehmen" klickst — und die Anzeige für die Teilnehmer bleibt aus, bis du sie separat freigibst.</>
-              : <>You can go back and change anything at any time. <strong>Nothing is saved</strong> before you click „Apply" at the end — and attendee visibility stays off until you release it separately.</>}
+              ? <>Du kannst jederzeit zurückgehen und alles ändern. <strong>Gespeichert wird nichts</strong>, bevor du am Ende auf „Übernehmen&ldquo; klickst — und die Anzeige für die Teilnehmer bleibt aus, bis du sie separat freigibst.</>
+              : <>You can go back and change anything at any time. <strong>Nothing is saved</strong> before you click „Apply&ldquo; at the end — and attendee visibility stays off until you release it separately.</>}
           </div>
         </div>
       </div>
@@ -832,8 +832,8 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
         <p style={explain}>
           {fields.main
             ? (isDe
-              ? <>Das ist der Zeitraum, für den ihr im Anmeldeformular gefragt habt: Wer „<strong>{fields.main.label}</strong>" mit Ja beantwortet hat, bekommt genau diesen Zeitraum. Zusätzliche Nächte kommen darunter dazu.</>
-              : <>This is the period you asked about in the registration form: everyone who answered „<strong>{fields.main.label}</strong>" with yes gets exactly this period. Additional nights are handled below.</>)
+              ? <>Das ist der Zeitraum, für den ihr im Anmeldeformular gefragt habt: Wer „<strong>{fields.main.label}</strong>&ldquo; mit Ja beantwortet hat, bekommt genau diesen Zeitraum. Zusätzliche Nächte kommen darunter dazu.</>
+              : <>This is the period you asked about in the registration form: everyone who answered „<strong>{fields.main.label}</strong>&ldquo; with yes gets exactly this period. Additional nights are handled below.</>)
             : (isDe
               ? <>Trag den Zeitraum ein, den die <strong>meisten</strong> Teilnehmer brauchen — meist die Nacht bzw. Nächte des Events. Jede Person bekommt ihn automatisch; Abweichungen regelst du darunter.</>
               : <>Enter the period <strong>most</strong> attendees need — usually the night(s) of the event itself. Everyone gets it automatically; exceptions are handled below.</>)}
@@ -868,8 +868,8 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
         {labelRange && main && (labelRange.from !== main.from || labelRange.to !== main.to) && (
           <div style={{ marginTop: 8, fontSize: '0.78rem', color: 'var(--dex-gray-700)' }}>
             {isDe
-              ? <>Eure Frage heißt „<strong>{fields.main ? fields.main.label : ''}</strong>" — das entspricht {fmtDay(labelRange.from, isDe)}–{fmtDay(labelRange.to, isDe)}:{' '}</>
-              : <>Your question is „<strong>{fields.main ? fields.main.label : ''}</strong>" — that means {fmtDay(labelRange.from, isDe)}–{fmtDay(labelRange.to, isDe)}:{' '}</>}
+              ? <>Eure Frage heißt „<strong>{fields.main ? fields.main.label : ''}</strong>&ldquo; — das entspricht {fmtDay(labelRange.from, isDe)}–{fmtDay(labelRange.to, isDe)}:{' '}</>
+              : <>Your question is „<strong>{fields.main ? fields.main.label : ''}</strong>&ldquo; — that means {fmtDay(labelRange.from, isDe)}–{fmtDay(labelRange.to, isDe)}:{' '}</>}
             <button type="button" onClick={() => setMainRange(labelRange.from, labelRange.to)}
               style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline', fontSize: '0.78rem' }}>
               {isDe ? 'übernehmen' : 'apply'}
@@ -895,8 +895,8 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
             </div>
             <p style={{ ...explain, marginBottom: 8 }}>
               {isDe
-                ? <>Euer Formular fragt unter „<strong>{fields.range.label}</strong>" direkt nach An- und Abreise. Jede Person bekommt genau ihren Zeitraum — der Standard oben zählt nur für alle ohne Angabe.</>
-                : <>Your form asks for arrival and departure directly under „<strong>{fields.range.label}</strong>". Everyone gets exactly their own period — the standard above only applies to those without an answer.</>}
+                ? <>Euer Formular fragt unter „<strong>{fields.range.label}</strong>&ldquo; direkt nach An- und Abreise. Jede Person bekommt genau ihren Zeitraum — der Standard oben zählt nur für alle ohne Angabe.</>
+                : <>Your form asks for arrival and departure directly under „<strong>{fields.range.label}</strong>&ldquo;. Everyone gets exactly their own period — the standard above only applies to those without an answer.</>}
             </p>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 420 }}>
@@ -941,8 +941,8 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
             </div>
             <p style={{ ...explain, marginBottom: 8 }}>
               {isDe
-                ? <>Eure Teilnehmer haben unter „<strong>{fields.extra.label}</strong>" selbst angegeben, ob sie länger brauchen. Der Assistent hat die Antworten gezählt und den passenden Zeitraum vorgeschlagen — prüf die Zuordnung und korrigiere sie, wo sie nicht stimmt.</>
-                : <>Your attendees stated under „<strong>{fields.extra.label}</strong>" whether they need longer. The wizard counted the answers and proposed a matching period — check and correct it where needed.</>}
+                ? <>Eure Teilnehmer haben unter „<strong>{fields.extra.label}</strong>&ldquo; selbst angegeben, ob sie länger brauchen. Der Assistent hat die Antworten gezählt und den passenden Zeitraum vorgeschlagen — prüf die Zuordnung und korrigiere sie, wo sie nicht stimmt.</>
+                : <>Your attendees stated under „<strong>{fields.extra.label}</strong>&ldquo; whether they need longer. The wizard counted the answers and proposed a matching period — check and correct it where needed.</>}
             </p>
             {/* v28.62: Ob jemand überhaupt ein Zimmer bekommt, entscheidet die
                 Bedarfsfrage — nicht diese Tabelle. Ohne den Hinweis las sich die
@@ -950,8 +950,8 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
             {fields.main && (
               <div style={{ fontSize: '0.79rem', color: 'var(--dex-gray-700)', background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: '7px 10px', marginBottom: 8, lineHeight: 1.5 }}>
                 {isDe
-                  ? <>Die Frage „<strong>{fields.main.label}</strong>" ist bereits der Standard-Zeitraum oben: <strong>{roomPeople.length}</strong> von {people.length} haben dort Ja gesagt{declinedCount > 0 ? <>, {declinedCount} Nein</> : ''}. Die Tabelle unten zählt <strong>nur diese {roomPeople.length}</strong> und klärt allein, wer davon zusätzlich früher anreist oder länger bleibt.</>
-                  : <>The question „<strong>{fields.main.label}</strong>" already IS the standard period above: <strong>{roomPeople.length}</strong> of {people.length} said yes{declinedCount > 0 ? <>, {declinedCount} said no</> : ''}. The table below counts <strong>only those {roomPeople.length}</strong> and settles solely who arrives earlier or stays longer on top.</>}
+                  ? <>Die Frage „<strong>{fields.main.label}</strong>&ldquo; ist bereits der Standard-Zeitraum oben: <strong>{roomPeople.length}</strong> von {people.length} haben dort Ja gesagt{declinedCount > 0 ? <>, {declinedCount} Nein</> : ''}. Die Tabelle unten zählt <strong>nur diese {roomPeople.length}</strong> und klärt allein, wer davon zusätzlich früher anreist oder länger bleibt.</>
+                  : <>The question „<strong>{fields.main.label}</strong>&ldquo; already IS the standard period above: <strong>{roomPeople.length}</strong> of {people.length} said yes{declinedCount > 0 ? <>, {declinedCount} said no</> : ''}. The table below counts <strong>only those {roomPeople.length}</strong> and settles solely who arrives earlier or stays longer on top.</>}
               </div>
             )}
             <div style={{ overflowX: 'auto' }}>
@@ -1340,7 +1340,7 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
             {isDe ? '„Kein Hotel nötig" überspringen' : 'Skip „no accommodation"'}
             <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
               {fields.main
-                ? (isDe ? `Wer „${fields.main.label}" mit Nein beantwortet hat, bekommt kein Zimmer zugeteilt.` : `Anyone who answered „${fields.main.label}" with no is not assigned a room.`)
+                ? (isDe ? `Wer „${fields.main.label}“ mit Nein beantwortet hat, bekommt kein Zimmer zugeteilt.` : `Anyone who answered „${fields.main.label}“ with no is not assigned a room.`)
                 : (isDe ? 'Wer im Anmeldeformular ausdrücklich kein Hotel wollte, bekommt keins zugeteilt.' : 'Anyone who explicitly declined accommodation is not assigned.')}
             </span>
           </span>
@@ -1387,8 +1387,8 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
               )}
               {plan.excludedAssigned > 0 && (
                 <li>{isDe
-                  ? <><strong>{plan.excludedAssigned}</strong> haben bereits ein Hotel und bleiben unberührt — setz oben in Schritt 3 „Bestehende Zuordnungen überschreiben", wenn sie mit verteilt werden sollen.</>
-                  : <><strong>{plan.excludedAssigned}</strong> already have a hotel and stay untouched — tick „Overwrite existing assignments" in step 3 to include them.</>}</li>
+                  ? <><strong>{plan.excludedAssigned}</strong> haben bereits ein Hotel und bleiben unberührt — setz oben in Schritt 3 „Bestehende Zuordnungen überschreiben&ldquo;, wenn sie mit verteilt werden sollen.</>
+                  : <><strong>{plan.excludedAssigned}</strong> already have a hotel and stay untouched — tick „Overwrite existing assignments&ldquo; in step 3 to include them.</>}</li>
               )}
               {plan.excludedNoWish > 0 && (
                 <li>{isDe
