@@ -6951,6 +6951,12 @@ export default function EventCreationPage(): React.ReactElement {
   // ============================================================
   const DRAFT_KEY = 'dex_event_creation_draft_v1';
   const draftPromptShownRef = React.useRef(false);
+  // v30.1: Zeitpunkt der letzten Zwischenspeicherung — fuer die Anzeige
+  // „Zwischengespeichert am …" ueber dem Formular. lastDraftJsonRef
+  // verhindert die Endlosschleife Autosave → setState → Re-Render →
+  // Autosave: unveraenderter Stand wird weder geschrieben noch gemeldet.
+  const [draftSavedAt, setDraftSavedAt] = React.useState<number | null>(null);
+  const lastDraftJsonRef = React.useRef('');
   const buildDraftPayload = (): Record<string, unknown> => ({
     title, description, location, addrStreet, addrHouseNo, addrZip, addrCity,
     organizer, organizerEmails, contactName, contactEmail, contactInfo,
@@ -7064,7 +7070,12 @@ export default function EventCreationPage(): React.ReactElement {
       try {
         const hasSubstance = title.trim().length > 0 || description.trim().length > 0 || subEvents.length > 0;
         if (!hasSubstance) return;
-        localStorage.setItem(DRAFT_KEY, JSON.stringify({ savedAt: Date.now(), data: buildDraftPayload() }));
+        const json = JSON.stringify(buildDraftPayload());
+        if (json === lastDraftJsonRef.current) return; // nichts Neues — nicht schreiben
+        lastDraftJsonRef.current = json;
+        const now = Date.now();
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({ savedAt: now, data: JSON.parse(json) }));
+        setDraftSavedAt(now);
       } catch { /* Quota voll / Privacy-Modus — Autosave ist best-effort */ }
     }, 1500);
     return () => clearTimeout(t);
@@ -8826,6 +8837,25 @@ export default function EventCreationPage(): React.ReactElement {
         {/* v28.78: Scope-Karte zwischen Schritt-Leiste und Formular — eine
             Ebene für „für wen gilt das hier?", die durch alle Schritte trägt. */}
         {renderGlobalScopeBar()}
+
+        {/* v30.1: Autosave-Anzeige der Neu-Anlage — Speicher-Symbol plus
+            Zeitstempel der letzten Zwischenspeicherung, auf jedem Schritt
+            sichtbar. Nur Neu-Anlage: im Edit-Modus gibt es keinen
+            Entwurfs-Zwischenspeicher (s. v30.0-Block). */}
+        {!isEditMode && draftSavedAt !== null && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '6px 2px 2px' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                <polyline points="17 21 17 13 7 13 7 21" />
+                <polyline points="7 3 7 8 15 8" />
+              </svg>
+              {isDe
+                ? `Zwischengespeichert am ${new Date(draftSavedAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })} um ${new Date(draftSavedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`
+                : `Auto-saved on ${new Date(draftSavedAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })} at ${new Date(draftSavedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`}
+            </span>
+          </div>
+        )}
 
         {/* ===== Formular ===== */}
         <div>
@@ -20040,7 +20070,16 @@ export default function EventCreationPage(): React.ReactElement {
 
       {/* v17.3: Unsaved-Changes-Confirm-Modal. Erscheint, wenn der User
           auf „Zurück" klickt und das Formular gegenüber dem Initial-
-          Snapshot Änderungen hat. */}
+          Snapshot Änderungen hat.
+          v30.1: Drei modusabhängige Wege, gestapelt statt nebeneinander:
+           - Neu-Anlage: „Entwurf speichern" legt den Stand in den
+             Entwurfs-Zwischenspeicher (v30.0) und verlässt den Wizard —
+             beim nächsten Öffnen der Event-Erstellung wird er angeboten.
+             „Event verwerfen" löscht den Entwurf endgültig.
+           - Edit: „Änderungen speichern" = attemptSubmit wie bisher
+             (blockt die Back-Nav, nach erfolgreichem Save navigiert der
+             submit-success-Dispatch); „Änderungen verwerfen" verlässt
+             ohne Speichern. */}
       {unsavedConfirmOpen && (
         <Modal
           open={true}
@@ -20050,46 +20089,81 @@ export default function EventCreationPage(): React.ReactElement {
           ariaLabel={isDe ? 'Ungespeicherte Änderungen' : 'Unsaved changes'}
         >
           <h3 style={{ margin: '0 0 12px', fontSize: '1.1rem', color: 'var(--dex-orange-dark, #b35a00)' }}>
-            {isDe ? 'Ungespeicherte Änderungen' : 'Unsaved changes'}
+            {isDe
+              ? (isEditMode ? 'Ungespeicherte Änderungen' : 'Entwurf noch nicht gespeichert')
+              : (isEditMode ? 'Unsaved changes' : 'Draft not saved yet')}
           </h3>
           <p style={{ margin: '0 0 16px', fontSize: '0.9rem', lineHeight: 1.5, color: 'var(--dex-gray-700)' }}>
             {isDe
-              ? <>Du hast Änderungen am Event vorgenommen, die noch <strong>nicht gespeichert</strong> sind. Wenn du jetzt zurückgehst, gehen sie verloren. Was möchtest du tun?</>
-              : <>You have made changes to this event that are <strong>not saved yet</strong>. Going back now will discard them. What do you want to do?</>}
+              ? (isEditMode
+                ? <>Du hast Änderungen am Event vorgenommen, die noch <strong>nicht gespeichert</strong> sind. Was möchtest du tun?</>
+                : <>Dein Event ist noch <strong>nicht angelegt</strong>. Du kannst den Stand als Entwurf behalten — beim nächsten Öffnen der Event-Erstellung machst du genau hier weiter. Hochgeladene Bilder sind im Entwurf nicht enthalten.</>)
+              : (isEditMode
+                ? <>You have made changes to this event that are <strong>not saved yet</strong>. What do you want to do?</>
+                : <>Your event is <strong>not created yet</strong>. You can keep this state as a draft — next time you open event creation you continue right here. Uploaded images are not part of the draft.</>)}
           </p>
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {isEditMode ? (
+              /* v17.7: blockt die laufende Back-Nav (resolve(false)) und
+                 triggert attemptSubmit; nach erfolgreichem Save dispatched
+                 EventCreationPage „dex-event-submit-success" und
+                 DexEventPlatform navigiert zum Organizer-Menü. */
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  unsavedConfirmOpen.resolve(false);
+                  setUnsavedConfirmOpen(null);
+                  window.setTimeout(() => { attemptSubmit(); }, 0);
+                }}
+                style={{ fontSize: '0.9rem', width: '100%', justifyContent: 'center' }}
+              >
+                <Send size={14} /> {isDe ? 'Änderungen speichern' : 'Save changes'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  // Sofort schreiben — der 1,5-s-Debounce des Autosaves hat
+                  // die letzten Eingaben sonst evtl. noch nicht gesichert.
+                  try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ savedAt: Date.now(), data: buildDraftPayload() })); } catch { /* best-effort */ }
+                  unsavedConfirmOpen.resolve(true);
+                  setUnsavedConfirmOpen(null);
+                }}
+                style={{ fontSize: '0.9rem', width: '100%', justifyContent: 'center' }}
+              >
+                <Send size={14} /> {isDe ? 'Entwurf speichern' : 'Save draft'}
+              </button>
+            )}
             <button
               type="button"
               className="btn btn-secondary"
               onClick={() => { unsavedConfirmOpen.resolve(false); setUnsavedConfirmOpen(null); }}
-              style={{ fontSize: '0.85rem' }}
+              style={{ fontSize: '0.9rem', width: '100%', justifyContent: 'center' }}
             >
-              {isDe ? 'Hier bleiben' : 'Stay here'}
+              {isDe
+                ? (isEditMode ? 'Bearbeitung fortsetzen' : 'Eventerstellung fortsetzen')
+                : (isEditMode ? 'Continue editing' : 'Continue creating')}
             </button>
             <button
               type="button"
               className="btn btn-danger"
-              onClick={() => { unsavedConfirmOpen.resolve(true); setUnsavedConfirmOpen(null); }}
-              style={{ fontSize: '0.85rem' }}
-            >
-              {isDe ? 'Änderungen verwerfen' : 'Discard changes'}
-            </button>
-            {/* v17.7: Dritter Button — Speichern und zurück zum Event.
-                Wir blockieren die laufende Back-Nav (resolve(false)) und
-                triggern attemptSubmit; nach erfolgreichem Save dispatched
-                EventCreationPage selbst „dex-event-submit-success" und
-                DexEventPlatform navigiert zum Organizer-Menü. */}
-            <button
-              type="button"
-              className="btn btn-primary"
               onClick={() => {
-                unsavedConfirmOpen.resolve(false);
+                if (!isEditMode) {
+                  // Verwerfen heisst verwerfen — auch den Entwurfs-
+                  // Zwischenspeicher, sonst bietet ihn der naechste
+                  // Besuch wieder an.
+                  try { localStorage.removeItem(DRAFT_KEY); } catch { /* */ }
+                }
+                unsavedConfirmOpen.resolve(true);
                 setUnsavedConfirmOpen(null);
-                window.setTimeout(() => { attemptSubmit(); }, 0);
               }}
-              style={{ fontSize: '0.85rem' }}
+              style={{ fontSize: '0.9rem', width: '100%', justifyContent: 'center' }}
             >
-              <Send size={14} /> {isDe ? 'Speichern und zurück zum Event' : 'Save and return to event'}
+              {isDe
+                ? (isEditMode ? 'Änderungen verwerfen' : 'Event verwerfen')
+                : (isEditMode ? 'Discard changes' : 'Discard event')}
             </button>
           </div>
         </Modal>
