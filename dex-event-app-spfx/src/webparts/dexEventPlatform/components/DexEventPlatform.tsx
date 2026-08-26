@@ -118,6 +118,43 @@ function ImpersonationBanner(props: { currentPage?: string }): React.ReactElemen
   );
 }
 
+// v30.3: Banner für die Organizer-/Admin-Vorschau „Übersicht als User
+// sehen" (RoleContext.previewAsUser). Anders als die Demo-Impersonation
+// bleibt die eigene Identität erhalten — der Banner muss deshalb klar
+// sagen, dass es NUR ums Ansehen geht und Anmelden gesperrt ist. Er
+// steht global über allen Seiten, damit die Vorschau auch nach einem
+// Wechsel zu „Meine Events" oder in andere Events beendbar bleibt.
+function UserPreviewBanner(): React.ReactElement | null {
+  const { previewAsUser, setPreviewAsUser } = useRoles();
+  if (!previewAsUser) return null;
+  return (
+    <div style={{
+      background: 'var(--dex-blue, #0076a8)',
+      color: '#fff',
+      padding: '10px 24px',
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+      fontSize: '0.85rem', fontWeight: 600,
+      borderBottom: '2px solid rgba(0,0,0,0.08)',
+    }}>
+      <span>
+        VORSCHAU · Du siehst die App gerade so, wie <strong>reguläre User</strong> sie sehen — nur zum Ansehen: <strong>Anmelden ist in der Vorschau deaktiviert</strong>.
+      </span>
+      <button
+        type="button"
+        onClick={() => setPreviewAsUser(false)}
+        style={{
+          background: '#fff', color: 'var(--dex-blue, #0076a8)',
+          border: 'none', borderRadius: 999,
+          padding: '4px 12px', fontWeight: 700, fontSize: '0.78rem',
+          cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,0.18)',
+        }}
+      >
+        Vorschau beenden
+      </button>
+    </div>
+  );
+}
+
 function AppContent(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
   const { isAdmin, isRolesLoading } = useRoles();
@@ -900,6 +937,7 @@ function AppContent(): React.ReactElement {
     <div className="app-layout" ref={layoutRef}>
       {!isBootLoading && <Header />}
       <ImpersonationBanner currentPage={currentPage} />
+      {!isBootLoading && <UserPreviewBanner />}
       {/* v23.37: Admin-Hinweis auf offene „Organizer werden"-Anträge (+ Deep-Link).
           v24.19: kein eigener Padding-Wrapper mehr — der erzeugte sonst einen
           weißen 12px-Streifen unter dem Header, auch wenn der Banner nichts

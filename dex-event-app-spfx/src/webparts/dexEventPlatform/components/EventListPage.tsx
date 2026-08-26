@@ -181,7 +181,10 @@ export default function EventListPage(): React.ReactElement {
   // erscheinen im Details-View des Parents (RegistrationPage), nicht eigenständig.
   const { topLevelEvents: events, isEventsLoading, getMyEventNumbers, childEventsOf, refreshParticipantCounts } = useEvents();
   const { currentUser, groupEmails } = useCurrentUser();
-  const { isAdmin, canCreateEvents } = useRoles();
+  // v30.4: previewAsUser senkt isAdmin/canCreateEvents bereits im RoleContext
+  // ab; nur der E-Mail-basierte Organizer-Check unten muss lokal mitziehen,
+  // damit „Meine Events als Organizer" und die Kachel-Badges verschwinden.
+  const { isAdmin, canCreateEvents, previewAsUser } = useRoles();
 
   // v19.17: KEIN 5-Sekunden-Polling mehr — das verursachte einen sichtbaren
   // Re-Render der ganzen Liste. Stattdessen die Teilnehmerzahlen nur EINMAL beim
@@ -273,10 +276,12 @@ export default function EventListPage(): React.ReactElement {
   // v20.0 (Audit): useCallback, damit die memoizte Filterkette unten eine
   // stabile Referenz als Dependency bekommt.
   const isOwnOrganizer = React.useCallback((e: DeloitteEvent): boolean => {
+    // v30.4: In der User-Vorschau gilt niemand als Organizer seiner Events.
+    if (previewAsUser) return false;
     const own = (e.organizerEmails || []).some((em: string) => (em || '').toLowerCase() === currentEmailLc);
     const co = (e.coOrganizerEmails || []).some((em: string) => (em || '').toLowerCase() === currentEmailLc);
     return own || co;
-  }, [currentEmailLc]);
+  }, [currentEmailLc, previewAsUser]);
   // v20.0 (Audit): die komplette Filter-/Sortier-Kette (Status → Entwurf →
   // Sichtbarkeit → Sortierung) lief vorher bei JEDEM Render neu über alle
   // Events. Jetzt memoizt — neu berechnet nur wenn sich Events, Filter,
@@ -539,7 +544,7 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
 }): React.ReactElement {
   const { navigate } = useNavigation();
   const { t } = useLanguage();
-  const { canCreateEvents } = useRoles();
+  const { canCreateEvents, previewAsUser } = useRoles();
   const isMobile = useIsMobile();
   return (
     <div className="my-events-list">
@@ -548,8 +553,9 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
         const isWait = myNumbers.waitlisted.includes(event.eventNumber);
         const targetPage = (isReg || isWait) ? 'my-events' : 'registration';
         // v11.90: Organizer-Badge in der List-View auch
-        const isOwn = (event.organizerEmails || []).some(em => (em || '').toLowerCase() === currentUserEmailLc)
-          || (event.coOrganizerEmails || []).some(em => (em || '').toLowerCase() === currentUserEmailLc);
+        // v30.4: in der User-Vorschau kein Organizer-Badge/-Bypass.
+        const isOwn = !previewAsUser && ((event.organizerEmails || []).some(em => (em || '').toLowerCase() === currentUserEmailLc)
+          || (event.coOrganizerEmails || []).some(em => (em || '').toLowerCase() === currentUserEmailLc));
         return (
           <div
             key={event.id}

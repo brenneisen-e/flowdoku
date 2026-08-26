@@ -27,6 +27,14 @@ interface RoleContextType {
   originalIsAdmin: boolean;
   /** v12.7: aktiv wenn Admin Demo-Impersonation gestartet hat. */
   isImpersonating: boolean;
+  /** v30.3: „Übersicht als User sehen" — leichter Vorschau-Modus für
+   *  Organizer UND Admins. Anders als die Demo-Impersonation bleibt die
+   *  eigene Identität (E-Mail, Standort, Anmeldungen) erhalten; nur die
+   *  Rollen-Bypässe fallen weg. Bewusst NICHT in localStorage: ein Reload
+   *  beendet die Vorschau, damit niemand versehentlich darin hängen
+   *  bleibt. Die Seiten sperren in der Vorschau zusätzlich das Anmelden. */
+  previewAsUser: boolean;
+  setPreviewAsUser: (on: boolean) => void;
   isOrganizer: boolean;
   canCreateEvents: boolean;
   /** v26: Der aktuelle User ist Power-User (Organizer/Admin mit IsPowerUser-Flag).
@@ -297,7 +305,10 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   // Standort. Wird in localStorage gehalten, damit das auch über
   // Reload bestehen bleibt. Beenden via Banner-Klick oben.
   const isImpersonating = typeof window !== 'undefined' && !!window.localStorage?.getItem('dex_demo_impersonation');
-  const effectiveRole: UserRole = isImpersonating ? 'User' : currentUserRole;
+  // v30.3: Organizer-/Admin-Vorschau „Übersicht als User sehen" — gleiche
+  // Rollen-Absenkung wie die Impersonation, aber ohne Identitätswechsel.
+  const [previewAsUser, setPreviewAsUser] = React.useState(false);
+  const effectiveRole: UserRole = (isImpersonating || previewAsUser) ? 'User' : currentUserRole;
   // v26.33: IT-Admin hat die gleichen App-Rechte wie Admin (nur keine Mails —
   // das regelt die exakte Role='Admin'-Filterung in den Empfänger-Listen).
   const isAdmin = effectiveRole === 'Admin' || effectiveRole === 'IT-Admin';
@@ -307,7 +318,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   // Impersonations-Modus bewusst false (wie isAdmin) — der Demo-User soll
   // exakt das sehen, was ein normaler User sieht.
   const myRoleEntry = roles.find(r => (r.userEmail || '').toLowerCase() === currentUserEmail.toLowerCase());
-  const isPowerUser = !isImpersonating && !!myRoleEntry?.isPowerUser;
+  const isPowerUser = !isImpersonating && !previewAsUser && !!myRoleEntry?.isPowerUser;
   const originalIsAdmin = currentUserRole === 'Admin' || currentUserRole === 'IT-Admin';
   const siteUrl = props.context.pageContext.web.absoluteUrl;
 
@@ -319,10 +330,10 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   const value = React.useMemo<RoleContextType>(() => ({
     roles, currentUserRole, isRolesLoading,
     isAdmin, isOrganizer, canCreateEvents, isPowerUser, siteUrl,
-    originalIsAdmin, isImpersonating,
+    originalIsAdmin, isImpersonating, previewAsUser, setPreviewAsUser,
     addRole, updateRole, setPowerUser, updateRoleLocation, removeRole, refreshRoles, searchUser, searchUsers, searchGroups, getGroupMembers, searchUsersByLocation,
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [roles, currentUserRole, isRolesLoading, isImpersonating, siteUrl]);
+  }), [roles, currentUserRole, isRolesLoading, isImpersonating, previewAsUser, siteUrl]);
 
   return React.createElement(
     RoleContext.Provider,

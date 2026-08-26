@@ -6042,6 +6042,16 @@ export default function EventCreationPage(): React.ReactElement {
           // angelegt hat — jeder weitere „Speichern"-Klick darf kein zweites
           // Event mehr erzeugen (s. handleSubmit).
           createdEventIdRef.current = String(eventId);
+          // v30.4: Der Entwurf ist mit dem Anlegen erledigt — HIER löschen.
+          // Der bisherige Aufräum-Effect hing an `submitted`, das der
+          // Create-Pfad nie setzt (er verlässt den Wizard über den
+          // Success-Dispatch) — deshalb tauchte der Entwurf nach dem
+          // Erstellen wieder auf. Zusätzlich draftSavedAt/pendingDraft
+          // zurücksetzen, damit weder Anzeige noch Autosave ihn wiederbeleben.
+          try { localStorage.removeItem(DRAFT_KEY); } catch { /* */ }
+          lastDraftJsonRef.current = '';
+          setDraftSavedAt(null);
+          setPendingDraft(null);
           pendingSuccessDispatchRef.current = { title, eventId: String(eventId), type: 'create' };
           setPendingSuccessDispatch({ title, eventId: String(eventId), type: 'create' });
           setShowSummaryModal(true);
@@ -6957,6 +6967,11 @@ export default function EventCreationPage(): React.ReactElement {
   // Autosave: unveraenderter Stand wird weder geschrieben noch gemeldet.
   const [draftSavedAt, setDraftSavedAt] = React.useState<number | null>(null);
   const lastDraftJsonRef = React.useRef('');
+  // v30.4: Statt eines Modal-Dialogs beim Öffnen zeigt eine KACHEL unter
+  // „Eigenes Event als Vorlage nutzen?" den gefundenen Entwurf — mit
+  // Fortsetzen- und Löschen-Button. pendingDraft hält ihn, bis der User
+  // entscheidet oder das eigene Tippen ihn überschreibt (draftSavedAt).
+  const [pendingDraft, setPendingDraft] = React.useState<{ savedAt: number; data: Record<string, unknown> } | null>(null);
   const buildDraftPayload = (): Record<string, unknown> => ({
     title, description, location, addrStreet, addrHouseNo, addrZip, addrCity,
     organizer, organizerEmails, contactName, contactEmail, contactInfo,
@@ -7026,9 +7041,9 @@ export default function EventCreationPage(): React.ReactElement {
     if (d.billingFields && typeof d.billingFields === 'object') setBillingFields(d.billingFields as Record<string, string>);
     setCurrentStep(Math.max(0, num(d.currentStep, 0)));
   };
-  // Beim Betreten der Neu-Anlage EINMAL fragen, ob der letzte Entwurf
-  // fortgesetzt werden soll. Ablehnen verwirft ihn (er wuerde sonst vom
-  // Autosave des frischen Formulars ohnehin ueberschrieben).
+  // Beim Betreten der Neu-Anlage EINMAL den letzten Entwurf laden. v30.4:
+  // kein Modal mehr — der Entwurf erscheint als Kachel in Schritt 1
+  // (unter der Vorlagen-Kachel), dort entscheidet der User per Button.
   React.useEffect(() => {
     if (isEditMode || draftPromptShownRef.current) return;
     draftPromptShownRef.current = true;
@@ -7043,21 +7058,7 @@ export default function EventCreationPage(): React.ReactElement {
         localStorage.removeItem(DRAFT_KEY);
         return;
       }
-      const when = new Date(parsed.savedAt || 0).toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-      const draftTitle = (typeof data.title === 'string' && data.title.trim()) ? `„${data.title.trim()}“` : (isDe ? '(ohne Titel)' : '(untitled)');
-      void (async () => {
-        const ok = await confirmDialog(
-          isDe
-            ? `Du hast einen nicht gespeicherten Entwurf vom ${when}: ${draftTitle}.\n\nMöchtest du ihn fortsetzen? „Abbrechen“ verwirft den Entwurf und startet leer.\n\nHinweis: Hochgeladene Bilder sind im Entwurf nicht enthalten und müssten neu gewählt werden.`
-            : `You have an unsaved draft from ${when}: ${draftTitle}.\n\nContinue it? “Cancel” discards the draft and starts fresh.\n\nNote: uploaded images are not part of the draft and would need to be re-selected.`,
-          { confirmLabel: isDe ? 'Entwurf fortsetzen' : 'Continue draft' },
-        );
-        if (ok) {
-          try { applyDraftPayload(data); } catch (err) { console.warn('[DEX] Entwurf-Wiederherstellung fehlgeschlagen:', err); }
-        } else {
-          try { localStorage.removeItem(DRAFT_KEY); } catch { /* */ }
-        }
-      })();
+      setPendingDraft({ savedAt: parsed.savedAt || 0, data });
     } catch { /* localStorage gesperrt o.ä. — kein Entwurf, kein Drama */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditMode]);
@@ -7065,7 +7066,10 @@ export default function EventCreationPage(): React.ReactElement {
   // gespeichert wird also ~1,5 s nach der letzten Aenderung (Tipp-Pause).
   // Kein Deps-Array: bei ~200 State-Variablen waere jede Liste sofort veraltet.
   React.useEffect(() => {
-    if (isEditMode || submitted) return undefined;
+    // v30.4: createdEventIdRef — nach erfolgreichem Anlegen darf der Autosave
+    // den soeben gelöschten Entwurf nicht aus dem noch gefüllten Formular
+    // neu erzeugen (der Wizard bleibt für das Summary-Modal gemountet).
+    if (isEditMode || submitted || createdEventIdRef.current) return undefined;
     const t = setTimeout(() => {
       try {
         const hasSubstance = title.trim().length > 0 || description.trim().length > 0 || subEvents.length > 0;
@@ -9017,6 +9021,60 @@ export default function EventCreationPage(): React.ReactElement {
                         </div>
                       </div>
                     )}
+                  </div>
+                );
+              })()}
+
+              {/* v30.4: Aktueller Entwurf als eigene Kachel unter der
+                  Vorlagen-Kachel — statt des Modal-Dialogs beim Öffnen.
+                  Verschwindet, sobald der User fortsetzt, löscht oder durch
+                  eigenes Tippen einen neuen Autosave erzeugt (draftSavedAt). */}
+              {!isEditMode && pendingDraft && draftSavedAt === null && (() => {
+                const when = new Date(pendingDraft.savedAt).toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+                const dTitle = (typeof pendingDraft.data.title === 'string' && (pendingDraft.data.title as string).trim())
+                  ? (pendingDraft.data.title as string).trim()
+                  : (isDe ? '(ohne Titel)' : '(untitled)');
+                return (
+                  <div style={{ margin: '0 0 22px', border: '2px solid var(--dex-orange, #ed8b00)', borderRadius: 16, background: 'linear-gradient(135deg, rgba(237,139,0,0.08), rgba(0,118,168,0.05))', padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+                    <div style={{ flexShrink: 0, width: 64, height: 80, borderRadius: 10, border: '3px solid #fff', boxShadow: '0 4px 10px rgba(0,0,0,0.18)', background: 'linear-gradient(135deg, var(--dex-orange, #ed8b00), var(--dex-blue, #0076a8))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg width={30} height={30} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                      </svg>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 220 }}>
+                      <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#b86700', marginBottom: 4 }}>
+                        {isDe ? 'Aktueller Entwurf' : 'Current draft'}
+                      </div>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                        {isDe
+                          ? <><strong>&bdquo;{dTitle}&ldquo;</strong> — zwischengespeichert am {when}. Hochgeladene Bilder sind im Entwurf nicht enthalten und müssten neu gewählt werden.</>
+                          : <><strong>&bdquo;{dTitle}&ldquo;</strong> — auto-saved on {when}. Uploaded images are not part of the draft and would need to be re-selected.</>}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 10, flexShrink: 0, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        style={{ fontSize: '0.85rem', padding: '8px 18px' }}
+                        onClick={() => {
+                          try { applyDraftPayload(pendingDraft.data); } catch (err) { console.warn('[DEX] Entwurf-Wiederherstellung fehlgeschlagen:', err); }
+                          setPendingDraft(null);
+                        }}
+                      >
+                        {isDe ? 'Entwurf fortsetzen' : 'Continue draft'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.85rem', padding: '8px 18px' }}
+                        onClick={() => {
+                          try { localStorage.removeItem(DRAFT_KEY); } catch { /* */ }
+                          setPendingDraft(null);
+                        }}
+                      >
+                        {isDe ? 'Entwurf löschen' : 'Delete draft'}
+                      </button>
+                    </div>
                   </div>
                 );
               })()}
@@ -11536,45 +11594,47 @@ export default function EventCreationPage(): React.ReactElement {
                   und die Antwort darauf, was ein Sub-Event ueberhaupt ist.
                   Zwei Kaesten uebereinander lasen sich wie zwei Themen. */}
               <div style={{ background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: '12px 16px', marginBottom: 12, border: '1px solid var(--dex-gray-200)' }}>
-                <div className="toggle-wrapper" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <label className="toggle">
-                    <input
-                      type="checkbox"
-                      checked={subEventsOptIn}
-                      onChange={e => {
-                        const on = e.target.checked;
-                        if (!on && subEvents.length > 0) {
-                          (async () => {
-                            // v28.2 SOFT-DISABLE: Der Toggle löscht NICHTS mehr.
-                            // Die Sub-Events (inkl. Teilnehmerlisten und
-                            // Anmeldungen) bleiben gespeichert und werden beim
-                            // Speichern nur per _subEventsDisabled-Flag von der
-                            // Anmeldeseite genommen. Wieder-Einschalten stellt
-                            // alles unverändert wieder her — auch über ein
-                            // Speichern hinweg. Endgültig löschen geht weiterhin
-                            // über das X an der einzelnen Sub-Event-Karte.
-                            const ok = await confirmDialog(
-                              isDe
-                                ? `Sub-Events deaktivieren? Deine ${subEvents.length} Sub-Event(s) bleiben mit allen Eingaben und Anmeldungen gespeichert, werden Teilnehmern nach dem Speichern aber nicht mehr angeboten. Beim Wieder-Einschalten ist alles unverändert da.`
-                                : `Deactivate sub-events? Your ${subEvents.length} sub-event(s) remain stored with all input and registrations, but after saving they are no longer offered to attendees. Re-enabling restores everything unchanged.`,
-                              { confirmLabel: isDe ? 'Deaktivieren' : 'Deactivate' }
-                            );
-                            if (ok) {
-                              setSubEventsOptIn(false);
-                              // Modi zurücksetzen, die ohne sichtbare Sub-Events
-                              // keinen Sinn ergeben (sonst wäre das Event für
-                              // Teilnehmer unbuchbar).
-                              if (subEventsOnlyMode) setSubEventsOnlyMode(false);
-                              if (requireSubEventSelection) setRequireSubEventSelection(false);
-                            }
-                          })().catch(() => { /* */ });
-                          return;
-                        }
-                        setSubEventsOptIn(on);
-                      }}
-                    />
-                    <span className="toggle-slider" />
-                  </label>
+                {/* v30.4: Checkbox statt Toggle-Slider — der Schalter war das
+                    einzige Slider-Element der Seite; alle anderen Optionen
+                    sind Checkboxen, und zwei Bedienformen für dieselbe Art
+                    Entscheidung lesen sich wie zwei verschiedene Dinge. */}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={subEventsOptIn}
+                    style={{ width: 18, height: 18, flexShrink: 0, cursor: 'pointer' }}
+                    onChange={e => {
+                      const on = e.target.checked;
+                      if (!on && subEvents.length > 0) {
+                        (async () => {
+                          // v28.2 SOFT-DISABLE: Der Toggle löscht NICHTS mehr.
+                          // Die Sub-Events (inkl. Teilnehmerlisten und
+                          // Anmeldungen) bleiben gespeichert und werden beim
+                          // Speichern nur per _subEventsDisabled-Flag von der
+                          // Anmeldeseite genommen. Wieder-Einschalten stellt
+                          // alles unverändert wieder her — auch über ein
+                          // Speichern hinweg. Endgültig löschen geht weiterhin
+                          // über das X an der einzelnen Sub-Event-Karte.
+                          const ok = await confirmDialog(
+                            isDe
+                              ? `Sub-Events deaktivieren? Deine ${subEvents.length} Sub-Event(s) bleiben mit allen Eingaben und Anmeldungen gespeichert, werden Teilnehmern nach dem Speichern aber nicht mehr angeboten. Beim Wieder-Einschalten ist alles unverändert da.`
+                              : `Deactivate sub-events? Your ${subEvents.length} sub-event(s) remain stored with all input and registrations, but after saving they are no longer offered to attendees. Re-enabling restores everything unchanged.`,
+                            { confirmLabel: isDe ? 'Deaktivieren' : 'Deactivate' }
+                          );
+                          if (ok) {
+                            setSubEventsOptIn(false);
+                            // Modi zurücksetzen, die ohne sichtbare Sub-Events
+                            // keinen Sinn ergeben (sonst wäre das Event für
+                            // Teilnehmer unbuchbar).
+                            if (subEventsOnlyMode) setSubEventsOnlyMode(false);
+                            if (requireSubEventSelection) setRequireSubEventSelection(false);
+                          }
+                        })().catch(() => { /* */ });
+                        return;
+                      }
+                      setSubEventsOptIn(on);
+                    }}
+                  />
                   {/* v28.90: „Sub-Events nutzen?" mit der Antwort „— nein
                       (Standard)" dahinter las sich wie ein halb ausgefülltes
                       Formularfeld. Jetzt eine schlichte Handlung — was ein
@@ -11600,7 +11660,7 @@ export default function EventCreationPage(): React.ReactElement {
                           : ` — deactivated. ${subEvents.length} sub-event(s) remain stored with all registrations but are hidden from attendees. Re-enable to restore.`)
                         : '')}
                   </span>
-                </div>
+                </label>
 
                 {/* v22.36: Erklärung, was ein Sub-Event ist (graue Beschreibungs-Box).
                     v28.96: Abstand zum Schalter darüber — die Box klebte direkt
@@ -18358,17 +18418,25 @@ export default function EventCreationPage(): React.ReactElement {
                   </div>
 
                   <div style={{ background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: '16px 18px', marginBottom: 16, border: '1px solid var(--dex-gray-200)' }}>
-                    <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 10 }}>
+                    <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 2 }}>
                       Abrechnungsrelevante Informationen
                     </label>
+                    {/* v30.4: Legende — die Sternchen standen unerklärt im Raum. */}
+                    <p style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', margin: '0 0 10px' }}>
+                      <span className="required">*</span> Pflichtangabe — ohne sie gilt die Abrechnungsmeldung an Finance &amp; Accounting als unvollständig. Speichern kannst du trotzdem jederzeit.
+                    </p>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px 16px' }}>
                       {BILLING_FIELDS.map(f => {
                         const val = billingFields[f.id] || '';
                         const empty = !val.trim();
                         const setVal = (v: string): void => setBillingFields(prev => ({ ...prev, [f.id]: v }));
                         return (
-                          <div key={f.id}>
-                            <label style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', display: 'block', marginBottom: 3 }}>
+                          // v30.4: Flex-Spalte, Label wächst — die Eingabefelder
+                          // einer Zeile stehen damit auf gleicher Höhe, auch wenn
+                          // ein Label („Name der Veranstaltung bzw. Anlass …")
+                          // zweizeilig umbricht.
+                          <div key={f.id} style={{ display: 'flex', flexDirection: 'column' }}>
+                            <label style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', display: 'block', marginBottom: 3, flexGrow: 1 }}>
                               {f.label} <span className="required">*</span>
                             </label>
                             {f.type === 'select' ? (
