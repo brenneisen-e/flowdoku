@@ -17444,13 +17444,29 @@ export default function EventCreationPage(): React.ReactElement {
                 width: '100%', maxWidth: 560, padding: 28, borderRadius: 16,
                 background: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
               }}>
+                {/* v29.69: Pilot-Badge — der Dialog erscheint nur Admins;
+                    das soll man ihm ansehen, damit im Test niemand glaubt,
+                    Organizer bekaemen diese Frage bereits. */}
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  background: 'rgba(237,139,0,0.14)', color: 'var(--dex-orange-dark, #b96a00)',
+                  border: '1px solid var(--dex-orange, #ed8b00)',
+                  borderRadius: 999, padding: '3px 12px', marginBottom: 10,
+                  fontSize: '0.72rem', fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase',
+                }}>
+                  Pilot — aktuell nur für Admins sichtbar
+                </span>
                 <h2 style={{ margin: '0 0 10px', fontSize: '1.15rem' }}>
                   Handelt es sich um ein abrechnungsrelevantes Event?
                 </h2>
                 <p style={{ fontSize: '0.9rem', color: 'var(--dex-gray-600)', margin: '0 0 18px' }}>
                   Abrechnungsrelevante Events sind Veranstaltungen, deren Kosten oder
                   Bewirtungsaufwendungen gegenüber Finance &amp; Accounting dokumentiert
-                  oder abgerechnet werden müssen.
+                  oder abgerechnet werden müssen. Das ist der Fall, wenn im Nachgang
+                  <strong> Rechnungen über die Kreditorenbuchhaltung eingereicht
+                  werden</strong> — etwa für Catering, eine externe Raumbuchung oder
+                  Anmeldegebühren (z.B. Startgelder für Läufer) — oder wenn für das
+                  Event <strong>Ariba-Bestellungen</strong> ausgelöst werden.
                 </p>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', margin: '0 0 18px' }}>
                   Die Entscheidung lässt sich später jederzeit im Schritt „Abrechnung&ldquo; ändern.
@@ -17488,7 +17504,11 @@ export default function EventCreationPage(): React.ReactElement {
                 <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px' }}>
                   Abrechnungsrelevante Events sind Veranstaltungen, deren Kosten oder
                   Bewirtungsaufwendungen gegenüber Finance &amp; Accounting dokumentiert
-                  oder abgerechnet werden müssen.
+                  oder abgerechnet werden müssen. Das ist der Fall, wenn im Nachgang
+                  <strong> Rechnungen über die Kreditorenbuchhaltung eingereicht
+                  werden</strong> — etwa für Catering, eine externe Raumbuchung oder
+                  Anmeldegebühren (z.B. Startgelder für Läufer) — oder wenn für das
+                  Event <strong>Ariba-Bestellungen</strong> ausgelöst werden.
                 </p>
                 <div style={{ display: 'flex', gap: 18 }}>
                   <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: '0.9rem' }}>
