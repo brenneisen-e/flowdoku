@@ -3363,8 +3363,8 @@ export default function RegistrationPage(): React.ReactElement {
         }}>
           <span>
             {locale === 'de'
-              ? <>Du siehst diese Seite mit <strong>Organizer-/Admin-Hinweisen und -Rechten</strong>. Mit der Vorschau prüfst du, wie die Anmeldemaske für reguläre User aussieht — <strong>nur zum Ansehen, Anmelden ist dort deaktiviert</strong>.</>
-              : <>You are viewing this page with <strong>organizer/admin notices and rights</strong>. The preview shows the registration form exactly as regular users see it — <strong>view only, registering is disabled there</strong>.</>}
+              ? <>Du bist <strong>Organizer bzw. Admin</strong> dieses Events und siehst deshalb zusätzliche Hinweise und Rechte. Klick auf <strong>&bdquo;Übersicht als User sehen&ldquo;</strong>, um diese Seite genau so zu sehen wie normale Teilnehmer. Die Vorschau ist reine Ansicht — anmelden kannst du dich darin nicht; beenden über den blauen Balken oben.</>
+              : <>You are an <strong>organizer or admin</strong> of this event and therefore see extra notices and rights. Click <strong>&bdquo;View as user&ldquo;</strong> to see this page exactly as regular attendees do. The preview is view-only — you cannot register in it; exit via the blue bar at the top.</>}
           </span>
           <button
             type="button"
@@ -5671,10 +5671,21 @@ export default function RegistrationPage(): React.ReactElement {
                                   >
                                     <span>{dayNum}</span>
                                     <span style={{ fontSize: '0.6rem', fontWeight: 600, opacity: 0.85 }}>
+                                      {/* v30.6: Abgelaufene Tages-Frist nennt das Datum —
+                                          „zu" liess offen, WARUM der Tag gesperrt ist und
+                                          bis wann man hätte buchen können. */}
                                       {notYetOpen
                                         ? (locale === 'de' ? `ab ${openFromLabel}` : `from ${openFromLabel}`)
-                                        : deadlineLocked
-                                        ? (locale === 'de' ? 'zu' : 'closed')
+                                        : deadlinePassed
+                                        ? (() => {
+                                            const dl = new Date(ce.registrationDeadline || '');
+                                            const dlLabel = isFinite(dl.getTime())
+                                              ? dl.toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit' })
+                                              : '';
+                                            return dlLabel
+                                              ? (locale === 'de' ? `war bis ${dlLabel}` : `until ${dlLabel}`)
+                                              : (locale === 'de' ? 'zu' : 'closed');
+                                          })()
                                         : isFull
                                         ? (locale === 'de' ? 'voll' : 'full')
                                         : hasCap

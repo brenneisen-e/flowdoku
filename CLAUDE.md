@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v29.47.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.6.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -259,6 +259,32 @@ nicht trennen; wer je Gruppe nachrückt, muss die Anzahl selbst ausrechnen
 Ausnahme: `splitSharedWaitlist` — dann ist es ein Topf mit der Summe beider
 Kapazitäten.
 
+**In `RegistrationPage` stehen ALLE Hooks vor `if (!event)` — keine
+Ausnahme.** Die Komponente hat frühe Returns (`!event`, `notYetActive`,
+`isFullyClosed`, `declined`, `submitted`), deren Bedingungen zur LAUFZEIT
+kippen (Submit, User-Vorschau). Ein Hook dahinter reißt die Hook-Reihenfolge
+→ React #300, kompletter Baum weiß. Genau so ist v30.3 der White Screen
+nach jeder Anmeldung entstanden (ein v29.40-useCallback hinter den
+Returns); v30.4 hat alle Hooks nach oben gezogen und einen Warnkommentar
+hinterlassen.
+
+**Rollierende Fristen sind seit v30.6 nur VORBELEGUNG.** Der
+Materialisierungs-Effect füllt bei unveränderter Regel nur LEERE Fristen
+(neue Kalender-Tage); manuelle Overrides im Sub-Reiter leben in den
+materialisierten Spalten selbst und überleben Wieder-Öffnen (kein
+Extra-Flag — `deadlineRuleKeyRef` startet mit dem geladenen Regelstand).
+Regel-Änderung erzwingt Neuberechnung ALLER Termine. Und: aktive
+Reg-Regel schaltet den v28.20-Hard-Cutoff der `klammerDeadline` ab
+(`isRegistrationFullyClosed` + Wizard schreibt `_klammerDeadline` dann
+nicht mehr) — eine stehengebliebene Klammer-Frist sperrte sonst das
+Gesamt-Event, obwohl nur Tag 1 zu war.
+
+**`_billing` trägt mehr als der Wizard schreibt.** Versand-Historie,
+Snapshots, Stempel und der F&A-Abschluss werden von den F&A-Flows über
+`patchEventOverridesValue` gepflegt; der Wizard erhält sie beim Speichern
+über `billingExtraRef`. Wer den `_billing`-Aufbau anfasst, darf diese
+Schlüssel nicht verlieren — sonst ist die revisionssichere Historie weg.
+
 **Inline-Styles können kein `:hover`.** Interaktive Elemente brauchen einen
 Hover-State (`hoverIdx`, `evTabHover`), sonst lesen sie sich als Beschriftung.
 
@@ -334,12 +360,21 @@ descriptionTemplates}`. Rezept: Block ausschneiden, `export` davor, Import
 zurück, `tsc`. **Danach immer `gulp bundle`** — ESLint findet die zu breit
 gefassten Importe, die `tsc` durchgehen lässt.
 
-**Stufe 2 — `EventService` (offen).** 13,2k Zeilen in einer Klasse, deren
-Methoden über `this.context`/`this.siteUrl` laufen. Aufteilbar nach Thema
-(Events, Teilnehmer, Hotels, Wartung), indem die Klasse die Methoden an
-Modul-Funktionen delegiert, die den Kontext als Parameter bekommen. Mechanisch
-und compiler-geprüft, aber viele Aufrufstellen — in einem Rutsch pro Thema,
-nicht querbeet.
+**Stufe 2 — `EventService` (BEGONNEN, v30.6).** Rezept ist etabliert und
+funktioniert: Sektion nach `services/events/<thema>.ts` kopieren, `this.` →
+`svc.`, Methodenkopf → `export async function name(svc: EventService, …)`,
+in der Klasse einen Delegations-Stub mit UNVERÄNDERTER Signatur stehen
+lassen (keine Aufrufstelle wird angefasst), `import type { EventService }`
+im Modul (Typ-Zyklus ist ok), dann `tsc` treiben lassen — private Helfer,
+die das Modul braucht, werden public (`_sp`, `_setListSecurity`,
+`getVisitorsGroupId` sind es schon; Unterstrich = „intern"). Modul-Konstanten
+(`REG_LIST_NAME`, `HOTEL_COLS_READY`) sind exportiert; Instanz-Zustand
+(z.B. `_idReorderCancelledFieldEnsured`) bleibt als public-Feld an der
+Klasse. Erledigt: `emailQueue`, `hotelPlanning`, `idReorder`, `changeLog`
+(12,9k → 12,2k Zeilen). Nächste Kandidaten in dieser Reihenfolge:
+DEX_Outlook (~500 Z.), EmailTemplates (~1,1k), Profil-Daten, Wochenbericht/
+Tickets/Archiv. IMMER ein Thema pro Rutsch, nach jedem `tsc` UND `gulp
+bundle` (ESLint sieht anderes als tsc).
 
 **Stufe 3 — die Render-Bäume (offen, teuer).** In `EventCreationPage` stecken
 ~16k Zeilen in EINER Funktion; die neun Schritte lesen aus rund 200

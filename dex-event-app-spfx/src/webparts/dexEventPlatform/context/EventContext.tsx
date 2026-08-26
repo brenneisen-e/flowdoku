@@ -1495,6 +1495,16 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
           return (ov && typeof ov._klammerDeadline === 'string') ? ov._klammerDeadline : '';
         } catch { return ''; }
       })(),
+      // v30.6: Rollierende Fristen-Regel als Signal fuer die Anmeldelogik —
+      // aktive Reg-Regel = Fristen gelten je Termin, kein harter
+      // Klammer-Schluss mehr (isRegistrationFullyClosed).
+      subDeadlineRule: (() => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          const r = ov && ov._subDeadlineRule;
+          return (r && typeof r === 'object') ? r : undefined;
+        } catch { return undefined; }
+      })(),
       // v28.2: Sub-Events SOFT-deaktiviert (Piggyback _subEventsDisabled) —
       // die Kind-Events bleiben inkl. Anmeldungen gespeichert, werden aber
       // auf der Anmeldeseite nicht mehr angeboten. Wieder-Einschalten im

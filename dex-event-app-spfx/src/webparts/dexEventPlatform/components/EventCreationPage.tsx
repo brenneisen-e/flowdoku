@@ -1868,7 +1868,22 @@ export default function EventCreationPage(): React.ReactElement {
   // weiter unten — TDZ, die v29.71-Falle). Ein eigener Guard ist auch nicht
   // noetig: ohne Sub-Event-Drafts ist die Schleife leer.
   // v29.77: gilt fuer ALLE Sub-Event-Events, nicht mehr nur den Kalender.
+  // v30.6: Die Regel ist nur noch eine VORBELEGUNG. Bei unveraenderter Regel
+  // werden ausschliesslich LEERE Fristen gefuellt (neu angeklickte Tage) —
+  // ein manuell ueberschriebener Wert im Sub-Reiter bleibt stehen, auch
+  // ueber Speichern/Wieder-Oeffnen hinweg (die Abweichung lebt in den
+  // materialisierten Spalten selbst, es braucht kein neues Flag). Aendert
+  // der Organizer die REGEL, rechnet sie bewusst wieder ALLE Termine neu.
+  // deadlineRuleKeyRef startet mit dem GELADENEN Regelstand, damit das
+  // Wieder-Oeffnen des Wizards nicht als Regel-Aenderung zaehlt.
+  const deadlineRuleKey = JSON.stringify({
+    r: (regRuleEnabled && regRuleAmount > 0) ? [regRuleAmount, regRuleUnit] : null,
+    c: (cancelRuleEnabled && cancelRuleAmount > 0 && userCancelAllowed) ? [cancelRuleAmount, cancelRuleUnit, cancelRuleAfter] : null,
+  });
+  const deadlineRuleKeyRef = React.useRef(deadlineRuleKey);
   React.useEffect(() => {
+    const force = deadlineRuleKeyRef.current !== deadlineRuleKey;
+    deadlineRuleKeyRef.current = deadlineRuleKey;
     if (!regRuleEnabled && !cancelRuleEnabled) return;
     const near = (a: string, b: string): boolean => {
       const ta = new Date(a || '').getTime(); const tb = new Date(b || '').getTime();
@@ -1881,11 +1896,13 @@ export default function EventCreationPage(): React.ReactElement {
         const patch: Partial<SubEventDraft> = {};
         if (regRuleEnabled && regRuleAmount > 0) {
           const iso = rollingDeadlineIso(s.startDate, regRuleAmount, regRuleUnit);
-          if (iso && !near(s.registrationDeadline || '', iso)) patch.registrationDeadline = iso;
+          const cur = s.registrationDeadline || '';
+          if (iso && (force ? !near(cur, iso) : !cur)) patch.registrationDeadline = iso;
         }
         if (cancelRuleEnabled && cancelRuleAmount > 0 && userCancelAllowed) {
           const iso = rollingDeadlineIso(s.startDate, cancelRuleAmount, cancelRuleUnit, cancelRuleAfter);
-          if (iso && !near(s.lastDeregisterDate || '', iso)) patch.lastDeregisterDate = iso;
+          const cur = s.lastDeregisterDate || '';
+          if (iso && (force ? !near(cur, iso) : !cur)) patch.lastDeregisterDate = iso;
         }
         if (Object.keys(patch).length === 0) return s;
         changed = true;
@@ -1893,7 +1910,8 @@ export default function EventCreationPage(): React.ReactElement {
       });
       return changed ? next : prev;
     });
-  }, [regRuleEnabled, regRuleAmount, regRuleUnit, cancelRuleEnabled, cancelRuleAmount, cancelRuleUnit, cancelRuleAfter, userCancelAllowed, subEvents]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deadlineRuleKey, regRuleEnabled, regRuleAmount, regRuleUnit, cancelRuleEnabled, cancelRuleAmount, cancelRuleUnit, cancelRuleAfter, userCancelAllowed, subEvents]);
   // v11.57: aktiv ausgewählter Tab in Step 6 (Kommunikation, v11.80 Renumbering). 0 = Haupt-Event,
   // N>0 = subEvents[N-1]. Beim Tab-Wechsel werden die Step-5-Felder zwischen
   // dem Top-Level-State und der jeweiligen Sub-Event-Slice gespiegelt — siehe
@@ -4872,7 +4890,11 @@ export default function EventCreationPage(): React.ReactElement {
         : {};
       // v28.20: explizite Klammer-Frist — nur im Klammer-Modus; leeres Feld
       // entfernt den Key (Blob wird frisch zusammengebaut).
+      // v30.6: Bei aktiver rollierender „Anmeldung bis"-Regel NIE mitschreiben
+      // — die Fristen gelten dann je Termin, und eine stehengebliebene
+      // Klammer-Frist sperrte sonst das gesamte Event (Soft-Opening-Fall).
       const klammerDeadlineConfig: Record<string, unknown> = (() => {
+        if (subEventsOptIn && regRuleEnabled) return {};
         const iso = (subEventsOnlyMode && klammerDeadline) ? deadlineToEndOfDayIso(klammerDeadline) : null;
         return iso ? { _klammerDeadline: iso } : {};
       })();
@@ -5704,7 +5726,9 @@ export default function EventCreationPage(): React.ReactElement {
           // v28.5: Bild-Banner-Layout (Piggyback).
           const imageBannerExtra = imageBanner ? { _imageBanner: true } : {};
           // v28.20: explizite Klammer-Frist (s. Edit-Pfad).
+          // v30.6: bei aktiver rollierender Regel nie mitschreiben (s. Edit-Pfad).
           const klammerDeadlineExtra: Record<string, unknown> = (() => {
+            if (subEventsOptIn && regRuleEnabled) return {};
             const iso = (subEventsOnlyMode && klammerDeadline) ? deadlineToEndOfDayIso(klammerDeadline) : null;
             return iso ? { _klammerDeadline: iso } : {};
           })();
@@ -13007,19 +13031,21 @@ export default function EventCreationPage(): React.ReactElement {
                           ? <>Frei pro Sub-Event setzbar. Leer lassen → die Fristen des Hauptevents gelten.</>
                           : <>Settable per sub-event. Leave empty → the main event’s deadlines apply.</>)}
                       </p>
-                      {/* v29.76: Rollierende Klammer-Regel sperrt das jeweilige
-                          Feld — der Wert wird aus dem Termin-Datum berechnet,
-                          eine Eingabe hier wuerde beim naechsten Render still
-                          ueberschrieben. */}
+                      {/* v29.76: Rollierende Klammer-Regel berechnete die Felder
+                          und sperrte sie. v30.6: Die Regel ist nur noch die
+                          VORBELEGUNG — hier darf pro Termin ueberschrieben
+                          werden (z.B. ein frueherer Schluss nur fuer diesen
+                          Tag). Der Effect fuellt nur noch leere Felder;
+                          „Auf Regel zuruecksetzen" holt den Regel-Wert zurueck. */}
                       {(regRuleEnabled || cancelRuleEnabled) && (
                         <p style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: -6, marginBottom: 10, lineHeight: 1.5 }}>
                           {isDe
-                            ? <>Rollierende Regel der Klammer aktiv — {regRuleEnabled && cancelRuleEnabled ? 'beide Fristen werden' : (regRuleEnabled ? '„Anmeldung bis" wird' : '„Abmeldung bis" wird')} automatisch aus dem Termin-Datum berechnet (einstellbar in Schritt 4 bei der Klammer).</>
-                            : <>Rolling bracket rule active — {regRuleEnabled && cancelRuleEnabled ? 'both deadlines are' : 'this deadline is'} computed from the date automatically (configured in step 4 on the bracket).</>}
+                            ? <>Rollierende Regel der Klammer aktiv (einstellbar in Schritt 4): {regRuleEnabled && cancelRuleEnabled ? 'beide Fristen werden' : (regRuleEnabled ? <>&bdquo;Anmeldung bis&ldquo; wird</> : <>&bdquo;Abmeldung bis&ldquo; wird</>)} aus dem Termin-Datum <strong>vorbelegt</strong>. Du kannst sie hier für diesen einzelnen Termin überschreiben — dein Wert bleibt dann stehen. Änderst du später die Regel selbst, werden wieder <strong>alle</strong> Termine neu berechnet.</>
+                            : <>Rolling bracket rule active (configured in step 4): {regRuleEnabled && cancelRuleEnabled ? 'both deadlines are' : 'this deadline is'} <strong>pre-filled</strong> from the date. You can override it here for this single date — your value then sticks. Changing the rule itself recomputes <strong>all</strong> dates again.</>}
                         </p>
                       )}
                       <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                        <div className="form-group" style={{ marginBottom: 0, ...(regRuleEnabled ? { opacity: 0.55, pointerEvents: 'none' as const, userSelect: 'none' as const } : {}) }}>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
                           {/* v29.75: gleicher Wortlaut wie auf der Klammer. */}
                           <label className="form-label">{isDe ? 'Anmeldung bis' : 'Registration until'}</label>
                           <DatePicker
@@ -13043,8 +13069,35 @@ export default function EventCreationPage(): React.ReactElement {
                             isClearable
                             autoComplete="off"
                           />
+                          {/* v30.6: Abweichung von der Regel sichtbar machen +
+                              Ruecksetz-Knopf (holt den berechneten Wert zurueck). */}
+                          {regRuleEnabled && regRuleAmount > 0 && (() => {
+                            const ruleIso = rollingDeadlineIso(se.startDate || '', regRuleAmount, regRuleUnit);
+                            if (!ruleIso) return null;
+                            const cur = new Date(se.registrationDeadline || '').getTime();
+                            const rt = new Date(ruleIso).getTime();
+                            const matches = isFinite(cur) && Math.abs(cur - rt) < 60000;
+                            return matches ? (
+                              <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', margin: '4px 0 0' }}>
+                                {isDe ? 'Entspricht der rollierenden Regel.' : 'Matches the rolling rule.'}
+                              </p>
+                            ) : (
+                              <p style={{ fontSize: '0.72rem', color: '#b86700', margin: '4px 0 0' }}>
+                                {isDe
+                                  ? <>Manuell überschrieben — Regel wäre {new Date(ruleIso).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}. </>
+                                  : <>Manually overridden — rule would be {new Date(ruleIso).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}. </>}
+                                <button
+                                  type="button"
+                                  onClick={() => updateSub({ registrationDeadline: ruleIso })}
+                                  style={{ background: 'none', border: 'none', padding: 0, color: 'var(--dex-blue, #0076a8)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, textDecoration: 'underline' }}
+                                >
+                                  {isDe ? 'Auf Regel zurücksetzen' : 'Reset to rule'}
+                                </button>
+                              </p>
+                            );
+                          })()}
                         </div>
-                        <div className="form-group" style={{ marginBottom: 0, ...(cancelRuleEnabled ? { opacity: 0.55, pointerEvents: 'none' as const, userSelect: 'none' as const } : {}) }}>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
                           <label className="form-label">{isDe ? 'Abmeldung bis' : 'Cancellation until'}</label>
                           <DatePicker
                             selected={se.lastDeregisterDate ? new Date(se.lastDeregisterDate) : null}
@@ -13067,6 +13120,31 @@ export default function EventCreationPage(): React.ReactElement {
                             isClearable
                             autoComplete="off"
                           />
+                          {cancelRuleEnabled && cancelRuleAmount > 0 && userCancelAllowed && (() => {
+                            const ruleIso = rollingDeadlineIso(se.startDate || '', cancelRuleAmount, cancelRuleUnit, cancelRuleAfter);
+                            if (!ruleIso) return null;
+                            const cur = new Date(se.lastDeregisterDate || '').getTime();
+                            const rt = new Date(ruleIso).getTime();
+                            const matches = isFinite(cur) && Math.abs(cur - rt) < 60000;
+                            return matches ? (
+                              <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', margin: '4px 0 0' }}>
+                                {isDe ? 'Entspricht der rollierenden Regel.' : 'Matches the rolling rule.'}
+                              </p>
+                            ) : (
+                              <p style={{ fontSize: '0.72rem', color: '#b86700', margin: '4px 0 0' }}>
+                                {isDe
+                                  ? <>Manuell überschrieben — Regel wäre {new Date(ruleIso).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}. </>
+                                  : <>Manually overridden — rule would be {new Date(ruleIso).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}. </>}
+                                <button
+                                  type="button"
+                                  onClick={() => updateSub({ lastDeregisterDate: ruleIso })}
+                                  style={{ background: 'none', border: 'none', padding: 0, color: 'var(--dex-blue, #0076a8)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, textDecoration: 'underline' }}
+                                >
+                                  {isDe ? 'Auf Regel zurücksetzen' : 'Reset to rule'}
+                                </button>
+                              </p>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>
