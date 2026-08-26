@@ -436,11 +436,63 @@ export default function EventCreationPage(): React.ReactElement {
   const [openRuleDays, setOpenRuleDays] = React.useState<number>(() => {
     try { const r = JSON.parse(editEvent?.emailTemplateOverrides || '{}')._subEventOpenRule; return (r && typeof r.days === 'number' && r.days > 0) ? r.days : 7; } catch { return 7; }
   });
-  const subEventOpenRulePiggyback = (): Record<string, unknown> => (
-    (openRuleEnabled && openRuleDays > 0 && subEventsOptIn)
-      ? { _subEventOpenRule: { mode: openRuleMode, days: openRuleDays } }
-      : {}
-  );
+  // v29.76: „Anmeldung ab" kann statt rollierend auch ein FESTES Datum sein
+  // (alle Termine oeffnen gemeinsam an diesem Tag). Gleiches Piggyback,
+  // eigener mode 'fixed' — die Anmeldeseite wertet beide Formen aus.
+  const [openRuleFixedDate, setOpenRuleFixedDate] = React.useState<string>(() => {
+    try {
+      const r = JSON.parse(editEvent?.emailTemplateOverrides || '{}')._subEventOpenRule;
+      return (r && r.mode === 'fixed' && r.date) ? isoToLocal(r.date) : '';
+    } catch { return ''; }
+  });
+  const subEventOpenRulePiggyback = (): Record<string, unknown> => {
+    if (!subEventsOptIn) return {};
+    if (openRuleEnabled && openRuleDays > 0) return { _subEventOpenRule: { mode: openRuleMode, days: openRuleDays } };
+    if (!openRuleEnabled && openRuleFixedDate) return { _subEventOpenRule: { mode: 'fixed', date: berlinLocalToUtcIso(openRuleFixedDate) || '' } };
+    return {};
+  };
+  // v29.76: Rollierende Fristen fuer Kalender-Termine — „Anmeldung bis" und
+  // „Abmeldung bis" als Abstand zum jeweiligen Termin statt festem Datum
+  // (Gegenstueck zu „Anmeldung ab"). Die Regel wird MATERIALISIERT: ein
+  // Effect rechnet je Sub-Event startDate minus Abstand und schreibt das
+  // Ergebnis in registrationDeadline/lastDeregisterDate des Drafts —
+  // Anmeldeseite, Organizer Center und Flows lesen weiter die echten
+  // Spalten, es gibt keinen zweiten Auswertungsort. Das Piggyback traegt
+  // nur die Regel selbst: fuer die UI beim Wieder-Oeffnen, und damit neu
+  // angeklickte Kalender-Tage sie automatisch bekommen.
+  const [regRuleEnabled, setRegRuleEnabled] = React.useState<boolean>(() => {
+    try { const r = JSON.parse(editEvent?.emailTemplateOverrides || '{}')._subDeadlineRule; return !!(r && r.reg && r.reg.amount > 0); } catch { return false; }
+  });
+  const [regRuleAmount, setRegRuleAmount] = React.useState<number>(() => {
+    try { const r = JSON.parse(editEvent?.emailTemplateOverrides || '{}')._subDeadlineRule; return (r && r.reg && typeof r.reg.amount === 'number' && r.reg.amount > 0) ? r.reg.amount : 1; } catch { return 1; }
+  });
+  const [regRuleUnit, setRegRuleUnit] = React.useState<'days' | 'hours'>(() => {
+    try { const r = JSON.parse(editEvent?.emailTemplateOverrides || '{}')._subDeadlineRule; return r && r.reg && r.reg.unit === 'hours' ? 'hours' : 'days'; } catch { return 'days'; }
+  });
+  const [cancelRuleEnabled, setCancelRuleEnabled] = React.useState<boolean>(() => {
+    try { const r = JSON.parse(editEvent?.emailTemplateOverrides || '{}')._subDeadlineRule; return !!(r && r.cancel && r.cancel.amount > 0); } catch { return false; }
+  });
+  const [cancelRuleAmount, setCancelRuleAmount] = React.useState<number>(() => {
+    try { const r = JSON.parse(editEvent?.emailTemplateOverrides || '{}')._subDeadlineRule; return (r && r.cancel && typeof r.cancel.amount === 'number' && r.cancel.amount > 0) ? r.cancel.amount : 1; } catch { return 1; }
+  });
+  const [cancelRuleUnit, setCancelRuleUnit] = React.useState<'days' | 'hours'>(() => {
+    try { const r = JSON.parse(editEvent?.emailTemplateOverrides || '{}')._subDeadlineRule; return r && r.cancel && r.cancel.unit === 'hours' ? 'hours' : 'days'; } catch { return 'days'; }
+  });
+  const subDeadlineRulePiggyback = (): Record<string, unknown> => {
+    if (!subEventsOptIn || !subEventCalendar) return {};
+    const rule: Record<string, unknown> = {};
+    if (regRuleEnabled && regRuleAmount > 0) rule.reg = { amount: regRuleAmount, unit: regRuleUnit };
+    if (cancelRuleEnabled && cancelRuleAmount > 0 && userCancelAllowed) rule.cancel = { amount: cancelRuleAmount, unit: cancelRuleUnit };
+    return Object.keys(rule).length ? { _subDeadlineRule: rule } : {};
+  };
+  // Abstand rueckwaerts vom Termin-Start — bewusst exakt (X Tage = X * 24 h
+  // vor dem Start), damit die Regel bei Ganztags-Terminen (Start 00:00)
+  // glatte Tagesgrenzen liefert.
+  const rollingDeadlineIso = (startIso: string, amount: number, unit: 'days' | 'hours'): string => {
+    const t2 = new Date(startIso || '').getTime();
+    if (!isFinite(t2) || !(amount > 0)) return '';
+    return new Date(t2 - amount * (unit === 'hours' ? 3600000 : 86400000)).toISOString();
+  };
   // v29.75: „Sichtbarkeit gilt für alle Sub-Events" — der Haken hält
   // Standortfilter, Verteiler und Verknüpfung der Sub-Events mit der
   // Klammer synchron (Spiegel-Effect weiter unten, nach den States).
@@ -1191,12 +1243,14 @@ export default function EventCreationPage(): React.ReactElement {
           _subEventOpenRule,
           // v29.75: Sichtbarkeit-für-alle-Sub-Events-Haken — eigener State.
           _visAllSubs,
+          // v29.76: Rollierende Fristen der Kalender-Termine — eigene States.
+          _subDeadlineRule,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
         // Variablen nur destrukturiert, um sie aus `rest` zu entfernen.
         void _eventLogo; void _outlookLogo; void _outlookLogoSameAsMail; void _b2run;
-        void _billing; void _subEventOpenRule; void _visAllSubs;
+        void _billing; void _subEventOpenRule; void _visAllSubs; void _subDeadlineRule;
         void _qrScanners; void _coOrganizers; void _testTeam;
         void _splitDisplayOrderReversed; void _requireSubEventSelection;
         void _subEventsOnlyMode; void _subEventsDisabled; void _imageBanner; void _childEventTerm;
@@ -1779,6 +1833,42 @@ export default function EventCreationPage(): React.ReactElement {
       return changed ? next : prev;
     });
   }, [visAllSubs, locationFilter, audience, filterMode]);
+  // v29.76: Rollierende Fristen materialisieren — je Sub-Event wird
+  // startDate minus Abstand in registrationDeadline/lastDeregisterDate
+  // geschrieben. subEvents steht bewusst MIT in den Deps: neu angeklickte
+  // Kalender-Tage und geaenderte Termine bekommen die Frist sofort; die
+  // Referenz-Stabilitaet (return prev bei 0 Aenderungen) beendet die
+  // Kette nach einem Durchlauf und haelt den v29.57-Skip sauber.
+  // ACHTUNG: subEventsOptIn ist hier NICHT referenzierbar (Deklaration erst
+  // weiter unten — TDZ, die v29.71-Falle). subEventCalendar reicht als
+  // Guard: ohne Opt-in gibt es keinen Kalender und keine Drafts.
+  React.useEffect(() => {
+    if (!subEventCalendar) return;
+    if (!regRuleEnabled && !cancelRuleEnabled) return;
+    const near = (a: string, b: string): boolean => {
+      const ta = new Date(a || '').getTime(); const tb = new Date(b || '').getTime();
+      return isFinite(ta) && isFinite(tb) && Math.abs(ta - tb) < 60000;
+    };
+    setSubEvents(prev => {
+      let changed = false;
+      const next = prev.map(s => {
+        if (!s.startDate) return s;
+        const patch: Partial<SubEventDraft> = {};
+        if (regRuleEnabled && regRuleAmount > 0) {
+          const iso = rollingDeadlineIso(s.startDate, regRuleAmount, regRuleUnit);
+          if (iso && !near(s.registrationDeadline || '', iso)) patch.registrationDeadline = iso;
+        }
+        if (cancelRuleEnabled && cancelRuleAmount > 0 && userCancelAllowed) {
+          const iso = rollingDeadlineIso(s.startDate, cancelRuleAmount, cancelRuleUnit);
+          if (iso && !near(s.lastDeregisterDate || '', iso)) patch.lastDeregisterDate = iso;
+        }
+        if (Object.keys(patch).length === 0) return s;
+        changed = true;
+        return { ...s, ...patch };
+      });
+      return changed ? next : prev;
+    });
+  }, [subEventCalendar, regRuleEnabled, regRuleAmount, regRuleUnit, cancelRuleEnabled, cancelRuleAmount, cancelRuleUnit, userCancelAllowed, subEvents]);
   // v11.57: aktiv ausgewählter Tab in Step 6 (Kommunikation, v11.80 Renumbering). 0 = Haupt-Event,
   // N>0 = subEvents[N-1]. Beim Tab-Wechsel werden die Step-5-Felder zwischen
   // dem Top-Level-State und der jeweiligen Sub-Event-Slice gespiegelt — siehe
@@ -4844,6 +4934,7 @@ export default function EventCreationPage(): React.ReactElement {
         billingPiggyback(), // v29.66: F&A-Pilot
         subEventOpenRulePiggyback(), // v29.67
         visAllSubsPiggyback(), // v29.75
+        subDeadlineRulePiggyback(), // v29.76
       ];
       updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || topPiggybackConfigs.some(o => Object.keys(o).length > 0))
         // v28.2: Object.assign statt Spread-Kette — die Literal-Spreads
@@ -5637,6 +5728,7 @@ export default function EventCreationPage(): React.ReactElement {
             billingPiggyback(), // v29.66: F&A-Pilot
             subEventOpenRulePiggyback(), // v29.67
             visAllSubsPiggyback(), // v29.75
+            subDeadlineRulePiggyback(), // v29.76
             ((userCancelAllowed && noCancelAfterDeadline) ? { _noCancelAfterDeadline: true } : {}),
             // v29.38: Teams-Link auch beim Anlegen.
             (/^https?:\/\//i.test(teamsLink.trim()) ? { _teamsLink: teamsLink.trim() } : {}),
@@ -6718,8 +6810,9 @@ export default function EventCreationPage(): React.ReactElement {
       // v29.66: F&A-Pilot — ohne diesen Eintrag warnt der Ungespeichert-
       // Waechter nicht, wenn nur Abrechnungsfelder geaendert wurden.
       billingHash: JSON.stringify({ billingRelevant, billingSendMode, billingFields }),
-      subOpenRuleHash: JSON.stringify({ openRuleEnabled, openRuleMode, openRuleDays }), // v29.67
+      subOpenRuleHash: JSON.stringify({ openRuleEnabled, openRuleMode, openRuleDays, openRuleFixedDate }), // v29.67/v29.76
       visAllSubs, // v29.75
+      subDeadlineRuleHash: JSON.stringify({ regRuleEnabled, regRuleAmount, regRuleUnit, cancelRuleEnabled, cancelRuleAmount, cancelRuleUnit }), // v29.76
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -6733,8 +6826,9 @@ export default function EventCreationPage(): React.ReactElement {
     outlookBody, outlookHeading, outlookSubheading, outlookSubject, disableEmails, disableRegistrationEmail, disableCancellationEmail, autoDeregisterOnDecline, inactiveHandling, disableOutlook,
     emailTemplateOverrides,
     billingRelevant, billingSendMode, billingFields, // v29.66
-    openRuleEnabled, openRuleMode, openRuleDays, // v29.67
+    openRuleEnabled, openRuleMode, openRuleDays, openRuleFixedDate, // v29.67/v29.76
     visAllSubs, // v29.75
+    regRuleEnabled, regRuleAmount, regRuleUnit, cancelRuleEnabled, cancelRuleAmount, cancelRuleUnit, // v29.76
   ]);
   React.useEffect(() => {
     // Initial-Snapshot ein paar Ticks nach dem ersten Render setzen, damit
@@ -12632,8 +12726,19 @@ export default function EventCreationPage(): React.ReactElement {
                           ? <>Frei pro Sub-Event setzbar. Leer lassen → die Fristen des Hauptevents gelten.</>
                           : <>Settable per sub-event. Leave empty → the main event’s deadlines apply.</>)}
                       </p>
+                      {/* v29.76: Rollierende Klammer-Regel sperrt das jeweilige
+                          Feld — der Wert wird aus dem Termin-Datum berechnet,
+                          eine Eingabe hier wuerde beim naechsten Render still
+                          ueberschrieben. */}
+                      {subEventCalendar && (regRuleEnabled || cancelRuleEnabled) && (
+                        <p style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: -6, marginBottom: 10, lineHeight: 1.5 }}>
+                          {isDe
+                            ? <>Rollierende Regel der Klammer aktiv — {regRuleEnabled && cancelRuleEnabled ? 'beide Fristen werden' : (regRuleEnabled ? '„Anmeldung bis" wird' : '„Abmeldung bis" wird')} automatisch aus dem Termin-Datum berechnet (einstellbar in Schritt 4 bei der Klammer).</>
+                            : <>Rolling bracket rule active — {regRuleEnabled && cancelRuleEnabled ? 'both deadlines are' : 'this deadline is'} computed from the date automatically (configured in step 4 on the bracket).</>}
+                        </p>
+                      )}
                       <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
+                        <div className="form-group" style={{ marginBottom: 0, ...((subEventCalendar && regRuleEnabled) ? { opacity: 0.55, pointerEvents: 'none' as const, userSelect: 'none' as const } : {}) }}>
                           {/* v29.75: gleicher Wortlaut wie auf der Klammer. */}
                           <label className="form-label">{isDe ? 'Anmeldung bis' : 'Registration until'}</label>
                           <DatePicker
@@ -12658,7 +12763,7 @@ export default function EventCreationPage(): React.ReactElement {
                             autoComplete="off"
                           />
                         </div>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
+                        <div className="form-group" style={{ marginBottom: 0, ...((subEventCalendar && cancelRuleEnabled) ? { opacity: 0.55, pointerEvents: 'none' as const, userSelect: 'none' as const } : {}) }}>
                           <label className="form-label">{isDe ? 'Abmeldung bis' : 'Cancellation until'}</label>
                           <DatePicker
                             selected={se.lastDeregisterDate ? new Date(se.lastDeregisterDate) : null}
@@ -13058,20 +13163,32 @@ export default function EventCreationPage(): React.ReactElement {
                       {subEventCalendar && (
                         <li>{openRuleEnabled
                           ? (isDe
-                            ? <>Anmeldung ab: <strong>{openRuleDays} {openRuleDays === 1 ? 'Tag' : 'Tage'} vor {openRuleMode === 'week' ? 'dem Montag der jeweiligen Woche' : 'dem jeweiligen Termin'}</strong></>
-                            : <>Registration opens: <strong>{openRuleDays} {openRuleDays === 1 ? 'day' : 'days'} before {openRuleMode === 'week' ? 'the Monday of each week' : 'each date'}</strong></>)
-                          : (isDe
-                            ? <>Anmeldung ab: <strong>sofort</strong> — keine Freischalt-Regel gesetzt</>
-                            : <>Registration opens: <strong>immediately</strong> — no opening rule set</>)}</li>
+                            ? <>Anmeldung ab: <strong>{openRuleDays} {openRuleDays === 1 ? 'Tag' : 'Tage'} vor {openRuleMode === 'week' ? 'dem Montag der jeweiligen Woche' : 'dem jeweiligen Termin'}</strong> (rollierend)</>
+                            : <>Registration opens: <strong>{openRuleDays} {openRuleDays === 1 ? 'day' : 'days'} before {openRuleMode === 'week' ? 'the Monday of each week' : 'each date'}</strong> (rolling)</>)
+                          : openRuleFixedDate
+                            ? (isDe
+                              ? <>Anmeldung ab: <strong>{fmt(berlinLocalToUtcIso(openRuleFixedDate) || '')}</strong> (alle Termine gemeinsam)</>
+                              : <>Registration opens: <strong>{fmt(berlinLocalToUtcIso(openRuleFixedDate) || '')}</strong> (all dates together)</>)
+                            : (isDe
+                              ? <>Anmeldung ab: <strong>sofort</strong></>
+                              : <>Registration opens: <strong>immediately</strong></>)}</li>
                       )}
-                      <li>{regRef
-                        ? (isDe ? <>Anmeldung bis: <strong>{fmt(regRef)}</strong>{dev(regDev)}</> : <>Registration until: <strong>{fmt(regRef)}</strong>{dev(regDev)}</>)
-                        : (isDe ? <>Anmeldung bis: <strong>je {childTermSingular || 'Sub-Event'}</strong> geregelt (keine gemeinsame Frist gesetzt)</> : <>Registration until: <strong>per {childTermSingular || 'sub-event'}</strong> (no shared deadline set)</>)}</li>
+                      <li>{(subEventCalendar && regRuleEnabled)
+                        ? (isDe
+                          ? <>Anmeldung bis: <strong>{regRuleAmount} {regRuleUnit === 'hours' ? (regRuleAmount === 1 ? 'Stunde' : 'Stunden') : (regRuleAmount === 1 ? 'Tag' : 'Tage')} vor dem jeweiligen Termin</strong> (rollierend)</>
+                          : <>Registration until: <strong>{regRuleAmount} {regRuleUnit === 'hours' ? 'hour(s)' : 'day(s)'} before each date</strong> (rolling)</>)
+                        : regRef
+                          ? (isDe ? <>Anmeldung bis: <strong>{fmt(regRef)}</strong>{dev(regDev)}</> : <>Registration until: <strong>{fmt(regRef)}</strong>{dev(regDev)}</>)
+                          : (isDe ? <>Anmeldung bis: <strong>je {childTermSingular || 'Sub-Event'}</strong> geregelt (keine gemeinsame Frist gesetzt)</> : <>Registration until: <strong>per {childTermSingular || 'sub-event'}</strong> (no shared deadline set)</>)}</li>
                       <li>{!userCancelAllowed
                         ? (isDe ? <>Abmeldung: <strong>deaktiviert</strong> — abmelden können nur Organizer und Admins</> : <>Cancellation: <strong>disabled</strong> — only organizers and admins can cancel</>)
-                        : cancelRef
-                          ? (isDe ? <>Abmeldung bis: <strong>{fmt(cancelRef)}</strong>{dev(cancelDev)}</> : <>Cancellation until: <strong>{fmt(cancelRef)}</strong>{dev(cancelDev)}</>)
-                          : (isDe ? <>Abmeldung bis: <strong>je {childTermSingular || 'Sub-Event'}</strong> geregelt (keine gemeinsame Frist gesetzt)</> : <>Cancellation until: <strong>per {childTermSingular || 'sub-event'}</strong> (no shared deadline set)</>)}</li>
+                        : (subEventCalendar && cancelRuleEnabled)
+                          ? (isDe
+                            ? <>Abmeldung bis: <strong>{cancelRuleAmount} {cancelRuleUnit === 'hours' ? (cancelRuleAmount === 1 ? 'Stunde' : 'Stunden') : (cancelRuleAmount === 1 ? 'Tag' : 'Tage')} vor dem jeweiligen Termin</strong> (rollierend)</>
+                            : <>Cancellation until: <strong>{cancelRuleAmount} {cancelRuleUnit === 'hours' ? 'hour(s)' : 'day(s)'} before each date</strong> (rolling)</>)
+                          : cancelRef
+                            ? (isDe ? <>Abmeldung bis: <strong>{fmt(cancelRef)}</strong>{dev(cancelDev)}</> : <>Cancellation until: <strong>{fmt(cancelRef)}</strong>{dev(cancelDev)}</>)
+                            : (isDe ? <>Abmeldung bis: <strong>je {childTermSingular || 'Sub-Event'}</strong> geregelt (keine gemeinsame Frist gesetzt)</> : <>Cancellation until: <strong>per {childTermSingular || 'sub-event'}</strong> (no shared deadline set)</>)}</li>
                       <li>{isDe ? <>sichtbar für: <strong>{visText}</strong></> : <>visible to: <strong>{visText}</strong></>}
                         {visAllSubs
                           ? <> {isDe ? '— per Haken für alle übernommen' : '— applied to all via checkbox'}{dev(0)}</>
@@ -13121,11 +13238,40 @@ export default function EventCreationPage(): React.ReactElement {
                       <strong>{isDe ? 'Termine rollierend freischalten' : 'Open dates on a rolling basis'}</strong>
                       <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400 }}>
                         {isDe
-                          ? 'Ohne Haken sind alle Termine sofort anmeldbar. Mit Haken öffnen sie erst X Tage vorher — noch nicht freigeschaltete Tage sind auf der Anmeldeseite ausgegraut und zeigen, ab wann die Anmeldung möglich ist.'
-                          : 'Unchecked, all dates are open immediately. Checked, they open only X days beforehand — days not yet open appear greyed out on the registration page and show when registration becomes possible.'}
+                          ? 'Entweder ein festes Datum (unten, leer = sofort anmeldbar) — oder mit Haken rollierend: Jeder Termin öffnet erst X Tage vorher. Noch nicht freigeschaltete Tage sind auf der Anmeldeseite ausgegraut und zeigen, ab wann die Anmeldung möglich ist.'
+                          : 'Either a fixed date (below, empty = open immediately) — or, when checked, rolling: each date opens only X days beforehand. Days not yet open appear greyed out on the registration page and show when registration becomes possible.'}
                       </span>
                     </span>
                   </label>
+                  {/* v29.76: fester Modus — ein Datum fuer ALLE Termine. */}
+                  {!openRuleEnabled && (
+                    <div style={{ marginTop: 10, paddingLeft: 28, maxWidth: 340 }}>
+                      <DatePicker
+                        selected={openRuleFixedDate ? new Date(openRuleFixedDate) : null}
+                        onChange={(date: Date | null) => setOpenRuleFixedDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
+                        showTimeSelect
+                        timeFormat="HH:mm"
+                        timeIntervals={15}
+                        timeCaption="Uhrzeit"
+                        dateFormat="dd.MM.yyyy, HH:mm"
+                        locale="de"
+                        placeholderText={isDe ? 'Optional — leer = sofort anmeldbar' : 'Optional — empty = open immediately'}
+                        className="form-input"
+                        wrapperClassName="dex-datepicker-wrapper"
+                        calendarClassName="dex-datepicker-calendar"
+                        popperPlacement="bottom-start"
+                        isClearable
+                        autoComplete="off"
+                      />
+                      {openRuleFixedDate && (
+                        <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: '6px 0 0' }}>
+                          {isDe
+                            ? 'Alle Termine öffnen gemeinsam zu diesem Zeitpunkt.'
+                            : 'All dates open together at this moment.'}
+                        </p>
+                      )}
+                    </div>
+                  )}
                   {openRuleEnabled && (
                     <div style={{ marginTop: 10, paddingLeft: 28 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.88rem' }}>
@@ -13201,6 +13347,58 @@ export default function EventCreationPage(): React.ReactElement {
                       </>
                     )} />
                   </label>
+                  {/* v29.76: Entweder festes Datum ODER rollierend je Termin
+                      (nur Kalender-Modus). Beim Umschalten auf rollierend wird
+                      das feste Datum geleert — zwei gleichzeitig wirkende
+                      Fristen wuerde niemand mehr nachvollziehen koennen. */}
+                  {subEventCalendar && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.85rem', marginBottom: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={regRuleEnabled}
+                        onChange={e => {
+                          setRegRuleEnabled(e.target.checked);
+                          if (e.target.checked) {
+                            if (subEventsOnlyMode) setKlammerDeadline(''); else setRegistrationDeadline('');
+                          }
+                        }}
+                        style={{ width: 16, height: 16, cursor: 'pointer' }}
+                      />
+                      <span>{isDe ? 'Rollierend je Termin' : 'Rolling per date'}</span>
+                    </label>
+                  )}
+                  {(subEventCalendar && regRuleEnabled) && (
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.88rem' }}>
+                        {isDe ? 'Anmeldung bis' : 'Registration until'}
+                        <input
+                          type="number"
+                          min={1}
+                          max={365}
+                          className="form-input"
+                          value={regRuleAmount}
+                          onChange={e => { const v = parseInt(e.target.value, 10); setRegRuleAmount(isFinite(v) && v > 0 ? Math.min(v, 365) : 1); }}
+                          style={{ width: 76, padding: '4px 8px', textAlign: 'center' }}
+                        />
+                        <select
+                          className="form-input"
+                          value={regRuleUnit}
+                          onChange={e => setRegRuleUnit(e.target.value === 'hours' ? 'hours' : 'days')}
+                          style={{ width: 'auto', padding: '4px 8px' }}
+                        >
+                          <option value="days">{isDe ? 'Tage' : 'days'}</option>
+                          <option value="hours">{isDe ? 'Stunden' : 'hours'}</option>
+                        </select>
+                        {isDe ? 'vor dem jeweiligen Termin' : 'before each date'}
+                      </div>
+                      <p style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', margin: '6px 0 0' }}>
+                        {isDe
+                          ? 'Die Frist wird je Termin ausgerechnet und in dessen Einstellungen geschrieben — auch für später hinzugefügte Termine.'
+                          : 'The deadline is computed per date and written into its settings — including dates added later.'}
+                      </p>
+                    </div>
+                  )}
+                  {!(subEventCalendar && regRuleEnabled) && (
                   <DatePicker
                     // v28.20: Im Klammer-Modus ist die Frist jetzt EDITIERBAR
                     // (eigener State klammerDeadline, Piggyback) — gesetzt +
@@ -13241,6 +13439,7 @@ export default function EventCreationPage(): React.ReactElement {
                     isClearable
                     autoComplete="off"
                   />
+                  )}
                   {subEventsOnlyMode && !klammerDeadline && effectiveKlammerDeadline && (
                     <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
                       {isDe
@@ -13304,6 +13503,53 @@ export default function EventCreationPage(): React.ReactElement {
                       </>
                     )} />
                   </label>
+                  {/* v29.76: wie „Anmeldung bis" — festes Datum ODER rollierend. */}
+                  {subEventCalendar && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.85rem', marginBottom: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={cancelRuleEnabled}
+                        onChange={e => {
+                          setCancelRuleEnabled(e.target.checked);
+                          if (e.target.checked) setLastDeregisterDate('');
+                        }}
+                        style={{ width: 16, height: 16, cursor: 'pointer' }}
+                      />
+                      <span>{isDe ? 'Rollierend je Termin' : 'Rolling per date'}</span>
+                    </label>
+                  )}
+                  {(subEventCalendar && cancelRuleEnabled) && (
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.88rem' }}>
+                        {isDe ? 'Abmeldung bis' : 'Cancellation until'}
+                        <input
+                          type="number"
+                          min={1}
+                          max={365}
+                          className="form-input"
+                          value={cancelRuleAmount}
+                          onChange={e => { const v = parseInt(e.target.value, 10); setCancelRuleAmount(isFinite(v) && v > 0 ? Math.min(v, 365) : 1); }}
+                          style={{ width: 76, padding: '4px 8px', textAlign: 'center' }}
+                        />
+                        <select
+                          className="form-input"
+                          value={cancelRuleUnit}
+                          onChange={e => setCancelRuleUnit(e.target.value === 'hours' ? 'hours' : 'days')}
+                          style={{ width: 'auto', padding: '4px 8px' }}
+                        >
+                          <option value="days">{isDe ? 'Tage' : 'days'}</option>
+                          <option value="hours">{isDe ? 'Stunden' : 'hours'}</option>
+                        </select>
+                        {isDe ? 'vor dem jeweiligen Termin' : 'before each date'}
+                      </div>
+                      <p style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', margin: '6px 0 0' }}>
+                        {isDe
+                          ? 'Die Frist wird je Termin ausgerechnet und in dessen Einstellungen geschrieben — auch für später hinzugefügte Termine.'
+                          : 'The deadline is computed per date and written into its settings — including dates added later.'}
+                      </p>
+                    </div>
+                  )}
+                  {!(subEventCalendar && cancelRuleEnabled) && (
                   <DatePicker
                     selected={lastDeregisterDate ? new Date(lastDeregisterDate) : null}
                     onChange={(date: Date | null) => {
@@ -13331,6 +13577,7 @@ export default function EventCreationPage(): React.ReactElement {
                     isClearable
                     autoComplete="off"
                   />
+                  )}
                 </div>
                 )}
               </div>

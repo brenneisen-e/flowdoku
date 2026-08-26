@@ -5478,14 +5478,20 @@ export default function RegistrationPage(): React.ReactElement {
                                 // bei der Anmeldefrist, damit sie testen können.
                                 const openFrom = ((): Date | null => {
                                   const rule = event.subEventOpenRule;
-                                  if (!rule || !(rule.days > 0)) return null;
+                                  if (!rule) return null;
+                                  // v29.76: festes Datum — gilt fuer ALLE Tage gleich.
+                                  if (rule.mode === 'fixed') {
+                                    const d = new Date(rule.date || '');
+                                    return isFinite(d.getTime()) ? d : null;
+                                  }
+                                  if (!((rule.days || 0) > 0)) return null;
                                   const [oy, om, od] = key.split('-').map(n => parseInt(n, 10));
                                   const dayDate = new Date(oy, om - 1, od);
                                   if (rule.mode === 'week') {
                                     // getDay(): So=0 — auf Montag der Woche zurückrechnen.
                                     dayDate.setDate(dayDate.getDate() - ((dayDate.getDay() + 6) % 7));
                                   }
-                                  dayDate.setDate(dayDate.getDate() - rule.days);
+                                  dayDate.setDate(dayDate.getDate() - (rule.days || 0));
                                   dayDate.setHours(0, 0, 0, 0);
                                   return dayDate;
                                 })();

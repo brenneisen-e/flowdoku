@@ -269,8 +269,10 @@ export interface DeloitteEvent {
    *  vor dem Termin (mode 'day') bzw. X Tage vor dem MONTAG der Woche des
    *  Termins (mode 'week', dann oeffnet die ganze KW gemeinsam). Vorher sind
    *  die Tage ausgegraut und zeigen „Anmeldung ab …". Piggyback
-   *  `_subEventOpenRule` in EmailTemplateOverrides der Klammer. */
-  subEventOpenRule?: { mode: 'day' | 'week'; days: number };
+   *  `_subEventOpenRule` in EmailTemplateOverrides der Klammer.
+   *  v29.76: mode 'fixed' — ALLE Termine oeffnen gemeinsam an einem festen
+   *  Datum (`date`, UTC-ISO); `days` entfaellt dann. */
+  subEventOpenRule?: { mode: 'day' | 'week' | 'fixed'; days?: number; date?: string };
   /** v28.97: Teilnehmer duerfen sich für GENAU EIN Sub-Event anmelden statt
    *  für beliebig viele. Aendert nur die Auswahl auf der Anmeldeseite (Liste
    *  wie Kalender verhalten sich dann wie Radio-Buttons) — an den Sub-Events
