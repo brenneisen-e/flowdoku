@@ -5461,7 +5461,30 @@ export default function RegistrationPage(): React.ReactElement {
                                 const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
                                 // v29.28: Frist-Bypass für Organizer/Admins (s. Listen-Pfad).
                                 const deadlineLocked = deadlinePassed && !isOrganizer && !isAdmin;
-                                const disabled = (isFull && !isSel) || (deadlineLocked && !isSel);
+                                // v29.67: Freischalt-Regel — der Tag öffnet erst X Tage
+                                // vorher (mode 'day') bzw. X Tage vor dem Montag seiner
+                                // Woche (mode 'week', die ganze KW öffnet gemeinsam).
+                                // Organizer/Admins dürfen vorher — derselbe Bypass wie
+                                // bei der Anmeldefrist, damit sie testen können.
+                                const openFrom = ((): Date | null => {
+                                  const rule = event.subEventOpenRule;
+                                  if (!rule || !(rule.days > 0)) return null;
+                                  const [oy, om, od] = key.split('-').map(n => parseInt(n, 10));
+                                  const dayDate = new Date(oy, om - 1, od);
+                                  if (rule.mode === 'week') {
+                                    // getDay(): So=0 — auf Montag der Woche zurückrechnen.
+                                    dayDate.setDate(dayDate.getDate() - ((dayDate.getDay() + 6) % 7));
+                                  }
+                                  dayDate.setDate(dayDate.getDate() - rule.days);
+                                  dayDate.setHours(0, 0, 0, 0);
+                                  return dayDate;
+                                })();
+                                const notYetOpen = !!openFrom && new Date() < openFrom;
+                                const openLocked = notYetOpen && !isOrganizer && !isAdmin;
+                                const openFromLabel = openFrom
+                                  ? openFrom.toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit' })
+                                  : '';
+                                const disabled = (isFull && !isSel) || (deadlineLocked && !isSel) || (openLocked && !isSel);
                                 const free = hasCap ? Math.max(0, (ce.maxParticipants || 0) - meta.count) : -1;
                                 const title = [
                                   ce.title || '',
@@ -5474,6 +5497,11 @@ export default function RegistrationPage(): React.ReactElement {
                                       : (locale === 'de' ? 'Anmeldefrist abgelaufen — als Organizer/Admin trotzdem wählbar' : 'Registration deadline passed — still selectable as organizer/admin'))
                                     : '',
                                   ce.mandatoryRegistration ? (locale === 'de' ? 'Pflichttermin' : 'Mandatory date') : '',
+                                  notYetOpen
+                                    ? (openLocked
+                                      ? (locale === 'de' ? `Anmeldung ab ${openFrom!.toLocaleDateString('de-DE')} möglich` : `Registration opens on ${openFrom!.toLocaleDateString('en-GB')}`)
+                                      : (locale === 'de' ? `Anmeldung öffnet regulär am ${openFrom!.toLocaleDateString('de-DE')} — als Organizer/Admin trotzdem wählbar` : `Registration opens on ${openFrom!.toLocaleDateString('en-GB')} — still selectable as organizer/admin`))
+                                    : '',
                                 ].filter(Boolean).join(' · ');
                                 return (
                                   <button
@@ -5509,7 +5537,9 @@ export default function RegistrationPage(): React.ReactElement {
                                   >
                                     <span>{dayNum}</span>
                                     <span style={{ fontSize: '0.6rem', fontWeight: 600, opacity: 0.85 }}>
-                                      {deadlineLocked
+                                      {openLocked
+                                        ? (locale === 'de' ? `ab ${openFromLabel}` : `from ${openFromLabel}`)
+                                        : deadlineLocked
                                         ? (locale === 'de' ? 'zu' : 'closed')
                                         : isFull
                                         ? (locale === 'de' ? 'voll' : 'full')

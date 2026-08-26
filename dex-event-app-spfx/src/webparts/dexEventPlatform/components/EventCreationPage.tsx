@@ -395,6 +395,24 @@ export default function EventCreationPage(): React.ReactElement {
   });
   // Der Frage-Dialog nach den Nutzungsbedingungen (nur neue Events, nur Admins).
   const [billingPromptOpen, setBillingPromptOpen] = React.useState(false);
+  // v29.67: Freischalt-Regel fuer Kalender-Termine. Bei sehr vielen Tagen
+  // sollen Teilnehmer nicht Monate im Voraus buchen — die Tage oeffnen erst
+  // X Tage vorher (je Termin) oder X Tage vor dem Montag der jeweiligen
+  // Woche (dann oeffnet die ganze KW gemeinsam).
+  const [openRuleEnabled, setOpenRuleEnabled] = React.useState<boolean>(() => {
+    try { const r = JSON.parse(editEvent?.emailTemplateOverrides || '{}')._subEventOpenRule; return !!(r && r.days > 0); } catch { return false; }
+  });
+  const [openRuleMode, setOpenRuleMode] = React.useState<'day' | 'week'>(() => {
+    try { const r = JSON.parse(editEvent?.emailTemplateOverrides || '{}')._subEventOpenRule; return r && r.mode === 'week' ? 'week' : 'day'; } catch { return 'day'; }
+  });
+  const [openRuleDays, setOpenRuleDays] = React.useState<number>(() => {
+    try { const r = JSON.parse(editEvent?.emailTemplateOverrides || '{}')._subEventOpenRule; return (r && typeof r.days === 'number' && r.days > 0) ? r.days : 7; } catch { return 7; }
+  });
+  const subEventOpenRulePiggyback = (): Record<string, unknown> => (
+    (openRuleEnabled && openRuleDays > 0 && subEventsOptIn)
+      ? { _subEventOpenRule: { mode: openRuleMode, days: openRuleDays } }
+      : {}
+  );
   const billingPiggyback = (): Record<string, unknown> => (
     billingRelevant === null
       ? {}
@@ -1148,12 +1166,14 @@ export default function EventCreationPage(): React.ReactElement {
           _teamsLink,
           // v29.66: Abrechnungs-Piggyback (F&A-Pilot) — lebt in eigenen States.
           _billing,
+          // v29.67: Freischalt-Regel der Kalender-Termine — eigene States.
+          _subEventOpenRule,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
         // Variablen nur destrukturiert, um sie aus `rest` zu entfernen.
         void _eventLogo; void _outlookLogo; void _outlookLogoSameAsMail; void _b2run;
-        void _billing;
+        void _billing; void _subEventOpenRule;
         void _qrScanners; void _coOrganizers; void _testTeam;
         void _splitDisplayOrderReversed; void _requireSubEventSelection;
         void _subEventsOnlyMode; void _subEventsDisabled; void _imageBanner; void _childEventTerm;
@@ -4754,6 +4774,7 @@ export default function EventCreationPage(): React.ReactElement {
         hideOrgIndividualConfig, headerImageLayoutConfig, noDescriptionConfig,
         subEventCalendarConfig, subEventSingleChoiceConfig, noSelfCancelConfig, noCancelAfterDeadlineConfig, teamsLinkConfig, hotelCarryConfig,
         billingPiggyback(), // v29.66: F&A-Pilot
+        subEventOpenRulePiggyback(), // v29.67
       ];
       updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || topPiggybackConfigs.some(o => Object.keys(o).length > 0))
         // v28.2: Object.assign statt Spread-Kette — die Literal-Spreads
@@ -5545,6 +5566,7 @@ export default function EventCreationPage(): React.ReactElement {
             // v29.25: Abmelde-Sperren auch beim Anlegen.
             (!userCancelAllowed ? { _noSelfCancel: true } : {}),
             billingPiggyback(), // v29.66: F&A-Pilot
+            subEventOpenRulePiggyback(), // v29.67
             ((userCancelAllowed && noCancelAfterDeadline) ? { _noCancelAfterDeadline: true } : {}),
             // v29.38: Teams-Link auch beim Anlegen.
             (/^https?:\/\//i.test(teamsLink.trim()) ? { _teamsLink: teamsLink.trim() } : {}),
@@ -6626,6 +6648,7 @@ export default function EventCreationPage(): React.ReactElement {
       // v29.66: F&A-Pilot — ohne diesen Eintrag warnt der Ungespeichert-
       // Waechter nicht, wenn nur Abrechnungsfelder geaendert wurden.
       billingHash: JSON.stringify({ billingRelevant, billingSendMode, billingFields }),
+      subOpenRuleHash: JSON.stringify({ openRuleEnabled, openRuleMode, openRuleDays }), // v29.67
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -6639,6 +6662,7 @@ export default function EventCreationPage(): React.ReactElement {
     outlookBody, outlookHeading, outlookSubheading, outlookSubject, disableEmails, disableRegistrationEmail, disableCancellationEmail, autoDeregisterOnDecline, inactiveHandling, disableOutlook,
     emailTemplateOverrides,
     billingRelevant, billingSendMode, billingFields, // v29.66
+    openRuleEnabled, openRuleMode, openRuleDays, // v29.67
   ]);
   React.useEffect(() => {
     // Initial-Snapshot ein paar Ticks nach dem ersten Render setzen, damit
@@ -11806,6 +11830,64 @@ export default function EventCreationPage(): React.ReactElement {
                           // einen Oktober-Tag will, blättert mit dem Pfeil.
                           calendarClassName="dex-datepicker-calendar dex-termin-calendar"
                         />
+                        {/* v29.67: Freischalt-Regel — bei einer Reihe ueber
+                            viele Wochen sollen Teilnehmer nicht Monate im
+                            Voraus buchen. Die Regel liegt auf der Klammer
+                            (event-weit) und wirkt nur auf der Anmeldeseite;
+                            hier im Wizard bleiben alle Tage bedienbar. */}
+                        <div style={{ margin: '10px 0 0', padding: '10px 12px', borderRadius: 8, background: '#fff', border: '1px solid var(--dex-gray-200)' }}>
+                          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={openRuleEnabled}
+                              onChange={e => setOpenRuleEnabled(e.target.checked)}
+                              style={{ width: 18, height: 18, marginTop: 1, flexShrink: 0, cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: '0.9rem' }}>
+                              <strong>{isDe ? 'Termine erst kurz vorher zur Anmeldung freischalten' : 'Open dates for registration only shortly beforehand'}</strong>
+                              <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400 }}>
+                                {isDe
+                                  ? 'Noch nicht freigeschaltete Tage sind auf der Anmeldeseite ausgegraut und zeigen, ab wann die Anmeldung möglich ist.'
+                                  : 'Days not yet open appear greyed out on the registration page and show when registration becomes possible.'}
+                              </span>
+                            </span>
+                          </label>
+                          {openRuleEnabled && (
+                            <div style={{ marginTop: 10, paddingLeft: 28 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.88rem' }}>
+                                {isDe ? 'Anmeldung möglich ab' : 'Registration opens'}
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={365}
+                                  className="form-input"
+                                  value={openRuleDays}
+                                  onChange={e => { const v = parseInt(e.target.value, 10); setOpenRuleDays(isFinite(v) && v > 0 ? Math.min(v, 365) : 1); }}
+                                  style={{ width: 76, padding: '4px 8px', textAlign: 'center' }}
+                                />
+                                {isDe ? 'Tage vor' : 'days before'}
+                                <select
+                                  className="form-input"
+                                  value={openRuleMode}
+                                  onChange={e => setOpenRuleMode(e.target.value === 'week' ? 'week' : 'day')}
+                                  style={{ width: 'auto', padding: '4px 8px' }}
+                                >
+                                  <option value="day">{isDe ? 'dem jeweiligen Termin' : 'each date'}</option>
+                                  <option value="week">{isDe ? 'dem Montag der jeweiligen Woche' : 'the Monday of its week'}</option>
+                                </select>
+                              </div>
+                              <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: '6px 0 0' }}>
+                                {openRuleMode === 'week'
+                                  ? (isDe
+                                    ? `Alle Termine einer Kalenderwoche öffnen gemeinsam: ${openRuleDays} ${openRuleDays === 1 ? 'Tag' : 'Tage'} vor deren Montag.`
+                                    : `All dates of a calendar week open together: ${openRuleDays} ${openRuleDays === 1 ? 'day' : 'days'} before that week's Monday.`)
+                                  : (isDe
+                                    ? `Jeder Termin öffnet einzeln: ${openRuleDays} ${openRuleDays === 1 ? 'Tag' : 'Tage'} vor seinem Datum.`
+                                    : `Each date opens individually: ${openRuleDays} ${openRuleDays === 1 ? 'day' : 'days'} before its date.`)}
+                              </p>
+                            </div>
+                          )}
+                        </div>
                         {/* v29.48: Termine außerhalb des Event-Zeitraums benennen.
                             Der Kalender lässt jeden Tag zu, der Zeitraum des
                             Hauptevents wandert aber nicht mit — in der Rückmeldung
