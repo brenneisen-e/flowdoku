@@ -6340,6 +6340,19 @@ export default function EventCreationPage(): React.ReactElement {
       // werden, sonst zeigen sie weiter den alten (oder gar keinen) Link.
       if (teamsLink.trim() !== initialTeamsLinkRef.current.trim() && subChangedFields.indexOf('outlookBody') < 0) subChangedFields.push('outlookBody');
       if (curSubLogo !== initSubLogo) subChangedFields.push('logo');
+      // v30.9: Auch der WIRKSAME Outlook-Betreff zählt als Änderung. Seit
+      // v30.7 erben Kalender-Tage den Hauptevent-Titel als Betreff — der
+      // Save schreibt das zwar in die OutlookSubject-Spalte, aber ohne
+      // UpdateEvent in der Queue bleibt der BESTEHENDE Termin beim alten
+      // Namen (Tages-Datum). Verglichen wird gegen den gespeicherten Stand
+      // der Sub-Event-Zeile, nicht gegen einen Draft-Schnappschuss — so
+      // greift es auch für Events, die vor v30.7 angelegt wurden.
+      {
+        const storedRow = childEventsOf(editEvent.id).find(c => c.id === s.dbId);
+        const effSubSubject = (s.outlookSubject || '').trim() || (subEventCalendar ? (title || editEvent.title || '').trim() : '');
+        const storedSubSubject = ((storedRow && storedRow.outlookSubject) || '').trim();
+        if (effSubSubject !== storedSubSubject && subChangedFields.indexOf('title') < 0) subChangedFields.push('title');
+      }
       // v11.66: Debug-Log für jeden Sub-Event, damit wir in der Browser-
       // Konsole nachvollziehen können, warum das Modal manchmal nicht
       // erscheint. v11.67: JSON.stringify damit der Browser die Werte
