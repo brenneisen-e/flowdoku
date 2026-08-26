@@ -15,7 +15,7 @@ import { useRoles } from '../context/RoleContext';
 import { isEventVisibleForUser } from './EventListPage';
 import { useCachedImage, useCachedImageWithFallback } from '../utils/imageCache';
 import { useIsMobile } from '../utils/useIsMobile';
-import { isRegistrationFullyClosed } from '../utils/eventFormat';
+import { isRegistrationFullyClosed, subEventRegDeadline } from '../utils/eventFormat';
 import { selfCancelLocked } from '../utils/cancelPolicy';
 import { isDeloitteInternalEmail, isExternalEmail } from '../utils/deloitteDomain';
 import { useLanguage, translations as appTranslations, Locale } from '../context/LanguageContext';
@@ -265,7 +265,7 @@ export default function RegistrationPage(): React.ReactElement {
   }, []);
 
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
-  const { events, isEventsLoading, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration, uploadFieldDocument, delegateRegistrationToAssistant, recordProxyDelegation, getLiveCounterStats, subscribeEventRealtime, getEventNumbersForEmail } = useEvents();
+  const { events, isEventsLoading, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration, uploadFieldDocument, delegateRegistrationToAssistant, recordProxyDelegation, getLiveCounterStats, subscribeEventRealtime, getEventNumbersForEmail, refreshEvents } = useEvents();
   const { currentUser, groupEmails } = useCurrentUser();
   // v30.3: previewAsUser = „Übersicht als User sehen" (Organizer-/Admin-
   // Vorschau). isAdmin kommt aus dem RoleContext bereits absenkt zurück;
@@ -722,6 +722,12 @@ export default function RegistrationPage(): React.ReactElement {
   }, [event?.id, event?.maxParticipants]);
   const [registerForParent, setRegisterForParent] = React.useState(true);
   const [selectedSessions, setSelectedSessions] = React.useState<Set<string>>(new Set());
+  // v30.9: Schnappschuss der Auswahl zum Submit-Zeitpunkt. Die Erfolgsseite
+  // listet „die folgenden Office-Tage" — las dafür aber den LIVE-State, und
+  // der kann zwischen Submit und Render geleert/umgebaut werden (Refresh-
+  // Effekte nach der Anmeldung). Ergebnis war eine Erfolgsseite OHNE die
+  // Tages-Liste. Der Ref friert den Stand beim Klick auf „Anmelden" ein.
+  const submittedSessionsRef = React.useRef<Set<string>>(new Set());
   const [sessionStarterType, setSessionStarterType] = React.useState<Record<string, string>>({});
   // v10.12+: pro Sub-Event eigene Custom-Field-Werte. Wird beim Check eines
   // Sub-Events in dem Pop-Up-Modal abgefragt (siehe pendingSubEventModal weiter
@@ -1626,6 +1632,8 @@ export default function RegistrationPage(): React.ReactElement {
         : 'This is a demo event — no real registration is stored. Feel free to explore the sections above.');
       return;
     }
+    // v30.9: Auswahl fuer die Erfolgsseite einfrieren (s. submittedSessionsRef).
+    submittedSessionsRef.current = new Set(selectedSessions);
     // Validierung Pflichtfelder
     setShowErrors(true);
 
@@ -2322,9 +2330,11 @@ export default function RegistrationPage(): React.ReactElement {
           // v18.74: Bei stellvertretender Anmeldung den Zustimmungs-Nachweis
           // mitschreiben (Pflicht-Checkbox wurde oben validiert).
           // v19.6: ccSelfEmail (Anmeldende:r auf CC der Bestätigungs-Mail).
+          // v30.9: skipReload — der 28-MB-Volllade-Refresh läuft EINMAL am
+          // Ende des Absendens (fire-and-forget), nicht nach jedem Schreiben.
           registerForOther
-            ? { proxyConsentConfirmed: true, actorAllowedAsAssistant, ...(ccSelfEmail ? { extraCc: ccSelfEmail } : {}) }
-            : (delegateCc ? { extraCc: delegateCc } : undefined)
+            ? { proxyConsentConfirmed: true, actorAllowedAsAssistant, ...(ccSelfEmail ? { extraCc: ccSelfEmail } : {}), skipReload: true }
+            : { ...(delegateCc ? { extraCc: delegateCc } : {}), skipReload: true }
         );
         if (bestEffort) {
           // Schatten-Klammer: Erfolg zählt mit, aber kein Fehler-Durchschlag.
@@ -2434,9 +2444,13 @@ export default function RegistrationPage(): React.ReactElement {
           // v19.6: ccSelfEmail zusätzlich in die CC der Sub-Event-Bestätigung
           // mergen (deduppt serverseitig).
           const seExtraCc = [crossCutCc, ccSelfEmail, delegateCc].filter(Boolean).join(';');
-          const seOpts = (seExtraCc || registerForOther)
-            ? { ...(seExtraCc ? { extraCc: seExtraCc } : {}), ...(registerForOther ? { proxyConsentConfirmed: true, actorAllowedAsAssistant } : {}) }
-            : undefined;
+          // v30.9: skipReload — bei Kalender-Events lief nach JEDEM Tag ein
+          // kompletter loadEvents (28 MB); jetzt ein Sammel-Refresh am Ende.
+          const seOpts = {
+            ...(seExtraCc ? { extraCc: seExtraCc } : {}),
+            ...(registerForOther ? { proxyConsentConfirmed: true, actorAllowedAsAssistant } : {}),
+            skipReload: true,
+          };
           const subRes = await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType, seOpts);
           if (subRes.ok) { anySuccess = true; anySubRegSuccess = true; }
           else lastSubReason = subRes.reason;
@@ -2460,7 +2474,7 @@ export default function RegistrationPage(): React.ReactElement {
           // soll nicht aus Versehen einen Sub-Event-Slot des Anderen freigeben
           // weil er den Haken nicht gesetzt hat. Wer einen TN abmelden will,
           // macht das aktiv im Admin Center.
-          await cancelRegistration(ce.id);
+          await cancelRegistration(ce.id, { skipReload: true });
           anySuccess = true;
           subOpsDone++;
           setSubmitProgress(50 + Math.floor((subOpsDone / Math.max(subOps, 1)) * 40));
@@ -2566,6 +2580,11 @@ export default function RegistrationPage(): React.ReactElement {
           try { await recordProxyDelegation(selectedEventId!, { email: participantEmail, name: `${firstTrim} ${surnameTrim}`.trim() || participantEmail }); }
           catch { /* best-effort */ }
         }
+        // v30.9: EIN Refresh für alle Schreibvorgänge dieses Absendens (die
+        // Einzel-Aufrufe oben laufen mit skipReload). Bewusst NICHT awaiten —
+        // die Erfolgsseite soll sofort erscheinen; Kacheln/Zähler ziehen im
+        // Hintergrund nach.
+        void refreshEvents().catch(() => { /* best-effort */ });
         setSubmitted(true);
       } else if (!parentOk) {
         // Parent-Fehler wurde schon in setError oben gesetzt.
@@ -2719,10 +2738,15 @@ export default function RegistrationPage(): React.ReactElement {
       const r = toRegister[i];
       setMassImportProgress(`${i + 1} / ${toRegister.length} — ${r.email}`);
       try {
-        const success = (await registerForEvent(event.id, {}, r.firstName, r.lastName, r.email, undefined, { suppressMail, suppressOutlook })).ok;
+        // v30.9: skipReload — sonst zieht JEDE Zeile des Massenimports einen
+        // kompletten loadEvents nach sich (N × 28 MB → Drosselung).
+        const success = (await registerForEvent(event.id, {}, r.firstName, r.lastName, r.email, undefined, { suppressMail, suppressOutlook, skipReload: true })).ok;
         if (success) ok++; else failed.push(r.email);
       } catch { failed.push(r.email); }
     }
+    // Ein Sammel-Refresh statt N Einzel-Reloads; nicht awaiten — das Ergebnis-
+    // Panel soll sofort erscheinen, die Zähler ziehen im Hintergrund nach.
+    if (ok > 0) void refreshEvents().catch(() => { /* best-effort */ });
     setMassImportBusy(false);
     setMassImportProgress('');
     setMassImportResult({ ok, failed });
@@ -2878,7 +2902,7 @@ export default function RegistrationPage(): React.ReactElement {
               der Mail/Outlook-Satz NUR wenn für die gewählten Sections wirklich
               Mail bzw. Outlook aktiv ist. */}
           {!isExternalProxy && sessionsOnlyHint && event.subEventsOnlyMode ? (() => {
-            const selectedChildren = childEvents.filter(ce => selectedSessions.has(ce.id));
+            const selectedChildren = childEvents.filter(ce => selectedSessions.has(ce.id) || submittedSessionsRef.current.has(ce.id));
             const anyEmail = selectedChildren.some(ce => !ce.disableEmails);
             const anyOutlook = selectedChildren.some(ce => !ce.disableOutlook);
             const sectionPlural = childTermPlural || (locale === 'de' ? 'Event-Sections' : 'event-sections');
@@ -4010,7 +4034,11 @@ export default function RegistrationPage(): React.ReactElement {
                     const isSel = selectedSessions.has(ce.id);
                     const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
                     const isSessionFull = hasCap && meta.count >= (ce.maxParticipants || 0);
-                    const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
+                    // v30.8: effektive Tages-Frist — materialisierte Spalte,
+                    // sonst Fallback aus der rollierenden Regel (Spalte kann
+                    // bei einem unter Drosselung abgebrochenen Save leer sein).
+                    const effRegDeadline = subEventRegDeadline(event, ce);
+                    const deadlinePassed = !!(effRegDeadline && new Date(effRegDeadline) < new Date());
                     // v29.28: Organizer/Admins dürfen — wie beim Haupt-Event
                     // (parentRegBlocked) und wie der Wizard es ausdrücklich
                     // verspricht — auch nach der Frist anmelden. Die
@@ -5579,7 +5607,11 @@ export default function RegistrationPage(): React.ReactElement {
                                 const isSel = selectedSessions.has(ce.id);
                                 const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
                                 const isFull = hasCap && meta.count >= (ce.maxParticipants || 0);
-                                const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
+                                // v30.8: effektive Tages-Frist — materialisierte Spalte,
+                    // sonst Fallback aus der rollierenden Regel (Spalte kann
+                    // bei einem unter Drosselung abgebrochenen Save leer sein).
+                    const effRegDeadline = subEventRegDeadline(event, ce);
+                    const deadlinePassed = !!(effRegDeadline && new Date(effRegDeadline) < new Date());
                                 // v29.28: Frist-Bypass für Organizer/Admins (s. Listen-Pfad).
                                 const deadlineLocked = deadlinePassed && !isOrganizer && !isAdmin;
                                 // v29.67: Freischalt-Regel — der Tag öffnet erst X Tage
@@ -5678,7 +5710,7 @@ export default function RegistrationPage(): React.ReactElement {
                                         ? (locale === 'de' ? `ab ${openFromLabel}` : `from ${openFromLabel}`)
                                         : deadlinePassed
                                         ? (() => {
-                                            const dl = new Date(ce.registrationDeadline || '');
+                                            const dl = new Date(effRegDeadline || '');
                                             const dlLabel = isFinite(dl.getTime())
                                               ? dl.toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit' })
                                               : '';
@@ -5719,7 +5751,11 @@ export default function RegistrationPage(): React.ReactElement {
                     const isSel = selectedSessions.has(ce.id);
                     const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
                     const isSessionFull = hasCap && meta.count >= (ce.maxParticipants || 0);
-                    const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
+                    // v30.8: effektive Tages-Frist — materialisierte Spalte,
+                    // sonst Fallback aus der rollierenden Regel (Spalte kann
+                    // bei einem unter Drosselung abgebrochenen Save leer sein).
+                    const effRegDeadline = subEventRegDeadline(event, ce);
+                    const deadlinePassed = !!(effRegDeadline && new Date(effRegDeadline) < new Date());
                     // v29.28: Organizer/Admins dürfen — wie beim Haupt-Event
                     // (parentRegBlocked) und wie der Wizard es ausdrücklich
                     // verspricht — auch nach der Frist anmelden. Die

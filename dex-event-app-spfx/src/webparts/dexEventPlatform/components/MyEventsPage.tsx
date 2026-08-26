@@ -20,7 +20,7 @@ import { isEventVisibleForUser } from './EventListPage';
 import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime, QuizQuestion } from '../types';
 import { SPRegistration, EventCommRow } from '../services/EventService';
 import { wrapTemplate } from '../services/EmailTemplates';
-import { isEventOver } from '../utils/eventFormat';
+import { isEventOver, subEventRegDeadline } from '../utils/eventFormat';
 import { selfCancelLocked, selfCancelLockReason } from '../utils/cancelPolicy';
 import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
@@ -3915,6 +3915,8 @@ function MyEventSubEvents(props: {
     peers: { id: string; title: string; startDate?: string; location?: string }[];
     resolve: (_choice: { peerIds: string[] } | 'abort') => void;
   } | null>(null);
+  // v30.9: Hover-State für die Kalender-Zellen (Inline-Styles können kein :hover).
+  const [dayHoverKey, setDayHoverKey] = React.useState<string>('');
 
   const refresh = React.useCallback(async (): Promise<void> => {
     try {
@@ -4124,14 +4126,257 @@ function MyEventSubEvents(props: {
       <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginBottom: 10, lineHeight: 1.45 }}>
         {hintLabel}
       </div>
+      {/* v30.9: Termin-Kalender auch in „Meine Events" — dieselbe Monats-
+          Darstellung wie auf der Anmeldeseite (v28.91). Bei einer Office-Tage-
+          Reihe mit vielen Terminen ist die Zeilen-Liste kaum zu erfassen;
+          im Raster sieht man die eigenen (grünen) Tage auf einen Blick.
+          Anders als auf der Anmeldeseite schaltet ein Klick hier DIREKT um:
+          er läuft über handleToggle und damit über denselben Feld-Modal-,
+          Peer-Cancel- und Sperr-Pfad wie die Buttons der Listen-Ansicht. */}
+      {!!props.parentEvent.subEventCalendar && (() => {
+        const dayOf = (iso?: string): string => {
+          if (!iso) return '';
+          const d = new Date(iso);
+          if (isNaN(d.getTime())) return '';
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        };
+        const entries = visibleChildren
+          .map(ce => ({ ce, key: dayOf(ce.startDate) }))
+          .filter(e => !!e.key);
+        if (entries.length === 0) return null;
+        const byDay: Record<string, DeloitteEvent> = {};
+        entries.forEach(e => { byDay[e.key] = e.ce; });
+        const monthKeys: string[] = [];
+        entries.forEach(e => {
+          const mk = e.key.slice(0, 7);
+          if (monthKeys.indexOf(mk) < 0) monthKeys.push(mk);
+        });
+        monthKeys.sort();
+        const weekdays = isDe
+          ? ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
+          : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        const regCount = entries.filter(e => registeredSet.has(e.ce.id)).length;
+        // v10.27-Anschluss: Antworten bearbeiten geht im Raster nicht direkt —
+        // die angemeldeten Termine mit Abfragefeldern stehen deshalb als
+        // kompakte Zeilen unter dem Kalender (öffnet dasselbe Edit-Modal).
+        const editableRegs = entries
+          .map(e => e.ce)
+          .filter(ce => registeredSet.has(ce.id) && (ce.eventSpecificFields || []).some(f => !!f.label));
+        return (
+          <div>
+            {monthKeys.map(mk => {
+              const [my, mm] = mk.split('-').map(n => parseInt(n, 10));
+              const first = new Date(my, mm - 1, 1);
+              const daysInMonth = new Date(my, mm, 0).getDate();
+              // Montag als erster Wochentag (getDay: So=0).
+              const lead = (first.getDay() + 6) % 7;
+              const cells: Array<string | null> = [];
+              for (let i = 0; i < lead; i++) cells.push(null);
+              for (let d = 1; d <= daysInMonth; d++) {
+                cells.push(`${my}-${String(mm).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+              }
+              return (
+                <div key={mk} style={{ marginBottom: 14 }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 6, color: 'var(--dex-gray-700, #444)' }}>
+                    {first.toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { month: 'long', year: 'numeric' })}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+                    {weekdays.map(w => (
+                      <div key={w} style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--dex-gray-400)', textAlign: 'center', padding: '2px 0' }}>{w}</div>
+                    ))}
+                    {cells.map((key, i) => {
+                      if (!key) return <div key={`e${i}`} />;
+                      const ce = byDay[key];
+                      const dayNum = parseInt(key.slice(8), 10);
+                      if (!ce) {
+                        return (
+                          <div key={key} style={{
+                            textAlign: 'center', padding: '8px 0', borderRadius: 8,
+                            fontSize: '0.8rem', color: 'var(--dex-gray-300, #ccc)',
+                          }}>{dayNum}</div>
+                        );
+                      }
+                      const isReg = registeredSet.has(ce.id);
+                      const isBusy = busyId === ce.id;
+                      const count = counts[ce.id] || 0;
+                      const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
+                      const isFull = hasCap && count >= (ce.maxParticipants || 0);
+                      const free = hasCap ? Math.max(0, (ce.maxParticipants || 0) - count) : -1;
+                      // Frist-/Freischalt-Rechnung wie in der Listen-Ansicht (v30.8/v30.2).
+                      const effRegDeadline = subEventRegDeadline(props.parentEvent, ce);
+                      const perDayRules = !!(props.parentEvent.subDeadlineRule && props.parentEvent.subDeadlineRule.reg) || !!props.parentEvent.subEventOpenRule;
+                      const deadlinePassed = !!(effRegDeadline && new Date(effRegDeadline) < new Date())
+                        || (!perDayRules && !!(props.parentEvent.klammerDeadline && new Date(props.parentEvent.klammerDeadline) < new Date()));
+                      const deadlineLocked = deadlinePassed && !isAdmin && !isParentOrganizer;
+                      const openFrom = ((): Date | null => {
+                        const rule = props.parentEvent.subEventOpenRule;
+                        if (!rule) return null;
+                        if (rule.mode === 'fixed') {
+                          const dd = new Date(rule.date || '');
+                          return isFinite(dd.getTime()) ? dd : null;
+                        }
+                        if (!((rule.days || 0) > 0)) return null;
+                        const base = new Date(ce.startDate || '');
+                        if (!isFinite(base.getTime())) return null;
+                        const dd = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+                        if (rule.mode === 'week') dd.setDate(dd.getDate() - ((dd.getDay() + 6) % 7));
+                        dd.setDate(dd.getDate() - (rule.days || 0));
+                        dd.setHours(0, 0, 0, 0);
+                        return dd;
+                      })();
+                      const notYetOpen = !isReg && !!openFrom && new Date() < openFrom;
+                      const openLocked = notYetOpen && !isAdmin && !isParentOrganizer;
+                      const openFromLabel = openFrom
+                        ? openFrom.toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit' })
+                        : '';
+                      const lockReason = isReg ? selfCancelLockReason(ce, props.parentEvent) : null;
+                      const cancelLocked = !!lockReason;
+                      const past = isEventOver(ce);
+                      const disabled = isBusy || past
+                        || (isReg ? cancelLocked : ((isFull) || deadlineLocked || openLocked));
+                      const dlLabel = (() => {
+                        const dl = new Date(effRegDeadline || '');
+                        return isFinite(dl.getTime())
+                          ? dl.toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit' })
+                          : '';
+                      })();
+                      const title = [
+                        ce.title || '',
+                        isReg
+                          ? (isDe ? 'Angemeldet — Klick meldet ab' : 'Registered — click to cancel')
+                          : (isDe ? 'Klick meldet an' : 'Click to register'),
+                        hasCap
+                          ? (isDe ? `${free} von ${ce.maxParticipants} Plätzen frei` : `${free} of ${ce.maxParticipants} seats free`)
+                          : '',
+                        cancelLocked
+                          ? (lockReason === 'always'
+                            ? (isDe ? 'Selbst-Abmeldung von den Organizern deaktiviert' : 'Self-cancellation disabled by the organizers')
+                            : (isDe ? 'Abmeldefrist abgelaufen — Selbst-Abmeldung gesperrt' : 'Cancellation deadline passed — self-cancellation locked'))
+                          : '',
+                        !isReg && deadlinePassed
+                          ? (deadlineLocked
+                            ? (isDe ? 'Anmeldefrist abgelaufen' : 'Registration deadline passed')
+                            : (isDe ? 'Anmeldefrist abgelaufen — als Organizer/Admin trotzdem wählbar' : 'Deadline passed — still selectable as organizer/admin'))
+                          : '',
+                        notYetOpen
+                          ? (openLocked
+                            ? (isDe ? `Anmeldung ab ${openFrom!.toLocaleDateString('de-DE')} möglich` : `Registration opens on ${openFrom!.toLocaleDateString('en-GB')}`)
+                            : (isDe ? `Anmeldung öffnet regulär am ${openFrom!.toLocaleDateString('de-DE')} — als Organizer/Admin trotzdem wählbar` : `Opens on ${openFrom!.toLocaleDateString('en-GB')} — still selectable as organizer/admin`))
+                          : '',
+                        past ? (isDe ? 'Termin liegt in der Vergangenheit' : 'Date is in the past') : '',
+                      ].filter(Boolean).join(' · ');
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => { if (!disabled) void handleToggle(ce.id, isReg); }}
+                          onMouseEnter={() => { if (!disabled) setDayHoverKey(key); }}
+                          onMouseLeave={() => setDayHoverKey(h => (h === key ? '' : h))}
+                          onFocus={() => { if (!disabled) setDayHoverKey(key); }}
+                          onBlur={() => setDayHoverKey(h => (h === key ? '' : h))}
+                          disabled={disabled}
+                          title={title}
+                          aria-pressed={isReg}
+                          style={{
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                            gap: 1, padding: '6px 0 5px', borderRadius: 8, minHeight: 46,
+                            border: `1px solid ${isReg
+                              ? 'var(--dex-green, #86bc25)'
+                              : (dayHoverKey === key ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)')}`,
+                            background: isReg
+                              ? (dayHoverKey === key ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-green, #86bc25)')
+                              : (dayHoverKey === key ? 'rgba(134,188,37,0.10)' : '#fff'),
+                            color: isReg ? '#fff' : (disabled ? 'var(--dex-gray-400)' : 'var(--dex-gray-800, #333)'),
+                            cursor: disabled ? 'not-allowed' : 'pointer',
+                            // v29.72-Regel: der Zustand ist für ALLE sichtbar, der
+                            // Organizer/Admin-Bypass öffnet nur das Klicken.
+                            opacity: disabled && !isReg ? 0.55 : (notYetOpen ? 0.65 : 1),
+                            fontWeight: 700, fontSize: '0.82rem',
+                            transition: 'background 120ms ease, border-color 120ms ease, transform 120ms ease',
+                            transform: (dayHoverKey === key && !disabled) ? 'translateY(-1px)' : 'none',
+                          }}
+                        >
+                          <span>{dayNum}</span>
+                          <span style={{ fontSize: '0.6rem', fontWeight: 600, opacity: 0.85 }}>
+                            {isBusy
+                              ? '…'
+                              : isReg
+                              ? (cancelLocked ? (isDe ? 'fix' : 'fixed') : '✓')
+                              : notYetOpen
+                              ? (isDe ? `ab ${openFromLabel}` : `from ${openFromLabel}`)
+                              : deadlinePassed
+                              ? (dlLabel
+                                ? (isDe ? `war bis ${dlLabel}` : `until ${dlLabel}`)
+                                : (isDe ? 'zu' : 'closed'))
+                              : isFull
+                              ? (isDe ? 'voll' : 'full')
+                              : hasCap
+                              ? (isDe ? `${free} frei` : `${free} free`)
+                              : '—'}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+              {regCount === 0
+                ? (isDe ? 'Noch kein Termin angemeldet.' : 'No date registered yet.')
+                : (isDe
+                  ? `${regCount} ${regCount === 1 ? 'Termin' : 'Termine'} angemeldet (grün).`
+                  : `${regCount} ${regCount === 1 ? 'date' : 'dates'} registered (green).`)}
+            </div>
+            {editableRegs.length > 0 && (
+              <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {editableRegs.map(ce => (
+                  <div key={ce.id} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+                    padding: '6px 12px', borderRadius: 8,
+                    background: 'rgba(134,188,37,0.08)', border: '1px solid var(--dex-green, #86bc25)',
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: '0.82rem' }}>{ce.title || fmt(ce.startDate || '')}</div>
+                      <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {(ce.eventSpecificFields || [])
+                          .filter(f => f.label && ((seData[ce.id] || {})[f.id] || '').trim())
+                          .map(f => (
+                            <FieldAnswerTag key={f.id} label={f.label} value={(seData[ce.id] || {})[f.id]} type={f.type} small />
+                          ))}
+                      </div>
+                    </div>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                      disabled={busyId === ce.id}
+                      onClick={() => { setEditingId(ce.id); setEditDraft({ ...(seData[ce.id] || {}) }); }}
+                    >
+                      {isDe ? 'Bearbeiten' : 'Edit'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {!props.parentEvent.subEventCalendar && (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {visibleChildren.map(ce => {
           const isReg = registeredSet.has(ce.id);
           const isBusy = busyId === ce.id;
           // v28.20: Auch die explizite Klammer-Frist des Hauptevents sperrt
           // das NACHTRÄGLICHE Anmelden (Abmelden bleibt möglich).
-          const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date())
-            || !!(props.parentEvent.klammerDeadline && new Date(props.parentEvent.klammerDeadline) < new Date());
+          // v30.8: effektive Tages-Frist (materialisierte Spalte, sonst
+          // Fallback aus der rollierenden Regel). Die Klammer-Frist sperrt
+          // nur noch, wenn KEINE Je-Termin-Logik konfiguriert ist — gleiche
+          // Regel wie isRegistrationFullyClosed.
+          const effRegDeadline = subEventRegDeadline(props.parentEvent, ce);
+          const perDayRules = !!(props.parentEvent.subDeadlineRule && props.parentEvent.subDeadlineRule.reg) || !!props.parentEvent.subEventOpenRule;
+          const deadlinePassed = !!(effRegDeadline && new Date(effRegDeadline) < new Date())
+            || (!perDayRules && !!(props.parentEvent.klammerDeadline && new Date(props.parentEvent.klammerDeadline) < new Date()));
           // v30.2: „Anmeldung ab" (Freischalt-Regel der Klammer) galt bisher
           // nur auf der Anmeldeseite — ueber „Meine Events" liess sich JEDER
           // Termin sofort buchen. Gleiche Rechnung wie subOpenFrom in
@@ -4259,6 +4504,7 @@ function MyEventSubEvents(props: {
           );
         })}
       </div>
+      )}
 
       {/* v10.27: Sub-Event-Edit-Modal — analog zum Hauptevent-Inline-Edit
           (siehe weiter oben), aber als Modal damit es übersichtlich

@@ -52,8 +52,30 @@ export function isRegistrationOpen(ev: { registrationDeadline?: string; startDat
  * Behebt den Bug, dass eine abgelaufene Klammer-/Hauptevent-Frist die ganze
  * Anmeldung sperrte, obwohl die Sub-Events noch offen waren.
  */
+/**
+ * v30.8: Effektive „Anmeldung bis"-Frist eines Sub-Events. Primär die
+ * MATERIALISIERTE Spalte (v29.76: der Wizard schreibt die rollierende Regel
+ * in registrationDeadline der Sub-Events — es gibt bewusst keinen zweiten
+ * Auswertungsort). Der Fallback auf die Regel greift NUR, wenn die Spalte
+ * leer ist: Beim Soft Opening waren die Tages-Fristen nie persistiert
+ * (Save unter Drosselung), und die Anmeldeseite hielt Tag 1 für offen,
+ * obwohl die Regel ihn längst geschlossen hatte.
+ */
+export function subEventRegDeadline(
+  parent: { subDeadlineRule?: { reg?: { amount?: number; unit?: string } } },
+  child: { registrationDeadline?: string; startDate?: string },
+): string {
+  const own = (child.registrationDeadline || '').trim();
+  if (own) return own;
+  const r = parent.subDeadlineRule && parent.subDeadlineRule.reg;
+  if (!r || !(Number(r.amount) > 0)) return '';
+  const t = new Date(child.startDate || '').getTime();
+  if (!isFinite(t)) return '';
+  return new Date(t - Number(r.amount) * (r.unit === 'hours' ? 3600000 : 86400000)).toISOString();
+}
+
 export function isRegistrationFullyClosed(
-  event: { registrationDeadline?: string; startDate?: string; endDate?: string; klammerDeadline?: string; subDeadlineRule?: { reg?: unknown } },
+  event: { registrationDeadline?: string; startDate?: string; endDate?: string; klammerDeadline?: string; subDeadlineRule?: { reg?: unknown }; subEventOpenRule?: unknown },
   childEvents: Array<{ registrationDeadline?: string; startDate?: string; endDate?: string }>,
 ): boolean {
   // v28.20: EXPLIZITE Klammer-Frist (Piggyback _klammerDeadline) — vom
@@ -65,9 +87,12 @@ export function isRegistrationFullyClosed(
   // stehengebliebene) Klammer-Frist sperrte sonst das gesamte Event: Beim
   // Soft Opening war Tag 1 zu (25.08.), alle weiteren Tage offen — und die
   // Anmeldeseite zeigte trotzdem „Anmeldefrist abgelaufen" für alles.
-  const rollingReg = !!(event.subDeadlineRule && event.subDeadlineRule.reg);
+  // v30.8: Gleiches gilt bei aktiver „Anmeldung ab"-Regel (_subEventOpenRule)
+  // — wer irgendeine Je-Termin-Logik konfiguriert hat, will Tages-Fenster;
+  // die stehengebliebene Klammer-Frist darf dann nie das ganze Event killen.
+  const perDayRules = !!(event.subDeadlineRule && event.subDeadlineRule.reg) || !!event.subEventOpenRule;
   const kdl = (event.klammerDeadline || '').trim();
-  if (kdl && !rollingReg) {
+  if (kdl && !perDayRules) {
     const kt = new Date(kdl).getTime();
     if (Number.isFinite(kt) && kt < Date.now()) return true;
   }

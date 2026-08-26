@@ -377,7 +377,7 @@ interface EventContextType {
   /** v29.47: Dokumente eines Events bei Bedarf nachladen (Boot lädt sie nicht mehr). */
   ensureEventDocuments: (eventIds: string[]) => Promise<void>;
   createEvent: (event: CreateEventInput) => Promise<number | null>;
-  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean; actorAllowedAsAssistant?: boolean }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste'; reason?: string }>;
+  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean; actorAllowedAsAssistant?: boolean; skipReload?: boolean }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste'; reason?: string }>;
   /** v11.82: Team-Anmeldung — Lead + N-1 Mitglieder gleichzeitig anmelden.
    *  Reserviert N Plätze atomar; bei Vollbelegung geht das ganze Team auf
    *  die Warteliste (keine Teil-Anmeldungen aus Kapazitätsmangel). */
@@ -427,7 +427,7 @@ interface EventContextType {
    *  die „Offene Teams"-Anzeige auf der Registrierungs-Seite. Nur Teams
    *  mit aktivem Mitglied-Count < TeamSize werden aufgeführt. */
   listOpenTeamsForEvent: (eventId: string) => Promise<Array<{ teamId: string; teamName: string; activeCount: number; teamSize: number; leadEmail: string; leadDisplayName: string }>>;
-  cancelRegistration: (eventId: string, opts?: { suppressNotifications?: boolean }) => Promise<boolean>;
+  cancelRegistration: (eventId: string, opts?: { suppressNotifications?: boolean; skipReload?: boolean }) => Promise<boolean>;
   /** v18.11: Proaktive Absage durch einen (noch nicht angemeldeten) Teilnehmer
    *  — „Ich nehme nicht teil". Landet als Abgemeldet-Eintrag im Admin-Center. */
   declineEvent: (eventId: string) => Promise<boolean>;
@@ -1881,7 +1881,12 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     // v18.74: proxyConsentConfirmed — bei stellvertretender Anmeldung wurde die
     // Zustimmung der Person bestätigt (Pflicht-Checkbox auf der Anmeldeseite).
     // Wird als Nachweis in die SP-Spalte ProxyConsent geschrieben.
-    opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean; actorAllowedAsAssistant?: boolean }
+    // v30.9: skipReload — jeder Aufruf zog am Ende ein volles loadEvents
+    // (28 MB + participantCounts) nach sich. Die Anmeldeseite meldet bei
+    // Kalender-Events MEHRFACH an (Tage + Schatten-Klammer) und lud damit
+    // pro Klick mehrere Male den kompletten Bestand; genau dieselbe Bremse
+    // wie v29.77 im Wizard. Schleifen skippen und refreshen EINMAL am Ende.
+    opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean; actorAllowedAsAssistant?: boolean; skipReload?: boolean }
   ): Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste'; reason?: string }> {
     // v17.25: Demo-Showcase-Event → No-Op, kein SP-Roundtrip. Die Register-
     // Seite blockt den Submit ohnehin mit einem Demo-Hinweis; dieser Guard
@@ -2474,7 +2479,8 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       if (status === 'Angemeldet') {
         eventService.bumpKpiParticipants(1).catch(() => { /* best-effort */ });
       }
-      await loadEvents();
+      // v30.9: s. opts.skipReload — Schleifen laden EINMAL am Ende neu.
+      if (!opts?.skipReload) await loadEvents();
     }
     // v18.67: echten Status zurückgeben (Angemeldet/Warteliste), damit die
     // RegistrationPage das Ergebnis-Modal nicht mehr aus der gecachten
@@ -3400,7 +3406,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     return open;
   }
 
-  async function cancelRegistration(eventId: string, opts?: { suppressNotifications?: boolean }): Promise<boolean> {
+  async function cancelRegistration(eventId: string, opts?: { suppressNotifications?: boolean; skipReload?: boolean }): Promise<boolean> {
     // v17.25: Demo-Showcase-Event → No-Op.
     if (isDemoShowcaseId(eventId)) return true;
     // v22.22: Selbst-Abmeldung von bereits vergangenen Events ist gesperrt —
@@ -3611,7 +3617,8 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
           console.warn('[DEX] team-cancel post-step failed:', err);
         });
       }
-      await loadEvents();
+      // v30.9: s. registerForEvent — Schleifen skippen, EIN Refresh am Ende.
+      if (!opts?.skipReload) await loadEvents();
     }
     return success;
   }
