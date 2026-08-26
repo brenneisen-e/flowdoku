@@ -364,6 +364,33 @@ export default function EventCreationPage(): React.ReactElement {
   // zuerst eine Bestätigungs-Maske mit den Nutzungs- und Datenschutz-
   // bedingungen akzeptieren. Nicht relevant beim Bearbeiten bestehender Events.
   const [tcAccepted, setTcAccepted] = React.useState(false);
+  const [tcCheckbox, setTcCheckbox] = React.useState(false);
+  // v28.41: Zweite, bewusst getrennte Bestätigung — der Organizer muss aktiv
+  // erklären, dass es ein internes Event ist bzw. die Deloitte-Teilnahme an
+  // einer externen Veranstaltung koordiniert. Absichtlich NICHT mit der
+  // Nutzungsbedingungs-Zustimmung zusammengelegt: Wer beides in einem Haken
+  // abnickt, hat den Einsatzbereich nicht gelesen.
+  const [internalCheckbox, setInternalCheckbox] = React.useState(false);
+  const [tcExpanded, setTcExpanded] = React.useState(false);
+  const { t, locale } = useLanguage();
+  // v20.4: App-Modals statt nativer Browser-Dialoge.
+  const { confirmDialog, showAlert } = useDialog();
+  // Mobile-Breakpoint (≤768px) für responsive Grid-/Flex-Anpassungen im Wizard.
+  const isMobile = useIsMobile();
+  const isDe = locale === 'de';
+
+  // Edit-Modus: wenn wir auf 'edit-event' sind und eine selectedEventId haben
+  const isEditMode = currentPage === 'edit-event' && !!selectedEventId;
+  const editEvent = isEditMode ? events.find(e => e.id === selectedEventId) : null;
+
+  // v29.71 BUG-FIX: Dieser Block stand VOR der editEvent-Deklaration (Zeile
+  // oben). Die useState-Initialisierer laufen synchron beim ersten Render —
+  // der Zugriff auf editEvent warf dort einen ReferenceError (TDZ), den das
+  // try/catch STILL schluckte: alle Abrechnungs- und Freischalt-States
+  // starteten immer leer. Beim Wieder-Oeffnen war der Haken weg, und der
+  // naechste Save schrieb den leeren Zustand zurueck und LOESCHTE damit die
+  // zuvor gespeicherte Einstellung. Ein catch um einen Programmierfehler ist
+  // kein Netz, sondern ein Versteck — deshalb steht der Block jetzt hier.
   // v29.66: Abrechnungsrelevanz (F&A-Pilot, nur Admins). Persistiert als
   // Piggyback `_billing` in EmailTemplateOverrides — beim Laden gestrippt
   // (s. Strip-Block), beim Speichern an BEIDEN Pfaden gemergt.
@@ -436,24 +463,6 @@ export default function EventCreationPage(): React.ReactElement {
     { id: 'name', label: 'Name der Veranstaltung bzw. Anlass der Bewirtung oder des Geschenks' },
   ];
   const billingMissing = BILLING_FIELDS.filter(f => !(billingFields[f.id] || '').trim());
-  const [tcCheckbox, setTcCheckbox] = React.useState(false);
-  // v28.41: Zweite, bewusst getrennte Bestätigung — der Organizer muss aktiv
-  // erklären, dass es ein internes Event ist bzw. die Deloitte-Teilnahme an
-  // einer externen Veranstaltung koordiniert. Absichtlich NICHT mit der
-  // Nutzungsbedingungs-Zustimmung zusammengelegt: Wer beides in einem Haken
-  // abnickt, hat den Einsatzbereich nicht gelesen.
-  const [internalCheckbox, setInternalCheckbox] = React.useState(false);
-  const [tcExpanded, setTcExpanded] = React.useState(false);
-  const { t, locale } = useLanguage();
-  // v20.4: App-Modals statt nativer Browser-Dialoge.
-  const { confirmDialog, showAlert } = useDialog();
-  // Mobile-Breakpoint (≤768px) für responsive Grid-/Flex-Anpassungen im Wizard.
-  const isMobile = useIsMobile();
-  const isDe = locale === 'de';
-
-  // Edit-Modus: wenn wir auf 'edit-event' sind und eine selectedEventId haben
-  const isEditMode = currentPage === 'edit-event' && !!selectedEventId;
-  const editEvent = isEditMode ? events.find(e => e.id === selectedEventId) : null;
 
   // ========== Zeitzonen-Handling (Europe/Berlin, browser-TZ-unabhängig) ==========
   //
