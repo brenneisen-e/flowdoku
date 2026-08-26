@@ -892,7 +892,35 @@ export default function RegistrationPage(): React.ReactElement {
           const meta: Record<string, { count: number; wasRegistered: boolean }> = {};
           const preselect = new Set<string>();
           const starterPre: Record<string, string> = {};
-          for (const ce of childEvents) {
+          // v29.65: Diese Schleife lief STRENG NACHEINANDER, und jeder Durchlauf
+          // macht zwei Requests (eigene Anmeldung + alle Anmeldungen). Bei einem
+          // Kalender-Event mit 21 Tagen sind das 42 Roundtrips, bevor
+          // `setSessionMeta` ueberhaupt einmal aufgerufen wird — und bis dahin
+          // faellt jede Tages-Kachel auf `{ count: 0, wasRegistered: false }`
+          // zurueck: alle zeigen die volle Platzzahl, und die eigenen, schon
+          // gebuchten Tage sind NICHT vorausgewaehlt. Genau das ist der Eindruck
+          // „die Maske sieht nicht so aus, wie sie soll".
+          //
+          // Jetzt laufen die Tage zu sechst (dieselbe Grenze wie beim
+          // Teilnehmerzahlen-Nachlauf im EventContext) und die Zahlen werden
+          // schrittweise veroeffentlicht, sobald ein Tag fertig ist.
+          //
+          // Die VORAUSWAHL bleibt bewusst ein einziger Aufruf am Ende: Sie
+          // ueberschreibt die Auswahl des Nutzers, und die haeppchenweise
+          // nachzuziehen wuerde mit dem konkurrieren, was er waehrenddessen
+          // anklickt.
+          const runLimited = async (items: typeof childEvents, limit: number, fn: (x: typeof childEvents[number]) => Promise<void>): Promise<void> => {
+            let next = 0;
+            const workers = new Array(Math.min(limit, items.length)).fill(0).map(async () => {
+              for (;;) {
+                const i = next++;
+                if (i >= items.length) return;
+                await fn(items[i]);
+              }
+            });
+            await Promise.all(workers);
+          };
+          await runLimited(childEvents, 6, async (ce) => {
             if (registerForOther) {
               // v18.37: Stellvertreter-Modus — nur die Belegungszahl laden
               // (für die „X/Y belegt"-/Voll-Anzeige). KEINE Self-Vorbelegung,
@@ -923,7 +951,11 @@ export default function RegistrationPage(): React.ReactElement {
                 if (existingType) starterPre[ce.id] = existingType;
               }
             }
-          }
+            // Schrittweise veroeffentlichen — die Kachel dieses Tages zeigt ihre
+            // echten Zahlen, sobald sie da sind, statt auf alle anderen zu warten.
+            const justDone = meta[ce.id];
+            if (justDone) setSessionMeta(prev => ({ ...prev, [ce.id]: justDone }));
+          });
           setSessionMeta(meta);
           // Im Stellvertreter-Modus startet die Auswahl leer (frische Anmeldung).
           setSelectedSessions(registerForOther ? new Set<string>() : preselect);
