@@ -5539,7 +5539,14 @@ export default function RegistrationPage(): React.ReactElement {
                                         : (dayHoverKey === key ? 'rgba(134,188,37,0.10)' : '#fff'),
                                       color: isSel ? '#fff' : (disabled ? 'var(--dex-gray-400)' : 'var(--dex-gray-800, #333)'),
                                       cursor: disabled ? 'not-allowed' : 'pointer',
-                                      opacity: disabled ? 0.55 : 1,
+                                      // v29.72: Der Freischalt-Zustand ist fuer ALLE sichtbar.
+                                      // Vorher machte der Organizer/Admin-Bypass die Kachel
+                                      // optisch voellig normal — die Organizerin des Events sah
+                                      // beim Testen keinerlei Wirkung und meldete die Funktion
+                                      // als kaputt, obwohl Teilnehmer sie korrekt gesperrt sahen.
+                                      // Jetzt: Anblick gleich fuer alle (gedimmt + „ab TT.MM."),
+                                      // nur das KLICKEN laesst der Bypass weiter zu.
+                                      opacity: disabled ? 0.55 : (notYetOpen ? 0.65 : 1),
                                       fontWeight: 700, fontSize: '0.82rem',
                                       transition: 'background 120ms ease, border-color 120ms ease, transform 120ms ease',
                                       transform: (dayHoverKey === key && !disabled) ? 'translateY(-1px)' : 'none',
@@ -5547,7 +5554,7 @@ export default function RegistrationPage(): React.ReactElement {
                                   >
                                     <span>{dayNum}</span>
                                     <span style={{ fontSize: '0.6rem', fontWeight: 600, opacity: 0.85 }}>
-                                      {openLocked
+                                      {notYetOpen
                                         ? (locale === 'de' ? `ab ${openFromLabel}` : `from ${openFromLabel}`)
                                         : deadlineLocked
                                         ? (locale === 'de' ? 'zu' : 'closed')
