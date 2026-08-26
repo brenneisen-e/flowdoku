@@ -14,6 +14,7 @@ import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
 import { useDialog } from '../context/DialogContext';
 import { EventService, CustomField } from '../services/EventService';
+import { isThrottled } from '../utils/spThrottle';
 // v26.48: zentrale B2Run-Köln-Vorlage (Titel-Erkennung + 7 Meldefelder mit
 // deterministischen IDs für den offiziellen Excel-Export).
 import { isB2RunKoelnTitle, b2runKoelnTemplateFields } from '../data/b2runKoeln';
@@ -3536,6 +3537,9 @@ export default function EventCreationPage(): React.ReactElement {
       && subTopGateInitialRef.current !== ''
       && subTopGateInitialRef.current === subTopGateKey();
     let skippedSubCount = 0;
+    // v29.74: Drossel-Abbruch (s. Schleifenrumpf).
+    let consecutiveSubFailures = 0;
+    let abortedForThrottle = false;
     const stepTotal = subEventsRef.current.filter(d => !!(d.title || '').trim()).length;
     let stepDone = 0;
     // v11.87: Sub-Event-Progress-Callback aus dem aufrufenden handleSubmit
@@ -3984,6 +3988,25 @@ export default function EventCreationPage(): React.ReactElement {
         // (429, zu großer Payload) nie ankamen.
         const subOk = await updateEvent(draft.dbId, subUpdates);
         if (!subOk) failedSubTitles.push(shortSubEventTitle(draft.title, title) || draft.title);
+        // v29.74: Bei Drosselung ANHALTEN statt weiterhaemmern. Zwei
+        // Fehlschlaege in Folge waehrend aktiver Drossel-Schranke heisst:
+        // SharePoint will gerade keine weiteren Schreibzugriffe von diesem
+        // Nutzer. Die restlichen Termine trotzdem zu versuchen (jeder mit
+        // eigenen Retries) hat einen Organizer bis zur NUTZER-SPERRE
+        // (Throttle.htm) eskaliert. Lieber ehrlich abbrechen — gespeichert
+        // ist gespeichert, der Rest kommt beim naechsten Save.
+        if (!subOk) {
+          consecutiveSubFailures++;
+          if (consecutiveSubFailures >= 2 && isThrottled()) {
+            abortedForThrottle = true;
+            break;
+          }
+        } else {
+          consecutiveSubFailures = 0;
+        }
+        // v29.74: Atempause zwischen den Schreibzugriffen — 19 MERGEs im
+        // Renn-Tempo sind genau das Muster, das die Drosselung ausloest.
+        await new Promise<void>(r => setTimeout(r, 250));
         // v27.11: eigenes Sub-Event-Bild persistieren (Upload/Entfernen).
         await persistSubEventImage(draft.dbId, draft);
       } else {
@@ -4019,7 +4042,11 @@ export default function EventCreationPage(): React.ReactElement {
     }
     // v29.21 (Audit): gescheiterte Sub-Events benennen statt still erfolgreich
     // zu wirken — der Organizer entscheidet dann selbst, ob er erneut speichert.
-    if (failedSubTitles.length > 0) {
+    if (abortedForThrottle) {
+      showAlert(isDe
+        ? `SharePoint bremst gerade alle Schreibzugriffe (Drosselung). Der Speichervorgang wurde nach ${stepDone} von ${stepTotal} Terminen angehalten, damit dein Konto nicht gesperrt wird. Was gespeichert ist, bleibt gespeichert — bitte warte ein paar Minuten und speichere dann erneut; bereits gesicherte Termine werden dabei übersprungen.`
+        : `SharePoint is currently throttling all writes. Saving stopped after ${stepDone} of ${stepTotal} dates to protect your account from being blocked. Everything saved so far is kept — please wait a few minutes and save again; dates already saved will be skipped.`, { variant: 'error' });
+    } else if (failedSubTitles.length > 0) {
       showAlert(isDe
         ? `${failedSubTitles.length} Sub-Event${failedSubTitles.length === 1 ? '' : 's'} konnte${failedSubTitles.length === 1 ? '' : 'n'} nicht gespeichert werden: ${failedSubTitles.join(', ')}. Die übrigen Änderungen sind gespeichert — bitte speichere erneut, um es nochmal zu versuchen.`
         : `${failedSubTitles.length} sub-event${failedSubTitles.length === 1 ? '' : 's'} could not be saved: ${failedSubTitles.join(', ')}. All other changes are saved — please save again to retry.`, { variant: 'error' });

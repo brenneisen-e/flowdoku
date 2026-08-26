@@ -1,89 +1,79 @@
 import { SPHttpClientResponse } from '@microsoft/sp-http';
 
 /**
- * v29.48 — Drosselung von SharePoint abfangen (HTTP 429/503).
+ * v29.48/v29.74 — Drosselung von SharePoint abfangen (HTTP 429/503).
  *
- * SharePoint zählt Requests pro Nutzer in einem gleitenden Fenster. Wer viele
- * Sub-Events in einem Rutsch speichert, überschreitet das Kontingent: die
- * nächsten Requests kommen mit **429 (Too Many Requests)** zurück, oft mit
- * einem `Retry-After`-Header, der sagt, wie lange man warten soll.
+ * Geschichte dieses Moduls, weil jede Regel hier aus einem echten Vorfall
+ * stammt:
+ *  - v29.48: Retry mit Backoff, damit das Speichern von 21 Sub-Events nicht
+ *    an einem einzelnen 429 scheitert.
+ *  - v29.50: Retry von den GETs genommen — ein 429 im Boot hielt sonst die
+ *    ganze App an. Dabei wurden die Wartezeiten auf 6 s gedeckelt.
+ *  - v29.74: Der 6-s-Deckel war der naechste Vorfall. Er galt AUCH fuer den
+ *    Retry-After-Header — sagte SharePoint „warte 120 s", klopften wir
+ *    nach 6 s wieder an. Gedrosselte Anfragen zaehlen bei Microsoft aber
+ *    WEITER aufs Kontingent; wer Retry-After ignoriert, wird vom 429 zur
+ *    NUTZER-SPERRE eskaliert (Throttle.htm, „Something\u2019s not right") —
+ *    genau das hat einen Organizer nach dem Bearbeiten von 19 Terminen
+ *    komplett aus SharePoint ausgesperrt.
  *
- * Bis hierher hat die App das als normalen Fehlschlag behandelt. Beim
- * Kalender-Event mit 21 Tagen war das Ergebnis genau das, was der Organizer
- * gemeldet hat: „The event could not be updated. Reason: HTTP 429" beim
- * Speichern der Anmeldefrist und „3 sub-events could not be saved …" beim
- * Speichern des Orts — und weil der Schreibvorgang nie ankam, standen
- * entfernte Tage danach immer noch in der Liste. Es war also nie ein
- * Datenfehler, sondern eine verworfene Antwort.
- *
- * Deshalb hier zwei Dinge:
- *
- *  1. **Wiederholen statt Aufgeben.** Ein 429/503 heißt „abgelehnt, nicht
- *     ausgeführt" — der Request ist nie beim Listen-Schreiben angekommen.
- *     Ihn zu wiederholen ist deshalb auch bei POST/MERGE ungefährlich; es
- *     entsteht kein zweiter Eintrag. Wartezeit: `Retry-After`, sonst 2/4/8/16 s.
- *
- *  2. **Eine gemeinsame Schranke.** Ohne sie laufen die 80 gerade fliegenden
- *     Requests alle in dieselbe Wand, warten alle gleich lang und schlagen
- *     danach gleichzeitig wieder auf — die Drosselung verlängert sich selbst.
- *     `gateUntil` ist deshalb modulweit: sieht EIN Request ein 429, warten
- *     ALLE bis zum selben Zeitpunkt, auch die, die gerade erst starten.
- *
- * Nicht wiederholt werden andere Statuscodes. 403/404/400 sind Aussagen über
- * den Request selbst; sie werden durch Warten nicht wahr.
+ * Die Regeln seither:
+ *  1. Retry-After wird IMMER voll respektiert — nie frueher wiederholen.
+ *  2. Ist die verlangte Wartezeit laenger, als ein Nutzer vor einem
+ *     Speichern-Balken sinnvoll wartet (RETRY_HONOR_MAX), wird GAR NICHT
+ *     wiederholt: Der Aufrufer bekommt den 429 und meldet den Fehlschlag.
+ *     Ein ehrlicher Fehler ist billiger als eine Kontosperre.
+ *  3. Die gemeinsame Schranke (gateUntil) gilt fuer die volle Dauer — kein
+ *     Durchlassen nach 8 s mehr. Nur Schreibzugriffe laufen durch dieses
+ *     Modul (v29.50), ein wartender Save blockiert also nicht die App.
+ *  4. Nach mehreren Drossel-Antworten in Folge schaltet ein Schutzschalter
+ *     die Wiederholungen ganz ab, bis die Schranke abgelaufen ist.
  */
 
 /** Maximale Zahl der Wiederholungen je Request. */
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 2;
+
+/** Backoff ohne Retry-After-Header: 4 s, dann 8 s. */
+const FALLBACK_WAIT_MS = [4000, 8000];
 
 /**
- * Obergrenze je Wartezeit. v29.50 von 30 s auf 6 s gesenkt: Mit vier Versuchen
- * à 30 s konnte EIN Request zwei Minuten warten — das ist keine Verzögerung
- * mehr, das ist ein Hänger.
+ * Laengste Wartezeit, die wir fuer einen Retry noch aussitzen. Verlangt
+ * SharePoint mehr, geben wir den 429 sofort an den Aufrufer weiter — der
+ * meldet „nicht gespeichert" und der Nutzer versucht es spaeter.
  */
-const MAX_WAIT_MS = 6000;
+const RETRY_HONOR_MAX_MS = 45000;
 
-/** Obergrenze für das Warten an der gemeinsamen Schranke (v29.50). */
-const MAX_GATE_WAIT_MS = 8000;
+/** Obergrenze der gemeinsamen Schranke (Schutz gegen absurde Header-Werte). */
+const GATE_MAX_MS = 180000;
 
-/**
- * Zeitpunkt, bis zu dem ALLE Requests warten. Wird gesetzt, sobald irgendein
- * Request gedrosselt wurde; das hält die nachfolgenden aus der Wand heraus.
- */
+/** Ab so vielen Drossel-Antworten in Folge: keine Retries mehr bis Gate-Ablauf. */
+const BREAKER_THRESHOLD = 4;
+
 let gateUntil = 0;
+let consecutiveThrottles = 0;
 
 const sleep = (ms: number): Promise<void> => new Promise<void>(r => setTimeout(r, ms));
 
-/**
- * Wartet, bis die gemeinsame Schranke offen ist — höchstens MAX_GATE_WAIT_MS,
- * danach läuft der Request trotzdem los.
- *
- * v29.50: Vorher waren es 60 Runden à 2 s. Das war als „lieber warten als
- * scheitern" gedacht und ist in der Praxis das Gegenteil: ein einziges 429
- * legte jeden folgenden Request für bis zu zwei Minuten still. Lieber ein
- * abgelehnter Request als eine Anwendung, die sich tot stellt.
- */
+/** Wartet, bis die gemeinsame Schranke offen ist — die VOLLE Dauer. */
 async function waitForGate(): Promise<void> {
-  const deadline = Date.now() + MAX_GATE_WAIT_MS;
   for (;;) {
-    const now = Date.now();
-    const rest = Math.min(gateUntil, deadline) - now;
+    const rest = Math.min(gateUntil, Date.now() + GATE_MAX_MS) - Date.now();
     if (rest <= 0) return;
-    await sleep(Math.min(rest, 1000));
+    await sleep(Math.min(rest, 2000));
   }
 }
 
-/** True, solange die App wegen Drosselung wartet — für Fortschrittstexte. */
+/** True, solange die App wegen Drosselung wartet — fuer Fortschrittstexte. */
 export function isThrottled(): boolean {
   return gateUntil > Date.now();
 }
 
 /**
- * Führt einen SharePoint-Request aus und wiederholt ihn bei Drosselung.
+ * Fuehrt einen SharePoint-Request aus und wiederholt ihn bei Drosselung.
  *
- * `call` muss den Request JEDES MAL neu aufbauen (also eine Funktion, kein
- * bereits gestartetes Promise) — sonst wird beim zweiten Versuch dieselbe,
- * schon abgelehnte Antwort zurückgegeben.
+ * `call` muss den Request JEDES MAL neu aufbauen (Funktion, kein bereits
+ * gestartetes Promise) — sonst kaeme beim zweiten Versuch dieselbe, schon
+ * abgelehnte Antwort zurueck.
  */
 export async function withThrottleRetry(
   call: () => Promise<SPHttpClientResponse>,
@@ -93,21 +83,33 @@ export async function withThrottleRetry(
   for (;;) {
     await waitForGate();
     const resp = await call();
-    if (resp.status !== 429 && resp.status !== 503) return resp;
-    if (attempt >= MAX_RETRIES) {
-      console.warn('[DEX Throttle] aufgegeben nach', attempt, 'Versuchen —', resp.status, label || '');
+    if (resp.status !== 429 && resp.status !== 503) {
+      consecutiveThrottles = 0;
       return resp;
     }
-    // Retry-After kommt als Sekunden (SharePoint) oder gar nicht.
+    consecutiveThrottles++;
+    // Retry-After lesen — Sekunden oder gar nicht.
     let waitMs = 0;
     try {
       const ra = parseInt(resp.headers.get('Retry-After') || '', 10);
       if (ra > 0) waitMs = ra * 1000;
-    } catch { /* Header nicht lesbar — Backoff greift */ }
-    if (waitMs <= 0) waitMs = 2000 * Math.pow(2, attempt);
-    if (waitMs > MAX_WAIT_MS) waitMs = MAX_WAIT_MS;
-    gateUntil = Math.max(gateUntil, Date.now() + waitMs);
+    } catch { /* Header nicht lesbar */ }
+    if (waitMs <= 0) waitMs = FALLBACK_WAIT_MS[Math.min(attempt, FALLBACK_WAIT_MS.length - 1)];
+    // Schranke IMMER auf die volle verlangte Dauer setzen — auch wenn wir
+    // selbst nicht mehr wiederholen. Nachfolgende Schreibzugriffe warten dann.
+    gateUntil = Math.max(gateUntil, Date.now() + Math.min(waitMs, GATE_MAX_MS));
+    const breakerOpen = consecutiveThrottles >= BREAKER_THRESHOLD;
+    if (attempt >= MAX_RETRIES || waitMs > RETRY_HONOR_MAX_MS || breakerOpen) {
+      console.warn(
+        '[DEX Throttle] gebe auf —', resp.status,
+        breakerOpen ? '(Schutzschalter offen)' : (waitMs > RETRY_HONOR_MAX_MS ? `(Retry-After ${Math.round(waitMs / 1000)} s zu lang)` : `(nach ${attempt} Versuchen)`),
+        label || '',
+      );
+      return resp;
+    }
     attempt++;
-    console.warn('[DEX Throttle] HTTP', resp.status, '— warte', waitMs, 'ms, Versuch', attempt, label || '');
+    console.warn('[DEX Throttle] HTTP', resp.status, '— warte', Math.round(waitMs / 1000), 's (Retry-After respektiert), Versuch', attempt, label || '');
+    // Nicht nur bis gateUntil warten — waitMs kann durch parallele Requests
+    // schon teilweise verstrichen sein; waitForGate am Schleifenkopf deckt das.
   }
 }
