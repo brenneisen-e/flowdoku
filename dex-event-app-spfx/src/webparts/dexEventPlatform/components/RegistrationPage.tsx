@@ -1063,7 +1063,17 @@ export default function RegistrationPage(): React.ReactElement {
   // Infos, sondern als eigener Kreis OBEN MITTIG, der die Oberkante der
   // Event-Karte überlappt („eingebautes" Profilbild-Muster). Banner-Modus
   // hat weiter Vorrang; Quer-/Hochformat behält den Seiten-Slot.
-  const imgCircleNotch = !!heroImgUrl && !event?.imageBanner && imgAspect != null && imgAspect >= 0.8 && imgAspect < 1.2;
+  // v29.70: Der Kreis ist jetzt der DEFAULT — nicht mehr nur fuer ~quadratische
+  // Bilder (Ratio 0,8-1,2). Vorher musste der Organizer sein Foto im Wizard
+  // extra rund zuschneiden, damit es den Kreis bekam; jedes normale Querformat
+  // landete im Seiten-Slot. Jetzt schneidet das CSS (objectFit: cover in der
+  // runden Maske) jedes Bild mittig in den Kreis. Zwei bewusste Ausnahmen, weil
+  // sie AKTIVE Entscheidungen des Organizers sind: der Banner-Modus und eine
+  // gepflegte Hero-Darstellung (Zoom/Hoehe aus v23.19). Wer das ganze Bild
+  // sehen will, hat weiterhin die Lupe (Lightbox, v28.12).
+  // Nebeneffekt: Die Bedingung haengt nicht mehr an imgAspect — der Kreis
+  // steht sofort, statt erst nach der Bildvermessung das Layout zu wechseln.
+  const imgCircleNotch = !!heroImgUrl && !event?.imageBanner && !event?.imageDisplay?.hero;
   const circleSize = isMobile ? 140 : 170;
   // v28.91: Kein Event-Foto → das DEX-Bild steht als KREIS oben mittig,
   // genau dort, wo auch ein rundes Event-Logo sitzt (imgCircleNotch). Im
