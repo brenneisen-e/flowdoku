@@ -22,6 +22,10 @@ import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions, SPHttpClientC
 // v29.48: Alle SharePoint-Requests dieser Klasse laufen über _sp (s.u.) und
 // damit durch den 429-Retry.
 import { withThrottleRetry } from '../utils/spThrottle';
+import * as emailQueue from './events/emailQueue';
+import * as hotelPlanning from './events/hotelPlanning';
+import * as idReorder from './events/idReorder';
+import * as changeLog from './events/changeLog';
 import { wrapTemplateForStorage, buildEmailFromTemplate, normalizeMadeWithLink } from './EmailTemplates';
 // v28.95: Die Mail-Koerper liegen jetzt in ./mailBodies — die Datei begann
 // sonst mit 400 Zeilen HTML, bevor die erste Methode kam.
@@ -65,11 +69,11 @@ import { subscribeListChanges } from '../utils/spListRealtime';
 import { DexTicket, TicketFollowUp } from '../types';
 // v28.95: Erstes nach Thema herausgeloestes Fach-Modul (siehe CLAUDE.md).
 import * as tickets from './tickets';
-const REG_LIST_NAME = 'Teilnehmer';
+export const REG_LIST_NAME = 'Teilnehmer';
 
 /** v28.61: Je Teilnehmerliste nur einmal pro Sitzung die Hotel-Spalten
  *  anlegen — der Aufruf ist idempotent, aber nicht kostenlos (drei POSTs). */
-const HOTEL_COLS_READY = new Set<string>();
+export const HOTEL_COLS_READY = new Set<string>();
 const REG_LIST_ITEM_TYPE = 'SP.Data.TeilnehmerListItem';
 // v7.28: Counter-Liste für atomare TeilnehmerID-Vergabe (ETag-basiert).
 // Pro Subsite eine Liste mit genau einem Item, dessen NextValue beim
@@ -443,7 +447,9 @@ export class EventService {
    *
    * Wer neu dazuschreibt, nimmt `this._sp`.
    */
-  private _sp = {
+  // v30.6: public — die Themen-Module (services/events/*) nutzen dieselbe
+  // Infrastruktur; der Unterstrich bleibt als "intern"-Signal.
+  public _sp = {
     get: (url: string, cfg: SPHttpClientConfiguration, options?: ISPHttpClientOptions): Promise<SPHttpClientResponse> =>
       this.context.spHttpClient.get(url, cfg, options),
     post: (url: string, cfg: SPHttpClientConfiguration, options?: ISPHttpClientOptions): Promise<SPHttpClientResponse> =>
@@ -497,7 +503,7 @@ export class EventService {
    * Listen-Erstellung noch beim Admin-Aufräumen. Gibt den HTTP-Status zurück
    * (-1 bei Exception).
    */
-  private async _setListSecurity(
+  public async _setListSecurity(
     listBase: string,
     values: { ReadSecurity?: number; WriteSecurity?: number },
   ): Promise<number> {
@@ -523,267 +529,23 @@ export class EventService {
   }
 
   // ==================== DEX_Emails Liste ====================
+  // v30.6 (Modularisierung Stufe 2, CLAUDE.md): Implementierung liegt in
+  // services/events/emailQueue.ts — hier stehen nur noch Delegations-Stubs
+  // mit unveraenderter Signatur, damit KEINE Aufrufstelle angepasst werden
+  // musste. Neue Queue-Logik gehoert ins Modul, nicht hierher.
 
-  /**
-   * E-Mail-Queue-Liste erstellen falls nicht vorhanden.
-   * Power Automate reagiert auf neue Einträge und versendet Mails.
-   *
-   * Spalten:
-   * - Title: Betreff der E-Mail
-   * - Recipient: Empfänger E-Mail-Adresse
-   * - RecipientName: Name des Empfängers
-   * - Body: HTML-Inhalt der E-Mail
-   * - EmailType: Art der E-Mail (Anmeldung, Abmeldung, Warteliste, Nachrücken, Info)
-   * - EventTitle: Name des Events
-   * - EventId: ID des Events (Referenz)
-   * - Status: Pending, Sent, Failed
-   * - SentDate: Wann wurde die Mail versendet
-   */
   public async ensureEmailsList(): Promise<void> {
-    const listName = 'DEX_Emails';
-    const exists = await this.listExists(listName);
-    if (exists) {
-      // Recipient-Feld auf Plain Text (RichText=false) setzen, falls es
-      // noch im alten RichText-Modus ist. SharePoint wrappt sonst den Wert
-      // in <div class="ExternalClassXXXX">...</div>, was den Power Automate
-      // Flow "emailMessage/To must be String/email" Fehler auslöst.
-      try {
-        await this.setRecipientFieldPlainText(listName);
-      } catch { /* ignore */ }
-
-      // Cc-Feld nachträglich anlegen (für Anfrage-Mails von der Landing Page).
-      // Bestehende Listen aus aelteren App-Versionen haben das Feld noch nicht.
-      try {
-        await this.ensureCcFieldExists(listName);
-      } catch { /* ignore */ }
-
-      // v8.5: Bcc-Feld nachträglich anlegen — wird genutzt um Organizer
-      // automatisch in Anmelde-/Abmelde-Bestätigungen zu BCC'en, ohne den
-      // Teilnehmer den Verteiler zu zeigen.
-      try {
-        await this.ensureBccFieldExists(listName);
-      } catch { /* ignore */ }
-
-      // v18.30: Importance-Feld nachträglich anlegen — der DEX_SEND_MAIL-Flow
-      // setzt darauf basierend die Outlook-Wichtigkeit (High = rotes „!").
-      // Leer/„Normal" = normale Wichtigkeit.
-      try {
-        await this.ensureImportanceFieldExists(listName);
-      } catch { /* ignore */ }
-
-      // Berechtigungen prüfen
-      try {
-        const listInfo = await this._sp.get(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=HasUniqueRoleAssignments`,
-          SPHttpClient.configurations.v1
-        );
-        if (listInfo.ok) {
-          const data = await listInfo.json();
-          if (!data.HasUniqueRoleAssignments) {
-            await this.setEmailsListPermissions(listName);
-          }
-        }
-      } catch { /* ignore */ }
-      return;
-    }
-
-    await this._post(`${this.siteUrl}/_api/web/lists`, {
-      '__metadata': { 'type': 'SP.List' },
-      'Title': listName,
-      'Description': 'E-Mail-Queue für automatischen Versand via Power Automate',
-      'BaseTemplate': 100,
-      'AllowContentTypes': false,
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const fields: Array<Record<string, any>> = [
-      // Recipient als Plain-Text Note-Feld (RichText=false), damit der Flow
-      // die Email-Adresse(n) ohne HTML-Wrapping bekommt.
-      { title: 'Recipient', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 3 },
-      { title: 'Cc', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 3 },
-      { title: 'Bcc', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 3 },
-      { title: 'RecipientName', type: 2 },
-      { title: 'Body', type: 3 }, // Body darf Rich/HTML bleiben (wird als HTML gerendert)
-      { title: 'EmailType', type: 6, choices: ['Anmeldung', 'Abmeldung', 'Warteliste', 'Nachruecken', 'Info'], metaType: 'SP.FieldChoice' },
-      { title: 'EventTitle', type: 2 },
-      { title: 'EventId', type: 2 },
-      { title: 'Status', type: 6, choices: ['Pending', 'Sent', 'Failed'], metaType: 'SP.FieldChoice' },
-      { title: 'SentDate', type: 4 },
-      // v18.30: Outlook-Wichtigkeit (leer/„Normal" = normal, „High" = rotes „!").
-      { title: 'Importance', type: 2 },
-    ];
-
-    for (const f of fields) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload: Record<string, any> = {
-        '__metadata': { 'type': f.metaType || 'SP.Field' },
-        'Title': f.title,
-        'FieldTypeKind': f.type,
-        'Required': false,
-      };
-      if (f.choices) {
-        payload['Choices'] = { 'results': f.choices };
-      }
-      if (f.metaType === 'SP.FieldMultiLineText') {
-        payload['RichText'] = !!f.richText;
-        if (typeof f.numberOfLines === 'number') payload['NumberOfLines'] = f.numberOfLines;
-      }
-      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
-    }
-
-    // Default View
-    await this.configureDefaultView(listName, [
-      'Recipient', 'RecipientName', 'EmailType', 'EventTitle', 'Status', 'SentDate',
-    ]);
-
-    await this.setEmailsListPermissions(listName);
+    return emailQueue.ensureEmailsList(this);
   }
 
-  /**
-   * Recipient-Feld auf Plain Text (RichText=false) umstellen.
-   * Idempotent: Wenn schon Plain Text, macht nichts.
-   * Nur möglich wenn der Current User Manage Lists Rechte hat (Owner/Admin).
-   */
-  private async setRecipientFieldPlainText(listName: string): Promise<void> {
-    const fieldUrl = `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('Recipient')`;
-    const resp = await this._sp.get(
-      `${fieldUrl}?$select=FieldTypeKind,RichText`,
-      SPHttpClient.configurations.v1
-    );
-    if (!resp.ok) return;
-    const data = await resp.json();
-    const kind = data.FieldTypeKind ?? data.d?.FieldTypeKind;
-    const richText = data.RichText ?? data.d?.RichText;
-    // Wenn bereits Note + Plain Text: nichts zu tun
-    if (kind === 3 && richText === false) return;
-    // Feld auf Note + RichText=false patchen
-    await this._merge(
-      fieldUrl,
-      {
-        '__metadata': { 'type': 'SP.FieldMultiLineText' },
-        'FieldTypeKind': 3,
-        'RichText': false,
-        'NumberOfLines': 3,
-      }
-    );
-  }
-
-  /**
-   * Cc-Feld auf DEX_Emails anlegen, falls noch nicht vorhanden.
-   * Multi-line Plain-Text damit auch ;-separierte Mehrfach-Adressen passen.
-   */
-  private async ensureCcFieldExists(listName: string): Promise<void> {
-    const probeUrl = `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('Cc')?$select=Id`;
-    const probe = await this._sp.get(probeUrl, SPHttpClient.configurations.v1);
-    if (probe.ok) return;
-    await this._post(
-      `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`,
-      {
-        '__metadata': { 'type': 'SP.FieldMultiLineText' },
-        'Title': 'Cc',
-        'FieldTypeKind': 3,
-        'Required': false,
-        'RichText': false,
-        'NumberOfLines': 3,
-      }
-    );
-  }
-
-  private async ensureBccFieldExists(listName: string): Promise<void> {
-    const probeUrl = `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('Bcc')?$select=Id`;
-    const probe = await this._sp.get(probeUrl, SPHttpClient.configurations.v1);
-    if (probe.ok) return;
-    await this._post(
-      `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`,
-      {
-        '__metadata': { 'type': 'SP.FieldMultiLineText' },
-        'Title': 'Bcc',
-        'FieldTypeKind': 3,
-        'Required': false,
-        'RichText': false,
-        'NumberOfLines': 3,
-      }
-    );
-  }
-
-  // v18.30: Importance-Spalte (Single line text) idempotent anlegen. Der
-  // DEX_SEND_MAIL-Flow liest sie und sendet bei „High" mit hoher Wichtigkeit.
-  private async ensureImportanceFieldExists(listName: string): Promise<void> {
-    const probeUrl = `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('Importance')?$select=Id`;
-    const probe = await this._sp.get(probeUrl, SPHttpClient.configurations.v1);
-    if (probe.ok) return;
-    await this._post(
-      `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`,
-      {
-        '__metadata': { 'type': 'SP.Field' },
-        'Title': 'Importance',
-        'FieldTypeKind': 2,
-        'Required': false,
-      }
-    );
-  }
-
-  /**
-   * Berechtigungen für DEX_Emails: Owners Full Control, Members Contribute, Item-Level Security
-   */
-  private async setEmailsListPermissions(listName: string): Promise<void> {
-    try {
-      await this._post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`,
-        {}
-      );
-      const ownersResp = await this._sp.get(
-        `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`, SPHttpClient.configurations.v1
-      );
-      if (ownersResp.ok) {
-        const d = await ownersResp.json();
-        await this._post(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741829)`, {}
-        );
-      }
-      const deallId = await this.getVisitorsGroupId();
-      if (deallId) {
-        await this._post(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${deallId}, roledefid=1073741827)`, {}
-        );
-      }
-    } catch { /* */ }
-
-    // Item-Level Security (v26.87: zuverlässiger nometadata-MERGE)
-    await this._setListSecurity(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`, { ReadSecurity: 2, WriteSecurity: 2 });
-  }
-
-  /**
-   * Berechtigungen für Queue-Listen (DEX_Outlook, DEX_IDReorder):
-   * Owners Full Control, Members Contribute, Item-Level Security
-   */
   public async setQueueListPermissions(listName: string): Promise<void> {
-    try {
-      await this._post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`,
-        {}
-      );
-      const ownersResp = await this._sp.get(
-        `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`, SPHttpClient.configurations.v1
-      );
-      if (ownersResp.ok) {
-        const d = await ownersResp.json();
-        await this._post(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741829)`, {}
-        );
-      }
-      const deallId = await this.getVisitorsGroupId();
-      if (deallId) {
-        await this._post(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${deallId}, roledefid=1073741827)`, {}
-        );
-      }
-    } catch { /* */ }
+    return emailQueue.setQueueListPermissions(this, listName);
   }
 
-  /**
-   * E-Mail in die Queue eintragen (wird von Power Automate versendet).
-   */
+  public async setEmailsListPermissions(listName: string): Promise<void> {
+    return emailQueue.setEmailsListPermissions(this, listName);
+  }
+
   public async queueEmail(
     subject: string,
     recipient: string,
@@ -794,124 +556,24 @@ export class EventService {
     eventId: string,
     cc?: string,
     bcc?: string,
-    // v18.30: 'High' = Outlook hohe Wichtigkeit (rotes „!"). Default normal.
     importance?: 'High' | 'Normal',
-    // v26.62: Optionaler Datei-Anhang an der Queue-Zeile (z. B. der fertige
-    // .eml-Einladungs-Entwurf bei externen Anmeldungen). Der DEX_SEND_MAIL-
-    // Flow muss die Item-Attachments an die ausgehende Mail anhängen
-    // (Get attachments → Get attachment content → Send-Email-Attachments);
-    // solange der Flow das nicht tut, wird der Anhang schlicht ignoriert.
     attachment?: { fileName: string; content: string }
   ): Promise<boolean> {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload: Record<string, any> = {
-        '__metadata': { 'type': 'SP.Data.DEX_x005f_EmailsListItem' },
-        'Title': subject,
-        'Recipient': recipient,
-        'RecipientName': recipientName,
-        // v29.42: Fußzeilen-Link kurz vor dem Versand auf die kanonische
-        // App-Adresse ziehen — gespeicherte Vorlagen und kopierte Events
-        // schleppen die Fußzeile älterer Stände mit.
-        'Body': normalizeMadeWithLink(body),
-        'EmailType': emailType,
-        'EventTitle': eventTitle,
-        'EventId': eventId,
-        'Status': 'Pending',
-      };
-      if (cc) payload['Cc'] = cc;
-      if (bcc) payload['Bcc'] = bcc;
-      if (importance === 'High') payload['Importance'] = 'High';
-      const response = await this._post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items`,
-        payload
-      );
-      if (!response.ok) return false;
-      if (attachment && attachment.fileName && attachment.content) {
-        try {
-          const data = await response.json();
-          const itemId = Number(data?.d?.Id ?? data?.Id ?? 0);
-          if (itemId > 0) {
-            const buf = new TextEncoder().encode(attachment.content);
-            const safeName = attachment.fileName.replace(/[^a-zA-Z0-9._@-]+/g, '_');
-            await this._sp.post(
-              `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items(${itemId})/AttachmentFiles/add(FileName='${encodeURIComponent(safeName)}')`,
-              SPHttpClient.configurations.v1,
-              { headers: { 'Accept': 'application/json;odata=nometadata' }, body: buf.buffer as ArrayBuffer }
-            );
-          }
-        } catch (attErr) {
-          // Anhang best-effort — die Mail selbst ist wichtiger als der Anhang.
-          console.warn('[DEX] queueEmail: Anhang konnte nicht angehängt werden:', attErr);
-        }
-      }
-      return true;
-    } catch {
-      return false;
-    }
+    return emailQueue.queueEmail(this, subject, recipient, recipientName, body, emailType, eventTitle, eventId, cc, bcc, importance, attachment);
   }
 
-  /** v26.12: Gibt es bereits eine Mail dieses Typs für dieses Event in der
-   *  DEX_Emails-Queue? Dient als serverseitiger Doppelversand-Schutz, wenn die
-   *  Mail clientseitig (App-Open) ausgelöst wird und mehrere Organizer die App
-   *  öffnen könnten. */
   public async hasQueuedEmail(emailType: string, eventId: string): Promise<boolean> {
-    try {
-      const safeType = (emailType || '').replace(/'/g, "''");
-      const safeId = (eventId || '').replace(/'/g, "''");
-      const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items?$select=Id&$filter=EmailType eq '${safeType}' and EventId eq '${safeId}'&$top=1`;
-      const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
-      if (!resp.ok) return false;
-      const data = await resp.json();
-      const items = data.value || data.d?.results || [];
-      return Array.isArray(items) && items.length > 0;
-    } catch {
-      return false;
-    }
+    return emailQueue.hasQueuedEmail(this, emailType, eventId);
   }
 
-  /** v26.33: Wurde seit `sinceIso` (inkl.) schon eine Mail dieses Typs in die
-   *  Queue gelegt? Grundlage für tages-entdoppelte Reminder (z.B. Ticket-
-   *  Erinnerung höchstens einmal pro Tag, egal wie viele Power-User die App
-   *  öffnen). */
   public async hasQueuedEmailSince(emailType: string, sinceIso: string): Promise<boolean> {
-    try {
-      const safeType = (emailType || '').replace(/'/g, "''");
-      const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items?$select=Id&$filter=EmailType eq '${safeType}' and Created ge datetime'${encodeURIComponent(sinceIso)}'&$top=1`;
-      const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
-      if (!resp.ok) return false;
-      const data = await resp.json();
-      const items = data.value || data.d?.results || [];
-      return Array.isArray(items) && items.length > 0;
-    } catch {
-      return false;
-    }
+    return emailQueue.hasQueuedEmailSince(this, emailType, sinceIso);
   }
 
-  /** v26.35: Für jedes Event das FRÜHESTE „ParticipantDeletionWarning"-Sendedatum
-   *  (Created in der DEX_Emails-Queue). Grundlage für die 1-Wochen-Frist zwischen
-   *  Vorwarnung an die Organizer und der Löschung der Teilnehmerliste. */
   public async getParticipantDeletionWarningDates(): Promise<Record<string, string>> {
-    const out: Record<string, string> = {};
-    try {
-      let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items?$select=EventId,Created&$filter=EmailType eq 'ParticipantDeletionWarning'&$top=5000`;
-      while (url) {
-        const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
-        if (!resp.ok) break;
-        const data = await resp.json();
-        const items = data.value || data.d?.results || [];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        for (const it of (items as any[])) {
-          const eid = String(it.EventId || '');
-          const created = it.Created || '';
-          if (!eid || !created) continue;
-          if (!out[eid] || new Date(created).getTime() < new Date(out[eid]).getTime()) out[eid] = created;
-        }
-        url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
-      }
-    } catch { /* best-effort */ }
-    return out;
+    return emailQueue.getParticipantDeletionWarningDates(this);
   }
+
 
   /** v26.13: Versions-Historie der CustomFields-Spalte eines DEX_Events-Items
    *  (neueste zuerst). Grundlage für die Wiederherstellung versehentlich
@@ -1448,452 +1110,50 @@ export class EventService {
     return { updated, checked: regs.length };
   }
 
-  // ==================== Hotel-Planung (v28.38) ====================
+  // ==================== Hotel-Planung / IDReorder / ChangeLog ====================
+  // v30.6 (Modularisierung Stufe 2): Implementierungen liegen in
+  // services/events/{hotelPlanning,idReorder,changeLog}.ts — hier stehen nur
+  // noch Delegations-Stubs mit unveraenderter Signatur.
 
-  /**
-   * v28.38: Spalten für die Hotel-Zuordnung auf einer Teilnehmerliste anlegen.
-   * Die Zuordnung gehört bewusst an die TEILNEHMERZEILE und nicht ans Event:
-   * so steht sie in der Teilnehmertabelle, läuft in jeden bestehenden Export
-   * mit und blaeht den Event-Datensatz nicht auf (2-MB-Grenze, s. v28.31).
-   * Idempotent — vorhandene Spalten liefern 500/400 und werden ignoriert.
-   */
   public async ensureHotelColumns(subsiteUrl: string): Promise<void> {
-    if (!subsiteUrl) return;
-    // v28.61: Nur EINMAL je Liste und Sitzung. Vorher lief das vor jeder
-    // einzelnen Zuordnung — drei POSTs, die alle mit „Feld existiert bereits"
-    // scheiterten, bevor überhaupt geschrieben wurde. Beim Umstellen eines
-    // Hotels in der Personenliste war genau das die spuerbare Verzoegerung.
-    if (HOTEL_COLS_READY.has(subsiteUrl)) return;
-    const base = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields`;
-    const fields: Array<{ title: string; type: number }> = [
-      { title: 'Hotel', type: 2 },       // Text: Name des Hotels
-      { title: 'HotelFrom', type: 4 },   // DateTime: Anreise
-      { title: 'HotelTo', type: 4 },     // DateTime: Abreise
-    ];
-    for (const f of fields) {
-      try {
-        await this._post(base, {
-          '__metadata': { 'type': 'SP.Field' },
-          'Title': f.title,
-          'FieldTypeKind': f.type,
-        });
-      } catch { /* existiert bereits oder keine Rechte — beides unkritisch */ }
-    }
-    HOTEL_COLS_READY.add(subsiteUrl);
+    return hotelPlanning.ensureHotelColumns(this, subsiteUrl);
   }
 
-  /**
-   * v28.38: Hotel-Zuordnung einer einzelnen Teilnehmerzeile setzen oder löschen
-   * (leeres Hotel = Zuordnung aufheben). Liefert true bei Erfolg.
-   */
-  public async setHotelAssignment(
-    subsiteUrl: string,
-    itemId: number,
-    hotel: string,
-    fromIso: string,
-    toIso: string,
-  ): Promise<boolean> {
-    if (!subsiteUrl || !itemId) return false;
-    try {
-      const resp = await this._merge(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
-        {
-          'Hotel': hotel || '',
-          'HotelFrom': hotel ? (fromIso || null) : null,
-          'HotelTo': hotel ? (toIso || null) : null,
-        },
-      );
-      return resp.ok || resp.status === 406;
-    } catch { return false; }
+  public async setHotelAssignment(subsiteUrl: string, itemId: number, hotel: string, fromIso: string, toIso: string): Promise<boolean> {
+    return hotelPlanning.setHotelAssignment(this, subsiteUrl, itemId, hotel, fromIso, toIso);
   }
 
-  // ==================== DEX_IDReorder Queue ====================
-
-  /**
-   * Queue-Liste für ID-Neuvergabe erstellen falls nicht vorhanden.
-   * Power Automate reagiert auf neue Einträge und vergibt TeilnehmerIDs
-   * auf der jeweiligen Subsite-Teilnehmerliste lückenlos neu.
-   *
-   * Spalten:
-   * - Title: Kurzbeschreibung (z.B. "Reorder: Test_20260408")
-   * - EventId: SP Item-ID des Events in DEX_Events
-   * - EventNumber: Hochlaufende EventNumber
-   * - SubsiteUrl: Absolute URL der Event-Subsite
-   * - Status: Pending, Processing, Done, Failed
-   */
   public async ensureIDReorderList(): Promise<void> {
-    const listName = 'DEX_IDReorder';
-    const exists = await this.listExists(listName);
-    if (exists) return;
-
-    await this._post(`${this.siteUrl}/_api/web/lists`, {
-      '__metadata': { 'type': 'SP.List' },
-      'Title': listName,
-      'Description': 'Queue für TeilnehmerID-Neuvergabe nach Abmeldungen',
-      'BaseTemplate': 100,
-      'AllowContentTypes': false,
-    });
-
-    const fields = [
-      { title: 'EventId', type: 2 },
-      { title: 'EventNumber', type: 9 },
-      { title: 'SubsiteUrl', type: 2 },
-      { title: 'Status', type: 6, choices: ['Pending', 'Processing', 'Done', 'Failed'], metaType: 'SP.FieldChoice' },
-      // v18.65: Name der abgemeldeten Person (für die Organizer-Nachrücker-Mail).
-      { title: 'CancelledName', type: 2 },
-    ];
-
-    for (const f of fields) {
-      const payload: Record<string, unknown> = {
-        '__metadata': { 'type': f.metaType || 'SP.Field' },
-        'Title': f.title,
-        'FieldTypeKind': f.type,
-        'Required': false,
-      };
-      if ((f as { choices?: string[] }).choices) {
-        payload['Choices'] = { 'results': (f as { choices: string[] }).choices };
-      }
-      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
-    }
-
-    await this.configureDefaultView(listName, [
-      'EventId', 'EventNumber', 'SubsiteUrl', 'Status',
-    ]);
-
-    await this.setQueueListPermissions(listName);
+    return idReorder.ensureIDReorderList(this);
   }
 
-  // ==================== DEX_ChangeLog (v9.0) ====================
-  // Audit-Liste für alle Änderungen an Events und Teilnehmern. Read-
-  // Berechtigung für Organizer/Admin (gleiche Permission-Pattern wie
-  // DEX_Roles), Schreibrechte für alle (damit User-Aktionen wie
-  // Anmeldung/Abmeldung mitloggen können).
-  public async ensureChangeLogList(): Promise<void> {
-    const listName = 'DEX_ChangeLog';
-    try {
-      const exists = await this.listExists(listName);
-      if (exists) {
-        try { await this.ensureChangeLogPermissions(listName); } catch { /* */ }
-        return;
-      }
-      // Liste existiert nicht — versuchen sie anzulegen. Schlägt fehl
-      // wenn der aktuelle User keine Owner-Permissions hat. Dann wird der
-      // App-Start nicht blockiert (Audit-Log ist best-effort für User
-      // ohne Schreibrechte auf der Liste-Erstellung).
-      const createResp = await this._post(`${this.siteUrl}/_api/web/lists`, {
-        '__metadata': { 'type': 'SP.List' },
-        'Title': listName,
-        'Description': 'Audit-Log für alle Änderungen an Events und Teilnehmern (v9.0)',
-        'BaseTemplate': 100,
-        'AllowContentTypes': false,
-      });
-      if (!createResp.ok) {
-        console.warn('[DEX] DEX_ChangeLog konnte nicht angelegt werden — vermutlich fehlen dem User Owner-Rechte. App läuft weiter, Audit-Einträge fehlen aber.');
-        return;
-      }
-      const fields = [
-        { title: 'Action', type: 6, choices: ['EventCreated', 'EventUpdated', 'EventArchived', 'EventRestored', 'EventDeletedPermanent', 'EventDeletedTest', 'ParticipantRegistered', 'ParticipantCancelled', 'ParticipantReactivated', 'ParticipantUpdated', 'ParticipantCheckedIn', 'ParticipantCheckedOut', 'IDReorder', 'Other'], metaType: 'SP.FieldChoice' },
-        { title: 'TargetType', type: 6, choices: ['Event', 'Participant', 'Subsite', 'Other'], metaType: 'SP.FieldChoice' },
-        { title: 'TargetId', type: 2 },
-        { title: 'TargetName', type: 2 },
-        { title: 'EventId', type: 2 },
-        { title: 'EventTitle', type: 2 },
-        { title: 'ActorName', type: 2 },
-        { title: 'ActorEmail', type: 2 },
-        { title: 'Details', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 6 },
-      ];
-      for (const f of fields) {
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const payload: Record<string, any> = {
-            '__metadata': { 'type': f.metaType || 'SP.Field' },
-            'Title': f.title,
-            'FieldTypeKind': f.type,
-            'Required': false,
-          };
-          if (f.choices) payload['Choices'] = { 'results': f.choices };
-          if (f.metaType === 'SP.FieldMultiLineText') {
-            payload['RichText'] = !!f.richText;
-            if (typeof f.numberOfLines === 'number') payload['NumberOfLines'] = f.numberOfLines;
-          }
-          await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
-        } catch { /* einzelne Feld-Fehler ignorieren */ }
-      }
-      try {
-        await this.configureDefaultView(listName, [
-          'Created', 'Action', 'TargetType', 'TargetName', 'EventTitle', 'ActorName', 'Details',
-        ]);
-      } catch { /* View-Setup ist optional */ }
-      try { await this.ensureChangeLogPermissions(listName); } catch { /* */ }
-    } catch (err) {
-      console.warn('[DEX] ensureChangeLogList failed (best-effort, App läuft weiter):', err);
-    }
-  }
-
-  // Berechtigungen: Site-Members und alle authentifizierten User können
-  // Einträge HINZUFUEGEN (damit Self-Reg/Cancel mitschreibt), aber nur
-  // Organizer/Admin können LESEN. Setzt Item-Level-Read = "Only their own".
-  private async ensureChangeLogPermissions(listName: string): Promise<void> {
-    try {
-      // v24.77: Permissions nur EINMAL setzen. Sind die Berechtigungen schon
-      // eindeutig (Vererbung bereits gebrochen), läuft das komplette Setup
-      // unten NICHT erneut. Vorher feuerte breakroleinheritance +
-      // addroleassignment bei JEDEM Boot neu → wiederkehrendes 400-Rauschen
-      // in der Konsole. Gleiches Muster wie ensureEventsList bei den
-      // Event-Permissions.
-      try {
-        const listInfo = await this._sp.get(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=HasUniqueRoleAssignments`,
-          SPHttpClient.configurations.v1
-        );
-        if (listInfo.ok) {
-          const data = await listInfo.json();
-          if (data.HasUniqueRoleAssignments) return; // schon eingerichtet
-        }
-      } catch { /* im Zweifel weiter unten einrichten */ }
-      // 1. Inheritance brechen
-      await this._post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`,
-        {}
-      );
-      // 2. Owners (Admin-Group) → Full Control
-      const ownersResp = await this._sp.get(
-        `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`, SPHttpClient.configurations.v1
-      );
-      if (ownersResp.ok) {
-        const d = await ownersResp.json();
-        await this._post(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741829)`, {}
-        );
-      }
-      // 3. Members (Organizer-Group typischerweise) → Contribute (sollen
-      //    auch schreiben können, damit Organizer-Aktionen wie Event-
-      //    Updates protokolliert werden).
-      const membersResp = await this._sp.get(
-        `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`, SPHttpClient.configurations.v1
-      );
-      if (membersResp.ok) {
-        const d = await membersResp.json();
-        await this._post(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741827)`, {} // 1073741827 = Contribute
-        );
-      }
-      // 4. Visitors (DEALL / Authenticated Users) → Contribute (damit
-      //    User-Aktionen wie Self-Anmeldung mitloggen können).
-      const visitorsId = await this.getVisitorsGroupId();
-      if (visitorsId) {
-        await this._post(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${visitorsId}, roledefid=1073741827)`, {} // Contribute
-        );
-      }
-      // 5. Item-Level-Read = "ReadAllItems" (1) — Organizer und Admin
-      //    müssen ALLE Einträge sehen, nicht nur eigene. Eigene
-      //    Lese-Beschränkung wäre für Audit-Log nutzlos.
-      // v22.2 FIX: war vorher ein nackter POST (kein MERGE) → SharePoint
-      // antwortete bei jedem Boot mit HTTP 400 (Console-Rauschen); der Wert
-      // wurde nie gesetzt (Default ist ohnehin 1, daher ohne Folgen).
-      // v26.87: MERGE zusätzlich auf nometadata umgestellt (verbose+__metadata
-      // war weiterhin 400) — jetzt greift es tatsächlich.
-      await this._setListSecurity(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`, { ReadSecurity: 1 });
-    } catch (e) {
-      console.warn('[DEX] ensureChangeLogPermissions failed:', e);
-    }
-  }
-
-  /**
-   * v9.0: Audit-Eintrag schreiben. Best-effort — Fehler werden nur
-   * geloggt, blocken die aufrufende Aktion nie. Wird automatisch von
-   * createEvent / updateEvent / deleteEvent / registerForEvent /
-   * cancelRegistration / adminUpdateRegistration / etc. gerufen.
-   */
-  public async writeChangeLog(entry: {
-    action: string;
-    targetType: 'Event' | 'Participant' | 'Subsite' | 'Other';
-    targetId?: string;
-    targetName?: string;
-    eventId?: string;
-    eventTitle?: string;
-    actorName?: string;
-    actorEmail?: string;
-    details?: string | Record<string, unknown>;
-  }): Promise<void> {
-    try {
-      const me = this.context.pageContext.user;
-      const actorName = entry.actorName || me.displayName || '';
-      const actorEmail = (entry.actorEmail || me.email || '').toLowerCase();
-      const detailsStr = typeof entry.details === 'string'
-        ? entry.details
-        : entry.details
-          ? JSON.stringify(entry.details)
-          : '';
-      // ENTWICKLUNG.md-Hinweis: bei odata=nometadata KEIN __metadata im Body —
-      // SP leitet den Typ aus der URL ab. Robust gegen List-Type-Encoding-
-      // Quirks (Bug-Story v7.28 → v7.29). Nutzen wir hier statt verbose-POST
-      // damit ein verschmierter Type-Name den ChangeLog-Insert nicht
-      // stillschweigend killt.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload: Record<string, any> = {
-        'Title': `${entry.action}: ${entry.targetName || entry.targetId || '-'}`,
-        'Action': entry.action,
-        'TargetType': entry.targetType,
-        'TargetId': entry.targetId || '',
-        'TargetName': entry.targetName || '',
-        'EventId': entry.eventId || '',
-        'EventTitle': entry.eventTitle || '',
-        'ActorName': actorName,
-        'ActorEmail': actorEmail,
-        'Details': detailsStr.substring(0, 30000),
-      };
-      const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_ChangeLog')/items`;
-      const options: ISPHttpClientOptions = {
-        headers: {
-          'Accept': 'application/json;odata=nometadata',
-          'Content-Type': 'application/json;odata=nometadata',
-          'odata-version': '',
-        },
-        body: JSON.stringify(payload),
-      };
-      await this._sp.post(url, SPHttpClient.configurations.v1, options);
-    } catch (err) {
-      console.warn('[DEX] writeChangeLog failed:', err);
-    }
-  }
-
-  /**
-   * Audit-Log lesen — Organizer/Admin only (durch SP-Permissions
-   * geschützt). Liefert die letzten N Einträge, optional gefiltert
-   * nach EventId.
-   */
-  public async readChangeLog(opts?: { eventId?: string; top?: number }): Promise<Array<{
-    Id: number; Created: string; Action: string; TargetType: string;
-    TargetId: string; TargetName: string; EventId: string; EventTitle: string;
-    ActorName: string; ActorEmail: string; Details: string;
-  }>> {
-    const top = opts?.top || 200;
-    const base = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_ChangeLog')/items`;
-    const sel = `$select=Id,Created,Action,TargetType,TargetId,TargetName,EventId,EventTitle,ActorName,ActorEmail,Details`;
-    const filter = opts?.eventId
-      ? `&$filter=EventId eq '${String(opts.eventId).replace(/'/g, "''")}'`
-      : '';
-    // v19.13 BUG-FIX: Das Audit-Log lud mit HTTP 400 (→ „0 Einträge"). Zwei
-    // typische Ursachen, gegen beide robust:
-    //  (a) `$orderby=Created` auf einer großen Liste ohne Index auf `Created`
-    //      → „List View Threshold"-Fehler (400). Deshalb jetzt nach `Id desc`
-    //      sortieren — `Id` ist IMMER indiziert, und da auto-increment entspricht
-    //      die Reihenfolge chronologisch absteigend.
-    //  (b) Ein Feld im `$select` existiert auf einer Bestands-/Legacy-Liste nicht
-    //      (Feld-Anlage best-effort) → 400. Deshalb Fallbacks ohne `$select` und
-    //      notfalls ohne Server-Filter (dann client-seitig nach EventId filtern).
-    const candidates = [
-      `${base}?${sel}&$orderby=Id desc&$top=${top}${filter}`,
-      `${base}?$orderby=Id desc&$top=${top}${filter}`,
-      `${base}?$orderby=Id desc&$top=${top}`,
-    ];
-    for (let i = 0; i < candidates.length; i++) {
-      try {
-        const resp = await this._sp.get(candidates[i], SPHttpClient.configurations.v1);
-        if (!resp.ok) continue;
-        const data = await resp.json();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let items: any[] = data.value || data.d?.results || [];
-        // Letzter Kandidat hat keinen Server-Filter (falls die EventId-Spalte
-        // im Filter das 400 ausgelöst hat) → client-seitig nachfiltern.
-        if (i === candidates.length - 1 && opts?.eventId) {
-          items = items.filter(it => String((it && it.EventId) || '') === String(opts.eventId));
-        }
-        return items;
-      } catch { /* nächsten Kandidaten versuchen */ }
-    }
-    console.warn('[DEX] readChangeLog: alle Abfrage-Varianten fehlgeschlagen.');
-    return [];
-  }
-
-  /**
-   * ID-Reorder in Queue eintragen (nach Abmeldung).
-   */
-  // v18.65: einmal pro Session die CancelledName-Spalte auf DEX_IDReorder
-  // nachrüsten (Bestands-Listen). Selbstheilend, weil der zentrale
-  // initEvents-ensure-Pfad bei gesetztem ENSURE_FLAG übersprungen wird.
-  private _idReorderCancelledFieldEnsured = false;
-  private async ensureIDReorderCancelledNameField(): Promise<void> {
-    if (this._idReorderCancelledFieldEnsured) return;
-    this._idReorderCancelledFieldEnsured = true;
-    // v19.5: CancelledName UND CancelledEmail nachrüsten. CancelledEmail erlaubt
-    // dem Nachrück-Flow, die abgemeldete Person eindeutig zu adressieren
-    // (Replaced-Audit: ReplacedByParticipantEmail auf der abgemeldeten Person +
-    // ReplacedParticipantEmail auf der nachrückenden Person).
-    for (const fieldTitle of ['CancelledName', 'CancelledEmail']) {
-      try {
-        const resp = await this._sp.get(
-          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_IDReorder')/fields/getbytitle('${fieldTitle}')?$select=Id`,
-          SPHttpClient.configurations.v1
-        );
-        if (resp.ok) continue; // existiert bereits
-      } catch { /* anlegen */ }
-      try {
-        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_IDReorder')/fields`, {
-          '__metadata': { 'type': 'SP.Field' }, 'Title': fieldTitle, 'FieldTypeKind': 2, 'Required': false,
-        });
-      } catch { /* best-effort — Retry-ohne-Feld unten fängt es ab */ }
-    }
-  }
+  // v18.65: Session-Merker der CancelledName-Spalten-Nachruestung — bleibt
+  // als Instanz-Zustand an der Klasse, das Modul liest/setzt ihn ueber svc.
+  public _idReorderCancelledFieldEnsured = false;
 
   public async queueIDReorder(
     eventId: string,
     eventNumber: number,
     subsiteUrl: string,
     eventTitle: string,
-    // v18.65: Name der abgemeldeten Person — wird in die Queue geschrieben,
-    // damit der DEX_IDReorder-Flow ihn direkt aus dem Trigger lesen kann (statt
-    // die „jüngste Abmeldung" abzufragen, was bei gleichzeitigen Abmeldungen
-    // während des Flow-Laufs falsch sein könnte). Genutzt für die
-    // Organizer-Nachrücker-Mail (OrgNachruecker-Template).
     cancelledName?: string,
-    // v19.5: E-Mail der abgemeldeten Person — der Nachrück-Flow nutzt sie für
-    // das Replaced-Audit (Hat ersetzt / Wurde ersetzt durch).
     cancelledEmail?: string
   ): Promise<boolean> {
-    try {
-      // ListItemEntityTypeFullName dynamisch ermitteln
-      let listItemType = 'SP.Data.DEX_x005f_IDReorderListItem';
-      try {
-        const typeResp = await this._sp.get(
-          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_IDReorder')?$select=ListItemEntityTypeFullName`,
-          SPHttpClient.configurations.v1
-        );
-        if (typeResp.ok) {
-          const typeData = await typeResp.json();
-          listItemType = typeData.ListItemEntityTypeFullName || typeData.d?.ListItemEntityTypeFullName || listItemType;
-        }
-      } catch { /* Fallback auf Standard-Name */ }
-
-      if (cancelledName || cancelledEmail) { try { await this.ensureIDReorderCancelledNameField(); } catch { /* */ } }
-
-      const baseBody: Record<string, unknown> = {
-        '__metadata': { 'type': listItemType },
-        'Title': `Reorder: ${eventTitle}`,
-        'EventId': eventId,
-        'EventNumber': eventNumber,
-        'SubsiteUrl': subsiteUrl,
-        'Status': 'Pending',
-      };
-      // v19.5: CancelledName + CancelledEmail als optionale Zusatzfelder.
-      const extra: Record<string, unknown> = {};
-      if (cancelledName) extra['CancelledName'] = cancelledName;
-      if (cancelledEmail) extra['CancelledEmail'] = cancelledEmail;
-      const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_IDReorder')/items`;
-      let response = await this._post(url, Object.keys(extra).length ? { ...baseBody, ...extra } : baseBody);
-      // Falls die Zusatz-Spalten (noch) fehlen, schlägt der erste POST fehl —
-      // dann ohne die Felder erneut posten, damit der Reorder NIEMALS verloren
-      // geht (kritischer Pfad).
-      if (!response.ok && Object.keys(extra).length) {
-        response = await this._post(url, baseBody);
-      }
-      return response.ok;
-    } catch {
-      return false;
-    }
+    return idReorder.queueIDReorder(this, eventId, eventNumber, subsiteUrl, eventTitle, cancelledName, cancelledEmail);
   }
+
+  public async ensureChangeLogList(): Promise<void> {
+    return changeLog.ensureChangeLogList(this);
+  }
+
+  public async writeChangeLog(entry: changeLog.ChangeLogEntryInput): Promise<void> {
+    return changeLog.writeChangeLog(this, entry);
+  }
+
+  public async readChangeLog(opts?: { eventId?: string; top?: number }): Promise<changeLog.ChangeLogRow[]> {
+    return changeLog.readChangeLog(this, opts);
+  }
+
 
   // ==================== DEX_EmailTemplates Liste ====================
 
@@ -11210,7 +10470,7 @@ export class EventService {
   /**
    * ID der Visitors-Gruppe ermitteln (dort ist DEALL / alle Deloitte-Mitarbeiter hinterlegt).
    */
-  private async getVisitorsGroupId(): Promise<number | null> {
+  public async getVisitorsGroupId(): Promise<number | null> {
     try {
       const resp = await this._sp.get(
         `${this.siteUrl}/_api/web/associatedvisitorgroup?$select=Id`,

@@ -53,15 +53,21 @@ export function isRegistrationOpen(ev: { registrationDeadline?: string; startDat
  * Anmeldung sperrte, obwohl die Sub-Events noch offen waren.
  */
 export function isRegistrationFullyClosed(
-  event: { registrationDeadline?: string; startDate?: string; endDate?: string; klammerDeadline?: string },
+  event: { registrationDeadline?: string; startDate?: string; endDate?: string; klammerDeadline?: string; subDeadlineRule?: { reg?: unknown } },
   childEvents: Array<{ registrationDeadline?: string; startDate?: string; endDate?: string }>,
 ): boolean {
   // v28.20: EXPLIZITE Klammer-Frist (Piggyback _klammerDeadline) — vom
   // Organizer bewusst gesetzt. Abgelaufen = Gesamt-Event zu, offene
   // Sub-Events ändern daran nichts. (Bewusst getrennt von der Spalte
   // RegistrationDeadline, deren Alt-Werte bei Klammern wirkungslos sind.)
+  // v30.6: AUSSER die rollierende „Anmeldung bis"-Regel ist aktiv — dann
+  // gelten die Fristen je Termin, und eine (aus der Zeit VOR der Regel
+  // stehengebliebene) Klammer-Frist sperrte sonst das gesamte Event: Beim
+  // Soft Opening war Tag 1 zu (25.08.), alle weiteren Tage offen — und die
+  // Anmeldeseite zeigte trotzdem „Anmeldefrist abgelaufen" für alles.
+  const rollingReg = !!(event.subDeadlineRule && event.subDeadlineRule.reg);
   const kdl = (event.klammerDeadline || '').trim();
-  if (kdl) {
+  if (kdl && !rollingReg) {
     const kt = new Date(kdl).getTime();
     if (Number.isFinite(kt) && kt < Date.now()) return true;
   }

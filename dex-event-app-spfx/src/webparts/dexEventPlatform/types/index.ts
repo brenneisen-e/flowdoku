@@ -352,6 +352,12 @@ export interface DeloitteEvent {
    *  = Anmeldung fürs GESAMTE Event zu, auch wenn Sub-Events noch offen wären;
    *  leer = wie bisher offen bis zur spätesten Sub-Event-Frist. */
   klammerDeadline?: string;
+  /** v30.6: Rollierende Fristen-Regel (Piggyback `_subDeadlineRule`). Die
+   *  Fristen selbst sind in die Sub-Event-Spalten MATERIALISIERT — dieses
+   *  Feld dient nur als Signal: Ist die Reg-Regel aktiv, gelten die Fristen
+   *  je Termin, und eine (womöglich veraltete) klammerDeadline darf NICHT
+   *  mehr als harter Schluss fürs Gesamt-Event wirken. */
+  subDeadlineRule?: { reg?: { amount: number; unit: string }; cancel?: { amount: number; unit: string; after?: boolean } };
   /** v14.8: Organizer-konfigurierbarer Begriff für die untergeordneten
    *  Events. Default „Sub-Event(s)" (DE/EN). Per Wizard-Dropdown auch
    *  „Workshop", „Session", „Programmpunkt", „Event-Section" oder
