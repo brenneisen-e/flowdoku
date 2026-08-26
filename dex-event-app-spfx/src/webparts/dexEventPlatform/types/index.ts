@@ -694,7 +694,11 @@ export interface Registration {
 // Wochenbericht, Organizer-Anträge, Inaktiv-Hinweise). Da alle Empfänger-Listen
 // exakt auf Role='Admin' filtern, wird ein IT-Admin dort automatisch NICHT
 // aufgenommen — er behält aber vollen App-Zugriff (isAdmin = true).
-export type UserRole = 'Admin' | 'IT-Admin' | 'Organizer' | 'User';
+// v30.5: 'F&A' = Finance & Accounting (Fachkonzept Abschnitt 7): alle Rechte
+// eines normalen Teilnehmers PLUS Zugriff auf das F&A Center — ausdrücklich
+// KEINE Organizer- oder Admin-Rechte (isAdmin/isOrganizer bleiben false, weil
+// alle Ableitungen exakt auf die anderen Rollen prüfen).
+export type UserRole = 'Admin' | 'IT-Admin' | 'Organizer' | 'F&A' | 'User';
 
 export interface User {
   id: string;

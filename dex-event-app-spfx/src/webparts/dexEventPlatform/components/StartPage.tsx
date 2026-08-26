@@ -6,7 +6,7 @@ import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useLanguage } from '../context/LanguageContext';
-import { Calendar, Pin, Settings, QrCode, Star, Users, MessageSquare } from './Icons';
+import { Calendar, Pin, Settings, QrCode, Star, Users, MessageSquare, FileText } from './Icons';
 import InquiryModal from './InquiryModal';
 import { useTickets } from '../context/TicketContext';
 import { useIsMobile } from '../utils/useIsMobile';
@@ -14,7 +14,7 @@ import { useIsMobile } from '../utils/useIsMobile';
 export default function StartPage(): React.ReactElement {
   const isMobile = useIsMobile();
   const { navigate } = useNavigation();
-  const { canCreateEvents, isAdmin, isPowerUser } = useRoles();
+  const { canCreateEvents, isAdmin, isPowerUser, isFA } = useRoles();
   const { events, isEventsLoading, getMyProxyRegistrations } = useEvents();
   const { powerUserQueue } = useTickets();
   const { currentUser } = useCurrentUser();
@@ -51,6 +51,8 @@ export default function StartPage(): React.ReactElement {
   const showCheckInTile = isCheckInTeamOfActive || isAdmin || isOrganizer;
   // v24.24: „Admin"-Kachel (Hub) — nur echte Admins.
   const showAdminHubTile = isAdmin;
+  // v30.5: „F&A Center"-Kachel — Rolle F&A und Admins (Fachkonzept Abschnitt 8).
+  const showFATile = isFA || isAdmin;
 
   // v26: „Tickets"-Kachel — Power-User + Admins beantworten hier die Fragen aus
   // dem Ticketsystem (Badge = Anzahl noch offener/in Bearbeitung befindlicher).
@@ -166,12 +168,19 @@ export default function StartPage(): React.ReactElement {
       <p>{isDe ? 'Verwaltung & Prozesse' : 'Administration & processes'}</p>
     </div>
   );
+  const tileFA = (
+    <div className="card card-clickable start-card" onClick={() => navigate('fa-center')}>
+      <div className="start-card__icon"><FileText size={64} /></div>
+      <h2>F&amp;A Center</h2>
+      <p>{isDe ? 'Abrechnungsrelevante Events' : 'Billing-relevant events'}</p>
+    </div>
+  );
 
   const clusters: Array<{ key: string; title: string; tiles: React.ReactNode[] }> = [
     { key: 'teilnahme', title: isDe ? 'Teilnahme' : 'Participation', tiles: [tileRegister, tileMyEvents] },
     { key: 'organisation', title: isDe ? 'Organisation' : 'Organization', tiles: [tileOrganizer, ...(showCheckInTile ? [tileCheckIn] : [])] },
     { key: 'support', title: isDe ? 'Support' : 'Support', tiles: showTicketsTile ? [tileTickets] : [] },
-    { key: 'verwaltung', title: isDe ? 'Verwaltung' : 'Administration', tiles: [...(showAssistTile ? [tileAssist] : []), ...(showAdminHubTile ? [tileAdminHub] : [])] },
+    { key: 'verwaltung', title: isDe ? 'Verwaltung' : 'Administration', tiles: [...(showAssistTile ? [tileAssist] : []), ...(showAdminHubTile ? [tileAdminHub] : []), ...(showFATile ? [tileFA] : [])] },
   ].filter(c => c.tiles.length > 0);
 
   // v26.37: Auf dem Handy verschwenden die quadratischen Kacheln viel
@@ -212,6 +221,7 @@ export default function StartPage(): React.ReactElement {
       items: [
         ...(showAssistTile ? [{ key: 'assistant', icon: <Users size={24} strokeWidth={1.6} />, label: isDe ? 'Assistenz' : 'Assistant', subtitle: isDe ? 'Anmeldungen für andere' : 'Registrations for others', onClick: () => navigate('assistant') }] : []),
         ...(showAdminHubTile ? [{ key: 'admin-hub', icon: <Star size={24} strokeWidth={1.6} />, label: 'Admin', subtitle: isDe ? 'Verwaltung & Prozesse' : 'Administration & processes', onClick: () => navigate('admin-hub') }] : []),
+        ...(showFATile ? [{ key: 'fa-center', icon: <FileText size={24} />, label: 'F&A Center', subtitle: isDe ? 'Abrechnungsrelevante Events' : 'Billing-relevant events', onClick: () => navigate('fa-center') }] : []),
       ],
     },
   ].filter(c => c.items.length > 0);

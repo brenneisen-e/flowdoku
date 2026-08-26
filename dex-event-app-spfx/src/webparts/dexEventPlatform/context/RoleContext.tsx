@@ -35,6 +35,9 @@ interface RoleContextType {
    *  bleibt. Die Seiten sperren in der Vorschau zusätzlich das Anmelden. */
   previewAsUser: boolean;
   setPreviewAsUser: (on: boolean) => void;
+  /** v30.5: Rolle 'F&A' — Teilnehmer-Rechte plus Zugriff aufs F&A Center,
+   *  keinerlei Organizer-/Admin-Rechte. Admins sehen das Center ebenfalls. */
+  isFA: boolean;
   isOrganizer: boolean;
   canCreateEvents: boolean;
   /** v26: Der aktuelle User ist Power-User (Organizer/Admin mit IsPowerUser-Flag).
@@ -58,7 +61,7 @@ interface RoleContextType {
 function migrateRole(spRole: string): UserRole {
   if (spRole === 'SuperAdmin') return 'Admin';
   if (spRole === 'EventAdmin') return 'Organizer';
-  if (spRole === 'Admin' || spRole === 'IT-Admin' || spRole === 'Organizer' || spRole === 'User') return spRole as UserRole;
+  if (spRole === 'Admin' || spRole === 'IT-Admin' || spRole === 'Organizer' || spRole === 'F&A' || spRole === 'User') return spRole as UserRole;
   return 'User';
 }
 
@@ -314,6 +317,8 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   const isAdmin = effectiveRole === 'Admin' || effectiveRole === 'IT-Admin';
   const isOrganizer = effectiveRole === 'Organizer' || isAdmin;
   const canCreateEvents = isOrganizer;
+  // v30.5: F&A sieht das F&A Center — Impersonation/Vorschau senken auch das ab.
+  const isFA = effectiveRole === 'F&A';
   // v26: Power-User-Flag des aktuellen Users aus DEX_Roles. Im Demo-/
   // Impersonations-Modus bewusst false (wie isAdmin) — der Demo-User soll
   // exakt das sehen, was ein normaler User sieht.
@@ -330,7 +335,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   const value = React.useMemo<RoleContextType>(() => ({
     roles, currentUserRole, isRolesLoading,
     isAdmin, isOrganizer, canCreateEvents, isPowerUser, siteUrl,
-    originalIsAdmin, isImpersonating, previewAsUser, setPreviewAsUser,
+    originalIsAdmin, isImpersonating, previewAsUser, setPreviewAsUser, isFA,
     addRole, updateRole, setPowerUser, updateRoleLocation, removeRole, refreshRoles, searchUser, searchUsers, searchGroups, getGroupMembers, searchUsersByLocation,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [roles, currentUserRole, isRolesLoading, isImpersonating, previewAsUser, siteUrl]);

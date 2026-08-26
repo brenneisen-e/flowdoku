@@ -432,6 +432,8 @@ export default function SettingsPage(): React.ReactElement {
     const itAdminPill = catPill('IT-Admin', '#ede7f6', '#5e35b1');
     const organizerPill = catPill('Organizer', 'rgba(0,118,168,0.10)', 'var(--dex-blue, #0076a8)');
     const userPill = catPill('User', '#f5f5f5', '#666');
+    // v30.5: F&A — Zugriff aufs F&A Center, sonst normale Teilnehmer-Rechte.
+    const faPill = catPill('F&A', 'rgba(237,139,0,0.12)', '#b86700');
     const coOrgPill = catPill('Co-Organizer', 'rgba(237,139,0,0.15)', 'var(--dex-orange-dark, #b35a00)');
     // Editierbare Zeile (DEX_Roles: Admins / Organizer / User)
     const editableRow = (r: typeof roles[number]): React.ReactElement => {
@@ -465,6 +467,7 @@ export default function SettingsPage(): React.ReactElement {
               <option value="Admin">Admin</option>
               <option value="IT-Admin">IT-Admin</option>
               <option value="Organizer">Organizer</option>
+              <option value="F&A">F&A</option>
               <option value="User">User</option>
             </select>
           </td>
@@ -473,6 +476,7 @@ export default function SettingsPage(): React.ReactElement {
               {r.role === 'Admin' && adminPill}
               {r.role === 'IT-Admin' && itAdminPill}
               {r.role === 'Organizer' && organizerPill}
+              {r.role === 'F&A' && faPill}
               {r.role === 'User' && userPill}
               {/* v24.87: globaler Organizer, der zusätzlich Events betreut → auch Co-Organizer. */}
               {r.role === 'Organizer' && evts.length > 0 && coOrgPill}
@@ -833,6 +837,8 @@ export default function SettingsPage(): React.ReactElement {
                     <option value="Organizer">Organizer</option>
                     <option value="Admin">Admin</option>
                     <option value="IT-Admin">IT-Admin (volle Rechte, keine Mails)</option>
+                    {/* v30.5: F&A — Teilnehmer-Rechte + F&A Center, keine Organizer-/Admin-Rechte. */}
+                    <option value="F&A">F&A (nur F&A Center)</option>
                   </select>
                 </div>
 

@@ -18,6 +18,7 @@ import { isThrottled } from '../utils/spThrottle';
 // v26.48: zentrale B2Run-Köln-Vorlage (Titel-Erkennung + 7 Meldefelder mit
 // deterministischen IDs für den offiziellen Excel-Export).
 import { isB2RunKoelnTitle, b2runKoelnTemplateFields } from '../data/b2runKoeln';
+import { BILLING_FIELDS } from '../data/billingFields';
 import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, parseOutlookHeadings, replacePlaceholders, getCachedOrbBase64, normalizeMadeWithLink } from '../services/EmailTemplates';
 import { exportSummaryAsPdf, exportSummaryAsDoc, SummaryData } from '../services/EventSummaryExport';
 import { EventType, AgendaItem } from '../types';
@@ -509,28 +510,47 @@ export default function EventCreationPage(): React.ReactElement {
   const visAllSubsPiggyback = (): Record<string, unknown> => (
     (visAllSubs && subEventsOptIn) ? { _visAllSubs: true } : {}
   );
-  const billingPiggyback = (): Record<string, unknown> => (
-    billingRelevant === null
-      ? {}
-      : { _billing: { relevant: billingRelevant, sendMode: billingSendMode, fields: billingFields } }
-  );
+  // v30.5: Alles AUSSER relevant/sendMode/fields (Versand-Historie, Stempel,
+  // Snapshots, Abschluss durch F&A) pflegen die F&A-Flows über
+  // patchEventOverridesValue — der Wizard darf diese Schlüssel beim
+  // Speichern nicht verlieren. Beim Öffnen einfrieren, beim Bauen des
+  // Piggybacks wieder unterlegen.
+  const billingExtraRef = React.useRef<Record<string, unknown>>((() => {
+    try {
+      const b = JSON.parse(editEvent?.emailTemplateOverrides || '{}')._billing;
+      if (b && typeof b === 'object') {
+        const { relevant, sendMode, fields, ...extra } = b as Record<string, unknown>;
+        void relevant; void sendMode; void fields;
+        return extra;
+      }
+    } catch { /* */ }
+    return {};
+  })());
+  // v30.5: Protokollierung (Fachkonzept Abschnitt 13) — geloggt wird beim
+  // Speichern, wenn sich Kennzeichnung oder Angaben geändert haben.
+  const billingInitialRef = React.useRef<string>(JSON.stringify({ r: billingRelevant, m: billingSendMode, f: billingFields }));
+  const billingPiggyback = (): Record<string, unknown> => {
+    if (billingRelevant === null) return {};
+    const snap = JSON.stringify({ r: billingRelevant, m: billingSendMode, f: billingFields });
+    if (snap !== billingInitialRef.current) {
+      try {
+        const prev = JSON.parse(billingInitialRef.current) as { r: boolean | null };
+        const by = `${currentUser?.firstName || ''} ${currentUser?.surname || ''}`.trim() || currentUser?.email || '';
+        const log = Array.isArray(billingExtraRef.current.log) ? (billingExtraRef.current.log as unknown[]) : [];
+        const action = prev.r !== billingRelevant
+          ? (billingRelevant ? 'Event als abrechnungsrelevant markiert' : 'Event nicht mehr als abrechnungsrelevant markiert')
+          : 'Abrechnungsinformationen geändert';
+        billingExtraRef.current = { ...billingExtraRef.current, log: [...log, { ts: new Date().toISOString(), by, action }].slice(-60) };
+      } catch { /* Log ist best-effort */ }
+      billingInitialRef.current = snap;
+    }
+    return { _billing: { relevant: billingRelevant, sendMode: billingSendMode, fields: billingFields, ...billingExtraRef.current } };
+  };
   // Alle elf Felder sind laut Fachkonzept Pflicht. Unvollstaendig ist ein
   // STATUS („Abrechnungsrelevante Informationen unvollständig"), kein
   // Speicher-Blocker — deshalb bewusst KEIN getStepErrors-Fall fuer Schritt 10.
-  // Labels bewusst nur deutsch: Das Konzept ist deutsch, der Pilot ist intern.
-  const BILLING_FIELDS: Array<{ id: string; label: string; type?: 'date' | 'select'; options?: string[] }> = [
-    { id: 'contact', label: 'Kontaktperson für Rückfragen' },
-    { id: 'docNo', label: 'Dokumenten-Nr. (SH Swift Launchpad)' },
-    { id: 'vendor', label: 'Lieferantenname' },
-    { id: 'mice', label: 'MICE Project Nummer' },
-    { id: 'ariba', label: 'Ariba Bestellnummer' },
-    { id: 'company', label: 'Gesellschaft, die die Rechnung erhalten hat' },
-    { id: 'category', label: 'Kategorie', type: 'select', options: ['Arbeitsessen', 'Belohnungsessen', 'Sonstiges', 'Geschenk'] },
-    { id: 'date', label: 'Veranstaltungs- bzw. Bewirtungsdatum', type: 'date' },
-    { id: 'place', label: 'Ort der Bewirtung bzw. Veranstaltung' },
-    { id: 'wbs', label: 'WBS-Code / Kostenstelle' },
-    { id: 'name', label: 'Name der Veranstaltung bzw. Anlass der Bewirtung oder des Geschenks' },
-  ];
+  // v30.5: Definition nach data/billingFields.ts gezogen (Wizard, F&A Center
+  // und F&A-Mails brauchen dieselbe Liste).
   const billingMissing = BILLING_FIELDS.filter(f => !(billingFields[f.id] || '').trim());
 
   // ========== Zeitzonen-Handling (Europe/Berlin, browser-TZ-unabhängig) ==========

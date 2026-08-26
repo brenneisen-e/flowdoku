@@ -2459,6 +2459,73 @@ export class EventService {
   }
 
   /**
+   * v30.5: F&A-Verteiler (Fachkonzept 8.1) — eigene Zeile in
+   * DEX_EmailTemplates (TemplateType '_FAConfig'), JSON im BodyHtml-Feld.
+   * Gleiche Ablage wie die _Config-Zeile: EIN REST-Call, keine neue Liste,
+   * und Admins können den Stand notfalls direkt in SharePoint einsehen.
+   */
+  public async getFAConfig(): Promise<{ infoRecipients: string[]; listRecipients: string[]; log: Array<{ ts: string; by: string; action: string; old?: string; neu?: string }> }> {
+    const empty = { infoRecipients: [], listRecipients: [], log: [] };
+    try {
+      const resp = await this._sp.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_FAConfig'&$top=1&$select=Id,BodyHtml`,
+        SPHttpClient.configurations.v1,
+      );
+      if (!resp.ok) return empty;
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      if (items.length === 0) return empty;
+      const parsed = JSON.parse(items[0].BodyHtml || '{}');
+      return {
+        infoRecipients: Array.isArray(parsed.infoRecipients) ? parsed.infoRecipients : [],
+        listRecipients: Array.isArray(parsed.listRecipients) ? parsed.listRecipients : [],
+        log: Array.isArray(parsed.log) ? parsed.log : [],
+      };
+    } catch { return empty; }
+  }
+
+  public async saveFAConfig(cfg: { infoRecipients: string[]; listRecipients: string[]; log: Array<{ ts: string; by: string; action: string; old?: string; neu?: string }> }): Promise<boolean> {
+    try {
+      const listName = 'DEX_EmailTemplates';
+      const body = JSON.stringify({ ...cfg, log: cfg.log.slice(-100) });
+      const resp = await this._sp.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$filter=TemplateType eq '_FAConfig'&$top=1&$select=Id`,
+        SPHttpClient.configurations.v1,
+      );
+      if (!resp.ok) return false;
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      if (items.length > 0) {
+        const r = await this._merge(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items(${items[0].Id})`,
+          { 'BodyHtml': body }
+        );
+        return r.ok;
+      }
+      // Zeile fehlt (Bestandsinstallation) — anlegen. Entity-Typ wie beim
+      // Template-Seeding ermitteln, mit Fallback auf den Standardnamen.
+      let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
+      try {
+        const typeResp = await this._sp.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=ListItemEntityTypeFullName`,
+          SPHttpClient.configurations.v1,
+        );
+        if (typeResp.ok) {
+          const typeData = await typeResp.json();
+          listItemType = typeData.ListItemEntityTypeFullName || typeData.d?.ListItemEntityTypeFullName || listItemType;
+        }
+      } catch { /* Fallback bleibt */ }
+      const create = await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
+        '__metadata': { 'type': listItemType },
+        'Title': '_FAConfig',
+        'TemplateType': '_FAConfig',
+        'BodyHtml': body,
+      });
+      return create.ok;
+    } catch { return false; }
+  }
+
+  /**
    * v11.53: KPI-Counter um delta hochzählen (Anmeldung +1, Cancel -1,
    * createEvent +1, deleteEvent -N). ETag-CAS-Retry, race-safe bei 10k+
    * parallelen Usern. Liefert den neuen Wert oder null bei Fehler.

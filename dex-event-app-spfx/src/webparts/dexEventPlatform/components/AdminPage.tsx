@@ -71,6 +71,8 @@ import { formatDate, getStatusColor, localizeStatus, stripHtmlToText, looksEngli
 import { formatAllDayPeriod } from '../utils/eventFormat';
 import { getBlockedInviteRecipients } from '../utils/inviteGuards';
 import { ActionTile, SplitMergeToggle, ActionsCollapsibleCard, ActionsRegistryProvider, ActionsDropdown } from './admin/ActionsMenu';
+import BillingActionPanel from './admin/BillingActionPanel';
+import { parseBillingOf } from '../utils/faBilling';
 
 
 
@@ -783,6 +785,8 @@ export default function AdminPage(): React.ReactElement {
   // v9.15: QR-Code-Versand-Modal mit Test-/Volldurchlauf. v20.7: der
   // Auto-Send-Toggle ist entfallen — Auto-Send ist immer aktiv.
   const [qrSendModalOpen, setQrSendModalOpen] = React.useState(false);
+  // v30.5: Modal „Event-Abrechnung" (Versand an F&A + Historie).
+  const [billingPanelOpen, setBillingPanelOpen] = React.useState(false);
   const [qrSendResult, setQrSendResult] = React.useState<string | null>(null);
   // v9.37: Vorschau der QR-Code-Mail (analog zur Live-Vorschau im Event-Wizard
   // unter „Kommunikation"). Der Organizer sieht damit vorab genau die Mail, die
@@ -7209,6 +7213,25 @@ export default function AdminPage(): React.ReactElement {
               badge="organizer"
               onClick={() => navigate('edit-event', selectedEvent.id)}
             />
+
+            {/* v30.5: Event-Abrechnung (Fachkonzept Abschnitt 6) — erscheint
+                AUSSCHLIESSLICH bei abrechnungsrelevanten Events. Versand an
+                F&A + Versandhistorie liegen im Modal (BillingActionPanel). */}
+            {parseBillingOf(selectedEvent)?.relevant === true && (
+              <ActionTile
+                icon={<Send size={18} />}
+                category="event"
+                title="Event-Abrechnung"
+                desc={isDe
+                  ? 'Abrechnungsinformationen oder Teilnehmerliste an Finance & Accounting senden und die Versandhistorie einsehen. Nur bei abrechnungsrelevanten Events sichtbar.'
+                  : 'Send billing information or the participant list to Finance & Accounting and view the send history. Only visible for billing-relevant events.'}
+                badge="organizer"
+                onClick={() => setBillingPanelOpen(true)}
+              />
+            )}
+            {billingPanelOpen && (
+              <BillingActionPanel event={selectedEvent} onClose={() => setBillingPanelOpen(false)} />
+            )}
 
             {/* v27.13: „In SharePoint öffnen" entfernt — alle Teilnehmer-
                 Aktionen (Bearbeiten, Export, Massenimport, Audit) laufen über
