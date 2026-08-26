@@ -17450,7 +17450,11 @@ export default function EventCreationPage(): React.ReactElement {
                 <p style={{ fontSize: '0.9rem', color: 'var(--dex-gray-600)', margin: '0 0 18px' }}>
                   Abrechnungsrelevante Events sind Veranstaltungen, deren Kosten oder
                   Bewirtungsaufwendungen gegenüber Finance &amp; Accounting dokumentiert
-                  oder abgerechnet werden müssen.
+                  oder abgerechnet werden müssen. Das ist der Fall, wenn im Nachgang
+                  <strong> Rechnungen über die Kreditorenbuchhaltung eingereicht
+                  werden</strong> — etwa für Catering, eine externe Raumbuchung oder
+                  Anmeldegebühren (z.B. Startgelder für Läufer) — oder wenn für das
+                  Event <strong>Ariba-Bestellungen</strong> ausgelöst werden.
                 </p>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', margin: '0 0 18px' }}>
                   Die Entscheidung lässt sich später jederzeit im Schritt „Abrechnung&ldquo; ändern.
@@ -17488,7 +17492,11 @@ export default function EventCreationPage(): React.ReactElement {
                 <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px' }}>
                   Abrechnungsrelevante Events sind Veranstaltungen, deren Kosten oder
                   Bewirtungsaufwendungen gegenüber Finance &amp; Accounting dokumentiert
-                  oder abgerechnet werden müssen.
+                  oder abgerechnet werden müssen. Das ist der Fall, wenn im Nachgang
+                  <strong> Rechnungen über die Kreditorenbuchhaltung eingereicht
+                  werden</strong> — etwa für Catering, eine externe Raumbuchung oder
+                  Anmeldegebühren (z.B. Startgelder für Läufer) — oder wenn für das
+                  Event <strong>Ariba-Bestellungen</strong> ausgelöst werden.
                 </p>
                 <div style={{ display: 'flex', gap: 18 }}>
                   <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: '0.9rem' }}>
