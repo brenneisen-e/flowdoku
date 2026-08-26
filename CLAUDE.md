@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.10.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.11.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -370,11 +370,19 @@ die das Modul braucht, werden public (`_sp`, `_setListSecurity`,
 `getVisitorsGroupId` sind es schon; Unterstrich = „intern"). Modul-Konstanten
 (`REG_LIST_NAME`, `HOTEL_COLS_READY`) sind exportiert; Instanz-Zustand
 (z.B. `_idReorderCancelledFieldEnsured`) bleibt als public-Feld an der
-Klasse. Erledigt: `emailQueue`, `hotelPlanning`, `idReorder`, `changeLog`
-(12,9k → 12,2k Zeilen). Nächste Kandidaten in dieser Reihenfolge:
-DEX_Outlook (~500 Z.), EmailTemplates (~1,1k), Profil-Daten, Wochenbericht/
-Tickets/Archiv. IMMER ein Thema pro Rutsch, nach jedem `tsc` UND `gulp
-bundle` (ESLint sieht anderes als tsc).
+Klasse. Erledigt: `emailQueue`, `hotelPlanning`, `idReorder`, `changeLog`,
+`outlookQueue`, `profileData` (v30.7), `emailTemplatesList` (Templates +
+_Config/KPI/_FAConfig), `archive` (DEX_Archive: ensure + Archiv-Lauf +
+Löschkonzept; `_delete` bleibt als allgemeiner Helfer public an der Klasse),
+`weeklyReport` (alle v30.11) — 12,9k → 9,9k Zeilen. Tickets waren schon
+v28.95 in `services/tickets.ts`. Nächster Kandidat: Organizer-Archiv/
+-Anträge/Rollen (~480 Z., ein Thema). Danach ist der Rest Kerngeschäft
+(Events CRUD, Registrierungen, Subsites) — dort erst nach Stufe 3 ran.
+IMMER ein Thema pro Rutsch, nach jedem `tsc` UND `gulp bundle` (ESLint
+sieht anderes als tsc). Falle aus v30.11: Konstanten-Importe des
+EventService nach dem Auszug prüfen — tsc meldet ungenutzte Importe NICHT
+(ESLint erst im bundle), und ein privater Helfer der Sektion kann
+Aufrufer außerhalb haben (`loadFileAsBase64` → public Stub).
 
 **Stufe 3 — die Render-Bäume (offen, teuer).** In `EventCreationPage` stecken
 ~16k Zeilen in EINER Funktion; die neun Schritte lesen aus rund 200
