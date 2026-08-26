@@ -19,6 +19,21 @@
  *    Credit, keine Postanschrift.
  */
 
+/**
+ * v29.64 — WER HIER LIEST, LIEST DEN GRUND FÜR ZWEI NACHBESSERUNGEN.
+ *
+ * `EventService.getRoleEmails('Admin')` liefert die PERSÖNLICHEN Konten der
+ * Admins. Als Empfänger einer App-Mail ist das genau das, was seit v29.43
+ * nicht mehr sein soll — v29.43 hat aber nur zwei von vier Fundstellen
+ * umgestellt. Übrig blieben die Organizer-Antrags-Mail und die Meldung
+ * „SharePoint-Zugriff benötigt", beide in `EventContext`; sie gingen weiter an
+ * Eike und Nils persönlich, gemeldet nach v29.63.
+ *
+ * Merksatz: `getRoleEmails('Admin')` ist für PRÜFUNGEN da („hat die Person schon eine Rolle"),
+ * nicht für Empfängerlisten. Wer eine neue Mail an „das DEX-Team" baut, nimmt
+ * `DEX_TEAM_RECIPIENTS`.
+ */
+
 /** Funktionspostfach des DEX-Teams — Anfragen, Onboarding-Kopien, Kontakt. */
 export const DEX_TEAM_EMAIL = 'dex.event@deloitte.de';
 
