@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.11.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.12.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -374,10 +374,11 @@ Klasse. Erledigt: `emailQueue`, `hotelPlanning`, `idReorder`, `changeLog`,
 `outlookQueue`, `profileData` (v30.7), `emailTemplatesList` (Templates +
 _Config/KPI/_FAConfig), `archive` (DEX_Archive: ensure + Archiv-Lauf +
 Löschkonzept; `_delete` bleibt als allgemeiner Helfer public an der Klasse),
-`weeklyReport` (alle v30.11) — 12,9k → 9,9k Zeilen. Tickets waren schon
-v28.95 in `services/tickets.ts`. Nächster Kandidat: Organizer-Archiv/
--Anträge/Rollen (~480 Z., ein Thema). Danach ist der Rest Kerngeschäft
-(Events CRUD, Registrierungen, Subsites) — dort erst nach Stufe 3 ran.
+`weeklyReport` (alle v30.11), `organizer` (Organizer-Archiv/-Anträge/
+Rollen-Abfragen, v30.12) — 12,9k → 9,6k Zeilen. Tickets waren schon
+v28.95 in `services/tickets.ts`. Damit ist der abtrennbare Rand ab —
+der Rest ist Kerngeschäft (Events CRUD, Registrierungen, Subsites,
+Hilfsmethoden) und hängt eng zusammen; dort erst nach Stufe 3 ran.
 IMMER ein Thema pro Rutsch, nach jedem `tsc` UND `gulp bundle` (ESLint
 sieht anderes als tsc). Falle aus v30.11: Konstanten-Importe des
 EventService nach dem Auszug prüfen — tsc meldet ungenutzte Importe NICHT
