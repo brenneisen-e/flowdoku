@@ -4069,7 +4069,18 @@ export default function EventCreationPage(): React.ReactElement {
         // Terminreihe die große Mehrheit der Schreibvorgänge (s. Kommentar
         // an subPersistKey). Nur wenn BEIDES unverändert ist: der Entwurf
         // selbst UND alles am Hauptevent, was ein Sub-Event erbt.
-        if (subGateUnchanged && !draft.imageFile && !draft.imageRemoved) {
+        // v30.10: … UND der wirksame Outlook-Betreff schon in der Zeile
+        // steht. Der v30.7-Fallback (Kalender-Tag → Hauptevent-Titel) wird
+        // erst BEIM SCHREIBEN berechnet — im Entwurf ändert sich dadurch
+        // nichts, der Skip hielt Bestands-Terminreihen deshalb für
+        // unverändert, OutlookSubject blieb leer und der UpdateEvent-Flow
+        // fiel per coalesce weiter auf den Tages-Titel zurück, egal wie oft
+        // aktualisiert wurde. Genau die Falle, vor der der subPersistKey-
+        // Kommentar warnt: ein abgeleiteter Wert, den keiner der beiden
+        // Schlüssel sieht.
+        const storedSubRow = childEventsOf(parentEventId).find(k => k.id === draft.dbId);
+        const subjectInSync = subOutlookSubject === ((storedSubRow && storedSubRow.outlookSubject) || '').trim();
+        if (subGateUnchanged && subjectInSync && !draft.imageFile && !draft.imageRemoved) {
           const before = initialSubPersistRef.current[draft.dbId];
           if (before !== undefined && before === subPersistKey(draft)) {
             skippedSubCount++;
