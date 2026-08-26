@@ -15,7 +15,7 @@ import { useRoles } from '../context/RoleContext';
 import { isEventVisibleForUser } from './EventListPage';
 import { useCachedImage, useCachedImageWithFallback } from '../utils/imageCache';
 import { useIsMobile } from '../utils/useIsMobile';
-import { isRegistrationFullyClosed } from '../utils/eventFormat';
+import { isRegistrationFullyClosed, subEventRegDeadline } from '../utils/eventFormat';
 import { selfCancelLocked } from '../utils/cancelPolicy';
 import { isDeloitteInternalEmail, isExternalEmail } from '../utils/deloitteDomain';
 import { useLanguage, translations as appTranslations, Locale } from '../context/LanguageContext';
@@ -4010,7 +4010,11 @@ export default function RegistrationPage(): React.ReactElement {
                     const isSel = selectedSessions.has(ce.id);
                     const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
                     const isSessionFull = hasCap && meta.count >= (ce.maxParticipants || 0);
-                    const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
+                    // v30.8: effektive Tages-Frist — materialisierte Spalte,
+                    // sonst Fallback aus der rollierenden Regel (Spalte kann
+                    // bei einem unter Drosselung abgebrochenen Save leer sein).
+                    const effRegDeadline = subEventRegDeadline(event, ce);
+                    const deadlinePassed = !!(effRegDeadline && new Date(effRegDeadline) < new Date());
                     // v29.28: Organizer/Admins dürfen — wie beim Haupt-Event
                     // (parentRegBlocked) und wie der Wizard es ausdrücklich
                     // verspricht — auch nach der Frist anmelden. Die
@@ -5579,7 +5583,11 @@ export default function RegistrationPage(): React.ReactElement {
                                 const isSel = selectedSessions.has(ce.id);
                                 const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
                                 const isFull = hasCap && meta.count >= (ce.maxParticipants || 0);
-                                const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
+                                // v30.8: effektive Tages-Frist — materialisierte Spalte,
+                    // sonst Fallback aus der rollierenden Regel (Spalte kann
+                    // bei einem unter Drosselung abgebrochenen Save leer sein).
+                    const effRegDeadline = subEventRegDeadline(event, ce);
+                    const deadlinePassed = !!(effRegDeadline && new Date(effRegDeadline) < new Date());
                                 // v29.28: Frist-Bypass für Organizer/Admins (s. Listen-Pfad).
                                 const deadlineLocked = deadlinePassed && !isOrganizer && !isAdmin;
                                 // v29.67: Freischalt-Regel — der Tag öffnet erst X Tage
@@ -5678,7 +5686,7 @@ export default function RegistrationPage(): React.ReactElement {
                                         ? (locale === 'de' ? `ab ${openFromLabel}` : `from ${openFromLabel}`)
                                         : deadlinePassed
                                         ? (() => {
-                                            const dl = new Date(ce.registrationDeadline || '');
+                                            const dl = new Date(effRegDeadline || '');
                                             const dlLabel = isFinite(dl.getTime())
                                               ? dl.toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit' })
                                               : '';
@@ -5719,7 +5727,11 @@ export default function RegistrationPage(): React.ReactElement {
                     const isSel = selectedSessions.has(ce.id);
                     const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
                     const isSessionFull = hasCap && meta.count >= (ce.maxParticipants || 0);
-                    const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
+                    // v30.8: effektive Tages-Frist — materialisierte Spalte,
+                    // sonst Fallback aus der rollierenden Regel (Spalte kann
+                    // bei einem unter Drosselung abgebrochenen Save leer sein).
+                    const effRegDeadline = subEventRegDeadline(event, ce);
+                    const deadlinePassed = !!(effRegDeadline && new Date(effRegDeadline) < new Date());
                     // v29.28: Organizer/Admins dürfen — wie beim Haupt-Event
                     // (parentRegBlocked) und wie der Wizard es ausdrücklich
                     // verspricht — auch nach der Frist anmelden. Die

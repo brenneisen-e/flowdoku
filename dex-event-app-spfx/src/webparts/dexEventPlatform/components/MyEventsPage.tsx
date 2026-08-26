@@ -20,7 +20,7 @@ import { isEventVisibleForUser } from './EventListPage';
 import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime, QuizQuestion } from '../types';
 import { SPRegistration, EventCommRow } from '../services/EventService';
 import { wrapTemplate } from '../services/EmailTemplates';
-import { isEventOver } from '../utils/eventFormat';
+import { isEventOver, subEventRegDeadline } from '../utils/eventFormat';
 import { selfCancelLocked, selfCancelLockReason } from '../utils/cancelPolicy';
 import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
@@ -4130,8 +4130,14 @@ function MyEventSubEvents(props: {
           const isBusy = busyId === ce.id;
           // v28.20: Auch die explizite Klammer-Frist des Hauptevents sperrt
           // das NACHTRÄGLICHE Anmelden (Abmelden bleibt möglich).
-          const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date())
-            || !!(props.parentEvent.klammerDeadline && new Date(props.parentEvent.klammerDeadline) < new Date());
+          // v30.8: effektive Tages-Frist (materialisierte Spalte, sonst
+          // Fallback aus der rollierenden Regel). Die Klammer-Frist sperrt
+          // nur noch, wenn KEINE Je-Termin-Logik konfiguriert ist — gleiche
+          // Regel wie isRegistrationFullyClosed.
+          const effRegDeadline = subEventRegDeadline(props.parentEvent, ce);
+          const perDayRules = !!(props.parentEvent.subDeadlineRule && props.parentEvent.subDeadlineRule.reg) || !!props.parentEvent.subEventOpenRule;
+          const deadlinePassed = !!(effRegDeadline && new Date(effRegDeadline) < new Date())
+            || (!perDayRules && !!(props.parentEvent.klammerDeadline && new Date(props.parentEvent.klammerDeadline) < new Date()));
           // v30.2: „Anmeldung ab" (Freischalt-Regel der Klammer) galt bisher
           // nur auf der Anmeldeseite — ueber „Meine Events" liess sich JEDER
           // Termin sofort buchen. Gleiche Rechnung wie subOpenFrom in
