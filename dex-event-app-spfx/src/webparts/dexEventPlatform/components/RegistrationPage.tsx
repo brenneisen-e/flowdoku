@@ -2682,6 +2682,29 @@ export default function RegistrationPage(): React.ReactElement {
     setMassImportResult({ ok, failed });
   };
 
+  /**
+   * v29.40: Personensuche, die nur Personen aus dem Verteilerkreis des Events
+   * liefert — für Felder mit `audienceOnly` (typisch: Zimmerpartner). Es ist
+   * dieselbe Prüfung wie beim Anmelden für andere (`isEventVisibleForUser`),
+   * damit Feld und Anmeldung nicht unterschiedlich urteilen.
+   *
+   * Die Treffer liefern Standort und Position mit; ohne diese Angaben kann ein
+   * reiner Standortfilter nicht greifen — dann bleibt die Person draußen, was
+   * die sichere Richtung ist (lieber jemanden zu wenig anbieten als eine
+   * Person, die gar nicht eingeladen ist).
+   *
+   * v30.3: VOR die frühen Returns (declined/submitted) verschoben. Als
+   * LETZTER Hook hinter ihnen riss er beim Umschalten auf den Erfolgs-
+   * screen die Hook-Reihenfolge (React #300, „Rendered fewer hooks") —
+   * die ganze App stand danach weiß. Hooks dürfen in dieser Komponente
+   * nur oberhalb dieser Zeile stehen.
+   */
+  const searchUsersInAudience = React.useCallback(async (q: string, includeIntl?: boolean) => {
+    const res = await searchUsers(q, includeIntl);
+    if (!event) return res;
+    return res.filter(u => isEventVisibleForUser(event, u.email, u.location || '', [], u.jobTitle || ''));
+  }, [searchUsers, event]);
+
   if (declined) {
     return (
       <div className="page-container text-center">
@@ -2958,23 +2981,6 @@ export default function RegistrationPage(): React.ReactElement {
       })();
     }
   };
-  /**
-   * v29.40: Personensuche, die nur Personen aus dem Verteilerkreis des Events
-   * liefert — für Felder mit `audienceOnly` (typisch: Zimmerpartner). Es ist
-   * dieselbe Prüfung wie beim Anmelden für andere (`isEventVisibleForUser`),
-   * damit Feld und Anmeldung nicht unterschiedlich urteilen.
-   *
-   * Die Treffer liefern Standort und Position mit; ohne diese Angaben kann ein
-   * reiner Standortfilter nicht greifen — dann bleibt die Person draußen, was
-   * die sichere Richtung ist (lieber jemanden zu wenig anbieten als eine
-   * Person, die gar nicht eingeladen ist).
-   */
-  const searchUsersInAudience = React.useCallback(async (q: string, includeIntl?: boolean) => {
-    const res = await searchUsers(q, includeIntl);
-    if (!event) return res;
-    return res.filter(u => isEventVisibleForUser(event, u.email, u.location || '', [], u.jobTitle || ''));
-  }, [searchUsers, event]);
-
   // v11.5: Custom-Field-Renderer extrahiert — wird zweimal verwendet:
   // einmal direkt in der Gruppen-Auswahl-Box für Felder mit
   // onlyForGroup-Constraint, einmal im Eventspez-2-Spalten-Grid für
