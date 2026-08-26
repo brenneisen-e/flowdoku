@@ -14,6 +14,7 @@ import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
 import { useDialog } from '../context/DialogContext';
 import { EventService, CustomField } from '../services/EventService';
+import { isThrottled } from '../utils/spThrottle';
 // v26.48: zentrale B2Run-Köln-Vorlage (Titel-Erkennung + 7 Meldefelder mit
 // deterministischen IDs für den offiziellen Excel-Export).
 import { isB2RunKoelnTitle, b2runKoelnTemplateFields } from '../data/b2runKoeln';
@@ -439,6 +440,17 @@ export default function EventCreationPage(): React.ReactElement {
     (openRuleEnabled && openRuleDays > 0 && subEventsOptIn)
       ? { _subEventOpenRule: { mode: openRuleMode, days: openRuleDays } }
       : {}
+  );
+  // v29.75: „Sichtbarkeit gilt für alle Sub-Events" — der Haken hält
+  // Standortfilter, Verteiler und Verknüpfung der Sub-Events mit der
+  // Klammer synchron (Spiegel-Effect weiter unten, nach den States).
+  // Persistiert als Piggyback, damit der Haken beim Wieder-Öffnen
+  // gesetzt bleibt und künftige Klammer-Änderungen weiter durchreichen.
+  const [visAllSubs, setVisAllSubs] = React.useState<boolean>(() => {
+    try { return JSON.parse(editEvent?.emailTemplateOverrides || '{}')._visAllSubs === true; } catch { return false; }
+  });
+  const visAllSubsPiggyback = (): Record<string, unknown> => (
+    (visAllSubs && subEventsOptIn) ? { _visAllSubs: true } : {}
   );
   const billingPiggyback = (): Record<string, unknown> => (
     billingRelevant === null
@@ -1177,12 +1189,14 @@ export default function EventCreationPage(): React.ReactElement {
           _billing,
           // v29.67: Freischalt-Regel der Kalender-Termine — eigene States.
           _subEventOpenRule,
+          // v29.75: Sichtbarkeit-für-alle-Sub-Events-Haken — eigener State.
+          _visAllSubs,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
         // Variablen nur destrukturiert, um sie aus `rest` zu entfernen.
         void _eventLogo; void _outlookLogo; void _outlookLogoSameAsMail; void _b2run;
-        void _billing; void _subEventOpenRule;
+        void _billing; void _subEventOpenRule; void _visAllSubs;
         void _qrScanners; void _coOrganizers; void _testTeam;
         void _splitDisplayOrderReversed; void _requireSubEventSelection;
         void _subEventsOnlyMode; void _subEventsDisabled; void _imageBanner; void _childEventTerm;
@@ -1746,6 +1760,25 @@ export default function EventCreationPage(): React.ReactElement {
     };
     });
   });
+  // v29.75: Solange der „Sichtbarkeit gilt für alle Sub-Events"-Haken gesetzt
+  // ist, spiegelt jede Änderung an Standortfilter/Verteiler/Verknüpfung der
+  // Klammer sofort in alle Sub-Event-Drafts — auch das Setzen des Hakens
+  // selbst. Die Sub-Event-Sichtbarkeits-UI ist währenddessen gesperrt (sonst
+  // würden dortige Eingaben beim nächsten Klammer-Edit stillschweigend
+  // überschrieben). Unveränderte Drafts behalten ihre Referenz, damit der
+  // v29.57-Skip („nichts geändert → nicht schreiben") nicht anschlägt.
+  React.useEffect(() => {
+    if (!visAllSubs) return;
+    setSubEvents(prev => {
+      let changed = false;
+      const next = prev.map(s => {
+        if ((s.locationFilter || '') === locationFilter && (s.audience || '') === audience && (s.filterMode || 'OR') === filterMode) return s;
+        changed = true;
+        return { ...s, locationFilter, audience, filterMode };
+      });
+      return changed ? next : prev;
+    });
+  }, [visAllSubs, locationFilter, audience, filterMode]);
   // v11.57: aktiv ausgewählter Tab in Step 6 (Kommunikation, v11.80 Renumbering). 0 = Haupt-Event,
   // N>0 = subEvents[N-1]. Beim Tab-Wechsel werden die Step-5-Felder zwischen
   // dem Top-Level-State und der jeweiligen Sub-Event-Slice gespiegelt — siehe
@@ -3536,6 +3569,9 @@ export default function EventCreationPage(): React.ReactElement {
       && subTopGateInitialRef.current !== ''
       && subTopGateInitialRef.current === subTopGateKey();
     let skippedSubCount = 0;
+    // v29.74: Drossel-Abbruch (s. Schleifenrumpf).
+    let consecutiveSubFailures = 0;
+    let abortedForThrottle = false;
     const stepTotal = subEventsRef.current.filter(d => !!(d.title || '').trim()).length;
     let stepDone = 0;
     // v11.87: Sub-Event-Progress-Callback aus dem aufrufenden handleSubmit
@@ -3984,6 +4020,25 @@ export default function EventCreationPage(): React.ReactElement {
         // (429, zu großer Payload) nie ankamen.
         const subOk = await updateEvent(draft.dbId, subUpdates);
         if (!subOk) failedSubTitles.push(shortSubEventTitle(draft.title, title) || draft.title);
+        // v29.74: Bei Drosselung ANHALTEN statt weiterhaemmern. Zwei
+        // Fehlschlaege in Folge waehrend aktiver Drossel-Schranke heisst:
+        // SharePoint will gerade keine weiteren Schreibzugriffe von diesem
+        // Nutzer. Die restlichen Termine trotzdem zu versuchen (jeder mit
+        // eigenen Retries) hat einen Organizer bis zur NUTZER-SPERRE
+        // (Throttle.htm) eskaliert. Lieber ehrlich abbrechen — gespeichert
+        // ist gespeichert, der Rest kommt beim naechsten Save.
+        if (!subOk) {
+          consecutiveSubFailures++;
+          if (consecutiveSubFailures >= 2 && isThrottled()) {
+            abortedForThrottle = true;
+            break;
+          }
+        } else {
+          consecutiveSubFailures = 0;
+        }
+        // v29.74: Atempause zwischen den Schreibzugriffen — 19 MERGEs im
+        // Renn-Tempo sind genau das Muster, das die Drosselung ausloest.
+        await new Promise<void>(r => setTimeout(r, 250));
         // v27.11: eigenes Sub-Event-Bild persistieren (Upload/Entfernen).
         await persistSubEventImage(draft.dbId, draft);
       } else {
@@ -4019,7 +4074,11 @@ export default function EventCreationPage(): React.ReactElement {
     }
     // v29.21 (Audit): gescheiterte Sub-Events benennen statt still erfolgreich
     // zu wirken — der Organizer entscheidet dann selbst, ob er erneut speichert.
-    if (failedSubTitles.length > 0) {
+    if (abortedForThrottle) {
+      showAlert(isDe
+        ? `SharePoint bremst gerade alle Schreibzugriffe (Drosselung). Der Speichervorgang wurde nach ${stepDone} von ${stepTotal} Terminen angehalten, damit dein Konto nicht gesperrt wird. Was gespeichert ist, bleibt gespeichert — bitte warte ein paar Minuten und speichere dann erneut; bereits gesicherte Termine werden dabei übersprungen.`
+        : `SharePoint is currently throttling all writes. Saving stopped after ${stepDone} of ${stepTotal} dates to protect your account from being blocked. Everything saved so far is kept — please wait a few minutes and save again; dates already saved will be skipped.`, { variant: 'error' });
+    } else if (failedSubTitles.length > 0) {
       showAlert(isDe
         ? `${failedSubTitles.length} Sub-Event${failedSubTitles.length === 1 ? '' : 's'} konnte${failedSubTitles.length === 1 ? '' : 'n'} nicht gespeichert werden: ${failedSubTitles.join(', ')}. Die übrigen Änderungen sind gespeichert — bitte speichere erneut, um es nochmal zu versuchen.`
         : `${failedSubTitles.length} sub-event${failedSubTitles.length === 1 ? '' : 's'} could not be saved: ${failedSubTitles.join(', ')}. All other changes are saved — please save again to retry.`, { variant: 'error' });
@@ -4784,6 +4843,7 @@ export default function EventCreationPage(): React.ReactElement {
         subEventCalendarConfig, subEventSingleChoiceConfig, noSelfCancelConfig, noCancelAfterDeadlineConfig, teamsLinkConfig, hotelCarryConfig,
         billingPiggyback(), // v29.66: F&A-Pilot
         subEventOpenRulePiggyback(), // v29.67
+        visAllSubsPiggyback(), // v29.75
       ];
       updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || topPiggybackConfigs.some(o => Object.keys(o).length > 0))
         // v28.2: Object.assign statt Spread-Kette — die Literal-Spreads
@@ -5576,6 +5636,7 @@ export default function EventCreationPage(): React.ReactElement {
             (!userCancelAllowed ? { _noSelfCancel: true } : {}),
             billingPiggyback(), // v29.66: F&A-Pilot
             subEventOpenRulePiggyback(), // v29.67
+            visAllSubsPiggyback(), // v29.75
             ((userCancelAllowed && noCancelAfterDeadline) ? { _noCancelAfterDeadline: true } : {}),
             // v29.38: Teams-Link auch beim Anlegen.
             (/^https?:\/\//i.test(teamsLink.trim()) ? { _teamsLink: teamsLink.trim() } : {}),
@@ -6658,6 +6719,7 @@ export default function EventCreationPage(): React.ReactElement {
       // Waechter nicht, wenn nur Abrechnungsfelder geaendert wurden.
       billingHash: JSON.stringify({ billingRelevant, billingSendMode, billingFields }),
       subOpenRuleHash: JSON.stringify({ openRuleEnabled, openRuleMode, openRuleDays }), // v29.67
+      visAllSubs, // v29.75
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -6672,6 +6734,7 @@ export default function EventCreationPage(): React.ReactElement {
     emailTemplateOverrides,
     billingRelevant, billingSendMode, billingFields, // v29.66
     openRuleEnabled, openRuleMode, openRuleDays, // v29.67
+    visAllSubs, // v29.75
   ]);
   React.useEffect(() => {
     // Initial-Snapshot ein paar Ticks nach dem ersten Render setzen, damit
@@ -11839,64 +11902,23 @@ export default function EventCreationPage(): React.ReactElement {
                           // einen Oktober-Tag will, blättert mit dem Pfeil.
                           calendarClassName="dex-datepicker-calendar dex-termin-calendar"
                         />
-                        {/* v29.67: Freischalt-Regel — bei einer Reihe ueber
-                            viele Wochen sollen Teilnehmer nicht Monate im
-                            Voraus buchen. Die Regel liegt auf der Klammer
-                            (event-weit) und wirkt nur auf der Anmeldeseite;
-                            hier im Wizard bleiben alle Tage bedienbar. */}
-                        <div style={{ margin: '10px 0 0', padding: '10px 12px', borderRadius: 8, background: '#fff', border: '1px solid var(--dex-gray-200)' }}>
-                          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                            <input
-                              type="checkbox"
-                              checked={openRuleEnabled}
-                              onChange={e => setOpenRuleEnabled(e.target.checked)}
-                              style={{ width: 18, height: 18, marginTop: 1, flexShrink: 0, cursor: 'pointer' }}
-                            />
-                            <span style={{ fontSize: '0.9rem' }}>
-                              <strong>{isDe ? 'Termine erst kurz vorher zur Anmeldung freischalten' : 'Open dates for registration only shortly beforehand'}</strong>
-                              <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400 }}>
-                                {isDe
-                                  ? 'Noch nicht freigeschaltete Tage sind auf der Anmeldeseite ausgegraut und zeigen, ab wann die Anmeldung möglich ist.'
-                                  : 'Days not yet open appear greyed out on the registration page and show when registration becomes possible.'}
-                              </span>
-                            </span>
-                          </label>
-                          {openRuleEnabled && (
-                            <div style={{ marginTop: 10, paddingLeft: 28 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.88rem' }}>
-                                {isDe ? 'Anmeldung möglich ab' : 'Registration opens'}
-                                <input
-                                  type="number"
-                                  min={1}
-                                  max={365}
-                                  className="form-input"
-                                  value={openRuleDays}
-                                  onChange={e => { const v = parseInt(e.target.value, 10); setOpenRuleDays(isFinite(v) && v > 0 ? Math.min(v, 365) : 1); }}
-                                  style={{ width: 76, padding: '4px 8px', textAlign: 'center' }}
-                                />
-                                {isDe ? 'Tage vor' : 'days before'}
-                                <select
-                                  className="form-input"
-                                  value={openRuleMode}
-                                  onChange={e => setOpenRuleMode(e.target.value === 'week' ? 'week' : 'day')}
-                                  style={{ width: 'auto', padding: '4px 8px' }}
-                                >
-                                  <option value="day">{isDe ? 'dem jeweiligen Termin' : 'each date'}</option>
-                                  <option value="week">{isDe ? 'dem Montag der jeweiligen Woche' : 'the Monday of its week'}</option>
-                                </select>
-                              </div>
-                              <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: '6px 0 0' }}>
-                                {openRuleMode === 'week'
-                                  ? (isDe
-                                    ? `Alle Termine einer Kalenderwoche öffnen gemeinsam: ${openRuleDays} ${openRuleDays === 1 ? 'Tag' : 'Tage'} vor deren Montag.`
-                                    : `All dates of a calendar week open together: ${openRuleDays} ${openRuleDays === 1 ? 'day' : 'days'} before that week's Monday.`)
-                                  : (isDe
-                                    ? `Jeder Termin öffnet einzeln: ${openRuleDays} ${openRuleDays === 1 ? 'Tag' : 'Tage'} vor seinem Datum.`
-                                    : `Each date opens individually: ${openRuleDays} ${openRuleDays === 1 ? 'day' : 'days'} before its date.`)}
-                              </p>
-                            </div>
-                          )}
-                        </div>
+                        {/* v29.75: Die Freischalt-Regel („Termine erst kurz
+                            vorher zur Anmeldung freischalten") stand bis
+                            v29.74 HIER im Kalender-Block. Sie ist aber eine
+                            Anmelde-Regel, keine Termin-Anlage — sie wohnt
+                            jetzt in Schritt 4 bei den Anmelde- und
+                            Abmeldefristen der Klammer. Der Hinweis bleibt,
+                            damit Organizer sie nicht an der alten Stelle
+                            suchen. */}
+                        <p style={{ margin: '10px 0 0', fontSize: '0.78rem', color: 'var(--dex-gray-500)', lineHeight: 1.5 }}>
+                          {isDe
+                            ? <>{openRuleEnabled
+                              ? <>&bdquo;Anmeldung ab&ldquo; aktiv: je Termin <strong>{openRuleDays} {openRuleDays === 1 ? 'Tag' : 'Tage'} vor {openRuleMode === 'week' ? 'dem Montag der jeweiligen Woche' : 'dem jeweiligen Termin'}</strong>. </>
+                              : <></>}&bdquo;Anmeldung ab&ldquo;, &bdquo;Anmeldung bis&ldquo; und &bdquo;Abmeldung bis&ldquo; für alle Termine stellst du in <strong>Schritt 4</strong> unter &bdquo;Anmelde- und Abmeldefristen&ldquo; ein.</>
+                            : <>{openRuleEnabled
+                              ? <>“Registration opens” active: <strong>{openRuleDays} {openRuleDays === 1 ? 'day' : 'days'} before {openRuleMode === 'week' ? 'the Monday of each week' : 'each date'}</strong>. </>
+                              : <></>}You configure “registration opens/until” and “cancellation until” for all dates in <strong>step 4</strong> under “Registration & cancellation deadlines”.</>}
+                        </p>
                         {/* v29.48: Termine außerhalb des Event-Zeitraums benennen.
                             Der Kalender lässt jeden Tag zu, der Zeitraum des
                             Hauptevents wandert aber nicht mit — in der Rückmeldung
@@ -12484,6 +12506,23 @@ export default function EventCreationPage(): React.ReactElement {
                           AudiencePicker-Prüfzeile (summarySlot). */}
                     </div>
 
+                    {/* v29.75: Solange „Sichtbarkeit gilt für alle Sub-Events"
+                        auf der Klammer gesetzt ist, wird die Sichtbarkeit hier
+                        nur ANGEZEIGT — Eingaben würden beim nächsten Klammer-
+                        Edit stillschweigend überschrieben (Spiegel-Effect),
+                        deshalb sperren statt verlieren lassen. */}
+                    {visAllSubs && (
+                      <div style={{
+                        margin: '0 0 12px', padding: '10px 12px', borderRadius: 8,
+                        background: 'rgba(134,188,37,0.07)', border: '1px solid var(--dex-green, #86bc25)',
+                        fontSize: '0.8rem', color: 'var(--dex-gray-700)', lineHeight: 1.5,
+                      }}>
+                        {isDe
+                          ? <>Die Sichtbarkeit wird von der <strong>{subEventsOnlyMode ? 'Klammer' : 'Hauptevent-Ebene'}</strong> vorgegeben (&bdquo;Sichtbarkeit gilt für alle {childTermPlural || 'Sub-Events'}&ldquo;). Zum Abweichen den Haken dort entfernen.</>
+                          : <>Visibility is governed by the <strong>{subEventsOnlyMode ? 'bracket' : 'main event'}</strong> (“visibility applies to all {childTermPlural || 'sub-events'}”). Uncheck the box there to deviate.</>}
+                      </div>
+                    )}
+                    <div style={visAllSubs ? { opacity: 0.55, pointerEvents: 'none' as const, userSelect: 'none' as const } : undefined}>
                     <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <StepBadge n={18} />
@@ -12566,6 +12605,7 @@ export default function EventCreationPage(): React.ReactElement {
                       ) : null}
                       cardBgSecondary={((se.locationFilter || '').trim().length > 0 || (se.audience || '').trim().length > 0) ? zebraS3Bg() : '#fff'}
                     />
+                    </div>{/* v29.75: Ende Sichtbarkeits-Sperre bei visAllSubs */}
 
                     {/* Deadlines: zwei DatePicker nebeneinander, gleicher Look
                         wie im Hauptevent. */}
@@ -12594,7 +12634,8 @@ export default function EventCreationPage(): React.ReactElement {
                       </p>
                       <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                         <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label className="form-label">{t('create.deadline')}</label>
+                          {/* v29.75: gleicher Wortlaut wie auf der Klammer. */}
+                          <label className="form-label">{isDe ? 'Anmeldung bis' : 'Registration until'}</label>
                           <DatePicker
                             selected={se.registrationDeadline ? new Date(se.registrationDeadline) : null}
                             onChange={(date: Date | null) => {
@@ -12618,7 +12659,7 @@ export default function EventCreationPage(): React.ReactElement {
                           />
                         </div>
                         <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label className="form-label">{t('create.lastcancel')}</label>
+                          <label className="form-label">{isDe ? 'Abmeldung bis' : 'Cancellation until'}</label>
                           <DatePicker
                             selected={se.lastDeregisterDate ? new Date(se.lastDeregisterDate) : null}
                             onChange={(date: Date | null) => {
@@ -12904,6 +12945,33 @@ export default function EventCreationPage(): React.ReactElement {
                 cardBgSecondary={(locationFilter || audience) ? zebraS3Bg() : '#fff'}
               />
 
+              {/* v29.75: „Sichtbarkeit gilt für alle Sub-Events" — der Haken
+                  spiegelt Standortfilter + Verteiler + Verknüpfung der Klammer
+                  laufend in alle Sub-Event-Drafts (Effect bei den States) und
+                  sperrt die Sichtbarkeits-UI der Sub-Event-Reiter, solange er
+                  gesetzt ist. Persistiert (Piggyback _visAllSubs), damit auch
+                  ein spaeterer Edit die Regel kennt. */}
+              {subEvents.length > 0 && (
+                <div className="form-group" style={{ padding: '12px 20px', marginBottom: 12, background: visAllSubs ? 'rgba(134,188,37,0.07)' : zebraS3Bg(), borderRadius: 8, border: `1px solid ${visAllSubs ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-100)'}` }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', margin: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={visAllSubs}
+                      onChange={e => setVisAllSubs(e.target.checked)}
+                      style={{ width: 18, height: 18, marginTop: 1, flexShrink: 0, cursor: 'pointer', accentColor: 'var(--dex-green, #86bc25)' }}
+                    />
+                    <span style={{ fontSize: '0.9rem' }}>
+                      <strong>{isDe ? `Sichtbarkeit gilt für alle ${childTermPlural || 'Sub-Events'}` : `Visibility applies to all ${childTermPlural || 'sub-events'}`}</strong>
+                      <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400, fontSize: '0.8rem', lineHeight: 1.5 }}>
+                        {isDe
+                          ? <>Standortfilter, Mailverteiler und Verknüpfung von oben werden in alle {subEvents.length} {childTermPlural || 'Sub-Events'} übernommen und bleiben synchron, solange der Haken gesetzt ist. Die Sichtbarkeit in den {childTermSingular || 'Sub-Event'}-Reitern ist dann gesperrt — Haken entfernen, um wieder je {childTermSingular || 'Sub-Event'} abzuweichen.</>
+                          : <>The location filter, mailing lists and combination above are applied to all {subEvents.length} {childTermPlural || 'sub-events'} and stay in sync while the box is checked. Visibility in the {childTermSingular || 'sub-event'} tabs is locked then — uncheck to deviate per {childTermSingular || 'sub-event'} again.</>}
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              )}
+
               {/* v23.6: Assistenz-Sichtbarkeit — eigener Baustein zwischen
                   „Mailverteiler / einzelne User" und „Anmeldefristen". Bewusst
                   AUSSERHALB des Greyout-Wrappers (laufzeit-/sichtbarkeitsrelevant,
@@ -12934,6 +13002,84 @@ export default function EventCreationPage(): React.ReactElement {
                     ? 'Bis wann können sich Teilnehmer anmelden bzw. fristgerecht abmelden? Die Abmeldefrist ist die kommunizierte Deadline — abmelden geht danach standardmäßig weiterhin bis zum Event-Ende, die Organizer werden dann aber automatisch informiert. Über die Option unter den Fristen lässt sich die Selbst-Abmeldung nach der Frist auch komplett sperren. Beide Werte werden anhand des Event-Datums automatisch vorgeschlagen, du kannst sie jederzeit überschreiben.'
                     : 'Until when can attendees register or cancel within the deadline? The cancellation deadline is the communicated cutoff — by default cancelling remains possible until the event ends, but organizers are then notified automatically. The option below the deadlines can instead lock self-cancellation completely after the cutoff. Both values are auto-suggested from the event date and can be overridden at any time.'} /></>)}
                 {isVisOpen('vis_fristen') && (<>
+              {/* v29.75: Klartext-Zusammenfassung fuer die Klammer — WAS gilt
+                  gerade fuer alle Sub-Events? Die einzelnen Regeln (Freischalt-
+                  Regel, Klammer-Anmeldefrist, Abmeldefrist, Sichtbarkeit)
+                  stehen verstreut in dieser Sektion und in der Sichtbarkeit
+                  darueber; hier laufen sie als ein lesbarer Absatz zusammen,
+                  inklusive der Zahl abweichender Sub-Events. */}
+              {subEvents.length > 0 && (() => {
+                const term = childTermPlural || 'Sub-Events';
+                const fmt = (v: string): string => v ? new Date(v).toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+                const ts = (v: string): number => { const t2 = new Date(v || '').getTime(); return isFinite(t2) ? t2 : 0; };
+                // Abweichungen je Frist: wie viele Sub-Events haben einen
+                // ANDEREN Wert als die Klammer? (Zeit-Vergleich, nicht
+                // String-Vergleich — die ISO-Formate variieren.)
+                const regRef = subEventsOnlyMode ? (klammerDeadline ? (berlinLocalToUtcIso(klammerDeadline) || '') : '') : (registrationDeadline ? (berlinLocalToUtcIso(registrationDeadline) || '') : '');
+                // Leer zaehlt NICHT als Abweichung: beim Hauptevent erbt ein
+                // leeres Sub-Event die Frist, bei der Klammer schliesst deren
+                // harter Anmeldeschluss ohnehin das gesamte Event.
+                const regDev = regRef ? subEvents.filter(s => (s.registrationDeadline || '').trim() !== '' && ts(s.registrationDeadline || '') !== ts(regRef)).length : 0;
+                const cancelRef = lastDeregisterDate ? (berlinLocalToUtcIso(lastDeregisterDate) || '') : '';
+                // Bei der Abmeldefrist gibt es KEINEN Klammer-Durchgriff — sie
+                // wirkt nur ueber die kopierten Sub-Werte. Ein leeres Sub-Event
+                // hat dort also wirklich keine Frist (= Abweichung); beim
+                // Hauptevent erbt es weiterhin.
+                const cancelDev = cancelRef ? subEvents.filter(s => {
+                  const v = (s.lastDeregisterDate || '').trim();
+                  if (!v) return subEventsOnlyMode;
+                  return ts(v) !== ts(cancelRef);
+                }).length : 0;
+                // Normalisiert vergleichen — Altbestand unterscheidet sich oft
+                // nur in Leerzeichen/Reihenfolge, das ist keine Abweichung.
+                const norm = (s: string): string => (s || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean).sort().join('|');
+                const visDev = subEvents.filter(s => norm(s.locationFilter || '') !== norm(locationFilter) || norm(s.audience || '') !== norm(audience)).length;
+                const dev = (n: number): React.ReactElement | null => n > 0
+                  ? <em style={{ color: 'var(--dex-orange, #ed8b00)' }}> ({isDe ? `${n} ${n === 1 ? 'weicht' : 'weichen'} ab` : `${n} deviate${n === 1 ? 's' : ''}`})</em>
+                  : null;
+                const locs = locationFilter.split(',').map(s => s.trim()).filter(Boolean);
+                const auds = audience.split(',').map(s => s.trim()).filter(Boolean);
+                const visText = (locs.length === 0 && auds.length === 0)
+                  ? (isDe ? 'alle Mitarbeiter von Deloitte Deutschland' : 'everyone at Deloitte Germany')
+                  : [
+                      locs.length ? (isDe ? `Standort${locs.length === 1 ? '' : 'e'} ${locs.join(', ')}` : `location${locs.length === 1 ? '' : 's'} ${locs.join(', ')}`) : '',
+                      auds.length ? (isDe ? `${auds.length} Verteiler/Person${auds.length === 1 ? '' : 'en'}` : `${auds.length} list${auds.length === 1 ? '' : 's'}/people`) : '',
+                    ].filter(Boolean).join(filterMode === 'AND' ? (isDe ? ' UND ' : ' AND ') : (isDe ? ' ODER ' : ' OR '));
+                return (
+                  <div style={{
+                    marginBottom: 14, padding: '10px 14px', borderRadius: 8,
+                    background: 'rgba(134,188,37,0.07)', border: '1px solid var(--dex-green, #86bc25)',
+                    fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.6,
+                  }}>
+                    <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                      {isDe ? `Aktuell gilt für alle ${subEvents.length} ${term}: ` : `Currently, for all ${subEvents.length} ${term}: `}
+                    </strong>
+                    <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                      {subEventCalendar && (
+                        <li>{openRuleEnabled
+                          ? (isDe
+                            ? <>Anmeldung ab: <strong>{openRuleDays} {openRuleDays === 1 ? 'Tag' : 'Tage'} vor {openRuleMode === 'week' ? 'dem Montag der jeweiligen Woche' : 'dem jeweiligen Termin'}</strong></>
+                            : <>Registration opens: <strong>{openRuleDays} {openRuleDays === 1 ? 'day' : 'days'} before {openRuleMode === 'week' ? 'the Monday of each week' : 'each date'}</strong></>)
+                          : (isDe
+                            ? <>Anmeldung ab: <strong>sofort</strong> — keine Freischalt-Regel gesetzt</>
+                            : <>Registration opens: <strong>immediately</strong> — no opening rule set</>)}</li>
+                      )}
+                      <li>{regRef
+                        ? (isDe ? <>Anmeldung bis: <strong>{fmt(regRef)}</strong>{dev(regDev)}</> : <>Registration until: <strong>{fmt(regRef)}</strong>{dev(regDev)}</>)
+                        : (isDe ? <>Anmeldung bis: <strong>je {childTermSingular || 'Sub-Event'}</strong> geregelt (keine gemeinsame Frist gesetzt)</> : <>Registration until: <strong>per {childTermSingular || 'sub-event'}</strong> (no shared deadline set)</>)}</li>
+                      <li>{!userCancelAllowed
+                        ? (isDe ? <>Abmeldung: <strong>deaktiviert</strong> — abmelden können nur Organizer und Admins</> : <>Cancellation: <strong>disabled</strong> — only organizers and admins can cancel</>)
+                        : cancelRef
+                          ? (isDe ? <>Abmeldung bis: <strong>{fmt(cancelRef)}</strong>{dev(cancelDev)}</> : <>Cancellation until: <strong>{fmt(cancelRef)}</strong>{dev(cancelDev)}</>)
+                          : (isDe ? <>Abmeldung bis: <strong>je {childTermSingular || 'Sub-Event'}</strong> geregelt (keine gemeinsame Frist gesetzt)</> : <>Cancellation until: <strong>per {childTermSingular || 'sub-event'}</strong> (no shared deadline set)</>)}</li>
+                      <li>{isDe ? <>sichtbar für: <strong>{visText}</strong></> : <>visible to: <strong>{visText}</strong></>}
+                        {visAllSubs
+                          ? <> {isDe ? '— per Haken für alle übernommen' : '— applied to all via checkbox'}{dev(0)}</>
+                          : dev(visDev) || <> {isDe ? `— je ${childTermSingular || 'Sub-Event'} anpassbar` : `— adjustable per ${childTermSingular || 'sub-event'}`}</>}</li>
+                    </ul>
+                  </div>
+                );
+              })()}
               {subEventsOnlyMode && (
                 <WizardHint
                   isDe={isDe}
@@ -12954,10 +13100,74 @@ export default function EventCreationPage(): React.ReactElement {
                   </div>
                 </WizardHint>
               )}
+              {/* v29.75: Freischalt-Regel („Anmeldung ab") — von Schritt 1
+                  (Kalender-Block) hierher gezogen: Sie ist eine Anmelde-Regel
+                  und gehoert neben Anmelde- und Abmeldefrist. Nur im
+                  Kalender-Modus sinnvoll, weil die Anmeldeseite sie auf den
+                  Tages-Kacheln umsetzt (v29.67/v29.72). */}
+              {subEventsOptIn && subEventCalendar && (
+                <div style={{ margin: '0 0 14px', padding: '10px 12px', borderRadius: 8, background: '#fff', border: '1px solid var(--dex-gray-200)' }}>
+                  {/* v29.75: User-Wortlaut — die drei Felder heissen
+                      „Anmeldung ab" / „Anmeldung bis" / „Abmeldung bis". */}
+                  <label className="form-label">{isDe ? 'Anmeldung ab' : 'Registration opens'}</label>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={openRuleEnabled}
+                      onChange={e => setOpenRuleEnabled(e.target.checked)}
+                      style={{ width: 18, height: 18, marginTop: 1, flexShrink: 0, cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '0.9rem' }}>
+                      <strong>{isDe ? 'Termine rollierend freischalten' : 'Open dates on a rolling basis'}</strong>
+                      <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400 }}>
+                        {isDe
+                          ? 'Ohne Haken sind alle Termine sofort anmeldbar. Mit Haken öffnen sie erst X Tage vorher — noch nicht freigeschaltete Tage sind auf der Anmeldeseite ausgegraut und zeigen, ab wann die Anmeldung möglich ist.'
+                          : 'Unchecked, all dates are open immediately. Checked, they open only X days beforehand — days not yet open appear greyed out on the registration page and show when registration becomes possible.'}
+                      </span>
+                    </span>
+                  </label>
+                  {openRuleEnabled && (
+                    <div style={{ marginTop: 10, paddingLeft: 28 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.88rem' }}>
+                        {isDe ? 'Anmeldung möglich ab' : 'Registration opens'}
+                        <input
+                          type="number"
+                          min={1}
+                          max={365}
+                          className="form-input"
+                          value={openRuleDays}
+                          onChange={e => { const v = parseInt(e.target.value, 10); setOpenRuleDays(isFinite(v) && v > 0 ? Math.min(v, 365) : 1); }}
+                          style={{ width: 76, padding: '4px 8px', textAlign: 'center' }}
+                        />
+                        {isDe ? 'Tage vor' : 'days before'}
+                        <select
+                          className="form-input"
+                          value={openRuleMode}
+                          onChange={e => setOpenRuleMode(e.target.value === 'week' ? 'week' : 'day')}
+                          style={{ width: 'auto', padding: '4px 8px' }}
+                        >
+                          <option value="day">{isDe ? 'dem jeweiligen Termin' : 'each date'}</option>
+                          <option value="week">{isDe ? 'dem Montag der jeweiligen Woche' : 'the Monday of its week'}</option>
+                        </select>
+                      </div>
+                      <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: '6px 0 0' }}>
+                        {openRuleMode === 'week'
+                          ? (isDe
+                            ? `Alle Termine einer Kalenderwoche öffnen gemeinsam: ${openRuleDays} ${openRuleDays === 1 ? 'Tag' : 'Tage'} vor deren Montag.`
+                            : `All dates of a calendar week open together: ${openRuleDays} ${openRuleDays === 1 ? 'day' : 'days'} before that week's Monday.`)
+                          : (isDe
+                            ? `Jeder Termin öffnet einzeln: ${openRuleDays} ${openRuleDays === 1 ? 'Tag' : 'Tage'} vor seinem Datum.`
+                            : `Each date opens individually: ${openRuleDays} ${openRuleDays === 1 ? 'day' : 'days'} before its date.`)}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">
-                    {t('create.deadline')}
+                    {/* v29.75: User-Wortlaut „Anmeldung bis" statt „Anmeldefrist". */}
+                    {isDe ? 'Anmeldung bis' : 'Registration until'}
                     {/* v28.20: Im Klammer-Modus eine eigene Erklärung — was die
                         Klammer-Frist bewirkt und wie sie mit abweichenden
                         Sub-Event-Fristen zusammenspielt. */}
@@ -13053,7 +13263,7 @@ export default function EventCreationPage(): React.ReactElement {
                     statt des Datumsfelds steht der Grund. */}
                 {!userCancelAllowed ? (
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">{t('create.lastcancel')}</label>
+                    <label className="form-label">{isDe ? 'Abmeldung bis' : 'Cancellation until'}</label>
                     <div style={{
                       padding: '10px 12px', borderRadius: 8, fontSize: '0.8rem', lineHeight: 1.5,
                       background: 'var(--dex-gray-50, #fafafa)', border: '1px dashed var(--dex-gray-300)',
@@ -13065,9 +13275,17 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                   </div>
                 ) : (
-                <div className="form-group" style={{ marginBottom: 0, ...(subEventsOnlyMode ? { opacity: 0.55, pointerEvents: 'none' as const, userSelect: 'none' as const } : {}) }}>
+                /* v29.75: Bei einer Klammer war das Feld bis v29.74 ausgegraut
+                   („gehoert zum einzelnen Sub-Event"). Jetzt funktioniert es
+                   wie die Klammer-Anmeldefrist (v28.20): Setzen kopiert den
+                   Termin in ALLE Sub-Event-Tabs, dort bleibt er pro Sub-Event
+                   anpassbar. Anders als die Anmeldefrist hat die Klammer
+                   KEINEN eigenen Durchgriff — die Wirkung kommt allein ueber
+                   die kopierten Sub-Werte. */
+                <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">
-                    {t('create.lastcancel')}
+                    {/* v29.75: User-Wortlaut „Abmeldung bis". */}
+                    {isDe ? 'Abmeldung bis' : 'Cancellation until'}
                     <InfoTooltip text={isDe ? (
                       <>
                         <strong>Letzte Abmeldemöglichkeit</strong> — der Stichtag, den du den Teilnehmern als <strong>verbindliche Abmeldefrist kommunizierst</strong>. Bis dahin gilt eine Abmeldung als unproblematisch.<br /><br />
@@ -13088,7 +13306,17 @@ export default function EventCreationPage(): React.ReactElement {
                   </label>
                   <DatePicker
                     selected={lastDeregisterDate ? new Date(lastDeregisterDate) : null}
-                    onChange={(date: Date | null) => setLastDeregisterDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
+                    onChange={(date: Date | null) => {
+                      const v = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '';
+                      setLastDeregisterDate(v);
+                      // v29.75: Wie die Klammer-Anmeldefrist (v28.20) — in alle
+                      // Sub-Event-Tabs uebernehmen. Beim Leeren bleiben die
+                      // Sub-Fristen unberuehrt (bewusst gleiches Verhalten).
+                      if (subEventsOnlyMode && v) {
+                        const iso = berlinLocalToUtcIso(v) || '';
+                        setSubEvents(prev => prev.map(s => ({ ...s, lastDeregisterDate: iso })));
+                      }
+                    }}
                     showTimeSelect
                     timeFormat="HH:mm"
                     timeIntervals={15}
@@ -13106,13 +13334,14 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
                 )}
               </div>
-              {/* v28.31: erklärt das ausgegraute Feld, statt es kommentarlos tot
-                  aussehen zu lassen. */}
+              {/* v29.75: Das Feld ist bei einer Klammer nicht mehr ausgegraut —
+                  erklaeren, WIE es wirkt (Kopie in alle Tabs, kein eigener
+                  Klammer-Durchgriff wie bei der Anmeldefrist). */}
               {subEventsOnlyMode && userCancelAllowed && (
                 <p style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 8, marginBottom: 0, lineHeight: 1.5 }}>
                   {isDe
-                    ? <>Die <strong>Abmeldefrist</strong> ist bei einer Klammer ausgegraut — sie gehört zum einzelnen {childTermSingular || 'Sub-Event'} und wird im jeweiligen Tab gesetzt. Die <strong>Anmeldefrist</strong> links gilt dagegen für das gesamte Event.</>
-                    : <>The <strong>cancellation deadline</strong> is greyed out for a bracket — it belongs to the individual {childTermSingular || 'sub-event'} and is set in its tab. The <strong>registration deadline</strong> on the left applies to the entire event.</>}
+                    ? <>Setzt du hier eine <strong>Abmeldefrist</strong>, wird sie in <strong>alle {childTermPlural || 'Sub-Events'}</strong> übernommen — im jeweiligen Reiter bleibt sie danach pro {childTermSingular || 'Sub-Event'} anpassbar. Die <strong>Anmeldefrist</strong> links wirkt zusätzlich als harter Anmeldeschluss für das gesamte Event.</>
+                    : <>Setting a <strong>cancellation deadline</strong> here copies it to <strong>all {childTermPlural || 'sub-events'}</strong> — it stays adjustable per {childTermSingular || 'sub-event'} in its tab. The <strong>registration deadline</strong> on the left additionally acts as a hard cutoff for the entire event.</>}
                 </p>
               )}
               {/* v29.25: Selbst-Abmeldung, zweistufig. Stufe 1 steht bewusst
