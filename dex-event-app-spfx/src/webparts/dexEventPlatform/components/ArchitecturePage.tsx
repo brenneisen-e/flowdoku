@@ -39,7 +39,7 @@ export default function ArchitecturePage(): React.ReactElement {
   // ---- Datenhaltung: SharePoint-Listen (gruppiert) ----
   const coreLists: Item[] = [
     { name: 'DEX_Events', de: 'Ein Eintrag pro Event/Sub-Event (Titel, Datum, Ort, Sichtbarkeit, Kapazität, Kommunikation).', en: 'One entry per event/sub-event (title, date, location, visibility, capacity, communication).', link: true },
-    { name: 'DEX_Roles', de: 'Rollen: User, Organizer, Admin.', en: 'Roles: user, organizer, admin.', link: true },
+    { name: 'DEX_Roles', de: 'Rollen: User, Organizer, Admin, IT-Admin, F&A (v30.5: Zugriff aufs F&A Center).', en: 'Roles: user, organizer, admin, IT admin, F&A (v30.5: access to the F&A center).', link: true },
     { name: 'DEX_Participants', de: 'Register „wer ist wo angemeldet“ — Grundlage für „Meine Events“, damit dafür nicht alle Subsites gelesen werden müssen. Nebenbuchhaltung, nicht die Wahrheit: maßgeblich ist die Teilnehmerliste des Events.', en: 'Registry of “who is registered where” — the basis for “My events” so it need not read every subsite. Secondary bookkeeping, not the source of truth: the event’s attendee list decides.', link: true },
     { name: 'DEX_EventComms', de: 'Protokoll der versendeten Rundmails je Event (Einladung, Ankündigung) — Teilnehmer lesen es unter „Meine Events“ nach.', en: 'Log of broadcast mails sent per event (invitation, announcement) — attendees can read it under “My events”.', link: true },
     { name: 'DEX_EventStats', de: 'Kennzahlen von Events, deren Teilnehmerliste nach der Aufbewahrungsfrist gelöscht wurde — ohne Personenbezug.', en: 'KPIs of events whose attendee list was deleted after the retention period — without personal data.', link: true },

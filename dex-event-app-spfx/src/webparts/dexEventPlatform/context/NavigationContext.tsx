@@ -9,7 +9,7 @@
 import * as React from 'react';
 import { deepLinkParams } from '../utils/deepLink';
 
-export type Page = 'landing' | 'start' | 'register' | 'registration' | 'my-events' | 'assistant' | 'create-event' | 'edit-event' | 'settings' | 'profile' | 'admin' | 'admin-hub' | 'role-matrix' | 'participants' | 'flowcharts' | 'check-in' | 'self-checkin-display' | 'help' | 'manual' | 'email-templates' | 'tickets' | 'architecture' | 'stats-archive' | 'intro-onepager';
+export type Page = 'landing' | 'start' | 'register' | 'registration' | 'my-events' | 'assistant' | 'create-event' | 'edit-event' | 'settings' | 'profile' | 'admin' | 'admin-hub' | 'role-matrix' | 'participants' | 'flowcharts' | 'check-in' | 'self-checkin-display' | 'help' | 'manual' | 'email-templates' | 'tickets' | 'architecture' | 'stats-archive' | 'intro-onepager' | 'fa-center';
 
 // v27.12 (Feedback Datenschutz-Review): Beim Seiten-Refresh landete man immer
 // wieder auf der Startseite — die Navigation lebt nur im React-State. Jetzt

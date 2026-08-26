@@ -61,6 +61,8 @@ const TicketsPage = React.lazy(() => import('./TicketsPage'));
 const ArchitecturePage = React.lazy(() => import('./ArchitecturePage'));
 const StatsArchivePage = React.lazy(() => import('./StatsArchivePage'));
 const IntroOnePagerPage = React.lazy(() => import('./IntroOnePagerPage'));
+// v30.5: F&A Center — Rolle „F&A" + Admins.
+const FACenterPage = React.lazy(() => import('./FACenterPage'));
 
 export interface IDexEventPlatformProps {
   context: WebPartContext;
@@ -158,7 +160,7 @@ function UserPreviewBanner(): React.ReactElement | null {
 function AppContent(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
   const { isAdmin, isRolesLoading } = useRoles();
-  const { markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, reconcileCounters, isEventsLoading, events, getKpiCache, recomputeEventKpiOnly } = useEvents();
+  const { markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, maybeSendBillingAutoMails, reconcileCounters, isEventsLoading, events, getKpiCache, recomputeEventKpiOnly } = useEvents();
 
   // v11.52: KPI-Boxen im Boot-Loader. Live-Zählung über alle Event-
   // Subsites war zu langsam (Counts kommen erst nach mehreren Sekunden) —
@@ -573,6 +575,23 @@ function AppContent(): React.ReactElement {
     }, 8000);
   }, [isAdmin, isEventsLoading, events]);
 
+  // v30.5: F&A-Auto-Versand (Fachkonzept Abschnitt 12) — beim Admin-Boot,
+  // gleicher Ort und gleiche Drossel-Philosophie wie der Wochenbericht:
+  // 1×/App-Session, deutlich verzögert; Doppelversand-Schutz liegt in den
+  // _billing-Stempeln + der DEX_Emails-Queue (mehrere Admins können die App
+  // gleichzeitig öffnen).
+  const didBillingAutoMails = React.useRef(false);
+  React.useEffect(() => {
+    if (didBillingAutoMails.current) return;
+    if (!isAdmin) return;
+    if (isEventsLoading) return;
+    if (!events || events.length === 0) return;
+    didBillingAutoMails.current = true;
+    window.setTimeout(() => {
+      maybeSendBillingAutoMails().catch(err => console.warn('[DEX] FA auto mails failed:', err));
+    }, 11000);
+  }, [isAdmin, isEventsLoading, events]);
+
   // v24.2: Post-Event-Mail an den Organizer — beim App-Öffnen nach dem
   // Event-Tag. Für JEDEN (nicht nur Admins); die Funktion filtert intern auf
   // die eigenen, abgelaufenen Events und drosselt 1×/Event/Organizer.
@@ -923,6 +942,8 @@ function AppContent(): React.ReactElement {
         return <StatsArchivePage />;
       case 'intro-onepager':
         return <IntroOnePagerPage />;
+      case 'fa-center':
+        return <FACenterPage />;
       default:
         return <LandingPage />;
     }

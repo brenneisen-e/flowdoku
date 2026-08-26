@@ -24,6 +24,7 @@ import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } fro
 import { looksLikeClaimName, resolveMyDisplayName, safeDisplayName } from '../utils/displayName';
 import { emitBootStage } from '../utils/bootProgress';
 import { DEX_TEAM_RECIPIENTS } from '../utils/supportContact';
+import { parseBillingOf, missingBillingFields, renderBillingInfoMailBody, renderBillingListMailBody, trimBillingLog, BillingData, BillingLogEntry, FAConfig } from '../utils/faBilling';
 
 /**
  * Organizer-Namen für Mail-Anreden sauber formatieren:
@@ -513,6 +514,12 @@ interface EventContextType {
    *  (Settings-Testbutton) wird die 7-Tage-Sperre übersprungen. Best-effort;
    *  liefert ein kleines Ergebnis für UI-Feedback. */
   maybeSendWeeklyReport: (opts?: { force?: boolean }) => Promise<{ sent: boolean; admins: number; reason?: string }>;
+  // v30.5: F&A-Abrechnung (Fachkonzept) — Verteiler, Versand, Abschluss, Auto-Job.
+  getFAConfig: () => Promise<FAConfig>;
+  saveFAConfig: (cfg: FAConfig) => Promise<boolean>;
+  sendFAMail: (ev: DeloitteEvent, kind: 'info' | 'list', opts?: { auto?: boolean }) => Promise<{ ok: boolean; reason?: string }>;
+  markEventSettled: (ev: DeloitteEvent) => Promise<boolean>;
+  maybeSendBillingAutoMails: () => Promise<{ infoSent: number; listSent: number; reminders: number }>;
   /** v24.2: „Danke, wir hoffen es lief gut"-Mail an den Organizer beim
    *  App-Öffnen nach dem Event-Tag (1×/Event/Organizer, localStorage-Drossel). */
   maybeSendPostEventOrganizerMails: () => Promise<void>;
@@ -5702,6 +5709,172 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     }
   }
 
+  // ==================== F&A-Abrechnung (v30.5) ====================
+  // Fachkonzept „Abrechnungsrelevante Events und F&A Integration": Versand
+  // und Abschluss laufen über das Piggyback `_billing` des Hauptevents —
+  // geschrieben per patchEventOverridesValue (read-modify-write NUR dieses
+  // Felds), damit kein voller updateEvent (und kein 28-MB-Reload) nötig ist.
+
+  /** `_billing` nach einem Patch auch im lokalen State nachziehen — bewusst
+   *  KEIN loadEvents (v29.77-Lehre: der Voll-Reload war die 429-Ursache). */
+  function applyBillingLocally(eventId: string, newB: BillingData): void {
+    setEvents(prev => prev.map(e => {
+      if (e.id !== eventId) return e;
+      let o: Record<string, unknown> = {};
+      try { o = JSON.parse(e.emailTemplateOverrides || '{}'); } catch { o = {}; }
+      o._billing = newB;
+      return { ...e, emailTemplateOverrides: JSON.stringify(o) };
+    }));
+  }
+
+  async function getFAConfig(): Promise<FAConfig> {
+    return eventService.getFAConfig();
+  }
+
+  async function saveFAConfig(cfg: FAConfig): Promise<boolean> {
+    return eventService.saveFAConfig(cfg);
+  }
+
+  /**
+   * Abrechnungsinfos ('info') bzw. Teilnehmerliste ('list') an die im F&A
+   * Center gepflegten Verteiler senden. Organizer stehen immer in CC.
+   * Protokolliert in `_billing.log` inkl. vollständigem Mail-Inhalt und
+   * legt den übermittelten Stand als Snapshot ab (die F&A-Detailansicht
+   * zeigt laut Konzept NUR Übermitteltes, nie den Live-Stand).
+   */
+  async function sendFAMail(ev: DeloitteEvent, kind: 'info' | 'list', opts?: { auto?: boolean }): Promise<{ ok: boolean; reason?: string }> {
+    const b = parseBillingOf(ev);
+    if (!b || !b.relevant) return { ok: false, reason: 'not-relevant' };
+    const idNum = parseInt(ev.id, 10);
+    if (!isFinite(idNum)) return { ok: false, reason: 'bad-id' };
+    const cfg = await eventService.getFAConfig();
+    const recipients = (kind === 'info' ? cfg.infoRecipients : cfg.listRecipients).filter(Boolean);
+    if (recipients.length === 0) return { ok: false, reason: 'no-recipients' };
+    const by = opts?.auto ? 'System (Auto-Versand)' : (currentUserName || currentUserEmail);
+    const cc = (ev.organizerEmails || []).filter(Boolean).join('; ');
+    const nowIso = new Date().toISOString();
+    let body = '';
+    let subject = '';
+    let stampPatch: Partial<BillingData> = {};
+    if (kind === 'info') {
+      if (missingBillingFields(b).length > 0) return { ok: false, reason: 'incomplete' };
+      body = renderBillingInfoMailBody(ev, b, by);
+      subject = `[DEX] Abrechnungsinformationen: ${ev.title}`;
+      stampPatch = { infoSentAt: nowIso, infoSnapshot: { ...(b.fields || {}) }, ...(opts?.auto ? { autoInfoSentAt: nowIso } : {}) };
+    } else {
+      const regs = await getAllRegistrations(ev.id);
+      const rows = (regs || [])
+        .filter(r => r.Status !== 'Abgemeldet')
+        .map(r => ({
+          name: (r.ParticipantName || `${r.Vorname || ''} ${r.Nachname || ''}`.trim()) || r.ParticipantEmail || '—',
+          email: r.ParticipantEmail || '',
+          status: r.Status || '',
+        }));
+      body = renderBillingListMailBody(ev, rows, by);
+      subject = `[DEX] Teilnehmerliste: ${ev.title}`;
+      stampPatch = { listSentAt: nowIso, listSnapshot: rows.slice(0, 500), ...(opts?.auto ? { autoListSentAt: nowIso } : {}) };
+    }
+    const emailType = kind === 'info' ? (opts?.auto ? 'FA_INFO_AUTO' : 'FA_INFO') : (opts?.auto ? 'FA_LIST_AUTO' : 'FA_LIST');
+    // Auto-Pfad: serverseitiger Doppelversand-Schutz — mehrere Admins können
+    // die App gleichzeitig booten, der localStorage-Stempel reicht dann nicht.
+    if (opts?.auto && await eventService.hasQueuedEmail(emailType, ev.id)) {
+      return { ok: false, reason: 'already-queued' };
+    }
+    const ok = await eventService.queueEmail(subject, recipients.join('; '), 'Finance & Accounting', body, emailType, ev.title, ev.id, cc || undefined);
+    if (!ok) return { ok: false, reason: 'queue-failed' };
+    const entry: BillingLogEntry = {
+      ts: nowIso, by,
+      action: kind === 'info' ? 'Abrechnungsinformationen an F&A versendet' : 'Teilnehmerliste an F&A versendet',
+      mailType: kind, to: recipients.join('; '), cc, subject, body,
+    };
+    const newB: BillingData = { ...b, ...stampPatch, log: trimBillingLog([...(b.log || []), entry]) };
+    const patched = await eventService.patchEventOverridesValue(idNum, '_billing', newB);
+    if (patched) applyBillingLocally(ev.id, newB);
+    return { ok: true };
+  }
+
+  /** „Als abgerechnet markieren" — nur F&A/Admin (UI-seitig gegated). Der
+   *  Status bleibt laut Konzept dauerhaft bestehen; Zeitpunkt + Person
+   *  werden protokolliert. */
+  async function markEventSettled(ev: DeloitteEvent): Promise<boolean> {
+    const b = parseBillingOf(ev);
+    if (!b || b.settled) return false;
+    const idNum = parseInt(ev.id, 10);
+    if (!isFinite(idNum)) return false;
+    const by = currentUserName || currentUserEmail;
+    const nowIso = new Date().toISOString();
+    const newB: BillingData = {
+      ...b,
+      settled: { ts: nowIso, by },
+      log: trimBillingLog([...(b.log || []), { ts: nowIso, by, action: 'Event als abgerechnet markiert' }]),
+    };
+    const ok = await eventService.patchEventOverridesValue(idNum, '_billing', newB);
+    if (ok) applyBillingLocally(ev.id, newB);
+    return ok;
+  }
+
+  /**
+   * Auto-Versand (Fachkonzept Abschnitt 12): Abrechnungsinfos 7 Kalendertage
+   * VOR dem Event (bzw. nach Aktivierung, wenn später erstellt — Entwürfe
+   * werden übersprungen), Teilnehmerliste 7 Kalendertage NACH dem Event.
+   * Bei unvollständigen Infos geht statt der F&A-Mail EINMAL eine
+   * Erinnerung an die Organizer. Läuft beim Admin-Boot (gleicher Ort wie
+   * der Wochenbericht); Doppelversand-Schutz über die _billing-Stempel plus
+   * die DEX_Emails-Queue. Der 30-Tage-Rückschau-Deckel verhindert, dass
+   * Altbestände beim Roll-out plötzlich Mails auslösen.
+   */
+  async function maybeSendBillingAutoMails(): Promise<{ infoSent: number; listSent: number; reminders: number }> {
+    const out = { infoSent: 0, listSent: 0, reminders: 0 };
+    const day = 86400000;
+    const now = Date.now();
+    try {
+      for (const ev of events) {
+        if (ev.parentEventId || ev.isDemoShowcase || ev.isFictive) continue;
+        const b = parseBillingOf(ev);
+        if (!b || !b.relevant || b.sendMode !== 'auto' || b.settled) continue;
+        const start = new Date(ev.startDate || '').getTime();
+        const end = new Date(ev.endDate || ev.startDate || '').getTime();
+        if (!isFinite(start) || !isFinite(end)) continue;
+        if (end < now - 30 * day) continue;
+        // Abrechnungsinfos — ab 7 Tage vor Start, solange noch nichts ging.
+        if (now >= start - 7 * day && !b.autoInfoSentAt && !b.infoSentAt) {
+          if (missingBillingFields(b).length > 0) {
+            if (!b.autoInfoReminderAt) {
+              const orgTo = (ev.organizerEmails || []).filter(Boolean).join('; ');
+              if (orgTo && !(await eventService.hasQueuedEmail('FA_INFO_REMINDER', ev.id))) {
+                const remBody = `<div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#333;line-height:1.5;"><p>Hallo,</p><p>für das abrechnungsrelevante Event <strong>${ev.title}</strong> steht der automatische Versand der Abrechnungsinformationen an Finance &amp; Accounting an — die Pflichtangaben sind aber noch <strong>unvollständig</strong>. Bitte ergänze sie im Event-Wizard (Schritt „Abrechnung"); der Versand wird dann beim nächsten App-Start nachgeholt.</p></div>`;
+                const qok = await eventService.queueEmail(`[DEX] Abrechnungsinfos unvollständig: ${ev.title}`, orgTo, '', remBody, 'FA_INFO_REMINDER', ev.title, ev.id);
+                if (qok) {
+                  const nowIso = new Date().toISOString();
+                  const newB: BillingData = { ...b, autoInfoReminderAt: nowIso, log: trimBillingLog([...(b.log || []), { ts: nowIso, by: 'System (Auto-Versand)', action: 'Erinnerung an Organizer: Abrechnungsinfos unvollständig' }]) };
+                  const idNum = parseInt(ev.id, 10);
+                  if (isFinite(idNum) && await eventService.patchEventOverridesValue(idNum, '_billing', newB)) applyBillingLocally(ev.id, newB);
+                  out.reminders++;
+                }
+              }
+            }
+          } else {
+            const r = await sendFAMail(ev, 'info', { auto: true });
+            if (r.ok) out.infoSent++;
+          }
+          // Bewusst NICHT im selben Lauf auch noch die Liste senden: beide
+          // Zweige patchen `_billing`, und der zweite würde auf dem hier
+          // veralteten Objekt arbeiten und den Info-Eintrag überschreiben.
+          // Die Liste geht dann beim nächsten App-Start raus.
+          continue;
+        }
+        // Teilnehmerliste — ab 7 Tage nach Ende.
+        if (now >= end + 7 * day && !b.autoListSentAt && !b.listSentAt) {
+          const r = await sendFAMail(ev, 'list', { auto: true });
+          if (r.ok) out.listSent++;
+        }
+      }
+    } catch (err) {
+      console.warn('[DEX] maybeSendBillingAutoMails error:', err);
+    }
+    return out;
+  }
+
   // ==================== Organizer-Antrag (v23.37) ====================
 
   async function requestOrganizerRole(email: string, name: string, location: string, message?: string): Promise<{ ok: boolean; reason?: string }> {
@@ -6017,7 +6190,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, getLastEventUpdateError, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getEventNumbersForEmail, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, restoreCustomFieldDescriptions,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, getLastEventUpdateError, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getEventNumbersForEmail, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, getFAConfig, saveFAConfig, sendFAMail, markEventSettled, maybeSendBillingAutoMails, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, restoreCustomFieldDescriptions,
         sendAdminInquiry,
         sendCompleteRegistrationReminder,
         notifyAdminsExternalAudienceAccess,
