@@ -4119,6 +4119,30 @@ function MyEventSubEvents(props: {
           // das NACHTRÄGLICHE Anmelden (Abmelden bleibt möglich).
           const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date())
             || !!(props.parentEvent.klammerDeadline && new Date(props.parentEvent.klammerDeadline) < new Date());
+          // v30.2: „Anmeldung ab" (Freischalt-Regel der Klammer) galt bisher
+          // nur auf der Anmeldeseite — ueber „Meine Events" liess sich JEDER
+          // Termin sofort buchen. Gleiche Rechnung wie subOpenFrom in
+          // RegistrationPage; Anzeige fuer alle Rollen, Klick-Sperre nur fuer
+          // Teilnehmer (v29.72-Regel: Bypass oeffnet Interaktion, nie den
+          // Anblick). Bestehende Anmeldungen bleiben verwaltbar.
+          const openFrom = ((): Date | null => {
+            const rule = props.parentEvent.subEventOpenRule;
+            if (!rule) return null;
+            if (rule.mode === 'fixed') {
+              const dd = new Date(rule.date || '');
+              return isFinite(dd.getTime()) ? dd : null;
+            }
+            if (!((rule.days || 0) > 0)) return null;
+            const base = new Date(ce.startDate || '');
+            if (!isFinite(base.getTime())) return null;
+            const dd = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+            if (rule.mode === 'week') dd.setDate(dd.getDate() - ((dd.getDay() + 6) % 7));
+            dd.setDate(dd.getDate() - (rule.days || 0));
+            dd.setHours(0, 0, 0, 0);
+            return dd;
+          })();
+          const notYetOpen = !isReg && !!openFrom && new Date() < openFrom;
+          const openLocked = notYetOpen && !isAdmin && !isParentOrganizer;
           const count = counts[ce.id] || 0;
           const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
           const isFull = hasCap && count >= (ce.maxParticipants || 0);
@@ -4129,7 +4153,7 @@ function MyEventSubEvents(props: {
           // eigene Sub-Event-Frist.
           const lockReason = isReg ? selfCancelLockReason(ce, props.parentEvent) : null;
           const cancelLocked = !!lockReason;
-          const disabled = isBusy || (deadlinePassed && !isReg) || (isFull && !isReg) || isEventOver(ce) || cancelLocked;
+          const disabled = isBusy || (deadlinePassed && !isReg) || (isFull && !isReg) || isEventOver(ce) || cancelLocked || openLocked;
           // v11.31: Custom-Field-Antworten gehören INS Sub-Event-Karten-
           // Layout, nicht ausserhalb. Maintainer-Wunsch: Tags zwischen
           // der Datums-/Adress-Zeile und den Action-Buttons (rechts) als
@@ -4155,6 +4179,8 @@ function MyEventSubEvents(props: {
               padding: '8px 12px', borderRadius: 8,
               background: isReg ? 'rgba(134,188,37,0.08)' : 'var(--dex-gray-50, #fafafa)',
               border: `1px solid ${isReg ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+              // v30.2: noch nicht freigeschaltet → gedimmt (alle Rollen).
+              opacity: notYetOpen ? 0.7 : 1,
             }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{ce.title || (isDe ? 'Session ohne Titel' : 'Untitled session')}</div>
@@ -4172,6 +4198,13 @@ function MyEventSubEvents(props: {
                   {isFull && !isReg && (
                     <span style={{ marginLeft: 8, color: 'var(--dex-red, #c00)', fontWeight: 600 }}>
                       ({isDe ? 'voll' : 'full'})
+                    </span>
+                  )}
+                  {notYetOpen && (
+                    <span style={{ marginLeft: 8, color: 'var(--dex-orange, #ed8b00)', fontWeight: 600 }}>
+                      ({openLocked
+                        ? (isDe ? `Anmeldung ab ${openFrom!.toLocaleDateString('de-DE')}` : `Registration opens ${openFrom!.toLocaleDateString('en-GB')}`)
+                        : (isDe ? `Anmeldung regulär ab ${openFrom!.toLocaleDateString('de-DE')} — als Organizer/Admin wählbar` : `Opens ${openFrom!.toLocaleDateString('en-GB')} — selectable as organizer/admin`)})
                     </span>
                   )}
                 </div>
