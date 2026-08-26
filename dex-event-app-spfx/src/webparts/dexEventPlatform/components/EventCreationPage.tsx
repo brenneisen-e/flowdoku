@@ -342,7 +342,11 @@ export default function EventCreationPage(): React.ReactElement {
   const { currentUser } = useCurrentUser();
   // searchGroups + searchUsersByLocation werden seit v19.x ausschließlich im
   // ausgelagerten <AudiencePicker> verwendet (eigener useRoles-Hook dort).
-  const { searchUsers, getGroupMembers, canCreateEvents } = useRoles();
+  const { searchUsers, getGroupMembers, canCreateEvents, isAdmin, originalIsAdmin } = useRoles();
+  // v29.66: F&A-Pilot — der komplette Abrechnungs-Teil ist bewusst NUR fuer
+  // Admins sichtbar (Testphase laut Fachkonzept; vor dem Rollout sind noch
+  // Abstimmungsschleifen geplant). originalIsAdmin deckt den Demo-Modus ab.
+  const adminLike = isAdmin || originalIsAdmin;
   // v26.34: Der „Benötigst du Hilfe?"-Ball (Power-User-Hilfe) unten rechts auf
   // Wizard-Seite 1 wurde auf Wunsch entfernt (inkl. powerUsers-Memo + State).
   // v13.0: Frühe Permission-Prüfung — vorher konnte ein Demo-User die
@@ -360,6 +364,60 @@ export default function EventCreationPage(): React.ReactElement {
   // zuerst eine Bestätigungs-Maske mit den Nutzungs- und Datenschutz-
   // bedingungen akzeptieren. Nicht relevant beim Bearbeiten bestehender Events.
   const [tcAccepted, setTcAccepted] = React.useState(false);
+  // v29.66: Abrechnungsrelevanz (F&A-Pilot, nur Admins). Persistiert als
+  // Piggyback `_billing` in EmailTemplateOverrides — beim Laden gestrippt
+  // (s. Strip-Block), beim Speichern an BEIDEN Pfaden gemergt.
+  // `relevant` kennt drei Zustaende: null = nie beantwortet (keine
+  // Vorauswahl, das verlangt das Konzept ausdruecklich), true/false =
+  // aktive Entscheidung des Organizers.
+  const [billingRelevant, setBillingRelevant] = React.useState<boolean | null>(() => {
+    try {
+      const b = JSON.parse(editEvent?.emailTemplateOverrides || '{}')._billing;
+      if (b && b.relevant === true) return true;
+      if (b && b.relevant === false) return false;
+    } catch { /* kein Blob, kein Zustand */ }
+    return null;
+  });
+  // Versandart: Konzept-Default ist Option 2 (manuell).
+  const [billingSendMode, setBillingSendMode] = React.useState<'auto' | 'manual'>(() => {
+    try {
+      const b = JSON.parse(editEvent?.emailTemplateOverrides || '{}')._billing;
+      if (b && b.sendMode === 'auto') return 'auto';
+    } catch { /* */ }
+    return 'manual';
+  });
+  const [billingFields, setBillingFields] = React.useState<Record<string, string>>(() => {
+    try {
+      const b = JSON.parse(editEvent?.emailTemplateOverrides || '{}')._billing;
+      if (b && b.fields && typeof b.fields === 'object') return b.fields as Record<string, string>;
+    } catch { /* */ }
+    return {};
+  });
+  // Der Frage-Dialog nach den Nutzungsbedingungen (nur neue Events, nur Admins).
+  const [billingPromptOpen, setBillingPromptOpen] = React.useState(false);
+  const billingPiggyback = (): Record<string, unknown> => (
+    billingRelevant === null
+      ? {}
+      : { _billing: { relevant: billingRelevant, sendMode: billingSendMode, fields: billingFields } }
+  );
+  // Alle elf Felder sind laut Fachkonzept Pflicht. Unvollstaendig ist ein
+  // STATUS („Abrechnungsrelevante Informationen unvollständig"), kein
+  // Speicher-Blocker — deshalb bewusst KEIN getStepErrors-Fall fuer Schritt 10.
+  // Labels bewusst nur deutsch: Das Konzept ist deutsch, der Pilot ist intern.
+  const BILLING_FIELDS: Array<{ id: string; label: string; type?: 'date' | 'select'; options?: string[] }> = [
+    { id: 'contact', label: 'Kontaktperson für Rückfragen' },
+    { id: 'docNo', label: 'Dokumenten-Nr. (SH Swift Launchpad)' },
+    { id: 'vendor', label: 'Lieferantenname' },
+    { id: 'mice', label: 'MICE Project Nummer' },
+    { id: 'ariba', label: 'Ariba Bestellnummer' },
+    { id: 'company', label: 'Gesellschaft, die die Rechnung erhalten hat' },
+    { id: 'category', label: 'Kategorie', type: 'select', options: ['Arbeitsessen', 'Belohnungsessen', 'Sonstiges', 'Geschenk'] },
+    { id: 'date', label: 'Veranstaltungs- bzw. Bewirtungsdatum', type: 'date' },
+    { id: 'place', label: 'Ort der Bewirtung bzw. Veranstaltung' },
+    { id: 'wbs', label: 'WBS-Code / Kostenstelle' },
+    { id: 'name', label: 'Name der Veranstaltung bzw. Anlass der Bewirtung oder des Geschenks' },
+  ];
+  const billingMissing = BILLING_FIELDS.filter(f => !(billingFields[f.id] || '').trim());
   const [tcCheckbox, setTcCheckbox] = React.useState(false);
   // v28.41: Zweite, bewusst getrennte Bestätigung — der Organizer muss aktiv
   // erklären, dass es ein internes Event ist bzw. die Deloitte-Teilnahme an
@@ -1088,11 +1146,14 @@ export default function EventCreationPage(): React.ReactElement {
           _noSelfCancel, _noCancelAfterDeadline,
           // v29.38: Teams-Link (s. teamsLinkConfig).
           _teamsLink,
+          // v29.66: Abrechnungs-Piggyback (F&A-Pilot) — lebt in eigenen States.
+          _billing,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
         // Variablen nur destrukturiert, um sie aus `rest` zu entfernen.
         void _eventLogo; void _outlookLogo; void _outlookLogoSameAsMail; void _b2run;
+        void _billing;
         void _qrScanners; void _coOrganizers; void _testTeam;
         void _splitDisplayOrderReversed; void _requireSubEventSelection;
         void _subEventsOnlyMode; void _subEventsDisabled; void _imageBanner; void _childEventTerm;
@@ -4692,6 +4753,7 @@ export default function EventCreationPage(): React.ReactElement {
         imageDisplayConfig, hideOrganizerConfig, hiddenOrganizersConfig,
         hideOrgIndividualConfig, headerImageLayoutConfig, noDescriptionConfig,
         subEventCalendarConfig, subEventSingleChoiceConfig, noSelfCancelConfig, noCancelAfterDeadlineConfig, teamsLinkConfig, hotelCarryConfig,
+        billingPiggyback(), // v29.66: F&A-Pilot
       ];
       updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || topPiggybackConfigs.some(o => Object.keys(o).length > 0))
         // v28.2: Object.assign statt Spread-Kette — die Literal-Spreads
@@ -5482,6 +5544,7 @@ export default function EventCreationPage(): React.ReactElement {
             ((subEventSingleChoice && subEventsOptIn) ? { _subEventSingleChoice: true } : {}),
             // v29.25: Abmelde-Sperren auch beim Anlegen.
             (!userCancelAllowed ? { _noSelfCancel: true } : {}),
+            billingPiggyback(), // v29.66: F&A-Pilot
             ((userCancelAllowed && noCancelAfterDeadline) ? { _noCancelAfterDeadline: true } : {}),
             // v29.38: Teams-Link auch beim Anlegen.
             (/^https?:\/\//i.test(teamsLink.trim()) ? { _teamsLink: teamsLink.trim() } : {}),
@@ -6560,6 +6623,9 @@ export default function EventCreationPage(): React.ReactElement {
       disableEmails, disableRegistrationEmail, disableCancellationEmail, autoDeregisterOnDecline, inactiveHandling, disableOutlook,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       emailTemplateOverridesHash: JSON.stringify(emailTemplateOverrides || {}),
+      // v29.66: F&A-Pilot — ohne diesen Eintrag warnt der Ungespeichert-
+      // Waechter nicht, wenn nur Abrechnungsfelder geaendert wurden.
+      billingHash: JSON.stringify({ billingRelevant, billingSendMode, billingFields }),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -6572,6 +6638,7 @@ export default function EventCreationPage(): React.ReactElement {
     customFields, agenda, documents, subEvents,
     outlookBody, outlookHeading, outlookSubheading, outlookSubject, disableEmails, disableRegistrationEmail, disableCancellationEmail, autoDeregisterOnDecline, inactiveHandling, disableOutlook,
     emailTemplateOverrides,
+    billingRelevant, billingSendMode, billingFields, // v29.66
   ]);
   React.useEffect(() => {
     // Initial-Snapshot ein paar Ticks nach dem ersten Render setzen, damit
@@ -6988,6 +7055,12 @@ export default function EventCreationPage(): React.ReactElement {
       'Cluster-Größe steuern: wie viele Fragen pro „Spielblock" angezeigt werden — Teilnehmer kann zwischenspeichern und später weitermachen',
       'Live-Highscore + Statistik im Admin Center sehen (welche Fragen am häufigsten falsch beantwortet werden)',
     ],
+    // v29.66: Schritt 10 „Abrechnung" (F&A-Pilot, nur Admins sehen den Schritt).
+    [
+      'Event als abrechnungsrelevant kennzeichnen — die Entscheidung ist jederzeit änderbar',
+      'Versandart wählen: automatisch (7 Tage vor/nach dem Event) oder manuell über das Organizer Center',
+      'Alle elf Pflichtangaben für Finance & Accounting pflegen — unvollständig blockiert das Speichern nicht',
+    ],
   ];
   // v29.21 (Audit B5): Die EN-Liste stand noch auf der 10-Schritt-Zählung von
   // vor v28.87 (alter Grundlagen-Mix, eigener Sub-Events-Schritt) — ab dem
@@ -7061,6 +7134,12 @@ export default function EventCreationPage(): React.ReactElement {
       'Control cluster size: how many questions per „play block" — attendees can save progress and continue later',
       'See live highscore + statistics in the admin center (which questions are most often answered incorrectly)',
     ],
+    // v29.66: step 10 "Billing" (F&A pilot, admins only).
+    [
+      'Mark the event as billing-relevant — the decision can be changed at any time',
+      'Pick the delivery mode: automatic (7 days before/after the event) or manual via the organizer center',
+      'Maintain all eleven mandatory Finance & Accounting details — incomplete data never blocks saving',
+    ],
   ];
 
   const steps = [
@@ -7083,6 +7162,17 @@ export default function EventCreationPage(): React.ReactElement {
     { label: t('create.step.team'), icon: '7' },
     { label: t('create.step.documents'), icon: '8' },
     { label: t('create.step.funzone'), icon: '9' },
+    // v29.66: F&A-Pilot — Schritt 10 haengt am ENDE, damit kein bestehender
+    // Index wandert (die Falle aus CLAUDE.md: currentStep === N,
+    // STEP_HINTS, SCOPE_AWARE_STEPS, getStepErrors haengen alle an festen
+    // Indizes). Navigation und Speichern-Knopf laufen ueber steps.length
+    // und ziehen automatisch mit. `dim` graut den Reiter aus, solange das
+    // Event nicht abrechnungsrelevant ist — oeffnen bleibt erlaubt.
+    ...(adminLike ? [{
+      label: isDe ? 'Abrechnung' : 'Billing',
+      icon: '10',
+      dim: billingRelevant !== true,
+    }] : []),
   ];
 
   // Tooltip-State: welcher Step zeigt gerade seinen Hint-Tooltip an?
@@ -8163,7 +8253,13 @@ export default function EventCreationPage(): React.ReactElement {
                 type="button"
                 className="btn btn-primary"
                 disabled={!tcCheckbox || !internalCheckbox}
-                onClick={() => setTcAccepted(true)}
+                onClick={() => {
+                  setTcAccepted(true);
+                  // v29.66: F&A-Pilot — direkt nach dem Akzeptieren fragt der
+                  // Dialog nach der Abrechnungsrelevanz (nur Admins, nur beim
+                  // Anlegen; im Edit-Modus erscheinen die Bedingungen nicht).
+                  if (adminLike) setBillingPromptOpen(true);
+                }}
                 style={{ opacity: (tcCheckbox && internalCheckbox) ? 1 : 0.5, cursor: (tcCheckbox && internalCheckbox) ? 'pointer' : 'not-allowed' }}
               >
                 <Check size={16} /> {isDe ? 'Akzeptieren & weiter' : 'Accept & continue'}
@@ -8275,6 +8371,8 @@ export default function EventCreationPage(): React.ReactElement {
                   display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
                   zIndex: 2, cursor: 'pointer',
                   flex: 1,
+                  // v29.66: ausgegrauter Abrechnungs-Schritt (s. steps-Array).
+                  opacity: (step as { dim?: boolean }).dim ? 0.5 : 1,
                 }}
               >
                 <div className="dex-step-circle" style={{
@@ -17251,6 +17349,171 @@ export default function EventCreationPage(): React.ReactElement {
 
             </div>{/* close creation-form */}
           </div>{/* close card */}
+
+          {/* v29.66: F&A-Pilot — Frage-Dialog nach den Nutzungsbedingungen.
+              Keine Vorauswahl: Das Konzept verlangt eine AKTIVE Entscheidung,
+              deshalb zwei gleichrangige Knoepfe statt Radio mit Default. */}
+          {adminLike && billingPromptOpen && (
+            <div style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1300,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+            }}>
+              <div className="card" style={{
+                width: '100%', maxWidth: 560, padding: 28, borderRadius: 16,
+                background: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+              }}>
+                <h2 style={{ margin: '0 0 10px', fontSize: '1.15rem' }}>
+                  Handelt es sich um ein abrechnungsrelevantes Event?
+                </h2>
+                <p style={{ fontSize: '0.9rem', color: 'var(--dex-gray-600)', margin: '0 0 18px' }}>
+                  Abrechnungsrelevante Events sind Veranstaltungen, deren Kosten oder
+                  Bewirtungsaufwendungen gegenüber Finance &amp; Accounting dokumentiert
+                  oder abgerechnet werden müssen.
+                </p>
+                <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', margin: '0 0 18px' }}>
+                  Die Entscheidung lässt sich später jederzeit im Schritt „Abrechnung&ldquo; ändern.
+                </p>
+                <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => { setBillingRelevant(false); setBillingPromptOpen(false); }}
+                  >
+                    Nein
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => { setBillingRelevant(true); setBillingPromptOpen(false); }}
+                  >
+                    Ja, abrechnungsrelevant
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* v29.66: F&A-Pilot — Schritt 10 „Abrechnung" (nur Admins). Haengt
+              als LETZTER Schritt an, damit kein bestehender Index wandert.
+              Nicht abrechnungsrelevant: nur die Frage; „Ja" blendet die
+              Abschnitte sofort ein (reiner State, kein Neuladen). */}
+          {adminLike && (
+            <div style={{ display: currentStep === 9 ? 'block' : 'none' }}>
+              <div style={{ background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: '16px 18px', marginBottom: 16, border: '1px solid var(--dex-gray-200)' }}>
+                <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 6 }}>
+                  Handelt es sich um ein abrechnungsrelevantes Event?
+                </label>
+                <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px' }}>
+                  Abrechnungsrelevante Events sind Veranstaltungen, deren Kosten oder
+                  Bewirtungsaufwendungen gegenüber Finance &amp; Accounting dokumentiert
+                  oder abgerechnet werden müssen.
+                </p>
+                <div style={{ display: 'flex', gap: 18 }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: '0.9rem' }}>
+                    <input type="radio" name="dexBillingRelevant" checked={billingRelevant === true} onChange={() => setBillingRelevant(true)} />
+                    Ja
+                  </label>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: '0.9rem' }}>
+                    <input type="radio" name="dexBillingRelevant" checked={billingRelevant === false} onChange={() => setBillingRelevant(false)} />
+                    Nein
+                  </label>
+                </div>
+              </div>
+
+              {billingRelevant === true && (
+                <>
+                  {/* Status — systemseitig aus den Pflichtfeldern abgeleitet,
+                      nie gespeichert und nie von Hand setzbar. */}
+                  <div style={{
+                    padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: '0.85rem',
+                    background: billingMissing.length > 0 ? 'rgba(237,139,0,0.10)' : 'rgba(134,188,37,0.12)',
+                    border: `1px solid ${billingMissing.length > 0 ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)'}`,
+                    color: 'var(--dex-gray-800)',
+                  }}>
+                    {billingMissing.length > 0
+                      ? <><strong>Status: Abrechnungsrelevante Informationen unvollständig</strong> — {billingMissing.length} von {BILLING_FIELDS.length} Pflichtfeldern fehlen noch. Speichern ist trotzdem möglich.</>
+                      : <><strong>Status: Vollständig</strong> — alle {BILLING_FIELDS.length} Pflichtangaben sind gepflegt.</>}
+                  </div>
+
+                  <div style={{ background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: '16px 18px', marginBottom: 16, border: '1px solid var(--dex-gray-200)' }}>
+                    <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 6 }}>
+                      Informationen zur Abrechnung
+                    </label>
+                    <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 12px' }}>
+                      Abrechnungsrelevante Informationen müssen an die Finance &amp; Accounting
+                      Abteilung gemeldet werden. Dies beinhaltet insbesondere allgemeine
+                      Eventinformationen, Teilnehmerlisten sowie Rechnungen und Belege. Die
+                      folgenden Einstellungen unterstützen die standardisierte und teilweise
+                      automatisierte Übermittlung dieser Informationen.
+                    </p>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginBottom: 10 }}>
+                      <input type="radio" name="dexBillingSend" checked={billingSendMode === 'auto'} onChange={() => setBillingSendMode('auto')} style={{ marginTop: 3 }} />
+                      <span style={{ fontSize: '0.88rem' }}>
+                        <strong>Automatisierter Versand</strong>
+                        <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2 }}>
+                          Abrechnungsinformationen 7 Kalendertage vor dem Event (bei kurzfristiger
+                          Erstellung: sofort nach Aktivierung), finale Teilnehmerliste 7 Kalendertage
+                          danach — jeweils an F&amp;A, Organizer in CC.
+                          <em style={{ display: 'block', marginTop: 2, color: 'var(--dex-orange, #b96a00)' }}>
+                            Pilot: Die Auswahl wird bereits gespeichert, der Automatik-Flow existiert noch nicht.
+                          </em>
+                        </span>
+                      </span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                      <input type="radio" name="dexBillingSend" checked={billingSendMode === 'manual'} onChange={() => setBillingSendMode('manual')} style={{ marginTop: 3 }} />
+                      <span style={{ fontSize: '0.88rem' }}>
+                        <strong>Manueller Versand</strong> <span style={{ color: 'var(--dex-gray-500)', fontWeight: 400 }}>(Standard)</span>
+                        <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2 }}>
+                          Kein automatischer Versand — Abrechnungsinformationen und Teilnehmerliste
+                          werden über das Organizer Center aktiv an F&amp;A gesendet.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+
+                  <div style={{ background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: '16px 18px', marginBottom: 16, border: '1px solid var(--dex-gray-200)' }}>
+                    <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 10 }}>
+                      Abrechnungsrelevante Informationen
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px 16px' }}>
+                      {BILLING_FIELDS.map(f => {
+                        const val = billingFields[f.id] || '';
+                        const empty = !val.trim();
+                        const setVal = (v: string): void => setBillingFields(prev => ({ ...prev, [f.id]: v }));
+                        return (
+                          <div key={f.id}>
+                            <label style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', display: 'block', marginBottom: 3 }}>
+                              {f.label} <span className="required">*</span>
+                            </label>
+                            {f.type === 'select' ? (
+                              <select
+                                className="form-input"
+                                value={val}
+                                onChange={e => setVal(e.target.value)}
+                                style={{ borderColor: empty ? 'var(--dex-orange, #ed8b00)' : undefined }}
+                              >
+                                <option value="">Bitte wählen…</option>
+                                {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
+                              </select>
+                            ) : (
+                              <input
+                                className="form-input"
+                                type={f.type === 'date' ? 'date' : 'text'}
+                                value={val}
+                                onChange={e => setVal(e.target.value)}
+                                style={{ borderColor: empty ? 'var(--dex-orange, #ed8b00)' : undefined }}
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Fortschrittsanzeige */}
           {isSubmitting && (
