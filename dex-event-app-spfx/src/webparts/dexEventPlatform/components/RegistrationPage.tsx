@@ -586,6 +586,29 @@ export default function RegistrationPage(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [event?.id, canCreateEvents, registerForOther, currentUser.email, currentUser.location, groupEmails]);
   /**
+   * v29.77: „Anmeldung ab" gilt jetzt fuer ALLE Sub-Event-Darstellungen,
+   * nicht nur die Kalender-Kacheln — deshalb ein gemeinsamer Rechner.
+   * mode 'fixed' = ein Zeitpunkt fuer alle; 'day'/'week' = rollierend
+   * relativ zum Start des jeweiligen Sub-Events (bei 'week' zum Montag
+   * seiner Woche, Mitternacht lokal — identisch zur Kachel-Logik).
+   */
+  const subOpenFrom = (startIso?: string): Date | null => {
+    const rule = event?.subEventOpenRule;
+    if (!rule) return null;
+    if (rule.mode === 'fixed') {
+      const d = new Date(rule.date || '');
+      return isFinite(d.getTime()) ? d : null;
+    }
+    if (!((rule.days || 0) > 0)) return null;
+    const base = new Date(startIso || '');
+    if (!isFinite(base.getTime())) return null;
+    const d = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+    if (rule.mode === 'week') d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    d.setDate(d.getDate() - (rule.days || 0));
+    d.setHours(0, 0, 0, 0);
+    return d;
+  };
+  /**
    * v29.9: Wie viele buchbare Sub-Events hat das Event, die dieser Person der
    * Zielgruppen-Filter oben WEGGENOMMEN hat?
    *
@@ -3925,7 +3948,14 @@ export default function RegistrationPage(): React.ReactElement {
                     // verspricht — auch nach der Frist anmelden. Die
                     // Kapazitäts-Sperre bleibt für alle.
                     const deadlineLocked = deadlinePassed && !isOrganizer && !isAdmin;
-                    const disabled = (isSessionFull && !isSel) || (deadlineLocked && !isSel);
+                    // v29.77: „Anmeldung ab" (fest oder rollierend) sperrt jetzt
+                    // auch die Listen-Karten, nicht nur die Kalender-Kacheln.
+                    // Anzeige fuer alle Rollen, Klick-Sperre nur fuer Teilnehmer
+                    // (v29.72-Regel: Bypass oeffnet Interaktion, nie den Anblick).
+                    const seOpenFrom = subOpenFrom(ce.startDate);
+                    const seNotYetOpen = !!seOpenFrom && new Date() < seOpenFrom;
+                    const seOpenLocked = seNotYetOpen && !isOrganizer && !isAdmin;
+                    const disabled = (isSessionFull && !isSel) || (deadlineLocked && !isSel) || (seOpenLocked && !isSel);
                     // Erbt vom Haupt-Event wenn gleichzeitig angemeldet wird.
                     const inheritsStarter = isSplitGroup && (willRegisterParent || registerForOther);
                     const sType = sessionStarterType[ce.id] || '';
@@ -3935,6 +3965,8 @@ export default function RegistrationPage(): React.ReactElement {
                         padding: 10, borderRadius: 8,
                         border: `1px solid ${isSel ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
                         background: isSel ? 'rgba(134,188,37,0.06)' : '#fff',
+                        // v29.77: noch nicht freigeschaltet → gedimmt (alle Rollen).
+                        opacity: seNotYetOpen && !isSel ? 0.75 : 1,
                       }}>
                         <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: disabled ? 'not-allowed' : 'pointer' }}>
                           <input
@@ -4045,6 +4077,17 @@ export default function RegistrationPage(): React.ReactElement {
                                   : (locale === 'de'
                                     ? 'Anmeldefrist abgelaufen — als Organizer/Admin trotzdem wählbar.'
                                     : 'Registration deadline passed — still selectable as organizer/admin.')}
+                              </div>
+                            )}
+                            {seNotYetOpen && !isSel && (
+                              <div style={{ fontSize: '0.72rem', color: 'var(--dex-orange)', marginTop: 2 }}>
+                                {seOpenLocked
+                                  ? (locale === 'de'
+                                    ? `Anmeldung ab ${seOpenFrom!.toLocaleDateString('de-DE')} möglich.`
+                                    : `Registration opens on ${seOpenFrom!.toLocaleDateString('en-GB')}.`)
+                                  : (locale === 'de'
+                                    ? `Anmeldung öffnet regulär am ${seOpenFrom!.toLocaleDateString('de-DE')} — als Organizer/Admin trotzdem wählbar.`
+                                    : `Registration opens on ${seOpenFrom!.toLocaleDateString('en-GB')} — still selectable as organizer/admin.`)}
                               </div>
                             )}
                             {isSessionFull && !isSel && (
@@ -5603,13 +5646,18 @@ export default function RegistrationPage(): React.ReactElement {
                     // verspricht — auch nach der Frist anmelden. Die
                     // Kapazitäts-Sperre bleibt für alle.
                     const deadlineLocked = deadlinePassed && !isOrganizer && !isAdmin;
-                    const disabled = (isSessionFull && !isSel) || (deadlineLocked && !isSel);
+                    // v29.77: „Anmeldung ab" auch in dieser Liste (s. oben).
+                    const seOpenFrom = subOpenFrom(ce.startDate);
+                    const seNotYetOpen = !!seOpenFrom && new Date() < seOpenFrom;
+                    const seOpenLocked = seNotYetOpen && !isOrganizer && !isAdmin;
+                    const disabled = (isSessionFull && !isSel) || (deadlineLocked && !isSel) || (seOpenLocked && !isSel);
 
                     return (
                       <div key={ce.id} style={{
                         padding: 10, borderRadius: 8,
                         border: `1px solid ${isSel ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
                         background: isSel ? 'rgba(134,188,37,0.06)' : '#fff',
+                        opacity: seNotYetOpen && !isSel ? 0.75 : 1,
                       }}>
                         <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: disabled ? 'not-allowed' : 'pointer' }}>
                           <input
@@ -5694,6 +5742,18 @@ export default function RegistrationPage(): React.ReactElement {
                             {deadlinePassed && !isSel && (
                               <div style={{ fontSize: '0.72rem', color: 'var(--dex-orange)', marginTop: 2 }}>
                                 {tEvent('reg.subevents.deadlinepassed')}
+                              </div>
+                            )}
+                            {/* v29.77: „Anmeldung ab" auch hier ausweisen. */}
+                            {seNotYetOpen && !isSel && (
+                              <div style={{ fontSize: '0.72rem', color: 'var(--dex-orange)', marginTop: 2 }}>
+                                {seOpenLocked
+                                  ? (locale === 'de'
+                                    ? `Anmeldung ab ${seOpenFrom!.toLocaleDateString('de-DE')} möglich.`
+                                    : `Registration opens on ${seOpenFrom!.toLocaleDateString('en-GB')}.`)
+                                  : (locale === 'de'
+                                    ? `Anmeldung öffnet regulär am ${seOpenFrom!.toLocaleDateString('de-DE')} — als Organizer/Admin trotzdem wählbar.`
+                                    : `Registration opens on ${seOpenFrom!.toLocaleDateString('en-GB')} — still selectable as organizer/admin.`)}
                               </div>
                             )}
                             {isSessionFull && !isSel && (

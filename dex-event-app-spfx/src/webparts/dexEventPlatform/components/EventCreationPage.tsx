@@ -478,20 +478,25 @@ export default function EventCreationPage(): React.ReactElement {
   const [cancelRuleUnit, setCancelRuleUnit] = React.useState<'days' | 'hours'>(() => {
     try { const r = JSON.parse(editEvent?.emailTemplateOverrides || '{}')._subDeadlineRule; return r && r.cancel && r.cancel.unit === 'hours' ? 'hours' : 'days'; } catch { return 'days'; }
   });
+  // v29.77: Abmelden darf auch NACH dem Termin-Beginn noch erlaubt sein
+  // („bis 1 Stunde nach dem Termin") — Richtung als eigener Schalter.
+  const [cancelRuleAfter, setCancelRuleAfter] = React.useState<boolean>(() => {
+    try { const r = JSON.parse(editEvent?.emailTemplateOverrides || '{}')._subDeadlineRule; return !!(r && r.cancel && r.cancel.after === true); } catch { return false; }
+  });
   const subDeadlineRulePiggyback = (): Record<string, unknown> => {
-    if (!subEventsOptIn || !subEventCalendar) return {};
+    if (!subEventsOptIn) return {};
     const rule: Record<string, unknown> = {};
     if (regRuleEnabled && regRuleAmount > 0) rule.reg = { amount: regRuleAmount, unit: regRuleUnit };
-    if (cancelRuleEnabled && cancelRuleAmount > 0 && userCancelAllowed) rule.cancel = { amount: cancelRuleAmount, unit: cancelRuleUnit };
+    if (cancelRuleEnabled && cancelRuleAmount > 0 && userCancelAllowed) rule.cancel = { amount: cancelRuleAmount, unit: cancelRuleUnit, ...(cancelRuleAfter ? { after: true } : {}) };
     return Object.keys(rule).length ? { _subDeadlineRule: rule } : {};
   };
-  // Abstand rueckwaerts vom Termin-Start — bewusst exakt (X Tage = X * 24 h
-  // vor dem Start), damit die Regel bei Ganztags-Terminen (Start 00:00)
-  // glatte Tagesgrenzen liefert.
-  const rollingDeadlineIso = (startIso: string, amount: number, unit: 'days' | 'hours'): string => {
+  // Abstand relativ zum Termin-Start — bewusst exakt (X Tage = X * 24 h),
+  // damit die Regel bei Ganztags-Terminen (Start 00:00) glatte Tagesgrenzen
+  // liefert. after=true rechnet VORWAERTS (Abmelden nach Beginn).
+  const rollingDeadlineIso = (startIso: string, amount: number, unit: 'days' | 'hours', after?: boolean): string => {
     const t2 = new Date(startIso || '').getTime();
     if (!isFinite(t2) || !(amount > 0)) return '';
-    return new Date(t2 - amount * (unit === 'hours' ? 3600000 : 86400000)).toISOString();
+    return new Date(t2 + (after ? 1 : -1) * amount * (unit === 'hours' ? 3600000 : 86400000)).toISOString();
   };
   // v29.75: „Sichtbarkeit gilt für alle Sub-Events" — der Haken hält
   // Standortfilter, Verteiler und Verknüpfung der Sub-Events mit der
@@ -1840,10 +1845,10 @@ export default function EventCreationPage(): React.ReactElement {
   // Referenz-Stabilitaet (return prev bei 0 Aenderungen) beendet die
   // Kette nach einem Durchlauf und haelt den v29.57-Skip sauber.
   // ACHTUNG: subEventsOptIn ist hier NICHT referenzierbar (Deklaration erst
-  // weiter unten — TDZ, die v29.71-Falle). subEventCalendar reicht als
-  // Guard: ohne Opt-in gibt es keinen Kalender und keine Drafts.
+  // weiter unten — TDZ, die v29.71-Falle). Ein eigener Guard ist auch nicht
+  // noetig: ohne Sub-Event-Drafts ist die Schleife leer.
+  // v29.77: gilt fuer ALLE Sub-Event-Events, nicht mehr nur den Kalender.
   React.useEffect(() => {
-    if (!subEventCalendar) return;
     if (!regRuleEnabled && !cancelRuleEnabled) return;
     const near = (a: string, b: string): boolean => {
       const ta = new Date(a || '').getTime(); const tb = new Date(b || '').getTime();
@@ -1859,7 +1864,7 @@ export default function EventCreationPage(): React.ReactElement {
           if (iso && !near(s.registrationDeadline || '', iso)) patch.registrationDeadline = iso;
         }
         if (cancelRuleEnabled && cancelRuleAmount > 0 && userCancelAllowed) {
-          const iso = rollingDeadlineIso(s.startDate, cancelRuleAmount, cancelRuleUnit);
+          const iso = rollingDeadlineIso(s.startDate, cancelRuleAmount, cancelRuleUnit, cancelRuleAfter);
           if (iso && !near(s.lastDeregisterDate || '', iso)) patch.lastDeregisterDate = iso;
         }
         if (Object.keys(patch).length === 0) return s;
@@ -1868,7 +1873,7 @@ export default function EventCreationPage(): React.ReactElement {
       });
       return changed ? next : prev;
     });
-  }, [subEventCalendar, regRuleEnabled, regRuleAmount, regRuleUnit, cancelRuleEnabled, cancelRuleAmount, cancelRuleUnit, userCancelAllowed, subEvents]);
+  }, [regRuleEnabled, regRuleAmount, regRuleUnit, cancelRuleEnabled, cancelRuleAmount, cancelRuleUnit, cancelRuleAfter, userCancelAllowed, subEvents]);
   // v11.57: aktiv ausgewählter Tab in Step 6 (Kommunikation, v11.80 Renumbering). 0 = Haupt-Event,
   // N>0 = subEvents[N-1]. Beim Tab-Wechsel werden die Step-5-Felder zwischen
   // dem Top-Level-State und der jeweiligen Sub-Event-Slice gespiegelt — siehe
@@ -4108,7 +4113,9 @@ export default function EventCreationPage(): React.ReactElement {
         // Fehlschlag als false. Vorher lief der Balken weiter und der Save
         // endete mit „Änderungen gespeichert!", auch wenn einzelne Sub-Events
         // (429, zu großer Payload) nie ankamen.
-        const subOk = await updateEvent(draft.dbId, subUpdates);
+        // v29.77: skipReload — sonst laedt JEDES Sub-Event-Update die komplette
+        // Event-Liste (28 MB) neu. Der eine Reload kommt vom Hauptevent-Update.
+        const subOk = await updateEvent(draft.dbId, subUpdates, { skipReload: true });
         if (!subOk) failedSubTitles.push(shortSubEventTitle(draft.title, title) || draft.title);
         // v29.74: Bei Drosselung ANHALTEN statt weiterhaemmern. Zwei
         // Fehlschlaege in Folge waehrend aktiver Drossel-Schranke heisst:
@@ -4650,24 +4657,8 @@ export default function EventCreationPage(): React.ReactElement {
 
     if (isEditMode && selectedEventId) {
       setProgressLabel('Event wird aktualisiert...');
-      // v11.18: Debug-Trace JSON-stringified, sodass der Output ohne
-      // Array-Aufklappen direkt als Text in der Console steht.
-      // eslint-disable-next-line no-console
-      console.log('[DEX][edit-save] customFields state at save:\n' + JSON.stringify(
-        customFields.map(f => ({
-          id: f.id,
-          label: f.label,
-          type: f.type,
-          required: f.required,
-          helpText: f.helpText,
-          helpTextStyle: f.helpTextStyle,
-          onlyForGroup: f.onlyForGroup,
-          showIf: f.showIf,
-          externalLinks: f.externalLinks,
-        })),
-        null,
-        2
-      ));
+      // v29.77: v11.18-Debug-Trace („customFields state at save") entfernt —
+      // der helpText-Roundtrip ist lange verifiziert, das Log war nur Laerm.
       // Sanitize: paart Organizer-Names + -Emails 1:1, droppt unvollständige
       // Pairs — verhindert Mismatch-State in DEX_Events.
       const sanitizedOrgPairEdit = sanitizeOrganizerPairs();
@@ -5093,8 +5084,7 @@ export default function EventCreationPage(): React.ReactElement {
       //      enthält (= Save sendet's korrekt → SP-Persist OK).
       //   2. oder ob updates['CustomFields'] ohne helpText/onlyForGroup
       //      ankommt (= State zum Save-Zeitpunkt war schon kaputt).
-      // eslint-disable-next-line no-console
-      console.log('[DEX][edit-save] updates.CustomFields about to POST:', updates['CustomFields']);
+      // v29.77: Debug-Log („updates.CustomFields about to POST") entfernt.
       const success = await updateEvent(selectedEventId, updates);
       if (success) {
         // v26.57: NEU zur Zielgruppe hinzugekommene Personen außerhalb von
@@ -5347,8 +5337,23 @@ export default function EventCreationPage(): React.ReactElement {
           }
         } catch (err) { console.warn('[DEX] Auto-fix Teilnehmer-Columns fehlgeschlagen:', err); }
 
-        setProgress(95);
+        // v29.77: Der Block hier war ein stummer Sammelposten — „Outlook wird
+        // aktualisiert… 95%" stand minutenlang ohne Angabe, WELCHER Termin
+        // gerade dran ist (und seit v29.74 wartet die Drossel-Logik ehrlich,
+        // also auch mal lange). Jetzt: Balken startet bei 90, jeder Queue-
+        // Eintrag rueckt ihn vor und der Label nennt Termin und Zaehler.
+        setProgress(90);
         setProgressLabel(isDe ? 'Outlook wird aktualisiert...' : 'Updating Outlook...');
+        const outlookTotal =
+          ((!disableOutlook && pendingOutlookUpdateForTopRef.current) ? 1 : 0)
+          + pendingOutlookUpdateForSubEventsRef.current.length
+          + (orgGetsSubInvites !== initialOrgGetsSubInvitesRef.current ? (1 + subEventsRef.current.filter(se => !!se.dbId && !se.disableOutlook).length) : 0);
+        let outlookDone = 0;
+        const tickOutlook = (label: string): void => {
+          outlookDone++;
+          setProgress(90 + Math.min(9, Math.round((outlookDone / Math.max(1, outlookTotal)) * 9)));
+          setProgressLabel(label);
+        };
         // v11.63: Outlook-Updates pro Event entscheiden — der Organizer hat
         // im Confirm-Modal pro betroffenem Event (Top + Sub) einzeln ent-
         // schieden. Top-Event bekommt UpdateEvent nur, wenn explizit
@@ -5361,6 +5366,7 @@ export default function EventCreationPage(): React.ReactElement {
             const ctx = (window as any).__dexSpfxContext;
             if (ctx && editEvent?.subsiteUrl) {
               const svc = new EventService(ctx);
+              tickOutlook(isDe ? `Outlook wird aktualisiert… (${title || 'Hauptevent'})` : `Updating Outlook… (${title || 'main event'})`);
               await svc.queueOutlookEvent('', selectedEventId, title, 'UpdateEvent');
             }
           } catch { /* Outlook-Update optional */ }
@@ -5372,12 +5378,17 @@ export default function EventCreationPage(): React.ReactElement {
             const ctx = (window as any).__dexSpfxContext;
             if (ctx) {
               const svc = new EventService(ctx);
-              for (const subId of pendingOutlookUpdateForSubEventsRef.current) {
+              const subIds = pendingOutlookUpdateForSubEventsRef.current;
+              for (let subIdx = 0; subIdx < subIds.length; subIdx++) {
+                const subId = subIds[subIdx];
                 const subDraft = subEventsRef.current.find(s => s.dbId === subId);
                 const subTitle = subDraft?.title || '';
+                tickOutlook(isDe
+                  ? `Outlook wird aktualisiert… (${subIdx + 1}/${subIds.length}: ${subTitle || 'Termin'})`
+                  : `Updating Outlook… (${subIdx + 1}/${subIds.length}: ${subTitle || 'date'})`);
                 try {
                   await svc.queueOutlookEvent('', subId, subTitle, 'UpdateEvent');
-                  await updateEvent(subId, { 'OutlookDirty': false });
+                  await updateEvent(subId, { 'OutlookDirty': false }, { skipReload: true });
                 } catch { /* einzelne Sub-Update-Fehler nicht eskalieren */ }
               }
             }
@@ -5406,7 +5417,11 @@ export default function EventCreationPage(): React.ReactElement {
                   .filter(se => !!se.dbId && !se.disableOutlook)
                   .map(se => ({ id: se.dbId as string, title: se.title || '' })),
               ];
-              for (const tgt of targets) {
+              for (let tgtIdx = 0; tgtIdx < targets.length; tgtIdx++) {
+                const tgt = targets[tgtIdx];
+                tickOutlook(isDe
+                  ? `Organizer werden ${action === 'Einladen' ? 'eingeladen' : 'ausgeladen'}… (${tgtIdx + 1}/${targets.length}: ${tgt.title || 'Termin'})`
+                  : `${action === 'Einladen' ? 'Inviting' : 'Removing'} organizers… (${tgtIdx + 1}/${targets.length}: ${tgt.title || 'date'})`);
                 for (const mail of orgMails) {
                   try { await svc.queueOutlookEvent(mail, tgt.id, tgt.title, action); }
                   catch { /* einzelne Queue-Fehler nicht eskalieren */ }
@@ -5428,7 +5443,7 @@ export default function EventCreationPage(): React.ReactElement {
             if (subId === selectedEventId) continue; // Top-Level schon erledigt
             if (checkedSubIds.has(subId)) continue;  // bereits auf false gesetzt
             if (dirtyMap[subId] === true) {
-              try { await updateEvent(subId, { 'OutlookDirty': true }); }
+              try { await updateEvent(subId, { 'OutlookDirty': true }, { skipReload: true }); }
               catch { /* */ }
             }
           }
@@ -6812,7 +6827,7 @@ export default function EventCreationPage(): React.ReactElement {
       billingHash: JSON.stringify({ billingRelevant, billingSendMode, billingFields }),
       subOpenRuleHash: JSON.stringify({ openRuleEnabled, openRuleMode, openRuleDays, openRuleFixedDate }), // v29.67/v29.76
       visAllSubs, // v29.75
-      subDeadlineRuleHash: JSON.stringify({ regRuleEnabled, regRuleAmount, regRuleUnit, cancelRuleEnabled, cancelRuleAmount, cancelRuleUnit }), // v29.76
+      subDeadlineRuleHash: JSON.stringify({ regRuleEnabled, regRuleAmount, regRuleUnit, cancelRuleEnabled, cancelRuleAmount, cancelRuleUnit, cancelRuleAfter }), // v29.76/77
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -6828,7 +6843,7 @@ export default function EventCreationPage(): React.ReactElement {
     billingRelevant, billingSendMode, billingFields, // v29.66
     openRuleEnabled, openRuleMode, openRuleDays, openRuleFixedDate, // v29.67/v29.76
     visAllSubs, // v29.75
-    regRuleEnabled, regRuleAmount, regRuleUnit, cancelRuleEnabled, cancelRuleAmount, cancelRuleUnit, // v29.76
+    regRuleEnabled, regRuleAmount, regRuleUnit, cancelRuleEnabled, cancelRuleAmount, cancelRuleUnit, cancelRuleAfter, // v29.76/77
   ]);
   React.useEffect(() => {
     // Initial-Snapshot ein paar Ticks nach dem ersten Render setzen, damit
@@ -6917,6 +6932,149 @@ export default function EventCreationPage(): React.ReactElement {
     if (orgInvitesTouchedRef.current) return;
     setOrgGetsSubInvites(!(subEventsOptIn && subEvents.length > 0));
   }, [subEventsOptIn, subEvents.length]);
+
+  // ============================================================
+  // v30.0: Entwurfs-Zwischenspeicher fuer die Neu-Anlage.
+  //
+  // Wer DEX mitten in der Event-Erstellung schliesst, verlor bisher alles.
+  // Jetzt sichert ein Debounce den Formularstand laufend nach localStorage;
+  // beim naechsten Oeffnen der Event-Erstellung fragt ein Dialog, ob der
+  // Entwurf fortgesetzt werden soll. Bewusste Grenzen:
+  //  - NUR Neu-Anlage. Ein Edit-Entwurf koennte beim Wiederherstellen einen
+  //    inzwischen live geaenderten Stand ueberschreiben.
+  //  - Bilder (File-Objekte) lassen sich nicht serialisieren und fehlen im
+  //    Entwurf — der Dialog sagt das dazu.
+  //  - localStorage ist ein Komfort, kein Vertrag: Quota/Privacy-Fehler
+  //    werden geschluckt, der Entwurf verfaellt nach 14 Tagen.
+  // Der Block steht bewusst NACH subEventsOptIn (Zeile oben) — frueher
+  // platzierte States waeren die v29.71-TDZ-Falle.
+  // ============================================================
+  const DRAFT_KEY = 'dex_event_creation_draft_v1';
+  const draftPromptShownRef = React.useRef(false);
+  const buildDraftPayload = (): Record<string, unknown> => ({
+    title, description, location, addrStreet, addrHouseNo, addrZip, addrCity,
+    organizer, organizerEmails, contactName, contactEmail, contactInfo,
+    startDate, endDate, registrationDeadline, lastDeregisterDate, klammerDeadline, activeFrom,
+    maxParticipants, waitlistEnabled, audience, locationFilter, filterMode, excludedUsers,
+    customFields, agenda,
+    // File-Objekte serialisieren zu {} — bewusst strippen statt Muell speichern.
+    subEvents: subEvents.map(sd => ({ ...sd, imageFile: null })),
+    subEventsOptIn, subEventsOnlyMode, subEventCalendar, subEventSingleChoice,
+    requireSubEventSelection, askSalutation,
+    teamRegistrationEnabled, teamSize, askTeamName,
+    userCancelAllowed, noCancelAfterDeadline, teamsLink,
+    disableEmails, disableOutlook,
+    emailTemplateOverrides,
+    openRuleEnabled, openRuleMode, openRuleDays, openRuleFixedDate,
+    regRuleEnabled, regRuleAmount, regRuleUnit,
+    cancelRuleEnabled, cancelRuleAmount, cancelRuleUnit, cancelRuleAfter,
+    visAllSubs,
+    billingRelevant, billingSendMode, billingFields,
+    currentStep,
+  });
+  const applyDraftPayload = (d: Record<string, unknown>): void => {
+    const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+    const bool = (v: unknown, dflt: boolean): boolean => (typeof v === 'boolean' ? v : dflt);
+    const num = (v: unknown, dflt: number): number => (typeof v === 'number' && isFinite(v) ? v : dflt);
+    setTitle(str(d.title)); setDescription(str(d.description)); setLocation(str(d.location));
+    setAddrStreet(str(d.addrStreet)); setAddrHouseNo(str(d.addrHouseNo)); setAddrZip(str(d.addrZip)); setAddrCity(str(d.addrCity));
+    setOrganizer(str(d.organizer));
+    if (Array.isArray(d.organizerEmails)) setOrganizerEmails(d.organizerEmails as string[]);
+    setContactName(str(d.contactName)); setContactEmail(str(d.contactEmail)); setContactInfo(str(d.contactInfo));
+    setStartDate(str(d.startDate)); setEndDate(str(d.endDate));
+    setRegistrationDeadline(str(d.registrationDeadline)); setLastDeregisterDate(str(d.lastDeregisterDate));
+    setKlammerDeadline(str(d.klammerDeadline)); setActiveFrom(str(d.activeFrom));
+    setMaxParticipants(str(d.maxParticipants)); setWaitlistEnabled(bool(d.waitlistEnabled, false));
+    setAudience(str(d.audience)); setLocationFilter(str(d.locationFilter));
+    setFilterMode(d.filterMode === 'AND' ? 'AND' : 'OR');
+    if (Array.isArray(d.excludedUsers)) setExcludedUsers(d.excludedUsers as string[]);
+    if (Array.isArray(d.customFields)) setCustomFields(d.customFields as CustomFieldInput[]);
+    if (Array.isArray(d.agenda)) setAgenda(d.agenda as AgendaItem[]);
+    if (Array.isArray(d.subEvents)) setSubEvents((d.subEvents as SubEventDraft[]).map(x => ({ ...x, imageFile: null })));
+    setSubEventsOptIn(bool(d.subEventsOptIn, false));
+    setSubEventsOnlyMode(bool(d.subEventsOnlyMode, false));
+    setSubEventCalendar(bool(d.subEventCalendar, false));
+    setSubEventSingleChoice(bool(d.subEventSingleChoice, false));
+    setRequireSubEventSelection(bool(d.requireSubEventSelection, false));
+    setAskSalutation(bool(d.askSalutation, false));
+    setTeamRegistrationEnabled(bool(d.teamRegistrationEnabled, false));
+    setTeamSize(num(d.teamSize, 2)); setAskTeamName(bool(d.askTeamName, false));
+    setUserCancelAllowed(bool(d.userCancelAllowed, true));
+    setNoCancelAfterDeadline(bool(d.noCancelAfterDeadline, false));
+    setTeamsLink(str(d.teamsLink));
+    setDisableEmails(bool(d.disableEmails, false)); setDisableOutlook(bool(d.disableOutlook, false));
+    if (d.emailTemplateOverrides && typeof d.emailTemplateOverrides === 'object') {
+      setEmailTemplateOverrides(d.emailTemplateOverrides as Record<string, EmailOverrideEntry>);
+    }
+    setOpenRuleEnabled(bool(d.openRuleEnabled, false));
+    setOpenRuleMode(d.openRuleMode === 'week' ? 'week' : 'day');
+    setOpenRuleDays(num(d.openRuleDays, 7)); setOpenRuleFixedDate(str(d.openRuleFixedDate));
+    setRegRuleEnabled(bool(d.regRuleEnabled, false)); setRegRuleAmount(num(d.regRuleAmount, 1));
+    setRegRuleUnit(d.regRuleUnit === 'hours' ? 'hours' : 'days');
+    setCancelRuleEnabled(bool(d.cancelRuleEnabled, false)); setCancelRuleAmount(num(d.cancelRuleAmount, 1));
+    setCancelRuleUnit(d.cancelRuleUnit === 'hours' ? 'hours' : 'days');
+    setCancelRuleAfter(bool(d.cancelRuleAfter, false));
+    setVisAllSubs(bool(d.visAllSubs, false));
+    if (typeof d.billingRelevant === 'boolean') setBillingRelevant(d.billingRelevant);
+    setBillingSendMode(d.billingSendMode === 'auto' ? 'auto' : 'manual');
+    if (d.billingFields && typeof d.billingFields === 'object') setBillingFields(d.billingFields as Record<string, string>);
+    setCurrentStep(Math.max(0, num(d.currentStep, 0)));
+  };
+  // Beim Betreten der Neu-Anlage EINMAL fragen, ob der letzte Entwurf
+  // fortgesetzt werden soll. Ablehnen verwirft ihn (er wuerde sonst vom
+  // Autosave des frischen Formulars ohnehin ueberschrieben).
+  React.useEffect(() => {
+    if (isEditMode || draftPromptShownRef.current) return;
+    draftPromptShownRef.current = true;
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { savedAt?: number; data?: Record<string, unknown> };
+      const data = parsed?.data;
+      const age = Date.now() - (parsed?.savedAt || 0);
+      const hasSubstance = !!data && ((typeof data.title === 'string' && data.title.trim().length > 0) || (Array.isArray(data.subEvents) && data.subEvents.length > 0));
+      if (!data || !hasSubstance || !(age >= 0) || age > 14 * 86400000) {
+        localStorage.removeItem(DRAFT_KEY);
+        return;
+      }
+      const when = new Date(parsed.savedAt || 0).toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const draftTitle = (typeof data.title === 'string' && data.title.trim()) ? `„${data.title.trim()}“` : (isDe ? '(ohne Titel)' : '(untitled)');
+      void (async () => {
+        const ok = await confirmDialog(
+          isDe
+            ? `Du hast einen nicht gespeicherten Entwurf vom ${when}: ${draftTitle}.\n\nMöchtest du ihn fortsetzen? „Abbrechen“ verwirft den Entwurf und startet leer.\n\nHinweis: Hochgeladene Bilder sind im Entwurf nicht enthalten und müssten neu gewählt werden.`
+            : `You have an unsaved draft from ${when}: ${draftTitle}.\n\nContinue it? “Cancel” discards the draft and starts fresh.\n\nNote: uploaded images are not part of the draft and would need to be re-selected.`,
+          { confirmLabel: isDe ? 'Entwurf fortsetzen' : 'Continue draft' },
+        );
+        if (ok) {
+          try { applyDraftPayload(data); } catch (err) { console.warn('[DEX] Entwurf-Wiederherstellung fehlgeschlagen:', err); }
+        } else {
+          try { localStorage.removeItem(DRAFT_KEY); } catch { /* */ }
+        }
+      })();
+    } catch { /* localStorage gesperrt o.ä. — kein Entwurf, kein Drama */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditMode]);
+  // Autosave: laeuft nach JEDEM Render, der Timer wird dabei neu aufgezogen —
+  // gespeichert wird also ~1,5 s nach der letzten Aenderung (Tipp-Pause).
+  // Kein Deps-Array: bei ~200 State-Variablen waere jede Liste sofort veraltet.
+  React.useEffect(() => {
+    if (isEditMode || submitted) return undefined;
+    const t = setTimeout(() => {
+      try {
+        const hasSubstance = title.trim().length > 0 || description.trim().length > 0 || subEvents.length > 0;
+        if (!hasSubstance) return;
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({ savedAt: Date.now(), data: buildDraftPayload() }));
+      } catch { /* Quota voll / Privacy-Modus — Autosave ist best-effort */ }
+    }, 1500);
+    return () => clearTimeout(t);
+  });
+  // Nach erfolgreichem Anlegen ist der Entwurf erledigt.
+  React.useEffect(() => {
+    if (submitted && !isEditMode) {
+      try { localStorage.removeItem(DRAFT_KEY); } catch { /* */ }
+    }
+  }, [submitted, isEditMode]);
 
   /**
    * v29.57 — Unveränderte Sub-Events beim Speichern überspringen.
@@ -12730,7 +12888,7 @@ export default function EventCreationPage(): React.ReactElement {
                           Feld — der Wert wird aus dem Termin-Datum berechnet,
                           eine Eingabe hier wuerde beim naechsten Render still
                           ueberschrieben. */}
-                      {subEventCalendar && (regRuleEnabled || cancelRuleEnabled) && (
+                      {(regRuleEnabled || cancelRuleEnabled) && (
                         <p style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: -6, marginBottom: 10, lineHeight: 1.5 }}>
                           {isDe
                             ? <>Rollierende Regel der Klammer aktiv — {regRuleEnabled && cancelRuleEnabled ? 'beide Fristen werden' : (regRuleEnabled ? '„Anmeldung bis" wird' : '„Abmeldung bis" wird')} automatisch aus dem Termin-Datum berechnet (einstellbar in Schritt 4 bei der Klammer).</>
@@ -12738,7 +12896,7 @@ export default function EventCreationPage(): React.ReactElement {
                         </p>
                       )}
                       <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                        <div className="form-group" style={{ marginBottom: 0, ...((subEventCalendar && regRuleEnabled) ? { opacity: 0.55, pointerEvents: 'none' as const, userSelect: 'none' as const } : {}) }}>
+                        <div className="form-group" style={{ marginBottom: 0, ...(regRuleEnabled ? { opacity: 0.55, pointerEvents: 'none' as const, userSelect: 'none' as const } : {}) }}>
                           {/* v29.75: gleicher Wortlaut wie auf der Klammer. */}
                           <label className="form-label">{isDe ? 'Anmeldung bis' : 'Registration until'}</label>
                           <DatePicker
@@ -12763,7 +12921,7 @@ export default function EventCreationPage(): React.ReactElement {
                             autoComplete="off"
                           />
                         </div>
-                        <div className="form-group" style={{ marginBottom: 0, ...((subEventCalendar && cancelRuleEnabled) ? { opacity: 0.55, pointerEvents: 'none' as const, userSelect: 'none' as const } : {}) }}>
+                        <div className="form-group" style={{ marginBottom: 0, ...(cancelRuleEnabled ? { opacity: 0.55, pointerEvents: 'none' as const, userSelect: 'none' as const } : {}) }}>
                           <label className="form-label">{isDe ? 'Abmeldung bis' : 'Cancellation until'}</label>
                           <DatePicker
                             selected={se.lastDeregisterDate ? new Date(se.lastDeregisterDate) : null}
@@ -13160,7 +13318,8 @@ export default function EventCreationPage(): React.ReactElement {
                       {isDe ? `Aktuell gilt für alle ${subEvents.length} ${term}: ` : `Currently, for all ${subEvents.length} ${term}: `}
                     </strong>
                     <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
-                      {subEventCalendar && (
+                      {/* v29.77: „Anmeldung ab" gilt fuer ALLE Sub-Event-Events. */}
+                      {(
                         <li>{openRuleEnabled
                           ? (isDe
                             ? <>Anmeldung ab: <strong>{openRuleDays} {openRuleDays === 1 ? 'Tag' : 'Tage'} vor {openRuleMode === 'week' ? 'dem Montag der jeweiligen Woche' : 'dem jeweiligen Termin'}</strong> (rollierend)</>
@@ -13173,7 +13332,7 @@ export default function EventCreationPage(): React.ReactElement {
                               ? <>Anmeldung ab: <strong>sofort</strong></>
                               : <>Registration opens: <strong>immediately</strong></>)}</li>
                       )}
-                      <li>{(subEventCalendar && regRuleEnabled)
+                      <li>{regRuleEnabled
                         ? (isDe
                           ? <>Anmeldung bis: <strong>{regRuleAmount} {regRuleUnit === 'hours' ? (regRuleAmount === 1 ? 'Stunde' : 'Stunden') : (regRuleAmount === 1 ? 'Tag' : 'Tage')} vor dem jeweiligen Termin</strong> (rollierend)</>
                           : <>Registration until: <strong>{regRuleAmount} {regRuleUnit === 'hours' ? 'hour(s)' : 'day(s)'} before each date</strong> (rolling)</>)
@@ -13182,7 +13341,7 @@ export default function EventCreationPage(): React.ReactElement {
                           : (isDe ? <>Anmeldung bis: <strong>je {childTermSingular || 'Sub-Event'}</strong> geregelt (keine gemeinsame Frist gesetzt)</> : <>Registration until: <strong>per {childTermSingular || 'sub-event'}</strong> (no shared deadline set)</>)}</li>
                       <li>{!userCancelAllowed
                         ? (isDe ? <>Abmeldung: <strong>deaktiviert</strong> — abmelden können nur Organizer und Admins</> : <>Cancellation: <strong>disabled</strong> — only organizers and admins can cancel</>)
-                        : (subEventCalendar && cancelRuleEnabled)
+                        : cancelRuleEnabled
                           ? (isDe
                             ? <>Abmeldung bis: <strong>{cancelRuleAmount} {cancelRuleUnit === 'hours' ? (cancelRuleAmount === 1 ? 'Stunde' : 'Stunden') : (cancelRuleAmount === 1 ? 'Tag' : 'Tage')} vor dem jeweiligen Termin</strong> (rollierend)</>
                             : <>Cancellation until: <strong>{cancelRuleAmount} {cancelRuleUnit === 'hours' ? 'hour(s)' : 'day(s)'} before each date</strong> (rolling)</>)
@@ -13222,7 +13381,12 @@ export default function EventCreationPage(): React.ReactElement {
                   und gehoert neben Anmelde- und Abmeldefrist. Nur im
                   Kalender-Modus sinnvoll, weil die Anmeldeseite sie auf den
                   Tages-Kacheln umsetzt (v29.67/v29.72). */}
-              {subEventsOptIn && subEventCalendar && (
+              {/* v29.77: „Anmeldung ab" steht IMMER hier — bei Sub-Event-Events
+                  als feste/rollierende Freischalt-Regel, bei reinen Haupt-
+                  events als das Aktivierungsdatum aus den Grundlagen (bewusst
+                  doppelt angeboten, damit die Sektion immer die volle Logik
+                  „Anmeldung ab / Anmeldung bis / Abmeldung bis" zeigt). */}
+              {subEventsOptIn ? (
                 <div style={{ margin: '0 0 14px', padding: '10px 12px', borderRadius: 8, background: '#fff', border: '1px solid var(--dex-gray-200)' }}>
                   {/* v29.75: User-Wortlaut — die drei Felder heissen
                       „Anmeldung ab" / „Anmeldung bis" / „Abmeldung bis". */}
@@ -13308,6 +13472,34 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                   )}
                 </div>
+              ) : (
+                <div style={{ margin: '0 0 14px', padding: '10px 12px', borderRadius: 8, background: '#fff', border: '1px solid var(--dex-gray-200)' }}>
+                  <label className="form-label">{isDe ? 'Anmeldung ab' : 'Registration opens'}</label>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', margin: '0 0 8px', lineHeight: 1.5 }}>
+                    {isDe
+                      ? <>Dasselbe Feld wie die <strong>Aktivierung in Schritt 1</strong> (bewusst an beiden Stellen): Bis zu diesem Zeitpunkt ist das Event nicht anmeldbar — je nach Vorschau-Einstellung unsichtbar oder als Vorschau mit dem Hinweis &bdquo;Anmeldung ab …&ldquo;. Leer = sofort anmeldbar.</>
+                      : <>The same field as the <strong>activation in step 1</strong> (deliberately in both places): until this moment the event cannot be booked — invisible or shown as a preview with a &bdquo;registration opens …&ldquo; note, depending on the preview setting. Empty = open immediately.</>}
+                  </p>
+                  <div style={{ maxWidth: 340 }}>
+                    <DatePicker
+                      selected={activeFrom ? new Date(activeFrom) : null}
+                      onChange={(date: Date | null) => setActiveFrom(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
+                      showTimeSelect
+                      timeFormat="HH:mm"
+                      timeIntervals={15}
+                      timeCaption="Uhrzeit"
+                      dateFormat="dd.MM.yyyy, HH:mm"
+                      locale="de"
+                      placeholderText={isDe ? 'Optional — leer = sofort anmeldbar' : 'Optional — empty = open immediately'}
+                      className="form-input"
+                      wrapperClassName="dex-datepicker-wrapper"
+                      calendarClassName="dex-datepicker-calendar"
+                      popperPlacement="bottom-start"
+                      isClearable
+                      autoComplete="off"
+                    />
+                  </div>
+                </div>
               )}
               <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
@@ -13347,11 +13539,12 @@ export default function EventCreationPage(): React.ReactElement {
                       </>
                     )} />
                   </label>
-                  {/* v29.76: Entweder festes Datum ODER rollierend je Termin
-                      (nur Kalender-Modus). Beim Umschalten auf rollierend wird
-                      das feste Datum geleert — zwei gleichzeitig wirkende
-                      Fristen wuerde niemand mehr nachvollziehen koennen. */}
-                  {subEventCalendar && (
+                  {/* v29.76: Entweder festes Datum ODER rollierend je Termin.
+                      Beim Umschalten auf rollierend wird das feste Datum
+                      geleert — zwei gleichzeitig wirkende Fristen wuerde
+                      niemand mehr nachvollziehen koennen.
+                      v29.77: fuer ALLE Sub-Event-Events, nicht nur Kalender. */}
+                  {subEventsOptIn && (
                     <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.85rem', marginBottom: 8 }}>
                       <input
                         type="checkbox"
@@ -13367,7 +13560,7 @@ export default function EventCreationPage(): React.ReactElement {
                       <span>{isDe ? 'Rollierend je Termin' : 'Rolling per date'}</span>
                     </label>
                   )}
-                  {(subEventCalendar && regRuleEnabled) && (
+                  {(subEventsOptIn && regRuleEnabled) && (
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.88rem' }}>
                         {isDe ? 'Anmeldung bis' : 'Registration until'}
@@ -13380,14 +13573,15 @@ export default function EventCreationPage(): React.ReactElement {
                           onChange={e => { const v = parseInt(e.target.value, 10); setRegRuleAmount(isFinite(v) && v > 0 ? Math.min(v, 365) : 1); }}
                           style={{ width: 76, padding: '4px 8px', textAlign: 'center' }}
                         />
+                        {/* v29.77: Einheit im Singular, wenn die Zahl 1 ist. */}
                         <select
                           className="form-input"
                           value={regRuleUnit}
                           onChange={e => setRegRuleUnit(e.target.value === 'hours' ? 'hours' : 'days')}
                           style={{ width: 'auto', padding: '4px 8px' }}
                         >
-                          <option value="days">{isDe ? 'Tage' : 'days'}</option>
-                          <option value="hours">{isDe ? 'Stunden' : 'hours'}</option>
+                          <option value="days">{isDe ? (regRuleAmount === 1 ? 'Tag' : 'Tage') : (regRuleAmount === 1 ? 'day' : 'days')}</option>
+                          <option value="hours">{isDe ? (regRuleAmount === 1 ? 'Stunde' : 'Stunden') : (regRuleAmount === 1 ? 'hour' : 'hours')}</option>
                         </select>
                         {isDe ? 'vor dem jeweiligen Termin' : 'before each date'}
                       </div>
@@ -13398,7 +13592,7 @@ export default function EventCreationPage(): React.ReactElement {
                       </p>
                     </div>
                   )}
-                  {!(subEventCalendar && regRuleEnabled) && (
+                  {!(subEventsOptIn && regRuleEnabled) && (
                   <DatePicker
                     // v28.20: Im Klammer-Modus ist die Frist jetzt EDITIERBAR
                     // (eigener State klammerDeadline, Piggyback) — gesetzt +
@@ -13504,7 +13698,7 @@ export default function EventCreationPage(): React.ReactElement {
                     )} />
                   </label>
                   {/* v29.76: wie „Anmeldung bis" — festes Datum ODER rollierend. */}
-                  {subEventCalendar && (
+                  {subEventsOptIn && (
                     <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.85rem', marginBottom: 8 }}>
                       <input
                         type="checkbox"
@@ -13518,7 +13712,7 @@ export default function EventCreationPage(): React.ReactElement {
                       <span>{isDe ? 'Rollierend je Termin' : 'Rolling per date'}</span>
                     </label>
                   )}
-                  {(subEventCalendar && cancelRuleEnabled) && (
+                  {(subEventsOptIn && cancelRuleEnabled) && (
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.88rem' }}>
                         {isDe ? 'Abmeldung bis' : 'Cancellation until'}
@@ -13531,16 +13725,27 @@ export default function EventCreationPage(): React.ReactElement {
                           onChange={e => { const v = parseInt(e.target.value, 10); setCancelRuleAmount(isFinite(v) && v > 0 ? Math.min(v, 365) : 1); }}
                           style={{ width: 76, padding: '4px 8px', textAlign: 'center' }}
                         />
+                        {/* v29.77: Einheit im Singular, wenn die Zahl 1 ist. */}
                         <select
                           className="form-input"
                           value={cancelRuleUnit}
                           onChange={e => setCancelRuleUnit(e.target.value === 'hours' ? 'hours' : 'days')}
                           style={{ width: 'auto', padding: '4px 8px' }}
                         >
-                          <option value="days">{isDe ? 'Tage' : 'days'}</option>
-                          <option value="hours">{isDe ? 'Stunden' : 'hours'}</option>
+                          <option value="days">{isDe ? (cancelRuleAmount === 1 ? 'Tag' : 'Tage') : (cancelRuleAmount === 1 ? 'day' : 'days')}</option>
+                          <option value="hours">{isDe ? (cancelRuleAmount === 1 ? 'Stunde' : 'Stunden') : (cancelRuleAmount === 1 ? 'hour' : 'hours')}</option>
                         </select>
-                        {isDe ? 'vor dem jeweiligen Termin' : 'before each date'}
+                        {/* v29.77: Abmelden darf auch NACH dem Termin-Beginn
+                            noch offen sein — Richtung waehlbar. */}
+                        <select
+                          className="form-input"
+                          value={cancelRuleAfter ? 'after' : 'before'}
+                          onChange={e => setCancelRuleAfter(e.target.value === 'after')}
+                          style={{ width: 'auto', padding: '4px 8px' }}
+                        >
+                          <option value="before">{isDe ? 'vor dem jeweiligen Termin' : 'before each date'}</option>
+                          <option value="after">{isDe ? 'nach dem jeweiligen Termin' : 'after each date starts'}</option>
+                        </select>
                       </div>
                       <p style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', margin: '6px 0 0' }}>
                         {isDe
@@ -13549,7 +13754,7 @@ export default function EventCreationPage(): React.ReactElement {
                       </p>
                     </div>
                   )}
-                  {!(subEventCalendar && cancelRuleEnabled) && (
+                  {!(subEventsOptIn && cancelRuleEnabled) && (
                   <DatePicker
                     selected={lastDeregisterDate ? new Date(lastDeregisterDate) : null}
                     onChange={(date: Date | null) => {
