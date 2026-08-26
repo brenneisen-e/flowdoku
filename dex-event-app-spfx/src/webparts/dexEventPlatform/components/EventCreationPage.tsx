@@ -507,9 +507,24 @@ export default function EventCreationPage(): React.ReactElement {
   const [visAllSubs, setVisAllSubs] = React.useState<boolean>(() => {
     try { return JSON.parse(editEvent?.emailTemplateOverrides || '{}')._visAllSubs === true; } catch { return false; }
   });
-  const visAllSubsPiggyback = (): Record<string, unknown> => (
-    (visAllSubs && subEventsOptIn) ? { _visAllSubs: true } : {}
-  );
+  // v30.7: Der Haken ging beim Speichern verloren (User-Meldung: gesetzt,
+  // gespeichert, beim Wieder-Öffnen weg). Zwei Absicherungen: (1) Das
+  // fruehere `&& subEventsOptIn`-Gate entfaellt — ein gesetzter Haken wird
+  // IMMER geschrieben (ohne Sub-Events wirkt er schlicht nicht). (2) Solange
+  // der Organizer den Haken in DIESER Sitzung nicht angefasst hat, wird der
+  // Server-Stand weitergetragen — selbst wenn der State-Init ihn (z.B. durch
+  // einen unter Drosselung veralteten editEvent) nicht mitbekommen hat,
+  // loescht ein argloser Save ihn dann nicht mehr.
+  const visAllSubsTouchedRef = React.useRef(false);
+  const visAllSubsPiggyback = (): Record<string, unknown> => {
+    if (visAllSubs) return { _visAllSubs: true };
+    if (!visAllSubsTouchedRef.current) {
+      try {
+        if (JSON.parse(editEvent?.emailTemplateOverrides || '{}')._visAllSubs === true) return { _visAllSubs: true };
+      } catch { /* */ }
+    }
+    return {};
+  };
   // v30.5: Alles AUSSER relevant/sendMode/fields (Versand-Historie, Stempel,
   // Snapshots, Abschluss durch F&A) pflegen die F&A-Flows über
   // patchEventOverridesValue — der Wizard darf diese Schlüssel beim
@@ -3769,7 +3784,12 @@ export default function EventCreationPage(): React.ReactElement {
       const subOutlookBodyRaw = (typeof draft.outlookBody === 'string' && draft.outlookBody !== '') ? draft.outlookBody : '';
       const subOutlookHeading = draft.outlookHeading || draft.title || '';
       const subOutlookSub = draft.outlookSubheading || '';
-      const subOutlookSubject = (draft.outlookSubject || '').trim();
+      // v30.7: Kalender-Tage heissen „Di. 01.09.2026" — ohne eigenen Betreff
+      // fiel der Outlook-Flow auf diesen Tages-Titel zurueck, und im Kalender
+      // der Teilnehmer stand nur das Datum (das der Termin ohnehin traegt).
+      // Default ist deshalb der NAME DES HAUPTEVENTS; ein im Kommunikations-
+      // Reiter gesetzter eigener Betreff gewinnt weiterhin.
+      const subOutlookSubject = (draft.outlookSubject || '').trim() || (subEventCalendar ? title.trim() : '');
       // v28.29: eigenes Bild des Sub-Events gewinnt, sonst erbt es das
       // Kopfbild des Hauptevents (statt still auf den Orb zu fallen).
       // v29.20 (Audit): auch das EIGENE Sub-Logo verkleinern — der
@@ -13460,7 +13480,7 @@ export default function EventCreationPage(): React.ReactElement {
                     <input
                       type="checkbox"
                       checked={visAllSubs}
-                      onChange={e => setVisAllSubs(e.target.checked)}
+                      onChange={e => { visAllSubsTouchedRef.current = true; setVisAllSubs(e.target.checked); }}
                       style={{ width: 18, height: 18, marginTop: 1, flexShrink: 0, cursor: 'pointer', accentColor: 'var(--dex-green, #86bc25)' }}
                     />
                     <span style={{ fontSize: '0.9rem' }}>
