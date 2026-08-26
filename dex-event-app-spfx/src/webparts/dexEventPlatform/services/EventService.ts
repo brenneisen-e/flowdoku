@@ -23,6 +23,8 @@ import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions, SPHttpClientC
 // damit durch den 429-Retry.
 import { withThrottleRetry } from '../utils/spThrottle';
 import * as emailQueue from './events/emailQueue';
+import * as profileData from './events/profileData';
+import * as outlookQueue from './events/outlookQueue';
 import * as hotelPlanning from './events/hotelPlanning';
 import * as idReorder from './events/idReorder';
 import * as changeLog from './events/changeLog';
@@ -613,502 +615,49 @@ export class EventService {
   }
 
   // ==================== DEX_Outlook Liste ====================
+  // v30.6 (Modularisierung Stufe 2, Tranche 2): Implementierung in
+  // services/events/outlookQueue.ts — hier nur Delegations-Stubs.
 
-  /**
-   * Outlook-Termin-Queue-Liste erstellen falls nicht vorhanden.
-   * Power Automate reagiert auf neue Einträge und lädt Teilnehmer
-   * zum Outlook-Termin ein oder aus. Der Flow holt sich alle Event-Details
-   * (Titel, Datum, Ort, CalendarLink) aus der DEX_Events-Liste via EventId.
-   *
-   * Spalten:
-   * - Title: Kurzbeschreibung (z.B. "Einladung: B2Run")
-   * - Attendee: E-Mail-Adresse des Teilnehmers
-   * - EventId: ID des Events in DEX_Events (Referenz)
-   * - ActionType: Einladen, Ausladen
-   * - Status: Pending, Sent, Failed
-   * - SentDate: Wann wurde die Aktion ausgeführt
-   */
   public async ensureOutlookList(): Promise<void> {
-    const listName = 'DEX_Outlook';
-    const exists = await this.listExists(listName);
-    if (exists) return;
-
-    await this._post(`${this.siteUrl}/_api/web/lists`, {
-      '__metadata': { 'type': 'SP.List' },
-      'Title': listName,
-      'Description': 'Outlook-Termin-Queue: Power Automate lädt Teilnehmer ein/aus',
-      'BaseTemplate': 100,
-      'AllowContentTypes': false,
-    });
-
-    const fields: Array<{ title: string; type: number; choices?: string[]; metaType?: string }> = [
-      { title: 'Attendee', type: 2 },
-      { title: 'EventId', type: 2 },
-      // ActionType:
-      //  - Einladen / Ausladen: einzelnen Attendee zum Outlook-Termin hinzufügen/entfernen
-      //  - UpdateEvent: Titel/Start/Ende aktualisieren (kein Attendee)
-      //  - DeleteEvent: kompletten Kalender-Termin löschen (wird beim Löschen eines Events
-      //    aus der App abgesetzt, inkl. CalendarLink damit der Flow nicht auf DEX_Events
-      //    angewiesen ist - das Event-Item wird direkt danach aus DEX_Events gelöscht).
-      { title: 'ActionType', type: 6, choices: ['Einladen', 'Ausladen', 'UpdateEvent', 'DeleteEvent'], metaType: 'SP.FieldChoice' },
-      { title: 'Status', type: 6, choices: ['Pending', 'Sent', 'Failed'], metaType: 'SP.FieldChoice' },
-      { title: 'SentDate', type: 4 },
-      // CalendarLink (iCalUId) - nur für DeleteEvent nötig, damit der Flow das Outlook-
-      // Event auch dann noch finden kann, wenn das DEX_Events-Item schon gelöscht wurde.
-      { title: 'CalendarLink', type: 3 },
-    ];
-
-    for (const f of fields) {
-      const payload: Record<string, unknown> = {
-        '__metadata': { 'type': f.metaType || 'SP.Field' },
-        'Title': f.title,
-        'FieldTypeKind': f.type,
-        'Required': false,
-      };
-      if (f.choices) {
-        payload['Choices'] = { 'results': f.choices };
-      }
-      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
-    }
-
-    await this.configureDefaultView(listName, [
-      'Attendee', 'EventId', 'SubEventId', 'ActionType', 'Status', 'SentDate', 'CalendarLink',
-    ]);
-
-    await this.setQueueListPermissions(listName);
+    return outlookQueue.ensureOutlookList(this);
   }
 
-  // v18.34: pro App-Session je Event nur einmal den OutlookLocation-Backfill
-  // versuchen — verhindert N Roundtrips bei N Einladen-Calls eines Events.
-  private _outlookLocationBackfilled = new Set<string>();
+  // v18.34: Session-Merker des OutlookLocation-Backfills — Instanz-Zustand,
+  // das Modul liest/setzt ihn ueber svc.
+  public _outlookLocationBackfilled = new Set<string>();
 
-  /**
-   * v18.34: Backfill für Bestands-Events. Stellt sicher, dass das DEX_Events-Item
-   * eine gefüllte OutlookLocation hat, BEVOR der Flow den Termin anlegt/aktualisiert.
-   * Neue Events bekommen OutlookLocation bereits beim Anlegen/Bearbeiten — alte
-   * (vor v18.34 erstellte) Events hätten sonst eine leere Spalte.
-   */
-  private async backfillOutlookLocation(eventId: string): Promise<void> {
-    if (!eventId || this._outlookLocationBackfilled.has(eventId)) return;
-    this._outlookLocationBackfilled.add(eventId);
-    try {
-      const numId = Number(eventId);
-      if (isNaN(numId)) return;
-      const ev = await this.getEvent(numId);
-      if (!ev) return;
-      if (ev.OutlookLocation && ev.OutlookLocation.trim() !== '') return; // schon gesetzt
-      const loc = buildOutlookLocation(ev.Location, ev.LocationAddress);
-      if (loc) {
-        await this.updateEvent(numId, { 'OutlookLocation': loc });
-      }
-    } catch { /* best effort — Backfill darf den Queue-Eintrag nie blockieren */ }
-  }
-
-  /**
-   * v28.37: Wer hat für dieses Event schon eine Einladungsmail bekommen?
-   *
-   * Liest die DEX_Emails-Zeilen vom Typ `Einladung` zum Event und sammelt
-   * Empfaenger aus `Recipient` und `Bcc` (Massenversand läuft in 450er-Chunks
-   * über Bcc, im To steht dann nur der ausloesende Organizer). Adressen
-   * lowercase, dedupliziert.
-   *
-   * WICHTIG für den Aufrufer: Alte DEX_Emails-Zeilen werden nach rund einem
-   * Monat archiviert. Für länger zurückliegende Versaende ist die Liste
-   * daher unvollstaendig — das Ergebnis taugt zum Nachfassen innerhalb einer
-   * laufenden Einladungsrunde, nicht als lueckenlose Historie.
-   */
   public async getInvitedRecipients(eventId: string | number): Promise<string[]> {
-    const id = String(eventId || '').trim();
-    if (!id) return [];
-    const out = new Set<string>();
-    let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items`
-      + `?$select=Recipient,Bcc&$filter=EmailType eq 'Einladung' and EventId eq '${id.replace(/'/g, "''")}'&$top=500`;
-    let guard = 0;
-    while (url && guard < 20) {
-      guard++;
-      let resp: SPHttpClientResponse;
-      try { resp = await this._sp.get(url, SPHttpClient.configurations.v1); }
-      catch { break; }
-      if (!resp.ok) break;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let data: any;
-      try { data = await resp.json(); } catch { break; }
-      const items = data.value || data.d?.results || [];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const it of items as any[]) {
-        const raw = `${it.Recipient || ''};${it.Bcc || ''}`;
-        for (const part of raw.split(/[;,]/)) {
-          const e = (part || '').trim().toLowerCase();
-          if (e.indexOf('@') > 0) out.add(e);
-        }
-      }
-      url = data['odata.nextLink'] || data['@odata.nextLink'] || (data.d && data.d.__next) || null;
-    }
-    return Array.from(out);
+    return outlookQueue.getInvitedRecipients(this, eventId);
   }
 
-  /**
-   * Outlook-Termin-Einladung in die Queue eintragen.
-   * Flow holt Event-Details (Datum, Ort, CalendarLink) aus DEX_Events via EventId.
-   */
-  public async queueOutlookEvent(
-    attendee: string,
-    eventId: string,
-    eventTitle: string,
-    actionType: 'Einladen' | 'Ausladen' | 'UpdateEvent'
-  ): Promise<boolean> {
-    try {
-      // v18.34: OutlookLocation für Bestands-Events nachziehen (einmal pro Event/Session).
-      await this.backfillOutlookLocation(eventId);
-      const response = await this._post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Outlook')/items`,
-        {
-          '__metadata': { 'type': 'SP.Data.DEX_x005f_OutlookListItem' },
-          'Title': `${actionType}: ${eventTitle}`,
-          'Attendee': attendee,
-          'EventId': eventId,
-          'ActionType': actionType,
-          'Status': 'Pending',
-        }
-      );
-      return response.ok;
-    } catch {
-      return false;
-    }
+  public async queueOutlookEvent(attendee: string, eventId: string, eventTitle: string, actionType: 'Einladen' | 'Ausladen' | 'UpdateEvent'): Promise<boolean> {
+    return outlookQueue.queueOutlookEvent(this, attendee, eventId, eventTitle, actionType);
   }
 
-  /**
-   * DeleteEvent in die DEX_Outlook-Queue eintragen. Wird vom deleteEvent-Flow
-   * aufgerufen, BEVOR das DEX_Events-Item gelöscht wird. Der DEX_Outlook_Einladungen-
-   * Flow findet den Outlook-Termin über CalendarLink (iCalUId) und löscht ihn.
-   * Attendee bleibt leer - DeleteEvent wirkt event-weit.
-   */
-  public async queueOutlookDeleteEvent(
-    eventId: string,
-    eventTitle: string,
-    calendarLink: string
-  ): Promise<boolean> {
-    try {
-      const response = await this._post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Outlook')/items`,
-        {
-          '__metadata': { 'type': 'SP.Data.DEX_x005f_OutlookListItem' },
-          'Title': `DeleteEvent: ${eventTitle}`,
-          'Attendee': '',
-          'EventId': eventId,
-          'ActionType': 'DeleteEvent',
-          'Status': 'Pending',
-          'CalendarLink': calendarLink,
-        }
-      );
-      return response.ok;
-    } catch {
-      return false;
-    }
+  public async queueOutlookDeleteEvent(eventId: string, eventTitle: string, calendarLink: string): Promise<boolean> {
+    return outlookQueue.queueOutlookDeleteEvent(this, eventId, eventTitle, calendarLink);
   }
 
-  /**
-   * Liefert alle Attendees, die den Outlook-Kalendertermin abgelehnt haben.
-   *
-   * Liest den Termin im Postfach der Shared Mailbox `no_reply.events@deloitte.de`
-   * via Microsoft Graph. Der Admin-User braucht dafür delegate/shared access
-   * auf das Postfach (Mailbox-Permission) + die SPFx-App muss `Calendars.Read.Shared`
-   * im Admin Center genehmigt bekommen.
-   *
-   * Holt `OutlookEventId` + `CalendarLink` via `GET` auf DEX_Events/{id}. Primärer
-   * Lookup des Outlook-Events über `OutlookEventId`. Wenn leer (alte Events):
-   * Fallback über `iCalUId` per `$filter`.
-   *
-   * Rückgabe-Status:
-   * - `ok: true`, `attendees: [...]` - Termin gefunden, Declines extrahiert
-   * - `ok: false`, `reason: 'no-pointer'` - DEX_Events hat weder OutlookEventId noch CalendarLink
-   * - `ok: false`, `reason: 'not-found'` - Outlook-Termin existiert nicht (mehr)
-   * - `ok: false`, `reason: 'forbidden'` - Admin hat keine Mailbox-Permission oder Tenant-Admin hat Calendars.Read.Shared nicht genehmigt
-   * - `ok: false`, `reason: 'error'` - unerwarteter Fehler
-   */
-  public async getDeclinedAttendees(
-    eventId: number | string
-  ): Promise<DeclineCheckResult> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ctx = this.context as any;
-    if (!ctx.msGraphClientFactory) return { ok: false, attendees: [], reason: 'error', message: 'Graph-Client nicht verfügbar.' };
-
-    // 1. OutlookEventId + CalendarLink aus DEX_Events holen. Nutzt den bewährten
-    // `getEvent()`-Path (gleiche Abfrage wie der Rest der App). Direktes
-    // $select=OutlookEventId,CalendarLink hatte in v5.18 zu leeren Strings
-    // geführt obwohl die Spalten in SharePoint gefüllt waren.
-    let outlookEventId = '';
-    let calendarLink = '';
-    let loadedEvent = false;
-    try {
-      const numericId = Number(eventId);
-      const spEvent = await this.getEvent(numericId);
-      if (spEvent) {
-        loadedEvent = true;
-        outlookEventId = String(spEvent.OutlookEventId || '');
-        calendarLink = String(spEvent.CalendarLink || '');
-        console.warn('[DEX] getDeclinedAttendees: Event geladen', {
-          id: numericId,
-          outlookEventIdLen: outlookEventId.length,
-          calendarLinkLen: calendarLink.length,
-        });
-      } else {
-        console.warn('[DEX] getDeclinedAttendees: getEvent() lieferte null', { eventId });
-      }
-    } catch (err) {
-      console.warn('[DEX] getDeclinedAttendees: getEvent() warf', err);
-    }
-    if (!outlookEventId && !calendarLink) {
-      return {
-        ok: false,
-        attendees: [],
-        reason: 'no-pointer',
-        message: loadedEvent
-          ? `Event-Item (Id=${eventId}) enthält weder OutlookEventId noch CalendarLink.`
-          : `Event-Item (Id=${eventId}) konnte nicht aus DEX_Events geladen werden (403/404?). Details siehe Browser-Console.`,
-      };
-    }
-
-    // 2. Outlook-Termin via Graph laden
-    const mailbox = 'no_reply.events@deloitte.de';
-    try {
-      const client = await ctx.msGraphClientFactory.getClient('3');
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let ev: any = null;
-      if (outlookEventId) {
-        ev = await client.api(`/users/${mailbox}/events/${outlookEventId}`)
-          .select('id,subject,attendees')
-          .get();
-      } else {
-        const escaped = calendarLink.replace(/'/g, "''");
-        const resp = await client.api(`/users/${mailbox}/events`)
-          .filter(`iCalUId eq '${escaped}'`)
-          .select('id,subject,attendees')
-          .top(1)
-          .get();
-        ev = (resp?.value || [])[0] || null;
-      }
-      if (!ev) return { ok: false, attendees: [], reason: 'not-found' };
-      if (!Array.isArray(ev.attendees)) return { ok: true, attendees: [] };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const declined = ev.attendees
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .filter((a: any) => a?.status?.response === 'declined')
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map((a: any) => ({
-          email: String(a?.emailAddress?.address || '').toLowerCase(),
-          name: String(a?.emailAddress?.name || ''),
-        }))
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .filter((a: any) => a.email);
-      return { ok: true, attendees: declined };
-    } catch (err) {
-      console.warn('[DEX] getDeclinedAttendees failed:', err);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const status = (err as any)?.statusCode || (err as any)?.status;
-      if (status === 403 || status === 401) return { ok: false, attendees: [], reason: 'forbidden' };
-      if (status === 404) return { ok: false, attendees: [], reason: 'not-found' };
-      return { ok: false, attendees: [], reason: 'error', message: err instanceof Error ? err.message : String(err) };
-    }
+  public async getDeclinedAttendees(eventId: number | string): Promise<DeclineCheckResult> {
+    return outlookQueue.getDeclinedAttendees(this, eventId);
   }
 
-  /**
-   * v22.7: Prüft per Microsoft Graph, ob die übergebenen (Deloitte-)E-Mail-
-   * Adressen noch zu einem aktiven Konto gehören. Liefert die Liste der
-   * Adressen, zu denen KEIN aktives Konto gefunden wurde — die Person hat
-   * womöglich das Unternehmen verlassen oder das Konto ist deaktiviert.
-   *
-   * - Nur @deloitte-Adressen werden geprüft; externe/Nicht-Deloitte-Adressen
-   *   werden übersprungen (nicht zuverlässig prüfbar) und nie gemeldet.
-   * - Batches von je 8 Adressen pro Graph-Request (mail/UPN-OR-Filter).
-   * - Best-effort: nur Adressen aus ERFOLGREICH abgefragten Batches können
-   *   als inaktiv gemeldet werden — fehlgeschlagene Batches erzeugen keinen
-   *   Fehlalarm. `ok=false`, wenn gar nichts geprüft werden konnte.
-   */
-  public async checkAccountsActive(
-    emails: string[]
-  ): Promise<{ ok: boolean; inactive: string[] }> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ctx = this.context as any;
-    if (!ctx.msGraphClientFactory) return { ok: false, inactive: [] };
-    const candidates = Array.from(new Set(
-      emails
-        .map(e => (e || '').trim().toLowerCase())
-        .filter(e => /@(.*\.)?deloitte\.(de|com)$/i.test(e))
-    ));
-    if (candidates.length === 0) return { ok: true, inactive: [] };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let client: any;
-    try {
-      client = await ctx.msGraphClientFactory.getClient('3');
-    } catch {
-      return { ok: false, inactive: [] };
-    }
-    const activeSet = new Set<string>();
-    const checkedSet = new Set<string>();
-    const esc = (s: string): string => s.replace(/'/g, "''");
-    // v24.34 HOTFIX: Graph erlaubt max. 15 OR-Klauseln im $filter. Pro E-Mail
-    // erzeugen wir 2 Klauseln (mail + userPrincipalName) → Batch 8 = 16 Klauseln
-    // → JEDER Batch scheiterte mit HTTP 400. Batch 7 = 14 Klauseln.
-    const BATCH = 7;
-    for (let i = 0; i < candidates.length; i += BATCH) {
-      const batch = candidates.slice(i, i + BATCH);
-      const clauses = batch
-        .map(e => `mail eq '${esc(e)}' or userPrincipalName eq '${esc(e)}'`)
-        .join(' or ');
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const resp: any = await client.api('/users')
-          .filter(`(${clauses})`)
-          .select('mail,userPrincipalName,accountEnabled')
-          .top(999)
-          .get();
-        // Batch gilt als geprüft (egal ob jemand gefunden wurde).
-        for (const e of batch) checkedSet.add(e);
-        const found = (resp?.value || []) as Array<{ mail?: string; userPrincipalName?: string; accountEnabled?: boolean }>;
-        for (const u of found) {
-          if (u.accountEnabled === false) continue; // deaktiviert → zählt als inaktiv
-          if (u.mail) activeSet.add(u.mail.toLowerCase());
-          if (u.userPrincipalName) activeSet.add(u.userPrincipalName.toLowerCase());
-        }
-      } catch (err) {
-        console.warn('[DEX] checkAccountsActive batch failed:', err);
-      }
-    }
-    if (checkedSet.size === 0) return { ok: false, inactive: [] };
-    // v26.42: ZWEITER Durchgang für nicht gefundene Adressen — KONTO-UMBENENNUNG
-    // erkennen (z.B. Heirat: UPN + primäre Mail wechseln auf den neuen Nachnamen,
-    // die ALTE Adresse bleibt als smtp:-Alias am selben, weiterhin AKTIVEN Konto).
-    // Der mail/UPN-Filter oben findet solche Konten nicht → früher Fehlalarm
-    // „hat Deloitte verlassen". proxyAddresses enthält die alte Adresse als Alias.
-    // Best-effort: schlägt die Abfrage fehl (z.B. Berechtigung), bleibt das
-    // bisherige Verhalten — der Durchgang kann Personen nur RETTEN, nie zusätzlich
-    // belasten.
-    const missing = candidates.filter(e => checkedSet.has(e) && !activeSet.has(e));
-    // 2 Klauseln je Adresse (smtp:/SMTP: — der Präfix-Vergleich ist case-sensitiv,
-    // Sekundär-Aliasse tragen 'smtp:', der Primär-Eintrag 'SMTP:') → 7×2 = 14 ≤ 15.
-    for (let i = 0; i < missing.length; i += BATCH) {
-      const batch = missing.slice(i, i + BATCH);
-      const clauses = batch
-        .map(e => `proxyAddresses/any(p: p eq 'smtp:${esc(e)}') or proxyAddresses/any(p: p eq 'SMTP:${esc(e)}')`)
-        .join(' or ');
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const resp: any = await client.api('/users')
-          .header('ConsistencyLevel', 'eventual')
-          .query({ '$count': 'true' })
-          .filter(`(${clauses})`)
-          .select('mail,userPrincipalName,accountEnabled,proxyAddresses')
-          .top(999)
-          .get();
-        const found = (resp?.value || []) as Array<{ mail?: string; userPrincipalName?: string; accountEnabled?: boolean; proxyAddresses?: string[] }>;
-        for (const u of found) {
-          if (u.accountEnabled === false) continue; // wirklich deaktiviert
-          // Alle Aliasse des Kontos als aktiv markieren — darunter die alte Adresse.
-          for (const p of (u.proxyAddresses || [])) {
-            const addr = String(p || '').replace(/^smtps?:/i, '').trim().toLowerCase();
-            if (addr) activeSet.add(addr);
-          }
-          if (u.mail) activeSet.add(u.mail.toLowerCase());
-          if (u.userPrincipalName) activeSet.add(u.userPrincipalName.toLowerCase());
-          console.warn('[DEX] checkAccountsActive: Konto umbenannt (Alias-Treffer), NICHT inaktiv:', u.mail || u.userPrincipalName);
-        }
-      } catch (err) {
-        // 403/400 (fehlende Graph-Berechtigung für proxyAddresses o.ä.) →
-        // keine Rettung möglich, Verhalten wie vor v26.42.
-        console.warn('[DEX] checkAccountsActive proxy-alias pass failed:', err);
-      }
-    }
-    const inactive = candidates.filter(e => checkedSet.has(e) && !activeSet.has(e));
-    return { ok: true, inactive };
+  public async checkAccountsActive(emails: string[]): Promise<{ ok: boolean; inactive: string[] }> {
+    return outlookQueue.checkAccountsActive(this, emails);
   }
 
-  /**
-   * v24.33: Unternehmenszugehörigkeit („Company name" / Graph `companyName`)
-   * des eingeloggten Users via Microsoft Graph. Die SP-UserProfile-Property
-   * „Company" ist im Tenant nicht zuverlässig gefüllt — Graph `/me` schon.
-   */
   public async getMyCompanyViaGraph(): Promise<string> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ctx = this.context as any;
-    if (!ctx.msGraphClientFactory) return '';
-    try {
-      const client = await ctx.msGraphClientFactory.getClient('3');
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const resp: any = await client.api('/me').select('companyName').get();
-      return (resp?.companyName || '').trim();
-    } catch {
-      return '';
-    }
+    return outlookQueue.getMyCompanyViaGraph(this);
   }
 
-  /**
-   * v24.33: Unternehmenszugehörigkeit für mehrere E-Mails via Graph (Batch à 8,
-   * gleiches Muster wie checkAccountsActive). Liefert eine Map
-   * lowercased-E-Mail → companyName. Für den Backfill bestehender Teilnehmer.
-   */
   public async getCompaniesByEmails(emails: string[]): Promise<Record<string, string>> {
-    const out: Record<string, string> = {};
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ctx = this.context as any;
-    if (!ctx.msGraphClientFactory) return out;
-    const candidates = Array.from(new Set(
-      emails.map(e => (e || '').trim().toLowerCase()).filter(e => /@(.*\.)?deloitte\.(de|com)$/i.test(e))
-    ));
-    if (candidates.length === 0) return out;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let client: any;
-    try { client = await ctx.msGraphClientFactory.getClient('3'); } catch { return out; }
-    const esc = (s: string): string => s.replace(/'/g, "''");
-    // v24.34 HOTFIX: Graph erlaubt max. 15 OR-Klauseln im $filter. Pro E-Mail
-    // erzeugen wir 2 Klauseln (mail + userPrincipalName) → Batch 8 = 16 Klauseln
-    // → JEDER Batch scheiterte mit HTTP 400. Batch 7 = 14 Klauseln.
-    const BATCH = 7;
-    for (let i = 0; i < candidates.length; i += BATCH) {
-      const batch = candidates.slice(i, i + BATCH);
-      const clauses = batch.map(e => `mail eq '${esc(e)}' or userPrincipalName eq '${esc(e)}'`).join(' or ');
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const resp: any = await client.api('/users').filter(`(${clauses})`).select('mail,userPrincipalName,companyName').top(999).get();
-        const found = (resp?.value || []) as Array<{ mail?: string; userPrincipalName?: string; companyName?: string }>;
-        for (const u of found) {
-          const comp = (u.companyName || '').trim();
-          if (!comp) continue;
-          if (u.mail) out[u.mail.toLowerCase()] = comp;
-          if (u.userPrincipalName) out[u.userPrincipalName.toLowerCase()] = comp;
-        }
-      } catch (err) {
-        console.warn('[DEX] getCompaniesByEmails batch failed:', err);
-      }
-    }
-    return out;
+    return outlookQueue.getCompaniesByEmails(this, emails);
   }
 
-  /**
-   * v24.33: Trägt die Unternehmenszugehörigkeit für bestehende Teilnehmer einer
-   * Liste nach (Backfill) — lädt alle Zeilen, holt `companyName` via Graph und
-   * setzt `Company` per MERGE, aber nur dort, wo es noch leer ist. Best-effort:
-   * fehlt die Spalte/das Recht, wird die Zeile übersprungen.
-   */
   public async backfillCompanyForList(subsiteUrl: string): Promise<{ updated: number; checked: number }> {
-    let regs: SPRegistration[] = [];
-    try { regs = await this.getAllRegistrations(subsiteUrl); } catch { return { updated: 0, checked: 0 }; }
-    const emails = Array.from(new Set(regs.map(r => (r.ParticipantEmail || '').toLowerCase()).filter(Boolean)));
-    if (emails.length === 0) return { updated: 0, checked: regs.length };
-    const compMap = await this.getCompaniesByEmails(emails);
-    let updated = 0;
-    for (const r of regs) {
-      const comp = compMap[(r.ParticipantEmail || '').toLowerCase()];
-      if (!comp) continue;
-      if ((r.Company || '').trim()) continue; // schon gesetzt
-      if (!r.Id) continue;
-      try {
-        await this._merge(`${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${r.Id})`, { Company: comp });
-        updated++;
-      } catch { /* Spalte evtl. nicht da / keine Rechte — überspringen */ }
-    }
-    return { updated, checked: regs.length };
+    return outlookQueue.backfillCompanyForList(this, subsiteUrl);
   }
+
 
   // ==================== Hotel-Planung / IDReorder / ChangeLog ====================
   // v30.6 (Modularisierung Stufe 2): Implementierungen liegen in
@@ -3652,7 +3201,8 @@ export class EventService {
    *
    * Idempotent: Werte ohne Wrapper bleiben unverändert.
    */
-  private static stripNoteWrapper(value: string | null | undefined): string {
+  // v30.7: public — profileData-Modul nutzt den Wrapper-Strip ebenfalls.
+  public static stripNoteWrapper(value: string | null | undefined): string {
     if (!value) return '';
     let v = value.trim();
     v = v.replace(/^<div\b[^>]*>/i, '');
@@ -9956,498 +9506,39 @@ export class EventService {
   }
 
   // ==================== Profil-Daten ====================
+  // v30.7 (Modularisierung Stufe 2, Tranche 3): Implementierung in
+  // services/events/profileData.ts — hier nur Delegations-Stubs.
 
-  /**
-   * Permission-Check: Darf der aktuell eingeloggte User einen anderen Teilnehmer
-   * registrieren? Wird in registerForEvent() und reactivateRegistration() aufgerufen,
-   * wenn ParticipantEmail !== session-Email.
-   *
-   * Erlaubt wenn (OR):
-   *   - DEX_Roles enthält den User als 'Admin'
-   *   - Der User ist in event.OrganizerEmail für das Event auf der zugehörigen
-   *     Subsite eingetragen (Event-scope Organizer)
-   *   - Der User ist Assistant (JobTitle enthält 'assistant') UND der Target
-   *     ist Partner oder Director (JobTitle enthält 'partner' oder 'director')
-   *
-   * Bei Fehlern lieber konservativ `false` zurückgeben statt durchlassen.
-   */
-  private async canRegisterForOthers(subsiteUrl: string, targetParticipantEmail: string): Promise<boolean> {
-    // v19.6: Mehrere mögliche Identitäten des eingeloggten Users sammeln.
-    // `pageContext.user.email` ist im SharePoint-Mobile-WebView nicht immer
-    // gesetzt bzw. weicht vom in OrganizerEmail gespeicherten SMTP-Wert ab —
-    // deshalb zusätzlich die E-Mail aus dem `loginName` (Claims-Format
-    // `i:0#.f|membership|user@domain`) als Fallback heranziehen.
-    const sessionIdentities = new Set<string>();
-    const rawEmail = (this.context.pageContext.user.email || '').toLowerCase().trim();
-    if (rawEmail) sessionIdentities.add(rawEmail);
-    const loginName = (this.context.pageContext.user.loginName || '').toLowerCase();
-    const loginMatch = loginName.match(/[^|]+@[^|\s]+$/);
-    if (loginMatch) sessionIdentities.add(loginMatch[0].trim());
-    if (sessionIdentities.size === 0) return false;
-    const sessionEmail = rawEmail || Array.from(sessionIdentities)[0];
-    const matchesSession = (emails: string[]): boolean =>
-      emails.some(e => sessionIdentities.has((e || '').toLowerCase().trim()));
-
-    // 1. DEX_Roles prüfen: Admin- ODER Organizer-Rolle haben?
-    //    v19.6 BUG-FIX: Vorher liess dieser Check NUR die Admin-Rolle durch.
-    //    Die Rollenmatrix sieht „Für andere registrieren" generell für
-    //    Organizer vor — deshalb hier Admin UND Organizer akzeptieren.
-    try {
-      const esc = sessionEmail.replace(/'/g, "''");
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=Title eq '${encodeURIComponent(esc)}'&$top=1&$select=Role`,
-        SPHttpClient.configurations.v1
-      );
-      if (resp.ok) {
-        const data = await resp.json();
-        const items = data.value || data.d?.results || [];
-        if (items.length > 0 && (items[0].Role === 'Admin' || items[0].Role === 'IT-Admin' || items[0].Role === 'Organizer')) return true;
-      }
-    } catch { /* ignore - fallback auf weitere Checks */ }
-
-    // 2. Event-Organizer ODER Co-Organizer dieses Events?
-    //    v19.6 BUG-FIX: Vorher wurde NUR `OrganizerEmail` (Haupt-Organizer)
-    //    geprüft — Co-Organizer stehen aber in `EmailTemplateOverrides._coOrganizers`
-    //    und wurden so fälschlich abgelehnt. Zudem war der Note-Strip auf EINE
-    //    `<div>`-Ebene begrenzt und der Split nur auf `;` — bei mehreren
-    //    Organizern (mehrere `<div>`/`<br>` oder Komma-Trennung) schlug der
-    //    Match fehl. Jetzt: HTML robust strippen, an `;`/`,`/Zeilenumbruch
-    //    splitten und Haupt- + Co-Organizer kombiniert gegen ALLE
-    //    Session-Identitäten matchen.
-    try {
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=SubsiteUrl eq '${encodeURIComponent(subsiteUrl.replace(/'/g, "''"))}'&$top=1&$select=OrganizerEmail,EmailTemplateOverrides`,
-        SPHttpClient.configurations.v1
-      );
-      if (resp.ok) {
-        const data = await resp.json();
-        const items = data.value || data.d?.results || [];
-        if (items.length > 0) {
-          const splitEmails = (raw: string | null | undefined): string[] =>
-            (raw || '')
-              .replace(/<br\s*\/?>/gi, ';')
-              .replace(/<\/div>\s*<div[^>]*>/gi, ';')
-              .replace(/<[^>]+>/g, '')
-              .split(/[;,\n\r]+/)
-              .map(s => s.trim().toLowerCase())
-              .filter(Boolean);
-          const mainOrgEmails = splitEmails(items[0].OrganizerEmail);
-          // Co-Organizer aus dem EmailTemplateOverrides-Piggyback `_coOrganizers`.
-          let coOrgEmails: string[] = [];
-          try {
-            const ovRaw = EventService.stripNoteWrapper(items[0].EmailTemplateOverrides) || '{}';
-            const ov = JSON.parse(ovRaw);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const list = (ov as any)._coOrganizers;
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            if (Array.isArray(list)) coOrgEmails = list.map((x: any) => String(x?.email || '').toLowerCase().trim()).filter(Boolean);
-          } catch { /* kein/ungültiges Override-JSON → keine Co-Organizer */ }
-          if (matchesSession([...mainOrgEmails, ...coOrgEmails])) return true;
-        }
-      }
-    } catch { /* ignore */ }
-
-    // 3. Assistant-Ausnahme: User-JobTitle ist eine Assistenz UND Target ist
-    //    Partner/Director.
-    //    v23.9 BUG-FIX: Vorher nur `indexOf('assistant')` — das matcht das
-    //    ENGLISCHE „Assistant", aber NICHT das deutsche „Assistenz" (und auch
-    //    nicht „Assistentin"/„Teamassistenz"). Eine Assistenz mit dem Job-Title
-    //    „Assistenz" fiel deshalb durch und durfte NICHT stellvertretend
-    //    anmelden — die Anmeldung schlug mit der generischen (irreführenden)
-    //    „bereits registriert"-Meldung fehl. Jetzt beide Schreibweisen matchen
-    //    (gleiche Logik wie isEventVisibleForUser).
-    try {
-      const sessionProfile = await this.getCurrentUserProfile();
-      const sessionJt = (sessionProfile.jobTitle || '').toLowerCase();
-      if (sessionJt.indexOf('assisten') >= 0 || sessionJt.indexOf('assistan') >= 0) {
-        const targetProfile = await this.getUserProfileByEmail(targetParticipantEmail);
-        const targetJt = (targetProfile.jobTitle || '').toLowerCase();
-        if (targetJt.indexOf('partner') >= 0 || targetJt.indexOf('director') >= 0) {
-          return true;
-        }
-        // Assistant darf nicht für Non-Partner/Director registrieren
-        return false;
-      }
-    } catch { /* ignore */ }
-
-    return false;
+  public async canRegisterForOthers(subsiteUrl: string, targetParticipantEmail: string): Promise<boolean> {
+    return profileData.canRegisterForOthers(this, subsiteUrl, targetParticipantEmail);
   }
 
-  /**
-   * Profildaten des aktuellen Users laden für die Teilnehmerliste.
-   */
   public async getCurrentUserProfile(): Promise<{ department: string; location: string; jobTitle: string; phone: string; firstName: string; lastName: string; displayName: string; company: string }> {
-    const empty = { department: '', location: '', jobTitle: '', phone: '', firstName: '', lastName: '', displayName: '', company: '' };
-    try {
-      const response = await this._sp.get(
-        `${this.siteUrl}/_api/SP.UserProfiles.PeopleManager/GetMyProperties`,
-        SPHttpClient.configurations.v1
-      );
-      if (!response.ok) return empty;
-
-      const data = await response.json();
-      const props: Array<{ Key: string; Value: string }> = data.UserProfileProperties || [];
-      const get = (key: string): string => {
-        const p = props.find(x => x.Key === key);
-        return p && p.Value ? p.Value : '';
-      };
-
-      // v24.33: Company kommt im Tenant nicht aus der SP-UserProfile-Property —
-      // wenn leer, via Graph `/me?$select=companyName` nachladen.
-      let company = get('Company') || get('SPS-Company') || get('CompanyName');
-      if (!company) { company = await this.getMyCompanyViaGraph(); }
-      return {
-        department: get('Department'),
-        location: get('Office'),
-        jobTitle: get('Title'),
-        phone: get('WorkPhone') || get('CellPhone'),
-        firstName: get('FirstName'),
-        lastName: get('LastName'),
-        displayName: get('PreferredName'),
-        company,
-      };
-    } catch {
-      return empty;
-    }
+    return profileData.getCurrentUserProfile(this);
   }
 
-  /**
-   * Cleanup: bei den N jüngsten Teilnehmer-Einträgen jedes Events JobTitle, Department,
-   * Location und Phone aus dem aktuellen Benutzerprofil neu laden und überschreiben.
-   * Notwendig weil bis v3.0.x diese Felder versehentlich vom EINGELOGGTEN User (statt
-   * vom registrierten Teilnehmer) gezogen wurden, wenn jemand für eine andere Person
-   * registriert hat.
-   *
-   * Idempotent: wenn die Daten bereits stimmen (Profil-Lookup liefert dasselbe), passiert
-   * nichts. Wird typisch einmalig per LocalStorage-Flag in EventContext getriggert.
-   *
-   * Liefert die Anzahl tatsächlich aktualisierter Items.
-   */
-  /**
-   * Cleanup nur für EIN Event: lae alle Teilnehmer-Profile per Email nachladen
-   * und JobTitle/Department/Location/Phone updaten falls abweichend.
-   * Wird per Admin-Button im Admin Center pro Event getriggert.
-   */
   public async fixEventParticipantsProfileData(subsiteUrl: string, n: number = 1000): Promise<{ scanned: number; updated: number; failedLookups: number }> {
-    let scanned = 0;
-    let updated = 0;
-    let failedLookups = 0;
-    const sleep = (ms: number): Promise<void> => new Promise(res => setTimeout(res, ms));
-    if (!subsiteUrl) return { scanned, updated, failedLookups };
-    try {
-      const listResp = await this._sp.get(
-        `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$select=Id,ParticipantEmail,Vorname,Nachname,ParticipantName,JobTitle,Department,Location,Phone&$orderby=RegistrationDate desc&$top=${n}`,
-        SPHttpClient.configurations.v1
-      );
-      if (!listResp.ok) return { scanned, updated, failedLookups };
-      const listData = await listResp.json();
-      const items = listData.value || listData.d?.results || [];
-      // v22.58: erkennt kaputte Namen (SharePoint-Claims-Token), die durch den
-      // sauberen Profil-Namen ersetzt werden müssen.
-      const looksLikeClaim = (s: string): boolean => /\|membership\||0#\.f\||^i:0#/i.test((s || '').trim());
-      for (const it of items) {
-        scanned += 1;
-        const email: string = (it.ParticipantEmail || '').trim();
-        if (!email) continue;
-        let profile = { department: '', location: '', jobTitle: '', phone: '', firstName: '', lastName: '', displayName: '' };
-        let success = false;
-        for (let attempt = 0; attempt < 3; attempt += 1) {
-          try {
-            const p = await this.getUserProfileByEmail(email);
-            if (p && (p.jobTitle || p.department || p.location || p.firstName || p.lastName)) {
-              profile = p; success = true; break;
-            }
-          } catch { /* */ }
-          await sleep(500 * (attempt + 1));
-        }
-        if (!success) { failedLookups += 1; continue; }
-        try {
-          // Name-Reparatur: nur wenn der aktuelle Name kaputt (Claims) oder leer
-          // ist UND das Profil einen sauberen Namen liefert.
-          const vornameBroken = looksLikeClaim(it.Vorname) || !(it.Vorname || '').trim();
-          const nameFix = vornameBroken && (profile.firstName || profile.lastName)
-            ? {
-                Vorname: profile.firstName || '',
-                Nachname: profile.lastName || '',
-                ParticipantName: (profile.displayName && !looksLikeClaim(profile.displayName) ? profile.displayName : `${profile.firstName} ${profile.lastName}`.trim()),
-              }
-            : null;
-          const profileUpdate =
-            (profile.jobTitle && profile.jobTitle !== (it.JobTitle || '')) ||
-            (profile.department && profile.department !== (it.Department || '')) ||
-            (profile.location && profile.location !== (it.Location || '')) ||
-            (profile.phone && profile.phone !== (it.Phone || ''));
-          if (nameFix || profileUpdate) {
-            const ok = await this._merge(
-              `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items(${it.Id})`,
-              {
-                'JobTitle': profile.jobTitle || it.JobTitle || '',
-                'Department': profile.department || it.Department || '',
-                'Location': profile.location || it.Location || '',
-                'Phone': profile.phone || it.Phone || '',
-                ...(nameFix || {}),
-              }
-            );
-            if (ok && (ok as { ok: boolean }).ok) updated += 1;
-          }
-        } catch { /* */ }
-        await sleep(200);
-      }
-    } catch { /* */ }
-    return { scanned, updated, failedLookups };
+    return profileData.fixEventParticipantsProfileData(this, subsiteUrl, n);
   }
 
   public async fixRecentParticipantsProfileData(n: number): Promise<{ scanned: number; updated: number; failedLookups: number }> {
-    let scanned = 0;
-    let updated = 0;
-    let failedLookups = 0;
-    const sleep = (ms: number): Promise<void> => new Promise(res => setTimeout(res, ms));
-    try {
-      const events = await this.getEvents();
-      for (const evt of events) {
-        if (!evt.SubsiteUrl) continue;
-        try {
-          const listResp = await this._sp.get(
-            `${evt.SubsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$select=Id,ParticipantEmail,JobTitle,Department,Location,Phone&$orderby=RegistrationDate desc&$top=${n}`,
-            SPHttpClient.configurations.v1
-          );
-          if (!listResp.ok) continue;
-          const listData = await listResp.json();
-          const items = listData.value || listData.d?.results || [];
-          for (const it of items) {
-            scanned += 1;
-            const email: string = (it.ParticipantEmail || '').trim();
-            if (!email) continue;
-            // Profil-Lookup mit Retry on Failure (max 3 Versuche, exponential backoff)
-            let profile = { department: '', location: '', jobTitle: '', phone: '' };
-            let success = false;
-            for (let attempt = 0; attempt < 3; attempt += 1) {
-              try {
-                const p = await this.getUserProfileByEmail(email);
-                if (p && (p.jobTitle || p.department || p.location)) {
-                  profile = p;
-                  success = true;
-                  break;
-                }
-              } catch { /* */ }
-              await sleep(500 * (attempt + 1));
-            }
-            if (!success) { failedLookups += 1; continue; }
-            try {
-              const needsUpdate =
-                (profile.jobTitle && profile.jobTitle !== (it.JobTitle || '')) ||
-                (profile.department && profile.department !== (it.Department || '')) ||
-                (profile.location && profile.location !== (it.Location || '')) ||
-                (profile.phone && profile.phone !== (it.Phone || ''));
-              if (!needsUpdate) {
-                await sleep(200); continue;
-              }
-              const ok = await this._merge(
-                `${evt.SubsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items(${it.Id})`,
-                {
-                  'JobTitle': profile.jobTitle || it.JobTitle || '',
-                  'Department': profile.department || it.Department || '',
-                  'Location': profile.location || it.Location || '',
-                  'Phone': profile.phone || it.Phone || '',
-                }
-              );
-              if (ok && (ok as { ok: boolean }).ok) updated += 1;
-            } catch { /* einzelnen überspringen */ }
-            // Throttle gegen Rate-Limit der UserProfile-API
-            await sleep(200);
-          }
-        } catch { /* */ }
-      }
-    } catch { /* */ }
-    return { scanned, updated, failedLookups };
+    return profileData.fixRecentParticipantsProfileData(this, n);
   }
 
-  /**
-   * Profildaten eines bestimmten Users via Email laden (für "Register for someone else"
-   * und "Profile neu laden"). Robust gegen UPN != SMTP-Mismatches.
-   *
-   * Strategie:
-   *   1. Direkter Lookup mit Claim `i:0#.f|membership|<email>` (funktioniert wenn UPN==SMTP).
-   *   2. Wenn leer: per `siteusers/getbyemail` den echten LoginName auflösen
-   *      (deckt UPN != SMTP und Guest-Accounts ab) und GetPropertiesFor mit
-   *      diesem LoginName erneut aufrufen.
-   *
-   * Rückgabe ist gefüllt sobald einer der Wege Properties liefert, sonst leer.
-   */
   public async getUserProfileByEmail(email: string): Promise<{ department: string; location: string; jobTitle: string; phone: string; firstName: string; lastName: string; displayName: string; company: string }> {
-    const empty = { department: '', location: '', jobTitle: '', phone: '', firstName: '', lastName: '', displayName: '', company: '' };
-    if (!email) return empty;
-
-    const extractProfile = (props: Array<{ Key: string; Value: string }>): { department: string; location: string; jobTitle: string; phone: string; firstName: string; lastName: string; displayName: string; company: string } => {
-      const get = (key: string): string => {
-        const p = props.find(x => x.Key === key);
-        return p && p.Value ? p.Value : '';
-      };
-      return {
-        department: get('Department'),
-        location: get('Office') || get('SPS-Location'),
-        jobTitle: get('Title') || get('SPS-JobTitle'),
-        phone: get('WorkPhone') || get('CellPhone'),
-        // v22.57: Namen mitliefern (für die Absage-Zeile, damit nie ein
-        // Claims-Token wie „0#.f|membership|…" als Vorname landet).
-        firstName: get('FirstName'),
-        lastName: get('LastName'),
-        displayName: get('PreferredName'),
-        // v24.29: Unternehmenszugehörigkeit / Rechtsträger.
-        company: get('Company') || get('SPS-Company') || get('CompanyName'),
-      };
-    };
-
-    // 1) Direkter Claim per SMTP-Email (schnell, funktioniert für Standard-Tenants)
-    try {
-      const directUrl = `${this.siteUrl}/_api/SP.UserProfiles.PeopleManager/GetPropertiesFor(accountName=@v)?@v='i:0%23.f|membership|${encodeURIComponent(email)}'`;
-      const response = await this._sp.get(directUrl, SPHttpClient.configurations.v1);
-      if (response.ok) {
-        const data = await response.json();
-        const props: Array<{ Key: string; Value: string }> = data.UserProfileProperties || [];
-        const profile = extractProfile(props);
-        if (profile.jobTitle || profile.department || profile.location || profile.phone) {
-          return profile;
-        }
-      }
-    } catch { /* weiter zu Fallback */ }
-
-    // 2) Fallback: echten LoginName (UPN-Claim) über siteusers/getbyemail auflösen
-    // Deckt UPN != SMTP, Guest-Accounts und Alias-SMTP-Adressen ab.
-    try {
-      const siteUserUrl = `${this.siteUrl}/_api/web/siteusers/getbyemail('${email.replace(/'/g, "''")}')?$select=LoginName`;
-      const siteUserResp = await this._sp.get(siteUserUrl, SPHttpClient.configurations.v1);
-      if (!siteUserResp.ok) return empty;
-      const siteUserData = await siteUserResp.json();
-      const loginName: string = siteUserData.LoginName || siteUserData.d?.LoginName || '';
-      if (!loginName) return empty;
-
-      const profileUrl = `${this.siteUrl}/_api/SP.UserProfiles.PeopleManager/GetPropertiesFor(accountName=@v)?@v='${encodeURIComponent(loginName)}'`;
-      const profileResp = await this._sp.get(profileUrl, SPHttpClient.configurations.v1);
-      if (!profileResp.ok) return empty;
-      const profileData = await profileResp.json();
-      const props: Array<{ Key: string; Value: string }> = profileData.UserProfileProperties || [];
-      return extractProfile(props);
-    } catch {
-      return empty;
-    }
+    return profileData.getUserProfileByEmail(this, email);
   }
 
-  /**
-   * v28.65: Claims-Login-Tokens in einer Teilnehmerliste reparieren.
-   *
-   * Hintergrund siehe `utils/displayName.ts`: Bei Personen, deren Eintrag in
-   * der versteckten „User Information List" ohne Anzeigename gestempelt wurde,
-   * lieferte `pageContext.user.displayName` das Login-Token
-   * („0#.f|membership|user@deloitte.de"). Bis v28.64 landete das 1:1 in der
-   * Teilnehmerzeile. Diese Methode zieht die betroffenen Namen aus dem
-   * Benutzerprofil nach.
-   *
-   * Geprüft werden `ParticipantName`, `Vorname`, `Nachname` (Quelle:
-   * `ParticipantEmail`) sowie die Audit-Felder `RegisteredByName` und
-   * `CancelledByName` (Quelle: die jeweilige Audit-E-Mail). Zeilen ohne Token
-   * bleiben unangetastet; ist die Person im Profil nicht auflösbar, wird
-   * wenigstens die E-Mail statt des Tokens gesetzt — lesbar und eindeutig.
-   */
   public async repairClaimNamesInRegistrations(
-    subsiteUrl: string,
-    onProgress?: (done: number, total: number) => void,
+    subsiteUrl: string
   ): Promise<{ scanned: number; hits: number; fixed: number; failed: number }> {
-    const out = { scanned: 0, hits: 0, fixed: 0, failed: 0 };
-    if (!subsiteUrl) return out;
-    const looksLikeClaim = (s: string): boolean => /\|membership\b|^i:0[#|]|^c:0|0#\.[a-z]\||^\d+#\./i.test((s || '').trim());
-    const mailFromClaim = (s: string): string => {
-      const m = (s || '').match(/\|([^|]+@[^|\s]+)\s*$/);
-      return m ? m[1].trim().toLowerCase() : '';
-    };
-    let rows: SPRegistration[] = [];
-    try { rows = await this.getAllRegistrations(subsiteUrl); } catch { return out; }
-    out.scanned = rows.length;
-
-    const affected = rows.filter(r =>
-      looksLikeClaim(r.ParticipantName || '') || looksLikeClaim(r.Vorname || '') || looksLikeClaim(r.Nachname || '')
-      || looksLikeClaim(r.RegisteredByName || '') || looksLikeClaim(r.CancelledByName || ''));
-    out.hits = affected.length;
-    if (affected.length === 0) return out;
-
-    // Profile je E-Mail nur einmal holen — dieselbe Person taucht oft mehrfach
-    // auf (Klammer-Schattenzeile plus Sub-Events).
-    const cache: Record<string, { firstName: string; lastName: string; displayName: string }> = {};
-    const nameFor = async (email: string): Promise<{ firstName: string; lastName: string; displayName: string }> => {
-      const key = (email || '').toLowerCase();
-      if (!key) return { firstName: '', lastName: '', displayName: '' };
-      if (cache[key]) return cache[key];
-      let p = { firstName: '', lastName: '', displayName: '' };
-      try {
-        const prof = await this.getUserProfileByEmail(key);
-        p = {
-          firstName: looksLikeClaim(prof.firstName) ? '' : (prof.firstName || '').trim(),
-          lastName: looksLikeClaim(prof.lastName) ? '' : (prof.lastName || '').trim(),
-          displayName: looksLikeClaim(prof.displayName) ? '' : (prof.displayName || '').trim(),
-        };
-      } catch { /* nicht auflösbar — E-Mail als Fallback */ }
-      cache[key] = p;
-      return p;
-    };
-
-    for (let i = 0; i < affected.length; i++) {
-      const r = affected[i];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const patch: Record<string, any> = {};
-      const ownEmail = (r.ParticipantEmail || r.Title || '').trim();
-      if (looksLikeClaim(r.ParticipantName || '') || looksLikeClaim(r.Vorname || '') || looksLikeClaim(r.Nachname || '')) {
-        const mail = ownEmail || mailFromClaim(r.ParticipantName || '');
-        // eslint-disable-next-line no-await-in-loop
-        const p = await nameFor(mail);
-        const first = looksLikeClaim(r.Vorname || '') ? p.firstName : ((r.Vorname || '').trim() || p.firstName);
-        const last = looksLikeClaim(r.Nachname || '') ? p.lastName : ((r.Nachname || '').trim() || p.lastName);
-        const display = p.displayName || `${first} ${last}`.trim() || mail;
-        if (looksLikeClaim(r.ParticipantName || '')) patch['ParticipantName'] = display;
-        if (looksLikeClaim(r.Vorname || '')) patch['Vorname'] = first;
-        if (looksLikeClaim(r.Nachname || '')) patch['Nachname'] = last;
-      }
-      if (looksLikeClaim(r.RegisteredByName || '')) {
-        const mail = (r.RegisteredByEmail || '').trim() || mailFromClaim(r.RegisteredByName || '');
-        // eslint-disable-next-line no-await-in-loop
-        const p = await nameFor(mail);
-        patch['RegisteredByName'] = p.displayName || `${p.firstName} ${p.lastName}`.trim() || mail;
-      }
-      if (looksLikeClaim(r.CancelledByName || '')) {
-        const mail = (r.CancelledByEmail || '').trim() || mailFromClaim(r.CancelledByName || '');
-        // eslint-disable-next-line no-await-in-loop
-        const p = await nameFor(mail);
-        patch['CancelledByName'] = p.displayName || `${p.firstName} ${p.lastName}`.trim() || mail;
-      }
-      if (Object.keys(patch).length === 0) { if (onProgress) onProgress(i + 1, affected.length); continue; }
-      try {
-        // eslint-disable-next-line no-await-in-loop
-        const resp = await this._merge(
-          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${r.Id})`, patch,
-        );
-        if (resp.ok || resp.status === 406) out.fixed++; else out.failed++;
-      } catch { out.failed++; }
-      if (onProgress) onProgress(i + 1, affected.length);
-    }
-    return out;
+    return profileData.repairClaimNamesInRegistrations(this, subsiteUrl);
   }
 
-  /**
-   * v28.65: Anzeigenamen zu einer E-Mail auflösen (für die Organizer-Reparatur
-   * im Admin Center). Leer, wenn das Profil nichts hergibt.
-   */
   public async displayNameForEmail(email: string): Promise<string> {
-    if (!email) return '';
-    const looksLikeClaim = (s: string): boolean => /\|membership\b|^i:0[#|]|^c:0|0#\.[a-z]\|/i.test((s || '').trim());
-    try {
-      const p = await this.getUserProfileByEmail(email);
-      const cand = [p.displayName, [p.lastName, p.firstName].filter(Boolean).join(', ')];
-      for (const c of cand) {
-        const v = (c || '').trim();
-        if (v && !looksLikeClaim(v)) return v;
-      }
-    } catch { /* nicht auflösbar */ }
-    return '';
+    return profileData.displayNameForEmail(this, email);
   }
+
 
   // ==================== Hilfsmethoden ====================
 
