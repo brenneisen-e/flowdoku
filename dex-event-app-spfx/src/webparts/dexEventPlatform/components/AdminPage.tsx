@@ -25,6 +25,7 @@ import OrganizerList from './OrganizerList';
 import { PersonContactHover } from './PersonContactHover';
 import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
 import { isEventOver } from '../utils/eventFormat';
+import { withParentTitleSubject } from '../utils/mailSubject';
 import { selfCancelLocked } from '../utils/cancelPolicy';
 import AddParticipantsModal from './admin/AddParticipantsModal';
 import { TeamsJoinButton } from './TeamsJoinButton';
@@ -370,7 +371,8 @@ export default function AdminPage(): React.ReactElement {
               if (spTpl) { emailData = buildEmailFromTemplate(spTpl, promoteVars); }
               else { emailData = promotionEmail(promotedFirstName, selectedEvent.title); }
               await eventServiceRef.queueEmail(
-                emailData.subject, promoted.email, promoted.name || '', emailData.body,
+                withParentTitleSubject(emailData.subject, selectedEvent.parentEventId ? allEvents.find(e => e.id === selectedEvent.parentEventId) : undefined),
+                promoted.email, promoted.name || '', emailData.body,
                 'Nachruecken', selectedEvent.title, selectedEvent.id
               );
             } catch (err) { console.warn('[DEX] promote-email failed:', err); }
@@ -1924,7 +1926,8 @@ export default function AdminPage(): React.ReactElement {
                 if (spTpl) emailData = buildEmailFromTemplate(spTpl, promoteVars);
                 else emailData = promotionEmail(promotedFirstName, child.title);
                 await eventServiceRef.queueEmail(
-                  emailData.subject, promoted.email, promoted.name || '', emailData.body,
+                  withParentTitleSubject(emailData.subject, selectedEvent && selectedEvent.subEventCalendar ? selectedEvent : undefined),
+                  promoted.email, promoted.name || '', emailData.body,
                   'Nachruecken', child.title, child.id
                 );
               } catch (err) { console.warn('[DEX] promote-email failed:', err); }
@@ -2135,7 +2138,8 @@ export default function AdminPage(): React.ReactElement {
           emailData = promotionEmail(promotedFirstName, selectedEvent.title);
         }
         await eventServiceRef.queueEmail(
-          emailData.subject, promoted.email, promoted.name || '', emailData.body,
+          withParentTitleSubject(emailData.subject, selectedEvent.parentEventId ? allEvents.find(e => e.id === selectedEvent.parentEventId) : undefined),
+          promoted.email, promoted.name || '', emailData.body,
           'Nachruecken', selectedEvent.title, selectedEvent.id
         );
       } catch (err) { console.warn('[DEX] promote-email failed:', err); }
