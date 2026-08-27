@@ -1939,16 +1939,21 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     // Klammer-Schatten-Zeile (subEventsOnlyMode): dort ist eine doppelte
     // Zeile harmlos (belegt keinen Platz, Bereinigen-Knopf existiert), ein
     // Abbruch würde dagegen die „Fehlende Klammer"-Fälle vermehren.
-    const alreadyActive = await eventService.isUserAlreadyOnEvent(subsiteUrl, (emailToUse || '').trim()).catch(() => null);
-    if (alreadyActive === null && !(event && event.subEventsOnlyMode)) {
+    // v30.17: Für die Klammer-Schatten-Zeile (subEventsOnlyMode) läuft die
+    // isUserAlreadyOnEvent-Prüfung gar nicht mehr — jedes ihrer Ergebnisse
+    // führte ohnehin zu „weiter" (aktiv → ok:true, Fehler → exempt, nicht
+    // aktiv → getMyRegistration entscheidet). Das spart einen SharePoint-
+    // Request pro Anmeldung; die Idempotenz sichert weiterhin der
+    // getMyRegistration-Check unten (v23.9-Guard). Für ECHTE Anmeldungen
+    // (Sub-Events, normale Events) bleibt die Prüfung inkl. fail-closed.
+    const isShadowParent = !!(event && event.subEventsOnlyMode);
+    const alreadyActive = isShadowParent
+      ? false
+      : await eventService.isUserAlreadyOnEvent(subsiteUrl, (emailToUse || '').trim()).catch(() => null);
+    if (alreadyActive === null) {
       return { ok: false, status: 'Warteliste', reason: 'dup-check-failed' };
     }
     if (alreadyActive) {
-      if (event && event.subEventsOnlyMode) {
-        // Schatten-Zeilen-Semantik (v23.9): vorhandener Schatten blockiert
-        // die Sub-Event-Anmeldung nicht.
-        return { ok: true, status: 'Angemeldet' };
-      }
       return { ok: false, status: 'Warteliste', reason: 'already-registered' };
     }
 
