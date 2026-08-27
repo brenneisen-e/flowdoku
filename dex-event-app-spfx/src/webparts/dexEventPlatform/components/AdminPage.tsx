@@ -165,6 +165,9 @@ export default function AdminPage(): React.ReactElement {
   const [missingReminderKey, setMissingReminderKey] = React.useState<string | null>(null);
   // v24.38: läuft gerade ein „Zur Klammer hinzufügen" für diese E-Mail?
   const [addingToKlammer, setAddingToKlammer] = React.useState<string | null>(null);
+  // v30.14: Fortschritt des Sammel-Fixes „Alle fehlenden Klammer-Anmeldungen
+  // still nachtragen" ('' = läuft nicht).
+  const [bulkKlammerProgress, setBulkKlammerProgress] = React.useState<string>('');
   // v24.40: Modal „Assistenz zuordnen" — Person an eine gewählte Assistenz
   // übergeben (RegisteredBy + Zeilen-Autor auf Klammer + alle Sub-Events).
   const [assignAssistRow, setAssignAssistRow] = React.useState<ConsolidatedRow | null>(null);
@@ -1409,16 +1412,11 @@ export default function AdminPage(): React.ReactElement {
   // händisch ergänzt. Das ist genau die „Schatten-Registrierung" des
   // subEventsOnlyMode — `registerForEvent` auf das Klammer-Event unterdrückt
   // bei subEventsOnlyMode automatisch Mail + Outlook (suppressParentNotifications).
-  const addToKlammer = async (row: ConsolidatedRow): Promise<void> => {
-    if (!selectedEvent) return;
+  // v30.14: Kern ohne Dialog/Alerts/Reload — wird vom Einzel-Knopf UND vom
+  // Sammel-Fix („Alle still nachtragen") benutzt. Liefert true bei Erfolg.
+  const addToKlammerCore = async (row: ConsolidatedRow): Promise<boolean> => {
+    if (!selectedEvent) return false;
     const name = `${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email;
-    if (!(await confirmDialog(
-      isDe
-        ? `Fehlende Hauptanmeldung: „${name}" ist nur in Sub-Events angemeldet, fehlt aber am Klammer-Event „${selectedEvent.title}".\n\nDie fehlende Klammer-Anmeldung jetzt ergänzen? (Es wird KEINE Mail und KEIN Outlook-Termin versendet — reine Datenkorrektur.)`
-        : `Missing main registration: „${name}" is only in sub-events but missing on the umbrella event „${selectedEvent.title}".\n\nAdd the missing umbrella registration now? (No email and no Outlook invite are sent — data correction only.)`,
-      { confirmLabel: isDe ? 'Hinzufügen' : 'Add' }
-    ))) return;
-    setAddingToKlammer(row.emailKey);
     try {
       // v24.39: Realen Registranten aus den Sub-Event-Zeilen ableiten (wer die
       // Sub-Events angemeldet hat). Die Klammer-Schatten-Zeile wird DEMSELBEN
@@ -1442,9 +1440,11 @@ export default function AdminPage(): React.ReactElement {
       // behandeln (Schatten gehört dann der Person selbst, nicht dem Admin).
       if (!realByEmail) { realByEmail = row.email; realByName = name; }
 
+      // v30.14: skipReload — der Kern läuft im Sammel-Fix in Serie; der eine
+      // Refresh kommt vom Aufrufer, sonst zöge jede Person einen loadEvents.
       const res = await registerForEvent(
         selectedEvent.id, {}, row.vorname || '', row.nachname || '', row.email, undefined,
-        { suppressMail: true, suppressOutlook: true, proxyConsentConfirmed: true, actorAllowedAsAssistant: true }
+        { suppressMail: true, suppressOutlook: true, proxyConsentConfirmed: true, actorAllowedAsAssistant: true, skipReload: true }
       );
       if (res && res.ok) {
         const regs = await getAllRegistrations(selectedEvent.id);
@@ -1474,17 +1474,69 @@ export default function AdminPage(): React.ReactElement {
             });
           } catch { /* */ }
         }
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.warn('[DEX] addToKlammer error:', err);
+      return false;
+    }
+  };
+
+  const addToKlammer = async (row: ConsolidatedRow): Promise<void> => {
+    if (!selectedEvent) return;
+    const name = `${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email;
+    if (!(await confirmDialog(
+      isDe
+        ? `Fehlende Hauptanmeldung: „${name}" ist nur in Sub-Events angemeldet, fehlt aber am Klammer-Event „${selectedEvent.title}".\n\nDie fehlende Klammer-Anmeldung jetzt ergänzen? (Es wird KEINE Mail und KEIN Outlook-Termin versendet — reine Datenkorrektur.)`
+        : `Missing main registration: „${name}" is only in sub-events but missing on the umbrella event „${selectedEvent.title}".\n\nAdd the missing umbrella registration now? (No email and no Outlook invite are sent — data correction only.)`,
+      { confirmLabel: isDe ? 'Hinzufügen' : 'Add' }
+    ))) return;
+    setAddingToKlammer(row.emailKey);
+    try {
+      const ok = await addToKlammerCore(row);
+      if (ok) {
         const regs2 = await getAllRegistrations(selectedEvent.id);
         setRegistrations(regs2);
         showAlert(isDe ? `„${name}" wurde zum Klammer-Event hinzugefügt.` : `„${name}" was added to the umbrella event.`, { variant: 'success' });
       } else {
         showAlert(isDe ? 'Hinzufügen fehlgeschlagen — bitte erneut versuchen.' : 'Adding failed — please try again.', { variant: 'error' });
       }
-    } catch (err) {
-      console.warn('[DEX] addToKlammer error:', err);
-      showAlert(isDe ? 'Unerwarteter Fehler beim Hinzufügen.' : 'Unexpected error while adding.', { variant: 'error' });
     } finally {
       setAddingToKlammer(null);
+    }
+  };
+
+  // v30.14: Sammel-Fix — ALLE fehlenden Klammer-Anmeldungen still nachtragen.
+  // Sequentiell mit Fehlerzähler (CLAUDE.md-Regel: prüfbar, kein Promise.all-
+  // Feuerwerk unter Drosselung); jede Zeile läuft über denselben Kern wie der
+  // Einzel-Knopf (inkl. Zuschreibung an den realen Registranten + ChangeLog).
+  const addAllToKlammer = async (rows: ConsolidatedRow[]): Promise<void> => {
+    if (!selectedEvent || rows.length === 0 || bulkKlammerProgress) return;
+    if (!(await confirmDialog(
+      isDe
+        ? `Alle ${rows.length} fehlenden Klammer-Anmeldungen jetzt still nachtragen? (Es wird KEINE Mail und KEIN Outlook-Termin versendet — reine Datenkorrektur. Die Zeilen werden der jeweils anmeldenden Person zugeschrieben.)`
+        : `Add all ${rows.length} missing umbrella registrations silently now? (No email and no Outlook invite are sent — data correction only. Rows are attributed to whoever registered the sub-events.)`,
+      { confirmLabel: isDe ? `Alle ${rows.length} nachtragen` : `Add all ${rows.length}` }
+    ))) return;
+    let okCount = 0;
+    let failCount = 0;
+    try {
+      for (let i = 0; i < rows.length; i++) {
+        setBulkKlammerProgress(`${i + 1}/${rows.length}`);
+        if (await addToKlammerCore(rows[i])) okCount++; else failCount++;
+      }
+      const regs2 = await getAllRegistrations(selectedEvent.id);
+      setRegistrations(regs2);
+      showAlert(
+        failCount === 0
+          ? (isDe ? `${okCount} Klammer-Anmeldungen nachgetragen.` : `${okCount} umbrella registrations added.`)
+          : (isDe
+            ? `${okCount} Klammer-Anmeldungen nachgetragen, ${failCount} fehlgeschlagen (typisch: SharePoint-Drosselung) — bitte in ein paar Minuten erneut ausführen, bereits nachgetragene werden übersprungen.`
+            : `${okCount} umbrella registrations added, ${failCount} failed (typically SharePoint throttling) — please run again in a few minutes; already-added ones are skipped.`),
+        { variant: failCount === 0 ? 'success' : 'error' });
+    } finally {
+      setBulkKlammerProgress('');
     }
   };
 
@@ -5041,9 +5093,21 @@ export default function AdminPage(): React.ReactElement {
   // (v15.25: die Klammer-Zeile ist reine Datenvollständigkeit, ohne Platz,
   // Mail oder Outlook) — die meldet die rote Box nicht mehr als
   // „Doppel-Anmeldung", sondern separat als technischen Hinweis.
-  const subEventDupGroups: Array<{ sectionTitle: string; email: string; name: string; count: number }> = (() => {
+  const subEventDupGroups: Array<{ sectionTitle: string; email: string; name: string; count: number; rowsInfo: string }> = (() => {
     if (!isConsolidatedMode || !selectedEvent) return [];
-    const out: Array<{ sectionTitle: string; email: string; name: string; count: number }> = [];
+    const out: Array<{ sectionTitle: string; email: string; name: string; count: number; rowsInfo: string }> = [];
+    // v30.14: Status + Zeitpunkt je Zeile ausweisen — die Duplikate können auf
+    // der WARTELISTE liegen und sind dann in der Teilnehmer-Tabelle unsichtbar
+    // (Befund: „2× angemeldet", aber in der Liste nicht auffindbar; beide
+    // Zeilen standen als Platz 1+2 auf der Warteliste desselben Tages).
+    const fmtDupRow = (r: SPRegistration): string => {
+      const st = r.Status || '?';
+      const d = r.RegistrationDate ? new Date(r.RegistrationDate) : null;
+      const ds = d && isFinite(d.getTime())
+        ? d.toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+        : '';
+      return ds ? `${st} ${ds}` : st;
+    };
     for (const ch of consolidatedChildren) {
       const byEmail: Record<string, SPRegistration[]> = {};
       for (const r of (subEventRegsByEventId[ch.id] || [])) {
@@ -5061,6 +5125,7 @@ export default function AdminPage(): React.ReactElement {
           email: em,
           name: (f.Vorname && f.Nachname) ? `${f.Vorname} ${f.Nachname}` : (f.ParticipantName || em),
           count: rows.length,
+          rowsInfo: rows.map(fmtDupRow).join(' + '),
         });
       });
     }
@@ -5389,6 +5454,21 @@ export default function AdminPage(): React.ReactElement {
                   ? 'Diese Personen sind in einem oder mehreren Sub-Events angemeldet, fehlen aber am Klammer-/Hauptevent selbst (z.B. durch eine abgebrochene Anmeldung). Dadurch fehlen u.a. die übergreifenden Hauptevent-Angaben. Du hast zwei Möglichkeiten: über „Erinnerung senden“ bittest du die Person (bzw. die anmeldende Person) per Mail mit Direkt-Link, die fehlenden Hauptevent-Angaben in der App nachzutragen — oder du trägst die fehlende Klammer-Anmeldung mit „Zur Klammer hinzufügen“ selbst nach (versendet KEINE Mail und KEINEN Outlook-Termin, reine Datenkorrektur).'
                   : 'These people are registered for one or more sub-events but are missing on the umbrella/main event itself (e.g. due to an interrupted registration), so the cross-cutting main-event details are missing. You have two options: use „Send reminder“ to ask the person (or whoever registered them) via email with a direct link to add the missing main-event details in the app — or add the missing umbrella registration yourself with „Add to umbrella“ (sends NO email and NO Outlook invite, data correction only).'}
               </p>
+              {/* v30.14: Sammel-Fix — alle auf einmal, still, sequentiell. */}
+              <div style={{ marginBottom: 10 }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  style={{ fontSize: '0.8rem', padding: '5px 14px', color: 'var(--dex-orange, #ed8b00)', borderColor: 'var(--dex-orange, #ed8b00)' }}
+                  disabled={!!bulkKlammerProgress || !!addingToKlammer}
+                  onClick={() => { void addAllToKlammer(missing); }}
+                >
+                  <Plus size={12} />{' '}
+                  {bulkKlammerProgress
+                    ? (isDe ? `Wird nachgetragen… (${bulkKlammerProgress})` : `Adding… (${bulkKlammerProgress})`)
+                    : (isDe ? `Alle ${missing.length} still zur Klammer hinzufügen` : `Silently add all ${missing.length} to the umbrella`)}
+                </button>
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {missing.map(r => {
                   const nm = `${r.vorname || ''} ${r.nachname || ''}`.trim() || r.email;
@@ -9621,6 +9701,9 @@ export default function AdminPage(): React.ReactElement {
                   setRegistrations(regs);
                 } catch { /* Anzeige aktualisiert sich beim nächsten Öffnen */ }
               })();
+              // v30.14: Die Einzel-Anmeldungen laufen jetzt mit skipReload —
+              // EIN Sammel-Refresh für Kacheln/Zähler, nicht awaiten.
+              void refreshEvents().catch(() => { /* best-effort */ });
             }}
             mainEvent={parentEventForSelected || selectedEvent}
             childEvents={childEventsOf((parentEventForSelected || selectedEvent).id)}
@@ -9933,8 +10016,8 @@ export default function AdminPage(): React.ReactElement {
                 </strong>
                 <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
                   {isDe
-                    ? 'Dieselbe Person ist im selben Sub-Event mehrfach angemeldet und belegt dort zwei Plätze. Im jeweiligen Sub-Event-Tab kannst du die doppelte Zeile über „Abmelden" still entfernen.'
-                    : 'The same person is registered more than once in the same sub-event and occupies two seats there. Use „Cancel" in that sub-event tab to silently remove the duplicate row.'}
+                    ? 'Dieselbe Person ist im selben Sub-Event mehrfach angemeldet und belegt dort zwei Plätze. Achtung: Die doppelten Zeilen können auch auf der WARTELISTE des Sub-Events stehen (dann fehlen sie in der Teilnehmer-Tabelle) — Status und Zeitpunkt stehen hinter jedem Eintrag. Im jeweiligen Sub-Event-Tab entfernst du die doppelte Zeile über „Abmelden" bzw. „Entfernen" (Warteliste) still.'
+                    : 'The same person is registered more than once in the same sub-event and occupies two seats there. Note: the duplicate rows may sit on the sub-event’s WAITLIST (then they are missing from the attendee table) — status and time are shown behind each entry. Remove the duplicate row silently via „Cancel" or „Remove" (waitlist) in that sub-event tab.'}
                 </span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -9946,6 +10029,8 @@ export default function AdminPage(): React.ReactElement {
                       {isDe ? `${g.count}× angemeldet` : `${g.count}× registered`}
                     </span>
                     <span style={{ color: 'var(--dex-gray-600)' }}>— {g.sectionTitle}</span>
+                    {/* v30.14: Status + Zeitpunkt je Zeile — Warteliste-Duplikate sind sonst nicht auffindbar. */}
+                    <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.78rem' }}>({g.rowsInfo})</span>
                   </div>
                 ))}
               </div>
