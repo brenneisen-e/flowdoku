@@ -45,7 +45,7 @@ export interface AddParticipantsModalProps {
     participantLastName?: string,
     participantEmail?: string,
     preferredStarterType?: string,
-    opts?: { suppressMail?: boolean; suppressOutlook?: boolean },
+    opts?: { suppressMail?: boolean; suppressOutlook?: boolean; skipReload?: boolean },
   ) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste'; reason?: string }>;
   isDe: boolean;
 }
@@ -184,6 +184,9 @@ export default function AddParticipantsModal(props: AddParticipantsModalProps): 
     for (const p of people) {
       const emailLc = (p.email || '').toLowerCase();
       const { first, last } = splitName(p.displayName, p.email);
+      // v30.14: mind. eine erfolgreiche SUB-Event-Anmeldung? Dann braucht die
+      // Person im Klammer-Modus auch die Schatten-Klammer-Zeile (s.u.).
+      let anySubOk = false;
       for (const t of selectedTargets) {
         done++;
         setProgress(`${done}/${total} — ${p.displayName || p.email} → ${t.title}`);
@@ -191,8 +194,12 @@ export default function AddParticipantsModal(props: AddParticipantsModalProps): 
         const cleaned: Record<string, string> = {};
         Object.keys(values).forEach(k => { if ((values[k] || '').trim()) cleaned[k] = values[k]; });
         try {
+          // v30.14: skipReload — vorher zog JEDE Person×Ziel-Kombination einen
+          // kompletten loadEvents nach sich (Massen-Hinzufügen = 429-Welle).
+          // Der eine Refresh kommt vom Aufrufer über onDone.
           const res = await registerForEvent(t.id, cleaned, first, last, p.email, undefined,
-            { suppressMail: !sendMail, suppressOutlook: !sendOutlook });
+            { suppressMail: !sendMail, suppressOutlook: !sendOutlook, skipReload: true });
+          if (res.ok && t.id !== mainEvent.id) anySubOk = true;
           rows.push({
             person: p.displayName || p.email,
             target: t.title,
@@ -203,6 +210,23 @@ export default function AddParticipantsModal(props: AddParticipantsModalProps): 
           });
         } catch (err) {
           rows.push({ person: p.displayName || p.email, target: t.title, status: String((err as Error)?.message || err), ok: false });
+        }
+      }
+      // v30.14: Klammer-Schatten-Zeile nachziehen. Dieser Pfad meldete Personen
+      // NUR in die Sub-Events — die Klammer-Zeile fehlte, und im Organizer
+      // Center lief die Box „Fehlende Klammer-Anmeldung" voll (Befund mit 24
+      // Personen im Soft Opening). registerForEvent ist für die Klammer
+      // idempotent: existiert bereits eine aktive Schatten-Zeile, wird nichts
+      // eingefügt. Still (keine Mail, kein Outlook) — reine Datenvollständigkeit.
+      if (anySubOk && mainEvent.subEventsOnlyMode) {
+        try {
+          const shadow = await registerForEvent(mainEvent.id, {}, first, last, p.email, undefined,
+            { suppressMail: true, suppressOutlook: true, skipReload: true });
+          if (!shadow.ok) {
+            rows.push({ person: p.displayName || p.email, target: isDe ? 'Klammer-Event (Schattenzeile)' : 'Umbrella event (shadow row)', status: shadow.reason || (isDe ? 'Fehlgeschlagen' : 'Failed'), ok: false });
+          }
+        } catch (err) {
+          rows.push({ person: p.displayName || p.email, target: isDe ? 'Klammer-Event (Schattenzeile)' : 'Umbrella event (shadow row)', status: String((err as Error)?.message || err), ok: false });
         }
       }
     }

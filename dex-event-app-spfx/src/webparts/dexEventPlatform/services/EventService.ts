@@ -28,44 +28,13 @@ import * as outlookQueue from './events/outlookQueue';
 import * as hotelPlanning from './events/hotelPlanning';
 import * as idReorder from './events/idReorder';
 import * as changeLog from './events/changeLog';
+import * as emailTemplatesList from './events/emailTemplatesList';
+import * as archive from './events/archive';
+import * as weeklyReport from './events/weeklyReport';
+import * as organizer from './events/organizer';
 import { wrapTemplateForStorage, buildEmailFromTemplate, normalizeMadeWithLink } from './EmailTemplates';
 // v28.95: Die Mail-Koerper liegen jetzt in ./mailBodies — die Datei begann
 // sonst mit 400 Zeilen HTML, bevor die erste Methode kam.
-import {
-  OUTLOOK_DECLINE_BODY_EN,
-  OUTLOOK_DECLINE_BODY_DE,
-  OUTLOOK_DECLINE_BODY_ONBEHALF_EN,
-  OUTLOOK_DECLINE_BODY_ONBEHALF_DE,
-  OUTLOOK_FORWARD_BODY_EN,
-  OUTLOOK_FORWARD_BODY_DE,
-  OUTLOOK_DECLINE_DIGEST_BODY_EN,
-  OUTLOOK_DECLINE_DIGEST_BODY_DE,
-  NACHRUECKEN_BODY_EN,
-  NACHRUECKEN_BODY_DE,
-  ORG_NACHRUECKER_BODY_EN,
-  ORG_NACHRUECKER_BODY_DE,
-  CANCEL_BANNER_HTML,
-  ABMELDUNG_AUTO_BODY_EN,
-  ABMELDUNG_AUTO_BODY_DE,
-  TEAM_MEMBER_JOINED_BODY_EN,
-  TEAM_MEMBER_JOINED_BODY_DE,
-  TEAM_JOIN_REQUEST_BODY_EN,
-  TEAM_JOIN_REQUEST_BODY_DE,
-  TEAM_JOIN_REJECTED_BODY_EN,
-  TEAM_JOIN_REJECTED_BODY_DE,
-  TEAM_LEAD_TRANSFERRED_BODY_EN,
-  TEAM_LEAD_TRANSFERRED_BODY_DE,
-  TEAM_MEMBER_CANCELLED_BODY_EN,
-  TEAM_MEMBER_CANCELLED_BODY_DE,
-  ROOMMATE_REQUEST_BODY_EN,
-  ROOMMATE_REQUEST_BODY_DE,
-  GROUP_SWITCH_CONFIRMED_BODY_EN,
-  GROUP_SWITCH_CONFIRMED_BODY_DE,
-  GROUP_SWITCH_WAITLIST_BODY_EN,
-  GROUP_SWITCH_WAITLIST_BODY_DE,
-  OVERBOOK_APOLOGY_BODY_EN,
-  OVERBOOK_APOLOGY_BODY_DE,
-} from './mailBodies';
 import { buildOutlookLocation } from '../utils/eventFormat';
 import { subscribeListChanges } from '../utils/spListRealtime';
 import { DexTicket, TicketFollowUp } from '../types';
@@ -705,1101 +674,97 @@ export class EventService {
 
 
   // ==================== DEX_EmailTemplates Liste ====================
+  // v30.11: Thema ausgelagert nach services/events/emailTemplatesList.ts —
+  // hier stehen nur noch Delegations-Stubs mit unveränderter Signatur.
 
-  /**
-   * Email-Templates-Liste erstellen und Default-Templates einfügen.
-   * Templates können pro Event überschrieben werden (im Event JSON).
-   *
-   * Platzhalter: {{Name}}, {{EventTitle}}, {{AppUrl}}
-   */
   public async ensureEmailTemplatesList(): Promise<void> {
-    const listName = 'DEX_EmailTemplates';
-    const exists = await this.listExists(listName);
-    if (exists) {
-      // Liste existiert - prüfen ob _Config Zeile und Logo-Spalten vorhanden
-      await this.ensureEmailTemplatesConfig(listName);
-      // Neuere Templates nachrüsten (falls die Liste vor v3.0.27 angelegt wurde
-      // und OutlookDeclineReminder noch nicht existiert)
-      await this.ensureMissingEmailTemplates(listName);
-      // Standard-Templates auf aktuelle Version upgraden (uerschreibt User-Customizing!)
-      // Damit Platzhalter wie {{WaitlistPosition}} bei aelteren Tenants nachgezogen werden.
-      await this.upgradeStandardEmailTemplates(listName);
-      return;
-    }
-
-    await this._post(`${this.siteUrl}/_api/web/lists`, {
-      '__metadata': { 'type': 'SP.List' },
-      'Title': listName,
-      'Description': 'Email-Vorlagen für die DEX Event Experience Platform (DE + EN)',
-      'BaseTemplate': 100,
-      'AllowContentTypes': false,
-    });
-
-    const fields = [
-      { title: 'TemplateType', type: 2 },
-      { title: 'Language', type: 2 },
-      { title: 'Subject', type: 2 },
-      { title: 'HeadingColor', type: 2 },
-      { title: 'Heading', type: 2 },
-      // v15.17: Subheading editierbar (vorher hart als „Event {{EventTitle}}").
-      // Leer/nicht-gesetzt → Fallback im Code auf {{EventTitle}} ohne Präfix.
-      { title: 'Subheading', type: 2 },
-      { title: 'BodyHtml', type: 3 },
-      { title: 'LogoBase64', type: 3 },           // Base64 Deloitte Logo (Deloitte_Logo.png)
-      { title: 'DefaultImageBase64', type: 3 },    // Base64 Default-Bild (dex-orb.png)
-    ];
-
-    for (const f of fields) {
-      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
-        '__metadata': { 'type': 'SP.Field' },
-        'Title': f.title,
-        'FieldTypeKind': f.type,
-        'Required': false,
-      });
-    }
-
-    // Default-Templates: DE + EN für jeden Typ
-    const defaults = [
-      // ===== ENGLISCH =====
-      { TemplateType: 'Anmeldung', Language: 'EN', Subject: 'Registration confirmation: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Registration successful',
-        BodyHtml: '<p>Dear {{Name}},</p><p>you have successfully registered for the event <strong>{{EventTitle}}</strong>.</p><p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="{{AppUrl}}">DEX App</a> (\u201EMy Events\u201C).</p><p>For organizational questions about the event, please contact {{OrganizerHtml}}.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
-      { TemplateType: 'Warteliste', Language: 'EN', Subject: 'Waitlist: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Waitlist confirmation',
-        BodyHtml: '<p>Dear {{Name}},</p><p>you have been placed on the <strong>waitlist</strong> for the event <strong>{{EventTitle}}</strong>.</p><p>Your current position: <strong>#{{WaitlistPosition}}</strong></p><p>We will notify you as soon as a spot becomes available. You can always check your current position in the <a href="{{AppUrl}}">DEX App</a> under \u201EMy Events\u201C.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
-      { TemplateType: 'Abmeldung', Language: 'EN', Subject: 'Cancellation confirmation: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Cancellation confirmed',
-        BodyHtml: '<p>Dear {{Name}},</p>' + CANCEL_BANNER_HTML + '<p>your registration for the event above has been <strong>cancelled</strong>. The Outlook calendar entry will be removed from your calendar shortly.</p><p>If you change your mind, you can register again via the <a href="{{AppUrl}}">DEX App</a>.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
-      { TemplateType: 'Nachruecken', Language: 'EN', Subject: 'You’ve got a spot: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'You’ve got a spot!',
-        BodyHtml: NACHRUECKEN_BODY_EN },
-      { TemplateType: 'EventErstellt', Language: 'EN', Subject: '[Deloitte Eventmanager] - New event created: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event Created',
-        BodyHtml: '<p>Dear {{Name}},</p><p>your event <strong>{{EventTitle}}</strong> has been successfully created.</p><p>You can manage participants in the <a href="{{AppUrl}}">DEX App</a>.</p><p>Regards,<br>Team DEX App</p>' },
-      { TemplateType: 'OutlookDeclineReminder', Language: 'EN', Subject: 'Action Required: Do you also want to cancel your registration? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'You declined the Outlook invite',
-        BodyHtml: OUTLOOK_DECLINE_BODY_EN },
-      { TemplateType: 'OutlookDeclineReminder_OnBehalfOf', Language: 'EN', Subject: 'Action Required: Cancel registration for {{EventTitle}}?', HeadingColor: '#ed8b00', Heading: 'Outlook invite declined on behalf',
-        BodyHtml: OUTLOOK_DECLINE_BODY_ONBEHALF_EN },
-      // ===== DEUTSCH =====
-      { TemplateType: 'Anmeldung', Language: 'DE', Subject: 'Anmeldebestätigung: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Anmeldung erfolgreich',
-        BodyHtml: '<p>Hallo {{Name}},</p><p>du hast dich erfolgreich für das Event <strong>{{EventTitle}}</strong> angemeldet.</p><p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="{{AppUrl}}">DEX App</a> (\u201EMeine Events\u201C) ab.</p><p>Zu organisatorischen Fragen zum Event wende dich bitte an {{OrganizerHtml}}.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
-      { TemplateType: 'Warteliste', Language: 'DE', Subject: 'Warteliste: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Warteliste-Bestätigung',
-        BodyHtml: '<p>Hallo {{Name}},</p><p>du stehst auf der <strong>Warteliste</strong> für das Event <strong>{{EventTitle}}</strong>.</p><p>Deine aktuelle Position: <strong>#{{WaitlistPosition}}</strong></p><p>Wir benachrichtigen dich, sobald ein Platz frei wird. Deinen aktuellen Warteliste-Platz kannst du jederzeit in der <a href="{{AppUrl}}">DEX App</a> unter \u201EMeine Events\u201C sehen.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
-      { TemplateType: 'Abmeldung', Language: 'DE', Subject: 'Abmeldebestätigung: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Abmeldung bestätigt',
-        BodyHtml: '<p>Hallo {{Name}},</p>' + CANCEL_BANNER_HTML + '<p>deine Anmeldung für das oben genannte Event wurde <strong>storniert</strong>. Der Outlook-Termin wird in Kürze aus deinem Kalender entfernt.</p><p>Du kannst dich jederzeit erneut über die <a href="{{AppUrl}}">DEX App</a> anmelden.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
-      { TemplateType: 'Nachruecken', Language: 'DE', Subject: 'Du hast einen Platz: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Du hast einen Platz!',
-        BodyHtml: NACHRUECKEN_BODY_DE },
-      // v19.25: pre-wrapped Abmelde-Bestätigung für die Flow-getriebene
-      // Auto-Abmeldung (DEX_OutlookDeclineHandler), eigener Type damit die
-      // App-eigene `Abmeldung` (unwrapped) unberührt bleibt.
-      { TemplateType: 'AbmeldungAuto', Language: 'EN', Subject: 'Cancellation confirmation: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Cancellation confirmed',
-        BodyHtml: ABMELDUNG_AUTO_BODY_EN },
-      { TemplateType: 'AbmeldungAuto', Language: 'DE', Subject: 'Abmeldebestätigung: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Abmeldung bestätigt',
-        BodyHtml: ABMELDUNG_AUTO_BODY_DE },
-      // v18.63: Organizer-Benachrichtigung bei Abmeldung mit Nachrücker (vom DEX_IDReorder-Flow gequeued).
-      { TemplateType: 'OrgNachruecker', Language: 'EN', Subject: 'Cancellation with waitlist move-up: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Cancellation — waitlist move-up',
-        BodyHtml: ORG_NACHRUECKER_BODY_EN },
-      { TemplateType: 'OrgNachruecker', Language: 'DE', Subject: 'Abmeldung mit Nachrücker: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Abmeldung — Nachrücker',
-        BodyHtml: ORG_NACHRUECKER_BODY_DE },
-      { TemplateType: 'EventErstellt', Language: 'DE', Subject: '[Deloitte Eventmanager] - Neues Event erstellt: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event erstellt',
-        BodyHtml: '<p>Hallo {{Name}},</p><p>dein Event <strong>{{EventTitle}}</strong> wurde erfolgreich erstellt.</p><p>Du kannst die Teilnehmer in der <a href="{{AppUrl}}">DEX App</a> verwalten.</p><p>Viele Grüße,<br>Team DEX App</p>' },
-      { TemplateType: 'OutlookDeclineReminder', Language: 'DE', Subject: 'Action Required: Möchtest du dich auch offiziell abmelden? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Du hast den Outlook-Termin abgelehnt',
-        BodyHtml: OUTLOOK_DECLINE_BODY_DE },
-      { TemplateType: 'OutlookDeclineReminder_OnBehalfOf', Language: 'EN', Subject: 'Action Required: Cancel registration for {{EventTitle}}?', HeadingColor: '#ed8b00', Heading: 'Outlook invite declined on behalf',
-        BodyHtml: OUTLOOK_DECLINE_BODY_ONBEHALF_EN },
-      { TemplateType: 'OutlookDeclineReminder_OnBehalfOf', Language: 'DE', Subject: 'Action Required: Anmeldung für {{EventTitle}} stornieren?', HeadingColor: '#ed8b00', Heading: 'Outlook-Termin in deinem Namen abgelehnt',
-        BodyHtml: OUTLOOK_DECLINE_BODY_ONBEHALF_DE },
-      // Meeting-Forward-Notification: FYI an Organizer wenn weitergeleitete Person nicht registriert ist
-      { TemplateType: 'OutlookForwardNotification', Language: 'EN', Subject: 'FYI: Meeting was forwarded — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Meeting was forwarded',
-        BodyHtml: OUTLOOK_FORWARD_BODY_EN },
-      { TemplateType: 'OutlookForwardNotification', Language: 'DE', Subject: 'FYI: Termin wurde weitergeleitet — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Termin wurde weitergeleitet',
-        BodyHtml: OUTLOOK_FORWARD_BODY_DE },
-      // v9.38: OutlookDeclineDigest — geht an Organizer nach jedem Decline mit Liste aller noch-angemeldeten Decliner.
-      { TemplateType: 'OutlookDeclineDigest', Language: 'EN', Subject: 'FYI: {{DeclineCount}} attendees declined Outlook — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: attendees declined the Outlook invite',
-        BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_EN },
-      { TemplateType: 'OutlookDeclineDigest', Language: 'DE', Subject: 'FYI: {{DeclineCount}} Teilnehmer haben Outlook abgelehnt — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: Teilnehmer haben den Outlook-Termin abgelehnt',
-        BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_DE },
-      // v12.13: Team-bezogene Templates (vorher inline in EventContext.tsx).
-      { TemplateType: 'TeamMemberJoined', Language: 'EN', Subject: 'New team member — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team update',
-        BodyHtml: TEAM_MEMBER_JOINED_BODY_EN },
-      { TemplateType: 'TeamMemberJoined', Language: 'DE', Subject: 'Neues Team-Mitglied — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Update',
-        BodyHtml: TEAM_MEMBER_JOINED_BODY_DE },
-      { TemplateType: 'TeamJoinRequest', Language: 'EN', Subject: 'Team join request — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team join request',
-        BodyHtml: TEAM_JOIN_REQUEST_BODY_EN },
-      { TemplateType: 'TeamJoinRequest', Language: 'DE', Subject: 'Team-Beitritts-Anfrage — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Beitritts-Anfrage',
-        BodyHtml: TEAM_JOIN_REQUEST_BODY_DE },
-      { TemplateType: 'TeamJoinRejected', Language: 'EN', Subject: 'Team join request declined — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team join request declined',
-        BodyHtml: TEAM_JOIN_REJECTED_BODY_EN },
-      { TemplateType: 'TeamJoinRejected', Language: 'DE', Subject: 'Team-Beitritts-Anfrage abgelehnt — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team-Beitritts-Anfrage abgelehnt',
-        BodyHtml: TEAM_JOIN_REJECTED_BODY_DE },
-      { TemplateType: 'TeamLeadTransferred', Language: 'EN', Subject: 'Team lead change — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team lead change',
-        BodyHtml: TEAM_LEAD_TRANSFERRED_BODY_EN },
-      { TemplateType: 'TeamLeadTransferred', Language: 'DE', Subject: 'Team-Lead-Wechsel — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Lead-Wechsel',
-        BodyHtml: TEAM_LEAD_TRANSFERRED_BODY_DE },
-      { TemplateType: 'TeamMemberCancelled', Language: 'EN', Subject: 'Team update — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team update',
-        BodyHtml: TEAM_MEMBER_CANCELLED_BODY_EN },
-      { TemplateType: 'TeamMemberCancelled', Language: 'DE', Subject: 'Team-Update — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team-Update',
-        BodyHtml: TEAM_MEMBER_CANCELLED_BODY_DE },
-      // v13.0: Restliche bisher-inline-Mails (Zimmerpartner, Gruppen-Wechsel, Überbuchung).
-      { TemplateType: 'RoommateRequest', Language: 'EN', Subject: '{{RegistrantName}} selected you as roommate — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Roommate request',
-        BodyHtml: ROOMMATE_REQUEST_BODY_EN },
-      { TemplateType: 'RoommateRequest', Language: 'DE', Subject: '{{RegistrantName}} hat dich als Zimmerpartner gewählt — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Zimmerpartner-Anfrage',
-        BodyHtml: ROOMMATE_REQUEST_BODY_DE },
-      { TemplateType: 'GroupSwitchConfirmed', Language: 'EN', Subject: 'Group switch confirmed — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Group switch',
-        BodyHtml: GROUP_SWITCH_CONFIRMED_BODY_EN },
-      { TemplateType: 'GroupSwitchConfirmed', Language: 'DE', Subject: 'Gruppen-Wechsel bestätigt — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Gruppen-Wechsel',
-        BodyHtml: GROUP_SWITCH_CONFIRMED_BODY_DE },
-      { TemplateType: 'GroupSwitchWaitlist', Language: 'EN', Subject: 'Group switch — on waitlist: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Group switch — on waitlist',
-        BodyHtml: GROUP_SWITCH_WAITLIST_BODY_EN },
-      { TemplateType: 'GroupSwitchWaitlist', Language: 'DE', Subject: 'Gruppen-Wechsel — auf Warteliste: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Gruppen-Wechsel — auf Warteliste',
-        BodyHtml: GROUP_SWITCH_WAITLIST_BODY_DE },
-      { TemplateType: 'OverbookingApology', Language: 'EN', Subject: 'Important: correction of your registration — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Registration corrected',
-        BodyHtml: OVERBOOK_APOLOGY_BODY_EN },
-      { TemplateType: 'OverbookingApology', Language: 'DE', Subject: 'Wichtig: Korrektur deiner Anmeldung — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Anmeldung korrigiert',
-        BodyHtml: OVERBOOK_APOLOGY_BODY_DE },
-    ];
-
-    let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
-    try {
-      const typeResp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=ListItemEntityTypeFullName`,
-        SPHttpClient.configurations.v1
-      );
-      if (typeResp.ok) {
-        const typeData = await typeResp.json();
-        listItemType = typeData.d?.ListItemEntityTypeFullName || typeData.ListItemEntityTypeFullName || listItemType;
-      }
-    } catch { /* Fallback */ }
-
-    for (const t of defaults) {
-      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
-        '__metadata': { 'type': listItemType },
-        'Title': `${t.TemplateType}_${t.Language}`,
-        'TemplateType': t.TemplateType,
-        'Language': t.Language,
-        'Subject': t.Subject,
-        'HeadingColor': t.HeadingColor,
-        'Heading': t.Heading,
-        'BodyHtml': t.BodyHtml,
-      });
-    }
-
-    // _Config Eintrag für Logos erstellen (Base64 muss manuell in SharePoint eingetragen werden)
-    await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
-      '__metadata': { 'type': listItemType },
-      'Title': '_Config',
-      'TemplateType': '_Config',
-      'Language': '',
-      'Subject': '',
-      'HeadingColor': '',
-      'Heading': '',
-      'BodyHtml': '',
-      'LogoBase64': '',           // Manuell: Base64 Data-URI von Deloitte_Logo.png eintragen
-      'DefaultImageBase64': '',   // Manuell: Base64 Data-URI von dex-orb.png eintragen
-    });
-
-    await this.configureDefaultView(listName, ['TemplateType', 'Language', 'Subject', 'Heading', 'HeadingColor']);
+    return emailTemplatesList.ensureEmailTemplatesList(this);
   }
 
-  /**
-   * Sicherstellen dass LogoBase64/DefaultImageBase64 Spalten und _Config Zeile existieren.
-   * Für Tenants wo DEX_EmailTemplates schon vor v3.0.27 angelegt wurde:
-   * neuere Templates (z.B. OutlookDeclineReminder DE+EN) nachrüsten, ohne
-   * bestehende zu überschreiben.
-   */
-  private async ensureMissingEmailTemplates(listName: string): Promise<void> {
-    const newTemplates = [
-      { TemplateType: 'OutlookDeclineReminder', Language: 'EN', Subject: 'Action Required: Do you also want to cancel your registration? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'You declined the Outlook invite',
-        BodyHtml: OUTLOOK_DECLINE_BODY_EN },
-      { TemplateType: 'OutlookDeclineReminder', Language: 'DE', Subject: 'Action Required: Möchtest du dich auch offiziell abmelden? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Du hast den Outlook-Termin abgelehnt',
-        BodyHtml: OUTLOOK_DECLINE_BODY_DE },
-      { TemplateType: 'OutlookDeclineReminder_OnBehalfOf', Language: 'EN', Subject: 'Action Required: Cancel registration for {{EventTitle}}?', HeadingColor: '#ed8b00', Heading: 'Outlook invite declined on behalf',
-        BodyHtml: OUTLOOK_DECLINE_BODY_ONBEHALF_EN },
-      { TemplateType: 'OutlookDeclineReminder_OnBehalfOf', Language: 'DE', Subject: 'Action Required: Anmeldung für {{EventTitle}} stornieren?', HeadingColor: '#ed8b00', Heading: 'Outlook-Termin in deinem Namen abgelehnt',
-        BodyHtml: OUTLOOK_DECLINE_BODY_ONBEHALF_DE },
-      { TemplateType: 'OutlookForwardNotification', Language: 'EN', Subject: 'FYI: Meeting was forwarded — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Meeting was forwarded',
-        BodyHtml: OUTLOOK_FORWARD_BODY_EN },
-      { TemplateType: 'OutlookForwardNotification', Language: 'DE', Subject: 'FYI: Termin wurde weitergeleitet — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Termin wurde weitergeleitet',
-        BodyHtml: OUTLOOK_FORWARD_BODY_DE },
-      // v9.38: OutlookDeclineDigest — wird bei bestehenden Tenants nachgerüstet.
-      { TemplateType: 'OutlookDeclineDigest', Language: 'EN', Subject: 'FYI: {{DeclineCount}} attendees declined Outlook — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: attendees declined the Outlook invite',
-        BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_EN },
-      { TemplateType: 'OutlookDeclineDigest', Language: 'DE', Subject: 'FYI: {{DeclineCount}} Teilnehmer haben Outlook abgelehnt — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: Teilnehmer haben den Outlook-Termin abgelehnt',
-        BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_DE },
-    ];
-
-    let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
-    try {
-      const typeResp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=ListItemEntityTypeFullName`,
-        SPHttpClient.configurations.v1
-      );
-      if (typeResp.ok) {
-        const typeData = await typeResp.json();
-        listItemType = typeData.d?.ListItemEntityTypeFullName || typeData.ListItemEntityTypeFullName || listItemType;
-      }
-    } catch { /* Fallback */ }
-
-    for (const t of newTemplates) {
-      try {
-        // Existiert das Template bereits? (TemplateType + Language)
-        const checkResp = await this._sp.get(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$filter=TemplateType eq '${t.TemplateType}' and Language eq '${t.Language}'&$top=1&$select=Id`,
-          SPHttpClient.configurations.v1
-        );
-        if (checkResp.ok) {
-          const checkData = await checkResp.json();
-          const items = checkData.value || checkData.d?.results || [];
-          if (items.length > 0) continue; // Schon vorhanden - nicht überschreiben
-        }
-        // Template fehlt - nachlegen
-        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
-          '__metadata': { 'type': listItemType },
-          'Title': `${t.TemplateType}_${t.Language}`,
-          'TemplateType': t.TemplateType,
-          'Language': t.Language,
-          'Subject': t.Subject,
-          'HeadingColor': t.HeadingColor,
-          'Heading': t.Heading,
-          'BodyHtml': t.BodyHtml,
-        });
-      } catch { /* Einzelnen Fehler nicht kritisch */ }
-    }
-  }
-
-  /**
-   * Standard-Email-Templates auf die aktuelle Version aktualisieren.
-   * Wird bei jedem App-Start aufgerufen, wenn die Liste schon existiert.
-   *
-   * !! ACHTUNG !! Überschreibt User-Customizing.
-   *
-   * Hintergrund: Templates wie 'Warteliste' wurden über die Zeit erweitert
-   * (z.B. {{WaitlistPosition}}-Platzhalter). Aelter angelegte Tenants haben
-   * noch die OOTB-Version ohne diese Felder. Diese Funktion zieht den BodyHtml
-   * (sowie Subject + Heading) auf den aktuellen Code-Stand nach.
-   */
-  /**
-   * v12.12: Öffentliche Re-Seed-Funktion für Admins. Stößt das Update aller
-   * Standard-Templates an — überschreibt eventuelle individuelle Änderungen
-   * in DEX_EmailTemplates mit den aktuellen Default-Texten aus dem Code.
-   */
   public async reseedDefaultEmailTemplates(): Promise<ReseedSummary> {
-    return this.upgradeStandardEmailTemplates('DEX_EmailTemplates');
+    return emailTemplatesList.reseedDefaultEmailTemplates(this);
   }
 
-  private async upgradeStandardEmailTemplates(listName: string): Promise<ReseedSummary> {
-    const summary: ReseedSummary = { created: 0, updated: 0, skipped: 0, failed: 0, errors: [] };
-    const APP_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
-    void APP_URL; // Reserviert für spätere Templates die {{AppUrl}} hardcoden
-    const standards = [
-      // ========== EN ==========
-      { TemplateType: 'Anmeldung', Language: 'EN', Subject: 'Registration confirmation: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Registration successful',
-        BodyHtml: '<p>Dear {{Name}},</p><p>you have successfully registered for the event <strong>{{EventTitle}}</strong>.</p><p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="{{AppUrl}}">DEX App</a> (\u201EMy Events\u201C).</p><p>For organizational questions about the event, please contact {{OrganizerHtml}}.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
-      { TemplateType: 'Warteliste', Language: 'EN', Subject: 'Waitlist: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Waitlist confirmation',
-        BodyHtml: '<p>Dear {{Name}},</p><p>you have been placed on the <strong>waitlist</strong> for the event <strong>{{EventTitle}}</strong>.</p><p>Your current position: <strong>#{{WaitlistPosition}}</strong></p><p>We will notify you as soon as a spot becomes available. You can always check your current position in the <a href="{{AppUrl}}">DEX App</a> under \u201EMy Events\u201C.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
-      { TemplateType: 'Abmeldung', Language: 'EN', Subject: 'Cancellation confirmation: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Cancellation confirmed',
-        BodyHtml: '<p>Dear {{Name}},</p>' + CANCEL_BANNER_HTML + '<p>your registration for the event above has been <strong>cancelled</strong>. The Outlook calendar entry will be removed from your calendar shortly.</p><p>If you change your mind, you can register again via the <a href="{{AppUrl}}">DEX App</a>.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
-      { TemplateType: 'Nachruecken', Language: 'EN', Subject: 'You’ve got a spot: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'You’ve got a spot!',
-        BodyHtml: NACHRUECKEN_BODY_EN },
-      { TemplateType: 'EventErstellt', Language: 'EN', Subject: '[Deloitte Eventmanager] - New event created: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event Created',
-        BodyHtml: '<p>Dear {{Name}},</p><p>your event <strong>{{EventTitle}}</strong> has been successfully created.</p><p>You can manage participants in the <a href="{{AppUrl}}">DEX App</a>.</p><p>Regards,<br>Team DEX App</p>' },
-      { TemplateType: 'OutlookDeclineReminder', Language: 'EN', Subject: 'Action Required: Do you also want to cancel your registration? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'You declined the Outlook invite',
-        BodyHtml: OUTLOOK_DECLINE_BODY_EN },
-      // ========== DE ==========
-      { TemplateType: 'Anmeldung', Language: 'DE', Subject: 'Anmeldebestätigung: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Anmeldung erfolgreich',
-        BodyHtml: '<p>Hallo {{Name}},</p><p>du hast dich erfolgreich für das Event <strong>{{EventTitle}}</strong> angemeldet.</p><p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="{{AppUrl}}">DEX App</a> (\u201EMeine Events\u201C) ab.</p><p>Zu organisatorischen Fragen zum Event wende dich bitte an {{OrganizerHtml}}.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
-      { TemplateType: 'Warteliste', Language: 'DE', Subject: 'Warteliste: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Warteliste-Bestätigung',
-        BodyHtml: '<p>Hallo {{Name}},</p><p>du stehst auf der <strong>Warteliste</strong> für das Event <strong>{{EventTitle}}</strong>.</p><p>Deine aktuelle Position: <strong>#{{WaitlistPosition}}</strong></p><p>Wir benachrichtigen dich, sobald ein Platz frei wird. Deinen aktuellen Warteliste-Platz kannst du jederzeit in der <a href="{{AppUrl}}">DEX App</a> unter \u201EMeine Events\u201C sehen.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
-      { TemplateType: 'Abmeldung', Language: 'DE', Subject: 'Abmeldebestätigung: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Abmeldung bestätigt',
-        BodyHtml: '<p>Hallo {{Name}},</p>' + CANCEL_BANNER_HTML + '<p>deine Anmeldung für das oben genannte Event wurde <strong>storniert</strong>. Der Outlook-Termin wird in Kürze aus deinem Kalender entfernt.</p><p>Du kannst dich jederzeit erneut über die <a href="{{AppUrl}}">DEX App</a> anmelden.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
-      { TemplateType: 'Nachruecken', Language: 'DE', Subject: 'Du hast einen Platz: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Du hast einen Platz!',
-        BodyHtml: NACHRUECKEN_BODY_DE },
-      // v19.25: pre-wrapped Abmelde-Bestätigung für die Flow-getriebene
-      // Auto-Abmeldung (DEX_OutlookDeclineHandler), eigener Type damit die
-      // App-eigene `Abmeldung` (unwrapped) unberührt bleibt.
-      { TemplateType: 'AbmeldungAuto', Language: 'EN', Subject: 'Cancellation confirmation: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Cancellation confirmed',
-        BodyHtml: ABMELDUNG_AUTO_BODY_EN },
-      { TemplateType: 'AbmeldungAuto', Language: 'DE', Subject: 'Abmeldebestätigung: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Abmeldung bestätigt',
-        BodyHtml: ABMELDUNG_AUTO_BODY_DE },
-      // v18.63: Organizer-Benachrichtigung bei Abmeldung mit Nachrücker (vom DEX_IDReorder-Flow gequeued).
-      { TemplateType: 'OrgNachruecker', Language: 'EN', Subject: 'Cancellation with waitlist move-up: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Cancellation — waitlist move-up',
-        BodyHtml: ORG_NACHRUECKER_BODY_EN },
-      { TemplateType: 'OrgNachruecker', Language: 'DE', Subject: 'Abmeldung mit Nachrücker: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Abmeldung — Nachrücker',
-        BodyHtml: ORG_NACHRUECKER_BODY_DE },
-      { TemplateType: 'EventErstellt', Language: 'DE', Subject: '[Deloitte Eventmanager] - Neues Event erstellt: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event erstellt',
-        BodyHtml: '<p>Hallo {{Name}},</p><p>dein Event <strong>{{EventTitle}}</strong> wurde erfolgreich erstellt.</p><p>Du kannst die Teilnehmer in der <a href="{{AppUrl}}">DEX App</a> verwalten.</p><p>Viele Grüße,<br>Team DEX App</p>' },
-      { TemplateType: 'OutlookDeclineReminder', Language: 'DE', Subject: 'Action Required: Möchtest du dich auch offiziell abmelden? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Du hast den Outlook-Termin abgelehnt',
-        BodyHtml: OUTLOOK_DECLINE_BODY_DE },
-      { TemplateType: 'OutlookDeclineReminder_OnBehalfOf', Language: 'EN', Subject: 'Action Required: Cancel registration for {{EventTitle}}?', HeadingColor: '#ed8b00', Heading: 'Outlook invite declined on behalf',
-        BodyHtml: OUTLOOK_DECLINE_BODY_ONBEHALF_EN },
-      { TemplateType: 'OutlookDeclineReminder_OnBehalfOf', Language: 'DE', Subject: 'Action Required: Anmeldung für {{EventTitle}} stornieren?', HeadingColor: '#ed8b00', Heading: 'Outlook-Termin in deinem Namen abgelehnt',
-        BodyHtml: OUTLOOK_DECLINE_BODY_ONBEHALF_DE },
-      { TemplateType: 'OutlookForwardNotification', Language: 'EN', Subject: 'FYI: Meeting was forwarded — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Meeting was forwarded',
-        BodyHtml: OUTLOOK_FORWARD_BODY_EN },
-      { TemplateType: 'OutlookForwardNotification', Language: 'DE', Subject: 'FYI: Termin wurde weitergeleitet — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Termin wurde weitergeleitet',
-        BodyHtml: OUTLOOK_FORWARD_BODY_DE },
-      // v9.38: OutlookDeclineDigest
-      { TemplateType: 'OutlookDeclineDigest', Language: 'EN', Subject: 'FYI: {{DeclineCount}} attendees declined Outlook — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: attendees declined the Outlook invite',
-        BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_EN },
-      { TemplateType: 'OutlookDeclineDigest', Language: 'DE', Subject: 'FYI: {{DeclineCount}} Teilnehmer haben Outlook abgelehnt — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: Teilnehmer haben den Outlook-Termin abgelehnt',
-        BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_DE },
-      // v12.13: Team-Templates auch im Re-Seed-Pfad, sonst greift der Admin-
-      // Reseed-Button die Texte nicht.
-      { TemplateType: 'TeamMemberJoined', Language: 'EN', Subject: 'New team member — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team update',
-        BodyHtml: TEAM_MEMBER_JOINED_BODY_EN },
-      { TemplateType: 'TeamMemberJoined', Language: 'DE', Subject: 'Neues Team-Mitglied — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Update',
-        BodyHtml: TEAM_MEMBER_JOINED_BODY_DE },
-      { TemplateType: 'TeamJoinRequest', Language: 'EN', Subject: 'Team join request — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team join request',
-        BodyHtml: TEAM_JOIN_REQUEST_BODY_EN },
-      { TemplateType: 'TeamJoinRequest', Language: 'DE', Subject: 'Team-Beitritts-Anfrage — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Beitritts-Anfrage',
-        BodyHtml: TEAM_JOIN_REQUEST_BODY_DE },
-      { TemplateType: 'TeamJoinRejected', Language: 'EN', Subject: 'Team join request declined — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team join request declined',
-        BodyHtml: TEAM_JOIN_REJECTED_BODY_EN },
-      { TemplateType: 'TeamJoinRejected', Language: 'DE', Subject: 'Team-Beitritts-Anfrage abgelehnt — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team-Beitritts-Anfrage abgelehnt',
-        BodyHtml: TEAM_JOIN_REJECTED_BODY_DE },
-      { TemplateType: 'TeamLeadTransferred', Language: 'EN', Subject: 'Team lead change — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team lead change',
-        BodyHtml: TEAM_LEAD_TRANSFERRED_BODY_EN },
-      { TemplateType: 'TeamLeadTransferred', Language: 'DE', Subject: 'Team-Lead-Wechsel — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Lead-Wechsel',
-        BodyHtml: TEAM_LEAD_TRANSFERRED_BODY_DE },
-      { TemplateType: 'TeamMemberCancelled', Language: 'EN', Subject: 'Team update — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team update',
-        BodyHtml: TEAM_MEMBER_CANCELLED_BODY_EN },
-      { TemplateType: 'TeamMemberCancelled', Language: 'DE', Subject: 'Team-Update — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team-Update',
-        BodyHtml: TEAM_MEMBER_CANCELLED_BODY_DE },
-      // v13.0: Zimmerpartner, Gruppen-Wechsel, Überbuchung (vorher inline).
-      { TemplateType: 'RoommateRequest', Language: 'EN', Subject: '{{RegistrantName}} selected you as roommate — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Roommate request',
-        BodyHtml: ROOMMATE_REQUEST_BODY_EN },
-      { TemplateType: 'RoommateRequest', Language: 'DE', Subject: '{{RegistrantName}} hat dich als Zimmerpartner gewählt — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Zimmerpartner-Anfrage',
-        BodyHtml: ROOMMATE_REQUEST_BODY_DE },
-      { TemplateType: 'GroupSwitchConfirmed', Language: 'EN', Subject: 'Group switch confirmed — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Group switch',
-        BodyHtml: GROUP_SWITCH_CONFIRMED_BODY_EN },
-      { TemplateType: 'GroupSwitchConfirmed', Language: 'DE', Subject: 'Gruppen-Wechsel bestätigt — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Gruppen-Wechsel',
-        BodyHtml: GROUP_SWITCH_CONFIRMED_BODY_DE },
-      { TemplateType: 'GroupSwitchWaitlist', Language: 'EN', Subject: 'Group switch — on waitlist: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Group switch — on waitlist',
-        BodyHtml: GROUP_SWITCH_WAITLIST_BODY_EN },
-      { TemplateType: 'GroupSwitchWaitlist', Language: 'DE', Subject: 'Gruppen-Wechsel — auf Warteliste: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Gruppen-Wechsel — auf Warteliste',
-        BodyHtml: GROUP_SWITCH_WAITLIST_BODY_DE },
-      { TemplateType: 'OverbookingApology', Language: 'EN', Subject: 'Important: correction of your registration — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Registration corrected',
-        BodyHtml: OVERBOOK_APOLOGY_BODY_EN },
-      { TemplateType: 'OverbookingApology', Language: 'DE', Subject: 'Wichtig: Korrektur deiner Anmeldung — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Anmeldung korrigiert',
-        BodyHtml: OVERBOOK_APOLOGY_BODY_DE },
-    ];
-
-    let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
-    try {
-      const typeResp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=ListItemEntityTypeFullName`,
-        SPHttpClient.configurations.v1
-      );
-      if (typeResp.ok) {
-        const typeData = await typeResp.json();
-        listItemType = typeData.d?.ListItemEntityTypeFullName || typeData.ListItemEntityTypeFullName || listItemType;
-      }
-    } catch { /* Fallback */ }
-
-    for (const t of standards) {
-      const label = `${t.TemplateType}_${t.Language}`;
-      try {
-        // Bestehendes Item finden
-        const checkResp = await this._sp.get(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$filter=TemplateType eq '${t.TemplateType}' and Language eq '${t.Language}'&$top=1&$select=Id,BodyHtml`,
-          SPHttpClient.configurations.v1
-        );
-        if (!checkResp.ok) {
-          summary.failed++;
-          summary.errors.push(`${label}: Prüfung fehlgeschlagen (HTTP ${checkResp.status})`);
-          continue;
-        }
-        const checkData = await checkResp.json();
-        const items = checkData.value || checkData.d?.results || [];
-        if (items.length === 0) {
-          // existiert nicht -> anlegen (übernimmt ensureMissingEmailTemplates für einige; hier sicherheitshalber auch)
-          const postResp = await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
-            '__metadata': { 'type': listItemType },
-            'Title': label,
-            'TemplateType': t.TemplateType,
-            'Language': t.Language,
-            'Subject': t.Subject,
-            'HeadingColor': t.HeadingColor,
-            'Heading': t.Heading,
-            'BodyHtml': t.BodyHtml,
-          });
-          // v18.66: _post wirft NICHT bei HTTP 4xx/5xx — Status explizit prüfen,
-          // sonst scheitern Inserts (z.B. neue Templates wie OrgNachruecker)
-          // stillschweigend und der Reseed meldet fälschlich Erfolg.
-          if (postResp.ok || postResp.status === 201 || postResp.status === 204) {
-            summary.created++;
-          } else {
-            summary.failed++;
-            let detail = '';
-            try { detail = (await postResp.text()).slice(0, 200); } catch { /* ignore */ }
-            summary.errors.push(`${label}: Anlegen fehlgeschlagen (HTTP ${postResp.status})${detail ? ' — ' + detail : ''}`);
-          }
-        } else {
-          // existiert -> updaten falls BodyHtml vom Default abweicht
-          const item = items[0];
-          if (item.BodyHtml !== t.BodyHtml) {
-            const mergeResp = await this._merge(
-              `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items(${item.Id})`,
-              {
-                'Title': label,
-                'TemplateType': t.TemplateType,
-                'Language': t.Language,
-                'Subject': t.Subject,
-                'HeadingColor': t.HeadingColor,
-                'Heading': t.Heading,
-                'BodyHtml': t.BodyHtml,
-              }
-            );
-            if (mergeResp.ok || mergeResp.status === 204) {
-              summary.updated++;
-            } else {
-              summary.failed++;
-              summary.errors.push(`${label}: Aktualisieren fehlgeschlagen (HTTP ${mergeResp.status})`);
-            }
-          } else {
-            summary.skipped++;
-          }
-        }
-      } catch (e) {
-        summary.failed++;
-        summary.errors.push(`${label}: ${e instanceof Error ? e.message : 'Unbekannter Fehler'}`);
-      }
-    }
-    return summary;
-  }
-
-  /**
-   * Wird aufgerufen wenn die Liste bereits existiert (nachträgliches Upgrade).
-   */
-  private async ensureEmailTemplatesConfig(listName: string): Promise<void> {
-    try {
-      // 1. Logo-Spalten nachträglich anlegen falls fehlend
-      // v9.16: TestTeamEmails ergänzt — globale Liste (";"-separiert) der
-      // User die Test-Events sehen + sich anmelden dürfen, auch wenn sie
-      // keine Organizer/Admin-Rolle haben.
-      const logoFields = [
-        { title: 'LogoBase64', type: 3 },
-        { title: 'DefaultImageBase64', type: 3 },
-        { title: 'TestTeamEmails', type: 3 }, // Note (multi-line text), ";"-separiert
-        // v11.47: App-Aufruf-Counter für die KPI-Boxen auf der LandingPage.
-        // Wird pro Browser-Session genau einmal inkrementiert (Session-Guard
-        // in LandingPage), ETag-CAS-Retry im incrementAppViewCount().
-        { title: 'AppViewCount', type: 9 }, // Number
-        // v11.52: gecachter Total-Teilnehmer-Counter für das LandingPage-KPI.
-        // Live-Zählung über alle Event-Subsites war zu langsam — stattdessen
-        // liest der Boot-Loader diesen einen Wert (schneller REST-Call), und
-        // sobald die App fertig geladen hat, schreiben wir den frischen Wert
-        // im Hintergrund zurück. Eventual consistency, für KPI-Anzeige ok.
-        { title: 'TotalParticipantsCount', type: 9 }, // Number
-        { title: 'TotalEventsCount', type: 9 }, // Number — analog für 'Events'
-        // v15.17: Subheading-Spalte für die untere Headline-Zeile pro
-        // Template (vorher hart als „Event {{EventTitle}}" im Code).
-        // Leerwert = Fallback im Code auf {{EventTitle}} ohne Präfix.
-        { title: 'Subheading', type: 2 }, // Single line text
-      ];
-      for (const f of logoFields) {
-        try {
-          const check = await this._sp.get(
-            `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('${f.title}')`,
-            SPHttpClient.configurations.v1
-          );
-          if (!check.ok) {
-            await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
-              '__metadata': { 'type': 'SP.Field' },
-              'Title': f.title,
-              'FieldTypeKind': f.type,
-              'Required': false,
-            });
-          }
-        } catch { /* Spalte existiert oder Fehler - ignorieren */ }
-      }
-
-      // 2. _Config Zeile prüfen und ggf. anlegen
-      const configResp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id`,
-        SPHttpClient.configurations.v1
-      );
-      if (configResp.ok) {
-        const configData = await configResp.json();
-        const items = configData.value || configData.d?.results || [];
-        if (items.length === 0) {
-          // _Config Zeile fehlt - anlegen
-          let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
-          try {
-            const typeResp = await this._sp.get(
-              `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=ListItemEntityTypeFullName`,
-              SPHttpClient.configurations.v1
-            );
-            if (typeResp.ok) {
-              const typeData = await typeResp.json();
-              listItemType = typeData.d?.ListItemEntityTypeFullName || typeData.ListItemEntityTypeFullName || listItemType;
-            }
-          } catch { /* Fallback */ }
-
-          await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
-            '__metadata': { 'type': listItemType },
-            'Title': '_Config',
-            'TemplateType': '_Config',
-          });
-        }
-      }
-    } catch (err) { console.warn('[DEX] ensureEmailTemplatesConfig fehlgeschlagen:', err); }
-  }
-
-  /**
-   * v11.52: Gecachte KPI-Werte (TotalParticipantsCount + TotalEventsCount)
-   * aus der _Config-Zeile von DEX_EmailTemplates lesen. Ein einziger REST-
-   * Call, kein Subsite-Roundtrip — Boot-Loader zeigt das innerhalb von ms.
-   * Liefert null bei Fehler, sonst { participants, events } mit 0 als
-   * Default für leere Felder.
-   */
   public async getKpiCache(): Promise<{ participants: number; events: number } | null> {
-    try {
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id,TotalParticipantsCount,TotalEventsCount`,
-        SPHttpClient.configurations.v1,
-      );
-      if (!resp.ok) return null;
-      const data = await resp.json();
-      const items = data.value || data.d?.results || [];
-      if (items.length === 0) return { participants: 0, events: 0 };
-      const it = items[0];
-      const pRaw = it.TotalParticipantsCount;
-      const eRaw = it.TotalEventsCount;
-      const p = (pRaw === null || pRaw === undefined) ? 0 : (typeof pRaw === 'number' ? pRaw : (parseInt(String(pRaw), 10) || 0));
-      const e = (eRaw === null || eRaw === undefined) ? 0 : (typeof eRaw === 'number' ? eRaw : (parseInt(String(eRaw), 10) || 0));
-      return { participants: p, events: e };
-    } catch { return null; }
+    return emailTemplatesList.getKpiCache(this);
   }
 
-  /**
-   * v30.5: F&A-Verteiler (Fachkonzept 8.1) — eigene Zeile in
-   * DEX_EmailTemplates (TemplateType '_FAConfig'), JSON im BodyHtml-Feld.
-   * Gleiche Ablage wie die _Config-Zeile: EIN REST-Call, keine neue Liste,
-   * und Admins können den Stand notfalls direkt in SharePoint einsehen.
-   */
   public async getFAConfig(): Promise<{ infoRecipients: string[]; listRecipients: string[]; log: Array<{ ts: string; by: string; action: string; old?: string; neu?: string }> }> {
-    const empty = { infoRecipients: [], listRecipients: [], log: [] };
-    try {
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_FAConfig'&$top=1&$select=Id,BodyHtml`,
-        SPHttpClient.configurations.v1,
-      );
-      if (!resp.ok) return empty;
-      const data = await resp.json();
-      const items = data.value || data.d?.results || [];
-      if (items.length === 0) return empty;
-      const parsed = JSON.parse(items[0].BodyHtml || '{}');
-      return {
-        infoRecipients: Array.isArray(parsed.infoRecipients) ? parsed.infoRecipients : [],
-        listRecipients: Array.isArray(parsed.listRecipients) ? parsed.listRecipients : [],
-        log: Array.isArray(parsed.log) ? parsed.log : [],
-      };
-    } catch { return empty; }
+    return emailTemplatesList.getFAConfig(this);
   }
 
   public async saveFAConfig(cfg: { infoRecipients: string[]; listRecipients: string[]; log: Array<{ ts: string; by: string; action: string; old?: string; neu?: string }> }): Promise<boolean> {
-    try {
-      const listName = 'DEX_EmailTemplates';
-      const body = JSON.stringify({ ...cfg, log: cfg.log.slice(-100) });
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$filter=TemplateType eq '_FAConfig'&$top=1&$select=Id`,
-        SPHttpClient.configurations.v1,
-      );
-      if (!resp.ok) return false;
-      const data = await resp.json();
-      const items = data.value || data.d?.results || [];
-      if (items.length > 0) {
-        const r = await this._merge(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items(${items[0].Id})`,
-          { 'BodyHtml': body }
-        );
-        return r.ok;
-      }
-      // Zeile fehlt (Bestandsinstallation) — anlegen. Entity-Typ wie beim
-      // Template-Seeding ermitteln, mit Fallback auf den Standardnamen.
-      let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
-      try {
-        const typeResp = await this._sp.get(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=ListItemEntityTypeFullName`,
-          SPHttpClient.configurations.v1,
-        );
-        if (typeResp.ok) {
-          const typeData = await typeResp.json();
-          listItemType = typeData.ListItemEntityTypeFullName || typeData.d?.ListItemEntityTypeFullName || listItemType;
-        }
-      } catch { /* Fallback bleibt */ }
-      const create = await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
-        '__metadata': { 'type': listItemType },
-        'Title': '_FAConfig',
-        'TemplateType': '_FAConfig',
-        'BodyHtml': body,
-      });
-      return create.ok;
-    } catch { return false; }
+    return emailTemplatesList.saveFAConfig(this, cfg);
   }
 
-  /**
-   * v11.53: KPI-Counter um delta hochzählen (Anmeldung +1, Cancel -1,
-   * createEvent +1, deleteEvent -N). ETag-CAS-Retry, race-safe bei 10k+
-   * parallelen Usern. Liefert den neuen Wert oder null bei Fehler.
-   */
   public async bumpKpiParticipants(delta: number): Promise<number | null> {
-    return this.bumpKpiField('TotalParticipantsCount', delta);
+    return emailTemplatesList.bumpKpiParticipants(this, delta);
   }
+
   public async bumpKpiEvents(delta: number): Promise<number | null> {
-    return this.bumpKpiField('TotalEventsCount', delta);
+    return emailTemplatesList.bumpKpiEvents(this, delta);
   }
 
-  /**
-   * v26.63: NUR die Events-Kennzahl der Startseite neu berechnen — allein aus
-   * DEX_Events (ein Read, paginiert), OHNE die teure Subsite-Teilnehmer-
-   * Schleife. Möglich, weil DEX_Events pro Zeile alles Nötige trägt: IsFictive
-   * (Entwurf), EventStatus (Cancelled/Under Construction) und ParentEventId
-   * (Sub-Event). Gezählt werden veröffentlichte Haupt-Events (inkl. abgelaufener).
-   * Der Teilnehmer-Zählerwert bleibt unverändert erhalten. Liefert die neue
-   * Events-Zahl oder null bei Fehler.
-   */
   public async recomputeEventKpiOnly(): Promise<number | null> {
-    const all = await this.getAllEventsForKpi();
-    if (all.length === 0) return null;
-    const events = all.filter(e =>
-      e.status !== 'Cancelled' && e.status !== 'Under Construction' && !e.isFictive && !e.parentEventId
-    ).length;
-    const cache = await this.getKpiCache();
-    const ok = await this.updateKpiCache({ events, participants: cache?.participants ?? 0 });
-    return ok ? events : null;
+    return emailTemplatesList.recomputeEventKpiOnly(this);
   }
 
-  /**
-   * v26.63: Denormalisierte Teilnehmerzahl `CurrentParticipants` am DEX_Events-
-   * Item aktualisieren. Best-effort — der MERGE klappt nur für Organizer/Admins
-   * (Schreibrecht auf DEX_Events); bei normalen Usern (nur Lesen) schlägt er
-   * still fehl, was gewollt ist. Liefert true bei Erfolg. Kein Fehler-Throw.
-   */
   public async persistCurrentParticipants(eventId: number, count: number): Promise<boolean> {
-    if (!Number.isFinite(eventId) || eventId <= 0 || !Number.isFinite(count) || count < 0) return false;
-    try {
-      const resp = await this._merge(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})`,
-        { 'CurrentParticipants': count }
-      );
-      return resp.ok || resp.status === 406;
-    } catch { return false; }
-  }
-  private async bumpKpiField(field: string, delta: number): Promise<number | null> {
-    if (!Number.isFinite(delta) || delta === 0) return null;
-    const itemUrl = await this.getConfigItemUrl();
-    if (!itemUrl) return null;
-    const MAX_RETRIES = 8;
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      let getResp: SPHttpClientResponse;
-      try {
-        getResp = await this._sp.get(itemUrl, SPHttpClient.configurations.v1);
-      } catch { return null; }
-      if (!getResp.ok) return null;
-      const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
-      if (!etag) return null;
-      let data;
-      try { data = await getResp.json(); } catch { return null; }
-      const raw = data?.[field] ?? data?.d?.[field];
-      const current = (raw === null || raw === undefined)
-        ? 0
-        : (typeof raw === 'number' ? raw : (parseInt(String(raw), 10) || 0));
-      const next = Math.max(0, current + delta);
-      const patchResp = await this._mergeIfMatch(itemUrl, { [field]: next }, etag);
-      if (patchResp.ok) return next;
-      if (patchResp.status !== 412) return null;
-      await new Promise(res => setTimeout(res, 40 + Math.floor(Math.random() * 80)));
-    }
-    return null;
+    return emailTemplatesList.persistCurrentParticipants(this, eventId, count);
   }
 
-  /**
-   * v11.52: Gecachte KPI-Werte zurückschreiben. Wird nach vollem App-Load
-   * im Hintergrund aufgerufen (DexEventPlatform), damit der nächste Boot-
-   * Loader frische Zahlen sieht. Best-effort, kein ETag-CAS nötig — bei
-   * gleichzeitigen Schreibern gewinnt der letzte, was für KPI ok ist.
-   */
   public async updateKpiCache(values: { participants: number; events: number }): Promise<boolean> {
-    const itemUrl = await this.getConfigItemUrl();
-    if (!itemUrl) return false;
-    try {
-      const resp = await this._mergeIfMatch(itemUrl, {
-        'TotalParticipantsCount': Math.max(0, Math.floor(values.participants || 0)),
-        'TotalEventsCount': Math.max(0, Math.floor(values.events || 0)),
-      }, '*');
-      return resp.ok;
-    } catch { return false; }
+    return emailTemplatesList.updateKpiCache(this, values);
   }
 
-  /**
-   * v26.4: ALLE DEX_Events-Zeilen (paginiert, NICHT auf 100 begrenzt) — nur die
-   * für die KPI nötigen Felder. getEvents() lädt aus Performance-Gründen nur die
-   * 100 neuesten; für den „bisher genutzt für"-Gesamtwert brauchen wir aber
-   * wirklich alle Events.
-   */
   public async getAllEventsForKpi(): Promise<Array<{ id: number; parentEventId: string; status: string; subsiteUrl: string; isFictive: boolean }>> {
-    const out: Array<{ id: number; parentEventId: string; status: string; subsiteUrl: string; isFictive: boolean }> = [];
-    let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=Id,ParentEventId,EventStatus,SubsiteUrl,IsFictive&$top=5000`;
-    let guard = 0;
-    while (url && guard < 20) {
-      guard++;
-      let resp: SPHttpClientResponse;
-      try { resp = await this._sp.get(url, SPHttpClient.configurations.v1); }
-      catch { break; }
-      if (!resp.ok) break;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let data: any;
-      try { data = await resp.json(); } catch { break; }
-      const items = data.value || data.d?.results || [];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const it of items as any[]) {
-        out.push({ id: it.Id, parentEventId: it.ParentEventId || '', status: it.EventStatus || '', subsiteUrl: it.SubsiteUrl || '', isFictive: !!it.IsFictive });
-      }
-      url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
-    }
-    return out;
+    return emailTemplatesList.getAllEventsForKpi(this);
   }
 
-  /**
-   * v26.4: KPI-Gesamtwerte über ALLE Events (nicht nur die geladenen 100):
-   * participants = Summe der aktiven Anmeldungen über alle Events, die NICHT
-   * abgesagt und KEIN Entwurf sind (inkl. abgelaufener/Completed + Sub-Events);
-   * events = Anzahl dieser Haupt-Events (ohne Sub-Events). Best-effort,
-   * sequentiell (SP-Throttling) — wird im Hintergrund 1×/Session aufgerufen.
-   * Liefert null bei komplettem Fehler (dann KEIN Cache-Überschreiben).
-   */
   public async getKpiTotals(): Promise<{ participants: number; events: number } | null> {
-    const LOG = '[DEX KPI]';
-    try {
-      // eslint-disable-next-line no-console
-      console.log(`${LOG} Recompute „bisher genutzt für" gestartet — zähle über ALLE Events (nicht nur die geladenen 100) …`);
-      const all = await this.getAllEventsForKpi();
-      if (all.length === 0) {
-        // eslint-disable-next-line no-console
-        console.warn(`${LOG} Keine Event-Zeilen geladen — Recompute übersprungen (Cache bleibt unverändert).`);
-        return null;
-      }
-      // Abgesagte Events + Entwürfe zählen NICHT, alles andere (Active/
-      // Completed, inkl. abgelaufener) schon. v26.52 BUG-FIX: Entwürfe sind
-      // seit v11.89 das IsFictive-FLAG — vorher wurde nur der Legacy-Status
-      // 'Under Construction' ausgefiltert, moderne Entwürfe/Test-Events
-      // zählten fälschlich mit (Events UND deren Test-Teilnehmer).
-      const counted = all.filter(e => e.status !== 'Cancelled' && e.status !== 'Under Construction' && !e.isFictive);
-      const events = counted.filter(e => !e.parentEventId).length;
-      // eslint-disable-next-line no-console
-      console.log(`${LOG} ${all.length} Event-Zeilen geladen → ${counted.length} werden gezählt (inkl. abgelaufener), davon ${events} Haupt-Events. Summiere Teilnehmer pro Subsite …`);
-      let participants = 0;
-      let scanned = 0;
-      let failed = 0;
-      for (const e of counted) {
-        if (!e.subsiteUrl) continue;
-        try { const c = await this.getRegistrationCount(e.subsiteUrl); participants += c.registered; scanned++; }
-        catch { failed++; /* einzelne Subsite-Fehler ignorieren — Gesamtwert bleibt best-effort */ }
-      }
-      // eslint-disable-next-line no-console
-      console.log(`${LOG} Ergebnis über ALLE Events: ${participants} Teilnehmer / ${events} Events (${scanned} Teilnehmerlisten gezählt${failed ? `, ${failed} nicht lesbar` : ''}).`);
-      return { participants, events };
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn(`${LOG} Recompute fehlgeschlagen (best-effort, Cache bleibt unverändert):`, err);
-      return null;
-    }
+    return emailTemplatesList.getKpiTotals(this);
   }
 
-  /**
-   * v11.50: Anzahl Items in DEX_Participants (= unique User, die jemals für
-   * irgendein Event angemeldet/auf Warteliste waren). Liest nur das ItemCount-
-   * Metadatum der Liste, nicht alle Items — schnell und cheap. Liefert null
-   * bei Fehler.
-   */
   public async getParticipantsListCount(): Promise<number | null> {
-    try {
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')?$select=ItemCount`,
-        SPHttpClient.configurations.v1,
-      );
-      if (!resp.ok) return null;
-      const data = await resp.json();
-      const raw = data?.ItemCount ?? data?.d?.ItemCount;
-      if (raw === null || raw === undefined) return null;
-      return typeof raw === 'number' ? raw : (parseInt(String(raw), 10) || 0);
-    } catch { return null; }
+    return emailTemplatesList.getParticipantsListCount(this);
   }
 
-  /**
-   * v11.47: Aktuellen App-Aufruf-Counter aus der _Config-Zeile von
-   * DEX_EmailTemplates lesen. Liefert 0 wenn das Feld leer / nicht
-   * vorhanden ist. null bei Lese-Fehler.
-   */
   public async getAppViewCount(): Promise<number | null> {
-    try {
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id,AppViewCount`,
-        SPHttpClient.configurations.v1,
-      );
-      if (!resp.ok) return null;
-      const data = await resp.json();
-      const items = data.value || data.d?.results || [];
-      if (items.length === 0) return 0;
-      const raw = items[0].AppViewCount;
-      if (raw === null || raw === undefined) return 0;
-      return typeof raw === 'number' ? raw : (parseInt(String(raw), 10) || 0);
-    } catch { return null; }
+    return emailTemplatesList.getAppViewCount(this);
   }
 
-  /**
-   * v11.47: App-Aufruf-Counter um 1 inkrementieren — ETag-CAS-Retry analog
-   * zum reserveSeat-Muster. Liefert den neuen Wert nach Inkrement, oder
-   * null bei Fehler / Retry-Erschöpfung.
-   */
   public async incrementAppViewCount(): Promise<number | null> {
-    const itemUrl = await this.getConfigItemUrl();
-    if (!itemUrl) return null;
-    const MAX_RETRIES = 8;
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      let getResp: SPHttpClientResponse;
-      try {
-        getResp = await this._sp.get(itemUrl, SPHttpClient.configurations.v1);
-      } catch { return null; }
-      if (!getResp.ok) return null;
-      const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
-      if (!etag) return null;
-      let data;
-      try { data = await getResp.json(); } catch { return null; }
-      const raw = data?.AppViewCount ?? data?.d?.AppViewCount;
-      const current = (raw === null || raw === undefined)
-        ? 0
-        : (typeof raw === 'number' ? raw : (parseInt(String(raw), 10) || 0));
-      const next = current + 1;
-      const patchResp = await this._mergeIfMatch(itemUrl, { 'AppViewCount': next }, etag);
-      if (patchResp.ok) return next;
-      if (patchResp.status !== 412) return null;
-      // 412 = stale ETag → kurzer Backoff + neu lesen
-      await new Promise(res => setTimeout(res, 40 + Math.floor(Math.random() * 80)));
-    }
-    return null;
+    return emailTemplatesList.incrementAppViewCount(this);
   }
 
-  /**
-   * v11.47: Helper — URL des _Config-Items in DEX_EmailTemplates ermitteln.
-   * Liefert null, wenn die Liste/Zeile noch nicht existiert.
-   */
-  private async getConfigItemUrl(): Promise<string | null> {
-    try {
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id`,
-        SPHttpClient.configurations.v1,
-      );
-      if (!resp.ok) return null;
-      const data = await resp.json();
-      const items = data.value || data.d?.results || [];
-      if (items.length === 0) return null;
-      const id = items[0].Id;
-      return `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items(${id})`;
-    } catch { return null; }
-  }
-
-  /**
-   * Logos als Base64 in die _Config Zeile schreiben (für Power Automate Flows).
-   * Lädt Deloitte_Logo.png und dex-orb.png aus SiteAssets/DEX_Logos,
-   * konvertiert zu Base64 Data-URI und speichert in LogoBase64/DefaultImageBase64.
-   */
   public async ensureLogosInConfig(): Promise<void> {
-    try {
-      // 1. _Config Zeile lesen
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1`,
-        SPHttpClient.configurations.v1
-      );
-      if (!resp.ok) return;
-      const data = await resp.json();
-      const items = data.value || data.d?.results || [];
-      const configItem = items[0];
-      if (!configItem) return;
-
-      // 2. Wenn LogoBase64 schon korrekt befüllt ist (mit image/ MIME-Type), nichts tun
-      if (configItem.LogoBase64 && configItem.LogoBase64.startsWith('data:image/')) return;
-
-      // 3. Bilder aus SiteAssets laden
-      const logoBase64 = await this.loadFileAsBase64('DEX_Logos/Deloitte_Logo.png');
-      const orbBase64 = await this.loadFileAsBase64('DEX_Logos/dex-orb.png');
-      if (!logoBase64 && !orbBase64) return;
-
-      // 4. In _Config Zeile schreiben (über die getestete _post/_merge Methode)
-      const configId = configItem.Id || configItem.d?.Id;
-      if (!configId) return;
-
-      const updatePayload: Record<string, unknown> = {
-        '__metadata': { 'type': 'SP.Data.DEX_x005f_EmailTemplatesListItem' },
-      };
-      if (logoBase64) updatePayload['LogoBase64'] = logoBase64;
-      if (orbBase64) updatePayload['DefaultImageBase64'] = orbBase64;
-
-      await this._sp.post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items(${configId})`,
-        SPHttpClient.configurations.v1,
-        {
-          headers: {
-            'Accept': 'application/json;odata=verbose',
-            'Content-Type': 'application/json;odata=verbose',
-            'IF-MATCH': '*',
-            'X-HTTP-Method': 'MERGE',
-            'odata-version': '',
-          },
-          body: JSON.stringify(updatePayload),
-        }
-      );
-    } catch (err) {
-      console.warn('[DEX] ensureLogosInConfig fehlgeschlagen:', err);
-    }
+    return emailTemplatesList.ensureLogosInConfig(this);
   }
 
-  /**
-   * Datei aus SiteAssets als Base64 Data-URI laden.
-   */
-  private async loadFileAsBase64(path: string): Promise<string> {
-    try {
-      const serverRelativeUrl = this.context.pageContext.web.serverRelativeUrl;
-      const fileUrl = `${this.siteUrl}/_api/web/GetFileByServerRelativeUrl('${serverRelativeUrl}/SiteAssets/${path}')/$value`;
-
-      // SPHttpClient mit binaryStringResponseBody für Binary-Downloads
-      const resp = await this._sp.get(fileUrl, SPHttpClient.configurations.v1, {
-        headers: { 'Accept': '*/*' },
-      } as ISPHttpClientOptions);
-      if (!resp.ok) {
-        console.warn('[DEX] loadFileAsBase64 fehlgeschlagen:', path, resp.status);
-        return '';
-      }
-      const blob = await resp.blob();
-      if (!blob || blob.size === 0) return '';
-      // MIME-Type aus Dateiendung ableiten (SPHttpClient gibt oft application/octet-stream)
-      const ext = path.split('.').pop()?.toLowerCase();
-      const mimeType = ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : blob.type;
-      const correctBlob = (blob.type !== mimeType) ? new Blob([blob], { type: mimeType }) : blob;
-      return await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string || '');
-        reader.onerror = () => resolve('');
-        reader.readAsDataURL(correctBlob);
-      });
-    } catch (err) {
-      console.warn('[DEX] loadFileAsBase64 Error:', path, err);
-      return '';
-    }
-  }
-
-  /**
-   * Email-Template aus DEX_EmailTemplates laden.
-   * Fallback auf eingebautes Template wenn nicht gefunden.
-   */
-  // v9.16: Test-Team — globale ";"-separierte E-Mail-Liste, gespeichert auf
-  // dem _Config-Eintrag der DEX_EmailTemplates-Liste. Erlaubt nicht-Admin/
-  // -Organizer-Usern Test-Events zu sehen + sich anzumelden.
   public async getTestTeamEmails(): Promise<string[]> {
-    try {
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=TestTeamEmails`,
-        SPHttpClient.configurations.v1
-      );
-      if (!resp.ok) return [];
-      const data = await resp.json();
-      const items = data.value || data.d?.results || [];
-      if (items.length === 0) return [];
-      const raw: string = (items[0].TestTeamEmails || '').toString();
-      return raw.split(/[;,\n]/).map(s => s.trim().toLowerCase()).filter(s => !!s && s.includes('@'));
-    } catch { return []; }
+    return emailTemplatesList.getTestTeamEmails(this);
   }
 
   public async setTestTeamEmails(emails: string[]): Promise<boolean> {
-    try {
-      const cleaned = (emails || []).map(s => (s || '').trim()).filter(s => !!s && s.includes('@'));
-      const value = cleaned.join(';');
-      // _Config-Item-ID lookup
-      const lookup = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id`,
-        SPHttpClient.configurations.v1
-      );
-      if (!lookup.ok) return false;
-      const data = await lookup.json();
-      const items = data.value || data.d?.results || [];
-      if (items.length === 0) return false;
-      const itemId = items[0].Id;
-      const resp = await this._merge(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items(${itemId})`,
-        { 'TestTeamEmails': value }
-      );
-      return resp.ok;
-    } catch { return false; }
+    return emailTemplatesList.setTestTeamEmails(this, emails);
   }
 
   public async getEmailTemplate(templateType: string, language: string = 'EN'): Promise<{ subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string } | null> {
-    try {
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '${templateType.replace(/'/g, "''")}' and Language eq '${language.replace(/'/g, "''")}'&$select=Subject,HeadingColor,Heading,Subheading,BodyHtml&$top=1`,
-        SPHttpClient.configurations.v1
-      );
-      if (resp.ok) {
-        const data = await resp.json();
-        const items = data.value || data.d?.results || [];
-        if (items.length > 0) {
-          return {
-            subject: items[0].Subject || '',
-            headingColor: items[0].HeadingColor || '#86bc25',
-            heading: items[0].Heading || '',
-            // v15.17: Subheading (untere Headline-Zeile, vorher hart als
-            // „Event {{EventTitle}}" geschrieben) jetzt aus dem Template.
-            // Leer = Fallback auf reinen EventTitle ohne „Event "-Präfix.
-            subheading: items[0].Subheading || '',
-            bodyHtml: items[0].BodyHtml || '',
-          };
-        }
-      }
-    } catch { /* */ }
-    return null;
+    return emailTemplatesList.getEmailTemplate(this, templateType, language);
   }
 
-  /**
-   * Alle Email-Templates laden (für Event-Erstellung / Admin).
-   */
   public async getAllEmailTemplates(): Promise<Array<{ id: number; templateType: string; language: string; subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string }>> {
-    try {
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$select=Id,TemplateType,Language,Subject,HeadingColor,Heading,Subheading,BodyHtml&$orderby=TemplateType,Language&$top=500`,
-        SPHttpClient.configurations.v1
-      );
-      if (resp.ok) {
-        const data = await resp.json();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return (data.value || data.d?.results || []).map((item: any) => ({
-          id: item.Id,
-          templateType: item.TemplateType || '',
-          language: item.Language || 'EN',
-          subject: item.Subject || '',
-          headingColor: item.HeadingColor || '#86bc25',
-          heading: item.Heading || '',
-          subheading: item.Subheading || '',
-          bodyHtml: item.BodyHtml || '',
-        }));
-      }
-    } catch { /* */ }
-    return [];
+    return emailTemplatesList.getAllEmailTemplates(this);
   }
 
-  /**
-   * Ein globales Email-Template (DEX_EmailTemplates) aktualisieren — Admin-Tool
-   * (globaler Vorlagen-Editor). Nur die übergebenen Felder werden per MERGE
-   * geschrieben.
-   */
   public async updateEmailTemplate(id: number, fields: { subject?: string; heading?: string; subheading?: string; headingColor?: string; bodyHtml?: string }): Promise<boolean> {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const body: Record<string, any> = {};
-      if (fields.subject !== undefined) body['Subject'] = fields.subject;
-      if (fields.heading !== undefined) body['Heading'] = fields.heading;
-      if (fields.subheading !== undefined) body['Subheading'] = fields.subheading;
-      if (fields.headingColor !== undefined) body['HeadingColor'] = fields.headingColor;
-      if (fields.bodyHtml !== undefined) body['BodyHtml'] = fields.bodyHtml;
-      if (Object.keys(body).length === 0) return true;
-      const resp = await this._merge(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items(${id})`, body);
-      return resp.ok;
-    } catch { return false; }
+    return emailTemplatesList.updateEmailTemplate(this, id, fields);
+  }
+
+  // v30.11: war privater Helfer der Sektion, wird aber auch vom
+  // Logo-&-Branding-Block (v26.50) gebraucht — bleibt deshalb als Stub public.
+  public async loadFileAsBase64(path: string): Promise<string> {
+    return emailTemplatesList.loadFileAsBase64(this, path);
   }
 
   // ==================== DEX_Participants Liste ====================
@@ -10438,165 +9403,28 @@ export class EventService {
   }
 
   // ==================== v21: Archivierung ====================
-  // Globale Queue-/Log-Listen, deren Zeilen abgelaufener Events ins
-  // DEX_Archive wandern (verschieben = nach Insert aus der Quelle löschen).
-  // DEX_Emails/Outlook/IDReorder/ChangeLog matchen über EventId, DEX_AccessFix
-  // über SubsiteUrl (hat keine EventId).
-  // v22.2: Pro Quelle eine SCHLANKE Feldauswahl für den Archiv-Lauf.
-  // WICHTIG: DEX_Emails OHNE `Body` — 1000+ komplette HTML-Mail-Bodies in
-  // den Browser zu laden hängte den Archiv-Lauf praktisch auf (zig MB).
-  // Der Mail-Body wird bewusst NICHT mitarchiviert (Metadaten reichen als
-  // Nachweis; die Mail ist längst versendet).
-  // hasStatus: Liste besitzt eine Status-Spalte → Zeilen mit 'Pending'
-  // (Flow hat sie noch nicht verarbeitet) werden NICHT archiviert, damit
-  // keine unversendete Mail / kein offener Auftrag aus der Queue verschwindet.
-  // v23.47: select MUSS den GESAMTEN Inhalt der Zeile abdecken — das Archiv
-  // ist die End-Ablage, der Originaldatensatz wird nach dem Insert gelöscht.
-  // Frühere Selects ließen Inhalte weg: DEX_Emails OHNE `Body` (kompletter
-  // Mailtext!) und DEX_Outlook OHNE `CalendarLink` — die fehlten damit im
-  // Payload und gingen beim Löschen verloren. Jetzt: vollständige Feldlisten.
-  private static readonly ARCHIVE_SOURCES: Array<{ list: string; matchBy: 'eventId' | 'subsiteUrl'; select: string; hasStatus: boolean }> = [
-    { list: 'DEX_Emails', matchBy: 'eventId', select: 'Id,Title,Recipient,RecipientName,Body,EmailType,EventTitle,EventId,Status,Cc,Bcc,Importance,Created', hasStatus: true },
-    { list: 'DEX_Outlook', matchBy: 'eventId', select: 'Id,Title,Attendee,EventId,ActionType,Status,CalendarLink,Created', hasStatus: true },
-    { list: 'DEX_IDReorder', matchBy: 'eventId', select: 'Id,Title,EventId,EventNumber,SubsiteUrl,Status,CancelledName,CancelledEmail,Created', hasStatus: true },
-    { list: 'DEX_ChangeLog', matchBy: 'eventId', select: 'Id,Title,Action,TargetType,TargetId,TargetName,EventId,EventTitle,ActorName,ActorEmail,Details,Created', hasStatus: false },
-    { list: 'DEX_AccessFix', matchBy: 'subsiteUrl', select: 'Id,Title,SubsiteUrl,ItemId,ParticipantEmail,Status,Created', hasStatus: true },
-  ];
+  // v30.11: Thema ausgelagert nach services/events/archive.ts (DEX_Archive-
+  // Liste, Archiv-Lauf über ARCHIVE_SOURCES, Löschkonzept) — hier stehen nur
+  // noch Delegations-Stubs mit unveränderter Signatur.
 
-  /**
-   * v21: DEX_Archive anlegen (Site-Collection-Root) — generisches Schema, das
-   * Zeilen aus mehreren Quell-Listen aufnimmt: SourceList, EventId, EventTitle,
-   * OriginalId, ArchivedAt + Payload (JSON der Originalzeile). NUR Admins
-   * (Owners) bekommen Zugriff (setArchiveListPermissions, kein Visitors-Grant).
-   */
   public async ensureArchiveList(): Promise<void> {
-    const listName = 'DEX_Archive';
-    const exists = await this.listExists(listName);
-    if (exists) return;
-    const createResp = await this._post(`${this.siteUrl}/_api/web/lists`, {
-      '__metadata': { 'type': 'SP.List' },
-      'Title': listName,
-      'Description': 'Archiv abgelaufener Event-Zeilen aus den Queue-/Log-Listen (v21). Nur für Admins lesbar.',
-      'BaseTemplate': 100,
-      'AllowContentTypes': false,
-    });
-    if (!createResp.ok) {
-      console.warn('[DEX] DEX_Archive konnte nicht angelegt werden — vermutlich fehlen Owner-Rechte.');
-      return;
-    }
-    const fields: Array<{ title: string; type: number; metaType?: string }> = [
-      { title: 'SourceList', type: 2 },
-      { title: 'EventId', type: 2 },
-      { title: 'EventTitle', type: 2 },
-      { title: 'OriginalId', type: 9 },
-      { title: 'ArchivedAt', type: 4 },
-      { title: 'Payload', type: 3, metaType: 'SP.FieldMultiLineText' },
-    ];
-    for (const f of fields) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const payload: Record<string, any> = {
-          '__metadata': { 'type': f.metaType || 'SP.Field' },
-          'Title': f.title, 'FieldTypeKind': f.type, 'Required': false,
-        };
-        if (f.metaType === 'SP.FieldMultiLineText') { payload['RichText'] = false; payload['NumberOfLines'] = 6; }
-        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
-      } catch { /* einzelne Feld-Fehler ignorieren */ }
-    }
-    try { await this.configureDefaultView(listName, ['SourceList', 'EventTitle', 'EventId', 'OriginalId', 'ArchivedAt']); } catch { /* */ }
-    try { await this.setArchiveListPermissions(listName); } catch { /* */ }
-  }
-
-  /** Admin-only: Vererbung brechen, NUR Owners (Site-Admins) Full Control —
-   *  bewusst KEIN Visitors-/Members-Grant, damit das Archiv nicht von allen
-   *  lesbar ist. */
-  private async setArchiveListPermissions(listName: string): Promise<void> {
-    try {
-      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`, {});
-      const ownersResp = await this._sp.get(`${this.siteUrl}/_api/web/associatedownergroup?$select=Id`, SPHttpClient.configurations.v1);
-      if (ownersResp.ok) {
-        const d = await ownersResp.json();
-        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741829)`, {});
-      }
-    } catch (e) { console.warn('[DEX] setArchiveListPermissions failed:', e); }
+    return archive.ensureArchiveList(this);
   }
 
   // ==================== Wochenbericht (v23.8) ====================
+  // v30.11: Thema ausgelagert nach services/events/weeklyReport.ts —
+  // Delegations-Stubs mit unveränderter Signatur.
 
-  /** Tracking-Liste für den wöchentlichen Admin-Bericht. Pro versendetem
-   *  Bericht eine Zeile (Created = Versandzeit; PeriodFrom/PeriodTo = der
-   *  abgedeckte Zeitraum). Quelle der Wahrheit für „wann lief der letzte
-   *  Bericht". */
   public async ensureWeeklyReportsList(): Promise<void> {
-    const listName = 'DEX_WeeklyReports';
-    const exists = await this.listExists(listName);
-    if (!exists) {
-      const createResp = await this._post(`${this.siteUrl}/_api/web/lists`, {
-        '__metadata': { 'type': 'SP.List' },
-        'Title': listName,
-        'Description': 'Versand-Protokoll des wöchentlichen Admin-Berichts (v23.8).',
-        'BaseTemplate': 100,
-        'AllowContentTypes': false,
-      });
-      if (!createResp.ok) {
-        console.warn('[DEX] DEX_WeeklyReports konnte nicht angelegt werden — vermutlich fehlen Owner-Rechte.');
-        return;
-      }
-      for (const f of [{ title: 'PeriodFrom', type: 4 }, { title: 'PeriodTo', type: 4 }]) {
-        try {
-          await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
-            '__metadata': { 'type': 'SP.Field' }, 'Title': f.title, 'FieldTypeKind': f.type, 'Required': false,
-          });
-        } catch { /* einzelne Feld-Fehler ignorieren */ }
-      }
-      try { await this.configureDefaultView(listName, ['PeriodFrom', 'PeriodTo']); } catch { /* */ }
-    }
-    // v23.36: DraftEventIds-Snapshot (JSON-Array der Event-IDs, die beim letzten
-    // Bericht noch Entwürfe waren) — idempotent nachziehen, auch auf Bestands-
-    // Listen. So erkennt der nächste Bericht „Entwurf ist live gegangen".
-    try {
-      const fieldsResp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName&$filter=InternalName eq 'DraftEventIds'&$top=1`,
-        SPHttpClient.configurations.v1
-      );
-      const fieldsData = fieldsResp.ok ? await fieldsResp.json() : null;
-      const has = fieldsData && (fieldsData.value || fieldsData.d?.results || []).length > 0;
-      if (!has) {
-        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
-          '__metadata': { 'type': 'SP.Field' }, 'Title': 'DraftEventIds', 'FieldTypeKind': 3, 'Required': false,
-        });
-      }
-    } catch { /* best-effort */ }
+    return weeklyReport.ensureWeeklyReportsList(this);
   }
 
-  /** Letzter Bericht: Created (Versandzeit) + PeriodTo + Entwurfs-Snapshot. */
   public async getLastWeeklyReport(): Promise<{ created: string; periodTo: string; draftEventIds: string[] } | null> {
-    try {
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_WeeklyReports')/items?$select=Created,PeriodTo,DraftEventIds&$orderby=Created desc&$top=1`,
-        SPHttpClient.configurations.v1
-      );
-      if (!resp.ok) return null;
-      const data = await resp.json();
-      const items = data.value || data.d?.results || [];
-      if (items.length === 0) return null;
-      let draftEventIds: string[] = [];
-      try { const arr = JSON.parse(items[0].DraftEventIds || '[]'); if (Array.isArray(arr)) draftEventIds = arr.map((x: unknown) => String(x)); } catch { /* */ }
-      return { created: items[0].Created || '', periodTo: items[0].PeriodTo || items[0].Created || '', draftEventIds };
-    } catch { return null; }
+    return weeklyReport.getLastWeeklyReport(this);
   }
 
-  /** Versand des Berichts protokollieren (eine Zeile) + Entwurfs-Snapshot. */
   public async recordWeeklyReport(fromIso: string, toIso: string, draftEventIds?: string[]): Promise<void> {
-    try {
-      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_WeeklyReports')/items`, {
-        '__metadata': { 'type': 'SP.Data.DEX_x005f_WeeklyReportsListItem' },
-        'Title': `Weekly ${toIso.slice(0, 10)}`,
-        'PeriodFrom': fromIso,
-        'PeriodTo': toIso,
-        'DraftEventIds': JSON.stringify(draftEventIds || []),
-      });
-    } catch (e) { console.warn('[DEX] recordWeeklyReport failed:', e); }
+    return weeklyReport.recordWeeklyReport(this, fromIso, toIso, draftEventIds);
   }
 
   // ==================== Ticketsystem (v26.0.0) ====================
@@ -10673,567 +9501,106 @@ export class EventService {
     return tickets.closeTicketNoAnswer(this, itemId);
   }
 
+  // ==================== Organizer-Verwaltung ====================
+  // v30.12: Organizer-Archiv (v24.6), Organizer-Anträge (v23.37) und
+  // Rollen-/Bericht-Abfragen ausgelagert nach services/events/organizer.ts —
+  // hier stehen nur noch Delegations-Stubs mit unveränderter Signatur.
+
   public async ensureOrganizerRequestsList(): Promise<void> {
-    const listName = 'DEX_OrganizerRequests';
-    const exists = await this.listExists(listName);
-    if (exists) return;
-    const cr = await this._post(`${this.siteUrl}/_api/web/lists`, {
-      '__metadata': { 'type': 'SP.List' },
-      'Title': listName,
-      'Description': 'Anträge „Organizer werden" (v23.37) — Admins bestätigen in der App.',
-      'BaseTemplate': 100,
-      'AllowContentTypes': false,
-    });
-    if (!cr.ok) { console.warn('[DEX] DEX_OrganizerRequests konnte nicht angelegt werden.'); return; }
-    const fields: Array<{ title: string; type: number; choices?: string[]; metaType?: string }> = [
-      { title: 'RequesterEmail', type: 2 },
-      { title: 'RequesterName', type: 2 },
-      { title: 'RequesterLocation', type: 2 },
-      { title: 'Message', type: 3 },
-      { title: 'Status', type: 6, choices: ['Pending', 'Approved', 'Rejected'], metaType: 'SP.FieldChoice' },
-      { title: 'DecidedDate', type: 4 },
-      { title: 'DecidedByEmail', type: 2 },
-    ];
-    for (const f of fields) {
-      const payload: Record<string, unknown> = { '__metadata': { 'type': f.metaType || 'SP.Field' }, 'Title': f.title, 'FieldTypeKind': f.type, 'Required': false };
-      if (f.choices) payload['Choices'] = { 'results': f.choices };
-      try { await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload); } catch { /* */ }
-    }
-    try { await this.configureDefaultView(listName, ['RequesterName', 'RequesterEmail', 'RequesterLocation', 'Status', 'Created', 'DecidedByEmail']); } catch { /* */ }
-    try { await this.setQueueListPermissions(listName); } catch { /* */ }
+    return organizer.ensureOrganizerRequestsList(this);
   }
 
-  // ==================== v24.6: Organizer-Archiv (pro Person ausblenden) ====================
-  // Reiner Anzeige-Filter: ein abgelaufenes Event kann der Organizer aus SEINER
-  // Übersicht ausblenden (eine Zeile pro Event+Person). Das Event selbst bleibt
-  // mit allen Daten erhalten und für andere sichtbar — KEINE Datenlöschung.
   public async ensureOrganizerArchivedList(): Promise<void> {
-    const listName = 'DEX_OrganizerArchived';
-    const exists = await this.listExists(listName);
-    if (exists) return;
-    const cr = await this._post(`${this.siteUrl}/_api/web/lists`, {
-      '__metadata': { 'type': 'SP.List' },
-      'Title': listName,
-      'Description': 'Pro Organizer ausgeblendete (archivierte) Events (v24.6) — reiner Anzeige-Filter, keine Datenlöschung.',
-      'BaseTemplate': 100,
-      'AllowContentTypes': false,
-    });
-    if (!cr.ok) { console.warn('[DEX] DEX_OrganizerArchived konnte nicht angelegt werden.'); return; }
-    for (const f of [{ title: 'EventId', type: 2 }, { title: 'OrganizerEmail', type: 2 }]) {
-      try { await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, { '__metadata': { 'type': 'SP.Field' }, 'Title': f.title, 'FieldTypeKind': f.type, 'Required': false }); } catch { /* */ }
-    }
-    try { await this.configureDefaultView(listName, ['EventId', 'OrganizerEmail', 'Created']); } catch { /* */ }
-    try { await this.setQueueListPermissions(listName); } catch { /* */ }
+    return organizer.ensureOrganizerArchivedList(this);
   }
 
   public async getOrganizerArchivedEventIds(email: string): Promise<Set<string>> {
-    const out = new Set<string>();
-    try {
-      const e = (email || '').replace(/'/g, "''");
-      if (!e) return out;
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerArchived')/items?$select=Id,EventId,OrganizerEmail&$filter=OrganizerEmail eq '${e}'&$top=2000`,
-        SPHttpClient.configurations.v1);
-      if (resp.ok) {
-        const d = await resp.json();
-        const rows = d.value || d.d?.results || [];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        for (const r of rows) { const id = String((r as any).EventId || ''); if (id) out.add(id); }
-      }
-    } catch { /* best-effort */ }
-    return out;
+    return organizer.getOrganizerArchivedEventIds(this, email);
   }
 
   public async archiveEventForOrganizer(eventId: string, email: string): Promise<boolean> {
-    try {
-      const resp = await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerArchived')/items`, {
-        '__metadata': { 'type': 'SP.Data.DEX_x005f_OrganizerArchivedListItem' },
-        'Title': String(eventId).slice(0, 250),
-        'EventId': String(eventId),
-        'OrganizerEmail': email,
-      });
-      return resp.ok;
-    } catch { return false; }
+    return organizer.archiveEventForOrganizer(this, eventId, email);
   }
 
   public async unarchiveEventForOrganizer(eventId: string, email: string): Promise<boolean> {
-    try {
-      const e = (email || '').replace(/'/g, "''");
-      const idEsc = String(eventId).replace(/'/g, "''");
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerArchived')/items?$select=Id&$filter=OrganizerEmail eq '${e}' and EventId eq '${idEsc}'&$top=50`,
-        SPHttpClient.configurations.v1);
-      if (!resp.ok) return false;
-      const d = await resp.json();
-      const rows = d.value || d.d?.results || [];
-      let okAll = true;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const r of rows) { const del = await this._delete(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerArchived')/items(${(r as any).Id})`); if (!del.ok) okAll = false; }
-      return okAll;
-    } catch { return false; }
+    return organizer.unarchiveEventForOrganizer(this, eventId, email);
   }
 
   public async createOrganizerRequest(email: string, name: string, location: string, message: string): Promise<{ ok: boolean; itemId?: number }> {
-    try {
-      const resp = await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerRequests')/items`, {
-        '__metadata': { 'type': 'SP.Data.DEX_x005f_OrganizerRequestsListItem' },
-        'Title': (name || email || 'Antrag').slice(0, 250),
-        'RequesterEmail': email,
-        'RequesterName': name,
-        'RequesterLocation': location || '',
-        'Message': message || '',
-        'Status': 'Pending',
-      });
-      if (!resp.ok) return { ok: false };
-      try { const j = await resp.json(); return { ok: true, itemId: j?.d?.Id || j?.Id || 0 }; } catch { return { ok: true }; }
-    } catch { return { ok: false }; }
+    return organizer.createOrganizerRequest(this, email, name, location, message);
   }
 
   public async getOrganizerRequests(onlyPending: boolean = true): Promise<Array<{ id: number; email: string; name: string; location: string; message: string; status: string; created: string }>> {
-    try {
-      const filter = onlyPending ? `&$filter=Status eq 'Pending'` : '';
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerRequests')/items?$select=Id,RequesterEmail,RequesterName,RequesterLocation,Message,Status,Created&$orderby=Created desc&$top=200${filter}`,
-        SPHttpClient.configurations.v1
-      );
-      if (!resp.ok) return [];
-      const data = await resp.json();
-      const items = data.value || data.d?.results || [];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return items.map((i: any) => ({ id: i.Id, email: i.RequesterEmail || '', name: i.RequesterName || '', location: i.RequesterLocation || '', message: i.Message || '', status: i.Status || '', created: i.Created || '' }));
-    } catch { return []; }
+    return organizer.getOrganizerRequests(this, onlyPending);
   }
 
-  /** v26.58: Einzelnen Organizer-Antrag inkl. Entscheidungs-Metadaten laden —
-   *  für den approveorg-Deep-Link, wenn der Antrag bereits entschieden wurde
-   *  („bereits freigegeben durch X am Y" statt kommentarlos Landing Page). */
   public async getOrganizerRequestDetails(id: number): Promise<{ id: number; email: string; name: string; status: string; decidedByEmail: string; decidedDate: string } | null> {
-    try {
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerRequests')/items(${id})?$select=Id,RequesterEmail,RequesterName,Status,DecidedByEmail,DecidedDate`,
-        SPHttpClient.configurations.v1
-      );
-      if (!resp.ok) return null;
-      const d = await resp.json();
-      const it = d.d || d;
-      if (!it || !it.Id) return null;
-      return {
-        id: Number(it.Id),
-        email: String(it.RequesterEmail || ''),
-        name: String(it.RequesterName || ''),
-        status: String(it.Status || ''),
-        decidedByEmail: String(it.DecidedByEmail || ''),
-        decidedDate: String(it.DecidedDate || ''),
-      };
-    } catch { return null; }
+    return organizer.getOrganizerRequestDetails(this, id);
   }
 
-  /** v26.59: Einer Person Leserechte auf die Site geben. Weg: User im Web
-   *  sicherstellen (ensureuser), dann in die Standard-Besucher-Gruppe
-   *  (associatedvisitorgroup, Permission Level „Lesen") aufnehmen — Gruppen-
-   *  Mitgliedschaft ist sauberer als Einzel-Berechtigungen. Fallback: direkte
-   *  Read-Rollenzuweisung (RoleTypeKind=2) aufs Web, falls es keine
-   *  Besucher-Gruppe gibt. Erfordert Berechtigungs-Verwaltungsrechte des
-   *  Aufrufers (Admins haben Full Control). Genutzt vom grantaccess-Deep-Link
-   *  aus der „SharePoint-Zugriff benötigt"-Mail. */
   public async grantSiteReadAccess(email: string): Promise<boolean> {
-    const mail = (email || '').trim();
-    if (!mail) return false;
-    try {
-      const ensure = await this._post(`${this.siteUrl}/_api/web/ensureuser`, { 'logonName': `i:0#.f|membership|${mail}` });
-      if (!ensure.ok) return false;
-      const ud = await ensure.json();
-      const userId = Number(ud?.d?.Id ?? ud?.Id ?? 0);
-      const loginName = String(ud?.d?.LoginName ?? ud?.LoginName ?? '') || `i:0#.f|membership|${mail}`;
-      if (!userId) return false;
-      try {
-        const vg = await this._sp.get(
-          `${this.siteUrl}/_api/web/associatedvisitorgroup?$select=Id`,
-          SPHttpClient.configurations.v1
-        );
-        if (vg.ok) {
-          const vgd = await vg.json();
-          const gid = Number(vgd?.Id ?? vgd?.d?.Id ?? 0);
-          if (gid > 0) {
-            const add = await this._post(`${this.siteUrl}/_api/web/sitegroups(${gid})/users`, {
-              '__metadata': { 'type': 'SP.User' },
-              'LoginName': loginName,
-            });
-            if (add.ok) return true;
-          }
-        }
-      } catch { /* Fallback unten */ }
-      const rd = await this._sp.get(
-        `${this.siteUrl}/_api/web/roledefinitions?$filter=RoleTypeKind eq 2&$select=Id&$top=1`,
-        SPHttpClient.configurations.v1
-      );
-      if (!rd.ok) return false;
-      const rdd = await rd.json();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const roleId = Number(((rdd.value || rdd.d?.results || [])[0] as any)?.Id || 0);
-      if (!roleId) return false;
-      const ra = await this._post(`${this.siteUrl}/_api/web/roleassignments/addroleassignment(principalid=${userId},roledefid=${roleId})`, {});
-      return ra.ok;
-    } catch { return false; }
+    return organizer.grantSiteReadAccess(this, email);
   }
 
   public async updateOrganizerRequestStatus(id: number, status: 'Approved' | 'Rejected', decidedByEmail: string): Promise<boolean> {
-    try {
-      const r = await this._merge(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerRequests')/items(${id})`, {
-        'Status': status, 'DecidedDate': new Date().toISOString(), 'DecidedByEmail': decidedByEmail,
-      });
-      return r.ok;
-    } catch { return false; }
+    return organizer.updateOrganizerRequestStatus(this, id, status, decidedByEmail);
   }
 
-  /**
-   * v28.89: OData-Filter auf die Rollen-Spalte, inklusive der ALTEN Werte.
-   *
-   * DEX_Roles kannte früher `SuperAdmin` (heute `Admin`) und `EventAdmin`
-   * (heute `Organizer`). `RoleContext.migrateRole` bildet beide weiterhin ab
-   * und schreibt sie im Hintergrund um — das passiert aber nur, wenn jemand
-   * die Rollenliste öffnet, und `updateRole` scheitert still (fehlende
-   * Schreibrechte). Es können also dauerhaft Legacy-Zeilen stehen bleiben.
-   *
-   * Für die Anzeige ist das egal, für Rechte-Prüfungen nicht: `Role eq
-   * 'Organizer'` findet einen Legacy-Organizer nicht, er gilt dann als „ohne
-   * Rolle" — und bekommt beim Speichern eines Events, in dem er als
-   * Co-Organizer steht, einen Freigabe-Antrag, obwohl er längst freigegeben
-   * ist (dasselbe beim Deep-Link der DEX-Anfrage).
-   */
-  private roleFilter(role: string): string {
-    const legacy: Record<string, string[]> = { Admin: ['SuperAdmin'], Organizer: ['EventAdmin'] };
-    const values = [role].concat(legacy[role] || []);
-    return values
-      .map(v => `Role eq '${encodeURIComponent(v.replace(/'/g, "''"))}'`)
-      .join(' or ');
-  }
-
-  /** E-Mail-Adressen (Title) aller DEX_Roles-Einträge mit der gegebenen Rolle. */
-  /** v23.38: Rollen-Empfänger mit E-Mail UND Anzeigename (für personalisierte
-   *  Mails wie den Wochenbericht — „Hallo <Name>" statt generisch „Admin"). */
   public async getRoleRecipients(role: string): Promise<Array<{ email: string; name: string }>> {
-    try {
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=${this.roleFilter(role)}&$select=Title,UserName&$top=5000`,
-        SPHttpClient.configurations.v1
-      );
-      if (!resp.ok) return [];
-      const data = await resp.json();
-      const items = data.value || data.d?.results || [];
-      const seen = new Set<string>();
-      const out: Array<{ email: string; name: string }> = [];
-      for (const i of items) {
-        const email = (i.Title || '').trim();
-        if (!email) continue;
-        const key = email.toLowerCase();
-        if (seen.has(key)) continue;
-        seen.add(key);
-        out.push({ email, name: (i.UserName || '').trim() || email });
-      }
-      return out;
-    } catch { return []; }
+    return organizer.getRoleRecipients(this, role);
   }
 
   public async getRoleEmails(role: string): Promise<string[]> {
-    try {
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=${this.roleFilter(role)}&$select=Title&$top=5000`,
-        SPHttpClient.configurations.v1
-      );
-      if (!resp.ok) return [];
-      const data = await resp.json();
-      const items = data.value || data.d?.results || [];
-      const set = new Set<string>();
-      for (const i of items) { const e = (i.Title || '').trim().toLowerCase(); if (e) set.add(e); }
-      return Array.from(set);
-    } catch { return []; }
+    return organizer.getRoleEmails(this, role);
   }
 
-  /** DEX_Roles-Einträge einer Rolle, die seit `fromIso` neu angelegt wurden. */
   public async getRoleItemsCreatedSince(role: string, fromIso: string): Promise<Array<{ email: string; created: string }>> {
-    try {
-      const esc = role.replace(/'/g, "''");
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=Role eq '${encodeURIComponent(esc)}' and Created ge '${fromIso}'&$select=Title,Created&$orderby=Created desc&$top=500`,
-        SPHttpClient.configurations.v1
-      );
-      if (!resp.ok) return [];
-      const data = await resp.json();
-      const items = data.value || data.d?.results || [];
-      return items.map((i: { Title?: string; Created?: string }) => ({ email: (i.Title || '').trim(), created: i.Created || '' }));
-    } catch { return []; }
+    return organizer.getRoleItemsCreatedSince(this, role, fromIso);
   }
 
-  /** DEX_Events-Items, die seit `fromIso` erstellt wurden — mit Ersteller
-   *  (SP-Author) + Titel. */
   public async getEventsCreatedSince(fromIso: string): Promise<Array<{ title: string; author: string; created: string; isDraft: boolean }>> {
-    try {
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=Title,Created,IsFictive,Author/Title&$expand=Author&$filter=Created ge '${fromIso}'&$orderby=Created desc&$top=500`,
-        SPHttpClient.configurations.v1
-      );
-      if (!resp.ok) return [];
-      const data = await resp.json();
-      const items = data.value || data.d?.results || [];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return items.map((i: any) => ({ title: i.Title || '(ohne Titel)', author: (i.Author && i.Author.Title) || '—', created: i.Created || '', isDraft: !!i.IsFictive }));
-    } catch { return []; }
+    return organizer.getEventsCreatedSince(this, fromIso);
   }
 
-  /** Aktive Anmeldungen einer Teilnehmer-Subsite zählen: total (alle aktiven)
-   *  + since (RegistrationDate ≥ fromIso). Status-Filter = Angemeldet/QR
-   *  versendet/Eingecheckt/Warteliste (keine Abgemeldeten). */
   public async countRegistrations(subsiteUrl: string, fromIso: string): Promise<{ total: number; since: number }> {
-    if (!subsiteUrl) return { total: 0, since: 0 };
-    const active = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
-    let total = 0; let since = 0;
-    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Status,RegistrationDate&$top=5000`;
-    let guard = 0;
-    const fromTs = new Date(fromIso).getTime();
-    while (url && guard < 50) {
-      guard++;
-      try {
-        const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
-        if (!resp.ok) break;
-        const data = await resp.json();
-        const items = data.value || data.d?.results || [];
-        for (const i of items) {
-          if (active.indexOf(i.Status) < 0) continue;
-          total++;
-          const ts = i.RegistrationDate ? new Date(i.RegistrationDate).getTime() : 0;
-          if (ts && ts >= fromTs) since++;
-        }
-        url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
-      } catch { break; }
-    }
-    return { total, since };
+    return organizer.countRegistrations(this, subsiteUrl, fromIso);
   }
 
-  /** Lädt alle Zeilen einer Liste (paged, nometadata). `select` schränkt die
-   *  Felder ein (fürs Zählen leichtgewichtig); ohne select = alle Felder
-   *  (für den Payload). */
-  private async loadAllListRows(listName: string, select?: string): Promise<Array<Record<string, unknown>>> {
-    const rows: Array<Record<string, unknown>> = [];
-    let url = `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$top=500${select ? `&$select=${select}` : ''}`;
-    let guard = 0;
-    while (url && guard < 500) {
-      guard++;
-      const resp = await this._sp.get(url, SPHttpClient.configurations.v1, {
-        headers: { 'Accept': 'application/json;odata=nometadata' },
-      });
-      if (!resp.ok) break;
-      const data = await resp.json();
-      const arr: Array<Record<string, unknown>> = data.value || data.d?.results || [];
-      rows.push(...arr);
-      url = (data['odata.nextLink'] as string) || (data['@odata.nextLink'] as string) || '';
-    }
-    return rows;
-  }
-
-  private rowMatchesExpired(
-    r: Record<string, unknown>, matchBy: 'eventId' | 'subsiteUrl',
-    expiredEventIds: Set<string>, expiredSubsiteUrls: Set<string>,
-    // v23.39: ALLE aktuell existierenden Event-IDs / Subsites. Eine Zeile, deren
-    // Bezug NICHT mehr darin vorkommt, gehört zu einem gelöschten Event
-    // (verwaist) und ist ebenfalls archivreif. Die size>0-Wächter verhindern,
-    // dass bei (noch) nicht geladenen Events fälschlich ALLES als verwaist gilt.
-    allEventIds: Set<string>, allSubsiteUrls: Set<string>
-  ): boolean {
-    // v22.2: 'Pending' = der Flow hat die Zeile noch nicht verarbeitet —
-    // niemals archivieren (sonst verschwindet z.B. eine unversendete Mail
-    // aus der Queue). Hängengebliebene Pendings bleiben so in der
-    // Arbeitsliste sichtbar, wo der Admin sie sehen soll.
-    if (String(r['Status'] || '') === 'Pending') return false;
-    // v26.32: Generelle 1-Monats-Karenz — KEINE Zeile wird archiviert, solange
-    // sie jünger als ~1 Monat ist, egal ob sie event-los ist (EventId leer/'0'),
-    // an ein bereits ABGELAUFENES Event hängt oder zu einem gelöschten (verwaisten)
-    // Event gehört. So bleiben frische Mails (Ticket-/Anfrage-Bestätigungen,
-    // Organizer-Anträge, Wochenbericht — auch solche zu einer Frage über ein
-    // schon vergangenes Event) mindestens einen Monat in der Queue sichtbar.
-    // Vorher (v26.26) griff die Karenz NUR für event-lose/verwaiste Zeilen;
-    // Mails abgelaufener Events verschwanden sofort — genau das war das Problem.
-    const ORPHAN_GRACE_MS = 30 * 24 * 60 * 60 * 1000; // ~1 Monat
-    const c = String(r['Created'] || '');
-    const createdTs = c ? new Date(c).getTime() : NaN;
-    // Ohne/mit ungültigem Erstellungsdatum konservativ NICHT archivieren.
-    if (isNaN(createdTs)) return false;
-    if ((Date.now() - createdTs) < ORPHAN_GRACE_MS) return false;
-    // Ab hier ist die Zeile ≥ 1 Monat alt.
-    if (matchBy === 'eventId') {
-      const id = String(r['EventId'] || '').trim();
-      // Keinem Event zugeordnet (leer/'0') → archivreif (alt genug).
-      if (!id || id === '0') return true;
-      // Event abgelaufen → archivreif.
-      if (expiredEventIds.has(id)) return true;
-      // Event existiert nicht mehr (gelöscht/verwaist) → archivreif.
-      if (allEventIds.size > 0 && !allEventIds.has(id)) return true;
-      // Event noch aktiv → nicht archivieren.
-      return false;
-    }
-    const su = String(r['SubsiteUrl'] || '').toLowerCase().trim();
-    if (!su) return true;
-    if (expiredSubsiteUrls.has(su)) return true;
-    if (allSubsiteUrls.size > 0 && !allSubsiteUrls.has(su)) return true;
-    return false;
-  }
-
-  /** v21: Zählt die archivreifen Zeilen pro Quell-Liste (leichtgewichtig:
-   *  nur Id+EventId bzw. Id+SubsiteUrl). */
   public async countArchivableRows(
     expiredEventIds: Set<string>, expiredSubsiteUrls: Set<string>,
     allEventIds: Set<string> = new Set(), allSubsiteUrls: Set<string> = new Set()
   ): Promise<{ total: number; perList: Record<string, number> }> {
-    const perList: Record<string, number> = {};
-    let total = 0;
-    for (const src of EventService.ARCHIVE_SOURCES) {
-      let c = 0;
-      try {
-        // v22.2: Status mitladen (wo vorhanden), damit der Pending-Ausschluss
-        // schon beim Zählen greift und die Box-Zahl zum Lauf passt.
-        // v26.26: Created mitladen — die Orphan-Regel (1-Monats-Karenz) braucht
-        // das Erstellungsdatum, sonst zählt die Box anders als der echte Lauf.
-        const base = src.matchBy === 'eventId' ? 'Id,EventId,Created' : 'Id,SubsiteUrl,Created';
-        const select = src.hasStatus ? `${base},Status` : base;
-        const rows = await this.loadAllListRows(src.list, select);
-        for (const r of rows) {
-          if (this.rowMatchesExpired(r, src.matchBy, expiredEventIds, expiredSubsiteUrls, allEventIds, allSubsiteUrls)) c++;
-        }
-      } catch { /* Liste evtl. nicht vorhanden */ }
-      perList[src.list] = c;
-      total += c;
-    }
-    return { total, perList };
+    return archive.countArchivableRows(this, expiredEventIds, expiredSubsiteUrls, allEventIds, allSubsiteUrls);
   }
 
-  /** v21: Verschiebt alle archivreifen Zeilen ins DEX_Archive (Insert →
-   *  Delete aus der Quelle). Sequentiell (SP-Throttling). onProgress meldet
-   *  Listen- + Zeilen-Fortschritt fürs Modal. */
   public async archiveExpiredRows(
     expiredEventIds: Set<string>, expiredSubsiteUrls: Set<string>,
     eventTitleById: Record<string, string>,
     onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void,
-    // v22.2: Abbruch-Check (UI-Button). Sauber: bereits verschobene Zeilen
-    // bleiben im Archiv (jede Zeile ist atomar Insert→Delete), der Rest
-    // bleibt in der Quelle und kommt beim nächsten Lauf dran.
     shouldCancel?: () => boolean,
-    // v23.39: alle aktuellen Event-IDs / Subsites (für die Verwaist-Erkennung).
     allEventIds: Set<string> = new Set(), allSubsiteUrls: Set<string> = new Set()
   ): Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }> {
-    const result = { archived: 0, failed: 0, cancelled: false, perList: {} as Record<string, number> };
-    const sources = EventService.ARCHIVE_SOURCES;
-    // v23.47: Payload soll den Inhalt vollständig festhalten (vorher bei 4000
-    // Zeichen gekappt — ein kompletter HTML-Mailtext ist länger und wurde so
-    // abgeschnitten). Großzügiger Sicherheits-Cap (60000), der praktisch jeden
-    // Mailtext komplett aufnimmt, aber pathologische Riesenwerte begrenzt.
-    const MAX_FIELD = 60000;
-    const buildPayload = (r: Record<string, unknown>): string => {
-      const out: Record<string, unknown> = {};
-      for (const k of Object.keys(r)) {
-        const v = r[k];
-        out[k] = (typeof v === 'string' && v.length > MAX_FIELD) ? `${v.slice(0, MAX_FIELD)}… [gekürzt]` : v;
-      }
-      return JSON.stringify(out);
-    };
-    for (let si = 0; si < sources.length; si++) {
-      const src = sources[si];
-      if (shouldCancel && shouldCancel()) { result.cancelled = true; break; }
-      let listArchived = 0;
-      try {
-        // v22.2: Fortschritt SOFORT melden (vorher kam der erste Callback erst
-        // nach dem Komplett-Laden — das Modal wirkte eingefroren).
-        if (onProgress) onProgress(si, sources.length, src.list, 0, 0);
-        const rows = await this.loadAllListRows(src.list, src.select);
-        const matching = rows.filter(r => this.rowMatchesExpired(r, src.matchBy, expiredEventIds, expiredSubsiteUrls, allEventIds, allSubsiteUrls));
-        if (onProgress) onProgress(si, sources.length, src.list, 0, matching.length);
-        for (let i = 0; i < matching.length; i++) {
-          if (shouldCancel && shouldCancel()) { result.cancelled = true; break; }
-          const r = matching[i];
-          const origId = Number(r['Id'] || 0);
-          const eid = src.matchBy === 'eventId' ? String(r['EventId'] || '') : '';
-          const title = eid ? (eventTitleById[eid] || '') : '';
-          try {
-            const ins = await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_Archive')/items`, {
-              '__metadata': { 'type': 'SP.Data.DEX_x005f_ArchiveListItem' },
-              'Title': `${src.list}#${origId}`.slice(0, 250),
-              'SourceList': src.list,
-              'EventId': eid,
-              'EventTitle': title,
-              'OriginalId': origId,
-              'ArchivedAt': new Date().toISOString(),
-              'Payload': buildPayload(r),
-            });
-            if (ins.ok && origId > 0) {
-              // Nur löschen, wenn der Archiv-Insert geklappt hat (kein Datenverlust).
-              const del = await this._delete(`${this.siteUrl}/_api/web/lists/getbytitle('${src.list}')/items(${origId})`);
-              if (del.ok) { listArchived++; result.archived++; } else { result.failed++; }
-            } else {
-              result.failed++;
-            }
-          } catch { result.failed++; }
-          if (onProgress) onProgress(si, sources.length, src.list, i + 1, matching.length);
-        }
-      } catch { /* Liste nicht vorhanden — überspringen */ }
-      result.perList[src.list] = listArchived;
-      if (result.cancelled) break;
-    }
-    return result;
+    return archive.archiveExpiredRows(this, expiredEventIds, expiredSubsiteUrls, eventTitleById, onProgress, shouldCancel, allEventIds, allSubsiteUrls);
   }
 
   // ==================== Archiv-Löschkonzept (v23.40) ====================
-  // DEX_Archive-Einträge sind die End-Ablage. Damit die Liste nicht unendlich
-  // wächst, können Admins Einträge löschen, die älter als ein Stichdatum sind
-  // (v23.48: standardmäßig 1 Monat nach Ablauf). „ArchivedAt" ist der Ablage-Zeitpunkt.
+  // v30.11: ausgelagert nach services/events/archive.ts — Stubs s.o.
 
-  /** Zählt DEX_Archive-Zeilen mit ArchivedAt älter als `olderThanIso`. */
   public async countDeletableArchiveRows(olderThanIso: string): Promise<number> {
-    try {
-      const cutoff = new Date(olderThanIso).getTime();
-      if (!isFinite(cutoff)) return 0;
-      const rows = await this.loadAllListRows('DEX_Archive', 'Id,ArchivedAt');
-      let c = 0;
-      for (const r of rows) {
-        const a = r['ArchivedAt'] ? new Date(String(r['ArchivedAt'])).getTime() : 0;
-        if (a > 0 && a < cutoff) c++;
-      }
-      return c;
-    } catch { return 0; }
+    return archive.countDeletableArchiveRows(this, olderThanIso);
   }
 
-  /** Löscht DEX_Archive-Zeilen älter als `olderThanIso` (sequentiell, mit
-   *  Fortschritt + Abbruch). Hartes DELETE — bewusst (das Archiv ist die
-   *  letzte Stufe; ältere Einträge braucht niemand mehr). */
   public async deleteOldArchiveRows(
     olderThanIso: string,
     onProgress?: (done: number, total: number) => void,
     shouldCancel?: () => boolean
   ): Promise<{ deleted: number; failed: number; cancelled: boolean }> {
-    const result = { deleted: 0, failed: 0, cancelled: false };
-    try {
-      const cutoff = new Date(olderThanIso).getTime();
-      if (!isFinite(cutoff)) return result;
-      const rows = await this.loadAllListRows('DEX_Archive', 'Id,ArchivedAt');
-      const targets = rows.filter(r => {
-        const a = r['ArchivedAt'] ? new Date(String(r['ArchivedAt'])).getTime() : 0;
-        return a > 0 && a < cutoff;
-      });
-      if (onProgress) onProgress(0, targets.length);
-      for (let i = 0; i < targets.length; i++) {
-        if (shouldCancel && shouldCancel()) { result.cancelled = true; break; }
-        const id = Number(targets[i]['Id'] || 0);
-        if (id > 0) {
-          try {
-            const del = await this._delete(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_Archive')/items(${id})`);
-            if (del.ok) result.deleted++; else result.failed++;
-          } catch { result.failed++; }
-        }
-        if (onProgress) onProgress(i + 1, targets.length);
-      }
-    } catch { /* Liste evtl. nicht vorhanden */ }
-    return result;
+    return archive.deleteOldArchiveRows(this, olderThanIso, onProgress, shouldCancel);
   }
 
-  private async _delete(url: string): Promise<SPHttpClientResponse> {
+  // v30.11: public — der Archiv-Lauf (services/events/archive.ts) und weitere
+  // Aufrufstellen brauchen den DELETE-Helfer von außen (Unterstrich = intern).
+  public async _delete(url: string): Promise<SPHttpClientResponse> {
     const options: ISPHttpClientOptions = {
       headers: {
         'Accept': 'application/json;odata=verbose',

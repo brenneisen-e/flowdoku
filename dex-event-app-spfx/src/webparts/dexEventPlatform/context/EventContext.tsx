@@ -1929,7 +1929,19 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     // und blockt aktive Doppel-Anmeldungen VOR jeder Sitzplatz-Reservierung.
     // Fail-open wie bisher (Item-Level-Security kann fremde Zeilen verbergen),
     // aber strikt weniger Duplikate als vorher.
-    const alreadyActive = await eventService.isUserAlreadyOnEvent(subsiteUrl, (emailToUse || '').trim()).catch(() => false);
+    // v30.14: Fail-CLOSED statt fail-open, wenn die Prüfung selbst scheitert
+    // (typisch: 429 während einer Anmeldewelle). Genau in dem Moment, in dem
+    // die Prüfung wegen Drosselung ausfiel, hat der User es „noch einmal
+    // versucht" — und die zweite Zeile kam durch (belegte Doppel-Warteliste
+    // im Soft Opening, 3 Minuten Abstand). Lieber die Anmeldung mit klarer
+    // Meldung ablehnen als eine Doppel-Zeile riskieren. Ausnahme bleibt die
+    // Klammer-Schatten-Zeile (subEventsOnlyMode): dort ist eine doppelte
+    // Zeile harmlos (belegt keinen Platz, Bereinigen-Knopf existiert), ein
+    // Abbruch würde dagegen die „Fehlende Klammer"-Fälle vermehren.
+    const alreadyActive = await eventService.isUserAlreadyOnEvent(subsiteUrl, (emailToUse || '').trim()).catch(() => null);
+    if (alreadyActive === null && !(event && event.subEventsOnlyMode)) {
+      return { ok: false, status: 'Warteliste', reason: 'dup-check-failed' };
+    }
     if (alreadyActive) {
       if (event && event.subEventsOnlyMode) {
         // Schatten-Zeilen-Semantik (v23.9): vorhandener Schatten blockiert

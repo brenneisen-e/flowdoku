@@ -3855,7 +3855,7 @@ function MyEventDocField(props: {
 function MyEventSubEvents(props: {
   parentEvent: DeloitteEvent;
   childEvents: DeloitteEvent[];
-  registerForEvent: (eventId: string, customData: Record<string, string>) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' }>;
+  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean; skipReload?: boolean }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' }>;
   cancelRegistration: (eventId: string, opts?: { suppressNotifications?: boolean }) => Promise<boolean>;
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
@@ -4061,7 +4061,19 @@ function MyEventSubEvents(props: {
           }
         }
       } else {
-        await props.registerForEvent(childEventId, registerCustomData);
+        const regRes = await props.registerForEvent(childEventId, registerCustomData);
+        // v30.14: Im Klammer-Modus (subEventsOnlyMode) braucht die Person auch
+        // die Schatten-Klammer-Zeile — dieser Pfad (An­melden über „Meine
+        // Events", seit v30.9 auch per Kalender-Klick) legte sie nie an und
+        // produzierte „Fehlende Klammer-Anmeldung" im Organizer Center.
+        // registerForEvent ist für die Klammer idempotent (aktive Schatten-
+        // Zeile → kein zweiter Insert); still, weil reine Datenvollständigkeit.
+        if (regRes.ok && props.parentEvent.subEventsOnlyMode) {
+          try {
+            await props.registerForEvent(props.parentEvent.id, {}, undefined, undefined, undefined, undefined,
+              { suppressMail: true, suppressOutlook: true, skipReload: true });
+          } catch (err) { console.warn('[DEX] shadow-parent ensure failed:', err); }
+        }
       }
       setProcessingMessage(isDe ? 'Aktualisiere…' : 'Refreshing…');
       await refresh();

@@ -18,7 +18,6 @@ import { isThrottled } from '../utils/spThrottle';
 // v26.48: zentrale B2Run-Köln-Vorlage (Titel-Erkennung + 7 Meldefelder mit
 // deterministischen IDs für den offiziellen Excel-Export).
 import { isB2RunKoelnTitle, b2runKoelnTemplateFields } from '../data/b2runKoeln';
-import { BILLING_FIELDS } from '../data/billingFields';
 import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, parseOutlookHeadings, replacePlaceholders, getCachedOrbBase64, normalizeMadeWithLink } from '../services/EmailTemplates';
 import { exportSummaryAsPdf, exportSummaryAsDoc, SummaryData } from '../services/EventSummaryExport';
 import { EventType, AgendaItem } from '../types';
@@ -45,6 +44,10 @@ import { setSaveInProgress } from '../utils/saveGuard';
 import { shortSubEventTitle } from '../utils/subEventTitle';
 import { DESCRIPTION_TEMPLATES } from '../data/descriptionTemplates';
 import { CustomFieldInput } from './wizard/customFieldInput';
+import { BillingStep } from './wizard/steps/BillingStep';
+import { DocumentsStep } from './wizard/steps/DocumentsStep';
+import { FunZoneStep } from './wizard/steps/FunZoneStep';
+import { TeamStep } from './wizard/steps/TeamStep';
 // v28.94: Unterkomponenten des Assistenten liegen jetzt in ./wizard —
 // sie kennen den Wizard-State nicht und liessen sich deshalb ohne
 // Verhaltensaenderung herausloesen.
@@ -566,7 +569,6 @@ export default function EventCreationPage(): React.ReactElement {
   // Speicher-Blocker — deshalb bewusst KEIN getStepErrors-Fall fuer Schritt 10.
   // v30.5: Definition nach data/billingFields.ts gezogen (Wizard, F&A Center
   // und F&A-Mails brauchen dieselbe Liste).
-  const billingMissing = BILLING_FIELDS.filter(f => !(billingFields[f.id] || '').trim());
 
   // ========== Zeitzonen-Handling (Europe/Berlin, browser-TZ-unabhängig) ==========
   //
@@ -14692,311 +14694,27 @@ export default function EventCreationPage(): React.ReactElement {
                   Konfiguriert Team-Anmeldung-Toggle + Teamgröße +
                   Team-Name-Frage. v15: Index 4 → 6 (Team kommt jetzt nach
                   Kommunikation). */}
-              <div style={{ display: currentStep === 6 ? 'block' : 'none' }}>
-              <h2 className="dex-step-head-title">
-                {isDe ? 'Schritt 7 — Team-Anmeldung' : 'Step 7 — Team Registration'}
-              </h2>
-              <p className="dex-step-head-lead">
-                {isDe
-                  ? <><strong>Optional</strong> — erlaube einer Person, ein ganzes Team gleichzeitig anzumelden. Praktisch z.B. für Lauf-Teams, Workshop-Gruppen oder Tische bei einer Abendveranstaltung. Default: aus.</>
-                  : <><strong>Optional</strong> — let a single person register an entire team in one go. Handy e.g. for running teams, workshop groups or tables at an evening event. Default: off.</>}
-              </p>
-
-              {/* Toggle Team-Anmeldung erlauben */}
-              <div style={{
-                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-                padding: '14px 16px', marginBottom: 12,
-                border: '1px solid var(--dex-gray-200)',
-              }}>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={teamRegistrationEnabled}
-                    onChange={e => setTeamRegistrationEnabled(e.target.checked)}
-                    style={{ marginTop: 3, cursor: 'pointer' }}
-                  />
-                  <span style={{ flex: 1 }}>
-                    <strong>{isDe ? 'Team-Anmeldung erlauben' : 'Allow team registration'}</strong>
-                    <InfoTooltip text={isDe
-                      ? <>
-                          <strong>Was du hier einstellst:</strong> ob eine Person ein <strong>ganzes Team</strong> über das Anmeldeformular anmelden darf — statt sich nur selbst einzutragen.<br /><br />
-                          <strong>Anzeige in der App:</strong> der Team-Lead sieht nach Eingabe seiner eigenen Daten ein zusätzliches Formularfeld pro weiterem Team-Mitglied (Name, E-Mail). Default: aus — dann verhält sich das Event wie gewohnt (eine Person meldet sich selbst an).<br /><br />
-                          <strong>Auswirkung für Teilnehmer:</strong> die mit angemeldeten Personen bekommen automatisch eine eigene Bestätigungsmail und (sofern Outlook aktiv ist) eigene Kalender-Einladung — sie müssen sich nicht selber registrieren.
-                        </>
-                      : <>
-                          <strong>What this controls:</strong> whether one person can register an <strong>entire team</strong> via the registration form — instead of only registering themselves.<br /><br />
-                          <strong>Where you see it:</strong> after entering their own details, the team lead sees an additional form block per team member (name, email). Default: off — the event behaves as usual (one person registers themselves).<br /><br />
-                          <strong>For attendees:</strong> co-registered members automatically receive their own confirmation email and (if Outlook is enabled) their own calendar invite — they do not have to register themselves.
-                        </>
-                    } />
-                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                      {isDe
-                        ? 'Wenn aktiviert, kann eine Person ein ganzes Team anmelden — die anderen Mitglieder bekommen Bestätigungsmail + Outlook-Termin automatisch.'
-                        : 'When enabled, one person can register an entire team — the other members automatically receive a confirmation mail + Outlook invite.'}
-                    </span>
-                  </span>
-                </label>
-              </div>
-
-              {/* Team-Größe + Team-Name-Frage — ausgegraut wenn Team-Anmeldung aus */}
-              <div style={{
-                background: teamRegistrationEnabled ? '#ffffff' : 'var(--dex-gray-50, #fafafa)',
-                borderRadius: 12, padding: '14px 16px', marginBottom: 12,
-                border: '1px solid var(--dex-gray-200)',
-                opacity: teamRegistrationEnabled ? 1 : 0.55,
-                transition: 'opacity 0.2s ease',
-              }}>
-                <div style={{ marginBottom: 14 }}>
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <strong>{isDe ? 'Team-Größe' : 'Team size'}</strong>
-                    <InfoTooltip text={isDe
-                      ? <>
-                          <strong>Was du hier einstellst:</strong> die maximale Anzahl Personen pro Team (inkl. Team-Lead). Min. 2, Max. 20. Default 4.<br /><br />
-                          <strong>Anzeige in der App:</strong> der Team-Lead sieht so viele Mitglied-Slots wie hier gesetzt; einzelne Slots können leer bleiben, ein Team ist also nicht zwingend voll.<br /><br />
-                          <strong>Auswirkung für Teilnehmer:</strong> ein Team kann maximal so groß werden — versucht der Team-Lead, mehr Mitglieder einzutragen, wird er gestoppt.
-                        </>
-                      : <>
-                          <strong>What this controls:</strong> the maximum number of people per team (including the team lead). Min. 2, max. 20. Default 4.<br /><br />
-                          <strong>Where you see it:</strong> the team lead sees as many member slots as configured here; slots can stay empty, so teams are not required to be full.<br /><br />
-                          <strong>For attendees:</strong> a team caps at this size — attempting to add more members is blocked.
-                        </>
-                    } />
-                  </label>
-                  <input
-                    type="number"
-                    className="form-input"
-                    min={2}
-                    max={20}
-                    value={teamSize}
-                    disabled={!teamRegistrationEnabled}
-                    onChange={e => {
-                      const v = parseInt(e.target.value, 10);
-                      if (isNaN(v)) { setTeamSize(2); return; }
-                      setTeamSize(Math.max(2, Math.min(20, v)));
-                    }}
-                    style={{ maxWidth: 120 }}
-                  />
-                </div>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}>
-                  <input
-                    type="checkbox"
-                    checked={askTeamName}
-                    disabled={!teamRegistrationEnabled}
-                    onChange={e => setAskTeamName(e.target.checked)}
-                    style={{ marginTop: 3, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}
-                  />
-                  <span style={{ flex: 1 }}>
-                    <strong>{isDe ? 'Team-Namen abfragen' : 'Ask for team name'}</strong>
-                    <InfoTooltip text={isDe
-                      ? <>
-                          <strong>Was du hier einstellst:</strong> ob der Team-Lead beim Anmelden zusätzlich einen <strong>frei wählbaren Team-Namen</strong> eingeben muss (z.B. &bdquo;Die schnellen Sieben&ldquo;).<br /><br />
-                          <strong>Anzeige in der App:</strong> der Team-Name erscheint auf der Seite &bdquo;Meine Events&ldquo; beim Team-Lead und allen Mitgliedern. Bei offenen Slots (Team noch nicht voll) wird der Team-Name in der Slot-Liste angezeigt, damit andere Teilnehmer bei Interesse beitreten können.<br /><br />
-                          <strong>Auswirkung für Teilnehmer:</strong> macht das Team identifizierbar. Bleibt die Option aus, wird das Team nur intern über den Namen des Team-Leads referenziert.
-                        </>
-                      : <>
-                          <strong>What this controls:</strong> whether the team lead has to enter a <strong>freely chosen team name</strong> during registration (e.g. &ldquo;The Fast Seven&rdquo;).<br /><br />
-                          <strong>Where you see it:</strong> the team name appears on &ldquo;My Events&rdquo; for the team lead and all members. For open slots (team not full yet), the name is displayed in the slot list so other attendees can join.<br /><br />
-                          <strong>For attendees:</strong> makes the team identifiable. If turned off, teams are referenced internally only via the team lead&apos;s name.
-                        </>
-                    } />
-                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                      {isDe
-                        ? 'Wenn aktiv, gibt der Team-Lead bei der Anmeldung einen Team-Namen ein, der dann auf der MyEvents-Seite und in offenen Slots angezeigt wird.'
-                        : 'When enabled, the team lead enters a team name during registration which is shown on the MyEvents page and in open slots.'}
-                    </span>
-                  </span>
-                </label>
-              </div>
-
-              {/* v22.78: Eigener Team-Begriff (frei benennbar wie Event-Sections)
-                  + „Teilnehmer dürfen keine neuen Teams erstellen". */}
-              <div style={{
-                background: teamRegistrationEnabled ? '#ffffff' : 'var(--dex-gray-50, #fafafa)',
-                borderRadius: 12, padding: '14px 16px', marginBottom: 12,
-                border: '1px solid var(--dex-gray-200)',
-                opacity: teamRegistrationEnabled ? 1 : 0.55, transition: 'opacity 0.2s ease',
-              }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <strong>{isDe ? 'Bezeichnung (statt „Team")' : 'Label (instead of “Team”)'}</strong>
-                  <InfoTooltip text={isDe
-                    ? <><strong>Was du hier einstellst:</strong> einen eigenen Begriff für die Teams — z.B. <strong>„Break-Out Session“</strong>, „Gruppe“ oder „Tisch“. Leer = Standard „Team“.<br /><br /><strong>Anzeige in der App:</strong> ersetzt das Wort „Team“ überall (Organizer Center, „Meine Events“, Anmeldeformular).</>
-                    : <><strong>What this controls:</strong> a custom term for the teams — e.g. <strong>“Break-Out session”</strong>, “group” or “table”. Empty = default “Team”.<br /><br /><strong>Where you see it:</strong> replaces the word “Team” everywhere (organizer center, “My Events”, registration form).</>} />
-                </label>
-                <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <input
-                    type="text" className="form-input"
-                    value={teamTermSingular}
-                    disabled={!teamRegistrationEnabled}
-                    onChange={e => setTeamTermSingular(e.target.value)}
-                    placeholder={isDe ? 'Einzahl, z.B. Break-Out Session' : 'Singular, e.g. Break-out session'}
-                  />
-                  <input
-                    type="text" className="form-input"
-                    value={teamTermPlural}
-                    disabled={!teamRegistrationEnabled}
-                    onChange={e => setTeamTermPlural(e.target.value)}
-                    placeholder={isDe ? 'Mehrzahl, z.B. Break-Out Sessions' : 'Plural, e.g. Break-out sessions'}
-                  />
-                </div>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 14, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}>
-                  <input
-                    type="checkbox"
-                    checked={teamMembersCannotCreate}
-                    disabled={!teamRegistrationEnabled}
-                    onChange={e => setTeamMembersCannotCreate(e.target.checked)}
-                    style={{ marginTop: 3, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}
-                  />
-                  <span style={{ flex: 1 }}>
-                    <strong>{isDe ? 'Teilnehmer dürfen keine neuen Teams erstellen' : 'Participants cannot create new teams'}</strong>
-                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                      {isDe
-                        ? 'Empfohlen für Break-Out-Sessions: Die Teilnehmer melden sich normal an, die Zuordnung in die Teams/Break-outs nimmst DU als Organizer vor (per Drag & Drop im Organizer Center).'
-                        : 'Recommended for break-out sessions: participants register normally, and YOU assign them to teams/break-outs as the organizer (drag & drop in the Organizer Center).'}
-                    </span>
-                  </span>
-                </label>
-              </div>
-
-              {/* v11.81: Beitritts-Modus — Sub-Box mit Modus + Sichtbarkeit + Approval */}
-              <div style={{
-                background: teamRegistrationEnabled ? '#ffffff' : 'var(--dex-gray-50, #fafafa)',
-                borderRadius: 12, padding: '14px 16px', marginBottom: 12,
-                border: '1px solid var(--dex-gray-200)',
-                opacity: teamRegistrationEnabled ? 1 : 0.55,
-                transition: 'opacity 0.2s ease',
-                // v22.78: Beitritts-Modus ist irrelevant, wenn Teilnehmer keine
-                // Teams erstellen/beitreten (Organizer ordnet zu) — dann ausgrauen.
-                ...(teamMembersCannotCreate ? { opacity: 0.45 } : {}),
-              }}>
-                <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 10, color: 'var(--dex-gray-800)' }}>
-                  {isDe ? 'Beitritts-Modus' : 'Join mode'}
-                </div>
-
-                {/* Radio-Group: komplette vs. Teil-Teams */}
-                <div style={{ marginBottom: 14 }}>
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}>
-                    <input
-                      type="radio"
-                      name="teamPartialMode"
-                      checked={!teamPartialAllowed}
-                      disabled={!teamRegistrationEnabled}
-                      onChange={() => setTeamPartialAllowed(false)}
-                      style={{ marginTop: 3, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}
-                    />
-                    <span style={{ flex: 1 }}>
-                      <strong>{isDe ? 'Nur komplette Teams' : 'Only complete teams'}</strong>
-                      <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                        {isDe
-                          ? 'Der Team-Lead muss alle N Mitglieder beim Anmelden eintragen. Halbe Teams sind nicht möglich.'
-                          : 'The team lead must enter all N members during registration. Partial teams are not possible.'}
-                      </span>
-                    </span>
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}>
-                    <input
-                      type="radio"
-                      name="teamPartialMode"
-                      checked={teamPartialAllowed}
-                      disabled={!teamRegistrationEnabled}
-                      onChange={() => setTeamPartialAllowed(true)}
-                      style={{ marginTop: 3, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}
-                    />
-                    <span style={{ flex: 1 }}>
-                      <strong>{isDe ? 'Auch Teil-Teams erlaubt' : 'Partial teams allowed'}</strong>
-                      <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                        {isDe
-                          ? 'Der Team-Lead kann z.B. 2 von 4 Mitgliedern anmelden, die restlichen 2 Slots bleiben offen — andere Personen können später beitreten (siehe nächste Option).'
-                          : 'The team lead can register e.g. 2 of 4 members; the remaining 2 slots stay open — others can join later (see next option).'}
-                      </span>
-                    </span>
-                  </label>
-                </div>
-
-                {/* Checkbox: Sichtbarkeit offener Slots */}
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}>
-                  <input
-                    type="checkbox"
-                    checked={teamOpenSlotsVisible}
-                    disabled={!teamRegistrationEnabled}
-                    onChange={e => {
-                      const v = e.target.checked;
-                      setTeamOpenSlotsVisible(v);
-                      if (!v) setTeamJoinRequiresApproval(false);
-                    }}
-                    style={{ marginTop: 3, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}
-                  />
-                  <span style={{ flex: 1 }}>
-                    <strong>{isDe ? 'Unvollständige Teams öffentlich für Beitritt sichtbar' : 'Open teams publicly visible for joining'}</strong>
-                    <InfoTooltip text={isDe
-                      ? <>
-                          <strong>Was du hier einstellst:</strong> ob andere Teilnehmer Teams mit offenen Slots in der Anmeldeseite sehen und beitreten können.<br /><br />
-                          <strong>Anzeige in der App:</strong> auf der Anmeldeseite erscheint eine Liste &bdquo;Teams mit freien Plätzen&ldquo; — pro Team mit der Anzahl freier Slots und (falls aktiviert) dem Team-Namen, aber <strong>ohne</strong> die Namen der bereits angemeldeten Mitglieder (Privatsphäre).<br /><br />
-                          <strong>Auswirkung für Teilnehmer:</strong> wer noch in keinem Team ist, kann mit einem Klick einem offenen Slot beitreten — entweder sofort gültig oder erst nach Bestätigung durch den Team-Lead (siehe nächste Option).
-                        </>
-                      : <>
-                          <strong>What this controls:</strong> whether other attendees see and can join teams with open slots on the registration page.<br /><br />
-                          <strong>Where you see it:</strong> the registration page shows a list &ldquo;teams with free seats&rdquo; — per team with the count of free slots and (if enabled) the team name, but <strong>without</strong> the names of already-registered members (privacy).<br /><br />
-                          <strong>For attendees:</strong> anyone not yet in a team can join an open slot with one click — either immediately or only after lead approval (see next option).
-                        </>
-                    } />
-                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                      {isDe
-                        ? <>Wenn aktiv: andere Teilnehmer sehen offene Slots in der Registrierungsseite als &bdquo;Team mit X freien Plätzen&ldquo; — <strong>ohne</strong> die Namen der bereits angemeldeten Mitglieder (Privatsphäre).</>
-                        : <>When active: other attendees see open slots on the registration page as &ldquo;team with X free seats&rdquo; — <strong>without</strong> the names of already-registered members (privacy).</>}
-                    </span>
-                  </span>
-                </label>
-
-                {/* Checkbox: Approval-Pflicht durch Team-Lead */}
-                <label style={{
-                  display: 'flex', alignItems: 'flex-start', gap: 10,
-                  cursor: (teamRegistrationEnabled && teamOpenSlotsVisible) ? 'pointer' : 'not-allowed',
-                  opacity: (teamRegistrationEnabled && teamOpenSlotsVisible) ? 1 : 0.55,
-                  transition: 'opacity 0.2s ease',
-                }}>
-                  <input
-                    type="checkbox"
-                    checked={teamJoinRequiresApproval}
-                    disabled={!teamRegistrationEnabled || !teamOpenSlotsVisible}
-                    onChange={e => setTeamJoinRequiresApproval(e.target.checked)}
-                    style={{ marginTop: 3, cursor: (teamRegistrationEnabled && teamOpenSlotsVisible) ? 'pointer' : 'not-allowed' }}
-                  />
-                  <span style={{ flex: 1 }}>
-                    <strong>{isDe ? 'Beitritt erfordert Bestätigung durch Team-Kapitän' : 'Joining requires team captain approval'}</strong>
-                    <InfoTooltip text={isDe
-                      ? <>
-                          <strong>Was du hier einstellst:</strong> ob jede Beitrittsanfrage zu einem offenen Team-Slot erst vom Team-Lead bestätigt werden muss.<br /><br />
-                          <strong>Anzeige in der App:</strong> der Team-Lead bekommt eine Mail mit <strong>&bdquo;Bestätigen&ldquo;</strong>- und <strong>&bdquo;Ablehnen&ldquo;</strong>-Buttons pro Anfrage. Bis zur Bestätigung steht der Beitretende in einer Approve-Queue und ist noch nicht offiziell im Team.<br /><br />
-                          <strong>Auswirkung für Teilnehmer:</strong> wenn aktiv, wird der Beitritt erst nach Bestätigung gültig — und der Beitretende bekommt erst dann seine Bestätigungsmail und (falls Outlook aktiv) den Kalendertermin. Wenn aus: Beitritt ist sofort gültig.
-                        </>
-                      : <>
-                          <strong>What this controls:</strong> whether every join request to an open team slot has to be confirmed by the team lead first.<br /><br />
-                          <strong>Where you see it:</strong> the team lead receives an email with <strong>&ldquo;Confirm&rdquo;</strong> and <strong>&ldquo;Reject&rdquo;</strong> buttons per request. Until confirmed, the joiner sits in an approve queue and is not yet officially in the team.<br /><br />
-                          <strong>For attendees:</strong> if active, the join only becomes valid after confirmation — and the joiner receives their confirmation mail and (if Outlook is enabled) the calendar invite only at that point. If off: join is immediately valid.
-                        </>
-                    } />
-                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                      {isDe
-                        ? 'Wenn aktiv: jeder Beitritt zu einem offenen Team geht erst in eine Approve-Queue. Der Team-Lead bekommt eine Mail mit „Bestätigen / Ablehnen"-Buttons. Erst nach Bestätigung ist die Person im Team. Wenn aus: Beitritt ist sofort gültig.'
-                        : 'When active: every join to an open team enters an approve queue. The team lead gets an email with "Confirm / Reject" buttons. Only after confirmation is the person in the team. When off: joins are immediately valid.'}
-                    </span>
-                  </span>
-                </label>
-              </div>
-
-              {/* v15: alter Hinweis „Logik folgt mit v11.82+" entfernt —
-                  die komplette Team-Anmelde-Logik (Multi-Person-Form,
-                  Mails, Outlook, Slot-Beitritt, Lead-Approval, Admin-Center-
-                  Team-Management) ist seit v11.82–v11.86 live. */}
-
-              {/* v20.2: Der Self-Check-in-Block (v18.33) ist aus dem Wizard
-                  ausgezogen — Self-Check-in ist jetzt grundsätzlich immer
-                  verfügbar und wird beim ersten Klick auf die Aktionen
-                  (Check-in-Seite, Admin Center, QR-Kachel im Event-Detail)
-                  automatisch aktiviert. Zeitfenster + Deaktivieren: im
-                  Kachel-Modal des Admin Centers. */}
-
-              </div>
+              <TeamStep
+                visible={currentStep === 6}
+                teamRegistrationEnabled={teamRegistrationEnabled}
+                setTeamRegistrationEnabled={setTeamRegistrationEnabled}
+                teamSize={teamSize}
+                setTeamSize={setTeamSize}
+                askTeamName={askTeamName}
+                setAskTeamName={setAskTeamName}
+                teamTermSingular={teamTermSingular}
+                setTeamTermSingular={setTeamTermSingular}
+                teamTermPlural={teamTermPlural}
+                setTeamTermPlural={setTeamTermPlural}
+                teamMembersCannotCreate={teamMembersCannotCreate}
+                setTeamMembersCannotCreate={setTeamMembersCannotCreate}
+                teamPartialAllowed={teamPartialAllowed}
+                setTeamPartialAllowed={setTeamPartialAllowed}
+                teamOpenSlotsVisible={teamOpenSlotsVisible}
+                setTeamOpenSlotsVisible={setTeamOpenSlotsVisible}
+                teamJoinRequiresApproval={teamJoinRequiresApproval}
+                setTeamJoinRequiresApproval={setTeamJoinRequiresApproval}
+              />
 
               {/* ===== Step 5 (v15: vormals Step 6): Registrierungsfelder ===== */}
               <div style={{ display: currentStep === 4 ? 'block' : 'none' }}>
@@ -17925,494 +17643,35 @@ export default function EventCreationPage(): React.ReactElement {
               </div>{/* close Step 7 (Kommunikation) */}
 
               {/* ===== Step 8 (v14.8: vormals Step 7): Dokumente ===== */}
-              <div style={{ display: currentStep === 7 ? 'block' : 'none' }}>
-                <h2 className="dex-step-head-title">
-                  {isDe ? 'Schritt 8 — Dokumente' : 'Step 8 — Documents'}
-                </h2>
-                <p className="dex-step-head-lead">
-                  {isDe
-                    ? 'Hier lädst du alle Unterlagen hoch, die deine Teilnehmer rund um das Event brauchen — von der Agenda bis zur Anfahrt.'
-                    : 'Here you upload all documents attendees might need around the event — from the agenda to the travel directions.'}
-                </p>
-                {renderStepIntro(
-                  [
-                    'Programm / Agenda pflegen (mehrtägig möglich, Drag-Reihenfolge pro Tag)',
-                    'Transferzeiten — Bus / Shuttle / Bahn von/zum Veranstaltungsort',
-                    'Dokumente hochladen (PDF) — Teilnehmer sehen sie auf MyEvents als Inline-Vorschau oder Download',
-                  ],
-                  [
-                    'Maintain the event programme / agenda (multi-day supported, drag-reorder per day)',
-                    'Transfer times — bus / shuttle / train to and from the venue',
-                    'Upload documents (PDF) — attendees see them on MyEvents as inline preview or download',
-                  ]
-                )}
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <StepBadge n={33} />
-                  {isDe ? 'Dokumente hochladen' : 'Upload documents'}
-                </label>
-                {/* v9.28: Schlagwörter fett rendern für bessere Lesbarkeit. */}
-                <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)', marginBottom: 16, lineHeight: 1.6 }}>
-                  {isDe ? (
-                    <>
-                      Lade hier alle Unterlagen hoch, die deine Teilnehmer rund um das Event brauchen — z.B.
-                      die <strong>Detail-Agenda als PDF</strong>, eine <strong>Anfahrtsbeschreibung mit Karte</strong>,
-                      die <strong>Hausordnung</strong> des Veranstaltungsorts, eine <strong>Packliste</strong>, das <strong>Teilnehmer-Briefing</strong>
-                      {' '}oder eine <strong>Datenschutz-/Foto-Einverständniserklärung</strong>. Die Dokumente erscheinen
-                      automatisch unter <strong>{'„Meine Events“'}</strong> in der Detail-Ansicht des Teilnehmers — dort sehen sie eine
-                      <strong> Inline-Vorschau</strong> (bei PDFs) und können das Dokument einzeln <strong>herunterladen</strong>.
-                      Mehrere Dateien gleichzeitig hochladen geht per <strong>Drag &amp; Drop</strong> oder <strong>Mehrfachauswahl</strong>.
-                      Du kannst Dokumente auch <strong>nach dem Event-Live-Gang</strong> noch hinzufügen oder austauschen — die
-                      Teilnehmer sehen immer die aktuelle Version. <strong>Tipp:</strong> für Dokumente, die nur intern für die
-                      Organizer wichtig sind (z.B. Kontaktliste vom Caterer), nutze eine geteilte
-                      <strong> Teams-/SharePoint-Ablage außerhalb von DEX</strong>, da hier alle Teilnehmer Lese-Zugriff haben.
-                    </>
-                  ) : (
-                    <>
-                      Upload everything attendees might need around the event — e.g.
-                      the <strong>detailed agenda as PDF</strong>, <strong>directions with a map</strong>,
-                      the venue&apos;s <strong>house rules</strong>, a <strong>packing list</strong>, the <strong>attendee briefing</strong>
-                      {' '}or a <strong>privacy/photo consent form</strong>. Documents show up automatically under
-                      <strong>{' „My Events“'}</strong> in the attendee detail view — they get an
-                      <strong> inline preview</strong> (for PDFs) and can <strong>download</strong> each file individually.
-                      Multiple files can be uploaded at once via <strong>drag &amp; drop</strong> or <strong>multi-select</strong>.
-                      You can keep adding or replacing documents <strong>after the event has gone live</strong> — attendees always
-                      see the latest version. <strong>Tip:</strong> for documents only meant for organizers (e.g. caterer
-                      contact list), use a shared <strong>Teams/SharePoint folder outside DEX</strong>, because every attendee has read access here.
-                    </>
-                  )}
-                </p>
-
-                {documents.map((doc, idx) => (
-                  <div key={idx} style={{
-                    display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', marginBottom: 6,
-                    background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
-                    border: '1px solid var(--dex-gray-200)',
-                  }}>
-                    <Icon iconName="Page" style={{ fontSize: 16, color: 'var(--dex-gray-600)' }} />
-                    <span style={{ flex: 1, fontSize: '0.85rem' }}>{doc.name}</span>
-                    {doc.size > 0 && <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)' }}>{(doc.size / 1024).toFixed(0)} KB</span>}
-                    <button type="button" onClick={() => setDocuments(documents.filter((_, i) => i !== idx))} style={{
-                      background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)',
-                      fontSize: '1.1rem', padding: '4px', lineHeight: 1,
-                    }} title={t('general.delete')}>
-                      <X size={16} />
-                    </button>
-                  </div>
-                ))}
-
-                <label className="btn btn-outline" style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <Plus size={14} /> {t('create.documents.upload')}
-                  <input
-                    type="file"
-                    multiple
-                    style={{ display: 'none' }}
-                    onChange={(e) => {
-                      const files = e.target.files;
-                      if (!files) return;
-                      const newDocs = Array.from(files).map(f => ({ name: f.name, file: f, url: '', size: f.size }));
-                      setDocuments([...documents, ...newDocs]);
-                      e.target.value = '';
-                    }}
-                  />
-                </label>
-
-                {/* v11.0: Teilnehmer-Upload-Toggle. Default OFF — wird nur
-                    bei expliziter Aktivierung in „Meine Events" als Upload-
-                    Bereich für die Anmeldung sichtbar. Anzeigename und
-                    Hinweistext sind frei konfigurierbar. */}
-                <div style={{ marginTop: 32, paddingTop: 20, borderTop: '2px solid var(--dex-gray-100)' }}>
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <StepBadge n={34} />
-                    {isDe ? 'Teilnehmer-Upload erlauben' : 'Allow attendee upload'}
-                    <InfoTooltip text={isDe ? (
-                      <>
-                        <strong>Was du hier einstellst:</strong> ob jeder Teilnehmer in &bdquo;Meine Events&ldquo; eine eigene Datei (z.B. PDF) zu seiner Anmeldung hochladen darf.<br /><br />
-                        <strong>Beispiele:</strong> Reisekostenbeleg, unterschriebener Datenschutzbogen, Foto-Einverständnis, Zertifikat als Voraussetzung für die Teilnahme.<br /><br />
-                        <strong>Ablauf:</strong> Teilnehmer sieht nach der Anmeldung in &bdquo;Meine Events&ldquo; einen Upload-Block mit deinem Anzeigenamen + Hinweistext. Hochgeladene Dateien werden direkt als <strong>Item-Attachment</strong> an die Teilnehmer-Zeile in der SharePoint-Subsite gehängt — nicht in einer Sammeldatei. Der Teilnehmer kann seine Datei jederzeit ersetzen oder löschen.<br /><br />
-                        <strong>Admin-Sicht:</strong> du siehst im Admin-Center pro Teilnehmer-Zeile alle hochgeladenen Dateien als Liste mit Download-Link. Du kannst auch fremde Uploads löschen.<br /><br />
-                        <strong>Default: aus.</strong> Nur einschalten, wenn du tatsächlich ein Dokument von Teilnehmern brauchst.
-                      </>
-                    ) : (
-                      <>
-                        <strong>What you set here:</strong> whether every attendee can upload a file (e.g. PDF) to their registration via &ldquo;My Events&rdquo;.<br /><br />
-                        <strong>Examples:</strong> travel-expense receipt, signed privacy form, photo-consent, certificate as a prerequisite to attend.<br /><br />
-                        <strong>Flow:</strong> after registering, the attendee sees an upload block in &ldquo;My Events&rdquo; with the display name and hint text you configure. Uploaded files attach directly as <strong>item attachments</strong> on the attendee&apos;s row in the SharePoint subsite — not into a collection file. Attendees can replace or delete their own file any time.<br /><br />
-                        <strong>Admin view:</strong> you see every uploaded file per attendee in the admin center with a download link. You can also delete attendee uploads.<br /><br />
-                        <strong>Default: off.</strong> Enable only when you actually need a document from attendees.
-                      </>
-                    )} />
-                  </label>
-                  <label
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 8,
-                      padding: '8px 14px', borderRadius: 999,
-                      fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap',
-                      cursor: 'pointer', userSelect: 'none',
-                      border: `1px solid ${allowAttendeeUpload ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-                      background: allowAttendeeUpload ? 'rgba(134,188,37,0.10)' : '#fff',
-                      color: allowAttendeeUpload ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={allowAttendeeUpload}
-                      onChange={e => setAllowAttendeeUpload(e.target.checked)}
-                      style={{ display: 'none' }}
-                    />
-                    <span style={{ fontSize: '0.9rem', lineHeight: 1 }}>{allowAttendeeUpload ? '✓' : '○'}</span>
-                    {isDe ? 'Teilnehmer dürfen Datei hochladen' : 'Attendees may upload a file'}
-                  </label>
-
-                  {allowAttendeeUpload && (
-                    <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                      <div>
-                        <label className="form-label" style={{ fontSize: '0.82rem', marginBottom: 4 }}>
-                          {isDe ? 'Anzeige-Name (z.B. „Reisekostenbeleg")' : 'Display name (e.g. „Travel-expense receipt")'}
-                        </label>
-                        <input
-                          className="form-input"
-                          value={attendeeUploadLabel}
-                          onChange={e => setAttendeeUploadLabel(e.target.value)}
-                          placeholder={isDe ? 'z.B. Reisekostenbeleg, Datenschutz-Erklärung' : 'e.g. Travel receipt, privacy form'}
-                          maxLength={80}
-                        />
-                      </div>
-                      <div>
-                        <label className="form-label" style={{ fontSize: '0.82rem', marginBottom: 4 }}>
-                          {isDe ? 'Hinweistext für Teilnehmer (optional)' : 'Hint text for attendees (optional)'}
-                        </label>
-                        <input
-                          className="form-input"
-                          value={attendeeUploadHint}
-                          onChange={e => setAttendeeUploadHint(e.target.value)}
-                          placeholder={isDe ? 'z.B. Bitte unterschrieben hochladen' : 'e.g. Please upload signed'}
-                          maxLength={240}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>{/* close Step 8 (Dokumente) */}
+              <DocumentsStep
+                visible={currentStep === 7}
+                documents={documents}
+                setDocuments={setDocuments}
+                allowAttendeeUpload={allowAttendeeUpload}
+                setAllowAttendeeUpload={setAllowAttendeeUpload}
+                attendeeUploadLabel={attendeeUploadLabel}
+                setAttendeeUploadLabel={setAttendeeUploadLabel}
+                attendeeUploadHint={attendeeUploadHint}
+                setAttendeeUploadHint={setAttendeeUploadHint}
+                renderStepIntro={renderStepIntro}
+              />
 
               {/* ===== Step 9 (v14.8: vormals Step 8): Fun-Zone ===== */}
-              <div style={{ display: currentStep === 8 ? 'block' : 'none' }}>
-                <h2 className="dex-step-head-title">
-                  {isDe ? 'Schritt 9 — Fun-Zone' : 'Step 9 — Fun Zone'}
-                </h2>
-                <p className="dex-step-head-lead">
-                  {isDe
-                    ? 'Optional: ein Quiz für die Teilnehmer — Multiple-Choice-Fragen mit Live-Highscore. Perfekt für Networking, Tagungs-Pausen oder Foto-Quiz.'
-                    : 'Optional: a quiz for attendees — multiple-choice questions with live highscore. Perfect for networking, breaks at conferences, or photo quizzes.'}
-                </p>
-                {renderStepIntro(
-                  [
-                    'Quiz-Fragen für das Event anlegen — Multiple-Choice mit beliebig vielen Antwortoptionen',
-                    'Pro Frage optional ein Bild hochladen (Logo, Foto-Quiz, etc.)',
-                    'Mehrere richtige Antworten möglich (Mehrfachauswahl) — werden alle für volle Punktzahl gebraucht',
-                    'Bereiche anlegen und Fragen per Drag & Drop zuordnen — alle Fragen eines Bereichs werden im Quiz zusammen auf einer Seite angezeigt',
-                    'Live-Highscore + Statistik im Admin Center sehen (welche Fragen am häufigsten falsch beantwortet werden)',
-                  ],
-                  [
-                    'Create quiz questions for the event — multiple choice with any number of answer options',
-                    'Optionally upload an image per question (logo, photo quiz, etc.)',
-                    'Multiple correct answers are supported — all of them must be picked for full points',
-                    'Create sections and assign questions via drag & drop — all questions in a section are shown together on one page in the quiz',
-                    'See live highscore + statistics in the admin center (which questions are most often answered incorrectly)',
-                  ]
-                )}
-                <h3 className="mb-16">{t('create.step.funzone')}</h3>
-                <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 16 }}>
-                  {t('create.funzone.hint')}
-                </p>
-
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <StepBadge n={34} />
-                  {isDe ? 'Quiz-Bereiche' : 'Quiz sections'}
-                </label>
-                {/* Bereiche: Header + "+ Bereich"-Button. Fragen können per Drag&Drop
-                    in Bereiche gezogen werden; jeder Bereich wird im Quiz zusammen
-                    auf einer Seite angezeigt. */}
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap',
-                }}>
-                  <button
-                    type="button"
-                    className="btn btn-outline"
-                    style={{ fontSize: '0.82rem', padding: '6px 14px' }}
-                    onClick={() => {
-                      setNewSectionName('');
-                      setNewSectionError('');
-                      setNewSectionModalOpen(true);
-                    }}
-                  >
-                    <Plus size={14} /> Bereich
-                  </button>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
-                    Fragen per Drag &amp; Drop in einen Bereich ziehen — alle Fragen eines Bereichs werden im Quiz zusammen angezeigt.
-                  </span>
-                </div>
-
-                {(() => {
-                  // Section-Reihenfolge: zuerst die in Fragen verwendeten (nach erster Erwähnung),
-                  // dann die noch leeren pendingSections.
-                  const used: string[] = [];
-                  for (const q of quiz) {
-                    if (q.section && used.indexOf(q.section) < 0) used.push(q.section);
-                  }
-                  const allSections: string[] = [...used];
-                  for (const p of pendingSections) {
-                    if (allSections.indexOf(p) < 0) allSections.push(p);
-                  }
-
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const handleDrop = (ev: any, targetSection: string | undefined): void => {
-                    ev.preventDefault();
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    const id = ev.dataTransfer?.getData?.('text/plain') as string | undefined;
-                    const qid = id || draggedQuestionId;
-                    if (!qid) return;
-                    updateQuizQuestion(qid, { section: targetSection });
-                    setDraggedQuestionId(null);
-                  };
-
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const renderQuestionCard = (q: any, qi: number): React.ReactElement => (
-                    <div
-                      key={q.id}
-                      draggable={true}
-                      onDragStart={ev => {
-                        setDraggedQuestionId(q.id);
-                        try { ev.dataTransfer.setData('text/plain', q.id); } catch { /* some browsers restrict */ }
-                        ev.dataTransfer.effectAllowed = 'move';
-                      }}
-                      onDragEnd={() => setDraggedQuestionId(null)}
-                      style={{
-                        padding: 16, marginBottom: 10, background: 'var(--dex-gray-50, #fafafa)',
-                        borderRadius: 12, border: '1px solid var(--dex-gray-200)',
-                        cursor: 'grab',
-                        opacity: draggedQuestionId === q.id ? 0.5 : 1,
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                        <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ cursor: 'grab', color: 'var(--dex-gray-400)' }} title="Ziehen, um in einen Bereich zu verschieben">⋮⋮</span>
-                          {t('create.funzone.question')} {qi + 1}
-                        </label>
-                        <button type="button" onClick={() => removeQuizQuestion(q.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red)', padding: 4 }}>
-                          <X size={16} />
-                        </button>
-                      </div>
-                      <input
-                        className="form-input"
-                        value={q.question}
-                        onChange={e => updateQuizQuestion(q.id, { question: e.target.value })}
-                        placeholder={t('create.funzone.questionplaceholder')}
-                        style={{ marginBottom: 10 }}
-                      />
-                      <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                        {q.imageBase64 ? (
-                          <>
-                            <img
-                              src={q.imageBase64}
-                              alt="Frage-Bild"
-                              style={{ maxHeight: 80, maxWidth: 160, borderRadius: 8, border: '1px solid var(--dex-gray-200)' }}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => updateQuizQuestion(q.id, { imageBase64: undefined })}
-                              style={{
-                                fontSize: '0.72rem', padding: '4px 10px',
-                                border: '1px solid var(--dex-gray-300)', borderRadius: 6,
-                                background: '#fff', color: 'var(--dex-red)', cursor: 'pointer',
-                              }}
-                            >
-                              Bild entfernen
-                            </button>
-                          </>
-                        ) : (
-                          <label style={{
-                            fontSize: '0.78rem', padding: '6px 12px',
-                            border: '1px dashed var(--dex-gray-300)', borderRadius: 8,
-                            cursor: 'pointer', color: 'var(--dex-gray-600)',
-                            display: 'inline-flex', alignItems: 'center', gap: 6,
-                          }}>
-                            Bild hochladen (optional)
-                            <input
-                              type="file"
-                              accept="image/*"
-                              style={{ display: 'none' }}
-                              onChange={async e => {
-                                const file = e.target.files && e.target.files[0];
-                                if (!file) return;
-                                try {
-                                  const dataUrl = await new Promise<string>((resolve, reject) => {
-                                    const reader = new FileReader();
-                                    reader.onload = () => resolve(String(reader.result || ''));
-                                    reader.onerror = reject;
-                                    reader.readAsDataURL(file);
-                                  });
-                                  const img = new Image();
-                                  await new Promise<void>((resolve, reject) => {
-                                    img.onload = () => resolve();
-                                    img.onerror = reject;
-                                    img.src = dataUrl;
-                                  });
-                                  const maxW = 800;
-                                  const scale = img.width > maxW ? maxW / img.width : 1;
-                                  const w = Math.round(img.width * scale);
-                                  const h = Math.round(img.height * scale);
-                                  const canvas = document.createElement('canvas');
-                                  canvas.width = w;
-                                  canvas.height = h;
-                                  const ctx = canvas.getContext('2d');
-                                  if (!ctx) return;
-                                  ctx.drawImage(img, 0, 0, w, h);
-                                  const compressed = canvas.toDataURL('image/jpeg', 0.8);
-                                  updateQuizQuestion(q.id, { imageBase64: compressed });
-                                } catch {
-                                  showAlert('Bild konnte nicht verarbeitet werden.');
-                                }
-                                e.target.value = '';
-                              }}
-                            />
-                          </label>
-                        )}
-                      </div>
-                      <label style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginBottom: 4, display: 'block' }}>
-                        {t('create.funzone.options')}
-                      </label>
-                      {q.options.map((opt: string, oi: number) => (
-                        <div key={oi} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                          <input
-                            type="checkbox"
-                            checked={q.correctIndices?.includes(oi) || false}
-                            onChange={() => {
-                              const indices = q.correctIndices || [];
-                              const newIndices = indices.includes(oi) ? indices.filter((x: number) => x !== oi) : [...indices, oi];
-                              updateQuizQuestion(q.id, { correctIndices: newIndices.length > 0 ? newIndices : [0] });
-                            }}
-                            title={t('create.funzone.correct')}
-                            style={{ accentColor: 'var(--dex-green)' }}
-                          />
-                          <input
-                            className="form-input"
-                            value={opt}
-                            onChange={e => {
-                              const newOpts = [...q.options];
-                              newOpts[oi] = e.target.value;
-                              updateQuizQuestion(q.id, { options: newOpts });
-                            }}
-                            placeholder={`${t('create.funzone.option')} ${oi + 1}`}
-                            style={{ flex: 1, padding: '6px 10px', fontSize: '0.85rem' }}
-                          />
-                          {q.options.length > 2 && (
-                            <button type="button" onClick={() => {
-                              const newOpts = q.options.filter((_: string, i: number) => i !== oi);
-                              const newCorrect = (q.correctIndices || []).filter((ci: number) => ci !== oi).map((ci: number) => ci > oi ? ci - 1 : ci);
-                              updateQuizQuestion(q.id, { options: newOpts, correctIndices: newCorrect.length > 0 ? newCorrect : [0] });
-                            }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-gray-400)', padding: 2 }}>
-                              <X size={14} />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                      <button type="button" onClick={() => updateQuizQuestion(q.id, { options: [...q.options, ''] })} style={{
-                        fontSize: '0.78rem', padding: '4px 12px', border: '1px dashed var(--dex-gray-300)',
-                        borderRadius: 8, background: 'none', color: 'var(--dex-green-dark)', cursor: 'pointer', marginTop: 4,
-                      }}>
-                        + {t('create.funzone.addoption')}
-                      </button>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-400)', marginTop: 6 }}>
-                        {t('create.funzone.correcthint')}
-                      </div>
-                    </div>
-                  );
-
-                  const unsortedQuiz = quiz.filter(q => !q.section);
-                  const globalIndexOf = (qid: string): number => quiz.findIndex(x => x.id === qid);
-
-                  return (
-                    <>
-                      {allSections.map(sec => {
-                        const inSec = quiz.filter(q => q.section === sec);
-                        return (
-                          <div
-                            key={`sec-${sec}`}
-                            onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-                            onDrop={e => handleDrop(e, sec)}
-                            style={{
-                              padding: 12, marginBottom: 14, borderRadius: 12,
-                              border: '2px dashed var(--dex-green)',
-                              background: 'rgba(134,188,37,0.04)',
-                            }}
-                          >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 8, flexWrap: 'wrap' }}>
-                              <h4 style={{ margin: 0, color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1rem' }}>
-                                Bereich: {sec} <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>({inSec.length} {inSec.length === 1 ? 'Frage' : 'Fragen'})</span>
-                              </h4>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  confirmDialog(isDe ? `Bereich "${sec}" entfernen? Die Fragen bleiben erhalten und landen in "Ohne Bereich".` : `Remove section "${sec}"? The questions are kept and move to "No section".`, { confirmLabel: isDe ? 'Entfernen' : 'Remove' }).then(ok => {
-                                    if (!ok) return;
-                                    for (const qq of quiz) {
-                                      if (qq.section === sec) updateQuizQuestion(qq.id, { section: undefined });
-                                    }
-                                    setPendingSections(prev => prev.filter(p => p !== sec));
-                                  }).catch(() => { /* */ });
-                                }}
-                                style={{
-                                  fontSize: '0.72rem', padding: '4px 10px',
-                                  border: '1px solid var(--dex-gray-300)', borderRadius: 6,
-                                  background: '#fff', color: 'var(--dex-red)', cursor: 'pointer',
-                                }}
-                              >
-                                Bereich entfernen
-                              </button>
-                            </div>
-                            {inSec.length === 0 ? (
-                              <div style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic', fontSize: '0.82rem', padding: '12px 8px', textAlign: 'center' }}>
-                                Fragen hierher ziehen
-                              </div>
-                            ) : (
-                              inSec.map(q => renderQuestionCard(q, globalIndexOf(q.id)))
-                            )}
-                          </div>
-                        );
-                      })}
-
-                      {/* Ohne Bereich */}
-                      <div
-                        onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-                        onDrop={e => handleDrop(e, undefined)}
-                        style={allSections.length > 0 ? {
-                          padding: 12, marginBottom: 14, borderRadius: 12,
-                          border: '2px dashed var(--dex-gray-300)',
-                          background: 'var(--dex-gray-50, #fafafa)',
-                        } : undefined}
-                      >
-                        {allSections.length > 0 && (
-                          <h4 style={{ margin: '0 0 10px', color: 'var(--dex-gray-600)', fontSize: '0.95rem' }}>
-                            Ohne Bereich <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>({unsortedQuiz.length} {unsortedQuiz.length === 1 ? 'Frage' : 'Fragen'})</span>
-                          </h4>
-                        )}
-                        {allSections.length > 0 && unsortedQuiz.length === 0 ? (
-                          <div style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic', fontSize: '0.82rem', padding: '8px', textAlign: 'center' }}>
-                            (leer)
-                          </div>
-                        ) : (
-                          unsortedQuiz.map(q => renderQuestionCard(q, globalIndexOf(q.id)))
-                        )}
-                      </div>
-                    </>
-                  );
-                })()}
-
-                <button type="button" className="btn btn-outline" onClick={addQuizQuestion} style={{ fontSize: '0.85rem', padding: '8px 20px' }}>
-                  <Plus size={14} /> {t('create.funzone.addquestion')}
-                </button>
-              </div>{/* close Step 9 (Fun-Zone) */}
+              <FunZoneStep
+                visible={currentStep === 8}
+                quiz={quiz}
+                addQuizQuestion={addQuizQuestion}
+                removeQuizQuestion={removeQuizQuestion}
+                updateQuizQuestion={updateQuizQuestion}
+                pendingSections={pendingSections}
+                setPendingSections={setPendingSections}
+                draggedQuestionId={draggedQuestionId}
+                setDraggedQuestionId={setDraggedQuestionId}
+                setNewSectionName={setNewSectionName}
+                setNewSectionError={setNewSectionError}
+                setNewSectionModalOpen={setNewSectionModalOpen}
+                renderStepIntro={renderStepIntro}
+              />
 
             </div>{/* close creation-form */}
           </div>{/* close card */}
@@ -18481,133 +17740,15 @@ export default function EventCreationPage(): React.ReactElement {
               Nicht abrechnungsrelevant: nur die Frage; „Ja" blendet die
               Abschnitte sofort ein (reiner State, kein Neuladen). */}
           {adminLike && (
-            <div style={{ display: currentStep === 9 ? 'block' : 'none' }}>
-              <div style={{ background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: '16px 18px', marginBottom: 16, border: '1px solid var(--dex-gray-200)' }}>
-                <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 6 }}>
-                  Handelt es sich um ein abrechnungsrelevantes Event?
-                </label>
-                <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px' }}>
-                  Abrechnungsrelevante Events sind Veranstaltungen, deren Kosten oder
-                  Bewirtungsaufwendungen gegenüber Finance &amp; Accounting dokumentiert
-                  oder abgerechnet werden müssen. Das ist der Fall, wenn im Nachgang
-                  <strong> Rechnungen über die Kreditorenbuchhaltung eingereicht
-                  werden</strong> — etwa für Catering, eine externe Raumbuchung oder
-                  Anmeldegebühren (z.B. Startgelder für Läufer) — oder wenn für das
-                  Event <strong>Ariba-Bestellungen</strong> ausgelöst werden.
-                </p>
-                <div style={{ display: 'flex', gap: 18 }}>
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: '0.9rem' }}>
-                    <input type="radio" name="dexBillingRelevant" checked={billingRelevant === true} onChange={() => setBillingRelevant(true)} />
-                    Ja
-                  </label>
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: '0.9rem' }}>
-                    <input type="radio" name="dexBillingRelevant" checked={billingRelevant === false} onChange={() => setBillingRelevant(false)} />
-                    Nein
-                  </label>
-                </div>
-              </div>
-
-              {billingRelevant === true && (
-                <>
-                  {/* Status — systemseitig aus den Pflichtfeldern abgeleitet,
-                      nie gespeichert und nie von Hand setzbar. */}
-                  <div style={{
-                    padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: '0.85rem',
-                    background: billingMissing.length > 0 ? 'rgba(237,139,0,0.10)' : 'rgba(134,188,37,0.12)',
-                    border: `1px solid ${billingMissing.length > 0 ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)'}`,
-                    color: 'var(--dex-gray-800)',
-                  }}>
-                    {billingMissing.length > 0
-                      ? <><strong>Status: Abrechnungsrelevante Informationen unvollständig</strong> — {billingMissing.length} von {BILLING_FIELDS.length} Pflichtfeldern fehlen noch. Speichern ist trotzdem möglich.</>
-                      : <><strong>Status: Vollständig</strong> — alle {BILLING_FIELDS.length} Pflichtangaben sind gepflegt.</>}
-                  </div>
-
-                  <div style={{ background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: '16px 18px', marginBottom: 16, border: '1px solid var(--dex-gray-200)' }}>
-                    <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 6 }}>
-                      Informationen zur Abrechnung
-                    </label>
-                    <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 12px' }}>
-                      Abrechnungsrelevante Informationen müssen an die Finance &amp; Accounting
-                      Abteilung gemeldet werden. Dies beinhaltet insbesondere allgemeine
-                      Eventinformationen, Teilnehmerlisten sowie Rechnungen und Belege. Die
-                      folgenden Einstellungen unterstützen die standardisierte und teilweise
-                      automatisierte Übermittlung dieser Informationen.
-                    </p>
-                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginBottom: 10 }}>
-                      <input type="radio" name="dexBillingSend" checked={billingSendMode === 'auto'} onChange={() => setBillingSendMode('auto')} style={{ marginTop: 3 }} />
-                      <span style={{ fontSize: '0.88rem' }}>
-                        <strong>Automatisierter Versand</strong>
-                        <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2 }}>
-                          Abrechnungsinformationen 7 Kalendertage vor dem Event (bei kurzfristiger
-                          Erstellung: sofort nach Aktivierung), finale Teilnehmerliste 7 Kalendertage
-                          danach — jeweils an F&amp;A, Organizer in CC.
-                          <em style={{ display: 'block', marginTop: 2, color: 'var(--dex-orange, #b96a00)' }}>
-                            Pilot: Die Auswahl wird bereits gespeichert, der Automatik-Flow existiert noch nicht.
-                          </em>
-                        </span>
-                      </span>
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                      <input type="radio" name="dexBillingSend" checked={billingSendMode === 'manual'} onChange={() => setBillingSendMode('manual')} style={{ marginTop: 3 }} />
-                      <span style={{ fontSize: '0.88rem' }}>
-                        <strong>Manueller Versand</strong> <span style={{ color: 'var(--dex-gray-500)', fontWeight: 400 }}>(Standard)</span>
-                        <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2 }}>
-                          Kein automatischer Versand — Abrechnungsinformationen und Teilnehmerliste
-                          werden über das Organizer Center aktiv an F&amp;A gesendet.
-                        </span>
-                      </span>
-                    </label>
-                  </div>
-
-                  <div style={{ background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: '16px 18px', marginBottom: 16, border: '1px solid var(--dex-gray-200)' }}>
-                    <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 2 }}>
-                      Abrechnungsrelevante Informationen
-                    </label>
-                    {/* v30.4: Legende — die Sternchen standen unerklärt im Raum. */}
-                    <p style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', margin: '0 0 10px' }}>
-                      <span className="required">*</span> Pflichtangabe — ohne sie gilt die Abrechnungsmeldung an Finance &amp; Accounting als unvollständig. Speichern kannst du trotzdem jederzeit.
-                    </p>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px 16px' }}>
-                      {BILLING_FIELDS.map(f => {
-                        const val = billingFields[f.id] || '';
-                        const empty = !val.trim();
-                        const setVal = (v: string): void => setBillingFields(prev => ({ ...prev, [f.id]: v }));
-                        return (
-                          // v30.4: Flex-Spalte, Label wächst — die Eingabefelder
-                          // einer Zeile stehen damit auf gleicher Höhe, auch wenn
-                          // ein Label („Name der Veranstaltung bzw. Anlass …")
-                          // zweizeilig umbricht.
-                          <div key={f.id} style={{ display: 'flex', flexDirection: 'column' }}>
-                            <label style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', display: 'block', marginBottom: 3, flexGrow: 1 }}>
-                              {f.label} <span className="required">*</span>
-                            </label>
-                            {f.type === 'select' ? (
-                              <select
-                                className="form-input"
-                                value={val}
-                                onChange={e => setVal(e.target.value)}
-                                style={{ borderColor: empty ? 'var(--dex-orange, #ed8b00)' : undefined }}
-                              >
-                                <option value="">Bitte wählen…</option>
-                                {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
-                              </select>
-                            ) : (
-                              <input
-                                className="form-input"
-                                type={f.type === 'date' ? 'date' : 'text'}
-                                value={val}
-                                onChange={e => setVal(e.target.value)}
-                                style={{ borderColor: empty ? 'var(--dex-orange, #ed8b00)' : undefined }}
-                              />
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
+            <BillingStep
+              visible={currentStep === 9}
+              billingRelevant={billingRelevant}
+              setBillingRelevant={setBillingRelevant}
+              billingSendMode={billingSendMode}
+              setBillingSendMode={setBillingSendMode}
+              billingFields={billingFields}
+              setBillingFields={setBillingFields}
+            />
           )}
 
           {/* Fortschrittsanzeige */}

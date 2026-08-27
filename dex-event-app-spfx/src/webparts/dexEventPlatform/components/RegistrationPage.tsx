@@ -2209,6 +2209,14 @@ export default function RegistrationPage(): React.ReactElement {
             ? 'Die Anmeldefrist dieses Events ist abgelaufen — eine Anmeldung ist nicht mehr möglich. Organizer und Admins können nach Ablauf weiterhin anmelden.'
             : 'The registration deadline for this event has passed — registration is no longer possible. Organizers and admins can still register after the deadline.';
         }
+        // v30.14: Duplikat-Prüfung selbst gescheitert (Drosselung) — die
+        // Anmeldung wird bewusst NICHT durchgeführt, statt eine Doppel-Zeile
+        // zu riskieren.
+        if (reason === 'dup-check-failed') {
+          return locale === 'de'
+            ? 'SharePoint ist gerade stark ausgelastet — wir konnten nicht sicher prüfen, ob diese Anmeldung schon existiert, und haben deshalb NICHT angemeldet (keine Doppel-Anmeldung riskieren). Bitte versuche es in ein paar Minuten erneut.'
+            : 'SharePoint is currently under heavy load — we could not verify whether this registration already exists, so nothing was registered (to avoid a duplicate). Please try again in a few minutes.';
+        }
         if (reason === 'insert-failed') {
           return locale === 'de'
             ? 'Die Anmeldung konnte nicht gespeichert werden (technischer Fehler an der Teilnehmerliste). Bitte erneut versuchen; hält es an, im Organizer Center „Spalten fixen" ausführen.'
