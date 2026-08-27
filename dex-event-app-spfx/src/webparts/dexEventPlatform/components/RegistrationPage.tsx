@@ -506,6 +506,17 @@ export default function RegistrationPage(): React.ReactElement {
   const [massImportProgress, setMassImportProgress] = React.useState('');
   const [massImportResult, setMassImportResult] = React.useState<{ ok: number; failed: string[] } | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  // v30.19: Während des Absendens warnt der Browser vor dem Schließen des
+  // Fensters/Tabs — ein abgebrochener Submit hinterlässt halbe Anmeldungen
+  // (Tage ohne Klammer, fehlende Bestätigungen). Der Text im Dialog kommt
+  // vom Browser; entscheidend ist preventDefault + returnValue.
+  // WICHTIG: Hook steht VOR den frühen Returns (v30.4-Regel dieser Datei).
+  React.useEffect(() => {
+    if (!isSubmitting) return undefined;
+    const warnBeforeUnload = (e: BeforeUnloadEvent): void => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload);
+  }, [isSubmitting]);
   // v11.33: Submit-Overlay mit Fortschrittsanzeige (Prozent + Label).
   // Bei vielen Sub-Events / vielen Custom-Fields kann der Submit
   // mehrere Sekunden dauern — vorher hat der User nur einen disabled
@@ -3540,8 +3551,25 @@ export default function RegistrationPage(): React.ReactElement {
             <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', fontVariantNumeric: 'tabular-nums' }}>
               {displayProgress}%
             </div>
+            {/* v30.19: deutlicher, pulsierender Warnhinweis — der Hintergrund
+                ist durch das Overlay ohnehin nicht klickbar, aber „bitte
+                warten" muss man SEHEN. Zusätzlich warnt ein
+                beforeunload-Guard (s. Hook oben) vor dem Schließen. */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '8px 16px', borderRadius: 999,
+              background: 'rgba(237,139,0,0.12)', border: '1px solid var(--dex-orange, #ed8b00)',
+              color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 700, fontSize: '0.85rem',
+              textAlign: 'center',
+              animation: 'dexWaitPulse 1.5s ease-in-out infinite',
+            }}>
+              {locale === 'de'
+                ? 'Bitte warten — Fenster nicht schließen'
+                : 'Please wait — do not close this window'}
+            </div>
           </div>
-          <style>{`@keyframes dexProgressSlide { 0% { left: -40%; } 100% { left: 100%; } }`}</style>
+          <style>{`@keyframes dexProgressSlide { 0% { left: -40%; } 100% { left: 100%; } }
+@keyframes dexWaitPulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.55; transform: scale(1.04); } }`}</style>
         </div>
       )}
       {/* v18: Demo-Hinweis-Banner. Das Demo-Event wird ansonsten exakt wie ein
