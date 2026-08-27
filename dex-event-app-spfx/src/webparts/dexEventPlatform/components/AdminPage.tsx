@@ -547,6 +547,9 @@ export default function AdminPage(): React.ReactElement {
   // v23.32: Standard = eingeklappt (Foto + zweizeilige Person: Name fett,
   // darunter „Position • Standort"). Gilt für konsolidierte UND normale Tabelle.
   const [personalColsCollapsed, setPersonalColsCollapsed] = React.useState(true);
+  // v30.21: Hover-State für den Auf-/Zuklapp-Knopf der Personen-Spalten
+  // (Inline-Styles können kein :hover).
+  const [colToggleHover, setColToggleHover] = React.useState(false);
   // v24.31: Teilnehmer-Detailmodal — Klick auf eine Person zeigt Kontakt-
   // Detailinfos (Foto, E-Mail, MS-Teams-Chat, Position/Standort/Unternehmen/
   // Abteilung/Telefon/Status). Bewusst „Detailinfos", nicht die Fragen/Antworten.
@@ -5743,27 +5746,55 @@ export default function AdminPage(): React.ReactElement {
               )}
               {personalColsCollapsed ? (
                 // v26.65 BUG-FIX: Sortier-Klick auf das GANZE <th> (vorher nur auf
-                // den kleinen Text-<span> — daneben klicken sortierte nicht). Der
-                // Ausklapp-Button stoppt die Propagation, damit er nicht sortiert.
-                <th style={{ textAlign: 'left', padding: 8, userSelect: 'none', whiteSpace: 'nowrap', cursor: 'pointer' }} onClick={() => handleSortConsolidated('nachname')}>
-                  <span>{isDe ? 'Teilnehmer' : 'Participant'}{sortArrow('nachname')}</span>
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setPersonalColsCollapsed(false); }}
-                    title={isDe ? 'Personen-Spalten ausklappen' : 'Expand personal columns'}
-                    style={{ marginLeft: 8, border: 'none', cursor: 'pointer', background: 'var(--dex-green)', color: '#fff', width: 20, height: 20, borderRadius: '50%', fontSize: '0.8rem', fontWeight: 700, lineHeight: '20px', textAlign: 'center', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle' }}
-                  >»</button>
+                // den kleinen Text-<span> — daneben klicken sortierte nicht).
+                // v30.21: Der Klapp-Knopf sitzt jetzt als beschriftete Pille in
+                // einer EIGENEN Zeile ÜBER der Spaltenüberschrift — der kleine
+                // runde Knopf lag direkt neben dem Sortier-Klickziel, ein leicht
+                // versetzter Klick sortierte statt zu klappen (Nutzer-Befund).
+                // Hover-Effekt über colToggleHover (Inline-Styles können kein :hover).
+                <th style={{ textAlign: 'left', padding: 8, userSelect: 'none', whiteSpace: 'nowrap', cursor: 'pointer', verticalAlign: 'top' }} onClick={() => handleSortConsolidated('nachname')}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setPersonalColsCollapsed(false); setColToggleHover(false); }}
+                      onMouseEnter={() => setColToggleHover(true)}
+                      onMouseLeave={() => setColToggleHover(false)}
+                      title={isDe ? 'Vorname, Nachname, E-Mail, Job Title, Standort und Unternehmen als eigene Spalten anzeigen' : 'Show first/last name, email, job title, location and company as separate columns'}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                        padding: '2px 10px', borderRadius: 999,
+                        border: '1px solid var(--dex-green, #86bc25)',
+                        background: colToggleHover ? 'var(--dex-green, #86bc25)' : '#fff',
+                        color: colToggleHover ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
+                        fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', lineHeight: 1.4,
+                        transition: 'background 120ms ease, color 120ms ease',
+                      }}
+                    >» {isDe ? 'Aufklappen' : 'Expand'}</button>
+                    <span>{isDe ? 'Teilnehmer' : 'Participant'}{sortArrow('nachname')}</span>
+                  </div>
                 </th>
               ) : (
                 <>
-                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('vorname')}>
-                    {isDe ? 'Vorname' : 'First name'}{sortArrow('vorname')}
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setPersonalColsCollapsed(true); }}
-                      title={isDe ? 'Personen-Spalten einklappen (nur Foto + Name)' : 'Collapse personal columns (photo + name only)'}
-                      style={{ marginLeft: 6, border: 'none', cursor: 'pointer', background: 'var(--dex-green)', color: '#fff', width: 20, height: 20, borderRadius: '50%', fontSize: '0.8rem', fontWeight: 700, lineHeight: '20px', textAlign: 'center', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle' }}
-                    >«</button>
+                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', verticalAlign: 'top' }} onClick={() => handleSortConsolidated('vorname')}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setPersonalColsCollapsed(true); setColToggleHover(false); }}
+                        onMouseEnter={() => setColToggleHover(true)}
+                        onMouseLeave={() => setColToggleHover(false)}
+                        title={isDe ? 'Personen-Spalten einklappen (nur Foto + Name)' : 'Collapse personal columns (photo + name only)'}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                          padding: '2px 10px', borderRadius: 999,
+                          border: '1px solid var(--dex-green, #86bc25)',
+                          background: colToggleHover ? 'var(--dex-green, #86bc25)' : '#fff',
+                          color: colToggleHover ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
+                          fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', lineHeight: 1.4,
+                          transition: 'background 120ms ease, color 120ms ease',
+                        }}
+                      >« {isDe ? 'Zuklappen' : 'Collapse'}</button>
+                      <span>{isDe ? 'Vorname' : 'First name'}{sortArrow('vorname')}</span>
+                    </div>
                   </th>
                   <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('nachname')}>{isDe ? 'Nachname' : 'Last name'}{sortArrow('nachname')}</th>
                   <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('email')}>Email{sortArrow('email')}</th>
