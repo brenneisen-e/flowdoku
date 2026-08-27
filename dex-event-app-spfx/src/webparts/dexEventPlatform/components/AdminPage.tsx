@@ -5738,11 +5738,11 @@ export default function AdminPage(): React.ReactElement {
                   nummer dieser Ansicht ist — NICHT die Teilnehmer-ID der SharePoint-
                   Liste (die pro Sub-Event unterschiedlich ist). Sortiert nach
                   Erst-Anmeldung. */}
-              <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('id')}
+              <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', verticalAlign: 'bottom' }} onClick={() => handleSortConsolidated('id')}
                 title={isDe ? 'Laufende Nummer in dieser Ansicht (nicht die Teilnehmer-ID der Liste — die ist pro Sub-Event unterschiedlich)' : 'Row number in this view (not the SharePoint participant ID — that differs per sub-event)'}>#{sortArrow('id')}</th>
               {/* v26.68: echte Teilnehmer-ID (Klammer-Liste) — nur bei aktiver Suche. */}
               {searchActive && (
-                <th style={{ textAlign: 'left', padding: 8 }} title={isDe ? 'Teilnehmer-ID in der Hauptevent-/Klammer-Teilnehmerliste' : 'Participant ID in the main-event / bracket list'}>ID</th>
+                <th style={{ textAlign: 'left', padding: 8, verticalAlign: 'bottom' }} title={isDe ? 'Teilnehmer-ID in der Hauptevent-/Klammer-Teilnehmerliste' : 'Participant ID in the main-event / bracket list'}>ID</th>
               )}
               {personalColsCollapsed ? (
                 // v26.65 BUG-FIX: Sortier-Klick auf das GANZE <th> (vorher nur auf
@@ -5752,7 +5752,7 @@ export default function AdminPage(): React.ReactElement {
                 // runde Knopf lag direkt neben dem Sortier-Klickziel, ein leicht
                 // versetzter Klick sortierte statt zu klappen (Nutzer-Befund).
                 // Hover-Effekt über colToggleHover (Inline-Styles können kein :hover).
-                <th style={{ textAlign: 'left', padding: 8, userSelect: 'none', whiteSpace: 'nowrap', cursor: 'pointer', verticalAlign: 'top' }} onClick={() => handleSortConsolidated('nachname')}>
+                <th style={{ textAlign: 'left', padding: 8, userSelect: 'none', whiteSpace: 'nowrap', cursor: 'pointer', verticalAlign: 'bottom' }} onClick={() => handleSortConsolidated('nachname')}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
                     <button
                       type="button"
@@ -5775,7 +5775,7 @@ export default function AdminPage(): React.ReactElement {
                 </th>
               ) : (
                 <>
-                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', verticalAlign: 'top' }} onClick={() => handleSortConsolidated('vorname')}>
+                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', verticalAlign: 'bottom' }} onClick={() => handleSortConsolidated('vorname')}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
                       <button
                         type="button"
@@ -5796,16 +5796,16 @@ export default function AdminPage(): React.ReactElement {
                       <span>{isDe ? 'Vorname' : 'First name'}{sortArrow('vorname')}</span>
                     </div>
                   </th>
-                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('nachname')}>{isDe ? 'Nachname' : 'Last name'}{sortArrow('nachname')}</th>
-                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('email')}>Email{sortArrow('email')}</th>
-                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('jobTitle')}>Job Title{sortArrow('jobTitle')}</th>
-                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('location')}>{isDe ? 'Standort' : 'Location'}{sortArrow('location')}</th>
-                  <th style={{ textAlign: 'left', padding: 8 }}>{isDe ? 'Unternehmen' : 'Company'}</th>
+                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', verticalAlign: 'bottom' }} onClick={() => handleSortConsolidated('nachname')}>{isDe ? 'Nachname' : 'Last name'}{sortArrow('nachname')}</th>
+                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', verticalAlign: 'bottom' }} onClick={() => handleSortConsolidated('email')}>Email{sortArrow('email')}</th>
+                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', verticalAlign: 'bottom' }} onClick={() => handleSortConsolidated('jobTitle')}>Job Title{sortArrow('jobTitle')}</th>
+                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', verticalAlign: 'bottom' }} onClick={() => handleSortConsolidated('location')}>{isDe ? 'Standort' : 'Location'}{sortArrow('location')}</th>
+                  <th style={{ textAlign: 'left', padding: 8, verticalAlign: 'bottom' }}>{isDe ? 'Unternehmen' : 'Company'}</th>
                 </>
               )}
               {/* v26.84: „Registriert von" auch im Klammer-View — selbst /
                   Assistenz / stellvertretend. */}
-              <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap' }}>{isDe ? 'Registriert von' : 'Registered by'}</th>
+              <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap', verticalAlign: 'bottom' }}>{isDe ? 'Registriert von' : 'Registered by'}</th>
               {parentCustomFields.map(f => (
                 <th key={`pf-${f.id}`} onClick={() => handleSortConsolidated(`pf:${f.id}`)} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 150, verticalAlign: 'top', lineHeight: 1.25, cursor: 'pointer', userSelect: 'none', ...PASTEL_A_HEADER }} title={`${f.label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
                   {f.label}{sortArrow(`pf:${f.id}`)}
@@ -5835,7 +5835,7 @@ export default function AdminPage(): React.ReactElement {
                   ))}
                 </React.Fragment>
               ))}
-              <th style={{ textAlign: 'left', padding: 8 }}>{isDe ? 'Details' : 'Details'}</th>
+              <th style={{ textAlign: 'left', padding: 8, verticalAlign: 'bottom' }}>{isDe ? 'Details' : 'Details'}</th>
             </tr>
             {/* v30.15: Summenzeile je Termin-Spalte — bei einer Office-Tage-
                 Reihe sieht man sonst nicht, wie voll ein Tag ist. Zählt über
