@@ -16,6 +16,7 @@ import { isEventVisibleForUser } from './EventListPage';
 import { useCachedImage, useCachedImageWithFallback } from '../utils/imageCache';
 import { useIsMobile } from '../utils/useIsMobile';
 import { isRegistrationFullyClosed, subEventRegDeadline } from '../utils/eventFormat';
+import { addPendingShadowParent, removePendingShadowParent } from '../utils/shadowHeal';
 import { selfCancelLocked } from '../utils/cancelPolicy';
 import { isDeloitteInternalEmail, isExternalEmail } from '../utils/deloitteDomain';
 import { useLanguage, translations as appTranslations, Locale } from '../context/LanguageContext';
@@ -2518,16 +2519,42 @@ export default function RegistrationPage(): React.ReactElement {
           await doParentRegistration(true);
         }
       }
-      // v29.48: Bleibt die Klammer-Zeile aus, ist die Anmeldung gültig, aber
-      // unvollständig — die übergreifenden Antworten (Verpflegung, Hotel,
-      // Anreise) haben keine Zeile, in der sie stehen könnten. Bisher war das
-      // für den Teilnehmer unsichtbar und tauchte erst beim Organizer als
-      // „Fehlende Klammer-Anmeldung" auf.
+      // v30.16: Bleibt die Klammer-Zeile aus, heilt sie sich jetzt SELBST —
+      // der v29.48-Fehler-Dialog („SharePoint rejected the last write, bitte
+      // erneut speichern") ist weg. Der Fall trat im Soft Opening real auf,
+      // obwohl schon zweimal versucht wurde: Die Klammer ist der letzte
+      // Schreibvorgang und trifft die Drossel am härtesten. Statt den
+      // Teilnehmer zu belasten: (1) Merker mit den Formular-Antworten in
+      // localStorage (verlustfrei), (2) stille Wiederholungen im Hintergrund
+      // der Erfolgsseite (20 s / 60 s / 180 s), (3) geht der Browser vorher
+      // zu, arbeitet der EventContext den Merker beim nächsten App-Start ab.
+      // registerForEvent ist für die Klammer idempotent — doppelter Nachzug
+      // fügt nichts doppelt ein. Letztes Netz bleibt das Organizer-Panel
+      // („Fehlende Klammer-Anmeldung" + Sammel-Fix, v30.14).
       if (shadowParentFailed) {
-        showAlert(locale === 'de'
-          ? `Deine Anmeldung für ${childTermPlural || 'die Sub-Events'} ist gespeichert — die übergreifenden Angaben zum Event konnten wir gerade nicht sichern (SharePoint hat den letzten Schreibvorgang abgelehnt). Öffne die Anmeldung in ein paar Minuten noch einmal und speichere sie erneut, dann sind auch diese Angaben hinterlegt.`
-          : `Your registration for the ${childTermPlural || 'sub-events'} is saved — we could not store the cross-cutting event details just now (SharePoint rejected the last write). Please open the registration again in a few minutes and save it once more so those details are recorded.`,
-          { variant: 'error' });
+        const shadowEntry = {
+          eventId: selectedEventId!,
+          customData: { ...customData },
+          firstName: firstTrim,
+          lastName: surnameTrim,
+          email: participantEmail,
+          proxy: registerForOther,
+          ts: Date.now(),
+        };
+        addPendingShadowParent(shadowEntry);
+        const retryShadow = (attempt: number): void => {
+          window.setTimeout(() => {
+            registerForEvent(
+              shadowEntry.eventId, shadowEntry.customData, shadowEntry.firstName, shadowEntry.lastName,
+              shadowEntry.email, undefined,
+              { ...(shadowEntry.proxy ? { proxyConsentConfirmed: true, actorAllowedAsAssistant } : {}), skipReload: true }
+            ).then(r => {
+              if (r.ok) removePendingShadowParent(shadowEntry.eventId, shadowEntry.email);
+              else if (attempt < 3) retryShadow(attempt + 1);
+            }).catch(() => { if (attempt < 3) retryShadow(attempt + 1); });
+          }, attempt === 1 ? 20000 : attempt === 2 ? 60000 : 180000);
+        };
+        retryShadow(1);
       }
       setSubmitProgress(95);
       setSubmitProgressLabel(locale === 'de' ? 'Bestätigungen werden versandt…' : 'Confirmations are being queued…');
