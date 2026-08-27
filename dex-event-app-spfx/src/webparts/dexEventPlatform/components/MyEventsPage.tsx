@@ -2801,10 +2801,27 @@ export default function MyEventsPage(): React.ReactElement {
                         }}
                       >
                         <X size={16} />
-                        {cancellingId === event.id ? (isCancelling ? '...' : t('myevents.confirmcancel')) : t('myevents.cancel')}
+                        {/* v30.20: Bei Kalender-Events sagt der Knopf, WAS er
+                            abmeldet — er kappt die GANZE Buchung (alle Tage).
+                            Nutzer-Befund: „man versteht den großen Abmelde-
+                            Button nicht" — er wirkte wie der Weg, EINEN Tag
+                            abzumelden. Einzelne Tage laufen über den Kalender
+                            (Klick auf grünen Tag + Bestätigung, s.u.). */}
+                        {cancellingId === event.id
+                          ? (isCancelling ? '...' : t('myevents.confirmcancel'))
+                          : (event.subEventCalendar
+                            ? (isDe ? 'Alle Termine abmelden' : 'Cancel all dates')
+                            : t('myevents.cancel'))}
                       </button>
                       {cancellingId === event.id && !isCancelling && (
                         <button className="btn btn-secondary" onClick={() => setCancellingId(null)} style={{ fontSize: '0.85rem', padding: '8px 16px' }}>{t('myevents.keepreg')}</button>
+                      )}
+                      {event.subEventCalendar && cancellingId !== event.id && (
+                        <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', lineHeight: 1.4 }}>
+                          {isDe
+                            ? 'Einzelne Tage meldest du unten im Kalender ab: auf den grünen Tag klicken und bestätigen.'
+                            : 'To cancel a single day, use the calendar below: click the green day and confirm.'}
+                        </span>
                       )}
                         </>
                       )}
@@ -3877,12 +3894,22 @@ function MyEventSubEvents(props: {
   // RoleContext bereits abgesenkt, der per-Event-Organizer-Check unten zieht
   // lokal mit; An-/Abmelden ist in der Vorschau gesperrt (handleToggle).
   const { isAdmin, previewAsUser } = useRoles();
-  const { showAlert } = useDialog();
+  const { showAlert, confirmDialog } = useDialog();
   const [busyId, setBusyId] = React.useState<string | null>(null);
   // v15.21: Voll-Bild-Progress-Modal beim (Peer-)Cancel + Anmeldung. Vorher
   // war nur die einzelne Karte mit „…" markiert — bei Peer-Cancels haben die
   // peers visuell nicht reagiert, weil busyId nur die EINE id hält.
   const [processingMessage, setProcessingMessage] = React.useState<string>('');
+  // v30.19: Während der Verarbeitung warnt der Browser vor dem Schließen des
+  // Fensters/Tabs (nativer „Website verlassen?"-Dialog) — ein Abbruch mitten
+  // im (Peer-)Cancel oder Anmelden hinterlässt halbe Zustände. Gleiche
+  // Mechanik wie das Submit-Overlay der RegistrationPage.
+  React.useEffect(() => {
+    if (!processingMessage) return undefined;
+    const warnBeforeUnload = (e: BeforeUnloadEvent): void => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload);
+  }, [processingMessage]);
   const [registeredSet, setRegisteredSet] = React.useState<Set<string>>(new Set());
   const [counts, setCounts] = React.useState<Record<string, number>>({});
   // v10.27: pro Sub-Event die geparsten Custom-Field-Antworten aus
@@ -3978,6 +4005,21 @@ function MyEventSubEvents(props: {
     // v29.25: Backstop zur Button-Sperre — Selbst-Abmeldung nach der Frist
     // deaktiviert (Organizer-Option auf dem Parent).
     if (currentlyRegistered && selfCancelLocked(props.childEvents.find(ce => ce.id === childEventId), props.parentEvent)) return;
+    // v30.20: Explizite Bestätigung VOR jeder Einzel-Abmeldung — im Kalender
+    // meldete ein Klick auf einen grünen Tag bisher SOFORT ab (ohne Peers gab
+    // es gar keine Nachfrage). Nutzer-Befund: „nicht intuitiv". Der Dialog
+    // nennt den Termin und was passiert (Bestätigungs-Mail, Outlook-Rückzug).
+    if (currentlyRegistered) {
+      const cancelTarget = props.childEvents.find(ce => ce.id === childEventId);
+      const cancelTitle = (cancelTarget && cancelTarget.title) || (isDe ? 'diesen Termin' : 'this date');
+      const okCancel = await confirmDialog(
+        isDe
+          ? `„${cancelTitle}" wirklich abmelden?\n\nDu bekommst eine Abmeldebestätigung per Mail und der Outlook-Termin wird zurückgezogen.`
+          : `Really cancel „${cancelTitle}"?\n\nYou will receive a cancellation confirmation by email and the Outlook invite will be withdrawn.`,
+        { danger: true, confirmLabel: isDe ? 'Abmelden' : 'Cancel registration' }
+      );
+      if (!okCancel) return;
+    }
     // v11.34: Beim Cancel eines Sub-Events fragen, ob die anderen aktiven
     // Sub-Events des gleichen Parents auch abgemeldet werden sollen
     // (Peer-Cancel-Cascade) — gleicher Pattern wie der Parent-Cancel.
@@ -4322,7 +4364,10 @@ function MyEventSubEvents(props: {
                             {isBusy
                               ? '…'
                               : isReg
-                              ? (cancelLocked ? (isDe ? 'fix' : 'fixed') : '✓')
+                              // v30.20: Beim Überfahren eines grünen Tags steht
+                              // „abmelden" statt ✓ — die Klick-Geste war sonst
+                              // nicht zu erraten (Nutzer-Befund: „nicht intuitiv").
+                              ? (cancelLocked ? (isDe ? 'fix' : 'fixed') : (dayHoverKey === key ? (isDe ? 'abmelden' : 'cancel') : '✓'))
                               : notYetOpen
                               ? (isDe ? `ab ${openFromLabel}` : `from ${openFromLabel}`)
                               : deadlinePassed
@@ -4805,8 +4850,22 @@ function MyEventSubEvents(props: {
             <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-500)' }}>
               {isDe ? 'Bitte einen Moment Geduld…' : 'Please wait a moment…'}
             </div>
+            {/* v30.19: pulsierender Warnhinweis — wie im Anmelde-Overlay der
+                RegistrationPage; zusätzlich beforeunload-Guard (Hook oben). */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '8px 16px', borderRadius: 999,
+              background: 'rgba(237,139,0,0.12)', border: '1px solid var(--dex-orange, #ed8b00)',
+              color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 700, fontSize: '0.85rem',
+              animation: 'dexWaitPulse 1.5s ease-in-out infinite',
+            }}>
+              {isDe
+                ? 'Bitte warten — Fenster nicht schließen'
+                : 'Please wait — do not close this window'}
+            </div>
           </div>
-          <style>{`@keyframes dexProgressSlide { 0% { left: -40%; } 100% { left: 100%; } }`}</style>
+          <style>{`@keyframes dexProgressSlide { 0% { left: -40%; } 100% { left: 100%; } }
+@keyframes dexWaitPulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.55; transform: scale(1.04); } }`}</style>
         </div>
       )}
     </div>

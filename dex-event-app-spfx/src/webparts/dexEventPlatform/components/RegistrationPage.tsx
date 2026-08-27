@@ -1342,7 +1342,18 @@ export default function RegistrationPage(): React.ReactElement {
   // Parent-Reg-Block; für reguläre User greift ohnehin die Fully-Closed-Seite).
   const isDeadlinePassed = (!!event.registrationDeadline && new Date(event.registrationDeadline) < new Date())
     || (!!event.klammerDeadline && new Date(event.klammerDeadline) < new Date());
-  const isFullyClosed = isRegistrationFullyClosed(event, childEvents);
+  // v30.20: Über ALLE buchbaren Sub-Events rechnen, NICHT über die
+  // sichtbarkeitsgefilterte childEvents-Liste. Sonst kippt die Entscheidung
+  // mit der Sichtbarkeit des Betrachters: In der User-Vorschau (und für User
+  // mit engem Verteiler) fielen alle Tage aus der Liste, die leere Liste
+  // zählte als „kein Sub-Event mehr offen", und die Alt-Frist der
+  // Klammer-Spalte (25.08.) zeigte „Anmeldefrist abgelaufen" — obwohl
+  // Termine offen waren, die die Person nur nicht sehen darf. Für „für dich
+  // ist keines freigegeben" gibt es die v29.9-Meldung, nicht die Frist-Seite.
+  const isFullyClosed = isRegistrationFullyClosed(
+    event,
+    event.subEventsDisabled ? [] : childEventsOf(event.id).filter(ce => !ce.isFictive)
+  );
 
   // v23.14: Vorschau vor Aktivierung — reguläre User dürfen die Anmeldeseite
   // erst ab dem „Aktiv ab"-Zeitpunkt öffnen (Deep-Link-Schutz; die Karte
