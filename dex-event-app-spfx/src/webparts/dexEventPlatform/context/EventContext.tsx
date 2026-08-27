@@ -19,6 +19,7 @@ import { isDeloitteInternalEmail, isExternalEmail } from '../utils/deloitteDomai
 import { registrationEmail, externalInviteInstructionEmail, externalInvitationEmail, coOrganizerAddedEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
 import { buildUnsentEmlDraft } from '../utils/emlDraft';
 import { readPendingShadowParents, removePendingShadowParent } from '../utils/shadowHeal';
+import { withParentTitleSubject } from '../utils/mailSubject';
 import { APP_VERSION } from '../version';
 import { RELEASE_NOTES } from '../data/releaseNotes';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
@@ -1939,16 +1940,21 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     // Klammer-Schatten-Zeile (subEventsOnlyMode): dort ist eine doppelte
     // Zeile harmlos (belegt keinen Platz, Bereinigen-Knopf existiert), ein
     // Abbruch würde dagegen die „Fehlende Klammer"-Fälle vermehren.
-    const alreadyActive = await eventService.isUserAlreadyOnEvent(subsiteUrl, (emailToUse || '').trim()).catch(() => null);
-    if (alreadyActive === null && !(event && event.subEventsOnlyMode)) {
+    // v30.17: Für die Klammer-Schatten-Zeile (subEventsOnlyMode) läuft die
+    // isUserAlreadyOnEvent-Prüfung gar nicht mehr — jedes ihrer Ergebnisse
+    // führte ohnehin zu „weiter" (aktiv → ok:true, Fehler → exempt, nicht
+    // aktiv → getMyRegistration entscheidet). Das spart einen SharePoint-
+    // Request pro Anmeldung; die Idempotenz sichert weiterhin der
+    // getMyRegistration-Check unten (v23.9-Guard). Für ECHTE Anmeldungen
+    // (Sub-Events, normale Events) bleibt die Prüfung inkl. fail-closed.
+    const isShadowParent = !!(event && event.subEventsOnlyMode);
+    const alreadyActive = isShadowParent
+      ? false
+      : await eventService.isUserAlreadyOnEvent(subsiteUrl, (emailToUse || '').trim()).catch(() => null);
+    if (alreadyActive === null) {
       return { ok: false, status: 'Warteliste', reason: 'dup-check-failed' };
     }
     if (alreadyActive) {
-      if (event && event.subEventsOnlyMode) {
-        // Schatten-Zeilen-Semantik (v23.9): vorhandener Schatten blockiert
-        // die Sub-Event-Anmeldung nicht.
-        return { ok: true, status: 'Angemeldet' };
-      }
       return { ok: false, status: 'Warteliste', reason: 'already-registered' };
     }
 
@@ -2335,7 +2341,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         })();
         const ccFromFields = ccMerged || undefined;
         eventService.queueEmail(
-          finalSubject, finalRecipient, finalRecipientName, finalBody,
+          withParentTitleSubject(finalSubject, calDayParentOf(event)), finalRecipient, finalRecipientName, finalBody,
           templateType, event.title, eventId, ccFromFields, undefined,
           undefined,
           // v26.71: KEIN Anhang mehr — die Deloitte-Mail-Flow-Regel blockt
@@ -3552,7 +3558,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
               cancelCc = merged.length ? merged.join(';') : undefined;
             } catch { cancelCc = orgCopyCc || undefined; }
             const emailOk = await eventService.queueEmail(
-              emailData.subject, currentUserEmail, currentUserName, emailData.body,
+              withParentTitleSubject(emailData.subject, calDayParentOf(event)), currentUserEmail, currentUserName, emailData.body,
               'Abmeldung', event.title, eventId, cancelCc, undefined
             );
             if (!emailOk) console.warn('[DEX] queueEmail for cancellation returned false');
@@ -3724,7 +3730,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
           } catch { memberCc = undefined; }
           memberCc = mergeCcLists(memberCc, orgCopyCc, memberRegistration.ParticipantEmail);
           await eventService.queueEmail(
-            emailData.subject,
+            withParentTitleSubject(emailData.subject, calDayParentOf(event)),
             memberRegistration.ParticipantEmail,
             `${memberRegistration.Vorname || ''} ${memberRegistration.Nachname || ''}`.trim() || memberRegistration.ParticipantEmail,
             emailData.body,
@@ -3883,7 +3889,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
           } catch { memberCc = undefined; }
           memberCc = mergeCcLists(memberCc, orgCopyCc, registration.ParticipantEmail);
           await eventService.queueEmail(
-            emailData.subject,
+            withParentTitleSubject(emailData.subject, calDayParentOf(event)),
             registration.ParticipantEmail,
             `${registration.Vorname || ''} ${registration.Nachname || ''}`.trim() || registration.ParticipantEmail,
             emailData.body,
@@ -5343,6 +5349,14 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events]);
+
+  // v30.18: Kalender-Eltern eines Tages auflösen — für den Mail-Betreff
+  // (withParentTitleSubject, s. utils/mailSubject).
+  const calDayParentOf = (ev: { parentEventId?: string } | undefined): DeloitteEvent | undefined => {
+    if (!ev || !ev.parentEventId) return undefined;
+    const p = events.find(x => x.id === ev.parentEventId);
+    return p && p.subEventCalendar ? p : undefined;
+  };
 
   const autoFixStartedRef = React.useRef(false);
   async function autoRepairProxyAccess(): Promise<void> {

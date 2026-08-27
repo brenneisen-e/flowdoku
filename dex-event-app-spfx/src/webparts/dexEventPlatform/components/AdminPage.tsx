@@ -25,6 +25,7 @@ import OrganizerList from './OrganizerList';
 import { PersonContactHover } from './PersonContactHover';
 import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
 import { isEventOver } from '../utils/eventFormat';
+import { withParentTitleSubject } from '../utils/mailSubject';
 import { selfCancelLocked } from '../utils/cancelPolicy';
 import AddParticipantsModal from './admin/AddParticipantsModal';
 import { TeamsJoinButton } from './TeamsJoinButton';
@@ -370,7 +371,8 @@ export default function AdminPage(): React.ReactElement {
               if (spTpl) { emailData = buildEmailFromTemplate(spTpl, promoteVars); }
               else { emailData = promotionEmail(promotedFirstName, selectedEvent.title); }
               await eventServiceRef.queueEmail(
-                emailData.subject, promoted.email, promoted.name || '', emailData.body,
+                withParentTitleSubject(emailData.subject, selectedEvent.parentEventId ? allEvents.find(e => e.id === selectedEvent.parentEventId) : undefined),
+                promoted.email, promoted.name || '', emailData.body,
                 'Nachruecken', selectedEvent.title, selectedEvent.id
               );
             } catch (err) { console.warn('[DEX] promote-email failed:', err); }
@@ -1924,7 +1926,8 @@ export default function AdminPage(): React.ReactElement {
                 if (spTpl) emailData = buildEmailFromTemplate(spTpl, promoteVars);
                 else emailData = promotionEmail(promotedFirstName, child.title);
                 await eventServiceRef.queueEmail(
-                  emailData.subject, promoted.email, promoted.name || '', emailData.body,
+                  withParentTitleSubject(emailData.subject, selectedEvent && selectedEvent.subEventCalendar ? selectedEvent : undefined),
+                  promoted.email, promoted.name || '', emailData.body,
                   'Nachruecken', child.title, child.id
                 );
               } catch (err) { console.warn('[DEX] promote-email failed:', err); }
@@ -2135,7 +2138,8 @@ export default function AdminPage(): React.ReactElement {
           emailData = promotionEmail(promotedFirstName, selectedEvent.title);
         }
         await eventServiceRef.queueEmail(
-          emailData.subject, promoted.email, promoted.name || '', emailData.body,
+          withParentTitleSubject(emailData.subject, selectedEvent.parentEventId ? allEvents.find(e => e.id === selectedEvent.parentEventId) : undefined),
+          promoted.email, promoted.name || '', emailData.body,
           'Nachruecken', selectedEvent.title, selectedEvent.id
         );
       } catch (err) { console.warn('[DEX] promote-email failed:', err); }
@@ -5229,6 +5233,35 @@ export default function AdminPage(): React.ReactElement {
       const own = (c.eventSpecificFields || []).filter(f => f.type !== 'user' && f.label && f.label.trim() && !parentIds.has(f.id));
       return { child: c, fields: own };
     });
+    // v30.17: Spalten-Zustand je Termin — vergangene Tage und (bei aktiver
+    // „Anmeldung ab"-Regel) noch nicht anmeldbare Tage werden in Kopf,
+    // Summenzeile und Zellen gedimmt. Dieselbe openFrom-Rechnung wie auf der
+    // Anmeldeseite und in „Meine Events" (fixed/day/week) — keine zweite
+    // Logik aufmachen.
+    const childOpenFrom = (c: DeloitteEvent): Date | null => {
+      const rule = selectedEvent.subEventOpenRule;
+      if (!rule) return null;
+      if (rule.mode === 'fixed') {
+        const d = new Date(rule.date || '');
+        return isFinite(d.getTime()) ? d : null;
+      }
+      if (!((rule.days || 0) > 0)) return null;
+      const base = new Date(c.startDate || '');
+      if (!isFinite(base.getTime())) return null;
+      const dd = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+      if (rule.mode === 'week') dd.setDate(dd.getDate() - ((dd.getDay() + 6) % 7));
+      dd.setDate(dd.getDate() - (rule.days || 0));
+      dd.setHours(0, 0, 0, 0);
+      return dd;
+    };
+    const hasOpenRule = !!selectedEvent.subEventOpenRule;
+    const childColState: Record<string, { past: boolean; notYetOpen: boolean; openFrom: Date | null }> = {};
+    for (const { child } of childCustomFieldsByChild) {
+      const opensAt = childOpenFrom(child);
+      childColState[child.id] = { past: isEventOver(child), notYetOpen: !!opensAt && new Date() < opensAt, openFrom: opensAt };
+    }
+    const dimColStyle = (id: string): React.CSSProperties =>
+      (childColState[id] && (childColState[id].past || childColState[id].notYetOpen)) ? { opacity: 0.45 } : {};
     const handleSortConsolidated = (key: string): void => {
       if (consolidatedSort === key) setConsolidatedSortAsc(!consolidatedSortAsc);
       else { setConsolidatedSort(key); setConsolidatedSortAsc(true); }
@@ -5756,7 +5789,7 @@ export default function AdminPage(): React.ReactElement {
               {childCustomFieldsByChild.map(({ child, fields }) => (
                 <React.Fragment key={`sub-${child.id}`}>
                   <th
-                    style={{ textAlign: 'center', padding: 8, cursor: 'pointer', userSelect: 'none', borderLeft: '1px solid var(--dex-gray-200)' }}
+                    style={{ textAlign: 'center', padding: 8, cursor: 'pointer', userSelect: 'none', borderLeft: '1px solid var(--dex-gray-200)', ...dimColStyle(child.id) }}
                     onClick={() => handleSortConsolidated(`child:${child.id}`)}
                     title={child.title}
                   >
@@ -5799,7 +5832,7 @@ export default function AdminPage(): React.ReactElement {
                 const cap = (typeof child.maxParticipants === 'number' && child.maxParticipants > 0) ? child.maxParticipants : 0;
                 return (
                   <React.Fragment key={`sum-${child.id}`}>
-                    <th style={{ textAlign: 'center', padding: '4px 8px', borderLeft: '1px solid var(--dex-gray-200)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                    <th style={{ textAlign: 'center', padding: '4px 8px', borderLeft: '1px solid var(--dex-gray-200)', fontSize: '0.8rem', whiteSpace: 'nowrap', ...dimColStyle(child.id) }}
                         title={isDe
                           ? `${regCount} angemeldet${cap ? ` von ${cap} Plätzen` : ''}${wlCount ? ` · ${wlCount} auf der Warteliste` : ''}`
                           : `${regCount} registered${cap ? ` of ${cap} seats` : ''}${wlCount ? ` · ${wlCount} on the waitlist` : ''}`}>
@@ -5813,6 +5846,41 @@ export default function AdminPage(): React.ReactElement {
               })}
               <th style={{ padding: 0 }} />
             </tr>
+            {/* v30.17: „Anmeldung ab"-Zeile — nur bei aktiver Freischalt-Regel.
+                Vergangene Tage heißen „vorbei", noch gesperrte zeigen ihr
+                Öffnungsdatum (orange), offene das Datum in grün. */}
+            {hasOpenRule && (
+              <tr style={{ borderBottom: '2px solid var(--dex-gray-200)', background: 'var(--dex-gray-50, #fafafa)' }}>
+                <th
+                  colSpan={1 + (searchActive ? 1 : 0) + (personalColsCollapsed ? 1 : 6) + 1 + parentCustomFields.length + parentUserFields.length}
+                  style={{ textAlign: 'right', padding: '2px 8px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}
+                >
+                  {isDe ? 'Anmeldung ab:' : 'Opens:'}
+                </th>
+                {childCustomFieldsByChild.map(({ child, fields }) => {
+                  const st = childColState[child.id];
+                  return (
+                    <React.Fragment key={`open-${child.id}`}>
+                      <th style={{
+                        textAlign: 'center', padding: '2px 8px', borderLeft: '1px solid var(--dex-gray-200)',
+                        fontSize: '0.72rem', whiteSpace: 'nowrap', fontWeight: 600,
+                        color: st.past
+                          ? 'var(--dex-gray-400)'
+                          : st.notYetOpen ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green-dark, #4a7c1f)',
+                      }}>
+                        {st.past
+                          ? (isDe ? 'vorbei' : 'past')
+                          : st.openFrom
+                          ? `${isDe ? 'ab ' : 'from '}${st.openFrom.toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit' })}`
+                          : '—'}
+                      </th>
+                      {fields.map(f => <th key={`open-${child.id}-${f.id}`} style={{ padding: 0 }} />)}
+                    </React.Fragment>
+                  );
+                })}
+                <th style={{ padding: 0 }} />
+              </tr>
+            )}
           </thead>
           <tbody>
             {consolidatedFiltered.map((row, idx) => {
@@ -5991,7 +6059,7 @@ export default function AdminPage(): React.ReactElement {
                       const isReg = !!r && ACTIVE.indexOf(r.Status) >= 0;
                       return (
                         <React.Fragment key={`scv-${child.id}`}>
-                          <td style={{ padding: 8, textAlign: 'center', borderLeft: '1px solid var(--dex-gray-200)' }}
+                          <td style={{ padding: 8, textAlign: 'center', borderLeft: '1px solid var(--dex-gray-200)', ...dimColStyle(child.id) }}
                               title={r ? `${translateStatus(r.Status, isDe)} — TID ${r.TeilnehmerID || '?'}` : (isDe ? 'Nicht angemeldet' : 'Not registered')}>
                             {isReg ? (
                               r.Status === 'Warteliste'
@@ -6014,7 +6082,7 @@ export default function AdminPage(): React.ReactElement {
                               if (v !== undefined && v !== null && v !== '') val = String(v);
                             }
                             return (
-                              <td key={`scv-${child.id}-${f.id}`} style={{ padding: 8, fontSize: '0.8rem', color: 'var(--dex-gray-700)', whiteSpace: 'nowrap', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', ...PASTEL_B_CELL }} title={val}>
+                              <td key={`scv-${child.id}-${f.id}`} style={{ padding: 8, fontSize: '0.8rem', color: 'var(--dex-gray-700)', whiteSpace: 'nowrap', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', ...PASTEL_B_CELL, ...dimColStyle(child.id) }} title={val}>
                                 {val ? highlightMatch(val) : (r ? '-' : '')}
                               </td>
                             );
