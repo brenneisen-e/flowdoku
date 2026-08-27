@@ -85,6 +85,10 @@ export default function SettingsPage(): React.ReactElement {
       if (!emailLc) continue;
       const matched: string[] = [];
       for (const evt of events) {
+        // v30.15: Nur MUTTER-Events zählen — Sub-Events/Kalender-Tage tragen
+        // seit v29.20 dieselbe OrganizerEmail, eine Office-Tage-Reihe mit 22
+        // Terminen blähte die Zelle sonst auf „22 Events" auf.
+        if (evt.parentEventId) continue;
         // v6.20: strikt per E-Mail — kein Namens-Substring-Match mehr.
         // Der alte Heuristik-Match per Nachname hat bei häufigen Nachnamen
         // False-Positives produziert (z.B. Assistentin mit gleichem Nachnamen
@@ -111,6 +115,8 @@ export default function SettingsPage(): React.ReactElement {
     const knownEmails = new Set(roles.map(r => (r.userEmail || '').toLowerCase()));
     const accumulator: Record<string, { name: string; events: string[] }> = {};
     for (const evt of events) {
+      // v30.15: nur Mutter-Events — s. organizerEventMap (22-Kalendertage-Falle).
+      if (evt.parentEventId) continue;
       const orgEmails = evt.organizerEmails || [];
       const orgNames = evt.organizers || [];
       for (let i = 0; i < orgEmails.length; i++) {

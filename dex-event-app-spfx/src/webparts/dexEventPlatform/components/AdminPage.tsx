@@ -5773,6 +5773,46 @@ export default function AdminPage(): React.ReactElement {
               ))}
               <th style={{ textAlign: 'left', padding: 8 }}>{isDe ? 'Details' : 'Details'}</th>
             </tr>
+            {/* v30.15: Summenzeile je Termin-Spalte — bei einer Office-Tage-
+                Reihe sieht man sonst nicht, wie voll ein Tag ist. Zählt über
+                die GLEICHE Logik wie die Haken-Zellen darunter (ACTIVE inkl.
+                Warteliste; Warteliste separat als „+N W") und über die
+                gefilterten Zeilen — mit aktiver Suche also die Teilsumme,
+                sonst alle. Kapazität aus dem Sub-Event als „/max".
+                Spalten-Vorlauf MUSS der Kopfzeile folgen (v28.53-Falle:
+                Kopf- und Zeilen-Reihenfolge nebeneinanderlegen!). */}
+            <tr style={{ borderBottom: '2px solid var(--dex-gray-200)', background: 'var(--dex-gray-50, #fafafa)' }}>
+              <th
+                colSpan={1 + (searchActive ? 1 : 0) + (personalColsCollapsed ? 1 : 6) + 1 + parentCustomFields.length + parentUserFields.length}
+                style={{ textAlign: 'right', padding: '4px 8px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}
+              >
+                {isDe ? '∑ angemeldet:' : '∑ registered:'}
+              </th>
+              {childCustomFieldsByChild.map(({ child, fields }) => {
+                let regCount = 0;
+                let wlCount = 0;
+                for (const row of consolidatedFiltered) {
+                  const r = row.perChild[child.id];
+                  if (!r || ACTIVE.indexOf(r.Status) < 0) continue;
+                  if (r.Status === 'Warteliste') wlCount++; else regCount++;
+                }
+                const cap = (typeof child.maxParticipants === 'number' && child.maxParticipants > 0) ? child.maxParticipants : 0;
+                return (
+                  <React.Fragment key={`sum-${child.id}`}>
+                    <th style={{ textAlign: 'center', padding: '4px 8px', borderLeft: '1px solid var(--dex-gray-200)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                        title={isDe
+                          ? `${regCount} angemeldet${cap ? ` von ${cap} Plätzen` : ''}${wlCount ? ` · ${wlCount} auf der Warteliste` : ''}`
+                          : `${regCount} registered${cap ? ` of ${cap} seats` : ''}${wlCount ? ` · ${wlCount} on the waitlist` : ''}`}>
+                      <span style={{ fontWeight: 700, color: (cap > 0 && regCount >= cap) ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)' }}>{regCount}</span>
+                      {cap > 0 && <span style={{ color: 'var(--dex-gray-400)', fontWeight: 400 }}>/{cap}</span>}
+                      {wlCount > 0 && <span style={{ color: 'var(--dex-orange, #ed8b00)', fontWeight: 600 }}> +{wlCount} W</span>}
+                    </th>
+                    {fields.map(f => <th key={`sum-${child.id}-${f.id}`} style={{ padding: 0 }} />)}
+                  </React.Fragment>
+                );
+              })}
+              <th style={{ padding: 0 }} />
+            </tr>
           </thead>
           <tbody>
             {consolidatedFiltered.map((row, idx) => {

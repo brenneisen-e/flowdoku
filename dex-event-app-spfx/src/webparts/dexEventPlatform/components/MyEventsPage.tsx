@@ -22,6 +22,7 @@ import { SPRegistration, EventCommRow } from '../services/EventService';
 import { wrapTemplate } from '../services/EmailTemplates';
 import { isEventOver, subEventRegDeadline } from '../utils/eventFormat';
 import { selfCancelLocked, selfCancelLockReason } from '../utils/cancelPolicy';
+import { addPendingShadowParent } from '../utils/shadowHeal';
 import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
 import { useDialog } from '../context/DialogContext';
@@ -4072,7 +4073,15 @@ function MyEventSubEvents(props: {
           try {
             await props.registerForEvent(props.parentEvent.id, {}, undefined, undefined, undefined, undefined,
               { suppressMail: true, suppressOutlook: true, skipReload: true });
-          } catch (err) { console.warn('[DEX] shadow-parent ensure failed:', err); }
+          } catch (err) {
+            console.warn('[DEX] shadow-parent ensure failed:', err);
+            // v30.16: Nachzug-Merker — der EventContext holt die Klammer-Zeile
+            // beim nächsten App-Start still nach (utils/shadowHeal).
+            addPendingShadowParent({
+              eventId: props.parentEvent.id, customData: {},
+              firstName: '', lastName: '', email: currentUser.email || '', ts: Date.now(),
+            });
+          }
         }
       }
       setProcessingMessage(isDe ? 'Aktualisiere…' : 'Refreshing…');

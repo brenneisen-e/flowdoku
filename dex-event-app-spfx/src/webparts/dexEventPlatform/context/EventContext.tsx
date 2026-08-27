@@ -18,6 +18,7 @@ import { isEventOver } from '../utils/eventFormat';
 import { isDeloitteInternalEmail, isExternalEmail } from '../utils/deloitteDomain';
 import { registrationEmail, externalInviteInstructionEmail, externalInvitationEmail, coOrganizerAddedEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
 import { buildUnsentEmlDraft } from '../utils/emlDraft';
+import { readPendingShadowParents, removePendingShadowParent } from '../utils/shadowHeal';
 import { APP_VERSION } from '../version';
 import { RELEASE_NOTES } from '../data/releaseNotes';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
@@ -5314,6 +5315,35 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
   // sie damit in „Meine Events" sieht + sich selbst abmelden kann. Läuft
   // gedrosselt (1×/24h via localStorage), sequentiell über alle aktiven
   // Subsites, komplett best-effort — der Admin merkt nichts davon.
+  // v30.16: Offene Klammer-Nachzüge aus localStorage abarbeiten (s.
+  // utils/shadowHeal). Entsteht, wenn der Klammer-Schreibvorgang einer
+  // Anmeldung trotz Wiederholungen an der Drosselung scheiterte und der
+  // Browser zuging, bevor die Hintergrund-Kette der Erfolgsseite fertig war.
+  // Läuft einmal pro Session, 20 s nach dem Boot (nicht in die Boot-Lastspitze),
+  // sequentiell; registerForEvent ist für die Klammer idempotent.
+  const shadowHealRanRef = React.useRef(false);
+  React.useEffect(() => {
+    if (shadowHealRanRef.current) return;
+    if (!events || events.length === 0) return;
+    if (readPendingShadowParents().length === 0) { shadowHealRanRef.current = true; return; }
+    shadowHealRanRef.current = true;
+    const t = window.setTimeout(() => {
+      void (async () => {
+        for (const p of readPendingShadowParents()) {
+          try {
+            const r = await registerForEvent(
+              p.eventId, p.customData || {}, p.firstName || '', p.lastName || '', p.email, undefined,
+              { ...(p.proxy ? { proxyConsentConfirmed: true, actorAllowedAsAssistant: true } : {}), suppressMail: true, suppressOutlook: true, skipReload: true }
+            );
+            if (r.ok) removePendingShadowParent(p.eventId, p.email);
+          } catch { /* bleibt im Merker — nächster App-Start versucht es wieder (14-Tage-Verfall) */ }
+        }
+      })();
+    }, 20000);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events]);
+
   const autoFixStartedRef = React.useRef(false);
   async function autoRepairProxyAccess(): Promise<void> {
     try {
