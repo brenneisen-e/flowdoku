@@ -73,7 +73,8 @@ import { formatAllDayPeriod } from '../utils/eventFormat';
 import { getBlockedInviteRecipients } from '../utils/inviteGuards';
 import { ActionTile, SplitMergeToggle, ActionsCollapsibleCard, ActionsRegistryProvider, ActionsDropdown } from './admin/ActionsMenu';
 import BillingActionPanel from './admin/BillingActionPanel';
-import { parseBillingOf } from '../utils/faBilling';
+import { parseBillingOf, missingBillingFields, faStatusOf, FA_STATUS_LABELS, FA_STATUS_COLORS } from '../utils/faBilling';
+import { BILLING_FIELDS } from '../data/billingFields';
 
 
 
@@ -7380,6 +7381,65 @@ export default function AdminPage(): React.ReactElement {
             seit v7.6 hier integriert — der Organizer/Admin findet alle Event-
             relevanten Aktionen an einem Ort. QR-Scanner sehen den ganzen Block
             nicht. */}
+        {/* v30.23 (F&A-Nachlieferung §1): Status der abrechnungsrelevanten
+            Angaben direkt auf der Organizer-Seite — nicht erst im Wizard.
+            Bewusst OHNE Status-Gate: Die Box (und die Aktionen darunter)
+            müssen laut Fachkonzept auch im ENTWURF verfügbar sein, weil
+            F&A die Eckdaten oft vor der Aktivierung braucht. */}
+        {!isQRScannerOnlyForSelected && !selectedEvent.isDemoShowcase && parseBillingOf(selectedEvent)?.relevant === true && (() => {
+          const bb = parseBillingOf(selectedEvent);
+          if (!bb) return null;
+          const miss = missingBillingFields(bb);
+          const incomplete = miss.length > 0;
+          const st = faStatusOf(selectedEvent, bb);
+          const stColors = FA_STATUS_COLORS[st];
+          return (
+            <div style={{
+              marginBottom: 16, padding: '12px 16px', borderRadius: 10,
+              border: `1px solid ${incomplete ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)'}`,
+              background: incomplete ? 'rgba(237,139,0,0.07)' : 'rgba(134,188,37,0.07)',
+              display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+            }}>
+              <Icon iconName={incomplete ? 'Warning' : 'CheckMark'} style={{ fontSize: 16, color: incomplete ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-green-dark, #4a7c1f)' }} />
+              <div style={{ flex: 1, minWidth: 240, fontSize: '0.85rem', lineHeight: 1.5, color: 'var(--dex-gray-800)' }}>
+                <strong>{isDe ? 'Abrechnungsrelevantes Event' : 'Billing-relevant event'}</strong>
+                <span style={{
+                  marginLeft: 8, padding: '1px 8px', borderRadius: 999, fontSize: '0.7rem', fontWeight: 700,
+                  background: stColors.bg, color: stColors.fg,
+                }}>{FA_STATUS_LABELS[st]}</span>
+                <div style={{ marginTop: 4, color: 'var(--dex-gray-700)' }}>
+                  {incomplete
+                    ? (isDe
+                      ? `Es fehlen noch ${miss.length} von ${BILLING_FIELDS.length} Pflichtangaben für die Meldung an Finance & Accounting: ${miss.map(f => f.label).slice(0, 4).join(', ')}${miss.length > 4 ? ` +${miss.length - 4} weitere` : ''}. Solange sie fehlen, kannst du die Abrechnungsinformationen nicht versenden — Speichern und Aktivieren des Events sind davon nicht betroffen.`
+                      : `${miss.length} of ${BILLING_FIELDS.length} required details for the Finance & Accounting report are still missing: ${miss.map(f => f.label).slice(0, 4).join(', ')}${miss.length > 4 ? ` +${miss.length - 4} more` : ''}. Until they are filled in, the billing information cannot be sent — saving and activating the event are unaffected.`)
+                    : (isDe
+                      ? `Alle ${BILLING_FIELDS.length} Pflichtangaben sind gepflegt. Über „Event-Abrechnung" schickst du Abrechnungsinformationen oder die Teilnehmerliste an F&A.`
+                      : `All ${BILLING_FIELDS.length} required details are filled in. Use „Event billing" to send the billing information or the participant list to F&A.`)}
+                </div>
+              </div>
+              <div style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
+                {incomplete && (
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    style={{ fontSize: '0.78rem', padding: '4px 12px', color: 'var(--dex-orange, #ed8b00)', borderColor: 'var(--dex-orange, #ed8b00)' }}
+                    onClick={() => navigate('edit-event', selectedEvent.id)}
+                  >
+                    {isDe ? 'Angaben ergänzen' : 'Complete details'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ fontSize: '0.78rem', padding: '4px 12px' }}
+                  onClick={() => setBillingPanelOpen(true)}
+                >
+                  {isDe ? 'Event-Abrechnung öffnen' : 'Open event billing'}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
         {!isQRScannerOnlyForSelected && !selectedEvent.isDemoShowcase && (
         <ActionsCollapsibleCard isDe={isDe}>
           <div className="admin-actions-grid" style={{
