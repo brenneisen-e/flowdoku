@@ -25,7 +25,7 @@ const fmtDateTime = (iso: string): string => {
 
 export default function BillingActionPanel(props: { event: DeloitteEvent; onClose: () => void }): React.ReactElement | null {
   const { event } = props;
-  const { events, sendFAMail, getFAConfig } = useEvents();
+  const { events, sendFAMail, getFAConfig, getAllRegistrations } = useEvents();
   const { confirmDialog, showAlert } = useDialog();
   // Frischen Stand aus dem Context nehmen — nach einem Versand patcht
   // sendFAMail den lokalen Event-State, das Modal soll sofort mitziehen.
@@ -36,7 +36,7 @@ export default function BillingActionPanel(props: { event: DeloitteEvent; onClos
   const mails = (b?.log || []).filter(l => l.mailType);
 
   const [recipients, setRecipients] = React.useState<{ info: string[]; list: string[] } | null>(null);
-  const [busy, setBusy] = React.useState<'' | 'info' | 'list'>('');
+  const [busy, setBusy] = React.useState<'' | 'info' | 'list' | 'xlsx'>('');
   const [openMailIdx, setOpenMailIdx] = React.useState<number | null>(null);
 
   React.useEffect(() => {
@@ -76,6 +76,95 @@ export default function BillingActionPanel(props: { event: DeloitteEvent; onClos
         showAlert(msg, { variant: 'error' });
       }
     } finally { setBusy(''); }
+  };
+
+  /**
+   * v30.23 (F&A-Nachlieferung §2): Teilnehmerliste als Excel.
+   *
+   * Das Fachkonzept verlangt die Liste „als Excel-Datei im Anhang der
+   * E-Mail". Das geht im Deloitte-Tenant NICHT: Die Mail-Flow-Regel blockt
+   * JEDE über Power Automate versendete Mail, die einen Anhang trägt (NDR
+   * „Power Apps and Power Automate cannot be used to … send email
+   * attachments") — die Mail käme dann gar nicht erst an. Genau daran ist
+   * schon der .eml-Anhang gescheitert (v26.71, in docs/flow-jsons.md als
+   * OBSOLET dokumentiert). Deshalb derselbe Weg wie dort: Die Mail trägt
+   * die Liste als HTML-Tabelle (kommt garantiert an, wird protokolliert),
+   * und wer die Datei braucht, lädt sie hier herunter und hängt sie aus
+   * dem eigenen Postfach an. Datenbasis identisch zur Mail
+   * (getAllRegistrations ohne Abgemeldete), damit beide nie auseinanderlaufen.
+   */
+  const downloadXlsx = async (): Promise<void> => {
+    if (busy) return;
+    setBusy('xlsx');
+    try {
+      const regs = await getAllRegistrations(liveEvent.id);
+      const rows = (regs || [])
+        .filter(r => r.Status !== 'Abgemeldet')
+        .map((r, i) => [
+          i + 1,
+          (r.ParticipantName || `${r.Vorname || ''} ${r.Nachname || ''}`.trim()) || r.ParticipantEmail || '—',
+          r.ParticipantEmail || '',
+          r.Status || '',
+        ]);
+      if (rows.length === 0) {
+        showAlert('Für dieses Event gibt es aktuell keine aktiven Anmeldungen.', { variant: 'info' });
+        return;
+      }
+      const headers = ['#', 'Name', 'E-Mail', 'Status'];
+      const safeName = (liveEvent.title || 'event').replace(/[^a-zA-Z0-9]/g, '_');
+      const fileName = `Teilnehmerliste_FA_${safeName}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      // xlsx erst beim Klick nachladen (schwerste Dependency, s. AdminPage).
+      const XLSX = await import('xlsx');
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (ws as any)['!cols'] = [{ wch: 5 }, { wch: 30 }, { wch: 34 }, { wch: 14 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Teilnehmer');
+      const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      // Manueller Anker-Download — im SPFx-Iframe ist saveAs oft blockiert.
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = fileName; a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 400);
+    } catch (err) {
+      console.warn('[DEX] F&A-XLSX-Export fehlgeschlagen:', err);
+      showAlert('Die Excel-Datei konnte nicht erzeugt werden — bitte erneut versuchen.', { variant: 'error' });
+    } finally { setBusy(''); }
+  };
+
+  /**
+   * v30.23 (F&A-Nachlieferung §2): „F&A-Team kontaktieren".
+   *
+   * Bewusst ein mailto: aus dem Postfach des Organizers und NICHT über die
+   * DEX-Mail-Queue: Es geht um Rückfragen — die Antwort von F&A muss beim
+   * Organizer landen. Eine Queue-Mail käme von no_reply.events@deloitte.de,
+   * eine Antwort darauf ginge ins Leere.
+   */
+  const contactFA = (): void => {
+    const to = (recipients?.info || []).join(';');
+    if (!to) {
+      showAlert('Es ist noch kein F&A-Verteiler hinterlegt — bitte im F&A Center pflegen (lassen).', { variant: 'error' });
+      return;
+    }
+    const subject = `Frage zur Abrechnung: ${liveEvent.title} (Event-ID ${liveEvent.eventNumber || liveEvent.id})`;
+    const bodyLines = [
+      'Guten Tag,',
+      '',
+      'ich habe eine Frage zur Abrechnung der folgenden Veranstaltung:',
+      '',
+      `Event: ${liveEvent.title}`,
+      `Event-ID: ${liveEvent.eventNumber || liveEvent.id}`,
+      `Datum: ${fmtDateTime(liveEvent.startDate || '')}`,
+      `Status der Angaben: ${FA_STATUS_LABELS[status]}`,
+      '',
+      '[Deine Frage]',
+      '',
+      'Viele Grüße',
+    ];
+    window.location.href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyLines.join('\r\n'))}`;
   };
 
   return (
@@ -150,14 +239,54 @@ export default function BillingActionPanel(props: { event: DeloitteEvent; onClos
                     : 'Sendet den aktuellen Stand aller nicht abgemeldeten Teilnehmer.'}
                 </div>
               </div>
+              <div style={{ display: 'inline-flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+                  disabled={busy !== ''}
+                  onClick={() => { void downloadXlsx(); }}
+                  title="Lädt dieselbe Liste als Excel-Datei herunter — zum Anhängen aus deinem eigenen Postfach."
+                >
+                  {busy === 'xlsx' ? 'Wird erzeugt…' : 'Als Excel laden'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ fontSize: '0.8rem', padding: '6px 16px' }}
+                  disabled={busy !== ''}
+                  onClick={() => { void doSend('list'); }}
+                >
+                  {busy === 'list' ? 'Wird gesendet…' : 'Senden'}
+                </button>
+              </div>
+            </div>
+            {/* v30.23: Warum kein Datei-Anhang? Der Tenant blockt Mails mit
+                Anhang komplett (s. Kommentar an downloadXlsx). */}
+            <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--dex-gray-500)', lineHeight: 1.5 }}>
+              Die Liste geht als Tabelle IM Mailtext an F&amp;A. Ein Datei-Anhang ist nicht möglich:
+              Deloitte blockt Mails mit Anhang, die aus Power Automate kommen — die Mail käme dann
+              gar nicht an. Wenn F&amp;A die Datei braucht, lade sie hier herunter und hänge sie aus
+              deinem Outlook an.
+            </div>
+          </div>
+          {/* v30.23 (F&A-Nachlieferung §2): dritte Aktion — Rückfragen an F&A. */}
+          <div style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 10, padding: '12px 14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 260px' }}>
+                <strong style={{ fontSize: '0.88rem' }}>F&amp;A-Team kontaktieren</strong>
+                <div style={{ fontSize: '0.76rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
+                  Öffnet eine vorbereitete E-Mail an F&amp;A in deinem Outlook — mit Event, Event-ID und
+                  Status. Bewusst aus deinem Postfach, damit die Antwort bei dir ankommt.
+                </div>
+              </div>
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn btn-secondary"
                 style={{ fontSize: '0.8rem', padding: '6px 16px', flexShrink: 0 }}
-                disabled={busy !== ''}
-                onClick={() => { void doSend('list'); }}
+                onClick={contactFA}
               >
-                {busy === 'list' ? 'Wird gesendet…' : 'Senden'}
+                E-Mail schreiben
               </button>
             </div>
           </div>
