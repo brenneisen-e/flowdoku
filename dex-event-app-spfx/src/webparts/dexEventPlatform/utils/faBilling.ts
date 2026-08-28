@@ -122,7 +122,7 @@ const TH_STYLE = 'text-align:left;padding:6px 10px;border:1px solid #ddd;backgro
 const TD_STYLE = 'padding:6px 10px;border:1px solid #ddd;vertical-align:top;';
 
 /** HTML-Body der Mail „Abrechnungsinformationen an F&A" — Eventkopf + alle elf Felder. */
-export function renderBillingInfoMailBody(ev: DeloitteEvent, b: BillingData, byName: string): string {
+export function renderBillingInfoMailBody(ev: DeloitteEvent, b: BillingData, byName: string, faCenterUrl?: string): string {
   const rows = BILLING_FIELDS.map(f =>
     `<tr><td style="${TD_STYLE}">${esc(f.label)}</td><td style="${TD_STYLE}">${esc((b.fields || {})[f.id] || '—')}</td></tr>`
   ).join('');
@@ -138,22 +138,47 @@ export function renderBillingInfoMailBody(ev: DeloitteEvent, b: BillingData, byN
 <tr><th style="${TH_STYLE}" colspan="2">Abrechnungsrelevante Informationen</th></tr>
 ${rows}
 </table>
+${faCenterUrl ? `${mailButton(faCenterUrl, 'Event im F&A Center öffnen')}
+<p style="color:#666;font-size:12px;margin-top:-8px;">Dort findest du alle übermittelten Stände zu diesem Event, die Teilnehmerliste zum Download und die Möglichkeit, das Event als abgerechnet zu markieren.</p>` : ''}
 <p style="color:#666;font-size:12px;">Ausgelöst von ${esc(byName)} über die DEX Event Experience Platform.</p>
 </div>`;
 }
 
 /** HTML-Body der Mail „Teilnehmerliste an F&A". */
+/**
+ * v30.24: Download-Schaltfläche für die Mail.
+ *
+ * Statt eines Datei-Anhangs (im Deloitte-Tenant unmöglich — jede Power-
+ * Automate-Mail MIT Anhang wird per NDR abgewiesen, s. v26.71) trägt die
+ * Mail einen Deep-Link ins F&A Center. Dort steht der versendete Stand als
+ * Tabelle und lässt sich mit einem Klick als Excel herunterladen. Vorteil
+ * gegenüber dem Anhang: Die personenbezogene Liste liegt nicht in
+ * Postfächern herum, sondern bleibt in DEX hinter der F&A-Rolle.
+ */
+function mailButton(url: string, label: string): string {
+  return `<p style="margin:18px 0;">
+<a href="${esc(url)}" style="display:inline-block;background:#86bc25;color:#ffffff;padding:11px 22px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;">${esc(label)}</a>
+</p>`;
+}
+
 export function renderBillingListMailBody(
   ev: DeloitteEvent,
   participants: Array<{ name: string; email: string; status: string }>,
-  byName: string
+  byName: string,
+  /** v30.24: Deep-Link ins F&A Center (Download der Liste als Excel). */
+  faCenterUrl?: string
 ): string {
   const rows = participants.map((p, i) =>
     `<tr><td style="${TD_STYLE}">${i + 1}</td><td style="${TD_STYLE}">${esc(p.name)}</td><td style="${TD_STYLE}">${esc(p.email)}</td><td style="${TD_STYLE}">${esc(p.status)}</td></tr>`
   ).join('');
+  const linkBlock = faCenterUrl
+    ? `${mailButton(faCenterUrl, 'Teilnehmerliste als Excel herunterladen')}
+<p style="color:#666;font-size:12px;margin-top:-8px;">Der Link öffnet dieses Event im F&amp;A Center der DEX-App — dort lädst du genau diesen Stand als Excel-Datei herunter. Dafür brauchst du die Rolle „F&amp;A" (oder Admin) in DEX; falls der Zugriff fehlt, melde dich bei dex.event@deloitte.de.</p>`
+    : '';
   return `${MAIL_WRAP_START}
 <p>Guten Tag,</p>
 <p>anbei die Teilnehmerliste zur Veranstaltung <strong>${esc(ev.title)}</strong> (Event-ID ${esc(String(ev.eventNumber || ev.id))}, ${fmtDateTime(ev.startDate)}) — <strong>${participants.length}</strong> ${participants.length === 1 ? 'Person' : 'Personen'}:</p>
+${linkBlock}
 <table style="${TABLE_STYLE}">
 <tr><th style="${TH_STYLE}">#</th><th style="${TH_STYLE}">Name</th><th style="${TH_STYLE}">E-Mail</th><th style="${TH_STYLE}">Status</th></tr>
 ${rows}

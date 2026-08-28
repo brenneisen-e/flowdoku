@@ -487,6 +487,14 @@ function AppContent(): React.ReactElement {
         // und öffnet das Ticket direkt zum Beantworten.
         didHandleDeepLink.current = true;
         navigate('tickets');
+      } else if (action === 'fa') {
+        // v30.24: Deep-Link aus den F&A-Mails („Teilnehmerliste als Excel
+        // herunterladen" / „Event im F&A Center öffnen"). Ersetzt den
+        // unmöglichen Datei-Anhang: Die Liste bleibt in DEX hinter der
+        // F&A-Rolle, F&A holt sie sich hier. Die Event-Id liest die
+        // FACenterPage selbst aus der URL und öffnet die Detailansicht.
+        didHandleDeepLink.current = true;
+        navigate('fa-center');
       } else if (action === 'ask') {
         // v26.7: Deep-Link aus der Antwort-Mail an den Fragesteller → App öffnen
         // und das „Hast du Fragen?"-Fenster auf „Deine Fragen" zeigen.

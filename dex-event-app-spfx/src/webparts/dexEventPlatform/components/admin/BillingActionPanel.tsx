@@ -264,10 +264,11 @@ export default function BillingActionPanel(props: { event: DeloitteEvent; onClos
             {/* v30.23: Warum kein Datei-Anhang? Der Tenant blockt Mails mit
                 Anhang komplett (s. Kommentar an downloadXlsx). */}
             <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--dex-gray-500)', lineHeight: 1.5 }}>
-              Die Liste geht als Tabelle IM Mailtext an F&amp;A. Ein Datei-Anhang ist nicht möglich:
-              Deloitte blockt Mails mit Anhang, die aus Power Automate kommen — die Mail käme dann
-              gar nicht an. Wenn F&amp;A die Datei braucht, lade sie hier herunter und hänge sie aus
-              deinem Outlook an.
+              Die Mail enthält die Liste als Tabelle und einen <strong>Download-Link ins F&amp;A Center</strong>,
+              über den F&amp;A sie als Excel-Datei zieht. Ein Datei-Anhang ist bewusst nicht dabei: Deloitte
+              blockt Mails mit Anhang, die aus Power Automate kommen — die Mail käme dann gar nicht an.
+              Über den Link bleibt die Teilnehmerliste außerdem in DEX (Zugriff nur mit F&amp;A- oder
+              Admin-Rolle) statt in Postfächern zu kursieren. &bdquo;Als Excel laden&ldquo; ist dein eigener Download.
             </div>
           </div>
           {/* v30.23 (F&A-Nachlieferung §2): dritte Aktion — Rückfragen an F&A. */}

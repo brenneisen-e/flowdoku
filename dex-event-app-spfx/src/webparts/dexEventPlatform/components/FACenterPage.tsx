@@ -21,6 +21,7 @@ import { useCurrentUser } from '../context/UserContext';
 import { useDialog } from '../context/DialogContext';
 import { DeloitteEvent } from '../types';
 import { BILLING_FIELDS } from '../data/billingFields';
+import { deepLinkParams } from '../utils/deepLink';
 import {
   parseBillingOf, faStatusOf, FAStatus, FA_STATUS_LABELS, FA_STATUS_COLORS,
   FAConfig, BillingLogEntry,
@@ -75,6 +76,7 @@ export default function FACenterPage(): React.ReactElement {
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [settleBusy, setSettleBusy] = React.useState(false);
   const [openMailIdx, setOpenMailIdx] = React.useState<number | null>(null);
+  const [xlsxBusy, setXlsxBusy] = React.useState(false);
 
   React.useEffect(() => {
     if (!allowed) return;
@@ -98,6 +100,70 @@ export default function FACenterPage(): React.ReactElement {
       .map(x => ({ ...x, status: faStatusOf(x.ev, x.b) }))
       .sort((a, b2) => new Date(b2.ev.startDate || 0).getTime() - new Date(a.ev.startDate || 0).getTime());
   }, [events]);
+
+  // v30.24: Deep-Link aus den F&A-Mails (#action=fa&event=<id>) — das Event
+  // direkt in der Detailansicht öffnen. Läuft erst, wenn die Events geladen
+  // sind (billingEvents leer = noch nichts zu wählen), und genau einmal:
+  // danach soll die eigene Navigation im Center Vorrang haben.
+  const deepLinkDone = React.useRef(false);
+  React.useEffect(() => {
+    if (deepLinkDone.current || !allowed || billingEvents.length === 0) return;
+    let evId = '';
+    try {
+      const p = deepLinkParams();
+      if (p.get('action') === 'fa') evId = (p.get('event') || '').trim();
+    } catch { /* URL nicht lesbar — dann bleibt die Übersicht stehen */ }
+    if (!evId) { deepLinkDone.current = true; return; }
+    deepLinkDone.current = true;
+    if (billingEvents.some(x => x.ev.id === evId)) setSelectedId(evId);
+    else showAlert('Das verlinkte Event ist nicht (mehr) als abrechnungsrelevant hinterlegt. Bitte wende dich an die Organizer des Events.', { variant: 'info' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowed, billingEvents.length]);
+
+  /**
+   * v30.24: Den an F&A übermittelten Stand als Excel herunterladen.
+   *
+   * Datenquelle ist bewusst der SNAPSHOT aus `_billing.listSnapshot` und
+   * nicht die Live-Teilnehmerliste: (1) Er liegt in DEX_Events und ist damit
+   * auch für F&A lesbar — die Teilnehmerlisten selbst liegen auf Subsites
+   * mit eigenen Berechtigungen, auf die F&A keinen Zugriff hat. (2) Er ist
+   * revisionssicher genau das, was gemeldet wurde. Ersetzt den im Tenant
+   * unmöglichen Datei-Anhang (s. utils/faBilling).
+   */
+  const downloadSnapshotXlsx = async (
+    ev: DeloitteEvent,
+    snapshot: Array<{ name: string; email: string; status: string }>,
+    sentAt?: string,
+  ): Promise<void> => {
+    if (xlsxBusy) return;
+    setXlsxBusy(true);
+    try {
+      const headers = ['#', 'Name', 'E-Mail', 'Status'];
+      const rows = snapshot.map((p, i) => [i + 1, p.name || '', p.email || '', p.status || '']);
+      const safeName = (ev.title || 'event').replace(/[^a-zA-Z0-9]/g, '_');
+      const stamp = (sentAt || new Date().toISOString()).slice(0, 10);
+      const XLSX = await import('xlsx');
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (ws as any)['!cols'] = [{ wch: 5 }, { wch: 30 }, { wch: 34 }, { wch: 14 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Teilnehmer');
+      const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      // Anker-Download — im SPFx-Iframe ist saveAs häufig blockiert.
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Teilnehmerliste_${safeName}_${stamp}.xlsx`;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 400);
+    } catch (err) {
+      console.warn('[DEX] F&A-Snapshot-Export fehlgeschlagen:', err);
+      showAlert('Die Excel-Datei konnte nicht erzeugt werden — bitte erneut versuchen.', { variant: 'error' });
+    } finally { setXlsxBusy(false); }
+  };
 
   const counts = React.useMemo(() => {
     const c: Record<FAStatus, number> = { incomplete: 0, upcoming: 0, listPending: 0, sentAwaitSettle: 0, settled: 0 };
@@ -252,9 +318,21 @@ export default function FACenterPage(): React.ReactElement {
           <h3 style={{ margin: '0 0 10px', fontSize: '0.95rem' }}>Teilnehmerliste</h3>
           {b?.listSnapshot && b.listSnapshot.length > 0 ? (
             <>
-              <p style={{ margin: '0 0 10px', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
-                {b.listSnapshot.length} Personen — Stand des letzten Versands an F&amp;A ({b.listSentAt ? fmtDateTime(b.listSentAt) : '—'}).
-              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', margin: '0 0 10px' }}>
+                <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--dex-gray-500)', flex: '1 1 240px' }}>
+                  {b.listSnapshot.length} Personen — Stand des letzten Versands an F&amp;A ({b.listSentAt ? fmtDateTime(b.listSentAt) : '—'}).
+                </p>
+                {/* v30.24: Download statt Mail-Anhang — s. downloadSnapshotXlsx. */}
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ fontSize: '0.8rem', padding: '6px 16px', flexShrink: 0 }}
+                  disabled={xlsxBusy}
+                  onClick={() => { void downloadSnapshotXlsx(selected.ev, b.listSnapshot || [], b.listSentAt); }}
+                >
+                  {xlsxBusy ? 'Wird erzeugt…' : 'Als Excel herunterladen'}
+                </button>
+              </div>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ borderCollapse: 'collapse', fontSize: '0.85rem', minWidth: 420 }}>
                   <thead>
