@@ -5829,9 +5829,18 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     let body = '';
     let subject = '';
     let stampPatch: Partial<BillingData> = {};
+    // v30.24: Deep-Link ins F&A Center statt Datei-Anhang — der Tenant
+    // blockt Anhänge aus Power Automate komplett (NDR, s. v26.71). Der Link
+    // öffnet das Event im F&A Center; dort liegt der versendete Stand und
+    // lässt sich als Excel ziehen. Die personenbezogene Liste bleibt damit
+    // in DEX hinter der F&A-Rolle statt in Postfächern zu kursieren.
+    const faCenterUrl = buildHashDeepLink(
+      `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+      { action: 'fa', event: ev.id }
+    );
     if (kind === 'info') {
       if (missingBillingFields(b).length > 0) return { ok: false, reason: 'incomplete' };
-      body = renderBillingInfoMailBody(ev, b, by);
+      body = renderBillingInfoMailBody(ev, b, by, faCenterUrl);
       subject = `[DEX] Abrechnungsinformationen: ${ev.title}`;
       stampPatch = { infoSentAt: nowIso, infoSnapshot: { ...(b.fields || {}) }, ...(opts?.auto ? { autoInfoSentAt: nowIso } : {}) };
     } else {
@@ -5843,7 +5852,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
           email: r.ParticipantEmail || '',
           status: r.Status || '',
         }));
-      body = renderBillingListMailBody(ev, rows, by);
+      body = renderBillingListMailBody(ev, rows, by, faCenterUrl);
       subject = `[DEX] Teilnehmerliste: ${ev.title}`;
       stampPatch = { listSentAt: nowIso, listSnapshot: rows.slice(0, 500), ...(opts?.auto ? { autoListSentAt: nowIso } : {}) };
     }
