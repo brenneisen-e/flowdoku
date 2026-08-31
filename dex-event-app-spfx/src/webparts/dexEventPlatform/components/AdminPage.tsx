@@ -43,6 +43,7 @@ import { useIsMobile } from '../utils/useIsMobile';
 import { EventService, EventCommRow } from '../services/EventService';
 import { SharePointService } from '../services/SharePointService';
 import { qrCodeEmail, qrEmailDefaults, buildQrBlockHtml, QrEmailOverride, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate, getCachedLogoBase64, getCachedOrbBase64, injectIntoEmailContent, externalInvitationEmail } from '../services/EmailTemplates';
+import { buildParticipantQrDataUrl } from '../utils/qrWithMark';
 // v26.47: Externe Anmeldung — Einladung als .eml-Entwurf (X-Unsent) zum
 // Selbst-Versenden durch die anmeldende Person (App kann keine externen
 // Adressen anmailen).
@@ -100,6 +101,18 @@ const DUP_ACTIVE_STATI = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Wartelis
  * niemandem auf, wenn sie fehlt.
  */
 const SAMPLE_QR_ID = 17;
+
+/**
+ * v30.36: Optik der Auswahl-Karten im „QR-Codes und Check-In"-Modal.
+ * Als Konstante, weil vier Karten sie teilen — vier inline kopierte
+ * Style-Objekte laufen erfahrungsgemaess auseinander.
+ */
+const hubChoiceStyle: React.CSSProperties = {
+  display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer',
+  padding: '16px 18px', borderRadius: 12,
+  border: '1px solid var(--dex-gray-200)', background: '#fff',
+  font: 'inherit', fontFamily: 'inherit',
+};
 
 type ConsolidatedRow = {
   emailKey: string;
@@ -802,6 +815,10 @@ export default function AdminPage(): React.ReactElement {
   // v9.15: QR-Code-Versand-Modal mit Test-/Volldurchlauf. v20.7: der
   // Auto-Send-Toggle ist entfallen — Auto-Send ist immer aktiv.
   const [qrSendModalOpen, setQrSendModalOpen] = React.useState(false);
+  // v30.36: Sammel-Einstieg „QR-Codes und Check-In". Zwei Schritte, damit pro
+  // Bildschirm nur EINE Entscheidung ansteht: erst wofuer, dann wie.
+  const [checkInHubOpen, setCheckInHubOpen] = React.useState(false);
+  const [checkInHubStep, setCheckInHubStep] = React.useState<'choose' | 'checkin'>('choose');
   // v30.5: Modal „Event-Abrechnung" (Versand an F&A + Historie).
   const [billingPanelOpen, setBillingPanelOpen] = React.useState(false);
   const [qrSendResult, setQrSendResult] = React.useState<string | null>(null);
@@ -4104,51 +4121,20 @@ export default function AdminPage(): React.ReactElement {
    * Bewusst monospace und groß: Die Zahl wird am Einlass vorgelesen und
    * abgetippt, nicht gelesen.
    */
+  /**
+   * v30.36: Erzeugung liegt jetzt in `utils/qrWithMark` — gemeinsam mit dem
+   * Auto-Versand im EventContext. Vorher gab es zwei Erzeuger, die
+   * auseinanderliefen (unterschiedliche Fehlerkorrektur), und das faellt
+   * niemandem auf: Der Code scannt einfach schlechter.
+   */
   const buildQrImageHtml = async (qrData: string): Promise<string> => {
-    let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
-    try {
-      const QRCode = await import('qrcode');
-      // v30.33: Fehlerkorrektur auf 'H' (30 %) statt Default 'M' (15 %). Der
-      // Code wird am Einlass vom Handy-Display abfotografiert — Spiegelungen,
-      // Fingerabdrücke, Displayschutz und schräge Winkel fressen genau die
-      // Reserve, die hier fehlte. Die Datenmenge (`DEX|<nr>|<mail>`) ist so
-      // klein, dass 'H' das Modul-Raster kaum vergrößert; die 300 px reichen
-      // weiterhin. 'H' ist außerdem die Voraussetzung für das Logo unten.
-      const canvas = document.createElement('canvas');
-      await QRCode.toCanvas(canvas, qrData, { width: 300, margin: 2, errorCorrectionLevel: 'H' });
-      // v30.33: DEX-Orb in die Mitte. Das ist keine Deko — ein Code mit
-      // erkennbarem Absender wird am Einlass nicht mit einem fremden QR
-      // verwechselt, und Teilnehmer finden ihn schneller in der Mail.
-      //
-      // 22 % Kantenlänge = ~5 % der Fläche, plus weißer Rand. Das liegt weit
-      // unter dem, was 'H' verkraftet (30 %); bewusst konservativ, weil die
-      // Reserve für die reale Abnutzung da sein soll (Spiegelung, Winkel) und
-      // nicht schon vom Logo aufgebraucht werden darf.
-      try {
-        const orb = getCachedOrbBase64();
-        const ctx = canvas.getContext('2d');
-        if (orb && ctx) {
-          const img = new Image();
-          await new Promise<void>(resolve => {
-            img.onload = () => resolve();
-            img.onerror = () => resolve(); // ohne Logo weiter — der Code zählt
-            img.src = orb;
-          });
-          if (img.width > 0) {
-            const size = Math.round(canvas.width * 0.22);
-            const pos = Math.round((canvas.width - size) / 2);
-            const pad = Math.round(size * 0.14);
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(pos - pad, pos - pad, size + pad * 2, size + pad * 2);
-            ctx.drawImage(img, pos, pos, size, size);
-          }
-        }
-      } catch { /* Logo ist Kür — ein QR ohne Orb ist besser als gar keiner */ }
-      const qrDataUrl = canvas.toDataURL('image/png');
-      qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
-    } catch { /* */ }
-    return qrImageHtml;
+    const qrDataUrl = await buildParticipantQrDataUrl(qrData, 300);
+    if (!qrDataUrl) {
+      return `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
+    }
+    return `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
   };
+
   const qrPreviewAction = async (): Promise<void> => {
     if (!selectedEvent) return;
     setQrPreviewLoading(true);
@@ -7520,22 +7506,6 @@ export default function AdminPage(): React.ReactElement {
               onClick={() => navigate('check-in', selectedEvent.id)}
             />
 
-            {/* v9.20: QR-Codes versenden als ActionTile (Modal-Trigger). */}
-            <ActionTile
-              icon={<Send size={18} />}
-              category="checkin"
-              title={isSendingQR ? (isDe ? `QR-Codes werden versendet... (${qrSentCount})` : `Sending QR codes... (${qrSentCount})`) : (isDe ? 'QR-Codes versenden' : 'Send QR codes')}
-              desc={isDe
-                ? 'Öffnet ein Modal mit zwei Optionen: Test (nur an dich) oder Versand an alle ohne Code. Nach dem ERSTEN Versand bekommt jede weitere Anmeldung an diesem Event ihren QR-Code automatisch per Mail — auch nach der Anmeldefrist. Teilnehmer finden ihren QR-Code zusätzlich jederzeit unter „Meine Events".'
-                : 'Opens a modal with two options: test (only to you) or send to everyone without a code. After the FIRST send, every further registration on this event receives its QR code automatically by email — even after the registration deadline. Participants can also find their QR code anytime under "My events".'}
-              badge="organizer"
-              busy={isSendingQR}
-              onClick={() => {
-                setQrSendResult(null);
-                setQrSendModalOpen(true);
-              }}
-            />
-
             {/* v11.89/v20.3: Der Event-Live/Entwurf-Toggle ist aus dem
                 Aktionen-Menü ausgezogen — der Status-Badge neben dem
                 Event-Titel ist jetzt selbst der klickbare Umschalter. */}
@@ -7577,66 +7547,25 @@ export default function AdminPage(): React.ReactElement {
                 Zeilen ohne Audit-Felder und ohne Format-Validierung (siehe
                 Feedback Datenschutz-Review 07/2026). */}
 
-            {/* v18.33/v20.1: Self-Check-in — QR-PDF + rotierende Live-Anzeige.
-                Seit v20.1 IMMER sichtbar für Admin/(Co-)Organizer: hat das
-                Event noch keinen aktiven Token, wird Self-Check-in beim Klick
-                automatisch aktiviert (Token erzeugen + am Event speichern). */}
-            {(isAdmin || isOrganizerFor(selectedEvent)) && (
-              <ActionTile
-                icon={<QrCode size={18} />}
-                category="checkin"
-                subCategory={isDe ? 'Self-Check-in' : 'Self check-in'}
-                title={isDe ? 'Self-Check-in einstellen' : 'Set up self check-in'}
-                desc={isDe
-                  ? 'Öffnet die Self-Check-in-Übersicht dieses Events: großer QR-Code, PDF-Download, Live-Anzeige und das Check-in-Zeitfenster (Von/Bis) — so kannst du das Zeitfenster auch schon Wochen vor dem Event festlegen. Standard: 2 Stunden vor Event-Start bis Event-Ende.'
-                  : 'Opens the self check-in overview of this event: large QR code, PDF download, live display and the check-in time window (from/until) — so you can set the window weeks before the event. Default: 2 hours before event start until event end.'}
-                badge="organizer"
-                busy={sciBusy}
-                onClick={() => { openSelfCheckInModal().catch(() => { /* best-effort */ }); }}
-              />
-            )}
-            {(isAdmin || isOrganizerFor(selectedEvent)) && (
-              <ActionTile
-                icon={<Download size={18} />}
-                category="checkin"
-                subCategory={isDe ? 'Self-Check-in' : 'Self check-in'}
-                title={isDe ? 'Self-Check-in: QR-PDF' : 'Self check-in: QR PDF'}
-                desc={isDe
-                  ? 'Lädt ein druckbares PDF mit dem QR-Code und einer kurzen Anleitung herunter. Zum Aushängen am Eingang — Teilnehmer scannen mit der Handy-Kamera und checken sich selbst ein. Das Check-in-Zeitfenster (Standard: 2 Stunden vor Start bis Event-Ende) begrenzt, wann der Code funktioniert — einstellbar über die QR-Kachel unter dem Event-Bild.'
-                  : 'Downloads a printable PDF with the QR code and short instructions. For posting at the entrance — attendees scan with their phone camera and check themselves in. The check-in time window (default: 2 hours before start until event end) limits when the code works — adjustable via the QR tile below the event image.'}
-                badge="organizer"
-                onClick={() => {
-                  (async () => {
-                    const token = await ensureSelfCheckInReady(selectedEvent);
-                    if (!token) return;
-                    await downloadSelfCheckInPdf({
-                      eventTitle: selectedEvent.title || 'Event',
-                      eventDateLabel: selectedEvent.startDate ? new Date(selectedEvent.startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '',
-                      locationLabel: selectedEvent.location || '',
-                      token,
-                    });
-                  })().catch(() => { /* best-effort */ });
-                }}
-              />
-            )}
-            {(isAdmin || isOrganizerFor(selectedEvent)) && (
-              <ActionTile
-                icon={<QrCode size={18} />}
-                category="checkin"
-                subCategory={isDe ? 'Self-Check-in' : 'Self check-in'}
-                title={isDe ? 'Self-Check-in: Live-Anzeige' : 'Self check-in: live display'}
-                desc={isDe
-                  ? 'Öffnet eine rotierende QR-Anzeige für einen Bildschirm am Eingang (Laptop, Tablet, Beamer). Der Code wechselt automatisch — ein abfotografierter Code verfällt sofort. Die foto-sichere Variante.'
-                  : 'Opens a rotating QR display for a screen at the entrance (laptop, tablet, projector). The code changes automatically — a photographed code expires instantly. The photo-safe option.'}
-                badge="organizer"
-                onClick={() => {
-                  (async () => {
-                    const token = await ensureSelfCheckInReady(selectedEvent);
-                    if (token) navigate('self-checkin-display', selectedEvent.id);
-                  })().catch(() => { /* best-effort */ });
-                }}
-              />
-            )}
+            {/* v30.36: Ein Einstieg statt fuenf Kacheln. „QR-Codes versenden"
+                und die drei Self-Check-in-Kacheln standen gleichrangig
+                nebeneinander und haben das Aktionen-Grid dominiert, obwohl sie
+                zusammengehoeren und meist nur EINE davon gebraucht wird. Jetzt
+                ein Knopf, dahinter eine Entscheidung: Codes verschicken oder
+                Check-in am Event-Tag. Die Self-Check-in-Varianten (PDF,
+                Live-Anzeige) erscheinen erst, wenn man sich fuer Check-in
+                entschieden hat — vorher sind sie nur Rauschen. */}
+            <ActionTile
+              icon={<QrCode size={18} />}
+              category="checkin"
+              title={isSendingQR ? (isDe ? `QR-Codes werden versendet... (${qrSentCount})` : `Sending QR codes... (${qrSentCount})`) : (isDe ? 'QR-Codes und Check-In' : 'QR codes and check-in')}
+              desc={isDe
+                ? 'Alles rund um den Event-Tag an einer Stelle: persoenliche QR-Codes an die Teilnehmer verschicken — oder das Check-in vorbereiten und starten (Team scannt, oder Teilnehmer checken sich selbst ein).'
+                : 'Everything about event day in one place: send personal QR codes to attendees — or prepare and start check-in (your team scans, or attendees check themselves in).'}
+              badge="organizer"
+              busy={isSendingQR}
+              onClick={() => { setCheckInHubStep('choose'); setCheckInHubOpen(true); }}
+            />
 
             {/* v10.19: Deep-Link kopieren — Organizer/Admin können den Link
                 des aktuell offenen Events in die Zwischenablage legen und z.B.
@@ -13109,6 +13038,102 @@ export default function AdminPage(): React.ReactElement {
               {isDe ? 'Schließen' : 'Close'}
             </button>
           </div>
+        </Modal>
+      )}
+
+      {/* v30.36: Auswahl-Modal hinter „QR-Codes und Check-In". */}
+      {checkInHubOpen && selectedEvent && (
+        <Modal
+          open={checkInHubOpen}
+          onClose={() => setCheckInHubOpen(false)}
+          maxWidth={640}
+          padding={24}
+          ariaLabel={isDe ? 'QR-Codes und Check-In' : 'QR codes and check-in'}
+        >
+          <h3 style={{ margin: '0 0 4px', fontSize: '1.15rem' }}>
+            {checkInHubStep === 'choose'
+              ? (isDe ? 'QR-Codes und Check-In' : 'QR codes and check-in')
+              : (isDe ? 'Check-In am Event-Tag' : 'Check-in on event day')}
+          </h3>
+          <p style={{ margin: '0 0 18px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+            {checkInHubStep === 'choose'
+              ? (isDe ? 'Was möchtest du tun?' : 'What would you like to do?')
+              : (isDe ? 'Wer scannt?' : 'Who scans?')}
+          </p>
+
+          {checkInHubStep === 'choose' ? (
+            <div style={{ display: 'grid', gap: 12 }}>
+              <button
+                type="button"
+                className="card"
+                onClick={() => { setCheckInHubOpen(false); setQrSendResult(null); setQrSendModalOpen(true); }}
+                style={hubChoiceStyle}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                  <span style={{ color: 'var(--dex-green)', display: 'inline-flex' }}><Send size={18} /></span>
+                  <span style={{ fontWeight: 700 }}>{isDe ? 'QR-Codes an Teilnehmer verschicken' : 'Send QR codes to attendees'}</span>
+                </div>
+                <span style={{ fontSize: '0.83rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                  {isDe
+                    ? 'Jede·r bekommt einen persönlichen Code per Mail, mit Name und Teilnehmer-ID daneben. Vorab: Vorschau ansehen und Test an dich schicken.'
+                    : 'Everyone receives a personal code by email, with name and attendee ID beside it. Beforehand: preview it and send a test to yourself.'}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="card"
+                onClick={() => setCheckInHubStep('checkin')}
+                style={hubChoiceStyle}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                  <span style={{ color: 'var(--dex-green)', display: 'inline-flex' }}><QrCode size={18} /></span>
+                  <span style={{ fontWeight: 700 }}>{isDe ? 'Check-In am Event-Tag' : 'Check-in on event day'}</span>
+                </div>
+                <span style={{ fontSize: '0.83rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                  {isDe
+                    ? 'Einlass öffnen — entweder dein Team scannt die Codes, oder die Teilnehmer checken sich selbst ein.'
+                    : 'Open the entrance — either your team scans the codes, or attendees check themselves in.'}
+                </span>
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: 12 }}>
+              <button
+                type="button"
+                className="card"
+                onClick={() => { setCheckInHubOpen(false); navigate('check-in', selectedEvent.id); }}
+                style={hubChoiceStyle}
+              >
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>{isDe ? 'Unser Team scannt' : 'Our team scans'}</div>
+                <span style={{ fontSize: '0.83rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                  {isDe
+                    ? 'Öffnet das Check-in-Werkzeug: scannen, per Teilnehmer-ID oder Namen einchecken, Live-Zahlen im Blick.'
+                    : 'Opens the check-in tool: scan, check in by attendee ID or name, watch the live counts.'}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="card"
+                onClick={() => { setCheckInHubOpen(false); openSelfCheckInModal().catch(() => { /* best-effort */ }); }}
+                style={hubChoiceStyle}
+                disabled={sciBusy}
+              >
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>{isDe ? 'Teilnehmer checken sich selbst ein' : 'Attendees check themselves in'}</div>
+                <span style={{ fontSize: '0.83rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                  {isDe
+                    ? 'Ein Event-QR am Eingang, den die Teilnehmer mit der Handy-Kamera scannen — ohne Scanner-Team. Dahinter: Zeitfenster einstellen, QR-PDF zum Aushängen und die rotierende Live-Anzeige.'
+                    : 'One event QR at the entrance that attendees scan with their phone camera — no scanner team. Behind it: set the time window, get the printable QR PDF and the rotating live display.'}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCheckInHubStep('choose')}
+                style={{ background: 'none', border: 'none', color: 'var(--dex-gray-600)', fontSize: '0.85rem', cursor: 'pointer', justifySelf: 'start', padding: 4 }}
+              >
+                {isDe ? '← Zurück' : '← Back'}
+              </button>
+            </div>
+          )}
         </Modal>
       )}
 

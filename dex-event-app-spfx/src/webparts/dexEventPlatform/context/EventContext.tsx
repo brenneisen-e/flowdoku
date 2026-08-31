@@ -2377,17 +2377,18 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
               const qrData = `DEX|${event.eventNumber}|${emailToUse}`;
               let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
               try {
-                // v20.0 (Audit): qrcode lazy laden (EventContext ist Boot-Pfad —
-                // die Lib gehört nicht ins Haupt-Bundle) + Fehler loggen statt
-                // still auf Text-Fallback zu wechseln.
-                const QRCode = await import('qrcode');
-                // v30.35: gleiche Fehlerkorrektur wie im Massen-Versand (H),
-                // sonst haben Auto-QR und manueller QR unterschiedliche
-                // Lesbarkeit — und niemand fände heraus, warum ausgerechnet die
-                // Nachzügler-Codes schlechter scannen.
-                const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2, errorCorrectionLevel: 'H' });
-                qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
-              } catch (qrErr) { console.warn('[DEX] QRCode.toDataURL fehlgeschlagen — Text-Fallback:', qrErr); }
+                // v30.36: gemeinsamer Erzeuger mit dem Massen-Versand
+                // (utils/qrWithMark) — hohe Fehlerkorrektur UND Deloitte-D. in
+                // der Mitte. Vorher lief dieser Pfad eigenstaendig und hatte
+                // beides nicht; der Unterschied faellt nur als schlechteres
+                // Scan-Ergebnis auf und wird nie zurueckverfolgt. Die
+                // Bibliothek bleibt dort lazy geladen (Boot-Pfad).
+                const { buildParticipantQrDataUrl } = await import('../utils/qrWithMark');
+                const qrDataUrl = await buildParticipantQrDataUrl(qrData, 300);
+                if (qrDataUrl) {
+                  qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
+                }
+              } catch (qrErr) { console.warn('[DEX] QR-Erzeugung fehlgeschlagen — Text-Fallback:', qrErr); }
               // v22.18: pro-Event angepasster QR-Mail-Text (Override-Key
               // 'QRCode' im EmailTemplateOverrides-JSON) — gilt damit auch
               // für den Auto-Versand, nicht nur den manuellen Versand.
