@@ -239,10 +239,16 @@ function buildSynthChildEvents(data: RegisterPreviewData): DeloitteEvent[] {
 }
 
 export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open, onClose, data }) => {
-  if (!open) return null;
+  // v30.40: ALLE Hooks VOR dem frühen Return — keine Ausnahme.
+  // Bis hierher standen sie dahinter. `open` kippt zur Laufzeit, also sprang die
+  // Hook-Anzahl beim Öffnen von 0 auf 3 und beim Schließen zurück: React #300,
+  // weißer Baum. Dieselbe Falle wie v30.3 in `RegistrationPage` — dort hat sie
+  // nach jeder Anmeldung den Bildschirm geleert. Gefunden mit
+  // `react-hooks/rules-of-hooks`, die in diesem Projekt bisher nicht lief.
   const isMobile = useIsMobile();
   const synthEvent = React.useMemo(() => buildSynthEvent(data), [data]);
   const synthChildren = React.useMemo(() => buildSynthChildEvents(data), [data]);
+  if (!open) return null;
 
   return (
     <div

@@ -2850,12 +2850,20 @@ Get_Teams_Event
 ```
 
 - [ ] **Method**: `GET` auswählen.
-- [ ] **Uri**: exakt dieselbe URI wie in `Set_Online_Meeting`, mit `?$select=body`
-      dahinter. Wenn dort z.B. `/me/events/@{...}` steht, dann hier:
+- [ ] **Uri**: die GLEICHE Form wie in `Set_Online_Meeting`, plus `?$select=body`.
+      Im Tenant steht dort die absolute Graph-URL — also über den
+      **Expression**-Tab (fx):
 
 ```
-/me/events/@{body('Create_event_(V4)')?['id']}?$select=body
+concat('https://graph.microsoft.com/v1.0/me/events/', outputs('Create_event_(V4)')?['body/id'], '?$select=body')
 ```
+
+> **Warum ausdrücklich dieselbe Form:** Relative (`/me/events/…`) und absolute
+> URI sind beim Outlook-Connector beide zulässig, aber die Formen sind in
+> diesem Flow schon einmal auseinandergelaufen und endeten in **HTTP 404
+> „The specified object was not found in the store."** (dokumentiert
+> 2026-05-22). Deshalb gilt hier weiter: die URI-Form der Graph-Action
+> übernehmen, die im GLEICHEN Flow schon funktioniert.
 
 - [ ] **Body** leer lassen, **Content-Type** leer lassen.
 
@@ -2871,19 +2879,19 @@ ersetzt**. Method, Uri und Content-Type bleiben unverändert.
       einsetzen:
 
 ```
-replace(replace(coalesce(body('Get_Teams_Event')?['body']?['content'], ''), '{{TEAMS_URL}}', coalesce(body('Set_Online_Meeting')?['onlineMeeting']?['joinUrl'], '')), '{{TEAMS_DIALIN}}', if(empty(coalesce(body('Set_Online_Meeting')?['onlineMeeting']?['conferenceId'], '')), '', concat('Konferenz-ID: ', body('Set_Online_Meeting')?['onlineMeeting']?['conferenceId'], ' &middot; Telefon: ', coalesce(body('Set_Online_Meeting')?['onlineMeeting']?['tollNumber'], ''))))
+string(setProperty(json('{}'), 'body', setProperty(json('{"contentType":"HTML"}'), 'content', replace(replace(coalesce(body('Get_Teams_Event')?['body']?['content'], ''), '{{TEAMS_URL}}', coalesce(body('Set_Online_Meeting')?['onlineMeeting']?['joinUrl'], '')), '{{TEAMS_DIALIN}}', if(empty(coalesce(body('Set_Online_Meeting')?['onlineMeeting']?['conferenceId'], '')), '', concat('Konferenz-ID: ', body('Set_Online_Meeting')?['onlineMeeting']?['conferenceId'], ' &middot; Telefon: ', coalesce(body('Set_Online_Meeting')?['onlineMeeting']?['tollNumber'], '')))))))
 ```
 
-- [ ] Prüfen, dass der Body danach genau so aussieht:
+Dieser Ausdruck ist das GANZE Feld **Body** — nicht mehr ein Stück in einem
+selbstgeschriebenen JSON-Text. `setProperty` baut das Objekt
+`{ "body": { "contentType": "HTML", "content": … } }`, `string()` serialisiert
+es. Anführungszeichen, Backslashes und Zeilenumbrüche im HTML werden dabei
+korrekt escaped — das ist der Punkt, an dem die erste Fassung zerbrochen ist
+(s. Falsch-Befund unten).
 
-```json
-{
-  "body": {
-    "contentType": "HTML",
-    "content": "@{<der fx-Ausdruck von oben>}"
-  }
-}
-```
+- [ ] Prüfen, dass im Feld **Body** NUR noch dieser eine fx-Ausdruck steht —
+      kein `{`, kein `"body":`, kein selbstgeschriebener JSON-Text mehr
+      drumherum. Der Ausdruck erzeugt das JSON vollständig selbst.
 
 - [ ] **Save** klicken.
 
@@ -2909,6 +2917,76 @@ weg — das ist der Fehler, um den es hier geht.
 - [ ] Fehlt der **Teilnehmen**-Knopf, ist `Get_Teams_Event` übersprungen worden
       und `Set_Teams_Body` hat den alten Ausdruck → Termin verwerfen, nicht
       reparieren, und beide Schritte oben nachziehen.
+
+#### Stand im Tenant — verifiziert 2026-08-31 (Code-View des True-Zweigs)
+
+Vom Nutzer aus Power Automate herauskopiert und gegen die Anleitung geprüft.
+Die Kette `Set_Online_Meeting` → `Get_Teams_Event` → `Set_Teams_Body` steht
+korrekt; `Set_Teams_Body` liest den Body aus `Get_Teams_Event` und nicht mehr
+aus `OutlookBody`.
+
+```json
+"Set_Online_Meeting": {
+  "inputs": { "parameters": {
+    "Uri": "@concat('https://graph.microsoft.com/v1.0/me/events/', outputs('Create_event_(V4)')?['body/id'])",
+    "Method": "PATCH",
+    "Body": "{\"isOnlineMeeting\": true, \"onlineMeetingProvider\": \"teamsForBusiness\"}",
+    "ContentType": "application/json"
+  } }
+},
+"Get_Teams_Event": {
+  "inputs": { "parameters": {
+    "Uri": "/me/events/@{body('Create_event_(V4)')?['id']}?$select=body",
+    "Method": "GET",
+    "ContentType": "application/json"
+  } },
+  "runAfter": { "Set_Online_Meeting": [ "Succeeded" ] }
+},
+"Set_Teams_Body": {
+  "inputs": { "parameters": {
+    "Uri": "@concat('https://graph.microsoft.com/v1.0/me/events/', outputs('Create_event_(V4)')?['body/id'])",
+    "Method": "PATCH",
+    "Body": "{ \"body\": { \"contentType\": \"HTML\", \"content\": \"@{replace(replace(coalesce(body('Get_Teams_Event')?['body']?['content'], ''), '{{TEAMS_URL}}', …), '{{TEAMS_DIALIN}}', …)}\" } }",
+    "ContentType": "application/json"
+  } },
+  "runAfter": { "Get_Teams_Event": [ "Succeeded" ] }
+}
+```
+
+**Offener Punkt aus der Prüfung:** `Get_Teams_Event` steht in der RELATIVEN
+URI-Form, die beiden PATCH-Actions in der absoluten. Beide sind beim
+Outlook-Connector zulässig und zeigen auf `/me` — der Teil, an dem der 404 von
+2026-05-22 hing, stimmt also. Die Mischung stammt aus einem relativen Beispiel
+in der ersten Fassung dieser Anleitung (korrigiert, s.o.); wer den Flow
+anfasst, gleicht sie am besten an.
+
+**FALSCH-BEFUND, korrigiert 2026-08-31 — hier ist der eigentliche Fehler.**
+An dieser Stelle stand: „Logic Apps escaped Interpolationen in
+JSON-String-Kontexten selbst, belegt durch den Flow selbst." Das war kein
+Beleg. Die Vorgänger-Fassung hat nie funktioniert — sie fiel nur nicht auf,
+weil ihr Fehlschlag im Termin genauso aussah wie ein fehlendes `replace`.
+Der erste echte Lauf endete in:
+
+```
+Action 'Set_Teams_Body' failed: Unable to read JSON request payload.
+Please ensure Content-Type header is set and payload is of valid JSON format.
+HTTP 400 BadRequest
+```
+
+**Warum:** `Get_Teams_Event` liefert den kompletten Termin-Body als HTML — voller
+`"`-Zeichen UND mit Zeilenumbrüchen. Beides wird roh in den JSON-String
+hineininterpoliert und zerlegt ihn. Ein JSON-String darf weder ein
+unescaptes `"` noch einen echten Umbruch enthalten.
+
+**Warum zeichenweises Escapen die falsche Antwort ist:** Man müsste `\`, `"`,
+`\r`, `\n` und `\t` einzeln behandeln, in genau dieser Reihenfolge — und ein
+vergessener Fall fällt wieder erst im Live-Lauf auf. Stattdessen wird das
+Objekt gebaut und die Serialisierung Logic Apps überlassen: `setProperty` legt
+die Eigenschaften an, `string()` macht daraus gültiges JSON mit korrektem
+Escaping. Siehe „Zeile 2" oben — dort steht der gültige Ausdruck.
+
+**Zwei Zeichen, die keine Rolle spielen:** `body('X')?['id']` und
+`outputs('X')?['body/id']` sind identisch; `·` und `&middot;` rendern gleich.
 
 ---
 
