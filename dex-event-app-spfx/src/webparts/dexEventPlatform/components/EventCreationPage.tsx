@@ -7398,6 +7398,39 @@ export default function EventCreationPage(): React.ReactElement {
     };
   }, []);
 
+  // v30.40: Diese fünf Hooks standen bis hierher UNTER `if (submitted)`.
+  // `submitted` kippt beim Speichern — damit sank die Hook-Anzahl mitten im
+  // Leben der Komponente, und das ist derselbe Fehler, der in v30.3 nach jeder
+  // Anmeldung den Bildschirm geleert hat (React #300). Gefunden mit
+  // `react-hooks/rules-of-hooks`, die in diesem Projekt bis v30.40 nicht lief.
+  //
+  // Verschoben wurde nur die POSITION, kein Zeichen am Inhalt. Möglich war das,
+  // weil keiner der fünf beim Anlegen etwas liest, das erst weiter unten
+  // entsteht: vier `useState` mit Literalen, ein `useMemo` über reine
+  // Literale, und der `useEffect` hat `[]` und läuft ohnehin erst nach dem
+  // Render. NEUE Hooks gehören ebenfalls hierher — nie unter den Return.
+  // Tooltip-State: welcher Step zeigt gerade seinen Hint-Tooltip an?
+  const [hintStepIdx, setHintStepIdx] = React.useState<number | null>(null);
+  // Baseline der Klammer-Sichtbarkeit beim Mount festhalten (Original-Stand des
+  // Events bzw. leer bei Neuanlage) — damit später erkannt wird, ob der
+  // Organizer die Sichtbarkeit wirklich geändert/neu gesetzt hat.
+  React.useEffect(() => {
+    if (visSnapshotRef.current === null) visSnapshotRef.current = visKey(locationFilter, audience, filterMode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const SUB_TRANSFER_GROUPS: Array<{ key: string; de: string; en: string; fields: string[] }> = React.useMemo(() => ([
+    { key: 'visibility', de: 'Sichtbarkeit (Standortfilter, Mailverteiler, Verknüpfung, Ausschlüsse)', en: 'Visibility (location filter, mailing lists, link mode, exclusions)', fields: ['locationFilter', 'audience', 'filterMode', 'excludedUsers'] },
+    { key: 'capacity', de: 'Teilnehmerzahl & Warteliste', en: 'Capacity & waitlist', fields: ['maxParticipants', 'waitlistEnabled'] },
+    { key: 'regDeadline', de: 'Anmeldefrist', en: 'Registration deadline', fields: ['registrationDeadline'] },
+    { key: 'deregDeadline', de: 'Abmeldefrist', en: 'Cancellation deadline', fields: ['lastDeregisterDate'] },
+    { key: 'place', de: 'Ort & Adresse', en: 'Location & address', fields: ['location', 'locationAddress'] },
+    { key: 'mandatory', de: 'Pflichtanmeldung', en: 'Mandatory registration', fields: ['mandatory'] },
+    { key: 'communication', de: 'Kommunikation (Logo, Outlook-Text, Überschriften, Betreff, Mail-Sprache, Mail-Schalter)', en: 'Communication (logo, Outlook text, headings, subject, mail language, mail toggles)', fields: ['emailLanguage', 'emailLogoBase64', 'outlookLogoBase64', 'outlookBody', 'outlookHeading', 'outlookSubheading', 'outlookSubject', 'disableEmails', 'disableRegistrationEmail', 'disableCancellationEmail', 'autoDeregisterOnDecline', 'inactiveHandling', 'disableOutlook', 'emailTemplateOverrides'] },
+    { key: 'times', de: 'Zeiten (Start & Ende) — überschreibt die Termine!', en: 'Times (start & end) — overwrites the dates!', fields: ['startDate', 'endDate'] },
+  ]), []);
+  const [subTransfer, setSubTransfer] = React.useState<null | { fromIdx: number; groups: string[]; targets: number[] }>(null);
+  const [activeScopeIdx, setActiveScopeIdx] = React.useState<number>(0);
+
   if (submitted) {
     return (
       <div className="page-container text-center">
@@ -7720,8 +7753,6 @@ export default function EventCreationPage(): React.ReactElement {
     }] : []),
   ];
 
-  // Tooltip-State: welcher Step zeigt gerade seinen Hint-Tooltip an?
-  const [hintStepIdx, setHintStepIdx] = React.useState<number | null>(null);
 
   // v29.21 (Audit B3): parametrisiert — der Kreis-Klick muss auch die
   // ÜBERSPRUNGENEN Schritte prüfen können, nicht nur den aktuellen.
@@ -7787,13 +7818,6 @@ export default function EventCreationPage(): React.ReactElement {
     setSubEvents(prev => prev.map(se => ({ ...se, locationFilter, audience, filterMode })));
   };
   const visKey = (loc: string, aud: string, mode: string): string => `${(loc || '').trim()}${(aud || '').trim()}${mode || 'AND'}`;
-  // Baseline der Klammer-Sichtbarkeit beim Mount festhalten (Original-Stand des
-  // Events bzw. leer bei Neuanlage) — damit später erkannt wird, ob der
-  // Organizer die Sichtbarkeit wirklich geändert/neu gesetzt hat.
-  React.useEffect(() => {
-    if (visSnapshotRef.current === null) visSnapshotRef.current = visKey(locationFilter, audience, filterMode);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   // v22.63: Fragt, ob die geänderte Klammer-Sichtbarkeit auf die Sub-Events
   // übernommen werden soll — immer wenn (a) die Klammer eine Sichtbarkeit hat,
   // (b) sie sich seit der Baseline geändert hat UND (c) sie von mindestens
@@ -7938,16 +7962,6 @@ export default function EventCreationPage(): React.ReactElement {
    * und ein Dialog, in dem der Organizer auswählt, WAS er auf WELCHE
    * Sub-Events überträgt.
    */
-  const SUB_TRANSFER_GROUPS: Array<{ key: string; de: string; en: string; fields: string[] }> = React.useMemo(() => ([
-    { key: 'visibility', de: 'Sichtbarkeit (Standortfilter, Mailverteiler, Verknüpfung, Ausschlüsse)', en: 'Visibility (location filter, mailing lists, link mode, exclusions)', fields: ['locationFilter', 'audience', 'filterMode', 'excludedUsers'] },
-    { key: 'capacity', de: 'Teilnehmerzahl & Warteliste', en: 'Capacity & waitlist', fields: ['maxParticipants', 'waitlistEnabled'] },
-    { key: 'regDeadline', de: 'Anmeldefrist', en: 'Registration deadline', fields: ['registrationDeadline'] },
-    { key: 'deregDeadline', de: 'Abmeldefrist', en: 'Cancellation deadline', fields: ['lastDeregisterDate'] },
-    { key: 'place', de: 'Ort & Adresse', en: 'Location & address', fields: ['location', 'locationAddress'] },
-    { key: 'mandatory', de: 'Pflichtanmeldung', en: 'Mandatory registration', fields: ['mandatory'] },
-    { key: 'communication', de: 'Kommunikation (Logo, Outlook-Text, Überschriften, Betreff, Mail-Sprache, Mail-Schalter)', en: 'Communication (logo, Outlook text, headings, subject, mail language, mail toggles)', fields: ['emailLanguage', 'emailLogoBase64', 'outlookLogoBase64', 'outlookBody', 'outlookHeading', 'outlookSubheading', 'outlookSubject', 'disableEmails', 'disableRegistrationEmail', 'disableCancellationEmail', 'autoDeregisterOnDecline', 'inactiveHandling', 'disableOutlook', 'emailTemplateOverrides'] },
-    { key: 'times', de: 'Zeiten (Start & Ende) — überschreibt die Termine!', en: 'Times (start & end) — overwrites the dates!', fields: ['startDate', 'endDate'] },
-  ]), []);
   const asRec = (d: SubEventDraft | undefined): Record<string, unknown> =>
     (d || {}) as unknown as Record<string, unknown>;
   /** Anzahl der ANDEREN Sub-Events, bei denen diese Gruppe abweicht. */
@@ -7962,7 +7976,6 @@ export default function EventCreationPage(): React.ReactElement {
     }
     return n;
   };
-  const [subTransfer, setSubTransfer] = React.useState<null | { fromIdx: number; groups: string[]; targets: number[] }>(null);
   const applySubTransfer = (): void => {
     if (!subTransfer) return;
     // v28.80: Die Kommunikationsfelder (Logo, Outlook-Text, Betreff …) stehen
@@ -8023,7 +8036,6 @@ export default function EventCreationPage(): React.ReactElement {
   // zurückgenommen: Gleichartige Angaben sollen gleich aussehen und an
   // derselben Stelle stehen.
   const SCOPE_AWARE_STEPS = [0, 2, 3, 4, 5]; // Grundlagen, Ort & Programm, Kapazität, Felder, Kommunikation
-  const [activeScopeIdx, setActiveScopeIdx] = React.useState<number>(0);
   const setScope = (idx: number): void => {
     setActiveScopeIdx(idx);
     setActiveLocationTabIdx(idx);

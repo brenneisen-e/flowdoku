@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.40.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.41.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -343,6 +343,16 @@ nicht trennen; wer je Gruppe nachrückt, muss die Anzahl selbst ausrechnen
 (`StarterType || PreferredStarterType`) und `onlyWithPreferredType` setzen.
 Ausnahme: `splitSharedWaitlist` — dann ist es ein Topf mit der Summe beider
 Kapazitäten.
+
+**Seit v30.41 erzwingt ESLint die Hook-Reihenfolge.** `react-hooks/rules-of-hooks`
+steht in `.eslintrc.json` auf `error` — der Build bricht ab, wenn ein Hook hinter
+einem frühen Return landet. Das Plugin lag jahrelang ungenutzt in den
+devDependencies; die vier Funde beim Einschalten (`RegistrationPage` v30.3,
+`RegisterPreviewModal`, `ArchitecturePage`, `EventCreationPage`) zeigen, was
+diese Lücke gekostet hat. `exhaustive-deps` bleibt bewusst aus (rund fünfzig
+gezielte `disable`-Kommentare, die Regel würde den `--ship`-Build sofort rot
+färben). Die Prosa-Regel unten gilt weiter — sie erklärt das WARUM, das ESLint
+nicht mitliefert.
 
 **In `RegistrationPage` stehen ALLE Hooks vor `if (!event)` — keine
 Ausnahme.** Die Komponente hat frühe Returns (`!event`, `notYetActive`,

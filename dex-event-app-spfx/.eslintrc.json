@@ -2,9 +2,29 @@
   "extends": [
     "@microsoft/eslint-config-spfx/lib/profiles/react"
   ],
+  // v30.40: `eslint-plugin-react-hooks` lag seit jeher in den devDependencies,
+  // war aber NIE eingebunden — alle `react-hooks/*` lösten zu `undefined` auf.
+  // Damit fehlte genau die Prüfung, die CLAUDE.md an drei Stellen von Hand
+  // beschreibt („ALLE Hooks vor `if (!event)` — keine Ausnahme").
+  "plugins": [
+    "react-hooks"
+  ],
   "rules": {
     "no-console": ["warn", { "allow": ["warn", "error"] }],
     "@typescript-eslint/no-explicit-any": "warn",
-    "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }]
+    "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+
+    // Hook hinter einem frühen Return = React #300 = weißer Baum. Das ist in
+    // diesem Projekt dreimal passiert (v30.3 `RegistrationPage`, dazu
+    // `RegisterPreviewModal`, `ArchitecturePage` und `EventCreationPage`, alle
+    // in v30.40 gefunden und behoben). Deshalb "error" und nicht "warn": Ein
+    // Fehler, der die ganze Seite leert, darf keinen Build passieren.
+    "react-hooks/rules-of-hooks": "error"
+
+    // BEWUSST NICHT AN: "react-hooks/exhaustive-deps". Der Code hat rund
+    // fünfzig `// eslint-disable-next-line react-hooks/exhaustive-deps` —
+    // die Regel würde den --ship-Build sofort rot färben (Warnungen brechen
+    // dort ab). Sie ist eine sinnvolle Aufräum-Aufgabe für später, aber keine,
+    // die man nebenbei erledigt.
   }
 }
