@@ -100,6 +100,9 @@ export default function CheckInPage(): React.ReactElement {
   const [cameraErrorInIframe, setCameraErrorInIframe] = React.useState(false);
   // v30.30: Foto-Weg — native Kamera-App per File-Input statt getUserMedia.
   const photoInputRef = React.useRef<HTMLInputElement>(null);
+  // v30.31: Nur für die `accept`-Erweiterung unten — bewusst eng gefasste
+  // UA-Prüfung, weil der Workaround eine Android-Eigenheit adressiert.
+  const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
   const [photoBusy, setPhotoBusy] = React.useState(false);
   const [photoHint, setPhotoHint] = React.useState('');
   const [checkedInCount, setCheckedInCount] = React.useState(0);
@@ -1006,11 +1009,20 @@ export default function CheckInPage(): React.ReactElement {
                   Kamera-Berechtigung für die Seite. Damit ist es der einzige
                   Scan-Weg, der weder an der WebView-Sperre der SharePoint-App
                   noch an der iframe-Freigabe einer Teams-Registerkarte hängt.
-                  Bewusst KEIN `multiple` — eine Person pro Foto. */}
+                  Bewusst KEIN `multiple` — eine Person pro Foto.
+
+                  v30.31: `accept` wird auf Android erweitert. Seit Android 14
+                  leiten Chrome und Edge ein reines `accept="image/*"` in den
+                  System-Foto-Picker um — und der hat gar keinen Kamera-Eintrag,
+                  auch mit `capture` nicht. Ein zusätzlicher, nicht-standardisierter
+                  Wert bricht diese Umleitung und bringt die Kamera zurück (der
+                  dokumentierte Workaround, s. Release Notes). Auf iOS bleibt es
+                  beim sauberen `image/*` — dort greift `capture` normal, und ein
+                  unbekannter MIME-Wert wäre nur ein Risiko ohne Nutzen. */}
               <input
                 ref={photoInputRef}
                 type="file"
-                accept="image/*"
+                accept={isAndroid ? 'image/*,android/allowCamera' : 'image/*'}
                 capture="environment"
                 style={{ display: 'none' }}
                 onChange={e => { void handlePhotoPicked(e.target.files?.[0] || null); e.target.value = ''; }}
@@ -1020,8 +1032,8 @@ export default function CheckInPage(): React.ReactElement {
               )}
               <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: '10px 0 0' }}>
                 {isDe
-                  ? 'Der Live-Scanner ist schneller. Wenn er sich nicht öffnen lässt — etwa in der SharePoint-App oder in einer Teams-Registerkarte — nimm den Foto-Weg: Er benutzt die normale Kamera-App deines Handys.'
-                  : 'The live scanner is faster. If it will not open — for example inside the SharePoint app or a Teams tab — use the photo route: it uses your phone’s regular camera app.'}
+                  ? <>Der Live-Scanner ist schneller. Wenn er sich nicht öffnen lässt — etwa in der SharePoint-App oder in einer Teams-Registerkarte — nimm den Foto-Weg: Er benutzt die normale Kamera-App deines Handys.{isAndroid ? <> Zeigt Android eine Auswahl statt der Kamera, tippe dort auf <strong>Kamera</strong>.</> : null}</>
+                  : <>The live scanner is faster. If it will not open — for example inside the SharePoint app or a Teams tab — use the photo route: it uses your phone’s regular camera app.{isAndroid ? <> If Android shows a chooser instead of the camera, pick <strong>Camera</strong> there.</> : null}</>}
               </p>
               {cameraError && (
                 <div style={{ marginTop: 12 }}>
