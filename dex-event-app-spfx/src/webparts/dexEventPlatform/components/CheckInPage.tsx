@@ -94,6 +94,10 @@ export default function CheckInPage(): React.ReactElement {
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [isScanning, setIsScanning] = React.useState(false);
   const [cameraError, setCameraError] = React.useState('');
+  // v30.29: Merkt sich, ob der Kamera-Fehler aus der iframe-Einbettung kam —
+  // nur dann hilft der „Seite im Browser öffnen"-Knopf, sonst wäre er ein
+  // Angebot, das nichts löst.
+  const [cameraErrorInIframe, setCameraErrorInIframe] = React.useState(false);
   const [checkedInCount, setCheckedInCount] = React.useState(0);
   const confirmCardRef = React.useRef<HTMLDivElement>(null);
   const [pendingCheckIn, setPendingCheckIn] = React.useState<{
@@ -319,6 +323,7 @@ export default function CheckInPage(): React.ReactElement {
   // qr-scanner starten
   const startCamera = async (): Promise<void> => {
     setCameraError('');
+    setCameraErrorInIframe(false); // v30.29
     if (!videoRef.current) return;
 
     // 1. Browser-API-Check: manche Embedded-WebViews (SharePoint-Mobile-App)
@@ -349,10 +354,50 @@ export default function CheckInPage(): React.ReactElement {
       const name = e?.name || '';
       let msg: string;
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-        msg = 'Kamera-Berechtigung wurde abgelehnt. Bitte in den Browser-Einstellungen '
-          + 'für diese Seite die Kamera erlauben und dann erneut versuchen. '
-          + '(iOS Safari: aA-Icon links in der Adresszeile → Website-Einstellungen → Kamera: Erlauben. '
-          + 'Android Chrome: Schloss-Icon in der Adresszeile → Berechtigungen → Kamera: Zulassen.)';
+        // v30.29: `NotAllowedError` hat ZWEI sehr verschiedene Ursachen, und
+        // die alte Meldung nannte immer nur die eine.
+        //
+        //  (a) Die Person hat den Dialog wirklich abgelehnt → Browser-
+        //      Einstellung zurücksetzen hilft.
+        //  (b) Die Seite steckt in einem iframe OHNE `allow="camera"`
+        //      (Teams-Registerkarte, eingebettete Web-Part-Ansicht, manche
+        //      SharePoint-Rahmen). Dann wird gar nicht erst GEFRAGT — Chrome
+        //      wirft denselben Fehlernamen. Wer daraufhin das Schloss-Icon
+        //      sucht, findet dort keinen Kamera-Eintrag und hält das Gerät
+        //      für kaputt. Der Rahmen gibt die Kamera nicht frei; helfen
+        //      kann nur, die Seite direkt im Browser zu öffnen.
+        //
+        // Unterschieden wird über die Permissions-API: `prompt` heißt „nie
+        // gefragt" und damit (b). Fehlt die API (Safari < 16), entscheidet
+        // die iframe-Erkennung allein.
+        let inIframe = false;
+        try { inIframe = window.self !== window.top; } catch { inIframe = true; /* Cross-Origin-Zugriff wirft → sicher im iframe */ }
+        let neverAsked = false;
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const perms = (navigator as any).permissions;
+          if (perms?.query) {
+            const st = await perms.query({ name: 'camera' });
+            neverAsked = st?.state === 'prompt';
+          }
+        } catch { /* Permissions-API kennt 'camera' nicht — dann bleibt es bei der iframe-Erkennung */ }
+
+        setCameraErrorInIframe(inIframe);
+        if (inIframe) {
+          msg = 'Diese Seite läuft in einem eingebetteten Rahmen (Teams-Registerkarte oder SharePoint-App). '
+            + 'Der Rahmen gibt die Kamera nicht frei — du wurdest deshalb gar nicht erst gefragt. '
+            + 'Öffne die Seite direkt im Browser (Edge, Chrome oder Safari) und starte den Scan dort erneut. '
+            + 'In Teams: die drei Punkte oben rechts an der Registerkarte → „Im Browser öffnen".';
+        } else if (neverAsked) {
+          msg = 'Der Browser hat die Kamera blockiert, ohne zu fragen. '
+            + 'Das passiert bei unsicheren Verbindungen oder wenn die Seite eingebettet ist — '
+            + 'öffne sie direkt in Edge, Chrome oder Safari und versuche es erneut.';
+        } else {
+          msg = 'Kamera-Berechtigung wurde abgelehnt. Bitte in den Browser-Einstellungen '
+            + 'für diese Seite die Kamera erlauben und dann erneut versuchen. '
+            + '(iOS Safari: aA-Icon links in der Adresszeile → Website-Einstellungen → Kamera: Erlauben. '
+            + 'Android Chrome: Schloss-Icon in der Adresszeile → Berechtigungen → Kamera: Zulassen.)';
+        }
       } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
         msg = 'Keine Kamera gefunden. Stelle sicher, dass dein Gerät eine Kamera hat und kein anderes Programm sie blockiert.';
       } else if (name === 'NotReadableError' || name === 'TrackStartError') {
@@ -898,6 +943,20 @@ export default function CheckInPage(): React.ReactElement {
               {cameraError && (
                 <div style={{ marginTop: 12 }}>
                   <p style={{ color: 'var(--dex-orange)', fontSize: '0.85rem', margin: 0 }}>{cameraError}</p>
+                  {/* v30.29: Steckt die Seite im iframe, ist „direkt im Browser
+                      öffnen" die einzige Abhilfe — dann auch einen Knopf dafür
+                      anbieten statt nur den Weg zu beschreiben. window.open aus
+                      dem iframe erzeugt einen Top-Level-Tab, dort greift die
+                      Kamera-Freigabe der Seite selbst. */}
+                  {cameraErrorInIframe && (
+                    <button
+                      className="btn btn-secondary"
+                      style={{ marginTop: 10, fontSize: '0.85rem' }}
+                      onClick={() => window.open(window.location.href, '_blank', 'noopener')}
+                    >
+                      Seite im Browser öffnen
+                    </button>
+                  )}
                   <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-700)', marginTop: 8, fontWeight: 600 }}>
                     Alternativ: Du kannst Teilnehmer auch in der Liste unten suchen
                     und per Klick auf &quot;Einchecken&quot; manuell einchecken.
