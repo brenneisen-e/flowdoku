@@ -40,7 +40,7 @@ export function checkInSection(locale: 'de' | 'en'): ManualSection {
       : 'Full guide for check-in on event day — by default search-by-name in the admin center (works on laptop, tablet AND phone); the live-camera scan is the faster alternative for large events, but runs on smartphone only (incl. the critical setup notes: disable the SharePoint app on the work profile beforehand, otherwise no camera access!).',
     visibleFor: ['User', 'Organizer', 'Admin'],
     keywords: isDe
-      ? 'Check-in Check-In einchecken auschecken Einlass Event-Tag QR-Code QR-Codes versenden Scanner Kamera-Scan Handy-Kamera Rückkamera Foto hochladen Foto-Upload Namens-Suche Namenssuche Teilnehmer einchecken Nur offene Filter Live-Counter Ergebnis-Karte grün blau rot Bereits eingecheckt QR versendet SharePoint-App deaktivieren Arbeitsprofil Kamera-Berechtigung NotReadableError QR-Scanner-Rolle QR-Code-Scanner Event-Picker Jetzt einchecken Sprechblase mobiler Shortcut Doppel-Scan mehrere Geräte rückgängig'
+      ? 'Check-in Check-In einchecken auschecken Einlass Event-Tag QR-Code QR-Codes versenden Scanner Kamera-Scan Handy-Kamera Rückkamera Foto vom QR-Code Foto-Weg Foto hochladen Namens-Suche Namenssuche Teilnehmer einchecken Nur offene Filter Live-Counter Ergebnis-Karte grün blau rot Bereits eingecheckt QR versendet SharePoint-App deaktivieren Arbeitsprofil Kamera-Berechtigung NotReadableError QR-Scanner-Rolle QR-Code-Scanner Event-Picker Jetzt einchecken Sprechblase mobiler Shortcut Doppel-Scan mehrere Geräte rückgängig'
       : 'check-in check in check out entrance event day QR code QR codes send scanner camera scan phone camera rear camera upload photo photo upload search by name name search check in attendees only open filter live counter result card green blue red already checked in QR sent disable SharePoint app work profile camera permission NotReadableError QR scanner role QR code scanner event picker check in now bubble mobile shortcut double scan multiple devices undo',
     perspectives: [
       {
@@ -331,17 +331,17 @@ export function checkInSection(locale: 'de' | 'en'): ManualSection {
           },
           {
             number: 9,
-            title: isDe ? 'Weg B Fallback: Foto-Upload statt Live-Kamera' : 'Path B fallback: photo upload instead of live camera',
+            title: isDe ? 'Weg B ohne Live-Kamera: „Foto vom QR-Code"' : 'Path B without live camera: „Photo of QR code"',
             description: (
               <>
                 {isDe
-                  ? 'Wenn die Kamera partout nicht startet (eingebetteter Browser, restriktives Firmen-MDM), kannst du innerhalb von Weg B auf „Foto hochladen" wechseln: Foto vom QR-Code mit der Standard-Kamera-App machen, in der Upload-Box auswählen — die App liest den QR-Code aus dem Bild aus und verarbeitet das Scan-Ergebnis genau wie beim Live-Scan. Ergebnis-Karte grün/orange/rot identisch zu Schritt 8. Falls auch das nicht klappt, ist Weg A (Namens-Suche, Schritt 2) der zuverlässige Plan C.'
-                  : 'If the camera absolutely refuses to start (embedded browser, restrictive corporate MDM), you can switch to „Upload photo" within Path B: take a photo of the QR code with the default camera app, pick it in the upload box — the app decodes the QR code from the image and processes the result like a live scan. Result card green/orange/red identical to step 8. If that also fails, Path A (search-by-name, step 2) is the reliable plan C.'}
+                  ? <>Neben dem Live-Scanner steht der Knopf <strong>&bdquo;📷 Foto vom QR-Code&ldquo;</strong>. Er öffnet die <strong>normale Kamera-App deines Handys</strong> — du knipst den Code, und die App liest ihn aus dem Bild. Ergebnis-Karte grün/orange/rot identisch zu Schritt 8.<br /><br />Der Weg ist <strong>langsamer</strong> als der Live-Scan (ein Foto pro Person statt Dauerscan), dafür der einzige, der ohne Kamera-Freigabe für die Seite auskommt: Er funktioniert auch in der SharePoint-App und in einer Teams-Registerkarte, wo der Live-Scanner gar nicht erst startet. Seit v30.30. Falls auch das nicht klappt — auf verwalteten Geräten kann eine Richtlinie die Übergabe aus der Kamera-App unterbinden —, ist Weg A (Namens-Suche, Schritt 2) der zuverlässige Plan C.</>
+                  : <>Next to the live scanner there is a <strong>&bdquo;📷 Photo of QR code&ldquo;</strong> button. It opens your phone’s <strong>regular camera app</strong> — you take the picture, the app decodes it. Result card green/orange/red identical to step 8.<br /><br />This route is <strong>slower</strong> than live scanning (one photo per person), but it is the only one that needs no camera permission for the page: it also works inside the SharePoint app and a Teams tab, where the live scanner never starts. Since v30.30. If even that fails — on managed devices a policy can block handing files over from the camera app — Path A (search by name, step 2) is the reliable plan C.</>}
               </>
             ),
             mockup: (
               <AppPreview
-                label={isDe ? 'Scanner-Maske mit Foto-Upload (echte Ansicht)' : 'Scanner page with photo upload (real view)'}
+                label={isDe ? 'Scanner-Maske mit Foto-Weg (echte Ansicht)' : 'Scanner page with photo route (real view)'}
                 role="Organizer"
                 page="check-in"
                 selectedEventId={DEMO_EVENT_ID}

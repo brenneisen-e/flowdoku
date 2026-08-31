@@ -98,6 +98,10 @@ export default function CheckInPage(): React.ReactElement {
   // nur dann hilft der „Seite im Browser öffnen"-Knopf, sonst wäre er ein
   // Angebot, das nichts löst.
   const [cameraErrorInIframe, setCameraErrorInIframe] = React.useState(false);
+  // v30.30: Foto-Weg — native Kamera-App per File-Input statt getUserMedia.
+  const photoInputRef = React.useRef<HTMLInputElement>(null);
+  const [photoBusy, setPhotoBusy] = React.useState(false);
+  const [photoHint, setPhotoHint] = React.useState('');
   const [checkedInCount, setCheckedInCount] = React.useState(0);
   const confirmCardRef = React.useRef<HTMLDivElement>(null);
   const [pendingCheckIn, setPendingCheckIn] = React.useState<{
@@ -332,7 +336,7 @@ export default function CheckInPage(): React.ReactElement {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setCameraError(
         'Dein Browser stellt keinen Kamera-Zugriff bereit. '
-        + 'Bitte öffne diese Seite direkt in Edge oder Safari (nicht in der SharePoint-App / Teams).'
+        + 'Bitte öffne diese Seite direkt in Edge, angemeldet mit deinem Arbeitskonto (nicht in der SharePoint-App / Teams) — oder nimm den Foto-Weg unten.'
       );
       return;
     }
@@ -386,12 +390,12 @@ export default function CheckInPage(): React.ReactElement {
         if (inIframe) {
           msg = 'Diese Seite läuft in einem eingebetteten Rahmen (Teams-Registerkarte oder SharePoint-App). '
             + 'Der Rahmen gibt die Kamera nicht frei — du wurdest deshalb gar nicht erst gefragt. '
-            + 'Öffne die Seite direkt im Browser (Edge, Chrome oder Safari) und starte den Scan dort erneut. '
+            + 'Öffne die Seite direkt in Edge (Arbeitskonto) und starte den Scan dort erneut — oder nimm den Foto-Weg, der ohne Kamera-Freigabe auskommt. '
             + 'In Teams: die drei Punkte oben rechts an der Registerkarte → „Im Browser öffnen".';
         } else if (neverAsked) {
           msg = 'Der Browser hat die Kamera blockiert, ohne zu fragen. '
             + 'Das passiert bei unsicheren Verbindungen oder wenn die Seite eingebettet ist — '
-            + 'öffne sie direkt in Edge, Chrome oder Safari und versuche es erneut.';
+            + 'öffne sie direkt in Edge (Arbeitskonto) — oder nimm den Foto-Weg, der ohne Kamera-Freigabe auskommt.';
         } else {
           msg = 'Kamera-Berechtigung wurde abgelehnt. Bitte in den Browser-Einstellungen '
             + 'für diese Seite die Kamera erlauben und dann erneut versuchen. '
@@ -414,7 +418,7 @@ export default function CheckInPage(): React.ReactElement {
         // Fallback OK -> weiter mit qr-scanner-Start (ohne early return)
         msg = '';
       } else if (name === 'SecurityError') {
-        msg = 'Kamera-Zugriff vom Browser blockiert (vermutlich unsichere Verbindung oder eingebetteter iframe). Öffne die Seite direkt in Edge/Safari.';
+        msg = 'Kamera-Zugriff vom Browser blockiert (vermutlich unsichere Verbindung oder eingebetteter iframe). Öffne die Seite direkt in Edge (Arbeitskonto) — oder nimm den Foto-Weg.';
       } else {
         msg = `Kamera konnte nicht gestartet werden: ${e?.message || String(err) || 'Unbekannter Fehler'}`;
       }
@@ -469,6 +473,48 @@ export default function CheckInPage(): React.ReactElement {
   };
 
   // Code verarbeiten und einchecken
+  /**
+   * v30.30: Foto-Weg. Der Live-Scanner braucht `getUserMedia` und hängt damit
+   * an einer Kette, die wir nicht kontrollieren (Browserwahl → CA-Policy →
+   * WebView → Kamera-Permission). Ein File-Input mit `capture="environment"`
+   * ruft stattdessen die native Kamera-App auf: Die App fragt DEX nie nach
+   * einer Kamera-Berechtigung, sie bekommt ein fertiges Bild.
+   *
+   * Ab hier ist alles identisch zum Live-Scan — dieselbe `processCode`, dieselbe
+   * Ergebniskarte, dieselbe Doppel-Scan-Erkennung. Der Foto-Weg ist bewusst nur
+   * eine zweite EINGABE, kein zweiter Ablauf.
+   *
+   * Die Bibliothek kommt aus demselben Lazy-Chunk wie beim Live-Scanner (v20.0),
+   * das Bundle wächst dadurch nicht.
+   */
+  const handlePhotoPicked = async (file: File | null): Promise<void> => {
+    setPhotoHint('');
+    if (!file) {
+      // Kein File trotz Klick: Auf verwalteten Geräten kann die Richtlinie den
+      // Rückweg aus der Kamera-App unterbinden („Receive data from other apps").
+      // Das sieht aus wie ein Abbruch durch den Nutzer und ist keiner — deshalb
+      // beide Möglichkeiten nennen statt zu raten.
+      setPhotoHint(isDe
+        ? 'Es kam kein Foto zurück. Entweder hast du abgebrochen — oder eine Geräte-Richtlinie erlaubt die Übergabe aus der Kamera-App nicht. Dann bleibt die Suche in der Teilnehmerliste unten.'
+        : 'No photo was returned. Either you cancelled — or a device policy blocks handing files over from the camera app. In that case use the participant search below.');
+      return;
+    }
+    setPhotoBusy(true);
+    try {
+      const QrScannerCls = (await import('qr-scanner')).default;
+      const res = await QrScannerCls.scanImage(file, { returnDetailedScanResult: true });
+      await processCode(res.data);
+    } catch {
+      // scanImage wirft, wenn im Bild kein Code steckt — das ist der Normalfall
+      // eines unscharfen oder zu weit entfernten Fotos, kein technischer Fehler.
+      setPhotoHint(isDe
+        ? 'Kein QR-Code im Foto erkannt. Geh näher ran, halte das Handy ruhig und achte darauf, dass der Code nicht gespiegelt oder überstrahlt ist.'
+        : 'No QR code found in the photo. Move closer, hold steady, and make sure the code is not mirrored or washed out by glare.');
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
   const processCode = async (code: string): Promise<void> => {
     if (isProcessing) return;
     setIsProcessing(true);
@@ -843,8 +889,8 @@ export default function CheckInPage(): React.ReactElement {
           </h3>
           <p style={{ color: '#bf360c', fontSize: '0.85rem', lineHeight: 1.6, margin: '0 0 12px' }}>
             {isDe
-              ? <>Die SharePoint Mobile App unterstützt keinen Kamera-Zugriff für Webparts. Bitte öffne diese Seite in <strong>Edge</strong> oder <strong>Safari</strong> auf deinem Handy — dort funktioniert der QR-Scanner.</>
-              : <>The SharePoint mobile app does not support camera access for web parts. Please open this page in <strong>Edge</strong> or <strong>Safari</strong> on your phone — the QR scanner works there.</>}
+              ? <>Die SharePoint Mobile App unterstützt keinen Kamera-Zugriff für Webparts. Nutze den <strong>Foto-Weg</strong> — der funktioniert auch hier, weil er die normale Kamera-App aufruft. Für den Live-Scanner öffne die Seite in <strong>Edge</strong> mit deinem Arbeitskonto.</>
+              : <>The SharePoint mobile app does not support camera access for web parts. Use the <strong>photo route</strong> — it works here because it calls the regular camera app. For the live scanner, open this page in <strong>Edge</strong> signed in with your work account.</>}
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button
@@ -853,10 +899,10 @@ export default function CheckInPage(): React.ReactElement {
               onClick={() => {
                 const url = window.location.href;
                 navigator.clipboard.writeText(url).then(() => {
-                  setResultMessage(isDe ? 'Link kopiert! Öffne ihn in Edge oder Safari.' : 'Link copied! Open it in Edge or Safari.');
+                  setResultMessage(isDe ? 'Link kopiert! Öffne ihn in Edge mit deinem Arbeitskonto.' : 'Link copied! Open it in Edge signed in with your work account.');
                   setResultType('info');
                 }).catch(() => {
-                  showAlert(<span style={{ userSelect: 'all', wordBreak: 'break-all', fontFamily: 'monospace', fontSize: '0.8rem' }}>{url}</span>, { title: isDe ? 'Link kopieren und in Edge/Safari öffnen' : 'Copy link and open in Edge/Safari' });
+                  showAlert(<span style={{ userSelect: 'all', wordBreak: 'break-all', fontFamily: 'monospace', fontSize: '0.8rem' }}>{url}</span>, { title: isDe ? 'Link kopieren und in Edge öffnen' : 'Copy link and open in Edge' });
                 });
               }}
             >
@@ -937,9 +983,46 @@ export default function CheckInPage(): React.ReactElement {
           <>
             <h3 style={{ marginBottom: 12 }}>{isDe ? 'Live-Scanner' : 'Live scanner'}</h3>
             <div style={{ textAlign: 'center' }}>
-              <button className="btn btn-primary" onClick={startCamera} style={{ fontSize: '1.1rem', padding: '14px 36px' }}>
-                {t('checkin.scan')}
-              </button>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <button className="btn btn-primary" onClick={startCamera} style={{ fontSize: '1.1rem', padding: '14px 36px' }}>
+                  {t('checkin.scan')}
+                </button>
+                {/* v30.30: Foto-Weg gleichberechtigt DANEBEN, nicht erst nach
+                    einem Fehlschlag. Am Eingang will niemand erst einen Fehler
+                    produzieren, um den Weg zu finden, der funktioniert. */}
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={photoBusy}
+                  style={{ fontSize: '1.1rem', padding: '14px 24px' }}
+                >
+                  {photoBusy
+                    ? (isDe ? 'Foto wird gelesen…' : 'Reading photo…')
+                    : (isDe ? '📷 Foto vom QR-Code' : '📷 Photo of QR code')}
+                </button>
+              </div>
+              {/* v30.30: `capture="environment"` öffnet die NATIVE Kamera-App des
+                  Geräts und liefert eine Datei zurück — ohne getUserMedia, ohne
+                  Kamera-Berechtigung für die Seite. Damit ist es der einzige
+                  Scan-Weg, der weder an der WebView-Sperre der SharePoint-App
+                  noch an der iframe-Freigabe einer Teams-Registerkarte hängt.
+                  Bewusst KEIN `multiple` — eine Person pro Foto. */}
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                style={{ display: 'none' }}
+                onChange={e => { void handlePhotoPicked(e.target.files?.[0] || null); e.target.value = ''; }}
+              />
+              {photoHint && (
+                <p style={{ color: 'var(--dex-orange)', fontSize: '0.85rem', margin: '10px 0 0' }}>{photoHint}</p>
+              )}
+              <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: '10px 0 0' }}>
+                {isDe
+                  ? 'Der Live-Scanner ist schneller. Wenn er sich nicht öffnen lässt — etwa in der SharePoint-App oder in einer Teams-Registerkarte — nimm den Foto-Weg: Er benutzt die normale Kamera-App deines Handys.'
+                  : 'The live scanner is faster. If it will not open — for example inside the SharePoint app or a Teams tab — use the photo route: it uses your phone’s regular camera app.'}
+              </p>
               {cameraError && (
                 <div style={{ marginTop: 12 }}>
                   <p style={{ color: 'var(--dex-orange)', fontSize: '0.85rem', margin: 0 }}>{cameraError}</p>
@@ -1038,10 +1121,11 @@ export default function CheckInPage(): React.ReactElement {
         )}
       </div>
 
-      {/* v7.16: Foto-Upload-Fallback (Galerie / Kamera-Capture per File-Input)
-          ist raus. Wenn der Live-Scanner nicht startet, weisen wir in der
-          Camera-Error-Message direkt auf die Live-Teilnehmerliste hin —
-          dort kann man per Klick manuell einchecken. */}
+      {/* v30.30: Der in v7.16 entfernte Foto-Weg ist zurück — aber oben, direkt
+          neben dem Live-Scanner, nicht als versteckter Notausgang. Grund für die
+          Rückkehr: Er ist der einzige Scan-Weg ohne getUserMedia und damit der
+          einzige, der auch in der SharePoint-App und in Teams-Registerkarten
+          trägt. Das Handbuch hat ihn ohnehin die ganze Zeit beschrieben. */}
 
       {/* v7.14: Live-Teilnehmerliste mit Foto / Position / Standort + Filter.
           Liste wird sofort beim Auswählen des Events geladen, kein "ab 2
