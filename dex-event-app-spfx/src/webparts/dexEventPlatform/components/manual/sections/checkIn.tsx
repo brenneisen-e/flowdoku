@@ -40,7 +40,7 @@ export function checkInSection(locale: 'de' | 'en'): ManualSection {
       : 'Full guide for check-in on event day — by default search-by-name in the admin center (works on laptop, tablet AND phone); the live-camera scan is the faster alternative for large events, but runs on smartphone only (incl. the critical setup notes: disable the SharePoint app on the work profile beforehand, otherwise no camera access!).',
     visibleFor: ['User', 'Organizer', 'Admin'],
     keywords: isDe
-      ? 'Check-in Check-In einchecken auschecken Einlass Event-Tag QR-Code QR-Codes versenden Scanner Kamera-Scan Handy-Kamera Rückkamera Foto vom QR-Code Foto-Weg Foto hochladen Namens-Suche Namenssuche Teilnehmer einchecken Nur offene Filter Live-Counter Ergebnis-Karte grün blau rot Bereits eingecheckt QR versendet SharePoint-App deaktivieren Arbeitsprofil Kamera-Berechtigung NotReadableError QR-Scanner-Rolle QR-Code-Scanner Event-Picker Jetzt einchecken Sprechblase mobiler Shortcut Doppel-Scan mehrere Geräte rückgängig'
+      ? 'Check-in Check-In einchecken auschecken Einlass Event-Tag QR-Code QR-Codes versenden Scanner Kamera-Scan Handy-Kamera Rückkamera Foto vom QR-Code Foto-Weg Foto hochladen Teilnehmer-ID ID eingeben ID eintippen Nummer nennen Logo im QR Fehlerkorrektur iOS Android Namens-Suche Namenssuche Teilnehmer einchecken Nur offene Filter Live-Counter Ergebnis-Karte grün blau rot Bereits eingecheckt QR versendet SharePoint-App deaktivieren Arbeitsprofil Kamera-Berechtigung NotReadableError QR-Scanner-Rolle QR-Code-Scanner Event-Picker Jetzt einchecken Sprechblase mobiler Shortcut Doppel-Scan mehrere Geräte rückgängig'
       : 'check-in check in check out entrance event day QR code QR codes send scanner camera scan phone camera rear camera upload photo photo upload search by name name search check in attendees only open filter live counter result card green blue red already checked in QR sent disable SharePoint app work profile camera permission NotReadableError QR scanner role QR code scanner event picker check in now bubble mobile shortcut double scan multiple devices undo',
     perspectives: [
       {
@@ -288,8 +288,8 @@ export function checkInSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Beim ersten Start fragt der Browser „Möchte diese Seite deine Kamera nutzen?" → bitte erlauben. Der Scanner nutzt bevorzugt die Rückkamera (environment facing). Wenn der Scanner dunkel bleibt, hast du entweder beim Permission-Prompt „Blockieren" angetippt oder eine andere App belegt die Kamera (z.B. laufender Teams-Anruf).'
-                  : 'On first launch the browser asks „Does this site want to use your camera?" → please allow. The scanner prefers the rear camera (environment facing). If the scanner stays dark, you either tapped „Block" on the permission prompt or another app is holding the camera (e.g. an ongoing Teams call).'}
+                  ? <>Beim ersten Start fragt der Browser &bdquo;Möchte diese Seite deine Kamera nutzen?&ldquo; → bitte erlauben. Der Scanner nutzt bevorzugt die Rückkamera.<br /><br /><strong>Erwartung nach Gerät (Stand v30.33):</strong> Auf <strong>iPhones</strong> läuft der Live-Scanner in der Regel zuverlässig. Auf <strong>Android</strong> ist er häufig blockiert, und zwar aus Gründen, die außerhalb von DEX liegen — die SharePoint-App gibt ihrem eingebetteten Browser keine Kamera, und seit Android 14 leiten Chrome und Edge Bild-Auswahlen in den System-Foto-Picker um, der keine Kamera anbietet. <strong>Verlass dich auf Android nicht auf den Scanner</strong>, sondern nimm die Teilnehmer-ID (Schritt 10). Bleibt der Scanner dunkel, hast du entweder &bdquo;Blockieren&ldquo; getippt oder eine andere App belegt die Kamera (z.B. laufender Teams-Anruf).</>
+                  : <>On first launch the browser asks &bdquo;Does this site want to use your camera?&ldquo; → please allow. The scanner prefers the rear camera.<br /><br /><strong>What to expect per device (as of v30.33):</strong> on <strong>iPhones</strong> the live scanner usually works reliably. On <strong>Android</strong> it is often blocked for reasons outside DEX — the SharePoint app grants its embedded browser no camera, and since Android 14 Chrome and Edge route image pickers to the system photo picker, which offers no camera. <strong>On Android, do not rely on the scanner</strong>; use the attendee ID instead (step 10). If the scanner stays dark, you either tapped &bdquo;Block&ldquo; or another app is holding the camera (e.g. an ongoing Teams call).</>}
               </>
             ),
             mockup: (
@@ -354,6 +354,24 @@ export function checkInSection(locale: 'de' | 'en'): ManualSection {
           },
           {
             number: 10,
+            title: isDe ? 'Weg B ohne Kamera: Teilnehmer-ID eintippen' : 'Path B without camera: type the attendee ID',
+            description: (
+              <>
+                {isDe
+                  ? <>Der zuverlässigste Weg, wenn die Kamera nicht mitspielt — und auf Android der <strong>empfohlene</strong>. In jeder QR-Mail steht unter dem Code groß die <strong>Teilnehmer-ID</strong>. Tippe sie unten im Check-in ins Suchfeld, und die Person erscheint sofort; ein Klick auf &bdquo;Einchecken&ldquo; genügt.<br /><br />Am Einlass heißt das: Wer keinen Scan hinbekommt, nennt einfach seine Nummer. Das ist in der Praxis kaum langsamer als ein Scan und funktioniert <strong>überall</strong> — in der SharePoint-App, in Teams, am Laptop.<br /><br /><strong>Zahlen treffen exakt:</strong> &bdquo;17&ldquo; findet Teilnehmer 17, nicht auch 117 oder 170. Am Einlass die falsche Person einzuchecken wäre schlimmer, als einmal mehr zu tippen. Namen und E-Mail funktionieren weiterhin als Teiltreffer. Ein Event-Kürzel braucht die ID nicht: Du wählst vorher ohnehin das Event, und innerhalb eines Events ist die Nummer eindeutig.</>
+                  : <>The most reliable route when the camera refuses — and the <strong>recommended</strong> one on Android. Every QR email prints the <strong>attendee ID</strong> in large type below the code. Type it into the search field in the check-in view and the person appears instantly; one click on &bdquo;Check in&ldquo; is enough.<br /><br />At the entrance this means: anyone whose code will not scan simply says their number. In practice that is barely slower than a scan and works <strong>everywhere</strong> — in the SharePoint app, in Teams, on a laptop.<br /><br /><strong>Numbers match exactly:</strong> &bdquo;17&ldquo; finds attendee 17, not 117 or 170. Checking in the wrong person is worse than one extra keystroke. Names and email still match partially. The ID needs no event prefix: you pick the event first, and within one event the number is unique.</>}
+              </>
+            ),
+            mockup: (
+              <Callout variant="tip" title={isDe ? 'Was seit v30.33 im QR-Code steckt' : 'What the QR code carries since v30.33'}>
+                {isDe
+                  ? <>Der Code trägt jetzt das <strong>DEX-Logo in der Mitte</strong> — so wird er am Einlass nicht mit einem fremden QR verwechselt und ist in der Mail schneller zu finden. Damit das die Lesbarkeit nicht kostet, läuft der Code auf der höchsten <strong>Fehlerkorrektur-Stufe</strong> (30 % statt 15 %): Er bleibt auch dann lesbar, wenn das Display spiegelt, verschmiert ist oder schräg gehalten wird. Das Logo belegt bewusst nur rund 5 % der Fläche — die restliche Reserve gehört der echten Abnutzung.</>
+                  : <>The code now carries the <strong>DEX logo in its centre</strong> — so it is not confused with a foreign QR at the entrance and is easier to spot in the email. To keep this from costing legibility, the code uses the highest <strong>error-correction level</strong> (30 % instead of 15 %): it stays readable through display glare, smudges and awkward angles. The logo deliberately covers only about 5 % of the area — the remaining reserve belongs to real-world wear.</>}
+              </Callout>
+            ),
+          },
+          {
+            number: 11,
             title: isDe ? 'Allgemein: Check-In rückgängig machen' : 'General: undo check-in',
             description: (
               <>
@@ -371,7 +389,7 @@ export function checkInSection(locale: 'de' | 'en'): ManualSection {
             ),
           },
           {
-            number: 11,
+            number: 12,
             title: isDe ? 'Allgemein: Mehrere Scanner-Geräte parallel' : 'General: multiple scanner devices in parallel',
             description: (
               <>
