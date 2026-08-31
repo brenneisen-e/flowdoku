@@ -718,6 +718,8 @@ export interface CreateEventInput {
   showAsFree?: boolean;
   /** v29.55: Organizer nicht in den Outlook-Termin eintragen. */
   skipOrganizerInvite?: boolean;
+  /** v30.26: Flow soll für diesen Termin einen Teams-Link erzeugen (isOnlineMeeting). */
+  outlookIsOnlineMeeting?: boolean;
   /** v18.42: Betreff des Outlook-Termins; leer = Event-Titel. */
   outlookSubject?: string;
   /** v18.44: abweichende Outlook-Start/-Ende (ISO); leer = Event-Datum. */
@@ -1338,6 +1340,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       // v29.52: ganztägiger Termin — der Outlook-Flow macht daraus isAllDay.
       allDay: !!e.AllDay,
       showAsFree: !!e.ShowAsFree,
+      outlookIsOnlineMeeting: !!e.OutlookIsOnlineMeeting, // v30.26
       skipOrganizerInvite: !!e.SkipOrganizerInvite,
       outlookStart: e.OutlookStart || undefined,
       outlookEnd: e.OutlookEnd || undefined,

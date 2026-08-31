@@ -173,6 +173,16 @@ export interface DeloitteEvent {
    *  leer = false = „nicht frei" = beschäftigt, also genau das bisherige
    *  Verhalten. Die Umkehrung passiert einmal, sichtbar, in der Oberfläche. */
   showAsFree?: boolean;
+  /**
+   * v30.26: Der Outlook-Termin wird als ECHTE Teams-Besprechung angelegt
+   * (Flow: „Is online meeting" = Yes, Provider Teams). Der Link entsteht
+   * dabei im Gruppenpostfach — Teilnehmer bekommen den „Teilnehmen"-Knopf
+   * in der Kalenderleiste, aber niemand kann die Besprechungsoptionen
+   * (Lobby, Aufzeichnung, Referenten) nachträglich ändern, weil der Termin
+   * dem No-Reply-Postfach gehört. Wer das braucht, legt die Besprechung
+   * selbst an und trägt den Link in `teamsLink` ein.
+   */
+  outlookIsOnlineMeeting?: boolean;
   /** v29.55: Organizer NICHT als Teilnehmer in den Outlook-Termin dieses Events
    *  eintragen. Der Flow setzt `item/requiredAttendees` aus `OrganizerEmail` —
    *  bei einer Terminreihe mit 21 Tagen bekommt der Organizer damit 21 Blocker
