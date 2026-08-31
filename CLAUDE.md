@@ -113,6 +113,14 @@ Tabelle", DEX_IDReorder v18.69):
    Chat-Antwort UND in `flow-jsons.md`.
 4. **fx-Ausdrücke immer als solche kennzeichnen** („über den Expression-Tab
    (fx), nie als Text") — das ist die häufigste Fehlerquelle.
+4b. **Anleitungstext deutsch, Oberflächen-Begriffe ENGLISCH.** Nutzer-Ansage
+   31.08.2026: „mein Power Automate ist auf englisch gestellt." Also **Edit**,
+   **Add an action**, **Condition** (Kategorie **Control**), **Rename**,
+   **Expression**-Tab, **is equal to**, **True**/**False**-Zweig, **Save**,
+   **Run history** — und die Feldnamen sowieso (**Method**, **Uri**, **Body**,
+   **Content-Type**). Keine deutschen Klammer-Übersetzungen dahinter: Zwei
+   Begriffe für denselben Knopf sind die Sucherei, die die Anleitung
+   verhindern soll. Nur der erklärende Text drumherum ist deutsch.
 5. **Am Ende ein Test-Schritt**: was der Nutzer klickt, um zu prüfen, dass es
    wirkt, und welcher Fehler welche Ursache hat.
 6. **Immer prüfen, ob die genannten Anker-Actions im Live-Flow existieren.** Die
