@@ -2799,6 +2799,54 @@ Flow `DEX_Outlook_Einladungen` ist es umgekehrt — dort wird der Termin über
 adressiert. **Regel: die URI-Form der Graph-Action übernehmen, die im
 GLEICHEN Flow schon funktioniert.**
 
+### ✅ AKTUELL GÜLTIG (v30.40) — `DEX_Outlook_Termine`: zwei Actions wieder ENTFERNEN
+
+Die Anleitungen weiter unten (v30.27 / v30.28 / KORREKTUR v30.37) sind damit
+**erledigt**. Sie bleiben nur als Protokoll stehen — nicht mehr ausführen.
+
+Seit v30.40 schreibt die App im Modus „DEX erzeugt den Teams-Link" keine Marke
+`{{TEAMS_URL}}` mehr in den Body. Es gibt also nichts mehr zu ersetzen, und die
+beiden Actions laufen ins Leere. Der Body-PATCH ist zudem der Weg, der die
+Besprechung gefährdet (s. Faktenlage unten) — ohne ihn ist der Flow sicherer,
+nicht nur kürzer.
+
+| # | Art | Name der Action | Stelle |
+|---|---|---|---|
+| 1 | **LÖSCHEN** | `Set Teams Body` | im **True**-Zweig, unterste Action |
+| 2 | **LÖSCHEN** | `Get Teams Event` | im **True**-Zweig, mittlere Action |
+| — | bleibt | `Set Online Meeting` | einzige Action im **True**-Zweig |
+
+**Reihenfolge einhalten: von UNTEN nach oben.** Power Automate verweigert das
+Löschen einer Action, solange eine andere sie referenziert — und
+`Set Teams Body` liest `body('Get_Teams_Event')`.
+
+#### Klicks
+
+- [ ] Flow `DEX_Outlook_Termine` öffnen, oben rechts **Edit**.
+- [ ] Im **True**-Zweig von `Check Online Meeting` die unterste Action
+      `Set Teams Body` anklicken.
+- [ ] Auf die drei Punkte (**…**) rechts oben an der Action klicken → **Delete**
+      → Rückfrage mit **OK** bestätigen.
+- [ ] Jetzt `Get Teams Event` anklicken, **…** → **Delete** → **OK**.
+- [ ] Kontrolle: Im **True**-Zweig steht nur noch `Set Online Meeting`. Der
+      **False**-Zweig bleibt leer („0 Actions") — das ist richtig so.
+- [ ] Oben **Save** klicken.
+
+#### Test
+
+- [ ] Ein Test-Event mit **Online-Meeting (automatisch)** anlegen.
+- [ ] Im Kalender: Der **Teilnehmen**-Knopf ist da.
+- [ ] Im Termintext: Die DEX-Karte endet nach dem Organizer-Absatz — kein
+      grüner Teams-Block, keine `{{TEAMS_URL}}`, keine `{{TEAMS_DIALIN}}` mehr.
+      Darunter der normale Microsoft-Kasten mit Join-Link, Meeting-ID und
+      Passcode.
+- [ ] Steht dort noch `{{TEAMS_URL}}` oder `{{TEAMS_DIALIN}}`, läuft in
+      SharePoint noch ein Event-Stand von vor v30.40 — das Paket aus `dist/`
+      installieren und ein NEUES Test-Event anlegen (bestehende Events tragen
+      die Marke im gespeicherten `OutlookBody`).
+
+---
+
 ### Der Teams-Kasten im Termin — Faktenlage, recherchiert 31.08.2026
 
 Auslöser: Die Frage, ob der von Exchange angehängte Kasten
