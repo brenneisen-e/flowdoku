@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.33.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.36.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -339,6 +339,21 @@ Snapshots, Stempel und der F&A-Abschluss werden von den F&A-Flows über
 `patchEventOverridesValue` gepflegt; der Wizard erhält sie beim Speichern
 über `billingExtraRef`. Wer den `_billing`-Aufbau anfasst, darf diese
 Schlüssel nicht verlieren — sonst ist die revisionssichere Historie weg.
+
+**Kamera-Scan: Das Problem ist die APP, nicht die Seite.** Am 31.08.2026
+scheiterten nacheinander fünf Anläufe an derselben Stelle — Live-Scanner
+(`getUserMedia`), Foto-Weg (`capture="environment"`), der `accept`-Trick gegen
+Androids Foto-Picker, eine eingebettete Power App und eine selbst gehostete
+Scanner-Seite im iframe. Der Grund ist immer derselbe: **Permissions Policy
+reicht Rechte nur ABWÄRTS durch.** Was das WebView der Host-App nicht hat, kann
+keine Seite und kein iframe darin gewinnen. Gemessen: In der SharePoint-App
+bekommt auch eine eingebettete Fremdseite mit `allow="camera"` **keine** Kamera.
+Weitere HTML-Varianten sind deshalb verlorene Zeit; wer den Kamera-Scan will,
+muss die **App** wechseln (Edge mit Arbeitskonto, Teams mit
+`barCode.scanBarCode`, oder Power Apps Mobile). Der Weg, der überall trägt, ist
+seit v30.33 die **Teilnehmer-ID**: Sie steht unter jedem QR-Code in der Mail und
+ist im Check-in-Suchfeld exakt suchbar. Zur Erwartung: iOS-Scanner läuft in der
+Regel, Android meist nicht.
 
 **Inline-Styles können kein `:hover`.** Interaktive Elemente brauchen einen
 Hover-State (`hoverIdx`, `evTabHover`), sonst lesen sie sich als Beschriftung.

@@ -105,6 +105,9 @@ export default function CheckInPage(): React.ReactElement {
   const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
   const [photoBusy, setPhotoBusy] = React.useState(false);
   const [photoHint, setPhotoHint] = React.useState('');
+  // v30.35: Direkteingabe der Teilnehmer-ID (s. Block unter dem Scan-Knopf).
+  const [idInput, setIdInput] = React.useState('');
+  const [idError, setIdError] = React.useState('');
   const [checkedInCount, setCheckedInCount] = React.useState(0);
   const confirmCardRef = React.useRef<HTMLDivElement>(null);
   const [pendingCheckIn, setPendingCheckIn] = React.useState<{
@@ -228,6 +231,51 @@ export default function CheckInPage(): React.ReactElement {
     });
   }, [nameSearchQuery, nameSearchEventId, searchRegsCache, onlyOpen]);
 
+  /**
+   * v30.35: Check-in über die eingetippte Teilnehmer-ID.
+   *
+   * Nutzt bewusst denselben Weg wie ein Klick in der Trefferliste
+   * (`startManualCheckInFromSearch`) — also dieselbe Bestätigungskarte mit
+   * Foto und Status. Am Einlass will man vor dem Einchecken sehen, WEN man
+   * eincheckt; eine ID ohne Gesicht wäre schneller und riskanter.
+   *
+   * Die Liste ist zu diesem Zeitpunkt geladen (`loadRegsForSearch` läuft beim
+   * Auswählen des Events). Ist sie es nicht, sagt die Meldung genau das,
+   * statt „ID nicht gefunden" zu behaupten.
+   */
+  const checkInByParticipantId = async (): Promise<void> => {
+    const raw = idInput.trim();
+    if (!raw) return;
+    setIdError('');
+    if (!nameSearchEventId) {
+      setIdError(isDe ? 'Bitte zuerst oben das Event auswählen.' : 'Please pick the event above first.');
+      return;
+    }
+    const regs = searchRegsCache[nameSearchEventId];
+    if (!regs) {
+      setIdError(isDe ? 'Teilnehmerliste wird noch geladen — bitte kurz warten und erneut versuchen.' : 'Attendee list is still loading — please wait a moment and try again.');
+      void loadRegsForSearch(nameSearchEventId);
+      return;
+    }
+    const hit = regs.filter(r => String(r.TeilnehmerID || '') === raw);
+    if (hit.length === 0) {
+      setIdError(isDe
+        ? `Keine Anmeldung mit der Teilnehmer-ID ${raw} bei diesem Event. Bitte die Nummer aus der QR-Mail prüfen — oder unten nach dem Namen suchen.`
+        : `No registration with attendee ID ${raw} for this event. Please check the number in the QR email — or search by name below.`);
+      return;
+    }
+    if (hit.length > 1) {
+      // Sollte nicht vorkommen (ID ist je Event fortlaufend), wäre aber ein
+      // Datenfehler, den man am Einlass nicht stillschweigend raten darf.
+      setIdError(isDe
+        ? `Mehrere Anmeldungen mit der ID ${raw} gefunden — bitte unten über den Namen einchecken und das den DEX-Admins melden.`
+        : `Several registrations share ID ${raw} — please check in by name below and report this to the DEX admins.`);
+      return;
+    }
+    setIdInput('');
+    startManualCheckInFromSearch(hit[0]);
+  };
+
   const startManualCheckInFromSearch = (reg: import('../services/EventService').SPRegistration): void => {
     const ev = events.find(e => e.id === nameSearchEventId);
     if (!ev || !ev.subsiteUrl) return;
@@ -299,11 +347,6 @@ export default function CheckInPage(): React.ReactElement {
     }
   };
 
-  // Erkennen ob die App in der SharePoint Mobile App läuft
-  const isSharePointMobileApp = React.useMemo(() => {
-    const ua = navigator.userAgent;
-    return /SharePoint/i.test(ua) && /Mobile|Android|iPhone|iPad/i.test(ua);
-  }, []);
 
   // URL für den Browser-Link generieren (für zukünftige Nutzung)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -896,44 +939,14 @@ export default function CheckInPage(): React.ReactElement {
         </div>
       )}
 
-      {/* SharePoint Mobile App Warnung */}
-      {isSharePointMobileApp && (
-        <div className="card" style={{
-          padding: 20, marginBottom: 16,
-          background: '#fff3e0', border: '2px solid #ff9800', borderRadius: 12,
-        }}>
-          <h3 style={{ margin: '0 0 8px', color: '#e65100', fontSize: '1rem' }}>
-            {isDe ? 'Kamera nicht verfügbar in der SharePoint App' : 'Camera not available in the SharePoint app'}
-          </h3>
-          <p style={{ color: '#bf360c', fontSize: '0.85rem', lineHeight: 1.6, margin: '0 0 12px' }}>
-            {isDe
-              ? <>Die SharePoint Mobile App unterstützt keinen Kamera-Zugriff für Webparts. Nutze den <strong>Foto-Weg</strong> — der funktioniert auch hier, weil er die normale Kamera-App aufruft. Für den Live-Scanner öffne die Seite in <strong>Edge</strong> mit deinem Arbeitskonto.</>
-              : <>The SharePoint mobile app does not support camera access for web parts. Use the <strong>photo route</strong> — it works here because it calls the regular camera app. For the live scanner, open this page in <strong>Edge</strong> signed in with your work account.</>}
-          </p>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button
-              className="btn btn-primary"
-              style={{ fontSize: '0.85rem' }}
-              onClick={() => {
-                const url = window.location.href;
-                navigator.clipboard.writeText(url).then(() => {
-                  setResultMessage(isDe ? 'Link kopiert! Öffne ihn in Edge mit deinem Arbeitskonto.' : 'Link copied! Open it in Edge signed in with your work account.');
-                  setResultType('info');
-                }).catch(() => {
-                  showAlert(<span style={{ userSelect: 'all', wordBreak: 'break-all', fontFamily: 'monospace', fontSize: '0.8rem' }}>{url}</span>, { title: isDe ? 'Link kopieren und in Edge öffnen' : 'Copy link and open in Edge' });
-                });
-              }}
-            >
-              {isDe ? 'Link kopieren' : 'Copy link'}
-            </button>
-          </div>
-          <p style={{ color: '#bf360c', fontSize: '0.75rem', marginTop: 8, marginBottom: 0 }}>
-            {isDe
-              ? 'Tipp: Lege dir die Seite als Lesezeichen in Edge an für schnellen Zugriff beim Event.'
-              : 'Tip: Bookmark this page in Edge for quick access during the event.'}
-          </p>
-        </div>
-      )}
+      {/* v30.35: Der orange Warnkasten „Kamera nicht verfuegbar in der
+          SharePoint App" ist raus. Er war ein Alarm fuer einen Zustand,
+          der in der SharePoint-App der NORMALFALL ist — und seit v30.33
+          gibt es dort einen Weg, der einfach funktioniert (Teilnehmer-ID).
+          Eine Warnung, die bei jedem Start erscheint und auf etwas
+          hinweist, das man nicht aendern kann, wird ueberlesen und macht
+          die Seite nur enger. Die Geraete-Erwartung steht jetzt ruhig im
+          Hinweistext unter dem Scan-Knopf. */}
 
       {/* Bestätigungs-Dialog nach Scan */}
       {pendingCheckIn && (
@@ -1001,23 +1014,73 @@ export default function CheckInPage(): React.ReactElement {
           <>
             <h3 style={{ marginBottom: 12 }}>{isDe ? 'Live-Scanner' : 'Live scanner'}</h3>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-                <button className="btn btn-primary" onClick={startCamera} style={{ fontSize: '1.1rem', padding: '14px 36px' }}>
-                  {t('checkin.scan')}
-                </button>
-                {/* v30.30: Foto-Weg gleichberechtigt DANEBEN, nicht erst nach
-                    einem Fehlschlag. Am Eingang will niemand erst einen Fehler
-                    produzieren, um den Weg zu finden, der funktioniert. */}
+              {/* v30.35: EIN Knopf statt zwei. Zwei gleich große Scan-Knöpfe
+                  nebeneinander sind zwei Bedienwege für dieselbe Absicht — man
+                  muss am Einlass erst entscheiden, statt zu scannen. Der
+                  Live-Scanner ist der Standard; der Foto-Weg steht als schmaler
+                  Text-Link darunter, für den Fall, dass der Scanner nicht
+                  aufgeht. Wenn beides scheitert, trägt die Teilnehmer-ID
+                  (v30.33) — die steht im Hinweis darunter. */}
+              <button className="btn btn-primary" onClick={startCamera} style={{ fontSize: '1.1rem', padding: '14px 36px' }}>
+                {t('checkin.scan')}
+              </button>
+              <div style={{ marginTop: 10 }}>
                 <button
-                  className="btn btn-secondary"
+                  type="button"
                   onClick={() => photoInputRef.current?.click()}
                   disabled={photoBusy}
-                  style={{ fontSize: '1.1rem', padding: '14px 24px' }}
+                  style={{
+                    background: 'none', border: 'none', padding: 4, cursor: photoBusy ? 'default' : 'pointer',
+                    color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.88rem', textDecoration: 'underline',
+                    font: 'inherit', fontFamily: 'inherit',
+                  }}
                 >
                   {photoBusy
                     ? (isDe ? 'Foto wird gelesen…' : 'Reading photo…')
-                    : (isDe ? '📷 Foto vom QR-Code' : '📷 Photo of QR code')}
+                    : (isDe ? 'Stattdessen Foto vom QR-Code machen' : 'Take a photo of the QR code instead')}
                 </button>
+              </div>
+
+              {/* v30.35: Die Teilnehmer-ID steht in der Mail groß unter dem
+                  QR-Code — also gehört sie hier genauso groß hin und nicht
+                  versteckt ins Filterfeld der Liste weiter unten. Auf Android
+                  ist sie der Weg, der überhaupt funktioniert; wer sie erst
+                  suchen muss, nimmt sie am Einlass nicht. */}
+              <div style={{
+                marginTop: 20, paddingTop: 18, borderTop: '1px solid var(--dex-gray-200)',
+              }}>
+                <div style={{ fontSize: '0.8rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--dex-gray-500)', marginBottom: 8 }}>
+                  {isDe ? 'Oder Teilnehmer-ID eingeben' : 'Or enter attendee ID'}
+                </div>
+                <form
+                  onSubmit={e => { e.preventDefault(); void checkInByParticipantId(); }}
+                  style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}
+                >
+                  <input
+                    value={idInput}
+                    onChange={e => { setIdInput(e.target.value.replace(/\D/g, '')); setIdError(''); }}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="17"
+                    aria-label={isDe ? 'Teilnehmer-ID' : 'Attendee ID'}
+                    style={{
+                      width: 130, padding: '12px 14px', textAlign: 'center',
+                      fontFamily: "'Courier New', Courier, monospace", fontSize: '1.5rem', fontWeight: 700,
+                      border: '2px solid var(--dex-gray-300)', borderRadius: 10,
+                    }}
+                  />
+                  <button type="submit" className="btn btn-primary" disabled={!idInput.trim()} style={{ fontSize: '1rem', padding: '12px 24px' }}>
+                    {isDe ? 'Einchecken' : 'Check in'}
+                  </button>
+                </form>
+                {idError && (
+                  <p style={{ color: 'var(--dex-orange)', fontSize: '0.85rem', margin: '10px 0 0' }}>{idError}</p>
+                )}
+                <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: '8px 0 0' }}>
+                  {isDe
+                    ? 'Die Nummer steht in der QR-Mail groß unter dem Code — sie funktioniert auf jedem Gerät.'
+                    : 'The number is printed in large type below the code in the QR email — it works on every device.'}
+                </p>
               </div>
               {/* v30.30: `capture="environment"` öffnet die NATIVE Kamera-App des
                   Geräts und liefert eine Datei zurück — ohne getUserMedia, ohne

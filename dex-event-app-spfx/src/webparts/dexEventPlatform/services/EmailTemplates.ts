@@ -877,11 +877,48 @@ export function qrEmailDefaults(lang: string = 'EN'): { subject: string; heading
 /** Fester QR-Block: Code-Bild + „<Name> | <Event>“ als Klartext (für den
  *  manuellen Check-in). Wird beim Versand UND in der Editor-Vorschau gleich
  *  gebaut. */
-export function buildQrBlockHtml(qrImageHtml: string, fullDisplayName: string, eventTitle: string): string {
+/**
+ * v30.35: QR links, Name und Teilnehmer-ID rechts daneben.
+ *
+ * Vorher stand alles zentriert untereinander — inklusive des Event-Titels, der
+ * zwei Zeilen weiter oben im Mailtext schon steht. Doppelt genannt macht er den
+ * Block nur höher, ohne etwas zu klären.
+ *
+ * Die ID ist auf drei Stellen aufgefüllt (`017`). Das ist kein Selbstzweck: Sie
+ * wird am Einlass vorgelesen und abgetippt, und eine feste Breite liest sich
+ * verlässlicher als „7" mitten im Fließtext.
+ *
+ * Aufbau als `<table>` mit zwei Zellen, nicht als Flexbox — Outlook rendert
+ * mit Word und kann kein Flex. `valign="middle"` hält die Textspalte auf
+ * Höhe des Codes.
+ */
+export function buildQrBlockHtml(qrImageHtml: string, fullDisplayName: string, teilnehmerId?: number): string {
   const escName = (fullDisplayName || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const escTitle = (eventTitle || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const checkInLabel = `<p style="text-align:center;font-size:16px;margin:8px 0 0;"><strong>${escName} | ${escTitle}</strong></p>`;
-  return `<div style="text-align:center;margin:24px 0;">${qrImageHtml}${checkInLabel}</div>`;
+  const hasId = teilnehmerId !== undefined && teilnehmerId !== null && !isNaN(Number(teilnehmerId));
+  // padStart gibt es im ES5-Target nicht — deshalb von Hand auffüllen.
+  let idText = '';
+  if (hasId) {
+    idText = String(teilnehmerId);
+    while (idText.length < 3) idText = `0${idText}`;
+  }
+  const rows = `<div style="font-size:15px;color:#2b2b2b;line-height:1.5;">`
+    + `<span style="color:#63666A;">Name:</span> <strong>${escName}</strong>`
+    + `</div>`
+    + (hasId
+      ? `<div style="font-size:15px;color:#2b2b2b;line-height:1.5;margin-top:6px;">`
+        + `<span style="color:#63666A;">ID:</span> `
+        + `<strong style="font-family:'Courier New',Courier,monospace;font-size:26px;letter-spacing:0.04em;">${idText}</strong>`
+        + `</div>`
+        + `<div style="font-size:12px;color:#63666A;margin-top:8px;line-height:1.45;">`
+        + `Falls der Scan nicht klappt: einfach diese Nummer am Einlass nennen.`
+        + `</div>`
+      : '');
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;border-collapse:collapse;">`
+    + `<tr>`
+    + `<td valign="middle" style="padding:0 18px 0 0;">${qrImageHtml}</td>`
+    + `<td valign="middle" style="font-family:Arial,Helvetica,sans-serif;">${rows}</td>`
+    + `</tr>`
+    + `</table>`;
 }
 
 export function qrCodeEmail(
@@ -890,11 +927,12 @@ export function qrCodeEmail(
   qrImageHtml: string,
   lang: string = 'EN',
   fullName?: string,
-  override?: QrEmailOverride
+  override?: QrEmailOverride,
+  teilnehmerId?: number // v30.35: erscheint rechts neben dem Code
 ): { subject: string; body: string } {
   // Fallback: wenn kein fullName übergeben, nutze nur firstName
   const fullDisplayName = (fullName || firstName || '').trim();
-  const qrBlock = buildQrBlockHtml(qrImageHtml, fullDisplayName, eventTitle);
+  const qrBlock = buildQrBlockHtml(qrImageHtml, fullDisplayName, teilnehmerId);
   const defaults = qrEmailDefaults(lang);
   const subjectTpl = (override && override.subject && override.subject.trim()) ? override.subject : defaults.subject;
   const headingTpl = (override && override.heading && override.heading.trim()) ? override.heading : defaults.heading;
