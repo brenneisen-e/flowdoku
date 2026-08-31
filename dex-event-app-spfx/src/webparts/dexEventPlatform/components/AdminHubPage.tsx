@@ -77,11 +77,6 @@ export default function AdminHubPage(): React.ReactElement {
   const [permCleanupReport, setPermCleanupReport] = React.useState<PermCleanupReport | null>(null);
   // v26.81: Verwaiste Subsites prüfen — Modal mit Bericht + Einzel-Löschung.
   const [orphanOpen, setOrphanOpen] = React.useState(false);
-  // v30.32: Einbettungs-Test (s. Abschnitt weiter unten). Vorbelegt mit der
-  // Seite, an der wir es zuerst gemessen haben — sie erlaubt Framing
-  // ausdrücklich (`frame-ancestors *`) und ist damit ein sauberer Referenzfall.
-  const [embedUrlInput, setEmbedUrlInput] = React.useState('https://www.natberger-huette.de/');
-  const [embedUrl, setEmbedUrl] = React.useState('');
   const [orphanBusy, setOrphanBusy] = React.useState(false);
   const [orphanProgress, setOrphanProgress] = React.useState<{ msg: string; done: number; total: number } | null>(null);
   const [orphanResult, setOrphanResult] = React.useState<OrphanScanResult | null>(null);
@@ -1082,62 +1077,15 @@ export default function AdminHubPage(): React.ReactElement {
         </div>
       </div>
 
-      {/* v30.32: Einbettungs-Test. Zweck ist eine Messung, keine Funktion —
-          deshalb bewusst im Admin Hub und nicht irgendwo teilnehmersichtbar.
-          Zwei Fragen werden hier beantwortet, die sonst nur geraten werden:
-          (1) Rendert ein SPFx-Webpart eine fremde Seite inline? (2) Kommt eine
-          so eingebettete Seite an die Kamera? Der iframe trägt deshalb
-          `allow="camera; microphone"` — die Weitergabe kann nur gelingen, wenn
-          die Seite DARÜBER das Recht selbst hat, und genau das ist die
-          eigentliche Frage auf dem Handy. */}
-      <h2 style={{ fontSize: '1.15rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Einbettungs-Test' : 'Embedding test'}</h2>
-      <div style={{ ...cardStyle, marginBottom: 28 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-          <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><Wrench size={18} /></span>
-          <span style={{ fontWeight: 700 }}>{isDe ? 'Fremde Seite einbetten' : 'Embed an external page'}</span>
-        </div>
-        <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
-          {isDe
-            ? <>Lädt eine beliebige HTTPS-Seite in einen <code>iframe</code> innerhalb dieses Webparts — mit Kamera-Freigabe (<code>allow=&quot;camera&quot;</code>). Damit lässt sich zweierlei messen: ob Einbetten überhaupt geht, und ob eine eingebettete Seite auf dem Handy an die Kamera kommt. <strong>Wichtig:</strong> Bleibt der Rahmen leer, liegt es meist an der Zielseite — viele Seiten verbieten Framing per <code>X-Frame-Options</code> oder <code>frame-ancestors</code>.</>
-            : <>Loads any HTTPS page into an <code>iframe</code> inside this web part — with camera delegation (<code>allow=&quot;camera&quot;</code>). This measures two things: whether embedding works at all, and whether an embedded page can reach the camera on a phone. <strong>Note:</strong> if the frame stays blank it is usually the target site — many sites forbid framing via <code>X-Frame-Options</code> or <code>frame-ancestors</code>.</>}
-        </p>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-          <input
-            type="url"
-            value={embedUrlInput}
-            onChange={e => setEmbedUrlInput(e.target.value)}
-            placeholder="https://…"
-            style={{ flex: '1 1 260px', minWidth: 0, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--dex-gray-300)', fontSize: '0.85rem' }}
-          />
-          <button
-            className="btn btn-primary"
-            style={{ fontSize: '0.82rem', padding: '8px 16px' }}
-            onClick={() => setEmbedUrl(embedUrlInput.trim())}
-          >
-            {isDe ? 'Laden' : 'Load'}
-          </button>
-          {embedUrl && (
-            <button className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '8px 16px' }} onClick={() => setEmbedUrl('')}>
-              {isDe ? 'Schließen' : 'Close'}
-            </button>
-          )}
-        </div>
-        {embedUrl && (
-          <>
-            <iframe
-              src={embedUrl}
-              title={isDe ? 'Einbettungs-Test' : 'Embedding test'}
-              allow="camera; microphone; fullscreen"
-              style={{ width: '100%', height: 460, border: '1px solid var(--dex-gray-300)', borderRadius: 8, background: '#fff' }}
-            />
-            <p style={{ fontSize: '0.76rem', color: 'var(--dex-gray-500)', margin: '8px 0 0' }}>
-              {isDe
-                ? <>Geladen: <code>{embedUrl}</code> — bleibt der Bereich weiß, hat die Zielseite das Einbetten verboten.</>
-                : <>Loaded: <code>{embedUrl}</code> — if the area stays white, the target site refused to be framed.</>}
-            </p>
-          </>
-        )}
-      </div>
+      {/* v30.34: Der Einbettungs-Test aus v30.32 ist wieder raus — die
+          Frage, die er beantworten sollte, ist beantwortet: Eine per
+          iframe eingebettete Fremdseite bekommt in der SharePoint-App
+          KEINE Kamera. Permissions Policy reicht Rechte nur abwaerts
+          durch; was das WebView der Host-App nicht hat, kann kein
+          Rahmen darin gewinnen. Damit ist auch eine selbst gehostete
+          Scanner-Seite als Weg erledigt — nachgemessen 31.08.2026.
+          Kein Werkzeug stehen lassen, das nur eine erledigte Frage
+          stellt; der Befund steht in CLAUDE.md und den Release Notes. */}
 
       {/* v24.97: E-Mails & Berichte — globale Mail-Werkzeuge (Reseed + Wochenbericht) */}
       <h2 style={{ fontSize: '1.15rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'E-Mails & Berichte' : 'Emails & reports'}</h2>
