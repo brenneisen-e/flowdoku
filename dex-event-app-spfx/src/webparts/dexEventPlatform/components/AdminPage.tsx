@@ -93,6 +93,14 @@ import { BILLING_FIELDS } from '../data/billingFields';
 // Doppel-Anmelde-Erkennung: „alles außer Abgemeldet" war zu weit gefasst.
 const DUP_ACTIVE_STATI = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
 
+/**
+ * v30.33: Beispiel-Teilnehmer-ID für Vorschau, Mail-Editor und Test-Versand.
+ * Dort gibt es keine echte Person — der Organizer soll aber sehen, dass unter
+ * dem QR-Code eine ID mitgeschickt wird, sonst fällt beim Gestalten der Mail
+ * niemandem auf, wenn sie fehlt.
+ */
+const SAMPLE_QR_ID = 17;
+
 type ConsolidatedRow = {
   emailKey: string;
   email: string;
@@ -4026,7 +4034,10 @@ export default function AdminPage(): React.ReactElement {
     // Beispiel-QR (eigene Daten) für die Vorschau — gleicher Aufbau wie im Versand.
     const myName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email;
     const qrData = `DEX|${tgt.eventNumber}|${currentUser.email}`;
-    const qrImageHtml = await buildQrImageHtml(qrData);
+    // v30.33: Beispiel-ID, damit im Editor sichtbar ist, dass die
+    // Teilnehmer-ID mitgeschickt wird — beim echten Versand steht dort die
+    // tatsaechliche Nummer der Person.
+    const qrImageHtml = await buildQrImageHtml(qrData, SAMPLE_QR_ID);
     setQrEditSampleBlock(buildQrBlockHtml(qrImageHtml, myName, tgt.title));
     // v22.19: Versand-Modal schließen — der Editor zeigt die Versand-Aktionen
     // in einer eigenen linken Spalte (nebeneinander statt übereinander).
@@ -4081,13 +4092,68 @@ export default function AdminPage(): React.ReactElement {
       }
     } finally { setQrEditSaving(false); }
   };
-  const buildQrImageHtml = async (qrData: string): Promise<string> => {
+  /**
+   * v30.33: Unter den QR-Code kommt die Teilnehmer-ID — groß und vorlesbar.
+   *
+   * Sie ist nicht nur Deko: Seit v30.33 kann das Check-in-Team die ID ins
+   * Suchfeld tippen und die Person damit einchecken. Das ist der Weg, der ohne
+   * Kamera auskommt — und auf verwalteten Geräten ist die Kamera nicht überall
+   * erreichbar (SharePoint-App-WebView, Android-Foto-Picker). Steht die ID
+   * nicht in der Mail, kann niemand sie nennen, und der ganze Weg läuft leer.
+   *
+   * Bewusst monospace und groß: Die Zahl wird am Einlass vorgelesen und
+   * abgetippt, nicht gelesen.
+   */
+  const buildQrImageHtml = async (qrData: string, teilnehmerId?: number): Promise<string> => {
     let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
     try {
       const QRCode = await import('qrcode');
-      const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
+      // v30.33: Fehlerkorrektur auf 'H' (30 %) statt Default 'M' (15 %). Der
+      // Code wird am Einlass vom Handy-Display abfotografiert — Spiegelungen,
+      // Fingerabdrücke, Displayschutz und schräge Winkel fressen genau die
+      // Reserve, die hier fehlte. Die Datenmenge (`DEX|<nr>|<mail>`) ist so
+      // klein, dass 'H' das Modul-Raster kaum vergrößert; die 300 px reichen
+      // weiterhin. 'H' ist außerdem die Voraussetzung für das Logo unten.
+      const canvas = document.createElement('canvas');
+      await QRCode.toCanvas(canvas, qrData, { width: 300, margin: 2, errorCorrectionLevel: 'H' });
+      // v30.33: DEX-Orb in die Mitte. Das ist keine Deko — ein Code mit
+      // erkennbarem Absender wird am Einlass nicht mit einem fremden QR
+      // verwechselt, und Teilnehmer finden ihn schneller in der Mail.
+      //
+      // 22 % Kantenlänge = ~5 % der Fläche, plus weißer Rand. Das liegt weit
+      // unter dem, was 'H' verkraftet (30 %); bewusst konservativ, weil die
+      // Reserve für die reale Abnutzung da sein soll (Spiegelung, Winkel) und
+      // nicht schon vom Logo aufgebraucht werden darf.
+      try {
+        const orb = getCachedOrbBase64();
+        const ctx = canvas.getContext('2d');
+        if (orb && ctx) {
+          const img = new Image();
+          await new Promise<void>(resolve => {
+            img.onload = () => resolve();
+            img.onerror = () => resolve(); // ohne Logo weiter — der Code zählt
+            img.src = orb;
+          });
+          if (img.width > 0) {
+            const size = Math.round(canvas.width * 0.22);
+            const pos = Math.round((canvas.width - size) / 2);
+            const pad = Math.round(size * 0.14);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(pos - pad, pos - pad, size + pad * 2, size + pad * 2);
+            ctx.drawImage(img, pos, pos, size, size);
+          }
+        }
+      } catch { /* Logo ist Kür — ein QR ohne Orb ist besser als gar keiner */ }
+      const qrDataUrl = canvas.toDataURL('image/png');
       qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
     } catch { /* */ }
+    if (teilnehmerId !== undefined && teilnehmerId !== null && !isNaN(Number(teilnehmerId))) {
+      qrImageHtml += `<div style="margin-top:10px;text-align:center;font-family:Arial,Helvetica,sans-serif;">`
+        + `<div style="font-size:12px;color:#63666A;letter-spacing:0.06em;text-transform:uppercase;">Teilnehmer-ID</div>`
+        + `<div style="font-family:'Courier New',Courier,monospace;font-size:30px;font-weight:bold;color:#2b2b2b;line-height:1.2;">${teilnehmerId}</div>`
+        + `<div style="font-size:12px;color:#63666A;margin-top:4px;">Falls der Scan nicht klappt: einfach diese Nummer am Einlass nennen.</div>`
+        + `</div>`;
+    }
     return qrImageHtml;
   };
   const qrPreviewAction = async (): Promise<void> => {
@@ -4098,7 +4164,7 @@ export default function AdminPage(): React.ReactElement {
       const orgFullName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || orgEmail;
       const orgFirstName = currentUser.firstName || orgFullName.split(/\s+/)[0] || orgFullName;
       const qrData = `DEX|${selectedEvent.eventNumber}|${orgEmail}`;
-      const qrImageHtml = await buildQrImageHtml(qrData);
+      const qrImageHtml = await buildQrImageHtml(qrData, SAMPLE_QR_ID); // v30.33: Beispiel-ID in der Vorschau
       const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName, getQrMailOverride(selectedEvent));
       let eventOrb = '';
       try {
@@ -4135,7 +4201,7 @@ export default function AdminPage(): React.ReactElement {
         const fullName = raw.indexOf(',') >= 0 ? raw.split(',').reverse().map(s => s.trim()).join(' ') : (raw || r.email);
         const firstName = raw.indexOf(',') >= 0 ? (raw.substring(raw.indexOf(',') + 1).trim().split(/\s+/)[0] || fullName) : (fullName.split(/\s+/)[0] || fullName);
         const qrData = `DEX|${ev.eventNumber}|${r.email}`;
-        const qrImageHtml = await buildQrImageHtml(qrData);
+        const qrImageHtml = await buildQrImageHtml(qrData, SAMPLE_QR_ID); // v30.33: Test-Mail zeigt eine Beispiel-ID
         const emailData = qrCodeEmail(firstName, ev.title, qrImageHtml, ev.emailLanguage || 'EN', fullName, liveOverride || getQrMailOverride(ev));
         await eventServiceRef.queueEmail(emailData.subject, r.email, fullName, emailData.body, 'QRCode', ev.title, ev.id);
         sent++; setQrSentCount(sent);
@@ -4162,7 +4228,7 @@ export default function AdminPage(): React.ReactElement {
       const qrData = `DEX|${selectedEvent.eventNumber}|${reg.ParticipantEmail}`;
       const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
       const firstName = reg.Vorname || (reg.ParticipantName || '').trim().split(/\s+/)[0] || name;
-      const qrImageHtml = await buildQrImageHtml(qrData);
+      const qrImageHtml = await buildQrImageHtml(qrData, reg.TeilnehmerID);
       const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', name, getQrMailOverride(selectedEvent));
       // v27.11: Member-Firm-Adressen zählen als intern → QR-Mail direkt.
       const isExternal = isExternalEmail(reg.ParticipantEmail);

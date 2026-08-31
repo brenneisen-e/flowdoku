@@ -184,9 +184,24 @@ export default function CheckInPage(): React.ReactElement {
     if (!nameSearchEventId) return [];
     const regs = searchRegsCache[nameSearchEventId] || [];
     const q = nameSearchQuery.trim().toLowerCase();
+    // v30.33: Die Teilnehmer-ID ist jetzt suchbar — und zwar EXAKT, nicht als
+    // Teiltreffer. Sie steht schon heute unter jedem QR-Code in der Mail; sie
+    // eintippen zu können macht den Check-in unabhängig von der Kamera, die auf
+    // verwalteten Geräten nicht überall erreichbar ist.
+    //
+    // Exakt deshalb, weil ein Teiltreffer bei „17" auch 117 und 170 liefern
+    // würde — am Einlass die falsche Person einzuchecken ist schlimmer als
+    // einmal mehr zu tippen. Die Namens-/Mail-Suche bleibt zusätzlich als
+    // Teiltreffer bestehen, damit „17" auch eine Mail mit 17 darin findet.
+    //
+    // Eindeutig ist die Zahl, weil der Check-in immer AUF EIN EVENT bezogen
+    // ist (Event-Picker davor) und TeilnehmerID je Event fortlaufend vergeben
+    // wird. Ein Event-Präfix braucht es hier deshalb nicht.
+    const numericQ = /^\d+$/.test(q) ? q : '';
     const matchesQuery = q.length === 0
       ? regs
       : regs.filter(r => {
+          if (numericQ && String(r.TeilnehmerID || '') === numericQ) return true;
           const full = `${r.Vorname || ''} ${r.Nachname || ''} ${r.ParticipantName || ''} ${r.ParticipantEmail || ''}`.toLowerCase();
           return full.indexOf(q) >= 0;
         });
@@ -1031,9 +1046,14 @@ export default function CheckInPage(): React.ReactElement {
                 <p style={{ color: 'var(--dex-orange)', fontSize: '0.85rem', margin: '10px 0 0' }}>{photoHint}</p>
               )}
               <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: '10px 0 0' }}>
+                {/* v30.33: Erwartung ehrlich setzen statt jeden erst scheitern
+                    lassen. Auf iPhones läuft der Scanner in aller Regel; auf
+                    Android hängt er an Dingen, die wir nicht kontrollieren
+                    (WebView der SharePoint-App, Foto-Picker ab Android 14).
+                    Deshalb dort gleich den Weg nennen, der immer funktioniert. */}
                 {isDe
-                  ? <>Der Live-Scanner ist schneller. Wenn er sich nicht öffnen lässt — etwa in der SharePoint-App oder in einer Teams-Registerkarte — nimm den Foto-Weg: Er benutzt die normale Kamera-App deines Handys.{isAndroid ? <> Zeigt Android eine Auswahl statt der Kamera, tippe dort auf <strong>Kamera</strong>.</> : null}</>
-                  : <>The live scanner is faster. If it will not open — for example inside the SharePoint app or a Teams tab — use the photo route: it uses your phone’s regular camera app.{isAndroid ? <> If Android shows a chooser instead of the camera, pick <strong>Camera</strong> there.</> : null}</>}
+                  ? <>Auf <strong>iPhones</strong> funktioniert der Live-Scanner in der Regel zuverlässig.{isAndroid ? <> Auf <strong>Android</strong> ist er oft blockiert — dann tippe die <strong>Teilnehmer-ID</strong> unten ins Suchfeld: Sie steht in jeder QR-Mail unter dem Code und funktioniert immer.</> : <> Klappt er nicht, tippe die <strong>Teilnehmer-ID</strong> unten ins Suchfeld — sie steht in jeder QR-Mail unter dem Code.</>} Der Foto-Weg benutzt die normale Kamera-App und kommt ohne Kamera-Freigabe für die Seite aus.{isAndroid ? <> Zeigt Android eine Auswahl statt der Kamera, tippe dort auf <strong>Kamera</strong>.</> : null}</>
+                  : <>On <strong>iPhones</strong> the live scanner usually works reliably.{isAndroid ? <> On <strong>Android</strong> it is often blocked — then type the <strong>attendee ID</strong> into the search field below: it is printed under the code in every QR email and always works.</> : <> If it does not start, type the <strong>attendee ID</strong> into the search field below — it is printed under the code in every QR email.</>} The photo route uses the regular camera app and needs no camera permission for the page.{isAndroid ? <> If Android shows a chooser instead of the camera, pick <strong>Camera</strong> there.</> : null}</>}
               </p>
               {cameraError && (
                 <div style={{ marginTop: 12 }}>
@@ -1210,7 +1230,8 @@ export default function CheckInPage(): React.ReactElement {
             className="form-input"
             value={nameSearchQuery}
             onChange={e => setNameSearchQuery(e.target.value)}
-            placeholder="Filter: Vorname, Nachname oder E-Mail…"
+            placeholder="Teilnehmer-ID, Vorname, Nachname oder E-Mail…"
+            inputMode="text"
             disabled={!nameSearchEventId}
             style={{ flex: '1 1 200px', padding: '10px 14px', fontSize: '0.95rem' }}
           />
