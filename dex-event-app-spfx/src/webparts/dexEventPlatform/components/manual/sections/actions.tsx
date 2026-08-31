@@ -18,7 +18,7 @@ export function actionsSection(locale: 'de' | 'en'): ManualSection {
       : 'Every action from the actions dropdown explained — export the attendee list, QR codes, emails, check-in and repair tools.',
     visibleFor: ['Organizer', 'Admin'],
     keywords: isDe
-      ? 'Aktionen Aktion auswählen Dropdown Menü Werkzeuge Organizer Center Admin Center Kategorien Suchfeld Excel-Export Teilnehmerliste xlsx herunterladen Zielgruppe Matrix Sub-Event-Blätter IDs neu vergeben Nummern renummerieren Von Warteliste nachrücken Überbuchung prüfen Outlook-Absagen prüfen Massenmail E-Mail versenden Einladungsmail E-Mails kopieren Check-in starten QR-Codes versenden Self-Check-in Event bearbeiten In SharePoint öffnen Deep-Link kopieren Audit-Log Änderungsprotokoll Spalten fixen Zugriff reparieren Counter zurücksetzen Custom-Fields reparieren Wartung Reparatur'
+      ? 'Aktionen Aktion auswählen Dropdown Menü Werkzeuge Organizer Center Admin Center Kategorien Suchfeld Excel-Export Teilnehmerliste xlsx herunterladen Zielgruppe Matrix Sub-Event-Blätter IDs neu vergeben Nummern renummerieren Von Warteliste nachrücken Überbuchung prüfen Outlook-Absagen prüfen Massenmail E-Mail versenden Einladungsmail E-Mails kopieren Check-in starten QR-Codes und Check-In QR-Codes versenden Self-Check-in Event bearbeiten In SharePoint öffnen Deep-Link kopieren Audit-Log Änderungsprotokoll Spalten fixen Zugriff reparieren Counter zurücksetzen Custom-Fields reparieren Wartung Reparatur'
       : 'actions pick an action dropdown menu tools organizer center admin center categories search box Excel export attendee list xlsx download target group matrix sub-event sheets reassign IDs renumber promote from waitlist check overbooking check Outlook declines mass email send email invitation email copy emails start check-in send QR codes self check-in edit event open in SharePoint copy deep link audit log change history fix columns repair access reset counter migrate B2Run repair custom fields maintenance repair',
     perspectives: [
       {
@@ -84,7 +84,7 @@ export function actionsSection(locale: 'de' | 'en'): ManualSection {
                 {isDe ? (
                   <ul style={{ margin: '4px 0 0', paddingLeft: 18, lineHeight: 1.6 }}>
                     <li><strong>Check-in starten</strong> — öffnet die Check-in-Seite, um Teilnehmer am Event-Tag einzuchecken (per Scan oder Namenssuche).</li>
-                    <li><strong>QR-Codes versenden</strong> — schickt jedem aktiven Teilnehmer seinen persönlichen Check-in-QR per Mail. Ab dem ersten Versand bekommen auch neue Anmeldungen ihren Code automatisch.</li>
+                    <li><strong>QR-Codes und Check-In</strong> — ein Einstieg für alles rund um den Event-Tag (seit v30.36). Dahinter wählst du zuerst, <em>was</em> du vorhast: persönliche Check-in-QR-Codes per Mail verschicken (ab dem ersten Versand bekommen auch neue Anmeldungen ihren Code automatisch), oder das Check-in vorbereiten. Bei Letzterem folgt die zweite Frage, <em>wer scannt</em> — dein Team oder die Teilnehmer selbst (Self-Check-in mit Zeitfenster, QR-PDF und Live-Anzeige).</li>
                     <li><strong>Self-Check-in einstellen</strong> — öffnet das Fenster für den Self-Check-in: großer QR, druckbares PDF, rotierende Live-Anzeige und das Check-in-Zeitfenster (Von/Bis).</li>
                   </ul>
                 ) : (

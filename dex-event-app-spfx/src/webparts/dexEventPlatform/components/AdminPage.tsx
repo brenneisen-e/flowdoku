@@ -103,10 +103,25 @@ const DUP_ACTIVE_STATI = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Wartelis
 const SAMPLE_QR_ID = 17;
 
 /**
+ * v30.37: Sentinel für `regLoadError` — „darf die Liste nicht lesen" statt
+ * „Lesen fehlgeschlagen". Als Marke und nicht als fertiger Satz, weil die
+ * Meldung zweisprachig gerendert wird und `regLoadError` nur einen String
+ * trägt.
+ */
+const ACCESS_DENIED_MSG = '__DEX_ACCESS_DENIED__';
+
+/**
  * v30.36: Optik der Auswahl-Karten im „QR-Codes und Check-In"-Modal.
  * Als Konstante, weil vier Karten sie teilen — vier inline kopierte
  * Style-Objekte laufen erfahrungsgemaess auseinander.
  */
+/** v30.36: Zeilen-Optik der Aufklapper im QR-Versand-Modal. */
+const qrDisclosureStyle: React.CSSProperties = {
+  background: 'none', border: 'none', padding: '4px 0', cursor: 'pointer',
+  color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.82rem', textAlign: 'left',
+  font: 'inherit', fontFamily: 'inherit', fontWeight: 600,
+};
+
 const hubChoiceStyle: React.CSSProperties = {
   display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer',
   padding: '16px 18px', borderRadius: 12,
@@ -559,6 +574,9 @@ export default function AdminPage(): React.ReactElement {
   // Sub-Event.
   const [subEventRegsByEventId, setSubEventRegsByEventId] = React.useState<Record<string, SPRegistration[]>>({});
   const [isLoadingSubEventRegs, setIsLoadingSubEventRegs] = React.useState(false);
+  // v30.37: Titel der Termine, deren Teilnehmerliste nicht lesbar war
+  // (Berechtigung/gelöschte Subsite). Leer = alles gelesen.
+  const [deniedSubEventLists, setDeniedSubEventLists] = React.useState<string[]>([]);
   // v22.59: manueller Reload-Trigger für die Sub-Event-Regs (z.B. nach dem
   // Löschen einer konsolidierten Abmeldung).
   const [subRegReloadTick, setSubRegReloadTick] = React.useState(0);
@@ -641,16 +659,27 @@ export default function AdminPage(): React.ReactElement {
     setIsLoadingSubEventRegs(true);
     (async () => {
       const map: Record<string, SPRegistration[]> = {};
+      // v30.37: Termine, deren Teilnehmerliste NICHT gelesen werden konnte.
+      // Bis v30.36 wurde daraus stillschweigend `[]` — für einen Organizer
+      // ohne Rechte auf den Sub-Event-Subsites sah ein volles Event dadurch
+      // exakt so aus wie ein leeres (jeder Tag „0", KPI-Kacheln 0,
+      // „Teilnehmer (0)"). Der Rückruf existiert seit v29.3, nur genutzt hat
+      // ihn hier niemand.
+      const denied: string[] = [];
       for (const ch of children) {
         try {
-          const regs = await getAllRegistrations(ch.id);
+          const regs = await getAllRegistrations(ch.id, st => {
+            if (st === 401 || st === 403 || st === 404 || st === 0) denied.push(ch.title || ch.id);
+          });
           map[ch.id] = regs;
         } catch {
           map[ch.id] = [];
+          denied.push(ch.title || ch.id);
         }
       }
       if (!cancelled) {
         setSubEventRegsByEventId(map);
+        setDeniedSubEventLists(denied);
         setIsLoadingSubEventRegs(false);
       }
     })().catch(() => { if (!cancelled) setIsLoadingSubEventRegs(false); });
@@ -819,6 +848,10 @@ export default function AdminPage(): React.ReactElement {
   // Bildschirm nur EINE Entscheidung ansteht: erst wofuer, dann wie.
   const [checkInHubOpen, setCheckInHubOpen] = React.useState(false);
   const [checkInHubStep, setCheckInHubStep] = React.useState<'choose' | 'checkin'>('choose');
+  // v30.36: Aufklapper im QR-Versand-Modal. Erklaerendes soll auf Abruf da
+  // sein, nicht beim Oeffnen den Blick auf die drei Schritte verstellen.
+  const [qrHelpOpen, setQrHelpOpen] = React.useState(false);
+  const [qrSubMailsOpen, setQrSubMailsOpen] = React.useState(false);
   // v30.5: Modal „Event-Abrechnung" (Versand an F&A + Historie).
   const [billingPanelOpen, setBillingPanelOpen] = React.useState(false);
   const [qrSendResult, setQrSendResult] = React.useState<string | null>(null);
@@ -992,6 +1025,9 @@ export default function AdminPage(): React.ReactElement {
   const [teamsToast, setTeamsToast] = React.useState<string>('');
   const [isRefreshingProfiles, setIsRefreshingProfiles] = React.useState(false);
   const [refreshProfilesResult, setRefreshProfilesResult] = React.useState<string | null>(null);
+  // v30.37: Berechtigungs-Reparatur über Klammer + alle Termine.
+  const [isRepairingPerms, setIsRepairingPerms] = React.useState(false);
+  const [repairPermsResult, setRepairPermsResult] = React.useState<string | null>(null);
   // Globale Reparatur: Organizer-Email-Mismatch über alle Events fixen
   const [isRepairingOrganizers, setIsRepairingOrganizers] = React.useState(false);
   const [repairOrganizersResult, setRepairOrganizersResult] = React.useState<string | null>(null);
@@ -3354,9 +3390,17 @@ export default function AdminPage(): React.ReactElement {
     }
     setIsLoadingRegs(true);
     setRegLoadError('');
+    setDeniedSubEventLists([]);
     try {
-      const regs = await getAllRegistrations(event.id);
+      // v30.37: Auch hier zählt der HTTP-Status. Ein 403 kam bisher als leere
+      // Liste an und wurde als „Noch keine Teilnehmer registriert." gerendert —
+      // die freundlichste denkbare Lüge.
+      let ownDenied = 0;
+      const regs = await getAllRegistrations(event.id, st => {
+        if (st === 401 || st === 403 || st === 404 || st === 0) ownDenied = st;
+      });
       setRegistrations(regs);
+      if (ownDenied) setRegLoadError(ACCESS_DENIED_MSG);
     } catch {
       setRegistrations([]);
       setRegLoadError('Teilnehmerliste konnte nicht geladen werden.');
@@ -8748,6 +8792,58 @@ export default function AdminPage(): React.ReactElement {
               />
             )}
 
+            {/* v30.37: Organizer-Berechtigungen über Klammer UND alle Termine
+                neu setzen. Bis v30.36 lief der Sync beim Speichern nur über
+                die Klammer-Subsite — nachträglich benannte (Co-)Organizer
+                hatten auf keinem einzigen Sub-Event Leserecht und sahen das
+                Event als leer. Idempotent: wer die Rechte hat, behält sie.
+                Ausführen kann das nur, wer selbst Full Control hat (Admin
+                oder Haupt-Organizer) — die betroffene Person kann sich die
+                Rechte naturgemäß nicht selbst geben. */}
+            {(isAdmin || isOrganizerFor(selectedEvent)) && (
+              <ActionTile
+                icon={<RefreshCw size={18} />}
+                category="maintenance"
+                title={isDe ? 'Organizer-Berechtigungen reparieren' : 'Repair organizer permissions'}
+                desc={isDe
+                  ? 'Setzt für alle Organizer und Co-Organizer dieses Events das Leserecht auf der Teilnehmerliste — auf dem Haupt-Event UND auf jedem einzelnen Termin. Nötig, wenn jemand nachträglich als Organizer dazugekommen ist und überall „0 Teilnehmer" sieht, obwohl Anmeldungen vorliegen.'
+                  : 'Grants every organizer and co-organizer of this event read access to the participant list — on the main event AND on every single date. Needed when someone was added as organizer later and sees "0 participants" everywhere although registrations exist.'}
+                badge="organizer"
+                busy={isRepairingPerms}
+                disabled={!selectedEvent?.subsiteUrl}
+                result={repairPermsResult}
+                resultIsError={!!repairPermsResult && (repairPermsResult.indexOf('Fehler') >= 0 || repairPermsResult.indexOf('Error') >= 0)}
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                  const emails = (selectedEvent.organizerEmails || [])
+                    .concat(selectedEvent.coOrganizerEmails || [])
+                    .map(e => (e || '').trim()).filter(Boolean);
+                  if (emails.length === 0) {
+                    setRepairPermsResult(isDe ? 'Keine Organizer-Adressen hinterlegt' : 'No organizer addresses on file');
+                    return;
+                  }
+                  const sites = [selectedEvent.subsiteUrl]
+                    .concat(childEventsOf(selectedEvent.id).map(k => k.subsiteUrl || ''))
+                    .filter(Boolean);
+                  setIsRepairingPerms(true);
+                  setRepairPermsResult(null);
+                  try {
+                    const r = await eventServiceRef.ensureOrganizerPermissionsMulti(sites, emails.join(';'));
+                    const unresolved = r.unresolved.length
+                      ? (isDe ? ` · ${r.unresolved.length} Adresse(n) nicht gefunden: ${r.unresolved.join(', ')}` : ` · ${r.unresolved.length} address(es) not found: ${r.unresolved.join(', ')}`)
+                      : '';
+                    setRepairPermsResult(isDe
+                      ? `${r.users} Person(en) auf ${r.sites} Liste(n) berechtigt${unresolved}`
+                      : `${r.users} person(s) granted on ${r.sites} list(s)${unresolved}`);
+                    setSubRegReloadTick(t => t + 1);
+                  } catch {
+                    setRepairPermsResult(isDe ? 'Fehler beim Setzen der Berechtigungen' : 'Error setting permissions');
+                  }
+                  setIsRepairingPerms(false);
+                }}
+              />
+            )}
+
             {/* v19.30 (Feature D): Audit-Log / Änderungsprotokoll dieses
                 Events öffnen — vorgefiltert auf den Event-Titel. Sichtbar für
                 Admin oder Organizer dieses Events. Zeigt pro Eintrag Zeitpunkt,
@@ -11117,8 +11213,40 @@ export default function AdminPage(): React.ReactElement {
           </Modal>
         )}
 
+        {/* v30.37: Fehlende Leserechte auf einzelnen Termin-Listen. Das
+            gehört ÜBER die Tabelle und nicht anstelle davon — die Termine,
+            die gelesen werden konnten, sind ja korrekt. Ohne diesen Hinweis
+            sah ein Organizer ohne Rechte auf den Sub-Event-Subsites ein
+            volles Event als leeres (jede Spalte „0"). */}
+        {deniedSubEventLists.length > 0 && (
+          <div style={{
+            border: '1px solid var(--dex-red)', background: '#fff5f5', borderRadius: 8,
+            padding: '12px 14px', marginBottom: 12, fontSize: 13, lineHeight: 1.5,
+          }}>
+            <strong style={{ color: 'var(--dex-red)' }}>
+              {isDe
+                ? `Kein Zugriff auf ${deniedSubEventLists.length} Teilnehmerliste(n)`
+                : `No access to ${deniedSubEventLists.length} participant list(s)`}
+            </strong>
+            <div style={{ marginTop: 6 }}>
+              {isDe
+                ? 'Die Zahlen unten sind deshalb unvollständig — betroffene Termine erscheinen mit 0 Teilnehmern, obwohl dort Anmeldungen liegen können. Grund ist fast immer, dass du erst nachträglich als Organizer benannt wurdest: Die Berechtigung wurde dann nur auf dem Haupt-Event gesetzt, nicht auf den einzelnen Terminen. Ein Admin oder der Haupt-Organizer behebt das über die Aktion „Organizer-Berechtigungen reparieren“.'
+                : 'The numbers below are therefore incomplete — affected dates show 0 participants even though registrations may exist. This almost always happens when you were named organizer after the event was created: permissions were then set on the main event only, not on the individual dates. An admin or the main organizer can fix this via the action „Repair organizer permissions“.'}
+            </div>
+            <div style={{ marginTop: 6, color: 'var(--dex-gray-500)' }}>
+              {deniedSubEventLists.slice(0, 8).join(' · ')}
+              {deniedSubEventLists.length > 8 ? ` … (+${deniedSubEventLists.length - 8})` : ''}
+            </div>
+          </div>
+        )}
         {regLoadError ? (
-          <p style={{ color: 'var(--dex-red)', fontStyle: 'italic' }}>{regLoadError}</p>
+          <p style={{ color: 'var(--dex-red)', fontStyle: 'italic' }}>
+            {regLoadError === ACCESS_DENIED_MSG
+              ? (isDe
+                ? 'Du hast keinen Zugriff auf die Teilnehmerliste dieses Events. Das ist kein leeres Event — die Liste lässt sich mit deinem Konto nur nicht lesen. Ein Admin oder der Haupt-Organizer kann das über die Aktion „Organizer-Berechtigungen reparieren" beheben.'
+                : 'You do not have access to this event’s participant list. This is not an empty event — the list simply cannot be read with your account. An admin or the main organizer can fix this via the action "Repair organizer permissions".')
+              : regLoadError}
+          </p>
         ) : isLoadingRegs ? (
           <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>{isDe ? 'Lade Teilnehmer...' : 'Loading participants...'}</p>
         ) : isConsolidatedMode ? (
@@ -13148,13 +13276,23 @@ export default function AdminPage(): React.ReactElement {
           padding={24}
           ariaLabel="QR-Codes versenden"
         >
-            <h3 style={{ margin: '0 0 4px', fontSize: '1.15rem' }}>{isDe ? 'QR-Code-Versand' : 'QR code sending'}</h3>
+            {/* v30.36: Entschlackt. Vorher standen hier fuenf konkurrierende
+                Aktionen, zwei Erklaerkaesten, eine Warnung und eine zweite
+                Spalte mit dem Self-Check-in — beim Oeffnen musste man erst
+                lesen, um handeln zu koennen. Jetzt: drei nummerierte Schritte,
+                bei denen der KNOPF der Schritt ist (vorher waren Nummern und
+                Knoepfe getrennt und mussten im Kopf zugeordnet werden), und
+                alles Erklaerende hinter Aufklappern. Der Self-Check-in ist
+                ganz raus: Er ist seit v30.36 eine gleichrangige Wahl im
+                Einstiegs-Modal davor — zweimal dieselbe Entscheidung
+                anzubieten ist genau die Falle, die CLAUDE.md beschreibt. */}
+            <h3 style={{ margin: '0 0 4px', fontSize: '1.15rem' }}>{isDe ? 'QR-Codes an Teilnehmer' : 'QR codes to attendees'}</h3>
             <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
               {isDe
-                ? 'Persönliche QR-Codes an deine Teilnehmer — fürs schnelle Einchecken am Event-Tag. Jede Mail kommt im Deloitte-Layout und zeigt unter dem Code Name + Event als Klartext.'
-                : 'Personal QR codes for your participants — for fast check-in on event day. Each email comes in the Deloitte layout and shows name + event as plain text below the code.'}
+                ? 'Jede·r bekommt einen persönlichen Code per Mail — mit Name und Teilnehmer-ID daneben.'
+                : 'Everyone receives a personal code by email — with name and attendee ID beside it.'}
             </p>
-            {/* v22.6: kompakte Status-Pills statt mehrerer Boxen. */}
+
             {(() => {
               const without = registrations.filter(r => r.Status === 'Angemeldet').length;
               const withQr = registrations.filter(r => r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length;
@@ -13166,190 +13304,127 @@ export default function AdminPage(): React.ReactElement {
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
                   {pill(without > 0 ? 'rgba(237,139,0,0.12)' : 'rgba(134,188,37,0.12)', without > 0 ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-green-dark, #4a7c1f)', <><strong>{without}</strong> {isDe ? 'ohne Code' : 'without code'}</>)}
                   {pill('var(--dex-gray-100, #eee)', 'var(--dex-gray-600)', <><strong>{withQr}</strong> {isDe ? 'mit Code' : 'with code'}</>)}
-                  {pill('rgba(134,188,37,0.10)', 'var(--dex-gray-600)', isDe ? 'Neue Anmeldungen automatisch (ab 1. Versand)' : 'New registrations automatic (after 1st send)')}
                   {externalCount > 0 && pill('#fff3e0', '#7a4a00', isDe ? `${externalCount} extern → QR an Organizer` : `${externalCount} external → QR to organizer`)}
                 </div>
               );
             })()}
-            {/* v22.6: Querformat — links der Versand-Flow, rechts die
-                Self-Check-in-Alternative. Auto-stack auf schmalen Screens. */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, alignItems: 'stretch' }}>
-              {/* LINKS: QR-Codes an Teilnehmer senden */}
-              <div style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: 10, color: 'var(--dex-gray-800)' }}>
-                  {isDe ? 'QR-Codes an deine Teilnehmer senden' : 'Send QR codes to your participants'}
-                </div>
-                <ol style={{ margin: '0 0 14px', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {[
-                    { n: 1, d: isDe ? 'Vorschau ansehen — wie sieht die Mail aus?' : 'Preview — what does the email look like?' },
-                    { n: 2, d: isDe ? 'Test an dich — Mail einmal selbst bekommen.' : 'Test to yourself — receive the email once.' },
-                    { n: 3, d: isDe ? 'An alle ohne Code senden.' : 'Send to everyone without a code.' },
-                  ].map(s => (
-                    <li key={s.n} style={{ display: 'flex', gap: 9, alignItems: 'center' }}>
-                      <span style={{ flexShrink: 0, width: 20, height: 20, borderRadius: '50%', background: 'var(--dex-green, #86bc25)', color: '#fff', fontWeight: 700, fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{s.n}</span>
-                      <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.4 }}>{s.d}</span>
-                    </li>
-                  ))}
-                </ol>
-                {/* v22.6: Aktions-Buttons im linken Block — Reihenfolge wie die Schritte. */}
-                <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <button
-                      className="btn btn-outline"
-                      disabled={isSendingQR || qrPreviewLoading}
-                      onClick={() => { qrPreviewAction().catch(() => { /* */ }); }}
-                      style={{ fontSize: '0.85rem', flex: 1, minWidth: 130 }}
-                      title={isDe ? 'So sieht die Mail aus, die rausgeht — inklusive echtem QR-Code für dich.' : 'How the email looks when sent — including a real QR code for you.'}
-                    >
-                      {qrPreviewLoading ? (isDe ? 'Lädt…' : 'Loading…') : (isDe ? '1. Vorschau' : '1. Preview')}
-                    </button>
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => { qrTestSendAction().catch(() => { /* */ }); }}
-                      disabled={isSendingQR}
-                      style={{ fontSize: '0.85rem', flex: 1, minWidth: 130 }}
-                    >
-                      {isDe ? '2. Test an Organisatoren' : '2. Test to organizers'}
-                    </button>
+
+            {/* Die drei Schritte — der Knopf IST der Schritt. */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {(() => {
+                const stepRow = (n: number, label: React.ReactNode, hint: string, btn: React.ReactElement): React.ReactElement => (
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <span style={{ flexShrink: 0, width: 24, height: 24, borderRadius: '50%', background: 'var(--dex-green, #86bc25)', color: '#fff', fontWeight: 700, fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{n}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '0.86rem', fontWeight: 600, color: 'var(--dex-gray-800)' }}>{label}</div>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--dex-gray-500)', lineHeight: 1.4 }}>{hint}</div>
+                    </div>
+                    <div style={{ flexShrink: 0 }}>{btn}</div>
                   </div>
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => { qrFullSendAction().catch(() => { /* */ }); }}
-                    disabled={isSendingQR || registrations.filter(r => r.Status === 'Angemeldet').length === 0}
-                    style={{ fontSize: '0.9rem', width: '100%', padding: '11px 18px', fontWeight: 700 }}
-                  >
-                    {(() => {
-                      const n = registrations.filter(r => r.Status === 'Angemeldet').length;
-                      if (isSendingQR) return `${isDe ? 'Versende' : 'Sending'}… (${qrSentCount})`;
-                      if (n === 0) return isDe ? 'Alle haben ihren QR-Code' : 'Everyone has their QR code';
-                      if (isDe) return `3. QR-${n === 1 ? 'Code' : 'Codes'} an ${n} Teilnehmer senden`;
-                      return `3. Send QR ${n === 1 ? 'code' : 'codes'} to ${n} participant${n === 1 ? '' : 's'}`;
-                    })()}
-                  </button>
-                  {/* v24.100: Hinweis — Versand ist nicht in Echtzeit (jede Mail
-                      einzeln), bei großen Events kann es dauern. Kein Drama,
-                      nur zur Erwartung. */}
-                  <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-600)', background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)', borderRadius: 6, padding: '7px 10px', lineHeight: 1.45 }}>
-                    {isDe
-                      ? <>Hinweis: Die Mails werden automatisch <strong>einzeln nacheinander</strong> verschickt. Bei großen Events (&gt; 100 Personen) kann der Versand daher schon mal <strong>über 10 Minuten</strong> dauern — das ist normal, keine Echtzeit-Übermittlung. Den QR-Code haben deine Teilnehmer ohnehin jederzeit <strong>live in der App</strong> unter &bdquo;Meine Events&ldquo;.</>
-                      : <>Note: The emails are sent automatically <strong>one by one</strong>. For large events (&gt; 100 people) sending can therefore take <strong>more than 10 minutes</strong> — this is normal, not a real-time delivery. Your participants always have their QR code <strong>live in the app</strong> under &bdquo;My Events&ldquo;.</>}
-                  </div>
-                  {/* v22.18: Mail-Text pro Event anpassbar — QR-Block bleibt fix. */}
-                  <button
-                    type="button"
-                    className="btn btn-outline"
-                    disabled={isSendingQR}
-                    onClick={() => { openQrMailEditor().catch(() => { /* */ }); }}
-                    style={{ fontSize: '0.82rem', width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-                  >
-                    <Pencil size={14} />
-                    {isDe
-                      ? `Mail-Text anpassen${getQrMailOverride(selectedEvent) ? ' (angepasst)' : ''}`
-                      : `Customize email text${getQrMailOverride(selectedEvent) ? ' (customized)' : ''}`}
-                  </button>
-                  {/* v29.26: QR-Mails der Sub-Events einzeln gestaltbar — der
-                      Override liegt auf der jeweiligen Sub-Event-Zeile und
-                      gilt für dessen manuellen UND automatischen Versand. */}
-                  {(() => {
-                    const kids = selectedEvent ? childEventsOf(selectedEvent.id) : [];
-                    if (kids.length === 0) return null;
-                    const term = (selectedEvent && selectedEvent.childEventTermPlural) || (isDe ? 'Sub-Events' : 'sub-events');
-                    return (
-                      <div style={{ border: '1px dashed var(--dex-gray-300)', borderRadius: 8, padding: '8px 10px' }}>
-                        <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--dex-gray-600)', marginBottom: 6 }}>
-                          {isDe ? `QR-Mails der ${term} einzeln gestalten` : `Customize the ${term} QR emails individually`}
-                        </div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', marginBottom: 8, lineHeight: 1.45 }}>
-                          {isDe
-                            ? 'Jeder Termin kann eine eigene QR-Mail haben. Der Text gilt für den Versand aus dem jeweiligen Sub-Event und für dessen automatischen QR-Versand bei neuen Anmeldungen.'
-                            : 'Each date can have its own QR email. The text applies to sending from that sub-event and to its automatic QR send for new registrations.'}
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          {kids.map(ce => (
-                            <button
-                              key={ce.id}
-                              type="button"
-                              className="btn btn-outline"
-                              disabled={isSendingQR}
-                              onClick={() => { openQrMailEditor(ce).catch(() => { /* */ }); }}
-                              style={{ fontSize: '0.76rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'flex-start', textAlign: 'left' }}
-                            >
-                              <Pencil size={12} />
-                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {ce.title || (isDe ? 'Ohne Titel' : 'Untitled')}
-                              </span>
-                              {getQrMailOverride(ce) && (
-                                <span style={{ flexShrink: 0, fontSize: '0.66rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                                  {isDe ? '(angepasst)' : '(customized)'}
-                                </span>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })()}
-                  {/* Hinweis, falls Organizer selbst nicht angemeldet ist (nur fürs Testen relevant). */}
-                  {(() => {
-                    const orgEmail = (currentUser.email || '').toLowerCase();
-                    const isOrgRegistered = !!orgEmail && registrations.some(r => (r.ParticipantEmail || '').toLowerCase() === orgEmail && (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt'));
-                    if (isOrgRegistered) return null;
-                    return (
-                      <div style={{ fontSize: '0.74rem', color: '#7a5a00', background: '#fff8e1', border: '1px solid #f5b400', borderRadius: 6, padding: '7px 10px', lineHeight: 1.4 }}>
-                        {isDe
-                          ? 'Test-Hinweis: Du bist selbst nicht angemeldet — die Test-Mail kommt an, aber ein späterer Check-in-Scan findet dich nicht in der Liste.'
-                          : 'Test note: you are not registered yourself — the test email arrives, but a later check-in scan will not find you in the list.'}
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-              {/* RECHTS: Self-Check-in als Alternative */}
-              <div style={{ border: '1px solid var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.06)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: 8, color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                  {isDe ? 'Alternative: Self-Check-in' : 'Alternative: self check-in'}
-                </div>
-                <p style={{ margin: '0 0 14px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
-                  {isDe
-                    ? 'Teilnehmer checken sich am Eingang selbst ein — sie scannen einen Event-QR mit der normalen Handy-Kamera, ganz ohne Scanner-Team.'
-                    : 'Participants check in at the entrance themselves — they scan an event QR with their phone camera, no scanner team needed.'}
-                </p>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 'auto' }}>
-                  <button
-                    className="btn btn-outline"
-                    style={{ fontSize: '0.82rem', flex: 1, minWidth: 130 }}
-                    onClick={() => { (async () => { const token = await ensureSelfCheckInReady(selectedEvent); if (token) { setQrSendModalOpen(false); navigate('self-checkin-display', selectedEvent.id); } })().catch(() => { /* */ }); }}
-                  >
-                    {isDe ? 'Live-QR anzeigen' : 'Show live QR'}
-                  </button>
-                  <button
-                    className="btn btn-outline"
-                    style={{ fontSize: '0.82rem', flex: 1, minWidth: 130 }}
-                    onClick={() => { (async () => { const token = await ensureSelfCheckInReady(selectedEvent); if (!token) return; await downloadSelfCheckInPdf({ eventTitle: selectedEvent.title || 'Event', eventDateLabel: selectedEvent.startDate ? new Date(selectedEvent.startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '', locationLabel: selectedEvent.location || '', token }); })().catch(() => { /* */ }); }}
-                  >
-                    {isDe ? 'QR-PDF herunterladen' : 'Download QR PDF'}
-                  </button>
-                </div>
-                <p style={{ margin: '14px 0 0', fontSize: '0.74rem', color: 'var(--dex-gray-500)', lineHeight: 1.45 }}>
-                  {isDe ? 'Ablauf am Event-Tag: ' : 'Process on event day: '}
-                  <a href="javascript:void(0)" onClick={(e) => { e.preventDefault(); navigate('manual'); window.location.hash = 'check-in'; }} style={{ color: 'var(--dex-green-dark)', fontWeight: 600 }}>
-                    {isDe ? 'Handbuch „Check-In am Event-Tag"' : 'Manual “Check-in on event day”'}
-                  </a>
-                </p>
-              </div>
+                );
+                const pending = registrations.filter(r => r.Status === 'Angemeldet').length;
+                return (
+                  <>
+                    {stepRow(1,
+                      isDe ? 'Vorschau ansehen' : 'Preview',
+                      isDe ? 'So sieht die Mail aus, die rausgeht.' : 'How the email will look.',
+                      <button className="btn btn-outline" disabled={isSendingQR || qrPreviewLoading} onClick={() => { qrPreviewAction().catch(() => { /* */ }); }} style={{ fontSize: '0.85rem', minWidth: 110 }}>
+                        {qrPreviewLoading ? (isDe ? 'Lädt…' : 'Loading…') : (isDe ? 'Ansehen' : 'View')}
+                      </button>)}
+                    {stepRow(2,
+                      isDe ? 'Test an dich' : 'Test to yourself',
+                      isDe ? 'Geht an alle Organisatoren dieses Events.' : 'Goes to all organizers of this event.',
+                      <button className="btn btn-secondary" disabled={isSendingQR} onClick={() => { qrTestSendAction().catch(() => { /* */ }); }} style={{ fontSize: '0.85rem', minWidth: 110 }}>
+                        {isDe ? 'Senden' : 'Send'}
+                      </button>)}
+                    {stepRow(3,
+                      isDe ? 'An alle ohne Code senden' : 'Send to everyone without a code',
+                      isDe ? 'Danach bekommt jede neue Anmeldung ihren Code automatisch.' : 'Afterwards every new registration gets its code automatically.',
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => { qrFullSendAction().catch(() => { /* */ }); }}
+                        disabled={isSendingQR || pending === 0}
+                        style={{ fontSize: '0.85rem', minWidth: 110, fontWeight: 700 }}
+                      >
+                        {isSendingQR
+                          ? `${isDe ? 'Versende' : 'Sending'}… (${qrSentCount})`
+                          : pending === 0
+                            ? (isDe ? 'Erledigt' : 'Done')
+                            : (isDe ? `An ${pending} senden` : `Send to ${pending}`)}
+                      </button>)}
+                  </>
+                );
+              })()}
             </div>
 
-            {/* v22.7: Info-Box „neue Anmeldungen automatisch" — erklärt, dass
-                nach dem ersten Versand niemand mehr manuell nachversorgt werden
-                muss. */}
-            <div style={{ marginTop: 14, display: 'flex', alignItems: 'flex-start', gap: 9, padding: '10px 12px', borderRadius: 8, background: 'var(--dex-green-light, #f0f8e8)', border: '1px solid rgba(134,188,37,0.4)' }}>
-              <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', flexShrink: 0, marginTop: 1 }}><Check size={16} /></span>
-              <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+            {/* Erklärendes auf Abruf — beim Öffnen soll man handeln können,
+                nicht erst lesen müssen. */}
+            <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <button type="button" onClick={() => setQrHelpOpen(v => !v)} style={qrDisclosureStyle}>
+                {qrHelpOpen ? '▾ ' : '▸ '}{isDe ? 'Wie lange dauert der Versand?' : 'How long does sending take?'}
+              </button>
+              {qrHelpOpen && (
+                <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', lineHeight: 1.5, padding: '2px 0 6px 14px' }}>
+                  {isDe
+                    ? <>Die Mails gehen <strong>einzeln nacheinander</strong> raus. Bei mehr als 100 Personen kann das <strong>über 10 Minuten</strong> dauern — das ist normal. Ihren Code sehen Teilnehmer ohnehin jederzeit in der App unter &bdquo;Meine Events&ldquo;.</>
+                    : <>Emails are sent <strong>one by one</strong>. With more than 100 people this can take <strong>over 10 minutes</strong> — that is normal. Attendees can see their code anytime in the app under &bdquo;My Events&ldquo;.</>}
+                </div>
+              )}
+
+              <button type="button" disabled={isSendingQR} onClick={() => { openQrMailEditor().catch(() => { /* */ }); }} style={qrDisclosureStyle}>
                 {isDe
-                  ? <><strong>Neue Anmeldungen bekommen ihren QR-Code automatisch.</strong> Sobald du den Versand einmal gestartet hast (Schritt 3), erhält jede weitere Anmeldung an diesem Event ihren QR-Code direkt zusammen mit der Anmeldebestätigung — auch nach der Anmeldefrist. Du musst dann nichts mehr manuell nachsenden.</>
-                  : <><strong>New registrations get their QR code automatically.</strong> Once you have started sending (step 3), every further registration for this event receives its QR code together with the registration confirmation — even after the deadline. You no longer have to resend anything manually.</>}
-              </span>
+                  ? `✎ Mail-Text anpassen${getQrMailOverride(selectedEvent) ? ' (angepasst)' : ''}`
+                  : `✎ Customize email text${getQrMailOverride(selectedEvent) ? ' (customized)' : ''}`}
+              </button>
+
+              {(() => {
+                const kids = selectedEvent ? childEventsOf(selectedEvent.id) : [];
+                if (kids.length === 0) return null;
+                const term = (selectedEvent && selectedEvent.childEventTermPlural) || (isDe ? 'Sub-Events' : 'sub-events');
+                return (
+                  <>
+                    <button type="button" onClick={() => setQrSubMailsOpen(v => !v)} style={qrDisclosureStyle}>
+                      {qrSubMailsOpen ? '▾ ' : '▸ '}{isDe ? `Mail-Texte der ${term} einzeln anpassen` : `Customize the ${term} emails individually`}
+                    </button>
+                    {qrSubMailsOpen && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '2px 0 6px 14px' }}>
+                        {kids.map(ce => (
+                          <button
+                            key={ce.id}
+                            type="button"
+                            className="btn btn-outline"
+                            disabled={isSendingQR}
+                            onClick={() => { openQrMailEditor(ce).catch(() => { /* */ }); }}
+                            style={{ fontSize: '0.76rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'flex-start', textAlign: 'left' }}
+                          >
+                            <Pencil size={12} />
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ce.title || (isDe ? 'Ohne Titel' : 'Untitled')}</span>
+                            {getQrMailOverride(ce) && (
+                              <span style={{ flexShrink: 0, fontSize: '0.66rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? '(angepasst)' : '(customized)'}</span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
+
+            {/* Bleibt sichtbar statt hinter einem Aufklapper: Wer selbst nicht
+                angemeldet ist, wundert sich sonst beim Test-Scan. */}
+            {(() => {
+              const orgEmail = (currentUser.email || '').toLowerCase();
+              const isOrgRegistered = !!orgEmail && registrations.some(r => (r.ParticipantEmail || '').toLowerCase() === orgEmail && (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt'));
+              if (isOrgRegistered) return null;
+              return (
+                <div style={{ marginTop: 12, fontSize: '0.76rem', color: '#7a5a00', background: '#fff8e1', border: '1px solid #f5b400', borderRadius: 6, padding: '7px 10px', lineHeight: 1.4 }}>
+                  {isDe
+                    ? 'Du bist selbst nicht angemeldet — die Test-Mail kommt an, aber ein späterer Check-in-Scan findet dich nicht in der Liste.'
+                    : 'You are not registered yourself — the test email arrives, but a later check-in scan will not find you in the list.'}
+                </div>
+              );
+            })()}
 
             {qrSendResult && (
               <div style={{

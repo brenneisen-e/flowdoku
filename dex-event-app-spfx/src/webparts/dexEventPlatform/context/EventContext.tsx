@@ -487,7 +487,8 @@ interface EventContextType {
    *  Organizer während der Tour ein Übungs-Event im Organizer Center. */
   setTutorialDemoActive: (on: boolean) => void;
   checkRegistrationByEmail: (eventId: string, email: string) => Promise<SPRegistration | null>;
-  getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
+  // v30.37: optionaler onHttpError — 403/404 ist NICHT „keine Teilnehmer".
+  getAllRegistrations: (eventId: string, onHttpError?: (_status: number) => void) => Promise<SPRegistration[]>;
   deleteEvent: (eventId: string) => Promise<boolean>;
   /** v24.0: Anzahl der Anmeldungen über das Organizer-Team hinaus (echte
    *  Teilnehmer, Haupt- + Sub-Events, status-unabhängig). >0 ⇒ Lösch-Sperre
@@ -4233,14 +4234,17 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     }
   }
 
-  async function getAllRegistrations(eventId: string): Promise<SPRegistration[]> {
+  async function getAllRegistrations(eventId: string, onHttpError?: (_status: number) => void): Promise<SPRegistration[]> {
     // v18: Demo-Event → synthetische Teilnehmerliste (~25 Demo-User inkl.
     // Team, Warteliste, Abmeldungen), damit der Admin die Teilnehmer-
     // Verwaltung im Demo-Modus durchspielen kann.
     if (isDemoShowcaseId(eventId)) return buildDemoRegistrations();
     const subsiteUrl = subsiteMap.current[eventId];
-    if (!subsiteUrl) return [];
-    return eventService.getAllRegistrations(subsiteUrl);
+    // v30.37: Auch die fehlende Subsite ist ein Fehler, kein leeres Event —
+    // sonst ist „Event hat keine Teilnehmerliste" von „niemand angemeldet"
+    // wieder nicht zu unterscheiden. Status 0 = kein HTTP-Versuch möglich.
+    if (!subsiteUrl) { if (onHttpError) onHttpError(0); return []; }
+    return eventService.getAllRegistrations(subsiteUrl, onHttpError);
   }
 
   // v24.0: Team-E-Mails eines Events (Organizer + Co-Organizer + Test-Team +

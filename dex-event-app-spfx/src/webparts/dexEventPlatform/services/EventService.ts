@@ -3658,34 +3658,74 @@ export class EventService {
    * obendrauf hinzu.
    */
   public async ensureOrganizerPermissions(subsiteUrl: string, organizerEmails: string): Promise<void> {
-    if (!subsiteUrl || !organizerEmails) return;
-    const emails = organizerEmails.split(/[;,]/).map(s => s.trim()).filter(Boolean);
+    await this.ensureOrganizerPermissionsMulti([subsiteUrl], organizerEmails);
+  }
+
+  /**
+   * v30.37: Derselbe Sync über MEHRERE Subsites — Klammer **und** alle
+   * Sub-Events.
+   *
+   * Warum das nötig war: `ensureOrganizerPermissions` lief im Wizard nur über
+   * `editEvent.subsiteUrl`, also die Klammer. Jedes Sub-Event hat aber eine
+   * EIGENE Subsite mit eigener Teilnehmerliste. Wer nachträglich als
+   * Co-Organizer dazukam, bekam Full Control auf der Klammer und auf keinem
+   * einzigen Termin — und weil `getAllRegistrations` bei 403 nicht wirft,
+   * sondern `[]` liefert, sah diese Person überall „0 Teilnehmer" statt einer
+   * Fehlermeldung. Ein Klammer-Event mit 19 Office-Tagen war damit für sie
+   * vollständig leer (Befund 31.08.2026, Carolin R.).
+   *
+   * Die User-Id wird EINMAL je Person aufgelöst, nicht je Subsite — sonst sind
+   * es bei 19 Terminen × 3 Organizern 57 Lookups gegen dieselben drei Konten.
+   *
+   * @returns Zähler fürs UI: wie viele Zuweisungen liefen, wie viele Personen
+   *   gar nicht auflösbar waren. Ein „schon vorhanden" zählt als Erfolg —
+   *   SharePoints `addroleassignment` ist idempotent.
+   */
+  public async ensureOrganizerPermissionsMulti(
+    subsiteUrls: string[],
+    organizerEmails: string
+  ): Promise<{ sites: number; users: number; grants: number; unresolved: string[] }> {
+    const sites = (subsiteUrls || []).map(s => (s || '').trim()).filter(Boolean);
+    const emails = (organizerEmails || '').split(/[;,]/).map(s => s.trim()).filter(Boolean);
+    const result = { sites: sites.length, users: 0, grants: 0, unresolved: [] as string[] };
+    if (sites.length === 0 || emails.length === 0) return result;
+
+    // 1) Personen auflösen — einmal, nicht je Subsite.
+    const userIds: number[] = [];
     for (const em of emails) {
       try {
         const userResponse = await this._sp.get(
           `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(em)}')?$select=Id`,
           SPHttpClient.configurations.v1
         );
-        if (!userResponse.ok) continue;
+        if (!userResponse.ok) { result.unresolved.push(em); continue; }
         const userData = await userResponse.json();
         const userId = userData.d?.Id || userData.Id;
-        if (!userId) continue;
-        // Subsite Full Control (Web-Level)
+        if (userId) userIds.push(userId); else result.unresolved.push(em);
+      } catch { result.unresolved.push(em); }
+    }
+    result.users = userIds.length;
+
+    // 2) Je Subsite: Web-Level + Teilnehmerliste. Beides einzeln gekapselt —
+    //    eine recycelte Subsite darf die übrigen Termine nicht abbrechen.
+    for (const site of sites) {
+      for (const userId of userIds) {
         try {
           await this._post(
-            `${subsiteUrl}/_api/web/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
+            `${site}/_api/web/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
             {}
           );
+          result.grants++;
         } catch { /* idempotent — Person hatte schon Rechte */ }
-        // Teilnehmerliste Full Control (List-Level)
         try {
           await this._post(
-            `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
+            `${site}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
             {}
           );
         } catch { /* idempotent */ }
-      } catch { /* skip einzelne User-Fehler, mit nächstem weiter */ }
+      }
     }
+    return result;
   }
 
   /**

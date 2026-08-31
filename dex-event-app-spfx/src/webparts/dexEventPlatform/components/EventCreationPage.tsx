@@ -5318,7 +5318,16 @@ export default function EventCreationPage(): React.ReactElement {
               coOrganizerEmails.join(';'),
             ].filter(Boolean).join(';');
             if (allOrgEmailsForPerm) {
-              await svcPerm.ensureOrganizerPermissions(editEvent.subsiteUrl, allOrgEmailsForPerm);
+              // v30.37: Klammer UND alle Sub-Events. Jeder Termin hat eine
+              // eigene Subsite mit eigener Teilnehmerliste — bis v30.36 lief
+              // der Sync nur über die Klammer. Ein nachträglich benannter
+              // Co-Organizer konnte die Klammer sehen und KEINEN einzigen
+              // Termin; weil getAllRegistrations bei 403 `[]` liefert, kam das
+              // in der App als „0 Teilnehmer" an statt als Fehler.
+              const permSites = [editEvent.subsiteUrl]
+                .concat(childEventsOf(editEvent.id).map(k => k.subsiteUrl || ''))
+                .filter(Boolean);
+              await svcPerm.ensureOrganizerPermissionsMulti(permSites, allOrgEmailsForPerm);
             }
           }
         } catch (err) { console.warn('[DEX] Permission-Sync für Organizer fehlgeschlagen:', err); }
