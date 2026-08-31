@@ -2673,14 +2673,15 @@ alle Bestands-Events nichts.
 
 #### Zeile 1 — `Check_Online_Meeting` (Condition) · NEU
 
-- Einfügen **nach** `Create event (V4)`, **vor** `Update item`.
+- Einfügen **ganz am Ende der Kette**, hinter `PATCH_DONOTFORWARD` (die
+  bestehende Graph-PATCH-Action, die nach `Update_item` läuft). Nichts
+  davorliegendes anfassen — dann bleiben `Create event (V4)`, das
+  Zurückschreiben des `CalendarLink` und DoNotForward unverändert.
 - Umbenennen in `Check_Online_Meeting`.
 - Linke Seite über **fx**: `coalesce(triggerBody()?['OutlookIsOnlineMeeting'], false)`
 - Operator **is equal to**, rechte Seite über **fx**: `true`
-- Der **Nein**-Zweig bleibt leer.
-- `Update item` anschließend per **Run after** an `Check_Online_Meeting`
-  („is successful") hängen — nicht in den Ja-Zweig hineinziehen, sonst läuft es
-  bei `false` gar nicht mehr.
+- Der **Nein**-Zweig bleibt leer. Kein Run-After an anderen Actions ändern —
+  die Condition ist der letzte Schritt.
 
 #### Zeile 2 — `Set_Online_Meeting` (Office 365 Outlook — Send an HTTP request) · NEU
 
@@ -2689,8 +2690,8 @@ Im **Ja**-Zweig von `Check_Online_Meeting`:
 | Feld | Wert |
 |---|---|
 | Method | `PATCH` |
-| Uri | `/v1.0/me/events/@{body('Create_event_(V4)')?['id']}` |
-| Headers | `Content-Type` = `application/json` |
+| Uri | `@concat('https://graph.microsoft.com/v1.0/me/events/', outputs('Create_event_(V4)')?['body/id'])` |
+| Content-Type | `application/json` |
 | Body | siehe unten |
 
 ```json
@@ -2700,10 +2701,18 @@ Im **Ja**-Zweig von `Check_Online_Meeting`:
 }
 ```
 
-Liegt der Kalender **nicht** im Postfach der Verbindung, sondern in einem
-freigegebenen Postfach (`table` in `Create event (V4)` = Kalender-Id der Shared
-Mailbox), dann statt `/me` das Postfach adressieren:
-`/v1.0/users/no_reply.events@deloitte.de/events/@{body('Create_event_(V4)')?['id']}`.
+**Zur URI — hier NICHT die Shared Mailbox adressieren.** Diese Action ist
+baugleich zu `PATCH_DONOTFORWARD` in demselben Flow, also einfach von dort
+kopieren und nur Body und Namen ändern. Dort steht bewusst `/me/events/{id}`:
+Der Termin liegt im Kalender des **Connection-Users**, nicht in
+`no_reply.events@deloitte.de` — die Shared Mailbox ist nur die
+Send-As-Identität für `organizer`. Der Versuch mit
+`/users/no_reply.events@.../events/{id}` endete hier in **HTTP 404 „The
+specified object was not found in the store."** (dokumentiert 2026-05-22). Im
+Flow `DEX_Outlook_Einladungen` ist es umgekehrt — dort wird der Termin über
+`iCalUId` im Postfach gesucht und deshalb mit `/users/no_reply.events@…`
+adressiert. **Regel: die URI-Form der Graph-Action übernehmen, die im
+GLEICHEN Flow schon funktioniert.**
 
 **Fallstricke, die dokumentiert sind und beide zutreffen können:**
 
@@ -2722,11 +2731,52 @@ Mailbox), dann statt `/me` das Postfach adressieren:
    Wenn nach dem Umbau kein „Teilnehmen"-Knopf im Termin steht, ist das der
    erste Verdacht — **nicht** der Flow.
 
-**Warum kein zweiter Weg für den Update-Pfad:** `DEX_Outlook_Einladungen`
-(`Build_Update_Body`) patcht Titel/Start/Ende/Body. `isOnlineMeeting` dort
-mitzupatchen wäre wirkungslos, sobald es einmal `true` ist, und würde bei
-`false` einen Fehler provozieren. Die Entscheidung fällt deshalb genau einmal —
-beim Anlegen des Termins.
+#### Update-Pfad — `DEX_Outlook_Einladungen`, Zweig `UpdateEvent`
+
+**Warum es den zweiten Einbau braucht:** Der Create-Flow triggert nur auf NEUE
+Listeneinträge. Schaltet ein Organizer die Option bei einem Event ein, das den
+Outlook-Termin schon hat (oder aktiviert sie bei einem Bestandsevent), läuft
+`DEX_CreateOutlookEvent` nie wieder — ohne diesen Teil bliebe der Haken für
+alle bestehenden Termine wirkungslos. Die App queued den Fall bereits: Seit
+v30.26 zählt ein Moduswechsel im Outlook-Update-Detektor (`onlineMeetingChanged()`)
+als Änderung und erzeugt eine `UpdateEvent`-Zeile.
+
+**Warum NICHT in `Build_Update_Body`:** Der Compose baut den PATCH-Body für
+JEDES Update. `"isOnlineMeeting": false` würde dort bei jedem Titel- oder
+Zeit-Update mitgeschickt — und Graph nimmt `false` auf einer bereits
+aktivierten Besprechung nicht an. Deshalb eine eigene, bedingte Action.
+
+##### Zeile 1 — `Check_Online_Meeting_Update` (Condition) · NEU
+
+- Einfügen im **Ja-Zweig von `Is_UpdateEvent`**, direkt **nach**
+  `Send_an_HTTP_request` (der Graph-PATCH mit `@outputs('Build_Update_Body')`).
+- Linke Seite über **fx**:
+  `coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookIsOnlineMeeting'], false)`
+  — hier kommt der Wert aus `Get_Event_Details`, **nicht** aus `triggerBody()`:
+  Die Queue-Zeile in `DEX_Outlook` trägt das Feld nicht, es steht in
+  `DEX_Events`.
+- Operator **is equal to**, rechte Seite über **fx**: `true`
+- Nein-Zweig bleibt leer.
+
+##### Zeile 2 — `Set_Online_Meeting_Update` (Office 365 Outlook — Send an HTTP request) · NEU
+
+Im **Ja**-Zweig. Am einfachsten `Send_an_HTTP_request` kopieren und Body
+ersetzen — URI und Verbindung stimmen dann schon:
+
+| Feld | Wert |
+|---|---|
+| Method | `PATCH` |
+| Uri | `@concat('https://graph.microsoft.com/v1.0/users/no_reply.events@deloitte.de/events/', variables('varRealEventId'))` |
+| Content-Type | `application/json` |
+| Body | `{ "isOnlineMeeting": true, "onlineMeetingProvider": "teamsForBusiness" }` |
+
+`varRealEventId` ist an dieser Stelle gesetzt (`Set_variable` nach
+`Find_Outlook_Event`) und hält die Graph-Event-Id des gefundenen Termins.
+
+**Idempotent:** Ist die Besprechung schon aktiv, ist der PATCH ein No-Op —
+Graph lässt `true` auf `true` zu. Nur der Weg zurück (`true` → `false`) ist
+gesperrt, s. Fallstrick 1. Deshalb darf diese Action bei jedem Update
+mitlaufen, ohne dass etwas doppelt entsteht.
 
 **Alternative, bewusst NICHT gewählt:** die Teams-Connector-Action „Create a
 Teams meeting" liefert zwar direkt einen `joinUrl`, legt aber einen **zweiten**
