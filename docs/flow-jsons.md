@@ -2832,6 +2832,35 @@ Die beiden inneren `replace` sind identisch zu dem, was `Create event (V4)` im
 Feld `item/body` schon macht — der Body wird also NICHT neu erfunden, nur um den
 Teams-Ersatz erweitert.
 
+**v30.28 — zusätzlich die Einwahl-Zeile (`{{TEAMS_DIALIN}}`).** Die App rendert
+unter dem Knopf eine leere Zeile mit dieser Marke; der Flow baut den GANZEN
+Text und lässt ihn leer, wenn es keine Einwahldaten gibt. Dafür ein viertes
+`replace` ganz außen (statt des Ausdrucks aus dem Kasten oben):
+
+```
+replace(replace(replace(replace(coalesce(triggerBody()?['OutlookBody'], ''), '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image')), '{{TEAMS_URL}}', coalesce(body('Set_Online_Meeting')?['onlineMeeting']?['joinUrl'], '')), '{{TEAMS_DIALIN}}', if(empty(coalesce(body('Set_Online_Meeting')?['onlineMeeting']?['conferenceId'], '')), '', concat('Konferenz-ID: ', body('Set_Online_Meeting')?['onlineMeeting']?['conferenceId'], ' &middot; Telefon: ', coalesce(body('Set_Online_Meeting')?['onlineMeeting']?['tollNumber'], ''))))
+```
+
+**Was NICHT geht — und warum es keine Nachlässigkeit ist:** Meeting-ID und
+Passcode aus dem Teams-Kasten lassen sich hier nicht reproduzieren. Sie gehören
+zur onlineMeeting-**Ressource** (`/onlineMeetings`, Feld `joinMeetingIdSettings`),
+während die `onlineMeeting`-**Eigenschaft** des Termins nur `joinUrl`,
+`conferenceId`, `tollNumber`/`tollFreeNumbers` und `quickDial` führt. Die
+Ressource ist über die Standard-Action des Outlook-Connectors gar nicht
+erreichbar — erlaubt sind nur die Segmente `messages`, `mailFolders`, `events`,
+`calendar`, `calendars`, `outlook`, `inferenceClassification`. Sie käme nur über
+den Premium-Connector „HTTP with Azure AD" plus Anwendungsrechte
+(`OnlineMeetings.Read.All` mit Application Access Policy) in Reichweite.
+
+Praktisch fehlt dadurch wenig: Der Passcode steckt bereits im `joinUrl`
+(`?p=…`), der Knopf funktioniert also ohne Eingabe. Meeting-ID und Passcode
+braucht nur, wer sich manuell über „Mit ID teilnehmen" einwählt — und für den
+Telefonweg stehen Konferenz-ID und Nummer in der neuen Zeile. **Wer die
+Teams-Angaben wortgleich behalten will**, lässt Zeile 3 (`Set_Teams_Body`) weg:
+Dann bleibt der von Exchange angehängte Kasten stehen — mit allen Angaben, aber
+eben unter der Karte statt darin. Das ist der Tausch, mehr Optionen gibt es
+nicht.
+
 **Der „Teilnehmen"-Knopf oben im Kalender bleibt.** Er hängt an der
 Termin-Eigenschaft `onlineMeeting`, nicht am Body-Text; überschrieben wird nur
 der angehängte Kasten. Was mit dem Body verschwindet, ist der Link
@@ -2870,10 +2899,63 @@ JEDES Update. `"isOnlineMeeting": false` würde dort bei jedem Titel- oder
 Zeit-Update mitgeschickt — und Graph nimmt `false` auf einer bereits
 aktivierten Besprechung nicht an. Deshalb eine eigene, bedingte Action.
 
+##### ⚠ KORREKTUR 2026-08-31 — die Reihenfolge unten war falsch
+
+Die erste Fassung dieser Anleitung setzte `Check_Online_Meeting_Update` **hinter**
+`Send_an_HTTP_request`. Der Live-JSON vom selben Tag zeigt, dass genau das
+eingebaut wurde — und dass es den Hauptfall nicht löst:
+
+```
+Build_Update_Body  →  Send_an_HTTP_request (Body-PATCH)  →  Check/Set_Online_Meeting_Update
+```
+
+`Build_Update_Body` liest die `joinUrl` aus `Get_Existing_Event`. Das läuft
+**bevor** `Set_Online_Meeting_Update` die Besprechung überhaupt anlegt. Beim
+ERSTEN Update, das ein Online-Meeting einschaltet — also genau dem Fall, für den
+dieser Zweig existiert — ist die `joinUrl` deshalb noch leer:
+
+1. `{{TEAMS_URL}}` wird durch `''` ersetzt → **toter grüner Knopf**.
+2. Danach legt `Set_Online_Meeting_Update` die Besprechung an, und Teams hängt
+   seinen eigenen Kasten UNTER die Karte — der Zustand, den v30.27 beseitigen
+   sollte.
+
+Erst ein ZWEITES Update würde es richtig stellen. Richtig ist deshalb:
+
+```
+Check/Set_Online_Meeting_Update  →  Build_Update_Body  →  Send_an_HTTP_request
+```
+
+**Zwei Änderungen am bestehenden Einbau** (nichts löschen):
+
+1. `Check_Online_Meeting_Update` **vor** `Build_Update_Body` ziehen, sodass die
+   Condition die erste Action im True-Zweig von `Is_UpdateEvent` ist und
+   `Build_Update_Body` per **Configure run after** an ihr hängt
+   („is successful"). `Send_an_HTTP_request` bleibt unverändert hinter
+   `Build_Update_Body`.
+2. In `Build_Update_Body` die `joinUrl` bevorzugt aus der Antwort des frisch
+   gelaufenen Enable-PATCH nehmen, mit `Get_Existing_Event` als Rückfall für
+   Termine, die die Besprechung schon hatten:
+
+```
+"content": "@{replace(replace(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookBody'], ''), '{{ORB_URL}}', coalesce(first(outputs('Get_Event_Details')?['body/value'])?['EmailImageBase64'], '')), '{{TEAMS_URL}}', coalesce(body('Set_Online_Meeting_Update')?['onlineMeeting']?['joinUrl'], body('Get_Existing_Event')?['onlineMeeting']?['joinUrl'], ''))}"
+```
+
+Läuft der False-Zweig (kein Online-Meeting), ist `Set_Online_Meeting_Update`
+übersprungen; `body()` liefert dann null und `coalesce` greift auf den zweiten
+Wert durch. Sollte ein Lauf stattdessen mit „The template language expression …
+cannot be evaluated" abbrechen, das erste Glied durch
+`if(equals(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookIsOnlineMeeting'], false), true), body('Set_Online_Meeting_Update')?['onlineMeeting']?['joinUrl'], '')`
+ersetzen.
+
+**Merksatz für beide Flows:** Der Body wird immer ZULETZT geschrieben. Alles,
+was Exchange von sich aus an den Body anhängt — der Teams-Kasten ist der einzige
+bekannte Fall —, muss vorher passiert sein, sonst überschreibt es unsere Karte
+oder fehlt darin.
+
 ##### Zeile 1 — `Check_Online_Meeting_Update` (Condition) · NEU
 
-- Einfügen im **Ja-Zweig von `Is_UpdateEvent`**, direkt **nach**
-  `Send_an_HTTP_request` (der Graph-PATCH mit `@outputs('Build_Update_Body')`).
+- Einfügen im **True-Zweig von `Is_UpdateEvent`** als **erste** Action, also
+  **vor** `Build_Update_Body` (s. Korrektur oben).
 - Linke Seite über **fx**:
   `coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookIsOnlineMeeting'], false)`
   — hier kommt der Wert aus `Get_Event_Details`, **nicht** aus `triggerBody()`:
@@ -2902,10 +2984,11 @@ ersetzen — URI und Verbindung stimmen dann schon:
 Kein neuer Schritt, nur eine Erweiterung: Der Update-Pfad schreibt den Body bei
 JEDEM Update neu aus `OutlookBody` — damit käme die Marke `{{TEAMS_URL}}` jedes
 Mal unersetzt zurück in den Termin. Deshalb in der Zeile `"content"` ein drittes
-`replace` außen herum:
+`replace` außen herum (Stand nach der Korrektur oben — Enable-PATCH zuerst,
+`Get_Existing_Event` als Rückfall):
 
 ```
-"content": "@{replace(replace(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookBody'], ''), '{{ORB_URL}}', coalesce(first(outputs('Get_Event_Details')?['body/value'])?['EmailImageBase64'], '')), '{{TEAMS_URL}}', coalesce(body('Get_Existing_Event')?['onlineMeeting']?['joinUrl'], ''))}"
+"content": "@{replace(replace(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookBody'], ''), '{{ORB_URL}}', coalesce(first(outputs('Get_Event_Details')?['body/value'])?['EmailImageBase64'], '')), '{{TEAMS_URL}}', coalesce(body('Set_Online_Meeting_Update')?['onlineMeeting']?['joinUrl'], body('Get_Existing_Event')?['onlineMeeting']?['joinUrl'], ''))}"
 ```
 
 `Get_Existing_Event` lädt den Termin an dieser Stelle bereits — die `joinUrl`
