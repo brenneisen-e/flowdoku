@@ -103,6 +103,14 @@ const DUP_ACTIVE_STATI = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Wartelis
 const SAMPLE_QR_ID = 17;
 
 /**
+ * v30.37: Sentinel für `regLoadError` — „darf die Liste nicht lesen" statt
+ * „Lesen fehlgeschlagen". Als Marke und nicht als fertiger Satz, weil die
+ * Meldung zweisprachig gerendert wird und `regLoadError` nur einen String
+ * trägt.
+ */
+const ACCESS_DENIED_MSG = '__DEX_ACCESS_DENIED__';
+
+/**
  * v30.36: Optik der Auswahl-Karten im „QR-Codes und Check-In"-Modal.
  * Als Konstante, weil vier Karten sie teilen — vier inline kopierte
  * Style-Objekte laufen erfahrungsgemaess auseinander.
@@ -566,6 +574,9 @@ export default function AdminPage(): React.ReactElement {
   // Sub-Event.
   const [subEventRegsByEventId, setSubEventRegsByEventId] = React.useState<Record<string, SPRegistration[]>>({});
   const [isLoadingSubEventRegs, setIsLoadingSubEventRegs] = React.useState(false);
+  // v30.37: Titel der Termine, deren Teilnehmerliste nicht lesbar war
+  // (Berechtigung/gelöschte Subsite). Leer = alles gelesen.
+  const [deniedSubEventLists, setDeniedSubEventLists] = React.useState<string[]>([]);
   // v22.59: manueller Reload-Trigger für die Sub-Event-Regs (z.B. nach dem
   // Löschen einer konsolidierten Abmeldung).
   const [subRegReloadTick, setSubRegReloadTick] = React.useState(0);
@@ -648,16 +659,27 @@ export default function AdminPage(): React.ReactElement {
     setIsLoadingSubEventRegs(true);
     (async () => {
       const map: Record<string, SPRegistration[]> = {};
+      // v30.37: Termine, deren Teilnehmerliste NICHT gelesen werden konnte.
+      // Bis v30.36 wurde daraus stillschweigend `[]` — für einen Organizer
+      // ohne Rechte auf den Sub-Event-Subsites sah ein volles Event dadurch
+      // exakt so aus wie ein leeres (jeder Tag „0", KPI-Kacheln 0,
+      // „Teilnehmer (0)"). Der Rückruf existiert seit v29.3, nur genutzt hat
+      // ihn hier niemand.
+      const denied: string[] = [];
       for (const ch of children) {
         try {
-          const regs = await getAllRegistrations(ch.id);
+          const regs = await getAllRegistrations(ch.id, st => {
+            if (st === 401 || st === 403 || st === 404 || st === 0) denied.push(ch.title || ch.id);
+          });
           map[ch.id] = regs;
         } catch {
           map[ch.id] = [];
+          denied.push(ch.title || ch.id);
         }
       }
       if (!cancelled) {
         setSubEventRegsByEventId(map);
+        setDeniedSubEventLists(denied);
         setIsLoadingSubEventRegs(false);
       }
     })().catch(() => { if (!cancelled) setIsLoadingSubEventRegs(false); });
@@ -1003,6 +1025,9 @@ export default function AdminPage(): React.ReactElement {
   const [teamsToast, setTeamsToast] = React.useState<string>('');
   const [isRefreshingProfiles, setIsRefreshingProfiles] = React.useState(false);
   const [refreshProfilesResult, setRefreshProfilesResult] = React.useState<string | null>(null);
+  // v30.37: Berechtigungs-Reparatur über Klammer + alle Termine.
+  const [isRepairingPerms, setIsRepairingPerms] = React.useState(false);
+  const [repairPermsResult, setRepairPermsResult] = React.useState<string | null>(null);
   // Globale Reparatur: Organizer-Email-Mismatch über alle Events fixen
   const [isRepairingOrganizers, setIsRepairingOrganizers] = React.useState(false);
   const [repairOrganizersResult, setRepairOrganizersResult] = React.useState<string | null>(null);
@@ -3365,9 +3390,17 @@ export default function AdminPage(): React.ReactElement {
     }
     setIsLoadingRegs(true);
     setRegLoadError('');
+    setDeniedSubEventLists([]);
     try {
-      const regs = await getAllRegistrations(event.id);
+      // v30.37: Auch hier zählt der HTTP-Status. Ein 403 kam bisher als leere
+      // Liste an und wurde als „Noch keine Teilnehmer registriert." gerendert —
+      // die freundlichste denkbare Lüge.
+      let ownDenied = 0;
+      const regs = await getAllRegistrations(event.id, st => {
+        if (st === 401 || st === 403 || st === 404 || st === 0) ownDenied = st;
+      });
       setRegistrations(regs);
+      if (ownDenied) setRegLoadError(ACCESS_DENIED_MSG);
     } catch {
       setRegistrations([]);
       setRegLoadError('Teilnehmerliste konnte nicht geladen werden.');
@@ -8759,6 +8792,58 @@ export default function AdminPage(): React.ReactElement {
               />
             )}
 
+            {/* v30.37: Organizer-Berechtigungen über Klammer UND alle Termine
+                neu setzen. Bis v30.36 lief der Sync beim Speichern nur über
+                die Klammer-Subsite — nachträglich benannte (Co-)Organizer
+                hatten auf keinem einzigen Sub-Event Leserecht und sahen das
+                Event als leer. Idempotent: wer die Rechte hat, behält sie.
+                Ausführen kann das nur, wer selbst Full Control hat (Admin
+                oder Haupt-Organizer) — die betroffene Person kann sich die
+                Rechte naturgemäß nicht selbst geben. */}
+            {(isAdmin || isOrganizerFor(selectedEvent)) && (
+              <ActionTile
+                icon={<RefreshCw size={18} />}
+                category="maintenance"
+                title={isDe ? 'Organizer-Berechtigungen reparieren' : 'Repair organizer permissions'}
+                desc={isDe
+                  ? 'Setzt für alle Organizer und Co-Organizer dieses Events das Leserecht auf der Teilnehmerliste — auf dem Haupt-Event UND auf jedem einzelnen Termin. Nötig, wenn jemand nachträglich als Organizer dazugekommen ist und überall „0 Teilnehmer" sieht, obwohl Anmeldungen vorliegen.'
+                  : 'Grants every organizer and co-organizer of this event read access to the participant list — on the main event AND on every single date. Needed when someone was added as organizer later and sees "0 participants" everywhere although registrations exist.'}
+                badge="organizer"
+                busy={isRepairingPerms}
+                disabled={!selectedEvent?.subsiteUrl}
+                result={repairPermsResult}
+                resultIsError={!!repairPermsResult && (repairPermsResult.indexOf('Fehler') >= 0 || repairPermsResult.indexOf('Error') >= 0)}
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                  const emails = (selectedEvent.organizerEmails || [])
+                    .concat(selectedEvent.coOrganizerEmails || [])
+                    .map(e => (e || '').trim()).filter(Boolean);
+                  if (emails.length === 0) {
+                    setRepairPermsResult(isDe ? 'Keine Organizer-Adressen hinterlegt' : 'No organizer addresses on file');
+                    return;
+                  }
+                  const sites = [selectedEvent.subsiteUrl]
+                    .concat(childEventsOf(selectedEvent.id).map(k => k.subsiteUrl || ''))
+                    .filter(Boolean);
+                  setIsRepairingPerms(true);
+                  setRepairPermsResult(null);
+                  try {
+                    const r = await eventServiceRef.ensureOrganizerPermissionsMulti(sites, emails.join(';'));
+                    const unresolved = r.unresolved.length
+                      ? (isDe ? ` · ${r.unresolved.length} Adresse(n) nicht gefunden: ${r.unresolved.join(', ')}` : ` · ${r.unresolved.length} address(es) not found: ${r.unresolved.join(', ')}`)
+                      : '';
+                    setRepairPermsResult(isDe
+                      ? `${r.users} Person(en) auf ${r.sites} Liste(n) berechtigt${unresolved}`
+                      : `${r.users} person(s) granted on ${r.sites} list(s)${unresolved}`);
+                    setSubRegReloadTick(t => t + 1);
+                  } catch {
+                    setRepairPermsResult(isDe ? 'Fehler beim Setzen der Berechtigungen' : 'Error setting permissions');
+                  }
+                  setIsRepairingPerms(false);
+                }}
+              />
+            )}
+
             {/* v19.30 (Feature D): Audit-Log / Änderungsprotokoll dieses
                 Events öffnen — vorgefiltert auf den Event-Titel. Sichtbar für
                 Admin oder Organizer dieses Events. Zeigt pro Eintrag Zeitpunkt,
@@ -11128,8 +11213,40 @@ export default function AdminPage(): React.ReactElement {
           </Modal>
         )}
 
+        {/* v30.37: Fehlende Leserechte auf einzelnen Termin-Listen. Das
+            gehört ÜBER die Tabelle und nicht anstelle davon — die Termine,
+            die gelesen werden konnten, sind ja korrekt. Ohne diesen Hinweis
+            sah ein Organizer ohne Rechte auf den Sub-Event-Subsites ein
+            volles Event als leeres (jede Spalte „0"). */}
+        {deniedSubEventLists.length > 0 && (
+          <div style={{
+            border: '1px solid var(--dex-red)', background: '#fff5f5', borderRadius: 8,
+            padding: '12px 14px', marginBottom: 12, fontSize: 13, lineHeight: 1.5,
+          }}>
+            <strong style={{ color: 'var(--dex-red)' }}>
+              {isDe
+                ? `Kein Zugriff auf ${deniedSubEventLists.length} Teilnehmerliste(n)`
+                : `No access to ${deniedSubEventLists.length} participant list(s)`}
+            </strong>
+            <div style={{ marginTop: 6 }}>
+              {isDe
+                ? 'Die Zahlen unten sind deshalb unvollständig — betroffene Termine erscheinen mit 0 Teilnehmern, obwohl dort Anmeldungen liegen können. Grund ist fast immer, dass du erst nachträglich als Organizer benannt wurdest: Die Berechtigung wurde dann nur auf dem Haupt-Event gesetzt, nicht auf den einzelnen Terminen. Ein Admin oder der Haupt-Organizer behebt das über die Aktion „Organizer-Berechtigungen reparieren“.'
+                : 'The numbers below are therefore incomplete — affected dates show 0 participants even though registrations may exist. This almost always happens when you were named organizer after the event was created: permissions were then set on the main event only, not on the individual dates. An admin or the main organizer can fix this via the action „Repair organizer permissions“.'}
+            </div>
+            <div style={{ marginTop: 6, color: 'var(--dex-gray-500)' }}>
+              {deniedSubEventLists.slice(0, 8).join(' · ')}
+              {deniedSubEventLists.length > 8 ? ` … (+${deniedSubEventLists.length - 8})` : ''}
+            </div>
+          </div>
+        )}
         {regLoadError ? (
-          <p style={{ color: 'var(--dex-red)', fontStyle: 'italic' }}>{regLoadError}</p>
+          <p style={{ color: 'var(--dex-red)', fontStyle: 'italic' }}>
+            {regLoadError === ACCESS_DENIED_MSG
+              ? (isDe
+                ? 'Du hast keinen Zugriff auf die Teilnehmerliste dieses Events. Das ist kein leeres Event — die Liste lässt sich mit deinem Konto nur nicht lesen. Ein Admin oder der Haupt-Organizer kann das über die Aktion „Organizer-Berechtigungen reparieren" beheben.'
+                : 'You do not have access to this event’s participant list. This is not an empty event — the list simply cannot be read with your account. An admin or the main organizer can fix this via the action "Repair organizer permissions".')
+              : regLoadError}
+          </p>
         ) : isLoadingRegs ? (
           <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>{isDe ? 'Lade Teilnehmer...' : 'Loading participants...'}</p>
         ) : isConsolidatedMode ? (

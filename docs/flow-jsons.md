@@ -2799,6 +2799,119 @@ Flow `DEX_Outlook_Einladungen` ist es umgekehrt — dort wird der Termin über
 adressiert. **Regel: die URI-Form der Graph-Action übernehmen, die im
 GLEICHEN Flow schon funktioniert.**
 
+### ⚠ KORREKTUR v30.37 (31.08.2026) — `Set_Teams_Body` darf den Body NICHT neu bauen
+
+**Befund aus dem Live-Betrieb:** In neuen Events blieb `{{TEAMS_DIALIN}}` als
+roher Text im Termin stehen, und der von Exchange angehängte Teams-Kasten war
+trotzdem noch da. Beim Nachrecherchieren ist ein zweiter, schwerwiegenderer
+Fehler aufgefallen — im Entwurf unten, nicht im Tenant.
+
+**Microsoft Graph, Referenz `event: update`, wörtlich:**
+
+> „Before updating the body of an event that has been set up as an online
+> meeting, be sure to first get the **body** property, apply the appropriate
+> changes to the content, and preserve the meeting blob for online meeting.
+> **Inadvertently removing the meeting blob from the body would disable meeting
+> online.**“
+
+Der Entwurf unten baut den Body aus `OutlookBody` **neu** und PATCHt ihn
+komplett. Damit fällt der Meeting-Blob weg, den Exchange beim Aktivieren in den
+Body geschrieben hat — die Besprechung kann dabei still kaputtgehen. Erschwerend:
+`isOnlineMeeting` lässt sich laut derselben Referenz **nicht zurücksetzen**; ein
+so beschädigter Termin ist nur durch Neuanlage zu heilen. Deshalb gilt ab sofort:
+
+**Body erst HOLEN, die Marken DARIN ersetzen, zurück-PATCHen.**
+
+Was das kostet: Der angehängte Exchange-Kasten **bleibt stehen**. Ihn zu
+entfernen ist genau die Handlung, die das Meeting gefährdet. Der Teams-Link
+steht dadurch zweimal im Termin — einmal im grünen DEX-Block „Online
+teilnehmen“ (das war das Ziel aus v30.27), einmal im Kasten darunter. Das ist
+der sichere Tausch; eine dritte Variante gibt es nicht.
+
+#### Übersicht der Änderung
+
+| # | NEU/GEÄNDERT | Name der Action | Art der Action | Stelle |
+|---|---|---|---|---|
+| 1 | **NEU** | `Get_Teams_Event` | Office 365 Outlook — Send an HTTP request | im **True**-Zweig, direkt **nach** `Set_Online_Meeting` |
+| 2 | **GEÄNDERT** | `Set_Teams_Body` | Office 365 Outlook — Send an HTTP request | bleibt, wo sie ist — direkt **nach** `Get_Teams_Event` |
+
+#### Zeile 1 — `Get_Teams_Event` (Send an HTTP request) · NEU
+
+- [ ] Im Flow `DEX_Outlook_Termine` oben rechts auf **Edit** klicken.
+- [ ] Im **True**-Zweig die Action `Set_Online_Meeting` suchen und darunter auf
+      **Add an action** klicken.
+- [ ] Nach `Send an HTTP request` suchen und den Treffer unter **Office 365
+      Outlook** wählen (NICHT „HTTP“ und NICHT „HTTP with Azure AD“).
+- [ ] Die neue Action über **Rename** auf diesen Namen setzen — der Name wird
+      unten in den Ausdrücken wörtlich gebraucht:
+
+```
+Get_Teams_Event
+```
+
+- [ ] **Method**: `GET` auswählen.
+- [ ] **Uri**: exakt dieselbe URI wie in `Set_Online_Meeting`, mit `?$select=body`
+      dahinter. Wenn dort z.B. `/me/events/@{...}` steht, dann hier:
+
+```
+/me/events/@{body('Create_event_(V4)')?['id']}?$select=body
+```
+
+- [ ] **Body** leer lassen, **Content-Type** leer lassen.
+
+#### Zeile 2 — `Set_Teams_Body` (Send an HTTP request) · GEÄNDERT
+
+Die Action bleibt vollständig erhalten — **nur der `content`-Ausdruck wird
+ersetzt**. Method, Uri und Content-Type bleiben unverändert.
+
+- [ ] In `Set_Teams_Body` das Feld **Body** öffnen.
+- [ ] Den bisherigen Ausdruck hinter `"content":` **komplett** markieren und
+      löschen (der mit `triggerBody()?['OutlookBody']` beginnt).
+- [ ] Über den **Expression**-Tab (fx) — **nie als Text** — diesen Ausdruck
+      einsetzen:
+
+```
+replace(replace(coalesce(body('Get_Teams_Event')?['body']?['content'], ''), '{{TEAMS_URL}}', coalesce(body('Set_Online_Meeting')?['onlineMeeting']?['joinUrl'], '')), '{{TEAMS_DIALIN}}', if(empty(coalesce(body('Set_Online_Meeting')?['onlineMeeting']?['conferenceId'], '')), '', concat('Konferenz-ID: ', body('Set_Online_Meeting')?['onlineMeeting']?['conferenceId'], ' &middot; Telefon: ', coalesce(body('Set_Online_Meeting')?['onlineMeeting']?['tollNumber'], ''))))
+```
+
+- [ ] Prüfen, dass der Body danach genau so aussieht:
+
+```json
+{
+  "body": {
+    "contentType": "HTML",
+    "content": "@{<der fx-Ausdruck von oben>}"
+  }
+}
+```
+
+- [ ] **Save** klicken.
+
+**Warum jetzt nur noch ZWEI `replace`:** `{{LOGO_URL}}` und `{{ORB_URL}}` hat
+`Create event (V4)` beim Anlegen bereits ersetzt. Im geholten Body stehen sie
+also gar nicht mehr — nur `{{TEAMS_URL}}` und `{{TEAMS_DIALIN}}` sind noch offen,
+weil es die Besprechung beim Anlegen noch nicht gab. Wer hier weiter über
+`OutlookBody` geht, ersetzt zwar dieselben Marken, wirft aber den Meeting-Blob
+weg — das ist der Fehler, um den es hier geht.
+
+#### Test
+
+- [ ] Ein Test-Event mit **Online-Meeting (automatisch)** anlegen.
+- [ ] Im Kalender prüfen: Steht oben der **Teilnehmen**-Knopf? → Die Besprechung
+      ist intakt, der Blob wurde bewahrt.
+- [ ] Im Termintext prüfen: Steht im grünen Block „Online teilnehmen“ ein
+      echter Link statt `{{TEAMS_URL}}`, und darunter eine Zeile mit
+      Konferenz-ID statt `{{TEAMS_DIALIN}}`?
+- [ ] Steht `{{TEAMS_DIALIN}}` noch roh da, ist der fx-Ausdruck als **Text**
+      statt über den **Expression**-Tab eingesetzt worden — dann steht in der
+      **Run history** bei `Set_Teams_Body` im `content` der Ausdruck als
+      Klartext.
+- [ ] Fehlt der **Teilnehmen**-Knopf, ist `Get_Teams_Event` übersprungen worden
+      und `Set_Teams_Body` hat den alten Ausdruck → Termin verwerfen, nicht
+      reparieren, und beide Schritte oben nachziehen.
+
+---
+
 #### Zeile 3 — `Set_Teams_Body` (Office 365 Outlook — Send an HTTP request) · NEU (v30.27)
 
 Ebenfalls im **True**-Zweig, direkt **nach** `Set_Online_Meeting`.
@@ -2831,6 +2944,10 @@ replace(replace(replace(coalesce(triggerBody()?['OutlookBody'], ''), '{{LOGO_URL
 Die beiden inneren `replace` sind identisch zu dem, was `Create event (V4)` im
 Feld `item/body` schon macht — der Body wird also NICHT neu erfunden, nur um den
 Teams-Ersatz erweitert.
+
+> **VERALTET — nicht übernehmen.** Der folgende Ausdruck baut den Body aus
+> `OutlookBody` neu und zerstört dabei den Meeting-Blob. Gültig ist die
+> KORREKTUR v30.37 weiter oben.
 
 **v30.28 — zusätzlich die Einwahl-Zeile (`{{TEAMS_DIALIN}}`).** Die App rendert
 unter dem Knopf eine leere Zeile mit dieser Marke; der Flow baut den GANZEN

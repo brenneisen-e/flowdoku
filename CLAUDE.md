@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.36.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.37.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -239,6 +239,24 @@ Verweise = Rückstand des 3-Monats-Löschkonzepts). Seit v29.3 gibt es den
 `onHttpError`-Rückruf; 404/410 heißt „Liste gelöscht" (eindeutig, Verweise
 dürfen weg), alles andere heißt „übersprungen". Wer aus einem leeren Ergebnis
 auf „nicht vorhanden" schließt, muss diesen Rückruf nutzen.
+
+Dieselbe Falle hat v30.37 ein zweites Mal zugeschnappt, diesmal in der
+Teilnehmer-Ansicht: `AdminPage` machte aus jedem Fehler stillschweigend
+`map[ch.id] = []`, und eine Co-Organizerin ohne Rechte auf den
+Sub-Event-Subsites sah ein Event mit 77 Anmeldungen als vollständig leeres
+(jede Spalte „0", alle KPI-Kacheln 0). **Merksatz: Ein leeres Ergebnis ohne
+geprüften Status ist keine Aussage über die Daten, sondern über gar nichts.**
+Beide Stellen nutzen jetzt `onHttpError`; die Ansicht zählt gesperrte Termine
+namentlich auf, statt sie als 0 zu rendern.
+
+**Berechtigungen gelten je Subsite — und jedes Sub-Event hat eine eigene.**
+`ensureOrganizerPermissions` lief bis v30.36 nur über `editEvent.subsiteUrl`.
+Wer bei `createEvent` noch nicht Organizer war, hatte danach Full Control auf
+der Klammer und auf **keinem** Termin. Seit v30.37 gibt es
+`ensureOrganizerPermissionsMulti(urls[], emails)` (löst die User-Id einmal je
+Person auf, nicht je Subsite) plus die Aktion „Organizer-Berechtigungen
+reparieren" für Bestandsdaten. Wer irgendwo eine Berechtigung setzt: Der
+Klammer-Pfad ist nie der ganze Pfad.
 
 **Löschungen zuerst im Register, dann unwiderruflich.** `deleteParticipantData`
 recycelte bis v29.2 erst die Subsite und räumte danach `DEX_Participants` auf —
