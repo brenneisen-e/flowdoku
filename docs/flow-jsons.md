@@ -2714,6 +2714,45 @@ Flow `DEX_Outlook_Einladungen` ist es umgekehrt — dort wird der Termin über
 adressiert. **Regel: die URI-Form der Graph-Action übernehmen, die im
 GLEICHEN Flow schon funktioniert.**
 
+#### Zeile 3 — `Set_Teams_Body` (Office 365 Outlook — Send an HTTP request) · NEU (v30.27)
+
+Ebenfalls im **True**-Zweig, direkt **nach** `Set_Online_Meeting`.
+
+**Warum:** Ohne diesen Schritt hängt Exchange seinen eigenen Kasten
+„Microsoft Teams meeting / Join: …" UNTER die gewrappte DEX-Karte — optisch
+abgetrennt, mit doppelter Information. Die App schreibt seit v30.27 im Modus
+`auto` die Marke `{{TEAMS_URL}}` in den Body (an genau der Stelle, an der auch
+ein selbst eingetragener Teams-Link stünde). Dieser PATCH ersetzt sie durch die
+echte `joinUrl` und überschreibt dabei den angehängten Kasten.
+
+**Kein zusätzliches GET nötig:** Der Enable-PATCH aus Zeile 2 liefert die
+`onlineMeeting`-Eigenschaft schon in seiner Antwort zurück
+(„The response includes the updated event with the corresponding online meeting
+information specified in the **onlineMeeting** property").
+
+| Feld | Wert |
+|---|---|
+| Method | `PATCH` |
+| Uri | dieselbe wie in Zeile 2 |
+| Content-Type | `application/json` |
+| Body | `{ "body": { "contentType": "HTML", "content": "<fx-Ausdruck>" } }` |
+
+fx für `content` (dreifaches `replace`, außen der neue Teams-Ersatz):
+
+```
+replace(replace(replace(coalesce(triggerBody()?['OutlookBody'], ''), '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image')), '{{TEAMS_URL}}', coalesce(body('Set_Online_Meeting')?['onlineMeeting']?['joinUrl'], ''))
+```
+
+Die beiden inneren `replace` sind identisch zu dem, was `Create event (V4)` im
+Feld `item/body` schon macht — der Body wird also NICHT neu erfunden, nur um den
+Teams-Ersatz erweitert.
+
+**Der „Teilnehmen"-Knopf oben im Kalender bleibt.** Er hängt an der
+Termin-Eigenschaft `onlineMeeting`, nicht am Body-Text; überschrieben wird nur
+der angehängte Kasten. Was mit dem Body verschwindet, ist der Link
+**Meeting options** — den kann in diesem Modus ohnehin niemand nutzen, weil die
+Besprechung dem Gruppenpostfach gehört (s. Fallstrick 1).
+
 **Fallstricke, die dokumentiert sind und beide zutreffen können:**
 
 1. **Einmal an, immer an.** „Once you enable a meeting online, Microsoft Graph
@@ -2772,6 +2811,28 @@ ersetzen — URI und Verbindung stimmen dann schon:
 
 `varRealEventId` ist an dieser Stelle gesetzt (`Set_variable` nach
 `Find_Outlook_Event`) und hält die Graph-Event-Id des gefundenen Termins.
+
+##### Zeile 3 — `Build_Update_Body` (Compose, bestehend) · GEÄNDERT (v30.27)
+
+Kein neuer Schritt, nur eine Erweiterung: Der Update-Pfad schreibt den Body bei
+JEDEM Update neu aus `OutlookBody` — damit käme die Marke `{{TEAMS_URL}}` jedes
+Mal unersetzt zurück in den Termin. Deshalb in der Zeile `"content"` ein drittes
+`replace` außen herum:
+
+```
+"content": "@{replace(replace(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookBody'], ''), '{{ORB_URL}}', coalesce(first(outputs('Get_Event_Details')?['body/value'])?['EmailImageBase64'], '')), '{{TEAMS_URL}}', coalesce(body('Get_Existing_Event')?['onlineMeeting']?['joinUrl'], ''))}"
+```
+
+`Get_Existing_Event` lädt den Termin an dieser Stelle bereits — die `joinUrl`
+ist also ohne zusätzliche Action da. Die Marke steht ohnehin nur im Body, wenn
+der Organizer den Modus `auto` gewählt hat; bei allen anderen Terminen läuft das
+`replace` ins Leere und ändert nichts.
+
+**Wenn `joinUrl` leer ist, entsteht ein toter grüner Knopf** — `coalesce` setzt
+dann einen leeren `href` ein. Das ist kein eigener Fehler, sondern dasselbe
+Symptom wie Fallstrick 2 (Outlook-Add-in aus): Die Besprechung wurde nie
+erzeugt. Wer einen Knopf ohne Ziel im Termin sieht, prüft also nicht den Body,
+sondern ob `isOnlineMeeting` am Termin überhaupt auf `true` steht.
 
 **Idempotent:** Ist die Besprechung schon aktiv, ist der PATCH ein No-Op —
 Graph lässt `true` auf `true` zu. Nur der Weg zurück (`true` → `false`) ist
