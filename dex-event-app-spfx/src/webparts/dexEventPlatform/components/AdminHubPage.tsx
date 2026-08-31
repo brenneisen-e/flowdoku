@@ -45,7 +45,7 @@ export default function AdminHubPage(): React.ReactElement {
   // v30.25: Tutorial-Einstieg für Admins (Header-Pille entfällt für sie).
   const { openTutorial } = useTutorial();
   const listUrl = (name: string): string => `${siteUrl}/Lists/${name}`;
-  const { events: allEvents, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns, restoreCustomFieldDescriptions, reseedDefaultEmailTemplates, maybeSendWeeklyReport, recomputeEventKpiOnly } = useEvents();
+  const { events: allEvents, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns, repairAllOrganizerPermissions, restoreCustomFieldDescriptions, reseedDefaultEmailTemplates, maybeSendWeeklyReport, recomputeEventKpiOnly } = useEvents();
   const { locale } = useLanguage();
   const { confirmDialog, showAlert } = useDialog();
   const isDe = locale === 'de';
@@ -54,7 +54,7 @@ export default function AdminHubPage(): React.ReactElement {
 
   const [archTotal, setArchTotal] = React.useState(0);
   const [delTotal, setDelTotal] = React.useState(0);
-  const [busy, setBusy] = React.useState<'' | 'arch' | 'del' | 'fixcols' | 'restoredesc' | 'reseed' | 'weekly' | 'kpi'>('');
+  const [busy, setBusy] = React.useState<'' | 'arch' | 'del' | 'fixcols' | 'perms' | 'restoredesc' | 'reseed' | 'weekly' | 'kpi'>('');
   // v26.63: zuletzt neu berechnete Events-Zahl (für die Erfolgs-Anzeige).
   const [kpiResult, setKpiResult] = React.useState<number | null>(null);
   // v28.26: Teilnehmer-Register bereinigen (Dubletten zusammenführen).
@@ -68,6 +68,8 @@ export default function AdminHubPage(): React.ReactElement {
   const [regCleanProgress, setRegCleanProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
   // v24.33: Fortschritt für das globale „Spalten fixen".
   const [fixProgress, setFixProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
+  // v30.39: Fortschritt der Berechtigungs-Reparatur über alle Event-Bäume.
+  const [permProgress, setPermProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
   const [restoreProgress, setRestoreProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
   const [restorePreview, setRestorePreview] = React.useState<Array<{ eventId: string; eventTitle: string; fields: Array<{ label: string; props: string[] }> }> | null>(null);
   // v26.81: Berechtigungen aufräumen — Modal mit Prüf-/Korrektur-Ablauf.
@@ -313,6 +315,36 @@ export default function AdminHubPage(): React.ReactElement {
       showAlert(msg, { variant: r.errors ? 'error' : 'success' });
     } catch { showAlert(isDe ? 'Spalten-Prüfung fehlgeschlagen.' : 'Column check failed.', { variant: 'error' }); }
     finally { setBusy(''); setFixProgress(null); }
+  };
+
+  // v30.39: Berechtigungen aller Organizer über ALLE Events nachziehen.
+  const doRepairPermissions = async (): Promise<void> => {
+    if (busy) return;
+    if (!(await confirmDialog(
+      isDe
+        ? 'Für ALLE Events prüfen, ob jeder Organizer und Co-Organizer Zugriff auf die Teilnehmerlisten hat — auf dem Haupt-Event UND auf jedem Sub-Event? Fehlende Rechte werden ergänzt. Es wird nichts entzogen und nichts gelöscht. Je nach Anzahl der Events kann das einige Minuten dauern.'
+        : 'Check for ALL events whether every organizer and co-organizer has access to the participant lists — on the main event AND on every sub-event? Missing permissions are added. Nothing is revoked and nothing is deleted. This may take a few minutes depending on the number of events.',
+      { confirmLabel: isDe ? 'Jetzt prüfen' : 'Check now' }
+    ))) return;
+    setBusy('perms');
+    setPermProgress({ done: 0, total: 0, label: '' });
+    try {
+      const r = await repairAllOrganizerPermissions((done, total, label) => setPermProgress({ done, total, label }));
+      // Die Zahl der Zuweisungen ist bewusst NICHT als „so viele waren kaputt"
+      // formuliert: SharePoint meldet bei addroleassignment nicht, ob das Recht
+      // neu ist. Deshalb steht dort, was getan wurde, nicht was gefehlt hat.
+      const un = r.unresolved.length
+        ? (isDe
+            ? ` ${r.unresolved.length} Adresse(n) konnten nicht zugeordnet werden: ${r.unresolved.join(', ')} — meist ehemalige Kolleg:innen.`
+            : ` ${r.unresolved.length} address(es) could not be resolved: ${r.unresolved.join(', ')} — usually former colleagues.`)
+        : '';
+      showAlert(isDe
+        ? `Fertig: ${r.trees} Event(s) mit insgesamt ${r.sites} Teilnehmerliste(n) durchlaufen, ${r.grants} Zuweisung(en) gesetzt${r.errors ? `, ${r.errors} mit Fehler` : ''}.${un}`
+        : `Done: ${r.trees} event(s) with ${r.sites} participant list(s) processed, ${r.grants} assignment(s) applied${r.errors ? `, ${r.errors} with errors` : ''}.${un}`,
+        { variant: r.errors ? 'error' : 'success' });
+    } catch {
+      showAlert(isDe ? 'Berechtigungs-Prüfung fehlgeschlagen.' : 'Permission check failed.', { variant: 'error' });
+    } finally { setBusy(''); setPermProgress(null); }
   };
 
   // v26.13: Wiederherstellung versehentlich gelöschter Custom-Field-
@@ -741,6 +773,35 @@ export default function AdminHubPage(): React.ReactElement {
           )}
           <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { void doFixAllColumns(); }}>
             {busy === 'fixcols' ? (isDe ? 'Wird geprüft…' : 'Checking…') : (isDe ? 'Jetzt alle prüfen' : 'Check all now')}
+          </button>
+        </div>
+
+        {/* v30.39: Organizer-Berechtigungen über alle Events. Der Einzel-Fix im
+            Organizer Center (v30.37) hilft nur dem, der von dem Problem schon
+            weiß — und sichtbar wird es erst, wenn jemand vor einer leeren
+            Teilnehmerliste steht. Diese Kachel geht über den Bestand. */}
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><Users size={18} /></span>
+            <span style={{ fontWeight: 700 }}>{isDe ? 'Organizer-Rechte prüfen (alle Events)' : 'Check organizer permissions (all events)'}</span>
+          </div>
+          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
+            {isDe
+              ? 'Stellt sicher, dass jeder Organizer und Co-Organizer die Teilnehmerliste seiner Events lesen darf — auf dem Haupt-Event UND auf jedem Sub-Event. Bis v30.36 wurde die Berechtigung beim Speichern nur auf dem Haupt-Event gesetzt: Wer nachträglich als Organizer dazukam, sah bei einem Event mit mehreren Terminen überall 0 Teilnehmer, obwohl Anmeldungen vorlagen. Fehlende Rechte werden ergänzt, es wird nichts entzogen und nichts gelöscht.'
+              : 'Ensures every organizer and co-organizer can read the participant list of their events — on the main event AND on every sub-event. Until v30.36 permissions were set on the main event only: anyone added as organizer later saw 0 participants everywhere on multi-date events although registrations existed. Missing permissions are added; nothing is revoked or deleted.'}
+          </p>
+          {busy === 'perms' && permProgress && (
+            <div style={{ margin: '0 0 10px' }}>
+              <div style={{ height: 8, background: 'var(--dex-gray-100)', borderRadius: 999, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${permProgress.total > 0 ? Math.round((permProgress.done / permProgress.total) * 100) : 0}%`, background: 'var(--dex-green, #86bc25)', transition: 'width 0.2s' }} />
+              </div>
+              <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {permProgress.done}/{permProgress.total}{permProgress.label ? ` \u00b7 ${permProgress.label}` : ''}
+              </div>
+            </div>
+          )}
+          <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { void doRepairPermissions(); }}>
+            {busy === 'perms' ? (isDe ? 'Wird geprüft…' : 'Checking…') : (isDe ? 'Jetzt alle prüfen' : 'Check all now')}
           </button>
         </div>
 
