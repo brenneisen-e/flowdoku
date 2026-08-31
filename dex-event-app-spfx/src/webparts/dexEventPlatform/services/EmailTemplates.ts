@@ -968,6 +968,18 @@ export function teamsJoinBlockHtml(link: string, isDe = true): string {
     + `</td></tr></table>`;
 }
 
+/**
+ * v30.27: Platzhalter für die Teams-Beitritts-URL im Outlook-Body.
+ *
+ * Im Modus „DEX erzeugt den Teams-Link" existiert die URL beim Speichern noch
+ * nicht — die Besprechung entsteht erst, wenn der Flow den Termin angelegt und
+ * per Graph `isOnlineMeeting` gesetzt hat. Die App schreibt deshalb diese Marke
+ * in den Body, der Flow ersetzt sie durch die echte `onlineMeeting.joinUrl`.
+ * Gleiches Muster wie `{{ORB_URL}}` / `{{LOGO_URL}}` — Wert bewusst ohne
+ * Sonderzeichen, damit escapeHtml ihn unverändert durchreicht.
+ */
+export const TEAMS_URL_PLACEHOLDER = '{{TEAMS_URL}}';
+
 /** v29.38: Bereits eingesetzte Teams-Blöcke entfernen (siehe teamsJoinBlockHtml). */
 export function stripTeamsJoinBlock(html: string): string {
   if (!html) return '';

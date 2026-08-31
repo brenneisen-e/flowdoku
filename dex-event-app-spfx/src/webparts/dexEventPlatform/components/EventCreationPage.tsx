@@ -18,7 +18,7 @@ import { isThrottled } from '../utils/spThrottle';
 // v26.48: zentrale B2Run-Köln-Vorlage (Titel-Erkennung + 7 Meldefelder mit
 // deterministischen IDs für den offiziellen Excel-Export).
 import { isB2RunKoelnTitle, b2runKoelnTemplateFields } from '../data/b2runKoeln';
-import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, parseOutlookHeadings, replacePlaceholders, getCachedOrbBase64, normalizeMadeWithLink } from '../services/EmailTemplates';
+import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, parseOutlookHeadings, replacePlaceholders, getCachedOrbBase64, normalizeMadeWithLink, TEAMS_URL_PLACEHOLDER } from '../services/EmailTemplates';
 import { exportSummaryAsPdf, exportSummaryAsDoc, SummaryData } from '../services/EventSummaryExport';
 import { EventType, AgendaItem } from '../types';
 import { Trash2, Send, Plus, X, Users, Check } from './Icons';
@@ -1379,6 +1379,22 @@ export default function EventCreationPage(): React.ReactElement {
   // sichtbar. Ohne Snapshot bliebe eine reine Link-Änderung für den
   // Update-Detektor unsichtbar und der Termin behielte den alten Stand.
   const effTeamsLink = (): string => (onlineMeetingMode === 'own' ? teamsLink.trim() : '');
+  /**
+   * v30.27: Link, der in den TERMIN-BODY wandert — nicht derselbe wie
+   * `effTeamsLink()`, der nur den gespeicherten `_teamsLink` steuert.
+   *
+   * Im Modus „DEX erzeugt den Link" gibt es beim Speichern noch keine URL: Die
+   * Teams-Besprechung entsteht erst, wenn der Flow den Termin angelegt hat.
+   * Ohne Platzhalter bliebe der DEX-Block leer und Teams hängt seinen eigenen
+   * Kasten UNTER die Layout-Karte — genau das, was v30.26 im Postfach gezeigt
+   * hat. Der Platzhalter folgt deshalb dem etablierten `{{ORB_URL}}`-Muster:
+   * Die App schreibt die Marke, der Flow ersetzt sie durch die echte joinUrl.
+   */
+  const outlookTeamsLink = (): string => (
+    onlineMeetingMode === 'own' ? teamsLink.trim()
+      : onlineMeetingMode === 'auto' ? TEAMS_URL_PLACEHOLDER
+        : ''
+  );
   const initialTeamsLinkRef = React.useRef<string>(teamsLink);
   // v30.26: Der Modus zählt für den Outlook-Update-Detektor genauso wie der
   // Link selbst — ein Wechsel von „eigener Link" auf „DEX erzeugt" ändert
@@ -3872,7 +3888,7 @@ export default function EventCreationPage(): React.ReactElement {
         const resolvedSub2 = subOutlookSub ? replacePlaceholders(subOutlookSub, vars) : (draft.location || undefined);
         // v18.73: Sub-Events erben das Header-Bild-Layout des Hauptevents.
         // v28.29: ohne eigenes/geerbtes Bild wird die Breite gekappt (Orb).
-        const wrapped = buildOutlookBody(resolvedHead, resolvedBody, resolvedSub2, headerLayoutFor(subOutlookLogo), effTeamsLink(), (subEmailLang || '').toUpperCase() !== 'EN');
+        const wrapped = buildOutlookBody(resolvedHead, resolvedBody, resolvedSub2, headerLayoutFor(subOutlookLogo), outlookTeamsLink(), (subEmailLang || '').toUpperCase() !== 'EN');
         wrappedSubOutlookBody = wrapped.replace(/\{\{ORB_URL\}\}/g, subOutlookLogo || getCachedOrbBase64() || '');
       }
       // Sub-Event-EmailTemplateOverrides: Logo-Piggybacks (Top-Level-Pattern)
@@ -4859,7 +4875,7 @@ export default function EventCreationPage(): React.ReactElement {
       // v27.5: Default-Unter-Überschrift = Ort (nicht Datum).
       const resolvedOlSub = effOutlookSubheading ? replacePlaceholders(effOutlookSubheading, outlookVars) : (location || undefined);
       // v18.73: Header-Bild Größe + Innenabstand (event-weit) in den Outlook-Body.
-      const wrappedOutlook = buildOutlookBody(resolvedOlHeading, resolvedBody, resolvedOlSub, headerLayoutFor(effOutlookLogo), effTeamsLink(), (emailLanguage || '').toUpperCase() !== 'EN');
+      const wrappedOutlook = buildOutlookBody(resolvedOlHeading, resolvedBody, resolvedOlSub, headerLayoutFor(effOutlookLogo), outlookTeamsLink(), (emailLanguage || '').toUpperCase() !== 'EN');
       // v11.93: Top-Level-Logo aus dem Resolver — sonst würde beim Speichern
       // aus einem Sub-Tab das falsche Logo aufs Haupt-Event geschrieben.
       updates['OutlookBody'] = wrappedOutlook.replace(/\{\{ORB_URL\}\}/g, effOutlookLogo || getCachedOrbBase64() || '');
@@ -5747,7 +5763,7 @@ export default function EventCreationPage(): React.ReactElement {
           // v27.5: Default-Unter-Überschrift = Ort (nicht Datum).
           const resolvedSub = effOutlookSubheading ? replacePlaceholders(effOutlookSubheading, vars) : (location || undefined);
           // v18.73: Header-Bild Größe + Innenabstand (event-weit) in den Outlook-Body.
-          const wrapped = buildOutlookBody(resolvedHeading, resolvedBody, resolvedSub, headerLayoutFor(effOutlookLogo), effTeamsLink(), (emailLanguage || '').toUpperCase() !== 'EN');
+          const wrapped = buildOutlookBody(resolvedHeading, resolvedBody, resolvedSub, headerLayoutFor(effOutlookLogo), outlookTeamsLink(), (emailLanguage || '').toUpperCase() !== 'EN');
           // v11.93: Logo aus Top-Level-Resolver, sonst landet beim Speichern
           // aus einem Sub-Tab das Sub-Logo aufs Haupt-Event.
           return wrapped.replace(/\{\{ORB_URL\}\}/g, effOutlookLogo || getCachedOrbBase64() || '');
