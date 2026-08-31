@@ -961,10 +961,22 @@ export function teamsJoinBlockHtml(link: string, isDe = true): string {
   const url = (link || '').trim();
   if (!url) return '';
   const safe = escapeHtml(url);
+  // v30.28: Bei der Platzhalter-Variante die sichtbare URL-Zeile weglassen.
+  // Der Flow ersetzt die Marke erst NACH dem Anlegen des Termins; hat er die
+  // Ersetzung noch nicht (Actions nicht eingebaut, Lauf fehlgeschlagen), stand
+  // sonst wörtlich „{{TEAMS_URL}}" als Text in der Einladung beim Teilnehmer.
+  // Der Knopf bleibt — er trägt dieselbe Marke im href und wird mit ersetzt.
+  const isPlaceholder = url === TEAMS_URL_PLACEHOLDER;
   return `<table data-dex-teams="1" role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0 8px;border-top:1px solid #e0e0e0;"><tr><td style="padding:16px 0 0;font-family:Arial,Helvetica,sans-serif;">`
     + `<div style="font-size:13px;color:#63666A;margin-bottom:6px;">${isDe ? 'Online teilnehmen' : 'Join online'}</div>`
     + `<a href="${safe}" style="display:inline-block;background:#86bc25;color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;padding:10px 18px;border-radius:4px;">${isDe ? 'An Microsoft-Teams-Besprechung teilnehmen' : 'Join the Microsoft Teams meeting'}</a>`
-    + `<div style="font-size:12px;color:#63666A;margin-top:8px;word-break:break-all;">${safe}</div>`
+    + (isPlaceholder ? '' : `<div style="font-size:12px;color:#63666A;margin-top:8px;word-break:break-all;">${safe}</div>`)
+    // v30.28: Einwahl-Zeile NUR im Platzhalter-Fall — bei einem selbst
+    // eingetragenen Link kennt DEX keine Konferenz-Daten. Der Flow baut die
+    // GANZE Zeile und setzt sie leer, wenn es keine gibt; deshalb eine einzige
+    // Marke statt „Label + Wert" (sonst stünde bei leerem Wert ein nacktes
+    // „Konferenz-ID:" im Termin).
+    + (isPlaceholder ? `<div style="font-size:12px;color:#63666A;margin-top:10px;">${TEAMS_DIALIN_PLACEHOLDER}</div>` : '')
     + `</td></tr></table>`;
 }
 
@@ -979,6 +991,23 @@ export function teamsJoinBlockHtml(link: string, isDe = true): string {
  * Sonderzeichen, damit escapeHtml ihn unverändert durchreicht.
  */
 export const TEAMS_URL_PLACEHOLDER = '{{TEAMS_URL}}';
+
+/**
+ * v30.28: Platzhalter für die Einwahl-Zeile unter dem Teams-Knopf.
+ *
+ * Der Flow baut die KOMPLETTE Zeile („Konferenz-ID: … · Telefon: …") und setzt
+ * sie leer, wenn es keine Einwahldaten gibt. Bewusst nicht „Label hier, Wert
+ * als Marke": Bei leerem Wert stünde sonst ein nacktes „Konferenz-ID:" im
+ * Termin — schlimmer als gar nichts.
+ *
+ * Was hier NICHT reinkann: Meeting-ID und Passcode aus dem Teams-Kasten. Die
+ * gehören zur onlineMeeting-RESSOURCE (`/onlineMeetings`), nicht zur
+ * `onlineMeeting`-Eigenschaft des Termins — die liefert nur joinUrl,
+ * conferenceId, tollNumber/tollFreeNumbers und quickDial. Die Ressource ist
+ * über die Standard-Action des Outlook-Connectors nicht erreichbar (erlaubt
+ * sind nur die Segmente messages/events/calendar/…).
+ */
+export const TEAMS_DIALIN_PLACEHOLDER = '{{TEAMS_DIALIN}}';
 
 /** v29.38: Bereits eingesetzte Teams-Blöcke entfernen (siehe teamsJoinBlockHtml). */
 export function stripTeamsJoinBlock(html: string): string {

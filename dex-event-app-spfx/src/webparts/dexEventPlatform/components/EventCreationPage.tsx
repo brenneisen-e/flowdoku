@@ -8889,7 +8889,11 @@ export default function EventCreationPage(): React.ReactElement {
                   zIndex: 2, cursor: 'pointer',
                   flex: 1,
                   // v29.66: ausgegrauter Abrechnungs-Schritt (s. steps-Array).
-                  opacity: (step as { dim?: boolean }).dim ? 0.5 : 1,
+                  // v30.28: NIE den Schritt ausgrauen, auf dem man gerade steht.
+                  // Der aktive Kreis ist grün mit weißer Ziffer — bei 50 %
+                  // Deckkraft wird daraus Weiß auf Blassgrün, also unlesbar.
+                  // Das Ausgrauen soll „optional" sagen, nicht „unlesbar".
+                  opacity: ((step as { dim?: boolean }).dim && idx !== currentStep) ? 0.5 : 1,
                 }}
               >
                 <div className="dex-step-circle" style={{

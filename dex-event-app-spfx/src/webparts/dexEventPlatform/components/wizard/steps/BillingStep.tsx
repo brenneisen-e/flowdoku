@@ -31,6 +31,15 @@ export const BillingStep: React.FC<BillingStepProps> = ({
   const billingMissing = BILLING_FIELDS.filter(f => !(billingFields[f.id] || '').trim());
   return (
     <div style={{ display: visible ? 'block' : 'none' }}>
+      {/* v30.28: Der grüne Schritt-Kopf fehlte seit der Extraktion in v30.13 —
+          jeder andere Schritt bringt ihn mit, hier blieb an seiner Stelle ein
+          leerer weißer Streifen (die Form-Karte kompensiert per marginBottom
+          die negative Top-Margin des Kopfs, der nie kam). */}
+      <h2 className="dex-step-head-title">Schritt 10 — Abrechnung</h2>
+      <p className="dex-step-head-lead">
+        Nur für Admins: Ist das Event abrechnungsrelevant, sammelt DEX hier die
+        Angaben für Finance &amp; Accounting und verschickt sie nach dem Event.
+      </p>
       <div style={{ background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: '16px 18px', marginBottom: 16, border: '1px solid var(--dex-gray-200)' }}>
         <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 6 }}>
           Handelt es sich um ein abrechnungsrelevantes Event?
