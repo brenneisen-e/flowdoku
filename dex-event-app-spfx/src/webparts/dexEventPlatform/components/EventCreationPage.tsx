@@ -18,7 +18,7 @@ import { isThrottled } from '../utils/spThrottle';
 // v26.48: zentrale B2Run-Köln-Vorlage (Titel-Erkennung + 7 Meldefelder mit
 // deterministischen IDs für den offiziellen Excel-Export).
 import { isB2RunKoelnTitle, b2runKoelnTemplateFields } from '../data/b2runKoeln';
-import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, parseOutlookHeadings, replacePlaceholders, getCachedOrbBase64, normalizeMadeWithLink, TEAMS_URL_PLACEHOLDER } from '../services/EmailTemplates';
+import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, parseOutlookHeadings, replacePlaceholders, getCachedOrbBase64, normalizeMadeWithLink } from '../services/EmailTemplates';
 import { exportSummaryAsPdf, exportSummaryAsDoc, SummaryData } from '../services/EventSummaryExport';
 import { EventType, AgendaItem } from '../types';
 import { Trash2, Send, Plus, X, Users, Check } from './Icons';
@@ -1380,20 +1380,39 @@ export default function EventCreationPage(): React.ReactElement {
   // Update-Detektor unsichtbar und der Termin behielte den alten Stand.
   const effTeamsLink = (): string => (onlineMeetingMode === 'own' ? teamsLink.trim() : '');
   /**
-   * v30.27: Link, der in den TERMIN-BODY wandert — nicht derselbe wie
-   * `effTeamsLink()`, der nur den gespeicherten `_teamsLink` steuert.
+   * Link, der in den TERMIN-BODY wandert — nicht derselbe wie `effTeamsLink()`,
+   * der nur den gespeicherten `_teamsLink` steuert.
    *
-   * Im Modus „DEX erzeugt den Link" gibt es beim Speichern noch keine URL: Die
-   * Teams-Besprechung entsteht erst, wenn der Flow den Termin angelegt hat.
-   * Ohne Platzhalter bliebe der DEX-Block leer und Teams hängt seinen eigenen
-   * Kasten UNTER die Layout-Karte — genau das, was v30.26 im Postfach gezeigt
-   * hat. Der Platzhalter folgt deshalb dem etablierten `{{ORB_URL}}`-Muster:
-   * Die App schreibt die Marke, der Flow ersetzt sie durch die echte joinUrl.
+   * **v30.40: Im Modus „DEX erzeugt den Link" steht hier wieder nichts.** Der
+   * Weg über die Marke `{{TEAMS_URL}}` (v30.27–v30.39) ist gescheitert, und
+   * zwar erst im letzten möglichen Moment — im fertigen Termin beim Teilnehmer:
+   *
+   * 1. Die App schrieb `<a href="{{TEAMS_URL}}">…</a>` in den Body.
+   * 2. Der Flow holte den Body per Graph und ersetzte die Marke durch die echte
+   *    `joinUrl`. Der PATCH lief mit 200 durch.
+   * 3. Im Termin stand danach `[https://teams.microsoft.com/l/meetup-join/…]An
+   *    Microsoft-Teams-Besprechung teilnehmen` — der Anker war zu Text
+   *    zerfallen. Vorher, mit der unersetzten Marke im href, war es noch ein
+   *    Knopf.
+   *
+   * Beobachtet, nicht bewiesen: Exchange normalisiert den Body eines
+   * Online-Meetings und lässt einen Anker auf die eigene joinUrl nicht stehen.
+   * Was sich prüfen ließ, spricht dafür — die Degradierung trat exakt mit
+   * unserem PATCH ein, an keiner früheren Stelle.
+   *
+   * Entscheidend ist aber nicht die Ursache, sondern dass der Kasten, den
+   * Exchange unter die Karte hängt, ohnehin bleiben MUSS: Ihn zu entfernen
+   * hieße, den Meeting-Blob aus dem Body zu werfen, und das deaktiviert die
+   * Besprechung (Graph-Referenz `event: update`). Er trägt Join-Link,
+   * Meeting-ID und Passcode — mehr, als der DEX-Block je hatte. Ein zweiter,
+   * kaputter Link darüber macht den Termin nur schlechter.
+   *
+   * Für einen SELBST eingetragenen Link bleibt alles wie bisher: Da gibt es
+   * keine Exchange-Normalisierung, der Block rendert sauber, und ohne ihn stünde
+   * der Link nirgends.
    */
   const outlookTeamsLink = (): string => (
-    onlineMeetingMode === 'own' ? teamsLink.trim()
-      : onlineMeetingMode === 'auto' ? TEAMS_URL_PLACEHOLDER
-        : ''
+    onlineMeetingMode === 'own' ? teamsLink.trim() : ''
   );
   const initialTeamsLinkRef = React.useRef<string>(teamsLink);
   // v30.26: Der Modus zählt für den Outlook-Update-Detektor genauso wie der

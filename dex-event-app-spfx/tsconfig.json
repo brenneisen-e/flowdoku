@@ -5,7 +5,10 @@
     "module": "esnext",
     "moduleResolution": "node",
     "jsx": "react",
-    "declaration": true,
+    // v30.40: aus. Nichts konsumiert die .d.ts — api-extractor laeuft in
+    // diesem Projekt gar nicht (keine Config), webpack liest nur lib/**/*.js,
+    // und das Paket hat keinen Consumer. Spart rund 6 s je Build.
+    "declaration": false,
     "sourceMap": true,
     "skipLibCheck": true,
     "outDir": "lib",

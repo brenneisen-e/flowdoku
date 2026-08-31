@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.39.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.40.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -65,8 +65,20 @@ GitHub-Repo"). Das Paket wird nur noch nach `dist/` kopiert; der
 Kumulativ-Absatz, die Download-Links und die versionierte Kopie unter
 `docs/downloads/` entfallen. `docs/release-notes.md` bleibt Pflicht.
 
-Erwartete Größe: ca. **2,2–2,3 MB**. Deutlich größer heißt: stale Bundles, Schritt 4
+Erwartete Größe: ca. **2,2–2,4 MB**. Deutlich größer heißt: stale Bundles, Schritt 4
 wiederholen. In `release/assets/` darf es nur **eine** `dex-event-platform-web-part_*.js` geben.
+
+**Der Build dauert seit v30.40 rund 1,1 statt 1,8 Minuten** — `.minifycache/`
+hält die Terser-Ergebnisse (rund 40 der 56 webpack-Sekunden waren reine
+Minifikation). Das Verzeichnis steht in `.gitignore` und **darf beim Aufräumen
+NICHT mitgelöscht werden**; es überlebt Releases absichtlich. Verifiziert: Ein
+Lauf aus dem Cache lieferte alle 78 Dateien byte-identisch. Wer ein Release
+wirklich von Null verifizieren will, löscht `.minifycache` vorher — dann kostet
+es wieder den vollen Preis. Nach einem `npm update` ist nichts zu tun: terser-
+und SPFx-Version stecken im Cache-Schlüssel. Details und die gemessenen
+Sackgassen (webpacks `cache: {type:'filesystem'}` zerlegt das Bundle,
+`--locale de-de` bringt null, esbuild/swc sind mangels `ts-loader` nicht
+anwendbar) stehen in `build/minify-cache.js` und in den Release Notes zu v30.40.
 
 **Release-Notes nie mit „…"-Literalen in Python-Heredocs schreiben.** Die
 Notes brauchen deutsche Anführungszeichen, aber das schließende Zeichen der

@@ -9,3 +9,5 @@ release/
 
 # Auto-generated SCSS type definitions
 *.module.scss.ts
+.minifycache/
+.tscache/

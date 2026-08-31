@@ -34,6 +34,11 @@ export default function ArchitecturePage(): React.ReactElement {
   React.useEffect(() => {
     if (!adminLike) navigate('start');
   }, [adminLike, navigate]);
+  // v30.40: `pdfBusy` stand bis hierher UNTER dem frühen Return. `adminLike`
+  // kippt zur Laufzeit — die Rollen kommen asynchron —, also sprang die
+  // Hook-Anzahl von 1 auf 2, sobald die Admin-Rolle eintraf: React #300.
+  // Hooks gehören VOR jeden frühen Return, ohne Ausnahme (s. v30.3/v30.4).
+  const [pdfBusy, setPdfBusy] = React.useState(false);
   if (!adminLike) return <div className="page-container" />;
 
   // ---- Datenhaltung: SharePoint-Listen (gruppiert) ----
@@ -127,7 +132,6 @@ export default function ArchitecturePage(): React.ReactElement {
     { name: isDe ? 'Co-Organizer-Freigabe' : 'Co-organizer approval', de: 'Wird jemand als Co-Organizer benannt, der noch kein Organizer ist, legt die App einen DEX_OrganizerRequests-Antrag an und mailt den Admins einen Freigabe-Link; nach der Freigabe erhält die Person Schreibrechte auf DEX_Events.', en: 'If someone is named co-organizer who is not yet an organizer, the app creates a DEX_OrganizerRequests entry and emails admins an approval link; after approval the person receives write access to DEX_Events.' },
   ];
 
-  const [pdfBusy, setPdfBusy] = React.useState(false);
   const toPdf = (items: Item[]): Array<{ name: string; desc: string }> => items.map(i => ({ name: i.name, desc: isDe ? i.de : i.en }));
   const downloadPdf = async (): Promise<void> => {
     if (pdfBusy) return;
