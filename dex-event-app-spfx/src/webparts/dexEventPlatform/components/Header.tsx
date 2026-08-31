@@ -216,7 +216,14 @@ export default function Header(): React.ReactElement {
           sitzt. */}
       {/* v26.36: Auf Mobile ausgeblendet — die absolut zentrierte CTA-Pille
           überlappt sonst das rechte Icon-Cluster und macht Buttons unklickbar. */}
-      {isLanding && !tutorialCtaHidden && !isMobile && (
+      {/* v30.25: Admins sehen die „Neu hier?"-Pille nicht mehr. Sie hing
+          bisher nur an `isLanding` — also an der Seite, NICHT daran, ob
+          jemand neu ist; ein Admin bekam sie bei jedem Start angeboten,
+          bis er sie einmal per × wegklickte (localStorage, pro Browser).
+          Für Admins gibt es das Tutorial stattdessen als Kachel im Admin
+          Center; Organizer und Teilnehmer behalten die Pille (für sie ist
+          es der einzige Einstieg). */}
+      {isLanding && !tutorialCtaHidden && !isMobile && currentUserRole !== 'Admin' && currentUserRole !== 'IT-Admin' && currentUserRole !== 'Organizer' && (
         <div
           style={{
             position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)',
@@ -530,7 +537,7 @@ export default function Header(): React.ReactElement {
         </div>
       </div>
       <ImpersonateModal open={showImpersonate} onClose={() => setShowImpersonate(false)} />
-      <LandingInfoModal open={showAbout} locale={locale === 'de' ? 'de' : 'en'} onClose={() => setShowAbout(false)} />
+      <LandingInfoModal open={showAbout} locale={locale === 'de' ? 'de' : 'en'} onClose={() => setShowAbout(false)} onStartTutorial={openTutorial} />
     </header>
     </div>
   );

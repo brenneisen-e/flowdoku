@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.24.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.26.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -86,6 +86,61 @@ eigenen Änderung stammt; sonst weiter. Häufigste eigene Warnung:
 
 Commits: klarer Betreff `vX.Y.Z: …`, im Body die Ursache erklären, nicht nur das
 Was. Trailer `Co-Authored-By` und `Claude-Session` anhängen.
+
+## Flow-Änderungen: IMMER als Klick-Wizard zum Abhaken
+
+**Feste Nutzer-Ansage (31.08.2026): „ich brauch immer ein How-to-Briefing als
+Klick-Wizard mit den einzelnen Schritten die ich ändern muss, und dann kann ich
+das als erledigt markieren."** Das gilt für jede Änderung an einem
+Power-Automate-Flow — ohne Ausnahme, auch wenn es „nur zwei Actions" sind.
+
+Der Grund ist kein Komfort: Power Automate hat kein Diff, kein Undo und keinen
+Compiler. Was in der App der `tsc` abfängt, fängt dort **niemand** ab. Ein
+falsch getippter fx-Ausdruck fällt erst beim nächsten Live-Lauf auf — also bei
+echten Teilnehmern.
+
+**Pflicht-Format** (Vorbild: `docs/flow-jsons.md` → „Klick-Anleitung als
+Tabelle", DEX_IDReorder v18.69):
+
+1. **Übersichtstabelle zuerst** — eine Zeile pro Action, Spalten
+   `# | NEU/GEÄNDERT | Name der Action | Art der Action | Stelle`. Die Spalte
+   „Stelle" nennt den Anker im bestehenden Flow („direkt nach `Update item`"),
+   nie nur „am Ende".
+2. **Danach je Action ein eigener Abschnitt** `#### Zeile N — Name (Art) · NEU`
+   mit **nummerierten Klicks**: wo klicken → was suchen → welches Feld → welcher
+   Wert. Kopierfertige Werte in eigenen Code-Blöcken, nichts im Fließtext.
+3. **Jeder Schritt beginnt mit `- [ ]`**, damit er abgehakt werden kann — in der
+   Chat-Antwort UND in `flow-jsons.md`.
+4. **fx-Ausdrücke immer als solche kennzeichnen** („über den Expression-Tab
+   (fx), nie als Text") — das ist die häufigste Fehlerquelle.
+4b. **Anleitungstext deutsch, Oberflächen-Begriffe ENGLISCH.** Nutzer-Ansage
+   31.08.2026: „mein Power Automate ist auf englisch gestellt." Also **Edit**,
+   **Add an action**, **Condition** (Kategorie **Control**), **Rename**,
+   **Expression**-Tab, **is equal to**, **True**/**False**-Zweig, **Save**,
+   **Run history** — und die Feldnamen sowieso (**Method**, **Uri**, **Body**,
+   **Content-Type**). Keine deutschen Klammer-Übersetzungen dahinter: Zwei
+   Begriffe für denselben Knopf sind die Sucherei, die die Anleitung
+   verhindern soll. Nur der erklärende Text drumherum ist deutsch.
+5. **Am Ende ein Test-Schritt**: was der Nutzer klickt, um zu prüfen, dass es
+   wirkt, und welcher Fehler welche Ursache hat.
+6. **Immer prüfen, ob die genannten Anker-Actions im Live-Flow existieren.** Die
+   Doku kann veralten: Am 31.08.2026 hing eine Anleitung an
+   `PATCH_DONOTFORWARD`, die im Tenant gar nicht (mehr) vorhanden war — ein
+   Screenshot des Flows hat es gezeigt. Vor dem Briefing nach einem Screenshot
+   des aktuellen Stands fragen, wenn die Kette nicht frisch bestätigt ist.
+
+**Zusätzlich als HTML-Seite (Artifact) — mit Kopier-Knopf an JEDEM Wert.**
+Nutzer-Ansage vom selben Tag: „in dem HTML brauch ich auch immer die
+Möglichkeit den Code mit einem Klick zu kopieren." Jeder fx-Ausdruck, jede URI
+und jeder JSON-Body bekommt einen eigenen „Kopieren"-Knopf; Markieren mit der
+Maus scheitert bei langen `@concat(...)`-Zeilen zu leicht, und ein halb
+kopierter Ausdruck ist genau der Fehler, den man erst im Live-Lauf sieht. Die
+Haken sollen den Fortschritt über einen Seiten-Reload hinweg behalten
+(`localStorage`, in try/catch).
+
+Dasselbe Format gehört in `docs/flow-jsons.md`, nicht nur in die Chat-Antwort —
+die Chat-Antwort ist weg, die Datei bleibt. Reihenfolge also: Datei pflegen,
+HTML-Seite daraus bauen, Link in die Antwort.
 
 ## Sprache
 

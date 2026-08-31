@@ -2635,6 +2635,154 @@ SET_FAILED (Email-Versand fehlgeschlagen):
 **Zweck:** Outlook-Kalendereintrag im Deloitte-Design erstellen (Logo + Event-Bild aus DEX_EmailTemplates) und iCalUId zurückschreiben
 **Letztes Update:** 2026-04-09
 
+### UI-Anleitung 2026-08-31 (v30.26) — Teams-Besprechung je Event (`OutlookIsOnlineMeeting`)
+
+**Ausgangsfrage:** „Was muss ich einstellen, damit es ein Teams-Termin wird?"
+**Kurzantwort: an `Create event (V4)` gar nichts — die Action kann es nicht.**
+Die Connector-Referenz von „Office 365 Outlook" listet für
+`V4CalendarPostItem` genau diese Parameter: Calendar id, Subject, Start/End
+time, Time zone, Required/Optional/Resource attendees, Body, Categories,
+Location, Importance, Is all day event?, Recurrence (+ Selected days of week,
+Recurrence end date, Number of occurrences), Reminder, Is reminder on, Show as,
+Response requested, Sensitivity. **Kein `isOnlineMeeting`, kein
+`onlineMeetingProvider`, kein `joinUrl` im Output** — auch nicht unter
+„Advanced parameters". Wer im Netz „Create a Teams meeting" findet, meint eine
+ANDERE Action (Teams-Connector bzw. Graph), nicht diese.
+
+**Der Weg, der im Tenant funktioniert:** Graph kennt die beiden Eigenschaften
+sehr wohl, und zwar auch beim **Aktualisieren** eines schon angelegten Termins:
+
+> „You can change an existing event to make it available as an online meeting,
+> by setting **isOnlineMeeting** to `true`, and **onlineMeetingProvider** to one
+> of the online meeting providers supported by the parent calendar."
+> — [Create or set an event as an online meeting in an Outlook calendar](https://learn.microsoft.com/en-us/graph/outlook-calendar-online-meetings)
+
+Und Graph erreicht man ohne Premium-Lizenz über die Standard-Action
+**„Send an HTTP request"** desselben Connectors „Office 365 Outlook" — sie
+lässt als erstes Segment `/me` bzw. `/users/<userId>` und als zweites u.a.
+`events` zu. Damit bleibt der bestehende `Create event (V4)`-Aufbau
+unverändert; es kommt genau **eine Bedingung mit einer Action** dazu.
+
+**App-Seite (fertig, v30.26):** Der Organizer entscheidet das pro Event in
+Schritt „Ort & Programm": Haken **„Online-Meeting (Microsoft Teams)"**, darunter
+zwei Optionen — *eigener Teams-Link* (Default, empfohlen) oder *DEX erzeugt den
+Link automatisch*. Nur die zweite Option schreibt die neue Ja/Nein-Spalte
+**`OutlookIsOnlineMeeting` = true** (Haupt-Event UND alle Sub-Events). Steht sie
+auf `false`, verhält sich der Flow exakt wie bisher — deshalb ändert sich für
+alle Bestands-Events nichts.
+
+#### Zeile 1 — `Check_Online_Meeting` (Condition) · NEU
+
+- Einfügen **ganz am Ende der Kette**, hinter `PATCH_DONOTFORWARD` (die
+  bestehende Graph-PATCH-Action, die nach `Update_item` läuft). Nichts
+  davorliegendes anfassen — dann bleiben `Create event (V4)`, das
+  Zurückschreiben des `CalendarLink` und DoNotForward unverändert.
+- Umbenennen in `Check_Online_Meeting`.
+- Linke Seite über **fx**: `coalesce(triggerBody()?['OutlookIsOnlineMeeting'], false)`
+- Operator **is equal to**, rechte Seite über **fx**: `true`
+- Der **Nein**-Zweig bleibt leer. Kein Run-After an anderen Actions ändern —
+  die Condition ist der letzte Schritt.
+
+#### Zeile 2 — `Set_Online_Meeting` (Office 365 Outlook — Send an HTTP request) · NEU
+
+Im **Ja**-Zweig von `Check_Online_Meeting`:
+
+| Feld | Wert |
+|---|---|
+| Method | `PATCH` |
+| Uri | `@concat('https://graph.microsoft.com/v1.0/me/events/', outputs('Create_event_(V4)')?['body/id'])` |
+| Content-Type | `application/json` |
+| Body | siehe unten |
+
+```json
+{
+  "isOnlineMeeting": true,
+  "onlineMeetingProvider": "teamsForBusiness"
+}
+```
+
+**Zur URI — hier NICHT die Shared Mailbox adressieren.** Diese Action ist
+baugleich zu `PATCH_DONOTFORWARD` in demselben Flow, also einfach von dort
+kopieren und nur Body und Namen ändern. Dort steht bewusst `/me/events/{id}`:
+Der Termin liegt im Kalender des **Connection-Users**, nicht in
+`no_reply.events@deloitte.de` — die Shared Mailbox ist nur die
+Send-As-Identität für `organizer`. Der Versuch mit
+`/users/no_reply.events@.../events/{id}` endete hier in **HTTP 404 „The
+specified object was not found in the store."** (dokumentiert 2026-05-22). Im
+Flow `DEX_Outlook_Einladungen` ist es umgekehrt — dort wird der Termin über
+`iCalUId` im Postfach gesucht und deshalb mit `/users/no_reply.events@…`
+adressiert. **Regel: die URI-Form der Graph-Action übernehmen, die im
+GLEICHEN Flow schon funktioniert.**
+
+**Fallstricke, die dokumentiert sind und beide zutreffen können:**
+
+1. **Einmal an, immer an.** „Once you enable a meeting online, Microsoft Graph
+   sets the meeting information in **onlineMeeting**. Subsequently, you cannot
+   change the **onlineMeetingProvider** property, nor set **isOnlineMeeting** to
+   `false` to disable the meeting online." Nimmt der Organizer den Haken später
+   wieder weg, verschwindet die Besprechung also **nicht** aus dem bestehenden
+   Termin — sie muss gelöscht und neu angelegt werden (nicht-destruktiver
+   Recreate-Pfad, s. CLAUDE.md). Genau deshalb steht die Warnung schon im
+   Wizard an der Auswahl.
+2. **Outlook-Add-in muss für das Postfach an sein.** Ist die Teams-Meeting-
+   Richtlinie ohne Outlook-Add-in konfiguriert, legt Graph den Termin an,
+   `isOnlineMeeting` bleibt aber `false` und `onlineMeeting` `null`
+   ([MS Q&A](https://learn.microsoft.com/en-us/answers/questions/2128371/creation-of-events-with-isonlinemeeting-true-(team)).
+   Wenn nach dem Umbau kein „Teilnehmen"-Knopf im Termin steht, ist das der
+   erste Verdacht — **nicht** der Flow.
+
+#### Update-Pfad — `DEX_Outlook_Einladungen`, Zweig `UpdateEvent`
+
+**Warum es den zweiten Einbau braucht:** Der Create-Flow triggert nur auf NEUE
+Listeneinträge. Schaltet ein Organizer die Option bei einem Event ein, das den
+Outlook-Termin schon hat (oder aktiviert sie bei einem Bestandsevent), läuft
+`DEX_CreateOutlookEvent` nie wieder — ohne diesen Teil bliebe der Haken für
+alle bestehenden Termine wirkungslos. Die App queued den Fall bereits: Seit
+v30.26 zählt ein Moduswechsel im Outlook-Update-Detektor (`onlineMeetingChanged()`)
+als Änderung und erzeugt eine `UpdateEvent`-Zeile.
+
+**Warum NICHT in `Build_Update_Body`:** Der Compose baut den PATCH-Body für
+JEDES Update. `"isOnlineMeeting": false` würde dort bei jedem Titel- oder
+Zeit-Update mitgeschickt — und Graph nimmt `false` auf einer bereits
+aktivierten Besprechung nicht an. Deshalb eine eigene, bedingte Action.
+
+##### Zeile 1 — `Check_Online_Meeting_Update` (Condition) · NEU
+
+- Einfügen im **Ja-Zweig von `Is_UpdateEvent`**, direkt **nach**
+  `Send_an_HTTP_request` (der Graph-PATCH mit `@outputs('Build_Update_Body')`).
+- Linke Seite über **fx**:
+  `coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookIsOnlineMeeting'], false)`
+  — hier kommt der Wert aus `Get_Event_Details`, **nicht** aus `triggerBody()`:
+  Die Queue-Zeile in `DEX_Outlook` trägt das Feld nicht, es steht in
+  `DEX_Events`.
+- Operator **is equal to**, rechte Seite über **fx**: `true`
+- Nein-Zweig bleibt leer.
+
+##### Zeile 2 — `Set_Online_Meeting_Update` (Office 365 Outlook — Send an HTTP request) · NEU
+
+Im **Ja**-Zweig. Am einfachsten `Send_an_HTTP_request` kopieren und Body
+ersetzen — URI und Verbindung stimmen dann schon:
+
+| Feld | Wert |
+|---|---|
+| Method | `PATCH` |
+| Uri | `@concat('https://graph.microsoft.com/v1.0/users/no_reply.events@deloitte.de/events/', variables('varRealEventId'))` |
+| Content-Type | `application/json` |
+| Body | `{ "isOnlineMeeting": true, "onlineMeetingProvider": "teamsForBusiness" }` |
+
+`varRealEventId` ist an dieser Stelle gesetzt (`Set_variable` nach
+`Find_Outlook_Event`) und hält die Graph-Event-Id des gefundenen Termins.
+
+**Idempotent:** Ist die Besprechung schon aktiv, ist der PATCH ein No-Op —
+Graph lässt `true` auf `true` zu. Nur der Weg zurück (`true` → `false`) ist
+gesperrt, s. Fallstrick 1. Deshalb darf diese Action bei jedem Update
+mitlaufen, ohne dass etwas doppelt entsteht.
+
+**Alternative, bewusst NICHT gewählt:** die Teams-Connector-Action „Create a
+Teams meeting" liefert zwar direkt einen `joinUrl`, legt aber einen **zweiten**
+Kalendereintrag im Postfach der Verbindung an. Dann stünden für ein Event zwei
+Termine im Kalender — dieselbe Falle wie zwei Bedienwege für dieselbe Auswahl.
+
 ### UI-Anleitung 2026-06-11 (v22.17) — „Create event (V4)" gegen leeres EndDate/StartDate härten
 
 **Problem:** Wird ein Event/Sub-Event OHNE End-Datum angelegt (z.B. ein

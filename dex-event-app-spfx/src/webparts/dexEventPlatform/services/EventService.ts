@@ -141,6 +141,7 @@ export interface SPEvent {
   AllDay?: boolean; // v29.52: ganztägiger Termin — der Outlook-Flow setzt daraus isAllDay
   ShowAsFree?: boolean; // v29.54: Termin als „Frei" zeigen (Flow: showAs). Negativ gespeichert, s. types/index.ts
   SkipOrganizerInvite?: boolean; // v29.55: Organizer nicht als Teilnehmer eintragen (Flow: requiredAttendees)
+  OutlookIsOnlineMeeting?: boolean; // v30.26: Flow soll für DIESEN Termin einen Teams-Link erzeugen (isOnlineMeeting)
   EmailLanguage: string; // DE oder EN
   RegistrationLanguage?: string; // v18.35: erzwungene Sprache der Anmeldeseite ('de' | 'en' | '')
   EmailTemplateOverrides: string; // JSON mit Event-spezifischen Template-Anpassungen
@@ -1656,6 +1657,11 @@ export class EventService {
       // NEGATIV benannt, damit bestehende Einträge (leer/false) weiter
       // beschäftigt bleiben — siehe Kommentar an DeloitteEvent.showAsFree.
       { title: 'ShowAsFree', type: 8, metaType: 'SP.Field' },
+      // v30.26: Boolean — Outlook-Termin als echte Teams-Besprechung anlegen
+      // (Flow „Create event (V4)": Is online meeting + Provider Teams).
+      // Leer/false = wie bisher KEIN automatisches Meeting; der Organizer
+      // entscheidet das pro Event im Wizard (Ort → Online-Meeting).
+      { title: 'OutlookIsOnlineMeeting', type: 8, metaType: 'SP.Field' },
       // v29.55: Boolean - Organizer nicht in requiredAttendees des Outlook-
       // Termins. Ebenfalls negativ, damit Bestandsevents unverändert bleiben.
       { title: 'SkipOrganizerInvite', type: 8, metaType: 'SP.Field' },
@@ -2331,6 +2337,7 @@ export class EventService {
     allDay?: boolean; // v29.52: ganztägiger Termin (Flow setzt daraus isAllDay)
     showAsFree?: boolean; // v29.54: Termin als „Frei" anzeigen (Flow: showAs)
     skipOrganizerInvite?: boolean; // v29.55: Organizer nicht einladen (Flow: requiredAttendees)
+    outlookIsOnlineMeeting?: boolean; // v30.26: Termin als Teams-Besprechung anlegen (Flow: isOnlineMeeting)
     locationFilter: string;
     audience: string;
     /** v16.4: Vor-aufgelöste E-Mails der Audience-DLs, ';'-separiert, lowercase. */
@@ -2556,6 +2563,7 @@ export class EventService {
         // Flow das Feld noch nicht liest, verhält sich alles wie bisher.
         'AllDay': !!event.allDay,
         'ShowAsFree': !!event.showAsFree, // v29.54
+        'OutlookIsOnlineMeeting': !!event.outlookIsOnlineMeeting, // v30.26
         'SkipOrganizerInvite': !!event.skipOrganizerInvite, // v29.55
         // v18.34/v18.40: Outlook-Ort = manuelle Überschreibung, sonst
         // automatisch aus Veranstaltungsort + Adresse. Flow mappt OutlookLocation 1:1.

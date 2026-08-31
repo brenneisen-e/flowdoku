@@ -18,6 +18,8 @@ interface Props {
   open: boolean;
   locale: 'de' | 'en';
   onClose: () => void;
+  /** v30.25: Startet die geführte Tour (Header reicht openTutorial durch). */
+  onStartTutorial?: () => void;
 }
 
 interface Feature {
@@ -67,7 +69,7 @@ function SectionHeading({ children }: { children: React.ReactNode }): React.Reac
   );
 }
 
-export default function LandingInfoModal({ open, locale, onClose }: Props): React.ReactElement | null {
+export default function LandingInfoModal({ open, locale, onClose, onStartTutorial }: Props): React.ReactElement | null {
   if (!open) return null;
 
   const isDE = locale === 'de';
@@ -247,6 +249,25 @@ export default function LandingInfoModal({ open, locale, onClose }: Props): Reac
           >
             <Mail size={16} /> {isDE ? 'Kontakt aufnehmen' : 'Get in touch'}
           </a>
+          {/* v30.25: Tutorial-Einstieg für JEDE Rolle. Die „Neu hier?"-Pille
+              auf der Startseite wird Organizern und Admins nicht mehr
+              angeboten (sie kennen die App) — über „Über die App" bleibt die
+              geführte Tour aber jederzeit erreichbar, z.B. um sie neuen
+              Kolleg:innen zu zeigen. */}
+          {onStartTutorial && (
+            <button
+              type="button"
+              onClick={() => { onClose(); window.setTimeout(() => onStartTutorial(), 250); }}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8, marginLeft: 10,
+                padding: '10px 20px', borderRadius: 8,
+                background: '#fff', color: GREEN, border: `2px solid ${GREEN}`,
+                fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              {isDE ? 'Geführtes Tutorial starten' : 'Start the guided tutorial'}
+            </button>
+          )}
 
           {/* Credits */}
           <div style={{

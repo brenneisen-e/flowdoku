@@ -836,6 +836,28 @@ export default function EventCreationPage(): React.ReactElement {
   // der Organizer fuegt den Link seiner eigenen Besprechung ein. Er landet als
   // Teilnahme-Block im Outlook-Termin.
   const [teamsLink, setTeamsLink] = React.useState<string>(editEvent?.teamsLink || '');
+  /**
+   * v30.26: Online-Meeting-Modus des Events — die Entscheidung trifft der
+   * Organizer pro Event, NICHT der Flow global.
+   *
+   *  'none' — kein Online-Meeting (Präsenz).
+   *  'own'  — der Organizer legt die Besprechung selbst in Outlook/Teams an
+   *           und trägt den Link ein (v29.38-Feld). Er behält damit alle
+   *           Besprechungsoptionen (Lobby, Aufzeichnung, Referenten).
+   *  'auto' — DEX lässt den Flow eine echte Teams-Besprechung erzeugen
+   *           (Spalte OutlookIsOnlineMeeting). Bequem und mit „Teilnehmen"-
+   *           Knopf im Kalender, ABER der Termin gehört dem Gruppen-/
+   *           No-Reply-Postfach: An den Besprechungsoptionen kann danach
+   *           niemand mehr etwas ändern.
+   *
+   * Abgeleitet aus dem gespeicherten Stand, damit Bestandsevents (nur
+   * teamsLink gepflegt) unverändert als 'own' erscheinen.
+   */
+  const [onlineMeetingMode, setOnlineMeetingMode] = React.useState<'none' | 'own' | 'auto'>(() => {
+    if (editEvent?.outlookIsOnlineMeeting) return 'auto';
+    if ((editEvent?.teamsLink || '').trim()) return 'own';
+    return 'none';
+  });
   const [userCancelAllowed, setUserCancelAllowed] = React.useState<boolean>(!(editEvent && editEvent.noSelfCancel));
   const [noCancelAfterDeadline, setNoCancelAfterDeadline] = React.useState<boolean>(!!(editEvent && editEvent.noCancelAfterDeadline));
   // v9.22: Auto-Fill der Deadlines wenn Start-Datum gesetzt wird und die
@@ -1356,7 +1378,17 @@ export default function EventCreationPage(): React.ReactElement {
   // Termin-Text (er wird erst beim Wrappen angehängt), ändert den Termin aber
   // sichtbar. Ohne Snapshot bliebe eine reine Link-Änderung für den
   // Update-Detektor unsichtbar und der Termin behielte den alten Stand.
+  const effTeamsLink = (): string => (onlineMeetingMode === 'own' ? teamsLink.trim() : '');
   const initialTeamsLinkRef = React.useRef<string>(teamsLink);
+  // v30.26: Der Modus zählt für den Outlook-Update-Detektor genauso wie der
+  // Link selbst — ein Wechsel von „eigener Link" auf „DEX erzeugt" ändert
+  // sowohl den Termin-Text (Link fällt weg) als auch den Termin-Typ
+  // (isOnlineMeeting). Ohne diesen Vergleich bliebe der bestehende Termin
+  // stehen, weil sich der reine teamsLink-String nicht bewegt hat.
+  const initialOnlineMeetingModeRef = React.useRef<'none' | 'own' | 'auto'>(onlineMeetingMode);
+  const onlineMeetingChanged = (): boolean =>
+    onlineMeetingMode !== initialOnlineMeetingModeRef.current
+    || effTeamsLink() !== (initialOnlineMeetingModeRef.current === 'own' ? initialTeamsLinkRef.current.trim() : '');
   // v18.73: Piggyback-Konfig für den Save (leer wenn alles auf Default steht —
   // dann wird der Key gar nicht geschrieben). Wird in Create- UND Edit-Pfad
   // sowie in die Sub-Event-Overrides gemerged.
@@ -3840,7 +3872,7 @@ export default function EventCreationPage(): React.ReactElement {
         const resolvedSub2 = subOutlookSub ? replacePlaceholders(subOutlookSub, vars) : (draft.location || undefined);
         // v18.73: Sub-Events erben das Header-Bild-Layout des Hauptevents.
         // v28.29: ohne eigenes/geerbtes Bild wird die Breite gekappt (Orb).
-        const wrapped = buildOutlookBody(resolvedHead, resolvedBody, resolvedSub2, headerLayoutFor(subOutlookLogo), teamsLink.trim(), (subEmailLang || '').toUpperCase() !== 'EN');
+        const wrapped = buildOutlookBody(resolvedHead, resolvedBody, resolvedSub2, headerLayoutFor(subOutlookLogo), effTeamsLink(), (subEmailLang || '').toUpperCase() !== 'EN');
         wrappedSubOutlookBody = wrapped.replace(/\{\{ORB_URL\}\}/g, subOutlookLogo || getCachedOrbBase64() || '');
       }
       // Sub-Event-EmailTemplateOverrides: Logo-Piggybacks (Top-Level-Pattern)
@@ -3908,6 +3940,9 @@ export default function EventCreationPage(): React.ReactElement {
         // v29.52: ganztägig mitschreiben — sonst kippt der Haken beim Speichern zurück.
         allDay: !!draft.allDay,
         showAsFree: !!draft.showAsFree,
+        // v30.26: Die Online-Meeting-Entscheidung gilt event-weit — jeder
+        // Termin einer Reihe bekommt dann seine eigene Teams-Besprechung.
+        outlookIsOnlineMeeting: onlineMeetingMode === 'auto',
         skipOrganizerInvite: !orgGetsSubInvites, // v29.55
         agenda: draftAgendaJson,
         transfers: draftTransfersJson,
@@ -4159,6 +4194,7 @@ export default function EventCreationPage(): React.ReactElement {
           // die Klasse Fehler, die v19.32/v20.0/v29.20 schon dreimal hatten.
           'AllDay': !!draft.allDay,
           'ShowAsFree': !!draft.showAsFree, // v29.54
+          'OutlookIsOnlineMeeting': onlineMeetingMode === 'auto', // v30.26
           'SkipOrganizerInvite': !orgGetsSubInvites, // v29.55
           'EmailLanguage': childPayload.emailLanguage,
           // v29.42: Fußzeilen-Link auch auf dem direkten Sub-Event-Schreibweg
@@ -4823,7 +4859,7 @@ export default function EventCreationPage(): React.ReactElement {
       // v27.5: Default-Unter-Überschrift = Ort (nicht Datum).
       const resolvedOlSub = effOutlookSubheading ? replacePlaceholders(effOutlookSubheading, outlookVars) : (location || undefined);
       // v18.73: Header-Bild Größe + Innenabstand (event-weit) in den Outlook-Body.
-      const wrappedOutlook = buildOutlookBody(resolvedOlHeading, resolvedBody, resolvedOlSub, headerLayoutFor(effOutlookLogo), teamsLink.trim(), (emailLanguage || '').toUpperCase() !== 'EN');
+      const wrappedOutlook = buildOutlookBody(resolvedOlHeading, resolvedBody, resolvedOlSub, headerLayoutFor(effOutlookLogo), effTeamsLink(), (emailLanguage || '').toUpperCase() !== 'EN');
       // v11.93: Top-Level-Logo aus dem Resolver — sonst würde beim Speichern
       // aus einem Sub-Tab das falsche Logo aufs Haupt-Event geschrieben.
       updates['OutlookBody'] = wrappedOutlook.replace(/\{\{ORB_URL\}\}/g, effOutlookLogo || getCachedOrbBase64() || '');
@@ -4834,6 +4870,8 @@ export default function EventCreationPage(): React.ReactElement {
       updates['OutlookEnd'] = outlookEndOverride || null;
       updates['AllDay'] = !!allDay; // v29.52
       updates['ShowAsFree'] = !!showAsFree; // v29.54
+      // v30.26: Teams-Besprechung nur im Modus „DEX erzeugt den Link".
+      updates['OutlookIsOnlineMeeting'] = onlineMeetingMode === 'auto';
       updates['SkipOrganizerInvite'] = !orgGetsSubInvites; // v29.55
       updates['Agenda'] = JSON.stringify(agenda);
       updates['Transfers'] = JSON.stringify(transferTimes);
@@ -4912,7 +4950,7 @@ export default function EventCreationPage(): React.ReactElement {
       const noCancelAfterDeadlineConfig = (userCancelAllowed && noCancelAfterDeadline) ? { _noCancelAfterDeadline: true } : {};
       // v29.38: Teams-Link nur speichern, wenn er wie ein Link aussieht — ein
       // halb eingefuegter Text würde sonst als toter Knopf im Termin landen.
-      const teamsLinkConfig = /^https?:\/\//i.test(teamsLink.trim()) ? { _teamsLink: teamsLink.trim() } : {};
+      const teamsLinkConfig = /^https?:\/\//i.test(effTeamsLink()) ? { _teamsLink: effTeamsLink() } : {};
       // v28.11: Bestehende Original-Bild-URL beim Edit-Save WEITERTRAGEN —
       // sonst würde der frisch zusammengebaute Overrides-Blob sie wegwerfen.
       // v28.12: auch bei neuem Bild erstmal mitschreiben; der Post-Save-Code
@@ -5645,6 +5683,7 @@ export default function EventCreationPage(): React.ReactElement {
         outlookEnd: outlookEndOverride || undefined,
         allDay, // v29.52
         showAsFree, // v29.54
+        outlookIsOnlineMeeting: onlineMeetingMode === 'auto', // v30.26
         skipOrganizerInvite: !orgGetsSubInvites, // v29.55
         locationFilter,
         audience,
@@ -5708,7 +5747,7 @@ export default function EventCreationPage(): React.ReactElement {
           // v27.5: Default-Unter-Überschrift = Ort (nicht Datum).
           const resolvedSub = effOutlookSubheading ? replacePlaceholders(effOutlookSubheading, vars) : (location || undefined);
           // v18.73: Header-Bild Größe + Innenabstand (event-weit) in den Outlook-Body.
-          const wrapped = buildOutlookBody(resolvedHeading, resolvedBody, resolvedSub, headerLayoutFor(effOutlookLogo), teamsLink.trim(), (emailLanguage || '').toUpperCase() !== 'EN');
+          const wrapped = buildOutlookBody(resolvedHeading, resolvedBody, resolvedSub, headerLayoutFor(effOutlookLogo), effTeamsLink(), (emailLanguage || '').toUpperCase() !== 'EN');
           // v11.93: Logo aus Top-Level-Resolver, sonst landet beim Speichern
           // aus einem Sub-Tab das Sub-Logo aufs Haupt-Event.
           return wrapped.replace(/\{\{ORB_URL\}\}/g, effOutlookLogo || getCachedOrbBase64() || '');
@@ -5823,7 +5862,7 @@ export default function EventCreationPage(): React.ReactElement {
             subDeadlineRulePiggyback(), // v29.76
             ((userCancelAllowed && noCancelAfterDeadline) ? { _noCancelAfterDeadline: true } : {}),
             // v29.38: Teams-Link auch beim Anlegen.
-            (/^https?:\/\//i.test(teamsLink.trim()) ? { _teamsLink: teamsLink.trim() } : {}),
+            (/^https?:\/\//i.test(effTeamsLink()) ? { _teamsLink: effTeamsLink() } : {}),
           ];
           // v29.19: Overrides aus dem Top-Level-Resolver — wie im Edit-Pfad
           // (v14.4). Der rohe State hält beim Speichern von einem Sub-Reiter
@@ -6273,7 +6312,8 @@ export default function EventCreationPage(): React.ReactElement {
     // v29.38: reine Teams-Link-Änderung ebenfalls als Kopf-/Layout-Änderung
     // melden (eigener Grund wäre eine weitere Feld-Variante — der Termin-Text
     // ändert sich hier tatsächlich, deshalb 'outlookBody').
-    if (teamsLink.trim() !== initialTeamsLinkRef.current.trim() && topChangedFields.indexOf('outlookBody') < 0) topChangedFields.push('outlookBody');
+    // v30.26: auch der Online-Meeting-Modus (s. onlineMeetingChanged).
+    if (onlineMeetingChanged() && topChangedFields.indexOf('outlookBody') < 0) topChangedFields.push('outlookBody');
     if (topLogoChanged) topChangedFields.push('logo');
     // v22.48: Organizer-Änderung. Der Outlook-Standardtext enthält die
     // Organizer-Namen („wendet euch bitte an …"). Solange der Text NICHT
@@ -6351,7 +6391,7 @@ export default function EventCreationPage(): React.ReactElement {
       // v29.38: Der Teams-Link gilt event-weit — er steckt auch in den
       // Sub-Event-Terminen. Ändert er sich, müssen die genauso aktualisiert
       // werden, sonst zeigen sie weiter den alten (oder gar keinen) Link.
-      if (teamsLink.trim() !== initialTeamsLinkRef.current.trim() && subChangedFields.indexOf('outlookBody') < 0) subChangedFields.push('outlookBody');
+      if (onlineMeetingChanged() && subChangedFields.indexOf('outlookBody') < 0) subChangedFields.push('outlookBody');
       if (curSubLogo !== initSubLogo) subChangedFields.push('logo');
       // v30.9: Auch der WIRKSAME Outlook-Betreff zählt als Änderung. Seit
       // v30.7 erben Kalender-Tage den Hauptevent-Titel als Betreff — der
@@ -7073,7 +7113,7 @@ export default function EventCreationPage(): React.ReactElement {
     subEventsOptIn, subEventsOnlyMode, subEventCalendar, subEventSingleChoice,
     requireSubEventSelection, askSalutation,
     teamRegistrationEnabled, teamSize, askTeamName,
-    userCancelAllowed, noCancelAfterDeadline, teamsLink,
+    userCancelAllowed, noCancelAfterDeadline, teamsLink, onlineMeetingMode, // v30.26
     disableEmails, disableOutlook,
     emailTemplateOverrides,
     openRuleEnabled, openRuleMode, openRuleDays, openRuleFixedDate,
@@ -7113,6 +7153,14 @@ export default function EventCreationPage(): React.ReactElement {
     setUserCancelAllowed(bool(d.userCancelAllowed, true));
     setNoCancelAfterDeadline(bool(d.noCancelAfterDeadline, false));
     setTeamsLink(str(d.teamsLink));
+    // v30.26: Modus aus dem Entwurf; Alt-Entwürfe kennen ihn nicht — dort
+    // ergibt sich 'own' aus einem vorhandenen Link, sonst 'none'.
+    const draftOmMode = str(d.onlineMeetingMode);
+    setOnlineMeetingMode(
+      draftOmMode === 'auto' || draftOmMode === 'own' || draftOmMode === 'none'
+        ? draftOmMode
+        : (str(d.teamsLink).trim() ? 'own' : 'none'),
+    );
     setDisableEmails(bool(d.disableEmails, false)); setDisableOutlook(bool(d.disableOutlook, false));
     if (d.emailTemplateOverrides && typeof d.emailTemplateOverrides === 'object') {
       setEmailTemplateOverrides(d.emailTemplateOverrides as Record<string, EmailOverrideEntry>);
@@ -11413,10 +11461,74 @@ export default function EventCreationPage(): React.ReactElement {
                 </span>
               </div>
 
+              {/* v30.26: Online-Meeting — Checkbox bei Ort, darunter die Wahl
+                  zwischen eigenem Link und automatischer Teams-Besprechung.
+                  Der Unterschied ist eine echte Entscheidung (Besprechungs-
+                  optionen behalten oder Bequemlichkeit), deshalb steht die
+                  Konsequenz direkt an der Auswahl und nicht im Tooltip. */}
+              <div className="form-group" style={{ marginTop: 16, padding: '14px 16px', borderRadius: 12, border: '1px solid var(--dex-gray-200)', background: 'var(--dex-gray-50, #fafafa)' }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={onlineMeetingMode !== 'none'}
+                    onChange={e => setOnlineMeetingMode(e.target.checked ? 'own' : 'none')}
+                    style={{ marginTop: 3, cursor: 'pointer' }}
+                  />
+                  <span style={{ flex: 1 }}>
+                    <strong>{isDe ? 'Online-Meeting (Microsoft Teams)' : 'Online meeting (Microsoft Teams)'}</strong>
+                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                      {isDe
+                        ? 'Für Events, an denen man per Teams teilnimmt — auch zusätzlich zu einem Präsenz-Ort (hybrid).'
+                        : 'For events attended via Teams — also possible in addition to a physical location (hybrid).'}
+                    </span>
+                  </span>
+                </label>
+                {onlineMeetingMode !== 'none' && (
+                  <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="dexOnlineMeetingMode"
+                        checked={onlineMeetingMode === 'own'}
+                        onChange={() => setOnlineMeetingMode('own')}
+                        style={{ marginTop: 3, cursor: 'pointer' }}
+                      />
+                      <span style={{ flex: 1, fontSize: '0.88rem' }}>
+                        <strong>{isDe ? 'Ich stelle den Teams-Link selbst' : 'I provide the Teams link myself'}</strong>
+                        <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 3, lineHeight: 1.5 }}>
+                          {isDe
+                            ? <>Du legst die Besprechung wie gewohnt in Outlook oder Teams an und trägst den Link unten ein. <strong>Empfohlen</strong>, wenn du die Besprechungsoptionen brauchst: Lobby, Aufzeichnung, Referenten-Rollen — die kannst du nur an deiner eigenen Besprechung ändern.</>
+                            : <>You create the meeting in Outlook or Teams and paste the link below. <strong>Recommended</strong> if you need the meeting options: lobby, recording, presenter roles — those can only be changed on your own meeting.</>}
+                        </span>
+                      </span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="dexOnlineMeetingMode"
+                        checked={onlineMeetingMode === 'auto'}
+                        onChange={() => setOnlineMeetingMode('auto')}
+                        style={{ marginTop: 3, cursor: 'pointer' }}
+                      />
+                      <span style={{ flex: 1, fontSize: '0.88rem' }}>
+                        <strong>{isDe ? 'DEX erzeugt den Teams-Link automatisch' : 'DEX creates the Teams link automatically'}</strong>
+                        <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 3, lineHeight: 1.5 }}>
+                          {isDe
+                            ? <>Der Termin wird als echte Teams-Besprechung angelegt — mit &bdquo;Teilnehmen&ldquo;-Knopf direkt im Kalender, ohne dass du etwas vorbereiten musst.<br /><strong style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>Wichtig:</strong> Die Besprechung gehört dem Gruppenpostfach (no_reply.events). <strong>Du kannst danach keine Besprechungsoptionen mehr ändern</strong> — keine Lobby-Einstellung, keine Aufzeichnung, keine Referenten-Rollen.</>
+                            : <>The event is created as a real Teams meeting — with a &bdquo;Join&ldquo; button right in the calendar, with nothing to prepare.<br /><strong style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>Important:</strong> the meeting belongs to the group mailbox (no_reply.events). <strong>You cannot change any meeting options afterwards</strong> — no lobby settings, no recording, no presenter roles.</>}
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                )}
+              </div>
+
               {/* v29.39: Teams-Link. Steht hier bei Ort und Adresse, weil er
                   dieselbe Frage beantwortet („wo findet es statt?") — und
                   bewusst NUR hier: Ein zweites Feld im Outlook-Editor wären
-                  zwei Bedienwege für denselben Wert. */}
+                  zwei Bedienwege für denselben Wert.
+                  v30.26: nur noch im Modus „eigener Link" sichtbar. */}
+              {onlineMeetingMode === 'own' && (
               <div className="form-group" style={{ marginTop: 16 }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   {isDe ? 'Teams-Link (optional)' : 'Teams link (optional)'}
@@ -11455,6 +11567,7 @@ export default function EventCreationPage(): React.ReactElement {
                   </span>
                 )}
               </div>
+              )}
 
               {/* ===== Agenda Editor ===== */}
               <div className="form-group" style={{ marginTop: 24 }}>
