@@ -2879,19 +2879,19 @@ ersetzt**. Method, Uri und Content-Type bleiben unverändert.
       einsetzen:
 
 ```
-replace(replace(coalesce(body('Get_Teams_Event')?['body']?['content'], ''), '{{TEAMS_URL}}', coalesce(body('Set_Online_Meeting')?['onlineMeeting']?['joinUrl'], '')), '{{TEAMS_DIALIN}}', if(empty(coalesce(body('Set_Online_Meeting')?['onlineMeeting']?['conferenceId'], '')), '', concat('Konferenz-ID: ', body('Set_Online_Meeting')?['onlineMeeting']?['conferenceId'], ' &middot; Telefon: ', coalesce(body('Set_Online_Meeting')?['onlineMeeting']?['tollNumber'], ''))))
+string(setProperty(json('{}'), 'body', setProperty(json('{"contentType":"HTML"}'), 'content', replace(replace(coalesce(body('Get_Teams_Event')?['body']?['content'], ''), '{{TEAMS_URL}}', coalesce(body('Set_Online_Meeting')?['onlineMeeting']?['joinUrl'], '')), '{{TEAMS_DIALIN}}', if(empty(coalesce(body('Set_Online_Meeting')?['onlineMeeting']?['conferenceId'], '')), '', concat('Konferenz-ID: ', body('Set_Online_Meeting')?['onlineMeeting']?['conferenceId'], ' &middot; Telefon: ', coalesce(body('Set_Online_Meeting')?['onlineMeeting']?['tollNumber'], '')))))))
 ```
 
-- [ ] Prüfen, dass der Body danach genau so aussieht:
+Dieser Ausdruck ist das GANZE Feld **Body** — nicht mehr ein Stück in einem
+selbstgeschriebenen JSON-Text. `setProperty` baut das Objekt
+`{ "body": { "contentType": "HTML", "content": … } }`, `string()` serialisiert
+es. Anführungszeichen, Backslashes und Zeilenumbrüche im HTML werden dabei
+korrekt escaped — das ist der Punkt, an dem die erste Fassung zerbrochen ist
+(s. Falsch-Befund unten).
 
-```json
-{
-  "body": {
-    "contentType": "HTML",
-    "content": "@{<der fx-Ausdruck von oben>}"
-  }
-}
-```
+- [ ] Prüfen, dass im Feld **Body** NUR noch dieser eine fx-Ausdruck steht —
+      kein `{`, kein `"body":`, kein selbstgeschriebener JSON-Text mehr
+      drumherum. Der Ausdruck erzeugt das JSON vollständig selbst.
 
 - [ ] **Save** klicken.
 
@@ -2960,11 +2960,30 @@ Outlook-Connector zulässig und zeigen auf `/me` — der Teil, an dem der 404 vo
 in der ersten Fassung dieser Anleitung (korrigiert, s.o.); wer den Flow
 anfasst, gleicht sie am besten an.
 
-**Kein Problem, obwohl es danach aussieht:** Der interpolierte Body-Inhalt ist
-HTML voller `"`-Zeichen und wird in einen JSON-String hineingeschrieben. Logic
-Apps escaped Interpolationen in JSON-String-Kontexten selbst — belegt durch den
-Flow selbst: Die Vorgänger-Fassung tat mit `OutlookBody` dasselbe und lieferte
-einen gültigen PATCH (der Fehler war dort ein fehlendes `replace`, kein 400).
+**FALSCH-BEFUND, korrigiert 2026-08-31 — hier ist der eigentliche Fehler.**
+An dieser Stelle stand: „Logic Apps escaped Interpolationen in
+JSON-String-Kontexten selbst, belegt durch den Flow selbst." Das war kein
+Beleg. Die Vorgänger-Fassung hat nie funktioniert — sie fiel nur nicht auf,
+weil ihr Fehlschlag im Termin genauso aussah wie ein fehlendes `replace`.
+Der erste echte Lauf endete in:
+
+```
+Action 'Set_Teams_Body' failed: Unable to read JSON request payload.
+Please ensure Content-Type header is set and payload is of valid JSON format.
+HTTP 400 BadRequest
+```
+
+**Warum:** `Get_Teams_Event` liefert den kompletten Termin-Body als HTML — voller
+`"`-Zeichen UND mit Zeilenumbrüchen. Beides wird roh in den JSON-String
+hineininterpoliert und zerlegt ihn. Ein JSON-String darf weder ein
+unescaptes `"` noch einen echten Umbruch enthalten.
+
+**Warum zeichenweises Escapen die falsche Antwort ist:** Man müsste `\`, `"`,
+`\r`, `\n` und `\t` einzeln behandeln, in genau dieser Reihenfolge — und ein
+vergessener Fall fällt wieder erst im Live-Lauf auf. Stattdessen wird das
+Objekt gebaut und die Serialisierung Logic Apps überlassen: `setProperty` legt
+die Eigenschaften an, `string()` macht daraus gültiges JSON mit korrektem
+Escaping. Siehe „Zeile 2" oben — dort steht der gültige Ausdruck.
 
 **Zwei Zeichen, die keine Rolle spielen:** `body('X')?['id']` und
 `outputs('X')?['body/id']` sind identisch; `·` und `&middot;` rendern gleich.
