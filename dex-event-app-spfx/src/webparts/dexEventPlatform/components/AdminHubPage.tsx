@@ -15,6 +15,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { useDialog } from '../context/DialogContext';
 import { useIsMobile } from '../utils/useIsMobile';
 import { Settings, Users, Mail, Book, FileText, Trash2, Columns, BarChart3, Wrench, GraduationCap } from './Icons';
+import { useTutorial } from './tutorial/TutorialGuide';
 import { RELEASE_NOTES, RELEASE_BEREICHE } from '../data/releaseNotes';
 import { EventService, PermCleanupReport, OrphanScanResult } from '../services/EventService';
 import Modal from './Modal';
@@ -41,6 +42,8 @@ const LIST_DOCS: Array<{ name: string; de: string }> = [
 export default function AdminHubPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { isAdmin, originalIsAdmin, siteUrl, roles } = useRoles();
+  // v30.25: Tutorial-Einstieg für Admins (Header-Pille entfällt für sie).
+  const { openTutorial } = useTutorial();
   const listUrl = (name: string): string => `${siteUrl}/Lists/${name}`;
   const { events: allEvents, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns, restoreCustomFieldDescriptions, reseedDefaultEmailTemplates, maybeSendWeeklyReport, recomputeEventKpiOnly } = useEvents();
   const { locale } = useLanguage();
@@ -530,6 +533,11 @@ export default function AdminHubPage(): React.ReactElement {
     { icon: <Book size={28} />, title: isDe ? 'Handbuch' : 'Manual', desc: isDe ? 'Ausführliche Anleitung zu allen Funktionen.' : 'Detailed guide for all features.', onClick: () => navigate('manual') },
     // v29.24: Onepager für die Einführungsveranstaltung — Zyklus, Einsatzbereich (Venn), Rollen, Kernfunktionen.
     { icon: <GraduationCap size={28} />, title: isDe ? 'Einführungs-Onepager' : 'Introduction one-pager', desc: isDe ? 'DEX auf einen Blick für die Einführungsveranstaltung: Event-Zyklus, Einsatzbereich, Rollen, Kernfunktionen.' : 'DEX at a glance for the introduction session: event cycle, scope, roles, core functions.', onClick: () => navigate('intro-onepager') },
+    // v30.25: Ersatz-Einstieg für Admins — die „Neu hier?"-Pille auf der
+    // Startseite wird ihnen nicht mehr angeboten (s. Header). Das Tutorial
+    // startet auf der Landing Page, deshalb erst dorthin navigieren und die
+    // Tour anschließend anstoßen.
+    { icon: <GraduationCap size={28} />, title: isDe ? 'DEX Tutorial' : 'DEX tutorial', desc: isDe ? 'Die geführte Tour durch die App starten — praktisch, um sie neuen Kolleg:innen zu zeigen.' : 'Start the guided tour through the app — handy for showing it to new colleagues.', onClick: () => { navigate('start'); window.setTimeout(() => { try { openTutorial(); } catch { /* Tour nicht verfügbar */ } }, 350); } },
   ];
 
   const cardStyle: React.CSSProperties = { background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 12, padding: 18, boxShadow: '0 2px 8px rgba(0,0,0,0.05)', transition: 'border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease' };
