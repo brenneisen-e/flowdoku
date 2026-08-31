@@ -3522,23 +3522,17 @@ export default function AdminPage(): React.ReactElement {
   // und dem editierbaren Check-in-Zeitfenster (Von/Bis).
   const [sciModalOpen, setSciModalOpen] = React.useState(false);
   const [sciModalQr, setSciModalQr] = React.useState('');
-  const [sciMiniQr, setSciMiniQr] = React.useState('');
   const [sciToken, setSciToken] = React.useState('');
   const [sciFrom, setSciFrom] = React.useState('');
   const [sciTo, setSciTo] = React.useState('');
   const [sciBusy, setSciBusy] = React.useState(false);
   const [sciSaveMsg, setSciSaveMsg] = React.useState('');
-  // Mini-QR für die Kachel, sobald das Event einen Token hat (lazy qrcode-Chunk).
-  React.useEffect(() => {
-    let cancelled = false;
-    const token = selectedEvent?.selfCheckInToken;
-    if (!token) { setSciMiniQr(''); return undefined; }
-    import('qrcode').then(async QRCode => {
-      const d = await QRCode.toDataURL(buildStaticCheckInUrl(token), { width: 220, margin: 0 });
-      if (!cancelled) setSciMiniQr(d);
-    }).catch(() => { /* Kachel zeigt dann das Icon-Fallback */ });
-    return () => { cancelled = true; };
-  }, [selectedEvent?.selfCheckInToken]);
+  // v30.38: Der Mini-QR ist entfallen. Er wurde beim Öffnen JEDES Events
+  // erzeugt (qrcode-Chunk + Canvas), nur um in der Kachel als 64-px-Vorschau zu
+  // stehen — die Kachel führt jetzt in den Einstieg „QR-Codes und Check-In" und
+  // zeigt ein Icon. Eine Vorschau des Self-Check-in-Codes an einer Stelle, an der
+  // man sich noch gar nicht für Self-Check-in entschieden hat, nahm die Auswahl
+  // vorweg; den großen QR gibt es im Modal weiterhin (`sciModalQr`).
   const isoToLocalInput = (iso?: string): string => {
     if (!iso) return '';
     const d = new Date(iso);
@@ -5822,7 +5816,22 @@ export default function AdminPage(): React.ReactElement {
             NICHT gestaucht wird, sondern über den overflowX:auto-Wrapper (oben)
             horizontal scrollbar wird — wie in der Sub-Event-Teilnehmerliste. */}
         <table style={{ width: '100%', minWidth: 'max-content', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-          <thead>
+          {/* v30.38: Kopf bleibt beim Scrollen stehen. Bei 19 Termin-Spalten
+              und 77 Zeilen war nach wenigen Zeilen nicht mehr erkennbar, zu
+              welchem Tag eine Haken-Spalte gehört — man musste hochscrollen,
+              zählen, zurückscrollen. Sticky sitzt am `<thead>` und nicht an den
+              einzelnen `<tr>`: Die drei Kopfzeilen (Spaltentitel, „∑ angemeldet",
+              „Anmeldung ab") sind unterschiedlich hoch, für zeilenweises Sticky
+              müsste man die Offsets messen. Dieselbe Lösung wie in der
+              Sub-Event-Teilnehmerliste (`renderTable`).
+              `background` ist Pflicht — ohne ihn scrollen die Datenzeilen
+              sichtbar durch den Kopf hindurch. Die Pastell-Kopfzellen setzen
+              ihren eigenen Hintergrund inline und gewinnen dadurch. */}
+          {/* Der Schatten ersetzt die Kopf-Unterkante: Bei `border-collapse:
+              collapse` bleiben die Rahmen der Kopfzeilen beim Ankleben zurück
+              (Browser-Verhalten, nicht abstellbar) — ohne ihn schwebt der Kopf
+              ohne Abgrenzung über den Daten. */}
+          <thead style={{ position: 'sticky', top: 0, zIndex: 2, background: 'var(--dex-gray-50, #fafafa)', boxShadow: '0 2px 4px rgba(0,0,0,0.08)' }}>
             <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
               {/* v26.65: Header-Tooltip stellt klar, dass „#" die laufende Zeilen-
                   nummer dieser Ansicht ist — NICHT die Teilnehmer-ID der SharePoint-
@@ -6746,32 +6755,13 @@ export default function AdminPage(): React.ReactElement {
                       {isDe ? 'Event bearbeiten' : 'Edit event'}
                     </button>
                   )}
-                  {/* v28.90: „Check-In starten" erst, wenn das Event wirklich
-                      live ist. Bei einem Entwurf (isFictive) sieht ihn niemand
-                      ausser Admins/Organizern, es kann sich also gar niemand
-                      angemeldet haben — der Knopf führte auf eine leere
-                      Check-in-Seite und suggerierte, es ginge schon los.
-                      Dasselbe vor einem gesetzten Aktivierungszeitpunkt
-                      (activeFrom in der Zukunft). */}
-                  {(() => {
-                    if (selectedEvent.isFictive) return null;
-                    if (selectedEvent.activeFrom) {
-                      const from = new Date(selectedEvent.activeFrom);
-                      if (!isNaN(from.getTime()) && from.getTime() > Date.now()) return null;
-                    }
-                    return (
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        onClick={() => navigate('check-in', selectedEvent.id)}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', padding: '6px 12px' }}
-                        title={t('admin.checkin') || (isDe ? 'Check-In starten' : 'Start check-in')}
-                      >
-                        <Hash size={14} />
-                        {isDe ? 'Check-In starten' : 'Start check-in'}
-                      </button>
-                    );
-                  })()}
+                  {/* v30.38: „Check-In starten" ist hier entfallen. Er sprang
+                      direkt auf die Scan-Seite und war damit ein zweiter,
+                      engerer Weg neben dem Einstieg „QR-Codes und Check-In"
+                      unter dem Event-Bild — zwei Knöpfe für dieselbe Absicht,
+                      von denen einer die Vorauswahl überspringt. Der Einstieg
+                      unten führt in beide Richtungen (Codes verschicken /
+                      Check-in) und bleibt der einzige. */}
                 </>
               )}
             </div>
@@ -6793,10 +6783,16 @@ export default function AdminPage(): React.ReactElement {
               const startTs = selectedEvent.startDate ? new Date(selectedEvent.startDate).getTime() : 0;
               const endTs = selectedEvent.endDate ? new Date(selectedEvent.endDate).getTime() : startTs;
               const nowTs = Date.now();
-              const qrPhase = registrations.some(r => r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
-              const within5Days = startTs > 0 && nowTs >= startTs - 5 * dayMs;
               const notLongPast = (endTs || startTs) === 0 || nowTs <= (endTs || startTs) + dayMs;
-              const showSciTile = canManageSci && notLongPast && (qrPhase || within5Days);
+              // v30.38: Der Knopf steht jetzt IMMER unter dem Bild, solange das
+              // Event nicht lange vorbei ist. Die Fünf-Tage-Regel (`within5Days`)
+              // und die QR-Phase stammen aus v20.2, als die Kachel direkt ins
+              // Self-Check-in-Modal sprang — dafür war „kurz vor dem Event" der
+              // richtige Zeitpunkt. Seit v30.38 führt sie in den Einstieg
+              // „QR-Codes und Check-In", und den braucht man VORHER: QR-Codes
+              // verschickt man in der Woche davor, nicht am Tag davor. Ein
+              // Einstieg, den man erst findet, wenn es zu spät ist, ist keiner.
+              const showSciTile = canManageSci && notLongPast;
               // v28.90: Ohne Event-Foto blieb die rechte Spalte leer und die
               // Detail-Zeilen liefen über die volle Breite — die Ansicht sah je
               // Event unterschiedlich aus, je nachdem ob jemand ein Bild
@@ -6858,33 +6854,35 @@ export default function AdminPage(): React.ReactElement {
                       </p>
                     </div>
                   )}
+                  {/* v30.38: Führt jetzt in denselben Einstieg wie im
+                      Aktionen-Menü („QR-Codes und Check-In"), statt direkt ins
+                      Self-Check-in-Modal zu springen. Vorher war das die einzige
+                      Stelle, an der eine der fünf Check-in-Varianten ohne
+                      Vorauswahl heraussprang — genau die Ungleichbehandlung, die
+                      v30.36 im Aktionen-Menü aufgelöst hat. Wer hier klickt, will
+                      „Check-in", nicht „ausgerechnet die Self-Variante". */}
                   {showSciTile && (
                     <button
                       type="button"
-                      onClick={openSelfCheckInModal}
-                      disabled={sciBusy}
-                      title={isDe ? 'Self-Check-in-QR anzeigen, drucken und Zeitfenster einstellen' : 'Show/print the self check-in QR and set the time window'}
+                      onClick={() => { setCheckInHubStep('choose'); setCheckInHubOpen(true); }}
+                      title={isDe ? 'QR-Codes versenden oder Check-in am Event-Tag starten' : 'Send QR codes or start check-in on event day'}
                       style={{
                         background: '#fff',
                         border: '1px solid var(--dex-green, #86bc25)',
                         borderRadius: 'var(--dex-radius, 12px)',
-                        padding: 12, cursor: sciBusy ? 'wait' : 'pointer',
+                        padding: 12, cursor: 'pointer',
                         display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left',
                       }}
                     >
-                      {sciMiniQr ? (
-                        <img src={sciMiniQr} alt="Self-Check-in QR" style={{ width: 64, height: 64, flexShrink: 0 }} />
-                      ) : (
-                        <span style={{ width: 64, height: 64, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(134,188,37,0.10)', borderRadius: 8, color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                          <QrCode size={32} />
-                        </span>
-                      )}
+                      <span style={{ width: 64, height: 64, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(134,188,37,0.10)', borderRadius: 8, color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                        <QrCode size={32} />
+                      </span>
                       <span style={{ minWidth: 0 }}>
                         <span style={{ display: 'block', fontWeight: 700, fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>
-                          Self-Check-in QR
+                          {isDe ? 'QR-Codes und Check-In' : 'QR codes and check-in'}
                         </span>
                         <span style={{ display: 'block', fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-                          {isDe ? 'Anklicken: anzeigen, drucken + Zeitfenster festlegen' : 'Click: show, print + set time window'}
+                          {isDe ? 'Codes verschicken oder Check-in starten' : 'Send codes or start check-in'}
                         </span>
                       </span>
                     </button>
