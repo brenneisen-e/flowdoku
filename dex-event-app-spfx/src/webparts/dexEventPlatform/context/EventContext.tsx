@@ -2381,7 +2381,11 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
                 // die Lib gehört nicht ins Haupt-Bundle) + Fehler loggen statt
                 // still auf Text-Fallback zu wechseln.
                 const QRCode = await import('qrcode');
-                const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
+                // v30.35: gleiche Fehlerkorrektur wie im Massen-Versand (H),
+                // sonst haben Auto-QR und manueller QR unterschiedliche
+                // Lesbarkeit — und niemand fände heraus, warum ausgerechnet die
+                // Nachzügler-Codes schlechter scannen.
+                const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2, errorCorrectionLevel: 'H' });
                 qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
               } catch (qrErr) { console.warn('[DEX] QRCode.toDataURL fehlgeschlagen — Text-Fallback:', qrErr); }
               // v22.18: pro-Event angepasster QR-Mail-Text (Override-Key

@@ -4037,8 +4037,8 @@ export default function AdminPage(): React.ReactElement {
     // v30.33: Beispiel-ID, damit im Editor sichtbar ist, dass die
     // Teilnehmer-ID mitgeschickt wird — beim echten Versand steht dort die
     // tatsaechliche Nummer der Person.
-    const qrImageHtml = await buildQrImageHtml(qrData, SAMPLE_QR_ID);
-    setQrEditSampleBlock(buildQrBlockHtml(qrImageHtml, myName, tgt.title));
+    const qrImageHtml = await buildQrImageHtml(qrData);
+    setQrEditSampleBlock(buildQrBlockHtml(qrImageHtml, myName, SAMPLE_QR_ID));
     // v22.19: Versand-Modal schließen — der Editor zeigt die Versand-Aktionen
     // in einer eigenen linken Spalte (nebeneinander statt übereinander).
     // Beim Schließen des Editors öffnet das Versand-Modal wieder.
@@ -4104,7 +4104,7 @@ export default function AdminPage(): React.ReactElement {
    * Bewusst monospace und groß: Die Zahl wird am Einlass vorgelesen und
    * abgetippt, nicht gelesen.
    */
-  const buildQrImageHtml = async (qrData: string, teilnehmerId?: number): Promise<string> => {
+  const buildQrImageHtml = async (qrData: string): Promise<string> => {
     let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
     try {
       const QRCode = await import('qrcode');
@@ -4147,13 +4147,6 @@ export default function AdminPage(): React.ReactElement {
       const qrDataUrl = canvas.toDataURL('image/png');
       qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
     } catch { /* */ }
-    if (teilnehmerId !== undefined && teilnehmerId !== null && !isNaN(Number(teilnehmerId))) {
-      qrImageHtml += `<div style="margin-top:10px;text-align:center;font-family:Arial,Helvetica,sans-serif;">`
-        + `<div style="font-size:12px;color:#63666A;letter-spacing:0.06em;text-transform:uppercase;">Teilnehmer-ID</div>`
-        + `<div style="font-family:'Courier New',Courier,monospace;font-size:30px;font-weight:bold;color:#2b2b2b;line-height:1.2;">${teilnehmerId}</div>`
-        + `<div style="font-size:12px;color:#63666A;margin-top:4px;">Falls der Scan nicht klappt: einfach diese Nummer am Einlass nennen.</div>`
-        + `</div>`;
-    }
     return qrImageHtml;
   };
   const qrPreviewAction = async (): Promise<void> => {
@@ -4164,8 +4157,8 @@ export default function AdminPage(): React.ReactElement {
       const orgFullName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || orgEmail;
       const orgFirstName = currentUser.firstName || orgFullName.split(/\s+/)[0] || orgFullName;
       const qrData = `DEX|${selectedEvent.eventNumber}|${orgEmail}`;
-      const qrImageHtml = await buildQrImageHtml(qrData, SAMPLE_QR_ID); // v30.33: Beispiel-ID in der Vorschau
-      const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName, getQrMailOverride(selectedEvent));
+      const qrImageHtml = await buildQrImageHtml(qrData);
+      const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName, getQrMailOverride(selectedEvent), SAMPLE_QR_ID);
       let eventOrb = '';
       try {
         const ov = JSON.parse(selectedEvent.emailTemplateOverrides || '{}');
@@ -4201,8 +4194,8 @@ export default function AdminPage(): React.ReactElement {
         const fullName = raw.indexOf(',') >= 0 ? raw.split(',').reverse().map(s => s.trim()).join(' ') : (raw || r.email);
         const firstName = raw.indexOf(',') >= 0 ? (raw.substring(raw.indexOf(',') + 1).trim().split(/\s+/)[0] || fullName) : (fullName.split(/\s+/)[0] || fullName);
         const qrData = `DEX|${ev.eventNumber}|${r.email}`;
-        const qrImageHtml = await buildQrImageHtml(qrData, SAMPLE_QR_ID); // v30.33: Test-Mail zeigt eine Beispiel-ID
-        const emailData = qrCodeEmail(firstName, ev.title, qrImageHtml, ev.emailLanguage || 'EN', fullName, liveOverride || getQrMailOverride(ev));
+        const qrImageHtml = await buildQrImageHtml(qrData);
+        const emailData = qrCodeEmail(firstName, ev.title, qrImageHtml, ev.emailLanguage || 'EN', fullName, liveOverride || getQrMailOverride(ev), SAMPLE_QR_ID);
         await eventServiceRef.queueEmail(emailData.subject, r.email, fullName, emailData.body, 'QRCode', ev.title, ev.id);
         sent++; setQrSentCount(sent);
       }
@@ -4228,8 +4221,8 @@ export default function AdminPage(): React.ReactElement {
       const qrData = `DEX|${selectedEvent.eventNumber}|${reg.ParticipantEmail}`;
       const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
       const firstName = reg.Vorname || (reg.ParticipantName || '').trim().split(/\s+/)[0] || name;
-      const qrImageHtml = await buildQrImageHtml(qrData, reg.TeilnehmerID);
-      const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', name, getQrMailOverride(selectedEvent));
+      const qrImageHtml = await buildQrImageHtml(qrData);
+      const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', name, getQrMailOverride(selectedEvent), reg.TeilnehmerID);
       // v27.11: Member-Firm-Adressen zählen als intern → QR-Mail direkt.
       const isExternal = isExternalEmail(reg.ParticipantEmail);
       if (isExternal) {
