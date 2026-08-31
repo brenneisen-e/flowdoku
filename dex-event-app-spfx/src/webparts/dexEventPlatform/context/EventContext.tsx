@@ -566,6 +566,8 @@ interface EventContextType {
   runArchiveExpired: (onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void, shouldCancel?: () => boolean) => Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }>;
   /** v24.33: Globales „Spalten fixen" über ALLE Events inkl. Sub-Events + Company-Backfill bestehender Teilnehmer. */
   fixAllEventColumns: (onProgress?: (done: number, total: number, label: string) => void) => Promise<{ lists: number; columnsAdded: number; backfilled: number; errors: number; anyChange: boolean }>;
+  // v30.39: Organizer-Rechte über ALLE Event-Bäume nachziehen (Klammer + Sub-Events).
+  repairAllOrganizerPermissions: (onProgress?: (done: number, total: number, label: string) => void) => Promise<{ trees: number; sites: number; grants: number; unresolved: string[]; errors: number }>;
   /** v26.13: Versehentlich gelöschte Custom-Field-Beschreibungen aus der
    *  SharePoint-Versionshistorie wiederherstellen. */
   restoreCustomFieldDescriptions: (onProgress?: (done: number, total: number, label: string) => void, dryRun?: boolean) => Promise<{ events: number; eventsChanged: number; fieldsRestored: number; errors: number; details: Array<{ eventId: string; eventTitle: string; fields: Array<{ label: string; props: string[] }> }> }>;
@@ -5458,6 +5460,67 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     return { lists: total, columnsAdded, backfilled, errors, anyChange: columnsAdded > 0 || backfilled > 0 };
   }
 
+  /**
+   * v30.39: Berechtigungs-Reparatur über ALLE Events auf einmal.
+   *
+   * Der Einzel-Fix im Organizer Center (v30.37) hilft nur dem, der von dem
+   * Problem schon weiß — und sichtbar wird es erst, wenn jemand vor einer
+   * leeren Teilnehmerliste steht. Diese Fassung geht über den Bestand: Für
+   * jeden Event-Baum (Klammer + alle Sub-Events) werden die Organizer- und
+   * Co-Organizer-Adressen aus ALLEN Ebenen zusammengezogen und auf ALLEN
+   * Subsites des Baums gesetzt.
+   *
+   * Warum die Adressen über den ganzen Baum vereinigt werden: Ein Sub-Event
+   * kann einen eigenen Organizer-Eintrag tragen (aus einer Kopiervorlage oder
+   * einer späteren Änderung). Wer auf einem Termin als Organizer steht, muss
+   * die Klammer sehen; wer auf der Klammer steht, alle Termine — sonst
+   * entsteht wieder genau die halbe Sicht, um die es geht.
+   *
+   * Idempotent und additiv: `addroleassignment` reicht bestehende Rechte
+   * durch, es wird NICHTS entzogen. Ein Lauf ohne Änderung ist deshalb ein
+   * gültiges Ergebnis, kein Fehlschlag.
+   */
+  async function repairAllOrganizerPermissions(
+    onProgress?: (done: number, total: number, label: string) => void
+  ): Promise<{ trees: number; sites: number; grants: number; unresolved: string[]; errors: number }> {
+    // 1) Nach Event-Baum gruppieren: Wurzel ist parentEventId oder die eigene Id.
+    const trees: Record<string, { title: string; sites: string[]; emails: Set<string> }> = {};
+    for (const e of events) {
+      const rootId = e.parentEventId || e.id;
+      if (!trees[rootId]) trees[rootId] = { title: '', sites: [], emails: new Set<string>() };
+      const t = trees[rootId];
+      if (!e.parentEventId) t.title = e.title || rootId;
+      const site = (e.subsiteUrl || '').trim();
+      if (site && t.sites.indexOf(site) < 0) t.sites.push(site);
+      const add = (arr?: string[]): void => {
+        (arr || []).forEach(x => { const v = (x || '').trim(); if (v) t.emails.add(v); });
+      };
+      add(e.organizerEmails);
+      add(e.coOrganizerEmails);
+    }
+    const keys = Object.keys(trees).filter(k => trees[k].sites.length > 0 && trees[k].emails.size > 0);
+    const total = keys.length;
+    let sites = 0; let grants = 0; let errors = 0;
+    const unresolved = new Set<string>();
+    for (let i = 0; i < keys.length; i++) {
+      const t = trees[keys[i]];
+      if (onProgress) onProgress(i, total, t.title || keys[i]);
+      try {
+        const r = await eventService.ensureOrganizerPermissionsMulti(
+          t.sites, Array.from(t.emails).join(';')
+        );
+        sites += r.sites;
+        grants += r.grants;
+        r.unresolved.forEach(u => unresolved.add(u));
+      } catch (err) {
+        errors++;
+        console.warn('[DEX] repairAllOrganizerPermissions failed for', keys[i], err);
+      }
+    }
+    if (onProgress) onProgress(total, total, '');
+    return { trees: total, sites, grants, unresolved: Array.from(unresolved), errors };
+  }
+
   // v26.13: Wiederherstellung von Custom-Field-Beschreibungen (helpText) und
   // weiteren Feld-Eigenschaften, die ein älterer „Spalten fixen"-Lauf
   // versehentlich aus dem CustomFields-JSON gestrippt hatte. Quelle ist die
@@ -6284,7 +6347,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, getLastEventUpdateError, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getEventNumbersForEmail, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, getFAConfig, saveFAConfig, sendFAMail, markEventSettled, maybeSendBillingAutoMails, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, restoreCustomFieldDescriptions,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, getLastEventUpdateError, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getEventNumbersForEmail, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, getFAConfig, saveFAConfig, sendFAMail, markEventSettled, maybeSendBillingAutoMails, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, repairAllOrganizerPermissions, restoreCustomFieldDescriptions,
         sendAdminInquiry,
         sendCompleteRegistrationReminder,
         notifyAdminsExternalAudienceAccess,
