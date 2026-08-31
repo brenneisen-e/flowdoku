@@ -2799,6 +2799,108 @@ Flow `DEX_Outlook_Einladungen` ist es umgekehrt — dort wird der Termin über
 adressiert. **Regel: die URI-Form der Graph-Action übernehmen, die im
 GLEICHEN Flow schon funktioniert.**
 
+### Der Teams-Kasten im Termin — Faktenlage, recherchiert 31.08.2026
+
+Auslöser: Die Frage, ob der von Exchange angehängte Kasten
+(„Microsoft Teams meeting / Join: … / Meeting ID / Passcode") wirklich bleiben
+MUSS. Ich hatte das behauptet und mich dabei auf einen einzigen Doku-Satz
+gestützt. Die Recherche zeigt: **für unseren Weg stimmt es, als allgemeine
+Aussage war es zu weit gefasst.**
+
+#### Was der „meeting blob" ist — BELEGT
+
+Er ist **der sichtbare Kasten**, kein verstecktes Element. Microsofts eigene
+Konzept-Doku benutzt das Wort dafür wörtlich
+([choose-online-meeting-api](https://github.com/microsoftgraph/microsoft-graph-docs-contrib/blob/main/concepts/choose-online-meeting-api.md)):
+
+> „Apps can directly create or update an event as an online meeting in the
+> Outlook calendar, with a **join-Teams-meeting blob inserted** in the Outlook
+> calendar event." — „Attendees can **click in the join-Teams-meeting blob** to
+> join meeting over the Internet or by dialing in."
+
+In etwas Unsichtbarem kann man nicht klicken. Die HTML-Struktur
+([outlook-calendar-online-meetings](https://learn.microsoft.com/en-us/graph/outlook-calendar-online-meetings)):
+`<div class="me-email-text">` als Hülle, darin `<a class="me-email-headline">`
+(Join) und `<a class="me-email-link">` (Nebenlinks), davor und dahinter je ein
+`<div style="width:100%; height:20px">` mit der Unterstrich-Linie. **Kein
+`data-`-Attribut, keine `id`, kein Kommentar-Marker.**
+
+Der **Teilnehmen-Knopf** im Kalender hängt dagegen NICHT am Body, sondern an
+MAPI-Properties (`SkypeTeamsMeetingUrl`, `OnlineMeetingConfLink`,
+`SkypeTeamsProperties` u.a.).
+
+#### Der entscheidende Unterschied: WER löscht
+
+| Weg | Ergebnis | Beleglage |
+|---|---|---|
+| Mensch löscht den Text im **Outlook-/OWA-UI** | Besprechung bleibt, Knopf bleibt, Kasten kommt **nicht** zurück | mehrfach BERICHTET, inkl. MS-Support-Antwort |
+| **Graph-PATCH auf `body`** ohne Blob | `isOnlineMeeting` kippt auf **false**, Knopf weg | Doku + MS-Engineer + mehrere Betroffene |
+
+Unser Flow benutzt den zweiten Weg. Ein Microsoft-Engineer bestätigt in
+[Q&A 2224600](https://learn.microsoft.com/en-us/answers/questions/2224600/microsoft-graph-update-event-request-set-isonlinem)
+genau den Doku-Satz; ein Betroffener in
+[Q&A 2103477](https://learn.microsoft.com/en-us/answers/questions/2103477/isonlinemeeting-becomes-false-when-updating-event)
+misst es nach:
+
+> „When sending the request with the `Body` field included, the
+> `IsOnlineMeeting` attribute breaks … If I remove the `Body` field, the
+> `IsOnlineMeeting` attribute remains intact, and the Join button is visible
+> again. **Even with simple HTML content or plain text**, it still causes the
+> problem."
+
+**Und die Falle dahinter:** Wieder-Einschalten erzeugt eine **NEUE `joinUrl`**.
+Bereits versendete Einladungen zeigen dann auf eine tote Besprechung. Deshalb
+niemals am Produktivtermin probieren.
+
+**Negativbefund:** Kein einziger Bericht von jemandem, der per Graph den Blob
+entfernt und den Knopf behalten hat — nicht auf Stack Overflow, Microsoft Q&A,
+GitHub, Reddit oder in der Power-Automate-Community.
+
+#### Wege, die es NICHT gibt — geprüft
+
+- **Besprechung vorab per `POST /me/onlineMeetings` und dann an den Termin
+  hängen:** unmöglich. `onlineMeeting` ist am Event **read-only**
+  ([Q&A 1866035](https://learn.microsoft.com/en-us/answers/questions/1866035/how-to-set-an-existing-online-meeting-to-an-event)),
+  und die Create-API „**does not create or update any Outlook event**". Man
+  bekäme einen normalen Termin mit Link im Text — ohne Teilnehmen-Knopf.
+- **Tenant-Schalter:** existiert nicht. Anpassbar sind laut
+  [Customize meeting invitations](https://learn.microsoft.com/en-us/microsoftteams/customize-meeting-invitations)
+  genau vier Dinge: Logo-URL, Privacy-URL, Help-URL, Footer-Text. Ein
+  `OnlineMeetingDetailsExpanded` gibt es in keiner Doku und keinem
+  `Set-CsTeamsMeetingPolicy`-Parameter.
+- **Gruppenpostfach ändert nichts** am Blob; es kommt nur eine Lizenzbedingung
+  dazu ([Teams Meeting Features for Shared Mailboxes](https://learn.microsoft.com/en-us/troubleshoot/microsoftteams/meetings/teams-meeting-with-shared-mailboxes)).
+
+#### Warum der Anker zu `[URL]Linktext` zerfiel — sehr wahrscheinlich nicht unser Fehler
+
+[MC772556](https://mc.merill.net/message/MC772556), weltweit ausgerollt Januar 2026:
+
+> „We've updated how Teams meeting join links appear in meeting invites. …
+> **meeting invites now display the full join link directly instead of a
+> labeled ‚Join the meeting now' hyperlink.**"
+
+Von einer Microsoft-Moderatorin als „**by design by backend setting, not a
+bug**" bestätigt. Das erklärt die Asymmetrie exakt: Die unersetzte Marke
+`{{TEAMS_URL}}` wurde nicht als Teams-Join-URL erkannt und blieb ein Knopf; die
+echte `joinUrl` wurde erkannt und auf „volle URL" normalisiert. Ein Abschalten
+ist nicht dokumentiert.
+
+#### Konsequenz für DEX (v30.40)
+
+Der eigene Teams-Block im Outlook-Body entfällt im Modus `auto`. Nicht, weil
+der Kasten unantastbar wäre, sondern weil beide Enden zu sind: Ihn per Graph zu
+entfernen kostet die Besprechung, und der eigene Link darüber würde seit
+MC772556 ohnehin als nackte URL rendern. Der Kasten trägt Join-Link, Meeting-ID
+und Passcode — mehr, als der DEX-Block je hatte. Im Modus `own` (selbst
+eingetragener Link) bleibt alles wie bisher.
+
+**Wenn jemand es doch messen will:** an einem **Wegwerf-Termin** PATCHen und
+danach `GET /me/events/{id}?$select=isOnlineMeeting,onlineMeeting`. Steht dort
+`isOnlineMeeting: false`, ist die Frage beantwortet — ohne echte Teilnehmer zu
+gefährden.
+
+---
+
 ### ⚠ KORREKTUR v30.37 (31.08.2026) — `Set_Teams_Body` darf den Body NICHT neu bauen
 
 **Befund aus dem Live-Betrieb:** In neuen Events blieb `{{TEAMS_DIALIN}}` als
