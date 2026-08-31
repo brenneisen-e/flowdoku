@@ -17815,6 +17815,28 @@ export default function EventCreationPage(): React.ReactElement {
                 renderStepIntro={renderStepIntro}
               />
 
+              {/* v29.66: F&A-Pilot — Schritt 10 „Abrechnung" (nur Admins). Haengt
+                  als LETZTER Schritt an, damit kein bestehender Index wandert.
+                  Nicht abrechnungsrelevant: nur die Frage; „Ja" blendet die
+                  Abschnitte sofort ein (reiner State, kein Neuladen).
+                  v30.38: Stand bis hierher AUSSERHALB von `.card`/`.creation-form`
+                  — der grüne Schritt-Kopf lebt von `margin: -32px` gegen die
+                  Karten-Polsterung, und ohne Karte bleute er gegen die Seite.
+                  Sichtbar war das als leerer weißer Streifen über dem Kopf: die
+                  Karte mit den Schritten 1–9 (alle `display:none`) rendert dann
+                  nur noch ihre eigene Polsterung. */}
+              {adminLike && (
+                <BillingStep
+                  visible={currentStep === 9}
+                  billingRelevant={billingRelevant}
+                  setBillingRelevant={setBillingRelevant}
+                  billingSendMode={billingSendMode}
+                  setBillingSendMode={setBillingSendMode}
+                  billingFields={billingFields}
+                  setBillingFields={setBillingFields}
+                />
+              )}
+
             </div>{/* close creation-form */}
           </div>{/* close card */}
 
@@ -17875,22 +17897,6 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               </div>
             </div>
-          )}
-
-          {/* v29.66: F&A-Pilot — Schritt 10 „Abrechnung" (nur Admins). Haengt
-              als LETZTER Schritt an, damit kein bestehender Index wandert.
-              Nicht abrechnungsrelevant: nur die Frage; „Ja" blendet die
-              Abschnitte sofort ein (reiner State, kein Neuladen). */}
-          {adminLike && (
-            <BillingStep
-              visible={currentStep === 9}
-              billingRelevant={billingRelevant}
-              setBillingRelevant={setBillingRelevant}
-              billingSendMode={billingSendMode}
-              setBillingSendMode={setBillingSendMode}
-              billingFields={billingFields}
-              setBillingFields={setBillingFields}
-            />
           )}
 
           {/* Fortschrittsanzeige */}
