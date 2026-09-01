@@ -2651,20 +2651,52 @@ serverseitiges Verbot.** Drei Befunde, die zusammen das Bild ergeben:
    setting the forwarding property of events, you can submit a feature request".
    Als **Workaround** nennt Microsoft dort genau die Extended Property, die
    unten steht.
-2. **Outlook selbst setzt dieselbe Property.** Die offizielle Funktion
-   [Prevent forwarding of a meeting](https://support.microsoft.com/en-us/office/prevent-forwarding-of-a-meeting-8cd354e5-b319-403e-8dd2-88b8ee89b4dd)
-   (Response Options → Allow Forwarding abwählen) schreibt den benannten Wert
-   `DoNotForward` im Namensraum PSETID_Common
-   (`{00062008-0000-0000-C000-000000000046}`) und transportiert ihn in der
-   Einladung als `X-MICROSOFT-DONOTFORWARDMEETING`. Wir bauen also nichts
-   Exotisches nach, sondern setzen dieselbe Marke wie der Client.
-3. **Es ist nicht erzwungen.** Im selben Q&A-Thread wird demonstriert, dass ein
-   Forward über die Graph-API auf einem so markierten Termin **200 OK** liefert.
-   Die Property blendet den Forward-Knopf in Outlook-Clients aus, die sie
-   auswerten; sie ist kein Rechte-Modell. Auch Cornell dokumentiert Fälle, in
-   denen die Sperre im Client nicht greift. Wer echte Unweiterleitbarkeit
-   braucht, landet bei IRM/Sensitivity-Labels — das ist eine ganz andere
-   Baustelle und nichts, was ein Flow nebenbei erledigt.
+2. **Der Namensraum ist PS_PUBLIC_STRINGS, nicht PSETID_Common.** Hier stand
+   bis 01.09.2026 die GUID `{00062008-…}` samt der Behauptung, Outlook schreibe
+   die Property in PSETID_Common. Beides ist **unbelegt**: Eine Code-Suche über
+   ganz GitHub nach `"Name DoNotForward"` liefert acht Treffer aus genau zwei
+   Ursprüngen — [`O365/python-o365`](https://github.com/O365/python-o365/blob/master/O365/calendar.py)
+   und ein Funktionstest in
+   [`ivfranji/GraphManagedApi`](https://github.com/ivfranji/GraphManagedApi/blob/master/src/Microsoft.Graph.ManagedAPI.FunctionalTests/FunctionalTests/EventTestDefinition.cs)
+   (`CreateDoNotForwardEvent`) —, und **beide benutzen
+   `{00020329-0000-0000-C000-000000000046}`**. Für `{00062008-…}` gibt es
+   außerhalb dieses Repos keinen einzigen Treffer, und der als Quelle genannte
+   Q&A-Thread enthält überhaupt keine GUID, sondern den Platzhalter
+   `"id":"Boolean {Guid} Name DoNotForward"`. Die Zahl stammt also aus dieser
+   Datei selbst.
+   **Warum das nie aufgefallen ist:** Ein falscher Namensraum erzeugt KEINEN
+   Fehler. Graph legt jede benannte Property an, die man ihm gibt — der PATCH
+   liefert 200, in der Run history sieht alles gut aus, und gewirkt hat nichts.
+   Ein „Stand 2026-05-22"-Eintrag weiter unten in dieser Datei beschreibt die
+   Action als vorhanden und funktionierend; ob sie je etwas bewirkt hat, ist
+   damit offen.
+3. **Es ist nicht erzwungen — aber anders, als hier stand.** Der Microsoft-
+   Support-Artikel sagt ausdrücklich das Gegenteil der bisherigen Behauptung
+   „nur Client-Sperre":
+   > „if they try to forward the meeting, **Exchange Online and Exchange Server
+   > block this action.** An email notification is sent to the attendee
+   > indicating that the meeting organizer doesn't allow forwarding"
+   Es greift also auch serverseitig, und laut demselben Artikel in OWA, Teams,
+   iOS und Android. Was NICHT greift: der Weg über die Graph-API (ein Forward
+   liefert dort 200, Nutzerbericht im Q&A-Thread), sowie Reply-All, Kopieren
+   und Screenshot — das nennt der Artikel selbst.
+4. **⚠ Das eigentliche Risiko: Einladungen können ausbleiben.** Cornell IT
+   dokumentiert nicht, dass die Sperre wirkungslos sei, sondern dass sie die
+   ZUSTELLUNG bricht:
+   > „if you turn off forwarding of meeting proposals, the students you invite
+   > will **NOT receive their invitations** and may be unaware of the existence
+   > of the meeting."
+   Grund ist serverseitige Weiterleitung im Empfänger-Postfach. Für DEX heißt
+   das: Jeder Teilnehmer mit einer weitergeleiteten Adresse — externe Gäste,
+   Partner-Gateways, private Weiterleitungen — bekommt den Termin dann **gar
+   nicht**, und der Flow merkt davon nichts. Das ist bei einem Event-Tool mit
+   externen Teilnehmern der Punkt, an dem man sich entscheiden muss.
+5. **Der letzte Schritt der Kette ist NICHT belegt.** Dass Exchange nach einer
+   *per Graph gesetzten* Property genauso sperrt wie nach dem Outlook-Schalter,
+   habe ich in keiner Quelle gefunden — kein Erfahrungsbericht, keine Doku. Der
+   Funktionstest in `GraphManagedApi` beweist nur, dass die Property in der
+   Teilnehmer-Kopie ankommt, nicht dass der Forward-Knopf danach sperrt.
+   **Vor dem Ausrollen an einem Wegwerf-Termin messen.**
 
 **Reihenfolge ist hier entscheidend.** Extended Properties werden von Exchange
 **nicht** automatisch auf die Teilnehmer-Kopien eines Termins übertragen (per
@@ -2687,7 +2719,7 @@ Direkt **nach** `Update item`, **vor** `Check_Online_Meeting` (v30.26).
 | Body | siehe unten |
 
 ```json
-{"singleValueExtendedProperties":[{"id":"Boolean {00062008-0000-0000-C000-000000000046} Name DoNotForward","value":"true"}]}
+{"singleValueExtendedProperties":[{"id":"Boolean {00020329-0000-0000-C000-000000000046} Name DoNotForward","value":"true"}]}
 ```
 
 `sensitivity: "private"` allein reicht dafür **nicht** — das ist eine
@@ -2717,7 +2749,7 @@ Teilnehmer nach dem Termin fragen.
   dass der Flow mit der zusätzlichen Run-After-Verzweigung weiterhin grün läuft.
 - Bleibt Forward klickbar, ist es fast immer der Client (alte Outlook-Version,
   Drittanbieter-Client), nicht der Flow: Die Property steht dann trotzdem am
-  Termin und lässt sich über `?$expand=singleValueExtendedProperties($filter=id eq 'Boolean {00062008-0000-0000-C000-000000000046} Name DoNotForward')`
+  Termin und lässt sich über `?$expand=singleValueExtendedProperties($filter=id eq 'Boolean {00020329-0000-0000-C000-000000000046} Name DoNotForward')`
   nachsehen.
 
 ### UI-Anleitung 2026-08-31 (v30.26) — Teams-Besprechung je Event (`OutlookIsOnlineMeeting`)
@@ -3841,6 +3873,14 @@ UPDATE_EVENT (CalendarLink zurückschreiben):
   "runAfter": { "Create_event_(V4)": ["Succeeded"] }
 }
 
+PATCH_DONOTFORWARD (Stand 2026-05-22) — ACHTUNG, siehe Korrektur 01.09.2026:
+Dieser Eintrag beschreibt die Action als vorhanden und wirksam. Die GUID darin
+war falsch (PSETID_Common statt PS_PUBLIC_STRINGS), und ein falscher Namensraum
+erzeugt KEINEN Fehler: Graph legt jede benannte Property an, der PATCH liefert
+200. Ob die Action je etwas bewirkt hat, ist damit offen. Am 31.08.2026 war sie
+im Tenant nicht (mehr) vorhanden. Gueltig ist der Abschnitt „Weiterleitungs-
+sperre" weiter oben.
+
 PATCH_DONOTFORWARD (Stand 2026-05-22):
 Nach Update_DEX_Event laeuft eine PATCH-Action auf Graph, die die
 Extended Property „DoNotForward=true" auf den frisch erzeugten
@@ -3862,7 +3902,7 @@ ersten Versuch mit `/users/no_reply.events@.../events/{id}` kam HTTP
     "parameters": {
       "Uri": "@concat('https://graph.microsoft.com/v1.0/me/events/', outputs('Create_event_(V4)')?['body/id'])",
       "Method": "PATCH",
-      "Body": "{\n  \"singleValueExtendedProperties\": [\n    {\n      \"id\": \"Boolean {00062008-0000-0000-C000-000000000046} Name DoNotForward\",\n      \"value\": \"true\"\n    }\n  ]\n}",
+      "Body": "{\n  \"singleValueExtendedProperties\": [\n    {\n      \"id\": \"Boolean {00020329-0000-0000-C000-000000000046} Name DoNotForward\",\n      \"value\": \"true\"\n    }\n  ]\n}",
       "ContentType": "application/json"
     },
     "host": {

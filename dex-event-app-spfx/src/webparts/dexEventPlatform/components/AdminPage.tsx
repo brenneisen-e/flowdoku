@@ -74,8 +74,8 @@ import { formatAllDayPeriod } from '../utils/eventFormat';
 import { getBlockedInviteRecipients } from '../utils/inviteGuards';
 import { ActionTile, SplitMergeToggle, ActionsCollapsibleCard, ActionsRegistryProvider, ActionsDropdown } from './admin/ActionsMenu';
 import BillingActionPanel from './admin/BillingActionPanel';
-import { parseBillingOf, missingBillingFields, faStatusOf, FA_STATUS_LABELS, FA_STATUS_COLORS } from '../utils/faBilling';
-import { BILLING_FIELDS } from '../data/billingFields';
+import { parseBillingOf, missingBillingFields, faStatusOf, FA_STATUS_LABELS, FA_STATUS_COLORS, FA_STATUS_NEXT } from '../utils/faBilling';
+import { BILLING_FIELDS, canEditBilling } from '../data/billingFields';
 
 
 
@@ -7502,6 +7502,15 @@ export default function AdminPage(): React.ReactElement {
                   marginLeft: 8, padding: '1px 8px', borderRadius: 999, fontSize: '0.7rem', fontWeight: 700,
                   background: stColors.bg, color: stColors.fg,
                 }}>{FA_STATUS_LABELS[st]}</span>
+                {/* v30.47: Was als NAECHSTES zu tun ist — direkt unter dem
+                    Status. Ein Status allein sagt, wo man steht; er sagt nicht,
+                    ob man selbst dran ist oder wartet. Genau das war bei
+                    „vollstaendig, Versendung ausstehend" die Frage. */}
+                {FA_STATUS_NEXT[st] && (
+                  <div style={{ marginTop: 4, fontSize: '0.8rem', fontWeight: 600, color: stColors.fg }}>
+                    {FA_STATUS_NEXT[st]}
+                  </div>
+                )}
                 <div style={{ marginTop: 4, color: 'var(--dex-gray-700)' }}>
                   {incomplete
                     ? (isDe
@@ -7525,13 +7534,15 @@ export default function AdminPage(): React.ReactElement {
                       // neun Schritte zu schicken ist kein Weg, sondern eine
                       // Suchaufgabe. Der Wizard liest die Marke EINMAL beim
                       // Mount und räumt sie danach selbst ab.
-                      // Nur setzen, wenn der Wizard den Schritt fuer diese
-                      // Person ueberhaupt rendert: Schritt 10 haengt dort an
-                      // `adminLike`. Ein Organizer ohne Admin-Rechte landete
-                      // sonst auf einem Index, den es fuer ihn nicht gibt —
-                      // leeres Formular statt Fehlermeldung.
+                      // v30.46: Nur setzen, wenn der Wizard den Schritt fuer
+                      // diese Person ueberhaupt rendert — sonst landet sie auf
+                      // einem Index, den es fuer sie nicht gibt, und sieht ein
+                      // leeres Formular statt einer Meldung. Dieselbe Ableitung
+                      // wie im Wizard (`canEditBilling`), damit beide Seiten
+                      // nicht auseinanderlaufen koennen: Ein Schalter,
+                      // FA_BILLING_STEP_FOR_ORGANIZERS, oeffnet beides zugleich.
                       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      if (isAdmin) { try { (window as any).__dexPreviewInitialStep = 9; } catch { /* */ } }
+                      if (canEditBilling(isAdmin, isOrganizerFor(selectedEvent))) { try { (window as any).__dexPreviewInitialStep = 9; } catch { /* */ } }
                       navigate('edit-event', selectedEvent.id);
                     }}
                   >

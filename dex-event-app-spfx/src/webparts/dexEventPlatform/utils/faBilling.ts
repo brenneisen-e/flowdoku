@@ -71,35 +71,104 @@ export function missingBillingFields(b: BillingData | null): BillingFieldDef[] {
 }
 
 /**
- * Statusmodell (Fachkonzept Abschnitt 11) — ausschließlich systemseitig
- * abgeleitet. 'sentAwaitSettle' ist der Zwischenzustand „Teilnehmerliste
- * übermittelt, Abschluss durch F&A offen" — das Konzept benennt ihn nicht
- * als eigene Kachel, in der Tabelle braucht er aber ein ehrliches Etikett.
+ * Statusmodell — v30.47 auf das Fachkonzept („Statusmodell (Erweiterung)")
+ * gebracht. Ausschließlich systemseitig abgeleitet: Es gibt keinen Ort, an
+ * dem jemand einen Status von Hand setzt. Ableiten statt speichern ist hier
+ * Absicht — ein gespeicherter Status wäre eine zweite Wahrheit neben den
+ * Daten, und die beiden laufen irgendwann auseinander (Feld nachträglich
+ * geleert, Versand wiederholt, Eventdatum verschoben).
+ *
+ * **Was sich gegenüber v30.5 ändert und warum es wichtig ist:** Der frühere
+ * Zustand `upcoming` fasste ZWEI Dinge zusammen, die das Konzept ausdrücklich
+ * trennt — „alle Pflichtfelder gepflegt, aber noch nichts an F&A geschickt"
+ * und „an F&A geschickt, Event steht noch aus". Für den Organizer sind das
+ * gegensätzliche Aussagen: Beim einen ist er dran, beim anderen wartet er.
+ * Genau deshalb steht `readyToSend` jetzt eigenständig da; `infoSentAt` lag
+ * im Datensatz längst vor, es wurde nur nie ausgewertet.
+ *
+ * Die fünf Stufen des Konzepts:
+ *
+ *   1 incomplete    Mindestens ein Pflichtfeld fehlt → Versand nicht möglich
+ *   2 readyToSend   Alles gepflegt, noch nicht an F&A versendet
+ *   3 infoSent      An F&A versendet, Event noch nicht stattgefunden
+ *   4 listPending   Event vorbei, Teilnehmerliste noch nicht versendet
+ *   5 settled       Abgerechnet
+ *
+ * Dazu EIN zusätzlicher Zwischenzustand, den das Konzept nicht benennt:
+ * `sentAwaitSettle` = Teilnehmerliste übermittelt, Abschluss durch F&A noch
+ * offen. Er bleibt bewusst erhalten, weil Stufe 5 laut Konzept BEIDES
+ * verlangt („Die Teilnehmerliste wurde erfolgreich an F&A versendet" UND
+ * „Der Abrechnungsprozess wurde durch F&A abgeschlossen"). Ohne ihn stünde
+ * „Abgerechnet" an Events, die F&A nie bestätigt hat — die Tabelle behauptete
+ * einen Abschluss, den es nicht gibt.
  */
-export type FAStatus = 'incomplete' | 'upcoming' | 'listPending' | 'sentAwaitSettle' | 'settled';
+export type FAStatus =
+  | 'incomplete'
+  | 'readyToSend'
+  | 'infoSent'
+  | 'listPending'
+  | 'sentAwaitSettle'
+  | 'settled';
+
+/** Reihenfolge der Statusübergänge — für die Fortschritts-Anzeige. */
+export const FA_STATUS_ORDER: FAStatus[] = [
+  'incomplete', 'readyToSend', 'infoSent', 'listPending', 'sentAwaitSettle', 'settled',
+];
 
 export function faStatusOf(ev: DeloitteEvent, b?: BillingData | null): FAStatus {
   const billing = b === undefined ? parseBillingOf(ev) : b;
   if (!billing) return 'incomplete';
+  // Der Abschluss durch F&A steht über allem: Ist er gesetzt, bleibt er —
+  // auch wenn danach noch jemand ein Feld anfasst.
   if (billing.settled) return 'settled';
   if (missingBillingFields(billing).length > 0) return 'incomplete';
+  // Konzept, Stufe 2: „Der Status bleibt bestehen, bis die Abrechnungs-
+  // informationen ERSTMALIG an F&A versendet wurden." Das gilt auch dann,
+  // wenn das Event schon vorbei ist — dann ist der Info-Versand der
+  // blockierende Schritt und nicht die Teilnehmerliste.
+  if (!billing.infoSentAt) return 'readyToSend';
   const end = new Date(ev.endDate || ev.startDate || '');
   const over = isFinite(end.getTime()) && end.getTime() < Date.now();
-  if (!over) return 'upcoming';
+  if (!over) return 'infoSent';
+  // Konzept, Stufe 4: bleibt bestehen, bis die Teilnehmerliste versendet ist —
+  // manuell ODER automatisch. Beide Wege stempeln `listSentAt`.
   return billing.listSentAt ? 'sentAwaitSettle' : 'listPending';
 }
 
+/** Beschriftungen wörtlich aus dem Fachkonzept. */
 export const FA_STATUS_LABELS: Record<FAStatus, string> = {
   incomplete: 'Abrechnungsrelevante Informationen unvollständig',
-  upcoming: 'Event ausstehend',
-  listPending: 'Teilnehmerlistenversand ausstehend',
+  readyToSend: 'Abrechnungsrelevante Informationen vollständig, Versendung ausstehend',
+  infoSent: 'Abrechnungsrelevante Informationen versendet, Event ausstehend',
+  listPending: 'Event stattgefunden, Teilnehmerlistenversand ausstehend',
   sentAwaitSettle: 'Teilnehmerliste versendet — Abschluss durch F&A offen',
   settled: 'Abgerechnet',
 };
 
+/** Kurzform für enge Stellen (Tabellen-Spalte, Kachel). */
+export const FA_STATUS_SHORT: Record<FAStatus, string> = {
+  incomplete: 'Angaben unvollständig',
+  readyToSend: 'Versand ausstehend',
+  infoSent: 'Event ausstehend',
+  listPending: 'Teilnehmerliste ausstehend',
+  sentAwaitSettle: 'Abschluss durch F&A offen',
+  settled: 'Abgerechnet',
+};
+
+/** Was ist als NÄCHSTES zu tun? Leer, wenn nichts offen ist. */
+export const FA_STATUS_NEXT: Record<FAStatus, string> = {
+  incomplete: 'Fehlende Pflichtangaben ergänzen — erst danach ist ein Versand möglich.',
+  readyToSend: 'Abrechnungsinformationen an F&A versenden.',
+  infoSent: 'Nichts zu tun — die Teilnehmerliste geht nach dem Event.',
+  listPending: 'Teilnehmerliste an F&A versenden.',
+  sentAwaitSettle: 'Nichts zu tun — F&A schließt die Abrechnung ab.',
+  settled: '',
+};
+
 export const FA_STATUS_COLORS: Record<FAStatus, { bg: string; fg: string }> = {
   incomplete: { bg: 'rgba(218,41,28,0.12)', fg: '#b02318' },
-  upcoming: { bg: 'rgba(0,118,168,0.12)', fg: '#0076a8' },
+  readyToSend: { bg: 'rgba(237,139,0,0.15)', fg: '#b86700' },
+  infoSent: { bg: 'rgba(0,118,168,0.12)', fg: '#0076a8' },
   listPending: { bg: 'rgba(237,139,0,0.15)', fg: '#b86700' },
   sentAwaitSettle: { bg: 'rgba(134,188,37,0.15)', fg: '#4a7c1f' },
   settled: { bg: 'rgba(134,188,37,0.25)', fg: '#2e7d32' },
