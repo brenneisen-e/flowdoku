@@ -29,7 +29,7 @@ import { emitBootStage } from '../utils/bootProgress';
 import { getCachedImage } from '../utils/imageCache';
 import { DEX_TEAM_RECIPIENTS } from '../utils/supportContact';
 import { parseBillingOf, missingBillingFields, renderBillingInfoMailBody, renderBillingListMailBody, trimBillingLog, faRowsFromRegistrations, BillingData, BillingLogEntry, FAConfig } from '../utils/faBilling';
-import { dlog } from '../utils/debugLog';
+import { dlog, isDebug } from '../utils/debugLog';
 
 /**
  * Organizer-Namen für Mail-Anreden sauber formatieren:
@@ -1037,8 +1037,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // eslint-disable-next-line no-console
       dlog('perf', `[DEX][perf][boot] total = ${tTotal} ms (schema-ensure RAN, version=v${APP_VERSION})`);
     }
-    // eslint-disable-next-line no-console
-    console.table(sorted.map(m => ({ stage: m.name, ms: m.ms })));
+    // v30.65: Auch die Tabelle nur auf Anforderung — sie war die „Array(2)"-Zeile
+    // im gemeldeten Log.
+    if (isDebug('perf')) {
+      // eslint-disable-next-line no-console
+      console.table(sorted.map(m => ({ stage: m.name, ms: m.ms })));
+    }
   }
 
   async function loadEvents(): Promise<void> {
@@ -5762,7 +5766,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         // wiederherzustellen). Hilft beim Nachvollziehen in der Browser-Konsole.
         const helpInHistory = (versions || []).some(v => (v.customFields || '').indexOf('helpText') >= 0);
         // eslint-disable-next-line no-console
-        console.log('[DEX restore]', ev.title, '(id', ev.id + ') — Versionen:', (versions || []).length, '— helpText in Historie:', helpInHistory);
+        dlog('perf', '[DEX restore]', ev.title, '(id', ev.id + ') — Versionen:', (versions || []).length, '— helpText in Historie:', helpInHistory);
         if (!versions || versions.length === 0) continue;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let currentArr: any[];

@@ -19,7 +19,50 @@ Wird aktualisiert wenn Flows geändert werden.
 **Zweck:** TeilnehmerIDs neu vergeben (Aktive + Warteliste lückenlos sortiert) + Nachrücken von Warteliste (seit v6.7 inkl. typ-bewusster Promotion für B2Run-Split-Wartelisten; seit v10.20 mit optionalem Shared-Waitlist-Modus)
 **Letztes Update:** 2026-06-11 (Audit-Fixes: Status-Sortierung in der Renummerierung, Folge-Reorder nach jeder Promotion, Fehler-Sichtbarkeit; JSON unten = as-implemented Export vom 2026-06-11)
 
-### UI-Anleitung 2026-09-01 (v30.63) — Platzzähler nach dem Nachrücken mitziehen
+### UI-Anleitung 2026-09-01 (v30.63, korrigiert v30.65) — Platzzähler nach dem Nachrücken mitziehen
+
+> ## ⚠️ Korrektur vom 01.09.2026 — bitte zuerst lesen
+>
+> Der erste Umsetzungsversuch ist an vier Stellen hängengeblieben. Drei davon
+> sind Kleinigkeiten, eine ist gefährlich. Wer den Flow schon angefasst hat,
+> arbeitet **diese Liste** ab — der Rest der Anleitung stimmt.
+>
+> **1. Die Uri darf NICHT mit `@` beginnen.** Genau das ist die Fehlermeldung
+> „The input parameter(s) of operation 'Count_Seats_Active' contains invalid
+> expression(s)". Ein führendes `@` heißt für Power Automate: „was jetzt kommt,
+> ist ein Ausdruck". `@_api/web/...` ist aber kein Ausdruck, sondern Text —
+> also bricht die Prüfung ab. In allen fünf neuen Actions muss die Uri mit
+> `_api/` anfangen, ohne irgendein Zeichen davor.
+>
+> - [ ] `Count_Seats_Active`, `Count_Seats_Waitlist`, `Count_Seats_Durch`,
+>       `Count_Seats_Fun`, `Sync_Seat_Counter` je öffnen, im Feld **Uri** das
+>       führende `@` löschen.
+>
+> **2. Die Zählungen laufen zurzeit nur, wenn der Reorder FEHLSCHLÄGT.** Im
+> Export steht bei `Count_Seats_Active` ein Run-after von `DEX_IDReorder` mit
+> **has failed / is skipped** — der Haken bei **is successful** fehlt. Damit
+> läuft die ganze Kette im Normalfall nie.
+>
+> - [ ] `Count_Seats_Active` → **⋮ → Configure run after** → bei `DEX_IDReorder`
+>       **is successful** anhaken, **has failed** und **is skipped** abwählen.
+>
+> **3. Der `Error_Handler` hängt jetzt am falschen Vorgänger — das ist die
+> gefährliche Stelle.** Er steht auf `Sync_Seat_Counter` → **is successful**.
+> Er enthält aber `Set Failed`. In der jetzigen Verdrahtung wird also **jeder
+> erfolgreiche Lauf** als gescheitert protokolliert. Er muss zurück auf den
+> Fehlerzweig von `DEX_IDReorder`.
+>
+> - [ ] `Error_Handler` → **⋮ → Configure run after** → Haken bei
+>       `Sync_Seat_Counter` komplett entfernen, stattdessen `DEX_IDReorder`
+>       wählen und dort **nur** **has failed** und **is skipped** anhaken.
+>
+> **4. Die Reihenfolge, die du gebaut hast, ist in Ordnung — behalte sie.**
+> Ursprünglich stand hier, die Kette gehöre **vor** `DEX_IDReorder`. Du hast sie
+> **danach** gehängt (`DEX IDReorder → Count Seats Active → … → Sync Seat
+> Counter`). Das ist sogar das robustere Bild: Erst ist die Renummerierung
+> fertig, dann wird gezählt — es kann keine halbfertige Zwischenzahl in den
+> Zähler laufen. Schritt 6 der ursprünglichen Anleitung („`DEX_IDReorder`
+> umhängen") **entfällt damit ersatzlos**; unten steht die korrigierte Fassung.
 
 **Warum das nötig ist.** Der Flow promotet beim Nachrücken eine Person von
 `Warteliste` auf `Angemeldet` — er fasst dabei aber die Liste
@@ -40,29 +83,34 @@ anders als ein Inkrement, das bei einem verlorenen Lauf für immer danebenliegt.
 
 **Die Stelle ist für alle drei Nachrück-Zweige dieselbe.** `Is_B2RunSplit`
 enthält die Zweige A/B/C; unmittelbar danach läuft `DEX_IDReorder` (setzt das
-Queue-Item auf `Done`). Genau dazwischen kommen die neuen Actions — einmal, statt
-dreimal in jedem Zweig.
+Queue-Item auf `Done`). Die neue Kette hängt **hinter** `DEX_IDReorder` — einmal,
+statt dreimal in jedem Zweig. Dass das Queue-Item zu diesem Zeitpunkt schon auf
+`Done` steht, ist unkritisch: Der Zähler ist Nebenbuchhaltung, kein Teil des
+Reorder-Vertrags.
 
 > **Vor dem Umsetzen bitte kurz prüfen** (ich kann den Tenant von hier nicht
 > einsehen, und diese Doku kann veralten — genau das ist am 31.08. schon einmal
-> passiert):
-> - [ ] Der Flow **DEX_IDReorder_TeilnehmerIDs** enthält eine Action **`Is_B2RunSplit`** (Art: **Condition**).
+> passiert). Am Export vom 01.09.2026 bestätigt:
+> - [ ] Der Flow **DEX_IDReorder_TeilnehmerIDs** enthält eine Action **`Is_B2RunSplit`** (Art: **Condition**) mit den drei Promote-Zweigen.
 > - [ ] Direkt danach folgt eine Action **`DEX_IDReorder`** (Art: **Update item**), die den Status auf `Done` setzt.
 > - [ ] Es gibt eine Action **`Settings`**, aus der `siteAddress` kommt.
+> - [ ] Es gibt einen **Scope** namens **`Error_Handler`** mit der Action `Set Failed` darin.
 >
 > Heißen die Actions bei dir anders, ist nur EINES wichtig: Die neuen Actions
-> müssen **nach allen Promote-Zweigen** und **vor** dem Setzen auf `Done` laufen.
+> müssen **nach allen Promote-Zweigen** laufen — sonst zählen sie einen Bestand,
+> den das Nachrücken gleich wieder verändert.
 
 #### Klick-Anleitung als Tabelle
 
 | # | NEU/GEÄNDERT | Name der Action | Art der Action | Stelle |
 |---|---|---|---|---|
-| 1 | NEU | `Count_Seats_Active` | Send an HTTP request to SharePoint | direkt nach `Is_B2RunSplit` |
+| 1 | NEU | `Count_Seats_Active` | Send an HTTP request to SharePoint | direkt nach `DEX_IDReorder` |
 | 2 | NEU | `Count_Seats_Waitlist` | Send an HTTP request to SharePoint | direkt nach `Count_Seats_Active` |
 | 3 | NEU | `Count_Seats_Durch` | Send an HTTP request to SharePoint | direkt nach `Count_Seats_Waitlist` |
 | 4 | NEU | `Count_Seats_Fun` | Send an HTTP request to SharePoint | direkt nach `Count_Seats_Durch` |
 | 5 | NEU | `Sync_Seat_Counter` | Send an HTTP request to SharePoint | direkt nach `Count_Seats_Fun` |
-| 6 | GEÄNDERT | `DEX_IDReorder` | Update item (bestehend) | Run after auf `Sync_Seat_Counter` umhängen |
+| 6 | UNVERÄNDERT | `DEX_IDReorder` | Update item (bestehend) | bleibt, wo es ist — nichts umhängen |
+| 7 | PRÜFEN | `Error_Handler` | Scope (bestehend) | muss weiter auf `DEX_IDReorder` · **has failed / is skipped** stehen |
 
 Alle fünf neuen Actions sind vom selben Typ. So legst du eine an:
 
@@ -75,8 +123,18 @@ outputs('Settings')?['siteAddress']
 ```
 
 - [ ] **Method**, **Uri**, **Headers**, **Body** wie unten setzen.
+- [ ] ⚠️ **Die Uri ist reiner Text und beginnt mit `_api/`.** Kein `@` davor, kein
+      **Expression**-Tab. Ein führendes `@` liest Power Automate als Ausdruck und
+      lehnt die Action mit „contains invalid expression(s)" ab. Falls der Editor
+      beim Einfügen von selbst ein `@` ergänzt: löschen.
 - [ ] **⋮ → Rename** → den Namen exakt eintragen (die Namen stehen in den Ausdrücken!).
-- [ ] **⋮ → Configure run after** → beim Vorgänger zusätzlich zu **is successful** auch **has failed** und **is skipped** anhaken. Der Platzzähler ist eine Nebenbuchhaltung — er darf einen Nachrück-Lauf nie zum Scheitern bringen.
+- [ ] **⋮ → Configure run after** → beim Vorgänger **is successful** anhaken.
+
+> **Ausnahme bei Zeile 1.** `Count_Seats_Active` hängt an `DEX_IDReorder` und dort
+> **nur** an **is successful**. Läuft der Reorder auf einen Fehler, soll nicht
+> gezählt werden — der Bestand ist dann unklar, und eine Zahl aus einem halben
+> Lauf wäre schlimmer als gar keine. Den Fehlerfall übernimmt der
+> `Error_Handler` (Zeile 7).
 
 ---
 
@@ -85,11 +143,20 @@ outputs('Settings')?['siteAddress']
 Zählt, wie viele Personen aktuell wirklich einen Platz belegen.
 
 - [ ] **Method:** `GET`
-- [ ] **Uri** — als Text einfügen (kein fx nötig):
+- [ ] **Uri** — als Text einfügen, **ohne** `@` am Anfang (kein fx):
 
 ```
 _api/web/lists/getbytitle('Teilnehmer')/items?$filter=(Status eq 'Angemeldet') or (Status eq 'QR versendet') or (Status eq 'Eingecheckt')&$select=Id&$top=1&$inlinecount=allpages
 ```
+
+- [ ] **Run after:** `DEX_IDReorder` → nur **is successful**.
+
+> Der Listentitel `Teilnehmer` ist im Flow als `outputs('Settings')?['listName']`
+> hinterlegt und in der App als Konstante `REG_LIST_NAME` — beide sagen dasselbe.
+> Deshalb steht er hier fest im Text: Ein Ausdruck an dieser Stelle wäre eine
+> weitere Gelegenheit für ein verirrtes `@`, und ein Tippfehler im Listennamen
+> liefert kein Fehlerbild, sondern eine **0** — die dann in den Zähler geschrieben
+> würde.
 
 - [ ] **Headers** — eine Zeile, links der Key, rechts der Wert:
 
@@ -231,21 +298,41 @@ int(body('Count_Seats_Waitlist')?['d']?['__count'])
 
 ---
 
-#### Zeile 6 — `DEX_IDReorder` (Update item) · GEÄNDERT
+#### Zeile 6 — `DEX_IDReorder` (Update item) · UNVERÄNDERT
 
-Die bestehende Abschluss-Action muss jetzt nach der neuen Kette laufen, nicht
-mehr direkt nach `Is_B2RunSplit`.
+Hier ist **nichts** zu tun. Die Action bleibt, wo sie ist: Run after
+`Is_B2RunSplit` → **is successful**.
 
-- [ ] Action **`DEX_IDReorder`** öffnen.
-- [ ] **⋮ → Configure run after**.
-- [ ] Den Haken bei **`Is_B2RunSplit`** entfernen.
-- [ ] **`Sync_Seat_Counter`** auswählen und dort **is successful**, **has failed** und **is skipped** anhaken.
+- [ ] Nur kontrollieren: **⋮ → Configure run after** zeigt `Is_B2RunSplit`
+      mit **is successful**. Falls dort `Sync_Seat_Counter` steht (aus einem
+      früheren Anlauf nach der alten Fassung dieser Anleitung), zurücksetzen.
+
+> Warum das Queue-Item schon vor dem Zählen auf `Done` geht: Der Zähler ist eine
+> Nebenbuchhaltung. Hinge `Done` daran, bliebe das Item bei jedem
+> SharePoint-Schluckauf auf `Processing` stehen — und der nächste Reorder-Lauf
+> wartete auf etwas, das nie fertig wird. Genau das soll die Kette **hinter**
+> dem Abschluss verhindern.
+
+---
+
+#### Zeile 7 — `Error_Handler` (Scope) · PRÜFEN
+
+Der bestehende Fehler-Scope (`Set Failed` darin) muss weiter den **Reorder**
+absichern — nicht den Platzzähler. Im Export vom 01.09. stand er auf
+`Sync_Seat_Counter` → **is successful**; damit würde jeder **erfolgreiche** Lauf
+als gescheitert protokolliert.
+
+- [ ] Action **`Error_Handler`** öffnen → **⋮ → Configure run after**.
+- [ ] Haken bei **`Sync_Seat_Counter`** vollständig entfernen.
+- [ ] **`DEX_IDReorder`** auswählen, dort **has failed** und **is skipped**
+      anhaken, **is successful** ausdrücklich **nicht**.
 - [ ] **Done** klicken.
 
-> Alle drei Zustände sind Absicht: Ob der Platzzähler geschrieben werden konnte
-> oder nicht, darf nicht darüber entscheiden, ob das Queue-Item auf `Done` geht.
-> Sonst bliebe es auf `Processing` hängen — und der nächste Reorder-Lauf würde
-> auf ein Item warten, das nie fertig wird.
+> Im Designer stehen `Count_Seats_Active` und `Error_Handler` danach
+> nebeneinander unter `DEX_IDReorder` — das ist richtig so: zwei Zweige, einer
+> für den Erfolgsfall (zählen), einer für den Fehlerfall (Status auf `Failed`).
+> Ein senkrechter Strang, in dem der Fehler-Scope am Ende hängt, kann diese
+> Unterscheidung nicht abbilden.
 
 - [ ] Oben rechts **Save** klicken.
 
@@ -256,7 +343,8 @@ mehr direkt nach `Is_B2RunSplit`.
 - [ ] Ein Test-Event mit **Kapazität 2** anlegen, drei Personen anmelden (die dritte landet auf der Warteliste).
 - [ ] In SharePoint die Liste **DEX_TeilnehmerCounter** der Event-Subsite öffnen. Erwartung: `SeatsTaken` = 2, `WaitlistTaken` = 1.
 - [ ] Eine der beiden aktiven Personen abmelden.
-- [ ] Im Flow **DEX_IDReorder_TeilnehmerIDs** unter **Run history** den frischen Lauf öffnen und prüfen, dass `Sync_Seat_Counter` **grün** ist.
+- [ ] Im Flow **DEX_IDReorder_TeilnehmerIDs** unter **Run history** den frischen Lauf öffnen und prüfen, dass alle vier `Count_Seats_*` **und** `Sync_Seat_Counter` **grün** sind — grau (Skipped) heißt: Run after falsch, siehe Fehlertabelle.
+- [ ] Im selben Lauf muss `Error_Handler` **grau (Skipped)** sein. Ist er grün, steht er am falschen Vorgänger und schreibt `Failed` über einen geglückten Lauf.
 - [ ] Die Zähler-Liste neu laden. Erwartung: `SeatsTaken` = 2 (die dritte Person ist nachgerückt), `WaitlistTaken` = 0.
 - [ ] Die Anmeldeseite als **normaler Teilnehmer** öffnen (nicht als Organizer) und die Termin-Kachel ansehen. Erwartung: **0 frei**. In der Browser-Konsole (F12) steht die Zeile `[DEX][seats] … Quelle: Platzzähler · belegt 2/2 · frei 0 · Warteliste 0`.
 
@@ -264,6 +352,9 @@ mehr direkt nach `Is_B2RunSplit`.
 
 | Beobachtung im Lauf | Ursache | Abhilfe |
 |---|---|---|
+| Beim **Save**: „The input parameter(s) of operation 'Count_Seats_Active' contains invalid expression(s)" | Die **Uri** beginnt mit `@` — Power Automate liest sie als Ausdruck | In allen fünf Actions das führende `@` löschen, die Uri beginnt mit `_api/` |
+| Alle `Count_Seats_*` sind **grau (Skipped)**, der Lauf ist trotzdem grün | `Count_Seats_Active` hängt an **has failed / is skipped** statt an **is successful** | Run after von `Count_Seats_Active` auf `DEX_IDReorder` → **is successful** korrigieren |
+| Das Queue-Item steht nach einem sauberen Lauf auf `Failed` | Der `Error_Handler` hängt an `Sync_Seat_Counter` → **is successful** | Zeile 7 abarbeiten: zurück auf `DEX_IDReorder` → **has failed / is skipped** |
 | `Sync_Seat_Counter` = HTTP 400, „Invalid JSON" | Ein `@{…}` steht als Text im Body statt als Ausdruck | Die vier Stellen einzeln über den **Expression**-Tab (fx) neu setzen |
 | `Sync_Seat_Counter` = HTTP 400, Feldtyp-Meldung | `int(…)` fehlt um einen der vier Werte | Ausdruck korrigieren |
 | `Sync_Seat_Counter` = HTTP 404 | Die Liste `DEX_TeilnehmerCounter` gibt es auf dieser Subsite nicht | Im Admin Center **Spalten fixen (alle Events)** ausführen |
