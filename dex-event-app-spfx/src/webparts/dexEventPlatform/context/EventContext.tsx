@@ -525,6 +525,8 @@ interface EventContextType {
   saveFAConfig: (cfg: FAConfig) => Promise<boolean>;
   sendFAMail: (ev: DeloitteEvent, kind: 'info' | 'list', opts?: { auto?: boolean }) => Promise<{ ok: boolean; reason?: string }>;
   markEventSettled: (ev: DeloitteEvent) => Promise<boolean>;
+  /** v30.53: Rückfrage an F&A in der Kommunikationshistorie festhalten. */
+  logFAContact: (ev: DeloitteEvent, to: string, subject: string) => Promise<boolean>;
   maybeSendBillingAutoMails: () => Promise<{ infoSent: number; listSent: number; reminders: number }>;
   /** v24.2: „Danke, wir hoffen es lief gut"-Mail an den Organizer beim
    *  App-Öffnen nach dem Event-Tag (1×/Event/Organizer, localStorage-Drossel). */
@@ -6026,6 +6028,36 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     return { ok: true };
   }
 
+  /**
+   * v30.53: Rückfrage an F&A in der Kommunikationshistorie festhalten.
+   *
+   * Das Fachkonzept verlangt für Bereich 3 „Speicherung der Kommunikation in
+   * der Kommunikationshistorie". Die Rückfrage entsteht aber im Outlook des
+   * Organizers (mailto:) — DEX sieht den Text NIE und bekommt auch keine
+   * Bestätigung, dass die Mail rausging. Protokolliert wird deshalb genau
+   * das, was belegbar ist: dass und wann eine Rückfrage an wen begonnen
+   * wurde. Ein Eintrag „Mail gesendet" wäre eine Behauptung über etwas, das
+   * die App weder auslöst noch prüfen kann — und in einer revisionssicheren
+   * Historie ist eine solche Behauptung schlimmer als eine Lücke.
+   */
+  async function logFAContact(ev: DeloitteEvent, to: string, subject: string): Promise<boolean> {
+    const b = parseBillingOf(ev);
+    if (!b) return false;
+    const idNum = parseInt(ev.id, 10);
+    if (!isFinite(idNum)) return false;
+    const nowIso = new Date().toISOString();
+    const entry: BillingLogEntry = {
+      ts: nowIso,
+      by: currentUserName || currentUserEmail,
+      action: 'Rückfrage an F&A im eigenen Postfach geöffnet',
+      to, subject,
+    };
+    const newB: BillingData = { ...b, log: trimBillingLog([...(b.log || []), entry]) };
+    const ok = await eventService.patchEventOverridesValue(idNum, '_billing', newB);
+    if (ok) applyBillingLocally(ev.id, newB);
+    return ok;
+  }
+
   /** „Als abgerechnet markieren" — nur F&A/Admin (UI-seitig gegated). Der
    *  Status bleibt laut Konzept dauerhaft bestehen; Zeitpunkt + Person
    *  werden protokolliert. */
@@ -6423,7 +6455,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, getLastEventUpdateError, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getEventNumbersForEmail, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, getFAConfig, saveFAConfig, sendFAMail, markEventSettled, maybeSendBillingAutoMails, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, repairAllOrganizerPermissions, restoreCustomFieldDescriptions,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, getLastEventUpdateError, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getEventNumbersForEmail, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, getFAConfig, saveFAConfig, sendFAMail, markEventSettled, logFAContact, maybeSendBillingAutoMails, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, repairAllOrganizerPermissions, restoreCustomFieldDescriptions,
         sendAdminInquiry,
         sendCompleteRegistrationReminder,
         notifyAdminsExternalAudienceAccess,

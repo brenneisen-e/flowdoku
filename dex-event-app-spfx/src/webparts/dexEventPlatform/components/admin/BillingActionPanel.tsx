@@ -12,10 +12,29 @@ import * as React from 'react';
 import { useEvents } from '../../context/EventContext';
 import { useDialog } from '../../context/DialogContext';
 import { DeloitteEvent } from '../../types';
+import Modal from '../Modal';
 import {
   parseBillingOf, missingBillingFields, faStatusOf, FA_STATUS_LABELS, FA_STATUS_COLORS,
   faRowsFromRegistrations, downloadFAParticipantXlsx,
 } from '../../utils/faBilling';
+
+/**
+ * v30.53: „Anzeige der Empfänger vor dem Versand" (Fachkonzept, Bereiche 1–3).
+ *
+ * Die Adressen standen bisher NUR im Bestätigungsdialog — also erst, nachdem
+ * man auf „Senden" gedrückt hat. Das Konzept meint aber die Anzeige davor:
+ * Man soll sehen, wohin es geht, BEVOR man sich zum Klick entscheidet.
+ */
+function RecipientLine(props: { label: string; addrs: string[]; withCc?: boolean }): React.ReactElement {
+  return (
+    <div style={{ marginTop: 8, fontSize: '0.74rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+      <strong style={{ color: 'var(--dex-gray-700)' }}>{props.label}: </strong>
+      {props.addrs.length === 0
+        ? <span style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>noch kein Verteiler hinterlegt — bitte im F&amp;A Center pflegen (lassen).</span>
+        : <span style={{ wordBreak: 'break-word' }}>{props.addrs.join(', ')}{props.withCc ? ' · Organizer in CC' : ''}</span>}
+    </div>
+  );
+}
 
 const fmtDateTime = (iso: string): string => {
   const d = new Date(iso || '');
@@ -26,7 +45,7 @@ const fmtDateTime = (iso: string): string => {
 
 export default function BillingActionPanel(props: { event: DeloitteEvent; onClose: () => void }): React.ReactElement | null {
   const { event } = props;
-  const { events, sendFAMail, getFAConfig, getAllRegistrations } = useEvents();
+  const { events, sendFAMail, getFAConfig, getAllRegistrations, logFAContact } = useEvents();
   const { confirmDialog, showAlert } = useDialog();
   // Frischen Stand aus dem Context nehmen — nach einem Versand patcht
   // sendFAMail den lokalen Event-State, das Modal soll sofort mitziehen.
@@ -122,7 +141,7 @@ export default function BillingActionPanel(props: { event: DeloitteEvent; onClos
    * Organizer landen. Eine Queue-Mail käme von no_reply.events@deloitte.de,
    * eine Antwort darauf ginge ins Leere.
    */
-  const contactFA = (): void => {
+  const contactFA = async (): Promise<void> => {
     const to = (recipients?.info || []).join(';');
     if (!to) {
       showAlert('Es ist noch kein F&A-Verteiler hinterlegt — bitte im F&A Center pflegen (lassen).', { variant: 'error' });
@@ -144,27 +163,22 @@ export default function BillingActionPanel(props: { event: DeloitteEvent; onClos
       'Viele Grüße',
     ];
     window.location.href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyLines.join('\r\n'))}`;
+    // v30.53: Das Konzept verlangt „Speicherung der Kommunikation in der
+    // Kommunikationshistorie". Bei einem mailto: sieht DEX den Text NIE — die
+    // Mail entsteht im Outlook des Organizers. Festgehalten wird deshalb, was
+    // belegbar ist: dass und wann eine Rückfrage an wen begonnen wurde. Das
+    // als „Mail gesendet" zu protokollieren wäre eine Behauptung über etwas,
+    // das die App weder auslöst noch bestätigt bekommt.
+    try { await logFAContact(liveEvent, to, subject); } catch { /* Protokoll ist best-effort */ }
   };
 
+  // v30.53: eigenes Overlay durch das gemeinsame <Modal> ersetzt. Das
+  // handgebaute schloss bei JEDEM Klick auf den Hintergrund — inklusive der
+  // Klicks, die innen begannen und außen endeten (v30.51). Nebenbei erbt der
+  // Dialog damit Escape, Portal und die Button-Styles.
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Event-Abrechnung"
-      style={{
-        position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.55)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-      }}
-      onClick={props.onClose}
-    >
-      <div
-        style={{
-          background: '#fff', borderRadius: 12, padding: '24px 28px',
-          maxWidth: 680, width: '100%', maxHeight: '86vh', overflowY: 'auto',
-          boxShadow: '0 16px 48px rgba(0,0,0,0.35)',
-        }}
-        onClick={e => e.stopPropagation()}
-      >
+    <Modal open onClose={props.onClose} maxWidth={680} ariaLabel="Event-Abrechnung">
+      <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
           <div>
             <h3 style={{ margin: '0 0 6px' }}>Event-Abrechnung</h3>
@@ -207,6 +221,7 @@ export default function BillingActionPanel(props: { event: DeloitteEvent; onClos
                 {busy === 'info' ? 'Wird gesendet…' : 'Senden'}
               </button>
             </div>
+            <RecipientLine label="Geht an" addrs={recipients?.info || []} withCc />
           </div>
           <div style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 10, padding: '12px 14px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -240,6 +255,7 @@ export default function BillingActionPanel(props: { event: DeloitteEvent; onClos
                 </button>
               </div>
             </div>
+            <RecipientLine label="Geht an" addrs={recipients?.list || []} withCc />
             {/* v30.23: Warum kein Datei-Anhang? Der Tenant blockt Mails mit
                 Anhang komplett (s. Kommentar an downloadXlsx). */}
             <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--dex-gray-500)', lineHeight: 1.5 }}>
@@ -257,18 +273,21 @@ export default function BillingActionPanel(props: { event: DeloitteEvent; onClos
                 <strong style={{ fontSize: '0.88rem' }}>F&amp;A-Team kontaktieren</strong>
                 <div style={{ fontSize: '0.76rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
                   Öffnet eine vorbereitete E-Mail an F&amp;A in deinem Outlook — mit Event, Event-ID und
-                  Status. Bewusst aus deinem Postfach, damit die Antwort bei dir ankommt.
+                  Status. Bewusst aus deinem Postfach, damit die Antwort bei dir ankommt; in der
+                  Historie unten wird festgehalten, dass du eine Rückfrage begonnen hast (den Text
+                  selbst sieht DEX nicht).
                 </div>
               </div>
               <button
                 type="button"
                 className="btn btn-secondary"
                 style={{ fontSize: '0.8rem', padding: '6px 16px', flexShrink: 0 }}
-                onClick={contactFA}
+                onClick={() => { void contactFA(); }}
               >
                 E-Mail schreiben
               </button>
             </div>
+            <RecipientLine label="Ansprechpartner" addrs={recipients?.info || []} />
           </div>
         </div>
 
@@ -310,6 +329,6 @@ export default function BillingActionPanel(props: { event: DeloitteEvent; onClos
           </div>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }
