@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.41.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.42.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -327,6 +327,17 @@ für Teilnehmer nicht „Sub-Events", sondern „Events" — der Default von
 beiden Konstanten und **nie** ein fest verdrahtetes „Sub-Event"; für den
 unbestimmten Artikel gibt es `childOneDe` (es heißt „ein Event", aber „eine
 Session" — das war vorher überall falsch).
+
+**Die Klammer-Zeile schreibt seit v30.42 `registerForEvent` selbst.** Wer eine
+Sub-Event-Anmeldung anlegt, bekommt die Klammer-Zeile automatisch dazu — kein
+Aufrufer muss mehr daran denken. Vorher war es umgekehrt, und es wurde dreimal
+vergessen (`AddParticipantsModal`, `MyEventsPage`, `AssistantPage` + Massen-
+import). Zwei Dinge dabei nicht anfassen: `skipShadowParent` setzt NUR die
+Anmeldeseite (sie legt die Klammer zuletzt an, MIT den übergreifenden
+Antworten — eine vorher eingefügte leere Zeile würde die Antworten
+verschlucken), und `shadowEnsuredRef` verhindert, dass ein Lauf über 19 Termine
+19-mal dieselbe Prüfung schickt. Fehlschläge landen als Merker in
+`utils/shadowHeal` und werden beim nächsten App-Start nachgeholt.
 
 **Nachgerückt wird nur beim Abmelden — nicht bei einer Kapazitätsänderung.**
 `promoteFirstWaitlistItem` hängt am Cancel-Pfad. Erhöht der Organizer eine

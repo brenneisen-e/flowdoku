@@ -6934,8 +6934,11 @@ export default function AdminPage(): React.ReactElement {
                         }
                       }
                       parentCount = activeSet.size;
-                    } else if (parent.id === selectedEvent.id) {
+                    } else if (parent.id === selectedEvent.id && !isLoadingRegs) {
                       // Normales Hauptevent ist selbst gewählt → Live-Zahl.
+                      // v30.42: Während des Ladens gehört `registrations` noch
+                      // dem vorher gewählten Termin — dieselbe Falle wie bei den
+                      // Sub-Reitern unten. Dann lieber der eigene Zähler.
                       parentCount = liveSelectedActive;
                     }
                     tabs.push({ id: parent.id, label: parent.title || (isDe ? 'Hauptevent' : 'Main event'), count: parentCount, isParent: true, ev: parent });
@@ -6948,11 +6951,16 @@ export default function AdminPage(): React.ReactElement {
                     // gewähltem Tab (gewählt = live, sonst = Cache), siehe der
                     // 188-vs-190-Effekt. Gewählter Tab bleibt die Live-Zahl der
                     // aktuell geladenen Tabelle.
+                    // v30.42: …aber NUR, solange nicht gerade geladen wird.
+                    // Beim Reiterwechsel gehört `registrations` noch dem ALTEN
+                    // Termin; der neue Reiter zeigte deshalb kurz dessen Zahl
+                    // (Nutzer-Befund: erst 55, dann 51). Während des Ladens
+                    // steht die eigene Zahl des Termins da — die stimmt sofort.
                     const subRegs = subEventRegsByEventId[c.id];
                     const subLiveCount = subRegs
                       ? subRegs.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length
                       : (c.currentParticipants || 0);
-                    tabs.push({ id: c.id, label: shortSubEventTitle(c.title, parent?.title) || (isDe ? 'ohne Titel' : 'untitled'), count: c.id === selectedEvent.id ? liveSelectedActive : subLiveCount, isParent: false, ev: c });
+                    tabs.push({ id: c.id, label: shortSubEventTitle(c.title, parent?.title) || (isDe ? 'ohne Titel' : 'untitled'), count: (c.id === selectedEvent.id && !isLoadingRegs) ? liveSelectedActive : subLiveCount, isParent: false, ev: c });
                   }
                   // v22.70: Einzelnen Tab-Button rendern (für flaches Layout
                   // UND die Sub-Event-Reihe im Klammer-Layout wiederverwendet).
