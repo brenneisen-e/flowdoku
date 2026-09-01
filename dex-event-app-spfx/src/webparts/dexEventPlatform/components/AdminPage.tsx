@@ -21,6 +21,7 @@ import { buildHashDeepLink } from '../utils/deepLink';
 import { SPRegistration } from '../services/EventService';
 import { B2RUN_KOELN_HEADERS, B2RUN_KOELN_ALTERSKLASSE, mapAnredeToB2Run, mapStarterTypeToStartblock, isB2RunKoelnTitle } from '../data/b2runKoeln';
 import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown, QrCode, Info, Calendar, Pin } from './Icons';
+import B2RunBibImportModal from './admin/B2RunBibImportModal';
 import OrganizerList from './OrganizerList';
 import { PersonContactHover } from './PersonContactHover';
 import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
@@ -1162,6 +1163,8 @@ export default function AdminPage(): React.ReactElement {
   // getroffen statt im Anker-Dropdown (der im „Aktion auswählen"-Menü mit
   // overflow:auto abgeschnitten wurde → Auswahl war unsichtbar).
   const [excelTargetModal, setExcelTargetModal] = React.useState<null | { mode: 'deloitte' | 'b2run'; chooseMode?: boolean }>(null);
+  // v30.48: Rücklauf des Veranstalters mit den echten Startnummern einlesen.
+  const [bibImportOpen, setBibImportOpen] = React.useState(false);
   const [excelAudience, setExcelAudience] = React.useState<'active' | 'activePlusWait' | 'waitOnly' | 'withCancelled'>('active');
   // v20.4: Excel-Export im Klammer-Modus — konsolidierte Matrix (eine Zeile
   // pro Person, Spalten pro Sub-Event) und/oder einzelne Sub-Event-Blätter
@@ -2840,6 +2843,13 @@ export default function AdminPage(): React.ReactElement {
       const colLabel = (lblA && lblB) ? `${lblA} / ${lblB}` : (isDe ? 'Gruppe' : 'Group');
       cols.push({ id: 'starterType', label: colLabel });
     }
+    // v30.48: Startnummer nur anbieten, wenn tatsächlich eine importiert wurde.
+    // Ohne Import wäre es eine Spalte voller „—" an jedem Event, das zufällig
+    // die Spalte in der Liste hat.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (registrations.some(r => String((r as any).Startnummer || '').trim())) {
+      cols.push({ id: 'startnummer', label: isDe ? 'Startnummer' : 'Bib number' });
+    }
     cols.push({ id: 'status', label: 'Status' });
     cols.push({ id: 'date', label: 'Registriert am' });
     // v17.15/v17.17.1: Nachrück-Audit-Spalten — nur sichtbar wenn das
@@ -2918,6 +2928,10 @@ export default function AdminPage(): React.ReactElement {
     })(),
     // v19.11: Audit-Spalten-Sichtbarkeit hängt an der Warteliste-Aktivität.
     hasWaitlistActivity,
+    // v30.48: Die Startnummern-Spalte erscheint erst nach dem Import — also
+    // sobald irgendeine Zeile eine Nummer trägt.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    registrations.some(r => String((r as any).Startnummer || '').trim()),
   ]);
 
   // v26.44: gibt es überhaupt eine Roommate-Spalte? Steuert den
@@ -3085,10 +3099,15 @@ export default function AdminPage(): React.ReactElement {
       // Team-Zuordnung existiert) — der frei benannte Begriff als Spaltenkopf.
       const includeTeam = !!selectedEvent.teamRegistrationEnabled || activeRegsForExport.some(r => !!r.TeamId);
       const teamHeader = selectedEvent.teamTermSingular || 'Team';
+      // v30.48: Startnummer nur, wenn sie importiert wurde — sonst eine leere
+      // Spalte in jedem Export.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const includeBib = activeRegsForExport.some(r => String((r as any).Startnummer || '').trim());
       headers = [
         'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'Email',
         'Department', 'Location', 'JobTitle', 'Phone',
         'Status', 'RegistrationDate',
+        ...(includeBib ? ['Startnummer'] : []),
         ...(includeTeam ? [teamHeader, `${teamHeader}-Lead`] : []),
       ];
       // Dynamisch alle Custom Field Labels aus dem Event sammeln
@@ -3128,6 +3147,7 @@ export default function AdminPage(): React.ReactElement {
           anyReg.Phone || '',
           r.Status || '',
           r.RegistrationDate ? new Date(r.RegistrationDate).toLocaleString('de-DE') : '',
+          ...(includeBib ? [String(anyReg.Startnummer || '')] : []),
           ...(includeTeam ? [r.TeamName || '', r.TeamLead ? 'Ja' : ''] : []),
         ];
         const customValues = customLabels.map(cf => {
@@ -7817,6 +7837,22 @@ export default function AdminPage(): React.ReactElement {
               )}
             </div>
 
+            {/* 5b. v30.48: Startnummern-Rücklauf einlesen — nur B2Run Köln.
+                Bewusst NICHT an `type === 'B2Run'` gehängt: Das Spaltenformat
+                der Rücklauf-Datei ist das des Köln-Exports. */}
+            {selectedEvent && isB2RunKoelnTitle(selectedEvent.title) && (
+              <ActionTile
+                icon={<Hash size={18} />}
+                category="participants"
+                title={isDe ? 'Startnummern importieren' : 'Import bib numbers'}
+                desc={isDe
+                  ? 'Liest die Rücklauf-Datei des Veranstalters ein und schreibt die echten Startnummern zu den Teilnehmern. Zeigt vorher, welche Nummer wegen einer Abmeldung an einen Nachrücker geht — die musst du beim Veranstalter ummelden.'
+                  : 'Reads the organiser\'s return file and writes the real bib numbers to the participants. Shows beforehand which number moves to a waitlist promotion after a cancellation.'}
+                badge="organizer"
+                onClick={() => setBibImportOpen(true)}
+              />
+            )}
+
             {/* 6. Outlook-Absagen prüfen — Admin only */}
             {isAdmin && (
               <ActionTile
@@ -11437,6 +11473,13 @@ export default function AdminPage(): React.ReactElement {
                     </th>
                   );
                 }
+                if (id === 'startnummer') {
+                  return (
+                    <th key={id} style={baseStyle} title={isDe ? 'Die offizielle Startnummer des Veranstalters, eingelesen über „Startnummern importieren".' : 'The official bib number from the organiser, imported via "Import bib numbers".'}>
+                      {isDe ? 'Startnummer' : 'Bib number'}{hideButton(id)}
+                    </th>
+                  );
+                }
                 if (id === 'promotedDate') {
                   return (
                     <th key={id} style={baseStyle} title={isDe ? 'Zeitpunkt des Nachrückens — gesetzt sobald der Teilnehmer von der Warteliste in den Aktiv-Bereich promotet wurde. Leer für Personen die sich direkt angemeldet haben.' : 'Time of promotion — set as soon as the participant was promoted from the waitlist into the active area. Empty for people who registered directly.'}>
@@ -11654,6 +11697,12 @@ export default function AdminPage(): React.ReactElement {
                   // Zeitstempel (Created) als Fallback zeigen statt Leere.
                   const regDate = (reg.RegistrationDate || '').trim() ? reg.RegistrationDate : (reg.Created || '');
                   return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{regDate ? formatDate(regDate) : '—'}</td>;
+                }
+                if (id === 'startnummer') {
+                  // v30.48: Startnummer aus dem Veranstalter-Rücklauf.
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const bib = String((reg as any).Startnummer || '').trim();
+                  return <td key={id} style={{ padding: 8, fontFamily: 'monospace', fontWeight: bib ? 700 : 400, color: bib ? 'var(--dex-gray-800)' : 'var(--dex-gray-300)' }}>{bib || '—'}</td>;
                 }
                 if (id === 'promotedDate') {
                   // v17.15: „Nachgerückt am" — gesetzt beim Promote
@@ -14683,6 +14732,16 @@ export default function AdminPage(): React.ReactElement {
           </Modal>
         );
       })()}
+
+      {/* v30.48: Startnummern-Rücklauf (B2Run Köln). */}
+      {bibImportOpen && selectedEvent && eventServiceRef && (
+        <B2RunBibImportModal
+          event={selectedEvent}
+          service={eventServiceRef}
+          onClose={() => setBibImportOpen(false)}
+          onDone={() => { reloadRegistrationsForIdCheck().catch(() => { /* best-effort */ }); }}
+        />
+      )}
 
       {/* v17.12: Excel-Export-Zielgruppen-Picker. */}
       {excelTargetModal && selectedEvent && (() => {

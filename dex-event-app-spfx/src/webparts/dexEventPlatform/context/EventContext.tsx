@@ -26,7 +26,7 @@ import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } fro
 import { looksLikeClaimName, resolveMyDisplayName, safeDisplayName } from '../utils/displayName';
 import { emitBootStage } from '../utils/bootProgress';
 import { DEX_TEAM_RECIPIENTS } from '../utils/supportContact';
-import { parseBillingOf, missingBillingFields, renderBillingInfoMailBody, renderBillingListMailBody, trimBillingLog, BillingData, BillingLogEntry, FAConfig } from '../utils/faBilling';
+import { parseBillingOf, missingBillingFields, renderBillingInfoMailBody, renderBillingListMailBody, trimBillingLog, faRowsFromRegistrations, BillingData, BillingLogEntry, FAConfig } from '../utils/faBilling';
 
 /**
  * Organizer-Namen für Mail-Anreden sauber formatieren:
@@ -5984,14 +5984,10 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       stampPatch = { infoSentAt: nowIso, infoSnapshot: { ...(b.fields || {}) }, ...(opts?.auto ? { autoInfoSentAt: nowIso } : {}) };
     } else {
       const regs = await getAllRegistrations(ev.id);
-      const rows = (regs || [])
-        .filter(r => r.Status !== 'Abgemeldet')
-        .map(r => ({
-          name: (r.ParticipantName || `${r.Vorname || ''} ${r.Nachname || ''}`.trim()) || r.ParticipantEmail || '—',
-          email: r.ParticipantEmail || '',
-          status: r.Status || '',
-        }));
-      body = renderBillingListMailBody(ev, rows, by, faCenterUrl);
+      // v30.50: EINE Abbildung für Versand, Snapshot und Download — vorher
+      // hatte jeder Weg seine eigene `.map()`.
+      const rows = faRowsFromRegistrations(regs);
+      body = renderBillingListMailBody(ev, rows, by, faCenterUrl, b);
       subject = `[DEX] Teilnehmerliste: ${ev.title}`;
       stampPatch = { listSentAt: nowIso, listSnapshot: rows.slice(0, 500), ...(opts?.auto ? { autoListSentAt: nowIso } : {}) };
     }

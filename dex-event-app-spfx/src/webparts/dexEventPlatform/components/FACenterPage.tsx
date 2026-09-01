@@ -26,8 +26,9 @@ import FARecipientEditor from './admin/FARecipientEditor';
 import {
   parseBillingOf, faStatusOf, FAStatus, FA_STATUS_LABELS, FA_STATUS_COLORS,
   FA_STATUS_ORDER, FA_STATUS_SHORT,
-  FAConfig, BillingLogEntry,
+  FAConfig, BillingLogEntry, BillingData, FAListRow, downloadFAParticipantXlsx, parsePersonValue,
 } from '../utils/faBilling';
+import { PersonContactHover } from './PersonContactHover';
 
 const fmtDate = (iso: string): string => {
   const d = new Date(iso || '');
@@ -43,6 +44,36 @@ const fmtDateTime = (iso: string): string => {
 // v30.45: `parseRecipientInput` ist entfallen. Der Verteiler wird nicht mehr
 // als Freitext gepflegt, sondern als Liste (Person-Picker + Chips, siehe
 // components/admin/FARecipientEditor.tsx) — es gibt nichts mehr zu parsen.
+
+/**
+ * v30.50: Der Ansprechpartner eines Events als Personen-Profil.
+ *
+ * Fachkonzept „F&A Center — Ansprechpartner": Die Person soll „analog zu den
+ * übrigen Personenanzeigen innerhalb der Plattform als Teams-/Microsoft-365-
+ * Profil" erscheinen. Genau das leistet `PersonContactHover` schon überall
+ * sonst (Teilnehmerliste, Organizer, Assistenz): Foto, beim Hover eine Karte
+ * mit Position, Standort, klickbarer E-Mail-Adresse und Teams-Chat-Link.
+ *
+ * Gespeichert bleibt der Wert unverändert als `Name <email>` — dasselbe
+ * Format, das `UserFieldPicker` überall schreibt. Zerlegt wird erst hier,
+ * für die Anzeige. Zwei Fälle, die es wirklich gibt und die deshalb nicht
+ * geraten werden: ein Alt-Wert aus der Freitext-Zeit vor v30.45 kann eine
+ * nackte Adresse ODER ein reiner Name sein. Ohne Adresse gibt es kein Foto
+ * und keinen Teams-Chat — dann steht der Name da, und zwar ohne einen leeren
+ * Avatar-Kreis daneben, der eine Verknüpfung verspricht, die es nicht gibt.
+ */
+function FAContactCell(props: { value: string }): React.ReactElement {
+  const { name, email } = parsePersonValue(props.value);
+  if (!name && !email) return <span style={{ color: 'var(--dex-gray-400)' }}>—</span>;
+  const label = name || email;
+  if (!email) return <span>{label}</span>;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+      <PersonContactHover email={email} name={label} size={26} isDe />
+      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+    </span>
+  );
+}
 
 const statusPill = (s: FAStatus): React.ReactElement => (
   <span style={{
@@ -130,33 +161,16 @@ export default function FACenterPage(): React.ReactElement {
    */
   const downloadSnapshotXlsx = async (
     ev: DeloitteEvent,
-    snapshot: Array<{ name: string; email: string; status: string }>,
+    b: BillingData | null | undefined,
+    snapshot: FAListRow[],
     sentAt?: string,
   ): Promise<void> => {
     if (xlsxBusy) return;
     setXlsxBusy(true);
     try {
-      const headers = ['#', 'Name', 'E-Mail', 'Status'];
-      const rows = snapshot.map((p, i) => [i + 1, p.name || '', p.email || '', p.status || '']);
-      const safeName = (ev.title || 'event').replace(/[^a-zA-Z0-9]/g, '_');
-      const stamp = (sentAt || new Date().toISOString()).slice(0, 10);
-      const XLSX = await import('xlsx');
-      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (ws as any)['!cols'] = [{ wch: 5 }, { wch: 30 }, { wch: 34 }, { wch: 14 }];
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Teilnehmer');
-      const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-      const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      // Anker-Download — im SPFx-Iframe ist saveAs häufig blockiert.
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Teilnehmerliste_${safeName}_${stamp}.xlsx`;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 400);
+      // v30.50: Aufbau der Datei liegt in utils/faBilling — dieselbe Datei,
+      // die der Abrechnungs-Dialog im Organizer Center erzeugt.
+      await downloadFAParticipantXlsx(ev, b, snapshot, sentAt);
     } catch (err) {
       console.warn('[DEX] F&A-Snapshot-Export fehlgeschlagen:', err);
       showAlert('Die Excel-Datei konnte nicht erzeugt werden — bitte erneut versuchen.', { variant: 'error' });
@@ -301,7 +315,14 @@ export default function FACenterPage(): React.ReactElement {
                   {BILLING_FIELDS.map(f => (
                     <tr key={f.id}>
                       <td style={{ padding: '4px 16px 4px 0', color: 'var(--dex-gray-500)', verticalAlign: 'top' }}>{f.label}</td>
-                      <td style={{ padding: '4px 0' }}>{(b.infoSnapshot || {})[f.id] || '—'}</td>
+                      <td style={{ padding: '4px 0' }}>
+                        {/* v30.50: Die Kontaktperson auch hier als Profil —
+                            sonst steht dieselbe Person in der Tabelle mit Foto
+                            und in der Detailansicht als Zeichenkette. */}
+                        {f.type === 'user'
+                          ? <FAContactCell value={(b.infoSnapshot || {})[f.id] || ''} />
+                          : ((b.infoSnapshot || {})[f.id] || '—')}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -329,11 +350,30 @@ export default function FACenterPage(): React.ReactElement {
                   className="btn btn-primary"
                   style={{ fontSize: '0.8rem', padding: '6px 16px', flexShrink: 0 }}
                   disabled={xlsxBusy}
-                  onClick={() => { void downloadSnapshotXlsx(selected.ev, b.listSnapshot || [], b.listSentAt); }}
+                  onClick={() => { void downloadSnapshotXlsx(selected.ev, b, b.listSnapshot || [], b.listSentAt); }}
                 >
                   {xlsxBusy ? 'Wird erzeugt…' : 'Als Excel herunterladen'}
                 </button>
               </div>
+              {/* v30.50: Ehrlicher Hinweis statt stiller Lücke. Snapshots aus
+                  Versendungen VOR diesem Release tragen nur Name, E-Mail und
+                  Status — First/Last Name, Country und Company Name gab es im
+                  Datensatz noch nicht und lassen sich nicht rückwirkend
+                  erfinden. Die Datei hat dann die richtige Form, aber leere
+                  Spalten; wer den vollständigen Satz braucht, versendet die
+                  Liste einmal neu. */}
+              {!b.listSnapshot.some(p => p.firstName || p.lastName || p.company) && (
+                <p style={{
+                  margin: '0 0 10px', padding: '8px 12px', borderRadius: 8,
+                  background: 'rgba(237,139,0,0.09)', color: 'var(--dex-orange-dark, #b35a00)',
+                  fontSize: '0.78rem', lineHeight: 1.5,
+                }}>
+                  Dieser Stand wurde vor der Formatumstellung übermittelt und trägt nur Name, E-Mail und Status.
+                  In der Excel-Datei bleiben <strong>First Name</strong>, <strong>Last Name</strong>,
+                  {' '}<strong>Country</strong> und <strong>Company Name</strong> deshalb leer.
+                  Für den vollständigen Satz die Teilnehmerliste einmal neu versenden.
+                </p>
+              )}
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ borderCollapse: 'collapse', fontSize: '0.85rem', minWidth: 420 }}>
                   <thead>
@@ -538,7 +578,18 @@ export default function FACenterPage(): React.ReactElement {
                     <td style={{ padding: '8px 14px 8px 0', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>{x.ev.eventNumber || x.ev.id}</td>
                     <td style={{ padding: '8px 14px 8px 0', fontWeight: 600 }}>{x.ev.title}</td>
                     <td style={{ padding: '8px 14px 8px 0', whiteSpace: 'nowrap' }}>{fmtDate(x.ev.startDate)}</td>
-                    <td style={{ padding: '8px 14px 8px 0' }}>{(x.b?.fields || {}).contact || (x.ev.organizers || [])[0] || '—'}</td>
+                    <td style={{ padding: '8px 14px 8px 0' }}>
+                      {/* v30.50: Ansprechpartner als Personen-Profil (Foto +
+                          Hover-Karte mit E-Mail und Teams-Chat) statt als
+                          roher Text `Felten, Nils Kilian <nifelten@…>`.
+                          Fachkonzept: „analog zu den übrigen Personenanzeigen
+                          innerhalb der Plattform". Bis dahin war das die
+                          letzte Stelle im F&A Center, an der eine Person als
+                          Zeichenkette stand — und die Adresse in spitzen
+                          Klammern gehört ins Datenformat, nicht auf den
+                          Bildschirm. */}
+                      <FAContactCell value={(x.b?.fields || {}).contact || (x.ev.organizers || [])[0] || ''} />
+                    </td>
                     <td style={{ padding: '8px 0' }}>{statusPill(x.status)}</td>
                   </tr>
                 ))}

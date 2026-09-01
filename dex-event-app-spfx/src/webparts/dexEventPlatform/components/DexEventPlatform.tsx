@@ -11,7 +11,7 @@ import * as React from 'react';
 import DexLogo from './DexLogo';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import styles from './DexEventPlatform.module.scss';
-import { NavigationProvider, useNavigation } from '../context/NavigationContext';
+import { NavigationProvider, useNavigation, Page } from '../context/NavigationContext';
 import { LanguageProvider } from '../context/LanguageContext';
 // v20.4: Moderne Confirm-/Alert-Modals statt nativer Browser-Dialoge.
 import { DialogProvider } from '../context/DialogContext';
@@ -126,9 +126,33 @@ function ImpersonationBanner(props: { currentPage?: string }): React.ReactElemen
 // sagen, dass es NUR ums Ansehen geht und Anmelden gesperrt ist. Er
 // steht global über allen Seiten, damit die Vorschau auch nach einem
 // Wechsel zu „Meine Events" oder in andere Events beendbar bleibt.
+// v30.49: Auf einer Organizer-Seite ist „so sehen reguläre User die App"
+// schlicht falsch — ein regulärer User sieht diese Seite GAR NICHT. Ohne
+// diesen Zusatz liest sich eine offene Teilnehmerliste mit Namen,
+// Kleidergrößen und Mobilnummern so, als bekäme ein Teilnehmer sie zu sehen.
+// Die Vorschau kann diese Seiten nicht ausblenden (sie ist bewusst nur eine
+// Ansicht, keine Rollen-Simulation), also muss sie den Unterschied benennen.
+const PREVIEW_ORGANIZER_ONLY: Partial<Record<Page, string>> = {
+  'admin': 'Diese Seite sehen reguläre User nicht — auf Teilnehmerlisten haben sie keinen Zugriff.',
+  'participants': 'Diese Seite sehen reguläre User nicht — auf Teilnehmerlisten haben sie keinen Zugriff.',
+  'check-in': 'Diese Seite sehen reguläre User nicht — auf Teilnehmerlisten und Check-in haben sie keinen Zugriff.',
+  'admin-hub': 'Diese Seite sehen reguläre User nicht — das Admin Center ist ihnen nicht zugänglich.',
+  'create-event': 'Diese Seite sehen reguläre User nicht — Events anlegen können nur Organizer.',
+  'edit-event': 'Diese Seite sehen reguläre User nicht — Events bearbeiten können nur Organizer.',
+  'fa-center': 'Diese Seite sehen reguläre User nicht — das F&A Center ist ihnen nicht zugänglich.',
+  'email-templates': 'Diese Seite sehen reguläre User nicht.',
+  'role-matrix': 'Diese Seite sehen reguläre User nicht.',
+  'stats-archive': 'Diese Seite sehen reguläre User nicht.',
+  'flowcharts': 'Diese Seite sehen reguläre User nicht.',
+  'intro-onepager': 'Diese Seite sehen reguläre User nicht.',
+  'architecture': 'Diese Seite sehen reguläre User nicht.',
+};
+
 function UserPreviewBanner(): React.ReactElement | null {
   const { previewAsUser, setPreviewAsUser } = useRoles();
+  const { currentPage } = useNavigation();
   if (!previewAsUser) return null;
+  const organizerOnlyHint = PREVIEW_ORGANIZER_ONLY[currentPage];
   return (
     <div style={{
       background: 'var(--dex-blue, #0076a8)',
@@ -140,6 +164,18 @@ function UserPreviewBanner(): React.ReactElement | null {
     }}>
       <span>
         VORSCHAU · Du siehst die App gerade so, wie <strong>reguläre User</strong> sie sehen — nur zum Ansehen: <strong>Anmelden ist in der Vorschau deaktiviert</strong>.
+        {organizerOnlyHint && (
+          <>
+            {' '}
+            <span style={{
+              display: 'inline-block', marginTop: 2,
+              background: 'rgba(255,255,255,0.18)', borderRadius: 6,
+              padding: '2px 8px',
+            }}>
+              ⚠ {organizerOnlyHint}
+            </span>
+          </>
+        )}
       </span>
       <button
         type="button"
