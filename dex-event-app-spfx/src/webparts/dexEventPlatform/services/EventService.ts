@@ -894,8 +894,6 @@ export class EventService {
     return eventsListSchema.configureDefaultView(this, listName, fieldNames, baseUrl, opts);
   }
 
-  // ==================== Events CRUD ====================
-
   /**
    * Strip SharePoint-Note-Field-Wrapper.
    *
@@ -1101,13 +1099,9 @@ export class EventService {
     return eventsCrud.deleteEvent(this, eventId);
   }
 
-  // =====================================================================
+  // ==================== Event-Statistik & Datenlöschung ====================
   // v26.32: Löschkonzept — Teilnehmerliste 3 Monate nach Event-Ende löschen;
   // Event + KPIs bleiben im Statistik-Archiv (DEX_EventStats) erhalten.
-  // =====================================================================
-
-
-  // ==================== Event-Statistik & Datenlöschung ====================
   // v30.66 (Modularisierung Stufe 2): Implementierung in
   // services/events/eventStats.ts — hier nur Delegations-Stubs.
 
@@ -1924,10 +1918,16 @@ export class EventService {
     return profileData.getUserProfileByEmail(this, email);
   }
 
+  // v30.66: `onProgress` fehlte hier seit dem Auszug in v30.7. Das Modul ruft den
+  // Rueckruf an zwei Stellen auf (je Zeile und am Schluss), der Stub nahm ihn aber
+  // gar nicht erst entgegen — ueber die Klasse war der Fortschritt also nicht
+  // erreichbar. Der einzige Aufrufer uebergibt bisher keinen, deshalb ist nie
+  // etwas aufgefallen; wer einen uebergeben haette, waere am Compiler gescheitert.
   public async repairClaimNamesInRegistrations(
-    subsiteUrl: string
+    subsiteUrl: string,
+    onProgress?: (done: number, total: number) => void,
   ): Promise<{ scanned: number; hits: number; fixed: number; failed: number }> {
-    return profileData.repairClaimNamesInRegistrations(this, subsiteUrl);
+    return profileData.repairClaimNamesInRegistrations(this, subsiteUrl, onProgress);
   }
 
   public async displayNameForEmail(email: string): Promise<string> {
