@@ -22,6 +22,7 @@ import { SPRegistration } from '../services/EventService';
 import { B2RUN_KOELN_HEADERS, B2RUN_KOELN_ALTERSKLASSE, mapAnredeToB2Run, mapStarterTypeToStartblock, isB2RunKoelnTitle } from '../data/b2runKoeln';
 import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown, QrCode, Info, Calendar, Pin } from './Icons';
 import B2RunBibImportModal from './admin/B2RunBibImportModal';
+import B2RunTodoModal from './admin/B2RunTodoModal';
 import RecipientPicker from './admin/RecipientPicker';
 import OrganizerList from './OrganizerList';
 import { PersonContactHover } from './PersonContactHover';
@@ -1175,6 +1176,8 @@ export default function AdminPage(): React.ReactElement {
   const [excelTargetModal, setExcelTargetModal] = React.useState<null | { mode: 'deloitte' | 'b2run'; chooseMode?: boolean }>(null);
   // v30.48: Rücklauf des Veranstalters mit den echten Startnummern einlesen.
   const [bibImportOpen, setBibImportOpen] = React.useState(false);
+  // v30.54: Offene Ummeldungen beim Veranstalter — live aus der Liste.
+  const [b2runTodoOpen, setB2runTodoOpen] = React.useState(false);
   const [excelAudience, setExcelAudience] = React.useState<'active' | 'activePlusWait' | 'waitOnly' | 'withCancelled'>('active');
   // v20.4: Excel-Export im Klammer-Modus — konsolidierte Matrix (eine Zeile
   // pro Person, Spalten pro Sub-Event) und/oder einzelne Sub-Event-Blätter
@@ -7899,6 +7902,23 @@ export default function AdminPage(): React.ReactElement {
                   : 'Reads the organiser\'s return file and writes the real bib numbers to the participants. Shows beforehand which number moves to a waitlist promotion after a cancellation.'}
                 badge="organizer"
                 onClick={() => setBibImportOpen(true)}
+              />
+            )}
+
+            {/* 5c. v30.54: Was beim Veranstalter noch zu tun ist. Eigene
+                Aktion, weil die Liste NACH dem Import weiterlebt: Jede spätere
+                Abmeldung erzeugt eine Ummeldung, und die entsteht, wenn kein
+                Import-Fenster offen ist. */}
+            {selectedEvent && isB2RunKoelnTitle(selectedEvent.title) && (
+              <ActionTile
+                icon={<Check size={18} />}
+                category="participants"
+                title={isDe ? 'Offen beim Veranstalter' : 'Open with the organiser'}
+                desc={isDe
+                  ? 'Zeigt, welche Startnummern du beim Veranstalter noch ummelden, abmelden oder nachmelden musst — jeweils mit Namen und Nummer. Wird bei jedem Öffnen neu berechnet, spätere Abmeldungen tauchen also von selbst auf. Erledigtes lässt sich abhaken.'
+                  : 'Shows which bib numbers still need to be transferred, cancelled or newly registered with the organiser. Recalculated each time you open it, so later cancellations show up by themselves.'}
+                badge="organizer"
+                onClick={() => setB2runTodoOpen(true)}
               />
             )}
 
@@ -14808,6 +14828,15 @@ export default function AdminPage(): React.ReactElement {
           </Modal>
         );
       })()}
+
+      {/* v30.54: Offene Aufgaben beim Veranstalter (B2Run Köln). */}
+      {b2runTodoOpen && selectedEvent && eventServiceRef && (
+        <B2RunTodoModal
+          event={selectedEvent}
+          service={eventServiceRef}
+          onClose={() => setB2runTodoOpen(false)}
+        />
+      )}
 
       {/* v30.48: Startnummern-Rücklauf (B2Run Köln). */}
       {bibImportOpen && selectedEvent && eventServiceRef && (

@@ -167,6 +167,47 @@ export function buildBibReport(rows: BibRow[], regs: SPRegistration[]): BibImpor
 }
 
 /**
+ * v30.54: Freie Nummern den Personen ohne Nummer zuordnen — als VORSCHLAG.
+ *
+ * Der Fall aus der Praxis (B2Run Köln 2026): 100 Startnummern gemeldet, 100
+ * Personen in DEX angemeldet — aber 2 Nummern stehen auf Abgemeldeten ohne
+ * aufgezeichneten Nachrücker, und 2 andere Personen sind angemeldet, ohne in
+ * der Datei zu stehen. Das ist kein Widerspruch, sondern zweimal derselbe
+ * Platz: Die beiden sind nach der Meldung auf die frei gewordenen Plätze
+ * gerückt, nur nicht über den Warteliste-Pfad, der `ReplacedByParticipantEmail`
+ * schreibt (Direktanmeldung in frei gewordene Kapazität, manuelles Anlegen
+ * durch den Organizer, Gruppenwechsel).
+ *
+ * **Deshalb ist das hier ausdrücklich KEINE Feststellung wie die Kette in
+ * `resolveSuccessor`.** Dort steht die Paarung in den Daten; hier wird sie aus
+ * Zeitpunkten erschlossen: früheste Abmeldung → früheste Neuanmeldung. Bei
+ * genau einem Paar ist das eindeutig, bei mehreren ist die Reihenfolge eine
+ * plausible Annahme und mehr nicht. Die Zuordnung muss deshalb im Fenster
+ * bestätigt (und bei Bedarf umgestellt) werden, bevor irgendetwas geschrieben
+ * wird — sonst trägt DEX eine Startnummer ein, die beim Veranstalter jemand
+ * anderem gehört, und der Fehler fällt erst am Einlass auf.
+ */
+export function suggestOrphanPairs(report: BibImportReport): Record<string, string> {
+  const ts = (v: string | undefined): number => {
+    const t = new Date(v || '').getTime();
+    return isFinite(t) ? t : Number.MAX_SAFE_INTEGER;
+  };
+  const orphans = report.matches
+    .filter(m => m.kind === 'orphan' && m.row.bib)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .sort((a, b) => ts((a.listed as any)?.CancellationDate) - ts((b.listed as any)?.CancellationDate));
+  const candidates = report.missingFromFile
+    .slice()
+    .sort((a, b) => ts(a.RegistrationDate) - ts(b.RegistrationDate));
+  const out: Record<string, string> = {};
+  const n = Math.min(orphans.length, candidates.length);
+  for (let i = 0; i < n; i++) {
+    out[orphans[i].row.bib] = lc(candidates[i].ParticipantEmail);
+  }
+  return out;
+}
+
+/**
  * Liest die Zeilen aus einer bereits geparsten Tabelle (erste Zeile = Header).
  *
  * Die Spalten werden über ihre ÜBERSCHRIFT gesucht, nicht über ihre Position:

@@ -19,7 +19,7 @@ import { useEvents } from '../../context/EventContext';
 import { useCurrentUser } from '../../context/UserContext';
 import { DeloitteEvent } from '../../types';
 import { SPRegistration, EventService } from '../../services/EventService';
-import { parseBibSheet, buildBibReport, BibImportReport, BibMatch } from '../../utils/b2runBibImport';
+import { parseBibSheet, buildBibReport, suggestOrphanPairs, BibImportReport, BibMatch } from '../../utils/b2runBibImport';
 
 const nameOf = (r?: SPRegistration): string =>
   r ? `${r.Vorname || ''} ${r.Nachname || ''}`.trim() || (r.ParticipantEmail || '') : '—';
@@ -43,6 +43,15 @@ export default function B2RunBibImportModal(props: {
   const [report, setReport] = React.useState<BibImportReport | null>(null);
   const [fileName, setFileName] = React.useState('');
   const [written, setWritten] = React.useState<{ ok: number; failed: number } | null>(null);
+  /**
+   * v30.54: Zuordnung „freie Nummer → Person ohne Nummer" (Startnummer → E-Mail).
+   *
+   * `''` heißt ausdrücklich „niemand — Nummer verfällt". Vorbelegt wird der
+   * zeitliche Vorschlag aus `suggestOrphanPairs`; die Entscheidung trifft der
+   * Organizer, weil die Paarung im Gegensatz zur Nachrück-Kette NICHT in den
+   * Daten steht (s. dort).
+   */
+  const [orphanAssign, setOrphanAssign] = React.useState<Record<string, string>>({});
 
   const readFile = async (file: File): Promise<void> => {
     setBusy(true); setProgress('Datei wird gelesen…'); setReport(null); setWritten(null);
@@ -63,7 +72,9 @@ export default function B2RunBibImportModal(props: {
         return;
       }
       setFileName(file.name);
-      setReport(buildBibReport(parsed.rows, regs));
+      const rep = buildBibReport(parsed.rows, regs);
+      setReport(rep);
+      setOrphanAssign(suggestOrphanPairs(rep));
     } catch (err) {
       console.warn('[DEX] B2Run-Import failed:', err);
       await showAlert('Die Datei konnte nicht gelesen werden. Bitte die unveränderte Excel des Veranstalters verwenden.', { variant: 'error' });
@@ -72,7 +83,16 @@ export default function B2RunBibImportModal(props: {
 
   const write = async (): Promise<void> => {
     if (!report || !props.event.subsiteUrl) return;
-    const toWrite = report.matches.filter(m => (m.kind === 'direct' || m.kind === 'transfer') && m.target && m.row.bib);
+    // v30.54: direkte + Nachrücker-Zuordnungen PLUS die vom Organizer
+    // bestätigten Zuordnungen freier Nummern.
+    const toWrite: Array<{ id: number; bib: string }> = report.matches
+      .filter(m => (m.kind === 'direct' || m.kind === 'transfer') && m.target && m.row.bib)
+      .map(m => ({ id: m.target!.Id, bib: m.row.bib }));
+    for (const [bib, email] of Object.entries(orphanAssign)) {
+      if (!email) continue;
+      const person = report.missingFromFile.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === email);
+      if (person) toWrite.push({ id: person.Id, bib });
+    }
     setBusy(true);
     // Die Spalte gibt es in Bestands-Listen nicht — erst anlegen, sonst laufen
     // alle Schreibvorgänge auf einen Feldfehler und der Import meldet 0/300.
@@ -91,8 +111,8 @@ export default function B2RunBibImportModal(props: {
       setProgress(`Startnummern werden geschrieben… ${i + 1} / ${toWrite.length}`);
       try {
         await props.service.adminUpdateRegistration(
-          props.event.subsiteUrl, m.target!.Id,
-          { Startnummer: m.row.bib },
+          props.event.subsiteUrl, m.id,
+          { Startnummer: m.bib },
           { name: `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email, email: currentUser.email },
         );
         ok++;
@@ -139,10 +159,18 @@ export default function B2RunBibImportModal(props: {
             (m.chain && m.chain.length > 1) ? `über ${m.chain.length - 1} weitere Abmeldung(en)` : '',
           ]);
         } else if (m.kind === 'orphan') {
-          rows.push([
-            'ABMELDEN beim Veranstalter oder jemanden nachmelden', m.row.bib, nameOf(m.listed), m.row.email,
-            '', '', m.row.block, 'Abgemeldet, niemand nachgerückt',
-          ]);
+          const em = orphanAssign[m.row.bib] || '';
+          const target = em ? report.missingFromFile.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === em) : undefined;
+          rows.push(target
+            ? [
+              'UMMELDEN beim Veranstalter', m.row.bib, nameOf(m.listed), m.row.email,
+              nameOf(target), target.ParticipantEmail || '', m.row.block,
+              'Von dir zugeordnet — nicht aus der Nachrück-Kette',
+            ]
+            : [
+              'ABMELDEN beim Veranstalter', m.row.bib, nameOf(m.listed), m.row.email,
+              '', '', m.row.block, 'Abgemeldet, niemand übernimmt die Nummer',
+            ]);
         } else {
           rows.push([
             'Prüfen — Adresse in DEX unbekannt', m.row.bib,
@@ -151,7 +179,7 @@ export default function B2RunBibImportModal(props: {
           ]);
         }
       }
-      for (const r of report.missingFromFile) {
+      for (const r of stillWithoutBib) {
         rows.push([
           'NACHMELDEN beim Veranstalter — keine Startnummer', '', nameOf(r), r.ParticipantEmail || '',
           '', '', '', 'In DEX angemeldet, steht nicht in der Datei',
@@ -184,6 +212,13 @@ export default function B2RunBibImportModal(props: {
   };
 
   const group = (kind: BibMatch['kind']): BibMatch[] => (report ? report.matches.filter(m => m.kind === kind) : []);
+  // v30.54: Wer eine freie Nummer zugeordnet bekommen hat, zählt nicht mehr
+  // als „ohne Startnummer" — und die Zuordnungen zählen mit beim Schreiben.
+  const assignedEmails = new Set(Object.values(orphanAssign).filter(Boolean));
+  const stillWithoutBib = report
+    ? report.missingFromFile.filter(r => !assignedEmails.has((r.ParticipantEmail || '').toLowerCase().trim()))
+    : [];
+  const assignedCount = assignedEmails.size;
   const transfers = group('transfer');
   const orphans = group('orphan');
   const unknowns = group('unknown');
@@ -254,27 +289,77 @@ export default function B2RunBibImportModal(props: {
             )}
 
             {orphans.length > 0 && (
-              <div style={{ ...box, borderColor: 'var(--dex-red, #da291c)', background: 'rgba(218,41,28,0.06)' }}>
-                <strong style={{ color: 'var(--dex-red, #da291c)' }}>Nummer ohne Nachrücker ({orphans.length})</strong>
-                <p style={{ margin: '4px 0 8px', fontSize: '0.82rem' }}>
-                  Abgemeldet, und niemand ist nachgerückt. Diese Startnummern bleiben ungenutzt — beim
-                  Veranstalter abmelden oder jemanden nachmelden.
+              <div style={{ ...box, borderColor: 'var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.07)' }}>
+                <strong style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>
+                  Freie Nummer zuordnen ({orphans.length})
+                </strong>
+                {/* v30.54: Diese Nummern verfallen NICHT automatisch. Wer den
+                    Platz eines Abgemeldeten bekommen hat, steht nur dann in den
+                    Daten, wenn er über die Warteliste nachgerückt ist. Bei einer
+                    Direktanmeldung in die frei gewordene Kapazität — oder wenn
+                    der Organizer jemanden von Hand angelegt hat — gibt es keine
+                    Kette. Dann ist der Platz trotzdem besetzt: Genau die
+                    Personen unten sind in DEX angemeldet, stehen aber nicht in
+                    der Datei. Deshalb hier zuordnen statt verfallen lassen. */}
+                <p style={{ margin: '4px 0 10px', fontSize: '0.82rem' }}>
+                  Diese Personen haben sich nach der Meldung abgemeldet, und DEX hat keinen
+                  Nachrücker aufgezeichnet. Die Nummer ist deshalb <strong>nicht</strong> automatisch
+                  verfallen — wer den Platz übernommen hat, steht rechts zur Auswahl (alle, die in
+                  DEX angemeldet sind, aber in der Datei fehlen). Der Vorschlag folgt der zeitlichen
+                  Reihenfolge: früheste Abmeldung, früheste Neuanmeldung. <strong>Bitte prüfen</strong> —
+                  anders als beim Nachrücken steht diese Zuordnung nicht in den Daten.
                 </p>
-                {orphans.map(m => (
-                  <div key={m.row.rowNo} style={{ fontSize: '0.82rem' }}>
-                    <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{m.row.bib}</span>{'  '}{nameOf(m.listed)}
-                  </div>
-                ))}
+                {orphans.map(m => {
+                  const bib = m.row.bib;
+                  const chosen = orphanAssign[bib] || '';
+                  // Bereits an eine andere Nummer vergebene Personen ausblenden,
+                  // damit dieselbe Person nicht zwei Startnummern bekommt.
+                  const takenElsewhere = new Set(
+                    Object.entries(orphanAssign)
+                      .filter(([k, v]) => k !== bib && v)
+                      .map(([, v]) => v)
+                  );
+                  return (
+                    <div key={m.row.rowNo} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6, fontSize: '0.82rem' }}>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 700, minWidth: 52 }}>{bib}</span>
+                      <span style={{ textDecoration: 'line-through', color: 'var(--dex-gray-500)', minWidth: 150 }}>{nameOf(m.listed)}</span>
+                      <span style={{ color: 'var(--dex-gray-500)' }}>→</span>
+                      <select
+                        className="form-input"
+                        value={chosen}
+                        disabled={busy || !!written}
+                        onChange={e => setOrphanAssign(prev => ({ ...prev, [bib]: e.target.value }))}
+                        style={{ fontSize: '0.8rem', padding: '5px 8px', flex: '1 1 240px', minWidth: 0 }}
+                      >
+                        <option value="">— niemand, Nummer verfällt —</option>
+                        {report.missingFromFile
+                          .filter(r => {
+                            const em = (r.ParticipantEmail || '').toLowerCase().trim();
+                            return em === chosen || !takenElsewhere.has(em);
+                          })
+                          .map(r => (
+                            <option key={r.Id} value={(r.ParticipantEmail || '').toLowerCase().trim()}>
+                              {nameOf(r)} · {r.ParticipantEmail}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
-            {report.missingFromFile.length > 0 && (
+            {/* v30.54: Wer oben eine freie Nummer zugeordnet bekommen hat, ist
+                hier nicht mehr „ohne Startnummer" — sonst widerspricht sich das
+                Fenster in zwei Kästen übereinander. */}
+            {stillWithoutBib.length > 0 && (
               <div style={{ ...box, borderColor: 'var(--dex-orange, #ed8b00)' }}>
-                <strong>Angemeldet, aber ohne Startnummer ({report.missingFromFile.length})</strong>
+                <strong>Nachmelden beim Veranstalter ({stillWithoutBib.length})</strong>
                 <p style={{ margin: '4px 0 8px', fontSize: '0.82rem' }}>
-                  In DEX angemeldet, steht aber nicht in der Datei — hier fehlt die Meldung beim Veranstalter.
+                  In DEX angemeldet, steht nicht in der Datei und hat auch keine freie Nummer bekommen —
+                  diese Personen musst du beim Veranstalter nachmelden.
                 </p>
-                {report.missingFromFile.map(r => (
+                {stillWithoutBib.map(r => (
                   <div key={r.Id} style={{ fontSize: '0.82rem' }}>{nameOf(r)} · {r.ParticipantEmail}</div>
                 ))}
               </div>
@@ -318,9 +403,13 @@ export default function B2RunBibImportModal(props: {
             )}
 
             <div style={{ ...box, borderColor: 'var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.07)' }}>
-              <strong>Wird geschrieben: {directs.length + transfers.length} Startnummern</strong>
+              <strong>Wird geschrieben: {directs.length + transfers.length + assignedCount} Startnummern</strong>
               <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
-                {directs.length} direkt zugeordnet, {transfers.length} an Nachrücker übertragen.
+                {directs.length} direkt zugeordnet, {transfers.length} an Nachrücker übertragen
+                {assignedCount > 0 ? `, ${assignedCount} freie Nummer${assignedCount === 1 ? '' : 'n'} von dir zugeordnet` : ''}.
+                {(transfers.length + assignedCount) > 0 && (
+                  <> Beim Veranstalter musst du <strong>{transfers.length + assignedCount}</strong> Ummeldung{(transfers.length + assignedCount) === 1 ? '' : 'en'} vornehmen.</>
+                )}
               </div>
             </div>
 
