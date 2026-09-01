@@ -33,7 +33,7 @@ import { setSaveInProgress } from '../utils/saveGuard';
 // sie kennen den Wizard-State nicht und liessen sich deshalb ohne
 // Verhaltensaenderung herausloesen.
 import { useIsMobile } from '../utils/useIsMobile';
-import DatePicker, { registerLocale } from 'react-datepicker';
+import { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale';
 import 'react-datepicker/dist/react-datepicker.css';
 import { SubEventDraft, OutlookConfirmItem } from './wizard/wizardTypes';
