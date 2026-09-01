@@ -871,6 +871,18 @@ export interface QrEmailOverride {
    * setzt, wenn Text und Event-Sprache auseinandergehen.
    */
   blockLang?: 'DE' | 'EN';
+  /**
+   * v30.61: Eigener Hinweistext unter der Teilnehmer-ID.
+   *
+   * Der Satz „Falls der Scan nicht klappt: einfach diese Nummer am Einlass
+   * nennen" passt nicht überall — beim B2Run heißt der Einlass „Trikot- und
+   * Startnummernübergabe", bei einer Konferenz „Registrierung". Er stand aber
+   * fest im Code, während der Mailtext direkt darüber frei ist.
+   *
+   * Leer = der Standardsatz in der Sprache des Blocks. Ein Leerzeichen (bzw.
+   * jeder Text) ersetzt ihn; wer ihn ganz loswerden will, trägt `-` ein.
+   */
+  blockNote?: string;
 }
 
 /** Standard-Texte der QR-Mail mit Platzhaltern ({{Vorname}}, {{Name}},
@@ -924,14 +936,19 @@ export function qrEmailDefaults(lang: string = 'EN'): { subject: string; heading
  * mit Word und kann kein Flex. `valign="middle"` hält die Textspalte auf
  * Höhe des Codes.
  */
-export function buildQrBlockHtml(qrImageHtml: string, fullDisplayName: string, teilnehmerId?: number, lang: string = 'DE'): string {
+export function buildQrBlockHtml(qrImageHtml: string, fullDisplayName: string, teilnehmerId?: number, lang: string = 'DE', note?: string): string {
   // v30.60: Der Block war fest deutsch — „Name:", „ID:" und der Hinweis unter
   // der Nummer standen auch in einer englischen QR-Mail auf Deutsch. Der
   // Mailtext folgte der Mail-Sprache, dieser Block nicht; im Ergebnis stand
   // „Falls der Scan nicht klappt…" unter einer Mail, die mit „Dear Alexander"
   // beginnt. Die Sprache kommt jetzt von derselben Einstellung wie der Text.
   const de = (lang || 'DE').toUpperCase() === 'DE';
-  const escName = (fullDisplayName || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const esc = (t: string): string => (t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const escName = esc(fullDisplayName || '');
+  // Ein einzelner Bindestrich heißt „gar kein Hinweis" — sonst gäbe es keine
+  // Möglichkeit, die Zeile loszuwerden (leer bedeutet ja „Standardtext").
+  const rawNote = (note || '').trim();
+  const customNote = rawNote === '-' ? ' ' : rawNote;
   const hasId = teilnehmerId !== undefined && teilnehmerId !== null && !isNaN(Number(teilnehmerId));
   // padStart gibt es im ES5-Target nicht — deshalb von Hand auffüllen.
   let idText = '';
@@ -948,9 +965,9 @@ export function buildQrBlockHtml(qrImageHtml: string, fullDisplayName: string, t
         + `<strong style="font-family:'Courier New',Courier,monospace;font-size:26px;letter-spacing:0.04em;">${idText}</strong>`
         + `</div>`
         + `<div style="font-size:12px;color:#63666A;margin-top:8px;line-height:1.45;">`
-        + (de
+        + esc(customNote || (de
           ? `Falls der Scan nicht klappt: einfach diese Nummer am Einlass nennen.`
-          : `If the scan does not work, simply give this number at the entrance.`)
+          : `If the scan does not work, simply give this number at the entrance.`))
         + `</div>`
       : '');
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;border-collapse:collapse;">`
@@ -981,7 +998,7 @@ export function qrCodeEmail(
   const fullDisplayName = (fullName || firstName || '').trim();
   // v30.60: Der Block folgt der Mail-Sprache — es sei denn, der Organizer hat
   // für ihn ausdrücklich etwas anderes gewählt (s. QrEmailOverride.blockLang).
-  const qrBlock = buildQrBlockHtml(qrImageHtml, fullDisplayName, teilnehmerId, (override && override.blockLang) || lang);
+  const qrBlock = buildQrBlockHtml(qrImageHtml, fullDisplayName, teilnehmerId, (override && override.blockLang) || lang, override && override.blockNote);
   const defaults = qrEmailDefaults(lang);
   const subjectTpl = (override && override.subject && override.subject.trim()) ? override.subject : defaults.subject;
   const headingTpl = (override && override.heading && override.heading.trim()) ? override.heading : defaults.heading;

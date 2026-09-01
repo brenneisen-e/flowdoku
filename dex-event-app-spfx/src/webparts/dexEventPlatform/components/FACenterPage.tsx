@@ -86,7 +86,7 @@ const statusPill = (s: FAStatus): React.ReactElement => (
 
 export default function FACenterPage(): React.ReactElement {
   const { navigate } = useNavigation();
-  const { isFA, isAdmin, searchUsers, searchUser } = useRoles();
+  const { isFA, isAdmin, searchUsers, searchUser, getEmployeeData } = useRoles();
   const { events, getFAConfig, saveFAConfig, markEventSettled, saveFAPersonalNumbers } = useEvents();
   const { confirmDialog, showAlert } = useDialog();
   const { currentUser } = useCurrentUser();
@@ -113,6 +113,11 @@ export default function FACenterPage(): React.ReactElement {
   const [pnDraft, setPnDraft] = React.useState<Record<string, { personalNr?: string; costCenter?: string }>>({});
   const [pnBusy, setPnBusy] = React.useState(false);
   const [pnEventId, setPnEventId] = React.useState<string>('');
+  // v30.61: Ergebnis des automatischen Abrufs — getrennt gehalten, damit die
+  // Meldung „x von y gefunden" ehrlich bleibt (leer heißt nicht „nichts da",
+  // sondern kann auch „nicht erlaubt" heißen; s. SharePointService).
+  const [pnAutoBusy, setPnAutoBusy] = React.useState(false);
+  const [pnAutoNote, setPnAutoNote] = React.useState('');
 
   React.useEffect(() => {
     if (!allowed) return;
@@ -406,11 +411,55 @@ export default function FACenterPage(): React.ReactElement {
                 background: 'rgba(0,118,168,0.06)', fontSize: '0.78rem', lineHeight: 1.5,
               }}>
                 <span style={{ flex: '1 1 260px', color: 'var(--dex-gray-600)' }}>
-                  <strong>Personalnummern zuordnen:</strong> „Nachschlagen&ldquo; öffnet
-                  die Liste <em>Active Employees</em> im Backoffice, bereits nach dem
-                  Nachnamen gesucht. Die Nummer hier eintragen — sie steht danach in der
-                  Excel-Datei und bleibt am Event gespeichert.
+                  <strong>Personalnummern zuordnen:</strong> &bdquo;Automatisch füllen&ldquo; holt
+                  Personalnummer und Kostenstelle für alle Personen auf einmal aus dem
+                  Verzeichnis. Was dort nicht gepflegt ist, trägst du selbst ein —
+                  &bdquo;Nachschlagen&ldquo; öffnet dafür die Liste <em>Active Employees</em>,
+                  bereits nach dem Nachnamen gesucht.
                 </span>
+                {/* v30.61: Der eigentliche Weg. Die Handarbeit aus v30.60 war bei
+                    100 Teilnehmern eine Stunde Abtippen — an genau der Stelle, an
+                    der ein Zahlendreher auf der Rechnung landet. */}
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ fontSize: '0.8rem', padding: '6px 16px', flexShrink: 0 }}
+                  disabled={pnAutoBusy || pnBusy}
+                  onClick={() => {
+                    const rows = b.listSnapshot || [];
+                    setPnAutoBusy(true);
+                    setPnAutoNote('');
+                    getEmployeeData(rows.map(r => r.email || ''))
+                      .then(map => {
+                        const next: Record<string, { personalNr?: string; costCenter?: string }> = { ...pnDraft };
+                        let found = 0;
+                        for (const r of rows) {
+                          const k = (r.email || '').toLowerCase().trim();
+                          const d = map[k];
+                          if (!d) continue;
+                          const pn = (d.employeeId || '').trim();
+                          const cc = (d.costCenter || '').trim();
+                          if (!pn && !cc) continue;
+                          found++;
+                          // Bereits Eingetragenes NICHT überschreiben: Wer von Hand
+                          // korrigiert hat, hat den besseren Wert.
+                          const cur = next[k] || {};
+                          next[k] = {
+                            personalNr: (cur.personalNr !== undefined ? cur.personalNr : r.personalNr) || pn,
+                            costCenter: (cur.costCenter !== undefined ? cur.costCenter : r.costCenter) || cc,
+                          };
+                        }
+                        setPnDraft(next);
+                        setPnAutoNote(found === 0
+                          ? 'Aus dem Verzeichnis kam nichts zurück. Entweder sind die Felder im Tenant nicht gepflegt, oder die Berechtigung „User.Read.All" ist im SharePoint Admin Center noch nicht freigegeben. Der manuelle Weg über „Nachschlagen" funktioniert unabhängig davon.'
+                          : `${found} von ${rows.length} Personen aus dem Verzeichnis übernommen. Nicht vergessen: unten speichern.`);
+                      })
+                      .catch(() => setPnAutoNote('Der Abruf aus dem Verzeichnis ist fehlgeschlagen — bitte erneut versuchen oder die Nummern von Hand eintragen.'))
+                      .finally(() => setPnAutoBusy(false));
+                  }}
+                >
+                  {pnAutoBusy ? 'Wird geholt…' : 'Automatisch füllen'}
+                </button>
                 <button
                   type="button"
                   className="btn btn-primary"
@@ -429,6 +478,9 @@ export default function FACenterPage(): React.ReactElement {
                 >
                   {pnBusy ? 'Wird gespeichert…' : `Personalnummern speichern${Object.keys(pnDraft).length > 0 ? ` (${Object.keys(pnDraft).length})` : ''}`}
                 </button>
+                {pnAutoNote && (
+                  <div style={{ flexBasis: '100%', marginTop: 4, color: 'var(--dex-gray-700)' }}>{pnAutoNote}</div>
+                )}
               </div>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ borderCollapse: 'collapse', fontSize: '0.85rem', minWidth: 420 }}>

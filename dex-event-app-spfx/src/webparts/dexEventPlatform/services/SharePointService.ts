@@ -1387,6 +1387,88 @@ export class SharePointService {
   }
 
   /**
+   * v30.61: Personal-Stammdaten mehrerer Personen auf einmal aus dem
+   * Verzeichnis (Microsoft Graph).
+   *
+   * Anlass: Die Personalnummer wurde in v30.60 von Hand nachgetragen — pro
+   * Person ein Klick in die Backoffice-Liste, ablesen, abtippen. Bei 100
+   * Teilnehmern ist das eine Stunde stumpfe Arbeit mit Tippfehlerrisiko an
+   * genau der Stelle, an der eine falsche Nummer auf der Rechnung landet.
+   * Entra ID kennt diese Felder bereits:
+   *
+   *  - `employeeId`                    → Personalnummer
+   *  - `employeeOrgData.costCenter`    → Kostenstelle des Mitarbeiters
+   *  - `companyName`                   → Company Name (F&A-Spalte)
+   *  - `country`                       → Country (F&A-Spalte)
+   *
+   * **Zwei Dinge, die man wissen muss, bevor man sich darauf verlässt:**
+   *
+   * (1) `employeeId` und `employeeOrgData` liefert Graph NUR mit der
+   *     Berechtigung `User.Read.All`. Sie steht in `package-solution.json`,
+   *     muss aber im SharePoint Admin Center unter „API-Zugriff" von einem
+   *     Tenant-Admin freigegeben werden. Ohne Freigabe antwortet Graph mit
+   *     403 — dann liefert diese Methode eine leere Map, und die Oberfläche
+   *     sagt das auch. Sie tut NICHT so, als gäbe es die Daten nicht.
+   * (2) Ob die Felder im Tenant überhaupt gepflegt sind, entscheidet HR, nicht
+   *     DEX. Kommt für eine Person nichts zurück, bleibt der manuelle Weg über
+   *     die Backoffice-Liste — deshalb bleibt der „Nachschlagen"-Knopf stehen.
+   *
+   * Abgefragt wird per JSON-Batch (20 Anfragen pro Aufruf, Graph-Limit) statt
+   * einzeln: 100 Personen sind damit fünf Roundtrips statt hundert.
+   */
+  public async getEmployeeData(emails: string[]): Promise<Record<string, {
+    employeeId?: string;
+    costCenter?: string;
+    companyName?: string;
+    country?: string;
+    department?: string;
+  }>> {
+    const out: Record<string, { employeeId?: string; costCenter?: string; companyName?: string; country?: string; department?: string }> = {};
+    const list = Array.from(new Set((emails || []).map(e => (e || '').trim().toLowerCase()).filter(Boolean)));
+    if (list.length === 0) return out;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ctx = this.context as any;
+      if (!ctx.msGraphClientFactory) return out;
+      const client = await ctx.msGraphClientFactory.getClient('3');
+      const SELECT = 'mail,userPrincipalName,employeeId,employeeOrgData,companyName,country,department';
+      for (let i = 0; i < list.length; i += 20) {
+        const chunk = list.slice(i, i + 20);
+        const requests = chunk.map((mail, n) => ({
+          id: String(n),
+          method: 'GET',
+          // Der Abruf über /users/{upn} trifft nur, wenn die Adresse der UPN
+          // ist. Die Teilnehmerlisten tragen aber auch SMTP-Aliase (siehe die
+          // Doppel-Adressen-Falle in CLAUDE.md) — deshalb der Filter über
+          // mail UND userPrincipalName statt eines direkten Zugriffs.
+          url: `/users?$select=${SELECT}&$filter=mail eq '${mail.replace(/'/g, "''")}' or userPrincipalName eq '${mail.replace(/'/g, "''")}'&$top=1`,
+        }));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const resp: any = await client.api('/$batch').post({ requests });
+        for (const r of (resp?.responses || [])) {
+          const idx = parseInt(r.id, 10);
+          const mail = chunk[idx];
+          if (!mail || r.status !== 200) continue;
+          const u = (r.body && r.body.value && r.body.value[0]) || null;
+          if (!u) continue;
+          out[mail] = {
+            employeeId: (u.employeeId || '').trim(),
+            costCenter: ((u.employeeOrgData && u.employeeOrgData.costCenter) || '').trim(),
+            companyName: (u.companyName || '').trim(),
+            country: (u.country || '').trim(),
+            department: (u.department || '').trim(),
+          };
+        }
+      }
+    } catch (err) {
+      // Bewusst kein Wegwerfen: Der Aufrufer unterscheidet „nichts gefunden"
+      // von „gar nicht gefragt" an der Größe der Map — deshalb hier melden.
+      console.warn('[DEX] getEmployeeData (Graph) fehlgeschlagen:', err);
+    }
+    return out;
+  }
+
+  /**
    * Hilfsmethode für POST-Requests
    */
   private async _post(url: string, body: object): Promise<SPHttpClientResponse> {
