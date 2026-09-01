@@ -17,10 +17,24 @@ Wird aktualisiert wenn Flows geändert werden.
 
 **Trigger:** Neuer Eintrag in DEX_IDReorder
 **Zweck:** TeilnehmerIDs neu vergeben (Aktive + Warteliste lückenlos sortiert) + Nachrücken von Warteliste (seit v6.7 inkl. typ-bewusster Promotion für B2Run-Split-Wartelisten; seit v10.20 mit optionalem Shared-Waitlist-Modus)
-**Letztes Update:** 2026-06-11 (Audit-Fixes: Status-Sortierung in der Renummerierung, Folge-Reorder nach jeder Promotion, Fehler-Sichtbarkeit; JSON unten = as-implemented Export vom 2026-06-11)
+**Letztes Update:** 2026-09-01 (Platzzähler-Kette: `Count_Seats_Active/Waitlist/Durch/Fun` + `Sync_Seat_Counter` hinter `DEX_IDReorder`; **im Tenant umgesetzt und am 01.09.2026 gegen den Export verifiziert** — alle acht `runAfter` stimmen, alle fünf Uris sind Text ohne `@`). Davor 2026-06-11 (Audit-Fixes: Status-Sortierung in der Renummerierung, Folge-Reorder nach jeder Promotion, Fehler-Sichtbarkeit).
+
+> **Der vollständige JSON weiter unten ist der Stand vom 2026-06-11** und enthält
+> die fünf Platzzähler-Actions **nicht**. Wer den Ist-Stand braucht, nimmt die
+> UI-Anleitung direkt darunter — dort steht die vollständige `runAfter`-Tabelle
+> über alle acht beteiligten Actions.
 
 ### UI-Anleitung 2026-09-01 (v30.63, korrigiert v30.65) — Platzzähler nach dem Nachrücken mitziehen
 
+> ## ✅ Stand 01.09.2026: umgesetzt und verifiziert
+>
+> Gegen den Flow-Export geprüft — alle acht `runAfter` entsprechen der Tabelle
+> weiter unten, alle fünf Uris sind Text ohne `@`. Offen bleibt nur der
+> Funktionstest (siehe „Test" am Ende) und, falls der Designer es meldet, die
+> Verbindung einer Action (**Change connection**). Der Korrektur-Block darunter
+> bleibt als Fehlerbild stehen: Die drei Stolperstellen sind reproduzierbar und
+> treffen jeden, der die Kette ein zweites Mal aufbaut.
+>
 > ## ⚠️ Korrektur vom 01.09.2026 — bitte zuerst lesen
 >
 > Der erste Umsetzungsversuch ist an vier Stellen hängengeblieben. Drei davon
