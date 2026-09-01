@@ -14,6 +14,7 @@ import { useDialog } from '../../context/DialogContext';
 import { DeloitteEvent } from '../../types';
 import {
   parseBillingOf, missingBillingFields, faStatusOf, FA_STATUS_LABELS, FA_STATUS_COLORS,
+  faRowsFromRegistrations, downloadFAParticipantXlsx,
 } from '../../utils/faBilling';
 
 const fmtDateTime = (iso: string): string => {
@@ -98,37 +99,15 @@ export default function BillingActionPanel(props: { event: DeloitteEvent; onClos
     setBusy('xlsx');
     try {
       const regs = await getAllRegistrations(liveEvent.id);
-      const rows = (regs || [])
-        .filter(r => r.Status !== 'Abgemeldet')
-        .map((r, i) => [
-          i + 1,
-          (r.ParticipantName || `${r.Vorname || ''} ${r.Nachname || ''}`.trim()) || r.ParticipantEmail || '—',
-          r.ParticipantEmail || '',
-          r.Status || '',
-        ]);
+      // v30.50: Zeilenaufbau UND Dateiaufbau liegen in utils/faBilling —
+      // dieselbe Datei, die auch das F&A Center herunterlädt. Vorher waren
+      // es zwei Implementierungen, die schon im Spaltensatz auseinanderliefen.
+      const rows = faRowsFromRegistrations(regs);
       if (rows.length === 0) {
         showAlert('Für dieses Event gibt es aktuell keine aktiven Anmeldungen.', { variant: 'info' });
         return;
       }
-      const headers = ['#', 'Name', 'E-Mail', 'Status'];
-      const safeName = (liveEvent.title || 'event').replace(/[^a-zA-Z0-9]/g, '_');
-      const fileName = `Teilnehmerliste_FA_${safeName}_${new Date().toISOString().slice(0, 10)}.xlsx`;
-      // xlsx erst beim Klick nachladen (schwerste Dependency, s. AdminPage).
-      const XLSX = await import('xlsx');
-      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (ws as any)['!cols'] = [{ wch: 5 }, { wch: 30 }, { wch: 34 }, { wch: 14 }];
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Teilnehmer');
-      const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-      const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      // Manueller Anker-Download — im SPFx-Iframe ist saveAs oft blockiert.
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = fileName; a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 400);
+      await downloadFAParticipantXlsx(liveEvent, b, rows);
     } catch (err) {
       console.warn('[DEX] F&A-XLSX-Export fehlgeschlagen:', err);
       showAlert('Die Excel-Datei konnte nicht erzeugt werden — bitte erneut versuchen.', { variant: 'error' });

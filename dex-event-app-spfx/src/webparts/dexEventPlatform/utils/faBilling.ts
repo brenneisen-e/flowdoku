@@ -47,7 +47,25 @@ export interface BillingData {
   autoInfoReminderAt?: string;
   /** Zuletzt an F&A übermittelter Stand (Detailansicht zeigt NUR Übermitteltes). */
   infoSnapshot?: Record<string, string>;
-  listSnapshot?: Array<{ name: string; email: string; status: string }>;
+  listSnapshot?: FAListRow[];
+}
+
+/**
+ * Eine Zeile der an F&A übermittelten Teilnehmerliste.
+ *
+ * v30.50: `firstName`/`lastName`/`country`/`company` sind neu und bewusst
+ * OPTIONAL — Snapshots aus früheren Versendungen tragen nur die ersten drei
+ * Felder. Pflicht wäre hier ein Typfehler an jedem Altbestand und eine leere
+ * Detailansicht für alles, was vor diesem Release gemeldet wurde.
+ */
+export interface FAListRow {
+  name: string;
+  email: string;
+  status: string;
+  firstName?: string;
+  lastName?: string;
+  country?: string;
+  company?: string;
 }
 
 /** F&A-Verteiler + Änderungsprotokoll (persistiert als eigene Zeile in DEX_EmailTemplates). */
@@ -232,14 +250,29 @@ function mailButton(url: string, label: string): string {
 
 export function renderBillingListMailBody(
   ev: DeloitteEvent,
-  participants: Array<{ name: string; email: string; status: string }>,
+  participants: FAListRow[],
   byName: string,
   /** v30.24: Deep-Link ins F&A Center (Download der Liste als Excel). */
-  faCenterUrl?: string
+  faCenterUrl?: string,
+  /** v30.50: Abrechnungsdaten — stehen laut Konzept ÜBER den Teilnehmerdaten. */
+  b?: BillingData | null
 ): string {
   const rows = participants.map((p, i) =>
     `<tr><td style="${TD_STYLE}">${i + 1}</td><td style="${TD_STYLE}">${esc(p.name)}</td><td style="${TD_STYLE}">${esc(p.email)}</td><td style="${TD_STYLE}">${esc(p.status)}</td></tr>`
   ).join('');
+  // v30.50: „Bei der Versendung der Teilnehmerliste sollen oberhalb der
+  // eigentlichen Teilnehmerdaten zusätzlich alle abrechnungsrelevanten
+  // Informationen des Events aufgeführt werden." Das gilt für die Datei UND
+  // für die Mail: Wer die Mail liest, ohne die Excel zu öffnen, hätte sonst
+  // eine Namensliste ohne jeden Bezug zu Ariba-Nummer und WBS-Code.
+  const billingBlock = b
+    ? `<table style="${TABLE_STYLE}">
+<tr><th style="${TH_STYLE}" colspan="2">Abrechnungsrelevante Informationen</th></tr>
+${BILLING_FIELDS.map(f =>
+      `<tr><td style="${TD_STYLE}">${esc(f.label)}</td><td style="${TD_STYLE}">${esc((b.fields || {})[f.id] || '—')}</td></tr>`
+    ).join('')}
+</table>`
+    : '';
   const linkBlock = faCenterUrl
     ? `${mailButton(faCenterUrl, 'Teilnehmerliste als Excel herunterladen')}
 <p style="color:#666;font-size:12px;margin-top:-8px;">Der Link öffnet dieses Event im F&amp;A Center der DEX-App — dort lädst du genau diesen Stand als Excel-Datei herunter. Dafür brauchst du die Rolle „F&amp;A" (oder Admin) in DEX; falls der Zugriff fehlt, melde dich bei dex.event@deloitte.de.</p>`
@@ -248,7 +281,9 @@ export function renderBillingListMailBody(
 <p>Guten Tag,</p>
 <p>anbei die Teilnehmerliste zur Veranstaltung <strong>${esc(ev.title)}</strong> (Event-ID ${esc(String(ev.eventNumber || ev.id))}, ${fmtDateTime(ev.startDate)}) — <strong>${participants.length}</strong> ${participants.length === 1 ? 'Person' : 'Personen'}:</p>
 ${linkBlock}
+${billingBlock}
 <table style="${TABLE_STYLE}">
+<tr><th style="${TH_STYLE}" colspan="4">Teilnehmer</th></tr>
 <tr><th style="${TH_STYLE}">#</th><th style="${TH_STYLE}">Name</th><th style="${TH_STYLE}">E-Mail</th><th style="${TH_STYLE}">Status</th></tr>
 ${rows}
 </table>
@@ -268,4 +303,205 @@ export function trimBillingLog(log: BillingLogEntry[]): BillingLogEntry[] {
     if (e.body && dropped < dropBodies) { dropped++; return { ...e, body: undefined }; }
     return e;
   });
+}
+
+/**
+ * v30.50: `Name <email>` in seine zwei Teile zerlegen.
+ *
+ * Das ist das Format, das `UserFieldPicker` überall in der App schreibt —
+ * auch in `_billing.fields.contact`. Bisher wurde der Wert nur als Ganzes
+ * angezeigt; für die Profil-Darstellung im F&A Center braucht es beide
+ * Teile getrennt. Enthält der Wert keine spitzen Klammern, ist er entweder
+ * eine nackte Adresse (Alt-Bestand aus der Freitext-Zeit vor v30.45) oder
+ * ein reiner Name — beides wird hier unterschieden, statt blind zu raten.
+ */
+export function parsePersonValue(raw: string | undefined | null): { name: string; email: string } {
+  const v = (raw || '').trim();
+  if (!v) return { name: '', email: '' };
+  const m = v.match(/^(.*?)\s*<([^>]+)>\s*$/);
+  if (m) return { name: (m[1] || '').trim(), email: (m[2] || '').trim() };
+  if (v.indexOf('@') > 0) return { name: '', email: v };
+  return { name: v, email: '' };
+}
+
+/**
+ * v30.50: Land eines Teilnehmers.
+ *
+ * **Annahme, bewusst an EINER Stelle:** Es gibt in DEX kein Länderfeld. Das
+ * Verzeichnis liefert den Standort teils als `DE - Koeln`, teils nur als
+ * `Koeln`. Aus einem vorangestellten Zwei-Buchstaben-Code lesen wir das Land
+ * ab; sonst gilt Deutschland — der Pilot läuft auf der deutschen Tenant-Site
+ * mit deutschen Standorten. Wenn F&A hier eines Tages echte Länder braucht,
+ * gehört ein Feld ins Profil, nicht mehr Rateregeln hierher.
+ */
+const COUNTRY_BY_CODE: Record<string, string> = {
+  DE: 'Deutschland', AT: 'Österreich', CH: 'Schweiz',
+  NL: 'Niederlande', BE: 'Belgien', FR: 'Frankreich',
+  GB: 'Vereinigtes Königreich', UK: 'Vereinigtes Königreich',
+  US: 'USA', PL: 'Polen', ES: 'Spanien', IT: 'Italien',
+};
+export function countryOfLocation(location: string | undefined | null): string {
+  const loc = (location || '').trim();
+  const m = loc.match(/^([A-Za-z]{2})\s*[-–]\s*/);
+  if (m) {
+    const hit = COUNTRY_BY_CODE[m[1].toUpperCase()];
+    if (hit) return hit;
+  }
+  return 'Deutschland';
+}
+
+/** Die Registrierungs-Felder, die eine F&A-Zeile braucht — strukturell getypt,
+ *  damit dieses Modul nicht vom EventService abhängt. */
+export interface FASourceRegistration {
+  ParticipantName?: string;
+  ParticipantEmail?: string;
+  Vorname?: string;
+  Nachname?: string;
+  Status?: string;
+  Location?: string;
+  Company?: string;
+}
+
+/**
+ * v30.50: EINE Abbildung Registrierung → F&A-Zeile.
+ *
+ * Es gibt zwei Wege, auf denen dieselbe Liste zu F&A geht (Versand-Snapshot
+ * in `sendFAMail`, Direkt-Download im Abrechnungs-Dialog) und einen dritten,
+ * der sie wieder anzeigt (F&A Center). Vor v30.50 hatte jeder seine eigene
+ * `.map()` — genau die Konstruktion, aus der zwei Ansichten mit
+ * unterschiedlichen Zahlen entstehen. Abgemeldete werden hier gefiltert,
+ * nicht beim Aufrufer.
+ */
+export function faRowsFromRegistrations(regs: FASourceRegistration[] | null | undefined): FAListRow[] {
+  return (regs || [])
+    .filter(r => r.Status !== 'Abgemeldet')
+    .map(r => {
+      const first = (r.Vorname || '').trim();
+      const last = (r.Nachname || '').trim();
+      return {
+        name: (r.ParticipantName || `${first} ${last}`.trim()) || r.ParticipantEmail || '—',
+        email: r.ParticipantEmail || '',
+        status: r.Status || '',
+        firstName: first,
+        lastName: last,
+        country: countryOfLocation(r.Location),
+        company: (r.Company || '').trim(),
+      };
+    });
+}
+
+/**
+ * v30.50: Die Excel-Datei für F&A im geforderten Aufbau (Fachkonzept
+ * „Versand der Teilnehmerliste an F&A", 01.09.2026).
+ *
+ * Zeilen 1–11 tragen die abrechnungsrelevanten Informationen (Label in
+ * Spalte A, Wert in Spalte B) — dieselben elf Felder wie `BILLING_FIELDS`,
+ * in derselben Reihenfolge wie die Vorlage von F&A. Zeile 12/13 bleiben
+ * leer, Zeile 14 ist die Kopfzeile der Teilnehmerliste, ab Zeile 15 stehen
+ * die Personen.
+ *
+ * **Die Beschriftungen sind bewusst die der F&A-Vorlage, nicht unsere
+ * Feld-Labels.** F&A liest diese Datei seit Jahren in dieser Form; eine
+ * schönere Beschriftung wäre für uns kosmetisch und für den Empfänger eine
+ * unbekannte Datei. `Personalnummer` und `kostenstelle des Mitarbeiters`
+ * bleiben leer — sie stehen DEX nicht zur Verfügung und werden von F&A
+ * ergänzt.
+ */
+const FA_SHEET_LABELS: Array<{ id: string; label: string }> = [
+  { id: 'contact', label: 'Kontaktperson (für etwaige Rückfragen):' },
+  { id: 'docNo', label: 'Documenten Nr ( sh Swift Launchpad):' },
+  { id: 'vendor', label: 'Lieferantenname:' },
+  { id: 'mice', label: 'Mice Project Nr' },
+  { id: 'ariba', label: 'Ariba Bestellnummer' },
+  { id: 'company', label: 'Gesellschaft, die die Rechnung erhalten hat:' },
+  { id: 'category', label: 'Arbeitsessen/Belohnungsessen/Sonstiges oder Geschenk' },
+  { id: 'date', label: 'Veranstaltungs-bzw. Bewirtungsdatum:' },
+  { id: 'place', label: 'Ort der Bewirtung/Veranstaltung:' },
+  { id: 'wbs', label: 'WBS Code / Kostenstelle:' },
+  { id: 'name', label: 'Name der Veranstaltung bzw. kurze Info zum Anlass der  Bewirtung oder zum Geschenk:' },
+];
+
+export const FA_SHEET_PARTICIPANT_HEADERS = [
+  'Participent Type', 'Email', 'First Name', 'Last Name',
+  'Country', 'Company Name', 'Personalnummer', 'kostenstelle des Mitarbeiters',
+];
+
+export function buildFASheetAoa(
+  ev: DeloitteEvent,
+  b: BillingData | null | undefined,
+  rows: FAListRow[]
+): string[][] {
+  const f = (b && b.fields) || {};
+  const aoa: string[][] = [];
+  for (const def of FA_SHEET_LABELS) {
+    let val = (f[def.id] || '').trim();
+    // Die Kontaktperson steht als `Name <email>` im Datensatz. In der Datei
+    // für F&A gehört der Name nach vorn und die Adresse dahinter — eine
+    // rohe spitze Klammer liest dort niemand.
+    if (def.id === 'contact' && val) {
+      const p = parsePersonValue(val);
+      val = p.name && p.email ? `${p.name} (${p.email})` : (p.name || p.email);
+    }
+    // Fällt ein Feld leer aus, bleibt die Zelle leer statt „—": Die Datei
+    // wird von F&A weiterverarbeitet, und ein Gedankenstrich ist dort ein
+    // Wert, kein fehlender Wert.
+    aoa.push([def.label, val]);
+  }
+  aoa.push([]);
+  aoa.push([]);
+  aoa.push(FA_SHEET_PARTICIPANT_HEADERS.slice());
+  for (const r of rows) {
+    aoa.push([
+      r.name || '',
+      r.email || '',
+      r.firstName || '',
+      r.lastName || '',
+      r.country || '',
+      r.company || '',
+      '', // Personalnummer — laut Konzept leer lassen, ergänzt F&A
+      '', // Kostenstelle des Mitarbeiters — dito
+    ]);
+  }
+  // `ev` fließt nur in den Dateinamen ein (s. downloadFAParticipantXlsx);
+  // der Blattinhalt ist vollständig durch die elf Felder bestimmt.
+  void ev;
+  return aoa;
+}
+
+/**
+ * v30.50: Die F&A-Datei erzeugen und herunterladen — EINE Implementierung
+ * für beide Einstiege (Abrechnungs-Dialog im Organizer Center, F&A Center).
+ *
+ * Der Anker-Download statt `saveAs` ist Absicht: Im SPFx-Iframe ist der
+ * Datei-Dialog der Bibliothek häufig blockiert.
+ */
+export async function downloadFAParticipantXlsx(
+  ev: DeloitteEvent,
+  b: BillingData | null | undefined,
+  rows: FAListRow[],
+  sentAt?: string
+): Promise<void> {
+  const aoa = buildFASheetAoa(ev, b, rows);
+  const safeName = (ev.title || 'event').replace(/[^a-zA-Z0-9]/g, '_');
+  const stamp = (sentAt || new Date().toISOString()).slice(0, 10);
+  // xlsx erst beim Klick nachladen (schwerste Dependency der App).
+  const XLSX = await import('xlsx');
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (ws as any)['!cols'] = [
+    { wch: 62 }, { wch: 34 }, { wch: 18 }, { wch: 18 },
+    { wch: 16 }, { wch: 26 }, { wch: 16 }, { wch: 26 },
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Teilnehmer');
+  const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Teilnehmerliste_FA_${safeName}_${stamp}.xlsx`;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 400);
 }
