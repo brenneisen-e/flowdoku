@@ -47,6 +47,16 @@ export interface AskInput {
    *  geht aber NUR an die DEX-Maintainer (statt an alle Power-User).
    *  undefined/'question' = inhaltliche Frage (bisheriges Verhalten). */
   category?: 'question' | 'bug';
+  /**
+   * v30.59: Wohin die Frage geht — AUSDRÜCKLICH gewählt statt abgeleitet.
+   *
+   * Bisher entschied das allein die Rolle: Wer kein Organizer ist, landete
+   * immer bei den Organizer:innen des gewählten Events. Das trifft für
+   * „Wann fängt das Frühstück an?" zu, aber nicht für „Der Assistent öffnet
+   * sich nicht mehr" — eine Produktfrage, die beim DEX-Team gehört und dort
+   * nie ankam. Fehlt der Wert, gilt die bisherige Ableitung.
+   */
+  routeTo?: 'organizer' | 'dex';
 }
 
 export interface AnswerInput {
@@ -313,7 +323,12 @@ export function TicketProvider(props: { context: WebPartContext; children: React
         ? Array.from(new Set([...(ctxEvent.organizerEmails || []), ...(ctxEvent.coOrganizerEmails || [])]
             .map(x => (x || '').trim()).filter(Boolean)))
         : [];
-      if (ctxEvent && orgs.length > 0) {
+      // v30.59: Eine ausdrückliche Wahl schlägt die Ableitung. „dex" heißt
+      // auch dann DEX-Team, wenn das Event Organizer:innen hat.
+      if (input.routeTo === 'dex') {
+        audience = 'PowerUser';
+        if (ctxEvent) { eventId = ctxEvent.id; eventTitle = ctxEvent.title; }
+      } else if (ctxEvent && orgs.length > 0) {
         audience = 'Organizer';
         eventId = ctxEvent.id; eventTitle = ctxEvent.title; assignedOrganizers = orgs;
       } else {
