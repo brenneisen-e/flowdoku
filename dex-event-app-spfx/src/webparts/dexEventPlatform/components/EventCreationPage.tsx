@@ -2514,10 +2514,28 @@ export default function EventCreationPage(): React.ReactElement {
       // v29.21 (Audit B5): 9 Schritte, Indizes 0..8 — die alte 7er-Grenze
       // verwarf Schritt 9 (Fun-Zone); Ticket-/Handbuch-Previews darauf
       // zeigten stattdessen Grundlagen.
-      if (typeof init === 'number' && init >= 0 && init <= 8) return init;
+      // v30.44: …und jetzt 0..9, weil Schritt 10 (Abrechnung) dazugekommen ist.
+      // Ohne diese Grenze landete „Angaben ergänzen" aus dem Organizer Center
+      // stumm auf Schritt 1 statt bei der Abrechnung — der Wert wurde
+      // verworfen, nicht gemeldet. Wer einen Schritt ergänzt, muss diese Zahl
+      // mitziehen (dieselbe Falle wie `SCOPE_AWARE_STEPS`, `getStepErrors` …).
+      // Auf den letzten Schritt begrenzen, den DIESE Person sieht: Schritt 10
+      // (Index 9) haengt an `adminLike`. Ein zu grosser Wert wuerde sonst
+      // jede Anzeige-Bedingung `currentStep === N` verfehlen — die Seite
+      // bliebe leer, ohne dass irgendwo etwas meldet, warum.
+      const maxStep = adminLike ? 9 : 8;
+      if (typeof init === 'number' && init >= 0) return Math.min(init, maxStep);
     }
     return 0;
   });
+  // v30.44: Die Marke ist ein EINMAL-Signal. Sie wird bewusst hier abgeräumt
+  // und nicht beim Setzen: Bliebe sie stehen, öffnete auch das nächste „Event
+  // anlegen" auf Schritt 10. Die Vorschau-Modals löschen sie zusätzlich beim
+  // Schließen — doppeltes Löschen ist folgenlos.
+  React.useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    try { delete (window as any).__dexPreviewInitialStep; } catch { /* */ }
+  }, []);
   // v26.30: aktuellen Wizard-Schritt (1-basiert, passend zur DexTicket-
   // Konvention) für den Header-Frage-Button melden — so wird die Frage eines
   // Organizers direkt dem Wizard-Schritt zugeordnet. Beim Verlassen zurücksetzen.
@@ -7081,7 +7099,7 @@ export default function EventCreationPage(): React.ReactElement {
       // v29.21 (Audit B5): 0..8 statt 0..7 — die Tour-Karten der letzten
       // beiden Schritte wurden sonst verworfen und die Tour blieb auf
       // „Dokumente" stehen.
-      if (typeof detail === 'number' && detail >= 0 && detail <= 8) {
+      if (typeof detail === 'number' && detail >= 0 && detail <= 9) {
         setCurrentStep(detail);
         setTriedNext(false);
       }

@@ -7518,7 +7518,22 @@ export default function AdminPage(): React.ReactElement {
                     type="button"
                     className="btn btn-outline"
                     style={{ fontSize: '0.78rem', padding: '4px 12px', color: 'var(--dex-orange, #ed8b00)', borderColor: 'var(--dex-orange, #ed8b00)' }}
-                    onClick={() => navigate('edit-event', selectedEvent.id)}
+                    onClick={() => {
+                      // v30.44: Direkt in Schritt 10 „Abrechnung" statt auf
+                      // Schritt 1. Wer auf „Angaben ergänzen" klickt, weiß
+                      // genau, welche Angaben gemeint sind — ihn erst durch
+                      // neun Schritte zu schicken ist kein Weg, sondern eine
+                      // Suchaufgabe. Der Wizard liest die Marke EINMAL beim
+                      // Mount und räumt sie danach selbst ab.
+                      // Nur setzen, wenn der Wizard den Schritt fuer diese
+                      // Person ueberhaupt rendert: Schritt 10 haengt dort an
+                      // `adminLike`. Ein Organizer ohne Admin-Rechte landete
+                      // sonst auf einem Index, den es fuer ihn nicht gibt —
+                      // leeres Formular statt Fehlermeldung.
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      if (isAdmin) { try { (window as any).__dexPreviewInitialStep = 9; } catch { /* */ } }
+                      navigate('edit-event', selectedEvent.id);
+                    }}
                   >
                     {isDe ? 'Angaben ergänzen' : 'Complete details'}
                   </button>
@@ -7586,9 +7601,6 @@ export default function AdminPage(): React.ReactElement {
                 badge="organizer"
                 onClick={() => setBillingPanelOpen(true)}
               />
-            )}
-            {billingPanelOpen && (
-              <BillingActionPanel event={selectedEvent} onClose={() => setBillingPanelOpen(false)} />
             )}
 
             {/* v27.13: „In SharePoint öffnen" entfernt — alle Teilnehmer-
@@ -8872,6 +8884,20 @@ export default function AdminPage(): React.ReactElement {
         )}
       </div>
       </ActionsRegistryProvider>
+
+      {/* v30.44: Das Modal „Event-Abrechnung" stand bis hierher INNERHALB von
+          `ActionsCollapsibleCard` — und die rendert ihre Kinder seit v12.7 in
+          `display: none` (die ActionTiles melden sich nur noch per Context beim
+          Dropdown an, gezeichnet wird dort nichts mehr). Das Modal wurde also
+          erzeugt, der State kippte, der onClick lief — sichtbar wurde nie
+          etwas. Genau das ist die Beobachtung aus dem Fachkonzept: „Ein Klick
+          auf den Button führt aktuell jedoch zu keiner Aktion", und dasselbe
+          bei der Aktion im Dropdown. Beide Einstiege waren nie kaputt, nur der
+          Ort des Modals war falsch. Es gehört auf Seitenebene, zu den anderen
+          Modals. */}
+      {billingPanelOpen && selectedEvent && (
+        <BillingActionPanel event={selectedEvent} onClose={() => setBillingPanelOpen(false)} />
+      )}
 
       {/* Zähler + QR/Check-in Aktionen.
           v9.14: Warteliste-KPI wird nur gerendert wenn Event eine Warteliste hat.

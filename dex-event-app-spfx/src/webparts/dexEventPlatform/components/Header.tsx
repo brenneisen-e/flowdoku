@@ -32,7 +32,10 @@ export default function Header(): React.ReactElement {
   React.useEffect(() => subscribeSaveInProgress(setSaveBusy), []);
   const { currentPage, navigate, selectedEventId } = useNavigation();
   const { currentUser, photoUrl } = useCurrentUser();
-  const { currentUserRole, originalIsAdmin } = useRoles();
+  const { currentUserRole, originalIsAdmin, previewAsUser, setPreviewAsUser } = useRoles();
+  // v30.43: Hover für den Ansicht-Wechselschalter. Inline-Styles können kein
+  // :hover; ohne Reaktion liest sich der Schalter als Beschriftung.
+  const [viewHover, setViewHover] = React.useState<'org' | 'user' | null>(null);
   const [showImpersonate, setShowImpersonate] = React.useState(false);
   const { events } = useEvents();
   // v22.50: Das frühere Check-in-Icon im Header ist entfallen — der Zugang zur
@@ -307,6 +310,69 @@ export default function Header(): React.ReactElement {
           Landing Page ausgeblendet, weil dort der Boot-/Logo-Look gilt. */}
       {!isLanding && <GlobalSearch />}
       <div className="header-right">
+        {/* v30.43: Wechselschalter Organizer-/User-Ansicht.
+
+            Vorher stand auf der Anmeldeseite ein blauer Hinweiskasten mit einem
+            Knopf &bdquo;Übersicht als User sehen&ldquo; — vier Zeilen Text über
+            der Seite, nur um EINE Einstellung anzubieten, und sichtbar
+            ausschließlich dort. Als Schalter im Header steht der aktuelle
+            Zustand immer da, gilt appweit und ist mit einem Klick umgelegt.
+
+            Die Sichtbarkeit hängt an der ECHTEN Rolle (`currentUserRole`,
+            `originalIsAdmin`): `isAdmin`/`isOrganizer` sind in der Vorschau
+            abgesenkt — der Schalter würde sich sonst nach dem ersten Klick
+            selbst ausblenden, und man käme nicht zurück. */}
+        {(currentUserRole === 'Organizer' || originalIsAdmin) && (
+          <div
+            role="group"
+            aria-label={locale === 'de' ? 'Ansicht wechseln' : 'Switch view'}
+            style={{
+              display: 'inline-flex', alignItems: 'center',
+              border: '1px solid var(--dex-gray-300, #d0d0d0)',
+              borderRadius: 999, overflow: 'hidden',
+              background: 'var(--dex-gray-50, #fafafa)',
+              height: 34, flexShrink: 0,
+            }}
+          >
+            {([
+              { key: 'org' as const, active: !previewAsUser, label: isMobile ? 'Organizer' : (locale === 'de' ? 'Organizer-Ansicht' : 'Organizer view') },
+              { key: 'user' as const, active: previewAsUser, label: isMobile ? 'User' : (locale === 'de' ? 'User-Ansicht' : 'User view') },
+            ]).map(seg => (
+              <button
+                key={seg.key}
+                type="button"
+                aria-pressed={seg.active}
+                onClick={() => setPreviewAsUser(seg.key === 'user')}
+                onMouseEnter={() => setViewHover(seg.key)}
+                onMouseLeave={() => setViewHover(prev => (prev === seg.key ? null : prev))}
+                onFocus={() => setViewHover(seg.key)}
+                onBlur={() => setViewHover(prev => (prev === seg.key ? null : prev))}
+                title={seg.key === 'user'
+                  ? (locale === 'de'
+                    ? 'Die App so sehen, wie reguläre Teilnehmer sie sehen. Reine Ansicht — anmelden kannst du dich darin nicht.'
+                    : 'See the app the way regular attendees do. View only — you cannot register in this mode.')
+                  : (locale === 'de'
+                    ? 'Zurück zur Organizer-Ansicht mit allen Hinweisen und Rechten.'
+                    : 'Back to the organizer view with all notices and rights.')}
+                style={{
+                  border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                  padding: isMobile ? '0 10px' : '0 14px', height: '100%',
+                  fontSize: '0.78rem', fontWeight: seg.active ? 700 : 500, lineHeight: 1,
+                  whiteSpace: 'nowrap',
+                  background: seg.active
+                    ? 'var(--dex-green, #86bc25)'
+                    : (viewHover === seg.key ? 'rgba(134,188,37,0.14)' : 'transparent'),
+                  color: seg.active
+                    ? '#fff'
+                    : (viewHover === seg.key ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700, #555)'),
+                  transition: 'background 120ms ease, color 120ms ease',
+                }}
+              >
+                {seg.label}
+              </button>
+            ))}
+          </div>
+        )}
         {/* v26: Grüner „Hast du Fragen?"-Button — Ticketsystem für alle User.
             v26.34: jetzt auch auf der Landing Page im Header sichtbar. */}
         <QuestionButton isMobile={isMobile} />
