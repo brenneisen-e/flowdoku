@@ -54,6 +54,13 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
   // v26.60: Organizer unterscheiden beim Einreichen zwischen inhaltlicher
   // Frage (→ Power-User) und Bug-Report (→ DEX-Team, dex.event@deloitte.de).
   const [askCategory, setAskCategory] = React.useState<'question' | 'bug'>('question');
+  // v30.59: Wohin die Frage geht, wird jetzt GEWÄHLT statt abgeleitet.
+  // `null` = noch nichts angeklickt, dann gilt die bisherige Vorbelegung
+  // (Event mit Organizer:innen → Organizer:innen). Der Grund für die Wahl:
+  // „Wann fängt das Frühstück an?" gehört zu den Organizer:innen, „Der
+  // Assistent öffnet sich nicht mehr" zum DEX-Team — die Rolle der fragenden
+  // Person sagt darüber nichts.
+  const [routeTo, setRouteTo] = React.useState<'organizer' | 'dex' | null>(null);
   const [shots, setShots] = React.useState<ShotRef[]>([]);
   // v29.40: Hinweis, wenn beim Anhängen etwas aussortiert wurde (kein Bild/zu groß).
   const [uploadNote, setUploadNote] = React.useState('');
@@ -135,7 +142,9 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
   const ctxOrgs = ctxEvent
     ? Array.from(new Set([...(ctxEvent.organizerEmails || []), ...(ctxEvent.coOrganizerEmails || [])].map((x) => (x || '').trim()).filter(Boolean)))
     : [];
-  const goesToOrganizer = !askerIsOrgLike && !!ctxEvent && ctxOrgs.length > 0;
+  const canChooseRoute = !askerIsOrgLike && !!ctxEvent && ctxOrgs.length > 0;
+  const effectiveRoute: 'organizer' | 'dex' = canChooseRoute ? (routeTo || 'organizer') : 'dex';
+  const goesToOrganizer = canChooseRoute && effectiveRoute === 'organizer';
   // v26.30: Auswahl-Optionen — „Deine Events" (angemeldet/Warteliste) vs. weitere
   // sichtbare Events. Test-Events (isFictive) nur für Organizer/Admins.
   const isMineFor = (ev: DeloitteEvent): boolean => {
@@ -231,6 +240,7 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
       eventId: selEventId,
       askWizardStep,
       category: askCategory,
+      routeTo: effectiveRoute,
     });
     setSubmitting(false);
     if (ok) {
@@ -382,6 +392,37 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
                 )}
               </select>
             </div>
+
+            {/* v30.59: An WEN geht die Frage? Ausdrücklich wählbar, statt nur
+                aus der Rolle abgeleitet. Vorher landete jede Frage einer
+                Nicht-Organizer-Person bei den Organisator:innen des gewählten
+                Events — auch eine Produktfrage („der Assistent öffnet sich
+                nicht mehr"), die dort niemand beantworten kann und die beim
+                DEX-Team nie ankam. */}
+            {canChooseRoute && (
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700,#444)', marginBottom: 4 }}>
+                  {isDe ? 'An wen soll die Frage gehen?' : 'Who should receive the question?'}
+                </label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {([
+                    { key: 'organizer' as const, label: isDe ? 'Organisator:innen des Events' : 'Event organizers', hint: isDe ? 'Alles zum Event selbst: Ablauf, Ort, Zeiten, Verpflegung.' : 'Anything about the event itself.' },
+                    { key: 'dex' as const, label: isDe ? 'DEX-Team' : 'DEX team', hint: isDe ? 'Alles zur App: etwas geht nicht, sieht falsch aus oder fehlt.' : 'Anything about the app itself.' },
+                  ]).map(opt => {
+                    const active = effectiveRoute === opt.key;
+                    return (
+                      <button key={opt.key} type="button" onClick={() => setRouteTo(opt.key)}
+                        style={{ flex: '1 1 200px', textAlign: 'left', padding: '9px 12px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit',
+                          border: active ? '2px solid var(--dex-green,#86bc25)' : '1px solid var(--dex-gray-300,#d1d1d1)',
+                          background: active ? '#f1f7e8' : '#fff' }}>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: active ? 'var(--dex-green-dark,#4a7c1f)' : 'var(--dex-gray-700,#444)' }}>{opt.label}</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500,#808080)', marginTop: 2, lineHeight: 1.4 }}>{opt.hint}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* v26.30: Herkunft aus dem Event-Wizard — wird der Antwort mitgegeben. */}
             {askWizardStep != null && (

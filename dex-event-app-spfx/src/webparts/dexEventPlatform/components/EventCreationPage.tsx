@@ -7115,8 +7115,15 @@ export default function EventCreationPage(): React.ReactElement {
       // v29.21 (Audit B5): 0..8 statt 0..7 — die Tour-Karten der letzten
       // beiden Schritte wurden sonst verworfen und die Tour blieb auf
       // „Dokumente" stehen.
-      if (typeof detail === 'number' && detail >= 0 && detail <= 9) {
-        setCurrentStep(detail);
+      // v30.59: Gegen die Schritte klemmen, die DIESE Person wirklich hat.
+      // Seit v30.44 gibt es Schritt 10 (Abrechnung) nur für Admins — für alle
+      // anderen endet der Assistent bei Index 8. Eine feste 9 hier setzte den
+      // Schritt auf einen, den es für sie nicht gibt: Jede Anzeige-Bedingung
+      // `currentStep === N` verfehlt dann, und die Seite bleibt LEER, ohne dass
+      // irgendwo etwas meldet. Genau davor warnt der Kommentar an `maxStep` —
+      // nur war diese Stelle nicht mitgezogen.
+      if (typeof detail === 'number' && detail >= 0) {
+        setCurrentStep(Math.min(detail, canBilling ? 9 : 8));
         setTriedNext(false);
       }
     };
@@ -7255,7 +7262,12 @@ export default function EventCreationPage(): React.ReactElement {
     if (typeof d.billingRelevant === 'boolean') setBillingRelevant(d.billingRelevant);
     setBillingSendMode(d.billingSendMode === 'auto' ? 'auto' : 'manual');
     if (d.billingFields && typeof d.billingFields === 'object') setBillingFields(d.billingFields as Record<string, string>);
-    setCurrentStep(Math.max(0, num(d.currentStep, 0)));
+    // v30.59: Auch beim Entwurf nach OBEN klemmen. Ein Entwurf, der auf
+    // Schritt 10 gespeichert wurde (als Admin, oder mit einem Build, in dem es
+    // den Schritt noch für alle gab), führte beim Wieder-Öffnen als Organizer
+    // auf einen Schritt, den es dort nicht gibt — und der Assistent zeigte
+    // gar nichts mehr an. Dasselbe Muster wie beim Tour-Schritt oben.
+    setCurrentStep(Math.min(Math.max(0, num(d.currentStep, 0)), canBilling ? 9 : 8));
   };
   // Beim Betreten der Neu-Anlage EINMAL den letzten Entwurf laden. v30.4:
   // kein Modal mehr — der Entwurf erscheint als Kachel in Schritt 1
