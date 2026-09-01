@@ -196,7 +196,7 @@ function UserPreviewBanner(): React.ReactElement | null {
 
 function AppContent(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
-  const { isAdmin, isRolesLoading } = useRoles();
+  const { isAdmin, isRolesLoading, canCreateEvents } = useRoles();
   const { markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, maybeSendBillingAutoMails, reconcileCounters, isEventsLoading, events, getKpiCache, recomputeEventKpiOnly } = useEvents();
 
   // v11.52: KPI-Boxen im Boot-Loader. Live-Zählung über alle Event-
@@ -595,7 +595,7 @@ function AppContent(): React.ReactElement {
       reconcileCounters().catch(err => console.warn('[DEX] counter reconcile failed:', err));
     }, 6000);
     return () => window.clearTimeout(t);
-  }, [isAdmin, isEventsLoading, events]);
+  }, [isAdmin, canCreateEvents, isEventsLoading, events]);
 
   // v23.8: Wöchentlicher Admin-Bericht. Beim Admin-Start (einmal pro App-
   // Session) wird geprüft, ob seit dem letzten Bericht ≥7 Tage vergangen sind —

@@ -991,22 +991,48 @@ export default function RegistrationPage(): React.ReactElement {
            * zeigt einen Strich statt einer erfundenen Zahl.
            */
           const occupancyOf = async (subId: string): Promise<number | null> => {
+            // v30.63: Nachvollziehbar in der Browser-Konsole. Bei einer
+            // gemeldeten Abweichung soll man SEHEN, aus welcher Quelle die Zahl
+            // kam — sonst rät man wieder zwischen „Daten falsch" und „Anzeige
+            // falsch", und genau das hat diesen Fehler zwei Runden gekostet.
+            const title = (childEvents.find(c => c.id === subId) || { title: subId }).title;
+            const cap = (childEvents.find(c => c.id === subId) || { maxParticipants: 0 }).maxParticipants || 0;
             try {
               const stats = await getLiveCounterStats(subId);
               // `seatsKnown` trennt „null Anmeldungen" von „nie geschrieben".
               // Ohne diese Unterscheidung wäre der ungenutzte Zähler genau die
               // 0, die den ursprünglichen Fehler erzeugt hat.
-              if (stats && stats.seatsKnown && typeof stats.active === 'number' && stats.active >= 0) return stats.active;
-            } catch { /* Rückfall unten */ }
+              if (stats && stats.seatsKnown && typeof stats.active === 'number' && stats.active >= 0) {
+                // eslint-disable-next-line no-console
+                console.log(`[DEX][seats] "${title}" — Quelle: Platzzähler · belegt ${stats.active}/${cap} · frei ${Math.max(0, cap - stats.active)} · Warteliste ${stats.waitlist < 0 ? 'unbekannt' : stats.waitlist}`);
+                return stats.active;
+              }
+              // eslint-disable-next-line no-console
+              console.log(`[DEX][seats] "${title}" — Platzzähler ${stats ? 'nie beschrieben (seatsKnown=false)' : 'nicht lesbar'} → Rückfall auf die Teilnehmerliste`);
+            } catch (e) {
+              // eslint-disable-next-line no-console
+              console.log(`[DEX][seats] "${title}" — Platzzähler-Abruf fehlgeschlagen → Rückfall auf die Teilnehmerliste`, e);
+            }
             let readable = true;
             try {
-              const regs = await getAllRegistrations(subId, () => { readable = false; });
+              const regs = await getAllRegistrations(subId, (status) => {
+                readable = false;
+                // eslint-disable-next-line no-console
+                console.log(`[DEX][seats] "${title}" — Teilnehmerliste nicht (vollständig) lesbar, HTTP ${status}. Keine Zahl anzeigen.`);
+              });
               if (!readable) return null;
-              return (regs || []).filter(r => {
+              const n = (regs || []).filter(r => {
                 const st = r.Status || '';
                 return st === 'Angemeldet' || st === 'QR versendet' || st === 'Eingecheckt';
               }).length;
-            } catch { return null; }
+              // eslint-disable-next-line no-console
+              console.log(`[DEX][seats] "${title}" — Quelle: Teilnehmerliste · belegt ${n}/${cap} · frei ${Math.max(0, cap - n)} · ${regs.length} Zeile(n) gelesen`);
+              return n;
+            } catch (e) {
+              // eslint-disable-next-line no-console
+              console.log(`[DEX][seats] "${title}" — auch die Teilnehmerliste nicht lesbar. Keine Zahl anzeigen.`, e);
+              return null;
+            }
           };
           const runLimited = async (items: typeof childEvents, limit: number, fn: (x: typeof childEvents[number]) => Promise<void>): Promise<void> => {
             let next = 0;

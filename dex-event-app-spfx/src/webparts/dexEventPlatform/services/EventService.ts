@@ -6492,19 +6492,29 @@ export class EventService {
     subsiteUrl: string,
     opts: { isSplit: boolean; previousStatus: string; starterType?: string; waitlistDisabled?: boolean }
   ): Promise<void> {
+    // v30.63: Jeder Zweig sagt in der Konsole, WAS er getan hat und warum.
+    // Der Zähler wird seit v30.62 auf der Anmeldeseite angezeigt; wenn eine
+    // Zahl nicht stimmt, muss sich die Ursache ohne Rätselraten ablesen lassen.
+    // eslint-disable-next-line no-console
+    const log = (msg: string): void => console.log(`[DEX][seats] Abmeldung — ${msg}`);
     try {
       const synced = await this.syncSeatsToActiveCount(subsiteUrl, { isSplit: opts.isSplit });
-      if (synced) return;
+      if (synced) { log('Voll-Abgleich gelaufen (Vollzugriff) — Zähler exakt neu gesetzt.'); return; }
       if (opts.previousStatus === 'Warteliste') {
         await this.adjustWaitlistCounter(subsiteUrl, -1);
+        log('Wartelisten-Zeile abgemeldet → WaitlistTaken −1.');
         return;
       }
-      if (EventService.ACTIVE_STATI.indexOf(opts.previousStatus) < 0) return;
+      if (EventService.ACTIVE_STATI.indexOf(opts.previousStatus) < 0) {
+        log(`Vorheriger Status „${opts.previousStatus}" war nicht aktiv — kein Platz freizugeben.`);
+        return;
+      }
       // v27.11: Warteliste vom Organizer abgeschaltet → es rückt NIEMAND nach
       // (App-Gates + Flow-Bedingung). Der Platz muss dann direkt freigegeben
       // werden — sonst blieben frei gewordene Plätze dauerhaft als belegt
       // gezählt (Deadlock, bis ein privilegierter Reconcile läuft).
       if (opts.waitlistDisabled) {
+        log('Warteliste ist abgeschaltet → SeatsTaken −1 (Platz sofort frei).');
         await this.adjustSeatCounterField(subsiteUrl, 'SeatsTaken', -1);
         if (opts.isSplit && opts.starterType === 'Durchstarter') {
           await this.adjustSeatCounterField(subsiteUrl, 'SeatsTakenDurch', -1);
@@ -6515,7 +6525,16 @@ export class EventService {
       }
       const stats = await this.getCounterStats(subsiteUrl, opts.isSplit);
       // stats.waitlist: -1 = unbekannt (Feld nie gepflegt) → fail-closed.
-      if (!stats || stats.waitlist !== 0) return;
+      if (!stats) { log('Zähler nicht lesbar → nichts geändert (heilt beim nächsten Abgleich).'); return; }
+      if (stats.waitlist < 0) {
+        log('Wartelisten-Stand UNBEKANNT (Feld nie geschrieben) → nichts geändert. Seit v30.63 wird es bei neuen Events mit 0 angelegt; Bestands-Events heilt der Abgleich beim nächsten Organizer-/Admin-Start.');
+        return;
+      }
+      if (stats.waitlist !== 0) {
+        log(`${stats.waitlist} Person(en) auf der Warteliste → SeatsTaken bleibt (der Nachrück-Flow besetzt den Platz sofort).`);
+        return;
+      }
+      log('Warteliste leer → SeatsTaken −1.');
       await this.adjustSeatCounterField(subsiteUrl, 'SeatsTaken', -1);
       if (opts.isSplit && opts.starterType === 'Durchstarter') {
         await this.adjustSeatCounterField(subsiteUrl, 'SeatsTakenDurch', -1);
@@ -8928,6 +8947,21 @@ export class EventService {
         '__metadata': { 'type': COUNTER_LIST_ITEM_TYPE },
         'Title': 'TeilnehmerID',
         'NextValue': maxId,
+        // v30.63: Sitzplatz- und Wartelisten-Zähler AUSDRÜCKLICH auf 0 setzen.
+        //
+        // Bisher blieben beide Felder null, bis die erste Anmeldung sie anfasst
+        // — und `WaitlistTaken` fasst niemand an, solange nie jemand auf der
+        // Warteliste steht. `getCounterStats` meldet null aber als „unbekannt"
+        // (-1), und `releaseSeatAfterCancel` handelt bei unbekanntem
+        // Wartelisten-Stand fail-closed: Es zählt NICHT herunter. Ergebnis war
+        // ein Zähler, der bei jeder Selbst-Abmeldung zu hoch stehen blieb, bis
+        // ein Admin die App öffnete.
+        //
+        // Auf einer frischen Subsite ist die 0 keine Annahme, sondern die
+        // Tatsache: Es gibt noch keine Anmeldung. Genau deshalb darf sie hier
+        // geschrieben werden — und nur hier.
+        'SeatsTaken': 0,
+        'WaitlistTaken': 0,
       });
       if (!resp.ok) {
         const errBody = await resp.text().catch(() => '');

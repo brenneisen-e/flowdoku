@@ -658,7 +658,7 @@ interface EventContextType {
    *  Bestand frischziehen (SeatsTaken + WaitlistTaken). Braucht Vollzugriff →
    *  beim Admin-Start aufrufen, damit die für alle lesbaren Counter stimmen,
    *  bevor Teilnehmer das Anmeldeformular öffnen. Best-effort, sequentiell. */
-  reconcileCounters: () => Promise<void>;
+  reconcileCounters: (opts?: { onlyMine?: boolean }) => Promise<void>;
   /** v24.75: Echtzeit-Push auf eine Liste der Event-Subsite. kind='counter'
    *  (Anmeldeformular, für alle lesbar) / 'participants' (Organizer-Liste).
    *  Liefert eine Cleanup-Funktion. Best-effort. */
@@ -1235,10 +1235,34 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
   }
 
   // v24.74: Counter aller aktiven Kapazitäts-Events frischziehen (privilegiert).
-  async function reconcileCounters(): Promise<void> {
+  async function reconcileCounters(opts?: { onlyMine?: boolean }): Promise<void> {
     const seen = new Set<string>();
+    // v30.63: Organizer heilen ihre EIGENEN Events mit.
+    //
+    // Bisher lief der Abgleich nur beim Admin-Start, höchstens alle sechs
+    // Stunden. Zwischen zwei Admin-Anmeldungen konnte der für alle lesbare
+    // Zähler driften — nach oben, wenn eine Selbst-Abmeldung ihn bei
+    // unbekanntem Wartelisten-Stand nicht herunterzählen durfte, nach unten,
+    // weil der Nachrück-Flow Warteliste→Angemeldet promotet, ohne SeatsTaken
+    // zu erhöhen. Seit die Anmeldeseite diesen Zähler ANZEIGT, ist das nicht
+    // mehr nur eine Frage der Überbuchungs-Sperre.
+    //
+    // Gefährlich wäre das nur, wenn jemand ohne Vollzugriff den Zähler mit
+    // einer beschnittenen Sicht überschreibt — genau der Fehler vom 15.07.
+    // Das kann hier nicht passieren: `getActiveCounts` vergleicht die
+    // gelesene Zeilenzahl mit dem echten ItemCount der Liste und wirft bei
+    // unvollständiger Sicht, `syncSeatsToActiveCount` schreibt dann nichts.
+    // Ein Organizer ohne Rechte auf eine Subsite heilt sie also schlicht
+    // nicht — er kann sie nicht kaputtmachen.
+    const mine = (e: DeloitteEvent): boolean => {
+      const me = (currentUserEmail || '').toLowerCase();
+      if (!me) return false;
+      return [...(e.organizerEmails || []), ...(e.coOrganizerEmails || [])]
+        .some(x => (x || '').toLowerCase() === me);
+    };
     const targets = (events || []).filter(e =>
-      e.status === 'Active' && (e.maxParticipants || 0) > 0 && (e.subsiteUrl || '').trim());
+      e.status === 'Active' && (e.maxParticipants || 0) > 0 && (e.subsiteUrl || '').trim()
+      && (!opts?.onlyMine || mine(e)));
     for (const e of targets) {
       const sub = e.subsiteUrl as string;
       if (seen.has(sub)) continue;
