@@ -2481,6 +2481,12 @@ export default function RegistrationPage(): React.ReactElement {
             ...(seExtraCc ? { extraCc: seExtraCc } : {}),
             ...(registerForOther ? { proxyConsentConfirmed: true, actorAllowedAsAssistant } : {}),
             skipReload: true,
+            // v30.42: Diese Seite legt die Klammer-Zeile SELBST an — zuletzt und
+            // mit den übergreifenden Antworten (Hotel, Verpflegung, Anreise).
+            // Die zentrale Absicherung im EventContext würde hier vorher eine
+            // LEERE Schattenzeile schreiben; die Zeile wäre dann belegt und die
+            // Antworten würden nie geschrieben. Genau deshalb gibt es das Flag.
+            skipShadowParent: true,
           };
           const subRes = await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType, seOpts);
           if (subRes.ok) { anySuccess = true; anySubRegSuccess = true; }

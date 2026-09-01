@@ -222,6 +222,50 @@ export default function LandingPage(): React.ReactElement {
   // Pro Event werden nur noch-nicht-benachrichtigte Personen behalten; bleibt
   // keine übrig, fällt das ganze Event aus der Box.
   type InactiveItem = { eventId: string; title: string; people: Array<{ email: string; name: string }> };
+  /**
+   * v30.42: Sub-Events auf ihre Klammer zusammenziehen.
+   *
+   * Der Scan läuft je Event, und bei einem Klammer-Event ist jeder Kalender-Tag
+   * ein eigenes Event. Dieselbe Person erschien deshalb einmal PRO Tag — bei
+   * 19 Office-Tagen also bis zu 19 Kacheln für einen einzigen Befund (Nutzer-
+   * Screenshot: vier Kacheln, alle „Jiva Dimitrova-Micha"). Für den Organizer
+   * ist das EINE Information: Diese Person hat womöglich Deloitte verlassen.
+   *
+   * Zusammengezogen wird ABSICHTLICH erst nach dem Aufteilen in
+   * `autoItems`/`notifyItems`: Das automatische Abmelden muss weiter am
+   * einzelnen Termin ansetzen (dort liegt die Anmeldung), nur die ANZEIGE und
+   * die Organizer-Mail gehören auf die Klammer. Damit landet auch der
+   * Dedup-Merker auf der Klammer und die Kacheln kommen nach dem Benachrichtigen
+   * nicht einzeln zurück.
+   */
+  const collapseToUmbrella = React.useCallback((items: InactiveItem[]): InactiveItem[] => {
+    const byId: Record<string, typeof events[number]> = {};
+    (events || []).forEach(e => { byId[e.id] = e; });
+    const out: InactiveItem[] = [];
+    const idx: Record<string, number> = {};
+    for (const it of items) {
+      const own = byId[it.eventId];
+      const parent = own?.parentEventId ? byId[own.parentEventId] : undefined;
+      // Nur echte Klammer-Events einsammeln. Ein Sub-Event unter einem normalen
+      // Hauptevent bleibt eigenständig — dort ist der Termin die Aussage.
+      const root = (parent && parent.subEventsOnlyMode) ? parent : own;
+      const rootId = root?.id || it.eventId;
+      const rootTitle = root?.title || it.title;
+      if (idx[rootId] === undefined) {
+        idx[rootId] = out.length;
+        out.push({ eventId: rootId, title: rootTitle, people: [] });
+      }
+      const bucket = out[idx[rootId]];
+      for (const p of it.people) {
+        const key = (p.email || '').toLowerCase().trim();
+        if (!key) continue;
+        if (bucket.people.some(x => (x.email || '').toLowerCase().trim() === key)) continue;
+        bucket.people.push(p);
+      }
+    }
+    return out.filter(it => it.people.length > 0);
+  }, [events]);
+
   const filterNotified = React.useCallback(async (items: InactiveItem[]): Promise<InactiveItem[]> => {
     const out: InactiveItem[] = [];
     for (const it of items) {
@@ -296,7 +340,7 @@ export default function LandingPage(): React.ReactElement {
           const liveIds = new Set(relevant.map(e => e.id));
           // v26.40: Nur 'notify'-Events in den Organizer-Hinweis; 'autoderegister'
           // wird beim frischen Scan automatisch abgemeldet (nicht hier anzeigen).
-          const cached = parsed.items.filter(it => liveIds.has(it.eventId) && !isAutoDereg(it.eventId));
+          const cached = collapseToUmbrella(parsed.items.filter(it => liveIds.has(it.eventId) && !isAutoDereg(it.eventId)));
           // v24.59: bereits benachrichtigte Konten gleich ausblenden.
           // v29.31: …und inzwischen abgemeldete Personen (Gegenprobe live).
           filterNotified(cached)
@@ -325,7 +369,7 @@ export default function LandingPage(): React.ReactElement {
             if (!cancelled && report.length > 0) setAutoDeregModal(report);
           }
           // Nur 'notify'-Events landen im Organizer-Hinweis.
-          const notifyItems = items.filter(it => !isAutoDereg(it.eventId));
+          const notifyItems = collapseToUmbrella(items.filter(it => !isAutoDereg(it.eventId)));
           const filtered = await filterNotified(notifyItems);
           if (!cancelled) setInactiveSummary(filtered);
           // Der frische Scan liest die Anmeldungen ohnehin selbst — hier ist

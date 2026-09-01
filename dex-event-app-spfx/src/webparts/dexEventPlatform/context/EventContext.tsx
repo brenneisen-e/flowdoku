@@ -18,7 +18,7 @@ import { isEventOver } from '../utils/eventFormat';
 import { isDeloitteInternalEmail, isExternalEmail } from '../utils/deloitteDomain';
 import { registrationEmail, externalInviteInstructionEmail, externalInvitationEmail, coOrganizerAddedEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
 import { buildUnsentEmlDraft } from '../utils/emlDraft';
-import { readPendingShadowParents, removePendingShadowParent } from '../utils/shadowHeal';
+import { readPendingShadowParents, removePendingShadowParent, addPendingShadowParent } from '../utils/shadowHeal';
 import { withParentTitleSubject } from '../utils/mailSubject';
 import { APP_VERSION } from '../version';
 import { RELEASE_NOTES } from '../data/releaseNotes';
@@ -379,7 +379,9 @@ interface EventContextType {
   /** v29.47: Dokumente eines Events bei Bedarf nachladen (Boot lädt sie nicht mehr). */
   ensureEventDocuments: (eventIds: string[]) => Promise<void>;
   createEvent: (event: CreateEventInput) => Promise<number | null>;
-  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean; actorAllowedAsAssistant?: boolean; skipReload?: boolean }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste'; reason?: string }>;
+  // v30.42: skipShadowParent — nur die Anmeldeseite setzt das; sie legt die
+  // Klammer-Zeile selbst an, und zwar MIT den übergreifenden Antworten.
+  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { skipShadowParent?: boolean; suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean; actorAllowedAsAssistant?: boolean; skipReload?: boolean }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste'; reason?: string }>;
   /** v11.82: Team-Anmeldung — Lead + N-1 Mitglieder gleichzeitig anmelden.
    *  Reserviert N Plätze atomar; bei Vollbelegung geht das ganze Team auf
    *  die Warteliste (keine Teil-Anmeldungen aus Kapazitätsmangel). */
@@ -1872,6 +1874,10 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     return eventId;
   }
 
+  // v30.42: Je Sitzung EINMAL je (Klammer, Person) die Schattenzeile prüfen.
+  // Ohne diesen Merker liefe ein Massen-Lauf über 19 Termine 19-mal in
+  // dieselbe Prüfung — auf einem Pfad, der ohnehin drosselungsempfindlich ist.
+  const shadowEnsuredRef = React.useRef<Set<string>>(new Set<string>());
   async function registerForEvent(
     eventId: string,
     customData: Record<string, string>,
@@ -1894,7 +1900,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     // Kalender-Events MEHRFACH an (Tage + Schatten-Klammer) und lud damit
     // pro Klick mehrere Male den kompletten Bestand; genau dieselbe Bremse
     // wie v29.77 im Wizard. Schleifen skippen und refreshen EINMAL am Ende.
-    opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean; actorAllowedAsAssistant?: boolean; skipReload?: boolean }
+    opts?: { skipShadowParent?: boolean; suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean; actorAllowedAsAssistant?: boolean; skipReload?: boolean }
   ): Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste'; reason?: string }> {
     // v17.25: Demo-Showcase-Event → No-Op, kein SP-Roundtrip. Die Register-
     // Seite blockt den Submit ohnehin mit einem Demo-Hinweis; dieser Guard
@@ -2511,6 +2517,64 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       }
       // v30.9: s. opts.skipReload — Schleifen laden EINMAL am Ende neu.
       if (!opts?.skipReload) await loadEvents();
+    }
+    // v30.42: Die Klammer-Zeile wird ZENTRAL sichergestellt — nicht mehr von
+    // jedem Aufrufer einzeln.
+    //
+    // Warum das eine Struktur- und keine Einzelfall-Korrektur ist: Bis v30.41
+    // musste JEDER Weg, der eine Sub-Event-Anmeldung anlegt, selbst daran
+    // denken. Fünf Wege, fünf Gelegenheiten, es zu vergessen — und vergessen
+    // wurde es dreimal: v30.14 im Organizer-Modal „Teilnehmer hinzufügen"
+    // (Befund mit 24 Personen), v30.14 auf dem „Meine Events"-Pfad, und bis
+    // hierher in `AssistantPage` (Assistenz meldet jemanden an einem Termin an)
+    // sowie im Massenimport der Anmeldeseite. Jeder neue Aufrufer wäre die
+    // nächste Gelegenheit gewesen. Ab jetzt kann man es nicht mehr vergessen:
+    // Wer ein Sub-Event schreibt, schreibt die Klammer mit.
+    //
+    // `skipShadowParent` setzt nur die Anmeldeseite — sie legt die Klammer
+    // ZULETZT und MIT den übergreifenden Antworten an. Käme hier vorher eine
+    // leere Schattenzeile, wäre die Zeile belegt und die Antworten (Hotel,
+    // Verpflegung, Anreise) würden nie geschrieben.
+    //
+    // Der Sitzungs-Merker verhindert, dass ein Massen-Lauf über 19 Termine
+    // 19-mal dieselbe Klammer-Zeile prüft — das wäre genau die Drosselung, an
+    // der diese Zeile ohnehin am ehesten scheitert.
+    if (success && event && event.parentEventId && !opts?.skipShadowParent) {
+      const parentEv = events.find(e => e.id === event.parentEventId);
+      if (parentEv && parentEv.subEventsOnlyMode) {
+        const guardKey = `${parentEv.id}|${(emailToUse || '').toLowerCase().trim()}`;
+        if (!shadowEnsuredRef.current.has(guardKey)) {
+          const fallback = (): void => {
+            // Nachzug-Merker: Der EventContext holt die Zeile beim nächsten
+            // App-Start still nach (utils/shadowHeal).
+            try {
+              addPendingShadowParent({
+                eventId: parentEv.id, customData: {},
+                firstName: firstNameToUse || '', lastName: lastNameToUse || '',
+                email: emailToUse || '', proxy: !!opts?.proxyConsentConfirmed, ts: Date.now(),
+              });
+            } catch { /* localStorage gesperrt → bleibt für das Organizer-Panel */ }
+          };
+          try {
+            const shadow = await registerForEvent(
+              parentEv.id, {}, firstNameToUse, lastNameToUse, emailToUse, undefined,
+              {
+                suppressMail: true, suppressOutlook: true, skipReload: true, skipShadowParent: true,
+                ...(opts?.proxyConsentConfirmed
+                  ? { proxyConsentConfirmed: true, actorAllowedAsAssistant: !!opts?.actorAllowedAsAssistant }
+                  : {}),
+              }
+            );
+            // `already-registered` heißt hier: Die Zeile steht bereits — das ist
+            // der Zielzustand, kein Fehlschlag.
+            if (shadow.ok || shadow.reason === 'already-registered') shadowEnsuredRef.current.add(guardKey);
+            else fallback();
+          } catch (err) {
+            console.warn('[DEX] Klammer-Zeile konnte nicht sichergestellt werden:', err);
+            fallback();
+          }
+        }
+      }
     }
     // v18.67: echten Status zurückgeben (Angemeldet/Warteliste), damit die
     // RegistrationPage das Ergebnis-Modal nicht mehr aus der gecachten
