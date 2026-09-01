@@ -6571,7 +6571,7 @@ export class EventService {
    * `null`, wenn der Counter (noch) nicht existiert/lesbar ist → Aufrufer fällt
    * dann auf den bisherigen (item-level-gefilterten) Zählweg zurück.
    */
-  public async getCounterStats(subsiteUrl: string, isSplit: boolean): Promise<{ active: number; waitlist: number } | null> {
+  public async getCounterStats(subsiteUrl: string, isSplit: boolean): Promise<{ active: number; waitlist: number; seatsKnown: boolean } | null> {
     if (!subsiteUrl) return null;
     const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
     try {
@@ -6583,11 +6583,20 @@ export class EventService {
       const durch = num(data?.SeatsTakenDurch ?? data?.d?.SeatsTakenDurch);
       const fun = num(data?.SeatsTakenFun ?? data?.d?.SeatsTakenFun);
       const wRaw = data?.WaitlistTaken ?? data?.d?.WaitlistTaken;
+      // v30.62: Ist das Feld noch NIE gesetzt worden (null/undefined), liefert
+      // `num()` eine 0 — und eine 0 liest sich wie „niemand angemeldet". Für die
+      // Termin-Kacheln der Anmeldeseite ist das der Unterschied zwischen einer
+      // Aussage und einer Erfindung, deshalb wird er hier durchgereicht.
+      const sRaw = data?.SeatsTaken ?? data?.d?.SeatsTaken;
+      const sDurchRaw = data?.SeatsTakenDurch ?? data?.d?.SeatsTakenDurch;
+      const sFunRaw = data?.SeatsTakenFun ?? data?.d?.SeatsTakenFun;
+      const known = (v: unknown): boolean => v !== null && v !== undefined && v !== '';
+      const seatsKnown = known(sRaw) || (isSplit && (known(sDurchRaw) || known(sFunRaw)));
       // SeatsTaken ist der Gesamt-Aktiv-Wert; bei Split fällt er ggf. auf
       // Durch+Fun zurück, falls der Gesamtwert (noch) nicht gepflegt wurde.
       const active = total > 0 ? total : (isSplit ? durch + fun : total);
       const waitlist = (wRaw === null || wRaw === undefined) ? -1 : num(wRaw);
-      return { active, waitlist };
+      return { active, waitlist, seatsKnown };
     } catch { return null; }
   }
 

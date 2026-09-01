@@ -755,7 +755,21 @@ export default function RegistrationPage(): React.ReactElement {
     subEventId: string;
     draftValues: Record<string, string>;
   } | null>(null);
-  const [sessionMeta, setSessionMeta] = React.useState<Record<string, { count: number; wasRegistered: boolean }>>({});
+  /**
+   * v30.62: `count` ist bewusst `number | null`.
+   *
+   * Die Belegung kam bis hierher aus `getAllRegistrations(ce.id)` — also aus der
+   * Teilnehmerliste der Subsite. Die hat Zeilen-Sicherheit: Ein normaler
+   * Teilnehmer liest dort NUR die eigene Zeile, und `getAllRegistrations` wirft
+   * bei 403 nicht, sondern liefert das bis dahin Gelesene (CLAUDE.md). Ergebnis
+   * war `count = 0` für JEDEN Tag — also „80 frei" überall, während Organizer,
+   * die die ganze Liste lesen dürfen, die echten Zahlen sahen. Genau dieser
+   * Widerspruch wurde gemeldet.
+   *
+   * `null` heißt jetzt „nicht ermittelbar" und wird als Strich angezeigt. Eine
+   * Zahl, die aus einem Leseverbot entsteht, ist keine Aussage über die Daten.
+   */
+  const [sessionMeta, setSessionMeta] = React.useState<Record<string, { count: number | null; wasRegistered: boolean }>>({});
   const [myParentReg, setMyParentReg] = React.useState<{ Status?: string } | null>(null);
   const [sessionsOnlySubmitted, setSessionsOnlySubmitted] = React.useState(false);
   // v18.67: echtes Anmelde-Ergebnis (Angemeldet/Warteliste) aus der
@@ -938,7 +952,7 @@ export default function RegistrationPage(): React.ReactElement {
     if (childEvents.length > 0) {
       (async () => {
         try {
-          const meta: Record<string, { count: number; wasRegistered: boolean }> = {};
+          const meta: Record<string, { count: number | null; wasRegistered: boolean }> = {};
           const preselect = new Set<string>();
           const starterPre: Record<string, string> = {};
           // v29.65: Diese Schleife lief STRENG NACHEINANDER, und jeder Durchlauf
@@ -958,6 +972,42 @@ export default function RegistrationPage(): React.ReactElement {
           // ueberschreibt die Auswahl des Nutzers, und die haeppchenweise
           // nachzuziehen wuerde mit dem konkurrieren, was er waehrenddessen
           // anklickt.
+          /**
+           * v30.62: Die Belegung eines Termins — aus einer Quelle, die JEDER
+           * lesen darf.
+           *
+           * Erste Wahl ist der Platzzähler `DEX_TeilnehmerCounter` der Subsite.
+           * Er ist genau dafür da und für alle lesbar; das Haupt-Event benutzt
+           * ihn längst (`liveStats`). Die Termin-Kacheln zählten stattdessen
+           * über die Teilnehmerliste — und die ist zeilenweise gesichert. Wer
+           * nur die eigene Zeile sehen darf, zählt eine oder keine, und die
+           * Kachel meldete „80 frei", während die Organizerin daneben die
+           * echten Zahlen sah.
+           *
+           * Die Liste bleibt der Rückfall, aber nur mit geprüftem Status: Ohne
+           * `onHttpError` wäre ein Leseverbot von einer leeren Liste nicht zu
+           * unterscheiden — genau die Verwechslung, die den Fehler erzeugt hat.
+           * Trägt keine der beiden Quellen, kommt `null` zurück und die Kachel
+           * zeigt einen Strich statt einer erfundenen Zahl.
+           */
+          const occupancyOf = async (subId: string): Promise<number | null> => {
+            try {
+              const stats = await getLiveCounterStats(subId);
+              // `seatsKnown` trennt „null Anmeldungen" von „nie geschrieben".
+              // Ohne diese Unterscheidung wäre der ungenutzte Zähler genau die
+              // 0, die den ursprünglichen Fehler erzeugt hat.
+              if (stats && stats.seatsKnown && typeof stats.active === 'number' && stats.active >= 0) return stats.active;
+            } catch { /* Rückfall unten */ }
+            let readable = true;
+            try {
+              const regs = await getAllRegistrations(subId, () => { readable = false; });
+              if (!readable) return null;
+              return (regs || []).filter(r => {
+                const st = r.Status || '';
+                return st === 'Angemeldet' || st === 'QR versendet' || st === 'Eingecheckt';
+              }).length;
+            } catch { return null; }
+          };
           const runLimited = async (items: typeof childEvents, limit: number, fn: (x: typeof childEvents[number]) => Promise<void>): Promise<void> => {
             let next = 0;
             const workers = new Array(Math.min(limit, items.length)).fill(0).map(async () => {
@@ -971,28 +1021,16 @@ export default function RegistrationPage(): React.ReactElement {
           };
           await runLimited(childEvents, 6, async (ce) => {
             if (registerForOther) {
-              // v18.37: Stellvertreter-Modus — nur die Belegungszahl laden
-              // (für die „X/Y belegt"-/Voll-Anzeige). KEINE Self-Vorbelegung,
-              // weil getMyRegistration die Daten des eingeloggten Users liefert,
-              // nicht die der angemeldeten Person. Der Assistent wählt die
-              // Sub-Events frisch aus.
-              const allRegs = await getAllRegistrations(ce.id);
-              const count = (allRegs || []).filter(r => {
-                const s = r.Status || '';
-                return s === 'Angemeldet' || s === 'QR versendet' || s === 'Eingecheckt';
-              }).length;
-              meta[ce.id] = { count, wasRegistered: false };
+              // v18.37: Stellvertreter-Modus — nur die Belegungszahl laden.
+              // KEINE Self-Vorbelegung, weil getMyRegistration die Daten des
+              // eingeloggten Users liefert, nicht die der angemeldeten Person.
+              meta[ce.id] = { count: await occupancyOf(ce.id), wasRegistered: false };
             } else {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const [myReg, allRegs] = await Promise.all([
+              const [myReg, count] = await Promise.all([
                 getMyRegistration(ce.id) as Promise<{ Status?: string; StarterType?: string; PreferredStarterType?: string } | null>,
-                getAllRegistrations(ce.id),
+                occupancyOf(ce.id),
               ]);
               const wasRegistered = !!myReg && myReg.Status !== 'Abgemeldet';
-              const count = (allRegs || []).filter(r => {
-                const s = r.Status || '';
-                return s === 'Angemeldet' || s === 'QR versendet' || s === 'Eingecheckt';
-              }).length;
               meta[ce.id] = { count, wasRegistered };
               if (wasRegistered) {
                 preselect.add(ce.id);
@@ -4177,10 +4215,13 @@ export default function RegistrationPage(): React.ReactElement {
                     </div>
                   )}
                   {childEvents.map(ce => {
-                    const meta = sessionMeta[ce.id] || { count: 0, wasRegistered: false };
+                    const meta = sessionMeta[ce.id] || { count: null, wasRegistered: false };
                     const isSel = selectedSessions.has(ce.id);
                     const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
-                    const isSessionFull = hasCap && meta.count >= (ce.maxParticipants || 0);
+                    // v30.62: Unbekannte Belegung sperrt NICHT. „Voll" ist eine
+                    // Aussage — sie darf nicht aus einer fehlenden Zahl entstehen.
+                    // Die echte Grenze zieht ohnehin serverseitig (reserveSeat).
+                    const isSessionFull = hasCap && meta.count !== null && meta.count >= (ce.maxParticipants || 0);
                     // v30.8: effektive Tages-Frist — materialisierte Spalte,
                     // sonst Fallback aus der rollierenden Regel (Spalte kann
                     // bei einem unter Drosselung abgebrochenen Save leer sein).
@@ -4297,6 +4338,12 @@ export default function RegistrationPage(): React.ReactElement {
                                 // sieht, wie viele Plätze noch frei sind. Vorher stand
                                 // dort nur "0/25" ohne Label, was die User-Frage
                                 // "warum steht da 0/25?" ausgelöst hat.
+                                // v30.62: Ohne belastbare Belegung nur die Kapazität
+                                // nennen. „0/80 belegt — 80 frei" wäre eine Zahl, die
+                                // aus einem Leseverbot entsteht, nicht aus den Daten.
+                                if (meta.count === null) {
+                                  return <> · {ce.maxParticipants} {locale === 'de' ? 'Plätze' : 'seats'}</>;
+                                }
                                 const sessionFree = Math.max(0, (ce.maxParticipants || 0) - (meta.count || 0));
                                 return (
                                   <> · <span style={{ color: isSessionFull ? 'var(--dex-red)' : 'inherit', fontWeight: 600 }}>
@@ -5750,10 +5797,11 @@ export default function RegistrationPage(): React.ReactElement {
                                   );
                                 }
                                 const ce = entry.ce;
-                                const meta = sessionMeta[ce.id] || { count: 0, wasRegistered: false };
+                                const meta = sessionMeta[ce.id] || { count: null, wasRegistered: false };
                                 const isSel = selectedSessions.has(ce.id);
                                 const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
-                                const isFull = hasCap && meta.count >= (ce.maxParticipants || 0);
+                                // v30.62: s. Listen-Ansicht — unbekannt ist nicht voll.
+                                const isFull = hasCap && meta.count !== null && meta.count >= (ce.maxParticipants || 0);
                                 // v30.8: effektive Tages-Frist — materialisierte Spalte,
                     // sonst Fallback aus der rollierenden Regel (Spalte kann
                     // bei einem unter Drosselung abgebrochenen Save leer sein).
@@ -5791,7 +5839,10 @@ export default function RegistrationPage(): React.ReactElement {
                                   ? openFrom.toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit' })
                                   : '';
                                 const disabled = (isFull && !isSel) || (deadlineLocked && !isSel) || (openLocked && !isSel);
-                                const free = hasCap ? Math.max(0, (ce.maxParticipants || 0) - meta.count) : -1;
+                                // v30.62: -1 = keine Kapazität, null = Zahl unbekannt.
+                                const free = (hasCap && meta.count !== null)
+                                  ? Math.max(0, (ce.maxParticipants || 0) - meta.count)
+                                  : (hasCap ? null : -1);
                                 const title = [
                                   ce.title || '',
                                   hasCap
@@ -5867,7 +5918,7 @@ export default function RegistrationPage(): React.ReactElement {
                                           })()
                                         : isFull
                                         ? (locale === 'de' ? 'voll' : 'full')
-                                        : hasCap
+                                        : (hasCap && free !== null)
                                         ? (locale === 'de' ? `${free} frei` : `${free} free`)
                                         : '—'}
                                     </span>
@@ -5894,10 +5945,13 @@ export default function RegistrationPage(): React.ReactElement {
                 <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', fontWeight: 600 }}>{childTermPlural || tEvent('reg.selection.sessions') || 'Sessions'}</div>
                   {childEvents.map(ce => {
-                    const meta = sessionMeta[ce.id] || { count: 0, wasRegistered: false };
+                    const meta = sessionMeta[ce.id] || { count: null, wasRegistered: false };
                     const isSel = selectedSessions.has(ce.id);
                     const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
-                    const isSessionFull = hasCap && meta.count >= (ce.maxParticipants || 0);
+                    // v30.62: Unbekannte Belegung sperrt NICHT. „Voll" ist eine
+                    // Aussage — sie darf nicht aus einer fehlenden Zahl entstehen.
+                    // Die echte Grenze zieht ohnehin serverseitig (reserveSeat).
+                    const isSessionFull = hasCap && meta.count !== null && meta.count >= (ce.maxParticipants || 0);
                     // v30.8: effektive Tages-Frist — materialisierte Spalte,
                     // sonst Fallback aus der rollierenden Regel (Spalte kann
                     // bei einem unter Drosselung abgebrochenen Save leer sein).
@@ -5987,6 +6041,12 @@ export default function RegistrationPage(): React.ReactElement {
                             </div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
                               {hasCap && (() => {
+                                // v30.62: Ohne belastbare Belegung nur die Kapazität
+                                // nennen. „0/80 belegt — 80 frei" wäre eine Zahl, die
+                                // aus einem Leseverbot entsteht, nicht aus den Daten.
+                                if (meta.count === null) {
+                                  return <> · {ce.maxParticipants} {locale === 'de' ? 'Plätze' : 'seats'}</>;
+                                }
                                 const sessionFree = Math.max(0, (ce.maxParticipants || 0) - (meta.count || 0));
                                 return (
                                   <> · <span style={{ color: isSessionFull ? 'var(--dex-red)' : 'inherit', fontWeight: 600 }}>

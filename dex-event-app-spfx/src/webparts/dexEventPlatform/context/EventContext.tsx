@@ -651,7 +651,9 @@ interface EventContextType {
   /** v24.73: Live-Plätze aus dem (für alle lesbaren) Counter — korrekte
    *  Aktiv-/Warteliste-Zahl auch für normale Teilnehmer. null = Counter nicht
    *  verfügbar (Aufrufer fällt auf event.currentParticipants zurück). */
-  getLiveCounterStats: (eventId: string) => Promise<{ active: number; waitlist: number } | null>;
+  /** v30.62: `seatsKnown` = false heißt, der Platzzähler wurde für diese
+   *  Subsite noch nie geschrieben. Die 0 darin ist dann kein Messwert. */
+  getLiveCounterStats: (eventId: string) => Promise<{ active: number; waitlist: number; seatsKnown: boolean } | null>;
   /** v24.74: Sitzplatz-Counter aller aktiven Kapazitäts-Events aus dem echten
    *  Bestand frischziehen (SeatsTaken + WaitlistTaken). Braucht Vollzugriff →
    *  beim Admin-Start aufrufen, damit die für alle lesbaren Counter stimmen,
@@ -1214,7 +1216,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
   // (wird von reserveSeat für JEDE Anmeldung gepflegt → korrekt für alle),
   // Warteliste = WaitlistTaken. null → Counter (noch) nicht da → Aufrufer nutzt
   // den bisherigen Wert.
-  async function getLiveCounterStats(eventId: string): Promise<{ active: number; waitlist: number } | null> {
+  async function getLiveCounterStats(eventId: string): Promise<{ active: number; waitlist: number; seatsKnown: boolean } | null> {
     const event = events.find(e => e.id === eventId);
     const subsiteUrl = subsiteMap.current[eventId] || event?.subsiteUrl;
     if (!subsiteUrl) return null;
