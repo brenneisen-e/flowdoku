@@ -10,6 +10,7 @@
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions, SPHttpClientConfiguration } from '@microsoft/sp-http';
 import { withThrottleRetry } from '../utils/spThrottle';
+import { dlog } from '../utils/debugLog';
 
 export class SharePointService {
   private context: WebPartContext;
@@ -1020,7 +1021,7 @@ export class SharePointService {
         const resultsStr = data.d?.ClientPeoplePickerSearchUser || data.ClientPeoplePickerSearchUser || '[]';
         const results = JSON.parse(resultsStr);
         // eslint-disable-next-line no-console
-        console.log(`[DEX][perf][searchUsers] variant="${variant}" raw=${results.length}`);
+        dlog('perf', `[DEX][perf][searchUsers] variant="${variant}" raw=${results.length}`);
 
         // v11.75: vor allem Variante 1 — SP-Picker liefert manchmal Treffer
         // mit leerem EntityData.Email (z.B. wenn der User noch keine SP-

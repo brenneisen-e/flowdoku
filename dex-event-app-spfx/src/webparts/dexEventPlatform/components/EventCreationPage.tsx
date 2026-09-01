@@ -63,6 +63,7 @@ import { Icon } from '@fluentui/react/lib/Icon';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale';
 import 'react-datepicker/dist/react-datepicker.css';
+import { dlog } from '../utils/debugLog';
 
 // Deutsche Locale registrieren
 registerLocale('de', de);
@@ -4373,7 +4374,7 @@ export default function EventCreationPage(): React.ReactElement {
       subTopGateInitialRef.current = subTopGateKey();
       if (skippedSubCount > 0) {
         // eslint-disable-next-line no-console
-        console.log(`[DEX] ${skippedSubCount} unveränderte Sub-Events übersprungen (kein Schreibvorgang).`);
+        dlog('perf', `[DEX] ${skippedSubCount} unveränderte Sub-Events übersprungen (kein Schreibvorgang).`);
       }
     }
     if (failedDeleteTitles.length > 0) {
@@ -6570,7 +6571,7 @@ export default function EventCreationPage(): React.ReactElement {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if (typeof window !== 'undefined' && (window as any).__dexDebug) {
         // eslint-disable-next-line no-console
-        console.log('[DEX][outlook-detect][sub] ' + JSON.stringify({
+        dlog('perf', '[DEX][outlook-detect][sub] ' + JSON.stringify({
           dbId: s.dbId,
           title: s.title,
           subChangedFields,
@@ -6644,7 +6645,7 @@ export default function EventCreationPage(): React.ReactElement {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (typeof window !== 'undefined' && (window as any).__dexDebug) {
       // eslint-disable-next-line no-console
-      console.log('[DEX][outlook-detect][result] ' + JSON.stringify({
+      dlog('perf', '[DEX][outlook-detect][result] ' + JSON.stringify({
         itemsCount: items.length,
         items,
         activeCommTabIdx,

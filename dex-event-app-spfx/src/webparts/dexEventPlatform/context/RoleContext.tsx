@@ -14,6 +14,7 @@ import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { SharePointService } from '../services/SharePointService';
 import { RoleAssignment, UserRole } from '../types';
 import { looksLikeClaimName, resolveMyDisplayName, safeDisplayName } from '../utils/displayName';
+import { dlog } from '../utils/debugLog';
 
 interface RoleContextType {
   roles: RoleAssignment[];
@@ -114,11 +115,11 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     // zum Admin.
     const { isNewlyCreated } = await spService.ensureRolesList();
     // eslint-disable-next-line no-console
-    console.log(`[DEX][perf][roles] ensureRolesList = ${Math.round(performance.now() - tEns)} ms`);
+    dlog('perf', `[DEX][perf][roles] ensureRolesList = ${Math.round(performance.now() - tEns)} ms`);
     const tGet = performance.now();
     const spRoles = await spService.getRoles();
     // eslint-disable-next-line no-console
-    console.log(`[DEX][perf][roles] getRoles = ${Math.round(performance.now() - tGet)} ms (n=${spRoles ? spRoles.length : 'null'})`);
+    dlog('perf', `[DEX][perf][roles] getRoles = ${Math.round(performance.now() - tGet)} ms (n=${spRoles ? spRoles.length : 'null'})`);
     void tBoot;
 
     if (spRoles === null) {
