@@ -31,7 +31,7 @@ export default function B2RunTodoModal(props: {
   service: EventService;
   onClose: () => void;
 }): React.ReactElement {
-  const { getAllRegistrations } = useEvents();
+  const { getAllRegistrations, events } = useEvents();
   const { showAlert } = useDialog();
   const [loading, setLoading] = React.useState(true);
   const [todos, setTodos] = React.useState<B2RunTodo[]>([]);
@@ -52,7 +52,12 @@ export default function B2RunTodoModal(props: {
         let storedTodos: StoredB2RunTodo[] = [];
         let storedDone: string[] = [];
         try {
-          const o = JSON.parse(props.event.emailTemplateOverrides || '{}');
+          // v30.56: IMMER den frischesten Stand nehmen. Das über die Props
+          // hereingereichte Event kann älter sein als der Kontext (der Import
+          // schreibt die Aufgaben und lädt danach nach) — und aus einem
+          // veralteten Objekt gelesen, sieht die Liste leer aus.
+          const liveEv = events.find(e => e.id === props.event.id) || props.event;
+          const o = JSON.parse(liveEv.emailTemplateOverrides || '{}');
           if (Array.isArray(o?._b2runTodo)) storedTodos = o._b2runTodo.filter((x: unknown) => !!x && typeof x === 'object');
           if (Array.isArray(o?._b2runTodoDone)) storedDone = o._b2runTodoDone.filter((x: unknown) => typeof x === 'string');
         } catch { /* kein Piggyback — dann ist nichts festgehalten */ }

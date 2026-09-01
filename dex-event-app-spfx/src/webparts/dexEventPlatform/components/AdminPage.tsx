@@ -18,7 +18,7 @@ import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { DeloitteEvent } from '../types';
 import { buildHashDeepLink } from '../utils/deepLink';
-import { SPRegistration } from '../services/EventService';
+import { SPRegistration, REG_LIST_NAME } from '../services/EventService';
 import { B2RUN_KOELN_HEADERS, B2RUN_KOELN_ALTERSKLASSE, mapAnredeToB2Run, mapStarterTypeToStartblock, isB2RunKoelnTitle } from '../data/b2runKoeln';
 import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown, QrCode, Info, Calendar, Pin } from './Icons';
 import B2RunBibImportModal from './admin/B2RunBibImportModal';
@@ -5631,8 +5631,70 @@ export default function AdminPage(): React.ReactElement {
             aber OHNE Hauptevent-/Klammer-Anmeldung (Daten-Anomalie). Als Fehler
             ausweisen + pro Person „Zur Klammer hinzufügen". */}
         {canManage && (() => {
-          const missing = consolidatedRows.filter(r => r.activeCount > 0 && !hasParentReg(r.emailKey));
-          if (missing.length === 0) return null;
+          /**
+           * v30.56: ERST prüfen, ob die Klammer-Zeile nur unter einer ANDEREN
+           * Schreibweise der Adresse steht — dann fehlt sie nämlich gar nicht.
+           *
+           * Der Kasten hat bis hier ausschließlich `ParticipantEmail` exakt
+           * verglichen. Dieselbe Person kann aber unter zwei Adressen in den
+           * Listen stehen (SMTP-Adresse gegen UPN/Alias) — die
+           * Doppel-Adressen-Falle, die in CLAUDE.md als erster Verdacht bei
+           * widersprüchlichen Ansichten steht. Trifft sie zu, meldete der
+           * Kasten einen Fehler, den es nicht gibt.
+           *
+           * **Und der Reparatur-Knopf hätte ihn zu einem echten gemacht:**
+           * „Zur Klammer hinzufügen" legt eine Zeile unter der Sub-Event-
+           * Adresse an — die Person stünde danach ZWEIMAL am Hauptevent, mit
+           * zwei Teilnehmer-IDs. Ein Knopf, der Daten repariert, darf keine
+           * Dubletten erzeugen.
+           *
+           * Erkannt wird die zweite Schreibweise über den lokalen Teil der
+           * Adresse (vor dem @) und über Vor-/Nachname. Beides ist eine
+           * Heuristik — deshalb wird der Fall NICHT still geschluckt, sondern
+           * getrennt ausgewiesen: Der Organizer sieht, unter welcher Adresse
+           * die Zeile steht, und entscheidet selbst.
+           */
+          const normName = (v: string): string => (v || '').toLowerCase().replace(/[^a-zäöüß]/g, '');
+          const localPart = (v: string): string => (v || '').toLowerCase().split('@')[0].trim();
+          const altParentRegOf = (row: typeof consolidatedRows[number]): SPRegistration | undefined => {
+            const lp = localPart(row.emailKey);
+            const nm = normName(row.vorname) + normName(row.nachname);
+            return registrations.find(r => {
+              const rEmail = (r.ParticipantEmail || '').toLowerCase().trim();
+              if (rEmail === row.emailKey) return false; // exakt wurde oben schon geprüft
+              if (lp && localPart(rEmail) === lp) return true;
+              const rNm = normName(r.Vorname || '') + normName(r.Nachname || '');
+              return !!nm && rNm === nm;
+            });
+          };
+          const flagged = consolidatedRows.filter(r => r.activeCount > 0 && !hasParentReg(r.emailKey));
+          const aliasCases = flagged
+            .map(r => ({ row: r, alt: altParentRegOf(r) }))
+            .filter(x => !!x.alt) as Array<{ row: typeof consolidatedRows[number]; alt: SPRegistration }>;
+          const aliasKeys = new Set(aliasCases.map(x => x.row.emailKey));
+          const missing = flagged.filter(r => !aliasKeys.has(r.emailKey));
+          if (missing.length === 0 && aliasCases.length === 0) return null;
+          if (missing.length === 0) {
+            // Nur Adress-Dubletten — kein Fehler, aber erklärungsbedürftig.
+            return (
+              <div style={{ marginBottom: 16, padding: 14, borderRadius: 10, border: '1px solid var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.07)' }}>
+                <strong style={{ color: 'var(--dex-orange-dark, #b35a00)', fontSize: '0.9rem' }}>
+                  {isDe ? `Klammer-Zeile unter anderer Adresse (${aliasCases.length})` : `Umbrella row under a different address (${aliasCases.length})`}
+                </strong>
+                <p style={{ margin: '6px 0 8px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                  {isDe
+                    ? 'Diese Personen haben eine Klammer-Anmeldung — sie steht nur unter einer anderen Schreibweise ihrer E-Mail-Adresse (SMTP-Adresse gegen UPN/Alias). Es fehlt also nichts. Trag sie NICHT über „Zur Klammer hinzufügen" nach, das würde eine zweite Zeile mit einer zweiten Teilnehmer-ID erzeugen. Wenn die beiden Schreibweisen stören, korrigiere die Adresse in der Teilnehmerzeile.'
+                    : 'These people do have an umbrella registration — it is just stored under a different spelling of their email address. Nothing is missing; do NOT use „Add to umbrella", it would create a duplicate row.'}
+                </p>
+                {aliasCases.map(x => (
+                  <div key={x.row.emailKey} style={{ fontSize: '0.82rem', marginBottom: 2 }}>
+                    <strong>{x.row.vorname} {x.row.nachname}</strong>{' '}
+                    <span style={{ color: 'var(--dex-gray-600)' }}>Sub-Events: {x.row.email} · Klammer: {x.alt.ParticipantEmail}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          }
           return (
             <div style={{ marginBottom: 16, padding: 14, borderRadius: 10, border: '1px solid var(--dex-red, #c00)', background: 'rgba(200,0,0,0.06)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -5646,6 +5708,17 @@ export default function AdminPage(): React.ReactElement {
                   ? 'Diese Personen sind in einem oder mehreren Sub-Events angemeldet, fehlen aber am Klammer-/Hauptevent selbst (z.B. durch eine abgebrochene Anmeldung). Dadurch fehlen u.a. die übergreifenden Hauptevent-Angaben. Du hast zwei Möglichkeiten: über „Erinnerung senden“ bittest du die Person (bzw. die anmeldende Person) per Mail mit Direkt-Link, die fehlenden Hauptevent-Angaben in der App nachzutragen — oder du trägst die fehlende Klammer-Anmeldung mit „Zur Klammer hinzufügen“ selbst nach (versendet KEINE Mail und KEINEN Outlook-Termin, reine Datenkorrektur).'
                   : 'These people are registered for one or more sub-events but are missing on the umbrella/main event itself (e.g. due to an interrupted registration), so the cross-cutting main-event details are missing. You have two options: use „Send reminder“ to ask the person (or whoever registered them) via email with a direct link to add the missing main-event details in the app — or add the missing umbrella registration yourself with „Add to umbrella“ (sends NO email and NO Outlook invite, data correction only).'}
               </p>
+              {/* v30.56: Adress-Dubletten auch hier benennen, wenn es
+                  DANEBEN echte Lücken gibt — sonst verschwinden sie
+                  kommentarlos aus dem Kasten und der Organizer fragt sich,
+                  wo die dritte Person geblieben ist. */}
+              {aliasCases.length > 0 && (
+                <p style={{ margin: '0 0 10px', padding: '8px 12px', borderRadius: 8, background: 'rgba(237,139,0,0.10)', fontSize: '0.8rem', color: 'var(--dex-orange-dark, #b35a00)', lineHeight: 1.5 }}>
+                  {isDe
+                    ? <>Nicht aufgeführt, weil dort nichts fehlt: {aliasCases.map(x => `${x.row.vorname} ${x.row.nachname}`).join(', ')} — die Klammer-Zeile steht unter einer anderen Schreibweise der Adresse ({aliasCases.map(x => x.alt.ParticipantEmail).join(', ')}).</>
+                    : <>Not listed because nothing is missing there: {aliasCases.map(x => `${x.row.vorname} ${x.row.nachname}`).join(', ')} — the umbrella row exists under a different spelling of the address.</>}
+                </p>
+              )}
               {/* v30.14: Sammel-Fix — alle auf einmal, still, sequentiell. */}
               <div style={{ marginBottom: 10 }}>
                 <button
@@ -7919,6 +7992,27 @@ export default function AdminPage(): React.ReactElement {
                   : 'Shows which bib numbers still need to be transferred, cancelled or newly registered with the organiser. Recalculated each time you open it, so later cancellations show up by themselves.'}
                 badge="organizer"
                 onClick={() => setB2runTodoOpen(true)}
+              />
+            )}
+
+            {/* 5d. v30.56: Die SharePoint-Liste direkt öffnen — Admin only.
+                Für die Fälle, die keine App-Ansicht abbildet: eine Spalte
+                nachsehen, eine Zeile von Hand korrigieren, den echten
+                Datenstand gegen eine Anzeige halten. Bewusst nur für Admins:
+                Die Liste kennt keine der Schutzregeln der App. */}
+            {isAdmin && selectedEvent && selectedEvent.subsiteUrl && (
+              <ActionTile
+                icon={<ExternalLink size={18} />}
+                category="maintenance"
+                title={isDe ? 'Teilnehmerliste in SharePoint öffnen' : 'Open participant list in SharePoint'}
+                desc={isDe
+                  ? 'Öffnet die zugrunde liegende SharePoint-Liste dieses Events in einem neuen Tab — für Nachschauen und Korrekturen, die die App nicht abbildet. Achtung: Dort gelten die Prüfungen der App nicht, Änderungen wirken sofort und werden nicht ins ChangeLog geschrieben.'
+                  : 'Opens the underlying SharePoint list of this event in a new tab. Note: none of the app\'s checks apply there and changes are not written to the change log.'}
+                badge="admin"
+                onClick={() => {
+                  const url = `${selectedEvent.subsiteUrl}/Lists/${encodeURIComponent(REG_LIST_NAME)}/AllItems.aspx`;
+                  window.open(url, '_blank', 'noopener,noreferrer');
+                }}
               />
             )}
 

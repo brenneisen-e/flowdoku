@@ -36,7 +36,7 @@ export default function B2RunBibImportModal(props: {
   onClose: () => void;
   onDone: () => void;
 }): React.ReactElement {
-  const { getAllRegistrations } = useEvents();
+  const { getAllRegistrations, refreshEvents } = useEvents();
   const { showAlert } = useDialog();
   const { currentUser } = useCurrentUser();
   const [busy, setBusy] = React.useState(false);
@@ -172,6 +172,12 @@ export default function B2RunBibImportModal(props: {
       todoSaved = await props.service
         .patchEventOverridesValue(Number(props.event.id), '_b2runTodo', todos)
         .catch(() => false);
+      // v30.56: Den lokalen Event-Stand nachziehen. `patchEventOverridesValue`
+      // schreibt NUR nach SharePoint — das Event-Objekt im Speicher trägt
+      // danach weiter die alten Overrides. Die Aufgabenliste liest genau von
+      // dort und zeigte deshalb „Nichts offen", obwohl der Import gerade neun
+      // Aufgaben gespeichert hatte.
+      if (todoSaved) { try { await refreshEvents(); } catch { /* beim nächsten Laden */ } }
     }
     setBusy(false); setProgress('');
     setWritten({ ok, failed, todos: todos.length, todoSaved });
