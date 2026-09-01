@@ -348,7 +348,7 @@ export default function EventCreationPage(): React.ReactElement {
   const { currentUser } = useCurrentUser();
   // searchGroups + searchUsersByLocation werden seit v19.x ausschließlich im
   // ausgelagerten <AudiencePicker> verwendet (eigener useRoles-Hook dort).
-  const { searchUsers, getGroupMembers, canCreateEvents, isAdmin, originalIsAdmin } = useRoles();
+  const { searchUsers, getGroupMembers, canCreateEvents, isAdmin, originalIsAdmin, isFA } = useRoles();
   // v29.66: F&A-Pilot — der komplette Abrechnungs-Teil ist bewusst NUR fuer
   // Admins sichtbar (Testphase laut Fachkonzept; vor dem Rollout sind noch
   // Abstimmungsschleifen geplant). originalIsAdmin deckt den Demo-Modus ab.
@@ -401,7 +401,8 @@ export default function EventCreationPage(): React.ReactElement {
   // einmal erwischt hat.
   const canBilling = canEditBilling(
     adminLike,
-    (editEvent?.organizerEmails || []).some(e => (e || '').toLowerCase() === (currentUser.email || '').toLowerCase())
+    (editEvent?.organizerEmails || []).some(e => (e || '').toLowerCase() === (currentUser.email || '').toLowerCase()),
+    isFA
   );
 
   // v29.71 BUG-FIX: Dieser Block stand VOR der editEvent-Deklaration (Zeile
@@ -5525,8 +5526,72 @@ export default function EventCreationPage(): React.ReactElement {
               }));
               await updateEvent(selectedEventId, { 'CustomFields': JSON.stringify(merged) });
             }
+            // v30.60: DIESELBE Behandlung für die Sub-Events.
+            //
+            // Bisher lief der Spalten-Abgleich beim Speichern nur über die
+            // Klammer. Sub-Event-Listen bekamen ihre Spalten einmal bei der
+            // Anlage und danach nie wieder — wer später ein Abfragefeld
+            // ergänzt, hat auf jeder Termin-Liste eine fehlende Spalte. Und
+            // eine fehlende Spalte lässt SharePoint nicht etwa den Wert
+            // weglassen, sondern lehnt den GANZEN Insert ab: Die Anmeldung
+            // scheitert, sobald jemand dieses Feld ausfüllt. Der Befund aus
+            // dem Bestand (12 fehlende Spalten über 100 Listen) ist genau das.
+            for (const sub of childEventsOf(editEvent.id)) {
+              if (!sub.subsiteUrl) continue;
+              try {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const subCf = ((sub as any).eventSpecificFields || []).map((f: any) => ({
+                  id: f.id, label: f.label, type: f.type, required: f.required, options: f.options,
+                  visible: true, spInternalName: f.spInternalName || '',
+                }));
+                await svc.fixRegistrationListColumns(sub.subsiteUrl, {
+                  isB2Run: !!(sub.durchstarterCapacity || sub.funstarterCapacity),
+                  hasQuiz: !!(sub.quiz && sub.quiz.length > 0),
+                  customFields: subCf,
+                });
+              } catch (e) { console.warn('[DEX] Spalten-Abgleich für Sub-Event fehlgeschlagen:', sub.id, e); }
+            }
+
+            // v30.60: NACHSEHEN und MELDEN, statt still weiterzugehen.
+            //
+            // Der ganze Block lief bisher in einem `catch`, das nur in die
+            // Konsole schrieb. Scheiterte der Spalten-Abgleich, meldete das
+            // Speichern trotzdem Erfolg — und das Problem fiel erst auf, wenn
+            // Wochen später eine Anmeldung scheiterte. Wer speichert, muss
+            // erfahren, dass etwas nicht sitzt; sonst wird aus einem
+            // behebbaren Zustand ein unerklärlicher Ausfall.
+            const stillBroken: string[] = [];
+            for (const target of [editEvent, ...childEventsOf(editEvent.id)]) {
+              if (!target.subsiteUrl) continue;
+              try {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const flds = ((target as any).eventSpecificFields || []).map((f: any) => ({ id: f.id, label: f.label, spInternalName: f.spInternalName || '' }));
+                const d = await svc.diagnoseRegistrationList(target.subsiteUrl, flds);
+                if (d.missingColumns.length > 0) {
+                  stillBroken.push(`${target.title}: ${d.missingColumns.map(m => m.label).join(', ')}`);
+                }
+              } catch { /* nicht lesbar — dann bleibt es beim Konsolen-Hinweis */ }
+            }
+            if (stillBroken.length > 0) {
+              showAlert(
+                (isDe
+                  ? 'Achtung: Für diese Abfragefelder konnte die Spalte in der Teilnehmerliste NICHT angelegt werden:\n\n'
+                  : 'Warning: the column could NOT be created for these fields:\n\n')
+                + stillBroken.join('\n')
+                + (isDe
+                  ? '\n\nSolange das so ist, scheitert jede Anmeldung, bei der jemand eines dieser Felder ausfüllt. Bitte im Admin Center „Spalten fixen (alle Events)“ ausführen oder das Speichern wiederholen.'
+                  : '\n\nUntil this is fixed, every registration that fills one of these fields will fail. Please run "Fix columns (all events)" in the Admin Center.'),
+                { variant: 'error' }
+              );
+            }
           }
-        } catch (err) { console.warn('[DEX] Auto-fix Teilnehmer-Columns fehlgeschlagen:', err); }
+        } catch (err) {
+          console.warn('[DEX] Auto-fix Teilnehmer-Columns fehlgeschlagen:', err);
+          // v30.60: Auch der harte Fehlschlag darf nicht stumm bleiben.
+          showAlert(isDe
+            ? 'Der Abgleich der Teilnehmerlisten-Spalten ist fehlgeschlagen. Das Event ist gespeichert, aber neu angelegte Abfragefelder haben womöglich keine Spalte — dann scheitern Anmeldungen, bei denen sie ausgefüllt werden. Bitte im Admin Center „Spalten fixen (alle Events)“ ausführen.'
+            : 'Syncing the participant list columns failed. The event is saved, but newly added fields may have no column.', { variant: 'error' });
+        }
 
         // v29.77: Der Block hier war ein stummer Sammelposten — „Outlook wird
         // aktualisiert… 95%" stand minutenlang ohne Angabe, WELCHER Termin
@@ -8053,6 +8118,54 @@ export default function EventCreationPage(): React.ReactElement {
     showAlert(isDe
       ? `Einstellungen auf ${n} ${n === 1 ? (childTermSingular || 'Sub-Event') : (childTermPlural || 'Sub-Events')} übertragen. Nicht vergessen zu speichern.`
       : `Settings transferred to ${n} sub-event(s). Don't forget to save.`,
+      { variant: 'success' });
+  };
+
+  /**
+   * v30.60: Kommunikation des Haupt-Events auf ALLE Termine übernehmen.
+   *
+   * Nutzer-Frage 01.09.2026: „Kann man die Kommunikation für alle Sub-Events
+   * auf einmal einstellen?" Bisher gab es nur den Weg Sub → andere Subs
+   * (v28.80). Wer die Mails zentral auf der Klammer gestaltet hatte, musste
+   * sie erst auf EINEN Termin kopieren, um sie von dort verteilen zu können.
+   *
+   * Gelesen wird über `resolveTopLevelCommState()` und NICHT direkt aus den
+   * State-Variablen: Steht der Organizer gerade auf einem Sub-Reiter, tragen
+   * `outlookBody` & Co. die Werte dieses Sub-Events — man würde einen Termin
+   * auf alle anderen kopieren und es „Haupt-Event" nennen.
+   *
+   * Überschrieben wird bewusst ALLES, auch bereits gepflegte Einzelwerte:
+   * Genau das ist die Frage, die der Dialog stellt. Objektwerte werden
+   * geklont, sonst teilen sich alle Termine dieselbe Referenz (v28.80).
+   */
+  const applyCommToAllSubEvents = async (): Promise<void> => {
+    const named = subEventsRef.current.filter(x => x.title && x.title.trim());
+    if (named.length === 0) return;
+    const term = childTermPlural || (isDe ? 'Sub-Events' : 'sub-events');
+    const ok = await confirmDialog(isDe
+      ? `Die Kommunikations-Einstellungen des Haupt-Events (Mail-Sprache, Logo, Outlook-Text, Überschriften, Betreff und alle Mail-Schalter) werden auf ALLE ${named.length} ${term} übertragen.\n\nBereits einzeln gepflegte Werte werden dabei überschrieben. Fortfahren?`
+      : `The main event's communication settings will be applied to ALL ${named.length} sub-events. Individually maintained values will be overwritten. Continue?`,
+      { title: isDe ? 'Für alle Termine gleich einstellen' : 'Apply to all dates' });
+    if (!ok) return;
+    // Erst den aktiven Reiter sichern — sonst kopiert man den Stand vor der
+    // letzten Bearbeitung (CLAUDE.md: „Kommunikationsfelder der Sub-Events
+    // liegen nicht laufend im Draft").
+    flushActiveCommTabToState();
+    const src = resolveTopLevelCommState() as unknown as Record<string, unknown>;
+    const commGroup = SUB_TRANSFER_GROUPS.filter(g => g.key === 'communication')[0];
+    const fields = commGroup ? commGroup.fields : [];
+    setSubEvents(prev => prev.map(s => {
+      if (!s.title || !s.title.trim()) return s;
+      const patch: Record<string, unknown> = {};
+      for (const f of fields) {
+        const v = src[f];
+        patch[f] = (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v;
+      }
+      return { ...s, ...(patch as unknown as Partial<SubEventDraft>) };
+    }));
+    showAlert(isDe
+      ? `Die Kommunikation des Haupt-Events gilt jetzt für alle ${named.length} ${term}. Nicht vergessen zu speichern.`
+      : `The main event's communication now applies to all ${named.length} sub-events. Don't forget to save.`,
       { variant: 'success' });
   };
 
@@ -17060,23 +17173,57 @@ export default function EventCreationPage(): React.ReactElement {
                     Betreff und Mail-Schalter bei jedem Sub-Event einzeln
                     einstellen. Nur sichtbar, wenn ein Sub-Event ausgewaehlt
                     ist; die Klammer-Kommunikation ist eine andere Ebene. */}
-                {activeCommTabIdx > 0 && subEvents.length > 1 && (
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      style={{ fontSize: '0.8rem', padding: '6px 14px' }}
-                      onClick={() => setSubTransfer({
-                        fromIdx: activeCommTabIdx - 1,
-                        groups: ['communication'],
-                        targets: subEvents.map((_, i) => i).filter(i => i !== activeCommTabIdx - 1),
-                      })}
-                      title={isDe
-                        ? 'Überträgt Logo, Outlook-Text, Überschriften, Betreff, Mail-Sprache und Mail-Schalter dieses Sub-Events auf andere Sub-Events'
-                        : 'Transfers logo, Outlook text, headings, subject, mail language and mail toggles of this sub-event to other sub-events'}
-                    >
-                      {isDe ? 'Kommunikation auf andere Sub-Events übertragen' : 'Transfer communication to other sub-events'}
-                    </button>
+                {/* v30.60: Beide Wege stehen jetzt an EINER Stelle und sagen
+                    ausdrücklich, was der Normalfall ist. Vorher gab es nur den
+                    Weg Sub → Subs, und er erschien ausschließlich auf einem
+                    Sub-Reiter — auf der Klammer sah es aus, als gäbe es die
+                    Möglichkeit gar nicht, und die Frage „kann man das nicht
+                    für alle auf einmal einstellen?" war die logische Folge. */}
+                {subEvents.length > 0 && (
+                  <div style={{
+                    marginBottom: 14, padding: '12px 16px', borderRadius: 10,
+                    border: '1px solid var(--dex-gray-200)', background: 'var(--dex-gray-50, #fafafa)',
+                  }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.86rem', marginBottom: 4 }}>
+                      {isDe ? 'Einzeln oder für alle Termine gemeinsam?' : 'Individually or for all dates at once?'}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.55, marginBottom: 10 }}>
+                      {isDe
+                        ? 'Voreingestellt ist einzeln: Was du unten änderst, gilt für den oben gewählten Reiter. Soll überall dasselbe ankommen, überträgst du es mit einem Klick.'
+                        : 'The default is individual: what you change below applies to the tab selected above. Use the buttons to make every date identical.'}
+                    </div>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+                        onClick={() => { void applyCommToAllSubEvents(); }}
+                        title={isDe
+                          ? 'Überträgt Mail-Sprache, Logo, Outlook-Text, Überschriften, Betreff und alle Mail-Schalter des Haupt-Events auf jeden Termin'
+                          : 'Applies the main event’s communication settings to every date'}
+                      >
+                        {isDe
+                          ? `Kommunikation des Haupt-Events auf alle ${childTermPlural || 'Sub-Events'} übernehmen`
+                          : 'Apply the main event’s communication to all sub-events'}
+                      </button>
+                      {activeCommTabIdx > 0 && subEvents.length > 1 && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+                          onClick={() => setSubTransfer({
+                            fromIdx: activeCommTabIdx - 1,
+                            groups: ['communication'],
+                            targets: subEvents.map((_, i) => i).filter(i => i !== activeCommTabIdx - 1),
+                          })}
+                          title={isDe
+                            ? 'Überträgt Logo, Outlook-Text, Überschriften, Betreff, Mail-Sprache und Mail-Schalter dieses Sub-Events auf andere Sub-Events'
+                            : 'Transfers logo, Outlook text, headings, subject, mail language and mail toggles of this sub-event to other sub-events'}
+                        >
+                          {isDe ? 'Kommunikation dieses Termins auf andere übertragen' : 'Transfer this date’s communication to others'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
                 {renderStepIntro(

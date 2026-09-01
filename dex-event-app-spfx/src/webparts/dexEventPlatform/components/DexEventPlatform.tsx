@@ -12,7 +12,8 @@ import DexLogo from './DexLogo';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import styles from './DexEventPlatform.module.scss';
 import { NavigationProvider, useNavigation, Page } from '../context/NavigationContext';
-import { LanguageProvider } from '../context/LanguageContext';
+import { LanguageProvider, useLanguage } from '../context/LanguageContext';
+import { inputLocaleTag } from '../utils/inputLocale';
 // v20.4: Moderne Confirm-/Alert-Modals statt nativer Browser-Dialoge.
 import { DialogProvider } from '../context/DialogContext';
 import { EventProvider, useEvents } from '../context/EventContext';
@@ -1062,14 +1063,41 @@ function AppContent(): React.ReactElement {
   );
 }
 
+/**
+ * v30.60: Hält das `lang`-Attribut der App an der Oberflächen-Sprache.
+ *
+ * Es steht hier und nicht an den einzelnen Feldern, weil es genau darum geht:
+ * `<input type="date">` und `<input type="time">` formatieren nach dem `lang`
+ * des nächsten Vorfahren, der eines trägt — ein Attribut am Wurzel-Element
+ * wirkt damit auf jedes Feld der App, auch auf die, die es noch nicht gibt.
+ * Ohne das zeigte Chrome „09/09/2026" und „04:41 PM" in einer sonst
+ * durchgehend deutschen Oberfläche (siehe utils/inputLocale).
+ *
+ * Rendert nichts — die Komponente existiert nur, um INNERHALB des
+ * LanguageProvider zu sitzen und von dort die Sprache zu kennen.
+ */
+function InputLocaleSync(props: { rootRef: React.RefObject<HTMLDivElement> }): null {
+  const { locale } = useLanguage();
+  const isDe = locale === 'de';
+  React.useEffect(() => {
+    const el = props.rootRef.current;
+    if (el) el.lang = inputLocaleTag(isDe);
+  }, [isDe, props.rootRef]);
+  return null;
+}
+
 export default function DexEventPlatform(props: IDexEventPlatformProps): React.ReactElement {
   // Context global verfügbar machen für ProfilePage
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).__dexSpfxContext = props.context;
+  const appRootRef = React.useRef<HTMLDivElement>(null);
 
   return (
-    <div className={styles.dexApp}>
+    // v30.60: `lang` startet auf Deutsch und wird von InputLocaleSync
+    // nachgezogen, sobald die Sprachwahl bekannt ist.
+    <div className={styles.dexApp} lang="de-DE" ref={appRootRef}>
       <LanguageProvider>
+        <InputLocaleSync rootRef={appRootRef} />
         <DialogProvider>
           <UserProvider context={props.context}>
             <RoleProvider context={props.context}>

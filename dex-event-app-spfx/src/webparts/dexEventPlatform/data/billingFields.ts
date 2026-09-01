@@ -63,8 +63,14 @@ export const FA_BILLING_STEP_FOR_ORGANIZERS = false;
  * Bewusst eine Funktion und keine zweite Konstante: Die Antwort hängt an der
  * Rolle UND am Schalter oben, und beide Aufrufer (Wizard, Organizer Center)
  * sollen dieselbe Verknüpfung benutzen statt sie je zweimal zu formulieren.
+ *
+ * v30.60: `isFA` ist ein drittes Argument und KEIN weiterer Schalter. Die
+ * Rolle F&A ist genau die Rolle, für die es den Abrechnungs-Schritt gibt —
+ * sie am Pilot-Schalter für Organizer hängen zu lassen, würde die Abrechnung
+ * ausgerechnet vor der Fachabteilung verbergen. Der Schalter oben bleibt
+ * damit die Antwort auf „auch normale Organizer?", nicht auf „auch F&A?".
  */
-export function canEditBilling(isAdminLike: boolean, isOrganizerOfEvent: boolean): boolean {
-  if (isAdminLike) return true;
+export function canEditBilling(isAdminLike: boolean, isOrganizerOfEvent: boolean, isFA?: boolean): boolean {
+  if (isAdminLike || isFA) return true;
   return FA_BILLING_STEP_FOR_ORGANIZERS && isOrganizerOfEvent;
 }

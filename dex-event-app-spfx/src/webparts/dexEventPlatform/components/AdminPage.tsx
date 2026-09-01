@@ -20,9 +20,12 @@ import { DeloitteEvent } from '../types';
 import { buildHashDeepLink } from '../utils/deepLink';
 import { SPRegistration, REG_LIST_NAME } from '../services/EventService';
 import { B2RUN_KOELN_HEADERS, B2RUN_KOELN_ALTERSKLASSE, mapAnredeToB2Run, mapStarterTypeToStartblock, isB2RunKoelnTitle } from '../data/b2runKoeln';
-import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown, QrCode, Info, Calendar, Pin } from './Icons';
+import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Shirt, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown, QrCode, Info, Calendar, Pin } from './Icons';
 import B2RunBibImportModal from './admin/B2RunBibImportModal';
 import B2RunTodoModal from './admin/B2RunTodoModal';
+import ShirtSizeModal from './admin/ShirtSizeModal';
+import { SHIRT_PATTERN } from '../utils/checkInExtras';
+import { groupSubEventTabs, stripGroupPrefix } from '../utils/subEventGroups';
 import RecipientPicker from './admin/RecipientPicker';
 import OrganizerList from './OrganizerList';
 import { PersonContactHover } from './PersonContactHover';
@@ -224,7 +227,7 @@ export default function AdminPage(): React.ReactElement {
   };
   const { currentUser } = useCurrentUser();
   // v27.11: getGroupMembers für die Verteiler-Auflösung der Einladungs-Mail.
-  const { isAdmin, siteUrl, currentUserRole, searchUser, searchUsers, getGroupMembers, isImpersonating } = useRoles();
+  const { isAdmin, siteUrl, currentUserRole, searchUser, searchUsers, getGroupMembers, isImpersonating, isFA } = useRoles();
   const { t, locale } = useLanguage();
   const isDe = locale === 'de';
   // v20.4: App-Modals statt nativer Browser-Dialoge.
@@ -871,11 +874,18 @@ export default function AdminPage(): React.ReactElement {
   const [qrEditBody, setQrEditBody] = React.useState('');
   const [qrEditSaving, setQrEditSaving] = React.useState(false);
   const [qrEditSampleBlock, setQrEditSampleBlock] = React.useState('');
+  // v30.60: Das Beispiel-QR-Bild getrennt halten — der Block daneben wird bei
+  // jedem Wechsel der Block-Sprache neu gebaut, das Bild selbst nicht.
+  const [qrEditSampleImg, setQrEditSampleImg] = React.useState('');
   // v30.52: Kopf-Bild der QR-Mail. Anders als bei Massen-/Einladungsmail wird
   // das hier GESPEICHERT (im QR-Override), weil die QR-Mail auch automatisch
   // bei neuen Anmeldungen rausgeht — dann gibt es kein Fenster, in dem man
   // die Breite noch einstellen könnte.
   const [qrHeaderImage, setQrHeaderImage] = React.useState<MailHeaderImage>(MAIL_HEADER_IMAGE_DEFAULT);
+  // v30.60: Sprache des festen Blocks neben dem QR-Code. '' = der Mail-Sprache
+  // des Events folgen (Normalfall); DE/EN nur, wenn Mailtext und Event-Sprache
+  // bewusst auseinandergehen.
+  const [qrBlockLang, setQrBlockLang] = React.useState<'' | 'DE' | 'EN'>('');
   const [qrEventPhotoB64, setQrEventPhotoB64] = React.useState('');
   const [searchQuery, setSearchQuery] = React.useState('');
   // v29.26: „Teilnehmer hinzufügen"-Dialog (Organizer-Ausnahme-Weg).
@@ -1178,6 +1188,11 @@ export default function AdminPage(): React.ReactElement {
   const [bibImportOpen, setBibImportOpen] = React.useState(false);
   // v30.54: Offene Ummeldungen beim Veranstalter — live aus der Liste.
   const [b2runTodoOpen, setB2runTodoOpen] = React.useState(false);
+  // v30.60: Bestellliste der Trikots (s. components/admin/ShirtSizeModal).
+  const [shirtSizeOpen, setShirtSizeOpen] = React.useState(false);
+  // v30.60: Aufgeklappte Reiter-Gruppe („Day 1" …). null = die zuletzt
+  // sinnvolle Gruppe wird beim Rendern bestimmt (die des gewählten Termins).
+  const [openTabGroup, setOpenTabGroup] = React.useState<string | null>(null);
   const [excelAudience, setExcelAudience] = React.useState<'active' | 'activePlusWait' | 'waitOnly' | 'withCancelled'>('active');
   // v20.4: Excel-Export im Klammer-Modus — konsolidierte Matrix (eine Zeile
   // pro Person, Spalten pro Sub-Event) und/oder einzelne Sub-Event-Blätter
@@ -4137,6 +4152,7 @@ export default function AdminPage(): React.ReactElement {
     // v30.52: gespeichertes Kopf-Bild laden; Event-Foto für die Auswahl
     // nachziehen (leer = „Event-Foto" bleibt deaktiviert).
     setQrHeaderImage(normalizeMailHeaderImage(ov && ov.headerImage));
+    setQrBlockLang((ov && ov.blockLang) || '');
     setQrEventPhotoB64('');
     if (tgt.imageUrl) {
       getCachedImage(tgt.imageUrl)
@@ -4150,7 +4166,8 @@ export default function AdminPage(): React.ReactElement {
     // Teilnehmer-ID mitgeschickt wird — beim echten Versand steht dort die
     // tatsaechliche Nummer der Person.
     const qrImageHtml = await buildQrImageHtml(qrData);
-    setQrEditSampleBlock(buildQrBlockHtml(qrImageHtml, myName, SAMPLE_QR_ID));
+    setQrEditSampleImg(qrImageHtml);
+    setQrEditSampleBlock(buildQrBlockHtml(qrImageHtml, myName, SAMPLE_QR_ID, ((ov && ov.blockLang) || tgt.emailLanguage || 'EN')));
     // v22.19: Versand-Modal schließen — der Editor zeigt die Versand-Aktionen
     // in einer eigenen linken Spalte (nebeneinander statt übereinander).
     // Beim Schließen des Editors öffnet das Versand-Modal wieder.
@@ -4180,6 +4197,10 @@ export default function AdminPage(): React.ReactElement {
         && qrEditHeading.trim() === def.heading.trim()
         && qrEditSubheading.trim() === def.subheading.trim()
         && qrEditBody.trim() === def.body.trim()
+        // v30.60: Ohne diese Bedingung würde eine allein geänderte
+        // Block-Sprache den Override löschen — die Auswahl wäre nach dem
+        // Speichern wieder weg (dieselbe Falle wie beim Kopf-Bild, v30.52).
+        && !qrBlockLang
         && isDefaultMailHeaderImage(qrHeaderImage);
       let all: Record<string, unknown> = {};
       try { all = JSON.parse(tgt.emailTemplateOverrides || '{}') || {}; } catch { all = {}; }
@@ -4190,6 +4211,7 @@ export default function AdminPage(): React.ReactElement {
           subject: qrEditSubject, heading: qrEditHeading, subheading: qrEditSubheading, bodyHtml: qrEditBody,
           // Nur Auswahl + Zahlen — NIE das Foto selbst (s. QrEmailOverride).
           headerImage: { ...qrHeaderImage },
+          ...(qrBlockLang ? { blockLang: qrBlockLang } : {}),
         };
       }
       const json = JSON.stringify(all);
@@ -6487,6 +6509,20 @@ export default function AdminPage(): React.ReactElement {
     && typeof selectedEvent.durchstarterCapacity === 'number'
     && typeof selectedEvent.funstarterCapacity === 'number'
     && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0);
+  // v30.60: Gibt es an diesem Event überhaupt ein Größen-Feld? Entscheidet, ob
+  // die Aktion „Benötigte T-Shirts" erscheint. Geprüft wird über dieselbe Regel
+  // wie am Check-in-Tisch (utils/checkInExtras) — auf der Klammer UND auf den
+  // Terminen, weil das Feld auf beiden Ebenen stehen kann.
+  //
+  // BEWUSST OHNE useMemo: Diese Stelle liegt hinter einem frühen Return
+  // (dieselbe Lage wie der v15.2-Hotfix oben) — ein Hook hier reißt die
+  // Hook-Reihenfolge und ESLint bricht den Build ab. Die Prüfung läuft über
+  // eine Handvoll Feld-Labels; das ist billiger als die Rettung wäre.
+  const shirtFieldExists = !!selectedEvent
+    && [selectedEvent, ...events.filter(e => e.parentEventId === selectedEvent.id)].some(ev =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (((ev as any).eventSpecificFields || []) as Array<{ label?: string }>)
+        .some(f => SHIRT_PATTERN.test(f.label || '')));
   const waitlistDurch = isSplitCapacity
     ? waitlistRegs.filter(r => r.PreferredStarterType === 'Durchstarter')
     : [];
@@ -7187,6 +7223,77 @@ export default function AdminPage(): React.ReactElement {
                   };
                   const parentTab = tabs.find(tb => tb.isParent);
                   const childTabs = tabs.filter(tb => !tb.isParent);
+
+                  // v30.60: Bei vielen gleich präfigierten Terminen („Day 1 - …",
+                  // „Day 2 - …") erst die Gruppen zeigen, dann auf Klick die
+                  // Termine dieser Gruppe. Ein Training mit 25 Sessions füllte
+                  // sonst sechs Zeilen, und die Fünf-Tage-Struktur, die in den
+                  // Namen steckt, war nur beim Lesen jeder Kachel zu erkennen.
+                  // Ob überhaupt gruppiert wird, entscheidet utils/subEventGroups —
+                  // bei wenigen Terminen bleibt die Leiste flach.
+                  const grouping = groupSubEventTabs(childTabs.map(tb => tb.label));
+                  const renderChildTabs = (): React.ReactNode => {
+                    if (!grouping.grouped) return childTabs.map(t => renderTab(t));
+                    // Voreingestellt offen: die Gruppe des gerade gewählten
+                    // Termins. Sonst stünde man nach dem Wechsel vor
+                    // zugeklappten Gruppen und müsste seinen eigenen Termin suchen.
+                    const selIdx = childTabs.findIndex(tb => tb.id === selectedEvent.id);
+                    const autoOpen = selIdx >= 0
+                      ? (grouping.groups.filter(g => g.idxs.indexOf(selIdx) >= 0)[0] || null)
+                      : null;
+                    const openLabel = openTabGroup !== null ? openTabGroup : (autoOpen ? autoOpen.label : grouping.groups[0].label);
+                    return (
+                      <div style={{ width: '100%' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                          {grouping.groups.map(g => {
+                            const on = g.label === openLabel;
+                            const hasSel = selIdx >= 0 && g.idxs.indexOf(selIdx) >= 0;
+                            const sum = g.idxs.reduce((n, i) => n + (childTabs[i] ? childTabs[i].count : 0), 0);
+                            return (
+                              <button
+                                key={g.label}
+                                type="button"
+                                onClick={() => setOpenTabGroup(on ? '' : g.label)}
+                                title={`${g.label} — ${g.idxs.length} ${isDe ? 'Termine' : 'dates'}`}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 7,
+                                  padding: '6px 14px', borderRadius: 999, cursor: 'pointer',
+                                  border: `1px solid ${on || hasSel ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+                                  background: on ? 'var(--dex-green, #86bc25)' : '#fff',
+                                  color: on ? '#fff' : 'var(--dex-gray-700)',
+                                  fontWeight: on || hasSel ? 700 : 500, fontSize: '0.82rem',
+                                  transition: 'background 0.15s, border-color 0.15s',
+                                }}
+                              >
+                                <span>{g.label}</span>
+                                <span style={{
+                                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                  minWidth: 22, height: 18, padding: '0 5px', borderRadius: 999,
+                                  background: on ? 'rgba(255,255,255,0.28)' : 'var(--dex-gray-100)',
+                                  color: on ? '#fff' : 'var(--dex-gray-600)',
+                                  fontSize: '0.68rem', fontWeight: 700,
+                                }}>{g.idxs.length}</span>
+                                {/* Der Punkt hinter der Zahl ist die Summe der
+                                    Anmeldungen dieses Tages — sie ist der Grund,
+                                    warum man eine Gruppe überhaupt aufmacht. */}
+                                <span style={{ fontSize: '0.72rem', opacity: 0.8 }}>· {sum}</span>
+                                <span style={{ fontSize: '0.7rem' }}>{on ? '▾' : '▸'}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'flex-end' }}>
+                          {(grouping.groups.filter(g => g.label === openLabel)[0] || { idxs: [] }).idxs.map(i => {
+                            const t = childTabs[i];
+                            if (!t) return null;
+                            // Innerhalb von „Day 1" heißt der Reiter „PMO", nicht
+                            // „Day 1 - PMO" — das Präfix steht schon oben.
+                            return renderTab({ ...t, label: stripGroupPrefix(t.label, openLabel) });
+                          })}
+                        </div>
+                      </div>
+                    );
+                  };
                   // v22.70: Im Klammer-Modus die Klammer als ECHTE Klammer ÜBER
                   // den Sub-Event-Tabs darstellen (oben volle Breite, darunter die
                   // eingerückten Sub-Events). Normales Hauptevent bleibt flach.
@@ -7248,7 +7355,7 @@ export default function AdminPage(): React.ReactElement {
                           borderLeft: '2px solid var(--dex-green, #86bc25)',
                           borderBottom: '1px solid var(--dex-gray-200)',
                         }}>
-                          {childTabs.map(t => renderTab(t))}
+                          {renderChildTabs()}
                         </div>
                       </div>
                     );
@@ -7264,7 +7371,8 @@ export default function AdminPage(): React.ReactElement {
                         paddingBottom: 0,
                       }}
                     >
-                      {tabs.map(t => renderTab(t))}
+                      {parentTab && renderTab(parentTab)}
+                      {renderChildTabs()}
                     </div>
                   );
                 })()}
@@ -7703,7 +7811,7 @@ export default function AdminPage(): React.ReactElement {
                       // nicht auseinanderlaufen koennen: Ein Schalter,
                       // FA_BILLING_STEP_FOR_ORGANIZERS, oeffnet beides zugleich.
                       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      if (canEditBilling(isAdmin, isOrganizerFor(selectedEvent))) { try { (window as any).__dexPreviewInitialStep = 9; } catch { /* */ } }
+                      if (canEditBilling(isAdmin, isOrganizerFor(selectedEvent), isFA)) { try { (window as any).__dexPreviewInitialStep = 9; } catch { /* */ } }
                       navigate('edit-event', selectedEvent.id);
                     }}
                   >
@@ -8008,6 +8116,24 @@ export default function AdminPage(): React.ReactElement {
                   : 'Shows which bib numbers still need to be transferred, cancelled or newly registered with the organiser. Recalculated each time you open it, so later cancellations show up by themselves.'}
                 badge="organizer"
                 onClick={() => setB2runTodoOpen(true)}
+              />
+            )}
+
+            {/* 5c-2. v30.60: Bestellliste der Trikots. Bewusst NICHT an B2Run
+                gehängt: Ein Feld mit Konfektionsgröße gibt es auch bei
+                Team-Events mit Hoodie oder Poloshirt. Die Kachel erscheint,
+                sobald es ein passendes Abfragefeld gibt — sonst wäre sie eine
+                Aktion, die nur eine Fehlermeldung zeigt. */}
+            {selectedEvent && shirtFieldExists && (
+              <ActionTile
+                icon={<Shirt size={18} />}
+                category="participants"
+                title={isDe ? 'Benötigte T-Shirts' : 'Required T-shirts'}
+                desc={isDe
+                  ? 'Zählt die angegebenen Trikot-/Konfektionsgrößen aller angemeldeten Personen zusammen — die Bestellliste je Größe, mit Namen und als Excel. Wer keine Größe angegeben hat, wird namentlich ausgewiesen statt weggelassen.'
+                  : 'Totals the shirt sizes of all registered people — the order list per size, with names and as Excel. People without a size are listed by name instead of dropped.'}
+                badge="organizer"
+                onClick={() => setShirtSizeOpen(true)}
               />
             )}
 
@@ -11607,15 +11733,35 @@ export default function AdminPage(): React.ReactElement {
                 };
                 // v23.33: eingeklappte „Teilnehmer"-Spalte (Foto + zweizeilig).
                 if (id === 'person') {
+                  // v30.60: Dieselbe beschriftete Pille wie in der
+                  // konsolidierten Matrix (v30.21). Diese Tabelle — und damit
+                  // jedes Event mit geteilten Gruppen — hatte weiterhin den
+                  // kleinen runden Knopf direkt neben dem Sortier-Klickziel:
+                  // ein leicht versetzter Klick sortierte, statt aufzuklappen.
+                  // Genau der Befund, der die Matrix schon umgebaut hat; zwei
+                  // Tabellen mit zwei Bedienungen für dieselbe Sache sind
+                  // zudem die Sucherei, die eine Vereinheitlichung erspart.
                   return (
-                    <th key="person" style={{ ...baseStyle, whiteSpace: 'nowrap', userSelect: 'none' }}>
-                      <span style={{ cursor: 'pointer' }} onClick={() => handleSort('nachname')}>{isDe ? 'Teilnehmer' : 'Participant'}{sortIcon('nachname')}</span>
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); setPersonalColsCollapsed(false); }}
-                        title={isDe ? 'Personen-Spalten ausklappen' : 'Expand personal columns'}
-                        style={{ marginLeft: 8, border: 'none', cursor: 'pointer', background: 'var(--dex-green)', color: '#fff', width: 20, height: 20, borderRadius: '50%', fontSize: '0.8rem', fontWeight: 700, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle' }}
-                      >»</button>
+                    <th key="person" style={{ ...baseStyle, whiteSpace: 'nowrap', userSelect: 'none', cursor: 'pointer' }} onClick={() => handleSort('nachname')}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setPersonalColsCollapsed(false); setColToggleHover(false); }}
+                          onMouseEnter={() => setColToggleHover(true)}
+                          onMouseLeave={() => setColToggleHover(false)}
+                          title={isDe ? 'Vorname, Nachname, E-Mail, Job Title, Standort und Unternehmen als eigene Spalten anzeigen' : 'Show first/last name, email, job title, location and company as separate columns'}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            padding: '2px 10px', borderRadius: 999,
+                            border: '1px solid var(--dex-green, #86bc25)',
+                            background: colToggleHover ? 'var(--dex-green, #86bc25)' : '#fff',
+                            color: colToggleHover ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
+                            fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', lineHeight: 1.4,
+                            transition: 'background 120ms ease, color 120ms ease',
+                          }}
+                        >» {isDe ? 'Aufklappen' : 'Expand'}</button>
+                        <span>{isDe ? 'Teilnehmer' : 'Participant'}{sortIcon('nachname')}</span>
+                      </div>
                     </th>
                   );
                 }
@@ -11627,18 +11773,35 @@ export default function AdminPage(): React.ReactElement {
                       style={{ ...baseStyle, cursor: 'pointer', userSelect: 'none' }}
                       onClick={() => handleSort(sortable)}
                     >
-                      {id === 'id' ? '#' : id === 'anrede' ? (isDe ? 'Anrede' : 'Salutation') : id === 'vorname' ? (isDe ? 'Vorname' : 'First name') : id === 'nachname' ? (isDe ? 'Nachname' : 'Last name') : id === 'email' ? 'Email' : id === 'status' ? 'Status' : (isDe ? 'Registriert am' : 'Registered on')}
-                      {sortIcon(sortable)}
-                      {/* v23.33: bei „Vorname" der grüne Einklapp-Chevron. */}
-                      {id === 'vorname' && (
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setPersonalColsCollapsed(true); }}
-                          title={isDe ? 'Personen-Spalten einklappen (Foto + Name)' : 'Collapse personal columns (photo + name)'}
-                          style={{ marginLeft: 6, border: 'none', cursor: 'pointer', background: 'var(--dex-green)', color: '#fff', width: 20, height: 20, borderRadius: '50%', fontSize: '0.8rem', fontWeight: 700, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle' }}
-                        >«</button>
+                      {/* v30.60: „Vorname" trägt den Zuklapp-Knopf als Pille in
+                          einer eigenen Zeile — Gegenstück zum Aufklappen oben. */}
+                      {id === 'vorname' ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setPersonalColsCollapsed(true); setColToggleHover(false); }}
+                            onMouseEnter={() => setColToggleHover(true)}
+                            onMouseLeave={() => setColToggleHover(false)}
+                            title={isDe ? 'Personen-Spalten einklappen (nur Foto + Name)' : 'Collapse personal columns (photo + name only)'}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              padding: '2px 10px', borderRadius: 999,
+                              border: '1px solid var(--dex-green, #86bc25)',
+                              background: colToggleHover ? 'var(--dex-green, #86bc25)' : '#fff',
+                              color: colToggleHover ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
+                              fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', lineHeight: 1.4,
+                              transition: 'background 120ms ease, color 120ms ease',
+                            }}
+                          >« {isDe ? 'Zuklappen' : 'Collapse'}</button>
+                          <span>{isDe ? 'Vorname' : 'First name'}{sortIcon(sortable)}{hideButton(id)}</span>
+                        </div>
+                      ) : (
+                        <>
+                          {id === 'id' ? '#' : id === 'anrede' ? (isDe ? 'Anrede' : 'Salutation') : id === 'nachname' ? (isDe ? 'Nachname' : 'Last name') : id === 'email' ? 'Email' : id === 'status' ? 'Status' : (isDe ? 'Registriert am' : 'Registered on')}
+                          {sortIcon(sortable)}
+                          {hideButton(id)}
+                        </>
                       )}
-                      {hideButton(id)}
                     </th>
                   );
                 }
@@ -13862,6 +14025,53 @@ export default function AdminPage(): React.ReactElement {
                 isDe={isDe}
               />
             </div>
+            {/* v30.60: Sprache des Blocks NEBEN dem Code. Er trägt „Name",
+                „ID" und den Hinweis zur Nummer und stand bisher immer auf
+                Deutsch — auch unter einer englischen Mail. Voreinstellung
+                bleibt „wie die Mail-Sprache des Events", damit hier kein
+                zweiter Schalter für dieselbe Frage entsteht. */}
+            <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px dashed var(--dex-gray-200)' }}>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>
+                {isDe ? 'Sprache neben dem QR-Code' : 'Language next to the QR code'}
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {([
+                  { v: '' as const, de: `Wie die Mail-Sprache (${(qrTgt.emailLanguage || 'EN').toUpperCase()})`, en: `Follow the event language (${(qrTgt.emailLanguage || 'EN').toUpperCase()})` },
+                  { v: 'DE' as const, de: 'Immer Deutsch', en: 'Always German' },
+                  { v: 'EN' as const, de: 'Immer Englisch', en: 'Always English' },
+                ]).map(opt => {
+                  const on = qrBlockLang === opt.v;
+                  return (
+                    <button
+                      key={opt.v || 'auto'}
+                      type="button"
+                      disabled={qrEditSaving || isSendingQR}
+                      onClick={() => {
+                        setQrBlockLang(opt.v);
+                        // Vorschau sofort mitziehen — sonst wählt man eine
+                        // Sprache und sieht rechts weiter die alte.
+                        if (qrEditSampleImg) {
+                          const myNm = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email;
+                          setQrEditSampleBlock(buildQrBlockHtml(qrEditSampleImg, myNm, SAMPLE_QR_ID, opt.v || qrTgt.emailLanguage || 'EN'));
+                        }
+                      }}
+                      style={{
+                        padding: '4px 12px', borderRadius: 999, cursor: 'pointer',
+                        border: `1px solid ${on ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+                        background: on ? 'var(--dex-green, #86bc25)' : '#fff',
+                        color: on ? '#fff' : 'var(--dex-gray-600)',
+                        fontSize: '0.74rem', fontWeight: 600,
+                      }}
+                    >{isDe ? opt.de : opt.en}</button>
+                  );
+                })}
+              </div>
+              <div style={{ marginTop: 6, color: 'var(--dex-gray-500)' }}>
+                {isDe
+                  ? 'Betrifft „Name", „ID" und den Hinweis unter der Nummer — nicht deinen Mailtext.'
+                  : 'Affects “Name”, “ID” and the note below the number — not your email copy.'}
+              </div>
+            </div>
           </div>
         );
         return (
@@ -14940,6 +15150,10 @@ export default function AdminPage(): React.ReactElement {
       })()}
 
       {/* v30.54: Offene Aufgaben beim Veranstalter (B2Run Köln). */}
+      {shirtSizeOpen && selectedEvent && (
+        <ShirtSizeModal event={selectedEvent} onClose={() => setShirtSizeOpen(false)} />
+      )}
+
       {b2runTodoOpen && selectedEvent && eventServiceRef && (
         <B2RunTodoModal
           event={selectedEvent}

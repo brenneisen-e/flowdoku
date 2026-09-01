@@ -967,6 +967,19 @@ export function LanguageProvider(props: { children: React.ReactNode }): React.Re
   );
 }
 
+/**
+ * v30.60: Die Sprache OHNE Zwang zum Provider.
+ *
+ * `Modal` braucht sie nur für das `lang`-Attribut der nativen Datums-/
+ * Zeitfelder. Ein Modal, das in einer Vorschau ohne Provider gerendert wird
+ * (wie es `useDialog` ausdrücklich zulässt), dürfte daran nicht scheitern —
+ * eine fehlende Sprachwahl ist dort kein Fehler, sondern nur der Default.
+ */
+export function useLocaleSafe(): Locale {
+  const ctx = React.useContext(LanguageContext);
+  return ctx ? ctx.locale : 'de';
+}
+
 export function useLanguage(): LanguageContextType {
   const ctx = React.useContext(LanguageContext);
   if (!ctx) throw new Error('useLanguage must be used within LanguageProvider');
