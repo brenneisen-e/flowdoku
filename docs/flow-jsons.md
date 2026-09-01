@@ -34,9 +34,49 @@ Wird aktualisiert wenn Flows geändert werden.
 > also bricht die Prüfung ab. In allen fünf neuen Actions muss die Uri mit
 > `_api/` anfangen, ohne irgendein Zeichen davor.
 >
+> **Das `@` tippt man nicht — es entsteht durch das falsche Fenster.** Wer die
+> Uri im **Expression**-Editor einträgt (das Panel mit den Reitern **Function**
+> und **Dynamic content** und dem blauen **Update**), speichert sie als
+> Ausdruck; Power Automate setzt das `@` beim Übernehmen selbst davor. Die
+> Verwechslung liegt nahe, weil direkt darüber bei **Site Address** ein
+> Ausdruck **richtig** ist (`@outputs('Settings')?['siteAddress']`). Merksatz:
+> **Site Address = fx, Uri = Text.**
+>
 > - [ ] `Count_Seats_Active`, `Count_Seats_Waitlist`, `Count_Seats_Durch`,
->       `Count_Seats_Fun`, `Sync_Seat_Counter` je öffnen, im Feld **Uri** das
->       führende `@` löschen.
+>       `Count_Seats_Fun`, `Sync_Seat_Counter` je öffnen.
+> - [ ] Falls das Expression-Panel offen ist: mit dem **X** oben rechts
+>       schließen, **nicht** auf **Update**.
+> - [ ] Im Feld **Uri** den bestehenden Inhalt **komplett** löschen. Steht dort
+>       eine graue Kachel (ein Ausdruck-Token), mit **Backspace** entfernen —
+>       ein Token lässt sich nicht durch Überschreiben in Text verwandeln.
+> - [ ] Die Uri **direkt in das Feld** einfügen. Öffnet sich dabei das
+>       Auswahl-Popup, mit **Esc** wegklicken und einfach weitertippen.
+> - [ ] Kontrolle: Im Feld steht schwarzer Fließtext, keine Kachel.
+>
+> **Plan B, falls das Feld sich weigert** und den Text immer wieder in einen
+> Ausdruck verwandelt: Dann gib bewusst einen Ausdruck an, der die Uri als
+> Zeichenkette **zurückgibt**. Einfache Anführungszeichen werden darin
+> **verdoppelt** — das ist die einzige Stelle, an der die Schreibweise abweicht.
+>
+> ```
+> concat('_api/web/lists/getbytitle(''Teilnehmer'')/items?$filter=(Status eq ''Angemeldet'') or (Status eq ''QR versendet'') or (Status eq ''Eingecheckt'')&$select=Id&$top=1&$inlinecount=allpages')
+> ```
+>
+> ```
+> concat('_api/web/lists/getbytitle(''Teilnehmer'')/items?$filter=Status eq ''Warteliste''&$select=Id&$top=1&$inlinecount=allpages')
+> ```
+>
+> ```
+> concat('_api/web/lists/getbytitle(''Teilnehmer'')/items?$filter=StarterType eq ''Durchstarter'' and ((Status eq ''Angemeldet'') or (Status eq ''QR versendet'') or (Status eq ''Eingecheckt''))&$select=Id&$top=1&$inlinecount=allpages')
+> ```
+>
+> ```
+> concat('_api/web/lists/getbytitle(''Teilnehmer'')/items?$filter=StarterType eq ''Funstarter'' and ((Status eq ''Angemeldet'') or (Status eq ''QR versendet'') or (Status eq ''Eingecheckt''))&$select=Id&$top=1&$inlinecount=allpages')
+> ```
+>
+> ```
+> concat('_api/web/lists/getbytitle(''DEX_TeilnehmerCounter'')/items(1)')
+> ```
 >
 > **2. Die Zählungen laufen zurzeit nur, wenn der Reorder FEHLSCHLÄGT.** Im
 > Export steht bei `Count_Seats_Active` ein Run-after von `DEX_IDReorder` mit
