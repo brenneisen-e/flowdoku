@@ -85,6 +85,15 @@ interface ModalProps {
   /** Wenn false, lassen sich Backdrop-Click und Escape ignorieren —
    *  nützlich während async-Submit-Operationen. Default true. */
   dismissable?: boolean;
+  /**
+   * v30.51: Nur den Backdrop-Klick abschalten, Escape aber behalten.
+   *
+   * Für Dialoge mit Eingabefeldern: Ein versehentlicher Klick daneben wirft
+   * dort Getipptes weg, und genau das passiert leicht — wer den vorbelegten
+   * Text markiert und die Maustaste einen Millimeter neben der Karte
+   * loslässt, hat den Dialog geschlossen. Default true (unverändert).
+   */
+  backdropClose?: boolean;
   /** Optional zusätzliches Card-Padding. Default '24px 28px'. */
   padding?: string | number;
   /** Aria-Label für Screen-Reader; Pflicht für barrierefreie Modals. */
@@ -97,12 +106,27 @@ export default function Modal({
   onClose,
   maxWidth = 480,
   dismissable = true,
+  backdropClose = true,
   padding,
   ariaLabel,
   children,
 }: ModalProps): React.ReactElement | null {
   // v24.64: Globale Modal-Button-Styles einmalig in document.head sicherstellen.
   React.useEffect(() => { ensureModalStyles(); }, []);
+
+  /**
+   * v30.51: Der Backdrop schließt nur, wenn die Maus AUF dem Backdrop
+   * gedrückt UND losgelassen wurde.
+   *
+   * Ein DOM-`click` feuert auf dem gemeinsamen Vorfahren von mousedown- und
+   * mouseup-Ziel. Wer im Dialog Text markiert und dabei über den Rand der
+   * Karte hinauszieht — beim vorbelegten `https://` der Normalfall —, drückt
+   * innen und lässt außen los: Der Klick landet dann auf dem Backdrop, und
+   * der Dialog ging zu, obwohl niemand danebengeklickt hat. Das
+   * `stopPropagation` auf der Karte hilft dagegen nicht, weil das Event die
+   * Karte gar nicht erst berührt.
+   */
+  const downOnBackdropRef = React.useRef(false);
 
   React.useEffect(() => {
     if (!open) return undefined;
@@ -121,7 +145,14 @@ export default function Modal({
       aria-modal="true"
       aria-label={ariaLabel}
       className={`dex-modal-overlay ${styles.dexApp}`}
-      onClick={() => { if (dismissable) onClose(); }}
+      onMouseDown={e => { downOnBackdropRef.current = e.target === e.currentTarget; }}
+      onClick={e => {
+        const wasDownOnBackdrop = downOnBackdropRef.current;
+        downOnBackdropRef.current = false;
+        if (!dismissable || !backdropClose) return;
+        if (e.target !== e.currentTarget || !wasDownOnBackdrop) return;
+        onClose();
+      }}
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',

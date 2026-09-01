@@ -22,6 +22,7 @@ import { SPRegistration } from '../services/EventService';
 import { B2RUN_KOELN_HEADERS, B2RUN_KOELN_ALTERSKLASSE, mapAnredeToB2Run, mapStarterTypeToStartblock, isB2RunKoelnTitle } from '../data/b2runKoeln';
 import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown, QrCode, Info, Calendar, Pin } from './Icons';
 import B2RunBibImportModal from './admin/B2RunBibImportModal';
+import RecipientPicker from './admin/RecipientPicker';
 import OrganizerList from './OrganizerList';
 import { PersonContactHover } from './PersonContactHover';
 import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
@@ -1069,6 +1070,12 @@ export default function AdminPage(): React.ReactElement {
   const [emailHeading, setEmailHeading] = React.useState('');
   const [emailBody, setEmailBody] = React.useState('');
   const [emailSending, setEmailSending] = React.useState(false);
+  // v30.51: Frei wählbares CC für Massenmail und Einladungsmail. Die Organizer
+  // stehen weiterhin AUTOMATISCH auf CC — das hier kommt zusätzlich dazu und
+  // ersetzt es nicht: Wer eine Mail an sein Event schickt, soll sie immer auch
+  // selbst im Postfach haben, unabhängig davon, was er hier einträgt.
+  const [massmailCc, setMassmailCc] = React.useState<string[]>([]);
+  const [inviteCc, setInviteCc] = React.useState<string[]>([]);
   // v22.9: Massenmail-Entwurf pro Event speichern (wie Einladungsmail) +
   // Testmail an die Organizer.
   const [massmailDraftSaved, setMassmailDraftSaved] = React.useState(false);
@@ -3970,6 +3977,9 @@ export default function AdminPage(): React.ReactElement {
     setEmailHeading(def.heading);
     setMassmailSubheading('');
     setEmailBody(def.body);
+    // v30.51: „Zurücksetzen" setzt auch das zusätzliche CC zurück — sonst
+    // bliebe ein Verteiler stehen, den niemand mehr im Text sieht.
+    setMassmailCc([]);
     setMassmailDraftSaved(false);
     window.setTimeout(() => { massmailHydratingRef.current = false; }, 0);
   };
@@ -14910,7 +14920,17 @@ export default function AdminPage(): React.ReactElement {
           // unter den Empfängern). Dedup per lowercase, semicolon-join.
           const orgEmails = (selectedEvent.organizerEmails || []).filter(Boolean);
           const recipientSet = new Set(recipients.map(r => (r.ParticipantEmail || '').toLowerCase()));
-          const ccList = orgEmails.filter(e => e && !recipientSet.has(e.toLowerCase()));
+          // v30.51: zusätzlich das frei gewählte CC. Gegen Empfänger UND
+          // gegeneinander entdoppelt — dieselbe Person zweimal im CC ist beim
+          // Empfänger sichtbar und sieht nach Fehler aus.
+          const ccSeen = new Set<string>();
+          const ccList: string[] = [];
+          for (const e of orgEmails.concat(massmailCc)) {
+            const lc = (e || '').trim().toLowerCase();
+            if (!lc || recipientSet.has(lc) || ccSeen.has(lc)) continue;
+            ccSeen.add(lc);
+            ccList.push(e.trim());
+          }
           const ccString = ccList.length > 0 ? ccList.join(';') : undefined;
           try {
             await eventServiceRef.queueEmail(
@@ -14920,7 +14940,12 @@ export default function AdminPage(): React.ReactElement {
             );
             try { await eventServiceRef.logEventComm({ eventId: selectedEvent.id, eventTitle: selectedEvent.title, subject: resolvedSubject, bodyHtml: fullBody, emailType: 'Massenmail' }); } catch { /* */ }
             setEmailSending(false);
-            const ccInfo = ccString ? ` (Organizer auf CC: ${ccList.length})` : ' (Organizer schon in Empfängerliste)';
+            // v30.51: Die Meldung nennt das ZUSÄTZLICHE CC getrennt — sonst
+            // liest sich eine höhere Zahl so, als hätte das Event plötzlich
+            // mehr Organizer.
+            const ccInfo = ccString
+              ? ` (auf CC: ${ccList.length}${massmailCc.length > 0 ? `, davon ${massmailCc.length} zusätzlich` : ''})`
+              : ' (Organizer schon in Empfängerliste)';
             showAlert(`E-Mail an ${recipients.length} Empfänger in die Warteschlange eingetragen.${ccInfo}`);
             setShowEmailModal(false);
             setMassmailMode('closed');
@@ -14938,7 +14963,7 @@ export default function AdminPage(): React.ReactElement {
           : massmailAudience === 'activePlusWait' ? 'Teilnehmer + Warteliste'
           : massmailAudience === 'nachruecker' ? 'Nachrücker (manueller Abgleich)'
           : 'Alle aktiven Teilnehmer';
-        const previewToLine = `${recipients.length} Empfänger — ${audienceLabel} · Organizer in CC`;
+        const previewToLine = `${recipients.length} Empfänger — ${audienceLabel} · Organizer in CC${massmailCc.length > 0 ? ` + ${massmailCc.length} zusätzlich` : ''}`;
         const previewSubjectLine = replacePlaceholders(emailSubject, previewVars);
         return (
           <HtmlEditorModal
@@ -14975,6 +15000,23 @@ export default function AdminPage(): React.ReactElement {
                   {isDe
                     ? <>Geht an <strong>{recipients.length}</strong> Empfänger (die oben gewählte Gruppe). Organizer kommen automatisch auf CC.</>
                     : <>Goes to <strong>{recipients.length}</strong> recipients (the group selected above). Organizers are automatically on CC.</>}
+                </div>
+                {/* v30.51: Zusätzliches CC. Bewusst hier oben, direkt unter der
+                    Empfänger-Zeile — CC ist eine Aussage über den Verteiler,
+                    nicht über die Gestaltung. */}
+                <div style={{ marginBottom: 10 }}>
+                  <RecipientPicker
+                    label={isDe ? 'Zusätzlich auf CC' : 'Additional CC'}
+                    hint={isDe
+                      ? 'Personen über die Suche, Funktionspostfächer im Feld darunter. Die Organizer des Events sind ohnehin auf CC und müssen hier nicht eingetragen werden.'
+                      : 'People via search, shared mailboxes in the field below. The event organizers are on CC anyway.'}
+                    emptyText={isDe ? 'Kein zusätzliches CC — es gehen nur die Organizer mit.' : 'No additional CC — only the organizers.'}
+                    value={massmailCc}
+                    onChange={setMassmailCc}
+                    searchUsers={searchUsers}
+                    searchUserByEmail={searchUser}
+                    disabled={emailSending}
+                  />
                 </div>
                 {/* v26.78: Bild im Mail-Kopf wählen — Standard (DEX-Logo/Orb) oder
                     das Event-Foto. „Event-Foto" nur wählbar, wenn das Event ein
@@ -15106,10 +15148,20 @@ export default function AdminPage(): React.ReactElement {
         // antworten können. Duplikate gegenüber TO werden rausgefiltert
         // (z.B. wenn der Sender selbst Organizer ist und 'An mich' wählt).
         const toLcSet = new Set(targetEmails.map(e => (e || '').toLowerCase()));
-        const ccEmails = (selectedEvent.organizerEmails || [])
-          .map(s => (s || '').trim())
-          .filter(Boolean)
-          .filter(e => !toLcSet.has(e.toLowerCase()));
+        // v30.51: Organizer PLUS das frei gewählte CC, entdoppelt gegen die
+        // Empfänger und gegeneinander.
+        const ccEmails = ((): string[] => {
+          const seen = new Set<string>();
+          const out: string[] = [];
+          for (const raw of (selectedEvent.organizerEmails || []).concat(inviteCc)) {
+            const e = (raw || '').trim();
+            const lc = e.toLowerCase();
+            if (!e || toLcSet.has(lc) || seen.has(lc)) continue;
+            seen.add(lc);
+            out.push(e);
+          }
+          return out;
+        })();
         // v11.41: Blocked-Check für den aktuell gewählten Empfänger-Modus.
         // 'organizer'-Modus blockt eigentlich nie — die eigene Mail ist immer
         // eine Person, kein Verteiler — aber wir laufen das defensiv mit.
@@ -15512,6 +15564,22 @@ export default function AdminPage(): React.ReactElement {
                 </div>
               </div>
             )}
+            {/* v30.51: Zusätzliches CC per Personensuche — dieselbe Bedienung
+                wie bei der Massenmail und im F&A Center. */}
+            <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px dashed var(--dex-gray-200)' }}>
+              <RecipientPicker
+                label={isDe ? 'Zusätzlich auf CC' : 'Additional CC'}
+                hint={isDe
+                  ? 'Personen über die Suche, Funktionspostfächer im Feld darunter. Die Organizer stehen ohnehin auf CC.'
+                  : 'People via search, shared mailboxes in the field below. The organizers are on CC anyway.'}
+                emptyText={isDe ? 'Kein zusätzliches CC — es gehen nur die Organizer mit.' : 'No additional CC — only the organizers.'}
+                value={inviteCc}
+                onChange={setInviteCc}
+                searchUsers={searchUsers}
+                searchUserByEmail={searchUser}
+                disabled={inviteSending}
+              />
+            </div>
             {/* v26.88: Bild im Mail-Kopf — Standard (DEX-Logo/Orb) oder Event-Foto.
                 „Event-Foto" nur wählbar, wenn das Event ein Bild hat (dann als
                 Base64 fest eingebacken; sonst bleibt der ORB-Platzhalter für den

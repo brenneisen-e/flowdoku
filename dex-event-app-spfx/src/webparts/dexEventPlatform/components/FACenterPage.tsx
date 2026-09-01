@@ -22,7 +22,7 @@ import { useDialog } from '../context/DialogContext';
 import { DeloitteEvent } from '../types';
 import { BILLING_FIELDS } from '../data/billingFields';
 import { deepLinkParams } from '../utils/deepLink';
-import FARecipientEditor from './admin/FARecipientEditor';
+import RecipientPicker from './admin/RecipientPicker';
 import {
   parseBillingOf, faStatusOf, FAStatus, FA_STATUS_LABELS, FA_STATUS_COLORS,
   FA_STATUS_ORDER, FA_STATUS_SHORT,
@@ -43,7 +43,7 @@ const fmtDateTime = (iso: string): string => {
 
 // v30.45: `parseRecipientInput` ist entfallen. Der Verteiler wird nicht mehr
 // als Freitext gepflegt, sondern als Liste (Person-Picker + Chips, siehe
-// components/admin/FARecipientEditor.tsx) — es gibt nichts mehr zu parsen.
+// components/admin/RecipientPicker.tsx) — es gibt nichts mehr zu parsen.
 
 /**
  * v30.50: Der Ansprechpartner eines Events als Personen-Profil.
@@ -467,7 +467,7 @@ export default function FACenterPage(): React.ReactElement {
           (eine Adresse pro Zeile). Änderungen wirken sofort auf alle zukünftigen Versendungen und werden protokolliert.
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
-          <FARecipientEditor
+          <RecipientPicker
             label="Verteiler Abrechnungsinformationen"
             hint="Personen über die Suche, Funktionspostfächer über das Feld darunter."
             value={infoAddrs}
@@ -476,7 +476,7 @@ export default function FACenterPage(): React.ReactElement {
             searchUserByEmail={searchUser}
             disabled={cfgBusy}
           />
-          <FARecipientEditor
+          <RecipientPicker
             label="Verteiler Teilnehmerlisten"
             hint="Personen über die Suche, Funktionspostfächer über das Feld darunter."
             value={listAddrs}
