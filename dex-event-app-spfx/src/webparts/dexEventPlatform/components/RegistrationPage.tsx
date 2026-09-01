@@ -271,7 +271,7 @@ export default function RegistrationPage(): React.ReactElement {
   // v30.3: previewAsUser = „Übersicht als User sehen" (Organizer-/Admin-
   // Vorschau). isAdmin kommt aus dem RoleContext bereits absenkt zurück;
   // nur der per-Event-Organizer-Check unten muss lokal mitziehen.
-  const { searchUsers, searchUser, isAdmin, previewAsUser, setPreviewAsUser } = useRoles();
+  const { searchUsers, searchUser, isAdmin, previewAsUser } = useRoles();
   const { locale: appLocale } = useLanguage();
   // v20.4: App-Modal statt nativem Browser-Alert.
   const { showAlert, confirmDialog } = useDialog();
@@ -3436,33 +3436,14 @@ export default function RegistrationPage(): React.ReactElement {
 
   return (
     <div className="page-container">
-      {/* v30.4: „Übersicht als User sehen" — Vorschau-Einstieg für Organizer
-          dieses Events UND Admins. In der aktiven Vorschau sind die Rollen
-          abgesenkt (isEventOrganizerReal bleibt als echte Eigenschaft), die
-          Leiste blendet sich über !previewAsUser aus; beendet wird die
-          Vorschau über den globalen blauen Banner ganz oben. */}
-      {(isEventOrganizerReal || isAdmin) && !previewAsUser && (
-        <div style={{
-          padding: '10px 16px', marginBottom: 16, borderRadius: 'var(--dex-radius-md)',
-          background: 'rgba(0,118,168,0.08)', border: '1px solid var(--dex-blue, #0076a8)',
-          color: 'var(--dex-gray-800)', fontSize: '0.85rem',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
-        }}>
-          <span>
-            {locale === 'de'
-              ? <>Du bist <strong>Organizer bzw. Admin</strong> dieses Events und siehst deshalb zusätzliche Hinweise und Rechte. Klick auf <strong>&bdquo;Übersicht als User sehen&ldquo;</strong>, um diese Seite genau so zu sehen wie normale Teilnehmer. Die Vorschau ist reine Ansicht — anmelden kannst du dich darin nicht; beenden über den blauen Balken oben.</>
-              : <>You are an <strong>organizer or admin</strong> of this event and therefore see extra notices and rights. Click <strong>&bdquo;View as user&ldquo;</strong> to see this page exactly as regular attendees do. The preview is view-only — you cannot register in it; exit via the blue bar at the top.</>}
-          </span>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            style={{ fontSize: '0.8rem', padding: '6px 14px', whiteSpace: 'nowrap', flexShrink: 0 }}
-            onClick={() => setPreviewAsUser(true)}
-          >
-            {locale === 'de' ? 'Übersicht als User sehen' : 'View as user'}
-          </button>
-        </div>
-      )}
+      {/* v30.43: Der blaue Hinweiskasten „Du bist Organizer bzw. Admin …" ist
+          hier entfallen. Er stand vier Zeilen breit über der Seite, nur um EINE
+          Einstellung anzubieten, und gab es ausschließlich auf dieser Seite.
+          Der Wechselschalter Organizer-/User-Ansicht sitzt jetzt im Header
+          (`Header.tsx`, v30.43): Der Zustand ist dort immer sichtbar, gilt
+          appweit und ist mit einem Klick umgelegt. `previewAsUser` und die
+          Rollen-Absenkung dahinter sind unverändert — nur der Einstieg ist
+          umgezogen. */}
       {showLocationBanner && (
         <div style={{
           padding: '10px 16px', marginBottom: 16, borderRadius: 'var(--dex-radius-md)',
