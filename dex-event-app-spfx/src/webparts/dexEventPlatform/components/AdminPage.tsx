@@ -886,6 +886,9 @@ export default function AdminPage(): React.ReactElement {
   // des Events folgen (Normalfall); DE/EN nur, wenn Mailtext und Event-Sprache
   // bewusst auseinandergehen.
   const [qrBlockLang, setQrBlockLang] = React.useState<'' | 'DE' | 'EN'>('');
+  // v30.61: Eigener Hinweistext unter der Teilnehmer-ID. '' = Standardsatz in
+  // der Block-Sprache; '-' = gar kein Hinweis (s. buildQrBlockHtml).
+  const [qrBlockNote, setQrBlockNote] = React.useState('');
   const [qrEventPhotoB64, setQrEventPhotoB64] = React.useState('');
   const [searchQuery, setSearchQuery] = React.useState('');
   // v29.26: „Teilnehmer hinzufügen"-Dialog (Organizer-Ausnahme-Weg).
@@ -4153,6 +4156,7 @@ export default function AdminPage(): React.ReactElement {
     // nachziehen (leer = „Event-Foto" bleibt deaktiviert).
     setQrHeaderImage(normalizeMailHeaderImage(ov && ov.headerImage));
     setQrBlockLang((ov && ov.blockLang) || '');
+    setQrBlockNote((ov && ov.blockNote) || '');
     setQrEventPhotoB64('');
     if (tgt.imageUrl) {
       getCachedImage(tgt.imageUrl)
@@ -4167,7 +4171,7 @@ export default function AdminPage(): React.ReactElement {
     // tatsaechliche Nummer der Person.
     const qrImageHtml = await buildQrImageHtml(qrData);
     setQrEditSampleImg(qrImageHtml);
-    setQrEditSampleBlock(buildQrBlockHtml(qrImageHtml, myName, SAMPLE_QR_ID, ((ov && ov.blockLang) || tgt.emailLanguage || 'EN')));
+    setQrEditSampleBlock(buildQrBlockHtml(qrImageHtml, myName, SAMPLE_QR_ID, ((ov && ov.blockLang) || tgt.emailLanguage || 'EN'), (ov && ov.blockNote) || ''));
     // v22.19: Versand-Modal schließen — der Editor zeigt die Versand-Aktionen
     // in einer eigenen linken Spalte (nebeneinander statt übereinander).
     // Beim Schließen des Editors öffnet das Versand-Modal wieder.
@@ -4201,6 +4205,7 @@ export default function AdminPage(): React.ReactElement {
         // Block-Sprache den Override löschen — die Auswahl wäre nach dem
         // Speichern wieder weg (dieselbe Falle wie beim Kopf-Bild, v30.52).
         && !qrBlockLang
+        && !qrBlockNote.trim()
         && isDefaultMailHeaderImage(qrHeaderImage);
       let all: Record<string, unknown> = {};
       try { all = JSON.parse(tgt.emailTemplateOverrides || '{}') || {}; } catch { all = {}; }
@@ -4212,6 +4217,7 @@ export default function AdminPage(): React.ReactElement {
           // Nur Auswahl + Zahlen — NIE das Foto selbst (s. QrEmailOverride).
           headerImage: { ...qrHeaderImage },
           ...(qrBlockLang ? { blockLang: qrBlockLang } : {}),
+          ...(qrBlockNote.trim() ? { blockNote: qrBlockNote.trim() } : {}),
         };
       }
       const json = JSON.stringify(all);
@@ -13633,12 +13639,17 @@ export default function AdminPage(): React.ReactElement {
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
                   <span style={{ color: 'var(--dex-green)', display: 'inline-flex' }}><Send size={18} /></span>
-                  <span style={{ fontWeight: 700 }}>{isDe ? 'QR-Codes an Teilnehmer verschicken' : 'Send QR codes to attendees'}</span>
+                  {/* v30.61: „verschicken" las sich wie ein Auslöser — als ginge
+                      mit dem Klick sofort alles raus. Es öffnet aber nur die
+                      Einrichtung: Text anpassen, Vorschau, Test, und ERST DANN
+                      der Versand. Die Beschriftung sagt das jetzt, statt es zu
+                      verschweigen und auf Mut zu hoffen. */}
+                  <span style={{ fontWeight: 700 }}>{isDe ? 'QR-Code-Versand einrichten' : 'Set up the QR code send-out'}</span>
                 </div>
                 <span style={{ fontSize: '0.83rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
                   {isDe
-                    ? 'Jede·r bekommt einen persönlichen Code per Mail, mit Name und Teilnehmer-ID daneben. Vorab: Vorschau ansehen und Test an dich schicken.'
-                    : 'Everyone receives a personal code by email, with name and attendee ID beside it. Beforehand: preview it and send a test to yourself.'}
+                    ? 'Hier wird noch nichts verschickt. Du stellst zuerst Text und Bild ein, siehst die Vorschau und kannst dir einen Test schicken — der Versand an alle ist der letzte Schritt und wird eigens bestätigt.'
+                    : 'Nothing is sent yet. You first set the copy and image, see the preview and can send yourself a test — sending to everyone is the final step and is confirmed separately.'}
                 </span>
               </button>
               <button
@@ -14052,7 +14063,7 @@ export default function AdminPage(): React.ReactElement {
                         // Sprache und sieht rechts weiter die alte.
                         if (qrEditSampleImg) {
                           const myNm = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email;
-                          setQrEditSampleBlock(buildQrBlockHtml(qrEditSampleImg, myNm, SAMPLE_QR_ID, opt.v || qrTgt.emailLanguage || 'EN'));
+                          setQrEditSampleBlock(buildQrBlockHtml(qrEditSampleImg, myNm, SAMPLE_QR_ID, opt.v || qrTgt.emailLanguage || 'EN', qrBlockNote));
                         }
                       }}
                       style={{
@@ -14070,6 +14081,36 @@ export default function AdminPage(): React.ReactElement {
                 {isDe
                   ? 'Betrifft „Name", „ID" und den Hinweis unter der Nummer — nicht deinen Mailtext.'
                   : 'Affects “Name”, “ID” and the note below the number — not your email copy.'}
+              </div>
+              {/* v30.61: Der Hinweis unter der ID stand fest im Code, während
+                  der Mailtext direkt darüber frei ist. „Am Einlass" heißt beim
+                  B2Run „bei der Trikot- und Startnummernübergabe" und bei einer
+                  Konferenz „an der Registrierung". */}
+              <div style={{ marginTop: 10 }}>
+                <label style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>
+                  {isDe ? 'Hinweis unter der Teilnehmer-ID' : 'Note below the participant ID'}
+                </label>
+                <input
+                  type="text"
+                  value={qrBlockNote}
+                  disabled={qrEditSaving || isSendingQR}
+                  onChange={e => {
+                    setQrBlockNote(e.target.value);
+                    if (qrEditSampleImg) {
+                      const myNm = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email;
+                      setQrEditSampleBlock(buildQrBlockHtml(qrEditSampleImg, myNm, SAMPLE_QR_ID, qrBlockLang || qrTgt.emailLanguage || 'EN', e.target.value));
+                    }
+                  }}
+                  placeholder={isDe
+                    ? 'Leer = „Falls der Scan nicht klappt: einfach diese Nummer am Einlass nennen."'
+                    : 'Empty = the default note'}
+                  style={{ width: '100%', padding: '6px 10px', border: '1px solid var(--dex-gray-200)', borderRadius: 6, fontSize: '0.82rem' }}
+                />
+                <div style={{ marginTop: 4, color: 'var(--dex-gray-500)' }}>
+                  {isDe
+                    ? 'Leer lassen für den Standardsatz. Ein einzelner Bindestrich (-) blendet den Hinweis ganz aus.'
+                    : 'Leave empty for the default. A single hyphen (-) hides the note entirely.'}
+                </div>
               </div>
             </div>
           </div>

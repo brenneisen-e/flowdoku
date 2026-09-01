@@ -59,6 +59,10 @@ interface RoleContextType {
   refreshRoles: () => Promise<void>;
   searchUser: (email: string) => Promise<{ displayName: string; location: string; jobTitle: string; department?: string; mobilePhone?: string; company?: string } | null>;
   searchUsers: (query: string, includeInternational?: boolean) => Promise<Array<{ email: string; displayName: string; location: string; jobTitle: string }>>;
+  /** v30.61: Personalnummer, Kostenstelle, Firma und Land mehrerer Personen
+   *  auf einmal aus dem Verzeichnis (Graph, `User.Read.All` nötig). Leere Map
+   *  = nicht erlaubt oder nicht gepflegt — nicht „gibt es nicht". */
+  getEmployeeData: (emails: string[]) => Promise<Record<string, { employeeId?: string; costCenter?: string; companyName?: string; country?: string; department?: string }>>;
   searchGroups: (query: string) => Promise<Array<{ email: string; displayName: string }>>;
   getGroupMembers: (groupEmail: string) => Promise<{ groupName: string; members: Array<{ email: string; displayName: string; firstName?: string; lastName?: string; jobTitle?: string; location?: string }> } | null>;
   searchUsersByLocation: (location: string) => Promise<Array<{ email: string; displayName: string; firstName: string; lastName: string; location: string; jobTitle: string }>>;
@@ -308,6 +312,10 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     return spService.getGroupMembers(groupEmail);
   }
 
+  async function getEmployeeData(emails: string[]): Promise<Record<string, { employeeId?: string; costCenter?: string; companyName?: string; country?: string; department?: string }>> {
+    return spService.getEmployeeData(emails);
+  }
+
   async function searchUsersByLocation(location: string): Promise<Array<{ email: string; displayName: string; firstName: string; lastName: string; location: string; jobTitle: string }>> {
     return spService.searchUsersByLocation(location);
   }
@@ -350,7 +358,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     roles, currentUserRole, isRolesLoading,
     isAdmin, isOrganizer, canCreateEvents, isPowerUser, siteUrl,
     originalIsAdmin, isImpersonating, previewAsUser, setPreviewAsUser, isFA,
-    addRole, updateRole, setPowerUser, updateRoleLocation, removeRole, refreshRoles, searchUser, searchUsers, searchGroups, getGroupMembers, searchUsersByLocation,
+    addRole, updateRole, setPowerUser, updateRoleLocation, removeRole, refreshRoles, searchUser, searchUsers, searchGroups, getGroupMembers, searchUsersByLocation, getEmployeeData,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [roles, currentUserRole, isRolesLoading, isImpersonating, previewAsUser, siteUrl]);
 

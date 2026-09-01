@@ -22,6 +22,7 @@ import { readPendingShadowParents, removePendingShadowParent, addPendingShadowPa
 import { withParentTitleSubject } from '../utils/mailSubject';
 import { APP_VERSION } from '../version';
 import { RELEASE_NOTES, splitReleaseNote } from '../data/releaseNotes';
+import { BundledItem, bundledCommOf, bundledItemsTableHtml, bundledItemsHeading } from '../utils/bundledComm';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
 import { looksLikeClaimName, resolveMyDisplayName, safeDisplayName } from '../utils/displayName';
 import { emitBootStage } from '../utils/bootProgress';
@@ -402,7 +403,7 @@ interface EventContextType {
   createEvent: (event: CreateEventInput) => Promise<number | null>;
   // v30.42: skipShadowParent — nur die Anmeldeseite setzt das; sie legt die
   // Klammer-Zeile selbst an, und zwar MIT den übergreifenden Antworten.
-  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { skipShadowParent?: boolean; suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean; actorAllowedAsAssistant?: boolean; skipReload?: boolean }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste'; reason?: string }>;
+  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { skipShadowParent?: boolean; suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean; actorAllowedAsAssistant?: boolean; skipReload?: boolean; bundledItems?: BundledItem[] }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste'; reason?: string }>;
   /** v11.82: Team-Anmeldung — Lead + N-1 Mitglieder gleichzeitig anmelden.
    *  Reserviert N Plätze atomar; bei Vollbelegung geht das ganze Team auf
    *  die Warteliste (keine Teil-Anmeldungen aus Kapazitätsmangel). */
@@ -545,6 +546,9 @@ interface EventContextType {
   saveFAConfig: (cfg: FAConfig) => Promise<boolean>;
   sendFAMail: (ev: DeloitteEvent, kind: 'info' | 'list', opts?: { auto?: boolean }) => Promise<{ ok: boolean; reason?: string }>;
   markEventSettled: (ev: DeloitteEvent) => Promise<boolean>;
+  /** v30.61: Aktualisierte Sammelmail nach einer Änderung an den gebuchten
+   *  Terminen (nur bei gebündelter Kommunikation). */
+  sendBundledUpdateMail: (parentEvent: DeloitteEvent, recipientEmail: string, recipientName: string, items: BundledItem[]) => Promise<boolean>;
   /** v30.60: Von F&A nachgetragene Personalnummern/Kostenstellen in den
    *  gemeldeten Snapshot schreiben (Zuordnung über die E-Mail-Adresse). */
   saveFAPersonalNumbers: (ev: DeloitteEvent, values: Record<string, { personalNr?: string; costCenter?: string }>) => Promise<boolean>;
@@ -1927,7 +1931,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     // Kalender-Events MEHRFACH an (Tage + Schatten-Klammer) und lud damit
     // pro Klick mehrere Male den kompletten Bestand; genau dieselbe Bremse
     // wie v29.77 im Wizard. Schleifen skippen und refreshen EINMAL am Ende.
-    opts?: { skipShadowParent?: boolean; suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean; actorAllowedAsAssistant?: boolean; skipReload?: boolean }
+    opts?: { skipShadowParent?: boolean; suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean; actorAllowedAsAssistant?: boolean; skipReload?: boolean; bundledItems?: BundledItem[] }
   ): Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste'; reason?: string }> {
     // v17.25: Demo-Showcase-Event → No-Op, kein SP-Roundtrip. Die Register-
     // Seite blockt den Submit ohnehin mit einem Demo-Hinweis; dieser Guard
@@ -2238,10 +2242,32 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       // Der User nimmt nicht am Hauptevent teil und soll dafür KEINE
       // Bestätigungs-Mail und KEINEN Outlook-Termin bekommen — die
       // tatsächlichen Teilnahme-Mails kommen pro Sub-Event.
-      const suppressParentNotifications = !!event.subEventsOnlyMode;
+      // v30.61: Gebündelte Kommunikation kehrt genau diese Unterdrückung um.
+      //
+      // Bisher galt: Die Klammer ist im subEventsOnlyMode nur eine Datenzeile,
+      // also schweigt sie — jeder Termin verschickt selbst. Steht der Modus auf
+      // gebündelt, ist die Klammer der EINZIGE Absender, und die Termine werden
+      // still angelegt (die Anmeldeseite setzt dafür suppressMail/-Outlook).
+      // Mail, Kalender und QR sind getrennt schaltbar (Nutzer-Entscheidung
+      // 01.09.2026), deshalb drei Ableitungen statt einer.
+      const bundledMode = bundledCommOf(event);
+      const suppressParentNotifications = !!event.subEventsOnlyMode && !bundledMode.mail;
+      const suppressParentOutlook = !!event.subEventsOnlyMode && !bundledMode.outlook;
+      const suppressParentQr = !!event.subEventsOnlyMode && !bundledMode.qr;
+      // …und die Gegenrichtung: Steht die Klammer auf „ein QR fürs Gesamt-Event",
+      // darf der Termin KEINEN eigenen Code schicken — sonst bekäme die Person
+      // beides, und am Einlass gäbe es zwei gültige Codes für eine Person.
+      // Dasselbe für Mail und Kalender: Die Anmeldeseite unterdrückt sie zwar
+      // schon beim Aufruf, aber sie ist nicht der einzige Weg, auf dem eine
+      // Termin-Anmeldung entsteht (Organizer-Modal, Assistenz, Massenimport).
+      // Diese Prüfung hier greift für alle.
+      const parentOfThis = event.parentEventId ? events.find(e => e.id === event.parentEventId) : undefined;
+      const parentBundled = bundledCommOf(parentOfThis);
+      const childSuppressedByParent = !!event.parentEventId && !!parentOfThis && !!parentOfThis.subEventsOnlyMode;
       // v19.21: disableRegistrationEmail = nur die Anmelde-Bestätigung
       // unterdrücken (granulares Sub-Häkchen unter dem Master „E-Mails").
-      if (!event.disableEmails && !event.disableRegistrationEmail && !suppressParentNotifications && !opts?.suppressMail) {
+      if (!event.disableEmails && !event.disableRegistrationEmail && !suppressParentNotifications && !opts?.suppressMail
+        && !(childSuppressedByParent && parentBundled.mail)) {
         // v8.5: Organizer-Mitlese-Modus auswerten. Bei 'always' immer,
         // bei 'fromDate' nur wenn das konfigurierte Datum bereits erreicht
         // ist, bei 'never'/undefined gar nicht.
@@ -2272,6 +2298,19 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         const finalRecipient = isExternalInvite ? currentUserEmail : emailToUse;
         const finalSubject = emailData.subject;
         let finalBody = emailData.body;
+        // v30.61: Bei gebündelter Kommunikation trägt DIESE eine Mail alles,
+        // wofür die Person angemeldet ist. Ohne die Liste wäre die Bündelung
+        // ein Rückschritt: Zehn Einzelmails sagen wenigstens, worum es geht.
+        // Die Liste kommt vom Aufrufer (nur er weiß, was gerade gebucht wurde)
+        // und wird direkt in den Fließtext gesetzt.
+        if (bundledMode.mail && opts?.bundledItems && opts.bundledItems.length > 0) {
+          const isDeMail = (lang || 'EN').toUpperCase() === 'DE';
+          const block = `<p style="margin:18px 0 0;font-weight:700;">`
+            + bundledItemsHeading(opts.bundledItems.length, isDeMail, event.childEventTermPlural)
+            + `</p>`
+            + bundledItemsTableHtml(opts.bundledItems, isDeMail);
+          finalBody = injectIntoEmailContent(finalBody, block);
+        }
         const finalRecipientName = isExternalInvite ? (currentUserName || currentUserEmail) : nameToUse;
         // CC-Adressen, die zusätzlich zu den Feld-CCs gelten (Organizer bei
         // externer Anmeldung).
@@ -2405,7 +2444,8 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       // AutoSendQRCode=true am Event). Kein Deadline-Trigger — vor dem ersten
       // Versand bekommt KEINE Anmeldung automatisch einen QR-Code.
       const qrPhaseActive = event.autoSendQRCode === true;
-      if (qrPhaseActive && status === 'Angemeldet' && !event.disableEmails && !suppressParentNotifications) {
+      if (qrPhaseActive && status === 'Angemeldet' && !event.disableEmails && !suppressParentQr
+        && !(childSuppressedByParent && parentBundled.qr)) {
         // v27.11: Member-Firm-Adressen zählen als intern — QR-Mail direkt.
         const isExternalRecipientQr = isExternalEmail(emailToUse);
         (async (): Promise<void> => {
@@ -2546,7 +2586,8 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       // v15.25: Schatten-Parent-Registrierung im subEventsOnlyMode bekommt
       // keinen Outlook-Termin (s.o. — der User „nimmt teil" an Sub-Events,
       // nicht am Parent).
-      if (status !== 'Warteliste' && !event.disableOutlook && !skipOutlookForExternal && !suppressParentNotifications && !opts?.suppressOutlook) {
+      if (status !== 'Warteliste' && !event.disableOutlook && !skipOutlookForExternal && !suppressParentOutlook && !opts?.suppressOutlook
+        && !(childSuppressedByParent && parentBundled.outlook)) {
         eventService.queueOutlookEvent(
           emailToUse, eventId, event.title, 'Einladen'
         ).catch(err => console.warn('[DEX] queueOutlookEvent failed:', err));
@@ -6129,6 +6170,62 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
   /** „Als abgerechnet markieren" — nur F&A/Admin (UI-seitig gegated). Der
    *  Status bleibt laut Konzept dauerhaft bestehen; Zeitpunkt + Person
    *  werden protokolliert. */
+  /**
+   * v30.61: Aktualisierte Sammelmail nach einer späteren Änderung.
+   *
+   * Nutzer-Entscheidung 01.09.2026: Wer später einen Termin dazubucht oder
+   * abwählt, soll EINE Mail mit der neuen vollständigen Liste bekommen — nicht
+   * gar nichts (dann stimmt die alte Mail nicht mehr) und nicht eine Mail je
+   * Änderung (dann ist die Bündelung umsonst).
+   *
+   * Bewusst eine eigene, schlanke Funktion und kein zweiter Durchlauf durch
+   * `registerForEvent`: Dort hängen Kapazitätsprüfung, Wartelisten-Logik,
+   * TeilnehmerID-Vergabe und Outlook mit dran. Hier ist nichts zu registrieren
+   * — es hat sich nur die Liste geändert, die in der Mail steht.
+   *
+   * Die Mail geht NUR raus, wenn wirklich noch etwas gebucht ist. Wer alles
+   * abgewählt hat, ist abgemeldet; dafür gibt es die Abmelde-Bestätigung, und
+   * eine „Deine Termine"-Mail mit leerer Liste wäre eine Verhöhnung.
+   */
+  async function sendBundledUpdateMail(
+    parentEvent: DeloitteEvent,
+    recipientEmail: string,
+    recipientName: string,
+    items: BundledItem[]
+  ): Promise<boolean> {
+    if (!parentEvent || !recipientEmail) return false;
+    if (!bundledCommOf(parentEvent).mail) return false;
+    if (!items || items.length === 0) return false;
+    if (parentEvent.disableEmails || parentEvent.disableRegistrationEmail) return false;
+    const isDeMail = (parentEvent.emailLanguage || 'EN').toUpperCase() === 'DE';
+    const first = (recipientName || '').trim().split(/\s+/)[0] || recipientName || '';
+    const subject = isDeMail
+      ? `Deine Anmeldung wurde aktualisiert — ${parentEvent.title}`
+      : `Your registration was updated — ${parentEvent.title}`;
+    const intro = isDeMail
+      ? `<p>Hallo ${first},</p><p>deine Anmeldung für <strong>${parentEvent.title}</strong> hat sich geändert. Hier ist der aktuelle Stand — diese Übersicht ersetzt die vorherige Bestätigung.</p>`
+      : `<p>Hi ${first},</p><p>your registration for <strong>${parentEvent.title}</strong> has changed. Here is the current state — this overview replaces the previous confirmation.</p>`;
+    const body = intro
+      + `<p style="margin:18px 0 0;font-weight:700;">${bundledItemsHeading(items.length, isDeMail, parentEvent.childEventTermPlural)}</p>`
+      + bundledItemsTableHtml(items, isDeMail)
+      + (isDeMail
+        ? `<p style="margin-top:24px;"><strong>Viele Gr&uuml;&szlig;e</strong><br><br><strong>Dein Event-Team</strong></p>`
+        : `<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`);
+    const wrapped = wrapTemplate(
+      isDeMail ? 'Deine Anmeldung wurde aktualisiert' : 'Your registration was updated',
+      parentEvent.title, body, '#0076a8'
+    );
+    try {
+      return await eventService.queueEmail(
+        subject, recipientEmail, recipientName, wrapped,
+        'RegistrationUpdate', parentEvent.title, parentEvent.id
+      );
+    } catch (err) {
+      console.warn('[DEX] sendBundledUpdateMail failed:', err);
+      return false;
+    }
+  }
+
   async function markEventSettled(ev: DeloitteEvent): Promise<boolean> {
     const b = parseBillingOf(ev);
     if (!b || b.settled) return false;
@@ -6574,7 +6671,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, getLastEventUpdateError, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getEventNumbersForEmail, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, getFAConfig, saveFAConfig, sendFAMail, markEventSettled, saveFAPersonalNumbers, logFAContact, maybeSendBillingAutoMails, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, repairAllOrganizerPermissions, restoreCustomFieldDescriptions,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, getLastEventUpdateError, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getEventNumbersForEmail, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, getFAConfig, saveFAConfig, sendFAMail, markEventSettled, saveFAPersonalNumbers, sendBundledUpdateMail, logFAContact, maybeSendBillingAutoMails, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, repairAllOrganizerPermissions, restoreCustomFieldDescriptions,
         sendAdminInquiry,
         sendCompleteRegistrationReminder,
         notifyAdminsExternalAudienceAccess,

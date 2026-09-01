@@ -40,6 +40,7 @@ import OrganizerList from './OrganizerList';
 import { buildOutlookLocation } from '../utils/eventFormat';
 import { setActiveWizardStep } from '../utils/wizardStepContext';
 import { canEditBilling } from '../data/billingFields';
+import { BundledComm, bundledCommOf, bundledCommConfig } from '../utils/bundledComm';
 // v28.98: Sperrt „Zurück" im Header, solange gespeichert wird.
 import { setSaveInProgress } from '../utils/saveGuard';
 import { shortSubEventTitle } from '../utils/subEventTitle';
@@ -1003,6 +1004,9 @@ export default function EventCreationPage(): React.ReactElement {
   const [terminListOpen, setTerminListOpen] = React.useState(false);
   // v28.97: Genau EIN Sub-Event waehlbar statt beliebig vieler.
   const [subEventSingleChoice, setSubEventSingleChoice] = React.useState<boolean>(!!(editEvent && editEvent.subEventSingleChoice));
+  // v30.61: Gebündelte Kommunikation (Mail / Kalender / QR getrennt schaltbar).
+  // Gelesen aus den Overrides der Klammer — siehe utils/bundledComm.
+  const [bundledComm, setBundledComm] = React.useState<BundledComm>(() => bundledCommOf(editEvent));
   // v28.10: Seitenverhältnis des Wizard-Bilds — die Banner-Option ist nur für
   // Querformat-Fotos sinnvoll und wird nur dann angeboten (Ratio >= 1.2).
   const [wizardImgAspect, setWizardImgAspect] = React.useState<number | null>(null);
@@ -1326,6 +1330,8 @@ export default function EventCreationPage(): React.ReactElement {
           _visAllSubs,
           // v29.76: Rollierende Fristen der Kalender-Termine — eigene States.
           _subDeadlineRule,
+          // v30.61: Gebündelte Kommunikation — eigene States (s. bundledComm).
+          _commBundledMail, _commBundledOutlook, _commBundledQr,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -1342,6 +1348,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _subEventCalendar; void _subEventSingleChoice;
         void _noSelfCancel; void _noCancelAfterDeadline; void _teamsLink;
         void _hotels; void _hotelStays; void _hotelVisible; void _hotelRules;
+        void _commBundledMail; void _commBundledOutlook; void _commBundledQr;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
     })() : {}
@@ -5013,6 +5020,9 @@ export default function EventCreationPage(): React.ReactElement {
       // abgewaehlter Schalter darf keinen Rest im Blob hinterlassen.
       const subEventCalendarConfig = (subEventCalendar && subEventsOptIn) ? { _subEventCalendar: true } : {};
       const subEventSingleChoiceConfig = (subEventSingleChoice && subEventsOptIn) ? { _subEventSingleChoice: true } : {};
+      // v30.61: Nur gesetzte Schalter schreiben — ein Event ohne Bündelung
+      // trägt keinen Ballast in den Overrides.
+      const bundledCommConf = subEventsOptIn ? bundledCommConfig(bundledComm) : {};
       // v29.25: Abmelde-Sperren — nur setzen, wenn aktiv (ein abgewählter
       // Schalter darf keinen Rest im Blob hinterlassen). Die Nach-Frist-
       // Sperre nur, solange die Selbst-Abmeldung überhaupt erlaubt ist.
@@ -5104,7 +5114,7 @@ export default function EventCreationPage(): React.ReactElement {
         organizerDisplayLargeConfig, previewBeforeActiveConfig,
         imageDisplayConfig, hideOrganizerConfig, hiddenOrganizersConfig,
         hideOrgIndividualConfig, headerImageLayoutConfig, noDescriptionConfig,
-        subEventCalendarConfig, subEventSingleChoiceConfig, noSelfCancelConfig, noCancelAfterDeadlineConfig, teamsLinkConfig, hotelCarryConfig,
+        subEventCalendarConfig, subEventSingleChoiceConfig, bundledCommConf, noSelfCancelConfig, noCancelAfterDeadlineConfig, teamsLinkConfig, hotelCarryConfig,
         billingPiggyback(), // v29.66: F&A-Pilot
         subEventOpenRulePiggyback(), // v29.67
         visAllSubsPiggyback(), // v29.75
@@ -5997,6 +6007,7 @@ export default function EventCreationPage(): React.ReactElement {
             // v28.91: Kalender-Modus der Sub-Events.
             ((subEventCalendar && subEventsOptIn) ? { _subEventCalendar: true } : {}),
             ((subEventSingleChoice && subEventsOptIn) ? { _subEventSingleChoice: true } : {}),
+            (subEventsOptIn ? bundledCommConfig(bundledComm) : {}),
             // v29.25: Abmelde-Sperren auch beim Anlegen.
             (!userCancelAllowed ? { _noSelfCancel: true } : {}),
             billingPiggyback(), // v29.66: F&A-Pilot
@@ -17184,6 +17195,49 @@ export default function EventCreationPage(): React.ReactElement {
                     marginBottom: 14, padding: '12px 16px', borderRadius: 10,
                     border: '1px solid var(--dex-gray-200)', background: 'var(--dex-gray-50, #fafafa)',
                   }}>
+                    {/* v30.61: Der eigentliche Schalter — eine Mail und ein
+                        Kalendereintrag fürs ganze Event statt einem je Termin.
+                        Das ist etwas anderes als „überall dieselben Texte":
+                        Dort verschicken weiterhin zehn Termine zehn Mails, hier
+                        verschickt die Klammer EINE. Nur im Klammer-Modus, weil
+                        ein buchbares Haupt-Event ohnehin selbst verschickt. */}
+                    {subEventsOnlyMode && (
+                      <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: '1px solid var(--dex-gray-200)' }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.86rem', marginBottom: 4 }}>
+                          {isDe ? 'Eine Mail fürs Gesamt-Event statt einer je Termin?' : 'One email for the whole event instead of one per date?'}
+                        </div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.55, marginBottom: 10 }}>
+                          {isDe
+                            ? `Wer sich für mehrere ${childTermPlural || 'Termine'} anmeldet, bekommt sonst für jeden eine eigene Bestätigung und einen eigenen Kalendereintrag. Gebündelt kommt stattdessen EINE Bestätigung mit der Liste aller gebuchten Termine — und ein Kalendereintrag über den Gesamtzeitraum.`
+                            : `Someone registering for several dates otherwise receives one confirmation and one calendar entry per date. Bundled, they get ONE confirmation listing all booked dates.`}
+                        </div>
+                        {([
+                          { key: 'mail' as const, de: 'Bestätigungs-Mails bündeln', en: 'Bundle confirmation emails', hintDe: 'Eine Mail mit der Liste aller gebuchten Termine.', hintEn: 'One email listing all booked dates.' },
+                          { key: 'outlook' as const, de: 'Kalendereintrag bündeln', en: 'Bundle the calendar entry', hintDe: 'Ein Eintrag über den Zeitraum des Gesamt-Events. Wer nur Tag 2 und 4 bucht, bekommt trotzdem einen Eintrag über den ganzen Zeitraum — welche Tage gebucht sind, steht in der Beschreibung.', hintEn: 'One entry spanning the whole event period.' },
+                          { key: 'qr' as const, de: 'Einen QR-Code fürs Gesamt-Event', en: 'One QR code for the whole event', hintDe: 'Der Check-in läuft dann über das Haupt-Event statt über die einzelnen Termine.', hintEn: 'Check-in then runs on the main event.' },
+                        ]).map(opt => (
+                          <label key={opt.key} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginBottom: 8, cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={bundledComm[opt.key]}
+                              onChange={e => setBundledComm(prev => ({ ...prev, [opt.key]: e.target.checked }))}
+                              style={{ marginTop: 3, flexShrink: 0 }}
+                            />
+                            <span style={{ minWidth: 0 }}>
+                              <span style={{ display: 'block', fontSize: '0.84rem', fontWeight: 600 }}>{isDe ? opt.de : opt.en}</span>
+                              <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--dex-gray-500)', lineHeight: 1.5 }}>{isDe ? opt.hintDe : opt.hintEn}</span>
+                            </span>
+                          </label>
+                        ))}
+                        {(bundledComm.mail || bundledComm.outlook) && (
+                          <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, background: 'rgba(0,118,168,0.07)', fontSize: '0.77rem', lineHeight: 1.5, color: 'var(--dex-gray-700)' }}>
+                            {isDe
+                              ? `Die Texte für die gebündelte Mail stehen auf dem Reiter ${subEventsOnlyMode ? 'Klammer' : 'Haupt-Event'}. Was du auf den Termin-Reitern eingestellt hast, bleibt gespeichert, wirkt aber nicht mehr, solange gebündelt wird.`
+                              : 'The copy for the bundled email lives on the bracket tab. Per-date settings stay saved but have no effect while bundling is on.'}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div style={{ fontWeight: 600, fontSize: '0.86rem', marginBottom: 4 }}>
                       {isDe ? 'Einzeln oder für alle Termine gemeinsam?' : 'Individually or for all dates at once?'}
                     </div>

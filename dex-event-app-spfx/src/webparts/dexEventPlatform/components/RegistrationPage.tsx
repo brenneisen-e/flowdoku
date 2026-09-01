@@ -22,6 +22,7 @@ import { isDeloitteInternalEmail, isExternalEmail } from '../utils/deloitteDomai
 import { useLanguage, translations as appTranslations, Locale } from '../context/LanguageContext';
 // v20.4: modernes Alert-Modal statt window.alert.
 import { useDialog } from '../context/DialogContext';
+import { BundledItem, bundledCommOf, BUNDLED_COMM_DEFAULT } from '../utils/bundledComm';
 import { Salutation, EventSpecificField, DeloitteEvent } from '../types';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { Send, X, Mail } from './Icons';
@@ -266,7 +267,7 @@ export default function RegistrationPage(): React.ReactElement {
   }, []);
 
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
-  const { events, isEventsLoading, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration, uploadFieldDocument, delegateRegistrationToAssistant, recordProxyDelegation, getLiveCounterStats, subscribeEventRealtime, getEventNumbersForEmail, refreshEvents } = useEvents();
+  const { events, isEventsLoading, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration, uploadFieldDocument, delegateRegistrationToAssistant, recordProxyDelegation, getLiveCounterStats, subscribeEventRealtime, getEventNumbersForEmail, refreshEvents, sendBundledUpdateMail } = useEvents();
   const { currentUser, groupEmails } = useCurrentUser();
   // v30.3: previewAsUser = „Übersicht als User sehen" (Organizer-/Admin-
   // Vorschau). isAdmin kommt aus dem RoleContext bereits absenkt zurück;
@@ -2380,6 +2381,22 @@ export default function RegistrationPage(): React.ReactElement {
       // true bei der subEventsOnly-Schatten-Zeile, die JETZT NACH den Sub-Events
       // angelegt wird — ein Fehlschlag darf die (gültigen) Sub-Event-Anmeldungen
       // nicht als Fehler markieren.
+      // v30.61: Was in dieser Anmeldung tatsächlich gebucht wurde — Grundlage
+      // der Terminliste in der Sammelmail. Gesammelt wird NUR bei Erfolg; eine
+      // Zeile für einen Termin, der nicht geschrieben wurde, wäre eine Zusage,
+      // die die Daten nicht decken.
+      //
+      // Steht HIER und nicht bei der Sub-Event-Schleife: `doParentRegistration`
+      // schließt darüber, und bei normalen Events (nicht subEventsOnly) läuft
+      // die Klammer-Anmeldung VOR der Schleife — eine spätere Deklaration wäre
+      // dort ein TDZ-Fehler (dieselbe Falle wie v29.71).
+      const bookedItems: BundledItem[] = [];
+      // Gebündelt wird nur im Klammer-Modus. Bei einem normalen Event mit
+      // Sub-Events ist das Hauptevent selbst buchbar und verschickt ohnehin
+      // seine eigene Mail — „statt zehn eine" gibt es dort nicht zu holen.
+      const bundledMode = (event && event.subEventsOnlyMode)
+        ? bundledCommOf(event)
+        : BUNDLED_COMM_DEFAULT;
       const doParentRegistration = async (bestEffort: boolean): Promise<void> => {
         const parentResult = await registerForEvent(
           selectedEventId!,
@@ -2393,9 +2410,16 @@ export default function RegistrationPage(): React.ReactElement {
           // v19.6: ccSelfEmail (Anmeldende:r auf CC der Bestätigungs-Mail).
           // v30.9: skipReload — der 28-MB-Volllade-Refresh läuft EINMAL am
           // Ende des Absendens (fire-and-forget), nicht nach jedem Schreiben.
-          registerForOther
-            ? { proxyConsentConfirmed: true, actorAllowedAsAssistant, ...(ccSelfEmail ? { extraCc: ccSelfEmail } : {}), skipReload: true }
-            : { ...(delegateCc ? { extraCc: delegateCc } : {}), skipReload: true }
+          {
+            ...(registerForOther
+              ? { proxyConsentConfirmed: true, actorAllowedAsAssistant, ...(ccSelfEmail ? { extraCc: ccSelfEmail } : {}) }
+              : { ...(delegateCc ? { extraCc: delegateCc } : {}) }),
+            skipReload: true,
+            // v30.61: Bei gebündelter Kommunikation trägt die Klammer-Mail die
+            // Liste der gebuchten Termine. Nur DIESE Stelle kennt sie — der
+            // EventContext sieht immer nur ein einzelnes Event.
+            ...(bundledMode.mail && bookedItems.length > 0 ? { bundledItems: bookedItems } : {}),
+          }
         );
         if (bestEffort) {
           // Schatten-Klammer: Erfolg zählt mit, aber kein Fehler-Durchschlag.
@@ -2509,6 +2533,11 @@ export default function RegistrationPage(): React.ReactElement {
           // kompletter loadEvents (28 MB); jetzt ein Sammel-Refresh am Ende.
           const seOpts = {
             ...(seExtraCc ? { extraCc: seExtraCc } : {}),
+            // v30.61: Gebündelte Kommunikation — der Termin wird still
+            // angelegt, die Klammer verschickt einmal für alles. Mail und
+            // Kalender getrennt, weil beides getrennt schaltbar ist.
+            ...(bundledMode.mail ? { suppressMail: true } : {}),
+            ...(bundledMode.outlook ? { suppressOutlook: true } : {}),
             ...(registerForOther ? { proxyConsentConfirmed: true, actorAllowedAsAssistant } : {}),
             skipReload: true,
             // v30.42: Diese Seite legt die Klammer-Zeile SELBST an — zuletzt und
@@ -2519,7 +2548,10 @@ export default function RegistrationPage(): React.ReactElement {
             skipShadowParent: true,
           };
           const subRes = await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType, seOpts);
-          if (subRes.ok) { anySuccess = true; anySubRegSuccess = true; }
+          if (subRes.ok) {
+            anySuccess = true; anySubRegSuccess = true;
+            bookedItems.push({ title: ce.title || '', startDate: ce.startDate, endDate: ce.endDate, location: ce.location });
+          }
           else lastSubReason = subRes.reason;
           subOpsDone++;
           setSubmitProgress(50 + Math.floor((subOpsDone / Math.max(subOps, 1)) * 40));
@@ -2621,6 +2653,22 @@ export default function RegistrationPage(): React.ReactElement {
           }, attempt === 1 ? 20000 : attempt === 2 ? 60000 : 180000);
         };
         retryShadow(1);
+      }
+      // v30.61: Gebündelt UND die Klammer-Zeile stand schon (also lief oben
+      // keine Anmeldung, die eine Mail ausgelöst hätte) → eine aktualisierte
+      // Sammelmail mit dem VOLLSTÄNDIGEN Stand. `bookedItems` trägt nur die
+      // gerade neu gebuchten Termine; für „Deine Anmeldung ist jetzt so" muss
+      // alles hinein, was aktuell gebucht ist — sonst läse sich die Mail wie
+      // eine Abmeldung von allem anderen.
+      if (bundledMode.mail && parentAlreadyHasRow && event) {
+        const stillBooked: BundledItem[] = childEvents
+          .filter(ce => selectedSessions.has(ce.id))
+          .map(ce => ({ title: ce.title || '', startDate: ce.startDate, endDate: ce.endDate, location: ce.location }));
+        const changed = bookedItems.length > 0 || lockedCancelTitles.length === 0;
+        if (changed && stillBooked.length > 0) {
+          const fullName = `${firstTrim} ${surnameTrim}`.trim() || participantEmail;
+          void sendBundledUpdateMail(event, participantEmail, fullName, stillBooked);
+        }
       }
       setSubmitProgress(95);
       setSubmitProgressLabel(locale === 'de' ? 'Bestätigungen werden versandt…' : 'Confirmations are being queued…');
