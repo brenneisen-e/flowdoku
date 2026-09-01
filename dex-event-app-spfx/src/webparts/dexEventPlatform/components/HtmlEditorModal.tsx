@@ -18,6 +18,7 @@ import { wrapTemplate, replacePlaceholders, replacePlaceholdersPlain, getCachedO
 // v20.4: modernes Confirm-Modal statt window.confirm.
 import { useDialog } from '../context/DialogContext';
 import { useIsMobile } from '../utils/useIsMobile';
+import LinkDialog from './LinkDialog';
 
 // v9.40: 'plain' = nur HTML rendern, kein Mail-/Outlook-Wrapper. Wird für die
 // Event-Beschreibung im Wizard genutzt — die landet 1:1 auf der Anmelde-Seite.
@@ -234,13 +235,23 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
   const editorRef = React.useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
   // v20.4: App-Modals statt window.confirm/window.prompt.
-  const { confirmDialog, promptDialog } = useDialog();
+  // v30.51: `promptDialog` wird hier nicht mehr gebraucht — der Link läuft
+  // über den eigenen `LinkDialog` (Ziel + Anzeige-Text in einem Fenster).
+  const { confirmDialog } = useDialog();
   const savedSelectionRef = React.useRef<Range | null>(null);
   // v18.20: aktuelle Schriftgröße der Auswahl (px) — treibt die „wie in Word"-
   // Anzeige im Größen-Dropdown. null = keine Auswahl im Editor / unbekannt.
   const [currentFontPx, setCurrentFontPx] = React.useState<number | null>(null);
   // v18.22: freier Hex-Code für die Body-Textfarbe (Picker/Eingabe).
   const [bodyHexDraft, setBodyHexDraft] = React.useState('#000000');
+  // v30.51: Offener Link-Dialog samt eingefrorenem Ausgangszustand.
+  const [linkState, setLinkState] = React.useState<null | {
+    href: string;
+    text: string;
+    editing: boolean;
+    textLocked: boolean;
+    anchor: HTMLAnchorElement | null;
+  }>(null);
 
   // External value beim Öffnen in den Editor laden (Re-Open mit anderem Template)
   React.useEffect(() => {
@@ -356,40 +367,80 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
   // v18.39: Link einfügen / bearbeiten / entfernen — ohne Copy-Paste, damit
   // beim Setzen eines Links keine fremde Formatierung (Zeilenabstand) mehr
   // mit hineinkommt.
-  const insertLink = (): void => {
+  /**
+   * v30.51: EIN Dialog für Ziel UND Anzeige-Text (s. components/LinkDialog).
+   *
+   * Der Zustand des Dialogs wird beim Öffnen eingefroren: `linkState` hält
+   * die bestehende href, den Anzeige-Text und — entscheidend — die Auswahl,
+   * die beim Klick auf den Knopf galt. Der Dialog stiehlt den Fokus, danach
+   * ist die Editor-Auswahl nicht mehr verlässlich; deshalb wird sie beim
+   * Übernehmen aus `savedSelectionRef` wiederhergestellt und nicht neu
+   * gelesen (dieselbe Falle wie bei den alten Prompts, v20.4).
+   */
+  const openLinkDialog = (): void => {
     restoreSelection();
+    saveSelection();
     const existing = getSelectionAnchor();
-    // v20.4: App-Prompt statt window.prompt. WICHTIG: nach jedem Dialog die
-    // gespeicherte Editor-Selektion wiederherstellen (das Modal stiehlt den
-    // Fokus), sonst landet execCommand ins Leere.
-    promptDialog('Link-Adresse (URL) — leer lassen, um den Link zu entfernen:', {
-      title: 'Link',
-      defaultValue: existing ? (existing.getAttribute('href') || '') : 'https://',
-      confirmLabel: 'Übernehmen',
-    }).then(async url => {
-      if (url === null) return; // Abbrechen
-      restoreSelection();
-      const sel = window.getSelection();
-      const collapsed = !sel || sel.rangeCount === 0 || sel.getRangeAt(0).collapsed;
-      if (url.trim() === '') {
-        try { document.execCommand('unlink'); } catch { /* ignore */ }
-        fireChange();
-        return;
+    const sel = window.getSelection();
+    const hasRange = !!sel && sel.rangeCount > 0;
+    const selectedText = hasRange ? sel!.getRangeAt(0).toString() : '';
+    // Über mehrere Absätze hinweg kann der Anzeige-Text nicht ersetzt werden,
+    // ohne die Formatierung dazwischen wegzuwerfen — dann wird nur verlinkt.
+    const multiBlock = selectedText.indexOf('\n') >= 0;
+    setLinkState({
+      href: existing ? (existing.getAttribute('href') || '') : '',
+      text: existing ? (existing.textContent || '') : selectedText,
+      editing: !!existing,
+      textLocked: multiBlock,
+      anchor: existing,
+    });
+  };
+
+  const applyLink = (href: string, text: string): void => {
+    const st = linkState;
+    setLinkState(null);
+    if (!st) return;
+    restoreSelection();
+    const sel = window.getSelection();
+    const collapsed = !sel || sel.rangeCount === 0 || sel.getRangeAt(0).collapsed;
+    const label = text || href.replace(/^mailto:/i, '');
+    if (st.anchor) {
+      // Bestehender Link: Ziel immer, Anzeige-Text nur wenn er sich geändert
+      // hat — sonst würde eine Auszeichnung IM Link (fett, farbig) durch
+      // reinen Text ersetzt.
+      st.anchor.setAttribute('href', href);
+      if (!st.textLocked && text && text !== (st.anchor.textContent || '')) {
+        st.anchor.textContent = text;
       }
-      if (existing) {
-        // Bestehender Link: nur die Ziel-URL aktualisieren, Anzeige-Text bleibt.
-        existing.setAttribute('href', url.trim());
-      } else if (collapsed) {
-        // Keine Auswahl: Anzeige-Text erfragen und sauberen Link einfügen.
-        const text = (await promptDialog('Anzeige-Text des Links:', { title: 'Link', defaultValue: url.trim(), confirmLabel: 'Einfügen' })) || url.trim();
-        restoreSelection();
-        try { document.execCommand('insertHTML', false, `<a href="${url.trim()}">${escHtml(text)}</a>`); } catch { /* ignore */ }
-      } else {
-        // Markierten Text in einen Link verwandeln.
-        try { document.execCommand('createLink', false, url.trim()); } catch { /* ignore */ }
+    } else if (collapsed) {
+      try { document.execCommand('insertHTML', false, `<a href="${escHtml(href)}">${escHtml(label)}</a>`); } catch { /* ignore */ }
+    } else if (!st.textLocked && text && text !== sel!.getRangeAt(0).toString()) {
+      // Markierung vorhanden UND der Anzeige-Text wurde geändert: die Auswahl
+      // komplett durch den neuen Link ersetzen.
+      try { document.execCommand('insertHTML', false, `<a href="${escHtml(href)}">${escHtml(text)}</a>`); } catch { /* ignore */ }
+    } else {
+      // Markierten Text unverändert verlinken — erhält die Formatierung darin.
+      try { document.execCommand('createLink', false, href); } catch { /* ignore */ }
+    }
+    fireChange();
+  };
+
+  const removeLink = (): void => {
+    const st = linkState;
+    setLinkState(null);
+    restoreSelection();
+    if (st?.anchor) {
+      // `unlink` braucht eine Auswahl IM Link; nach dem Dialog ist die nicht
+      // mehr sicher — deshalb den Anker direkt durch seinen Inhalt ersetzen.
+      const parent = st.anchor.parentNode;
+      if (parent) {
+        while (st.anchor.firstChild) parent.insertBefore(st.anchor.firstChild, st.anchor);
+        parent.removeChild(st.anchor);
       }
-      fireChange();
-    }).catch(() => { /* */ });
+    } else {
+      try { document.execCommand('unlink'); } catch { /* ignore */ }
+    }
+    fireChange();
   };
 
   // v18.39: Einfügen IMMER als reiner Text (mit Zeilenumbrüchen als <br>).
@@ -1065,7 +1116,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                       Link: Cursor hineinsetzen → URL ändern. Leere URL entfernt
                       den Link. So muss kein Link mehr per Copy-Paste eingefügt
                       werden (das brach den Zeilenabstand). */}
-                  <button type="button" style={tbBtn} title="Link einfügen / bearbeiten" onMouseDown={e => e.preventDefault()} onClick={insertLink}><Icon iconName="Link" style={{ fontSize: 13 }} /></button>
+                  <button type="button" style={tbBtn} title="Link oder E-Mail-Adresse einfügen / bearbeiten" onMouseDown={e => e.preventDefault()} onClick={openLinkDialog}><Icon iconName="Link" style={{ fontSize: 13 }} /></button>
                   <button type="button" style={tbBtn} title="Formatierung entfernen" onMouseDown={e => e.preventDefault()} onClick={() => exec('removeFormat')}>⌫</button>
                 </div>
                 <div
@@ -1158,6 +1209,20 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
           )}
         </div>
       </div>
+
+      {/* v30.51: Link-Dialog — Ziel, Anzeige-Text und Web/E-Mail in EINEM
+          Fenster. Liegt bewusst innerhalb des Editor-Modals im React-Baum;
+          gerendert wird er ohnehin per Portal an document.body. */}
+      <LinkDialog
+        open={!!linkState}
+        initialHref={linkState?.href}
+        initialText={linkState?.text}
+        editing={!!linkState?.editing}
+        textLocked={!!linkState?.textLocked}
+        onCancel={() => { setLinkState(null); restoreSelection(); }}
+        onApply={r => applyLink(r.href, r.text)}
+        onRemove={removeLink}
+      />
     </div>
   );
 };

@@ -1,6 +1,6 @@
 /**
- * v30.45: Empfänger-Verwaltung im F&A Center (Fachkonzept „F&A Center —
- * Verwaltung der Empfänger").
+ * v30.45: Empfänger-Verwaltung mit Profil-Chips (zuerst für das F&A Center,
+ * seit v30.51 auch für die CC-Felder der Organizer-Mails).
  *
  * Vorher: eine `<textarea>`, eine Adresse pro Zeile. Das war die einzige
  * Stelle in der App, an der Personen als roher Text standen — überall sonst
@@ -30,7 +30,9 @@ import { X, Plus } from '../Icons';
 
 type Profile = { displayName: string; location: string; jobTitle: string };
 
-export interface FARecipientEditorProps {
+export interface RecipientPickerProps {
+  /** Text, wenn noch niemand eingetragen ist. Default: F&A-Verteiler-Wortlaut. */
+  emptyText?: string;
   label: string;
   hint?: string;
   value: string[];
@@ -46,7 +48,7 @@ const chipBase: React.CSSProperties = {
   padding: '4px 6px 4px 4px', background: '#fff', maxWidth: '100%',
 };
 
-export default function FARecipientEditor(props: FARecipientEditorProps): React.ReactElement {
+export default function RecipientPicker(props: RecipientPickerProps): React.ReactElement {
   const { value, onChange, searchUsers, searchUserByEmail } = props;
   // Aufgelöste Profile je Adresse. `null` = geprüft und KEINE Person
   // (Gruppenadresse); fehlender Schlüssel = noch nicht geprüft.
@@ -104,7 +106,7 @@ export default function FARecipientEditor(props: FARecipientEditorProps): React.
       {/* Aktuelle Empfänger */}
       {value.length === 0 ? (
         <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: 'var(--dex-orange-dark, #b35a00)' }}>
-          Noch keine Empfänger — an diesen Verteiler kann nichts versendet werden.
+          {props.emptyText || 'Noch keine Empfänger — an diesen Verteiler kann nichts versendet werden.'}
         </p>
       ) : (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
