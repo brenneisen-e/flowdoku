@@ -2799,7 +2799,7 @@ Flow `DEX_Outlook_Einladungen` ist es umgekehrt — dort wird der Termin über
 adressiert. **Regel: die URI-Form der Graph-Action übernehmen, die im
 GLEICHEN Flow schon funktioniert.**
 
-### ✅ AKTUELL GÜLTIG (v30.40) — `DEX_Outlook_Termine`: zwei Actions wieder ENTFERNEN
+### ✅ AKTUELL GÜLTIG (v30.40) — `DEX_CreateOutlookEvent`: zwei Actions wieder ENTFERNEN
 
 Die Anleitungen weiter unten (v30.27 / v30.28 / KORREKTUR v30.37) sind damit
 **erledigt**. Sie bleiben nur als Protokoll stehen — nicht mehr ausführen.
@@ -2822,7 +2822,7 @@ Löschen einer Action, solange eine andere sie referenziert — und
 
 #### Klicks
 
-- [ ] Flow `DEX_Outlook_Termine` öffnen, oben rechts **Edit**.
+- [ ] Flow `DEX_CreateOutlookEvent` öffnen, oben rechts **Edit**.
 - [ ] Im **True**-Zweig von `Check Online Meeting` die unterste Action
       `Set Teams Body` anklicken.
 - [ ] Auf die drei Punkte (**…**) rechts oben an der Action klicken → **Delete**
@@ -2987,7 +2987,7 @@ der sichere Tausch; eine dritte Variante gibt es nicht.
 
 #### Zeile 1 — `Get_Teams_Event` (Send an HTTP request) · NEU
 
-- [ ] Im Flow `DEX_Outlook_Termine` oben rechts auf **Edit** klicken.
+- [ ] Im Flow `DEX_CreateOutlookEvent` oben rechts auf **Edit** klicken.
 - [ ] Im **True**-Zweig die Action `Set_Online_Meeting` suchen und darunter auf
       **Add an action** klicken.
 - [ ] Nach `Send an HTTP request` suchen und den Treffer unter **Office 365
