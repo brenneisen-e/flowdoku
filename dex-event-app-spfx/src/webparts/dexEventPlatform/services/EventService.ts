@@ -5930,6 +5930,42 @@ export class EventService {
   }
 
   /**
+   * v30.48: Spalte `Startnummer` in der Teilnehmerliste sicherstellen.
+   *
+   * Eigene Spalte statt Custom-Field: Die Startnummer soll im Export, in der
+   * Teilnehmerliste und in der Check-in-Suche auftauchen — ein Custom-Field
+   * wäre pro Event konfigurierbar, aber nicht durchsuchbar. Text und nicht
+   * Zahl, weil Veranstalter-Nummern führende Nullen und Präfixe haben können;
+   * gerechnet wird damit ohnehin nie.
+   *
+   * Idempotent: Existiert die Spalte, passiert nichts. Wirft nicht — der
+   * Import meldet den Fehlschlag selbst, statt hier abzubrechen.
+   */
+  public async ensureStartNumberColumn(subsiteUrl: string): Promise<boolean> {
+    try {
+      const resp = await this._sp.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields?$filter=InternalName eq 'Startnummer'&$select=InternalName`,
+        SPHttpClient.configurations.v1
+      );
+      if (resp.ok) {
+        const d = await resp.json();
+        const arr = d.value || d.d?.results || [];
+        if (arr.length > 0) return true;
+      }
+      await this._post(`${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields`, {
+        '__metadata': { 'type': 'SP.Field' },
+        'Title': 'Startnummer',
+        'FieldTypeKind': 2, // Text
+        'Required': false,
+      });
+      return true;
+    } catch (e) {
+      console.warn('[DEX] ensureStartNumberColumn failed:', e);
+      return false;
+    }
+  }
+
+  /**
    * Alle Registrierungen für ein Event laden (nur für Organizer/Admin)
    */
   /**
