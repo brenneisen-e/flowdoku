@@ -17,6 +17,7 @@ import { useDialog } from '../context/DialogContext';
 import { useRoles } from '../context/RoleContext';
 import { useCurrentUser } from '../context/UserContext';
 import { EventService } from '../services/EventService';
+import { checkInExtras, parseCustomData, CheckInExtra } from '../utils/checkInExtras';
 import { useLanguage } from '../context/LanguageContext';
 import { useIsMobile } from '../utils/useIsMobile';
 import OrganizerList from './OrganizerList';
@@ -113,6 +114,8 @@ export default function CheckInPage(): React.ReactElement {
   const [pendingCheckIn, setPendingCheckIn] = React.useState<{
     name: string; email: string; event: { subsiteUrl: string; title: string };
     regId: number; status: string; department?: string; jobTitle?: string; location?: string; photoUrl?: string;
+    /** v30.53: Startnummer, Trikotgröße, Gruppe — was am Tisch gebraucht wird. */
+    extras?: CheckInExtra[];
   } | null>(null);
 
 
@@ -121,6 +124,28 @@ export default function CheckInPage(): React.ReactElement {
   const eventService = React.useMemo(() => context ? new EventService(context) : null, []);
 
   const selectedEvent = selectedEventId ? events.find(e => e.id === selectedEventId) : null;
+
+  /**
+   * v30.53: Startnummer + Trikotgröße + Gruppe zu einer Zeile.
+   *
+   * Am Check-in-Tisch eines Laufs wird nicht nur abgehakt, sondern auch das
+   * Trikot ausgegeben und die Startnummer genannt. Ohne diese Angaben muss
+   * daneben eine Excel offen sein — genau dort entsteht die Schlange. Die
+   * Regel, WELCHE Felder das sind, steht in utils/checkInExtras.
+   */
+  const extrasFor = React.useCallback((
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    reg: any,
+    eventId: string,
+  ): CheckInExtra[] => {
+    const ev = events.find(e => e.id === eventId);
+    return checkInExtras(
+      ev?.eventSpecificFields,
+      parseCustomData(reg?.CustomData),
+      reg,
+      { bib: isDe ? 'Startnummer' : 'Bib number', group: isDe ? 'Gruppe' : 'Group' },
+    );
+  }, [events, isDe]);
 
   // v7.12: Name-Suche für manuelles Einchecken — wenn der QR-Scanner in der
   // SP-App nicht funktioniert (Camera-API gesperrt) oder der Teilnehmer den
@@ -307,6 +332,7 @@ export default function CheckInPage(): React.ReactElement {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       location: (reg as any).Location || '',
       photoUrl,
+      extras: extrasFor(reg, ev.id),
     });
     setResultMessage('');
     setResultType('');
@@ -659,6 +685,9 @@ export default function CheckInPage(): React.ReactElement {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       location: (reg as any).Location || '',
       photoUrl,
+      // v30.53: auch auf dem QR-Weg — der Tisch braucht dieselben Angaben,
+      // egal ob gescannt oder gesucht wurde.
+      extras: extrasFor(reg, event.id),
     });
     setResultMessage('');
     setResultType('');
@@ -983,6 +1012,29 @@ export default function CheckInPage(): React.ReactElement {
               )}
               {pendingCheckIn.location && (
                 <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>{pendingCheckIn.location}</p>
+              )}
+              {/* v30.53: Startnummer + Trikotgröße gut sichtbar — sie werden
+                  hier vorgelesen bzw. ausgegeben, nicht nur nachgeschlagen. */}
+              {(pendingCheckIn.extras || []).length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                  {(pendingCheckIn.extras || []).map((x, i) => (
+                    <span key={i} style={{
+                      display: 'inline-flex', alignItems: 'baseline', gap: 6,
+                      padding: x.strong ? '5px 12px' : '4px 10px',
+                      borderRadius: 8,
+                      background: x.strong ? 'rgba(134,188,37,0.14)' : 'var(--dex-gray-100, #f5f5f5)',
+                      border: x.strong ? '1px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-200)',
+                    }}>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--dex-gray-600)' }}>{x.label}</span>
+                      <strong style={{
+                        fontSize: x.strong ? '1.15rem' : '0.9rem',
+                        fontFamily: x.strong ? "'Courier New',Courier,monospace" : 'inherit',
+                        letterSpacing: x.strong ? '0.04em' : undefined,
+                        color: x.strong ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-800)',
+                      }}>{x.value}</strong>
+                    </span>
+                  ))}
+                </div>
               )}
             </div>
           </div>
@@ -1427,6 +1479,31 @@ export default function CheckInPage(): React.ReactElement {
                           <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {reg.ParticipantEmail}
                           </div>
+                          {/* v30.53: Startnummer + Trikotgröße schon in der
+                              Trefferliste — beim B2Run wird beides am selben
+                              Tisch gebraucht wie der Check-in selbst. */}
+                          {(() => {
+                            const ex = extrasFor(reg, nameSearchEventId);
+                            if (ex.length === 0) return null;
+                            return (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                                {ex.map((x, i) => (
+                                  <span key={i} style={{
+                                    display: 'inline-flex', alignItems: 'baseline', gap: 5,
+                                    fontSize: '0.7rem', padding: '2px 8px', borderRadius: 6,
+                                    background: x.strong ? 'rgba(134,188,37,0.14)' : 'var(--dex-gray-100, #f5f5f5)',
+                                    color: 'var(--dex-gray-700)',
+                                  }}>
+                                    <span style={{ color: 'var(--dex-gray-500)' }}>{x.label}</span>
+                                    <strong style={{
+                                      fontFamily: x.strong ? "'Courier New',Courier,monospace" : 'inherit',
+                                      color: x.strong ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-800)',
+                                    }}>{x.value}</strong>
+                                  </span>
+                                ))}
+                              </div>
+                            );
+                          })()}
                         </div>
                         <span style={{
                           fontSize: '0.7rem', padding: '3px 8px', borderRadius: 999,

@@ -25,6 +25,7 @@ import { RELEASE_NOTES } from '../data/releaseNotes';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
 import { looksLikeClaimName, resolveMyDisplayName, safeDisplayName } from '../utils/displayName';
 import { emitBootStage } from '../utils/bootProgress';
+import { getCachedImage } from '../utils/imageCache';
 import { DEX_TEAM_RECIPIENTS } from '../utils/supportContact';
 import { parseBillingOf, missingBillingFields, renderBillingInfoMailBody, renderBillingListMailBody, trimBillingLog, faRowsFromRegistrations, BillingData, BillingLogEntry, FAConfig } from '../utils/faBilling';
 
@@ -524,6 +525,8 @@ interface EventContextType {
   saveFAConfig: (cfg: FAConfig) => Promise<boolean>;
   sendFAMail: (ev: DeloitteEvent, kind: 'info' | 'list', opts?: { auto?: boolean }) => Promise<{ ok: boolean; reason?: string }>;
   markEventSettled: (ev: DeloitteEvent) => Promise<boolean>;
+  /** v30.53: Rückfrage an F&A in der Kommunikationshistorie festhalten. */
+  logFAContact: (ev: DeloitteEvent, to: string, subject: string) => Promise<boolean>;
   maybeSendBillingAutoMails: () => Promise<{ infoSent: number; listSent: number; reminders: number }>;
   /** v24.2: „Danke, wir hoffen es lief gut"-Mail an den Organizer beim
    *  App-Öffnen nach dem Event-Tag (1×/Event/Organizer, localStorage-Drossel). */
@@ -2405,9 +2408,24 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
               try {
                 const ovAll = JSON.parse(event.emailTemplateOverrides || '{}');
                 const ov = ovAll && ovAll['QRCode'];
-                if (ov && (ov.subject || ov.heading || ov.subheading || ov.bodyHtml)) qrOverride = ov;
+                // v30.52: `headerImage` zählt jetzt AUCH als Override — sonst
+                // ginge die gespeicherte Kopf-Bild-Einstellung beim
+                // automatischen Versand verloren, wenn die Texte auf dem
+                // Standard stehen.
+                if (ov && (ov.subject || ov.heading || ov.subheading || ov.bodyHtml || ov.headerImage)) qrOverride = ov;
               } catch { /* kein Override */ }
-              const qrMail = qrCodeEmail(firstNameToUse, event.title, qrImageHtml, lang, nameToUse, qrOverride);
+              // v30.52: Hat der Organizer das Event-Foto als Kopf-Bild
+              // gewählt, wird es hier aufgelöst und fest eingebacken — sonst
+              // bleibt {{ORB_URL}} stehen und der Flow setzt das Standardbild.
+              // Der Abruf ist gecacht, kostet pro Sitzung also einmal.
+              let qrHeroPhoto = '';
+              if (qrOverride && qrOverride.headerImage && qrOverride.headerImage.hero === 'event' && event.imageUrl) {
+                try {
+                  const b64 = await getCachedImage(event.imageUrl);
+                  if (b64 && b64.indexOf('data:') === 0) qrHeroPhoto = b64;
+                } catch { /* Foto nicht ladbar → Standardbild */ }
+              }
+              const qrMail = qrCodeEmail(firstNameToUse, event.title, qrImageHtml, lang, nameToUse, qrOverride, undefined, qrHeroPhoto);
               // v9.22: Auto-Send-QR für externe Empfänger ebenfalls an den
               // Organizer umleiten (mit klarem Subject-Präfix), nicht an den
               // externen Mail-Empfänger.
@@ -6010,6 +6028,36 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     return { ok: true };
   }
 
+  /**
+   * v30.53: Rückfrage an F&A in der Kommunikationshistorie festhalten.
+   *
+   * Das Fachkonzept verlangt für Bereich 3 „Speicherung der Kommunikation in
+   * der Kommunikationshistorie". Die Rückfrage entsteht aber im Outlook des
+   * Organizers (mailto:) — DEX sieht den Text NIE und bekommt auch keine
+   * Bestätigung, dass die Mail rausging. Protokolliert wird deshalb genau
+   * das, was belegbar ist: dass und wann eine Rückfrage an wen begonnen
+   * wurde. Ein Eintrag „Mail gesendet" wäre eine Behauptung über etwas, das
+   * die App weder auslöst noch prüfen kann — und in einer revisionssicheren
+   * Historie ist eine solche Behauptung schlimmer als eine Lücke.
+   */
+  async function logFAContact(ev: DeloitteEvent, to: string, subject: string): Promise<boolean> {
+    const b = parseBillingOf(ev);
+    if (!b) return false;
+    const idNum = parseInt(ev.id, 10);
+    if (!isFinite(idNum)) return false;
+    const nowIso = new Date().toISOString();
+    const entry: BillingLogEntry = {
+      ts: nowIso,
+      by: currentUserName || currentUserEmail,
+      action: 'Rückfrage an F&A im eigenen Postfach geöffnet',
+      to, subject,
+    };
+    const newB: BillingData = { ...b, log: trimBillingLog([...(b.log || []), entry]) };
+    const ok = await eventService.patchEventOverridesValue(idNum, '_billing', newB);
+    if (ok) applyBillingLocally(ev.id, newB);
+    return ok;
+  }
+
   /** „Als abgerechnet markieren" — nur F&A/Admin (UI-seitig gegated). Der
    *  Status bleibt laut Konzept dauerhaft bestehen; Zeitpunkt + Person
    *  werden protokolliert. */
@@ -6407,7 +6455,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, getLastEventUpdateError, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getEventNumbersForEmail, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, getFAConfig, saveFAConfig, sendFAMail, markEventSettled, maybeSendBillingAutoMails, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, repairAllOrganizerPermissions, restoreCustomFieldDescriptions,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, getLastEventUpdateError, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getEventNumbersForEmail, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, getFAConfig, saveFAConfig, sendFAMail, markEventSettled, logFAContact, maybeSendBillingAutoMails, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, repairAllOrganizerPermissions, restoreCustomFieldDescriptions,
         sendAdminInquiry,
         sendCompleteRegistrationReminder,
         notifyAdminsExternalAudienceAccess,

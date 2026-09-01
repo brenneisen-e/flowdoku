@@ -78,6 +78,8 @@ import { ActionTile, SplitMergeToggle, ActionsCollapsibleCard, ActionsRegistryPr
 import BillingActionPanel from './admin/BillingActionPanel';
 import { parseBillingOf, missingBillingFields, faStatusOf, FA_STATUS_LABELS, FA_STATUS_COLORS, FA_STATUS_NEXT } from '../utils/faBilling';
 import { BILLING_FIELDS, canEditBilling } from '../data/billingFields';
+import MailHeaderImageChooser from './admin/MailHeaderImageChooser';
+import { MailHeaderImage, MAIL_HEADER_IMAGE_DEFAULT, mailHeaderOpts, applyHeroImage, hasOwnHeaderImage, normalizeMailHeaderImage, isDefaultMailHeaderImage } from '../utils/mailHeaderImage';
 
 
 
@@ -180,18 +182,9 @@ function eventHeaderImageLayout(overridesJson: string | undefined): { width: num
   } catch { return fullWidth; }
 }
 
-/**
- * v29.37: Orb-Schutz wie im Wizard (`headerLayoutFor`, v28.29). Ohne eigenes
- * Bild setzt der Flow das Standard-DEX-Logo in den Kopf — 600 px breit wäre
- * das ein bildschirmfüllender, unten abgeschnittener Orb.
- */
-function headerOptsFor(layout: { width: number; paddingV: number; paddingH: number }, hasOwnImage: boolean): { imageWidth: number; imagePaddingV: number; imagePaddingH: number } {
-  return {
-    imageWidth: hasOwnImage ? layout.width : Math.min(layout.width, 180),
-    imagePaddingV: hasOwnImage ? layout.paddingV : Math.max(layout.paddingV, 20),
-    imagePaddingH: hasOwnImage ? layout.paddingH : Math.max(layout.paddingH, 20),
-  };
-}
+// v30.52: `headerOptsFor` ist als `mailHeaderOpts` nach utils/mailHeaderImage
+// gewandert — der Orb-Schutz (v29.37) wird auch beim automatischen QR-Versand
+// gebraucht, wo es keine Oberfläche gibt.
 
 export default function AdminPage(): React.ReactElement {
   const isMobile = useIsMobile();
@@ -877,6 +870,12 @@ export default function AdminPage(): React.ReactElement {
   const [qrEditBody, setQrEditBody] = React.useState('');
   const [qrEditSaving, setQrEditSaving] = React.useState(false);
   const [qrEditSampleBlock, setQrEditSampleBlock] = React.useState('');
+  // v30.52: Kopf-Bild der QR-Mail. Anders als bei Massen-/Einladungsmail wird
+  // das hier GESPEICHERT (im QR-Override), weil die QR-Mail auch automatisch
+  // bei neuen Anmeldungen rausgeht — dann gibt es kein Fenster, in dem man
+  // die Breite noch einstellen könnte.
+  const [qrHeaderImage, setQrHeaderImage] = React.useState<MailHeaderImage>(MAIL_HEADER_IMAGE_DEFAULT);
+  const [qrEventPhotoB64, setQrEventPhotoB64] = React.useState('');
   const [searchQuery, setSearchQuery] = React.useState('');
   // v29.26: „Teilnehmer hinzufügen"-Dialog (Organizer-Ausnahme-Weg).
   const [addParticipantsOpen, setAddParticipantsOpen] = React.useState(false);
@@ -1091,12 +1090,15 @@ export default function AdminPage(): React.ReactElement {
   // direkt in den {{ORB_URL}}-Platzhalter gebacken, damit es unabhängig vom
   // Flow-Default im Mail-Kopf erscheint. massmailEventPhotoB64 wird beim Öffnen
   // des Massenmail-Editors vorgeladen (für Vorschau + Versand).
-  const [massmailHero, setMassmailHero] = React.useState<'logo' | 'event'>('logo');
+  // v30.52: Auswahl UND Maße des Kopf-Bildes liegen jetzt in EINEM Objekt
+  // (utils/mailHeaderImage) — vorher waren es je Mail-Dialog zwei getrennte
+  // States, und die QR-Mail hatte gar keine.
+  const [massmailHeaderImage, setMassmailHeaderImage] = React.useState<MailHeaderImage>(MAIL_HEADER_IMAGE_DEFAULT);
   const [massmailEventPhotoB64, setMassmailEventPhotoB64] = React.useState<string>('');
   // v26.88: dieselbe „Bild im Mail-Kopf"-Wahl für die EINLADUNGSMAIL.
-  const [inviteHero, setInviteHero] = React.useState<'logo' | 'event'>('logo');
+  const [inviteHeaderImage, setInviteHeaderImage] = React.useState<MailHeaderImage>(MAIL_HEADER_IMAGE_DEFAULT);
   // v26.98: Event-Foto im Mail-Composer zuschneiden (invite/massmail).
-  const [composerCrop, setComposerCrop] = React.useState<'invite' | 'massmail' | null>(null);
+  const [composerCrop, setComposerCrop] = React.useState<'invite' | 'massmail' | 'qr' | null>(null);
   const [inviteEventPhotoB64, setInviteEventPhotoB64] = React.useState<string>('');
   // v11.40: Einladungsmail-Modal — Mail mit Anmelde-Link an Organizer (zum
   // Weiterleiten) oder direkt an den hinterlegten Mailverteiler des Events.
@@ -1121,9 +1123,10 @@ export default function AdminPage(): React.ReactElement {
   const [inviteSending, setInviteSending] = React.useState(false);
   // v26.94: Header-Bild-Größe (Breite/Innenabstand) auch in Einladungs- und
   // Massenmail einstellbar — gleiche Steuerung wie im Wizard (inkl. „Volle
-  // Breite"). Transient pro Session; Default = bisheriges Layout (180/30/30).
-  const [inviteImageLayout, setInviteImageLayout] = React.useState<{ width: number; paddingV: number; paddingH: number }>({ width: 180, paddingV: 30, paddingH: 30 });
-  const [massmailImageLayout, setMassmailImageLayout] = React.useState<{ width: number; paddingV: number; paddingH: number }>({ width: 180, paddingV: 30, paddingH: 30 });
+  // Breite"). Transient pro Session.
+  // v30.52: Die beiden Layout-States sind in `massmailHeaderImage` /
+  // `inviteHeaderImage` aufgegangen (oben) — Auswahl und Maße gehören
+  // zusammen, sonst muss jede Aufrufstelle zwei Dinge einsammeln.
   // v22.5: Unter-Überschrift der Einladungsmail (vorher nicht erfasst) + Entwurf-
   // Speicherung pro Event in localStorage, damit ein angefangener Text beim
   // Schließen + erneuten Öffnen erhalten bleibt.
@@ -3782,7 +3785,7 @@ export default function AdminPage(): React.ReactElement {
     setInviteBody(loaded && typeof loaded.body === 'string' ? loaded.body : def.body);
     setInviteTarget(loaded && loaded.target === 'audience' ? 'audience' : 'organizer');
     // v29.37: dito für Einladung und Erinnerung.
-    setInviteImageLayout(eventHeaderImageLayout(ev.emailTemplateOverrides));
+    setInviteHeaderImage(p => ({ ...p, ...eventHeaderImageLayout(ev.emailTemplateOverrides) }));
     // Hydration-Flag im nächsten Tick freigeben, damit das Auto-Speichern erst
     // auf echte Nutzer-Edits reagiert (nicht auf das initiale Laden).
     window.setTimeout(() => { inviteHydratingRef.current = false; }, 0);
@@ -3958,7 +3961,7 @@ export default function AdminPage(): React.ReactElement {
     setMassmailSubheading(loaded && typeof loaded.subheading === 'string' ? loaded.subheading : '');
     setEmailBody(loaded && typeof loaded.body === 'string' ? loaded.body : def.body);
     // v29.37: Kopfbild-Größe aus dem Event übernehmen statt fest 180/30/30.
-    setMassmailImageLayout(eventHeaderImageLayout(ev.emailTemplateOverrides));
+    setMassmailHeaderImage(p => ({ ...p, ...eventHeaderImageLayout(ev.emailTemplateOverrides) }));
     window.setTimeout(() => { massmailHydratingRef.current = false; }, 0);
   };
   const openMassmailPicker = (): void => {
@@ -4007,7 +4010,7 @@ export default function AdminPage(): React.ReactElement {
   // Wechselt der Nutzer das Event, wird die Wahl auf „Standard" zurückgesetzt.
   React.useEffect(() => {
     if (!showEmailModal || !selectedEvent) return;
-    setMassmailHero('logo');
+    setMassmailHeaderImage(p => ({ ...p, hero: 'logo' }));
     setMassmailEventPhotoB64('');
     const url = selectedEvent.imageUrl;
     if (!url) return;
@@ -4023,7 +4026,7 @@ export default function AdminPage(): React.ReactElement {
   // „DEX-Logo".
   React.useEffect(() => {
     if (!showInviteModal || !selectedEvent) return;
-    setInviteHero('logo');
+    setInviteHeaderImage(p => ({ ...p, hero: 'logo' }));
     setInviteEventPhotoB64('');
     const url = selectedEvent.imageUrl;
     if (!url) return;
@@ -4039,22 +4042,18 @@ export default function AdminPage(): React.ReactElement {
   // Event-Bild als Base64 fest eingebacken; sonst bleibt {{ORB_URL}} erhalten,
   // damit der Flow wie gehabt das Standard-Bild (DEX-Logo/Orb bzw. das
   // konfigurierte Mail-Logo des Events) einsetzt.
+  // v30.52: EINE Umsetzung für beide (und die QR-Mail) — s. utils/mailHeaderImage.
   const applyMassmailHero = (wrappedHtml: string): string =>
-    (massmailHero === 'event' && massmailEventPhotoB64)
-      ? wrappedHtml.replace(/\{\{ORB_URL\}\}/g, massmailEventPhotoB64)
-      : wrappedHtml;
-  // v26.88: dito für die Einladungsmail.
+    applyHeroImage(wrappedHtml, massmailHeaderImage, massmailEventPhotoB64);
   const applyInviteHero = (wrappedHtml: string): string =>
-    (inviteHero === 'event' && inviteEventPhotoB64)
-      ? wrappedHtml.replace(/\{\{ORB_URL\}\}/g, inviteEventPhotoB64)
-      : wrappedHtml;
+    applyHeroImage(wrappedHtml, inviteHeaderImage, inviteEventPhotoB64);
   // v29.37: Steht im Kopf ein eigenes Bild? Entweder das eingebackene Event-Foto
   // oder — wenn {{ORB_URL}} stehen bleibt — das Mail-Logo des Events, das der
   // Flow einsetzt. Nur dann darf die volle Breite gelten (sonst Orb-Deckel).
-  const massmailHasOwnImage = (massmailHero === 'event' && !!massmailEventPhotoB64) || !!(selectedEvent && selectedEvent.mailImageBase64);
-  const inviteHasOwnImage = (inviteHero === 'event' && !!inviteEventPhotoB64) || !!(selectedEvent && selectedEvent.mailImageBase64);
-  const massmailHeaderOpts = headerOptsFor(massmailImageLayout, massmailHasOwnImage);
-  const inviteHeaderOpts = headerOptsFor(inviteImageLayout, inviteHasOwnImage);
+  const massmailHasOwnImage = hasOwnHeaderImage(massmailHeaderImage, massmailEventPhotoB64, selectedEvent && selectedEvent.mailImageBase64);
+  const inviteHasOwnImage = hasOwnHeaderImage(inviteHeaderImage, inviteEventPhotoB64, selectedEvent && selectedEvent.mailImageBase64);
+  const massmailHeaderOpts = mailHeaderOpts(massmailHeaderImage, massmailHasOwnImage);
+  const inviteHeaderOpts = mailHeaderOpts(inviteHeaderImage, inviteHasOwnImage);
   // Testmail mit dem aktuellen Stand an die Organizer (zur Kontrolle vor dem
   // echten Massenversand). Geht NICHT an die Teilnehmer.
   const sendMassmailTestToOrganizers = async (): Promise<void> => {
@@ -4116,6 +4115,15 @@ export default function AdminPage(): React.ReactElement {
     setQrEditHeading((ov && ov.heading) || def.heading);
     setQrEditSubheading((ov && ov.subheading) || def.subheading);
     setQrEditBody((ov && ov.bodyHtml) || def.body);
+    // v30.52: gespeichertes Kopf-Bild laden; Event-Foto für die Auswahl
+    // nachziehen (leer = „Event-Foto" bleibt deaktiviert).
+    setQrHeaderImage(normalizeMailHeaderImage(ov && ov.headerImage));
+    setQrEventPhotoB64('');
+    if (tgt.imageUrl) {
+      getCachedImage(tgt.imageUrl)
+        .then(b64 => { if (b64 && b64.indexOf('data:') === 0) setQrEventPhotoB64(b64); })
+        .catch(() => { /* Foto nicht ladbar → Option bleibt deaktiviert */ });
+    }
     // Beispiel-QR (eigene Daten) für die Vorschau — gleicher Aufbau wie im Versand.
     const myName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email;
     const qrData = `DEX|${tgt.eventNumber}|${currentUser.email}`;
@@ -4146,16 +4154,24 @@ export default function AdminPage(): React.ReactElement {
     setQrEditSaving(true);
     try {
       const def = qrEmailDefaults(tgt.emailLanguage || 'EN');
+      // v30.52: Das Kopf-Bild zählt mit. Ohne diese Bedingung würde eine
+      // geänderte Bildbreite bei sonst unveränderten Texten den Override
+      // LÖSCHEN — die Einstellung wäre nach dem Speichern weg.
       const isDefault = qrEditSubject.trim() === def.subject.trim()
         && qrEditHeading.trim() === def.heading.trim()
         && qrEditSubheading.trim() === def.subheading.trim()
-        && qrEditBody.trim() === def.body.trim();
+        && qrEditBody.trim() === def.body.trim()
+        && isDefaultMailHeaderImage(qrHeaderImage);
       let all: Record<string, unknown> = {};
       try { all = JSON.parse(tgt.emailTemplateOverrides || '{}') || {}; } catch { all = {}; }
       if (isDefault) {
         delete all['QRCode'];
       } else {
-        all['QRCode'] = { subject: qrEditSubject, heading: qrEditHeading, subheading: qrEditSubheading, bodyHtml: qrEditBody };
+        all['QRCode'] = {
+          subject: qrEditSubject, heading: qrEditHeading, subheading: qrEditSubheading, bodyHtml: qrEditBody,
+          // Nur Auswahl + Zahlen — NIE das Foto selbst (s. QrEmailOverride).
+          headerImage: { ...qrHeaderImage },
+        };
       }
       const json = JSON.stringify(all);
       const ok = await updateEvent(tgt.id, { 'EmailTemplateOverrides': json });
@@ -4203,6 +4219,23 @@ export default function AdminPage(): React.ReactElement {
     return `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
   };
 
+  /**
+   * v30.52: Löst das Kopf-Bild der QR-Mail auf.
+   *
+   * Nur wenn im Override „Event-Foto" gewählt ist, wird das Bild als Base64
+   * geholt und fest eingebacken; sonst bleibt `{{ORB_URL}}` stehen und der
+   * Flow setzt wie bisher das Standard-Bild. `getCachedImage` cacht — pro
+   * Sitzung fällt der Abruf also einmal an, nicht je Teilnehmer.
+   */
+  const qrHeroPhotoFor = async (ev: DeloitteEvent, override?: QrEmailOverride): Promise<string> => {
+    const hdr = normalizeMailHeaderImage(override && override.headerImage);
+    if (hdr.hero !== 'event' || !ev.imageUrl) return '';
+    try {
+      const b64 = await getCachedImage(ev.imageUrl);
+      return (b64 && b64.indexOf('data:') === 0) ? b64 : '';
+    } catch { return ''; }
+  };
+
   const qrPreviewAction = async (): Promise<void> => {
     if (!selectedEvent) return;
     setQrPreviewLoading(true);
@@ -4212,7 +4245,8 @@ export default function AdminPage(): React.ReactElement {
       const orgFirstName = currentUser.firstName || orgFullName.split(/\s+/)[0] || orgFullName;
       const qrData = `DEX|${selectedEvent.eventNumber}|${orgEmail}`;
       const qrImageHtml = await buildQrImageHtml(qrData);
-      const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName, getQrMailOverride(selectedEvent), SAMPLE_QR_ID);
+      const qrOv = getQrMailOverride(selectedEvent);
+      const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName, qrOv, SAMPLE_QR_ID, await qrHeroPhotoFor(selectedEvent, qrOv));
       let eventOrb = '';
       try {
         const ov = JSON.parse(selectedEvent.emailTemplateOverrides || '{}');
@@ -4241,6 +4275,10 @@ export default function AdminPage(): React.ReactElement {
       const recipients = orgEmails.length > 0
         ? orgEmails.map((em, i) => ({ email: em, rawName: orgNames[i] || em }))
         : [{ email: currentUser.email, rawName: `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email }];
+      // v30.52: Test = Vorschau — also auch beim Kopf-Bild den AKTUELLEN
+      // Editor-Stand nehmen, wenn der Test aus dem Editor kommt.
+      const testOverride = liveOverride || getQrMailOverride(ev);
+      const testHeroPhoto = await qrHeroPhotoFor(ev, testOverride);
       let sent = 0;
       for (const r of recipients) {
         const raw = (r.rawName || '').trim();
@@ -4249,7 +4287,7 @@ export default function AdminPage(): React.ReactElement {
         const firstName = raw.indexOf(',') >= 0 ? (raw.substring(raw.indexOf(',') + 1).trim().split(/\s+/)[0] || fullName) : (fullName.split(/\s+/)[0] || fullName);
         const qrData = `DEX|${ev.eventNumber}|${r.email}`;
         const qrImageHtml = await buildQrImageHtml(qrData);
-        const emailData = qrCodeEmail(firstName, ev.title, qrImageHtml, ev.emailLanguage || 'EN', fullName, liveOverride || getQrMailOverride(ev), SAMPLE_QR_ID);
+        const emailData = qrCodeEmail(firstName, ev.title, qrImageHtml, ev.emailLanguage || 'EN', fullName, testOverride, SAMPLE_QR_ID, testHeroPhoto);
         await eventServiceRef.queueEmail(emailData.subject, r.email, fullName, emailData.body, 'QRCode', ev.title, ev.id);
         sent++; setQrSentCount(sent);
       }
@@ -4276,7 +4314,8 @@ export default function AdminPage(): React.ReactElement {
       const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
       const firstName = reg.Vorname || (reg.ParticipantName || '').trim().split(/\s+/)[0] || name;
       const qrImageHtml = await buildQrImageHtml(qrData);
-      const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', name, getQrMailOverride(selectedEvent), reg.TeilnehmerID);
+      const sendOv = getQrMailOverride(selectedEvent);
+      const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', name, sendOv, reg.TeilnehmerID, await qrHeroPhotoFor(selectedEvent, sendOv));
       // v27.11: Member-Firm-Adressen zählen als intern → QR-Mail direkt.
       const isExternal = isExternalEmail(reg.ParticipantEmail);
       if (isExternal) {
@@ -13584,10 +13623,18 @@ export default function AdminPage(): React.ReactElement {
         const savedHeading = (savedOv && savedOv.heading) || def.heading;
         const savedSubheading = (savedOv && savedOv.subheading) || def.subheading;
         const savedBody = (savedOv && savedOv.bodyHtml) || def.body;
+        const savedHeaderImage = normalizeMailHeaderImage(savedOv && savedOv.headerImage);
         const qrEditDirty = qrEditSubject.trim() !== savedSubject.trim()
           || qrEditHeading.trim() !== savedHeading.trim()
           || qrEditSubheading.trim() !== savedSubheading.trim()
-          || qrEditBody.trim() !== savedBody.trim();
+          || qrEditBody.trim() !== savedBody.trim()
+          // v30.52: Auch eine geänderte Kopf-Bild-Einstellung ist eine
+          // ungespeicherte Änderung — sonst sperrt der Versand nicht, obwohl
+          // er den alten Stand verschicken würde.
+          || qrHeaderImage.hero !== savedHeaderImage.hero
+          || qrHeaderImage.width !== savedHeaderImage.width
+          || qrHeaderImage.paddingV !== savedHeaderImage.paddingV
+          || qrHeaderImage.paddingH !== savedHeaderImage.paddingH;
         const noCodeCount = registrations.filter(r => r.Status === 'Angemeldet').length;
         const withCodeCount = registrations.filter(r => r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length;
         const leftPanel = (
@@ -13623,7 +13670,7 @@ export default function AdminPage(): React.ReactElement {
               type="button"
               className="btn btn-outline"
               disabled={isSendingQR}
-              onClick={() => { qrTestSendAction({ subject: qrEditSubject, heading: qrEditHeading, subheading: qrEditSubheading, bodyHtml: qrEditBody }, isSubTarget ? qrTgt : undefined).catch(() => { /* */ }); }}
+              onClick={() => { qrTestSendAction({ subject: qrEditSubject, heading: qrEditHeading, subheading: qrEditSubheading, bodyHtml: qrEditBody, headerImage: { ...qrHeaderImage } }, isSubTarget ? qrTgt : undefined).catch(() => { /* */ }); }}
               style={{ fontSize: '0.82rem', width: '100%' }}
             >
               {isDe ? 'Test an Organisatoren (aktueller Text)' : 'Test to organizers (current text)'}
@@ -13672,6 +13719,19 @@ export default function AdminPage(): React.ReactElement {
             {isDe
               ? <><strong>Fester Bestandteil:</strong> Der Platzhalter <code>{'{{QR_BLOCK}}'}</code> steht für den persönlichen QR-Code mit Name + Event als Klartext — er lässt sich verschieben, aber nicht entfernen (fehlt er im Text, wird der Block beim Versand automatisch ans Ende gesetzt). Verfügbare Platzhalter: <code>{'{{Vorname}}'}</code>, <code>{'{{Name}}'}</code>, <code>{'{{EventTitle}}'}</code>. <strong>Der gespeicherte Text gilt für alle QR-Mails dieses Events</strong> — manueller Versand UND automatischer Versand bei neuen Anmeldungen.</>
               : <><strong>Fixed element:</strong> the placeholder <code>{'{{QR_BLOCK}}'}</code> represents the personal QR code with name + event as plain text — it can be moved but not removed (if missing, the block is appended automatically when sending). Available placeholders: <code>{'{{Vorname}}'}</code>, <code>{'{{Name}}'}</code>, <code>{'{{EventTitle}}'}</code>. <strong>The saved text applies to all QR emails of this event</strong> — manual sending AND the automatic send for new registrations.</>}
+            {/* v30.52: Kopf-Bild — dieselbe Auswahl wie in Massen- und
+                Einladungsmail. Hier wird sie MITGESPEICHERT, weil die QR-Mail
+                auch automatisch rausgeht. */}
+            <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px dashed var(--dex-gray-200)' }}>
+              <MailHeaderImageChooser
+                value={qrHeaderImage}
+                onChange={setQrHeaderImage}
+                eventPhotoB64={qrEventPhotoB64}
+                disabled={qrEditSaving || isSendingQR}
+                onCrop={() => setComposerCrop('qr')}
+                isDe={isDe}
+              />
+            </div>
           </div>
         );
         return (
@@ -13701,7 +13761,13 @@ export default function AdminPage(): React.ReactElement {
               { key: '{{EventTitle}}', label: isDe ? 'Event-Titel' : 'Event title' },
               { key: '{{QR_BLOCK}}', label: isDe ? 'QR-Code-Block (fix)' : 'QR code block (fixed)' },
             ]}
-            imageBase64={customLogo}
+            imageBase64={(qrHeaderImage.hero === 'event' && qrEventPhotoB64) ? qrEventPhotoB64 : customLogo}
+            imageWidth={qrHeaderImage.width}
+            imagePaddingV={qrHeaderImage.paddingV}
+            imagePaddingH={qrHeaderImage.paddingH}
+            onImageWidthChange={(w) => setQrHeaderImage(p => ({ ...p, width: w }))}
+            onImagePaddingVChange={(v) => setQrHeaderImage(p => ({ ...p, paddingV: v }))}
+            onImagePaddingHChange={(h) => setQrHeaderImage(p => ({ ...p, paddingH: h }))}
             headerExtra={headerExtra}
             extraAction={{
               label: qrEditSaving
@@ -14895,6 +14961,47 @@ export default function AdminPage(): React.ReactElement {
           EventTitle: selectedEvent.title,
           Organizer: orgNames,
         };
+        /**
+         * v30.51.1: Das tatsächliche CC — EINMAL berechnet, für Anzeige UND
+         * Versand.
+         *
+         * Zwei Regeln, die nicht dieselbe sind:
+         *  - Das AUTOMATISCHE Organizer-CC (v17.10) wird gegen die Empfänger
+         *    entdoppelt. Es soll niemanden doppelt eintragen, den ohnehin
+         *    jemand anschreibt.
+         *  - Ein SELBST eingetragenes CC wird nicht gefiltert. Der gemeldete
+         *    Fall: zwei Personen eingetragen, angekommen ist eine — die andere
+         *    war selbst Teilnehmer und stand damit schon im An-Feld, also warf
+         *    der Filter sie still hinaus. Wer jemanden ausdrücklich auf CC
+         *    setzt, hat sich dabei etwas gedacht. Doppelt zugestellt wird
+         *    nichts: Exchange liefert eine Adresse einmal aus, auch wenn sie
+         *    in To und Cc steht.
+         *
+         * Dass die Liste hier oben steht und nicht erst im Versand, ist der
+         * eigentliche Punkt: Vorher stand im Dialog eine ZUSAGE („Organizer
+         * kommen automatisch auf CC"), während der Versand etwas anderes tat.
+         * Jetzt zeigt der Dialog genau die Liste, die verschickt wird.
+         */
+        const massmailCcPreview = ((): string[] => {
+          const recipientSet = new Set(recipients.map(r => (r.ParticipantEmail || '').toLowerCase()));
+          const seen = new Set<string>();
+          const out: string[] = [];
+          for (const raw of (selectedEvent.organizerEmails || [])) {
+            const e = (raw || '').trim();
+            const lc = e.toLowerCase();
+            if (!e || recipientSet.has(lc) || seen.has(lc)) continue;
+            seen.add(lc);
+            out.push(e);
+          }
+          for (const raw of massmailCc) {
+            const e = (raw || '').trim();
+            const lc = e.toLowerCase();
+            if (!e || seen.has(lc)) continue;
+            seen.add(lc);
+            out.push(e);
+          }
+          return out;
+        })();
         const customLogo = (() => {
           try {
             const o = JSON.parse(selectedEvent.emailTemplateOverrides || '{}');
@@ -14916,21 +15023,7 @@ export default function AdminPage(): React.ReactElement {
             : `Event ${selectedEvent.title}`;
           const fullBody = applyMassmailHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody, undefined, massmailHeaderOpts));
           const allEmails = recipients.map(r => r.ParticipantEmail).join(';');
-          // v17.10: Organizer immer auf CC (falls nicht ohnehin schon
-          // unter den Empfängern). Dedup per lowercase, semicolon-join.
-          const orgEmails = (selectedEvent.organizerEmails || []).filter(Boolean);
-          const recipientSet = new Set(recipients.map(r => (r.ParticipantEmail || '').toLowerCase()));
-          // v30.51: zusätzlich das frei gewählte CC. Gegen Empfänger UND
-          // gegeneinander entdoppelt — dieselbe Person zweimal im CC ist beim
-          // Empfänger sichtbar und sieht nach Fehler aus.
-          const ccSeen = new Set<string>();
-          const ccList: string[] = [];
-          for (const e of orgEmails.concat(massmailCc)) {
-            const lc = (e || '').trim().toLowerCase();
-            if (!lc || recipientSet.has(lc) || ccSeen.has(lc)) continue;
-            ccSeen.add(lc);
-            ccList.push(e.trim());
-          }
+          const ccList = massmailCcPreview;
           const ccString = ccList.length > 0 ? ccList.join(';') : undefined;
           try {
             await eventServiceRef.queueEmail(
@@ -14944,8 +15037,8 @@ export default function AdminPage(): React.ReactElement {
             // liest sich eine höhere Zahl so, als hätte das Event plötzlich
             // mehr Organizer.
             const ccInfo = ccString
-              ? ` (auf CC: ${ccList.length}${massmailCc.length > 0 ? `, davon ${massmailCc.length} zusätzlich` : ''})`
-              : ' (Organizer schon in Empfängerliste)';
+              ? ` (auf CC: ${ccList.join(', ')})`
+              : ' (niemand auf CC — alle Organizer stehen schon im An-Feld)';
             showAlert(`E-Mail an ${recipients.length} Empfänger in die Warteschlange eingetragen.${ccInfo}`);
             setShowEmailModal(false);
             setMassmailMode('closed');
@@ -14963,7 +15056,8 @@ export default function AdminPage(): React.ReactElement {
           : massmailAudience === 'activePlusWait' ? 'Teilnehmer + Warteliste'
           : massmailAudience === 'nachruecker' ? 'Nachrücker (manueller Abgleich)'
           : 'Alle aktiven Teilnehmer';
-        const previewToLine = `${recipients.length} Empfänger — ${audienceLabel} · Organizer in CC${massmailCc.length > 0 ? ` + ${massmailCc.length} zusätzlich` : ''}`;
+        // v30.51.1: Die Vorschau nennt die WIRKLICHE CC-Zahl (s. massmailCcPreview).
+        const previewToLine = `${recipients.length} Empfänger — ${audienceLabel}${massmailCcPreview.length > 0 ? ` · ${massmailCcPreview.length} in CC` : ' · niemand in CC'}`;
         const previewSubjectLine = replacePlaceholders(emailSubject, previewVars);
         return (
           <HtmlEditorModal
@@ -14987,19 +15081,32 @@ export default function AdminPage(): React.ReactElement {
               { key: '{{EventTitle}}', label: 'Event' },
               { key: '{{Organizer}}', label: 'Organizer' },
             ]}
-            imageBase64={(massmailHero === 'event' && massmailEventPhotoB64) ? massmailEventPhotoB64 : customLogo}
-            imageWidth={massmailImageLayout.width}
-            imagePaddingV={massmailImageLayout.paddingV}
-            imagePaddingH={massmailImageLayout.paddingH}
-            onImageWidthChange={(w) => setMassmailImageLayout(p => ({ ...p, width: w }))}
-            onImagePaddingVChange={(v) => setMassmailImageLayout(p => ({ ...p, paddingV: v }))}
-            onImagePaddingHChange={(h) => setMassmailImageLayout(p => ({ ...p, paddingH: h }))}
+            imageBase64={(massmailHeaderImage.hero === 'event' && massmailEventPhotoB64) ? massmailEventPhotoB64 : customLogo}
+            imageWidth={massmailHeaderImage.width}
+            imagePaddingV={massmailHeaderImage.paddingV}
+            imagePaddingH={massmailHeaderImage.paddingH}
+            onImageWidthChange={(w) => setMassmailHeaderImage(p => ({ ...p, width: w }))}
+            onImagePaddingVChange={(v) => setMassmailHeaderImage(p => ({ ...p, paddingV: v }))}
+            onImagePaddingHChange={(h) => setMassmailHeaderImage(p => ({ ...p, paddingH: h }))}
             headerExtra={(
               <div style={{ padding: 12, background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)', marginBottom: 4 }}>
                 <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginBottom: 8 }}>
                   {isDe
-                    ? <>Geht an <strong>{recipients.length}</strong> Empfänger (die oben gewählte Gruppe). Organizer kommen automatisch auf CC.</>
-                    : <>Goes to <strong>{recipients.length}</strong> recipients (the group selected above). Organizers are automatically on CC.</>}
+                    ? <>Geht an <strong>{recipients.length}</strong> Empfänger (die oben gewählte Gruppe).</>
+                    : <>Goes to <strong>{recipients.length}</strong> recipients (the group selected above).</>}
+                </div>
+                {/* v30.51.1: Was WIRKLICH ins CC geht, statt einer Zusage.
+                    Vorher stand hier „Organizer kommen automatisch auf CC" —
+                    das stimmt aber genau dann nicht, wenn die Organizer selbst
+                    am Event teilnehmen (der Normalfall beim eigenen Event):
+                    Dann stehen sie schon im An-Feld und werden nicht noch
+                    einmal ins CC gesetzt. Wer das nicht weiß, sucht den Fehler
+                    in der App. */}
+                <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginBottom: 8 }}>
+                  <strong style={{ color: 'var(--dex-gray-700)' }}>CC: </strong>
+                  {massmailCcPreview.length === 0
+                    ? <span style={{ color: 'var(--dex-gray-500)' }}>niemand — alle Organizer stehen bereits im An-Feld.</span>
+                    : <span style={{ wordBreak: 'break-word' }}>{massmailCcPreview.join(', ')}</span>}
                 </div>
                 {/* v30.51: Zusätzliches CC. Bewusst hier oben, direkt unter der
                     Empfänger-Zeile — CC ist eine Aussage über den Verteiler,
@@ -15018,48 +15125,17 @@ export default function AdminPage(): React.ReactElement {
                     disabled={emailSending}
                   />
                 </div>
-                {/* v26.78: Bild im Mail-Kopf wählen — Standard (DEX-Logo/Orb) oder
-                    das Event-Foto. „Event-Foto" nur wählbar, wenn das Event ein
-                    Bild hat (dann als Base64 in die Mail eingebacken). */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--dex-gray-600)' }}>{isDe ? 'Bild im Mail-Kopf:' : 'Header image:'}</span>
-                  <div style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--dex-gray-300)' }}>
-                    {([
-                      { key: 'logo' as const, label: isDe ? 'DEX-Logo' : 'DEX logo', enabled: true },
-                      { key: 'event' as const, label: isDe ? 'Event-Foto' : 'Event photo', enabled: !!massmailEventPhotoB64 },
-                    ]).map(opt => {
-                      const active = massmailHero === opt.key;
-                      return (
-                        <button
-                          key={opt.key}
-                          type="button"
-                          disabled={emailSending || !opt.enabled}
-                          onClick={() => opt.enabled && setMassmailHero(opt.key)}
-                          title={!opt.enabled ? (isDe ? 'Dieses Event hat kein Bild hinterlegt.' : 'This event has no image set.') : undefined}
-                          style={{
-                            padding: '6px 14px', fontSize: '0.78rem', border: 'none', cursor: (opt.enabled && !emailSending) ? 'pointer' : 'not-allowed',
-                            background: active ? 'var(--dex-green)' : 'transparent',
-                            color: active ? '#fff' : (opt.enabled ? 'var(--dex-gray-600)' : 'var(--dex-gray-400)'),
-                            fontWeight: active ? 700 : 500, opacity: opt.enabled ? 1 : 0.6,
-                          }}
-                        >
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {massmailHero === 'event' && !!massmailEventPhotoB64 && (
-                    <button type="button" disabled={emailSending} onClick={() => setComposerCrop('massmail')}
-                      style={{ padding: '5px 12px', fontSize: '0.75rem', fontWeight: 600, cursor: emailSending ? 'not-allowed' : 'pointer', border: '1px solid var(--dex-green, #86bc25)', borderRadius: 6, background: 'rgba(134,188,37,0.10)', color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                      {isDe ? 'Foto zuschneiden' : 'Crop photo'}
-                    </button>
-                  )}
-                  <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
-                    {massmailHero === 'event'
-                      ? (isDe ? 'Das Event-Foto erscheint im Mail-Kopf.' : 'The event photo is shown in the header.')
-                      : (isDe ? 'Standard-Bild (DEX-Logo bzw. dein Mail-Logo).' : 'Default image (DEX logo or your mail logo).')}
-                  </span>
-                </div>
+                {/* v30.52: gemeinsame Auswahl (s. admin/MailHeaderImageChooser) —
+                    vorher stand dieselbe Reiter-Reihe hier und in der
+                    Einladungsmail wortgleich ein zweites Mal. */}
+                <MailHeaderImageChooser
+                  value={massmailHeaderImage}
+                  onChange={setMassmailHeaderImage}
+                  eventPhotoB64={massmailEventPhotoB64}
+                  disabled={emailSending}
+                  onCrop={() => setComposerCrop('massmail')}
+                  isDe={isDe}
+                />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   <button type="button" className="btn btn-secondary" onClick={saveMassmailDraft} disabled={emailSending} style={{ fontSize: '0.78rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     <Check size={14} /> {isDe ? 'Entwurf speichern' : 'Save draft'}
@@ -15148,15 +15224,24 @@ export default function AdminPage(): React.ReactElement {
         // antworten können. Duplikate gegenüber TO werden rausgefiltert
         // (z.B. wenn der Sender selbst Organizer ist und 'An mich' wählt).
         const toLcSet = new Set(targetEmails.map(e => (e || '').toLowerCase()));
-        // v30.51: Organizer PLUS das frei gewählte CC, entdoppelt gegen die
-        // Empfänger und gegeneinander.
+        // v30.51.1: Das AUTOMATISCHE Organizer-CC wird gegen die Empfänger
+        // entdoppelt, ein selbst eingetragenes CC NICHT — sonst verschwindet
+        // eine ausdrücklich gewählte Person still, nur weil sie ohnehin
+        // Empfänger ist (s. Massenmail).
         const ccEmails = ((): string[] => {
           const seen = new Set<string>();
           const out: string[] = [];
-          for (const raw of (selectedEvent.organizerEmails || []).concat(inviteCc)) {
+          for (const raw of (selectedEvent.organizerEmails || [])) {
             const e = (raw || '').trim();
             const lc = e.toLowerCase();
             if (!e || toLcSet.has(lc) || seen.has(lc)) continue;
+            seen.add(lc);
+            out.push(e);
+          }
+          for (const raw of inviteCc) {
+            const e = (raw || '').trim();
+            const lc = e.toLowerCase();
+            if (!e || seen.has(lc)) continue;
             seen.add(lc);
             out.push(e);
           }
@@ -15580,48 +15665,16 @@ export default function AdminPage(): React.ReactElement {
                 disabled={inviteSending}
               />
             </div>
-            {/* v26.88: Bild im Mail-Kopf — Standard (DEX-Logo/Orb) oder Event-Foto.
-                „Event-Foto" nur wählbar, wenn das Event ein Bild hat (dann als
-                Base64 fest eingebacken; sonst bleibt der ORB-Platzhalter für den
-                Flow). Spiegelt die Massenmail-Option. */}
-            <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px dashed var(--dex-gray-200)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--dex-gray-600)' }}>{isDe ? 'Bild im Mail-Kopf:' : 'Header image:'}</span>
-              <div style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--dex-gray-300)' }}>
-                {([
-                  { key: 'logo' as const, label: isDe ? 'DEX-Logo' : 'DEX logo', enabled: true },
-                  { key: 'event' as const, label: isDe ? 'Event-Foto' : 'Event photo', enabled: !!inviteEventPhotoB64 },
-                ]).map(opt => {
-                  const active = inviteHero === opt.key;
-                  return (
-                    <button
-                      key={opt.key}
-                      type="button"
-                      disabled={inviteSending || !opt.enabled}
-                      onClick={() => opt.enabled && setInviteHero(opt.key)}
-                      title={!opt.enabled ? (isDe ? 'Dieses Event hat kein Bild hinterlegt.' : 'This event has no image set.') : undefined}
-                      style={{
-                        padding: '6px 14px', fontSize: '0.78rem', border: 'none', cursor: (opt.enabled && !inviteSending) ? 'pointer' : 'not-allowed',
-                        background: active ? 'var(--dex-green)' : 'transparent',
-                        color: active ? '#fff' : (opt.enabled ? 'var(--dex-gray-600)' : 'var(--dex-gray-400)'),
-                        fontWeight: active ? 700 : 500, opacity: opt.enabled ? 1 : 0.6,
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-              {inviteHero === 'event' && !!inviteEventPhotoB64 && (
-                <button type="button" disabled={inviteSending} onClick={() => setComposerCrop('invite')}
-                  style={{ padding: '5px 12px', fontSize: '0.75rem', fontWeight: 600, cursor: inviteSending ? 'not-allowed' : 'pointer', border: '1px solid var(--dex-green, #86bc25)', borderRadius: 6, background: 'rgba(134,188,37,0.10)', color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                  {isDe ? 'Foto zuschneiden' : 'Crop photo'}
-                </button>
-              )}
-              <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
-                {inviteHero === 'event'
-                  ? (isDe ? 'Das Event-Foto erscheint im Mail-Kopf.' : 'The event photo is shown in the header.')
-                  : (isDe ? 'Standard-Bild (DEX-Logo bzw. dein Mail-Logo).' : 'Default image (DEX logo or your mail logo).')}
-              </span>
+            {/* v30.52: dieselbe Auswahl wie in Massen- und QR-Mail. */}
+            <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px dashed var(--dex-gray-200)' }}>
+              <MailHeaderImageChooser
+                value={inviteHeaderImage}
+                onChange={setInviteHeaderImage}
+                eventPhotoB64={inviteEventPhotoB64}
+                disabled={inviteSending}
+                onCrop={() => setComposerCrop('invite')}
+                isDe={isDe}
+              />
             </div>
             {/* v22.5/v22.6: Entwurf speichern (Button) + Auto-Speichern-Hinweis
                 + Zurücksetzen. */}
@@ -15701,13 +15754,13 @@ export default function AdminPage(): React.ReactElement {
               { key: '{{Link}}', label: isDe ? 'Anmelde-Link' : 'Registration link' },
               { key: '{{Organizer}}', label: 'Organizer' },
             ]}
-            imageBase64={(inviteHero === 'event' && inviteEventPhotoB64) ? inviteEventPhotoB64 : customLogo}
-            imageWidth={inviteImageLayout.width}
-            imagePaddingV={inviteImageLayout.paddingV}
-            imagePaddingH={inviteImageLayout.paddingH}
-            onImageWidthChange={(w) => setInviteImageLayout(p => ({ ...p, width: w }))}
-            onImagePaddingVChange={(v) => setInviteImageLayout(p => ({ ...p, paddingV: v }))}
-            onImagePaddingHChange={(h) => setInviteImageLayout(p => ({ ...p, paddingH: h }))}
+            imageBase64={(inviteHeaderImage.hero === 'event' && inviteEventPhotoB64) ? inviteEventPhotoB64 : customLogo}
+            imageWidth={inviteHeaderImage.width}
+            imagePaddingV={inviteHeaderImage.paddingV}
+            imagePaddingH={inviteHeaderImage.paddingH}
+            onImageWidthChange={(w) => setInviteHeaderImage(p => ({ ...p, width: w }))}
+            onImagePaddingVChange={(v) => setInviteHeaderImage(p => ({ ...p, paddingV: v }))}
+            onImagePaddingHChange={(h) => setInviteHeaderImage(p => ({ ...p, paddingH: h }))}
             headerExtra={headerExtra}
             extraAction={{
               label: inviteSending
@@ -15728,12 +15781,13 @@ export default function AdminPage(): React.ReactElement {
       {composerCrop && (
         <ImageCropModal
           open={!!composerCrop}
-          src={composerCrop === 'invite' ? inviteEventPhotoB64 : massmailEventPhotoB64}
+          src={composerCrop === 'invite' ? inviteEventPhotoB64 : composerCrop === 'qr' ? qrEventPhotoB64 : massmailEventPhotoB64}
           isDe={isDe}
           allowAspect
           onClose={() => setComposerCrop(null)}
           onApply={(dataUrl) => {
             if (composerCrop === 'invite') setInviteEventPhotoB64(dataUrl);
+            else if (composerCrop === 'qr') setQrEventPhotoB64(dataUrl);
             else setMassmailEventPhotoB64(dataUrl);
             setComposerCrop(null);
           }}

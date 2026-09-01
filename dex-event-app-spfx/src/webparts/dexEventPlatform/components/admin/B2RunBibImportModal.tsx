@@ -103,6 +103,86 @@ export default function B2RunBibImportModal(props: {
     props.onDone();
   };
 
+  /**
+   * v30.53: Den Abgleich als Excel herunterladen.
+   *
+   * Die Vorschau am Bildschirm beantwortet „was passiert jetzt?" — die Datei
+   * beantwortet „was muss ich beim Veranstalter noch tun?". Das sind zwei
+   * verschiedene Momente: Die Ummeldungen macht man später, an einem anderen
+   * Rechner, womöglich am Telefon. Ein Fenster, das man dafür offen halten
+   * muss, ist genau der Grund, warum Dinge liegen bleiben.
+   *
+   * EIN Blatt mit einer Spalte „Was ist zu tun" statt vier Blättern: Die
+   * Liste wird abgearbeitet, nicht ausgewertet — und beim Abarbeiten will
+   * man filtern, nicht zwischen Reitern springen.
+   */
+  const downloadReport = async (): Promise<void> => {
+    if (!report || busy) return;
+    setBusy(true);
+    setProgress('Excel wird erzeugt…');
+    try {
+      const rows: (string | number)[][] = [[
+        'Was ist zu tun', 'Startnummer', 'Gemeldete Person', 'E-Mail (gemeldet)',
+        'Nummer geht an', 'E-Mail (neu)', 'Startblock laut Datei', 'Hinweis',
+      ]];
+      for (const m of report.matches) {
+        if (m.kind === 'direct') {
+          rows.push([
+            'Nichts — Nummer bleibt bei der Person', m.row.bib, nameOf(m.listed), m.row.email,
+            '', '', m.row.block,
+            m.blockMismatch ? `Startblock in DEX: ${m.blockMismatch.dex}` : '',
+          ]);
+        } else if (m.kind === 'transfer') {
+          rows.push([
+            'UMMELDEN beim Veranstalter', m.row.bib, nameOf(m.listed), m.row.email,
+            nameOf(m.target), m.target?.ParticipantEmail || '', m.row.block,
+            (m.chain && m.chain.length > 1) ? `über ${m.chain.length - 1} weitere Abmeldung(en)` : '',
+          ]);
+        } else if (m.kind === 'orphan') {
+          rows.push([
+            'ABMELDEN beim Veranstalter oder jemanden nachmelden', m.row.bib, nameOf(m.listed), m.row.email,
+            '', '', m.row.block, 'Abgemeldet, niemand nachgerückt',
+          ]);
+        } else {
+          rows.push([
+            'Prüfen — Adresse in DEX unbekannt', m.row.bib,
+            `${m.row.firstName} ${m.row.lastName}`.trim(), m.row.email,
+            '', '', m.row.block, 'Verdacht: zweite Schreibweise derselben Person',
+          ]);
+        }
+      }
+      for (const r of report.missingFromFile) {
+        rows.push([
+          'NACHMELDEN beim Veranstalter — keine Startnummer', '', nameOf(r), r.ParticipantEmail || '',
+          '', '', '', 'In DEX angemeldet, steht nicht in der Datei',
+        ]);
+      }
+      for (const bib of report.duplicateBibs) {
+        rows.push(['Prüfen — Startnummer doppelt in der Datei', bib, '', '', '', '', '', '']);
+      }
+      const XLSX = await import('xlsx');
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (ws as any)['!cols'] = [{ wch: 44 }, { wch: 13 }, { wch: 26 }, { wch: 32 }, { wch: 26 }, { wch: 32 }, { wch: 30 }, { wch: 40 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Startnummern-Abgleich');
+      const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const safeName = (props.event.title || 'event').replace(/[^a-zA-Z0-9]/g, '_');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Startnummern_Abgleich_${safeName}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 400);
+    } catch (err) {
+      console.warn('[DEX] Abgleich-Export fehlgeschlagen:', err);
+      await showAlert('Die Excel-Datei konnte nicht erzeugt werden — bitte erneut versuchen.', { variant: 'error' });
+    } finally { setBusy(false); setProgress(''); }
+  };
+
   const group = (kind: BibMatch['kind']): BibMatch[] => (report ? report.matches.filter(m => m.kind === kind) : []);
   const transfers = group('transfer');
   const orphans = group('orphan');
@@ -257,6 +337,14 @@ export default function B2RunBibImportModal(props: {
                 onClick={() => { void write(); }}
               >
                 {busy ? (progress || 'Bitte warten…') : 'Startnummern jetzt schreiben'}
+              </button>
+              <button
+                className="btn btn-secondary"
+                disabled={busy}
+                onClick={() => { void downloadReport(); }}
+                title="Lädt den kompletten Abgleich als Excel — mit einer Spalte „Was ist zu tun\u201c zum Abarbeiten beim Veranstalter."
+              >
+                Abgleich als Excel laden
               </button>
               <button className="btn btn-secondary" disabled={busy} onClick={props.onClose}>
                 {written ? 'Schließen' : 'Abbrechen'}
