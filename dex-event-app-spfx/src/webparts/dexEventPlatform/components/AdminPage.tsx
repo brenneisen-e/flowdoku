@@ -14895,6 +14895,47 @@ export default function AdminPage(): React.ReactElement {
           EventTitle: selectedEvent.title,
           Organizer: orgNames,
         };
+        /**
+         * v30.51.1: Das tatsächliche CC — EINMAL berechnet, für Anzeige UND
+         * Versand.
+         *
+         * Zwei Regeln, die nicht dieselbe sind:
+         *  - Das AUTOMATISCHE Organizer-CC (v17.10) wird gegen die Empfänger
+         *    entdoppelt. Es soll niemanden doppelt eintragen, den ohnehin
+         *    jemand anschreibt.
+         *  - Ein SELBST eingetragenes CC wird nicht gefiltert. Der gemeldete
+         *    Fall: zwei Personen eingetragen, angekommen ist eine — die andere
+         *    war selbst Teilnehmer und stand damit schon im An-Feld, also warf
+         *    der Filter sie still hinaus. Wer jemanden ausdrücklich auf CC
+         *    setzt, hat sich dabei etwas gedacht. Doppelt zugestellt wird
+         *    nichts: Exchange liefert eine Adresse einmal aus, auch wenn sie
+         *    in To und Cc steht.
+         *
+         * Dass die Liste hier oben steht und nicht erst im Versand, ist der
+         * eigentliche Punkt: Vorher stand im Dialog eine ZUSAGE („Organizer
+         * kommen automatisch auf CC"), während der Versand etwas anderes tat.
+         * Jetzt zeigt der Dialog genau die Liste, die verschickt wird.
+         */
+        const massmailCcPreview = ((): string[] => {
+          const recipientSet = new Set(recipients.map(r => (r.ParticipantEmail || '').toLowerCase()));
+          const seen = new Set<string>();
+          const out: string[] = [];
+          for (const raw of (selectedEvent.organizerEmails || [])) {
+            const e = (raw || '').trim();
+            const lc = e.toLowerCase();
+            if (!e || recipientSet.has(lc) || seen.has(lc)) continue;
+            seen.add(lc);
+            out.push(e);
+          }
+          for (const raw of massmailCc) {
+            const e = (raw || '').trim();
+            const lc = e.toLowerCase();
+            if (!e || seen.has(lc)) continue;
+            seen.add(lc);
+            out.push(e);
+          }
+          return out;
+        })();
         const customLogo = (() => {
           try {
             const o = JSON.parse(selectedEvent.emailTemplateOverrides || '{}');
@@ -14916,21 +14957,7 @@ export default function AdminPage(): React.ReactElement {
             : `Event ${selectedEvent.title}`;
           const fullBody = applyMassmailHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody, undefined, massmailHeaderOpts));
           const allEmails = recipients.map(r => r.ParticipantEmail).join(';');
-          // v17.10: Organizer immer auf CC (falls nicht ohnehin schon
-          // unter den Empfängern). Dedup per lowercase, semicolon-join.
-          const orgEmails = (selectedEvent.organizerEmails || []).filter(Boolean);
-          const recipientSet = new Set(recipients.map(r => (r.ParticipantEmail || '').toLowerCase()));
-          // v30.51: zusätzlich das frei gewählte CC. Gegen Empfänger UND
-          // gegeneinander entdoppelt — dieselbe Person zweimal im CC ist beim
-          // Empfänger sichtbar und sieht nach Fehler aus.
-          const ccSeen = new Set<string>();
-          const ccList: string[] = [];
-          for (const e of orgEmails.concat(massmailCc)) {
-            const lc = (e || '').trim().toLowerCase();
-            if (!lc || recipientSet.has(lc) || ccSeen.has(lc)) continue;
-            ccSeen.add(lc);
-            ccList.push(e.trim());
-          }
+          const ccList = massmailCcPreview;
           const ccString = ccList.length > 0 ? ccList.join(';') : undefined;
           try {
             await eventServiceRef.queueEmail(
@@ -14944,8 +14971,8 @@ export default function AdminPage(): React.ReactElement {
             // liest sich eine höhere Zahl so, als hätte das Event plötzlich
             // mehr Organizer.
             const ccInfo = ccString
-              ? ` (auf CC: ${ccList.length}${massmailCc.length > 0 ? `, davon ${massmailCc.length} zusätzlich` : ''})`
-              : ' (Organizer schon in Empfängerliste)';
+              ? ` (auf CC: ${ccList.join(', ')})`
+              : ' (niemand auf CC — alle Organizer stehen schon im An-Feld)';
             showAlert(`E-Mail an ${recipients.length} Empfänger in die Warteschlange eingetragen.${ccInfo}`);
             setShowEmailModal(false);
             setMassmailMode('closed');
@@ -14963,7 +14990,8 @@ export default function AdminPage(): React.ReactElement {
           : massmailAudience === 'activePlusWait' ? 'Teilnehmer + Warteliste'
           : massmailAudience === 'nachruecker' ? 'Nachrücker (manueller Abgleich)'
           : 'Alle aktiven Teilnehmer';
-        const previewToLine = `${recipients.length} Empfänger — ${audienceLabel} · Organizer in CC${massmailCc.length > 0 ? ` + ${massmailCc.length} zusätzlich` : ''}`;
+        // v30.51.1: Die Vorschau nennt die WIRKLICHE CC-Zahl (s. massmailCcPreview).
+        const previewToLine = `${recipients.length} Empfänger — ${audienceLabel}${massmailCcPreview.length > 0 ? ` · ${massmailCcPreview.length} in CC` : ' · niemand in CC'}`;
         const previewSubjectLine = replacePlaceholders(emailSubject, previewVars);
         return (
           <HtmlEditorModal
@@ -14998,8 +15026,21 @@ export default function AdminPage(): React.ReactElement {
               <div style={{ padding: 12, background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)', marginBottom: 4 }}>
                 <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginBottom: 8 }}>
                   {isDe
-                    ? <>Geht an <strong>{recipients.length}</strong> Empfänger (die oben gewählte Gruppe). Organizer kommen automatisch auf CC.</>
-                    : <>Goes to <strong>{recipients.length}</strong> recipients (the group selected above). Organizers are automatically on CC.</>}
+                    ? <>Geht an <strong>{recipients.length}</strong> Empfänger (die oben gewählte Gruppe).</>
+                    : <>Goes to <strong>{recipients.length}</strong> recipients (the group selected above).</>}
+                </div>
+                {/* v30.51.1: Was WIRKLICH ins CC geht, statt einer Zusage.
+                    Vorher stand hier „Organizer kommen automatisch auf CC" —
+                    das stimmt aber genau dann nicht, wenn die Organizer selbst
+                    am Event teilnehmen (der Normalfall beim eigenen Event):
+                    Dann stehen sie schon im An-Feld und werden nicht noch
+                    einmal ins CC gesetzt. Wer das nicht weiß, sucht den Fehler
+                    in der App. */}
+                <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginBottom: 8 }}>
+                  <strong style={{ color: 'var(--dex-gray-700)' }}>CC: </strong>
+                  {massmailCcPreview.length === 0
+                    ? <span style={{ color: 'var(--dex-gray-500)' }}>niemand — alle Organizer stehen bereits im An-Feld.</span>
+                    : <span style={{ wordBreak: 'break-word' }}>{massmailCcPreview.join(', ')}</span>}
                 </div>
                 {/* v30.51: Zusätzliches CC. Bewusst hier oben, direkt unter der
                     Empfänger-Zeile — CC ist eine Aussage über den Verteiler,
@@ -15148,15 +15189,24 @@ export default function AdminPage(): React.ReactElement {
         // antworten können. Duplikate gegenüber TO werden rausgefiltert
         // (z.B. wenn der Sender selbst Organizer ist und 'An mich' wählt).
         const toLcSet = new Set(targetEmails.map(e => (e || '').toLowerCase()));
-        // v30.51: Organizer PLUS das frei gewählte CC, entdoppelt gegen die
-        // Empfänger und gegeneinander.
+        // v30.51.1: Das AUTOMATISCHE Organizer-CC wird gegen die Empfänger
+        // entdoppelt, ein selbst eingetragenes CC NICHT — sonst verschwindet
+        // eine ausdrücklich gewählte Person still, nur weil sie ohnehin
+        // Empfänger ist (s. Massenmail).
         const ccEmails = ((): string[] => {
           const seen = new Set<string>();
           const out: string[] = [];
-          for (const raw of (selectedEvent.organizerEmails || []).concat(inviteCc)) {
+          for (const raw of (selectedEvent.organizerEmails || [])) {
             const e = (raw || '').trim();
             const lc = e.toLowerCase();
             if (!e || toLcSet.has(lc) || seen.has(lc)) continue;
+            seen.add(lc);
+            out.push(e);
+          }
+          for (const raw of inviteCc) {
+            const e = (raw || '').trim();
+            const lc = e.toLowerCase();
+            if (!e || seen.has(lc)) continue;
             seen.add(lc);
             out.push(e);
           }

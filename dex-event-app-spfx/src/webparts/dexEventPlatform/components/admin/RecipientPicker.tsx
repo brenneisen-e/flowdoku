@@ -55,7 +55,9 @@ export default function RecipientPicker(props: RecipientPickerProps): React.Reac
   const [profiles, setProfiles] = React.useState<Record<string, Profile | null>>({});
   const [pickerValue, setPickerValue] = React.useState('');
   const [groupInput, setGroupInput] = React.useState('');
-  const [groupError, setGroupError] = React.useState('');
+  // v30.51.1: Meldung für BEIDE Wege (Personensuche und Gruppenadresse) —
+  // die Personensuche kann dieselbe Ablehnung erzeugen wie das Textfeld.
+  const [addError, setAddError] = React.useState('');
   const [removeHover, setRemoveHover] = React.useState<string | null>(null);
 
   // Profile nacheinander auflösen, nicht parallel: Ein Verteiler hat eine
@@ -80,14 +82,14 @@ export default function RecipientPicker(props: RecipientPickerProps): React.Reac
   const addAddress = (raw: string): boolean => {
     const addr = (raw || '').trim().toLowerCase();
     if (!addr || addr.indexOf('@') < 0 || addr.indexOf('.') < 0) {
-      setGroupError('Bitte eine vollständige E-Mail-Adresse eingeben.');
+      setAddError('Bitte eine vollständige E-Mail-Adresse eingeben.');
       return false;
     }
     if (value.some(v => v.toLowerCase() === addr)) {
-      setGroupError('Diese Adresse steht bereits im Verteiler.');
+      setAddError('Diese Adresse steht bereits im Verteiler.');
       return false;
     }
-    setGroupError('');
+    setAddError('');
     onChange(value.concat(addr));
     return true;
   };
@@ -172,9 +174,20 @@ export default function RecipientPicker(props: RecipientPickerProps): React.Reac
         <UserFieldPicker
           value={pickerValue}
           onChange={v => {
-            setPickerValue(v);
             const m = (v || '').match(/<([^>]+@[^>]+)>/);
-            if (m && addAddress(m[1])) setPickerValue('');
+            if (!m) { setPickerValue(v); return; }
+            // v30.51.1: Der Picker wird IMMER geleert, auch wenn die Adresse
+            // abgelehnt wurde.
+            //
+            // `UserFieldPicker` hält genau EINE Person: Sobald eine gewählt
+            // ist, zeigt er ihre Karte statt des Suchfelds. Vorher wurde er
+            // nur bei Erfolg geleert — wer dieselbe Person versehentlich ein
+            // zweites Mal wählte, bekam „steht bereits im Verteiler" und
+            // gleichzeitig einen Picker, der die Person festhielt: Ab da ließ
+            // sich hier NIEMAND mehr eintragen, und der einzige Ausweg war,
+            // das × an der Karte zu treffen. Genau das war der gemeldete Fall.
+            addAddress(m[1]);
+            setPickerValue('');
           }}
           searchUsers={searchUsers}
           searchUserByEmail={searchUserByEmail}
@@ -192,7 +205,7 @@ export default function RecipientPicker(props: RecipientPickerProps): React.Reac
           value={groupInput}
           disabled={props.disabled}
           placeholder="Gruppenadresse / Funktionspostfach…"
-          onChange={e => { setGroupInput(e.target.value); if (groupError) setGroupError(''); }}
+          onChange={e => { setGroupInput(e.target.value); if (addError) setAddError(''); }}
           onKeyDown={e => {
             if (e.key === 'Enter') { e.preventDefault(); if (addAddress(groupInput)) setGroupInput(''); }
           }}
@@ -207,8 +220,8 @@ export default function RecipientPicker(props: RecipientPickerProps): React.Reac
           <Plus size={13} /> Hinzufügen
         </button>
       </div>
-      {groupError && (
-        <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: 'var(--dex-red, #da291c)' }}>{groupError}</p>
+      {addError && (
+        <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: 'var(--dex-red, #da291c)' }}>{addError}</p>
       )}
     </div>
   );
