@@ -370,6 +370,26 @@ export interface EventStatsRow {
   archivedDate: string;
 }
 
+/**
+ * v30.58: Ein Befund je Event aus „Spalten fixen (alle Events)".
+ *
+ * `stillMissing` ist der wichtige Teil: Spalten, die auch nach dem Fix nicht
+ * angelegt werden konnten. Genau die bringen jeden Insert zu Fall, in dem sie
+ * vorkommen — bei einer Klammer-Liste also jede Anmeldung, bei der die Person
+ * das betreffende Hauptevent-Feld ausgefüllt hat.
+ */
+export interface FixColumnsDetail {
+  eventId: string;
+  eventTitle: string;
+  /** Klammer/Einzel-Event (true) oder Sub-Event (false). */
+  isParent: boolean;
+  /** Die Teilnehmerliste selbst ist weg (404/410) — keine Spalten-Frage. */
+  listMissing: boolean;
+  fixedColumns: string[];
+  stillMissing: string[];
+  error?: string;
+}
+
 interface EventContextType {
   events: DeloitteEvent[];
   /** Top-Level-Events (ohne parentEventId) — was in EventListPage/MyEventsPage angezeigt wird. */
@@ -570,7 +590,8 @@ interface EventContextType {
    *  v22.2: shouldCancel = Abbruch-Check aus dem Fortschrittsmodal. */
   runArchiveExpired: (onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void, shouldCancel?: () => boolean) => Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }>;
   /** v24.33: Globales „Spalten fixen" über ALLE Events inkl. Sub-Events + Company-Backfill bestehender Teilnehmer. */
-  fixAllEventColumns: (onProgress?: (done: number, total: number, label: string) => void) => Promise<{ lists: number; columnsAdded: number; backfilled: number; errors: number; anyChange: boolean }>;
+  /** v30.58: `details` sagt PRO EVENT, was gefehlt hat und was danach noch fehlt. */
+  fixAllEventColumns: (onProgress?: (done: number, total: number, label: string) => void) => Promise<{ lists: number; columnsAdded: number; backfilled: number; errors: number; anyChange: boolean; details: FixColumnsDetail[] }>;
   // v30.39: Organizer-Rechte über ALLE Event-Bäume nachziehen (Klammer + Sub-Events).
   repairAllOrganizerPermissions: (onProgress?: (done: number, total: number, label: string) => void) => Promise<{ trees: number; sites: number; grants: number; unresolved: string[]; errors: number }>;
   /** v26.13: Versehentlich gelöschte Custom-Field-Beschreibungen aus der
@@ -5494,7 +5515,13 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
   // onProgress treibt eine Fortschrittsanzeige (done/total + Event-Titel).
   async function fixAllEventColumns(
     onProgress?: (done: number, total: number, label: string) => void
-  ): Promise<{ lists: number; columnsAdded: number; backfilled: number; errors: number; anyChange: boolean }> {
+  ): Promise<{ lists: number; columnsAdded: number; backfilled: number; errors: number; anyChange: boolean; details: FixColumnsDetail[] }> {
+    // v30.58: Der Lauf sagt jetzt auch, WAS er gefunden hat. Vorher lieferte er
+    // nur Zahlen („12 Spalten ergänzt") — für die Frage „warum scheitert bei
+    // drei Leuten die Klammer-Anmeldung?" ist das wertlos. Jede Liste wird
+    // deshalb VOR und NACH dem Fix gegen die Abfragefelder ihres Events
+    // gehalten; was danach immer noch fehlt, ist die eigentliche Meldung.
+    const details: FixColumnsDetail[] = [];
     const seen = new Set<string>();
     const targets: DeloitteEvent[] = [];
     for (const e of events) {
@@ -5508,6 +5535,10 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     for (let i = 0; i < targets.length; i++) {
       const ev = targets[i];
       if (onProgress) onProgress(i, total, ev.title || '');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const diagFields = (ev.eventSpecificFields || []).map((f: any) => ({ id: f.id, label: f.label, spInternalName: f.spInternalName || '' }));
+      const before = await eventService.diagnoseRegistrationList(ev.subsiteUrl!, diagFields)
+        .catch(() => ({ ok: false, listMissing: false, missingColumns: [], error: 'nicht lesbar' }));
       try {
         const cf = (ev.eventSpecificFields || []).map(f => ({
           id: f.id, label: f.label, type: f.type, required: f.required, options: f.options,
@@ -5536,10 +5567,35 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
           try { await updateEvent(ev.id, { 'CustomFields': JSON.stringify(upd) }); } catch { /* best-effort */ }
         }
         try { const bf = await eventService.backfillCompanyForList(ev.subsiteUrl!); backfilled += bf.updated; } catch { /* best-effort */ }
-      } catch (err) { errors++; console.warn('[DEX] fixAllEventColumns failed for', ev.id, err); }
+        // Nach dem Fix erneut hinsehen — nur was JETZT noch fehlt, ist ein Befund.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const evFresh: any = events.find(e => e.id === ev.id) || ev;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const afterFields = (evFresh.eventSpecificFields || []).map((f: any) => ({ id: f.id, label: f.label, spInternalName: f.spInternalName || '' }));
+        const after = await eventService.diagnoseRegistrationList(ev.subsiteUrl!, afterFields)
+          .catch(() => ({ ok: false, listMissing: false, missingColumns: [], error: 'nicht lesbar' }));
+        if (before.missingColumns.length > 0 || after.missingColumns.length > 0 || after.listMissing || !after.ok) {
+          details.push({
+            eventId: ev.id, eventTitle: ev.title || ev.id,
+            isParent: !ev.parentEventId,
+            listMissing: !!after.listMissing,
+            fixedColumns: before.missingColumns.filter(m => !after.missingColumns.some(x => x.id === m.id)).map(m => m.label),
+            stillMissing: after.missingColumns.map(m => `${m.label} (${m.column})`),
+            error: after.error || before.error,
+          });
+        }
+      } catch (err) {
+        errors++;
+        console.warn('[DEX] fixAllEventColumns failed for', ev.id, err);
+        details.push({
+          eventId: ev.id, eventTitle: ev.title || ev.id, isParent: !ev.parentEventId,
+          listMissing: false, fixedColumns: [], stillMissing: [],
+          error: String((err as Error)?.message || err),
+        });
+      }
     }
     if (onProgress) onProgress(total, total, '');
-    return { lists: total, columnsAdded, backfilled, errors, anyChange: columnsAdded > 0 || backfilled > 0 };
+    return { lists: total, columnsAdded, backfilled, errors, anyChange: columnsAdded > 0 || backfilled > 0, details };
   }
 
   /**

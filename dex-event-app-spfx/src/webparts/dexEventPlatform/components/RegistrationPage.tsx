@@ -2291,6 +2291,36 @@ export default function RegistrationPage(): React.ReactElement {
       // in beiden Fällen ZUM SCHLUSS über den Schritt-3-Block unten).
       const shouldShadowRegisterParent = isSubOnlyMode && sessionsBeingAdded && !parentAlreadyHasRow;
 
+      // v30.57: Den Nachzug-Merker SCHARFSTELLEN, BEVOR der erste Sub-Event
+      // geschrieben wird — nicht erst, wenn die Klammer-Zeile scheitert.
+      //
+      // Bis hier entstand er nur im Fehlerzweig von `doParentRegistration`.
+      // Das deckt den Fall ab, dass SharePoint den Schreibvorgang ablehnt —
+      // aber nicht den Fall, den die Fehlermeldung im Organizer Center selbst
+      // nennt: die ABGEBROCHENE Anmeldung. Wer den Tab schließt, das WLAN
+      // verliert oder auf dem Handy die App wechselt, während die 19 Termine
+      // geschrieben werden, kommt nie bis zum Klammer-Schritt. Dann gibt es
+      // keinen Fehler, keinen Merker und keine Selbstheilung — nur eine Person
+      // mit Sub-Event-Zeilen ohne Klammer-Zeile. Genau das Bild aus dem
+      // roten Kasten.
+      //
+      // Umgekehrt scharfstellen kostet nichts: Der Merker wird unten wieder
+      // entfernt, sobald die Klammer-Zeile steht, und ein überzähliger Nachzug
+      // ist folgenlos — `registerForEvent` ist für die Klammer idempotent.
+      if (shouldShadowRegisterParent) {
+        try {
+          addPendingShadowParent({
+            eventId: selectedEventId!,
+            customData: { ...customData },
+            firstName: firstTrim,
+            lastName: surnameTrim,
+            email: participantEmail,
+            proxy: registerForOther,
+            ts: Date.now(),
+          });
+        } catch { /* localStorage gesperrt → es bleibt beim bisherigen Netz */ }
+      }
+
       // v28.22: UNSICHTBARE Doppel-Anmeldung abfangen.
       //
       // Die Teilnehmerlisten laufen mit Item-Level-Security („nur eigene
@@ -2546,6 +2576,14 @@ export default function RegistrationPage(): React.ReactElement {
           shadowParentFailed = false;
           await doParentRegistration(true);
         }
+        // v30.57: Steht die Zeile, ist der vorab gesetzte Merker erledigt.
+        if (!shadowParentFailed) {
+          try { removePendingShadowParent(selectedEventId!, participantEmail); } catch { /* egal */ }
+        }
+      } else if (shouldShadowRegisterParent) {
+        // Kein einziger Sub-Event ging durch — dann gibt es auch nichts
+        // nachzuziehen, der Merker muss wieder weg.
+        try { removePendingShadowParent(selectedEventId!, participantEmail); } catch { /* egal */ }
       }
       // v30.16: Bleibt die Klammer-Zeile aus, heilt sie sich jetzt SELBST —
       // der v29.48-Fehler-Dialog („SharePoint rejected the last write, bitte

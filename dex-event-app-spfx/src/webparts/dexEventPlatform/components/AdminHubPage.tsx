@@ -10,7 +10,7 @@
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
-import { useEvents } from '../context/EventContext';
+import { useEvents, FixColumnsDetail } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useDialog } from '../context/DialogContext';
 import { useIsMobile } from '../utils/useIsMobile';
@@ -68,6 +68,8 @@ export default function AdminHubPage(): React.ReactElement {
   const [regCleanProgress, setRegCleanProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
   // v24.33: Fortschritt für das globale „Spalten fixen".
   const [fixProgress, setFixProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
+  // v30.58: Befund des letzten Spalten-Laufs, je Event. `null` = noch nicht gelaufen.
+  const [fixReport, setFixReport] = React.useState<FixColumnsDetail[] | null>(null);
   // v30.39: Fortschritt der Berechtigungs-Reparatur über alle Event-Bäume.
   const [permProgress, setPermProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
   const [restoreProgress, setRestoreProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
@@ -312,6 +314,13 @@ export default function AdminHubPage(): React.ReactElement {
         : (isDe
             ? `Alles war schon korrekt — ${r.lists} Teilnehmerlisten geprüft, nichts zu tun${r.errors ? ` (${r.errors} mit Fehler)` : ''}.`
             : `Everything was already fine — ${r.lists} lists checked, nothing to do${r.errors ? ` (${r.errors} with errors)` : ''}.`);
+      // v30.58: Der Befund JE EVENT — das ist der eigentliche Zweck des Laufs.
+      // Eine Zahl („12 Spalten ergänzt") beantwortet nicht, warum bei drei
+      // Personen die Klammer-Anmeldung scheitert. Was nach dem Fix immer noch
+      // fehlt, bringt jeden Insert zu Fall, in dem die Spalte vorkommt — bei
+      // einer Klammer-Liste also jede Anmeldung, bei der die Person das
+      // betreffende Hauptevent-Feld ausgefüllt hat.
+      setFixReport(r.details || []);
       showAlert(msg, { variant: r.errors ? 'error' : 'success' });
     } catch { showAlert(isDe ? 'Spalten-Prüfung fehlgeschlagen.' : 'Column check failed.', { variant: 'error' }); }
     finally { setBusy(''); setFixProgress(null); }
@@ -769,6 +778,55 @@ export default function AdminHubPage(): React.ReactElement {
               <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {fixProgress.done}/{fixProgress.total}{fixProgress.label ? ` · ${fixProgress.label}` : ''}
               </div>
+            </div>
+          )}
+          {/* v30.58: Der Befund je Event. Das ist der Punkt des Laufs — eine
+              Zahl allein beantwortet nicht, warum eine Anmeldung scheitert. */}
+          {fixReport && (
+            <div style={{
+              margin: '0 0 10px', padding: '10px 12px', borderRadius: 8,
+              border: `1px solid ${fixReport.some(d => d.stillMissing.length > 0 || d.listMissing || d.error) ? 'var(--dex-red, #da291c)' : 'var(--dex-green, #86bc25)'}`,
+              background: fixReport.some(d => d.stillMissing.length > 0 || d.listMissing || d.error) ? 'rgba(218,41,28,0.06)' : 'rgba(134,188,37,0.08)',
+              fontSize: '0.78rem', lineHeight: 1.5, maxHeight: 300, overflowY: 'auto',
+            }}>
+              {fixReport.length === 0 ? (
+                <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                  Kein Befund — auf allen Teilnehmerlisten sind alle Spalten der Abfragefelder vorhanden.
+                </strong>
+              ) : (
+                <>
+                  <strong>Befund ({fixReport.length} {fixReport.length === 1 ? 'Event' : 'Events'})</strong>
+                  <p style={{ margin: '4px 0 8px', color: 'var(--dex-gray-700)' }}>
+                    Fehlt auf einer Liste die Spalte zu einem Abfragefeld, lehnt SharePoint die
+                    <strong> gesamte Anmeldung</strong> ab — aber nur bei den Personen, die dieses Feld
+                    ausfüllen. Deshalb sieht es aus wie ein Einzelfall.
+                  </p>
+                  {fixReport.map(d => (
+                    <div key={d.eventId} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--dex-gray-200)' }}>
+                      <div style={{ fontWeight: 600 }}>
+                        {d.eventTitle}{' '}
+                        <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
+                          ({d.isParent ? 'Haupt-/Klammer-Event' : 'Sub-Event'})
+                        </span>
+                      </div>
+                      {d.listMissing && (
+                        <div style={{ color: 'var(--dex-red, #da291c)' }}>Teilnehmerliste existiert nicht (mehr).</div>
+                      )}
+                      {d.fixedColumns.length > 0 && (
+                        <div style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>Ergänzt: {d.fixedColumns.join(', ')}</div>
+                      )}
+                      {d.stillMissing.length > 0 && (
+                        <div style={{ color: 'var(--dex-red, #da291c)' }}>
+                          <strong>Fehlt weiterhin:</strong> {d.stillMissing.join(', ')}
+                        </div>
+                      )}
+                      {d.error && (
+                        <div style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>Hinweis: {d.error}</div>
+                      )}
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           )}
           <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { void doFixAllColumns(); }}>

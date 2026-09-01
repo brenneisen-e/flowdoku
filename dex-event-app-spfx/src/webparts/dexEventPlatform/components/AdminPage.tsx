@@ -1525,9 +1525,25 @@ export default function AdminPage(): React.ReactElement {
 
       // v30.14: skipReload — der Kern läuft im Sammel-Fix in Serie; der eine
       // Refresh kommt vom Aufrufer, sonst zöge jede Person einen loadEvents.
+      // v30.57: KEIN `proxyConsentConfirmed` mehr.
+      //
+      // Das Nachtragen einer fehlenden Klammer-Zeile ist eine Datenkorrektur —
+      // niemand hat dabei jemanden um Zustimmung gefragt. Das Flag schrieb
+      // aber genau das in die Spalte `ProxyConsent`: „Zustimmung der Person
+      // zur stellvertretenden Anmeldung bestätigt durch <Admin> am <Datum>".
+      // Zusammen mit dem `RegisteredBy`-Rückschreiben zwei Zeilen weiter unten
+      // entstand ein Datensatz, der sich selbst widerspricht: angemeldet von
+      // der Person selbst, Zustimmung bestätigt durch jemand anderen.
+      //
+      // Ein erfundener Zustimmungsnachweis ist die unangenehmste Sorte
+      // falscher Daten — er sieht aus wie ein Beleg. Das Flag steuert
+      // ausschließlich diesen Text (s. EventContext, `proxyConsentStr`) und
+      // ist KEIN Rechte-Schalter; ohne es bleibt die Spalte leer, und wer die
+      // Korrektur ausgelöst hat, steht ohnehin im ChangeLog-Eintrag unten.
+      // `actorAllowedAsAssistant` bleibt — das ist die Rechte-Seite.
       const res = await registerForEvent(
         selectedEvent.id, {}, row.vorname || '', row.nachname || '', row.email, undefined,
-        { suppressMail: true, suppressOutlook: true, proxyConsentConfirmed: true, actorAllowedAsAssistant: true, skipReload: true }
+        { suppressMail: true, suppressOutlook: true, actorAllowedAsAssistant: true, skipReload: true }
       );
       if (res && res.ok) {
         const regs = await getAllRegistrations(selectedEvent.id);
