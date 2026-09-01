@@ -95,15 +95,32 @@ export class SharePointService {
             },
             body: JSON.stringify({
               '__metadata': { 'type': 'SP.FieldChoice' },
-              'Choices': { 'results': ['Admin', 'IT-Admin', 'Organizer', 'User'] },
+              'Choices': { 'results': ['Admin', 'IT-Admin', 'Organizer', 'F&A', 'User'] },
             }),
           }
         );
       } catch { /* Choice-Update optional */ }
 
-      // v18.5: IsPowerUser-Spalte auf bestehenden Listen nachziehen (best-effort;
-      // schlägt fehl falls die Spalte schon existiert — dann ignorieren).
+      // v18.5: IsPowerUser-Spalte auf bestehenden Listen nachziehen.
+      //
+      // v30.65: ERST PRÜFEN, dann anlegen. Vorher lief der Anlage-Versuch bei
+      // JEDEM App-Start und bei JEDEM Nutzer — die Spalte existiert längst,
+      // SharePoint antwortet mit HTTP 500, der `catch` verschluckt es, und der
+      // Browser schreibt trotzdem eine rote Zeile in die Konsole (er protokolliert
+      // die Antwort, bevor unser Code sie sieht). Das war der wiederkehrende
+      // „DEX_Roles/fields 500" im gemeldeten Log: kein Fehler in der Sache,
+      // aber einer, der bei jedem Start nach einem aussah — und der echte
+      // Meldungen daneben unglaubwürdig macht.
+      let hasPowerUser = false;
       try {
+        const probe = await this._sp.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('IsPowerUser')`,
+          SPHttpClient.configurations.v1
+        );
+        hasPowerUser = probe.ok;
+      } catch { hasPowerUser = false; }
+      try {
+        if (hasPowerUser) throw new Error('__skip__');
         await this._post(
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`,
           {
@@ -117,7 +134,7 @@ export class SharePointService {
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/views/getbytitle('All Items')/viewfields/addviewfield('IsPowerUser')`,
           {}
         );
-      } catch { /* Spalte existiert bereits — ok */ }
+      } catch { /* '__skip__' = Spalte ist schon da; sonst best-effort */ }
 
       return { isNewlyCreated: false };
     }

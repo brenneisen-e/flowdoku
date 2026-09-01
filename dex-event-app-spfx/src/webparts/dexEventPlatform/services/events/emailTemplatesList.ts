@@ -11,6 +11,7 @@
 
 import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions } from '@microsoft/sp-http';
 import type { EventService, ReseedSummary } from '../EventService';
+import { dlog } from '../../utils/debugLog';
 import {
   OUTLOOK_DECLINE_BODY_EN,
   OUTLOOK_DECLINE_BODY_DE,
@@ -812,7 +813,7 @@ export async function getKpiTotals(svc: EventService): Promise<{ participants: n
   const LOG = '[DEX KPI]';
   try {
     // eslint-disable-next-line no-console
-    console.log(`${LOG} Recompute „bisher genutzt für" gestartet — zähle über ALLE Events (nicht nur die geladenen 100) …`);
+    dlog('kpi', `${LOG} Recompute „bisher genutzt für" gestartet — zähle über ALLE Events (nicht nur die geladenen 100) …`);
     const all = await svc.getAllEventsForKpi();
     if (all.length === 0) {
       // eslint-disable-next-line no-console
@@ -827,7 +828,7 @@ export async function getKpiTotals(svc: EventService): Promise<{ participants: n
     const counted = all.filter(e => e.status !== 'Cancelled' && e.status !== 'Under Construction' && !e.isFictive);
     const events = counted.filter(e => !e.parentEventId).length;
     // eslint-disable-next-line no-console
-    console.log(`${LOG} ${all.length} Event-Zeilen geladen → ${counted.length} werden gezählt (inkl. abgelaufener), davon ${events} Haupt-Events. Summiere Teilnehmer pro Subsite …`);
+    dlog('kpi', `${LOG} ${all.length} Event-Zeilen geladen → ${counted.length} werden gezählt (inkl. abgelaufener), davon ${events} Haupt-Events. Summiere Teilnehmer pro Subsite …`);
     let participants = 0;
     let scanned = 0;
     let failed = 0;
@@ -837,7 +838,7 @@ export async function getKpiTotals(svc: EventService): Promise<{ participants: n
       catch { failed++; /* einzelne Subsite-Fehler ignorieren — Gesamtwert bleibt best-effort */ }
     }
     // eslint-disable-next-line no-console
-    console.log(`${LOG} Ergebnis über ALLE Events: ${participants} Teilnehmer / ${events} Events (${scanned} Teilnehmerlisten gezählt${failed ? `, ${failed} nicht lesbar` : ''}).`);
+    dlog('kpi', `${LOG} Ergebnis über ALLE Events: ${participants} Teilnehmer / ${events} Events (${scanned} Teilnehmerlisten gezählt${failed ? `, ${failed} nicht lesbar` : ''}).`);
     return { participants, events };
   } catch (err) {
     // eslint-disable-next-line no-console

@@ -2255,8 +2255,7 @@ export class EventService {
       const data = JSON.parse(raw);
       const parseMs = t0 ? Math.round(performance.now() - t0) : -1;
       const rows = data.value || [];
-      // eslint-disable-next-line no-console
-      console.log(
+      dlog('perf',
         `[DEX][perf][getEvents] ${rows.length} Events · ${Math.round(raw.length / 1024)} KB JSON · parse ${parseMs} ms`
       );
       return rows;
