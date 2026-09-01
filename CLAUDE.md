@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.45.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.46.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -384,6 +384,16 @@ Reg-Regel schaltet den v28.20-Hard-Cutoff der `klammerDeadline` ab
 (`isRegistrationFullyClosed` + Wizard schreibt `_klammerDeadline` dann
 nicht mehr) — eine stehengebliebene Klammer-Frist sperrte sonst das
 Gesamt-Event, obwohl nur Tag 1 zu war.
+
+**Wer den Abrechnungs-Schritt sehen darf, steht an EINER Stelle.**
+`FA_BILLING_STEP_FOR_ORGANIZERS` in `data/billingFields.ts` (Pilot: `false`)
+plus `canEditBilling(isAdminLike, isOrganizerOfEvent)`. Nutzer-Entscheidung
+01.09.2026: künftig auch Organizer, im Piloten nur Admins. Vorher hing die
+Frage an fünf Stellen getrennt an `adminLike`/`isAdmin` — Schritt-Array,
+Rendering, Speichern-Dialog, Obergrenze des Sprung-Index und das Sprung-Gate
+in `AdminPage`. Wer daran etwas ändert: **nur den Schalter**, nie die
+Aufrufstellen. Und `canBilling` muss im Wizard HINTER `const editEvent`
+stehen — davor ist es ein TDZ-Fehler (dieselbe Falle wie v29.71).
 
 **`_billing` trägt mehr als der Wizard schreibt.** Versand-Historie,
 Snapshots, Stempel und der F&A-Abschluss werden von den F&A-Flows über

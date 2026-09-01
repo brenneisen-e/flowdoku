@@ -39,6 +39,7 @@ import OrganizerList from './OrganizerList';
 // Kachel-Modal des Admin Centers.
 import { buildOutlookLocation } from '../utils/eventFormat';
 import { setActiveWizardStep } from '../utils/wizardStepContext';
+import { canEditBilling } from '../data/billingFields';
 // v28.98: Sperrt „Zurück" im Header, solange gespeichert wird.
 import { setSaveInProgress } from '../utils/saveGuard';
 import { shortSubEventTitle } from '../utils/subEventTitle';
@@ -387,6 +388,21 @@ export default function EventCreationPage(): React.ReactElement {
   // Edit-Modus: wenn wir auf 'edit-event' sind und eine selectedEventId haben
   const isEditMode = currentPage === 'edit-event' && !!selectedEventId;
   const editEvent = isEditMode ? events.find(e => e.id === selectedEventId) : null;
+  // v30.46: Wer darf den Abrechnungs-Schritt sehen? EINE Ableitung für alle
+  // Stellen — Schritt-Array, Rendering, Speichern-Dialog und die Obergrenze des
+  // Sprung-Index hängen ab jetzt hier dran, nicht mehr je einzeln an
+  // `adminLike`. Der Schalter dahinter (`FA_BILLING_STEP_FOR_ORGANIZERS` in
+  // `data/billingFields.ts`) steht im Pilot auf `false`; ihn auf `true` zu
+  // setzen öffnet den Schritt für Organizer des eigenen Events, ohne dass hier
+  // etwas angefasst werden muss.
+  //
+  // Steht bewusst HINTER `editEvent`: Weiter oben (neben `adminLike`) wäre es
+  // ein TDZ-Fehler — dieselbe Falle, die v29.71 an genau dieser Stelle schon
+  // einmal erwischt hat.
+  const canBilling = canEditBilling(
+    adminLike,
+    (editEvent?.organizerEmails || []).some(e => (e || '').toLowerCase() === (currentUser.email || '').toLowerCase())
+  );
 
   // v29.71 BUG-FIX: Dieser Block stand VOR der editEvent-Deklaration (Zeile
   // oben). Die useState-Initialisierer laufen synchron beim ersten Render —
@@ -2523,7 +2539,7 @@ export default function EventCreationPage(): React.ReactElement {
       // (Index 9) haengt an `adminLike`. Ein zu grosser Wert wuerde sonst
       // jede Anzeige-Bedingung `currentStep === N` verfehlen — die Seite
       // bliebe leer, ohne dass irgendwo etwas meldet, warum.
-      const maxStep = adminLike ? 9 : 8;
+      const maxStep = canBilling ? 9 : 8;
       if (typeof init === 'number' && init >= 0) return Math.min(init, maxStep);
     }
     return 0;
@@ -7764,7 +7780,7 @@ export default function EventCreationPage(): React.ReactElement {
     // Indizes). Navigation und Speichern-Knopf laufen ueber steps.length
     // und ziehen automatisch mit. `dim` graut den Reiter aus, solange das
     // Event nicht abrechnungsrelevant ist — oeffnen bleibt erlaubt.
-    ...(adminLike ? [{
+    ...(canBilling ? [{
       label: isDe ? 'Abrechnung' : 'Billing',
       icon: '10',
       dim: billingRelevant !== true,
@@ -8833,7 +8849,7 @@ export default function EventCreationPage(): React.ReactElement {
                   // v29.66: F&A-Pilot — direkt nach dem Akzeptieren fragt der
                   // Dialog nach der Abrechnungsrelevanz (nur Admins, nur beim
                   // Anlegen; im Edit-Modus erscheinen die Bedingungen nicht).
-                  if (adminLike) setBillingPromptOpen(true);
+                  if (canBilling) setBillingPromptOpen(true);
                 }}
                 style={{ opacity: (tcCheckbox && internalCheckbox) ? 1 : 0.5, cursor: (tcCheckbox && internalCheckbox) ? 'pointer' : 'not-allowed' }}
               >
@@ -17874,7 +17890,7 @@ export default function EventCreationPage(): React.ReactElement {
                   Sichtbar war das als leerer weißer Streifen über dem Kopf: die
                   Karte mit den Schritten 1–9 (alle `display:none`) rendert dann
                   nur noch ihre eigene Polsterung. */}
-              {adminLike && (
+              {canBilling && (
                 <BillingStep
                   visible={currentStep === 9}
                   billingRelevant={billingRelevant}
@@ -17892,7 +17908,7 @@ export default function EventCreationPage(): React.ReactElement {
           {/* v29.66: F&A-Pilot — Frage-Dialog nach den Nutzungsbedingungen.
               Keine Vorauswahl: Das Konzept verlangt eine AKTIVE Entscheidung,
               deshalb zwei gleichrangige Knoepfe statt Radio mit Default. */}
-          {adminLike && billingPromptOpen && (
+          {canBilling && billingPromptOpen && (
             <div style={{
               position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1300,
               display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
