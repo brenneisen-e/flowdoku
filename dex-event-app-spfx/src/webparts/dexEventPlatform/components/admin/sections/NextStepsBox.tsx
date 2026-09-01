@@ -9,9 +9,7 @@ import { DeloitteEvent } from '../../../types';
 
 export interface NextStepsBoxProps {
   childEventsOf: (parentEventId: string) => DeloitteEvent[];
-  isAdmin: boolean;
   isDe: boolean;
-  isOrganizerFor: (ev: DeloitteEvent) => boolean;
   openInviteModal: () => void;
   selectedEvent: DeloitteEvent;
   setVisListOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -19,7 +17,7 @@ export interface NextStepsBoxProps {
 }
 
 export const NextStepsBox: React.FC<NextStepsBoxProps> = (p) => {
-  const { childEventsOf, isAdmin, isDe, isOrganizerFor, openInviteModal, selectedEvent, setVisListOpen, visListOpen } = p;
+  const { childEventsOf, isDe, openInviteModal, selectedEvent, setVisListOpen, visListOpen } = p;
   return (
           <aside style={{ flex: '1 1 360px', minWidth: 320 }}>
             <div className="card" style={{ padding: 20, background: 'rgba(134,188,37,0.05)', border: '1px solid var(--dex-green, #86bc25)' }}>

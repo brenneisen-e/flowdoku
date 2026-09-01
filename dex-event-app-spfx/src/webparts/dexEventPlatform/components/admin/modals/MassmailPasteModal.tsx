@@ -4,14 +4,11 @@
  */
 import * as React from 'react';
 import Modal from '../../Modal';
-import { DeloitteEvent } from '../../../types';
 import { SPRegistration } from '../../../services/EventService';
 
 export interface MassmailPasteModalProps {
-  massmailMode: "closed" | "pick" | "paste" | "editor";
   massmailPasteRaw: string;
   registrations: SPRegistration[];
-  selectedEvent: DeloitteEvent;
   setMassmailMode: React.Dispatch<React.SetStateAction<"closed" | "pick" | "paste" | "editor">>;
   setMassmailPasteRaw: React.Dispatch<React.SetStateAction<string>>;
   setShowEmailModal: React.Dispatch<React.SetStateAction<boolean>>;
@@ -19,7 +16,7 @@ export interface MassmailPasteModalProps {
 }
 
 export const MassmailPasteModal: React.FC<MassmailPasteModalProps> = (p) => {
-  const { massmailMode, massmailPasteRaw, registrations, selectedEvent, setMassmailMode, setMassmailPasteRaw, setShowEmailModal, showAlert } = p;
+  const { massmailPasteRaw, registrations, setMassmailMode, setMassmailPasteRaw, setShowEmailModal, showAlert } = p;
         const closeAll = (): void => { setMassmailMode('closed'); setMassmailPasteRaw(''); };
         const back = (): void => { setMassmailMode('pick'); };
         // E-Mail-Adressen aus dem Rohtext extrahieren — robust gegen Vorname

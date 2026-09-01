@@ -5,7 +5,6 @@
 import * as React from 'react';
 import Modal from '../../Modal';
 import { getCachedLogoBase64, getCachedOrbBase64 } from '../../../services/EmailTemplates';
-import { DeloitteEvent } from '../../../types';
 import { SPRegistration } from '../../../services/EventService';
 
 export interface OverbookDecisionModalProps {
@@ -18,7 +17,6 @@ export interface OverbookDecisionModalProps {
   obWithMail: boolean;
   overbookModal: { mode: "confirm" | "keep"; targets: SPRegistration[]; };
   runOverbookResolution: () => Promise<void>;
-  selectedEvent: DeloitteEvent;
   setObKeepVariant: React.Dispatch<React.SetStateAction<"active" | "firstWaitlist">>;
   setObMailBody: React.Dispatch<React.SetStateAction<string>>;
   setObMailLang: React.Dispatch<React.SetStateAction<"DE" | "EN">>;
@@ -29,7 +27,7 @@ export interface OverbookDecisionModalProps {
 }
 
 export const OverbookDecisionModal: React.FC<OverbookDecisionModalProps> = (p) => {
-  const { obBusy, obKeepVariant, obMailBody, obMailLang, obMailSubject, obRemoveCalendar, obWithMail, overbookModal, runOverbookResolution, selectedEvent, setObKeepVariant, setObMailBody, setObMailLang, setObMailSubject, setObRemoveCalendar, setObWithMail, setOverbookModal } = p;
+  const { obBusy, obKeepVariant, obMailBody, obMailLang, obMailSubject, obRemoveCalendar, obWithMail, overbookModal, runOverbookResolution, setObKeepVariant, setObMailBody, setObMailLang, setObMailSubject, setObRemoveCalendar, setObWithMail, setOverbookModal } = p;
   return (
         <Modal
           open={true}

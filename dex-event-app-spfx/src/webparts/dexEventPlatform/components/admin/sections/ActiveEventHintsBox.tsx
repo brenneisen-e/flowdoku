@@ -14,9 +14,7 @@ export interface ActiveEventHintsBoxProps {
   expandedHintIds: Set<string>;
   hintLangBusy: boolean;
   hintsDismissTick: number;
-  isAdmin: boolean;
   isDe: boolean;
-  isOrganizerFor: (ev: DeloitteEvent) => boolean;
   parentEventForSelected: DeloitteEvent;
   refreshEvents: () => Promise<void>;
   selectedEvent: DeloitteEvent;
@@ -30,7 +28,7 @@ export interface ActiveEventHintsBoxProps {
 }
 
 export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
-  const { childEventsOf, expandedHintIds, hintLangBusy, hintsDismissTick, isAdmin, isDe, isOrganizerFor, parentEventForSelected, refreshEvents, selectedEvent, setExpandedHintIds, setHintLangBusy, setHintsDismissTick, setQrSendModalOpen, setSelectedEvent, showAlert, updateEvent } = p;
+  const { childEventsOf, expandedHintIds, hintLangBusy, hintsDismissTick, isDe, parentEventForSelected, refreshEvents, selectedEvent, setExpandedHintIds, setHintLangBusy, setHintsDismissTick, setQrSendModalOpen, setSelectedEvent, showAlert, updateEvent } = p;
           void hintsDismissTick; // erzwingt Re-Render nach „Ausblenden"
           const dismissKey = (id: string): string => `dex_hint_dismiss_${selectedEvent.id}_${id}`;
           const isDismissed = (id: string): boolean => {

@@ -31,3 +31,14 @@ export type AudiencePerson = { email: string; displayName?: string; jobTitle?: s
  *  koerper und war damit von aussen nicht referenzierbar — das ausgelagerte
  *  Zielgruppen-Modal braucht ihn aber. */
 export type MassmailAudience = 'active' | 'activePlusWait' | 'waitOnly' | 'nachruecker' | 'custom';
+
+/** v30.66: Admin-Toast für Abmelde-/Nachrück-Feedback (seit v6.8):
+ *   - 'cancelling': während die Abmeldung + Nachrück-Suche läuft (orange, Spinner)
+ *   - 'promoted'  : erfolgreicher Nachrücker mit Namen + Typ (grün)
+ *   - 'no-promote': Abmeldung ok, aber keiner auf der Warteliste (grau)
+ *  Stand als lokaler Typ IM Komponentenkoerper; die ausgelagerte Abmelde-
+ *  Pipeline kann ihn von dort nicht referenzieren. */
+export type AdminToastState =
+  | { kind: 'cancelling'; name: string }
+  | { kind: 'promoted'; name: string; email: string; type?: string }
+  | { kind: 'no-promote'; name: string };

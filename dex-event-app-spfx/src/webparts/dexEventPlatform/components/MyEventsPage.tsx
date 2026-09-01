@@ -2,22 +2,21 @@
  * Meine Events - zeigt alle Events für die der User registriert ist.
  * Lädt Registrierungen aus den jeweiligen Teilnehmerlisten.
  * Ermöglicht Abmeldung mit Zwei-Schritt-Bestätigung.
+ *
+ * v30.66: Die Seite ist nur noch Daten-Beschaffung + Zustand. Karte, Dialoge
+ * und die Sub-Event-Ansicht liegen in `components/myEvents/` — die Importe
+ * unten sind deshalb kurz geworden.
  */
 
 import * as React from 'react';
 import { Icon } from '@fluentui/react/lib/Icon';
 import OrganizerList from './OrganizerList';
-import { CachedImg } from './CachedImage';
 
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
 import { useRoles } from '../context/RoleContext';
-import { UserFieldPicker } from './UserFieldPicker';
 import { useCurrentUser } from '../context/UserContext';
-// v22.13: Sub-Events in „Meine Events" nach ihrer EIGENEN Sichtbarkeit filtern
-// (gleiche Logik wie Anmeldeseite/Event-Liste).
-import { isEventVisibleForUser } from './EventListPage';
-import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime } from '../types';
+import { DeloitteEvent } from '../types';
 import { SPRegistration, EventCommRow } from '../services/EventService';
 import { wrapTemplate } from '../services/EmailTemplates';
 import { isEventOver } from '../utils/eventFormat';
@@ -25,21 +24,9 @@ import { selfCancelLocked, selfCancelLockReason } from '../utils/cancelPolicy';
 import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
 import { useDialog } from '../context/DialogContext';
-// v11.99: RefreshCw nicht mehr benötigt (Page-Level-Refresh-Button entfernt).
-import { X, Pencil, QrCode, Mail } from './Icons';
-import Modal from './Modal';
-import InternationalSearchToggle from './InternationalSearchToggle';
 import { buildDemoShowcaseEvents, buildDemoMyRegistration } from '../services/demoShowcaseEvent';
-import { TeamsJoinButton } from './TeamsJoinButton';
-import { eventTeamsLink, locationWithoutTeamsUrl } from '../utils/teamsLink';
-import { formatAllDayPeriod } from '../utils/eventFormat';
 import { dlog } from '../utils/debugLog';
-import { FieldAnswerTag, MyEventEntry, formatDate, formatDateRange, getStatusBadgeClass, getStatusLabel } from './myEvents/myEventsHelpers';
-import DocumentsViewer from './myEvents/DocumentsViewer';
-import QuizPlayer from './myEvents/QuizPlayer';
-import MyEventSubEvents from './myEvents/MyEventSubEvents';
-import MyEventDocField from './myEvents/MyEventDocField';
-import MyEventUpload from './myEvents/MyEventUpload';
+import { MyEventEntry, formatDate } from './myEvents/myEventsHelpers';
 import CancelledEventsCollapsible from './myEvents/CancelledEventsCollapsible';
 import MyEventCard from './myEvents/MyEventCard';
 import { AddMemberModal, ManageTeamModal, CascadeCancelModal, MyQrModal, EventCommsModal } from './myEvents/MyEventsModals';

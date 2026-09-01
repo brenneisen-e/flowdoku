@@ -6,13 +6,11 @@ import * as React from 'react';
 import { Pencil, X } from '../../Icons';
 import { MultiSelectDropdown } from '../../MultiSelectDropdown';
 import { DeloitteEvent } from '../../../types';
-import { SPRegistration } from '../../../services/EventService';
 
 export interface EditRegModalProps {
   closeEditModal: () => void;
   editError: string;
   editForm: Record<string, string>;
-  editingReg: SPRegistration;
   isDe: boolean;
   isSavingEdit: boolean;
   saveEdit: () => Promise<void>;
@@ -21,7 +19,7 @@ export interface EditRegModalProps {
 }
 
 export const EditRegModal: React.FC<EditRegModalProps> = (p) => {
-  const { closeEditModal, editError, editForm, editingReg, isDe, isSavingEdit, saveEdit, selectedEvent, setEditForm } = p;
+  const { closeEditModal, editError, editForm, isDe, isSavingEdit, saveEdit, selectedEvent, setEditForm } = p;
   return (
         <div
           style={{

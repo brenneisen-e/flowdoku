@@ -6,6 +6,7 @@
  * Die Grenze ist mechanisch gezogen (zusammenhaengender Bereich), nicht
  * thematisch — der Name beschreibt den Schwerpunkt, nicht eine reine Trennung. */
 import * as React from 'react';
+import { DeloitteEvent } from '../../../types';
 import { SubEventDraft, SuggestedEntry } from '../../wizard/wizardTypes';
 import { getSuggestedFieldsCatalog } from '../../../data/suggestedFields';
 import { CustomFieldInput } from '../../wizard/customFieldInput';
@@ -18,7 +19,6 @@ export interface UseWizardOptionStateCtx {
   customFields: CustomFieldInput[];
   durchstarterCapacity: string;
   editEvent: import("../../../types/index").DeloitteEvent;
-  events: import("../../../types/index").DeloitteEvent[];
   funstarterCapacity: string;
   isDe: boolean;
   isEditMode: boolean;
@@ -78,7 +78,7 @@ export interface UseWizardOptionStateCtx {
 }
 
 export function useWizardOptionState(ctx: UseWizardOptionStateCtx) {
-  const { b2runStartblocks, customFields, durchstarterCapacity, editEvent, events, funstarterCapacity, isDe, isEditMode, newStartblock, selectedTemplate, setAddrCity, setAddrHouseNo, setAddrStreet, setAddrZip, setAgenda, setAudience, setB2runStartblocks, setContactEmail, setContactInfo, setContactName, setCurrentStep, setCustomFields, setDescription, setDurchstarterCapacity, setEmailLanguage, setEndDate, setEventImageUrl, setExcludedUsers, setFieldExpandOverride, setFilterMode, setFunstarterCapacity, setImageFile, setImageOrigAspect, setImageOrigFile, setImagePreview, setKlammerDeadline, setLastDeregisterDate, setLocation, setLocationFilter, setMaxParticipants, setNewStartblock, setNoDescription, setRegistrationDeadline, setRemovedSavedSubs, setSelectedTemplate, setShowTemplatePicker, setSplitDescA, setSplitDescB, setSplitHelpText, setSplitLabelA, setSplitLabelB, setSplitSectionTitle, setSplitSharedWaitlist, setStartDate, setSubEvents, setTemplateLoadingId, setTitle, setTransferTimes, setUnlimitedParticipants, setWaitlistEnabled, showAlert } = ctx;
+  const { b2runStartblocks, customFields, durchstarterCapacity, editEvent, funstarterCapacity, isDe, isEditMode, newStartblock, selectedTemplate, setAddrCity, setAddrHouseNo, setAddrStreet, setAddrZip, setAgenda, setAudience, setB2runStartblocks, setContactEmail, setContactInfo, setContactName, setCurrentStep, setCustomFields, setDescription, setDurchstarterCapacity, setEmailLanguage, setEndDate, setEventImageUrl, setExcludedUsers, setFieldExpandOverride, setFilterMode, setFunstarterCapacity, setImageFile, setImageOrigAspect, setImageOrigFile, setImagePreview, setKlammerDeadline, setLastDeregisterDate, setLocation, setLocationFilter, setMaxParticipants, setNewStartblock, setNoDescription, setRegistrationDeadline, setRemovedSavedSubs, setSelectedTemplate, setShowTemplatePicker, setSplitDescA, setSplitDescB, setSplitHelpText, setSplitLabelA, setSplitLabelB, setSplitSectionTitle, setSplitSharedWaitlist, setStartDate, setSubEvents, setTemplateLoadingId, setTitle, setTransferTimes, setUnlimitedParticipants, setWaitlistEnabled, showAlert } = ctx;
   const [allowAttendeeUpload, setAllowAttendeeUpload] = React.useState<boolean>(
     !!editEvent?.allowAttendeeUpload
   );
@@ -452,7 +452,7 @@ export function useWizardOptionState(ctx: UseWizardOptionStateCtx) {
   // ins neue Formular laden (KEINE Datumswerte, KEINE Sub-Events — die legt der
   // Organizer fürs neue Event frisch fest). Das Bild wird vom (gleichen
   // SharePoint-)Anhang gefetcht und als Datei für den Re-Upload übernommen.
-  const applyEventTemplate = async (ev: (typeof events)[number]): Promise<void> => {
+  const applyEventTemplate = async (ev: DeloitteEvent): Promise<void> => {
     return await applyEventTemplateImpl({
       resetDemoVariantBaseState, setAddrCity, setAddrHouseNo, setAddrStreet, setAddrZip, setAgenda,
       setAskSalutation, setAudience, setBilingualFields, setCurrentStep, setCustomFields, setDescription,

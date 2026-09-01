@@ -5,15 +5,12 @@
 import * as React from 'react';
 import { MassmailAudience } from '../adminTypes';
 import Modal from '../../Modal';
-import { DeloitteEvent } from '../../../types';
 import { SPRegistration } from '../../../services/EventService';
 
 export interface MassmailPickModalProps {
   massmailAudience: MassmailAudience;
-  massmailMode: "closed" | "pick" | "paste" | "editor";
   massmailStatuses: Set<string>;
   registrations: SPRegistration[];
-  selectedEvent: DeloitteEvent;
   setMassmailAudience: React.Dispatch<React.SetStateAction<MassmailAudience>>;
   setMassmailMode: React.Dispatch<React.SetStateAction<"closed" | "pick" | "paste" | "editor">>;
   setMassmailPasteRaw: React.Dispatch<React.SetStateAction<string>>;
@@ -22,7 +19,7 @@ export interface MassmailPickModalProps {
 }
 
 export const MassmailPickModal: React.FC<MassmailPickModalProps> = (p) => {
-  const { massmailAudience, massmailMode, massmailStatuses, registrations, selectedEvent, setMassmailAudience, setMassmailMode, setMassmailPasteRaw, setMassmailStatuses, setShowEmailModal } = p;
+  const { massmailAudience, massmailStatuses, registrations, setMassmailAudience, setMassmailMode, setMassmailPasteRaw, setMassmailStatuses, setShowEmailModal } = p;
         const closeAll = (): void => { setMassmailMode('closed'); setMassmailPasteRaw(''); };
         const proceed = (): void => {
           if (massmailAudience === 'custom' && massmailStatuses.size === 0) return;

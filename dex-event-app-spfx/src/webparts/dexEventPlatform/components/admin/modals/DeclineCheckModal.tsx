@@ -13,11 +13,10 @@ export interface DeclineCheckModalProps {
   setDeclineCopied: React.Dispatch<React.SetStateAction<boolean>>;
   setShowDeclineModal: React.Dispatch<React.SetStateAction<boolean>>;
   showAlert: (message: React.ReactNode, opts?: import("../../../context/DialogContext").AlertOptions) => void;
-  showDeclineModal: boolean;
 }
 
 export const DeclineCheckModal: React.FC<DeclineCheckModalProps> = (p) => {
-  const { declineCopied, declineResult, isDe, setDeclineCopied, setShowDeclineModal, showAlert, showDeclineModal } = p;
+  const { declineCopied, declineResult, isDe, setDeclineCopied, setShowDeclineModal, showAlert } = p;
   return (
         <div
           style={{

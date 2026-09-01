@@ -13,9 +13,9 @@ export interface EventOverviewScreenProps {
   archiveBusyId: string;
   archivedCount: number;
   archivedEventIds: Set<string>;
-  changeLogModal: React.ReactElement<any, string | React.JSXElementConstructor<any>>;
+  changeLogModal: React.ReactElement | null;
   currentEvents: DeloitteEvent[];
-  dangerZoneModal: React.ReactElement<any, string | React.JSXElementConstructor<any>>;
+  dangerZoneModal: React.ReactElement | null;
   deletingId: string;
   draftCount: number;
   eventSortMode: "alpha" | "date";

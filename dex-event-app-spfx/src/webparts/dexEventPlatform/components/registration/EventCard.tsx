@@ -26,8 +26,8 @@ export interface EventCardProps {
   imgAspectReady: boolean;
   imgCircleNotch: boolean;
   imgHovered: boolean;
-  imgSlotH: 210 | 260 | 300;
-  imgSlotW: 280 | 420 | 210 | 240;
+  imgSlotH: number;
+  imgSlotW: number;
   imgZoomed: boolean;
   isMobile: boolean;
   locale: Locale;

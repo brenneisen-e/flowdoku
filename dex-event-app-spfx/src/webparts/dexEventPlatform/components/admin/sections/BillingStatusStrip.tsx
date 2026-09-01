@@ -13,14 +13,13 @@ export interface BillingStatusStripProps {
   isDe: boolean;
   isFA: boolean;
   isOrganizerFor: (ev: DeloitteEvent) => boolean;
-  isQRScannerOnlyForSelected: boolean;
   navigate: (page: import("../../../context/NavigationContext").Page, eventId?: string, intent?: import("../../../context/NavigationContext").NavIntent) => void;
   selectedEvent: DeloitteEvent;
   setBillingPanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 export const BillingStatusStrip: React.FC<BillingStatusStripProps> = (p) => {
-  const { isAdmin, isDe, isFA, isOrganizerFor, isQRScannerOnlyForSelected, navigate, selectedEvent, setBillingPanelOpen } = p;
+  const { isAdmin, isDe, isFA, isOrganizerFor, navigate, selectedEvent, setBillingPanelOpen } = p;
           const bb = parseBillingOf(selectedEvent);
           if (!bb) return null;
           const miss = missingBillingFields(bb);

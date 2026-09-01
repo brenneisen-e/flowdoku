@@ -12,9 +12,7 @@ export interface HotelPlanningSectionProps {
   confirmDialog: (message: React.ReactNode, opts?: import("../../../context/DialogContext").ConfirmOptions) => Promise<boolean>;
   getAllRegistrations: (eventId: string, onHttpError?: (_status: number) => void) => Promise<SPRegistration[]>;
   hotelPanelOpen: boolean;
-  isAdmin: boolean;
   isDe: boolean;
-  isOrganizerFor: (ev: DeloitteEvent) => boolean;
   refreshEvents: () => Promise<void>;
   registrations: SPRegistration[];
   selectedEvent: DeloitteEvent;
@@ -25,7 +23,7 @@ export interface HotelPlanningSectionProps {
 }
 
 export const HotelPlanningSection: React.FC<HotelPlanningSectionProps> = (p) => {
-  const { childEventsOf, confirmDialog, getAllRegistrations, hotelPanelOpen, isAdmin, isDe, isOrganizerFor, refreshEvents, registrations, selectedEvent, setHotelPanelOpen, setRegistrations, showAlert, subEventRegsByEventId } = p;
+  const { childEventsOf, confirmDialog, getAllRegistrations, hotelPanelOpen, isDe, refreshEvents, registrations, selectedEvent, setHotelPanelOpen, setRegistrations, showAlert, subEventRegsByEventId } = p;
         const HOTEL_LABEL = /hotel|unterkunft|übernacht|uebernacht|accommodation|lodging/i;
         const asksForHotel = (ev: { eventSpecificFields?: Array<{ type?: string; label?: string; labelEn?: string }> }): boolean =>
           (ev.eventSpecificFields || []).some(f =>

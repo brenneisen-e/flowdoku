@@ -4,7 +4,6 @@
  */
 import * as React from 'react';
 import Modal from '../../Modal';
-import { DeloitteEvent } from '../../../types';
 import { SPRegistration } from '../../../services/EventService';
 
 export interface DupCancelModalProps {
@@ -13,14 +12,13 @@ export interface DupCancelModalProps {
   isDe: boolean;
   performSilentDuplicateDelete: (reg: SPRegistration) => Promise<void>;
   performStandardCancel: (reg: SPRegistration) => Promise<void>;
-  selectedEvent: DeloitteEvent;
   setDupCancelBusy: React.Dispatch<React.SetStateAction<boolean>>;
   setDupCancelReg: React.Dispatch<React.SetStateAction<SPRegistration>>;
   showAlert: (message: React.ReactNode, opts?: import("../../../context/DialogContext").AlertOptions) => void;
 }
 
 export const DupCancelModal: React.FC<DupCancelModalProps> = (p) => {
-  const { dupCancelBusy, dupCancelReg, isDe, performSilentDuplicateDelete, performStandardCancel, selectedEvent, setDupCancelBusy, setDupCancelReg, showAlert } = p;
+  const { dupCancelBusy, dupCancelReg, isDe, performSilentDuplicateDelete, performStandardCancel, setDupCancelBusy, setDupCancelReg, showAlert } = p;
         const reg = dupCancelReg;
         const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
         const teamLabel = reg.TeamName ? `„${reg.TeamName}"` : (reg.TeamId ? (isDe ? 'Team ohne Namen' : 'unnamed team') : (isDe ? 'Einzel-Anmeldung' : 'individual registration'));

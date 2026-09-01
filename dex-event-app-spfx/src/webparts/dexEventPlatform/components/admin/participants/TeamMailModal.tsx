@@ -18,13 +18,12 @@ export interface TeamMailModalProps {
   setTeamMailSubject: React.Dispatch<React.SetStateAction<string>>;
   teamMailBody: string;
   teamMailInfoByTid: Record<string, string>;
-  teamMailOpen: boolean;
   teamMailSending: boolean;
   teamMailSubject: string;
 }
 
 export const TeamMailModal: React.FC<TeamMailModalProps> = (p) => {
-  const { getActiveTeams, isDe, selectedEvent, sendTeamMails, setTeamMailBody, setTeamMailInfoByTid, setTeamMailOpen, setTeamMailSubject, teamMailBody, teamMailInfoByTid, teamMailOpen, teamMailSending, teamMailSubject } = p;
+  const { getActiveTeams, isDe, selectedEvent, sendTeamMails, setTeamMailBody, setTeamMailInfoByTid, setTeamMailOpen, setTeamMailSubject, teamMailBody, teamMailInfoByTid, teamMailSending, teamMailSubject } = p;
   return (
           <Modal
             open={true}
