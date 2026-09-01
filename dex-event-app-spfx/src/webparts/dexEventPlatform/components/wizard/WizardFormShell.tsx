@@ -33,6 +33,7 @@ export interface WizardFormShellProps {
   billingRelevant: boolean;
   billingSendMode: "manual" | "auto";
   canBilling: boolean;
+  capacityStepProps: Omit<CapacityStepProps, 'visible'>;
   communicationStepProps: Omit<CommunicationStepProps, 'visible'>;
   currentStep: number;
   detailsStepProps: Omit<DetailsStepProps, 'visible'>;
