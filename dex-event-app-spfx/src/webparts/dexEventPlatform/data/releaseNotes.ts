@@ -43,7 +43,94 @@ export interface ReleaseNote {
   text: string;
 }
 
+/**
+ * v30.60: Ein Eintrag, zerlegt in Kernaussage und Einzelpunkte.
+ *
+ * Nutzer-Befund 01.09.2026: „das ist extrem viel Fließtext. Bitte optimieren,
+ * auch rückwirkend." Stimmt — die Einträge sind Absätze von zehn Zeilen, und
+ * wer wissen will, was ein Release gebracht hat, liest sie nicht.
+ *
+ * **Warum die Gliederung beim Anzeigen entsteht und nicht im Datensatz:** Es
+ * gibt über 600 Einträge. Sie alle von Hand umzuschreiben hieße, 600 Texte
+ * anzufassen, die inhaltlich stimmen — mit dem Risiko, dabei Aussagen zu
+ * verändern, die als Beleg dienen (in den Notes stehen Ursachen und
+ * Entscheidungen, die anderswo zitiert werden). Der Text bleibt deshalb
+ * unangetastet und ist weiter die Quelle für Suche und Wochenbericht; die
+ * Gliederung liest sich aus ihm heraus. Damit wirkt sie sofort für JEDEN
+ * Eintrag, auch für die von vor zwei Jahren.
+ *
+ * Die Struktur steckt bereits in den Texten — sie war nur nicht sichtbar:
+ * Die meisten längeren Einträge nummerieren ihre Punkte selbst („(1) … (2) …"),
+ * viele beginnen mit einer Ankündigung („Drei Sachen."). Genau daran wird
+ * getrennt. Wo es keine Nummerierung gibt, bleibt der Text ein Absatz — dann
+ * gibt es nichts zu gliedern, und erfundene Aufzählungspunkte wären schlechter
+ * als ein ehrlicher Fließtext.
+ */
+export interface ReleaseNoteParts {
+  /** Erster Satz — die Kernaussage, fett vorangestellt. */
+  lead: string;
+  /** Die nummerierten Punkte, ohne ihre „(n)"-Marke. Leer = keine. */
+  points: string[];
+  /** Was nach dem Lead und vor/nach den Punkten übrig bleibt. */
+  rest: string;
+}
+
+/** Ende des ersten Satzes finden — Abkürzungen wie „z.B." zählen nicht. */
+function firstSentenceEnd(t: string): number {
+  for (let i = 0; i < t.length - 1; i++) {
+    const c = t.charAt(i);
+    if (c !== '.' && c !== '!' && c !== '?') continue;
+    if (t.charAt(i + 1) !== ' ') continue;
+    // „z.B. ", „ca. ", „v30.60: " — ein Punkt nach einem sehr kurzen Wort ist
+    // in aller Regel eine Abkürzung, kein Satzende.
+    const before = t.slice(Math.max(0, i - 4), i);
+    if (/(^|\s)(z\.B|bzw|ca|ggf|u\.a|d\.h|Nr|vgl|evtl|inkl|max|min)$/i.test(before)) continue;
+    // Eine Ziffer direkt vor dem Punkt: Versionsnummer oder Aufzählung.
+    if (/[0-9]$/.test(t.slice(0, i))) continue;
+    return i + 1;
+  }
+  return -1;
+}
+
+export function splitReleaseNote(text: string): ReleaseNoteParts {
+  const t = (text || '').trim();
+  if (!t) return { lead: '', points: [], rest: '' };
+
+  // Punkte an den selbst gesetzten Marken „(1)", „(2)" … trennen.
+  const marks: number[] = [];
+  const re = /\((\d)\)\s/g;
+  let m = re.exec(t);
+  let expect = 1;
+  while (m) {
+    if (parseInt(m[1], 10) === expect) { marks.push(m.index); expect++; }
+    m = re.exec(t);
+  }
+
+  if (marks.length >= 2) {
+    const head = t.slice(0, marks[0]).trim();
+    const points: string[] = [];
+    for (let i = 0; i < marks.length; i++) {
+      const from = marks[i];
+      const to = i + 1 < marks.length ? marks[i + 1] : t.length;
+      points.push(t.slice(from, to).replace(/^\(\d\)\s*/, '').trim());
+    }
+    // Der Kopf ist oft nur „Drei Sachen." — als Lead sagt das nichts. Dann
+    // lieber gar kein Lead als einer, der den Platz wegnimmt.
+    const lead = /^(Zwei|Drei|Vier|Fünf|Sechs)\s+(Sachen|Dinge|Punkte|Fehler|Änderungen)\b/i.test(head) && head.length < 60
+      ? ''
+      : head;
+    return { lead, points, rest: '' };
+  }
+
+  const end = firstSentenceEnd(t);
+  if (end < 0 || end >= t.length - 1) return { lead: t, points: [], rest: '' };
+  return { lead: t.slice(0, end).trim(), points: [], rest: t.slice(end).trim() };
+}
+
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '30.60.0', date: '2026-09-01', bereich: 'Verwaltung', type: 'Feature', text: 'Die Rolle F&A kann jetzt alles, was Organizer können — plus den Abrechnungs-Schritt und das F&A Center. Bisher war sie eine Sackgasse: Wer sie bekam, verlor die Organizer-Rechte, die dieselbe Person für ihre eigenen Events braucht. (1) Neu im F&A Center: Personalnummern zuordnen. Je Person öffnet ein Knopf die Backoffice-Liste „Active Employees", bereits nach dem Nachnamen gesucht; die gefundene Nummer trägst du daneben ein, und sie steht danach in der Excel-Datei für F&A. Die beiden Spalten „Personalnummer" und „kostenstelle des Mitarbeiters" blieben bisher immer leer. Gespeichert wird am gemeldeten Stand, zugeordnet über die E-Mail-Adresse — nicht über die Zeilennummer, sonst landet eine Nummer nach einem neuen Versand bei der falschen Person. (2) Fehlende Spalten in Teilnehmerlisten können nicht mehr unbemerkt bleiben. Beim Speichern eines Events werden jetzt auch die Listen ALLER Termine abgeglichen, nicht nur die des Hauptevents — und danach wird nachgesehen: Fehlt weiterhin eine Spalte, sagt die App das mit Event und Feldnamen, statt es in die Konsole zu schreiben. Das ist der Fehler, der Anmeldungen scheitern lässt, aber nur bei den Personen, die genau dieses Feld ausfüllen. (3) Neue Aktion „Benötigte T-Shirts": zählt die angegebenen Trikot-/Konfektionsgrößen aller Angemeldeten zusammen — je Größe, mit Namen und als Excel. Wer keine Größe angegeben hat, wird namentlich ausgewiesen statt aus der Summe weggelassen. (4) Kommunikation für alle Termine auf einmal: Ein Knopf überträgt Mail-Sprache, Logo, Outlook-Text, Überschriften, Betreff und alle Mail-Schalter des Haupt-Events auf jeden Termin. Bisher ging das nur von einem Termin auf die anderen — wer zentral auf der Klammer gestaltet hatte, musste erst auf einen Termin kopieren.' },
+  { version: '30.60.0', date: '2026-09-01', bereich: 'Allgemein', type: 'Bugfix', text: 'Sechs Dinge an der Darstellung, alle aus dem Alltag gemeldet. (1) Datums- und Uhrzeitfelder zeigten „09/09/2026" und „04:41 PM" — amerikanisch, mitten in einer deutschen Oberfläche. Das ist keine Einstellung im Code, sondern die Sprache, in der der Browser die Seite sieht; sie wird jetzt an EINER Stelle für die ganze App gesetzt (und in Dialogfenstern gleich mit, die technisch außerhalb liegen). Ab sofort TT.MM.JJJJ und die 24-Stunden-Uhr. In Firefox richtet sich die Anzeige weiterhin nach der Spracheinstellung des Browsers — das kann eine Webseite nicht überstimmen. (2) Bei vielen gleich benannten Terminen („Day 1 - …", „Day 2 - …") stehen die Reiter jetzt gebündelt: erst die Tage, ein Klick zeigt die Termine des Tages. Ein Training mit 25 Sessions füllte die Leiste vorher über sechs Zeilen. Gilt im Organizer Center und im Assistenten; bei wenigen Terminen bleibt die Leiste wie bisher flach. (3) Der Text neben dem QR-Code („Name", „ID" und der Hinweis zur Nummer) war fest deutsch — auch in einer englischen QR-Mail. Er folgt jetzt der Mail-Sprache, und im QR-Editor lässt sich für ihn ausdrücklich Deutsch oder Englisch wählen. (4) Die Mail „Termin wurde weitergeleitet" ist neu gegliedert: eine Fakten-Tabelle (wer, an wen, welches Event, welcher Status) statt zweier Absätze Fließtext, und der lange Name der Person steht nicht mehr fünfmal darin. (5) Der Aufklapp-Knopf der Personen-Spalten in der Teilnehmerliste ist jetzt derselbe wie in der Sub-Event-Matrix — eine beschriftete Pille in eigener Zeile statt eines kleinen runden Knopfes direkt neben dem Sortier-Klickziel. (6) Beim Fragen-Stellen bekommen auch Organizer und Admins die Wahl, an wen die Frage geht. Bisher war sie an die Rolle gekoppelt und für sie unsichtbar — auch eine Organizerin hat Fragen zu einem fremden Event, die das DEX-Team nicht beantworten kann.' },
+  { version: '30.60.0', date: '2026-09-01', bereich: 'Prozesse & Doku', type: 'Feature', text: 'Die Release Notes sind gegliedert statt Fließtext. Der erste Satz steht als Kernaussage voran, die Einzelpunkte darunter als Liste — in der Release-Notes-Tabelle und im Wochenbericht. Das gilt rückwirkend für alle Einträge, auch die von vor zwei Jahren: Die Gliederung wird beim Anzeigen aus dem Text gelesen, statt 600 Texte umzuschreiben, die inhaltlich stimmen und anderswo als Beleg zitiert werden. Wo ein Eintrag keine Punkte enthält, bleibt er ein Absatz — erfundene Aufzählungen wären schlechter als ein ehrlicher Fließtext.' },
   { version: '30.59.0', date: '2026-09-01', bereich: 'Event-Erstellung', type: 'Bugfix', text: 'Der Assistent zeigte bei manchen Organizer:innen gar nichts mehr an — kein Schritt öffnete sich, das Event ließ sich nicht mehr bearbeiten. Ursache war der neue Schritt 10 (Abrechnung): Den gibt es im Piloten nur für Admins, der Assistent endet für alle anderen bei Schritt 9. Zwei Stellen setzten den Schritt trotzdem auf 10 — die Tour und das Laden eines gespeicherten Entwurfs. Ein Schritt, den es nicht gibt, passt zu keiner Anzeige-Bedingung: Die Seite bleibt leer, ohne dass irgendwo etwas meldet. Beide Stellen klemmen jetzt auf die Schritte, die die jeweilige Person wirklich hat. Wer betroffen war, kann das Event nach dem Update ganz normal wieder öffnen — es sind keine Daten verlorengegangen. Außerdem: Beim Fragen-Stellen wählst du jetzt selbst, an wen die Frage geht — an die Organisator:innen des Events (Ablauf, Ort, Zeiten) oder an das DEX-Team (etwas in der App geht nicht). Bisher entschied das allein die Rolle: Wer kein Organizer ist, landete immer bei den Organisator:innen — auch mit einer Frage zur App, die dort niemand beantworten kann.' },
   { version: '30.58.0', date: '2026-09-01', bereich: 'Verwaltung', type: 'Feature', text: '„Spalten fixen (alle Events)" sagt jetzt, WAS es gefunden hat — nicht mehr nur eine Zahl. Nach dem Lauf steht je Event, welche Spalten ergänzt wurden und welche weiterhin fehlen, getrennt nach Haupt- und Sub-Event. Der Grund dahinter: Fehlt auf einer Teilnehmerliste die Spalte zu einem Abfragefeld, lehnt SharePoint die GANZE Anmeldung ab — aber nur bei den Personen, die dieses Feld ausfüllen. Deshalb sieht es aus wie ein zufälliger Einzelfall, obwohl es ein Struktur-Fehler ist. Und weil die übergreifenden Hauptevent-Fragen nur auf die Klammer geschrieben werden, scheitert dann genau dort die Anmeldung, während die Termine durchlaufen. Zusätzlich liest die App bei einer abgelehnten Anmeldung jetzt die Antwort von SharePoint mit und schreibt sie in die Browser-Konsole — dort steht im Klartext, welche Spalte fehlt. Bisher endete jeder abgelehnte Schreibvorgang als anonymes „insert-failed"; die Auskunft war immer da, sie hat nur nie jemand gelesen.' },
   { version: '30.57.0', date: '2026-09-01', bereich: 'Anmeldung', type: 'Bugfix', text: 'Zwei Fehler, beide mit Folgen in den Daten. (1) Abgebrochene Anmeldung: Der Nachzug-Merker für die fehlende Klammer-Zeile entstand bisher erst, WENN der Schreibvorgang scheiterte. Wer den Tab schließt, das WLAN verliert oder auf dem Handy die App wechselt, während die Termine geschrieben werden, kommt aber nie bis zum Klammer-Schritt — dann gab es keinen Fehler, keinen Merker und keine Selbstheilung, sondern nur eine Person mit Termin-Zeilen ohne Klammer-Zeile. Genau das Bild aus dem roten Kasten im Organizer Center. Der Merker wird jetzt gesetzt, BEVOR der erste Termin geschrieben wird, und erst entfernt, wenn die Klammer-Zeile steht; jeder Abbruch dazwischen heilt sich beim nächsten App-Start. (2) Die Aktion „Zur Klammer hinzufügen" schrieb einen Zustimmungsnachweis, den es nicht gibt: „Zustimmung der Person zur stellvertretenden Anmeldung bestätigt durch <Admin>". Das Nachtragen einer fehlenden Zeile ist eine Datenkorrektur — dabei wird niemand um Zustimmung gefragt. Zusammen mit dem Zurückschreiben des ursprünglichen Anmelders entstand ein Datensatz, der sich selbst widerspricht: angemeldet von der Person selbst, Zustimmung bestätigt durch jemand anderen. Die Spalte bleibt jetzt leer; wer die Korrektur ausgelöst hat, steht wie bisher im Änderungsprotokoll.' },

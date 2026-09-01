@@ -5,6 +5,7 @@
  * State: Sie bekommt Tabs, aktiven Index und einen onChange.
  */
 import * as React from 'react';
+import { groupSubEventTabs, stripGroupPrefix } from '../../utils/subEventGroups';
 
 /**
  * v22.30: Tab-Leiste der pro-Sub-Event-Schritte (Klammer/Haupt + Sub-Events).
@@ -41,6 +42,9 @@ export function StickyTabStrip(props: {
    *  umbrechenden Reitern. */
   countBadge?: string;
 }): React.ReactElement {
+  // v30.60: Aufgeklappte Reiter-Gruppe („Day 1" …). '' = zugeklappt, null =
+  // noch nichts gewählt, dann gilt die Gruppe des aktiven Reiters.
+  const [openGroup, setOpenGroup] = React.useState<string | null>(null);
   const phRef = React.useRef<HTMLDivElement | null>(null);
   const [pin, setPin] = React.useState<null | { top: number; left: number; width: number; height: number }>(null);
   // v28.72: Hover-/Fokus-Index für die Reiter (Inline-Styles können kein :hover).
@@ -250,6 +254,76 @@ export function StickyTabStrip(props: {
               </button>
             );
           };
+          /**
+           * v30.60: Bei vielen gleich präfigierten Terminen („Day 1 - …",
+           * „Day 2 - …") erst die Gruppen zeigen, ein Klick öffnet die Termine
+           * des Tages. Ein Training mit 25 Sessions füllte die Leiste sonst
+           * über sechs Zeilen, und die Struktur, die in den Namen steckt, war
+           * nur beim Lesen jeder einzelnen Kachel zu erkennen. Ob überhaupt
+           * gebündelt wird, entscheidet utils/subEventGroups — bei wenigen
+           * Terminen bleibt die Leiste flach (eine Gruppierung, die nichts
+           * spart, ist nur eine zusätzliche Ebene).
+           */
+          const subTabs = props.tabs.slice(1);
+          const grouping = groupSubEventTabs(subTabs.map(t => t.label));
+          const renderSubTabs = (): React.ReactNode => {
+            if (!grouping.grouped) return subTabs.map((tab, i) => renderTabBtn(tab, i + 1));
+            // Voreingestellt offen ist die Gruppe des aktiven Reiters — sonst
+            // steht man nach einem Schrittwechsel vor lauter zugeklappten
+            // Gruppen und muss den eigenen Termin suchen.
+            const selSub = props.activeIdx - 1;
+            const auto = selSub >= 0
+              ? (grouping.groups.filter(g => g.idxs.indexOf(selSub) >= 0)[0] || null)
+              : null;
+            const openLabel = openGroup !== null ? openGroup : (auto ? auto.label : grouping.groups[0].label);
+            const shown = grouping.groups.filter(g => g.label === openLabel)[0];
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', minWidth: 0 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {grouping.groups.map(g => {
+                    const on = g.label === openLabel;
+                    const hasSel = selSub >= 0 && g.idxs.indexOf(selSub) >= 0;
+                    return (
+                      <button
+                        key={g.label}
+                        type="button"
+                        onClick={() => setOpenGroup(on ? '' : g.label)}
+                        title={`${g.label} — ${g.idxs.length}`}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 7,
+                          padding: '5px 13px', borderRadius: 999, cursor: 'pointer',
+                          border: `1px solid ${on || hasSel ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+                          background: on ? 'var(--dex-green, #86bc25)' : '#fff',
+                          color: on ? '#fff' : 'var(--dex-gray-700)',
+                          fontWeight: on || hasSel ? 700 : 500, fontSize: '0.8rem',
+                          transition: 'background 0.15s, border-color 0.15s',
+                        }}
+                      >
+                        <span>{g.label}</span>
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          minWidth: 20, height: 17, padding: '0 5px', borderRadius: 999,
+                          background: on ? 'rgba(255,255,255,0.28)' : 'var(--dex-gray-100)',
+                          color: on ? '#fff' : 'var(--dex-gray-600)',
+                          fontSize: '0.67rem', fontWeight: 700,
+                        }}>{g.idxs.length}</span>
+                        <span style={{ fontSize: '0.68rem' }}>{on ? '\u25BE' : '\u25B8'}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'flex-end' }}>
+                  {(shown ? shown.idxs : []).map(i => {
+                    const tab = subTabs[i];
+                    if (!tab) return null;
+                    // In der Gruppe „Day 1" heißt der Reiter „PMO" — das Präfix
+                    // steht schon eine Zeile darüber.
+                    return renderTabBtn({ ...tab, label: stripGroupPrefix(tab.label, openLabel) }, i + 1);
+                  })}
+                </div>
+              </div>
+            );
+          };
           const klammerLayout = !!props.klammer && props.tabs.length > 1 && !!props.tabs[0] && props.tabs[0].isMain;
           if (klammerLayout) {
             const dis = !!props.mainDisabled;
@@ -371,7 +445,7 @@ export function StickyTabStrip(props: {
                       paddingBottom: 2,
                     }}
                   >
-                    {props.tabs.slice(1).map((tab, i) => renderTabBtn(tab, i + 1))}
+                    {renderSubTabs()}
                   </div>
                   {ovf.right && arrowBtn(1)}
                   {/* v29.23: Die Standortanzeige „3 / 21" (v28.89) ist hier
@@ -400,7 +474,8 @@ export function StickyTabStrip(props: {
                 paddingBottom: 0,
               }}
             >
-              {props.tabs.map((tab, tabIdx) => renderTabBtn(tab, tabIdx))}
+              {props.tabs[0] ? renderTabBtn(props.tabs[0], 0) : null}
+              {renderSubTabs()}
             </div>
           );
         })()}

@@ -27,6 +27,7 @@ import {
   parseBillingOf, faStatusOf, FAStatus, FA_STATUS_LABELS, FA_STATUS_COLORS,
   FA_STATUS_ORDER, FA_STATUS_SHORT,
   FAConfig, BillingLogEntry, BillingData, FAListRow, downloadFAParticipantXlsx, parsePersonValue,
+  activeEmployeesLookupUrl,
 } from '../utils/faBilling';
 import { PersonContactHover } from './PersonContactHover';
 
@@ -86,7 +87,7 @@ const statusPill = (s: FAStatus): React.ReactElement => (
 export default function FACenterPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { isFA, isAdmin, searchUsers, searchUser } = useRoles();
-  const { events, getFAConfig, saveFAConfig, markEventSettled } = useEvents();
+  const { events, getFAConfig, saveFAConfig, markEventSettled, saveFAPersonalNumbers } = useEvents();
   const { confirmDialog, showAlert } = useDialog();
   const { currentUser } = useCurrentUser();
 
@@ -106,6 +107,12 @@ export default function FACenterPage(): React.ReactElement {
   const [settleBusy, setSettleBusy] = React.useState(false);
   const [openMailIdx, setOpenMailIdx] = React.useState<number | null>(null);
   const [xlsxBusy, setXlsxBusy] = React.useState(false);
+  // v30.60: Personalnummern-Mapping. Der Entwurf liegt lokal je E-Mail-Adresse
+  // und wird erst auf Klick gespeichert — Zeichen für Zeichen zu speichern
+  // hieße bei 100 Teilnehmern 100 Schreibvorgänge auf dasselbe Event-Item.
+  const [pnDraft, setPnDraft] = React.useState<Record<string, { personalNr?: string; costCenter?: string }>>({});
+  const [pnBusy, setPnBusy] = React.useState(false);
+  const [pnEventId, setPnEventId] = React.useState<string>('');
 
   React.useEffect(() => {
     if (!allowed) return;
@@ -199,6 +206,19 @@ export default function FACenterPage(): React.ReactElement {
       return hay.indexOf(q) >= 0;
     });
   }, [billingEvents, search, statusFilter]);
+
+  // v30.60: Der Personalnummern-Entwurf gehört zu EINEM Event. Wer die
+  // Detailansicht wechselt, ohne zu speichern, würde die Eingaben sonst beim
+  // nächsten Speichern dem falschen Event zuordnen. Deshalb hier verworfen —
+  // sichtbar, weil die Zellen dann wieder den gespeicherten Stand zeigen.
+  // Steht VOR dem `if (!allowed)`: Hooks hinter einem frühen Return reißen die
+  // Hook-Reihenfolge (siehe CLAUDE.md, React #300).
+  React.useEffect(() => {
+    const id = selectedId || '';
+    if (id === pnEventId) return;
+    setPnEventId(id);
+    setPnDraft({});
+  }, [selectedId, pnEventId]);
 
   const selected = selectedId ? billingEvents.find(x => x.ev.id === selectedId) : undefined;
 
@@ -374,24 +394,104 @@ export default function FACenterPage(): React.ReactElement {
                   Für den vollständigen Satz die Teilnehmerliste einmal neu versenden.
                 </p>
               )}
+              {/* v30.60: Personalnummern-Mapping. F&A hat als einzige Rolle
+                  Zugriff auf die Backoffice-Liste „Active Employees"; der
+                  Knopf je Zeile öffnet sie in einem neuen Tab, bereits nach
+                  dem Nachnamen gesucht (Parameter `k`). Die gefundene Nummer
+                  wird hier eingetragen und landet in der Excel-Datei — die
+                  beiden Spalten der F&A-Vorlage blieben bisher leer. */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+                margin: '0 0 10px', padding: '8px 12px', borderRadius: 8,
+                background: 'rgba(0,118,168,0.06)', fontSize: '0.78rem', lineHeight: 1.5,
+              }}>
+                <span style={{ flex: '1 1 260px', color: 'var(--dex-gray-600)' }}>
+                  <strong>Personalnummern zuordnen:</strong> „Nachschlagen&ldquo; öffnet
+                  die Liste <em>Active Employees</em> im Backoffice, bereits nach dem
+                  Nachnamen gesucht. Die Nummer hier eintragen — sie steht danach in der
+                  Excel-Datei und bleibt am Event gespeichert.
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ fontSize: '0.8rem', padding: '6px 16px', flexShrink: 0 }}
+                  disabled={pnBusy || Object.keys(pnDraft).length === 0}
+                  onClick={() => {
+                    setPnBusy(true);
+                    saveFAPersonalNumbers(selected.ev, pnDraft)
+                      .then(ok => {
+                        if (ok) { setPnDraft({}); showAlert('Die Personalnummern wurden gespeichert.', { variant: 'success' }); }
+                        else showAlert('Die Personalnummern konnten nicht gespeichert werden — bitte erneut versuchen.', { variant: 'error' });
+                      })
+                      .catch(() => showAlert('Die Personalnummern konnten nicht gespeichert werden — bitte erneut versuchen.', { variant: 'error' }))
+                      .finally(() => setPnBusy(false));
+                  }}
+                >
+                  {pnBusy ? 'Wird gespeichert…' : `Personalnummern speichern${Object.keys(pnDraft).length > 0 ? ` (${Object.keys(pnDraft).length})` : ''}`}
+                </button>
+              </div>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ borderCollapse: 'collapse', fontSize: '0.85rem', minWidth: 420 }}>
                   <thead>
                     <tr>
-                      {['#', 'Name', 'E-Mail', 'Status'].map(h => (
-                        <th key={h} style={{ textAlign: 'left', padding: '6px 12px 6px 0', borderBottom: '2px solid var(--dex-gray-200)' }}>{h}</th>
+                      {['#', 'Name', 'E-Mail', 'Status', 'Personalnummer', 'Kostenstelle', ''].map((h, hi) => (
+                        <th key={hi} style={{ textAlign: 'left', padding: '6px 12px 6px 0', borderBottom: '2px solid var(--dex-gray-200)' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {b.listSnapshot.map((p, i) => (
-                      <tr key={i}>
-                        <td style={{ padding: '4px 12px 4px 0', color: 'var(--dex-gray-400)' }}>{i + 1}</td>
-                        <td style={{ padding: '4px 12px 4px 0' }}>{p.name}</td>
-                        <td style={{ padding: '4px 12px 4px 0' }}>{p.email}</td>
-                        <td style={{ padding: '4px 0' }}>{p.status}</td>
-                      </tr>
-                    ))}
+                    {b.listSnapshot.map((p, i) => {
+                      const k = (p.email || '').toLowerCase().trim();
+                      const d = pnDraft[k];
+                      const pnVal = d && d.personalNr !== undefined ? d.personalNr : (p.personalNr || '');
+                      const ccVal = d && d.costCenter !== undefined ? d.costCenter : (p.costCenter || '');
+                      const patch = (part: { personalNr?: string; costCenter?: string }): void => setPnDraft(prev => ({
+                        ...prev,
+                        [k]: { personalNr: pnVal, costCenter: ccVal, ...part },
+                      }));
+                      const cellInput: React.CSSProperties = {
+                        width: 130, padding: '3px 8px', fontSize: '0.82rem',
+                        border: '1px solid var(--dex-gray-200)', borderRadius: 6,
+                      };
+                      return (
+                        <tr key={i}>
+                          <td style={{ padding: '4px 12px 4px 0', color: 'var(--dex-gray-400)' }}>{i + 1}</td>
+                          <td style={{ padding: '4px 12px 4px 0' }}>{p.name}</td>
+                          <td style={{ padding: '4px 12px 4px 0' }}>{p.email}</td>
+                          <td style={{ padding: '4px 12px 4px 0' }}>{p.status}</td>
+                          <td style={{ padding: '4px 12px 4px 0' }}>
+                            <input
+                              type="text" value={pnVal} style={cellInput}
+                              placeholder="—"
+                              onChange={e => patch({ personalNr: e.target.value })}
+                            />
+                          </td>
+                          <td style={{ padding: '4px 12px 4px 0' }}>
+                            <input
+                              type="text" value={ccVal} style={cellInput}
+                              placeholder="—"
+                              onChange={e => patch({ costCenter: e.target.value })}
+                            />
+                          </td>
+                          <td style={{ padding: '4px 0' }}>
+                            {/* Neuer Tab + noopener: Die Backoffice-Seite liegt in
+                                einer anderen Site Collection; im selben Tab wäre
+                                das F&A Center samt Entwurf weg. Die Anmeldung
+                                trägt der Browser mit — es ist derselbe Nutzer. */}
+                            <a
+                              href={activeEmployeesLookupUrl(p)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="btn btn-secondary"
+                              style={{ fontSize: '0.75rem', padding: '3px 10px', whiteSpace: 'nowrap', textDecoration: 'none' }}
+                              title={`Active Employees nach „${p.lastName || p.name}“ durchsuchen`}
+                            >
+                              Nachschlagen
+                            </a>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

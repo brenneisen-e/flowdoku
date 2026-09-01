@@ -22,6 +22,8 @@
  */
 import * as React from 'react';
 import * as ReactDOM from 'react-dom';
+import { useLocaleSafe } from '../context/LanguageContext';
+import { inputLocaleTag } from '../utils/inputLocale';
 // v24.65: Die gescopte Root-Klasse des Web Parts. Alle Basis-Styles (Schrift,
 // Radio-/Checkbox-/Input-Styling, CSS-Variablen) liegen unter `.dexApp`. Ein per
 // Portal an document.body gerendertes Modal liegt AUSSERHALB dieses Scopes —
@@ -128,6 +130,13 @@ export default function Modal({
    */
   const downOnBackdropRef = React.useRef(false);
 
+  // v30.60: Die Sprache für die nativen Datums-/Zeitfelder im Modal. Der
+  // Context trägt auch durch ein Portal (React-Kontext folgt dem
+  // Komponenten-Baum, nicht dem DOM); das Attribut muss aber trotzdem hier
+  // gesetzt werden, weil das Overlay im DOM an document.body hängt und das
+  // `lang` der App-Wurzel deshalb nicht erbt.
+  const modalLang = inputLocaleTag(useLocaleSafe() === 'de');
+
   React.useEffect(() => {
     if (!open) return undefined;
     const onKey = (e: KeyboardEvent): void => {
@@ -153,6 +162,12 @@ export default function Modal({
         if (e.target !== e.currentTarget || !wasDownOnBackdrop) return;
         onClose();
       }}
+      // v30.60: Wie die --dex-*-Variablen eine Zeile tiefer muss auch die
+      // Sprache am Overlay stehen: Das Modal hängt per Portal an document.body
+      // und liegt damit AUSSERHALB des App-Wurzelelements, das `lang` trägt.
+      // Ohne das zeigen Datums- und Zeitfelder in Modals wieder MM/DD/YYYY und
+      // die 12-Stunden-Uhr (siehe utils/inputLocale).
+      lang={modalLang}
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',

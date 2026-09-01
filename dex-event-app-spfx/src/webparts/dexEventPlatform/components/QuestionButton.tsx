@@ -18,6 +18,7 @@ import { TicketContext } from '../context/TicketContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useNavigation } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
+import { useCurrentUser } from '../context/UserContext';
 import { useEvents } from '../context/EventContext';
 import { searchManual, openManualArticle, getManualSection, ManualArticle } from '../utils/manualSearch';
 import { captureScreen } from '../utils/screenshot';
@@ -40,6 +41,7 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
   const { locale } = useLanguage();
   const { navigate, selectedEventId } = useNavigation();
   const { currentUserRole, isAdmin } = useRoles();
+  const { currentUser } = useCurrentUser();
   const { events, topLevelEvents, getMyEventNumbers, childEventsOf } = useEvents();
   const isDe = locale === 'de';
 
@@ -142,8 +144,23 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
   const ctxOrgs = ctxEvent
     ? Array.from(new Set([...(ctxEvent.organizerEmails || []), ...(ctxEvent.coOrganizerEmails || [])].map((x) => (x || '').trim()).filter(Boolean)))
     : [];
-  const canChooseRoute = !askerIsOrgLike && !!ctxEvent && ctxOrgs.length > 0;
-  const effectiveRoute: 'organizer' | 'dex' = canChooseRoute ? (routeTo || 'organizer') : 'dex';
+  // v30.60: Die Wahl hing an der Rolle — wer selbst Organizer oder Admin ist,
+  // bekam sie gar nicht zu sehen und landete immer beim DEX-Team. Das ist
+  // dieselbe Bevormundung wie vorher, nur andersherum: Auch eine Organizerin
+  // hat Fragen zu einem Event, das ihr nicht gehört („wann ist der Transfer?"),
+  // und die kann das DEX-Team nicht beantworten. Sichtbar ist die Wahl deshalb
+  // immer, sobald ein Event gewählt ist, das überhaupt Organizer hat.
+  //
+  // Eine Ausnahme bleibt: Bin ich selbst Organizer DIESES Events, führt der
+  // Weg „an die Organizer" zu mir selbst — dann gibt es nichts zu wählen.
+  const myMail = (currentUser.email || '').toLowerCase().trim();
+  const askerOwnsThisEvent = !!myMail && ctxOrgs.some(o => o.toLowerCase() === myMail);
+  const canChooseRoute = !!ctxEvent && ctxOrgs.length > 0 && !askerOwnsThisEvent;
+  // Voreinstellung: Teilnehmer fragen meist zum Event, Organizer/Admins meist
+  // zum Werkzeug. Beides bleibt umstellbar — es ist eine Vorbelegung, kein Gate.
+  const effectiveRoute: 'organizer' | 'dex' = canChooseRoute
+    ? (routeTo || (askerIsOrgLike ? 'dex' : 'organizer'))
+    : 'dex';
   const goesToOrganizer = canChooseRoute && effectiveRoute === 'organizer';
   // v26.30: Auswahl-Optionen — „Deine Events" (angemeldet/Warteliste) vs. weitere
   // sichtbare Events. Test-Events (isFictive) nur für Organizer/Admins.
@@ -393,7 +410,7 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
               </select>
             </div>
 
-            {/* v30.59: An WEN geht die Frage? Ausdrücklich wählbar, statt nur
+            {/* v30.59/v30.60: An WEN geht die Frage? Ausdrücklich wählbar, statt nur
                 aus der Rolle abgeleitet. Vorher landete jede Frage einer
                 Nicht-Organizer-Person bei den Organisator:innen des gewählten
                 Events — auch eine Produktfrage („der Assistent öffnet sich
@@ -407,7 +424,7 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {([
                     { key: 'organizer' as const, label: isDe ? 'Organisator:innen des Events' : 'Event organizers', hint: isDe ? 'Alles zum Event selbst: Ablauf, Ort, Zeiten, Verpflegung.' : 'Anything about the event itself.' },
-                    { key: 'dex' as const, label: isDe ? 'DEX-Team' : 'DEX team', hint: isDe ? 'Alles zur App: etwas geht nicht, sieht falsch aus oder fehlt.' : 'Anything about the app itself.' },
+                    { key: 'dex' as const, label: isDe ? 'DEX-Team (Admins des Tools)' : 'DEX team (tool admins)', hint: isDe ? 'Alles zur App: etwas geht nicht, sieht falsch aus oder fehlt.' : 'Anything about the app itself.' },
                   ]).map(opt => {
                     const active = effectiveRoute === opt.key;
                     return (

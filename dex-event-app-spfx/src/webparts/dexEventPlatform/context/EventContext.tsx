@@ -21,7 +21,7 @@ import { buildUnsentEmlDraft } from '../utils/emlDraft';
 import { readPendingShadowParents, removePendingShadowParent, addPendingShadowParent } from '../utils/shadowHeal';
 import { withParentTitleSubject } from '../utils/mailSubject';
 import { APP_VERSION } from '../version';
-import { RELEASE_NOTES } from '../data/releaseNotes';
+import { RELEASE_NOTES, splitReleaseNote } from '../data/releaseNotes';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
 import { looksLikeClaimName, resolveMyDisplayName, safeDisplayName } from '../utils/displayName';
 import { emitBootStage } from '../utils/bootProgress';
@@ -545,6 +545,9 @@ interface EventContextType {
   saveFAConfig: (cfg: FAConfig) => Promise<boolean>;
   sendFAMail: (ev: DeloitteEvent, kind: 'info' | 'list', opts?: { auto?: boolean }) => Promise<{ ok: boolean; reason?: string }>;
   markEventSettled: (ev: DeloitteEvent) => Promise<boolean>;
+  /** v30.60: Von F&A nachgetragene Personalnummern/Kostenstellen in den
+   *  gemeldeten Snapshot schreiben (Zuordnung über die E-Mail-Adresse). */
+  saveFAPersonalNumbers: (ev: DeloitteEvent, values: Record<string, { personalNr?: string; costCenter?: string }>) => Promise<boolean>;
   /** v30.53: Rückfrage an F&A in der Kommunikationshistorie festhalten. */
   logFAContact: (ev: DeloitteEvent, to: string, subject: string) => Promise<boolean>;
   maybeSendBillingAutoMails: () => Promise<{ infoSent: number; listSent: number; reminders: number }>;
@@ -5883,7 +5886,16 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       const relToTs = new Date(toIso).getTime();
       const relNotes = RELEASE_NOTES.filter(n => { const t = new Date(n.date).getTime(); return isFinite(t) && t >= relFromTs && t <= relToTs; });
       const relNotesHtml = relNotes.length > 0
-        ? `<ul style="margin:8px 0 0 18px;padding:0;">${relNotes.map(n => `<li style="margin-bottom:6px;"><strong>${n.type === 'Bugfix' ? 'Behoben' : 'Neu'}:</strong> ${esc(n.text)}</li>`).join('')}</ul>`
+        // v30.60: Auch im Wochenbericht gegliedert statt als Textblock —
+        // dieselbe Zerlegung wie in der Release-Notes-Tabelle. Ein Bericht,
+        // der aus fünf zehnzeiligen Absätzen besteht, wird nicht gelesen.
+        ? `<ul style="margin:8px 0 0 18px;padding:0;">${relNotes.map(n => {
+          const parts = splitReleaseNote(n.text);
+          const inner = parts.points.length > 0
+            ? `${parts.lead ? esc(parts.lead) : ''}<ul style="margin:4px 0 0 16px;padding:0;">${parts.points.map(pt => `<li style="margin-bottom:3px;">${esc(pt)}</li>`).join('')}</ul>`
+            : `${esc(parts.lead)}${parts.rest ? ` ${esc(parts.rest)}` : ''}`;
+          return `<li style="margin-bottom:8px;"><strong>${n.type === 'Bugfix' ? 'Behoben' : 'Neu'}:</strong> ${inner}</li>`;
+        }).join('')}</ul>`
         : '';
       const draftCount = newEvents.filter(e => e.isDraft).length;
       const draftHint = draftCount > 0
@@ -6128,6 +6140,57 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       ...b,
       settled: { ts: nowIso, by },
       log: trimBillingLog([...(b.log || []), { ts: nowIso, by, action: 'Event als abgerechnet markiert' }]),
+    };
+    const ok = await eventService.patchEventOverridesValue(idNum, '_billing', newB);
+    if (ok) applyBillingLocally(ev.id, newB);
+    return ok;
+  }
+
+  /**
+   * v30.60: Von F&A nachgetragene Personalnummern/Kostenstellen speichern.
+   *
+   * Nutzer-Ansage 01.09.2026: F&A hat Zugriff auf die Backoffice-Liste
+   * „Active Employees" und mappt von dort die Personalnummer je Teilnehmer.
+   * Geschrieben wird in den SNAPSHOT (`_billing.listSnapshot`) und nicht in
+   * die Teilnehmerliste auf der Subsite — aus zwei Gründen: (1) F&A hat auf
+   * die Subsites keinen Zugriff, (2) der Snapshot ist der Stand, der
+   * gemeldet wurde, und genau der geht als Excel wieder hinaus.
+   *
+   * Zusammengeführt wird über die E-Mail-Adresse, nicht über den Index: Der
+   * Snapshot kann zwischen Anzeige und Speichern neu versendet worden sein,
+   * und ein Index-Treffer würde die Nummer dann der falschen Person
+   * zuordnen. Personen, die im aktuellen Snapshot nicht mehr stehen,
+   * verlieren ihren Eintrag — das ist gewollt, sie sind nicht mehr gemeldet.
+   */
+  async function saveFAPersonalNumbers(
+    ev: DeloitteEvent,
+    values: Record<string, { personalNr?: string; costCenter?: string }>
+  ): Promise<boolean> {
+    const b = parseBillingOf(ev);
+    if (!b || !b.listSnapshot) return false;
+    const idNum = parseInt(ev.id, 10);
+    if (!isFinite(idNum)) return false;
+    const key = (s: string): string => (s || '').toLowerCase().trim();
+    let changed = 0;
+    const snap = b.listSnapshot.map(r => {
+      const v = values[key(r.email)];
+      if (!v) return r;
+      const pn = (v.personalNr || '').trim();
+      const cc = (v.costCenter || '').trim();
+      if (pn === (r.personalNr || '') && cc === (r.costCenter || '')) return r;
+      changed++;
+      return { ...r, personalNr: pn, costCenter: cc };
+    });
+    if (changed === 0) return true;
+    const by = currentUserName || currentUserEmail;
+    const nowIso = new Date().toISOString();
+    const newB: BillingData = {
+      ...b,
+      listSnapshot: snap,
+      log: trimBillingLog([...(b.log || []), {
+        ts: nowIso, by,
+        action: `Personalnummern ergänzt (${changed} ${changed === 1 ? 'Person' : 'Personen'})`,
+      }]),
     };
     const ok = await eventService.patchEventOverridesValue(idNum, '_billing', newB);
     if (ok) applyBillingLocally(ev.id, newB);
@@ -6511,7 +6574,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, getLastEventUpdateError, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getEventNumbersForEmail, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, getFAConfig, saveFAConfig, sendFAMail, markEventSettled, logFAContact, maybeSendBillingAutoMails, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, repairAllOrganizerPermissions, restoreCustomFieldDescriptions,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, getLastEventUpdateError, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getEventNumbersForEmail, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, getFAConfig, saveFAConfig, sendFAMail, markEventSettled, saveFAPersonalNumbers, logFAContact, maybeSendBillingAutoMails, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, repairAllOrganizerPermissions, restoreCustomFieldDescriptions,
         sendAdminInquiry,
         sendCompleteRegistrationReminder,
         notifyAdminsExternalAudienceAccess,

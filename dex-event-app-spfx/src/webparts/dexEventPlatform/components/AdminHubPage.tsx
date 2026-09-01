@@ -16,7 +16,7 @@ import { useDialog } from '../context/DialogContext';
 import { useIsMobile } from '../utils/useIsMobile';
 import { Settings, Users, Mail, Book, FileText, Trash2, Columns, BarChart3, Wrench, GraduationCap } from './Icons';
 import { useTutorial } from './tutorial/TutorialGuide';
-import { RELEASE_NOTES, RELEASE_BEREICHE } from '../data/releaseNotes';
+import { splitReleaseNote, RELEASE_NOTES, RELEASE_BEREICHE } from '../data/releaseNotes';
 import { EventService, PermCleanupReport, OrphanScanResult } from '../services/EventService';
 import Modal from './Modal';
 import { setCachedLogoBase64, setCachedOrbBase64 } from '../services/EmailTemplates';
@@ -1306,7 +1306,27 @@ export default function AdminHubPage(): React.ReactElement {
             <span style={{ fontSize: '0.66rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999, textAlign: 'center', alignSelf: 'start', background: n.type === 'Bugfix' ? 'rgba(218,41,28,0.12)' : 'rgba(134,188,37,0.15)', color: n.type === 'Bugfix' ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)' }}>
               {n.type === 'Bugfix' ? (isDe ? 'Behoben' : 'Fix') : (isDe ? 'Neu' : 'New')}
             </span>
-            <span style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', lineHeight: 1.45 }}>{n.text}</span>
+            {/* v30.60: Kernaussage fett, Einzelpunkte als Liste. Die Gliederung
+                wird beim Anzeigen aus dem Text gelesen (siehe
+                data/releaseNotes.splitReleaseNote) — dadurch gilt sie auch für
+                alle Alt-Einträge, ohne dass 600 belegte Texte umgeschrieben
+                werden müssten. */}
+            <span style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+              {(() => {
+                const p = splitReleaseNote(n.text);
+                return (
+                  <>
+                    {p.lead && <strong style={{ display: 'block', color: 'var(--dex-gray-800)' }}>{p.lead}</strong>}
+                    {p.rest && <span style={{ display: 'block', marginTop: p.lead ? 4 : 0 }}>{p.rest}</span>}
+                    {p.points.length > 0 && (
+                      <ul style={{ margin: p.lead ? '6px 0 0' : 0, paddingLeft: 18 }}>
+                        {p.points.map((pt, pi) => <li key={pi} style={{ marginBottom: 4 }}>{pt}</li>)}
+                      </ul>
+                    )}
+                  </>
+                );
+              })()}
+            </span>
           </div>
         ))}
       </div>

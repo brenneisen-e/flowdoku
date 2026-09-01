@@ -855,6 +855,22 @@ export interface QrEmailOverride {
    * beim Versand aus dem Event-Bild aufgelöst (Cache, s. utils/imageCache).
    */
   headerImage?: { hero?: 'logo' | 'event'; width?: number; paddingV?: number; paddingH?: number };
+  /**
+   * v30.60: Sprache des festen Blocks NEBEN dem QR-Code („Name", „ID" und der
+   * Hinweis „Falls der Scan nicht klappt…").
+   *
+   * Warum eine eigene Einstellung und nicht einfach `event.emailLanguage`:
+   * Der Mailtext der QR-Mail ist frei überschreibbar. Wer eine englische
+   * Einladung schreibt, das Event aber auf Deutsch stehen lässt (oder
+   * umgekehrt), bekam bisher zwangsläufig einen Block in der falschen
+   * Sprache — im gemeldeten Fall stand „Falls der Scan nicht klappt…" unter
+   * einer Mail, die mit „Dear Alexander" beginnt.
+   *
+   * Leer heißt: der Mail-Sprache des Events folgen. Es ist damit kein
+   * zweiter Schalter für dieselbe Frage, sondern eine Ausnahme, die man nur
+   * setzt, wenn Text und Event-Sprache auseinandergehen.
+   */
+  blockLang?: 'DE' | 'EN';
 }
 
 /** Standard-Texte der QR-Mail mit Platzhaltern ({{Vorname}}, {{Name}},
@@ -908,7 +924,13 @@ export function qrEmailDefaults(lang: string = 'EN'): { subject: string; heading
  * mit Word und kann kein Flex. `valign="middle"` hält die Textspalte auf
  * Höhe des Codes.
  */
-export function buildQrBlockHtml(qrImageHtml: string, fullDisplayName: string, teilnehmerId?: number): string {
+export function buildQrBlockHtml(qrImageHtml: string, fullDisplayName: string, teilnehmerId?: number, lang: string = 'DE'): string {
+  // v30.60: Der Block war fest deutsch — „Name:", „ID:" und der Hinweis unter
+  // der Nummer standen auch in einer englischen QR-Mail auf Deutsch. Der
+  // Mailtext folgte der Mail-Sprache, dieser Block nicht; im Ergebnis stand
+  // „Falls der Scan nicht klappt…" unter einer Mail, die mit „Dear Alexander"
+  // beginnt. Die Sprache kommt jetzt von derselben Einstellung wie der Text.
+  const de = (lang || 'DE').toUpperCase() === 'DE';
   const escName = (fullDisplayName || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const hasId = teilnehmerId !== undefined && teilnehmerId !== null && !isNaN(Number(teilnehmerId));
   // padStart gibt es im ES5-Target nicht — deshalb von Hand auffüllen.
@@ -918,7 +940,7 @@ export function buildQrBlockHtml(qrImageHtml: string, fullDisplayName: string, t
     while (idText.length < 3) idText = `0${idText}`;
   }
   const rows = `<div style="font-size:15px;color:#2b2b2b;line-height:1.5;">`
-    + `<span style="color:#63666A;">Name:</span> <strong>${escName}</strong>`
+    + `<span style="color:#63666A;">${de ? 'Name:' : 'Name:'}</span> <strong>${escName}</strong>`
     + `</div>`
     + (hasId
       ? `<div style="font-size:15px;color:#2b2b2b;line-height:1.5;margin-top:6px;">`
@@ -926,7 +948,9 @@ export function buildQrBlockHtml(qrImageHtml: string, fullDisplayName: string, t
         + `<strong style="font-family:'Courier New',Courier,monospace;font-size:26px;letter-spacing:0.04em;">${idText}</strong>`
         + `</div>`
         + `<div style="font-size:12px;color:#63666A;margin-top:8px;line-height:1.45;">`
-        + `Falls der Scan nicht klappt: einfach diese Nummer am Einlass nennen.`
+        + (de
+          ? `Falls der Scan nicht klappt: einfach diese Nummer am Einlass nennen.`
+          : `If the scan does not work, simply give this number at the entrance.`)
         + `</div>`
       : '');
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;border-collapse:collapse;">`
@@ -955,7 +979,9 @@ export function qrCodeEmail(
 ): { subject: string; body: string } {
   // Fallback: wenn kein fullName übergeben, nutze nur firstName
   const fullDisplayName = (fullName || firstName || '').trim();
-  const qrBlock = buildQrBlockHtml(qrImageHtml, fullDisplayName, teilnehmerId);
+  // v30.60: Der Block folgt der Mail-Sprache — es sei denn, der Organizer hat
+  // für ihn ausdrücklich etwas anderes gewählt (s. QrEmailOverride.blockLang).
+  const qrBlock = buildQrBlockHtml(qrImageHtml, fullDisplayName, teilnehmerId, (override && override.blockLang) || lang);
   const defaults = qrEmailDefaults(lang);
   const subjectTpl = (override && override.subject && override.subject.trim()) ? override.subject : defaults.subject;
   const headingTpl = (override && override.heading && override.heading.trim()) ? override.heading : defaults.heading;

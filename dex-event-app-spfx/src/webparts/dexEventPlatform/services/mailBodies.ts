@@ -100,34 +100,54 @@ export const OUTLOOK_FORWARD_BODY_EN = wrapTemplateForStorage(
   'Meeting was forwarded',
   'Event {{EventTitle}}',
   `<p>Hi,</p>
-<p>FYI: <strong>{{Forwarder}}</strong> forwarded the Outlook invitation for <strong>{{EventTitle}}</strong> to <strong>{{Recipient}}</strong> ({{RecipientEmail}}).</p>
-<p><strong>{{Recipient}} is currently NOT registered in the DEX participant list.</strong> This person still needs to register via the app in order to get a ParticipantID and QR code and to appear in the official participant list.</p>
-<p style="margin:24px 0;text-align:center;"><a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView" style="display:inline-block;padding:12px 28px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Open DEX App</a></p>
-<p style="font-size:13px;color:#555;margin-top:24px;">Possible next steps:</p>
-<ul style="font-size:13px;color:#555;margin:0 0 24px 16px;padding:0;">
-<li>Ask {{Recipient}} to register themselves via the app.</li>
-<li>Or: register {{Recipient}} manually as organizer via "Register for another person".</li>
-<li>Or: remove {{Recipient}} from the Outlook meeting if they should not attend.</li>
-</ul>
-<p style="font-size:12px;color:#999;">This message was generated automatically (Microsoft Outlook Meeting Forward Notification).</p>
+<p>An Outlook invitation for your event was forwarded to someone who is <strong>not in the DEX participant list</strong>.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin:20px 0;font-size:14px;">
+<tr><td style="padding:8px 12px 8px 0;color:#63666A;width:32%;vertical-align:top;">Forwarded by</td><td style="padding:8px 0;border-bottom:1px solid #eee;"><strong>{{Forwarder}}</strong></td></tr>
+<tr><td style="padding:8px 12px 8px 0;color:#63666A;vertical-align:top;">To</td><td style="padding:8px 0;border-bottom:1px solid #eee;"><strong>{{Recipient}}</strong><br><span style="color:#63666A;">{{RecipientEmail}}</span></td></tr>
+<tr><td style="padding:8px 12px 8px 0;color:#63666A;vertical-align:top;">Event</td><td style="padding:8px 0;border-bottom:1px solid #eee;">{{EventTitle}}</td></tr>
+<tr><td style="padding:8px 12px 8px 0;color:#63666A;vertical-align:top;">Status</td><td style="padding:8px 0;border-bottom:1px solid #eee;"><span style="display:inline-block;padding:2px 10px;border-radius:999px;background:#fdeeee;color:#b3261e;font-weight:700;font-size:13px;">not registered</span></td></tr>
+</table>
+<p style="font-size:14px;margin:0 0 6px;"><strong>What this means:</strong> without registering, the person gets no participant ID and no QR code, and does not appear in the official participant list.</p>
+<p style="font-size:14px;margin:16px 0 6px;"><strong>You have three options:</strong></p>
+<ol style="font-size:14px;color:#333;margin:0 0 24px 18px;padding:0;line-height:1.7;">
+<li>Ask the person to register themselves via the app.</li>
+<li>Register the person yourself — in the app via &ldquo;Register for another person&rdquo;.</li>
+<li>Remove the person from the Outlook meeting if they should not attend.</li>
+</ol>
+<p style="margin:24px 0;text-align:center;"><a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView" style="display:inline-block;padding:12px 28px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Open in the DEX app</a></p>
+<p style="font-size:12px;color:#999;">This message was generated automatically (Microsoft Outlook Meeting Forward Notification). No action is needed if the forward is fine — but the person will not count as an attendee.</p>
 <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
 );
 
+// v30.60: Neu gegliedert \u2014 die Mail war \u201Erecht un\u00FCbersichtlich" (Nutzer-Befund
+// 01.09.2026). Der Grund war nicht die Menge, sondern die Form: Wer, an wen und
+// mit welchem Status standen als Flie\u00DFtext in zwei Abs\u00E4tzen, und der lange
+// Name der weitergeleiteten Person kam f\u00FCnfmal vor \u2014 dreimal davon in der
+// Optionsliste, wo \u201Edie Person" gen\u00FCgt. Jetzt: ein Satz, eine Fakten-Tabelle
+// (Wer \u00B7 An wen \u00B7 Event \u00B7 Status), dann die drei Optionen. Der Status steht in
+// der Tabelle statt im Text, weil er die einzige Angabe ist, die eine Handlung
+// ausl\u00F6st.
 export const OUTLOOK_FORWARD_BODY_DE = wrapTemplateForStorage(
   '#0d6efd',
   'Termin wurde weitergeleitet',
   'Event {{EventTitle}}',
   `<p>Hallo,</p>
-<p>zur Info: <strong>{{Forwarder}}</strong> hat die Outlook-Einladung f\u00FCr <strong>{{EventTitle}}</strong> an <strong>{{Recipient}}</strong> ({{RecipientEmail}}) weitergeleitet.</p>
-<p><strong>{{Recipient}} ist aktuell NICHT in der DEX-Teilnehmerliste registriert.</strong> Die Person muss sich ggf. noch selbst \u00FCber die App anmelden, damit sie eine TeilnehmerID und einen QR-Code bekommt und in der offiziellen Teilnehmerliste erscheint.</p>
-<p style="margin:24px 0;text-align:center;"><a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView" style="display:inline-block;padding:12px 28px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">DEX-App \u00F6ffnen</a></p>
-<p style="font-size:13px;color:#555;margin-top:24px;">M\u00F6gliche Handlungsoptionen:</p>
-<ul style="font-size:13px;color:#555;margin:0 0 24px 16px;padding:0;">
-<li>{{Recipient}} bitten, sich selbst \u00FCber die App zu registrieren.</li>
-<li>Oder: {{Recipient}} als Organizer manuell \u00FCber "F\u00FCr andere Person registrieren" eintragen.</li>
-<li>Oder: {{Recipient}} aus dem Outlook-Termin entfernen, falls nicht gew\u00FCnscht.</li>
-</ul>
-<p style="font-size:12px;color:#999;">Diese Mail wurde automatisch erzeugt (Microsoft Outlook Meeting Forward Notification).</p>
+<p>eine Outlook-Einladung zu deinem Event wurde an eine Person weitergeleitet, die <strong>nicht in der DEX-Teilnehmerliste steht</strong>.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin:20px 0;font-size:14px;">
+<tr><td style="padding:8px 12px 8px 0;color:#63666A;width:32%;vertical-align:top;">Weitergeleitet von</td><td style="padding:8px 0;border-bottom:1px solid #eee;"><strong>{{Forwarder}}</strong></td></tr>
+<tr><td style="padding:8px 12px 8px 0;color:#63666A;vertical-align:top;">An</td><td style="padding:8px 0;border-bottom:1px solid #eee;"><strong>{{Recipient}}</strong><br><span style="color:#63666A;">{{RecipientEmail}}</span></td></tr>
+<tr><td style="padding:8px 12px 8px 0;color:#63666A;vertical-align:top;">Event</td><td style="padding:8px 0;border-bottom:1px solid #eee;">{{EventTitle}}</td></tr>
+<tr><td style="padding:8px 12px 8px 0;color:#63666A;vertical-align:top;">Status</td><td style="padding:8px 0;border-bottom:1px solid #eee;"><span style="display:inline-block;padding:2px 10px;border-radius:999px;background:#fdeeee;color:#b3261e;font-weight:700;font-size:13px;">nicht angemeldet</span></td></tr>
+</table>
+<p style="font-size:14px;margin:0 0 6px;"><strong>Was das bedeutet:</strong> Ohne eigene Anmeldung bekommt die Person keine TeilnehmerID und keinen QR-Code und taucht in der offiziellen Teilnehmerliste nicht auf.</p>
+<p style="font-size:14px;margin:16px 0 6px;"><strong>Du hast drei M\u00F6glichkeiten:</strong></p>
+<ol style="font-size:14px;color:#333;margin:0 0 24px 18px;padding:0;line-height:1.7;">
+<li>Die Person bitten, sich selbst \u00FCber die App anzumelden.</li>
+<li>Die Person selbst eintragen \u2014 in der App \u00FCber &bdquo;F\u00FCr andere Person registrieren&ldquo;.</li>
+<li>Die Person aus dem Outlook-Termin entfernen, falls die Teilnahme nicht gewollt ist.</li>
+</ol>
+<p style="margin:24px 0;text-align:center;"><a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView" style="display:inline-block;padding:12px 28px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">In der DEX-App \u00F6ffnen</a></p>
+<p style="font-size:12px;color:#999;">Diese Mail wurde automatisch erzeugt (Microsoft Outlook Meeting Forward Notification). Du musst nichts tun, wenn die Weiterleitung in Ordnung ist \u2014 die Person z\u00E4hlt dann aber auch nicht als Teilnehmer.</p>
 <p style="margin-top:24px;"><strong>Viele Gr\u00FC\u00DFe</strong><br><br><strong>Dein Event-Team</strong></p>`
 );
 

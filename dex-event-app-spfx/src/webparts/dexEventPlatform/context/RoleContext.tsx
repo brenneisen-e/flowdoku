@@ -35,8 +35,15 @@ interface RoleContextType {
    *  bleibt. Die Seiten sperren in der Vorschau zusätzlich das Anmelden. */
   previewAsUser: boolean;
   setPreviewAsUser: (on: boolean) => void;
-  /** v30.5: Rolle 'F&A' — Teilnehmer-Rechte plus Zugriff aufs F&A Center,
-   *  keinerlei Organizer-/Admin-Rechte. Admins sehen das Center ebenfalls. */
+  /** Rolle 'F&A'. Admins sehen das Center ebenfalls.
+   *
+   *  v30.60: Der Zuschnitt ist ein anderer als in v30.5. Damals war F&A eine
+   *  reine Lese-Rolle (Teilnehmer-Rechte plus das Center). Nutzer-Ansage
+   *  01.09.2026: „diese Person können zwei Sachen: 1. alles was Organizer
+   *  können (aber plus die neue Abrechnungsfunktion) und 2. Zugriff auf das
+   *  F&A Center." F&A ist damit ein Organizer mit zwei Zusätzen — deshalb
+   *  zählt die Rolle unten in `isOrganizer` mit, und `canEditBilling`
+   *  bekommt sie als eigenes Argument. */
   isFA: boolean;
   isOrganizer: boolean;
   canCreateEvents: boolean;
@@ -207,7 +214,10 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
             await spService.grantFullControlOnRolesList(userEmail);
             await spService.grantFullControlOnEventsList(userEmail);
             await spService.grantOrganizerPermissions(userEmail);
-          } else if (role === 'Organizer') {
+          } else if (role === 'Organizer' || role === 'F&A') {
+            // v30.60: F&A arbeitet wie ein Organizer und braucht dieselben
+            // SharePoint-Rechte — ohne sie scheitert das Anlegen der Subsite,
+            // und zwar erst beim Speichern eines Events.
             await spService.grantReadOnRolesList(userEmail);
             await spService.grantOrganizerPermissions(userEmail);
           }
@@ -224,7 +234,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
           await spService.grantFullControlOnRolesList(userEmail);
           await spService.grantFullControlOnEventsList(userEmail);
           await spService.grantOrganizerPermissions(userEmail); // Site-Rechte für Subsite-Erstellung
-        } else if (role === 'Organizer') {
+        } else if (role === 'Organizer' || role === 'F&A') {
           await spService.grantReadOnRolesList(userEmail);
           await spService.grantOrganizerPermissions(userEmail);
         }
@@ -243,7 +253,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
           await spService.grantFullControlOnRolesList(oldRole.userEmail);
           await spService.grantFullControlOnEventsList(oldRole.userEmail);
           await spService.grantOrganizerPermissions(oldRole.userEmail);
-        } else if (newRole === 'Organizer') {
+        } else if (newRole === 'Organizer' || newRole === 'F&A') {
           await spService.grantReadOnRolesList(oldRole.userEmail);
           await spService.grantOrganizerPermissions(oldRole.userEmail);
         } else if (newRole === 'User') {
@@ -315,7 +325,11 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   // v26.33: IT-Admin hat die gleichen App-Rechte wie Admin (nur keine Mails —
   // das regelt die exakte Role='Admin'-Filterung in den Empfänger-Listen).
   const isAdmin = effectiveRole === 'Admin' || effectiveRole === 'IT-Admin';
-  const isOrganizer = effectiveRole === 'Organizer' || isAdmin;
+  // v30.60: F&A zählt als Organizer. Vorher war die Rolle eine Sackgasse —
+  // wer sie bekam, verlor die Organizer-Rechte, die dieselbe Person für ihre
+  // eigenen Events braucht. Die Abrechnung ist ein ZUSATZ zur Organizer-
+  // Arbeit, kein Ersatz dafür.
+  const isOrganizer = effectiveRole === 'Organizer' || effectiveRole === 'F&A' || isAdmin;
   const canCreateEvents = isOrganizer;
   // v30.5: F&A sieht das F&A Center — Impersonation/Vorschau senken auch das ab.
   const isFA = effectiveRole === 'F&A';

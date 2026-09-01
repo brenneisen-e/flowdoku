@@ -66,6 +66,36 @@ export interface FAListRow {
   lastName?: string;
   country?: string;
   company?: string;
+  /** v30.60: Von F&A im Center nachgetragen (siehe `activeEmployeesLookupUrl`).
+   *  DEX kennt die Personalnummer nicht und kann sie auch nicht ermitteln —
+   *  sie steht in einer Backoffice-Liste, auf die nur F&A Zugriff hat. */
+  personalNr?: string;
+  /** Kostenstelle des Mitarbeiters — dieselbe Herkunft wie `personalNr`. */
+  costCenter?: string;
+}
+
+/**
+ * v30.60: Deep-Link in die Backoffice-Liste „Active Employees", vorbelegt mit
+ * dem Nachnamen der Person.
+ *
+ * Nutzer-Ansage 01.09.2026: Die F&A-Kolleginnen und -Kollegen haben Zugriff
+ * auf diese SharePoint-Seite und tragen von dort die Personalnummer je
+ * Teilnehmer nach. Der Parameter `k` ist der Suchbegriff der Seite, `ql=1031`
+ * die deutsche Oberfläche — beides aus dem vom Nutzer gelieferten Link.
+ *
+ * Gesucht wird mit dem NACHNAMEN, nicht mit dem vollen Namen: Die Liste
+ * durchsucht Mitarbeiterdatensätze, und „Max Mustermann" trifft dort nichts,
+ * weil Vor- und Nachname getrennt stehen. Fehlt der Nachname (Alt-Snapshots
+ * vor v30.50 tragen ihn nicht), nehmen wir das letzte Wort des Anzeigenamens —
+ * eine Näherung, aber eine, die den Klick nicht wertlos macht.
+ */
+export const FA_ACTIVE_EMPLOYEES_URL =
+  'https://teams.de.deloitte.com/sites/dtBackoffice/SitePages/Active%20Employees.aspx';
+
+export function activeEmployeesLookupUrl(row: Pick<FAListRow, 'lastName' | 'name'>): string {
+  const fromName = (row.name || '').trim().split(/\s+/).slice(-1)[0] || '';
+  const key = (row.lastName || '').trim() || fromName;
+  return `${FA_ACTIVE_EMPLOYEES_URL}?k=${encodeURIComponent(key)}&ql=1031`;
 }
 
 /** F&A-Verteiler + Änderungsprotokoll (persistiert als eigene Zeile in DEX_EmailTemplates). */
@@ -404,8 +434,9 @@ export function faRowsFromRegistrations(regs: FASourceRegistration[] | null | un
  * Feld-Labels.** F&A liest diese Datei seit Jahren in dieser Form; eine
  * schönere Beschriftung wäre für uns kosmetisch und für den Empfänger eine
  * unbekannte Datei. `Personalnummer` und `kostenstelle des Mitarbeiters`
- * bleiben leer — sie stehen DEX nicht zur Verfügung und werden von F&A
- * ergänzt.
+ * standen DEX ursprünglich nicht zur Verfügung; seit v30.60 kann F&A sie im
+ * Center nachtragen (`FAListRow.personalNr`) — nachgetragene Werte landen in
+ * der Datei, nicht nachgetragene bleiben leer wie zuvor.
  */
 const FA_SHEET_LABELS: Array<{ id: string; label: string }> = [
   { id: 'contact', label: 'Kontaktperson (für etwaige Rückfragen):' },
@@ -458,8 +489,11 @@ export function buildFASheetAoa(
       r.lastName || '',
       r.country || '',
       r.company || '',
-      '', // Personalnummer — laut Konzept leer lassen, ergänzt F&A
-      '', // Kostenstelle des Mitarbeiters — dito
+      // v30.60: Nicht mehr grundsätzlich leer. Trägt F&A die Nummer im Center
+      // nach, steht sie hier — sonst bleibt die Zelle leer wie bisher und
+      // wird in der Datei ergänzt. Ein „—" wäre für F&A ein Wert.
+      r.personalNr || '',
+      r.costCenter || '',
     ]);
   }
   // `ev` fließt nur in den Dateinamen ein (s. downloadFAParticipantXlsx);

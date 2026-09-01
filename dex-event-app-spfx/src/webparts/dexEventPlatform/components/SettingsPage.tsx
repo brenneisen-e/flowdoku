@@ -80,7 +80,8 @@ export default function SettingsPage(): React.ReactElement {
   const organizerEventMap = React.useMemo<Record<string, string[]>>(() => {
     const map: Record<string, string[]> = {};
     for (const role of roles) {
-      if (role.role !== 'Organizer' && role.role !== 'Admin' && role.role !== 'IT-Admin') continue;
+      // v30.60: F&A koordiniert seit dem Rollen-Zuschnitt eigene Events mit.
+      if (role.role !== 'Organizer' && role.role !== 'F&A' && role.role !== 'Admin' && role.role !== 'IT-Admin') continue;
       const emailLc = (role.userEmail || '').toLowerCase();
       if (!emailLc) continue;
       const matched: string[] = [];
@@ -408,8 +409,12 @@ export default function SettingsPage(): React.ReactElement {
     const matchAgg = (x: { email: string; name: string }): boolean => { const p = profiles[x.email] || {}; return hit([x.name, x.email, p.jobTitle, p.location]); };
     // v26.33: IT-Admins zählen zur Admin-Gruppe (gleiche Rechte).
     const admins = [...roles].filter(r => r.role === 'Admin' || r.role === 'IT-Admin').filter(matchRole).sort(byName);
-    const organizers = [...roles].filter(r => r.role === 'Organizer').filter(matchRole).sort(byName);
-    const usersLeft = [...roles].filter(r => r.role !== 'Admin' && r.role !== 'IT-Admin' && r.role !== 'Organizer').filter(matchRole).sort(byName);
+    // v30.60: F&A steht in der Organizer-Gruppe, nicht bei den Teilnehmern.
+    // Seit die Rolle Organizer-Rechte trägt, wäre sie unter „User" eine
+    // Falschaussage über die Rechte dieser Person; das F&A-Pill in der
+    // Status-Spalte unterscheidet sie weiterhin.
+    const organizers = [...roles].filter(r => r.role === 'Organizer' || r.role === 'F&A').filter(matchRole).sort(byName);
+    const usersLeft = [...roles].filter(r => r.role !== 'Admin' && r.role !== 'IT-Admin' && r.role !== 'Organizer' && r.role !== 'F&A').filter(matchRole).sort(byName);
     const eventBadges = (titles: string[]): React.ReactNode => titles.length === 0
       ? <span style={{ color: 'var(--dex-gray-300)' }}>—</span>
       : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{titles.map((t2, idx) => (
