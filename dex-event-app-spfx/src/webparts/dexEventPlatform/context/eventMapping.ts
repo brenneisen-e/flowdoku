@@ -9,7 +9,7 @@
 
 import { DeloitteEvent, DexHotel, DexHotelStay, DexHotelRules } from '../types';
 import { SPEvent, CustomField } from '../services/EventService';
-import { buildDisplayImageUrl, collectCcEmailsFromFields, stripSpNoteWrapper } from './eventTextHelpers';
+import { buildDisplayImageUrl, stripSpNoteWrapper } from './eventTextHelpers';
 
 export async function mapSPEventToDeloitteEvent(e: SPEvent, subsiteMap: { current: Record<string, string> }): Promise<DeloitteEvent> {
   // SubsiteUrl merken

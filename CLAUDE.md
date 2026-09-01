@@ -473,66 +473,82 @@ Die Sub-Event-Karten sind seither reine **Liste**: anlegen, „Bearbeiten"
 
 ## Modularisierung
 
-Stand: **106k Zeilen in 132 Dateien**, davon die Hälfte in vier Dateien
-(`EventCreationPage` 17,4k · `AdminPage` 15,3k · `EventService` 13,2k ·
-`RegistrationPage` 6,3k). **Es gibt keine Tests.** Das einzige Netz sind
-`tsc`, ESLint und der Build — was der Compiler nicht sieht, sieht niemand.
+Stand nach v30.66: **rund 133k Zeilen in 343 Dateien**, **keine davon ueber
+3.000 Zeilen**. Die groessten sind `EventContext` 2,9k, `EventCreationPage`
+2,8k, `AdminPage` 2,7k, `RegistrationPage` 2,5k, `EventService` 2,4k. Vorher
+lagen 56k Zeilen — die Haelfte des Projekts — in sechs Dateien.
 
-Deshalb in dieser Reihenfolge, nicht anders:
+**Es gibt weiterhin keine Tests.** Das einzige Netz sind `tsc`, ESLint, der
+Build und der Audit-Diff. Genau deshalb ist das Rezept unten mechanisch und
+nicht kreativ: Wo nichts prueft, darf nichts umformuliert werden.
 
-**Stufe 1 — Modul-Ebene (v28.94 erledigt).** Alles, was VOR der Komponente
-steht, kennt den State nicht und lässt sich als Ganzes verschieben. Ergebnis:
-`components/wizard/*` (StickyTabStrip, StepBadge, LocationMultiSelect,
-FieldDescEditor, FieldTypeSuggestion, customFieldInput),
-`components/admin/ActionsMenu.tsx` (ActionTile + Registry + Dropdown gehören
-zusammen — eine Datei, nicht drei), `utils/{subEventTitle, eventStatus,
-inviteGuards, fieldHeuristics}`, `data/{actionCategories,
-descriptionTemplates}`. Rezept: Block ausschneiden, `export` davor, Import
-zurück, `tsc`. **Danach immer `gulp bundle`** — ESLint findet die zu breit
-gefassten Importe, die `tsc` durchgehen lässt.
+### Das Rezept (dreimal bewaehrt, an sechs Dateien angewandt)
 
-**Stufe 2 — `EventService` (BEGONNEN, v30.6).** Rezept ist etabliert und
-funktioniert: Sektion nach `services/events/<thema>.ts` kopieren, `this.` →
-`svc.`, Methodenkopf → `export async function name(svc: EventService, …)`,
-in der Klasse einen Delegations-Stub mit UNVERÄNDERTER Signatur stehen
-lassen (keine Aufrufstelle wird angefasst), `import type { EventService }`
-im Modul (Typ-Zyklus ist ok), dann `tsc` treiben lassen — private Helfer,
-die das Modul braucht, werden public (`_sp`, `_setListSecurity`,
-`getVisitorsGroupId` sind es schon; Unterstrich = „intern"). Modul-Konstanten
-(`REG_LIST_NAME`, `HOTEL_COLS_READY`) sind exportiert; Instanz-Zustand
-(z.B. `_idReorderCancelledFieldEnsured`) bleibt als public-Feld an der
-Klasse. Erledigt: `emailQueue`, `hotelPlanning`, `idReorder`, `changeLog`,
-`outlookQueue`, `profileData` (v30.7), `emailTemplatesList` (Templates +
-_Config/KPI/_FAConfig), `archive` (DEX_Archive: ensure + Archiv-Lauf +
-Löschkonzept; `_delete` bleibt als allgemeiner Helfer public an der Klasse),
-`weeklyReport` (alle v30.11), `organizer` (Organizer-Archiv/-Anträge/
-Rollen-Abfragen, v30.12) — 12,9k → 9,6k Zeilen. Tickets waren schon
-v28.95 in `services/tickets.ts`. Damit ist der abtrennbare Rand ab —
-der Rest ist Kerngeschäft (Events CRUD, Registrierungen, Subsites,
-Hilfsmethoden) und hängt eng zusammen; dort erst nach Stufe 3 ran.
-IMMER ein Thema pro Rutsch, nach jedem `tsc` UND `gulp bundle` (ESLint
-sieht anderes als tsc). Falle aus v30.11: Konstanten-Importe des
-EventService nach dem Auszug prüfen — tsc meldet ungenutzte Importe NICHT
-(ESLint erst im bundle), und ein privater Helfer der Sektion kann
-Aufrufer außerhalb haben (`loadFileAsBase64` → public Stub).
+1. **Blockgrenzen bestimmen** — nicht raten, sondern per Klammerbilanz
+   ausrechnen (Zeichenketten und Kommentare vorher entfernen, sonst zaehlt eine
+   Klammer im Text mit).
+2. **Props-Vertrag aus dem Compiler holen, nicht aus dem Kopf.** Ueber die
+   TypeScript-Compiler-API: fuer jeden Bezeichner im Block das Symbol
+   aufloesen, und zwar `getTypeOfSymbolAtLocation` **auf der Deklaration** —
+   nicht `getTypeAtLocation` an der Verwendungsstelle, sonst liest sich
+   `useState(false)` als `false` statt `boolean`.
+3. **Block 1:1 verschieben.** Kein Dedent, kein Reformat, keine Leerzeile weg.
+   Erlaubt sind genau zwei Aenderungen: die Anzeige-Bedingung wird zu `visible`,
+   und ein Kommentar HINTER dem schliessenden Tag entfaellt (im `return (...)`
+   waere er ein zweites Wurzelelement).
+4. **Audit-Diff** gegen `git show HEAD:<pfad>`: der Koerper muss zeichengleich
+   sein. Meldet er mehr als die erlaubten Stellen, ist der Schnitt falsch —
+   nicht der Diff.
+5. **`tsc` nach JEDEM Schnitt, `eslint` am Ende.** Von hinten nach vorne
+   schneiden, sonst verschieben sich die Zeilennummern der offenen Bloecke.
 
-**Stufe 3 — die Render-Bäume (BEGONNEN, v30.13).** Vier in sich geschlossene
-Schritte sind als Komponenten in `components/wizard/steps/` — `BillingStep`
-(Index 9), `DocumentsStep` (7), `FunZoneStep` (8), `TeamStep` (6). Rezept,
-das die Tag-Balance-Falle umgeht: (1) Blockgrenzen über die
-`currentStep === N`-Marker und den `close Step`-Kommentar bestimmen, (2)
-Ident-Inventar des Blocks (grep auf Bezeichner) → Props-Vertrag NUR aus dem,
-was der Block wirklich liest, (3) JSX per Skript 1:1 verschieben — erlaubte
-Transformationen sind genau drei: dedent, `currentStep === N` → `visible`,
-Schluss-Kommentar weg, (4) Audit-Diff des Komponenten-Bodys gegen den
-HEAD-Stand (muss IDENTISCH melden), (5) tsc + bundle. `t`/`isDe` und
-`confirmDialog`/`showAlert` holen sich die Komponenten selbst über
-`useLanguage()`/`useDialog()`; `visible` steuert display:none statt unmount
-(Eingaben überleben den Schrittwechsel — wie vorher). Lokale IIFE-Helfer
-eines Blocks (Fun-Zone: handleDrop, renderQuestionCard) wandern mit. Die
-verbleibenden Schritte 0–5 sind scope-fähig (`scopeSub`/`patchScopeSub`,
-~200 States) — dort NICHT ohne Browser-Verifikation weiterschneiden, und
-immer nur EINEN Schritt pro Release.
+Fuer Logik gilt dasselbe mit einem `ctx`-Objekt als erstem Parameter — genau
+das Muster, das `svc` beim `EventService` schon hatte. Kopf und `};` des
+Handlers bleiben in der Datei stehen, ersetzt wird nur der Koerper: dann muss
+keine Aufrufstelle angefasst werden.
+
+### Vier Fallen, die dabei wirklich zugeschnappt sind
+
+**Ein ctx-Wert, der erst NACH dem Block deklariert wird, ist ein TDZ-Fehler.**
+Als Closure-Zugriff aus einer Funktion war er harmlos — sie laeuft spaeter. Als
+Feld eines Objekts, das beim Aufruf gebaut wird, ist er zur Laufzeit noch nicht
+initialisiert. Drei von neun Segmenten in `EventCreationPage` sind daran
+gescheitert und deshalb stehen geblieben; im `EventContext` mussten
+`calDayParentOf` und `childEventsOf` dafuer wortgleich nach oben wandern.
+Das ist die einzige Falle, die **kein** Compiler meldet — sie muss vor dem
+Schnitt ausgerechnet werden.
+
+**Typen im Funktionskoerper sind von aussen nicht referenzierbar.** In
+`EventCreationPage` standen `SubEventDraft`, `ImgView`, `OutlookConfirmItem`
+und zwei weitere INNERHALB der Komponente. Sie muessen zuerst auf Modul-Ebene
+in eine eigene Datei (`components/wizard/wizardTypes.ts`) — ein Import aus der
+Seite zurueck waere ein Modul-Zyklus.
+
+**Ein mehrzeiliger Rueckgabetyp sieht aus wie ein Koerperanfang.**
+`const f = (): {\n  a: string;\n} => {` — die erste Zeile endet auf `{`, und
+eine naive Kopfsuche haelt den Typ-Block fuer Code. Der Compiler meldet es
+sofort, aber nur, weil nach jedem Schnitt `tsc` laeuft.
+
+**ESLint findet die toten Importe, `tsc` nicht.** Nach dem Auszug standen in
+`EventCreationPage` 36 Import-Zeilen, deren Bindings nur noch in den
+ausgelagerten Dateien gebraucht werden — dieselbe Falle wie v30.11. Immer zum
+Schluss `eslint` ueber die angefasste Datei UND die neuen.
+
+### Wo was liegt
+
+- `components/wizard/steps/` — die elf Wizard-Schritte
+- `components/wizard/hooks/` — drei State-Buendel des Wizards
+- `components/wizard/logic/` — Save-Pfad, Outlook, Vorlagen, Entwurf, Render-Helfer
+- `components/admin/{sections,participants,modals,logic}/` — das Organizer Center
+- `components/registration/` — Anmeldeseite (Sektionen, Modals, Submit-Pfad)
+- `components/myEvents/` — Meine Events (Karte, Sub-Events, Modals)
+- `context/actions/` — die Aktionen des EventContext als Factory-Module
+- `services/events/` — die Themen des EventService (31 Module)
+
+**Vor einem neuen Schnitt: die Zeilennummern selbst nachpruefen.** Jede
+Kartierung in einem Auftrag oder Kommentar bezieht sich auf einen Stand, der
+nach dem ersten Schnitt nicht mehr gilt.
+
 
 ## Offene Arbeit
 

@@ -10,31 +10,28 @@
 
 import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
-import { DeloitteEvent, DexHotel, DexHotelStay, DexHotelRules } from '../types';
-import { EventService, SPEvent, CustomField, SPRegistration, SPParticipant, ReseedSummary, AssistantLink, EventCommRow } from '../services/EventService';
+import { DeloitteEvent } from '../types';
+import { EventService, SPEvent, SPRegistration, ReseedSummary } from '../services/EventService';
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
 import { buildHashDeepLink } from '../utils/deepLink';
 import { isEventOver } from '../utils/eventFormat';
-import { isDeloitteInternalEmail, isExternalEmail } from '../utils/deloitteDomain';
-import { registrationEmail, externalInviteInstructionEmail, externalInvitationEmail, coOrganizerAddedEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
+import { isExternalEmail } from '../utils/deloitteDomain';
+import { registrationEmail, externalInviteInstructionEmail, externalInvitationEmail, waitlistEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
 import { buildUnsentEmlDraft } from '../utils/emlDraft';
 import { readPendingShadowParents, removePendingShadowParent, addPendingShadowParent } from '../utils/shadowHeal';
 import { withParentTitleSubject } from '../utils/mailSubject';
 import { APP_VERSION } from '../version';
-import { RELEASE_NOTES, splitReleaseNote } from '../data/releaseNotes';
 import { BundledItem, bundledCommOf, bundledItemsTableHtml, bundledItemsHeading } from '../utils/bundledComm';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
 import { looksLikeClaimName, resolveMyDisplayName, safeDisplayName } from '../utils/displayName';
 import { emitBootStage } from '../utils/bootProgress';
 import { getCachedImage } from '../utils/imageCache';
-import { DEX_TEAM_RECIPIENTS } from '../utils/supportContact';
-import { parseBillingOf, missingBillingFields, renderBillingInfoMailBody, renderBillingListMailBody, trimBillingLog, faRowsFromRegistrations, BillingData, BillingLogEntry, FAConfig } from '../utils/faBilling';
 import { dlog, isDebug } from '../utils/debugLog';
 
 // v30.66: Reine Modul-Helfer (kein State-Zugriff) liegen jetzt in
 // `eventTextHelpers.ts`. Hier re-exportiert, damit bestehende Importe aus
 // `EventContext` unveraendert tragen.
-import { applyEventTemplateOverride, stripSpNoteWrapper, formatOrganizerList, collectCcEmailsFromFields, mergeCcLists, summarizeCustomFields, buildEventUpdateDiff, buildDisplayImageUrl } from './eventTextHelpers';
+import { applyEventTemplateOverride, stripSpNoteWrapper, formatOrganizerList, collectCcEmailsFromFields, mergeCcLists, summarizeCustomFields, buildEventUpdateDiff } from './eventTextHelpers';
 export { applyEventTemplateOverride, stripSpNoteWrapper, formatOrganizerList, collectCcEmailsFromFields, mergeCcLists, summarizeCustomFields, buildEventUpdateDiff };
 // v30.66: Das SP->App-Mapping liegt in `eventMapping.ts`; es bekommt die
 // Subsite-Map als Ref herein, weil es sich die Subsite-URL je Event merkt.
