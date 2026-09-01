@@ -20,6 +20,7 @@ import { useCurrentUser } from '../../context/UserContext';
 import { DeloitteEvent } from '../../types';
 import { SPRegistration, EventService } from '../../services/EventService';
 import { parseBibSheet, buildBibReport, suggestOrphanPairs, BibImportReport, BibMatch } from '../../utils/b2runBibImport';
+import { StoredB2RunTodo, b2runNameOf } from '../../utils/b2runTodos';
 
 const nameOf = (r?: SPRegistration): string =>
   r ? `${r.Vorname || ''} ${r.Nachname || ''}`.trim() || (r.ParticipantEmail || '') : '—';
@@ -42,7 +43,7 @@ export default function B2RunBibImportModal(props: {
   const [progress, setProgress] = React.useState('');
   const [report, setReport] = React.useState<BibImportReport | null>(null);
   const [fileName, setFileName] = React.useState('');
-  const [written, setWritten] = React.useState<{ ok: number; failed: number } | null>(null);
+  const [written, setWritten] = React.useState<{ ok: number; failed: number; todos: number; todoSaved: boolean } | null>(null);
   /**
    * v30.54: Zuordnung „freie Nummer → Person ohne Nummer" (Startnummer → E-Mail).
    *
@@ -118,8 +119,62 @@ export default function B2RunBibImportModal(props: {
         ok++;
       } catch { failed++; }
     }
+    // v30.55: Die Aufgaben beim Veranstalter FESTHALTEN.
+    //
+    // Sie lassen sich hinterher nicht mehr ableiten: Die Startnummer einer
+    // abgemeldeten Person steht nur in dieser Datei, nie in DEX — geschrieben
+    // wird sie ausschließlich der Person, die läuft. Nach dem Import sieht der
+    // Datenstand deshalb aus, als wäre nie etwas zu tun gewesen. Genau daran
+    // ist die Aufgabenliste in v30.54 gescheitert: „Nichts offen", während beim
+    // Veranstalter neun Ummeldungen warteten. Dass DEX die Nummer geschrieben
+    // hat, heißt nicht, dass der Veranstalter davon weiß.
+    setProgress('Aufgabenliste wird gespeichert…');
+    const nowIso = new Date().toISOString();
+    const todos: StoredB2RunTodo[] = [];
+    for (const m of report.matches) {
+      if (m.kind === 'transfer' && m.target) {
+        todos.push({
+          key: `transfer|${m.row.bib}|${(m.target.ParticipantEmail || '').toLowerCase().trim()}`,
+          kind: 'transfer', bib: m.row.bib, certain: true, ts: nowIso,
+          fromName: b2runNameOf(m.listed!), fromEmail: m.listed?.ParticipantEmail,
+          toName: b2runNameOf(m.target), toEmail: m.target.ParticipantEmail,
+          action: `Startnummer ${m.row.bib} beim Veranstalter von ${b2runNameOf(m.listed!)} auf ${b2runNameOf(m.target)} ummelden.`,
+        });
+      } else if (m.kind === 'orphan') {
+        const em = orphanAssign[m.row.bib] || '';
+        const target = em ? report.missingFromFile.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === em) : undefined;
+        todos.push(target
+          ? {
+            key: `assign|${m.row.bib}|${em}`,
+            kind: 'assign', bib: m.row.bib, certain: false, ts: nowIso,
+            fromName: b2runNameOf(m.listed!), fromEmail: m.listed?.ParticipantEmail,
+            toName: b2runNameOf(target), toEmail: target.ParticipantEmail,
+            action: `Startnummer ${m.row.bib} beim Veranstalter von ${b2runNameOf(m.listed!)} auf ${b2runNameOf(target)} ummelden — von dir zugeordnet, nicht aus der Nachrück-Kette.`,
+          }
+          : {
+            key: `unregister|${m.row.bib}`,
+            kind: 'unregister', bib: m.row.bib, certain: true, ts: nowIso,
+            fromName: b2runNameOf(m.listed!), fromEmail: m.listed?.ParticipantEmail,
+            action: `Startnummer ${m.row.bib} (${b2runNameOf(m.listed!)}) beim Veranstalter abmelden — es ist niemand da, der sie übernimmt.`,
+          });
+      }
+    }
+    for (const r of stillWithoutBib) {
+      todos.push({
+        key: `register|${(r.ParticipantEmail || '').toLowerCase().trim()}`,
+        kind: 'register', bib: '', certain: true, ts: nowIso,
+        toName: b2runNameOf(r), toEmail: r.ParticipantEmail,
+        action: `${b2runNameOf(r)} beim Veranstalter nachmelden — angemeldet, aber ohne Startnummer.`,
+      });
+    }
+    let todoSaved = true;
+    if (todos.length > 0) {
+      todoSaved = await props.service
+        .patchEventOverridesValue(Number(props.event.id), '_b2runTodo', todos)
+        .catch(() => false);
+    }
     setBusy(false); setProgress('');
-    setWritten({ ok, failed });
+    setWritten({ ok, failed, todos: todos.length, todoSaved });
     props.onDone();
   };
 
@@ -414,9 +469,16 @@ export default function B2RunBibImportModal(props: {
             </div>
 
             {written && (
-              <p style={{ color: written.failed ? 'var(--dex-red)' : 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600 }}>
+              <div style={{ color: written.failed ? 'var(--dex-red)' : 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600 }}>
                 {written.ok} Startnummer(n) geschrieben{written.failed ? `, ${written.failed} fehlgeschlagen` : ''}.
-              </p>
+                {written.todos > 0 && (
+                  <div style={{ fontWeight: 400, fontSize: '0.82rem', color: 'var(--dex-gray-700)', marginTop: 4 }}>
+                    {written.todoSaved
+                      ? <>{written.todos} Aufgabe{written.todos === 1 ? '' : 'n'} für den Veranstalter stehen jetzt unter <strong>&bdquo;Offen beim Veranstalter&ldquo;</strong> — dort abhaken, wenn du sie erledigt hast.</>
+                      : <span style={{ color: 'var(--dex-red)' }}>Die Aufgabenliste konnte nicht gespeichert werden — bitte den Abgleich als Excel laden, damit nichts verlorengeht.</span>}
+                  </div>
+                )}
+              </div>
             )}
 
             <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
