@@ -501,9 +501,21 @@ export default function AdminPage(): React.ReactElement {
     let cancelled = false;
     setDeletePolicy({ loading: true });
     (async () => {
+      // v30.66: Ein Fehler beim Zaehlen ist KEINE Null. Vorher lief der
+      // catch-Zweig auf `externalCount = 0` — und 0 ist genau der Wert, der
+      // unten die Loeschung freigibt. Ein nicht lesbares Event wird jetzt
+      // gesperrt statt freigegeben.
       let externalCount = 0;
-      try { externalCount = await countExternalRegistrations(confirmDeleteEvent); } catch { externalCount = 0; }
+      let countFailed = false;
+      try { externalCount = await countExternalRegistrations(confirmDeleteEvent); } catch { countFailed = true; }
       if (cancelled) return;
+      if (countFailed) {
+        setDeletePolicy({ loading: false, allowed: false, requiresTitle: false, externalCount: 0,
+          reason: isDe
+            ? 'Die Teilnehmerliste dieses Events konnte nicht gelesen werden. Ob es Anmeldungen ausserhalb des Organizer-Teams gibt, ist damit unbekannt — geloescht wird deshalb nicht. Bitte spaeter erneut versuchen oder die Berechtigungen auf den Termin-Subsites pruefen.'
+            : 'The attendee list of this event could not be read, so it is unknown whether there are registrations beyond the organizer team. Deletion is blocked. Please retry later or check the permissions on the sub-event subsites.' });
+        return;
+      }
       const endRaw = confirmDeleteEvent.endDate || confirmDeleteEvent.startDate;
       const endTs = endRaw ? new Date(endRaw).getTime() : 0;
       // v26.32: Aufbewahrung 3 Monate (statt vormals 1 Jahr) — konsistent mit dem

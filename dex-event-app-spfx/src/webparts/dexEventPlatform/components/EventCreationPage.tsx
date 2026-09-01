@@ -517,7 +517,15 @@ export default function EventCreationPage(): React.ReactElement {
   const [bulkQrScannerOpen, setBulkQrScannerOpen] = React.useState(false);
 
   // v9.21: Active-From-Datum (optional) — Event auto-aktiv ab diesem Zeitpunkt.
-  const [activeFrom, setActiveFrom] = React.useState(editEvent ? (editEvent.activeFrom || '') : '');
+  // v30.66: `activeFrom` war das einzige Datumsfeld, das die Berlin-Konvertierung
+  // umging — roh aus SharePoint geladen (UTC-ISO mit Z), aber vom DatePicker als
+  // naive Lokalzeit ueberschrieben und mit `new Date(...)` gespeichert. Damit hing
+  // der Freischalt-Zeitpunkt an der Zeitzone des Browsers: In einer VDI-Sitzung auf
+  // UTC ging ein auf 00:00 gesetztes Event erst um 02:00 Berliner Zeit auf. Jetzt
+  // derselbe Pfad wie bei allen anderen Fristen (isoToLocal beim Laden,
+  // berlinLocalToUtcIso beim Speichern) — so wie es v29.19 fuer
+  // NotifyOrgRegisterFromDate schon gemacht hat.
+  const [activeFrom, setActiveFrom] = React.useState(editEvent && editEvent.activeFrom ? isoToLocal(editEvent.activeFrom) : '');
   // v23.14: Vorschau vor Aktivierung — nur relevant bei gesetztem „Aktiv ab".
   // true = Teilnehmer sehen das Event schon vorher als Vorschau (mit Hinweis
   // „Anmeldung ab …", noch nicht buchbar); false = vorher komplett unsichtbar.

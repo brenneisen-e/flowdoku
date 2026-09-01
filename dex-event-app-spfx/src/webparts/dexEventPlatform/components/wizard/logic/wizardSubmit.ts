@@ -622,7 +622,8 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
           ))
         : '';
       // v9.21: ActiveFrom als SP-DateTime
-      updates['ActiveFrom'] = activeFrom ? new Date(activeFrom).toISOString() : null;
+      // v30.66: berlinLocalToUtcIso wie bei allen anderen Fristen (siehe activeFrom-State).
+      updates['ActiveFrom'] = activeFrom ? (berlinLocalToUtcIso(activeFrom) || null) : null;
       // Custom-Mail-Logo in EmailImageBase64 (SP-Spalte) — der Flow ersetzt
       // {{ORB_URL}} in Mails damit. Wenn leer: Flow fällt auf _Config
       // DefaultImageBase64 (DEX-Orb) zurück.
@@ -1339,7 +1340,7 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
         // v29.19: „Aktiv ab" auch beim ANLEGEN persistieren — gleiche
         // Konvertierung wie der Edit-Pfad. Vorher wurde nur das abhängige
         // _previewBeforeActive-Flag geschrieben, das Datum selbst nicht.
-        activeFrom: activeFrom ? new Date(activeFrom).toISOString() : undefined,
+        activeFrom: activeFrom ? (berlinLocalToUtcIso(activeFrom) || undefined) : undefined,
         // v29.21: Split-Invariante (s. Edit-Pfad).
         maxParticipants: useSplitCapacities ? 0 : (unlimitedParticipants ? 0 : (Number(maxParticipants) || 0)),
         waitlistEnabled,

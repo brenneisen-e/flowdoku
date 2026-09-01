@@ -122,14 +122,27 @@ export async function reorderParticipantIDs(
   const allItems: Array<{ Id: number; Status: string; TeilnehmerID: number | null }> = [];
   let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,Status,TeilnehmerID&$orderby=Id asc&$top=5000`;
 
+  // v30.66: Ein Lesefehler darf hier NICHT einfach die Schleife verlassen.
+  // Danach wird ueber `allItems` renummeriert — auf einer halb gelesenen Liste
+  // bekaemen die gelesenen Zeilen die IDs 1..N, waehrend die ungelesenen ihre
+  // alten behalten. Das Ergebnis waeren DOPPELTE TeilnehmerIDs, und die Methode
+  // meldete dazu „0 Fehler", weil nur die Schreibvorgaenge gezaehlt werden.
+  // Die Regel aus CLAUDE.md gilt auch hier: bei Fehlern abbrechen, BEVOR
+  // etwas geschrieben wird. Beide Aufrufer fangen die Ausnahme ab; nicht
+  // renummeriert ist allemal besser als falsch renummeriert.
   while (url) {
+    let response: SPHttpClientResponse;
     try {
-      const response = await svc._sp.get(url, SPHttpClient.configurations.v1);
-      if (!response.ok) break;
-      const data = await response.json();
-      allItems.push(...(data.value || data.d?.results || []));
-      url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
-    } catch { break; }
+      response = await svc._sp.get(url, SPHttpClient.configurations.v1);
+    } catch {
+      throw new Error('reorderParticipantIDs: Teilnehmerliste nicht vollstaendig lesbar — abgebrochen, es wurde nichts geaendert.');
+    }
+    if (!response.ok) {
+      throw new Error('reorderParticipantIDs: Teilnehmerliste nicht vollstaendig lesbar (HTTP ' + response.status + ') — abgebrochen, es wurde nichts geaendert.');
+    }
+    const data = await response.json();
+    allItems.push(...(data.value || data.d?.results || []));
+    url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
   }
 
   // Ziel-IDs in einem ersten Durchlauf berechnen: erst Angemeldete, dann Warteliste.

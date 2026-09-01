@@ -189,9 +189,16 @@ export function makeBillingActions(deps: BillingDeps) {
       + (isDeMail
         ? `<p style="margin-top:24px;"><strong>Viele Gr&uuml;&szlig;e</strong><br><br><strong>Dein Event-Team</strong></p>`
         : `<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`);
+    // v30.66: Die vier Argumente standen in der falschen Reihenfolge. Die
+    // Signatur ist wrapTemplate(headingColor, heading, subheading, bodyHtml) —
+    // uebergeben wurde (Ueberschrift, Titel, body, '#0076a8'). Damit landete der
+    // gesamte Mailtext im Subheading und als Body stand woertlich '#0076a8' in
+    // der Mail. Alle anderen 7 Aufrufstellen im Projekt uebergeben die Farbe
+    // zuerst; der Fehler kam mit der gebuendelten Update-Mail in v30.61 herein.
     const wrapped = wrapTemplate(
+      '#0076a8',
       isDeMail ? 'Deine Anmeldung wurde aktualisiert' : 'Your registration was updated',
-      parentEvent.title, body, '#0076a8'
+      parentEvent.title, body
     );
     try {
       return await eventService.queueEmail(

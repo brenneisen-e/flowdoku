@@ -162,7 +162,20 @@ export async function archiveEventStats(svc: EventService, meta: {
     await svc.ensureEventStatsList();
     const existing = await svc.getArchivedStatsEventNumbers();
     if (existing.has(meta.eventNumber)) return true;
-    const regs = meta.subsiteUrl ? await svc.getAllRegistrations(meta.subsiteUrl) : [];
+    // v30.66: `getAllRegistrations` WIRFT NICHT — bei einem HTTP-Fehler bricht die
+    // Leseschleife ab und liefert das bis dahin Gelesene, bei 403/500 also `[]`.
+    // Ohne geprueften Status waeren alle KPIs 0, und weil der Aufrufer genau auf
+    // dieses `true` hin die Subsite UNWIDERRUFLICH loescht, waeren die echten
+    // Zahlen danach nicht mehr rekonstruierbar. Ein Lesefehler heisst deshalb:
+    // nicht archivieren, nicht loeschen, beim naechsten Lauf erneut versuchen.
+    let readError = 0;
+    const regs = meta.subsiteUrl
+      ? await svc.getAllRegistrations(meta.subsiteUrl, (status: number) => { readError = status; })
+      : [];
+    if (readError) {
+      console.warn('[DEX] archiveEventStats: Teilnehmerliste nicht lesbar (HTTP ' + readError + ') — Event ' + meta.eventNumber + ' wird NICHT archiviert.');
+      return false;
+    }
     const countBy = (pred: (s: string) => boolean): number => regs.filter(r => pred(r.Status || '')).length;
     const me = (svc.context.pageContext.user.email || '').toLowerCase();
     const resp = await svc._post(

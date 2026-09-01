@@ -2403,8 +2403,17 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     for (const ev of [event, ...children]) {
       const team = new Set<string>(baseTeam);
       teamEmailSetFor(ev).forEach(e => team.add(e));
+      // v30.66: Ein Lesefehler darf hier NICHT zu einer leeren Liste werden.
+      // Der Rueckgabewert ist die Loesch-Sperre: 0 heisst "keine fremden
+      // Anmeldungen, darf geloescht werden". Wer die Teilnehmerliste nicht lesen
+      // kann (403 auf einer Sub-Event-Subsite), bekam bisher genau diese 0 — und
+      // damit die Freigabe zum Loeschen eines Events, das sehr wohl Anmeldungen
+      // hat. Jetzt schlaegt der Fehler bis zum Aufrufer durch, der ihn als
+      // "unbekannt" behandeln MUSS (siehe AdminPage/LandingPage).
       let regs: SPRegistration[] = [];
-      try { regs = await getAllRegistrations(ev.id); } catch { regs = []; }
+      let readError = 0;
+      regs = await getAllRegistrations(ev.id, (status: number) => { readError = status; });
+      if (readError) throw new Error('countExternalRegistrations: Teilnehmerliste nicht lesbar (HTTP ' + readError + ')');
       for (const r of regs) {
         if (!ACTIVE.has(r.Status || '')) continue;
         const email = (r.ParticipantEmail || '').toLowerCase().trim();
