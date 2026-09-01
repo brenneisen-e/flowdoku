@@ -13,6 +13,8 @@
  */
 import * as React from 'react';
 import { BILLING_FIELDS } from '../../../data/billingFields';
+import { UserFieldPicker } from '../../UserFieldPicker';
+import { useRoles } from '../../../context/RoleContext';
 
 export interface BillingStepProps {
   visible: boolean;
@@ -28,6 +30,10 @@ export const BillingStep: React.FC<BillingStepProps> = ({
   visible, billingRelevant, setBillingRelevant,
   billingSendMode, setBillingSendMode, billingFields, setBillingFields,
 }) => {
+  // v30.45: Der Person-Picker braucht die Suche aus dem RoleContext. Wie `t`
+  // und `confirmDialog` in den anderen Schritten holt sich die Komponente das
+  // selbst, statt es durch den Props-Vertrag zu schleifen.
+  const { searchUsers, searchUser } = useRoles();
   const billingMissing = BILLING_FIELDS.filter(f => !(billingFields[f.id] || '').trim());
   return (
     <div style={{ display: visible ? 'block' : 'none' }}>
@@ -139,7 +145,24 @@ export const BillingStep: React.FC<BillingStepProps> = ({
                     <label style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', display: 'block', marginBottom: 3, flexGrow: 1 }}>
                       {f.label} <span className="required">*</span>
                     </label>
-                    {f.type === 'select' ? (
+                    {f.type === 'user' ? (
+                      // v30.45: Kontaktperson als Person-Picker statt Freitext
+                      // (F&A-Fachkonzept). Derselbe Picker wie überall sonst —
+                      // Chip mit Profilfoto, Job Title und Standort, Auswahl nur
+                      // aus dem Tenant. Der gespeicherte Wert bleibt der String
+                      // `Name <email>`, deshalb ändert sich an
+                      // `missingBillingFields`, am F&A-Mailtext und an allem,
+                      // was `_billing` liest, nichts.
+                      <UserFieldPicker
+                        value={val}
+                        onChange={setVal}
+                        searchUsers={searchUsers}
+                        searchUserByEmail={searchUser}
+                        placeholder="Name oder E-Mail der Kontaktperson…"
+                        errorStyle={empty ? { borderColor: 'var(--dex-orange, #ed8b00)' } : {}}
+                        forcedIsDe
+                      />
+                    ) : f.type === 'select' ? (
                       <select
                         className="form-input"
                         value={val}

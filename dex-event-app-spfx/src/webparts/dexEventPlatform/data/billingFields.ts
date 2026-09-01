@@ -10,12 +10,20 @@
 export interface BillingFieldDef {
   id: string;
   label: string;
-  type?: 'date' | 'select';
+  /**
+   * v30.45: `user` = Person-Picker statt Freitext (F&A-Fachkonzept,
+   * „Die Kontaktperson wird nicht als Freitext erfasst"). Gespeichert wird
+   * weiter ein String im Format `Name <email>` — dasselbe Format, das
+   * `UserFieldPicker` überall sonst in der App schreibt und wieder einliest.
+   * Damit bleibt `missingBillingFields`, der F&A-Mailtext und alles, was
+   * `_billing` liest, unverändert: Es ist und bleibt ein Textwert.
+   */
+  type?: 'date' | 'select' | 'user';
   options?: string[];
 }
 
 export const BILLING_FIELDS: BillingFieldDef[] = [
-  { id: 'contact', label: 'Kontaktperson für Rückfragen' },
+  { id: 'contact', label: 'Kontaktperson für Rückfragen', type: 'user' },
   { id: 'docNo', label: 'Dokumenten-Nr. (SH Swift Launchpad)' },
   { id: 'vendor', label: 'Lieferantenname' },
   { id: 'mice', label: 'MICE Project Nummer' },

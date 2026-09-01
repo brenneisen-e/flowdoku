@@ -22,6 +22,7 @@ import { useDialog } from '../context/DialogContext';
 import { DeloitteEvent } from '../types';
 import { BILLING_FIELDS } from '../data/billingFields';
 import { deepLinkParams } from '../utils/deepLink';
+import FARecipientEditor from './admin/FARecipientEditor';
 import {
   parseBillingOf, faStatusOf, FAStatus, FA_STATUS_LABELS, FA_STATUS_COLORS,
   FAConfig, BillingLogEntry,
@@ -38,16 +39,9 @@ const fmtDateTime = (iso: string): string => {
     : '—';
 };
 
-/** E-Mail-Liste aus einem Freitext (Komma, Semikolon oder Zeilenumbruch). */
-const parseRecipientInput = (raw: string): string[] => {
-  const seen = new Set<string>();
-  return raw.split(/[,;\n]/).map(s => s.trim()).filter(Boolean).filter(s => {
-    const lc = s.toLowerCase();
-    if (seen.has(lc)) return false;
-    seen.add(lc);
-    return true;
-  });
-};
+// v30.45: `parseRecipientInput` ist entfallen. Der Verteiler wird nicht mehr
+// als Freitext gepflegt, sondern als Liste (Person-Picker + Chips, siehe
+// components/admin/FARecipientEditor.tsx) — es gibt nichts mehr zu parsen.
 
 const statusPill = (s: FAStatus): React.ReactElement => (
   <span style={{
@@ -59,7 +53,7 @@ const statusPill = (s: FAStatus): React.ReactElement => (
 
 export default function FACenterPage(): React.ReactElement {
   const { navigate } = useNavigation();
-  const { isFA, isAdmin } = useRoles();
+  const { isFA, isAdmin, searchUsers, searchUser } = useRoles();
   const { events, getFAConfig, saveFAConfig, markEventSettled } = useEvents();
   const { confirmDialog, showAlert } = useDialog();
   const { currentUser } = useCurrentUser();
@@ -67,8 +61,11 @@ export default function FACenterPage(): React.ReactElement {
   const allowed = isFA || isAdmin;
 
   const [cfg, setCfg] = React.useState<FAConfig | null>(null);
-  const [infoInput, setInfoInput] = React.useState('');
-  const [listInput, setListInput] = React.useState('');
+  // v30.45: Empfaenger als LISTE statt als Textarea-Text. Gespeichert wird
+  // weiterhin `string[]` mit nackten Adressen — nur die Bedienung wechselt vom
+  // Freitext auf Person-Picker + Chips (F&A-Fachkonzept).
+  const [infoAddrs, setInfoAddrs] = React.useState<string[]>([]);
+  const [listAddrs, setListAddrs] = React.useState<string[]>([]);
   const [cfgBusy, setCfgBusy] = React.useState(false);
   const [cfgLogOpen, setCfgLogOpen] = React.useState(false);
   const [search, setSearch] = React.useState('');
@@ -84,8 +81,8 @@ export default function FACenterPage(): React.ReactElement {
     getFAConfig().then(c => {
       if (cancelled) return;
       setCfg(c);
-      setInfoInput(c.infoRecipients.join('\n'));
-      setListInput(c.listRecipients.join('\n'));
+      setInfoAddrs(c.infoRecipients);
+      setListAddrs(c.listRecipients);
     }).catch(() => { /* leerer Stand bleibt */ });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -205,8 +202,8 @@ export default function FACenterPage(): React.ReactElement {
     if (!cfg || cfgBusy) return;
     setCfgBusy(true);
     try {
-      const nextInfo = parseRecipientInput(infoInput);
-      const nextList = parseRecipientInput(listInput);
+      const nextInfo = infoAddrs.filter(Boolean);
+      const nextList = listAddrs.filter(Boolean);
       const by = `${currentUser?.firstName || ''} ${currentUser?.surname || ''}`.trim() || currentUser?.email || '';
       const log = [...cfg.log];
       // Änderungen protokollieren (Konzept 8.1: „Änderungen werden protokolliert").
@@ -426,14 +423,24 @@ export default function FACenterPage(): React.ReactElement {
           (eine Adresse pro Zeile). Änderungen wirken sofort auf alle zukünftigen Versendungen und werden protokolliert.
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
-          <div>
-            <label className="form-label" style={{ fontSize: '0.8rem' }}>Verteiler Abrechnungsinformationen</label>
-            <textarea className="form-input" rows={3} value={infoInput} onChange={e => setInfoInput(e.target.value)} placeholder={'fa-abrechnung@deloitte.de'} style={{ resize: 'vertical' }} />
-          </div>
-          <div>
-            <label className="form-label" style={{ fontSize: '0.8rem' }}>Verteiler Teilnehmerlisten</label>
-            <textarea className="form-input" rows={3} value={listInput} onChange={e => setListInput(e.target.value)} placeholder={'fa-teilnehmerlisten@deloitte.de'} style={{ resize: 'vertical' }} />
-          </div>
+          <FARecipientEditor
+            label="Verteiler Abrechnungsinformationen"
+            hint="Personen über die Suche, Funktionspostfächer über das Feld darunter."
+            value={infoAddrs}
+            onChange={setInfoAddrs}
+            searchUsers={searchUsers}
+            searchUserByEmail={searchUser}
+            disabled={cfgBusy}
+          />
+          <FARecipientEditor
+            label="Verteiler Teilnehmerlisten"
+            hint="Personen über die Suche, Funktionspostfächer über das Feld darunter."
+            value={listAddrs}
+            onChange={setListAddrs}
+            searchUsers={searchUsers}
+            searchUserByEmail={searchUser}
+            disabled={cfgBusy}
+          />
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 12, flexWrap: 'wrap' }}>
           <button className="btn btn-primary" disabled={cfgBusy || !cfg} onClick={() => { void saveRecipients(); }}>
