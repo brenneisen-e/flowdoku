@@ -32,6 +32,14 @@ import * as emailTemplatesList from './events/emailTemplatesList';
 import * as archive from './events/archive';
 import * as weeklyReport from './events/weeklyReport';
 import * as organizer from './events/organizer';
+import * as teilnehmerIdCounter from './events/teilnehmerIdCounter';
+import * as eventAssets from './events/eventAssets';
+import * as branding from './events/branding';
+import * as eventStats from './events/eventStats';
+import * as registrationAttachments from './events/registrationAttachments';
+import * as accessQueues from './events/accessQueues';
+import * as notificationLogs from './events/notificationLogs';
+import * as permissionsAudit from './events/permissionsAudit';
 import { wrapTemplateForStorage, buildEmailFromTemplate, normalizeMadeWithLink } from './EmailTemplates';
 // v28.95: Die Mail-Koerper liegen jetzt in ./mailBodies — die Datei begann
 // sonst mit 400 Zeilen HTML, bevor die erste Methode kam.
@@ -57,8 +65,10 @@ const REG_LIST_ITEM_TYPE = 'SP.Data.TeilnehmerListItem';
 // machen ('SP.Data.DEX_x005f_EventsListItem'). Ohne dieses Encoding
 // schlägt der POST stillschweigend mit HTTP 400 fehl, weil SP den
 // Typ-Namen nicht auflösen kann.
-const COUNTER_LIST_NAME = 'DEX_TeilnehmerCounter';
-const COUNTER_LIST_ITEM_TYPE = 'SP.Data.DEX_x005f_TeilnehmerCounterListItem';
+// v30.66: exportiert, weil das Zaehler-Thema in services/events/teilnehmerIdCounter.ts
+// liegt, die Namen aber auch im Rest des Service vorkommen.
+export const COUNTER_LIST_NAME = 'DEX_TeilnehmerCounter';
+export const COUNTER_LIST_ITEM_TYPE = 'SP.Data.DEX_x005f_TeilnehmerCounterListItem';
 
 export interface DeclinedAttendee {
   email: string;
@@ -436,14 +446,14 @@ export class EventService {
 
   /** Web-Basis-URL aus einer Securable-/Listen-API-URL ableiten
    *  (…/_api/web… → Teil vor „/_api/web"). */
-  private _webOf(apiBase: string): string {
+  public _webOf(apiBase: string): string {
     const idx = apiBase.indexOf('/_api/web');
     return idx > 0 ? apiBase.slice(0, idx) : this.siteUrl;
   }
 
   /** Request-Digest (FormDigestValue) des angegebenen Webs holen (gecacht).
    *  Leerer String, wenn nicht ermittelbar. */
-  private async _webDigest(webUrl: string): Promise<string> {
+  public async _webDigest(webUrl: string): Promise<string> {
     const key = (webUrl || this.siteUrl).toLowerCase().replace(/\/+$/, '');
     const cached = this._digestByWeb.get(key);
     if (cached) return cached;
@@ -1450,7 +1460,7 @@ export class EventService {
    * still eine unvollständige Liste zu liefern. Für Abläufe, die aus dem
    * Ergebnis auf „Person ist unbekannt" schließen (Register-Abgleich).
    */
-  private async fetchAllParticipantsOrThrow(onPage?: (loaded: number) => void): Promise<SPParticipant[]> {
+  public async fetchAllParticipantsOrThrow(onPage?: (loaded: number) => void): Promise<SPParticipant[]> {
     return this.readAllParticipants(true, onPage);
   }
 
@@ -3095,82 +3105,19 @@ export class EventService {
   // Event + KPIs bleiben im Statistik-Archiv (DEX_EventStats) erhalten.
   // =====================================================================
 
-  private static readonly EVENTSTATS_LIST = 'DEX_EventStats';
-  private static readonly EVENTSTATS_ITEM_TYPE = 'SP.Data.DEX_x005f_EventStatsListItem';
 
-  /** Legt DEX_EventStats (Statistik-Archiv, KEINE PII) an, falls nicht vorhanden.
-   *  Existiert die Liste bereits, werden nur fehlende (neue) Spalten nachgerüstet
-   *  — z.B. `Organizer` (v26.33), das es in früheren Versionen noch nicht gab. */
+  // ==================== Event-Statistik & Datenlöschung ====================
+  // v30.66 (Modularisierung Stufe 2): Implementierung in
+  // services/events/eventStats.ts — hier nur Delegations-Stubs.
+
   public async ensureEventStatsList(): Promise<void> {
-    const listName = EventService.EVENTSTATS_LIST;
-    const fields: Array<{ title: string; type: number }> = [
-      { title: 'EventNumber', type: 9 }, { title: 'EventTitle', type: 2 },
-      { title: 'EventType', type: 2 }, { title: 'EventLocation', type: 2 },
-      { title: 'EventStart', type: 4 }, { title: 'EventEnd', type: 4 },
-      { title: 'MaxParticipants', type: 9 }, { title: 'RegisteredCount', type: 9 },
-      { title: 'QRSentCount', type: 9 }, { title: 'CheckedInCount', type: 9 },
-      { title: 'NoShowCount', type: 9 }, { title: 'WaitlistCount', type: 9 },
-      { title: 'DeregisteredCount', type: 9 }, { title: 'ArchivedByEmail', type: 2 },
-      { title: 'ArchivedDate', type: 4 }, { title: 'Organizer', type: 3 },
-    ];
-    let exists = false;
-    try { exists = await this.listExists(listName); } catch { exists = false; }
-    if (!exists) {
-      const createResp = await this._post(`${this.siteUrl}/_api/web/lists`, {
-        '__metadata': { 'type': 'SP.List' },
-        'Title': listName,
-        'Description': 'Statistik-Archiv (v26): KPIs eines Events, nachdem die Teilnehmerliste nach 3 Monaten gelöscht wurde. Enthält KEINE personenbezogenen Daten.',
-        'BaseTemplate': 100,
-        'AllowContentTypes': false,
-      });
-      if (!createResp.ok) { console.warn('[DEX] DEX_EventStats konnte nicht angelegt werden — vermutlich fehlen Owner-Rechte.'); return; }
-    }
-    // Nur fehlende Felder anlegen (idempotent): bestehende Internal-Names holen.
-    const have = new Set<string>();
-    try {
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName&$top=200`,
-        SPHttpClient.configurations.v1,
-      );
-      if (resp.ok) {
-        const data = await resp.json();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        for (const f of ((data.value || data.d?.results || []) as any[])) { if (f.InternalName) have.add(String(f.InternalName)); }
-      }
-    } catch { /* dann versuchen wir einfach alle anzulegen */ }
-    for (const f of fields) {
-      if (have.has(f.title)) continue;
-      try {
-        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
-          '__metadata': { 'type': 'SP.Field' }, 'Title': f.title, 'FieldTypeKind': f.type, 'Required': false,
-        });
-      } catch { /* einzelne Feld-Fehler ignorieren */ }
-    }
+    return eventStats.ensureEventStatsList(this);
   }
 
-  /** EventNumbers, für die bereits ein Statistik-Archiv-Eintrag existiert. */
   public async getArchivedStatsEventNumbers(): Promise<Set<number>> {
-    const out = new Set<number>();
-    try {
-      if (!(await this.listExists(EventService.EVENTSTATS_LIST))) return out;
-      let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.EVENTSTATS_LIST}')/items?$select=EventNumber&$top=5000`;
-      while (url) {
-        const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
-        if (!resp.ok) break;
-        const data = await resp.json();
-        const items = data.value || data.d?.results || [];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        for (const it of (items as any[])) { const n = Number(it.EventNumber); if (!Number.isNaN(n)) out.add(n); }
-        url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
-      }
-    } catch { /* best-effort */ }
-    return out;
+    return eventStats.getArchivedStatsEventNumbers(this);
   }
 
-  /**
-   * Liest alle Zeilen aus dem Statistik-Archiv (DEX_EventStats). Reine KPI-
-   * Daten, KEINE PII. Für die Anzeige-Kachel „Statistik-Archiv" im Admin Center.
-   */
   public async getEventStats(): Promise<Array<{
     id: number; eventNumber: number; eventTitle: string; eventType: string;
     location: string; startDate: string; endDate: string; maxParticipants: number | null;
@@ -3178,217 +3125,27 @@ export class EventService {
     noShowCount: number; waitlistCount: number; deregisteredCount: number;
     organizer: string; archivedByEmail: string; archivedDate: string;
   }>> {
-    const out: Array<{
-      id: number; eventNumber: number; eventTitle: string; eventType: string;
-      location: string; startDate: string; endDate: string; maxParticipants: number | null;
-      registeredCount: number; qrSentCount: number; checkedInCount: number;
-      noShowCount: number; waitlistCount: number; deregisteredCount: number;
-      organizer: string; archivedByEmail: string; archivedDate: string;
-    }> = [];
-    try {
-      if (!(await this.listExists(EventService.EVENTSTATS_LIST))) return out;
-      const sel = 'Id,EventNumber,EventTitle,EventType,EventLocation,EventStart,EventEnd,MaxParticipants,RegisteredCount,QRSentCount,CheckedInCount,NoShowCount,WaitlistCount,DeregisteredCount,Organizer,ArchivedByEmail,ArchivedDate';
-      let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.EVENTSTATS_LIST}')/items?$select=${sel}&$orderby=ArchivedDate desc&$top=5000`;
-      while (url) {
-        const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
-        if (!resp.ok) break;
-        const data = await resp.json();
-        const items = data.value || data.d?.results || [];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        for (const it of (items as any[])) {
-          const num = (v: unknown): number => { const n = Number(v); return Number.isNaN(n) ? 0 : n; };
-          out.push({
-            id: Number(it.Id),
-            eventNumber: num(it.EventNumber),
-            eventTitle: it.EventTitle || '',
-            eventType: it.EventType || '',
-            location: it.EventLocation || '',
-            startDate: it.EventStart || '',
-            endDate: it.EventEnd || '',
-            maxParticipants: (it.MaxParticipants === null || it.MaxParticipants === undefined) ? null : num(it.MaxParticipants),
-            registeredCount: num(it.RegisteredCount),
-            qrSentCount: num(it.QRSentCount),
-            checkedInCount: num(it.CheckedInCount),
-            noShowCount: num(it.NoShowCount),
-            waitlistCount: num(it.WaitlistCount),
-            deregisteredCount: num(it.DeregisteredCount),
-            organizer: EventService.stripNoteWrapper(it.Organizer) || '',
-            archivedByEmail: it.ArchivedByEmail || '',
-            archivedDate: it.ArchivedDate || '',
-          });
-        }
-        url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
-      }
-    } catch (err) { console.warn('[DEX] getEventStats failed:', err); }
-    return out;
+    return eventStats.getEventStats(this);
   }
 
-  /**
-   * Berechnet die KPIs eines Events aus der Teilnehmerliste und schreibt EINE
-   * Zeile ins DEX_EventStats (keine PII). Muss VOR dem Löschen der Subsite
-   * laufen. Idempotent: existiert schon eine Zeile für die EventNumber, wird
-   * nichts geschrieben (true).
-   */
   public async archiveEventStats(meta: {
     eventNumber: number; eventTitle: string; eventType?: string; location?: string;
     startDate?: string; endDate?: string; maxParticipants?: number; subsiteUrl?: string;
     organizer?: string;
   }): Promise<boolean> {
-    try {
-      await this.ensureEventStatsList();
-      const existing = await this.getArchivedStatsEventNumbers();
-      if (existing.has(meta.eventNumber)) return true;
-      const regs = meta.subsiteUrl ? await this.getAllRegistrations(meta.subsiteUrl) : [];
-      const countBy = (pred: (s: string) => boolean): number => regs.filter(r => pred(r.Status || '')).length;
-      const me = (this.context.pageContext.user.email || '').toLowerCase();
-      const resp = await this._post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.EVENTSTATS_LIST}')/items`,
-        {
-          '__metadata': { 'type': EventService.EVENTSTATS_ITEM_TYPE },
-          'Title': `${meta.eventNumber}: ${(meta.eventTitle || '').slice(0, 200)}`,
-          'EventNumber': meta.eventNumber, 'EventTitle': meta.eventTitle || '',
-          'EventType': meta.eventType || '', 'EventLocation': meta.location || '',
-          'EventStart': meta.startDate || null, 'EventEnd': meta.endDate || null,
-          'MaxParticipants': typeof meta.maxParticipants === 'number' ? meta.maxParticipants : null,
-          'RegisteredCount': countBy(s => s === 'Angemeldet' || s === 'QR versendet' || s === 'Eingecheckt'),
-          'QRSentCount': countBy(s => s === 'QR versendet' || s === 'Eingecheckt'),
-          'CheckedInCount': countBy(s => s === 'Eingecheckt'),
-          'NoShowCount': countBy(s => s === 'No-Show'),
-          'WaitlistCount': countBy(s => s === 'Warteliste'),
-          'DeregisteredCount': countBy(s => s === 'Abgemeldet'),
-          'ArchivedByEmail': me, 'ArchivedDate': new Date().toISOString(),
-          'Organizer': meta.organizer || '',
-        }
-      );
-      return resp.ok;
-    } catch (err) { console.warn('[DEX] archiveEventStats failed:', err); return false; }
+    return eventStats.archiveEventStats(this, meta);
   }
 
-  /** Rollback: entfernt die (soeben geschriebene) Statistik-Zeile(n) einer
-   *  EventNumber — genutzt, wenn die anschließende Löschung fehlschlägt, damit
-   *  das Event beim nächsten Lauf erneut verarbeitet wird. */
   public async deleteEventStatsRow(eventNumber: number): Promise<boolean> {
-    try {
-      const url = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.EVENTSTATS_LIST}')/items?$select=Id&$filter=EventNumber eq ${eventNumber}&$top=50`;
-      const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
-      if (!resp.ok) return false;
-      const data = await resp.json();
-      const items = data.value || data.d?.results || [];
-      let ok = true;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const it of (items as any[])) {
-        try { await this._delete(`${this.siteUrl}/_api/web/lists/getbytitle('${EventService.EVENTSTATS_LIST}')/items(${it.Id})`); }
-        catch { ok = false; }
-      }
-      return ok;
-    } catch { return false; }
+    return eventStats.deleteEventStatsRow(this, eventNumber);
   }
 
-  /**
-   * Löscht die Teilnehmerliste (Subsite) eines Events, LÄSST das DEX_Events-Item
-   * bestehen (Event bleibt sichtbar; KPIs stehen im DEX_EventStats). Bereinigt
-   * zusätzlich DEX_Participants (EventNumber entfernen). Gegenstück zu
-   * deleteEvent(), das auch das Event-Item entfernt.
-   */
   public async deleteParticipantData(eventId: number): Promise<boolean> {
-    try {
-      const event = await this.getEvent(eventId);
-      if (!event) return false;
-      /**
-       * v29.3: Reihenfolge umgedreht — erst das Register, dann die
-       * unwiderrufliche Löschung.
-       *
-       * Bisher wurde zuerst die Subsite recycelt und danach das Register
-       * aufgeräumt, und zwar so, dass ein Scheitern nicht auffiel:
-       * `getAllParticipants()` liest NICHT strikt (eine unvollständige Seite
-       * kam still als vollständige Liste zurück), alle Schreibvorgänge liefen
-       * als EIN `Promise.all` gleichzeitig los (bei hunderten Teilnehmern die
-       * Einladung zur SharePoint-Drosselung), und jeder Fehler wurde per
-       * `.catch(() => null)` weggeworfen. Was danach im Register stand, wusste
-       * niemand — die Teilnehmerliste war aber schon weg, also ließ sich der
-       * Rest auch nicht mehr nachrechnen.
-       *
-       * Genau das ist der Rückstand, den die Register-Prüfung heute als
-       * „Verweis ohne Zeile" meldet. Jetzt gilt: strikt lesen, sequentiell
-       * schreiben, jeden Fehlschlag zählen — und bei Fehlern GAR NICHT
-       * löschen. Der Aufrufer wertet `false` bereits als „später erneut
-       * versuchen" und rollt die Statistik-Zeile zurück; nichts geht verloren,
-       * weil die Subsite dann noch steht.
-       */
-      if (event.EventNumber) {
-        let registryFailed = 0;
-        try {
-          const allParticipants = await this.fetchAllParticipantsOrThrow();
-          const en = String(event.EventNumber);
-          const affected = allParticipants.filter(p =>
-            (p.EventRegistered?.split(',').map(s => s.trim()).includes(en))
-            || (p.EventOnWaitlist?.split(',').map(s => s.trim()).includes(en)));
-          for (const p of affected) {
-            // eslint-disable-next-line no-await-in-loop
-            const ok = await this.removeParticipantEvent(p.Email, event.EventNumber).catch(() => false);
-            if (!ok) registryFailed += 1;
-          }
-        } catch (err) {
-          console.warn('[DEX] deleteParticipantData: Register nicht vollständig lesbar — Löschung abgebrochen:', err);
-          return false;
-        }
-        if (registryFailed > 0) {
-          console.warn(`[DEX] deleteParticipantData: ${registryFailed} Register-Einträge nicht aktualisiert — Löschung abgebrochen (Event ${event.EventNumber}).`);
-          return false;
-        }
-      }
-      if (event.SubsiteUrl) {
-        try { await this._post(`${event.SubsiteUrl}/_api/web/recycle`, {}); }
-        catch { console.warn('[DEX] Teilnehmer-Subsite konnte nicht recycelt werden:', event.SubsiteUrl); }
-      }
-      if (event.RegistrationListName && event.RegistrationListName !== 'Teilnehmer') {
-        try { await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${event.RegistrationListName.replace(/'/g, "''")}')/recycle`, {}); }
-        catch { /* */ }
-      }
-      try {
-        await this.writeChangeLog({
-          action: 'ParticipantListDeleted', targetType: 'Event', targetId: String(eventId),
-          targetName: event.Title || '', eventId: String(eventId), eventTitle: event.Title || '',
-          details: { subsiteUrl: event.SubsiteUrl || '', eventNumber: event.EventNumber, note: 'Teilnehmerliste gelöscht (3-Monats-Löschkonzept); KPIs im DEX_EventStats.' },
-        });
-      } catch { /* */ }
-      return true;
-    } catch { return false; }
+    return eventStats.deleteParticipantData(this, eventId);
   }
 
-  /**
-   * v11.69: Löscht NUR das DEX_Events-Listenitem — KEIN Cascade auf Subsite,
-   * KEIN Outlook-DeleteEvent in die Queue, KEIN EventImage-Recycle, KEIN
-   * DEX_Participants-Cleanup. Gegenstück zu `deleteEvent()`, das alles
-   * mit-aufräumt.
-   *
-   * Nutzungs-Szenario: Outlook-Termin nachträglich auf einem bereits
-   * angelegten Sub-Event aktivieren. Der `DEX_CreateOutlookEvent`-Flow
-   * triggert ausschliesslich auf NEUE DEX_Events-Items (GetOnNewItems) —
-   * ein MERGE-Update reicht nicht aus. Statt das ganze Sub-Event komplett
-   * delete+recreate zu machen (was kaskadierend Subsite + Teilnehmer-
-   * anmeldungen mitlöschen würde), wird hier nur die DEX_Events-Zeile
-   * entfernt und gleich darauf eine neue mit `createEvent({ existingSubsiteUrl,
-   * existingRegistrationListName })` angelegt. Die alte Subsite mit allen
-   * Anmeldungen bleibt unangetastet und wird einfach an die neue Zeile
-   * gekoppelt.
-   *
-   * **Garantie:** Diese Methode ruft KEIN `recycle()` auf der Subsite, KEIN
-   * `recycle()` auf der Teilnehmerliste und KEIN `removeParticipantEvent()`.
-   * Nur das DEX_Events-Item wird per REST-DELETE entfernt — alles andere
-   * bleibt 1:1 erhalten.
-   */
   public async deleteEventItemOnly(eventId: string | number): Promise<boolean> {
-    try {
-      const idNum = typeof eventId === 'string' ? parseInt(eventId, 10) : eventId;
-      if (!idNum || Number.isNaN(idNum)) return false;
-      const response = await this._delete(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${idNum})`
-      );
-      return response.ok;
-    } catch {
-      return false;
-    }
+    return eventStats.deleteEventItemOnly(this, eventId);
   }
 
   // ==================== Subsites ====================
@@ -4696,597 +4453,101 @@ export class EventService {
     }
   }
 
-  /**
-   * v18.48: Sperr-Liste für den Outlook-Einladungs-Flow (DEX_Outlook_Einladungen).
-   *
-   * Hintergrund: der Einladungs-Flow patcht pro Anmeldung/Abmeldung die
-   * KOMPLETTE Teilnehmerliste eines Outlook-Termins (bei Grossevents bis zu
-   * 1500 Personen) an Microsoft Graph. Lief der Flow seriell (Concurrency 1),
-   * standen Anmeldungen für völlig UNTERSCHIEDLICHE Events stundenlang in
-   * der Warteschlange. Lösung „Option B": die Trigger-Concurrency wird hoch-
-   * gesetzt (z.B. 25 parallele Läufe), und ein Pro-Event-Lock verhindert,
-   * dass zwei Läufe für dasSELBE Event gleichzeitig die Teilnehmerliste
-   * lesen-und-schreiben (Race -> verlorene Einträge).
-   *
-   * Die Liste hat eine eindeutige (Enforce-Unique) Spalte `EventId`. Der Flow
-   * „erwirbt" den Lock per Create-Item: gelingt das Create, hat er den Lock;
-   * schlägt es wegen der Eindeutigkeits-Prüfung fehl, hält gerade ein
-   * anderer Lauf desselben Events den Lock -> kurz warten und erneut
-   * versuchen. Am Ende löscht der Flow das Lock-Item wieder (Release).
-   *
-   * Die UI-Schritt-für-Schritt-Anleitung steht in `docs/flow-jsons.md` unter
-   * „UI-Anleitung 2026-06-02 (v18.48) — Option B: Pro-Event-Lock für
-   * parallele Outlook-Läufe".
-   */
-  /**
-   * v20.7: Queue-Liste `DEX_AccessFix` (Site-Collection-Root) für den
-   * Assistenz-Fall der Fremd-Anmeldung. Wenn `trySetItemAuthor` mangels
-   * „Listen verwalten"-Rechten scheitert (normaler Contribute-User, z.B.
-   * Assistenz meldet einen Partner an), schreibt die App hier einen
-   * Auftrag — der Power-Automate-Flow `DEX_AccessFix_Autor` (läuft mit
-   * Service-Identität, hat Full Control) setzt dann den Zeilen-Autor auf
-   * den Teilnehmer und markiert den Auftrag als Done/Failed.
-   * Spalten: SubsiteUrl (Text), ItemId (Number), ParticipantEmail (Text),
-   * Status (Text: Pending/Done/Failed). Schreibrechte für alle User via
-   * setQueueListPermissions (analog DEX_Emails).
-   */
+  // ==================== Zugriffs-Queues (AccessFix / AssistantAccess) ====================
+  // v30.66 (Modularisierung Stufe 2): Implementierung in
+  // services/events/accessQueues.ts — hier nur Delegations-Stubs.
+
   public async ensureAccessFixList(): Promise<void> {
-    const listName = 'DEX_AccessFix';
-    const exists = await this.listExists(listName);
-    if (exists) return;
-
-    await this._post(`${this.siteUrl}/_api/web/lists`, {
-      '__metadata': { 'type': 'SP.List' },
-      'Title': listName,
-      'Description': 'Queue: Zeilen-Autor bei Fremd-Anmeldungen auf den Teilnehmer setzen (v20.7, Flow DEX_AccessFix_Autor).',
-      'BaseTemplate': 100,
-      'AllowContentTypes': false,
-    });
-    const fields: Array<{ title: string; type: number }> = [
-      { title: 'SubsiteUrl', type: 2 },
-      { title: 'ItemId', type: 9 },
-      { title: 'ParticipantEmail', type: 2 },
-      { title: 'Status', type: 2 },
-    ];
-    for (const f of fields) {
-      try {
-        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
-          '__metadata': { 'type': 'SP.Field' },
-          'Title': f.title,
-          'FieldTypeKind': f.type,
-          'Required': false,
-        });
-      } catch { /* einzelne Feld-Fehler ignorieren */ }
-    }
-    try {
-      await this.configureDefaultView(listName, ['SubsiteUrl', 'ItemId', 'ParticipantEmail', 'Status', 'Created']);
-    } catch { /* View optional */ }
-    try {
-      await this.setQueueListPermissions(listName);
-    } catch { /* best-effort */ }
-    // Item-Level-Security: User sehen/ändern nur EIGENE Aufträge (sonst wäre
-    // ablesbar, wer wen angemeldet hat). Der Flow läuft als Site-Owner und
-    // sieht alle Items („Listen verwalten" hebelt die Item-Beschränkung aus).
-    // v26.87: zuverlässiger nometadata-MERGE (verbose+__metadata → HTTP 400).
-    await this._setListSecurity(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`, { ReadSecurity: 2, WriteSecurity: 2 });
+    return accessQueues.ensureAccessFixList(this);
   }
 
-  /**
-   * v20.7: Auftrag für den DEX_AccessFix_Autor-Flow einreihen (siehe
-   * ensureAccessFixList). Best-effort — Fehler blocken die Anmeldung nie.
-   */
   public async queueAccessFix(subsiteUrl: string, itemId: number, participantEmail: string): Promise<void> {
-    try {
-      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_AccessFix')/items`, {
-        '__metadata': { 'type': 'SP.Data.DEX_x005f_AccessFixListItem' },
-        'Title': `${participantEmail} -> Item ${itemId}`.slice(0, 250),
-        'SubsiteUrl': subsiteUrl,
-        'ItemId': itemId,
-        'ParticipantEmail': participantEmail,
-        'Status': 'Pending',
-      });
-    } catch (err) {
-      console.warn('[DEX] queueAccessFix fehlgeschlagen (best-effort):', err);
-    }
+    return accessQueues.queueAccessFix(this, subsiteUrl, itemId, participantEmail);
   }
 
-  /**
-   * v24.41: Liste `DEX_AssistantAccess` — Delegations-/Zugriffs-Queue für die
-   * „Meine Assistenz beauftragen"-Funktion. Wenn ein Admin/Director sich für
-   * ein Event anmeldet und eine Assistenz angibt, wird hier ein Eintrag
-   * angelegt. Zwei Zwecke:
-   *  1. **Flow-Auftrag:** Der Flow `DEX_AssistantAccess_Grant` setzt den
-   *     Zeilen-Autor (`Created By`) der Teilnehmer-Anmeldung auf die Assistenz,
-   *     damit diese die Anmeldung in ihrer „Assistenz"-Kachel sieht/bearbeitet
-   *     (unter „nur eigene Elemente" geht das NUR über den Autor — siehe
-   *     Recherche v24.41). Für Admins setzt die App den Autor direkt; für
-   *     normale Directoren erledigt es der Flow.
-   *  2. **Info-Zeile für den Director:** Da der Director nach der Delegation
-   *     nicht mehr Autor der Teilnehmer-Zeile ist (und sie unter ILS nicht mehr
-   *     sieht), liest „Meine Events" hier (der Director ist Autor SEINES
-   *     Delegations-Eintrags → sieht ihn) eine schreibgeschützte Zeile
-   *     „Angemeldet für X — verwaltet von Assistenz Y".
-   * ReadSecurity/WriteSecurity=2: jeder sieht nur die EIGENEN Delegations-
-   * Einträge; der Flow (Site-Owner) sieht alle.
-   */
   public async ensureAssistantAccessList(): Promise<void> {
-    const listName = 'DEX_AssistantAccess';
-    const exists = await this.listExists(listName);
-    if (exists) return;
-
-    await this._post(`${this.siteUrl}/_api/web/lists`, {
-      '__metadata': { 'type': 'SP.List' },
-      'Title': listName,
-      'Description': 'Queue + Info: Anmeldung an eine Assistenz delegieren — Zeilen-Autor auf die Assistenz setzen (v24.41, Flow DEX_AssistantAccess_Grant).',
-      'BaseTemplate': 100,
-      'AllowContentTypes': false,
-    });
-    const fields: Array<{ title: string; type: number }> = [
-      { title: 'SubsiteUrl', type: 2 },
-      { title: 'ItemId', type: 9 },
-      { title: 'EventId', type: 2 },
-      { title: 'EventTitle', type: 2 },
-      { title: 'ParticipantEmail', type: 2 },   // die angemeldete Person
-      { title: 'ParticipantName', type: 2 },
-      { title: 'AssistantEmail', type: 2 },     // die verknüpfte Assistenz
-      { title: 'AssistantName', type: 2 },
-      { title: 'OwnerEmail', type: 2 },         // wer die Anmeldung VERWALTET
-      { title: 'LinkType', type: 2 },           // 'delegation' (Selbst-Anmeldung+Assistenz) | 'proxy' (Assistenz meldet an)
-      { title: 'Status', type: 2 },             // 'Active' | 'Cancelled'
-      { title: 'RequestType', type: 2 },        // '' | 'change' | 'cancel'
-      { title: 'RequestNote', type: 3 },        // Note
-      { title: 'RequestedByEmail', type: 2 },
-      { title: 'RequestedByName', type: 2 },
-      { title: 'RequestStatus', type: 2 },      // '' | 'Open' | 'Done' | 'Rejected'
-    ];
-    for (const f of fields) {
-      try {
-        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
-          '__metadata': { 'type': 'SP.Field' },
-          'Title': f.title,
-          'FieldTypeKind': f.type,
-          'Required': false,
-        });
-      } catch { /* einzelne Feld-Fehler ignorieren */ }
-    }
-    try {
-      await this.configureDefaultView(listName, ['SubsiteUrl', 'ItemId', 'EventTitle', 'ParticipantEmail', 'AssistantEmail', 'OwnerEmail', 'LinkType', 'Status', 'RequestType', 'RequestStatus', 'Created']);
-    } catch { /* View optional */ }
-    try {
-      await this.setQueueListPermissions(listName);
-    } catch { /* best-effort */ }
-    // v24.41: ReadSecurity=1/WriteSecurity=1 — jeder darf lesen UND schreiben.
-    // Die Liste enthält bewusst NUR Koordinations-Daten (Verknüpfung Person ↔
-    // Assistenz + Anforderungs-Status), KEINE sensiblen Anmelde-Antworten (die
-    // bleiben ILS-geschützt auf der Subsite). So sehen beide Seiten ihre
-    // relevanten Einträge (App filtert) und können Anforderungen schreiben —
-    // alles ohne Flow.
-    // v26.87: zuverlässiger nometadata-MERGE (verbose+__metadata → HTTP 400).
-    await this._setListSecurity(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`, { ReadSecurity: 1, WriteSecurity: 1 });
+    return accessQueues.ensureAssistantAccessList(this);
   }
 
-  /**
-   * v24.41: Verknüpfungs-/Koordinations-Eintrag in DEX_AssistantAccess anlegen.
-   * `ownerEmail` = wer die Anmeldung verwaltet (Owner). `linkType`:
-   * 'delegation' (Person meldet sich selbst an + benennt Assistenz) oder
-   * 'proxy' (Assistenz meldet die Person an). Best-effort.
-   */
   public async queueAssistantAccess(args: {
     subsiteUrl: string; itemId: number; eventId: string; eventTitle: string;
     participantEmail: string; participantName: string; assistantEmail: string; assistantName: string;
     ownerEmail: string; linkType: 'delegation' | 'proxy';
   }): Promise<void> {
-    try {
-      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_AssistantAccess')/items`, {
-        '__metadata': { 'type': 'SP.Data.DEX_x005f_AssistantAccessListItem' },
-        'Title': `${args.participantEmail} <-> ${args.assistantEmail} (${args.eventTitle || args.eventId})`.slice(0, 250),
-        'SubsiteUrl': args.subsiteUrl,
-        'ItemId': args.itemId,
-        'EventId': args.eventId,
-        'EventTitle': (args.eventTitle || '').slice(0, 250),
-        'ParticipantEmail': args.participantEmail,
-        'ParticipantName': (args.participantName || '').slice(0, 250),
-        'AssistantEmail': args.assistantEmail,
-        'AssistantName': (args.assistantName || '').slice(0, 250),
-        'OwnerEmail': args.ownerEmail,
-        'LinkType': args.linkType,
-        'Status': 'Active',
-        'RequestStatus': '',
-      });
-    } catch (err) {
-      console.warn('[DEX] queueAssistantAccess fehlgeschlagen (best-effort):', err);
-    }
+    return accessQueues.queueAssistantAccess(this, args);
   }
 
-  /**
-   * v24.41: Alle AKTIVEN Verknüpfungen lesen, die den eingeloggten User
-   * betreffen (als angemeldete Person, als verknüpfte Assistenz ODER als Owner).
-   * ReadSecurity=1 — der Server liefert alle; wir filtern serverseitig auf die
-   * drei Email-Felder. Die App kategorisiert danach (Info-Ansichten + offene
-   * Anforderungen an den Owner).
-   */
   public async getAssistantLinksForUser(myEmail: string): Promise<AssistantLink[]> {
-    const out: AssistantLink[] = [];
-    const me = (myEmail || '').toLowerCase().trim();
-    if (!me) return out;
-    const esc = me.replace(/'/g, "''");
-    const filter = `Status eq 'Active' and (ParticipantEmail eq '${esc}' or AssistantEmail eq '${esc}' or OwnerEmail eq '${esc}')`;
-    try {
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_AssistantAccess')/items?$select=Id,SubsiteUrl,ItemId,EventId,EventTitle,ParticipantEmail,ParticipantName,AssistantEmail,AssistantName,OwnerEmail,LinkType,Status,RequestType,RequestNote,RequestedByEmail,RequestedByName,RequestStatus,Created&$filter=${encodeURIComponent(filter)}&$orderby=Created desc&$top=500`,
-        SPHttpClient.configurations.v1
-      );
-      if (!resp.ok) return out;
-      const data = await resp.json();
-      const items: Array<Record<string, string | number>> = data.value || data.d?.results || [];
-      for (const it of items) {
-        out.push({
-          id: Number(it.Id) || 0,
-          subsiteUrl: String(it.SubsiteUrl || ''),
-          itemId: Number(it.ItemId) || 0,
-          eventId: String(it.EventId || ''),
-          eventTitle: String(it.EventTitle || ''),
-          participantEmail: String(it.ParticipantEmail || ''),
-          participantName: String(it.ParticipantName || ''),
-          assistantEmail: String(it.AssistantEmail || ''),
-          assistantName: String(it.AssistantName || ''),
-          ownerEmail: String(it.OwnerEmail || ''),
-          linkType: String(it.LinkType || ''),
-          status: String(it.Status || ''),
-          requestType: String(it.RequestType || ''),
-          requestNote: String(it.RequestNote || ''),
-          requestedByEmail: String(it.RequestedByEmail || ''),
-          requestedByName: String(it.RequestedByName || ''),
-          requestStatus: String(it.RequestStatus || ''),
-          created: String(it.Created || ''),
-        });
-      }
-    } catch { /* best-effort */ }
-    return out;
+    return accessQueues.getAssistantLinksForUser(this, myEmail);
   }
 
-  /**
-   * v24.42: Eine Änderungs-/Abmelde-Anforderung auf einem Link setzen
-   * (RequestType/RequestNote/RequestStatus=Open + Anforderer). Schreibbar von
-   * jedem (WriteSecurity=1) — der nicht-Owner stellt die Anforderung.
-   */
   public async setAssistantLinkRequest(linkId: number, args: {
     requestType: 'change' | 'cancel'; note: string; requestedByEmail: string; requestedByName: string;
   }): Promise<boolean> {
-    try {
-      const resp = await this._merge(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_AssistantAccess')/items(${linkId})`,
-        {
-          'RequestType': args.requestType,
-          'RequestNote': (args.note || '').slice(0, 1000),
-          'RequestedByEmail': args.requestedByEmail,
-          'RequestedByName': (args.requestedByName || '').slice(0, 250),
-          'RequestStatus': 'Open',
-        }
-      );
-      return resp.ok;
-    } catch { return false; }
+    return accessQueues.setAssistantLinkRequest(this, linkId, args);
   }
 
-  /** v24.42: Anforderung als erledigt/abgelehnt markieren (Owner). */
   public async resolveAssistantLinkRequest(linkId: number, decision: 'Done' | 'Rejected'): Promise<boolean> {
-    try {
-      const resp = await this._merge(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_AssistantAccess')/items(${linkId})`,
-        { 'RequestStatus': decision }
-      );
-      return resp.ok;
-    } catch { return false; }
+    return accessQueues.resolveAssistantLinkRequest(this, linkId, decision);
   }
 
-  /** v24.41: Link beim Abmelden auf 'Cancelled' setzen (Info verschwindet). */
   public async setAssistantLinkStatusForRegistration(itemId: number, subsiteUrl: string, status: 'Cancelled'): Promise<void> {
-    try {
-      const esc = (subsiteUrl || '').replace(/'/g, "''");
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_AssistantAccess')/items?$select=Id&$filter=ItemId eq ${itemId} and SubsiteUrl eq '${esc}' and Status eq 'Active'&$top=20`,
-        SPHttpClient.configurations.v1
-      );
-      if (!resp.ok) return;
-      const data = await resp.json();
-      const items: Array<{ Id: number }> = data.value || data.d?.results || [];
-      for (const it of items) {
-        try { await this._merge(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_AssistantAccess')/items(${it.Id})`, { 'Status': status }); } catch { /* */ }
-      }
-    } catch { /* best-effort */ }
+    return accessQueues.setAssistantLinkStatusForRegistration(this, itemId, subsiteUrl, status);
   }
 
-  /**
-   * v24.51: Liste `DEX_InactiveNotices` — Dedup-Marker für die „Organizer über
-   * inaktives Konto informieren"-Mail. ReadSecurity=1 (alle Admins lesen
-   * dieselben Marker → klickt ein zweiter Admin, wird NICHT erneut gesendet).
-   * Spalten: EventId + ParticipantEmail (Schlüssel) + SentByEmail (informativ).
-   */
+  // ==================== Merk-/Protokoll-Listen rund um Mails ====================
+  // v30.66 (Modularisierung Stufe 2): Implementierung in
+  // services/events/notificationLogs.ts — hier nur Delegations-Stubs.
+
   public async ensureInactiveNoticesList(): Promise<void> {
-    const listName = 'DEX_InactiveNotices';
-    const exists = await this.listExists(listName);
-    if (exists) return;
-    await this._post(`${this.siteUrl}/_api/web/lists`, {
-      '__metadata': { 'type': 'SP.List' },
-      'Title': listName,
-      'Description': 'Dedup: Organizer wurde über ein inaktives Konto informiert (v24.51). Eine Mail pro Event+Person, egal welcher Admin klickt.',
-      'BaseTemplate': 100,
-      'AllowContentTypes': false,
-    });
-    const fields: Array<{ title: string; type: number }> = [
-      { title: 'EventId', type: 2 },
-      { title: 'ParticipantEmail', type: 2 },
-      { title: 'SentByEmail', type: 2 },
-    ];
-    for (const f of fields) {
-      try {
-        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
-          '__metadata': { 'type': 'SP.Field' }, 'Title': f.title, 'FieldTypeKind': f.type, 'Required': false,
-        });
-      } catch { /* */ }
-    }
-    try { await this.configureDefaultView(listName, ['EventId', 'ParticipantEmail', 'SentByEmail', 'Created']); } catch { /* */ }
-    try { await this.setQueueListPermissions(listName); } catch { /* */ }
-    // ReadSecurity bleibt 1 (Default) — alle Admins müssen dieselben Marker
-    // sehen können (sonst keine Cross-Admin-Dedup).
+    return notificationLogs.ensureInactiveNoticesList(this);
   }
 
-  /** v24.51: Bereits benachrichtigte (Event+Email)-Paare für ein Event lesen. */
   public async getSentInactiveNotices(eventId: string): Promise<Set<string>> {
-    const out = new Set<string>();
-    try {
-      const esc = (eventId || '').replace(/'/g, "''");
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_InactiveNotices')/items?$select=ParticipantEmail&$filter=EventId eq '${esc}'&$top=500`,
-        SPHttpClient.configurations.v1
-      );
-      if (!resp.ok) return out;
-      const data = await resp.json();
-      for (const it of (data.value || data.d?.results || [])) {
-        const e = (it.ParticipantEmail || '').toLowerCase().trim();
-        if (e) out.add(e);
-      }
-    } catch { /* */ }
-    return out;
+    return notificationLogs.getSentInactiveNotices(this, eventId);
   }
 
-  /** v24.51: Benachrichtigungs-Marker anlegen (claim). */
   public async recordInactiveNotice(eventId: string, participantEmail: string): Promise<void> {
-    try {
-      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_InactiveNotices')/items`, {
-        '__metadata': { 'type': 'SP.Data.DEX_x005f_InactiveNoticesListItem' },
-        'Title': `${eventId} | ${participantEmail}`.slice(0, 250),
-        'EventId': eventId,
-        'ParticipantEmail': participantEmail,
-        'SentByEmail': (this.context.pageContext.user.email || '').toLowerCase(),
-      });
-    } catch (err) { console.warn('[DEX] recordInactiveNotice failed:', err); }
+    return notificationLogs.recordInactiveNotice(this, eventId, participantEmail);
   }
 
-  /**
-   * v26.39: `DEX_PostEventMails` — PERSISTENTER Dedup-Marker für die Post-Event-
-   * „Danke & Hinweis zur Aufbewahrung"-Mail an die Organizer. Vorher hing die
-   * Entdopplung an der TRANSIENTEN `DEX_Emails`-Queue (nach Versand + Archivierung
-   * wieder leer → `hasQueuedEmail` fand nichts → Mail wurde beim nächsten
-   * App-Öffnen ERNEUT verschickt) + Browser-`localStorage` (pro Gerät/User). Ein
-   * dauerhafter Marker pro EventId behebt das geräte- und zeitübergreifend.
-   * Rückgabe: true = Liste wurde JETZT NEU angelegt (Erststart → Altbestand seeden).
-   */
   public async ensurePostEventMailsList(): Promise<boolean> {
-    const listName = 'DEX_PostEventMails';
-    try { if (await this.listExists(listName)) return false; } catch { return false; }
-    const cr = await this._post(`${this.siteUrl}/_api/web/lists`, {
-      '__metadata': { 'type': 'SP.List' },
-      'Title': listName,
-      'Description': 'Dedup (v26.39): „Danke & Hinweis zur Aufbewahrung"-Mail wurde für dieses Event bereits an die Organizer verschickt. Ein Marker pro Event — verhindert Mehrfachversand.',
-      'BaseTemplate': 100, 'AllowContentTypes': false,
-    });
-    if (!cr.ok) return false;
-    for (const f of [{ title: 'EventId', type: 2 }, { title: 'SentByEmail', type: 2 }]) {
-      try { await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, { '__metadata': { 'type': 'SP.Field' }, 'Title': f.title, 'FieldTypeKind': f.type, 'Required': false }); } catch { /* */ }
-    }
-    try { await this.configureDefaultView(listName, ['EventId', 'SentByEmail', 'Created']); } catch { /* */ }
-    try { await this.setQueueListPermissions(listName); } catch { /* */ }
-    return true;
+    return notificationLogs.ensurePostEventMailsList(this);
   }
 
-  /** v26.39: Alle EventIds, für die die Post-Event-Mail schon raus ist. */
   public async getPostEventMailSentEventIds(): Promise<Set<string>> {
-    const out = new Set<string>();
-    try {
-      if (!(await this.listExists('DEX_PostEventMails'))) return out;
-      let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_PostEventMails')/items?$select=EventId&$top=5000`;
-      while (url) {
-        const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
-        if (!resp.ok) break;
-        const data = await resp.json();
-        for (const it of (data.value || data.d?.results || [])) { const e = String(it.EventId || '').trim(); if (e) out.add(e); }
-        url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
-      }
-    } catch { /* */ }
-    return out;
+    return notificationLogs.getPostEventMailSentEventIds(this);
   }
 
-  /** v26.39: Marker setzen — Post-Event-Mail für dieses Event ist erledigt. */
   public async recordPostEventMail(eventId: string | number): Promise<void> {
-    try {
-      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_PostEventMails')/items`, {
-        '__metadata': { 'type': 'SP.Data.DEX_x005f_PostEventMailsListItem' },
-        'Title': `${eventId}`.slice(0, 250),
-        'EventId': String(eventId),
-        'SentByEmail': (this.context.pageContext.user.email || '').toLowerCase(),
-      });
-    } catch (err) { console.warn('[DEX] recordPostEventMail failed:', err); }
+    return notificationLogs.recordPostEventMail(this, eventId);
   }
 
-  // =====================================================================
-  // v26.41: DEX_EventComms — dauerhaftes Kommunikations-Log der EVENT-RUNDMAILS
-  // (Einladung, Massenmail, Ankündigungen). Organizer sehen die Historie im
-  // Organizer Center; Teilnehmer die Rundmails unter „Meine Events" (Nachrücker/
-  // Spätanmelder können nachlesen). KEINE persönlichen Bestätigungsmails.
-  // Lesbar für alle Site-Nutzer (Rundmails sind nicht vertraulich); geschrieben
-  // nur bei Organizer-Aktionen (queueEmail-Begleitung).
-  // =====================================================================
   public async ensureEventCommsList(): Promise<void> {
-    const listName = 'DEX_EventComms';
-    try { if (await this.listExists(listName)) return; } catch { return; }
-    const cr = await this._post(`${this.siteUrl}/_api/web/lists`, {
-      '__metadata': { 'type': 'SP.List' },
-      'Title': listName,
-      'Description': 'Kommunikations-Log (v26.41): Event-Rundmails (Einladung/Massenmail/Ankündigung) mit Zeitstempel — Organizer-Historie + Teilnehmer-Ansicht unter „Meine Events". Keine persönlichen Bestätigungsmails.',
-      'BaseTemplate': 100, 'AllowContentTypes': false,
-    });
-    if (!cr.ok) { console.warn('[DEX] DEX_EventComms konnte nicht angelegt werden.'); return; }
-    const fields: Array<{ title: string; type: number; note?: boolean }> = [
-      { title: 'EventId', type: 2 }, { title: 'EventTitle', type: 2 },
-      { title: 'Subject', type: 2 }, { title: 'BodyHtml', type: 3, note: true },
-      { title: 'EmailType', type: 2 }, { title: 'SentByEmail', type: 2 }, { title: 'SentByName', type: 2 },
-    ];
-    for (const f of fields) {
-      try {
-        const payload: Record<string, unknown> = { '__metadata': { 'type': f.note ? 'SP.FieldMultiLineText' : 'SP.Field' }, 'Title': f.title, 'FieldTypeKind': f.type, 'Required': false };
-        if (f.note) { payload['RichText'] = false; payload['NumberOfLines'] = 12; }
-        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
-      } catch { /* einzelne Feld-Fehler ignorieren */ }
-    }
-    try { await this.configureDefaultView(listName, ['EventId', 'EventTitle', 'Subject', 'EmailType', 'SentByName', 'Created']); } catch { /* */ }
-    // KEIN Inheritance-Break: alle Site-Nutzer dürfen die Rundmails lesen.
+    return notificationLogs.ensureEventCommsList(this);
   }
 
-  /** Eine gesendete Event-Rundmail ins Log schreiben. */
   public async logEventComm(meta: { eventId: string | number; eventTitle: string; subject: string; bodyHtml: string; emailType: string }): Promise<void> {
-    try {
-      await this.ensureEventCommsList();
-      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_EventComms')/items`, {
-        '__metadata': { 'type': 'SP.Data.DEX_x005f_EventCommsListItem' },
-        'Title': `${meta.eventId}: ${(meta.subject || '').slice(0, 180)}`.slice(0, 250),
-        'EventId': String(meta.eventId), 'EventTitle': meta.eventTitle || '',
-        'Subject': meta.subject || '', 'BodyHtml': meta.bodyHtml || '',
-        'EmailType': meta.emailType || '',
-        'SentByEmail': (this.context.pageContext.user.email || '').toLowerCase(),
-        'SentByName': this.context.pageContext.user.displayName || '',
-      });
-    } catch (err) { console.warn('[DEX] logEventComm failed:', err); }
+    return notificationLogs.logEventComm(this, meta);
   }
 
-  /** Alle Rundmails eines Events (neueste zuerst). */
   public async getEventComms(eventId: string | number): Promise<EventCommRow[]> {
-    const out: EventCommRow[] = [];
-    try {
-      if (!(await this.listExists('DEX_EventComms'))) return out;
-      const esc = String(eventId).replace(/'/g, "''");
-      const sel = 'Id,EventId,Subject,BodyHtml,EmailType,SentByName,SentByEmail,Created';
-      let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EventComms')/items?$select=${sel}&$filter=EventId eq '${esc}'&$orderby=Created desc&$top=500`;
-      while (url) {
-        const resp = await this._sp.get(url, SPHttpClient.configurations.v1);
-        if (!resp.ok) break;
-        const data = await resp.json();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        for (const it of ((data.value || data.d?.results || []) as any[])) {
-          out.push({ id: Number(it.Id), eventId: String(it.EventId || ''), subject: it.Subject || '', bodyHtml: it.BodyHtml || '', emailType: it.EmailType || '', sentByName: it.SentByName || '', sentByEmail: it.SentByEmail || '', created: it.Created || '' });
-        }
-        url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
-      }
-    } catch (err) { console.warn('[DEX] getEventComms failed:', err); }
-    return out;
+    return notificationLogs.getEventComms(this, eventId);
   }
 
-  /** v26.69: Eine Log-Zeile aus dem Kommunikations-Log löschen — z. B. wenn ein
-   *  Eintrag versehentlich protokolliert wurde und den „Bereits versendete Infos"-
-   *  Hinweis fälschlich auslöst. Gibt true bei Erfolg zurück. */
   public async deleteEventComm(id: number): Promise<boolean> {
-    try {
-      if (!(await this.listExists('DEX_EventComms'))) return false;
-      const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EventComms')/items(${Number(id)})`;
-      const resp = await this._delete(url);
-      return resp.ok;
-    } catch (err) { console.warn('[DEX] deleteEventComm failed:', err); return false; }
+    return notificationLogs.deleteEventComm(this, id);
   }
 
-  /** Gibt es überhaupt Rundmails zu diesem Event? (für den Anmeldemail-Hinweis) */
-  /**
-   * @param excludeTypes v29.11: Rundmail-Arten, die NICHT zählen sollen.
-   *
-   * Hintergrund: Der Hinweis „Bereits versendete Infos zu diesem Event“ in der
-   * Anmeldebestätigung soll die Person auf Kommunikation aufmerksam machen, die
-   * sie verpasst haben könnte. Die Einladung ist genau das nicht — über sie ist
-   * die Person meist überhaupt erst gekommen, und wer sich ohne Einladung
-   * anmeldet, kann sie in der App ohnehin nachlesen. Stand nur eine Einladung
-   * im Log, verwies der Hinweis also auf die Mail, die man gerade in der Hand
-   * hatte. Lohnend ist er erst, wenn es DARÜBER HINAUS etwas gab.
-   *
-   * Die Auswertung läuft bewusst im Code und nicht als OData-Filter: `ne` würde
-   * Zeilen mit leerem EmailType je nach Auslegung verschlucken. Alt-Zeilen ohne
-   * Art zählen hier als „weitere Mail“ — im Zweifel lieber hinweisen als eine
-   * echte Ankündigung verschweigen.
-   */
   public async hasEventComms(
     eventId: string | number,
     excludeTypes?: string[],
   ): Promise<boolean> {
-    try {
-      if (!(await this.listExists('DEX_EventComms'))) return false;
-      const esc = String(eventId).replace(/'/g, "''");
-      const resp = await this._sp.get(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_EventComms')/items?$select=Id,EmailType&$filter=EventId eq '${esc}'&$top=200`, SPHttpClient.configurations.v1);
-      if (!resp.ok) return false;
-      const data = await resp.json();
-      const items = (data.value || data.d?.results || []) as Array<{ EmailType?: string }>;
-      if (!Array.isArray(items) || items.length === 0) return false;
-      if (!excludeTypes || excludeTypes.length === 0) return true;
-      const skip = excludeTypes.map(t => (t || '').trim().toLowerCase());
-      return items.some(it => skip.indexOf((it.EmailType || '').trim().toLowerCase()) < 0);
-    } catch { return false; }
+    return notificationLogs.hasEventComms(this, eventId, excludeTypes);
   }
 
   public async ensureOutlookLocksList(): Promise<void> {
-    const listName = 'DEX_OutlookLocks';
-    const exists = await this.listExists(listName);
-    if (exists) return;
-
-    await this._post(`${this.siteUrl}/_api/web/lists`, {
-      '__metadata': { 'type': 'SP.List' },
-      'Title': listName,
-      'Description': 'Pro-Event-Sperre für den Outlook-Einladungs-Flow (v18.48) — verhindert gleichzeitige Läufe für dasselbe Event.',
-      'BaseTemplate': 100,
-      'AllowContentTypes': false,
-    });
-
-    // EventId: der Lock-Schlüssel. Muss eindeutig + indiziert sein, damit das
-    // Create-als-Lock-Erwerb-Muster funktioniert (zweiter gleichzeitiger
-    // Create für dieselbe EventId schlägt fehl -> der Lauf wartet & retryt).
-    await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
-      '__metadata': { 'type': 'SP.Field' },
-      'Title': 'EventId',
-      'FieldTypeKind': 2,
-      'Required': false,
-    });
-    // LockedAt: rein informativ (Debugging hängengebliebener Locks).
-    await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
-      '__metadata': { 'type': 'SP.Field' },
-      'Title': 'LockedAt',
-      'FieldTypeKind': 4,
-      'Required': false,
-    });
-
-    // EventId indizieren und Eindeutigkeit erzwingen. Reihenfolge wichtig:
-    // erst Indexed, dann EnforceUniqueValues (SP verlangt eine indizierte
-    // Spalte für die Eindeutigkeits-Prüfung). Auf einer frischen, leeren
-    // Liste ist das unkritisch (keine Duplikate vorhanden).
-    const fieldUrl = `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('EventId')`;
-    try {
-      await this._merge(fieldUrl, { 'Indexed': true });
-      await this._merge(fieldUrl, { 'EnforceUniqueValues': true });
-    } catch (e) {
-      console.warn('[DEX] ensureOutlookLocksList: EnforceUniqueValues konnte nicht gesetzt werden:', e);
-    }
-
-    await this.configureDefaultView(listName, ['EventId', 'LockedAt']);
-
-    // Schreibrechte wie bei den anderen Queue-Listen (DEX_Emails etc.) —
-    // der Flow-Connection-Account muss Lock-Items anlegen/löschen können.
-    try {
-      await this.setQueueListPermissions(listName);
-    } catch { /* best-effort */ }
+    return notificationLogs.ensureOutlookLocksList(this);
   }
 
   /**
@@ -7544,41 +6805,17 @@ export class EventService {
     }
   }
 
-  /**
-   * v11.0: Item-Attachments einer Teilnehmer-Registrierung listen.
-   * Liefert ein Array mit FileName + ServerRelativeUrl, sodass die App
-   * Download-Links rendern kann. Subsite-spezifisch (jede Teilnehmerliste
-   * lebt in der Event-Subsite).
-   */
+  // ==================== Anhänge an Anmeldezeilen ====================
+  // v30.66 (Modularisierung Stufe 2): Implementierung in
+  // services/events/registrationAttachments.ts — hier nur Delegations-Stubs.
+
   public async listRegistrationAttachments(
     subsiteUrl: string,
     itemId: number,
   ): Promise<Array<{ fileName: string; serverRelativeUrl: string }>> {
-    try {
-      const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})/AttachmentFiles`;
-      const resp = await this._sp.get(url, SPHttpClient.configurations.v1, {
-        headers: { 'Accept': 'application/json;odata=nometadata' },
-      });
-      if (!resp.ok) return [];
-      const data = await resp.json();
-      const items = data.value || [];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return items.map((a: any) => ({
-        fileName: a.FileName || '',
-        serverRelativeUrl: a.ServerRelativeUrl || '',
-      })).filter((x: { fileName: string }) => !!x.fileName);
-    } catch (err) {
-      console.warn('[DEX] listRegistrationAttachments failed:', err);
-      return [];
-    }
+    return registrationAttachments.listRegistrationAttachments(this, subsiteUrl, itemId);
   }
 
-  /**
-   * v11.0: PDF / Datei als Item-Attachment an eine Teilnehmer-Zeile
-   * hängen. SharePoint erlaubt mehrere Attachments pro Item; bei
-   * gleichem Namen wirft die API einen 409, daher prefixen wir den
-   * Dateinamen mit einem Timestamp wenn die App das aufruft.
-   */
   public async addRegistrationAttachment(
     subsiteUrl: string,
     itemId: number,
@@ -7587,43 +6824,15 @@ export class EventService {
     // zuzuordnen (z.B. 'dxf-<fieldId>--'). Leer = generischer Attendee-Upload.
     fieldPrefix: string = '',
   ): Promise<boolean> {
-    try {
-      const buf = await file.arrayBuffer();
-      // Dateiname säubern + Timestamp-prefix für Eindeutigkeit
-      const safeName = (file.name || 'upload.pdf').replace(/[^a-zA-Z0-9._-]+/g, '_');
-      const ts = new Date().toISOString().replace(/[:.]/g, '-').replace(/T/, '_').slice(0, 19);
-      const finalName = `${fieldPrefix}${ts}_${safeName}`;
-      const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})/AttachmentFiles/add(FileName='${encodeURIComponent(finalName)}')`;
-      const resp = await this._sp.post(url, SPHttpClient.configurations.v1, {
-        headers: { 'Accept': 'application/json;odata=nometadata' },
-        body: buf,
-      });
-      return resp.ok;
-    } catch (err) {
-      console.warn('[DEX] addRegistrationAttachment failed:', err);
-      return false;
-    }
+    return registrationAttachments.addRegistrationAttachment(this, subsiteUrl, itemId, file, fieldPrefix);
   }
 
-  /**
-   * v11.0: Item-Attachment löschen. Wird sowohl vom User (eigener
-   * Upload zurückziehen) als auch vom Admin (im Admin Center) genutzt.
-   */
   public async deleteRegistrationAttachment(
     subsiteUrl: string,
     itemId: number,
     fileName: string,
   ): Promise<boolean> {
-    try {
-      const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})/AttachmentFiles/getByFileName('${encodeURIComponent(fileName)}')`;
-      const resp = await this._sp.post(url, SPHttpClient.configurations.v1, {
-        headers: { 'IF-MATCH': '*', 'X-HTTP-Method': 'DELETE', 'Accept': 'application/json;odata=nometadata' },
-      });
-      return resp.ok;
-    } catch (err) {
-      console.warn('[DEX] deleteRegistrationAttachment failed:', err);
-      return false;
-    }
+    return registrationAttachments.deleteRegistrationAttachment(this, subsiteUrl, itemId, fileName);
   }
 
   /**
@@ -8114,551 +7323,79 @@ export class EventService {
     }
   }
 
-  // ==================== Bild-Upload ====================
+  // ==================== Branding-Assets (Logo, Orb, Video) ====================
+  // v30.66 (Modularisierung Stufe 2): Implementierung in
+  // services/events/branding.ts — hier nur Delegations-Stubs.
 
-  /**
-   * SiteAssets-Unterordner sicherstellen:
-   * - DEX_EventImages (Event-Bilder)
-   * - DEX_Logos (Deloitte-Logo für E-Mail-Templates, manuell hochgeladen)
-   */
   public async ensureAssetsFolders(): Promise<void> {
-    const baseUrl = this.context.pageContext.web.serverRelativeUrl;
-    const folders = ['DEX_EventImages', 'DEX_Logos'];
-
-    for (const folder of folders) {
-      const folderUrl = `${baseUrl}/SiteAssets/${folder}`;
-      try {
-        const check = await this._sp.get(
-          `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderUrl}')`,
-          SPHttpClient.configurations.v1
-        );
-        if (check.ok) continue;
-      } catch { /* */ }
-
-      try {
-        await this._post(`${this.siteUrl}/_api/web/folders`, {
-          '__metadata': { 'type': 'SP.Folder' },
-          'ServerRelativeUrl': folderUrl,
-        });
-        // Ordner erstellt
-      } catch {
-        console.warn(`[DEX] Konnte ${folder} Ordner nicht erstellen`);
-      }
-    }
+    return branding.ensureAssetsFolders(this);
   }
 
-  // ==================== v26.50: Logo & Branding (Admin-Center) ====================
-  // Zentrale Ablage des Default-Logos (PNG) + Logo-Videos. Das PNG lebt in der
-  // _Config-Zeile von DEX_EmailTemplates (LogoBase64) — ALLE neu versendeten
-  // Mails nutzen es automatisch — und wird zusätzlich als
-  // SiteAssets/DEX_Logos/Deloitte_Logo.png gespiegelt (Fallback-Pfad von
-  // loadLogosAsBase64). Das Video liegt als SiteAssets/DEX_Logos/dex-logo-video.*.
-
-  private static readonly BRANDING_VIDEO_BASENAME = 'dex-logo-video';
-
-  /** Aktuelles Branding: Deloitte-Logo + DEX-Orb (Data-URIs) + Video-URL
-   *  (leer wenn keins da). v26.58: orbBase64 ergänzt — das eigentliche
-   *  DEX-Logo (bunter Ring, _Config.DefaultImageBase64 bzw. dex-orb.png);
-   *  LogoBase64 ist das Deloitte-Logo der E-Mail-Kopfzeile. */
   public async getBranding(): Promise<{ logoBase64: string; orbBase64: string; videoUrl: string; videoFileName: string }> {
-    let logoBase64 = '';
-    let orbBase64 = '';
-    try {
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id,LogoBase64,DefaultImageBase64`,
-        SPHttpClient.configurations.v1
-      );
-      if (resp.ok) {
-        const d = await resp.json();
-        const it = (d.value || d.d?.results || [])[0];
-        if (it && it.LogoBase64) logoBase64 = String(it.LogoBase64);
-        if (it && it.DefaultImageBase64) orbBase64 = String(it.DefaultImageBase64);
-      }
-    } catch { /* */ }
-    if (!logoBase64) {
-      try { logoBase64 = await this.loadFileAsBase64('DEX_Logos/Deloitte_Logo.png'); } catch { /* */ }
-    }
-    if (!orbBase64) {
-      try { orbBase64 = await this.loadFileAsBase64('DEX_Logos/dex-orb.png'); } catch { /* */ }
-    }
-    // Video: feste Kandidaten-Namen prüfen (mp4 bevorzugt).
-    let videoUrl = '';
-    let videoFileName = '';
-    const serverRel = this.context.pageContext.web.serverRelativeUrl;
-    for (const ext of ['mp4', 'webm', 'mov']) {
-      const name = `${EventService.BRANDING_VIDEO_BASENAME}.${ext}`;
-      try {
-        const check = await this._sp.get(
-          `${this.siteUrl}/_api/web/GetFileByServerRelativeUrl('${serverRel}/SiteAssets/DEX_Logos/${name}')?$select=Exists,ServerRelativeUrl`,
-          SPHttpClient.configurations.v1
-        );
-        if (check.ok) {
-          videoUrl = `${new URL(this.siteUrl).origin}${serverRel}/SiteAssets/DEX_Logos/${name}`;
-          videoFileName = name;
-          break;
-        }
-      } catch { /* nächster Kandidat */ }
-    }
-    return { logoBase64, orbBase64, videoUrl, videoFileName };
+    return branding.getBranding(this);
   }
 
-  /** v26.58: Neues DEX-Logo (Orb, PNG als Data-URI) speichern:
-   *  _Config.DefaultImageBase64 (Default-Mail-Bild / {{ORB_URL}}-Fallback)
-   *  + Spiegelung nach SiteAssets/DEX_Logos/dex-orb.png. */
   public async saveBrandingOrb(orbDataUri: string): Promise<boolean> {
-    if (!orbDataUri || orbDataUri.indexOf('data:image/') !== 0) return false;
-    let ok = false;
-    try {
-      const listName = 'DEX_EmailTemplates';
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id`,
-        SPHttpClient.configurations.v1
-      );
-      let cfgId = 0;
-      if (resp.ok) {
-        const d = await resp.json();
-        const it = (d.value || d.d?.results || [])[0];
-        if (it) cfgId = Number(it.Id);
-      }
-      if (cfgId > 0) {
-        const m = await this._merge(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items(${cfgId})`, { 'DefaultImageBase64': orbDataUri });
-        ok = m.ok;
-      } else {
-        const c = await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
-          '__metadata': { 'type': 'SP.Data.DEX_x005f_EmailTemplatesListItem' },
-          'Title': '_Config', 'TemplateType': '_Config', 'DefaultImageBase64': orbDataUri,
-        });
-        ok = c.ok;
-      }
-    } catch (err) { console.warn('[DEX] saveBrandingOrb (_Config) failed:', err); }
-    // Spiegel nach SiteAssets (best-effort — Fallback-Pfad + Download-Quelle).
-    try {
-      await this.ensureAssetsFolders();
-      const b64 = orbDataUri.split(',')[1] || '';
-      const bin = atob(b64);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      const serverRel = this.context.pageContext.web.serverRelativeUrl;
-      await this._sp.post(
-        `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${serverRel}/SiteAssets/DEX_Logos')/Files/add(url='dex-orb.png',overwrite=true)`,
-        SPHttpClient.configurations.v1,
-        { headers: { 'Accept': 'application/json;odata=nometadata' }, body: bytes.buffer as ArrayBuffer }
-      );
-    } catch (err) { console.warn('[DEX] saveBrandingOrb (SiteAssets mirror) failed:', err); }
-    return ok;
+    return branding.saveBrandingOrb(this, orbDataUri);
   }
 
-  /** Neues Default-Logo (PNG als Data-URI) speichern: _Config.LogoBase64 (Mails)
-   *  + Spiegelung nach SiteAssets/DEX_Logos/Deloitte_Logo.png (Fallback). */
   public async saveBrandingLogo(logoDataUri: string): Promise<boolean> {
-    if (!logoDataUri || logoDataUri.indexOf('data:image/') !== 0) return false;
-    let ok = false;
-    try {
-      // _Config-Zeile finden bzw. anlegen, dann MERGE.
-      const listName = 'DEX_EmailTemplates';
-      const resp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id`,
-        SPHttpClient.configurations.v1
-      );
-      let cfgId = 0;
-      if (resp.ok) {
-        const d = await resp.json();
-        const it = (d.value || d.d?.results || [])[0];
-        if (it) cfgId = Number(it.Id);
-      }
-      if (cfgId > 0) {
-        const m = await this._merge(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items(${cfgId})`, { 'LogoBase64': logoDataUri });
-        ok = m.ok;
-      } else {
-        const c = await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
-          '__metadata': { 'type': 'SP.Data.DEX_x005f_EmailTemplatesListItem' },
-          'Title': '_Config', 'TemplateType': '_Config', 'LogoBase64': logoDataUri,
-        });
-        ok = c.ok;
-      }
-    } catch (err) { console.warn('[DEX] saveBrandingLogo (_Config) failed:', err); }
-    // Spiegel nach SiteAssets (best-effort — Fallback-Pfad + Download-Quelle).
-    try {
-      await this.ensureAssetsFolders();
-      const b64 = logoDataUri.split(',')[1] || '';
-      const bin = atob(b64);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      const serverRel = this.context.pageContext.web.serverRelativeUrl;
-      await this._sp.post(
-        `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${serverRel}/SiteAssets/DEX_Logos')/Files/add(url='Deloitte_Logo.png',overwrite=true)`,
-        SPHttpClient.configurations.v1,
-        { headers: { 'Accept': 'application/json;odata=nometadata' }, body: bytes.buffer as ArrayBuffer }
-      );
-    } catch (err) { console.warn('[DEX] saveBrandingLogo (SiteAssets mirror) failed:', err); }
-    return ok;
+    return branding.saveBrandingLogo(this, logoDataUri);
   }
 
-  /** Neues Logo-Video nach SiteAssets/DEX_Logos hochladen (fester Name,
-   *  overwrite). Liefert die absolute URL oder '' bei Fehler. */
   public async uploadBrandingVideo(file: File): Promise<string> {
-    try {
-      await this.ensureAssetsFolders();
-      const ext = (file.name.split('.').pop() || 'mp4').toLowerCase();
-      const safeExt = ['mp4', 'webm', 'mov'].indexOf(ext) >= 0 ? ext : 'mp4';
-      const name = `${EventService.BRANDING_VIDEO_BASENAME}.${safeExt}`;
-      const serverRel = this.context.pageContext.web.serverRelativeUrl;
-      const buf = await file.arrayBuffer();
-      const resp = await this._sp.post(
-        `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${serverRel}/SiteAssets/DEX_Logos')/Files/add(url='${name}',overwrite=true)`,
-        SPHttpClient.configurations.v1,
-        { headers: { 'Accept': 'application/json;odata=nometadata' }, body: buf }
-      );
-      if (!resp.ok) return '';
-      return `${new URL(this.siteUrl).origin}${serverRel}/SiteAssets/DEX_Logos/${name}`;
-    } catch (err) { console.warn('[DEX] uploadBrandingVideo failed:', err); return ''; }
+    return branding.uploadBrandingVideo(this, file);
   }
 
-  /**
-   * Event-Bild als Attachment an ein DEX_Events-Item anhängen.
-   * Löscht zuerst alle bestehenden Bild-Attachments (Präfix __eventimage__),
-   * dann wird das neue Bild hochgeladen. Liefert die ServerRelativeUrl als absolute URL.
-   * Vorteil: keine SiteAssets-Berechtigungen nötig - wer das Item editieren darf,
-   * darf auch Attachments hinzufügen.
-   */
+  /** Serialisiert die Overrides-Schreibvorgänge (siehe services/events/eventAssets.ts).
+   *  v30.66: public — das Thema liegt im Modul, der Instanz-Zustand bleibt hier. */
+  public _ovQueue: Promise<void> = Promise.resolve();
+
+  // ==================== Event-Bilder, -Dokumente, EmailTemplateOverrides ====================
+  // v30.66 (Modularisierung Stufe 2): Implementierung in
+  // services/events/eventAssets.ts — hier nur Delegations-Stubs. Die
+  // Serialisierungs-Warteschlange `_ovQueue` bleibt als Instanz-Zustand hier.
+
   public async uploadEventImageAsAttachment(eventId: number, file: File): Promise<string> {
-    const IMAGE_PREFIX = '__eventimage__';
-    try {
-      // 1. Bestehende Bild-Attachments löschen (nur __eventimage__-Präfixe)
-      try {
-        const listResp = await this._sp.get(
-          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles`,
-          SPHttpClient.configurations.v1
-        );
-        if (listResp.ok) {
-          const listData = await listResp.json();
-          const files = listData.value || listData.d?.results || [];
-          for (const f of files) {
-            const fn: string = f.FileName || '';
-            if (fn.indexOf(IMAGE_PREFIX) === 0) {
-              try {
-                await this._delete(
-                  `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/getByFileName('${encodeURIComponent(fn)}')`
-                );
-              } catch { /* ignore */ }
-            }
-          }
-        }
-      } catch { /* ignore */ }
-
-      // 2. Neues Bild hochladen mit Präfix
-      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-      const safeName = `${IMAGE_PREFIX}${Date.now().toString(36)}.${ext}`;
-
-      const response = await this._sp.post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/add(FileName='${encodeURIComponent(safeName)}')`,
-        SPHttpClient.configurations.v1,
-        {
-          headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-          body: file,
-        } as ISPHttpClientOptions
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        const relUrl = data.d?.ServerRelativeUrl || data.ServerRelativeUrl || '';
-        if (relUrl) return `${window.location.origin}${relUrl}`;
-        // Hochgeladen, aber ohne URL in der Antwort: Pfad ist bekannt und die
-        // Datei liegt dort — hier darf geraten werden.
-        const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
-        return `${window.location.origin}${serverRelUrl}/Lists/DEX_Events/Attachments/${eventId}/${safeName}`;
-      }
-      // v29.34: Bei einer FEHLER-Antwort keine URL mehr raten. Die geratene
-      // Adresse zeigte auf eine Datei, die nie ankam — gespeichert wurde sie
-      // trotzdem, und das Bild fehlte danach dauerhaft. Leer heißt hier
-      // „fehlgeschlagen"; die Aufrufer melden das dem Organizer.
-      console.warn('[DEX] Image attachment upload status:', response.status);
-    } catch (err) {
-      console.warn('[DEX] uploadEventImageAsAttachment error:', err);
-    }
-    return '';
+    return eventAssets.uploadEventImageAsAttachment(this, eventId, file);
   }
 
-  // v28.11: Präfix des UNBESCHNITTENEN Original-Bilds (bewusst KEIN
-  // '__eventimage__'-Präfix-Match, sonst würde der normale Bild-Upload es
-  // mitlöschen). Wird nur gespeichert, wenn ein Querformat-Original per
-  // App-Zuschnitt rund/quadratisch wurde — die Anmeldeseite zeigt dann
-  // lieber das Original im Querformat-Slot.
-  private static readonly ORIG_IMAGE_PREFIX = '__eventimgorig__';
-
-  /** v28.11: Alle Original-Bild-Attachments eines Events löschen (best-effort). */
   public async deleteEventOrigImageAttachment(eventId: number): Promise<void> {
-    try {
-      const listResp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles`,
-        SPHttpClient.configurations.v1
-      );
-      if (!listResp.ok) return;
-      const listData = await listResp.json();
-      const files = listData.value || listData.d?.results || [];
-      for (const f of files) {
-        const fn: string = f.FileName || '';
-        if (fn.indexOf(EventService.ORIG_IMAGE_PREFIX) === 0) {
-          try {
-            await this._delete(
-              `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/getByFileName('${encodeURIComponent(fn)}')`
-            );
-          } catch { /* ignore */ }
-        }
-      }
-    } catch { /* ignore */ }
+    return eventAssets.deleteEventOrigImageAttachment(this, eventId);
   }
 
-  /** v28.11: Unbeschnittenes Original-Bild als zweites Attachment speichern.
-   *  Löscht vorher bestehende Originale; liefert die absolute URL. */
   public async uploadEventOrigImageAsAttachment(eventId: number, file: File): Promise<string> {
-    try {
-      await this.deleteEventOrigImageAttachment(eventId);
-      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-      const safeName = `${EventService.ORIG_IMAGE_PREFIX}${Date.now().toString(36)}.${ext}`;
-      const response = await this._sp.post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/add(FileName='${encodeURIComponent(safeName)}')`,
-        SPHttpClient.configurations.v1,
-        {
-          headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-          body: file,
-        } as ISPHttpClientOptions
-      );
-      if (response.ok) {
-        const data = await response.json();
-        const relUrl = data.d?.ServerRelativeUrl || data.ServerRelativeUrl || '';
-        if (relUrl) return `${window.location.origin}${relUrl}`;
-        const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
-        return `${window.location.origin}${serverRelUrl}/Lists/DEX_Events/Attachments/${eventId}/${safeName}`;
-      }
-      // v29.34: Bei Fehler-Antwort NICHT raten — die geratene URL landete in
-      // `_imageOrigUrl`, und die Kachel bevorzugt diese Adresse vor dem
-      // Event-Bild. Ergebnis war eine weiße Kachel bei einem Event, das im
-      // Organizer Center sein Bild hatte. Leer lässt den bisherigen Wert
-      // stehen (der Aufrufer patcht nur bei nicht-leerem Ergebnis).
-      console.warn('[DEX] Orig image attachment upload status:', response.status);
-    } catch (err) {
-      console.warn('[DEX] uploadEventOrigImageAsAttachment error:', err);
-    }
-    return '';
+    return eventAssets.uploadEventOrigImageAsAttachment(this, eventId, file);
   }
 
-  /** v28.11: EINEN Schlüssel im EmailTemplateOverrides-JSON eines Events
-   *  patchen (read-modify-write). Leerer Wert entfernt den Schlüssel.
-   *  Nötig für Werte, die erst NACH dem Item-Save bekannt sind (z.B. die
-   *  Attachment-URL des Original-Bilds). */
   public async patchEventOverridesKey(eventId: number, key: string, value: string): Promise<void> {
-    try {
-      const getResp = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})?$select=EmailTemplateOverrides`,
-        SPHttpClient.configurations.v1
-      );
-      if (!getResp.ok) return;
-      const data = await getResp.json();
-      const raw = data.d?.EmailTemplateOverrides || data.EmailTemplateOverrides || '';
-      let obj: Record<string, unknown> = {};
-      try { obj = raw ? JSON.parse(raw) : {}; } catch { obj = {}; }
-      if (value) obj[key] = value; else delete obj[key];
-      await this._merge(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})`,
-        { 'EmailTemplateOverrides': JSON.stringify(obj) }
-      );
-    } catch (err) {
-      console.warn('[DEX] patchEventOverridesKey fehlgeschlagen:', key, err);
-    }
+    return eventAssets.patchEventOverridesKey(this, eventId, key, value);
   }
 
-  /**
-   * v28.38: Wie `patchEventOverridesKey`, aber für beliebige JSON-Werte
-   * (Arrays, Booleans, Objekte). `undefined`/`null`/leeres Array löschen den
-   * Schlüssel, damit die Overrides nicht mit leeren Huellen zuwachsen.
-   * Liefert true bei Erfolg.
-   */
   public async patchEventOverridesValue(eventId: number, key: string, value: unknown): Promise<boolean> {
-    const res = await this.patchEventOverridesValueEx(eventId, key, value);
-    return res.ok;
+    return eventAssets.patchEventOverridesValue(this, eventId, key, value);
   }
 
-  /**
-   * v28.60: Wie `patchEventOverridesValue`, liefert aber den Grund mit.
-   *
-   * Vorher gab es nur true/false — bei einem Fehlschlag stand im UI „konnte
-   * nicht gespeichert werden" und sonst nichts, was die Ursachensuche
-   * unmöglich machte. Jetzt kommt der HTTP-Status samt SharePoint-Meldung
-   * zurück, und die drei typischen Stolpersteine sind abgefangen:
-   *
-   *  - **Transiente Fehler** (429 Throttling, 5xx): ein Wiederholungsversuch
-   *    nach kurzer Pause statt sofort aufzugeben.
-   *  - **Grössenlimit**: SharePoint lehnt Requests über 2 MB ab. Das Feld
-   *    trägt bei Events mit eingebetteten Logos einiges — wir prüfen vorher
-   *    und sagen es klar, statt in ein nacktes HTTP 400 zu laufen.
-   *  - **Parallele Schreibvorgänge**: Der Aufruf ist ein Read-Modify-Write.
-   *    Zwei gleichzeitige Aufrufe (z.B. schnell hintereinander geklickte
-   *    Löschungen) würden sich gegenseitig überschreiben, deshalb laufen sie
-   *    über `_ovQueue` streng nacheinander.
-   */
   public async patchEventOverridesValueEx(
     eventId: number, key: string, value: unknown,
   ): Promise<{ ok: boolean; status: number; detail: string }> {
-    const run = async (): Promise<{ ok: boolean; status: number; detail: string }> => {
-      const attempt = async (): Promise<{ ok: boolean; status: number; detail: string }> => {
-        const getResp = await this._sp.get(
-          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})?$select=EmailTemplateOverrides`,
-          SPHttpClient.configurations.v1
-        );
-        if (!getResp.ok) {
-          return { ok: false, status: getResp.status, detail: `Lesen fehlgeschlagen (HTTP ${getResp.status})` };
-        }
-        const data = await getResp.json();
-        const raw = data.d?.EmailTemplateOverrides || data.EmailTemplateOverrides || '';
-        let obj: Record<string, unknown> = {};
-        try { obj = raw ? JSON.parse(raw) : {}; } catch { obj = {}; }
-        const empty = value === undefined || value === null || value === false
-          || (Array.isArray(value) && value.length === 0);
-        if (empty) { delete obj[key]; } else { obj[key] = value; }
-        const payload = JSON.stringify(obj);
-        if (payload.length > 1_900_000) {
-          return {
-            ok: false, status: 413,
-            detail: `Der Event-Datensatz ist mit ${(payload.length / 1048576).toFixed(2)} MB zu gross für einen Schreibvorgang (Limit 2 MB).`,
-          };
-        }
-        const resp = await this._merge(
-          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})`,
-          { 'EmailTemplateOverrides': payload }
-        );
-        if (resp.ok || resp.status === 406) return { ok: true, status: resp.status, detail: '' };
-        let body = '';
-        try { body = await resp.text(); } catch { /* egal */ }
-        // SharePoint verpackt die Meldung in {error:{message:{value}}}.
-        let msg = '';
-        try {
-          const j = JSON.parse(body);
-          msg = j?.error?.message?.value || j?.['odata.error']?.message?.value || '';
-        } catch { msg = (body || '').substring(0, 200); }
-        return { ok: false, status: resp.status, detail: msg || `HTTP ${resp.status}` };
-      };
-
-      for (let i = 0; i < 2; i++) {
-        try {
-          const r = await attempt();
-          if (r.ok) return r;
-          const transient = r.status === 429 || r.status >= 500;
-          if (!transient || i === 1) {
-            console.warn('[DEX] patchEventOverridesValue fehlgeschlagen:', key, r.status, r.detail);
-            return r;
-          }
-        } catch (err) {
-          if (i === 1) {
-            console.warn('[DEX] patchEventOverridesValue Ausnahme:', key, err);
-            return { ok: false, status: 0, detail: String((err as Error)?.message || err) };
-          }
-        }
-        await new Promise<void>(res => setTimeout(res, 600));
-      }
-      return { ok: false, status: 0, detail: 'unbekannt' };
-    };
-
-    // Streng nacheinander — sonst gehen parallele Read-Modify-Writes verloren.
-    const next = this._ovQueue.then(run, run);
-    this._ovQueue = next.then(() => undefined, () => undefined);
-    return next;
+    return eventAssets.patchEventOverridesValueEx(this, eventId, key, value);
   }
 
-  /** Serialisiert die Overrides-Schreibvorgänge (siehe oben). */
-  private _ovQueue: Promise<void> = Promise.resolve();
-
-  /**
-   * EventImageUrl-Feld eines DEX_Events-Items setzen (kleines MERGE).
-   */
   public async updateEventImageUrl(eventId: number, url: string): Promise<boolean> {
-    try {
-      const resp = await this._merge(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})`,
-        { 'EventImageUrl': url }
-      );
-      return resp.ok || resp.status === 406;
-    } catch {
-      return false;
-    }
+    return eventAssets.updateEventImageUrl(this, eventId, url);
   }
 
-  /**
-   * Dokument als Attachment an ein DEX_Events-Item anfügen.
-   * Nutzt native SharePoint List Item Attachments - keine Ordner nötig.
-   */
   public async uploadEventDocument(eventId: number, file: File): Promise<string> {
-    try {
-      const fileName = file.name.replace(/[#%&*:<>?/\\|]/g, '_');
-
-      const response = await this._sp.post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/add(FileName='${encodeURIComponent(fileName)}')`,
-        SPHttpClient.configurations.v1,
-        {
-          headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-          body: file,
-        } as ISPHttpClientOptions
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        const relUrl = data.d?.ServerRelativeUrl || data.ServerRelativeUrl || '';
-        if (relUrl) return `${window.location.origin}${relUrl}`;
-      } else {
-        console.warn('[DEX] Attachment upload status:', response.status);
-      }
-
-      // Fallback: URL aus bekanntem Pfad
-      const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
-      return `${window.location.origin}${serverRelUrl}/Lists/DEX_Events/Attachments/${eventId}/${fileName}`;
-    } catch (err) {
-      console.warn('[DEX] uploadEventDocument error:', err);
-    }
-    return '';
+    return eventAssets.uploadEventDocument(this, eventId, file);
   }
 
-  /**
-   * Dokument-Attachment von einem DEX_Events-Item löschen.
-   * Wird beim Edit verwendet, wenn der User ein bestehendes Dokument entfernt.
-   */
   public async deleteEventDocument(eventId: number, fileName: string): Promise<boolean> {
-    try {
-      const resp = await this._delete(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/getByFileName('${encodeURIComponent(fileName)}')`
-      );
-      return resp.ok || resp.status === 200 || resp.status === 204;
-    } catch (err) {
-      console.warn('[DEX] deleteEventDocument error:', err);
-      return false;
-    }
+    return eventAssets.deleteEventDocument(this, eventId, fileName);
   }
 
-  /**
-   * Attachments eines DEX_Events-Items laden.
-   * Bilder mit Präfix __eventimage__ werden ausgefiltert (nur für EventImageUrl).
-   */
   public async getEventAttachments(eventId: number): Promise<Array<{ name: string; url: string; size: number }>> {
-    try {
-      const response = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles`,
-        SPHttpClient.configurations.v1
-      );
-      if (response.ok) {
-        const data = await response.json();
-        const files = data.value || data.d?.results || [];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return files
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .filter((f: any) => (f.FileName || '').indexOf('__eventimage__') !== 0)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .map((f: any) => ({
-            name: f.FileName || '',
-            url: `${window.location.origin}${f.ServerRelativeUrl || ''}`,
-            size: 0,
-          }));
-      }
-    } catch { /* Attachments nicht verfügbar */ }
-    return [];
+    return eventAssets.getEventAttachments(this, eventId);
   }
 
   // ==================== Profil-Daten ====================
@@ -8792,426 +7529,49 @@ export class EventService {
     return response;
   }
 
-  // v7.28: Atomare TeilnehmerID-Vergabe über die DEX_TeilnehmerCounter-Liste
-  // pro Event-Subsite. Verhindert Race-Conditions wenn viele User gleichzeitig
-  // anmelden — ohne das vorher passieren konnte, dass zwei User dieselbe ID
-  // bekommen (siehe Bug-Report v7.27 → v7.28).
-  //
-  // Ablauf:
-  //   1. Counter-Item GET'en, ETag aus Response-Header lesen.
-  //   2. NextValue + 1 mit IF-MATCH: <etag> via MERGE schreiben.
-  //   3. Bei 412 (ETag-Mismatch = jemand war schneller) → kurzes Jitter +
-  //      Retry, max 8x.
-  //   4. Bei Erfolg: NextValue+1 ist die neue TeilnehmerID des aufrufenden Users.
-  //
-  // Fallback: Wenn die Counter-Liste nicht existiert (z.B. legacy event ohne
-  // "Spalten fixen"-Lauf), kommt undefined zurück — der Aufrufer fällt dann
-  // auf das alte (race-anfällige) max+1-Verfahren zurück. Bestandsschutz.
-  // v7.28 / v9.10: Nächste TeilnehmerID atomar holen.
-  //   1. Counter-Item GET'en, ETag aus Response-Header lesen.
-  //   2. Counter-Item PATCH'en mit IF-MATCH=<ETag>, NextValue=current+1.
-  //   3. Bei 412 (ETag-Mismatch = jemand war schneller) → Exponential
-  //      Backoff mit Full Jitter, dann Retry. Bis zu 40 Versuche.
-  //   4. Bei Erfolg: NextValue+1 ist die neue TeilnehmerID des aufrufenden Users.
-  //
-  // v9.10: Counter-Liste wird ON-DEMAND angelegt+geseeded, falls sie fehlt
-  // (z.B. weil das Event vor v7.28 erstellt wurde). Vorher gab undefined
-  // zurück → Aufrufer fiel auf max+1 zurück → Race-Condition bei
-  // Massen-Anmeldungen. Jetzt: einmalig ensureCounterList() rufen, dann
-  // erneut versuchen. Damit ist der race-anfällige Fallback nur noch
-  // erreicht, wenn auch das Anlegen scheitert (Permission-Issue).
-  //
-  // v9.10: Retries 8 → 40, Backoff von festem Jitter auf Exponential
-  // Backoff mit Full Jitter (Cap 500ms). Bei 50+ parallelen Anmeldungen
-  // wahren 8 Retries praktisch garantiert ausgeschöpft.
-  private async getNextTeilnehmerId(subsiteUrl: string): Promise<number | undefined> {
-    const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
-    const MAX_RETRIES = 40;
-    let triedLazyCreate = false;
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      let getResp: SPHttpClientResponse;
-      try {
-        getResp = await this._sp.get(counterItemUrl, SPHttpClient.configurations.v1);
-      } catch {
-        return undefined;
-      }
-      if (!getResp.ok) {
-        // 404 = Counter-Liste / Item existiert nicht.
-        // v9.10: Statt direkt undefined zu liefern, einmalig versuchen die
-        // Liste anzulegen + zu seeden (idempotent). Wenn das klappt, gleich
-        // weiter — wenn nicht, geben wir auf.
-        if (getResp.status === 404 && !triedLazyCreate) {
-          triedLazyCreate = true;
-          try {
-            await this.ensureCounterList(subsiteUrl);
-            // Kein delay — direkt nächste Iteration, die das frische Item liest.
-            continue;
-          } catch {
-            return undefined;
-          }
-        }
-        return undefined;
-      }
-      const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
-      if (!etag) return undefined;
-      let data;
-      try { data = await getResp.json(); } catch { return undefined; }
-      // v9.13: NextValue defensiv parsen — handhabt sowohl number als auch
-      // (in seltenen SP-Konfigurationen) string. Sorgt dafür dass current
-      // bei einer korrekt gespeicherten 165 nie auf 0 fallback'ed.
-      const rawNextValue = data?.NextValue ?? data?.d?.NextValue;
-      const current = typeof rawNextValue === 'number'
-        ? rawNextValue
-        : (typeof rawNextValue === 'string' ? (parseInt(rawNextValue, 10) || 0) : 0);
-      // v9.13: Counter ist die Source of Truth. Wir vertrauen ihm und
-      // inkrementieren atomar via ETag-CAS. KEIN zusätzlicher Lesezugriff
-      // auf die Teilnehmerliste mehr — das Counter-Pattern existiert genau,
-      // damit wir hier NICHT max(TID) aus der Teilnehmerliste rechnen
-      // müssen. Wenn der Counter korrupt sein sollte (z.B. von altem
-      // syncCounterToMax-Bug auf 0 gepatcht), gibt's den expliziten
-      // "Counter zurücksetzen"-Button im Admin Center für den Fix.
-      const next = current + 1;
-      const patchResp = await this._mergeIfMatch(counterItemUrl, { 'NextValue': next }, etag);
-      if (patchResp.ok) return next;
-      if (patchResp.status !== 412) {
-        // Anderer Fehler (z.B. 500) → kein Sinn weiter zu retry'n
-        return undefined;
-      }
-      // 412 = ETag-Mismatch = jemand war schneller → Exponential Backoff
-      // mit Full Jitter (Cap 500ms). Cluster bei Massen-Anmeldungen
-      // werden so zuverlässig entzerrt — ohne Backoff laufen alle
-      // Clients sekundengleich in den nächsten Conflict.
-      const baseDelay = Math.min(500, 50 * Math.pow(1.4, attempt));
-      const delay = Math.floor(baseDelay * (0.5 + Math.random()));
-      await new Promise(res => setTimeout(res, delay));
-    }
-    // Nach 40 Retries aufgeben — Aufrufer kann die Anmeldung sauber
-    // mit TeilnehmerID=null durchziehen lassen und der Admin lädt
-    // anschliessend "IDs neu vergeben".
-    console.warn('[DEX] getNextTeilnehmerId: 40 retries erschöpft — TeilnehmerID bleibt unset, Admin sollte IDs neu vergeben.');
-    return undefined;
-  }
-
-  // Hilfsroutine: prüft ob auf der Counter-Liste die NextValue-Spalte
-  // existiert und legt sie an wenn sie fehlt. Idempotent.
   // v24.76: Counter-Felder (inkl. des neuen WaitlistTaken) EINMAL pro Subsite
   // pro Session sicherstellen, bevor darauf geschrieben wird — sonst liefert der
   // MERGE auf Bestands-Events ein HTTP 400 (Feld existiert noch nicht). Gecacht,
   // damit nicht bei jedem Reconcile/Bump erneut geprobt wird.
-  private _counterFieldsEnsured: Set<string> = new Set<string>();
-  private async ensureCounterFieldsOnce(subsiteUrl: string): Promise<void> {
-    if (!subsiteUrl || this._counterFieldsEnsured.has(subsiteUrl)) return;
-    try { await this.ensureCounterListField(subsiteUrl); } catch { /* best-effort */ }
-    this._counterFieldsEnsured.add(subsiteUrl);
+  // v30.66: public — der Merker ist Instanz-Zustand, das Thema liegt im Modul.
+  public _counterFieldsEnsured: Set<string> = new Set<string>();
+
+  // ==================== TeilnehmerID-Zähler ====================
+  // v30.66 (Modularisierung Stufe 2): Implementierung in
+  // services/events/teilnehmerIdCounter.ts — hier nur Delegations-Stubs.
+  // Die bisher privaten Helfer sind public, weil das Modul sie über `svc`
+  // aufruft (Unterstrich-Konvention: „intern").
+
+  public async getNextTeilnehmerId(subsiteUrl: string): Promise<number | undefined> {
+    return teilnehmerIdCounter.getNextTeilnehmerId(this, subsiteUrl);
   }
 
-  private async ensureCounterListField(subsiteUrl: string): Promise<void> {
-    const fieldsUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/fields`;
-    // v7.28: NextValue (TeilnehmerID-Automat).
-    // v11.36: SeatsTaken / SeatsTakenDurch / SeatsTakenFun — atomare
-    // Sitzplatz-Reservierung pro Gruppe (gegen Überbuchung bei
-    // zeitgleichen Anmeldungen). Alle Number-Felder, default 0/leer.
-    const wanted = ['NextValue', 'SeatsTaken', 'SeatsTakenDurch', 'SeatsTakenFun', 'WaitlistTaken'];
-    for (const name of wanted) {
-      try {
-        const probe = await this._sp.get(
-          `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/fields/getbytitle('${name}')`,
-          SPHttpClient.configurations.v1
-        );
-        if (probe.ok) continue;
-        await this._post(
-          fieldsUrl,
-          { '__metadata': { 'type': 'SP.Field' }, 'Title': name, 'FieldTypeKind': 9, 'Required': false }
-        );
-      } catch { /* best-effort; reserveSeat fällt sonst sauber zurück */ }
-    }
+  public async ensureCounterFieldsOnce(subsiteUrl: string): Promise<void> {
+    return teilnehmerIdCounter.ensureCounterFieldsOnce(this, subsiteUrl);
   }
 
-  // v7.28: Counter-Liste für ein Event anlegen (1 Liste mit 1 Item) und
-  // direkt mit dem aktuellen Max-Wert seeden — damit bestehende Events ohne
-  // ID-Lückenproduktion umsteigen können.
-  // Idempotent: tut nichts wenn die Liste schon existiert.
-  // v7.29-Fix: Item-Inserts nutzen den korrekt _x005f_-encodeten Type-Namen
-  // (genauso wie wir das für DEX_Events machen). Vorher wurde der Listen-
-  // name 1:1 in den Type übernommen, was bei Unterstrich stillschweigend
-  // zu HTTP 400 führt → leere Counter-Liste.
-  private async ensureCounterList(subsiteUrl: string): Promise<{ created: boolean; seededValue?: number }> {
-    const probe = await this._sp.get(
-      `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')`,
-      SPHttpClient.configurations.v1
-    );
-    const itemsUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items`;
-    const seedItem = async (): Promise<number> => {
-      const maxId = await this.getCurrentMaxTeilnehmerId(subsiteUrl);
-      const resp = await this._post(itemsUrl, {
-        '__metadata': { 'type': COUNTER_LIST_ITEM_TYPE },
-        'Title': 'TeilnehmerID',
-        'NextValue': maxId,
-        // v30.63: Sitzplatz- und Wartelisten-Zähler AUSDRÜCKLICH auf 0 setzen.
-        //
-        // Bisher blieben beide Felder null, bis die erste Anmeldung sie anfasst
-        // — und `WaitlistTaken` fasst niemand an, solange nie jemand auf der
-        // Warteliste steht. `getCounterStats` meldet null aber als „unbekannt"
-        // (-1), und `releaseSeatAfterCancel` handelt bei unbekanntem
-        // Wartelisten-Stand fail-closed: Es zählt NICHT herunter. Ergebnis war
-        // ein Zähler, der bei jeder Selbst-Abmeldung zu hoch stehen blieb, bis
-        // ein Admin die App öffnete.
-        //
-        // Auf einer frischen Subsite ist die 0 keine Annahme, sondern die
-        // Tatsache: Es gibt noch keine Anmeldung. Genau deshalb darf sie hier
-        // geschrieben werden — und nur hier.
-        'SeatsTaken': 0,
-        'WaitlistTaken': 0,
-      });
-      if (!resp.ok) {
-        const errBody = await resp.text().catch(() => '');
-        console.warn('[DEX] ensureCounterList: Seed-Item fehlgeschlagen, status=', resp.status, errBody.substring(0, 300));
-      }
-      return maxId;
-    };
-
-    if (probe.ok) {
-      // Liste existiert — sicherstellen dass das Schema komplett ist und ein Item drin liegt.
-      try { await this.ensureCounterListField(subsiteUrl); } catch { /* */ }
-      // v9.13/v9.14: setCounterListPermissions wurde hier ursprünglich
-      // mitaufgerufen, hat aber bei laufender Event-Anlage Race-Conditions
-      // ausgelöst (breakroleinheritance gegen frisch provisionierte Liste
-      // in derselben Request-Welle). Permissions werden jetzt nur noch
-      // explizit über den "Counter zurücksetzen"-Button gefixt — siehe
-      // resetCounterToMax. Bestehende Events können damit per Admin-Klick
-      // geheilt werden, neue Events bekommen ihre Permissions im
-      // create-Branch unten gesetzt.
-      const itemListResp = await this._sp.get(
-        `${itemsUrl}?$top=1`,
-        SPHttpClient.configurations.v1
-      );
-      if (itemListResp.ok) {
-        const data = await itemListResp.json();
-        const list = data.value || data.d?.results || [];
-        if (list.length > 0) return { created: false }; // alles ok
-      }
-      // Liste ohne Item → nachseeden
-      const seededValue = await seedItem();
-      return { created: false, seededValue };
-    }
-
-    // Liste neu anlegen
-    await this._post(
-      `${subsiteUrl}/_api/web/lists`,
-      {
-        '__metadata': { 'type': 'SP.List' },
-        'BaseTemplate': 100,
-        'Title': COUNTER_LIST_NAME,
-        'Description': 'Atomarer Counter für TeilnehmerID-Vergabe (ETag-basiert). Nicht manuell editieren.',
-        'AllowContentTypes': false,
-        'ContentTypesEnabled': false,
-        'EnableVersioning': false,
-        'EnableMinorVersions': false,
-        'OnQuickLaunch': false,
-      }
-    );
-    await this.ensureCounterListField(subsiteUrl);
-    // v9.13: Counter-Liste muss explizit Contribute-Rechte für Visitors
-    // bekommen, damit normale User die ETag-CAS-Inkrementierung
-    // durchführen können. Ohne das schlägt PATCH NextValue mit 401/403
-    // fehl → getNextTeilnehmerId gibt undefined zurück → TID landet null
-    // (oder im allerersten Lazy-Create-Pfad bei 1).
-    try { await this.setCounterListPermissions(subsiteUrl); } catch { /* */ }
-    const seededValue = await seedItem();
-    return { created: true, seededValue };
+  public async ensureCounterListField(subsiteUrl: string): Promise<void> {
+    return teilnehmerIdCounter.ensureCounterListField(this, subsiteUrl);
   }
 
-  /**
-   * Berechtigungen für DEX_TeilnehmerCounter setzen — analog zur
-   * Teilnehmerliste:
-   *   - Owners der Hauptsite: Full Control (1073741829)
-   *   - Visitors (DEALL): Contribute (1073741827) → ETag-CAS-Inkrement
-   *   - Organizer-Mail (falls bekannt): Full Control
-   *
-   * Idempotent: kann auf bestehenden Counter-Listen erneut aufgerufen
-   * werden um v9.13-Permissions nachzupatchen. Die Funktion bricht
-   * Rollen-Vererbung explizit (clearSubscopes=true), damit Read-Only-
-   * Inheritance vom Subsite nicht versehentlich greift.
-   */
-  private async setCounterListPermissions(subsiteUrl: string, organizerEmail?: string): Promise<void> {
-    try {
-      await this._post(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`,
-        {}
-      );
-      const ownersResp = await this._sp.get(
-        `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`,
-        SPHttpClient.configurations.v1
-      );
-      if (ownersResp.ok) {
-        const ownersData = await ownersResp.json();
-        const ownersId = ownersData.Id ?? ownersData.d?.Id;
-        if (ownersId) {
-          await this._post(
-            `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/roleassignments/addroleassignment(principalid=${ownersId}, roledefid=1073741829)`,
-            {}
-          );
-        }
-      }
-      // Visitors → Contribute. KRITISCH: damit normale User
-      // den Counter atomar inkrementieren können.
-      const visitorsId = await this.getVisitorsGroupId();
-      if (visitorsId) {
-        await this._post(
-          `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/roleassignments/addroleassignment(principalid=${visitorsId}, roledefid=1073741827)`,
-          {}
-        );
-      }
-      // Organizer optional → Full Control
-      if (organizerEmail) {
-        try {
-          const userResp = await this._sp.get(
-            `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(organizerEmail)}')?$select=Id`,
-            SPHttpClient.configurations.v1
-          );
-          if (userResp.ok) {
-            const userData = await userResp.json();
-            const userId = userData.Id ?? userData.d?.Id;
-            if (userId) {
-              await this._post(
-                `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
-                {}
-              );
-            }
-          }
-        } catch { /* Organizer-Permission ist optional */ }
-      }
-    } catch (err) {
-      console.warn('[DEX] setCounterListPermissions fehlgeschlagen:', err);
-    }
+  public async ensureCounterList(subsiteUrl: string): Promise<{ created: boolean; seededValue?: number }> {
+    return teilnehmerIdCounter.ensureCounterList(this, subsiteUrl);
   }
 
-  // v7.28 / v9.13: Aktuellen Max-Wert von TeilnehmerID in der Teilnehmerliste
-  // lesen. Wird beim **Seeden** des Counters und beim **Sync nach Reorder**
-  // genutzt — die Counter-Liste selbst ist im Normalbetrieb die Source of
-  // Truth (siehe getNextTeilnehmerId).
-  //
-  // **Bugfix v9.13:** Vorher hat $orderby=TeilnehmerID desc&$top=1 unter
-  // bestimmten Bedingungen das null-Item zuerst geliefert (SP sortiert NULL-
-  // Werte bei Number-Feldern oft als "größter Wert" in desc-Order).
-  // Sobald irgendjemand abgemeldet war (TID=null) lief die Funktion ins
-  // null-Branch und gab 0 zurück.
-  //
-  // Konsequenz im alten Code (vor v9.12): syncCounterToMax patcht den
-  // Counter auf liveMax=0 RUNTER → nächste Anmeldung kriegt TID=1 →
-  // Duplikat zu echten aktiven Teilnehmern. Genau der Fall den der User
-  // beim Go-Live live gesehen hat (Theresa #1 obwohl 165 aktive Anmeldungen).
-  //
-  // Fix: $filter=TeilnehmerID gt 0 schliesst NULL und 0 explizit aus —
-  // funktioniert unabhängig von SP-NULL-Sortier-Konventionen.
-  private async getCurrentMaxTeilnehmerId(subsiteUrl: string): Promise<number> {
-    try {
-      const resp = await this._sp.get(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=TeilnehmerID&$filter=TeilnehmerID gt 0&$orderby=TeilnehmerID desc&$top=1`,
-        SPHttpClient.configurations.v1
-      );
-      if (!resp.ok) return 0;
-      const data = await resp.json();
-      const items = data.value || data.d?.results || [];
-      if (items.length > 0 && items[0].TeilnehmerID != null) return items[0].TeilnehmerID;
-    } catch { /* */ }
-    return 0;
+  public async setCounterListPermissions(subsiteUrl: string, organizerEmail?: string): Promise<void> {
+    return teilnehmerIdCounter.setCounterListPermissions(this, subsiteUrl, organizerEmail);
   }
 
-  // v7.31 / v9.12: Counter mit aktuellem Max-Wert konsistent halten — wird
-  // nach Cancel und nach reorderParticipantIDs aufgerufen. Die Logik ist
-  // **monotonic up-only**: der Counter geht NIE runter (sonst werden
-  // cancelled IDs reused — exakter Duplikat-Bug aus dem Go-Live).
-  //
-  // - current >= liveMax: nichts zu tun (Counter steht bereits hoch genug).
-  // - current  < liveMax: Counter HOCH auf liveMax setzen (z.B. nach
-  //   reorderParticipantIDs, der die TIDs im Bereich [1..N_active] vergibt
-  //   wo N_active größer sein kann als der bisherige Counter-Stand).
-  //
-  // Vorher (Bug bis v9.11): exakt umgekehrt — Counter wurde auf liveMax
-  // RUNTER gesetzt wenn current > liveMax. Das produzierte sowohl bei
-  // Cancel als auch nach IDReorder Duplikate.
-  //
-  // ETag-CAS mit Retry, damit eine parallele Anmeldung den Counter nicht
-  // zwischen Read und Write wegrasselt.
-  // v9.13: Oeffentliche Recovery-Methode für den Admin-Button "Counter
-  // zurücksetzen". Liest den aktuellen Max-TID aus der Teilnehmerliste und
-  // setzt den Counter auf diesen Wert (per ETag-CAS, monotonic up-only via
-  // syncCounterToMax). Gibt den neuen Counter-Wert zurück damit der Admin
-  // direkt sehen kann auf was es gepatcht wurde.
+  public async getCurrentMaxTeilnehmerId(subsiteUrl: string): Promise<number> {
+    return teilnehmerIdCounter.getCurrentMaxTeilnehmerId(this, subsiteUrl);
+  }
+
   public async resetCounterToMax(subsiteUrl: string): Promise<{ counter: number; max: number }> {
-    // v11.27: bidirektionaler Reset. Vorher rief diese Methode nur
-    // syncCounterToMax auf — das ist monotonic up-only und liess einen
-    // zu hohen Counter unverändert. Genau das hat der Maintainer beobachtet:
-    // Counter=11, Max-TID=4, Klick auf "Counter zurücksetzen" → keine
-    // Änderung, weiterhin 11. Jetzt setzen wir den Counter explizit
-    // auf max(TID) — egal ob er drunter (gefährlich, Doppel-IDs möglich)
-    // oder drüber stand (harmlos, nur Lücken-Springen).
-    try { await this.ensureCounterList(subsiteUrl); } catch { /* */ }
-    const max = await this.getCurrentMaxTeilnehmerId(subsiteUrl);
-    const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
-    let finalCounter = 0;
-    // ETag-CAS-Loop, falls jemand parallel inserted und den Counter inkrementiert.
-    for (let attempt = 0; attempt < 8; attempt++) {
-      try {
-        const getResp = await this._sp.get(counterItemUrl, SPHttpClient.configurations.v1);
-        if (!getResp.ok) break;
-        const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
-        if (!etag) break;
-        const data = await getResp.json();
-        const rawCurrent = data?.NextValue ?? data?.d?.NextValue;
-        const current = typeof rawCurrent === 'number' ? rawCurrent : (typeof rawCurrent === 'string' ? (parseInt(rawCurrent, 10) || 0) : 0);
-        if (current === max) {
-          finalCounter = current;
-          break;
-        }
-        const patchResp = await this._mergeIfMatch(counterItemUrl, { 'NextValue': max }, etag);
-        if (patchResp.ok) {
-          finalCounter = max;
-          console.warn(`[DEX] resetCounterToMax: counter von ${current} auf ${max} gesetzt (Subsite: ${subsiteUrl}).`);
-          break;
-        }
-        if (patchResp.status !== 412) {
-          finalCounter = current;
-          break;
-        }
-        // 412 = jemand war schneller, nochmal lesen+patchen
-        await new Promise(res => setTimeout(res, 50 + Math.floor(Math.random() * 100)));
-      } catch (err) {
-        console.warn('[DEX] resetCounterToMax error:', err);
-        break;
-      }
-    }
-    return { counter: finalCounter, max };
+    return teilnehmerIdCounter.resetCounterToMax(this, subsiteUrl);
   }
 
-  private async syncCounterToMax(subsiteUrl: string): Promise<void> {
-    const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
-    for (let attempt = 0; attempt < 8; attempt++) {
-      const liveMax = await this.getCurrentMaxTeilnehmerId(subsiteUrl);
-      let getResp: SPHttpClientResponse;
-      try {
-        getResp = await this._sp.get(counterItemUrl, SPHttpClient.configurations.v1);
-      } catch {
-        return;
-      }
-      if (!getResp.ok) return;
-      const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
-      if (!etag) return;
-      let data;
-      try { data = await getResp.json(); } catch { return; }
-      const current = typeof data?.NextValue === 'number' ? data.NextValue : 0;
-      if (current >= liveMax) return; // bereits konsistent — Counter ist nicht "zu klein"
-      const patchResp = await this._mergeIfMatch(counterItemUrl, { 'NextValue': liveMax }, etag);
-      if (patchResp.ok) {
-        console.warn(`[DEX] syncCounterToMax: counter von ${current} auf ${liveMax} hochgezogen.`);
-        return;
-      }
-      if (patchResp.status !== 412) return;
-      // 412 = jemand war schneller, nochmal lesen+patchen
-      await new Promise(res => setTimeout(res, 50 + Math.floor(Math.random() * 100)));
-    }
-    // Nach 8 Retries aufgeben — best-effort, blockiert keine andere Aktion
+  public async syncCounterToMax(subsiteUrl: string): Promise<void> {
+    return teilnehmerIdCounter.syncCounterToMax(this, subsiteUrl);
   }
 
   /**
@@ -9230,382 +7590,30 @@ export class EventService {
     }
   }
 
-  /**
-   * v21: Item-Level-Security („nur eigene Elemente", 2/2) auf den globalen
-   * Queue-Listen DEX_Outlook + DEX_IDReorder nachziehen. DEX_Emails und
-   * DEX_AccessFix haben sie bereits; DEX_TeamJoinRequests bekommt sie
-   * bewusst NICHT (der Team-Lead muss fremde Beitritts-Anfragen lesen).
-   * Idempotent; wird vom Admin-Reparatur-Button mit ausgeführt.
-   */
+  // ==================== Berechtigungs-Audit / verwaiste Subsites ====================
+  // v30.66 (Modularisierung Stufe 2): Implementierung in
+  // services/events/permissionsAudit.ts — hier nur Delegations-Stubs.
+
   public async hardenQueueListsIls(): Promise<{ fixed: string[]; failed: string[] }> {
-    const targets = ['DEX_Outlook', 'DEX_IDReorder'];
-    const fixed: string[] = [];
-    const failed: string[] = [];
-    for (const listName of targets) {
-      try {
-        // v26.87: zuverlässiger nometadata-MERGE (verbose+__metadata → HTTP 400).
-        const st = await this._setListSecurity(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`, { ReadSecurity: 2, WriteSecurity: 2 });
-        if (st >= 200 && st < 300) fixed.push(listName); else failed.push(listName);
-      } catch { failed.push(listName); }
-    }
-    return { fixed, failed };
+    return permissionsAudit.hardenQueueListsIls(this);
   }
 
-  // ==================== v26.79: Berechtigungen aufräumen ====================
-  // Scannt die GESAMTE Site-Collection (Haupt-Web + alle Listen/Bibliotheken +
-  // alle Subsites + deren Listen) und findet EINZEL-Freigaben (direkte
-  // Nutzer-Berechtigungen), die über das Rollen-Konzept hinaus SCHREIB-/Vollzugriff
-  // geben. Soll-Konzept: Schreiben nur über die Gruppen (Owners, Members,
-  // Visitors/DEALL) plus die im Rollen-Konzept vorgesehenen Einzelpersonen
-  // (Admins global; Organizer auf DEX_Events/Web-Root + ihren eigenen
-  // Event-Subsites). Alle anderen direkten Nutzer-Schreibrechte gelten als
-  // „manuelle Über-Freigabe" und werden entfernt — LESERECHTE bleiben erhalten
-  // (die betroffene Person liest weiterhin über die Visitors-/DEALL-Gruppe;
-  // internationale Leser sind bewusst OK). Gruppen werden NIE angefasst.
-  //
-  // Zusätzlich wird die Element-Sicherheit (ReadSecurity/WriteSecurity=2 „nur
-  // eigene Elemente") auf den sensiblen Listen (Teilnehmer, DEX_Emails,
-  // DEX_Outlook, DEX_IDReorder) geprüft und korrigiert.
-  //
-  // apply=false → reiner Prüf-/Dry-Run-Bericht (ändert NICHTS).
-  // apply=true  → entfernt die Über-Freigaben und korrigiert die Element-Sicherheit.
   public async auditOrCleanupPermissions(
     apply: boolean,
     ctx: { adminEmails: string[]; organizerEmails: string[]; subsiteOrganizers: Record<string, string>; selfEmail: string },
     onProgress?: (msg: string, done: number, total: number) => void
   ): Promise<PermCleanupReport> {
-    const report: PermCleanupReport = {
-      apply, websScanned: 0, listsScanned: 0, strayWriteFound: 0, strayWriteRemoved: 0,
-      ilsIssues: 0, ilsFixed: 0, errors: 0, findings: [],
-    };
-    const MAX_FINDINGS = 800;
-    const addFinding = (f: PermCleanupFinding): void => { if (report.findings.length < MAX_FINDINGS) report.findings.push(f); };
-    const norm = (e: string): string => (e || '').trim().toLowerCase();
-    const globalAllowed = new Set([...(ctx.adminEmails || []), ...(ctx.organizerEmails || []), ctx.selfEmail].map(norm).filter(Boolean));
-    // 1073741825 = Limited Access (System-verwaltet), 1073741826 = Read → beide
-    // gelten NICHT als „Schreibrecht". Alles andere (Contribute/Edit/Design/Full
-    // Control + Custom-Level) zählt als elevated.
-    const isElevated = (ids: number[]): boolean => ids.some(id => id !== 1073741825 && id !== 1073741826);
-    const extractEmail = (login: string): string => {
-      const l = login || '';
-      const m = /\|membership\|([^|]+)$/i.exec(l) || /\|([^|]+@[^|]+)$/.exec(l);
-      return m ? m[1] : '';
-    };
-    const isSystemPrincipal = (email: string, login: string): boolean => {
-      const l = (login || '').toLowerCase();
-      if (!email) return true; // ohne E-Mail nicht sicher klassifizierbar → nicht anfassen
-      if (email.indexOf('@sharepoint') >= 0) return true;
-      if (l.indexOf('app@sharepoint') >= 0 || l.indexOf('|spo-grid') >= 0 || l.indexOf('c:0(.s|true') >= 0) return true;
-      return false;
-    };
-
-    const processSecurable = async (scopeBase: string, label: string, allowed: Set<string>): Promise<void> => {
-      let assigns: Array<{ pid: number; type: number; title: string; login: string; email: string; roleIds: number[]; roleNames: string[] }>;
-      try {
-        assigns = await this._readRoleAssignments(scopeBase);
-      } catch {
-        report.errors++;
-        addFinding({ scope: label, kind: 'error', detail: 'Berechtigungen konnten nicht gelesen werden.', fixed: false });
-        return;
-      }
-      for (const a of assigns) {
-        if (a.type !== 1) continue; // nur einzelne User (Gruppen NIE anfassen)
-        const email = norm(a.email || extractEmail(a.login));
-        if (isSystemPrincipal(email, a.login)) continue;
-        if (allowed.has(email)) continue; // Admin/Organizer/Ich → legitim
-        if (!isElevated(a.roleIds)) continue; // reine Leseberechtigung → OK (int. Leser)
-        report.strayWriteFound++;
-        let fixed = false;
-        if (apply) {
-          try {
-            const r = await this._deletePrincipalAssignment(scopeBase, a.pid);
-            fixed = r.ok || r.status === 200 || r.status === 204;
-            if (fixed) report.strayWriteRemoved++; else report.errors++;
-          } catch { report.errors++; }
-        }
-        addFinding({
-          scope: label, kind: 'stray-write', principal: email || a.title,
-          detail: `${(a.roleNames.filter(Boolean).join(', ') || 'Schreibzugriff')} — ${apply ? (fixed ? 'Schreibrecht entfernt (Lesen bleibt, sofern Gruppenmitglied)' : 'Entfernen fehlgeschlagen') : 'würde entfernt (Lesen bleibt über Gruppe)'}`,
-          fixed,
-        });
-      }
-    };
-
-    // Liest ReadSecurity/WriteSecurity einer Liste (roh + geparst). Loggt bei
-    // Bedarf die exakte Server-Antwort — Diagnose, warum eine Korrektur ggf.
-    // nicht greift (Format/Stale/Rechte).
-    const readIls = async (listBase: string, label: string): Promise<{ rs: number; ws: number; raw: string; status: number } | null> => {
-      try {
-        const resp = await this._sp.get(
-          `${listBase}?$select=ReadSecurity,WriteSecurity`, SPHttpClient.configurations.v1,
-          { headers: { 'Accept': 'application/json;odata=nometadata' } }
-        );
-        if (!resp.ok) { console.warn('[DEX PermFix] ILS-Read HTTP', resp.status, label); return null; }
-        const d = await resp.json();
-        const raw = JSON.stringify(d).slice(0, 200);
-        return { rs: Number(d.ReadSecurity ?? d.d?.ReadSecurity), ws: Number(d.WriteSecurity ?? d.d?.WriteSecurity), raw, status: resp.status };
-      } catch (e) { console.warn('[DEX PermFix] ILS-Read ERROR', label, e); return null; }
-    };
-    const checkIls = async (listBase: string, label: string): Promise<void> => {
-      const before = await readIls(listBase, label);
-      if (!before || !Number.isFinite(before.rs) || !Number.isFinite(before.ws)) {
-        console.warn('[DEX PermFix] ILS unlesbar/format', label, 'raw=', before?.raw);
-        return;
-      }
-      if (before.rs === 2 && before.ws === 2) return;
-      report.ilsIssues++;
-      console.warn(`[DEX PermFix] ILS FALSCH ${before.rs}/${before.ws} (soll 2/2)`, label, 'raw=', before.raw);
-      let fixed = false;
-      if (apply) {
-        // v26.87: zuverlässiger nometadata-MERGE (Digest + kein __metadata).
-        // Der bisherige verbose+__metadata-MERGE gab unter SPFx odata-version
-        // 3.0 flächendeckend HTTP 400 zurück → nichts wurde je korrigiert.
-        const mergeStatus = await this._setListSecurity(listBase, { ReadSecurity: 2, WriteSecurity: 2 });
-        // ENTSCHEIDEND: Read-back — nur wenn der Server danach WIRKLICH 2/2
-        // meldet, gilt es als korrigiert (nicht blind dem MERGE-Status trauen).
-        const after = await readIls(listBase, label);
-        fixed = !!after && after.rs === 2 && after.ws === 2;
-        console.warn(`[DEX PermFix] ILS-FIX ${label} | MERGE-Status=${mergeStatus} | nachher=${after ? `${after.rs}/${after.ws}` : 'null'} | raw=${after?.raw} | => ${fixed ? 'OK' : 'WEITER FALSCH'}`);
-        if (fixed) report.ilsFixed++; else report.errors++;
-      }
-      addFinding({ scope: label, kind: 'ils', detail: `Element-Sicherheit ${before.rs}/${before.ws} statt 2/2 („nur eigene Elemente") — ${apply ? (fixed ? 'korrigiert' : 'Korrektur fehlgeschlagen (siehe Konsole)') : 'würde korrigiert'}`, fixed });
-    };
-    const ILS_LISTS = new Set(['DEX_Emails', 'DEX_Outlook', 'DEX_IDReorder']);
-
-    // ---- 1. Haupt-Web (Site-Root) ----
-    onProgress?.('Hauptseite …', 0, 1);
-    await processSecurable(`${this.siteUrl}/_api/web`, 'Hauptseite (Web-Root)', globalAllowed);
-    report.websScanned++;
-
-    // ---- 2. Listen/Bibliotheken des Haupt-Webs ----
-    const rootLists = await this._listSecurables(this.siteUrl);
-    // Alle Subsites der Collection einsammeln (BFS, max. 3 Ebenen, gedeckelt) —
-    // Event-Subsites hängen direkt unter dem Root, tiefere Verschachtelung wird
-    // vorsorglich mitgenommen, damit wirklich der GANZE SharePoint erfasst ist.
-    const subwebs: Array<{ url: string; serverRel: string; title: string; unique: boolean }> = [];
-    const seenWebs = new Set<string>([this.siteUrl.toLowerCase().replace(/\/+$/, '')]);
-    let frontier = [this.siteUrl];
-    for (let depth = 0; depth < 3 && frontier.length > 0 && subwebs.length < 500; depth++) {
-      const next: string[] = [];
-      for (const wurl of frontier) {
-        const kids = await this._childWebs(wurl);
-        for (const k of kids) {
-          const kkey = k.url.toLowerCase().replace(/\/+$/, '');
-          if (!k.url || seenWebs.has(kkey)) continue;
-          seenWebs.add(kkey);
-          subwebs.push(k);
-          next.push(k.url);
-          if (subwebs.length >= 500) break;
-        }
-        if (subwebs.length >= 500) break;
-      }
-      frontier = next;
-    }
-    const total = 1 + rootLists.length + subwebs.length;
-    let done = 1;
-    for (const l of rootLists) {
-      onProgress?.(`Liste ${l.title} …`, done, total);
-      if (l.unique) { await processSecurable(l.base, `Liste ${l.title}`, globalAllowed); report.listsScanned++; }
-      if (ILS_LISTS.has(l.title)) await checkIls(l.base, `Liste ${l.title}`);
-      done++;
-    }
-
-    // ---- 3. Subsites (Event-Subsites) + deren Listen ----
-    for (const w of subwebs) {
-      const wlabel = w.title || w.serverRel || w.url;
-      onProgress?.(`Subsite ${wlabel} …`, done, total);
-      const key = (s: string): string => norm(s).replace(/\/+$/, '');
-      const orgStr = ctx.subsiteOrganizers[key(w.serverRel)] || ctx.subsiteOrganizers[key(w.url)] || '';
-      const allowed = new Set(globalAllowed);
-      orgStr.split(/[;,]/).map(norm).filter(Boolean).forEach(e => allowed.add(e));
-      if (w.unique) { await processSecurable(`${w.url}/_api/web`, `Subsite ${wlabel} – Web`, allowed); }
-      report.websScanned++;
-      try {
-        const subLists = await this._listSecurables(w.url);
-        for (const sl of subLists) {
-          if (sl.unique) { await processSecurable(sl.base, `Subsite ${wlabel} – Liste ${sl.title}`, allowed); report.listsScanned++; }
-          if (sl.title === REG_LIST_NAME) await checkIls(sl.base, `Subsite ${wlabel} – Teilnehmerliste`);
-        }
-      } catch { /* Subsite-Listen nicht lesbar */ }
-      done++;
-    }
-    onProgress?.('Fertig', total, total);
-    return report;
+    return permissionsAudit.auditOrCleanupPermissions(this, apply, ctx, onProgress);
   }
 
-  /** Liest die Rollenzuweisungen eines Securables (Web oder Liste). scopeBase =
-   *  voll-qualifizierte API-URL bis zum Securable (…/_api/web bzw.
-   *  …/_api/web/lists/getbytitle('X')). */
-  private async _readRoleAssignments(scopeBase: string): Promise<Array<{ pid: number; type: number; title: string; login: string; email: string; roleIds: number[]; roleNames: string[] }>> {
-    // $top hoch setzen: ein über-freigegebenes Securable (genau der Fall, den
-    // wir suchen) kann viele Einzel-Zuweisungen haben — ohne $top würde OData
-    // bei 100 abschneiden und Über-Freigaben stillschweigend übersehen.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rows: any[] = [];
-    let url: string | null = `${scopeBase}/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Title,Member/LoginName,Member/PrincipalType,Member/Email,RoleDefinitionBindings/Id,RoleDefinitionBindings/Name&$top=2000`;
-    let guard = 0;
-    while (url && guard < 20) {
-      guard++;
-      const resp: SPHttpClientResponse = await this._sp.get(url, SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } });
-      if (!resp.ok) { if (guard === 1) throw new Error(`roleassignments ${resp.status}`); break; }
-      const d = await resp.json();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const page: any[] = d.value || d.d?.results || [];
-      for (const p of page) rows.push(p);
-      // Falls SharePoint doch paginiert: nextLink verfolgen (nometadata-Feldname).
-      url = d['odata.nextLink'] || d['@odata.nextLink'] || null;
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return rows.map((ra: any) => {
-      const m = ra.Member || {};
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const binds: any[] = ra.RoleDefinitionBindings || ra.RoleDefinitionBindings?.results || [];
-      return {
-        pid: Number(ra.PrincipalId),
-        type: Number(m.PrincipalType) || 0,
-        title: m.Title || '',
-        login: m.LoginName || '',
-        email: m.Email || '',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        roleIds: binds.map((b: any) => Number(b.Id)),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        roleNames: binds.map((b: any) => b.Name || ''),
-      };
-    });
-  }
-
-  /** Entfernt ALLE Rollenzuweisungen eines Principals auf einem Securable
-   *  (Downgrade auf „kein direktes Recht" — Leserecht über Gruppen bleibt). */
-  private async _deletePrincipalAssignment(scopeBase: string, principalId: number): Promise<SPHttpClientResponse> {
-    // v26.81: Digest des Ziel-Webs mitschicken (Cross-Web-Schreibzugriff auf
-    // Subsites würde sonst mit 403 abgelehnt).
-    const digest = await this._webDigest(this._webOf(scopeBase));
-    return this._sp.post(
-      `${scopeBase}/roleassignments/getbyprincipalid(${principalId})`,
-      SPHttpClient.configurations.v1,
-      { headers: { 'Accept': 'application/json;odata=verbose', 'Content-Type': 'application/json;odata=verbose', 'odata-version': '', 'IF-MATCH': '*', 'X-HTTP-Method': 'DELETE', ...(digest ? { 'X-RequestDigest': digest } : {}) } }
-    );
-  }
-
-  /** Alle Listen/Bibliotheken eines Webs mit Unique-Flag. base = API-URL zum
-   *  Securable der Liste. Titel mit Sonderzeichen werden für getbytitle escaped. */
-  private async _listSecurables(webUrl: string): Promise<Array<{ title: string; hidden: boolean; unique: boolean; base: string }>> {
-    try {
-      const resp = await this._sp.get(
-        `${webUrl}/_api/web/lists?$select=Title,Hidden,HasUniqueRoleAssignments&$top=1000`,
-        SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } }
-      );
-      if (!resp.ok) return [];
-      const d = await resp.json();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rows: any[] = d.value || [];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return rows.map((l: any) => ({
-        title: l.Title || '',
-        hidden: !!l.Hidden,
-        unique: !!l.HasUniqueRoleAssignments,
-        base: `${webUrl}/_api/web/lists/getbytitle('${String(l.Title || '').replace(/'/g, "''")}')`,
-      })).filter(l => l.title);
-    } catch { return []; }
-  }
-
-  /** Direkte Kind-Webs eines Webs (eine Ebene — Event-Subsites hängen direkt
-   *  unter dem Root). */
-  private async _childWebs(webUrl: string): Promise<Array<{ url: string; serverRel: string; title: string; unique: boolean }>> {
-    try {
-      const resp = await this._sp.get(
-        `${webUrl}/_api/web/webs?$select=Url,ServerRelativeUrl,Title,HasUniqueRoleAssignments&$top=1000`,
-        SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } }
-      );
-      if (!resp.ok) return [];
-      const d = await resp.json();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rows: any[] = d.value || [];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return rows.map((w: any) => ({ url: w.Url || '', serverRel: w.ServerRelativeUrl || '', title: w.Title || '', unique: !!w.HasUniqueRoleAssignments })).filter(w => w.url);
-    } catch { return []; }
-  }
-
-  // ==================== v26.81: Verwaiste Subsites finden ====================
-  // Vergleicht alle real existierenden Subsites (Webs) mit den von DEX_Events
-  // referenzierten SubsiteUrls. Ein Web, das von KEINEM Event (Haupt- oder
-  // Sub-Event) referenziert wird, ist ein „Rest" — z.B. eine Test-Subsite,
-  // deren Event bereits gelöscht wurde. Reine Analyse, ändert NICHTS.
   public async findOrphanSubsites(
     onProgress?: (msg: string, done: number, total: number) => void
   ): Promise<OrphanScanResult> {
-    const result: OrphanScanResult = { websScanned: 0, eventSubsites: 0, orphans: [] };
-    const norm = (s: string): string => (s || '').trim().toLowerCase().replace(/\/+$/, '');
-
-    // 1. Referenzierte Subsites aus DEX_Events (alle Events inkl. Sub-Events).
-    onProgress?.('Events werden gelesen …', 0, 1);
-    const events = await this.getAllEventsForKpi();
-    const referenced = new Set<string>();
-    for (const e of events) {
-      if (e.subsiteUrl) {
-        referenced.add(norm(e.subsiteUrl));
-        try { referenced.add(norm(new URL(e.subsiteUrl).pathname)); } catch { /* */ }
-      }
-    }
-    result.eventSubsites = referenced.size;
-
-    // 2. Alle Subsites einsammeln (BFS, max. 3 Ebenen, cap 500).
-    const allWebs: Array<{ url: string; serverRel: string; title: string }> = [];
-    const seen = new Set<string>([norm(this.siteUrl)]);
-    let frontier = [this.siteUrl];
-    for (let depth = 0; depth < 3 && frontier.length > 0 && allWebs.length < 500; depth++) {
-      const next: string[] = [];
-      for (const wurl of frontier) {
-        const kids = await this._childWebs(wurl);
-        for (const k of kids) {
-          const kk = norm(k.url);
-          if (!k.url || seen.has(kk)) continue;
-          seen.add(kk);
-          allWebs.push({ url: k.url, serverRel: k.serverRel, title: k.title });
-          next.push(k.url);
-          if (allWebs.length >= 500) break;
-        }
-        if (allWebs.length >= 500) break;
-      }
-      frontier = next;
-    }
-    result.websScanned = allWebs.length;
-
-    // 3. Nicht referenzierte Webs = Rest-Kandidaten; Metadaten nachladen.
-    const candidates = allWebs.filter(w => !referenced.has(norm(w.url)) && !referenced.has(norm(w.serverRel)));
-    let i = 0;
-    for (const w of candidates) {
-      i++;
-      onProgress?.(`Prüfe „${w.title || w.serverRel}" …`, i, candidates.length);
-      let created = '';
-      try {
-        const wr = await this._sp.get(`${w.url}/_api/web?$select=Created,Title`, SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } });
-        if (wr.ok) { const wd = await wr.json(); created = wd.Created || wd.d?.Created || ''; }
-      } catch { /* */ }
-      let hasParticipantList = false;
-      let participantCount = 0;
-      try {
-        const lr = await this._sp.get(`${w.url}/_api/web/lists/getbytitle('${REG_LIST_NAME}')?$select=ItemCount`, SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } });
-        if (lr.ok) { const ld = await lr.json(); hasParticipantList = true; participantCount = Number(ld.ItemCount ?? ld.d?.ItemCount) || 0; }
-      } catch { /* Liste fehlt → kein Event-Rest oder anders strukturiert */ }
-      result.orphans.push({ url: w.url, serverRel: w.serverRel, title: w.title, created, hasParticipantList, participantCount });
-    }
-    onProgress?.('Fertig', candidates.length, candidates.length);
-    return result;
+    return permissionsAudit.findOrphanSubsites(this, onProgress);
   }
 
-  /** Löscht eine (verwaiste) Subsite endgültig — inkl. aller Listen darin.
-   *  Nur für Admins (Owner-Rechte nötig). SharePoint verlangt, dass das Web
-   *  keine eigenen Unter-Webs mehr hat. */
   public async deleteSubsiteWeb(webUrl: string): Promise<boolean> {
-    try {
-      const digest = await this._webDigest(webUrl);
-      const resp = await this._sp.post(
-        `${webUrl}/_api/web`, SPHttpClient.configurations.v1,
-        { headers: { 'Accept': 'application/json;odata=verbose', 'Content-Type': 'application/json;odata=verbose', 'odata-version': '', 'IF-MATCH': '*', 'X-HTTP-Method': 'DELETE', ...(digest ? { 'X-RequestDigest': digest } : {}) } }
-      );
-      return resp.ok || resp.status === 200 || resp.status === 204;
-    } catch { return false; }
+    return permissionsAudit.deleteSubsiteWeb(this, webUrl);
   }
 
   // ==================== v21: Archivierung ====================

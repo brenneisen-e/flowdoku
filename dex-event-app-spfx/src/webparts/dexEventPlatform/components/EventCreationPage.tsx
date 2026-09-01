@@ -80,6 +80,14 @@ import { runWizardSubmit } from './wizard/logic/wizardSubmit';
 import { persistSubEventsForParentImpl } from './wizard/logic/persistSubEvents';
 import { WizardTermsModal } from './wizard/WizardTermsModal';
 import { WizardModals } from './wizard/WizardModals';
+import { STEP_HINTS_DE, STEP_HINTS_EN, SUB_TRANSFER_GROUPS } from '../data/wizardHints';
+import { getSuggestedFieldsCatalog } from '../data/suggestedFields';
+import { renderGlobalScopeBarImpl, renderHeaderSizeControlImpl, renderKlammerVisibilityMismatchImpl, renderOutlookUpdateButtonImpl, renderPerEventTabStripImpl, renderPreviewSectionImpl, renderShowIfConfigImpl, renderVisibilitySummaryBoxImpl } from './wizard/logic/wizardRenderHelpers';
+import { applyEventPhotoToLogoImpl, applySubTransferImpl, getStepErrorsForImpl, toggleDaySubEventImpl } from './wizard/logic/wizardMisc';
+import { applyCommToAllSubEventsImpl, flushActiveCommTabToStateImpl, resolveTopLevelCommStateImpl, switchCommTabImpl } from './wizard/logic/commTabs';
+import { applyDraftPayloadImpl } from './wizard/logic/wizardDraft';
+import { confirmOutlookSaveImpl, createMissingOutlookAppointmentsImpl, triggerOutlookUpdateAllImpl, triggerOutlookUpdateNowImpl } from './wizard/logic/outlookActions';
+import { applyEventTemplateImpl, applyTemplateImpl, loadDemoSubEventImpl, loadDemoSubEventTeamImpl, resetDemoVariantBaseStateImpl } from './wizard/logic/wizardTemplates';
 
 // Deutsche Locale registrieren
 registerLocale('de', de);
@@ -1266,105 +1274,18 @@ export default function EventCreationPage(): React.ReactElement {
     return best;
   };
   const applyEventPhotoToLogo = async (setter: (b64: string) => void): Promise<string> => {
-    try {
-      let b64 = '';
-      // v28.29 BUG-FIX: „Event-Foto verwenden" nahm bisher IMMER den Zuschnitt
-      // (imageFile/imagePreview = das runde bzw. quadratisch beschnittene
-      // Event-Bild). Im Mail-/Outlook-Kopf steht aber ein RECHTECK — das Foto
-      // kam dort sichtbar abgeschnitten an, ohne dass der Organizer das
-      // gewollt hätte. Wenn ein unbeschnittenes Original existiert (frischer
-      // Upload: imageOrigFile; gespeichertes Event: editEvent.imageOrigUrl),
-      // wird jetzt DIESES übernommen.
-      if (imageOrigFile) {
-        b64 = await fileToBase64(await compressImage(imageOrigFile, 600, 0.85, true));
-      } else if (editEvent && editEvent.imageOrigUrl) {
-        try {
-          const resp = await fetch(editEvent.imageOrigUrl, { credentials: 'include' });
-          const blob = await resp.blob();
-          const f = new File([blob], 'event-photo.jpg', { type: blob.type || 'image/jpeg' });
-          b64 = await fileToBase64(await compressImage(f, 600, 0.85, true));
-        } catch { /* Original nicht ladbar → unten auf den Zuschnitt zurückfallen */ }
-      }
-      if (b64) {
-        setter(b64);
-        return b64;
-      }
-      if (imageFile) {
-        b64 = await fileToBase64(await compressImage(imageFile, 600, 0.85, true));
-      } else if (imagePreview && imagePreview.indexOf('data:') === 0) {
-        // v28.10: Frischer Zuschnitt (Data-URL) ebenfalls komprimieren —
-        // vorher ging das volle Bild unkomprimiert ins Logo (2-MB-Falle).
-        b64 = await shrinkLogoB64(imagePreview);
-      } else if (imagePreview) {
-        const resp = await fetch(imagePreview, { credentials: 'include' });
-        const blob = await resp.blob();
-        const f = new File([blob], 'event-photo.jpg', { type: blob.type || 'image/jpeg' });
-        b64 = await fileToBase64(await compressImage(f, 600, 0.85, true));
-      }
-      if (b64) setter(b64);
-      else showAlert(isDe ? 'Kein Event-Foto vorhanden — bitte zuerst oben ein Bild hochladen.' : 'No event photo yet — please upload an image above first.', { variant: 'error' });
-      return b64;
-    } catch {
-      showAlert(isDe ? 'Das Event-Foto konnte nicht übernommen werden.' : 'Could not use the event photo.', { variant: 'error' });
-      return '';
-    }
+    return await applyEventPhotoToLogoImpl({
+      editEvent, fileToBase64, imageFile, imageOrigFile, imagePreview, isDe,
+      showAlert, shrinkLogoB64,
+    }, setter);
   };
   // v27.2: Größensteuerung fürs Kopfbild als wiederverwendbarer Block (Schritt 23
   // UND 24) — inkl. verkleinerter Live-Vorschau, die zeigt, wie groß das Bild im
   // Mail-/Outlook-Kopf steht. `headerImageLayout` gilt event-weit (Mail + Outlook).
   const renderHeaderSizeControl = (previewSrc: string, note?: string): React.ReactElement => {
-    const PREV_W = 260; const sc = PREV_W / 600;
-    const isFullWidthPreset = headerImageLayout.width === 600 && headerImageLayout.paddingV === 0 && headerImageLayout.paddingH === 0;
-    const isDefaultPreset = headerImageLayout.width === 180 && headerImageLayout.paddingV === 30 && headerImageLayout.paddingH === 30;
-    const numInput = (val: number, min: number, max: number, def: number, set: (n: number) => void): React.ReactElement => (
-      <input type="number" min={min} max={max} step={min === 80 ? 10 : 2} value={val}
-        onChange={e => set(Math.max(min, Math.min(max, parseInt(e.target.value, 10) || def)))}
-        style={{ width: 78, height: 28, fontSize: '0.82rem', borderRadius: 4, border: '1px solid var(--dex-gray-300)', padding: '0 8px' }} />
-    );
-    const lbl: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.7rem', color: 'var(--dex-gray-600)' };
-    return (
-      <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200)', borderRadius: 8 }}>
-        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)', letterSpacing: 0.3, marginBottom: 8 }}>
-          {isDe ? 'BILDGRÖSSE IM KOPF — gilt für Mail & Outlook-Termin' : 'HEADER IMAGE SIZE — applies to mail & Outlook invite'}
-        </div>
-        <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
-            <label style={lbl}>{isDe ? 'Breite (px)' : 'Width (px)'}{numInput(headerImageLayout.width, 80, 600, 180, n => setHeaderImageLayout(p => ({ ...p, width: n })))}</label>
-            <label style={lbl}>{isDe ? 'Abstand seitl.' : 'Padding sides'}{numInput(headerImageLayout.paddingH, 0, 80, 0, n => setHeaderImageLayout(p => ({ ...p, paddingH: n })))}</label>
-            <label style={lbl}>{isDe ? 'Abstand ob./unt.' : 'Padding top/bot.'}{numInput(headerImageLayout.paddingV, 0, 80, 0, n => setHeaderImageLayout(p => ({ ...p, paddingV: n })))}</label>
-            {/* v28.31: Beide Voreinstellungen zeigen jetzt an, WELCHE gerade
-                aktiv ist. Vorher war „Volle Breite" immer gruen und „Standard"
-                immer grau — auch wenn tatsaechlich 180/30/30 (= Standard) stand. */}
-            <button type="button" onClick={() => setHeaderImageLayout({ width: 600, paddingV: 0, paddingH: 0 })}
-              title={isDe ? 'Bild füllt den Kopf über die volle Breite' : 'Image fills the header full width'}
-              style={{ height: 28, padding: '0 12px', fontSize: '0.72rem', fontWeight: isFullWidthPreset ? 700 : 600, cursor: 'pointer', background: isFullWidthPreset ? 'var(--dex-green, #86bc25)' : 'transparent', color: isFullWidthPreset ? '#fff' : 'var(--dex-gray-600)', border: isFullWidthPreset ? 'none' : '1px solid var(--dex-gray-300)', borderRadius: 6 }}>
-              {isFullWidthPreset ? '✓ ' : ''}{isDe ? 'Volle Breite' : 'Full width'}
-            </button>
-            <button type="button" onClick={() => setHeaderImageLayout({ width: 180, paddingV: 30, paddingH: 30 })}
-              style={{ height: 28, padding: '0 12px', fontSize: '0.72rem', fontWeight: isDefaultPreset ? 700 : 600, cursor: 'pointer', background: isDefaultPreset ? 'var(--dex-green, #86bc25)' : 'transparent', color: isDefaultPreset ? '#fff' : 'var(--dex-gray-600)', border: isDefaultPreset ? 'none' : '1px solid var(--dex-gray-300)', borderRadius: 6 }}>
-              {isDefaultPreset ? '✓ ' : ''}{isDe ? 'Standard' : 'Default'}
-            </button>
-          </div>
-          {previewSrc && (
-            <div style={{ width: PREV_W, flexShrink: 0, border: '1px solid var(--dex-gray-200)', borderRadius: 4, overflow: 'hidden', background: '#fff' }}>
-              <div style={{ textAlign: 'center', padding: `${Math.round(headerImageLayout.paddingV * sc)}px ${Math.round(headerImageLayout.paddingH * sc)}px` }}>
-                <img src={previewSrc} alt="" style={{ display: 'inline-block', width: '100%', maxWidth: Math.max(20, Math.round(headerImageLayout.width * sc)), height: 'auto' }} />
-              </div>
-              <div style={{ borderTop: '2px solid var(--dex-green, #86bc25)' }} />
-              <div style={{ fontSize: '0.6rem', color: 'var(--dex-gray-400)', textAlign: 'center', padding: '2px 0' }}>{isDe ? 'So groß im Mail-Kopf (verkleinert)' : 'Size in the mail header (scaled)'}</div>
-            </div>
-          )}
-        </div>
-        {/* v28.29: sagt, WOHER das gezeigte Bild kommt (eigenes / vom Hauptevent
-            geerbt / Standardlogo). Vorher zeigte die Vorschau kommentarlos das
-            Event-Foto, obwohl gespeichert etwas anderes wurde. */}
-        {note && (
-          <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--dex-gray-600)', lineHeight: 1.45 }}>
-            {note}
-          </div>
-        )}
-      </div>
-    );
+    return renderHeaderSizeControlImpl({
+      headerImageLayout, isDe, setHeaderImageLayout,
+    }, previewSrc, note);
   };
   const [dragFieldId, setDragFieldId] = React.useState<string | null>(null);
   // v18.55: Pro-Feld Ein-/Ausklapp-Status für Schritt 5 (Felder). Default =
@@ -1765,141 +1686,23 @@ export default function EventCreationPage(): React.ReactElement {
    * zu Waisen machen.
    */
   const createMissingOutlookAppointments = async (): Promise<void> => {
-    const mainId = editEvent?.id || '';
-    const missing = outlookMissingTargets().filter(m => m.id && m.id !== mainId);
-    if (missing.length === 0) return;
-    const pt = parentTimesIso();
-    const fmt = (iso: string): string => {
-      if (!iso) return '—';
-      const d = new Date(iso);
-      return isNaN(d.getTime()) ? '—' : d.toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-    };
-    const plan = missing.map(m => {
-      const d = subEventsRef.current.find(s => s.dbId === m.id);
-      const start = (d && d.startDate) || pt.start || '';
-      const end = (d && d.endDate) || (d && d.startDate) || pt.end || pt.start || '';
-      const inherited = !(d && d.startDate);
-      return { ...m, start, end, inherited };
+    return await createMissingOutlookAppointmentsImpl({
+      childTermPlural, childTermSingular, confirmDialog, editEvent, flushActiveCommTabToState, forceOutlookRecreateRef,
+      handleSubmit, isDe, outlookMissingTargets, parentTimesIso, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs,
+      pendingOutlookRecreateForSubEventsRef, pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, setOutlookUpdateBusy, showAlert, subEventsRef,
     });
-    if (plan.some(p => !p.start)) {
-      showAlert(isDe
-        ? 'Das Hauptevent hat keine Startzeit — ohne die lässt sich kein Termin anlegen. Bitte zuerst in Schritt 1 die Zeiten setzen und speichern.'
-        : 'The main event has no start time — no appointment can be created without it. Please set the times in step 1 first and save.', { variant: 'error' });
-      return;
-    }
-    const list = plan.map(p => `• ${p.title || '?'}: ${fmt(p.start)} – ${fmt(p.end)}${p.inherited ? (isDe ? '  (Zeiten des Hauptevents)' : '  (main event times)') : ''}`).join('\n');
-    const ok = await confirmDialog(
-      isDe
-        ? `Für diese ${plan.length} ${plan.length === 1 ? (childTermSingular || 'Sub-Event') : (childTermPlural || 'Sub-Events')} wird jetzt ein Outlook-Termin angelegt:\n\n${list}\n\nSub-Events ohne eigene Zeiten übernehmen die Zeiten des Hauptevents. Wenn du genauere Zeiten willst, brich hier ab, trage sie oben ein und klicke danach erneut.\n\nAnmeldungen, Teilnehmer-IDs und Teilnehmerlisten bleiben dabei unverändert.`
-        : `An Outlook appointment will now be created for these ${plan.length} sub-event(s):\n\n${list}\n\nSub-events without their own times inherit the main event's times. If you want more precise times, cancel here, enter them above and click again.\n\nRegistrations, attendee IDs and attendee lists stay untouched.`,
-      { confirmLabel: isDe ? 'Termine anlegen' : 'Create appointments' },
-    );
-    if (!ok) return;
-    plan.forEach(p => forceOutlookRecreateRef.current.add(p.id));
-    // v29.20 (Audit): wie attemptSubmit VOR dem Save flushen — dieser Pfad
-    // rief handleSubmit direkt, und die Kommunikations-Eingaben des gerade
-    // offenen Reiters lagen dann noch nicht im Draft (CLAUDE.md-Falle):
-    // Der frisch angelegte Outlook-Termin trug den Text von VOR der letzten
-    // Bearbeitung. Ebenso die pendingOutlook*-Reste eines früheren
-    // Modal-Durchlaufs zurücksetzen, die hier sonst ungefragt nachwirkten.
-    flushActiveCommTabToState();
-    pendingOutlookDirtyWriteRef.current = null;
-    pendingOutlookDirtyWriteRefs.current = {};
-    pendingOutlookUpdateForTopRef.current = false;
-    pendingOutlookUpdateForSubEventsRef.current = [];
-    pendingOutlookRecreateForSubEventsRef.current = [];
-    setOutlookUpdateBusy(true);
-    try {
-      await handleSubmit();
-    } finally {
-      setOutlookUpdateBusy(false);
-      forceOutlookRecreateRef.current.clear();
-    }
   };
   const triggerOutlookUpdateNow = async (): Promise<void> => {
-    let targetDbId = '';
-    let targetTitle = title;
-    let hasAppointment = false;
-    if (activeCommTabIdx > 0) {
-      const sub = subEvents[activeCommTabIdx - 1];
-      if (sub) {
-        targetDbId = sub.dbId || '';
-        targetTitle = sub.title || title;
-        hasAppointment = !!(sub.initialOutlookEventId || sub.initialCalendarLink);
-      }
-    } else {
-      targetDbId = editEvent?.id || '';
-      hasAppointment = !!(editEvent?.outlookEventId || editEvent?.calendarLink);
-    }
-    if (!editEvent || !targetDbId) {
-      showAlert(isDe ? 'Den Outlook-Termin gibt es erst, nachdem das Event gespeichert wurde.' : 'The Outlook appointment only exists after the event has been saved.', { variant: 'info' });
-      return;
-    }
-    if (disableOutlook) {
-      showAlert(isDe ? 'Für diesen Tab ist der Outlook-Termin deaktiviert (Schalter weiter oben in Schritt 6).' : 'The Outlook appointment is disabled for this tab (toggle further up in step 6).', { variant: 'info' });
-      return;
-    }
-    if (!hasAppointment) {
-      showAlert(isDe ? 'Für dieses Event wurde noch kein Outlook-Termin angelegt — er entsteht beim Speichern.' : 'No Outlook appointment has been created for this event yet — it is created on save.', { variant: 'info' });
-      return;
-    }
-    const ok = await confirmDialog(
-      isDe
-        ? `Der Outlook-Termin von „${targetTitle}" wird bei allen Teilnehmern mit dem zuletzt GESPEICHERTEN Stand aktualisiert. Falls du gerade etwas geändert hast, speichere bitte zuerst und klicke dann erneut hier.\n\nHinweis: Sub-Events haben eigene Termine — die aktualisierst du im jeweiligen Tab oder über „Alle Termine aktualisieren".`
-        : `The Outlook appointment of „${targetTitle}" will be updated for all attendees with the last SAVED state. If you just changed something, please save first and then click here again.\n\nNote: sub-events have their own appointments — update them in their tab or via „Update all appointments".`,
-      { confirmLabel: isDe ? 'Jetzt aktualisieren' : 'Update now' },
-    );
-    if (!ok) return;
-    setOutlookUpdateBusy(true);
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const ctx = (window as any).__dexSpfxContext;
-      const svc = new EventService(ctx);
-      await svc.queueOutlookEvent('', targetDbId, targetTitle, 'UpdateEvent');
-      setOutlookUpdateDone(isDe
-        ? `Angestoßen für „${targetTitle}" (${new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr). Die Kalender der Teilnehmer aktualisieren sich in Kürze.`
-        : `Triggered for „${targetTitle}" (${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}). Attendees' calendars will refresh shortly.`);
-      showAlert(isDe ? 'Outlook-Aktualisierung wurde angestoßen — die Kalender der Teilnehmer aktualisieren sich in Kürze.' : 'Outlook update triggered — attendees will see the refreshed appointment shortly.', { variant: 'success' });
-    } catch {
-      showAlert(isDe ? 'Aktualisierung fehlgeschlagen — bitte erneut versuchen.' : 'Update failed — please try again.', { variant: 'error' });
-    } finally {
-      setOutlookUpdateBusy(false);
-    }
+    return await triggerOutlookUpdateNowImpl({
+      activeCommTabIdx, confirmDialog, disableOutlook, editEvent, isDe, setOutlookUpdateBusy,
+      setOutlookUpdateDone, showAlert, subEvents, title,
+    });
   };
   /** v28.28: Haupt-Termin UND alle Sub-Event-Termine in einem Rutsch. */
   const triggerOutlookUpdateAll = async (): Promise<void> => {
-    const targets = outlookUpdateTargets();
-    if (targets.length === 0) return;
-    const list = targets.map(t => `• ${t.title || '?'}`).join('\n');
-    const ok = await confirmDialog(
-      isDe
-        ? `Alle ${targets.length} Outlook-Termine dieses Events mit dem zuletzt GESPEICHERTEN Stand aktualisieren?\n\n${list}\n\nJede/r Teilnehmer/in bekommt pro Termin, für den sie/er angemeldet ist, eine „Aktualisierter Termin"-Benachrichtigung.`
-        : `Update all ${targets.length} Outlook appointments of this event with the last SAVED state?\n\n${list}\n\nEach attendee receives an „updated meeting" notification per appointment they are registered for.`,
-      { confirmLabel: isDe ? 'Alle aktualisieren' : 'Update all' },
-    );
-    if (!ok) return;
-    setOutlookUpdateBusy(true);
-    let done = 0;
-    let failed = 0;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const ctx = (window as any).__dexSpfxContext;
-      const svc = new EventService(ctx);
-      for (const t of targets) {
-        try { await svc.queueOutlookEvent('', t.id, t.title, 'UpdateEvent'); done += 1; }
-        catch { failed += 1; }
-      }
-    } finally {
-      setOutlookUpdateBusy(false);
-    }
-    const stamp = new Date().toLocaleTimeString(isDe ? 'de-DE' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
-    setOutlookUpdateDone(isDe
-      ? `${done} Termin(e) angestoßen${failed > 0 ? `, ${failed} fehlgeschlagen` : ''} (${stamp} Uhr). Die Kalender der Teilnehmer aktualisieren sich in Kürze.`
-      : `${done} appointment(s) triggered${failed > 0 ? `, ${failed} failed` : ''} (${stamp}). Attendees' calendars will refresh shortly.`);
-    showAlert(
-      isDe ? `${done} Outlook-Termin(e) angestoßen${failed > 0 ? `, ${failed} fehlgeschlagen` : ''}.` : `${done} Outlook appointment(s) triggered${failed > 0 ? `, ${failed} failed` : ''}.`,
-      { variant: failed > 0 ? 'error' : 'success' },
-    );
+    return await triggerOutlookUpdateAllImpl({
+      confirmDialog, isDe, outlookUpdateTargets, setOutlookUpdateBusy, setOutlookUpdateDone, showAlert,
+    });
   };
   /**
    * v28.28: Kompakte Schalter-Zeile für „Was soll automatisch verschickt
@@ -1935,93 +1738,11 @@ export default function EventCreationPage(): React.ReactElement {
 
   // Wiederverwendbarer Button-Block für die Outlook-Sektionen (Bild + Text).
   const renderOutlookUpdateButton = (): React.ReactNode => {
-    if (!editEvent) return null; // nur beim Bearbeiten sinnvoll (Neu-Event hat noch keinen Termin)
-    // v28.28: Der Kasten war orange umrandet und wurde dadurch als Warnung
-    // („da steht noch was aus") gelesen — obwohl er nur ein dauerhaft
-    // verfügbares Werkzeug ist und nach dem Klick natürlich stehen bleibt.
-    // Jetzt neutral, mit Ziel-Angabe und sichtbarer Erfolgsmeldung.
-    const tabTitle = activeCommTabIdx > 0
-      ? (subEvents[activeCommTabIdx - 1]?.title || (childTermSingular || 'Sub-Event'))
-      : (title || editEvent.title || (isDe ? 'Hauptevent' : 'main event'));
-    const allTargets = outlookUpdateTargets();
-    const showAll = allTargets.length > 1;
-    // v28.67: fehlende Termine benennen (s. outlookMissingTargets).
-    const missingTargets = outlookMissingTargets();
-    const totalTargets = allTargets.length + missingTargets.length;
-    // v28.69: nachanlegbar sind nur Sub-Events — das Hauptevent nicht, seine
-    // Item-Id steht in ParentEventId aller Kinder (s. createMissingOutlookAppointments).
-    const missingSubIds = missingTargets.filter(m => m.id && m.id !== (editEvent?.id || ''));
-    return (
-      <div style={{ marginTop: 14, padding: 12, borderRadius: 8, background: 'var(--dex-gray-50, #f8f9fa)', border: '1px solid var(--dex-gray-200)' }}>
-        <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-gray-800)', marginBottom: 6 }}>
-          {isDe ? 'Outlook-Termin manuell nachschicken (optional)' : 'Re-send the Outlook appointment manually (optional)'}
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={outlookUpdateBusy}
-            onClick={() => { void triggerOutlookUpdateNow(); }}
-            style={{ fontSize: '0.82rem', padding: '7px 14px' }}
-          >
-            {outlookUpdateBusy
-              ? (isDe ? 'Wird aktualisiert…' : 'Updating…')
-              : (isDe ? `Termin von „${tabTitle}" aktualisieren` : `Update appointment of „${tabTitle}"`)}
-          </button>
-          {showAll && (
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={outlookUpdateBusy}
-              onClick={() => { void triggerOutlookUpdateAll(); }}
-              style={{ fontSize: '0.82rem', padding: '7px 14px' }}
-            >
-              {isDe
-                ? `Alle ${allTargets.length} Termine aktualisieren`
-                : `Update all ${allTargets.length} appointments`}
-            </button>
-          )}
-        </div>
-        {missingTargets.length > 0 && (
-          <div style={{
-            marginTop: 8, padding: '8px 10px', borderRadius: 6, fontSize: '0.76rem', lineHeight: 1.5,
-            background: '#fff8e6', border: '1px solid #e0b34d', color: '#7a5a12',
-          }}>
-            {isDe
-              ? <>Für <strong>{missingTargets.length} von {totalTargets}</strong> Terminen dieses Events gibt es noch <strong>keinen</strong> Kalendereintrag — deshalb steht oben nur „{allTargets.length}“: {missingTargets.map(m => m.title || '?').join(', ')}. Häufigste Ursache: das {childTermSingular || 'Sub-Event'} wurde ohne Start-/Endzeit gespeichert, dann kann kein Termin erzeugt werden. {missingSubIds.length > 0 ? <>Der Knopf unten legt die fehlenden Termine jetzt an — Sub-Events ohne eigene Zeiten übernehmen dabei die Zeiten des Hauptevents. Anmeldungen und Teilnehmerlisten bleiben unverändert.</> : <>Für das Hauptevent selbst lässt sich das hier nicht nachholen — bitte beim Support melden.</>}</>
-              : <>There is <strong>no</strong> calendar entry yet for <strong>{missingTargets.length} of {totalTargets}</strong> appointments of this event — that is why it says „{allTargets.length}“ above: {missingTargets.map(m => m.title || '?').join(', ')}. Most common cause: the sub-event was saved without a start/end time, so no appointment can be created. {missingSubIds.length > 0 ? <>The button below creates the missing appointments now — sub-events without their own times inherit the main event&apos;s times. Registrations and attendee lists stay untouched.</> : <>This cannot be repaired here for the main event itself — please contact support.</>}</>}
-            {missingSubIds.length > 0 && (
-              <div style={{ marginTop: 8 }}>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={outlookUpdateBusy}
-                  onClick={() => { void createMissingOutlookAppointments(); }}
-                  style={{ fontSize: '0.82rem', padding: '7px 14px' }}
-                >
-                  {outlookUpdateBusy
-                    ? (isDe ? 'Wird angelegt…' : 'Creating…')
-                    : (isDe ? `${missingSubIds.length} fehlende Termine jetzt anlegen` : `Create ${missingSubIds.length} missing appointments now`)}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-        {outlookUpdateDone && (
-          <div style={{
-            marginTop: 8, padding: '6px 10px', borderRadius: 6, fontSize: '0.76rem', fontWeight: 600,
-            background: '#f1f7e8', border: '1px solid var(--dex-green, #86bc25)', color: 'var(--dex-green-dark, #4a7c1f)',
-          }}>
-            ✓ {outlookUpdateDone}
-          </div>
-        )}
-        <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-600)', marginTop: 8, lineHeight: 1.5 }}>
-          {isDe
-            ? <>Nur nötig, wenn der Kalendereintrag der Teilnehmer noch veraltet ist — der Termin wird dann mit dem zuletzt <strong>gespeicherten</strong> Stand neu verschickt. Erst speichern, dann klicken. <strong>Wichtig:</strong> {childTermPlural || 'Sub-Events'} haben eigene Termine; dieser Knopf betrifft nur „{tabTitle}“{showAll ? ' — für alle auf einmal den zweiten Knopf nutzen' : ''}. Der Kasten bleibt dauerhaft stehen, er ist keine Fehlermeldung.</>
-            : <>Only needed if the attendees’ calendar entry is still outdated — the appointment is re-sent with the last <strong>saved</strong> state. Save first, then click. <strong>Important:</strong> sub-events have their own appointments; this button only affects „{tabTitle}“{showAll ? ' — use the second button for all at once' : ''}. This box is always here, it is not an error message.</>}
-        </div>
-      </div>
-    );
+    return renderOutlookUpdateButtonImpl({
+      activeCommTabIdx, childTermPlural, childTermSingular, createMissingOutlookAppointments, editEvent, isDe,
+      outlookMissingTargets, outlookUpdateBusy, outlookUpdateDone, outlookUpdateTargets, subEvents, title,
+      triggerOutlookUpdateAll, triggerOutlookUpdateNow,
+    });
   };
   // v11.60: synchroner Spiegel von subEvents für Save/Detect-Pfade. React-
   // State-Updates sind async — wenn flushActiveCommTabToState() per
@@ -2417,211 +2138,7 @@ export default function EventCreationPage(): React.ReactElement {
   // Erkennungsmerkmal in der Auswahl-Liste) und einen ausführlicheren
   // Tooltip-Text — der erklärt dem Organizer, was das Feld in der App
   // bewirkt, ohne dass er es erst hinzufügen muss.
-  const SUGGESTED_FIELDS_CATALOG: SuggestedEntry[] = isDe ? [
-    {
-      // v22.38: Sonder-Eintrag — schaltet das Standard-Anrede-Feld an
-      // (askSalutation-Flag) statt ein Custom-Field anzulegen. Wird in
-      // addSelectedSuggestedFields gesondert behandelt.
-      key: 'salutation', category: 'general', icon: 'Contact',
-      label: 'Anrede',
-      description: 'Pflicht-Dropdown Frau / Herr / Divers / Keine Angabe — erscheint über dem Vornamen',
-      build: (n) => ({ id: `cf-${n}`, label: 'Anrede', type: 'select', required: true, options: [], visible: true }),
-    },
-    {
-      key: 'tshirt', category: 'general', icon: 'Tag',
-      label: 'T-Shirt Größe',
-      description: 'Dropdown mit Kein T-Shirt / XS–XXL',
-      build: (n) => ({ id: `cf-${n}`, label: 'T-Shirt Größe', type: 'select', required: false, options: ['Habe bereits ein T-Shirt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true }),
-    },
-    {
-      key: 'allergies', category: 'general', icon: 'Warning',
-      label: 'Allergien',
-      description: 'Freitextfeld für Allergien/Unverträglichkeiten',
-      build: (n) => ({ id: `cf-${n}`, label: 'Allergien', type: 'text', required: false, options: [], visible: true }),
-    },
-    {
-      key: 'diet', category: 'general', icon: 'EatDrink',
-      label: 'Essenspräferenzen',
-      description: 'Dropdown: Keine Präferenzen / Vegetarisch / Vegan / Pescetarisch',
-      build: (n) => ({ id: `cf-${n}`, label: 'Essenspräferenzen', type: 'select', required: false, options: ['Keine Präferenzen', 'Vegetarisch', 'Vegan', 'Pescetarisch'], visible: true }),
-    },
-    {
-      key: 'hotel', category: 'general', icon: 'Hotel',
-      label: 'Hotel benötigt',
-      description: 'Checkbox: Teilnehmer benötigt ein Hotel',
-      build: (n) => ({ id: `cf-${n}`, label: 'Hotel benötigt', type: 'checkbox', required: false, options: [], visible: true }),
-    },
-    {
-      key: 'roomtype', category: 'general', icon: 'Room',
-      label: 'Zimmerart',
-      description: 'Dropdown: Keine Präferenz / Einzelzimmer / Doppelzimmer',
-      build: (n) => ({ id: `cf-${n}`, label: 'Zimmerart (falls Hotel benötigt)', type: 'select', required: false, options: ['Keine Präferenz', 'Einzelzimmer', 'Doppelzimmer'], visible: true }),
-    },
-    {
-      key: 'roommate', category: 'general', icon: 'People',
-      label: 'Bevorzugter Zimmerpartner',
-      description: 'Personen-Suche; Match-Erkennung im Admin Center',
-      build: (n) => ({ id: `cf-${n}`, label: 'Bevorzugter Zimmerpartner (bei Doppelzimmer)', type: 'roommate', required: false, options: [], visible: true }),
-    },
-    // B2Run-Pakete — nur für Lauf-Events relevant. Sektion ist im Modal
-    // standardmäßig eingeklappt, damit der Standard-Organizer sie nicht
-    // versehentlich aktiviert.
-    {
-      key: 'b2run_startblock', category: 'b2run', icon: 'Running',
-      label: 'Startblock',
-      description: 'Dropdown der Startblöcke. Optionen werden nachträglich im Wizard gepflegt.',
-      build: (_n) => ({ id: `b2run_startblock`, label: 'Startblock', type: 'select', required: true, options: [], visible: true }),
-    },
-    {
-      key: 'b2run_gruppe', category: 'b2run', icon: 'BulletedList',
-      label: 'Gruppe',
-      description: 'Dropdown: offene Klasse / Nordic Walker / Damen / Herren',
-      build: (_n) => ({ id: `b2run_gruppe`, label: 'Gruppe', type: 'select', required: true, options: ['offene Klasse', 'Nordic Walker', 'Damen', 'Herren'], visible: true }),
-    },
-    {
-      key: 'b2run_altersklasse', category: 'b2run', icon: 'Calendar',
-      label: 'Altersklasse',
-      description: 'Dropdown: unter 18 / 18-29 / 30-39 / 40-49 / 50-59 / 60+',
-      build: (_n) => ({ id: `b2run_altersklasse`, label: 'Altersklasse', type: 'select', required: true, options: ['unter 18', '18-29', '30-39', '40-49', '50-59', '60+'], visible: true }),
-    },
-    {
-      key: 'b2run_infoservice', category: 'b2run', icon: 'CellPhone',
-      label: 'Infoservice (SMS)',
-      description: 'Checkbox: aktiviert die Mobilnummer-Pflicht für den B2Run-SMS-Service',
-      build: (_n) => ({ id: `b2run_infoservice`, label: 'Infoservice nutzen (SMS von B2Run — Mobilnummer erforderlich)', type: 'checkbox', required: false, options: [], visible: true }),
-    },
-    {
-      key: 'b2run_mobilnummer', category: 'b2run', icon: 'Phone',
-      label: 'Mobilnummer',
-      description: 'Freitext, dynamisch Pflicht wenn Infoservice aktiv',
-      build: (_n) => ({ id: `b2run_mobilnummer`, label: 'Mobilnummer (nur bei aktiviertem Infoservice)', type: 'text', required: true, options: [], visible: true, showIf: { fieldId: 'b2run_infoservice', values: ['true'] } }),
-    },
-    {
-      key: 'b2run_anonym', category: 'b2run', icon: 'Hide3',
-      label: 'Anonym teilnehmen',
-      description: 'Checkbox: Teilnehmer in Ergebnislisten anonymisieren',
-      build: (_n) => ({ id: `b2run_anonym`, label: 'Anonym teilnehmen', type: 'checkbox', required: false, options: [], visible: true }),
-    },
-    {
-      key: 'b2run_laufshirt', category: 'b2run', icon: 'Sport',
-      label: 'Deloitte-Laufshirt',
-      description: 'Dropdown: vorhandenes Shirt / XS-XXL',
-      build: (_n) => ({ id: `b2run_laufshirt`, label: 'Deloitte-Laufshirt', type: 'select', required: true, options: ['Habe bereits ein Laufshirt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true }),
-    },
-    {
-      key: 'b2run_datenschutz', category: 'b2run', icon: 'LockShield',
-      label: 'AGB / Datenschutz',
-      description: 'Pflicht-Checkbox mit Links zu B2Run-AGB und Datenschutzerklärung',
-      build: (_n) => ({
-        id: `b2run_datenschutz`,
-        label: 'Zustimmung AGB, Datenschutz & Bildaufnahmen',
-        type: 'checkbox', required: true, options: [], visible: true,
-        externalLinks: [
-          { label: 'AGB (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/agb/index.html' },
-          { label: 'Datenschutz (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
-        ],
-      }),
-    },
-  ] : [
-    {
-      key: 'salutation', category: 'general', icon: 'Contact',
-      label: 'Salutation',
-      description: 'Required dropdown Mrs / Mr / Diverse / Prefer not to say — shown above the first name',
-      build: (n) => ({ id: `cf-${n}`, label: 'Salutation', type: 'select', required: true, options: [], visible: true }),
-    },
-    {
-      key: 'tshirt', category: 'general', icon: 'Tag',
-      label: 'T-Shirt size',
-      description: 'Dropdown: No t-shirt needed / XS–XXL',
-      build: (n) => ({ id: `cf-${n}`, label: 'T-Shirt size', type: 'select', required: false, options: ['I already have one', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true }),
-    },
-    {
-      key: 'allergies', category: 'general', icon: 'Warning',
-      label: 'Allergies',
-      description: 'Free-text field for allergies / intolerances',
-      build: (n) => ({ id: `cf-${n}`, label: 'Allergies', type: 'text', required: false, options: [], visible: true }),
-    },
-    {
-      key: 'diet', category: 'general', icon: 'EatDrink',
-      label: 'Dietary preferences',
-      description: 'Dropdown: No preference / Vegetarian / Vegan / Pescetarian',
-      build: (n) => ({ id: `cf-${n}`, label: 'Dietary preferences', type: 'select', required: false, options: ['No preference', 'Vegetarian', 'Vegan', 'Pescetarian'], visible: true }),
-    },
-    {
-      key: 'hotel', category: 'general', icon: 'Hotel',
-      label: 'Hotel required',
-      description: 'Checkbox: participant needs a hotel room',
-      build: (n) => ({ id: `cf-${n}`, label: 'Hotel required', type: 'checkbox', required: false, options: [], visible: true }),
-    },
-    {
-      key: 'roomtype', category: 'general', icon: 'Room',
-      label: 'Room type',
-      description: 'Dropdown: No preference / Single room / Double room',
-      build: (n) => ({ id: `cf-${n}`, label: 'Room type (if hotel needed)', type: 'select', required: false, options: ['No preference', 'Single room', 'Double room'], visible: true }),
-    },
-    {
-      key: 'roommate', category: 'general', icon: 'People',
-      label: 'Preferred roommate',
-      description: 'People search; match detection in the admin center',
-      build: (n) => ({ id: `cf-${n}`, label: 'Preferred roommate (for double room)', type: 'roommate', required: false, options: [], visible: true }),
-    },
-    {
-      key: 'b2run_startblock', category: 'b2run', icon: 'Running',
-      label: 'Start block',
-      description: 'Dropdown of start blocks. Options are added later in the wizard.',
-      build: (_n) => ({ id: `b2run_startblock`, label: 'Start block', type: 'select', required: true, options: [], visible: true }),
-    },
-    {
-      key: 'b2run_gruppe', category: 'b2run', icon: 'BulletedList',
-      label: 'Category',
-      description: 'Dropdown: Open class / Nordic Walker / Women / Men',
-      build: (_n) => ({ id: `b2run_gruppe`, label: 'Category', type: 'select', required: true, options: ['Open class', 'Nordic Walker', 'Women', 'Men'], visible: true }),
-    },
-    {
-      key: 'b2run_altersklasse', category: 'b2run', icon: 'Calendar',
-      label: 'Age group',
-      description: 'Dropdown: under 18 / 18-29 / 30-39 / 40-49 / 50-59 / 60+',
-      build: (_n) => ({ id: `b2run_altersklasse`, label: 'Age group', type: 'select', required: true, options: ['under 18', '18-29', '30-39', '40-49', '50-59', '60+'], visible: true }),
-    },
-    {
-      key: 'b2run_infoservice', category: 'b2run', icon: 'CellPhone',
-      label: 'Info service (SMS)',
-      description: 'Checkbox: enables the mandatory mobile-number for the B2Run SMS service',
-      build: (_n) => ({ id: `b2run_infoservice`, label: 'Use B2Run info service (SMS — mobile number required)', type: 'checkbox', required: false, options: [], visible: true }),
-    },
-    {
-      key: 'b2run_mobilnummer', category: 'b2run', icon: 'Phone',
-      label: 'Mobile number',
-      description: 'Free text, dynamically required when info service is active',
-      build: (_n) => ({ id: `b2run_mobilnummer`, label: 'Mobile number (only if info service is enabled)', type: 'text', required: true, options: [], visible: true, showIf: { fieldId: 'b2run_infoservice', values: ['true'] } }),
-    },
-    {
-      key: 'b2run_anonym', category: 'b2run', icon: 'Hide3',
-      label: 'Anonymous participation',
-      description: 'Checkbox: anonymise attendee in result lists',
-      build: (_n) => ({ id: `b2run_anonym`, label: 'Participate anonymously', type: 'checkbox', required: false, options: [], visible: true }),
-    },
-    {
-      key: 'b2run_laufshirt', category: 'b2run', icon: 'Sport',
-      label: 'Deloitte running shirt',
-      description: 'Dropdown: existing shirt / XS-XXL',
-      build: (_n) => ({ id: `b2run_laufshirt`, label: 'Deloitte running shirt', type: 'select', required: true, options: ['I already have one', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true }),
-    },
-    {
-      key: 'b2run_datenschutz', category: 'b2run', icon: 'LockShield',
-      label: 'Terms / privacy',
-      description: 'Required checkbox with links to B2Run terms and privacy policy',
-      build: (_n) => ({
-        id: `b2run_datenschutz`,
-        label: 'I agree to the terms, privacy policy and photo/video recordings',
-        type: 'checkbox', required: true, options: [], visible: true,
-        externalLinks: [
-          { label: 'Terms (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/agb/index.html' },
-          { label: 'Privacy (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
-        ],
-      }),
-    },
-  ];
+  const SUGGESTED_FIELDS_CATALOG: SuggestedEntry[] = getSuggestedFieldsCatalog(isDe);
 
   const [showSuggestedModal, setShowSuggestedModal] = React.useState(false);
   const [suggestedSelection, setSuggestedSelection] = React.useState<Record<string, boolean>>({});
@@ -2670,162 +2187,9 @@ export default function EventCreationPage(): React.ReactElement {
   // genutzt vom Hauptevent UND von Sub-Event-Feldern (vorher fehlte die UI bei
   // Sub-Events komplett, daher liessen sich Bedingungen dort nie setzen).
   const renderShowIfConfig = (field: CustomFieldInput, idx: number, allFields: CustomFieldInput[], onUpdate: (u: Partial<CustomFieldInput>) => void): React.ReactElement => {
-                      const candidateSources = allFields.slice(0, idx).filter(other =>
-                        (other.type === 'select' || other.type === 'checkbox') && (other.label || '').trim().length > 0
-                      );
-                      const sourceField = field.showIf
-                        ? allFields.find(o => o.id === field.showIf!.fieldId)
-                        : null;
-                      const removeShowIf = (): void => {
-                        // showIf gezielt löschen: updateCustomField macht ein
-                        // shallow-merge, also setzen wir undefined und filtern
-                        // beim Save raus.
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        onUpdate({ showIf: undefined as any });
-                      };
-                      return (
-                        <div style={{ marginLeft: 32, marginTop: 10, padding: '10px 12px', background: 'rgba(21,101,192,0.04)', border: '1px dashed var(--dex-gray-300)', borderRadius: 8 }}>
-                          {!field.showIf ? (
-                            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (candidateSources.length === 0) {
-                                    showAlert(isDe
-                                      ? 'Es gibt noch kein Dropdown- oder Checkbox-Feld VOR diesem hier, an das die Sichtbarkeit geknüpft werden könnte. Lege zuerst ein passendes Feld weiter oben an.'
-                                      : 'There is no dropdown or checkbox field BEFORE this one yet that visibility could depend on. Please add a suitable field above first.');
-                                    return;
-                                  }
-                                  const first = candidateSources[0];
-                                  onUpdate({
-                                    showIf: {
-                                      fieldId: first.id,
-                                      values: first.type === 'checkbox' ? ['true'] : (first.options[0] ? [first.options[0]] : []),
-                                    },
-                                  });
-                                }}
-                                style={{
-                                  background: 'none', border: 'none', padding: 0,
-                                  color: 'var(--dex-green-dark, #4a7c1f)',
-                                  fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
-                                }}
-                              >
-                                + {isDe ? 'Sichtbarkeitsbedingung hinzufügen' : 'Add visibility condition'}
-                              </button>
-                              <InfoTooltip
-                                text={isDe
-                                  ? 'Dieses Feld wird nur angezeigt, wenn die Antwort auf eine andere (zuvor angelegte) Frage einem von dir festgelegten Wert entspricht. Beispiel: „Roommate" wird nur gefragt, wenn die Frage „Zimmerart" mit „Doppelzimmer" beantwortet wurde. Andernfalls bleibt das Feld komplett verborgen — und blockiert auch nicht die Pflichtfeld-Validierung.'
-                                  : 'This field is shown only when the answer to another (previously added) question matches a value you specify. Example: "Roommate" is only asked when the question "Room type" is answered with "Double room". Otherwise the field stays fully hidden — and does not block the required-field validation either.'}
-                              />
-                            </span>
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
-                                {isDe ? 'Diese Frage nur anzeigen wenn:' : 'Only show this question when:'}
-                                <InfoTooltip
-                                  text={isDe
-                                    ? 'Dieses Feld wird nur angezeigt, wenn die Antwort auf die Quell-Frage einem der gewählten Werte entspricht. Bei Mehrfachauswahl-Quellen reicht ein Treffer. Pflichtfeld-Validierung wird übersprungen, solange das Feld verborgen ist.'
-                                    : 'This field is shown only when the answer to the source question matches one of the chosen values. With multi-select sources a single match is enough. Required-field validation is skipped as long as the field stays hidden.'}
-                                />
-                              </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                <select
-                                  className="form-select"
-                                  value={field.showIf.fieldId}
-                                  onChange={e => {
-                                    const newSrc = allFields.find(o => o.id === e.target.value);
-                                    if (!newSrc) return;
-                                    onUpdate({
-                                      showIf: {
-                                        fieldId: newSrc.id,
-                                        values: newSrc.type === 'checkbox' ? ['true'] : (newSrc.options[0] ? [newSrc.options[0]] : []),
-                                      },
-                                    });
-                                  }}
-                                  style={{ fontSize: '0.82rem', padding: '4px 8px', minWidth: 180, maxWidth: 320 }}
-                                >
-                                  {candidateSources.map(o => (
-                                    <option key={o.id} value={o.id}>
-                                      {allFields.findIndex(c => c.id === o.id) + 1}. {o.label}
-                                    </option>
-                                  ))}
-                                  {/* fallback wenn die ausgewählte Quelle hinter dem Feld gelandet
-                                      ist (z.B. nach einem Move) — option in der Liste anzeigen,
-                                      aber als ungültig markiert lassen. */}
-                                  {sourceField && !candidateSources.find(c => c.id === sourceField.id) && (
-                                    <option value={sourceField.id} disabled>
-                                      ⚠ {sourceField.label} ({isDe ? 'liegt hinter diesem Feld' : 'is positioned after this field'})
-                                    </option>
-                                  )}
-                                </select>
-                                <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
-                                  {isDe ? '=' : '='}
-                                </span>
-                                {sourceField && sourceField.type === 'checkbox' ? (
-                                  <select
-                                    className="form-select"
-                                    value={field.showIf.values[0] || 'true'}
-                                    onChange={e => onUpdate({
-                                      showIf: { fieldId: field.showIf!.fieldId, values: [e.target.value] },
-                                    })}
-                                    style={{ fontSize: '0.82rem', padding: '4px 8px', minWidth: 130 }}
-                                  >
-                                    <option value="true">{isDe ? 'angehakt' : 'checked'}</option>
-                                    <option value="false">{isDe ? 'nicht angehakt' : 'unchecked'}</option>
-                                  </select>
-                                ) : sourceField ? (
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                                    {(sourceField.options || []).filter(Boolean).map(opt => {
-                                      const checked = field.showIf!.values.indexOf(opt) >= 0;
-                                      return (
-                                        <label
-                                          key={opt}
-                                          style={{
-                                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                                            padding: '4px 10px', borderRadius: 999,
-                                            fontSize: '0.78rem', cursor: 'pointer',
-                                            border: `1px solid ${checked ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-                                            background: checked ? 'rgba(134,188,37,0.10)' : '#fff',
-                                            color: checked ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)',
-                                            fontWeight: 600,
-                                          }}
-                                        >
-                                          <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            onChange={() => {
-                                              const next = checked
-                                                ? field.showIf!.values.filter(v => v !== opt)
-                                                : [...field.showIf!.values, opt];
-                                              onUpdate({
-                                                showIf: { fieldId: field.showIf!.fieldId, values: next },
-                                              });
-                                            }}
-                                            style={{ display: 'none' }}
-                                          />
-                                          {checked ? '✓' : '○'} {opt}
-                                        </label>
-                                      );
-                                    })}
-                                  </div>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  onClick={removeShowIf}
-                                  title={isDe ? 'Bedingung entfernen' : 'Remove condition'}
-                                  style={{
-                                    background: 'none', border: 'none', cursor: 'pointer',
-                                    color: 'var(--dex-red, #c00)', fontSize: '0.8rem',
-                                    padding: '4px 6px', marginLeft: 'auto',
-                                  }}
-                                >
-                                  ✕ {isDe ? 'entfernen' : 'remove'}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
+    return renderShowIfConfigImpl({
+      isDe, showAlert,
+    }, field, idx, allFields, onUpdate);
   };
 
 
@@ -2890,69 +2254,9 @@ export default function EventCreationPage(): React.ReactElement {
    */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const applyTemplate = (template: 'blank' | 'b2run'): void => {
-    setSelectedTemplate(template);
-    if (template === 'blank') {
-      // v7.20-Fix: NICHT alle Fields löschen — nur die B2Run-spezifischen
-      // (Präfix "b2run_"). So gehen Custom-Felder, die der Organizer manuell
-      // angelegt hat, beim Deselect des B2Run-Templates nicht verloren.
-      setCustomFields(prev => prev.filter(f => !f.id.startsWith('b2run_')));
-      setB2runStartblocks([]);
-      return;
-    }
-    if (template === 'b2run') {
-      // Custom Fields in der Reihenfolge der B2Run-Excel-Spalten
-      // Hinweis: Strasse/PLZ/Stadt werden NICHT abgefragt (werden leer in der Excel stehen)
-      // Locale-abhängige Labels/Optionen. IDs bleiben konstant, damit die
-      // B2Run-Logik (Infoservice -> Mobilnummer, CSV-Export etc.) unabhängig
-      // von der Sprache funktioniert.
-      const fields: CustomFieldInput[] = isDe ? [
-        { id: 'b2run_startblock', label: 'Startblock', type: 'select', required: true, options: [...b2runStartblocks], visible: true },
-        { id: 'b2run_gruppe', label: 'Gruppe', type: 'select', required: true, options: ['offene Klasse', 'Nordic Walker', 'Damen', 'Herren'], visible: true },
-        { id: 'b2run_altersklasse', label: 'Altersklasse', type: 'select', required: true, options: ['unter 18', '18-29', '30-39', '40-49', '50-59', '60+'], visible: true },
-        { id: 'b2run_infoservice', label: 'Infoservice nutzen (SMS von B2Run — Mobilnummer erforderlich)', type: 'checkbox', required: false, options: [], visible: true },
-        { id: 'b2run_mobilnummer', label: 'Mobilnummer (nur bei aktiviertem Infoservice)', type: 'text', required: true, options: [], visible: true, showIf: { fieldId: 'b2run_infoservice', values: ['true'] } },
-        { id: 'b2run_anonym', label: 'Anonym teilnehmen', type: 'checkbox', required: false, options: [], visible: true },
-        { id: 'b2run_laufshirt', label: 'Deloitte-Laufshirt', type: 'select', required: true, options: ['Habe bereits ein Laufshirt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true },
-        {
-          id: 'b2run_datenschutz',
-          label: 'Zustimmung AGB, Datenschutz & Bildaufnahmen',
-          type: 'checkbox',
-          required: true,
-          options: [],
-          visible: true,
-          externalLinks: [
-            { label: 'AGB (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/agb/index.html' },
-            { label: 'Datenschutz (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
-          ],
-        },
-      ] : [
-        { id: 'b2run_startblock', label: 'Start block', type: 'select', required: true, options: [...b2runStartblocks], visible: true },
-        { id: 'b2run_gruppe', label: 'Category', type: 'select', required: true, options: ['Open class', 'Nordic Walker', 'Women', 'Men'], visible: true },
-        { id: 'b2run_altersklasse', label: 'Age group', type: 'select', required: true, options: ['under 18', '18-29', '30-39', '40-49', '50-59', '60+'], visible: true },
-        { id: 'b2run_infoservice', label: 'Use B2Run info service (SMS — mobile number required)', type: 'checkbox', required: false, options: [], visible: true },
-        { id: 'b2run_mobilnummer', label: 'Mobile number (only if info service is enabled)', type: 'text', required: true, options: [], visible: true, showIf: { fieldId: 'b2run_infoservice', values: ['true'] } },
-        { id: 'b2run_anonym', label: 'Participate anonymously', type: 'checkbox', required: false, options: [], visible: true },
-        { id: 'b2run_laufshirt', label: 'Deloitte running shirt', type: 'select', required: true, options: ['I already have one', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true },
-        {
-          id: 'b2run_datenschutz',
-          label: 'I agree to the terms, privacy policy and photo/video recordings',
-          type: 'checkbox',
-          required: true,
-          options: [],
-          visible: true,
-          externalLinks: [
-            { label: 'Terms (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/agb/index.html' },
-            { label: 'Privacy (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
-          ],
-        },
-      ];
-      // v7.20-Fix: bestehende NON-b2run-Felder erhalten und die B2Run-Felder
-      // anhängen (vorher: setCustomFields(fields) hat alles überschrieben).
-      setCustomFields(prev => {
-        const nonB2run = prev.filter(f => !f.id.startsWith('b2run_'));
-        return [...nonB2run, ...fields];
-      });
-    }
+    return applyTemplateImpl({
+      b2runStartblocks, isDe, setB2runStartblocks, setCustomFields, setSelectedTemplate,
+    }, template);
   };
 
   // Startblöcke-Änderung direkt in das Custom Field übernehmen
@@ -3030,40 +2334,14 @@ export default function EventCreationPage(): React.ReactElement {
   // Variant-spezifischen Felder auf neutralen Default zurück, damit die
   // Demo-Varianten nicht versehentlich Zustand der vorigen Variante erben.
   const resetDemoVariantBaseState = (): void => {
-    // v28.7: Demo-Vorlagen setzen immer eine Beschreibung — der
-    // „Keine Beschreibung"-Schalter darf dann nicht angehakt bleiben.
-    setNoDescription(false);
-    // v28.20: keine Klammer-Frist aus einer vorherigen Vorlage mitschleppen.
-    setKlammerDeadline('');
-    setUseSplitCapacities(false);
-    setSplitLabelA('Teilnehmergruppe 1');
-    setSplitLabelB('Teilnehmergruppe 2');
-    setDurchstarterCapacity('0');
-    setFunstarterCapacity('0');
-    setSplitSharedWaitlist(false);
-    setTeamRegistrationEnabled(false);
-    setTeamSize(4);
-    setAskTeamName(false);
-    setTeamPartialAllowed(false);
-    setTeamOpenSlotsVisible(false);
-    setTeamJoinRequiresApproval(false);
-    setAskSalutation(false);
-    setConfirmDialogEnabled(false); // v18.75: Sicherheitshinweis-Default
-    setConfirmDialogMode('summary');
-    setConfirmDialogText('');
-    setSubEvents([]);
-    setRemovedSavedSubs([]);
-    setCustomFields([]);
-    setAgenda([]);
-    setTransferTimes([]);
-    setLocationFilter('');
-    setAudience('');
-    setEventImageUrl('');
-    setContactName('');
-    setContactEmail('');
-    setContactInfo('');
-    setWaitlistEnabled(true);
-    setEmailLanguage('DE');
+    return resetDemoVariantBaseStateImpl({
+      setAgenda, setAskSalutation, setAskTeamName, setAudience, setConfirmDialogEnabled, setConfirmDialogMode,
+      setConfirmDialogText, setContactEmail, setContactInfo, setContactName, setCustomFields, setDurchstarterCapacity,
+      setEmailLanguage, setEventImageUrl, setFunstarterCapacity, setKlammerDeadline, setLocationFilter, setNoDescription,
+      setRemovedSavedSubs, setSplitLabelA, setSplitLabelB, setSplitSharedWaitlist, setSubEvents, setTeamJoinRequiresApproval,
+      setTeamOpenSlotsVisible, setTeamPartialAllowed, setTeamRegistrationEnabled, setTeamSize, setTransferTimes, setUseSplitCapacities,
+      setWaitlistEnabled,
+    });
   };
 
   // v24.9 (E): bestehendes Event als Vorlage übernehmen — Einstellungen + Bild
@@ -3071,99 +2349,15 @@ export default function EventCreationPage(): React.ReactElement {
   // Organizer fürs neue Event frisch fest). Das Bild wird vom (gleichen
   // SharePoint-)Anhang gefetcht und als Datei für den Re-Upload übernommen.
   const applyEventTemplate = async (ev: (typeof events)[number]): Promise<void> => {
-    setTemplateLoadingId(ev.id);
-    try {
-      resetDemoVariantBaseState();
-      setTitle(`${ev.title || ''} (Kopie)`.trim());
-      setDescription(ev.description || '');
-      setLocation(ev.location || '');
-      setAddrStreet(ev.locationAddress?.street || '');
-      setAddrHouseNo(ev.locationAddress?.houseNo || '');
-      setAddrZip(ev.locationAddress?.zip || '');
-      setAddrCity(ev.locationAddress?.city || '');
-      setLocationFilter((ev.locationAudience || []).join(', '));
-      setAudience((ev.audienceFilter || []).join(', '));
-      setFilterMode(ev.filterMode || 'OR');
-      if (ev.maxParticipants && ev.maxParticipants > 0) { setUnlimitedParticipants(false); setMaxParticipants(String(ev.maxParticipants)); }
-      else { setUnlimitedParticipants(true); setMaxParticipants(''); }
-      setWaitlistEnabled(!!ev.waitlistEnabled);
-      setAskSalutation(!!ev.askSalutation);
-      if (ev.agenda && ev.agenda.length > 0) setAgenda([...ev.agenda]);
-      // Geteilte Kapazität übernehmen, falls vorhanden.
-      if ((ev.splitLabelA || '').trim() || (ev.splitLabelB || '').trim() || (ev.durchstarterCapacity || 0) > 0 || (ev.funstarterCapacity || 0) > 0) {
-        setUseSplitCapacities(true);
-        setSplitLabelA(ev.splitLabelA || '');
-        setSplitLabelB(ev.splitLabelB || '');
-        setSplitDescA(ev.splitDescA || '');
-        setSplitDescB(ev.splitDescB || '');
-        setSplitHelpText(ev.splitHelpText || '');
-        setSplitSectionTitle(ev.splitSectionTitle || '');
-        setDurchstarterCapacity(String(ev.durchstarterCapacity || 0));
-        setFunstarterCapacity(String(ev.funstarterCapacity || 0));
-        setSplitSharedWaitlist(!!ev.splitSharedWaitlist);
-      }
-      setCustomFields((ev.eventSpecificFields || []).map(f => ({
-        id: f.id, label: f.label, type: f.type, required: f.required,
-        options: f.options ? [...f.options] : [], visible: true,
-        ...(f.multi ? { multi: true } : {}),
-        ...(f.helpText ? { helpText: f.helpText } : {}),
-        ...(f.helpTextStyle === 'inline' ? { helpTextStyle: 'inline' as const } : {}),
-        ...(f.showIf ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } } : {}),
-        ...(f.onlyForGroup ? { onlyForGroup: f.onlyForGroup } : {}),
-        ...(f.confirmLabel ? { confirmLabel: f.confirmLabel } : {}),
-        ...(f.labelEn ? { labelEn: f.labelEn } : {}),
-        ...(f.helpTextEn ? { helpTextEn: f.helpTextEn } : {}),
-        ...(f.confirmLabelEn ? { confirmLabelEn: f.confirmLabelEn } : {}),
-        ...(f.optionsEn && f.optionsEn.length > 0 ? { optionsEn: [...f.optionsEn] } : {}),
-        ...(f.externalLinks && f.externalLinks.length > 0 ? { externalLinks: f.externalLinks.map(x => ({ ...x })) } : {}),
-        ...(f.ccOnEmails ? { ccOnEmails: true } : {}),
-        ...(f.notifyRoommate === false ? { notifyRoommate: false } : {}),
-        ...(f.audienceOnly ? { audienceOnly: true } : {}),
-        // v29.20 (Audit A3): auch hier fehlten Vorauswahl, Vorfilter,
-        // Uhrzeit-Option und die daterange-Grenzen — die Kopie verlor sie.
-        ...(f.defaultValue ? { defaultValue: f.defaultValue } : {}),
-        ...(f.optionCategories && f.optionCategories.length > 0 ? { optionCategories: [...f.optionCategories] } : {}),
-        ...(f.prefilterLabel ? { prefilterLabel: f.prefilterLabel } : {}),
-        ...(f.withTime ? { withTime: true } : {}),
-        ...(f.rangeStart ? { rangeStart: f.rangeStart } : {}),
-        ...(f.rangeEnd ? { rangeEnd: f.rangeEnd } : {}),
-        ...(typeof f.maxNights === 'number' && f.maxNights > 0 ? { maxNights: f.maxNights } : {}),
-      })));
-      // v29.20 (Audit): Die EN-Varianten oben nützen nur mit dem Schalter —
-      // serializeCustomFields schreibt sie ausschließlich bei aktivem
-      // bilingualFields. Ohne die Übernahme zeigte der Wizard die EN-Texte
-      // der Vorlage an und der Save warf sie still weg. Ebenso übernimmt die
-      // Kopie jetzt Mail-Sprache und Ausschluss-Liste — beides gehört zur
-      // Konfiguration, die man mit einer Vorlage erwartet.
-      setBilingualFields(!!ev.bilingualFields);
-      setEmailLanguage((ev.emailLanguage || 'DE').toUpperCase() === 'EN' ? 'EN' : 'DE');
-      setExcludedUsers([...(ev.excludedUsers || [])]);
-      // Bild: Vorschau sofort, Datei best-effort vom SP-Anhang nachladen.
-      // v29.20 (Audit): Vorher NUR gesetzt, wenn die Vorlage ein Bild hat —
-      // beim Wechsel von Vorlage A (mit Bild) zu Vorlage B (ohne) blieben
-      // imagePreview/imageFile von A stehen, und das neue Event bekam still
-      // das Foto des falschen Events. resetDemoVariantBaseState leerte nur
-      // eventImageUrl. Jetzt wird immer erst geleert.
-      setImagePreview('');
-      setImageFile(null);
-      setImageOrigFile(null);
-      setImageOrigAspect(null);
-      if (ev.imageUrl) {
-        setImagePreview(ev.imageUrl);
-        try {
-          const resp = await fetch(ev.imageUrl);
-          if (resp.ok) {
-            const blob = await resp.blob();
-            const ext = (blob.type && blob.type.indexOf('png') >= 0) ? 'png' : 'jpg';
-            setImageFile(new File([blob], `vorlage-bild.${ext}`, { type: blob.type || 'image/jpeg' }));
-          }
-        } catch { /* nur Vorschau, kein Re-Upload */ }
-      }
-      setShowTemplatePicker(false);
-      setCurrentStep(0);
-    } finally {
-      setTemplateLoadingId(null);
-    }
+    return await applyEventTemplateImpl({
+      resetDemoVariantBaseState, setAddrCity, setAddrHouseNo, setAddrStreet, setAddrZip, setAgenda,
+      setAskSalutation, setAudience, setBilingualFields, setCurrentStep, setCustomFields, setDescription,
+      setDurchstarterCapacity, setEmailLanguage, setExcludedUsers, setFilterMode, setFunstarterCapacity, setImageFile,
+      setImageOrigAspect, setImageOrigFile, setImagePreview, setLocation, setLocationFilter, setMaxParticipants,
+      setShowTemplatePicker, setSplitDescA, setSplitDescB, setSplitHelpText, setSplitLabelA, setSplitLabelB,
+      setSplitSectionTitle, setSplitSharedWaitlist, setTemplateLoadingId, setTitle, setUnlimitedParticipants, setUseSplitCapacities,
+      setWaitlistEnabled,
+    }, ev);
   };
 
   // v24.5: Demo-Events finden immer am NÄCHSTEN Samstag statt.
@@ -3235,91 +2429,22 @@ export default function EventCreationPage(): React.ReactElement {
   };
 
   const loadDemoSubEvent = (): void => {
-    resetDemoVariantBaseState();
-    const start = nextSaturdayAt(9, 0);
-    const end = nextSaturdayAt(17, 0);
-    const deadline = beforeNextSaturday(3, 23, 59);
-    setTitle('Demo-Conference mit Dinner');
-    setDescription('Hauptkonferenz + abendliches Dinner als getrenntes Sub-Event mit eigener Anmeldung.');
-    setLocation('Deloitte Office Hamburg');
-    setStartDate(fmtDatetime(start));
-    setEndDate(fmtDatetime(end));
-    setRegistrationDeadline(fmtDate(deadline));
-    setLastDeregisterDate(fmtDate(deadline));
-    setMaxParticipants('100');
-    setUseSplitCapacities(false);
-    setWaitlistEnabled(true);
-    setAskSalutation(false);
-    const tDemo = Date.now();
-    setCustomFields([
-      { id: `cf-${tDemo}`, label: 'Hotel-Buchung', type: 'select', required: false,
-        options: ['Ja, ich brauche ein Hotel', 'Nein, ich reise abends ab'], visible: true },
-    ]);
-    const dinnerStart = nextSaturdayAt(18, 0);
-    const dinnerEnd = nextSaturdayAt(22, 0);
-    setSubEvents([
-      {
-        id: `se-${tDemo}`,
-        title: 'Networking-Dinner',
-        startDate: berlinLocalToUtcIso(fmtDatetime(dinnerStart)),
-        endDate: berlinLocalToUtcIso(fmtDatetime(dinnerEnd)),
-        registrationDeadline: '',
-        location: 'Restaurant Fischmarkt',
-        description: 'Optionales Networking-Dinner im Anschluss an die Konferenz.',
-        maxParticipants: 60,
-        disableEmails: false,
-        disableOutlook: false,
-        customFields: [],
-      },
-    ]);
-    setCurrentStep(0);
+    return loadDemoSubEventImpl({
+      beforeNextSaturday, berlinLocalToUtcIso, fmtDate, fmtDatetime, nextSaturdayAt, resetDemoVariantBaseState,
+      setAskSalutation, setCurrentStep, setCustomFields, setDescription, setEndDate, setLastDeregisterDate,
+      setLocation, setMaxParticipants, setRegistrationDeadline, setStartDate, setSubEvents, setTitle,
+      setUseSplitCapacities, setWaitlistEnabled,
+    });
   };
 
   const loadDemoSubEventTeam = (): void => {
-    resetDemoVariantBaseState();
-    const start = nextSaturdayAt(18, 0);
-    const end = nextSaturdayAt(22, 0);
-    const deadline = beforeNextSaturday(5, 23, 59);
-    setTitle('Demo-Kneipenquiz mit Team-Anmeldung');
-    setDescription('Quizabend, bei dem ganze Teams über das Anmeldeformular angemeldet werden.');
-    setLocation('Heinrich Campus Düsseldorf, 6. Etage, Dachterrasse');
-    setStartDate(fmtDatetime(start));
-    setEndDate(fmtDatetime(end));
-    setRegistrationDeadline(fmtDate(deadline));
-    setLastDeregisterDate(fmtDate(deadline));
-    setMaxParticipants('80');
-    setUseSplitCapacities(false);
-    setWaitlistEnabled(true);
-    setAskSalutation(false);
-    setTeamRegistrationEnabled(true);
-    setTeamSize(4);
-    setAskTeamName(true);
-    setTeamPartialAllowed(true);
-    setTeamOpenSlotsVisible(true);
-    setTeamJoinRequiresApproval(false);
-    const tDemo = Date.now();
-    setCustomFields([
-      { id: `cf-${tDemo}`, label: 'Essenspräferenz', type: 'select', required: true,
-        options: ['Vegetarisch', 'Vegan', 'Keine Einschränkungen'], visible: true },
-    ]);
-    const briefStart = nextSaturdayAt(17, 0);
-    const briefEnd = nextSaturdayAt(17, 30);
-    setSubEvents([
-      {
-        id: `se-${tDemo}`,
-        title: 'Vorbereitungs-Briefing (Quizmaster)',
-        startDate: berlinLocalToUtcIso(fmtDatetime(briefStart)),
-        endDate: berlinLocalToUtcIso(fmtDatetime(briefEnd)),
-        registrationDeadline: '',
-        location: 'Heinrich Campus Düsseldorf, 6. Etage, Dachterrasse',
-        description: 'Kurzes Briefing für die Quizmaster-Helfer vor dem Event.',
-        maxParticipants: 10,
-        disableEmails: false,
-        disableOutlook: false,
-        customFields: [],
-      },
-    ]);
-    setCurrentStep(0);
+    return loadDemoSubEventTeamImpl({
+      beforeNextSaturday, berlinLocalToUtcIso, fmtDate, fmtDatetime, nextSaturdayAt, resetDemoVariantBaseState,
+      setAskSalutation, setAskTeamName, setCurrentStep, setCustomFields, setDescription, setEndDate,
+      setLastDeregisterDate, setLocation, setMaxParticipants, setRegistrationDeadline, setStartDate, setSubEvents,
+      setTeamJoinRequiresApproval, setTeamOpenSlotsVisible, setTeamPartialAllowed, setTeamRegistrationEnabled, setTeamSize, setTitle,
+      setUseSplitCapacities, setWaitlistEnabled,
+    });
   };
 
   // v11.88: Variant-Map für den Demo-Button. Key entspricht der Karten-
@@ -3475,92 +2600,14 @@ export default function EventCreationPage(): React.ReactElement {
    * spiegeln nur beim Tab-Wechsel hin und zurück.
    */
   const switchCommTab = (nextIdx: number): void => {
-    if (nextIdx === activeCommTabIdx) return;
-    // 1) Aktuellen UI-State in das ausgehende Slot schreiben.
-    if (activeCommTabIdx > 0) {
-      const fromIdx = activeCommTabIdx - 1;
-      // v11.60: synchron in den Ref schreiben (siehe flushActiveCommTabToState).
-      const flushed = subEventsRef.current.map((s, i) => i === fromIdx ? {
-        ...s,
-        emailLanguage,
-        emailLogoBase64: emailLogoPreview,
-        outlookLogoBase64: outlookLogoPreview,
-        outlookBody,
-        outlookHeading,
-        outlookSubheading,
-        outlookSubject,
-        disableEmails,
-        disableRegistrationEmail,
-        disableCancellationEmail,
-        autoDeregisterOnDecline,
-        inactiveHandling,
-        disableOutlook,
-        // v14.4: Mail-Text-Overrides pro Sub-Event mitspiegeln.
-        emailTemplateOverrides: { ...emailTemplateOverrides },
-      } : s);
-      subEventsRef.current = flushed;
-      setSubEvents(flushed);
-    } else {
-      // Slot 0 = Top-Level. Der UI-State wird hier direkt vom Top-Level-State
-      // gehalten — kein Snapshot nötig, weil setEmailLanguage etc. den Wert
-      // schon dort hält. Beim Zurück-Wechsel auf Tab 0 setzen wir die
-      // Top-Level-States aus dem `topLevelCommSnapshot`-Ref (siehe unten).
-      topLevelCommSnapshot.current = {
-        emailLanguage,
-        emailLogoBase64: emailLogoPreview,
-        outlookLogoBase64: outlookLogoPreview,
-        outlookBody,
-        outlookHeading,
-        outlookSubheading,
-        outlookSubject,
-        disableEmails,
-        disableRegistrationEmail,
-        disableCancellationEmail,
-        autoDeregisterOnDecline,
-        inactiveHandling,
-        disableOutlook,
-        emailTemplateOverrides: { ...emailTemplateOverrides },
-      };
-    }
-    // 2) Werte aus dem Ziel-Slot in die Step-5-UI laden.
-    if (nextIdx === 0) {
-      const snap = topLevelCommSnapshot.current;
-      if (snap) {
-        setEmailLanguage(snap.emailLanguage);
-        setEmailLogoPreview(snap.emailLogoBase64 || '');
-        setOutlookLogoPreview(snap.outlookLogoBase64 || '');
-        setOutlookBody(snap.outlookBody || '');
-        setOutlookHeading(snap.outlookHeading || '');
-        setOutlookSubheading(snap.outlookSubheading || '');
-        setOutlookSubject(snap.outlookSubject || '');
-        setDisableEmails(!!snap.disableEmails);
-        setDisableRegistrationEmail(!!snap.disableRegistrationEmail);
-        setDisableCancellationEmail(!!snap.disableCancellationEmail);
-        setAutoDeregisterOnDecline(!!snap.autoDeregisterOnDecline);
-        setInactiveHandling(snap.inactiveHandling === 'autoderegister' ? 'autoderegister' : 'notify');
-        setDisableOutlook(!!snap.disableOutlook);
-        setEmailTemplateOverrides(snap.emailTemplateOverrides || {});
-      }
-    } else {
-      const sub = subEvents[nextIdx - 1];
-      if (sub) {
-        setEmailLanguage(sub.emailLanguage || (locale === 'de' ? 'DE' : 'EN'));
-        setEmailLogoPreview(sub.emailLogoBase64 || '');
-        setOutlookLogoPreview(sub.outlookLogoBase64 || '');
-        setOutlookBody(sub.outlookBody || '');
-        setOutlookHeading(sub.outlookHeading || sub.title || '');
-        setOutlookSubheading(sub.outlookSubheading || '');
-        setOutlookSubject(sub.outlookSubject || '');
-        setDisableEmails(!!sub.disableEmails);
-        setDisableRegistrationEmail(!!sub.disableRegistrationEmail);
-        setDisableCancellationEmail(!!sub.disableCancellationEmail);
-        setAutoDeregisterOnDecline(!!sub.autoDeregisterOnDecline);
-        setInactiveHandling(sub.inactiveHandling === 'autoderegister' ? 'autoderegister' : 'notify');
-        setDisableOutlook(!!sub.disableOutlook);
-        setEmailTemplateOverrides(sub.emailTemplateOverrides || {});
-      }
-    }
-    setActiveCommTabIdx(nextIdx);
+    return switchCommTabImpl({
+      activeCommTabIdx, autoDeregisterOnDecline, disableCancellationEmail, disableEmails, disableOutlook, disableRegistrationEmail,
+      emailLanguage, emailLogoPreview, emailTemplateOverrides, inactiveHandling, locale, outlookBody,
+      outlookHeading, outlookLogoPreview, outlookSubheading, outlookSubject, setActiveCommTabIdx, setAutoDeregisterOnDecline,
+      setDisableCancellationEmail, setDisableEmails, setDisableOutlook, setDisableRegistrationEmail, setEmailLanguage, setEmailLogoPreview,
+      setEmailTemplateOverrides, setInactiveHandling, setOutlookBody, setOutlookHeading, setOutlookLogoPreview, setOutlookSubheading,
+      setOutlookSubject, setSubEvents, subEvents, subEventsRef, topLevelCommSnapshot,
+    }, nextIdx);
   };
   // v11.57: Snapshot des Top-Level-Step-5-States. Wird beim Wechsel auf einen
   // Sub-Event-Tab gesetzt und beim Zurückspringen wieder eingespielt.
@@ -3584,33 +2631,11 @@ export default function EventCreationPage(): React.ReactElement {
   // Tabs ins zugehörige Slot zurückgeschrieben werden — sonst gehen die
   // letzten Änderungen verloren.
   const flushActiveCommTabToState = (): void => {
-    if (activeCommTabIdx > 0) {
-      const fromIdx = activeCommTabIdx - 1;
-      // v11.60: synchron in den Ref schreiben — sonst sieht die direkt
-      // anschliessende Detect-/Persist-Logik noch die alte Array.
-      const flushed = subEventsRef.current.map((s, i) => i === fromIdx ? {
-        ...s,
-        emailLanguage,
-        emailLogoBase64: emailLogoPreview,
-        outlookLogoBase64: outlookLogoPreview,
-        outlookBody,
-        outlookHeading,
-        outlookSubheading,
-        outlookSubject,
-        disableEmails,
-        disableRegistrationEmail,
-        disableCancellationEmail,
-        autoDeregisterOnDecline,
-        inactiveHandling,
-        disableOutlook,
-        emailTemplateOverrides: { ...emailTemplateOverrides },
-      } : s);
-      subEventsRef.current = flushed;
-      setSubEvents(flushed);
-    }
-    // Slot 0 (Top-Level) wird ohnehin direkt von den State-Variablen gespeist
-    // — kein Snapshot-Flush nötig (resolveTopLevelCommState liest auf Tab 0
-    // direkt aus dem State, der Snapshot wird nur für Sub-Tab-Pfade benutzt).
+    return flushActiveCommTabToStateImpl({
+      activeCommTabIdx, autoDeregisterOnDecline, disableCancellationEmail, disableEmails, disableOutlook, disableRegistrationEmail,
+      emailLanguage, emailLogoPreview, emailTemplateOverrides, inactiveHandling, outlookBody, outlookHeading,
+      outlookLogoPreview, outlookSubheading, outlookSubject, setSubEvents, subEventsRef,
+    });
   };
 
   /**
@@ -3624,61 +2649,12 @@ export default function EventCreationPage(): React.ReactElement {
    * ob die aktuellen State-Variablen schon Top-Level sind (Tab 0) oder ob aus
    * dem topLevelCommSnapshot resolved werden muss.
    */
-  const resolveTopLevelCommState = (): {
-    emailLanguage: string;
-    emailLogoBase64: string;
-    outlookLogoBase64: string;
-    outlookBody: string;
-    outlookHeading: string;
-    outlookSubheading: string;
-    outlookSubject: string;
-    disableEmails: boolean;
-    disableRegistrationEmail: boolean;
-    disableCancellationEmail: boolean;
-    autoDeregisterOnDecline: boolean;
-    inactiveHandling?: 'notify' | 'autoderegister';
-    disableOutlook: boolean;
-    emailTemplateOverrides: Record<string, EmailOverrideEntry>;
-  } => {
-    if (activeCommTabIdx === 0) {
-      return {
-        emailLanguage,
-        emailLogoBase64: emailLogoPreview,
-        outlookLogoBase64: outlookLogoPreview,
-        outlookBody,
-        outlookHeading,
-        outlookSubheading,
-        outlookSubject,
-        disableEmails,
-        disableRegistrationEmail,
-        disableCancellationEmail,
-        autoDeregisterOnDecline,
-        inactiveHandling,
-        disableOutlook,
-        emailTemplateOverrides,
-      };
-    }
-    const snap = topLevelCommSnapshot.current;
-    if (snap) return snap;
-    // Fallback (sollte praktisch nicht eintreten): wir sind auf einem Sub-Tab,
-    // hatten aber noch keinen Snapshot — verwenden die aktuellen State-Werte,
-    // damit zumindest kein Crash entsteht.
-    return {
-      emailLanguage,
-      emailLogoBase64: emailLogoPreview,
-      outlookLogoBase64: outlookLogoPreview,
-      outlookBody,
-      outlookHeading,
-      outlookSubheading,
-      outlookSubject,
-      disableEmails,
-      disableRegistrationEmail,
-      disableCancellationEmail,
-      autoDeregisterOnDecline,
-      inactiveHandling,
-      disableOutlook,
-      emailTemplateOverrides,
-    };
+  const resolveTopLevelCommState = (): { emailLanguage: string; emailLogoBase64: string; outlookLogoBase64: string; outlookBody: string; outlookHeading: string; outlookSubheading: string; outlookSubject: string; disableEmails: boolean; disableRegistrationEmail: boolean; disableCancellationEmail: boolean; autoDeregisterOnDecline: boolean; inactiveHandling?: 'notify' | 'autoderegister'; disableOutlook: boolean; emailTemplateOverrides: Record<string, EmailOverrideEntry>; } => {
+    return resolveTopLevelCommStateImpl({
+      activeCommTabIdx, autoDeregisterOnDecline, disableCancellationEmail, disableEmails, disableOutlook, disableRegistrationEmail,
+      emailLanguage, emailLogoPreview, emailTemplateOverrides, inactiveHandling, outlookBody, outlookHeading,
+      outlookLogoPreview, outlookSubheading, outlookSubject, topLevelCommSnapshot,
+    });
   };
 
   /**
@@ -3928,51 +2904,10 @@ export default function EventCreationPage(): React.ReactElement {
   // nicht angehakte (aber im Detect-Items gelistete) bekommen
   // OutlookDirty=true. Events ausserhalb des Detect-Items bleiben unberührt.
   const confirmOutlookSave = (): void => {
-    setOutlookConfirmOpen(false);
-    const topId = editEvent ? editEvent.id : '';
-    const topItem = outlookConfirmItems.find(it => it.kind === 'top');
-    const subItems = outlookConfirmItems.filter(it => it.kind === 'sub');
-    const topChecked = !!topItem && !!outlookConfirmChecks[topItem.eventId];
-    // v11.69: Angehakte Sub-Events trennen in:
-    //  - `normalUpdateSubIds`: Sub-Event hat bereits einen Outlook-Termin →
-    //    DEX_Outlook 'UpdateEvent' in die Queue schreiben (bestehender Pfad).
-    //  - `recreateSubIds`: Sub-Event hat noch keinen Outlook-Termin
-    //    (`noOutlookYet`) → DEX_Events-Item per `deleteEventItemOnly` löschen
-    //    und mit `existingSubsiteUrl` neu anlegen, damit der
-    //    DEX_CreateOutlookEvent-Flow triggert. Teilnehmer-Subsite + Liste
-    //    bleiben unangetastet erhalten.
-    const checkedSubItems = subItems.filter(it => !!outlookConfirmChecks[it.eventId]);
-    const normalUpdateSubIds = checkedSubItems.filter(it => !it.noOutlookYet).map(it => it.eventId);
-    const recreateSubIds = checkedSubItems.filter(it => !!it.noOutlookYet).map(it => it.eventId);
-    pendingOutlookUpdateForTopRef.current = topChecked;
-    pendingOutlookUpdateForSubEventsRef.current = normalUpdateSubIds;
-    pendingOutlookRecreateForSubEventsRef.current = recreateSubIds;
-    // Pro Event-ID den OutlookDirty-Schreibwert vormerken.
-    // v11.69: noOutlookYet-Items werden — egal ob angehakt oder nicht — NICHT
-    // dirty markiert. Bei angehakt erfolgt ein Recreate (neues Item hat von
-    // Haus aus OutlookDirty=false), bei nicht angehakt existiert immer noch
-    // kein Outlook-Termin der "aus-Sync" sein könnte → Marker wäre falsch.
-    const dirtyMap: Record<string, boolean> = {};
-    for (const it of outlookConfirmItems) {
-      if (it.noOutlookYet) continue;
-      dirtyMap[it.eventId] = !outlookConfirmChecks[it.eventId];
-    }
-    pendingOutlookDirtyWriteRefs.current = dirtyMap;
-    // Top-Level kompatibel halten: wenn das Top-Event im Modal war, wird
-    // OutlookDirty entsprechend gesetzt; sonst null = nicht anfassen.
-    if (topItem) {
-      pendingOutlookDirtyWriteRef.current = !topChecked;
-    } else {
-      pendingOutlookDirtyWriteRef.current = null;
-    }
-    // setTriggerOutlookUpdate steuert in handleSubmit, ob der Top-Level-
-    // Outlook-Branch überhaupt betreten wird. v11.63: nur true wenn das
-    // Top-Event angehakt wurde ODER mindestens ein Sub-Event angehakt
-    // wurde (damit der Sub-Event-Branch im handleSubmit getroffen wird).
-    setTriggerOutlookUpdate(topChecked || normalUpdateSubIds.length > 0 || recreateSubIds.length > 0);
-    // Verhindern dass topId als „angehakt" interpretiert wird ohne Modal.
-    void topId;
-    handleSubmit().catch(() => { /* */ });
+    return confirmOutlookSaveImpl({
+      editEvent, handleSubmit, outlookConfirmChecks, outlookConfirmItems, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs,
+      pendingOutlookRecreateForSubEventsRef, pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, setOutlookConfirmOpen, setTriggerOutlookUpdate,
+    });
   };
   const cancelOutlookSave = (): void => {
     setOutlookConfirmOpen(false);
@@ -4056,69 +2991,10 @@ export default function EventCreationPage(): React.ReactElement {
    * Ohne Sub-Events wird gar nichts gezeigt — dann gibt es nichts zu wählen.
    */
   const renderGlobalScopeBar = (): React.ReactElement | null => {
-    if (subEvents.length === 0) return null;
-    const named = subEvents.filter(s => (s.title || '').trim());
-    // v29.21 (Audit): Nicht mehr verstecken, wenn ein Sub-Reiter aktiv ist.
-    // Sequenz vorher: „Hinzufügen" (Draft ohne Titel) → „Bearbeiten"
-    // (setScope(1)) → die Leiste war null, die Sub-Event-Liste hängt an
-    // activeScopeIdx === 0 — keine Bedienung mehr, um zurück auf die Klammer
-    // zu kommen. Die Reiter tragen für unbenannte Drafts den Fallback
-    // „Sub-Event ohne Titel".
-    if (named.length === 0 && activeScopeIdx === 0) return null;
-    const applies = SCOPE_AWARE_STEPS.indexOf(currentStep) >= 0;
-    const scopeIdx = Math.min(activeScopeIdx, subEvents.length);
-    const mainLabel = `${subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt-Event' : 'Main event')}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`;
-    // v28.90: Die Karte war grün getönt und mit grünem Rand abgesetzt — sie las
-    // sich dadurch wie ein Status („hier stimmt etwas") statt wie das, was sie
-    // ist: eine Navigation. Grün bleibt der aktiven Auswahl vorbehalten.
-    // Ausserdem `overflow: hidden` (plus `minWidth: 0` weiter innen): Die
-    // Reiter-Reihe schob sich bei vielen Sub-Events über den rechten Kartenrand
-    // hinaus — Flex-Kinder haben `min-width: auto`, die Scroll-Fläche konnte
-    // ihren Container also aufblähen.
-    // v28.91: …und ganz ohne eigene Fläche. Die weiße Karte auf grauem Grund
-    // war immer noch ein Kasten, der um Aufmerksamkeit konkurriert; die Reiter
-    // selbst tragen ihre Form bereits. Transparent, nur Abstand.
-    return (
-      <div id="dex-scope-bar" style={{
-        margin: '18px 0 0', padding: '12px 0 14px', borderRadius: 0,
-        background: 'transparent',
-        border: 'none',
-        overflow: 'hidden',
-      }}>
-        {applies ? (
-          renderPerEventTabStrip(
-            scopeIdx,
-            setScope,
-            mainLabel,
-            isDe ? 'Event-Ebene wechseln' : 'Switch event level',
-          )
-        ) : (
-          <>
-            <div style={{
-              fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.03em',
-              textTransform: 'uppercase', color: 'var(--dex-gray-500)', marginBottom: 6,
-            }}>
-              {isDe ? 'Welches (Sub-)Event bearbeitest du gerade?' : 'Which (sub-)event are you editing?'}
-            </div>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-              padding: '9px 14px', borderRadius: 10,
-              background: '#fff', border: '1px dashed var(--dex-gray-300)',
-              fontSize: '0.84rem', color: 'var(--dex-gray-700)',
-            }}>
-              <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                {isDe ? 'Dieser Schritt gilt für das gesamte Event' : 'This step applies to the entire event'}
-              </strong>
-              <span style={{ color: 'var(--dex-gray-600)' }}>
-                {isDe
-                  ? `— ${subEventsOnlyMode ? 'Klammer' : 'Haupt-Event'} und alle ${named.length} ${named.length === 1 ? (childTermSingular || 'Sub-Event') : (childTermPlural || 'Sub-Events')} gemeinsam. Eine Auswahl gibt es hier nicht.`
-                  : `— ${subEventsOnlyMode ? 'bracket' : 'main event'} and all ${named.length} sub-events together. There is nothing to pick here.`}
-              </span>
-            </div>
-          </>
-        )}
-      </div>
-    );
+    return renderGlobalScopeBarImpl({
+      activeScopeIdx, childTermPlural, childTermSingular, currentStep, isDe, renderPerEventTabStrip,
+      SCOPE_AWARE_STEPS, setScope, subEvents, subEventsOnlyMode, title,
+    });
   };
 
   // v15.6: Hinweis-Banner für den Hauptevent-Tab in den Steps 3/4/5, wenn
@@ -4167,51 +3043,9 @@ export default function EventCreationPage(): React.ReactElement {
     mode: 'AND' | 'OR',
     excludedCount: number
   ): React.ReactElement => {
-    const locs = (locList || []).filter(Boolean);
-    const auds = (audienceStr || '').split(',').map(s => s.trim()).filter(Boolean);
-    // v28.76: Klartext statt Stichworten. Vorher stand hier „Sichtbar für
-    // 1 Verteiler/Personen." — grammatisch schief und inhaltlich unklar
-    // (1 Verteiler? 1 Person? beides?). Jetzt ein ganzer Satz, der sagt, WER
-    // das Event sieht.
-    let text: string;
-    if (locs.length === 0 && auds.length === 0) {
-      text = isDe
-        ? 'Das Event sehen alle Mitarbeiter von Deloitte Deutschland.'
-        : 'Everyone at Deloitte Germany can see this event.';
-    } else {
-      const parts: string[] = [];
-      if (locs.length) {
-        parts.push(isDe
-          ? (locs.length === 1 ? `Mitarbeiter am Standort ${locs[0]}` : `Mitarbeiter an den Standorten ${locs.join(', ')}`)
-          : (locs.length === 1 ? `employees at location ${locs[0]}` : `employees at the locations ${locs.join(', ')}`));
-      }
-      if (auds.length) {
-        parts.push(isDe
-          ? (auds.length === 1 ? 'die Mitglieder des hinterlegten Verteilers bzw. die hinterlegte Person' : `die Mitglieder der ${auds.length} hinterlegten Verteiler bzw. Personen`)
-          : (auds.length === 1 ? 'the members of the selected distribution list or the selected person' : `the members of the ${auds.length} selected distribution lists / people`));
-      }
-      const joiner = parts.length > 1
-        ? (mode === 'AND' ? (isDe ? ' und gleichzeitig ' : ' and at the same time ') : (isDe ? ' oder ' : ' or '))
-        : '';
-      text = (isDe ? 'Das Event sehen nur ' : 'Only ') + parts.join(joiner) + (isDe ? '.' : ' can see this event.');
-    }
-    return (
-      <div style={{
-        marginTop: 10, padding: '8px 12px', borderRadius: 8,
-        background: 'rgba(134,188,37,0.07)', border: '1px solid var(--dex-green, #86bc25)',
-        fontSize: '0.78rem', color: 'var(--dex-gray-700)', lineHeight: 1.5,
-      }}>
-        <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>
-          {isDe ? 'Aktuell eingestellt: ' : 'Currently configured: '}
-        </strong>
-        {text}
-        {excludedCount > 0 && (
-          <> {isDe
-            ? `${excludedCount} Person${excludedCount === 1 ? ' ist' : 'en sind'} ausgeschlossen.`
-            : `${excludedCount} ${excludedCount === 1 ? 'person is' : 'people are'} excluded.`}</>
-        )}
-      </div>
-    );
+    return renderVisibilitySummaryBoxImpl({
+      isDe,
+    }, locList, audienceStr, mode, excludedCount);
   };
 
   /**
@@ -4231,78 +3065,9 @@ export default function EventCreationPage(): React.ReactElement {
    * Beides wird hier gemeldet, mit dem passenden Ein-Klick-Ausweg.
    */
   const renderKlammerVisibilityMismatch = (): React.ReactElement | null => {
-    if (!subEventsOnlyMode || subEvents.length === 0) return null;
-    const split = (s: string): string[] => (s || '').split(',').map(x => x.trim()).filter(Boolean);
-    const parentLocs = split(locationFilter);
-    const parentAuds = split(audience);
-    const parentOpen = parentLocs.length === 0 && parentAuds.length === 0;
-    const childLocSets = subEvents.map(s => split(s.locationFilter || ''));
-
-    // (a) Klammer offen, aber JEDES Sub-Event schränkt ein.
-    if (parentOpen && childLocSets.every(l => l.length > 0)) {
-      const union = Array.from(new Set(childLocSets.reduce((a, b) => a.concat(b), [])));
-      return (
-        <div style={{
-          marginTop: 10, padding: '10px 12px', borderRadius: 8,
-          background: '#fff8e6', border: '1px solid #e0b34d', color: '#7a5a12',
-          fontSize: '0.78rem', lineHeight: 1.55,
-        }}>
-          <strong>{isDe ? 'Die Klammer lässt mehr zu als ihre Sub-Events' : 'The bracket is broader than its sub-events'}</strong>
-          <div style={{ marginTop: 4 }}>
-            {isDe
-              ? <>Hier ist <strong>kein Standort</strong> gesetzt, das Event ist also für alle sichtbar — aber <strong>alle {subEvents.length} Sub-Events</strong> sind auf {union.length === 1 ? <>den Standort <strong>{union[0]}</strong></> : <>die Standorte <strong>{union.join(', ')}</strong></>} beschränkt. Wer nicht dazugehört, sieht das Event in der Übersicht, findet darin aber <strong>nichts, wofür er sich anmelden kann</strong>.</>
-              : <>No location is set here, so the event is visible to everyone — but <strong>all {subEvents.length} sub-events</strong> are restricted to {union.join(', ')}. People outside see the event but find nothing they can register for.</>}
-          </div>
-          <button
-            type="button"
-            className="btn btn-primary"
-            style={{ fontSize: '0.78rem', padding: '5px 12px', marginTop: 8 }}
-            onClick={() => setLocationFilter(union.join(', '))}
-          >
-            {isDe
-              ? `Klammer ebenfalls auf ${union.join(', ')} setzen`
-              : `Restrict the bracket to ${union.join(', ')} as well`}
-          </button>
-        </div>
-      );
-    }
-
-    // (b) Ein Sub-Event lässt mehr zu, als die Klammer durchlässt.
-    if (!parentOpen && parentLocs.length > 0) {
-      const lc = (s: string): string => s.toLowerCase();
-      const parentLc = parentLocs.map(lc);
-      const offenders = subEvents
-        .map((s, i) => ({ s, extra: childLocSets[i].filter(l => parentLc.indexOf(lc(l)) < 0) }))
-        .filter(x => x.extra.length > 0);
-      if (offenders.length > 0) {
-        const extras = Array.from(new Set(offenders.reduce<string[]>((a, b) => a.concat(b.extra), [])));
-        return (
-          <div style={{
-            marginTop: 10, padding: '10px 12px', borderRadius: 8,
-            background: '#fff8e6', border: '1px solid #e0b34d', color: '#7a5a12',
-            fontSize: '0.78rem', lineHeight: 1.55,
-          }}>
-            <strong>{isDe ? 'Einstellungen in Sub-Events, die nicht greifen können' : 'Sub-event settings that cannot take effect'}</strong>
-            <div style={{ marginTop: 4 }}>
-              {isDe
-                ? <>{offenders.length === 1 ? 'Ein Sub-Event lässt' : `${offenders.length} Sub-Events lassen`} {extras.length === 1 ? <>den Standort <strong>{extras[0]}</strong></> : <>die Standorte <strong>{extras.join(', ')}</strong></>} zu — die Klammer aber nicht. Der Zugang läuft immer über die Klammer, deshalb bleiben diese Personen <strong>trotzdem draußen</strong>. Entweder hier ergänzen oder im Sub-Event entfernen.</>
-                : <>{offenders.length} sub-event(s) allow {extras.join(', ')}, but the bracket does not. Access always goes through the bracket, so those people stay out anyway.</>}
-            </div>
-            <button
-              type="button"
-              className="btn btn-primary"
-              style={{ fontSize: '0.78rem', padding: '5px 12px', marginTop: 8 }}
-              onClick={() => setLocationFilter(Array.from(new Set(parentLocs.concat(extras))).join(', '))}
-            >
-              {isDe
-                ? `${extras.join(', ')} hier ergänzen`
-                : `Add ${extras.join(', ')} here`}
-            </button>
-          </div>
-        );
-      }
-    }
-    return null;
+    return renderKlammerVisibilityMismatchImpl({
+      audience, isDe, locationFilter, setLocationFilter, subEvents, subEventsOnlyMode,
+    });
   };
 
   // v15.6: Style-Helfer für den ausgegrauten Hauptevent-Tab-Inhalt. Bei
@@ -4513,65 +3278,18 @@ export default function EventCreationPage(): React.ReactElement {
     currentStep,
   });
   const applyDraftPayload = (d: Record<string, unknown>): void => {
-    const str = (v: unknown): string => (typeof v === 'string' ? v : '');
-    const bool = (v: unknown, dflt: boolean): boolean => (typeof v === 'boolean' ? v : dflt);
-    const num = (v: unknown, dflt: number): number => (typeof v === 'number' && isFinite(v) ? v : dflt);
-    setTitle(str(d.title)); setDescription(str(d.description)); setLocation(str(d.location));
-    setAddrStreet(str(d.addrStreet)); setAddrHouseNo(str(d.addrHouseNo)); setAddrZip(str(d.addrZip)); setAddrCity(str(d.addrCity));
-    setOrganizer(str(d.organizer));
-    if (Array.isArray(d.organizerEmails)) setOrganizerEmails(d.organizerEmails as string[]);
-    setContactName(str(d.contactName)); setContactEmail(str(d.contactEmail)); setContactInfo(str(d.contactInfo));
-    setStartDate(str(d.startDate)); setEndDate(str(d.endDate));
-    setRegistrationDeadline(str(d.registrationDeadline)); setLastDeregisterDate(str(d.lastDeregisterDate));
-    setKlammerDeadline(str(d.klammerDeadline)); setActiveFrom(str(d.activeFrom));
-    setMaxParticipants(str(d.maxParticipants)); setWaitlistEnabled(bool(d.waitlistEnabled, false));
-    setAudience(str(d.audience)); setLocationFilter(str(d.locationFilter));
-    setFilterMode(d.filterMode === 'AND' ? 'AND' : 'OR');
-    if (Array.isArray(d.excludedUsers)) setExcludedUsers(d.excludedUsers as string[]);
-    if (Array.isArray(d.customFields)) setCustomFields(d.customFields as CustomFieldInput[]);
-    if (Array.isArray(d.agenda)) setAgenda(d.agenda as AgendaItem[]);
-    if (Array.isArray(d.subEvents)) setSubEvents((d.subEvents as SubEventDraft[]).map(x => ({ ...x, imageFile: null })));
-    setSubEventsOptIn(bool(d.subEventsOptIn, false));
-    setSubEventsOnlyMode(bool(d.subEventsOnlyMode, false));
-    setSubEventCalendar(bool(d.subEventCalendar, false));
-    setSubEventSingleChoice(bool(d.subEventSingleChoice, false));
-    setRequireSubEventSelection(bool(d.requireSubEventSelection, false));
-    setAskSalutation(bool(d.askSalutation, false));
-    setTeamRegistrationEnabled(bool(d.teamRegistrationEnabled, false));
-    setTeamSize(num(d.teamSize, 2)); setAskTeamName(bool(d.askTeamName, false));
-    setUserCancelAllowed(bool(d.userCancelAllowed, true));
-    setNoCancelAfterDeadline(bool(d.noCancelAfterDeadline, false));
-    setTeamsLink(str(d.teamsLink));
-    // v30.26: Modus aus dem Entwurf; Alt-Entwürfe kennen ihn nicht — dort
-    // ergibt sich 'own' aus einem vorhandenen Link, sonst 'none'.
-    const draftOmMode = str(d.onlineMeetingMode);
-    setOnlineMeetingMode(
-      draftOmMode === 'auto' || draftOmMode === 'own' || draftOmMode === 'none'
-        ? draftOmMode
-        : (str(d.teamsLink).trim() ? 'own' : 'none'),
-    );
-    setDisableEmails(bool(d.disableEmails, false)); setDisableOutlook(bool(d.disableOutlook, false));
-    if (d.emailTemplateOverrides && typeof d.emailTemplateOverrides === 'object') {
-      setEmailTemplateOverrides(d.emailTemplateOverrides as Record<string, EmailOverrideEntry>);
-    }
-    setOpenRuleEnabled(bool(d.openRuleEnabled, false));
-    setOpenRuleMode(d.openRuleMode === 'week' ? 'week' : 'day');
-    setOpenRuleDays(num(d.openRuleDays, 7)); setOpenRuleFixedDate(str(d.openRuleFixedDate));
-    setRegRuleEnabled(bool(d.regRuleEnabled, false)); setRegRuleAmount(num(d.regRuleAmount, 1));
-    setRegRuleUnit(d.regRuleUnit === 'hours' ? 'hours' : 'days');
-    setCancelRuleEnabled(bool(d.cancelRuleEnabled, false)); setCancelRuleAmount(num(d.cancelRuleAmount, 1));
-    setCancelRuleUnit(d.cancelRuleUnit === 'hours' ? 'hours' : 'days');
-    setCancelRuleAfter(bool(d.cancelRuleAfter, false));
-    setVisAllSubs(bool(d.visAllSubs, false));
-    if (typeof d.billingRelevant === 'boolean') setBillingRelevant(d.billingRelevant);
-    setBillingSendMode(d.billingSendMode === 'auto' ? 'auto' : 'manual');
-    if (d.billingFields && typeof d.billingFields === 'object') setBillingFields(d.billingFields as Record<string, string>);
-    // v30.59: Auch beim Entwurf nach OBEN klemmen. Ein Entwurf, der auf
-    // Schritt 10 gespeichert wurde (als Admin, oder mit einem Build, in dem es
-    // den Schritt noch für alle gab), führte beim Wieder-Öffnen als Organizer
-    // auf einen Schritt, den es dort nicht gibt — und der Assistent zeigte
-    // gar nichts mehr an. Dasselbe Muster wie beim Tour-Schritt oben.
-    setCurrentStep(Math.min(Math.max(0, num(d.currentStep, 0)), canBilling ? 9 : 8));
+    return applyDraftPayloadImpl({
+      canBilling, setActiveFrom, setAddrCity, setAddrHouseNo, setAddrStreet, setAddrZip,
+      setAgenda, setAskSalutation, setAskTeamName, setAudience, setBillingFields, setBillingRelevant,
+      setBillingSendMode, setCancelRuleAfter, setCancelRuleAmount, setCancelRuleEnabled, setCancelRuleUnit, setContactEmail,
+      setContactInfo, setContactName, setCurrentStep, setCustomFields, setDescription, setDisableEmails,
+      setDisableOutlook, setEmailTemplateOverrides, setEndDate, setExcludedUsers, setFilterMode, setKlammerDeadline,
+      setLastDeregisterDate, setLocation, setLocationFilter, setMaxParticipants, setNoCancelAfterDeadline, setOnlineMeetingMode,
+      setOpenRuleDays, setOpenRuleEnabled, setOpenRuleFixedDate, setOpenRuleMode, setOrganizer, setOrganizerEmails,
+      setRegistrationDeadline, setRegRuleAmount, setRegRuleEnabled, setRegRuleUnit, setRequireSubEventSelection, setStartDate,
+      setSubEventCalendar, setSubEvents, setSubEventSingleChoice, setSubEventsOnlyMode, setSubEventsOptIn, setTeamRegistrationEnabled,
+      setTeamSize, setTeamsLink, setTitle, setUserCancelAllowed, setVisAllSubs, setWaitlistEnabled,
+    }, d);
   };
   // Beim Betreten der Neu-Anlage EINMAL den letzten Entwurf laden. v30.4:
   // kein Modal mehr — der Entwurf erscheint als Kachel in Schritt 1
@@ -4768,16 +3486,6 @@ export default function EventCreationPage(): React.ReactElement {
     if (visSnapshotRef.current === null) visSnapshotRef.current = visKey(locationFilter, audience, filterMode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const SUB_TRANSFER_GROUPS: Array<{ key: string; de: string; en: string; fields: string[] }> = React.useMemo(() => ([
-    { key: 'visibility', de: 'Sichtbarkeit (Standortfilter, Mailverteiler, Verknüpfung, Ausschlüsse)', en: 'Visibility (location filter, mailing lists, link mode, exclusions)', fields: ['locationFilter', 'audience', 'filterMode', 'excludedUsers'] },
-    { key: 'capacity', de: 'Teilnehmerzahl & Warteliste', en: 'Capacity & waitlist', fields: ['maxParticipants', 'waitlistEnabled'] },
-    { key: 'regDeadline', de: 'Anmeldefrist', en: 'Registration deadline', fields: ['registrationDeadline'] },
-    { key: 'deregDeadline', de: 'Abmeldefrist', en: 'Cancellation deadline', fields: ['lastDeregisterDate'] },
-    { key: 'place', de: 'Ort & Adresse', en: 'Location & address', fields: ['location', 'locationAddress'] },
-    { key: 'mandatory', de: 'Pflichtanmeldung', en: 'Mandatory registration', fields: ['mandatory'] },
-    { key: 'communication', de: 'Kommunikation (Logo, Outlook-Text, Überschriften, Betreff, Mail-Sprache, Mail-Schalter)', en: 'Communication (logo, Outlook text, headings, subject, mail language, mail toggles)', fields: ['emailLanguage', 'emailLogoBase64', 'outlookLogoBase64', 'outlookBody', 'outlookHeading', 'outlookSubheading', 'outlookSubject', 'disableEmails', 'disableRegistrationEmail', 'disableCancellationEmail', 'autoDeregisterOnDecline', 'inactiveHandling', 'disableOutlook', 'emailTemplateOverrides'] },
-    { key: 'times', de: 'Zeiten (Start & Ende) — überschreibt die Termine!', en: 'Times (start & end) — overwrites the dates!', fields: ['startDate', 'endDate'] },
-  ]), []);
   const [subTransfer, setSubTransfer] = React.useState<null | { fromIdx: number; groups: string[]; targets: number[] }>(null);
   const [activeScopeIdx, setActiveScopeIdx] = React.useState<number>(0);
 
@@ -4834,81 +3542,9 @@ export default function EventCreationPage(): React.ReactElement {
 
   // Vorschau-Sektion rendern
   const renderPreviewSection = (sectionId: string): React.ReactElement | null => {
-    switch (sectionId) {
-      case 'event':
-        return (
-          <div className="registration-event" style={{ borderRadius: 'var(--dex-radius-lg)' }}>
-            <div className="section-header section-header--red">Selected Event</div>
-            <div className="registration-event__card">
-              <div className="registration-event__image" style={{
-                background: eventImageUrl
-                  ? `url(${eventImageUrl}) center/cover`
-                  : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
-              }}>
-                <div className="registration-event__overlay">
-                  <h4>{title || 'Event Titel'}</h4>
-                  <p>{formatPreviewDate(startDate)} until<br />{formatPreviewDate(endDate)}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      case 'personal':
-        return (
-          <div className="registration-form" style={{ borderRadius: 'var(--dex-radius-lg)' }}>
-            <div className="section-header">Personal Information</div>
-            <div style={{ padding: '16px 20px' }}>
-              <div className="form-group"><label className="form-label"><span className="required">*</span> Salutation</label><select className="form-select" disabled><option>Please select</option></select></div>
-              <div className="form-group"><label className="form-label"><span className="required">*</span> First Name</label><input className="form-input" disabled placeholder="First Name" /></div>
-              <div className="form-group"><label className="form-label"><span className="required">*</span> Surname</label><input className="form-input" disabled placeholder="Surname" /></div>
-              <div className="form-group"><label className="form-label"><span className="required">*</span> E-Mail</label><input className="form-input" disabled placeholder="email@deloitte.de" /></div>
-            </div>
-          </div>
-        );
-      case 'specific':
-        return (
-          <div className="registration-specific" style={{ borderRadius: 'var(--dex-radius-lg)' }}>
-            <div className="section-header">Event specific Information</div>
-            <div style={{ padding: '16px 20px' }}>
-              {customFields.filter(f => f.label).length === 0 ? (
-                <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic', fontSize: '0.9rem' }}>No additional information required.</p>
-              ) : (
-                customFields.filter(f => f.label).map(field => (
-                  <div className="form-group" key={field.id}>
-                    <label className="form-label">{field.required && <span className="required">*</span>}{field.label}</label>
-                    {field.type === 'select' && field.multi ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 8, border: '1px solid var(--dex-gray-200)', borderRadius: 6, background: '#fff' }}>
-                        {field.options.map(o => o.trim()).filter(Boolean).map(opt => (
-                          <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
-                            <input type="checkbox" disabled />
-                            <span>{opt}</span>
-                          </label>
-                        ))}
-                        <span style={{ fontSize: '0.7rem', color: 'var(--dex-gray-400)', marginTop: 2 }}>Mehrere Auswahl möglich</span>
-                      </div>
-                    ) : field.type === 'select' ? (
-                      <select className="form-select" disabled><option>Please select</option>{field.options.map(o => o.trim()).filter(Boolean).map(opt => <option key={opt}>{opt}</option>)}</select>
-                    ) : field.type === 'checkbox' ? (
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.9rem' }}><input type="checkbox" disabled /> {field.label}</label>
-                    ) : (
-                      <input className="form-input" disabled placeholder={field.label} type={field.type === 'number' ? 'number' : 'text'} />
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        );
-      case 'actions':
-        return (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 16 }}>
-            <button className="btn btn-danger" disabled style={{ opacity: 0.5 }}><Trash2 size={16} /> Delete</button>
-            <button className="btn btn-primary" disabled style={{ opacity: 0.5 }}><Send size={16} /> Register</button>
-          </div>
-        );
-      default:
-        return null;
-    }
+    return renderPreviewSectionImpl({
+      customFields, endDate, eventImageUrl, formatPreviewDate, startDate, title,
+    }, sectionId);
   };
 
 
@@ -4916,159 +3552,11 @@ export default function EventCreationPage(): React.ReactElement {
   // (Mouseover) als Tooltip eingeblendet — vorher wurden sie als
   // dauerhafte grüne Hinweis-Box am Anfang jedes Steps angezeigt
   // (renderStepIntro), das war für geübte Organizer zu viel Rauschen.
-  const STEP_HINTS_DE: string[][] = [
-    [
-      'Event-Titel und Beschreibung — werden auf der Eventliste und der Registrierungsseite angezeigt',
-      'Event-Bild hochladen (wird oben auf der Detailseite und in den Mails verwendet)',
-      'Als Entwurf speichern — taucht dann nur für Admins, Organizer und Test-Team auf',
-    ],
-    [
-      // v24.12 Schritt 2: Organizer & Team
-      'Organizer auswählen — bekommen alle Organizer-Mails und sehen das Event im Admin Center; einzelne lassen sich von der Anmeldeseite ausblenden',
-      'Anzeige der Organizer auf dem Anmeldeformular wählen (klein/groß) — mit Live-Vorschau',
-      'Optional: externen Ansprechpartner (z.B. Service-Mail) angeben',
-      'Test-Team: sieht das Event schon im Entwurf',
-      'Check-in-Team: bedient am Event-Tag nur das Check-in-Tool',
-    ],
-    [
-      // v15 Step 3: Ort & Programm (mit Tabs pro Sub-Event)
-      'Veranstaltungsort und Adresse erfassen — pro Sub-Event optional eigener Ort (per Tab)',
-      'Start- und End-Datum (mit Uhrzeit) festlegen',
-      'Agenda mehrtägig pflegen (Drag-Reihenfolge pro Tag)',
-      'Transferzeiten — Bus / Shuttle / Bahn von/zum Veranstaltungsort',
-    ],
-    [
-      // v15 Step 4: Kapazität & Sichtbarkeit (mit Tabs pro Sub-Event)
-      'Maximale Teilnehmerzahl festlegen (oder Unbegrenzt) — pro Sub-Event eigene Kapazität per Tab (Default: vom Hauptevent übernehmen)',
-      'Anmeldefrist setzen — pro Sub-Event eigene Deadline möglich (leer = Hauptevent-Deadline gilt)',
-      'Optional: Letzte Abmeldemöglichkeit — die kommunizierte Abmeldefrist; danach bleibt die Abmeldung bis zum Event-Ende möglich, die Organizer werden aber automatisch informiert',
-      'Warteliste aktivieren — voll besetzte Events nehmen weitere Anmeldungen auf, bis ein Platz frei wird',
-      'Optional: Geteilte Kapazität — zwei frei benannte Gruppen mit eigener Platzzahl + eigener oder gemeinsamer Warteliste',
-    ],
-    [
-      // v15 Step 5: Felder (mit Tabs pro Sub-Event)
-      'Feldtyp wählen: Text, Zahl, Dropdown, Checkbox, Personen-Suche oder Roommate (Doppelzimmer)',
-      'Mehrfachauswahl bei Dropdowns (z.B. mehrere Allergien anhaken)',
-      'Pflichtfeld setzen (rotes Sternchen, Anmeldung blockiert wenn leer)',
-      'Beschreibung pro Feld — landet als „i"-Tooltip neben dem Feld-Label',
-      'Sichtbarkeitsbedingung: Feld nur dann anzeigen wenn eine andere Frage einen bestimmten Wert hat (z.B. „Zimmerart nur fragen wenn Hotel = ja")',
-      'Pro Sub-Event eigene Felder per Tab (Default: vom Hauptevent übernehmen)',
-    ],
-    [
-      // v15 Step 6: Kommunikation
-      'E-Mail-Sprache (DE/EN) für die automatischen Mails an die Teilnehmer wählen',
-      'Pro Mail-Template (Anmeldung, Storno, Warteliste, Erinnerung, QR-Code…) den Subject/Heading/Body anpassen — mit Live-Vorschau',
-      'Eigenes Logo / Header-Bild für Mail und Outlook-Termin hochladen',
-      'Outlook-Termin-Body individuell gestalten (Live-Vorschau zeigt wie das Outlook-Element später aussieht)',
-      'Benachrichtigungen optional komplett deaktivieren — z.B. für interne Entwurfs-Events',
-      'Pro Sub-Event eigene Mail-Texte + Outlook-Body + Disable-Toggles per Tab',
-    ],
-    [
-      // v15 Step 7: Team-Anmeldung
-      'Team-Anmeldung erlauben — ein Teilnehmer kann sich für sich + sein Team gleichzeitig anmelden',
-      'Team-Größe festlegen (2-N Personen)',
-      'Optional Team-Namen abfragen — z.B. für Quiz- oder Lauf-Teams',
-      'Beitritts-Modus: nur komplette Teams ODER auch Teil-Teams erlaubt',
-      'Optional: offene Slots öffentlich sichtbar — andere Teilnehmer können beitreten (ggf. mit Lead-Approval)',
-    ],
-    [
-      // v15 Step 8: Dokumente
-      'Dokumente hochladen (PDF) — Teilnehmer sehen sie auf MyEvents als Inline-Vorschau oder Download',
-    ],
-    [
-      // v15 Step 9: Fun-Zone
-      'Quiz-Fragen für das Event anlegen — Multiple-Choice mit beliebig vielen Antwortoptionen',
-      'Pro Frage optional ein Bild hochladen (Logo, Foto-Quiz, etc.)',
-      'Mehrere richtige Antworten möglich (Mehrfachauswahl) — werden alle für volle Punktzahl gebraucht',
-      'Cluster-Größe steuern: wie viele Fragen pro „Spielblock" angezeigt werden — Teilnehmer kann zwischenspeichern und später weitermachen',
-      'Live-Highscore + Statistik im Admin Center sehen (welche Fragen am häufigsten falsch beantwortet werden)',
-    ],
-    // v29.66: Schritt 10 „Abrechnung" (F&A-Pilot, nur Admins sehen den Schritt).
-    [
-      'Event als abrechnungsrelevant kennzeichnen — die Entscheidung ist jederzeit änderbar',
-      'Versandart wählen: automatisch (7 Tage vor/nach dem Event) oder manuell über das Organizer Center',
-      'Alle elf Pflichtangaben für Finance & Accounting pflegen — unvollständig blockiert das Speichern nicht',
-    ],
-  ];
   // v29.21 (Audit B5): Die EN-Liste stand noch auf der 10-Schritt-Zählung von
   // vor v28.87 (alter Grundlagen-Mix, eigener Sub-Events-Schritt) — ab dem
   // dritten Eintrag zeigte jedes i-Icon die Hints des FALSCHEN Schritts, und
   // für Schritt 9 gab es gar keinen Eintrag. Jetzt 1:1 parallel zu
   // STEP_HINTS_DE (9 Einträge).
-  const STEP_HINTS_EN: string[][] = [
-    [
-      'Event title and description — shown on the event list and registration page',
-      'Upload an event image (used at the top of the detail page and in emails)',
-      'Save as draft — only visible to admins, organizers and the test team',
-    ],
-    [
-      // Step 2: Organizers & Team
-      'Pick the organizers — they receive all organizer emails and see the event in the admin center; individual ones can be hidden from the registration page',
-      'Choose how organizers appear on the registration form (small/large) — with live preview',
-      'Optional: add an external contact (e.g. a service mailbox)',
-      'Test team: sees the event while it is still a draft',
-      'Check-in team: only operates the check-in tool on event day',
-    ],
-    [
-      // Step 3: Location & Programme (with tabs per sub-event)
-      'Enter venue and address — per sub-event an own location is possible (via tab)',
-      'Set start and end date (with time)',
-      'Maintain a multi-day agenda (drag ordering per day)',
-      'Transfer times — bus / shuttle / train to and from the venue',
-    ],
-    [
-      // v15 Step 4: Capacity & Visibility (with tabs per sub-event)
-      'Set the maximum number of attendees (or Unlimited) — per sub-event own capacity via tab (default: inherit from main event)',
-      'Set the registration deadline — per sub-event own deadline possible (empty = main-event deadline applies)',
-      'Optional: last cancellation date — the communicated deadline; cancelling stays possible until the event ends, but organizers are notified automatically',
-      'Enable waitlist — full events accept new registrations and promote them once a spot frees up',
-      'Optional: split capacity — two freely-named groups with own seat count + own or shared waitlist',
-    ],
-    [
-      // v15 Step 5: Fields (with tabs per sub-event)
-      'Pick a field type: text, number, dropdown, checkbox, people search or roommate (double room)',
-      'Multi-select for dropdowns (e.g. tick multiple allergies)',
-      'Mark required (red asterisk, blocks submit when empty)',
-      'Description per field — appears as „i" tooltip next to the field label',
-      'Visibility condition: only show this field when another question has a specific value (e.g. „Only ask room type if Hotel = yes")',
-      'Per sub-event own fields via tab (default: inherit from main event)',
-    ],
-    [
-      // v15 Step 6: Communication
-      'Pick the email language (DE/EN) for automatic emails to attendees',
-      'Edit subject / heading / body per email template (registration, cancellation, waitlist, reminder, QR code…) — with live preview',
-      'Upload a custom logo / header image for the email and Outlook event',
-      'Customise the Outlook event body (live preview shows how the Outlook item will appear)',
-      'Optionally disable notifications entirely — e.g. for internal draft events',
-      'Per sub-event own mail texts + Outlook body + disable toggles via tab',
-    ],
-    [
-      // v15 Step 7: Team Registration
-      'Allow team registration — an attendee can register themselves + their team at once',
-      'Set team size (2-N people)',
-      'Optionally ask for a team name — e.g. quiz or running teams',
-      'Join mode: complete teams only OR partial teams allowed',
-      'Optional: open slots publicly visible — other attendees can join (with optional lead approval)',
-    ],
-    [
-      // v15 Step 8: Documents
-      'Upload documents (PDF) — attendees see them on MyEvents as inline preview or download',
-    ],
-    [
-      // v15 Step 9: Fun-Zone
-      'Create quiz questions for the event — multiple choice with any number of answer options',
-      'Optionally upload an image per question (logo, photo quiz, etc.)',
-      'Multiple correct answers are supported — all of them must be picked for full points',
-      'Control cluster size: how many questions per „play block" — attendees can save progress and continue later',
-      'See live highscore + statistics in the admin center (which questions are most often answered incorrectly)',
-    ],
-    // v29.66: step 10 "Billing" (F&A pilot, admins only).
-    [
-      'Mark the event as billing-relevant — the decision can be changed at any time',
-      'Pick the delivery mode: automatic (7 days before/after the event) or manual via the organizer center',
-      'Maintain all eleven mandatory Finance & Accounting details — incomplete data never blocks saving',
-    ],
-  ];
 
   const steps = [
     { label: t('create.step.basics'), icon: '1' },
@@ -5107,58 +3595,11 @@ export default function EventCreationPage(): React.ReactElement {
   // v29.21 (Audit B3): parametrisiert — der Kreis-Klick muss auch die
   // ÜBERSPRUNGENEN Schritte prüfen können, nicht nur den aktuellen.
   const getStepErrorsFor = (step: number): string[] => {
-    const errors: string[] = [];
-    switch (step) {
-      case 0:
-        // Schritt 1 (Grundlagen): Titel + Datum sind Pflicht. Die Datum-Checks
-        // laufen hier, weil die DatePicker schon in Grundlagen stehen.
-        if (!title) errors.push('title');
-        if (!startDate) errors.push('startDate');
-        if (!endDate) errors.push('endDate');
-        // v29.55 BUG-FIX: Bei einem ganztägigen Termin ist die Uhrzeit
-        // bedeutungslos — die DatePicker liefern ohne Zeitauswahl beide Male
-        // 00:00, und `<=` meldete dann bei Start = Ende denselben Tag als
-        // Fehler. Ganztägig wird deshalb tagesgenau verglichen: Fehler nur,
-        // wenn der End-TAG vor dem Start-TAG liegt.
-        if (startDate && endDate) {
-          const bad = allDay
-            ? endDate.slice(0, 10) < startDate.slice(0, 10)
-            : new Date(endDate) <= new Date(startDate);
-          if (bad) errors.push('endBeforeStart');
-        }
-        // v9.14: description ist optional — kein Pflichtfeld mehr
-        // v28.87: Die Sub-Events stehen seit dem Wegfall von Schritt 3 in
-        // Grundlagen — also wird ihre Datumsprüfung hier mitgeführt (v18.36:
-        // Ende vor Start laesst den Outlook-Create-Flow mit HTTP 400 scheitern).
-        if (subEvents.some(se => se.title && se.title.trim() && se.startDate && se.endDate && new Date(se.endDate) <= new Date(se.startDate))) {
-          errors.push('subEventEndBeforeStart');
-        }
-        break;
-      case 1:
-        // v24.12: Schritt 2 (Organizer & Team) — mindestens ein Organizer ist Pflicht.
-        if (!organizer) errors.push('organizer');
-        break;
-      case 2:
-        // Schritt 3 (Ort & Programm) ist ohne Pflicht-Validierung —
-        // Adresse / Agenda / Transferzeiten sind alle optional.
-        break;
-      case 3:
-        // Schritt 4 (Kapazität & Sichtbarkeit).
-        // v29.21 (Audit B4): Im „Nur Sub-Events"-Modus sind die geprüften
-        // Felder gar nicht bedienbar — der sichtbare DatePicker editiert die
-        // Klammer-Frist, die Abmeldefrist ist ausgegraut, der Kapazitätsblock
-        // durch die Erklär-Box ersetzt. Die Prüfungen sperrten „Weiter" dann
-        // ohne sichtbaren Grund und ohne Ausweg. Gleiches bei geteilter
-        // Kapazität: maxParticipants ist dort per Konvention 0/leer, die
-        // Fehlermeldung rendert nur im Nicht-Split-Zweig.
-        if (!subEventsOnlyMode) {
-          if (registrationDeadline && startDate && new Date(registrationDeadline) > new Date(startDate)) errors.push('deadlineAfterStart');
-          if (userCancelAllowed && lastDeregisterDate && startDate && new Date(lastDeregisterDate) > new Date(startDate)) errors.push('deregAfterStart');
-          if (!useSplitCapacities && !unlimitedParticipants && (maxParticipants === '' || isNaN(Number(maxParticipants)) || Number(maxParticipants) < 0)) errors.push('maxParticipants');
-        }
-        break;
-    }
-    return errors;
+    return getStepErrorsForImpl({
+      allDay, endDate, lastDeregisterDate, maxParticipants, organizer, registrationDeadline,
+      startDate, subEvents, subEventsOnlyMode, title, unlimitedParticipants, userCancelAllowed,
+      useSplitCapacities,
+    }, step);
   };
   const getStepErrors = (): string[] => getStepErrorsFor(currentStep);
 
@@ -5327,37 +3768,10 @@ export default function EventCreationPage(): React.ReactElement {
     return n;
   };
   const applySubTransfer = (): void => {
-    if (!subTransfer) return;
-    // v28.80: Die Kommunikationsfelder (Logo, Outlook-Text, Betreff …) stehen
-    // NICHT laufend im Draft — sie leben im UI-State und werden erst beim
-    // Reiterwechsel in den Slot geschrieben. Ohne diesen Flush würde man den
-    // Stand VOR der letzten Bearbeitung kopieren. Der Flush schreibt synchron
-    // in subEventsRef, deshalb wird von dort gelesen.
-    flushActiveCommTabToState();
-    const src = asRec(subEventsRef.current[subTransfer.fromIdx] || subEvents[subTransfer.fromIdx]);
-    const fields: string[] = [];
-    for (const g of SUB_TRANSFER_GROUPS) {
-      if (subTransfer.groups.indexOf(g.key) >= 0) fields.push(...g.fields);
-    }
-    if (fields.length === 0 || subTransfer.targets.length === 0) { setSubTransfer(null); return; }
-    setSubEvents(prev => prev.map((s, i) => {
-      if (subTransfer.targets.indexOf(i) < 0) return s;
-      const patch: Record<string, unknown> = {};
-      for (const f of fields) {
-        const v = src[f];
-        // v28.80: Objekte (z.B. emailTemplateOverrides) klonen — sonst teilen
-        // sich alle Ziel-Sub-Events dieselbe Referenz und eine spätere
-        // Aenderung an einem würde die anderen mitziehen.
-        patch[f] = (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v;
-      }
-      return { ...s, ...(patch as unknown as Partial<SubEventDraft>) };
-    }));
-    const n = subTransfer.targets.length;
-    setSubTransfer(null);
-    showAlert(isDe
-      ? `Einstellungen auf ${n} ${n === 1 ? (childTermSingular || 'Sub-Event') : (childTermPlural || 'Sub-Events')} übertragen. Nicht vergessen zu speichern.`
-      : `Settings transferred to ${n} sub-event(s). Don't forget to save.`,
-      { variant: 'success' });
+    return applySubTransferImpl({
+      asRec, childTermPlural, childTermSingular, flushActiveCommTabToState, isDe, setSubEvents,
+      setSubTransfer, showAlert, subEvents, subEventsRef, subTransfer,
+    });
   };
 
   /**
@@ -5378,34 +3792,10 @@ export default function EventCreationPage(): React.ReactElement {
    * geklont, sonst teilen sich alle Termine dieselbe Referenz (v28.80).
    */
   const applyCommToAllSubEvents = async (): Promise<void> => {
-    const named = subEventsRef.current.filter(x => x.title && x.title.trim());
-    if (named.length === 0) return;
-    const term = childTermPlural || (isDe ? 'Sub-Events' : 'sub-events');
-    const ok = await confirmDialog(isDe
-      ? `Die Kommunikations-Einstellungen des Haupt-Events (Mail-Sprache, Logo, Outlook-Text, Überschriften, Betreff und alle Mail-Schalter) werden auf ALLE ${named.length} ${term} übertragen.\n\nBereits einzeln gepflegte Werte werden dabei überschrieben. Fortfahren?`
-      : `The main event's communication settings will be applied to ALL ${named.length} sub-events. Individually maintained values will be overwritten. Continue?`,
-      { title: isDe ? 'Für alle Termine gleich einstellen' : 'Apply to all dates' });
-    if (!ok) return;
-    // Erst den aktiven Reiter sichern — sonst kopiert man den Stand vor der
-    // letzten Bearbeitung (CLAUDE.md: „Kommunikationsfelder der Sub-Events
-    // liegen nicht laufend im Draft").
-    flushActiveCommTabToState();
-    const src = resolveTopLevelCommState() as unknown as Record<string, unknown>;
-    const commGroup = SUB_TRANSFER_GROUPS.filter(g => g.key === 'communication')[0];
-    const fields = commGroup ? commGroup.fields : [];
-    setSubEvents(prev => prev.map(s => {
-      if (!s.title || !s.title.trim()) return s;
-      const patch: Record<string, unknown> = {};
-      for (const f of fields) {
-        const v = src[f];
-        patch[f] = (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v;
-      }
-      return { ...s, ...(patch as unknown as Partial<SubEventDraft>) };
-    }));
-    showAlert(isDe
-      ? `Die Kommunikation des Haupt-Events gilt jetzt für alle ${named.length} ${term}. Nicht vergessen zu speichern.`
-      : `The main event's communication now applies to all ${named.length} sub-events. Don't forget to save.`,
-      { variant: 'success' });
+    return await applyCommToAllSubEventsImpl({
+      childTermPlural, confirmDialog, flushActiveCommTabToState, isDe, resolveTopLevelCommState, setSubEvents,
+      showAlert, subEventsRef,
+    });
   };
 
   /**
@@ -5606,87 +3996,11 @@ export default function EventCreationPage(): React.ReactElement {
    * dieselbe Rückfrage wie das X an der Karte.
    */
   const toggleDaySubEvent = (d: Date | null): void => {
-    if (!d) return;
-    const key = dayKeyOfDate(d);
-    // v29.17: Die An-/Abwahl-Entscheidung fällt IM Funktions-Updater, auf dem
-    // tatsächlichen State — nicht auf dem `subEvents` aus der Render-Closure.
-    // Bei 20+ Terminen dauert ein Re-Render des Wizards spürbar; wer in der
-    // Zeit erneut klickt, dessen zweiter Klick sah vorher noch den ALTEN
-    // Stand: Ein eben abgewählter Tag galt als „nicht vorhanden" und wurde
-    // wieder angelegt — das Abwählen wirkte „kaputt". Mit dem Updater ist
-    // jeder Klick ein echter Toggle auf dem aktuellen Stand.
-    //
-    // Scope-Korrektur vorab aus der Closure: Steht der Reiter gerade auf dem
-    // Tag, der entfernt wird, zurück auf die Klammer. Im (seltenen) Stale-Fall
-    // unterbleibt nur die Korrektur — scopeSub sichert den Index ohnehin ab.
-    const closureIdx = subEvents.findIndex(se => dayKeyOfSub(se) === key);
-    if (closureIdx >= 0 && activeScopeIdx === closureIdx + 1) setScope(0);
-    // v29.22: Abwahl eines GESPEICHERTEN Termins → in removedSavedSubs parken
-    // (Orange im Kalender, per Klick rückholbar). Ein ORANGE-Tag → Draft aus
-    // dem Park zurückholen statt einen neuen anzulegen. Beide Übergänge sind
-    // über die Guards in den Updatern idempotent — schnelle Doppelklicks auf
-    // veraltetem Render-Stand (v29.17-Falle) können weder doppelt parken noch
-    // doppelt anlegen.
-    const closureExisting = closureIdx >= 0 ? subEvents[closureIdx] : undefined;
-    if (closureExisting) {
-      if (closureExisting.dbId) {
-        setRemovedSavedSubs(prev => prev.some(x => x.id === closureExisting.id) ? prev : [...prev, closureExisting]);
-      }
-      setSubEvents(prev => prev.filter(x => x.id !== closureExisting.id));
-      return;
-    }
-    const stashed = removedSavedSubs.find(x => dayKeyOfSub(x) === key);
-    if (stashed) {
-      setRemovedSavedSubs(prev => prev.filter(x => x.id !== stashed.id));
-      setSubEvents(prev => prev.some(x => x.id === stashed.id) ? prev : [...prev, stashed]);
-      return;
-    }
-    setSubEvents(prev => {
-      const existingIdx = prev.findIndex(se => dayKeyOfSub(se) === key);
-      if (existingIdx >= 0) {
-        // v28.96: KEINE Rückfrage je Klick. Im Kalender wird aus- und
-        // abgewählt, oft mehrfach hintereinander — ein Modal bei jedem Klick
-        // macht genau das unbenutzbar. Der Datenverlust-Hinweis steht ohnehin
-        // schon an der richtigen Stelle: beim SPEICHERN listet
-        // handleSubmitInner alle Sub-Events auf, die dabei endgültig gelöscht
-        // würden (toDelete), und fragt einmal nach. Bis dahin ist nichts
-        // passiert. (Stale-Doppelklick: der Tag wurde eben schon behandelt.)
-        return prev;
-      }
-      // v28.92: Der Termin bekommt die UHRZEIT des Hauptevents, gelegt auf
-      // diesen Tag — läuft das Event von 9 bis 17 Uhr, gilt das auch für den
-      // einzelnen Tag. Ein Ganztags-Block (00:00–23:59) würde den Teilnehmern
-      // den kompletten Kalendertag zustellen.
-      //
-      // Die Zeitfelder bleiben bewusst NICHT leer: Ein Sub-Event ohne Zeiten
-      // erbt seit v28.66 die TERMINE des Hauptevents — bei einer Reihe also
-      // 01.09.–01.10. für jeden einzelnen Tag statt des Tages selbst.
-      //
-      // Zwei Fälle, in denen die Uhrzeit nichts hergibt, fallen auf den ganzen
-      // Tag zurück: gar keine Zeiten am Hauptevent, und ein mehrtägiges Event,
-      // dessen Endzeit nicht nach der Startzeit liegt (z.B. 01.09. 00:00 bis
-      // 01.10. 00:00 — daraus liesse sich für einen Tag keine gültige Spanne
-      // bauen).
-      const timeOf = (v: string): string => {
-        const t = (v || '').slice(11, 16);
-        return /^\d{2}:\d{2}$/.test(t) ? t : '';
-      };
-      const startTime = timeOf(startDate);
-      const endTime = timeOf(endDate);
-      const usable = !!startTime && !!endTime && endTime > startTime;
-      const start = berlinLocalToUtcIso(`${key}T${usable ? startTime : '00:00'}`);
-      const end = berlinLocalToUtcIso(`${key}T${usable ? endTime : '23:59'}`);
-      // v29.52: Der erzeugte Tag erbt „ganztägig" vom Hauptevent — und ist es
-      // auch dann, wenn sich aus dem Zeitraum keine Uhrzeit ableiten ließ
-      // (`!usable`, z.B. Klammer 01.09. 00:00 – 25.09. 17:00). Genau dieser
-      // Fall hat die ganztägigen Blocker erzeugt, über die sich Organizer
-      // beschwert haben: 00:00–23:59 sieht in Outlook aus wie ein Tag
-      // Vollsperrung, ist aber technisch ein normaler Termin.
-      return prev.concat([makeSubEventDraft({
-        title: dayLabel(d), startDate: start, endDate: end,
-        allDay: allDay || !usable,
-      })]);
-    });
+    return toggleDaySubEventImpl({
+      activeScopeIdx, allDay, berlinLocalToUtcIso, dayKeyOfDate, dayKeyOfSub, dayLabel,
+      endDate, makeSubEventDraft, removedSavedSubs, setRemovedSavedSubs, setScope, setSubEvents,
+      startDate, subEvents,
+    }, d);
   };
 
   /**
@@ -5727,144 +4041,10 @@ export default function EventCreationPage(): React.ReactElement {
     mainLabel: string,
     ariaLabel: string,
   ): React.ReactElement | null => {
-    if (subEvents.length === 0) return null;
-    // v22.5: Der „Haupt"/„Klammer"-Badge links im Tab trägt die Rolle bereits —
-    // deshalb das doppelte „Klammer: …"/„Haupt-Event: …"-Präfix aus dem Label
-    // strippen (sonst stand „KLAMMER  Klammer: …" doppelt da). Sub-Event-Tabs
-    // zeigen nur den reinen Sub-Namen (ohne „<Hauptevent> | "-Präfix).
-    const strippedMain = mainLabel.replace(/^(Klammer|Bracket|Haupt-Event|Main event):\s*/i, '').trim();
-    const tabs: Array<{ label: string; isMain: boolean }> = [
-      { label: strippedMain || mainLabel, isMain: true },
-      ...subEvents.map(s => ({
-        label: (shortSubEventTitle(s.title, title) || (isDe ? 'Sub-Event ohne Titel' : 'Untitled sub-event')).trim(),
-        isMain: false,
-      })),
-    ];
-    // v28.72: Geltungsbereich benennen. Die Reiter standen bisher ohne
-    // Erklärung da — sie sehen aus wie eine Beschriftung („dieses Event hat
-    // 5 Teile"), nicht wie eine Umschaltung. Organizer stellten deshalb alles
-    // am ersten Reiter ein und wunderten sich, dass es für die anderen nicht
-    // galt; manche merkten gar nicht, dass ihr Event eine Klammer ist. Zwei
-    // Ergänzungen, beide am Blick des Nutzers ausgerichtet:
-    //  - eine Frage ÜBER den Reitern, die die Bedienung benennt,
-    //  - ein Hinweis UNTER den Reitern, direkt über den Feldern: für wen die
-    //    Einstellungen gerade gelten und wo die anderen zu finden sind. Der
-    //    steht bewusst bei den Feldern, weil dort hingeschaut wird — nicht
-    //    oben in der Leiste.
-    const subCount = subEvents.length;
-    const activeIsMain = activeIdx === 0;
-    const activeLabel = (tabs[activeIdx] || tabs[0]).label;
-    const mainWord = subEventsOnlyMode ? (isDe ? 'Klammer' : 'bracket') : (isDe ? 'Haupt-Event' : 'main event');
-    const otherSubs = activeIsMain ? subCount : subCount - 1;
-    const scopeText = ((): React.ReactNode => {
-      if (activeIsMain) {
-        if (isDe) {
-          return (
-            <>Du bearbeitest gerade {subEventsOnlyMode ? <>die <strong>Klammer</strong></> : <>das <strong>Haupt-Event</strong></>} „{activeLabel}“.{' '}
-              {subEventsOnlyMode
-                ? <>Zur Klammer meldet sich niemand direkt an — Teilnehmer wählen eines der Sub-Events. </>
-                : null}
-              Die Einstellungen auf dieser Seite gelten <strong>ausschließlich für {subEventsOnlyMode ? 'die Klammer' : 'das Haupt-Event'}</strong>. {otherSubs === 1 ? 'Das andere Sub-Event stellst du' : `Die ${otherSubs} Sub-Events stellst du`} oben über {otherSubs === 1 ? 'seinen Reiter' : 'ihre Reiter'} <strong>separat</strong> ein.</>
-          );
-        }
-        return (
-          <>You are editing the <strong>{subEventsOnlyMode ? 'bracket' : 'main event'}</strong> „{activeLabel}“.{' '}
-            {subEventsOnlyMode ? <>Nobody registers for the bracket itself — attendees pick one of the sub-events. </> : null}
-            These settings apply <strong>only to it</strong>. The {otherSubs === 1 ? 'other sub-event' : `${otherSubs} sub-events`} are configured <strong>separately</strong> via {otherSubs === 1 ? 'its tab' : 'their tabs'} above.</>
-        );
-      }
-      if (isDe) {
-        return (
-          <>Du bearbeitest gerade das <strong>Sub-Event</strong> „{activeLabel}“. Die Einstellungen auf dieser Seite gelten <strong>ausschließlich für dieses Sub-Event</strong>
-            {otherSubs > 0
-              ? <> — {mainWord === 'Klammer' ? 'die Klammer' : 'das Haupt-Event'} und {otherSubs === 1 ? 'das weitere Sub-Event' : `die ${otherSubs} weiteren Sub-Events`} stellst du oben über die Reiter separat ein.</>
-              : <> — {mainWord === 'Klammer' ? 'die Klammer' : 'das Haupt-Event'} stellst du oben über den Reiter separat ein.</>}</>
-        );
-      }
-      return (
-        <>You are editing the <strong>sub-event</strong> „{activeLabel}“. These settings apply <strong>only to it</strong>
-          {otherSubs > 0
-            ? <> — the {subEventsOnlyMode ? 'bracket' : 'main event'} and the {otherSubs === 1 ? 'other sub-event' : `${otherSubs} other sub-events`} are configured separately via the tabs above.</>
-            : <> — the {subEventsOnlyMode ? 'bracket' : 'main event'} is configured separately via its tab above.</>}</>
-      );
-    })();
-    // v22.30: Rendering + Sticky-Pin + gefüllter Aktiv-Tab leben in der
-    // Modul-Komponente StickyTabStrip (Hooks pro Instanz).
-    return (
-      <>
-        <div style={{
-          fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.03em',
-          textTransform: 'uppercase', color: 'var(--dex-gray-500)', marginBottom: 6,
-        }}>
-          {isDe ? 'Welches (Sub-)Event bearbeitest du gerade?' : 'Which (sub-)event are you editing?'}
-        </div>
-        <StickyTabStrip
-          tabs={tabs}
-          activeIdx={activeIdx}
-          onChange={onChange}
-          ariaLabel={ariaLabel}
-          mainBadge={subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt' : 'Main')}
-          klammer={subEventsOnlyMode}
-          klammerWord={isDe ? 'Klammerevent' : 'bracket event'}
-          // v29.23: Zähl-Badge rechts in der Klammer-Zeile — ersetzt die frei
-          // schwebende Zahl neben den umbrechenden Reitern. Im Kalender-Modus
-          // sind die Kinder „Termine", sonst gilt die Event-Bezeichnung.
-          countBadge={subCount >= 2 ? `${subCount} ${subEventCalendar
-            ? (isDe ? 'Termine' : 'dates')
-            : (childTermPlural || (isDe ? 'Sub-Events' : 'sub-events'))}` : undefined}
-          klammerInfo={
-            <InfoTooltip
-              placement="bottom"
-              interactive
-              text={isDe ? (
-                <>
-                  <strong>Klammerevent</strong> — zu diesem Event selbst meldet sich <strong>niemand</strong> an. Teilnehmer sehen nur die {childTermPlural || 'Sub-Events'} darunter und melden sich <strong>dort</strong> an. Der Eventname ist die Klammer darüber: Er erscheint in der Übersicht und fasst die {childTermPlural || 'Sub-Events'} zusammen.<br /><br />
-                  Deshalb gibt es hier keine eigene Teilnehmerzahl und keine eigene Warteliste — beides pflegst du je {childTermSingular || 'Sub-Event'}.<br /><br />
-                  <strong>Du willst, dass man sich auch zum Hauptevent anmelden kann?</strong> Dann stell die Anmeldung in Schritt 1 (&bdquo;Grundlagen&ldquo;) um —{' '}
-                  <button
-                    type="button"
-                    onClick={() => goToSubEventsMode()}
-                    style={{
-                      background: 'none', border: 'none', padding: 0, font: 'inherit',
-                      color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline',
-                      cursor: 'pointer', fontWeight: 700,
-                    }}
-                  >
-                    hier direkt hinspringen
-                  </button>.
-                </>
-              ) : (
-                <>
-                  <strong>Bracket event</strong> — <strong>nobody</strong> registers for this event itself. Attendees only see the sub-events below and register <strong>there</strong>. The event name is the bracket around them: it appears in the overview and groups the sub-events.<br /><br />
-                  That is why there is no capacity and no waitlist at this level — you set both per sub-event.<br /><br />
-                  <strong>Want people to be able to register for the main event too?</strong> Then change the registration mode in step 1 —{' '}
-                  <button
-                    type="button"
-                    onClick={() => goToSubEventsMode()}
-                    style={{
-                      background: 'none', border: 'none', padding: 0, font: 'inherit',
-                      color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline',
-                      cursor: 'pointer', fontWeight: 700,
-                    }}
-                  >
-                    jump there directly
-                  </button>.
-                </>
-              )}
-            />
-          }
-        />
-        <div style={{
-          margin: '-6px 0 16px', padding: '10px 12px', borderRadius: 8,
-          background: 'var(--dex-gray-50, #f8f9fa)',
-          border: '1px solid var(--dex-gray-200)',
-          borderLeft: '4px solid var(--dex-green, #86bc25)',
-          fontSize: '0.82rem', lineHeight: 1.55, color: 'var(--dex-gray-700)',
-        }}>
-          {scopeText}
-        </div>
-      </>
-    );
+    return renderPerEventTabStripImpl({
+      ariaLabel, childTermPlural, childTermSingular, goToSubEventsMode, isDe, mainLabel,
+      subEventCalendar, subEvents, subEventsOnlyMode, title,
+    }, activeIdx, onChange);
   };
 
   // Nutzungsbedingungen-Modal: zeigt sich beim ersten Aufruf der
