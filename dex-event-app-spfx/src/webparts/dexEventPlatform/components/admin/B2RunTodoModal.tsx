@@ -1,20 +1,15 @@
 /**
  * v30.54: „Offen beim Veranstalter" — die Aufgabenliste zum B2Run.
  *
- * Warum als eigenes Fenster und nicht als Teil des Imports: Der Import ist ein
- * Ereignis, die Aufgaben sind ein Zustand. Nach dem Rücklauf gehen die
- * Abmeldungen weiter, und jede erzeugt eine Ummeldung beim Veranstalter — zu
- * einem Zeitpunkt, an dem niemand eine Import-Maske offen hat. Diese Liste
- * rechnet deshalb bei jedem Öffnen neu aus der Teilnehmerliste (s.
- * utils/b2runTodos) statt einen Stand von damals zu zeigen.
+ * **v30.55 korrigiert den Ansatz aus v30.54.** Dort wurde die Liste
+ * ausschließlich aus den Teilnehmerzeilen abgeleitet — und war direkt nach
+ * einem Import leer, obwohl beim Veranstalter neun Ummeldungen warteten. Der
+ * Grund steht in `utils/b2runTodos`: Die Startnummer einer abgemeldeten Person
+ * existiert nur in der Datei des Veranstalters, nie in DEX. Was der Import
+ * erzeugt hat, wird deshalb FESTGEHALTEN (`_b2runTodo`); was seither passiert
+ * ist, kommt weiterhin aus der Ableitung. Beides wird hier zusammengeführt.
  *
- * **Gespeichert wird nur das Abhaken**, nicht die Liste selbst. Eine
- * gespeicherte Aufgabenliste wäre eine zweite Wahrheit neben den Anmeldungen:
- * Wird eine Abmeldung zurückgenommen oder eine Nummer korrigiert, stimmt sie
- * nicht mehr, und niemand merkt es. Der Haken liegt als Schlüssel-Liste im
- * Piggyback `_b2runTodoDone` der Event-Zeile; verschwindet die Aufgabe von
- * selbst (weil der Fall gelöst ist), ist der Haken bedeutungslos und stört
- * nicht.
+ * Der Haken liegt getrennt davon in `_b2runTodoDone`.
  */
 import * as React from 'react';
 import Modal from '../Modal';
@@ -22,10 +17,7 @@ import { useDialog } from '../../context/DialogContext';
 import { useEvents } from '../../context/EventContext';
 import { DeloitteEvent } from '../../types';
 import { EventService, SPRegistration } from '../../services/EventService';
-import { buildB2RunTodos, B2RunTodo, B2RUN_TODO_LABELS } from '../../utils/b2runTodos';
-
-const nameOf = (r?: SPRegistration): string =>
-  r ? `${r.Vorname || ''} ${r.Nachname || ''}`.trim() || (r.ParticipantEmail || '') : '—';
+import { mergeB2RunTodos, B2RunTodo, StoredB2RunTodo, B2RUN_TODO_LABELS } from '../../utils/b2runTodos';
 
 const KIND_COLOR: Record<B2RunTodo['kind'], { bg: string; fg: string }> = {
   transfer: { bg: 'rgba(237,139,0,0.12)', fg: 'var(--dex-orange-dark, #b35a00)' },
@@ -43,6 +35,8 @@ export default function B2RunTodoModal(props: {
   const { showAlert } = useDialog();
   const [loading, setLoading] = React.useState(true);
   const [todos, setTodos] = React.useState<B2RunTodo[]>([]);
+  const [regs, setRegs] = React.useState<SPRegistration[]>([]);
+  const [bibBusy, setBibBusy] = React.useState<string>('');
   const [done, setDone] = React.useState<string[]>([]);
   const [saving, setSaving] = React.useState(false);
   const [showDone, setShowDone] = React.useState(false);
@@ -54,13 +48,16 @@ export default function B2RunTodoModal(props: {
       try {
         const regs = await getAllRegistrations(props.event.id);
         if (cancelled) return;
-        setTodos(buildB2RunTodos(regs));
-        let stored: string[] = [];
+        setRegs(regs);
+        let storedTodos: StoredB2RunTodo[] = [];
+        let storedDone: string[] = [];
         try {
           const o = JSON.parse(props.event.emailTemplateOverrides || '{}');
-          if (Array.isArray(o?._b2runTodoDone)) stored = o._b2runTodoDone.filter((x: unknown) => typeof x === 'string');
-        } catch { /* kein Piggyback — dann ist nichts abgehakt */ }
-        setDone(stored);
+          if (Array.isArray(o?._b2runTodo)) storedTodos = o._b2runTodo.filter((x: unknown) => !!x && typeof x === 'object');
+          if (Array.isArray(o?._b2runTodoDone)) storedDone = o._b2runTodoDone.filter((x: unknown) => typeof x === 'string');
+        } catch { /* kein Piggyback — dann ist nichts festgehalten */ }
+        setTodos(mergeB2RunTodos(storedTodos, regs));
+        setDone(storedDone);
       } catch {
         if (!cancelled) await showAlert('Die Teilnehmerliste konnte nicht gelesen werden.', { variant: 'error' });
       } finally { if (!cancelled) setLoading(false); }
@@ -85,6 +82,40 @@ export default function B2RunTodoModal(props: {
     }
   };
 
+  /**
+   * v30.55: Die Startnummer in DEX auf die Person umtragen, die sie beim
+   * Veranstalter bekommt.
+   *
+   * Die Ummeldung beim Veranstalter ist das eine — steht die Nummer in DEX
+   * weiter bei der abgemeldeten Person (oder bei niemandem), zeigt der
+   * Check-in für die Person, die wirklich läuft, keine Nummer an. Der Knopf
+   * setzt sie deshalb um und räumt sie bei der Vorgängerin weg; danach
+   * verschwindet die Aufgabe von selbst aus der abgeleiteten Liste.
+   */
+  const moveBibInDex = async (t: B2RunTodo): Promise<void> => {
+    if (bibBusy || !t.toReg || !t.bib || !props.event.subsiteUrl) return;
+    setBibBusy(t.key);
+    try {
+      const actor = { name: 'DEX', email: '' };
+      await props.service.adminUpdateRegistration(props.event.subsiteUrl, t.toReg.Id, { Startnummer: t.bib }, actor);
+      // Bei der Vorgängerin leeren, damit die Nummer nicht zweimal in der
+      // Liste steht — sonst hält die Ableitung sie für weiterhin belegt.
+      const from = regs.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === (t.fromEmail || '').toLowerCase().trim()
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        && String((r as any).Startnummer || '').trim() === t.bib);
+      if (from) {
+        await props.service.adminUpdateRegistration(props.event.subsiteUrl, from.Id, { Startnummer: '' }, actor);
+      }
+      const fresh = await getAllRegistrations(props.event.id);
+      setRegs(fresh);
+      setTodos(prev => prev.map(x => x.key === t.key
+        ? { ...x, bibInDex: true, toReg: fresh.find(r => r.Id === t.toReg!.Id) || x.toReg }
+        : x));
+    } catch {
+      await showAlert('Die Startnummer konnte nicht übertragen werden — bitte erneut versuchen.', { variant: 'error' });
+    } finally { setBibBusy(''); }
+  };
+
   const open = todos.filter(t => done.indexOf(t.key) < 0);
   const closed = todos.filter(t => done.indexOf(t.key) >= 0);
 
@@ -98,8 +129,8 @@ export default function B2RunTodoModal(props: {
           done.indexOf(t.key) >= 0 ? 'erledigt' : 'offen',
           `${B2RUN_TODO_LABELS[t.kind]} — ${t.action}`,
           t.bib || '',
-          nameOf(t.from), t.from?.ParticipantEmail || '',
-          nameOf(t.to), t.to?.ParticipantEmail || '',
+          t.fromName || '', t.fromEmail || '',
+          t.toName || '', t.toEmail || '',
           t.certain ? 'in DEX aufgezeichnet' : 'erschlossen — bitte prüfen',
         ]);
       }
@@ -162,11 +193,30 @@ export default function B2RunTodoModal(props: {
         <div style={{ fontSize: '0.83rem', lineHeight: 1.5, textDecoration: isDone ? 'line-through' : undefined }}>
           {t.action}
         </div>
-        {(t.from || t.to) && (
+        {(t.fromEmail || t.toEmail) && (
           <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-            {t.from ? <>von {t.from.ParticipantEmail}</> : null}
-            {t.from && t.to ? ' · ' : ''}
-            {t.to ? <>auf {t.to.ParticipantEmail}</> : null}
+            {t.fromEmail ? <>von {t.fromEmail}</> : null}
+            {t.fromEmail && t.toEmail ? ' · ' : ''}
+            {t.toEmail ? <>auf {t.toEmail}</> : null}
+          </div>
+        )}
+        {/* v30.55: Die Ummeldung beim Veranstalter ist das eine — die Nummer
+            muss aber auch in DEX bei der richtigen Person stehen, sonst zeigt
+            der Check-in für die Person, die wirklich läuft, gar keine Nummer. */}
+        {!isDone && t.bib && t.toReg && !t.bibInDex && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={!!bibBusy}
+            onClick={() => { void moveBibInDex(t); }}
+            style={{ fontSize: '0.75rem', padding: '4px 12px', marginTop: 6 }}
+          >
+            {bibBusy === t.key ? 'Wird übertragen…' : `Startnummer ${t.bib} in DEX auf ${t.toName} übertragen`}
+          </button>
+        )}
+        {t.bib && t.bibInDex && (
+          <div style={{ fontSize: '0.72rem', color: 'var(--dex-green-dark, #4a7c1f)', marginTop: 4 }}>
+            In DEX steht die Nummer bereits bei {t.toName}.
           </div>
         )}
       </div>
