@@ -74,7 +74,7 @@ import { formatAllDayPeriod } from '../utils/eventFormat';
 import { getBlockedInviteRecipients } from '../utils/inviteGuards';
 import { ActionTile, SplitMergeToggle, ActionsCollapsibleCard, ActionsRegistryProvider, ActionsDropdown } from './admin/ActionsMenu';
 import BillingActionPanel from './admin/BillingActionPanel';
-import { parseBillingOf, missingBillingFields, faStatusOf, FA_STATUS_LABELS, FA_STATUS_COLORS } from '../utils/faBilling';
+import { parseBillingOf, missingBillingFields, faStatusOf, FA_STATUS_LABELS, FA_STATUS_COLORS, FA_STATUS_NEXT } from '../utils/faBilling';
 import { BILLING_FIELDS, canEditBilling } from '../data/billingFields';
 
 
@@ -7502,6 +7502,15 @@ export default function AdminPage(): React.ReactElement {
                   marginLeft: 8, padding: '1px 8px', borderRadius: 999, fontSize: '0.7rem', fontWeight: 700,
                   background: stColors.bg, color: stColors.fg,
                 }}>{FA_STATUS_LABELS[st]}</span>
+                {/* v30.47: Was als NAECHSTES zu tun ist — direkt unter dem
+                    Status. Ein Status allein sagt, wo man steht; er sagt nicht,
+                    ob man selbst dran ist oder wartet. Genau das war bei
+                    „vollstaendig, Versendung ausstehend" die Frage. */}
+                {FA_STATUS_NEXT[st] && (
+                  <div style={{ marginTop: 4, fontSize: '0.8rem', fontWeight: 600, color: stColors.fg }}>
+                    {FA_STATUS_NEXT[st]}
+                  </div>
+                )}
                 <div style={{ marginTop: 4, color: 'var(--dex-gray-700)' }}>
                   {incomplete
                     ? (isDe

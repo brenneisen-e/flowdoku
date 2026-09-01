@@ -25,6 +25,7 @@ import { deepLinkParams } from '../utils/deepLink';
 import FARecipientEditor from './admin/FARecipientEditor';
 import {
   parseBillingOf, faStatusOf, FAStatus, FA_STATUS_LABELS, FA_STATUS_COLORS,
+  FA_STATUS_ORDER, FA_STATUS_SHORT,
   FAConfig, BillingLogEntry,
 } from '../utils/faBilling';
 
@@ -163,7 +164,10 @@ export default function FACenterPage(): React.ReactElement {
   };
 
   const counts = React.useMemo(() => {
-    const c: Record<FAStatus, number> = { incomplete: 0, upcoming: 0, listPending: 0, sentAwaitSettle: 0, settled: 0 };
+    // v30.47: aus FA_STATUS_ORDER aufgebaut statt von Hand aufgezaehlt — eine
+    // neue Stufe im Statusmodell taucht damit automatisch hier auf.
+    const c = {} as Record<FAStatus, number>;
+    FA_STATUS_ORDER.forEach(k => { c[k] = 0; });
     billingEvents.forEach(x => { c[x.status]++; });
     return c;
   }, [billingEvents]);
@@ -466,12 +470,14 @@ export default function FACenterPage(): React.ReactElement {
 
       {/* 8.2 Dashboard */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 20 }}>
-        {([
-          ['incomplete', 'Abrechnungsrelevante Informationen unvollständig'],
-          ['upcoming', 'Event ausstehend'],
-          ['listPending', 'Teilnehmerlistenversand ausstehend'],
-          ['settled', 'Abgerechnet'],
-        ] as Array<[FAStatus, string]>).map(([key, label]) => (
+        {/* v30.47: Kacheln aus FA_STATUS_ORDER statt aus einer handgepflegten
+            Liste. Die alte Liste kannte vier der fuenf Stufen — Events im
+            Zustand „Teilnehmerliste versendet, Abschluss offen" waren ueber die
+            Kacheln gar nicht auffindbar. Eine Aufzaehlung, die eine Stufe
+            vergisst, versteckt genau die Events, die noch jemanden brauchen. */}
+        {FA_STATUS_ORDER.map(key => FA_STATUS_SHORT[key]).map((label, i) => {
+          const key = FA_STATUS_ORDER[i];
+          return (
           <button
             key={key}
             type="button"
@@ -485,7 +491,8 @@ export default function FACenterPage(): React.ReactElement {
             <div style={{ fontSize: '1.8rem', fontWeight: 800, color: FA_STATUS_COLORS[key].fg }}>{counts[key]}</div>
             <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', lineHeight: 1.4 }}>{label}</div>
           </button>
-        ))}
+          );
+        })}
       </div>
 
       {/* 9. Tabelle */}
