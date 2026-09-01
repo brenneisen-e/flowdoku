@@ -7,6 +7,7 @@
  * Generiert den kompletten HTML-Body für Power Automate.
  */
 
+import { normalizeMailHeaderImage } from '../utils/mailHeaderImage';
 import { SPHttpClient } from '@microsoft/sp-http';
 import { buildHashDeepLink } from '../utils/deepLink';
 
@@ -839,6 +840,21 @@ export interface QrEmailOverride {
   heading?: string;
   subheading?: string;
   bodyHtml?: string;
+  /**
+   * v30.52: Kopf-Bild der QR-Mail (Auswahl + Maße), gespeichert je Event.
+   *
+   * Anders als bei Massenmail und Einladung ist das hier eine DAUERHAFTE
+   * Einstellung: Die QR-Mail geht auch automatisch raus, wenn sich jemand
+   * neu anmeldet — es gibt in dem Moment keinen Dialog, in dem man die
+   * Breite noch einstellen könnte. Deshalb liegt sie im Override und nicht
+   * im Zustand eines Fensters.
+   *
+   * Gespeichert werden nur Auswahl und Zahlen, NIE das Foto selbst: Das
+   * Feld `EmailTemplateOverrides` trägt schon das Mail-Logo, und ein zweites
+   * Base64-Bild darin bringt die Spalte an ihr Größenlimit. Das Foto wird
+   * beim Versand aus dem Event-Bild aufgelöst (Cache, s. utils/imageCache).
+   */
+  headerImage?: { hero?: 'logo' | 'event'; width?: number; paddingV?: number; paddingH?: number };
 }
 
 /** Standard-Texte der QR-Mail mit Platzhaltern ({{Vorname}}, {{Name}},
@@ -928,7 +944,14 @@ export function qrCodeEmail(
   lang: string = 'EN',
   fullName?: string,
   override?: QrEmailOverride,
-  teilnehmerId?: number // v30.35: erscheint rechts neben dem Code
+  teilnehmerId?: number, // v30.35: erscheint rechts neben dem Code
+  /**
+   * v30.52: Event-Foto als Base64, wenn der Organizer es als Kopf-Bild
+   * gewählt hat. Der Aufrufer löst es auf (er kennt das Event); ohne den
+   * Wert bleibt `{{ORB_URL}}` stehen und der Flow setzt das Standard-Bild —
+   * genau das Verhalten von vorher.
+   */
+  eventPhotoB64?: string
 ): { subject: string; body: string } {
   // Fallback: wenn kein fullName übergeben, nutze nur firstName
   const fullDisplayName = (fullName || firstName || '').trim();
@@ -951,14 +974,27 @@ export function qrCodeEmail(
   } else {
     body += qrBlock;
   }
+  // v30.52: Kopf-Bild aus dem Override anwenden — Maße über wrapTemplate,
+  // das Foto (falls gewählt UND vom Aufrufer aufgelöst) statt {{ORB_URL}}.
+  const hdr = normalizeMailHeaderImage(override && override.headerImage);
+  // Der Orb-Schutz gilt auch hier: Ohne eigenes Bild wäre „Volle Breite" ein
+  // bildschirmfüllender, unten abgeschnittener Orb (s. utils/mailHeaderImage).
+  const ownImage = hdr.hero === 'event' && !!eventPhotoB64;
+  const wrapped = wrapTemplate(
+    GREEN,
+    replacePlaceholdersPlain(headingTpl, vars),
+    replacePlaceholdersPlain(subheadingTpl, vars),
+    body,
+    undefined,
+    {
+      imageWidth: ownImage ? hdr.width : Math.min(hdr.width, 180),
+      imagePaddingV: ownImage ? hdr.paddingV : Math.max(hdr.paddingV, 20),
+      imagePaddingH: ownImage ? hdr.paddingH : Math.max(hdr.paddingH, 20),
+    }
+  );
   return {
     subject: replacePlaceholdersPlain(subjectTpl, vars),
-    body: wrapTemplate(
-      GREEN,
-      replacePlaceholdersPlain(headingTpl, vars),
-      replacePlaceholdersPlain(subheadingTpl, vars),
-      body
-    ),
+    body: ownImage ? wrapped.replace(/\{\{ORB_URL\}\}/g, eventPhotoB64!) : wrapped,
   };
 }
 

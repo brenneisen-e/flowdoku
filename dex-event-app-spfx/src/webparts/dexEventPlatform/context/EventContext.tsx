@@ -25,6 +25,7 @@ import { RELEASE_NOTES } from '../data/releaseNotes';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
 import { looksLikeClaimName, resolveMyDisplayName, safeDisplayName } from '../utils/displayName';
 import { emitBootStage } from '../utils/bootProgress';
+import { getCachedImage } from '../utils/imageCache';
 import { DEX_TEAM_RECIPIENTS } from '../utils/supportContact';
 import { parseBillingOf, missingBillingFields, renderBillingInfoMailBody, renderBillingListMailBody, trimBillingLog, faRowsFromRegistrations, BillingData, BillingLogEntry, FAConfig } from '../utils/faBilling';
 
@@ -2405,9 +2406,24 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
               try {
                 const ovAll = JSON.parse(event.emailTemplateOverrides || '{}');
                 const ov = ovAll && ovAll['QRCode'];
-                if (ov && (ov.subject || ov.heading || ov.subheading || ov.bodyHtml)) qrOverride = ov;
+                // v30.52: `headerImage` zählt jetzt AUCH als Override — sonst
+                // ginge die gespeicherte Kopf-Bild-Einstellung beim
+                // automatischen Versand verloren, wenn die Texte auf dem
+                // Standard stehen.
+                if (ov && (ov.subject || ov.heading || ov.subheading || ov.bodyHtml || ov.headerImage)) qrOverride = ov;
               } catch { /* kein Override */ }
-              const qrMail = qrCodeEmail(firstNameToUse, event.title, qrImageHtml, lang, nameToUse, qrOverride);
+              // v30.52: Hat der Organizer das Event-Foto als Kopf-Bild
+              // gewählt, wird es hier aufgelöst und fest eingebacken — sonst
+              // bleibt {{ORB_URL}} stehen und der Flow setzt das Standardbild.
+              // Der Abruf ist gecacht, kostet pro Sitzung also einmal.
+              let qrHeroPhoto = '';
+              if (qrOverride && qrOverride.headerImage && qrOverride.headerImage.hero === 'event' && event.imageUrl) {
+                try {
+                  const b64 = await getCachedImage(event.imageUrl);
+                  if (b64 && b64.indexOf('data:') === 0) qrHeroPhoto = b64;
+                } catch { /* Foto nicht ladbar → Standardbild */ }
+              }
+              const qrMail = qrCodeEmail(firstNameToUse, event.title, qrImageHtml, lang, nameToUse, qrOverride, undefined, qrHeroPhoto);
               // v9.22: Auto-Send-QR für externe Empfänger ebenfalls an den
               // Organizer umleiten (mit klarem Subject-Präfix), nicht an den
               // externen Mail-Empfänger.
