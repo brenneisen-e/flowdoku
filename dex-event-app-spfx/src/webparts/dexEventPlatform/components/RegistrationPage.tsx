@@ -43,6 +43,7 @@ import StayRangePicker from './StayRangePickerLazy';
 import { DEX_ORB_PNG } from '../data/brandLogos';
 import { getCachedOrbBase64, replacePlaceholders } from '../services/EmailTemplates';
 import { formatAllDayPeriod } from '../utils/eventFormat';
+import { dlog } from '../utils/debugLog';
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -1004,21 +1005,21 @@ export default function RegistrationPage(): React.ReactElement {
               // 0, die den ursprünglichen Fehler erzeugt hat.
               if (stats && stats.seatsKnown && typeof stats.active === 'number' && stats.active >= 0) {
                 // eslint-disable-next-line no-console
-                console.log(`[DEX][seats] "${title}" — Quelle: Platzzähler · belegt ${stats.active}/${cap} · frei ${Math.max(0, cap - stats.active)} · Warteliste ${stats.waitlist < 0 ? 'unbekannt' : stats.waitlist}`);
+                dlog('seats', `[DEX][seats] "${title}" — Quelle: Platzzähler · belegt ${stats.active}/${cap} · frei ${Math.max(0, cap - stats.active)} · Warteliste ${stats.waitlist < 0 ? 'unbekannt' : stats.waitlist}`);
                 return stats.active;
               }
               // eslint-disable-next-line no-console
-              console.log(`[DEX][seats] "${title}" — Platzzähler ${stats ? 'nie beschrieben (seatsKnown=false)' : 'nicht lesbar'} → Rückfall auf die Teilnehmerliste`);
+              dlog('seats', `[DEX][seats] "${title}" — Platzzähler ${stats ? 'nie beschrieben (seatsKnown=false)' : 'nicht lesbar'} → Rückfall auf die Teilnehmerliste`);
             } catch (e) {
               // eslint-disable-next-line no-console
-              console.log(`[DEX][seats] "${title}" — Platzzähler-Abruf fehlgeschlagen → Rückfall auf die Teilnehmerliste`, e);
+              dlog('seats', `[DEX][seats] "${title}" — Platzzähler-Abruf fehlgeschlagen → Rückfall auf die Teilnehmerliste`, e);
             }
             let readable = true;
             try {
               const regs = await getAllRegistrations(subId, (status) => {
                 readable = false;
                 // eslint-disable-next-line no-console
-                console.log(`[DEX][seats] "${title}" — Teilnehmerliste nicht (vollständig) lesbar, HTTP ${status}. Keine Zahl anzeigen.`);
+                dlog('seats', `[DEX][seats] "${title}" — Teilnehmerliste nicht (vollständig) lesbar, HTTP ${status}. Keine Zahl anzeigen.`);
               });
               if (!readable) return null;
               const n = (regs || []).filter(r => {
@@ -1026,11 +1027,11 @@ export default function RegistrationPage(): React.ReactElement {
                 return st === 'Angemeldet' || st === 'QR versendet' || st === 'Eingecheckt';
               }).length;
               // eslint-disable-next-line no-console
-              console.log(`[DEX][seats] "${title}" — Quelle: Teilnehmerliste · belegt ${n}/${cap} · frei ${Math.max(0, cap - n)} · ${regs.length} Zeile(n) gelesen`);
+              dlog('seats', `[DEX][seats] "${title}" — Quelle: Teilnehmerliste · belegt ${n}/${cap} · frei ${Math.max(0, cap - n)} · ${regs.length} Zeile(n) gelesen`);
               return n;
             } catch (e) {
               // eslint-disable-next-line no-console
-              console.log(`[DEX][seats] "${title}" — auch die Teilnehmerliste nicht lesbar. Keine Zahl anzeigen.`, e);
+              dlog('seats', `[DEX][seats] "${title}" — auch die Teilnehmerliste nicht lesbar. Keine Zahl anzeigen.`, e);
               return null;
             }
           };

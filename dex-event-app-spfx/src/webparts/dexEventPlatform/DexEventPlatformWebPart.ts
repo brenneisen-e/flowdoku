@@ -14,6 +14,7 @@ import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
 
 import DexEventPlatform, { IDexEventPlatformProps } from './components/DexEventPlatform';
 import { APP_VERSION } from './version';
+import { dlog } from './utils/debugLog';
 
 /**
  * v29.51 (Messpunkt): Zeit vom Seitenaufruf bis hierher.
@@ -30,7 +31,7 @@ export default class DexEventPlatformWebPart extends BaseClientSideWebPart<{}> {
 
   public render(): void {
     // eslint-disable-next-line no-console
-    console.log(`[DEX][perf][shell] v${APP_VERSION} · Bundle bereit nach ${bootShellMs} ms (Seite + Download + Parsen, noch kein Request)`);
+    dlog('perf', `[DEX][perf][shell] v${APP_VERSION} · Bundle bereit nach ${bootShellMs} ms (Seite + Download + Parsen, noch kein Request)`);
     const element: React.ReactElement<IDexEventPlatformProps> = React.createElement(
       DexEventPlatform,
       { context: this.context }

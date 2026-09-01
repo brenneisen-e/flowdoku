@@ -36,6 +36,7 @@ import OrganizerRequestsBanner from './OrganizerRequestsBanner';
 import GrantAccessHandler from './GrantAccessHandler';
 import InviteDownloadHandler from './InviteDownloadHandler';
 import { KpiRow } from './LandingPage';
+import { dlog } from '../utils/debugLog';
 
 // v20.0 (Audit): Route-Level-Code-Splitting. Die schweren Sekundär-Seiten
 // (Wizard ~13k Zeilen + react-datepicker, Organizer Center ~9.5k Zeilen + xlsx,
@@ -245,18 +246,18 @@ function AppContent(): React.ReactElement {
     try {
       if (sessionStorage.getItem(SESSION_KEY) === '1') {
         // eslint-disable-next-line no-console
-        console.log('[DEX KPI] Events-Zahl in dieser Browser-Session bereits neu berechnet — übersprungen.');
+        dlog('kpi', '[DEX KPI] Events-Zahl in dieser Browser-Session bereits neu berechnet — übersprungen.');
         return;
       }
     } catch { /* */ }
     // eslint-disable-next-line no-console
-    console.log('[DEX KPI] Admin-Session — Events-Zahl aus DEX_Events neu berechnen (Teilnehmer bleibt der Live-Counter).');
+    dlog('kpi', '[DEX KPI] Admin-Session — Events-Zahl aus DEX_Events neu berechnen (Teilnehmer bleibt der Live-Counter).');
     recomputeEventKpiOnly()
       .then(events2 => {
         if (events2 === null) return;
         setKpiCache(prev => ({ participants: prev?.participants ?? 0, events: events2 }));
         // eslint-disable-next-line no-console
-        console.log(`[DEX KPI] Events-Zahl aktualisiert: ${events2} (in _Config gespeichert).`);
+        dlog('kpi', `[DEX KPI] Events-Zahl aktualisiert: ${events2} (in _Config gespeichert).`);
         try { sessionStorage.setItem(SESSION_KEY, '1'); } catch { /* */ }
       })
       .catch(() => { /* */ });

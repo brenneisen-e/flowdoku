@@ -29,6 +29,7 @@ import { emitBootStage } from '../utils/bootProgress';
 import { getCachedImage } from '../utils/imageCache';
 import { DEX_TEAM_RECIPIENTS } from '../utils/supportContact';
 import { parseBillingOf, missingBillingFields, renderBillingInfoMailBody, renderBillingListMailBody, trimBillingLog, faRowsFromRegistrations, BillingData, BillingLogEntry, FAConfig } from '../utils/faBilling';
+import { dlog } from '../utils/debugLog';
 
 /**
  * Organizer-Namen für Mail-Anreden sauber formatieren:
@@ -993,7 +994,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       ]);
       const dPar = Math.round(performance.now() - tPar);
       // eslint-disable-next-line no-console
-      console.log(`[DEX][perf][boot] ensure-parallel-stage = ${dPar} ms`);
+      dlog('perf', `[DEX][perf][boot] ensure-parallel-stage = ${dPar} ms`);
       // Einzelne Sub-Zeiten in die Gesamt-Tabelle übernehmen.
       for (const m of parallelMarks) perfMarks.push(m);
       // Erfolg markieren — nächster Boot überspringt die ensure-Calls.
@@ -1031,10 +1032,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const sorted = [...perfMarks].sort((a, b) => b.ms - a.ms);
     if (skipEnsure) {
       // eslint-disable-next-line no-console
-      console.log(`[DEX][perf][boot] total = ${tTotal} ms (schema-ensure SKIPPED, version=v${APP_VERSION})`);
+      dlog('perf', `[DEX][perf][boot] total = ${tTotal} ms (schema-ensure SKIPPED, version=v${APP_VERSION})`);
     } else {
       // eslint-disable-next-line no-console
-      console.log(`[DEX][perf][boot] total = ${tTotal} ms (schema-ensure RAN, version=v${APP_VERSION})`);
+      dlog('perf', `[DEX][perf][boot] total = ${tTotal} ms (schema-ensure RAN, version=v${APP_VERSION})`);
     }
     // eslint-disable-next-line no-console
     console.table(sorted.map(m => ({ stage: m.name, ms: m.ms })));
@@ -1055,7 +1056,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const spEvents = await eventService.getEvents();
     const dGet = Math.round(performance.now() - tGet);
     // eslint-disable-next-line no-console
-    console.log(`[DEX][perf][loadEvents] getEvents = ${dGet} ms (n=${spEvents.length})`);
+    dlog('perf', `[DEX][perf][loadEvents] getEvents = ${dGet} ms (n=${spEvents.length})`);
     emitBootStage('mapping');
     const tMap = performance.now();
     // v9.41: jedes Event-Mapping einzeln in try/catch wrappen — wenn EIN
@@ -1075,7 +1076,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const mapped = safeMapped.filter((x): x is DeloitteEvent => x !== null);
     const dMap = Math.round(performance.now() - tMap);
     // eslint-disable-next-line no-console
-    console.log(`[DEX][perf][loadEvents] mapSPEventToDeloitteEvent x ${spEvents.length} = ${dMap} ms`);
+    dlog('perf', `[DEX][perf][loadEvents] mapSPEventToDeloitteEvent x ${spEvents.length} = ${dMap} ms`);
 
     // AB HIER ist die App bedienbar: Titel, Zeiten, Sichtbarkeit, Bilder und
     // die zuletzt gespeicherte Teilnehmerzahl (Spalte CurrentParticipants)
@@ -1088,7 +1089,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         const tCnt = performance.now();
         const withCounts = await loadParticipantCountsForEvents(mapped);
         // eslint-disable-next-line no-console
-        console.log(`[DEX][perf][loadEvents] participantCounts (nachgelagert) = ${Math.round(performance.now() - tCnt)} ms`);
+        dlog('perf', `[DEX][perf][loadEvents] participantCounts (nachgelagert) = ${Math.round(performance.now() - tCnt)} ms`);
         setEvents(withCounts);
       } catch (err) { console.warn('[DEX] Teilnehmerzahlen-Nachlauf fehlgeschlagen:', err); }
     })();

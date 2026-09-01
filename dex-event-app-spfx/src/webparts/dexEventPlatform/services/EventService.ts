@@ -40,6 +40,7 @@ import { subscribeListChanges } from '../utils/spListRealtime';
 import { DexTicket, TicketFollowUp } from '../types';
 // v28.95: Erstes nach Thema herausgeloestes Fach-Modul (siehe CLAUDE.md).
 import * as tickets from './tickets';
+import { dlog } from '../utils/debugLog';
 export const REG_LIST_NAME = 'Teilnehmer';
 
 /** v28.61: Je Teilnehmerliste nur einmal pro Sitzung die Hotel-Spalten
@@ -6496,7 +6497,7 @@ export class EventService {
     // Der Zähler wird seit v30.62 auf der Anmeldeseite angezeigt; wenn eine
     // Zahl nicht stimmt, muss sich die Ursache ohne Rätselraten ablesen lassen.
     // eslint-disable-next-line no-console
-    const log = (msg: string): void => console.log(`[DEX][seats] Abmeldung — ${msg}`);
+    const log = (msg: string): void => dlog('seats', `[DEX][seats] Abmeldung — ${msg}`);
     try {
       const synced = await this.syncSeatsToActiveCount(subsiteUrl, { isSplit: opts.isSplit });
       if (synced) { log('Voll-Abgleich gelaufen (Vollzugriff) — Zähler exakt neu gesetzt.'); return; }

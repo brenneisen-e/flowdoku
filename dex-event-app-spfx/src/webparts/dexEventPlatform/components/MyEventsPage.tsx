@@ -37,6 +37,7 @@ import StayRangePicker from './StayRangePickerLazy';
 import { TeamsJoinButton } from './TeamsJoinButton';
 import { eventTeamsLink, locationWithoutTeamsUrl } from '../utils/teamsLink';
 import { formatAllDayPeriod } from '../utils/eventFormat';
+import { dlog } from '../utils/debugLog';
 
 // v20.0 (Audit): PdfViewer zieht react-pdf (+pdfjs) ins Bundle — lazy laden,
 // der Viewer wird nur beim Öffnen eines Dokuments gebraucht.
@@ -1098,7 +1099,7 @@ export default function MyEventsPage(): React.ReactElement {
     // (vorher O(Events × Anmeldungen) pro Ladevorgang).
     const myNumSet = new Set(allMyNumbers);
     // eslint-disable-next-line no-console
-    console.log(`[DEX][perf][myevents] getMyEventNumbers = ${Math.round(performance.now() - tNums)} ms (n=${allMyNumbers.length})`);
+    dlog('perf', `[DEX][perf][myevents] getMyEventNumbers = ${Math.round(performance.now() - tNums)} ms (n=${allMyNumbers.length})`);
 
     if (allMyNumbers.length > 0) {
       // Nur Events laden die in DEX_Participants stehen
@@ -1113,7 +1114,7 @@ export default function MyEventsPage(): React.ReactElement {
         catch { return { event, reg: null as SPRegistration | null }; }
       }));
       // eslint-disable-next-line no-console
-      console.log(`[DEX][perf][myevents] getMyRegistration relevant n=${relevantEvents.length} = ${Math.round(performance.now() - tRel)} ms (parallel)`);
+      dlog('perf', `[DEX][perf][myevents] getMyRegistration relevant n=${relevantEvents.length} = ${Math.round(performance.now() - tRel)} ms (parallel)`);
       for (const { event, reg } of relevantRegs) {
         if (!reg) {
           // v28.23: Das zentrale Teilnehmer-Register kennt die Anmeldung, die
@@ -1250,7 +1251,7 @@ export default function MyEventsPage(): React.ReactElement {
         catch { return { event, reg: null as SPRegistration | null }; }
       }));
       // eslint-disable-next-line no-console
-      console.log(`[DEX][perf][myevents] getMyRegistration remaining n=${remainingEvents.length} = ${Math.round(performance.now() - tRem)} ms (parallel, Abgemeldet-Suche)`);
+      dlog('perf', `[DEX][perf][myevents] getMyRegistration remaining n=${remainingEvents.length} = ${Math.round(performance.now() - tRem)} ms (parallel, Abgemeldet-Suche)`);
       for (const { event, reg } of remainingRegs) {
         if (reg && reg.Status === 'Abgemeldet') {
           // v10.22: Auch hier den hasActiveChild-Sonderfall prüfen — falls
@@ -1280,7 +1281,7 @@ export default function MyEventsPage(): React.ReactElement {
         catch { return { event, reg: null as SPRegistration | null }; }
       }));
       // eslint-disable-next-line no-console
-      console.log(`[DEX][perf][myevents] getMyRegistration fallback n=${topLevelEvents.length} = ${Math.round(performance.now() - tFb)} ms (parallel, Altdaten-Pfad)`);
+      dlog('perf', `[DEX][perf][myevents] getMyRegistration fallback n=${topLevelEvents.length} = ${Math.round(performance.now() - tFb)} ms (parallel, Altdaten-Pfad)`);
       for (const { event, reg } of fbRegs) {
         if (reg) entries.push({ event, registration: reg });
       }
@@ -1298,7 +1299,7 @@ export default function MyEventsPage(): React.ReactElement {
     } catch { /* ignore */ }
     const tTotal = Math.round(performance.now() - tStart);
     // eslint-disable-next-line no-console
-    console.log(`[DEX][perf][myevents] total = ${tTotal} ms (entries=${entries.length}, silent=${silent})`);
+    dlog('perf', `[DEX][perf][myevents] total = ${tTotal} ms (entries=${entries.length}, silent=${silent})`);
   }
 
   // Eigentliche Cancel-Logik (direkt ausführen, ohne 2-Klick-Bestätigung).

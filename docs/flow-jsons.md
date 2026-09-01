@@ -19,6 +19,260 @@ Wird aktualisiert wenn Flows geändert werden.
 **Zweck:** TeilnehmerIDs neu vergeben (Aktive + Warteliste lückenlos sortiert) + Nachrücken von Warteliste (seit v6.7 inkl. typ-bewusster Promotion für B2Run-Split-Wartelisten; seit v10.20 mit optionalem Shared-Waitlist-Modus)
 **Letztes Update:** 2026-06-11 (Audit-Fixes: Status-Sortierung in der Renummerierung, Folge-Reorder nach jeder Promotion, Fehler-Sichtbarkeit; JSON unten = as-implemented Export vom 2026-06-11)
 
+### UI-Anleitung 2026-09-01 (v30.63) — Platzzähler nach dem Nachrücken mitziehen
+
+**Warum das nötig ist.** Der Flow promotet beim Nachrücken eine Person von
+`Warteliste` auf `Angemeldet` — er fasst dabei aber die Liste
+`DEX_TeilnehmerCounter` nicht an. Der Zähler `SeatsTaken` bleibt also stehen,
+obwohl ein Platz belegt wurde, und `WaitlistTaken` bleibt zu hoch.
+
+Für die **Überbuchungs-Sperre** war das bisher folgenlos: `reserveSeat` in der
+App liest zusätzlich den echten Bestand und nimmt den höheren der beiden Werte.
+Seit **v30.62** zeigt die **Anmeldeseite** diesen Zähler aber an — er ist die
+einzige Quelle, die auch normale Teilnehmer lesen dürfen. Eine Drift ist damit
+keine interne Ungenauigkeit mehr, sondern eine falsche Zahl auf dem Bildschirm:
+Nach einem Nachrücken steht dort ein Platz zu viel als frei.
+
+**Der Ansatz: absolute Werte statt +1/−1.** Der Flow zählt den tatsächlichen
+Bestand und schreibt ihn. Das ist idempotent (ein doppelter Lauf schadet nicht),
+braucht kein ETag-Verfahren im Flow und heilt nebenbei jede ältere Abweichung —
+anders als ein Inkrement, das bei einem verlorenen Lauf für immer danebenliegt.
+
+**Die Stelle ist für alle drei Nachrück-Zweige dieselbe.** `Is_B2RunSplit`
+enthält die Zweige A/B/C; unmittelbar danach läuft `DEX_IDReorder` (setzt das
+Queue-Item auf `Done`). Genau dazwischen kommen die neuen Actions — einmal, statt
+dreimal in jedem Zweig.
+
+> **Vor dem Umsetzen bitte kurz prüfen** (ich kann den Tenant von hier nicht
+> einsehen, und diese Doku kann veralten — genau das ist am 31.08. schon einmal
+> passiert):
+> - [ ] Der Flow **DEX_IDReorder_TeilnehmerIDs** enthält eine Action **`Is_B2RunSplit`** (Art: **Condition**).
+> - [ ] Direkt danach folgt eine Action **`DEX_IDReorder`** (Art: **Update item**), die den Status auf `Done` setzt.
+> - [ ] Es gibt eine Action **`Settings`**, aus der `siteAddress` kommt.
+>
+> Heißen die Actions bei dir anders, ist nur EINES wichtig: Die neuen Actions
+> müssen **nach allen Promote-Zweigen** und **vor** dem Setzen auf `Done` laufen.
+
+#### Klick-Anleitung als Tabelle
+
+| # | NEU/GEÄNDERT | Name der Action | Art der Action | Stelle |
+|---|---|---|---|---|
+| 1 | NEU | `Count_Seats_Active` | Send an HTTP request to SharePoint | direkt nach `Is_B2RunSplit` |
+| 2 | NEU | `Count_Seats_Waitlist` | Send an HTTP request to SharePoint | direkt nach `Count_Seats_Active` |
+| 3 | NEU | `Count_Seats_Durch` | Send an HTTP request to SharePoint | direkt nach `Count_Seats_Waitlist` |
+| 4 | NEU | `Count_Seats_Fun` | Send an HTTP request to SharePoint | direkt nach `Count_Seats_Durch` |
+| 5 | NEU | `Sync_Seat_Counter` | Send an HTTP request to SharePoint | direkt nach `Count_Seats_Fun` |
+| 6 | GEÄNDERT | `DEX_IDReorder` | Update item (bestehend) | Run after auf `Sync_Seat_Counter` umhängen |
+
+Alle fünf neuen Actions sind vom selben Typ. So legst du eine an:
+
+- [ ] Am **+** unter der jeweiligen Vorgänger-Action auf **Add an action** klicken.
+- [ ] Im Suchfeld **Send an HTTP request to SharePoint** eingeben und auswählen.
+- [ ] **Site Address:** auf das Feld klicken → **Enter custom value** → über den **Expression**-Tab (fx) eintragen:
+
+```
+outputs('Settings')?['siteAddress']
+```
+
+- [ ] **Method**, **Uri**, **Headers**, **Body** wie unten setzen.
+- [ ] **⋮ → Rename** → den Namen exakt eintragen (die Namen stehen in den Ausdrücken!).
+- [ ] **⋮ → Configure run after** → beim Vorgänger zusätzlich zu **is successful** auch **has failed** und **is skipped** anhaken. Der Platzzähler ist eine Nebenbuchhaltung — er darf einen Nachrück-Lauf nie zum Scheitern bringen.
+
+---
+
+#### Zeile 1 — `Count_Seats_Active` (Send an HTTP request to SharePoint) · NEU
+
+Zählt, wie viele Personen aktuell wirklich einen Platz belegen.
+
+- [ ] **Method:** `GET`
+- [ ] **Uri** — als Text einfügen (kein fx nötig):
+
+```
+_api/web/lists/getbytitle('Teilnehmer')/items?$filter=(Status eq 'Angemeldet') or (Status eq 'QR versendet') or (Status eq 'Eingecheckt')&$select=Id&$top=1&$inlinecount=allpages
+```
+
+- [ ] **Headers** — eine Zeile, links der Key, rechts der Wert:
+
+```
+Accept
+```
+
+```
+application/json;odata=verbose
+```
+
+> `$top=1` ist Absicht: Uns interessiert nur `__count`, nicht die Zeilen. Damit
+> bleibt die Antwort winzig, egal wie groß die Liste ist. `$inlinecount=allpages`
+> liefert die Gesamtzahl **ohne** Paginierung — der Grund, warum hier
+> `odata=verbose` steht und nicht `nometadata`.
+
+---
+
+#### Zeile 2 — `Count_Seats_Waitlist` (Send an HTTP request to SharePoint) · NEU
+
+- [ ] **Method:** `GET`
+- [ ] **Uri:**
+
+```
+_api/web/lists/getbytitle('Teilnehmer')/items?$filter=Status eq 'Warteliste'&$select=Id&$top=1&$inlinecount=allpages
+```
+
+- [ ] **Headers:** dieselbe eine Zeile wie oben (`Accept` / `application/json;odata=verbose`).
+
+---
+
+#### Zeile 3 — `Count_Seats_Durch` (Send an HTTP request to SharePoint) · NEU
+
+Nur bei B2Run-Events mit geteilten Gruppen relevant. Bei allen anderen Events
+liefert die Abfrage schlicht `0` — deshalb braucht es keine Bedingung drumherum.
+
+- [ ] **Method:** `GET`
+- [ ] **Uri:**
+
+```
+_api/web/lists/getbytitle('Teilnehmer')/items?$filter=StarterType eq 'Durchstarter' and ((Status eq 'Angemeldet') or (Status eq 'QR versendet') or (Status eq 'Eingecheckt'))&$select=Id&$top=1&$inlinecount=allpages
+```
+
+- [ ] **Headers:** `Accept` / `application/json;odata=verbose`.
+
+---
+
+#### Zeile 4 — `Count_Seats_Fun` (Send an HTTP request to SharePoint) · NEU
+
+- [ ] **Method:** `GET`
+- [ ] **Uri:**
+
+```
+_api/web/lists/getbytitle('Teilnehmer')/items?$filter=StarterType eq 'Funstarter' and ((Status eq 'Angemeldet') or (Status eq 'QR versendet') or (Status eq 'Eingecheckt'))&$select=Id&$top=1&$inlinecount=allpages
+```
+
+- [ ] **Headers:** `Accept` / `application/json;odata=verbose`.
+
+---
+
+#### Zeile 5 — `Sync_Seat_Counter` (Send an HTTP request to SharePoint) · NEU
+
+Schreibt die vier gezählten Werte in die Zähler-Zeile.
+
+- [ ] **Method:** `POST`
+- [ ] **Uri:**
+
+```
+_api/web/lists/getbytitle('DEX_TeilnehmerCounter')/items(1)
+```
+
+- [ ] **Headers** — vier Zeilen:
+
+```
+Accept
+```
+
+```
+application/json;odata=verbose
+```
+
+```
+Content-Type
+```
+
+```
+application/json;odata=verbose
+```
+
+```
+IF-MATCH
+```
+
+```
+*
+```
+
+```
+X-HTTP-Method
+```
+
+```
+MERGE
+```
+
+- [ ] **Body** — komplett in den **Body**-Kasten einfügen. Die vier `@{…}`-Stellen sind **Ausdrücke**: an die jeweilige Stelle klicken, den **Expression**-Tab (fx) öffnen, den Ausdruck ohne die `@{ }`-Klammern eintippen, **OK**. Niemals als reinen Text stehen lassen.
+
+```
+{
+  "__metadata": { "type": "SP.Data.DEX_x005f_TeilnehmerCounterListItem" },
+  "SeatsTaken": @{int(body('Count_Seats_Active')?['d']?['__count'])},
+  "SeatsTakenDurch": @{int(body('Count_Seats_Durch')?['d']?['__count'])},
+  "SeatsTakenFun": @{int(body('Count_Seats_Fun')?['d']?['__count'])},
+  "WaitlistTaken": @{int(body('Count_Seats_Waitlist')?['d']?['__count'])}
+}
+```
+
+Die vier Ausdrücke einzeln zum Kopieren:
+
+```
+int(body('Count_Seats_Active')?['d']?['__count'])
+```
+
+```
+int(body('Count_Seats_Durch')?['d']?['__count'])
+```
+
+```
+int(body('Count_Seats_Fun')?['d']?['__count'])
+```
+
+```
+int(body('Count_Seats_Waitlist')?['d']?['__count'])
+```
+
+> `int(…)` ist Pflicht: `__count` kommt als **Zeichenkette** zurück, das
+> SharePoint-Feld ist eine **Zahl**. Ohne die Umwandlung antwortet SharePoint mit
+> HTTP 400 und der Zähler bleibt stehen.
+
+---
+
+#### Zeile 6 — `DEX_IDReorder` (Update item) · GEÄNDERT
+
+Die bestehende Abschluss-Action muss jetzt nach der neuen Kette laufen, nicht
+mehr direkt nach `Is_B2RunSplit`.
+
+- [ ] Action **`DEX_IDReorder`** öffnen.
+- [ ] **⋮ → Configure run after**.
+- [ ] Den Haken bei **`Is_B2RunSplit`** entfernen.
+- [ ] **`Sync_Seat_Counter`** auswählen und dort **is successful**, **has failed** und **is skipped** anhaken.
+- [ ] **Done** klicken.
+
+> Alle drei Zustände sind Absicht: Ob der Platzzähler geschrieben werden konnte
+> oder nicht, darf nicht darüber entscheiden, ob das Queue-Item auf `Done` geht.
+> Sonst bliebe es auf `Processing` hängen — und der nächste Reorder-Lauf würde
+> auf ein Item warten, das nie fertig wird.
+
+- [ ] Oben rechts **Save** klicken.
+
+---
+
+#### Test
+
+- [ ] Ein Test-Event mit **Kapazität 2** anlegen, drei Personen anmelden (die dritte landet auf der Warteliste).
+- [ ] In SharePoint die Liste **DEX_TeilnehmerCounter** der Event-Subsite öffnen. Erwartung: `SeatsTaken` = 2, `WaitlistTaken` = 1.
+- [ ] Eine der beiden aktiven Personen abmelden.
+- [ ] Im Flow **DEX_IDReorder_TeilnehmerIDs** unter **Run history** den frischen Lauf öffnen und prüfen, dass `Sync_Seat_Counter` **grün** ist.
+- [ ] Die Zähler-Liste neu laden. Erwartung: `SeatsTaken` = 2 (die dritte Person ist nachgerückt), `WaitlistTaken` = 0.
+- [ ] Die Anmeldeseite als **normaler Teilnehmer** öffnen (nicht als Organizer) und die Termin-Kachel ansehen. Erwartung: **0 frei**. In der Browser-Konsole (F12) steht die Zeile `[DEX][seats] … Quelle: Platzzähler · belegt 2/2 · frei 0 · Warteliste 0`.
+
+**Welcher Fehler welche Ursache hat:**
+
+| Beobachtung im Lauf | Ursache | Abhilfe |
+|---|---|---|
+| `Sync_Seat_Counter` = HTTP 400, „Invalid JSON" | Ein `@{…}` steht als Text im Body statt als Ausdruck | Die vier Stellen einzeln über den **Expression**-Tab (fx) neu setzen |
+| `Sync_Seat_Counter` = HTTP 400, Feldtyp-Meldung | `int(…)` fehlt um einen der vier Werte | Ausdruck korrigieren |
+| `Sync_Seat_Counter` = HTTP 404 | Die Liste `DEX_TeilnehmerCounter` gibt es auf dieser Subsite nicht | Im Admin Center **Spalten fixen (alle Events)** ausführen |
+| `Sync_Seat_Counter` = HTTP 403 | Die Flow-Verbindung darf auf der Subsite nicht schreiben | Rechte der Verbindung prüfen — die Zähler-Liste erlaubt **Contribute** für Besucher |
+| `Count_Seats_*` liefert `__count` = `"0"` bei vollem Event | Der Listenname ist nicht `Teilnehmer` | In der Uri den tatsächlichen Listentitel eintragen |
+| Zähler stimmt, Kachel zeigt trotzdem falsch | Browser-Cache | Anmeldeseite neu laden; die Zahl wird bei jedem Öffnen frisch geholt |
+
+---
+
 ### UI-Anleitung 2026-06-11 (Audit) — Status-Sortierung zurück in die Renummerierung + Folge-Reorder nach Promotion + Fehler-Sichtbarkeit
 
 **Status: VOLLSTÄNDIG UMGESETZT im Tenant + per Flow-JSON verifiziert (2026-06-11).** Alle 12 Zeilen sind live; die zunächst unvollständig gespeicherte Action `Set_Failed_Unclean` wurde am selben Tag nachgezogen (korrigierte Fassung steht im json-Block unten). Ergebnis des

@@ -19,6 +19,7 @@
  *   Cleanup-Funktion beim Unmount aufrufen.
  */
 import { SPHttpClient } from '@microsoft/sp-http';
+import { dlog } from './debugLog';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function extractId(data: any): string {
@@ -53,7 +54,7 @@ export async function subscribeListChanges(
     try {
       if (socket) {
         // eslint-disable-next-line no-console
-        console.log(`${LOG} Verbindung zu „${listTitle}" wird getrennt.`);
+        dlog('realtime', `${LOG} Verbindung zu „${listTitle}" wird getrennt.`);
         socket.removeAllListeners?.(); socket.disconnect?.();
       }
     } catch { /* */ }
@@ -61,7 +62,7 @@ export async function subscribeListChanges(
   };
   try {
     // eslint-disable-next-line no-console
-    console.log(`${LOG} Abonniere Änderungen an Liste „${listTitle}" …`);
+    dlog('realtime', `${LOG} Abonniere Änderungen an Liste „${listTitle}" …`);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const getJson = async (url: string): Promise<any> => {
       const r = await spHttpClient.get(url, SPHttpClient.configurations.v1);
@@ -87,7 +88,7 @@ export async function subscribeListChanges(
     if (!notificationUrl) throw new Error('keine notificationUrl erhalten');
     if (disposed) return cleanup;
     // eslint-disable-next-line no-console
-    console.log(`${LOG} notificationUrl für „${listTitle}" erhalten — verbinde Socket …`);
+    dlog('realtime', `${LOG} notificationUrl für „${listTitle}" erhalten — verbinde Socket …`);
     // socket.io-client lazy laden.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mod: any = await import('socket.io-client');
@@ -96,11 +97,11 @@ export async function subscribeListChanges(
     socket = io(notificationUrl, { transports: ['websocket'], reconnectionAttempts: 5 });
     socket.on('connect', () => {
       // eslint-disable-next-line no-console
-      console.log(`${LOG} ✅ Verbunden — Live-Updates für „${listTitle}" sind aktiv.`);
+      dlog('realtime', `${LOG} ✅ Verbunden — Live-Updates für „${listTitle}" sind aktiv.`);
     });
     socket.on('notification', () => {
       // eslint-disable-next-line no-console
-      console.log(`${LOG} 🔔 Änderung an „${listTitle}" empfangen → aktualisiere die Anzeige.`);
+      dlog('realtime', `${LOG} 🔔 Änderung an „${listTitle}" empfangen → aktualisiere die Anzeige.`);
       if (!disposed) { try { onChange(); } catch { /* */ } }
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -110,7 +111,7 @@ export async function subscribeListChanges(
     });
     socket.on('disconnect', () => {
       // eslint-disable-next-line no-console
-      console.log(`${LOG} Socket für „${listTitle}" getrennt.`);
+      dlog('realtime', `${LOG} Socket für „${listTitle}" getrennt.`);
     });
   } catch (e) {
     // eslint-disable-next-line no-console
