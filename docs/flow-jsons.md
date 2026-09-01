@@ -96,6 +96,41 @@ Wird aktualisiert wenn Flows geändert werden.
 >       `Sync_Seat_Counter` komplett entfernen, stattdessen `DEX_IDReorder`
 >       wählen und dort **nur** **has failed** und **is skipped** anhaken.
 >
+> **Endstand: so und nicht anders müssen die `runAfter` aussehen.** Beim zweiten
+> Anlauf ist die Korrektur aus Punkt 2 an die falsche Action gewandert — nicht
+> `Count_Seats_Active` bekam **is successful**, sondern `DEX_IDReorder` bekam
+> **has failed / is skipped**. Folge: Bei einem geglückten Lauf wird ab
+> `Is_B2RunSplit` gar nichts mehr ausgeführt, das Queue-Item bleibt auf
+> `Processing` stehen. Diese acht Zeilen sind der vollständige Sollstand; alles,
+> was davon abweicht, ist falsch.
+>
+> | Action | Run after | Zustände |
+> |---|---|---|
+> | `Is_B2RunSplit` | `Get_EventDetails` | is successful |
+> | `DEX_IDReorder` | `Is_B2RunSplit` | **is successful** |
+> | `Count_Seats_Active` | `DEX_IDReorder` | **is successful** |
+> | `Count_Seats_Waitlist` | `Count_Seats_Active` | is successful |
+> | `Count_Seats_Durch` | `Count_Seats_Waitlist` | is successful |
+> | `Count_Seats_Fun` | `Count_Seats_Durch` | is successful |
+> | `Sync_Seat_Counter` | `Count_Seats_Fun` | is successful |
+> | `Error_Handler` | `DEX_IDReorder` | **has failed · is skipped** |
+>
+> **has failed / is skipped** steht in der ganzen Kette an **genau einer**
+> Stelle: beim `Error_Handler`. Überall sonst ist es falsch.
+>
+> **Die Warnung „Your flow may have a circular loop" ist harmlos und älter als
+> diese Änderung.** Sie erscheint, weil die drei `Requeue_Reorder_*`-Actions
+> einen neuen Eintrag in genau der Liste anlegen, auf der der Flow triggert —
+> das ist der gewollte Folge-Reorder aus v18.69 nach einer Promotion. Er ist
+> durch `Check_Promote_OK_*` (nur bei HTTP 204) abgesichert und endet, sobald
+> die Warteliste leer oder die Kapazität voll ist. Der Platzzähler schreibt nach
+> `DEX_TeilnehmerCounter` auf der Subsite und hat mit der Warnung nichts zu tun.
+>
+> **Zeigt eine Action „Not connected"**, kann der Designer ihre Parameter nicht
+> laden (statt der Felder steht „No additional information is needed for this
+> step"). Über **Change connection** dieselbe SharePoint-Verbindung wählen, die
+> die übrigen Actions nutzen — sonst scheitert sie zur Laufzeit.
+>
 > **4. Die Reihenfolge, die du gebaut hast, ist in Ordnung — behalte sie.**
 > Ursprünglich stand hier, die Kette gehöre **vor** `DEX_IDReorder`. Du hast sie
 > **danach** gehängt (`DEX IDReorder → Count Seats Active → … → Sync Seat
