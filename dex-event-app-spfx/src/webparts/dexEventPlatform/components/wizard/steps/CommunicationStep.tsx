@@ -26,7 +26,6 @@ export interface CommunicationStepProps {
   childTermPlural: string;
   commToggleRow: (opts: { checked: boolean; onChange: (v: boolean) => void; label: string; short: string; info: React.ReactNode; accent?: string; }) => React.ReactElement;
   confirmDialog: (message: React.ReactNode, opts?: import("../../../context/DialogContext").ConfirmOptions) => Promise<boolean>;
-  currentStep: number;
   disableCancellationEmail: boolean;
   disableEmails: boolean;
   disableOutlook: boolean;
@@ -35,7 +34,7 @@ export interface CommunicationStepProps {
   effectiveHeaderImage: (kind: 'email' | 'outlook', own: string) => {    src: string;    note: string;};
   emailLanguage: string;
   emailLogoFromPhoto: boolean;
-  emailLogoPreview: any;
+  emailLogoPreview: string;
   emailTemplateOverrides: Record<string, EmailOverrideEntry>;
   emailTemplates: { id: number; templateType: string; language: string; subject: string; heading: string; headingColor: string; bodyHtml: string; }[];
   funstarterCapacity: string;
@@ -64,7 +63,7 @@ export interface CommunicationStepProps {
   setDisableRegistrationEmail: React.Dispatch<React.SetStateAction<boolean>>;
   setEmailLanguage: React.Dispatch<React.SetStateAction<string>>;
   setEmailLogoFromPhoto: React.Dispatch<React.SetStateAction<boolean>>;
-  setEmailLogoPreview: React.Dispatch<any>;
+  setEmailLogoPreview: React.Dispatch<React.SetStateAction<string>>;
   setEmailTemplateOverrides: React.Dispatch<React.SetStateAction<Record<string, EmailOverrideEntry>>>;
   setHtmlEditorMode: React.Dispatch<React.SetStateAction<"outlook" | "email" | "description">>;
   setHtmlEditorOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -88,7 +87,7 @@ export interface CommunicationStepProps {
 }
 export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
   const { visible } = p;
-  const { activeCommTabIdx, applyCommToAllSubEvents, applyEventPhotoToLogo, autoDeregisterOnDecline, bundledComm, childTermPlural, commToggleRow, confirmDialog, currentStep, disableCancellationEmail, disableEmails, disableOutlook, disableRegistrationEmail, durchstarterCapacity, effectiveHeaderImage, emailLanguage, emailLogoFromPhoto, emailLogoPreview, emailTemplateOverrides, emailTemplates, funstarterCapacity, imageFile, imagePreview, inactiveHandling, isDe, mainCommDisabledAck, maxParticipants, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, offerLogoToSubEvents, organizer, outlookBody, outlookLogoFromPhoto, outlookLogoPreview, renderHeaderSizeControl, renderOutlookUpdateButton, renderStepIntro, setAutoDeregisterOnDecline, setBundledComm, setDisableCancellationEmail, setDisableEmails, setDisableOutlook, setDisableRegistrationEmail, setEmailLanguage, setEmailLogoFromPhoto, setEmailLogoPreview, setEmailTemplateOverrides, setHtmlEditorMode, setHtmlEditorOpen, setHtmlEditorTemplateType, setInactiveHandling, setLogoCropTarget, setMainCommDisabledAck, setNotifyOrgCancelMode, setNotifyOrgRegisterFromDate, setNotifyOrgRegisterMode, setOutlookLogoFromPhoto, setOutlookLogoPreview, setSubTransfer, subEvents, subEventsOnlyMode, t, title, unlimitedParticipants, useSplitCapacities, waitlistEnabled } = p;
+  const { activeCommTabIdx, applyCommToAllSubEvents, applyEventPhotoToLogo, autoDeregisterOnDecline, bundledComm, childTermPlural, commToggleRow, confirmDialog, disableCancellationEmail, disableEmails, disableOutlook, disableRegistrationEmail, durchstarterCapacity, effectiveHeaderImage, emailLanguage, emailLogoFromPhoto, emailLogoPreview, emailTemplateOverrides, emailTemplates, funstarterCapacity, imageFile, imagePreview, inactiveHandling, isDe, mainCommDisabledAck, maxParticipants, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, offerLogoToSubEvents, organizer, outlookBody, outlookLogoFromPhoto, outlookLogoPreview, renderHeaderSizeControl, renderOutlookUpdateButton, renderStepIntro, setAutoDeregisterOnDecline, setBundledComm, setDisableCancellationEmail, setDisableEmails, setDisableOutlook, setDisableRegistrationEmail, setEmailLanguage, setEmailLogoFromPhoto, setEmailLogoPreview, setEmailTemplateOverrides, setHtmlEditorMode, setHtmlEditorOpen, setHtmlEditorTemplateType, setInactiveHandling, setLogoCropTarget, setMainCommDisabledAck, setNotifyOrgCancelMode, setNotifyOrgRegisterFromDate, setNotifyOrgRegisterMode, setOutlookLogoFromPhoto, setOutlookLogoPreview, setSubTransfer, subEvents, subEventsOnlyMode, t, title, unlimitedParticipants, useSplitCapacities, waitlistEnabled } = p;
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
                 <h2 className="dex-step-head-title">

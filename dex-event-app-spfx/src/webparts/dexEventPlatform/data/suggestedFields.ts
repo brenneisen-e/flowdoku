@@ -1,7 +1,6 @@
 // v30.66: Aus EventCreationPage.tsx ausgelagert. Der Katalog haengt allein an
 // der Sprache — als Funktion statt als Konstante im Funktionskoerper, wo er bei
 // jedem Render neu gebaut wurde.
-import { CustomFieldInput } from '../components/wizard/customFieldInput';
 import { SuggestedEntry } from '../components/wizard/wizardTypes';
 
 export function getSuggestedFieldsCatalog(isDe: boolean): SuggestedEntry[] {

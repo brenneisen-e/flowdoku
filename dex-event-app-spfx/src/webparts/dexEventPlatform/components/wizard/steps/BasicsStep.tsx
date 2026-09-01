@@ -21,14 +21,13 @@ export interface BasicsStepProps {
   applyEventTemplate: (ev: import("../../../types/index").DeloitteEvent) => Promise<void>;
   childEventsOf: (parentEventId: string) => import("../../../types/index").DeloitteEvent[];
   childTermSingular: string;
-  currentStep: number;
   currentUser: import("../../../types/index").User;
   dayKeyOfDate: (d: Date) => string;
   description: string;
   DRAFT_KEY: string;
   draftSavedAt: number;
   editEvent: import("../../../types/index").DeloitteEvent;
-  emailLogoPreview: any;
+  emailLogoPreview: string;
   errorBorderStyle: (fieldName: string) => React.CSSProperties;
   events: import("../../../types/index").DeloitteEvent[];
   fieldHasError: (fieldName: string) => boolean;
@@ -63,7 +62,7 @@ export interface BasicsStepProps {
   setActiveFrom: React.Dispatch<React.SetStateAction<string>>;
   setDescription: React.Dispatch<React.SetStateAction<string>>;
   setEmailLogoFromPhoto: React.Dispatch<React.SetStateAction<boolean>>;
-  setEmailLogoPreview: React.Dispatch<any>;
+  setEmailLogoPreview: React.Dispatch<React.SetStateAction<string>>;
   setEventImageUrl: React.Dispatch<React.SetStateAction<string>>;
   setHtmlEditorMode: React.Dispatch<React.SetStateAction<"outlook" | "email" | "description">>;
   setHtmlEditorOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -105,7 +104,7 @@ export interface BasicsStepProps {
 }
 export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
   const { visible } = p;
-  const { activeFrom, activeScopeIdx, applyDraftPayload, applyEventTemplate, childEventsOf, childTermSingular, currentStep, currentUser, dayKeyOfDate, description, DRAFT_KEY, draftSavedAt, editEvent, emailLogoPreview, errorBorderStyle, events, fieldHasError, fileToBase64, imageBanner, imageDisplay, imageDisplayOpen, imageEditOpen, imageFile, imageOrigFile, imagePreview, imageUploadError, isDe, isEditMode, isFictive, location, logoCropTarget, noDescription, outlookLogoPreview, patchScopeSub, pendingDraft, previewBeforeActive, renderStepIntro, scAllDay, scDescription, scEnd, scImagePreview, scopeSub, scShowAsFree, scStart, scTitle, setActiveFrom, setDescription, setEmailLogoFromPhoto, setEmailLogoPreview, setEventImageUrl, setHtmlEditorMode, setHtmlEditorOpen, setImageBanner, setImageDisplay, setImageDisplayOpen, setImageEditOpen, setImageFile, setImageOrigAspect, setImageOrigFile, setImagePreview, setImageUploadError, setIsFictive, setLogoCropTarget, setNoDescription, setOutlookLogoFromPhoto, setOutlookLogoPreview, setPendingDraft, setPreviewBeforeActive, setScAllDay, setScEnd, setScShowAsFree, setScStart, setScTitle, setShowDemoVariantModal, setShowTemplatePicker, setSubEvents, setSubImageCropIdx, showTemplatePicker, shrinkLogoB64, startDate, subEvents, subEventsOnlyMode, t, templateLoadingId, title, wizardImgAspect, zebraS3Bg } = p;
+  const { activeFrom, activeScopeIdx, applyDraftPayload, applyEventTemplate, childEventsOf, childTermSingular, currentUser, dayKeyOfDate, description, DRAFT_KEY, draftSavedAt, editEvent, emailLogoPreview, errorBorderStyle, events, fieldHasError, fileToBase64, imageBanner, imageDisplay, imageDisplayOpen, imageEditOpen, imageFile, imageOrigFile, imagePreview, imageUploadError, isDe, isEditMode, isFictive, location, logoCropTarget, noDescription, outlookLogoPreview, patchScopeSub, pendingDraft, previewBeforeActive, renderStepIntro, scAllDay, scDescription, scEnd, scImagePreview, scopeSub, scShowAsFree, scStart, scTitle, setActiveFrom, setDescription, setEmailLogoFromPhoto, setEmailLogoPreview, setEventImageUrl, setHtmlEditorMode, setHtmlEditorOpen, setImageBanner, setImageDisplay, setImageDisplayOpen, setImageEditOpen, setImageFile, setImageOrigAspect, setImageOrigFile, setImagePreview, setImageUploadError, setIsFictive, setLogoCropTarget, setNoDescription, setOutlookLogoFromPhoto, setOutlookLogoPreview, setPendingDraft, setPreviewBeforeActive, setScAllDay, setScEnd, setScShowAsFree, setScStart, setScTitle, setShowDemoVariantModal, setShowTemplatePicker, setSubEvents, setSubImageCropIdx, showTemplatePicker, shrinkLogoB64, startDate, subEvents, subEventsOnlyMode, t, templateLoadingId, title, wizardImgAspect, zebraS3Bg } = p;
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
               {/* v23.6: Demo-Button sitzt jetzt IM grünen Schritt-1-Header

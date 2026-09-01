@@ -17,7 +17,7 @@ export interface SwitchCommTabCtx {
   disableOutlook: boolean;
   disableRegistrationEmail: boolean;
   emailLanguage: string;
-  emailLogoPreview: any;
+  emailLogoPreview: string;
   emailTemplateOverrides: Record<string, EmailOverrideEntry>;
   inactiveHandling: "notify" | "autoderegister";
   locale: import("../../../context/LanguageContext").Locale;
@@ -33,7 +33,7 @@ export interface SwitchCommTabCtx {
   setDisableOutlook: React.Dispatch<React.SetStateAction<boolean>>;
   setDisableRegistrationEmail: React.Dispatch<React.SetStateAction<boolean>>;
   setEmailLanguage: React.Dispatch<React.SetStateAction<string>>;
-  setEmailLogoPreview: React.Dispatch<any>;
+  setEmailLogoPreview: React.Dispatch<React.SetStateAction<string>>;
   setEmailTemplateOverrides: React.Dispatch<React.SetStateAction<Record<string, EmailOverrideEntry>>>;
   setInactiveHandling: React.Dispatch<React.SetStateAction<"notify" | "autoderegister">>;
   setOutlookBody: React.Dispatch<React.SetStateAction<string>>;
@@ -151,7 +151,7 @@ export interface FlushActiveCommTabToStateCtx {
   disableOutlook: boolean;
   disableRegistrationEmail: boolean;
   emailLanguage: string;
-  emailLogoPreview: any;
+  emailLogoPreview: string;
   emailTemplateOverrides: Record<string, EmailOverrideEntry>;
   inactiveHandling: "notify" | "autoderegister";
   outlookBody: string;
@@ -208,7 +208,7 @@ export interface ResolveTopLevelCommStateCtx {
   disableOutlook: boolean;
   disableRegistrationEmail: boolean;
   emailLanguage: string;
-  emailLogoPreview: any;
+  emailLogoPreview: string;
   emailTemplateOverrides: Record<string, EmailOverrideEntry>;
   inactiveHandling: "notify" | "autoderegister";
   outlookBody: string;

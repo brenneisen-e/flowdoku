@@ -15,7 +15,6 @@ import { CustomFieldInput } from '../../wizard/customFieldInput';
 import { FieldTypeSuggestion } from '../../wizard/FieldTypeSuggestion';
 import { StepBadge } from '../../wizard/StepBadge';
 import { FieldDescEditor } from '../../wizard/FieldDescEditor';
-import { de } from 'date-fns/locale';
 export interface FieldsStepProps {
   visible: boolean;
   activeFieldsTabIdx: number;
@@ -30,7 +29,6 @@ export interface FieldsStepProps {
   confirmDialogMode: string;
   confirmDialogText: string;
   copyParentFieldsToSubEvent: (subEventId: string) => void;
-  currentStep: number;
   customFields: CustomFieldInput[];
   dragFieldId: string;
   dragOverFieldId: string;
@@ -71,7 +69,7 @@ export interface FieldsStepProps {
 }
 export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
   const { visible } = p;
-  const { activeFieldsTabIdx, addCustomField, addStartblock, addSubEventCustomField, askSalutation, b2runStartblocks, bilingualFields, childTermPlural, confirmDialogEnabled, confirmDialogMode, confirmDialogText, copyParentFieldsToSubEvent, currentStep, customFields, dragFieldId, dragOverFieldId, fieldExpandOverride, isDe, moveCustomField, newStartblock, openSuggestedModal, registrationLanguage, removeCustomField, removeStartblock, removeSubEventCustomField, renderShowIfConfig, renderStepIntro, reorderMode, setAskSalutation, setBilingualFields, setConfirmDialogEnabled, setConfirmDialogMode, setConfirmDialogText, setCustomFields, setDragFieldId, setDragOverFieldId, setNewStartblock, setRegistrationLanguage, setReorderMode, setSubEvents, splitLabelA, splitLabelB, subEvents, subEventsOnlyMode, t, title, toggleFieldExpand, updateCustomField, updateSubEventCustomField, useSplitCapacities } = p;
+  const { activeFieldsTabIdx, addCustomField, addStartblock, addSubEventCustomField, askSalutation, b2runStartblocks, bilingualFields, childTermPlural, confirmDialogEnabled, confirmDialogMode, confirmDialogText, copyParentFieldsToSubEvent, customFields, dragFieldId, dragOverFieldId, fieldExpandOverride, isDe, moveCustomField, newStartblock, openSuggestedModal, registrationLanguage, removeCustomField, removeStartblock, removeSubEventCustomField, renderShowIfConfig, renderStepIntro, reorderMode, setAskSalutation, setBilingualFields, setConfirmDialogEnabled, setConfirmDialogMode, setConfirmDialogText, setCustomFields, setDragFieldId, setDragOverFieldId, setNewStartblock, setRegistrationLanguage, setReorderMode, setSubEvents, splitLabelA, splitLabelB, subEvents, subEventsOnlyMode, t, title, toggleFieldExpand, updateCustomField, updateSubEventCustomField, useSplitCapacities } = p;
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">

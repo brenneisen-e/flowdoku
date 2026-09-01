@@ -19,7 +19,6 @@ export interface LocationProgramStepProps {
   addrStreet: string;
   addrZip: string;
   agenda: AgendaItem[];
-  currentStep: number;
   isDe: boolean;
   isMobile: boolean;
   isoToLocal: (iso: string) => string;
@@ -48,7 +47,7 @@ export interface LocationProgramStepProps {
 }
 export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
   const { visible } = p;
-  const { activeLocationTabIdx, addAgendaItem, addrCity, addrHouseNo, addrStreet, addrZip, agenda, currentStep, isDe, isMobile, isoToLocal, location, locationOptions, onlineMeetingMode, outlookLocationOverride, removeAgendaItem, renderStepIntro, setAddrCity, setAddrHouseNo, setAddrStreet, setAddrZip, setLocation, setOnlineMeetingMode, setOutlookLocationOverride, setSubEvents, setTeamsLink, setTransferTimes, startDate, subEvents, t, teamsLink, transferTimes, updateAgendaItem } = p;
+  const { activeLocationTabIdx, addAgendaItem, addrCity, addrHouseNo, addrStreet, addrZip, agenda, isDe, isMobile, isoToLocal, location, locationOptions, onlineMeetingMode, outlookLocationOverride, removeAgendaItem, renderStepIntro, setAddrCity, setAddrHouseNo, setAddrStreet, setAddrZip, setLocation, setOnlineMeetingMode, setOutlookLocationOverride, setSubEvents, setTeamsLink, setTransferTimes, startDate, subEvents, t, teamsLink, transferTimes, updateAgendaItem } = p;
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">

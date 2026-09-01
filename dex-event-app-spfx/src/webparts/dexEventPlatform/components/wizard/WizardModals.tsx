@@ -20,7 +20,6 @@ import { Icon } from '@fluentui/react/lib/Icon';
 import { InfoTooltip } from '../InfoTooltip';
 import { AgendaItem } from '../../types';
 import { CustomFieldInput } from '../wizard/customFieldInput';
-import { de } from 'date-fns/locale';
 
 export interface WizardModalsProps {
   activeCommTabIdx: number;
@@ -61,7 +60,7 @@ export interface WizardModalsProps {
   dragSectionId: string;
   durchstarterCapacity: string;
   emailLanguage: string;
-  emailLogoPreview: any;
+  emailLogoPreview: string;
   emailTemplateOverrides: Record<string, EmailOverrideEntry>;
   emailTemplates: { id: number; templateType: string; language: string; subject: string; heading: string; headingColor: string; bodyHtml: string; }[];
   endDate: string;

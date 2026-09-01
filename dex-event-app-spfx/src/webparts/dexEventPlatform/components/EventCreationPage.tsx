@@ -7,32 +7,19 @@
 
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
-import { useEvents, formatOrganizerList } from '../context/EventContext';
+import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
 import { useDialog } from '../context/DialogContext';
-import { EventService, CustomField } from '../services/EventService';
-import { isThrottled } from '../utils/spThrottle';
+import { EventService } from '../services/EventService';
 // v26.48: zentrale B2Run-Köln-Vorlage (Titel-Erkennung + 7 Meldefelder mit
 // deterministischen IDs für den offiziellen Excel-Export).
-import { isB2RunKoelnTitle, b2runKoelnTemplateFields } from '../data/b2runKoeln';
-import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, parseOutlookHeadings, replacePlaceholders, getCachedOrbBase64, normalizeMadeWithLink } from '../services/EmailTemplates';
-import { exportSummaryAsPdf, exportSummaryAsDoc, SummaryData } from '../services/EventSummaryExport';
+import { getCachedOrbBase64 } from '../services/EmailTemplates';
 import { EventType, AgendaItem } from '../types';
-import { Trash2, Send, Plus, X, Users, Check } from './Icons';
-import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
-import { HtmlEditorModal } from './HtmlEditorModal';
-import { RegisterPreviewModal } from './RegisterPreviewModal';
 import { InfoTooltip } from './InfoTooltip';
 import WizardHint from './WizardHint';
-import BulkUserImportModal from './BulkUserImportModal';
-import AudiencePicker from './AudiencePicker';
-import ImageCropModal from './ImageCropModal';
-import Modal from './Modal';
-import InternationalSearchToggle from './InternationalSearchToggle';
-import OrganizerList from './OrganizerList';
 // v20.2: Self-Check-in ist aus dem Wizard ausgezogen — Aktivierung läuft
 // automatisch beim ersten Klick auf die Aktionen (Check-in-Seite, Admin
 // Center, QR-Kachel im Event-Detail); Zeitfenster + Deaktivieren im
@@ -40,54 +27,31 @@ import OrganizerList from './OrganizerList';
 import { buildOutlookLocation } from '../utils/eventFormat';
 import { setActiveWizardStep } from '../utils/wizardStepContext';
 import { canEditBilling } from '../data/billingFields';
-import { BundledComm, bundledCommOf, bundledCommConfig } from '../utils/bundledComm';
 // v28.98: Sperrt „Zurück" im Header, solange gespeichert wird.
 import { setSaveInProgress } from '../utils/saveGuard';
-import { shortSubEventTitle } from '../utils/subEventTitle';
-import { DESCRIPTION_TEMPLATES } from '../data/descriptionTemplates';
-import { CustomFieldInput } from './wizard/customFieldInput';
-import { BillingStep } from './wizard/steps/BillingStep';
-import { DocumentsStep } from './wizard/steps/DocumentsStep';
-import { FunZoneStep } from './wizard/steps/FunZoneStep';
-import { TeamStep } from './wizard/steps/TeamStep';
 // v28.94: Unterkomponenten des Assistenten liegen jetzt in ./wizard —
 // sie kennen den Wizard-State nicht und liessen sich deshalb ohne
 // Verhaltensaenderung herausloesen.
-import { StickyTabStrip } from './wizard/StickyTabStrip';
-import { StepBadge } from './wizard/StepBadge';
-import { LocationMultiSelect } from './wizard/LocationMultiSelect';
-import { FieldDescEditor } from './wizard/FieldDescEditor';
-import { FieldTypeSuggestion } from './wizard/FieldTypeSuggestion';
 import { useIsMobile } from '../utils/useIsMobile';
-import { Icon } from '@fluentui/react/lib/Icon';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale';
 import 'react-datepicker/dist/react-datepicker.css';
-import { dlog } from '../utils/debugLog';
-import { ImgView, SubEventDraft, OutlookConfirmItem, SuggestedCategory, SuggestedEntry } from './wizard/wizardTypes';
+import { SubEventDraft, OutlookConfirmItem } from './wizard/wizardTypes';
 import { EmailOverrideEntry } from './wizard/emailOverrideEntry';
 import { compressImage } from '../utils/imageCompress';
-import { BasicsStep } from './wizard/steps/BasicsStep';
-import { DetailsStep } from './wizard/steps/DetailsStep';
-import { LocationProgramStep } from './wizard/steps/LocationProgramStep';
-import { SubEventsSection } from './wizard/steps/SubEventsSection';
-import { CapacityStep } from './wizard/steps/CapacityStep';
-import { FieldsStep } from './wizard/steps/FieldsStep';
-import { CommunicationStep } from './wizard/steps/CommunicationStep';
-import { outlookLogoPiggyback, readOutlookLogo, serializeCustomFields, reinsertOrganizerPlaceholder, resolveAudienceMembersToCsv } from './wizard/wizardHelpers';
+import { readOutlookLogo } from './wizard/wizardHelpers';
 import { detectOutlookRelevantChangesImpl } from './wizard/logic/outlookChanges';
 import { runWizardSubmit } from './wizard/logic/wizardSubmit';
 import { persistSubEventsForParentImpl } from './wizard/logic/persistSubEvents';
 import { WizardTermsModal } from './wizard/WizardTermsModal';
 import { WizardModals } from './wizard/WizardModals';
-import { STEP_HINTS_DE, STEP_HINTS_EN, SUB_TRANSFER_GROUPS } from '../data/wizardHints';
-import { getSuggestedFieldsCatalog } from '../data/suggestedFields';
-import { renderGlobalScopeBarImpl, renderHeaderSizeControlImpl, renderKlammerVisibilityMismatchImpl, renderOutlookUpdateButtonImpl, renderPerEventTabStripImpl, renderPreviewSectionImpl, renderShowIfConfigImpl, renderVisibilitySummaryBoxImpl } from './wizard/logic/wizardRenderHelpers';
-import { applyEventPhotoToLogoImpl, applySubTransferImpl, getStepErrorsForImpl, toggleDaySubEventImpl } from './wizard/logic/wizardMisc';
+import { SUB_TRANSFER_GROUPS } from '../data/wizardHints';
+import { renderGlobalScopeBarImpl, renderKlammerVisibilityMismatchImpl, renderOutlookUpdateButtonImpl, renderPerEventTabStripImpl, renderPreviewSectionImpl, renderVisibilitySummaryBoxImpl } from './wizard/logic/wizardRenderHelpers';
+import { applySubTransferImpl, getStepErrorsForImpl, toggleDaySubEventImpl } from './wizard/logic/wizardMisc';
 import { applyCommToAllSubEventsImpl, flushActiveCommTabToStateImpl, resolveTopLevelCommStateImpl, switchCommTabImpl } from './wizard/logic/commTabs';
 import { applyDraftPayloadImpl } from './wizard/logic/wizardDraft';
 import { confirmOutlookSaveImpl, createMissingOutlookAppointmentsImpl, triggerOutlookUpdateAllImpl, triggerOutlookUpdateNowImpl } from './wizard/logic/outlookActions';
-import { applyEventTemplateImpl, applyTemplateImpl, loadDemoSubEventImpl, loadDemoSubEventTeamImpl, resetDemoVariantBaseStateImpl } from './wizard/logic/wizardTemplates';
+import { loadDemoSubEventImpl, loadDemoSubEventTeamImpl } from './wizard/logic/wizardTemplates';
 import { WizardFormShell } from './wizard/WizardFormShell';
 import { useWizardEventFieldState } from './wizard/hooks/useWizardEventFieldState';
 import { useWizardVisibilityState } from './wizard/hooks/useWizardVisibilityState';
@@ -2724,7 +2688,7 @@ export default function EventCreationPage(): React.ReactElement {
   // oben waere ein TDZ-Fehler auf die spaeter deklarierten Handler.
   const basicsStepProps = {
     activeFrom, activeScopeIdx, applyDraftPayload, applyEventTemplate, childEventsOf, childTermSingular,
-    currentStep, currentUser, dayKeyOfDate, description, DRAFT_KEY, draftSavedAt,
+    currentUser, dayKeyOfDate, description, DRAFT_KEY, draftSavedAt,
     editEvent, emailLogoPreview, errorBorderStyle, events, fieldHasError, fileToBase64,
     imageBanner, imageDisplay, imageDisplayOpen, imageEditOpen, imageFile, imageOrigFile,
     imagePreview, imageUploadError, isDe, isEditMode, isFictive, location,
@@ -2740,7 +2704,7 @@ export default function EventCreationPage(): React.ReactElement {
     title, wizardImgAspect, zebraS3Bg,
   };
   const detailsStepProps = {
-    contactEmail, contactExpanded, contactInfo, contactName, contactOrganizerEmail, currentStep,
+    contactEmail, contactExpanded, contactInfo, contactName, contactOrganizerEmail,
     errorBorderStyle, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly, isDe, isSearchingOrganizer,
     location, organizer, organizerDisplayLarge, organizerEmails, organizerIncludeIntl, organizerResults,
     organizerSearch, organizerTimerRef, qrScannerEmails, qrScannerIncludeIntl, qrScannerNames, qrScannerResults,
@@ -2754,7 +2718,7 @@ export default function EventCreationPage(): React.ReactElement {
   };
   const locationProgramStepProps = {
     activeLocationTabIdx, addAgendaItem, addrCity, addrHouseNo, addrStreet, addrZip,
-    agenda, currentStep, isDe, isMobile, isoToLocal, location,
+    agenda, isDe, isMobile, isoToLocal, location,
     locationOptions, onlineMeetingMode, outlookLocationOverride, removeAgendaItem, renderStepIntro, setAddrCity,
     setAddrHouseNo, setAddrStreet, setAddrZip, setLocation, setOnlineMeetingMode, setOutlookLocationOverride,
     setSubEvents, setTeamsLink, setTransferTimes, startDate, subEvents, t,
@@ -2762,7 +2726,7 @@ export default function EventCreationPage(): React.ReactElement {
   };
   const subEventsSectionProps = {
     activeScopeIdx, audience, berlinLocalToUtcIso, childGender, childTermPlural, childTermSingular,
-    confirmDialog, currentStep, customTermMode, dayKeyOfSub, endDate, filterMode,
+    confirmDialog, customTermMode, dayKeyOfSub, endDate, filterMode,
     goToScopeBar, isDe, isoToLocal, klammerDeadline, locationFilter, mainEventLabel,
     mainEventLabelMode, openRuleDays, openRuleEnabled, openRuleMode, orgGetsSubInvites, orgInvitesTouchedRef,
     removedSavedSubs, removeSubEventDraft, requireSubEventSelection, setAllSubsAllDay, setAllSubsShowAsFree, setChildGender,
@@ -2775,7 +2739,7 @@ export default function EventCreationPage(): React.ReactElement {
   const capacityStepProps = {
     activeCapacityTabIdx, activeFrom, assistantsCanSee, audience, b2runStartblocks, berlinLocalToUtcIso,
     cancelRuleAfter, cancelRuleAmount, cancelRuleEnabled, cancelRuleUnit, childTermPlural, childTermSingular,
-    currentStep, durchstarterCapacity, durchstarterStartblock, effectiveKlammerDeadline, errorBorderStyle, excludedUsers,
+    durchstarterCapacity, durchstarterStartblock, effectiveKlammerDeadline, errorBorderStyle, excludedUsers,
     fieldHasError, filterMode, funstarterCapacity, funstarterStartblock, hauptGreyoutWrapperStyle, isDe,
     isVisOpen, klammerDeadline, lastDeregisterDate, locationFilter, locationOptions, maxParticipants,
     noCancelAfterDeadline, openRuleDays, openRuleEnabled, openRuleFixedDate, openRuleMode, registrationDeadline,
@@ -2796,7 +2760,7 @@ export default function EventCreationPage(): React.ReactElement {
   const fieldsStepProps = {
     activeFieldsTabIdx, addCustomField, addStartblock, addSubEventCustomField, askSalutation, b2runStartblocks,
     bilingualFields, childTermPlural, confirmDialogEnabled, confirmDialogMode, confirmDialogText, copyParentFieldsToSubEvent,
-    currentStep, customFields, dragFieldId, dragOverFieldId, fieldExpandOverride, isDe,
+    customFields, dragFieldId, dragOverFieldId, fieldExpandOverride, isDe,
     moveCustomField, newStartblock, openSuggestedModal, registrationLanguage, removeCustomField, removeStartblock,
     removeSubEventCustomField, renderShowIfConfig, renderStepIntro, reorderMode, setAskSalutation, setBilingualFields,
     setConfirmDialogEnabled, setConfirmDialogMode, setConfirmDialogText, setCustomFields, setDragFieldId, setDragOverFieldId,
@@ -2806,7 +2770,7 @@ export default function EventCreationPage(): React.ReactElement {
   };
   const communicationStepProps = {
     activeCommTabIdx, applyCommToAllSubEvents, applyEventPhotoToLogo, autoDeregisterOnDecline, bundledComm, childTermPlural,
-    commToggleRow, confirmDialog, currentStep, disableCancellationEmail, disableEmails, disableOutlook,
+    commToggleRow, confirmDialog, disableCancellationEmail, disableEmails, disableOutlook,
     disableRegistrationEmail, durchstarterCapacity, effectiveHeaderImage, emailLanguage, emailLogoFromPhoto, emailLogoPreview,
     emailTemplateOverrides, emailTemplates, funstarterCapacity, imageFile, imagePreview, inactiveHandling,
     isDe, mainCommDisabledAck, maxParticipants, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode,
@@ -2855,9 +2819,10 @@ export default function EventCreationPage(): React.ReactElement {
     unlimitedParticipants, unsavedConfirmOpen, useSplitCapacities, visCopyModalOpen, waitlistEnabled,
   };
   const wizardFormShellProps = {
+    currentStep,
     actionRowRef, actionRowVisible, activeScopeIdx, addQuizQuestion, allowAttendeeUpload, askTeamName,
     attemptSubmitGuarded, attendeeUploadHint, attendeeUploadLabel, basicsStepProps, billingFields, billingPromptOpen,
-    billingRelevant, billingSendMode, canBilling, capacityStepProps, communicationStepProps, currentStep,
+    billingRelevant, billingSendMode, canBilling, capacityStepProps, communicationStepProps,
     detailsStepProps, documents, draftSavedAt, draggedQuestionId, error, fieldsStepProps,
     getStepErrorsFor, goBack, hintStepIdx, isDe, isEditMode, isSubmitting,
     locationProgramStepProps, pendingSections, proceedNext, progress, progressLabel, quiz,

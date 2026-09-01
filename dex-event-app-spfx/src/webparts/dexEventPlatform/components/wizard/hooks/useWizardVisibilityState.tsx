@@ -135,7 +135,7 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
   );
   // editingTemplate state entfällt seit Modal-Migration v4.7.0
   // Custom Event-Logo für E-Mails (ersetzt das DEX-Orb in E-Mails).
-  const [emailLogoPreview, setEmailLogoPreview] = React.useState(() => {
+  const [emailLogoPreview, setEmailLogoPreview] = React.useState<string>(() => {
     if (!editEvent?.emailTemplateOverrides) return '';
     try { const o = JSON.parse(editEvent.emailTemplateOverrides); return o._eventLogo || ''; } catch { return ''; }
   });

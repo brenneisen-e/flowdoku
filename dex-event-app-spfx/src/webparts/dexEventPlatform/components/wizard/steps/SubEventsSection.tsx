@@ -21,7 +21,6 @@ export interface SubEventsSectionProps {
   childTermPlural: string;
   childTermSingular: string;
   confirmDialog: (message: React.ReactNode, opts?: import("../../../context/DialogContext").ConfirmOptions) => Promise<boolean>;
-  currentStep: number;
   customTermMode: boolean;
   dayKeyOfSub: (se: SubEventDraft) => string;
   endDate: string;
@@ -76,7 +75,7 @@ export interface SubEventsSectionProps {
 }
 export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
   const { visible } = p;
-  const { activeScopeIdx, audience, berlinLocalToUtcIso, childGender, childTermPlural, childTermSingular, confirmDialog, currentStep, customTermMode, dayKeyOfSub, endDate, filterMode, goToScopeBar, isDe, isoToLocal, klammerDeadline, locationFilter, mainEventLabel, mainEventLabelMode, openRuleDays, openRuleEnabled, openRuleMode, orgGetsSubInvites, orgInvitesTouchedRef, removedSavedSubs, removeSubEventDraft, requireSubEventSelection, setAllSubsAllDay, setAllSubsShowAsFree, setChildGender, setChildTermPlural, setChildTermSingular, setCustomTermMode, setEndDate, setMainEventLabel, setMainEventLabelMode, setOrgGetsSubInvites, setRemovedSavedSubs, setRequireSubEventSelection, setScope, setStartDate, setSubEventCalendar, setSubEvents, setSubEventSingleChoice, setSubEventsOnlyMode, setSubEventsOptIn, setSubImageCropIdx, setTerminListOpen, startDate, subEventCalendar, subEvents, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn, subImageCropIdx, t, terminListOpen, title, toggleDaySubEvent } = p;
+  const { activeScopeIdx, audience, berlinLocalToUtcIso, childGender, childTermPlural, childTermSingular, confirmDialog, customTermMode, dayKeyOfSub, endDate, filterMode, goToScopeBar, isDe, isoToLocal, klammerDeadline, locationFilter, mainEventLabel, mainEventLabelMode, openRuleDays, openRuleEnabled, openRuleMode, orgGetsSubInvites, orgInvitesTouchedRef, removedSavedSubs, removeSubEventDraft, requireSubEventSelection, setAllSubsAllDay, setAllSubsShowAsFree, setChildGender, setChildTermPlural, setChildTermSingular, setCustomTermMode, setEndDate, setMainEventLabel, setMainEventLabelMode, setOrgGetsSubInvites, setRemovedSavedSubs, setRequireSubEventSelection, setScope, setStartDate, setSubEventCalendar, setSubEvents, setSubEventSingleChoice, setSubEventsOnlyMode, setSubEventsOptIn, setSubImageCropIdx, setTerminListOpen, startDate, subEventCalendar, subEvents, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn, subImageCropIdx, t, terminListOpen, title, toggleDaySubEvent } = p;
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
               {/* v28.90: Die Frage stand ganz oben in Schritt 1, noch vor

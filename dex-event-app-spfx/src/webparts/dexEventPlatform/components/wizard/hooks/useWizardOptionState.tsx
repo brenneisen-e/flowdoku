@@ -12,7 +12,6 @@ import { CustomFieldInput } from '../../wizard/customFieldInput';
 import { renderShowIfConfigImpl } from '../../wizard/logic/wizardRenderHelpers';
 import { applyEventTemplateImpl, applyTemplateImpl, resetDemoVariantBaseStateImpl } from '../../wizard/logic/wizardTemplates';
 import { AgendaItem } from '../../../types';
-import { de } from 'date-fns/locale';
 
 export interface UseWizardOptionStateCtx {
   b2runStartblocks: string[];

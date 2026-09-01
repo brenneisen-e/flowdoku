@@ -18,7 +18,6 @@ export interface DetailsStepProps {
   contactInfo: string;
   contactName: string;
   contactOrganizerEmail: string;
-  currentStep: number;
   errorBorderStyle: (fieldName: string) => React.CSSProperties;
   hiddenOrganizerEmails: string[];
   hideOrganizer: boolean;
@@ -79,7 +78,7 @@ export interface DetailsStepProps {
 }
 export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
   const { visible } = p;
-  const { contactEmail, contactExpanded, contactInfo, contactName, contactOrganizerEmail, currentStep, errorBorderStyle, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly, isDe, isSearchingOrganizer, location, organizer, organizerDisplayLarge, organizerEmails, organizerIncludeIntl, organizerResults, organizerSearch, organizerTimerRef, qrScannerEmails, qrScannerIncludeIntl, qrScannerNames, qrScannerResults, qrScannerSearch, qrScannerTimerRef, searchUsers, setBulkOrganizerOpen, setBulkQrScannerOpen, setBulkTestTeamOpen, setContactEmail, setContactExpanded, setContactInfo, setContactName, setContactOrganizerEmail, setHideOrganizer, setHideOrganizerIndividualOnly, setOrganizer, setOrganizerDisplayLarge, setOrganizerEmails, setOrganizerIncludeIntl, setOrganizerResults, setOrganizerSearch, setQrScannerEmails, setQrScannerIncludeIntl, setQrScannerNames, setQrScannerResults, setQrScannerSearch, setTestTeamEmails, setTestTeamIncludeIntl, setTestTeamNames, setTestTeamResults, setTestTeamSearch, startDate, t, testTeamEmails, testTeamIncludeIntl, testTeamNames, testTeamResults, testTeamSearch, testTeamTimerRef, title, toggleOrganizerHidden } = p;
+  const { contactEmail, contactExpanded, contactInfo, contactName, contactOrganizerEmail, errorBorderStyle, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly, isDe, isSearchingOrganizer, location, organizer, organizerDisplayLarge, organizerEmails, organizerIncludeIntl, organizerResults, organizerSearch, organizerTimerRef, qrScannerEmails, qrScannerIncludeIntl, qrScannerNames, qrScannerResults, qrScannerSearch, qrScannerTimerRef, searchUsers, setBulkOrganizerOpen, setBulkQrScannerOpen, setBulkTestTeamOpen, setContactEmail, setContactExpanded, setContactInfo, setContactName, setContactOrganizerEmail, setHideOrganizer, setHideOrganizerIndividualOnly, setOrganizer, setOrganizerDisplayLarge, setOrganizerEmails, setOrganizerIncludeIntl, setOrganizerResults, setOrganizerSearch, setQrScannerEmails, setQrScannerIncludeIntl, setQrScannerNames, setQrScannerResults, setQrScannerSearch, setTestTeamEmails, setTestTeamIncludeIntl, setTestTeamNames, setTestTeamResults, setTestTeamSearch, startDate, t, testTeamEmails, testTeamIncludeIntl, testTeamNames, testTeamResults, testTeamSearch, testTeamTimerRef, title, toggleOrganizerHidden } = p;
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">

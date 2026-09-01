@@ -15,7 +15,6 @@ import { EventService } from '../../../services/EventService';
 import { compressImage } from '../../../utils/imageCompress';
 import { AgendaItem, EventType } from '../../../types';
 import { CustomFieldInput } from '../../wizard/customFieldInput';
-import { de } from 'date-fns/locale';
 import { ImgView, SubEventDraft } from '../../wizard/wizardTypes';
 import { EmailOverrideEntry } from '../../wizard/emailOverrideEntry';
 
