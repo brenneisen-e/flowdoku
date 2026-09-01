@@ -4125,7 +4125,10 @@ export class EventService {
   // v23.9: Statt nacktem boolean ein konkreter Grund bei Misserfolg, damit die
   // UI nicht mehr pauschal „bereits registriert" anzeigt (irreführend, wenn der
   // echte Grund Berechtigung/Deadline/Insert-Fehler war).
-  ): Promise<{ ok: boolean; reason?: 'not-allowed' | 'deadline' | 'insert-failed' | 'error' }> {
+    // v30.58: `detail` trägt die Klartext-Antwort von SharePoint bei einem
+    // abgelehnten Insert (z.B. „The field or property 'X' does not exist") —
+    // der `reason` bleibt maschinenlesbar, die Ursache geht nicht verloren.
+  ): Promise<{ ok: boolean; reason?: 'not-allowed' | 'deadline' | 'insert-failed' | 'error'; detail?: string }> {
     try {
       // ---- Permission-Checks (v3.9.2 / v3.9.3) ----
       // Serverseitige Prüfungen — nicht perfekt (SPFx läuft im Browser),
@@ -4309,7 +4312,31 @@ export class EventService {
           retryPayload
         );
       }
-      if (!response.ok) return { ok: false, reason: 'insert-failed' };
+      if (!response.ok) {
+        // v30.58: Den Grund AUSLESEN statt nur „insert-failed" zu melden.
+        //
+        // Bisher endete jeder abgelehnte Insert als anonymes „insert-failed" —
+        // und genau das hat die Suche nach der fehlenden Klammer-Zeile so lange
+        // aufgehalten: SharePoint sagt in der Antwort, WELCHE Spalte es nicht
+        // gibt („The field or property 'X' does not exist"), nur hat es nie
+        // jemand gelesen. Der Retry oben strippt bloß zwei fest verdrahtete
+        // Spalten (`ProxyConsent`, `Company`); ein nachträglich angelegtes
+        // Abfragefeld, dessen Spalte auf DIESER Liste fehlt, bringt den ganzen
+        // Insert zu Fall — und zwar nur bei den Personen, die das Feld
+        // ausfüllen. Das erklärt, warum es immer dieselben wenigen trifft und
+        // nicht zufällig streut wie eine Drosselung.
+        let detail = '';
+        try {
+          const txt = await response.text();
+          const m = txt.match(/"value"\s*:\s*"([^"]{0,400})"/);
+          detail = (m ? m[1] : txt).slice(0, 400);
+        } catch { /* Body nicht lesbar */ }
+        console.warn('[DEX] registerForEvent: Insert abgelehnt', {
+          status: response.status, subsiteUrl, detail,
+          felder: Object.keys(payload),
+        });
+        return { ok: false, reason: 'insert-failed', detail };
+      }
 
       // Inserted-Item-Id EINMALIG aus der Response lesen (der Body lässt sich
       // nur einmal konsumieren) — wird sowohl für die Dedup-Prüfung als auch
@@ -6806,6 +6833,58 @@ export class EventService {
    * Spalten der Teilnehmerliste fixen: fehlende Spalten anlegen, View-Reihenfolge korrigieren.
    * Kann auf bestehenden Events ausgeführt werden um die Liste nachträglich zu aktualisieren.
    */
+  /**
+   * v30.58: Prüft EINE Teilnehmerliste gegen die Abfragefelder ihres Events —
+   * ohne etwas zu ändern.
+   *
+   * Der Anlass: Fehlt auf einer Liste die Spalte zu einem Abfragefeld, lehnt
+   * SharePoint den GANZEN Insert ab (HTTP 400, „The field or property … does
+   * not exist"). Betroffen sind dann nur die Personen, die dieses Feld
+   * ausfüllen — deshalb sieht es aus wie ein zufälliger Einzelfall und nicht
+   * wie ein Struktur-Fehler. Genau so ist die fehlende Klammer-Zeile
+   * entstanden: Die übergreifenden Hauptevent-Felder gehen NUR auf die
+   * Klammer-Liste, also scheitert auch nur dort der Schreibvorgang.
+   *
+   * Bewusst lesend: „Was ist kaputt?" und „repariere es" sind zwei Fragen.
+   * Wer erst sehen will, was los ist, soll dafür nichts verändern müssen.
+   */
+  public async diagnoseRegistrationList(
+    subsiteUrl: string,
+    customFields: Array<{ id: string; label: string; spInternalName?: string }>
+  ): Promise<{ ok: boolean; listMissing: boolean; missingColumns: Array<{ id: string; label: string; column: string }>; error?: string }> {
+    try {
+      const resp = await this._sp.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields?$filter=Hidden eq false&$top=500&$select=InternalName,Title`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) {
+        // 404 heißt: Die Liste gibt es nicht (mehr). Das ist eine ANDERE
+        // Aussage als „Spalte fehlt" und darf nicht damit vermischt werden —
+        // dieselbe Unterscheidung wie bei getAllRegistrations (v29.3).
+        return { ok: false, listMissing: resp.status === 404 || resp.status === 410, missingColumns: [], error: `HTTP ${resp.status}` };
+      }
+      const data = await resp.json();
+      const rows: Array<{ InternalName?: string; Title?: string }> = data.value || data.d?.results || [];
+      const have = new Set<string>();
+      for (const r of rows) {
+        if (r.InternalName) have.add(r.InternalName.toLowerCase());
+        if (r.Title) have.add(r.Title.toLowerCase());
+      }
+      const missing: Array<{ id: string; label: string; column: string }> = [];
+      for (const f of (customFields || [])) {
+        const col = (f.spInternalName || '').trim();
+        // Ohne spInternalName wurde das Feld noch nie auf eine Liste
+        // geschrieben — dann ist nicht die Liste schuld, sondern die
+        // Zuordnung fehlt. Beides meldet „Spalten fixen" als zu erledigen.
+        if (!col) { missing.push({ id: f.id, label: f.label, column: '(noch nicht zugeordnet)' }); continue; }
+        if (!have.has(col.toLowerCase())) missing.push({ id: f.id, label: f.label, column: col });
+      }
+      return { ok: true, listMissing: false, missingColumns: missing };
+    } catch (e) {
+      return { ok: false, listMissing: false, missingColumns: [], error: String((e as Error)?.message || e) };
+    }
+  }
+
   public async fixRegistrationListColumns(
     subsiteUrl: string,
     eventContext?: {
