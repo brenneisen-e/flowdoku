@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.65.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.66.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -415,6 +415,22 @@ muss die **App** wechseln (Edge mit Arbeitskonto, Teams mit
 seit v30.33 die **Teilnehmer-ID**: Sie steht unter jedem QR-Code in der Mail und
 ist im Check-in-Suchfeld exakt suchbar. Zur Erwartung: iOS-Scanner läuft in der
 Regel, Android meist nicht.
+
+**Ein `$filter` auf eine fehlende Spalte liefert keine 0 — er wirft.** Am
+01.09.2026 stand in einem Flow-Briefing: „Bei Events ohne Gruppen liefert
+`StarterType eq 'Durchstarter'` schlicht 0." Falsch: Die App **löscht**
+`StarterType`/`PreferredStarterType` auf Events ohne geteilte Gruppen wieder
+(`deletableFields`, `EventService.ts` ~7096), und SharePoint antwortet auf
+eine unbekannte Spalte im `$filter` mit `SPException` → 502. Der Connector
+wiederholt das mit Backoff (12 Minuten je Action, über eine Stunde je Lauf),
+die Warteschlange staut sich, und einen Tag lang rückt niemand nach. Wer eine
+Spalte im Flow abfragt, prüft vorher in `ensureRegistrationList` UND in
+`deletableFields`, ob sie auf **jeder** Subsite existiert — und setzt bei
+optionalen Spalten **Retry Policy: None** plus toleranten Run after. Zweite
+Lehre aus demselben Tag: **Die Queue-Liste `DEX_IDReorder` zeigte nur `Done`,
+während die Run history nur rote Läufe hatte** — `DEX_IDReorder` (Status →
+Done) läuft VOR der Zähler-Kette. Wer den Zustand eines Flows an seiner Queue
+misst, misst dort nichts. Immer die Run history ansehen.
 
 **Inline-Styles können kein `:hover`.** Interaktive Elemente brauchen einen
 Hover-State (`hoverIdx`, `evTabHover`), sonst lesen sie sich als Beschriftung.

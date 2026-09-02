@@ -26,6 +26,7 @@ import B2RunTodoModal from './admin/B2RunTodoModal';
 import ShirtSizeModal from './admin/ShirtSizeModal';
 import { SHIRT_PATTERN } from '../utils/checkInExtras';
 import { groupSubEventTabs, stripGroupPrefix } from '../utils/subEventGroups';
+import { buildPromotionPlan, promotionPlanLines, isSplitCapacityOf, PromotionPlan } from '../utils/promotionPlan';
 import RecipientPicker from './admin/RecipientPicker';
 import OrganizerList from './OrganizerList';
 import { PersonContactHover } from './PersonContactHover';
@@ -1046,6 +1047,12 @@ export default function AdminPage(): React.ReactElement {
   // Globale Reparatur: Organizer-Email-Mismatch über alle Events fixen
   const [isRepairingOrganizers, setIsRepairingOrganizers] = React.useState(false);
   const [repairOrganizersResult, setRepairOrganizersResult] = React.useState<string | null>(null);
+  // v30.66: „Nachrücken & IDs für ALLE Events nachholen" — Sammel-Heilung nach
+  // einem Flow-Ausfall. Fortschritt getrennt vom Ergebnis, damit die Kachel
+  // während des Laufs sagt, bei welchem Event sie gerade ist.
+  const [isHealingAll, setIsHealingAll] = React.useState(false);
+  const [healAllProgress, setHealAllProgress] = React.useState<string | null>(null);
+  const [healAllResult, setHealAllResult] = React.useState<string | null>(null);
   // v28.65: Reparatur der Claims-Login-Tokens („0#.f|membership|…") in Namen —
   // Teilnehmerzeilen, Organizer-Namen der Events und die Rollenliste.
   const [isRepairingNames, setIsRepairingNames] = React.useState(false);
@@ -2231,38 +2238,43 @@ export default function AdminPage(): React.ReactElement {
    * Plätze dieselbe Benachrichtigung je Person braucht — zwei Kopien dieses
    * Mail-Aufbaus wären beim nächsten Template-Wechsel auseinandergelaufen.
    */
-  const notifyPromoted = async (promoted: { email: string; name?: string }): Promise<void> => {
-    if (!eventServiceRef || !selectedEvent) return;
-    if (!selectedEvent.disableEmails) {
+  // v30.66: `ev` ist optional und fällt auf `selectedEvent` zurück. Die
+  // Sammel-Aktion arbeitet Event für Event ab, ohne die Auswahl umzustellen —
+  // ein `setSelectedEvent` je Event würde die ganze Seite neu rendern und die
+  // Reihenfolge der Zustandsänderungen unübersichtlich machen.
+  const notifyPromoted = async (promoted: { email: string; name?: string }, ev?: DeloitteEvent): Promise<void> => {
+    const target = ev || selectedEvent;
+    if (!eventServiceRef || !target) return;
+    if (!target.disableEmails) {
       try {
-        const lang = selectedEvent.emailLanguage || 'EN';
+        const lang = target.emailLanguage || 'EN';
         const promotedFirstName = (promoted.name || '').trim().split(/\s+/)[0] || '';
         const promoteVars = {
           Name: promotedFirstName,
-          EventTitle: selectedEvent.title,
-          Organizer: formatOrganizerList(selectedEvent.organizers, lang),
+          EventTitle: target.title,
+          Organizer: formatOrganizerList(target.organizers, lang),
           AppUrl: `${eventServiceRef.siteUrl}/SitePages/DEX.aspx?env=WebView`,
           WaitlistPosition: '',
         };
         let emailData: { subject: string; body: string };
         const spTplRaw = await eventServiceRef.getEmailTemplate('Nachruecken', lang).catch(() => null);
-        const spTpl = applyEventTemplateOverride(spTplRaw, selectedEvent.emailTemplateOverrides, 'Nachruecken');
+        const spTpl = applyEventTemplateOverride(spTplRaw, target.emailTemplateOverrides, 'Nachruecken');
         if (spTpl) {
           emailData = buildEmailFromTemplate(spTpl, promoteVars);
         } else {
-          emailData = promotionEmail(promotedFirstName, selectedEvent.title);
+          emailData = promotionEmail(promotedFirstName, target.title);
         }
         await eventServiceRef.queueEmail(
-          withParentTitleSubject(emailData.subject, selectedEvent.parentEventId ? allEvents.find(e => e.id === selectedEvent.parentEventId) : undefined),
+          withParentTitleSubject(emailData.subject, target.parentEventId ? allEvents.find(e => e.id === target.parentEventId) : undefined),
           promoted.email, promoted.name || '', emailData.body,
-          'Nachruecken', selectedEvent.title, selectedEvent.id
+          'Nachruecken', target.title, target.id
         );
       } catch (err) { console.warn('[DEX] promote-email failed:', err); }
     }
-    if (!selectedEvent.disableOutlook) {
+    if (!target.disableOutlook) {
       try {
         await eventServiceRef.queueOutlookEvent(
-          promoted.email, selectedEvent.id, selectedEvent.title, 'Einladen'
+          promoted.email, target.id, target.title, 'Einladen'
         );
       } catch (err) { console.warn('[DEX] promote-outlook failed:', err); }
     }
@@ -2299,42 +2311,18 @@ export default function AdminPage(): React.ReactElement {
       // daraus ab, wie oft nachgerückt wird. Auf einem veralteten Stand
       // würde die Schleife über die Kapazität hinauslaufen.
       const fresh = await getAllRegistrations(selectedEvent.id);
-      const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
-      const lblA = (selectedEvent.splitLabelA && selectedEvent.splitLabelA.trim()) || 'Durchstarter';
-      const lblB = (selectedEvent.splitLabelB && selectedEvent.splitLabelB.trim()) || 'Funstarter';
-      // Geteilte Kapazität MIT getrennten Wartelisten → je Gruppe rechnen.
-      // Gemeinsame Warteliste (splitSharedWaitlist) verhält sich wie ein
-      // einzelner Topf: Wer zuerst wartet, rückt nach.
-      const perGroup = isSplitCapacity && !selectedEvent.splitSharedWaitlist;
-      const groups: Array<{ key?: string; label: string; cap: number }> = perGroup
-        ? [
-          { key: 'Durchstarter', label: lblA, cap: selectedEvent.durchstarterCapacity || 0 },
-          { key: 'Funstarter', label: lblB, cap: selectedEvent.funstarterCapacity || 0 },
-        ]
-        : [{
-          key: undefined,
-          label: isDe ? 'Plätze' : 'Seats',
-          cap: isSplitCapacity
-            // Gemeinsame Warteliste: Die Obergrenze ist die Summe beider
-            // Gruppen — `maxParticipants` ist bei geteilten Kapazitäten 0.
-            ? (selectedEvent.durchstarterCapacity || 0) + (selectedEvent.funstarterCapacity || 0)
-            : (selectedEvent.maxParticipants || 0),
-        }];
-      const groupOf = (r: SPRegistration): string => r.StarterType || r.PreferredStarterType || '';
-      const plan = groups.map(g => {
-        const inGroup = (r: SPRegistration): boolean => !g.key || groupOf(r) === g.key;
-        const active = fresh.filter(r => ACTIVE.indexOf(r.Status) >= 0 && inGroup(r)).length;
-        const waiting = fresh.filter(r => r.Status === 'Warteliste' && inGroup(r)).length;
-        // Kapazität 0 heißt „unbegrenzt" — dann rückt die ganze Warteliste nach.
-        const free = g.cap > 0 ? Math.max(0, g.cap - active) : waiting;
-        return { ...g, active, waiting, count: Math.min(free, waiting), free };
-      });
-      const total = plan.reduce((n, g) => n + g.count, 0);
+      // v30.66: Die Gruppen-Rechnung steht jetzt in `utils/promotionPlan` —
+      // die Sammel-Aktion „…für ALLE Events nachholen" braucht dieselbe, und
+      // zwei Kopien laufen bei der nächsten Kapazitäts-Änderung auseinander.
+      const planned = buildPromotionPlan(selectedEvent, fresh, isDe);
+      const perGroup = planned.perGroup;
+      const plan = planned.groups;
+      const total = planned.total;
 
       if (total === 0) {
         // Den tatsächlichen Grund nennen, nicht den erstbesten: „voll" und
         // „niemand wartet" führen zu ganz verschiedenen nächsten Schritten.
-        const anyWaiting = plan.some(g => g.waiting > 0);
+        const anyWaiting = planned.anyWaiting;
         setPromoteResult(!anyWaiting
           ? (isDe ? 'Niemand auf der Warteliste.' : 'Nobody on the waitlist.')
           : perGroup
@@ -2346,12 +2334,7 @@ export default function AdminPage(): React.ReactElement {
         return;
       }
 
-      const lines = plan
-        .filter(g => g.waiting > 0 || g.free > 0)
-        .map(g => perGroup
-          ? `• ${g.label}: ${g.active}/${g.cap || '∞'} belegt · ${g.waiting} auf der Warteliste → ${g.count} rücken nach`
-          : `• ${g.active}/${g.cap || '∞'} belegt · ${g.waiting} auf der Warteliste → ${g.count} rücken nach`)
-        .join('\n');
+      const lines = promotionPlanLines(planned).join('\n');
       const ok = await confirmDialog(
         isDe
           ? `${total} ${total === 1 ? 'Person' : 'Personen'} von der Warteliste nachrücken lassen?\n\n${lines}\n\nJede nachgerückte Person bekommt den Status „Angemeldet", eine Nachrück-Mail und eine Outlook-Einladung. Danach werden die TeilnehmerIDs neu vergeben.`
@@ -2410,6 +2393,196 @@ export default function AdminPage(): React.ReactElement {
       setPromoteResult(isDe ? 'Fehler beim Nachrücken.' : 'Error promoting.');
     }
     setIsPromoting(false);
+  };
+
+  /**
+   * v30.66: Nachrücken & IDs für ALLE Events nachholen (Admin Center).
+   *
+   * Entstanden am 02.09.2026: Der Flow `DEX_IDReorder_TeilnehmerIDs` brach
+   * einen Tag lang jeden Lauf mit 502 ab (Gruppen-Zählung auf Events ohne
+   * `StarterType`-Spalte). Jede Abmeldung in dieser Zeit hat einen Platz frei
+   * gemacht, den niemand bekommen hat — bei Leuten daneben auf der Warteliste.
+   * Pro Event nachklicken hieße 30 Events × „Freie Plätze füllen"; das hier
+   * macht es in einem Durchgang und berichtet am Ende.
+   *
+   * Zwei Phasen, bewusst getrennt:
+   *  1. PLANEN — alle Listen lesen, je Event über `buildPromotionPlan`
+   *     ausrechnen, wer nachrücken darf, und prüfen, ob die Nummern Lücken
+   *     haben. Noch wird nichts geschrieben. Das Ergebnis steht im
+   *     Bestätigungs-Dialog: Die Aktion verschickt Nachrück-Mails und
+   *     Outlook-Einladungen, und ein Knopf, der ungefragt an 30 Leute mailt,
+   *     ist der falsche Knopf.
+   *  2. AUSFÜHREN — promoten + benachrichtigen, IDs neu vergeben, Zähler
+   *     syncen. Sequentiell (SharePoint-Throttling), mit Fehlerzähler statt
+   *     stillem catch — ein 429 hinterließe sonst genau die halben Zustände,
+   *     die man später nicht mehr nachrechnen kann (v29.2).
+   *
+   * Beschnittene Listen werden ÜBERSPRUNGEN, nicht als leer gerechnet: Eine
+   * Subsite ohne Vollzugriff meldet sich über `onHttpError`, und „0 Aktive"
+   * aus einer 403-Sicht hieße sonst „alle Plätze frei" (v30.62). Solche
+   * Events stehen namentlich im Bericht.
+   */
+  const runHealAllEvents = async (): Promise<void> => {
+    if (!eventServiceRef) return;
+    setIsHealingAll(true);
+    setHealAllResult(null);
+    setHealAllProgress(null);
+    try {
+      // Alle aktiven Events mit Subsite — auch Sub-Events, jeder Termin hat
+      // eigene Liste, eigenen Zähler, eigene Warteliste. Klammern im
+      // subEventsOnlyMode raus: dort ist niemand buchbar, die Zeilen sind
+      // Schatten (v15.25), und `cap 0` würde als „unbegrenzt" gelesen.
+      const seen = new Set<string>();
+      const candidates = allEvents.filter(e => {
+        const sub = (e.subsiteUrl || '').trim();
+        if (!sub || e.status !== 'Active' || e.subEventsOnlyMode) return false;
+        if (seen.has(sub)) return false;
+        seen.add(sub);
+        return true;
+      });
+      if (candidates.length === 0) {
+        setHealAllResult(isDe ? 'Keine aktiven Events mit Teilnehmerliste.' : 'No active events with a participant list.');
+        setIsHealingAll(false);
+        return;
+      }
+
+      // ---- Phase 1: planen -------------------------------------------------
+      type Planned = { ev: DeloitteEvent; plan: PromotionPlan; idGap: boolean; blocked: number | null };
+      const planned: Planned[] = [];
+      for (let i = 0; i < candidates.length; i++) {
+        const ev = candidates[i];
+        setHealAllProgress(isDe ? `Prüfe ${i + 1}/${candidates.length}: ${ev.title}` : `Checking ${i + 1}/${candidates.length}: ${ev.title}`);
+        // Objekt statt `let`, weil TS eine Zuweisung im Rückruf nicht sieht
+        // und die Variable sonst als `null` festschreibt.
+        const err: { status: number | null } = { status: null };
+        const regs = await getAllRegistrations(ev.id, s => { err.status = s; });
+        planned.push({
+          ev,
+          plan: buildPromotionPlan(ev, regs, isDe),
+          idGap: recentCancellation(regs).recent,
+          blocked: err.status,
+        });
+      }
+      const blocked = planned.filter(p => p.blocked !== null);
+      const usable = planned.filter(p => p.blocked === null);
+      const withPromote = usable.filter(p => p.plan.total > 0);
+      const withGap = usable.filter(p => p.idGap);
+      const totalPromote = withPromote.reduce((n, p) => n + p.plan.total, 0);
+
+      const evLabel = (ev: DeloitteEvent): string => {
+        const parent = ev.parentEventId ? allEvents.find(e => e.id === ev.parentEventId) : undefined;
+        return parent ? `${parent.title} › ${shortSubEventTitle(ev.title, parent.title)}` : ev.title;
+      };
+      const summaryLines: string[] = [];
+      summaryLines.push(isDe ? `${usable.length} ${usable.length === 1 ? 'Event' : 'Events'} geprüft.` : `${usable.length} ${usable.length === 1 ? 'event' : 'events'} checked.`);
+      if (totalPromote > 0) {
+        summaryLines.push('');
+        summaryLines.push(isDe
+          ? `${totalPromote} ${totalPromote === 1 ? 'Person rückt' : 'Personen rücken'} nach:`
+          : `${totalPromote} ${totalPromote === 1 ? 'person moves' : 'people move'} up:`);
+        for (const p of withPromote) {
+          summaryLines.push(`• ${evLabel(p.ev)} — ${p.plan.total}`);
+          for (const l of promotionPlanLines(p.plan)) summaryLines.push(`    ${l}`);
+        }
+      } else {
+        summaryLines.push(isDe ? 'Niemand muss nachrücken.' : 'Nobody needs to move up.');
+      }
+      summaryLines.push('');
+      summaryLines.push(isDe
+        ? `${withGap.length} ${withGap.length === 1 ? 'Event' : 'Events'} mit Nummern-Lücken ${withGap.length === 1 ? 'wird' : 'werden'} neu nummeriert; die Platzzähler aller ${usable.length} Events werden abgeglichen.`
+        : `${withGap.length} ${withGap.length === 1 ? 'event' : 'events'} with ID gaps will be renumbered; the seat counters of all ${usable.length} events will be reconciled.`);
+      if (blocked.length > 0) {
+        summaryLines.push('');
+        summaryLines.push(isDe
+          ? `Übersprungen — kein Vollzugriff auf die Teilnehmerliste (${blocked.length}):`
+          : `Skipped — no full access to the participant list (${blocked.length}):`);
+        for (const p of blocked) summaryLines.push(`• ${evLabel(p.ev)} (HTTP ${p.blocked})`);
+      }
+      if (totalPromote > 0) {
+        summaryLines.push('');
+        summaryLines.push(isDe
+          ? 'Jede nachgerückte Person bekommt den Status „Angemeldet", eine Nachrück-Mail und eine Outlook-Einladung.'
+          : 'Each promoted person gets status “Registered”, a promotion email and an Outlook invite.');
+      }
+      setHealAllProgress(null);
+      const ok = await confirmDialog(summaryLines.join('\n'), {
+        confirmLabel: totalPromote > 0 ? (isDe ? 'Nachrücken & heilen' : 'Promote & heal') : (isDe ? 'Heilen' : 'Heal'),
+      });
+      if (!ok) { setIsHealingAll(false); return; }
+
+      // ---- Phase 2: ausführen ---------------------------------------------
+      let promotedTotal = 0;
+      let reorderedEvents = 0;
+      let syncedEvents = 0;
+      let errors = 0;
+      const promotedNames: string[] = [];
+      for (let i = 0; i < usable.length; i++) {
+        const { ev, plan, idGap } = usable[i];
+        const sub = (ev.subsiteUrl || '').trim();
+        setHealAllProgress(isDe ? `Heile ${i + 1}/${usable.length}: ${ev.title}` : `Healing ${i + 1}/${usable.length}: ${ev.title}`);
+        let promotedHere = 0;
+        for (const g of plan.groups) {
+          for (let k = 0; k < g.count; k++) {
+            // Obergrenze bewusst NICHT mitgeben — dieselbe Begründung wie in
+            // runManualPromote: Der Service zählt über die ganze Liste und
+            // kann eine Gruppe nicht trennen; die Anzahl steht oben fest.
+            const promoted = await eventServiceRef.promoteFirstWaitlistItem(sub, undefined, undefined, g.key);
+            if (promoted && promoted.success && promoted.email) {
+              promotedHere++;
+              promotedNames.push(promoted.name || promoted.email);
+              await notifyPromoted({ email: promoted.email, name: promoted.name }, ev);
+            } else {
+              // Warteliste unerwartet leer (jemand hat sich zwischendurch
+              // abgemeldet) — kein Fehler, nur nichts mehr zu tun.
+              break;
+            }
+          }
+        }
+        promotedTotal += promotedHere;
+        // IDs nur anfassen, wo es nötig ist: Der Reorder schreibt jede
+        // geänderte Zeile, und auf 30 sauberen Events wäre das reines Rauschen
+        // gegen das SharePoint-Throttling.
+        if (idGap || promotedHere > 0) {
+          try {
+            const r = await eventServiceRef.reorderParticipantIDs(sub, () => { /* Fortschritt je Event nicht nötig */ });
+            reorderedEvents++;
+            errors += r.errors;
+          } catch (e) {
+            errors++;
+            console.warn('[DEX] healAll: reorder failed', ev.title, e);
+          }
+        }
+        try {
+          await eventServiceRef.syncSeatsToActiveCount(sub, { isSplit: isSplitCapacityOf(ev) });
+          syncedEvents++;
+        } catch (e) {
+          errors++;
+          console.warn('[DEX] healAll: seat sync failed', ev.title, e);
+        }
+      }
+
+      const parts: string[] = [];
+      parts.push(isDe
+        ? `${promotedTotal} ${promotedTotal === 1 ? 'Person' : 'Personen'} nachgerückt`
+        : `${promotedTotal} ${promotedTotal === 1 ? 'person' : 'people'} promoted`);
+      if (promotedNames.length > 0) parts[0] += ` (${promotedNames.slice(0, 6).join(', ')}${promotedNames.length > 6 ? ', …' : ''})`;
+      parts.push(isDe ? `${reorderedEvents} Events neu nummeriert` : `${reorderedEvents} events renumbered`);
+      parts.push(isDe ? `${syncedEvents} Zähler abgeglichen` : `${syncedEvents} counters reconciled`);
+      if (blocked.length > 0) parts.push(isDe ? `${blocked.length} übersprungen (kein Zugriff)` : `${blocked.length} skipped (no access)`);
+      if (errors > 0) parts.push(isDe ? `${errors} Fehler — Konsole prüfen` : `${errors} errors — check console`);
+      setHealAllResult(parts.join(' · '));
+
+      // Das gerade geöffnete Event zeigt sonst bis zum nächsten Klick den
+      // alten Stand („Teilnehmer (N)", Warn-Box).
+      if (selectedEvent && seen.has((selectedEvent.subsiteUrl || '').trim())) {
+        try { setRegistrations(await getAllRegistrations(selectedEvent.id)); } catch { /* Anzeige bleibt alt, Daten sind geheilt */ }
+      }
+    } catch (err) {
+      console.warn('[DEX] healAll failed:', err);
+      setHealAllResult(isDe ? `Fehler: ${err instanceof Error ? err.message : String(err)}` : `Error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    setHealAllProgress(null);
+    setIsHealingAll(false);
   };
 
   // v11.70 / v11.71: Hinweis-Box „IDs sind ggf. nicht korrekt" wird jetzt
@@ -8794,6 +8967,29 @@ export default function AdminPage(): React.ReactElement {
               />
             )}
 
+            {/* v30.66: Nachrücken & IDs für ALLE Events nachholen — Admin only.
+                Sammel-Heilung nach einem Ausfall des Flows
+                DEX_IDReorder_TeilnehmerIDs (02.09.2026). Erst planen und im
+                Dialog zeigen, wer nachrückt — dann ausführen. Logik in
+                runHealAllEvents. */}
+            {isAdmin && (
+              <ActionTile
+                icon={<RefreshCw size={18} />}
+                category="maintenance"
+                title={isHealingAll
+                  ? (isDe ? 'Heilung läuft…' : 'Healing…')
+                  : (isDe ? 'Nachrücken & IDs für ALLE Events nachholen' : 'Catch up promotions & IDs for ALL events')}
+                desc={isDe
+                  ? 'Für den Fall, dass der Nachrück-Flow ausgefallen war: Prüft alle aktiven Events, lässt überall dort nachrücken, wo Plätze frei sind und Leute warten, nummeriert lückenhafte TeilnehmerIDs neu und gleicht alle Platzzähler ab. Zeigt VOR dem Ausführen, wer in welchem Event nachrücken würde — erst nach Bestätigung gehen Mails und Einladungen raus. Events ohne Vollzugriff werden namentlich übersprungen, nicht als leer gezählt.'
+                  : 'For when the promotion flow was down: checks all active events, promotes wherever seats are free and people are waiting, renumbers participant IDs with gaps and reconciles all seat counters. Shows BEFORE running who would move up in which event — emails and invites only go out after confirmation. Events without full access are skipped by name, not counted as empty.'}
+                badge="admin"
+                busy={isHealingAll}
+                result={isHealingAll ? healAllProgress : healAllResult}
+                resultIsError={!isHealingAll && !!healAllResult && (healAllResult.indexOf('Fehler') >= 0 || healAllResult.indexOf('Error') >= 0 || healAllResult.indexOf('errors') >= 0)}
+                onClick={async () => { await runHealAllEvents(); }}
+              />
+            )}
+
             {/* v28.65: Login-Tokens in Namen reparieren.
                 SharePoint stempelt in seine versteckte „User Information List"
                 bei manchen Personen das Claims-Login („0#.f|membership|
@@ -10530,7 +10726,7 @@ export default function AdminPage(): React.ReactElement {
                 {probablyStillRunning ? (
                   <>Die automatische Korrektur — <strong>Nachrücken von der Warteliste</strong> und <strong>Neu-Nummerierung</strong> — braucht nach einer Abmeldung typischerweise 1–5 Minuten. Die Liste wird hier <strong>automatisch alle 30 Sekunden neu geladen</strong>; diese Box verschwindet von selbst, sobald alles stimmt. Bitte in dieser Phase NICHT manuell korrigieren (sonst laufen zwei Korrekturen ineinander).</>
                 ) : (
-                  <>Die letzte Abmeldung liegt länger zurück — die automatische Korrektur ist also bereits durchgelaufen, die Lücke ist trotzdem geblieben. Das passiert, wenn genau die <strong>höchste Nummer abgemeldet</strong> wurde, während <strong>gleichzeitig neue Anmeldungen</strong> schon höhere Nummern bekommen haben — ein weiterer automatischer Lauf kommt erst bei der nächsten Abmeldung. Das ist rein kosmetisch (Nachrücken/Check-in funktionieren trotzdem) und jetzt <strong>gefahrlos per Klick zu beheben</strong>:</>
+                  <>Die letzte Abmeldung liegt länger zurück. Die Lücke kann trotzdem frisch sein — ein <strong>Gruppenwechsel</strong> auf die Warteliste vergibt eine neue Nummer und lässt die alte leer, setzt aber kein Abmeldedatum; und wenn der Nachrück-Flow <strong>gestaut oder ausgefallen</strong> ist, kommt die automatische Korrektur verspätet oder gar nicht (Admin: <strong>Run history</strong> des Flows prüfen). Die Lücke ist rein kosmetisch (Nachrücken/Check-in funktionieren trotzdem) und <strong>gefahrlos per Klick zu beheben</strong>:</>
                 )}
               </div>
               {/* v22.12: manueller Sofort-Check (lädt die Liste neu). */}

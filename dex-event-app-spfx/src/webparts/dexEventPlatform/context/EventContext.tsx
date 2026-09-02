@@ -1265,8 +1265,17 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       return [...(e.organizerEmails || []), ...(e.coOrganizerEmails || [])]
         .some(x => (x || '').toLowerCase() === me);
     };
+    // v30.66: Geteilte Kapazitäten haben `maxParticipants` 0 — die Grenze steht
+    // in `durchstarterCapacity`/`funstarterCapacity` (CLAUDE.md). Der alte
+    // Filter `maxParticipants > 0` hat genau diese Events von der Heilung
+    // ausgeschlossen; aufgefallen am 02.09.2026 an einem B2Run-Event, dessen
+    // Zähler nach dem Flow-Ausfall nicht mehr von selbst stimmten.
+    const hasCapacity = (e: DeloitteEvent): boolean =>
+      (e.maxParticipants || 0) > 0
+      || (e.durchstarterCapacity || 0) > 0
+      || (e.funstarterCapacity || 0) > 0;
     const targets = (events || []).filter(e =>
-      e.status === 'Active' && (e.maxParticipants || 0) > 0 && (e.subsiteUrl || '').trim()
+      e.status === 'Active' && hasCapacity(e) && (e.subsiteUrl || '').trim()
       && (!opts?.onlyMine || mine(e)));
     for (const e of targets) {
       const sub = e.subsiteUrl as string;

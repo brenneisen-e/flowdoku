@@ -24,9 +24,18 @@ Wird aktualisiert wenn Flows geändert werden.
 > UI-Anleitung direkt darunter — dort steht die vollständige `runAfter`-Tabelle
 > über alle acht beteiligten Actions.
 
-### UI-Anleitung 2026-09-02 — DRINGEND: Gruppen-Zählung bricht Events ohne Gruppen
+### UI-Anleitung 2026-09-02 — Gruppen-Zählung bricht Events ohne Gruppen
 
-> ## 🔴 Laufender Schaden — bitte zuerst
+> ## ✅ Umgesetzt am 02.09.2026 (vollständige Lösung, gegen den Export verifiziert)
+>
+> `Count_Seats_Durch`/`Count_Seats_Fun` mit `retryPolicy: none`, `Count_Seats_Fun`
+> und `Counter_Body` mit tolerantem Run after, `Sync_Seat_Counter` liest den Body
+> aus `outputs('Counter_Body')`. Offen: der Stau in der Run history baut sich
+> mit den noch laufenden Läufen ab. Die App-seitige Nachholung der ausgefallenen
+> Nachrück-Läufe ist seit **v30.66** eine Admin-Aktion („Nachrücken & IDs für
+> ALLE Events nachholen"). Der Block darunter bleibt als Fehlerbild stehen.
+>
+> ## 🔴 Was passiert war
 >
 > Die gestern eingebaute Kette **legt den Reorder-Flow für jedes Event ohne
 > geteilte Gruppen lahm**. Belegt am Lauf vom 02.09.2026 auf
