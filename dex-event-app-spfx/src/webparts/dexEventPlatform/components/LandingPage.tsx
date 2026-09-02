@@ -43,9 +43,11 @@ export default function LandingPage(): React.ReactElement {
   // ==================== v22: Archivierung (Admin) ====================
   const { isAdmin, canCreateEvents } = useRoles();
   // v24.23: Die „DEX für dein Event nutzen"-Box (Werde Organizer) ist für
-  // Organizer überflüssig — sie haben die Funktionen schon. Admins sehen sie
-  // bewusst weiter (um die normale User-Ansicht der Landing Page zu prüfen).
-  const showOrganizerCta = !canCreateEvents || isAdmin;
+  // Organizer überflüssig — sie haben die Funktionen schon.
+  // v30.68: Auch für Admins aus (Nutzer-Ansage 02.09.2026) — sie sind
+  // Organizer mit mehr Rechten; die User-Ansicht prüft man über die
+  // Rollen-Vorschau, nicht über einen Kasten, der einen selbst wirbt.
+  const showOrganizerCta = !canCreateEvents;
   const { isEventsLoading, getArchivableCount, runArchiveExpired, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getSentInactiveNotices, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, deleteEvent, getLastEventDeleteError, countExternalRegistrations, refreshEvents, getAllRegistrations } = useEvents();
   // v26.40: Modal-Hinweis nach automatischer Abmeldung von Ex-Deloitte-Personen.
   const [autoDeregModal, setAutoDeregModal] = React.useState<Array<{ title: string; people: Array<{ email: string; name: string }> }> | null>(null);
