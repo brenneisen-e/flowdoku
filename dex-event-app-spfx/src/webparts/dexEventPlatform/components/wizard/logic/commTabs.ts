@@ -269,18 +269,36 @@ export function resolveTopLevelCommStateImpl(ctx: ResolveTopLevelCommStateCtx): 
  * Aufruf gebaut, nicht memoisiert: damit sieht die Funktion exakt die Werte des
  * laufenden Renders, wie die Closure vorher auch. */
 export interface ApplyCommToAllSubEventsCtx {
+  // v30.67: aktiver Reiter + die Step-6-Setter, damit der sichtbare
+  // Sub-Reiter nach dem Kopieren neu geladen werden kann (s. unten).
+  activeCommTabIdx: number;
   childTermPlural: string;
   confirmDialog: (message: React.ReactNode, opts?: import("../../../context/DialogContext").ConfirmOptions) => Promise<boolean>;
   flushActiveCommTabToState: () => void;
   isDe: boolean;
+  locale: import("../../../context/LanguageContext").Locale;
   resolveTopLevelCommState: () => { emailLanguage: string; emailLogoBase64: string; outlookLogoBase64: string; outlookBody: string; outlookHeading: string; outlookSubheading: string; outlookSubject: string; disableEmails: boolean; disableRegistrationEmail: boolean; disableCancellationEmail: boolean; autoDeregisterOnDecline: boolean; inactiveHandling?: 'notify' | 'autoderegister'; disableOutlook: boolean; emailTemplateOverrides: Record<string, EmailOverrideEntry>; };
+  setAutoDeregisterOnDecline: React.Dispatch<React.SetStateAction<boolean>>;
+  setDisableCancellationEmail: React.Dispatch<React.SetStateAction<boolean>>;
+  setDisableEmails: React.Dispatch<React.SetStateAction<boolean>>;
+  setDisableOutlook: React.Dispatch<React.SetStateAction<boolean>>;
+  setDisableRegistrationEmail: React.Dispatch<React.SetStateAction<boolean>>;
+  setEmailLanguage: React.Dispatch<React.SetStateAction<string>>;
+  setEmailLogoPreview: React.Dispatch<React.SetStateAction<string>>;
+  setEmailTemplateOverrides: React.Dispatch<React.SetStateAction<Record<string, EmailOverrideEntry>>>;
+  setInactiveHandling: React.Dispatch<React.SetStateAction<"notify" | "autoderegister">>;
+  setOutlookBody: React.Dispatch<React.SetStateAction<string>>;
+  setOutlookHeading: React.Dispatch<React.SetStateAction<string>>;
+  setOutlookLogoPreview: React.Dispatch<React.SetStateAction<string>>;
+  setOutlookSubheading: React.Dispatch<React.SetStateAction<string>>;
+  setOutlookSubject: React.Dispatch<React.SetStateAction<string>>;
   setSubEvents: React.Dispatch<React.SetStateAction<SubEventDraft[]>>;
   showAlert: (message: React.ReactNode, opts?: import("../../../context/DialogContext").AlertOptions) => void;
   subEventsRef: React.MutableRefObject<SubEventDraft[]>;
 }
 
 export async function applyCommToAllSubEventsImpl(ctx: ApplyCommToAllSubEventsCtx): Promise<void> {
-  const { childTermPlural, confirmDialog, flushActiveCommTabToState, isDe, resolveTopLevelCommState, setSubEvents, showAlert, subEventsRef } = ctx;
+  const { activeCommTabIdx, childTermPlural, confirmDialog, flushActiveCommTabToState, isDe, locale, resolveTopLevelCommState, setAutoDeregisterOnDecline, setDisableCancellationEmail, setDisableEmails, setDisableOutlook, setDisableRegistrationEmail, setEmailLanguage, setEmailLogoPreview, setEmailTemplateOverrides, setInactiveHandling, setOutlookBody, setOutlookHeading, setOutlookLogoPreview, setOutlookSubheading, setOutlookSubject, setSubEvents, showAlert, subEventsRef } = ctx;
     const named = subEventsRef.current.filter(x => x.title && x.title.trim());
     if (named.length === 0) return;
     const term = childTermPlural || (isDe ? 'Sub-Events' : 'sub-events');
@@ -296,7 +314,11 @@ export async function applyCommToAllSubEventsImpl(ctx: ApplyCommToAllSubEventsCt
     const src = resolveTopLevelCommState() as unknown as Record<string, unknown>;
     const commGroup = SUB_TRANSFER_GROUPS.filter(g => g.key === 'communication')[0];
     const fields = commGroup ? commGroup.fields : [];
-    setSubEvents(prev => prev.map(s => {
+    // v30.67: über den Ref rechnen und ihn synchron mitschreiben — wie
+    // flushActiveCommTabToState. Ein direkt folgender Flush (Speichern,
+    // Reiterwechsel) liest `subEventsRef.current`; ein reines
+    // setSubEvents(prev => …) wäre dort noch nicht angekommen.
+    const next = subEventsRef.current.map(s => {
       if (!s.title || !s.title.trim()) return s;
       const patch: Record<string, unknown> = {};
       for (const f of fields) {
@@ -304,7 +326,37 @@ export async function applyCommToAllSubEventsImpl(ctx: ApplyCommToAllSubEventsCt
         patch[f] = (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v;
       }
       return { ...s, ...(patch as unknown as Partial<SubEventDraft>) };
-    }));
+    });
+    subEventsRef.current = next;
+    setSubEvents(next);
+    // v30.67: Den gerade SICHTBAREN Sub-Reiter neu laden. Die Kommunikations-
+    // felder liegen nicht laufend im Draft, sondern im UI-State (CLAUDE.md);
+    // der zeigte nach dem Kopieren weiter die ALTEN Werte dieses Termins, und
+    // der nächste flushActiveCommTabToState() schrieb genau diesen Stand in
+    // den Slot zurück — der offene Termin war der einzige, der die Übernahme
+    // nicht bekam, ohne jede Rückmeldung. Geladen wird aus dem frisch
+    // gepatchten Slot (nicht aus `src`), damit Felder, die die Gruppe nicht
+    // überträgt, ihren Sub-Wert behalten — dieselben Setter wie in
+    // switchCommTab.
+    if (activeCommTabIdx > 0) {
+      const cur = next[activeCommTabIdx - 1];
+      if (cur) {
+        setEmailLanguage(cur.emailLanguage || (locale === 'de' ? 'DE' : 'EN'));
+        setEmailLogoPreview(cur.emailLogoBase64 || '');
+        setOutlookLogoPreview(cur.outlookLogoBase64 || '');
+        setOutlookBody(cur.outlookBody || '');
+        setOutlookHeading(cur.outlookHeading || cur.title || '');
+        setOutlookSubheading(cur.outlookSubheading || '');
+        setOutlookSubject(cur.outlookSubject || '');
+        setDisableEmails(!!cur.disableEmails);
+        setDisableRegistrationEmail(!!cur.disableRegistrationEmail);
+        setDisableCancellationEmail(!!cur.disableCancellationEmail);
+        setAutoDeregisterOnDecline(!!cur.autoDeregisterOnDecline);
+        setInactiveHandling(cur.inactiveHandling === 'autoderegister' ? 'autoderegister' : 'notify');
+        setDisableOutlook(!!cur.disableOutlook);
+        setEmailTemplateOverrides({ ...(cur.emailTemplateOverrides || {}) });
+      }
+    }
     showAlert(isDe
       ? `Die Kommunikation des Haupt-Events gilt jetzt für alle ${named.length} ${term}. Nicht vergessen zu speichern.`
       : `The main event's communication now applies to all ${named.length} sub-events. Don't forget to save.`,

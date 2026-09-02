@@ -364,22 +364,23 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
         for (const key of Object.keys(ov)) {
           if (key.startsWith('_')) continue;
           const val = ov[key] as Partial<EmailOverrideEntry> | undefined;
-          if (val && (val.subject || val.heading || val.bodyHtml || val.headingColor || val.headingFontSize || val.subheading !== undefined || val.headingBold !== undefined || val.headingItalic !== undefined || val.subheadingColor || val.subheadingFontSize || val.subheadingBold !== undefined || val.subheadingItalic !== undefined)) {
+          // v30.67: `headerImage`/`blockLang`/`blockNote` in die Aufnahme-
+          // Bedingung — ein QR-Override, der NUR das Kopfbild ändert, fiel
+          // sonst komplett durch.
+          if (val && (val.subject || val.heading || val.bodyHtml || val.headingColor || val.headingFontSize || val.subheading !== undefined || val.headingBold !== undefined || val.headingItalic !== undefined || val.subheadingColor || val.subheadingFontSize || val.subheadingBold !== undefined || val.subheadingItalic !== undefined || val.headerImage || val.blockLang || val.blockNote)) {
+            // v30.67: Eintrag DURCHREICHEN statt Feld für Feld neu bauen. Die
+            // feste Feldliste (v18.19/v18.22) kannte die QR-Mail-Erweiterungen
+            // (v30.52/v30.60: Kopfbild, Block-Sprache, Notiz) nicht; beim
+            // nächsten Wizard-Speichern schrieb persistSubEvents genau diesen
+            // beschnittenen Stand zurück — die QR-Mail des Termins zeigte
+            // wieder den Orb, ohne dass jemand sie angefasst hatte. Das
+            // Hauptevent reicht seinen Eintrag ohnehin ungefiltert durch
+            // (`rest`); nur die drei Pflichtfelder werden hier normalisiert.
             filtered[key] = {
+              ...val,
               subject: val.subject || '',
               heading: val.heading || '',
               bodyHtml: val.bodyHtml || '',
-              // v18.19/v18.22: Überschrift-Farbe/-Größe/-Stil + Subheading-
-              // Formatierung mit-übernehmen.
-              ...(val.subheading !== undefined ? { subheading: val.subheading } : {}),
-              ...(val.headingColor ? { headingColor: val.headingColor } : {}),
-              ...(val.headingFontSize ? { headingFontSize: val.headingFontSize } : {}),
-              ...(val.headingBold !== undefined ? { headingBold: val.headingBold } : {}),
-              ...(val.headingItalic !== undefined ? { headingItalic: val.headingItalic } : {}),
-              ...(val.subheadingColor ? { subheadingColor: val.subheadingColor } : {}),
-              ...(val.subheadingFontSize ? { subheadingFontSize: val.subheadingFontSize } : {}),
-              ...(val.subheadingBold !== undefined ? { subheadingBold: val.subheadingBold } : {}),
-              ...(val.subheadingItalic !== undefined ? { subheadingItalic: val.subheadingItalic } : {}),
             };
           }
         }

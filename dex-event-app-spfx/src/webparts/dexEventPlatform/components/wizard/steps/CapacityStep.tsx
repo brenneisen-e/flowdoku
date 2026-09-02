@@ -11,8 +11,23 @@ import { LocationMultiSelect } from '../../wizard/LocationMultiSelect';
 import AudiencePicker from '../../AudiencePicker';
 import DatePicker from 'react-datepicker';
 import { shortSubEventTitle } from '../../../utils/subEventTitle';
+import { isoToLocal } from '../../../utils/berlinTime'; // v30.67
 import { InfoTooltip } from '../../InfoTooltip';
 import WizardHint from '../../WizardHint';
+
+/** v30.67: Sub-Event-Fristen liegen als UTC-ISO vor. Der Picker zeigte sie
+ *  über `new Date(iso)` in der BROWSER-Zeitzone, der Schreibweg (onChange →
+ *  berlinLocalToUtcIso) las die Wanduhr aber als BERLINER Zeit. Auf einem
+ *  UTC-/London-Rechner (Citrix, Reise) hieß das: Anzeige 21:59 statt 23:59,
+ *  und jedes Anfassen des Feldes verschob die Frist um den Offset nach vorn.
+ *  Hin- und Rückweg müssen dieselbe Zeitzone nehmen — wie Start/Ende in
+ *  Schritt 1 (`subIsoToDate`): Berliner Wanduhr als lokales Date. */
+const berlinIsoToPickerDate = (iso: string | undefined): Date | null => {
+  const local = iso ? isoToLocal(iso) : '';
+  if (!local) return null;
+  const d = new Date(local);
+  return isNaN(d.getTime()) ? null : d;
+};
 export interface CapacityStepProps {
   visible: boolean;
   activeCapacityTabIdx: number;
@@ -436,7 +451,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                           {/* v29.75: gleicher Wortlaut wie auf der Klammer. */}
                           <label className="form-label">{isDe ? 'Anmeldung bis' : 'Registration until'}</label>
                           <DatePicker
-                            selected={se.registrationDeadline ? new Date(se.registrationDeadline) : null}
+                            selected={berlinIsoToPickerDate(se.registrationDeadline)}
                             onChange={(date: Date | null) => {
                               if (!date) { updateSub({ registrationDeadline: '' }); return; }
                               const local = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
@@ -471,8 +486,8 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                             ) : (
                               <p style={{ fontSize: '0.72rem', color: '#b86700', margin: '4px 0 0' }}>
                                 {isDe
-                                  ? <>Manuell überschrieben — Regel wäre {new Date(ruleIso).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}. </>
-                                  : <>Manually overridden — rule would be {new Date(ruleIso).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}. </>}
+                                  ? <>Manuell überschrieben — Regel wäre {new Date(ruleIso).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })}. </>
+                                  : <>Manually overridden — rule would be {new Date(ruleIso).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })}. </>}
                                 <button
                                   type="button"
                                   onClick={() => updateSub({ registrationDeadline: ruleIso })}
@@ -487,7 +502,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                         <div className="form-group" style={{ marginBottom: 0 }}>
                           <label className="form-label">{isDe ? 'Abmeldung bis' : 'Cancellation until'}</label>
                           <DatePicker
-                            selected={se.lastDeregisterDate ? new Date(se.lastDeregisterDate) : null}
+                            selected={berlinIsoToPickerDate(se.lastDeregisterDate)}
                             onChange={(date: Date | null) => {
                               if (!date) { updateSub({ lastDeregisterDate: '' }); return; }
                               const local = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
@@ -520,8 +535,8 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                             ) : (
                               <p style={{ fontSize: '0.72rem', color: '#b86700', margin: '4px 0 0' }}>
                                 {isDe
-                                  ? <>Manuell überschrieben — Regel wäre {new Date(ruleIso).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}. </>
-                                  : <>Manually overridden — rule would be {new Date(ruleIso).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}. </>}
+                                  ? <>Manuell überschrieben — Regel wäre {new Date(ruleIso).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })}. </>
+                                  : <>Manually overridden — rule would be {new Date(ruleIso).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })}. </>}
                                 <button
                                   type="button"
                                   onClick={() => updateSub({ lastDeregisterDate: ruleIso })}

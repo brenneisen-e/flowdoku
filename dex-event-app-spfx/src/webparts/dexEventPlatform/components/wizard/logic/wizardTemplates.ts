@@ -314,7 +314,6 @@ export async function applyEventTemplateImpl(ctx: ApplyEventTemplateCtx, ev: imp
 export interface LoadDemoSubEventCtx {
   beforeNextSaturday: (daysBefore: number, hour: number, minute: number) => Date;
   berlinLocalToUtcIso: (localStr: string) => string;
-  fmtDate: (d: Date) => string;
   fmtDatetime: (d: Date) => string;
   nextSaturdayAt: (hour: number, minute: number) => Date;
   resetDemoVariantBaseState: () => void;
@@ -335,7 +334,7 @@ export interface LoadDemoSubEventCtx {
 }
 
 export function loadDemoSubEventImpl(ctx: LoadDemoSubEventCtx): void {
-  const { beforeNextSaturday, berlinLocalToUtcIso, fmtDate, fmtDatetime, nextSaturdayAt, resetDemoVariantBaseState, setAskSalutation, setCurrentStep, setCustomFields, setDescription, setEndDate, setLastDeregisterDate, setLocation, setMaxParticipants, setRegistrationDeadline, setStartDate, setSubEvents, setTitle, setUseSplitCapacities, setWaitlistEnabled } = ctx;
+  const { beforeNextSaturday, berlinLocalToUtcIso, fmtDatetime, nextSaturdayAt, resetDemoVariantBaseState, setAskSalutation, setCurrentStep, setCustomFields, setDescription, setEndDate, setLastDeregisterDate, setLocation, setMaxParticipants, setRegistrationDeadline, setStartDate, setSubEvents, setTitle, setUseSplitCapacities, setWaitlistEnabled } = ctx;
     resetDemoVariantBaseState();
     const start = nextSaturdayAt(9, 0);
     const end = nextSaturdayAt(17, 0);
@@ -345,8 +344,9 @@ export function loadDemoSubEventImpl(ctx: LoadDemoSubEventCtx): void {
     setLocation('Deloitte Office Hamburg');
     setStartDate(fmtDatetime(start));
     setEndDate(fmtDatetime(end));
-    setRegistrationDeadline(fmtDate(deadline));
-    setLastDeregisterDate(fmtDate(deadline));
+    // v30.67: fmtDatetime — der Fristen-State ist 16-stellig (s. loadDemoStandard).
+    setRegistrationDeadline(fmtDatetime(deadline));
+    setLastDeregisterDate(fmtDatetime(deadline));
     setMaxParticipants('100');
     setUseSplitCapacities(false);
     setWaitlistEnabled(true);
@@ -385,7 +385,6 @@ export function loadDemoSubEventImpl(ctx: LoadDemoSubEventCtx): void {
 export interface LoadDemoSubEventTeamCtx {
   beforeNextSaturday: (daysBefore: number, hour: number, minute: number) => Date;
   berlinLocalToUtcIso: (localStr: string) => string;
-  fmtDate: (d: Date) => string;
   fmtDatetime: (d: Date) => string;
   nextSaturdayAt: (hour: number, minute: number) => Date;
   resetDemoVariantBaseState: () => void;
@@ -412,7 +411,7 @@ export interface LoadDemoSubEventTeamCtx {
 }
 
 export function loadDemoSubEventTeamImpl(ctx: LoadDemoSubEventTeamCtx): void {
-  const { beforeNextSaturday, berlinLocalToUtcIso, fmtDate, fmtDatetime, nextSaturdayAt, resetDemoVariantBaseState, setAskSalutation, setAskTeamName, setCurrentStep, setCustomFields, setDescription, setEndDate, setLastDeregisterDate, setLocation, setMaxParticipants, setRegistrationDeadline, setStartDate, setSubEvents, setTeamJoinRequiresApproval, setTeamOpenSlotsVisible, setTeamPartialAllowed, setTeamRegistrationEnabled, setTeamSize, setTitle, setUseSplitCapacities, setWaitlistEnabled } = ctx;
+  const { beforeNextSaturday, berlinLocalToUtcIso, fmtDatetime, nextSaturdayAt, resetDemoVariantBaseState, setAskSalutation, setAskTeamName, setCurrentStep, setCustomFields, setDescription, setEndDate, setLastDeregisterDate, setLocation, setMaxParticipants, setRegistrationDeadline, setStartDate, setSubEvents, setTeamJoinRequiresApproval, setTeamOpenSlotsVisible, setTeamPartialAllowed, setTeamRegistrationEnabled, setTeamSize, setTitle, setUseSplitCapacities, setWaitlistEnabled } = ctx;
     resetDemoVariantBaseState();
     const start = nextSaturdayAt(18, 0);
     const end = nextSaturdayAt(22, 0);
@@ -422,8 +421,8 @@ export function loadDemoSubEventTeamImpl(ctx: LoadDemoSubEventTeamCtx): void {
     setLocation('Heinrich Campus Düsseldorf, 6. Etage, Dachterrasse');
     setStartDate(fmtDatetime(start));
     setEndDate(fmtDatetime(end));
-    setRegistrationDeadline(fmtDate(deadline));
-    setLastDeregisterDate(fmtDate(deadline));
+    setRegistrationDeadline(fmtDatetime(deadline)); // v30.67: s. loadDemoStandard
+    setLastDeregisterDate(fmtDatetime(deadline));
     setMaxParticipants('80');
     setUseSplitCapacities(false);
     setWaitlistEnabled(true);

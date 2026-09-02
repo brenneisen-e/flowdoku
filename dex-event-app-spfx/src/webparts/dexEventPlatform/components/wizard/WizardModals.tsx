@@ -34,7 +34,6 @@ export interface WizardModalsProps {
   askSalutation: boolean;
   attemptSubmit: () => void;
   audience: string;
-  autoDeregisterOnDecline: boolean;
   berlinLocalToUtcIso: (localStr: string) => string;
   bilingualFields: boolean;
   buildDraftPayload: () => Record<string, unknown>;
@@ -50,10 +49,8 @@ export interface WizardModalsProps {
   customFields: CustomFieldInput[];
   DEMO_VARIANTS: Record<"standard" | "groups" | "subevent" | "subeventTeam", () => void>;
   description: string;
-  disableCancellationEmail: boolean;
   disableEmails: boolean;
   disableOutlook: boolean;
-  disableRegistrationEmail: boolean;
   documents: { name: string; file?: File; url: string; size: number; }[];
   DRAFT_KEY: string;
   dragOverSectionId: string;
@@ -73,7 +70,6 @@ export interface WizardModalsProps {
   htmlEditorOpen: boolean;
   htmlEditorTemplateType: string;
   imagePreview: string;
-  inactiveHandling: "notify" | "autoderegister";
   isDe: boolean;
   isEditMode: boolean;
   isFictive: boolean;
@@ -110,6 +106,10 @@ export interface WizardModalsProps {
   registrationLanguage: "" | "de" | "en";
   renderPreviewSection: (sectionId: string) => React.ReactElement | null;
   requireSubEventSelection: boolean;
+  // v30.67: Der Prüfen-Dialog liest die Kommunikation des HAUPTEVENTS über
+  // den Resolver, nicht aus den Spiegel-States (die auf einem Sub-Reiter
+  // den Sub-Wert tragen).
+  resolveTopLevelCommState: () => { emailLanguage: string; disableEmails: boolean; disableRegistrationEmail: boolean; disableCancellationEmail: boolean; autoDeregisterOnDecline: boolean; inactiveHandling?: 'notify' | 'autoderegister'; disableOutlook: boolean; };
   scDescription: string;
   scopeSub: SubEventDraft;
   searchUsers: (query: string, includeInternational?: boolean) => Promise<{ email: string; displayName: string; location: string; jobTitle: string; }[]>;
@@ -204,7 +204,7 @@ export interface WizardModalsProps {
 }
 
 export const WizardModals: React.FC<WizardModalsProps> = (p) => {
-  const { activeCommTabIdx, activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, addSelectedSuggestedFields, agenda, applySubTransfer, askSalutation, attemptSubmit, audience, autoDeregisterOnDecline, berlinLocalToUtcIso, bilingualFields, buildDraftPayload, bulkOrganizerOpen, bulkQrScannerOpen, bulkTestTeamOpen, cancelOutlookSave, childTermPlural, childTermSingular, closeVisCopy, confirmOutlookSave, contactEmail, customFields, DEMO_VARIANTS, description, disableCancellationEmail, disableEmails, disableOutlook, disableRegistrationEmail, documents, DRAFT_KEY, dragOverSectionId, dragSectionId, durchstarterCapacity, emailLanguage, emailLogoPreview, emailTemplateOverrides, emailTemplates, endDate, eventImageUrl, excludedUsers, filterMode, funstarterCapacity, headerImageLayout, htmlEditorMode, htmlEditorOpen, htmlEditorTemplateType, imagePreview, inactiveHandling, isDe, isEditMode, isFictive, isMobile, isoToLocal, lastDeregisterDate, location, locationFilter, maxParticipants, newSectionError, newSectionModalOpen, newSectionName, organizer, organizerEmails, outlookBody, outlookConfirmChecks, outlookConfirmItems, outlookConfirmOpen, outlookEndOverride, outlookHeading, outlookLocationOverride, outlookLogoPreview, outlookStartOverride, outlookSubheading, outlookSubject, pendingSections, pendingSuccessDispatch, pendingSuccessDispatchRef, previewSections, qrScannerEmails, qrScannerNames, quiz, registrationDeadline, registrationLanguage, renderPreviewSection, requireSubEventSelection, scDescription, scopeSub, searchUsers, setBulkOrganizerOpen, setBulkQrScannerOpen, setBulkTestTeamOpen, setDragOverSectionId, setDragSectionId, setEmailTemplateOverrides, setHeaderImageLayout, setHtmlEditorOpen, setNewSectionError, setNewSectionModalOpen, setNewSectionName, setOrganizer, setOrganizerEmails, setOutlookBody, setOutlookConfirmChecks, setOutlookEndOverride, setOutlookHeading, setOutlookLocationOverride, setOutlookStartOverride, setOutlookSubheading, setOutlookSubject, setPendingSections, setPendingSuccessDispatch, setPreviewSections, setQrScannerEmails, setQrScannerNames, setScDescription, setShowB2runSuggested, setShowConfigCheck, setShowDemoVariantModal, setShowPreview, setShowRegisterPreview, setShowSuggestedModal, setShowSummaryModal, setSubEvents, setSubTransfer, setSuggestedSelection, setTestTeamEmails, setTestTeamNames, setUnsavedConfirmOpen, showB2runSuggested, showConfigCheck, showDemoVariantModal, showPreview, showRegisterPreview, showSuggestedModal, showSummaryModal, splitLabelA, splitLabelB, splitSharedWaitlist, startDate, SUB_TRANSFER_GROUPS, subEvents, subEventsOnlyMode, subGroupDiffCount, subTransfer, SUGGESTED_FIELDS_CATALOG, suggestedSelection, t, teamRegistrationEnabled, teamSize, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, unsavedConfirmOpen, useSplitCapacities, visCopyModalOpen, waitlistEnabled, allowAttendeeUpload, askTeamName, attendeeUploadHint, attendeeUploadLabel, contactInfo, contactName, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, quizClusterSize, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitSectionTitle, teamJoinRequiresApproval, teamOpenSlotsVisible, teamPartialAllowed } = p;
+  const { activeCommTabIdx, activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, addSelectedSuggestedFields, agenda, applySubTransfer, askSalutation, attemptSubmit, audience, berlinLocalToUtcIso, bilingualFields, buildDraftPayload, bulkOrganizerOpen, bulkQrScannerOpen, bulkTestTeamOpen, cancelOutlookSave, childTermPlural, childTermSingular, closeVisCopy, confirmOutlookSave, contactEmail, customFields, DEMO_VARIANTS, description, disableEmails, disableOutlook, documents, DRAFT_KEY, dragOverSectionId, dragSectionId, durchstarterCapacity, emailLanguage, emailLogoPreview, emailTemplateOverrides, emailTemplates, endDate, eventImageUrl, excludedUsers, filterMode, funstarterCapacity, headerImageLayout, htmlEditorMode, htmlEditorOpen, htmlEditorTemplateType, imagePreview, isDe, isEditMode, isFictive, isMobile, isoToLocal, lastDeregisterDate, location, locationFilter, maxParticipants, newSectionError, newSectionModalOpen, newSectionName, organizer, organizerEmails, outlookBody, outlookConfirmChecks, outlookConfirmItems, outlookConfirmOpen, outlookEndOverride, outlookHeading, outlookLocationOverride, outlookLogoPreview, outlookStartOverride, outlookSubheading, outlookSubject, pendingSections, pendingSuccessDispatch, pendingSuccessDispatchRef, previewSections, qrScannerEmails, qrScannerNames, quiz, registrationDeadline, registrationLanguage, renderPreviewSection, requireSubEventSelection, resolveTopLevelCommState, scDescription, scopeSub, searchUsers, setBulkOrganizerOpen, setBulkQrScannerOpen, setBulkTestTeamOpen, setDragOverSectionId, setDragSectionId, setEmailTemplateOverrides, setHeaderImageLayout, setHtmlEditorOpen, setNewSectionError, setNewSectionModalOpen, setNewSectionName, setOrganizer, setOrganizerEmails, setOutlookBody, setOutlookConfirmChecks, setOutlookEndOverride, setOutlookHeading, setOutlookLocationOverride, setOutlookStartOverride, setOutlookSubheading, setOutlookSubject, setPendingSections, setPendingSuccessDispatch, setPreviewSections, setQrScannerEmails, setQrScannerNames, setScDescription, setShowB2runSuggested, setShowConfigCheck, setShowDemoVariantModal, setShowPreview, setShowRegisterPreview, setShowSuggestedModal, setShowSummaryModal, setSubEvents, setSubTransfer, setSuggestedSelection, setTestTeamEmails, setTestTeamNames, setUnsavedConfirmOpen, showB2runSuggested, showConfigCheck, showDemoVariantModal, showPreview, showRegisterPreview, showSuggestedModal, showSummaryModal, splitLabelA, splitLabelB, splitSharedWaitlist, startDate, SUB_TRANSFER_GROUPS, subEvents, subEventsOnlyMode, subGroupDiffCount, subTransfer, SUGGESTED_FIELDS_CATALOG, suggestedSelection, t, teamRegistrationEnabled, teamSize, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, unsavedConfirmOpen, useSplitCapacities, visCopyModalOpen, waitlistEnabled, allowAttendeeUpload, askTeamName, attendeeUploadHint, attendeeUploadLabel, contactInfo, contactName, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, quizClusterSize, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitSectionTitle, teamJoinRequiresApproval, teamOpenSlotsVisible, teamPartialAllowed } = p;
   return (
     <>
       {/* ===== Vollbild-Vorschau Modal ===== */}
@@ -770,6 +770,12 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
         const orgList = organizer.split(';').map(s => s.trim()).filter(Boolean);
         const locList = locationFilter.split(',').map(s => s.trim()).filter(Boolean);
         const audList = (audience || '').split(',').map(s => s.trim()).filter(Boolean);
+        // v30.67: Kommunikation des Hauptevents auflösen — die Step-6-States
+        // (emailLanguage, disableEmails, disableOutlook …) sind Spiegel-States
+        // und tragen auf einem Sub-Reiter die Werte DIESES Sub-Events. Der
+        // Dialog meldete dann unter „Schritt 6 — Kommunikation" die Mail-
+        // Einstellungen des Termins als die des Hauptevents (v11.93-Falle).
+        const topComm = resolveTopLevelCommState();
         const sections: Array<{ title: string; rows: CheckRow[] }> = [];
         sections.push({
           title: isDe ? 'Schritt 1 — Grundlagen' : 'Step 1 — Basics',
@@ -832,12 +838,12 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
         sections.push({
           title: isDe ? 'Schritt 6 — Kommunikation' : 'Step 6 — Communication',
           rows: [
-            { label: isDe ? 'Mail-Sprache' : 'Email language', value: (emailLanguage || 'EN').toUpperCase() === 'DE' ? 'Deutsch' : 'English', status: 'ok' },
-            { label: isDe ? 'Bestätigungs-Mails' : 'Confirmation emails', value: disableEmails ? (isDe ? 'deaktiviert' : 'disabled') : (isDe ? 'aktiv' : 'on'), status: disableEmails ? 'ok' : 'default' },
-            ...(!disableEmails && (disableRegistrationEmail || disableCancellationEmail) ? [{ label: isDe ? 'Einzeln deaktiviert' : 'Individually disabled', value: [disableRegistrationEmail ? (isDe ? 'Anmelde-Bestätigung' : 'registration confirmation') : '', disableCancellationEmail ? (isDe ? 'Abmelde-Bestätigung' : 'cancellation confirmation') : ''].filter(Boolean).join(', '), status: 'ok' as CheckStatus }] : []),
-            { label: isDe ? 'Outlook-Termin' : 'Outlook invite', value: disableOutlook ? (isDe ? 'deaktiviert' : 'disabled') : (isDe ? 'aktiv' : 'on'), status: disableOutlook ? 'ok' : 'default' },
-            { label: isDe ? 'Auto-Abmeldung bei Outlook-Absage' : 'Auto-cancel on Outlook decline', value: autoDeregisterOnDecline ? (isDe ? 'an' : 'on') : (isDe ? 'aus' : 'off'), status: autoDeregisterOnDecline ? 'ok' : 'default' },
-            { label: isDe ? 'Person nicht mehr bei Deloitte' : 'Person no longer at Deloitte', value: inactiveHandling === 'autoderegister' ? (isDe ? 'automatisch abmelden' : 'auto-deregister') : (isDe ? 'Organizer informieren' : 'notify organizer'), status: inactiveHandling === 'autoderegister' ? 'ok' : 'default' },
+            { label: isDe ? 'Mail-Sprache' : 'Email language', value: (topComm.emailLanguage || 'EN').toUpperCase() === 'DE' ? 'Deutsch' : 'English', status: 'ok' },
+            { label: isDe ? 'Bestätigungs-Mails' : 'Confirmation emails', value: topComm.disableEmails ? (isDe ? 'deaktiviert' : 'disabled') : (isDe ? 'aktiv' : 'on'), status: topComm.disableEmails ? 'ok' : 'default' },
+            ...(!topComm.disableEmails && (topComm.disableRegistrationEmail || topComm.disableCancellationEmail) ? [{ label: isDe ? 'Einzeln deaktiviert' : 'Individually disabled', value: [topComm.disableRegistrationEmail ? (isDe ? 'Anmelde-Bestätigung' : 'registration confirmation') : '', topComm.disableCancellationEmail ? (isDe ? 'Abmelde-Bestätigung' : 'cancellation confirmation') : ''].filter(Boolean).join(', '), status: 'ok' as CheckStatus }] : []),
+            { label: isDe ? 'Outlook-Termin' : 'Outlook invite', value: topComm.disableOutlook ? (isDe ? 'deaktiviert' : 'disabled') : (isDe ? 'aktiv' : 'on'), status: topComm.disableOutlook ? 'ok' : 'default' },
+            { label: isDe ? 'Auto-Abmeldung bei Outlook-Absage' : 'Auto-cancel on Outlook decline', value: topComm.autoDeregisterOnDecline ? (isDe ? 'an' : 'on') : (isDe ? 'aus' : 'off'), status: topComm.autoDeregisterOnDecline ? 'ok' : 'default' },
+            { label: isDe ? 'Person nicht mehr bei Deloitte' : 'Person no longer at Deloitte', value: topComm.inactiveHandling === 'autoderegister' ? (isDe ? 'automatisch abmelden' : 'auto-deregister') : (isDe ? 'Organizer informieren' : 'notify organizer'), status: topComm.inactiveHandling === 'autoderegister' ? 'ok' : 'default' },
           ],
         });
         sections.push({

@@ -57,6 +57,7 @@ import { useWizardEventFieldState } from './wizard/hooks/useWizardEventFieldStat
 import { useWizardVisibilityState } from './wizard/hooks/useWizardVisibilityState';
 import { useWizardOptionState } from './wizard/hooks/useWizardOptionState';
 import { berlinLocalToUtcIso, isoToLocal } from '../utils/berlinTime';
+import { rollingDeadlineIso } from '../utils/rollingDeadline'; // v30.67
 
 // Deutsche Locale registrieren
 registerLocale('de', de);
@@ -257,14 +258,10 @@ export default function EventCreationPage(): React.ReactElement {
     if (cancelRuleEnabled && cancelRuleAmount > 0 && userCancelAllowed) rule.cancel = { amount: cancelRuleAmount, unit: cancelRuleUnit, ...(cancelRuleAfter ? { after: true } : {}) };
     return Object.keys(rule).length ? { _subDeadlineRule: rule } : {};
   };
-  // Abstand relativ zum Termin-Start — bewusst exakt (X Tage = X * 24 h),
-  // damit die Regel bei Ganztags-Terminen (Start 00:00) glatte Tagesgrenzen
-  // liefert. after=true rechnet VORWAERTS (Abmelden nach Beginn).
-  const rollingDeadlineIso = (startIso: string, amount: number, unit: 'days' | 'hours', after?: boolean): string => {
-    const t2 = new Date(startIso || '').getTime();
-    if (!isFinite(t2) || !(amount > 0)) return '';
-    return new Date(t2 + (after ? 1 : -1) * amount * (unit === 'hours' ? 3600000 : 86400000)).toISOString();
-  };
+  // v30.67: `rollingDeadlineIso` liegt jetzt in utils/rollingDeadline.ts —
+  // die alte Rechnung „X Tage = X * 24 h" lieferte nur OHNE Sommerzeit-
+  // Wechsel glatte Tagesgrenzen; über die Umstellung hinweg fiel die Frist
+  // auf den Vortag (Begründung dort).
   // v29.75: „Sichtbarkeit gilt für alle Sub-Events" — der Haken hält
   // Standortfilter, Verteiler und Verknüpfung der Sub-Events mit der
   // Klammer synchron (Spiegel-Effect weiter unten, nach den States).
@@ -294,9 +291,19 @@ export default function EventCreationPage(): React.ReactElement {
   // v30.5: Alles AUSSER relevant/sendMode/fields (Versand-Historie, Stempel,
   // Snapshots, Abschluss durch F&A) pflegen die F&A-Flows über
   // patchEventOverridesValue — der Wizard darf diese Schlüssel beim
-  // Speichern nicht verlieren. Beim Öffnen einfrieren, beim Bauen des
-  // Piggybacks wieder unterlegen.
-  const billingExtraRef = React.useRef<Record<string, unknown>>((() => {
+  // Speichern nicht verlieren.
+  // v30.67: NICHT mehr beim Öffnen einfrieren. `editEvent` ist aus dem
+  // Context-State abgeleitet (`events.find`), und `applyBillingLocally`
+  // zieht `_billing` dort nach, wenn während der offenen Wizard-Sitzung eine
+  // F&A-Mail rausgeht (Auto-Versand 11 s nach dem Boot, oder ein zweiter
+  // Admin im Organizer Center). Der eingefrorene Stand kannte
+  // infoSentAt/infoSnapshot/Log dann nicht, und der nächste „Speichern"-
+  // Klick löschte die revisionssichere Historie — mit dem Nebeneffekt, dass
+  // der nächste Boot dieselbe Mail ein zweites Mal an F&A schickte. Dieselbe
+  // Lehre wie `visAllSubsPiggyback` (v30.7): den Server-Stand erneut lesen,
+  // nicht dem Mount-Snapshot vertrauen. Der Ref bleibt nur als Fallback,
+  // falls im aktuellen editEvent gar kein `_billing` steht.
+  const billingExtraFromEvent = (): Record<string, unknown> | null => {
     try {
       const b = JSON.parse(editEvent?.emailTemplateOverrides || '{}')._billing;
       if (b && typeof b === 'object') {
@@ -305,8 +312,13 @@ export default function EventCreationPage(): React.ReactElement {
         return extra;
       }
     } catch { /* */ }
-    return {};
-  })());
+    return null;
+  };
+  const billingExtraRef = React.useRef<Record<string, unknown>>(billingExtraFromEvent() || {});
+  // v30.67: Log-Einträge DIESER Sitzung getrennt halten — sie werden beim
+  // Bauen des Piggybacks hinter den frisch gelesenen Server-Log gehängt. So
+  // überlebt ein Eintrag auch einen gescheiterten Save (429) bis zum Retry.
+  const billingSessionLogRef = React.useRef<unknown[]>([]);
   // v30.5: Protokollierung (Fachkonzept Abschnitt 13) — geloggt wird beim
   // Speichern, wenn sich Kennzeichnung oder Angaben geändert haben.
   const billingInitialRef = React.useRef<string>(JSON.stringify({ r: billingRelevant, m: billingSendMode, f: billingFields }));
@@ -317,15 +329,18 @@ export default function EventCreationPage(): React.ReactElement {
       try {
         const prev = JSON.parse(billingInitialRef.current) as { r: boolean | null };
         const by = `${currentUser?.firstName || ''} ${currentUser?.surname || ''}`.trim() || currentUser?.email || '';
-        const log = Array.isArray(billingExtraRef.current.log) ? (billingExtraRef.current.log as unknown[]) : [];
         const action = prev.r !== billingRelevant
           ? (billingRelevant ? 'Event als abrechnungsrelevant markiert' : 'Event nicht mehr als abrechnungsrelevant markiert')
           : 'Abrechnungsinformationen geändert';
-        billingExtraRef.current = { ...billingExtraRef.current, log: [...log, { ts: new Date().toISOString(), by, action }].slice(-60) };
+        billingSessionLogRef.current = [...billingSessionLogRef.current, { ts: new Date().toISOString(), by, action }];
       } catch { /* Log ist best-effort */ }
       billingInitialRef.current = snap;
     }
-    return { _billing: { relevant: billingRelevant, sendMode: billingSendMode, fields: billingFields, ...billingExtraRef.current } };
+    const live = billingExtraFromEvent();
+    const extra = live || billingExtraRef.current;
+    const serverLog = Array.isArray(extra.log) ? (extra.log as unknown[]) : [];
+    const log = [...serverLog, ...billingSessionLogRef.current].slice(-60);
+    return { _billing: { relevant: billingRelevant, sendMode: billingSendMode, fields: billingFields, ...extra, ...(log.length > 0 ? { log } : {}) } };
   };
   // Alle elf Felder sind laut Fachkonzept Pflicht. Unvollstaendig ist ein
   // STATUS („Abrechnungsrelevante Informationen unvollständig"), kein
@@ -998,7 +1013,7 @@ export default function EventCreationPage(): React.ReactElement {
     SUGGESTED_FIELDS_CATALOG, addCustomField, addSelectedSuggestedFields, addStartblock, addSubEventCustomField, allowAttendeeUpload,
     applyEventTemplate, askSalutation, askTeamName, attendeeUploadHint, attendeeUploadLabel, beforeNextSaturday,
     bilingualFields, confirmDialogEnabled, confirmDialogMode, confirmDialogText, copyParentFieldsToSubEvent, dragOverSectionId,
-    dragSectionId, durchstarterRequiresProof, durchstarterStartblock, error, fmtDate, fmtDatetime,
+    dragSectionId, durchstarterRequiresProof, durchstarterStartblock, error, fmtDatetime,
     funstarterStartblock, imageUploadError, isB2runTemplate, isSubmitting, isVisOpen, loadDemoGroups,
     loadDemoStandard, locationOptions, mainEventLabel, mainEventLabelMode, nextSaturdayAt, openSuggestedModal,
     previewSections, progress, progressLabel, registrationLanguage, removeCustomField, removeStartblock,
@@ -1016,7 +1031,7 @@ export default function EventCreationPage(): React.ReactElement {
   } = useWizardOptionState({ b2runStartblocks, customFields, durchstarterCapacity, editEvent, funstarterCapacity, isDe, isEditMode, newStartblock, selectedTemplate, setAddrCity, setAddrHouseNo, setAddrStreet, setAddrZip, setAgenda, setAudience, setB2runStartblocks, setContactEmail, setContactInfo, setContactName, setCurrentStep, setCustomFields, setDescription, setDurchstarterCapacity, setEmailLanguage, setEndDate, setEventImageUrl, setExcludedUsers, setFieldExpandOverride, setFilterMode, setFunstarterCapacity, setImageFile, setImageOrigAspect, setImageOrigFile, setImagePreview, setKlammerDeadline, setLastDeregisterDate, setLocation, setLocationFilter, setMaxParticipants, setNewStartblock, setNoDescription, setRegistrationDeadline, setRemovedSavedSubs, setSelectedTemplate, setShowTemplatePicker, setSplitDescA, setSplitDescB, setSplitHelpText, setSplitLabelA, setSplitLabelB, setSplitSectionTitle, setSplitSharedWaitlist, setStartDate, setSubEvents, setTemplateLoadingId, setTitle, setTransferTimes, setUnlimitedParticipants, setWaitlistEnabled, showAlert });
   const loadDemoSubEvent = (): void => {
     return loadDemoSubEventImpl({
-      beforeNextSaturday, berlinLocalToUtcIso, fmtDate, fmtDatetime, nextSaturdayAt, resetDemoVariantBaseState,
+      beforeNextSaturday, berlinLocalToUtcIso, fmtDatetime, nextSaturdayAt, resetDemoVariantBaseState,
       setAskSalutation, setCurrentStep, setCustomFields, setDescription, setEndDate, setLastDeregisterDate,
       setLocation, setMaxParticipants, setRegistrationDeadline, setStartDate, setSubEvents, setTitle,
       setUseSplitCapacities, setWaitlistEnabled,
@@ -1025,7 +1040,7 @@ export default function EventCreationPage(): React.ReactElement {
 
   const loadDemoSubEventTeam = (): void => {
     return loadDemoSubEventTeamImpl({
-      beforeNextSaturday, berlinLocalToUtcIso, fmtDate, fmtDatetime, nextSaturdayAt, resetDemoVariantBaseState,
+      beforeNextSaturday, berlinLocalToUtcIso, fmtDatetime, nextSaturdayAt, resetDemoVariantBaseState,
       setAskSalutation, setAskTeamName, setCurrentStep, setCustomFields, setDescription, setEndDate,
       setLastDeregisterDate, setLocation, setMaxParticipants, setRegistrationDeadline, setStartDate, setSubEvents,
       setTeamJoinRequiresApproval, setTeamOpenSlotsVisible, setTeamPartialAllowed, setTeamRegistrationEnabled, setTeamSize, setTitle,
@@ -1035,11 +1050,18 @@ export default function EventCreationPage(): React.ReactElement {
 
   // v11.88: Variant-Map für den Demo-Button. Key entspricht der Karten-
   // Auswahl im Modal, Value ist die Loader-Funktion oben.
+  // v30.67: Vor jedem Demo-Laden auf die Klammer zurück. Die Loader ersetzen
+  // das gesamte Sub-Event-Array; stand der Organizer auf einem Sub-Reiter
+  // (der Demo-Knopf ist auch dort sichtbar), zeigte die Scope-Leiste danach
+  // ins Leere — und die Comm-Klemmung feuerte switchCommTab(0) ERST NACH dem
+  // Laden und überschrieb die frischen Demo-Kommunikationswerte mit dem
+  // Snapshot von vor dem Variantenwechsel. setScope(0) VOR dem Laden räumt
+  // beides aus (der Aufruf läuft erst beim Klick, nach der Deklaration).
   const DEMO_VARIANTS: Record<'standard' | 'groups' | 'subevent' | 'subeventTeam', () => void> = {
-    standard: loadDemoStandard,
-    groups: loadDemoGroups,
-    subevent: loadDemoSubEvent,
-    subeventTeam: loadDemoSubEventTeam,
+    standard: () => { setScope(0); loadDemoStandard(); },
+    groups: () => { setScope(0); loadDemoGroups(); },
+    subevent: () => { setScope(0); loadDemoSubEvent(); },
+    subeventTeam: () => { setScope(0); loadDemoSubEventTeam(); },
   };
 
 
@@ -1164,8 +1186,9 @@ export default function EventCreationPage(): React.ReactElement {
     onStep?: (done: number, total: number, title: string) => void,
   ): Promise<void> => {
     return await persistSubEventsForParentImpl({
+      addrCity, addrHouseNo, addrStreet, addrZip, // v30.67: {{Address}}-Fallback
       bilingualFields, childEventsOf, confirmDialog, contactEmail, createEvent, deleteEvent,
-      deleteEventItemOnly, editEvent, emailLanguage, forceOutlookRecreateRef, headerImageLayoutConfig,
+      deleteEventItemOnly, editEvent, forceOutlookRecreateRef, headerImageLayoutConfig,
       headerLayoutFor, initialSubEventDbIds, initialSubEventOutlookMeta, initialSubPersistRef, isDe, isFictive,
       onlineMeetingMode, organizer, orgGetsSubInvites, outlookTeamsLink, parentTimesIso, pendingOutlookRecreateForSubEventsRef,
       persistSubEventImage, resolveTopLevelCommState, sanitizeOrganizerPairs, showAlert, shrinkLogoB64,
@@ -1353,8 +1376,8 @@ export default function EventCreationPage(): React.ReactElement {
       childEventsOf, childGender, childTermPlural, childTermSingular, computeFormSnapshot, confirmDialog,
       confirmDialogEnabled, confirmDialogMode, confirmDialogText, contactEmail, contactInfo, contactName,
       contactOrganizerEmail, coOrganizerEmails, coOrganizerNames, createdEventIdRef, createEvent, currentUser,
-      customFields, deadlineToEndOfDayIso, description, disableOutlook, documents, DRAFT_KEY,
-      durchstarterCapacity, durchstarterRequiresProof, durchstarterStartblock, editEvent, effTeamsLink, emailLanguage,
+      customFields, deadlineToEndOfDayIso, description, documents, DRAFT_KEY,
+      durchstarterCapacity, durchstarterRequiresProof, durchstarterStartblock, editEvent, effTeamsLink,
       endDate, eventImageUrl, eventType, excludedUsers, filterMode, funstarterCapacity,
       funstarterStartblock, getGroupMembers, getLastEventUpdateError, headerImageLayoutConfig, headerLayoutFor, hiddenOrganizerEmails,
       hideOrganizer, hideOrganizerIndividualOnly, imageBanner, imageDisplay, imageFile, imageOrigAspect,
@@ -1701,6 +1724,11 @@ export default function EventCreationPage(): React.ReactElement {
       subOpenRuleHash: JSON.stringify({ openRuleEnabled, openRuleMode, openRuleDays, openRuleFixedDate }), // v29.67/v29.76
       visAllSubs, // v29.75
       subDeadlineRuleHash: JSON.stringify({ regRuleEnabled, regRuleAmount, regRuleUnit, cancelRuleEnabled, cancelRuleAmount, cancelRuleUnit, cancelRuleAfter }), // v29.76/77
+      // v30.67: Online-Meeting-Modus (v30.26) fehlte — eine reine Modus-
+      // Änderung (none ↔ auto, teamsLink bewegt sich dabei nicht) galt dem
+      // Ungespeichert-Wächter als „nichts geändert" UND ließ subTopGateKey
+      // (liest diesen Snapshot) alle Termine überspringen.
+      onlineMeetingMode,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -1717,6 +1745,7 @@ export default function EventCreationPage(): React.ReactElement {
     openRuleEnabled, openRuleMode, openRuleDays, openRuleFixedDate, // v29.67/v29.76
     visAllSubs, // v29.75
     regRuleEnabled, regRuleAmount, regRuleUnit, cancelRuleEnabled, cancelRuleAmount, cancelRuleUnit, cancelRuleAfter, // v29.76/77
+    onlineMeetingMode, // v30.67
   ]);
   React.useEffect(() => {
     // Initial-Snapshot ein paar Ticks nach dem ersten Render setzen, damit
@@ -1981,7 +2010,12 @@ export default function EventCreationPage(): React.ReactElement {
       bilingual: bilingualFields,
       emailLang: emailLanguage,
       header: headerImageLayout,
-      teams: teamsLink,
+      // v30.67: Modus UND Link — `OutlookIsOnlineMeeting` jedes Termins hängt
+      // am Modus (persistSubEvents: `onlineMeetingMode === 'auto'`), und beim
+      // Wechsel none ↔ auto bewegt sich der Link nicht. Genau der Fall, vor
+      // dem der Kommentar über subPersistKey warnt: Die Änderung wurde für
+      // ALLE Termine still verworfen, nur das Hauptevent bekam sie.
+      teams: `${onlineMeetingMode}|${teamsLink}`,
       allDay, showAsFree,
       logos: `${(emailLogoPreview || '').length}:${(outlookLogoPreview || '').length}`,
     });
@@ -2074,6 +2108,21 @@ export default function EventCreationPage(): React.ReactElement {
   }, []);
   const [subTransfer, setSubTransfer] = React.useState<null | { fromIdx: number; groups: string[]; targets: number[] }>(null);
   const [activeScopeIdx, setActiveScopeIdx] = React.useState<number>(0);
+  // v30.67: Range-Garantie auch für den fünften Reiter-Index. v28.89 hat
+  // `activeScopeIdx` als gemeinsamen Index eingeführt, ihn aber nicht in die
+  // Klemmungen von v11.57/v15.0 (oben, für die vier Alt-Indizes) aufgenommen.
+  // Die üblichen Löschwege rufen selbst setScope(0); die Demo-Loader
+  // (`resetDemoVariantBaseState` → setSubEvents([])) tun das nicht. Folge:
+  // Scope 2 bei einem Sub-Event — die Leiste zeigt einen Termin als aktiv,
+  // `scopeSub` ist undefined, und Schritt 1 schreibt still ins HAUPTEVENT;
+  // bei null Sub-Events rendert die Leiste gar nicht mehr, der event-weite
+  // Block bleibt an `activeScopeIdx === 0` ausgeblendet und es gibt keinen
+  // Weg zurück. Die vier anderen Indizes klemmen ihre eigenen Effects, also
+  // reicht hier der Scope-Index selbst (setScope steht erst weiter unten —
+  // und hinter dem frühen Return, deshalb bewusst nicht von hier aus).
+  React.useEffect(() => {
+    if (activeScopeIdx > subEvents.length) setActiveScopeIdx(0);
+  }, [subEvents.length, activeScopeIdx]);
 
   if (submitted) {
     return (
@@ -2379,7 +2428,10 @@ export default function EventCreationPage(): React.ReactElement {
    */
   const applyCommToAllSubEvents = async (): Promise<void> => {
     return await applyCommToAllSubEventsImpl({
-      childTermPlural, confirmDialog, flushActiveCommTabToState, isDe, resolveTopLevelCommState, setSubEvents,
+      activeCommTabIdx, childTermPlural, confirmDialog, flushActiveCommTabToState, isDe, locale,
+      resolveTopLevelCommState, setAutoDeregisterOnDecline, setDisableCancellationEmail, setDisableEmails, setDisableOutlook,
+      setDisableRegistrationEmail, setEmailLanguage, setEmailLogoPreview, setEmailTemplateOverrides, setInactiveHandling, setOutlookBody,
+      setOutlookHeading, setOutlookLogoPreview, setOutlookSubheading, setOutlookSubject, setSubEvents,
       showAlert, subEventsRef,
     });
   };
@@ -2762,19 +2814,19 @@ export default function EventCreationPage(): React.ReactElement {
     splitDisplayOrderReversed, splitHelpText, splitSectionTitle, teamJoinRequiresApproval, teamOpenSlotsVisible, teamPartialAllowed,
     activeCommTabIdx, activeFrom, addrCity, addrHouseNo, addrStreet, addrZip,
     addSelectedSuggestedFields, agenda, applySubTransfer, askSalutation, attemptSubmit, audience,
-    autoDeregisterOnDecline, berlinLocalToUtcIso, bilingualFields, buildDraftPayload, bulkOrganizerOpen, bulkQrScannerOpen,
+    berlinLocalToUtcIso, bilingualFields, buildDraftPayload, bulkOrganizerOpen, bulkQrScannerOpen,
     bulkTestTeamOpen, cancelOutlookSave, childTermPlural, childTermSingular, closeVisCopy, confirmOutlookSave,
-    contactEmail, customFields, DEMO_VARIANTS, description, disableCancellationEmail, disableEmails,
-    disableOutlook, disableRegistrationEmail, documents, DRAFT_KEY, dragOverSectionId, dragSectionId,
+    contactEmail, customFields, DEMO_VARIANTS, description, disableEmails,
+    disableOutlook, documents, DRAFT_KEY, dragOverSectionId, dragSectionId,
     durchstarterCapacity, emailLanguage, emailLogoPreview, emailTemplateOverrides, emailTemplates, endDate,
     eventImageUrl, excludedUsers, filterMode, funstarterCapacity, headerImageLayout, htmlEditorMode,
-    htmlEditorOpen, htmlEditorTemplateType, imagePreview, inactiveHandling, isDe, isEditMode,
+    htmlEditorOpen, htmlEditorTemplateType, imagePreview, isDe, isEditMode,
     isFictive, isMobile, isoToLocal, lastDeregisterDate, location, locationFilter,
     maxParticipants, newSectionError, newSectionModalOpen, newSectionName, organizer, organizerEmails,
     outlookBody, outlookConfirmChecks, outlookConfirmItems, outlookConfirmOpen, outlookEndOverride, outlookHeading,
     outlookLocationOverride, outlookLogoPreview, outlookStartOverride, outlookSubheading, outlookSubject, pendingSections,
     pendingSuccessDispatch, pendingSuccessDispatchRef, previewSections, qrScannerEmails, qrScannerNames, quiz,
-    registrationDeadline, registrationLanguage, renderPreviewSection, requireSubEventSelection, scDescription, scopeSub,
+    registrationDeadline, registrationLanguage, renderPreviewSection, requireSubEventSelection, resolveTopLevelCommState, scDescription, scopeSub,
     searchUsers, setBulkOrganizerOpen, setBulkQrScannerOpen, setBulkTestTeamOpen, setDragOverSectionId, setDragSectionId,
     setEmailTemplateOverrides, setHeaderImageLayout, setHtmlEditorOpen, setNewSectionError, setNewSectionModalOpen, setNewSectionName,
     setOrganizer, setOrganizerEmails, setOutlookBody, setOutlookConfirmChecks, setOutlookEndOverride, setOutlookHeading,

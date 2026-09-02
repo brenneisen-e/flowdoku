@@ -58,7 +58,6 @@ export interface WizardSubmitCtx {
   customFields: CustomFieldInput[];
   deadlineToEndOfDayIso: (dateStr: string) => string | null;
   description: string;
-  disableOutlook: boolean;
   documents: { name: string; file?: File; url: string; size: number; }[];
   DRAFT_KEY: string;
   durchstarterCapacity: string;
@@ -66,7 +65,6 @@ export interface WizardSubmitCtx {
   durchstarterStartblock: string;
   editEvent: import("../../../types/index").DeloitteEvent;
   effTeamsLink: () => string;
-  emailLanguage: string;
   endDate: string;
   eventImageUrl: string;
   eventType: EventType;
@@ -191,7 +189,7 @@ export interface WizardSubmitCtx {
 }
 
 export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
-  const { activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, agenda, allDay, allowAttendeeUpload, askSalutation, askTeamName, assistantsCanSee, attendeeUploadHint, attendeeUploadLabel, audience, berlinLocalToUtcIso, bilingualFields, billingPiggyback, bundledComm, childEventsOf, childGender, childTermPlural, childTermSingular, computeFormSnapshot, confirmDialog, confirmDialogEnabled, confirmDialogMode, confirmDialogText, contactEmail, contactInfo, contactName, contactOrganizerEmail, coOrganizerEmails, coOrganizerNames, createdEventIdRef, createEvent, currentUser, customFields, deadlineToEndOfDayIso, description, disableOutlook, documents, DRAFT_KEY, durchstarterCapacity, durchstarterRequiresProof, durchstarterStartblock, editEvent, effTeamsLink, emailLanguage, endDate, eventImageUrl, eventType, excludedUsers, filterMode, funstarterCapacity, funstarterStartblock, getGroupMembers, getLastEventUpdateError, headerImageLayoutConfig, headerLayoutFor, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly, imageBanner, imageDisplay, imageFile, imageOrigAspect, imageOrigFile, initialDocumentNames, initialFormSnapshotRef, initialOrgGetsSubInvitesRef, initialSubEventDbIds, isB2runTemplate, isDe, isEditMode, isFictive, klammerDeadline, lastDeregisterDate, lastDraftJsonRef, location, locationFilter, mainCommDisabledAck, mainEventLabel, mainEventLabelMode, maxParticipants, noCancelAfterDeadline, noDescription, notifyAdminsExternalAudienceAccess, notifyNewCoOrganizers, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, onlineMeetingMode, organizer, organizerDisplayLarge, organizerEmails, orgGetsSubInvites, outlookEndOverride, outlookLocationOverride, outlookStartOverride, outlookTeamsLink, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs, pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, pendingSuccessDispatchRef, persistSubEventsForParent, previewBeforeActive, qrScannerEmails, qrScannerNames, quiz, quizClusterSize, refreshEvents, registrationDeadline, registrationLanguage, regRuleEnabled, requestCoOrganizerApprovals, requireSubEventSelection, resolveTopLevelCommState, sanitizeOrganizerPairs, selectedEventId, setDraftSavedAt, setError, setImageUploadError, setIsSubmitting, setNavigationGuard, setPendingDraft, setPendingSuccessDispatch, setProgress, setProgressLabel, setRemovedSavedSubs, setShowSummaryModal, showAlert, showAsFree, shrinkLogoB64, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitLabelA, splitLabelB, splitSectionTitle, splitSharedWaitlist, startDate, subDeadlineRulePiggyback, subEventCalendar, subEventOpenRulePiggyback, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn, subEventsRef, teamJoinRequiresApproval, teamMembersCannotCreate, teamOpenSlotsVisible, teamPartialAllowed, teamRegistrationEnabled, teamSize, teamTermPlural, teamTermSingular, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, updateEvent, userCancelAllowed, useSplitCapacities, visAllSubsPiggyback, waitlistEnabled, wizardImgAspect } = ctx;
+  const { activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, agenda, allDay, allowAttendeeUpload, askSalutation, askTeamName, assistantsCanSee, attendeeUploadHint, attendeeUploadLabel, audience, berlinLocalToUtcIso, bilingualFields, billingPiggyback, bundledComm, childEventsOf, childGender, childTermPlural, childTermSingular, computeFormSnapshot, confirmDialog, confirmDialogEnabled, confirmDialogMode, confirmDialogText, contactEmail, contactInfo, contactName, contactOrganizerEmail, coOrganizerEmails, coOrganizerNames, createdEventIdRef, createEvent, currentUser, customFields, deadlineToEndOfDayIso, description, documents, DRAFT_KEY, durchstarterCapacity, durchstarterRequiresProof, durchstarterStartblock, editEvent, effTeamsLink, endDate, eventImageUrl, eventType, excludedUsers, filterMode, funstarterCapacity, funstarterStartblock, getGroupMembers, getLastEventUpdateError, headerImageLayoutConfig, headerLayoutFor, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly, imageBanner, imageDisplay, imageFile, imageOrigAspect, imageOrigFile, initialDocumentNames, initialFormSnapshotRef, initialOrgGetsSubInvitesRef, initialSubEventDbIds, isB2runTemplate, isDe, isEditMode, isFictive, klammerDeadline, lastDeregisterDate, lastDraftJsonRef, location, locationFilter, mainCommDisabledAck, mainEventLabel, mainEventLabelMode, maxParticipants, noCancelAfterDeadline, noDescription, notifyAdminsExternalAudienceAccess, notifyNewCoOrganizers, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, onlineMeetingMode, organizer, organizerDisplayLarge, organizerEmails, orgGetsSubInvites, outlookEndOverride, outlookLocationOverride, outlookStartOverride, outlookTeamsLink, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs, pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, pendingSuccessDispatchRef, persistSubEventsForParent, previewBeforeActive, qrScannerEmails, qrScannerNames, quiz, quizClusterSize, refreshEvents, registrationDeadline, registrationLanguage, regRuleEnabled, requestCoOrganizerApprovals, requireSubEventSelection, resolveTopLevelCommState, sanitizeOrganizerPairs, selectedEventId, setDraftSavedAt, setError, setImageUploadError, setIsSubmitting, setNavigationGuard, setPendingDraft, setPendingSuccessDispatch, setProgress, setProgressLabel, setRemovedSavedSubs, setShowSummaryModal, showAlert, showAsFree, shrinkLogoB64, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitLabelA, splitLabelB, splitSectionTitle, splitSharedWaitlist, startDate, subDeadlineRulePiggyback, subEventCalendar, subEventOpenRulePiggyback, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn, subEventsRef, teamJoinRequiresApproval, teamMembersCannotCreate, teamOpenSlotsVisible, teamPartialAllowed, teamRegistrationEnabled, teamSize, teamTermPlural, teamTermSingular, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, updateEvent, userCancelAllowed, useSplitCapacities, visAllSubsPiggyback, waitlistEnabled, wizardImgAspect } = ctx;
     // v9.14: Beschreibung ist jetzt optional. Nur Title bleibt Pflicht.
     if (!title) return;
 
@@ -424,7 +422,10 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
       // v27.5: Default-Unter-Überschrift = Ort (nicht Datum).
       const resolvedOlSub = effOutlookSubheading ? replacePlaceholders(effOutlookSubheading, outlookVars) : (location || undefined);
       // v18.73: Header-Bild Größe + Innenabstand (event-weit) in den Outlook-Body.
-      const wrappedOutlook = buildOutlookBody(resolvedOlHeading, resolvedBody, resolvedOlSub, headerLayoutFor(effOutlookLogo), outlookTeamsLink(), (emailLanguage || '').toUpperCase() !== 'EN');
+      // v30.67: `effEmailLanguage` statt des rohen States — auf einem Sub-Reiter
+      // trägt `emailLanguage` den Wert des Sub-Events, und der Teams-Beitreten-
+      // Block im Hauptevent-Termin kam dann in der falschen Sprache.
+      const wrappedOutlook = buildOutlookBody(resolvedOlHeading, resolvedBody, resolvedOlSub, headerLayoutFor(effOutlookLogo), outlookTeamsLink(), (effEmailLanguage || '').toUpperCase() !== 'EN');
       // v11.93: Top-Level-Logo aus dem Resolver — sonst würde beim Speichern
       // aus einem Sub-Tab das falsche Logo aufs Haupt-Event geschrieben.
       updates['OutlookBody'] = wrappedOutlook.replace(/\{\{ORB_URL\}\}/g, effOutlookLogo || getCachedOrbBase64() || '');
@@ -1099,8 +1100,10 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
         // Eintrag rueckt ihn vor und der Label nennt Termin und Zaehler.
         setProgress(90);
         setProgressLabel(isDe ? 'Outlook wird aktualisiert...' : 'Updating Outlook...');
+        // v30.67: `effDisableOutlook` statt des rohen States — auf einem
+        // Sub-Reiter trägt `disableOutlook` den Wert DIESES Sub-Events.
         const outlookTotal =
-          ((!disableOutlook && pendingOutlookUpdateForTopRef.current) ? 1 : 0)
+          ((!effDisableOutlook && pendingOutlookUpdateForTopRef.current) ? 1 : 0)
           + pendingOutlookUpdateForSubEventsRef.current.length
           + (orgGetsSubInvites !== initialOrgGetsSubInvitesRef.current ? (1 + subEventsRef.current.filter(se => !!se.dbId && !se.disableOutlook).length) : 0);
         let outlookDone = 0;
@@ -1115,16 +1118,35 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
         // angehakt (pendingOutlookUpdateForTopRef.current). OutlookDirty
         // wurde für das Top-Event schon im updateEvent-Call oben mit
         // pendingOutlookDirtyWriteRef geschrieben.
-        if (!disableOutlook && pendingOutlookUpdateForTopRef.current) {
+        // v30.67: `effDisableOutlook` statt `disableOutlook` — genau die
+        // v11.93-Falle: Speichert der Organizer von einem Sub-Reiter aus,
+        // dessen Termin „Outlook deaktiviert" hat, stand hier der Sub-Wert,
+        // der Zweig wurde übersprungen, KEIN UpdateEvent landete in der Queue
+        // — und OutlookDirty war oben schon auf false geschrieben. Der
+        // Kalender der Teilnehmer behielt den alten Stand, und der Wizard bot
+        // die Aktualisierung nie wieder an. Die Erkennung (outlookChanges.ts)
+        // löste längst über resolveTopLevelCommState auf; nur dieser Zweig
+        // und die Zählung darüber lasen noch roh.
+        // v30.67: Queue-Ergebnis PRÜFEN — queueOutlookEvent wirft nie, es
+        // meldet Fehlschlag (429) als false. Dann den Dirty-Marker zurück auf
+        // true setzen, damit der nächste Wizard-Lauf die offene Aktualisierung
+        // wieder anbietet, und den Termin am Ende namentlich melden.
+        const failedOutlookTitles: string[] = [];
+        if (!effDisableOutlook && pendingOutlookUpdateForTopRef.current) {
           try {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const ctx = (window as any).__dexSpfxContext;
             if (ctx && editEvent?.subsiteUrl) {
               const svc = new EventService(ctx);
               tickOutlook(isDe ? `Outlook wird aktualisiert… (${title || 'Hauptevent'})` : `Updating Outlook… (${title || 'main event'})`);
-              await svc.queueOutlookEvent('', selectedEventId, title, 'UpdateEvent');
+              const topQueued = await svc.queueOutlookEvent('', selectedEventId, title, 'UpdateEvent');
+              if (!topQueued) {
+                failedOutlookTitles.push(title || (isDe ? 'Hauptevent' : 'main event'));
+                const restored = await updateEvent(selectedEventId, { 'OutlookDirty': true }, { skipReload: true });
+                if (!restored) console.warn('[DEX][v30.67] OutlookDirty konnte nach gescheitertem UpdateEvent nicht zurückgesetzt werden:', selectedEventId);
+              }
             }
-          } catch { /* Outlook-Update optional */ }
+          } catch (err) { console.warn('[DEX][v30.67] Outlook-Update des Hauptevents fehlgeschlagen:', err); failedOutlookTitles.push(title || (isDe ? 'Hauptevent' : 'main event')); }
         }
         // v11.63: Sub-Event-Outlook-Updates pro angehaktem Sub-Event.
         if (pendingOutlookUpdateForSubEventsRef.current.length > 0) {
@@ -1141,10 +1163,20 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
                 tickOutlook(isDe
                   ? `Outlook wird aktualisiert… (${subIdx + 1}/${subIds.length}: ${subTitle || 'Termin'})`
                   : `Updating Outlook… (${subIdx + 1}/${subIds.length}: ${subTitle || 'date'})`);
+                // v30.67: Rückgabewert prüfen — queueOutlookEvent WIRFT nicht,
+                // es liefert false (429 nach ~20 Schreibzugriffen). Vorher
+                // wurde OutlookDirty trotzdem gelöscht: kein Eintrag in
+                // DEX_Outlook, Kalender alt, und der Wizard meldete beim
+                // nächsten Öffnen keine offene Änderung mehr. Dieselbe
+                // Klasse wie v29.21 (updateEvent) und v29.48 (deleteEvent).
                 try {
-                  await svc.queueOutlookEvent('', subId, subTitle, 'UpdateEvent');
-                  await updateEvent(subId, { 'OutlookDirty': false }, { skipReload: true });
-                } catch { /* einzelne Sub-Update-Fehler nicht eskalieren */ }
+                  const subQueued = await svc.queueOutlookEvent('', subId, subTitle, 'UpdateEvent');
+                  if (subQueued) {
+                    await updateEvent(subId, { 'OutlookDirty': false }, { skipReload: true });
+                  } else {
+                    failedOutlookTitles.push(subTitle || (isDe ? 'Termin' : 'date'));
+                  }
+                } catch (err) { console.warn('[DEX][v30.67] Outlook-Update eines Sub-Events fehlgeschlagen:', subId, err); failedOutlookTitles.push(subTitle || (isDe ? 'Termin' : 'date')); }
               }
             }
           } catch { /* Sub-Outlook-Updates optional */ }
@@ -1203,6 +1235,13 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
             }
           }
         } catch { /* */ }
+        // v30.67: gescheiterte Outlook-Aufträge benennen statt still
+        // „gespeichert" zu melden (s. failedOutlookTitles oben).
+        if (failedOutlookTitles.length > 0) {
+          showAlert(isDe
+            ? `Das Event ist gespeichert, aber für ${failedOutlookTitles.length} Termin${failedOutlookTitles.length === 1 ? '' : 'e'} konnte die Outlook-Aktualisierung nicht angestoßen werden: ${failedOutlookTitles.join(', ')}. Die Kalender der Teilnehmer zeigen dort noch den alten Stand — bitte öffne das Event später erneut und bestätige die Aktualisierung noch einmal.`
+            : `The event is saved, but the Outlook update could not be queued for ${failedOutlookTitles.length} date${failedOutlookTitles.length === 1 ? '' : 's'}: ${failedOutlookTitles.join(', ')}. Attendees' calendars still show the old state there — please reopen the event later and confirm the update again.`, { variant: 'error' });
+        }
         setProgress(100);
         setProgressLabel('Änderungen gespeichert!');
         // v9.45: Soft-Refresh analog zum Create-Pfad. Wizard verlassen via
@@ -1389,7 +1428,8 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
           // v27.5: Default-Unter-Überschrift = Ort (nicht Datum).
           const resolvedSub = effOutlookSubheading ? replacePlaceholders(effOutlookSubheading, vars) : (location || undefined);
           // v18.73: Header-Bild Größe + Innenabstand (event-weit) in den Outlook-Body.
-          const wrapped = buildOutlookBody(resolvedHeading, resolvedBody, resolvedSub, headerLayoutFor(effOutlookLogo), outlookTeamsLink(), (emailLanguage || '').toUpperCase() !== 'EN');
+          // v30.67: effEmailLanguage — s. Update-Pfad.
+          const wrapped = buildOutlookBody(resolvedHeading, resolvedBody, resolvedSub, headerLayoutFor(effOutlookLogo), outlookTeamsLink(), (effEmailLanguage || '').toUpperCase() !== 'EN');
           // v11.93: Logo aus Top-Level-Resolver, sonst landet beim Speichern
           // aus einem Sub-Tab das Sub-Logo aufs Haupt-Event.
           return wrapped.replace(/\{\{ORB_URL\}\}/g, effOutlookLogo || getCachedOrbBase64() || '');

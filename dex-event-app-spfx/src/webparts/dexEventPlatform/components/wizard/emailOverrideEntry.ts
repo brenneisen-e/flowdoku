@@ -19,4 +19,10 @@ export type EmailOverrideEntry = {
   subheadingFontSize?: string;
   subheadingBold?: boolean;
   subheadingItalic?: boolean;
+  /** v30.67: QR-Mail-Erweiterungen (v30.52/v30.60, geschrieben vom Organizer
+   *  Center — `saveQrMailOverride`). Nur am `QRCode`-Eintrag belegt. Hier
+   *  aufgeführt, damit der Wizard-Rundlauf sie nicht mehr abschneidet. */
+  headerImage?: import("../../utils/mailHeaderImage").MailHeaderImage;
+  blockLang?: string;
+  blockNote?: string;
 };

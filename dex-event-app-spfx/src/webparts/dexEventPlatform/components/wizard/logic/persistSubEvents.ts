@@ -15,6 +15,12 @@ import { SubEventDraft } from '../../wizard/wizardTypes';
 import { EmailOverrideEntry } from '../../wizard/emailOverrideEntry';
 
 export interface PersistSubEventsCtx {
+  // v30.67: Adresse des Hauptevents — Fallback für {{Address}} im Outlook-
+  // Body eines Sub-Events ohne eigene Adresse.
+  addrCity: string;
+  addrHouseNo: string;
+  addrStreet: string;
+  addrZip: string;
   bilingualFields: boolean;
   childEventsOf: (parentEventId: string) => import("../../../types/index").DeloitteEvent[];
   confirmDialog: (message: React.ReactNode, opts?: import("../../../context/DialogContext").ConfirmOptions) => Promise<boolean>;
@@ -23,7 +29,6 @@ export interface PersistSubEventsCtx {
   deleteEvent: (eventId: string) => Promise<boolean>;
   deleteEventItemOnly: (eventId: string) => Promise<boolean>;
   editEvent: import("../../../types/index").DeloitteEvent;
-  emailLanguage: string;
   forceOutlookRecreateRef: React.MutableRefObject<Set<string>>;
   headerImageLayoutConfig: { _headerImageLayout: { width: number; paddingV: number; paddingH: number; }; } | { _headerImageLayout?: undefined; };
   headerLayoutFor: (logoB64: string) => {    imageWidth: number;    imagePaddingV: number;    imagePaddingH: number;};
@@ -54,8 +59,17 @@ export interface PersistSubEventsCtx {
 }
 
 export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, parentEventId: string, onStep: (done: number, total: number, title: string) => void): Promise<void> {
-  const { bilingualFields, childEventsOf, confirmDialog, contactEmail, createEvent, deleteEvent, deleteEventItemOnly, editEvent, emailLanguage, forceOutlookRecreateRef, headerImageLayoutConfig, headerLayoutFor, initialSubEventDbIds, initialSubEventOutlookMeta, initialSubPersistRef, isDe, isFictive, onlineMeetingMode, organizer, orgGetsSubInvites, outlookTeamsLink, parentTimesIso, pendingOutlookRecreateForSubEventsRef, persistSubEventImage, resolveTopLevelCommState, sanitizeOrganizerPairs, showAlert, shrinkLogoB64, subEventCalendar, subEventsRef, subPersistKey, subPhotoAsLogo, subTopGateInitialRef, subTopGateKey, title, updateEvent } = ctx;
+  const { addrCity, addrHouseNo, addrStreet, addrZip, bilingualFields, childEventsOf, confirmDialog, contactEmail, createEvent, deleteEvent, deleteEventItemOnly, editEvent, forceOutlookRecreateRef, headerImageLayoutConfig, headerLayoutFor, initialSubEventDbIds, initialSubEventOutlookMeta, initialSubPersistRef, isDe, isFictive, onlineMeetingMode, organizer, orgGetsSubInvites, outlookTeamsLink, parentTimesIso, pendingOutlookRecreateForSubEventsRef, persistSubEventImage, resolveTopLevelCommState, sanitizeOrganizerPairs, showAlert, shrinkLogoB64, subEventCalendar, subEventsRef, subPersistKey, subPhotoAsLogo, subTopGateInitialRef, subTopGateKey, title, updateEvent } = ctx;
     const keptDbIds = new Set<string>();
+    // v30.67: Ids, deren DEX_Events-Zeile in DIESEM Lauf per Recreate ersetzt
+    // (oder auf dem Legacy-Pfad bewusst gelöscht) wurde. Sie sind weder
+    // „behalten" (die Zeile ist weg) noch „abgewählt" (der Termin lebt unter
+    // neuer Id weiter) — die Aufräum-Schleife unten darf sie deshalb NIE
+    // anfassen. Vorher rief sie für jede ersetzte Id deleteEvent (→ 404 →
+    // false) und meldete nach einem vollständig erfolgreichen Speichern
+    // „N Termine konnten nicht gelöscht werden", mit je einem kompletten
+    // Event-Reload obendrauf.
+    const replacedDbIds = new Set<string>();
     const failedSubTitles: string[] = [];
     // v29.57: Einmal je Save auswerten, nicht je Sub-Event — die Schranke
     // hängt nur am Hauptevent. Bei einem NEUEN Event (kein Snapshot) wird nie
@@ -127,7 +141,11 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
       // den Sub-Event eigene Werte in Step 5 gesetzt hat, verwenden wir die;
       // sonst fallback auf die Top-Level-Werte (Backward-Compat für
       // Sub-Events ohne eigene Communication-Einstellungen).
-      const subEmailLang = draft.emailLanguage || emailLanguage;
+      // v30.67: Fallback über `parentComm`, nicht über den rohen State — auf
+      // einem Sub-Reiter hält `emailLanguage` den Wert DIESES Reiters, und
+      // ein neuer Termin (ohne eigene Sprache) erbte beim Speichern von dort
+      // die Sprache des zuletzt geöffneten Termins statt die des Hauptevents.
+      const subEmailLang = draft.emailLanguage || parentComm.emailLanguage;
       const subOutlookBodyRaw = (typeof draft.outlookBody === 'string' && draft.outlookBody !== '') ? draft.outlookBody : '';
       const subOutlookHeading = draft.outlookHeading || draft.title || '';
       const subOutlookSub = draft.outlookSubheading || '';
@@ -156,9 +174,26 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
       // komplett ohne Text an. Jetzt bekommen Sub-Events denselben
       // Default-Body wie das Haupt-Event (v7.4-Pattern: Anmeldebestätigung +
       // Abmelde-Hinweis über die App + Organizer-Kontakt).
+      // v15.3: Sub-Event-eigene strukturierte Adresse serialisieren (analog
+      // zum Hauptevent-Top-Level-Pattern). Wenn alle vier Komponenten leer
+      // sind, wird ein leerer String gespeichert.
+      // v30.67: nach oben gezogen — {{Address}} im Outlook-Body braucht sie
+      // schon beim Aufbau der `vars` (stand dort hart auf '').
+      const draftAddr = draft.locationAddress || { street: '', houseNo: '', zip: '', city: '' };
+      const draftHasAddress = !!(draftAddr.street || draftAddr.houseNo || draftAddr.zip || draftAddr.city);
       let wrappedSubOutlookBody = '';
       {
         const orgNamesSub = formatOrganizerList([organizer], subEmailLang);
+        // v30.67: {{Address}} war im Sub-Event-Zweig immer leer — der
+        // Variablen-Knopf im Editor bot sie an, die Vorschau zeigte sie, im
+        // Termin der Teilnehmer stand „Treffpunkt: “. Dieselbe Formatierung
+        // wie im Hauptevent-Pfad; ohne eigene Adresse die des Hauptevents
+        // (ein Sub-Event findet innerhalb seines Hauptevents statt).
+        const fmtAddr = (street: string, houseNo: string, zip: string, city: string): string =>
+          [street, houseNo].filter(Boolean).join(' ') + ((zip || city) ? ', ' + [zip, city].filter(Boolean).join(' ') : '');
+        const subAddress = draftHasAddress
+          ? fmtAddr(draftAddr.street || '', draftAddr.houseNo || '', draftAddr.zip || '', draftAddr.city || '')
+          : fmtAddr(addrStreet, addrHouseNo, addrZip, addrCity);
         const vars = {
           EventTitle: draft.title.trim(),
           // v27.5: {{Organizer}} auf normalisierte Namen ("Vorname Nachname",
@@ -166,7 +201,7 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
           Organizer: orgNamesSub || organizer,
           ContactEmail: contactEmail.trim(),
           Location: draft.location || '',
-          Address: '',
+          Address: subAddress,
           StartDate: draft.startDate ? new Date(draft.startDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
           EndDate: draft.endDate ? new Date(draft.endDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
         };
@@ -206,11 +241,6 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
       const subEmailOverrides = Object.keys(subOverridesMerged).length > 0
         ? JSON.stringify(subOverridesMerged)
         : '';
-      // v15.3: Sub-Event-eigene strukturierte Adresse serialisieren (analog
-      // zum Hauptevent-Top-Level-Pattern). Wenn alle vier Komponenten leer
-      // sind, wird ein leerer String gespeichert.
-      const draftAddr = draft.locationAddress || { street: '', houseNo: '', zip: '', city: '' };
-      const draftHasAddress = !!(draftAddr.street || draftAddr.houseNo || draftAddr.zip || draftAddr.city);
       const draftLocationAddress = draftHasAddress ? JSON.stringify(draftAddr) : '';
       const draftAgendaJson = JSON.stringify(draft.agenda || []);
       const draftTransfersJson = JSON.stringify(draft.transferTimes || []);
@@ -314,6 +344,9 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
                 ? `Der Outlook-Termin für „${draft.title || 'Sub-Event'}" konnte nicht neu angelegt werden (SharePoint hat den Austausch des Eintrags abgelehnt). Das Sub-Event und seine Anmeldungen sind unverändert — bitte versuche es später erneut.`
                 : `The Outlook appointment for "${draft.title || 'sub-event'}" could not be recreated (SharePoint rejected replacing the entry). The sub-event and its registrations are untouched — please try again later.`, { variant: 'error' });
             } else {
+              // v30.67: Die alte Zeile ist nachweislich weg — nie mehr in den
+              // kaskadierenden deleteEvent-Zweig (s. replacedDbIds).
+              replacedDbIds.add(draft.dbId);
               // Reuse-Payload: bestehende Subsite + Teilnehmerliste an die
               // neue DEX_Events-Zeile koppeln. disableOutlook explizit false,
               // outlookEventId leer, damit der Flow sauber neu schreibt.
@@ -368,26 +401,43 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
           const subsiteUrlForReuse = initialMeta?.subsiteUrl || '';
           const regListNameForReuse = initialMeta?.registrationListName || 'Teilnehmer';
           if (subsiteUrlForReuse && regListNameForReuse) {
-            try {
-              await deleteEventItemOnly(draft.dbId);
-            } catch { /* Delete-Fehler: trotzdem versuchen, neu anzulegen */ }
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const reusePayload: any = {
-              ...childPayload,
-              disableOutlook: false,
-              outlookEventId: '',
-              existingSubsiteUrl: subsiteUrlForReuse,
-              existingRegistrationListName: regListNameForReuse,
-              onProgress: subOnProgress,
-            };
-            try {
-              const recreatedId = await createEvent(reusePayload);
-              // v27.11: Sub-Event-Bild auch auf dem Legacy-Recreate-Pfad persistieren.
-              await persistSubEventImage(recreatedId, draft);
-            } catch (err) {
-              console.warn('[DEX][v11.69] Legacy-Toggle-Recreate fehlgeschlagen:', draft.dbId, err);
+            // v30.67: Derselbe Riegel wie im v29.21-Pfad oben — dieser
+            // ältere Zweig (DisableOutlook-Toggle, „Fehlende Termine jetzt
+            // anlegen") war damals übersehen worden. deleteEventItemOnly
+            // wirft nie, es meldet Fehlschlag als false; das try/catch war
+            // toter Code. Unter Drosselung (429, ab ca. dem 20. Schreib-
+            // vorgang) lief der Recreate trotzdem weiter: eine ZWEITE Zeile
+            // auf dieselbe Subsite, die alte blieb stehen, fiel nicht in
+            // keptDbIds und wurde am Ende KASKADIEREND gelöscht — samt der
+            // geteilten Subsite mit allen Anmeldungen.
+            const legacyItemDeleted = await deleteEventItemOnly(draft.dbId).catch(() => false);
+            if (!legacyItemDeleted) {
+              console.warn('[DEX][v30.67] Recreate abgebrochen — deleteEventItemOnly fehlgeschlagen, Sub-Event bleibt unangetastet:', draft.dbId);
+              showAlert(isDe
+                ? `Der Outlook-Termin für „${draft.title || 'Sub-Event'}" konnte nicht neu angelegt werden (SharePoint hat den Austausch des Eintrags abgelehnt). Das Sub-Event und seine Anmeldungen sind unverändert — bitte versuche es später erneut.`
+                : `The Outlook appointment for "${draft.title || 'sub-event'}" could not be recreated (SharePoint rejected replacing the entry). The sub-event and its registrations are untouched — please try again later.`, { variant: 'error' });
+              // Kein continue: unten in den normalen Update-Pfad fallen, dort
+              // landet die dbId in keptDbIds.
+            } else {
+              replacedDbIds.add(draft.dbId);
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const reusePayload: any = {
+                ...childPayload,
+                disableOutlook: false,
+                outlookEventId: '',
+                existingSubsiteUrl: subsiteUrlForReuse,
+                existingRegistrationListName: regListNameForReuse,
+                onProgress: subOnProgress,
+              };
+              try {
+                const recreatedId = await createEvent(reusePayload);
+                // v27.11: Sub-Event-Bild auch auf dem Legacy-Recreate-Pfad persistieren.
+                await persistSubEventImage(recreatedId, draft);
+              } catch (err) {
+                console.warn('[DEX][v11.69] Legacy-Toggle-Recreate fehlgeschlagen:', draft.dbId, err);
+              }
+              continue;
             }
-            continue;
           } else {
             // Edge-Case: kein subsiteUrl auf dem alten Item bekannt (sehr
             // alte Events). In dem Fall fallen wir auf den destruktiven
@@ -401,9 +451,10 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
                 + `Continue anyway?`;
             const confirmed = await confirmDialog(msg, { danger: true, title: isDe ? 'Sub-Event neu aufsetzen' : 'Recreate sub-event', confirmLabel: isDe ? 'Trotzdem fortfahren' : 'Continue anyway' });
             if (confirmed) {
-              try {
-                await deleteEvent(draft.dbId);
-              } catch { /* delete-Fehler darf Re-Create nicht blockieren */ }
+              // v30.67: Gelungenes Löschen merken — sonst versucht die
+              // Aufräum-Schleife unten dieselbe Id ein zweites Mal (404).
+              const legacyGone = await deleteEvent(draft.dbId).catch(() => false);
+              if (legacyGone) replacedDbIds.add(draft.dbId);
               const recreatedLegacyId = await createEvent({ ...childPayload, onProgress: subOnProgress });
               // v27.11: Sub-Event-Bild auch hier persistieren.
               await persistSubEventImage(recreatedLegacyId, draft);
@@ -581,7 +632,8 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
     // waren, während der dazwischenliegende 29.09. verschwand.
     const failedDeleteTitles: string[] = [];
     for (const oldId of initialSubEventDbIds) {
-      if (!keptDbIds.has(oldId)) {
+      // v30.67: ersetzte Ids überspringen (s. replacedDbIds oben).
+      if (!keptDbIds.has(oldId) && !replacedDbIds.has(oldId)) {
         const gone = await deleteEvent(oldId).catch(() => false);
         if (!gone) {
           const stored = childEventsOf(parentEventId).find(k => k.id === oldId);

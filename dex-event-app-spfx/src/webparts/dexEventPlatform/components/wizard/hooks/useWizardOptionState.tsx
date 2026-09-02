@@ -494,8 +494,12 @@ export function useWizardOptionState(ctx: UseWizardOptionStateCtx) {
     setLocation('Heinrich Campus Düsseldorf, 6. Etage');
     setStartDate(fmtDatetime(start));
     setEndDate(fmtDatetime(end));
-    setRegistrationDeadline(fmtDate(deadline));
-    setLastDeregisterDate(fmtDate(deadline));
+    // v30.67: fmtDatetime statt fmtDate — der State trägt überall sonst das
+    // 16-stellige „YYYY-MM-DDTHH:MM"; die 10-stellige Form liest der
+    // DatePicker als UTC-Mitternacht (Anzeige „02:00" statt 23:59), und ein
+    // erneutes Anklicken desselben Tages schrieb dann 02:00 als Frist.
+    setRegistrationDeadline(fmtDatetime(deadline));
+    setLastDeregisterDate(fmtDatetime(deadline));
     setMaxParticipants('50');
     setUseSplitCapacities(false);
     setWaitlistEnabled(true);
@@ -518,8 +522,8 @@ export function useWizardOptionState(ctx: UseWizardOptionStateCtx) {
     setLocation('Deloitte Office Köln');
     setStartDate(fmtDatetime(start));
     setEndDate(fmtDatetime(end));
-    setRegistrationDeadline(fmtDate(deadline));
-    setLastDeregisterDate(fmtDate(deadline));
+    setRegistrationDeadline(fmtDatetime(deadline)); // v30.67: s. loadDemoStandard
+    setLastDeregisterDate(fmtDatetime(deadline));
     setMaxParticipants('50');
     setUseSplitCapacities(true);
     setSplitLabelA('Vormittag');

@@ -189,7 +189,10 @@ export async function triggerOutlookUpdateAllImpl(ctx: TriggerOutlookUpdateAllCt
       const ctx = (window as any).__dexSpfxContext;
       const svc = new EventService(ctx);
       for (const t of targets) {
-        try { await svc.queueOutlookEvent('', t.id, t.title, 'UpdateEvent'); done += 1; }
+        // v30.67: am Rückgabewert festmachen, nicht am catch — queueOutlookEvent
+        // wirft nie, es liefert false. Vorher zählte jeder abgelehnte POST
+        // (429) als Erfolg und die Meldung sagte „N Termine angestoßen".
+        try { const queued = await svc.queueOutlookEvent('', t.id, t.title, 'UpdateEvent'); if (queued) done += 1; else failed += 1; }
         catch { failed += 1; }
       }
     } finally {

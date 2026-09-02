@@ -392,7 +392,17 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                           type="radio"
                           name="subEventsMode"
                           checked={selected}
-                          onChange={() => setSubEventsOnlyMode(modeVal)}
+                          onChange={() => {
+                            setSubEventsOnlyMode(modeVal);
+                            // v30.67: Der Flag wird beim Laden aus einem ABGELEITETEN
+                            // Getter befüllt (`_requireSubEventSelection || _subEventsOnlyMode`)
+                            // und beim Speichern als eigener Schlüssel zurückgeschrieben.
+                            // Wer einmal „Nur Sub-Events" hatte, behielt ihn deshalb für
+                            // immer — Pflicht-Hinweis auf der Anmeldeseite, Team-Anmeldung
+                            // ausgeblendet, und keine Bedienung, um ihn loszuwerden.
+                            // Beim Wechsel auf „Haupt-Event + Sub-Events" fällt er.
+                            if (!modeVal) setRequireSubEventSelection(false);
+                          }}
                           style={{
                             position: 'absolute', opacity: 0, pointerEvents: 'none',
                             width: 1, height: 1, margin: -1, padding: 0,
