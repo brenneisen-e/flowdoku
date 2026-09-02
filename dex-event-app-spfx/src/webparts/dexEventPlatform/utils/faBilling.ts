@@ -483,7 +483,13 @@ export function buildFASheetAoa(
   aoa.push(FA_SHEET_PARTICIPANT_HEADERS.slice());
   for (const r of rows) {
     aoa.push([
-      r.name || '',
+      // v30.67: Spalte A heißt in der F&A-Vorlage „Participent Type" — ein
+      // Teilnehmertyp, kein Name. Bis v30.66 stand hier der Anzeigename, bei
+      // 300 Personen also 300 verschiedene „Typen"; der Name steht ohnehin
+      // zerlegt in First/Last Name. DEX kennt keinen Typ in F&As Vokabular,
+      // deshalb bleibt die Zelle leer — dieselbe Regel wie für Personalnummer
+      // und Kostenstelle unten: ein erfundener Wert wäre für F&A ein Wert.
+      '',
       r.email || '',
       r.firstName || '',
       r.lastName || '',

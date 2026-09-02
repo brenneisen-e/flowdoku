@@ -106,7 +106,13 @@ export const StayRangePicker: React.FC<IStayRangePickerProps> = (props: IStayRan
     // Datum vor der Anreise und das Feld zeigt 0 Nächte.
     let to = parsed.to;
     if (!to || stayNights(from, to) <= 0) {
-      const cand = new Date(d.getTime() + 86400000);
+      // v30.67: Kalendertag statt +24 h. `d` ist LOKALE Mitternacht, und in
+      // der Nacht, in der die Sommerzeit endet, hat der Tag 25 Stunden —
+      // +86400000 ms landete dann auf 23:00 desselben Datums, die Abreise
+      // fiel auf den Anreisetag und das Feld zeigte „0 Nächte". setDate
+      // rechnet über die Kalender-Komponenten und überspringt den Sprung.
+      const cand = new Date(d);
+      cand.setDate(cand.getDate() + 1);
       to = (maxD && cand > maxD) ? toLocalDay(maxD) : toLocalDay(cand);
     }
     onChange(formatStayValue(from, to));
