@@ -582,6 +582,10 @@ export default function RegistrationPage(): React.ReactElement {
   const [sessionMeta, setSessionMeta] = React.useState<Record<string, { count: number | null; wasRegistered: boolean }>>({});
   const [myParentReg, setMyParentReg] = React.useState<{ Status?: string } | null>(null);
   const [sessionsOnlySubmitted, setSessionsOnlySubmitted] = React.useState(false);
+  // v30.67 (Review): Seit leere Auswahl = Abmeldung (sessionsChanged) landete
+  // eine Komplett-Abmeldung auf der Erfolgsseite „erfolgreich angemeldet" mit
+  // LEERER Terminliste. Dieses Flag schaltet dort auf „Abmeldung durchgeführt".
+  const [submittedAsCancellation, setSubmittedAsCancellation] = React.useState(false);
   // v18.67: echtes Anmelde-Ergebnis (Angemeldet/Warteliste) aus der
   // Haupt-Registrierung — das Ergebnis-Modal nutzt das statt der gecachten
   // isFull-Schätzung, die nach Cancel/Re-Register veraltet sein konnte und
@@ -1560,7 +1564,7 @@ export default function RegistrationPage(): React.ReactElement {
     selectedSessions, sendBundledUpdateMail, sessionFieldValues, sessionMeta, sessionsChanged, setAssistantModalOpen, setCcSelfModalOpen,
     setConfirmDialogAck, setConfirmDialogOpen, setConfirmDraftParent, setConfirmDraftSessions, setError, setExternalEmailWarning,
     setFallbackDialog, setIsSubmitting, setSessionsOnlySubmitted, setShowErrors, setSubmitProgress, setSubmitProgressLabel,
-    setSubmitted, setSubmittedAsWaitlist, setSubmittedJoinKind, showAlert, starterCounts, submittedSessionsRef,
+    setSubmitted, setSubmittedAsCancellation, setSubmittedAsWaitlist, setSubmittedJoinKind, showAlert, starterCounts, submittedSessionsRef,
     subOnlyTerms, surname, t, teamMemberFields, teamMembersParsed, teamName,
     teamValidation, thirdPartyCheck, updateMyRegistration, uploadFieldDocument, userResults, userSearchIncludeIntl,
     willRegisterParent,
@@ -1774,14 +1778,22 @@ export default function RegistrationPage(): React.ReactElement {
     // bestätigt danach. Deshalb hier NICHT „erfolgreich registriert" texten.
     const isExternalProxy = registerForOther && isExternalEmailAddr((email || '').trim());
     const proxyName = `${firstName} ${surname}`.trim() || email;
-    const successHeadline = isExternalProxy
+    const successHeadline = submittedAsCancellation
+      ? (locale === 'de' ? 'Abmeldung durchgeführt' : 'Cancellation completed')
+      : isExternalProxy
       ? (locale === 'de' ? 'In der Teilnehmerliste hinterlegt' : 'Added to the participant list')
       : sessionsOnlyHint
       ? (childTermPlural
           ? (locale === 'de' ? `Für ${childTermPlural} angemeldet` : `Registered for ${childTermPlural}`)
           : (t('reg.success.sessionsonly.title') || 'Für Sessions angemeldet'))
       : (submittedAsWaitlist ? t('reg.waitlisttitle') : t('reg.success'));
-    const successBody = isExternalProxy
+    const successBody = submittedAsCancellation
+      // v30.67 (Review): Alle Termine abgewählt = Abmeldung. Vorher stand hier
+      // „erfolgreich angemeldet" mit leerer Terminliste.
+      ? (locale === 'de'
+          ? `Du bist für keinen der ${childTermPlural || 'Termine'} von „${event.title}" mehr angemeldet. Für jeden abgemeldeten ${childTermSingular || 'Termin'} bekommst du eine Abmeldebestätigung per E-Mail, sofern der Organizer Abmelde-Mails aktiviert hat.`
+          : `You are no longer registered for any of the ${childTermPlural || 'dates'} of "${event.title}". For each cancelled ${childTermSingular || 'date'} you will receive a cancellation confirmation by email, provided the organizer has enabled cancellation emails.`)
+      : isExternalProxy
       ? (locale === 'de'
           ? `${proxyName} wurde in der Teilnehmerliste hinterlegt — mit dem Status „Angemeldet (Datenschutzrückmeldung offen)". Da „${email}" eine externe Adresse ist, versendet die App KEINE Mail dorthin und KEINEN Kalendereintrag. Du bekommst eine E-Mail (Organisator:innen in Kopie) mit einem Button, über den du den fertigen Einladungs-Entwurf direkt herunterlädst — leite ihn aus deinem eigenen Postfach an ${proxyName} weiter und bestätige nach ihrer Rückmeldung die Datenschutz-Zustimmung in der Teilnehmerliste.`
           : `${proxyName} has been added to the participant list — with status „Registered (privacy confirmation pending)". Since „${email}" is an external address, the app sends NO email there and NO calendar entry. You'll receive an email (organizers in copy) with a button to download the ready-made invitation draft directly — forward it from your own mailbox to ${proxyName}, and confirm the privacy consent in the participant list once they reply.`)
@@ -1855,7 +1867,7 @@ export default function RegistrationPage(): React.ReactElement {
               Liste der gewählten Sections (dynamische Organizer-Bezeichnung) und
               der Mail/Outlook-Satz NUR wenn für die gewählten Sections wirklich
               Mail bzw. Outlook aktiv ist. */}
-          {!isExternalProxy && sessionsOnlyHint && event.subEventsOnlyMode ? (() => {
+          {!isExternalProxy && !submittedAsCancellation && sessionsOnlyHint && event.subEventsOnlyMode ? (() => {
             const selectedChildren = childEvents.filter(ce => selectedSessions.has(ce.id) || submittedSessionsRef.current.has(ce.id));
             const anyEmail = selectedChildren.some(ce => !ce.disableEmails);
             const anyOutlook = selectedChildren.some(ce => !ce.disableOutlook);

@@ -55,7 +55,15 @@ interface RoleContextType {
   isPowerUser: boolean;
   siteUrl: string;
   addRole: (userEmail: string, userName: string, role: UserRole, location: string) => Promise<boolean>;
+  /** true = DEX_Roles-Zeile geändert. Ob die SharePoint-Rechte dazu passen, sagt `hadRoleRightsIssue()`. */
   updateRole: (itemId: number, newRole: UserRole) => Promise<boolean>;
+  /** v30.67 (Review): true, wenn beim letzten updateRole/removeRole die Zeile
+   *  geändert wurde, aber mindestens ein SharePoint-Recht NICHT angepasst
+   *  werden konnte. Getrennt vom Rückgabewert, weil „Zeile nicht geändert"
+   *  und „Zeile geändert, Recht blieb stehen" zwei verschiedene Meldungen
+   *  brauchen — als ein boolean war die Rollenverwaltung im ersten Fall
+   *  falsch („Rolle entfernt — aber …", obwohl sie noch stand). */
+  hadRoleRightsIssue: () => boolean;
   setPowerUser: (itemId: number, isPowerUser: boolean) => Promise<boolean>;
   updateRoleLocation: (itemId: number, location: string) => Promise<boolean>;
   removeRole: (itemId: number) => Promise<boolean>;
@@ -282,8 +290,13 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     return rolesOk && eventsOk && siteOk;
   }
 
+  // v30.67 (Review): s. hadRoleRightsIssue im Interface.
+  const roleRightsIssueRef = React.useRef(false);
+  function hadRoleRightsIssue(): boolean { return roleRightsIssueRef.current; }
+
   async function updateRole(itemId: number, newRole: UserRole): Promise<boolean> {
     const oldRole = roles.find(r => r.id === itemId);
+    roleRightsIssueRef.current = false;
     const success = await spService.updateRole(itemId, newRole);
     // v30.67: `rightsOk` trägt, ob die SharePoint-Rechte zur neuen Rolle
     // passen. Vorher wurde jeder Fehler im Rechte-Block als „best-effort"
@@ -319,8 +332,9 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     }
     if (success && !rightsOk) {
       console.warn(`[DEX] updateRole: Rolle von ${oldRole?.userEmail} steht in DEX_Roles auf ${newRole}, aber mindestens ein SharePoint-Recht konnte NICHT entzogen werden — siehe Warnungen darüber.`);
+      roleRightsIssueRef.current = true;
     }
-    return success && rightsOk;
+    return success;
   }
 
   // v18.5: Power-User-Flag setzen/entfernen (Zusatz auf einem Organizer).
@@ -332,6 +346,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
 
   async function removeRole(itemId: number): Promise<boolean> {
     const roleEntry = roles.find(r => r.id === itemId);
+    roleRightsIssueRef.current = false;
     const success = await spService.deleteRole(itemId);
     // v30.67: Die Entzüge laufen jetzt AWAITED und mit Ergebnis — vorher
     // fire-and-forget mit `.catch(console.warn)`, und das Web-Recht (Full
@@ -350,10 +365,11 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
         }
         if (!rightsOk) {
           console.warn(`[DEX] removeRole: Zeile von ${roleEntry.userEmail} ist aus DEX_Roles entfernt, aber mindestens ein SharePoint-Recht konnte NICHT entzogen werden — siehe Warnungen darüber.`);
+          roleRightsIssueRef.current = true;
         }
       }
     }
-    return success && rightsOk;
+    return success;
   }
 
   async function updateRoleLocation(itemId: number, location: string): Promise<boolean> {
@@ -424,7 +440,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     roles, currentUserRole, isRolesLoading,
     isAdmin, isOrganizer, canCreateEvents, isPowerUser, siteUrl,
     originalIsAdmin, isImpersonating, previewAsUser, setPreviewAsUser, isFA,
-    addRole, updateRole, setPowerUser, updateRoleLocation, removeRole, refreshRoles, searchUser, searchUsers, searchGroups, getGroupMembers, searchUsersByLocation, getEmployeeData,
+    addRole, updateRole, hadRoleRightsIssue, setPowerUser, updateRoleLocation, removeRole, refreshRoles, searchUser, searchUsers, searchGroups, getGroupMembers, searchUsersByLocation, getEmployeeData,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [roles, currentUserRole, isRolesLoading, isImpersonating, previewAsUser, siteUrl]);
 

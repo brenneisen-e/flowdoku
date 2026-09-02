@@ -881,6 +881,36 @@ export async function deleteEvent(svc: EventService, eventId: number): Promise<b
     const event = await svc.getEvent(eventId);
     if (!event) return false;
 
+    // v30.67 (Review): Teilt eine ZWEITE DEX_Events-Zeile diese Subsite
+    // (Duplikat-Zustand aus einem halb gescheiterten Recreate, s.
+    // persistSubEvents.recreateWithReuse), darf die Subsite NICHT recycelt
+    // werden — sie trägt die Anmeldungen der anderen Zeile. Dann wird unten
+    // nur die Zeile entfernt. Ist die Abfrage nicht lesbar, wird gar nichts
+    // gelöscht: unbekannt sperrt. Die Prüfung steht VOR dem Register-Lauf,
+    // damit bei Abbruch nichts angefasst ist.
+    let subsiteShared = false;
+    if (event.SubsiteUrl) {
+      try {
+        const shareResp = await svc._sp.get(
+          `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=Id&$filter=SubsiteUrl eq '${encodeURIComponent(event.SubsiteUrl.replace(/'/g, "''"))}' and Id ne ${eventId}&$top=1`,
+          SPHttpClient.configurations.v1
+        );
+        if (!shareResp.ok) {
+          console.warn(`[DEX] deleteEvent: Prüfung auf geteilte Subsite nicht möglich (HTTP ${shareResp.status}) — Löschung abgebrochen (Event ${eventId}).`);
+          return false;
+        }
+        const shareData = await shareResp.json();
+        const others: Array<{ Id: number }> = shareData.value || shareData.d?.results || [];
+        subsiteShared = others.length > 0;
+        if (subsiteShared) {
+          console.warn(`[DEX] deleteEvent: Subsite ${event.SubsiteUrl} wird auch von Item ${others[0].Id} genutzt — nur die DEX_Events-Zeile ${eventId} wird entfernt, die Subsite bleibt.`);
+        }
+      } catch (err) {
+        console.warn('[DEX] deleteEvent: Prüfung auf geteilte Subsite fehlgeschlagen — Löschung abgebrochen:', err);
+        return false;
+      }
+    }
+
     // v30.67: Register ZUERST — dieselbe Reihenfolge wie deleteParticipantData
     // seit v29.3 (CLAUDE.md „Löschungen zuerst im Register"). Bisher wurde die
     // Subsite recycelt und DANACH DEX_Participants aufgeräumt, und zwar so,
@@ -931,7 +961,7 @@ export async function deleteEvent(svc: EventService, eventId: number): Promise<b
     //    die Subsite mitsamt Teilnehmerliste 93 Tage in den Site
     //    Collection Recycle Bin → ein Tenant-Admin / Site Collection
     //    Admin kann sie dort wiederherstellen falls nötig.
-    if (event.SubsiteUrl) {
+    if (event.SubsiteUrl && !subsiteShared) {
       try {
         await svc._post(`${event.SubsiteUrl}/_api/web/recycle`, {});
       } catch {

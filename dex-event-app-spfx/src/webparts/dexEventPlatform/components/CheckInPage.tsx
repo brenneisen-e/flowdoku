@@ -180,9 +180,14 @@ export default function CheckInPage(): React.ReactElement {
       let httpStatus = 0;
       const regs = await getAllRegistrations(eventId, (status) => { readable = false; httpStatus = status; });
       if (!readable) {
+        // v30.67 (Review): zweisprachig wie der Nachbarpfad checkInByParticipantId.
         setSearchLoadError(httpStatus === 403
-          ? 'Keine Leseberechtigung auf der Teilnehmerliste dieses Termins — bitte Organizer/Admin um Freigabe bitten.'
-          : `Teilnehmerliste konnte nicht gelesen werden (${httpStatus ? 'HTTP ' + httpStatus : 'keine Teilnehmerliste gefunden'}) — bitte erneut versuchen.`);
+          ? (isDe
+            ? 'Keine Leseberechtigung auf der Teilnehmerliste dieses Termins — bitte Organizer/Admin um Freigabe bitten.'
+            : 'No read permission on this date\'s attendee list — please ask an organizer/admin for access.')
+          : (isDe
+            ? `Teilnehmerliste konnte nicht gelesen werden (${httpStatus ? 'HTTP ' + httpStatus : 'keine Teilnehmerliste gefunden'}) — bitte erneut versuchen.`
+            : `The attendee list could not be read (${httpStatus ? 'HTTP ' + httpStatus : 'no attendee list found'}) — please try again.`));
       } else {
         setSearchRegsCache(prev => ({ ...prev, [eventId]: regs }));
       }
@@ -738,7 +743,9 @@ export default function CheckInPage(): React.ReactElement {
       // stand — und die Person tauchte später in der No-Show-Auswertung auf.
       const ok = await eventService.checkInParticipant(pendingCheckIn.event.subsiteUrl, pendingCheckIn.regId);
       if (!ok) {
-        setResultMessage(`${pendingCheckIn.name} — Check-in fehlgeschlagen (bitte erneut versuchen oder Organizer informieren).`);
+        setResultMessage(isDe
+          ? `${pendingCheckIn.name} — Check-in fehlgeschlagen (bitte erneut versuchen oder Organizer informieren).`
+          : `${pendingCheckIn.name} — check-in failed (please retry or inform an organizer).`);
         setResultType('error');
         setPendingCheckIn(null);
         processingRef.current = false;
@@ -1446,7 +1453,7 @@ export default function CheckInPage(): React.ReactElement {
                 style={{ marginLeft: 8, fontSize: '0.74rem', padding: '2px 8px' }}
                 onClick={() => { void loadRegsForSearch(nameSearchEventId); }}
               >
-                Erneut laden
+                {isDe ? 'Erneut laden' : 'Reload'}
               </button>
             )}
           </p>

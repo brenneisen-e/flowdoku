@@ -402,8 +402,9 @@ export default function FACenterPage(): React.ReactElement {
                   fontSize: '0.78rem', lineHeight: 1.5,
                 }}>
                   Dieser Stand wurde vor der Formatumstellung übermittelt und trägt nur Name, E-Mail und Status.
-                  In der Excel-Datei bleiben <strong>First Name</strong>, <strong>Last Name</strong>,
-                  {' '}<strong>Country</strong> und <strong>Company Name</strong> deshalb leer.
+                  In der Excel-Datei werden <strong>First Name</strong> und <strong>Last Name</strong> aus dem
+                  Namen abgeleitet (letztes Wort = Nachname); <strong>Country</strong> und
+                  {' '}<strong>Company Name</strong> bleiben leer.
                   Für den vollständigen Satz die Teilnehmerliste einmal neu versenden.
                 </p>
               )}

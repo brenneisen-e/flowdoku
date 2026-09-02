@@ -1162,7 +1162,12 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
                 if (!restored) console.warn('[DEX][v30.67] OutlookDirty konnte nach gescheitertem UpdateEvent nicht zurückgesetzt werden:', selectedEventId);
               }
             }
-          } catch (err) { console.warn('[DEX][v30.67] Outlook-Update des Hauptevents fehlgeschlagen:', err); failedOutlookTitles.push(title || (isDe ? 'Hauptevent' : 'main event')); }
+          } catch (err) {
+            console.warn('[DEX][v30.67] Outlook-Update des Hauptevents fehlgeschlagen:', err);
+            failedOutlookTitles.push(title || (isDe ? 'Hauptevent' : 'main event'));
+            // v30.67 (Review): auch im Ausnahmefall den Marker zurücksetzen.
+            try { await updateEvent(selectedEventId, { 'OutlookDirty': true }, { skipReload: true }); } catch { /* s. o. */ }
+          }
         }
         // v11.63: Sub-Event-Outlook-Updates pro angehaktem Sub-Event.
         if (pendingOutlookUpdateForSubEventsRef.current.length > 0) {
@@ -1191,8 +1196,20 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
                     await updateEvent(subId, { 'OutlookDirty': false }, { skipReload: true });
                   } else {
                     failedOutlookTitles.push(subTitle || (isDe ? 'Termin' : 'date'));
+                    // v30.67 (Review): Den Marker AKTIV auf true schreiben — die
+                    // Zeile trägt sonst den Wert des letzten erfolgreichen
+                    // Speicherns (false), outlookChanges bietet den Termin beim
+                    // nächsten Öffnen nie wieder an, und die Meldung unten
+                    // verspräche etwas, das nie kommt. Der Hauptevent-Zweig
+                    // schreibt seit v30.67 genauso zurück.
+                    const restoredSub = await updateEvent(subId, { 'OutlookDirty': true }, { skipReload: true });
+                    if (!restoredSub) console.warn('[DEX][v30.67] OutlookDirty konnte nach gescheitertem UpdateEvent nicht zurückgesetzt werden:', subId);
                   }
-                } catch (err) { console.warn('[DEX][v30.67] Outlook-Update eines Sub-Events fehlgeschlagen:', subId, err); failedOutlookTitles.push(subTitle || (isDe ? 'Termin' : 'date')); }
+                } catch (err) {
+                  console.warn('[DEX][v30.67] Outlook-Update eines Sub-Events fehlgeschlagen:', subId, err);
+                  failedOutlookTitles.push(subTitle || (isDe ? 'Termin' : 'date'));
+                  try { await updateEvent(subId, { 'OutlookDirty': true }, { skipReload: true }); } catch { /* s. o. */ }
+                }
               }
             }
           } catch { /* Sub-Outlook-Updates optional */ }
@@ -1254,6 +1271,13 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
         // v30.67: gescheiterte Outlook-Aufträge benennen statt still
         // „gespeichert" zu melden (s. failedOutlookTitles oben).
         if (failedOutlookTitles.length > 0) {
+          // v30.67 (Review): Die OutlookDirty:true-Schreibvorgänge oben laufen
+          // mit skipReload — der Context-State hält noch das false aus dem
+          // updateEvent davor. Öffnet der Organizer das Event sofort wieder,
+          // läse outlookChanges den alten Wert und böte nichts an. Einmal
+          // nachladen, damit „später erneut bestätigen" auch sofort gilt.
+          try { await refreshEvents(); }
+          catch (err) { console.warn('[DEX][v30.67] Reload nach gescheitertem Outlook-Update fehlgeschlagen:', err); }
           showAlert(isDe
             ? `Das Event ist gespeichert, aber für ${failedOutlookTitles.length} Termin${failedOutlookTitles.length === 1 ? '' : 'e'} konnte die Outlook-Aktualisierung nicht angestoßen werden: ${failedOutlookTitles.join(', ')}. Die Kalender der Teilnehmer zeigen dort noch den alten Stand — bitte öffne das Event später erneut und bestätige die Aktualisierung noch einmal.`
             : `The event is saved, but the Outlook update could not be queued for ${failedOutlookTitles.length} date${failedOutlookTitles.length === 1 ? '' : 's'}: ${failedOutlookTitles.join(', ')}. Attendees' calendars still show the old state there — please reopen the event later and confirm the update again.`, { variant: 'error' });

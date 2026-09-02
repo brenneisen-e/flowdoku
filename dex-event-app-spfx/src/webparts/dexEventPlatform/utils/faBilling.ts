@@ -482,6 +482,15 @@ export function buildFASheetAoa(
   aoa.push([]);
   aoa.push(FA_SHEET_PARTICIPANT_HEADERS.slice());
   for (const r of rows) {
+    // v30.67 (Review): Snapshots vor v30.50 tragen nur `name`, kein
+    // firstName/lastName. Seit Spalte A leer bleibt, stand für diese Zeilen
+    // GAR KEIN Name mehr in der Datei — nur die E-Mail. Deshalb den Namen
+    // in First/Last Name zerlegen, wenn die getrennten Felder fehlen:
+    // letztes Wort = Nachname, dieselbe Näherung wie activeEmployeesLookupUrl.
+    const hasSplitName = !!((r.firstName || '').trim() || (r.lastName || '').trim());
+    const nameParts = (r.name || '').trim().split(/\s+/).filter(Boolean);
+    const firstName = hasSplitName ? (r.firstName || '') : nameParts.slice(0, -1).join(' ');
+    const lastName = hasSplitName ? (r.lastName || '') : (nameParts.slice(-1)[0] || '');
     aoa.push([
       // v30.67: Spalte A heißt in der F&A-Vorlage „Participent Type" — ein
       // Teilnehmertyp, kein Name. Bis v30.66 stand hier der Anzeigename, bei
@@ -491,8 +500,8 @@ export function buildFASheetAoa(
       // und Kostenstelle unten: ein erfundener Wert wäre für F&A ein Wert.
       '',
       r.email || '',
-      r.firstName || '',
-      r.lastName || '',
+      firstName,
+      lastName,
       r.country || '',
       r.company || '',
       // v30.60: Nicht mehr grundsätzlich leer. Trägt F&A die Nummer im Center

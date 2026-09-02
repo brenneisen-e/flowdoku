@@ -1191,7 +1191,7 @@ export default function EventCreationPage(): React.ReactElement {
       deleteEventItemOnly, editEvent, forceOutlookRecreateRef, headerImageLayoutConfig,
       headerLayoutFor, initialSubEventDbIds, initialSubEventOutlookMeta, initialSubPersistRef, isDe, isFictive,
       onlineMeetingMode, organizer, orgGetsSubInvites, outlookTeamsLink, parentTimesIso, pendingOutlookRecreateForSubEventsRef,
-      persistSubEventImage, resolveTopLevelCommState, sanitizeOrganizerPairs, showAlert, shrinkLogoB64,
+      persistSubEventImage, refreshEvents, resolveTopLevelCommState, sanitizeOrganizerPairs, showAlert, shrinkLogoB64,
       subEventCalendar, subEventsRef, subPersistKey, subPhotoAsLogo, subTopGateInitialRef, subTopGateKey,
       title, updateEvent,
     }, parentEventId, onStep);

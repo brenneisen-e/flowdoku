@@ -44,6 +44,8 @@ export interface PersistSubEventsCtx {
   parentTimesIso: () => {    start: string;    end: string;};
   pendingOutlookRecreateForSubEventsRef: React.MutableRefObject<string[]>;
   persistSubEventImage: (subDbId: string | number | null | undefined, draft: { imageFile?: File | null; imageRemoved?: boolean; }) => Promise<void>;
+  /** v30.67 (Review): einmaliger Reload nach einem Recreate (s. Funktionsende). */
+  refreshEvents: () => Promise<void>;
   resolveTopLevelCommState: () => { emailLanguage: string; emailLogoBase64: string; outlookLogoBase64: string; outlookBody: string; outlookHeading: string; outlookSubheading: string; outlookSubject: string; disableEmails: boolean; disableRegistrationEmail: boolean; disableCancellationEmail: boolean; autoDeregisterOnDecline: boolean; inactiveHandling?: 'notify' | 'autoderegister'; disableOutlook: boolean; emailTemplateOverrides: Record<string, EmailOverrideEntry>; };
   sanitizeOrganizerPairs: () => {    orgString: string;    orgEmailString: string;    droppedCount: number;};
   showAlert: (message: React.ReactNode, opts?: import("../../../context/DialogContext").AlertOptions) => void;
@@ -59,7 +61,7 @@ export interface PersistSubEventsCtx {
 }
 
 export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, parentEventId: string, onStep: (done: number, total: number, title: string) => void): Promise<void> {
-  const { addrCity, addrHouseNo, addrStreet, addrZip, bilingualFields, childEventsOf, confirmDialog, contactEmail, createEvent, deleteEvent, deleteEventItemOnly, editEvent, forceOutlookRecreateRef, headerImageLayoutConfig, headerLayoutFor, initialSubEventDbIds, initialSubEventOutlookMeta, initialSubPersistRef, isDe, isFictive, onlineMeetingMode, organizer, orgGetsSubInvites, outlookTeamsLink, parentTimesIso, pendingOutlookRecreateForSubEventsRef, persistSubEventImage, resolveTopLevelCommState, sanitizeOrganizerPairs, showAlert, shrinkLogoB64, subEventCalendar, subEventsRef, subPersistKey, subPhotoAsLogo, subTopGateInitialRef, subTopGateKey, title, updateEvent } = ctx;
+  const { addrCity, addrHouseNo, addrStreet, addrZip, bilingualFields, childEventsOf, confirmDialog, contactEmail, createEvent, deleteEvent, deleteEventItemOnly, editEvent, forceOutlookRecreateRef, headerImageLayoutConfig, headerLayoutFor, initialSubEventDbIds, initialSubEventOutlookMeta, initialSubPersistRef, isDe, isFictive, onlineMeetingMode, organizer, orgGetsSubInvites, outlookTeamsLink, parentTimesIso, pendingOutlookRecreateForSubEventsRef, persistSubEventImage, refreshEvents, resolveTopLevelCommState, sanitizeOrganizerPairs, showAlert, shrinkLogoB64, subEventCalendar, subEventsRef, subPersistKey, subPhotoAsLogo, subTopGateInitialRef, subTopGateKey, title, updateEvent } = ctx;
     const keptDbIds = new Set<string>();
     // v30.67: Ids, deren DEX_Events-Zeile in DIESEM Lauf per Recreate ersetzt
     // (oder auf dem Legacy-Pfad bewusst gelöscht) wurde. Sie sind weder
@@ -135,11 +137,11 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
       console.warn(`[DEX][${logTag}] Recreate: alte Zeile nicht löschbar, neue Zeile ${rolledBack ? 'zurückgenommen' : 'NICHT zurückgenommen'}:`, draft.dbId, recreatedId);
       showAlert(rolledBack
         ? (isDe
-          ? `Der Outlook-Termin für „${draft.title || 'Sub-Event'}" konnte nicht neu angelegt werden (SharePoint hat den Austausch des Eintrags abgelehnt). Das Sub-Event und seine Anmeldungen sind unverändert — bitte versuche es später erneut.`
-          : `The Outlook appointment for "${draft.title || 'sub-event'}" could not be recreated (SharePoint rejected replacing the entry). The sub-event and its registrations are untouched — please try again later.`)
+          ? `Der Outlook-Termin für „${draft.title || 'Sub-Event'}" konnte nicht neu angelegt werden (SharePoint hat den Austausch des Eintrags abgelehnt). Das Sub-Event und seine Anmeldungen sind unverändert — bitte versuche es später erneut. Möglicherweise liegt trotzdem schon ein Outlook-Termin für den zurückgenommenen Eintrag in deinem Kalender — bitte lösche ihn dort von Hand.`
+          : `The Outlook appointment for "${draft.title || 'sub-event'}" could not be recreated (SharePoint rejected replacing the entry). The sub-event and its registrations are untouched — please try again later. An Outlook appointment for the withdrawn entry may nevertheless already be in your calendar — please delete it there manually.`)
         : (isDe
-          ? `Beim Neuanlegen des Outlook-Termins für „${draft.title || 'Sub-Event'}" ist ein doppelter Eintrag entstanden (Eintrag-Id ${recreatedId}). Die Anmeldungen sind unverändert. Bitte melde dich beim DEX-Team, damit der doppelte Eintrag entfernt wird — lösche ihn NICHT selbst im Organizer Center, das würde die Anmeldungen mitlöschen.`
-          : `Recreating the Outlook appointment for "${draft.title || 'sub-event'}" left a duplicate entry (item id ${recreatedId}). Registrations are unchanged. Please contact the DEX team to remove the duplicate — do NOT delete it yourself in the Organizer Center, that would delete the registrations as well.`),
+          ? `Beim Neuanlegen des Outlook-Termins für „${draft.title || 'Sub-Event'}" ist ein doppelter Eintrag entstanden (Eintrag-Id ${recreatedId}). Die Anmeldungen sind unverändert. Bitte melde dich beim DEX-Team, damit der doppelte Eintrag entfernt wird — lösche ihn NICHT selbst, weder im Organizer Center noch über „Entfernen" im Wizard: Das würde die Anmeldungen mitlöschen.`
+          : `Recreating the Outlook appointment for "${draft.title || 'sub-event'}" left a duplicate entry (item id ${recreatedId}). Registrations are unchanged. Please contact the DEX team to remove the duplicate — do NOT delete it yourself, neither in the Organizer Center nor via "Remove" in the wizard: that would delete the registrations as well.`),
         { variant: 'error' });
       return false;
     };
@@ -675,6 +677,17 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
       showAlert(isDe
         ? `${failedSubTitles.length} Sub-Event${failedSubTitles.length === 1 ? '' : 's'} konnte${failedSubTitles.length === 1 ? '' : 'n'} nicht gespeichert werden: ${failedSubTitles.join(', ')}. Die übrigen Änderungen sind gespeichert — bitte speichere erneut, um es nochmal zu versuchen.`
         : `${failedSubTitles.length} sub-event${failedSubTitles.length === 1 ? '' : 's'} could not be saved: ${failedSubTitles.join(', ')}. All other changes are saved — please save again to retry.`, { variant: 'error' });
+    }
+    // v30.67 (Review): Nach einem Recreate kennt der Client-State die neuen
+    // Zeilen nicht — die alten stehen weiter in der Liste, die neuen fehlen,
+    // und ein erneut geöffneter Wizard böte dieselben Termine noch einmal an
+    // (dann mit dem falschen Grund „Austausch abgelehnt", weil die alte Id
+    // längst 404 ist). Bis v30.66 lud die Aufräum-Schleife je ersetzter Id
+    // komplett nach — fälschlich, aber es war das einzige Nachladen. Seit sie
+    // ersetzte Ids überspringt: hier EINMAL nachladen.
+    if (replacedDbIds.size > 0) {
+      try { await refreshEvents(); }
+      catch (err) { console.warn('[DEX][v30.67] Reload nach Recreate fehlgeschlagen:', err); }
     }
     // v29.57: Nach dem Save ist der aktuelle Stand der neue Vergleichspunkt —
     // sonst würde ein zweiter Save in derselben Sitzung alles erneut schreiben.

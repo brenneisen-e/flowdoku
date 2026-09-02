@@ -94,6 +94,8 @@ export interface SubmitFlowCtx {
   setFallbackDialog: React.Dispatch<React.SetStateAction<{ wunsch: string; alt: string; altFree: number; }>>;
   setIsSubmitting: React.Dispatch<React.SetStateAction<boolean>>;
   setSessionsOnlySubmitted: React.Dispatch<React.SetStateAction<boolean>>;
+  /** v30.67 (Review): Komplett-Abmeldung über die Anmeldeseite (alle Termine abgewählt). */
+  setSubmittedAsCancellation: React.Dispatch<React.SetStateAction<boolean>>;
   setShowErrors: React.Dispatch<React.SetStateAction<boolean>>;
   setSubmitProgress: React.Dispatch<React.SetStateAction<number>>;
   setSubmitProgressLabel: React.Dispatch<React.SetStateAction<string>>;
@@ -140,7 +142,7 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
     selectedSessions, sendBundledUpdateMail, sessionFieldValues, sessionMeta, sessionsChanged, setAssistantModalOpen, setCcSelfModalOpen,
     setConfirmDialogAck, setConfirmDialogOpen, setConfirmDraftParent, setConfirmDraftSessions, setError, setExternalEmailWarning,
     setFallbackDialog, setIsSubmitting, setSessionsOnlySubmitted, setShowErrors, setSubmitProgress, setSubmitProgressLabel,
-    setSubmitted, setSubmittedAsWaitlist, setSubmittedJoinKind, showAlert, starterCounts, submittedSessionsRef,
+    setSubmitted, setSubmittedAsCancellation, setSubmittedAsWaitlist, setSubmittedJoinKind, showAlert, starterCounts, submittedSessionsRef,
     subOnlyTerms, surname, t, teamMemberFields, teamMembersParsed, teamName,
     teamValidation, thirdPartyCheck, updateMyRegistration, uploadFieldDocument, userResults, userSearchIncludeIntl,
     willRegisterParent,
@@ -1254,6 +1256,16 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
         // Parent diesmal oder schon vorher angemeldet), zeigen wir auf der
         // Success-Seite den Sessions-Only-Hinweis.
         setSessionsOnlySubmitted(!willRegisterParent && !registerForOther);
+        // v30.67 (Review): Alle Termine abgewählt und nichts Neues gebucht =
+        // Komplett-Abmeldung. Die Erfolgsseite sagt dann „Abmeldung
+        // durchgeführt" statt „erfolgreich angemeldet" mit leerer Liste.
+        // Gesperrte Abmeldungen (lockedCancelTitles) zählen nicht: dort ist
+        // die Person weiterhin angemeldet, die Meldung dazu kam schon oben.
+        setSubmittedAsCancellation(
+          isSubOnlyMode && !registerForOther && !sessionsBeingAdded
+          && !childEvents.some(ce => selectedSessions.has(ce.id))
+          && lockedCancelTitles.length === 0
+        );
         // v24.41 Szenario A: Assistenz verknüpfen (Info + Anforderung). Der
         // Owner bleibt der/die Anmeldende; die Assistenz sieht es als Info.
         if (delegateAssist) {

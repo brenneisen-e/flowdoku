@@ -880,10 +880,17 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     // serverseitigen Organizer-Ableitung (SubsiteUrl/Note-Feld/pageContext),
     // die im Tenant gelegentlich legitime Organizer abgelehnt hat.
     const actorEmailLc = (currentUserEmail || '').toLowerCase();
-    const actorIsEventOrganizer = !!event && (
-      (event.organizerEmails || []).some(e => (e || '').toLowerCase() === actorEmailLc) ||
-      (event.coOrganizerEmails || []).some(e => (e || '').toLowerCase() === actorEmailLc)
+    // v30.67 (Review): Parent-Fallback wie AdminPage.isOrganizerFor.
+    // `_coOrganizers` steht nur auf der Klammer-Zeile; ein Sub-Event erbt
+    // OrganizerEmail, aber keine Co-Organizer. Ohne den Fallback war die
+    // Frist-Ausnahme für Co-Organizer (v30.67) auf Terminen wirkungslos —
+    // „Teilnehmer hinzufügen" nach Fristablauf meldete je Termin „deadline".
+    const isOrganizerOf = (ev: DeloitteEvent | undefined): boolean => !!ev && (
+      (ev.organizerEmails || []).some(e => (e || '').toLowerCase() === actorEmailLc) ||
+      (ev.coOrganizerEmails || []).some(e => (e || '').toLowerCase() === actorEmailLc)
     );
+    const parentOfEvent = (event && event.parentEventId) ? events.find(p => p.id === event.parentEventId) : undefined;
+    const actorIsEventOrganizer = isOrganizerOf(event) || isOrganizerOf(parentOfEvent);
     let success: boolean;
     let failReason: string | undefined;
     if (existing && existing.Status === 'Abgemeldet') {
@@ -2500,7 +2507,13 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       // 5) Eigene Registrierung auf der Subsite finden.
       const subsiteUrl = sp.SubsiteUrl;
       if (!subsiteUrl) return { status: 'error', eventTitle, eventStart };
-      const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
+      // v30.67 (Review): Am Einlass scannen hunderte Personen in Minuten —
+      // ein 429 lieferte null, und die Seite sagte „Keine Anmeldung gefunden"
+      // zu jemandem, der angemeldet ist. Nicht lesbar = 'error' (mit „später
+      // erneut versuchen"), nicht 'not-registered'.
+      let regReadFailed = false;
+      const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail, () => { regReadFailed = true; });
+      if (regReadFailed) return { status: 'error', eventTitle, eventStart };
       if (!myReg) return { status: 'not-registered', eventTitle, eventStart };
       if (myReg.Status === 'Eingecheckt') return { status: 'already', eventTitle, eventStart };
       if (myReg.Status === 'Warteliste') return { status: 'on-waitlist', eventTitle, eventStart };

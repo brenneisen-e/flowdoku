@@ -727,7 +727,17 @@ export function makeCancellationActions(deps: CancellationDeps) {
       const p = dn.split(/\s+/).filter(Boolean);
       firstName = p[0] || ''; lastName = p.slice(1).join(' ');
     }
-    const existing = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
+    // v30.67 (Review): Ein 429 hier hieß „keine Zeile" — und darunter wurde
+    // eine NEUE Absage-Zeile geschrieben, während die aktive stehen blieb:
+    // Platz belegt, QR-Mail und Termin laufen weiter, Person doppelt im
+    // Organizer Center, und sie selbst las „Absage erfasst". Nicht lesbar =
+    // nichts schreiben; handleDecline zeigt bei false die Fehlermeldung.
+    let readFailed = false;
+    const existing = await eventService.getMyRegistration(subsiteUrl, currentUserEmail, () => { readFailed = true; });
+    if (readFailed) {
+      console.warn('[DEX] declineEvent: eigene Zeile nicht lesbar — keine Absage-Zeile geschrieben', eventId);
+      return false;
+    }
     if (existing) {
       // Bereits abgemeldet/abgesagt → nichts zu tun. Aktiv/Warteliste →
       // regulärer Cancel-Pfad (gibt Sitzplatz frei, Mail, IDReorder).
