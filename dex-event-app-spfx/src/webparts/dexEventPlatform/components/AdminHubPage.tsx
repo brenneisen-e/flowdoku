@@ -18,6 +18,7 @@ import { Settings, Users, Mail, Book, FileText, Trash2, Columns, BarChart3, Wren
 import { useTutorial } from './tutorial/TutorialGuide';
 import { splitReleaseNote, RELEASE_NOTES, RELEASE_BEREICHE } from '../data/releaseNotes';
 import { EventService, PermCleanupReport, OrphanScanResult } from '../services/EventService';
+import { healAllEvents } from './admin/logic/healAllEvents';
 import Modal from './Modal';
 import { setCachedLogoBase64, setCachedOrbBase64 } from '../services/EmailTemplates';
 
@@ -45,7 +46,7 @@ export default function AdminHubPage(): React.ReactElement {
   // v30.25: Tutorial-Einstieg für Admins (Header-Pille entfällt für sie).
   const { openTutorial } = useTutorial();
   const listUrl = (name: string): string => `${siteUrl}/Lists/${name}`;
-  const { events: allEvents, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns, repairAllOrganizerPermissions, restoreCustomFieldDescriptions, reseedDefaultEmailTemplates, maybeSendWeeklyReport, recomputeEventKpiOnly } = useEvents();
+  const { events: allEvents, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns, repairAllOrganizerPermissions, restoreCustomFieldDescriptions, reseedDefaultEmailTemplates, maybeSendWeeklyReport, recomputeEventKpiOnly, getAllRegistrations } = useEvents();
   const { locale } = useLanguage();
   const { confirmDialog, showAlert } = useDialog();
   const isDe = locale === 'de';
@@ -68,6 +69,12 @@ export default function AdminHubPage(): React.ReactElement {
   const [regCleanProgress, setRegCleanProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
   // v24.33: Fortschritt für das globale „Spalten fixen".
   const [fixProgress, setFixProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
+  // v30.70: „Nachrücken & IDs für ALLE Events nachholen" — Sammel-Heilung
+  // nach einem Ausfall des Nachrück-Flows. Fortschritt getrennt vom Ergebnis,
+  // damit die Kachel während des Laufs sagt, bei welchem Event sie gerade ist.
+  const [healBusy, setHealBusy] = React.useState(false);
+  const [healProgress, setHealProgress] = React.useState<string | null>(null);
+  const [healResult, setHealResult] = React.useState<{ text: string; isError: boolean } | null>(null);
   // v30.58: Befund des letzten Spalten-Laufs, je Event. `null` = noch nicht gelaufen.
   const [fixReport, setFixReport] = React.useState<FixColumnsDetail[] | null>(null);
   // v30.39: Fortschritt der Berechtigungs-Reparatur über alle Event-Bäume.
@@ -1192,6 +1199,56 @@ export default function AdminHubPage(): React.ReactElement {
           </p>
           <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { setOrphanResult(null); setOrphanOpen(true); }}>
             {isDe ? 'Subsites prüfen…' : 'Check subsites…'}
+          </button>
+        </div>
+
+        {/* v30.70: Nachrücken & IDs für ALLE Events nachholen. Sammel-Heilung
+            nach einem Ausfall des Flows DEX_IDReorder_TeilnehmerIDs
+            (02.09.2026). Erst planen und im Dialog zeigen, wer nachrückt —
+            dann ausführen. Logik in admin/logic/healAllEvents.ts. */}
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><Wrench size={18} /></span>
+            <span style={{ fontWeight: 700 }}>{isDe ? 'Nachrücken & IDs für ALLE Events nachholen' : 'Catch up promotions & IDs for ALL events'}</span>
+          </div>
+          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
+            {isDe
+              ? 'Für den Fall, dass der Nachrück-Flow ausgefallen war: Prüft alle aktiven Events, lässt überall dort nachrücken, wo Plätze frei sind und Leute warten, nummeriert lückenhafte TeilnehmerIDs neu und gleicht alle Platzzähler ab. Zeigt VOR dem Ausführen, wer in welchem Event nachrücken würde — erst nach Bestätigung gehen Mails und Einladungen raus. Events ohne Vollzugriff und Events mit gemeinsamer Warteliste bei geteilten Gruppen werden namentlich ausgewiesen statt falsch gerechnet.'
+              : 'For when the promotion flow was down: checks all active events, promotes wherever seats are free and people are waiting, renumbers participant IDs with gaps and reconciles all seat counters. Shows BEFORE running who would move up in which event — emails and invites only go out after confirmation. Events without full access, and split-group events with a shared waitlist, are listed by name instead of being miscounted.'}
+          </p>
+          {healBusy && healProgress && (
+            <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', margin: '0 0 10px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {healProgress}
+            </div>
+          )}
+          {healResult && !healBusy && (
+            <div style={{
+              margin: '0 0 10px', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', lineHeight: 1.45,
+              background: healResult.isError ? 'rgba(218,41,28,0.06)' : '#f1f7e8',
+              border: `1px solid ${healResult.isError ? 'var(--dex-red, #da291c)' : 'var(--dex-green, #86bc25)'}`,
+            }}>
+              {healResult.text}
+            </div>
+          )}
+          <button
+            className="btn btn-primary"
+            style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }}
+            disabled={busy !== '' || healBusy || !eventServiceRef}
+            onClick={() => {
+              if (!eventServiceRef) return;
+              setHealBusy(true);
+              setHealResult(null);
+              healAllEvents({
+                svc: eventServiceRef, allEvents, isDe, getAllRegistrations, confirmDialog,
+                onProgress: setHealProgress,
+              }).then(r => {
+                if (!r.cancelled) setHealResult({ text: r.text, isError: r.isError });
+              }).catch(err => {
+                setHealResult({ text: (isDe ? 'Fehler: ' : 'Error: ') + (err instanceof Error ? err.message : String(err || '')).slice(0, 300), isError: true });
+              }).then(() => { setHealProgress(null); setHealBusy(false); });
+            }}
+          >
+            {healBusy ? (isDe ? 'Heilung läuft…' : 'Healing…') : (isDe ? 'Prüfen & nachholen…' : 'Check & catch up…')}
           </button>
         </div>
       </div>

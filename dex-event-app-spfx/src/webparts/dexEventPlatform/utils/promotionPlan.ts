@@ -2,7 +2,7 @@
  * v30.66 — Wie viele Personen dürfen von der Warteliste nachrücken?
  *
  * Gruppen-Rechnung für die Sammel-Aktion „Nachrücken & IDs für ALLE Events
- * nachholen" (`useWaitlistActions.runHealAllEvents`), nach dem Vorbild von
+ * nachholen" (`admin/logic/healAllEvents.ts`), nach dem Vorbild von
  * `runManualPromote` (v29.16): Bei geteilten Kapazitäten ist `maxParticipants`
  * 0 (CLAUDE.md), die Obergrenze steht in `durchstarterCapacity`/
  * `funstarterCapacity` — wer `maxParticipants` als Grenze prüft, prüft dort
