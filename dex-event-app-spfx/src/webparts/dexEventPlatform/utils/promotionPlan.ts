@@ -1,14 +1,17 @@
 /**
  * v30.66 — Wie viele Personen dürfen von der Warteliste nachrücken?
  *
- * Herausgezogen aus `AdminPage.runManualPromote` (v29.16), weil die
- * Sammel-Aktion „Nachrücken & IDs für ALLE Events nachholen" dieselbe Rechnung
- * braucht. Zwei Kopien dieser Logik wären teuer: Bei geteilten Kapazitäten ist
- * `maxParticipants` 0 (CLAUDE.md), die Obergrenze steht in
- * `durchstarterCapacity`/`funstarterCapacity` — wer das an einer Stelle
- * nachzieht und an der anderen vergisst, überbucht eine volle Gruppe, während
- * die Gruppe mit freien Plätzen leer ausgeht. Genau dieser Fehler steckte bis
- * v29.16 in der Einzel-Aktion.
+ * Gruppen-Rechnung für die Sammel-Aktion „Nachrücken & IDs für ALLE Events
+ * nachholen" (`useWaitlistActions.runHealAllEvents`), nach dem Vorbild von
+ * `runManualPromote` (v29.16): Bei geteilten Kapazitäten ist `maxParticipants`
+ * 0 (CLAUDE.md), die Obergrenze steht in `durchstarterCapacity`/
+ * `funstarterCapacity` — wer `maxParticipants` als Grenze prüft, prüft dort
+ * gar nichts und überbucht eine volle Gruppe, während die Gruppe mit freien
+ * Plätzen leer ausgeht. Genau dieser Fehler steckte bis v29.16 in der
+ * Einzel-Aktion.
+ *
+ * Bewusst NICHT abgedeckt: geteilte Kapazität mit gemeinsamer Warteliste
+ * (`splitSharedWaitlist`) — siehe `PromotionPlan.sharedWaitlist`.
  *
  * Das Modul rechnet nur — es schreibt nichts. Aufrufer entscheiden, ob sie
  * fragen, protokollieren oder ausführen.
@@ -41,6 +44,15 @@ export interface PromotionPlan {
   total: number;
   /** Wartet überhaupt jemand? Trennt „voll" von „niemand da" in der Meldung. */
   anyWaiting: boolean;
+  /**
+   * true = geteilte Kapazität MIT gemeinsamer Warteliste. Dieses Modul rechnet
+   * dafür bewusst NICHT (`total` ist dann 0): Gemeinsame Warteliste heißt
+   * „gemeinsame Reihenfolge", nicht „gemeinsamer Kapazitätstopf" (v30.67) —
+   * wer nachrückt, muss in SEINE Gruppe passen, und das lässt sich nur durch
+   * Simulation der Warteliste in ihrer Reihenfolge entscheiden. Die steht in
+   * `useWaitlistActions.runManualPromote`; Aufrufer verweisen dorthin.
+   */
+  sharedWaitlist: boolean;
 }
 
 /**
@@ -74,21 +86,21 @@ export function buildPromotionPlan(
   const isSplit = isSplitCapacityOf(ev);
   const lblA = (ev.splitLabelA && ev.splitLabelA.trim()) || 'Durchstarter';
   const lblB = (ev.splitLabelB && ev.splitLabelB.trim()) || 'Funstarter';
-  // Gemeinsame Warteliste (`splitSharedWaitlist`) verhält sich wie ein einzelner
-  // Topf mit der Summe beider Kapazitäten: Wer zuerst wartet, rückt nach.
-  const perGroup = isSplit && !ev.splitSharedWaitlist;
+  const sharedWaitlist = isSplit && !!ev.splitSharedWaitlist;
+  if (sharedWaitlist) {
+    // Siehe `PromotionPlan.sharedWaitlist`: hier gibt es keine gültige Zahl,
+    // die ohne Simulation der Reihenfolge herauskäme. Lieber ehrlich 0 als
+    // eine Summe, die die Gruppengrenzen ignoriert.
+    const waiting = regs.filter(r => r.Status === 'Warteliste').length;
+    return { perGroup: false, groups: [], total: 0, anyWaiting: waiting > 0, sharedWaitlist: true };
+  }
+  const perGroup = isSplit;
   const base: Array<{ key?: string; label: string; cap: number }> = perGroup
     ? [
       { key: 'Durchstarter', label: lblA, cap: ev.durchstarterCapacity || 0 },
       { key: 'Funstarter', label: lblB, cap: ev.funstarterCapacity || 0 },
     ]
-    : [{
-      key: undefined,
-      label: isDe ? 'Plätze' : 'Seats',
-      cap: isSplit
-        ? (ev.durchstarterCapacity || 0) + (ev.funstarterCapacity || 0)
-        : (ev.maxParticipants || 0),
-    }];
+    : [{ key: undefined, label: isDe ? 'Plätze' : 'Seats', cap: ev.maxParticipants || 0 }];
 
   const groups: PromotionGroup[] = base.map(g => {
     const inGroup = (r: SPRegistration): boolean => !g.key || groupOf(r) === g.key;
@@ -104,6 +116,7 @@ export function buildPromotionPlan(
     groups,
     total: groups.reduce((n, g) => n + g.count, 0),
     anyWaiting: groups.some(g => g.waiting > 0),
+    sharedWaitlist: false,
   };
 }
 

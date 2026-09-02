@@ -43,10 +43,12 @@ export default function LandingPage(): React.ReactElement {
   // ==================== v22: Archivierung (Admin) ====================
   const { isAdmin, canCreateEvents } = useRoles();
   // v24.23: Die „DEX für dein Event nutzen"-Box (Werde Organizer) ist für
-  // Organizer überflüssig — sie haben die Funktionen schon. Admins sehen sie
-  // bewusst weiter (um die normale User-Ansicht der Landing Page zu prüfen).
-  const showOrganizerCta = !canCreateEvents || isAdmin;
-  const { isEventsLoading, getArchivableCount, runArchiveExpired, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getSentInactiveNotices, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, deleteEvent, countExternalRegistrations, refreshEvents, getAllRegistrations } = useEvents();
+  // Organizer überflüssig — sie haben die Funktionen schon.
+  // v30.68: Auch für Admins aus (Nutzer-Ansage 02.09.2026) — sie sind
+  // Organizer mit mehr Rechten; die User-Ansicht prüft man über die
+  // Rollen-Vorschau, nicht über einen Kasten, der einen selbst wirbt.
+  const showOrganizerCta = !canCreateEvents;
+  const { isEventsLoading, getArchivableCount, runArchiveExpired, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getSentInactiveNotices, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, deleteEvent, getLastEventDeleteError, countExternalRegistrations, refreshEvents, getAllRegistrations } = useEvents();
   // v26.40: Modal-Hinweis nach automatischer Abmeldung von Ex-Deloitte-Personen.
   const [autoDeregModal, setAutoDeregModal] = React.useState<Array<{ title: string; people: Array<{ email: string; name: string }> }> | null>(null);
   // v24.51: „Organizer benachrichtigen" pro Event (inaktive Konten).
@@ -203,7 +205,16 @@ export default function LandingPage(): React.ReactElement {
           : 'This event has registrations beyond the organizer team and cannot be deleted here.', { variant: 'error' });
         return;
       }
-      await deleteEvent(ev.id);
+      // v30.67 (Review): deleteEvent liefert false, wenn bewusst nichts (oder
+      // nur ein Teil) gelöscht wurde — Termine nicht lesbar, ein Termin nicht
+      // löschbar, Klammer-Recycle abgelehnt. Das stand vorher grün als
+      // „Entwurf gelöscht" da, und der Entwurf blieb in der Liste.
+      const gone = await deleteEvent(ev.id);
+      if (!gone) {
+        showAlert(getLastEventDeleteError(isDe ? 'de' : 'en')
+          || (isDe ? 'Löschen fehlgeschlagen — bitte erneut versuchen.' : 'Deletion failed — please try again.'), { variant: 'error' });
+        return;
+      }
       showAlert(isDe ? 'Entwurf gelöscht.' : 'Draft deleted.', { variant: 'success' });
       try { await refreshEvents(); } catch { /* */ }
     } catch {
@@ -447,6 +458,32 @@ export default function LandingPage(): React.ReactElement {
     const id = window.setInterval(() => setNowTick(Date.now()), 60000);
     return () => window.clearInterval(id);
   }, []);
+  // v30.68: SOFORT zeigen, was beim letzten Mal galt — Merker je Person im
+  // Browser —, dann im Hintergrund frisch prüfen. Bis hierher erschienen die
+  // Kacheln erst, wenn alle Events geladen UND bis zu zwanzig Teilnehmer-
+  // listen nacheinander gelesen waren: mehrere Sekunden, in denen die
+  // meisten längst auf „Start" geklickt hatten (Nutzer-Befund 02.09.2026).
+  // Der Merker ist Komfort, keine Wahrheit: vergangene Events fallen beim
+  // Lesen raus, die frische Prüfung ersetzt ihn, sobald sie da ist.
+  const regBoxCacheKey = (email: string): string => `dex_landing_regboxes_v1:${email.toLowerCase()}`;
+  React.useEffect(() => {
+    const myEmail = (currentUser?.email || '').trim();
+    if (!myEmail) return;
+    try {
+      const raw = window.localStorage.getItem(regBoxCacheKey(myEmail));
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { ts?: number; items?: Array<{ eventId: string; title: string; imageUrl?: string; startDate: string; location?: string }> };
+      if (!parsed || !Array.isArray(parsed.items)) return;
+      if (Date.now() - (parsed.ts || 0) > 14 * 24 * 60 * 60 * 1000) return;
+      const now = Date.now();
+      const stillAhead = parsed.items.filter(b => {
+        const d = new Date(b.startDate);
+        if (!Number.isFinite(d.getTime())) return false;
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59).getTime() >= now;
+      });
+      if (stillAhead.length > 0) setMyRegBoxes(prev => (prev.length > 0 ? prev : stillAhead));
+    } catch { /* Merker nicht lesbar — dann eben erst die frische Prüfung */ }
+  }, [currentUser?.email]);
   React.useEffect(() => {
     if (isEventsLoading) return undefined;
     const myEmail = (currentUser?.email || '').trim();
@@ -475,9 +512,23 @@ export default function LandingPage(): React.ReactElement {
       const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
       const isActiveReg = (r: { Status?: string } | null | undefined): boolean =>
         !!r && ACTIVE.indexOf(r.Status || '') >= 0;
-      const boxes: Array<{ eventId: string; title: string; imageUrl?: string; startDate: string; location?: string }> = [];
-      for (const top of topCandidates) {
-        if (cancelled) return;
+      // v30.68: Parallel mit kleiner Obergrenze statt streng nacheinander —
+      // zwanzig Kandidaten hintereinander waren der zweite Grund für die
+      // Wartezeit. Nicht Promise.all über alles: Das wäre die Drosselung
+      // (s. mapLimited im EventContext, v29.47).
+      const limited = async <T,>(items: T[], n: number, fn: (x: T) => Promise<void>): Promise<void> => {
+        let next = 0;
+        const worker = async (): Promise<void> => {
+          for (;;) {
+            const k = next++;
+            if (k >= items.length || cancelled) return;
+            await fn(items[k]);
+          }
+        };
+        await Promise.all(Array.from({ length: Math.max(1, Math.min(n, items.length)) }, () => worker()));
+      };
+      const registeredIds = new Set<string>();
+      await limited(topCandidates, 4, async (top) => {
         let registered = false;
         try {
           // Eigene Anmeldung am Haupt-/Klammer-Event (bei „Nur Sub-Events"
@@ -488,19 +539,25 @@ export default function LandingPage(): React.ReactElement {
         if (!registered) {
           // Fallback: irgendein Sub-Event aktiv angemeldet?
           const children = (events || []).filter(c => c.parentEventId === top.id && !c.isFictive);
-          for (const child of children) {
-            if (cancelled) return;
+          await limited(children, 2, async (child) => {
+            if (registered) return;
             try {
-              if (isActiveReg(await getMyRegistration(child.id))) { registered = true; break; }
+              if (isActiveReg(await getMyRegistration(child.id))) registered = true;
             } catch { /* einzelner Sub-Event-Lookup-Fehler */ }
-          }
+          });
         }
-        if (registered) {
-          boxes.push({ eventId: top.id, title: top.title || '', imageUrl: top.imageUrl, startDate: top.startDate, location: top.location });
-        }
-        if (boxes.length >= 6) break;
+        if (registered) registeredIds.add(top.id);
+      });
+      if (cancelled) return;
+      const boxes = topCandidates
+        .filter(top => registeredIds.has(top.id))
+        .slice(0, 6)
+        .map(top => ({ eventId: top.id, title: top.title || '', imageUrl: top.imageUrl, startDate: top.startDate, location: top.location }));
+      if (!cancelled) {
+        setMyRegBoxes(boxes);
+        setMyRegBoxesLoaded(true);
+        try { window.localStorage.setItem(regBoxCacheKey(myEmail), JSON.stringify({ ts: Date.now(), items: boxes })); } catch { /* Merker ist Komfort */ }
       }
-      if (!cancelled) { setMyRegBoxes(boxes); setMyRegBoxesLoaded(true); }
     })().catch(() => { /* best-effort */ });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

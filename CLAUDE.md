@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.66.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.69.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -261,6 +261,50 @@ geprüften Status ist keine Aussage über die Daten, sondern über gar nichts.**
 Beide Stellen nutzen jetzt `onHttpError`; die Ansicht zählt gesperrte Termine
 namentlich auf, statt sie als 0 zu rendern.
 
+**Ein Lesefehler ist keine Null — das war die Ursache von rund 60 der 124
+Audit-Befunde (v30.66/v30.67).** `getAllRegistrations` wirft nicht; wer das
+Ergebnis ohne `onHttpError` liest, macht aus 403/429/500 eine leere Liste,
+und eine leere Liste hiess an dreissig Stellen „niemand angemeldet", „nicht
+eingecheckt", „darf geloescht werden", „Platz ist frei". Seit v30.67 gilt
+ueberall: nicht lesbar = `null`/„unbekannt", und unbekannt SPERRT (Loeschen,
+Versand, Check-in, Nachruecken), statt freizugeben. Wer eine neue Stelle baut,
+die aus einer Liste etwas ableitet: `onHttpError` mitgeben, bei Status
+abbrechen, und den Zustand „unbekannt" in der UI benennen — nie als 0 rendern.
+
+**Rechte werden vergeben UND entzogen — und beides muss spiegelbildlich sein.**
+`grantOrganizerPermissions` vergab bis v30.67 Full Control auf DEX_Events UND
+auf dem Web; einen Revoke gab es nur fuer Listen. Wer einmal Organizer war,
+behielt Zugriff auf alle Teilnehmer-Subsites. Seit v30.67 gibt es
+`revokeSiteAccess`; jeder Revoke liest die `roleassignments` danach nach und
+meldet nur dann Erfolg, wenn der Principal wirklich weg ist (SharePoint
+antwortet ohne vorhandene Zuweisung mit 404 ODER 500 — der DELETE-Status ist
+nicht belastbar). Selbstschutz: fuer die angemeldete Person laeuft kein
+Web-Revoke. Wer eine neue Rechtevergabe baut, baut den Entzug im selben Commit.
+
+**Erst anlegen, dann löschen — bei jedem Austausch einer Zeile.** Der
+Recreate-Pfad der Sub-Events löschte bis v30.67 die alte DEX_Events-Zeile und
+legte DANN die neue an. Scheiterte das Anlegen (429 auf dem ersten GET,
+2-MB-Grenze), war der Termin aus allen Ansichten weg, die Subsite verwaist,
+und der Wizard meldete „gespeichert" — der catch schrieb nur in die Konsole.
+Seit dem Review-Nachzug zu v30.67 (`recreateWithReuse`): erst anlegen, dann
+löschen, bei jedem Fehlschlag bleibt der alte Stand; `deleteEvent` prüft vor
+dem Recycle, ob eine zweite Zeile dieselbe `SubsiteUrl` trägt. Merksatz: Der
+unumkehrbare Schritt kommt zuletzt. Und ein Reload, der „nur Kosten" ist, kann
+das einzige Nachladen sein — die 19 Reloads der Aufräum-Schleife waren es;
+ihr Wegfall ließ gelöschte Zeilen im Client-State stehen.
+
+**Ein Fix-Release braucht sein eigenes Review.** Das Review des v30.67-Diffs
+(neun Prüfer plus ein Prüfer über den ersten Nachzug) fand 32 Stellen, an
+denen ein Fix zu kurz griff (Vertrag geändert, ein Aufrufer vergessen:
+`r.failed`, `invitedLc === null`, `getMyRegistration(onHttpError)`), nur einen
+Teil der Fälle traf (Klammer ja, Sub-Event nein) oder ein neues Loch aufriss
+(Reihenfolge, entfallener Reload). Wer einen Rückgabetyp ändert, grept ALLE
+Aufrufer im selben Commit — die Hälfte der Funde war genau das. Und im
+Organizer Center gibt es seither genau EINEN Nachlade-Pfad für die
+Teilnehmerliste: `reloadRegistrations()` in `AdminPage` (Status geprüft, bei
+Fehler bleibt die alte Liste, `regStaleHint`). Wer nach einem Schreibvorgang
+nachlädt, ruft ihn — nie `setRegistrations(await getAllRegistrations(id))`.
+
 **Berechtigungen gelten je Subsite — und jedes Sub-Event hat eine eigene.**
 `ensureOrganizerPermissions` lief bis v30.36 nur über `editEvent.subsiteUrl`.
 Wer bei `createEvent` noch nicht Organizer war, hatte danach Full Control auf
@@ -328,16 +372,36 @@ beiden Konstanten und **nie** ein fest verdrahtetes „Sub-Event"; für den
 unbestimmten Artikel gibt es `childOneDe` (es heißt „ein Event", aber „eine
 Session" — das war vorher überall falsch).
 
-**Die Klammer-Zeile schreibt seit v30.42 `registerForEvent` selbst.** Wer eine
-Sub-Event-Anmeldung anlegt, bekommt die Klammer-Zeile automatisch dazu — kein
-Aufrufer muss mehr daran denken. Vorher war es umgekehrt, und es wurde dreimal
-vergessen (`AddParticipantsModal`, `MyEventsPage`, `AssistantPage` + Massen-
-import). Zwei Dinge dabei nicht anfassen: `skipShadowParent` setzt NUR die
-Anmeldeseite (sie legt die Klammer zuletzt an, MIT den übergreifenden
-Antworten — eine vorher eingefügte leere Zeile würde die Antworten
-verschlucken), und `shadowEnsuredRef` verhindert, dass ein Lauf über 19 Termine
-19-mal dieselbe Prüfung schickt. Fehlschläge landen als Merker in
-`utils/shadowHeal` und werden beim nächsten App-Start nachgeholt.
+**„Fehlende Klammer-Anmeldung" war eine Prüfung, kein Zufall.** Zwei Releases
+lang hieß die Erklärung „Drosselung, letzter Schreibvorgang, Tab zu" — bis
+Eike fragte, warum dieselbe Technik bei den Terminen geht und bei der Klammer
+immer scheitert. Antwort: `registration.ts` Check B wies die Schattenzeile
+mit der `RegistrationDeadline` des HAUPTEVENTS ab, während die Anmeldeseite
+seit v29.13 ausdrücklich sagt „Frist des Hauptevents abgelaufen — offene
+Termine weiterhin buchbar". Termine geschrieben, Klammer 'deadline',
+best-effort geschluckt: jede Anmeldung nach der Frist ohne Klammer. Seit
+v30.68 gilt Check B nicht für die Klammer eines `_subEventsOnlyMode`-Events.
+Merksatz: Wenn „dieselbe Technik" an EINER Stelle immer scheitert, ist es
+eine Prüfung (Frist, Kapazität, Berechtigung, Spalten) — die unterscheidet
+sich je Liste, die Technik nicht. Erst den Ablehnungsgrund lesen (v30.58
+`detail`), dann über Drosselung reden.
+
+**Die Klammer-Zeile wird seit v30.68 ZUERST geschrieben — und blockiert
+nie.** `registerForEvent` stellt sie vor dem Termin sicher (erster
+Schreibvorgang, nicht der, den die Drosselung trifft); scheitert sie, wird
+der Termin TROTZDEM geschrieben (Nutzer-Entscheidung 02.09.2026: „wenn mit
+der Klammer was nicht stimmt, werden die Leute nicht angemeldet — das will
+ich nicht"), danach ein zweiter Versuch, dann der Merker in
+`utils/shadowHeal` (App-Start-Heilung; der Timer feuerte bis v30.67 nie).
+Die Anmeldeseite (`skipShadowParent`) schreibt die Klammer selbst zuerst,
+MIT den übergreifenden Antworten, lässt die Termine in jedem Fall laufen,
+versucht es nach der Schleife erneut und nimmt die Klammer zurück, wenn kein
+Termin zustande kommt. `shadowEnsuredRef` ist eine Map mit 5-Minuten-Verfall.
+Die zweite Hälfte: Wer die Klammer abmeldet oder löscht, tut das ZULETZT und
+nur, wenn kein Termin mehr aktiv ist (`runDeregModal`, „Person überall
+löschen", `MyEventsPage`). Das Gegenstück „Klammer ohne Termin" fängt der
+Kasten „Unvollständige Anmeldungen" — harmlos (kein Platz, keine Mail) und
+seit v30.67 ausgesetzt, solange eine Termin-Liste nicht lesbar ist.
 
 **Nachgerückt wird nur beim Abmelden — nicht bei einer Kapazitätsänderung.**
 `promoteFirstWaitlistItem` hängt am Cancel-Pfad. Erhöht der Organizer eine
@@ -489,66 +553,82 @@ Die Sub-Event-Karten sind seither reine **Liste**: anlegen, „Bearbeiten"
 
 ## Modularisierung
 
-Stand: **106k Zeilen in 132 Dateien**, davon die Hälfte in vier Dateien
-(`EventCreationPage` 17,4k · `AdminPage` 15,3k · `EventService` 13,2k ·
-`RegistrationPage` 6,3k). **Es gibt keine Tests.** Das einzige Netz sind
-`tsc`, ESLint und der Build — was der Compiler nicht sieht, sieht niemand.
+Stand nach v30.66: **rund 133k Zeilen in 343 Dateien**, **keine davon ueber
+3.000 Zeilen**. Die groessten sind `EventContext` 2,9k, `EventCreationPage`
+2,8k, `AdminPage` 2,7k, `RegistrationPage` 2,5k, `EventService` 2,4k. Vorher
+lagen 56k Zeilen — die Haelfte des Projekts — in sechs Dateien.
 
-Deshalb in dieser Reihenfolge, nicht anders:
+**Es gibt weiterhin keine Tests.** Das einzige Netz sind `tsc`, ESLint, der
+Build und der Audit-Diff. Genau deshalb ist das Rezept unten mechanisch und
+nicht kreativ: Wo nichts prueft, darf nichts umformuliert werden.
 
-**Stufe 1 — Modul-Ebene (v28.94 erledigt).** Alles, was VOR der Komponente
-steht, kennt den State nicht und lässt sich als Ganzes verschieben. Ergebnis:
-`components/wizard/*` (StickyTabStrip, StepBadge, LocationMultiSelect,
-FieldDescEditor, FieldTypeSuggestion, customFieldInput),
-`components/admin/ActionsMenu.tsx` (ActionTile + Registry + Dropdown gehören
-zusammen — eine Datei, nicht drei), `utils/{subEventTitle, eventStatus,
-inviteGuards, fieldHeuristics}`, `data/{actionCategories,
-descriptionTemplates}`. Rezept: Block ausschneiden, `export` davor, Import
-zurück, `tsc`. **Danach immer `gulp bundle`** — ESLint findet die zu breit
-gefassten Importe, die `tsc` durchgehen lässt.
+### Das Rezept (dreimal bewaehrt, an sechs Dateien angewandt)
 
-**Stufe 2 — `EventService` (BEGONNEN, v30.6).** Rezept ist etabliert und
-funktioniert: Sektion nach `services/events/<thema>.ts` kopieren, `this.` →
-`svc.`, Methodenkopf → `export async function name(svc: EventService, …)`,
-in der Klasse einen Delegations-Stub mit UNVERÄNDERTER Signatur stehen
-lassen (keine Aufrufstelle wird angefasst), `import type { EventService }`
-im Modul (Typ-Zyklus ist ok), dann `tsc` treiben lassen — private Helfer,
-die das Modul braucht, werden public (`_sp`, `_setListSecurity`,
-`getVisitorsGroupId` sind es schon; Unterstrich = „intern"). Modul-Konstanten
-(`REG_LIST_NAME`, `HOTEL_COLS_READY`) sind exportiert; Instanz-Zustand
-(z.B. `_idReorderCancelledFieldEnsured`) bleibt als public-Feld an der
-Klasse. Erledigt: `emailQueue`, `hotelPlanning`, `idReorder`, `changeLog`,
-`outlookQueue`, `profileData` (v30.7), `emailTemplatesList` (Templates +
-_Config/KPI/_FAConfig), `archive` (DEX_Archive: ensure + Archiv-Lauf +
-Löschkonzept; `_delete` bleibt als allgemeiner Helfer public an der Klasse),
-`weeklyReport` (alle v30.11), `organizer` (Organizer-Archiv/-Anträge/
-Rollen-Abfragen, v30.12) — 12,9k → 9,6k Zeilen. Tickets waren schon
-v28.95 in `services/tickets.ts`. Damit ist der abtrennbare Rand ab —
-der Rest ist Kerngeschäft (Events CRUD, Registrierungen, Subsites,
-Hilfsmethoden) und hängt eng zusammen; dort erst nach Stufe 3 ran.
-IMMER ein Thema pro Rutsch, nach jedem `tsc` UND `gulp bundle` (ESLint
-sieht anderes als tsc). Falle aus v30.11: Konstanten-Importe des
-EventService nach dem Auszug prüfen — tsc meldet ungenutzte Importe NICHT
-(ESLint erst im bundle), und ein privater Helfer der Sektion kann
-Aufrufer außerhalb haben (`loadFileAsBase64` → public Stub).
+1. **Blockgrenzen bestimmen** — nicht raten, sondern per Klammerbilanz
+   ausrechnen (Zeichenketten und Kommentare vorher entfernen, sonst zaehlt eine
+   Klammer im Text mit).
+2. **Props-Vertrag aus dem Compiler holen, nicht aus dem Kopf.** Ueber die
+   TypeScript-Compiler-API: fuer jeden Bezeichner im Block das Symbol
+   aufloesen, und zwar `getTypeOfSymbolAtLocation` **auf der Deklaration** —
+   nicht `getTypeAtLocation` an der Verwendungsstelle, sonst liest sich
+   `useState(false)` als `false` statt `boolean`.
+3. **Block 1:1 verschieben.** Kein Dedent, kein Reformat, keine Leerzeile weg.
+   Erlaubt sind genau zwei Aenderungen: die Anzeige-Bedingung wird zu `visible`,
+   und ein Kommentar HINTER dem schliessenden Tag entfaellt (im `return (...)`
+   waere er ein zweites Wurzelelement).
+4. **Audit-Diff** gegen `git show HEAD:<pfad>`: der Koerper muss zeichengleich
+   sein. Meldet er mehr als die erlaubten Stellen, ist der Schnitt falsch —
+   nicht der Diff.
+5. **`tsc` nach JEDEM Schnitt, `eslint` am Ende.** Von hinten nach vorne
+   schneiden, sonst verschieben sich die Zeilennummern der offenen Bloecke.
 
-**Stufe 3 — die Render-Bäume (BEGONNEN, v30.13).** Vier in sich geschlossene
-Schritte sind als Komponenten in `components/wizard/steps/` — `BillingStep`
-(Index 9), `DocumentsStep` (7), `FunZoneStep` (8), `TeamStep` (6). Rezept,
-das die Tag-Balance-Falle umgeht: (1) Blockgrenzen über die
-`currentStep === N`-Marker und den `close Step`-Kommentar bestimmen, (2)
-Ident-Inventar des Blocks (grep auf Bezeichner) → Props-Vertrag NUR aus dem,
-was der Block wirklich liest, (3) JSX per Skript 1:1 verschieben — erlaubte
-Transformationen sind genau drei: dedent, `currentStep === N` → `visible`,
-Schluss-Kommentar weg, (4) Audit-Diff des Komponenten-Bodys gegen den
-HEAD-Stand (muss IDENTISCH melden), (5) tsc + bundle. `t`/`isDe` und
-`confirmDialog`/`showAlert` holen sich die Komponenten selbst über
-`useLanguage()`/`useDialog()`; `visible` steuert display:none statt unmount
-(Eingaben überleben den Schrittwechsel — wie vorher). Lokale IIFE-Helfer
-eines Blocks (Fun-Zone: handleDrop, renderQuestionCard) wandern mit. Die
-verbleibenden Schritte 0–5 sind scope-fähig (`scopeSub`/`patchScopeSub`,
-~200 States) — dort NICHT ohne Browser-Verifikation weiterschneiden, und
-immer nur EINEN Schritt pro Release.
+Fuer Logik gilt dasselbe mit einem `ctx`-Objekt als erstem Parameter — genau
+das Muster, das `svc` beim `EventService` schon hatte. Kopf und `};` des
+Handlers bleiben in der Datei stehen, ersetzt wird nur der Koerper: dann muss
+keine Aufrufstelle angefasst werden.
+
+### Vier Fallen, die dabei wirklich zugeschnappt sind
+
+**Ein ctx-Wert, der erst NACH dem Block deklariert wird, ist ein TDZ-Fehler.**
+Als Closure-Zugriff aus einer Funktion war er harmlos — sie laeuft spaeter. Als
+Feld eines Objekts, das beim Aufruf gebaut wird, ist er zur Laufzeit noch nicht
+initialisiert. Drei von neun Segmenten in `EventCreationPage` sind daran
+gescheitert und deshalb stehen geblieben; im `EventContext` mussten
+`calDayParentOf` und `childEventsOf` dafuer wortgleich nach oben wandern.
+Das ist die einzige Falle, die **kein** Compiler meldet — sie muss vor dem
+Schnitt ausgerechnet werden.
+
+**Typen im Funktionskoerper sind von aussen nicht referenzierbar.** In
+`EventCreationPage` standen `SubEventDraft`, `ImgView`, `OutlookConfirmItem`
+und zwei weitere INNERHALB der Komponente. Sie muessen zuerst auf Modul-Ebene
+in eine eigene Datei (`components/wizard/wizardTypes.ts`) — ein Import aus der
+Seite zurueck waere ein Modul-Zyklus.
+
+**Ein mehrzeiliger Rueckgabetyp sieht aus wie ein Koerperanfang.**
+`const f = (): {\n  a: string;\n} => {` — die erste Zeile endet auf `{`, und
+eine naive Kopfsuche haelt den Typ-Block fuer Code. Der Compiler meldet es
+sofort, aber nur, weil nach jedem Schnitt `tsc` laeuft.
+
+**ESLint findet die toten Importe, `tsc` nicht.** Nach dem Auszug standen in
+`EventCreationPage` 36 Import-Zeilen, deren Bindings nur noch in den
+ausgelagerten Dateien gebraucht werden — dieselbe Falle wie v30.11. Immer zum
+Schluss `eslint` ueber die angefasste Datei UND die neuen.
+
+### Wo was liegt
+
+- `components/wizard/steps/` — die elf Wizard-Schritte
+- `components/wizard/hooks/` — drei State-Buendel des Wizards
+- `components/wizard/logic/` — Save-Pfad, Outlook, Vorlagen, Entwurf, Render-Helfer
+- `components/admin/{sections,participants,modals,logic}/` — das Organizer Center
+- `components/registration/` — Anmeldeseite (Sektionen, Modals, Submit-Pfad)
+- `components/myEvents/` — Meine Events (Karte, Sub-Events, Modals)
+- `context/actions/` — die Aktionen des EventContext als Factory-Module
+- `services/events/` — die Themen des EventService (31 Module)
+
+**Vor einem neuen Schnitt: die Zeilennummern selbst nachpruefen.** Jede
+Kartierung in einem Auftrag oder Kommentar bezieht sich auf einen Stand, der
+nach dem ersten Schnitt nicht mehr gilt.
+
 
 ## Offene Arbeit
 

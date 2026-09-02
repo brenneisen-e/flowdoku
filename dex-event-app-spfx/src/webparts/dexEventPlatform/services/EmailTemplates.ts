@@ -354,8 +354,25 @@ export function buildEmailFromTemplate(
   // Subheading hat, fallen wir auf den reinen EventTitle zurück.
   const rawSub = (template.subheading && template.subheading.trim()) || '{{EventTitle}}';
   const subheading = replacePlaceholdersPlain(rawSub, vars);
-  // Body: HTML, daher Werte escapen
-  let bodyHtml = replacePlaceholders(template.bodyHtml, vars);
+  // Body: HTML, daher Werte escapen.
+  // v30.66: ZWEI Platzhalter tragen fertiges HTML statt Text — `NewLeadBlock`
+  // (Team-Lead-Hinweis, 5x in mailBodies.ts) und `WaitlistPositionBlock`
+  // (Ueberbuchungs-Entschuldigung). Sie liefen bisher durch escapeHtml, in der
+  // Mail standen also woertlich `<p style=...><strong>` statt des Kastens.
+  // Beide Werte baut die App vollstaendig selbst (feste Texte plus eine Zahl,
+  // keine Nutzereingabe) — deshalb duerfen sie roh gesetzt werden. Dasselbe
+  // Muster wie `{{OrganizerHtml}}` direkt darunter: erst escapen, was Text ist,
+  // dann die HTML-Bloecke einsetzen.
+  const RAW_HTML_KEYS = ['NewLeadBlock', 'WaitlistPositionBlock'];
+  const textVars: Record<string, string> = {};
+  const htmlVars: Record<string, string> = {};
+  for (const [k, v] of Object.entries(vars)) {
+    if (RAW_HTML_KEYS.indexOf(k) >= 0) htmlVars[k] = v; else textVars[k] = v;
+  }
+  let bodyHtml = replacePlaceholders(template.bodyHtml, textVars);
+  for (const [k, v] of Object.entries(htmlVars)) {
+    bodyHtml = bodyHtml.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), v);
+  }
   // v22.47: {{OrganizerHtml}} — nur die NAMEN fett, die Verbinder („und"/", ")
   // bleiben normal. Wird RAW (unescaped) ersetzt, deshalb erst nach
   // replacePlaceholders (das `OrganizerHtml` mangels vars-Key stehen lässt).

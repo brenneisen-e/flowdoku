@@ -151,6 +151,11 @@ export default function AudiencePicker({
   const [audienceGroupKeys, setAudienceGroupKeys] = React.useState<Set<string>>(() => new Set());
   const [audienceIncludeIntl, setAudienceIncludeIntl] = React.useState(false);
   const audienceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // v30.67: Laufnummer der Suche — eine Antwort, die nach einer neueren
+  // Eingabe eintrifft, wird verworfen. Der Timer entprellt nur das STARTEN;
+  // eine langsame ältere Antwort („mül") überschrieb sonst die Treffer zu
+  // „müller", und ein Klick nahm die falsche Person in die Zielgruppe auf.
+  const audienceSeqRef = React.useRef(0);
   // v22.7: Debounce-Timer für die Live-People-Picker-Suche im „Sichtbarkeit
   // prüfen"-Modal (vorher manuelles Enter/„Suchen").
   const emailSearchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -517,6 +522,7 @@ export default function AudiencePicker({
             const val = e.target.value;
             setAudienceSearch(val);
             if (audienceTimerRef.current) clearTimeout(audienceTimerRef.current);
+            const seq = ++audienceSeqRef.current;
             if (val.trim().length >= 2) {
               audienceTimerRef.current = setTimeout(async () => {
                 setIsSearchingAudience(true);
@@ -529,12 +535,14 @@ export default function AudiencePicker({
                   const u: Array<{ kind: 'user' | 'group'; email: string; displayName: string }> = users.map((x: any) => ({ kind: 'user' as const, email: x.email, displayName: x.displayName }));
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const g: Array<{ kind: 'user' | 'group'; email: string; displayName: string }> = groups.map((x: any) => ({ kind: 'group' as const, email: x.email, displayName: x.displayName }));
+                  if (seq !== audienceSeqRef.current) return; // überholt — neuere Eingabe läuft
                   setAudienceResults([...g, ...u]); // Gruppen zuerst anzeigen
-                } catch { setAudienceResults([]); }
-                setIsSearchingAudience(false);
+                } catch { if (seq === audienceSeqRef.current) setAudienceResults([]); }
+                if (seq === audienceSeqRef.current) setIsSearchingAudience(false);
               }, 300);
             } else {
               setAudienceResults([]);
+              setIsSearchingAudience(false);
             }
           }}
           placeholder="Personen oder Gruppen suchen (z.B. SAPAlliance, max@deloitte.de, DEKOELN)"
@@ -546,6 +554,7 @@ export default function AudiencePicker({
             setAudienceIncludeIntl(next);
             const q = audienceSearch.trim();
             if (q.length >= 2) {
+              const seq = ++audienceSeqRef.current;
               setIsSearchingAudience(true);
               try {
                 const [users, groups] = await Promise.all([
@@ -556,9 +565,10 @@ export default function AudiencePicker({
                 const u: Array<{ kind: 'user' | 'group'; email: string; displayName: string }> = users.map((x: any) => ({ kind: 'user' as const, email: x.email, displayName: x.displayName }));
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const g: Array<{ kind: 'user' | 'group'; email: string; displayName: string }> = groups.map((x: any) => ({ kind: 'group' as const, email: x.email, displayName: x.displayName }));
+                if (seq !== audienceSeqRef.current) return; // überholt
                 setAudienceResults([...g, ...u]);
-              } catch { setAudienceResults([]); }
-              setIsSearchingAudience(false);
+              } catch { if (seq === audienceSeqRef.current) setAudienceResults([]); }
+              if (seq === audienceSeqRef.current) setIsSearchingAudience(false);
             }
           }}
           isDe={isDe}

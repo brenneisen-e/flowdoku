@@ -123,15 +123,16 @@ const ORGANIZER_TOUR: TutorialTour = {
   id: 'organizer',
   labelDe: 'Organizer-Tutorial',
   labelEn: 'Organizer tutorial',
-  descDe: 'Events anlegen mit dem Wizard (alle 9 Schritte), Teilnehmer verwalten im Organizer Center und der Check-in am Eventtag.',
-  descEn: 'Create events with the wizard (all 9 steps), manage attendees in the Organizer Center and run check-in on the event day.',
+  // v30.67: „alle Schritte" statt „alle 9" — Admins haben zehn.
+  descDe: 'Events anlegen mit dem Wizard (alle Schritte), Teilnehmer verwalten im Organizer Center und der Check-in am Eventtag.',
+  descEn: 'Create events with the wizard (all steps), manage attendees in the Organizer Center and run check-in on the event day.',
   steps: [
     {
       page: 'start',
       titleDe: 'Willkommen, Organizer!',
       titleEn: 'Welcome, organizer!',
-      bodyDe: 'Diese Tour zeigt dir, wie du Events anlegst (mit allen 9 Wizard-Schritten), Teilnehmer verwaltest und den Eventtag meisterst. Für die Dauer der Tour liegt ein Demo-Event in deiner Organizer-Liste — nur für dich sichtbar, zum gefahrlosen Anschauen.',
-      bodyEn: 'This tour shows you how to create events (with all 9 wizard steps), manage attendees and run the event day. For the duration of the tour a demo event sits in your organizer list — visible only to you, safe to explore.',
+      bodyDe: 'Diese Tour zeigt dir, wie du Events anlegst (mit allen Wizard-Schritten), Teilnehmer verwaltest und den Eventtag meisterst. Für die Dauer der Tour liegt ein Demo-Event in deiner Organizer-Liste — nur für dich sichtbar, zum gefahrlosen Anschauen.',
+      bodyEn: 'This tour shows you how to create events (with all wizard steps), manage attendees and run the event day. For the duration of the tour a demo event sits in your organizer list — visible only to you, safe to explore.',
     },
     {
       page: 'start',
@@ -154,8 +155,8 @@ const ORGANIZER_TOUR: TutorialTour = {
       selector: '.page-container button.btn-primary',
       titleDe: 'Neues Event in Minuten',
       titleEn: 'A new event in minutes',
-      bodyDe: 'Über diesen Button startest du den Event-Wizard. Wir gehen jetzt gemeinsam alle 9 Schritte durch — keine Sorge, es wird dabei nichts gespeichert.',
-      bodyEn: 'This button starts the event wizard. We will now walk through all 9 steps together — don’t worry, nothing gets saved.',
+      bodyDe: 'Über diesen Button startest du den Event-Wizard. Wir gehen jetzt gemeinsam alle Schritte durch — keine Sorge, es wird dabei nichts gespeichert.',
+      bodyEn: 'This button starts the event wizard. We will now walk through all steps together — don’t worry, nothing gets saved.',
     },
     {
       page: 'create-event',
@@ -240,7 +241,13 @@ const ORGANIZER_TOUR: TutorialTour = {
     },
     {
       page: 'create-event',
-      wizardStep: 8,
+      // v30.67: 9 statt 8 — seit v29.66 hat der Assistent für Admins/F&A zehn
+      // Schritte, und der Anlegen-Knopf rendert nur auf dem LETZTEN. Auf
+      // Index 8 stand für sie „Weiter", das Element fehlte, der Spotlight
+      // blieb aus. Der Empfänger (EventCreationPage, dex-tutorial-wizard-step)
+      // klemmt die 9 für alle ohne Abrechnungs-Schritt auf 8 — dort ist 8
+      // der letzte Schritt, der Knopf also ebenfalls da.
+      wizardStep: 9,
       selector: '[data-tour="wizard-submit"]',
       titleDe: 'Und was passiert beim Anlegen?',
       titleEn: 'And what happens when you create it?',

@@ -132,6 +132,13 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   const hotels: DexHotel[] = hotelsLocal;
   const stays: DexHotelStay[] = staysLocal;
   const visible = visibleLocal;
+  /** v30.67: Ein Satz für die Rückfrage eines Massenlaufs bei freigegebener
+   *  Anzeige — statt einer eigenen Rückfrage je Person (s. writeAssignment). */
+  const visibleNote = visible
+    ? (isDe
+      ? '\n\nDie Hotel-Anzeige ist freigegeben: Die Betroffenen sehen die Änderung sofort unter „Meine Events".'
+      : '\n\nHotel display is released: those affected see the change immediately under „My events".')
+    : '';
 
   /** Nur für den Ausnahmefall, dass eine Sub-Liste nicht durchgereicht wurde. */
   const [subEmailsFallback, setSubEmailsFallback] = React.useState<Record<string, SPRegistration[]>>({});
@@ -275,22 +282,32 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     const already = rows.filter(r => (r.Hotel || '').trim() && (r.Hotel || '').trim() !== subHotelPick).length;
     const ok = await confirmDialog(
       isDe
-        ? `Alle ${rows.length} Teilnehmer aus „${child.title}" dem Hotel „${subHotelPick}" zuordnen?${already > 0 ? `\n\n${already} davon sind aktuell einem ANDEREN Hotel zugeordnet und werden umgebucht.` : ''}`
-        : `Assign all ${rows.length} attendees from „${child.title}" to „${subHotelPick}"?${already > 0 ? `\n\n${already} of them are currently assigned to a DIFFERENT hotel and will be moved.` : ''}`,
+        ? `Alle ${rows.length} Teilnehmer aus „${child.title}" dem Hotel „${subHotelPick}" zuordnen?${already > 0 ? `\n\n${already} davon sind aktuell einem ANDEREN Hotel zugeordnet und werden umgebucht.` : ''}${visibleNote}`
+        : `Assign all ${rows.length} attendees from „${child.title}" to „${subHotelPick}"?${already > 0 ? `\n\n${already} of them are currently assigned to a DIFFERENT hotel and will be moved.` : ''}${visibleNote}`,
       { confirmLabel: isDe ? 'Zuordnen' : 'Assign' },
     );
     if (!ok) return;
     setBulkProgress({ done: 0, total: rows.length });
+    // v30.67: Nur zählen, was wirklich geschrieben wurde — die Rückfrage stand
+    // oben einmal, writeAssignment fragt nicht mehr je Person.
+    let written = 0;
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const fs = formStayOf(r);
       const from = toDay(r.HotelFrom) || (fs && !fs.none ? fs.from : '') || (defaultStay ? defaultStay.from : '');
       const to = toDay(r.HotelTo) || (fs && !fs.none ? fs.to : '') || (defaultStay ? defaultStay.to : '');
       // eslint-disable-next-line no-await-in-loop
-      await writeAssignment([r], subHotelPick, from, to);
+      const okOne = await writeAssignment([r], subHotelPick, from, to, { skipConfirm: true });
+      if (okOne) written++;
       setBulkProgress({ done: i + 1, total: rows.length });
     }
     setBulkProgress(null);
+    setSelected(new Set());
+    showAlert(
+      isDe ? `${written} von ${rows.length} Teilnehmer(n) aus „${child.title}" dem Hotel „${subHotelPick}" zugeordnet${written < rows.length ? `, ${rows.length - written} fehlgeschlagen` : ''}.`
+        : `${written} of ${rows.length} attendees from „${child.title}" assigned to „${subHotelPick}"${written < rows.length ? `, ${rows.length - written} failed` : ''}.`,
+      { variant: written < rows.length ? 'error' : 'success' },
+    );
   };
 
   // v28.54: Die Zugehoerigkeit je Sub-Event kommt aus den Listen, die das
@@ -394,8 +411,8 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     const lines = planned.map(f => `• ${f.hotel.name}: ${f.take.length}${f.unlimited ? (isDe ? ' (kein Kontingent hinterlegt)' : ' (no capacity set)') : ` (${isDe ? 'Rest' : 'left'}: ${f.left})`}`).join('\n');
     const ok = await confirmDialog(
       isDe
-        ? `${candidates.length} von ${people.length} Person(en) automatisch verteilen?\n\n${lines}${unplaced > 0 ? `\n\n${unplaced} Person(en) bleiben ohne Hotel — das Kontingent reicht nicht.` : ''}\n\nNicht angefasst werden: ${skippedAssigned} bereits zugeordnete${skippedNoWish > 0 ? ` und ${skippedNoWish} ohne Hotel-Wunsch` : ''}. Personen aus demselben Sub-Event werden möglichst zusammen untergebracht.`
-        : `Distribute ${candidates.length} of ${people.length} person(s)?\n\n${lines}${unplaced > 0 ? `\n\n${unplaced} person(s) stay without a hotel — capacity is not sufficient.` : ''}\n\nUntouched: ${skippedAssigned} already assigned${skippedNoWish > 0 ? ` and ${skippedNoWish} without a hotel request` : ''}. People from the same sub-event are kept together where possible.`,
+        ? `${candidates.length} von ${people.length} Person(en) automatisch verteilen?\n\n${lines}${unplaced > 0 ? `\n\n${unplaced} Person(en) bleiben ohne Hotel — das Kontingent reicht nicht.` : ''}\n\nNicht angefasst werden: ${skippedAssigned} bereits zugeordnete${skippedNoWish > 0 ? ` und ${skippedNoWish} ohne Hotel-Wunsch` : ''}. Personen aus demselben Sub-Event werden möglichst zusammen untergebracht.${visibleNote}`
+        : `Distribute ${candidates.length} of ${people.length} person(s)?\n\n${lines}${unplaced > 0 ? `\n\n${unplaced} person(s) stay without a hotel — capacity is not sufficient.` : ''}\n\nUntouched: ${skippedAssigned} already assigned${skippedNoWish > 0 ? ` and ${skippedNoWish} without a hotel request` : ''}. People from the same sub-event are kept together where possible.${visibleNote}`,
       { confirmLabel: isDe ? 'Verteilen' : 'Distribute' },
     );
     if (!ok) return;
@@ -403,6 +420,11 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     const total = planned.reduce((n, f) => n + f.take.length, 0);
     setBulkProgress({ done: 0, total });
     let done = 0;
+    // v30.67: Nur zählen, was wirklich geschrieben wurde. Vorher fragte
+    // writeAssignment bei freigegebener Anzeige je Person nach, ein
+    // „Abbrechen" bei Person 17 blieb unbemerkt, und die Meldung sagte
+    // trotzdem „80 Person(en) verteilt".
+    let written = 0;
     for (const f of planned) {
       for (const r of f.take) {
         // v28.63: Der selbst gewählte Zeitraum schlägt die Standard-Vorlage.
@@ -410,16 +432,19 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
         const from = toDay(r.HotelFrom) || (fs && !fs.none ? fs.from : '') || (defaultStay ? defaultStay.from : '');
         const to = toDay(r.HotelTo) || (fs && !fs.none ? fs.to : '') || (defaultStay ? defaultStay.to : '');
         // eslint-disable-next-line no-await-in-loop
-        await writeAssignment([r], f.hotel.name, from, to);
+        const okOne = await writeAssignment([r], f.hotel.name, from, to, { skipConfirm: true });
+        if (okOne) written++;
         done++;
         setBulkProgress({ done, total });
       }
     }
     setBulkProgress(null);
+    setSelected(new Set());
+    const failed = total - written;
     showAlert(
-      isDe ? `${total} Person(en) verteilt${unplaced > 0 ? `, ${unplaced} ohne Hotel geblieben` : ''}.`
-        : `${total} person(s) distributed${unplaced > 0 ? `, ${unplaced} left without a hotel` : ''}.`,
-      { variant: unplaced > 0 ? 'info' : 'success' },
+      isDe ? `${written} von ${total} Person(en) verteilt${failed > 0 ? `, ${failed} fehlgeschlagen` : ''}${unplaced > 0 ? `, ${unplaced} ohne Hotel geblieben` : ''}.`
+        : `${written} of ${total} person(s) distributed${failed > 0 ? `, ${failed} failed` : ''}${unplaced > 0 ? `, ${unplaced} left without a hotel` : ''}.`,
+      { variant: failed > 0 ? 'error' : unplaced > 0 ? 'info' : 'success' },
     );
   };
 
@@ -783,25 +808,35 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
 
   /* ---------------- Zuordnung schreiben ---------------- */
 
+  /**
+   * v30.67: Schreib-Primitiv für Einzel- UND Massenpfade. Die Freigabe-
+   * Rückfrage stellt es nur, wenn der Aufrufer sie nicht schon gestellt hat
+   * (`skipConfirm`) — vorher kam sie bei „Automatisch verteilen" EINMAL PRO
+   * PERSON (80 Modals bei 80 Personen), und ein „Abbrechen" bei Person 17
+   * zählte trotzdem als verteilt, weil die Schleifen ein `void` bekamen.
+   * Rückgabe: true = alle Zeilen geschrieben; false = abgebrochen, kein
+   * Zugriff oder mindestens eine Zeile fehlgeschlagen.
+   */
   const writeAssignment = async (
     rows: SPRegistration[],
     hotel: string,
     from: string,
     to: string,
-  ): Promise<void> => {
+    opts?: { skipConfirm?: boolean },
+  ): Promise<boolean> => {
     if (!svc || !event.subsiteUrl) {
       showAlert(isDe ? 'Kein Zugriff auf die Teilnehmerliste dieses Events.' : 'No access to this event’s participant list.', { variant: 'error' });
-      return;
+      return false;
     }
     // Ist die Anzeige freigegeben, sieht die Person die Änderung sofort.
-    if (visible && rows.length > 0) {
+    if (visible && rows.length > 0 && !(opts && opts.skipConfirm)) {
       const ok = await confirmDialog(
         isDe
           ? `Die Hotel-Anzeige ist für dieses Event freigegeben.\n\n${rows.length === 1 ? 'Die betroffene Person sieht' : `Die ${rows.length} betroffenen Personen sehen`} die Änderung sofort unter „Meine Events".\n\nFortfahren?`
           : `Hotel display is released for this event.\n\n${rows.length === 1 ? 'The person sees' : `The ${rows.length} people see`} the change immediately under „My events".\n\nContinue?`,
         { confirmLabel: isDe ? 'Ja, zuordnen' : 'Yes, assign' },
       );
-      if (!ok) return;
+      if (!ok) return false;
     }
     setBusy('assign');
     // Sofort anzeigen — geschrieben wird gleich, nachgeladen im Hintergrund.
@@ -828,7 +863,9 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     }
     if (many) setBulkProgress(null);
     setBusy('');
-    setSelected(new Set());
+    // v30.67: Die Markierung leert der Aufrufer. Hier leerte sie der ERSTE
+    // Durchlauf eines Massenlaufs — und mit ihr fiel die Markierungs-Leiste
+    // samt Fortschrittsbalken aus dem Baum, während die Schleife weiterlief.
     if (failedIds.length > 0) {
       // Nur die fehlgeschlagenen Zeilen zurückrollen — der Rest steht.
       setRowOv(prev => {
@@ -843,6 +880,18 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
       );
     }
     void Promise.resolve(onReloadRegistrations()).catch(() => { /* Hintergrund */ });
+    return failedIds.length === 0;
+  };
+
+  /** v30.67: Freigabe-Rückfrage EINMAL für einen ganzen Lauf (s. writeAssignment). */
+  const confirmVisibleBulk = async (count: number): Promise<boolean> => {
+    if (!visible || count === 0) return true;
+    return confirmDialog(
+      isDe
+        ? `Die Hotel-Anzeige ist für dieses Event freigegeben.\n\nDie ${count} betroffenen Personen sehen die Änderung sofort unter „Meine Events".\n\nFortfahren?`
+        : `Hotel display is released for this event.\n\nThe ${count} people affected see the change immediately under „My events".\n\nContinue?`,
+      { confirmLabel: isDe ? 'Ja, zuordnen' : 'Yes, assign' },
+    );
   };
 
   const defaultStay = stays.filter(s => s.isDefault)[0] || stays[0];
@@ -900,32 +949,116 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     return { nights: base + extra, exact: false };
   }, [formStayOf, wishOf, defaultStay, answerRowsOf, event.eventSpecificFields, childEvents]);
 
+  /**
+   * v30.67: Die gefilterte + sortierte Liste EINMAL ziehen. Die drei Filter
+   * standen als Inline-Kette im <tbody>; der Kopf-Haken und alle
+   * Massenaktionen arbeiteten auf dem ungefilterten `people`. Wer „Nur ohne
+   * Hotel" wählte, 30 Zeilen sah, alle markierte und „→ Hotel C" klickte,
+   * buchte 300 um — die 270 bereits zugeordneten gleich mit.
+   */
+  const visiblePeople = React.useMemo(() => people
+    .filter(p => filterHotel === '__all'
+      || (filterHotel === '__none' ? !(p.Hotel || '').trim() : (p.Hotel || '').trim() === filterHotel))
+    .filter(p => !hideNoWish || wishOf(p) !== false)
+    .filter(p => {
+      const q = search.trim().toLowerCase();
+      if (!q) return true;
+      return `${p.Nachname || ''} ${p.Vorname || ''} ${p.ParticipantName || ''} ${p.ParticipantEmail || ''} ${p.Location || ''} ${p.Company || ''} ${p.Hotel || ''}`
+        .toLowerCase().indexOf(q) >= 0;
+    })
+    .sort((a, b) => {
+      const dir = sortAsc ? 1 : -1;
+      const txt = (x: SPRegistration): string => {
+        if (sortKey === 'first') return x.Vorname || '';
+        if (sortKey === 'job') return String((x as any).JobTitle || '');
+        if (sortKey === 'loc') return x.Location || '';
+        if (sortKey === 'comp') return x.Company || '';
+        if (sortKey === 'hotel') return (x.Hotel || '').trim();
+        if (sortKey === 'wish') { const w = wishOf(x); return w === true ? '1' : w === false ? '2' : '3'; }
+        // v29.6: Nächte numerisch, aber als Text mit führenden
+        // Nullen — sonst sortiert '10' vor '2'.
+        if (sortKey === 'wishn') { const wn = wishNightsOf(x); return wn ? String(wn.nights).padStart(3, '0') : 'zzz'; }
+        if (sortKey === 'match') {
+          const wn = wishNightsOf(x);
+          const as = (x.Hotel || '').trim();
+          if (!wn || wn.nights <= 0 || !as) return '3';
+          return nightsBetween(toDay(x.HotelFrom), toDay(x.HotelTo)) === wn.nights ? '2' : '1';
+        }
+        if (sortKey === 'subs') return subsOf(x).join(', ');
+        return x.Nachname || x.ParticipantName || '';
+      };
+      return txt(a).localeCompare(txt(b), 'de') * dir;
+    }), [people, filterHotel, hideNoWish, search, sortKey, sortAsc, wishOf, wishNightsOf, subsOf]);
+
+  /** Markierte Zeilen, die gerade SICHTBAR sind — nur die trifft eine
+   *  Massenaktion. Eine Markierung, die ein Filterwechsel ausblendet, wirkt
+   *  nicht nach; sie erscheint wieder, sobald die Zeile wieder sichtbar ist. */
+  const selectedRows = React.useMemo(
+    () => visiblePeople.filter(p => selected.has(p.Id)),
+    [visiblePeople, selected],
+  );
+
   const assignSelectedTo = async (hotelName: string): Promise<void> => {
-    const rows = people.filter(p => selected.has(p.Id));
+    const rows = selectedRows;
     if (rows.length === 0) return;
+    // v30.67: Rückfrage einmal für den Lauf, nicht je Person (s. writeAssignment).
+    if (!(await confirmVisibleBulk(rows.length))) return;
     setBulkProgress({ done: 0, total: rows.length });
+    let written = 0;
     // Zeitraum: vorhandenen behalten, sonst die Standard-Vorlage geben.
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const from = toDay(r.HotelFrom) || (defaultStay ? defaultStay.from : '');
       const to = toDay(r.HotelTo) || (defaultStay ? defaultStay.to : '');
       // eslint-disable-next-line no-await-in-loop
-      await writeAssignment([r], hotelName, from, to);
+      const ok = await writeAssignment([r], hotelName, from, to, { skipConfirm: true });
+      if (ok) written++;
       setBulkProgress({ done: i + 1, total: rows.length });
     }
     setBulkProgress(null);
+    setSelected(new Set());
+    showAlert(
+      isDe ? `${written} von ${rows.length} Person(en) „${hotelName}" zugeordnet${written < rows.length ? `, ${rows.length - written} fehlgeschlagen` : ''}.`
+        : `${written} of ${rows.length} person(s) assigned to „${hotelName}"${written < rows.length ? `, ${rows.length - written} failed` : ''}.`,
+      { variant: written < rows.length ? 'error' : 'success' },
+    );
   };
 
   const applyStayToSelected = async (stay: DexHotelStay): Promise<void> => {
-    const rows = people.filter(p => selected.has(p.Id));
-    if (rows.length === 0) return;
+    const all = selectedRows;
+    if (all.length === 0) return;
+    // v30.67: Ohne Hotel lässt sich kein Zeitraum speichern — ein leeres Hotel
+    // heißt in setHotelAssignment „Zuordnung aufheben", HotelFrom/HotelTo
+    // werden auf null gesetzt (services/events/hotelPlanning.ts). Vorher lief
+    // der Balken durch, in der Tabelle stand danach weiter „— kein Zeitraum —",
+    // und hatte eine Zeile Daten ohne Hotel, waren sie gelöscht.
+    const rows = all.filter(r => (r.Hotel || '').trim());
+    const skipped = all.length - rows.length;
+    const skippedNote = skipped > 0
+      ? (isDe
+        ? ` ${skipped} Person(en) übersprungen — ohne Hotel lässt sich kein Zeitraum speichern, erst „→ Hotel" wählen.`
+        : ` ${skipped} person(s) skipped — a period cannot be saved without a hotel, pick „→ hotel" first.`)
+      : '';
+    if (rows.length === 0) {
+      showAlert((isDe ? 'Nichts gespeichert.' : 'Nothing saved.') + skippedNote, { variant: 'error' });
+      return;
+    }
+    if (!(await confirmVisibleBulk(rows.length))) return;
     setBulkProgress({ done: 0, total: rows.length });
+    let written = 0;
     for (let i = 0; i < rows.length; i++) {
       // eslint-disable-next-line no-await-in-loop
-      await writeAssignment([rows[i]], (rows[i].Hotel || '').trim(), stay.from, stay.to);
+      const ok = await writeAssignment([rows[i]], (rows[i].Hotel || '').trim(), stay.from, stay.to, { skipConfirm: true });
+      if (ok) written++;
       setBulkProgress({ done: i + 1, total: rows.length });
     }
     setBulkProgress(null);
+    setSelected(new Set());
+    showAlert(
+      (isDe ? `Zeitraum „${stay.label}" bei ${written} von ${rows.length} Person(en) gesetzt${written < rows.length ? `, ${rows.length - written} fehlgeschlagen` : ''}.`
+        : `Period „${stay.label}" set for ${written} of ${rows.length} person(s)${written < rows.length ? `, ${rows.length - written} failed` : ''}.`) + skippedNote,
+      { variant: written < rows.length ? 'error' : skipped > 0 ? 'info' : 'success' },
+    );
   };
 
   /* ---------------- Auswertungen ---------------- */
@@ -988,15 +1121,19 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   }, [people]);
 
   /** Wer hat laut Anmeldung Unterkunft angefragt, ist aber ohne Hotel? */
-  const wantsHotelWithout = React.useMemo(() => people.filter(p => {
-    if ((p.Hotel || '').trim()) return false;
-    const blob = JSON.stringify(p || {}).toLowerCase();
-    // Bewusst breit: die Feldnamen sind pro Event frei benannt („Hotel room",
-    // „Hotel (24-25 Sept)", „Room required …"). Ein Treffer auf eine
-    // Ja-Antwort in einem Hotel-Feld reicht als Hinweis.
-    if (blob.indexOf('hotel') < 0 && blob.indexOf('accommodation') < 0 && blob.indexOf('unterkunft') < 0) return false;
-    return blob.indexOf('yes') >= 0 || blob.indexOf('ja,') >= 0 || blob.indexOf('ja ') >= 0;
-  }), [people]);
+  // v30.67: Dieselbe Quelle wie „Automatisch verteilen" und die Spalte
+  // „Hotel-Wunsch" — wishOf legt Klammer- und Sub-Event-Zeilen zusammen und
+  // kennt die Zusatznächte-Ausnahme (v28.59). Der Volltext-Scan über die
+  // ganze Zeile (v28.39) war beides zugleich: zu breit — sobald die
+  // Hotel-Spalten existieren, steht „Hotel":null in JEDER Zeile, und jedes
+  // „Yes" (Fotoeinwilligung) oder „Anja " galt als Wunsch — und zu eng, weil
+  // die Klammer-Zeile einer Klammer keine Antworten trägt (CLAUDE.md:
+  // „Antworten stehen dort, wo angemeldet wurde"); genau die Person ohne
+  // Zimmer fehlte dann in der Karte.
+  const wantsHotelWithout = React.useMemo(
+    () => people.filter(p => !(p.Hotel || '').trim() && wishOf(p) === true),
+    [people, wishOf],
+  );
 
   /* ---------------- Export ---------------- */
 
@@ -1600,6 +1737,25 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
           </span>
         </div>
 
+        {/* v30.67: Der Balken hängt allein an bulkProgress. Er stand in der
+            Markierungs-Leiste (v28.48, als es nur „markieren → zuordnen" gab)
+            — bei „Automatisch verteilen" und „Ganzes Sub-Event" war die
+            Markierung leer und 200 MERGE-Requests liefen minutenlang ohne
+            jede Rückmeldung; die Seite wirkte eingefroren. */}
+        {bulkProgress && (
+          <div style={{ width: '100%', margin: '6px 0 10px' }}>
+            <div style={{ height: 8, background: 'var(--dex-gray-100)', borderRadius: 999, overflow: 'hidden' }}>
+              <div style={{
+                height: '100%', transition: 'width 0.2s', background: 'var(--dex-green, #86bc25)',
+                width: `${bulkProgress.total > 0 ? Math.round((bulkProgress.done / bulkProgress.total) * 100) : 0}%`,
+              }} />
+            </div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-600)', marginTop: 3 }}>
+              {bulkProgress.done}/{bulkProgress.total} {isDe ? 'verarbeitet …' : 'processed …'}
+            </div>
+          </div>
+        )}
+
         {showRoster && (
           <>
             {hotels.length === 0 && (
@@ -1647,14 +1803,14 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                 </span>
               </div>
             )}
-            {selected.size > 0 && (
+            {selectedRows.length > 0 && (
               <div style={{
                 display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
                 padding: '8px 10px', marginBottom: 10, borderRadius: 8,
                 background: 'rgba(134,188,37,0.08)', border: '1px solid var(--dex-green, #86bc25)',
               }}>
                 <strong style={{ fontSize: '0.8rem' }}>
-                  {isDe ? `${selected.size} markiert:` : `${selected.size} selected:`}
+                  {isDe ? `${selectedRows.length} markiert:` : `${selectedRows.length} selected:`}
                 </strong>
                 {hotels.map(h => (
                   <button key={h.id} type="button" className="btn btn-secondary" disabled={busy !== ''}
@@ -1672,22 +1828,9 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                 ))}
                 <button type="button" disabled={busy !== ''}
                   style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.74rem', color: 'var(--dex-red, #c00)', textDecoration: 'underline' }}
-                  onClick={() => { void writeAssignment(people.filter(p => selected.has(p.Id)), '', '', ''); }}>
+                  onClick={() => { void writeAssignment(selectedRows, '', '', '').then(ok => { if (ok) setSelected(new Set()); }); }}>
                   {isDe ? 'Zuordnung aufheben' : 'Clear assignment'}
                 </button>
-                {bulkProgress && (
-                  <div style={{ width: '100%', marginTop: 6 }}>
-                    <div style={{ height: 8, background: 'var(--dex-gray-100)', borderRadius: 999, overflow: 'hidden' }}>
-                      <div style={{
-                        height: '100%', transition: 'width 0.2s', background: 'var(--dex-green, #86bc25)',
-                        width: `${bulkProgress.total > 0 ? Math.round((bulkProgress.done / bulkProgress.total) * 100) : 0}%`,
-                      }} />
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-600)', marginTop: 3 }}>
-                      {bulkProgress.done}/{bulkProgress.total} {isDe ? 'zugeordnet …' : 'assigned …'}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
             {/* v28.55: eigener Scroll-Container wie bei der Teilnehmerliste
@@ -1700,9 +1843,11 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                 <thead>
                   <tr style={{ textAlign: 'left', color: 'var(--dex-gray-600)' }}>
                     <th style={{ ...thSticky, padding: '4px 6px', width: 28 }}>
+                      {/* v30.67: „Alle markieren" meint die SICHTBAREN Zeilen —
+                          vorher das ungefilterte `people` (s. visiblePeople). */}
                       <input type="checkbox"
-                        checked={selected.size > 0 && selected.size === people.length}
-                        onChange={e => setSelected(e.target.checked ? new Set(people.map(p => p.Id)) : new Set())} />
+                        checked={visiblePeople.length > 0 && selectedRows.length === visiblePeople.length}
+                        onChange={e => setSelected(e.target.checked ? new Set(visiblePeople.map(p => p.Id)) : new Set())} />
                     </th>
                     {personColsExpanded ? (
                       <>
@@ -1782,39 +1927,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                   </tr>
                 </thead>
                 <tbody>
-                  {people
-                    .filter(p => filterHotel === '__all'
-                      || (filterHotel === '__none' ? !(p.Hotel || '').trim() : (p.Hotel || '').trim() === filterHotel))
-                    .filter(p => !hideNoWish || wishOf(p) !== false)
-                    .filter(p => {
-                      const q = search.trim().toLowerCase();
-                      if (!q) return true;
-                      return `${p.Nachname || ''} ${p.Vorname || ''} ${p.ParticipantName || ''} ${p.ParticipantEmail || ''} ${p.Location || ''} ${p.Company || ''} ${p.Hotel || ''}`
-                        .toLowerCase().indexOf(q) >= 0;
-                    })
-                    .sort((a, b) => {
-                      const dir = sortAsc ? 1 : -1;
-                      const txt = (x: SPRegistration): string => {
-                        if (sortKey === 'first') return x.Vorname || '';
-                        if (sortKey === 'job') return String((x as any).JobTitle || '');
-                        if (sortKey === 'loc') return x.Location || '';
-                        if (sortKey === 'comp') return x.Company || '';
-                        if (sortKey === 'hotel') return (x.Hotel || '').trim();
-                        if (sortKey === 'wish') { const w = wishOf(x); return w === true ? '1' : w === false ? '2' : '3'; }
-                        // v29.6: Nächte numerisch, aber als Text mit führenden
-                        // Nullen — sonst sortiert '10' vor '2'.
-                        if (sortKey === 'wishn') { const wn = wishNightsOf(x); return wn ? String(wn.nights).padStart(3, '0') : 'zzz'; }
-                        if (sortKey === 'match') {
-                          const wn = wishNightsOf(x);
-                          const as = (x.Hotel || '').trim();
-                          if (!wn || wn.nights <= 0 || !as) return '3';
-                          return nightsBetween(toDay(x.HotelFrom), toDay(x.HotelTo)) === wn.nights ? '2' : '1';
-                        }
-                        if (sortKey === 'subs') return subsOf(x).join(', ');
-                        return x.Nachname || x.ParticipantName || '';
-                      };
-                      return txt(a).localeCompare(txt(b), 'de') * dir;
-                    })
+                  {visiblePeople
                     .map(p => {
                       const from = toDay(p.HotelFrom);
                       const to = toDay(p.HotelTo);
@@ -1973,7 +2086,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                                 const h = e.target.value;
                                 void writeAssignment([p], h,
                                   from || (defaultStay ? defaultStay.from : ''),
-                                  to || (defaultStay ? defaultStay.to : ''));
+                                  to || (defaultStay ? defaultStay.to : '')).then(ok => { if (ok) setSelected(new Set()); });
                               }}>
                               <option value="">{isDe ? '— kein Hotel —' : '— none —'}</option>
                               {hotels.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
@@ -1993,7 +2106,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                                 const v = e.target.value;
                                 if (v === '__custom') return; // bestehender Sonderfall bleibt
                                 const st = stays.filter(x => x.id === v)[0];
-                                void writeAssignment([p], (p.Hotel || '').trim(), st ? st.from : '', st ? st.to : '');
+                                void writeAssignment([p], (p.Hotel || '').trim(), st ? st.from : '', st ? st.to : '').then(ok => { if (ok) setSelected(new Set()); });
                               }}
                             >
                               <option value="">{stays.length === 0 ? (isDe ? '— erst Zeitraum anlegen —' : '— create a template first —') : (isDe ? '— kein Zeitraum —' : '— none —')}</option>
@@ -2057,6 +2170,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
         isDe={isDe}
         busy={wizardBusy}
         wishOf={wishOf}
+        answerRowsOf={answerRowsOf}
         onApply={applyWizard}
       />
 

@@ -63,6 +63,10 @@ export interface IHotelSetupWizardProps {
   busy: boolean;
   /** Hat die Person im Formular eine Unterkunft gewünscht? null = keine Frage. */
   wishOf: (p: SPRegistration) => boolean | null;
+  /** v30.67: Alle Antwort-Zeilen einer Person — Klammer-Zeile zuerst, dann
+   *  ihre Zeilen aus den Sub-Events (HotelPlanningPanel.answerRowsOf). Ohne
+   *  den Rückruf zählt nur die übergebene Zeile. */
+  answerRowsOf?: (p: SPRegistration) => SPRegistration[];
   onClose: () => void;
   onApply: (payload: {
     stays: DexHotelStay[];
@@ -166,41 +170,91 @@ const parseLabelRange = (label: string, yearHint: number): { from: string; to: s
 };
 
 export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotelSetupWizardProps) => {
-  const { open, event, people, childEvents, subEmails, hotels, stays, rules, isDe, busy, wishOf, onClose, onApply } = props;
+  const { open, event, people, childEvents, subEmails, hotels, stays, rules, isDe, busy, wishOf, answerRowsOf, onClose, onApply } = props;
 
   /* ------------------------------------------------------------------ *
    * Was das Anmeldeformular schon weiß
    * ------------------------------------------------------------------ */
 
   const answersOf = React.useCallback((p: SPRegistration): Record<string, string> => {
-    try { return JSON.parse(p.CustomData || '{}') as Record<string, string>; } catch { return {}; }
-  }, []);
+    // v30.67: Über ALLE Zeilen der Person zusammenlegen. Bei einer Klammer ist
+    // `p` die Schattenzeile ohne CustomData — die Hotel-Antwort steht auf der
+    // Sub-Event-Zeile (CLAUDE.md: „Antworten stehen dort, wo angemeldet
+    // wurde"). Das Panel löst seit v29.3 so auf, der Assistent las weiter nur
+    // `p`: Schritt 4 meldete „0 Extranächte", und direkt danach zeigte die
+    // Tabelle für dieselben Leute die abweichende Nächtezahl rot an. Die
+    // Klammer-Zeile steht vorn und gewinnt bei gleicher Feld-Id — deshalb
+    // rückwärts gemischt, dieselbe Regel wie wishOf im Panel.
+    const cd: Record<string, string> = {};
+    for (const row of (answerRowsOf ? answerRowsOf(p) : [p]).slice().reverse()) {
+      try {
+        const one = JSON.parse(row.CustomData || '{}') as Record<string, string>;
+        Object.keys(one).forEach(k => { const v = one[k]; if (v !== undefined && v !== null && String(v) !== '') cd[k] = String(v); });
+      } catch { /* Zeile ohne lesbares CustomData überspringen */ }
+    }
+    return cd;
+  }, [answerRowsOf]);
 
   /** Die beiden Hotel-Fragen im Formular: „braucht ihr ein Zimmer?" und
    *  „braucht ihr Zusatznächte?". Erkannt über die Beschriftung — das Formular
    *  ist pro Event frei definiert, eine feste Feld-Id gibt es nicht. */
+  type WizardField = { id: string; label?: string; helpText?: string; options?: string[]; type?: string };
   const fields = React.useMemo(() => {
-    const all = (event.eventSpecificFields || []) as Array<{ id: string; label?: string; helpText?: string; options?: string[]; type?: string }>;
+    // v30.67: Parent- UND Child-Felder. Bei einer Klammer steht das Formular
+    // mit den Hotel-Fragen meist am Sub-Event, nicht an der Klammer — das
+    // Panel sucht seit v29.3 in beiden (rangeFieldIds, wishOf), der Assistent
+    // las nur `event.eventSpecificFields` und fand bei Klammer-Events weder
+    // Zeiträume noch Zusatznächte. Sub-Events können eigene Kopien derselben
+    // Frage mit eigener Id tragen (`cf-<Zeitstempel>`), deshalb je Frage ALLE
+    // passenden Ids sammeln; das erste Feld bleibt für Label und Optionen
+    // massgeblich.
+    const seen: Record<string, true> = {};
+    const all: WizardField[] = [];
+    const push = (list?: unknown): void => {
+      for (const f of ((list || []) as WizardField[])) {
+        if (!f || !f.id || seen[f.id]) continue;
+        seen[f.id] = true; all.push(f);
+      }
+    };
+    push(event.eventSpecificFields);
+    childEvents.forEach(c => push(c.eventSpecificFields));
     // v28.63: Gibt es ein Zeitraum-Feld, ist alles andere zweitrangig — dort
     // steht die Antwort exakt statt als Fliesstext („23.09. – 25.09." statt
     // „Yes, I need ONE additional night from 23 - 24 Sept.").
-    const range = all.filter(f => f.type === 'daterange')[0] || null;
+    const ranges = all.filter(f => f.type === 'daterange');
+    const range = ranges[0] || null;
     const hotelish = all.filter(f => HOTEL_RE.test(`${f.label || ''} ${f.helpText || ''}`) && f.type !== 'daterange');
-    const extra = range ? null : (hotelish.filter(f => EXTRA_RE.test(`${f.label || ''} ${f.helpText || ''}`))[0] || null);
-    const main = range ? null : (hotelish.filter(f => !extra || f.id !== extra.id)[0] || null);
-    return { main, extra, range };
-  }, [event.eventSpecificFields]);
+    const extras = range ? [] : hotelish.filter(f => EXTRA_RE.test(`${f.label || ''} ${f.helpText || ''}`));
+    const extra = extras[0] || null;
+    const mains = range ? [] : hotelish.filter(f => !extras.some(x => x.id === f.id));
+    const main = mains[0] || null;
+    return {
+      main, extra, range,
+      mainIds: mains.map(f => f.id), extraIds: extras.map(f => f.id), rangeIds: ranges.map(f => f.id),
+    };
+  }, [event.eventSpecificFields, childEvents]);
+
+  /** v30.67: Erste nicht-leere Antwort auf eine der Feld-Ids einer Frage. */
+  const answerFor = React.useCallback((p: SPRegistration, ids: string[]): string => {
+    if (ids.length === 0) return '';
+    const cd = answersOf(p);
+    for (const id of ids) {
+      const v = (cd[id] || '').trim();
+      if (v) return v;
+    }
+    return '';
+  }, [answersOf]);
 
   /** Der im Formular angegebene Zeitraum dieser Person (nur mit `daterange`). */
   const formStay = React.useCallback((p: SPRegistration): { none: boolean; from: string; to: string } | null => {
     if (!fields.range) return null;
-    const raw = (answersOf(p)[fields.range.id] || '').trim();
+    const raw = answerFor(p, fields.rangeIds);
     if (!raw) return null;
     const parsed = parseStayValue(raw);
     if (parsed.none) return { none: true, from: '', to: '' };
     if (!parsed.from || !parsed.to) return null;
     return parsed;
-  }, [fields.range, answersOf]);
+  }, [fields.range, fields.rangeIds, answerFor]);
 
   /** Die im Formular genannten Zeiträume mit Häufigkeit — die Grundlage für
    *  Schritt 1, wenn das Event das Zeitraum-Feld nutzt. */
@@ -232,11 +286,11 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
       return fs.none ? false : true;
     }
     if (!fields.main) return wishOf(p);
-    const v = (answersOf(p)[fields.main.id] || '').trim();
+    const v = answerFor(p, fields.mainIds);
     if (!v) return null;
     if (NO_RE.test(v)) return false;
     return /\bja\b|\byes\b/i.test(v) ? true : null;
-  }, [fields.main, fields.range, formStay, answersOf, wishOf]);
+  }, [fields.main, fields.mainIds, fields.range, formStay, answerFor, wishOf]);
 
   /**
    * Wer braucht überhaupt ein Zimmer? Das entscheidet allein die Bedarfsfrage
@@ -272,13 +326,13 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
       if (v) counts[v] = 0;
     }
     for (const p of roomPeople) {
-      const v = (answersOf(p)[fields.extra.id] || '').trim();
+      const v = answerFor(p, fields.extraIds);
       counts[v] = (counts[v] || 0) + 1;
     }
     return Object.keys(counts)
       .map(v => ({ value: v, count: counts[v] }))
       .sort((a, b) => (a.value === '' ? -1 : b.value === '' ? 1 : b.count - a.count));
-  }, [fields.extra, roomPeople, answersOf]);
+  }, [fields.extra, fields.extraIds, roomPeople, answerFor]);
 
   /* ------------------------------------------------------------------ *
    * Zustand
@@ -416,7 +470,7 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
     const fs = formStay(p);
     if (fs && !fs.none) take(fs);
     if (fields.extra) {
-      const v = (answersOf(p)[fields.extra.id] || '').trim();
+      const v = answerFor(p, fields.extraIds);
       const m = answerMap[v];
       if (m && m.nights > 0) take(answerStays.filter(s => s.id === `auto_${m.after ? 'a' : 'b'}_${m.nights}`)[0]);
     }
@@ -433,7 +487,7 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
     const exFrom = toDay(p.HotelFrom); const exTo = toDay(p.HotelTo);
     if (exFrom && exTo) return { from: exFrom, to: exTo };
     return mainStay ? { from: mainStay.from, to: mainStay.to } : { from: '', to: '' };
-  }, [fields.extra, formStay, answersOf, answerMap, answerStays, wRules, subsOf, allStays, mainStay]);
+  }, [fields.extra, fields.extraIds, formStay, answerFor, answerMap, answerStays, wRules, subsOf, allStays, mainStay]);
 
   const forcedHotel = React.useCallback((p: SPRegistration): string => {
     const bySub = wRules.bySub || {};

@@ -15,6 +15,8 @@ import { SharePointService } from '../services/SharePointService';
 import { RoleAssignment, UserRole } from '../types';
 import { looksLikeClaimName, resolveMyDisplayName, safeDisplayName } from '../utils/displayName';
 import { dlog } from '../utils/debugLog';
+import { isAdminRole, roleRank } from '../utils/roleRank';
+import { isCurrentUser } from '../utils/sessionIdentities';
 
 interface RoleContextType {
   roles: RoleAssignment[];
@@ -53,7 +55,15 @@ interface RoleContextType {
   isPowerUser: boolean;
   siteUrl: string;
   addRole: (userEmail: string, userName: string, role: UserRole, location: string) => Promise<boolean>;
+  /** true = DEX_Roles-Zeile geändert. Ob die SharePoint-Rechte dazu passen, sagt `hadRoleRightsIssue()`. */
   updateRole: (itemId: number, newRole: UserRole) => Promise<boolean>;
+  /** v30.67 (Review): true, wenn beim letzten updateRole/removeRole die Zeile
+   *  geändert wurde, aber mindestens ein SharePoint-Recht NICHT angepasst
+   *  werden konnte. Getrennt vom Rückgabewert, weil „Zeile nicht geändert"
+   *  und „Zeile geändert, Recht blieb stehen" zwei verschiedene Meldungen
+   *  brauchen — als ein boolean war die Rollenverwaltung im ersten Fall
+   *  falsch („Rolle entfernt — aber …", obwohl sie noch stand). */
+  hadRoleRightsIssue: () => boolean;
   setPowerUser: (itemId: number, isPowerUser: boolean) => Promise<boolean>;
   updateRoleLocation: (itemId: number, location: string) => Promise<boolean>;
   removeRole: (itemId: number) => Promise<boolean>;
@@ -229,6 +239,16 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
         } catch (err) { console.warn('[DEX] permission re-grant failed (best-effort):', err); }
         return true;
       }
+      // v30.67: Nie implizit herabstufen. `addRole` heißt „diese Rechte
+      // sicherstellen" — wer schon MEHR hat (F&A oder Admin, wenn Organizer
+      // angefragt ist), verlöre über diesen Weg still das F&A Center bzw. die
+      // Admin-Rechte; genau so ist die Freigabe eines „Organizer werden"-
+      // Antrags einer F&A-Person passiert. Eine bewusste Herabstufung geht
+      // über `updateRole` aus der Rollenverwaltung, nie über `addRole`.
+      if (roleRank(existing.role) > roleRank(role)) {
+        console.warn(`[DEX] addRole: ${mail} hat bereits die Rolle ${existing.role} — ${role} wäre eine Herabstufung und wird NICHT gesetzt.`);
+        return false;
+      }
       // Andere Rolle: die bestehende Zeile aendern statt eine zweite anzulegen.
       return updateRole(existing.id, role);
     }
@@ -249,9 +269,40 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     return success;
   }
 
+  // v30.67: Alle direkten Rechte einer Person entziehen — DEX_Roles,
+  // DEX_Events und (NEU) der Web-Root. Rückgabe false heißt „mindestens ein
+  // Entzug wirkt nicht"; der Aufrufer reicht das nach oben statt Erfolg zu
+  // melden. Jeder Entzug betrifft nur die direkte Zuweisung DIESES Principals
+  // (`getbyprincipalid`), nie eine Gruppe.
+  async function revokeAllAccess(userEmail: string): Promise<boolean> {
+    const rolesOk = await spService.revokeAccessOnRolesList(userEmail);
+    const eventsOk = await spService.revokeAccessOnEventsList(userEmail);
+    // Selbstschutz: Die angemeldete Person darf sich nicht selbst vom Web
+    // aussperren — ein Admin, der die Rollenverwaltung an sich testet, käme
+    // sonst nicht mehr an die Site. Die Listenrechte laufen wie bisher; nur
+    // der Web-Entzug wird übersprungen, mit Warnung statt still.
+    let siteOk = true;
+    if (isCurrentUser(props.context, userEmail)) {
+      console.warn(`[DEX] RoleContext: Web-Rechte von ${userEmail} werden NICHT entzogen — das ist die angemeldete Person (Selbstschutz).`);
+    } else {
+      siteOk = await spService.revokeSiteAccess(userEmail);
+    }
+    return rolesOk && eventsOk && siteOk;
+  }
+
+  // v30.67 (Review): s. hadRoleRightsIssue im Interface.
+  const roleRightsIssueRef = React.useRef(false);
+  function hadRoleRightsIssue(): boolean { return roleRightsIssueRef.current; }
+
   async function updateRole(itemId: number, newRole: UserRole): Promise<boolean> {
     const oldRole = roles.find(r => r.id === itemId);
+    roleRightsIssueRef.current = false;
     const success = await spService.updateRole(itemId, newRole);
+    // v30.67: `rightsOk` trägt, ob die SharePoint-Rechte zur neuen Rolle
+    // passen. Vorher wurde jeder Fehler im Rechte-Block als „best-effort"
+    // weggeloggt und nur `success` (die DEX_Roles-Zeile) zurückgegeben —
+    // die App meldete Erfolg, während die alten Rechte stehen blieben.
+    let rightsOk = true;
     if (success && oldRole) {
       try {
         if (newRole === 'Admin' || newRole === 'IT-Admin') {
@@ -259,14 +310,29 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
           await spService.grantFullControlOnEventsList(oldRole.userEmail);
           await spService.grantOrganizerPermissions(oldRole.userEmail);
         } else if (newRole === 'Organizer' || newRole === 'F&A') {
+          // v30.67: Downgrade Admin → Organizer/F&A. `addroleassignment` ist
+          // ADDITIV — Read auf DEX_Roles kam bisher NEBEN das bestehende Full
+          // Control, der Ex-Admin konnte die Rollenliste weiter bearbeiten
+          // und sich selbst wieder hochstufen. Deshalb ERST die bestehende
+          // Zuweisung auf DEX_Roles entfernen, DANN Read vergeben. DEX_Events
+          // und Web-Root bleiben: dort haben Organizer dasselbe Full Control.
+          if (isAdminRole(oldRole.role)) {
+            rightsOk = await spService.revokeAccessOnRolesList(oldRole.userEmail) && rightsOk;
+          }
           await spService.grantReadOnRolesList(oldRole.userEmail);
           await spService.grantOrganizerPermissions(oldRole.userEmail);
         } else if (newRole === 'User') {
-          await spService.revokeAccessOnRolesList(oldRole.userEmail);
-          await spService.revokeAccessOnEventsList(oldRole.userEmail);
+          rightsOk = await revokeAllAccess(oldRole.userEmail) && rightsOk;
         }
-      } catch (err) { console.warn('[DEX] permission grant for updateRole failed (best-effort):', err); }
+      } catch (err) {
+        console.warn('[DEX] permission grant for updateRole failed:', err);
+        rightsOk = false;
+      }
       await refreshRoles();
+    }
+    if (success && !rightsOk) {
+      console.warn(`[DEX] updateRole: Rolle von ${oldRole?.userEmail} steht in DEX_Roles auf ${newRole}, aber mindestens ein SharePoint-Recht konnte NICHT entzogen werden — siehe Warnungen darüber.`);
+      roleRightsIssueRef.current = true;
     }
     return success;
   }
@@ -280,12 +346,27 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
 
   async function removeRole(itemId: number): Promise<boolean> {
     const roleEntry = roles.find(r => r.id === itemId);
+    roleRightsIssueRef.current = false;
     const success = await spService.deleteRole(itemId);
+    // v30.67: Die Entzüge laufen jetzt AWAITED und mit Ergebnis — vorher
+    // fire-and-forget mit `.catch(console.warn)`, und das Web-Recht (Full
+    // Control auf der Site-Collection aus `grantOrganizerPermissions`) wurde
+    // gar nicht angefasst. Die Person war aus DEX_Roles verschwunden und
+    // konnte trotzdem jede Teilnehmer-Subsite lesen.
+    let rightsOk = true;
     if (success) {
       await refreshRoles();
       if (roleEntry) {
-        spService.revokeAccessOnRolesList(roleEntry.userEmail).catch(err => console.warn('[DEX] revokeAccessOnRolesList failed:', err));
-        spService.revokeAccessOnEventsList(roleEntry.userEmail).catch(err => console.warn('[DEX] revokeAccessOnEventsList failed:', err));
+        try {
+          rightsOk = await revokeAllAccess(roleEntry.userEmail);
+        } catch (err) {
+          console.warn('[DEX] removeRole: Rechte-Entzug fehlgeschlagen:', err);
+          rightsOk = false;
+        }
+        if (!rightsOk) {
+          console.warn(`[DEX] removeRole: Zeile von ${roleEntry.userEmail} ist aus DEX_Roles entfernt, aber mindestens ein SharePoint-Recht konnte NICHT entzogen werden — siehe Warnungen darüber.`);
+          roleRightsIssueRef.current = true;
+        }
       }
     }
     return success;
@@ -359,7 +440,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     roles, currentUserRole, isRolesLoading,
     isAdmin, isOrganizer, canCreateEvents, isPowerUser, siteUrl,
     originalIsAdmin, isImpersonating, previewAsUser, setPreviewAsUser, isFA,
-    addRole, updateRole, setPowerUser, updateRoleLocation, removeRole, refreshRoles, searchUser, searchUsers, searchGroups, getGroupMembers, searchUsersByLocation, getEmployeeData,
+    addRole, updateRole, hadRoleRightsIssue, setPowerUser, updateRoleLocation, removeRole, refreshRoles, searchUser, searchUsers, searchGroups, getGroupMembers, searchUsersByLocation, getEmployeeData,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [roles, currentUserRole, isRolesLoading, isImpersonating, previewAsUser, siteUrl]);
 

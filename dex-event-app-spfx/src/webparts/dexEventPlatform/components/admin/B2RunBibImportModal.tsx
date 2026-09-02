@@ -67,9 +67,16 @@ export default function B2RunBibImportModal(props: {
       const parsed = parseBibSheet(table);
       if (parsed.error) { await showAlert(parsed.error, { variant: 'error' }); return; }
       setProgress('Teilnehmer werden geladen…');
-      const regs = await getAllRegistrations(props.event.id);
+      // v30.67 (Review): Auch eine TEILWEISE gelesene Liste ist keine Basis —
+      // die fehlenden Personen würden als „nicht gefunden" gelten.
+      let readFailed = false;
+      const regs = await getAllRegistrations(props.event.id, () => { readFailed = true; });
+      if (readFailed) {
+        await showAlert('Die Teilnehmerliste konnte gerade nicht (vollständig) gelesen werden — ohne sie kann nichts zugeordnet werden. Bitte später erneut versuchen.', { variant: 'error' });
+        return;
+      }
       if (regs.length === 0) {
-        await showAlert('Die Teilnehmerliste dieses Events ist leer oder nicht lesbar — ohne sie kann nichts zugeordnet werden.', { variant: 'error' });
+        await showAlert('Die Teilnehmerliste dieses Events ist leer — ohne sie kann nichts zugeordnet werden.', { variant: 'error' });
         return;
       }
       setFileName(file.name);

@@ -16,6 +16,7 @@ import { useNavigation } from '../context/NavigationContext';
 import { useDialog } from '../context/DialogContext';
 import Modal from './Modal';
 import { deepLinkParams } from '../utils/deepLink';
+import { hasOrganizerRights } from '../utils/roleRank';
 import { Settings, Check, X } from './Icons';
 
 type Req = { id: number; email: string; name: string; location: string; message: string; created: string };
@@ -104,8 +105,13 @@ export default function OrganizerRequestsBanner(): React.ReactElement | null {
         // gesetzt werden — das wäre eine Herabstufung durch die Hintertür.
         const reqMail = (r.email || '').trim().toLowerCase();
         const existing = roles.filter(x => (x.userEmail || '').trim().toLowerCase() === reqMail)[0];
-        const alreadyEntitled = !!existing
-          && (existing.role === 'Organizer' || existing.role === 'Admin' || existing.role === 'IT-Admin');
+        // v30.67: Über EINE Ableitung (utils/roleRank) statt einer eigenen
+        // Aufzählung — die kannte F&A nicht. Seit v30.60 ist F&A ein
+        // Organizer-Superset; die Freigabe lief hier bis v30.66 in `addRole`
+        // → `updateRole(existing.id, 'Organizer')` und nahm der Person still
+        // das F&A Center und den Abrechnungs-Schritt. Weder Admin noch
+        // Betroffene erfuhren davon.
+        const alreadyEntitled = !!existing && hasOrganizerRights(existing.role);
         if (alreadyEntitled) {
           const roleLabel = existing.role === 'Organizer'
             ? 'Organizer'
