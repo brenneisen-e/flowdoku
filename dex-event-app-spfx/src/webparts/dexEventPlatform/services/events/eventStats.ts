@@ -284,6 +284,24 @@ export async function deleteParticipantData(svc: EventService, eventId: number):
     // durchreichen: Der Aufrufer rollt dann die Statistik-Zeile zurück und
     // versucht es beim nächsten Lauf erneut. Ein 404 zählt als „schon weg" —
     // sonst bliebe ein manuell recycelter Termin für immer in der Fälligkeit.
+    // v30.67 (Review): Die Alt-Liste (Legacy-Events, Liste auf der Hauptsite)
+    // VOR der Subsite recyceln. Der Aufrufer rollt bei `false` die Statistik-
+    // Zeile zurück und rechnet beim nächsten Lauf die KPIs aus der Subsite neu
+    // — das setzt voraus, dass bei `false` die Subsite noch STEHT. Lief die
+    // Alt-Liste danach und scheiterte, war die Subsite bereits weg: kein
+    // Archiv, keine Quelle mehr, und das Event blieb bei jedem Lauf
+    // „fehlgeschlagen". In dieser Reihenfolge lässt jeder Fehlschlag die
+    // Subsite intakt; eine schon recycelte Alt-Liste meldet beim Wiederholen
+    // 404 und gilt als erledigt.
+    if (event.RegistrationListName && event.RegistrationListName !== 'Teilnehmer') {
+      let rec: { ok: boolean; status: number } | null = null;
+      try { rec = await svc._post(`${svc.siteUrl}/_api/web/lists/getbytitle('${event.RegistrationListName.replace(/'/g, "''")}')/recycle`, {}); }
+      catch (err) { console.warn('[DEX] deleteParticipantData: Alt-Liste konnte nicht recycelt werden:', event.RegistrationListName, err); }
+      if (!rec || (!rec.ok && rec.status !== 404)) {
+        console.warn(`[DEX] deleteParticipantData: Recycle der Alt-Liste abgelehnt (HTTP ${rec ? rec.status : 'Netzwerk'}) — Löschung nicht bestätigt (Event ${event.EventNumber}).`);
+        return false;
+      }
+    }
     if (event.SubsiteUrl) {
       let rec: { ok: boolean; status: number } | null = null;
       try { rec = await svc._post(`${event.SubsiteUrl}/_api/web/recycle`, {}); }
@@ -293,15 +311,6 @@ export async function deleteParticipantData(svc: EventService, eventId: number):
         return false;
       }
       if (rec.status === 404) console.warn('[DEX] deleteParticipantData: Subsite nicht (mehr) vorhanden — als gelöscht gewertet:', event.SubsiteUrl);
-    }
-    if (event.RegistrationListName && event.RegistrationListName !== 'Teilnehmer') {
-      let rec: { ok: boolean; status: number } | null = null;
-      try { rec = await svc._post(`${svc.siteUrl}/_api/web/lists/getbytitle('${event.RegistrationListName.replace(/'/g, "''")}')/recycle`, {}); }
-      catch (err) { console.warn('[DEX] deleteParticipantData: Alt-Liste konnte nicht recycelt werden:', event.RegistrationListName, err); }
-      if (!rec || (!rec.ok && rec.status !== 404)) {
-        console.warn(`[DEX] deleteParticipantData: Recycle der Alt-Liste abgelehnt (HTTP ${rec ? rec.status : 'Netzwerk'}) — Löschung nicht bestätigt (Event ${event.EventNumber}).`);
-        return false;
-      }
     }
     try {
       await svc.writeChangeLog({

@@ -57,8 +57,10 @@ import { COUNTER_LIST_NAME, REG_LIST_NAME } from '../EventService';
  *   der `promoteFirstWaitlistItem` mit `onlyWithPreferredType` nachrückt.
  *   Bisher galt der Wert als Index in die GESAMT-Warteliste: „Platz 2" in
  *   der Funstarter-Tabelle schob die Person zwischen die ersten beiden
- *   Durchstarter-Wartenden und nummerierte deren ganze Liste um. Leer =
- *   eine gemeinsame Warteliste (Normalfall und `splitSharedWaitlist`).
+ *   Durchstarter-Wartenden und nummerierte deren ganze Liste um.
+ *   `undefined` = eine gemeinsame Warteliste (Normalfall und
+ *   `splitSharedWaitlist`); `''` = die Zeilen OHNE (oder mit unbekannter)
+ *   Gruppe — die dritte Tabelle „Warteliste ohne Gruppe" im Organizer Center.
  */
 export async function setWaitlistPosition(
   svc: EventService,
@@ -89,8 +91,16 @@ export async function setWaitlistPosition(
     // v30.67: Gesamt-Warteliste (bestimmt die globale ID-Folge) und die
     // Zielgruppe darin (bestimmt, was umsortiert wird). Ohne `group` sind
     // beide dieselbe Liste — das bisherige Verhalten.
-    const grp = (group || '').trim();
-    const inGroup = (i: Row): boolean => !grp || (i.PreferredStarterType || '').trim() === grp;
+    // v30.67 (Review): `undefined` (Gesamtliste) von `''` (Zeilen ohne
+    // Gruppe) trennen — vorher fielen beide auf „alle", und ein Platzwechsel
+    // in der Tabelle „Warteliste ohne Gruppe" sortierte die Person über die
+    // komplette Warteliste, vor alle Durchstarter- und Funstarter-Wartenden.
+    // normGroup ist dieselbe Definition wie waitlistUnassigned in AdminPage.
+    const normGroup = (v: string | null | undefined): string => {
+      const t = (v || '').trim();
+      return (t === 'Durchstarter' || t === 'Funstarter') ? t : '';
+    };
+    const inGroup = (i: Row): boolean => group === undefined || normGroup(i.PreferredStarterType) === normGroup(group);
     const waitlistAll = allItems.filter(i => i.Status === 'Warteliste').sort(byTidThenId);
     const waitlist = waitlistAll.filter(inGroup);
 

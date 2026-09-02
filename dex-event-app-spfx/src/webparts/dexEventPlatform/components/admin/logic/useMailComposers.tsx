@@ -51,7 +51,7 @@ export interface UseMailComposersCtx {
   setInviteSubheading: React.Dispatch<React.SetStateAction<string>>;
   setInviteSubject: React.Dispatch<React.SetStateAction<string>>;
   setInviteTarget: React.Dispatch<React.SetStateAction<"organizer" | "audience" | "pending" | "uninvited">>;
-  setInvitedLc: React.Dispatch<React.SetStateAction<Set<string>>>;
+  setInvitedLc: React.Dispatch<React.SetStateAction<Set<string> | null | undefined>>;
   setMassmailAudience: React.Dispatch<React.SetStateAction<MassmailAudience>>;
   setMassmailCc: React.Dispatch<React.SetStateAction<string[]>>;
   setMassmailDraftSaved: React.Dispatch<React.SetStateAction<boolean>>;
@@ -345,7 +345,8 @@ export function useMailComposers(ctx: UseMailComposersCtx): UseMailComposersResu
     setInviteCustomEmails(null);
     setInviteAddInput('');
     setInviteAudienceOpen(false);
-    setInvitedLc(null);
+    // v30.67 (Review): undefined = lädt, null = nicht lesbar (s. AdminPage).
+    setInvitedLc(undefined);
     if (eventServiceRef) {
       // v30.67: Ein HTTP-Fehler beim Lesen der Einladungs-Queue lieferte
       // stillschweigend eine Teilliste — und der Composer bot genau die

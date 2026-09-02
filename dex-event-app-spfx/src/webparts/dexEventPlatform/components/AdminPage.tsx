@@ -907,7 +907,11 @@ export default function AdminPage(): React.ReactElement {
   // v28.37: Adressen, die für dieses Event schon eine Einladungsmail bekommen
   // haben (aus DEX_Emails, Typ „Einladung"). Wird beim Öffnen des Dialogs
   // geladen; null = noch nicht geladen bzw. nicht ermittelbar.
-  const [invitedLc, setInvitedLc] = React.useState<Set<string> | null>(null);
+  // v30.67 (Review): undefined = wird geladen, null = Lesen gescheitert
+  // (Abgleich nicht möglich), Set = bekannt. Beide „unbekannt"-Zustände
+  // sperren den Modus „Nur an noch nicht Eingeladene" — sonst ging die
+  // Einladung bei einem 429 auf DEX_Emails ein zweites Mal an alle.
+  const [invitedLc, setInvitedLc] = React.useState<Set<string> | null | undefined>(undefined);
   // v28.37: Vom Organizer von Hand angepasste Empfaengerliste. null = keine
   // Anpassung, es gilt die per Radio gewählte Liste. Sobald etwas entfernt
   // oder ergänzt wird, übernimmt diese Liste.

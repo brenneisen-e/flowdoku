@@ -144,7 +144,7 @@ export const DangerZoneModal: React.FC<DangerZoneModalProps> = (p) => {
                     try {
                       const ok = await deleteEvent(confirmDeleteEvent.id);
                       if (!ok) {
-                        const why = getLastEventDeleteError();
+                        const why = getLastEventDeleteError(isDe ? 'de' : 'en');
                         showAlert(why || (isDe ? 'Das Event konnte nicht gelöscht werden.' : 'The event could not be deleted.'), { variant: 'error' });
                       }
                     } finally {

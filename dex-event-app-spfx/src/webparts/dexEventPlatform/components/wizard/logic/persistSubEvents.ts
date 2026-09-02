@@ -93,6 +93,56 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
         if (typeof cb === 'function') cb(stage);
       } catch { /* */ }
     };
+    // v30.67 (Review): Recreate mit Subsite-Reuse — ERST die neue Zeile
+    // anlegen, DANN die alte löschen. Vorher lief es umgekehrt: Scheiterte
+    // createEvent nach dem Delete (429 auf dem ersten GET, 2-MB-Grenze, POST
+    // abgelehnt), war die DEX_Events-Zeile des Termins weg — Subsite verwaist,
+    // Termin in keiner Ansicht — und der Wizard meldete „gespeichert", weil
+    // der catch nur in die Konsole schrieb. Jetzt bleibt bei JEDEM Fehlschlag
+    // die alte Zeile stehen; der Aufrufer fällt in den normalen Update-Pfad
+    // (dort landet die dbId in keptDbIds) und der Recreate-Merker bleibt für
+    // den nächsten Save erhalten. Schlägt erst das Löschen der ALTEN Zeile
+    // fehl, wird die neue zurückgenommen; gelingt auch das nicht, stehen zwei
+    // Zeilen auf derselben Subsite — die alte wird behalten, der Organizer
+    // bekommt den Hinweis, den doppelten Eintrag NICHT selbst zu löschen
+    // (deleteEvent würde die geteilte Subsite mitnehmen).
+    // Rückgabe true = ersetzt (Aufrufer macht `continue`), false = Update-Pfad.
+    const recreateWithReuse = async (draft: SubEventDraft, reusePayload: unknown, logTag: string): Promise<boolean> => {
+      let recreatedId: number | null = null;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        recreatedId = await createEvent(reusePayload as any);
+      } catch (err) {
+        console.warn(`[DEX][${logTag}] Sub-Event-Recreate mit Subsite-Reuse fehlgeschlagen — alte Zeile bleibt:`, draft.dbId, err);
+        recreatedId = null;
+      }
+      if (!recreatedId) {
+        showAlert(isDe
+          ? `Der Outlook-Termin für „${draft.title || 'Sub-Event'}" konnte nicht neu angelegt werden (SharePoint hat den neuen Eintrag abgelehnt). Das Sub-Event und seine Anmeldungen sind unverändert — bitte versuche es später erneut.`
+          : `The Outlook appointment for "${draft.title || 'sub-event'}" could not be recreated (SharePoint rejected the new entry). The sub-event and its registrations are untouched — please try again later.`, { variant: 'error' });
+        return false;
+      }
+      const oldGone = await deleteEventItemOnly(draft.dbId).catch(() => false);
+      if (oldGone) {
+        // Die alte Zeile ist nachweislich weg — nie mehr in den kaskadierenden
+        // deleteEvent-Zweig (s. replacedDbIds).
+        replacedDbIds.add(draft.dbId);
+        // v27.11: Sub-Event-Bild auch auf dem Recreate-Pfad persistieren.
+        await persistSubEventImage(recreatedId, draft);
+        return true;
+      }
+      const rolledBack = await deleteEventItemOnly(String(recreatedId)).catch(() => false);
+      console.warn(`[DEX][${logTag}] Recreate: alte Zeile nicht löschbar, neue Zeile ${rolledBack ? 'zurückgenommen' : 'NICHT zurückgenommen'}:`, draft.dbId, recreatedId);
+      showAlert(rolledBack
+        ? (isDe
+          ? `Der Outlook-Termin für „${draft.title || 'Sub-Event'}" konnte nicht neu angelegt werden (SharePoint hat den Austausch des Eintrags abgelehnt). Das Sub-Event und seine Anmeldungen sind unverändert — bitte versuche es später erneut.`
+          : `The Outlook appointment for "${draft.title || 'sub-event'}" could not be recreated (SharePoint rejected replacing the entry). The sub-event and its registrations are untouched — please try again later.`)
+        : (isDe
+          ? `Beim Neuanlegen des Outlook-Termins für „${draft.title || 'Sub-Event'}" ist ein doppelter Eintrag entstanden (Eintrag-Id ${recreatedId}). Die Anmeldungen sind unverändert. Bitte melde dich beim DEX-Team, damit der doppelte Eintrag entfernt wird — lösche ihn NICHT selbst im Organizer Center, das würde die Anmeldungen mitlöschen.`
+          : `Recreating the Outlook appointment for "${draft.title || 'sub-event'}" left a duplicate entry (item id ${recreatedId}). Registrations are unchanged. Please contact the DEX team to remove the duplicate — do NOT delete it yourself in the Organizer Center, that would delete the registrations as well.`),
+        { variant: 'error' });
+      return false;
+    };
     // Sub-Events erben Organizer + OrganizerEmail vom Parent. Einmal sanitisieren
     // statt pro Iteration, identisch für alle Children.
     const sanitizedOrgPair = sanitizeOrganizerPairs();
@@ -333,43 +383,26 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
             // dieselbe Subsite, und die Aufräum-Schleife am Ende rief
             // deleteEvent auf die alte Id — KASKADIEREND: Sie recycelte die
             // geteilte Subsite mit allen Anmeldungen, auf die die frische
-            // Zeile zeigt. Deshalb: bei Fehlschlag den Recreate für dieses
-            // Sub-Event abbrechen, die dbId als behalten registrieren und in
-            // den normalen Update-Pfad fallen — der Termin fehlt dann
-            // weiterhin, aber es geht nichts verloren.
-            const itemDeleted = await deleteEventItemOnly(draft.dbId).catch(() => false);
-            if (!itemDeleted) {
-              console.warn('[DEX][v29.21] Recreate abgebrochen — deleteEventItemOnly fehlgeschlagen, Sub-Event bleibt unangetastet:', draft.dbId);
-              showAlert(isDe
-                ? `Der Outlook-Termin für „${draft.title || 'Sub-Event'}" konnte nicht neu angelegt werden (SharePoint hat den Austausch des Eintrags abgelehnt). Das Sub-Event und seine Anmeldungen sind unverändert — bitte versuche es später erneut.`
-                : `The Outlook appointment for "${draft.title || 'sub-event'}" could not be recreated (SharePoint rejected replacing the entry). The sub-event and its registrations are untouched — please try again later.`, { variant: 'error' });
-            } else {
-              // v30.67: Die alte Zeile ist nachweislich weg — nie mehr in den
-              // kaskadierenden deleteEvent-Zweig (s. replacedDbIds).
-              replacedDbIds.add(draft.dbId);
-              // Reuse-Payload: bestehende Subsite + Teilnehmerliste an die
-              // neue DEX_Events-Zeile koppeln. disableOutlook explizit false,
-              // outlookEventId leer, damit der Flow sauber neu schreibt.
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const reusePayload: any = {
-                ...childPayload,
-                disableOutlook: false,
-                outlookEventId: '',
-                existingSubsiteUrl: subsiteUrlForReuse,
-                existingRegistrationListName: regListNameForReuse,
-                onProgress: subOnProgress,
-              };
-              try {
-                const recreatedId = await createEvent(reusePayload);
-                // v27.11: Sub-Event-Bild auch auf dem Recreate-Pfad persistieren.
-                await persistSubEventImage(recreatedId, draft);
-              } catch (err) {
-                console.warn('[DEX][v11.69] Sub-Event-Recreate mit Subsite-Reuse fehlgeschlagen:', draft.dbId, err);
-              }
-              // NICHT zu keptDbIds hinzufügen — das alte Item wurde gelöscht
-              // und die neue Zeile hat eine andere ID.
-              continue;
-            }
+            // Zeile zeigt.
+            // v30.67 (Review): Reihenfolge und Fehlerbehandlung liegen jetzt
+            // in recreateWithReuse (erst anlegen, dann löschen). Bei false in
+            // den normalen Update-Pfad fallen — die dbId landet dort in
+            // keptDbIds, es geht nichts verloren.
+            // Reuse-Payload: bestehende Subsite + Teilnehmerliste an die
+            // neue DEX_Events-Zeile koppeln. disableOutlook explizit false,
+            // outlookEventId leer, damit der Flow sauber neu schreibt.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const reusePayload: any = {
+              ...childPayload,
+              disableOutlook: false,
+              outlookEventId: '',
+              existingSubsiteUrl: subsiteUrlForReuse,
+              existingRegistrationListName: regListNameForReuse,
+              onProgress: subOnProgress,
+            };
+            // NICHT zu keptDbIds hinzufügen, wenn ersetzt — das alte Item
+            // wurde gelöscht und die neue Zeile hat eine andere ID.
+            if (await recreateWithReuse(draft, reusePayload, 'v11.69')) continue;
           } else {
             console.warn('[DEX][v11.69] Recreate angefordert aber keine subsiteUrl/registrationListName vorhanden — Sub-Event:', draft.dbId, 'meta:', initialMeta);
             // Fall durch zum normalen Update-Pfad — wenigstens die Felder
@@ -410,34 +443,19 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
             // auf dieselbe Subsite, die alte blieb stehen, fiel nicht in
             // keptDbIds und wurde am Ende KASKADIEREND gelöscht — samt der
             // geteilten Subsite mit allen Anmeldungen.
-            const legacyItemDeleted = await deleteEventItemOnly(draft.dbId).catch(() => false);
-            if (!legacyItemDeleted) {
-              console.warn('[DEX][v30.67] Recreate abgebrochen — deleteEventItemOnly fehlgeschlagen, Sub-Event bleibt unangetastet:', draft.dbId);
-              showAlert(isDe
-                ? `Der Outlook-Termin für „${draft.title || 'Sub-Event'}" konnte nicht neu angelegt werden (SharePoint hat den Austausch des Eintrags abgelehnt). Das Sub-Event und seine Anmeldungen sind unverändert — bitte versuche es später erneut.`
-                : `The Outlook appointment for "${draft.title || 'sub-event'}" could not be recreated (SharePoint rejected replacing the entry). The sub-event and its registrations are untouched — please try again later.`, { variant: 'error' });
-              // Kein continue: unten in den normalen Update-Pfad fallen, dort
-              // landet die dbId in keptDbIds.
-            } else {
-              replacedDbIds.add(draft.dbId);
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const reusePayload: any = {
-                ...childPayload,
-                disableOutlook: false,
-                outlookEventId: '',
-                existingSubsiteUrl: subsiteUrlForReuse,
-                existingRegistrationListName: regListNameForReuse,
-                onProgress: subOnProgress,
-              };
-              try {
-                const recreatedId = await createEvent(reusePayload);
-                // v27.11: Sub-Event-Bild auch auf dem Legacy-Recreate-Pfad persistieren.
-                await persistSubEventImage(recreatedId, draft);
-              } catch (err) {
-                console.warn('[DEX][v11.69] Legacy-Toggle-Recreate fehlgeschlagen:', draft.dbId, err);
-              }
-              continue;
-            }
+            // v30.67 (Review): s. recreateWithReuse — erst anlegen, dann
+            // löschen. Kein continue bei false: unten in den normalen
+            // Update-Pfad fallen, dort landet die dbId in keptDbIds.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const reusePayload: any = {
+              ...childPayload,
+              disableOutlook: false,
+              outlookEventId: '',
+              existingSubsiteUrl: subsiteUrlForReuse,
+              existingRegistrationListName: regListNameForReuse,
+              onProgress: subOnProgress,
+            };
+            if (await recreateWithReuse(draft, reusePayload, 'v11.69/Legacy')) continue;
           } else {
             // Edge-Case: kein subsiteUrl auf dem alten Item bekannt (sehr
             // alte Events). In dem Fall fallen wir auf den destruktiven
@@ -610,7 +628,13 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
         // v27.11: eigenes Sub-Event-Bild persistieren (Upload/Entfernen).
         await persistSubEventImage(draft.dbId, draft);
       } else {
-        const newSubId = await createEvent({ ...childPayload, onProgress: subOnProgress });
+        // v30.67 (Review): createEvent WIRFT seit v30.67 (EventNumber nicht
+        // lesbar, 2-MB-Grenze) — ungefangen brach das die ganze Schleife ab:
+        // die restlichen Termine und die Aufräum-Schleife liefen nicht, und
+        // wizardSubmit meldete nach einem console.warn trotzdem Erfolg.
+        let newSubId: number | null = null;
+        try { newSubId = await createEvent({ ...childPayload, onProgress: subOnProgress }); }
+        catch (err) { console.warn('[DEX] Sub-Event anlegen fehlgeschlagen:', draft.title, err); newSubId = null; }
         if (!newSubId) failedSubTitles.push(shortSubEventTitle(draft.title, title) || draft.title);
         // v27.11: Bild fürs frisch angelegte Sub-Event hochladen (braucht die
         // neue DEX_Events-Item-Id aus createEvent).

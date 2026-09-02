@@ -94,6 +94,8 @@ export interface EventContextType {
   isEventsLoading: boolean;
   /** v29.47: Dokumente eines Events bei Bedarf nachladen (Boot lädt sie nicht mehr). */
   ensureEventDocuments: (eventIds: string[]) => Promise<void>;
+  /** v30.67 (Review): Anhänge eines Events verwerfen und neu laden — nach Änderungen am Context vorbei (Wizard). */
+  refreshEventDocuments: (eventId: string) => Promise<void>;
   createEvent: (event: CreateEventInput) => Promise<number | null>;
   // v30.42: skipShadowParent — nur die Anmeldeseite setzt das; sie legt die
   // Klammer-Zeile selbst an, und zwar MIT den übergreifenden Antworten.
@@ -229,7 +231,7 @@ export interface EventContextType {
   /** v30.67: Klartext-Grund, warum das letzte deleteEvent fehlschlug — nennt
    *  die Termine, die nicht gelöscht werden konnten (die Klammer bleibt dann
    *  bewusst stehen, damit sie bedienbar bleibt). Leer nach Erfolg. */
-  getLastEventDeleteError: () => string;
+  getLastEventDeleteError: (lang?: 'de' | 'en') => string;
   /** v22.42: Automatischer Hintergrund-Fix der Zeilen-Autoren (Sichtbarkeit
    *  von Fremd-Anmeldungen). Läuft beim Admin-Start gedrosselt (1×/24h) über
    *  alle aktiven Subsites — best-effort, blockiert nichts. */

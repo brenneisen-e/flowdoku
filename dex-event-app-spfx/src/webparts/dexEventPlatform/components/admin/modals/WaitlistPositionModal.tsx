@@ -39,7 +39,11 @@ export const WaitlistPositionModal: React.FC<WaitlistPositionModalProps> = (p) =
             // Wartelisten: bei splitSharedWaitlist ist es ein Topf (CLAUDE.md),
             // dort waere eine Gruppen-Sortierung genauso falsch.
             const perGroup = !!(selectedEvent.durchstarterCapacity || selectedEvent.funstarterCapacity) && !selectedEvent.splitSharedWaitlist;
-            const group = perGroup ? (reg.PreferredStarterType || undefined) : undefined;
+            // v30.67 (Review): '' = Tabelle „Warteliste ohne Gruppe" — der
+            // Service trennt das von undefined (= Gesamtliste).
+            const group = perGroup
+              ? ((reg.PreferredStarterType === 'Durchstarter' || reg.PreferredStarterType === 'Funstarter') ? reg.PreferredStarterType : '')
+              : undefined;
             const res = await eventServiceRef.setWaitlistPosition(selectedEvent.subsiteUrl, reg.Id, parsed, group);
             if (!res.ok) {
               showAlert(res.error || (isDe ? 'Der Platz konnte nicht geändert werden.' : 'The position could not be changed.'), { variant: 'error' });

@@ -85,7 +85,7 @@ registerLocale('de', de);
 
 export default function EventCreationPage(): React.ReactElement {
   const { goBack, selectedEventId, currentPage, setNavigationGuard, navigate } = useNavigation();
-  const { events, childEventsOf, ensureEventDocuments, createEvent, updateEvent, getLastEventUpdateError, deleteEvent, deleteEventItemOnly, refreshEvents, requestCoOrganizerApprovals, notifyNewCoOrganizers, notifyAdminsExternalAudienceAccess } = useEvents();
+  const { events, childEventsOf, ensureEventDocuments, refreshEventDocuments, createEvent, updateEvent, getLastEventUpdateError, deleteEvent, deleteEventItemOnly, refreshEvents, requestCoOrganizerApprovals, notifyNewCoOrganizers, notifyAdminsExternalAudienceAccess } = useEvents();
   const { currentUser } = useCurrentUser();
   // searchGroups + searchUsersByLocation werden seit v19.x ausschließlich im
   // ausgelagerten <AudiencePicker> verwendet (eigener useRoles-Hook dort).
@@ -1388,7 +1388,7 @@ export default function EventCreationPage(): React.ReactElement {
       notifyOrgRegisterMode, onlineMeetingMode, organizer, organizerDisplayLarge, organizerEmails, orgGetsSubInvites,
       outlookEndOverride, outlookLocationOverride, outlookStartOverride, outlookTeamsLink, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs,
       pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, pendingSuccessDispatchRef, persistSubEventsForParent, previewBeforeActive, qrScannerEmails,
-      qrScannerNames, quiz, quizClusterSize, refreshEvents, registrationDeadline, registrationLanguage,
+      qrScannerNames, quiz, quizClusterSize, refreshEventDocuments, refreshEvents, registrationDeadline, registrationLanguage,
       regRuleEnabled, requestCoOrganizerApprovals, requireSubEventSelection, resolveTopLevelCommState, sanitizeOrganizerPairs, selectedEventId,
       setDraftSavedAt, setError, setImageUploadError, setIsSubmitting, setNavigationGuard, setPendingDraft,
       setPendingSuccessDispatch, setProgress, setProgressLabel, setRemovedSavedSubs, setShowSummaryModal, showAlert,

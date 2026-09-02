@@ -358,6 +358,22 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }
 
   /**
+   * v30.67 (Review): Anhänge eines Events neu laden, nachdem der Wizard sie
+   * am Context vorbei geändert hat (eigene EventService-Instanz). Ohne das
+   * trug keepLoadedDocuments die Liste von VOR dem Speichern in den frischen
+   * State: gelöschte Datei mit totem Link, neue Datei fehlt — bis zum F5, und
+   * ein erneut geöffneter Wizard zeigte die Änderung als nicht geschehen.
+   */
+  async function refreshEventDocuments(eventId: string): Promise<void> {
+    const id = String(eventId || '');
+    if (!id) return;
+    const running = documentsInflightRef.current.get(id);
+    if (running) { try { await running; } catch { /* */ } }
+    documentsLoadedRef.current.delete(id);
+    await ensureEventDocuments([id]);
+  }
+
+  /**
    * v30.67: Nachgeladene Anhänge über einen loadEvents hinweg behalten.
    *
    * Das Mapping setzt immer `documents: []`, der Merker `documentsLoadedRef`
@@ -741,7 +757,16 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       return { ok: false, status: 'Warteliste', reason: 'already-registered' };
     }
 
-    const existing = await eventService.getMyRegistration(subsiteUrl, emailToUse);
+    // v30.67 (Review): Auch dieser Lesevorgang ist keine Aussage, wenn er
+    // scheitert — ein 429 hier hieß „keine Zeile" und führte in den Insert
+    // statt in die Reaktivierung: zweite Zeile zur selben Adresse. Die
+    // Klammer-Schattenzeile bleibt ausgenommen (dort ist die Dublette
+    // harmlos; ein Abbruch vermehrte nur die „Fehlende Klammer"-Fälle).
+    let regReadFailed = false;
+    const existing = await eventService.getMyRegistration(subsiteUrl, emailToUse, () => { regReadFailed = true; });
+    if (regReadFailed && !isShadowParent) {
+      return { ok: false, status: 'Warteliste', reason: 'dup-check-failed' };
+    }
     if (existing && existing.Status !== 'Abgemeldet') {
       // v23.9: Im Klammer-Modus (subEventsOnlyMode) ist die Parent-Zeile NUR
       // ein Schatten zur Datenvollständigkeit — die echte Anmeldung sind die
@@ -2578,9 +2603,11 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
   // v30.67: Klartext-Grund des letzten fehlgeschlagenen deleteEvent — damit
   // die Oberfläche die nicht gelöschten Termine namentlich nennen kann statt
   // nur „fehlgeschlagen" (Gegenstück zu getLastEventUpdateError).
-  const lastDeleteEventErrorRef = React.useRef('');
-  function getLastEventDeleteError(): string {
-    return lastDeleteEventErrorRef.current;
+  // v30.67 (Review): beide Sprachen halten — der Provider kennt die Locale
+  // nicht, die Ansichten (DangerZoneModal, LandingPage) schon.
+  const lastDeleteEventErrorRef = React.useRef<{ de: string; en: string }>({ de: '', en: '' });
+  function getLastEventDeleteError(lang?: 'de' | 'en'): string {
+    return lang === 'en' ? lastDeleteEventErrorRef.current.en : lastDeleteEventErrorRef.current.de;
   }
 
   // v29.77: opts.skipReload — der Wizard schreibt beim Speichern eines
@@ -2657,7 +2684,10 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     // sonst mit ParentEventId auf ein geloeschtes Item verwaist zurueck.
     const serverChildIds = ev && !ev.isFictive ? await eventService.getChildEventIds(Number(eventId)) : [];
     if (serverChildIds === null) {
-      lastDeleteEventErrorRef.current = 'Nicht gelöscht: Die Termine dieses Events konnten nicht gelesen werden — bitte später erneut versuchen.';
+      lastDeleteEventErrorRef.current = {
+        de: 'Nicht gelöscht: Die Termine dieses Events konnten nicht gelesen werden — bitte später erneut versuchen.',
+        en: 'Not deleted: the dates of this event could not be read — please try again later.',
+      };
       console.warn('[DEX] deleteEvent abgebrochen — Kind-Events nicht lesbar', eventId);
       return false;
     }
@@ -2699,16 +2729,22 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       .reduce((s, c) => s + (c.currentParticipants || 0), 0);
     if (failedChildren.length > 0) {
       lastDeleteEventErrorRef.current = failedChildren.length === 1
-        ? `Nicht gelöscht: Der Termin „${failedChildren[0]}" konnte nicht gelöscht werden — bitte später erneut löschen.`
-        : `Nicht gelöscht: ${failedChildren.length} Termine konnten nicht gelöscht werden (${failedChildren.join(', ')}) — bitte später erneut löschen.`;
-      console.warn('[DEX] deleteEvent abgebrochen —', lastDeleteEventErrorRef.current);
+        ? {
+          de: `Nicht gelöscht: Der Termin „${failedChildren[0]}" konnte nicht gelöscht werden — bitte später erneut löschen.`,
+          en: `Not deleted: the date "${failedChildren[0]}" could not be deleted — please try deleting again later.`,
+        }
+        : {
+          de: `Nicht gelöscht: ${failedChildren.length} Termine konnten nicht gelöscht werden (${failedChildren.join(', ')}) — bitte später erneut löschen.`,
+          en: `Not deleted: ${failedChildren.length} dates could not be deleted (${failedChildren.join(', ')}) — please try deleting again later.`,
+        };
+      console.warn('[DEX] deleteEvent abgebrochen —', lastDeleteEventErrorRef.current.de);
       // Die Teilnehmer der bereits gelöschten Termine sind weg — das gehört
       // aus dem KPI heraus, auch wenn die Klammer stehen bleibt.
       if (childActive > 0) eventService.bumpKpiParticipants(-childActive).catch(() => { /* */ });
       await loadEvents();
       return false;
     }
-    lastDeleteEventErrorRef.current = '';
+    lastDeleteEventErrorRef.current = { de: '', en: '' };
     const parentActive = (ev && !ev.isFictive) ? (ev.currentParticipants || 0) : 0;
     // v30.67: Nur das Top-Level-Event zählen. createEvent erhöht den Events-
     // KPI seit v23.38 nur für Haupt-/Klammer-Events (`!input.parentEventId`),
@@ -2728,7 +2764,10 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         eventService.bumpKpiParticipants(-totalActive).catch(() => { /* */ });
       }
     } else {
-      lastDeleteEventErrorRef.current = 'Das Event konnte nicht gelöscht werden — bitte später erneut versuchen.';
+      lastDeleteEventErrorRef.current = {
+        de: 'Das Event konnte nicht gelöscht werden — bitte später erneut versuchen.',
+        en: 'The event could not be deleted — please try again later.',
+      };
     }
     // Events immer neu laden, auch wenn Subsite-Löschung fehlschlug
     await loadEvents();
@@ -3067,7 +3106,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       value: {
         events: eventsForConsumer,
         topLevelEvents: eventsForConsumer.filter(e => !e.parentEventId),
-        childEventsOf, isEventsLoading, ensureEventDocuments,
+        childEventsOf, isEventsLoading, ensureEventDocuments, refreshEventDocuments,
         createEvent, registerForEvent, registerTeam,
         getTeamMembers: async (eventId: string, teamId: string): Promise<SPRegistration[]> => {
           const subsiteUrl = subsiteMap.current[eventId];

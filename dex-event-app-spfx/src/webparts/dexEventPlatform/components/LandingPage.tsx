@@ -46,7 +46,7 @@ export default function LandingPage(): React.ReactElement {
   // Organizer überflüssig — sie haben die Funktionen schon. Admins sehen sie
   // bewusst weiter (um die normale User-Ansicht der Landing Page zu prüfen).
   const showOrganizerCta = !canCreateEvents || isAdmin;
-  const { isEventsLoading, getArchivableCount, runArchiveExpired, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getSentInactiveNotices, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, deleteEvent, countExternalRegistrations, refreshEvents, getAllRegistrations } = useEvents();
+  const { isEventsLoading, getArchivableCount, runArchiveExpired, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getSentInactiveNotices, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, deleteEvent, getLastEventDeleteError, countExternalRegistrations, refreshEvents, getAllRegistrations } = useEvents();
   // v26.40: Modal-Hinweis nach automatischer Abmeldung von Ex-Deloitte-Personen.
   const [autoDeregModal, setAutoDeregModal] = React.useState<Array<{ title: string; people: Array<{ email: string; name: string }> }> | null>(null);
   // v24.51: „Organizer benachrichtigen" pro Event (inaktive Konten).
@@ -203,7 +203,16 @@ export default function LandingPage(): React.ReactElement {
           : 'This event has registrations beyond the organizer team and cannot be deleted here.', { variant: 'error' });
         return;
       }
-      await deleteEvent(ev.id);
+      // v30.67 (Review): deleteEvent liefert false, wenn bewusst nichts (oder
+      // nur ein Teil) gelöscht wurde — Termine nicht lesbar, ein Termin nicht
+      // löschbar, Klammer-Recycle abgelehnt. Das stand vorher grün als
+      // „Entwurf gelöscht" da, und der Entwurf blieb in der Liste.
+      const gone = await deleteEvent(ev.id);
+      if (!gone) {
+        showAlert(getLastEventDeleteError(isDe ? 'de' : 'en')
+          || (isDe ? 'Löschen fehlgeschlagen — bitte erneut versuchen.' : 'Deletion failed — please try again.'), { variant: 'error' });
+        return;
+      }
       showAlert(isDe ? 'Entwurf gelöscht.' : 'Draft deleted.', { variant: 'success' });
       try { await refreshEvents(); } catch { /* */ }
     } catch {

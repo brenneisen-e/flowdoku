@@ -25,7 +25,8 @@ export interface InviteComposerModalProps {
   inviteBody: string;
   inviteCc: string[];
   inviteCustomEmails: string[];
-  invitedLc: Set<string>;
+  /** v30.67 (Review): undefined = lädt, null = nicht lesbar, Set = bekannt. */
+  invitedLc: Set<string> | null | undefined;
   inviteDraftSaved: boolean;
   inviteEventPhotoB64: string;
   inviteHeaderImage: MailHeaderImage;
@@ -90,11 +91,17 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
         // v28.37: Zweiter Abgleich — gegen die bereits verschickten
         // Einladungsmails. Trifft den Fall „Verteiler wurde nachträglich
         // erweitert, jetzt nur die Neuen anschreiben".
-        const uninvitedEmails = audienceEmails.filter(e => {
-          const lc = e.toLowerCase();
-          if (lc.indexOf('@') < 0) return true; // Gruppe → nicht aufloesbar, mitnehmen
-          return !(invitedLc && invitedLc.has(lc));
-        });
+        // v30.67 (Review): Solange die Einladungen nicht BEKANNT sind (lädt
+        // oder nicht lesbar), gibt es keine „noch nicht Eingeladenen" — der
+        // Modus ist gesperrt und der Sende-Pfad blockt zusätzlich (s.u.).
+        const invitedKnown = !!invitedLc;
+        const uninvitedEmails = invitedKnown
+          ? audienceEmails.filter(e => {
+            const lc = e.toLowerCase();
+            if (lc.indexOf('@') < 0) return true; // Gruppe → nicht aufloesbar, mitnehmen
+            return !invitedLc.has(lc);
+          })
+          : [];
         const alreadyInvitedCount = audienceEmails.length - uninvitedEmails.length;
         const modeEmails = inviteTarget === 'pending'
           ? pendingEmails
@@ -172,6 +179,15 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
         })();
         const sendAction = async (): Promise<void> => {
           if (!eventServiceRef || !selectedEvent) return;
+          // v30.67 (Review): Der Modus kann noch gewählt sein, wenn das Lesen
+          // der Einladungen NACH der Auswahl gescheitert ist — dann nie an
+          // „alle" senden, sondern abbrechen.
+          if (inviteTarget === 'uninvited' && !invitedKnown) {
+            showAlert(isDe
+              ? 'Die bereits verschickten Einladungen konnten nicht gelesen werden — ein Abgleich „Nur an noch nicht Eingeladene" ist gerade nicht möglich. Bitte schließe den Dialog und öffne ihn erneut, oder wähle einen anderen Empfängerkreis.'
+              : 'The invitations already sent could not be read — "Only to not-yet-invited" cannot be determined right now. Please close and reopen the dialog, or choose a different recipient group.', { variant: 'error' });
+            return;
+          }
           if (targetEmails.length === 0) {
             showAlert(isDe
               ? (isBroadcast
@@ -326,21 +342,25 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
             {/* v28.37: Zwei Nachfass-Modi. Beide arbeiten auf dem Verteiler und
                 ziehen davon ab, wer schon „durch" ist — einmal gemessen an den
                 bereits verschickten Einladungen, einmal an der Teilnehmerliste. */}
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, cursor: audienceEmails.length === 0 ? 'not-allowed' : 'pointer', fontSize: '0.82rem', opacity: audienceEmails.length === 0 ? 0.55 : 1 }}>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, cursor: (audienceEmails.length === 0 || !invitedKnown) ? 'not-allowed' : 'pointer', fontSize: '0.82rem', opacity: (audienceEmails.length === 0 || !invitedKnown) ? 0.55 : 1 }}>
               <input
                 type="radio"
                 name="inviteTarget"
                 checked={inviteTarget === 'uninvited'}
                 onChange={() => { setInviteTarget('uninvited'); setInviteCustomEmails(null); }}
-                disabled={audienceEmails.length === 0}
+                disabled={audienceEmails.length === 0 || !invitedKnown}
                 style={{ marginTop: 3 }}
               />
               <span style={{ flex: 1 }}>
-                <strong>{isDe ? `Nur an noch nicht Eingeladene (${uninvitedEmails.length})` : `Only to not-yet-invited (${uninvitedEmails.length})`}</strong>
+                <strong>{isDe ? `Nur an noch nicht Eingeladene (${invitedKnown ? uninvitedEmails.length : '–'})` : `Only to not-yet-invited (${invitedKnown ? uninvitedEmails.length : '–'})`}</strong>
                 <br />
                 <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.78rem' }}>
-                  {invitedLc === null
+                  {invitedLc === undefined
                     ? (isDe ? 'Frühere Einladungen werden geladen …' : 'Loading earlier invitations …')
+                    : invitedLc === null
+                    ? (isDe
+                      ? 'Abgleich nicht möglich — die bereits verschickten Einladungen konnten nicht gelesen werden. Bitte schließe den Dialog und öffne ihn erneut.'
+                      : 'Comparison not possible — the invitations already sent could not be read. Please close and reopen the dialog.')
                     : (isDe
                       ? `Abgleich gegen bereits verschickte Einladungsmails — ${alreadyInvitedCount} Adresse(n) fallen raus. Hinweis: Versendete Mails werden nach rund einem Monat archiviert; ältere Einladungsrunden sind darin nicht mehr enthalten.`
                       : `Compared against invitations already sent — ${alreadyInvitedCount} address(es) excluded. Note: sent mails are archived after about a month, so older rounds are no longer included.`)}

@@ -128,6 +128,7 @@ export interface WizardSubmitCtx {
   qrScannerNames: string[];
   quiz: { id: string; question: string; options: string[]; correctIndices: number[]; imageBase64?: string; section?: string; }[];
   quizClusterSize: number;
+  refreshEventDocuments: (eventId: string) => Promise<void>;
   refreshEvents: () => Promise<void>;
   registrationDeadline: string;
   registrationLanguage: "" | "de" | "en";
@@ -189,7 +190,7 @@ export interface WizardSubmitCtx {
 }
 
 export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
-  const { activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, agenda, allDay, allowAttendeeUpload, askSalutation, askTeamName, assistantsCanSee, attendeeUploadHint, attendeeUploadLabel, audience, berlinLocalToUtcIso, bilingualFields, billingPiggyback, bundledComm, childEventsOf, childGender, childTermPlural, childTermSingular, computeFormSnapshot, confirmDialog, confirmDialogEnabled, confirmDialogMode, confirmDialogText, contactEmail, contactInfo, contactName, contactOrganizerEmail, coOrganizerEmails, coOrganizerNames, createdEventIdRef, createEvent, currentUser, customFields, deadlineToEndOfDayIso, description, documents, DRAFT_KEY, durchstarterCapacity, durchstarterRequiresProof, durchstarterStartblock, editEvent, effTeamsLink, endDate, eventImageUrl, eventType, excludedUsers, filterMode, funstarterCapacity, funstarterStartblock, getGroupMembers, getLastEventUpdateError, headerImageLayoutConfig, headerLayoutFor, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly, imageBanner, imageDisplay, imageFile, imageOrigAspect, imageOrigFile, initialDocumentNames, initialFormSnapshotRef, initialOrgGetsSubInvitesRef, initialSubEventDbIds, isB2runTemplate, isDe, isEditMode, isFictive, klammerDeadline, lastDeregisterDate, lastDraftJsonRef, location, locationFilter, mainCommDisabledAck, mainEventLabel, mainEventLabelMode, maxParticipants, noCancelAfterDeadline, noDescription, notifyAdminsExternalAudienceAccess, notifyNewCoOrganizers, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, onlineMeetingMode, organizer, organizerDisplayLarge, organizerEmails, orgGetsSubInvites, outlookEndOverride, outlookLocationOverride, outlookStartOverride, outlookTeamsLink, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs, pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, pendingSuccessDispatchRef, persistSubEventsForParent, previewBeforeActive, qrScannerEmails, qrScannerNames, quiz, quizClusterSize, refreshEvents, registrationDeadline, registrationLanguage, regRuleEnabled, requestCoOrganizerApprovals, requireSubEventSelection, resolveTopLevelCommState, sanitizeOrganizerPairs, selectedEventId, setDraftSavedAt, setError, setImageUploadError, setIsSubmitting, setNavigationGuard, setPendingDraft, setPendingSuccessDispatch, setProgress, setProgressLabel, setRemovedSavedSubs, setShowSummaryModal, showAlert, showAsFree, shrinkLogoB64, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitLabelA, splitLabelB, splitSectionTitle, splitSharedWaitlist, startDate, subDeadlineRulePiggyback, subEventCalendar, subEventOpenRulePiggyback, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn, subEventsRef, teamJoinRequiresApproval, teamMembersCannotCreate, teamOpenSlotsVisible, teamPartialAllowed, teamRegistrationEnabled, teamSize, teamTermPlural, teamTermSingular, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, updateEvent, userCancelAllowed, useSplitCapacities, visAllSubsPiggyback, waitlistEnabled, wizardImgAspect } = ctx;
+  const { activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, agenda, allDay, allowAttendeeUpload, askSalutation, askTeamName, assistantsCanSee, attendeeUploadHint, attendeeUploadLabel, audience, berlinLocalToUtcIso, bilingualFields, billingPiggyback, bundledComm, childEventsOf, childGender, childTermPlural, childTermSingular, computeFormSnapshot, confirmDialog, confirmDialogEnabled, confirmDialogMode, confirmDialogText, contactEmail, contactInfo, contactName, contactOrganizerEmail, coOrganizerEmails, coOrganizerNames, createdEventIdRef, createEvent, currentUser, customFields, deadlineToEndOfDayIso, description, documents, DRAFT_KEY, durchstarterCapacity, durchstarterRequiresProof, durchstarterStartblock, editEvent, effTeamsLink, endDate, eventImageUrl, eventType, excludedUsers, filterMode, funstarterCapacity, funstarterStartblock, getGroupMembers, getLastEventUpdateError, headerImageLayoutConfig, headerLayoutFor, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly, imageBanner, imageDisplay, imageFile, imageOrigAspect, imageOrigFile, initialDocumentNames, initialFormSnapshotRef, initialOrgGetsSubInvitesRef, initialSubEventDbIds, isB2runTemplate, isDe, isEditMode, isFictive, klammerDeadline, lastDeregisterDate, lastDraftJsonRef, location, locationFilter, mainCommDisabledAck, mainEventLabel, mainEventLabelMode, maxParticipants, noCancelAfterDeadline, noDescription, notifyAdminsExternalAudienceAccess, notifyNewCoOrganizers, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, onlineMeetingMode, organizer, organizerDisplayLarge, organizerEmails, orgGetsSubInvites, outlookEndOverride, outlookLocationOverride, outlookStartOverride, outlookTeamsLink, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs, pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, pendingSuccessDispatchRef, persistSubEventsForParent, previewBeforeActive, qrScannerEmails, qrScannerNames, quiz, quizClusterSize, refreshEventDocuments, refreshEvents, registrationDeadline, registrationLanguage, regRuleEnabled, requestCoOrganizerApprovals, requireSubEventSelection, resolveTopLevelCommState, sanitizeOrganizerPairs, selectedEventId, setDraftSavedAt, setError, setImageUploadError, setIsSubmitting, setNavigationGuard, setPendingDraft, setPendingSuccessDispatch, setProgress, setProgressLabel, setRemovedSavedSubs, setShowSummaryModal, showAlert, showAsFree, shrinkLogoB64, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitLabelA, splitLabelB, splitSectionTitle, splitSharedWaitlist, startDate, subDeadlineRulePiggyback, subEventCalendar, subEventOpenRulePiggyback, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn, subEventsRef, teamJoinRequiresApproval, teamMembersCannotCreate, teamOpenSlotsVisible, teamPartialAllowed, teamRegistrationEnabled, teamSize, teamTermPlural, teamTermSingular, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, updateEvent, userCancelAllowed, useSplitCapacities, visAllSubsPiggyback, waitlistEnabled, wizardImgAspect } = ctx;
     // v9.14: Beschreibung ist jetzt optional. Nur Title bleibt Pflicht.
     if (!title) return;
 
@@ -787,6 +788,14 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
 
         try { await syncEventDocuments(); }
         catch (err) { console.warn('[DEX] Dokument-Sync fehlgeschlagen:', err); }
+        // v30.67 (Review): Der Sync schreibt am Context vorbei; der loadEvents
+        // aus updateEvent hat die Anhang-Liste von VOR dem Speichern behalten
+        // (keepLoadedDocuments). Jetzt neu laden, damit „Meine Events" und ein
+        // erneut geöffneter Wizard den echten Stand zeigen.
+        if (initialDocumentNames.length > 0 || documents.some(d => !!d.file)) {
+          try { await refreshEventDocuments(selectedEventId); }
+          catch (err) { console.warn('[DEX] Anhänge neu laden fehlgeschlagen:', err); }
+        }
         // v29.18: Bild-Upload VOR den Sub-Events — wie im Create-Pfad (v29.17).
         // Der Block stand bei Fortschritt 90, HINTER persistSubEventsForParent:
         // Wer im Bearbeiten den Kalender aktiviert und 20+ Tage anklickt, löst
@@ -927,7 +936,14 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
               : `Saving sub-events… ${done} of ${total}${subTitle ? ` — ${subTitle}` : ''}`);
           });
         }
-        catch (err) { console.warn('[DEX] Sub-Events persistieren fehlgeschlagen:', err); }
+        catch (err) {
+          console.warn('[DEX] Sub-Events persistieren fehlgeschlagen:', err);
+          // v30.67 (Review): Ein Abbruch hier hieß bisher stumm „gespeichert" —
+          // die Termine hinter der Fehlerstelle wurden nie geschrieben.
+          showAlert(isDe
+            ? `Die Sub-Events konnten nicht vollständig gespeichert werden (${err instanceof Error ? err.message : 'unbekannter Fehler'}). Bitte prüfe die Termine und speichere erneut.`
+            : `The sub-events could not be saved completely (${err instanceof Error ? err.message : 'unknown error'}). Please check the dates and save again.`, { variant: 'error' });
+        }
         // v29.22: Die orange Vormerkliste ist nach dem Save Geschichte — die
         // Termine wurden (nach Rückfrage) gelöscht; stehen gebliebene Marker
         // würden beim nächsten Öffnen Geister anzeigen.

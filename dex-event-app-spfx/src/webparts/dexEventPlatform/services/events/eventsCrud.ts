@@ -13,6 +13,7 @@ import { SPHttpClient } from '@microsoft/sp-http';
 import { normalizeMadeWithLink } from '../EmailTemplates';
 import { buildOutlookLocation } from '../../utils/eventFormat';
 import { dlog } from '../../utils/debugLog';
+import { withThrottleRetry } from '../../utils/spThrottle';
 import type { EventService, CustomField, SPEvent } from '../EventService';
 import { REG_LIST_NAME } from '../EventService';
 
@@ -346,10 +347,15 @@ export async function createEvent(svc: EventService, event: {
     const readNextEventNumber = async (): Promise<number> => {
       let enResp;
       try {
-        enResp = await svc._sp.get(
+        // v30.67 (Review): Dieser GET ist der erste Request eines SCHREIB-
+        // Vorgangs — anders als die Boot-GETs (v29.50) darf er auf eine
+        // Drosselung warten. Ohne Retry wurde ein einzelnes 429 zum harten
+        // Abbruch, und im Recreate-Pfad der Sub-Events war die alte Zeile
+        // dann bereits gelöscht.
+        enResp = await withThrottleRetry(() => svc._sp.get(
           `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=EventNumber&$orderby=EventNumber desc&$top=1`,
           SPHttpClient.configurations.v1
-        );
+        ), 'EventNumber');
       } catch (err) {
         throw new Error(`Event-Nummer konnte nicht ermittelt werden (${err instanceof Error ? err.message : 'Netzwerkfehler'}) — bitte erneut versuchen.`);
       }
