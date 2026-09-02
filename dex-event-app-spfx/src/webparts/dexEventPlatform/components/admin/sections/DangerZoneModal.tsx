@@ -5,6 +5,8 @@
 import * as React from 'react';
 import { Trash2, X } from '../../Icons';
 import { DeloitteEvent } from '../../../types';
+import { useDialog } from '../../../context/DialogContext';
+import { useEvents } from '../../../context/EventContext';
 
 export interface DangerZoneModalProps {
   confirmDeleteEvent: DeloitteEvent;
@@ -21,6 +23,11 @@ export interface DangerZoneModalProps {
 
 export const DangerZoneModal: React.FC<DangerZoneModalProps> = (p) => {
   const { confirmDeleteEvent, confirmDeleteText, deleteEvent, deletePolicy, isDe, isDeleting, setConfirmDeleteEvent, setConfirmDeleteText, setDeletingId, setIsDeleting } = p;
+  // v30.67: deleteEvent bricht seit diesem Release ab, wenn ein Termin nicht
+  // geloescht werden konnte, und liefert false. Ohne Auswertung schloss sich
+  // das Modal kommentarlos — der Admin hielt das Event fuer geloescht.
+  const { showAlert } = useDialog();
+  const { getLastEventDeleteError } = useEvents();
     const expected = (confirmDeleteEvent.title || '').trim().toLowerCase();
     const typed = confirmDeleteText.trim().toLowerCase();
     const matches = !!expected && expected === typed;
@@ -135,7 +142,11 @@ export const DangerZoneModal: React.FC<DangerZoneModalProps> = (p) => {
                     setIsDeleting(true);
                     setDeletingId(confirmDeleteEvent.id);
                     try {
-                      await deleteEvent(confirmDeleteEvent.id);
+                      const ok = await deleteEvent(confirmDeleteEvent.id);
+                      if (!ok) {
+                        const why = getLastEventDeleteError();
+                        showAlert(why || (isDe ? 'Das Event konnte nicht gelöscht werden.' : 'The event could not be deleted.'), { variant: 'error' });
+                      }
                     } finally {
                       setIsDeleting(false);
                       setDeletingId(null);

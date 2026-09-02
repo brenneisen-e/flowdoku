@@ -1088,7 +1088,16 @@ export default function RegistrationPage(): React.ReactElement {
         //     Rückruf wäre 403 von einer leeren Liste nicht zu unterscheiden.
         // Unbekannt heißt null: die Karten zeigen einen Strich, der Submit
         // überspringt den Vorab-Dialog, `reserveSeat` entscheidet serverseitig.
-        if (!canCreateEvents) { setStarterCounts(null); return; }
+        if (!canCreateEvents) {
+          // v30.67 (Nachzug): Fuer Teilnehmer kommt die Gruppenbelegung aus dem
+          // Platzzaehler — der ist fuer alle lesbar. Wartelisten je Gruppe
+          // fuehrt der Zaehler nicht, die bleiben 0 (der Vorab-Dialog beim
+          // Absenden prueft nur die aktive Belegung, reserveSeat entscheidet).
+          const cs = await getLiveCounterStats(event.id);
+          if (!cs || !cs.groupsKnown) { setStarterCounts(null); return; }
+          setStarterCounts({ durch: cs.durch, fun: cs.fun, durchWait: 0, funWait: 0 });
+          return;
+        }
         const { EventService } = await import('../services/EventService');
         const svc = new EventService(ctx);
         let readable = true;
@@ -1109,7 +1118,7 @@ export default function RegistrationPage(): React.ReactElement {
         });
       } catch (e) { console.warn('[DEX] Gruppen-Belegung nicht lesbar:', e); setStarterCounts(null); }
     })();
-  }, [isSplitGroup, event?.subsiteUrl, canCreateEvents]);
+  }, [isSplitGroup, event?.subsiteUrl, canCreateEvents, event?.id]);
   // v19.17: Der frühere 5-Sekunden-Poll auf dem Anmelde-Screen wurde wieder
   // entfernt — er verursachte einen sichtbaren Re-Render. Die Belegungszahl
   // kommt jetzt aus dem Context-Stand beim Öffnen (die Übersicht lädt sie beim

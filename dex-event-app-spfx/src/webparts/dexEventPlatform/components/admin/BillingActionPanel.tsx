@@ -88,11 +88,23 @@ export default function BillingActionPanel(props: { event: DeloitteEvent; onClos
       if (r.ok) {
         showAlert(kind === 'info' ? 'Abrechnungsinformationen wurden an F&A gesendet.' : 'Teilnehmerliste wurde an F&A gesendet.', { variant: 'success' });
       } else {
-        const msg = r.reason === 'incomplete'
+        // v30.67: sendFAMail unterscheidet jetzt, WARUM nichts (oder nur die
+        // Haelfte) passiert ist. Vor allem 'stamp-failed' braucht eine eigene
+        // Meldung: Die Mail IST raus, nur der Vermerk fehlt — die generische
+        // "Versand fehlgeschlagen" laedt zum zweiten Klick und damit zur
+        // Doppel-Mail an F&A ein.
+        const reason = r.reason || '';
+        const msg = reason === 'incomplete'
           ? 'Versand nicht möglich: Die Pflichtangaben sind noch unvollständig.'
-          : r.reason === 'no-recipients'
+          : reason === 'no-recipients'
             ? 'Versand nicht möglich: Kein F&A-Verteiler hinterlegt.'
-            : 'Versand fehlgeschlagen — bitte später erneut versuchen.';
+            : reason === 'read-failed'
+              ? 'Die Teilnehmerliste konnte nicht gelesen werden — Versand abgebrochen, es wurde nichts gesendet. Bitte später erneut versuchen.'
+              : reason === 'no-participants'
+                ? 'Keine aktiven Anmeldungen — es wurde nichts versendet.'
+                : reason.indexOf('stamp-failed') === 0
+                  ? 'Die Mail wurde versendet, aber der Vermerk in der Versand-Historie konnte NICHT gespeichert werden. Bitte NICHT erneut senden — sonst bekommt F&A die Liste doppelt. Details in der Browser-Konsole unter [DEX].'
+                  : 'Versand fehlgeschlagen — bitte später erneut versuchen.';
         showAlert(msg, { variant: 'error' });
       }
     } finally { setBusy(''); }

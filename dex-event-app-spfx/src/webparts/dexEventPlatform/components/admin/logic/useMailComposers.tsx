@@ -347,9 +347,14 @@ export function useMailComposers(ctx: UseMailComposersCtx): UseMailComposersResu
     setInviteAudienceOpen(false);
     setInvitedLc(null);
     if (eventServiceRef) {
-      eventServiceRef.getInvitedRecipients(selectedEvent.id)
-        .then(list => setInvitedLc(new Set(list)))
-        .catch(() => setInvitedLc(new Set<string>()));
+      // v30.67: Ein HTTP-Fehler beim Lesen der Einladungs-Queue lieferte
+      // stillschweigend eine Teilliste — und der Composer bot genau die
+      // uebersprungenen Personen als "noch nicht eingeladen" an: Doppel-
+      // Einladung. Unvollstaendig heisst jetzt null (unbekannt), nicht leer.
+      let incomplete = false;
+      eventServiceRef.getInvitedRecipients(selectedEvent.id, () => { incomplete = true; })
+        .then(list => setInvitedLc(incomplete ? null : new Set(list)))
+        .catch(() => setInvitedLc(null));
     } else {
       setInvitedLc(new Set<string>());
     }

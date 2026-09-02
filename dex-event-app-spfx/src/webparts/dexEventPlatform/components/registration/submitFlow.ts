@@ -621,6 +621,18 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
           setError(locale === 'de'
             ? `Person bereits angemeldet: ${dupEmail}. Bitte aus dem Team entfernen und erneut versuchen.`
             : `Person already registered: ${dupEmail}. Please remove from the team and try again.`);
+        } else if (result.reason && result.reason.indexOf('partial-insert:') === 0) {
+          // v30.67: Ein Teilerfolg ist keine "fehlgeschlagene Team-Anmeldung" —
+          // die uebrigen Personen SIND angemeldet. Wer hier "Fehler" liest und
+          // es noch einmal versucht, erzeugt Doppel-Anmeldungen.
+          const failed = result.reason.substring('partial-insert:'.length);
+          setError(locale === 'de'
+            ? `Für folgende Personen ist die Anmeldung nicht durchgekommen: ${failed} — bitte einzeln nachmelden. Die übrigen Teammitglieder sind angemeldet.`
+            : `Registration did not go through for: ${failed} — please register them individually. The other team members are registered.`);
+        } else if (result.reason === 'dup-check-failed') {
+          setError(locale === 'de'
+            ? 'Die Prüfung auf bereits angemeldete Personen konnte nicht durchgeführt werden — es wurde niemand angemeldet. Bitte später erneut versuchen.'
+            : 'The check for already registered people could not be run — nobody was registered. Please try again later.');
         } else {
           setError(t('reg.error') || (locale === 'de' ? 'Fehler bei der Team-Anmeldung.' : 'Team registration failed.'));
         }

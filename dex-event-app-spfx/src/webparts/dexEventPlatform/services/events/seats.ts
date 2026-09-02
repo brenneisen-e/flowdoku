@@ -608,7 +608,13 @@ export async function adjustWaitlistCounter(svc: EventService, subsiteUrl: strin
  * `null`, wenn der Counter (noch) nicht existiert/lesbar ist → Aufrufer fällt
  * dann auf den bisherigen (item-level-gefilterten) Zählweg zurück.
  */
-export async function getCounterStats(svc: EventService, subsiteUrl: string, isSplit: boolean): Promise<{ active: number; waitlist: number; seatsKnown: boolean } | null> {
+// v30.67: durch/fun/groupsKnown zusaetzlich — die Anmeldeseite braucht bei
+// geteilten Kapazitaeten die Gruppenwerte aus dem Zaehler, weil die
+// Teilnehmerliste zeilenweise gesichert ist und fuer Teilnehmer nur die eigene
+// Zeile zeigt (jede Zahl daraus waere erfunden). reserveSeat pflegt bei Split
+// NUR die Gruppenfelder, deshalb sind sie hier die verlaessliche Quelle.
+export interface CounterStats { active: number; waitlist: number; seatsKnown: boolean; durch: number; fun: number; groupsKnown: boolean }
+export async function getCounterStats(svc: EventService, subsiteUrl: string, isSplit: boolean): Promise<CounterStats | null> {
   if (!subsiteUrl) return null;
   const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
   try {
@@ -633,7 +639,8 @@ export async function getCounterStats(svc: EventService, subsiteUrl: string, isS
     // Durch+Fun zurück, falls der Gesamtwert (noch) nicht gepflegt wurde.
     const active = total > 0 ? total : (isSplit ? durch + fun : total);
     const waitlist = (wRaw === null || wRaw === undefined) ? -1 : num(wRaw);
-    return { active, waitlist, seatsKnown };
+    const groupsKnown = known(sDurchRaw) || known(sFunRaw);
+    return { active, waitlist, seatsKnown, durch, fun, groupsKnown };
   } catch { return null; }
 }
 

@@ -1,3 +1,4 @@
+import { rollingDeadlineIso } from './rollingDeadline';
 // v18.34 — Hilfsfunktion: lesbaren Outlook-Termin-Ort aus Veranstaltungsort +
 // Adresse bauen. `LocationAddress` liegt in DEX_Events als JSON-String
 // ({ street, houseNo, zip, city }) vor — der Power-Automate-Flow kann das nicht
@@ -69,9 +70,10 @@ export function subEventRegDeadline(
   if (own) return own;
   const r = parent.subDeadlineRule && parent.subDeadlineRule.reg;
   if (!r || !(Number(r.amount) > 0)) return '';
-  const t = new Date(child.startDate || '').getTime();
-  if (!isFinite(t)) return '';
-  return new Date(t - Number(r.amount) * (r.unit === 'hours' ? 3600000 : 86400000)).toISOString();
+  // v30.67: Kalendertage statt 24-h-Bloecke — dieselbe Rechnung wie im Wizard
+  // (utils/rollingDeadline). Vorher widersprachen sich Wizard-Wert und dieser
+  // Fallback ueber die Sommerzeit-Grenze hinweg um eine Stunde.
+  return rollingDeadlineIso(child.startDate || '', Number(r.amount), r.unit === 'hours' ? 'hours' : 'days');
 }
 
 export function isRegistrationFullyClosed(

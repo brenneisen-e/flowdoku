@@ -123,6 +123,29 @@ export async function getEvent(svc: EventService, eventId: number): Promise<SPEv
  * Check-in-Link ?action=selfcheckin&token=…). Liefert das erste Event mit
  * passendem Token. Alle eingeloggten User dürfen DEX_Events lesen.
  */
+/**
+ * v30.67: Alle Kind-Ids eines Klammer-Events direkt aus DEX_Events. getEvents
+ * laedt nur $top=100 nach StartDate desc und laesst Zeilen mit Mapping-Fehler
+ * aus — ein Loeschlauf, der die Kinder aus dem Client-State nimmt, kann Termine
+ * uebersehen, und die blieben dann mit ParentEventId auf ein geloeschtes Item
+ * verwaist zurueck. null = nicht lesbar (dann darf NICHT geloescht werden).
+ */
+export async function getChildEventIds(svc: EventService, parentId: number): Promise<number[] | null> {
+  if (!parentId) return null;
+  try {
+    const ids: number[] = [];
+    let url: string | null = `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=Id&$filter=ParentEventId eq '${parentId}'&$top=5000`;
+    while (url) {
+      const resp = await svc._sp.get(url, SPHttpClient.configurations.v1);
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      (data.value || data.d?.results || []).forEach((r: { Id: number }) => { if (typeof r.Id === 'number') ids.push(r.Id); });
+      url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
+    }
+    return ids;
+  } catch { return null; }
+}
+
 export async function getEventBySelfCheckInToken(svc: EventService, token: string): Promise<SPEvent | null> {
   try {
     const safe = token.replace(/'/g, "''");

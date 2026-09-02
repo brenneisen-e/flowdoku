@@ -48,6 +48,7 @@ import { makeParticipantFileActions } from './actions/participantFiles';
 import { makeMailActions } from './actions/mails';
 
 import { EventContextType, CreateEventInput, SelfCheckInParams, SelfCheckInStatus, SelfCheckInResult, EventStatsRow, FixColumnsDetail } from './eventContextTypes';
+import { CounterStats } from '../services/events/seats';
 // v30.66: Die Typen liegen jetzt in `eventContextTypes.ts`; hier nur noch
 // re-exportiert, damit bestehende Importe aus `EventContext` weiter tragen.
 export { EventContextType, CreateEventInput, SelfCheckInParams, SelfCheckInStatus, SelfCheckInResult, EventStatsRow, FixColumnsDetail };
@@ -465,7 +466,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
   // (wird von reserveSeat für JEDE Anmeldung gepflegt → korrekt für alle),
   // Warteliste = WaitlistTaken. null → Counter (noch) nicht da → Aufrufer nutzt
   // den bisherigen Wert.
-  async function getLiveCounterStats(eventId: string): Promise<{ active: number; waitlist: number; seatsKnown: boolean } | null> {
+  async function getLiveCounterStats(eventId: string): Promise<CounterStats | null> {
     const event = events.find(e => e.id === eventId);
     const subsiteUrl = subsiteMap.current[eventId] || event?.subsiteUrl;
     if (!subsiteUrl) return null;
@@ -2649,8 +2650,22 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     // Seit v6.4: Sub-Events sind eigene DEX_Events-Items. Vor dem Löschen des
     // Parent-Events müssen alle Child-Events gelöscht werden, damit auch deren
     // Outlook-Kalendertermine, Subsites und Teilnehmerlisten aufgeräumt werden.
-    const children = events.filter(e => e.parentEventId === eventId);
     const ev = events.find(e => e.id === eventId);
+    // v30.67: Kinder vom SERVER, nicht aus dem Client-State — der ist auf 100
+    // Events gekappt und laesst Zeilen mit Mapping-Fehler aus. Ist die Abfrage
+    // nicht lesbar, wird gar nichts geloescht: Ein uebersehenes Kind bliebe
+    // sonst mit ParentEventId auf ein geloeschtes Item verwaist zurueck.
+    const serverChildIds = ev && !ev.isFictive ? await eventService.getChildEventIds(Number(eventId)) : [];
+    if (serverChildIds === null) {
+      lastDeleteEventErrorRef.current = 'Nicht gelöscht: Die Termine dieses Events konnten nicht gelesen werden — bitte später erneut versuchen.';
+      console.warn('[DEX] deleteEvent abgebrochen — Kind-Events nicht lesbar', eventId);
+      return false;
+    }
+    const clientChildren = events.filter(e => e.parentEventId === eventId);
+    const knownIds = new Set(clientChildren.map(c => c.id));
+    const children: DeloitteEvent[] = clientChildren.concat(
+      serverChildIds.filter(id => !knownIds.has(String(id))).map(id => ({ id: String(id), title: `#${id}`, parentEventId: eventId } as unknown as DeloitteEvent))
+    );
     // v30.67: Das Ergebnis je Kind AUSWERTEN. eventService.deleteEvent wirft
     // nicht, es liefert false (429 auf dem Item-Recycle nach einem Dutzend
     // Terminen) — das catch war toter Code, die Schleife lief durch, und die

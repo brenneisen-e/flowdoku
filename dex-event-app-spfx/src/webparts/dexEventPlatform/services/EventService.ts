@@ -934,6 +934,10 @@ export class EventService {
     return eventsCrud.getEvent(this, eventId);
   }
 
+  public async getChildEventIds(parentId: number): Promise<number[] | null> {
+    return eventsCrud.getChildEventIds(this, parentId);
+  }
+
   public async getEventBySelfCheckInToken(token: string): Promise<SPEvent | null> {
     return eventsCrud.getEventBySelfCheckInToken(this, token);
   }
@@ -1586,7 +1590,7 @@ export class EventService {
     return seats.adjustWaitlistCounter(this, subsiteUrl, delta);
   }
 
-  public async getCounterStats(subsiteUrl: string, isSplit: boolean): Promise<{ active: number; waitlist: number; seatsKnown: boolean } | null> {
+  public async getCounterStats(subsiteUrl: string, isSplit: boolean): Promise<seats.CounterStats | null> {
     return seats.getCounterStats(this, subsiteUrl, isSplit);
   }
 

@@ -11,6 +11,7 @@ import { DeloitteEvent } from '../types';
 import { CustomField, SPRegistration, SPParticipant, ReseedSummary, AssistantLink, EventCommRow } from '../services/EventService';
 import { BundledItem } from '../utils/bundledComm';
 import { FAConfig } from '../utils/faBilling';
+import { CounterStats } from '../services/events/seats';
 
 /** v18.33: Eingabe für den Self-Check-in-Deep-Link. Entweder `token` (statischer
  *  QR) ODER `eventNumber` + `code` + `windowIndex` (rotierender Live-QR). */
@@ -350,7 +351,7 @@ export interface EventContextType {
    *  verfügbar (Aufrufer fällt auf event.currentParticipants zurück). */
   /** v30.62: `seatsKnown` = false heißt, der Platzzähler wurde für diese
    *  Subsite noch nie geschrieben. Die 0 darin ist dann kein Messwert. */
-  getLiveCounterStats: (eventId: string) => Promise<{ active: number; waitlist: number; seatsKnown: boolean } | null>;
+  getLiveCounterStats: (eventId: string) => Promise<CounterStats | null>;
   /** v24.74: Sitzplatz-Counter aller aktiven Kapazitäts-Events aus dem echten
    *  Bestand frischziehen (SeatsTaken + WaitlistTaken). Braucht Vollzugriff →
    *  beim Admin-Start aufrufen, damit die für alle lesbaren Counter stimmen,

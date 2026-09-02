@@ -33,7 +33,10 @@ export const WaitlistPositionModal: React.FC<WaitlistPositionModalProps> = (p) =
           if (!eventServiceRef || !selectedEvent.subsiteUrl || !valid) return;
           setWlPosBusy(true);
           try {
-            const res = await eventServiceRef.setWaitlistPosition(selectedEvent.subsiteUrl, reg.Id, parsed);
+            // v30.67: Gruppe mitgeben — bei geteilten Kapazitaeten sortierte
+            // "Platz aendern" sonst ueber die GESAMTE Warteliste und schob die
+            // Person in die falsche Gruppen-Reihenfolge.
+            const res = await eventServiceRef.setWaitlistPosition(selectedEvent.subsiteUrl, reg.Id, parsed, reg.PreferredStarterType || undefined);
             if (!res.ok) {
               showAlert(res.error || (isDe ? 'Der Platz konnte nicht geändert werden.' : 'The position could not be changed.'), { variant: 'error' });
               return;
