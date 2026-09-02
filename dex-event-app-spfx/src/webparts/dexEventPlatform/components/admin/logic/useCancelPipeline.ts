@@ -33,7 +33,7 @@ export interface UseCancelPipelineResult {
   buildCancellationMail: (ev: DeloitteEvent, reg: SPRegistration, fullName: string) => Promise<{    subject: string;    body: string;}>;
   cleanupShadowDuplicates: () => Promise<void>;
   isSyncingRegistry: boolean;
-  performSilentDuplicateDelete: (reg: SPRegistration) => Promise<void>;
+  performSilentDuplicateDelete: (reg: SPRegistration) => Promise<boolean>;
   performStandardCancel: (reg: SPRegistration) => Promise<void>;
   setIsSyncingRegistry: React.Dispatch<React.SetStateAction<boolean>>;
   setSyncRegistryResult: React.Dispatch<React.SetStateAction<string>>;
@@ -184,36 +184,48 @@ export function useCancelPipeline(ctx: UseCancelPipelineCtx): UseCancelPipelineR
   // (keine Abmelde-Mail, kein Outlook-Ausladen, kein Nachrücken, kein
   // ID-Reorder, kein DEX_Participants-Cleanup) — die Person bleibt über ihre
   // andere Zeile regulär angemeldet. Sitzplatz-Counter wird nachgezogen.
-  const performSilentDuplicateDelete = async (reg: SPRegistration): Promise<void> => {
-    if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+  // v30.67: Liefert, ob die Zeile WIRKLICH weg ist. `deleteRegistration` ist
+  // bewusst nicht-werfend (`return resp.ok`, `catch → false`) — das try/catch
+  // hier fing also nie etwas, und jeder Aufrufer meldete „entfernt", auch
+  // wenn die Zeile noch da war.
+  const performSilentDuplicateDelete = async (reg: SPRegistration): Promise<boolean> => {
+    if (!eventServiceRef || !selectedEvent?.subsiteUrl) return false;
     const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
     setAdminToast({ kind: 'cancelling', name });
+    let deleted = false;
     try {
-      await eventServiceRef.deleteRegistration(selectedEvent.subsiteUrl, reg.Id);
-      try {
-        await eventServiceRef.writeChangeLog({
-          action: 'RegistrationDeleted',
-          targetType: 'Participant',
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          targetId: ((reg as any).ParticipantEmail || '') + '#' + reg.Id,
-          targetName: name,
-          eventId: selectedEvent.id,
-          eventTitle: selectedEvent.title,
-          details: { note: 'Doppel-Anmeldung still entfernt (Duplikat). Person bleibt über die zweite Zeile angemeldet.' },
-        });
-      } catch (err) { console.warn('[DEX] writeChangeLog (dup delete) failed:', err); }
-      try {
-        const isSplit = typeof selectedEvent.durchstarterCapacity === 'number'
-          && typeof selectedEvent.funstarterCapacity === 'number'
-          && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0);
-        await eventServiceRef.syncSeatsToActiveCount(selectedEvent.subsiteUrl, { isSplit });
-      } catch { /* best-effort */ }
+      deleted = await eventServiceRef.deleteRegistration(selectedEvent.subsiteUrl, reg.Id);
+      if (!deleted) console.warn('[DEX] performSilentDuplicateDelete: DELETE nicht ok für Item', reg.Id);
+      // Audit-Eintrag und Sitzplatz-Sync nur, wenn die Zeile wirklich weg ist —
+      // ein „RegistrationDeleted" für eine noch vorhandene Zeile wäre eine
+      // falsche Historie.
+      if (deleted) {
+        try {
+          await eventServiceRef.writeChangeLog({
+            action: 'RegistrationDeleted',
+            targetType: 'Participant',
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            targetId: ((reg as any).ParticipantEmail || '') + '#' + reg.Id,
+            targetName: name,
+            eventId: selectedEvent.id,
+            eventTitle: selectedEvent.title,
+            details: { note: 'Doppel-Anmeldung still entfernt (Duplikat). Person bleibt über die zweite Zeile angemeldet.' },
+          });
+        } catch (err) { console.warn('[DEX] writeChangeLog (dup delete) failed:', err); }
+        try {
+          const isSplit = typeof selectedEvent.durchstarterCapacity === 'number'
+            && typeof selectedEvent.funstarterCapacity === 'number'
+            && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0);
+          await eventServiceRef.syncSeatsToActiveCount(selectedEvent.subsiteUrl, { isSplit });
+        } catch { /* best-effort */ }
+      }
     } catch (err) {
       console.warn('[DEX] performSilentDuplicateDelete failed:', err);
     }
     const regs = await getAllRegistrations(selectedEvent.id);
     setRegistrations(regs);
     setAdminToast(null);
+    return deleted;
   };
   // v28.23: Doppelte Klammer-Schatten-Zeilen in einem Rutsch bereinigen.
   // Diese Zeilen tauchen in der konsolidierten Klammer-Tabelle NICHT auf (dort
@@ -251,11 +263,16 @@ export function useCancelPipeline(ctx: UseCancelPipelineCtx): UseCancelPipelineR
       } catch { return 0; }
     };
     let removed = 0;
+    // v30.67: `removed` zählte VERSUCHE — `deleteRegistration` wirft nicht,
+    // sondern liefert false. Die grüne Meldung „N entfernt" nannte also die
+    // Zahl der Aufrufe, nicht der Löschungen.
+    let failedDel = 0;
     for (const rows of groups) {
       const sorted = rows.slice().sort((a, b) => (answerScore(b) - answerScore(a)) || (a.Id - b.Id));
       for (const r of sorted.slice(1)) {
         try {
-          await eventServiceRef.deleteRegistration(selectedEvent.subsiteUrl, r.Id);
+          const ok = await eventServiceRef.deleteRegistration(selectedEvent.subsiteUrl, r.Id);
+          if (!ok) { failedDel += 1; console.warn('[DEX] cleanupShadowDuplicates: DELETE nicht ok für Item', r.Id); continue; }
           removed += 1;
           try {
             await eventServiceRef.writeChangeLog({
@@ -268,7 +285,7 @@ export function useCancelPipeline(ctx: UseCancelPipelineCtx): UseCancelPipelineR
               details: { note: 'Doppelte Klammer-Schatten-Zeile still entfernt (v28.23). Sub-Event-Anmeldungen unberührt.' },
             });
           } catch { /* best-effort */ }
-        } catch (err) { console.warn('[DEX] cleanupShadowDuplicates failed for item', r.Id, err); }
+        } catch (err) { failedDel += 1; console.warn('[DEX] cleanupShadowDuplicates failed for item', r.Id, err); }
       }
     }
     try {
@@ -283,8 +300,12 @@ export function useCancelPipeline(ctx: UseCancelPipelineCtx): UseCancelPipelineR
     } catch { /* */ }
     setShadowDupBusy(false);
     showAlert(
-      isDe ? `${removed} doppelte Klammer-Zeile(n) entfernt.` : `${removed} duplicate overall-event row(s) removed.`,
-      { variant: 'success' },
+      failedDel > 0
+        ? (isDe
+          ? `${removed} doppelte Klammer-Zeile(n) entfernt — ${failedDel} konnten NICHT entfernt werden (fehlende Rechte oder Drosselung) und sind noch da.`
+          : `${removed} duplicate overall-event row(s) removed — ${failedDel} could NOT be removed (missing permissions or throttling) and are still there.`)
+        : (isDe ? `${removed} doppelte Klammer-Zeile(n) entfernt.` : `${removed} duplicate overall-event row(s) removed.`),
+      { variant: failedDel > 0 ? 'error' : 'success' },
     );
   };
   return {

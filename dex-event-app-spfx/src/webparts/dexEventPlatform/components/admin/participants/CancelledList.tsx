@@ -178,15 +178,30 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
                 ? `„${nm}" wirklich überall löschen? Alle ${targets.length} Einträge dieser Person (Gesamt-Event + Sub-Events) werden endgültig entfernt und können nicht wiederhergestellt werden.`
                 : `Permanently delete „${nm}" everywhere? All ${targets.length} entries of this person (overall event + sub-events) will be removed and cannot be restored.`;
               if (!(await confirmDialog(msg, { danger: true, title: isDe ? 'Person überall löschen' : 'Delete person everywhere', confirmLabel: isDe ? 'Endgültig löschen' : 'Delete permanently' }))) return;
+              // v30.67: `deleteRegistration` wirft nicht, es liefert false — das
+              // try/catch fing also nie etwas. Der Audit-Eintrag behauptete
+              // `count: 12, everywhere: true`, auch wenn drei Zeilen auf einer
+              // Subsite ohne Delete-Recht liegen blieben; die Person zählte dort
+              // weiter, bekam Mails und Outlook-Termine. Zählen, was WIRKLICH
+              // gelöscht wurde, und es sagen.
+              let delOk = 0;
+              let delFailed = 0;
               for (const t of targets) {
-                try { await eventServiceRef.deleteRegistration(t.sub, t.id); } catch { /* best-effort */ }
+                const ok = await eventServiceRef.deleteRegistration(t.sub, t.id).catch(() => false);
+                if (ok) delOk += 1; else delFailed += 1;
               }
               try {
-                await eventServiceRef.writeChangeLog({ action: 'RegistrationDeleted', targetType: 'Participant', targetId: p.email, targetName: nm, eventId: selectedEvent.id, eventTitle: selectedEvent.title, details: { deletedStatus: 'Abgemeldet', count: targets.length, everywhere: true } });
+                await eventServiceRef.writeChangeLog({ action: 'RegistrationDeleted', targetType: 'Participant', targetId: p.email, targetName: nm, eventId: selectedEvent.id, eventTitle: selectedEvent.title, details: { deletedStatus: 'Abgemeldet', count: delOk, failed: delFailed, everywhere: delFailed === 0 } });
               } catch { /* */ }
               setSubRegReloadTick(t => t + 1);
               const regs = await getAllRegistrations(selectedEvent.id);
               setRegistrations(regs);
+              if (delFailed > 0) {
+                showAlert(isDe
+                  ? `${delOk} von ${targets.length} Einträgen gelöscht — ${delFailed} konnten nicht entfernt werden (fehlende Rechte auf dem Termin oder Drosselung). Bitte „Organizer-Berechtigungen reparieren“ ausführen und erneut versuchen.`
+                  : `${delOk} of ${targets.length} entries deleted — ${delFailed} could not be removed (missing permissions on the date or throttling). Please run „Repair organizer permissions“ and try again.`,
+                  { variant: 'error' });
+              }
             };
             return (
               <>

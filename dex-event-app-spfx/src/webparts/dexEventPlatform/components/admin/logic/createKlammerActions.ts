@@ -5,6 +5,7 @@
  */
 import * as React from 'react';
 import { ConsolidatedRow } from '../../admin/adminTypes';
+import { activeParentRegOf } from './parentRegs';
 import { DeloitteEvent } from '../../../types';
 import { EventService, SPRegistration } from '../../../services/EventService';
 import { applyEventTemplateOverride, formatOrganizerList } from '../../../context/EventContext';
@@ -55,7 +56,6 @@ export interface CreateKlammerActionsCtx {
   setMainFieldsEditSubsite: React.Dispatch<React.SetStateAction<string>>;
   setMainFieldsEditTargetIsParent: React.Dispatch<React.SetStateAction<boolean>>;
   setRegistrations: React.Dispatch<React.SetStateAction<SPRegistration[]>>;
-  setSubEventRegsByEventId: React.Dispatch<React.SetStateAction<Record<string, SPRegistration[]>>>;
   setSubRegReloadTick: React.Dispatch<React.SetStateAction<number>>;
   showAlert: (message: React.ReactNode, opts?: import("../../../context/DialogContext").AlertOptions) => void;
 }
@@ -82,7 +82,7 @@ export function createKlammerActions(ctx: CreateKlammerActionsCtx): CreateKlamme
     setAssignAssistRow, setAssignAssistValue, setBulkKlammerProgress, setDeregBusy, setDeregModal,
     setDeregSelected, setDeregSilent, setMainFieldsEditError, setMainFieldsEditForm,
     setMainFieldsEditName, setMainFieldsEditReg, setMainFieldsEditSaving, setMainFieldsEditSubsite,
-    setMainFieldsEditTargetIsParent, setRegistrations, setSubEventRegsByEventId,
+    setMainFieldsEditTargetIsParent, setRegistrations,
     setSubRegReloadTick, showAlert,
   } = ctx;
   // v19.30 — Feature A: Edit-Modal für die Hauptevent-Custom-Felder einer
@@ -263,7 +263,10 @@ export function createKlammerActions(ctx: CreateKlammerActionsCtx): CreateKlamme
       let done = 0;
       let failed = 0;
       // 1) Klammer-/Hauptevent-Zeile.
-      const parentReg = registrations.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === row.emailKey);
+      // v30.67: die AKTIVE Zeile — `find` ohne Status nahm die älteste, und
+      // die konnte abgemeldet sein (RegisteredBy landete dann auf einer Zeile,
+      // die niemand mehr liest).
+      const parentReg = activeParentRegOf(registrations, row.emailKey);
       if (parentReg && selectedEvent.subsiteUrl) {
         const ok = await eventServiceRef.assignRegistrationToAssistant(selectedEvent.subsiteUrl, parentReg.Id, assistEmail, assistName);
         if (ok) done += 1; else failed += 1;
@@ -309,7 +312,12 @@ export function createKlammerActions(ctx: CreateKlammerActionsCtx): CreateKlamme
     if (!selectedEvent) return;
     setMainFieldsEditError('');
     // 1) Bevorzugt die Hauptevent-Anmeldung (Klammer-Subsite).
-    const parentReg = registrations.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === emailKey) || null;
+    // v30.67: nur eine AKTIVE Klammer-Zeile ist ein Speicherort. Vorher fing
+    // eine abgemeldete Zeile die Bearbeitung ab: Hotel/Verpflegung wanderten
+    // in eine Zeile, die das HotelPlanningPanel (ACTIVE_STATI) nie sieht —
+    // die Person blieb ohne Zimmer. Ohne aktive Klammer-Zeile greift der
+    // Sub-Event-Fallback darunter.
+    const parentReg = activeParentRegOf(registrations, emailKey) || null;
     let targetReg: SPRegistration | null = parentReg;
     let targetSubsite = selectedEvent.subsiteUrl || '';
     let isParent = true;
@@ -460,16 +468,18 @@ export function createKlammerActions(ctx: CreateKlammerActionsCtx): CreateKlamme
   };
 
   // v19.30 — Feature B: Sub-Event-Registrierungen neu laden (nach einer
-  // Abmeldung im konsolidierten View). Spiegelt den Lade-Effekt von oben.
+  // Abmeldung im konsolidierten View).
+  // v30.67: Kein eigener Lade-Pfad mehr — nur noch der Trigger für den
+  // Lade-Effekt in AdminPage. Die Handkopie von v19.30 „spiegelte" den
+  // Effekt, wurde beim v30.37-Umbau (onHttpError + deniedSubEventLists +
+  // Lade-Anzeige) aber nicht mitgezogen: `getAllRegistrations` wirft nie,
+  // ein 429 direkt nach dem Abmelde-Schwall wurde zu `map[ch.id] = []`, die
+  // Matrix zeigte den Termin leer, das Zugriffs-Banner blieb auf dem alten
+  // Stand. Der Organizer las das als „ich habe gerade alle abgemeldet".
+  // Jetzt gibt es genau EINEN Pfad, der diese Map baut.
   const reloadSubEventRegs = async (): Promise<void> => {
     if (!selectedEvent || !selectedEvent.subEventsOnlyMode) return;
-    const children = childEventsOf(selectedEvent.id);
-    const map: Record<string, SPRegistration[]> = {};
-    for (const ch of children) {
-      try { map[ch.id] = await getAllRegistrations(ch.id); }
-      catch { map[ch.id] = []; }
-    }
-    setSubEventRegsByEventId(map);
+    setSubRegReloadTick(t => t + 1);
   };
   // v19.30 — Feature B: Abmelde-Modal für eine konsolidierte Zeile öffnen.
   // Sammelt alle Sub-Events, in denen die Person aktiv angemeldet ist.

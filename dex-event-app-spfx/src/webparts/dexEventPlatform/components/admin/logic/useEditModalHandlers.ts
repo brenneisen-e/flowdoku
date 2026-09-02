@@ -4,7 +4,7 @@
  * nach aussen liefert, geht als Objekt zurueck.
  */
 import * as React from 'react';
-import { EventService, SPRegistration } from '../../../services/EventService';
+import { EventService, REG_LIST_NAME, SPRegistration } from '../../../services/EventService';
 import { isDeloitteInternalEmail } from '../../../utils/deloitteDomain';
 import { DeloitteEvent } from '../../../types';
 
@@ -241,8 +241,45 @@ export function useEditModalHandlers(ctx: UseEditModalHandlersCtx): UseEditModal
           details: { changes },
         });
       } catch { /* */ }
+      // v30.67: Die E-Mail ist der Schlüssel des Registers DEX_Participants
+      // (`$filter=Email eq …`) — und der einzige Schlüssel des Datenmodells
+      // überhaupt. Jeder Pfad, der ihn VERGIBT, schreibt doppelt (Zeile +
+      // Register); dieser Pfad, der ihn ÄNDERT, behandelte ihn wie ein
+      // Textfeld. Folge: Das Event blieb unter der alten Adresse im Register,
+      // „Meine Events" der Person war leer, die Doppel-Anmelde-Prüfung fragte
+      // unter der neuen Adresse ins Leere, und beim Abmelden fand
+      // `removeParticipantEvent` nichts — ein verwaister Verweis für immer.
+      // Reihenfolge: prüfbare Nebenbuchhaltung zuerst (neu anlegen), dann alt
+      // entfernen. Schlägt das Anlegen fehl, erfährt es der Organizer.
+      let registryFailed = false;
+      if (patch.ParticipantEmail !== undefined && newEmail.toLowerCase() !== oldEmail.toLowerCase()) {
+        const rowStatus = String(r.Status || '');
+        const evNo = selectedEvent.eventNumber || 0;
+        if (evNo > 0 && rowStatus !== 'Abgemeldet') {
+          const regStatus = rowStatus === 'Warteliste' ? 'Warteliste' : 'Angemeldet';
+          const up = await eventServiceRef.upsertParticipant(newVorname, newNachname, newEmail, evNo, regStatus);
+          if (up) {
+            const rm = await eventServiceRef.removeParticipantEvent(oldEmail, evNo);
+            // false heißt hier auch „unter der alten Adresse gab es keinen
+            // Eintrag" — nicht unterscheidbar, deshalb nur ein Warn-Log; die
+            // Register-Prüfung (Admin) findet einen Rest als verwaisten Verweis.
+            if (!rm) console.warn('[DEX] saveEdit: Register-Eintrag der alten Adresse nicht entfernt:', oldEmail, evNo);
+          } else {
+            registryFailed = true;
+          }
+        }
+        // Die Zeile gehört jetzt der neuen Person — mit ReadSecurity=2 sieht
+        // sie ihre eigene Zeile sonst nicht (Zeilen-Autor bleibt die alte).
+        try { await eventServiceRef.trySetItemAuthor(selectedEvent.subsiteUrl, REG_LIST_NAME, editingReg.Id, newEmail); } catch { /* best-effort, s. trySetItemAuthor */ }
+      }
       const regs = await getAllRegistrations(selectedEvent.id);
       setRegistrations(regs);
+      if (registryFailed) {
+        setEditError(isDe
+          ? 'Die Zeile ist gespeichert, aber das Teilnehmer-Register (DEX_Participants) konnte nicht auf die neue Adresse umgeschrieben werden. Die Person sieht das Event unter „Meine Events“ erst, wenn ein Admin das Register abgleicht. Bitte noch einmal speichern oder den Admin informieren.'
+          : 'The row was saved, but the participant registry (DEX_Participants) could not be switched to the new address. The person will not see the event under „My events“ until an admin reconciles the registry. Please save again or inform the admin.');
+        return;
+      }
       closeEditModal();
     } catch (err) {
       console.warn('[DEX] saveEdit error:', err);

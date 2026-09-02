@@ -17,13 +17,12 @@ import { TeamsJoinButton } from '../../TeamsJoinButton';
 import { ActionsDropdown } from '../../admin/ActionsMenu';
 import { DeloitteEvent } from '../../../types';
 import { SPRegistration } from '../../../services/EventService';
-import { ConsolidatedRow } from '../../admin/adminTypes';
+import { countConsolidatedActive } from '../logic/parentRegs';
 
 export interface EventDetailCardProps {
   activeRegs: SPRegistration[];
   childEventsOf: (parentEventId: string) => DeloitteEvent[];
   confirmDialog: (message: React.ReactNode, opts?: import("../../../context/DialogContext").ConfirmOptions) => Promise<boolean>;
-  consolidatedFiltered: ConsolidatedRow[];
   detailCardRef: React.MutableRefObject<HTMLDivElement>;
   events: DeloitteEvent[];
   evTabHover: string;
@@ -52,7 +51,7 @@ export interface EventDetailCardProps {
 }
 
 export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
-  const { activeRegs, childEventsOf, confirmDialog, consolidatedFiltered, detailCardRef, events, evTabHover, handleSelectEvent, isAdmin, isConsolidatedMode, isDe, isImpersonating, isLoadingRegs, isMobile, isOrganizerFor, navigate, openTabGroup, registrations, reservedDetailHeight, reservedDetailWidth, selectedEvent, setCheckInHubOpen, setCheckInHubStep, setEvTabHover, setOpenTabGroup, subEventRegsByEventId, t, toggleDraftStatus, waitlistRegs } = p;
+  const { activeRegs, childEventsOf, confirmDialog, detailCardRef, events, evTabHover, handleSelectEvent, isAdmin, isConsolidatedMode, isDe, isImpersonating, isLoadingRegs, isMobile, isOrganizerFor, navigate, openTabGroup, registrations, reservedDetailHeight, reservedDetailWidth, selectedEvent, setCheckInHubOpen, setCheckInHubStep, setEvTabHover, setOpenTabGroup, subEventRegsByEventId, t, toggleDraftStatus, waitlistRegs } = p;
   return (
         <div ref={detailCardRef} className="card" style={{ padding: 24, minHeight: reservedDetailHeight, flex: '1 1 420px', minWidth: reservedDetailWidth || 0 }}>
           {/* Header: Event-Titel + Status-Badge + Schnellaktionen (v13.11) */}
@@ -653,7 +652,11 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
                     </div>
                     <div style={rowStyle}>
                       <span style={labelStyle}>{isDe ? 'Aktuell registriert' : 'Currently registered'}</span>
-                      <span style={valueStyle}>{isConsolidatedMode ? consolidatedFiltered.length : activeRegs.length}</span>
+                      {/* v30.67: dieselbe Zählung wie die KPI-Kachel „Angemeldet".
+                          `consolidatedFiltered` enthält bewusst auch die Warteliste
+                          (die Matrix zeigt Wartende als „W") — hier stand dadurch
+                          120, in der Kachel darunter 100. */}
+                      <span style={valueStyle}>{isConsolidatedMode ? countConsolidatedActive(subEventRegsByEventId) : activeRegs.length}</span>
                     </div>
                     {waitlistRegs.length > 0 && (
                       <div style={rowStyle}>

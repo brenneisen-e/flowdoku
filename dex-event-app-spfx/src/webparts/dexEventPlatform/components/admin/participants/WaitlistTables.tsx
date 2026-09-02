@@ -30,12 +30,14 @@ export interface WaitlistTablesProps {
   waitlistSortAsc: boolean;
   waitlistSortColumn: "date" | "location" | "pos" | "vorname" | "nachname" | "email" | "jobtitle";
   waitlistTruePos: Record<number, number>;
+  /** v30.67: wahre Gruppengröße je Person (ungefiltert), s. AdminPage. */
+  waitlistTrueTotal: Record<number, number>;
   waitlistUnassigned: SPRegistration[];
   wlPosBusy: boolean;
 }
 
 export const WaitlistTables: React.FC<WaitlistTablesProps> = (p) => {
-  const { buildCancellationMail, confirmDialog, currentUser, eventServiceRef, getAllRegistrations, isDe, isSplitCapacity, query, selectedEvent, setRegistrations, setWaitlistSortAsc, setWaitlistSortColumn, setWlPosModal, setWlPosValue, showAlert, waitlistDurch, waitlistFun, waitlistRegs, waitlistSortAsc, waitlistSortColumn, waitlistTruePos, waitlistUnassigned, wlPosBusy } = p;
+  const { buildCancellationMail, confirmDialog, currentUser, eventServiceRef, getAllRegistrations, isDe, isSplitCapacity, query, selectedEvent, setRegistrations, setWaitlistSortAsc, setWaitlistSortColumn, setWlPosModal, setWlPosValue, showAlert, waitlistDurch, waitlistFun, waitlistRegs, waitlistSortAsc, waitlistSortColumn, waitlistTruePos, waitlistTrueTotal, waitlistUnassigned, wlPosBusy } = p;
           // Seit v6.5: bei B2Run-Split-Kapazitäten getrennte Wartelisten-Tabellen pro
           // PreferredStarterType. Ohne Split: eine einzige Warteliste wie bisher.
           const renderWaitlistTable = (title: string, regs: SPRegistration[], accentColor: string): React.ReactElement | null => {
@@ -129,7 +131,12 @@ export const WaitlistTables: React.FC<WaitlistTablesProps> = (p) => {
                               style={{ fontSize: '0.75rem', padding: '4px 10px', marginRight: 6 }}
                               disabled={wlPosBusy}
                               onClick={() => {
-                                setWlPosModal({ reg, currentPos: truePos != null ? truePos : (i + 1), total: regs.length });
+                                // v30.67: `regs` ist die SUCH-gefilterte Liste — als
+                                // Nenner/`max` stand bei aktiver Suche also die
+                                // Trefferzahl („Platz 7 von 1"). Die wahre Gruppengröße
+                                // kommt wie die wahre Position aus der ungefilterten Liste.
+                                const trueTotal = waitlistTrueTotal[reg.Id];
+                                setWlPosModal({ reg, currentPos: truePos != null ? truePos : (i + 1), total: trueTotal != null ? trueTotal : regs.length });
                                 setWlPosValue('1');
                               }}
                             >

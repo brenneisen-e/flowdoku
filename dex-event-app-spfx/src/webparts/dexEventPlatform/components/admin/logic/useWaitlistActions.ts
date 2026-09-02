@@ -292,15 +292,67 @@ export function useWaitlistActions(ctx: UseWaitlistActionsCtx): UseWaitlistActio
             : (selectedEvent.maxParticipants || 0),
         }];
       const groupOf = (r: SPRegistration): string => r.StarterType || r.PreferredStarterType || '';
+      // v30.67: Gemeinsame Warteliste heißt „gemeinsame REIHENFOLGE", nicht
+      // „gemeinsamer Kapazitätstopf". Die nachrückende Person bekommt ihren
+      // PreferredStarterType als StarterType, und die Gruppengrenzen gelten
+      // weiter — `reserveSeat`, `detectOverbooking` und die Gruppen-Karten
+      // der Anmeldeseite prüfen alle gegen die EINZELNE Gruppe. Bisher wurde
+      // hier gegen die Summe gerechnet und ohne Typfilter nachgerückt: Bei A
+      // voll (30/30) und B 25/30 rückten fünf Durchstarter nach, A stand auf
+      // 35/30, die Überbuchungs-Box flaggte sie, B blieb leer.
+      //
+      // Deshalb die Warteliste in ihrer Reihenfolge simulieren: Solange BEIDE
+      // Gruppen Platz haben, rückt die nächste Person nach (ohne Filter — das
+      // ist genau sie, weil bis dahin niemand übersprungen wurde). Ist eine
+      // Gruppe voll, nur noch mit Typfilter auf die offene Gruppe; wer dort
+      // nicht hineingehört, bleibt stehen. Ohne Wunsch-Typ zählt die Person
+      // auf den Gesamt-Topf und kann nur in Phase 1 nachrücken.
+      const sharedInfo = ((): { steps: Array<string | undefined>; activeA: number; activeB: number; capA: number; capB: number } | null => {
+        if (!isSplitCapacity || !selectedEvent.splitSharedWaitlist) return null;
+        const capA = selectedEvent.durchstarterCapacity || 0;
+        const capB = selectedEvent.funstarterCapacity || 0;
+        const activeAll = fresh.filter(r => ACTIVE.indexOf(r.Status) >= 0);
+        const activeA = activeAll.filter(r => groupOf(r) === 'Durchstarter').length;
+        const activeB = activeAll.filter(r => groupOf(r) === 'Funstarter').length;
+        let freeA = capA > 0 ? Math.max(0, capA - activeA) : Number.POSITIVE_INFINITY;
+        let freeB = capB > 0 ? Math.max(0, capB - activeB) : Number.POSITIVE_INFINITY;
+        // Gesamt-Topf als zweite Schranke: Aktive ohne Gruppe belegen einen
+        // Platz, ohne in einer Gruppe zu zählen.
+        let budget = (capA + capB) > 0 ? Math.max(0, capA + capB - activeAll.length) : Number.POSITIVE_INFINITY;
+        const steps: Array<string | undefined> = [];
+        const waitingSorted = fresh.filter(r => r.Status === 'Warteliste')
+          .sort((a, b) => (a.TeilnehmerID || 0) - (b.TeilnehmerID || 0));
+        for (const r of waitingSorted) {
+          if (budget <= 0 || (freeA <= 0 && freeB <= 0)) break;
+          const g = groupOf(r);
+          if (freeA > 0 && freeB > 0) {
+            steps.push(undefined);
+            if (g === 'Durchstarter') freeA -= 1;
+            else if (g === 'Funstarter') freeB -= 1;
+            else if (freeA >= freeB) freeA -= 1;
+            else freeB -= 1;
+            budget -= 1;
+          } else if (freeA > 0 && g === 'Durchstarter') {
+            steps.push('Durchstarter'); freeA -= 1; budget -= 1;
+          } else if (freeB > 0 && g === 'Funstarter') {
+            steps.push('Funstarter'); freeB -= 1; budget -= 1;
+          }
+          // sonst: Gruppe voll → bleibt stehen
+        }
+        return { steps, activeA, activeB, capA, capB };
+      })();
       const plan = groups.map(g => {
         const inGroup = (r: SPRegistration): boolean => !g.key || groupOf(r) === g.key;
         const active = fresh.filter(r => ACTIVE.indexOf(r.Status) >= 0 && inGroup(r)).length;
         const waiting = fresh.filter(r => r.Status === 'Warteliste' && inGroup(r)).length;
         // Kapazität 0 heißt „unbegrenzt" — dann rückt die ganze Warteliste nach.
         const free = g.cap > 0 ? Math.max(0, g.cap - active) : waiting;
-        return { ...g, active, waiting, count: Math.min(free, waiting), free };
+        return { ...g, active, waiting, count: sharedInfo ? sharedInfo.steps.length : Math.min(free, waiting), free };
       });
       const total = plan.reduce((n, g) => n + g.count, 0);
+      const sharedGroupsText = sharedInfo
+        ? ` (${lblA} ${sharedInfo.activeA}/${sharedInfo.capA || '∞'} · ${lblB} ${sharedInfo.activeB}/${sharedInfo.capB || '∞'})`
+        : '';
 
       if (total === 0) {
         // Den tatsächlichen Grund nennen, nicht den erstbesten: „voll" und
@@ -312,7 +364,13 @@ export function useWaitlistActions(ctx: UseWaitlistActionsCtx): UseWaitlistActio
             ? (isDe
               ? `Kein freier Platz in den Gruppen, in denen jemand wartet (${plan.filter(g => g.waiting > 0).map(g => `${g.label}: ${g.active}/${g.cap}`).join(', ')}).`
               : `No free seat in the groups where people are waiting (${plan.filter(g => g.waiting > 0).map(g => `${g.label}: ${g.active}/${g.cap}`).join(', ')}).`)
-            : (isDe ? 'Kein freier Platz — Event ist voll.' : 'No free seat — event is full.'));
+            : sharedInfo
+              // v30.67: gemeinsame Warteliste — die wartenden Personen gehören
+              // in eine volle Gruppe, die andere hat Platz, aber niemand will hin.
+              ? (isDe
+                ? `Kein freier Platz in der Gruppe, in der jemand wartet${sharedGroupsText}.`
+                : `No free seat in the group where people are waiting${sharedGroupsText}.`)
+              : (isDe ? 'Kein freier Platz — Event ist voll.' : 'No free seat — event is full.'));
         setIsPromoting(false);
         return;
       }
@@ -321,7 +379,7 @@ export function useWaitlistActions(ctx: UseWaitlistActionsCtx): UseWaitlistActio
         .filter(g => g.waiting > 0 || g.free > 0)
         .map(g => perGroup
           ? `• ${g.label}: ${g.active}/${g.cap || '∞'} belegt · ${g.waiting} auf der Warteliste → ${g.count} rücken nach`
-          : `• ${g.active}/${g.cap || '∞'} belegt · ${g.waiting} auf der Warteliste → ${g.count} rücken nach`)
+          : `• ${g.active}/${g.cap || '∞'} belegt${sharedGroupsText} · ${g.waiting} auf der Warteliste → ${g.count} rücken nach`)
         .join('\n');
       const ok = await confirmDialog(
         isDe
@@ -333,7 +391,15 @@ export function useWaitlistActions(ctx: UseWaitlistActionsCtx): UseWaitlistActio
 
       const promotedNames: string[] = [];
       let failed = 0;
-      for (const g of plan) {
+      // v30.67: Bei gemeinsamer Warteliste die Schrittfolge aus der
+      // Simulation oben (je Schritt ein Typfilter oder keiner), sonst wie
+      // bisher je Gruppe `count`-mal.
+      const runs: Array<{ key?: string; count: number }> = sharedInfo
+        ? sharedInfo.steps.map(k => ({ key: k, count: 1 }))
+        : plan.map(g => ({ key: g.key, count: g.count }));
+      let stop = false;
+      for (const g of runs) {
+        if (stop) break;
         for (let i = 0; i < g.count; i++) {
           // maxParticipants bewusst NICHT mitgeben: Die Überbuchungs-Sperre
           // im Service zählt über die GANZE Liste und kann eine Gruppe nicht
@@ -351,8 +417,11 @@ export function useWaitlistActions(ctx: UseWaitlistActionsCtx): UseWaitlistActio
             await notifyPromoted({ email: promoted.email, name: promoted.name });
           } else {
             // Warteliste unerwartet leer (jemand hat sich zwischendurch
-            // abgemeldet) — kein Fehler, nur nichts mehr zu tun.
+            // abgemeldet) — kein Fehler, nur nichts mehr zu tun. Bei der
+            // simulierten Schrittfolge stimmt ab hier die Reihenfolge nicht
+            // mehr — dann ganz aufhören statt weiterzuraten.
             failed++;
+            if (sharedInfo) stop = true;
             break;
           }
         }

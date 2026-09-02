@@ -12,6 +12,7 @@ import { formatDate, translateStatus } from '../../../utils/eventStatus';
 import { SPRegistration } from '../../../services/EventService';
 import { Check, ExternalLink, Plus, Trash2 } from '../../Icons';
 import { shortSubEventTitle } from '../../../utils/subEventTitle';
+import { activeParentRegOf } from '../logic/parentRegs';
 
 export interface ConsolidatedViewProps {
   addAllToKlammer: (rows: ConsolidatedRow[]) => Promise<void>;
@@ -25,6 +26,8 @@ export interface ConsolidatedViewProps {
   consolidatedRows: ConsolidatedRow[];
   consolidatedSort: string;
   consolidatedSortAsc: boolean;
+  /** v30.67: Termine, deren Liste NICHT gelesen wurde (v30.37-Zustand aus AdminPage). */
+  deniedSubEventLists: string[];
   expandedConsolidatedEmail: string;
   highlightMatch: (text: unknown) => React.ReactNode;
   inactiveAccounts: string[];
@@ -37,7 +40,7 @@ export interface ConsolidatedViewProps {
   openDeregModal: (row: ConsolidatedRow) => void;
   openMainFieldsEdit: (emailKey: string, displayName: string) => void;
   orgPastLock: boolean;
-  performSilentDuplicateDelete: (reg: SPRegistration) => Promise<void>;
+  performSilentDuplicateDelete: (reg: SPRegistration) => Promise<boolean>;
   personalColsCollapsed: boolean;
   registrations: SPRegistration[];
   reminderBusyId: number;
@@ -61,7 +64,7 @@ export interface ConsolidatedViewProps {
 }
 
 export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
-  const { addAllToKlammer, addingToKlammer, addToKlammer, bulkKlammerProgress, colToggleHover, confirmDialog, consolidatedChildren, consolidatedFiltered, consolidatedRows, consolidatedSort, consolidatedSortAsc, expandedConsolidatedEmail, highlightMatch, inactiveAccounts, isAdmin, isConsolidatedMode, isDe, isLoadingSubEventRegs, isOrganizerFor, missingReminderKey, openDeregModal, openMainFieldsEdit, orgPastLock, performSilentDuplicateDelete, personalColsCollapsed, registrations, reminderBusyId, searchQuery, selectedEvent, sendCompleteRegistrationReminder, setAssignAssistRow, setAssignAssistValue, setColToggleHover, setConsolidatedSort, setConsolidatedSortAsc, setExpandedConsolidatedEmail, setMissingReminderKey, setParticipantDetail, setPersonalColsCollapsed, setReminderBusyId, setSelectedEvent, showAlert, stripLocPrefix, subEventRegsByEventId } = p;
+  const { addAllToKlammer, addingToKlammer, addToKlammer, bulkKlammerProgress, colToggleHover, confirmDialog, consolidatedChildren, consolidatedFiltered, consolidatedRows, consolidatedSort, consolidatedSortAsc, deniedSubEventLists, expandedConsolidatedEmail, highlightMatch, inactiveAccounts, isAdmin, isConsolidatedMode, isDe, isLoadingSubEventRegs, isOrganizerFor, missingReminderKey, openDeregModal, openMainFieldsEdit, orgPastLock, performSilentDuplicateDelete, personalColsCollapsed, registrations, reminderBusyId, searchQuery, selectedEvent, sendCompleteRegistrationReminder, setAssignAssistRow, setAssignAssistValue, setColToggleHover, setConsolidatedSort, setConsolidatedSortAsc, setExpandedConsolidatedEmail, setMissingReminderKey, setParticipantDetail, setPersonalColsCollapsed, setReminderBusyId, setSelectedEvent, showAlert, stripLocPrefix, subEventRegsByEventId } = p;
     if (!selectedEvent) return null;
     if (isLoadingSubEventRegs) {
       return <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>{isDe ? 'Lade Sub-Event-Teilnehmer...' : 'Loading sub-event participants...'}</p>;
@@ -135,15 +138,21 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
     // Hauptevent-Teilnehmerliste? Nur dann gibt es Hauptevent-Antworten zum
     // Bearbeiten. (Im subEventsOnlyMode kann jemand nur in Sub-Events
     // angemeldet sein.)
+    // v30.67: nur eine AKTIVE Klammer-Zeile zählt (s. parentRegs.ts). `some`
+    // ohne Status ließ eine abgemeldete Klammer-Zeile den roten Kasten
+    // „Fehlende Klammer-Anmeldung" schlucken und blendete „Zur Klammer
+    // hinzufügen" aus — der Organizer hatte keinen Weg, den Zustand zu
+    // sehen oder zu reparieren. `registerForEvent` reaktiviert die
+    // abgemeldete Zeile (EventContext), es entsteht keine Dublette.
     const hasParentReg = (emailKey: string): boolean =>
-      registrations.some(r => (r.ParticipantEmail || '').toLowerCase().trim() === emailKey);
+      !!activeParentRegOf(registrations, emailKey);
     // v26.85: Ist ein bestimmtes Hauptevent-Feld für diese Person befüllt?
     // Gleiche Auflösung wie die Tabelle (Parent-Reg-Spalte → Parent-CustomData
     // → Sub-Event-CustomData-Fallback), damit die „Infos fehlen"-Erkennung nicht
     // fälschlich anschlägt.
     const parentFieldFilled = (row: ConsolidatedRow, f: { id: string; spInternalName?: string }): boolean => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const parentReg = registrations.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === row.emailKey) as any;
+      const parentReg = activeParentRegOf(registrations, row.emailKey) as any; // v30.67: aktive, neueste Zeile
       const spName = (f as { spInternalName?: string }).spInternalName || '';
       if (parentReg) {
         let v: unknown = spName ? parentReg[spName] : undefined;
@@ -182,7 +191,16 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
         if (em) anySubEmails.add(em);
       }
     }
-    const orphanShadowRegs = registrations.filter(r => {
+    // v30.67: Diese Erkennung ist nur belastbar, wenn ALLE Termin-Listen
+    // gelesen wurden. War auch nur eine nicht lesbar (403 für eine nachträglich
+    // benannte Co-Organizerin, 429 beim 12. Termin), fehlen deren Personen in
+    // `anySubEmails` — jede davon hat aber (seit v30.42 garantiert) eine aktive
+    // Klammer-Zeile und landete hier als „Rest". Der Knopf darunter löscht die
+    // Klammer-Zeile HART, samt aller Hauptevent-Antworten. Ein leeres Ergebnis
+    // ohne geprüften Status ist keine Aussage über die Daten: Bei gesperrten
+    // Listen wird die Box ausgesetzt und das gesagt.
+    const orphanCheckBlocked = deniedSubEventLists.length > 0;
+    const orphanShadowRegs = orphanCheckBlocked ? [] : registrations.filter(r => {
       if ((r.Status || '') === 'Abgemeldet') return false;
       const em = (r.ParticipantEmail || '').toLowerCase().trim();
       return !!em && !anySubEmails.has(em);
@@ -204,6 +222,19 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
       // inline mit: Bei 400+ Teilnehmern musste man an der ganzen Tabelle
       // vorbeiscrollen, und der sticky-thead hätte keinen Bezugsrahmen.
       <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
+        {/* v30.67: Prüfung ausgesetzt, solange eine Termin-Liste nicht lesbar war —
+            sonst löscht „Rest-Anmeldung entfernen" echte Anmeldungen. */}
+        {orphanCheckBlocked && (
+          <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 10, border: '1px solid var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.07)', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+            <strong style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>
+              {isDe ? 'Prüfung auf unvollständige Anmeldungen ausgesetzt' : 'Check for incomplete registrations suspended'}
+            </strong>
+            {' — '}
+            {isDe
+              ? `${deniedSubEventLists.length} Termin-Liste(n) konnten nicht gelesen werden. Wer nur dort angemeldet ist, sähe hier wie ein Rest aus, und „Rest-Anmeldung entfernen“ würde eine echte Anmeldung löschen. Sobald alle Listen lesbar sind, erscheint die Prüfung wieder.`
+              : `${deniedSubEventLists.length} date list(s) could not be read. Anyone registered only there would look like a leftover here, and „Remove leftover“ would delete a real registration. The check returns as soon as all lists are readable.`}
+          </div>
+        )}
         {/* v23.7: Unvollständige Klammer-Anmeldungen (nur Klammer, kein Sub-Event)
             sichtbar machen — mit Erinnerungs- oder Entfernen-Option, damit eine
             blockierte (Neu-)Anmeldung wieder möglich wird. */}
@@ -303,8 +334,13 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                             style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-red, #c00)', borderColor: 'var(--dex-red, #c00)' }}
                             onClick={async () => {
                               if (!(await confirmDialog(isDe ? `Unvollständige Anmeldung von ${nm} entfernen? Die Person kann sich danach neu anmelden.` : `Remove the incomplete registration of ${nm}? The person can register again afterwards.`, { danger: true, confirmLabel: isDe ? 'Entfernen' : 'Remove' }))) return;
-                              await performSilentDuplicateDelete(r);
-                              showAlert(isDe ? 'Rest-Anmeldung entfernt — die Person kann jetzt wieder angemeldet werden.' : 'Leftover registration removed — the person can be registered again now.', { variant: 'success' });
+                              // v30.67: `deleteRegistration` wirft nicht, es liefert false —
+                              // vorher hieß es auch dann „entfernt".
+                              const okDel = await performSilentDuplicateDelete(r);
+                              showAlert(okDel
+                                ? (isDe ? 'Rest-Anmeldung entfernt — die Person kann jetzt wieder angemeldet werden.' : 'Leftover registration removed — the person can be registered again now.')
+                                : (isDe ? 'Rest-Anmeldung konnte NICHT entfernt werden (fehlende Rechte oder Drosselung) — die Zeile ist noch da.' : 'The leftover registration could NOT be removed (missing permissions or throttling) — the row is still there.'),
+                                { variant: okDel ? 'success' : 'error' });
                             }}
                           >
                             {isDe ? 'Rest-Anmeldung entfernen' : 'Remove leftover'}
@@ -944,7 +980,7 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                       // Sub-Event-CustomData. Vorher wurde nur Sub-Event-
                       // CustomData gelesen — Parent-Felder waren immer leer.
                       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      const parentReg = registrations.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === row.emailKey) as any;
+                      const parentReg = activeParentRegOf(registrations, row.emailKey) as any; // v30.67: aktive, neueste Zeile
                       if (parentReg) {
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         const spName = (f as any).spInternalName || '';
@@ -981,7 +1017,7 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                     {parentUserFields.map(f => {
                       let raw = '';
                       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      const parentReg = registrations.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === row.emailKey) as any;
+                      const parentReg = activeParentRegOf(registrations, row.emailKey) as any; // v30.67: aktive, neueste Zeile
                       if (parentReg && parentReg.CustomData) {
                         try { const v = JSON.parse(parentReg.CustomData)[f.id]; if (v !== undefined && v !== null && v !== '') raw = String(v); } catch { /* */ }
                       }

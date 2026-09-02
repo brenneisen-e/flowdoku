@@ -5,6 +5,7 @@
 import * as React from 'react';
 import { SPRegistration } from '../../../services/EventService';
 import { DeloitteEvent } from '../../../types';
+import { countConsolidatedActive } from '../logic/parentRegs';
 
 export interface KpiTilesProps {
   isConsolidatedMode: boolean;
@@ -17,7 +18,11 @@ export interface KpiTilesProps {
 
 export const KpiTiles: React.FC<KpiTilesProps> = (p) => {
   const { isConsolidatedMode, isSplitCapacity, registrations, selectedEvent, subEventRegsByEventId, t } = p;
-        const hasWaitlistKPI = !!(selectedEvent?.waitlistEnabled && (selectedEvent?.maxParticipants || 0) > 0);
+        // v30.67: Bei geteilten Kapazitäten ist `maxParticipants` per
+        // Definition 0 (die Kapazität steht in durchstarter-/funstarterCapacity).
+        // `> 0` sollte nur „Unbegrenzt" ausschließen, schloss aber jedes
+        // Split-Event mit aus — 25 Wartende, keine Kachel.
+        const hasWaitlistKPI = !!(selectedEvent?.waitlistEnabled && ((selectedEvent?.maxParticipants || 0) > 0 || isSplitCapacity));
         // Fraktionen pro Spalte — Angemeldet bekommt 2fr wenn Split aktiv ist.
         const angeFr = isSplitCapacity ? '2fr' : '1fr';
         const tail = `1fr 1fr${hasWaitlistKPI ? ' 1fr' : ''} 1fr`; // QR / Eingecheckt / [Warteliste] / Abgemeldet
@@ -36,7 +41,6 @@ export const KpiTiles: React.FC<KpiTilesProps> = (p) => {
               ...Object.values(subEventRegsByEventId),
             )
           : [];
-        const consolidatedActiveByEmail = new Set<string>();
         const consolidatedQRByEmail = new Set<string>();
         const consolidatedCheckedByEmail = new Set<string>();
         const consolidatedWaitlistByEmail = new Set<string>();
@@ -47,14 +51,16 @@ export const KpiTiles: React.FC<KpiTilesProps> = (p) => {
           // statt aus den KPIs zu verschwinden — sonst KPI < Tabelle.
           const key = (r.ParticipantEmail || '').toLowerCase().trim() || `__noemail#${r.Id}`;
           consolidatedAnyByEmail.add(key);
-          if (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt') consolidatedActiveByEmail.add(key);
           if (r.Status === 'QR versendet') consolidatedQRByEmail.add(key);
           if (r.Status === 'Eingecheckt') consolidatedCheckedByEmail.add(key);
           if (r.Status === 'Warteliste') consolidatedWaitlistByEmail.add(key);
           if (r.Status === 'Abgemeldet') consolidatedCancelledByEmail.add(key);
         }
         const active = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
-        const totalActive = isConsolidatedMode ? consolidatedActiveByEmail.size : active.length;
+        // v30.67: Über den gemeinsamen Helfer, damit die Detail-Karte
+        // („Aktuell registriert") dieselbe Zahl zeigt — vorher zählte sie die
+        // Matrix-Zeilen inklusive Warteliste.
+        const totalActive = isConsolidatedMode ? countConsolidatedActive(subEventRegsByEventId) : active.length;
         // v19.12: nach EFFEKTIVER Gruppe zählen (StarterType ODER, falls leer,
         // PreferredStarterType). Sonst fehlen angemeldete Nachrücker, deren
         // StarterType der Flow nicht gesetzt hat, in der Gruppen-Zahl — dann ist

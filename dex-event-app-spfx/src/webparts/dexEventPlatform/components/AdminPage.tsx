@@ -159,10 +159,19 @@ export default function AdminPage(): React.ReactElement {
       await refreshEvents();
       // Wenn ein Event gerade selektiert ist, auch dessen Registrations neu laden
       if (selectedEvent) {
-        try {
-          const regs = await getAllRegistrations(selectedEvent.id);
+        // v30.67: `getAllRegistrations` wirft nie — bei 429/403/500 kam bis
+        // hierher `[]` zurück und ersetzte die vollständige Liste durch eine
+        // leere, ohne Fehlertext. Wie im Auswahl-Pfad (v30.37) zählt der
+        // Status: bei Fehler bleibt der geladene Stand stehen, und ein
+        // Hinweis über der Tabelle sagt, dass er alt ist.
+        let failedStatus = -1;
+        const regs = await getAllRegistrations(selectedEvent.id, st => { failedStatus = st; });
+        if (failedStatus >= 0) {
+          setRegStaleHint(failedStatus === 401 || failedStatus === 403 ? 'denied' : 'transient');
+        } else {
+          setRegStaleHint('');
           setRegistrations(regs);
-        } catch { /* */ }
+        }
       }
     } finally { setIsRefreshing(false); }
   };
@@ -225,7 +234,21 @@ export default function AdminPage(): React.ReactElement {
     let cancelled = false;
     let cleanupSocket: (() => void) | null = null;
     const reload = (): void => {
-      getAllRegistrations(ev.id).then(r => { if (!cancelled) setRegistrations(r); }).catch(() => { /* */ });
+      // v30.67: Ein Push während einer Anmeldewelle trifft gern auf 429 —
+      // und `getAllRegistrations` liefert dann `[]` statt zu werfen. Das
+      // `.catch` hier war toter Code; die Tabelle, alle KPI-Kacheln und die
+      // Warteliste fielen still auf 0. Bei Fehler bleibt der alte Stand, mit
+      // Hinweis — NICHT `regLoadError`, das würde die Tabelle ersetzen.
+      let failedStatus = -1;
+      getAllRegistrations(ev.id, st => { failedStatus = st; }).then(r => {
+        if (cancelled) return;
+        if (failedStatus >= 0) {
+          setRegStaleHint(failedStatus === 401 || failedStatus === 403 ? 'denied' : 'transient');
+          return;
+        }
+        setRegStaleHint('');
+        setRegistrations(r);
+      }).catch(() => { /* */ });
     };
     subscribeEventRealtime(ev.id, 'participants', reload)
       .then(c => { if (cancelled) c(); else cleanupSocket = c; })
@@ -400,8 +423,14 @@ export default function AdminPage(): React.ReactElement {
       const denied: string[] = [];
       for (const ch of children) {
         try {
-          const regs = await getAllRegistrations(ch.id, st => {
-            if (st === 401 || st === 403 || st === 404 || st === 0) denied.push(ch.title || ch.id);
+          // v30.67: JEDER Rückruf heißt „nicht gelesen" — nicht nur vier
+          // Codes. Der Rückruf feuert per Definition bei jedem nicht-ok-Status;
+          // 429 (Drosselung beim 12. von 19 Terminen) und 5xx fehlten in der
+          // Liste und wurden zu „0 Teilnehmer" ohne Banner. Referenz:
+          // `analyzeRegistryAgainstLists` wertet nur 404/410 als eindeutig,
+          // alles andere als „sagt nichts über den Inhalt".
+          const regs = await getAllRegistrations(ch.id, () => {
+            denied.push(ch.title || ch.id);
           });
           map[ch.id] = regs;
         } catch {
@@ -449,6 +478,12 @@ export default function AdminPage(): React.ReactElement {
   }, [selectedEvent?.id, selectedEvent?.parentEventId]);
   const [isLoadingRegs, setIsLoadingRegs] = React.useState(false);
   const [regLoadError, setRegLoadError] = React.useState('');
+  // v30.67: Der LETZTE Nachlade-Versuch (Refresh-Knopf, Echtzeit-Push) ist
+  // fehlgeschlagen; die Tabelle zeigt deshalb den zuvor geladenen Stand.
+  // Bewusst getrennt von `regLoadError`: Das ersetzt die Tabelle — hier gibt
+  // es aber gültige Daten, nur ältere. Der Auswahl-Pfad setzt frisch.
+  const [regStaleHint, setRegStaleHint] = React.useState<'' | 'denied' | 'transient'>('');
+  React.useEffect(() => { setRegStaleHint(''); }, [selectedEvent?.id]);
   // v18.24: beim Event-/Tab-Wechsel die aktuelle Höhe der Detail-Card
   // „einfrieren", solange die Teilnehmer neu geladen werden — sonst klappt
   // die Card auf die „Lade..."-Zeile zusammen und springt danach wieder auf
@@ -1754,12 +1789,16 @@ export default function AdminPage(): React.ReactElement {
   // innerhalb der jeweiligen Gruppe), berechnet aus der UNGEFILTERTEN Liste —
   // damit die „Platz"-Anzeige auch beim Suchen/Filtern korrekt bleibt (sonst
   // zeigte eine gefilterte Trefferliste fälschlich Platz 1, 2, …).
-  const waitlistTruePos: Record<number, number> = (() => {
+  // v30.67: Dazu die wahre GRUPPENGRÖSSE je Person (`waitlistTrueTotal`) —
+  // der „Platz ändern"-Dialog bekam bisher `regs.length`, also die Zahl der
+  // SUCHTREFFER: Bei aktiver Suche hieß es „Platz 7 von 1", `max=1`, und nur
+  // die Vorbelegung „1" ließ sich speichern.
+  const { waitlistTruePos, waitlistTrueTotal } = ((): { waitlistTruePos: Record<number, number>; waitlistTrueTotal: Record<number, number> } => {
     const map: Record<number, number> = {};
+    const total: Record<number, number> = {};
     const rank = (arr: SPRegistration[]): void => {
-      arr.slice()
-        .sort((a, b) => (a.TeilnehmerID || 0) - (b.TeilnehmerID || 0))
-        .forEach((r, idx) => { if (typeof r.Id === 'number') map[r.Id] = idx + 1; });
+      const s = arr.slice().sort((a, b) => (a.TeilnehmerID || 0) - (b.TeilnehmerID || 0));
+      s.forEach((r, idx) => { if (typeof r.Id === 'number') { map[r.Id] = idx + 1; total[r.Id] = s.length; } });
     };
     const all = registrations.filter(r => r.Status === 'Warteliste');
     if (isSplitCapacity) {
@@ -1769,7 +1808,7 @@ export default function AdminPage(): React.ReactElement {
     } else {
       rank(all);
     }
-    return map;
+    return { waitlistTruePos: map, waitlistTrueTotal: total };
   })();
 
   // Roommate-Matching: durchsucht CustomData nach roommate-Type Feldern, extrahiert
@@ -1872,7 +1911,7 @@ export default function AdminPage(): React.ReactElement {
     setAssignAssistRow, setAssignAssistValue, setBulkKlammerProgress, setDeregBusy, setDeregModal,
     setDeregSelected, setDeregSilent, setMainFieldsEditError, setMainFieldsEditForm,
     setMainFieldsEditName, setMainFieldsEditReg, setMainFieldsEditSaving, setMainFieldsEditSubsite,
-    setMainFieldsEditTargetIsParent, setRegistrations, setSubEventRegsByEventId,
+    setMainFieldsEditTargetIsParent, setRegistrations,
     setSubRegReloadTick, showAlert,
   });
   // v30.66: Props-Buendel der ausgelagerten Teilansichten. Bewusst hier, direkt
@@ -2053,7 +2092,7 @@ export default function AdminPage(): React.ReactElement {
     buildCancellationMail, confirmDialog, currentUser, eventServiceRef, getAllRegistrations, isDe,
     isSplitCapacity, query, selectedEvent, setRegistrations, setWaitlistSortAsc, setWaitlistSortColumn,
     setWlPosModal, setWlPosValue, showAlert, waitlistDurch, waitlistFun, waitlistRegs,
-    waitlistSortAsc, waitlistSortColumn, waitlistTruePos, waitlistUnassigned, wlPosBusy,
+    waitlistSortAsc, waitlistSortColumn, waitlistTruePos, waitlistTrueTotal, waitlistUnassigned, wlPosBusy,
   };
   const cancelledListProps = {
     cancelledRegs, cancelledSortAsc, cancelledSortColumn, confirmDialog, consolidatedChildren, eventServiceRef,
@@ -2075,7 +2114,7 @@ export default function AdminPage(): React.ReactElement {
     duplicateEvents, isDe, selectedEvent, setConfirmDeleteEvent,
   };
   const eventDetailCardProps = {
-    activeRegs, childEventsOf, confirmDialog, consolidatedFiltered, detailCardRef, events,
+    activeRegs, childEventsOf, confirmDialog, detailCardRef, events,
     evTabHover, handleSelectEvent, isAdmin, isConsolidatedMode, isDe, isImpersonating,
     isLoadingRegs, isMobile, isOrganizerFor, navigate, openTabGroup, registrations,
     reservedDetailHeight, reservedDetailWidth, selectedEvent, setCheckInHubOpen, setCheckInHubStep, setEvTabHover,
@@ -2131,7 +2170,7 @@ export default function AdminPage(): React.ReactElement {
   };
   const consolidatedViewProps = {
     addAllToKlammer, addingToKlammer, addToKlammer, bulkKlammerProgress, colToggleHover, confirmDialog,
-    consolidatedChildren, consolidatedFiltered, consolidatedRows, consolidatedSort, consolidatedSortAsc, expandedConsolidatedEmail,
+    consolidatedChildren, consolidatedFiltered, consolidatedRows, consolidatedSort, consolidatedSortAsc, deniedSubEventLists, expandedConsolidatedEmail,
     highlightMatch, inactiveAccounts, isAdmin, isConsolidatedMode, isDe, isLoadingSubEventRegs,
     isOrganizerFor, missingReminderKey, openDeregModal, openMainFieldsEdit, orgPastLock, performSilentDuplicateDelete,
     personalColsCollapsed, registrations, reminderBusyId, searchQuery, selectedEvent, sendCompleteRegistrationReminder,
@@ -2472,6 +2511,20 @@ export default function AdminPage(): React.ReactElement {
               {deniedSubEventLists.length > 8 ? ` … (+${deniedSubEventLists.length - 8})` : ''}
             </div>
           </div>
+        )}
+        {/* v30.67: Nachladen fehlgeschlagen — die Tabelle bleibt (alter Stand),
+            der Hinweis kommt dazu. Vorher wurde die Liste bei jedem HTTP-Fehler
+            eines Pushs still durch `[]` ersetzt. */}
+        {regStaleHint && !regLoadError && (
+          <p style={{ color: 'var(--dex-orange-dark, #b35a00)', background: 'rgba(237,139,0,0.10)', border: '1px solid var(--dex-orange, #ed8b00)', borderRadius: 6, padding: '8px 10px', fontSize: 13, marginBottom: 12 }}>
+            {regStaleHint === 'denied'
+              ? (isDe
+                ? 'Aktualisierung fehlgeschlagen: kein Zugriff auf die Teilnehmerliste. Angezeigt wird der zuletzt geladene Stand.'
+                : 'Refresh failed: no access to the participant list. Showing the last loaded state.')
+              : (isDe
+                ? 'Aktualisierung fehlgeschlagen (Drosselung oder Netz). Angezeigt wird der zuletzt geladene Stand — bitte „Aktualisieren“ erneut versuchen.'
+                : 'Refresh failed (throttling or network). Showing the last loaded state — please try „Refresh“ again.')}
+          </p>
         )}
         {regLoadError ? (
           <p style={{ color: 'var(--dex-red)', fontStyle: 'italic' }}>

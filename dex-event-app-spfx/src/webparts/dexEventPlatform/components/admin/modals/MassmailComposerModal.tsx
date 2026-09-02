@@ -4,6 +4,7 @@
  */
 import * as React from 'react';
 import { replacePlaceholders, wrapTemplate } from '../../../services/EmailTemplates';
+import { formatOrganizerList } from '../../../context/eventTextHelpers';
 import { HtmlEditorModal } from '../../HtmlEditorModal';
 import RecipientPicker from '../../admin/RecipientPicker';
 import MailHeaderImageChooser from '../../admin/MailHeaderImageChooser';
@@ -76,7 +77,11 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
           }
           return registrations.filter(r => ACTIVE.indexOf(r.Status) >= 0);
         })();
-        const orgNames = (selectedEvent.organizers || []).join(', ');
+        // v30.67: Über `formatOrganizerList` wie alle anderen Mail-Stellen —
+        // `join(', ')` auf den Roh-Werten („Nachname, Vorname") ergab
+        // „Sathasivam, Philipp, Oesterle, Ines", Vor- und Nachnamen nicht
+        // mehr auseinanderzuhalten.
+        const orgNames = formatOrganizerList(selectedEvent.organizers || [], selectedEvent.emailLanguage || 'EN') || (selectedEvent.organizers || []).join(', ');
         const previewVars: Record<string, string> = {
           EventTitle: selectedEvent.title,
           Organizer: orgNames,

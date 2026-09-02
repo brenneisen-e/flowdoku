@@ -97,7 +97,10 @@ export function useColumnConfig(ctx: UseColumnConfigCtx): UseColumnConfigResult 
     // v19.11: Zusätzlich `hasWaitlistActivity` — Events OHNE echte Warteliste
     // (Default waitlistEnabled=true, aber niemand wartet/nachgerückt) zeigen die
     // leeren Audit-Spalten jetzt nicht mehr.
-    if (selectedEvent?.waitlistEnabled && (selectedEvent?.maxParticipants || 0) > 0 && hasWaitlistActivity) {
+    // v30.67: `|| isSplit` — bei geteilten Kapazitäten ist `maxParticipants`
+    // 0, die Audit-Spalten erschienen dort nie (dieselbe Verwechslung wie bei
+    // der KPI-Kachel „Warteliste", KpiTiles.tsx).
+    if (selectedEvent?.waitlistEnabled && ((selectedEvent?.maxParticipants || 0) > 0 || isSplit) && hasWaitlistActivity) {
       cols.push({ id: 'promotedDate', label: 'Nachgerückt am' });
       // v19.4: „Hat ersetzt" = die abgemeldete Person, deren Platz diese Person
       // übernommen hat. „Wurde ersetzt durch" wandert in die Abmeldungen-Tabelle
@@ -237,8 +240,19 @@ export function useColumnConfig(ctx: UseColumnConfigCtx): UseColumnConfigResult 
   }, [columnStorageKey, availableColumns.map(c => c.id).join(',')]);
 
   // Persistieren bei Änderungen.
+  // v30.67: NUR nach einer echten Benutzeraktion (hide/show/move). Der
+  // Lade-Effekt oben hängt an `availableColumns`, und das hängt an den noch
+  // nicht geladenen `registrations`: Beim Öffnen fehlten die bedingten Spalten
+  // („Nachgerückt am", „Startnummer"), der Lader schnitt sie aus order UND
+  // hidden, und dieser Effekt schrieb den Zwischenstand sofort als Wahrheit
+  // fest. Kamen die Anmeldungen Sekunden später, war die Ausblendung weg —
+  // bei jedem Öffnen aufs Neue. Ein Dirty-Flag trennt „User hat umgestellt"
+  // von „Lader hat auf einen unvollständigen Spaltensatz reduziert".
+  const columnDirtyRef = React.useRef(false);
   React.useEffect(() => {
     if (!columnStorageKey || columnOrder.length === 0) return;
+    if (!columnDirtyRef.current) return;
+    columnDirtyRef.current = false;
     try {
       localStorage.setItem(columnStorageKey, JSON.stringify({ order: columnOrder, hidden: hiddenColumns }));
     } catch { /* quota exceeded oder private mode → ignorieren */ }
@@ -248,9 +262,10 @@ export function useColumnConfig(ctx: UseColumnConfigCtx): UseColumnConfigResult 
   const hideColumn = (id: string): void => {
     const col = availableColumns.find(c => c.id === id);
     if (!col || col.alwaysVisible) return;
-    if (hiddenColumns.indexOf(id) < 0) setHiddenColumns([...hiddenColumns, id]);
+    if (hiddenColumns.indexOf(id) < 0) { columnDirtyRef.current = true; setHiddenColumns([...hiddenColumns, id]); }
   };
   const showColumn = (id: string): void => {
+    columnDirtyRef.current = true;
     setHiddenColumns(hiddenColumns.filter(h => h !== id));
     if (columnOrder.indexOf(id) < 0) {
       const actionIdx = columnOrder.indexOf('action');
@@ -267,6 +282,7 @@ export function useColumnConfig(ctx: UseColumnConfigCtx): UseColumnConfigResult 
     if (columnOrder[target] === 'action') return;
     const next = [...columnOrder];
     [next[idx], next[target]] = [next[target], next[idx]];
+    columnDirtyRef.current = true;
     setColumnOrder(next);
   };
   return {

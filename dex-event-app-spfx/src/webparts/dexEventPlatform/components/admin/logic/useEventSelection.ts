@@ -79,10 +79,12 @@ export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionR
       // v30.37: Auch hier zählt der HTTP-Status. Ein 403 kam bisher als leere
       // Liste an und wurde als „Noch keine Teilnehmer registriert." gerendert —
       // die freundlichste denkbare Lüge.
-      let ownDenied = 0;
-      const regs = await getAllRegistrations(event.id, st => {
-        if (st === 401 || st === 403 || st === 404 || st === 0) ownDenied = st;
-      });
+      // v30.67: JEDER Rückruf zählt — 429 und 5xx fehlten in der Liste und
+      // kamen als „Noch keine Teilnehmer registriert." an. Und `st === 0`
+      // (Netzfehler) war zwar gelistet, machte `ownDenied` aber zu 0 = falsy,
+      // der Hinweis blieb also gerade im Netzfehler-Fall aus.
+      let ownDenied = false;
+      const regs = await getAllRegistrations(event.id, () => { ownDenied = true; });
       setRegistrations(regs);
       if (ownDenied) setRegLoadError(ACCESS_DENIED_MSG);
     } catch {

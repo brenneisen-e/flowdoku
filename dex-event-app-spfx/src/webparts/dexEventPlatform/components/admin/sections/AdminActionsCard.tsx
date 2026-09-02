@@ -977,8 +977,12 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                   let mismatched = 0;
                   let eventsUpdated = 0;
                   let orgsRecovered = 0;
-                  let orgsUnresolved = 0;
                   const unresolvedNames: string[] = [];
+                  // v30.67: Namen, die beim Schreiben aus dem Organizer-Feld
+                  // fielen (s. finalPairs unten) — getrennt gemeldet, weil der
+                  // Admin sie im Wizard neu hinzufügen muss.
+                  const droppedNames: string[] = [];
+                  let namesFromEmail = 0;
                   try {
                     for (const ev of adminEvents) {
                       scanned++;
@@ -996,6 +1000,7 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                       // Für jeden Slot mit Name aber ohne Email: Graph-Search nach Lastname
                       // pro Slot, EINS-zu-EINS-Match wenn Local-Part den Lastname enthält.
                       let recoveredHere = 0;
+                      const unresolvedHere: string[] = [];
                       const fixedNames = names.slice();
                       const fixedEmails = emails.slice();
                       for (let i = 0; i < max; i++) {
@@ -1029,21 +1034,40 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                             orgsRecovered++;
                           } else {
                             // Mehrdeutig oder nichts gefunden — leer lassen
-                            unresolvedNames.push(`${name} (Event ${ev.eventNumber})`);
-                            orgsUnresolved++;
+                            unresolvedHere.push(`${name} (Event ${ev.eventNumber})`);
                           }
                         } catch {
-                          unresolvedNames.push(`${name} (Event ${ev.eventNumber})`);
-                          orgsUnresolved++;
+                          unresolvedHere.push(`${name} (Event ${ev.eventNumber})`);
                         }
                       }
                       // Nichts wiederhergestellt? Skip Update — Storage ist eh schon
                       // im aktuellen Zustand, Pad allein bringt keinen Mehrwert
                       // (bei Save aus Wizard heilt sich das ohnehin).
-                      if (recoveredHere === 0) continue;
-                      // Alle vollständig leeren Slots aussortieren bevor wir schreiben
+                      if (recoveredHere === 0) { unresolvedNames.push(...unresolvedHere); continue; }
+                      // v30.67: Slots „E-Mail ohne Namen" vor dem Schreiben mit dem
+                      // Anzeigenamen füllen (ersatzweise die Adresse selbst) — die
+                      // E-Mail ist berechtigungsrelevant und darf nicht wegfallen.
+                      for (let i = 0; i < max; i++) {
+                        const e = (fixedEmails[i] || '').trim();
+                        if (!e || (fixedNames[i] || '').trim()) continue;
+                        let resolved = '';
+                        try { resolved = eventServiceRef ? await eventServiceRef.displayNameForEmail(e) : ''; } catch { /* Adresse als Name */ }
+                        fixedNames[i] = resolved || e;
+                        namesFromEmail++;
+                      }
+                      // v30.67: NUR vollständige Paare schreiben — wie
+                      // `sanitizeOrganizerPairs` im Wizard. Organizer und
+                      // OrganizerEmail sind zwei POSITIONSGEBUNDENE Strings, aber die
+                      // Lesekante (`eventMapping.ts`, `.filter(s => s)`) verwirft leere
+                      // Segmente: 'anna;;carla' wird zu [anna, carla], und ab dann trägt
+                      // „Bernd" Carlas Adresse; `remove(idx)` auf Bernds Chip löscht
+                      // Carlas E-Mail. Die Reparatur erzeugte damit genau die
+                      // Verschiebung, die sie beheben soll — und der zweite Lauf
+                      // zementierte sie. Unauflösbare Namen fallen deshalb aus dem
+                      // Feld und werden unten namentlich gemeldet.
                       const finalPairs = fixedNames.map((n, i) => ({ n: (n || '').trim(), e: (fixedEmails[i] || '').trim() }))
-                        .filter(p => p.n || p.e);
+                        .filter(p => p.n && p.e);
+                      droppedNames.push(...unresolvedHere);
                       const finalNames = finalPairs.map(p => p.n).join('; ');
                       const finalEmails = finalPairs.map(p => p.e).join(';');
                       try {
@@ -1057,10 +1081,18 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                     const lines = isDe
                       ? [`Gescannt: ${scanned}`, `Mit Mismatch: ${mismatched}`, `Aktualisiert: ${eventsUpdated}`, `Emails wiederhergestellt: ${orgsRecovered}`]
                       : [`Scanned: ${scanned}`, `With mismatch: ${mismatched}`, `Updated: ${eventsUpdated}`, `Emails recovered: ${orgsRecovered}`];
-                    if (orgsUnresolved > 0) {
+                    if (namesFromEmail > 0) {
+                      lines.push(isDe ? `Namen zu E-Mails ergänzt: ${namesFromEmail}` : `Names added for emails: ${namesFromEmail}`);
+                    }
+                    if (unresolvedNames.length > 0) {
                       lines.push(isDe
-                        ? `Manuell nachziehen (${orgsUnresolved}): ${unresolvedNames.slice(0, 5).join(', ')}${unresolvedNames.length > 5 ? '…' : ''}`
-                        : `Add manually (${orgsUnresolved}): ${unresolvedNames.slice(0, 5).join(', ')}${unresolvedNames.length > 5 ? '…' : ''}`);
+                        ? `E-Mail manuell nachziehen (${unresolvedNames.length}): ${unresolvedNames.slice(0, 5).join(', ')}${unresolvedNames.length > 5 ? '…' : ''}`
+                        : `Add email manually (${unresolvedNames.length}): ${unresolvedNames.slice(0, 5).join(', ')}${unresolvedNames.length > 5 ? '…' : ''}`);
+                    }
+                    if (droppedNames.length > 0) {
+                      lines.push(isDe
+                        ? `Ohne E-Mail nicht speicherbar — aus dem Organizer-Feld entfernt, im Wizard neu hinzufügen (${droppedNames.length}): ${droppedNames.slice(0, 5).join(', ')}${droppedNames.length > 5 ? '…' : ''}`
+                        : `Not storable without email — removed from the organizer field, re-add in the wizard (${droppedNames.length}): ${droppedNames.slice(0, 5).join(', ')}${droppedNames.length > 5 ? '…' : ''}`);
                     }
                     setRepairOrganizersResult(lines.join(' · '));
                   } catch (err) {
@@ -1105,6 +1137,8 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                   setNameFixModal({ running: true, step: isDe ? 'Teilnehmerlisten' : 'Participant lists', evIdx: 0, evTotal: adminEvents.length, summary: null });
                   let regHits = 0; let regFixed = 0; let regFailed = 0;
                   let orgFixed = 0; let orgEvents = 0;
+                  // v30.67: Slots ohne E-Mail, die beim Schreiben wegfielen (s.u.).
+                  let orgDropped = 0;
                   let roleFixed = 0; let roleHits = 0;
                   try {
                     // 1. Teilnehmerlisten aller Events (Sub-Events haben eigene Listen
@@ -1139,8 +1173,16 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                         changed++; orgFixed++;
                       }
                       if (changed === 0) continue;
+                      // v30.67: nur vollständige Paare schreiben (s. „Organizer-Mails
+                      // reparieren"). `emails` war hier zudem ein SPARSE Array, wenn es
+                      // kürzer als `names` war — `join(';')` macht aus den Löchern leere
+                      // Segmente, die Lesekante verwirft sie, alle Adressen dahinter
+                      // rutschen um einen Slot nach vorn.
+                      const pairs = names.map((n, i) => ({ n: (n || '').trim(), e: (emails[i] || '').trim() }));
+                      const complete = pairs.filter(p => p.n && p.e);
+                      orgDropped += pairs.length - complete.length;
                       try {
-                        const ok = await updateEvent(ev.id, { 'Organizer': names.join('; '), 'OrganizerEmail': emails.join(';') });
+                        const ok = await updateEvent(ev.id, { 'Organizer': complete.map(p => p.n).join('; '), 'OrganizerEmail': complete.map(p => p.e).join(';') });
                         if (ok) orgEvents++;
                       } catch { /* Event überspringen */ }
                     }
@@ -1154,12 +1196,12 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                     const lines = isDe
                       ? [
                         `Teilnehmerzeilen: ${regHits} betroffen, ${regFixed} repariert${regFailed > 0 ? `, ${regFailed} fehlgeschlagen` : ''}`,
-                        `Organizer-Namen: ${orgFixed} in ${orgEvents} Event(s)`,
+                        `Organizer-Namen: ${orgFixed} in ${orgEvents} Event(s)${orgDropped > 0 ? `, ${orgDropped} Slot(s) ohne E-Mail nicht übernommen (im Wizard nachtragen)` : ''}`,
                         `Rollenverwaltung: ${roleHits} betroffen, ${roleFixed} repariert`,
                       ]
                       : [
                         `Attendee rows: ${regHits} affected, ${regFixed} repaired${regFailed > 0 ? `, ${regFailed} failed` : ''}`,
-                        `Organizer names: ${orgFixed} in ${orgEvents} event(s)`,
+                        `Organizer names: ${orgFixed} in ${orgEvents} event(s)${orgDropped > 0 ? `, ${orgDropped} slot(s) without email not written (add in the wizard)` : ''}`,
                         `Role management: ${roleHits} affected, ${roleFixed} repaired`,
                       ];
                     setRepairNamesResult(lines.join(' · '));
@@ -1327,11 +1369,26 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                         nf.options = [];
                         changes.push(`${label} -> Checkbox`);
                       }
-                      const isShirt = lowLabel.indexOf('t-shirt') >= 0 || lowLabel.indexOf('tshirt') >= 0 || lowLabel.indexOf('shirt') >= 0;
+                      // v30.67: Idempotent machen. Der Guard prüfte auf 'kein' — ein
+                      // Wort, das in keinem der beiden eingefügten Texte vorkommt
+                      // ('Ohne T-Shirt', 'Habe bereits ein Laufshirt'). Jeder Klick
+                      // hängte deshalb eine weitere Kopie vorn an. Und 'Laufshirt'
+                      // enthält 'shirt': Ein Laufshirt-Feld lief durch BEIDE Zweige,
+                      // bekam 'Ohne T-Shirt' UND ein zweites 'Habe bereits …', und
+                      // `required` kippte erst auf false, dann zurück auf true.
+                      const uniqOpts = (arr: string[]): string[] => arr.filter((o, i) => arr.indexOf(o) === i);
+                      const hasOpt = (arr: string[], text: string): boolean =>
+                        arr.some((o: string) => o.trim().toLowerCase() === text.toLowerCase() || o.toLowerCase().indexOf('kein') >= 0);
+                      const isLaufshirt = nf.id === 'b2run_laufshirt' || /laufshirt/i.test(label);
+                      const isShirt = !isLaufshirt && (lowLabel.indexOf('t-shirt') >= 0 || lowLabel.indexOf('tshirt') >= 0 || lowLabel.indexOf('shirt') >= 0);
                       if (isShirt && nf.type === 'select') {
-                        const opts: string[] = Array.isArray(nf.options) ? nf.options.slice() : [];
-                        const hasNo = opts.some((o: string) => o.toLowerCase().indexOf('kein') >= 0);
-                        if (!hasNo) {
+                        const rawOpts: string[] = Array.isArray(nf.options) ? nf.options.slice() : [];
+                        const opts = uniqOpts(rawOpts);
+                        if (opts.length !== rawOpts.length) {
+                          nf.options = opts;
+                          changes.push(`${label}: doppelte Optionen entfernt`);
+                        }
+                        if (!hasOpt(opts, 'Ohne T-Shirt')) {
                           opts.unshift('Ohne T-Shirt');
                           nf.options = opts;
                           changes.push(`${label} -> 'Ohne T-Shirt'-Option`);
@@ -1367,15 +1424,19 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                           changes.push('B2Run-Datenschutz: AGB + Datenschutz Links ergänzt');
                         }
                       }
-                      if (nf.id === 'b2run_laufshirt' || /laufshirt/i.test(label)) {
+                      if (isLaufshirt) {
                         if (!nf.required) {
                           nf.required = true;
                           changes.push(`${label || nf.id}: als Pflichtfeld markiert`);
                         }
                         if (nf.type === 'select') {
-                          const opts: string[] = Array.isArray(nf.options) ? nf.options.slice() : [];
-                          const hasNo = opts.some((o: string) => o.toLowerCase().indexOf('kein') >= 0);
-                          if (!hasNo) {
+                          const rawOpts: string[] = Array.isArray(nf.options) ? nf.options.slice() : [];
+                          const opts = uniqOpts(rawOpts);
+                          if (opts.length !== rawOpts.length) {
+                            nf.options = opts;
+                            changes.push(`${label || nf.id}: doppelte Optionen entfernt`);
+                          }
+                          if (!hasOpt(opts, 'Habe bereits ein Laufshirt')) {
                             opts.unshift('Habe bereits ein Laufshirt');
                             nf.options = opts;
                             changes.push(`${label || nf.id}: 'Habe bereits ein Laufshirt'-Option hinzugefügt`);

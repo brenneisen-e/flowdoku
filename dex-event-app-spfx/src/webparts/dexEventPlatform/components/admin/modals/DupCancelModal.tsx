@@ -10,7 +10,7 @@ export interface DupCancelModalProps {
   dupCancelBusy: boolean;
   dupCancelReg: SPRegistration;
   isDe: boolean;
-  performSilentDuplicateDelete: (reg: SPRegistration) => Promise<void>;
+  performSilentDuplicateDelete: (reg: SPRegistration) => Promise<boolean>;
   performStandardCancel: (reg: SPRegistration) => Promise<void>;
   setDupCancelBusy: React.Dispatch<React.SetStateAction<boolean>>;
   setDupCancelReg: React.Dispatch<React.SetStateAction<SPRegistration>>;
@@ -52,10 +52,15 @@ export const DupCancelModal: React.FC<DupCancelModalProps> = (p) => {
                 disabled={dupCancelBusy}
                 onClick={async () => {
                   setDupCancelBusy(true);
-                  await performSilentDuplicateDelete(reg);
+                  // v30.67: Rückgabewert auswerten — `deleteRegistration` meldet
+                  // Misserfolg über false, nicht über eine Ausnahme.
+                  const okDel = await performSilentDuplicateDelete(reg);
                   setDupCancelBusy(false);
                   setDupCancelReg(null);
-                  showAlert(isDe ? 'Doppelte Anmeldung still entfernt.' : 'Duplicate registration silently removed.', { variant: 'success' });
+                  showAlert(okDel
+                    ? (isDe ? 'Doppelte Anmeldung still entfernt.' : 'Duplicate registration silently removed.')
+                    : (isDe ? 'Die Zeile konnte NICHT entfernt werden (fehlende Rechte oder Drosselung) — sie ist noch da.' : 'The row could NOT be removed (missing permissions or throttling) — it is still there.'),
+                    { variant: okDel ? 'success' : 'error' });
                 }}
               >
                 {dupCancelBusy ? (isDe ? 'Wird entfernt…' : 'Removing…') : (isDe ? 'Duplikat still entfernen (empfohlen)' : 'Silently remove duplicate (recommended)')}

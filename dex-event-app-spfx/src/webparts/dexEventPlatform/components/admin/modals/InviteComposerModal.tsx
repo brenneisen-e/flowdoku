@@ -5,6 +5,7 @@
 import * as React from 'react';
 import { getBlockedInviteRecipients } from '../../../utils/inviteGuards';
 import { replacePlaceholders, wrapTemplate } from '../../../services/EmailTemplates';
+import { formatOrganizerList } from '../../../context/eventTextHelpers';
 import RecipientPicker from '../../admin/RecipientPicker';
 import MailHeaderImageChooser from '../../admin/MailHeaderImageChooser';
 import { Check, Send } from '../../Icons';
@@ -155,7 +156,8 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
               : inviteTarget === 'uninvited' ? 'To not-yet-invited'
               : inviteTarget === 'pending' ? 'To not-yet-registered'
               : 'To mail distribution'} (${nRecipients === 0 ? 'empty' : nRecipients + ' recipients'})`);
-        const orgNames = (selectedEvent.organizers || []).join(', ');
+        // v30.67: s. MassmailComposerModal — „Nachname, Vorname"-Mus vermeiden.
+        const orgNames = formatOrganizerList(selectedEvent.organizers || [], selectedEvent.emailLanguage || 'EN') || (selectedEvent.organizers || []).join(', ');
         const appUrl = `${siteUrl}/SitePages/DEX.aspx?env=WebView`;
         const previewVars: Record<string, string> = {
           EventTitle: selectedEvent.title,
