@@ -325,13 +325,28 @@ export default function SettingsPage(): React.ReactElement {
     if (success) {
       setStatusMsg(`Rolle für ${userName} entfernt.`);
     } else {
-      setStatusMsg('Error: Rolle konnte nicht entfernt werden.');
+      // v30.67: `false` heisst seit dem Web-Revoke nicht mehr "Zeile nicht
+      // entfernt", sondern "Zeile ODER SharePoint-Rechte nicht vollstaendig".
+      // Die DEX_Roles-Zeile ist in diesem Fall in aller Regel weg; was blieb,
+      // ist ein Recht auf dem Web oder einer Liste. Das muss der Admin wissen,
+      // sonst haelt er die Person fuer ausgesperrt, die es nicht ist.
+      setStatusMsg(isDe
+        ? `Rolle für ${userName} entfernt — aber die SharePoint-Rechte konnten nicht vollständig entzogen werden. Bitte die Berechtigungen der Person auf der Site prüfen (Details in der Browser-Konsole unter [DEX]).`
+        : `Role for ${userName} removed — but the SharePoint permissions could not be fully revoked. Please check the person's permissions on the site (details in the browser console under [DEX]).`);
     }
-    setTimeout(() => setStatusMsg(''), 4000);
+    setTimeout(() => setStatusMsg(''), success ? 4000 : 12000);
   };
 
   const handleChangeRole = async (itemId: number, role: UserRole): Promise<void> => {
-    await updateRole(itemId, role);
+    // v30.67: Rueckgabewert auswerten — vorher blieb ein nicht entzogenes Recht
+    // beim Herabstufen unsichtbar.
+    const ok = await updateRole(itemId, role);
+    if (!ok) {
+      setStatusMsg(isDe
+        ? 'Rolle geändert — aber die SharePoint-Rechte konnten nicht vollständig angepasst werden. Bitte die Berechtigungen der Person auf der Site prüfen (Details in der Browser-Konsole unter [DEX]).'
+        : 'Role changed — but the SharePoint permissions could not be fully adjusted. Please check the person\'s permissions on the site (details in the browser console under [DEX]).');
+      setTimeout(() => setStatusMsg(''), 12000);
+    }
   };
 
   // v24.87: roleBadge entfernt (war nur für die gelöschte „User Information"-Karte).

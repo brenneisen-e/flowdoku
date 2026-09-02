@@ -1165,10 +1165,13 @@ export class EventService {
     return subsiteProvisioning.ensureOrganizerPermissions(this, subsiteUrl, organizerEmails);
   }
 
+  // v30.67: Rueckgabetyp aus dem Modul durchreichen — der alte Inline-Typ blendete
+  // `failed` aus, und die Aufrufer konnten fehlgeschlagene Rechtevergaben nicht
+  // anzeigen (der Fund: "meldet Erfolg, ohne eine Antwort zu pruefen").
   public async ensureOrganizerPermissionsMulti(
     subsiteUrls: string[],
     organizerEmails: string
-  ): Promise<{ sites: number; users: number; grants: number; unresolved: string[] }> {
+  ): Promise<subsiteProvisioning.OrganizerPermissionsResult> {
     return subsiteProvisioning.ensureOrganizerPermissionsMulti(this, subsiteUrls, organizerEmails);
   }
 
