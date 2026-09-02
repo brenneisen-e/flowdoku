@@ -11,6 +11,7 @@ import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions, SPHttpClientConfiguration } from '@microsoft/sp-http';
 import { withThrottleRetry } from '../utils/spThrottle';
 import { dlog } from '../utils/debugLog';
+import { isCurrentUser } from '../utils/sessionIdentities';
 
 export class SharePointService {
   private context: WebPartContext;
@@ -416,47 +417,125 @@ export class SharePointService {
 
   /**
    * Einem User die Berechtigung auf die DEX_Events-Liste entziehen.
+   *
+   * v30.67: Liefert, ob der Entzug WIRKT (nachgelesen, nicht nur abgeschickt).
+   * Vorher `void` mit stillem catch — ein gescheiterter Entzug sah für die App
+   * genauso aus wie ein gelungener, und die Rollenverwaltung meldete „Rolle
+   * entfernt", während die Rechte stehen blieben.
    */
-  public async revokeAccessOnEventsList(userEmail: string): Promise<void> {
-    try {
-      const userId = await this.getUserIdByEmail(userEmail);
-      if (!userId) return;
-
-      const headers: HeadersInit = {
-        'Accept': 'application/json;odata=verbose',
-        'X-HTTP-Method': 'DELETE',
-      };
-
-      await this._sp.post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/roleassignments/getbyprincipalid(${userId})`,
-        SPHttpClient.configurations.v1,
-        { headers }
-      );
-    } catch (e) {
-      console.warn('[DEX] revokeAccessOnEventsList Error:', e);
-    }
+  public async revokeAccessOnEventsList(userEmail: string): Promise<boolean> {
+    return this._revokePrincipalOn(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')`, userEmail, 'revokeAccessOnEventsList');
   }
 
   /**
    * Einem User die Berechtigung auf die Rollen-Liste entziehen.
+   * v30.67: Rückgabe wie `revokeAccessOnEventsList`.
    */
-  public async revokeAccessOnRolesList(userEmail: string): Promise<void> {
+  public async revokeAccessOnRolesList(userEmail: string): Promise<boolean> {
+    return this._revokePrincipalOn(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')`, userEmail, 'revokeAccessOnRolesList');
+  }
+
+  /**
+   * v30.67: Spiegelbild zu `grantOrganizerPermissions`, das ZWEI Rechte
+   * vergibt — Full Control auf DEX_Events UND Full Control auf dem Web-Root
+   * (`/_api/web/roleassignments`, nötig für `webs/add`). Für das zweite gab es
+   * bis v30.66 kein Gegenstück: Wer auf „User" zurückgestuft oder aus
+   * DEX_Roles gelöscht wurde, behielt Full Control auf der gesamten
+   * Site-Collection — inklusive aller Teilnehmer-Subsites und „Manage
+   * Permissions", womit sich die Person die entzogenen Listenrechte selbst
+   * zurückgeben konnte.
+   *
+   * Entzogen wird NUR die direkte Zuweisung dieses einen Principals
+   * (`getbyprincipalid`), nie eine Gruppe. Rechte über Owners/Members/
+   * Visitors bleiben unberührt.
+   *
+   * Selbstschutz: Für die angemeldete Person läuft der Entzug NICHT — ein
+   * Admin, der die Rollenverwaltung an sich selbst testet, würde sich sonst
+   * aus der Site aussperren. Der Aufrufer (RoleContext) prüft das ebenfalls;
+   * hier ist die letzte Sperre für jeden anderen Aufrufer.
+   */
+  public async revokeSiteAccess(userEmail: string): Promise<boolean> {
+    if (isCurrentUser(this.context, userEmail)) {
+      console.warn(`[DEX] revokeSiteAccess: Selbstschutz — Web-Rechte von ${userEmail} (angemeldete Person) werden NICHT entzogen.`);
+      return false;
+    }
+    return this._revokePrincipalOn(`${this.siteUrl}/_api/web`, userEmail, 'revokeSiteAccess');
+  }
+
+  /**
+   * v30.67: Direkte Rollenzuweisung EINES Principals auf einem Securable
+   * (Web oder Liste) entfernen und das Ergebnis NACHLESEN.
+   *
+   * Warum nachlesen statt nur den DELETE-Status zu prüfen: SharePoint
+   * antwortet auf `getbyprincipalid(...)` ohne vorhandene Zuweisung je nach
+   * Fall mit 404 oder 500 — das ist dann KEIN Fehler, es gab nichts zu
+   * entziehen. Und ein 403 (kein „Manage Permissions") ließe die Rechte
+   * stehen. Die einzige belastbare Aussage ist deshalb der Blick in die
+   * Zuweisungsliste danach: Steht der Principal noch drin, ist der Entzug
+   * gescheitert — egal, was der DELETE gemeldet hat.
+   *
+   * @returns true = die Person hat auf diesem Securable keine direkte
+   *   Zuweisung mehr. false = steht noch drin ODER nicht prüfbar; in beiden
+   *   Fällen mit `console.warn('[DEX] …')`, denn ein still gescheiterter
+   *   Entzug ist derselbe Zustand wie gar keiner — nur ohne dass es jemand
+   *   weiß.
+   */
+  private async _revokePrincipalOn(scopeBase: string, userEmail: string, label: string): Promise<boolean> {
+    let userId: number | null = null;
     try {
-      const userId = await this.getUserIdByEmail(userEmail);
-      if (!userId) return;
-
-      const headers: HeadersInit = {
-        'Accept': 'application/json;odata=verbose',
-        'X-HTTP-Method': 'DELETE',
-      };
-
-      await this._sp.post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/roleassignments/getbyprincipalid(${userId})`,
-        SPHttpClient.configurations.v1,
-        { headers }
-      );
+      userId = await this.getUserIdByEmail(userEmail);
     } catch (e) {
-      console.warn('[DEX] revokeAccessOnRolesList Error:', e);
+      console.warn(`[DEX] ${label}: User-Id für ${userEmail} nicht auflösbar — nichts entzogen.`, e);
+      return false;
+    }
+    if (!userId) {
+      console.warn(`[DEX] ${label}: Keine User-Id für ${userEmail} — nichts entzogen.`);
+      return false;
+    }
+
+    let deleteStatus = 0;
+    try {
+      const del = await this._sp.post(
+        `${scopeBase}/roleassignments/getbyprincipalid(${userId})`,
+        SPHttpClient.configurations.v1,
+        { headers: { 'Accept': 'application/json;odata=verbose', 'X-HTTP-Method': 'DELETE' } }
+      );
+      deleteStatus = del.status;
+    } catch (e) {
+      console.warn(`[DEX] ${label}: DELETE für ${userEmail} nicht abgesetzt — nichts entzogen.`, e);
+      return false;
+    }
+
+    // Kontrolle: die Zuweisungen dieses Securables lesen und dem nextLink
+    // folgen. Direkte Zuweisungen sind wenige — aber ein Kappen darf hier
+    // nie „steht nicht mehr drin" bedeuten.
+    try {
+      let url: string | null = `${scopeBase}/roleassignments?$select=PrincipalId&$top=5000`;
+      let guard = 0;
+      while (url && guard < 20) {
+        guard++;
+        const chk = await this._sp.get(url, SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } });
+        if (!chk.ok) {
+          console.warn(`[DEX] ${label}: Entzug für ${userEmail} nicht prüfbar (DELETE HTTP ${deleteStatus}, Kontrolle HTTP ${chk.status}) — gilt als NICHT entzogen.`);
+          return false;
+        }
+        const d = await chk.json();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rows: any[] = d.value || d.d?.results || [];
+        if (rows.some(r => Number(r.PrincipalId) === userId)) {
+          console.warn(`[DEX] ${label}: ${userEmail} steht nach DELETE (HTTP ${deleteStatus}) noch in den Zuweisungen von ${scopeBase} — NICHT entzogen.`);
+          return false;
+        }
+        url = d['odata.nextLink'] || d['@odata.nextLink'] || (d.d && d.d.__next) || null;
+      }
+      if (url) {
+        console.warn(`[DEX] ${label}: Kontrolle nach ${guard} Seiten abgebrochen — gilt als NICHT entzogen.`);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn(`[DEX] ${label}: Kontrolle für ${userEmail} fehlgeschlagen — gilt als NICHT entzogen.`, e);
+      return false;
     }
   }
 
@@ -583,22 +662,51 @@ export class SharePointService {
     // $select mit IsPowerUser einen HTTP 400 werfen — daher Fallback auf den
     // Select OHNE IsPowerUser.
     const baseSelect = 'Id,Title,UserName,Role,UserLocation,AssignedBy,AssignedDate';
+    // v30.67: `$top=5000` UND dem nextLink folgen. Ohne `$top` liefert
+    // SharePoint 100 Zeilen und den Rest nur über `odata.nextLink` — die
+    // Methode gab `data.value` 1:1 zurück. Ab der 101. Zeile (sortiert nach
+    // Role,UserName) fehlte eine Organizerin damit im Ergebnis, `initRoles`
+    // fand sie nicht und setzte sie auf 'User': kein Organizer Center, keine
+    // eigenen Events — obwohl ihr Eintrag in DEX_Roles korrekt stand. Jede
+    // andere Item-Abfrage der Service-Schicht setzt ein `$top`; diese war die
+    // einzige Ausnahme, und ausgerechnet an ihr hängt die Rechteermittlung.
+    //
+    // Fail-closed: Bricht das Lesen NACH der ersten Seite ab, kommt `null`
+    // (= „nicht lesbar"), nie die halbe Liste — eine halbe Rollenliste sähe
+    // für die Aufrufer wie eine vollständige aus.
+    const itemsUrl = (withPowerUser: boolean): string =>
+      `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$select=${baseSelect}${withPowerUser ? ',IsPowerUser' : ''}&$orderby=Role,UserName&$top=5000`;
     try {
-      let response = await this._sp.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$select=${baseSelect},IsPowerUser&$orderby=Role,UserName`,
-        SPHttpClient.configurations.v1
-      );
+      let response = await this._sp.get(itemsUrl(true), SPHttpClient.configurations.v1);
       if (!response.ok) {
         // Retry ohne IsPowerUser (Spalte existiert evtl. noch nicht).
-        response = await this._sp.get(
-          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$select=${baseSelect}&$orderby=Role,UserName`,
-          SPHttpClient.configurations.v1
-        );
+        response = await this._sp.get(itemsUrl(false), SPHttpClient.configurations.v1);
         if (!response.ok) return null;
       }
-      const data = await response.json();
-      return data.value || [];
-    } catch {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const out: any[] = [];
+      let guard = 0;
+      for (;;) {
+        const data = await response.json();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const page: any[] = data.value || data.d?.results || [];
+        for (const r of page) out.push(r);
+        const next: string | null = data['odata.nextLink'] || data['@odata.nextLink'] || (data.d && data.d.__next) || null;
+        if (!next) break;
+        guard++;
+        if (guard >= 20) {
+          console.warn('[DEX] getRoles: mehr als 20 Seiten — Lesen abgebrochen, DEX_Roles gilt als nicht lesbar.');
+          return null;
+        }
+        response = await this._sp.get(next, SPHttpClient.configurations.v1);
+        if (!response.ok) {
+          console.warn(`[DEX] getRoles: Folgeseite nicht lesbar (HTTP ${response.status}) — DEX_Roles gilt als nicht lesbar, nicht als leer.`);
+          return null;
+        }
+      }
+      return out;
+    } catch (e) {
+      console.warn('[DEX] getRoles: Lesen fehlgeschlagen — DEX_Roles gilt als nicht lesbar.', e);
       return null;
     }
   }

@@ -223,6 +223,14 @@ export default function FACenterPage(): React.ReactElement {
     if (id === pnEventId) return;
     setPnEventId(id);
     setPnDraft({});
+    // v30.67: Die Meldung „x von y übernommen … unten speichern" gehört zum
+    // selben Entwurf. Sie blieb beim Eventwechsel stehen und forderte zum
+    // Speichern von Daten auf, die es nicht mehr gab — bei deaktiviertem
+    // Speichern-Knopf. Die aufgeklappte Mail ebenso: Index i meint im
+    // nächsten Event eine andere Mail (der Wechsel über die Tabelle setzt
+    // ihn nicht zurück, nur der Zurück-Knopf).
+    setPnAutoNote('');
+    setOpenMailIdx(null);
   }, [selectedId, pnEventId]);
 
   const selected = selectedId ? billingEvents.find(x => x.ev.id === selectedId) : undefined;
@@ -394,8 +402,9 @@ export default function FACenterPage(): React.ReactElement {
                   fontSize: '0.78rem', lineHeight: 1.5,
                 }}>
                   Dieser Stand wurde vor der Formatumstellung übermittelt und trägt nur Name, E-Mail und Status.
-                  In der Excel-Datei bleiben <strong>First Name</strong>, <strong>Last Name</strong>,
-                  {' '}<strong>Country</strong> und <strong>Company Name</strong> deshalb leer.
+                  In der Excel-Datei werden <strong>First Name</strong> und <strong>Last Name</strong> aus dem
+                  Namen abgeleitet (letztes Wort = Nachname); <strong>Country</strong> und
+                  {' '}<strong>Company Name</strong> bleiben leer.
                   Für den vollständigen Satz die Teilnehmerliste einmal neu versenden.
                 </p>
               )}
@@ -431,8 +440,13 @@ export default function FACenterPage(): React.ReactElement {
                     setPnAutoNote('');
                     getEmployeeData(rows.map(r => r.email || ''))
                       .then(map => {
-                        const next: Record<string, { personalNr?: string; costCenter?: string }> = { ...pnDraft };
-                        let found = 0;
+                        // v30.67: Treffer erst sammeln, dann per Updater in den
+                        // AKTUELLEN Entwurf mergen. Vorher war `{ ...pnDraft }`
+                        // der Stand vom Klick — wer während des Abrufs (fünf
+                        // Graph-Batches bei 100 Personen) eine Nummer von Hand
+                        // eintippte, verlor sie beim setPnDraft(next) ohne
+                        // Meldung; sie stand ja auch nicht im Verzeichnis.
+                        const hits: Array<{ k: string; pn: string; cc: string; row: FAListRow }> = [];
                         for (const r of rows) {
                           const k = (r.email || '').toLowerCase().trim();
                           const d = map[k];
@@ -440,16 +454,22 @@ export default function FACenterPage(): React.ReactElement {
                           const pn = (d.employeeId || '').trim();
                           const cc = (d.costCenter || '').trim();
                           if (!pn && !cc) continue;
-                          found++;
-                          // Bereits Eingetragenes NICHT überschreiben: Wer von Hand
-                          // korrigiert hat, hat den besseren Wert.
-                          const cur = next[k] || {};
-                          next[k] = {
-                            personalNr: (cur.personalNr !== undefined ? cur.personalNr : r.personalNr) || pn,
-                            costCenter: (cur.costCenter !== undefined ? cur.costCenter : r.costCenter) || cc,
-                          };
+                          hits.push({ k, pn, cc, row: r });
                         }
-                        setPnDraft(next);
+                        const found = hits.length;
+                        setPnDraft(prev => {
+                          const next: Record<string, { personalNr?: string; costCenter?: string }> = { ...prev };
+                          for (const h of hits) {
+                            // Bereits Eingetragenes NICHT überschreiben: Wer von Hand
+                            // korrigiert hat, hat den besseren Wert.
+                            const cur = next[h.k] || {};
+                            next[h.k] = {
+                              personalNr: (cur.personalNr !== undefined ? cur.personalNr : h.row.personalNr) || h.pn,
+                              costCenter: (cur.costCenter !== undefined ? cur.costCenter : h.row.costCenter) || h.cc,
+                            };
+                          }
+                          return next;
+                        });
                         setPnAutoNote(found === 0
                           ? 'Aus dem Verzeichnis kam nichts zurück. Entweder sind die Felder im Tenant nicht gepflegt, oder die Berechtigung „User.Read.All" ist im SharePoint Admin Center noch nicht freigegeben. Der manuelle Weg über „Nachschlagen" funktioniert unabhängig davon.'
                           : `${found} von ${rows.length} Personen aus dem Verzeichnis übernommen. Nicht vergessen: unten speichern.`);

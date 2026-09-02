@@ -305,7 +305,10 @@ export default function AssistantPage(): React.ReactElement {
           setFieldModal(null);
           await reload();
         } else {
-          await showAlert(isDe ? 'Anmeldung fehlgeschlagen.' : 'Registration failed.', { variant: 'error' });
+          // v30.68: 'dup-check-failed' heißt: nichts gespeichert, später erneut.
+          await showAlert(res.reason === 'dup-check-failed'
+            ? (isDe ? 'Anmeldung nicht angelegt — SharePoint ist gerade ausgelastet. Es wurde nichts gespeichert, bitte in ein paar Minuten erneut versuchen.' : 'Registration not created — SharePoint is busy right now. Nothing was saved, please try again in a few minutes.')
+            : (isDe ? 'Anmeldung fehlgeschlagen.' : 'Registration failed.'), { variant: 'error' });
         }
       }
     } finally {
@@ -640,7 +643,15 @@ export default function AssistantPage(): React.ReactElement {
                       {isDe ? 'Sub-Events' : 'Sub-events'}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {subItems.map(({ child, item }) => (
+                      {subItems.map(({ child, item }) => {
+                        // v30.67: Den Anmelde-Knopf an den STATUS koppeln, nicht an
+                        // die Existenz der Zeile — `getProxyRegistrationsByActor`
+                        // liefert auch abgemeldete Zeilen (RegisteredByEmail bleibt
+                        // beim Abmelden stehen). Vorher: Badge „Abgemeldet" und kein
+                        // einziger Knopf, der Termin war für die Assistenz dauerhaft
+                        // gesperrt. registerForEvent reaktiviert eine abgemeldete Zeile.
+                        const itemActive = !!item && ACTIVE_STATUSES.indexOf(item.registration.Status) >= 0;
+                        return (
                         <RegRow
                           key={child.id}
                           title={child.title.indexOf('|') >= 0 ? child.title.split('|').pop()!.trim() : child.title}
@@ -654,9 +665,10 @@ export default function AssistantPage(): React.ReactElement {
                           childEvent={child}
                           onEdit={item ? () => openEdit(group, item) : undefined}
                           onCancel={item ? () => doCancel(group, item) : undefined}
-                          onRegister={!item ? () => openRegister(group, child) : undefined}
+                          onRegister={!itemActive ? () => openRegister(group, child) : undefined}
                         />
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -757,7 +769,9 @@ function RegRow(props: RegRowProps): React.ReactElement {
             {cancelBusy ? '…' : (isDe ? 'Abmelden' : 'Cancel')}
           </button>
         )}
-        {!item && onRegister && !over && (
+        {/* v30.67: `!active` statt `!item` — eine abgemeldete Zeile darf
+            wieder angemeldet werden (s. Aufrufer). */}
+        {!active && onRegister && !over && (
           <button type="button" onClick={onRegister} style={btnPrimary}>
             <Icon iconName="Add" style={{ fontSize: 13, marginRight: 5 }} />{isDe ? 'Anmelden' : 'Register'}
           </button>

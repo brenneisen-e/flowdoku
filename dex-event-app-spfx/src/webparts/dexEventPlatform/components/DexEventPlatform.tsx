@@ -581,19 +581,28 @@ function AppContent(): React.ReactElement {
   const didReconcileCounters = React.useRef(false);
   React.useEffect(() => {
     if (didReconcileCounters.current) return;
-    if (!isAdmin) return;
+    // v30.67: Auch Organizer — mit `onlyMine`. v30.63 hat den Parameter im
+    // Context eingebaut und in den Release Notes angekündigt, diese einzige
+    // Aufrufstelle aber nicht nachgezogen: `canCreateEvents` stand schon im
+    // Deps-Array, im Rumpf sperrte `if (!isAdmin)` weiter alles. Ein nach
+    // oben gedrifteter Zähler blieb bis zum nächsten Admin-Start stehen —
+    // und die Anmeldeseite zeigt seit v30.62 genau diesen Zähler.
+    if (!isAdmin && !canCreateEvents) return;
     if (isEventsLoading) return;
     if (!events || events.length === 0) return;
+    // Drossel je Rolle getrennt: Ein Organizer-Lauf (nur eigene Events)
+    // darf den nächsten Admin-Lauf (alle Events) nicht sechs Stunden sperren.
+    const throttleKey = isAdmin ? 'dex_counter_reconcile_lastrun' : 'dex_counter_reconcile_lastrun_org';
     let due = true;
     try {
-      const last = parseInt(window.localStorage.getItem('dex_counter_reconcile_lastrun') || '0', 10);
+      const last = parseInt(window.localStorage.getItem(throttleKey) || '0', 10);
       if (last && Date.now() - last < 6 * 60 * 60 * 1000) due = false;
     } catch { /* */ }
     if (!due) return;
     didReconcileCounters.current = true;
-    try { window.localStorage.setItem('dex_counter_reconcile_lastrun', String(Date.now())); } catch { /* */ }
+    try { window.localStorage.setItem(throttleKey, String(Date.now())); } catch { /* */ }
     const t = window.setTimeout(() => {
-      reconcileCounters().catch(err => console.warn('[DEX] counter reconcile failed:', err));
+      reconcileCounters(isAdmin ? undefined : { onlyMine: true }).catch(err => console.warn('[DEX] counter reconcile failed:', err));
     }, 6000);
     return () => window.clearTimeout(t);
   }, [isAdmin, canCreateEvents, isEventsLoading, events]);

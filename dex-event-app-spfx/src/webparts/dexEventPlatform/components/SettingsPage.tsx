@@ -56,7 +56,7 @@ export default function SettingsPage(): React.ReactElement {
   const { currentUser } = useCurrentUser();
   const {
     roles, isAdmin, originalIsAdmin,
-    addRole, updateRole, setPowerUser, removeRole, isRolesLoading, siteUrl, searchUsers, searchUser,
+    addRole, updateRole, setPowerUser, removeRole, hadRoleRightsIssue, isRolesLoading, siteUrl, searchUsers, searchUser,
   } = useRoles();
   const { events, sendOrganizerOnboarding } = useEvents();
   const { locale } = useLanguage();
@@ -321,17 +321,47 @@ export default function SettingsPage(): React.ReactElement {
     if (!confirmed) return;
     setIsRemoving(itemId);
     const success = await removeRole(itemId);
+    // v30.67 (Review): Zwei Fehlerarten, zwei Meldungen. `success` sagt nur,
+    // ob die DEX_Roles-Zeile weg ist; ob die SharePoint-Rechte mitgingen,
+    // sagt hadRoleRightsIssue(). Als EIN boolean war die Meldung im Fall
+    // „Zeile nicht gelöscht" falsch („entfernt — aber …", während die Zeile
+    // weiter in der Tabelle stand).
+    const rightsIssue = hadRoleRightsIssue();
     setIsRemoving(null);
-    if (success) {
-      setStatusMsg(`Rolle für ${userName} entfernt.`);
+    if (success && !rightsIssue) {
+      setStatusMsg(isDe ? `Rolle für ${userName} entfernt.` : `Role for ${userName} removed.`);
+    } else if (success) {
+      // Die DEX_Roles-Zeile ist weg; was blieb, ist ein Recht auf dem Web
+      // oder einer Liste. Das muss der Admin wissen, sonst hält er die
+      // Person für ausgesperrt, die es nicht ist.
+      setStatusMsg(isDe
+        ? `Rolle für ${userName} entfernt — aber die SharePoint-Rechte konnten nicht vollständig entzogen werden. Bitte die Berechtigungen der Person auf der Site prüfen (Details in der Browser-Konsole unter [DEX]).`
+        : `Role for ${userName} removed — but the SharePoint permissions could not be fully revoked. Please check the person's permissions on the site (details in the browser console under [DEX]).`);
     } else {
-      setStatusMsg('Error: Rolle konnte nicht entfernt werden.');
+      setStatusMsg(isDe
+        ? `Rolle für ${userName} konnte nicht entfernt werden — die Zeile steht weiterhin in der Rollenliste. Bitte erneut versuchen.`
+        : `Role for ${userName} could not be removed — the row is still in the roles list. Please try again.`);
     }
-    setTimeout(() => setStatusMsg(''), 4000);
+    setTimeout(() => setStatusMsg(''), (success && !rightsIssue) ? 4000 : 12000);
   };
 
   const handleChangeRole = async (itemId: number, role: UserRole): Promise<void> => {
-    await updateRole(itemId, role);
+    // v30.67: Rueckgabewert auswerten — vorher blieb ein nicht entzogenes Recht
+    // beim Herabstufen unsichtbar.
+    const ok = await updateRole(itemId, role);
+    // v30.67 (Review): s. handleRemoveRole — Zeile und Rechte getrennt melden.
+    const rightsIssue = hadRoleRightsIssue();
+    if (!ok) {
+      setStatusMsg(isDe
+        ? 'Rolle konnte nicht geändert werden — die Zeile trägt weiterhin die alte Rolle. Bitte erneut versuchen.'
+        : 'Role could not be changed — the row still carries the old role. Please try again.');
+      setTimeout(() => setStatusMsg(''), 12000);
+    } else if (rightsIssue) {
+      setStatusMsg(isDe
+        ? 'Rolle geändert — aber die SharePoint-Rechte konnten nicht vollständig angepasst werden. Bitte die Berechtigungen der Person auf der Site prüfen (Details in der Browser-Konsole unter [DEX]).'
+        : 'Role changed — but the SharePoint permissions could not be fully adjusted. Please check the person\'s permissions on the site (details in the browser console under [DEX]).');
+      setTimeout(() => setStatusMsg(''), 12000);
+    }
   };
 
   // v24.87: roleBadge entfernt (war nur für die gelöschte „User Information"-Karte).

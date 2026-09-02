@@ -10,858 +10,50 @@
 
 import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
-import { DeloitteEvent, DexHotel, DexHotelStay, DexHotelRules } from '../types';
-import { EventService, SPEvent, CustomField, SPRegistration, SPParticipant, ReseedSummary, AssistantLink, EventCommRow } from '../services/EventService';
+import { DeloitteEvent } from '../types';
+import { EventService, SPEvent, SPRegistration, ReseedSummary } from '../services/EventService';
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
 import { buildHashDeepLink } from '../utils/deepLink';
 import { isEventOver } from '../utils/eventFormat';
-import { isDeloitteInternalEmail, isExternalEmail } from '../utils/deloitteDomain';
-import { registrationEmail, externalInviteInstructionEmail, externalInvitationEmail, coOrganizerAddedEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
+import { isExternalEmail } from '../utils/deloitteDomain';
+import { registrationEmail, externalInviteInstructionEmail, externalInvitationEmail, waitlistEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
 import { buildUnsentEmlDraft } from '../utils/emlDraft';
 import { readPendingShadowParents, removePendingShadowParent, addPendingShadowParent } from '../utils/shadowHeal';
 import { withParentTitleSubject } from '../utils/mailSubject';
 import { APP_VERSION } from '../version';
-import { RELEASE_NOTES, splitReleaseNote } from '../data/releaseNotes';
 import { BundledItem, bundledCommOf, bundledItemsTableHtml, bundledItemsHeading } from '../utils/bundledComm';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
 import { looksLikeClaimName, resolveMyDisplayName, safeDisplayName } from '../utils/displayName';
 import { emitBootStage } from '../utils/bootProgress';
 import { getCachedImage } from '../utils/imageCache';
-import { DEX_TEAM_RECIPIENTS } from '../utils/supportContact';
-import { parseBillingOf, missingBillingFields, renderBillingInfoMailBody, renderBillingListMailBody, trimBillingLog, faRowsFromRegistrations, BillingData, BillingLogEntry, FAConfig } from '../utils/faBilling';
 import { dlog, isDebug } from '../utils/debugLog';
 
-/**
- * Organizer-Namen für Mail-Anreden sauber formatieren:
- *   Input:  ['Sathasivam, Philipp', 'Oesterle, Ines']
- *   Output: 'Philipp Sathasivam und Ines Oesterle'  (bei DE)
- *           'Philipp Sathasivam and Ines Oesterle'  (bei EN)
- *
- * - Namen können auch ';'-separiert als Einzel-String kommen, wird gesplittet.
- * - Nachname/Vorname-Pairs werden vorgetauscht (SP-Default ist "Nachname, Vorname").
- * - Bei 1 Name: nur der Name. Bei 2: "A und B" / "A and B". Bei 3+: "A, B und C" / "A, B and C".
- */
-/**
- * Wendet Event-spezifische Template-Overrides auf die globale SP-Vorlage an.
- *
- * - Override-JSON-Format: { "Anmeldung": { subject, heading, bodyHtml }, ... }
- * - Pro Feld gilt: Override > globale SP-Vorlage. headingColor bleibt immer
- *   die globale (Overrides ändern keine Brand-Farben).
- * - Wenn weder Override noch SP-Template existieren, gibt die Funktion null
- *   zurück und der Caller fällt auf das Code-Default zurück.
- */
-export function applyEventTemplateOverride(
-  spTemplate: { subject: string; headingColor: string; heading: string; subheading?: string; bodyHtml: string } | null,
-  overridesJson: string | undefined,
-  templateType: string
-): { subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string; headingFontSize?: string; headingBold?: boolean; headingItalic?: boolean; subheadingColor?: string; subheadingFontSize?: string; subheadingBold?: boolean; subheadingItalic?: boolean; imageWidth?: number; imagePaddingV?: number; imagePaddingH?: number } | null {
-  // v15.19: Subheading-Override pro Event mitziehen. Color/Size bleiben
-  // weiterhin aus dem Standard-Template (wrapTemplate-Layout fest), nur
-  // die Text-Werte (Subject, Heading, Subheading, Body) sind editierbar.
-  if (!overridesJson) {
-    if (!spTemplate) return null;
-    return {
-      subject: spTemplate.subject,
-      headingColor: spTemplate.headingColor || '#86bc25',
-      heading: spTemplate.heading,
-      subheading: spTemplate.subheading || '',
-      bodyHtml: spTemplate.bodyHtml,
-    };
-  }
-  try {
-    const all = JSON.parse(overridesJson) as Record<string, { subject?: string; heading?: string; subheading?: string; bodyHtml?: string; headingColor?: string; headingFontSize?: string; headingBold?: boolean; headingItalic?: boolean; subheadingColor?: string; subheadingFontSize?: string; subheadingBold?: boolean; subheadingItalic?: boolean }>;
-    // v18.73: globales Header-Bild-Layout (Breite + Innenabstand). Liegt unter
-    // dem reservierten Piggyback-Key `_headerImageLayout` und gilt für ALLE
-    // Template-Typen des Events — daher hier einmal gelesen und in jeden
-    // Rückgabe-Zweig gespreadet (auch wenn der konkrete Typ keinen Text-
-    // Override hat).
-    const il = (all as unknown as { _headerImageLayout?: { width?: number; paddingV?: number; paddingH?: number } })._headerImageLayout || {};
-    const imgSpread = {
-      ...(typeof il.width === 'number' && il.width > 0 ? { imageWidth: il.width } : {}),
-      ...(typeof il.paddingV === 'number' && il.paddingV >= 0 ? { imagePaddingV: il.paddingV } : {}),
-      ...(typeof il.paddingH === 'number' && il.paddingH >= 0 ? { imagePaddingH: il.paddingH } : {}),
-    };
-    const o = all[templateType];
-    if (!o || (!o.subject && !o.heading && o.subheading === undefined && !o.bodyHtml && !o.headingColor && !o.headingFontSize && o.headingBold === undefined && o.headingItalic === undefined && !o.subheadingColor && !o.subheadingFontSize && o.subheadingBold === undefined && o.subheadingItalic === undefined)) {
-      if (!spTemplate) return null;
-      return {
-        subject: spTemplate.subject,
-        headingColor: spTemplate.headingColor || '#86bc25',
-        heading: spTemplate.heading,
-        subheading: spTemplate.subheading || '',
-        bodyHtml: spTemplate.bodyHtml,
-        ...imgSpread,
-      };
-    }
-    return {
-      subject: o.subject || spTemplate?.subject || '',
-      heading: o.heading || spTemplate?.heading || '',
-      // Override.subheading ist „intentional set" — auch leerer String
-      // soll respektiert werden, damit man die zweite Zeile abschalten kann.
-      subheading: o.subheading !== undefined ? o.subheading : (spTemplate?.subheading || ''),
-      bodyHtml: o.bodyHtml || spTemplate?.bodyHtml || '',
-      // v18.19: Überschrift-Farbe + -Größe pro Event überschreibbar.
-      headingColor: o.headingColor || spTemplate?.headingColor || '#86bc25',
-      ...(o.headingFontSize ? { headingFontSize: o.headingFontSize } : {}),
-      // v18.22: Fett/Kursiv (Überschrift) + Unter-Überschrift-Formatierung.
-      ...(o.headingBold !== undefined ? { headingBold: o.headingBold } : {}),
-      ...(o.headingItalic !== undefined ? { headingItalic: o.headingItalic } : {}),
-      ...(o.subheadingColor ? { subheadingColor: o.subheadingColor } : {}),
-      ...(o.subheadingFontSize ? { subheadingFontSize: o.subheadingFontSize } : {}),
-      ...(o.subheadingBold !== undefined ? { subheadingBold: o.subheadingBold } : {}),
-      ...(o.subheadingItalic !== undefined ? { subheadingItalic: o.subheadingItalic } : {}),
-      ...imgSpread,
-    };
-  } catch {
-    if (!spTemplate) return null;
-    return {
-      subject: spTemplate.subject,
-      headingColor: spTemplate.headingColor || '#86bc25',
-      heading: spTemplate.heading,
-      subheading: spTemplate.subheading || '',
-      bodyHtml: spTemplate.bodyHtml,
-    };
-  }
-}
+// v30.66: Reine Modul-Helfer (kein State-Zugriff) liegen jetzt in
+// `eventTextHelpers.ts`. Hier re-exportiert, damit bestehende Importe aus
+// `EventContext` unveraendert tragen.
+import { applyEventTemplateOverride, stripSpNoteWrapper, formatOrganizerList, collectCcEmailsFromFields, mergeCcLists, summarizeCustomFields, buildEventUpdateDiff } from './eventTextHelpers';
+export { applyEventTemplateOverride, stripSpNoteWrapper, formatOrganizerList, collectCcEmailsFromFields, mergeCcLists, summarizeCustomFields, buildEventUpdateDiff };
+// v30.66: Das SP->App-Mapping liegt in `eventMapping.ts`; es bekommt die
+// Subsite-Map als Ref herein, weil es sich die Subsite-URL je Event merkt.
+import { mapSPEventToDeloitteEvent } from './eventMapping';
+import { makeBillingActions } from './actions/billing';
+import { makeOrganizerRoleActions } from './actions/organizerRoles';
+import { makeInactiveAccountActions } from './actions/inactiveAccounts';
+import { makeMaintenanceActions } from './actions/maintenance';
+import { makeAutoMailActions } from './actions/autoMails';
+import { makeCancellationActions } from './actions/cancellation';
+import { makeArchiveActions } from './actions/archiveAndPurge';
+import { makeAssistantActions } from './actions/assistantAndProxy';
+import { makeParticipantFileActions } from './actions/participantFiles';
+import { makeMailActions } from './actions/mails';
 
-/**
- * Strip SharePoint-Note-Field-Wrapper.
- *
- * Seit der Migration der Felder Organizer + OrganizerEmail von Single-Line-Text
- * auf Note (Multi-Line-Text, Plain) — nötig wegen 255-Char-Limit bei 10+ Co-
- * Organizern — wickelt SharePoint die Werte beim REST-Read in einen
- * `<div class="ExternalClassXXXX">…</div>`-Container. Das passiert obwohl
- * `RichText: false` gesetzt ist und ist eine bekannte SP-Quirk.
- *
- * Folge ohne Strip: `(e.Organizer || '').split(';')` zerhackt den Wrapper an
- * den Semikolons, das erste und letzte Stück enthalten dann die Tag-Reste
- * `<div class="…">…` bzw. `…</div>` und landen so in den Chip-Labels.
- *
- * Idempotent: Eingaben ohne Wrapper bleiben unverändert.
- */
-export function stripSpNoteWrapper(value: string | null | undefined): string {
-  if (!value) return '';
-  let v = value.trim();
-  v = v.replace(/^<div\b[^>]*>/i, '');
-  v = v.replace(/<\/div>\s*$/i, '');
-  return v.trim();
-}
-
-export function formatOrganizerList(organizers: string[], lang: string): string {
-  const names: string[] = [];
-  for (const entry of organizers || []) {
-    // Akzeptiere ';' UND ',' als Top-Level-Trenner zwischen Personen.
-    // Wenn die Anzahl der Komma-Tokens gerade und >=2 ist, behandeln wir sie als
-    // Paare ('Lastname, Firstname, Lastname, Firstname, ...'). Sonst fallen wir
-    // zurück auf Semikolon-Split + 'Lastname, Firstname' pro Stück.
-    const raw = (entry || '').trim();
-    if (!raw) continue;
-    const semiPieces = raw.split(';').map(p => p.trim()).filter(Boolean);
-    const pieces: string[] = [];
-    for (const sp of semiPieces) {
-      const commaTokens = sp.split(',').map(s => s.trim()).filter(Boolean);
-      if (commaTokens.length >= 4 && commaTokens.length % 2 === 0) {
-        // Paarweise interpretieren: ['Last','First','Last','First',...]
-        for (let i = 0; i < commaTokens.length; i += 2) {
-          pieces.push(`${commaTokens[i]}, ${commaTokens[i + 1]}`);
-        }
-      } else {
-        pieces.push(sp);
-      }
-    }
-    for (const piece of pieces) {
-      const commaParts = piece.split(',').map(s => s.trim());
-      if (commaParts.length === 2 && commaParts[0] && commaParts[1]) {
-        names.push(`${commaParts[1]} ${commaParts[0]}`);
-      } else {
-        names.push(piece);
-      }
-    }
-  }
-  if (names.length === 0) return '';
-  if (names.length === 1) return names[0];
-  const conj = (lang || 'EN').toUpperCase() === 'DE' ? ' und ' : ' and ';
-  if (names.length === 2) return `${names[0]}${conj}${names[1]}`;
-  return `${names.slice(0, -1).join(', ')}${conj}${names[names.length - 1]}`;
-}
-
-/** v18.41: Sammelt die E-Mail-Adressen aus People-Picker-Feldern (user/roommate),
- *  die der Organizer als „CC bei An-/Abmelde-Mail" markiert hat. Format des
- *  Feldwerts ist „Anzeigename <email>". Liefert einen ';'-getrennten CC-String
- *  (ohne den Teilnehmer selbst, dedupliziert). NUR für Mails — nicht Outlook. */
-export function collectCcEmailsFromFields(
-  fields: Array<{ id: string; type: string; ccOnEmails?: boolean }> | undefined,
-  customData: Record<string, string>,
-  excludeEmail?: string
-): string {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  const exclude = (excludeEmail || '').toLowerCase();
-  for (const f of (fields || [])) {
-    if (!f.ccOnEmails) continue;
-    if (f.type !== 'user' && f.type !== 'roommate') continue;
-    const v = customData[f.id];
-    if (!v) continue;
-    const m = v.match(/<([^>]+@[^>]+)>/);
-    const em = m ? m[1].trim() : '';
-    const lc = em.toLowerCase();
-    if (em && lc !== exclude && !seen.has(lc)) { seen.add(lc); out.push(em); }
-  }
-  return out.join(';');
-}
-
-/**
- * v28.28: Zwei CC-Listen (Semikolon-getrennt) zusammenführen — ohne Dubletten
- * und ohne die Empfängeradresse selbst. Gebraucht, seit die Organizer-
- * Mitlese-Kopie auf CC statt BCC läuft und sich damit eine Liste mit den
- * CC-Feldern der Anmeldung teilt.
- */
-export function mergeCcLists(a: string | undefined, b: string | undefined, excludeEmail?: string): string | undefined {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  const exclude = (excludeEmail || '').trim().toLowerCase();
-  for (const part of [a || '', b || '']) {
-    for (const em of part.split(';').map(s => s.trim()).filter(Boolean)) {
-      const lc = em.toLowerCase();
-      if (lc === exclude || seen.has(lc)) continue;
-      seen.add(lc);
-      out.push(em);
-    }
-  }
-  return out.length ? out.join(';') : undefined;
-}
-
-// v19.33: SP-Spaltennamen → lesbare Labels fürs Event-Audit-Log.
-const EVENT_AUDIT_LABELS: Record<string, string> = {
-  Title: 'Titel', Description: 'Beschreibung', Location: 'Ort', LocationAddress: 'Adresse',
-  StartDate: 'Start', EndDate: 'Ende', RegistrationDeadline: 'Anmeldeschluss',
-  LastDeregisterDate: 'Letzte Abmeldung', MaxParticipants: 'Teilnehmerzahl',
-  WaitlistEnabled: 'Warteliste', DisableEmails: 'E-Mails',
-  DisableRegistrationEmail: 'Anmelde-Bestätigung', DisableCancellationEmail: 'Abmelde-Bestätigung',
-  AutoDeregisterOnDecline: 'Outlook-Absage = Abmeldung', InactiveHandling: 'Ex-Deloitte-Konto: Verhalten', DisableOutlook: 'Outlook-Termin',
-  EmailLanguage: 'Mail-Sprache', RegistrationLanguage: 'Anmeldesprache',
-  CustomFields: 'Eventfelder', Agenda: 'Agenda', Transfers: 'Transferzeiten', FunZone: 'Quiz',
-  OutlookBody: 'Outlook-Text', OutlookSubject: 'Outlook-Betreff', OutlookLocation: 'Outlook-Ort',
-  OutlookStart: 'Outlook-Start', OutlookEnd: 'Outlook-Ende',
-  LocationFilter: 'Standortfilter', Audience: 'Mailverteiler', FilterMode: 'Filterverknüpfung',
-  ExcludedUsers: 'Ausgeschlossene Personen', AudienceResolvedEmails: 'Sichtbarkeits-Cache',
-  Organizer: 'Organizer', OrganizerEmail: 'Organizer-Mails',
-  ContactName: 'Ansprechpartner', ContactEmail: 'Kontakt-Mail', ContactInfo: 'Kontakt-Info',
-  EventImageUrl: 'Event-Bild', EmailImageBase64: 'Mail-Logo', EmailTemplateOverrides: 'Mail-Vorlagen',
-  DurchstarterCapacity: 'Kapazität Gruppe A', FunstarterCapacity: 'Kapazität Gruppe B',
-  SplitLabelA: 'Label Gruppe A', SplitLabelB: 'Label Gruppe B', SplitHelpText: 'Gruppen-Hinweistext', SplitSectionTitle: 'Gruppen-Überschrift', SplitSharedWaitlist: 'Gemeinsame Warteliste',
-  TeamRegistrationEnabled: 'Team-Anmeldung', TeamSize: 'Teamgröße', AskTeamName: 'Team-Name abfragen',
-  AskSalutation: 'Anrede abfragen', BilingualFields: 'Zweisprachig',
-  ConfirmDialogEnabled: 'Bestätigungs-Dialog', SelfCheckInEnabled: 'Self-Check-in',
-  ActiveFrom: 'Sichtbar ab', NotifyOrgRegisterMode: 'Organizer-Kopie Anmeldung',
-  NotifyOrgCancelMode: 'Organizer-Kopie Abmeldung', AllowAttendeeUpload: 'Datei-Upload',
-};
-
-/**
- * v19.33: Diff zwischen altem Roh-SP-Item und dem Update-Payload (beide
- * SP-Spalten-Format → verlässlicher Vergleich). Liefert NUR die wirklich
- * geänderten Felder als `{ Label: { old, new } }`. Lange/JSON-Felder werden
- * nicht ausgeschrieben (nur „(geändert)"), Booleans als „an"/„aus".
- */
-// v26.20: Lesbare Zusammenfassung der Custom-Felder fürs Audit-Log —
-// „Label: Beschreibung | …". Dient als Vorher/Nachher-Verlauf der Felder UND
-// als Sicherheitsnetz, falls Feld-Beschreibungen (helpText) verloren gehen
-// (dann steht die alte Beschreibung noch im Audit-Eintrag). Akzeptiert sowohl
-// das CustomFields-JSON (String) als auch ein bereits geparstes Array.
-export function summarizeCustomFields(raw: unknown): string {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let arr: any[];
-  try { arr = Array.isArray(raw) ? raw : JSON.parse(typeof raw === 'string' ? (raw || '[]') : '[]'); } catch { return ''; }
-  if (!Array.isArray(arr) || arr.length === 0) return '(keine Felder)';
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const parts = arr.map((f: any) => {
-    const label = String((f && (f.label || f.id)) || '?').trim();
-    const help = String((f && f.helpText) || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
-    return help ? `${label}: ${help.length > 200 ? `${help.slice(0, 200)}…` : help}` : label;
-  });
-  let s = parts.join(' | ');
-  if (s.length > 2000) s = `${s.slice(0, 2000)}…`;
-  return s;
-}
-
-export function buildEventUpdateDiff(
-  oldItem: Record<string, unknown>,
-  updates: Record<string, unknown>,
-): Record<string, { old: string; new: string }> {
-  const norm = (v: unknown): string => {
-    if (v === null || v === undefined) return '';
-    if (typeof v === 'boolean') return v ? 'true' : 'false';
-    return String(v).trim();
-  };
-  const same = (a: unknown, b: unknown): boolean => {
-    const na = norm(a), nb = norm(b);
-    if (na === nb) return true;
-    const da = Date.parse(na), db = Date.parse(nb);
-    if (!isNaN(da) && !isNaN(db)) return da === db;
-    return false;
-  };
-  const prettyBool = (v: string): string => v === 'true' ? 'an' : v === 'false' ? 'aus' : v;
-  const trunc = (s: string): string => s.length > 80 ? `${s.slice(0, 77)}…` : s;
-  const opaque = new Set(['CustomFields', 'Agenda', 'Transfers', 'FunZone', 'EmailTemplateOverrides', 'AudienceResolvedEmails', 'EmailImageBase64', 'OutlookBody', 'ExcludedUsers', 'Documents']);
-  const out: Record<string, { old: string; new: string }> = {};
-  for (const key of Object.keys(updates)) {
-    if (same(oldItem[key], updates[key])) continue;
-    const label = EVENT_AUDIT_LABELS[key] || key;
-    if (key === 'CustomFields') {
-      // v26.20: Statt nur „(geändert)" die Feld-Beschreibungen vorher/nachher
-      // ausschreiben — Verlauf + Sicherheitsnetz für verlorene Beschreibungen.
-      out[label] = { old: summarizeCustomFields(oldItem[key]) || '(leer)', new: summarizeCustomFields(updates[key]) || '(leer)' };
-    } else if (opaque.has(key)) {
-      out[label] = { old: '(vorher)', new: '(geändert)' };
-    } else {
-      out[label] = { old: trunc(prettyBool(norm(oldItem[key]))) || '(leer)', new: trunc(prettyBool(norm(updates[key]))) || '(leer)' };
-    }
-  }
-  return out;
-}
-
-/** v18.33: Eingabe für den Self-Check-in-Deep-Link. Entweder `token` (statischer
- *  QR) ODER `eventNumber` + `code` + `windowIndex` (rotierender Live-QR). */
-export interface SelfCheckInParams {
-  token?: string;
-  eventNumber?: number;
-  code?: string;
-  windowIndex?: number;
-}
-
-/** v18.33: Strukturiertes Ergebnis des Self-Check-ins für die Ergebnis-UI. */
-export type SelfCheckInStatus =
-  | 'success'        // erfolgreich eingecheckt
-  | 'already'        // war bereits eingecheckt
-  | 'not-registered' // nicht für dieses Event angemeldet
-  | 'on-waitlist'    // auf der Warteliste — kein Check-in möglich
-  | 'not-found'      // Event/Token nicht gefunden
-  | 'disabled'       // Self-Check-in für dieses Event nicht aktiviert
-  | 'closed'         // außerhalb des Check-in-Zeitfensters
-  | 'expired'        // rotierender Code abgelaufen / ungültig
-  | 'error';         // technischer Fehler
-
-export interface SelfCheckInResult {
-  status: SelfCheckInStatus;
-  eventTitle?: string;
-  eventStart?: string;
-  opensAt?: string;   // ISO, bei status='closed'
-  closesAt?: string;  // ISO, bei status='closed'
-}
-
-/** v26.33: Eine Zeile aus dem Statistik-Archiv (DEX_EventStats) — reine KPIs
- *  eines Events, dessen Teilnehmerliste nach dem 3-Monats-Löschkonzept gelöscht
- *  wurde. Enthält KEINE personenbezogenen Daten. */
-export interface EventStatsRow {
-  id: number;
-  eventNumber: number;
-  eventTitle: string;
-  eventType: string;
-  location: string;
-  startDate: string;
-  endDate: string;
-  maxParticipants: number | null;
-  registeredCount: number;
-  qrSentCount: number;
-  checkedInCount: number;
-  noShowCount: number;
-  waitlistCount: number;
-  deregisteredCount: number;
-  organizer: string;
-  archivedByEmail: string;
-  archivedDate: string;
-}
-
-/**
- * v30.58: Ein Befund je Event aus „Spalten fixen (alle Events)".
- *
- * `stillMissing` ist der wichtige Teil: Spalten, die auch nach dem Fix nicht
- * angelegt werden konnten. Genau die bringen jeden Insert zu Fall, in dem sie
- * vorkommen — bei einer Klammer-Liste also jede Anmeldung, bei der die Person
- * das betreffende Hauptevent-Feld ausgefüllt hat.
- */
-export interface FixColumnsDetail {
-  eventId: string;
-  eventTitle: string;
-  /** Klammer/Einzel-Event (true) oder Sub-Event (false). */
-  isParent: boolean;
-  /** Die Teilnehmerliste selbst ist weg (404/410) — keine Spalten-Frage. */
-  listMissing: boolean;
-  fixedColumns: string[];
-  stillMissing: string[];
-  error?: string;
-}
-
-interface EventContextType {
-  events: DeloitteEvent[];
-  /** Top-Level-Events (ohne parentEventId) — was in EventListPage/MyEventsPage angezeigt wird. */
-  topLevelEvents: DeloitteEvent[];
-  /** Kind-Events eines Parents (Sub-Events / Trainingssessions), sortiert nach StartDate. */
-  childEventsOf: (parentEventId: string) => DeloitteEvent[];
-  isEventsLoading: boolean;
-  /** v29.47: Dokumente eines Events bei Bedarf nachladen (Boot lädt sie nicht mehr). */
-  ensureEventDocuments: (eventIds: string[]) => Promise<void>;
-  createEvent: (event: CreateEventInput) => Promise<number | null>;
-  // v30.42: skipShadowParent — nur die Anmeldeseite setzt das; sie legt die
-  // Klammer-Zeile selbst an, und zwar MIT den übergreifenden Antworten.
-  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { skipShadowParent?: boolean; suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean; actorAllowedAsAssistant?: boolean; skipReload?: boolean; bundledItems?: BundledItem[] }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste'; reason?: string }>;
-  /** v11.82: Team-Anmeldung — Lead + N-1 Mitglieder gleichzeitig anmelden.
-   *  Reserviert N Plätze atomar; bei Vollbelegung geht das ganze Team auf
-   *  die Warteliste (keine Teil-Anmeldungen aus Kapazitätsmangel). */
-  registerTeam: (
-    eventId: string,
-    leadData: { firstName: string; lastName: string; email: string; salutation?: string; customData: Record<string, string>; preferredStarterType?: string },
-    members: Array<{ email: string; displayName: string; customData?: Record<string, string> }>,
-    teamName: string | undefined
-  ) => Promise<{ ok: boolean; teamId?: string; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
-  /** v11.82: Andere Team-Mitglieder zu einer Registrierung laden — für das
-   *  Team-Badge in „Meine Events". */
-  getTeamMembers: (eventId: string, teamId: string) => Promise<SPRegistration[]>;
-  /** v11.83: Ein Team-Lead kann nachträglich ein einzelnes Mitglied
-   *  zum bereits angemeldeten Team hinzufügen (Plus-Button in MyEvents).
-   *  Atomar einen Sitzplatz reservieren, neuen Member-Eintrag anlegen,
-   *  Bestätigungs-Mail + Outlook-Termin queuen. */
-  addTeamMember: (eventId: string, teamId: string, teamName: string | undefined, member: { email: string; displayName: string }, customData?: Record<string, string>, opts?: { suppressMemberMail?: boolean; suppressOthersMail?: boolean; ccEmail?: string }) => Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
-  /** v22.49: „Neues Mitglied"-Info an bestehende Team-Mitglieder (scope: alle
-   *  oder nur Lead) — vom Zuordnungs-Modal optional ausgelöst. */
-  notifyExistingTeamMembers: (eventId: string, teamId: string, teamName: string | undefined, newMemberNames: string[], excludeEmails: string[], scope?: 'all' | 'lead') => Promise<void>;
-  /** v17.2: Schon angemeldete Person (ohne TeamId) einem Team zuweisen.
-   *  PATCHt nur die TeamId/TeamName/TeamLead-Felder, KEINE neue
-   *  Registrierung, KEINE Bestätigungsmail, KEIN Outlook. */
-  assignTeamlessToTeam: (eventId: string, teamId: string, teamName: string | undefined, existingRegId: number, isLead?: boolean, opts?: { sendMail?: boolean; recipientEmail?: string; recipientFirstName?: string; recipientLastName?: string; ccEmail?: string }) => Promise<boolean>;
-  /** v11.83: Direkter Team-Beitritt aus der Anmeldeseite (wenn der
-   *  Organizer "Beitritt erfordert Bestätigung" NICHT aktiviert hat).
-   *  Verhalten wie `addTeamMember`, aber läuft mit dem eingeloggten User
-   *  selbst als neuem Member. */
-  joinTeam: (eventId: string, teamId: string, teamName: string | undefined, customData?: Record<string, string>) => Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
-  /** v11.84: Team-Lead-Rolle innerhalb eines Teams übergeben — nur im
-   *  Admin Center für Admin/Organizer eigener Events sichtbar. Setzt die
-   *  alte Lead-Zeile auf TeamLead=false und die neue auf TeamLead=true,
-   *  schickt anschliessend eine Info-Mail an alle aktiven Mitglieder. */
-  transferTeamLead: (eventId: string, teamId: string, newLeadEmail: string) => Promise<{ ok: boolean; reason?: string }>;
-  /** v11.83: Beitritts-Anfrage in DEX_TeamJoinRequests einreichen — für
-   *  Events bei denen der Organizer Approval aktiviert hat. */
-  createTeamJoinRequest: (eventId: string, teamId: string, customData?: Record<string, string>) => Promise<{ ok: boolean; itemId?: number; reason?: string }>;
-  /** v11.83: Pending-Beitritts-Anfragen abrufen (nur für den
-   *  eingeloggten User als Team-Lead — Filter auf TeamId, das er selber
-   *  führt). */
-  listTeamJoinRequestsForEvent: (eventId: string, teamId: string) => Promise<Array<{ Id: number; EventId: string; TeamId: string; RequesterEmail: string; RequesterDisplayName: string; Status: string; Created: string }>>;
-  /** v11.83: Approval-/Reject-Entscheidung eines Leads — bei „Approved"
-   *  legt die App die Member-Anmeldung an und queued Mails; bei
-   *  „Rejected" eine kurze Absage-Mail an den Anfragenden. */
-  decideTeamJoinRequest: (requestId: number, decision: 'Approved' | 'Rejected') => Promise<boolean>;
-  /** v11.83: Liste der Teams (gruppiert nach TeamId) eines Events für
-   *  die „Offene Teams"-Anzeige auf der Registrierungs-Seite. Nur Teams
-   *  mit aktivem Mitglied-Count < TeamSize werden aufgeführt. */
-  listOpenTeamsForEvent: (eventId: string) => Promise<Array<{ teamId: string; teamName: string; activeCount: number; teamSize: number; leadEmail: string; leadDisplayName: string }>>;
-  cancelRegistration: (eventId: string, opts?: { suppressNotifications?: boolean; skipReload?: boolean }) => Promise<boolean>;
-  /** v18.11: Proaktive Absage durch einen (noch nicht angemeldeten) Teilnehmer
-   *  — „Ich nehme nicht teil". Landet als Abgemeldet-Eintrag im Admin-Center. */
-  declineEvent: (eventId: string) => Promise<boolean>;
-  /** v11.86: Ein Team-Lead meldet über „Team verwalten" stellvertretend
-   *  ein Team-Mitglied vom Event ab. Audit-Felder (CancelledBy*) werden
-   *  mit dem eingeloggten Lead gefüllt, danach läuft derselbe
-   *  Team-Post-Step wie beim Self-Cancel (Info-Mails an die uebrigen
-   *  Mitglieder; Auto-Promote nicht relevant, weil der Lead sich nicht
-   *  selbst löscht). */
-  cancelTeamMember: (
-    eventId: string,
-    memberRegistration: SPRegistration
-  ) => Promise<boolean>;
-  getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
-  /** v24.36: Assistenz — alle Anmeldungen (Haupt- + Sub-Events), die der
-   *  eingeloggte User STELLVERTRETEND für eine andere Person durchgeführt hat
-   *  (RegisteredByEmail = ich, ParticipantEmail ≠ ich). Liefert Event +
-   *  Registrierung pro Treffer, dedupliziert über alle Subsites. */
-  getMyProxyRegistrations: () => Promise<Array<{ event: DeloitteEvent; registration: SPRegistration }>>;
-  /** v24.36: Stellvertretende Abmeldung einer Fremd-Anmeldung durch die
-   *  Assistenz — voller Side-Effect-Pfad (Abmelde-Mail, Outlook-Ausladen,
-   *  ID-Reorder, Sitzplatz-Sync), Audit als Akteur „assistant". */
-  cancelProxyRegistration: (eventId: string, registration: SPRegistration) => Promise<boolean>;
-  /** v24.36: Custom-Field-Antworten einer Fremd-Anmeldung aktualisieren
-   *  (Assistenz). Schreibt CustomData + die gemappten SP-Spalten. */
-  updateProxyRegistration: (eventId: string, registration: SPRegistration, customData: Record<string, string>) => Promise<boolean>;
-  /** v24.43: Eine stellvertretend angelegte Anmeldung komplett an die Person
-   *  selbst übergeben (Owner/Autor/RegisteredBy → Person). */
-  handBackToParticipant: (eventId: string, registration: SPRegistration) => Promise<boolean>;
-  /** v24.41: Nach einer Selbst-Anmeldung die Verwaltung an eine Assistenz
-   *  delegieren — legt pro betroffener Zeile (Haupt-/Klammer-Event + alle
-   *  Sub-Events, für die der User angemeldet ist) einen Delegations-Auftrag in
-   *  DEX_AssistantAccess an. Der Flow setzt darauf den Zeilen-Autor +
-   *  RegisteredBy auf die Assistenz (Zugriff in deren „Assistenz"-Kachel). */
-  delegateRegistrationToAssistant: (eventId: string, assistant: { email: string; name: string }) => Promise<void>;
-  /** v24.41 Szenario B: Nach stellvertretender Anmeldung einen Info-Link
-   *  anlegen (Anmelder = Owner, angemeldete Person sieht Info). */
-  recordProxyDelegation: (eventId: string, participant: { email: string; name: string }) => Promise<void>;
-  /** v24.41: Alle aktiven Assistenz-Verknüpfungen des Users (als Person,
-   *  Assistenz oder Owner) — Basis für Info-Ansichten + Anforderungen. */
-  getMyAssistantLinks: () => Promise<AssistantLink[]>;
-  /** v24.42: Änderungs-/Abmelde-Anforderung stellen (schreibt die Anforderung +
-   *  schickt dem Owner eine Deeplink-Mail). */
-  requestAssistantChange: (link: AssistantLink, requestType: 'change' | 'cancel', note: string) => Promise<boolean>;
-  /** v24.42: Anforderung als erledigt/abgelehnt markieren (Owner). */
-  resolveAssistantRequest: (linkId: number, decision: 'Done' | 'Rejected') => Promise<boolean>;
-  /** v18.33: Self-Check-in über einen gescannten QR-Deep-Link. Löst das Event
-   *  per Token (statischer QR) oder Event-Nummer + HMAC-Code (rotierender QR)
-   *  auf, validiert Fenster/Frische und setzt die eigene Registrierung auf
-   *  „Eingecheckt". Gibt ein strukturiertes Ergebnis für die Ergebnis-UI. */
-  selfCheckIn: (params: SelfCheckInParams) => Promise<SelfCheckInResult>;
-  /** v22.23: Organizer-Tutorial — solange aktiv, wird das synthetische
-   *  Demo-Showcase-Event (read-only, nur client-seitig) in die Event-Liste
-   *  injiziert, mit dem eingeloggten User als Organizer. So sieht der
-   *  Organizer während der Tour ein Übungs-Event im Organizer Center. */
-  setTutorialDemoActive: (on: boolean) => void;
-  checkRegistrationByEmail: (eventId: string, email: string) => Promise<SPRegistration | null>;
-  // v30.37: optionaler onHttpError — 403/404 ist NICHT „keine Teilnehmer".
-  getAllRegistrations: (eventId: string, onHttpError?: (_status: number) => void) => Promise<SPRegistration[]>;
-  deleteEvent: (eventId: string) => Promise<boolean>;
-  /** v24.0: Anzahl der Anmeldungen über das Organizer-Team hinaus (echte
-   *  Teilnehmer, Haupt- + Sub-Events, status-unabhängig). >0 ⇒ Lösch-Sperre
-   *  (nur Admin, frühestens 1 Jahr nach Event-Ende). */
-  countExternalRegistrations: (event: DeloitteEvent) => Promise<number>;
-  /** v24.6: Organizer-Archiv (pro Person ausblenden, reiner Anzeige-Filter). */
-  getOrganizerArchivedEventIds: () => Promise<Set<string>>;
-  archiveEventForOrganizer: (eventId: string) => Promise<boolean>;
-  unarchiveEventForOrganizer: (eventId: string) => Promise<boolean>;
-  /** v11.69: Löscht NUR das DEX_Events-Listenitem, ohne Subsite-/Teilnehmer-
-   *  Liste-Recycle und ohne Outlook-DeleteEvent-Queue. Wird gebraucht, um ein
-   *  Sub-Event mit `existingSubsiteUrl` neu anzulegen, damit der
-   *  `DEX_CreateOutlookEvent`-Flow triggert — die alte Subsite mit
-   *  Anmeldungen bleibt erhalten. */
-  deleteEventItemOnly: (eventId: string) => Promise<boolean>;
-  updateEvent: (eventId: string, updates: Record<string, unknown>, opts?: { skipReload?: boolean }) => Promise<boolean>;
-  /** v26.51: Klartext-Grund, warum das letzte updateEvent fehlschlug — für die
-   *  Fehlermeldung im Wizard (vorher stand der Grund nur in der Konsole). */
-  getLastEventUpdateError: () => string;
-  /** v22.42: Automatischer Hintergrund-Fix der Zeilen-Autoren (Sichtbarkeit
-   *  von Fremd-Anmeldungen). Läuft beim Admin-Start gedrosselt (1×/24h) über
-   *  alle aktiven Subsites — best-effort, blockiert nichts. */
-  autoRepairProxyAccess: () => Promise<void>;
-  /** v23.8: Wöchentlichen Admin-Bericht versenden, falls fällig (≥7 Tage seit
-   *  dem letzten). Beim App-Start für Admins aufgerufen. Mit `force:true`
-   *  (Settings-Testbutton) wird die 7-Tage-Sperre übersprungen. Best-effort;
-   *  liefert ein kleines Ergebnis für UI-Feedback. */
-  maybeSendWeeklyReport: (opts?: { force?: boolean }) => Promise<{ sent: boolean; admins: number; reason?: string }>;
-  // v30.5: F&A-Abrechnung (Fachkonzept) — Verteiler, Versand, Abschluss, Auto-Job.
-  getFAConfig: () => Promise<FAConfig>;
-  saveFAConfig: (cfg: FAConfig) => Promise<boolean>;
-  sendFAMail: (ev: DeloitteEvent, kind: 'info' | 'list', opts?: { auto?: boolean }) => Promise<{ ok: boolean; reason?: string }>;
-  markEventSettled: (ev: DeloitteEvent) => Promise<boolean>;
-  /** v30.61: Aktualisierte Sammelmail nach einer Änderung an den gebuchten
-   *  Terminen (nur bei gebündelter Kommunikation). */
-  sendBundledUpdateMail: (parentEvent: DeloitteEvent, recipientEmail: string, recipientName: string, items: BundledItem[]) => Promise<boolean>;
-  /** v30.60: Von F&A nachgetragene Personalnummern/Kostenstellen in den
-   *  gemeldeten Snapshot schreiben (Zuordnung über die E-Mail-Adresse). */
-  saveFAPersonalNumbers: (ev: DeloitteEvent, values: Record<string, { personalNr?: string; costCenter?: string }>) => Promise<boolean>;
-  /** v30.53: Rückfrage an F&A in der Kommunikationshistorie festhalten. */
-  logFAContact: (ev: DeloitteEvent, to: string, subject: string) => Promise<boolean>;
-  maybeSendBillingAutoMails: () => Promise<{ infoSent: number; listSent: number; reminders: number }>;
-  /** v24.2: „Danke, wir hoffen es lief gut"-Mail an den Organizer beim
-   *  App-Öffnen nach dem Event-Tag (1×/Event/Organizer, localStorage-Drossel). */
-  maybeSendPostEventOrganizerMails: () => Promise<void>;
-  /** v23.37: Antrag „Organizer werden" anlegen (+ Admin-Mail mit Deep-Link). */
-  requestOrganizerRole: (email: string, name: string, location: string, message?: string) => Promise<{ ok: boolean; reason?: string }>;
-  /** v26.24: Beim Event-Speichern für jeden benannten Co-Organizer, der noch
-   *  KEIN Organizer/Admin ist, einen „Organizer werden"-Antrag (zur Admin-
-   *  Freigabe) anlegen. orgNames/orgEmails sind die 1:1-gepaarten Strings aus
-   *  sanitizeOrganizerPairs (Namen „; "-, Mails ";"-getrennt). Best-effort. */
-  requestCoOrganizerApprovals: (orgNames: string, orgEmails: string, eventTitle: string) => Promise<void>;
-  /** v26.34: Neu hinzugefügte (Co-)Organizer per Mail informieren (Zugriff auf
-   *  die Teilnehmerliste) + Outlook-Kalendereinladung. Best-effort. */
-  notifyNewCoOrganizers: (eventId: string, eventTitle: string, added: Array<{ name: string; email: string }>, isDe: boolean, disableOutlook?: boolean) => Promise<void>;
-  /** v23.37: offene Organizer-Anträge (für den Admin-Hinweis beim App-Start). */
-  getOpenOrganizerRequests: () => Promise<Array<{ id: number; email: string; name: string; location: string; message: string; created: string }>>;
-  /** v23.37: Antrag entscheiden — Status setzen + Antragsteller informieren.
-   *  Die eigentliche Rollenvergabe macht der Aufrufer über useRoles().addRole. */
-  markOrganizerRequestDecided: (id: number, status: 'Approved' | 'Rejected', email: string, name: string, opts?: { suppressMail?: boolean }) => Promise<boolean>;
-  /** v26.58: Einzelnen Antrag inkl. Entscheidungs-Metadaten (Status,
-   *  DecidedByEmail, DecidedDate) — für den approveorg-Deep-Link. */
-  getOrganizerRequestDetails: (id: number) => Promise<{ id: number; email: string; name: string; status: string; decidedByEmail: string; decidedDate: string } | null>;
-  /** v22.45: Scannt die übergebenen Events auf Teilnehmer ohne aktives
-   *  Deloitte-Konto (für die Landing-Page-Warnung der Organizer/Admins). */
-  scanInactiveAccounts: (evs: Array<{ id: string; title: string; subsiteUrl?: string }>) => Promise<Array<{ eventId: string; title: string; people: Array<{ email: string; name: string }> }>>;
-  /** v24.51: Organizer per Mail über (ein) inaktives Konto informieren — mit
-   *  Dedup über alle Admins (nur einmal pro Event+Person). */
-  notifyOrganizerOfInactive: (eventId: string, people: Array<{ email: string; name: string }>) => Promise<{ sent: number; skipped: number; noOrganizer?: boolean }>;
-  /** v26.40: Erkannte Ex-Deloitte-Personen automatisch abmelden (Event-Setting
-   *  inactiveHandling='autoderegister'). Gibt die abgemeldeten Personen zurück. */
-  autoDeregisterInactive: (eventId: string, people: Array<{ email: string; name: string }>) => Promise<Array<{ email: string; name: string }>>;
-  /** v26.41: Kommunikations-Log (Event-Rundmails) eines Events — für die
-   *  Teilnehmer-Ansicht unter „Meine Events" und die Organizer-Historie. */
-  getEventComms: (eventId: string) => Promise<EventCommRow[]>;
-  /** v24.59: Bereits benachrichtigte Teilnehmer-E-Mails (lowercase) eines Events
-   *  — damit die Landing-Page schon-benachrichtigte Konten ausblenden kann. */
-  getSentInactiveNotices: (eventId: string) => Promise<Set<string>>;
-  /** v21: Archivierung — zählt archivreife Zeilen abgelaufener Events. */
-  getArchivableCount: () => Promise<{ total: number; perList: Record<string, number> }>;
-  /** v21: Archivierung — verschiebt archivreife Zeilen ins DEX_Archive.
-   *  v22.2: shouldCancel = Abbruch-Check aus dem Fortschrittsmodal. */
-  runArchiveExpired: (onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void, shouldCancel?: () => boolean) => Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }>;
-  /** v24.33: Globales „Spalten fixen" über ALLE Events inkl. Sub-Events + Company-Backfill bestehender Teilnehmer. */
-  /** v30.58: `details` sagt PRO EVENT, was gefehlt hat und was danach noch fehlt. */
-  fixAllEventColumns: (onProgress?: (done: number, total: number, label: string) => void) => Promise<{ lists: number; columnsAdded: number; backfilled: number; errors: number; anyChange: boolean; details: FixColumnsDetail[] }>;
-  // v30.39: Organizer-Rechte über ALLE Event-Bäume nachziehen (Klammer + Sub-Events).
-  repairAllOrganizerPermissions: (onProgress?: (done: number, total: number, label: string) => void) => Promise<{ trees: number; sites: number; grants: number; unresolved: string[]; errors: number }>;
-  /** v26.13: Versehentlich gelöschte Custom-Field-Beschreibungen aus der
-   *  SharePoint-Versionshistorie wiederherstellen. */
-  restoreCustomFieldDescriptions: (onProgress?: (done: number, total: number, label: string) => void, dryRun?: boolean) => Promise<{ events: number; eventsChanged: number; fieldsRestored: number; errors: number; details: Array<{ eventId: string; eventTitle: string; fields: Array<{ label: string; props: string[] }> }> }>;
-  /** v23.40: Löschkonzept — zählt DEX_Archive-Einträge älter als 1 Monat (v23.48). */
-  getDeletableArchiveCount: () => Promise<number>;
-  /** v23.40: Löschkonzept — löscht DEX_Archive-Einträge älter als 1 Monat (v23.48). */
-  runDeleteOldArchive: (onProgress?: (done: number, total: number) => void, shouldCancel?: () => boolean) => Promise<{ deleted: number; failed: number; cancelled: boolean }>;
-  /** v26.32: Löschkonzept — Teilnehmerlisten 3 Monate nach Event-Ende. Events im
-   *  Vorwarn-Fenster (3 Mon. − 1 Woche) bzw. fällige (≥3 Mon.) + Ausführung +
-   *  automatische Vorwarn-Mail an die Organizer. */
-  getParticipantDeletionWarnings: () => Promise<DeloitteEvent[]>;
-  getParticipantDeletionDue: () => Promise<DeloitteEvent[]>;
-  runParticipantDeletion: (onProgress?: (done: number, total: number, label: string) => void) => Promise<{ deleted: number; failed: number }>;
-  maybeSendParticipantDeletionWarnings: () => Promise<void>;
-  /** v26.33: Liest das Statistik-Archiv (DEX_EventStats) — KPIs gelöschter
-   *  Teilnehmerlisten für die Admin-Center-Kachel „Statistik-Archiv". */
-  getEventStats: () => Promise<EventStatsRow[]>;
-  updateMyRegistration: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
-  /** v10.27: Split-Capacity-Gruppen-Wechsel für die eigene Registrierung.
-   *  Nimmt die App-internen Wert-IDs ('Durchstarter' | 'Funstarter') —
-   *  liefert zurück, ob der Wechsel direkt in die Ziel-Gruppe gehen
-   *  konnte oder ob der User auf die Warteliste der Ziel-Gruppe gesetzt
-   *  wurde (full=true). */
-  switchSplitGroup: (eventId: string, newType: 'Durchstarter' | 'Funstarter') => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' | 'Failed'; full: boolean }>;
-  /** v11.0: Item-Attachments einer Teilnehmer-Zeile listen / hochladen /
-   *  löschen — der itemId ist in beiden Fällen die SharePoint-ID des
-   *  jeweiligen Teilnehmer-Items in der Subsite. Im User-Flow nutzt die
-   *  App für 'eigene Anmeldung' getMyRegistration, im Admin-Flow gibt
-   *  AdminPage die fremde Item-ID direkt mit. */
-  listMyEventAttachments: (eventId: string) => Promise<Array<{ fileName: string; serverRelativeUrl: string }>>;
-  uploadMyEventAttachment: (eventId: string, file: File) => Promise<boolean>;
-  deleteMyEventAttachment: (eventId: string, fileName: string) => Promise<boolean>;
-  // v19.0: Dokument-Custom-Felder (pro-Feld-Attachments).
-  uploadFieldDocument: (eventId: string, fieldId: string, file: File, participantEmail?: string) => Promise<boolean>;
-  listFieldDocuments: (eventId: string, fieldId: string, participantEmail?: string) => Promise<Array<{ fileName: string; serverRelativeUrl: string; displayName: string }>>;
-  deleteFieldDocument: (eventId: string, fileName: string, participantEmail?: string) => Promise<boolean>;
-  getMyEventNumbers: () => Promise<{ registered: number[]; waitlisted: number[] }>;
-  /** v28.22: Event-Nummern einer beliebigen Person (DEX_Participants, ohne
-   *  Item-Level-Security der Teilnehmerlisten) — für die Doppel-Anmelde-
-   *  Vorwarnung, die auch fremd angelegte Zeilen erkennt. */
-  getEventNumbersForEmail: (email: string) => Promise<{ registered: number[]; waitlisted: number[] }>;
-  /** v22.50: globale Teilnehmer-Liste (DEX_Participants) für die Admin-Suche.
-   *  Berechtigungs-Scoping (nur Events, die der Nutzer verwalten darf) macht
-   *  der Aufrufer. */
-  getAllParticipants: () => Promise<SPParticipant[]>;
-  refreshEvents: () => Promise<void>;
-  refreshParticipantCounts: (eventId?: string) => Promise<void>;
-  /** v24.73: Live-Plätze aus dem (für alle lesbaren) Counter — korrekte
-   *  Aktiv-/Warteliste-Zahl auch für normale Teilnehmer. null = Counter nicht
-   *  verfügbar (Aufrufer fällt auf event.currentParticipants zurück). */
-  /** v30.62: `seatsKnown` = false heißt, der Platzzähler wurde für diese
-   *  Subsite noch nie geschrieben. Die 0 darin ist dann kein Messwert. */
-  getLiveCounterStats: (eventId: string) => Promise<{ active: number; waitlist: number; seatsKnown: boolean } | null>;
-  /** v24.74: Sitzplatz-Counter aller aktiven Kapazitäts-Events aus dem echten
-   *  Bestand frischziehen (SeatsTaken + WaitlistTaken). Braucht Vollzugriff →
-   *  beim Admin-Start aufrufen, damit die für alle lesbaren Counter stimmen,
-   *  bevor Teilnehmer das Anmeldeformular öffnen. Best-effort, sequentiell. */
-  reconcileCounters: (opts?: { onlyMine?: boolean }) => Promise<void>;
-  /** v24.75: Echtzeit-Push auf eine Liste der Event-Subsite. kind='counter'
-   *  (Anmeldeformular, für alle lesbar) / 'participants' (Organizer-Liste).
-   *  Liefert eine Cleanup-Funktion. Best-effort. */
-  subscribeEventRealtime: (eventId: string, kind: 'counter' | 'participants', onChange: () => void) => Promise<() => void>;
-  markExpiredEventsAsCompleted: () => Promise<number>;
-  sendAdminInquiry: (requesterName: string, requesterEmail: string, eventName: string, message: string, requesterLocation?: string, requesterJobTitle?: string) => Promise<boolean>;
-  /** v26.67: Erinnerungs-Mail an eine „verwaiste" (Geister-)Anmeldung — die
-   *  Person (bzw. die anmeldende Person bei Fremd-Anmeldung) hat eine Klammer-
-   *  Zeile, aber kein Sub-Event ausgewählt; die Mail bittet sie, die Anmeldung
-   *  abzuschließen, und verlinkt direkt die Anmeldeseite des Events. */
-  sendCompleteRegistrationReminder: (args: { eventId: string; eventTitle: string; participantEmail: string; participantName: string; registeredByEmail?: string; registeredByName?: string }) => Promise<boolean>;
-  /** v26.57: Approve-Mail an die Admins, wenn Personen AUSSERHALB von
-   *  @deloitte.de zur Zielgruppe eines Events hinzugefügt wurden — der
-   *  SharePoint ist im Default nur für Deloitte DE ALL freigeschaltet,
-   *  internationale Kolleg:innen brauchen also zusätzlich Site-Zugriff. */
-  notifyAdminsExternalAudienceAccess: (eventTitle: string, persons: string[], requesterName: string) => Promise<void>;
-  /** v12.12: Admin-Aktion zum Re-Seed der Default-Email-Templates in
-   *  DEX_EmailTemplates. Überschreibt die aktuelle Subject/Heading/BodyHtml
-   *  jedes Standard-Templates mit den Default-Werten aus dem Code. */
-  reseedDefaultEmailTemplates: () => Promise<ReseedSummary>;
-  /** v24.98: Globaler Mail-Vorlagen-Editor — alle Templates lesen + einzelne
-   *  Felder (Subject/Heading/Subheading/Farbe/Body) speichern. */
-  getAllEmailTemplates: () => Promise<Array<{ id: number; templateType: string; language: string; subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string }>>;
-  updateEmailTemplate: (id: number, fields: { subject?: string; heading?: string; subheading?: string; headingColor?: string; bodyHtml?: string }) => Promise<boolean>;
-  /** v11.52: Gecachte KPI-Werte (Events + Teilnehmer) aus _Config lesen —
-   *  ein einziger schneller REST-Call, für Boot-Loader-Anzeige. */
-  getKpiCache: () => Promise<{ participants: number; events: number } | null>;
-  /** v11.52: Frische KPI-Werte in _Config schreiben. Wird nach vollem
-   *  App-Load im Hintergrund aufgerufen, damit nächster Boot frisch ist. */
-  updateKpiCache: (v: { participants: number; events: number }) => Promise<boolean>;
-  /** v26.4: Korrekte KPI-Gesamtwerte über ALLE Events (paginiert, nicht nur die
-   *  geladenen 100) — Admin-Recompute für den „bisher genutzt für"-Boot-Zähler. */
-  getKpiTotals: () => Promise<{ participants: number; events: number } | null>;
-  /** v26.63: NUR die Events-Zahl neu berechnen — allein aus DEX_Events, ohne den
-   *  teuren Subsite-Teilnehmer-Scan. Liefert die neue Events-Zahl oder null. */
-  recomputeEventKpiOnly: () => Promise<number | null>;
-  /**
-   * Onboarding-Mail an einen frisch ernannten Organizer/Admin verschicken.
-   * Cc geht automatisch an die DEX-Verantwortlichen, der Body wird ins
-   * Deloitte-Layout gewrappt (siehe organizerOnboardingEmail in EmailTemplates).
-   */
-  sendOrganizerOnboarding: (recipientEmail: string, recipientName: string, role: 'Organizer' | 'Admin') => Promise<boolean>;
-  // v9.21: Globaler TestTeam-State entfernt — Test-Team ist ab jetzt
-  // per-Event (auf event.testTeamEmails). Die globalen Methoden bleiben
-  // im EventService dormant für Backward-Compat.
-}
-
-export interface CreateEventInput {
-  title: string;
-  type: string;
-  status: string;
-  description: string;
-  location: string;
-  locationAddress?: string; // JSON: { street, houseNo, zip, city }
-  locationFilter: string;
-  audience: string;
-  /** v16.4: Pre-resolved DL members (';'-separated, lowercase). */
-  audienceResolvedEmails?: string;
-  filterMode: string;
-  startDate: string;
-  endDate: string;
-  registrationDeadline: string;
-  lastDeregisterDate: string;
-  /** v29.19: Auto-Aktivierung (UTC-ISO) — wurde beim Anlegen bisher nicht
-   *  persistiert, obwohl der Wizard das Feld anbietet. */
-  activeFrom?: string;
-  maxParticipants: number;
-  waitlistEnabled: boolean;
-  mandatoryRegistration?: boolean; // v24.64: Pflicht-Sub-Event
-  eventImageUrl: string;
-  organizer: string;
-  organizerEmail: string;
-  /** v10.16: optionaler Ansprechpartner (Anzeige-Feld). */
-  contactName?: string;
-  contactEmail?: string;
-  contactInfo?: string;
-  contactOrganizerEmail?: string; // v26.18
-  outlookEventId: string;
-  outlookBody: string;
-  agenda?: string; // JSON-Array mit Agenda-Einträgen
-  transfers?: string; // JSON-Array mit Transferzeiten
-  documents?: string; // JSON-Array mit Dokumenten
-  funZone?: string; // JSON-Array mit Quiz-Fragen
-  quizClusterSize?: number; // 1..4 Fragen pro Quiz-Ansicht
-  /** Seit v6.4: wenn gesetzt, wird das Event als Sub-Event zum angegebenen Parent angelegt. */
-  parentEventId?: string;
-  emailLanguage?: string;
-  /** v18.35: erzwungene Anmeldeseiten-Sprache ('de' | 'en'); leer = App-Sprache. */
-  registrationLanguage?: 'de' | 'en';
-  /** v18.40: manueller Outlook-Termin-Ort; leer = Auto aus Veranstaltungsort + Adresse. */
-  outlookLocation?: string;
-  /** v29.52: ganztägiger Termin — der Outlook-Flow macht daraus isAllDay. */
-  allDay?: boolean;
-  /** v29.54: Termin als „Frei" statt „Beschäftigt" anzeigen. */
-  showAsFree?: boolean;
-  /** v29.55: Organizer nicht in den Outlook-Termin eintragen. */
-  skipOrganizerInvite?: boolean;
-  /** v30.26: Flow soll für diesen Termin einen Teams-Link erzeugen (isOnlineMeeting). */
-  outlookIsOnlineMeeting?: boolean;
-  /** v18.42: Betreff des Outlook-Termins; leer = Event-Titel. */
-  outlookSubject?: string;
-  /** v18.44: abweichende Outlook-Start/-Ende (ISO); leer = Event-Datum. */
-  outlookStart?: string;
-  outlookEnd?: string;
-  emailTemplateOverrides?: string;
-  disableEmails?: boolean;
-  disableRegistrationEmail?: boolean; // v19.21: keine Anmelde-Bestätigung
-  disableCancellationEmail?: boolean; // v19.21: keine Abmelde-Bestätigung
-  autoDeregisterOnDecline?: boolean; // v19.23: Outlook-Absage = Auto-Abmeldung
-  inactiveHandling?: 'notify' | 'autoderegister'; // v26.40
-  disableOutlook?: boolean;
-  outlookDirty?: boolean; // v11.57: Outlook-Update ausstehend nach Bearbeitung
-  notifyOrgRegisterMode?: 'never' | 'always' | 'fromDate';
-  notifyOrgRegisterFromDate?: string;
-  notifyOrgCancelMode?: 'never' | 'always' | 'afterDeadline';
-  excludedUsers?: string[];
-  isFictive?: boolean;
-  durchstarterCapacity?: number;
-  funstarterCapacity?: number;
-  splitLabelA?: string;
-  splitLabelB?: string;
-  splitDescA?: string; // v26.72: Beschreibung Gruppe A (mehrzeilig)
-  splitDescB?: string; // v26.72: Beschreibung Gruppe B (mehrzeilig)
-  splitHelpText?: string; // v26.83: Hinweistext über der Gruppen-Auswahl
-  splitSectionTitle?: string; // v26.83: frei wählbare Überschrift der Gruppen-Auswahl
-  splitSharedWaitlist?: boolean;
-  allowAttendeeUpload?: boolean;
-  attendeeUploadHint?: string;
-  attendeeUploadLabel?: string;
-  /** v11.80: Anrede im Registrierungsformular abfragen (Default false). */
-  askSalutation?: boolean;
-  /** v18.75: Sicherheitshinweis vor dem Absenden der Anmeldung. */
-  confirmDialogEnabled?: boolean;
-  confirmDialogMode?: string; // 'summary' | 'freetext'
-  confirmDialogText?: string;
-  /** v18.33: Self-Check-in per QR-Code erlauben (Default false). */
-  selfCheckInEnabled?: boolean;
-  /** v18.33: Geheimer Token (statischer Link + HMAC-Schlüssel rotierender QR). */
-  selfCheckInToken?: string;
-  /** v18.33: optionaler Start des Check-in-Fensters (ISO). */
-  selfCheckInFrom?: string;
-  /** v18.33: optionales Ende des Check-in-Fensters (ISO). */
-  selfCheckInTo?: string;
-  /** v11.80: Team-Anmeldung erlauben (Default false). */
-  teamRegistrationEnabled?: boolean;
-  /** v11.80: Maximale Teamgröße (0 = nicht gesetzt). */
-  teamSize?: number;
-  /** v11.80: Team-Namen abfragen (Default false). */
-  askTeamName?: boolean;
-  /** v11.81: Auch Teil-Teams erlauben (Default false = nur komplette Teams). */
-  teamPartialAllowed?: boolean;
-  /** v11.81: Offene Slots öffentlich für Beitritt sichtbar (Default false). */
-  teamOpenSlotsVisible?: boolean;
-  /** v11.81: Beitritt erfordert Bestätigung durch Team-Kapitän (Default false). */
-  teamJoinRequiresApproval?: boolean;
-  /** v17.20: Custom-Fields zweisprachig (DE + EN) anbieten. */
-  bilingualFields?: boolean;
-  customFields: CustomField[];
-  /** v11.69: Optional — wenn gesetzt zusammen mit `existingRegistrationListName`,
-   *  wird keine neue Subsite angelegt. Stattdessen wird die mitgegebene Subsite
-   *  an die neue DEX_Events-Zeile gekoppelt. Genutzt für "Outlook nachträglich
-   *  aktivieren ohne Teilnehmer-Verlust" (siehe `deleteEventItemOnly`). */
-  existingSubsiteUrl?: string;
-  /** v11.69: Optional — Listenname der bereits bestehenden Teilnehmerliste in
-   *  der wiederverwendeten Subsite (i.d.R. "Teilnehmer"). Muss zusammen mit
-   *  `existingSubsiteUrl` gesetzt sein, damit der Reuse-Pfad greift. */
-  existingRegistrationListName?: string;
-  /** v11.87: Optionaler Progress-Callback. Wird zu Beginn jeder Teil-
-   *  Operation aufgerufen, sodass die UI den Fortschrittsbalken und die
-   *  Unter-Caption sichtbar bewegen kann. Stages decken die langsamen
-   *  SP-Operationen ab (Subsite-Create, Teilnehmer-Liste, Permissions,
-   *  Item-Insert). */
-  onProgress?: (stage:
-    | 'start'
-    | 'subsite-creating'
-    | 'subsite-done'
-    | 'permissions'
-    | 'list-creating'
-    | 'list-done'
-    | 'item-insert'
-    | 'done'
-  ) => void;
-}
+import { EventContextType, CreateEventInput, SelfCheckInParams, SelfCheckInStatus, SelfCheckInResult, EventStatsRow, FixColumnsDetail } from './eventContextTypes';
+import { CounterStats } from '../services/events/seats';
+// v30.66: Die Typen liegen jetzt in `eventContextTypes.ts`; hier nur noch
+// re-exportiert, damit bestehende Importe aus `EventContext` weiter tragen.
+export { EventContextType, CreateEventInput, SelfCheckInParams, SelfCheckInStatus, SelfCheckInResult, EventStatsRow, FixColumnsDetail };
 
 export const EventContext = React.createContext<EventContextType | undefined>(undefined);
-
-// v26.17: Cache-Buster für das Event-Bild. Der Browser-Bild-Cache (IndexedDB,
-// utils/imageCache) speichert pro BILD-URL — ändert sich beim Bild-Wechsel die
-// URL NICHT (z.B. Attachment mit gleichem Dateinamen überschrieben), zeigte die
-// App dauerhaft das alte, gecachte Bild. Wir hängen daher die letzte
-// Änderungszeit des Events als `?v=`-Parameter an die ANZEIGE-URL — ändert sich
-// das Event (= auch beim Bild-Tausch), wird die URL neu und der Cache greift
-// frisch. Nur für die Anzeige; das gespeicherte EventImageUrl bleibt unberührt.
-function buildDisplayImageUrl(rawUrl: string, modified?: string): string {
-  const url = (rawUrl || '').trim();
-  if (!url || url.indexOf('data:') === 0) return url;
-  if (!modified) return url;
-  let v = '';
-  try { v = String(new Date(modified).getTime()); } catch { v = ''; }
-  if (!v || v === 'NaN') return url;
-  return `${url}${url.indexOf('?') >= 0 ? '&' : '?'}v=${v}`;
-}
 
 export function EventProvider(props: { context: WebPartContext; children: React.ReactNode }): React.ReactElement {
   const [events, setEvents] = React.useState<DeloitteEvent[]>([]);
@@ -902,6 +94,34 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return displayName.trim().split(/\s+/)[0];
   };
   const currentUserFirstName = getFirstName(currentUserName);
+
+  // v30.18: Kalender-Eltern eines Tages auflösen — für den Mail-Betreff
+  // (withParentTitleSubject, s. utils/mailSubject).
+  const calDayParentOf = (ev: { parentEventId?: string } | undefined): DeloitteEvent | undefined => {
+    if (!ev || !ev.parentEventId) return undefined;
+    const p = events.find(x => x.id === ev.parentEventId);
+    return p && p.subEventCalendar ? p : undefined;
+  };
+
+  // ==================== Sub-Event-Helper (v6.4+) ====================
+  // Seit v6.4 sind Sub-Events keine separaten JSON-Arrays mehr, sondern
+  // eigene DEX_Events-Items mit gesetztem parentEventId. Damit funktionieren
+  // alle bestehenden Flows (DEX_CreateOutlookEvent, DEX_Outlook_Einladungen,
+  // Teilnehmerliste, Organizer-Kalendereinladungen, Declines, QR-Codes,
+  // Warteliste, ...) unverändert — ein Sub-Event ist einfach ein Event.
+  // v13.11: topLevelEvents wird unten direkt aus `eventsForConsumer`
+  // gefiltert, weil die Demo-Impersonation pro Event qrScannerEmails
+  // shadowen muss.
+  const childEventsOf = React.useCallback(
+    (parentEventId: string): DeloitteEvent[] => {
+      if (!parentEventId) return [];
+      return events
+        .filter(e => e.parentEventId === parentEventId)
+        .slice()
+        .sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
+    },
+    [events]
+  );
 
   React.useEffect(() => {
     initEvents().catch(() => setIsEventsLoading(false));
@@ -1071,7 +291,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // benutzt, weil die SPFx-tsconfig auf ES2018 steht.)
     const safeMapped = await Promise.all(spEvents.map(async (e) => {
       try {
-        return await mapSPEventToDeloitteEvent(e);
+        return await mapSPEventToDeloitteEvent(e, subsiteMap);
       } catch (err) {
         console.warn('[DEX] mapSPEventToDeloitteEvent fehlgeschlagen für Event', e?.Id, err);
         return null;
@@ -1085,7 +305,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // AB HIER ist die App bedienbar: Titel, Zeiten, Sichtbarkeit, Bilder und
     // die zuletzt gespeicherte Teilnehmerzahl (Spalte CurrentParticipants)
     // stehen im Mapping. Die Liste geht deshalb sofort raus.
-    setEvents(mapped);
+    // v30.67: Bereits nachgeladene Anhänge behalten — s. keepLoadedDocuments.
+    setEvents(prev => keepLoadedDocuments(prev, mapped));
 
     // Nachlauf, sichtbar nur als Zahlen, die sich still aktualisieren.
     void (async () => {
@@ -1094,7 +315,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         const withCounts = await loadParticipantCountsForEvents(mapped);
         // eslint-disable-next-line no-console
         dlog('perf', `[DEX][perf][loadEvents] participantCounts (nachgelagert) = ${Math.round(performance.now() - tCnt)} ms`);
-        setEvents(withCounts);
+        // v30.67: Nicht den Snapshot von VOR einem parallel eingetroffenen
+        // ensureEventDocuments zurückschreiben — s. keepLoadedDocuments.
+        setEvents(prev => keepLoadedDocuments(prev, withCounts));
       } catch (err) { console.warn('[DEX] Teilnehmerzahlen-Nachlauf fehlgeschlagen:', err); }
     })();
   }
@@ -1132,6 +355,44 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       documentsInflightRef.current.set(id, p);
       return p;
     }));
+  }
+
+  /**
+   * v30.67 (Review): Anhänge eines Events neu laden, nachdem der Wizard sie
+   * am Context vorbei geändert hat (eigene EventService-Instanz). Ohne das
+   * trug keepLoadedDocuments die Liste von VOR dem Speichern in den frischen
+   * State: gelöschte Datei mit totem Link, neue Datei fehlt — bis zum F5, und
+   * ein erneut geöffneter Wizard zeigte die Änderung als nicht geschehen.
+   */
+  async function refreshEventDocuments(eventId: string): Promise<void> {
+    const id = String(eventId || '');
+    if (!id) return;
+    const running = documentsInflightRef.current.get(id);
+    if (running) { try { await running; } catch { /* */ } }
+    documentsLoadedRef.current.delete(id);
+    await ensureEventDocuments([id]);
+  }
+
+  /**
+   * v30.67: Nachgeladene Anhänge über einen loadEvents hinweg behalten.
+   *
+   * Das Mapping setzt immer `documents: []`, der Merker `documentsLoadedRef`
+   * sagt aber weiter „geladen" — zwei Zustände über dieselben Daten, die
+   * nicht synchron waren. Nach jedem loadEvents (Antworten ändern, Sub-Event
+   * abmelden) verschwand deshalb die Download-Box in „Meine Events" bis zum
+   * F5, weil niemand mehr nachlud (der Effect dort hängt an der Anzahl der
+   * Events, und die ändert sich nicht). Derselbe Verlust ohne Nutzeraktion,
+   * wenn der Zähl-Nachlauf einen Snapshot von VOR einem parallel
+   * eingetroffenen ensureEventDocuments zurückschrieb. Was einmal geladen
+   * ist, wandert hier in die frisch gemappten Objekte.
+   */
+  function keepLoadedDocuments(prev: DeloitteEvent[], next: DeloitteEvent[]): DeloitteEvent[] {
+    if (!prev || prev.length === 0) return next;
+    const docsById: Record<string, DeloitteEvent['documents']> = {};
+    for (const p of prev) {
+      if (p.documents && p.documents.length > 0) docsById[p.id] = p.documents;
+    }
+    return next.map(e => (docsById[e.id] && (!e.documents || e.documents.length === 0)) ? { ...e, documents: docsById[e.id] } : e);
   }
 
 
@@ -1221,7 +482,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
   // (wird von reserveSeat für JEDE Anmeldung gepflegt → korrekt für alle),
   // Warteliste = WaitlistTaken. null → Counter (noch) nicht da → Aufrufer nutzt
   // den bisherigen Wert.
-  async function getLiveCounterStats(eventId: string): Promise<{ active: number; waitlist: number; seatsKnown: boolean } | null> {
+  async function getLiveCounterStats(eventId: string): Promise<CounterStats | null> {
     const event = events.find(e => e.id === eventId);
     const subsiteUrl = subsiteMap.current[eventId] || event?.subsiteUrl;
     if (!subsiteUrl) return null;
@@ -1265,8 +526,18 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       return [...(e.organizerEmails || []), ...(e.coOrganizerEmails || [])]
         .some(x => (x || '').toLowerCase() === me);
     };
+    // v30.67: Effektive Kapazität statt maxParticipants. Bei geteilten
+    // Kapazitäten ist maxParticipants per Konvention 0 (CLAUDE.md) — der
+    // Filter schloss damit genau die Events aus, die als einzige ZWEI Zähler
+    // synchron halten müssen; das `isSplit` unten war nie erreichbar. Folge:
+    // Eine Selbst-Abmeldung bei unbekanntem Wartelisten-Stand ließ den
+    // Gruppenzähler dauerhaft zu hoch, reserveSeat meldete 'full' bei freien
+    // Plätzen, und die App heilte das von sich aus nie.
+    const effectiveCap = (e: DeloitteEvent): number => (e.maxParticipants || 0) > 0
+      ? (e.maxParticipants || 0)
+      : ((e.durchstarterCapacity || 0) + (e.funstarterCapacity || 0));
     const targets = (events || []).filter(e =>
-      e.status === 'Active' && (e.maxParticipants || 0) > 0 && (e.subsiteUrl || '').trim()
+      e.status === 'Active' && effectiveCap(e) > 0 && (e.subsiteUrl || '').trim()
       && (!opts?.onlyMine || mine(e)));
     for (const e of targets) {
       const sub = e.subsiteUrl as string;
@@ -1326,567 +597,6 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     }
   }
 
-  async function mapSPEventToDeloitteEvent(e: SPEvent): Promise<DeloitteEvent> {
-    // SubsiteUrl merken
-    if (e.SubsiteUrl) {
-      subsiteMap.current[e.Id.toString()] = e.SubsiteUrl;
-    }
-
-    // Teilnehmeranzahl: v26.63 aus der persistierten DEX_Events-Spalte
-    // CurrentParticipants als Startwert (statt hart 0) — so ist die Zahl auch
-    // ohne Subsite-Scan verfügbar. loadParticipantCountsForEvents überschreibt
-    // sie mit der frischen Zahl, sobald ein Event geöffnet/geladen wird.
-    const currentParticipants = (typeof e.CurrentParticipants === 'number') ? e.CurrentParticipants : 0;
-    const waitlistCount = 0;
-
-    // Custom Fields parsen
-    let customFields: CustomField[] = [];
-    try {
-      if (e.CustomFields) customFields = JSON.parse(e.CustomFields);
-    } catch { /* ungültig */ }
-    // v29.77: Der v11.18-Debug-Trace („Raw CustomFields for event …") ist
-    // entfernt — er druckte bei JEDEM loadEvents die CustomFields fremder
-    // Events in die Konsole (las sich wie fremde Daten im falschen Event)
-    // und stringifizierte megabyteweise JSON.
-
-    return {
-      id: e.Id.toString(),
-      eventNumber: e.EventNumber || 0,
-      title: e.Title || '',
-      // v5.2: EventType-Spalte deprecated. Typ aus CustomFields ableiten
-      // (Fallback auf alten SP-Wert wenn noch vorhanden).
-      type: (e.EventType as DeloitteEvent['type'])
-        || (customFields.some(f => f.id === 'b2run_startblock') ? 'B2Run' : 'Other'),
-      // v11.89: 'Under Construction' aus Legacy-Daten transparent auf 'Active'
-      // mappen — der Entwurfs-Zustand lebt jetzt auf IsFictive.
-      status: (e.EventStatus === 'Under Construction' ? 'Active' : (e.EventStatus as DeloitteEvent['status'])) || 'Active',
-      organizers: (stripSpNoteWrapper(e.Organizer) || '').split(';').map((s: string) => s.trim()).filter((s: string) => s),
-      organizerEmails: (stripSpNoteWrapper(e.OrganizerEmail) || '').split(';').map((s: string) => s.trim()).filter((s: string) => s),
-      // v10.16: Optionaler Ansprechpartner. ContactInfo ist Note-Feld, daher
-      // strippen — Name/Email sind Single-Line, kein Wrapper.
-      contactName: e.ContactName || '',
-      // v28.5: als Rückfragen-Kontakt markierter Organizer (v26.18-Spalte,
-      // Wizard-UI + Anzeige kamen erst mit v28.5).
-      contactOrganizerEmail: e.ContactOrganizerEmail || '',
-      contactEmail: e.ContactEmail || '',
-      contactInfo: stripSpNoteWrapper(e.ContactInfo),
-      location: e.Location || '',
-      locationAddress: (() => {
-        try {
-          if (!e.LocationAddress) return undefined;
-          const o = JSON.parse(e.LocationAddress);
-          return { street: o.street || '', houseNo: o.houseNo || '', zip: o.zip || '', city: o.city || '' };
-        } catch { return undefined; }
-      })(),
-      locationAudience: e.LocationFilter ? e.LocationFilter.split(',').map(s => s.trim()) : [],
-      audienceFilter: e.Audience ? e.Audience.split(',').map(s => s.trim()) : [],
-      // v16.4: vor-aufgelöste Member-E-Mails der Audience-DLs.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      audienceResolvedEmails: ((e as any).AudienceResolvedEmails || '')
-        .split(';').map((s: string) => s.trim().toLowerCase()).filter(Boolean),
-      filterMode: (e.FilterMode as 'AND' | 'OR') || 'OR',
-      startDate: e.StartDate || '',
-      endDate: e.EndDate || '',
-      // v26.22: SP-Erstell-Zeitstempel (für die Duplikat-Anzeige „erstellt am …").
-      created: (e as { Created?: string }).Created || '',
-      registrationDeadline: e.RegistrationDeadline || '',
-      lastDeregisterDate: e.LastDeregisterDate || '',
-      description: e.Description || '',
-      maxParticipants: e.MaxParticipants || 0,
-      waitlistEnabled: e.WaitlistEnabled !== false, // default true wenn null/undefined
-      mandatoryRegistration: e.MandatoryRegistration === true, // v24.64
-
-      autoSendQRCode: e.AutoSendQRCode === true, // v9.15 — explizites opt-in pro Event
-      activeFrom: e.ActiveFrom || undefined, // v9.21 — Auto-Activate-Datum
-      currentParticipants,
-      waitlistCount,
-      imageUrl: buildDisplayImageUrl(e.EventImageUrl || '', (e as { Modified?: string }).Modified),
-      subsiteUrl: e.SubsiteUrl || '',
-      outlookBody: e.OutlookBody || '',
-      outlookSubject: e.OutlookSubject || undefined,
-      // v29.52: ganztägiger Termin — der Outlook-Flow macht daraus isAllDay.
-      allDay: !!e.AllDay,
-      showAsFree: !!e.ShowAsFree,
-      outlookIsOnlineMeeting: !!e.OutlookIsOnlineMeeting, // v30.26
-      skipOrganizerInvite: !!e.SkipOrganizerInvite,
-      outlookStart: e.OutlookStart || undefined,
-      outlookEnd: e.OutlookEnd || undefined,
-      outlookLocation: e.OutlookLocation || undefined,
-      outlookEventId: e.OutlookEventId || '',
-      // v11.61: CalendarLink (iCalUId) muss in den Event-Type, weil der
-      // DEX_CreateOutlookEvent-Flow nur dieses Feld auf Erfolg setzt — die
-      // v11.57-Modal-Erkennung hatte auf OutlookEventId geprüft (immer leer)
-      // und das Outlook-Update-Confirm-Modal kam deshalb nie.
-      calendarLink: e.CalendarLink || '',
-      emailLanguage: e.EmailLanguage || 'EN',
-      // v18.35: erzwungene Anmeldeseiten-Sprache (nur 'de'/'en' gültig, sonst undefined).
-      registrationLanguage: (e.RegistrationLanguage === 'de' || e.RegistrationLanguage === 'en') ? e.RegistrationLanguage : undefined,
-      emailTemplateOverrides: e.EmailTemplateOverrides || '',
-      disableEmails: !!e.DisableEmails,
-      disableRegistrationEmail: !!e.DisableRegistrationEmail,
-      disableCancellationEmail: !!e.DisableCancellationEmail,
-      autoDeregisterOnDecline: !!e.AutoDeregisterOnDecline,
-      inactiveHandling: e.InactiveHandling === 'autoderegister' ? 'autoderegister' : 'notify',
-      disableOutlook: !!e.DisableOutlook,
-      // v14.5: requireSubEventSelection als Piggyback im EmailTemplateOverrides-
-      // JSON (kein neues SP-Feld nötig).
-      // v14.8: subEventsOnlyMode + childEventTerm zusätzlich aus dem
-      // Piggyback-Blob auslesen. subEventsOnlyMode impliziert
-      // requireSubEventSelection (auch wenn der Flag nicht explizit gesetzt
-      // ist).
-      requireSubEventSelection: ((): boolean => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          return !!(ov && (ov._requireSubEventSelection || ov._subEventsOnlyMode));
-        } catch { return false; }
-      })(),
-      subEventsOnlyMode: ((): boolean => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          return !!(ov && ov._subEventsOnlyMode);
-        } catch { return false; }
-      })(),
-      // v29.25: Selbst-Abmeldung komplett deaktiviert bzw. nach der
-      // Abmeldefrist gesperrt (Piggybacks _noSelfCancel /
-      // _noCancelAfterDeadline). Auswertung in utils/cancelPolicy.
-      noSelfCancel: ((): boolean => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          return !!(ov && ov._noSelfCancel);
-        } catch { return false; }
-      })(),
-      noCancelAfterDeadline: ((): boolean => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          return !!(ov && ov._noCancelAfterDeadline);
-        } catch { return false; }
-      })(),
-      // v28.97: Nur EIN Sub-Event waehlbar (Piggyback _subEventSingleChoice).
-      subEventSingleChoice: ((): boolean => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          return !!(ov && ov._subEventSingleChoice);
-        } catch { return false; }
-      })(),
-      // v28.91: Sub-Events sind Termine → Kalender-Auswahl (Piggyback
-      // _subEventCalendar). Ohne Flag bleibt die Anmeldeseite bei der Liste.
-      // v29.67: Freischalt-Regel der Kalender-Termine (s. types/index.ts).
-      subEventOpenRule: ((): { mode: 'day' | 'week' | 'fixed'; days?: number; date?: string } | undefined => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          const r = ov && ov._subEventOpenRule;
-          if (r && (r.mode === 'day' || r.mode === 'week') && typeof r.days === 'number' && r.days > 0) {
-            return { mode: r.mode, days: r.days };
-          }
-          // v29.76: festes Datum — alle Termine oeffnen gemeinsam.
-          if (r && r.mode === 'fixed' && typeof r.date === 'string' && r.date) {
-            return { mode: 'fixed', date: r.date };
-          }
-        } catch { /* */ }
-        return undefined;
-      })(),
-      subEventCalendar: ((): boolean => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          return !!(ov && ov._subEventCalendar);
-        } catch { return false; }
-      })(),
-      // v28.5: Event-Bild als Banner über den Infos (Piggyback _imageBanner).
-      imageBanner: ((): boolean => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          return !!(ov && ov._imageBanner);
-        } catch { return false; }
-      })(),
-      // v28.11: URL des UNBESCHNITTENEN Querformat-Originals (Piggyback
-      // _imageOrigUrl) — nur gesetzt, wenn ein Querformat-Foto per App-
-      // Zuschnitt rund/quadratisch wurde. Die Event-Liste nutzt dann das
-      // Original als Kachel-Hintergrund; die Anmeldeseite behält den Kreis.
-      imageOrigUrl: ((): string => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          return (ov && typeof ov._imageOrigUrl === 'string') ? ov._imageOrigUrl : '';
-        } catch { return ''; }
-      })(),
-      // v29.13: Das Mail-Logo (Piggyback `_eventLogo`, identisch mit der Spalte
-      // EmailImageBase64) als Base64. Es ist ein ANDERES Bild als das
-      // Event-Bild aus Schritt 1: Mails und Outlook-Termin zeigen dieses,
-      // Anmeldeseite und Kachel das Event-Bild. Wer nur eines von beiden
-      // pflegt — meist das Mail-Logo, weil man es im Postfach sofort sieht —
-      // bekam auf der Anmeldeseite den generischen DEX-Kreis. Deshalb steht
-      // es hier zur Verfügung und dient dort als Rückfall.
-      mailImageBase64: ((): string => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          const v = (ov && typeof ov._eventLogo === 'string') ? ov._eventLogo : '';
-          return v.indexOf('data:') === 0 ? v : '';
-        } catch { return ''; }
-      })(),
-      // v29.38: Vom Organizer hinterlegter Teams-Link (Piggyback `_teamsLink`).
-      teamsLink: ((): string => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          const v = (ov && typeof ov._teamsLink === 'string') ? ov._teamsLink.trim() : '';
-          return /^https?:\/\//i.test(v) ? v : '';
-        } catch { return ''; }
-      })(),
-      // v28.38: Hotel-Planung (Piggybacks _hotels / _hotelStays / _hotelVisible).
-      // Nur Stammdaten und Vorlagen — die Zuordnung pro Person steht in der
-      // Teilnehmerliste (Spalten Hotel/HotelFrom/HotelTo).
-      hotels: ((): DexHotel[] => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          return (ov && Array.isArray(ov._hotels)) ? ov._hotels as DexHotel[] : [];
-        } catch { return []; }
-      })(),
-      hotelStays: ((): DexHotelStay[] => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          return (ov && Array.isArray(ov._hotelStays)) ? ov._hotelStays as DexHotelStay[] : [];
-        } catch { return []; }
-      })(),
-      hotelVisibleToAttendees: ((): boolean => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          return !!(ov && ov._hotelVisible);
-        } catch { return false; }
-      })(),
-      // v28.58: Verteil-Regeln aus dem Einrichtungs-Assistenten.
-      hotelRules: ((): DexHotelRules => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          return (ov && ov._hotelRules && typeof ov._hotelRules === 'object') ? ov._hotelRules as DexHotelRules : {};
-        } catch { return {}; }
-      })(),
-      // v28.20: Explizite Klammer-Anmeldefrist (Piggyback _klammerDeadline).
-      // Abgelaufen = Gesamt-Event zu (auch bei offenen Sub-Events); leer =
-      // wie bisher offen bis zur spätesten Sub-Event-Frist.
-      klammerDeadline: ((): string => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          return (ov && typeof ov._klammerDeadline === 'string') ? ov._klammerDeadline : '';
-        } catch { return ''; }
-      })(),
-      // v30.6: Rollierende Fristen-Regel als Signal fuer die Anmeldelogik —
-      // aktive Reg-Regel = Fristen gelten je Termin, kein harter
-      // Klammer-Schluss mehr (isRegistrationFullyClosed).
-      subDeadlineRule: (() => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          const r = ov && ov._subDeadlineRule;
-          return (r && typeof r === 'object') ? r : undefined;
-        } catch { return undefined; }
-      })(),
-      // v28.2: Sub-Events SOFT-deaktiviert (Piggyback _subEventsDisabled) —
-      // die Kind-Events bleiben inkl. Anmeldungen gespeichert, werden aber
-      // auf der Anmeldeseite nicht mehr angeboten. Wieder-Einschalten im
-      // Wizard zeigt sie unverändert an (kein Löschen mehr über den Toggle).
-      subEventsDisabled: ((): boolean => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          return !!(ov && ov._subEventsDisabled);
-        } catch { return false; }
-      })(),
-      // v18.9: Organizer-Anzeige ausblenden (Piggyback _hideOrganizer).
-      hideOrganizer: ((): boolean => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          return !!(ov && ov._hideOrganizer);
-        } catch { return false; }
-      })(),
-      // v24.15: „nur einzelne ausblenden"-Modus (Piggyback _hideOrgIndividual).
-      hideOrganizerIndividualOnly: ((): boolean => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          return !!(ov && ov._hideOrgIndividual);
-        } catch { return false; }
-      })(),
-      // v24.8 (J): einzelne ausgeblendete Organizer (Piggyback _hiddenOrganizers).
-      hiddenOrganizerEmails: ((): string[] => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          const arr = ov && ov._hiddenOrganizers;
-          return Array.isArray(arr) ? arr.map((x: unknown) => String(x || '').toLowerCase()).filter(Boolean) : [];
-        } catch { return []; }
-      })(),
-      // v23.6: Assistenz-Sichtbarkeit (Piggyback _assistantsCanSee).
-      assistantsCanSee: ((): boolean => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          return !!(ov && ov._assistantsCanSee);
-        } catch { return false; }
-      })(),
-      // v23.14: Vorschau vor Aktivierung (Piggyback _previewBeforeActive).
-      previewBeforeActive: ((): boolean => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          return !!(ov && ov._previewBeforeActive);
-        } catch { return false; }
-      })(),
-      // v23.25: Organizer groß (Foto + Mail direkt sichtbar) statt klein
-      // (Chip mit Hover) — Piggyback _organizerDisplayLarge.
-      organizerDisplayLarge: ((): boolean => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          return !!(ov && ov._organizerDisplayLarge);
-        } catch { return false; }
-      })(),
-      // v23.19: Pro-Ansicht-Darstellung des Event-Bildes (Piggyback _imageDisplay).
-      imageDisplay: ((): { card?: { zoom: number; posY: number }; hero?: { zoom: number; posY: number } } | undefined => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          const d = ov && ov._imageDisplay;
-          if (d && typeof d === 'object' && (d.card || d.hero)) return d;
-          return undefined;
-        } catch { return undefined; }
-      })(),
-      childEventTermSingular: ((): string | undefined => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          const v = ov && ov._childEventTerm && typeof ov._childEventTerm.singular === 'string' ? ov._childEventTerm.singular : '';
-          return v || undefined;
-        } catch { return undefined; }
-      })(),
-      childEventTermPlural: ((): string | undefined => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          const v = ov && ov._childEventTerm && typeof ov._childEventTerm.plural === 'string' ? ov._childEventTerm.plural : '';
-          return v || undefined;
-        } catch { return undefined; }
-      })(),
-      // v29.60: Geschlecht der Bezeichnung — fuer den unbestimmten Artikel.
-      childEventTermGender: ((): 'm' | 'f' | 'n' | undefined => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          const v = ov && ov._childEventTerm ? ov._childEventTerm.gender : '';
-          return (v === 'm' || v === 'f' || v === 'n') ? v : undefined;
-        } catch { return undefined; }
-      })(),
-      // v22.78: frei benennbarer Team-Begriff + „keine neuen Teams"-Flag
-      // (Piggyback im EmailTemplateOverrides-JSON, analog _childEventTerm).
-      teamTermSingular: ((): string | undefined => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          const v = ov && ov._teamTerm && typeof ov._teamTerm.singular === 'string' ? ov._teamTerm.singular : '';
-          return v || undefined;
-        } catch { return undefined; }
-      })(),
-      teamTermPlural: ((): string | undefined => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          const v = ov && ov._teamTerm && typeof ov._teamTerm.plural === 'string' ? ov._teamTerm.plural : '';
-          return v || undefined;
-        } catch { return undefined; }
-      })(),
-      teamMembersCannotCreate: ((): boolean => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          return !!(ov && ov._teamMembersCannotCreate);
-        } catch { return false; }
-      })(),
-      // v24.58: Anzeige-Bezeichnung des Haupt-Events in der Sub-Event-Auswahl
-      // (Piggyback _mainEventLabel = { mode, text }).
-      mainEventLabelMode: ((): 'default' | 'custom' | 'none' | undefined => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          const m = ov && ov._mainEventLabel && ov._mainEventLabel.mode;
-          return (m === 'custom' || m === 'none') ? m : undefined;
-        } catch { return undefined; }
-      })(),
-      mainEventLabel: ((): string | undefined => {
-        try {
-          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          const v = ov && ov._mainEventLabel && typeof ov._mainEventLabel.text === 'string' ? ov._mainEventLabel.text : '';
-          return v || undefined;
-        } catch { return undefined; }
-      })(),
-      // v11.57: bei alten Tenants kann die SP-Spalte fehlen — undefined wird
-      // als false interpretiert (kein Hinweis anzeigen).
-      outlookDirty: !!e.OutlookDirty,
-      notifyOrgRegisterMode: ((): 'never' | 'always' | 'fromDate' => {
-        const v = (e.NotifyOrgRegisterMode || '').toLowerCase();
-        if (v === 'always') return 'always';
-        if (v === 'fromdate') return 'fromDate';
-        return 'never';
-      })(),
-      notifyOrgRegisterFromDate: e.NotifyOrgRegisterFromDate || '',
-      notifyOrgCancelMode: ((): 'never' | 'always' | 'afterDeadline' => {
-        const v = (e.NotifyOrgCancelMode || '').toLowerCase();
-        if (v === 'always') return 'always';
-        if (v === 'afterdeadline') return 'afterDeadline';
-        return 'never';
-      })(),
-      excludedUsers: (e.ExcludedUsers || '').split(';').map((s: string) => s.trim().toLowerCase()).filter(Boolean),
-      // v11.89: Legacy-Events mit EventStatus='Under Construction' werden
-      // auch ohne explizites IsFictive-Flag als Entwurf erkannt — bis die
-      // Migration im Hintergrund das SP-Item neu geschrieben hat.
-      isFictive: !!e.IsFictive || e.EventStatus === 'Under Construction',
-      durchstarterCapacity: typeof e.DurchstarterCapacity === 'number' ? e.DurchstarterCapacity : undefined,
-      funstarterCapacity: typeof e.FunstarterCapacity === 'number' ? e.FunstarterCapacity : undefined,
-      splitLabelA: e.SplitLabelA || undefined,
-      splitLabelB: e.SplitLabelB || undefined,
-      splitDescA: e.SplitDescA || undefined,
-      splitDescB: e.SplitDescB || undefined,
-      splitHelpText: e.SplitHelpText || undefined,
-      splitSectionTitle: e.SplitSectionTitle || undefined,
-      splitSharedWaitlist: !!e.SplitSharedWaitlist,
-      allowAttendeeUpload: !!e.AllowAttendeeUpload,
-      attendeeUploadHint: e.AttendeeUploadHint || undefined,
-      attendeeUploadLabel: e.AttendeeUploadLabel || undefined,
-      // v11.80: Anrede-Toggle + Team-Anmelde-Konfiguration durchreichen.
-      // Alte Tenants ohne diese Spalten interpretieren undefined als false /
-      // 0, das passt zum Default-Verhalten (Anrede aus, Team-Anmeldung aus).
-      askSalutation: !!e.AskSalutation,
-      confirmDialogEnabled: !!e.ConfirmDialogEnabled,
-      confirmDialogMode: e.ConfirmDialogMode || '',
-      confirmDialogText: e.ConfirmDialogText || '',
-      // v18.33: Self-Check-in. Alte Tenants ohne diese Spalten lesen undefined
-      // als false / leer — Self-Check-in bleibt dann schlicht aus.
-      selfCheckInEnabled: !!e.SelfCheckInEnabled,
-      selfCheckInToken: e.SelfCheckInToken || undefined,
-      selfCheckInFrom: e.SelfCheckInFrom || undefined,
-      selfCheckInTo: e.SelfCheckInTo || undefined,
-      teamRegistrationEnabled: !!e.TeamRegistrationEnabled,
-      teamSize: typeof e.TeamSize === 'number' ? e.TeamSize : 0,
-      askTeamName: !!e.AskTeamName,
-      // v11.81: Erweiterte Team-Anmelde-Konfiguration (Beitritts-Modus).
-      // Alte Tenants ohne diese Spalten interpretieren undefined als false
-      // — das deckt sich mit dem konservativen Default „Nur komplette Teams,
-      // keine offenen Slots, keine Approval-Queue".
-      teamPartialAllowed: !!e.TeamPartialAllowed,
-      teamOpenSlotsVisible: !!e.TeamOpenSlotsVisible,
-      teamJoinRequiresApproval: !!e.TeamJoinRequiresApproval,
-      // v17.20: Bilingual-Toggle für Custom-Fields (DE + EN).
-      bilingualFields: !!e.BilingualFields,
-      // v6.15: Extra-B2Run-Config aus EmailTemplateOverrides._b2run (piggyback in
-      // der bestehenden JSON-Struktur, keine neue SP-Spalte nötig).
-      // v6.19: QR-Code-Scanner-Liste aus EmailTemplateOverrides._qrScanners (piggyback).
-      // v9.18: Co-Organizer-Liste aus EmailTemplateOverrides._coOrganizers (piggyback, gleicher Pattern).
-      // v9.21: Test-Team-Liste aus EmailTemplateOverrides._testTeam (per-Event statt global).
-      ...(() => {
-        try {
-          const parsed = JSON.parse(e.EmailTemplateOverrides || '{}');
-          if (!parsed || typeof parsed !== 'object') return { qrScannerNames: [], qrScannerEmails: [], coOrganizerNames: [], coOrganizerEmails: [], testTeamNames: [], testTeamEmails: [] };
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const b = (parsed as any)._b2run;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const qr = (parsed as any)._qrScanners;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const co = (parsed as any)._coOrganizers;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const tt = (parsed as any)._testTeam;
-          // v11.25: pure Display-Reihenfolge-Umkehr für Split-Capacity-Karten.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const splitDispRev = !!(parsed as any)._splitDisplayOrderReversed;
-          const b2Part = b && typeof b === 'object' ? {
-            durchstarterStartblock: typeof b.durchstarterStartblock === 'string' ? b.durchstarterStartblock : undefined,
-            funstarterStartblock: typeof b.funstarterStartblock === 'string' ? b.funstarterStartblock : undefined,
-            durchstarterRequiresProof: !!b.durchstarterRequiresProof,
-          } : {};
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const qrNames: string[] = Array.isArray(qr) ? qr.map((x: any) => String(x?.name || '')) : [];
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const qrEmails: string[] = Array.isArray(qr) ? qr.map((x: any) => String(x?.email || '')) : [];
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const coNames: string[] = Array.isArray(co) ? co.map((x: any) => String(x?.name || '')) : [];
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const coEmails: string[] = Array.isArray(co) ? co.map((x: any) => String(x?.email || '')) : [];
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const ttNames: string[] = Array.isArray(tt) ? tt.map((x: any) => String(x?.name || '')) : [];
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const ttEmails: string[] = Array.isArray(tt) ? tt.map((x: any) => String(x?.email || '')) : [];
-          return { ...b2Part, splitDisplayOrderReversed: splitDispRev, qrScannerNames: qrNames, qrScannerEmails: qrEmails, coOrganizerNames: coNames, coOrganizerEmails: coEmails, testTeamNames: ttNames, testTeamEmails: ttEmails };
-        } catch { return { qrScannerNames: [], qrScannerEmails: [], coOrganizerNames: [], coOrganizerEmails: [], testTeamNames: [], testTeamEmails: [] }; }
-      })(),
-      agenda: (() => { try { return e.Agenda ? JSON.parse(e.Agenda) : []; } catch { return []; } })(),
-      transferTimes: (() => { try { return e.Transfers ? JSON.parse(e.Transfers) : []; } catch { return []; } })(),
-      quiz: (() => { try { return e.FunZone ? JSON.parse(e.FunZone) : []; } catch { return []; } })(),
-      quizClusterSize: typeof e.QuizClusterSize === 'number' && e.QuizClusterSize >= 1 ? e.QuizClusterSize : undefined,
-      parentEventId: e.ParentEventId || undefined,
-      documents: [], // Wird per loadAttachments nachgeladen
-      eventSpecificFields: customFields.map(cf => ({
-        id: cf.id,
-        label: cf.label,
-        type: cf.type,
-        required: cf.required,
-        options: cf.options,
-        // v7.20: helpText durchreichen, damit das Registrierungsformular ihn
-        // im "i"-Tooltip neben dem Label anzeigen kann.
-        helpText: cf.helpText || '',
-        // v18.18: Darstellungs-Stil der Beschreibung (tooltip|inline).
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        helpTextStyle: (cf as any).helpTextStyle === 'inline' ? 'inline' : 'tooltip',
-        // v7.21: showIf-Bedingung durchreichen — RegistrationPage filtert
-        // anhand davon, ob das Feld angezeigt wird.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        showIf: (cf as any).showIf,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        spInternalName: (cf as any).spInternalName || '',
-        // v7.11: multi-Flag durchreichen, damit RegistrationPage Mehrfachauswahl rendern kann
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        multi: !!(cf as any).multi,
-        // v26.74: Vorauswahl (Single-Select) durchreichen — RegistrationPage
-        // belegt das Feld damit vor, der Wizard zeigt sie im Feld-Editor.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        defaultValue: (cf as any).defaultValue || undefined,
-        // v26.75: Vorfilter-Kategorien + Beschriftung durchreichen.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        optionCategories: Array.isArray((cf as any).optionCategories) ? (cf as any).optionCategories : undefined,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        prefilterLabel: (cf as any).prefilterLabel || undefined,
-        // v24.25: withTime — bei Datums-Feldern (type='date') auch die Uhrzeit
-        // mit abfragen (datetime-local statt date).
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        withTime: !!(cf as any).withTime,
-        // v29.20 (Audit A3): Die daterange-Grenzen (v28.63) fehlten in diesem
-        // Mapping komplett — das buchbare Übernachtungs-Fenster und das
-        // Nächte-Limit kamen deshalb bei KEINEM Event auf der Anmeldeseite an,
-        // und der Wizard konnte sie beim Edit nicht laden (→ der nächste Save
-        // entfernte sie endgültig aus dem CustomFields-JSON).
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        rangeStart: (cf as any).rangeStart || undefined,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        rangeEnd: (cf as any).rangeEnd || undefined,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        maxNights: typeof (cf as any).maxNights === 'number' ? (cf as any).maxNights : undefined,
-        // externalLinks ebenfalls durchreichen, damit AGB-Links für B2Run-Datenschutz
-        // korrekt unter dem Feld angezeigt werden (war bisher nur über den Fallback in
-        // RegistrationPage abgesichert).
-        externalLinks: cf.externalLinks,
-        // v18.41: CC-bei-Mail-Flag durchreichen — collectCcEmailsFromFields liest es.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ccOnEmails: !!(cf as any).ccOnEmails,
-        // v26.60: Roommate-Benachrichtigung — nur explizites false schaltet ab.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        notifyRoommate: (cf as any).notifyRoommate !== false,
-        // v11.16: onlyForGroup aus dem persistierten Feld durchreichen.
-        // Wurde im Wizard sauber gespeichert (CustomFields-JSON enthält
-        // den Schlüssel), aber der Loader hat ihn nie zurückgelesen —
-        // Folge: die Gruppen-spezifische Sichtbarkeit (Funstarter only /
-        // Durchstarter only) hat in der Registrierungs-UI nie gegriffen,
-        // weil die Filter-Chain auf undefined gefallen ist.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        onlyForGroup: (cf as any).onlyForGroup,
-        // v17.19: confirmLabel (Text neben Checkbox) im Mapping nachgezogen
-        // — vorher hier vergessen, Folge: Wizard speicherte den Text korrekt,
-        // RegistrationPage fiel aber immer auf den Default „Ja, bestätigen"
-        // zurück, weil das Field-Mapping confirmLabel droppte.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        confirmLabel: (cf as any).confirmLabel,
-        // v17.20: Englische Varianten durchreichen — nur dann wirksam, wenn
-        // auf Event-Ebene `bilingualFields=true` ist; die RegistrationPage
-        // entscheidet zur Laufzeit, ob sie die EN-Spalte zieht.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        labelEn: (cf as any).labelEn,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        helpTextEn: (cf as any).helpTextEn,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        confirmLabelEn: (cf as any).confirmLabelEn,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        optionsEn: (cf as any).optionsEn,
-      })),
-    };
-  }
 
   async function createEvent(input: CreateEventInput): Promise<number | null> {
     const eventId = await eventService.createEvent(input);
@@ -1936,10 +646,30 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     return eventId;
   }
 
+  /**
+   * v30.67: Aktiv-Prüfung mit drei Antworten — true = angemeldet, false = frei,
+   * null = nicht prüfbar (429/403) → der Aufrufer lehnt ab (fail-closed).
+   *
+   * Der Service liefert heute bei JEDEM Fehler `false` (`if (!response.ok)
+   * return false; catch { return false; }`). Damit war der v30.14-Zweig
+   * `alreadyActive === null` in registerForEvent toter Code, und in der
+   * Anmeldewelle kam die zweite Zeile durch — genau der Befund, den v30.14
+   * beheben sollte. Die Aufrufstellen hier sind dreiwertig; sobald
+   * `isUserAlreadyOnEvent` bei Fehler `null` liefert (Service-Änderung, im
+   * v30.67-Bericht beschrieben), greift der Zweig ohne weiteres Zutun.
+   */
+  const probeAlreadyActive = async (subsiteUrl: string, email: string): Promise<boolean | null> =>
+    eventService.isUserAlreadyOnEvent(subsiteUrl, email);
+
   // v30.42: Je Sitzung EINMAL je (Klammer, Person) die Schattenzeile prüfen.
   // Ohne diesen Merker liefe ein Massen-Lauf über 19 Termine 19-mal in
   // dieselbe Prüfung — auf einem Pfad, der ohnehin drosselungsempfindlich ist.
-  const shadowEnsuredRef = React.useRef<Set<string>>(new Set<string>());
+  // v30.68: Sitzungs-Merker MIT Verfall. Ein Lauf über 19 Termine prüft die
+  // Klammer-Zeile einmal, nicht 19-mal — aber nicht für immer: Wird die
+  // Klammer in derselben Sitzung abgemeldet (Organizer Center), sagte ein
+  // ewiger Merker weiter „steht", und der nächste Termin hätte keine Klammer.
+  const shadowEnsuredRef = React.useRef<Map<string, number>>(new Map<string, number>());
+  const SHADOW_ENSURED_TTL_MS = 5 * 60 * 1000;
   async function registerForEvent(
     eventId: string,
     customData: Record<string, string>,
@@ -2032,7 +762,16 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       return { ok: false, status: 'Warteliste', reason: 'already-registered' };
     }
 
-    const existing = await eventService.getMyRegistration(subsiteUrl, emailToUse);
+    // v30.67 (Review): Auch dieser Lesevorgang ist keine Aussage, wenn er
+    // scheitert — ein 429 hier hieß „keine Zeile" und führte in den Insert
+    // statt in die Reaktivierung: zweite Zeile zur selben Adresse. Die
+    // Klammer-Schattenzeile bleibt ausgenommen (dort ist die Dublette
+    // harmlos; ein Abbruch vermehrte nur die „Fehlende Klammer"-Fälle).
+    let regReadFailed = false;
+    const existing = await eventService.getMyRegistration(subsiteUrl, emailToUse, () => { regReadFailed = true; });
+    if (regReadFailed && !isShadowParent) {
+      return { ok: false, status: 'Warteliste', reason: 'dup-check-failed' };
+    }
     if (existing && existing.Status !== 'Abgemeldet') {
       // v23.9: Im Klammer-Modus (subEventsOnlyMode) ist die Parent-Zeile NUR
       // ein Schatten zur Datenvollständigkeit — die echte Anmeldung sind die
@@ -2047,6 +786,57 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         return { ok: true, status: existing.Status === 'Warteliste' ? 'Warteliste' : 'Angemeldet' };
       }
       return { ok: false, status: 'Warteliste' };
+    }
+
+    // v30.68: Die Klammer-Zeile wird VOR dem Termin geschrieben — als
+    // erster Schreibvorgang, nicht als letzter. Bis v30.67 kam sie zuletzt,
+    // also genau dort, wo die Drosselung nach 19 Terminen greift, und ein
+    // zugeklappter Tab kam nie bis dahin. Die eigentliche Ursache des roten
+    // Kastens war aber die Fristprüfung im Service (registration.ts, Check
+    // B): Sie wies die Schattenzeile mit der Frist des HAUPTEVENTS ab — seit
+    // v30.68 gilt die Frist dort nicht für die Klammer eines „Nur Sub-
+    // Events"-Events.
+    //
+    // Nutzer-Entscheidung 02.09.2026: Die Termine werden IMMER geschrieben,
+    // auch wenn die Klammer scheitert — „wenn mit der Klammer was nicht
+    // stimmt, werden die Leute nicht angemeldet, das will ich nicht". Dann
+    // folgt nach dem Termin ein zweiter Versuch, danach der Nachzug-Merker
+    // (utils/shadowHeal, beim nächsten App-Start). Der Sitzungs-Merker
+    // verhindert, dass ein Lauf über 19 Termine 19-mal dieselbe Zeile prüft.
+    //
+    // `skipShadowParent` setzt nur die Anmeldeseite — sie schreibt die Klammer
+    // selbst zuerst, MIT den übergreifenden Antworten (Hotel, Verpflegung,
+    // Anreise).
+    let umbrellaPending = false;
+    if (event && event.parentEventId && !opts?.skipShadowParent) {
+      const parentEv = events.find(e => e.id === event.parentEventId);
+      if (parentEv && parentEv.subEventsOnlyMode) {
+        const guardKey = `${parentEv.id}|${(emailToUse || '').toLowerCase().trim()}`;
+        const ensuredAt = shadowEnsuredRef.current.get(guardKey) || 0;
+        if (Date.now() - ensuredAt > SHADOW_ENSURED_TTL_MS) {
+          let umbrellaOk = false;
+          try {
+            const shadow = await registerForEvent(
+              parentEv.id, {}, firstNameToUse, lastNameToUse, emailToUse, undefined,
+              {
+                suppressMail: true, suppressOutlook: true, skipReload: true, skipShadowParent: true,
+                ...(opts?.proxyConsentConfirmed
+                  ? { proxyConsentConfirmed: true, actorAllowedAsAssistant: !!opts?.actorAllowedAsAssistant }
+                  : {}),
+              }
+            );
+            // `already-registered` heißt: Die Zeile steht — Zielzustand.
+            umbrellaOk = shadow.ok || shadow.reason === 'already-registered';
+          } catch (err) {
+            console.warn('[DEX] Klammer-Zeile konnte nicht sichergestellt werden:', err);
+          }
+          if (umbrellaOk) shadowEnsuredRef.current.set(guardKey, Date.now());
+          else {
+            umbrellaPending = true;
+            console.warn('[DEX] registerForEvent: Klammer-Zeile steht (noch) nicht — Termin wird trotzdem angelegt, Klammer wird nachgezogen:', parentEv.id, emailToUse);
+          }
+        }
+      }
     }
 
     // Prüfen ob Platz frei oder Waitlist
@@ -2069,6 +859,10 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     //   'full'     → Gruppe voll → Warteliste
     //   'error'    → Counter nicht nutzbar → FAIL-CLOSED → Warteliste
     //                (NIE optimistisch Angemeldet — genau das war der Bug).
+    // v30.67: Merken, WELCHER Zähler wirklich erhöht wurde — für die Rückgabe,
+    // falls der Insert danach scheitert (s.u.). cap <= 0 heißt „unbegrenzt":
+    // reserveSeat liefert dann 'reserved', ohne den Zähler anzufassen.
+    let reservedSeatField: 'SeatsTaken' | 'SeatsTakenDurch' | 'SeatsTakenFun' | null = null;
     if (event && isSplitGroup && preferredStarterType) {
       const cap = preferredStarterType === 'Durchstarter'
         ? (event.durchstarterCapacity || 0)
@@ -2076,6 +870,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       const seat = await eventService.reserveSeat(subsiteUrl, preferredStarterType as 'Durchstarter' | 'Funstarter', cap);
       if (seat === 'reserved') {
         effectiveStarterType = preferredStarterType;
+        if (cap > 0) reservedSeatField = eventService.seatFieldFor(preferredStarterType);
       } else {
         // 'full' ODER 'error' → fail-closed auf Warteliste für genau diesen Typ.
         status = 'Warteliste';
@@ -2091,6 +886,8 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       const seat = await eventService.reserveSeat(subsiteUrl, '', event.maxParticipants);
       if (seat !== 'reserved') {
         status = 'Warteliste';
+      } else {
+        reservedSeatField = 'SeatsTaken';
       }
     }
 
@@ -2139,14 +936,23 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     // serverseitigen Organizer-Ableitung (SubsiteUrl/Note-Feld/pageContext),
     // die im Tenant gelegentlich legitime Organizer abgelehnt hat.
     const actorEmailLc = (currentUserEmail || '').toLowerCase();
-    const actorIsEventOrganizer = !!event && (
-      (event.organizerEmails || []).some(e => (e || '').toLowerCase() === actorEmailLc) ||
-      (event.coOrganizerEmails || []).some(e => (e || '').toLowerCase() === actorEmailLc)
+    // v30.67 (Review): Parent-Fallback wie AdminPage.isOrganizerFor.
+    // `_coOrganizers` steht nur auf der Klammer-Zeile; ein Sub-Event erbt
+    // OrganizerEmail, aber keine Co-Organizer. Ohne den Fallback war die
+    // Frist-Ausnahme für Co-Organizer (v30.67) auf Terminen wirkungslos —
+    // „Teilnehmer hinzufügen" nach Fristablauf meldete je Termin „deadline".
+    const isOrganizerOf = (ev: DeloitteEvent | undefined): boolean => !!ev && (
+      (ev.organizerEmails || []).some(e => (e || '').toLowerCase() === actorEmailLc) ||
+      (ev.coOrganizerEmails || []).some(e => (e || '').toLowerCase() === actorEmailLc)
     );
+    const parentOfEvent = (event && event.parentEventId) ? events.find(p => p.id === event.parentEventId) : undefined;
+    const actorIsEventOrganizer = isOrganizerOf(event) || isOrganizerOf(parentOfEvent);
     let success: boolean;
     let failReason: string | undefined;
     if (existing && existing.Status === 'Abgemeldet') {
-      success = await eventService.reactivateRegistration(subsiteUrl, existing.Id, firstNameToUse, lastNameToUse, customData, status, fieldMap, actorName, actorEmail, proxyConsentStr);
+      // v30.67: Gruppe mitgeben — bei geteilten Kapazitaeten landete eine
+      // Re-Anmeldung sonst ohne StarterType und damit in keiner Gruppe.
+      success = await eventService.reactivateRegistration(subsiteUrl, existing.Id, firstNameToUse, lastNameToUse, customData, status, fieldMap, actorName, actorEmail, proxyConsentStr, effectiveStarterType, preferredStarterType);
       if (!success) failReason = 'error';
     } else {
       const r = await eventService.registerForEvent(
@@ -2156,6 +962,19 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       );
       success = r.ok;
       failReason = r.reason;
+    }
+    // v30.67: Reservierten Platz zurückgeben, wenn der Insert scheitert.
+    // reserveSeat schreibt bewusst VOR dem Insert (atomar per ETag-CAS); der
+    // Erfolgspfad war gepflegt, der Fehlerpfad nicht. Bei 429 in der
+    // Anmeldewelle, 403 auf einer frischen Subsite oder 400 wegen einer
+    // fehlenden Custom-Field-Spalte blieb SeatsTaken erhöht — drei Versuche,
+    // drei Phantom-Plätze, und ab der Kapazität ging jede echte Anmeldung auf
+    // die Warteliste. Geheilt hat das nur der privilegierte Reconcile
+    // (Admin-Boot, 1×/6 h) — ein reiner Teilnehmer-Pfad nie. Dasselbe Muster
+    // wie der Rollback in switchSplitGroup.
+    if (!success && reservedSeatField) {
+      try { await eventService.adjustSeatCounterField(subsiteUrl, reservedSeatField, -1); }
+      catch (err) { console.warn('[DEX] Sitzplatz-Rückgabe nach fehlgeschlagenem Insert fehlgeschlagen:', err); }
     }
 
     if (success && event) {
@@ -2520,7 +1339,16 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
                   if (b64 && b64.indexOf('data:') === 0) qrHeroPhoto = b64;
                 } catch { /* Foto nicht ladbar → Standardbild */ }
               }
-              const qrMail = qrCodeEmail(firstNameToUse, event.title, qrImageHtml, lang, nameToUse, qrOverride, undefined, qrHeroPhoto);
+              // v30.67: Die Registrierung VOR dem Mailaufbau laden und die
+              // Teilnehmer-ID durchreichen. Der 7. Parameter stand hart auf
+              // undefined — die Auto-QR-Mail der Nachzügler kam ohne die
+              // ID-Zeile unter dem Code und ohne den Hinweis „Nummer am Einlass
+              // nennen". Genau die Personen, bei denen der Kamera-Scan
+              // (Android/SharePoint-App) scheitert, hatten keine Ersatznummer;
+              // Massenversand und Test hatten sie. Die Zeile wurde ohnehin
+              // gleich darauf für setQRSentStatus geladen — jetzt nur einmal.
+              const myReg = event.subsiteUrl ? await eventService.getMyRegistration(event.subsiteUrl, emailToUse) : null;
+              const qrMail = qrCodeEmail(firstNameToUse, event.title, qrImageHtml, lang, nameToUse, qrOverride, myReg?.TeilnehmerID, qrHeroPhoto);
               // v9.22: Auto-Send-QR für externe Empfänger ebenfalls an den
               // Organizer umleiten (mit klarem Subject-Präfix), nicht an den
               // externen Mail-Empfänger.
@@ -2547,11 +1375,8 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
               // Status auf 'QR versendet' setzen, damit der Admin-Center-View
               // sofort zeigt, dass der QR-Code raus ist (analog zum
               // manuellen Massen-QR-Versand).
-              if (event.subsiteUrl) {
-                const myReg = await eventService.getMyRegistration(event.subsiteUrl, emailToUse);
-                if (myReg && myReg.Id) {
-                  await eventService.setQRSentStatus(event.subsiteUrl, myReg.Id);
-                }
+              if (event.subsiteUrl && myReg && myReg.Id) {
+                await eventService.setQRSentStatus(event.subsiteUrl, myReg.Id);
               }
             } catch (err) { console.warn('[DEX] auto-send QR failed:', err); }
           })().catch(err => console.warn('[DEX] auto-send QR outer failed:', err));
@@ -2632,61 +1457,37 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       // v30.9: s. opts.skipReload — Schleifen laden EINMAL am Ende neu.
       if (!opts?.skipReload) await loadEvents();
     }
-    // v30.42: Die Klammer-Zeile wird ZENTRAL sichergestellt — nicht mehr von
-    // jedem Aufrufer einzeln.
-    //
-    // Warum das eine Struktur- und keine Einzelfall-Korrektur ist: Bis v30.41
-    // musste JEDER Weg, der eine Sub-Event-Anmeldung anlegt, selbst daran
-    // denken. Fünf Wege, fünf Gelegenheiten, es zu vergessen — und vergessen
-    // wurde es dreimal: v30.14 im Organizer-Modal „Teilnehmer hinzufügen"
-    // (Befund mit 24 Personen), v30.14 auf dem „Meine Events"-Pfad, und bis
-    // hierher in `AssistantPage` (Assistenz meldet jemanden an einem Termin an)
-    // sowie im Massenimport der Anmeldeseite. Jeder neue Aufrufer wäre die
-    // nächste Gelegenheit gewesen. Ab jetzt kann man es nicht mehr vergessen:
-    // Wer ein Sub-Event schreibt, schreibt die Klammer mit.
-    //
-    // `skipShadowParent` setzt nur die Anmeldeseite — sie legt die Klammer
-    // ZULETZT und MIT den übergreifenden Antworten an. Käme hier vorher eine
-    // leere Schattenzeile, wäre die Zeile belegt und die Antworten (Hotel,
-    // Verpflegung, Anreise) würden nie geschrieben.
-    //
-    // Der Sitzungs-Merker verhindert, dass ein Massen-Lauf über 19 Termine
-    // 19-mal dieselbe Klammer-Zeile prüft — das wäre genau die Drosselung, an
-    // der diese Zeile ohnehin am ehesten scheitert.
-    if (success && event && event.parentEventId && !opts?.skipShadowParent) {
-      const parentEv = events.find(e => e.id === event.parentEventId);
-      if (parentEv && parentEv.subEventsOnlyMode) {
-        const guardKey = `${parentEv.id}|${(emailToUse || '').toLowerCase().trim()}`;
-        if (!shadowEnsuredRef.current.has(guardKey)) {
-          const fallback = (): void => {
-            // Nachzug-Merker: Der EventContext holt die Zeile beim nächsten
-            // App-Start still nach (utils/shadowHeal).
-            try {
-              addPendingShadowParent({
-                eventId: parentEv.id, customData: {},
-                firstName: firstNameToUse || '', lastName: lastNameToUse || '',
-                email: emailToUse || '', proxy: !!opts?.proxyConsentConfirmed, ts: Date.now(),
-              });
-            } catch { /* localStorage gesperrt → bleibt für das Organizer-Panel */ }
-          };
+    // v30.42 → v30.68: Die Klammer-Zeile wird zentral sichergestellt — seit
+    // v30.68 VOR dem Termin (s. oben). Scheiterte sie dort, hier der zweite
+    // Versuch nach dem Termin (der Termin ist geschrieben, die Person ist
+    // angemeldet); scheitert auch der, holt der Nachzug-Merker die Zeile beim
+    // nächsten App-Start nach (utils/shadowHeal).
+    if (success && umbrellaPending && event && event.parentEventId) {
+      const parentEv2 = events.find(e => e.id === event.parentEventId);
+      if (parentEv2) {
+        const guardKey2 = `${parentEv2.id}|${(emailToUse || '').toLowerCase().trim()}`;
+        let healed = false;
+        try {
+          const again = await registerForEvent(
+            parentEv2.id, {}, firstNameToUse, lastNameToUse, emailToUse, undefined,
+            {
+              suppressMail: true, suppressOutlook: true, skipReload: true, skipShadowParent: true,
+              ...(opts?.proxyConsentConfirmed
+                ? { proxyConsentConfirmed: true, actorAllowedAsAssistant: !!opts?.actorAllowedAsAssistant }
+                : {}),
+            }
+          );
+          healed = again.ok || again.reason === 'already-registered';
+        } catch (err) { console.warn('[DEX] Klammer-Zeile auch im zweiten Versuch nicht:', err); }
+        if (healed) shadowEnsuredRef.current.set(guardKey2, Date.now());
+        else {
           try {
-            const shadow = await registerForEvent(
-              parentEv.id, {}, firstNameToUse, lastNameToUse, emailToUse, undefined,
-              {
-                suppressMail: true, suppressOutlook: true, skipReload: true, skipShadowParent: true,
-                ...(opts?.proxyConsentConfirmed
-                  ? { proxyConsentConfirmed: true, actorAllowedAsAssistant: !!opts?.actorAllowedAsAssistant }
-                  : {}),
-              }
-            );
-            // `already-registered` heißt hier: Die Zeile steht bereits — das ist
-            // der Zielzustand, kein Fehlschlag.
-            if (shadow.ok || shadow.reason === 'already-registered') shadowEnsuredRef.current.add(guardKey);
-            else fallback();
-          } catch (err) {
-            console.warn('[DEX] Klammer-Zeile konnte nicht sichergestellt werden:', err);
-            fallback();
-          }
+            addPendingShadowParent({
+              eventId: parentEv2.id, customData: {},
+              firstName: firstNameToUse || '', lastName: lastNameToUse || '',
+              email: emailToUse || '', proxy: !!opts?.proxyConsentConfirmed, ts: Date.now(),
+            });
+          } catch { /* localStorage gesperrt → bleibt für das Organizer-Panel */ }
         }
       }
     }
@@ -2757,7 +1558,9 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
 
     const allEmails = [leadData.email, ...members.map(m => m.email)];
     for (const em of allEmails) {
-      const blocked = await eventService.isUserAlreadyOnEvent(subsiteUrl, em);
+      // v30.67: null = nicht prüfbar → ablehnen statt durchwinken (s. probeAlreadyActive).
+      const blocked = await probeAlreadyActive(subsiteUrl, em);
+      if (blocked === null) return { ok: false, reason: 'dup-check-failed' };
       if (blocked) {
         return { ok: false, reason: `already-registered:${em}` };
       }
@@ -2780,6 +1583,9 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     // Atomar N Plätze reservieren — Split-Group oder klassisch.
     const isSplitGroup = typeof event.durchstarterCapacity === 'number' && typeof event.funstarterCapacity === 'number'
       && (event.durchstarterCapacity > 0 || event.funstarterCapacity > 0);
+    // v30.67: Welcher Zähler um teamCount erhöht wurde — für die Rückgabe
+    // nicht belegter Plätze, falls Inserts scheitern (s.u.).
+    let reservedSeatField: 'SeatsTaken' | 'SeatsTakenDurch' | 'SeatsTakenFun' | null = null;
     if (isSplitGroup && leadData.preferredStarterType) {
       const cap = leadData.preferredStarterType === 'Durchstarter'
         ? (event.durchstarterCapacity || 0)
@@ -2788,11 +1594,22 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       if (seat !== 'reserved') {
         status = 'Warteliste';
         effectiveStarterType = undefined;
+      } else if (cap > 0) {
+        reservedSeatField = eventService.seatFieldFor(leadData.preferredStarterType);
       }
     } else if (event.maxParticipants > 0) {
       const seat = await eventService.reserveSeat(subsiteUrl, '', event.maxParticipants, teamCount);
       if (seat !== 'reserved') status = 'Warteliste';
+      else reservedSeatField = 'SeatsTaken';
     }
+    // v30.67: Reservierte, aber nicht belegte Plätze zurückgeben — sonst
+    // blockieren sie als Phantom-Plätze andere Anmeldungen, bis jemand
+    // „Zähler abgleichen" klickt (adjustSeatCounterField ist additiv + ETag-CAS).
+    const releaseSeats = async (n: number): Promise<void> => {
+      if (!reservedSeatField || n <= 0) return;
+      try { await eventService.adjustSeatCounterField(subsiteUrl, reservedSeatField, -n); }
+      catch (err) { console.warn('[DEX] registerTeam: Sitzplatz-Rückgabe fehlgeschlagen:', err); }
+    };
 
     // FieldMap aus Custom Fields extrahieren (cf.id -> spInternalName)
     const fieldMap: Record<string, string> = {};
@@ -2826,11 +1643,22 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
     };
 
-    // Alle Team-Insert-Calls parallel — Counter-CAS in getNextTeilnehmerId
-    // garantiert eindeutige TeilnehmerIDs auch bei N parallelen Inserts.
-    const insertPromises: Array<Promise<{ ok: boolean; email: string; firstName: string; lastName: string }>> = [];
+    // v30.67: Inserts NACHEINANDER statt als Promise.all, mit Fehlerzähler.
+    // Fünf gleichzeitige POSTs in der Anmeldewelle sind genau die Konstellation,
+    // die SharePoint mit 429 drosselt; registerTeamMember fängt das ab und
+    // liefert {ok:false}. Vorher galt `some(r => r.ok)` als Erfolg: Zwei von
+    // fünf Zeilen fehlten, der Lead sah die Erfolgsseite, die zwei Personen
+    // erfuhren nichts und standen in keiner Liste — und SeatsTaken stand auf
+    // fünf. Dasselbe Muster, das CLAUDE.md für deleteParticipantData als
+    // Ursache des Register-Rückstands beschreibt. Jetzt: Lead zuerst — ohne
+    // Lead kein Team, dann wird gar nichts angelegt; scheitert ein Mitglied,
+    // laufen die übrigen weiter, der Teilerfolg wird als solcher gemeldet und
+    // die nicht belegten Plätze gehen zurück. (Die Counter-CAS in
+    // getNextTeilnehmerId garantiert weiterhin eindeutige TeilnehmerIDs.)
+    type TeamInsertResult = { ok: boolean; email: string; firstName: string; lastName: string };
+    const results: TeamInsertResult[] = [];
     // Lead
-    insertPromises.push((async (): Promise<{ ok: boolean; email: string; firstName: string; lastName: string }> => {
+    {
       const r = await eventService.registerTeamMember(subsiteUrl, {
         firstName: leadData.firstName,
         lastName: leadData.lastName,
@@ -2848,39 +1676,43 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         registeredByEmail: actorEmail,
         salutation: leadData.salutation,
       });
-      return { ok: r.ok, email: leadData.email, firstName: leadData.firstName, lastName: leadData.lastName };
-    })());
+      results.push({ ok: r.ok, email: leadData.email, firstName: leadData.firstName, lastName: leadData.lastName });
+      if (!r.ok) {
+        await releaseSeats(teamCount);
+        return { ok: false, reason: 'insert-failed' };
+      }
+    }
     // Members
-    members.forEach((m, idx) => {
+    for (let idx = 0; idx < members.length; idx++) {
+      const m = members[idx];
       const profile = memberProfiles[idx] || { department: '', location: '', jobTitle: '', phone: '' };
       const parsed = parseDisplayName(m.displayName);
-      insertPromises.push((async (): Promise<{ ok: boolean; email: string; firstName: string; lastName: string }> => {
-        const r = await eventService.registerTeamMember(subsiteUrl, {
-          firstName: parsed.firstName,
-          lastName: parsed.lastName,
-          email: m.email,
-          profile,
-          status,
-          teamId,
-          teamLead: false,
-          teamName,
-          // v18.12: Custom-Field-Antworten des Mitglieds (z.B. Essenspräferenz).
-          customData: m.customData || {},
-          customFieldMap: fieldMap,
-          starterType: effectiveStarterType,
-          preferredStarterType: leadData.preferredStarterType,
-          registeredByName: actorName,
-          registeredByEmail: actorEmail,
-          // Anrede der Mitglieder bleibt leer — kein Picker für Member-Anreden.
-          salutation: '',
-        });
-        return { ok: r.ok, email: m.email, firstName: parsed.firstName, lastName: parsed.lastName };
-      })());
-    });
-
-    const results = await Promise.all(insertPromises);
-    const anyOk = results.some(r => r.ok);
-    if (!anyOk) return { ok: false, reason: 'insert-failed' };
+      const r = await eventService.registerTeamMember(subsiteUrl, {
+        firstName: parsed.firstName,
+        lastName: parsed.lastName,
+        email: m.email,
+        profile,
+        status,
+        teamId,
+        teamLead: false,
+        teamName,
+        // v18.12: Custom-Field-Antworten des Mitglieds (z.B. Essenspräferenz).
+        customData: m.customData || {},
+        customFieldMap: fieldMap,
+        starterType: effectiveStarterType,
+        preferredStarterType: leadData.preferredStarterType,
+        registeredByName: actorName,
+        registeredByEmail: actorEmail,
+        // Anrede der Mitglieder bleibt leer — kein Picker für Member-Anreden.
+        salutation: '',
+      });
+      results.push({ ok: r.ok, email: m.email, firstName: parsed.firstName, lastName: parsed.lastName });
+    }
+    const failedInserts = results.filter(r => !r.ok);
+    if (failedInserts.length > 0) {
+      console.warn('[DEX] registerTeam: Insert fehlgeschlagen für', failedInserts.map(f => f.email).join(', '));
+      await releaseSeats(failedInserts.length);
+    }
 
     // Pro erfolgreiche Anmeldung: Bestätigungs-Mail + Outlook-Termin queuen.
     const lang = event.emailLanguage || 'EN';
@@ -2963,13 +1795,20 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       targetName: `${leadData.firstName} ${leadData.lastName}`.trim(),
       eventId,
       eventTitle: event.title,
-      details: { teamId, teamSize: teamCount, status, members: members.map(m => m.email) },
+      details: { teamId, teamSize: teamCount, status, members: members.map(m => m.email), ...(failedInserts.length > 0 ? { failed: failedInserts.map(f => f.email) } : {}) },
     }).catch(() => { /* */ });
 
     if (status === 'Angemeldet') {
-      eventService.bumpKpiParticipants(teamCount).catch(() => { /* best-effort */ });
+      // v30.67: Nur die Zeilen zählen, die es wirklich gibt.
+      eventService.bumpKpiParticipants(successResults.length).catch(() => { /* best-effort */ });
     }
     await loadEvents();
+    // v30.67: Teilerfolg ist kein Erfolg — die Anmeldeseite darf nicht die
+    // Erfolgsseite zeigen, während zwei Personen fehlen. Die Adressen stehen
+    // im Grund, damit der Lead sie einzeln nachmelden kann.
+    if (failedInserts.length > 0) {
+      return { ok: false, teamId, status, reason: `partial-insert:${failedInserts.map(f => f.email).join(',')}` };
+    }
     return { ok: true, teamId, status };
   }
 
@@ -3108,7 +1947,9 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     if (!event) return { ok: false, reason: 'event-not-found' };
     if (!teamId) return { ok: false, reason: 'invalid-team-id' };
 
-    const blocked = await eventService.isUserAlreadyOnEvent(subsiteUrl, member.email);
+    // v30.67: null = nicht prüfbar → ablehnen statt durchwinken (s. probeAlreadyActive).
+    const blocked = await probeAlreadyActive(subsiteUrl, member.email);
+    if (blocked === null) return { ok: false, reason: 'dup-check-failed' };
     if (blocked) return { ok: false, reason: `already-registered:${member.email}` };
 
     // Vorhandene Mitglieder laden — um die richtige Gruppe (Split) und
@@ -3125,6 +1966,8 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     let effectiveStarterType: string | undefined = inheritedStarterType || undefined;
     const isSplitGroup = typeof event.durchstarterCapacity === 'number' && typeof event.funstarterCapacity === 'number'
       && (event.durchstarterCapacity > 0 || event.funstarterCapacity > 0);
+    // v30.67: Welcher Zähler erhöht wurde — Rückgabe bei gescheitertem Insert (s.u.).
+    let reservedSeatField: 'SeatsTaken' | 'SeatsTakenDurch' | 'SeatsTakenFun' | null = null;
     if (isSplitGroup && inheritedStarterType) {
       const cap = inheritedStarterType === 'Durchstarter'
         ? (event.durchstarterCapacity || 0)
@@ -3133,10 +1976,13 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       if (seat !== 'reserved') {
         status = 'Warteliste';
         effectiveStarterType = undefined;
+      } else if (cap > 0) {
+        reservedSeatField = eventService.seatFieldFor(inheritedStarterType);
       }
     } else if (event.maxParticipants > 0) {
       const seat = await eventService.reserveSeat(subsiteUrl, '', event.maxParticipants, 1);
       if (seat !== 'reserved') status = 'Warteliste';
+      else reservedSeatField = 'SeatsTaken';
     }
 
     // Profil laden + DisplayName parsen.
@@ -3171,7 +2017,14 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       registeredByEmail: currentUserEmail,
       salutation: '',
     });
-    if (!r.ok) return { ok: false, reason: 'insert-failed' };
+    if (!r.ok) {
+      // v30.67: Reservierten Platz zurückgeben — s. registerForEvent.
+      if (reservedSeatField) {
+        try { await eventService.adjustSeatCounterField(subsiteUrl, reservedSeatField, -1); }
+        catch (err) { console.warn('[DEX] addTeamMember: Sitzplatz-Rückgabe fehlgeschlagen:', err); }
+      }
+      return { ok: false, reason: 'insert-failed' };
+    }
 
     // Bestätigungs-Mail + Outlook + DEX_Participants — same pattern as
     // registerTeam aber für EINEN Member.
@@ -3422,7 +2275,9 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     const event = events.find(e => e.id === eventId);
     if (!event) return { ok: false, reason: 'event-not-found' };
 
-    const blocked = await eventService.isUserAlreadyOnEvent(subsiteUrl, currentUserEmail);
+    // v30.67: null = nicht prüfbar → ablehnen statt durchwinken (s. probeAlreadyActive).
+    const blocked = await probeAlreadyActive(subsiteUrl, currentUserEmail);
+    if (blocked === null) return { ok: false, reason: 'dup-check-failed' };
     if (blocked) return { ok: false, reason: 'already-registered' };
 
     // Lead finden — die Mail-Notification soll an ihn gehen.
@@ -3614,727 +2469,12 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     return open;
   }
 
-  async function cancelRegistration(eventId: string, opts?: { suppressNotifications?: boolean; skipReload?: boolean }): Promise<boolean> {
-    // v17.25: Demo-Showcase-Event → No-Op.
-    if (isDemoShowcaseId(eventId)) return true;
-    // v22.22: Selbst-Abmeldung von bereits vergangenen Events ist gesperrt —
-    // gilt damit auch für den Auto-Cancel-Deep-Link aus Mails und die
-    // Sub-Event-Session-Toggles in Meine Events. Organizer/Admins melden
-    // über das Admin Center ab (eventService.cancelRegistration direkt) —
-    // dieser Pfad ist bewusst NICHT betroffen, läuft bei vergangenen Events
-    // aber still (ohne Mail/Outlook/Nachrücken, siehe AdminPage).
-    const evForGuard = events.find(e => e.id === eventId);
-    if (evForGuard && isEventOver(evForGuard)) {
-      console.warn('[DEX] cancelRegistration blocked: event already in the past', eventId);
-      return false;
-    }
-    const subsiteUrl = subsiteMap.current[eventId];
-    if (!subsiteUrl) return false;
-
-    const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
-    if (!myReg) return false;
-
-    // Audit: wer klickt gerade 'Abmelden'? = der eingeloggte User. Bei Self-Cancel
-    // ist das = der Teilnehmer selbst. Aus der App heraus gibt's aktuell keinen
-    // "Abmeldung für andere"-Pfad (das macht der Organizer/Admin über AdminPage,
-    // dort wird eventService.cancelRegistration direkt aufgerufen).
-    // v11.53: vorherigen Status merken, damit wir den KPI-Counter nur dann
-    // dekrementieren, wenn der User tatsächlich 'Angemeldet' war (Wartelist-
-    // Cancel berührt den Teilnehmer-KPI nicht).
-    const wasActive = myReg.Status === 'Angemeldet';
-    // v11.83: Team-Anmeldungs-Kontext snapshotten, BEVOR der eigene Status
-    // auf 'Abgemeldet' kippt — danach liefert getTeamMembers den eigenen
-    // Eintrag schon mit dem alten Lead-Flag aus und der Promote-Pfad
-    // verlässt sich nicht mehr darauf. Wir speichern hier den eigenen
-    // TeamId/TeamLead/TeamName-Stand und filtern nach dem Cancel die
-    // verbleibenden Mitglieder.
-    const wasTeamCancel = !!myReg.TeamId;
-    const wasTeamLead = wasTeamCancel && !!myReg.TeamLead;
-    const teamId = myReg.TeamId || '';
-    const teamName = myReg.TeamName || '';
-    const success = await eventService.cancelRegistration(subsiteUrl, myReg.Id, currentUserName, currentUserEmail);
-    if (success) {
-      const event = events.find(e => e.id === eventId);
-      if (wasActive) {
-        eventService.bumpKpiParticipants(-1).catch(() => { /* best-effort */ });
-      }
-      // v9.0: Audit-Log (fire-and-forget)
-      eventService.writeChangeLog({
-        action: 'ParticipantCancelled',
-        targetType: 'Participant',
-        targetId: currentUserEmail,
-        targetName: currentUserName,
-        eventId: eventId,
-        eventTitle: event?.title || '',
-        details: { participantId: myReg.Id, asActor: 'self' },
-      }).catch(() => { /* */ });
-      if (event) {
-        // Dual-Write: DEX_Participants aktualisieren
-        if (event.eventNumber) {
-          try {
-            await eventService.removeParticipantEvent(currentUserEmail, event.eventNumber);
-          } catch (err) { console.warn('[DEX] removeParticipantEvent failed:', err); }
-        }
-        // Abmelde-E-Mail in Queue eintragen (SharePoint-Template, Fallback auf Code-Template)
-        // v17.19/v17.22: Notifications werden NUR unterdrückt, wenn der Aufrufer
-        // das explizit anfordert (`opts.suppressNotifications`). Das passiert
-        // ausschliesslich beim automatischen Schatten-Parent-Cancel im
-        // subEventsOnlyMode (MyEventsPage: letzte Sub-Event-Abmeldung räumt
-        // den Schatten-Parent ab — die Sub-Event-Abmeldung hat ihre eigene
-        // Mail schon verschickt). v17.22-Fix: vorher wurde pauschal auf
-        // `event.subEventsOnlyMode` geprüft, wodurch Alt-Anmeldungen (User
-        // hat sich noch im Normal-Modus direkt beim Parent angemeldet, bevor
-        // der Organizer das Event auf subEventsOnlyMode umstellte) beim
-        // direkten Abmelden weder Bestätigungs-Mail noch Outlook-Ausladen
-        // bekamen.
-        const suppressParentNotificationsCancel = !!opts?.suppressNotifications;
-        // v19.21: disableCancellationEmail = nur die Abmelde-Bestätigung
-        // unterdrücken (granulares Sub-Häkchen unter dem Master „E-Mails").
-        if (!event.disableEmails && !event.disableCancellationEmail && !suppressParentNotificationsCancel) {
-          try {
-            const lang = event.emailLanguage || 'EN';
-            // {{Name}} in Anreden: nur Vorname (displayName ist im Deloitte-Tenant
-            // "Nachname, Vorname" -> getFirstName extrahiert den Vornamen).
-            const cancelVars = { Name: currentUserFirstName, EventTitle: event.title, AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView` };
-            let emailData: { subject: string; body: string };
-            const spTplRaw = await eventService.getEmailTemplate('Abmeldung', lang).catch(() => null);
-            const spTpl = applyEventTemplateOverride(spTplRaw, event.emailTemplateOverrides, 'Abmeldung');
-            if (spTpl) {
-              emailData = buildEmailFromTemplate(spTpl, cancelVars);
-            } else {
-              emailData = cancellationEmail(currentUserFirstName, event.title);
-            }
-            // v8.5: Organizer-Mitlesen bei Abmeldung auswerten. 'always' = immer,
-            // 'afterDeadline' = nur wenn lastDeregisterDate überschritten ist.
-            // v28.28: als CC statt BCC (siehe Anmelde-Pfad).
-            let orgCopyCc = '';
-            const mode = event.notifyOrgCancelMode || 'never';
-            if (mode === 'always' || (mode === 'afterDeadline' && event.lastDeregisterDate && new Date() > new Date(event.lastDeregisterDate))) {
-              const orgEmails = (event.organizerEmails || []).filter(Boolean);
-              if (orgEmails.length > 0) orgCopyCc = orgEmails.join(';');
-            }
-            // v18.41: People-Picker-Felder mit „CC bei Mail" → ausgewählte
-            // Person(en) auch bei der Abmelde-Mail auf CC (nicht im Outlook-Termin).
-            // v18.58: Im subEventsOnlyMode liegen die übergreifenden CC-Felder
-            // (z.B. Assistenz) in der Schatten-Parent-Registrierung, NICHT in der
-            // Sub-Event-Registrierung. Beim Abmelden einer Section daher
-            // zusätzlich die CC aus dem Parent-Event nachladen und mergen, damit
-            // die Assistenz auch die Abmelde-Mail in Kopie bekommt (Anmeldung
-            // war bereits via extraCc abgedeckt).
-            let cancelCc: string | undefined;
-            try {
-              const cd = myReg.CustomData ? JSON.parse(myReg.CustomData) as Record<string, string> : {};
-              const ownCc = collectCcEmailsFromFields(event.eventSpecificFields, cd, currentUserEmail);
-              let parentCc = '';
-              if (event.parentEventId) {
-                const parentEvent = events.find(ev => ev.id === event.parentEventId);
-                if (parentEvent && parentEvent.subEventsOnlyMode) {
-                  try {
-                    const parentReg = await getMyRegistration(event.parentEventId);
-                    const pcd = parentReg?.CustomData ? JSON.parse(parentReg.CustomData) as Record<string, string> : {};
-                    parentCc = collectCcEmailsFromFields(parentEvent.eventSpecificFields, pcd, currentUserEmail);
-                  } catch { /* parent-CC best-effort */ }
-                }
-              }
-              const seen = new Set<string>();
-              const merged: string[] = [];
-              for (const part of [ownCc, parentCc, orgCopyCc]) {
-                for (const em of part.split(';').map(s => s.trim()).filter(Boolean)) {
-                  const lc = em.toLowerCase();
-                  if (lc !== (currentUserEmail || '').toLowerCase() && !seen.has(lc)) { seen.add(lc); merged.push(em); }
-                }
-              }
-              cancelCc = merged.length ? merged.join(';') : undefined;
-            } catch { cancelCc = orgCopyCc || undefined; }
-            const emailOk = await eventService.queueEmail(
-              withParentTitleSubject(emailData.subject, calDayParentOf(event)), currentUserEmail, currentUserName, emailData.body,
-              'Abmeldung', event.title, eventId, cancelCc, undefined
-            );
-            if (!emailOk) console.warn('[DEX] queueEmail for cancellation returned false');
-          } catch (err) { console.warn('[DEX] queueEmail for cancellation failed:', err); }
-        }
-        // Outlook-Termin-Einladung zurückziehen
-        if (!event.disableOutlook && !suppressParentNotificationsCancel) {
-          try {
-            await eventService.queueOutlookEvent(
-              currentUserEmail, eventId, event.title, 'Ausladen'
-            );
-          } catch (err) { console.warn('[DEX] queueOutlookEvent failed:', err); }
-        }
-        // Nachrücken wird komplett vom Power-Automate-Flow DEX_IDReorder_TeilnehmerIDs
-        // übernommen (seit v6.7). Der Flow ist typen-bewusst für B2Run-Split-
-        // Wartelisten: er promotet den ersten Warteliste-Teilnehmer mit passendem
-        // PreferredStarterType und verschickt Nachrück-Mail + Outlook-Einladung.
-        // Die App macht nur noch Abmeldung + IDReorder-Queue-Trigger — keine
-        // parallele Client-Promote-Logik mehr (die vorher zu Race-Conditions mit
-        // dem Flow geführt hat).
-        // ID-Reorder in Queue eintragen (triggert den DEX_IDReorder-Flow, der
-        // danach ID-Neuvergabe + Nachrücken abwickelt).
-        if (subsiteUrl) {
-          try {
-            // v24.71: CancelledName als „Vorname Nachname" schreiben (aus der
-            // Registrierung), nicht den SharePoint-Anzeigenamen currentUserName
-            // („Nachname, Vorname") — sonst stehen in der Organizer-Nachrück-Mail
-            // die Namen uneinheitlich (z.B. „Obermeier, Katrin" abgemeldet vs.
-            // „Alexa Sophie Gedaschko" nachgerückt). Der Flow baut PromotedName
-            // ebenfalls als „Vorname Nachname".
-            const cancelledDisplayName = (myReg.Vorname && myReg.Nachname)
-              ? `${myReg.Vorname} ${myReg.Nachname}`
-              : (myReg.ParticipantName || currentUserName);
-            const reorderOk = await eventService.queueIDReorder(
-              eventId, event.eventNumber || 0, subsiteUrl, event.title, cancelledDisplayName, currentUserEmail
-            );
-            if (!reorderOk) console.warn('[DEX] queueIDReorder returned false');
-          } catch (err) { console.warn('[DEX] queueIDReorder failed:', err); }
-          // v11.36 → v27.10: Sitzplatz-Counter nach der Abmeldung pflegen.
-          // NICHT mehr blind syncSeatsToActiveCount — ein normaler User sieht
-          // die Teilnehmerliste seit v26.87 nur beschnitten („nur eigene
-          // Elemente") und hätte den Counter mit 0 überschrieben (Ursache der
-          // Warteliste-Überholung vom 15.07.). releaseSeatAfterCancel macht
-          // den Voll-Reconcile nur bei Vollzugriff und arbeitet sonst additiv.
-          try {
-            const isSplit = typeof event.durchstarterCapacity === 'number'
-              && typeof event.funstarterCapacity === 'number'
-              && ((event.durchstarterCapacity || 0) > 0 || (event.funstarterCapacity || 0) > 0);
-            await eventService.releaseSeatAfterCancel(subsiteUrl, {
-              isSplit,
-              previousStatus: myReg.Status || '',
-              starterType: myReg.StarterType || undefined,
-              // v27.11: Warteliste abgeschaltet → niemand rückt nach, der
-              // Platz muss direkt freigegeben werden (sonst Counter-Deadlock).
-              waitlistDisabled: event.waitlistEnabled === false,
-            });
-          } catch { /* best-effort */ }
-        }
-      } else {
-        console.warn('[DEX] cancelRegistration: event not found in state for id', eventId);
-      }
-      // v11.83: Team-Cancel-Nachlauf — Auto-Promote des früheren Members
-      // zum neuen Lead (falls Self-Cancel der Lead war), Info-Mails an die
-      // verbleibenden Mitglieder, Hinweis welche Optionen ihnen offenstehen.
-      // Der Sitzplatz-Counter wird im normalen Reconcile oben schon
-      // dekrementiert — der frei werdende Platz darf von anderen Teilnehmern
-      // belegt werden (oder vom Team-Lead nachbesetzt werden, siehe
-      // addTeamMember). Die App entscheidet hier bewusst NICHT, ob der
-      // Slot für das Team reserviert bleibt — das passt zur Beschreibung
-      // im Spec, weil der frei werdende Sitz neutral ist: der Team-Lead
-      // kann ihn über "Mitglied hinzufügen" wieder füllen, ansonsten
-      // landet er in der normalen Sitzplatz-Verwaltung.
-      if (wasTeamCancel && event) {
-        await handleTeamCancelPostStep(event, eventId, subsiteUrl, teamId, teamName, wasTeamLead, myReg).catch(err => {
-          console.warn('[DEX] team-cancel post-step failed:', err);
-        });
-      }
-      // v30.9: s. registerForEvent — Schleifen skippen, EIN Refresh am Ende.
-      if (!opts?.skipReload) await loadEvents();
-    }
-    return success;
-  }
-
-  /**
-   * v11.86: Team-Lead meldet stellvertretend ein Team-Mitglied vom Event
-   * ab — ausgelöst aus dem „Team verwalten"-Modal in MyEvents. Audit
-   * wird auf den eingeloggten Lead geschrieben (CancelledByName/Email),
-   * danach läuft derselbe Team-Post-Step wie beim Self-Cancel:
-   * Sitzplatz-Reconcile, IDReorder-Queue, Outlook-Ausladung,
-   * Abmelde-Bestätigung an die abgemeldete Person und Info-Mails an die
-   * uebrigen Team-Mitglieder. Der Lead darf sich über diesen Pfad
-   * NICHT selbst löschen — das übernimmt der normale Self-Cancel über
-   * `cancelRegistration` (inkl. Auto-Promote des frühesten Members).
-   */
-  async function cancelTeamMember(
-    eventId: string,
-    memberRegistration: SPRegistration
-  ): Promise<boolean> {
-    const subsiteUrl = subsiteMap.current[eventId];
-    if (!subsiteUrl || !memberRegistration?.Id) return false;
-    if (!memberRegistration.TeamId) return false;
-    // Self-Schutz: der Lead löscht sich nicht über diesen Pfad — sein
-    // eigener Cancel läuft via cancelRegistration mit Auto-Promote.
-    if ((memberRegistration.ParticipantEmail || '').toLowerCase() === (currentUserEmail || '').toLowerCase()) {
-      console.warn('[DEX] cancelTeamMember: Lead cannot cancel itself via this path');
-      return false;
-    }
-    const wasActive = memberRegistration.Status === 'Angemeldet';
-    const teamId = memberRegistration.TeamId;
-    const teamName = memberRegistration.TeamName || '';
-    // Audit = der eingeloggte Lead (stellvertretender Cancel).
-    const ok = await eventService.cancelRegistration(
-      subsiteUrl, memberRegistration.Id, currentUserName, currentUserEmail
-    );
-    if (!ok) return false;
-    const event = events.find(e => e.id === eventId);
-    if (wasActive) {
-      eventService.bumpKpiParticipants(-1).catch(() => { /* */ });
-    }
-    eventService.writeChangeLog({
-      action: 'ParticipantCancelled',
-      targetType: 'Participant',
-      targetId: memberRegistration.ParticipantEmail,
-      targetName: `${memberRegistration.Vorname || ''} ${memberRegistration.Nachname || ''}`.trim() || memberRegistration.ParticipantEmail,
-      eventId: eventId,
-      eventTitle: event?.title || '',
-      details: { participantId: memberRegistration.Id, asActor: 'teamLead', actorEmail: currentUserEmail },
-    }).catch(() => { /* */ });
-    if (event) {
-      // Dual-Write: DEX_Participants aktualisieren
-      if (event.eventNumber) {
-        try {
-          await eventService.removeParticipantEvent(memberRegistration.ParticipantEmail, event.eventNumber);
-        } catch (err) { console.warn('[DEX] removeParticipantEvent failed:', err); }
-      }
-      // Abmelde-Mail an die abgemeldete Person.
-      // v19.21: disableCancellationEmail unterdrückt auch hier die Abmelde-Mail.
-      if (!event.disableEmails && !event.disableCancellationEmail) {
-        try {
-          const lang = event.emailLanguage || 'EN';
-          const cancelledFirst = memberRegistration.Vorname
-            || (memberRegistration.ParticipantName || '').split(/[ ,]+/)[0]
-            || '';
-          const cancelVars = {
-            Name: cancelledFirst,
-            EventTitle: event.title,
-            AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
-          };
-          let emailData: { subject: string; body: string };
-          const spTplRaw = await eventService.getEmailTemplate('Abmeldung', lang).catch(() => null);
-          const spTpl = applyEventTemplateOverride(spTplRaw, event.emailTemplateOverrides, 'Abmeldung');
-          if (spTpl) {
-            emailData = buildEmailFromTemplate(spTpl, cancelVars);
-          } else {
-            emailData = cancellationEmail(cancelledFirst, event.title);
-          }
-          // v28.28: Organizer-Mitlese-Kopie als CC statt BCC (s.o.).
-          let orgCopyCc = '';
-          const mode = event.notifyOrgCancelMode || 'never';
-          if (mode === 'always' || (mode === 'afterDeadline' && event.lastDeregisterDate && new Date() > new Date(event.lastDeregisterDate))) {
-            const orgEmails = (event.organizerEmails || []).filter(Boolean);
-            if (orgEmails.length > 0) orgCopyCc = orgEmails.join(';');
-          }
-          // v18.41: CC-Felder der abgemeldeten Person berücksichtigen.
-          let memberCc: string | undefined;
-          try {
-            const cd = memberRegistration.CustomData ? JSON.parse(memberRegistration.CustomData) as Record<string, string> : {};
-            memberCc = collectCcEmailsFromFields(event.eventSpecificFields, cd, memberRegistration.ParticipantEmail) || undefined;
-          } catch { memberCc = undefined; }
-          memberCc = mergeCcLists(memberCc, orgCopyCc, memberRegistration.ParticipantEmail);
-          await eventService.queueEmail(
-            withParentTitleSubject(emailData.subject, calDayParentOf(event)),
-            memberRegistration.ParticipantEmail,
-            `${memberRegistration.Vorname || ''} ${memberRegistration.Nachname || ''}`.trim() || memberRegistration.ParticipantEmail,
-            emailData.body,
-            'Abmeldung', event.title, eventId, memberCc, undefined
-          );
-        } catch (err) { console.warn('[DEX] queueEmail for team-lead cancel failed:', err); }
-      }
-      // Outlook-Ausladung.
-      if (!event.disableOutlook) {
-        try {
-          await eventService.queueOutlookEvent(
-            memberRegistration.ParticipantEmail, eventId, event.title, 'Ausladen'
-          );
-        } catch (err) { console.warn('[DEX] queueOutlookEvent (team-lead cancel) failed:', err); }
-      }
-      // ID-Reorder + Sitzplatz-Sync.
-      if (subsiteUrl) {
-        try {
-          await eventService.queueIDReorder(
-            eventId, event.eventNumber || 0, subsiteUrl, event.title,
-            `${memberRegistration.Vorname || ''} ${memberRegistration.Nachname || ''}`.trim() || memberRegistration.ParticipantName || undefined,
-            memberRegistration.ParticipantEmail || undefined
-          );
-        } catch (err) { console.warn('[DEX] queueIDReorder (team-lead cancel) failed:', err); }
-        // v27.10: ILS-sichere Counter-Pflege statt blindem Voll-Sync (der
-        // Team-Lead ist ein normaler User — siehe Kommentar im Self-Cancel).
-        try {
-          const isSplit = typeof event.durchstarterCapacity === 'number'
-            && typeof event.funstarterCapacity === 'number'
-            && ((event.durchstarterCapacity || 0) > 0 || (event.funstarterCapacity || 0) > 0);
-          await eventService.releaseSeatAfterCancel(subsiteUrl, {
-            isSplit,
-            previousStatus: memberRegistration.Status || '',
-            starterType: memberRegistration.StarterType || undefined,
-            waitlistDisabled: event.waitlistEnabled === false, // v27.11
-          });
-        } catch { /* best-effort */ }
-      }
-      // Info-Mails an die uebrigen Team-Mitglieder. Wir löschen NICHT
-      // den Lead, daher `wasTeamLead = false` → kein Auto-Promote.
-      await handleTeamCancelPostStep(event, eventId, subsiteUrl, teamId, teamName, false, memberRegistration)
-        .catch(err => { console.warn('[DEX] team-cancel post-step (lead-initiated) failed:', err); });
-    }
-    await loadEvents();
-    return true;
-  }
-
-  /**
-   * v24.36: Assistenz — alle Fremd-Anmeldungen des eingeloggten Users über
-   * alle Subsites (Haupt- + Sub-Events) einsammeln. Dedupliziert pro Subsite
-   * (mehrere Events teilen sich keine Subsite, aber Sub-Events haben eigene),
-   * sodass jede Teilnehmerliste nur einmal abgefragt wird.
-   */
-  async function getMyProxyRegistrations(): Promise<Array<{ event: DeloitteEvent; registration: SPRegistration }>> {
-    const me = (currentUserEmail || '').toLowerCase().trim();
-    if (!me) return [];
-    // Subsite → Event-Liste (mehrere Events können theoretisch dieselbe Subsite
-    // teilen — z.B. recreate-Pfad; dann ordnen wir die Treffer dem passenden
-    // Event über die Event-Nummer in der Zeile nicht zu, sondern nehmen das
-    // erste Event der Subsite. In der Praxis = 1:1 Event↔Subsite.)
-    const subsiteToEvents = new Map<string, DeloitteEvent[]>();
-    for (const ev of events) {
-      const sub = subsiteMap.current[ev.id];
-      if (!sub) continue;
-      const arr = subsiteToEvents.get(sub) || [];
-      arr.push(ev);
-      subsiteToEvents.set(sub, arr);
-    }
-    const results: Array<{ event: DeloitteEvent; registration: SPRegistration }> = [];
-    const subs = Array.from(subsiteToEvents.keys());
-    // Parallel je Subsite abfragen (best-effort, Fehler je Subsite ignorieren).
-    await Promise.all(subs.map(async (sub) => {
-      let regs: SPRegistration[] = [];
-      try { regs = await eventService.getProxyRegistrationsByActor(sub, me); }
-      catch { regs = []; }
-      if (regs.length === 0) return;
-      const evs = subsiteToEvents.get(sub) || [];
-      const primary = evs[0];
-      if (!primary) return;
-      for (const r of regs) {
-        results.push({ event: primary, registration: r });
-      }
-    }));
-    return results;
-  }
-
-  /**
-   * v24.36: Stellvertretende Abmeldung einer Fremd-Anmeldung durch die
-   * Assistenz. Spiegelt den Side-Effect-Pfad von `cancelTeamMember`
-   * (Abmelde-Mail, Outlook-Ausladen, ID-Reorder, Sitzplatz-Sync), aber ohne
-   * Team-Logik. Audit als Akteur „assistant".
-   */
-  async function cancelProxyRegistration(eventId: string, registration: SPRegistration): Promise<boolean> {
-    const subsiteUrl = subsiteMap.current[eventId];
-    if (!subsiteUrl || !registration?.Id) return false;
-    // Self-Schutz: über diesen Pfad meldet sich niemand selbst ab.
-    if ((registration.ParticipantEmail || '').toLowerCase() === (currentUserEmail || '').toLowerCase()) {
-      console.warn('[DEX] cancelProxyRegistration: cannot cancel own registration via this path');
-      return false;
-    }
-    const event = events.find(e => e.id === eventId);
-    // v22.22: Nach Event-Ende keine Abmeldung mehr.
-    if (event && isEventOver(event)) {
-      console.warn('[DEX] cancelProxyRegistration: event is over, blocked');
-      return false;
-    }
-    const wasActive = registration.Status === 'Angemeldet';
-    const ok = await eventService.cancelRegistration(
-      subsiteUrl, registration.Id, currentUserName, currentUserEmail
-    );
-    if (!ok) return false;
-    if (wasActive) {
-      eventService.bumpKpiParticipants(-1).catch(() => { /* */ });
-    }
-    eventService.writeChangeLog({
-      action: 'RegistrationCancelled',
-      targetType: 'Participant',
-      targetId: registration.ParticipantEmail,
-      targetName: `${registration.Vorname || ''} ${registration.Nachname || ''}`.trim() || registration.ParticipantEmail,
-      eventId: eventId,
-      eventTitle: event?.title || '',
-      details: { participantId: registration.Id, asActor: 'assistant', actorEmail: currentUserEmail },
-    }).catch(() => { /* */ });
-    if (event) {
-      if (event.eventNumber) {
-        try { await eventService.removeParticipantEvent(registration.ParticipantEmail, event.eventNumber); }
-        catch (err) { console.warn('[DEX] removeParticipantEvent failed:', err); }
-      }
-      // Abmelde-Mail an die abgemeldete Person.
-      if (!event.disableEmails && !event.disableCancellationEmail) {
-        try {
-          const lang = event.emailLanguage || 'EN';
-          const cancelledFirst = registration.Vorname
-            || (registration.ParticipantName || '').split(/[ ,]+/)[0] || '';
-          const cancelVars = {
-            Name: cancelledFirst,
-            EventTitle: event.title,
-            AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
-          };
-          let emailData: { subject: string; body: string };
-          const spTplRaw = await eventService.getEmailTemplate('Abmeldung', lang).catch(() => null);
-          const spTpl = applyEventTemplateOverride(spTplRaw, event.emailTemplateOverrides, 'Abmeldung');
-          if (spTpl) emailData = buildEmailFromTemplate(spTpl, cancelVars);
-          else emailData = cancellationEmail(cancelledFirst, event.title);
-          // v28.28: Organizer-Mitlese-Kopie als CC statt BCC (s.o.).
-          let orgCopyCc = '';
-          const mode = event.notifyOrgCancelMode || 'never';
-          if (mode === 'always' || (mode === 'afterDeadline' && event.lastDeregisterDate && new Date() > new Date(event.lastDeregisterDate))) {
-            const orgEmails = (event.organizerEmails || []).filter(Boolean);
-            if (orgEmails.length > 0) orgCopyCc = orgEmails.join(';');
-          }
-          let memberCc: string | undefined;
-          try {
-            const cd = registration.CustomData ? JSON.parse(registration.CustomData) as Record<string, string> : {};
-            memberCc = collectCcEmailsFromFields(event.eventSpecificFields, cd, registration.ParticipantEmail) || undefined;
-          } catch { memberCc = undefined; }
-          memberCc = mergeCcLists(memberCc, orgCopyCc, registration.ParticipantEmail);
-          await eventService.queueEmail(
-            withParentTitleSubject(emailData.subject, calDayParentOf(event)),
-            registration.ParticipantEmail,
-            `${registration.Vorname || ''} ${registration.Nachname || ''}`.trim() || registration.ParticipantEmail,
-            emailData.body,
-            'Abmeldung', event.title, eventId, memberCc, undefined
-          );
-        } catch (err) { console.warn('[DEX] queueEmail for proxy cancel failed:', err); }
-      }
-      // Outlook-Ausladung.
-      if (!event.disableOutlook) {
-        try {
-          await eventService.queueOutlookEvent(registration.ParticipantEmail, eventId, event.title, 'Ausladen');
-        } catch (err) { console.warn('[DEX] queueOutlookEvent (proxy cancel) failed:', err); }
-      }
-      // ID-Reorder + Sitzplatz-Sync (treibt das Nachrücken der Warteliste).
-      try {
-        await eventService.queueIDReorder(
-          eventId, event.eventNumber || 0, subsiteUrl, event.title,
-          `${registration.Vorname || ''} ${registration.Nachname || ''}`.trim() || registration.ParticipantName || undefined,
-          registration.ParticipantEmail || undefined
-        );
-      } catch (err) { console.warn('[DEX] queueIDReorder (proxy cancel) failed:', err); }
-      // v27.10: ILS-sichere Counter-Pflege statt blindem Voll-Sync (die
-      // Assistenz ist ein normaler User — siehe Kommentar im Self-Cancel).
-      try {
-        const isSplit = typeof event.durchstarterCapacity === 'number'
-          && typeof event.funstarterCapacity === 'number'
-          && ((event.durchstarterCapacity || 0) > 0 || (event.funstarterCapacity || 0) > 0);
-        await eventService.releaseSeatAfterCancel(subsiteUrl, {
-          isSplit,
-          previousStatus: registration.Status || '',
-          starterType: registration.StarterType || undefined,
-          waitlistDisabled: event.waitlistEnabled === false, // v27.11
-        });
-      } catch { /* best-effort */ }
-    }
-    await loadEvents();
-    return true;
-  }
-
-  /**
-   * v24.36: Custom-Field-Antworten einer Fremd-Anmeldung aktualisieren
-   * (Assistenz). Operiert direkt auf der übergebenen Registrierungs-Zeile.
-   */
-  async function updateProxyRegistration(eventId: string, registration: SPRegistration, customData: Record<string, string>): Promise<boolean> {
-    const subsiteUrl = subsiteMap.current[eventId];
-    if (!subsiteUrl || !registration?.Id) return false;
-    const event = events.find(e => e.id === eventId);
-    const fieldMap: Record<string, string> = {};
-    const fieldLabelMap: Record<string, string> = {};
-    if (event) {
-      for (const f of event.eventSpecificFields) {
-        if (f.spInternalName) fieldMap[f.id] = f.spInternalName;
-        fieldLabelMap[f.id] = f.label;
-      }
-    }
-    let oldCustomData: Record<string, string> = {};
-    try { if (registration.CustomData) oldCustomData = JSON.parse(registration.CustomData); }
-    catch { /* */ }
-    const success = await eventService.updateRegistrationData(
-      subsiteUrl, registration.Id, customData, fieldMap, oldCustomData, fieldLabelMap
-    );
-    if (success) await loadEvents();
-    return success;
-  }
-
-  // v24.43: Eine (stellvertretend angelegte) Anmeldung KOMPLETT an die
-  // angemeldete Person selbst übergeben — Owner + Zeilen-Autor + RegisteredBy
-  // werden auf die Person gesetzt. Danach sieht/verwaltet NUR noch sie die
-  // Anmeldung (über „Meine Events"); sie verschwindet aus der „Assistenz"-
-  // Kachel des bisherigen Akteurs. Etwaiger Assistenz-Verknüpfungs-Eintrag
-  // wird auf 'Cancelled' gesetzt (kein Assistenz-Bezug mehr).
-  async function handBackToParticipant(eventId: string, registration: SPRegistration): Promise<boolean> {
-    const subsiteUrl = subsiteMap.current[eventId];
-    if (!subsiteUrl || !registration?.Id) return false;
-    const pEmail = (registration.ParticipantEmail || '').trim();
-    if (!pEmail) return false;
-    const pName = `${registration.Vorname || ''} ${registration.Nachname || ''}`.trim() || registration.ParticipantName || pEmail;
-    const ok = await eventService.assignRegistrationToAssistant(subsiteUrl, registration.Id, pEmail, pName);
-    try { await eventService.setAssistantLinkStatusForRegistration(registration.Id, subsiteUrl, 'Cancelled'); } catch { /* */ }
-    if (ok) {
-      eventService.writeChangeLog({
-        action: 'ParticipantUpdated',
-        targetType: 'Participant',
-        targetId: pEmail,
-        targetName: pName,
-        eventId,
-        eventTitle: events.find(e => e.id === eventId)?.title || '',
-        details: { scope: 'handedBackToParticipant', actorEmail: currentUserEmail },
-      }).catch(() => { /* */ });
-    }
-    await loadEvents();
-    return ok;
-  }
-
-  /**
-   * v11.83: Nach einem Team-Mitglied-Cancel (Self-Cancel) erledigt diese
-   * Routine:
-   *   1) Verbleibende aktive Team-Mitglieder laden (ohne den gerade
-   *      Abgemeldeten, der jetzt 'Abgemeldet' ist).
-   *   2) Falls die abgemeldete Person Lead war UND mindestens ein Member
-   *      uebrig ist, das früheste aktive Mitglied per MERGE-Patch zum
-   *      neuen Lead promoten.
-   *   3) Pro verbleibendem Mitglied eine Info-Mail in DEX_Emails queuen,
-   *      die den Cancel ankündigt und die nächsten Schritte erklärt.
-   *
-   * Fail-safe: alle Sub-Operationen sind best-effort und schlucken Fehler
-   * still — das Cancel selbst hat oben schon erfolgreich auf dem Item
-   * geschrieben, ein Mail-/Promote-Fehler darf den User-Flow nicht
-   * blockieren.
-   */
-  async function handleTeamCancelPostStep(
-    event: DeloitteEvent,
-    eventId: string,
-    subsiteUrl: string,
-    teamId: string,
-    teamName: string,
-    wasTeamLead: boolean,
-    cancelledReg: SPRegistration
-  ): Promise<void> {
-    const members = await eventService.getTeamMembers(subsiteUrl, teamId);
-    // Verbleibende = aktive (NICHT 'Abgemeldet') und NICHT der gerade
-    // abgemeldete Eintrag (Id-Vergleich, weil ein parallel-Member denselben
-    // Vor-/Nachnamen haben könnte).
-    const remaining = members.filter(m => m.Status !== 'Abgemeldet' && m.Id !== cancelledReg.Id);
-    if (remaining.length === 0) {
-      // Team aufgelöst — kein Promote, keine Info-Mails nötig.
-      return;
-    }
-
-    // Auto-Promote: wenn der Cancel ein Lead war, das früheste aktive
-    // Member zum neuen Lead machen. Sortier-Kriterium: kleinste
-    // TeilnehmerID, sonst früheste RegistrationDate, sonst kleinste Id.
-    let newLeadId: number | null = null;
-    if (wasTeamLead) {
-      const sorted = [...remaining].sort((a, b) => {
-        const aTid = typeof a.TeilnehmerID === 'number' ? a.TeilnehmerID : Number.MAX_SAFE_INTEGER;
-        const bTid = typeof b.TeilnehmerID === 'number' ? b.TeilnehmerID : Number.MAX_SAFE_INTEGER;
-        if (aTid !== bTid) return aTid - bTid;
-        const aRd = new Date(a.RegistrationDate || 0).getTime();
-        const bRd = new Date(b.RegistrationDate || 0).getTime();
-        if (aRd !== bRd) return aRd - bRd;
-        return a.Id - b.Id;
-      });
-      const promoteTarget = sorted[0];
-      if (promoteTarget) {
-        try {
-          await eventService.promoteToTeamLead(subsiteUrl, promoteTarget.Id);
-          newLeadId = promoteTarget.Id;
-        } catch (err) {
-          console.warn('[DEX] promoteToTeamLead failed:', err);
-        }
-      }
-    }
-
-    // v12.14: Info-Mails kommen aus TemplateType=TeamMemberCancelled.
-    // {{NewLeadBlock}}-Platzhalter wird für den Auto-Promote-Empfänger
-    // gefüllt, für alle anderen leer.
-    if (event.disableEmails) return;
-    const lang = event.emailLanguage || 'EN';
-    const isDe = lang.toUpperCase() === 'DE';
-    const tpl = await eventService.getEmailTemplate('TeamMemberCancelled', lang).catch(() => null);
-    const teamSizeCfg = event.teamSize || (remaining.length + 1);
-    const cancelledFullName = `${cancelledReg.Vorname || ''} ${cancelledReg.Nachname || ''}`.trim() || cancelledReg.ParticipantEmail;
-    const teamNameStr = teamName ? `„${teamName}"` : '';
-    const newLeadBlockHtml = isDe
-      ? `<p style="padding:10px 14px;background:rgba(134,188,37,0.10);border:1px solid #86bc25;border-radius:6px;"><strong>Du bist jetzt der neue Team-Lead.</strong> Du kannst über „Meine Events" eine neue Person hinzufügen, falls der frei gewordene Platz wieder gefüllt werden soll.</p>`
-      : `<p style="padding:10px 14px;background:rgba(134,188,37,0.10);border:1px solid #86bc25;border-radius:6px;"><strong>You are the new team lead now.</strong> You can add a replacement member via „My Events" if you want to fill the freed slot.</p>`;
-
-    for (const m of remaining) {
-      const mFirst = m.Vorname || (m.ParticipantName || '').split(/[ ,]+/)[0] || '';
-      const mFull = `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantEmail;
-      const isNewLead = newLeadId !== null && m.Id === newLeadId;
-      const vars: Record<string, string> = {
-        Name: mFirst || mFull,
-        CancelledName: cancelledFullName,
-        TeamName: teamNameStr,
-        EventTitle: event.title,
-        ActiveCount: String(remaining.length),
-        TeamSize: String(teamSizeCfg),
-        NewLeadBlock: isNewLead ? newLeadBlockHtml : '',
-        AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
-      };
-      let mail: { subject: string; body: string };
-      if (tpl) {
-        mail = buildEmailFromTemplate(tpl, vars);
-      } else {
-        const inner = isDe
-          ? `<p>Hallo ${mFirst},</p><p>${cancelledFullName} hat sich vom Team ${teamNameStr} abgemeldet (${remaining.length}/${teamSizeCfg}).</p>${isNewLead ? newLeadBlockHtml : ''}`
-          : `<p>Hello ${mFirst},</p><p>${cancelledFullName} cancelled their registration from team ${teamNameStr} (${remaining.length}/${teamSizeCfg}).</p>${isNewLead ? newLeadBlockHtml : ''}`;
-        mail = {
-          subject: isDe ? `Team-Update — ${event.title}` : `Team update — ${event.title}`,
-          body: wrapTemplate('#ed8b00', isDe ? 'Team-Update' : 'Team update', `Event ${event.title}`, inner),
-        };
-      }
-      try {
-        await eventService.queueEmail(
-          mail.subject,
-          m.ParticipantEmail,
-          mFull,
-          mail.body,
-          'TeamMemberCancelled',
-          event.title,
-          eventId
-        );
-      } catch (err) {
-        console.warn('[DEX] team-cancel info mail failed:', err);
-      }
-    }
-  }
-
-  // v18.11: Proaktive Absage durch den eingeloggten User („Ich nehme nicht
-  // teil"). Wenn schon eine aktive/Warteliste-Anmeldung existiert, wird sie
-  // regulär abgemeldet (Seat-Sync, Mail, IDReorder laufen mit). Sonst wird
-  // eine reine Absage-Zeile (Status=Abgemeldet, Marker _declined) angelegt.
-  async function declineEvent(eventId: string): Promise<boolean> {
-    if (isDemoShowcaseId(eventId)) return true;
-    const subsiteUrl = subsiteMap.current[eventId];
-    if (!subsiteUrl) return false;
-    // Name aus displayName ableiten („Nachname, Vorname" oder „Vorname Nachname").
-    // v22.57: Claims-Login-Token (z.B. „0#.f|membership|user@…") niemals als
-    // Namen verwenden — declineRegistration zieht in dem Fall den sauberen
-    // Namen aus dem Benutzerprofil.
-    const looksLikeClaim = (s: string): boolean => /\|membership\||0#\.f\||^i:0#/i.test((s || '').trim());
-    const dn = looksLikeClaim(currentUserName) ? '' : (currentUserName || '').trim();
-    let firstName = ''; let lastName = '';
-    if (dn.indexOf(',') >= 0) {
-      const p = dn.split(',').map(s => s.trim());
-      lastName = p[0] || ''; firstName = p[1] || '';
-    } else {
-      const p = dn.split(/\s+/).filter(Boolean);
-      firstName = p[0] || ''; lastName = p.slice(1).join(' ');
-    }
-    const existing = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
-    if (existing) {
-      // Bereits abgemeldet/abgesagt → nichts zu tun. Aktiv/Warteliste →
-      // regulärer Cancel-Pfad (gibt Sitzplatz frei, Mail, IDReorder).
-      if (existing.Status === 'Abgemeldet') return true;
-      return await cancelRegistration(eventId);
-    }
-    const ok = await eventService.declineRegistration(
-      subsiteUrl, firstName, lastName, currentUserEmail, currentUserName, currentUserEmail
-    );
-    if (ok) {
-      const event = events.find(e => e.id === eventId);
-      eventService.writeChangeLog({
-        action: 'ParticipantDeclined',
-        targetType: 'Participant',
-        targetId: currentUserEmail,
-        targetName: `${firstName} ${lastName}`.trim() || currentUserEmail,
-        eventId,
-        eventTitle: event?.title || '',
-        details: { asActor: 'self', proactiveDecline: true },
-      }).catch(() => { /* */ });
-    }
-    return ok;
-  }
+  // v30.66: Ausgelagert nach `cancellation.ts` (Modularisierung Stufe 3).
+  // Die Funktionskoerper sind unveraendert; sie bekommen ihre Umgebung
+  // ueber ein explizites deps-Objekt statt ueber die Closure.
+  const {
+    cancelRegistration, cancelTeamMember, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, declineEvent,
+  } = makeCancellationActions({ eventService, events, subsiteMap, currentUserEmail, currentUserName, currentUserFirstName, calDayParentOf, getMyRegistration, loadEvents });
 
   async function getMyRegistration(eventId: string): Promise<SPRegistration | null> {
     const subsiteUrl = subsiteMap.current[eventId];
@@ -4399,7 +2539,13 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       // 5) Eigene Registrierung auf der Subsite finden.
       const subsiteUrl = sp.SubsiteUrl;
       if (!subsiteUrl) return { status: 'error', eventTitle, eventStart };
-      const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
+      // v30.67 (Review): Am Einlass scannen hunderte Personen in Minuten —
+      // ein 429 lieferte null, und die Seite sagte „Keine Anmeldung gefunden"
+      // zu jemandem, der angemeldet ist. Nicht lesbar = 'error' (mit „später
+      // erneut versuchen"), nicht 'not-registered'.
+      let regReadFailed = false;
+      const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail, () => { regReadFailed = true; });
+      if (regReadFailed) return { status: 'error', eventTitle, eventStart };
       if (!myReg) return { status: 'not-registered', eventTitle, eventStart };
       if (myReg.Status === 'Eingecheckt') return { status: 'already', eventTitle, eventStart };
       if (myReg.Status === 'Warteliste') return { status: 'on-waitlist', eventTitle, eventStart };
@@ -4460,8 +2606,17 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     for (const ev of [event, ...children]) {
       const team = new Set<string>(baseTeam);
       teamEmailSetFor(ev).forEach(e => team.add(e));
+      // v30.66: Ein Lesefehler darf hier NICHT zu einer leeren Liste werden.
+      // Der Rueckgabewert ist die Loesch-Sperre: 0 heisst "keine fremden
+      // Anmeldungen, darf geloescht werden". Wer die Teilnehmerliste nicht lesen
+      // kann (403 auf einer Sub-Event-Subsite), bekam bisher genau diese 0 — und
+      // damit die Freigabe zum Loeschen eines Events, das sehr wohl Anmeldungen
+      // hat. Jetzt schlaegt der Fehler bis zum Aufrufer durch, der ihn als
+      // "unbekannt" behandeln MUSS (siehe AdminPage/LandingPage).
       let regs: SPRegistration[] = [];
-      try { regs = await getAllRegistrations(ev.id); } catch { regs = []; }
+      let readError = 0;
+      regs = await getAllRegistrations(ev.id, (status: number) => { readError = status; });
+      if (readError) throw new Error('countExternalRegistrations: Teilnehmerliste nicht lesbar (HTTP ' + readError + ')');
       for (const r of regs) {
         if (!ACTIVE.has(r.Status || '')) continue;
         const email = (r.ParticipantEmail || '').toLowerCase().trim();
@@ -4488,6 +2643,16 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
   // v26.51: Klartext-Grund des letzten fehlgeschlagenen updateEvent (Service).
   function getLastEventUpdateError(): string {
     try { return eventService.lastUpdateEventError || ''; } catch { return ''; }
+  }
+
+  // v30.67: Klartext-Grund des letzten fehlgeschlagenen deleteEvent — damit
+  // die Oberfläche die nicht gelöschten Termine namentlich nennen kann statt
+  // nur „fehlgeschlagen" (Gegenstück zu getLastEventUpdateError).
+  // v30.67 (Review): beide Sprachen halten — der Provider kennt die Locale
+  // nicht, die Ansichten (DangerZoneModal, LandingPage) schon.
+  const lastDeleteEventErrorRef = React.useRef<{ de: string; en: string }>({ de: '', en: '' });
+  function getLastEventDeleteError(lang?: 'de' | 'en'): string {
+    return lang === 'en' ? lastDeleteEventErrorRef.current.en : lastDeleteEventErrorRef.current.de;
   }
 
   // v29.77: opts.skipReload — der Wizard schreibt beim Speichern eines
@@ -4536,233 +2701,12 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     return success;
   }
 
-  // ==================== v21: Archivierung ====================
-  // Abgelaufen = End-Datum (Fallback Start-Datum) liegt in der Vergangenheit.
-  // Liefert Event-Ids + Subsite-URLs + Titel-Map für die Archiv-Funktionen.
-  function getExpiredEventSets(): { ids: Set<string>; subs: Set<string>; titles: Record<string, string>; allIds: Set<string>; allSubs: Set<string> } {
-    const now = Date.now();
-    const ids = new Set<string>();
-    const subs = new Set<string>();
-    const titles: Record<string, string> = {};
-    // v23.39: zusätzlich ALLE aktuell existierenden Event-IDs/Subsites — damit
-    // die Archivierung Zeilen GELÖSCHTER Events (verwaist) ebenfalls erfasst
-    // (deren Bezug taucht in allIds/allSubs nicht mehr auf).
-    const allIds = new Set<string>();
-    const allSubs = new Set<string>();
-    for (const e of events) {
-      allIds.add(String(e.id));
-      if (e.subsiteUrl) allSubs.add(e.subsiteUrl.toLowerCase());
-      const endRef = e.endDate || e.startDate;
-      const t = endRef ? new Date(endRef).getTime() : 0;
-      if (t > 0 && t < now) {
-        ids.add(String(e.id));
-        titles[String(e.id)] = e.title || '';
-        if (e.subsiteUrl) subs.add(e.subsiteUrl.toLowerCase());
-      }
-    }
-    return { ids, subs, titles, allIds, allSubs };
-  }
-
-  /** v21: Zählt archivreife Zeilen (Queue-/Log-Listen abgelaufener Events). */
-  async function getArchivableCount(): Promise<{ total: number; perList: Record<string, number> }> {
-    if (!eventService) return { total: 0, perList: {} };
-    const { ids, subs, allIds, allSubs } = getExpiredEventSets();
-    // v23.39: Events müssen geladen sein (allIds>0), sonst würde die
-    // Verwaist-Erkennung ALLES als gelöscht ansehen. Archivreif sind jetzt
-    // Zeilen abgelaufener UND gelöschter (verwaister) Events.
-    if (allIds.size === 0) return { total: 0, perList: {} };
-    return eventService.countArchivableRows(ids, subs, allIds, allSubs);
-  }
-
-  /** v21: Verschiebt alle archivreifen Zeilen ins DEX_Archive (Admin).
-   *  v22.2: shouldCancel = Abbruch-Check aus dem Fortschrittsmodal. */
-  async function runArchiveExpired(
-    onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void,
-    shouldCancel?: () => boolean
-  ): Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }> {
-    if (!eventService) return { archived: 0, failed: 0, cancelled: false, perList: {} };
-    const { ids, subs, titles, allIds, allSubs } = getExpiredEventSets();
-    return eventService.archiveExpiredRows(ids, subs, titles, onProgress, shouldCancel, allIds, allSubs);
-  }
-
-  // v23.40: Löschkonzept — Stichdatum.
-  // v23.48: Frist auf 1 Monat (Wunsch Maintainer) — die archivierten Daten
-  // (DEX_Emails/DEX_Outlook/… im DEX_Archive) sollen rund einen Monat nach
-  // Ablauf des Events weg. Da sofort archiviert wird, fällt ArchivedAt mit dem
-  // Event-Ablauf zusammen.
-  function archiveDeleteCutoffIso(): string {
-    const d = new Date();
-    d.setMonth(d.getMonth() - 1);
-    return d.toISOString();
-  }
-  async function getDeletableArchiveCount(): Promise<number> {
-    if (!eventService) return 0;
-    return eventService.countDeletableArchiveRows(archiveDeleteCutoffIso());
-  }
-  async function runDeleteOldArchive(
-    onProgress?: (done: number, total: number) => void,
-    shouldCancel?: () => boolean
-  ): Promise<{ deleted: number; failed: number; cancelled: boolean }> {
-    if (!eventService) return { deleted: 0, failed: 0, cancelled: false };
-    return eventService.deleteOldArchiveRows(archiveDeleteCutoffIso(), onProgress, shouldCancel);
-  }
-
-  // ====================================================================
-  // v26.32: Löschkonzept — Teilnehmerliste 3 Monate nach Event-Ende löschen.
-  // 3 Mon. − 1 Woche: Vorwarn-Mail an alle Organizer (Download-Hinweis) +
-  // Landing-Hinweis. Ab 3 Mon.: Admin löscht per Button die Teilnehmerliste;
-  // Event bleibt in DEX_Events, KPIs wandern ins DEX_EventStats-Archiv.
-  // ====================================================================
-  const PARTICIPANT_RETENTION_MONTHS = 3;
-  const PARTICIPANT_WARN_LEAD_MS = 7 * 24 * 60 * 60 * 1000;
-  function participantDeleteDueTs(e: DeloitteEvent): number {
-    const endRef = e.endDate || e.startDate;
-    if (!endRef) return 0;
-    const d = new Date(endRef);
-    if (isNaN(d.getTime())) return 0;
-    d.setMonth(d.getMonth() + PARTICIPANT_RETENTION_MONTHS);
-    return d.getTime();
-  }
-  // Nur echte Haupt-Events mit eigener Teilnehmer-Subsite, keine Entwürfe.
-  function isParticipantDeletionCandidate(e: DeloitteEvent): boolean {
-    return !e.parentEventId && !e.isFictive && !!e.subsiteUrl;
-  }
-
-  /** Events, deren Teilnehmerliste fällig ist (≥3 Mon.) und noch NICHT archiviert. */
-  // v26.35: Kandidaten = ab 1 Woche VOR der 3-Monats-Frist (dann läuft die
-  // Vorwarnung), noch mit Subsite, kein Entwurf, noch nicht archiviert.
-  function participantDeletionCandidates(now: number): DeloitteEvent[] {
-    return (events || []).filter(e => {
-      const due = participantDeleteDueTs(e);
-      return isParticipantDeletionCandidate(e) && due > 0 && (due - PARTICIPANT_WARN_LEAD_MS) <= now;
-    });
-  }
-
-  /** Löschbar ERST, wenn die Vorwarn-Mail an die Organizer raus ist UND danach
-   *  mindestens 1 Woche vergangen ist — sonst könnte gelöscht werden, ohne dass
-   *  je gewarnt wurde. */
-  async function getParticipantDeletionDue(): Promise<DeloitteEvent[]> {
-    if (!eventService) return [];
-    const now = Date.now();
-    const cands = participantDeletionCandidates(now);
-    if (cands.length === 0) return [];
-    let archived = new Set<number>();
-    try { archived = await eventService.getArchivedStatsEventNumbers(); } catch { archived = new Set(); }
-    let warnDates: Record<string, string> = {};
-    try { warnDates = await eventService.getParticipantDeletionWarningDates(); } catch { warnDates = {}; }
-    return cands.filter(e => {
-      if (archived.has(e.eventNumber)) return false;
-      const sent = warnDates[String(e.id)];
-      const sentTs = sent ? new Date(sent).getTime() : 0;
-      return sentTs > 0 && (sentTs + PARTICIPANT_WARN_LEAD_MS) <= now;
-    });
-  }
-
-  /** Events, deren Löschung ansteht, aber die 1-Wochen-Frist seit der Vorwarnung
-   *  noch NICHT abgelaufen ist (bzw. die Warnung noch aussteht). */
-  async function getParticipantDeletionWarnings(): Promise<DeloitteEvent[]> {
-    if (!eventService) return [];
-    const now = Date.now();
-    const cands = participantDeletionCandidates(now);
-    if (cands.length === 0) return [];
-    let archived = new Set<number>();
-    try { archived = await eventService.getArchivedStatsEventNumbers(); } catch { archived = new Set(); }
-    let warnDates: Record<string, string> = {};
-    try { warnDates = await eventService.getParticipantDeletionWarningDates(); } catch { warnDates = {}; }
-    return cands.filter(e => {
-      if (archived.has(e.eventNumber)) return false;
-      const sent = warnDates[String(e.id)];
-      const sentTs = sent ? new Date(sent).getTime() : 0;
-      // Noch NICHT löschbar → im Warn-/Wartezustand.
-      return !(sentTs > 0 && (sentTs + PARTICIPANT_WARN_LEAD_MS) <= now);
-    });
-  }
-
-  /** Admin-Aktion: KPIs archivieren, dann Teilnehmerliste löschen (Event bleibt). */
-  async function runParticipantDeletion(
-    onProgress?: (done: number, total: number, label: string) => void
-  ): Promise<{ deleted: number; failed: number }> {
-    if (!eventService) return { deleted: 0, failed: 0 };
-    const due = await getParticipantDeletionDue();
-    let deleted = 0, failed = 0;
-    for (let i = 0; i < due.length; i++) {
-      const e = due[i];
-      if (onProgress) onProgress(i, due.length, e.title || '');
-      try {
-        // Erst KPIs sichern — nur bei Erfolg die (unwiderrufliche) Löschung starten.
-        const orgNames = Array.from(new Set(
-          [...(e.organizers || []), ...(e.coOrganizerNames || [])].map(x => (x || '').trim()).filter(Boolean)
-        )).join(', ');
-        const archivedOk = await eventService.archiveEventStats({
-          eventNumber: e.eventNumber, eventTitle: e.title, eventType: e.type,
-          location: e.location, startDate: e.startDate, endDate: e.endDate,
-          maxParticipants: e.maxParticipants, subsiteUrl: e.subsiteUrl,
-          organizer: orgNames,
-        });
-        if (!archivedOk) { failed++; continue; }
-        const delOk = await eventService.deleteParticipantData(Number(e.id));
-        if (delOk) { deleted++; }
-        else {
-          // Löschung fehlgeschlagen → Statistik-Zeile zurückrollen, damit das
-          // Event beim nächsten Lauf erneut verarbeitet wird. Die Subsite
-          // existiert noch (Löschung schlug fehl), daher sind die dann neu
-          // berechneten KPIs korrekt — sonst bliebe die Teilnehmerliste (PII)
-          // verwaist zurück (Archiv-Eintrag würde sie fälschlich als „erledigt"
-          // markieren).
-          try { await eventService.deleteEventStatsRow(e.eventNumber); } catch { /* */ }
-          failed++;
-        }
-      } catch { failed++; }
-    }
-    if (onProgress) onProgress(due.length, due.length, '');
-    await loadEvents();
-    return { deleted, failed };
-  }
-
-  /** Auto-Vorwarnung an alle Organizer (einmalig, Queue-entdoppelt). Wird vom
-   *  Admin-App-Open auf der Landing Page ausgelöst. */
-  async function maybeSendParticipantDeletionWarnings(): Promise<void> {
-    try {
-      if (!eventService) return;
-      const warns = await getParticipantDeletionWarnings();
-      if (warns.length === 0) return;
-      let appUrl = '';
-      try { appUrl = `${props.context.pageContext.web.absoluteUrl}/SitePages/DEX.aspx`; } catch { appUrl = ''; }
-      for (const ev of warns) {
-        const key = `dex_participantdelwarn_${ev.id}`;
-        let already = false;
-        try { already = !!window.localStorage.getItem(key); } catch { already = false; }
-        if (already) continue;
-        const orgEmails = Array.from(new Set(
-          [...(ev.organizerEmails || []), ...(ev.coOrganizerEmails || [])]
-            .map(x => (x || '').trim()).filter(x => x.indexOf('@') > 0)
-        ));
-        if (orgEmails.length === 0) continue;
-        const seen = new Set<string>();
-        const recipients = orgEmails.filter(e => { const lc = e.toLowerCase(); if (seen.has(lc)) return false; seen.add(lc); return true; });
-        let alreadyQueued = false;
-        try { alreadyQueued = await eventService.hasQueuedEmail('ParticipantDeletionWarning', ev.id); } catch { alreadyQueued = false; }
-        if (alreadyQueued) { try { window.localStorage.setItem(key, String(Date.now())); } catch { /* */ } continue; }
-        const linkLine = appUrl
-          ? `<p style="margin:0 0 12px;">Ihr könnt die Teilnehmerübersicht jetzt noch im <a href="${appUrl}" style="color:#86bc25;font-weight:600;">Organizer Center der DEX App</a> ansehen und als Excel exportieren.</p>`
-          : `<p style="margin:0 0 12px;">Ihr könnt die Teilnehmerübersicht jetzt noch im Organizer Center der DEX App ansehen und als Excel exportieren.</p>`;
-        const inner = `
-          <p style="margin:0 0 12px;">Hallo zusammen,</p>
-          <p style="margin:0 0 12px;">für euer Event <strong>&bdquo;${ev.title}&ldquo;</strong> läuft die Aufbewahrungsfrist der Teilnehmerliste ab: <strong>in etwa einer Woche wird die Teilnehmerliste gelöscht</strong> (3 Monate nach dem Event, Datenschutz-/Aufbewahrungsvorgabe).</p>
-          <p style="margin:0 0 12px;">Bitte <strong>ladet euch die Liste jetzt herunter</strong>, falls ihr sie noch braucht. Das Event und die wichtigsten Kennzahlen bleiben danach im Statistik-Archiv erhalten.</p>
-          ${linkLine}
-          <p style="margin:0 0 12px;">Vielen Dank!</p>`;
-        const body = wrapTemplate('#86bc25', 'Teilnehmerliste wird bald gelöscht', ev.title, inner);
-        try {
-          await eventService.queueEmail(
-            `Teilnehmerliste zu „${ev.title}" wird in ~1 Woche gelöscht`,
-            recipients.join('; '), recipients.join('; '), body, 'ParticipantDeletionWarning', ev.title, ev.id,
-          );
-          try { window.localStorage.setItem(key, String(Date.now())); } catch { /* */ }
-        } catch { /* einzelne Mail-Fehler ignorieren */ }
-      }
-    } catch (e) { console.warn('[DEX] participant deletion warning mail failed:', e); }
-  }
+  // v30.66: Ausgelagert nach `archiveAndPurge.ts` (Modularisierung Stufe 3).
+  // Die Funktionskoerper sind unveraendert; sie bekommen ihre Umgebung
+  // ueber ein explizites deps-Objekt statt ueber die Closure.
+  const {
+    getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionDue, getParticipantDeletionWarnings, runParticipantDeletion, maybeSendParticipantDeletionWarnings,
+  } = makeArchiveActions({ eventService, events, loadEvents, props });
 
   /** v26.33: Liest das Statistik-Archiv (DEX_EventStats) für die Admin-Kachel. */
   async function getEventStats(): Promise<EventStatsRow[]> {
@@ -4778,25 +2722,82 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     // Seit v6.4: Sub-Events sind eigene DEX_Events-Items. Vor dem Löschen des
     // Parent-Events müssen alle Child-Events gelöscht werden, damit auch deren
     // Outlook-Kalendertermine, Subsites und Teilnehmerlisten aufgeräumt werden.
-    const children = events.filter(e => e.parentEventId === eventId);
+    const ev = events.find(e => e.id === eventId);
+    // v30.67: Kinder vom SERVER, nicht aus dem Client-State — der ist auf 100
+    // Events gekappt und laesst Zeilen mit Mapping-Fehler aus. Ist die Abfrage
+    // nicht lesbar, wird gar nichts geloescht: Ein uebersehenes Kind bliebe
+    // sonst mit ParentEventId auf ein geloeschtes Item verwaist zurueck.
+    const serverChildIds = ev && !ev.isFictive ? await eventService.getChildEventIds(Number(eventId)) : [];
+    if (serverChildIds === null) {
+      lastDeleteEventErrorRef.current = {
+        de: 'Nicht gelöscht: Die Termine dieses Events konnten nicht gelesen werden — bitte später erneut versuchen.',
+        en: 'Not deleted: the dates of this event could not be read — please try again later.',
+      };
+      console.warn('[DEX] deleteEvent abgebrochen — Kind-Events nicht lesbar', eventId);
+      return false;
+    }
+    const clientChildren = events.filter(e => e.parentEventId === eventId);
+    const knownIds = new Set(clientChildren.map(c => c.id));
+    const children: DeloitteEvent[] = clientChildren.concat(
+      serverChildIds.filter(id => !knownIds.has(String(id))).map(id => ({ id: String(id), title: `#${id}`, parentEventId: eventId } as unknown as DeloitteEvent))
+    );
+    // v30.67: Das Ergebnis je Kind AUSWERTEN. eventService.deleteEvent wirft
+    // nicht, es liefert false (429 auf dem Item-Recycle nach einem Dutzend
+    // Terminen) — das catch war toter Code, die Schleife lief durch, und die
+    // Klammer wurde trotzdem gelöscht. Die übrigen Kinder blieben mit einem
+    // ParentEventId auf ein nicht mehr existierendes Item zurück: Alle
+    // Übersichten filtern !parentEventId, die Termine waren in der App
+    // unerreichbar, ihre Subsites, Anmeldungen und Outlook-Termine liefen
+    // weiter. Scheitert ein Kind, bleibt die Klammer deshalb stehen — dann ist
+    // alles noch bedienbar, und der Admin kann es später erneut versuchen.
+    const failedChildren: string[] = [];
+    const deletedChildren: DeloitteEvent[] = [];
     for (const child of children) {
+      let okChild = false;
       try {
-        await eventService.deleteEvent(Number(child.id));
-        delete subsiteMap.current[child.id];
+        okChild = await eventService.deleteEvent(Number(child.id));
       } catch (err) {
         console.warn('[DEX] Child-Event-Delete fehlgeschlagen:', child.id, err);
+      }
+      if (okChild) {
+        delete subsiteMap.current[child.id];
+        deletedChildren.push(child);
+      } else {
+        failedChildren.push(child.title || child.id);
       }
     }
     // v11.53: vor dem Löschen merken, wie viele aktive Anmeldungen wir
     // vom KPI-Counter abziehen müssen — Parent + alle Children, nur
     // nicht-fictive Events. Wird im Hintergrund einmalig abgezogen.
-    const ev = events.find(e => e.id === eventId);
-    const childActive = children
+    const childActive = deletedChildren
       .filter(c => !c.isFictive)
       .reduce((s, c) => s + (c.currentParticipants || 0), 0);
+    if (failedChildren.length > 0) {
+      lastDeleteEventErrorRef.current = failedChildren.length === 1
+        ? {
+          de: `Nicht gelöscht: Der Termin „${failedChildren[0]}" konnte nicht gelöscht werden — bitte später erneut löschen.`,
+          en: `Not deleted: the date "${failedChildren[0]}" could not be deleted — please try deleting again later.`,
+        }
+        : {
+          de: `Nicht gelöscht: ${failedChildren.length} Termine konnten nicht gelöscht werden (${failedChildren.join(', ')}) — bitte später erneut löschen.`,
+          en: `Not deleted: ${failedChildren.length} dates could not be deleted (${failedChildren.join(', ')}) — please try deleting again later.`,
+        };
+      console.warn('[DEX] deleteEvent abgebrochen —', lastDeleteEventErrorRef.current.de);
+      // Die Teilnehmer der bereits gelöschten Termine sind weg — das gehört
+      // aus dem KPI heraus, auch wenn die Klammer stehen bleibt.
+      if (childActive > 0) eventService.bumpKpiParticipants(-childActive).catch(() => { /* */ });
+      await loadEvents();
+      return false;
+    }
+    lastDeleteEventErrorRef.current = { de: '', en: '' };
     const parentActive = (ev && !ev.isFictive) ? (ev.currentParticipants || 0) : 0;
-    const childEventsToDecrement = children.filter(c => !c.isFictive).length
-      + ((ev && !ev.isFictive) ? 1 : 0);
+    // v30.67: Nur das Top-Level-Event zählen. createEvent erhöht den Events-
+    // KPI seit v23.38 nur für Haupt-/Klammer-Events (`!input.parentEventId`),
+    // die Gegenbuchung hier zog aber je Kind eins ab: Nach dem Löschen einer
+    // Klammer mit 8 Terminen stand „Events durchgeführt" um 8 zu niedrig (bei
+    // mehreren Kalender-Events negativ), bis zufällig ein Admin die App
+    // öffnete. recomputeEventKpiOnly zählt ebenfalls nur !parentEventId.
+    const childEventsToDecrement = (ev && !ev.isFictive) ? 1 : 0;
     const success = await eventService.deleteEvent(Number(eventId));
     delete subsiteMap.current[eventId];
     if (success) {
@@ -4807,6 +2808,11 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       if (totalActive > 0) {
         eventService.bumpKpiParticipants(-totalActive).catch(() => { /* */ });
       }
+    } else {
+      lastDeleteEventErrorRef.current = {
+        de: 'Das Event konnte nicht gelöscht werden — bitte später erneut versuchen.',
+        en: 'The event could not be deleted — please try again later.',
+      };
     }
     // Events immer neu laden, auch wenn Subsite-Löschung fehlschlug
     await loadEvents();
@@ -4872,253 +2878,19 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     return success;
   }
 
-  // v24.41: Delegation an eine Assistenz — pro Anmelde-Zeile (Haupt-/Klammer-
-  // Event + alle Sub-Events, für die der User angemeldet ist) einen Auftrag in
-  // DEX_AssistantAccess anlegen. Der Flow setzt darauf Zeilen-Autor +
-  // RegisteredBy auf die Assistenz. Best-effort: blockt die Anmeldung nie.
-  async function delegateRegistrationToAssistant(eventId: string, assistant: { email: string; name: string }): Promise<void> {
-    const assistEmail = (assistant?.email || '').trim();
-    if (!assistEmail) return;
-    if (assistEmail.toLowerCase() === (currentUserEmail || '').toLowerCase()) return; // nicht sich selbst
-    const assistName = (assistant?.name || '').trim() || assistEmail;
-    const participantName = (currentUserName || '').trim() || currentUserEmail;
-    // Ziel-Events: Hauptevent + (falls Klammer) alle Sub-Events.
-    const targetEventIds = [eventId, ...childEventsOf(eventId).map(c => c.id)];
-    for (const evId of targetEventIds) {
-      const subsiteUrl = subsiteMap.current[evId];
-      if (!subsiteUrl) continue;
-      let myReg: SPRegistration | null = null;
-      try { myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail); } catch { myReg = null; }
-      if (!myReg || !myReg.Id) continue;
-      // Nur aktive Zeilen delegieren (keine abgemeldeten).
-      if ((myReg.Status || '') === 'Abgemeldet') continue;
-      const ev = events.find(e => e.id === evId);
-      // Szenario A (ohne Flow): KEIN Owner-Wechsel — der Anmelder bleibt
-      // Eigentümer (Owner) und verwaltet selbst. Es wird nur ein Info-
-      // Verknüpfungs-Eintrag angelegt, über den die Assistenz die Anmeldung als
-      // INFO sieht und eine Änderungs-/Abmelde-Anforderung stellen kann.
-      try {
-        await eventService.queueAssistantAccess({
-          subsiteUrl,
-          itemId: myReg.Id,
-          eventId: evId,
-          eventTitle: ev?.title || '',
-          participantEmail: currentUserEmail,
-          participantName,
-          assistantEmail: assistEmail,
-          assistantName: assistName,
-          ownerEmail: currentUserEmail,
-          linkType: 'delegation',
-        });
-      } catch (err) { console.warn('[DEX] queueAssistantAccess failed:', err); }
-    }
-  }
+  // v30.66: Ausgelagert nach `assistantAndProxy.ts` (Modularisierung Stufe 3).
+  // Die Funktionskoerper sind unveraendert; sie bekommen ihre Umgebung
+  // ueber ein explizites deps-Objekt statt ueber die Closure.
+  const {
+    delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest,
+  } = makeAssistantActions({ eventService, events, subsiteMap, currentUserEmail, currentUserName, childEventsOf });
 
-  // v24.41 Szenario B: Nach einer stellvertretenden Anmeldung (Assistenz meldet
-  // eine andere Person an) einen Info-Link anlegen — der ANMELDER ist Owner und
-  // verwaltet, die angemeldete Person sieht die Anmeldung als INFO unter „Meine
-  // Events" und kann eine Anforderung stellen.
-  async function recordProxyDelegation(eventId: string, participant: { email: string; name: string }): Promise<void> {
-    const partEmail = (participant?.email || '').trim();
-    if (!partEmail) return;
-    if (partEmail.toLowerCase() === (currentUserEmail || '').toLowerCase()) return; // keine Selbst-Anmeldung
-    const partName = (participant?.name || '').trim() || partEmail;
-    const ownerName = (currentUserName || '').trim() || currentUserEmail;
-    const targetEventIds = [eventId, ...childEventsOf(eventId).map(c => c.id)];
-    for (const evId of targetEventIds) {
-      const subsiteUrl = subsiteMap.current[evId];
-      if (!subsiteUrl) continue;
-      let reg: SPRegistration | null = null;
-      try { reg = await eventService.getMyRegistration(subsiteUrl, partEmail); } catch { reg = null; }
-      if (!reg || !reg.Id || (reg.Status || '') === 'Abgemeldet') continue;
-      const ev = events.find(e => e.id === evId);
-      try {
-        await eventService.queueAssistantAccess({
-          subsiteUrl,
-          itemId: reg.Id,
-          eventId: evId,
-          eventTitle: ev?.title || '',
-          participantEmail: partEmail,
-          participantName: partName,
-          assistantEmail: currentUserEmail,   // der Anmelder = verknüpfte „Assistenz"/Owner
-          assistantName: ownerName,
-          ownerEmail: currentUserEmail,
-          linkType: 'proxy',
-        });
-      } catch (err) { console.warn('[DEX] recordProxyDelegation queue failed:', err); }
-    }
-  }
-
-  async function getMyAssistantLinks(): Promise<AssistantLink[]> {
-    try { return await eventService.getAssistantLinksForUser(currentUserEmail); }
-    catch { return []; }
-  }
-
-  async function requestAssistantChange(link: AssistantLink, requestType: 'change' | 'cancel', note: string): Promise<boolean> {
-    if (!eventService || !link?.id) return false;
-    const requesterName = (currentUserName || '').trim() || currentUserEmail;
-    const ok = await eventService.setAssistantLinkRequest(link.id, {
-      requestType, note,
-      requestedByEmail: currentUserEmail,
-      requestedByName: requesterName,
-    });
-    if (!ok) return false;
-    // Deeplink-Mail an den OWNER (wer die Anmeldung verwaltet), damit er die
-    // Änderung/Abmeldung ausführt. Best-effort — gated über DisableEmails des
-    // Events (falls auffindbar).
-    try {
-      const ev = events.find(e => e.id === link.eventId);
-      if (ev && ev.disableEmails) return true; // Mails aus → nur die Liste, keine Mail
-      const isDe = !(ev && ev.emailLanguage === 'EN');
-      const actionLabel = requestType === 'cancel'
-        ? (isDe ? 'Abmeldung' : 'Cancellation')
-        : (isDe ? 'Änderung der Angaben' : 'Change of details');
-      const deepLink = buildHashDeepLink(`${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, { action: 'assistreq', id: link.id });
-      const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const heading = isDe ? 'Anforderung an dich' : 'Request for you';
-      const sub = isDe ? `${actionLabel} — ${link.eventTitle || ''}` : `${actionLabel} — ${link.eventTitle || ''}`;
-      const body = isDe
-        ? `<p>Hallo,</p>
-           <p><strong>${esc(requesterName)}</strong> bittet dich um eine <strong>${esc(actionLabel)}</strong> für die folgende Anmeldung, die DU verwaltest:</p>
-           <p style="margin:12px 0;padding:10px 14px;background:#f3f7ec;border-radius:8px;">
-             <strong>Event:</strong> ${esc(link.eventTitle || link.eventId)}<br/>
-             <strong>Angemeldete Person:</strong> ${esc(link.participantName || link.participantEmail)}<br/>
-             ${note ? `<strong>Anmerkung:</strong> ${esc(note)}` : ''}
-           </p>
-           <p>Bitte führe die ${esc(actionLabel)} in der DEX-App aus (deine „Assistenz"-Kachel bzw. „Meine Events"):</p>
-           <p><a href="${deepLink}" style="display:inline-block;background:#86bc25;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">In DEX öffnen</a></p>
-           <p>Vielen Dank!</p>`
-        : `<p>Hello,</p>
-           <p><strong>${esc(requesterName)}</strong> asks you for a <strong>${esc(actionLabel)}</strong> for the following registration that YOU manage:</p>
-           <p style="margin:12px 0;padding:10px 14px;background:#f3f7ec;border-radius:8px;">
-             <strong>Event:</strong> ${esc(link.eventTitle || link.eventId)}<br/>
-             <strong>Registered person:</strong> ${esc(link.participantName || link.participantEmail)}<br/>
-             ${note ? `<strong>Note:</strong> ${esc(note)}` : ''}
-           </p>
-           <p>Please perform the ${esc(actionLabel)} in the DEX app (your „Assistant" tile or „My Events"):</p>
-           <p><a href="${deepLink}" style="display:inline-block;background:#86bc25;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">Open in DEX</a></p>
-           <p>Many thanks!</p>`;
-      const subject = isDe
-        ? `Anforderung: ${actionLabel} — ${link.eventTitle || ''}`
-        : `Request: ${actionLabel} — ${link.eventTitle || ''}`;
-      const wrapped = wrapTemplate('#86bc25', heading, sub, body);
-      await eventService.queueEmail(subject, link.ownerEmail, link.ownerEmail, wrapped, 'Info', link.eventTitle || '', link.eventId);
-    } catch (err) { console.warn('[DEX] requestAssistantChange mail failed:', err); }
-    return true;
-  }
-
-  async function resolveAssistantRequest(linkId: number, decision: 'Done' | 'Rejected'): Promise<boolean> {
-    if (!eventService) return false;
-    return eventService.resolveAssistantLinkRequest(linkId, decision);
-  }
-
-  // v22.50: Passthrough für die globale Admin-Suche (DEX_Participants).
-  async function getAllParticipants(): Promise<SPParticipant[]> {
-    try { return await eventService.getAllParticipants(); }
-    catch (err) { console.warn('[DEX] getAllParticipants failed:', err); return []; }
-  }
-
-  // v28.22: Event-Nummern (angemeldet / Warteliste) einer BELIEBIGEN Person aus
-  // DEX_Participants. Diese Liste liegt auf der Haupt-Site und unterliegt NICHT
-  // der Item-Level-Security der Teilnehmerlisten — sie kennt daher auch
-  // Anmeldungen, die jemand anders (z.B. eine Assistenz) angelegt hat und die
-  // für die betroffene Person selbst unsichtbar sind. Genau daraus entstanden
-  // die doppelten Anmeldungen: Der Vorab-Check auf der Event-Subsite fand die
-  // fremde Zeile nicht und legte fail-open eine zweite an.
-  async function getEventNumbersForEmail(email: string): Promise<{ registered: number[]; waitlisted: number[] }> {
-    const em = (email || '').trim();
-    if (!em) return { registered: [], waitlisted: [] };
-    try {
-      const record = await eventService.getParticipantByEmail(em);
-      if (!record) return { registered: [], waitlisted: [] };
-      const parse = (s?: string): number[] => s
-        ? s.split(',').map(x => parseInt(x.trim(), 10)).filter(n => !isNaN(n))
-        : [];
-      return { registered: parse(record.EventRegistered), waitlisted: parse(record.EventOnWaitlist) };
-    } catch {
-      return { registered: [], waitlisted: [] };
-    }
-  }
-
-  async function getMyEventNumbers(): Promise<{ registered: number[]; waitlisted: number[] }> {
-    try {
-      const record = await eventService.getParticipantByEmail(currentUserEmail);
-      if (!record) return { registered: [], waitlisted: [] };
-      const registered = record.EventRegistered
-        ? record.EventRegistered.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n))
-        : [];
-      const waitlisted = record.EventOnWaitlist
-        ? record.EventOnWaitlist.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n))
-        : [];
-      return { registered, waitlisted };
-    } catch {
-      return { registered: [], waitlisted: [] };
-    }
-  }
-
-  async function refreshEvents(): Promise<void> {
-    await loadEvents();
-  }
-
-  // v11.0: Item-Attachments — Wrapper für die eigene Registrierung.
-  async function listMyEventAttachments(eventId: string): Promise<Array<{ fileName: string; serverRelativeUrl: string }>> {
-    const subsiteUrl = subsiteMap.current[eventId];
-    if (!subsiteUrl) return [];
-    const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
-    if (!myReg) return [];
-    return eventService.listRegistrationAttachments(subsiteUrl, myReg.Id);
-  }
-  async function uploadMyEventAttachment(eventId: string, file: File): Promise<boolean> {
-    const subsiteUrl = subsiteMap.current[eventId];
-    if (!subsiteUrl) return false;
-    const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
-    if (!myReg) return false;
-    return eventService.addRegistrationAttachment(subsiteUrl, myReg.Id, file);
-  }
-  async function deleteMyEventAttachment(eventId: string, fileName: string): Promise<boolean> {
-    const subsiteUrl = subsiteMap.current[eventId];
-    if (!subsiteUrl) return false;
-    const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
-    if (!myReg) return false;
-    return eventService.deleteRegistrationAttachment(subsiteUrl, myReg.Id, fileName);
-  }
-
-  // v19.0: Dokument-Custom-Felder. Ein Attachment wird über einen Dateinamen-
-  // Präfix (`dxf-<fieldId>--`) genau EINEM Dokument-Feld zugeordnet, sodass ein
-  // Event mehrere Dokument-Felder haben kann. participantEmail erlaubt den
-  // Upload für eine andere Person (stellvertretende Anmeldung); Default = der
-  // eingeloggte User (Self-Anmeldung + „Meine Events").
-  const docFieldPrefix = (fieldId: string): string => `dxf-${(fieldId || '').replace(/[^a-zA-Z0-9]/g, '')}--`;
-  const stripDocPrefix = (fileName: string): string =>
-    fileName
-      .replace(/^dxf-[a-zA-Z0-9]+--\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_/, '')
-      .replace(/^dxf-[a-zA-Z0-9]+--/, '');
-  async function uploadFieldDocument(eventId: string, fieldId: string, file: File, participantEmail?: string): Promise<boolean> {
-    const subsiteUrl = subsiteMap.current[eventId];
-    if (!subsiteUrl) return false;
-    const email = (participantEmail || currentUserEmail || '').trim();
-    const reg = await eventService.getMyRegistration(subsiteUrl, email);
-    if (!reg || !reg.Id) return false;
-    return eventService.addRegistrationAttachment(subsiteUrl, reg.Id, file, docFieldPrefix(fieldId));
-  }
-  async function listFieldDocuments(eventId: string, fieldId: string, participantEmail?: string): Promise<Array<{ fileName: string; serverRelativeUrl: string; displayName: string }>> {
-    const subsiteUrl = subsiteMap.current[eventId];
-    if (!subsiteUrl) return [];
-    const email = (participantEmail || currentUserEmail || '').trim();
-    const reg = await eventService.getMyRegistration(subsiteUrl, email);
-    if (!reg || !reg.Id) return [];
-    const all = await eventService.listRegistrationAttachments(subsiteUrl, reg.Id);
-    const prefix = docFieldPrefix(fieldId);
-    return all.filter(f => f.fileName.startsWith(prefix)).map(f => ({ ...f, displayName: stripDocPrefix(f.fileName) }));
-  }
-  async function deleteFieldDocument(eventId: string, fileName: string, participantEmail?: string): Promise<boolean> {
-    const subsiteUrl = subsiteMap.current[eventId];
-    if (!subsiteUrl) return false;
-    const email = (participantEmail || currentUserEmail || '').trim();
-    const reg = await eventService.getMyRegistration(subsiteUrl, email);
-    if (!reg || !reg.Id) return false;
-    return eventService.deleteRegistrationAttachment(subsiteUrl, reg.Id, fileName);
-  }
+  // v30.66: Ausgelagert nach `participantFiles.ts` (Modularisierung Stufe 3).
+  // Die Funktionskoerper sind unveraendert; sie bekommen ihre Umgebung
+  // ueber ein explizites deps-Objekt statt ueber die Closure.
+  const {
+    getAllParticipants, getEventNumbersForEmail, getMyEventNumbers, refreshEvents, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument,
+  } = makeParticipantFileActions({ eventService, subsiteMap, currentUserEmail, loadEvents });
 
   // v10.27: Split-Capacity-Gruppen-Wechsel — wrappt EventService.switchSplitGroup,
   // ergänzt um Mail/Outlook-Sideeffects und Reload.
@@ -5226,233 +2998,13 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     return eventService.updateEmailTemplate(id, fields);
   }
 
-  // v26.67 (A): Erinnerung an eine verwaiste Klammer-Anmeldung — die Person
-  // hat die Anmeldung nicht abgeschlossen (kein Sub-Event gewählt). Bei
-  // Fremd-Anmeldung geht die Mail an die ANMELDENDE Person (die kann es in der
-  // App abschließen), die Person selbst kommt auf CC; bei Selbst-Anmeldung an
-  // die Person. Deep-Link öffnet direkt die Anmeldeseite des Events.
-  async function sendCompleteRegistrationReminder(args: { eventId: string; eventTitle: string; participantEmail: string; participantName: string; registeredByEmail?: string; registeredByName?: string }): Promise<boolean> {
-    const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const participant = (args.participantEmail || '').trim();
-    if (!participant) return false;
-    const actor = (args.registeredByEmail || '').trim();
-    const isProxy = !!actor && actor.toLowerCase() !== participant.toLowerCase();
-    const appBase = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`;
-    const link = buildHashDeepLink(appBase, { action: 'register', event: args.eventId });
-    const btn = `<p style="margin:20px 0;text-align:center;"><a href="${link}" style="display:inline-block;padding:12px 26px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Anmeldung jetzt abschließen</a></p>`;
-    const firstName = (nm: string): string => (nm || '').includes(',') ? (nm.split(',')[1] || '').trim() : (nm.split(/\s+/)[0] || '');
-    let to: string; let toName: string; let cc: string | undefined; let inner: string;
-    if (isProxy) {
-      to = actor; toName = args.registeredByName || actor;
-      cc = participant;
-      inner = `
-        <p style="margin:0 0 12px;">Hallo ${esc(firstName(args.registeredByName || ''))},</p>
-        <p style="margin:0 0 12px;">du hast <strong>${esc(args.participantName || participant)}</strong> für das Event <strong>${esc(args.eventTitle)}</strong> angemeldet — die Anmeldung ist aber <strong>noch nicht abgeschlossen</strong>: Es wurde noch kein Programmpunkt (Sub-Event) ausgewählt. Solange das offen ist, gilt die Person als <strong>nicht angemeldet</strong>.</p>
-        <p style="margin:0 0 12px;">Bitte öffne die Anmeldung und wähle die gewünschten Programmpunkte aus, damit die Anmeldung gültig wird.</p>
-        ${btn}
-        <p style="margin:0;color:#777;font-size:13px;">Die betroffene Person ist auf Kopie (CC).</p>`;
-    } else {
-      to = participant; toName = args.participantName || participant;
-      inner = `
-        <p style="margin:0 0 12px;">Hallo ${esc(firstName(args.participantName || ''))},</p>
-        <p style="margin:0 0 12px;">deine Anmeldung für das Event <strong>${esc(args.eventTitle)}</strong> ist <strong>noch nicht abgeschlossen</strong>: Es wurde noch kein Programmpunkt (Sub-Event) ausgewählt. Solange das offen ist, bist du <strong>nicht angemeldet</strong>.</p>
-        <p style="margin:0 0 12px;">Bitte öffne die Anmeldung und wähle die gewünschten Programmpunkte aus, damit deine Anmeldung gültig wird.</p>
-        ${btn}`;
-    }
-    const body = wrapTemplate('#86bc25', 'Anmeldung noch abschließen', esc(args.eventTitle), inner);
-    try {
-      return await eventService.queueEmail(
-        `Bitte Anmeldung abschließen: ${args.eventTitle}`,
-        to, toName, body, 'RegistrationReminder', args.eventTitle, args.eventId, cc || undefined, undefined, 'High'
-      );
-    } catch (e) { console.warn('[DEX] sendCompleteRegistrationReminder failed:', e); return false; }
-  }
+  // v30.66: Ausgelagert nach `mails.ts` (Modularisierung Stufe 3).
+  // Die Funktionskoerper sind unveraendert; sie bekommen ihre Umgebung
+  // ueber ein explizites deps-Objekt statt ueber die Closure.
+  const {
+    sendCompleteRegistrationReminder, sendAdminInquiry, notifyAdminsExternalAudienceAccess, sendOrganizerOnboarding,
+  } = makeMailActions({ eventService });
 
-  async function sendAdminInquiry(
-    requesterName: string,
-    requesterEmail: string,
-    eventName: string,
-    message: string,
-    requesterLocation?: string,
-    requesterJobTitle?: string
-  ): Promise<boolean> {
-    // v29.43: Funktionspostfach statt der persönlichen Konten — eine Anfrage
-    // darf nicht an einem Urlaub oder Wechsel hängen bleiben.
-    const adminTo = DEX_TEAM_RECIPIENTS;
-    const subject = `DEX-Anfrage: ${eventName || 'Event ohne Titel'} (von ${requesterName || 'unbekannt'})`;
-    const escape = (s: string): string => s
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-    const messageHtml = escape(message).replace(/\r?\n/g, '<br>');
-    // v26.56: Fachliche Anforderung — die Anfrage-Mail enthält einen Deep-Link,
-    // über den Admins die anfragende Person direkt als Organizer freigeben
-    // können. Dazu wird (wie beim „Organizer werden"-Antrag) ein nachverfolg-
-    // barer Antrag in DEX_OrganizerRequests angelegt und der bestehende
-    // approveorg-Deep-Link genutzt. Nur wenn die Person nicht ohnehin schon
-    // Organizer/Admin ist; ein bereits offener Antrag wird wiederverwendet
-    // statt dupliziert. Fehler hier dürfen die Anfrage-Mail nie blockieren.
-    let approveBlock = '';
-    try {
-      const mailLc = (requesterEmail || '').trim().toLowerCase();
-      if (mailLc) {
-        const [orgs, admins, itAdmins] = await Promise.all([
-          eventService.getRoleEmails('Organizer'),
-          eventService.getRoleEmails('Admin'),
-          eventService.getRoleEmails('IT-Admin'),
-        ]);
-        const hasRole = orgs.concat(admins, itAdmins).some(e => (e || '').toLowerCase() === mailLc);
-        if (!hasRole) {
-          const open = await eventService.getOrganizerRequests(true);
-          const existing = open.filter(r => (r.email || '').toLowerCase() === mailLc)[0];
-          let requestId = existing ? existing.id : 0;
-          if (!requestId) {
-            const created = await eventService.createOrganizerRequest(
-              requesterEmail.trim(),
-              requesterName || requesterEmail,
-              requesterLocation || '',
-              `DEX-Anfrage zum Event „${eventName || '—'}": ${message}`.slice(0, 500)
-            );
-            if (created.ok && created.itemId) requestId = created.itemId;
-          }
-          if (requestId) {
-            const appBase = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`;
-            const approveUrl = buildHashDeepLink(appBase, { action: 'approveorg', request: requestId });
-            approveBlock = `
-      <p style="margin:20px 0 6px;text-align:center;"><a href="${approveUrl}" style="display:inline-block;padding:12px 26px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">${escape(requesterName || requesterEmail)} als Organizer freigeben</a></p>
-      <p style="margin:0;color:#777;font-size:13px;text-align:center;">Öffnet die App und bestätigt den automatisch angelegten Organizer-Antrag — Freigeben geht nur als Admin.</p>
-    `;
-          }
-        }
-      }
-    } catch (e) { console.warn('[DEX] sendAdminInquiry: Freigabe-Deep-Link übersprungen:', e); }
-    const bodyInner = `
-      <p>Hallo DEX-Team,</p>
-      <p>es gibt eine neue Anfrage zur DEX Event Experience Platform:</p>
-      <table cellpadding="6" cellspacing="0" style="border-collapse:collapse;margin:8px 0;">
-        <tr><td style="color:#555;font-weight:600;vertical-align:top;">Name:</td><td>${escape(requesterName)}</td></tr>
-        <tr><td style="color:#555;font-weight:600;vertical-align:top;">E-Mail:</td><td><a href="mailto:${escape(requesterEmail)}">${escape(requesterEmail)}</a></td></tr>
-        ${requesterJobTitle && requesterJobTitle.trim() ? `<tr><td style="color:#555;font-weight:600;vertical-align:top;">Position:</td><td>${escape(requesterJobTitle)}</td></tr>` : ''}
-        ${requesterLocation && requesterLocation.trim() ? `<tr><td style="color:#555;font-weight:600;vertical-align:top;">Standort:</td><td>${escape(requesterLocation)}</td></tr>` : ''}
-        <tr><td style="color:#555;font-weight:600;vertical-align:top;">Event:</td><td>${escape(eventName)}</td></tr>
-      </table>
-      <p style="color:#555;font-weight:600;margin-bottom:4px;">Worum geht es:</p>
-      <p>${messageHtml}</p>
-      ${approveBlock}
-      <p style="margin-top:24px;color:#888;font-size:0.85rem;">${escape(requesterName)} ist im Cc und kann direkt geantwortet werden.</p>
-    `;
-    const body = wrapTemplate('#86bc25', 'Neue DEX-Anfrage', `Event: ${eventName || '-'}`, bodyInner);
-    // EventId muss '0' sein (nicht ''), damit der DEX_SEND_MAIL Flow Get_Event
-    // mit "ID eq 0" als gültigem OData-Filter aufrufen kann. Bei leerem
-    // EventId baut der Flow "ID eq " was kein gültiger OData-Ausdruck ist
-    // und der Flow direkt in Get_Event failed (clientRequestId-Fehler).
-    // Get_Event liefert dann 0 Items, Compose_Image fällt automatisch auf
-    // das Default-Bild aus _Config zurück - die Mail geht trotzdem raus.
-    // v18.30: Anfrage-Mail mit hoher Wichtigkeit (rotes „!" in Outlook) —
-    // der DEX_SEND_MAIL-Flow liest das Importance-Feld aus der Queue aus.
-    return eventService.queueEmail(
-      subject, adminTo, 'DEX Admin Team', body, 'Info', eventName || 'DEX-Anfrage', '0', requesterEmail, undefined, 'High'
-    );
-  }
-
-  /**
-   * v26.57: Approve-Mail an die Admins, wenn Personen AUSSERHALB von
-   * @deloitte.de zur Zielgruppe eines Events hinzugefügt wurden. Hintergrund:
-   * Der SharePoint ist im Default nur für Deloitte DE ALL freigeschaltet —
-   * internationale Member-Firm-Kolleg:innen (z. B. @deloitte.at) sehen die
-   * App sonst gar nicht, selbst wenn sie in der Zielgruppe stehen. Die Mail
-   * listet die Personen auf und verlinkt direkt die Site-Berechtigungsseite.
-   * Fehler hier dürfen den Event-Save nie blockieren (Aufrufer feuern
-   * fire-and-forget mit .catch).
-   */
-  async function notifyAdminsExternalAudienceAccess(eventTitle: string, persons: string[], requesterName: string): Promise<void> {
-    const unique = Array.from(new Set(persons.map(p => (p || '').trim().toLowerCase()).filter(Boolean)));
-    if (unique.length === 0) return;
-    try {
-      // v26.57: Wer schon Site-Zugriff hat (direkt oder über eine Gruppe),
-      // braucht keine Freigabe mehr — aus der Mail rausfiltern. Nicht
-      // prüfbare Fälle (null) bleiben drin: lieber einmal zu viel
-      // benachrichtigen als eine nötige Freigabe verpassen.
-      const accessChecks = await Promise.all(unique.map(async p => ({
-        email: p,
-        hasAccess: await eventService.userHasSiteAccess(p),
-      })));
-      const needsAccess = accessChecks.filter(c => c.hasAccess !== true).map(c => c.email);
-      if (needsAccess.length === 0) return;
-      // v29.64: Empfaenger ist das Funktionspostfach, nicht die Liste der
-      // Admin-Konten. getRoleEmails('Admin') liefert die PERSOENLICHEN
-      // Adressen — genau das, was seit v29.43 nicht mehr sein soll. In v29.43
-      // wurden nur zwei von vier Stellen umgestellt; diese hier und die
-      // Organizer-Antrags-Mail blieben stehen.
-      const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const permissionsUrl = `${eventService.siteUrl}/_layouts/15/user.aspx`;
-      // v26.59: Der Button vergibt die Leserechte DIREKT (grantaccess-Deep-Link
-      // → GrantAccessHandler in der App) statt auf die rohe SharePoint-
-      // Berechtigungsseite zu verlinken. Die manuelle Seite bleibt als
-      // Fallback-Link unten drin.
-      const appBase = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`;
-      const grantUrl = buildHashDeepLink(appBase, { action: 'grantaccess', emails: needsAccess.join(';') });
-      const alreadyOk = unique.length - needsAccess.length;
-      const inner = `
-        <p style="margin:0 0 12px;">Hallo zusammen,</p>
-        <p style="margin:0 0 12px;">beim Event <strong>${esc(eventTitle || '—')}</strong> wurden Personen <strong>außerhalb von @deloitte.de</strong> zur Zielgruppe hinzugefügt${requesterName ? ` (durch ${esc(requesterName)})` : ''}:</p>
-        <ul style="margin:0 0 12px;padding-left:20px;">
-          ${needsAccess.map(p => `<li style="margin:2px 0;"><a href="mailto:${esc(p)}">${esc(p)}</a></li>`).join('')}
-        </ul>
-        ${alreadyOk > 0 ? `<p style="margin:0 0 12px;color:#777;font-size:13px;">${alreadyOk} weitere hinzugefügte ${alreadyOk === 1 ? 'Person hat' : 'Personen haben'} bereits Zugriff auf die Site und ${alreadyOk === 1 ? 'ist' : 'sind'} hier nicht aufgeführt.</p>` : ''}
-        <p style="margin:0 0 12px;">Der SharePoint ist im Default nur für <strong>Deloitte DE ALL</strong> freigeschaltet — damit diese Personen die DEX App (und damit das Event) überhaupt öffnen können, müssen sie zusätzlich auf der Site berechtigt werden.</p>
-        <p style="margin:20px 0;text-align:center;"><a href="${grantUrl}" style="display:inline-block;padding:12px 26px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Zugriff jetzt freigeben (ein Klick)</a></p>
-        <p style="margin:0;color:#777;font-size:13px;">Der Button öffnet die DEX App und vergibt automatisch Leserechte über die Besucher-Gruppe der Site — funktioniert nur als Admin. Alternativ manuell über die <a href="${permissionsUrl}" style="color:#4a7c1f;">Site-Berechtigungen</a>.</p>
-      `;
-      const body = wrapTemplate('#ed8b00', 'SharePoint-Zugriff benötigt', esc(eventTitle || '—'), inner);
-      await eventService.queueEmail(
-        `SharePoint-Zugriff benötigt: ${unique.length} ${unique.length === 1 ? 'Person' : 'Personen'} außerhalb @deloitte.de (${eventTitle || 'Event'})`,
-        DEX_TEAM_RECIPIENTS, 'DEX-Team', body, 'Info', eventTitle || '', '0', undefined, undefined, 'High'
-      );
-    } catch (e) {
-      console.warn('[DEX] notifyAdminsExternalAudienceAccess failed:', e);
-    }
-  }
-
-  /**
-   * Onboarding-Mail an einen neu ernannten Organizer (oder Admin) verschicken.
-   * Subject + Body kommen aus EmailTemplates.organizerOnboardingEmail (Deloitte-
-   * Layout inkl. Header/Footer). Die DEX-Verantwortlichen werden im Cc
-   * informiert. EventId='0' damit der DEX_SEND_MAIL Flow den Get_Event-Step
-   * mit gültigem OData-Filter ausführen kann (analog sendAdminInquiry).
-   */
-  async function sendOrganizerOnboarding(
-    recipientEmail: string,
-    recipientName: string,
-    role: 'Organizer' | 'Admin'
-  ): Promise<boolean> {
-    if (!recipientEmail || !recipientName) return false;
-    const cc = DEX_TEAM_RECIPIENTS;  // v29.43: siehe utils/supportContact
-    const { subject, body } = organizerOnboardingEmail(recipientName, role);
-    return eventService.queueEmail(
-      subject, recipientEmail, recipientName, body, 'Info', 'DEX-Onboarding', '0', cc
-    );
-  }
-
-
-  // ==================== Sub-Event-Helper (v6.4+) ====================
-  // Seit v6.4 sind Sub-Events keine separaten JSON-Arrays mehr, sondern
-  // eigene DEX_Events-Items mit gesetztem parentEventId. Damit funktionieren
-  // alle bestehenden Flows (DEX_CreateOutlookEvent, DEX_Outlook_Einladungen,
-  // Teilnehmerliste, Organizer-Kalendereinladungen, Declines, QR-Codes,
-  // Warteliste, ...) unverändert — ein Sub-Event ist einfach ein Event.
-  // v13.11: topLevelEvents wird unten direkt aus `eventsForConsumer`
-  // gefiltert, weil die Demo-Impersonation pro Event qrScannerEmails
-  // shadowen muss.
-  const childEventsOf = React.useCallback(
-    (parentEventId: string): DeloitteEvent[] => {
-      if (!parentEventId) return [];
-      return events
-        .filter(e => e.parentEventId === parentEventId)
-        .slice()
-        .sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
-    },
-    [events]
-  );
 
   // v13.11: Demo-Impersonation kann den synthetischen Demo-User per
   // qrScannerEmails einem konkreten Event als Check-In-Helfer
@@ -5520,12 +3072,23 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
   // Läuft einmal pro Session, 20 s nach dem Boot (nicht in die Boot-Lastspitze),
   // sequentiell; registerForEvent ist für die Klammer idempotent.
   const shadowHealRanRef = React.useRef(false);
+  // v30.67: Timer-Id im Ref, Abräumen NUR beim Unmount. Die alte Cleanup
+  // `return () => clearTimeout(t)` gehörte zum Effect-Lauf und lief bei JEDER
+  // neuen `events`-Referenz — und loadEvents liefert beim Boot garantiert zwei
+  // davon (setEvents(mapped), wenige Sekunden später setEvents(withCounts)),
+  // lange vor Ablauf der 20 s. Der Guard `shadowHealRanRef` verhinderte
+  // danach das Neu-Armen: Der Merker sagte „gelaufen", die Cleanup hatte das
+  // Feuern verhindert — zusammen „nie". Die Klammer-Zeilen wurden in keiner
+  // Sitzung nachgeholt, der Merker verfiel still nach 14 Tagen. Dieselbe
+  // Lehre steht seit v23.12 in DexEventPlatform („KEIN clearTimeout-Cleanup
+  // zurückgeben").
+  const shadowHealTimerRef = React.useRef<number | null>(null);
   React.useEffect(() => {
     if (shadowHealRanRef.current) return;
     if (!events || events.length === 0) return;
     if (readPendingShadowParents().length === 0) { shadowHealRanRef.current = true; return; }
     shadowHealRanRef.current = true;
-    const t = window.setTimeout(() => {
+    shadowHealTimerRef.current = window.setTimeout(() => {
       void (async () => {
         for (const p of readPendingShadowParents()) {
           try {
@@ -5538,1145 +3101,49 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         }
       })();
     }, 20000);
-    return () => window.clearTimeout(t);
+    // Bewusst KEINE Cleanup hier — s. Kommentar am shadowHealTimerRef.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events]);
+  React.useEffect(() => () => {
+    if (shadowHealTimerRef.current !== null) window.clearTimeout(shadowHealTimerRef.current);
+  }, []);
 
-  // v30.18: Kalender-Eltern eines Tages auflösen — für den Mail-Betreff
-  // (withParentTitleSubject, s. utils/mailSubject).
-  const calDayParentOf = (ev: { parentEventId?: string } | undefined): DeloitteEvent | undefined => {
-    if (!ev || !ev.parentEventId) return undefined;
-    const p = events.find(x => x.id === ev.parentEventId);
-    return p && p.subEventCalendar ? p : undefined;
-  };
 
   const autoFixStartedRef = React.useRef(false);
-  async function autoRepairProxyAccess(): Promise<void> {
-    try {
-      if (typeof window === 'undefined') return;
-      if (autoFixStartedRef.current) return; // kein Doppelstart in derselben Session
-      const KEY = 'dex_autoaccessfix_lastrun';
-      const last = Number(window.localStorage.getItem(KEY) || '0');
-      const now = Date.now();
-      if (last && now - last < 24 * 60 * 60 * 1000) return; // max. 1×/Tag
-      autoFixStartedRef.current = true;
-      // Zeitstempel sofort setzen — verhindert Hammern bei mehreren Tabs/Reloads.
-      window.localStorage.setItem(KEY, String(now));
-      // Aktive Events mit Subsite, dedupliziert nach Subsite (inkl. Sub-Events).
-      const seen = new Set<string>();
-      const subs: string[] = [];
-      for (const e of events) {
-        if (e.status !== 'Active') continue;
-        const s = (e.subsiteUrl || '').trim();
-        if (!s || seen.has(s)) continue;
-        seen.add(s); subs.push(s);
-      }
-      let fixedTotal = 0;
-      for (const s of subs) {
-        try {
-          const r = await eventService.repairProxyRegistrationAccess(s);
-          fixedTotal += r.authorFixed;
-        } catch (err) { console.warn('[DEX] autoRepairProxyAccess failed for', s, err); }
-      }
-      // eslint-disable-next-line no-console
-      if (fixedTotal > 0) console.info(`[DEX] autoRepairProxyAccess: ${fixedTotal} Zeile(n) auf den Teilnehmer als Autor gesetzt (${subs.length} Subsites geprüft).`);
-    } catch (err) { console.warn('[DEX] autoRepairProxyAccess error:', err); }
-  }
+  // v30.66: Ausgelagert nach `maintenance.ts` (Modularisierung Stufe 3).
+  // Die Funktionskoerper sind unveraendert; sie bekommen ihre Umgebung
+  // ueber ein explizites deps-Objekt statt ueber die Closure.
+  const {
+    autoRepairProxyAccess, fixAllEventColumns, repairAllOrganizerPermissions, restoreCustomFieldDescriptions,
+  } = makeMaintenanceActions({ eventService, events, autoFixStartedRef, updateEvent, loadEvents });
 
-  // v24.33: Globales „Spalten fixen" über ALLE Events (Haupt + Sub) — legt
-  // fehlende Spalten (inkl. der neuen Company-Spalte) an, korrigiert die
-  // View-Reihenfolge, zieht das Custom-Field-Mapping nach UND trägt die
-  // Unternehmenszugehörigkeit für bestehende Teilnehmer nach (Graph-Backfill).
-  // onProgress treibt eine Fortschrittsanzeige (done/total + Event-Titel).
-  async function fixAllEventColumns(
-    onProgress?: (done: number, total: number, label: string) => void
-  ): Promise<{ lists: number; columnsAdded: number; backfilled: number; errors: number; anyChange: boolean; details: FixColumnsDetail[] }> {
-    // v30.58: Der Lauf sagt jetzt auch, WAS er gefunden hat. Vorher lieferte er
-    // nur Zahlen („12 Spalten ergänzt") — für die Frage „warum scheitert bei
-    // drei Leuten die Klammer-Anmeldung?" ist das wertlos. Jede Liste wird
-    // deshalb VOR und NACH dem Fix gegen die Abfragefelder ihres Events
-    // gehalten; was danach immer noch fehlt, ist die eigentliche Meldung.
-    const details: FixColumnsDetail[] = [];
-    const seen = new Set<string>();
-    const targets: DeloitteEvent[] = [];
-    for (const e of events) {
-      const s = (e.subsiteUrl || '').trim();
-      if (!s || seen.has(s.toLowerCase())) continue;
-      seen.add(s.toLowerCase());
-      targets.push(e);
-    }
-    const total = targets.length;
-    let columnsAdded = 0; let backfilled = 0; let errors = 0;
-    for (let i = 0; i < targets.length; i++) {
-      const ev = targets[i];
-      if (onProgress) onProgress(i, total, ev.title || '');
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const diagFields = (ev.eventSpecificFields || []).map((f: any) => ({ id: f.id, label: f.label, spInternalName: f.spInternalName || '' }));
-      const before = await eventService.diagnoseRegistrationList(ev.subsiteUrl!, diagFields)
-        .catch(() => ({ ok: false, listMissing: false, missingColumns: [], error: 'nicht lesbar' }));
-      try {
-        const cf = (ev.eventSpecificFields || []).map(f => ({
-          id: f.id, label: f.label, type: f.type, required: f.required, options: f.options,
-          visible: true,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          spInternalName: (f as any).spInternalName || '',
-        }));
-        const res = await eventService.fixRegistrationListColumns(ev.subsiteUrl!, {
-          isB2Run: !!(ev.durchstarterCapacity || ev.funstarterCapacity),
-          hasQuiz: !!(ev.quiz && ev.quiz.length > 0),
-          customFields: cf,
-        });
-        columnsAdded += (res.added ? res.added.length : 0);
-        if (res.customFieldMap && Object.keys(res.customFieldMap).length > 0) {
-          // v26.13 DATENVERLUST-FIX: NICHT aus dem gestrippten `cf` neu bauen —
-          // das droppte helpText (Beschreibungen!), showIf, multi, EN-Varianten
-          // usw. beim Zurückschreiben. Stattdessen die VOLLEN geparsten Felder
-          // behalten und NUR spInternalName nachtragen (wie der Edit-Save seit
-          // v19.20). Sonst sind nach „Spalten fixen (alle Events)" alle
-          // Custom-Field-Beschreibungen weg.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const upd = (ev.eventSpecificFields || []).map((f: any) => {
-            const sp = res.customFieldMap![f.id];
-            return sp ? { ...f, spInternalName: sp } : { ...f };
-          });
-          try { await updateEvent(ev.id, { 'CustomFields': JSON.stringify(upd) }); } catch { /* best-effort */ }
-        }
-        try { const bf = await eventService.backfillCompanyForList(ev.subsiteUrl!); backfilled += bf.updated; } catch { /* best-effort */ }
-        // Nach dem Fix erneut hinsehen — nur was JETZT noch fehlt, ist ein Befund.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const evFresh: any = events.find(e => e.id === ev.id) || ev;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const afterFields = (evFresh.eventSpecificFields || []).map((f: any) => ({ id: f.id, label: f.label, spInternalName: f.spInternalName || '' }));
-        const after = await eventService.diagnoseRegistrationList(ev.subsiteUrl!, afterFields)
-          .catch(() => ({ ok: false, listMissing: false, missingColumns: [], error: 'nicht lesbar' }));
-        if (before.missingColumns.length > 0 || after.missingColumns.length > 0 || after.listMissing || !after.ok) {
-          details.push({
-            eventId: ev.id, eventTitle: ev.title || ev.id,
-            isParent: !ev.parentEventId,
-            listMissing: !!after.listMissing,
-            fixedColumns: before.missingColumns.filter(m => !after.missingColumns.some(x => x.id === m.id)).map(m => m.label),
-            stillMissing: after.missingColumns.map(m => `${m.label} (${m.column})`),
-            error: after.error || before.error,
-          });
-        }
-      } catch (err) {
-        errors++;
-        console.warn('[DEX] fixAllEventColumns failed for', ev.id, err);
-        details.push({
-          eventId: ev.id, eventTitle: ev.title || ev.id, isParent: !ev.parentEventId,
-          listMissing: false, fixedColumns: [], stillMissing: [],
-          error: String((err as Error)?.message || err),
-        });
-      }
-    }
-    if (onProgress) onProgress(total, total, '');
-    return { lists: total, columnsAdded, backfilled, errors, anyChange: columnsAdded > 0 || backfilled > 0, details };
-  }
+  // v30.66: Ausgelagert nach `autoMails.ts` (Modularisierung Stufe 3).
+  // Die Funktionskoerper sind unveraendert; sie bekommen ihre Umgebung
+  // ueber ein explizites deps-Objekt statt ueber die Closure.
+  const {
+    maybeSendPostEventOrganizerMails, maybeSendWeeklyReport,
+  } = makeAutoMailActions({ eventService, events, currentUserEmail, props });
 
-  /**
-   * v30.39: Berechtigungs-Reparatur über ALLE Events auf einmal.
-   *
-   * Der Einzel-Fix im Organizer Center (v30.37) hilft nur dem, der von dem
-   * Problem schon weiß — und sichtbar wird es erst, wenn jemand vor einer
-   * leeren Teilnehmerliste steht. Diese Fassung geht über den Bestand: Für
-   * jeden Event-Baum (Klammer + alle Sub-Events) werden die Organizer- und
-   * Co-Organizer-Adressen aus ALLEN Ebenen zusammengezogen und auf ALLEN
-   * Subsites des Baums gesetzt.
-   *
-   * Warum die Adressen über den ganzen Baum vereinigt werden: Ein Sub-Event
-   * kann einen eigenen Organizer-Eintrag tragen (aus einer Kopiervorlage oder
-   * einer späteren Änderung). Wer auf einem Termin als Organizer steht, muss
-   * die Klammer sehen; wer auf der Klammer steht, alle Termine — sonst
-   * entsteht wieder genau die halbe Sicht, um die es geht.
-   *
-   * Idempotent und additiv: `addroleassignment` reicht bestehende Rechte
-   * durch, es wird NICHTS entzogen. Ein Lauf ohne Änderung ist deshalb ein
-   * gültiges Ergebnis, kein Fehlschlag.
-   */
-  async function repairAllOrganizerPermissions(
-    onProgress?: (done: number, total: number, label: string) => void
-  ): Promise<{ trees: number; sites: number; grants: number; unresolved: string[]; errors: number }> {
-    // 1) Nach Event-Baum gruppieren: Wurzel ist parentEventId oder die eigene Id.
-    const trees: Record<string, { title: string; sites: string[]; emails: Set<string> }> = {};
-    for (const e of events) {
-      const rootId = e.parentEventId || e.id;
-      if (!trees[rootId]) trees[rootId] = { title: '', sites: [], emails: new Set<string>() };
-      const t = trees[rootId];
-      if (!e.parentEventId) t.title = e.title || rootId;
-      const site = (e.subsiteUrl || '').trim();
-      if (site && t.sites.indexOf(site) < 0) t.sites.push(site);
-      const add = (arr?: string[]): void => {
-        (arr || []).forEach(x => { const v = (x || '').trim(); if (v) t.emails.add(v); });
-      };
-      add(e.organizerEmails);
-      add(e.coOrganizerEmails);
-    }
-    const keys = Object.keys(trees).filter(k => trees[k].sites.length > 0 && trees[k].emails.size > 0);
-    const total = keys.length;
-    let sites = 0; let grants = 0; let errors = 0;
-    const unresolved = new Set<string>();
-    for (let i = 0; i < keys.length; i++) {
-      const t = trees[keys[i]];
-      if (onProgress) onProgress(i, total, t.title || keys[i]);
-      try {
-        const r = await eventService.ensureOrganizerPermissionsMulti(
-          t.sites, Array.from(t.emails).join(';')
-        );
-        sites += r.sites;
-        grants += r.grants;
-        r.unresolved.forEach(u => unresolved.add(u));
-      } catch (err) {
-        errors++;
-        console.warn('[DEX] repairAllOrganizerPermissions failed for', keys[i], err);
-      }
-    }
-    if (onProgress) onProgress(total, total, '');
-    return { trees: total, sites, grants, unresolved: Array.from(unresolved), errors };
-  }
+  // v30.66: Ausgelagert nach `billing.ts` (Modularisierung Stufe 3).
+  // Die Funktionskoerper sind unveraendert; sie bekommen ihre Umgebung
+  // ueber ein explizites deps-Objekt statt ueber die Closure.
+  const {
+    getFAConfig, saveFAConfig, sendFAMail, logFAContact, sendBundledUpdateMail, markEventSettled, saveFAPersonalNumbers, maybeSendBillingAutoMails,
+  } = makeBillingActions({ eventService, events, setEvents, currentUserEmail, currentUserName, getAllRegistrations });
 
-  // v26.13: Wiederherstellung von Custom-Field-Beschreibungen (helpText) und
-  // weiteren Feld-Eigenschaften, die ein älterer „Spalten fixen"-Lauf
-  // versehentlich aus dem CustomFields-JSON gestrippt hatte. Quelle ist die
-  // SharePoint-Versionshistorie des DEX_Events-Items: pro Feld wird die JÜNGSTE
-  // ältere Version gesucht, die die jeweilige Eigenschaft noch enthielt, und nur
-  // FEHLENDE Werte im aktuellen Stand aufgefüllt (nie etwas überschrieben).
-  async function restoreCustomFieldDescriptions(
-    onProgress?: (done: number, total: number, label: string) => void,
-    dryRun?: boolean
-  ): Promise<{ events: number; eventsChanged: number; fieldsRestored: number; errors: number; details: Array<{ eventId: string; eventTitle: string; fields: Array<{ label: string; props: string[] }> }> }> {
-    const RESTORE_PROPS = ['helpText', 'helpTextEn', 'helpTextStyle', 'showIf', 'multi', 'externalLinks', 'ccOnEmails', 'onlyForGroup', 'confirmLabel', 'confirmLabelEn', 'labelEn', 'optionsEn'];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const hasVal = (p: string, val: any): boolean => {
-      if (p === 'multi' || p === 'ccOnEmails') return val === true;
-      if (p === 'optionsEn' || p === 'externalLinks') return Array.isArray(val) && val.length > 0;
-      return typeof val === 'string' ? val.trim().length > 0 : (val !== undefined && val !== null);
-    };
-    const seen = new Set<string>();
-    const targets = (events || []).filter(e => { const id = String(e.id); if (seen.has(id)) return false; seen.add(id); return true; });
-    const total = targets.length;
-    let eventsChanged = 0; let fieldsRestored = 0; let errors = 0;
-    const details: Array<{ eventId: string; eventTitle: string; fields: Array<{ label: string; props: string[] }> }> = [];
-    for (let i = 0; i < total; i++) {
-      const ev = targets[i];
-      if (onProgress) onProgress(i, total, ev.title || '');
-      try {
-        const versions = await eventService.getEventCustomFieldsVersions(Number(ev.id));
-        // v26.13: Diagnose — pro Event ausgeben, wie viele Versionen es gibt und
-        // ob in der Historie überhaupt ein helpText vorkommt (sonst ist nichts
-        // wiederherzustellen). Hilft beim Nachvollziehen in der Browser-Konsole.
-        const helpInHistory = (versions || []).some(v => (v.customFields || '').indexOf('helpText') >= 0);
-        // eslint-disable-next-line no-console
-        dlog('perf', '[DEX restore]', ev.title, '(id', ev.id + ') — Versionen:', (versions || []).length, '— helpText in Historie:', helpInHistory);
-        if (!versions || versions.length === 0) continue;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let currentArr: any[];
-        try { currentArr = JSON.parse(versions[0].customFields || '[]'); } catch { currentArr = []; }
-        if (!Array.isArray(currentArr) || currentArr.length === 0) continue;
-        // Pro Feld-Id den jüngsten vorhandenen Wert je Eigenschaft sammeln
-        // (Versionen sind bereits neueste-zuerst sortiert → erster Treffer gilt).
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const best: Record<string, Record<string, any>> = {};
-        for (const ver of versions) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          let arr: any[]; try { arr = JSON.parse(ver.customFields || '[]'); } catch { continue; }
-          if (!Array.isArray(arr)) continue;
-          for (const f of arr) {
-            const id = f && f.id; if (!id) continue;
-            if (!best[id]) best[id] = {};
-            for (const p of RESTORE_PROPS) {
-              if (best[id][p] !== undefined) continue;
-              if (hasVal(p, f[p])) best[id][p] = f[p];
-            }
-          }
-        }
-        let changed = false;
-        const evFields: Array<{ label: string; props: string[] }> = [];
-        const restoredArr = currentArr.map((f) => {
-          const id = f && f.id; if (!id || !best[id]) return f;
-          const out = { ...f };
-          const restoredProps: string[] = [];
-          for (const p of RESTORE_PROPS) {
-            if (!hasVal(p, out[p]) && best[id][p] !== undefined) {
-              out[p] = best[id][p]; changed = true; fieldsRestored++; restoredProps.push(p);
-            }
-          }
-          if (restoredProps.length > 0) evFields.push({ label: (f.label || f.id || '?'), props: restoredProps });
-          return out;
-        });
-        if (changed) {
-          if (evFields.length > 0) details.push({ eventId: String(ev.id), eventTitle: ev.title || String(ev.id), fields: evFields });
-          // v26.13: Trockenlauf — nur ermitteln, NICHT schreiben.
-          if (!dryRun) { await updateEvent(ev.id, { 'CustomFields': JSON.stringify(restoredArr) }); }
-          eventsChanged++;
-        }
-      } catch (e) { errors++; console.warn('[DEX] restoreCustomFieldDescriptions failed for', ev.id, e); }
-    }
-    if (onProgress) onProgress(total, total, '');
-    return { events: total, eventsChanged, fieldsRestored, errors, details };
-  }
+  // v30.66: Ausgelagert nach `organizerRoles.ts` (Modularisierung Stufe 3).
+  // Die Funktionskoerper sind unveraendert; sie bekommen ihre Umgebung
+  // ueber ein explizites deps-Objekt statt ueber die Closure.
+  const {
+    requestOrganizerRole, requestCoOrganizerApprovals, notifyNewCoOrganizers, getOpenOrganizerRequests, markOrganizerRequestDecided,
+  } = makeOrganizerRoleActions({ eventService, currentUserEmail, currentUserName, props });
 
-  // v23.8: Wöchentlicher Admin-Bericht. Wird beim App-Start (nur Admins,
-  // gedrosselt) angestoßen. Quelle der Wahrheit für „wann lief der letzte
-  // Bericht" ist die SP-Liste DEX_WeeklyReports — erst wenn der letzte Bericht
-  // ≥ 7 Tage her ist, wird ein neuer geschrieben (Vergleichszeitraum = seit dem
-  // letzten Bericht; allererster Bericht = letzte 7 Tage). Inhalt: neue Events
-  // (+ von wem), Anmeldungen im Zeitraum, neu ernannte Organizer — plus
-  // Gesamt-KPIs (Events insgesamt, aktive Anmeldungen insgesamt, hinterlegte
-  // Organizer). Best-effort; Fehler blocken nie den Boot.
-  // v24.2: „Danke, wir hoffen es lief gut"-Mail an den Organizer, wenn er die
-  // App nach dem Event-Tag öffnet. Einmal pro Event und Organizer (localStorage-
-  // Drosselung pro Browser). Enthält den Hinweis auf die 1-jährige Aufbewahrung
-  // der Teilnehmerübersicht (Datenschutz) + Verweis auf Excel-Export / App.
-  async function maybeSendPostEventOrganizerMails(): Promise<void> {
-    try {
-      const meLc = (currentUserEmail || '').toLowerCase();
-      if (!meLc) return;
-      const overEvents = (events || []).filter(e => {
-        if (e.parentEventId) return false; // nur Hauptevents
-        if (e.isFictive) return false;     // keine Entwürfe
-        const isOrg = (e.organizerEmails || []).some(x => (x || '').toLowerCase() === meLc)
-          || (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === meLc);
-        if (!isOrg) return false;
-        return isEventOver(e);
-      });
-      if (overEvents.length === 0) return;
-      // v26.39: Persistenter Dedup-Marker (DEX_PostEventMails) statt der
-      // transienten DEX_Emails-Queue — die wurde nach Versand + Archivierung
-      // wieder leer, wodurch die Mail beim nächsten App-Öffnen ERNEUT rausging.
-      const newlyCreated = await eventService.ensurePostEventMailsList().catch(() => false);
-      if (newlyCreated) {
-        // Erststart nach dem Update: ALLE bereits abgelaufenen (sichtbaren)
-        // Events als „erledigt" markieren, damit sie KEINE (weitere) Mail
-        // bekommen. Nur ab jetzt neu ablaufende Events erhalten die Mail — dann
-        // genau einmal. So endet die Wiederhol-Schleife ohne Extra-Versand.
-        const overAll = (events || []).filter(e => !e.parentEventId && !e.isFictive && isEventOver(e));
-        for (const e of overAll) { try { await eventService.recordPostEventMail(e.id); } catch { /* */ } }
-        return;
-      }
-      const sentIds = await eventService.getPostEventMailSentEventIds().catch(() => new Set<string>());
-      let appUrl = '';
-      try { appUrl = `${props.context.pageContext.web.absoluteUrl}/SitePages/DEX.aspx`; } catch { appUrl = ''; }
-      for (const ev of overEvents) {
-        if (sentIds.has(String(ev.id))) continue; // schon verschickt (persistenter Marker)
-        const key = `dex_posteventmail_${ev.id}`;
-        let already = false;
-        try { already = !!window.localStorage.getItem(key); } catch { already = false; }
-        if (already) continue;
-        // v26.12: an ALLE Organizer (Haupt- + Co-Organizer), nicht nur an den,
-        // der die App öffnet. Doppelversand-Schutz serverseitig über die Queue
-        // (DEX_Emails) — so feuert auch bei mehreren Organizern nur EINE Mail.
-        const orgEmails = Array.from(new Set(
-          [...(ev.organizerEmails || []), ...(ev.coOrganizerEmails || [])]
-            .map(x => (x || '').trim())
-            .filter(x => x.indexOf('@') > 0)
-            .map(x => x)
-        ));
-        if (orgEmails.length === 0) continue;
-        // Dedupe case-insensitiv (eine Adresse nicht doppelt im To).
-        const seen = new Set<string>();
-        const recipients = orgEmails.filter(e => { const lc = e.toLowerCase(); if (seen.has(lc)) return false; seen.add(lc); return true; });
-        const linkLine = appUrl
-          ? `<p style="margin:0 0 12px;">Ihr findet die Teilnehmerübersicht jederzeit im <a href="${appUrl}" style="color:#86bc25;font-weight:600;">Organizer Center der DEX App</a> — dort könnt ihr sie auch als Excel exportieren.</p>`
-          : `<p style="margin:0 0 12px;">Ihr findet die Teilnehmerübersicht jederzeit im Organizer Center der DEX App — dort könnt ihr sie auch als Excel exportieren.</p>`;
-        const inner = `
-          <p style="margin:0 0 12px;">Hallo zusammen,</p>
-          <p style="margin:0 0 12px;">wir hoffen, euer Event <strong>&bdquo;${ev.title}&ldquo;</strong> ist gut verlaufen und alle hatten eine schöne Zeit!</p>
-          <p style="margin:0 0 12px;">Ein kurzer Hinweis zur Aufbewahrung: Die <strong>Teilnehmerübersicht bleibt noch 3 Monate gespeichert</strong> (Datenschutz-/Aufbewahrungsvorgabe). Danach wird sie gelöscht — das Event und die wichtigsten Kennzahlen bleiben im Statistik-Archiv erhalten. Ihr werdet rund eine Woche vorher noch einmal erinnert.</p>
-          ${linkLine}
-          <p style="margin:0 0 12px;">Vielen Dank, dass ihr das Event organisiert habt!</p>`;
-        const body = wrapTemplate('#86bc25', 'Danke für euer Event!', ev.title, inner);
-        try {
-          await eventService.queueEmail(
-            `Dein Event „${ev.title}" — danke & Hinweis zur Aufbewahrung`,
-            recipients.join('; '), recipients.join('; '), body, 'PostEventOrganizer', ev.title, ev.id,
-          );
-          // v26.39: persistenten Marker setzen — verhindert erneuten Versand,
-          // auch nachdem die DEX_Emails-Zeile längst archiviert/gelöscht wurde.
-          await eventService.recordPostEventMail(ev.id);
-          try { window.localStorage.setItem(key, String(Date.now())); } catch { /* */ }
-        } catch { /* einzelne Mail-Fehler ignorieren */ }
-      }
-    } catch (e) { console.warn('[DEX] post-event organizer mail failed:', e); }
-  }
-
-  async function maybeSendWeeklyReport(opts?: { force?: boolean }): Promise<{ sent: boolean; admins: number; reason?: string }> {
-    const force = !!opts?.force;
-    try {
-      const SEVEN = 7 * 24 * 60 * 60 * 1000;
-      const now = new Date();
-      const last = await eventService.getLastWeeklyReport();
-      if (!force) {
-        // v23.38: Fälligkeit AUSSCHLIESSLICH am Server-Eintrag (DEX_WeeklyReports)
-        // festmachen. Der frühere per-Browser-localStorage-Backstop konnte die
-        // automatische Auslösung dauerhaft blockieren (ein alter „lastsent"-
-        // Merker aus einem früheren Versuch, bei dem nie eine Mail rausging) —
-        // das war der Grund, warum nie ein Bericht kam. Ohne Server-Eintrag (oder
-        // wenn der letzte ≥ 7 Tage her ist) wird jetzt zuverlässig gesendet; der
-        // Doppelversand-Schutz pro App-Session liegt im Boot-Effekt (didWeeklyReport).
-        const serverLastTs = (last && last.created) ? new Date(last.created).getTime() : 0;
-        if (serverLastTs && (now.getTime() - serverLastTs) < SEVEN) return { sent: false, admins: 0, reason: 'not-due' }; // noch keine 7 Tage
-      }
-      // v23.38: pro Admin eine eigene Mail mit ECHTEM Namen + persönlicher
-      // Anrede (vorher eine Sammelmail mit generischem „Admin").
-      const adminRecipients = await eventService.getRoleRecipients('Admin');
-      if (adminRecipients.length === 0) return { sent: false, admins: 0, reason: 'no-admins' }; // niemand zum Versenden
-      const periodFrom = (last && last.periodTo) ? new Date(last.periodTo) : new Date(now.getTime() - SEVEN);
-      const fromIso = periodFrom.toISOString();
-      const toIso = now.toISOString();
-
-      // Daten sammeln.
-      const [newEvents, newOrganizers, organizerEmails] = await Promise.all([
-        eventService.getEventsCreatedSince(fromIso),
-        eventService.getRoleItemsCreatedSince('Organizer', fromIso),
-        eventService.getRoleEmails('Organizer'),
-      ]);
-      // Anmeldungen über alle (deduplizierten) Subsites zählen.
-      const subs = new Set<string>();
-      for (const e of events) { if (e.subsiteUrl) subs.add(e.subsiteUrl); }
-      let regSince = 0; let regTotal = 0;
-      for (const sub of Array.from(subs)) {
-        try { const c = await eventService.countRegistrations(sub, fromIso); regSince += c.since; regTotal += c.total; }
-        catch { /* einzelne Subsite-Fehler ignorieren */ }
-      }
-      const totalEvents = events.length;
-
-      // E-Mail bauen — bewusst anwenderfreundlich formuliert (ganze Sätze,
-      // Singular/Plural, „(noch im Entwurf)" hinter Entwurfs-Events).
-      const fmtD = (iso: string): string => { try { return new Date(iso).toLocaleDateString('de-DE'); } catch { return iso.slice(0, 10); } };
-      const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const draftBadge = '<span style="margin-left:6px;padding:1px 7px;border-radius:8px;background:#fff3e0;color:#b35a00;font-size:11px;font-weight:600;">noch im Entwurf</span>';
-      const eventsHtml = newEvents.length > 0
-        ? `<p style="margin:6px 0 0;">${newEvents.length === 1 ? 'In dieser Woche wurde <strong>1 neues Event</strong> angelegt:' : `In dieser Woche wurden <strong>${newEvents.length} neue Events</strong> angelegt:`}</p>
-           <ul style="margin:8px 0 0 18px;padding:0;">${newEvents.map(e => `<li style="margin-bottom:6px;"><strong>${esc(e.title)}</strong>${e.isDraft ? '&nbsp;' + draftBadge : ''}<br><span style="color:#777;font-size:13px;">angelegt von ${esc(e.author)} am ${fmtD(e.created)}</span></li>`).join('')}</ul>`
-        : '<p style="margin:6px 0 0;color:#666;">In dieser Woche wurde kein neues Event angelegt.</p>';
-      const orgHtml = newOrganizers.length > 0
-        ? `<p style="margin:6px 0 0;">${newOrganizers.length === 1 ? 'Eine Person wurde neu als Organizer berechtigt:' : `${newOrganizers.length} Personen wurden neu als Organizer berechtigt:`}</p>
-           <ul style="margin:8px 0 0 18px;padding:0;">${newOrganizers.map(o => `<li style="margin-bottom:4px;">${esc(o.email)} <span style="color:#777;font-size:13px;">(seit ${fmtD(o.created)})</span></li>`).join('')}</ul>`
-        : '<p style="margin:6px 0 0;color:#666;">In dieser Woche wurde niemand neu als Organizer berechtigt.</p>';
-      // v23.44: Release Notes der Berichtswoche (aus dem TS-Modul, datums-gefiltert).
-      const relFromTs = new Date(fromIso).getTime();
-      const relToTs = new Date(toIso).getTime();
-      const relNotes = RELEASE_NOTES.filter(n => { const t = new Date(n.date).getTime(); return isFinite(t) && t >= relFromTs && t <= relToTs; });
-      const relNotesHtml = relNotes.length > 0
-        // v30.60: Auch im Wochenbericht gegliedert statt als Textblock —
-        // dieselbe Zerlegung wie in der Release-Notes-Tabelle. Ein Bericht,
-        // der aus fünf zehnzeiligen Absätzen besteht, wird nicht gelesen.
-        ? `<ul style="margin:8px 0 0 18px;padding:0;">${relNotes.map(n => {
-          const parts = splitReleaseNote(n.text);
-          const inner = parts.points.length > 0
-            ? `${parts.lead ? esc(parts.lead) : ''}<ul style="margin:4px 0 0 16px;padding:0;">${parts.points.map(pt => `<li style="margin-bottom:3px;">${esc(pt)}</li>`).join('')}</ul>`
-            : `${esc(parts.lead)}${parts.rest ? ` ${esc(parts.rest)}` : ''}`;
-          return `<li style="margin-bottom:8px;"><strong>${n.type === 'Bugfix' ? 'Behoben' : 'Neu'}:</strong> ${inner}</li>`;
-        }).join('')}</ul>`
-        : '';
-      const draftCount = newEvents.filter(e => e.isDraft).length;
-      const draftHint = draftCount > 0
-        ? `<p style="margin:6px 0 0;color:#777;font-size:13px;">Davon ${draftCount === 1 ? 'ist 1 Event noch ein Entwurf' : `sind ${draftCount} Events noch Entwürfe`} und damit für Teilnehmer noch nicht sichtbar.</p>`
-        : '';
-
-      // v23.36: Events, die seit dem letzten Bericht von Entwurf auf LIVE
-      // gewechselt sind (Snapshot der Entwurfs-IDs aus dem letzten Bericht).
-      // Nur Top-Level (Klammern/Hauptevents).
-      const lastDraftIds = (last && last.draftEventIds) || [];
-      const wentLive = events.filter(e => !e.isFictive && !e.parentEventId && lastDraftIds.indexOf(String(e.id)) >= 0);
-      const wentLiveHtml = wentLive.length > 0
-        ? `<h3 style="margin:20px 0 0;font-size:15px;color:#2d4a06;">Live gegangene Events</h3>
-           <p style="margin:6px 0 0;">${wentLive.length === 1 ? 'Ein zuvor als Entwurf gespeichertes Event ist jetzt <strong>live</strong> und für Teilnehmer sichtbar:' : `${wentLive.length} zuvor als Entwurf gespeicherte Events sind jetzt <strong>live</strong> und für Teilnehmer sichtbar:`}</p>
-           <ul style="margin:8px 0 0 18px;padding:0;">${wentLive.map(e => `<li style="margin-bottom:4px;"><strong>${esc(e.title)}</strong></li>`).join('')}</ul>`
-        : '';
-
-      // v23.36: Events, die IM ZEITRAUM stattgefunden haben — Klammern/
-      // Hauptevents als EINE Zeile mit Auflistung der Sub-Events + Teilnehmerzahl.
-      const fromTs = new Date(fromIso).getTime();
-      const toTs = new Date(toIso).getTime();
-      const shortSub = (t: string): string => { const p = (t || '').split('|'); return (p.length > 1 ? p[p.length - 1] : t).trim(); };
-      const evDateTs = (e: DeloitteEvent): number => {
-        const end = e.endDate ? new Date(e.endDate).getTime() : 0;
-        const start = e.startDate ? new Date(e.startDate).getTime() : 0;
-        return (isFinite(end) && end) ? end : ((isFinite(start) && start) ? start : 0);
-      };
-      const cnt = (e: DeloitteEvent): number => Math.max(0, e.currentParticipants || 0);
-      const heldRows = events.filter(e => !e.parentEventId && !e.isFictive).map(e => {
-        const kids = events.filter(c => c.parentEventId === e.id);
-        let ts = evDateTs(e);
-        if (!ts && kids.length) ts = Math.max(0, ...kids.map(evDateTs));
-        return { e, kids, ts };
-      }).filter(r => r.ts >= fromTs && r.ts <= toTs).sort((a, b) => a.ts - b.ts);
-      const heldHtml = heldRows.length > 0
-        ? `<p style="margin:6px 0 0;">${heldRows.length === 1 ? 'In diesem Zeitraum hat <strong>1 Event</strong> stattgefunden:' : `In diesem Zeitraum haben <strong>${heldRows.length} Events</strong> stattgefunden:`}</p>
-           <ul style="margin:8px 0 0 18px;padding:0;">${heldRows.map(r => `<li style="margin-bottom:6px;"><strong>${esc(r.e.title)}</strong> — ${cnt(r.e)} Teilnehmer <span style="color:#777;font-size:13px;">(${fmtD(new Date(r.ts).toISOString())})</span>${r.kids.length ? `<ul style="margin:4px 0 0 18px;padding:0;color:#555;font-size:13px;">${r.kids.map(k => `<li style="margin-bottom:2px;">${esc(shortSub(k.title))} — ${cnt(k)} Teilnehmer</li>`).join('')}</ul>` : ''}</li>`).join('')}</ul>`
-        : '<p style="margin:6px 0 0;color:#666;">In diesem Zeitraum hat kein Event stattgefunden.</p>';
-
-      // v26: Tickets im Berichtszeitraum (Fragen & Antworten der Nutzer).
-      const tInPeriod = (iso: string): boolean => { const x = new Date(iso).getTime(); return isFinite(x) && x >= fromTs && x <= toTs; };
-      let ticketsInPeriod: Array<{ askerName: string; questions: string[]; status: string; answerText: string; answeredByName: string }> = [];
-      try {
-        const allTickets = await eventService.getTickets();
-        ticketsInPeriod = allTickets.filter(tk => tInPeriod(tk.created) || (!!tk.answeredAt && tInPeriod(tk.answeredAt)));
-      } catch { /* best-effort */ }
-      const tStatusLabel = (s: string): string => (s === 'Closed' ? 'beantwortet' : (s === 'InProgress' ? 'in Bearbeitung' : 'offen'));
-      const answeredInPeriod = ticketsInPeriod.filter(tk => tk.status === 'Closed').length;
-      const ticketsHtml = ticketsInPeriod.length > 0
-        ? `<p style="margin:6px 0 0;">In diesem Zeitraum ${ticketsInPeriod.length === 1 ? 'wurde <strong>1 Frage</strong> gestellt' : `wurden <strong>${ticketsInPeriod.length} Fragen</strong> gestellt`}${answeredInPeriod > 0 ? `, davon ${answeredInPeriod} beantwortet` : ''}:</p>
-           <ul style="margin:8px 0 0 18px;padding:0;">${ticketsInPeriod.map(tk => `<li style="margin-bottom:8px;"><strong>${esc(tk.askerName)}</strong> <span style="color:#777;font-size:13px;">(${tStatusLabel(tk.status)})</span><br><span style="color:#333;">${esc((tk.questions || []).join(' / '))}</span>${tk.status === 'Closed' && tk.answerText ? `<br><span style="color:#2d4a06;font-size:13px;">Antwort${tk.answeredByName ? ` (${esc(tk.answeredByName)})` : ''}: ${esc(tk.answerText)}</span>` : ''}</li>`).join('')}</ul>`
-        : '<p style="margin:6px 0 0;color:#666;">In diesem Zeitraum wurden keine Fragen über das Ticketsystem gestellt.</p>';
-      const relNotesBottomHtml = relNotes.length > 0
-        ? `<p style="margin:6px 0 0;color:#555;">Diese Verbesserungen sind in diesem Zeitraum live gegangen:</p>${relNotesHtml}`
-        : '<p style="margin:6px 0 0;color:#666;">In diesem Zeitraum gab es keine neuen Änderungen an der App.</p>';
-
-      const inner = `
-        <p style="margin:0 0 6px;">Hallo __GREETING_NAME__,</p>
-        <p style="margin:0 0 16px;">hier ist euer wöchentlicher Überblick über die DEX Event Experience Platform — was in den letzten Tagen passiert ist, vom <strong>${fmtD(fromIso)}</strong> bis <strong>${fmtD(toIso)}</strong>.</p>
-        <h3 style="margin:18px 0 0;font-size:15px;color:#2d4a06;">Neue Events</h3>
-        ${eventsHtml}
-        ${draftHint}
-        ${wentLiveHtml}
-        <h3 style="margin:20px 0 0;font-size:15px;color:#2d4a06;">Stattgefundene Events</h3>
-        ${heldHtml}
-        <h3 style="margin:20px 0 0;font-size:15px;color:#2d4a06;">Neue Anmeldungen</h3>
-        <p style="margin:6px 0 0;">In diesem Zeitraum ${regSince === 1 ? 'ist <strong>1 Anmeldung</strong> eingegangen.' : `sind <strong>${regSince} Anmeldungen</strong> eingegangen.`}</p>
-        <h3 style="margin:20px 0 0;font-size:15px;color:#2d4a06;">Neue Organizer</h3>
-        ${orgHtml}
-        <hr style="border:none;border-top:1px solid #e0e0e0;margin:24px 0;">
-        <h3 style="margin:0 0 6px;font-size:15px;color:#2d4a06;">Die Plattform auf einen Blick</h3>
-        <p style="margin:0 0 8px;color:#777;font-size:13px;">Gesamtzahlen über alle Events hinweg:</p>
-        <table style="border-collapse:collapse;font-size:14px;">
-          <tr><td style="padding:3px 16px 3px 0;color:#555;">Events insgesamt</td><td style="padding:3px 0;font-weight:700;">${totalEvents}</td></tr>
-          <tr><td style="padding:3px 16px 3px 0;color:#555;">Aktive Anmeldungen insgesamt</td><td style="padding:3px 0;font-weight:700;">${regTotal}</td></tr>
-          <tr><td style="padding:3px 16px 3px 0;color:#555;">Berechtigte Organizer</td><td style="padding:3px 0;font-weight:700;">${organizerEmails.length}</td></tr>
-        </table>
-        <hr style="border:none;border-top:1px solid #e0e0e0;margin:24px 0;">
-        <h3 style="margin:0 0 6px;font-size:15px;color:#2d4a06;">Fragen &amp; Antworten</h3>
-        ${ticketsHtml}
-        <hr style="border:none;border-top:1px solid #e0e0e0;margin:24px 0;">
-        <h3 style="margin:0 0 6px;font-size:15px;color:#2d4a06;">Release Notes</h3>
-        ${relNotesBottomHtml}
-        <p style="margin:24px 0 0;font-size:12px;color:#999;">Diesen Bericht bekommt ihr automatisch einmal pro Woche, weil ihr Admin der DEX Event Experience Platform seid.</p>
-      `;
-      const subject = `Automatischer Wochenbericht — ${fmtD(toIso)}`;
-      // v23.38: EINE Sammelmail an ALLE Admins (alle Adressen im To,
-      // Semikolon-getrennt — der DEX_SEND_MAIL-Flow mappt Recipient direkt aufs
-      // To-Feld). RecipientName = echte Namen der Admins (statt generisch
-      // „Admin"); Anrede generisch „Hallo zusammen". EventId='0' (gültiger
-      // OData-Filter im Flow; '' würde den ganzen Lauf abbrechen → keine Mail).
-      const toAll = adminRecipients.map(a => a.email).join('; ');
-      const namesAll = adminRecipients.map(a => a.name || a.email).join('; ');
-      const groupInner = inner.replace('__GREETING_NAME__', 'zusammen');
-      const body = wrapTemplate('#86bc25', 'Automatischer Wochenbericht', `${fmtD(fromIso)} – ${fmtD(toIso)}`, groupInner);
-      const queued = await eventService.queueEmail(subject, toAll, namesAll, body, 'WeeklyReport', '', '0');
-      if (queued) {
-        // v23.36: aktuellen Entwurfs-Snapshot mitspeichern, damit der NÄCHSTE
-        // Bericht „live gegangen" erkennt (Entwurf jetzt → live beim nächsten Mal).
-        const currentDraftIds = events.filter(e => e.isFictive && !e.parentEventId).map(e => String(e.id));
-        await eventService.recordWeeklyReport(fromIso, toIso, currentDraftIds);
-        return { sent: true, admins: adminRecipients.length };
-      }
-      console.warn('[DEX] Wochenbericht: queueEmail meldete Misserfolg — kein Protokolleintrag, Retry beim nächsten Boot.');
-      return { sent: false, admins: adminRecipients.length, reason: 'queue-failed' };
-    } catch (err) {
-      console.warn('[DEX] maybeSendWeeklyReport error:', err);
-      return { sent: false, admins: 0, reason: 'error' };
-    }
-  }
-
-  // ==================== F&A-Abrechnung (v30.5) ====================
-  // Fachkonzept „Abrechnungsrelevante Events und F&A Integration": Versand
-  // und Abschluss laufen über das Piggyback `_billing` des Hauptevents —
-  // geschrieben per patchEventOverridesValue (read-modify-write NUR dieses
-  // Felds), damit kein voller updateEvent (und kein 28-MB-Reload) nötig ist.
-
-  /** `_billing` nach einem Patch auch im lokalen State nachziehen — bewusst
-   *  KEIN loadEvents (v29.77-Lehre: der Voll-Reload war die 429-Ursache). */
-  function applyBillingLocally(eventId: string, newB: BillingData): void {
-    setEvents(prev => prev.map(e => {
-      if (e.id !== eventId) return e;
-      let o: Record<string, unknown> = {};
-      try { o = JSON.parse(e.emailTemplateOverrides || '{}'); } catch { o = {}; }
-      o._billing = newB;
-      return { ...e, emailTemplateOverrides: JSON.stringify(o) };
-    }));
-  }
-
-  async function getFAConfig(): Promise<FAConfig> {
-    return eventService.getFAConfig();
-  }
-
-  async function saveFAConfig(cfg: FAConfig): Promise<boolean> {
-    return eventService.saveFAConfig(cfg);
-  }
-
-  /**
-   * Abrechnungsinfos ('info') bzw. Teilnehmerliste ('list') an die im F&A
-   * Center gepflegten Verteiler senden. Organizer stehen immer in CC.
-   * Protokolliert in `_billing.log` inkl. vollständigem Mail-Inhalt und
-   * legt den übermittelten Stand als Snapshot ab (die F&A-Detailansicht
-   * zeigt laut Konzept NUR Übermitteltes, nie den Live-Stand).
-   */
-  async function sendFAMail(ev: DeloitteEvent, kind: 'info' | 'list', opts?: { auto?: boolean }): Promise<{ ok: boolean; reason?: string }> {
-    const b = parseBillingOf(ev);
-    if (!b || !b.relevant) return { ok: false, reason: 'not-relevant' };
-    const idNum = parseInt(ev.id, 10);
-    if (!isFinite(idNum)) return { ok: false, reason: 'bad-id' };
-    const cfg = await eventService.getFAConfig();
-    const recipients = (kind === 'info' ? cfg.infoRecipients : cfg.listRecipients).filter(Boolean);
-    if (recipients.length === 0) return { ok: false, reason: 'no-recipients' };
-    const by = opts?.auto ? 'System (Auto-Versand)' : (currentUserName || currentUserEmail);
-    const cc = (ev.organizerEmails || []).filter(Boolean).join('; ');
-    const nowIso = new Date().toISOString();
-    let body = '';
-    let subject = '';
-    let stampPatch: Partial<BillingData> = {};
-    // v30.24: Deep-Link ins F&A Center statt Datei-Anhang — der Tenant
-    // blockt Anhänge aus Power Automate komplett (NDR, s. v26.71). Der Link
-    // öffnet das Event im F&A Center; dort liegt der versendete Stand und
-    // lässt sich als Excel ziehen. Die personenbezogene Liste bleibt damit
-    // in DEX hinter der F&A-Rolle statt in Postfächern zu kursieren.
-    const faCenterUrl = buildHashDeepLink(
-      `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
-      { action: 'fa', event: ev.id }
-    );
-    if (kind === 'info') {
-      if (missingBillingFields(b).length > 0) return { ok: false, reason: 'incomplete' };
-      body = renderBillingInfoMailBody(ev, b, by, faCenterUrl);
-      subject = `[DEX] Abrechnungsinformationen: ${ev.title}`;
-      stampPatch = { infoSentAt: nowIso, infoSnapshot: { ...(b.fields || {}) }, ...(opts?.auto ? { autoInfoSentAt: nowIso } : {}) };
-    } else {
-      const regs = await getAllRegistrations(ev.id);
-      // v30.50: EINE Abbildung für Versand, Snapshot und Download — vorher
-      // hatte jeder Weg seine eigene `.map()`.
-      const rows = faRowsFromRegistrations(regs);
-      body = renderBillingListMailBody(ev, rows, by, faCenterUrl, b);
-      subject = `[DEX] Teilnehmerliste: ${ev.title}`;
-      stampPatch = { listSentAt: nowIso, listSnapshot: rows.slice(0, 500), ...(opts?.auto ? { autoListSentAt: nowIso } : {}) };
-    }
-    const emailType = kind === 'info' ? (opts?.auto ? 'FA_INFO_AUTO' : 'FA_INFO') : (opts?.auto ? 'FA_LIST_AUTO' : 'FA_LIST');
-    // Auto-Pfad: serverseitiger Doppelversand-Schutz — mehrere Admins können
-    // die App gleichzeitig booten, der localStorage-Stempel reicht dann nicht.
-    if (opts?.auto && await eventService.hasQueuedEmail(emailType, ev.id)) {
-      return { ok: false, reason: 'already-queued' };
-    }
-    const ok = await eventService.queueEmail(subject, recipients.join('; '), 'Finance & Accounting', body, emailType, ev.title, ev.id, cc || undefined);
-    if (!ok) return { ok: false, reason: 'queue-failed' };
-    const entry: BillingLogEntry = {
-      ts: nowIso, by,
-      action: kind === 'info' ? 'Abrechnungsinformationen an F&A versendet' : 'Teilnehmerliste an F&A versendet',
-      mailType: kind, to: recipients.join('; '), cc, subject, body,
-    };
-    const newB: BillingData = { ...b, ...stampPatch, log: trimBillingLog([...(b.log || []), entry]) };
-    const patched = await eventService.patchEventOverridesValue(idNum, '_billing', newB);
-    if (patched) applyBillingLocally(ev.id, newB);
-    return { ok: true };
-  }
-
-  /**
-   * v30.53: Rückfrage an F&A in der Kommunikationshistorie festhalten.
-   *
-   * Das Fachkonzept verlangt für Bereich 3 „Speicherung der Kommunikation in
-   * der Kommunikationshistorie". Die Rückfrage entsteht aber im Outlook des
-   * Organizers (mailto:) — DEX sieht den Text NIE und bekommt auch keine
-   * Bestätigung, dass die Mail rausging. Protokolliert wird deshalb genau
-   * das, was belegbar ist: dass und wann eine Rückfrage an wen begonnen
-   * wurde. Ein Eintrag „Mail gesendet" wäre eine Behauptung über etwas, das
-   * die App weder auslöst noch prüfen kann — und in einer revisionssicheren
-   * Historie ist eine solche Behauptung schlimmer als eine Lücke.
-   */
-  async function logFAContact(ev: DeloitteEvent, to: string, subject: string): Promise<boolean> {
-    const b = parseBillingOf(ev);
-    if (!b) return false;
-    const idNum = parseInt(ev.id, 10);
-    if (!isFinite(idNum)) return false;
-    const nowIso = new Date().toISOString();
-    const entry: BillingLogEntry = {
-      ts: nowIso,
-      by: currentUserName || currentUserEmail,
-      action: 'Rückfrage an F&A im eigenen Postfach geöffnet',
-      to, subject,
-    };
-    const newB: BillingData = { ...b, log: trimBillingLog([...(b.log || []), entry]) };
-    const ok = await eventService.patchEventOverridesValue(idNum, '_billing', newB);
-    if (ok) applyBillingLocally(ev.id, newB);
-    return ok;
-  }
-
-  /** „Als abgerechnet markieren" — nur F&A/Admin (UI-seitig gegated). Der
-   *  Status bleibt laut Konzept dauerhaft bestehen; Zeitpunkt + Person
-   *  werden protokolliert. */
-  /**
-   * v30.61: Aktualisierte Sammelmail nach einer späteren Änderung.
-   *
-   * Nutzer-Entscheidung 01.09.2026: Wer später einen Termin dazubucht oder
-   * abwählt, soll EINE Mail mit der neuen vollständigen Liste bekommen — nicht
-   * gar nichts (dann stimmt die alte Mail nicht mehr) und nicht eine Mail je
-   * Änderung (dann ist die Bündelung umsonst).
-   *
-   * Bewusst eine eigene, schlanke Funktion und kein zweiter Durchlauf durch
-   * `registerForEvent`: Dort hängen Kapazitätsprüfung, Wartelisten-Logik,
-   * TeilnehmerID-Vergabe und Outlook mit dran. Hier ist nichts zu registrieren
-   * — es hat sich nur die Liste geändert, die in der Mail steht.
-   *
-   * Die Mail geht NUR raus, wenn wirklich noch etwas gebucht ist. Wer alles
-   * abgewählt hat, ist abgemeldet; dafür gibt es die Abmelde-Bestätigung, und
-   * eine „Deine Termine"-Mail mit leerer Liste wäre eine Verhöhnung.
-   */
-  async function sendBundledUpdateMail(
-    parentEvent: DeloitteEvent,
-    recipientEmail: string,
-    recipientName: string,
-    items: BundledItem[]
-  ): Promise<boolean> {
-    if (!parentEvent || !recipientEmail) return false;
-    if (!bundledCommOf(parentEvent).mail) return false;
-    if (!items || items.length === 0) return false;
-    if (parentEvent.disableEmails || parentEvent.disableRegistrationEmail) return false;
-    const isDeMail = (parentEvent.emailLanguage || 'EN').toUpperCase() === 'DE';
-    const first = (recipientName || '').trim().split(/\s+/)[0] || recipientName || '';
-    const subject = isDeMail
-      ? `Deine Anmeldung wurde aktualisiert — ${parentEvent.title}`
-      : `Your registration was updated — ${parentEvent.title}`;
-    const intro = isDeMail
-      ? `<p>Hallo ${first},</p><p>deine Anmeldung für <strong>${parentEvent.title}</strong> hat sich geändert. Hier ist der aktuelle Stand — diese Übersicht ersetzt die vorherige Bestätigung.</p>`
-      : `<p>Hi ${first},</p><p>your registration for <strong>${parentEvent.title}</strong> has changed. Here is the current state — this overview replaces the previous confirmation.</p>`;
-    const body = intro
-      + `<p style="margin:18px 0 0;font-weight:700;">${bundledItemsHeading(items.length, isDeMail, parentEvent.childEventTermPlural)}</p>`
-      + bundledItemsTableHtml(items, isDeMail)
-      + (isDeMail
-        ? `<p style="margin-top:24px;"><strong>Viele Gr&uuml;&szlig;e</strong><br><br><strong>Dein Event-Team</strong></p>`
-        : `<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`);
-    const wrapped = wrapTemplate(
-      isDeMail ? 'Deine Anmeldung wurde aktualisiert' : 'Your registration was updated',
-      parentEvent.title, body, '#0076a8'
-    );
-    try {
-      return await eventService.queueEmail(
-        subject, recipientEmail, recipientName, wrapped,
-        'RegistrationUpdate', parentEvent.title, parentEvent.id
-      );
-    } catch (err) {
-      console.warn('[DEX] sendBundledUpdateMail failed:', err);
-      return false;
-    }
-  }
-
-  async function markEventSettled(ev: DeloitteEvent): Promise<boolean> {
-    const b = parseBillingOf(ev);
-    if (!b || b.settled) return false;
-    const idNum = parseInt(ev.id, 10);
-    if (!isFinite(idNum)) return false;
-    const by = currentUserName || currentUserEmail;
-    const nowIso = new Date().toISOString();
-    const newB: BillingData = {
-      ...b,
-      settled: { ts: nowIso, by },
-      log: trimBillingLog([...(b.log || []), { ts: nowIso, by, action: 'Event als abgerechnet markiert' }]),
-    };
-    const ok = await eventService.patchEventOverridesValue(idNum, '_billing', newB);
-    if (ok) applyBillingLocally(ev.id, newB);
-    return ok;
-  }
-
-  /**
-   * v30.60: Von F&A nachgetragene Personalnummern/Kostenstellen speichern.
-   *
-   * Nutzer-Ansage 01.09.2026: F&A hat Zugriff auf die Backoffice-Liste
-   * „Active Employees" und mappt von dort die Personalnummer je Teilnehmer.
-   * Geschrieben wird in den SNAPSHOT (`_billing.listSnapshot`) und nicht in
-   * die Teilnehmerliste auf der Subsite — aus zwei Gründen: (1) F&A hat auf
-   * die Subsites keinen Zugriff, (2) der Snapshot ist der Stand, der
-   * gemeldet wurde, und genau der geht als Excel wieder hinaus.
-   *
-   * Zusammengeführt wird über die E-Mail-Adresse, nicht über den Index: Der
-   * Snapshot kann zwischen Anzeige und Speichern neu versendet worden sein,
-   * und ein Index-Treffer würde die Nummer dann der falschen Person
-   * zuordnen. Personen, die im aktuellen Snapshot nicht mehr stehen,
-   * verlieren ihren Eintrag — das ist gewollt, sie sind nicht mehr gemeldet.
-   */
-  async function saveFAPersonalNumbers(
-    ev: DeloitteEvent,
-    values: Record<string, { personalNr?: string; costCenter?: string }>
-  ): Promise<boolean> {
-    const b = parseBillingOf(ev);
-    if (!b || !b.listSnapshot) return false;
-    const idNum = parseInt(ev.id, 10);
-    if (!isFinite(idNum)) return false;
-    const key = (s: string): string => (s || '').toLowerCase().trim();
-    let changed = 0;
-    const snap = b.listSnapshot.map(r => {
-      const v = values[key(r.email)];
-      if (!v) return r;
-      const pn = (v.personalNr || '').trim();
-      const cc = (v.costCenter || '').trim();
-      if (pn === (r.personalNr || '') && cc === (r.costCenter || '')) return r;
-      changed++;
-      return { ...r, personalNr: pn, costCenter: cc };
-    });
-    if (changed === 0) return true;
-    const by = currentUserName || currentUserEmail;
-    const nowIso = new Date().toISOString();
-    const newB: BillingData = {
-      ...b,
-      listSnapshot: snap,
-      log: trimBillingLog([...(b.log || []), {
-        ts: nowIso, by,
-        action: `Personalnummern ergänzt (${changed} ${changed === 1 ? 'Person' : 'Personen'})`,
-      }]),
-    };
-    const ok = await eventService.patchEventOverridesValue(idNum, '_billing', newB);
-    if (ok) applyBillingLocally(ev.id, newB);
-    return ok;
-  }
-
-  /**
-   * Auto-Versand (Fachkonzept Abschnitt 12): Abrechnungsinfos 7 Kalendertage
-   * VOR dem Event (bzw. nach Aktivierung, wenn später erstellt — Entwürfe
-   * werden übersprungen), Teilnehmerliste 7 Kalendertage NACH dem Event.
-   * Bei unvollständigen Infos geht statt der F&A-Mail EINMAL eine
-   * Erinnerung an die Organizer. Läuft beim Admin-Boot (gleicher Ort wie
-   * der Wochenbericht); Doppelversand-Schutz über die _billing-Stempel plus
-   * die DEX_Emails-Queue. Der 30-Tage-Rückschau-Deckel verhindert, dass
-   * Altbestände beim Roll-out plötzlich Mails auslösen.
-   */
-  async function maybeSendBillingAutoMails(): Promise<{ infoSent: number; listSent: number; reminders: number }> {
-    const out = { infoSent: 0, listSent: 0, reminders: 0 };
-    const day = 86400000;
-    const now = Date.now();
-    try {
-      for (const ev of events) {
-        if (ev.parentEventId || ev.isDemoShowcase || ev.isFictive) continue;
-        const b = parseBillingOf(ev);
-        if (!b || !b.relevant || b.sendMode !== 'auto' || b.settled) continue;
-        const start = new Date(ev.startDate || '').getTime();
-        const end = new Date(ev.endDate || ev.startDate || '').getTime();
-        if (!isFinite(start) || !isFinite(end)) continue;
-        if (end < now - 30 * day) continue;
-        // Abrechnungsinfos — ab 7 Tage vor Start, solange noch nichts ging.
-        if (now >= start - 7 * day && !b.autoInfoSentAt && !b.infoSentAt) {
-          if (missingBillingFields(b).length > 0) {
-            if (!b.autoInfoReminderAt) {
-              const orgTo = (ev.organizerEmails || []).filter(Boolean).join('; ');
-              if (orgTo && !(await eventService.hasQueuedEmail('FA_INFO_REMINDER', ev.id))) {
-                const remBody = `<div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#333;line-height:1.5;"><p>Hallo,</p><p>für das abrechnungsrelevante Event <strong>${ev.title}</strong> steht der automatische Versand der Abrechnungsinformationen an Finance &amp; Accounting an — die Pflichtangaben sind aber noch <strong>unvollständig</strong>. Bitte ergänze sie im Event-Wizard (Schritt „Abrechnung"); der Versand wird dann beim nächsten App-Start nachgeholt.</p></div>`;
-                const qok = await eventService.queueEmail(`[DEX] Abrechnungsinfos unvollständig: ${ev.title}`, orgTo, '', remBody, 'FA_INFO_REMINDER', ev.title, ev.id);
-                if (qok) {
-                  const nowIso = new Date().toISOString();
-                  const newB: BillingData = { ...b, autoInfoReminderAt: nowIso, log: trimBillingLog([...(b.log || []), { ts: nowIso, by: 'System (Auto-Versand)', action: 'Erinnerung an Organizer: Abrechnungsinfos unvollständig' }]) };
-                  const idNum = parseInt(ev.id, 10);
-                  if (isFinite(idNum) && await eventService.patchEventOverridesValue(idNum, '_billing', newB)) applyBillingLocally(ev.id, newB);
-                  out.reminders++;
-                }
-              }
-            }
-          } else {
-            const r = await sendFAMail(ev, 'info', { auto: true });
-            if (r.ok) out.infoSent++;
-          }
-          // Bewusst NICHT im selben Lauf auch noch die Liste senden: beide
-          // Zweige patchen `_billing`, und der zweite würde auf dem hier
-          // veralteten Objekt arbeiten und den Info-Eintrag überschreiben.
-          // Die Liste geht dann beim nächsten App-Start raus.
-          continue;
-        }
-        // Teilnehmerliste — ab 7 Tage nach Ende.
-        if (now >= end + 7 * day && !b.autoListSentAt && !b.listSentAt) {
-          const r = await sendFAMail(ev, 'list', { auto: true });
-          if (r.ok) out.listSent++;
-        }
-      }
-    } catch (err) {
-      console.warn('[DEX] maybeSendBillingAutoMails error:', err);
-    }
-    return out;
-  }
-
-  // ==================== Organizer-Antrag (v23.37) ====================
-
-  async function requestOrganizerRole(email: string, name: string, location: string, message?: string): Promise<{ ok: boolean; reason?: string }> {
-    const mail = (email || '').trim();
-    if (!mail) return { ok: false, reason: 'no-email' };
-    try {
-      // Doppel-Antrag vermeiden: existiert schon ein offener Antrag dieser Person?
-      const open = await eventService.getOrganizerRequests(true);
-      if (open.some(r => (r.email || '').toLowerCase() === mail.toLowerCase())) {
-        return { ok: true, reason: 'already-pending' };
-      }
-      const created = await eventService.createOrganizerRequest(mail, name || mail, location || '', message || '');
-      if (!created.ok) return { ok: false, reason: 'create-failed' };
-      // Admins per Mail informieren — mit Deep-Link zum Bestätigen (greift nur als Admin).
-      try {
-        {
-          // v29.64: an das Funktionspostfach, nicht an die Admin-Konten (s.o.).
-          const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-          const appBase = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`;
-          const approveUrl = created.itemId ? buildHashDeepLink(appBase, { action: 'approveorg', request: created.itemId }) : appBase;
-          const inner = `
-            <p style="margin:0 0 12px;">Hallo zusammen,</p>
-            <p style="margin:0 0 12px;"><strong>${esc(name || mail)}</strong> möchte <strong>Organizer</strong> werden und kann dann eigene Events anlegen und verwalten.</p>
-            <table style="border-collapse:collapse;font-size:14px;margin:8px 0;">
-              <tr><td style="padding:3px 16px 3px 0;color:#555;">Name:</td><td>${esc(name || '—')}</td></tr>
-              <tr><td style="padding:3px 16px 3px 0;color:#555;">E-Mail:</td><td><a href="mailto:${esc(mail)}">${esc(mail)}</a></td></tr>
-              <tr><td style="padding:3px 16px 3px 0;color:#555;">Standort:</td><td>${esc(location || '—')}</td></tr>
-            </table>
-            ${message ? `<p style="margin:8px 0 0;color:#555;">Nachricht:</p><p style="margin:4px 0 0;">${esc(message).replace(/\r?\n/g, '<br>')}</p>` : ''}
-            <p style="margin:20px 0;text-align:center;"><a href="${approveUrl}" style="display:inline-block;padding:12px 26px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Antrag in der App öffnen &amp; bestätigen</a></p>
-            <p style="margin:0;color:#777;font-size:13px;">Bestätigen geht nur als Admin. Du findest offene Anträge auch direkt nach dem Öffnen der App oben als Hinweis.</p>
-          `;
-          const body = wrapTemplate('#86bc25', 'Neuer Organizer-Antrag', esc(name || mail), inner);
-          await eventService.queueEmail(`Organizer-Antrag: ${name || mail}`, DEX_TEAM_RECIPIENTS, 'DEX-Team', body, 'OrganizerRequest', '', '0');
-        }
-      } catch (e) { console.warn('[DEX] requestOrganizerRole admin mail failed:', e); }
-      return { ok: true, reason: created.itemId ? undefined : 'no-id' };
-    } catch (err) {
-      console.warn('[DEX] requestOrganizerRole error:', err);
-      return { ok: false, reason: 'error' };
-    }
-  }
-
-  // v26.24: Co-Organizer-Freigabe. Beim Speichern eines Events ruft der Wizard
-  // dies mit der (1:1-gepaarten) Organizer-Namens-/-Mail-Liste auf. Für jede
-  // benannte Person, die NOCH KEIN Organizer/Admin ist (und nicht der speichernde
-  // User selbst), wird über requestOrganizerRole ein „Organizer werden"-Antrag
-  // angelegt — die Admins bekommen die bestehende Antrags-Mail mit Deep-Link und
-  // geben die Person frei (dann wird sie Organizer und kann das Event bearbeiten
-  // und speichern). requestOrganizerRole entdoppelt offene Anträge selbst, daher
-  // ist ein erneuter Save unkritisch. Best-effort — blockt den Save nie.
-  async function requestCoOrganizerApprovals(orgNames: string, orgEmails: string, eventTitle: string): Promise<void> {
-    try {
-      const mails = (orgEmails || '').split(';').map(s => s.trim());
-      const names = (orgNames || '').split(';').map(s => s.trim());
-      if (mails.filter(Boolean).length === 0) return;
-      const orgs = await eventService.getRoleEmails('Organizer');
-      const admins = await eventService.getRoleEmails('Admin');
-      const elevated = new Set([...orgs, ...admins].map(e => e.toLowerCase()));
-      const me = (currentUserEmail || '').toLowerCase();
-      for (let i = 0; i < mails.length; i++) {
-        const mail = mails[i];
-        if (!mail) continue;
-        const lc = mail.toLowerCase();
-        if (lc === me) continue;            // sich selbst nie anfragen
-        if (elevated.has(lc)) continue;     // ist schon Organizer/Admin → kann eh speichern
-        const nm = names[i] || mail;
-        const requester = currentUserName || currentUserEmail || '';
-        const msg = `„${requester}" hat diese Person als Co-Organizer für das Event „${eventTitle}" benannt. `
-          + `Mit der Freigabe wird sie Organizer und kann das Event in DEX bearbeiten und speichern.`;
-        try { await requestOrganizerRole(mail, nm, '', msg); }
-        catch (e) { console.warn('[DEX] requestCoOrganizerApprovals: Einzel-Antrag fehlgeschlagen:', mail, e); }
-      }
-    } catch (e) {
-      console.warn('[DEX] requestCoOrganizerApprovals fehlgeschlagen (best-effort):', e);
-    }
-  }
-
-  /**
-   * v26.34: Neu hinzugefügte Co-Organizer benachrichtigen — „Du wurdest von X zum
-   * Co-Organizer gemacht und kannst nun auf die Teilnehmerliste zugreifen" — plus
-   * eine Outlook-Kalendereinladung zum Event. Wird beim Event-Speichern für die
-   * DIFFERENZ (neue Organizer, die vorher nicht dabei waren) aufgerufen. Best-effort.
-   */
-  async function notifyNewCoOrganizers(
-    eventId: string,
-    eventTitle: string,
-    added: Array<{ name: string; email: string }>,
-    isDe: boolean,
-    disableOutlook?: boolean
-  ): Promise<void> {
-    if (!eventService || !added || added.length === 0) return;
-    let appUrl = '';
-    try { appUrl = `${props.context.pageContext.web.absoluteUrl}/SitePages/DEX.aspx`; } catch { appUrl = ''; }
-    // Anzeigename des Anmeldenden „Vorname Nachname" (displayName ist oft „Nachname, Vorname").
-    const actorDisplay = (() => {
-      const p = (currentUserName || '').split(',').map(s => s.trim());
-      return p.length === 2 ? `${p[1]} ${p[0]}` : (currentUserName || '');
-    })();
-    const seen = new Set<string>();
-    for (const person of added) {
-      const email = (person.email || '').trim();
-      const lc = email.toLowerCase();
-      if (!email || email.indexOf('@') < 0 || seen.has(lc)) continue;
-      seen.add(lc);
-      const name = (person.name || '').trim() || email;
-      try {
-        const { subject, body } = coOrganizerAddedEmail(name, eventTitle, actorDisplay, isDe, appUrl);
-        await eventService.queueEmail(subject, email, name, body, 'CoOrganizerAdded', eventTitle, eventId || '0');
-      } catch { /* Mail best-effort */ }
-      // Outlook-Kalendereinladung — nur Deloitte-Adressen (v27.11: beliebige
-      // Member Firm), nur wenn Outlook aktiv.
-      if (!disableOutlook && isDeloitteInternalEmail(email)) {
-        try { await eventService.queueOutlookEvent(email, eventId, eventTitle, 'Einladen'); } catch { /* */ }
-      }
-    }
-  }
-
-  async function getOpenOrganizerRequests(): Promise<Array<{ id: number; email: string; name: string; location: string; message: string; created: string }>> {
-    try {
-      const list = await eventService.getOrganizerRequests(true);
-      return list.map(r => ({ id: r.id, email: r.email, name: r.name, location: r.location, message: r.message, created: r.created }));
-    } catch { return []; }
-  }
-
-  async function markOrganizerRequestDecided(
-    id: number, status: 'Approved' | 'Rejected', email: string, name: string,
-    opts?: { suppressMail?: boolean },
-  ): Promise<boolean> {
-    try {
-      const ok = await eventService.updateOrganizerRequestStatus(id, status, currentUserEmail || '');
-      // v29.63: Hatte die Person die Rechte schon, wird der Antrag nur
-      // geschlossen — ohne Mail. Eine Onboarding-Mail fuer etwas, das sich
-      // nicht geaendert hat, verwirrt mehr als sie hilft.
-      if (opts && opts.suppressMail) return ok;
-      // Antragsteller informieren (best-effort, EventId='0').
-      try {
-        const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        const appBase = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`;
-        if (status === 'Approved') {
-          // v28.44 BUG-FIX: Hier ging bisher nur eine kurze Bestätigung raus —
-          // die richtige Onboarding-Mail (Links, erstes Test-Event, Handbuch,
-          // Ticketsystem, Einsatzbereich) gab es ausschliesslich beim MANUELLEN
-          // Zuweisen einer Rolle. Wer über den Antragsweg Organizer wurde, hat
-          // sie also nie bekommen. Jetzt bekommen beide Wege dieselbe Mail.
-          const onboarding = organizerOnboardingEmail(name || email, 'Organizer');
-          await eventService.queueEmail(onboarding.subject, email, name || email, onboarding.body, 'OrganizerApproved', '', '0');
-          void appBase;
-        } else {
-          const inner = `
-            <p style="margin:0 0 12px;">Hallo ${esc((name || '').split(' ')[0] || '')},</p>
-            <p style="margin:0 0 12px;">vielen Dank für dein Interesse. Dein Antrag, Organizer zu werden, wurde aktuell <strong>nicht freigegeben</strong>. Bei Fragen wende dich gerne an das DEX-Team.</p>
-          `;
-          const body = wrapTemplate('#86bc25', 'Zu deinem Organizer-Antrag', '', inner);
-          await eventService.queueEmail('Zu deinem Organizer-Antrag', email, name || email, body, 'OrganizerRejected', '', '0');
-        }
-      } catch (e) { console.warn('[DEX] markOrganizerRequestDecided mail failed:', e); }
-      return ok;
-    } catch (err) {
-      console.warn('[DEX] markOrganizerRequestDecided error:', err);
-      return false;
-    }
-  }
-
-  // v22.45: Scan über mehrere Events — pro Event Teilnehmer laden und auf ein
-  // aktives Deloitte-Konto prüfen. Für die Landing-Page-Warnung (Organizer/
-  // Admin). Sequentiell + best-effort; der Aufrufer (LandingPage) drosselt
-  // den Aufruf via localStorage (1×/24h) und übergibt nur Events, die der
-  // User auch lesen darf (eigene bzw. — als Admin — alle).
-  async function scanInactiveAccounts(
-    evs: Array<{ id: string; title: string; subsiteUrl?: string }>
-  ): Promise<Array<{ eventId: string; title: string; people: Array<{ email: string; name: string }> }>> {
-    const out: Array<{ eventId: string; title: string; people: Array<{ email: string; name: string }> }> = [];
-    const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
-    for (const ev of evs) {
-      const sub = (ev.subsiteUrl || '').trim();
-      if (!sub) continue;
-      try {
-        const regs = await eventService.getAllRegistrations(sub);
-        const active = regs.filter(r => ACTIVE.indexOf(r.Status) >= 0);
-        const emails = Array.from(new Set(active.map(r => (r.ParticipantEmail || '').trim().toLowerCase()).filter(Boolean)));
-        if (emails.length === 0) continue;
-        const res = await eventService.checkAccountsActive(emails);
-        if (!res.ok || res.inactive.length === 0) continue;
-        const people = res.inactive.map(em => {
-          const reg = active.find(r => (r.ParticipantEmail || '').trim().toLowerCase() === em);
-          const name = reg
-            ? ((reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || em))
-            : em;
-          return { email: em, name };
-        });
-        out.push({ eventId: ev.id, title: ev.title, people });
-      } catch (err) { console.warn('[DEX] scanInactiveAccounts failed for', ev.id, err); }
-    }
-    return out;
-  }
-
-  // v24.59: Bereits benachrichtigte Konten eines Events (lowercase E-Mails) —
-  // best-effort-Durchgriff auf den Service.
-  async function getSentInactiveNotices(eventId: string): Promise<Set<string>> {
-    try { return await eventService.getSentInactiveNotices(eventId); }
-    catch { return new Set<string>(); }
-  }
-
-  // v24.51: Den/die Organizer eines Events per Mail darauf hinweisen, dass eine
-  // angemeldete Person womöglich kein aktives Deloitte-Konto mehr hat. Dedup
-  // über DEX_InactiveNotices (ReadSecurity=1) — pro Event+Person nur EINE Mail,
-  // egal welcher Admin den Button klickt.
-  async function notifyOrganizerOfInactive(
-    eventId: string,
-    people: Array<{ email: string; name: string }>
-  ): Promise<{ sent: number; skipped: number; noOrganizer?: boolean }> {
-    const event = events.find(e => e.id === eventId);
-    if (!event) return { sent: 0, skipped: 0 };
-    const orgEmails = Array.from(new Set((event.organizerEmails || []).concat(event.coOrganizerEmails || [])
-      .map(e => (e || '').trim()).filter(Boolean)));
-    if (orgEmails.length === 0) return { sent: 0, skipped: people.length, noOrganizer: true };
-    let sentSet = new Set<string>();
-    try { sentSet = await eventService.getSentInactiveNotices(eventId); } catch { sentSet = new Set(); }
-    const newPeople = people.filter(p => !sentSet.has((p.email || '').toLowerCase().trim()));
-    if (newPeople.length === 0) return { sent: 0, skipped: people.length };
-    // Marker setzen (claim) — danach versenden.
-    for (const p of newPeople) {
-      try { await eventService.recordInactiveNotice(eventId, (p.email || '').toLowerCase().trim()); } catch { /* */ }
-    }
-    const isDe = !(event.emailLanguage === 'EN');
-    const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const list = newPeople.map(p => `<li><strong>${esc(p.name || p.email)}</strong>${p.name ? ` (${esc(p.email)})` : ''}</li>`).join('');
-    const heading = isDe ? 'Möglicherweise inaktives Konto' : 'Possibly inactive account';
-    const sub = event.title;
-    const appUrl = buildHashDeepLink(`${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, { action: 'admin', event: eventId });
-    const body = isDe
-      ? `<p>Hallo,</p>
-         <p>bei deinem Event <strong>${esc(event.title)}</strong> ${newPeople.length === 1 ? 'gibt es eine angemeldete Person, die' : 'gibt es angemeldete Personen, die'} <strong>womöglich Deloitte verlassen ${newPeople.length === 1 ? 'hat' : 'haben'}</strong> (kein aktives Konto mehr). An ${newPeople.length === 1 ? 'diese Person' : 'diese Personen'} kommen Bestätigungs-Mails und Outlook-Termine <strong>möglicherweise nicht an</strong>:</p>
-         <ul>${list}</ul>
-         <p>Bitte prüfe das im Organizer Center und melde die ${newPeople.length === 1 ? 'Person' : 'Personen'} bei Bedarf ab.</p>
-         <p><a href="${appUrl}" style="display:inline-block;background:#86bc25;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">Event im Organizer Center öffnen</a></p>
-         <p>Danke!</p>`
-      : `<p>Hello,</p>
-         <p>at your event <strong>${esc(event.title)}</strong> there ${newPeople.length === 1 ? 'is a registered person who' : 'are registered people who'} may have <strong>left Deloitte</strong> (no active account). Confirmation emails and Outlook invites <strong>may not arrive</strong> for ${newPeople.length === 1 ? 'them' : 'them'}:</p>
-         <ul>${list}</ul>
-         <p>Please review this in the Organizer Center and deregister ${newPeople.length === 1 ? 'the person' : 'the people'} if needed.</p>
-         <p><a href="${appUrl}" style="display:inline-block;background:#86bc25;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">Open event in the Organizer Center</a></p>
-         <p>Thanks!</p>`;
-    const subject = isDe ? `Hinweis: möglicherweise inaktives Konto — ${event.title}` : `Heads-up: possibly inactive account — ${event.title}`;
-    const wrapped = wrapTemplate('#86bc25', heading, sub, body);
-    try {
-      // Eine Mail an alle Organizer (Semikolon-getrennt, der Flow mappt To direkt).
-      await eventService.queueEmail(subject, orgEmails.join(';'), orgEmails.join(';'), wrapped, 'Info', event.title, eventId);
-    } catch (err) { console.warn('[DEX] notifyOrganizerOfInactive mail failed:', err); }
-    return { sent: newPeople.length, skipped: people.length - newPeople.length };
-  }
-
-  /**
-   * v26.40: Erkannte Ex-Deloitte-Personen automatisch abmelden (nur wenn das
-   * Event `inactiveHandling === 'autoderegister'` hat). Nutzt denselben Pfad wie
-   * das manuelle Abmelden im Organizer Center (Abmelde-Mail/Outlook-Ausladung/
-   * Nachrücken via Flow). Gibt die tatsächlich abgemeldeten Personen zurück —
-   * die Landing Page zeigt daraus einen Modal-Hinweis für den Organizer.
-   */
-  async function autoDeregisterInactive(
-    eventId: string,
-    people: Array<{ email: string; name: string }>
-  ): Promise<Array<{ email: string; name: string }>> {
-    const event = events.find(e => e.id === eventId);
-    if (!event || !event.subsiteUrl) return [];
-    const removed: Array<{ email: string; name: string }> = [];
-    let regs: SPRegistration[] = [];
-    try { regs = await eventService.getAllRegistrations(event.subsiteUrl); } catch { return []; }
-    const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
-    const actorName = (currentUserName || '').trim() || currentUserEmail;
-    for (const p of people) {
-      const em = (p.email || '').toLowerCase().trim();
-      if (!em) continue;
-      const reg = regs.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === em && ACTIVE.indexOf(r.Status) >= 0);
-      if (!reg) continue;
-      try {
-        const ok = await eventService.cancelRegistration(event.subsiteUrl, reg.Id, actorName, currentUserEmail);
-        if (ok) removed.push({ email: em, name: p.name || em });
-      } catch (err) { console.warn('[DEX] autoDeregisterInactive failed for', em, err); }
-    }
-    if (removed.length > 0) { try { await loadEvents(); } catch { /* */ } }
-    return removed;
-  }
-
-  // v26.41: Kommunikations-Log (Rundmails) eines Events lesen.
-  async function getEventComms(eventId: string): Promise<EventCommRow[]> {
-    try { return await eventService.getEventComms(eventId); }
-    catch { return []; }
-  }
+  // v30.66: Ausgelagert nach `inactiveAccounts.ts` (Modularisierung Stufe 3).
+  // Die Funktionskoerper sind unveraendert; sie bekommen ihre Umgebung
+  // ueber ein explizites deps-Objekt statt ueber die Closure.
+  const {
+    scanInactiveAccounts, getSentInactiveNotices, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms,
+  } = makeInactiveAccountActions({ eventService, events, currentUserEmail, currentUserName, loadEvents });
 
   return React.createElement(
     EventContext.Provider,
@@ -6684,7 +3151,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       value: {
         events: eventsForConsumer,
         topLevelEvents: eventsForConsumer.filter(e => !e.parentEventId),
-        childEventsOf, isEventsLoading, ensureEventDocuments,
+        childEventsOf, isEventsLoading, ensureEventDocuments, refreshEventDocuments,
         createEvent, registerForEvent, registerTeam,
         getTeamMembers: async (eventId: string, teamId: string): Promise<SPRegistration[]> => {
           const subsiteUrl = subsiteMap.current[eventId];
@@ -6702,7 +3169,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, getLastEventUpdateError, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getEventNumbersForEmail, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, getFAConfig, saveFAConfig, sendFAMail, markEventSettled, saveFAPersonalNumbers, sendBundledUpdateMail, logFAContact, maybeSendBillingAutoMails, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, repairAllOrganizerPermissions, restoreCustomFieldDescriptions,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, getLastEventUpdateError, getLastEventDeleteError, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getEventNumbersForEmail, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, getFAConfig, saveFAConfig, sendFAMail, markEventSettled, saveFAPersonalNumbers, sendBundledUpdateMail, logFAContact, maybeSendBillingAutoMails, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, repairAllOrganizerPermissions, restoreCustomFieldDescriptions,
         sendAdminInquiry,
         sendCompleteRegistrationReminder,
         notifyAdminsExternalAudienceAccess,
