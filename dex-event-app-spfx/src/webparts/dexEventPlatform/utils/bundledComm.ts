@@ -70,6 +70,41 @@ export function bundledCommConfig(m: BundledComm): Record<string, boolean> {
   return out;
 }
 
+/**
+ * v30.71: „Gemeinsam für alle Termine" — ein Schalter mit Gedächtnis statt des
+ * einmaligen Kopier-Knopfs aus v30.60.
+ *
+ * Nutzer-Ansage 02.09.2026: „kein Button, sondern ein Wechselschalter —
+ * entweder einzeln oder für alle Termine zusammen." Der Knopf kopierte einmal;
+ * sobald danach jemand am Haupt-Event etwas änderte, liefen die Termine wieder
+ * auseinander. Der Schalter bleibt an: Solange er steht, bekommt jeder Termin
+ * beim Speichern die Kommunikations-Werte des Haupt-Events (persistSubEvents),
+ * und die Termin-Reiter sind im Kommunikations-Schritt nur Anzeige.
+ *
+ * Etwas ANDERES als die Bündel-Schalter oben: Dort geht es darum, wie OFT eine
+ * Mail kommt (eine fürs Gesamt-Event statt einer je Termin), hier darum, WAS
+ * drinsteht. Beides lebt als Piggyback in den Overrides der Klammer.
+ *
+ * Voreinstellung (Nutzer-Entscheidung): neue Events GEMEINSAM, bestehende
+ * Events EINZELN — damit sich an laufenden Events nichts ändert.
+ */
+export const COMM_SHARED_KEY = '_commShared';
+
+export function commSharedOf(
+  ev: { emailTemplateOverrides?: string; parentEventId?: string } | null | undefined
+): boolean {
+  if (!ev || ev.parentEventId) return false;
+  try {
+    const o = JSON.parse(ev.emailTemplateOverrides || '{}') || {};
+    return o[COMM_SHARED_KEY] === true;
+  } catch { return false; }
+}
+
+/** Nur „an" wird geschrieben — ein Event im Einzel-Modus trägt keinen Ballast. */
+export function commSharedConfig(on: boolean): Record<string, boolean> {
+  return on ? { [COMM_SHARED_KEY]: true } : {};
+}
+
 /** Ein gebuchter Termin, wie er in der Sammelmail steht. */
 export interface BundledItem {
   title: string;
