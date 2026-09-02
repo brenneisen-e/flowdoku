@@ -458,6 +458,32 @@ export default function LandingPage(): React.ReactElement {
     const id = window.setInterval(() => setNowTick(Date.now()), 60000);
     return () => window.clearInterval(id);
   }, []);
+  // v30.68: SOFORT zeigen, was beim letzten Mal galt — Merker je Person im
+  // Browser —, dann im Hintergrund frisch prüfen. Bis hierher erschienen die
+  // Kacheln erst, wenn alle Events geladen UND bis zu zwanzig Teilnehmer-
+  // listen nacheinander gelesen waren: mehrere Sekunden, in denen die
+  // meisten längst auf „Start" geklickt hatten (Nutzer-Befund 02.09.2026).
+  // Der Merker ist Komfort, keine Wahrheit: vergangene Events fallen beim
+  // Lesen raus, die frische Prüfung ersetzt ihn, sobald sie da ist.
+  const regBoxCacheKey = (email: string): string => `dex_landing_regboxes_v1:${email.toLowerCase()}`;
+  React.useEffect(() => {
+    const myEmail = (currentUser?.email || '').trim();
+    if (!myEmail) return;
+    try {
+      const raw = window.localStorage.getItem(regBoxCacheKey(myEmail));
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { ts?: number; items?: Array<{ eventId: string; title: string; imageUrl?: string; startDate: string; location?: string }> };
+      if (!parsed || !Array.isArray(parsed.items)) return;
+      if (Date.now() - (parsed.ts || 0) > 14 * 24 * 60 * 60 * 1000) return;
+      const now = Date.now();
+      const stillAhead = parsed.items.filter(b => {
+        const d = new Date(b.startDate);
+        if (!Number.isFinite(d.getTime())) return false;
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59).getTime() >= now;
+      });
+      if (stillAhead.length > 0) setMyRegBoxes(prev => (prev.length > 0 ? prev : stillAhead));
+    } catch { /* Merker nicht lesbar — dann eben erst die frische Prüfung */ }
+  }, [currentUser?.email]);
   React.useEffect(() => {
     if (isEventsLoading) return undefined;
     const myEmail = (currentUser?.email || '').trim();
@@ -486,9 +512,23 @@ export default function LandingPage(): React.ReactElement {
       const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
       const isActiveReg = (r: { Status?: string } | null | undefined): boolean =>
         !!r && ACTIVE.indexOf(r.Status || '') >= 0;
-      const boxes: Array<{ eventId: string; title: string; imageUrl?: string; startDate: string; location?: string }> = [];
-      for (const top of topCandidates) {
-        if (cancelled) return;
+      // v30.68: Parallel mit kleiner Obergrenze statt streng nacheinander —
+      // zwanzig Kandidaten hintereinander waren der zweite Grund für die
+      // Wartezeit. Nicht Promise.all über alles: Das wäre die Drosselung
+      // (s. mapLimited im EventContext, v29.47).
+      const limited = async <T,>(items: T[], n: number, fn: (x: T) => Promise<void>): Promise<void> => {
+        let next = 0;
+        const worker = async (): Promise<void> => {
+          for (;;) {
+            const k = next++;
+            if (k >= items.length || cancelled) return;
+            await fn(items[k]);
+          }
+        };
+        await Promise.all(Array.from({ length: Math.max(1, Math.min(n, items.length)) }, () => worker()));
+      };
+      const registeredIds = new Set<string>();
+      await limited(topCandidates, 4, async (top) => {
         let registered = false;
         try {
           // Eigene Anmeldung am Haupt-/Klammer-Event (bei „Nur Sub-Events"
@@ -499,19 +539,25 @@ export default function LandingPage(): React.ReactElement {
         if (!registered) {
           // Fallback: irgendein Sub-Event aktiv angemeldet?
           const children = (events || []).filter(c => c.parentEventId === top.id && !c.isFictive);
-          for (const child of children) {
-            if (cancelled) return;
+          await limited(children, 2, async (child) => {
+            if (registered) return;
             try {
-              if (isActiveReg(await getMyRegistration(child.id))) { registered = true; break; }
+              if (isActiveReg(await getMyRegistration(child.id))) registered = true;
             } catch { /* einzelner Sub-Event-Lookup-Fehler */ }
-          }
+          });
         }
-        if (registered) {
-          boxes.push({ eventId: top.id, title: top.title || '', imageUrl: top.imageUrl, startDate: top.startDate, location: top.location });
-        }
-        if (boxes.length >= 6) break;
+        if (registered) registeredIds.add(top.id);
+      });
+      if (cancelled) return;
+      const boxes = topCandidates
+        .filter(top => registeredIds.has(top.id))
+        .slice(0, 6)
+        .map(top => ({ eventId: top.id, title: top.title || '', imageUrl: top.imageUrl, startDate: top.startDate, location: top.location }));
+      if (!cancelled) {
+        setMyRegBoxes(boxes);
+        setMyRegBoxesLoaded(true);
+        try { window.localStorage.setItem(regBoxCacheKey(myEmail), JSON.stringify({ ts: Date.now(), items: boxes })); } catch { /* Merker ist Komfort */ }
       }
-      if (!cancelled) { setMyRegBoxes(boxes); setMyRegBoxesLoaded(true); }
     })().catch(() => { /* best-effort */ });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

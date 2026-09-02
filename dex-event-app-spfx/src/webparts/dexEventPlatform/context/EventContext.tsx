@@ -306,7 +306,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // die zuletzt gespeicherte Teilnehmerzahl (Spalte CurrentParticipants)
     // stehen im Mapping. Die Liste geht deshalb sofort raus.
     // v30.67: Bereits nachgeladene Anhänge behalten — s. keepLoadedDocuments.
-    setEvents(prev => keepLoadedDocuments(prev, mapped));
+    setEvents(prev => keepLoadedDocuments(prev, inheritParentImages(mapped)));
 
     // Nachlauf, sichtbar nur als Zahlen, die sich still aktualisieren.
     void (async () => {
@@ -317,7 +317,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         dlog('perf', `[DEX][perf][loadEvents] participantCounts (nachgelagert) = ${Math.round(performance.now() - tCnt)} ms`);
         // v30.67: Nicht den Snapshot von VOR einem parallel eingetroffenen
         // ensureEventDocuments zurückschreiben — s. keepLoadedDocuments.
-        setEvents(prev => keepLoadedDocuments(prev, withCounts));
+        setEvents(prev => keepLoadedDocuments(prev, inheritParentImages(withCounts)));
       } catch (err) { console.warn('[DEX] Teilnehmerzahlen-Nachlauf fehlgeschlagen:', err); }
     })();
   }
@@ -371,6 +371,25 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     if (running) { try { await running; } catch { /* */ } }
     documentsLoadedRef.current.delete(id);
     await ensureEventDocuments([id]);
+  }
+
+  /**
+   * v30.68: Sub-Events ohne eigenes Bild tragen das Bild des Hauptevents
+   * (Nutzer-Ansage 02.09.2026: „im Default auch das Hauptevent-Foto"). Nur
+   * Anzeige — nichts wird kopiert oder hochgeladen; ein eigenes Bild am
+   * Sub-Event gewinnt weiterhin. `imageInherited` sagt dem Wizard, dass das
+   * Feld dort leer bleibt. Zoom/Ausschnitt (`imageDisplay`) wandern mit,
+   * damit die Kachel gleich beschnitten ist.
+   */
+  function inheritParentImages(list: DeloitteEvent[]): DeloitteEvent[] {
+    const byId: Record<string, DeloitteEvent> = {};
+    for (const e of list) byId[e.id] = e;
+    return list.map(e => {
+      if (!e.parentEventId || (e.imageUrl || '').trim()) return e;
+      const parent = byId[e.parentEventId];
+      if (!parent || !(parent.imageUrl || '').trim()) return e;
+      return { ...e, imageUrl: parent.imageUrl, imageDisplay: e.imageDisplay || parent.imageDisplay, imageInherited: true };
+    });
   }
 
   /**

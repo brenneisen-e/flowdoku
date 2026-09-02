@@ -518,7 +518,9 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
       waitlistEnabled: typeof k.waitlistEnabled === 'boolean' ? k.waitlistEnabled : true,
       askSalutation: !!k.askSalutation,
       // v27.11: bestehendes Sub-Event-Bild (SP-URL) als Vorschau laden.
-      imagePreview: k.imageUrl || '',
+      // v30.68: ein vom Hauptevent GEERBTES Bild ist kein eigenes — das Feld
+      // bleibt leer, sonst „bearbeitet" man hier das Bild des Hauptevents.
+      imagePreview: k.imageInherited ? '' : (k.imageUrl || ''),
       // v15.0 (legacy): Inheritance-Flags werden seit v15.3 nicht mehr
       // ausgewertet. Bleiben in den geparsten Drafts, weil das Schema
       // sie noch erlaubt — Wirkung gleich Null.
