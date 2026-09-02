@@ -110,8 +110,16 @@ async function backfillOutlookLocation(svc: EventService, eventId: string): Prom
  * Monat archiviert. Für länger zurückliegende Versaende ist die Liste
  * daher unvollstaendig — das Ergebnis taugt zum Nachfassen innerhalb einer
  * laufenden Einladungsrunde, nicht als lueckenlose Historie.
+ *
+ * @param onHttpError v30.67: Meldet, dass die Liste NICHT vollständig gelesen
+ *   wurde (HTTP-Status; 0 bei Netzwerkfehler oder Abbruch durch die
+ *   Seiten-Reißleine). Die Funktion wirft nicht — ein 429 auf Seite 1 lieferte
+ *   bisher still `[]`, der Einladungs-Dialog zeigte „0 Adresse(n) fallen
+ *   raus", und die Einladung ging ein zweites Mal an den ganzen Verteiler.
+ *   Wer „nur an noch nicht Eingeladene" anbietet, muss den Rückruf nutzen
+ *   (dasselbe Muster wie `getAllRegistrations`).
  */
-export async function getInvitedRecipients(svc: EventService, eventId: string | number): Promise<string[]> {
+export async function getInvitedRecipients(svc: EventService, eventId: string | number, onHttpError?: (_status: number) => void): Promise<string[]> {
   const id = String(eventId || '').trim();
   if (!id) return [];
   const out = new Set<string>();
@@ -122,11 +130,11 @@ export async function getInvitedRecipients(svc: EventService, eventId: string | 
     guard++;
     let resp: SPHttpClientResponse;
     try { resp = await svc._sp.get(url, SPHttpClient.configurations.v1); }
-    catch { break; }
-    if (!resp.ok) break;
+    catch { if (onHttpError) onHttpError(0); break; }
+    if (!resp.ok) { if (onHttpError) onHttpError(resp.status); break; }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let data: any;
-    try { data = await resp.json(); } catch { break; }
+    try { data = await resp.json(); } catch { if (onHttpError) onHttpError(0); break; }
     const items = data.value || data.d?.results || [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const it of items as any[]) {
@@ -138,6 +146,9 @@ export async function getInvitedRecipients(svc: EventService, eventId: string | 
     }
     url = data['odata.nextLink'] || data['@odata.nextLink'] || (data.d && data.d.__next) || null;
   }
+  // v30.67: Reißleine erreicht, aber es gäbe noch Seiten — auch das ist
+  // „unvollständig", nicht „fertig".
+  if (url && onHttpError) onHttpError(0);
   return Array.from(out);
 }
 

@@ -19,6 +19,7 @@ import { SPHttpClient } from '@microsoft/sp-http';
 import { EventService } from '../EventService';
 import type { SPRegistration } from '../EventService';
 import { REG_LIST_ITEM_TYPE, REG_LIST_NAME } from '../EventService';
+import { sessionIdentities } from '../../utils/sessionIdentities';
 
 // ==================== Registrierungen ====================
 
@@ -72,6 +73,12 @@ export async function registerForEvent(
     // aber fangt naiven App-Bypass (F12, direkter Service-Aufruf) ab.
     const sessionEmail = (svc.context.pageContext.user.email || '').toLowerCase();
     const targetEmail = (participantEmail || '').toLowerCase();
+    // v30.67: Alle Schreibweisen der angemeldeten Person (pageContext-E-Mail
+    // UND die Adresse aus dem loginName) — dieselbe Menge wie in
+    // `canRegisterForOthers`. Steht im Event die SMTP-Adresse und liefert der
+    // pageContext den UPN/Alias, scheiterte die Frist-Ausnahme unten sonst
+    // auch für den HAUPT-Organizer.
+    const sessionIds = sessionIdentities(svc.context);
 
     // Event-Metadaten laden (Deadline + OrganizerEmail) über SubsiteUrl.
     // Beide Checks nutzen die gleiche Abfrage — einmal laden, mehrfach prüfen.
@@ -80,7 +87,7 @@ export async function registerForEvent(
     try {
       const subsiteEsc = encodeURIComponent(subsiteUrl.replace(/'/g, "''"));
       const evResp = await svc._sp.get(
-        `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=SubsiteUrl eq '${subsiteEsc}'&$top=1&$select=RegistrationDeadline,OrganizerEmail`,
+        `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=SubsiteUrl eq '${subsiteEsc}'&$top=1&$select=RegistrationDeadline,OrganizerEmail,EmailTemplateOverrides`,
         SPHttpClient.configurations.v1
       );
       if (evResp.ok) {
@@ -88,8 +95,36 @@ export async function registerForEvent(
         const items = evData.value || evData.d?.results || [];
         if (items.length > 0) {
           eventDeadline = items[0].RegistrationDeadline || '';
-          const orgStr: string = EventService.stripNoteWrapper(items[0].OrganizerEmail);
-          eventOrganizerEmails = orgStr.split(';').map(s => s.trim().toLowerCase()).filter(Boolean);
+          // v30.67: Derselbe Personenkreis wie in `canRegisterForOthers`
+          // (services/events/profileData.ts, v19.6): HTML des Note-Felds
+          // robust strippen, an `;`/`,`/Zeilenumbruch splitten UND die
+          // Co-Organizer aus dem Piggyback `_coOrganizers` dazunehmen.
+          // Vorher zählte hier nur `OrganizerEmail` mit `;`-Split — ein
+          // Co-Organizer wurde nach Fristablauf abgewiesen, obwohl die
+          // Rollenmatrix „Nach Anmeldefrist registrieren" für ihn zusagt
+          // und Check A ihn wenige Zeilen darüber längst akzeptiert.
+          const splitEmails = (raw: string | null | undefined): string[] =>
+            (raw || '')
+              .replace(/<br\s*\/?>/gi, ';')
+              .replace(/<\/div>\s*<div[^>]*>/gi, ';')
+              .replace(/<[^>]+>/g, '')
+              .split(/[;,\n\r]+/)
+              .map(s => s.trim().toLowerCase())
+              .filter(Boolean);
+          eventOrganizerEmails = splitEmails(items[0].OrganizerEmail);
+          try {
+            const ovRaw = EventService.stripNoteWrapper(items[0].EmailTemplateOverrides) || '{}';
+            const ov = JSON.parse(ovRaw);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const list = (ov as any)._coOrganizers;
+            if (Array.isArray(list)) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              for (const x of list as any[]) {
+                const e = String(x?.email || '').toLowerCase().trim();
+                if (e) eventOrganizerEmails.push(e);
+              }
+            }
+          } catch { /* kein/ungültiges Override-JSON → keine Co-Organizer */ }
         }
       }
     } catch { /* Bei Load-Fehler konservativ weitermachen — andere Checks greifen */ }
@@ -114,7 +149,14 @@ export async function registerForEvent(
     if (eventDeadline) {
       const deadlineDate = new Date(eventDeadline);
       if (!isNaN(deadlineDate.getTime()) && deadlineDate < new Date()) {
-        const isEventOrganizer = eventOrganizerEmails.indexOf(sessionEmail) >= 0;
+        // v30.67: Haupt- UND Co-Organizer, gegen ALLE Session-Identitäten —
+        // plus das Client-Flag, dem Check A (die schärfere Prüfung) seit
+        // v19.9 bereits vertraut; es kommt aus denselben DEX_Events-Daten
+        // wie die Sichtbarkeit des „Teilnehmer hinzufügen"-Dialogs. Die
+        // Assistenz-Ausnahme (`clientAssistantAllowed`) bleibt hier bewusst
+        // draußen: Sie darf die Frist nicht umgehen.
+        const isEventOrganizer = actorIsEventOrganizer
+          || eventOrganizerEmails.some(e => sessionIds.has(e));
         let isAdmin = false;
         try {
           const esc = sessionEmail.replace(/'/g, "''");

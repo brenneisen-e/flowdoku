@@ -335,6 +335,11 @@ export async function deleteEventDocument(svc: EventService, eventId: number, fi
 /**
  * Attachments eines DEX_Events-Items laden.
  * Bilder mit Präfix __eventimage__ werden ausgefiltert (nur für EventImageUrl).
+ * v30.67: ebenso das unbeschnittene Original (`__eventimgorig__`). Die beiden
+ * Präfixe sind bewusst verschieden, damit der Bild-Upload das Original nicht
+ * mitlöscht — derselbe Nicht-Match ließ es hier aber als „Dokument" zu den
+ * Teilnehmern durchrutschen (Anmeldeseite und Schritt 7 zeigten eine Datei
+ * `__eventimgorig__….jpg` zum Download neben der Agenda).
  */
 export async function getEventAttachments(svc: EventService, eventId: number): Promise<Array<{ name: string; url: string; size: number }>> {
   try {
@@ -348,7 +353,10 @@ export async function getEventAttachments(svc: EventService, eventId: number): P
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return files
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .filter((f: any) => (f.FileName || '').indexOf('__eventimage__') !== 0)
+        .filter((f: any) => {
+          const n = String(f.FileName || '');
+          return n.indexOf('__eventimage__') !== 0 && n.indexOf(ORIG_IMAGE_PREFIX) !== 0;
+        })
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .map((f: any) => ({
           name: f.FileName || '',

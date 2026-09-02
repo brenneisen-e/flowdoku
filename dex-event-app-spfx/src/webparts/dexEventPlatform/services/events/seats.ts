@@ -50,18 +50,29 @@ import { COUNTER_LIST_NAME, REG_LIST_NAME } from '../EventService';
  * die IDs innerhalb der Warteliste.
  *
  * @param targetPosition 1-basiert. Wird auf 1..(Anzahl Wartende) geklemmt.
+ * @param group v30.67: Gruppe (`PreferredStarterType`) bei geteilten
+ *   Kapazitäten mit getrennten Wartelisten. Dann sind `targetPosition`,
+ *   `from` und `to` der Rang INNERHALB dieser Gruppe — genau die Zahl, die
+ *   das Organizer Center anzeigt (waitlistTruePos rankt je Gruppe) und nach
+ *   der `promoteFirstWaitlistItem` mit `onlyWithPreferredType` nachrückt.
+ *   Bisher galt der Wert als Index in die GESAMT-Warteliste: „Platz 2" in
+ *   der Funstarter-Tabelle schob die Person zwischen die ersten beiden
+ *   Durchstarter-Wartenden und nummerierte deren ganze Liste um. Leer =
+ *   eine gemeinsame Warteliste (Normalfall und `splitSharedWaitlist`).
  */
 export async function setWaitlistPosition(
   svc: EventService,
   subsiteUrl: string,
   itemId: number,
-  targetPosition: number
+  targetPosition: number,
+  group?: string
 ): Promise<{ ok: boolean; from: number; to: number; changed: number; error?: string }> {
   const fail = (error: string): { ok: boolean; from: number; to: number; changed: number; error: string } =>
     ({ ok: false, from: 0, to: 0, changed: 0, error });
   try {
-    const allItems: Array<{ Id: number; Status: string; TeilnehmerID: number | null }> = [];
-    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,Status,TeilnehmerID&$orderby=Id asc&$top=5000`;
+    type Row = { Id: number; Status: string; TeilnehmerID: number | null; PreferredStarterType?: string | null };
+    const allItems: Row[] = [];
+    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,Status,TeilnehmerID,PreferredStarterType&$orderby=Id asc&$top=5000`;
     while (url) {
       const response = await svc._sp.get(url, SPHttpClient.configurations.v1);
       if (!response.ok) return fail(`Teilnehmerliste konnte nicht gelesen werden (HTTP ${response.status}).`);
@@ -75,7 +86,13 @@ export async function setWaitlistPosition(
     const activeItems = allItems
       .filter(i => i.Status === 'Angemeldet' || i.Status === 'QR versendet' || i.Status === 'Eingecheckt')
       .sort(byTidThenId);
-    const waitlist = allItems.filter(i => i.Status === 'Warteliste').sort(byTidThenId);
+    // v30.67: Gesamt-Warteliste (bestimmt die globale ID-Folge) und die
+    // Zielgruppe darin (bestimmt, was umsortiert wird). Ohne `group` sind
+    // beide dieselbe Liste — das bisherige Verhalten.
+    const grp = (group || '').trim();
+    const inGroup = (i: Row): boolean => !grp || (i.PreferredStarterType || '').trim() === grp;
+    const waitlistAll = allItems.filter(i => i.Status === 'Warteliste').sort(byTidThenId);
+    const waitlist = waitlistAll.filter(inGroup);
 
     const fromIdx = waitlist.findIndex(i => i.Id === itemId);
     if (fromIdx < 0) return fail('Diese Person steht nicht (mehr) auf der Warteliste — bitte die Liste neu laden.');
@@ -89,10 +106,15 @@ export async function setWaitlistPosition(
 
     // Ziel-IDs: Angemeldete 1..N (unverändert), danach die neue
     // Warteliste-Reihenfolge, Abgemeldete null.
+    // v30.67: Die Plätze der Gesamt-Warteliste, die zur Zielgruppe gehören,
+    // werden in der neuen Gruppen-Reihenfolge belegt; Zeilen fremder Gruppen
+    // behalten Platz und ID — nur der Rang INNERHALB der Gruppe ändert sich.
+    let gi = 0;
+    const mergedWaitlist = waitlistAll.map(i => (inGroup(i) ? waitlist[gi++] : i));
     const targetIds = new Map<number, number | null>();
     let nextId = 1;
     for (const item of activeItems) targetIds.set(item.Id, nextId++);
-    for (const item of waitlist) targetIds.set(item.Id, nextId++);
+    for (const item of mergedWaitlist) targetIds.set(item.Id, nextId++);
     for (const item of allItems) if (!targetIds.has(item.Id)) targetIds.set(item.Id, null);
 
     let changed = 0;

@@ -35,7 +35,9 @@ export async function reactivateRegistration(
   customFieldMap?: Record<string, string>,
   registeredByName?: string, // Audit: Name des Users der die Re-Anmeldung auslöst
   registeredByEmail?: string, // Audit: E-Mail des Users der die Re-Anmeldung auslöst
-  proxyConsent?: string // v18.74: Zustimmungs-Nachweis bei stellvertretender Re-Anmeldung
+  proxyConsent?: string, // v18.74: Zustimmungs-Nachweis bei stellvertretender Re-Anmeldung
+  starterType?: string, // v30.67: Gruppe bei geteilten Kapazitäten (wie registerForEvent)
+  preferredStarterType?: string // v30.67: gewünschte Gruppe (Warteliste: nur diese, StarterType leer)
 ): Promise<boolean> {
   try {
     // ---- Permission-Checks (v3.9.2 / v3.9.3) ----
@@ -146,6 +148,18 @@ export async function reactivateRegistration(
     if (auditEmail) body['RegisteredByEmail'] = auditEmail;
     // v18.74: Zustimmungs-Nachweis bei stellvertretender Re-Anmeldung.
     if (proxyConsent) body['ProxyConsent'] = proxyConsent;
+    // v30.67: Gruppe bei geteilten Kapazitäten mitschreiben — dasselbe Muster
+    // wie registerForEvent, bei Warteliste wie switchSplitGroup (StarterType
+    // leer, nur PreferredStarterType). Bisher nahm dieser zweite, ältere
+    // Anmeldepfad die Gruppe gar nicht entgegen: Die Zeile trug weiter den
+    // StarterType der ERSTEN Anmeldung, während reserveSeat schon einen Platz
+    // in der neu gewählten Gruppe verbraucht hatte — Person in Gruppe A
+    // gezählt, Platz in Gruppe B belegt, der nächste Zähler-Sync überbucht A.
+    if (starterType) body['StarterType'] = starterType;
+    if (preferredStarterType) {
+      body['PreferredStarterType'] = preferredStarterType;
+      if (status === 'Warteliste') body['StarterType'] = '';
+    }
 
     if (customFieldMap) {
       for (const cfId of Object.keys(customData)) {
@@ -436,11 +450,20 @@ export async function adminUpdateRegistration(
 
 /**
  * Eigene Registrierung für ein Event laden
+ *
+ * @param onHttpError v30.67: Meldet, dass die Abfrage gescheitert ist (HTTP-
+ *   Status, 0 bei Netzwerkfehler). Ohne den Rückruf ist `null` zweideutig —
+ *   „keine Zeile" und „konnte nicht lesen" sehen gleich aus. Genau daran
+ *   ging der v30.14-Fail-closed vorbei: `_sp.get` wirft bei 429 nicht, das
+ *   `.catch` im Aufrufer feuerte nie, und die Doppel-Anmelde-Prüfung sagte
+ *   „nicht angemeldet". Wer aus `null` auf „nicht vorhanden" schließt, muss
+ *   den Rückruf nutzen (dasselbe Muster wie `getAllRegistrations`).
  */
 export async function getMyRegistration(
   svc: EventService,
   subsiteUrl: string,
-  email: string
+  email: string,
+  onHttpError?: (_status: number) => void
 ): Promise<SPRegistration | null> {
   try {
     // v27.11: $orderby=Id desc — bei mehreren Zeilen derselben Person
@@ -451,11 +474,12 @@ export async function getMyRegistration(
       `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=ParticipantEmail eq '${email.trim().replace(/'/g, "''")}'&$orderby=Id desc&$top=1`,
       SPHttpClient.configurations.v1
     );
-    if (!response.ok) return null;
+    if (!response.ok) { if (onHttpError) onHttpError(response.status); return null; }
     const data = await response.json();
     if (data.value && data.value.length > 0) return data.value[0];
     return null;
   } catch {
+    if (onHttpError) onHttpError(0);
     return null;
   }
 }

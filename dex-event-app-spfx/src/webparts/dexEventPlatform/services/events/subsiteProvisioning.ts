@@ -302,18 +302,39 @@ export async function ensureOrganizerPermissions(svc: EventService, subsiteUrl: 
  * Die User-Id wird EINMAL je Person aufgelöst, nicht je Subsite — sonst sind
  * es bei 19 Terminen × 3 Organizern 57 Lookups gegen dieselben drei Konten.
  *
- * @returns Zähler fürs UI: wie viele Zuweisungen liefen, wie viele Personen
- *   gar nicht auflösbar waren. Ein „schon vorhanden" zählt als Erfolg —
- *   SharePoints `addroleassignment` ist idempotent.
+ * @returns Zähler fürs UI: wie viele Zuweisungen BESTÄTIGT wurden, wie viele
+ *   Personen gar nicht auflösbar waren und (v30.67) welche Zuweisungen
+ *   SharePoint abgelehnt hat. Ein „schon vorhanden" zählt als Erfolg —
+ *   SharePoints `addroleassignment` ist idempotent und antwortet dann 200.
  */
+/**
+ * v30.67: Ergebnis von `ensureOrganizerPermissionsMulti`. `failed` führt jede
+ * Zuweisung auf, die SharePoint NICHT mit 2xx beantwortet hat (`status` 0 =
+ * Netzwerkfehler). `grants` zählt nur bestätigte Zuweisungen — Web-Root UND
+ * Teilnehmerliste je Person und Subsite, also bis zu zwei je Paar.
+ */
+export interface OrganizerPermissionFailure {
+  site: string;
+  userId: number;
+  /** 'web' = Rechte auf der Subsite selbst, 'list' = auf der Teilnehmerliste. */
+  scope: 'web' | 'list';
+  status: number;
+}
+export interface OrganizerPermissionsResult {
+  sites: number;
+  users: number;
+  grants: number;
+  unresolved: string[];
+  failed: OrganizerPermissionFailure[];
+}
 export async function ensureOrganizerPermissionsMulti(
   svc: EventService,
   subsiteUrls: string[],
   organizerEmails: string
-): Promise<{ sites: number; users: number; grants: number; unresolved: string[] }> {
+): Promise<OrganizerPermissionsResult> {
   const sites = (subsiteUrls || []).map(s => (s || '').trim()).filter(Boolean);
   const emails = (organizerEmails || '').split(/[;,]/).map(s => s.trim()).filter(Boolean);
-  const result = { sites: sites.length, users: 0, grants: 0, unresolved: [] as string[] };
+  const result: OrganizerPermissionsResult = { sites: sites.length, users: 0, grants: 0, unresolved: [], failed: [] };
   if (sites.length === 0 || emails.length === 0) return result;
 
   // 1) Personen auflösen — einmal, nicht je Subsite.
@@ -334,22 +355,36 @@ export async function ensureOrganizerPermissionsMulti(
 
   // 2) Je Subsite: Web-Level + Teilnehmerliste. Beides einzeln gekapselt —
   //    eine recycelte Subsite darf die übrigen Termine nicht abbrechen.
+  //
+  // v30.67: Beide Antworten werden GEPRÜFT. `svc._post` wirft bei HTTP-
+  // Fehlern nicht — der `try/catch` fing nur Netzwerkfehler, `grants++` lief
+  // bei 403 (kein „Manage Permissions" auf dem Termin) und 404 (Subsite
+  // recycelt) genauso, und die Listen-Zuweisung wurde gar nicht gezählt. Die
+  // Kachel „Organizer-Berechtigungen reparieren" meldete deshalb grün
+  // „3 Person(en) auf 20 Liste(n) berechtigt", während die Co-Organizerin
+  // weiter überall 0 Teilnehmer sah. Ein bereits vorhandenes Recht
+  // beantwortet SharePoint mit 200 — Erfolg und Scheitern sind also
+  // unterscheidbar.
+  const grant = async (site: string, userId: number, scope: 'web' | 'list', url: string): Promise<void> => {
+    let status = 0;
+    try {
+      const r = await svc._post(url, {});
+      status = r.status;
+      if (r.ok) { result.grants++; return; }
+    } catch { status = 0; }
+    result.failed.push({ site, userId, scope, status });
+  };
   for (const site of sites) {
     for (const userId of userIds) {
-      try {
-        await svc._post(
-          `${site}/_api/web/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
-          {}
-        );
-        result.grants++;
-      } catch { /* idempotent — Person hatte schon Rechte */ }
-      try {
-        await svc._post(
-          `${site}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
-          {}
-        );
-      } catch { /* idempotent */ }
+      await grant(site, userId, 'web', `${site}/_api/web/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`);
+      await grant(site, userId, 'list', `${site}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`);
     }
+  }
+  if (result.failed.length > 0) {
+    // Eine Sammel-Warnung statt einer je Zuweisung — bei 19 Terminen × 3
+    // Personen wären es sonst über hundert Zeilen.
+    const lines = result.failed.map(f => `${f.site} [${f.scope}] user ${f.userId} → HTTP ${f.status}`);
+    console.warn(`[DEX] ensureOrganizerPermissionsMulti: ${result.failed.length} Zuweisung(en) NICHT gesetzt:\n${lines.join('\n')}`);
   }
   return result;
 }

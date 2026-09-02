@@ -404,6 +404,14 @@ export async function setQRSentStatus(
 
 /**
  * Registrierung per Email auf einer Subsite finden
+ *
+ * v30.67: Einziger Aufrufer ist der QR-Scan am Check-in-Tisch. Bisher
+ * `$top=1` ohne Sortierung und ohne Status-Vorzug — bei zwei Zeilen zur
+ * selben Adresse (Abmeldung, später erneute Anmeldung durch eine Assistenz,
+ * die die alte Zeile wegen ReadSecurity nicht sieht) lieferte SharePoint die
+ * älteste, und eine angemeldete Person wurde am Einlass als „storniert"
+ * abgewiesen. Jetzt gewinnt die AKTIVE Zeile, sonst die neueste — dasselbe
+ * Muster wie `getMyRegistration` (v27.11) und `buildBibReport` (v30.54).
  */
 export async function getRegistrationByEmail(
   svc: EventService,
@@ -412,13 +420,15 @@ export async function getRegistrationByEmail(
 ): Promise<SPRegistration | null> {
   try {
     const response = await svc._sp.get(
-      `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=ParticipantEmail eq '${email.replace(/'/g, "''")}'&$select=Id,Title,Vorname,Nachname,ParticipantName,ParticipantEmail,Status,RegistrationDate,RegisteredByName,RegisteredByEmail,CancellationDate,CancelledByName,CancelledByEmail,CustomData,Department,JobTitle,Location,Company&$top=1`,
+      `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=ParticipantEmail eq '${email.trim().replace(/'/g, "''")}'&$select=Id,Title,Vorname,Nachname,ParticipantName,ParticipantEmail,Status,RegistrationDate,RegisteredByName,RegisteredByEmail,CancellationDate,CancelledByName,CancelledByEmail,CustomData,Department,JobTitle,Location,Company&$orderby=Id desc&$top=20`,
       SPHttpClient.configurations.v1
     );
     if (!response.ok) return null;
     const data = await response.json();
-    if (data.value && data.value.length > 0) return data.value[0];
-    return null;
+    const rows: SPRegistration[] = data.value || data.d?.results || [];
+    if (rows.length === 0) return null;
+    const active = rows.filter(r => ACTIVE_STATI.indexOf(r.Status || '') >= 0)[0];
+    return active || rows[0];
   } catch {
     return null;
   }

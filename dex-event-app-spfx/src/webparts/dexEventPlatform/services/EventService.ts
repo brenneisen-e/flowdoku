@@ -588,8 +588,8 @@ export class EventService {
   // das Modul liest/setzt ihn ueber svc.
   public _outlookLocationBackfilled = new Set<string>();
 
-  public async getInvitedRecipients(eventId: string | number): Promise<string[]> {
-    return outlookQueue.getInvitedRecipients(this, eventId);
+  public async getInvitedRecipients(eventId: string | number, onHttpError?: (_status: number) => void): Promise<string[]> {
+    return outlookQueue.getInvitedRecipients(this, eventId, onHttpError);
   }
 
   public async queueOutlookEvent(attendee: string, eventId: string, eventTitle: string, actionType: 'Einladen' | 'Ausladen' | 'UpdateEvent'): Promise<boolean> {
@@ -1436,9 +1436,11 @@ export class EventService {
     customFieldMap?: Record<string, string>,
     registeredByName?: string, // Audit: Name des Users der die Re-Anmeldung auslöst
     registeredByEmail?: string, // Audit: E-Mail des Users der die Re-Anmeldung auslöst
-    proxyConsent?: string // v18.74: Zustimmungs-Nachweis bei stellvertretender Re-Anmeldung
+    proxyConsent?: string, // v18.74: Zustimmungs-Nachweis bei stellvertretender Re-Anmeldung
+    starterType?: string, // v30.67: Gruppe bei geteilten Kapazitäten (wie registerForEvent)
+    preferredStarterType?: string // v30.67: gewünschte Gruppe
   ): Promise<boolean> {
-    return registrationEdit.reactivateRegistration(this, subsiteUrl, itemId, firstName, surname, customData, status, customFieldMap, registeredByName, registeredByEmail, proxyConsent);
+    return registrationEdit.reactivateRegistration(this, subsiteUrl, itemId, firstName, surname, customData, status, customFieldMap, registeredByName, registeredByEmail, proxyConsent, starterType, preferredStarterType);
   }
 
   public async mergeRegistrationFields(
@@ -1483,9 +1485,10 @@ export class EventService {
 
   public async getMyRegistration(
     subsiteUrl: string,
-    email: string
+    email: string,
+    onHttpError?: (_status: number) => void // v30.67: „konnte nicht lesen" von „keine Zeile" trennen
   ): Promise<SPRegistration | null> {
-    return registrationEdit.getMyRegistration(this, subsiteUrl, email);
+    return registrationEdit.getMyRegistration(this, subsiteUrl, email, onHttpError);
   }
 
   public async getProxyRegistrationsByActor(
@@ -1528,9 +1531,10 @@ export class EventService {
   public async setWaitlistPosition(
     subsiteUrl: string,
     itemId: number,
-    targetPosition: number
+    targetPosition: number,
+    group?: string // v30.67: Rang innerhalb dieser Gruppe (PreferredStarterType) bei getrennten Wartelisten
   ): Promise<{ ok: boolean; from: number; to: number; changed: number; error?: string }> {
-    return seats.setWaitlistPosition(this, subsiteUrl, itemId, targetPosition);
+    return seats.setWaitlistPosition(this, subsiteUrl, itemId, targetPosition, group);
   }
 
   public async reorderParticipantIDs(

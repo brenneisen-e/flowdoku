@@ -309,6 +309,43 @@ async function _childWebs(svc: EventService, webUrl: string): Promise<Array<{ ur
   } catch { return []; }
 }
 
+/** v30.67: SubsiteUrls ALLER DEX_Events-Zeilen, strikt gelesen: jeder
+ *  HTTP-Fehler, Netzwerkfehler oder ein abgebrochenes Paging WIRFT, statt
+ *  eine halbe Liste zurückzugeben. `total` zählt alle Zeilen (auch ohne
+ *  SubsiteUrl), damit der Aufrufer „Liste leer" von „nichts referenziert"
+ *  unterscheiden kann. */
+async function _referencedSubsiteUrlsStrict(svc: EventService): Promise<{ total: number; subsiteUrls: string[] }> {
+  const out: string[] = [];
+  let total = 0;
+  let url: string | null = `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=Id,SubsiteUrl&$top=5000`;
+  let guard = 0;
+  while (url) {
+    guard++;
+    if (guard > 20) throw new Error('DEX_Events: mehr als 20 Seiten — Lesen abgebrochen, Prüfung nicht möglich.');
+    let resp: SPHttpClientResponse;
+    try {
+      resp = await svc._sp.get(url, SPHttpClient.configurations.v1);
+    } catch (e) {
+      throw new Error(`DEX_Events konnte nicht gelesen werden (${e instanceof Error ? e.message : String(e)}) — Prüfung abgebrochen, sonst gälte jede Subsite als verwaist.`);
+    }
+    if (!resp.ok) {
+      throw new Error(`DEX_Events konnte nicht gelesen werden (HTTP ${resp.status}) — Prüfung abgebrochen, sonst gälte jede Subsite als verwaist.`);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let data: any;
+    try { data = await resp.json(); } catch { throw new Error('DEX_Events: Antwort nicht lesbar — Prüfung abgebrochen.'); }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const items: any[] = data.value || data.d?.results || [];
+    for (const it of items) {
+      total++;
+      const u = String(it.SubsiteUrl || '').trim();
+      if (u) out.push(u);
+    }
+    url = data['odata.nextLink'] || data['@odata.nextLink'] || (data.d && data.d.__next) || null;
+  }
+  return { total, subsiteUrls: out };
+}
+
 // ==================== v26.81: Verwaiste Subsites finden ====================
 // Vergleicht alle real existierenden Subsites (Webs) mit den von DEX_Events
 // referenzierten SubsiteUrls. Ein Web, das von KEINEM Event (Haupt- oder
@@ -322,14 +359,26 @@ export async function findOrphanSubsites(
   const norm = (s: string): string => (s || '').trim().toLowerCase().replace(/\/+$/, '');
 
   // 1. Referenzierte Subsites aus DEX_Events (alle Events inkl. Sub-Events).
+  //
+  // v30.67: STRIKT lesen. `getAllEventsForKpi` bricht bei `!resp.ok` die
+  // Schleife ab und liefert die bis dahin gelesenen Zeilen — bei einem 429
+  // (GETs laufen seit v29.50 bewusst ohne Retry) oder 403 auf der ersten
+  // Seite also `[]`. `referenced` blieb leer, und damit galt JEDE der bis zu
+  // 500 Subsites als verwaist — jede Live-Teilnehmerliste mit „Endgültig
+  // löschen"-Knopf daneben. Die beiden anderen Aufrufer (`getKpiTotals`,
+  // `recomputeEventKpiOnly`) schützen sich mit `if (all.length === 0)`; hier
+  // fehlte der Wächter. Jetzt: Lesefehler → Abbruch mit Fehler (die UI zeigt
+  // ihn), und eine wirklich leere Event-Liste ist ein Sonderfall, der
+  // ebenfalls KEINE Löschliste erzeugt.
   onProgress?.('Events werden gelesen …', 0, 1);
-  const events = await svc.getAllEventsForKpi();
+  const eventRows = await _referencedSubsiteUrlsStrict(svc);
+  if (eventRows.total === 0) {
+    throw new Error('DEX_Events enthält keine Events — die Prüfung wird nicht ausgeführt, weil dann jede Subsite als verwaist gälte. Bitte zuerst prüfen, ob die Liste wirklich leer ist.');
+  }
   const referenced = new Set<string>();
-  for (const e of events) {
-    if (e.subsiteUrl) {
-      referenced.add(norm(e.subsiteUrl));
-      try { referenced.add(norm(new URL(e.subsiteUrl).pathname)); } catch { /* */ }
-    }
+  for (const u of eventRows.subsiteUrls) {
+    referenced.add(norm(u));
+    try { referenced.add(norm(new URL(u).pathname)); } catch { /* */ }
   }
   result.eventSubsites = referenced.size;
 

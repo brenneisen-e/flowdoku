@@ -482,15 +482,26 @@ export async function removeParticipantEvent(svc: EventService, email: string, e
     const registered = existing.EventRegistered ? existing.EventRegistered.split(',').map(s => s.trim()).filter(s => s && s !== en) : [];
     const waitlist = existing.EventOnWaitlist ? existing.EventOnWaitlist.split(',').map(s => s.trim()).filter(s => s && s !== en) : [];
 
-    await svc._merge(
+    const resp = await svc._merge(
       `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items(${existing.Id})`,
       {
         'EventRegistered': registered.join(','),
         'EventOnWaitlist': waitlist.join(','),
       }
     );
+    // v30.67: `_merge` wirft bei HTTP-Fehlern NICHT, sondern liefert die
+    // Antwort zurück (406 ist dort schon auf ok normalisiert). Bisher kam hier
+    // unbedingt `true` — ein 429 oder 403 zählte als aufgeräumt, und der
+    // v29.3-Riegel in deleteParticipantData („bei Fehlern GAR NICHT löschen")
+    // konnte nie greifen: Der Zähler blieb 0, die Subsite wurde recycelt,
+    // und die Register-Verweise standen dauerhaft ohne nachrechenbare Zeile.
+    if (!resp.ok) {
+      console.warn(`[DEX] removeParticipantEvent: MERGE für ${email} abgelehnt (HTTP ${resp.status}) — Event ${en} bleibt im Register.`);
+      return false;
+    }
     return true;
-  } catch {
+  } catch (err) {
+    console.warn(`[DEX] removeParticipantEvent: Fehler für ${email} (Event ${eventNumber}):`, err);
     return false;
   }
 }

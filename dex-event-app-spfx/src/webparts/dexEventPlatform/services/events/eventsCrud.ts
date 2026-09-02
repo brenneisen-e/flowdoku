@@ -310,19 +310,33 @@ export async function createEvent(svc: EventService, event: {
   try {
     reportProgress('start');
     // 0. Nächste EventNumber ermitteln
-    let nextEventNumber = 1;
-    try {
-      const enResp = await svc._sp.get(
-        `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=EventNumber&$orderby=EventNumber desc&$top=1`,
-        SPHttpClient.configurations.v1
-      );
-      if (enResp.ok) {
-        const enData = await enResp.json();
-        if (enData.value && enData.value.length > 0 && enData.value[0].EventNumber) {
-          nextEventNumber = enData.value[0].EventNumber + 1;
-        }
+    // v30.67: Ein Lesefehler ist KEIN leeres Ergebnis. Bisher diente
+    // `nextEventNumber = 1` gleichzeitig als Startwert für „Liste ist leer"
+    // und als stiller Fallback für „Abfrage gescheitert" (429/500/Netz) — ab
+    // da trugen zwei Events dieselbe Nummer, und DEX_Participants, „Meine
+    // Events", der QR-Code und deleteEvent schlüsseln alle über diese Nummer.
+    // Deshalb: bei Fehler abbrechen, BEVOR irgendetwas angelegt wird (der
+    // Wizard zeigt Errors aus createEvent an). Unmittelbar vor dem Insert wird
+    // die Nummer noch einmal nachgelesen und nach dem Insert auf Eindeutigkeit
+    // geprüft — zwischen erstem Lesen und Schreiben liegt die Subsite-Anlage
+    // (oft > 30 s), zwei parallel anlegende Organizer zogen dieselbe Nummer.
+    const readNextEventNumber = async (): Promise<number> => {
+      let enResp;
+      try {
+        enResp = await svc._sp.get(
+          `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=EventNumber&$orderby=EventNumber desc&$top=1`,
+          SPHttpClient.configurations.v1
+        );
+      } catch (err) {
+        throw new Error(`Event-Nummer konnte nicht ermittelt werden (${err instanceof Error ? err.message : 'Netzwerkfehler'}) — bitte erneut versuchen.`);
       }
-    } catch { /* Fallback: 1 */ }
+      if (!enResp.ok) throw new Error(`Event-Nummer konnte nicht ermittelt werden (HTTP ${enResp.status}) — bitte erneut versuchen.`);
+      const enData = await enResp.json();
+      const items = enData.value || enData.d?.results || [];
+      const top = items.length > 0 ? Number(items[0].EventNumber) : 0;
+      return (Number.isFinite(top) && top > 0) ? top + 1 : 1;
+    };
+    let nextEventNumber = await readNextEventNumber();
 
     // v11.69: Reuse-Pfad — wenn `existingSubsiteUrl` UND
     // `existingRegistrationListName` mitgegeben wurden, überspringen wir
@@ -511,6 +525,17 @@ export async function createEvent(svc: EventService, event: {
     };
 
     reportProgress('item-insert');
+    // v30.67: Nummer direkt vor dem Insert nachlesen (s. Kommentar oben).
+    // Best-effort: Scheitert das Nachlesen, bleibt die zu Beginn geprüfte
+    // Nummer — die Subsite steht schon, ein Abbruch hier hinterließe sie
+    // verwaist. Im Reuse-Pfad (Recreate ohne Subsite-Anlage) liegen zwischen
+    // beiden Lesevorgängen nur Millisekunden, dort entfällt der Request.
+    if (!reuseSubsite) {
+      try {
+        const fresh = await readNextEventNumber();
+        if (fresh > nextEventNumber) { nextEventNumber = fresh; payload.EventNumber = fresh; }
+      } catch { /* zu Beginn geprüfte Nummer behalten */ }
+    }
     // v28.10: gleicher 2-MB-Schutz wie in updateEvent — zu große Payloads
     // (eingebettete Logos/Bilder) sauber abfangen statt kryptischem 400.
     if (JSON.stringify(payload).length > 1_900_000) {
@@ -523,8 +548,31 @@ export async function createEvent(svc: EventService, event: {
 
     if (!response.ok) return null;
     const result = await response.json();
+    const newItemId: number = result.d?.Id || result.Id;
+    // v30.67: Eindeutigkeit nach dem Insert prüfen — analog zum Post-Insert-
+    // Dedup der TeilnehmerID in registerForEvent. Haben zwei Organizer im
+    // selben Fenster dieselbe Nummer gezogen, behält die ältere Zeile
+    // (kleinere Id) die Nummer, unsere bekommt die nächste freie. Best-effort:
+    // Ein Fehler hier darf das angelegte Event nicht mehr kippen, er wird
+    // nur gemeldet.
+    try {
+      const dupResp = await svc._sp.get(
+        `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=Id&$filter=EventNumber eq ${nextEventNumber}&$top=10`,
+        SPHttpClient.configurations.v1
+      );
+      if (dupResp.ok) {
+        const dupData = await dupResp.json();
+        const dupItems: Array<{ Id: number }> = dupData.value || dupData.d?.results || [];
+        if (dupItems.length > 1 && newItemId !== Math.min(...dupItems.map(d => d.Id))) {
+          const fresh = await readNextEventNumber();
+          const fix = await svc._merge(`${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${newItemId})`, { 'EventNumber': fresh });
+          if (fix.ok) console.warn(`[DEX] createEvent: EventNumber ${nextEventNumber} war doppelt vergeben — Item ${newItemId} auf ${fresh} korrigiert.`);
+          else console.warn(`[DEX] createEvent: EventNumber ${nextEventNumber} doppelt vergeben, Korrektur fehlgeschlagen (HTTP ${fix.status}) — bitte im Admin Center prüfen.`);
+        }
+      }
+    } catch (err) { console.warn('[DEX] createEvent: Eindeutigkeits-Prüfung der EventNumber fehlgeschlagen:', err); }
     reportProgress('done');
-    return result.d?.Id || result.Id;
+    return newItemId;
   } catch (err) {
     if (err instanceof Error) throw err;
     return null;
@@ -804,6 +852,41 @@ export async function deleteEvent(svc: EventService, eventId: number): Promise<b
     const event = await svc.getEvent(eventId);
     if (!event) return false;
 
+    // v30.67: Register ZUERST — dieselbe Reihenfolge wie deleteParticipantData
+    // seit v29.3 (CLAUDE.md „Löschungen zuerst im Register"). Bisher wurde die
+    // Subsite recycelt und DANACH DEX_Participants aufgeräumt, und zwar so,
+    // dass ein Scheitern nicht auffiel: nicht strikt gelesen (eine abgebrochene
+    // Seite kam still als vollständige Liste), alle MERGEs gleichzeitig
+    // (Promise.all — die Einladung zur Drosselung) und jeder Fehler per
+    // `.catch(() => null)` verworfen. Was im Register stehen blieb, ließ sich
+    // nicht mehr nachrechnen, weil die Teilnehmerliste schon weg war — genau
+    // die „Verweis ohne Zeile"-Rückstände der Register-Prüfung. Jetzt: strikt
+    // lesen, sequentiell schreiben, Fehler zählen, und bei Fehlern mit `false`
+    // abbrechen, BEVOR irgendetwas recycelt oder in die Outlook-Queue gestellt
+    // wird. Das Event steht dann noch; der Löschversuch lässt sich wiederholen.
+    if (event.EventNumber) {
+      let registryFailed = 0;
+      try {
+        const allParticipants = await svc.fetchAllParticipantsOrThrow();
+        const en = String(event.EventNumber);
+        const affected = allParticipants.filter(p =>
+          (p.EventRegistered?.split(',').map(s => s.trim()).includes(en))
+          || (p.EventOnWaitlist?.split(',').map(s => s.trim()).includes(en)));
+        for (const p of affected) {
+          // eslint-disable-next-line no-await-in-loop
+          const ok = await svc.removeParticipantEvent(p.Email, event.EventNumber).catch(() => false);
+          if (!ok) registryFailed += 1;
+        }
+      } catch (err) {
+        console.warn('[DEX] deleteEvent: Register nicht vollständig lesbar — Löschung abgebrochen:', err);
+        return false;
+      }
+      if (registryFailed > 0) {
+        console.warn(`[DEX] deleteEvent: ${registryFailed} Register-Einträge nicht aktualisiert — Löschung abgebrochen (Event ${event.EventNumber}).`);
+        return false;
+      }
+    }
+
     // 0. Outlook-Kalendereintrag per Queue löschen (VOR allem anderen, damit
     //    CalendarLink noch vorhanden ist). Der DEX_Outlook_Einladungen-Flow
     //    greift den DeleteEvent-Eintrag auf und löscht den Kalender-Termin
@@ -855,26 +938,8 @@ export async function deleteEvent(svc: EventService, eventId: number): Promise<b
       }
     }
 
-    // 3. DEX_Participants aufräumen: EventNumber aus allen Teilnehmern entfernen
-    if (event.EventNumber) {
-      try {
-        const allParticipants = await svc.getAllParticipants();
-        // Parallelize participant cleanup for better performance
-        const updatePromises = allParticipants
-          .filter(p => {
-            const en = String(event.EventNumber);
-            const hasRegistered = p.EventRegistered?.split(',').map(s => s.trim()).includes(en);
-            const hasWaitlist = p.EventOnWaitlist?.split(',').map(s => s.trim()).includes(en);
-            return hasRegistered || hasWaitlist;
-          })
-          .map(p => svc.removeParticipantEvent(p.Email, event.EventNumber));
-        // Promise.all mit individueller Fehlerbehandlung (Promise.allSettled nicht verfügbar in ES2017)
-        const safePromises = updatePromises.map(p => p.catch(() => null));
-        await Promise.all(safePromises);
-      } catch {
-        console.warn('[DEX] DEX_Participants konnte nicht aufgeräumt werden');
-      }
-    }
+    // (v30.67: Der DEX_Participants-Block stand hier — er läuft jetzt ganz
+    // oben, VOR dem ersten Recycle, siehe Kommentar dort.)
 
     // 4. Event-Dokumente löschen (SiteAssets/DEX_EventDocs/Event_{number}_*)
     if (event.EventNumber) {

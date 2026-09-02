@@ -274,13 +274,34 @@ export async function deleteParticipantData(svc: EventService, eventId: number):
         return false;
       }
     }
+    // v30.67: `_post` wirft bei HTTP 4xx/5xx NICHT — der `catch` griff nur bei
+    // Netzwerk-Ausnahmen, und die Funktion lief bei 403 (keine Rechte auf der
+    // Subsite) oder 429 (Drosselung im Lauf über viele Events) trotzdem auf
+    // `return true`. Folge: „1 gelöscht", die Statistik-Zeile blieb stehen,
+    // `getParticipantDeletionDue` filterte das Event künftig als erledigt aus —
+    // und die Subsite mit allen personenbezogenen Daten stand dauerhaft weiter.
+    // Deshalb jetzt `response.ok` prüfen und den Fehlschlag als `false`
+    // durchreichen: Der Aufrufer rollt dann die Statistik-Zeile zurück und
+    // versucht es beim nächsten Lauf erneut. Ein 404 zählt als „schon weg" —
+    // sonst bliebe ein manuell recycelter Termin für immer in der Fälligkeit.
     if (event.SubsiteUrl) {
-      try { await svc._post(`${event.SubsiteUrl}/_api/web/recycle`, {}); }
-      catch { console.warn('[DEX] Teilnehmer-Subsite konnte nicht recycelt werden:', event.SubsiteUrl); }
+      let rec: { ok: boolean; status: number } | null = null;
+      try { rec = await svc._post(`${event.SubsiteUrl}/_api/web/recycle`, {}); }
+      catch (err) { console.warn('[DEX] deleteParticipantData: Teilnehmer-Subsite konnte nicht recycelt werden:', event.SubsiteUrl, err); }
+      if (!rec || (!rec.ok && rec.status !== 404)) {
+        console.warn(`[DEX] deleteParticipantData: Recycle der Subsite abgelehnt (HTTP ${rec ? rec.status : 'Netzwerk'}) — Löschung nicht bestätigt (Event ${event.EventNumber}).`);
+        return false;
+      }
+      if (rec.status === 404) console.warn('[DEX] deleteParticipantData: Subsite nicht (mehr) vorhanden — als gelöscht gewertet:', event.SubsiteUrl);
     }
     if (event.RegistrationListName && event.RegistrationListName !== 'Teilnehmer') {
-      try { await svc._post(`${svc.siteUrl}/_api/web/lists/getbytitle('${event.RegistrationListName.replace(/'/g, "''")}')/recycle`, {}); }
-      catch { /* */ }
+      let rec: { ok: boolean; status: number } | null = null;
+      try { rec = await svc._post(`${svc.siteUrl}/_api/web/lists/getbytitle('${event.RegistrationListName.replace(/'/g, "''")}')/recycle`, {}); }
+      catch (err) { console.warn('[DEX] deleteParticipantData: Alt-Liste konnte nicht recycelt werden:', event.RegistrationListName, err); }
+      if (!rec || (!rec.ok && rec.status !== 404)) {
+        console.warn(`[DEX] deleteParticipantData: Recycle der Alt-Liste abgelehnt (HTTP ${rec ? rec.status : 'Netzwerk'}) — Löschung nicht bestätigt (Event ${event.EventNumber}).`);
+        return false;
+      }
     }
     try {
       await svc.writeChangeLog({

@@ -144,8 +144,11 @@ export async function ensureEmailTemplatesList(svc: EventService): Promise<void>
       BodyHtml: '<p>Hallo {{Name}},</p><p>dein Event <strong>{{EventTitle}}</strong> wurde erfolgreich erstellt.</p><p>Du kannst die Teilnehmer in der <a href="{{AppUrl}}">DEX App</a> verwalten.</p><p>Viele Grüße,<br>Team DEX App</p>' },
     { TemplateType: 'OutlookDeclineReminder', Language: 'DE', Subject: 'Action Required: Möchtest du dich auch offiziell abmelden? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Du hast den Outlook-Termin abgelehnt',
       BodyHtml: OUTLOOK_DECLINE_BODY_DE },
-    { TemplateType: 'OutlookDeclineReminder_OnBehalfOf', Language: 'EN', Subject: 'Action Required: Cancel registration for {{EventTitle}}?', HeadingColor: '#ed8b00', Heading: 'Outlook invite declined on behalf',
-      BodyHtml: OUTLOOK_DECLINE_BODY_ONBEHALF_EN },
+    // v30.67: Der EN-Eintrag OutlookDeclineReminder_OnBehalfOf stand hier ein
+    // zweites Mal (Copy-Paste aus dem EN-Block oben) — auf einem frischen
+    // Tenant entstanden zwei identische Zeilen, und `$top=1` entschied, welche
+    // der Vorlagen-Editor bearbeitet. Entfernt; die Seeding-Schleife unten
+    // dedupliziert zusätzlich über TemplateType+Language.
     { TemplateType: 'OutlookDeclineReminder_OnBehalfOf', Language: 'DE', Subject: 'Action Required: Anmeldung für {{EventTitle}} stornieren?', HeadingColor: '#ed8b00', Heading: 'Outlook-Termin in deinem Namen abgelehnt',
       BodyHtml: OUTLOOK_DECLINE_BODY_ONBEHALF_DE },
     // Meeting-Forward-Notification: FYI an Organizer wenn weitergeleitete Person nicht registriert ist
@@ -210,7 +213,14 @@ export async function ensureEmailTemplatesList(svc: EventService): Promise<void>
     }
   } catch { /* Fallback */ }
 
+  // v30.67: Je TemplateType+Language nur EINE Zeile anlegen — ein künftiger
+  // Doppeleintrag im Array darf keine Doppelzeile mehr erzeugen (die beiden
+  // Nachrüst-Arrays prüfen auf Existenz, dieses Erst-Seeding tat es nicht).
+  const seeded = new Set<string>();
   for (const t of defaults) {
+    const key = `${t.TemplateType}_${t.Language}`;
+    if (seeded.has(key)) { console.warn(`[DEX] ensureEmailTemplatesList: Doppelter Default-Eintrag ${key} übersprungen.`); continue; }
+    seeded.add(key);
     await svc._post(`${svc.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
       '__metadata': { 'type': listItemType },
       'Title': `${t.TemplateType}_${t.Language}`,
@@ -705,9 +715,21 @@ export async function recomputeEventKpiOnly(svc: EventService): Promise<number |
   const events = all.filter(e =>
     e.status !== 'Cancelled' && e.status !== 'Under Construction' && !e.isFictive && !e.parentEventId
   ).length;
-  const cache = await svc.getKpiCache();
-  const ok = await svc.updateKpiCache({ events, participants: cache?.participants ?? 0 });
-  return ok ? events : null;
+  // v30.67: NUR TotalEventsCount schreiben. Vorher lief der Teilnehmer-Wert
+  // über getKpiCache() mit — und `cache?.participants ?? 0` machte aus einem
+  // einmalig nicht lesbaren Cache (429/403) eine 0, die in die gemeinsame
+  // _Config-Zeile geschrieben wurde. Der Live-Zähler wird nur noch per ±1
+  // fortgeschrieben, ein Voll-Recompute gibt es nicht: Die Startseite zeigte
+  // ab da allen „0 Teilnehmer", dauerhaft. Ein MERGE, der die Spalte gar
+  // nicht anfasst, kann sie auch nicht überschreiben — und schließt nebenbei
+  // das Fenster zwischen Lesen und Schreiben, in dem ein paralleler Bump
+  // verloren ging.
+  const itemUrl = await getConfigItemUrl(svc);
+  if (!itemUrl) return null;
+  try {
+    const resp = await svc._mergeIfMatch(itemUrl, { 'TotalEventsCount': Math.max(0, Math.floor(events)) }, '*');
+    return resp.ok ? events : null;
+  } catch { return null; }
 }
 
 /**
