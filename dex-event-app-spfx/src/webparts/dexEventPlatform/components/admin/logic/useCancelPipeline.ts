@@ -20,12 +20,12 @@ export interface UseCancelPipelineCtx {
   currentUser: import("../../../types/index").User;
   duplicateEmails: Set<string>;
   eventServiceRef: EventService;
-  getAllRegistrations: (eventId: string, onHttpError?: (_status: number) => void) => Promise<SPRegistration[]>;
+  /** v30.67 (Review): gemeinsamer Nachlade-Pfad der Seite — `null` = nicht lesbar. */
+  reloadRegistrations: () => Promise<SPRegistration[] | null>;
   isDe: boolean;
   registrations: SPRegistration[];
   selectedEvent: DeloitteEvent;
   setAdminToast: React.Dispatch<React.SetStateAction<AdminToastState>>;
-  setRegistrations: React.Dispatch<React.SetStateAction<SPRegistration[]>>;
   showAlert: (message: React.ReactNode, opts?: import("../../../context/DialogContext").AlertOptions) => void;
 }
 
@@ -43,8 +43,8 @@ export interface UseCancelPipelineResult {
 
 export function useCancelPipeline(ctx: UseCancelPipelineCtx): UseCancelPipelineResult {
   const {
-    allEvents, confirmDialog, currentUser, duplicateEmails, eventServiceRef, getAllRegistrations,
-    isDe, registrations, selectedEvent, setAdminToast, setRegistrations, showAlert,
+    allEvents, confirmDialog, currentUser, duplicateEmails, eventServiceRef,
+    isDe, registrations, reloadRegistrations, selectedEvent, setAdminToast, showAlert,
   } = ctx;
   /**
    * v29.44: Abmelde-Mail bauen — für ALLE Organizer-Wege gleich.
@@ -174,8 +174,9 @@ export function useCancelPipeline(ctx: UseCancelPipelineCtx): UseCancelPipelineR
         showAlert('Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.');
       }
     }
-    const regs = await getAllRegistrations(selectedEvent.id);
-    setRegistrations(regs);
+    // v30.67 (Review): gemeinsamer Nachlade-Pfad — bei 429 nach dem Abmelden
+    // ersetzte der Reload die Liste still durch `[]`.
+    await reloadRegistrations();
   };
 
   // v23.2: Stilles Löschen einer doppelten Anmelde-Zeile. Anders als die
@@ -222,8 +223,7 @@ export function useCancelPipeline(ctx: UseCancelPipelineCtx): UseCancelPipelineR
     } catch (err) {
       console.warn('[DEX] performSilentDuplicateDelete failed:', err);
     }
-    const regs = await getAllRegistrations(selectedEvent.id);
-    setRegistrations(regs);
+    await reloadRegistrations();
     setAdminToast(null);
     return deleted;
   };
@@ -294,10 +294,7 @@ export function useCancelPipeline(ctx: UseCancelPipelineCtx): UseCancelPipelineR
         && ((selectedEvent.durchstarterCapacity || 0) > 0 || (selectedEvent.funstarterCapacity || 0) > 0);
       await eventServiceRef.syncSeatsToActiveCount(selectedEvent.subsiteUrl, { isSplit });
     } catch { /* best-effort */ }
-    try {
-      const regs = await getAllRegistrations(selectedEvent.id);
-      setRegistrations(regs);
-    } catch { /* */ }
+    try { await reloadRegistrations(); } catch { /* */ }
     setShadowDupBusy(false);
     showAlert(
       failedDel > 0

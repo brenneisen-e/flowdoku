@@ -10,20 +10,20 @@ import { SPRegistration } from '../../../services/EventService';
 export interface HotelPlanningSectionProps {
   childEventsOf: (parentEventId: string) => DeloitteEvent[];
   confirmDialog: (message: React.ReactNode, opts?: import("../../../context/DialogContext").ConfirmOptions) => Promise<boolean>;
-  getAllRegistrations: (eventId: string, onHttpError?: (_status: number) => void) => Promise<SPRegistration[]>;
+  /** v30.67 (Review): gemeinsamer Nachlade-Pfad der Seite — `null` = nicht lesbar. */
+  reloadRegistrations: () => Promise<SPRegistration[] | null>;
   hotelPanelOpen: boolean;
   isDe: boolean;
   refreshEvents: () => Promise<void>;
   registrations: SPRegistration[];
   selectedEvent: DeloitteEvent;
   setHotelPanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  setRegistrations: React.Dispatch<React.SetStateAction<SPRegistration[]>>;
   showAlert: (message: React.ReactNode, opts?: import("../../../context/DialogContext").AlertOptions) => void;
   subEventRegsByEventId: Record<string, SPRegistration[]>;
 }
 
 export const HotelPlanningSection: React.FC<HotelPlanningSectionProps> = (p) => {
-  const { childEventsOf, confirmDialog, getAllRegistrations, hotelPanelOpen, isDe, refreshEvents, registrations, selectedEvent, setHotelPanelOpen, setRegistrations, showAlert, subEventRegsByEventId } = p;
+  const { childEventsOf, confirmDialog, hotelPanelOpen, isDe, refreshEvents, registrations, reloadRegistrations, selectedEvent, setHotelPanelOpen, showAlert, subEventRegsByEventId } = p;
         const HOTEL_LABEL = /hotel|unterkunft|übernacht|uebernacht|accommodation|lodging/i;
         const asksForHotel = (ev: { eventSpecificFields?: Array<{ type?: string; label?: string; labelEn?: string }> }): boolean =>
           (ev.eventSpecificFields || []).some(f =>
@@ -63,8 +63,8 @@ export const HotelPlanningSection: React.FC<HotelPlanningSectionProps> = (p) => 
                 childEvents={childEventsOf(selectedEvent.id)}
                 subEventRegsByEventId={subEventRegsByEventId}
                 onReloadRegistrations={async () => {
-                  const regs = await getAllRegistrations(selectedEvent.id);
-                  setRegistrations(regs);
+                  // v30.67 (Review): gemeinsamer Nachlade-Pfad statt `[]` bei 429.
+                  await reloadRegistrations();
                 }}
                 onReloadEvents={async () => { await refreshEvents(); }}
                 showAlert={showAlert}

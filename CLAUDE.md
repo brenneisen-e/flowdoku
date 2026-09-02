@@ -281,6 +281,30 @@ antwortet ohne vorhandene Zuweisung mit 404 ODER 500 — der DELETE-Status ist
 nicht belastbar). Selbstschutz: fuer die angemeldete Person laeuft kein
 Web-Revoke. Wer eine neue Rechtevergabe baut, baut den Entzug im selben Commit.
 
+**Erst anlegen, dann löschen — bei jedem Austausch einer Zeile.** Der
+Recreate-Pfad der Sub-Events löschte bis v30.67 die alte DEX_Events-Zeile und
+legte DANN die neue an. Scheiterte das Anlegen (429 auf dem ersten GET,
+2-MB-Grenze), war der Termin aus allen Ansichten weg, die Subsite verwaist,
+und der Wizard meldete „gespeichert" — der catch schrieb nur in die Konsole.
+Seit dem Review-Nachzug zu v30.67 (`recreateWithReuse`): erst anlegen, dann
+löschen, bei jedem Fehlschlag bleibt der alte Stand; `deleteEvent` prüft vor
+dem Recycle, ob eine zweite Zeile dieselbe `SubsiteUrl` trägt. Merksatz: Der
+unumkehrbare Schritt kommt zuletzt. Und ein Reload, der „nur Kosten" ist, kann
+das einzige Nachladen sein — die 19 Reloads der Aufräum-Schleife waren es;
+ihr Wegfall ließ gelöschte Zeilen im Client-State stehen.
+
+**Ein Fix-Release braucht sein eigenes Review.** Das Review des v30.67-Diffs
+(neun Prüfer plus ein Prüfer über den ersten Nachzug) fand 32 Stellen, an
+denen ein Fix zu kurz griff (Vertrag geändert, ein Aufrufer vergessen:
+`r.failed`, `invitedLc === null`, `getMyRegistration(onHttpError)`), nur einen
+Teil der Fälle traf (Klammer ja, Sub-Event nein) oder ein neues Loch aufriss
+(Reihenfolge, entfallener Reload). Wer einen Rückgabetyp ändert, grept ALLE
+Aufrufer im selben Commit — die Hälfte der Funde war genau das. Und im
+Organizer Center gibt es seither genau EINEN Nachlade-Pfad für die
+Teilnehmerliste: `reloadRegistrations()` in `AdminPage` (Status geprüft, bei
+Fehler bleibt die alte Liste, `regStaleHint`). Wer nach einem Schreibvorgang
+nachlädt, ruft ihn — nie `setRegistrations(await getAllRegistrations(id))`.
+
 **Berechtigungen gelten je Subsite — und jedes Sub-Event hat eine eigene.**
 `ensureOrganizerPermissions` lief bis v30.36 nur über `editEvent.subsiteUrl`.
 Wer bei `createEvent` noch nicht Organizer war, hatte danach Full Control auf

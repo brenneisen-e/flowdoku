@@ -29,7 +29,8 @@ export interface AdminAddMemberModalProps {
   adminAddTeamlessPicks: Set<number>;
   assignTeamlessToTeam: (eventId: string, teamId: string, teamName: string, existingRegId: number, isLead?: boolean, opts?: { sendMail?: boolean; recipientEmail?: string; recipientFirstName?: string; recipientLastName?: string; ccEmail?: string; }) => Promise<boolean>;
   currentUser: import("../../../types/index").User;
-  getAllRegistrations: (eventId: string, onHttpError?: (_status: number) => void) => Promise<SPRegistration[]>;
+  /** v30.67 (Review): gemeinsamer Nachlade-Pfad der Seite — `null` = nicht lesbar. */
+  reloadRegistrations: () => Promise<SPRegistration[] | null>;
   isDe: boolean;
   notifyExistingTeamMembers: (eventId: string, teamId: string, teamName: string, newMemberNames: string[], excludeEmails: string[], scope?: "all" | "lead") => Promise<void>;
   registrations: SPRegistration[];
@@ -51,12 +52,11 @@ export interface AdminAddMemberModalProps {
   setAdminAddNotifyScope: React.Dispatch<React.SetStateAction<"all" | "lead">>;
   setAdminAddSendMail: React.Dispatch<React.SetStateAction<boolean>>;
   setAdminAddTeamlessPicks: React.Dispatch<React.SetStateAction<Set<number>>>;
-  setRegistrations: React.Dispatch<React.SetStateAction<SPRegistration[]>>;
   setTeamsToast: React.Dispatch<React.SetStateAction<string>>;
 }
 
 export const AdminAddMemberModal: React.FC<AdminAddMemberModalProps> = (p) => {
-  const { addTeamMember, adminAddCcOrganizer, adminAddLeadRegId, adminAddMemberBusy, adminAddMemberConsent, adminAddMemberDialog, adminAddMemberError, adminAddMemberIncludeIntl, adminAddMemberPick, adminAddMemberQuery, adminAddMemberQueryTimer, adminAddMemberResults, adminAddMemberSearching, adminAddNewPersonMail, adminAddNotifyOthers, adminAddNotifyScope, adminAddSendMail, adminAddTeamlessPicks, assignTeamlessToTeam, currentUser, getAllRegistrations, isDe, notifyExistingTeamMembers, registrations, searchUsers, selectedEvent, setAdminAddCcOrganizer, setAdminAddLeadRegId, setAdminAddMemberBusy, setAdminAddMemberConsent, setAdminAddMemberDialog, setAdminAddMemberError, setAdminAddMemberIncludeIntl, setAdminAddMemberPick, setAdminAddMemberQuery, setAdminAddMemberResults, setAdminAddMemberSearching, setAdminAddNewPersonMail, setAdminAddNotifyOthers, setAdminAddNotifyScope, setAdminAddSendMail, setAdminAddTeamlessPicks, setRegistrations, setTeamsToast } = p;
+  const { addTeamMember, adminAddCcOrganizer, adminAddLeadRegId, adminAddMemberBusy, adminAddMemberConsent, adminAddMemberDialog, adminAddMemberError, adminAddMemberIncludeIntl, adminAddMemberPick, adminAddMemberQuery, adminAddMemberQueryTimer, adminAddMemberResults, adminAddMemberSearching, adminAddNewPersonMail, adminAddNotifyOthers, adminAddNotifyScope, adminAddSendMail, adminAddTeamlessPicks, assignTeamlessToTeam, currentUser, isDe, notifyExistingTeamMembers, registrations, reloadRegistrations, searchUsers, selectedEvent, setAdminAddCcOrganizer, setAdminAddLeadRegId, setAdminAddMemberBusy, setAdminAddMemberConsent, setAdminAddMemberDialog, setAdminAddMemberError, setAdminAddMemberIncludeIntl, setAdminAddMemberPick, setAdminAddMemberQuery, setAdminAddMemberResults, setAdminAddMemberSearching, setAdminAddNewPersonMail, setAdminAddNotifyOthers, setAdminAddNotifyScope, setAdminAddSendMail, setAdminAddTeamlessPicks, setTeamsToast } = p;
         // v17.2: Quick-Pick aus bereits registrierten Personen ohne Team —
         // damit der Organizer nicht via Graph-Suche jeden neu picken muss,
         // wenn die Person ohnehin schon angemeldet ist.
@@ -172,8 +172,8 @@ export const AdminAddMemberModal: React.FC<AdminAddMemberModalProps> = (p) => {
             // <Name>"-Mail queuen. Aktuell läuft die Mail nur über den
             // addTeamMember-Pfad (Graph-Pick) automatisch.
             window.setTimeout(() => setTeamsToast(''), 4500);
-            const regs = await getAllRegistrations(selectedEvent.id);
-            setRegistrations(regs);
+            // v30.67 (Review): gemeinsamer Nachlade-Pfad statt `[]` bei 429.
+            await reloadRegistrations();
             closeDlg();
           } catch {
             setAdminAddMemberError('Hinzufügen fehlgeschlagen.');

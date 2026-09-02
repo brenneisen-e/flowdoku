@@ -13,12 +13,12 @@ export interface WaitlistTablesProps {
   confirmDialog: (message: React.ReactNode, opts?: import("../../../context/DialogContext").ConfirmOptions) => Promise<boolean>;
   currentUser: import("../../../types/index").User;
   eventServiceRef: EventService;
-  getAllRegistrations: (eventId: string, onHttpError?: (_status: number) => void) => Promise<SPRegistration[]>;
+  /** v30.67 (Review): gemeinsamer Nachlade-Pfad der Seite — `null` = nicht lesbar. */
+  reloadRegistrations: () => Promise<SPRegistration[] | null>;
   isDe: boolean;
   isSplitCapacity: boolean;
   query: string;
   selectedEvent: DeloitteEvent;
-  setRegistrations: React.Dispatch<React.SetStateAction<SPRegistration[]>>;
   setWaitlistSortAsc: React.Dispatch<React.SetStateAction<boolean>>;
   setWaitlistSortColumn: React.Dispatch<React.SetStateAction<"date" | "location" | "pos" | "vorname" | "nachname" | "email" | "jobtitle">>;
   setWlPosModal: React.Dispatch<React.SetStateAction<{ reg: SPRegistration; currentPos: number; total: number; }>>;
@@ -37,7 +37,7 @@ export interface WaitlistTablesProps {
 }
 
 export const WaitlistTables: React.FC<WaitlistTablesProps> = (p) => {
-  const { buildCancellationMail, confirmDialog, currentUser, eventServiceRef, getAllRegistrations, isDe, isSplitCapacity, query, selectedEvent, setRegistrations, setWaitlistSortAsc, setWaitlistSortColumn, setWlPosModal, setWlPosValue, showAlert, waitlistDurch, waitlistFun, waitlistRegs, waitlistSortAsc, waitlistSortColumn, waitlistTruePos, waitlistTrueTotal, waitlistUnassigned, wlPosBusy } = p;
+  const { buildCancellationMail, confirmDialog, currentUser, eventServiceRef, isDe, isSplitCapacity, query, reloadRegistrations, selectedEvent, setWaitlistSortAsc, setWaitlistSortColumn, setWlPosModal, setWlPosValue, showAlert, waitlistDurch, waitlistFun, waitlistRegs, waitlistSortAsc, waitlistSortColumn, waitlistTruePos, waitlistTrueTotal, waitlistUnassigned, wlPosBusy } = p;
           // Seit v6.5: bei B2Run-Split-Kapazitäten getrennte Wartelisten-Tabellen pro
           // PreferredStarterType. Ohne Split: eine einzige Warteliste wie bisher.
           const renderWaitlistTable = (title: string, regs: SPRegistration[], accentColor: string): React.ReactElement | null => {
@@ -178,8 +178,8 @@ export const WaitlistTables: React.FC<WaitlistTablesProps> = (p) => {
                                     showAlert(isDe ? 'Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.' : 'Cancellation successful, but the ID reorder entry could not be written to the queue. Please click "Reassign IDs" once.');
                                   }
                                 }
-                                const allRegs = await getAllRegistrations(selectedEvent.id);
-                                setRegistrations(allRegs);
+                                // v30.67 (Review): gemeinsamer Nachlade-Pfad statt `[]` bei 429.
+                                await reloadRegistrations();
                               }}
                             >
                               Entfernen

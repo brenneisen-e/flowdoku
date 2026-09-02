@@ -17,7 +17,8 @@ export interface CreateQrMailActionsCtx {
   confirmDialog: (message: React.ReactNode, opts?: import("../../../context/DialogContext").ConfirmOptions) => Promise<boolean>;
   currentUser: import("../../../types/index").User;
   eventServiceRef: EventService;
-  getAllRegistrations: (eventId: string, onHttpError?: (_status: number) => void) => Promise<SPRegistration[]>;
+  /** v30.67 (Review): gemeinsamer Nachlade-Pfad der Seite — `null` = nicht lesbar. */
+  reloadRegistrations: () => Promise<SPRegistration[] | null>;
   isDe: boolean;
   qrBlockLang: "" | "DE" | "EN";
   qrBlockNote: string;
@@ -55,7 +56,6 @@ export interface CreateQrMailActionsCtx {
   setQrSendModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setQrSendResult: React.Dispatch<React.SetStateAction<string>>;
   setQrSentCount: React.Dispatch<React.SetStateAction<number>>;
-  setRegistrations: React.Dispatch<React.SetStateAction<SPRegistration[]>>;
   setSciBusy: React.Dispatch<React.SetStateAction<boolean>>;
   setSciSaveMsg: React.Dispatch<React.SetStateAction<string>>;
   setSelectedEvent: React.Dispatch<React.SetStateAction<DeloitteEvent>>;
@@ -76,14 +76,14 @@ export interface CreateQrMailActionsResult {
 
 export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailActionsResult {
   const {
-    confirmDialog, currentUser, eventServiceRef, getAllRegistrations, isDe, qrBlockLang,
+    confirmDialog, currentUser, eventServiceRef, isDe, qrBlockLang,
     qrBlockNote, qrEditBody, qrEditHeading, qrEditSaving, qrEditSubheading, qrEditSubject,
-    qrEditTarget, qrHeaderImage, refreshEvents, registrations, sciBusy, sciFrom, sciTo,
+    qrEditTarget, qrHeaderImage, refreshEvents, registrations, reloadRegistrations, sciBusy, sciFrom, sciTo,
     selectedEvent, setIsSendingQR, setQrBlockLang, setQrBlockNote, setQrEditBody, setQrEditHeading,
     setQrEditOpen, setQrEditSampleBlock, setQrEditSampleImg, setQrEditSaving, setQrEditSubheading,
     setQrEditSubject, setQrEditTarget, setQrEventPhotoB64, setQrHeaderImage, setQrPreviewHtml,
     setQrPreviewLoading, setQrPreviewOpen, setQrPreviewSubject, setQrSendModalOpen,
-    setQrSendResult, setQrSentCount, setRegistrations, setSciBusy, setSciSaveMsg, setSelectedEvent,
+    setQrSendResult, setQrSentCount, setSciBusy, setSciSaveMsg, setSelectedEvent,
     showAlert, updateEvent,
   } = ctx;
   // v22.6: QR-Versand-Aktionen als benannte Funktionen (vorher inline im Modal) —
@@ -349,8 +349,9 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
     }
     // v21: Erster Massen-Versand startet die QR-Phase (AutoSendQRCode=true).
     try { await eventServiceRef.updateEvent(parseInt(selectedEvent.id, 10), { AutoSendQRCode: true }); } catch { /* */ }
-    const regs = await getAllRegistrations(selectedEvent.id);
-    setRegistrations(regs);
+    // v30.67 (Review): gemeinsamer Nachlade-Pfad — nach einem Massen-Versand
+    // ist die 429 auf dem Reload der Normalfall, die Liste wurde dann `[]`.
+    await reloadRegistrations();
     setIsSendingQR(false);
     setQrSendResult(extCount > 0
       ? (isDe

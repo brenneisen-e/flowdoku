@@ -16,6 +16,8 @@ export interface UseWaitlistActionsCtx {
   confirmDialog: (message: React.ReactNode, opts?: import("../../../context/DialogContext").ConfirmOptions) => Promise<boolean>;
   eventServiceRef: EventService;
   getAllRegistrations: (eventId: string, onHttpError?: (_status: number) => void) => Promise<SPRegistration[]>;
+  /** v30.67 (Review): gemeinsamer Nachlade-Pfad der Seite — `null` = nicht lesbar. */
+  reloadRegistrations: () => Promise<SPRegistration[] | null>;
   isDe: boolean;
   isSplitCapacity: boolean;
   obKeepVariant: "active" | "firstWaitlist";
@@ -36,7 +38,6 @@ export interface UseWaitlistActionsCtx {
   setObMailSubject: React.Dispatch<React.SetStateAction<string>>;
   setOverbookModal: React.Dispatch<React.SetStateAction<{ mode: "confirm" | "keep"; targets: SPRegistration[]; }>>;
   setPromoteResult: React.Dispatch<React.SetStateAction<string>>;
-  setRegistrations: React.Dispatch<React.SetStateAction<SPRegistration[]>>;
   setReorderProgress: React.Dispatch<React.SetStateAction<number>>;
   setReorderProgressLabel: React.Dispatch<React.SetStateAction<string>>;
   setReorderResult: React.Dispatch<React.SetStateAction<string>>;
@@ -58,7 +59,7 @@ export function useWaitlistActions(ctx: UseWaitlistActionsCtx): UseWaitlistActio
     obKeepVariant, obMailBody, obMailLang, obMailSubject, obRemoveCalendar, obWithMail,
     overbookModal, registrations, selectedEvent, setAdminToast, setIsPromoting, setIsReorderingIDs,
     setObBusy, setObMailBody, setObMailLang, setObMailSubject, setOverbookModal, setPromoteResult,
-    setRegistrations, setReorderProgress, setReorderProgressLabel, setReorderResult,
+    reloadRegistrations, setReorderProgress, setReorderProgressLabel, setReorderResult,
   } = ctx;
   // v11.36: Fairer Wartelisten-Rang einer Person in ihrer Gruppe — gleiche
   // Logik wie die Review-Box. Genutzt für die "neue Warteliste-Position" im
@@ -164,8 +165,8 @@ export function useWaitlistActions(ctx: UseWaitlistActionsCtx): UseWaitlistActio
       try { await eventServiceRef.reorderParticipantIDs(sub, pct => setReorderProgress(pct)); } catch { /* */ }
       try { await eventServiceRef.syncSeatsToActiveCount(sub, { isSplit: isSplitCapacity }); } catch { /* */ }
       setReorderProgress(null);
-      const regs = await getAllRegistrations(selectedEvent.id);
-      setRegistrations(regs);
+      // v30.67 (Review): gemeinsamer Nachlade-Pfad statt `setRegistrations([])` bei 429.
+      await reloadRegistrations();
     } catch { /* einzelne Fehler werden geschluckt; Liste wird trotzdem neu geladen */ }
     setObBusy(false);
     setOverbookModal(null);
@@ -187,8 +188,7 @@ export function useWaitlistActions(ctx: UseWaitlistActionsCtx): UseWaitlistActio
       setReorderResult(isDe
         ? `${result.success} aktualisiert, ${result.errors} Fehler`
         : `${result.success} updated, ${result.errors} errors`);
-      const regs = await getAllRegistrations(selectedEvent.id);
-      setRegistrations(regs);
+      await reloadRegistrations();
     } catch {
       setReorderResult(isDe ? 'Fehler beim Neuvergeben der IDs' : 'Error reassigning IDs');
     }
@@ -269,7 +269,18 @@ export function useWaitlistActions(ctx: UseWaitlistActionsCtx): UseWaitlistActio
       // Frisch lesen: `registrations` kann Minuten alt sein, und wir leiten
       // daraus ab, wie oft nachgerückt wird. Auf einem veralteten Stand
       // würde die Schleife über die Kapazität hinauslaufen.
-      const fresh = await getAllRegistrations(selectedEvent.id);
+      // v30.67 (Review): Nicht lesbar heißt hier nicht „0 Aktive" — genau
+      // daraus leitet die Schleife ab, wie viele Plätze frei sind; ein 429
+      // hätte die Warteliste in ein volles Event nachrücken lassen.
+      let freshFailed = false;
+      const fresh = await getAllRegistrations(selectedEvent.id, () => { freshFailed = true; });
+      if (freshFailed) {
+        setPromoteResult(isDe
+          ? 'Nachrücken abgebrochen: Die Teilnehmerliste konnte gerade nicht gelesen werden — bitte später erneut versuchen.'
+          : 'Promotion aborted: the attendee list could not be read right now — please try again later.');
+        setIsPromoting(false);
+        return;
+      }
       const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
       const lblA = (selectedEvent.splitLabelA && selectedEvent.splitLabelA.trim()) || 'Durchstarter';
       const lblB = (selectedEvent.splitLabelB && selectedEvent.splitLabelB.trim()) || 'Funstarter';
@@ -520,8 +531,7 @@ export function useWaitlistActions(ctx: UseWaitlistActionsCtx): UseWaitlistActio
     idRecheckBusyRef.current = true;
     setIdRecheckBusy(true);
     try {
-      const regs = await getAllRegistrations(selectedEvent.id);
-      setRegistrations(regs);
+      await reloadRegistrations();
     } catch { /* best-effort */ }
     idRecheckBusyRef.current = false;
     setIdRecheckBusy(false);

@@ -27,6 +27,12 @@ export type ConsolidatedRow = {
  *  einzeln eingetragene Personen bleiben sie leer. */
 export type AudiencePerson = { email: string; displayName?: string; jobTitle?: string; location?: string };
 
+/** v30.67 (Review): Ein Termin, dessen Teilnehmerliste nicht gelesen werden
+ *  konnte — mit HTTP-Status, weil nur 401/403/404 eine Rechtefrage sind;
+ *  429/5xx/0 heißen „gerade nicht lesbar" und brauchen einen anderen Hinweis.
+ *  `status: -1` = Ausnahme statt HTTP-Antwort (unbekannt). */
+export interface DeniedSubEventList { title: string; status: number }
+
 /** v30.66: Zielgruppe der Massenmail. Stand als lokaler Typ IM Komponenten-
  *  koerper und war damit von aussen nicht referenzierbar — das ausgelagerte
  *  Zielgruppen-Modal braucht ihn aber. */

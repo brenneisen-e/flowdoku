@@ -5,6 +5,7 @@
  */
 import * as React from 'react';
 import { ACCESS_DENIED_MSG } from '../../admin/adminConstants';
+import { DeniedSubEventList } from '../../admin/adminTypes';
 import { DeloitteEvent } from '../../../types';
 import { EventService, SPRegistration } from '../../../services/EventService';
 import { buildStaticCheckInUrl, defaultCheckInWindow, generateSelfCheckInToken } from '../../../utils/selfCheckIn';
@@ -21,9 +22,11 @@ export interface UseEventSelectionCtx {
   navigate: (page: import("../../../context/NavigationContext").Page, eventId?: string, intent?: import("../../../context/NavigationContext").NavIntent) => void;
   refreshEvents: () => Promise<void>;
   registrations: SPRegistration[];
+  /** v30.67 (Review): gemeinsamer Nachlade-Pfad der Seite — `null` = nicht lesbar. */
+  reloadRegistrations: () => Promise<SPRegistration[] | null>;
   selectedEvent: DeloitteEvent;
   selectedEventId: string;
-  setDeniedSubEventLists: React.Dispatch<React.SetStateAction<string[]>>;
+  setDeniedSubEventLists: React.Dispatch<React.SetStateAction<DeniedSubEventList[]>>;
   setIsLoadingRegs: React.Dispatch<React.SetStateAction<boolean>>;
   setRegLoadError: React.Dispatch<React.SetStateAction<string>>;
   setRegistrations: React.Dispatch<React.SetStateAction<SPRegistration[]>>;
@@ -54,7 +57,7 @@ export interface UseEventSelectionResult {
 export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionResult {
   const {
     adminEvents, childEventsOf, confirmDialog, detailCardRef, eventServiceRef, getAllRegistrations,
-    isDe, navigate, refreshEvents, registrations, selectedEvent, selectedEventId,
+    isDe, navigate, refreshEvents, registrations, reloadRegistrations, selectedEvent, selectedEventId,
     setDeniedSubEventLists, setIsLoadingRegs, setRegLoadError, setRegistrations,
     setReservedDetailHeight, setSelectedEvent, showAlert, updateEvent,
   } = ctx;
@@ -83,10 +86,26 @@ export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionR
       // kamen als „Noch keine Teilnehmer registriert." an. Und `st === 0`
       // (Netzfehler) war zwar gelistet, machte `ownDenied` aber zu 0 = falsy,
       // der Hinweis blieb also gerade im Netzfehler-Fall aus.
-      let ownDenied = false;
-      const regs = await getAllRegistrations(event.id, () => { ownDenied = true; });
-      setRegistrations(regs);
-      if (ownDenied) setRegLoadError(ACCESS_DENIED_MSG);
+      // v30.67 (Review): Der Status entscheidet über den TEXT. Bis hierher
+      // hieß jeder Fehler „Du hast keinen Zugriff … Berechtigungen reparieren"
+      // — bei 429/5xx/Netz eine falsche Fährte, die Reparatur-Aktion ändert
+      // daran nichts. Und die (leere oder halbe) Liste geht bei Fehler NICHT
+      // in den State: KPI-Kacheln und „Aktuell registriert" stehen außerhalb
+      // des `regLoadError`-Zweigs und rechneten daraus eine „0"; sie rendern
+      // jetzt über `regsUnknown` ein „—". Leer setzen muss sein — sonst
+      // bliebe die Liste des VORHER gewählten Termins stehen.
+      let failedStatus = -1;
+      const regs = await getAllRegistrations(event.id, st => { failedStatus = st; });
+      if (failedStatus >= 0) {
+        setRegistrations([]);
+        setRegLoadError(failedStatus === 401 || failedStatus === 403
+          ? ACCESS_DENIED_MSG
+          : (isDe
+            ? 'Die Teilnehmerliste konnte gerade nicht gelesen werden (Drosselung oder Netz) — bitte „Aktualisieren“ klicken.'
+            : 'The participant list could not be read right now (throttling or network) — please click „Refresh“.'));
+      } else {
+        setRegistrations(regs);
+      }
     } catch {
       setRegistrations([]);
       setRegLoadError('Teilnehmerliste konnte nicht geladen werden.');
@@ -154,8 +173,11 @@ export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionR
       }
       if (cancelled) return;
       overbookHealRef.current = true; // nächsten Effekt-Lauf nach Reload überspringen
-      const regs = await getAllRegistrations(selectedEvent.id);
-      setRegistrations(regs);
+      // v30.67 (Review): gemeinsamer Nachlade-Pfad — bei 429 ersetzte der
+      // Reload die Liste still durch `[]`. Schlägt er fehl, ändert sich
+      // `registrations` nicht, der Effekt läuft nicht erneut — der Merker
+      // muss dann zurück, sonst überspringt er den NÄCHSTEN echten Lauf.
+      if (!(await reloadRegistrations())) overbookHealRef.current = false;
     })().catch(() => { /* */ });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

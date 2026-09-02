@@ -66,7 +66,7 @@ import { MailHeaderImage, MAIL_HEADER_IMAGE_DEFAULT } from '../utils/mailHeaderI
 // in components/admin/adminConstants|adminStyles|adminTypes — sie kennt den
 // State nicht und war restlos abtrennbar.
 import { DUP_ACTIVE_STATI, ACCESS_DENIED_MSG } from './admin/adminConstants';
-import { ConsolidatedRow, AudiencePerson, MassmailAudience, AdminToastState } from './admin/adminTypes';
+import { ConsolidatedRow, AudiencePerson, MassmailAudience, AdminToastState, DeniedSubEventList } from './admin/adminTypes';
 import JumpButtons from './admin/JumpButtons';
 import { NameFixModal } from './admin/modals/NameFixModal';
 import { AccessFixModal } from './admin/modals/AccessFixModal';
@@ -164,13 +164,17 @@ export default function AdminPage(): React.ReactElement {
         // leere, ohne Fehlertext. Wie im Auswahl-Pfad (v30.37) zählt der
         // Status: bei Fehler bleibt der geladene Stand stehen, und ein
         // Hinweis über der Tabelle sagt, dass er alt ist.
-        let failedStatus = -1;
-        const regs = await getAllRegistrations(selectedEvent.id, st => { failedStatus = st; });
-        if (failedStatus >= 0) {
-          setRegStaleHint(failedStatus === 401 || failedStatus === 403 ? 'denied' : 'transient');
-        } else {
-          setRegStaleHint('');
-          setRegistrations(regs);
+        // v30.67 (Review): über den gemeinsamen Helfer `reloadRegistrations`.
+        // Bei Erfolg auch `regLoadError` löschen — der Auswahl-Pfad setzt ihn,
+        // und nichts räumte ihn wieder weg: Nach einer 429 beim Öffnen stand
+        // „konnte nicht gelesen werden" dauerhaft da, obwohl die Liste längst
+        // wieder lesbar war. Und die Termin-Listen (Klammer-Modus) mit
+        // anstoßen, sonst bleibt auch das Banner „N Teilnehmerliste(n) nicht
+        // lesbar" nach einer Drosselung stehen.
+        const regs = await reloadRegistrations();
+        if (regs) {
+          setRegLoadError('');
+          setSubRegReloadTick(t => t + 1);
         }
       }
     } finally { setIsRefreshing(false); }
@@ -221,6 +225,34 @@ export default function AdminPage(): React.ReactElement {
       .forEach(sel => { try { document.querySelectorAll(sel).forEach(toTop); } catch { /* */ } });
   }, [selectedEvent?.id]);
   const [registrations, setRegistrations] = React.useState<SPRegistration[]>([]);
+  // v30.67 (Review): EIN Nachlade-Pfad für alle Schreibpfade des Organizer
+  // Centers. `getAllRegistrations` wirft nie — jede Stelle, die nach einem
+  // Schreibvorgang `setRegistrations(await getAllRegistrations(id))` rief,
+  // ersetzte bei 429/403/500 die volle Liste still durch `[]` („Noch keine
+  // Teilnehmer registriert", alle KPI-Kacheln 0, kein Hinweis). Der Refresh-
+  // Knopf und der Echtzeit-Push hatten das seit fd6cd155 richtig, rund 25
+  // weitere Stellen nicht — „Person überall löschen" traf mit dem Reload
+  // gern in die Drosselung, die das Löschen selbst ausgelöst hatte.
+  // Semantik wie dort: bei Fehler bleibt der alte Stand stehen, der Hinweis
+  // über der Tabelle sagt, dass er alt ist. Rückgabe `null` heißt „nicht
+  // lesbar", damit Aufrufer, die mit der Liste weiterrechnen, abbrechen
+  // statt mit `[]` zu arbeiten.
+  // Steht bewusst HIER: `useCancelPipeline` weiter unten bekommt es als
+  // ctx-Feld — darunter deklariert wäre es ein TDZ-Fehler. `setRegStaleHint`
+  // ist erst später deklariert; als Closure-Zugriff ist das unkritisch (läuft
+  // erst nach dem Render), dasselbe Muster wie `handleRefresh` oben.
+  const reloadRegistrations = async (): Promise<SPRegistration[] | null> => {
+    if (!selectedEvent) return null;
+    let failedStatus = -1;
+    const regs = await getAllRegistrations(selectedEvent.id, st => { failedStatus = st; });
+    if (failedStatus >= 0) {
+      setRegStaleHint(failedStatus === 401 || failedStatus === 403 ? 'denied' : 'transient');
+      return null;
+    }
+    setRegStaleHint('');
+    setRegistrations(regs);
+    return regs;
+  };
   // v28.39: Hotel-Planung eingeklappt starten — Events ohne Übernachtung
   // sollen von dem Abschnitt nichts merken.
   const [hotelPanelOpen, setHotelPanelOpen] = React.useState(false);
@@ -306,8 +338,8 @@ export default function AdminPage(): React.ReactElement {
     performSilentDuplicateDelete, performStandardCancel, setIsSyncingRegistry,
     setSyncRegistryResult, shadowDupBusy, syncRegistryResult,
   } = useCancelPipeline({
-    allEvents, confirmDialog, currentUser, duplicateEmails, eventServiceRef, getAllRegistrations,
-    isDe, registrations, selectedEvent, setAdminToast, setRegistrations, showAlert,
+    allEvents, confirmDialog, currentUser, duplicateEmails, eventServiceRef,
+    isDe, registrations, reloadRegistrations, selectedEvent, setAdminToast, showAlert,
   });
   // v22.16: „Hinweise"-Box für aktive Events — Busy-State für den 1-Klick-
   // Sprach-Fix + Tick, damit „Ausblenden" (localStorage) sofort re-rendert.
@@ -331,7 +363,11 @@ export default function AdminPage(): React.ReactElement {
   const [isLoadingSubEventRegs, setIsLoadingSubEventRegs] = React.useState(false);
   // v30.37: Titel der Termine, deren Teilnehmerliste nicht lesbar war
   // (Berechtigung/gelöschte Subsite). Leer = alles gelesen.
-  const [deniedSubEventLists, setDeniedSubEventLists] = React.useState<string[]>([]);
+  // v30.67 (Review): mit HTTP-Status — das Banner unten nennt „erst
+  // nachträglich als Organizer benannt" nur noch bei 401/403/404; eine 429
+  // oder ein Netzfehler ist keine Rechtefrage und schickte Organizer auf die
+  // Aktion „Berechtigungen reparieren", die daran nichts ändert.
+  const [deniedSubEventLists, setDeniedSubEventLists] = React.useState<DeniedSubEventList[]>([]);
   // v22.59: manueller Reload-Trigger für die Sub-Event-Regs (z.B. nach dem
   // Löschen einer konsolidierten Abmeldung).
   const [subRegReloadTick, setSubRegReloadTick] = React.useState(0);
@@ -420,7 +456,7 @@ export default function AdminPage(): React.ReactElement {
       // exakt so aus wie ein leeres (jeder Tag „0", KPI-Kacheln 0,
       // „Teilnehmer (0)"). Der Rückruf existiert seit v29.3, nur genutzt hat
       // ihn hier niemand.
-      const denied: string[] = [];
+      const denied: DeniedSubEventList[] = [];
       for (const ch of children) {
         try {
           // v30.67: JEDER Rückruf heißt „nicht gelesen" — nicht nur vier
@@ -429,13 +465,14 @@ export default function AdminPage(): React.ReactElement {
           // Liste und wurden zu „0 Teilnehmer" ohne Banner. Referenz:
           // `analyzeRegistryAgainstLists` wertet nur 404/410 als eindeutig,
           // alles andere als „sagt nichts über den Inhalt".
-          const regs = await getAllRegistrations(ch.id, () => {
-            denied.push(ch.title || ch.id);
+          const regs = await getAllRegistrations(ch.id, st => {
+            denied.push({ title: ch.title || ch.id, status: st });
           });
           map[ch.id] = regs;
         } catch {
           map[ch.id] = [];
-          denied.push(ch.title || ch.id);
+          // v30.67 (Review): -1 = Ausnahme statt HTTP-Status → „unbekannt".
+          denied.push({ title: ch.title || ch.id, status: -1 });
         }
       }
       if (!cancelled) {
@@ -478,6 +515,17 @@ export default function AdminPage(): React.ReactElement {
   }, [selectedEvent?.id, selectedEvent?.parentEventId]);
   const [isLoadingRegs, setIsLoadingRegs] = React.useState(false);
   const [regLoadError, setRegLoadError] = React.useState('');
+  // v30.67 (Review): „Liste nicht lesbar" als Flag für die Zähler. Die
+  // KPI-Kacheln und „Aktuell registriert" stehen außerhalb des
+  // `regLoadError`-Zweigs und rechneten aus der leeren Liste eine „0" —
+  // neben dem Text „kein Zugriff" stand also weiter „0 angemeldet". Mit dem
+  // Flag rendern sie „—". Bewusst NUR `regLoadError`: bei `regStaleHint`
+  // steht der zuletzt geladene Stand in der Tabelle, dann dürfen die Kacheln
+  // dieselben (alten) Zahlen zeigen — Kachel und Tabelle bleiben deckungsgleich.
+  const regsUnknown = !!regLoadError;
+  // v30.67 (Review): Im Klammer-Modus sind Summen über die Termin-Listen nur
+  // eine Untergrenze, sobald eine Liste nicht lesbar war → Kacheln zeigen „≥ N".
+  const subListsIncomplete = deniedSubEventLists.length > 0;
   // v30.67: Der LETZTE Nachlade-Versuch (Refresh-Knopf, Echtzeit-Push) ist
   // fehlgeschlagen; die Tabelle zeigt deshalb den zuvor geladenen Stand.
   // Bewusst getrennt von `regLoadError`: Das ersetzt die Tabelle — hier gibt
@@ -1062,8 +1110,8 @@ export default function AdminPage(): React.ReactElement {
   const {
     closeEditModal, openEditModal, saveEdit,
   } = useEditModalHandlers({
-    currentUser, editForm, editingReg, eventServiceRef, getAllRegistrations, isDe, searchUser,
-    selectedEvent, setEditError, setEditForm, setEditingReg, setIsSavingEdit, setRegistrations,
+    currentUser, editForm, editingReg, eventServiceRef, isDe, reloadRegistrations, searchUser,
+    selectedEvent, setEditError, setEditForm, setEditingReg, setIsSavingEdit,
   });
 
 
@@ -1083,9 +1131,9 @@ export default function AdminPage(): React.ReactElement {
   } = useWaitlistActions({
     allEvents, confirmDialog, eventServiceRef, getAllRegistrations, isDe, isSplitCapacity,
     obKeepVariant, obMailBody, obMailLang, obMailSubject, obRemoveCalendar, obWithMail,
-    overbookModal, registrations, selectedEvent, setAdminToast, setIsPromoting, setIsReorderingIDs,
+    overbookModal, registrations, reloadRegistrations, selectedEvent, setAdminToast, setIsPromoting, setIsReorderingIDs,
     setObBusy, setObMailBody, setObMailLang, setObMailSubject, setOverbookModal, setPromoteResult,
-    setRegistrations, setReorderProgress, setReorderProgressLabel, setReorderResult,
+    setReorderProgress, setReorderProgressLabel, setReorderResult,
   });
 
   // v30.66: useTeamActions — Rumpf in logic/useTeamActions.tsx.
@@ -1094,9 +1142,9 @@ export default function AdminPage(): React.ReactElement {
     sendTeamMails, setColumnOrder, setHiddenColumns, setShowColumnPicker, setShowMatches,
     showColumnPicker, showMatches,
   } = useTeamActions({
-    dragRegId, eventServiceRef, getAllRegistrations, idFixCheckedForRef, isDe, isLoadingRegs,
-    recentCancellation, registrations, reloadRegistrationsForIdCheck, selectedEvent,
-    setDragOverTid, setDragRegId, setRegistrations, setTeamMailBody, setTeamMailInfoByTid,
+    dragRegId, eventServiceRef, idFixCheckedForRef, isDe, isLoadingRegs,
+    recentCancellation, registrations, reloadRegistrations, reloadRegistrationsForIdCheck, selectedEvent,
+    setDragOverTid, setDragRegId, setTeamMailBody, setTeamMailInfoByTid,
     setTeamMailOpen, setTeamMailSending, setTeamMailSubject, showAlert, teamMailBody,
     teamMailInfoByTid, teamMailSubject,
   });
@@ -1313,7 +1361,7 @@ export default function AdminPage(): React.ReactElement {
     toggleDraftStatus,
   } = useEventSelection({
     adminEvents, childEventsOf, confirmDialog, detailCardRef, eventServiceRef, getAllRegistrations,
-    isDe, navigate, refreshEvents, registrations, selectedEvent, selectedEventId,
+    isDe, navigate, refreshEvents, registrations, reloadRegistrations, selectedEvent, selectedEventId,
     setDeniedSubEventLists, setIsLoadingRegs, setRegLoadError, setRegistrations,
     setReservedDetailHeight, setSelectedEvent, showAlert, updateEvent,
   });
@@ -1345,14 +1393,14 @@ export default function AdminPage(): React.ReactElement {
     closeQrMailEditor, getQrMailOverride, openQrMailEditor, qrFullSendAction, qrPreviewAction,
     qrTestSendAction, saveQrMailOverride, saveSelfCheckInWindow,
   } = createQrMailActions({
-    confirmDialog, currentUser, eventServiceRef, getAllRegistrations, isDe, qrBlockLang,
+    confirmDialog, currentUser, eventServiceRef, isDe, qrBlockLang,
     qrBlockNote, qrEditBody, qrEditHeading, qrEditSaving, qrEditSubheading, qrEditSubject,
-    qrEditTarget, qrHeaderImage, refreshEvents, registrations, sciBusy, sciFrom, sciTo,
+    qrEditTarget, qrHeaderImage, refreshEvents, registrations, reloadRegistrations, sciBusy, sciFrom, sciTo,
     selectedEvent, setIsSendingQR, setQrBlockLang, setQrBlockNote, setQrEditBody, setQrEditHeading,
     setQrEditOpen, setQrEditSampleBlock, setQrEditSampleImg, setQrEditSaving, setQrEditSubheading,
     setQrEditSubject, setQrEditTarget, setQrEventPhotoB64, setQrHeaderImage, setQrPreviewHtml,
     setQrPreviewLoading, setQrPreviewOpen, setQrPreviewSubject, setQrSendModalOpen,
-    setQrSendResult, setQrSentCount, setRegistrations, setSciBusy, setSciSaveMsg, setSelectedEvent,
+    setQrSendResult, setQrSentCount, setSciBusy, setSciSaveMsg, setSelectedEvent,
     showAlert, updateEvent,
   });
 
@@ -1805,7 +1853,15 @@ export default function AdminPage(): React.ReactElement {
       s.forEach((r, idx) => { if (typeof r.Id === 'number') { map[r.Id] = idx + 1; total[r.Id] = s.length; } });
     };
     const all = registrations.filter(r => r.Status === 'Warteliste');
-    if (isSplitCapacity) {
+    // v30.67 (Review): je Gruppe NUR bei getrennten Wartelisten. Bei
+    // `splitSharedWaitlist` ist es ein Topf (CLAUDE.md): der „Platz ändern"-
+    // Dialog übergibt dann `group = undefined`, der Service sortiert über die
+    // Gesamtliste, und das Nachrücken rechnet ebenso — hier stand trotzdem
+    // der Gruppen-Rang („Platz 2 von 5" in der Tabelle, „Platz 1, vorher 4"
+    // im Ergebnis). Die drei Gruppen-Tabellen bleiben getrennt gerendert —
+    // sie zeigen den Wunsch-Typ, das ist Information —, die Platz-Zahl gilt
+    // dann aber im gemeinsamen Topf, wie überall sonst.
+    if (isSplitCapacity && !selectedEvent?.splitSharedWaitlist) {
       rank(all.filter(r => r.PreferredStarterType === 'Durchstarter'));
       rank(all.filter(r => r.PreferredStarterType === 'Funstarter'));
       rank(all.filter(r => !r.PreferredStarterType || (r.PreferredStarterType !== 'Durchstarter' && r.PreferredStarterType !== 'Funstarter')));
@@ -1909,13 +1965,13 @@ export default function AdminPage(): React.ReactElement {
   } = createKlammerActions({
     assignAssistRow, assignAssistValue, buildCancellationMail, bulkKlammerProgress, childEventsOf,
     confirmDialog, consolidatedChildren, consolidatedRows, currentUser, deregModal, deregSelected,
-    deregSilent, eventServiceRef, getAllRegistrations, inactiveAccounts, isDe, mainFieldsEditForm,
+    deregSilent, eventServiceRef, inactiveAccounts, isDe, mainFieldsEditForm,
     mainFieldsEditName, mainFieldsEditReg, mainFieldsEditSubsite, mainFieldsEditTargetIsParent,
-    registerForEvent, registrations, selectedEvent, setAddingToKlammer, setAssignAssistBusy,
+    registerForEvent, registrations, reloadRegistrations, selectedEvent, setAddingToKlammer, setAssignAssistBusy,
     setAssignAssistRow, setAssignAssistValue, setBulkKlammerProgress, setDeregBusy, setDeregModal,
     setDeregSelected, setDeregSilent, setMainFieldsEditError, setMainFieldsEditForm,
     setMainFieldsEditName, setMainFieldsEditReg, setMainFieldsEditSaving, setMainFieldsEditSubsite,
-    setMainFieldsEditTargetIsParent, setRegistrations,
+    setMainFieldsEditTargetIsParent,
     setSubRegReloadTick, showAlert,
   });
   // v30.66: Props-Buendel der ausgelagerten Teilansichten. Bewusst hier, direkt
@@ -2029,18 +2085,18 @@ export default function AdminPage(): React.ReactElement {
     setObMailLang, setObMailSubject, setObRemoveCalendar, setObWithMail, setOverbookModal,
   };
   const waitlistPositionModalProps = {
-    eventServiceRef, getAllRegistrations, isDe, selectedEvent, setRegistrations, setWlPosBusy,
+    eventServiceRef, isDe, reloadRegistrations, selectedEvent, setWlPosBusy,
     setWlPosModal, setWlPosValue, showAlert, wlPosBusy, wlPosModal, wlPosValue,
   };
   const adminAddMemberModalProps = {
     addTeamMember, adminAddCcOrganizer, adminAddLeadRegId, adminAddMemberBusy, adminAddMemberConsent, adminAddMemberDialog,
     adminAddMemberError, adminAddMemberIncludeIntl, adminAddMemberPick, adminAddMemberQuery, adminAddMemberQueryTimer, adminAddMemberResults,
     adminAddMemberSearching, adminAddNewPersonMail, adminAddNotifyOthers, adminAddNotifyScope, adminAddSendMail, adminAddTeamlessPicks,
-    assignTeamlessToTeam, currentUser, getAllRegistrations, isDe, notifyExistingTeamMembers, registrations,
+    assignTeamlessToTeam, currentUser, isDe, notifyExistingTeamMembers, registrations, reloadRegistrations,
     searchUsers, selectedEvent, setAdminAddCcOrganizer, setAdminAddLeadRegId, setAdminAddMemberBusy, setAdminAddMemberConsent,
     setAdminAddMemberDialog, setAdminAddMemberError, setAdminAddMemberIncludeIntl, setAdminAddMemberPick, setAdminAddMemberQuery, setAdminAddMemberResults,
     setAdminAddMemberSearching, setAdminAddNewPersonMail, setAdminAddNotifyOthers, setAdminAddNotifyScope, setAdminAddSendMail, setAdminAddTeamlessPicks,
-    setRegistrations, setTeamsToast,
+    setTeamsToast,
   };
   // v30.66: Props-Buendel der ausgelagerten Teilansichten. Bewusst hier, direkt
   // vor dem return — davor stehen alle Deklarationen, weiter oben waere es ein
@@ -2069,12 +2125,12 @@ export default function AdminPage(): React.ReactElement {
   };
   const teamsSectionProps = {
     confirmDialog, currentUser, dragOverTid, dragRegId, eventServiceRef, getActiveTeams,
-    getAllRegistrations, isAdmin, isDe, isLoadingRegs, isMobile, isOrganizerFor,
+    isAdmin, isDe, isLoadingRegs, isMobile, isOrganizerFor,
     leadTransferBusy, leadTransferOpenFor, moveRegToTeam, onTeamDrop, openTeamMailDialog, registrations,
-    selectedEvent, setAdminAddCcOrganizer, setAdminAddLeadRegId, setAdminAddMemberConsent, setAdminAddMemberDialog, setAdminAddMemberError,
+    reloadRegistrations, selectedEvent, setAdminAddCcOrganizer, setAdminAddLeadRegId, setAdminAddMemberConsent, setAdminAddMemberDialog, setAdminAddMemberError,
     setAdminAddMemberPick, setAdminAddMemberQuery, setAdminAddMemberResults, setAdminAddNewPersonMail, setAdminAddNotifyOthers, setAdminAddNotifyScope,
     setAdminAddSendMail, setAdminAddTeamlessPicks, setDragOverTid, setDragRegId, setLeadTransferBusy, setLeadTransferOpenFor,
-    setRegistrations, setTeamEditOpenFor, setTeamsCollapsed, setTeamsToast, showAlert, teamEditOpenFor,
+    setTeamEditOpenFor, setTeamsCollapsed, setTeamsToast, showAlert, teamEditOpenFor,
     teamsCollapsed, transferTeamLead,
   };
   const teamMailModalProps = {
@@ -2084,24 +2140,24 @@ export default function AdminPage(): React.ReactElement {
   };
   const participantTableProps = {
     activeRegs, allEvents, attachmentsByReg, availableColumns, colToggleHover, columnOrder,
-    computeRoommatePairs, confirmDialog, duplicateEmails, eventServiceRef, getAllRegistrations, getRoommateInfo,
+    computeRoommatePairs, confirmDialog, duplicateEmails, eventServiceRef, getRoommateInfo,
     handleSort, hasRoommateColumn, hiddenColumns, hideColumn, highlightMatch, inactiveAccounts,
     isDe, isSplitCapacity, moveColumn, openEditModal, orgPastLock, parentEventForSelected,
-    parentRegsByEmail, performStandardCancel, personalColsCollapsed, query, registrations, selectedEvent,
-    setAttachmentsModalReg, setColToggleHover, setDupCancelReg, setParticipantDetail, setPersonalColsCollapsed, setRegistrations,
+    parentRegsByEmail, performStandardCancel, personalColsCollapsed, query, registrations, reloadRegistrations, selectedEvent,
+    setAttachmentsModalReg, setColToggleHover, setDupCancelReg, setParticipantDetail, setPersonalColsCollapsed,
     setShowColumnPicker, setSplitParticipantsView, showAlert, showColumn, showColumnPicker, showMatches,
     sortIcon, splitParticipantsView, stripLocPrefix,
   };
   const waitlistTablesProps = {
-    buildCancellationMail, confirmDialog, currentUser, eventServiceRef, getAllRegistrations, isDe,
-    isSplitCapacity, query, selectedEvent, setRegistrations, setWaitlistSortAsc, setWaitlistSortColumn,
+    buildCancellationMail, confirmDialog, currentUser, eventServiceRef, isDe,
+    isSplitCapacity, query, reloadRegistrations, selectedEvent, setWaitlistSortAsc, setWaitlistSortColumn,
     setWlPosModal, setWlPosValue, showAlert, waitlistDurch, waitlistFun, waitlistRegs,
     waitlistSortAsc, waitlistSortColumn, waitlistTruePos, waitlistTrueTotal, waitlistUnassigned, wlPosBusy,
   };
   const cancelledListProps = {
     cancelledRegs, cancelledSortAsc, cancelledSortColumn, confirmDialog, consolidatedChildren, eventServiceRef,
-    getAllRegistrations, hasWaitlistActivity, isAdmin, isConsolidatedMode, isDe, isOrganizerFor,
-    registrations, selectedEvent, setCancelledSortAsc, setCancelledSortColumn, setRegistrations, setSubRegReloadTick,
+    hasWaitlistActivity, isAdmin, isConsolidatedMode, isDe, isOrganizerFor,
+    registrations, reloadRegistrations, selectedEvent, setCancelledSortAsc, setCancelledSortColumn, setSubRegReloadTick,
     showAlert, stripLocPrefix, subEventRegsByEventId,
   };
   // v30.66: Props-Buendel der ausgelagerten Teilansichten. Bewusst hier, direkt
@@ -2120,9 +2176,9 @@ export default function AdminPage(): React.ReactElement {
   const eventDetailCardProps = {
     activeRegs, childEventsOf, confirmDialog, detailCardRef, events,
     evTabHover, handleSelectEvent, isAdmin, isConsolidatedMode, isDe, isImpersonating,
-    isLoadingRegs, isMobile, isOrganizerFor, navigate, openTabGroup, registrations,
+    isLoadingRegs, isMobile, isOrganizerFor, navigate, openTabGroup, registrations, regsUnknown,
     reservedDetailHeight, reservedDetailWidth, selectedEvent, setCheckInHubOpen, setCheckInHubStep, setEvTabHover,
-    setOpenTabGroup, subEventRegsByEventId, t, toggleDraftStatus, waitlistRegs,
+    setOpenTabGroup, subEventRegsByEventId, subListsIncomplete, t, toggleDraftStatus, waitlistRegs,
   };
   const nextStepsBoxProps = {
     childEventsOf, isDe, openInviteModal, selectedEvent,
@@ -2134,29 +2190,29 @@ export default function AdminPage(): React.ReactElement {
   };
   const adminActionsCardProps = {
     adminEvents, allEvents, childEventsOf, confirmDialog, copiedDeepLink, copiedEmails,
-    detectOverbookResult, eventServiceRef, fixColumnsResult, fixFieldsResult, getAllRegistrations, isAdmin,
+    detectOverbookResult, eventServiceRef, fixColumnsResult, fixFieldsResult, isAdmin,
     isCheckingDeclines, isDe, isDetectingOverbook, isFixingColumns, isFixingFields, isOrganizerFor,
     isPromoting, isRefreshingProfiles, isReorderingIDs, isRepairingAccess, isRepairingNames,
     isRepairingOrganizers, isRepairingPerms, isResettingCounter, isSendingQR, isSplitCapacity, isSyncingRegistry,
     navigate, openChangeLogForEvent, openCommsModal, openInviteModal, openMassmailPicker, promoteResult,
-    qrSentCount, refreshEvents, refreshProfilesResult, registrations, reorderResult, repairAccessResult,
+    qrSentCount, refreshEvents, refreshProfilesResult, registrations, reloadRegistrations, reorderResult, repairAccessResult,
     repairNamesResult, repairOrganizersResult, repairPermsResult, resetCounterResult, runIdReorder, runManualPromote,
     searchUsers, selectedEvent, setAccessFixModal, setB2runTodoOpen, setBibImportOpen, setBillingPanelOpen,
     setCheckInHubOpen, setCheckInHubStep, setCopiedDeepLink, setCopiedEmails, setDeclineCopied, setDeclineResult,
     setDetectOverbookResult, setExcelAudience, setExcelTargetModal, setFixColumnsResult, setFixFieldsResult, setIsCheckingDeclines,
     setIsDetectingOverbook, setIsFixingColumns, setIsFixingFields, setIsRefreshingProfiles, setIsRepairingAccess, setIsRepairingNames,
     setIsRepairingOrganizers, setIsRepairingPerms, setIsResettingCounter, setIsSyncingRegistry, setNameFixModal, setRefreshProfilesResult,
-    setRegistrations, setRepairAccessResult, setRepairNamesResult, setRepairOrganizersResult, setRepairPermsResult, setResetCounterResult,
+    setRepairAccessResult, setRepairNamesResult, setRepairOrganizersResult, setRepairPermsResult, setResetCounterResult,
     setShirtSizeOpen, setShowDeclineModal, setShowExportMenu, setSubRegReloadTick, setSyncRegistryResult, shirtFieldExists,
     showAlert, showExportMenu, siteUrl, spServiceRef, syncRegistryResult, t,
     updateEvent,
   };
   const kpiTilesProps = {
-    isConsolidatedMode, isSplitCapacity, registrations, selectedEvent, subEventRegsByEventId, t,
+    isConsolidatedMode, isDe, isSplitCapacity, registrations, regsUnknown, selectedEvent, subEventRegsByEventId, subListsIncomplete, t,
   };
   const hotelPlanningSectionProps = {
-    childEventsOf, confirmDialog, getAllRegistrations, hotelPanelOpen, isDe,
-    refreshEvents, registrations, selectedEvent, setHotelPanelOpen, setRegistrations,
+    childEventsOf, confirmDialog, hotelPanelOpen, isDe,
+    refreshEvents, registrations, reloadRegistrations, selectedEvent, setHotelPanelOpen,
     showAlert, subEventRegsByEventId,
   };
   const quizStatsSectionProps = {
@@ -2412,12 +2468,9 @@ export default function AdminPage(): React.ReactElement {
             open={addParticipantsOpen}
             onClose={() => setAddParticipantsOpen(false)}
             onDone={() => {
-              void (async () => {
-                try {
-                  const regs = await getAllRegistrations(selectedEvent.id);
-                  setRegistrations(regs);
-                } catch { /* Anzeige aktualisiert sich beim nächsten Öffnen */ }
-              })();
+              // v30.67 (Review): gemeinsamer Helfer — nach einem Massen-
+              // Hinzufügen ist die 429 auf dem Reload der Normalfall.
+              void reloadRegistrations();
               // v30.14: Die Einzel-Anmeldungen laufen jetzt mit skipReload —
               // EIN Sammel-Refresh für Kacheln/Zähler, nicht awaiten.
               void refreshEvents().catch(() => { /* best-effort */ });
@@ -2495,27 +2548,40 @@ export default function AdminPage(): React.ReactElement {
             die gelesen werden konnten, sind ja korrekt. Ohne diesen Hinweis
             sah ein Organizer ohne Rechte auf den Sub-Event-Subsites ein
             volles Event als leeres (jede Spalte „0"). */}
-        {deniedSubEventLists.length > 0 && (
+        {deniedSubEventLists.length > 0 && (() => {
+          // v30.67 (Review): Die Ursache „erst nachträglich als Organizer
+          // benannt" gilt nur für 401/403/404. Eine 429 oder ein Netzfehler
+          // ist keine Rechtefrage — dafür hilft „Aktualisieren", nicht die
+          // Reparatur-Aktion. Bei Mischung zählt die Rechte-Ursache, die
+          // Statuscodes je Termin stehen dahinter.
+          const permDenied = deniedSubEventLists.some(d => d.status === 401 || d.status === 403 || d.status === 404);
+          const n = deniedSubEventLists.length;
+          return (
           <div style={{
             border: '1px solid var(--dex-red)', background: '#fff5f5', borderRadius: 8,
             padding: '12px 14px', marginBottom: 12, fontSize: 13, lineHeight: 1.5,
           }}>
             <strong style={{ color: 'var(--dex-red)' }}>
-              {isDe
-                ? `Kein Zugriff auf ${deniedSubEventLists.length} Teilnehmerliste(n)`
-                : `No access to ${deniedSubEventLists.length} participant list(s)`}
+              {permDenied
+                ? (isDe ? `Kein Zugriff auf ${n} Teilnehmerliste(n)` : `No access to ${n} participant list(s)`)
+                : (isDe ? `${n} Teilnehmerliste(n) konnten gerade nicht gelesen werden` : `${n} participant list(s) could not be read right now`)}
             </strong>
             <div style={{ marginTop: 6 }}>
-              {isDe
-                ? 'Die Zahlen unten sind deshalb unvollständig — betroffene Termine erscheinen mit 0 Teilnehmern, obwohl dort Anmeldungen liegen können. Grund ist fast immer, dass du erst nachträglich als Organizer benannt wurdest: Die Berechtigung wurde dann nur auf dem Haupt-Event gesetzt, nicht auf den einzelnen Terminen. Ein Admin oder der Haupt-Organizer behebt das über die Aktion „Organizer-Berechtigungen reparieren“.'
-                : 'The numbers below are therefore incomplete — affected dates show 0 participants even though registrations may exist. This almost always happens when you were named organizer after the event was created: permissions were then set on the main event only, not on the individual dates. An admin or the main organizer can fix this via the action „Repair organizer permissions“.'}
+              {permDenied
+                ? (isDe
+                  ? 'Die Zahlen unten sind deshalb unvollständig — betroffene Termine erscheinen mit 0 Teilnehmern, obwohl dort Anmeldungen liegen können. Grund ist fast immer, dass du erst nachträglich als Organizer benannt wurdest: Die Berechtigung wurde dann nur auf dem Haupt-Event gesetzt, nicht auf den einzelnen Terminen. Ein Admin oder der Haupt-Organizer behebt das über die Aktion „Organizer-Berechtigungen reparieren“.'
+                  : 'The numbers below are therefore incomplete — affected dates show 0 participants even though registrations may exist. This almost always happens when you were named organizer after the event was created: permissions were then set on the main event only, not on the individual dates. An admin or the main organizer can fix this via the action „Repair organizer permissions“.')
+                : (isDe
+                  ? 'Die Zahlen unten sind deshalb unvollständig — betroffene Termine erscheinen mit 0 Teilnehmern, obwohl dort Anmeldungen liegen können. Ursache ist eine SharePoint-Drosselung oder ein Netzfehler, keine fehlende Berechtigung — bitte „Aktualisieren“ klicken.'
+                  : 'The numbers below are therefore incomplete — affected dates show 0 participants even though registrations may exist. The cause is SharePoint throttling or a network error, not a missing permission — please click „Refresh“.')}
             </div>
             <div style={{ marginTop: 6, color: 'var(--dex-gray-500)' }}>
-              {deniedSubEventLists.slice(0, 8).join(' · ')}
-              {deniedSubEventLists.length > 8 ? ` … (+${deniedSubEventLists.length - 8})` : ''}
+              {deniedSubEventLists.slice(0, 8).map(d => d.status > 0 ? `${d.title} (HTTP ${d.status})` : d.title).join(' · ')}
+              {n > 8 ? ` … (+${n - 8})` : ''}
             </div>
           </div>
-        )}
+          );
+        })()}
         {/* v30.67: Nachladen fehlgeschlagen — die Tabelle bleibt (alter Stand),
             der Hinweis kommt dazu. Vorher wurde die Liste bei jedem HTTP-Fehler
             eines Pushs still durch `[]` ersetzt. */}

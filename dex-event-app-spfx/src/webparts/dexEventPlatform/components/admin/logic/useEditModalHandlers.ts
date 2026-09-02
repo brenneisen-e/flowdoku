@@ -13,7 +13,8 @@ export interface UseEditModalHandlersCtx {
   editForm: Record<string, string>;
   editingReg: SPRegistration;
   eventServiceRef: EventService;
-  getAllRegistrations: (eventId: string, onHttpError?: (_status: number) => void) => Promise<SPRegistration[]>;
+  /** v30.67 (Review): gemeinsamer Nachlade-Pfad der Seite — `null` = nicht lesbar. */
+  reloadRegistrations: () => Promise<SPRegistration[] | null>;
   isDe: boolean;
   searchUser: (email: string) => Promise<{ displayName: string; location: string; jobTitle: string; department?: string; mobilePhone?: string; company?: string; }>;
   selectedEvent: DeloitteEvent;
@@ -21,7 +22,6 @@ export interface UseEditModalHandlersCtx {
   setEditForm: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   setEditingReg: React.Dispatch<React.SetStateAction<SPRegistration>>;
   setIsSavingEdit: React.Dispatch<React.SetStateAction<boolean>>;
-  setRegistrations: React.Dispatch<React.SetStateAction<SPRegistration[]>>;
 }
 
 export interface UseEditModalHandlersResult {
@@ -32,8 +32,8 @@ export interface UseEditModalHandlersResult {
 
 export function useEditModalHandlers(ctx: UseEditModalHandlersCtx): UseEditModalHandlersResult {
   const {
-    currentUser, editForm, editingReg, eventServiceRef, getAllRegistrations, isDe, searchUser,
-    selectedEvent, setEditError, setEditForm, setEditingReg, setIsSavingEdit, setRegistrations,
+    currentUser, editForm, editingReg, eventServiceRef, isDe, reloadRegistrations, searchUser,
+    selectedEvent, setEditError, setEditForm, setEditingReg, setIsSavingEdit,
   } = ctx;
   const openEditModal = (reg: SPRegistration): void => {
     setEditError('');
@@ -272,8 +272,9 @@ export function useEditModalHandlers(ctx: UseEditModalHandlersCtx): UseEditModal
         // sie ihre eigene Zeile sonst nicht (Zeilen-Autor bleibt die alte).
         try { await eventServiceRef.trySetItemAuthor(selectedEvent.subsiteUrl, REG_LIST_NAME, editingReg.Id, newEmail); } catch { /* best-effort, s. trySetItemAuthor */ }
       }
-      const regs = await getAllRegistrations(selectedEvent.id);
-      setRegistrations(regs);
+      // v30.67 (Review): gemeinsamer Nachlade-Pfad — 429 nach dem Speichern
+      // machte aus der Liste still `[]`.
+      await reloadRegistrations();
       if (registryFailed) {
         setEditError(isDe
           ? 'Die Zeile ist gespeichert, aber das Teilnehmer-Register (DEX_Participants) konnte nicht auf die neue Adresse umgeschrieben werden. Die Person sieht das Event unter „Meine Events“ erst, wenn ein Admin das Register abgleicht. Bitte noch einmal speichern oder den Admin informieren.'

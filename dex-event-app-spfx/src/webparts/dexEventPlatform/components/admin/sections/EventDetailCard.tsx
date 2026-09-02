@@ -37,6 +37,8 @@ export interface EventDetailCardProps {
   navigate: (page: import("../../../context/NavigationContext").Page, eventId?: string, intent?: import("../../../context/NavigationContext").NavIntent) => void;
   openTabGroup: string;
   registrations: SPRegistration[];
+  /** v30.67 (Review): Teilnehmerliste nicht lesbar (`regLoadError`) — keine Live-Zahl aus `registrations`. */
+  regsUnknown: boolean;
   reservedDetailHeight: number;
   reservedDetailWidth: number;
   selectedEvent: DeloitteEvent;
@@ -45,13 +47,15 @@ export interface EventDetailCardProps {
   setEvTabHover: React.Dispatch<React.SetStateAction<string>>;
   setOpenTabGroup: React.Dispatch<React.SetStateAction<string>>;
   subEventRegsByEventId: Record<string, SPRegistration[]>;
+  /** v30.67 (Review): mindestens eine Termin-Liste nicht lesbar — Summen sind Untergrenzen („≥ N"). */
+  subListsIncomplete: boolean;
   t: (key: string) => string;
   toggleDraftStatus: () => Promise<void>;
   waitlistRegs: SPRegistration[];
 }
 
 export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
-  const { activeRegs, childEventsOf, confirmDialog, detailCardRef, events, evTabHover, handleSelectEvent, isAdmin, isConsolidatedMode, isDe, isImpersonating, isLoadingRegs, isMobile, isOrganizerFor, navigate, openTabGroup, registrations, reservedDetailHeight, reservedDetailWidth, selectedEvent, setCheckInHubOpen, setCheckInHubStep, setEvTabHover, setOpenTabGroup, subEventRegsByEventId, t, toggleDraftStatus, waitlistRegs } = p;
+  const { activeRegs, childEventsOf, confirmDialog, detailCardRef, events, evTabHover, handleSelectEvent, isAdmin, isConsolidatedMode, isDe, isImpersonating, isLoadingRegs, isMobile, isOrganizerFor, navigate, openTabGroup, registrations, regsUnknown, reservedDetailHeight, reservedDetailWidth, selectedEvent, setCheckInHubOpen, setCheckInHubStep, setEvTabHover, setOpenTabGroup, subEventRegsByEventId, subListsIncomplete, t, toggleDraftStatus, waitlistRegs } = p;
   return (
         <div ref={detailCardRef} className="card" style={{ padding: 24, minHeight: reservedDetailHeight, flex: '1 1 420px', minWidth: reservedDetailWidth || 0 }}>
           {/* Header: Event-Titel + Status-Badge + Schnellaktionen (v13.11) */}
@@ -328,11 +332,14 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
                         }
                       }
                       parentCount = activeSet.size;
-                    } else if (parent.id === selectedEvent.id && !isLoadingRegs) {
+                    } else if (parent.id === selectedEvent.id && !isLoadingRegs && !regsUnknown) {
                       // Normales Hauptevent ist selbst gewählt → Live-Zahl.
                       // v30.42: Während des Ladens gehört `registrations` noch
                       // dem vorher gewählten Termin — dieselbe Falle wie bei den
                       // Sub-Reitern unten. Dann lieber der eigene Zähler.
+                      // v30.67 (Review): dasselbe, wenn die Liste nicht lesbar
+                      // war — `registrations` ist dann `[]`, die Live-Zahl wäre
+                      // eine „0", die keine ist. Der eigene Zähler stimmt eher.
                       parentCount = liveSelectedActive;
                     }
                     tabs.push({ id: parent.id, label: parent.title || (isDe ? 'Hauptevent' : 'Main event'), count: parentCount, isParent: true, ev: parent });
@@ -354,7 +361,7 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
                     const subLiveCount = subRegs
                       ? subRegs.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length
                       : (c.currentParticipants || 0);
-                    tabs.push({ id: c.id, label: shortSubEventTitle(c.title, parent?.title) || (isDe ? 'ohne Titel' : 'untitled'), count: (c.id === selectedEvent.id && !isLoadingRegs) ? liveSelectedActive : subLiveCount, isParent: false, ev: c });
+                    tabs.push({ id: c.id, label: shortSubEventTitle(c.title, parent?.title) || (isDe ? 'ohne Titel' : 'untitled'), count: (c.id === selectedEvent.id && !isLoadingRegs && !regsUnknown) ? liveSelectedActive : subLiveCount, isParent: false, ev: c });
                   }
                   // v22.70: Einzelnen Tab-Button rendern (für flaches Layout
                   // UND die Sub-Event-Reihe im Klammer-Layout wiederverwendet).
@@ -656,7 +663,15 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
                           `consolidatedFiltered` enthält bewusst auch die Warteliste
                           (die Matrix zeigt Wartende als „W") — hier stand dadurch
                           120, in der Kachel darunter 100. */}
-                      <span style={valueStyle}>{isConsolidatedMode ? countConsolidatedActive(subEventRegsByEventId) : activeRegs.length}</span>
+                      {/* v30.67 (Review): nicht lesbar → „—" statt „0"; im Klammer-
+                          Modus mit nicht lesbarer Termin-Liste nur eine Untergrenze. */}
+                      <span style={valueStyle}>{isConsolidatedMode
+                        ? (subListsIncomplete
+                          ? <span title={isDe ? 'Mindestens — eine Termin-Liste war nicht lesbar' : 'At least — one date list was not readable'}>≥ {countConsolidatedActive(subEventRegsByEventId)}</span>
+                          : countConsolidatedActive(subEventRegsByEventId))
+                        : (regsUnknown
+                          ? <span title={isDe ? 'Liste nicht lesbar' : 'List not readable'}>—</span>
+                          : activeRegs.length)}</span>
                     </div>
                     {waitlistRegs.length > 0 && (
                       <div style={rowStyle}>

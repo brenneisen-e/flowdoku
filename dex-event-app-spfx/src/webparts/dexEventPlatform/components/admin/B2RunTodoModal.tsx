@@ -46,9 +46,15 @@ export default function B2RunTodoModal(props: {
     let cancelled = false;
     (async () => {
       try {
-        const regs = await getAllRegistrations(props.event.id);
+        // v30.67 (Review): unvollständig gelesen = unvollständige Aufgaben —
+        // das muss die Person wissen, sonst gelten offene Nummern als erledigt.
+        let readFailed = false;
+        const regs = await getAllRegistrations(props.event.id, () => { readFailed = true; });
         if (cancelled) return;
         setRegs(regs);
+        if (readFailed) {
+          await showAlert('Die Teilnehmerliste konnte nicht vollständig gelesen werden — die Aufgabenliste ist unvollständig. Bitte den Dialog schließen und erneut öffnen.', { variant: 'error' });
+        }
         let storedTodos: StoredB2RunTodo[] = [];
         let storedDone: string[] = [];
         try {
@@ -111,11 +117,18 @@ export default function B2RunTodoModal(props: {
       if (from) {
         await props.service.adminUpdateRegistration(props.event.subsiteUrl, from.Id, { Startnummer: '' }, actor);
       }
-      const fresh = await getAllRegistrations(props.event.id);
-      setRegs(fresh);
+      // v30.67 (Review): Die Übertragung ist durch — scheitert nur das
+      // Nachlesen, bleibt der alte Stand stehen und die Aufgabe gilt als
+      // erledigt; sonst stünde die Nummer wieder als „offen" da.
+      let freshFailed = false;
+      const fresh = await getAllRegistrations(props.event.id, () => { freshFailed = true; });
+      if (!freshFailed) setRegs(fresh);
       setTodos(prev => prev.map(x => x.key === t.key
-        ? { ...x, bibInDex: true, toReg: fresh.find(r => r.Id === t.toReg!.Id) || x.toReg }
+        ? { ...x, bibInDex: true, toReg: (!freshFailed && fresh.find(r => r.Id === t.toReg!.Id)) || x.toReg }
         : x));
+      if (freshFailed) {
+        await showAlert('Übertragen — aber die Teilnehmerliste konnte danach nicht neu geladen werden. Bitte den Dialog später erneut öffnen.', { variant: 'info' });
+      }
     } catch {
       await showAlert('Die Startnummer konnte nicht übertragen werden — bitte erneut versuchen.', { variant: 'error' });
     } finally { setBibBusy(''); }

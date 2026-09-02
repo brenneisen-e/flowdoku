@@ -9,15 +9,20 @@ import { countConsolidatedActive } from '../logic/parentRegs';
 
 export interface KpiTilesProps {
   isConsolidatedMode: boolean;
+  isDe: boolean;
   isSplitCapacity: boolean;
   registrations: SPRegistration[];
+  /** v30.67 (Review): Teilnehmerliste nicht lesbar (`regLoadError`) — Kacheln zeigen „—". */
+  regsUnknown: boolean;
   selectedEvent: DeloitteEvent;
   subEventRegsByEventId: Record<string, SPRegistration[]>;
+  /** v30.67 (Review): mindestens eine Termin-Liste nicht lesbar — Summen sind Untergrenzen („≥ N"). */
+  subListsIncomplete: boolean;
   t: (key: string) => string;
 }
 
 export const KpiTiles: React.FC<KpiTilesProps> = (p) => {
-  const { isConsolidatedMode, isSplitCapacity, registrations, selectedEvent, subEventRegsByEventId, t } = p;
+  const { isConsolidatedMode, isDe, isSplitCapacity, registrations, regsUnknown, selectedEvent, subEventRegsByEventId, subListsIncomplete, t } = p;
         // v30.67: Bei geteilten Kapazitäten ist `maxParticipants` per
         // Definition 0 (die Kapazität steht in durchstarter-/funstarterCapacity).
         // `> 0` sollte nur „Unbegrenzt" ausschließen, schloss aber jedes
@@ -61,6 +66,20 @@ export const KpiTiles: React.FC<KpiTilesProps> = (p) => {
         // („Aktuell registriert") dieselbe Zahl zeigt — vorher zählte sie die
         // Matrix-Zeilen inklusive Warteliste.
         const totalActive = isConsolidatedMode ? countConsolidatedActive(subEventRegsByEventId) : active.length;
+        // v30.67 (Review): „—" statt Zahl, wenn die Liste nicht lesbar war. Die
+        // Kacheln stehen außerhalb des `regLoadError`-Zweigs und zeigten neben
+        // „kein Zugriff" weiter „0 angemeldet" — eine Null, die keine ist
+        // (CLAUDE.md: unbekannt ist keine Null). Im Klammer-Modus kommen die
+        // Zahlen aus den Termin-Listen; nur „Abgemeldet" zählt die Klammer-
+        // Zeilen mit und ist dann ebenfalls unbekannt. War eine Termin-Liste
+        // nicht lesbar, sind die Summen nur Untergrenzen: „≥ N".
+        const unknownAll = regsUnknown && !isConsolidatedMode;
+        const dash = <span title={isDe ? 'Liste nicht lesbar' : 'List not readable'}>—</span>;
+        const show = (n: number, unknown: boolean): React.ReactNode => unknown
+          ? dash
+          : (isConsolidatedMode && subListsIncomplete
+            ? <span title={isDe ? 'Mindestens — eine Termin-Liste war nicht lesbar' : 'At least — one date list was not readable'}>≥ {n}</span>
+            : n);
         // v19.12: nach EFFEKTIVER Gruppe zählen (StarterType ODER, falls leer,
         // PreferredStarterType). Sonst fehlen angemeldete Nachrücker, deren
         // StarterType der Flow nicht gesetzt hat, in der Gruppen-Zahl — dann ist
@@ -77,19 +96,19 @@ export const KpiTiles: React.FC<KpiTilesProps> = (p) => {
         const grpA = (
           <div key="grpA" style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
             <span style={{ color: 'var(--dex-green-dark, #6b9a1e)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={labelA}>● {labelA}</span>
-            <strong style={{ whiteSpace: 'nowrap' }}>{durchActive}<span style={{ color: 'var(--dex-gray-400)' }}>/{durchCap}</span></strong>
+            <strong style={{ whiteSpace: 'nowrap' }}>{unknownAll ? dash : durchActive}<span style={{ color: 'var(--dex-gray-400)' }}>/{durchCap}</span></strong>
           </div>
         );
         const grpB = (
           <div key="grpB" style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
             <span style={{ color: 'var(--dex-orange, #ff8c00)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={labelB}>● {labelB}</span>
-            <strong style={{ whiteSpace: 'nowrap' }}>{funActive}<span style={{ color: 'var(--dex-gray-400)' }}>/{funCap}</span></strong>
+            <strong style={{ whiteSpace: 'nowrap' }}>{unknownAll ? dash : funActive}<span style={{ color: 'var(--dex-gray-400)' }}>/{funCap}</span></strong>
           </div>
         );
         return (
           <div className="admin-counters" style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 12, marginBottom: 24 }}>
             <div className="card" style={{ padding: 16, textAlign: 'center' }}>
-              <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#1565c0' }}>{totalActive}</div>
+              <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#1565c0' }}>{show(totalActive, unknownAll)}</div>
               <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.registered')}</div>
               {isSplitCapacity && (
                 <div style={{
@@ -106,26 +125,26 @@ export const KpiTiles: React.FC<KpiTilesProps> = (p) => {
             {hasWaitlistKPI && (
               <div className="card" style={{ padding: 16, textAlign: 'center' }}>
                 <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-orange)' }}>
-                  {isConsolidatedMode ? consolidatedWaitlistByEmail.size : registrations.filter(r => r.Status === 'Warteliste').length}
+                  {show(isConsolidatedMode ? consolidatedWaitlistByEmail.size : registrations.filter(r => r.Status === 'Warteliste').length, unknownAll)}
                 </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.waitlist')}</div>
               </div>
             )}
             <div className="card" style={{ padding: 16, textAlign: 'center' }}>
               <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#6a1b9a' }}>
-                {isConsolidatedMode ? consolidatedQRByEmail.size : registrations.filter(r => r.Status === 'QR versendet').length}
+                {show(isConsolidatedMode ? consolidatedQRByEmail.size : registrations.filter(r => r.Status === 'QR versendet').length, unknownAll)}
               </div>
               <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.qrsent')}</div>
             </div>
             <div className="card" style={{ padding: 16, textAlign: 'center' }}>
               <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-green)' }}>
-                {isConsolidatedMode ? consolidatedCheckedByEmail.size : registrations.filter(r => r.Status === 'Eingecheckt').length}
+                {show(isConsolidatedMode ? consolidatedCheckedByEmail.size : registrations.filter(r => r.Status === 'Eingecheckt').length, unknownAll)}
               </div>
               <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.checkedin')}</div>
             </div>
             <div className="card" style={{ padding: 16, textAlign: 'center' }}>
               <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-gray-400)' }}>
-                {isConsolidatedMode ? consolidatedCancelledByEmail.size : registrations.filter(r => r.Status === 'Abgemeldet').length}
+                {show(isConsolidatedMode ? consolidatedCancelledByEmail.size : registrations.filter(r => r.Status === 'Abgemeldet').length, regsUnknown)}
               </div>
               <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.cancelled')}</div>
             </div>

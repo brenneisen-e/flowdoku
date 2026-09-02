@@ -23,7 +23,8 @@ export interface AdminActionsCardProps {
   eventServiceRef: EventService;
   fixColumnsResult: string;
   fixFieldsResult: string;
-  getAllRegistrations: (eventId: string, onHttpError?: (_status: number) => void) => Promise<SPRegistration[]>;
+  /** v30.67 (Review): gemeinsamer Nachlade-Pfad der Seite — `null` = nicht lesbar. */
+  reloadRegistrations: () => Promise<SPRegistration[] | null>;
   isAdmin: boolean;
   isCheckingDeclines: boolean;
   isDe: boolean;
@@ -90,7 +91,6 @@ export interface AdminActionsCardProps {
   setIsSyncingRegistry: React.Dispatch<React.SetStateAction<boolean>>;
   setNameFixModal: React.Dispatch<React.SetStateAction<{ running: boolean; step: string; evIdx: number; evTotal: number; summary: string[]; }>>;
   setRefreshProfilesResult: React.Dispatch<React.SetStateAction<string>>;
-  setRegistrations: React.Dispatch<React.SetStateAction<SPRegistration[]>>;
   setRepairAccessResult: React.Dispatch<React.SetStateAction<string>>;
   setRepairNamesResult: React.Dispatch<React.SetStateAction<string>>;
   setRepairOrganizersResult: React.Dispatch<React.SetStateAction<string>>;
@@ -112,7 +112,7 @@ export interface AdminActionsCardProps {
 }
 
 export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
-  const { adminEvents, allEvents, childEventsOf, confirmDialog, copiedDeepLink, copiedEmails, detectOverbookResult, eventServiceRef, fixColumnsResult, fixFieldsResult, getAllRegistrations, isAdmin, isCheckingDeclines, isDe, isDetectingOverbook, isFixingColumns, isFixingFields, isOrganizerFor, isPromoting, isRefreshingProfiles, isReorderingIDs, isRepairingAccess, isRepairingNames, isRepairingOrganizers, isRepairingPerms, isResettingCounter, isSendingQR, isSplitCapacity, isSyncingRegistry, navigate, openChangeLogForEvent, openCommsModal, openInviteModal, openMassmailPicker, promoteResult, qrSentCount, refreshEvents, refreshProfilesResult, registrations, reorderResult, repairAccessResult, repairNamesResult, repairOrganizersResult, repairPermsResult, resetCounterResult, runIdReorder, runManualPromote, searchUsers, selectedEvent, setAccessFixModal, setB2runTodoOpen, setBibImportOpen, setBillingPanelOpen, setCheckInHubOpen, setCheckInHubStep, setCopiedDeepLink, setCopiedEmails, setDeclineCopied, setDeclineResult, setDetectOverbookResult, setExcelAudience, setExcelTargetModal, setFixColumnsResult, setFixFieldsResult, setIsCheckingDeclines, setIsDetectingOverbook, setIsFixingColumns, setIsFixingFields, setIsRefreshingProfiles, setIsRepairingAccess, setIsRepairingNames, setIsRepairingOrganizers, setIsRepairingPerms, setIsResettingCounter, setIsSyncingRegistry, setNameFixModal, setRefreshProfilesResult, setRegistrations, setRepairAccessResult, setRepairNamesResult, setRepairOrganizersResult, setRepairPermsResult, setResetCounterResult, setShirtSizeOpen, setShowDeclineModal, setShowExportMenu, setSubRegReloadTick, setSyncRegistryResult, shirtFieldExists, showAlert, showExportMenu, siteUrl, spServiceRef, syncRegistryResult, t, updateEvent } = p;
+  const { adminEvents, allEvents, childEventsOf, confirmDialog, copiedDeepLink, copiedEmails, detectOverbookResult, eventServiceRef, fixColumnsResult, fixFieldsResult, isAdmin, isCheckingDeclines, isDe, isDetectingOverbook, isFixingColumns, isFixingFields, isOrganizerFor, isPromoting, isRefreshingProfiles, isReorderingIDs, isRepairingAccess, isRepairingNames, isRepairingOrganizers, isRepairingPerms, isResettingCounter, isSendingQR, isSplitCapacity, isSyncingRegistry, navigate, openChangeLogForEvent, openCommsModal, openInviteModal, openMassmailPicker, promoteResult, qrSentCount, refreshEvents, refreshProfilesResult, registrations, reloadRegistrations, reorderResult, repairAccessResult, repairNamesResult, repairOrganizersResult, repairPermsResult, resetCounterResult, runIdReorder, runManualPromote, searchUsers, selectedEvent, setAccessFixModal, setB2runTodoOpen, setBibImportOpen, setBillingPanelOpen, setCheckInHubOpen, setCheckInHubStep, setCopiedDeepLink, setCopiedEmails, setDeclineCopied, setDeclineResult, setDetectOverbookResult, setExcelAudience, setExcelTargetModal, setFixColumnsResult, setFixFieldsResult, setIsCheckingDeclines, setIsDetectingOverbook, setIsFixingColumns, setIsFixingFields, setIsRefreshingProfiles, setIsRepairingAccess, setIsRepairingNames, setIsRepairingOrganizers, setIsRepairingPerms, setIsResettingCounter, setIsSyncingRegistry, setNameFixModal, setRefreshProfilesResult, setRepairAccessResult, setRepairNamesResult, setRepairOrganizersResult, setRepairPermsResult, setResetCounterResult, setShirtSizeOpen, setShowDeclineModal, setShowExportMenu, setSubRegReloadTick, setSyncRegistryResult, shirtFieldExists, showAlert, showExportMenu, siteUrl, spServiceRef, syncRegistryResult, t, updateEvent } = p;
   return (
         <ActionsCollapsibleCard isDe={isDe}>
           <div className="admin-actions-grid" style={{
@@ -696,8 +696,7 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                         ? `${res.total} markiert (${parts})${res.errors ? ` — ${res.errors} Fehler` : ''}`
                         : `${res.total} marked (${parts})${res.errors ? ` — ${res.errors} errors` : ''}`)
                       : (isDe ? `Keine Überbuchung gefunden (${parts})` : `No overbooking found (${parts})`));
-                    const regs = await getAllRegistrations(selectedEvent.id);
-                    setRegistrations(regs);
+                    await reloadRegistrations();
                   } catch {
                     setDetectOverbookResult(isDe ? 'Fehler beim Prüfen der Überbuchung' : 'Error checking overbooking');
                   }
@@ -1178,7 +1177,25 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                       // kürzer als `names` war — `join(';')` macht aus den Löchern leere
                       // Segmente, die Lesekante verwirft sie, alle Adressen dahinter
                       // rutschen um einen Slot nach vorn.
-                      const pairs = names.map((n, i) => ({ n: (n || '').trim(), e: (emails[i] || '').trim() }));
+                      // v30.67 (Review): über max(names, emails) laufen — wie im
+                      // Nachbar-Tile „Organizer-Mails reparieren". `names.map` lief nur
+                      // über die Namen: Ein Event mit MEHR Adressen als Namen verlor
+                      // die überzähligen Adressen stumm, und die Adresse ist das, was
+                      // berechtigt (Rechteverlust ohne Meldung). Ein Slot „E-Mail ohne
+                      // Name" bekommt deshalb den Anzeigenamen (ersatzweise die
+                      // Adresse); verworfen und gezählt wird nur „Name ohne E-Mail".
+                      const slots = Math.max(names.length, emails.length);
+                      const pairs: Array<{ n: string; e: string }> = [];
+                      for (let i = 0; i < slots; i++) {
+                        let n = (names[i] || '').trim();
+                        const e = (emails[i] || '').trim();
+                        if (e && !n) {
+                          let resolved = '';
+                          try { resolved = await eventServiceRef.displayNameForEmail(e); } catch { /* Adresse als Name */ }
+                          n = resolved || e;
+                        }
+                        pairs.push({ n, e });
+                      }
                       const complete = pairs.filter(p => p.n && p.e);
                       orgDropped += pairs.length - complete.length;
                       try {
@@ -1496,8 +1513,7 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                     setRefreshProfilesResult(isDe
                       ? `${result.scanned} geprüft, ${result.updated} aktualisiert, ${result.failedLookups} Profil-Lookups fehlgeschlagen`
                       : `${result.scanned} checked, ${result.updated} updated, ${result.failedLookups} profile lookups failed`);
-                    const regs = await getAllRegistrations(selectedEvent.id);
-                    setRegistrations(regs);
+                    await reloadRegistrations();
                   } catch {
                     setRefreshProfilesResult(isDe ? 'Fehler beim Auffrischen der Profile' : 'Error refreshing profiles');
                   }
@@ -1546,10 +1562,31 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                     const unresolved = r.unresolved.length
                       ? (isDe ? ` · ${r.unresolved.length} Adresse(n) nicht gefunden: ${r.unresolved.join(', ')}` : ` · ${r.unresolved.length} address(es) not found: ${r.unresolved.join(', ')}`)
                       : '';
-                    setRepairPermsResult(isDe
-                      ? `${r.users} Person(en) auf ${r.sites} Liste(n) berechtigt${unresolved}`
-                      : `${r.users} person(s) granted on ${r.sites} list(s)${unresolved}`);
-                    setSubRegReloadTick(t => t + 1);
+                    // v30.67 (Review): `failed` auswerten. Das Ergebnis trägt seit
+                    // v30.67 je fehlgeschlagene Zuweisung Subsite, Scope (web/list)
+                    // und HTTP-Status — die Kachel las nur users/sites und meldete
+                    // bei 40× HTTP 403 grün „3 Person(en) auf 20 Liste(n)
+                    // berechtigt". `grants` ist die Zahl der wirklich gesetzten
+                    // Rechte; `users` sagt nur, wie viele Adressen aufgelöst wurden.
+                    // `resultIsError` hängt am Wort „Fehler"/„Error" — deshalb steht
+                    // es vorn im Text. Vorbild: repairAllOrganizerPermissions
+                    // (context/actions/maintenance.ts). Die Termin-Listen werden nur
+                    // nachgeladen, wenn nichts fehlgeschlagen ist — sonst zeigte der
+                    // Reload dieselben „0", und das Banner verschwände zu Unrecht.
+                    const failed = r.failed || [];
+                    const siteName = (s: string): string => s.replace(/\/+$/, '').split('/').pop() || s;
+                    if (failed.length > 0) {
+                      const shown = failed.slice(0, 5).map(f => `${siteName(f.site)} [${f.scope}] HTTP ${f.status}`).join(', ');
+                      const more = failed.length > 5 ? ' …' : '';
+                      setRepairPermsResult(isDe
+                        ? `Fehler: ${failed.length} Zuweisung(en) fehlgeschlagen — ${shown}${more} · ${r.grants} Recht(e) gesetzt${unresolved}`
+                        : `Error: ${failed.length} assignment(s) failed — ${shown}${more} · ${r.grants} grant(s) set${unresolved}`);
+                    } else {
+                      setRepairPermsResult(isDe
+                        ? `${r.grants} Recht(e) für ${r.users} Person(en) auf ${r.sites} Liste(n) gesetzt${unresolved}`
+                        : `${r.grants} grant(s) for ${r.users} person(s) on ${r.sites} list(s) set${unresolved}`);
+                      setSubRegReloadTick(t => t + 1);
+                    }
                   } catch {
                     setRepairPermsResult(isDe ? 'Fehler beim Setzen der Berechtigungen' : 'Error setting permissions');
                   }

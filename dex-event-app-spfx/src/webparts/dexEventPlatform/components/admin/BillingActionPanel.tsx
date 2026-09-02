@@ -129,7 +129,14 @@ export default function BillingActionPanel(props: { event: DeloitteEvent; onClos
     if (busy) return;
     setBusy('xlsx');
     try {
-      const regs = await getAllRegistrations(liveEvent.id);
+      // v30.67 (Review): Ein Lesefehler ergab eine Datei mit null Zeilen —
+      // die F&A für „keine Anmeldungen" gehalten hätte.
+      let readFailed = false;
+      const regs = await getAllRegistrations(liveEvent.id, () => { readFailed = true; });
+      if (readFailed) {
+        showAlert('Die Teilnehmerliste konnte gerade nicht gelesen werden — es wurde keine Datei erzeugt. Bitte später erneut versuchen.', { variant: 'error' });
+        return;
+      }
       // v30.50: Zeilenaufbau UND Dateiaufbau liegen in utils/faBilling —
       // dieselbe Datei, die auch das F&A Center herunterlädt. Vorher waren
       // es zwei Implementierungen, die schon im Spaltensatz auseinanderliefen.

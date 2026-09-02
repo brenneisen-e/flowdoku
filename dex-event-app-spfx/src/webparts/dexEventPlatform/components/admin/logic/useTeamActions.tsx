@@ -11,7 +11,8 @@ import { DeloitteEvent } from '../../../types';
 export interface UseTeamActionsCtx {
   dragRegId: number;
   eventServiceRef: EventService;
-  getAllRegistrations: (eventId: string, onHttpError?: (_status: number) => void) => Promise<SPRegistration[]>;
+  /** v30.67 (Review): gemeinsamer Nachlade-Pfad der Seite — `null` = nicht lesbar. */
+  reloadRegistrations: () => Promise<SPRegistration[] | null>;
   idFixCheckedForRef: React.MutableRefObject<string>;
   isDe: boolean;
   isLoadingRegs: boolean;
@@ -21,7 +22,6 @@ export interface UseTeamActionsCtx {
   selectedEvent: DeloitteEvent;
   setDragOverTid: React.Dispatch<React.SetStateAction<string>>;
   setDragRegId: React.Dispatch<React.SetStateAction<number>>;
-  setRegistrations: React.Dispatch<React.SetStateAction<SPRegistration[]>>;
   setTeamMailBody: React.Dispatch<React.SetStateAction<string>>;
   setTeamMailInfoByTid: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   setTeamMailOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -51,9 +51,9 @@ export interface UseTeamActionsResult {
 
 export function useTeamActions(ctx: UseTeamActionsCtx): UseTeamActionsResult {
   const {
-    dragRegId, eventServiceRef, getAllRegistrations, idFixCheckedForRef, isDe, isLoadingRegs,
-    recentCancellation, registrations, reloadRegistrationsForIdCheck, selectedEvent,
-    setDragOverTid, setDragRegId, setRegistrations, setTeamMailBody, setTeamMailInfoByTid,
+    dragRegId, eventServiceRef, idFixCheckedForRef, isDe, isLoadingRegs,
+    recentCancellation, registrations, reloadRegistrations, reloadRegistrationsForIdCheck, selectedEvent,
+    setDragOverTid, setDragRegId, setTeamMailBody, setTeamMailInfoByTid,
     setTeamMailOpen, setTeamMailSending, setTeamMailSubject, showAlert, teamMailBody,
     teamMailInfoByTid, teamMailSubject,
   } = ctx;
@@ -82,8 +82,8 @@ export function useTeamActions(ctx: UseTeamActionsCtx): UseTeamActionsResult {
         eventId: selectedEvent.id, eventTitle: selectedEvent.title,
         details: { fromTeam: curTid, toTeam: targetTid, via: 'dragdrop' },
       }).catch(() => { /* */ });
-      const regs = await getAllRegistrations(selectedEvent.id);
-      setRegistrations(regs);
+      // v30.67 (Review): gemeinsamer Nachlade-Pfad statt `[]` bei 429.
+      await reloadRegistrations();
     } catch (err) { console.warn('[DEX] moveRegToTeam failed:', err); }
   };
   // Drop-Handler: gezogene Registrierung ermitteln + verschieben.

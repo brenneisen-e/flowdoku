@@ -25,7 +25,8 @@ export interface ParticipantTableProps {
   confirmDialog: (message: React.ReactNode, opts?: import("../../../context/DialogContext").ConfirmOptions) => Promise<boolean>;
   duplicateEmails: Set<string>;
   eventServiceRef: EventService;
-  getAllRegistrations: (eventId: string, onHttpError?: (_status: number) => void) => Promise<SPRegistration[]>;
+  /** v30.67 (Review): gemeinsamer Nachlade-Pfad der Seite — `null` = nicht lesbar. */
+  reloadRegistrations: () => Promise<SPRegistration[] | null>;
   getRoommateInfo: (reg: {    ParticipantEmail?: string;}) => { partnerName: string; partnerEmail: string; mutual: boolean; };
   handleSort: (col: string) => void;
   hasRoommateColumn: boolean;
@@ -50,7 +51,6 @@ export interface ParticipantTableProps {
   setDupCancelReg: React.Dispatch<React.SetStateAction<SPRegistration>>;
   setParticipantDetail: React.Dispatch<React.SetStateAction<{ name: string; email: string; jobTitle: string; location: string; company: string; department: string; phone: string; status: string; tid: number; }>>;
   setPersonalColsCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
-  setRegistrations: React.Dispatch<React.SetStateAction<SPRegistration[]>>;
   setShowColumnPicker: React.Dispatch<React.SetStateAction<boolean>>;
   setSplitParticipantsView: React.Dispatch<React.SetStateAction<"split" | "merged">>;
   showAlert: (message: React.ReactNode, opts?: import("../../../context/DialogContext").AlertOptions) => void;
@@ -63,7 +63,7 @@ export interface ParticipantTableProps {
 }
 
 export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
-  const { activeRegs, allEvents, attachmentsByReg, availableColumns, colToggleHover, columnOrder, computeRoommatePairs, confirmDialog, duplicateEmails, eventServiceRef, getAllRegistrations, getRoommateInfo, handleSort, hasRoommateColumn, hiddenColumns, hideColumn, highlightMatch, inactiveAccounts, isDe, isSplitCapacity, moveColumn, openEditModal, orgPastLock, parentEventForSelected, parentRegsByEmail, performStandardCancel, personalColsCollapsed, query, registrations, selectedEvent, setAttachmentsModalReg, setColToggleHover, setDupCancelReg, setParticipantDetail, setPersonalColsCollapsed, setRegistrations, setShowColumnPicker, setSplitParticipantsView, showAlert, showColumn, showColumnPicker, showMatches, sortIcon, splitParticipantsView, stripLocPrefix } = p;
+  const { activeRegs, allEvents, attachmentsByReg, availableColumns, colToggleHover, columnOrder, computeRoommatePairs, confirmDialog, duplicateEmails, eventServiceRef, getRoommateInfo, handleSort, hasRoommateColumn, hiddenColumns, hideColumn, highlightMatch, inactiveAccounts, isDe, isSplitCapacity, moveColumn, openEditModal, orgPastLock, parentEventForSelected, parentRegsByEmail, performStandardCancel, personalColsCollapsed, query, registrations, reloadRegistrations, selectedEvent, setAttachmentsModalReg, setColToggleHover, setDupCancelReg, setParticipantDetail, setPersonalColsCollapsed, setShowColumnPicker, setSplitParticipantsView, showAlert, showColumn, showColumnPicker, showMatches, sortIcon, splitParticipantsView, stripLocPrefix } = p;
   return (
           /* v17.13: overflowX: 'auto' entfernt — der scrollbare Wrapper
              hat die sticky-thead-Berechnung gebrochen (sticky relative zum
@@ -727,14 +727,12 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                   const doCheckIn = async (): Promise<void> => {
                     if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
                     await eventServiceRef.checkInParticipant(selectedEvent.subsiteUrl, reg.Id);
-                    const regs = await getAllRegistrations(selectedEvent.id);
-                    setRegistrations(regs);
+                    await reloadRegistrations();
                   };
                   const doCheckOut = async (): Promise<void> => {
                     if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
                     await eventServiceRef.checkOutParticipant(selectedEvent.subsiteUrl, reg.Id);
-                    const regs = await getAllRegistrations(selectedEvent.id);
-                    setRegistrations(regs);
+                    await reloadRegistrations();
                   };
                   // v29.25: Echter No-Show-Status (wie auf der Check-in-Seite,
                   // v23.28) — nicht zu verwechseln mit dem „No-Show"-Knopf der
@@ -750,8 +748,7 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                         { variant: 'error' });
                       return;
                     }
-                    const regs = await getAllRegistrations(selectedEvent.id);
-                    setRegistrations(regs);
+                    await reloadRegistrations();
                   };
                   return (
                     <td key={id} style={{ padding: 8, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -926,8 +923,7 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                                   reg.Id,
                                   { eventId: selectedEvent.id, eventTitle: selectedEvent.title, participantName: fullName }
                                 );
-                                const regs = await getAllRegistrations(selectedEvent.id);
-                                setRegistrations(regs);
+                                await reloadRegistrations();
                                 if (ok) {
                                   showAlert(
                                     isDe ? `Datenschutz-Rückmeldung von ${fullName} bestätigt.` : `Privacy confirmation of ${fullName} recorded.`,

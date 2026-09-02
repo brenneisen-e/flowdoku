@@ -9,10 +9,10 @@ import { EventService, SPRegistration } from '../../../services/EventService';
 
 export interface WaitlistPositionModalProps {
   eventServiceRef: EventService;
-  getAllRegistrations: (eventId: string, onHttpError?: (_status: number) => void) => Promise<SPRegistration[]>;
+  /** v30.67 (Review): gemeinsamer Nachlade-Pfad der Seite — `null` = nicht lesbar. */
+  reloadRegistrations: () => Promise<SPRegistration[] | null>;
   isDe: boolean;
   selectedEvent: DeloitteEvent;
-  setRegistrations: React.Dispatch<React.SetStateAction<SPRegistration[]>>;
   setWlPosBusy: React.Dispatch<React.SetStateAction<boolean>>;
   setWlPosModal: React.Dispatch<React.SetStateAction<{ reg: SPRegistration; currentPos: number; total: number; }>>;
   setWlPosValue: React.Dispatch<React.SetStateAction<string>>;
@@ -23,7 +23,7 @@ export interface WaitlistPositionModalProps {
 }
 
 export const WaitlistPositionModal: React.FC<WaitlistPositionModalProps> = (p) => {
-  const { eventServiceRef, getAllRegistrations, isDe, selectedEvent, setRegistrations, setWlPosBusy, setWlPosModal, setWlPosValue, showAlert, wlPosBusy, wlPosModal, wlPosValue } = p;
+  const { eventServiceRef, isDe, reloadRegistrations, selectedEvent, setWlPosBusy, setWlPosModal, setWlPosValue, showAlert, wlPosBusy, wlPosModal, wlPosValue } = p;
         const reg = wlPosModal.reg;
         const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || reg.ParticipantEmail || '');
         const parsed = parseInt(wlPosValue, 10);
@@ -49,8 +49,8 @@ export const WaitlistPositionModal: React.FC<WaitlistPositionModalProps> = (p) =
               showAlert(res.error || (isDe ? 'Der Platz konnte nicht geändert werden.' : 'The position could not be changed.'), { variant: 'error' });
               return;
             }
-            const allRegs = await getAllRegistrations(selectedEvent.id);
-            setRegistrations(allRegs);
+            // v30.67 (Review): gemeinsamer Nachlade-Pfad statt `[]` bei 429.
+            await reloadRegistrations();
             showAlert(res.changed === 0
               ? (isDe ? `${name} steht bereits auf Platz ${res.to}.` : `${name} is already at position ${res.to}.`)
               : (isDe ? `${name} steht jetzt auf Platz ${res.to} (vorher ${res.from}).` : `${name} is now at position ${res.to} (previously ${res.from}).`),

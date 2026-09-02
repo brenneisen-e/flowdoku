@@ -5,7 +5,7 @@
 import * as React from 'react';
 import { DeloitteEvent } from '../../../types';
 import { isEventOver } from '../../../utils/eventFormat';
-import { ConsolidatedRow } from '../../admin/adminTypes';
+import { ConsolidatedRow, DeniedSubEventList } from '../../admin/adminTypes';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { PersonContactHover } from '../../PersonContactHover';
 import { formatDate, translateStatus } from '../../../utils/eventStatus';
@@ -27,7 +27,7 @@ export interface ConsolidatedViewProps {
   consolidatedSort: string;
   consolidatedSortAsc: boolean;
   /** v30.67: Termine, deren Liste NICHT gelesen wurde (v30.37-Zustand aus AdminPage). */
-  deniedSubEventLists: string[];
+  deniedSubEventLists: DeniedSubEventList[];
   expandedConsolidatedEmail: string;
   highlightMatch: (text: unknown) => React.ReactNode;
   inactiveAccounts: string[];

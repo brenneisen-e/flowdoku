@@ -17,7 +17,8 @@ export interface CancelledListProps {
   confirmDialog: (message: React.ReactNode, opts?: import("../../../context/DialogContext").ConfirmOptions) => Promise<boolean>;
   consolidatedChildren: DeloitteEvent[];
   eventServiceRef: EventService;
-  getAllRegistrations: (eventId: string, onHttpError?: (_status: number) => void) => Promise<SPRegistration[]>;
+  /** v30.67 (Review): gemeinsamer Nachlade-Pfad der Seite — `null` = nicht lesbar. */
+  reloadRegistrations: () => Promise<SPRegistration[] | null>;
   hasWaitlistActivity: boolean;
   isAdmin: boolean;
   isConsolidatedMode: boolean;
@@ -27,7 +28,6 @@ export interface CancelledListProps {
   selectedEvent: DeloitteEvent;
   setCancelledSortAsc: React.Dispatch<React.SetStateAction<boolean>>;
   setCancelledSortColumn: React.Dispatch<React.SetStateAction<"date" | "type" | "location" | "vorname" | "nachname" | "email" | "jobtitle">>;
-  setRegistrations: React.Dispatch<React.SetStateAction<SPRegistration[]>>;
   setSubRegReloadTick: React.Dispatch<React.SetStateAction<number>>;
   showAlert: (message: React.ReactNode, opts?: import("../../../context/DialogContext").AlertOptions) => void;
   stripLocPrefix: (loc: string) => string;
@@ -35,7 +35,7 @@ export interface CancelledListProps {
 }
 
 export const CancelledList: React.FC<CancelledListProps> = (p) => {
-  const { cancelledRegs, cancelledSortAsc, cancelledSortColumn, confirmDialog, consolidatedChildren, eventServiceRef, getAllRegistrations, hasWaitlistActivity, isAdmin, isConsolidatedMode, isDe, isOrganizerFor, registrations, selectedEvent, setCancelledSortAsc, setCancelledSortColumn, setRegistrations, setSubRegReloadTick, showAlert, stripLocPrefix, subEventRegsByEventId } = p;
+  const { cancelledRegs, cancelledSortAsc, cancelledSortColumn, confirmDialog, consolidatedChildren, eventServiceRef, hasWaitlistActivity, isAdmin, isConsolidatedMode, isDe, isOrganizerFor, registrations, reloadRegistrations, selectedEvent, setCancelledSortAsc, setCancelledSortColumn, setSubRegReloadTick, showAlert, stripLocPrefix, subEventRegsByEventId } = p;
           // v18.11: Abmeldungs-Liste mit denselben Spalten + Sortierung wie
           // Teilnehmer-/Warteliste. Unterscheidet proaktive Absagen
           // (CustomData _declined = „Ich nehme nicht teil", ohne vorherige
@@ -104,11 +104,9 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
               // (z.B. Absagen auf der Klammer) neu laden, sonst die Event-Regs.
               if (isConsolidatedMode) {
                 setSubRegReloadTick(t => t + 1);
-                const regs = await getAllRegistrations(selectedEvent.id);
-                setRegistrations(regs);
+                await reloadRegistrations();
               } else {
-                const regs = await getAllRegistrations(selectedEvent.id);
-                setRegistrations(regs);
+                await reloadRegistrations();
               }
             } else {
               // eslint-disable-next-line no-alert
@@ -194,8 +192,11 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
                 await eventServiceRef.writeChangeLog({ action: 'RegistrationDeleted', targetType: 'Participant', targetId: p.email, targetName: nm, eventId: selectedEvent.id, eventTitle: selectedEvent.title, details: { deletedStatus: 'Abgemeldet', count: delOk, failed: delFailed, everywhere: delFailed === 0 } });
               } catch { /* */ }
               setSubRegReloadTick(t => t + 1);
-              const regs = await getAllRegistrations(selectedEvent.id);
-              setRegistrations(regs);
+              // v30.67 (Review): gemeinsamer Nachlade-Pfad. Genau hier schnappte
+              // die Falle zu: „Person überall löschen" über 12 Zeilen löst die
+              // Drosselung aus, der Reload danach bekam 429 → `[]` → „Noch
+              // keine Teilnehmer registriert", alle Kacheln 0, kein Hinweis.
+              await reloadRegistrations();
               if (delFailed > 0) {
                 showAlert(isDe
                   ? `${delOk} von ${targets.length} Einträgen gelöscht — ${delFailed} konnten nicht entfernt werden (fehlende Rechte auf dem Termin oder Drosselung). Bitte „Organizer-Berechtigungen reparieren“ ausführen und erneut versuchen.`

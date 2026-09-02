@@ -28,7 +28,8 @@ export interface CreateKlammerActionsCtx {
   deregSelected: Set<string>;
   deregSilent: boolean;
   eventServiceRef: EventService;
-  getAllRegistrations: (eventId: string, onHttpError?: (_status: number) => void) => Promise<SPRegistration[]>;
+  /** v30.67 (Review): gemeinsamer Nachlade-Pfad der Seite — `null` = nicht lesbar. */
+  reloadRegistrations: () => Promise<SPRegistration[] | null>;
   inactiveAccounts: string[];
   isDe: boolean;
   mainFieldsEditForm: Record<string, string>;
@@ -55,7 +56,6 @@ export interface CreateKlammerActionsCtx {
   setMainFieldsEditSaving: React.Dispatch<React.SetStateAction<boolean>>;
   setMainFieldsEditSubsite: React.Dispatch<React.SetStateAction<string>>;
   setMainFieldsEditTargetIsParent: React.Dispatch<React.SetStateAction<boolean>>;
-  setRegistrations: React.Dispatch<React.SetStateAction<SPRegistration[]>>;
   setSubRegReloadTick: React.Dispatch<React.SetStateAction<number>>;
   showAlert: (message: React.ReactNode, opts?: import("../../../context/DialogContext").AlertOptions) => void;
 }
@@ -76,13 +76,13 @@ export function createKlammerActions(ctx: CreateKlammerActionsCtx): CreateKlamme
   const {
     assignAssistRow, assignAssistValue, buildCancellationMail, bulkKlammerProgress, childEventsOf,
     confirmDialog, consolidatedChildren, consolidatedRows, currentUser, deregModal, deregSelected,
-    deregSilent, eventServiceRef, getAllRegistrations, inactiveAccounts, isDe, mainFieldsEditForm,
+    deregSilent, eventServiceRef, inactiveAccounts, isDe, mainFieldsEditForm,
     mainFieldsEditName, mainFieldsEditReg, mainFieldsEditSubsite, mainFieldsEditTargetIsParent,
-    registerForEvent, registrations, selectedEvent, setAddingToKlammer, setAssignAssistBusy,
+    registerForEvent, registrations, reloadRegistrations, selectedEvent, setAddingToKlammer, setAssignAssistBusy,
     setAssignAssistRow, setAssignAssistValue, setBulkKlammerProgress, setDeregBusy, setDeregModal,
     setDeregSelected, setDeregSilent, setMainFieldsEditError, setMainFieldsEditForm,
     setMainFieldsEditName, setMainFieldsEditReg, setMainFieldsEditSaving, setMainFieldsEditSubsite,
-    setMainFieldsEditTargetIsParent, setRegistrations,
+    setMainFieldsEditTargetIsParent,
     setSubRegReloadTick, showAlert,
   } = ctx;
   // v19.30 — Feature A: Edit-Modal für die Hauptevent-Custom-Felder einer
@@ -146,10 +146,14 @@ export function createKlammerActions(ctx: CreateKlammerActionsCtx): CreateKlamme
         { suppressMail: true, suppressOutlook: true, actorAllowedAsAssistant: true, skipReload: true }
       );
       if (res && res.ok) {
-        const regs = await getAllRegistrations(selectedEvent.id);
+        // v30.67 (Review): gemeinsamer Nachlade-Pfad; `null` = nicht lesbar.
+        // Vorher kam bei 429 `[]` — `find` lief ins Leere und die Zuschreibung
+        // an den realen Registranten unterblieb ohne ein Wort.
+        const regs = await reloadRegistrations();
+        if (!regs) console.warn('[DEX] addToKlammerCore: Liste nach dem Anlegen nicht lesbar — Zuschreibung an den Registranten übersprungen:', row.emailKey);
         // Schatten-Zeile dem realen Registranten zuschreiben (registerForEvent
         // hat den eingeloggten Admin als RegisteredBy gesetzt).
-        const newParent = regs.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === row.emailKey);
+        const newParent = regs ? regs.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === row.emailKey) : undefined;
         if (newParent && eventServiceRef && selectedEvent.subsiteUrl
           && realByEmail.toLowerCase() !== (currentUser.email || '').toLowerCase()) {
           try {
@@ -195,8 +199,7 @@ export function createKlammerActions(ctx: CreateKlammerActionsCtx): CreateKlamme
     try {
       const ok = await addToKlammerCore(row);
       if (ok) {
-        const regs2 = await getAllRegistrations(selectedEvent.id);
-        setRegistrations(regs2);
+        await reloadRegistrations();
         showAlert(isDe ? `„${name}" wurde zum Klammer-Event hinzugefügt.` : `„${name}" was added to the umbrella event.`, { variant: 'success' });
       } else {
         showAlert(isDe ? 'Hinzufügen fehlgeschlagen — bitte erneut versuchen.' : 'Adding failed — please try again.', { variant: 'error' });
@@ -225,8 +228,9 @@ export function createKlammerActions(ctx: CreateKlammerActionsCtx): CreateKlamme
         setBulkKlammerProgress(`${i + 1}/${rows.length}`);
         if (await addToKlammerCore(rows[i])) okCount++; else failCount++;
       }
-      const regs2 = await getAllRegistrations(selectedEvent.id);
-      setRegistrations(regs2);
+      // v30.67 (Review): gemeinsamer Nachlade-Pfad — nach dem Sammel-Fix ist
+      // die 429 auf dem Reload der Normalfall, die Liste wurde dann `[]`.
+      await reloadRegistrations();
       showAlert(
         failCount === 0
           ? (isDe ? `${okCount} Klammer-Anmeldungen nachgetragen.` : `${okCount} umbrella registrations added.`)
@@ -290,8 +294,7 @@ export function createKlammerActions(ctx: CreateKlammerActionsCtx): CreateKlamme
           details: { scope: 'assignedAssistant', assistantEmail: assistEmail, actorEmail: currentUser.email, rowsUpdated: done },
         });
       } catch { /* */ }
-      const regs = await getAllRegistrations(selectedEvent.id);
-      setRegistrations(regs);
+      await reloadRegistrations();
       setSubRegReloadTick(t => t + 1);
       setAssignAssistRow(null);
       setAssignAssistValue('');
@@ -451,8 +454,7 @@ export function createKlammerActions(ctx: CreateKlammerActionsCtx): CreateKlamme
       // Hauptevent-Ziel → Hauptevent-Teilnehmerliste; Sub-Event-Ziel → die
       // konsolidierten Sub-Event-Registrierungen neu ziehen.
       if (isParentTarget) {
-        const regs = await getAllRegistrations(selectedEvent.id);
-        setRegistrations(regs);
+        await reloadRegistrations();
       } else {
         setSubRegReloadTick(t => t + 1);
       }
@@ -666,7 +668,7 @@ export function createKlammerActions(ctx: CreateKlammerActionsCtx): CreateKlamme
     // Hauptevent-Zeile mit abgemeldet werden kann, wäre die Kopfzeile
     // („Teilnehmer (N)") sonst bis zum nächsten Öffnen veraltet.
     if (selectedEvent) {
-      try { setRegistrations(await getAllRegistrations(selectedEvent.id)); } catch { /* */ }
+      try { await reloadRegistrations(); } catch { /* */ }
     }
     setDeregBusy(false);
     closeDeregModal();

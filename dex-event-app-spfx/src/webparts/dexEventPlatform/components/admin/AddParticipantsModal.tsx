@@ -174,6 +174,38 @@ export default function AddParticipantsModal(props: AddParticipantsModalProps): 
     );
   };
 
+  // v30.67 (Review): `res.reason` ist ein Code ('dup-check-failed', 'full', …)
+  // und stand roh in der Status-Spalte des Ergebnisberichts. Die Klartexte
+  // entsprechen denen der Anmeldeseite (`regFailMessage` in
+  // registration/submitFlow.ts — dort eine lokale, nicht exportierte Funktion,
+  // deshalb hier lokal abgebildet und kurz gehalten für die Tabellenzelle).
+  // Unbekannte Codes bleiben roh sichtbar — besser als ein pauschales
+  // „Fehlgeschlagen", das die Ursache verschluckt.
+  const reasonText = (reason?: string): string => {
+    switch (reason) {
+      case 'dup-check-failed':
+        return isDe
+          ? 'Nicht angelegt — Anmeldeliste gerade nicht lesbar (Drosselung), bitte später erneut hinzufügen'
+          : 'Not created — registration list not readable right now (throttling), please add again later';
+      case 'insert-failed':
+        return isDe
+          ? 'Nicht gespeichert — technischer Fehler an der Teilnehmerliste, bitte erneut versuchen (hält es an: „Spalten fixen“)'
+          : 'Not saved — technical error on the participant list, please try again (if it persists: „Fix columns“)';
+      case 'already-registered':
+        return isDe ? 'Bereits angemeldet' : 'Already registered';
+      case 'full':
+        return isDe ? 'Alle Plätze belegt, Warteliste deaktiviert' : 'All seats taken, waitlist disabled';
+      case 'deadline':
+        return isDe ? 'Anmeldefrist abgelaufen' : 'Registration deadline has passed';
+      case 'not-allowed':
+        return isDe ? 'Nicht berechtigt, diese Person für dieses Event anzumelden' : 'Not allowed to register this person for this event';
+      case 'event-not-found':
+        return isDe ? 'Event nicht gefunden (keine Teilnehmerliste)' : 'Event not found (no participant list)';
+      default:
+        return reason || (isDe ? 'Fehlgeschlagen' : 'Failed');
+    }
+  };
+
   const run = async (): Promise<void> => {
     if (running || people.length === 0 || selectedTargets.length === 0) return;
     setRunning(true);
@@ -205,7 +237,7 @@ export default function AddParticipantsModal(props: AddParticipantsModalProps): 
             target: t.title,
             status: res.ok
               ? (res.status === 'Warteliste' ? (isDe ? 'Warteliste' : 'Waitlist') : (isDe ? 'Angemeldet' : 'Registered'))
-              : (res.reason || (isDe ? 'Fehlgeschlagen' : 'Failed')),
+              : reasonText(res.reason),
             ok: res.ok,
           });
         } catch (err) {
@@ -223,7 +255,7 @@ export default function AddParticipantsModal(props: AddParticipantsModalProps): 
           const shadow = await registerForEvent(mainEvent.id, {}, first, last, p.email, undefined,
             { suppressMail: true, suppressOutlook: true, skipReload: true });
           if (!shadow.ok) {
-            rows.push({ person: p.displayName || p.email, target: isDe ? 'Klammer-Event (Schattenzeile)' : 'Umbrella event (shadow row)', status: shadow.reason || (isDe ? 'Fehlgeschlagen' : 'Failed'), ok: false });
+            rows.push({ person: p.displayName || p.email, target: isDe ? 'Klammer-Event (Schattenzeile)' : 'Umbrella event (shadow row)', status: reasonText(shadow.reason), ok: false });
           }
         } catch (err) {
           rows.push({ person: p.displayName || p.email, target: isDe ? 'Klammer-Event (Schattenzeile)' : 'Umbrella event (shadow row)', status: String((err as Error)?.message || err), ok: false });

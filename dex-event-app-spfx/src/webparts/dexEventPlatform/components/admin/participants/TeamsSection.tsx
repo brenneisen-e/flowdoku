@@ -15,7 +15,8 @@ export interface TeamsSectionProps {
   dragRegId: number;
   eventServiceRef: EventService;
   getActiveTeams: () => Array<{    tid: string;    teamName: string;    members: SPRegistration[];}>;
-  getAllRegistrations: (eventId: string, onHttpError?: (_status: number) => void) => Promise<SPRegistration[]>;
+  /** v30.67 (Review): gemeinsamer Nachlade-Pfad der Seite — `null` = nicht lesbar. */
+  reloadRegistrations: () => Promise<SPRegistration[] | null>;
   isAdmin: boolean;
   isDe: boolean;
   isLoadingRegs: boolean;
@@ -45,7 +46,6 @@ export interface TeamsSectionProps {
   setDragRegId: React.Dispatch<React.SetStateAction<number>>;
   setLeadTransferBusy: React.Dispatch<React.SetStateAction<boolean>>;
   setLeadTransferOpenFor: React.Dispatch<React.SetStateAction<string>>;
-  setRegistrations: React.Dispatch<React.SetStateAction<SPRegistration[]>>;
   setTeamEditOpenFor: React.Dispatch<React.SetStateAction<string>>;
   setTeamsCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
   setTeamsToast: React.Dispatch<React.SetStateAction<string>>;
@@ -56,7 +56,7 @@ export interface TeamsSectionProps {
 }
 
 export const TeamsSection: React.FC<TeamsSectionProps> = (p) => {
-  const { confirmDialog, currentUser, dragOverTid, dragRegId, eventServiceRef, getActiveTeams, getAllRegistrations, isAdmin, isDe, isLoadingRegs, isMobile, isOrganizerFor, leadTransferBusy, leadTransferOpenFor, moveRegToTeam, onTeamDrop, openTeamMailDialog, registrations, selectedEvent, setAdminAddCcOrganizer, setAdminAddLeadRegId, setAdminAddMemberConsent, setAdminAddMemberDialog, setAdminAddMemberError, setAdminAddMemberPick, setAdminAddMemberQuery, setAdminAddMemberResults, setAdminAddNewPersonMail, setAdminAddNotifyOthers, setAdminAddNotifyScope, setAdminAddSendMail, setAdminAddTeamlessPicks, setDragOverTid, setDragRegId, setLeadTransferBusy, setLeadTransferOpenFor, setRegistrations, setTeamEditOpenFor, setTeamsCollapsed, setTeamsToast, showAlert, teamEditOpenFor, teamsCollapsed, transferTeamLead } = p;
+  const { confirmDialog, currentUser, dragOverTid, dragRegId, eventServiceRef, getActiveTeams, isAdmin, isDe, isLoadingRegs, isMobile, isOrganizerFor, leadTransferBusy, leadTransferOpenFor, moveRegToTeam, onTeamDrop, openTeamMailDialog, registrations, reloadRegistrations, selectedEvent, setAdminAddCcOrganizer, setAdminAddLeadRegId, setAdminAddMemberConsent, setAdminAddMemberDialog, setAdminAddMemberError, setAdminAddMemberPick, setAdminAddMemberQuery, setAdminAddMemberResults, setAdminAddNewPersonMail, setAdminAddNotifyOthers, setAdminAddNotifyScope, setAdminAddSendMail, setAdminAddTeamlessPicks, setDragOverTid, setDragRegId, setLeadTransferBusy, setLeadTransferOpenFor, setTeamEditOpenFor, setTeamsCollapsed, setTeamsToast, showAlert, teamEditOpenFor, teamsCollapsed, transferTeamLead } = p;
           // v11.84: Teams-Section — Admin-Center-Team-Management.
           // Sichtbar nur für Events mit aktivierter Team-Anmeldung. Listet
           // alle Teams (gruppiert per TeamId, abgemeldete Mitglieder
@@ -439,8 +439,7 @@ export const TeamsSection: React.FC<TeamsSectionProps> = (p) => {
                                         }).catch(() => { /* */ });
                                         setTeamsToast(`${name} wurde aus dem Team entfernt — Anmeldung bleibt bestehen.`);
                                         window.setTimeout(() => setTeamsToast(''), 4500);
-                                        const regs = await getAllRegistrations(selectedEvent.id);
-                                        setRegistrations(regs);
+                                        await reloadRegistrations();
                                       } catch (err) {
                                         console.warn('[DEX] removeFromTeam failed:', err);
                                         showAlert('Entfernen aus dem Team fehlgeschlagen.', { variant: 'error' });
@@ -533,8 +532,7 @@ export const TeamsSection: React.FC<TeamsSectionProps> = (p) => {
                                               const res = await transferTeamLead(selectedEvent.id, tid, m.ParticipantEmail);
                                               if (res.ok) {
                                                 setTeamsToast(`Lead-Rolle wurde an ${nm} übergeben.`);
-                                                const regs = await getAllRegistrations(selectedEvent.id);
-                                                setRegistrations(regs);
+                                                await reloadRegistrations();
                                                 window.setTimeout(() => setTeamsToast(''), 4500);
                                               } else {
                                                 setTeamsToast(`Lead-Übergabe fehlgeschlagen: ${res.reason || 'Unbekannter Fehler'}.`);
