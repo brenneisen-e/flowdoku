@@ -5,6 +5,7 @@
 import * as React from 'react';
 import { CollapsibleSection, formatDate, subEventDescHtml } from './regHelpers';
 import { subEventRegDeadline } from '../../utils/eventFormat';
+import { isoToLocal } from '../../utils/berlinTime';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { Locale } from '../../context/LanguageContext';
 import { DeloitteEvent, EventSpecificField } from '../../types';
@@ -51,7 +52,8 @@ export interface EventSpecificSectionProps {
   showErrors: boolean;
   splitLabelA: string;
   splitLabelB: string;
-  starterCounts: { durch: number; fun: number; durchWait: number; funWait: number; };
+  /** v30.67: null = Belegung nicht ermittelbar (Strich statt erfundener 0). */
+  starterCounts: { durch: number; fun: number; durchWait: number; funWait: number; } | null;
   subOpenFrom: (startIso?: string) => Date | null;
   t: (key: string) => string;
   tEvent: (key: string) => string;
@@ -193,7 +195,10 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                             // v19.19: nie negativ — bei Überbuchung greift der
                             // isFull-Zweig oben (zeigt „Voll"), die echte
                             // Überbuchungszahl bleibt dem Organizer/Admin vorbehalten.
-                            <span style={{ color: accent }}>{`${Math.max(0, free)} / ${opt.cap} ${t('reg.starter.free')}`}</span>
+                            // v30.67: Ohne ermittelte Belegung (starterCounts null) keinen
+                            // erfundenen Wert — „50 / 50 frei" war die Zahl, die eine volle
+                            // Gruppe als frei verkaufte (Teilnehmerliste zeilenweise gesichert).
+                            <span style={{ color: accent }}>{starterCounts ? `${Math.max(0, free)} / ${opt.cap} ${t('reg.starter.free')}` : `— / ${opt.cap} ${t('reg.starter.free')}`}</span>
                           )}
                           {/* v19.19: Warteliste pro Gruppe — nur bei GETRENNTEN
                               Wartelisten. Bei gemeinsamer Warteliste steht die
@@ -417,11 +422,15 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                     nur eine andere Darstellung derselben Auswahl. */}
                 {!!event.subEventCalendar && (() => {
                   type DayEntry = { ce: typeof childEvents[0]; key: string };
+                  // v30.67: Der Kalendertag ist der BERLINER Tag, nicht der des
+                  // Browsers. Ein Termin „Di 00:00" steht als 22:00Z des Vortags
+                  // in der Liste; `getDate()` lieferte auf einem UTC-Browser den
+                  // Montag, die Kachel rutschte einen Tag nach links — gebucht
+                  // wurde trotzdem der Dienstag. `isoToLocal` ist dieselbe
+                  // Umrechnung, die der Wizard beim Anlegen benutzt.
                   const dayOf = (iso?: string): string => {
                     if (!iso) return '';
-                    const d = new Date(iso);
-                    if (isNaN(d.getTime())) return '';
-                    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                    return isoToLocal(iso).slice(0, 10);
                   };
                   const entries: DayEntry[] = childEvents
                     .map(ce => ({ ce, key: dayOf(ce.startDate) }))
@@ -557,8 +566,14 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                                   : (hasCap ? null : -1);
                                 const title = [
                                   ce.title || '',
+                                  // v30.67: Derselbe Dreiweg wie in der Beschriftung — `free`
+                                  // ist bewusst null, wenn keine Quelle trägt; „null von 80
+                                  // Plätzen frei" war die Erfindung, die v30.62 aus der
+                                  // Kachel entfernt hat, im Tooltip aber stehen ließ.
                                   hasCap
-                                    ? (locale === 'de' ? `${free} von ${ce.maxParticipants} Plätzen frei` : `${free} of ${ce.maxParticipants} seats free`)
+                                    ? (free !== null
+                                      ? (locale === 'de' ? `${free} von ${ce.maxParticipants} Plätzen frei` : `${free} of ${ce.maxParticipants} seats free`)
+                                      : (locale === 'de' ? `${ce.maxParticipants} Plätze · Belegung nicht ermittelbar` : `${ce.maxParticipants} seats · occupancy unknown`))
                                     : (locale === 'de' ? 'Unbegrenzte Plätze' : 'Unlimited seats'),
                                   deadlinePassed
                                     ? (deadlineLocked

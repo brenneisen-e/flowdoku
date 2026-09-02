@@ -10,6 +10,8 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useCurrentUser } from '../../context/UserContext';
 import { useRoles } from '../../context/RoleContext';
 import { useDialog } from '../../context/DialogContext';
+import { useEvents } from '../../context/EventContext';
+import { isoToLocal } from '../../utils/berlinTime';
 import { isEventOver, subEventRegDeadline } from '../../utils/eventFormat';
 import { selfCancelLocked, selfCancelLockReason } from '../../utils/cancelPolicy';
 import { addPendingShadowParent } from '../../utils/shadowHeal';
@@ -28,10 +30,11 @@ import { FieldAnswerTag } from './myEventsHelpers';
 export default function MyEventSubEvents(props: {
   parentEvent: DeloitteEvent;
   childEvents: DeloitteEvent[];
-  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean; skipReload?: boolean }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' }>;
+  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean; skipReload?: boolean }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste'; reason?: string }>;
   cancelRegistration: (eventId: string, opts?: { suppressNotifications?: boolean }) => Promise<boolean>;
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
-  getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
+  /** v30.67: mit `onHttpError` — ohne Rückruf ist ein Leseverbot von einer leeren Liste nicht zu unterscheiden. */
+  getAllRegistrations: (eventId: string, onHttpError?: (_status: number) => void) => Promise<SPRegistration[]>;
   updateMyRegistration: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
   onMutated: () => Promise<void>;
 }): React.ReactElement | null {
@@ -50,6 +53,8 @@ export default function MyEventSubEvents(props: {
   // lokal mit; An-/Abmelden ist in der Vorschau gesperrt (handleToggle).
   const { isAdmin, previewAsUser } = useRoles();
   const { showAlert, confirmDialog } = useDialog();
+  // v30.67: Belegung aus dem für alle lesbaren Platzzähler — s. refresh().
+  const { getLiveCounterStats } = useEvents();
   const [busyId, setBusyId] = React.useState<string | null>(null);
   // v15.21: Voll-Bild-Progress-Modal beim (Peer-)Cancel + Anmeldung. Vorher
   // war nur die einzelne Karte mit „…" markiert — bei Peer-Cancels haben die
@@ -66,7 +71,13 @@ export default function MyEventSubEvents(props: {
     return () => window.removeEventListener('beforeunload', warnBeforeUnload);
   }, [processingMessage]);
   const [registeredSet, setRegisteredSet] = React.useState<Set<string>>(new Set());
-  const [counts, setCounts] = React.useState<Record<string, number>>({});
+  // v30.67: Der echte Status je Termin — `registeredSet` warf 'Warteliste' mit
+  // 'Angemeldet' in einen Topf, und ein Wartelisten-Platz stand grün als
+  // „(Angemeldet)" da, mit „Abmelden"-Knopf.
+  const [statusById, setStatusById] = React.useState<Record<string, string>>({});
+  // v30.67: null = Belegung nicht ermittelbar (weder Platzzähler noch lesbare
+  // Liste) — dann wird keine Zahl gezeigt und nichts als „frei" behauptet.
+  const [counts, setCounts] = React.useState<Record<string, number | null>>({});
   // v10.27: pro Sub-Event die geparsten Custom-Field-Antworten aus
   // myReg.CustomData. Wird nur für aktive Registrierungen befüllt.
   const [seData, setSeData] = React.useState<Record<string, Record<string, string>>>({});
@@ -111,28 +122,50 @@ export default function MyEventSubEvents(props: {
         if (isActive && reg && reg.CustomData) {
           try { data = JSON.parse(reg.CustomData) as Record<string, string>; } catch { /* fall back to empty */ }
         }
-        return { id: ce.id, isActive, data };
+        return { id: ce.id, isActive, status: (reg && reg.Status) || '', data };
       }));
       const s = new Set<string>();
+      const statusMap: Record<string, string> = {};
       const dataMap: Record<string, Record<string, string>> = {};
       for (const r of regs) {
         if (r.isActive) {
           s.add(r.id);
+          statusMap[r.id] = r.status;
           dataMap[r.id] = r.data;
         }
       }
       setRegisteredSet(s);
+      setStatusById(statusMap);
       setSeData(dataMap);
 
-      const countPairs = await Promise.all(props.childEvents.map(async (ce) => {
-        const all = await props.getAllRegistrations(ce.id);
-        const active = (all || []).filter(r => {
-          const st = r.Status || '';
-          return st === 'Angemeldet' || st === 'QR versendet' || st === 'Eingecheckt';
-        }).length;
-        return { id: ce.id, count: active };
-      }));
-      const map: Record<string, number> = {};
+      // v30.67: Belegung wie auf der Anmeldeseite (`occupancyOf`, v30.62):
+      // zuerst der Platzzähler DEX_TeilnehmerCounter, den jeder lesen darf.
+      // Die Teilnehmerliste ist zeilenweise gesichert (ReadSecurity=2) — ein
+      // Teilnehmer zählte dort nur die eigene Zeile, sah „0/20" bei vollem
+      // Termin, kein „(voll)", einen aktiven Anmelde-Knopf, und landete still
+      // auf der Warteliste. Die Liste bleibt Rückfall, aber nur mit geprüftem
+      // Status; trägt keine Quelle, bleibt die Zahl unbekannt (null).
+      const occupancyOf = async (ce: DeloitteEvent): Promise<number | null> => {
+        try {
+          const stats = await getLiveCounterStats(ce.id);
+          // `seatsKnown` trennt „null Anmeldungen" von „nie geschrieben".
+          if (stats && stats.seatsKnown && typeof stats.active === 'number' && stats.active >= 0) return stats.active;
+        } catch (e) { console.warn('[DEX] Platzzähler nicht lesbar, Rückfall auf die Liste:', ce.id, e); }
+        let readable = true;
+        try {
+          const all = await props.getAllRegistrations(ce.id, () => { readable = false; });
+          if (!readable) return null;
+          return (all || []).filter(r => {
+            const st = r.Status || '';
+            return st === 'Angemeldet' || st === 'QR versendet' || st === 'Eingecheckt';
+          }).length;
+        } catch (e) {
+          console.warn('[DEX] Belegung nicht ermittelbar:', ce.id, e);
+          return null;
+        }
+      };
+      const countPairs = await Promise.all(props.childEvents.map(async (ce) => ({ id: ce.id, count: await occupancyOf(ce) })));
+      const map: Record<string, number | null> = {};
       for (const p of countPairs) map[p.id] = p.count;
       setCounts(map);
     } catch { /* ignore */ }
@@ -260,6 +293,22 @@ export default function MyEventSubEvents(props: {
         }
       } else {
         const regRes = await props.registerForEvent(childEventId, registerCustomData);
+        // v30.67: Das Ergebnis MELDEN. Vorher kam nichts zurück — weder bei
+        // einem Fehlschlag (volle Gruppe ohne Warteliste, Doppel-Check) noch
+        // beim Wartelisten-Platz; die Person hielt sich für angemeldet, plante
+        // die Anreise und las in der Wartelisten-Mail etwas anderes als hier.
+        if (!regRes.ok) {
+          const why = regRes.reason === 'full'
+            ? (isDe ? 'Der Termin ist voll und hat keine Warteliste.' : 'This date is full and has no waitlist.')
+            : regRes.reason === 'already-registered'
+            ? (isDe ? 'Du bist für diesen Termin bereits angemeldet.' : 'You are already registered for this date.')
+            : (isDe ? 'Die Anmeldung wurde nicht gespeichert — bitte erneut versuchen oder die Organizer ansprechen.' : 'The registration was not saved — please try again or contact the organizers.');
+          await showAlert(why, { variant: 'error' });
+        } else if (regRes.status === 'Warteliste') {
+          await showAlert(isDe
+            ? 'Der Termin ist bereits voll — du stehst jetzt auf der Warteliste und wirst benachrichtigt, sobald ein Platz frei wird.'
+            : 'This date is already full — you are now on the waitlist and will be notified as soon as a seat becomes free.');
+        }
         // v30.14: Im Klammer-Modus (subEventsOnlyMode) braucht die Person auch
         // die Schatten-Klammer-Zeile — dieser Pfad (An­melden über „Meine
         // Events", seit v30.9 auch per Kalender-Klick) legte sie nie an und
@@ -352,11 +401,13 @@ export default function MyEventSubEvents(props: {
           er läuft über handleToggle und damit über denselben Feld-Modal-,
           Peer-Cancel- und Sperr-Pfad wie die Buttons der Listen-Ansicht. */}
       {!!props.parentEvent.subEventCalendar && (() => {
+        // v30.67: Berliner Kalendertag statt Browser-Tag — ein Termin „Di 00:00"
+        // steht als 22:00Z des Vortags in der Liste, und auf einem UTC-Browser
+        // rutschte die Kachel auf den Montag (gleiche Rechnung wie auf der
+        // Anmeldeseite, `isoToLocal` ist die Umrechnung des Wizards).
         const dayOf = (iso?: string): string => {
           if (!iso) return '';
-          const d = new Date(iso);
-          if (isNaN(d.getTime())) return '';
-          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          return isoToLocal(iso).slice(0, 10);
         };
         const entries = visibleChildren
           .map(ce => ({ ce, key: dayOf(ce.startDate) }))
@@ -415,11 +466,14 @@ export default function MyEventSubEvents(props: {
                         );
                       }
                       const isReg = registeredSet.has(ce.id);
+                      // v30.67: Wartelisten-Platz sichtbar machen (orange) — s. statusById.
+                      const isWait = isReg && statusById[ce.id] === 'Warteliste';
                       const isBusy = busyId === ce.id;
-                      const count = counts[ce.id] || 0;
+                      // v30.67: null = Belegung unbekannt → weder „voll" noch „N frei".
+                      const count: number | null = counts[ce.id] ?? null;
                       const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
-                      const isFull = hasCap && count >= (ce.maxParticipants || 0);
-                      const free = hasCap ? Math.max(0, (ce.maxParticipants || 0) - count) : -1;
+                      const isFull = hasCap && count !== null && count >= (ce.maxParticipants || 0);
+                      const free: number | null = hasCap ? (count !== null ? Math.max(0, (ce.maxParticipants || 0) - count) : null) : -1;
                       // Frist-/Freischalt-Rechnung wie in der Listen-Ansicht (v30.8/v30.2).
                       const effRegDeadline = subEventRegDeadline(props.parentEvent, ce);
                       const perDayRules = !!(props.parentEvent.subDeadlineRule && props.parentEvent.subDeadlineRule.reg) || !!props.parentEvent.subEventOpenRule;
@@ -434,9 +488,12 @@ export default function MyEventSubEvents(props: {
                           return isFinite(dd.getTime()) ? dd : null;
                         }
                         if (!((rule.days || 0) > 0)) return null;
-                        const base = new Date(ce.startDate || '');
-                        if (!isFinite(base.getTime())) return null;
-                        const dd = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+                        // v30.67: Berliner Kalendertag (s. dayOf) — sonst öffnet der
+                        // Tag auf einem UTC-Browser einen Tag zu früh.
+                        const baseLocal = isoToLocal(ce.startDate || '');
+                        if (!baseLocal) return null;
+                        const [by, bm, bd] = baseLocal.slice(0, 10).split('-').map(n => parseInt(n, 10));
+                        const dd = new Date(by, bm - 1, bd);
                         if (rule.mode === 'week') dd.setDate(dd.getDate() - ((dd.getDay() + 6) % 7));
                         dd.setDate(dd.getDate() - (rule.days || 0));
                         dd.setHours(0, 0, 0, 0);
@@ -461,10 +518,14 @@ export default function MyEventSubEvents(props: {
                       const title = [
                         ce.title || '',
                         isReg
-                          ? (isDe ? 'Angemeldet — Klick meldet ab' : 'Registered — click to cancel')
+                          ? (isWait
+                            ? (isDe ? 'Warteliste — Klick meldet ab' : 'Waitlist — click to cancel')
+                            : (isDe ? 'Angemeldet — Klick meldet ab' : 'Registered — click to cancel'))
                           : (isDe ? 'Klick meldet an' : 'Click to register'),
                         hasCap
-                          ? (isDe ? `${free} von ${ce.maxParticipants} Plätzen frei` : `${free} of ${ce.maxParticipants} seats free`)
+                          ? (free !== null
+                            ? (isDe ? `${free} von ${ce.maxParticipants} Plätzen frei` : `${free} of ${ce.maxParticipants} seats free`)
+                            : (isDe ? `${ce.maxParticipants} Plätze · Belegung nicht ermittelbar` : `${ce.maxParticipants} seats · occupancy unknown`))
                           : '',
                         cancelLocked
                           ? (lockReason === 'always'
@@ -499,10 +560,12 @@ export default function MyEventSubEvents(props: {
                             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                             gap: 1, padding: '6px 0 5px', borderRadius: 8, minHeight: 46,
                             border: `1px solid ${isReg
-                              ? 'var(--dex-green, #86bc25)'
+                              ? (isWait ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)')
                               : (dayHoverKey === key ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)')}`,
                             background: isReg
-                              ? (dayHoverKey === key ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-green, #86bc25)')
+                              ? (isWait
+                                ? (dayHoverKey === key ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-orange, #ed8b00)')
+                                : (dayHoverKey === key ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-green, #86bc25)'))
                               : (dayHoverKey === key ? 'rgba(134,188,37,0.10)' : '#fff'),
                             color: isReg ? '#fff' : (disabled ? 'var(--dex-gray-400)' : 'var(--dex-gray-800, #333)'),
                             cursor: disabled ? 'not-allowed' : 'pointer',
@@ -522,7 +585,7 @@ export default function MyEventSubEvents(props: {
                               // v30.20: Beim Überfahren eines grünen Tags steht
                               // „abmelden" statt ✓ — die Klick-Geste war sonst
                               // nicht zu erraten (Nutzer-Befund: „nicht intuitiv").
-                              ? (cancelLocked ? (isDe ? 'fix' : 'fixed') : (dayHoverKey === key ? (isDe ? 'abmelden' : 'cancel') : '✓'))
+                              ? (cancelLocked ? (isDe ? 'fix' : 'fixed') : (dayHoverKey === key ? (isDe ? 'abmelden' : 'cancel') : (isWait ? (isDe ? 'Warteliste' : 'waitlist') : '✓')))
                               : notYetOpen
                               ? (isDe ? `ab ${openFromLabel}` : `from ${openFromLabel}`)
                               : deadlinePassed
@@ -531,7 +594,7 @@ export default function MyEventSubEvents(props: {
                                 : (isDe ? 'zu' : 'closed'))
                               : isFull
                               ? (isDe ? 'voll' : 'full')
-                              : hasCap
+                              : (hasCap && free !== null)
                               ? (isDe ? `${free} frei` : `${free} free`)
                               : '—'}
                           </span>
@@ -612,9 +675,12 @@ export default function MyEventSubEvents(props: {
               return isFinite(dd.getTime()) ? dd : null;
             }
             if (!((rule.days || 0) > 0)) return null;
-            const base = new Date(ce.startDate || '');
-            if (!isFinite(base.getTime())) return null;
-            const dd = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+            // v30.67: Berliner Kalendertag (s. dayOf im Kalender) — sonst öffnet
+            // der Tag auf einem UTC-Browser einen Tag zu früh.
+            const baseLocal = isoToLocal(ce.startDate || '');
+            if (!baseLocal) return null;
+            const [by, bm, bd] = baseLocal.slice(0, 10).split('-').map(n => parseInt(n, 10));
+            const dd = new Date(by, bm - 1, bd);
             if (rule.mode === 'week') dd.setDate(dd.getDate() - ((dd.getDay() + 6) % 7));
             dd.setDate(dd.getDate() - (rule.days || 0));
             dd.setHours(0, 0, 0, 0);
@@ -622,9 +688,12 @@ export default function MyEventSubEvents(props: {
           })();
           const notYetOpen = !isReg && !!openFrom && new Date() < openFrom;
           const openLocked = notYetOpen && !isAdmin && !isParentOrganizer;
-          const count = counts[ce.id] || 0;
+          // v30.67: null = Belegung unbekannt → weder „voll" noch eine Zahl.
+          const count: number | null = counts[ce.id] ?? null;
           const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
-          const isFull = hasCap && count >= (ce.maxParticipants || 0);
+          const isFull = hasCap && count !== null && count >= (ce.maxParticipants || 0);
+          // v30.67: Wartelisten-Platz sichtbar machen (orange) — s. statusById.
+          const isWait = isReg && statusById[ce.id] === 'Warteliste';
           // v22.22: Vergangene Sessions sind weder an- noch abmeldbar
           // (Abmelde-Sperre für vergangene Events; EventContext blockt zusätzlich).
           // v29.25: Abmelde-Sperre (Organizer-Option, komplett oder nach der
@@ -656,8 +725,8 @@ export default function MyEventSubEvents(props: {
             <div key={ce.id} style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
               padding: '8px 12px', borderRadius: 8,
-              background: isReg ? 'rgba(134,188,37,0.08)' : 'var(--dex-gray-50, #fafafa)',
-              border: `1px solid ${isReg ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+              background: isReg ? (isWait ? 'rgba(237,139,0,0.08)' : 'rgba(134,188,37,0.08)') : 'var(--dex-gray-50, #fafafa)',
+              border: `1px solid ${isReg ? (isWait ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)') : 'var(--dex-gray-200)'}`,
               // v30.2: noch nicht freigeschaltet → gedimmt (alle Rollen).
               opacity: notYetOpen ? 0.7 : 1,
             }}>
@@ -667,11 +736,11 @@ export default function MyEventSubEvents(props: {
                   {ce.startDate && <>{fmt(ce.startDate)}{ce.endDate ? ` – ${fmt(ce.endDate)}` : ''}</>}
                   {ce.location && <>&nbsp;·&nbsp;{ce.location}</>}
                   {hasCap && (
-                    <>&nbsp;·&nbsp;<span style={{ color: isFull ? 'var(--dex-red, #c00)' : 'inherit' }}>{count}/{ce.maxParticipants}</span></>
+                    <>&nbsp;·&nbsp;<span style={{ color: isFull ? 'var(--dex-red, #c00)' : 'inherit' }} title={count === null ? (isDe ? 'Belegung nicht ermittelbar' : 'Occupancy unknown') : undefined}>{count === null ? '—' : count}/{ce.maxParticipants}</span></>
                   )}
                   {isReg && (
-                    <span style={{ marginLeft: 8, color: 'var(--dex-green)', fontWeight: 600 }}>
-                      ({isDe ? 'Angemeldet' : 'Registered'})
+                    <span style={{ marginLeft: 8, color: isWait ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green)', fontWeight: 600 }}>
+                      ({isWait ? (isDe ? 'Warteliste' : 'Waitlist') : (isDe ? 'Angemeldet' : 'Registered')})
                     </span>
                   )}
                   {isFull && !isReg && (

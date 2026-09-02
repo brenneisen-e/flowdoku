@@ -59,7 +59,6 @@ export interface SubmitFlowCtx {
   isTeamMode: boolean;
   joinTeam: (eventId: string, teamId: string, teamName: string, customData?: Record<string, string>) => Promise<{ ok: boolean; status?: "Angemeldet" | "Warteliste"; reason?: string; }>;
   locale: Locale;
-  myParentReg: { Status?: string; };
   nothingToSubmit: boolean;
   otherConsentConfirmed: boolean;
   parentAlreadyRegistered: boolean;
@@ -82,6 +81,8 @@ export interface SubmitFlowCtx {
   sendBundledUpdateMail: (parentEvent: DeloitteEvent, recipientEmail: string, recipientName: string, items: BundledItem[]) => Promise<boolean>;
   sessionFieldValues: Record<string, Record<string, string>>;
   sessionMeta: Record<string, { count: number; wasRegistered: boolean; }>;
+  /** v30.67: Abweichung zwischen Vorbelegung und Auswahl — eine leere Auswahl kann eine Abmeldung sein. */
+  sessionsChanged: boolean;
   setAssistantModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setCcSelfModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setConfirmDialogAck: React.Dispatch<React.SetStateAction<boolean>>;
@@ -100,7 +101,8 @@ export interface SubmitFlowCtx {
   setSubmittedAsWaitlist: React.Dispatch<React.SetStateAction<boolean>>;
   setSubmittedJoinKind: React.Dispatch<React.SetStateAction<"joined" | "requested">>;
   showAlert: (message: React.ReactNode, opts?: import("../../context/DialogContext").AlertOptions) => void;
-  starterCounts: { durch: number; fun: number; durchWait: number; funWait: number; };
+  /** v30.67: null, solange die Belegung nicht ermittelt ist — damit darf nicht gerechnet werden. */
+  starterCounts: { durch: number; fun: number; durchWait: number; funWait: number; } | null;
   submittedSessionsRef: React.MutableRefObject<Set<string>>;
   subOnlyTerms: boolean;
   surname: string;
@@ -131,11 +133,11 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
     createTeamJoinRequest, currentUser, delegateAssistEnabled, delegateAssistValue, delegateChoiceRef, delegateRegistrationToAssistant,
     durchCap, email, event, eventSpecific, externalEmailConfirmedRef, externalPerson,
     firstName, funCap, getEventNumbersForEmail, hiddenChildCount, isAllowedTargetForAssistant, isAssistant,
-    isDeadlinePassed, isSplitGroup, isTeamMode, joinTeam, locale, myParentReg,
+    isDeadlinePassed, isSplitGroup, isTeamMode, joinTeam, locale,
     nothingToSubmit, otherConsentConfirmed, parentAlreadyRegistered, parentFullNoWaitlist, parentRegBlocked, pendingDocFiles,
     pendingJoinTeam, preferredStarterType, previewAsUser, recordProxyDelegation, refreshEvents, registerForEvent,
     registerForOther, registerForParent, registerTeam, salutation, searchUsers, selectedEventId,
-    selectedSessions, sendBundledUpdateMail, sessionFieldValues, sessionMeta, setAssistantModalOpen, setCcSelfModalOpen,
+    selectedSessions, sendBundledUpdateMail, sessionFieldValues, sessionMeta, sessionsChanged, setAssistantModalOpen, setCcSelfModalOpen,
     setConfirmDialogAck, setConfirmDialogOpen, setConfirmDraftParent, setConfirmDraftSessions, setError, setExternalEmailWarning,
     setFallbackDialog, setIsSubmitting, setSessionsOnlySubmitted, setShowErrors, setSubmitProgress, setSubmitProgressLabel,
     setSubmitted, setSubmittedAsWaitlist, setSubmittedJoinKind, showAlert, starterCounts, submittedSessionsRef,
@@ -253,7 +255,12 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
     }
     // v24.64: Im „Nur Sub-Events"-Modus ist das Haupt-Event nicht buchbar —
     // dann muss mindestens ein Sub-Event gewählt sein.
-    if (event && event.subEventsOnlyMode && childEvents.length > 0 && selectedSessions.size === 0) {
+    // v30.67: … es sei denn, die leere Auswahl IST die Änderung: Wer alle
+    // gebuchten Termine abwählt, will sich abmelden (`sessionsChanged`, seit
+    // v28.88 bekannt). Der Guard nannte ihm bisher einen Grund („mindestens
+    // ein Event auswählen"), der auf seine Absicht nicht zutraf — die letzte
+    // Anmeldung war über die Anmeldeseite nicht kündbar.
+    if (event && event.subEventsOnlyMode && childEvents.length > 0 && selectedSessions.size === 0 && !sessionsChanged) {
       setError(locale === 'de'
         ? `Bitte wähle mindestens ${childOneDe} aus, um dich anzumelden.`
         : `Please select at least one ${childTermSingular || 'sub-event'} to register.`);
@@ -488,7 +495,14 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
     //   (b) auf die Warteliste für den gewünschten Typ.
     // Kein stiller Auto-Fallback mehr. Beide Typen voll → direkt auf Warteliste
     // (kein Dialog, Logik in EventContext setzt Status=Warteliste).
-    if ((willRegisterParent || registerForOther) && isSplitGroup && preferredStarterType && !pendingJoinTeam) {
+    // v30.67: `starterCounts` ist null, solange der Belegungs-Effect nicht
+    // durch ist (oder keine Zahl liefern darf). Dann wird der Vorab-Dialog
+    // übersprungen statt mit erfundenen Zahlen zu rechnen — vorher warf die
+    // Zeile darunter einen TypeError in eine unbehandelte Promise-Rejection,
+    // noch vor `setIsSubmitting(true)`: kein Overlay, keine Meldung, der
+    // „Anmelden"-Knopf wirkte tot. Die harte Grenze zieht ohnehin
+    // `reserveSeat` serverseitig.
+    if ((willRegisterParent || registerForOther) && isSplitGroup && preferredStarterType && !pendingJoinTeam && starterCounts) {
       const durchFree = Math.max(0, durchCap - starterCounts.durch);
       const funFree = Math.max(0, funCap - starterCounts.fun);
       const wunschFree = preferredStarterType === 'Durchstarter' ? durchFree : funFree;
@@ -792,7 +806,22 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
       // Events.
       const isSubOnlyMode = !!(event && event.subEventsOnlyMode);
       const sessionsBeingAdded = childEvents.some(ce => selectedSessions.has(ce.id) && !sessionMeta[ce.id]?.wasRegistered);
-      const parentAlreadyHasRow = !!myParentReg;
+      // v30.67: Nicht „gibt es eine Zeile", sondern „gibt es eine AKTIVE Zeile
+      // der Person, die hier angemeldet wird". Zwei Fälle liefen daran vorbei:
+      // (1) Eine ABGEMELDETE Klammer-Zeile zählte als vorhanden — die Klammer
+      //     wurde nie reaktiviert, `updateMyRegistration` (unten) schrieb die
+      //     frischen Antworten in die abgemeldete Zeile, und die Hotelplanung
+      //     (filtert auf aktive Stati) kannte die Person nicht mehr, obwohl
+      //     sie „Yes, I need accommodation" beantwortet hatte.
+      // (2) `myParentReg` ist IMMER die Zeile des eingeloggten Users; im
+      //     Stellvertreter-Modus sagt sie nichts über die Zielperson. Hatte
+      //     sich die Organizerin selbst angemeldet, bekam die andere Person
+      //     Termin-Zeilen, aber keine Klammer — und weil diese Seite
+      //     `skipShadowParent` setzt, zog auch das zentrale Netz nicht nach.
+      // `registerForEvent` ist für die Klammer idempotent (aktive Zeile →
+      // ok, kein zweiter Insert) und reaktiviert eine abgemeldete Zeile samt
+      // CustomData — der Schritt-3-Block darf also in beiden Fällen laufen.
+      const parentAlreadyHasRow = !registerForOther && parentAlreadyRegistered;
       // v26.67 (B): deckt jetzt Selbst- UND Fremd-Anmeldung ab (das frühere
       // `!registerForOther` entfällt — die Klammer läuft im subEventsOnly-Modus
       // in beiden Fällen ZUM SCHLUSS über den Schritt-3-Block unten).
@@ -1096,6 +1125,21 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
             ? `Nicht abgemeldet: ${lockedCancelTitles.join(', ')}. Die Abmeldefrist ist abgelaufen und die Organizer haben die Selbst-Abmeldung danach deaktiviert — bitte wende dich zum Abmelden an die Organizer. Deine Anmeldung bleibt bestehen.`
             : `Not cancelled: ${lockedCancelTitles.join(', ')}. The cancellation deadline has passed and the organizers have disabled self-cancellation after it — please contact the organizers to cancel. Your registration remains in place.`),
           { variant: 'error' });
+      }
+      // v30.67: Wer im „Nur Sub-Events"-Modus den LETZTEN gebuchten Termin
+      // abwählt, will sich ganz abmelden — bis hierher hatte der Guard oben
+      // das verhindert. Bleibt kein Termin mehr, muss auch die Schatten-
+      // Klammer weg, sonst führt „Meine Events" die Person weiter als
+      // angemeldet (derselbe Fall wie v15.26 in MyEventSubEvents). Still,
+      // weil die Termin-Abmeldungen ihre Mails schon verschickt haben. Bei
+      // ausgeblendeten Terminen (hiddenChildCount) ist nicht sicher, ob noch
+      // etwas gebucht ist — dann bleibt die Klammer lieber stehen.
+      if (isSubOnlyMode && !registerForOther && parentAlreadyHasRow && anySuccess
+        && lockedCancelTitles.length === 0 && hiddenChildCount === 0
+        && !childEvents.some(ce => selectedSessions.has(ce.id))) {
+        setSubmitProgressLabel(locale === 'de' ? 'Hauptevent-Eintrag wird entfernt…' : 'Removing main-event entry…');
+        try { await cancelRegistration(selectedEventId!, { suppressNotifications: true, skipReload: true }); }
+        catch (err) { console.warn('[DEX] shadow-parent cancel failed:', err); }
       }
       // v26.67 (B) Schritt 3: Schatten-/Klammer-Zeile im subEventsOnly-Modus
       // JETZT anlegen — erst nachdem mind. ein Sub-Event erfolgreich angemeldet

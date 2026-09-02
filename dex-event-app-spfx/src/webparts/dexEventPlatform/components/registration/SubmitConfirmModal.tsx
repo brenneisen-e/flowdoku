@@ -17,7 +17,8 @@ export interface SubmitConfirmModalProps {
   confirmDraftParent: boolean;
   confirmDraftSessions: Set<string>;
   event: DeloitteEvent;
-  handleSubmit: () => Promise<void>;
+  /** v30.67: Ref statt Funktion — s. RegistrationPage.handleSubmitRef. */
+  handleSubmitRef: React.MutableRefObject<() => Promise<void>>;
   locale: Locale;
   registerForOther: boolean;
   resolveMainEventLabel: (defaultLabel: string) => string | null;
@@ -33,7 +34,7 @@ export interface SubmitConfirmModalProps {
   willRegisterParent: boolean;
 }
 export const SubmitConfirmModal: React.FC<SubmitConfirmModalProps> = (p) => {
-  const { childEvents, childTermPlural, confirmDialogAck, confirmDialogConfirmedRef, confirmDialogOpen, confirmDraftParent, confirmDraftSessions, event, handleSubmit, locale, registerForOther, resolveMainEventLabel, selectedSessions, sessionFieldValues, setConfirmDialogAck, setConfirmDialogOpen, setConfirmDraftParent, setConfirmDraftSessions, setPendingSubEventModal, setRegisterForParent, setSelectedSessions, willRegisterParent } = p;
+  const { childEvents, childTermPlural, confirmDialogAck, confirmDialogConfirmedRef, confirmDialogOpen, confirmDraftParent, confirmDraftSessions, event, handleSubmitRef, locale, registerForOther, resolveMainEventLabel, selectedSessions, sessionFieldValues, setConfirmDialogAck, setConfirmDialogOpen, setConfirmDraftParent, setConfirmDraftSessions, setPendingSubEventModal, setRegisterForParent, setSelectedSessions, willRegisterParent } = p;
         const isFree = event.confirmDialogMode === 'freetext';
         // v18.76: ALLE Sub-Events zeigen (auch nicht ausgewählte), damit der
         // Teilnehmer im Dialog ab- UND zuwählen kann.
@@ -172,7 +173,11 @@ export const SubmitConfirmModal: React.FC<SubmitConfirmModalProps> = (p) => {
                   }
                   confirmDialogConfirmedRef.current = true;
                   setConfirmDialogOpen(false);
-                  setTimeout(() => { handleSubmit().catch(() => { /* */ }); }, 60);
+                  // v30.67: Über den Ref — das beim Öffnen übergebene handleSubmit
+                  // schloss über die Auswahl von damals; die eben gesetzten Haken
+                  // kamen nie im Submit an (B blieb angemeldet, C fehlte, das
+                  // abgewählte Haupt-Event wurde trotzdem gebucht).
+                  setTimeout(() => { handleSubmitRef.current().catch(() => { /* */ }); }, 60);
                 }}
                 style={{ fontSize: '0.85rem' }}
               >

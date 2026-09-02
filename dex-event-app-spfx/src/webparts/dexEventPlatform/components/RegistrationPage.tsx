@@ -28,6 +28,8 @@ import { UserFieldPicker } from './UserFieldPicker';
 // v29.51: nachgeladen — zieht react-datepicker + date-fns aus dem Boot-Bundle.
 import StayRangePicker from './StayRangePickerLazy';
 import { dlog } from '../utils/debugLog';
+import { isoToLocal } from '../utils/berlinTime';
+import { looksLikeAssistantJobTitle } from '../utils/jobTitleHeuristics';
 
 // v30.66: Modul-Ebene (Formatierer, Sanitizer, CollapsibleSection, Bild-Cache)
 // liegt in einer eigenen Datei — die ausgelagerten Teilbaeume der Seite brauchen
@@ -187,8 +189,12 @@ export default function RegistrationPage(): React.ReactElement {
   // Deadline). Der Deadline-Schutz greift automatisch, weil RegistrationPage für
   // normale User nach Deadline komplett die "closed"-Seite zeigt und gar nicht
   // zum Button-Rendering kommt.
-  const currentJobTitleLc = (currentUser.jobTitle || '').toLowerCase();
-  const isAssistant = currentJobTitleLc.includes('assistant');
+  // v30.67: Dieselbe Heuristik wie serverseitig (`canRegisterForOthers`) und
+  // in der Event-Sichtbarkeit — vorher prüfte nur diese Stelle das englische
+  // „assistant", und wer im Profil „Assistenz"/„Teamassistenz" steht, sah den
+  // Umschalter „Für eine andere Person anmelden" nie, obwohl der Service die
+  // Anmeldung zugelassen hätte.
+  const isAssistant = looksLikeAssistantJobTitle(currentUser.jobTitle);
   const ALLOWED_TARGET_TITLES = ['partner', 'director'];
   const isAllowedTargetForAssistant = (jt: string): boolean => {
     const lc = (jt || '').toLowerCase();
@@ -417,9 +423,14 @@ export default function RegistrationPage(): React.ReactElement {
       return isFinite(d.getTime()) ? d : null;
     }
     if (!((rule.days || 0) > 0)) return null;
-    const base = new Date(startIso || '');
-    if (!isFinite(base.getTime())) return null;
-    const d = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+    // v30.67: Der Kalendertag des Termins ist der BERLINER Tag — ein Termin
+    // „Di 00:00" liegt als 22:00Z des Vortags in der Liste, und ein Browser
+    // auf UTC rechnete daraus den Montag (dieselbe Rechnung wie dayOf in
+    // EventSpecificSection/MyEventSubEvents).
+    const baseLocal = isoToLocal(startIso || '');
+    if (!baseLocal) return null;
+    const [by, bm, bd] = baseLocal.slice(0, 10).split('-').map(n => parseInt(n, 10));
+    const d = new Date(by, bm - 1, bd);
     if (rule.mode === 'week') d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
     d.setDate(d.getDate() - (rule.days || 0));
     d.setHours(0, 0, 0, 0);
@@ -1063,9 +1074,26 @@ export default function RegistrationPage(): React.ReactElement {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const ctx = (window as any).__dexSpfxContext;
         if (!ctx) return;
+        // v30.67: Zwei Gründe, KEINE Zahl zu liefern statt einer falschen:
+        // (1) Die Teilnehmerliste ist zeilenweise gesichert (ReadSecurity=2,
+        //     v26.87). Ein normaler Teilnehmer bekommt HTTP 200 und höchstens
+        //     die eigene Zeile — beide Gruppen sähen „50 / 50 frei", und der
+        //     Umsteige-Dialog beim Absenden schwiege, obwohl seine Wunsch-
+        //     Gruppe voll ist (die Regression, die v27.10 für ungeteilte
+        //     Events mit dem Counter behoben hat). Die für alle lesbare Quelle
+        //     wäre der Platzzähler (SeatsTakenDurch/-Fun); solange der Kontext
+        //     die Gruppenfelder nicht durchreicht, bleibt die Zahl für
+        //     Teilnehmer unbekannt.
+        // (2) `getAllRegistrations` wirft bei HTTP-Fehlern nicht — ohne den
+        //     Rückruf wäre 403 von einer leeren Liste nicht zu unterscheiden.
+        // Unbekannt heißt null: die Karten zeigen einen Strich, der Submit
+        // überspringt den Vorab-Dialog, `reserveSeat` entscheidet serverseitig.
+        if (!canCreateEvents) { setStarterCounts(null); return; }
         const { EventService } = await import('../services/EventService');
         const svc = new EventService(ctx);
-        const allRegs = await svc.getAllRegistrations(event.subsiteUrl!);
+        let readable = true;
+        const allRegs = await svc.getAllRegistrations(event.subsiteUrl!, () => { readable = false; });
+        if (!readable) { setStarterCounts(null); return; }
         const active = allRegs.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
         // v19.19: Warteliste pro Gruppe über die effektive Gruppe
         // (StarterType || PreferredStarterType) — Wartelisten-Einträge haben
@@ -1079,9 +1107,9 @@ export default function RegistrationPage(): React.ReactElement {
           durchWait: waiting.filter(r => effGroup(r) === 'Durchstarter').length,
           funWait: waiting.filter(r => effGroup(r) === 'Funstarter').length,
         });
-      } catch { /* ignore */ }
+      } catch (e) { console.warn('[DEX] Gruppen-Belegung nicht lesbar:', e); setStarterCounts(null); }
     })();
-  }, [isSplitGroup, event?.subsiteUrl]);
+  }, [isSplitGroup, event?.subsiteUrl, canCreateEvents]);
   // v19.17: Der frühere 5-Sekunden-Poll auf dem Anmelde-Screen wurde wieder
   // entfernt — er verursachte einen sichtbaren Re-Render. Die Belegungszahl
   // kommt jetzt aus dem Context-Stand beim Öffnen (die Übersicht lädt sie beim
@@ -1128,6 +1156,12 @@ export default function RegistrationPage(): React.ReactElement {
   const [confirmDraftParent, setConfirmDraftParent] = React.useState(true);
   const [confirmDraftSessions, setConfirmDraftSessions] = React.useState<Set<string>>(new Set());
   const confirmDialogConfirmedRef = React.useRef(false);
+  // v30.67: Der Bestätigungs-Dialog stößt den Submit im setTimeout an — mit
+  // dem `handleSubmit`, das er beim Öffnen bekam. Das schließt über die
+  // Auswahl JENES Renders; die im Dialog geänderten Haken landeten nur im
+  // State, nie in der ausgeführten Funktion (B blieb angemeldet, C fehlte).
+  // Der Ref zeigt bei jedem Render auf das frische handleSubmit.
+  const handleSubmitRef = React.useRef<() => Promise<void>>(async () => { /* wird nach createSubmitFlow gesetzt */ });
   const externalEmailConfirmedRef = React.useRef(false);
   // v19.6: Bei stellvertretender Anmeldung einer INTERNEN Person (Deloitte)
   // fragt nach dem „Anmelden"-Klick ein Modal, ob der/die Anmeldende (Organizer,
@@ -1510,11 +1544,11 @@ export default function RegistrationPage(): React.ReactElement {
     createTeamJoinRequest, currentUser, delegateAssistEnabled, delegateAssistValue, delegateChoiceRef, delegateRegistrationToAssistant,
     durchCap, email, event, eventSpecific, externalEmailConfirmedRef, externalPerson,
     firstName, funCap, getEventNumbersForEmail, hiddenChildCount, isAllowedTargetForAssistant, isAssistant,
-    isDeadlinePassed, isSplitGroup, isTeamMode, joinTeam, locale, myParentReg,
+    isDeadlinePassed, isSplitGroup, isTeamMode, joinTeam, locale,
     nothingToSubmit, otherConsentConfirmed, parentAlreadyRegistered, parentFullNoWaitlist, parentRegBlocked, pendingDocFiles,
     pendingJoinTeam, preferredStarterType, previewAsUser, recordProxyDelegation, refreshEvents, registerForEvent,
     registerForOther, registerForParent, registerTeam, salutation, searchUsers, selectedEventId,
-    selectedSessions, sendBundledUpdateMail, sessionFieldValues, sessionMeta, setAssistantModalOpen, setCcSelfModalOpen,
+    selectedSessions, sendBundledUpdateMail, sessionFieldValues, sessionMeta, sessionsChanged, setAssistantModalOpen, setCcSelfModalOpen,
     setConfirmDialogAck, setConfirmDialogOpen, setConfirmDraftParent, setConfirmDraftSessions, setError, setExternalEmailWarning,
     setFallbackDialog, setIsSubmitting, setSessionsOnlySubmitted, setShowErrors, setSubmitProgress, setSubmitProgressLabel,
     setSubmitted, setSubmittedAsWaitlist, setSubmittedJoinKind, showAlert, starterCounts, submittedSessionsRef,
@@ -1522,6 +1556,7 @@ export default function RegistrationPage(): React.ReactElement {
     teamValidation, thirdPartyCheck, updateMyRegistration, uploadFieldDocument, userResults, userSearchIncludeIntl,
     willRegisterParent,
   });
+  handleSubmitRef.current = handleSubmit;
 
   // v26.37: „Zurücksetzen"-Button (und handleClear) entfernt — auf Wunsch.
 
@@ -2305,7 +2340,7 @@ export default function RegistrationPage(): React.ReactElement {
   };
   const submitConfirmModalProps = {
     childEvents, childTermPlural, confirmDialogAck, confirmDialogConfirmedRef, confirmDialogOpen, confirmDraftParent,
-    confirmDraftSessions, event, handleSubmit, locale, registerForOther, resolveMainEventLabel,
+    confirmDraftSessions, event, handleSubmitRef, locale, registerForOther, resolveMainEventLabel,
     selectedSessions, sessionFieldValues, setConfirmDialogAck, setConfirmDialogOpen, setConfirmDraftParent, setConfirmDraftSessions,
     setPendingSubEventModal, setRegisterForParent, setSelectedSessions, willRegisterParent,
   };
@@ -2374,7 +2409,7 @@ export default function RegistrationPage(): React.ReactElement {
     childEvents, childOneDe, childTermPlural, childTermSingular, email, event,
     handleDecline, handleSubmit, isDeclining, isSubmitting, isTeamMode, liveStats,
     locale, nothingToSubmit, otherConsentConfirmed, parentAlreadyRegistered, pendingJoinTeam, registerForOther,
-    resolveMainEventLabel, selectedSessions, t, teamMembersParsed, teamValidation, thirdPartyCheck,
+    resolveMainEventLabel, selectedSessions, sessionsChanged, t, teamMembersParsed, teamValidation, thirdPartyCheck,
     willRegisterParent,
   };
   const privacyNoteProps = {

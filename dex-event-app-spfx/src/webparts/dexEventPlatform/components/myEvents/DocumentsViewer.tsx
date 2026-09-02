@@ -105,9 +105,15 @@ export default function DocumentsViewer({ documents, t }: { documents: Array<{na
   };
 
   // Cleanup blob URLs bei Unmount
+  // v30.67: `[blobUrl]` statt `[]` — mit leerer Liste hielt die Cleanup den
+  // Wert des ERSTEN Renders ('') und gab nie etwas frei; jedes geöffnete PDF
+  // blieb bis zum Tab-Ende im Speicher. Mit dem Wert als Dependency läuft sie
+  // beim Wechsel mit der ALTEN URL (die ab da niemand mehr rendert — toggleDoc
+  // setzt vorher '') und beim Unmount mit der letzten. Ein doppeltes revoke
+  // (Zuklappen räumt selbst auf) ist folgenlos.
   React.useEffect(() => {
     return () => { if (blobUrl) URL.revokeObjectURL(blobUrl); };
-  }, []);
+  }, [blobUrl]);
 
   return (
     <div style={{ marginTop: 12 }}>

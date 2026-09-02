@@ -29,6 +29,8 @@ export interface RegistrationActionBarProps {
   registerForOther: boolean;
   resolveMainEventLabel: (defaultLabel: string) => string | null;
   selectedSessions: Set<string>;
+  /** v30.67: leere Auswahl kann eine Abmeldung sein (s. nothingPicked). */
+  sessionsChanged: boolean;
   t: (key: string) => string;
   teamMembersParsed: { displayName: string; email: string; }[];
   teamValidation: { ok: boolean; reason?: string; };
@@ -36,7 +38,7 @@ export interface RegistrationActionBarProps {
   willRegisterParent: boolean;
 }
 export const RegistrationActionBar: React.FC<RegistrationActionBarProps> = (p) => {
-  const { childEvents, childOneDe, childTermPlural, childTermSingular, email, event, handleDecline, handleSubmit, isDeclining, isSubmitting, isTeamMode, liveStats, locale, nothingToSubmit, otherConsentConfirmed, parentAlreadyRegistered, pendingJoinTeam, registerForOther, resolveMainEventLabel, selectedSessions, t, teamMembersParsed, teamValidation, thirdPartyCheck, willRegisterParent } = p;
+  const { childEvents, childOneDe, childTermPlural, childTermSingular, email, event, handleDecline, handleSubmit, isDeclining, isSubmitting, isTeamMode, liveStats, locale, nothingToSubmit, otherConsentConfirmed, parentAlreadyRegistered, pendingJoinTeam, registerForOther, resolveMainEventLabel, selectedSessions, sessionsChanged, t, teamMembersParsed, teamValidation, thirdPartyCheck, willRegisterParent } = p;
   return (
       <div style={{ maxWidth: 1100, margin: '24px auto 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
         {/* v24.57: Badge mit Icon — freie Plätze ODER (wenn voll + Warteliste
@@ -97,7 +99,11 @@ export const RegistrationActionBar: React.FC<RegistrationActionBarProps> = (p) =
           // mindestens ein Sub-Event ausgewählt sein, sonst Button ausgrauen
           // + Hinweis statt „Registrieren (Haupt-Event)" zeigen.
           const isSubOnly = !!(event && event.subEventsOnlyMode) && !registerForOther;
-          const nothingPicked = isSubOnly && selectedSessions.size === 0;
+          // v30.67: … außer die leere Auswahl ist die Änderung — wer alle
+          // gebuchten Termine abwählt, will sich abmelden. Vorher war die
+          // letzte Anmeldung über diese Seite nicht kündbar: Button grau,
+          // „Bitte mindestens ein Event auswählen".
+          const nothingPicked = isSubOnly && selectedSessions.size === 0 && !sessionsChanged;
           // v15.16: Consent-Pflicht bei „Für andere registrieren".
           const needsOtherConsent = registerForOther && !!email.trim() && !otherConsentConfirmed;
           // v19.8: Bei stellvertretender Anmeldung den Button sperren, wenn die

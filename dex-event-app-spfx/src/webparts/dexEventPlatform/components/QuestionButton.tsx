@@ -119,7 +119,16 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
   }, [open]);
 
   // Object-URLs der Screenshots beim Unmount freigeben.
-  React.useEffect(() => () => { shots.forEach((s) => { try { URL.revokeObjectURL(s.url); } catch { /* */ } }); }, [shots]);
+  // v30.67: NUR beim Unmount — mit `[shots]` lief die Cleanup bei JEDER
+  // Änderung und widerrief die URLs des vorigen Arrays, also auch die der
+  // Bilder, die per Spread weiter in der Liste stehen: zweites Bild anhängen
+  // → erstes Vorschaubild kaputt, „Vergrößern & markieren" öffnete leer und
+  // „Übernehmen" schloss wortlos. Der Ref hält den aktuellen Stand für den
+  // einen Lauf am Ende; das Einzel-Revoke sitzt bereits in removeShot,
+  // onAnnotateSave, resetForm und submit.
+  const shotsRef = React.useRef(shots);
+  shotsRef.current = shots;
+  React.useEffect(() => () => { shotsRef.current.forEach((s) => { try { URL.revokeObjectURL(s.url); } catch { /* */ } }); }, []);
 
   // v26.7: Deep-Link aus der Antwort-Mail (?action=ask) öffnet das Modal direkt
   // auf „Deine Fragen".

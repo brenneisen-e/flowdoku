@@ -112,7 +112,7 @@ export default function CheckInPage(): React.ReactElement {
   const [checkedInCount, setCheckedInCount] = React.useState(0);
   const confirmCardRef = React.useRef<HTMLDivElement>(null);
   const [pendingCheckIn, setPendingCheckIn] = React.useState<{
-    name: string; email: string; event: { subsiteUrl: string; title: string };
+    name: string; email: string; event: { id?: string; subsiteUrl: string; title: string };
     regId: number; status: string; department?: string; jobTitle?: string; location?: string; photoUrl?: string;
     /** v30.53: Startnummer, Trikotgröße, Gruppe — was am Tisch gebraucht wird. */
     extras?: CheckInExtra[];
@@ -169,8 +169,23 @@ export default function CheckInPage(): React.ReactElement {
     setIsLoadingSearchRegs(true);
     setSearchLoadError('');
     try {
-      const regs = await getAllRegistrations(eventId);
-      setSearchRegsCache(prev => ({ ...prev, [eventId]: regs }));
+      // v30.67: `getAllRegistrations` wirft bei HTTP-Fehlern NICHT, sondern
+      // liefert die bis dahin gelesenen Zeilen — bei 403/429 also `[]`. Das
+      // landete hier als gültige, leere Liste im Cache: „Keine Teilnehmer",
+      // „Keine Anmeldung mit der Teilnehmer-ID …", und weil der Cache-
+      // Schlüssel gesetzt war, kein zweiter Versuch mehr bis zum Seiten-
+      // Reload. Nur der Rückruf unterscheidet „leer" von „verboten"; ohne
+      // geprüften Status kommt nichts in den Cache (CLAUDE.md, dritter Pfad).
+      let readable = true;
+      let httpStatus = 0;
+      const regs = await getAllRegistrations(eventId, (status) => { readable = false; httpStatus = status; });
+      if (!readable) {
+        setSearchLoadError(httpStatus === 403
+          ? 'Keine Leseberechtigung auf der Teilnehmerliste dieses Termins — bitte Organizer/Admin um Freigabe bitten.'
+          : `Teilnehmerliste konnte nicht gelesen werden (${httpStatus ? 'HTTP ' + httpStatus : 'keine Teilnehmerliste gefunden'}) — bitte erneut versuchen.`);
+      } else {
+        setSearchRegsCache(prev => ({ ...prev, [eventId]: regs }));
+      }
     } catch {
       setSearchLoadError('Teilnehmerliste konnte nicht geladen werden.');
     }
@@ -182,6 +197,11 @@ export default function CheckInPage(): React.ReactElement {
   React.useEffect(() => {
     if (nameSearchEventId && !searchRegsCache[nameSearchEventId]) {
       loadRegsForSearch(nameSearchEventId);
+    } else if (searchLoadError) {
+      // v30.67: Der Ladefehler gehört zu dem Event, bei dem er entstand —
+      // beim Wechsel auf ein bereits geladenes Event darf er nicht stehen
+      // bleiben (loadRegsForSearch kehrt bei Cache-Treffer vorher zurück).
+      setSearchLoadError('');
     }
   }, [nameSearchEventId, searchRegsCache, loadRegsForSearch]);
 
@@ -278,7 +298,15 @@ export default function CheckInPage(): React.ReactElement {
     }
     const regs = searchRegsCache[nameSearchEventId];
     if (!regs) {
-      setIdError(isDe ? 'Teilnehmerliste wird noch geladen — bitte kurz warten und erneut versuchen.' : 'Attendee list is still loading — please wait a moment and try again.');
+      // v30.67: Ohne Cache-Eintrag gibt es zwei Zustände — „lädt noch" und
+      // „konnte nicht gelesen werden" (403/429, s. loadRegsForSearch). Beide
+      // erlauben KEINE Aussage über die ID; der zweite darf aber nicht als
+      // Warten verkauft werden, das nie endet.
+      setIdError(searchLoadError
+        ? (isDe
+          ? `Die Teilnehmerliste konnte nicht gelesen werden — ob die ID ${raw} angemeldet ist, lässt sich so nicht sagen. ${searchLoadError}`
+          : `The attendee list could not be read — whether ID ${raw} is registered cannot be told. Please retry or ask an organizer/admin for access.`)
+        : (isDe ? 'Teilnehmerliste wird noch geladen — bitte kurz warten und erneut versuchen.' : 'Attendee list is still loading — please wait a moment and try again.'));
       void loadRegsForSearch(nameSearchEventId);
       return;
     }
@@ -322,7 +350,7 @@ export default function CheckInPage(): React.ReactElement {
     setPendingCheckIn({
       name,
       email: reg.ParticipantEmail || '',
-      event: { subsiteUrl: ev.subsiteUrl, title: ev.title },
+      event: { id: ev.id, subsiteUrl: ev.subsiteUrl, title: ev.title },
       regId: reg.Id,
       status: reg.Status,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -675,7 +703,7 @@ export default function CheckInPage(): React.ReactElement {
     setPendingCheckIn({
       name,
       email,
-      event: { subsiteUrl: event.subsiteUrl, title: event.title },
+      event: { id: event.id, subsiteUrl: event.subsiteUrl, title: event.title },
       regId: reg.Id,
       status: reg.Status,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -702,8 +730,35 @@ export default function CheckInPage(): React.ReactElement {
   const confirmCheckIn = async (): Promise<void> => {
     if (!pendingCheckIn || !eventService) return;
     try {
-      await eventService.checkInParticipant(pendingCheckIn.event.subsiteUrl, pendingCheckIn.regId);
+      // v30.67: `checkInParticipant` wirft nie — es liefert `response.ok` bzw.
+      // false. Der catch unten fängt also nur Unerwartetes; ob der MERGE
+      // (403 ohne Schreibrecht, 429 in der Einlasswelle, 400 ohne Spalte)
+      // durchging, steht NUR im Rückgabewert. Vorher stieg der Zähler und die
+      // grüne Meldung kam auch dann, wenn in der Liste weiter „Angemeldet"
+      // stand — und die Person tauchte später in der No-Show-Auswertung auf.
+      const ok = await eventService.checkInParticipant(pendingCheckIn.event.subsiteUrl, pendingCheckIn.regId);
+      if (!ok) {
+        setResultMessage(`${pendingCheckIn.name} — Check-in fehlgeschlagen (bitte erneut versuchen oder Organizer informieren).`);
+        setResultType('error');
+        setPendingCheckIn(null);
+        processingRef.current = false;
+        return;
+      }
       setCheckedInCount(prev => prev + 1);
+      // v30.67: Den neuen Status auch in der Trefferliste nachführen — sie
+      // liest nur aus dem Cache, und der wurde bisher nur beim No-Show
+      // gepatcht. Ohne den Patch blieb die Person „Angemeldet", die KPI-
+      // Kachel stand, und unter „Nur offene" stand sie weiter bei den Offenen;
+      // ein zweiter Helfer checkte sie erneut ein.
+      const evId = pendingCheckIn.event.id;
+      const regId = pendingCheckIn.regId;
+      if (evId) {
+        setSearchRegsCache(prev => {
+          const list = prev[evId];
+          if (!list) return prev;
+          return { ...prev, [evId]: list.map(r => r.Id === regId ? { ...r, Status: 'Eingecheckt' } : r) };
+        });
+      }
       setResultMessage(`${pendingCheckIn.name} — ${t('checkin.success')}`);
       setResultType('success');
     } catch {
@@ -1382,9 +1437,24 @@ export default function CheckInPage(): React.ReactElement {
         {searchLoadError && (
           <p style={{ marginTop: 8, fontSize: '0.78rem', color: 'var(--dex-red)' }}>
             {searchLoadError}
+            {/* v30.67: Ohne Cache-Eintrag ist ein zweiter Versuch möglich — der
+                Knopf erspart den Seiten-Reload, der vorher der einzige Weg war. */}
+            {nameSearchEventId && !isLoadingSearchRegs && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ marginLeft: 8, fontSize: '0.74rem', padding: '2px 8px' }}
+                onClick={() => { void loadRegsForSearch(nameSearchEventId); }}
+              >
+                Erneut laden
+              </button>
+            )}
           </p>
         )}
-        {nameSearchEventId && !isLoadingSearchRegs && (
+        {/* v30.67: Bei einem Ladefehler gibt es keine Liste — also auch kein
+            „Keine Teilnehmer für dieses Event", das wäre eine Aussage über
+            Daten, die nie gelesen wurden. */}
+        {nameSearchEventId && !isLoadingSearchRegs && !searchLoadError && (
           <div style={{ marginTop: 12 }}>
             {searchHits.length === 0 ? (
               <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)', fontStyle: 'italic', margin: 0 }}>

@@ -640,7 +640,15 @@ export default function AssistantPage(): React.ReactElement {
                       {isDe ? 'Sub-Events' : 'Sub-events'}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {subItems.map(({ child, item }) => (
+                      {subItems.map(({ child, item }) => {
+                        // v30.67: Den Anmelde-Knopf an den STATUS koppeln, nicht an
+                        // die Existenz der Zeile — `getProxyRegistrationsByActor`
+                        // liefert auch abgemeldete Zeilen (RegisteredByEmail bleibt
+                        // beim Abmelden stehen). Vorher: Badge „Abgemeldet" und kein
+                        // einziger Knopf, der Termin war für die Assistenz dauerhaft
+                        // gesperrt. registerForEvent reaktiviert eine abgemeldete Zeile.
+                        const itemActive = !!item && ACTIVE_STATUSES.indexOf(item.registration.Status) >= 0;
+                        return (
                         <RegRow
                           key={child.id}
                           title={child.title.indexOf('|') >= 0 ? child.title.split('|').pop()!.trim() : child.title}
@@ -654,9 +662,10 @@ export default function AssistantPage(): React.ReactElement {
                           childEvent={child}
                           onEdit={item ? () => openEdit(group, item) : undefined}
                           onCancel={item ? () => doCancel(group, item) : undefined}
-                          onRegister={!item ? () => openRegister(group, child) : undefined}
+                          onRegister={!itemActive ? () => openRegister(group, child) : undefined}
                         />
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -757,7 +766,9 @@ function RegRow(props: RegRowProps): React.ReactElement {
             {cancelBusy ? '…' : (isDe ? 'Abmelden' : 'Cancel')}
           </button>
         )}
-        {!item && onRegister && !over && (
+        {/* v30.67: `!active` statt `!item` — eine abgemeldete Zeile darf
+            wieder angemeldet werden (s. Aufrufer). */}
+        {!active && onRegister && !over && (
           <button type="button" onClick={onRegister} style={btnPrimary}>
             <Icon iconName="Add" style={{ fontSize: 13, marginRight: 5 }} />{isDe ? 'Anmelden' : 'Register'}
           </button>
