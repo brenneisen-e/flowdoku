@@ -64,7 +64,7 @@ export const IdGapHintBox: React.FC<IdGapHintBoxProps> = (p) => {
                 {probablyStillRunning ? (
                   <>Die automatische Korrektur — <strong>Nachrücken von der Warteliste</strong> und <strong>Neu-Nummerierung</strong> — braucht nach einer Abmeldung typischerweise 1–5 Minuten. Die Liste wird hier <strong>automatisch alle 30 Sekunden neu geladen</strong>; diese Box verschwindet von selbst, sobald alles stimmt. Bitte in dieser Phase NICHT manuell korrigieren (sonst laufen zwei Korrekturen ineinander).</>
                 ) : (
-                  <>Die letzte Abmeldung liegt länger zurück — die automatische Korrektur ist also bereits durchgelaufen, die Lücke ist trotzdem geblieben. Das passiert, wenn genau die <strong>höchste Nummer abgemeldet</strong> wurde, während <strong>gleichzeitig neue Anmeldungen</strong> schon höhere Nummern bekommen haben — ein weiterer automatischer Lauf kommt erst bei der nächsten Abmeldung. Das ist rein kosmetisch (Nachrücken/Check-in funktionieren trotzdem) und jetzt <strong>gefahrlos per Klick zu beheben</strong>:</>
+                  <>Die letzte Abmeldung liegt länger zurück. Die Lücke kann trotzdem frisch sein — ein <strong>Gruppenwechsel</strong> auf die Warteliste vergibt eine neue Nummer und lässt die alte leer, setzt aber kein Abmeldedatum; und wenn der Nachrück-Flow <strong>gestaut oder ausgefallen</strong> ist, kommt die automatische Korrektur verspätet oder gar nicht (Admin: <strong>Run history</strong> des Flows prüfen). Die Lücke ist rein kosmetisch (Nachrücken/Check-in funktionieren trotzdem) und <strong>gefahrlos per Klick zu beheben</strong>:</>
                 )}
               </div>
               {/* v22.12: manueller Sofort-Check (lädt die Liste neu). */}

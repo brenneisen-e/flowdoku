@@ -24,9 +24,197 @@ Wird aktualisiert wenn Flows geändert werden.
 > UI-Anleitung direkt darunter — dort steht die vollständige `runAfter`-Tabelle
 > über alle acht beteiligten Actions.
 
+### UI-Anleitung 2026-09-02 — Gruppen-Zählung bricht Events ohne Gruppen
+
+> ## ✅ Umgesetzt am 02.09.2026 (vollständige Lösung, gegen den Export verifiziert)
+>
+> `Count_Seats_Durch`/`Count_Seats_Fun` mit `retryPolicy: none`, `Count_Seats_Fun`
+> und `Counter_Body` mit tolerantem Run after, `Sync_Seat_Counter` liest den Body
+> aus `outputs('Counter_Body')`. Offen: der Stau in der Run history baut sich
+> mit den noch laufenden Läufen ab. Die App-seitige Nachholung der ausgefallenen
+> Nachrück-Läufe ist seit **v30.66** eine Admin-Aktion („Nachrücken & IDs für
+> ALLE Events nachholen"). Der Block darunter bleibt als Fehlerbild stehen.
+>
+> ## 🔴 Was passiert war
+>
+> Die gestern eingebaute Kette **legt den Reorder-Flow für jedes Event ohne
+> geteilte Gruppen lahm**. Belegt am Lauf vom 02.09.2026 auf
+> `cyber-rheinland-teamevent-duesseldorf-2--ijzbf`:
+>
+> ```
+> 502 BadGateway — Die Spalte 'StarterType' ist nicht vorhanden.
+> ```
+>
+> **Meine Annahme im Briefing war falsch.** Dort stand: „Nur bei B2Run-Events mit
+> geteilten Gruppen relevant. Bei allen anderen Events liefert die Abfrage
+> schlicht `0` — deshalb braucht es keine Bedingung drumherum." Tatsächlich
+> **löscht die App** `StarterType` und `PreferredStarterType` auf Events ohne
+> geteilte Gruppen wieder (`EventService.ts:7096`, `deletableFields`). Ein
+> `$filter` auf eine nicht vorhandene Spalte liefert keine 0, sondern eine
+> `SPException` → 502.
+>
+> **Die Folgen, alle drei gemessen:**
+> - `Count_Seats_Durch` scheitert, `Count_Seats_Fun` und `Sync_Seat_Counter`
+>   werden übersprungen (sie hängen an **is successful**), der Lauf endet
+>   **Failed**.
+> - Der Connector wiederholt den 502 mit Backoff: die Action allein braucht
+>   **12 Minuten**, ganze Läufe **über eine Stunde** (gemessen: 01:14:08).
+> - Dadurch **staut sich die Warteschlange**: In der Run history standen
+>   gleichzeitig 4 × *Waiting* und 1 × *Running*. Jede Abmeldung und jeder
+>   Folge-Reorder landet hinter diesem Stau — **das ist die wahrscheinliche
+>   Ursache dafür, dass die TeilnehmerID-Lücke nicht mehr geschlossen wird.**
+>
+> Das Queue-Item steht trotzdem auf `Done`, weil `DEX_IDReorder` **vor** der
+> Zähler-Kette läuft. Deshalb sah die Liste `DEX_IDReorder` gesund aus, während
+> die Run history voller roter Läufe war — wer nur auf die Queue schaut, sieht
+> diesen Schaden nicht.
+
+#### Notbremse zuerst (2 Minuten) — danach ist der Flow sofort wieder grün
+
+Wer nicht sofort die volle Lösung bauen will: Die beiden Gruppen-Zählungen
+ersatzlos entfernen. `SeatsTaken` und `WaitlistTaken` — die beiden Werte, die
+die Anmeldeseite anzeigt — bleiben dabei vollständig erhalten. Nur
+`SeatsTakenDurch`/`SeatsTakenFun` pflegt dann wieder allein die App
+(`reconcileCounters`, läuft für Admins und Organizer). Das ist der Stand von
+vorgestern und war nie ein Problem.
+
+- [ ] Action `Count_Seats_Durch` → **⋮ → Delete**.
+- [ ] Action `Count_Seats_Fun` → **⋮ → Delete**.
+- [ ] `Sync_Seat_Counter` → **⋮ → Configure run after** → `Count_Seats_Waitlist`, **is successful**.
+- [ ] `Sync_Seat_Counter` → Feld **Body** komplett leeren und ersetzen durch:
+
+```
+{
+  "__metadata": { "type": "SP.Data.DEX_x005f_TeilnehmerCounterListItem" },
+  "SeatsTaken": @{int(body('Count_Seats_Active')?['d']?['__count'])},
+  "WaitlistTaken": @{int(body('Count_Seats_Waitlist')?['d']?['__count'])}
+}
+```
+
+- [ ] Die beiden `@{…}`-Stellen über den **Expression**-Tab (fx) setzen, nicht als Text.
+- [ ] **Save**.
+
+> Danach dauert ein Lauf wieder Sekunden. Der Stau in der Run history baut sich
+> ab, sobald die schon laufenden Läufe durch sind — die brauchen noch je bis zu
+> einer Stunde, das lässt sich nicht abkürzen. **Erst wenn nichts mehr auf
+> *Waiting* steht, kann die TeilnehmerID-Lücke wieder geschlossen werden.**
+
+Die vollständige Lösung unten holt die Gruppen-Zähler zurück, ohne Events ohne
+Gruppen zu beschädigen. Sie kann jederzeit nachgezogen werden.
+
+#### Klick-Anleitung als Tabelle (vollständige Lösung)
+
+| # | NEU/GEÄNDERT | Name der Action | Art der Action | Stelle |
+|---|---|---|---|---|
+| 1 | GEÄNDERT | `Count_Seats_Durch` | Send an HTTP request to SharePoint | Retry Policy auf **None** |
+| 2 | GEÄNDERT | `Count_Seats_Fun` | Send an HTTP request to SharePoint | Retry Policy auf **None** + Run after tolerant |
+| 3 | NEU | `Counter_Body` | Compose (Kategorie **Data Operation**) | direkt nach `Count_Seats_Fun` |
+| 4 | GEÄNDERT | `Sync_Seat_Counter` | Send an HTTP request to SharePoint | Run after auf `Counter_Body`, Body ersetzen |
+
+**Der Ansatz.** Die beiden Gruppen-Zählungen dürfen scheitern — auf einem Event
+ohne Gruppen ist „es gibt keine Gruppen" die richtige Antwort, kein Fehler. Sie
+sollen nur (a) sofort aufgeben statt zwölf Minuten zu wiederholen und (b) die
+Kette nicht mitreißen. Und der Zähler-Schreibvorgang darf die beiden
+Gruppen-Felder dann **gar nicht erst anfassen** — eine 0 hineinzuschreiben wäre
+schlimmer als sie wegzulassen, weil auf einem echten Split-Event ein einmaliger
+Netzwerkfehler die Gruppen-Kapazität auf 0 setzen würde. Deshalb baut ein
+`Compose` den Body je nach Lage mit oder ohne die beiden Felder.
+
+---
+
+#### Zeile 1 — `Count_Seats_Durch` (Send an HTTP request to SharePoint) · GEÄNDERT
+
+- [ ] Action `Count_Seats_Durch` öffnen → Reiter **Settings**.
+- [ ] Abschnitt **Networking** → **Retry Policy** → von **Default** auf **None** stellen.
+- [ ] **Done** / zurück zu **Parameters**.
+
+> Warum: Der 502 kommt von einer **fehlenden Spalte**. Das wird beim vierten
+> Versuch nicht besser — es kostet nur die zwölf Minuten, die den Stau erzeugen.
+
+---
+
+#### Zeile 2 — `Count_Seats_Fun` (Send an HTTP request to SharePoint) · GEÄNDERT
+
+- [ ] Action `Count_Seats_Fun` öffnen → **Settings** → **Retry Policy** → **None**.
+- [ ] **⋮ → Configure run after** → bei `Count_Seats_Durch` zusätzlich zu
+      **is successful** auch **has failed** und **is skipped** anhaken.
+
+> Hier ist die Toleranz richtig — anders als bei `Count_Seats_Active`, das an
+> `DEX_IDReorder` hängt: Fällt die eine Gruppen-Zählung aus, fällt die andere
+> aus demselben Grund aus, und beide zusammen sind auf diesem Event bedeutungslos.
+
+---
+
+#### Zeile 3 — `Counter_Body` (Compose) · NEU
+
+Baut den JSON-Body. Mit den Gruppen-Feldern, wenn beide Zählungen **200**
+geliefert haben — sonst ohne sie.
+
+- [ ] Am **+** unter `Count_Seats_Fun` → **Add an action** → **Compose** (Kategorie **Data Operation**).
+- [ ] **⋮ → Rename** → exakt `Counter_Body`.
+- [ ] **⋮ → Configure run after** → bei `Count_Seats_Fun` **is successful**, **has failed** und **is skipped** anhaken.
+- [ ] Ins Feld **Inputs** über den **Expression**-Tab (fx) — nie als Text:
+
+```
+if(and(equals(int(coalesce(outputs('Count_Seats_Durch')?['statusCode'],0)),200),equals(int(coalesce(outputs('Count_Seats_Fun')?['statusCode'],0)),200)),concat('{"__metadata":{"type":"SP.Data.DEX_x005f_TeilnehmerCounterListItem"},"SeatsTaken":',string(int(body('Count_Seats_Active')?['d']?['__count'])),',"WaitlistTaken":',string(int(body('Count_Seats_Waitlist')?['d']?['__count'])),',"SeatsTakenDurch":',string(int(body('Count_Seats_Durch')?['d']?['__count'])),',"SeatsTakenFun":',string(int(body('Count_Seats_Fun')?['d']?['__count'])),'}'),concat('{"__metadata":{"type":"SP.Data.DEX_x005f_TeilnehmerCounterListItem"},"SeatsTaken":',string(int(body('Count_Seats_Active')?['d']?['__count'])),',"WaitlistTaken":',string(int(body('Count_Seats_Waitlist')?['d']?['__count'])),'}'))
+```
+
+> Der Ausdruck ist lang, aber er tut nur eines: Er prüft, ob beide
+> Gruppen-Zählungen **200** waren, und setzt danach zwei Felder mehr oder
+> weniger in denselben JSON. `SeatsTaken` und `WaitlistTaken` stehen in **beiden**
+> Zweigen — die hängen an `Status` und funktionieren auf jedem Event.
+
+---
+
+#### Zeile 4 — `Sync_Seat_Counter` (Send an HTTP request to SharePoint) · GEÄNDERT
+
+- [ ] Action `Sync_Seat_Counter` öffnen.
+- [ ] **⋮ → Configure run after** → Haken bei `Count_Seats_Fun` entfernen,
+      `Counter_Body` wählen, dort **is successful**.
+- [ ] Feld **Body** komplett leeren und über den **Expression**-Tab (fx) ersetzen durch:
+
+```
+outputs('Counter_Body')
+```
+
+- [ ] **Method**, **Uri** und **Headers** bleiben unverändert.
+- [ ] Oben rechts **Save**.
+
+---
+
+#### Test
+
+- [ ] Ein Event **ohne** geteilte Gruppen nehmen, eine Person abmelden.
+- [ ] **Run history** → frischer Lauf: `Count_Seats_Durch` und `Count_Seats_Fun`
+      sind **rot**, `Counter_Body` und `Sync_Seat_Counter` **grün**, der Lauf
+      insgesamt **Succeeded**. Dauer: **Sekunden**, nicht Minuten.
+- [ ] In `DEX_TeilnehmerCounter` dieser Subsite: `SeatsTaken`/`WaitlistTaken`
+      aktuell, `SeatsTakenDurch`/`SeatsTakenFun` **unverändert**.
+- [ ] Dasselbe auf einem Event **mit** geteilten Gruppen (B2Run): alle vier
+      Zählungen grün, alle vier Felder geschrieben.
+- [ ] In der Run history prüfen, dass **keine** Läufe mehr auf *Waiting* stehen —
+      erst dann ist der Stau abgebaut und die TeilnehmerID-Korrektur läuft wieder
+      zeitnah.
+
+**Welcher Fehler welche Ursache hat:**
+
+| Beobachtung im Lauf | Ursache | Abhilfe |
+|---|---|---|
+| `Count_Seats_Durch` 502 „Die Spalte 'StarterType' ist nicht vorhanden" | Event ohne geteilte Gruppen — **erwartet**, kein Fehler | Nichts. Nach dieser Änderung läuft der Flow trotzdem grün weiter |
+| Die Action braucht immer noch Minuten | **Retry Policy** steht noch auf **Default** | Zeile 1 und 2 abarbeiten |
+| `Sync_Seat_Counter` 400 „Invalid JSON" | `Counter_Body` steht als Text statt als Ausdruck | Inputs über den **Expression**-Tab (fx) neu setzen |
+| `SeatsTakenDurch` wird auf 0 gesetzt | Der alte Body ist noch drin | Zeile 4: Body durch `outputs('Counter_Body')` ersetzen |
+| Läufe stehen weiter auf *Waiting* | Der Stau baut sich erst ab | Warten, bis die laufenden Läufe durch sind — sie brauchen noch je bis zu 1 h |
+
+---
+
 ### UI-Anleitung 2026-09-01 (v30.63, korrigiert v30.65) — Platzzähler nach dem Nachrücken mitziehen
 
-> ## ✅ Stand 01.09.2026: umgesetzt und verifiziert
+> ## ✅ Stand 01.09.2026: Verdrahtung verifiziert — aber siehe die Anleitung DARÜBER
+>
+> Die `runAfter`-Verdrahtung stimmt. Der **Inhalt** von `Count_Seats_Durch`/
+> `Count_Seats_Fun` ist trotzdem falsch und muss nach der Anleitung oben
+> nachgezogen werden.
 >
 > Gegen den Flow-Export geprüft — alle acht `runAfter` entsprechen der Tabelle
 > weiter unten, alle fünf Uris sind Text ohne `@`. Offen bleibt nur der

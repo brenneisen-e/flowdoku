@@ -874,6 +874,12 @@ export default function AdminPage(): React.ReactElement {
   // Globale Reparatur: Organizer-Email-Mismatch über alle Events fixen
   const [isRepairingOrganizers, setIsRepairingOrganizers] = React.useState(false);
   const [repairOrganizersResult, setRepairOrganizersResult] = React.useState<string | null>(null);
+  // v30.69: „Nachrücken & IDs für ALLE Events nachholen" — Sammel-Heilung nach
+  // einem Flow-Ausfall. Fortschritt getrennt vom Ergebnis, damit die Kachel
+  // während des Laufs sagt, bei welchem Event sie gerade ist.
+  const [isHealingAll, setIsHealingAll] = React.useState(false);
+  const [healAllProgress, setHealAllProgress] = React.useState<string | null>(null);
+  const [healAllResult, setHealAllResult] = React.useState<string | null>(null);
   // v28.65: Reparatur der Claims-Login-Tokens („0#.f|membership|…") in Namen —
   // Teilnehmerzeilen, Organizer-Namen der Events und die Rollenliste.
   const [isRepairingNames, setIsRepairingNames] = React.useState(false);
@@ -1127,13 +1133,14 @@ export default function AdminPage(): React.ReactElement {
   // v30.66: useWaitlistActions — Rumpf in logic/useWaitlistActions.ts.
   const {
     idFixCheckedForRef, idRecheckBusy, recentCancellation, reloadRegistrationsForIdCheck,
-    runIdReorder, runManualPromote, runOverbookResolution,
+    runIdReorder, runManualPromote, runOverbookResolution, runHealAllEvents,
   } = useWaitlistActions({
     allEvents, confirmDialog, eventServiceRef, getAllRegistrations, isDe, isSplitCapacity,
     obKeepVariant, obMailBody, obMailLang, obMailSubject, obRemoveCalendar, obWithMail,
     overbookModal, registrations, reloadRegistrations, selectedEvent, setAdminToast, setIsPromoting, setIsReorderingIDs,
     setObBusy, setObMailBody, setObMailLang, setObMailSubject, setOverbookModal, setPromoteResult,
     setReorderProgress, setReorderProgressLabel, setReorderResult,
+    setIsHealingAll, setHealAllProgress, setHealAllResult,
   });
 
   // v30.66: useTeamActions — Rumpf in logic/useTeamActions.tsx.
@@ -2194,6 +2201,7 @@ export default function AdminPage(): React.ReactElement {
     isCheckingDeclines, isDe, isDetectingOverbook, isFixingColumns, isFixingFields, isOrganizerFor,
     isPromoting, isRefreshingProfiles, isReorderingIDs, isRepairingAccess, isRepairingNames,
     isRepairingOrganizers, isRepairingPerms, isResettingCounter, isSendingQR, isSplitCapacity, isSyncingRegistry,
+    isHealingAll, healAllProgress, healAllResult, runHealAllEvents,
     navigate, openChangeLogForEvent, openCommsModal, openInviteModal, openMassmailPicker, promoteResult,
     qrSentCount, refreshEvents, refreshProfilesResult, registrations, reloadRegistrations, reorderResult, repairAccessResult,
     repairNamesResult, repairOrganizersResult, repairPermsResult, resetCounterResult, runIdReorder, runManualPromote,

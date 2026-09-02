@@ -39,6 +39,11 @@ export interface AdminActionsCardProps {
   isRepairingNames: boolean;
   isRepairingOrganizers: boolean;
   isRepairingPerms: boolean;
+  /** v30.69: Sammel-Heilung „Nachrücken & IDs für ALLE Events nachholen". */
+  isHealingAll: boolean;
+  healAllProgress: string | null;
+  healAllResult: string | null;
+  runHealAllEvents: () => Promise<void>;
   isResettingCounter: boolean;
   isSendingQR: boolean;
   isSplitCapacity: boolean;
@@ -112,6 +117,9 @@ export interface AdminActionsCardProps {
 }
 
 export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
+  // v30.69: eigene Zeile statt Anhängen an die lange Destrukturierung darunter —
+  // die ist generiert und soll beim nächsten Schnitt austauschbar bleiben.
+  const { isHealingAll, healAllProgress, healAllResult, runHealAllEvents } = p;
   const { adminEvents, allEvents, childEventsOf, confirmDialog, copiedDeepLink, copiedEmails, detectOverbookResult, eventServiceRef, fixColumnsResult, fixFieldsResult, isAdmin, isCheckingDeclines, isDe, isDetectingOverbook, isFixingColumns, isFixingFields, isOrganizerFor, isPromoting, isRefreshingProfiles, isReorderingIDs, isRepairingAccess, isRepairingNames, isRepairingOrganizers, isRepairingPerms, isResettingCounter, isSendingQR, isSplitCapacity, isSyncingRegistry, navigate, openChangeLogForEvent, openCommsModal, openInviteModal, openMassmailPicker, promoteResult, qrSentCount, refreshEvents, refreshProfilesResult, registrations, reloadRegistrations, reorderResult, repairAccessResult, repairNamesResult, repairOrganizersResult, repairPermsResult, resetCounterResult, runIdReorder, runManualPromote, searchUsers, selectedEvent, setAccessFixModal, setB2runTodoOpen, setBibImportOpen, setBillingPanelOpen, setCheckInHubOpen, setCheckInHubStep, setCopiedDeepLink, setCopiedEmails, setDeclineCopied, setDeclineResult, setDetectOverbookResult, setExcelAudience, setExcelTargetModal, setFixColumnsResult, setFixFieldsResult, setIsCheckingDeclines, setIsDetectingOverbook, setIsFixingColumns, setIsFixingFields, setIsRefreshingProfiles, setIsRepairingAccess, setIsRepairingNames, setIsRepairingOrganizers, setIsRepairingPerms, setIsResettingCounter, setIsSyncingRegistry, setNameFixModal, setRefreshProfilesResult, setRepairAccessResult, setRepairNamesResult, setRepairOrganizersResult, setRepairPermsResult, setResetCounterResult, setShirtSizeOpen, setShowDeclineModal, setShowExportMenu, setSubRegReloadTick, setSyncRegistryResult, shirtFieldExists, showAlert, showExportMenu, siteUrl, spServiceRef, syncRegistryResult, t, updateEvent } = p;
   return (
         <ActionsCollapsibleCard isDe={isDe}>
@@ -942,6 +950,29 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                     setIsRepairingAccess(false);
                   }
                 }}
+              />
+            )}
+
+            {/* v30.69: Nachrücken & IDs für ALLE Events nachholen — Admin only.
+                Sammel-Heilung nach einem Ausfall des Flows
+                DEX_IDReorder_TeilnehmerIDs (02.09.2026). Erst planen und im
+                Dialog zeigen, wer nachrückt — dann ausführen. Logik in
+                useWaitlistActions.runHealAllEvents. */}
+            {isAdmin && (
+              <ActionTile
+                icon={<RefreshCw size={18} />}
+                category="maintenance"
+                title={isHealingAll
+                  ? (isDe ? 'Heilung läuft…' : 'Healing…')
+                  : (isDe ? 'Nachrücken & IDs für ALLE Events nachholen' : 'Catch up promotions & IDs for ALL events')}
+                desc={isDe
+                  ? 'Für den Fall, dass der Nachrück-Flow ausgefallen war: Prüft alle aktiven Events, lässt überall dort nachrücken, wo Plätze frei sind und Leute warten, nummeriert lückenhafte TeilnehmerIDs neu und gleicht alle Platzzähler ab. Zeigt VOR dem Ausführen, wer in welchem Event nachrücken würde — erst nach Bestätigung gehen Mails und Einladungen raus. Events ohne Vollzugriff und Events mit gemeinsamer Warteliste bei geteilten Gruppen werden namentlich ausgewiesen statt falsch gerechnet.'
+                  : 'For when the promotion flow was down: checks all active events, promotes wherever seats are free and people are waiting, renumbers participant IDs with gaps and reconciles all seat counters. Shows BEFORE running who would move up in which event — emails and invites only go out after confirmation. Events without full access, and split-group events with a shared waitlist, are listed by name instead of being miscounted.'}
+                badge="admin"
+                busy={isHealingAll}
+                result={isHealingAll ? healAllProgress : healAllResult}
+                resultIsError={!isHealingAll && !!healAllResult && (healAllResult.indexOf('Fehler') >= 0 || healAllResult.indexOf('Error') >= 0 || healAllResult.indexOf('errors') >= 0)}
+                onClick={async () => { await runHealAllEvents(); }}
               />
             )}
 
