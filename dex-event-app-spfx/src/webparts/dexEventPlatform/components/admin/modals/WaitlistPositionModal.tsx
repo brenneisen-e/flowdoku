@@ -35,8 +35,12 @@ export const WaitlistPositionModal: React.FC<WaitlistPositionModalProps> = (p) =
           try {
             // v30.67: Gruppe mitgeben — bei geteilten Kapazitaeten sortierte
             // "Platz aendern" sonst ueber die GESAMTE Warteliste und schob die
-            // Person in die falsche Gruppen-Reihenfolge.
-            const res = await eventServiceRef.setWaitlistPosition(selectedEvent.subsiteUrl, reg.Id, parsed, reg.PreferredStarterType || undefined);
+            // Person in die falsche Gruppen-Reihenfolge. Aber NUR bei getrennten
+            // Wartelisten: bei splitSharedWaitlist ist es ein Topf (CLAUDE.md),
+            // dort waere eine Gruppen-Sortierung genauso falsch.
+            const perGroup = !!(selectedEvent.durchstarterCapacity || selectedEvent.funstarterCapacity) && !selectedEvent.splitSharedWaitlist;
+            const group = perGroup ? (reg.PreferredStarterType || undefined) : undefined;
+            const res = await eventServiceRef.setWaitlistPosition(selectedEvent.subsiteUrl, reg.Id, parsed, group);
             if (!res.ok) {
               showAlert(res.error || (isDe ? 'Der Platz konnte nicht geändert werden.' : 'The position could not be changed.'), { variant: 'error' });
               return;
