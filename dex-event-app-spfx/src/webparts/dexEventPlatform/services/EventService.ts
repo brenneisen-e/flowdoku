@@ -1284,7 +1284,7 @@ export class EventService {
     return registration.transferTeamLead(this, subsiteUrl, fromLeadItemId, toNewLeadItemId);
   }
 
-  public async isUserAlreadyOnEvent(subsiteUrl: string, email: string): Promise<boolean> {
+  public async isUserAlreadyOnEvent(subsiteUrl: string, email: string): Promise<boolean | null> {
     return registration.isUserAlreadyOnEvent(this, subsiteUrl, email);
   }
 

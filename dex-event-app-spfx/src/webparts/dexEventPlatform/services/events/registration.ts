@@ -552,7 +552,11 @@ export async function transferTeamLead(
  * der Aufrufer dann auf die strikteren Stellen-internen Checks zurück-
  * fällt; ein lauter Throw würde den Pfad unnötig abbrechen).
  */
-export async function isUserAlreadyOnEvent(svc: EventService, subsiteUrl: string, email: string): Promise<boolean> {
+// v30.67: `null` heisst "konnte nicht pruefen". Vorher lieferte jeder HTTP-Fehler
+// `false` = "frei" — damit war der v30.14-Schutz gegen Doppel-Anmeldungen genau
+// dann wirkungslos, wenn er gebraucht wurde (403 auf der Subsite, Throttling).
+// Die vier Aufrufer im EventContext sind dreiwertig und behandeln null fail-closed.
+export async function isUserAlreadyOnEvent(svc: EventService, subsiteUrl: string, email: string): Promise<boolean | null> {
   if (!subsiteUrl || !email) return false;
   try {
     const emEsc = email.trim().replace(/'/g, "''");
@@ -561,11 +565,11 @@ export async function isUserAlreadyOnEvent(svc: EventService, subsiteUrl: string
     const filter = `(ParticipantEmail eq '${emEsc}') and (${statusClause})`;
     const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=${encodeURIComponent(filter)}&$top=1&$select=Id,Status,ParticipantEmail`;
     const response = await svc._sp.get(url, SPHttpClient.configurations.v1);
-    if (!response.ok) return false;
+    if (!response.ok) return null;
     const data = await response.json();
     const items = data.value || data.d?.results || [];
     return items.length > 0;
   } catch {
-    return false;
+    return null;
   }
 }

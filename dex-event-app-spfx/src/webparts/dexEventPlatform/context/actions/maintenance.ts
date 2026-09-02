@@ -225,6 +225,12 @@ export function makeMaintenanceActions(deps: MaintenanceDeps) {
         sites += r.sites;
         grants += r.grants;
         r.unresolved.forEach(u => unresolved.add(u));
+        // v30.67: fehlgeschlagene Rechtevergaben zaehlen — vorher meldete die
+        // Reparatur Erfolg, ohne eine einzige Antwort gesehen zu haben.
+        if (r.failed && r.failed.length) {
+          errors += r.failed.length;
+          r.failed.forEach(f => unresolved.add(`${f.site} (${f.scope}, HTTP ${f.status})`));
+        }
       } catch (err) {
         errors++;
         console.warn('[DEX] repairAllOrganizerPermissions failed for', keys[i], err);

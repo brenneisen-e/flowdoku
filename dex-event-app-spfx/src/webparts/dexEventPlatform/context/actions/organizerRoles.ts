@@ -79,9 +79,14 @@ export function makeOrganizerRoleActions(deps: OrganizerRoleDeps) {
       const mails = (orgEmails || '').split(';').map(s => s.trim());
       const names = (orgNames || '').split(';').map(s => s.trim());
       if (mails.filter(Boolean).length === 0) return;
-      const orgs = await eventService.getRoleEmails('Organizer');
-      const admins = await eventService.getRoleEmails('Admin');
-      const elevated = new Set([...orgs, ...admins].map(e => e.toLowerCase()));
+      // v30.67: F&A und IT-Admin haben Organizer-Rechte (utils/roleRank) — sie
+      // bekamen trotzdem bei jedem Save einen "Organizer werden"-Antrag samt
+      // Admin-Mail, weil hier nur zwei der vier Rollen gezaehlt wurden.
+      const [orgs, admins, fa, itAdmins] = await Promise.all([
+        eventService.getRoleEmails('Organizer'), eventService.getRoleEmails('Admin'),
+        eventService.getRoleEmails('F&A'), eventService.getRoleEmails('IT-Admin'),
+      ]);
+      const elevated = new Set([...orgs, ...admins, ...fa, ...itAdmins].map(e => e.toLowerCase()));
       const me = (currentUserEmail || '').toLowerCase();
       for (let i = 0; i < mails.length; i++) {
         const mail = mails[i];

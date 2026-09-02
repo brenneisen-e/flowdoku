@@ -861,7 +861,9 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     let success: boolean;
     let failReason: string | undefined;
     if (existing && existing.Status === 'Abgemeldet') {
-      success = await eventService.reactivateRegistration(subsiteUrl, existing.Id, firstNameToUse, lastNameToUse, customData, status, fieldMap, actorName, actorEmail, proxyConsentStr);
+      // v30.67: Gruppe mitgeben — bei geteilten Kapazitaeten landete eine
+      // Re-Anmeldung sonst ohne StarterType und damit in keiner Gruppe.
+      success = await eventService.reactivateRegistration(subsiteUrl, existing.Id, firstNameToUse, lastNameToUse, customData, status, fieldMap, actorName, actorEmail, proxyConsentStr, effectiveStarterType, preferredStarterType);
       if (!success) failReason = 'error';
     } else {
       const r = await eventService.registerForEvent(
