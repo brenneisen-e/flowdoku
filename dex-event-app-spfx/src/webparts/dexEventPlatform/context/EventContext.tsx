@@ -304,7 +304,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // AB HIER ist die App bedienbar: Titel, Zeiten, Sichtbarkeit, Bilder und
     // die zuletzt gespeicherte Teilnehmerzahl (Spalte CurrentParticipants)
     // stehen im Mapping. Die Liste geht deshalb sofort raus.
-    setEvents(mapped);
+    // v30.67: Bereits nachgeladene Anhänge behalten — s. keepLoadedDocuments.
+    setEvents(prev => keepLoadedDocuments(prev, mapped));
 
     // Nachlauf, sichtbar nur als Zahlen, die sich still aktualisieren.
     void (async () => {
@@ -313,7 +314,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         const withCounts = await loadParticipantCountsForEvents(mapped);
         // eslint-disable-next-line no-console
         dlog('perf', `[DEX][perf][loadEvents] participantCounts (nachgelagert) = ${Math.round(performance.now() - tCnt)} ms`);
-        setEvents(withCounts);
+        // v30.67: Nicht den Snapshot von VOR einem parallel eingetroffenen
+        // ensureEventDocuments zurückschreiben — s. keepLoadedDocuments.
+        setEvents(prev => keepLoadedDocuments(prev, withCounts));
       } catch (err) { console.warn('[DEX] Teilnehmerzahlen-Nachlauf fehlgeschlagen:', err); }
     })();
   }
@@ -351,6 +354,28 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       documentsInflightRef.current.set(id, p);
       return p;
     }));
+  }
+
+  /**
+   * v30.67: Nachgeladene Anhänge über einen loadEvents hinweg behalten.
+   *
+   * Das Mapping setzt immer `documents: []`, der Merker `documentsLoadedRef`
+   * sagt aber weiter „geladen" — zwei Zustände über dieselben Daten, die
+   * nicht synchron waren. Nach jedem loadEvents (Antworten ändern, Sub-Event
+   * abmelden) verschwand deshalb die Download-Box in „Meine Events" bis zum
+   * F5, weil niemand mehr nachlud (der Effect dort hängt an der Anzahl der
+   * Events, und die ändert sich nicht). Derselbe Verlust ohne Nutzeraktion,
+   * wenn der Zähl-Nachlauf einen Snapshot von VOR einem parallel
+   * eingetroffenen ensureEventDocuments zurückschrieb. Was einmal geladen
+   * ist, wandert hier in die frisch gemappten Objekte.
+   */
+  function keepLoadedDocuments(prev: DeloitteEvent[], next: DeloitteEvent[]): DeloitteEvent[] {
+    if (!prev || prev.length === 0) return next;
+    const docsById: Record<string, DeloitteEvent['documents']> = {};
+    for (const p of prev) {
+      if (p.documents && p.documents.length > 0) docsById[p.id] = p.documents;
+    }
+    return next.map(e => (docsById[e.id] && (!e.documents || e.documents.length === 0)) ? { ...e, documents: docsById[e.id] } : e);
   }
 
 
@@ -484,8 +509,18 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       return [...(e.organizerEmails || []), ...(e.coOrganizerEmails || [])]
         .some(x => (x || '').toLowerCase() === me);
     };
+    // v30.67: Effektive Kapazität statt maxParticipants. Bei geteilten
+    // Kapazitäten ist maxParticipants per Konvention 0 (CLAUDE.md) — der
+    // Filter schloss damit genau die Events aus, die als einzige ZWEI Zähler
+    // synchron halten müssen; das `isSplit` unten war nie erreichbar. Folge:
+    // Eine Selbst-Abmeldung bei unbekanntem Wartelisten-Stand ließ den
+    // Gruppenzähler dauerhaft zu hoch, reserveSeat meldete 'full' bei freien
+    // Plätzen, und die App heilte das von sich aus nie.
+    const effectiveCap = (e: DeloitteEvent): number => (e.maxParticipants || 0) > 0
+      ? (e.maxParticipants || 0)
+      : ((e.durchstarterCapacity || 0) + (e.funstarterCapacity || 0));
     const targets = (events || []).filter(e =>
-      e.status === 'Active' && (e.maxParticipants || 0) > 0 && (e.subsiteUrl || '').trim()
+      e.status === 'Active' && effectiveCap(e) > 0 && (e.subsiteUrl || '').trim()
       && (!opts?.onlyMine || mine(e)));
     for (const e of targets) {
       const sub = e.subsiteUrl as string;
@@ -593,6 +628,21 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     }
     return eventId;
   }
+
+  /**
+   * v30.67: Aktiv-Prüfung mit drei Antworten — true = angemeldet, false = frei,
+   * null = nicht prüfbar (429/403) → der Aufrufer lehnt ab (fail-closed).
+   *
+   * Der Service liefert heute bei JEDEM Fehler `false` (`if (!response.ok)
+   * return false; catch { return false; }`). Damit war der v30.14-Zweig
+   * `alreadyActive === null` in registerForEvent toter Code, und in der
+   * Anmeldewelle kam die zweite Zeile durch — genau der Befund, den v30.14
+   * beheben sollte. Die Aufrufstellen hier sind dreiwertig; sobald
+   * `isUserAlreadyOnEvent` bei Fehler `null` liefert (Service-Änderung, im
+   * v30.67-Bericht beschrieben), greift der Zweig ohne weiteres Zutun.
+   */
+  const probeAlreadyActive = async (subsiteUrl: string, email: string): Promise<boolean | null> =>
+    eventService.isUserAlreadyOnEvent(subsiteUrl, email);
 
   // v30.42: Je Sitzung EINMAL je (Klammer, Person) die Schattenzeile prüfen.
   // Ohne diesen Merker liefe ein Massen-Lauf über 19 Termine 19-mal in
@@ -727,6 +777,10 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     //   'full'     → Gruppe voll → Warteliste
     //   'error'    → Counter nicht nutzbar → FAIL-CLOSED → Warteliste
     //                (NIE optimistisch Angemeldet — genau das war der Bug).
+    // v30.67: Merken, WELCHER Zähler wirklich erhöht wurde — für die Rückgabe,
+    // falls der Insert danach scheitert (s.u.). cap <= 0 heißt „unbegrenzt":
+    // reserveSeat liefert dann 'reserved', ohne den Zähler anzufassen.
+    let reservedSeatField: 'SeatsTaken' | 'SeatsTakenDurch' | 'SeatsTakenFun' | null = null;
     if (event && isSplitGroup && preferredStarterType) {
       const cap = preferredStarterType === 'Durchstarter'
         ? (event.durchstarterCapacity || 0)
@@ -734,6 +788,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       const seat = await eventService.reserveSeat(subsiteUrl, preferredStarterType as 'Durchstarter' | 'Funstarter', cap);
       if (seat === 'reserved') {
         effectiveStarterType = preferredStarterType;
+        if (cap > 0) reservedSeatField = eventService.seatFieldFor(preferredStarterType);
       } else {
         // 'full' ODER 'error' → fail-closed auf Warteliste für genau diesen Typ.
         status = 'Warteliste';
@@ -749,6 +804,8 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       const seat = await eventService.reserveSeat(subsiteUrl, '', event.maxParticipants);
       if (seat !== 'reserved') {
         status = 'Warteliste';
+      } else {
+        reservedSeatField = 'SeatsTaken';
       }
     }
 
@@ -814,6 +871,19 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       );
       success = r.ok;
       failReason = r.reason;
+    }
+    // v30.67: Reservierten Platz zurückgeben, wenn der Insert scheitert.
+    // reserveSeat schreibt bewusst VOR dem Insert (atomar per ETag-CAS); der
+    // Erfolgspfad war gepflegt, der Fehlerpfad nicht. Bei 429 in der
+    // Anmeldewelle, 403 auf einer frischen Subsite oder 400 wegen einer
+    // fehlenden Custom-Field-Spalte blieb SeatsTaken erhöht — drei Versuche,
+    // drei Phantom-Plätze, und ab der Kapazität ging jede echte Anmeldung auf
+    // die Warteliste. Geheilt hat das nur der privilegierte Reconcile
+    // (Admin-Boot, 1×/6 h) — ein reiner Teilnehmer-Pfad nie. Dasselbe Muster
+    // wie der Rollback in switchSplitGroup.
+    if (!success && reservedSeatField) {
+      try { await eventService.adjustSeatCounterField(subsiteUrl, reservedSeatField, -1); }
+      catch (err) { console.warn('[DEX] Sitzplatz-Rückgabe nach fehlgeschlagenem Insert fehlgeschlagen:', err); }
     }
 
     if (success && event) {
@@ -1178,7 +1248,16 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
                   if (b64 && b64.indexOf('data:') === 0) qrHeroPhoto = b64;
                 } catch { /* Foto nicht ladbar → Standardbild */ }
               }
-              const qrMail = qrCodeEmail(firstNameToUse, event.title, qrImageHtml, lang, nameToUse, qrOverride, undefined, qrHeroPhoto);
+              // v30.67: Die Registrierung VOR dem Mailaufbau laden und die
+              // Teilnehmer-ID durchreichen. Der 7. Parameter stand hart auf
+              // undefined — die Auto-QR-Mail der Nachzügler kam ohne die
+              // ID-Zeile unter dem Code und ohne den Hinweis „Nummer am Einlass
+              // nennen". Genau die Personen, bei denen der Kamera-Scan
+              // (Android/SharePoint-App) scheitert, hatten keine Ersatznummer;
+              // Massenversand und Test hatten sie. Die Zeile wurde ohnehin
+              // gleich darauf für setQRSentStatus geladen — jetzt nur einmal.
+              const myReg = event.subsiteUrl ? await eventService.getMyRegistration(event.subsiteUrl, emailToUse) : null;
+              const qrMail = qrCodeEmail(firstNameToUse, event.title, qrImageHtml, lang, nameToUse, qrOverride, myReg?.TeilnehmerID, qrHeroPhoto);
               // v9.22: Auto-Send-QR für externe Empfänger ebenfalls an den
               // Organizer umleiten (mit klarem Subject-Präfix), nicht an den
               // externen Mail-Empfänger.
@@ -1205,11 +1284,8 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
               // Status auf 'QR versendet' setzen, damit der Admin-Center-View
               // sofort zeigt, dass der QR-Code raus ist (analog zum
               // manuellen Massen-QR-Versand).
-              if (event.subsiteUrl) {
-                const myReg = await eventService.getMyRegistration(event.subsiteUrl, emailToUse);
-                if (myReg && myReg.Id) {
-                  await eventService.setQRSentStatus(event.subsiteUrl, myReg.Id);
-                }
+              if (event.subsiteUrl && myReg && myReg.Id) {
+                await eventService.setQRSentStatus(event.subsiteUrl, myReg.Id);
               }
             } catch (err) { console.warn('[DEX] auto-send QR failed:', err); }
           })().catch(err => console.warn('[DEX] auto-send QR outer failed:', err));
@@ -1415,7 +1491,9 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
 
     const allEmails = [leadData.email, ...members.map(m => m.email)];
     for (const em of allEmails) {
-      const blocked = await eventService.isUserAlreadyOnEvent(subsiteUrl, em);
+      // v30.67: null = nicht prüfbar → ablehnen statt durchwinken (s. probeAlreadyActive).
+      const blocked = await probeAlreadyActive(subsiteUrl, em);
+      if (blocked === null) return { ok: false, reason: 'dup-check-failed' };
       if (blocked) {
         return { ok: false, reason: `already-registered:${em}` };
       }
@@ -1438,6 +1516,9 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     // Atomar N Plätze reservieren — Split-Group oder klassisch.
     const isSplitGroup = typeof event.durchstarterCapacity === 'number' && typeof event.funstarterCapacity === 'number'
       && (event.durchstarterCapacity > 0 || event.funstarterCapacity > 0);
+    // v30.67: Welcher Zähler um teamCount erhöht wurde — für die Rückgabe
+    // nicht belegter Plätze, falls Inserts scheitern (s.u.).
+    let reservedSeatField: 'SeatsTaken' | 'SeatsTakenDurch' | 'SeatsTakenFun' | null = null;
     if (isSplitGroup && leadData.preferredStarterType) {
       const cap = leadData.preferredStarterType === 'Durchstarter'
         ? (event.durchstarterCapacity || 0)
@@ -1446,11 +1527,22 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       if (seat !== 'reserved') {
         status = 'Warteliste';
         effectiveStarterType = undefined;
+      } else if (cap > 0) {
+        reservedSeatField = eventService.seatFieldFor(leadData.preferredStarterType);
       }
     } else if (event.maxParticipants > 0) {
       const seat = await eventService.reserveSeat(subsiteUrl, '', event.maxParticipants, teamCount);
       if (seat !== 'reserved') status = 'Warteliste';
+      else reservedSeatField = 'SeatsTaken';
     }
+    // v30.67: Reservierte, aber nicht belegte Plätze zurückgeben — sonst
+    // blockieren sie als Phantom-Plätze andere Anmeldungen, bis jemand
+    // „Zähler abgleichen" klickt (adjustSeatCounterField ist additiv + ETag-CAS).
+    const releaseSeats = async (n: number): Promise<void> => {
+      if (!reservedSeatField || n <= 0) return;
+      try { await eventService.adjustSeatCounterField(subsiteUrl, reservedSeatField, -n); }
+      catch (err) { console.warn('[DEX] registerTeam: Sitzplatz-Rückgabe fehlgeschlagen:', err); }
+    };
 
     // FieldMap aus Custom Fields extrahieren (cf.id -> spInternalName)
     const fieldMap: Record<string, string> = {};
@@ -1484,11 +1576,22 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
     };
 
-    // Alle Team-Insert-Calls parallel — Counter-CAS in getNextTeilnehmerId
-    // garantiert eindeutige TeilnehmerIDs auch bei N parallelen Inserts.
-    const insertPromises: Array<Promise<{ ok: boolean; email: string; firstName: string; lastName: string }>> = [];
+    // v30.67: Inserts NACHEINANDER statt als Promise.all, mit Fehlerzähler.
+    // Fünf gleichzeitige POSTs in der Anmeldewelle sind genau die Konstellation,
+    // die SharePoint mit 429 drosselt; registerTeamMember fängt das ab und
+    // liefert {ok:false}. Vorher galt `some(r => r.ok)` als Erfolg: Zwei von
+    // fünf Zeilen fehlten, der Lead sah die Erfolgsseite, die zwei Personen
+    // erfuhren nichts und standen in keiner Liste — und SeatsTaken stand auf
+    // fünf. Dasselbe Muster, das CLAUDE.md für deleteParticipantData als
+    // Ursache des Register-Rückstands beschreibt. Jetzt: Lead zuerst — ohne
+    // Lead kein Team, dann wird gar nichts angelegt; scheitert ein Mitglied,
+    // laufen die übrigen weiter, der Teilerfolg wird als solcher gemeldet und
+    // die nicht belegten Plätze gehen zurück. (Die Counter-CAS in
+    // getNextTeilnehmerId garantiert weiterhin eindeutige TeilnehmerIDs.)
+    type TeamInsertResult = { ok: boolean; email: string; firstName: string; lastName: string };
+    const results: TeamInsertResult[] = [];
     // Lead
-    insertPromises.push((async (): Promise<{ ok: boolean; email: string; firstName: string; lastName: string }> => {
+    {
       const r = await eventService.registerTeamMember(subsiteUrl, {
         firstName: leadData.firstName,
         lastName: leadData.lastName,
@@ -1506,39 +1609,43 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         registeredByEmail: actorEmail,
         salutation: leadData.salutation,
       });
-      return { ok: r.ok, email: leadData.email, firstName: leadData.firstName, lastName: leadData.lastName };
-    })());
+      results.push({ ok: r.ok, email: leadData.email, firstName: leadData.firstName, lastName: leadData.lastName });
+      if (!r.ok) {
+        await releaseSeats(teamCount);
+        return { ok: false, reason: 'insert-failed' };
+      }
+    }
     // Members
-    members.forEach((m, idx) => {
+    for (let idx = 0; idx < members.length; idx++) {
+      const m = members[idx];
       const profile = memberProfiles[idx] || { department: '', location: '', jobTitle: '', phone: '' };
       const parsed = parseDisplayName(m.displayName);
-      insertPromises.push((async (): Promise<{ ok: boolean; email: string; firstName: string; lastName: string }> => {
-        const r = await eventService.registerTeamMember(subsiteUrl, {
-          firstName: parsed.firstName,
-          lastName: parsed.lastName,
-          email: m.email,
-          profile,
-          status,
-          teamId,
-          teamLead: false,
-          teamName,
-          // v18.12: Custom-Field-Antworten des Mitglieds (z.B. Essenspräferenz).
-          customData: m.customData || {},
-          customFieldMap: fieldMap,
-          starterType: effectiveStarterType,
-          preferredStarterType: leadData.preferredStarterType,
-          registeredByName: actorName,
-          registeredByEmail: actorEmail,
-          // Anrede der Mitglieder bleibt leer — kein Picker für Member-Anreden.
-          salutation: '',
-        });
-        return { ok: r.ok, email: m.email, firstName: parsed.firstName, lastName: parsed.lastName };
-      })());
-    });
-
-    const results = await Promise.all(insertPromises);
-    const anyOk = results.some(r => r.ok);
-    if (!anyOk) return { ok: false, reason: 'insert-failed' };
+      const r = await eventService.registerTeamMember(subsiteUrl, {
+        firstName: parsed.firstName,
+        lastName: parsed.lastName,
+        email: m.email,
+        profile,
+        status,
+        teamId,
+        teamLead: false,
+        teamName,
+        // v18.12: Custom-Field-Antworten des Mitglieds (z.B. Essenspräferenz).
+        customData: m.customData || {},
+        customFieldMap: fieldMap,
+        starterType: effectiveStarterType,
+        preferredStarterType: leadData.preferredStarterType,
+        registeredByName: actorName,
+        registeredByEmail: actorEmail,
+        // Anrede der Mitglieder bleibt leer — kein Picker für Member-Anreden.
+        salutation: '',
+      });
+      results.push({ ok: r.ok, email: m.email, firstName: parsed.firstName, lastName: parsed.lastName });
+    }
+    const failedInserts = results.filter(r => !r.ok);
+    if (failedInserts.length > 0) {
+      console.warn('[DEX] registerTeam: Insert fehlgeschlagen für', failedInserts.map(f => f.email).join(', '));
+      await releaseSeats(failedInserts.length);
+    }
 
     // Pro erfolgreiche Anmeldung: Bestätigungs-Mail + Outlook-Termin queuen.
     const lang = event.emailLanguage || 'EN';
@@ -1621,13 +1728,20 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       targetName: `${leadData.firstName} ${leadData.lastName}`.trim(),
       eventId,
       eventTitle: event.title,
-      details: { teamId, teamSize: teamCount, status, members: members.map(m => m.email) },
+      details: { teamId, teamSize: teamCount, status, members: members.map(m => m.email), ...(failedInserts.length > 0 ? { failed: failedInserts.map(f => f.email) } : {}) },
     }).catch(() => { /* */ });
 
     if (status === 'Angemeldet') {
-      eventService.bumpKpiParticipants(teamCount).catch(() => { /* best-effort */ });
+      // v30.67: Nur die Zeilen zählen, die es wirklich gibt.
+      eventService.bumpKpiParticipants(successResults.length).catch(() => { /* best-effort */ });
     }
     await loadEvents();
+    // v30.67: Teilerfolg ist kein Erfolg — die Anmeldeseite darf nicht die
+    // Erfolgsseite zeigen, während zwei Personen fehlen. Die Adressen stehen
+    // im Grund, damit der Lead sie einzeln nachmelden kann.
+    if (failedInserts.length > 0) {
+      return { ok: false, teamId, status, reason: `partial-insert:${failedInserts.map(f => f.email).join(',')}` };
+    }
     return { ok: true, teamId, status };
   }
 
@@ -1766,7 +1880,9 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     if (!event) return { ok: false, reason: 'event-not-found' };
     if (!teamId) return { ok: false, reason: 'invalid-team-id' };
 
-    const blocked = await eventService.isUserAlreadyOnEvent(subsiteUrl, member.email);
+    // v30.67: null = nicht prüfbar → ablehnen statt durchwinken (s. probeAlreadyActive).
+    const blocked = await probeAlreadyActive(subsiteUrl, member.email);
+    if (blocked === null) return { ok: false, reason: 'dup-check-failed' };
     if (blocked) return { ok: false, reason: `already-registered:${member.email}` };
 
     // Vorhandene Mitglieder laden — um die richtige Gruppe (Split) und
@@ -1783,6 +1899,8 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     let effectiveStarterType: string | undefined = inheritedStarterType || undefined;
     const isSplitGroup = typeof event.durchstarterCapacity === 'number' && typeof event.funstarterCapacity === 'number'
       && (event.durchstarterCapacity > 0 || event.funstarterCapacity > 0);
+    // v30.67: Welcher Zähler erhöht wurde — Rückgabe bei gescheitertem Insert (s.u.).
+    let reservedSeatField: 'SeatsTaken' | 'SeatsTakenDurch' | 'SeatsTakenFun' | null = null;
     if (isSplitGroup && inheritedStarterType) {
       const cap = inheritedStarterType === 'Durchstarter'
         ? (event.durchstarterCapacity || 0)
@@ -1791,10 +1909,13 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       if (seat !== 'reserved') {
         status = 'Warteliste';
         effectiveStarterType = undefined;
+      } else if (cap > 0) {
+        reservedSeatField = eventService.seatFieldFor(inheritedStarterType);
       }
     } else if (event.maxParticipants > 0) {
       const seat = await eventService.reserveSeat(subsiteUrl, '', event.maxParticipants, 1);
       if (seat !== 'reserved') status = 'Warteliste';
+      else reservedSeatField = 'SeatsTaken';
     }
 
     // Profil laden + DisplayName parsen.
@@ -1829,7 +1950,14 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       registeredByEmail: currentUserEmail,
       salutation: '',
     });
-    if (!r.ok) return { ok: false, reason: 'insert-failed' };
+    if (!r.ok) {
+      // v30.67: Reservierten Platz zurückgeben — s. registerForEvent.
+      if (reservedSeatField) {
+        try { await eventService.adjustSeatCounterField(subsiteUrl, reservedSeatField, -1); }
+        catch (err) { console.warn('[DEX] addTeamMember: Sitzplatz-Rückgabe fehlgeschlagen:', err); }
+      }
+      return { ok: false, reason: 'insert-failed' };
+    }
 
     // Bestätigungs-Mail + Outlook + DEX_Participants — same pattern as
     // registerTeam aber für EINEN Member.
@@ -2080,7 +2208,9 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     const event = events.find(e => e.id === eventId);
     if (!event) return { ok: false, reason: 'event-not-found' };
 
-    const blocked = await eventService.isUserAlreadyOnEvent(subsiteUrl, currentUserEmail);
+    // v30.67: null = nicht prüfbar → ablehnen statt durchwinken (s. probeAlreadyActive).
+    const blocked = await probeAlreadyActive(subsiteUrl, currentUserEmail);
+    if (blocked === null) return { ok: false, reason: 'dup-check-failed' };
     if (blocked) return { ok: false, reason: 'already-registered' };
 
     // Lead finden — die Mail-Notification soll an ihn gehen.
@@ -2442,6 +2572,14 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     try { return eventService.lastUpdateEventError || ''; } catch { return ''; }
   }
 
+  // v30.67: Klartext-Grund des letzten fehlgeschlagenen deleteEvent — damit
+  // die Oberfläche die nicht gelöschten Termine namentlich nennen kann statt
+  // nur „fehlgeschlagen" (Gegenstück zu getLastEventUpdateError).
+  const lastDeleteEventErrorRef = React.useRef('');
+  function getLastEventDeleteError(): string {
+    return lastDeleteEventErrorRef.current;
+  }
+
   // v29.77: opts.skipReload — der Wizard schreibt beim Speichern eines
   // Kalender-Events VIELE Items nacheinander (je Sub-Event Update + Outlook-
   // Dirty-Flags). Bis jetzt zog JEDER dieser Schreibvorgaenge ein volles
@@ -2510,24 +2648,58 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     // Parent-Events müssen alle Child-Events gelöscht werden, damit auch deren
     // Outlook-Kalendertermine, Subsites und Teilnehmerlisten aufgeräumt werden.
     const children = events.filter(e => e.parentEventId === eventId);
+    const ev = events.find(e => e.id === eventId);
+    // v30.67: Das Ergebnis je Kind AUSWERTEN. eventService.deleteEvent wirft
+    // nicht, es liefert false (429 auf dem Item-Recycle nach einem Dutzend
+    // Terminen) — das catch war toter Code, die Schleife lief durch, und die
+    // Klammer wurde trotzdem gelöscht. Die übrigen Kinder blieben mit einem
+    // ParentEventId auf ein nicht mehr existierendes Item zurück: Alle
+    // Übersichten filtern !parentEventId, die Termine waren in der App
+    // unerreichbar, ihre Subsites, Anmeldungen und Outlook-Termine liefen
+    // weiter. Scheitert ein Kind, bleibt die Klammer deshalb stehen — dann ist
+    // alles noch bedienbar, und der Admin kann es später erneut versuchen.
+    const failedChildren: string[] = [];
+    const deletedChildren: DeloitteEvent[] = [];
     for (const child of children) {
+      let okChild = false;
       try {
-        await eventService.deleteEvent(Number(child.id));
-        delete subsiteMap.current[child.id];
+        okChild = await eventService.deleteEvent(Number(child.id));
       } catch (err) {
         console.warn('[DEX] Child-Event-Delete fehlgeschlagen:', child.id, err);
+      }
+      if (okChild) {
+        delete subsiteMap.current[child.id];
+        deletedChildren.push(child);
+      } else {
+        failedChildren.push(child.title || child.id);
       }
     }
     // v11.53: vor dem Löschen merken, wie viele aktive Anmeldungen wir
     // vom KPI-Counter abziehen müssen — Parent + alle Children, nur
     // nicht-fictive Events. Wird im Hintergrund einmalig abgezogen.
-    const ev = events.find(e => e.id === eventId);
-    const childActive = children
+    const childActive = deletedChildren
       .filter(c => !c.isFictive)
       .reduce((s, c) => s + (c.currentParticipants || 0), 0);
+    if (failedChildren.length > 0) {
+      lastDeleteEventErrorRef.current = failedChildren.length === 1
+        ? `Nicht gelöscht: Der Termin „${failedChildren[0]}" konnte nicht gelöscht werden — bitte später erneut löschen.`
+        : `Nicht gelöscht: ${failedChildren.length} Termine konnten nicht gelöscht werden (${failedChildren.join(', ')}) — bitte später erneut löschen.`;
+      console.warn('[DEX] deleteEvent abgebrochen —', lastDeleteEventErrorRef.current);
+      // Die Teilnehmer der bereits gelöschten Termine sind weg — das gehört
+      // aus dem KPI heraus, auch wenn die Klammer stehen bleibt.
+      if (childActive > 0) eventService.bumpKpiParticipants(-childActive).catch(() => { /* */ });
+      await loadEvents();
+      return false;
+    }
+    lastDeleteEventErrorRef.current = '';
     const parentActive = (ev && !ev.isFictive) ? (ev.currentParticipants || 0) : 0;
-    const childEventsToDecrement = children.filter(c => !c.isFictive).length
-      + ((ev && !ev.isFictive) ? 1 : 0);
+    // v30.67: Nur das Top-Level-Event zählen. createEvent erhöht den Events-
+    // KPI seit v23.38 nur für Haupt-/Klammer-Events (`!input.parentEventId`),
+    // die Gegenbuchung hier zog aber je Kind eins ab: Nach dem Löschen einer
+    // Klammer mit 8 Terminen stand „Events durchgeführt" um 8 zu niedrig (bei
+    // mehreren Kalender-Events negativ), bis zufällig ein Admin die App
+    // öffnete. recomputeEventKpiOnly zählt ebenfalls nur !parentEventId.
+    const childEventsToDecrement = (ev && !ev.isFictive) ? 1 : 0;
     const success = await eventService.deleteEvent(Number(eventId));
     delete subsiteMap.current[eventId];
     if (success) {
@@ -2538,6 +2710,8 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       if (totalActive > 0) {
         eventService.bumpKpiParticipants(-totalActive).catch(() => { /* */ });
       }
+    } else {
+      lastDeleteEventErrorRef.current = 'Das Event konnte nicht gelöscht werden — bitte später erneut versuchen.';
     }
     // Events immer neu laden, auch wenn Subsite-Löschung fehlschlug
     await loadEvents();
@@ -2797,12 +2971,23 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
   // Läuft einmal pro Session, 20 s nach dem Boot (nicht in die Boot-Lastspitze),
   // sequentiell; registerForEvent ist für die Klammer idempotent.
   const shadowHealRanRef = React.useRef(false);
+  // v30.67: Timer-Id im Ref, Abräumen NUR beim Unmount. Die alte Cleanup
+  // `return () => clearTimeout(t)` gehörte zum Effect-Lauf und lief bei JEDER
+  // neuen `events`-Referenz — und loadEvents liefert beim Boot garantiert zwei
+  // davon (setEvents(mapped), wenige Sekunden später setEvents(withCounts)),
+  // lange vor Ablauf der 20 s. Der Guard `shadowHealRanRef` verhinderte
+  // danach das Neu-Armen: Der Merker sagte „gelaufen", die Cleanup hatte das
+  // Feuern verhindert — zusammen „nie". Die Klammer-Zeilen wurden in keiner
+  // Sitzung nachgeholt, der Merker verfiel still nach 14 Tagen. Dieselbe
+  // Lehre steht seit v23.12 in DexEventPlatform („KEIN clearTimeout-Cleanup
+  // zurückgeben").
+  const shadowHealTimerRef = React.useRef<number | null>(null);
   React.useEffect(() => {
     if (shadowHealRanRef.current) return;
     if (!events || events.length === 0) return;
     if (readPendingShadowParents().length === 0) { shadowHealRanRef.current = true; return; }
     shadowHealRanRef.current = true;
-    const t = window.setTimeout(() => {
+    shadowHealTimerRef.current = window.setTimeout(() => {
       void (async () => {
         for (const p of readPendingShadowParents()) {
           try {
@@ -2815,9 +3000,12 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         }
       })();
     }, 20000);
-    return () => window.clearTimeout(t);
+    // Bewusst KEINE Cleanup hier — s. Kommentar am shadowHealTimerRef.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events]);
+  React.useEffect(() => () => {
+    if (shadowHealTimerRef.current !== null) window.clearTimeout(shadowHealTimerRef.current);
+  }, []);
 
 
   const autoFixStartedRef = React.useRef(false);
@@ -2826,7 +3014,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
   // ueber ein explizites deps-Objekt statt ueber die Closure.
   const {
     autoRepairProxyAccess, fixAllEventColumns, repairAllOrganizerPermissions, restoreCustomFieldDescriptions,
-  } = makeMaintenanceActions({ eventService, events, autoFixStartedRef, updateEvent });
+  } = makeMaintenanceActions({ eventService, events, autoFixStartedRef, updateEvent, loadEvents });
 
   // v30.66: Ausgelagert nach `autoMails.ts` (Modularisierung Stufe 3).
   // Die Funktionskoerper sind unveraendert; sie bekommen ihre Umgebung
@@ -2880,7 +3068,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, getLastEventUpdateError, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getEventNumbersForEmail, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, getFAConfig, saveFAConfig, sendFAMail, markEventSettled, saveFAPersonalNumbers, sendBundledUpdateMail, logFAContact, maybeSendBillingAutoMails, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, repairAllOrganizerPermissions, restoreCustomFieldDescriptions,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, getLastEventUpdateError, getLastEventDeleteError, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getEventNumbersForEmail, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, getFAConfig, saveFAConfig, sendFAMail, markEventSettled, saveFAPersonalNumbers, sendBundledUpdateMail, logFAContact, maybeSendBillingAutoMails, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, repairAllOrganizerPermissions, restoreCustomFieldDescriptions,
         sendAdminInquiry,
         sendCompleteRegistrationReminder,
         notifyAdminsExternalAudienceAccess,

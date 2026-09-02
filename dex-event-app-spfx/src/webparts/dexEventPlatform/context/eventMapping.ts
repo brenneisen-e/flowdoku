@@ -541,6 +541,14 @@ export async function mapSPEventToDeloitteEvent(e: SPEvent, subsiteMap: { curren
       // v18.41: CC-bei-Mail-Flag durchreichen — collectCcEmailsFromFields liest es.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ccOnEmails: !!(cf as any).ccOnEmails,
+      // v30.67: audienceOnly (v29.40, Personen-Felder nur aus dem Verteiler)
+      // fehlte hier als einzige Eigenschaft von EventSpecificField — dieselbe
+      // Drop-Klasse wie rangeStart (v29.20), confirmLabel (v17.19) und
+      // onlyForGroup (v11.16): Der Wizard schrieb das Flag, der Loader las es
+      // nie zurück, die Anmeldeseite nahm wieder die freie Personensuche, und
+      // der nächste Save entfernte das Flag endgültig aus dem JSON.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      audienceOnly: !!(cf as any).audienceOnly,
       // v26.60: Roommate-Benachrichtigung — nur explizites false schaltet ab.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       notifyRoommate: (cf as any).notifyRoommate !== false,

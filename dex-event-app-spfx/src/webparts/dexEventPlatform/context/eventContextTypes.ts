@@ -225,6 +225,10 @@ export interface EventContextType {
   /** v26.51: Klartext-Grund, warum das letzte updateEvent fehlschlug — für die
    *  Fehlermeldung im Wizard (vorher stand der Grund nur in der Konsole). */
   getLastEventUpdateError: () => string;
+  /** v30.67: Klartext-Grund, warum das letzte deleteEvent fehlschlug — nennt
+   *  die Termine, die nicht gelöscht werden konnten (die Klammer bleibt dann
+   *  bewusst stehen, damit sie bedienbar bleibt). Leer nach Erfolg. */
+  getLastEventDeleteError: () => string;
   /** v22.42: Automatischer Hintergrund-Fix der Zeilen-Autoren (Sichtbarkeit
    *  von Fremd-Anmeldungen). Läuft beim Admin-Start gedrosselt (1×/24h) über
    *  alle aktiven Subsites — best-effort, blockiert nichts. */

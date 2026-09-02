@@ -53,6 +53,48 @@ export function makeBillingActions(deps: BillingDeps) {
   }
 
   /**
+   * v30.67: Anmeldungen für die F&A-Liste STRIKT lesen — Haupt-Event plus
+   * (bei Klammer-Events) alle Termine, je E-Mail-Adresse eine Zeile.
+   *
+   * Warum strikt: `getAllRegistrations` wirft nicht. Bei 403 (Admin ohne
+   * Leserecht auf der Subsite), 429 oder fehlender Subsite (Status 0) kommt
+   * ein leeres bzw. gekürztes Array zurück — und das ist keine Aussage über
+   * die Daten. Nur der `onHttpError`-Rückruf unterscheidet „niemand
+   * angemeldet" von „nicht lesbar". Ein Lesefehler auf IRGENDEINER Liste
+   * macht das Ergebnis unbrauchbar: Eine halbe Liste ist für die Abrechnung
+   * schlimmer als keine.
+   *
+   * Warum die Termine dazugehören: Bei einem Klammer-Event hängen die echten
+   * Anmeldungen an den Sub-Event-Listen. Die Klammer-Zeile schreibt
+   * `registerForEvent` erst seit v30.42 zuverlässig; Altbestand aus dem
+   * Organizer-Modal, „Meine Events" und der Assistenz hat sie nicht. Nur die
+   * Klammer zu lesen meldet F&A weniger Personen, als die Teilnehmerliste im
+   * Organizer Center zeigt. Die Klammer-Zeile hat Vorrang (sie trägt die
+   * übergreifenden Antworten), Termin-Zeilen füllen nur auf.
+   */
+  async function collectFARegistrations(ev: DeloitteEvent): Promise<{ ok: boolean; regs: SPRegistration[] }> {
+    const merged: SPRegistration[] = [];
+    const seen = new Set<string>();
+    const ids = [ev.id, ...events.filter(e => e.parentEventId === ev.id).map(e => e.id)];
+    for (const id of ids) {
+      let httpErr = 0;
+      const regs = await getAllRegistrations(id, s => { httpErr = s || -1; });
+      if (httpErr) {
+        console.warn(`[DEX] sendFAMail: Teilnehmerliste von Event ${id} nicht lesbar (HTTP ${httpErr}) — Versand abgebrochen, nächster Lauf versucht es erneut.`);
+        return { ok: false, regs: [] };
+      }
+      for (const r of regs) {
+        if (r.Status === 'Abgemeldet') continue;
+        const k = (r.ParticipantEmail || '').toLowerCase().trim();
+        if (!k || seen.has(k)) continue;
+        seen.add(k);
+        merged.push(r);
+      }
+    }
+    return { ok: true, regs: merged };
+  }
+
+  /**
    * Abrechnungsinfos ('info') bzw. Teilnehmerliste ('list') an die im F&A
    * Center gepflegten Verteiler senden. Organizer stehen immer in CC.
    * Protokolliert in `_billing.log` inkl. vollständigem Mail-Inhalt und
@@ -88,10 +130,18 @@ export function makeBillingActions(deps: BillingDeps) {
       subject = `[DEX] Abrechnungsinformationen: ${ev.title}`;
       stampPatch = { infoSentAt: nowIso, infoSnapshot: { ...(b.fields || {}) }, ...(opts?.auto ? { autoInfoSentAt: nowIso } : {}) };
     } else {
-      const regs = await getAllRegistrations(ev.id);
+      // v30.67: Lesefehler und leeres Ergebnis sind KEIN Versandgrund. Vorher
+      // ging bei 403/429 eine offizielle Mail „0 Personen" an F&A, listSentAt
+      // wurde gestempelt, der Auto-Versand wiederholte sich nie mehr, und das
+      // F&A Center zeigte „Teilnehmerliste versendet" neben „keine
+      // Teilnehmerliste versendet". Ohne Stempel versucht es der nächste Lauf
+      // erneut — das ist hier das richtige Verhalten.
+      const read = await collectFARegistrations(ev);
+      if (!read.ok) return { ok: false, reason: 'read-failed' };
       // v30.50: EINE Abbildung für Versand, Snapshot und Download — vorher
       // hatte jeder Weg seine eigene `.map()`.
-      const rows = faRowsFromRegistrations(regs);
+      const rows = faRowsFromRegistrations(read.regs);
+      if (rows.length === 0) return { ok: false, reason: 'no-participants' };
       body = renderBillingListMailBody(ev, rows, by, faCenterUrl, b);
       subject = `[DEX] Teilnehmerliste: ${ev.title}`;
       stampPatch = { listSentAt: nowIso, listSnapshot: rows.slice(0, 500), ...(opts?.auto ? { autoListSentAt: nowIso } : {}) };
@@ -109,9 +159,26 @@ export function makeBillingActions(deps: BillingDeps) {
       action: kind === 'info' ? 'Abrechnungsinformationen an F&A versendet' : 'Teilnehmerliste an F&A versendet',
       mailType: kind, to: recipients.join('; '), cc, subject, body,
     };
-    const newB: BillingData = { ...b, ...stampPatch, log: trimBillingLog([...(b.log || []), entry]) };
-    const patched = await eventService.patchEventOverridesValue(idNum, '_billing', newB);
-    if (patched) applyBillingLocally(ev.id, newB);
+    let newB: BillingData = { ...b, ...stampPatch, log: trimBillingLog([...(b.log || []), entry]) };
+    // v30.67: Der Rückgabewert hing am Queue-Erfolg, nicht an der Persistenz
+    // des Stempels. Scheiterte der Patch (413: EmailTemplateOverrides über der
+    // 2-MB-Grenze durch Mail-Logo plus Volltext-Log; 429/5xx nach dem Retry),
+    // meldete die Funktion trotzdem Erfolg — Historie leer, listSentAt fehlt,
+    // und der Auto-Versand schickte dieselbe Mail beim nächsten Boot erneut,
+    // weil hasQueuedEmail auf der transienten Queue nichts mehr sieht. Bei 413
+    // einmal OHNE den Mail-Volltext nachsetzen: Der Stempel ist die
+    // Doppelversand-Sperre, der Volltext nur die Anzeige.
+    let patch = await eventService.patchEventOverridesValueEx(idNum, '_billing', newB);
+    if (!patch.ok && patch.status === 413 && entry.body) {
+      const slim: BillingLogEntry = { ...entry, body: undefined };
+      newB = { ...b, ...stampPatch, log: trimBillingLog([...(b.log || []), slim]) };
+      patch = await eventService.patchEventOverridesValueEx(idNum, '_billing', newB);
+    }
+    if (!patch.ok) {
+      console.warn(`[DEX] sendFAMail: Mail (${emailType}) ist in der Queue, der _billing-Stempel konnte aber NICHT gespeichert werden (HTTP ${patch.status}: ${patch.detail}) — nicht erneut senden, bis der Vermerk steht.`);
+      return { ok: false, reason: `stamp-failed:${patch.status}` };
+    }
+    applyBillingLocally(ev.id, newB);
     return { ok: true };
   }
 
@@ -333,6 +400,9 @@ export function makeBillingActions(deps: BillingDeps) {
         if (now >= end + 7 * day && !b.autoListSentAt && !b.listSentAt) {
           const r = await sendFAMail(ev, 'list', { auto: true });
           if (r.ok) out.listSent++;
+          // v30.67: read-failed / no-participants → bewusst NICHT gestempelt,
+          // der nächste App-Start versucht es erneut (statt „0 Personen" zu melden).
+          else if (r.reason === 'no-participants') console.warn(`[DEX] Auto-Versand Teilnehmerliste für „${ev.title}" übersprungen: keine aktiven Anmeldungen lesbar — nächster Lauf versucht es erneut.`);
         }
       }
     } catch (err) {

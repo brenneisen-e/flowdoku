@@ -494,6 +494,11 @@ export const translations: Record<Locale, Record<string, string>> = {
     'eventlist.title': 'Your events',
     'eventlist.hint': 'Here are the events available for your registration. Some events might only be visible for certain locations or business areas.',
     'eventlist.onlyactive': 'Only active events',
+    // v30.67: Der Schlüssel fehlte nur im en-Block — t() liefert bei
+    // locale='en' dann den Schlüssel selbst zurück (truthy), deshalb griff
+    // auch der Fallback an der Aufrufstelle nie: Über dem Umschalter stand
+    // „EVENTLIST.VIEW".
+    'eventlist.view': 'View',
     'eventlist.ownevents': 'My events as organizer',
     'eventlist.otherevents': 'Other events',
 

@@ -17,10 +17,13 @@ export interface MaintenanceDeps {
   events: DeloitteEvent[];
   autoFixStartedRef: { current: boolean };
   updateEvent: (eventId: string, updates: Record<string, unknown>, opts?: { skipReload?: boolean }) => Promise<boolean>;
+  /** v30.67: Einmaliger Reload NACH einem Massenlauf — statt eines vollen
+   *  loadEvents je updateEvent (die 429-Drossel aus v29.77). */
+  loadEvents: () => Promise<void>;
 }
 
 export function makeMaintenanceActions(deps: MaintenanceDeps) {
-  const { eventService, events, autoFixStartedRef, updateEvent } = deps;
+  const { eventService, events, autoFixStartedRef, updateEvent, loadEvents } = deps;
 
   async function autoRepairProxyAccess(): Promise<void> {
     try {
@@ -78,11 +81,17 @@ export function makeMaintenanceActions(deps: MaintenanceDeps) {
     }
     const total = targets.length;
     let columnsAdded = 0; let backfilled = 0; let errors = 0;
+    // v30.67: Ob überhaupt eine Zuordnung nach DEX_Events geschrieben wurde —
+    // nur dann lohnt der eine Reload nach der Schleife.
+    let reloadNeeded = false;
     for (let i = 0; i < targets.length; i++) {
       const ev = targets[i];
       if (onProgress) onProgress(i, total, ev.title || '');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const diagFields = (ev.eventSpecificFields || []).map((f: any) => ({ id: f.id, label: f.label, spInternalName: f.spInternalName || '' }));
+      // v30.67: Die Zuordnung, die dieser Durchlauf tatsächlich persistiert hat
+      // (null = nichts geschrieben) — Grundlage der Nach-Diagnose, s.u.
+      let persistedFields: typeof diagFields | null = null;
       const before = await eventService.diagnoseRegistrationList(ev.subsiteUrl!, diagFields)
         .catch(() => ({ ok: false, listMissing: false, missingColumns: [], error: 'nicht lesbar' }));
       try {
@@ -110,14 +119,30 @@ export function makeMaintenanceActions(deps: MaintenanceDeps) {
             const sp = res.customFieldMap![f.id];
             return sp ? { ...f, spInternalName: sp } : { ...f };
           });
-          try { await updateEvent(ev.id, { 'CustomFields': JSON.stringify(upd) }); } catch { /* best-effort */ }
+          // v30.67: skipReload — die deps-Signatur sah es vor, genutzt wurde es
+          // nicht. Ohne den Schalter zog JEDES Event mit mindestens einem
+          // Abfragefeld ein volles loadEvents nach sich (alle Events plus
+          // Teilnehmerzähler über alle Subsites): dutzende überlappende
+          // Komplett-Reloads, die 429-Drossel bis zur Nutzer-Sperre — genau
+          // der v29.77-Anfragensturm. Einmal neu laden reicht, nach der Schleife.
+          let mappingPersisted = false;
+          try { mappingPersisted = await updateEvent(ev.id, { 'CustomFields': JSON.stringify(upd) }, { skipReload: true }); } catch { /* best-effort */ }
+          if (mappingPersisted) {
+            reloadNeeded = true;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            persistedFields = upd.map((f: any) => ({ id: f.id, label: f.label, spInternalName: f.spInternalName || '' }));
+          }
         }
         try { const bf = await eventService.backfillCompanyForList(ev.subsiteUrl!); backfilled += bf.updated; } catch { /* best-effort */ }
         // Nach dem Fix erneut hinsehen — nur was JETZT noch fehlt, ist ein Befund.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const evFresh: any = events.find(e => e.id === ev.id) || ev;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const afterFields = (evFresh.eventSpecificFields || []).map((f: any) => ({ id: f.id, label: f.label, spInternalName: f.spInternalName || '' }));
+        // v30.67: NICHT aus `events` lesen. Das ist das Array des Renders, in dem
+        // diese Closure gebaut wurde; updateEvent löst zwar setEvents aus, die
+        // laufende Schleife sieht davon nichts — `evFresh` war deshalb immer
+        // identisch zu `ev`, jedes gerade zugeordnete Feld ging mit leerem
+        // spInternalName in die Diagnose und wurde als „fehlt weiterhin"
+        // gemeldet. Maßgeblich ist, was wirklich nach DEX_Events geschrieben
+        // wurde; ist nichts geschrieben worden, gilt der Stand von vorher.
+        const afterFields = persistedFields || diagFields;
         const after = await eventService.diagnoseRegistrationList(ev.subsiteUrl!, afterFields)
           .catch(() => ({ ok: false, listMissing: false, missingColumns: [], error: 'nicht lesbar' }));
         if (before.missingColumns.length > 0 || after.missingColumns.length > 0 || after.listMissing || !after.ok) {
@@ -141,6 +166,10 @@ export function makeMaintenanceActions(deps: MaintenanceDeps) {
       }
     }
     if (onProgress) onProgress(total, total, '');
+    // v30.67: EIN Reload für den ganzen Lauf (s. skipReload oben).
+    if (reloadNeeded) {
+      try { await loadEvents(); } catch (err) { console.warn('[DEX] fixAllEventColumns: loadEvents nach dem Lauf fehlgeschlagen:', err); }
+    }
     return { lists: total, columnsAdded, backfilled, errors, anyChange: columnsAdded > 0 || backfilled > 0, details };
   }
 
@@ -215,10 +244,13 @@ export function makeMaintenanceActions(deps: MaintenanceDeps) {
     onProgress?: (done: number, total: number, label: string) => void,
     dryRun?: boolean
   ): Promise<{ events: number; eventsChanged: number; fieldsRestored: number; errors: number; details: Array<{ eventId: string; eventTitle: string; fields: Array<{ label: string; props: string[] }> }> }> {
-    const RESTORE_PROPS = ['helpText', 'helpTextEn', 'helpTextStyle', 'showIf', 'multi', 'externalLinks', 'ccOnEmails', 'onlyForGroup', 'confirmLabel', 'confirmLabelEn', 'labelEn', 'optionsEn'];
+    // v30.67: audienceOnly — der Loader hat das Flag bis v30.66 nie zurückgelesen
+    // (eventMapping), jeder Save danach hat es aus dem JSON entfernt. Aus der
+    // Versionshistorie ist es wiederherstellbar wie die anderen Drop-Opfer.
+    const RESTORE_PROPS = ['helpText', 'helpTextEn', 'helpTextStyle', 'showIf', 'multi', 'externalLinks', 'ccOnEmails', 'onlyForGroup', 'confirmLabel', 'confirmLabelEn', 'labelEn', 'optionsEn', 'audienceOnly'];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const hasVal = (p: string, val: any): boolean => {
-      if (p === 'multi' || p === 'ccOnEmails') return val === true;
+      if (p === 'multi' || p === 'ccOnEmails' || p === 'audienceOnly') return val === true;
       if (p === 'optionsEn' || p === 'externalLinks') return Array.isArray(val) && val.length > 0;
       return typeof val === 'string' ? val.trim().length > 0 : (val !== undefined && val !== null);
     };
@@ -226,6 +258,7 @@ export function makeMaintenanceActions(deps: MaintenanceDeps) {
     const targets = (events || []).filter(e => { const id = String(e.id); if (seen.has(id)) return false; seen.add(id); return true; });
     const total = targets.length;
     let eventsChanged = 0; let fieldsRestored = 0; let errors = 0;
+    let written = 0; // v30.67: wie viele Events wirklich geschrieben wurden → ein Reload am Ende
     const details: Array<{ eventId: string; eventTitle: string; fields: Array<{ label: string; props: string[] }> }> = [];
     for (let i = 0; i < total; i++) {
       const ev = targets[i];
@@ -277,12 +310,17 @@ export function makeMaintenanceActions(deps: MaintenanceDeps) {
         if (changed) {
           if (evFields.length > 0) details.push({ eventId: String(ev.id), eventTitle: ev.title || String(ev.id), fields: evFields });
           // v26.13: Trockenlauf — nur ermitteln, NICHT schreiben.
-          if (!dryRun) { await updateEvent(ev.id, { 'CustomFields': JSON.stringify(restoredArr) }); }
+          // v30.67: skipReload — derselbe Anfragensturm wie in fixAllEventColumns
+          // (ein voller loadEvents je Event); einmal neu laden nach der Schleife.
+          if (!dryRun) { await updateEvent(ev.id, { 'CustomFields': JSON.stringify(restoredArr) }, { skipReload: true }); written++; }
           eventsChanged++;
         }
       } catch (e) { errors++; console.warn('[DEX] restoreCustomFieldDescriptions failed for', ev.id, e); }
     }
     if (onProgress) onProgress(total, total, '');
+    if (written > 0) {
+      try { await loadEvents(); } catch (err) { console.warn('[DEX] restoreCustomFieldDescriptions: loadEvents nach dem Lauf fehlgeschlagen:', err); }
+    }
     return { events: total, eventsChanged, fieldsRestored, errors, details };
   }
 
