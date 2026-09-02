@@ -148,6 +148,11 @@ export interface DeloitteEvent {
   mandatoryRegistration?: boolean;
   autoSendQRCode?: boolean; // v9.15 — automatisch QR-Code-Mail nach Anmeldung versenden
   imageUrl?: string;
+  /** v30.68: true, wenn `imageUrl` (und `imageDisplay`) vom Hauptevent geerbt
+   *  sind — das Sub-Event hat kein eigenes Bild. Anzeige nutzt das Bild, der
+   *  Wizard zeigt das Feld leer (sonst würde man das Bild des Hauptevents
+   *  „bearbeiten"). */
+  imageInherited?: boolean;
   subsiteUrl?: string;
   outlookBody: string;
   /** v18.42: Betreff des Outlook-Termins. Leer = Event-Titel (Flow-Fallback). */

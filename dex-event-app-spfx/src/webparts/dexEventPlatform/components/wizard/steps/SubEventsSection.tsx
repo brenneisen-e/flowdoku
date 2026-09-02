@@ -1030,9 +1030,10 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                         oben im Kalender angeklickt wurden. „Sub-Events
                         (optional)" darüber liest sich, als käme hier noch eine
                         zweite, freiwillige Sorte. */}
+                    {/* v30.68: ohne „(optional)" — Nutzer-Ansage 02.09.2026. */}
                     {subEventCalendar
                       ? (isDe ? 'Angelegte Termine' : 'Created dates')
-                      : <>{(childTermPlural || (isDe ? 'Sub-Events' : 'Sub-events'))} {isDe ? '(optional)' : '(optional)'}</>}
+                      : <>{childTermPlural || (isDe ? 'Sub-Events' : 'Sub-events')}</>}
                     <InfoTooltip text={isDe ? (
                       <>
                         <strong>Was du hier einstellst:</strong> <strong>zusätzliche Sessions</strong> zum Hauptevent — z.B. eine Trainingsreihe, optionale Workshops, Side-Events am Vortag. Pro Session ein eigener Eintrag mit Titel, Ort, Start/Ende, Anmeldeschluss und Kapazität.<br /><br />
