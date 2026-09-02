@@ -13,6 +13,7 @@ import DatePicker from 'react-datepicker';
 import { Check, Plus } from '../../Icons';
 import { compressImage } from '../../../utils/imageCompress';
 import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
+import { COMM_TOPICS } from '../logic/commTabs';
 import { BundledComm } from '../../../utils/bundledComm';
 import { SubEventDraft } from '../../wizard/wizardTypes';
 import { EmailOverrideEntry } from '../../wizard/emailOverrideEntry';
@@ -20,6 +21,13 @@ export interface CommunicationStepProps {
   visible: boolean;
   activeCommTabIdx: number;
   applyCommToAllSubEvents: () => Promise<void>;
+  /** v30.71: ein Thema (s. COMM_TOPICS) vom offenen Reiter auf alle Termine. */
+  applyCommTopicToAllSubEvents: (topic: string) => Promise<void>;
+  /** v30.71: „Gemeinsam für alle Termine" — Kennzeichen am Haupt-Event. */
+  commShared: boolean;
+  setCommShared: React.Dispatch<React.SetStateAction<boolean>>;
+  flushActiveCommTabToState: () => void;
+  resolveTopLevelCommState: () => { emailLanguage: string; emailLogoBase64: string; outlookLogoBase64: string; outlookBody: string; outlookHeading: string; outlookSubheading: string; outlookSubject: string; disableEmails: boolean; disableRegistrationEmail: boolean; disableCancellationEmail: boolean; autoDeregisterOnDecline: boolean; inactiveHandling?: 'notify' | 'autoderegister'; disableOutlook: boolean; emailTemplateOverrides: Record<string, EmailOverrideEntry> };
   applyEventPhotoToLogo: (setter: (b64: string) => void) => Promise<string>;
   autoDeregisterOnDecline: boolean;
   bundledComm: BundledComm;
@@ -87,7 +95,60 @@ export interface CommunicationStepProps {
 }
 export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
   const { visible } = p;
-  const { activeCommTabIdx, applyCommToAllSubEvents, applyEventPhotoToLogo, autoDeregisterOnDecline, bundledComm, childTermPlural, commToggleRow, confirmDialog, disableCancellationEmail, disableEmails, disableOutlook, disableRegistrationEmail, durchstarterCapacity, effectiveHeaderImage, emailLanguage, emailLogoFromPhoto, emailLogoPreview, emailTemplateOverrides, emailTemplates, funstarterCapacity, imageFile, imagePreview, inactiveHandling, isDe, mainCommDisabledAck, maxParticipants, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, offerLogoToSubEvents, organizer, outlookBody, outlookLogoFromPhoto, outlookLogoPreview, renderHeaderSizeControl, renderOutlookUpdateButton, renderStepIntro, setAutoDeregisterOnDecline, setBundledComm, setDisableCancellationEmail, setDisableEmails, setDisableOutlook, setDisableRegistrationEmail, setEmailLanguage, setEmailLogoFromPhoto, setEmailLogoPreview, setEmailTemplateOverrides, setHtmlEditorMode, setHtmlEditorOpen, setHtmlEditorTemplateType, setInactiveHandling, setLogoCropTarget, setMainCommDisabledAck, setNotifyOrgCancelMode, setNotifyOrgRegisterFromDate, setNotifyOrgRegisterMode, setOutlookLogoFromPhoto, setOutlookLogoPreview, setSubTransfer, subEvents, subEventsOnlyMode, t, title, unlimitedParticipants, useSplitCapacities, waitlistEnabled } = p;
+  const { activeCommTabIdx, applyCommTopicToAllSubEvents, commShared, setCommShared, flushActiveCommTabToState, resolveTopLevelCommState, applyEventPhotoToLogo, autoDeregisterOnDecline, bundledComm, childTermPlural, commToggleRow, confirmDialog, disableCancellationEmail, disableEmails, disableOutlook, disableRegistrationEmail, durchstarterCapacity, effectiveHeaderImage, emailLanguage, emailLogoFromPhoto, emailLogoPreview, emailTemplateOverrides, emailTemplates, funstarterCapacity, imageFile, imagePreview, inactiveHandling, isDe, mainCommDisabledAck, maxParticipants, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, offerLogoToSubEvents, organizer, outlookBody, outlookLogoFromPhoto, outlookLogoPreview, renderHeaderSizeControl, renderOutlookUpdateButton, renderStepIntro, setAutoDeregisterOnDecline, setBundledComm, setDisableCancellationEmail, setDisableEmails, setDisableOutlook, setDisableRegistrationEmail, setEmailLanguage, setEmailLogoFromPhoto, setEmailLogoPreview, setEmailTemplateOverrides, setHtmlEditorMode, setHtmlEditorOpen, setHtmlEditorTemplateType, setInactiveHandling, setLogoCropTarget, setMainCommDisabledAck, setNotifyOrgCancelMode, setNotifyOrgRegisterFromDate, setNotifyOrgRegisterMode, setOutlookLogoFromPhoto, setOutlookLogoPreview, subEvents, subEventsOnlyMode, t, title, unlimitedParticipants, useSplitCapacities, waitlistEnabled } = p;
+
+  // v30.71: Hilfen für den Schalter "gemeinsam / einzeln" (s. Box oben im Schritt).
+  const namedSubCount = subEvents.filter(s => s.title && s.title.trim()).length;
+  const mainTabLabel = subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt-Event' : 'Main event');
+  const currentTabLabel = activeCommTabIdx > 0 ? ((subEvents[activeCommTabIdx - 1] && subEvents[activeCommTabIdx - 1].title) || '') : mainTabLabel;
+  const childOneDe = 'Jeden Termin';
+  // Weicht der offene Termin beim Thema vom Haupt-Event ab? Live-State für die
+  // Felder, die der Schritt als Props hat; Betreff/Unterzeile aus dem Slot
+  // (die hält der Reiter erst nach dem nächsten Flush aktuell).
+  const topicDiffersFromParent = (key: string): boolean => {
+    if (activeCommTabIdx <= 0) return false;
+    const top = resolveTopLevelCommState();
+    const slot: Partial<SubEventDraft> = subEvents[activeCommTabIdx - 1] || {};
+    switch (key) {
+      case 'language': return !!emailLanguage && emailLanguage !== top.emailLanguage;
+      case 'switches': return disableEmails !== top.disableEmails || disableRegistrationEmail !== top.disableRegistrationEmail
+        || disableCancellationEmail !== top.disableCancellationEmail || autoDeregisterOnDecline !== top.autoDeregisterOnDecline
+        || inactiveHandling !== top.inactiveHandling || disableOutlook !== top.disableOutlook;
+      case 'mailLogo': return !!emailLogoPreview && emailLogoPreview !== top.emailLogoBase64;
+      case 'outlookLogo': return !!outlookLogoPreview && outlookLogoPreview !== top.outlookLogoBase64;
+      case 'outlookText': return (!!outlookBody && outlookBody !== top.outlookBody)
+        || !!(slot.outlookSubject || '').trim() || !!(slot.outlookSubheading || '').trim();
+      case 'templates': return JSON.stringify(emailTemplateOverrides || {}) !== JSON.stringify(top.emailTemplateOverrides || {});
+      default: return false;
+    }
+  };
+  // Umschalten. Auf "gemeinsam": vorher sagen, wie viele Termine bei irgendeinem
+  // Thema eigene Werte haben - die bleiben bis zum Speichern erhalten, danach
+  // gilt überall der Stand des Haupt-Events.
+  const switchCommShared = async (on: boolean): Promise<void> => {
+    if (on === commShared) return;
+    if (on) {
+      flushActiveCommTabToState();
+      const top = resolveTopLevelCommState();
+      const own = subEvents.filter(x => x.title && x.title.trim()).filter(x =>
+        (!!x.emailLanguage && x.emailLanguage !== top.emailLanguage)
+        || (!!x.emailLogoBase64 && x.emailLogoBase64 !== top.emailLogoBase64)
+        || (!!x.outlookLogoBase64 && x.outlookLogoBase64 !== top.outlookLogoBase64)
+        || (!!x.outlookBody && x.outlookBody !== top.outlookBody)
+        || !!(x.outlookSubject || '').trim() || !!(x.outlookSubheading || '').trim()
+        || (JSON.stringify(x.emailTemplateOverrides || {}) !== '{}' && JSON.stringify(x.emailTemplateOverrides || {}) !== JSON.stringify(top.emailTemplateOverrides || {}))
+        || !!x.disableEmails !== !!top.disableEmails || !!x.disableOutlook !== !!top.disableOutlook).length;
+      if (own > 0) {
+        const term = childTermPlural || (isDe ? 'Termine' : 'dates');
+        const ok = await confirmDialog(isDe
+          ? `${own} ${own === 1 ? 'Termin hat' : term + ' haben'} eigene Kommunikations-Einstellungen. Im gemeinsamen Modus gelten überall die Werte des Haupt-Events. Die eigenen Werte bleiben erhalten, bis du speicherst — dann werden sie überschrieben. Weiter?`
+          : `${own} ${own === 1 ? 'date has' : 'dates have'} their own communication settings. In shared mode the main event's values apply everywhere. The own values stay until you save - then they are overwritten. Continue?`,
+          { title: isDe ? 'Gemeinsam für alle Termine' : 'Shared across all dates', confirmLabel: isDe ? 'Gemeinsam' : 'Shared' });
+        if (!ok) return;
+      }
+    }
+    setCommShared(on);
+  };
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
                 <h2 className="dex-step-head-title">
@@ -114,6 +175,109 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                     marginBottom: 14, padding: '12px 16px', borderRadius: 10,
                     border: '1px solid var(--dex-gray-200)', background: 'var(--dex-gray-50, #fafafa)',
                   }}>
+                    {/* v30.71: Schalter mit Gedächtnis statt Kopier-Knopf.
+                        Nutzer-Ansage 02.09.2026: „kein Button, sondern ein
+                        Wechselschalter — entweder einzeln oder für alle Termine
+                        zusammen." Gemeinsam = die Termin-Reiter sind hier nur
+                        Anzeige, gespeichert wird überall der Stand des
+                        Haupt-Events (persistSubEvents). Einzeln = Themenliste
+                        mit Chip (eigen / wie Haupt-Event) und einem Knopf, der
+                        genau EIN Thema auf alle Termine verteilt. */}
+                    <div style={{ fontWeight: 600, fontSize: '0.86rem', marginBottom: 4 }}>
+                      {isDe ? 'Gelten die Einstellungen für jeden Termin einzeln oder für alle gemeinsam?' : 'Do these settings apply per date or to all dates together?'}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.55, marginBottom: 10 }}>
+                      {isDe
+                        ? 'Mails, Kalendereinträge und Texte — du entscheidest einmal, ob jeder Termin seine eigenen bekommt oder alle dieselben.'
+                        : 'Emails, calendar entries and texts — decide once whether every date gets its own or all share the same.'}
+                    </div>
+                    <div role="radiogroup" aria-label={isDe ? 'Modus' : 'Mode'} style={{ display: 'inline-flex', gap: 3, padding: 3, border: '1px solid var(--dex-gray-300)', borderRadius: 999, background: '#fff' }}>
+                      {([
+                        { on: true, de: `Gemeinsam für alle ${namedSubCount} ${childTermPlural || 'Termine'}`, en: `Shared across all ${namedSubCount} dates`, subDe: 'Einmal einstellen, überall gleich', subEn: 'Set once, same everywhere' },
+                        { on: false, de: `${childOneDe} einzeln`, en: 'Each date individually', subDe: 'Jeder Reiter hat eigene Einstellungen', subEn: 'Every tab has its own settings' },
+                      ]).map(opt => {
+                        const active = commShared === opt.on;
+                        return (
+                          <button
+                            key={String(opt.on)}
+                            type="button"
+                            role="radio"
+                            aria-checked={active}
+                            onClick={() => { void switchCommShared(opt.on); }}
+                            style={{
+                              border: 0, borderRadius: 999, padding: '7px 15px', cursor: 'pointer', textAlign: 'left',
+                              background: active ? 'var(--dex-green-dark, #4a7c1f)' : 'transparent',
+                              color: active ? '#fff' : 'var(--dex-gray-700)', fontWeight: 600, fontSize: '0.84rem', lineHeight: 1.2,
+                            }}
+                          >
+                            <span style={{ display: 'block' }}>{isDe ? opt.de : opt.en}</span>
+                            <span style={{ display: 'block', fontSize: '0.72rem', fontWeight: 400, opacity: active ? 0.85 : 0.7, marginTop: 2 }}>{isDe ? opt.subDe : opt.subEn}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {commShared ? (
+                      <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 8, background: 'rgba(134,188,37,0.10)', border: '1px solid var(--dex-green, #86bc25)', fontSize: '0.82rem', lineHeight: 1.5 }}>
+                        {activeCommTabIdx === 0
+                          ? (isDe
+                            ? <><strong>Du stellst alles hier auf dem Reiter „{mainTabLabel}&ldquo; ein.</strong> Was du hier änderst, gilt beim Speichern für alle {namedSubCount} {childTermPlural || 'Termine'}. Die Termin-Reiter zeigen keine eigenen Felder mehr.</>
+                            : <><strong>You set everything here on the “{mainTabLabel}” tab.</strong> On save it applies to all {namedSubCount} dates. The date tabs no longer show their own fields.</>)
+                          : (isDe
+                            ? <><strong>Dieser Termin übernimmt alles vom Reiter „{mainTabLabel}&ldquo;.</strong> Zum Ändern wechsle dorthin — oder stelle oben auf „{childOneDe} einzeln&ldquo;, wenn dieser Termin etwas Eigenes braucht.</>
+                            : <><strong>This date takes everything from the “{mainTabLabel}” tab.</strong> Switch there to change it — or choose “Each date individually” above if this date needs something of its own.</>)}
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 8, background: 'rgba(0,118,168,0.07)', border: '1px solid rgba(0,118,168,0.35)', fontSize: '0.82rem', lineHeight: 1.5 }}>
+                          {activeCommTabIdx === 0
+                            ? (isDe
+                              ? <><strong>Du bearbeitest gerade: {mainTabLabel}.</strong> Jede Zeile unten ist ein Thema. Mit „für alle übernehmen&ldquo; verteilst du genau dieses Thema auf alle {namedSubCount} {childTermPlural || 'Termine'} — mehr nicht.</>
+                              : <><strong>You are editing: {mainTabLabel}.</strong> Each row below is one topic. “Apply to all” copies exactly that topic to all {namedSubCount} dates — nothing else.</>)
+                            : (isDe
+                              ? <><strong>Du bearbeitest gerade: {currentTabLabel}.</strong> Jede Zeile zeigt, ob dieser Termin etwas Eigenes hat oder das Haupt-Event übernimmt. Mit „für alle übernehmen&ldquo; verteilst du genau dieses Thema auf die anderen {childTermPlural || 'Termine'}.</>
+                              : <><strong>You are editing: {currentTabLabel}.</strong> Each row shows whether this date has something of its own or inherits from the main event. “Apply to all” copies exactly that topic to the other dates.</>)}
+                        </div>
+                        <div style={{ marginTop: 10, borderTop: '1px solid var(--dex-gray-200)' }}>
+                          {COMM_TOPICS.map(topic => {
+                            const own = activeCommTabIdx > 0 && topicDiffersFromParent(topic.key);
+                            return (
+                              <div key={topic.key} style={{ display: 'grid', gridTemplateColumns: '30px 1fr auto', gap: 10, alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--dex-gray-200)' }}>
+                                <StepBadge n={topic.step} />
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontWeight: 600, fontSize: '0.86rem' }}>{t(topic.labelKey)}</div>
+                                </div>
+                                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                  {activeCommTabIdx > 0 && (
+                                    <span style={{
+                                      fontSize: '0.72rem', padding: '2px 9px', borderRadius: 999, whiteSpace: 'nowrap',
+                                      border: `1px solid ${own ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-300)'}`,
+                                      color: own ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-gray-600)',
+                                      background: own ? 'rgba(237,139,0,0.10)' : '#fff',
+                                    }}>
+                                      {own ? (isDe ? 'eigen' : 'own') : (isDe ? 'wie Haupt-Event' : 'as main event')}
+                                    </span>
+                                  )}
+                                  {namedSubCount > (activeCommTabIdx > 0 ? 1 : 0) && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary"
+                                      style={{ fontSize: '0.74rem', padding: '3px 10px', borderRadius: 999 }}
+                                      onClick={() => { void applyCommTopicToAllSubEvents(topic.key); }}
+                                      title={isDe ? `Nur „${t(topic.labelKey)}" von diesem Reiter auf alle ${childTermPlural || 'Termine'} übertragen` : `Copy only this topic from this tab to all dates`}
+                                    >
+                                      {isDe ? `für alle ${namedSubCount} übernehmen` : `apply to all ${namedSubCount}`}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--dex-gray-200)' }} />
+                    {/* v30.71: Bündel-Block jetzt UNTER dem Schalter - oben geht es um
+                        den Inhalt, hier um die Anzahl der Mails (Nutzer-Entscheidung 02.09.). */}
                     {/* v30.61: Der eigentliche Schalter — eine Mail und ein
                         Kalendereintrag fürs ganze Event statt einem je Termin.
                         Das ist etwas anderes als „überall dieselben Texte":
@@ -123,7 +287,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                     {subEventsOnlyMode && (
                       <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: '1px solid var(--dex-gray-200)' }}>
                         <div style={{ fontWeight: 600, fontSize: '0.86rem', marginBottom: 4 }}>
-                          {isDe ? 'Eine Mail fürs Gesamt-Event statt einer je Termin?' : 'One email for the whole event instead of one per date?'}
+                          {isDe ? 'Wie viele Mails bekommt jemand, der mehrere Termine bucht?' : 'How many emails does someone get who books several dates?'}
                         </div>
                         <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.55, marginBottom: 10 }}>
                           {isDe
@@ -157,46 +321,6 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                         )}
                       </div>
                     )}
-                    <div style={{ fontWeight: 600, fontSize: '0.86rem', marginBottom: 4 }}>
-                      {isDe ? 'Einzeln oder für alle Termine gemeinsam?' : 'Individually or for all dates at once?'}
-                    </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.55, marginBottom: 10 }}>
-                      {isDe
-                        ? 'Voreingestellt ist einzeln: Was du unten änderst, gilt für den oben gewählten Reiter. Soll überall dasselbe ankommen, überträgst du es mit einem Klick.'
-                        : 'The default is individual: what you change below applies to the tab selected above. Use the buttons to make every date identical.'}
-                    </div>
-                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        style={{ fontSize: '0.8rem', padding: '6px 14px' }}
-                        onClick={() => { void applyCommToAllSubEvents(); }}
-                        title={isDe
-                          ? 'Überträgt Mail-Sprache, Logo, Outlook-Text, Überschriften, Betreff und alle Mail-Schalter des Haupt-Events auf jeden Termin'
-                          : 'Applies the main event’s communication settings to every date'}
-                      >
-                        {isDe
-                          ? `Kommunikation des Haupt-Events auf alle ${childTermPlural || 'Sub-Events'} übernehmen`
-                          : 'Apply the main event’s communication to all sub-events'}
-                      </button>
-                      {activeCommTabIdx > 0 && subEvents.length > 1 && (
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          style={{ fontSize: '0.8rem', padding: '6px 14px' }}
-                          onClick={() => setSubTransfer({
-                            fromIdx: activeCommTabIdx - 1,
-                            groups: ['communication'],
-                            targets: subEvents.map((_, i) => i).filter(i => i !== activeCommTabIdx - 1),
-                          })}
-                          title={isDe
-                            ? 'Überträgt Logo, Outlook-Text, Überschriften, Betreff, Mail-Sprache und Mail-Schalter dieses Sub-Events auf andere Sub-Events'
-                            : 'Transfers logo, Outlook text, headings, subject, mail language and mail toggles of this sub-event to other sub-events'}
-                        >
-                          {isDe ? 'Kommunikation dieses Termins auf andere übertragen' : 'Transfer this date’s communication to others'}
-                        </button>
-                      )}
-                    </div>
                   </div>
                 )}
                 {renderStepIntro(
@@ -385,7 +509,9 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                   </div>
                 )}
 
-                {!(subEventsOnlyMode && activeCommTabIdx === 0) && (
+                {/* v30.71: Im gemeinsamen Modus zeigt ein Termin-Reiter keine
+                    eigenen Felder — der Kasten oben sagt, wo man ändert. */}
+                {!(subEventsOnlyMode && activeCommTabIdx === 0) && !(commShared && activeCommTabIdx > 0 && subEvents.length > 0) && (
                 <>
                 <div className="form-group">
                   <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

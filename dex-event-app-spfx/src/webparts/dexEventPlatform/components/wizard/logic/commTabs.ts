@@ -262,6 +262,64 @@ export function resolveTopLevelCommStateImpl(ctx: ResolveTopLevelCommStateCtx): 
     };
 }
 
+/**
+ * v30.71: Die Themen des Kommunikations-Schritts, die ein Termin eigenständig
+ * haben kann — je Thema die Felder des Slots. Schritt 27 (Organizer in Kopie)
+ * fehlt bewusst: Er gilt event-weit und hat keinen Sub-Event-Slot.
+ * `labelKey` ist der Übersetzungsschlüssel der Schritt-Überschrift, damit die
+ * Themenliste im Schalter dieselben Namen trägt wie die Abschnitte darunter.
+ */
+export const COMM_TOPICS: Array<{ key: string; step: number; labelKey: string; fields: string[] }> = [
+  { key: 'language', step: 25, labelKey: 'create.emaillanguage', fields: ['emailLanguage'] },
+  { key: 'switches', step: 26, labelKey: 'create.notifications', fields: ['disableEmails', 'disableRegistrationEmail', 'disableCancellationEmail', 'autoDeregisterOnDecline', 'inactiveHandling', 'disableOutlook'] },
+  { key: 'mailLogo', step: 28, labelKey: 'create.eventlogo.mail', fields: ['emailLogoBase64'] },
+  { key: 'outlookLogo', step: 29, labelKey: 'create.outlooklogo', fields: ['outlookLogoBase64'] },
+  { key: 'outlookText', step: 30, labelKey: 'create.outlookdesc', fields: ['outlookBody', 'outlookHeading', 'outlookSubheading', 'outlookSubject'] },
+  { key: 'templates', step: 31, labelKey: 'create.templates.title', fields: ['emailTemplateOverrides'] },
+];
+
+/**
+ * v30.71: EIN Thema vom gerade offenen Reiter auf alle anderen Termine.
+ * Quelle ist der aktive Reiter (Haupt-Event oder ein Termin) — nach dem Flush,
+ * damit die letzte Bearbeitung mitkommt (CLAUDE.md). Objektwerte geklont.
+ * Der offene Reiter ist die Quelle und braucht deshalb kein Neuladen; die
+ * v30.67-Falle aus applyCommToAllSubEvents (sichtbarer Reiter zeigt alte
+ * Werte) tritt hier nicht auf.
+ */
+export async function applyCommTopicToAllSubEventsImpl(ctx: ApplyCommToAllSubEventsCtx, topicKey: string): Promise<void> {
+  const { activeCommTabIdx, childTermPlural, confirmDialog, flushActiveCommTabToState, isDe, resolveTopLevelCommState, setSubEvents, showAlert, subEventsRef } = ctx;
+  const topic = COMM_TOPICS.filter(x => x.key === topicKey)[0];
+  if (!topic) return;
+  flushActiveCommTabToState();
+  const srcIdx = activeCommTabIdx - 1;
+  const src = (srcIdx >= 0 ? subEventsRef.current[srcIdx] : resolveTopLevelCommState()) as unknown as Record<string, unknown>;
+  if (!src) return;
+  const targets = subEventsRef.current
+    .map((s, i) => ({ s, i }))
+    .filter(x => x.i !== srcIdx && x.s.title && x.s.title.trim());
+  if (targets.length === 0) return;
+  const term = childTermPlural || (isDe ? 'Termine' : 'dates');
+  const ok = await confirmDialog(isDe
+    ? `„${topic.key === 'templates' ? 'E-Mail-Texte' : topic.key === 'switches' ? 'Versand-Schalter' : topic.key === 'language' ? 'Mail-Sprache' : topic.key === 'mailLogo' ? 'Mail-Logo' : topic.key === 'outlookLogo' ? 'Outlook-Bild' : 'Outlook-Text'}" von diesem Reiter auf ${targets.length} ${term} übertragen? Dort vorhandene eigene Werte für dieses Thema werden überschrieben — alle anderen Themen bleiben, wie sie sind.`
+    : `Copy this topic from this tab to ${targets.length} ${term}? Existing own values for this topic there will be overwritten — every other topic stays as it is.`,
+    { title: isDe ? 'Ein Thema für alle übernehmen' : 'Apply one topic to all' });
+  if (!ok) return;
+  const next = subEventsRef.current.map((s, i) => {
+    if (i === srcIdx || !s.title || !s.title.trim()) return s;
+    const patch: Record<string, unknown> = {};
+    for (const f of topic.fields) {
+      const v = src[f];
+      patch[f] = (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v;
+    }
+    return { ...s, ...(patch as unknown as Partial<SubEventDraft>) };
+  });
+  subEventsRef.current = next;
+  setSubEvents(next);
+  showAlert(isDe
+    ? `Übernommen für ${targets.length} ${term}. Gespeichert wird es mit dem Event.`
+    : `Applied to ${targets.length} ${term}. It is saved with the event.`);
+}
+
 /* applyCommToAllSubEvents — aus EventCreationPage.tsx ausgelagert (Zeilen 5021-5048 des
  * urspruenglichen Stands). Der Funktionskoerper ist zeichengleich uebernommen;
  * alles, was er aus dem Komponenten-Scope liest, kommt jetzt ueber `ctx` —

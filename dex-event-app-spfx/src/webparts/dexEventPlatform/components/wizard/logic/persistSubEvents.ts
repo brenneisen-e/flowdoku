@@ -51,6 +51,8 @@ export interface PersistSubEventsCtx {
   showAlert: (message: React.ReactNode, opts?: import("../../../context/DialogContext").AlertOptions) => void;
   shrinkLogoB64: (b64: string) => Promise<string>;
   subEventCalendar: boolean;
+  /** v30.71: Kommunikation gemeinsam - Termine bekommen die Werte des Hauptevents. */
+  commShared: boolean;
   subEventsRef: React.MutableRefObject<SubEventDraft[]>;
   subPersistKey: (d: SubEventDraft) => string;
   subPhotoAsLogo: (draft: { imageFile?: File | null; imagePreview?: string; imageRemoved?: boolean; }) => Promise<string>;
@@ -61,7 +63,7 @@ export interface PersistSubEventsCtx {
 }
 
 export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, parentEventId: string, onStep: (done: number, total: number, title: string) => void): Promise<void> {
-  const { addrCity, addrHouseNo, addrStreet, addrZip, bilingualFields, childEventsOf, confirmDialog, contactEmail, createEvent, deleteEvent, deleteEventItemOnly, editEvent, forceOutlookRecreateRef, headerImageLayoutConfig, headerLayoutFor, initialSubEventDbIds, initialSubEventOutlookMeta, initialSubPersistRef, isDe, isFictive, onlineMeetingMode, organizer, orgGetsSubInvites, outlookTeamsLink, parentTimesIso, pendingOutlookRecreateForSubEventsRef, persistSubEventImage, refreshEvents, resolveTopLevelCommState, sanitizeOrganizerPairs, showAlert, shrinkLogoB64, subEventCalendar, subEventsRef, subPersistKey, subPhotoAsLogo, subTopGateInitialRef, subTopGateKey, title, updateEvent } = ctx;
+  const { addrCity, addrHouseNo, addrStreet, addrZip, bilingualFields, commShared, childEventsOf, confirmDialog, contactEmail, createEvent, deleteEvent, deleteEventItemOnly, editEvent, forceOutlookRecreateRef, headerImageLayoutConfig, headerLayoutFor, initialSubEventDbIds, initialSubEventOutlookMeta, initialSubPersistRef, isDe, isFictive, onlineMeetingMode, organizer, orgGetsSubInvites, outlookTeamsLink, parentTimesIso, pendingOutlookRecreateForSubEventsRef, persistSubEventImage, refreshEvents, resolveTopLevelCommState, sanitizeOrganizerPairs, showAlert, shrinkLogoB64, subEventCalendar, subEventsRef, subPersistKey, subPhotoAsLogo, subTopGateInitialRef, subTopGateKey, title, updateEvent } = ctx;
     const keptDbIds = new Set<string>();
     // v30.67: Ids, deren DEX_Events-Zeile in DIESEM Lauf per Recreate ersetzt
     // (oder auf dem Legacy-Pfad bewusst gelöscht) wurde. Sie sind weder
@@ -197,16 +199,30 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
       // einem Sub-Reiter hält `emailLanguage` den Wert DIESES Reiters, und
       // ein neuer Termin (ohne eigene Sprache) erbte beim Speichern von dort
       // die Sprache des zuletzt geöffneten Termins statt die des Hauptevents.
-      const subEmailLang = draft.emailLanguage || parentComm.emailLanguage;
-      const subOutlookBodyRaw = (typeof draft.outlookBody === 'string' && draft.outlookBody !== '') ? draft.outlookBody : '';
-      const subOutlookHeading = draft.outlookHeading || draft.title || '';
-      const subOutlookSub = draft.outlookSubheading || '';
+      // v30.71: Gemeinsame Kommunikation - die eigenen Werte des Termins
+      // zaehlen dann nicht; jedes Feld faellt ueber die bestehenden Fallbacks
+      // auf das Hauptevent zurueck. `dc` ist eine Lese-Kopie: `draft` selbst
+      // bleibt unangetastet, damit spaetere Schreibzugriffe (Outlook-Recreate
+      // unten) und der Wizard-State ihre Werte behalten.
+      const dc: SubEventDraft = commShared ? {
+        ...draft,
+        emailLanguage: undefined, emailLogoBase64: undefined, outlookLogoBase64: undefined,
+        outlookBody: undefined, outlookHeading: undefined, outlookSubheading: undefined, outlookSubject: undefined,
+        disableEmails: parentComm.disableEmails, disableRegistrationEmail: parentComm.disableRegistrationEmail,
+        disableCancellationEmail: parentComm.disableCancellationEmail, autoDeregisterOnDecline: parentComm.autoDeregisterOnDecline,
+        inactiveHandling: parentComm.inactiveHandling, disableOutlook: parentComm.disableOutlook,
+        emailTemplateOverrides: JSON.parse(JSON.stringify(parentComm.emailTemplateOverrides || {})),
+      } : draft;
+      const subEmailLang = dc.emailLanguage || parentComm.emailLanguage;
+      const subOutlookBodyRaw = (typeof dc.outlookBody === 'string' && dc.outlookBody !== '') ? dc.outlookBody : '';
+      const subOutlookHeading = dc.outlookHeading || draft.title || '';
+      const subOutlookSub = dc.outlookSubheading || '';
       // v30.7: Kalender-Tage heissen „Di. 01.09.2026" — ohne eigenen Betreff
       // fiel der Outlook-Flow auf diesen Tages-Titel zurueck, und im Kalender
       // der Teilnehmer stand nur das Datum (das der Termin ohnehin traegt).
       // Default ist deshalb der NAME DES HAUPTEVENTS; ein im Kommunikations-
       // Reiter gesetzter eigener Betreff gewinnt weiterhin.
-      const subOutlookSubject = (draft.outlookSubject || '').trim() || (subEventCalendar ? title.trim() : '');
+      const subOutlookSubject = (dc.outlookSubject || '').trim() || (subEventCalendar ? title.trim() : '');
       // v28.29: eigenes Bild des Sub-Events gewinnt, sonst erbt es das
       // Kopfbild des Hauptevents (statt still auf den Orb zu fallen).
       // v29.20 (Audit): auch das EIGENE Sub-Logo verkleinern — der
@@ -217,9 +233,9 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
       // EIGENE Bild des Sub-Events (s. subPhotoAsLogo) — bei Terminreihen mit
       // Foto je Termin kam sonst überall das Bild des Hauptevents an. Nur
       // aufgerufen, wenn kein eigenes Logo gesetzt ist (spart Laden/Komprimieren).
-      const subOwnPhotoLogo = draft.emailLogoBase64 ? '' : await subPhotoAsLogo(draft);
-      const subEmailLogo = (draft.emailLogoBase64 ? await shrinkLogoB64(draft.emailLogoBase64) : '') || subOwnPhotoLogo || inheritedEmailLogo;
-      const subOutlookLogo = (draft.outlookLogoBase64 ? await shrinkLogoB64(draft.outlookLogoBase64) : '') || subOwnPhotoLogo || inheritedOutlookLogo;
+      const subOwnPhotoLogo = dc.emailLogoBase64 ? '' : await subPhotoAsLogo(draft);
+      const subEmailLogo = (dc.emailLogoBase64 ? await shrinkLogoB64(dc.emailLogoBase64) : '') || subOwnPhotoLogo || inheritedEmailLogo;
+      const subOutlookLogo = (dc.outlookLogoBase64 ? await shrinkLogoB64(dc.outlookLogoBase64) : '') || subOwnPhotoLogo || inheritedOutlookLogo;
       // Outlook-Body wrappen. v26.59 BUG-FIX: Ohne eigenen Text wurde der Body
       // bisher LEER gespeichert („der Flow setzt einen Default" — stimmte
       // nicht, der Flow mappt 1:1) → die Outlook-Einladung der Sub-Events kam
@@ -278,7 +294,7 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
       // Sub-Event-EmailTemplateOverrides: Logo-Piggybacks (Top-Level-Pattern)
       // + ab v14.4 die echten Mail-Text-Overrides pro Sub-Event
       // (Anmeldung/Warteliste/Abmeldung/Nachrücken).
-      const subDraftOverrides = draft.emailTemplateOverrides || {};
+      const subDraftOverrides = dc.emailTemplateOverrides || {};
       // v15.3: Inheritance-Flags entfallen — Sub-Events sind seit v15.3
       // vollwertige Events mit eigener Konfiguration. Der Piggyback-Key
       // `_inheritFlags` wird nicht mehr geschrieben.
@@ -346,13 +362,13 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
         quizClusterSize: 1,
         emailLanguage: subEmailLang,
         emailTemplateOverrides: subEmailOverrides,
-        disableEmails: !!draft.disableEmails,
+        disableEmails: !!dc.disableEmails,
         // v19.22: granulare An-/Abmelde-Mail-Schalter pro Sub-Event persistieren.
-        disableRegistrationEmail: !!draft.disableRegistrationEmail,
-        disableCancellationEmail: !!draft.disableCancellationEmail,
-        autoDeregisterOnDecline: !!draft.autoDeregisterOnDecline,
-        inactiveHandling: (draft.inactiveHandling === 'autoderegister' ? 'autoderegister' : 'notify') as 'notify' | 'autoderegister',
-        disableOutlook: !!draft.disableOutlook,
+        disableRegistrationEmail: !!dc.disableRegistrationEmail,
+        disableCancellationEmail: !!dc.disableCancellationEmail,
+        autoDeregisterOnDecline: !!dc.autoDeregisterOnDecline,
+        inactiveHandling: (dc.inactiveHandling === 'autoderegister' ? 'autoderegister' : 'notify') as 'notify' | 'autoderegister',
+        disableOutlook: !!dc.disableOutlook,
         isFictive: isFictive,
         askSalutation: !!draft.askSalutation,
         // v29.20 (Audit): kanonisch serialisieren wie der Update-Zweig —
@@ -421,7 +437,7 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
         // DEX_Events-Items (GetOnNewItems). Ein reines MERGE-Update würde
         // den Flow nie anstoßen → kein Outlook-Termin.
         const wasOutlookDisabled = !!initialMeta?.disableOutlook;
-        const nowOutlookEnabled = !draft.disableOutlook;
+        const nowOutlookEnabled = !dc.disableOutlook;
         const hadOutlookEventId = !!(initialMeta?.outlookEventId);
         // v28.69: „Fehlende Termine jetzt anlegen" erzwingt denselben Pfad —
         // ein reines Update triggert den GetOnNewItems-Flow nie.

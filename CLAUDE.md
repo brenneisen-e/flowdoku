@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.70.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.71.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -526,6 +526,22 @@ bleibt die Karte stehen und sagt, dass der Schritt für alles gilt.
 
 **`setScope` ruft für die Kommunikation bewusst `switchCommTab(idx)`** statt
 `setActiveCommTabIdx` — sonst gehen Sub-Event-Mailtexte verloren.
+
+**Seit v30.71 hat der Kommunikations-Schritt einen Schalter „gemeinsam /
+einzeln"** (`commShared`, Piggyback `_commShared` auf der Klammer, Vorgabe:
+neue Events gemeinsam, bestehende einzeln). Gemeinsam heißt NICHT „einmal
+kopieren": `persistSubEvents` liest die 13 Kommunikationsfelder eines Termins
+dann aus einer Lese-Kopie `dc`, in der die Slot-Werte geleert bzw. auf
+`parentComm` gesetzt sind — die bestehenden `draft.x || parentComm.x`-Fallbacks
+erledigen den Rest. `draft` selbst bleibt unangetastet, weil der
+Outlook-Recreate-Zweig weiter unten `draft.disableOutlook = true` SCHREIBT.
+Wer ein Kommunikationsfeld ergänzt: in `COMM_TOPICS` (commTabs.ts) eintragen,
+in `dc` leeren, und den Chip-Vergleich `topicDiffersFromParent` im Schritt
+nachziehen — sonst verteilt „für alle übernehmen" das Feld nicht, und der
+Termin zeigt „wie Haupt-Event", obwohl er abweicht. Im Einzel-Modus verteilt
+`applyCommTopicToAllSubEventsImpl` genau EIN Thema vom offenen Reiter; die
+Komplett-Übernahme `applyCommToAllSubEvents` (v30.60) existiert noch, hat
+aber keinen Knopf mehr.
 
 Seit v28.88 hat kein Schritt mehr eine eigene Reiter-Leiste; im
 Kommunikations-Schritt steht an ihrer Stelle nur noch der Satz „Die

@@ -112,6 +112,8 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
           _subDeadlineRule,
           // v30.61: Gebündelte Kommunikation — eigene States (s. bundledComm).
           _commBundledMail, _commBundledOutlook, _commBundledQr,
+          // v30.71: Gemeinsame Kommunikation — eigener State (s. commShared).
+          _commShared,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -129,6 +131,7 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
         void _noSelfCancel; void _noCancelAfterDeadline; void _teamsLink;
         void _hotels; void _hotelStays; void _hotelVisible; void _hotelRules;
         void _commBundledMail; void _commBundledOutlook; void _commBundledQr;
+        void _commShared;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
     })() : {}

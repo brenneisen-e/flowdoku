@@ -9,6 +9,7 @@ import * as React from 'react';
 import { buildOutlookLocation } from '../../../utils/eventFormat';
 import { EventType } from '../../../types';
 import { ImgView, SubEventDraft } from '../../wizard/wizardTypes';
+import { commSharedOf } from '../../../utils/bundledComm';
 import { BundledComm, bundledCommOf } from '../../../utils/bundledComm';
 import { CustomFieldInput } from '../../wizard/customFieldInput';
 import { reinsertOrganizerPlaceholder } from '../../wizard/wizardHelpers';
@@ -235,6 +236,10 @@ export function useWizardEventFieldState(ctx: UseWizardEventFieldStateCtx) {
   // v30.61: Gebündelte Kommunikation (Mail / Kalender / QR getrennt schaltbar).
   // Gelesen aus den Overrides der Klammer — siehe utils/bundledComm.
   const [bundledComm, setBundledComm] = React.useState<BundledComm>(() => bundledCommOf(editEvent));
+  // v30.71: „Gemeinsam für alle Termine" — neue Events starten gemeinsam,
+  // bestehende lesen ihr Kennzeichen (fehlt es: einzeln, wie bisher).
+  // Siehe utils/bundledComm → commSharedOf.
+  const [commShared, setCommShared] = React.useState<boolean>(() => editEvent ? commSharedOf(editEvent) : true);
   // v28.10: Seitenverhältnis des Wizard-Bilds — die Banner-Option ist nur für
   // Querformat-Fotos sinnvoll und wird nur dann angeboten (Ratio >= 1.2).
   const [wizardImgAspect, setWizardImgAspect] = React.useState<number | null>(null);
@@ -481,7 +486,7 @@ export function useWizardEventFieldState(ctx: UseWizardEventFieldStateCtx) {
   // Anmeldung durch, und erst wenn alles passt wird der Schalter rausgenommen.
 
   return {
-    allDay, audience, autoDeregisterOnDecline, bundledComm, childGender, childTermPlural,
+    allDay, audience, autoDeregisterOnDecline, bundledComm, commShared, childGender, childTermPlural,
     childTermSingular, customFields, customTermMode, description, disableCancellationEmail, disableEmails,
     disableOutlook, disableRegistrationEmail, emailLanguage, emailLogoFromPhoto, endDate, eventImageUrl,
     excludedUsers, filterMode, htmlEditorMode, htmlEditorOpen, htmlEditorTemplateType, imageBanner,
@@ -491,7 +496,7 @@ export function useWizardEventFieldState(ctx: UseWizardEventFieldStateCtx) {
     notifyOrgRegisterFromDate, notifyOrgRegisterMode, onlineMeetingMode, orgGetsSubInvites, orgInvitesTouchedRef, outlookBody,
     outlookEndOverride, outlookHeading, outlookLocationOverride, outlookLogoFromPhoto, outlookStartOverride, outlookSubheading,
     outlookSubject, pendingSuccessDispatch, pendingSuccessDispatchRef, registrationDeadline, removedSavedSubs, requireSubEventSelection,
-    setAllDay, setAudience, setAutoDeregisterOnDecline, setBundledComm, setChildGender, setChildTermPlural,
+    setAllDay, setAudience, setAutoDeregisterOnDecline, setBundledComm, setCommShared, setChildGender, setChildTermPlural,
     setChildTermSingular, setCustomFields, setCustomTermMode, setDescription, setDisableCancellationEmail, setDisableEmails,
     setDisableOutlook, setDisableRegistrationEmail, setEmailLanguage, setEmailLogoFromPhoto, setEndDate, setEventImageUrl,
     setExcludedUsers, setFilterMode, setHtmlEditorMode, setHtmlEditorOpen, setHtmlEditorTemplateType, setImageBanner,

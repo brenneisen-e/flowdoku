@@ -48,7 +48,7 @@ import { WizardModals } from './wizard/WizardModals';
 import { SUB_TRANSFER_GROUPS } from '../data/wizardHints';
 import { renderGlobalScopeBarImpl, renderKlammerVisibilityMismatchImpl, renderOutlookUpdateButtonImpl, renderPerEventTabStripImpl, renderPreviewSectionImpl, renderVisibilitySummaryBoxImpl } from './wizard/logic/wizardRenderHelpers';
 import { applySubTransferImpl, getStepErrorsForImpl, toggleDaySubEventImpl } from './wizard/logic/wizardMisc';
-import { applyCommToAllSubEventsImpl, flushActiveCommTabToStateImpl, resolveTopLevelCommStateImpl, switchCommTabImpl } from './wizard/logic/commTabs';
+import { applyCommTopicToAllSubEventsImpl, applyCommToAllSubEventsImpl, flushActiveCommTabToStateImpl, resolveTopLevelCommStateImpl, switchCommTabImpl } from './wizard/logic/commTabs';
 import { applyDraftPayloadImpl } from './wizard/logic/wizardDraft';
 import { confirmOutlookSaveImpl, createMissingOutlookAppointmentsImpl, triggerOutlookUpdateAllImpl, triggerOutlookUpdateNowImpl } from './wizard/logic/outlookActions';
 import { loadDemoSubEventImpl, loadDemoSubEventTeamImpl } from './wizard/logic/wizardTemplates';
@@ -518,7 +518,7 @@ export default function EventCreationPage(): React.ReactElement {
   // Override vorbelegen, wenn der gespeicherte Wert vom Auto-Standard abweicht —
   // sonst bleibt das Feld leer und der Ort zieht weiter automatisch nach.
   const {
-    allDay, audience, autoDeregisterOnDecline, bundledComm, childGender, childTermPlural,
+    allDay, audience, autoDeregisterOnDecline, bundledComm, commShared, childGender, childTermPlural,
     childTermSingular, customFields, customTermMode, description, disableCancellationEmail, disableEmails,
     disableOutlook, disableRegistrationEmail, emailLanguage, emailLogoFromPhoto, endDate, eventImageUrl,
     excludedUsers, filterMode, htmlEditorMode, htmlEditorOpen, htmlEditorTemplateType, imageBanner,
@@ -528,7 +528,7 @@ export default function EventCreationPage(): React.ReactElement {
     notifyOrgRegisterFromDate, notifyOrgRegisterMode, onlineMeetingMode, orgGetsSubInvites, orgInvitesTouchedRef, outlookBody,
     outlookEndOverride, outlookHeading, outlookLocationOverride, outlookLogoFromPhoto, outlookStartOverride, outlookSubheading,
     outlookSubject, pendingSuccessDispatch, pendingSuccessDispatchRef, registrationDeadline, removedSavedSubs, requireSubEventSelection,
-    setAllDay, setAudience, setAutoDeregisterOnDecline, setBundledComm, setChildGender, setChildTermPlural,
+    setAllDay, setAudience, setAutoDeregisterOnDecline, setBundledComm, setCommShared, setChildGender, setChildTermPlural,
     setChildTermSingular, setCustomFields, setCustomTermMode, setDescription, setDisableCancellationEmail, setDisableEmails,
     setDisableOutlook, setDisableRegistrationEmail, setEmailLanguage, setEmailLogoFromPhoto, setEndDate, setEventImageUrl,
     setExcludedUsers, setFilterMode, setHtmlEditorMode, setHtmlEditorOpen, setHtmlEditorTemplateType, setImageBanner,
@@ -1187,7 +1187,7 @@ export default function EventCreationPage(): React.ReactElement {
   ): Promise<void> => {
     return await persistSubEventsForParentImpl({
       addrCity, addrHouseNo, addrStreet, addrZip, // v30.67: {{Address}}-Fallback
-      bilingualFields, childEventsOf, confirmDialog, contactEmail, createEvent, deleteEvent,
+      bilingualFields, childEventsOf, commShared, confirmDialog, contactEmail, createEvent, deleteEvent,
       deleteEventItemOnly, editEvent, forceOutlookRecreateRef, headerImageLayoutConfig,
       headerLayoutFor, initialSubEventDbIds, initialSubEventOutlookMeta, initialSubPersistRef, isDe, isFictive,
       onlineMeetingMode, organizer, orgGetsSubInvites, outlookTeamsLink, parentTimesIso, pendingOutlookRecreateForSubEventsRef,
@@ -1372,7 +1372,7 @@ export default function EventCreationPage(): React.ReactElement {
     return await runWizardSubmit({
       activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, agenda,
       allDay, allowAttendeeUpload, askSalutation, askTeamName, assistantsCanSee, attendeeUploadHint,
-      attendeeUploadLabel, audience, berlinLocalToUtcIso, bilingualFields, billingPiggyback, bundledComm,
+      attendeeUploadLabel, audience, berlinLocalToUtcIso, bilingualFields, billingPiggyback, bundledComm, commShared,
       childEventsOf, childGender, childTermPlural, childTermSingular, computeFormSnapshot, confirmDialog,
       confirmDialogEnabled, confirmDialogMode, confirmDialogText, contactEmail, contactInfo, contactName,
       contactOrganizerEmail, coOrganizerEmails, coOrganizerNames, createdEventIdRef, createEvent, currentUser,
@@ -2426,6 +2426,19 @@ export default function EventCreationPage(): React.ReactElement {
    * Genau das ist die Frage, die der Dialog stellt. Objektwerte werden
    * geklont, sonst teilen sich alle Termine dieselbe Referenz (v28.80).
    */
+  // v30.71: EIN Thema (Sprache, Schalter, Logo, Outlook-Text, Mail-Texte) vom
+  // gerade offenen Reiter auf alle anderen Termine - der kleine Knopf je
+  // Zeile im Einzel-Modus. Gleicher Ctx wie die Komplett-Uebernahme.
+  const applyCommTopicToAllSubEvents = async (topic: string): Promise<void> => {
+    return await applyCommTopicToAllSubEventsImpl({
+      activeCommTabIdx, childTermPlural, confirmDialog, flushActiveCommTabToState, isDe, locale,
+      resolveTopLevelCommState, setAutoDeregisterOnDecline, setDisableCancellationEmail, setDisableEmails, setDisableOutlook,
+      setDisableRegistrationEmail, setEmailLanguage, setEmailLogoPreview, setEmailTemplateOverrides, setInactiveHandling, setOutlookBody,
+      setOutlookHeading, setOutlookLogoPreview, setOutlookSubheading, setOutlookSubject, setSubEvents,
+      showAlert, subEventsRef,
+    }, topic);
+  };
+
   const applyCommToAllSubEvents = async (): Promise<void> => {
     return await applyCommToAllSubEventsImpl({
       activeCommTabIdx, childTermPlural, confirmDialog, flushActiveCommTabToState, isDe, locale,
@@ -2791,13 +2804,14 @@ export default function EventCreationPage(): React.ReactElement {
     updateSubEventCustomField, useSplitCapacities,
   };
   const communicationStepProps = {
-    activeCommTabIdx, applyCommToAllSubEvents, applyEventPhotoToLogo, autoDeregisterOnDecline, bundledComm, childTermPlural,
+    activeCommTabIdx, applyCommToAllSubEvents, applyCommTopicToAllSubEvents, applyEventPhotoToLogo, autoDeregisterOnDecline, bundledComm, commShared, childTermPlural,
+    flushActiveCommTabToState, resolveTopLevelCommState,
     commToggleRow, confirmDialog, disableCancellationEmail, disableEmails, disableOutlook,
     disableRegistrationEmail, durchstarterCapacity, effectiveHeaderImage, emailLanguage, emailLogoFromPhoto, emailLogoPreview,
     emailTemplateOverrides, emailTemplates, funstarterCapacity, imageFile, imagePreview, inactiveHandling,
     isDe, mainCommDisabledAck, maxParticipants, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode,
     offerLogoToSubEvents, organizer, outlookBody, outlookLogoFromPhoto, outlookLogoPreview, renderHeaderSizeControl,
-    renderOutlookUpdateButton, renderStepIntro, setAutoDeregisterOnDecline, setBundledComm, setDisableCancellationEmail, setDisableEmails,
+    renderOutlookUpdateButton, renderStepIntro, setAutoDeregisterOnDecline, setBundledComm, setCommShared, setDisableCancellationEmail, setDisableEmails,
     setDisableOutlook, setDisableRegistrationEmail, setEmailLanguage, setEmailLogoFromPhoto, setEmailLogoPreview, setEmailTemplateOverrides,
     setHtmlEditorMode, setHtmlEditorOpen, setHtmlEditorTemplateType, setInactiveHandling, setLogoCropTarget, setMainCommDisabledAck,
     setNotifyOrgCancelMode, setNotifyOrgRegisterFromDate, setNotifyOrgRegisterMode, setOutlookLogoFromPhoto, setOutlookLogoPreview, setSubTransfer,
