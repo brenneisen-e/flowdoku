@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.65.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.67.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -260,6 +260,26 @@ Sub-Event-Subsites sah ein Event mit 77 Anmeldungen als vollständig leeres
 geprüften Status ist keine Aussage über die Daten, sondern über gar nichts.**
 Beide Stellen nutzen jetzt `onHttpError`; die Ansicht zählt gesperrte Termine
 namentlich auf, statt sie als 0 zu rendern.
+
+**Ein Lesefehler ist keine Null — das war die Ursache von rund 60 der 124
+Audit-Befunde (v30.66/v30.67).** `getAllRegistrations` wirft nicht; wer das
+Ergebnis ohne `onHttpError` liest, macht aus 403/429/500 eine leere Liste,
+und eine leere Liste hiess an dreissig Stellen „niemand angemeldet", „nicht
+eingecheckt", „darf geloescht werden", „Platz ist frei". Seit v30.67 gilt
+ueberall: nicht lesbar = `null`/„unbekannt", und unbekannt SPERRT (Loeschen,
+Versand, Check-in, Nachruecken), statt freizugeben. Wer eine neue Stelle baut,
+die aus einer Liste etwas ableitet: `onHttpError` mitgeben, bei Status
+abbrechen, und den Zustand „unbekannt" in der UI benennen — nie als 0 rendern.
+
+**Rechte werden vergeben UND entzogen — und beides muss spiegelbildlich sein.**
+`grantOrganizerPermissions` vergab bis v30.67 Full Control auf DEX_Events UND
+auf dem Web; einen Revoke gab es nur fuer Listen. Wer einmal Organizer war,
+behielt Zugriff auf alle Teilnehmer-Subsites. Seit v30.67 gibt es
+`revokeSiteAccess`; jeder Revoke liest die `roleassignments` danach nach und
+meldet nur dann Erfolg, wenn der Principal wirklich weg ist (SharePoint
+antwortet ohne vorhandene Zuweisung mit 404 ODER 500 — der DELETE-Status ist
+nicht belastbar). Selbstschutz: fuer die angemeldete Person laeuft kein
+Web-Revoke. Wer eine neue Rechtevergabe baut, baut den Entzug im selben Commit.
 
 **Berechtigungen gelten je Subsite — und jedes Sub-Event hat eine eigene.**
 `ensureOrganizerPermissions` lief bis v30.36 nur über `editEvent.subsiteUrl`.
