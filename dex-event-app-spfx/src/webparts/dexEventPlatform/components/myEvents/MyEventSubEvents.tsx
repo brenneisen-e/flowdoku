@@ -301,7 +301,7 @@ export default function MyEventSubEvents(props: {
             ? (isDe ? 'Der Termin ist voll und hat keine Warteliste.' : 'This date is full and has no waitlist.')
             : regRes.reason === 'already-registered'
             ? (isDe ? 'Du bist für diesen Termin bereits angemeldet.' : 'You are already registered for this date.')
-            : (regRes.reason === 'umbrella-failed' || regRes.reason === 'dup-check-failed')
+            : regRes.reason === 'dup-check-failed'
             ? (isDe ? 'Die Anmeldung wurde nicht angelegt — SharePoint ist gerade ausgelastet. Bitte versuche es in ein paar Minuten erneut; es wurde nichts gespeichert.' : 'The registration was not created — SharePoint is busy right now. Please try again in a few minutes; nothing was saved.')
             : (isDe ? 'Die Anmeldung wurde nicht gespeichert — bitte erneut versuchen oder die Organizer ansprechen.' : 'The registration was not saved — please try again or contact the organizers.');
           await showAlert(why, { variant: 'error' });
@@ -310,9 +310,9 @@ export default function MyEventSubEvents(props: {
             ? 'Der Termin ist bereits voll — du stehst jetzt auf der Warteliste und wirst benachrichtigt, sobald ein Platz frei wird.'
             : 'This date is already full — you are now on the waitlist and will be notified as soon as a seat becomes free.');
         }
-        // v30.14 → v30.68: Die Klammer-Zeile stellt registerForEvent jetzt
-        // VOR dem Termin sicher (Voraussetzung, kein Nachzug) — der Nachzug
-        // und der localStorage-Merker, die hier standen, sind entfallen.
+        // v30.14 → v30.68: Die Klammer-Zeile stellt registerForEvent selbst
+        // sicher — VOR dem Termin, mit zweitem Versuch danach und Nachzug-
+        // Merker (utils/shadowHeal). Der eigene Nachzug hier ist entfallen.
       }
       setProcessingMessage(isDe ? 'Aktualisiere…' : 'Refreshing…');
       await refresh();

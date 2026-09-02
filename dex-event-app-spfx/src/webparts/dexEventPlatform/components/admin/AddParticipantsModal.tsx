@@ -187,10 +187,6 @@ export default function AddParticipantsModal(props: AddParticipantsModalProps): 
         return isDe
           ? 'Nicht angelegt — Anmeldeliste gerade nicht lesbar (Drosselung), bitte später erneut hinzufügen'
           : 'Not created — registration list not readable right now (throttling), please add again later';
-      case 'umbrella-failed':
-        return isDe
-          ? 'Nicht angelegt — die Klammer-Zeile konnte nicht geschrieben werden (Drosselung), bitte später erneut hinzufügen'
-          : 'Not created — the umbrella row could not be written (throttling), please add again later';
       case 'insert-failed':
         return isDe
           ? 'Nicht gespeichert — technischer Fehler an der Teilnehmerliste, bitte erneut versuchen (hält es an: „Spalten fixen“)'
@@ -246,9 +242,9 @@ export default function AddParticipantsModal(props: AddParticipantsModalProps): 
           rows.push({ person: p.displayName || p.email, target: t.title, status: String((err as Error)?.message || err), ok: false });
         }
       }
-      // v30.14 → v30.68: Die Klammer-Zeile stellt registerForEvent VOR jedem
-      // Termin sicher (Voraussetzung, kein Nachzug) — ein Termin ohne Klammer
-      // wird gar nicht erst angelegt ('umbrella-failed' steht dann im Bericht).
+      // v30.14 → v30.68: Die Klammer-Zeile stellt registerForEvent selbst
+      // sicher — VOR jedem Termin, mit zweitem Versuch danach und Nachzug-
+      // Merker (utils/shadowHeal). Der eigene Nachzug hier ist entfallen.
     }
     setProgress('');
     setReport(rows);

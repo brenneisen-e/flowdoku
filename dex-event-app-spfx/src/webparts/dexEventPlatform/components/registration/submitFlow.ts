@@ -19,6 +19,7 @@ import { isExternalEmailAddr, isPlausibleEmail, stripPrefilterKeys } from './reg
 import { BUNDLED_COMM_DEFAULT, BundledItem, bundledCommOf } from '../../utils/bundledComm';
 import { collectCcEmailsFromFields } from '../../context/EventContext';
 import { selfCancelLocked } from '../../utils/cancelPolicy';
+import { addPendingShadowParent, removePendingShadowParent } from '../../utils/shadowHeal';
 import { Locale } from '../../context/LanguageContext';
 import { DeloitteEvent, Salutation } from '../../types';
 
@@ -842,9 +843,9 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
       // in beiden Fällen ZUM SCHLUSS über den Schritt-3-Block unten).
       const shouldShadowRegisterParent = isSubOnlyMode && sessionsBeingAdded && !parentAlreadyHasRow;
 
-      // v30.57 → v30.68: Der Nachzug-Merker (localStorage) ist entfallen —
-      // die Klammer wird jetzt VOR den Terminen geschrieben (s. unten), ein
-      // Abbruch danach hinterlässt keine Termin-Zeile ohne Klammer mehr.
+      // v30.57 → v30.68: Der VORAB gesetzte Nachzug-Merker ist entfallen —
+      // die Klammer wird jetzt VOR den Terminen geschrieben (s. unten); der
+      // Merker entsteht nur noch, wenn sie auch nach den Terminen nicht steht.
 
       // v28.22: UNSICHTBARE Doppel-Anmeldung abfangen.
       //
@@ -988,28 +989,23 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
         await doParentRegistration(false);
         setSubmitProgress(50);
       } else if (shouldShadowRegisterParent) {
-        // v30.68: Klammer ZUERST — Voraussetzung, kein Nachzug. Bis v30.67
-        // lief sie als letzter Schreibvorgang („Schritt 3"), also genau dort,
-        // wo das SharePoint-Kontingent nach 19 Terminen erschöpft ist, und
-        // ein zugeklappter Tab kam nie bis dahin. Scheitert sie jetzt (zwei
-        // Versuche), wird KEIN Termin geschrieben: nichts ist passiert, die
-        // Person versucht es später erneut — statt „angemeldet" ohne die
-        // übergreifenden Antworten und ohne Zeile in der Klammer.
+        // v30.68: Klammer ZUERST. Bis v30.67 lief sie als letzter
+        // Schreibvorgang („Schritt 3"), also genau dort, wo das SharePoint-
+        // Kontingent nach 19 Terminen erschöpft ist, und ein zugeklappter Tab
+        // kam nie bis dahin. Die eigentliche Ursache des roten Kastens — die
+        // Fristprüfung des Hauptevents traf die Schattenzeile — ist seit
+        // v30.68 im Service behoben (registration.ts, Check B).
+        // Scheitert die Klammer trotzdem, laufen die Termine WEITER
+        // (Nutzer-Entscheidung 02.09.2026: „wenn mit der Klammer was nicht
+        // stimmt, werden die Leute nicht angemeldet — das will ich nicht").
+        // Nach der Schleife folgt ein weiterer Versuch, dann der Nachzug-
+        // Merker mit Hintergrund-Kette (s. unten).
         setSubmitProgress(35);
         setSubmitProgressLabel(locale === 'de' ? 'Hauptevent-Daten werden gespeichert…' : 'Saving main-event data…');
         await doParentRegistration(true, bundledMode.mail);
         if (shadowParentFailed) {
           shadowParentFailed = false;
           await doParentRegistration(true, bundledMode.mail);
-        }
-        if (shadowParentFailed) {
-          setError(locale === 'de'
-            ? 'Die Anmeldung wurde NICHT gestartet: SharePoint hat den Hauptevent-Eintrag abgelehnt (meist Drosselung bei hoher Last). Es wurde nichts gespeichert — bitte versuche es in ein paar Minuten erneut.'
-            : 'The registration was NOT started: SharePoint rejected the main-event entry (usually throttling under heavy load). Nothing was saved — please try again in a few minutes.');
-          setIsSubmitting(false);
-          setSubmitProgress(0);
-          setSubmitProgressLabel('');
-          return;
         }
         setSubmitProgress(50);
       } else if (isSubOnlyMode && parentAlreadyHasRow && sessionsBeingAdded && !registerForOther) {
@@ -1177,6 +1173,41 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
         setSubmitProgressLabel(locale === 'de' ? 'Hauptevent-Eintrag wird zurückgenommen…' : 'Withdrawing main-event entry…');
         try { await cancelRegistration(selectedEventId!, { suppressNotifications: true, skipReload: true }); }
         catch (err) { console.warn('[DEX] Gegenbuchung der Klammer-Zeile fehlgeschlagen:', err); }
+      }
+      // v30.68: Klammer scheiterte vor der Schleife, Termine stehen — jetzt
+      // ein weiterer Versuch (das Kontingent hat sich in der Schleife oft
+      // erholt), sonst Nachzug-Merker + Hintergrund-Kette (20 s / 60 s /
+      // 180 s) und App-Start-Heilung (utils/shadowHeal). registerForEvent
+      // ist für die Klammer idempotent — doppelter Nachzug fügt nichts
+      // doppelt ein. Letztes Netz bleibt das Organizer-Panel.
+      if (shadowParentFailed && anySubRegSuccess) {
+        shadowParentFailed = false;
+        await doParentRegistration(true, bundledMode.mail);
+      }
+      if (shadowParentFailed && anySubRegSuccess) {
+        const shadowEntry = {
+          eventId: selectedEventId!,
+          customData: { ...customData },
+          firstName: firstTrim,
+          lastName: surnameTrim,
+          email: participantEmail,
+          proxy: registerForOther,
+          ts: Date.now(),
+        };
+        addPendingShadowParent(shadowEntry);
+        const retryShadow = (attempt: number): void => {
+          window.setTimeout(() => {
+            registerForEvent(
+              shadowEntry.eventId, shadowEntry.customData, shadowEntry.firstName, shadowEntry.lastName,
+              shadowEntry.email, undefined,
+              { ...(shadowEntry.proxy ? { proxyConsentConfirmed: true, actorAllowedAsAssistant } : {}), skipReload: true }
+            ).then(r => {
+              if (r.ok) removePendingShadowParent(shadowEntry.eventId, shadowEntry.email);
+              else if (attempt < 3) retryShadow(attempt + 1);
+            }).catch(() => { if (attempt < 3) retryShadow(attempt + 1); });
+          }, attempt === 1 ? 20000 : attempt === 2 ? 60000 : 180000);
+        };
+        retryShadow(1);
       }
       // v30.68: Bei gebündelter Mail wurde die Klammer oben STILL angelegt
       // (die Terminliste stand noch nicht fest). Jetzt, mit den wirklich

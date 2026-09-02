@@ -372,26 +372,35 @@ beiden Konstanten und **nie** ein fest verdrahtetes „Sub-Event"; für den
 unbestimmten Artikel gibt es `childOneDe` (es heißt „ein Event", aber „eine
 Session" — das war vorher überall falsch).
 
-**Die Klammer-Zeile ist seit v30.68 eine VORAUSSETZUNG, kein Nachzug.**
-Bis v30.67 wurde bei einem Klammer-Event erst jeder Termin geschrieben und
-die Klammer zuletzt — und der letzte Schreibvorgang ist der, den die
-Drosselung trifft (vier bis sechs Schreibzugriffe je Termin, Drossel nach
-rund zwanzig). Zugeklappte Tabs, Merker im falschen Browser und ein
-Heil-Timer, der bis v30.67 nie feuerte, taten den Rest: der rote Kasten
-„Fehlende Klammer-Anmeldung". Seit v30.68 stellt `registerForEvent` die
-Klammer VOR dem Termin sicher und legt ohne Klammer keinen Termin an
-(`reason: 'umbrella-failed'`, fail-closed). Die Anmeldeseite (`skipShadowParent`)
-schreibt die Klammer selbst zuerst, MIT den übergreifenden Antworten, bricht
-bei Fehlschlag ab, bevor ein Termin geschrieben ist, und nimmt sie zurück,
-wenn kein einziger Termin zustande kommt. `shadowEnsuredRef` ist eine Map
-mit 5-Minuten-Verfall (ein ewiger Merker sagte nach einer Abmeldung in
-derselben Sitzung weiter „steht"). Wer einen neuen Weg baut, der einen Termin
-schreibt, ruft `registerForEvent` — und setzt `skipShadowParent` NUR, wenn er
-die Klammer selbst und VORHER schreibt. Die zweite Hälfte der Regel: Wer die
-Klammer abmeldet oder löscht, tut das ZULETZT und nur, wenn kein Termin mehr
-aktiv ist (`runDeregModal`, „Person überall löschen", `MyEventsPage`). Das
-Gegenstück „Klammer ohne Termin" fängt der Kasten „Unvollständige
-Anmeldungen" — er ist der harmlosere Rest (kein Platz, keine Mail) und
+**„Fehlende Klammer-Anmeldung" war eine Prüfung, kein Zufall.** Zwei Releases
+lang hieß die Erklärung „Drosselung, letzter Schreibvorgang, Tab zu" — bis
+Eike fragte, warum dieselbe Technik bei den Terminen geht und bei der Klammer
+immer scheitert. Antwort: `registration.ts` Check B wies die Schattenzeile
+mit der `RegistrationDeadline` des HAUPTEVENTS ab, während die Anmeldeseite
+seit v29.13 ausdrücklich sagt „Frist des Hauptevents abgelaufen — offene
+Termine weiterhin buchbar". Termine geschrieben, Klammer 'deadline',
+best-effort geschluckt: jede Anmeldung nach der Frist ohne Klammer. Seit
+v30.68 gilt Check B nicht für die Klammer eines `_subEventsOnlyMode`-Events.
+Merksatz: Wenn „dieselbe Technik" an EINER Stelle immer scheitert, ist es
+eine Prüfung (Frist, Kapazität, Berechtigung, Spalten) — die unterscheidet
+sich je Liste, die Technik nicht. Erst den Ablehnungsgrund lesen (v30.58
+`detail`), dann über Drosselung reden.
+
+**Die Klammer-Zeile wird seit v30.68 ZUERST geschrieben — und blockiert
+nie.** `registerForEvent` stellt sie vor dem Termin sicher (erster
+Schreibvorgang, nicht der, den die Drosselung trifft); scheitert sie, wird
+der Termin TROTZDEM geschrieben (Nutzer-Entscheidung 02.09.2026: „wenn mit
+der Klammer was nicht stimmt, werden die Leute nicht angemeldet — das will
+ich nicht"), danach ein zweiter Versuch, dann der Merker in
+`utils/shadowHeal` (App-Start-Heilung; der Timer feuerte bis v30.67 nie).
+Die Anmeldeseite (`skipShadowParent`) schreibt die Klammer selbst zuerst,
+MIT den übergreifenden Antworten, lässt die Termine in jedem Fall laufen,
+versucht es nach der Schleife erneut und nimmt die Klammer zurück, wenn kein
+Termin zustande kommt. `shadowEnsuredRef` ist eine Map mit 5-Minuten-Verfall.
+Die zweite Hälfte: Wer die Klammer abmeldet oder löscht, tut das ZULETZT und
+nur, wenn kein Termin mehr aktiv ist (`runDeregModal`, „Person überall
+löschen", `MyEventsPage`). Das Gegenstück „Klammer ohne Termin" fängt der
+Kasten „Unvollständige Anmeldungen" — harmlos (kein Platz, keine Mail) und
 seit v30.67 ausgesetzt, solange eine Termin-Liste nicht lesbar ist.
 
 **Nachgerückt wird nur beim Abmelden — nicht bei einer Kapazitätsänderung.**

@@ -83,6 +83,10 @@ export async function registerForEvent(
     // Event-Metadaten laden (Deadline + OrganizerEmail) über SubsiteUrl.
     // Beide Checks nutzen die gleiche Abfrage — einmal laden, mehrfach prüfen.
     let eventDeadline = '';
+    // v30.68: Ist das Ziel die KLAMMER eines „Nur Sub-Events"-Events? Dann
+    // ist die Zeile eine Schattenzeile (übergreifende Angaben), keine
+    // Buchung — und die Frist des Hauptevents darf sie nicht abweisen.
+    let umbrellaOnly = false;
     let eventOrganizerEmails: string[] = [];
     try {
       const subsiteEsc = encodeURIComponent(subsiteUrl.replace(/'/g, "''"));
@@ -116,6 +120,8 @@ export async function registerForEvent(
             const ovRaw = EventService.stripNoteWrapper(items[0].EmailTemplateOverrides) || '{}';
             const ov = JSON.parse(ovRaw);
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            umbrellaOnly = !!(ov as any)._subEventsOnlyMode;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const list = (ov as any)._coOrganizers;
             if (Array.isArray(list)) {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -146,7 +152,23 @@ export async function registerForEvent(
     // Check B: Deadline abgelaufen? Nur Event-Organizer + Admin dürfen nach
     // Deadline registrieren (auch für sich selbst). Assistant NICHT — das ist
     // wie ein normaler User.
-    if (eventDeadline) {
+    // v30.68: DIE Ursache von „Fehlende Klammer-Anmeldung". Diese Prüfung
+    // lief auch für die Schattenzeile der Klammer — mit der Frist des
+    // HAUPTEVENTS. Die Anmeldeseite sagt seit v29.13 ausdrücklich „Die
+    // Anmeldefrist des Hauptevents ist abgelaufen — die offenen Termine sind
+    // weiterhin buchbar", die Termin-Listen prüfen ihre eigenen Tagesfristen
+    // und nahmen an; der stille Klammer-Eintrag danach wurde HIER mit
+    // 'deadline' abgewiesen, der Aufrufer wertete ihn als best-effort — und
+    // jede Anmeldung nach dieser Frist stand ohne Klammer-Zeile da. Dieselbe
+    // Technik, aber eine andere Frist. Für die Klammer eines „Nur Sub-
+    // Events"-Events gilt die Frist deshalb nicht: Sie ist keine Buchung.
+    if (eventDeadline && umbrellaOnly) {
+      const dl = new Date(eventDeadline);
+      if (!isNaN(dl.getTime()) && dl < new Date()) {
+        console.warn(`[DEX] registerForEvent: Frist des Hauptevents (${eventDeadline}) ist abgelaufen — für die Klammer-Schattenzeile ohne Belang, Eintrag läuft.`);
+      }
+    }
+    if (eventDeadline && !umbrellaOnly) {
       const deadlineDate = new Date(eventDeadline);
       if (!isNaN(deadlineDate.getTime()) && deadlineDate < new Date()) {
         // v30.67: Haupt- UND Co-Organizer, gegen ALLE Session-Identitäten —

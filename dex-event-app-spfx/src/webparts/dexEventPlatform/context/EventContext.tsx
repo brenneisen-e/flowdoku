@@ -18,7 +18,7 @@ import { isEventOver } from '../utils/eventFormat';
 import { isExternalEmail } from '../utils/deloitteDomain';
 import { registrationEmail, externalInviteInstructionEmail, externalInvitationEmail, waitlistEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
 import { buildUnsentEmlDraft } from '../utils/emlDraft';
-import { readPendingShadowParents, removePendingShadowParent } from '../utils/shadowHeal';
+import { readPendingShadowParents, removePendingShadowParent, addPendingShadowParent } from '../utils/shadowHeal';
 import { withParentTitleSubject } from '../utils/mailSubject';
 import { APP_VERSION } from '../version';
 import { BundledItem, bundledCommOf, bundledItemsTableHtml, bundledItemsHeading } from '../utils/bundledComm';
@@ -788,18 +788,26 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       return { ok: false, status: 'Warteliste' };
     }
 
-    // v30.68: Die Klammer-Zeile ist eine VORAUSSETZUNG, kein Nachzug.
-    // Bis v30.67 wurde erst der Termin geschrieben und danach die Klammer
-    // „sichergestellt" — jeder Abbruch dazwischen (429 auf dem letzten
-    // Schreibvorgang, Tab zu, Merker im falschen Browser) hinterließ eine
-    // Termin-Zeile ohne Klammer: genau der rote Kasten „Fehlende Klammer-
-    // Anmeldung". Jetzt steht die Klammer, BEVOR der Termin geschrieben wird;
-    // scheitert sie, wird der Termin NICHT angelegt (reason 'umbrella-failed')
-    // — dann gibt es nichts nachzuziehen und nichts zu heilen.
+    // v30.68: Die Klammer-Zeile wird VOR dem Termin geschrieben — als
+    // erster Schreibvorgang, nicht als letzter. Bis v30.67 kam sie zuletzt,
+    // also genau dort, wo die Drosselung nach 19 Terminen greift, und ein
+    // zugeklappter Tab kam nie bis dahin. Die eigentliche Ursache des roten
+    // Kastens war aber die Fristprüfung im Service (registration.ts, Check
+    // B): Sie wies die Schattenzeile mit der Frist des HAUPTEVENTS ab — seit
+    // v30.68 gilt die Frist dort nicht für die Klammer eines „Nur Sub-
+    // Events"-Events.
+    //
+    // Nutzer-Entscheidung 02.09.2026: Die Termine werden IMMER geschrieben,
+    // auch wenn die Klammer scheitert — „wenn mit der Klammer was nicht
+    // stimmt, werden die Leute nicht angemeldet, das will ich nicht". Dann
+    // folgt nach dem Termin ein zweiter Versuch, danach der Nachzug-Merker
+    // (utils/shadowHeal, beim nächsten App-Start). Der Sitzungs-Merker
+    // verhindert, dass ein Lauf über 19 Termine 19-mal dieselbe Zeile prüft.
     //
     // `skipShadowParent` setzt nur die Anmeldeseite — sie schreibt die Klammer
     // selbst zuerst, MIT den übergreifenden Antworten (Hotel, Verpflegung,
-    // Anreise), und nimmt sie zurück, wenn kein Termin zustande kommt.
+    // Anreise).
+    let umbrellaPending = false;
     if (event && event.parentEventId && !opts?.skipShadowParent) {
       const parentEv = events.find(e => e.id === event.parentEventId);
       if (parentEv && parentEv.subEventsOnlyMode) {
@@ -822,11 +830,11 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
           } catch (err) {
             console.warn('[DEX] Klammer-Zeile konnte nicht sichergestellt werden:', err);
           }
-          if (!umbrellaOk) {
-            console.warn('[DEX] registerForEvent: Klammer-Zeile steht nicht — Termin wird NICHT angelegt:', parentEv.id, emailToUse);
-            return { ok: false, status: 'Warteliste', reason: 'umbrella-failed' };
+          if (umbrellaOk) shadowEnsuredRef.current.set(guardKey, Date.now());
+          else {
+            umbrellaPending = true;
+            console.warn('[DEX] registerForEvent: Klammer-Zeile steht (noch) nicht — Termin wird trotzdem angelegt, Klammer wird nachgezogen:', parentEv.id, emailToUse);
           }
-          shadowEnsuredRef.current.set(guardKey, Date.now());
         }
       }
     }
@@ -1450,8 +1458,39 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       if (!opts?.skipReload) await loadEvents();
     }
     // v30.42 → v30.68: Die Klammer-Zeile wird zentral sichergestellt — seit
-    // v30.68 VOR dem Termin (s. oben, Voraussetzung statt Nachzug). Der
-    // Nachzug-Block, der hier stand, ist damit entfallen.
+    // v30.68 VOR dem Termin (s. oben). Scheiterte sie dort, hier der zweite
+    // Versuch nach dem Termin (der Termin ist geschrieben, die Person ist
+    // angemeldet); scheitert auch der, holt der Nachzug-Merker die Zeile beim
+    // nächsten App-Start nach (utils/shadowHeal).
+    if (success && umbrellaPending && event && event.parentEventId) {
+      const parentEv2 = events.find(e => e.id === event.parentEventId);
+      if (parentEv2) {
+        const guardKey2 = `${parentEv2.id}|${(emailToUse || '').toLowerCase().trim()}`;
+        let healed = false;
+        try {
+          const again = await registerForEvent(
+            parentEv2.id, {}, firstNameToUse, lastNameToUse, emailToUse, undefined,
+            {
+              suppressMail: true, suppressOutlook: true, skipReload: true, skipShadowParent: true,
+              ...(opts?.proxyConsentConfirmed
+                ? { proxyConsentConfirmed: true, actorAllowedAsAssistant: !!opts?.actorAllowedAsAssistant }
+                : {}),
+            }
+          );
+          healed = again.ok || again.reason === 'already-registered';
+        } catch (err) { console.warn('[DEX] Klammer-Zeile auch im zweiten Versuch nicht:', err); }
+        if (healed) shadowEnsuredRef.current.set(guardKey2, Date.now());
+        else {
+          try {
+            addPendingShadowParent({
+              eventId: parentEv2.id, customData: {},
+              firstName: firstNameToUse || '', lastName: lastNameToUse || '',
+              email: emailToUse || '', proxy: !!opts?.proxyConsentConfirmed, ts: Date.now(),
+            });
+          } catch { /* localStorage gesperrt → bleibt für das Organizer-Panel */ }
+        }
+      }
+    }
     // v18.67: echten Status zurückgeben (Angemeldet/Warteliste), damit die
     // RegistrationPage das Ergebnis-Modal nicht mehr aus der gecachten
     // currentParticipants-Schätzung (isFull) ableiten muss — die war nach
