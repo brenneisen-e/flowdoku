@@ -305,7 +305,11 @@ export default function AssistantPage(): React.ReactElement {
           setFieldModal(null);
           await reload();
         } else {
-          await showAlert(isDe ? 'Anmeldung fehlgeschlagen.' : 'Registration failed.', { variant: 'error' });
+          // v30.68: 'umbrella-failed' (Klammer-Zeile nicht schreibbar) und
+          // 'dup-check-failed' heißen beide: nichts gespeichert, später erneut.
+          await showAlert((res.reason === 'umbrella-failed' || res.reason === 'dup-check-failed')
+            ? (isDe ? 'Anmeldung nicht angelegt — SharePoint ist gerade ausgelastet. Es wurde nichts gespeichert, bitte in ein paar Minuten erneut versuchen.' : 'Registration not created — SharePoint is busy right now. Nothing was saved, please try again in a few minutes.')
+            : (isDe ? 'Anmeldung fehlgeschlagen.' : 'Registration failed.'), { variant: 'error' });
         }
       }
     } finally {

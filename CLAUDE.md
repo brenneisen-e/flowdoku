@@ -372,16 +372,27 @@ beiden Konstanten und **nie** ein fest verdrahtetes „Sub-Event"; für den
 unbestimmten Artikel gibt es `childOneDe` (es heißt „ein Event", aber „eine
 Session" — das war vorher überall falsch).
 
-**Die Klammer-Zeile schreibt seit v30.42 `registerForEvent` selbst.** Wer eine
-Sub-Event-Anmeldung anlegt, bekommt die Klammer-Zeile automatisch dazu — kein
-Aufrufer muss mehr daran denken. Vorher war es umgekehrt, und es wurde dreimal
-vergessen (`AddParticipantsModal`, `MyEventsPage`, `AssistantPage` + Massen-
-import). Zwei Dinge dabei nicht anfassen: `skipShadowParent` setzt NUR die
-Anmeldeseite (sie legt die Klammer zuletzt an, MIT den übergreifenden
-Antworten — eine vorher eingefügte leere Zeile würde die Antworten
-verschlucken), und `shadowEnsuredRef` verhindert, dass ein Lauf über 19 Termine
-19-mal dieselbe Prüfung schickt. Fehlschläge landen als Merker in
-`utils/shadowHeal` und werden beim nächsten App-Start nachgeholt.
+**Die Klammer-Zeile ist seit v30.68 eine VORAUSSETZUNG, kein Nachzug.**
+Bis v30.67 wurde bei einem Klammer-Event erst jeder Termin geschrieben und
+die Klammer zuletzt — und der letzte Schreibvorgang ist der, den die
+Drosselung trifft (vier bis sechs Schreibzugriffe je Termin, Drossel nach
+rund zwanzig). Zugeklappte Tabs, Merker im falschen Browser und ein
+Heil-Timer, der bis v30.67 nie feuerte, taten den Rest: der rote Kasten
+„Fehlende Klammer-Anmeldung". Seit v30.68 stellt `registerForEvent` die
+Klammer VOR dem Termin sicher und legt ohne Klammer keinen Termin an
+(`reason: 'umbrella-failed'`, fail-closed). Die Anmeldeseite (`skipShadowParent`)
+schreibt die Klammer selbst zuerst, MIT den übergreifenden Antworten, bricht
+bei Fehlschlag ab, bevor ein Termin geschrieben ist, und nimmt sie zurück,
+wenn kein einziger Termin zustande kommt. `shadowEnsuredRef` ist eine Map
+mit 5-Minuten-Verfall (ein ewiger Merker sagte nach einer Abmeldung in
+derselben Sitzung weiter „steht"). Wer einen neuen Weg baut, der einen Termin
+schreibt, ruft `registerForEvent` — und setzt `skipShadowParent` NUR, wenn er
+die Klammer selbst und VORHER schreibt. Die zweite Hälfte der Regel: Wer die
+Klammer abmeldet oder löscht, tut das ZULETZT und nur, wenn kein Termin mehr
+aktiv ist (`runDeregModal`, „Person überall löschen", `MyEventsPage`). Das
+Gegenstück „Klammer ohne Termin" fängt der Kasten „Unvollständige
+Anmeldungen" — er ist der harmlosere Rest (kein Platz, keine Mail) und
+seit v30.67 ausgesetzt, solange eine Termin-Liste nicht lesbar ist.
 
 **Nachgerückt wird nur beim Abmelden — nicht bei einer Kapazitätsänderung.**
 `promoteFirstWaitlistItem` hängt am Cancel-Pfad. Erhöht der Organizer eine

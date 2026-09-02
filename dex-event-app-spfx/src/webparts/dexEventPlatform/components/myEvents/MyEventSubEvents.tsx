@@ -14,7 +14,6 @@ import { useEvents } from '../../context/EventContext';
 import { isoToLocal } from '../../utils/berlinTime';
 import { isEventOver, subEventRegDeadline } from '../../utils/eventFormat';
 import { selfCancelLocked, selfCancelLockReason } from '../../utils/cancelPolicy';
-import { addPendingShadowParent } from '../../utils/shadowHeal';
 import { isEventVisibleForUser } from '../EventListPage';
 import { InfoTooltip } from '../InfoTooltip';
 import Modal from '../Modal';
@@ -302,6 +301,8 @@ export default function MyEventSubEvents(props: {
             ? (isDe ? 'Der Termin ist voll und hat keine Warteliste.' : 'This date is full and has no waitlist.')
             : regRes.reason === 'already-registered'
             ? (isDe ? 'Du bist für diesen Termin bereits angemeldet.' : 'You are already registered for this date.')
+            : (regRes.reason === 'umbrella-failed' || regRes.reason === 'dup-check-failed')
+            ? (isDe ? 'Die Anmeldung wurde nicht angelegt — SharePoint ist gerade ausgelastet. Bitte versuche es in ein paar Minuten erneut; es wurde nichts gespeichert.' : 'The registration was not created — SharePoint is busy right now. Please try again in a few minutes; nothing was saved.')
             : (isDe ? 'Die Anmeldung wurde nicht gespeichert — bitte erneut versuchen oder die Organizer ansprechen.' : 'The registration was not saved — please try again or contact the organizers.');
           await showAlert(why, { variant: 'error' });
         } else if (regRes.status === 'Warteliste') {
@@ -309,26 +310,9 @@ export default function MyEventSubEvents(props: {
             ? 'Der Termin ist bereits voll — du stehst jetzt auf der Warteliste und wirst benachrichtigt, sobald ein Platz frei wird.'
             : 'This date is already full — you are now on the waitlist and will be notified as soon as a seat becomes free.');
         }
-        // v30.14: Im Klammer-Modus (subEventsOnlyMode) braucht die Person auch
-        // die Schatten-Klammer-Zeile — dieser Pfad (An­melden über „Meine
-        // Events", seit v30.9 auch per Kalender-Klick) legte sie nie an und
-        // produzierte „Fehlende Klammer-Anmeldung" im Organizer Center.
-        // registerForEvent ist für die Klammer idempotent (aktive Schatten-
-        // Zeile → kein zweiter Insert); still, weil reine Datenvollständigkeit.
-        if (regRes.ok && props.parentEvent.subEventsOnlyMode) {
-          try {
-            await props.registerForEvent(props.parentEvent.id, {}, undefined, undefined, undefined, undefined,
-              { suppressMail: true, suppressOutlook: true, skipReload: true });
-          } catch (err) {
-            console.warn('[DEX] shadow-parent ensure failed:', err);
-            // v30.16: Nachzug-Merker — der EventContext holt die Klammer-Zeile
-            // beim nächsten App-Start still nach (utils/shadowHeal).
-            addPendingShadowParent({
-              eventId: props.parentEvent.id, customData: {},
-              firstName: '', lastName: '', email: currentUser.email || '', ts: Date.now(),
-            });
-          }
-        }
+        // v30.14 → v30.68: Die Klammer-Zeile stellt registerForEvent jetzt
+        // VOR dem Termin sicher (Voraussetzung, kein Nachzug) — der Nachzug
+        // und der localStorage-Merker, die hier standen, sind entfallen.
       }
       setProcessingMessage(isDe ? 'Aktualisiere…' : 'Refreshing…');
       await refresh();

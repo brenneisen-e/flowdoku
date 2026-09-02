@@ -704,7 +704,9 @@ export default function MyEventsPage(): React.ReactElement {
             parentTitle: entry.event.title,
             subEvents: activeKids,
             resolve,
-            isSectionedEvent: !!entry.event.requireSubEventSelection,
+            // v30.68: Im Klammer-Modus gibt es kein „nur Hauptevent abmelden" —
+            // die Klammer ohne Termine wäre genau der halbe Zustand.
+            isSectionedEvent: !!entry.event.requireSubEventSelection || !!entry.event.subEventsOnlyMode,
           });
         });
         setCascadeDialog(null);
@@ -719,6 +721,29 @@ export default function MyEventsPage(): React.ReactElement {
       }
     }
 
+    // v30.68: Im Klammer-Modus die Termine ZUERST abmelden und die Klammer
+    // nur, wenn jeder Termin abgemeldet wurde. Vorher lief die Klammer zuerst
+    // und die Termine best-effort hinterher: Scheiterte einer (429), stand die
+    // Person auf dem Termin ohne Klammer. Bei normalen Events bleibt die
+    // Reihenfolge (die Klammer IST dort die Anmeldung).
+    const kidsFirst = !!(entry && entry.event.subEventsOnlyMode);
+    if (kidsFirst) {
+      let kidsFailed = 0;
+      for (const childId of childIdsToCancel) {
+        try { if (!(await cancelRegistration(childId, { skipReload: true }))) kidsFailed += 1; }
+        catch (err) { console.warn('[DEX] cascade-cancel sub-event failed:', childId, err); kidsFailed += 1; }
+      }
+      if (kidsFailed > 0) {
+        showAlert(isDe
+          ? `${kidsFailed} Termin${kidsFailed === 1 ? '' : 'e'} konnte${kidsFailed === 1 ? '' : 'n'} nicht abgemeldet werden — deine Anmeldung bleibt bestehen. Bitte versuche es in ein paar Minuten erneut.`
+          : `${kidsFailed} date${kidsFailed === 1 ? '' : 's'} could not be cancelled — your registration remains in place. Please try again in a few minutes.`,
+          { variant: 'error' });
+        await loadMyRegistrations();
+        setCancellingId(null);
+        setIsCancelling(false);
+        return;
+      }
+    }
     const success = await cancelRegistration(eventId);
     if (success) {
       // Late cancellation: alle Organizer zusammen benachrichtigen (EINE Mail an
@@ -759,10 +784,13 @@ export default function MyEventsPage(): React.ReactElement {
       }
       // v11.33: nach erfolgreicher Parent-Abmeldung optional die ausgewählten
       // Sub-Events kaskadieren. Best-effort — Fehler einzelner Sub-Events
-      // brechen den Reload nicht ab.
-      for (const childId of childIdsToCancel) {
-        try { await cancelRegistration(childId); }
-        catch (err) { console.warn('[DEX] cascade-cancel sub-event failed:', childId, err); }
+      // brechen den Reload nicht ab. v30.68: im Klammer-Modus liefen sie oben
+      // schon VOR der Klammer (kidsFirst).
+      if (!kidsFirst) {
+        for (const childId of childIdsToCancel) {
+          try { await cancelRegistration(childId); }
+          catch (err) { console.warn('[DEX] cascade-cancel sub-event failed:', childId, err); }
+        }
       }
       await loadMyRegistrations();
       // v22.46: Erfolgs-Screen mit persönlicher Ansprache anzeigen.

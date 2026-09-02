@@ -248,7 +248,7 @@ export interface EventContextType {
   markEventSettled: (ev: DeloitteEvent) => Promise<boolean>;
   /** v30.61: Aktualisierte Sammelmail nach einer Änderung an den gebuchten
    *  Terminen (nur bei gebündelter Kommunikation). */
-  sendBundledUpdateMail: (parentEvent: DeloitteEvent, recipientEmail: string, recipientName: string, items: BundledItem[]) => Promise<boolean>;
+  sendBundledUpdateMail: (parentEvent: DeloitteEvent, recipientEmail: string, recipientName: string, items: BundledItem[], variant?: 'confirm' | 'update') => Promise<boolean>;
   /** v30.60: Von F&A nachgetragene Personalnummern/Kostenstellen in den
    *  gemeldeten Snapshot schreiben (Zuordnung über die E-Mail-Adresse). */
   saveFAPersonalNumbers: (ev: DeloitteEvent, values: Record<string, { personalNr?: string; costCenter?: string }>) => Promise<boolean>;

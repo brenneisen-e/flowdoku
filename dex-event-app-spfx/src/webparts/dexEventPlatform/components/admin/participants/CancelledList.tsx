@@ -159,18 +159,24 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
               // sondern ALLE Zeilen dieser E-Mail über die Klammer UND alle
               // Sub-Events (inkl. der aktiven „Schatten"-Zeile auf der Klammer,
               // die beim reinen Abmelden/Löschen sonst verwaist liegen bleibt).
-              const targets: Array<{ sub: string; id: number }> = [];
+              // v30.68: Termine ZUERST, Klammer ZULETZT — und die Klammer nur,
+              // wenn jede Termin-Zeile weg ist. Vorher stand die Klammer vorn:
+              // Ein 429 bei der dritten Termin-Zeile ließ die Person auf dem
+              // Termin stehen, während ihre Klammer-Zeile schon gelöscht war.
+              const parentTargets: Array<{ sub: string; id: number }> = [];
+              const subTargets: Array<{ sub: string; id: number }> = [];
               if (selectedEvent.subsiteUrl) {
                 for (const r of registrations) {
-                  if ((r.ParticipantEmail || '').toLowerCase().trim() === emailLc) targets.push({ sub: selectedEvent.subsiteUrl, id: r.Id });
+                  if ((r.ParticipantEmail || '').toLowerCase().trim() === emailLc) parentTargets.push({ sub: selectedEvent.subsiteUrl, id: r.Id });
                 }
               }
               for (const c of consolidatedChildren) {
                 if (!c.subsiteUrl) continue;
                 for (const r of (subEventRegsByEventId[c.id] || [])) {
-                  if ((r.ParticipantEmail || '').toLowerCase().trim() === emailLc) targets.push({ sub: c.subsiteUrl, id: r.Id });
+                  if ((r.ParticipantEmail || '').toLowerCase().trim() === emailLc) subTargets.push({ sub: c.subsiteUrl, id: r.Id });
                 }
               }
+              const targets = subTargets.concat(parentTargets);
               const nm = `${p.firstName} ${p.lastName}`.trim() || p.email;
               const msg = isDe
                 ? `„${nm}" wirklich überall löschen? Alle ${targets.length} Einträge dieser Person (Gesamt-Event + Sub-Events) werden endgültig entfernt und können nicht wiederhergestellt werden.`
@@ -184,12 +190,21 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
               // gelöscht wurde, und es sagen.
               let delOk = 0;
               let delFailed = 0;
-              for (const t of targets) {
+              for (const t of subTargets) {
                 const ok = await eventServiceRef.deleteRegistration(t.sub, t.id).catch(() => false);
                 if (ok) delOk += 1; else delFailed += 1;
               }
+              let parentSkipped = 0;
+              if (delFailed === 0) {
+                for (const t of parentTargets) {
+                  const ok = await eventServiceRef.deleteRegistration(t.sub, t.id).catch(() => false);
+                  if (ok) delOk += 1; else delFailed += 1;
+                }
+              } else {
+                parentSkipped = parentTargets.length;
+              }
               try {
-                await eventServiceRef.writeChangeLog({ action: 'RegistrationDeleted', targetType: 'Participant', targetId: p.email, targetName: nm, eventId: selectedEvent.id, eventTitle: selectedEvent.title, details: { deletedStatus: 'Abgemeldet', count: delOk, failed: delFailed, everywhere: delFailed === 0 } });
+                await eventServiceRef.writeChangeLog({ action: 'RegistrationDeleted', targetType: 'Participant', targetId: p.email, targetName: nm, eventId: selectedEvent.id, eventTitle: selectedEvent.title, details: { deletedStatus: 'Abgemeldet', count: delOk, failed: delFailed, parentSkipped, everywhere: delFailed === 0 } });
               } catch { /* */ }
               setSubRegReloadTick(t => t + 1);
               // v30.67 (Review): gemeinsamer Nachlade-Pfad. Genau hier schnappte
@@ -199,8 +214,8 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
               await reloadRegistrations();
               if (delFailed > 0) {
                 showAlert(isDe
-                  ? `${delOk} von ${targets.length} Einträgen gelöscht — ${delFailed} konnten nicht entfernt werden (fehlende Rechte auf dem Termin oder Drosselung). Bitte „Organizer-Berechtigungen reparieren“ ausführen und erneut versuchen.`
-                  : `${delOk} of ${targets.length} entries deleted — ${delFailed} could not be removed (missing permissions on the date or throttling). Please run „Repair organizer permissions“ and try again.`,
+                  ? `${delOk} von ${targets.length} Einträgen gelöscht — ${delFailed} konnten nicht entfernt werden (fehlende Rechte auf dem Termin oder Drosselung).${parentSkipped > 0 ? ' Die Klammer-Zeile wurde deshalb bewusst stehen gelassen.' : ''} Bitte „Organizer-Berechtigungen reparieren“ ausführen und erneut versuchen.`
+                  : `${delOk} of ${targets.length} entries deleted — ${delFailed} could not be removed (missing permissions on the date or throttling).${parentSkipped > 0 ? ' The umbrella row was therefore deliberately kept.' : ''} Please run „Repair organizer permissions“ and try again.`,
                   { variant: 'error' });
               }
             };

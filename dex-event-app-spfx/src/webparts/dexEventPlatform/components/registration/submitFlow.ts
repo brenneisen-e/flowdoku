@@ -16,7 +16,6 @@
  */
 import * as React from 'react';
 import { isExternalEmailAddr, isPlausibleEmail, stripPrefilterKeys } from './regHelpers';
-import { addPendingShadowParent, removePendingShadowParent } from '../../utils/shadowHeal';
 import { BUNDLED_COMM_DEFAULT, BundledItem, bundledCommOf } from '../../utils/bundledComm';
 import { collectCcEmailsFromFields } from '../../context/EventContext';
 import { selfCancelLocked } from '../../utils/cancelPolicy';
@@ -78,7 +77,7 @@ export interface SubmitFlowCtx {
   searchUsers: (query: string, includeInternational?: boolean) => Promise<{ email: string; displayName: string; location: string; jobTitle: string; }[]>;
   selectedEventId: string;
   selectedSessions: Set<string>;
-  sendBundledUpdateMail: (parentEvent: DeloitteEvent, recipientEmail: string, recipientName: string, items: BundledItem[]) => Promise<boolean>;
+  sendBundledUpdateMail: (parentEvent: DeloitteEvent, recipientEmail: string, recipientName: string, items: BundledItem[], variant?: 'confirm' | 'update') => Promise<boolean>;
   sessionFieldValues: Record<string, Record<string, string>>;
   sessionMeta: Record<string, { count: number; wasRegistered: boolean; }>;
   /** v30.67: Abweichung zwischen Vorbelegung und Auswahl — eine leere Auswahl kann eine Abmeldung sein. */
@@ -748,6 +747,8 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
       // doParentRegistration). Die Sub-Event-Anmeldungen bleiben gültig, aber
       // die übergreifenden Hauptevent-Antworten fehlen — das muss gesagt werden.
       let shadowParentFailed = false;
+      // v30.68: Klammer in DIESEM Lauf neu angelegt (s. Klammer-zuerst unten).
+      let umbrellaCreatedNow = false;
       // v23.10: Assistenz-Proxy-Anmeldung — der Client hat (Picker-Greyout +
       // Submit-Validierung oben) bereits sichergestellt, dass eine Assistenz nur
       // Partner/Director anmeldet. Dieses Flag wird der Registrierung als
@@ -841,35 +842,9 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
       // in beiden Fällen ZUM SCHLUSS über den Schritt-3-Block unten).
       const shouldShadowRegisterParent = isSubOnlyMode && sessionsBeingAdded && !parentAlreadyHasRow;
 
-      // v30.57: Den Nachzug-Merker SCHARFSTELLEN, BEVOR der erste Sub-Event
-      // geschrieben wird — nicht erst, wenn die Klammer-Zeile scheitert.
-      //
-      // Bis hier entstand er nur im Fehlerzweig von `doParentRegistration`.
-      // Das deckt den Fall ab, dass SharePoint den Schreibvorgang ablehnt —
-      // aber nicht den Fall, den die Fehlermeldung im Organizer Center selbst
-      // nennt: die ABGEBROCHENE Anmeldung. Wer den Tab schließt, das WLAN
-      // verliert oder auf dem Handy die App wechselt, während die 19 Termine
-      // geschrieben werden, kommt nie bis zum Klammer-Schritt. Dann gibt es
-      // keinen Fehler, keinen Merker und keine Selbstheilung — nur eine Person
-      // mit Sub-Event-Zeilen ohne Klammer-Zeile. Genau das Bild aus dem
-      // roten Kasten.
-      //
-      // Umgekehrt scharfstellen kostet nichts: Der Merker wird unten wieder
-      // entfernt, sobald die Klammer-Zeile steht, und ein überzähliger Nachzug
-      // ist folgenlos — `registerForEvent` ist für die Klammer idempotent.
-      if (shouldShadowRegisterParent) {
-        try {
-          addPendingShadowParent({
-            eventId: selectedEventId!,
-            customData: { ...customData },
-            firstName: firstTrim,
-            lastName: surnameTrim,
-            email: participantEmail,
-            proxy: registerForOther,
-            ts: Date.now(),
-          });
-        } catch { /* localStorage gesperrt → es bleibt beim bisherigen Netz */ }
-      }
+      // v30.57 → v30.68: Der Nachzug-Merker (localStorage) ist entfallen —
+      // die Klammer wird jetzt VOR den Terminen geschrieben (s. unten), ein
+      // Abbruch danach hinterlässt keine Termin-Zeile ohne Klammer mehr.
 
       // v28.22: UNSICHTBARE Doppel-Anmeldung abfangen.
       //
@@ -946,7 +921,7 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
       const bundledMode = (event && event.subEventsOnlyMode)
         ? bundledCommOf(event)
         : BUNDLED_COMM_DEFAULT;
-      const doParentRegistration = async (bestEffort: boolean): Promise<void> => {
+      const doParentRegistration = async (bestEffort: boolean, quiet?: boolean): Promise<void> => {
         const parentResult = await registerForEvent(
           selectedEventId!,
           customData,
@@ -964,6 +939,9 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
               ? { proxyConsentConfirmed: true, actorAllowedAsAssistant, ...(ccSelfEmail ? { extraCc: ccSelfEmail } : {}) }
               : { ...(delegateCc ? { extraCc: delegateCc } : {}) }),
             skipReload: true,
+            // v30.68: Klammer-zuerst bei gebündelter Mail — die Terminliste
+            // steht noch nicht fest; die Bestätigung geht nach der Schleife.
+            ...(quiet ? { suppressMail: true } : {}),
             // v30.61: Bei gebündelter Kommunikation trägt die Klammer-Mail die
             // Liste der gebuchten Termine. Nur DIESE Stelle kennt sie — der
             // EventContext sieht immer nur ein einzelnes Event.
@@ -971,8 +949,10 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
           }
         );
         if (bestEffort) {
-          // Schatten-Klammer: Erfolg zählt mit, aber kein Fehler-Durchschlag.
-          if (parentResult.ok) { anySuccess = true; return; }
+          // v30.68: Die Klammer zählt NICHT als Erfolg der Anmeldung — sie ist
+          // Voraussetzung. Ob angemeldet wurde, entscheiden die Termine; ohne
+          // einen einzigen wird die Klammer unten wieder zurückgenommen.
+          if (parentResult.ok) { umbrellaCreatedNow = true; return; }
           // v29.48: … der Fehlschlag darf aber auch nicht spurlos verschwinden.
           // Genau hier entsteht „Fehlende Klammer-Anmeldung" im Organizer
           // Center: Die Schattenzeile ist der LETZTE Schreibvorgang einer
@@ -1006,6 +986,31 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
         setSubmitProgress(30);
         setSubmitProgressLabel(locale === 'de' ? 'Haupt-Event wird angemeldet…' : 'Registering for main event…');
         await doParentRegistration(false);
+        setSubmitProgress(50);
+      } else if (shouldShadowRegisterParent) {
+        // v30.68: Klammer ZUERST — Voraussetzung, kein Nachzug. Bis v30.67
+        // lief sie als letzter Schreibvorgang („Schritt 3"), also genau dort,
+        // wo das SharePoint-Kontingent nach 19 Terminen erschöpft ist, und
+        // ein zugeklappter Tab kam nie bis dahin. Scheitert sie jetzt (zwei
+        // Versuche), wird KEIN Termin geschrieben: nichts ist passiert, die
+        // Person versucht es später erneut — statt „angemeldet" ohne die
+        // übergreifenden Antworten und ohne Zeile in der Klammer.
+        setSubmitProgress(35);
+        setSubmitProgressLabel(locale === 'de' ? 'Hauptevent-Daten werden gespeichert…' : 'Saving main-event data…');
+        await doParentRegistration(true, bundledMode.mail);
+        if (shadowParentFailed) {
+          shadowParentFailed = false;
+          await doParentRegistration(true, bundledMode.mail);
+        }
+        if (shadowParentFailed) {
+          setError(locale === 'de'
+            ? 'Die Anmeldung wurde NICHT gestartet: SharePoint hat den Hauptevent-Eintrag abgelehnt (meist Drosselung bei hoher Last). Es wurde nichts gespeichert — bitte versuche es in ein paar Minuten erneut.'
+            : 'The registration was NOT started: SharePoint rejected the main-event entry (usually throttling under heavy load). Nothing was saved — please try again in a few minutes.');
+          setIsSubmitting(false);
+          setSubmitProgress(0);
+          setSubmitProgressLabel('');
+          return;
+        }
         setSubmitProgress(50);
       } else if (isSubOnlyMode && parentAlreadyHasRow && sessionsBeingAdded && !registerForOther) {
         // v18.59: Die Schatten-Parent-Zeile existiert bereits (frühere
@@ -1155,68 +1160,30 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
         try { await cancelRegistration(selectedEventId!, { suppressNotifications: true, skipReload: true }); }
         catch (err) { console.warn('[DEX] shadow-parent cancel failed:', err); }
       }
-      // v26.67 (B) Schritt 3: Schatten-/Klammer-Zeile im subEventsOnly-Modus
-      // JETZT anlegen — erst nachdem mind. ein Sub-Event erfolgreich angemeldet
-      // wurde. So kann kein unsichtbarer „Geist" entstehen (Klammer ohne
-      // Sub-Event). Deckt Selbst- (shouldShadowRegisterParent) UND
-      // Fremd-Anmeldung (registerForOther) ab; ohne neue Sub-Event-Anmeldung
-      // (z. B. nur Abmeldungen) wird keine leere Klammer erzeugt.
-      if (shouldShadowRegisterParent && anySubRegSuccess) {
-        setSubmitProgress(92);
-        setSubmitProgressLabel(locale === 'de' ? 'Hauptevent-Daten werden gespeichert…' : 'Saving main-event data…');
-        await doParentRegistration(true);
-        // v29.48: Ein zweiter Versuch, bevor wir aufgeben. Der erste scheitert
-        // fast immer an der Drosselung; withThrottleRetry hat dann schon
-        // gewartet, das Kontingent ist wieder frei.
-        if (shadowParentFailed) {
-          shadowParentFailed = false;
-          await doParentRegistration(true);
-        }
-        // v30.57: Steht die Zeile, ist der vorab gesetzte Merker erledigt.
-        if (!shadowParentFailed) {
-          try { removePendingShadowParent(selectedEventId!, participantEmail); } catch { /* egal */ }
-        }
-      } else if (shouldShadowRegisterParent) {
-        // Kein einziger Sub-Event ging durch — dann gibt es auch nichts
-        // nachzuziehen, der Merker muss wieder weg.
-        try { removePendingShadowParent(selectedEventId!, participantEmail); } catch { /* egal */ }
+      // v30.68: Die Klammer steht seit dem Umbau VOR den Terminen (s. oben).
+      // Übrig bleibt die Gegenbuchung: Wurde die Klammer in DIESEM Lauf neu
+      // angelegt und kein einziger Termin geschrieben, wird sie wieder
+      // abgemeldet — sonst bliebe eine Klammer ohne Termin (Kasten
+      // „Unvollständige Anmeldungen"). Scheitert auch das, zeigt der Kasten
+      // es; das ist der harmlosere Rest (kein Platz, keine Termin-Mail). Bei
+      // stellvertretender Anmeldung gehört die Zeile der anderen Person —
+      // dort bleibt der Kasten das Netz, cancelRegistration träfe die eigene.
+      // Und nur, wenn die Person laut Seite keinen anderen Termin aktiv hat:
+      // registerForEvent meldet auch eine SCHON VORHANDENE aktive Klammer als
+      // ok — die darf nicht zurückgenommen werden, wenn andere Termine an ihr
+      // hängen (z. B. wenn myParentReg beim Laden nicht lesbar war).
+      const hadOtherActiveSubs = childEvents.some(ce => !!sessionMeta[ce.id]?.wasRegistered);
+      if (umbrellaCreatedNow && !anySubRegSuccess && !registerForOther && !hadOtherActiveSubs) {
+        setSubmitProgressLabel(locale === 'de' ? 'Hauptevent-Eintrag wird zurückgenommen…' : 'Withdrawing main-event entry…');
+        try { await cancelRegistration(selectedEventId!, { suppressNotifications: true, skipReload: true }); }
+        catch (err) { console.warn('[DEX] Gegenbuchung der Klammer-Zeile fehlgeschlagen:', err); }
       }
-      // v30.16: Bleibt die Klammer-Zeile aus, heilt sie sich jetzt SELBST —
-      // der v29.48-Fehler-Dialog („SharePoint rejected the last write, bitte
-      // erneut speichern") ist weg. Der Fall trat im Soft Opening real auf,
-      // obwohl schon zweimal versucht wurde: Die Klammer ist der letzte
-      // Schreibvorgang und trifft die Drossel am härtesten. Statt den
-      // Teilnehmer zu belasten: (1) Merker mit den Formular-Antworten in
-      // localStorage (verlustfrei), (2) stille Wiederholungen im Hintergrund
-      // der Erfolgsseite (20 s / 60 s / 180 s), (3) geht der Browser vorher
-      // zu, arbeitet der EventContext den Merker beim nächsten App-Start ab.
-      // registerForEvent ist für die Klammer idempotent — doppelter Nachzug
-      // fügt nichts doppelt ein. Letztes Netz bleibt das Organizer-Panel
-      // („Fehlende Klammer-Anmeldung" + Sammel-Fix, v30.14).
-      if (shadowParentFailed) {
-        const shadowEntry = {
-          eventId: selectedEventId!,
-          customData: { ...customData },
-          firstName: firstTrim,
-          lastName: surnameTrim,
-          email: participantEmail,
-          proxy: registerForOther,
-          ts: Date.now(),
-        };
-        addPendingShadowParent(shadowEntry);
-        const retryShadow = (attempt: number): void => {
-          window.setTimeout(() => {
-            registerForEvent(
-              shadowEntry.eventId, shadowEntry.customData, shadowEntry.firstName, shadowEntry.lastName,
-              shadowEntry.email, undefined,
-              { ...(shadowEntry.proxy ? { proxyConsentConfirmed: true, actorAllowedAsAssistant } : {}), skipReload: true }
-            ).then(r => {
-              if (r.ok) removePendingShadowParent(shadowEntry.eventId, shadowEntry.email);
-              else if (attempt < 3) retryShadow(attempt + 1);
-            }).catch(() => { if (attempt < 3) retryShadow(attempt + 1); });
-          }, attempt === 1 ? 20000 : attempt === 2 ? 60000 : 180000);
-        };
-        retryShadow(1);
+      // v30.68: Bei gebündelter Mail wurde die Klammer oben STILL angelegt
+      // (die Terminliste stand noch nicht fest). Jetzt, mit den wirklich
+      // gebuchten Terminen, die eine Bestätigung.
+      if (umbrellaCreatedNow && anySubRegSuccess && bundledMode.mail && event && bookedItems.length > 0) {
+        const fullName = `${firstTrim} ${surnameTrim}`.trim() || participantEmail;
+        void sendBundledUpdateMail(event, participantEmail, fullName, bookedItems, 'confirm');
       }
       // v30.61: Gebündelt UND die Klammer-Zeile stand schon (also lief oben
       // keine Anmeldung, die eine Mail ausgelöst hätte) → eine aktualisierte

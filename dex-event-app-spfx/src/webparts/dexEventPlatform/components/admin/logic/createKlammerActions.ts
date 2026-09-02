@@ -528,10 +528,19 @@ export function createKlammerActions(ctx: CreateKlammerActionsCtx): CreateKlamme
     setDeregBusy(true);
     const actorName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email;
     const actorEmail = currentUser.email;
-    const chosen = deregModal.items.filter(i => deregSelected.has(i.child.id));
-    for (const { child, reg, isParent } of chosen) {
+    const chosenAll = deregModal.items.filter(i => deregSelected.has(i.child.id));
+    // v30.68: Termine ZUERST, die Klammer ZULETZT — und nur, wenn kein aktiver
+    // Termin übrig bleibt und keine Termin-Abmeldung gescheitert ist. Vorher
+    // stand die Klammer vorn in der Liste: Wer einzelne Termine abwählte und
+    // die Klammer angehakt ließ, meldete die Person vom Hauptevent ab, während
+    // ihre Termine weiterliefen — „Fehlende Klammer-Anmeldung" per Bedienung.
+    const parentItem = chosenAll.find(i => !!i.isParent);
+    const remainingActiveSubs = deregModal.items.filter(i => !i.isParent && !deregSelected.has(i.child.id));
+    const chosen = chosenAll.filter(i => !i.isParent);
+    let subCancelFailed = 0;
+    const deregOne = async ({ child, reg, isParent }: { child: DeloitteEvent; reg: SPRegistration; isParent?: boolean }): Promise<boolean> => {
       const sub = child.subsiteUrl;
-      if (!sub) continue;
+      if (!sub) return true;
       const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
       const cancelledStarterType = reg.StarterType || '';
       try {
@@ -564,7 +573,7 @@ export function createKlammerActions(ctx: CreateKlammerActionsCtx): CreateKlamme
         // Klammer-Titel, obwohl er sich von einem Termin abgemeldet hat. Im
         // Modus „nur Sub-Events" ist die Klammer ohnehin nur eine
         // Schattenzeile — dort nie eine eigene Mail.
-        const skipParentMail = !!isParent && (!!child.subEventsOnlyMode || chosen.some(i => !i.isParent));
+        const skipParentMail = !!isParent && (!!child.subEventsOnlyMode || chosenAll.some(i => !i.isParent));
         if (reg.ParticipantEmail && notifyLeaver) {
           if (!child.disableEmails && !child.disableCancellationEmail && !skipParentMail) {
             try {
@@ -658,12 +667,28 @@ export function createKlammerActions(ctx: CreateKlammerActionsCtx): CreateKlamme
         }
       } catch (err) {
         console.warn('[DEX] consolidated deregister failed for child', child.id, err);
+        return false;
+      }
+      return true;
+    };
+    for (const item of chosen) {
+      if (!(await deregOne(item))) subCancelFailed += 1;
+    }
+    if (parentItem) {
+      if (remainingActiveSubs.length === 0 && subCancelFailed === 0) {
+        await deregOne(parentItem);
+      } else {
+        const stillActive = remainingActiveSubs.length;
+        showAlert(isDe
+          ? `Die Klammer-Zeile von ${deregModal.name} bleibt bestehen: ${stillActive > 0 ? `${stillActive} Termin${stillActive === 1 ? '' : 'e'} ${stillActive === 1 ? 'ist' : 'sind'} weiterhin aktiv` : ''}${stillActive > 0 && subCancelFailed > 0 ? ' und ' : ''}${subCancelFailed > 0 ? `${subCancelFailed} Termin-Abmeldung${subCancelFailed === 1 ? '' : 'en'} ${subCancelFailed === 1 ? 'ist' : 'sind'} gescheitert` : ''}. Eine Klammer ohne Termine entsteht nur, wenn alle Termine abgemeldet sind.`
+          : `The umbrella row of ${deregModal.name} remains: ${stillActive > 0 ? `${stillActive} date${stillActive === 1 ? '' : 's'} ${stillActive === 1 ? 'is' : 'are'} still active` : ''}${stillActive > 0 && subCancelFailed > 0 ? ' and ' : ''}${subCancelFailed > 0 ? `${subCancelFailed} date cancellation${subCancelFailed === 1 ? '' : 's'} failed` : ''}. The umbrella is only cancelled once all dates are cancelled.`,
+          { variant: 'error' });
       }
     }
     try { await reloadSubEventRegs(); } catch { /* */ }
     // v29.31: Gecachte „Konto inaktiv"-Ergebnisse dieser Event-Familie
     // verwerfen (s. performStandardCancel).
-    invalidateInactiveAccountCache(chosen.map(c => c.child.id).concat(selectedEvent ? [selectedEvent.id] : []));
+    invalidateInactiveAccountCache(chosenAll.map(c => c.child.id).concat(selectedEvent ? [selectedEvent.id] : []));
     // v29.29: Auch die Klammer-Teilnehmerliste neu laden — seit die
     // Hauptevent-Zeile mit abgemeldet werden kann, wäre die Kopfzeile
     // („Teilnehmer (N)") sonst bis zum nächsten Öffnen veraltet.

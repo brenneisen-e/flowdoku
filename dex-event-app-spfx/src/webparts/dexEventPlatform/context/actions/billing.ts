@@ -236,7 +236,10 @@ export function makeBillingActions(deps: BillingDeps) {
     parentEvent: DeloitteEvent,
     recipientEmail: string,
     recipientName: string,
-    items: BundledItem[]
+    items: BundledItem[],
+    // v30.68: 'confirm' = erste Bestätigung (Klammer-zuerst schreibt die Zeile
+    // still, die Liste der Termine steht erst nach der Schleife fest).
+    variant: 'confirm' | 'update' = 'update'
   ): Promise<boolean> {
     if (!parentEvent || !recipientEmail) return false;
     if (!bundledCommOf(parentEvent).mail) return false;
@@ -244,12 +247,17 @@ export function makeBillingActions(deps: BillingDeps) {
     if (parentEvent.disableEmails || parentEvent.disableRegistrationEmail) return false;
     const isDeMail = (parentEvent.emailLanguage || 'EN').toUpperCase() === 'DE';
     const first = (recipientName || '').trim().split(/\s+/)[0] || recipientName || '';
+    const isConfirm = variant === 'confirm';
     const subject = isDeMail
-      ? `Deine Anmeldung wurde aktualisiert — ${parentEvent.title}`
-      : `Your registration was updated — ${parentEvent.title}`;
+      ? (isConfirm ? `Deine Anmeldung — ${parentEvent.title}` : `Deine Anmeldung wurde aktualisiert — ${parentEvent.title}`)
+      : (isConfirm ? `Your registration — ${parentEvent.title}` : `Your registration was updated — ${parentEvent.title}`);
     const intro = isDeMail
-      ? `<p>Hallo ${first},</p><p>deine Anmeldung für <strong>${parentEvent.title}</strong> hat sich geändert. Hier ist der aktuelle Stand — diese Übersicht ersetzt die vorherige Bestätigung.</p>`
-      : `<p>Hi ${first},</p><p>your registration for <strong>${parentEvent.title}</strong> has changed. Here is the current state — this overview replaces the previous confirmation.</p>`;
+      ? (isConfirm
+        ? `<p>Hallo ${first},</p><p>vielen Dank für deine Anmeldung zu <strong>${parentEvent.title}</strong>. Hier ist die Übersicht deiner gebuchten Termine.</p>`
+        : `<p>Hallo ${first},</p><p>deine Anmeldung für <strong>${parentEvent.title}</strong> hat sich geändert. Hier ist der aktuelle Stand — diese Übersicht ersetzt die vorherige Bestätigung.</p>`)
+      : (isConfirm
+        ? `<p>Hi ${first},</p><p>thank you for registering for <strong>${parentEvent.title}</strong>. Here is the overview of the dates you booked.</p>`
+        : `<p>Hi ${first},</p><p>your registration for <strong>${parentEvent.title}</strong> has changed. Here is the current state — this overview replaces the previous confirmation.</p>`);
     const body = intro
       + `<p style="margin:18px 0 0;font-weight:700;">${bundledItemsHeading(items.length, isDeMail, parentEvent.childEventTermPlural)}</p>`
       + bundledItemsTableHtml(items, isDeMail)
@@ -264,7 +272,9 @@ export function makeBillingActions(deps: BillingDeps) {
     // zuerst; der Fehler kam mit der gebuendelten Update-Mail in v30.61 herein.
     const wrapped = wrapTemplate(
       '#0076a8',
-      isDeMail ? 'Deine Anmeldung wurde aktualisiert' : 'Your registration was updated',
+      isDeMail
+        ? (isConfirm ? 'Deine Anmeldung' : 'Deine Anmeldung wurde aktualisiert')
+        : (isConfirm ? 'Your registration' : 'Your registration was updated'),
       parentEvent.title, body
     );
     try {
