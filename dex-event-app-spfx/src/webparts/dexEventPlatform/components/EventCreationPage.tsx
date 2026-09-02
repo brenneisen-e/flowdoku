@@ -56,6 +56,7 @@ import { WizardFormShell } from './wizard/WizardFormShell';
 import { useWizardEventFieldState } from './wizard/hooks/useWizardEventFieldState';
 import { useWizardVisibilityState } from './wizard/hooks/useWizardVisibilityState';
 import { useWizardOptionState } from './wizard/hooks/useWizardOptionState';
+import { berlinLocalToUtcIso, isoToLocal } from '../utils/berlinTime';
 
 // Deutsche Locale registrieren
 registerLocale('de', de);
@@ -200,10 +201,16 @@ export default function EventCreationPage(): React.ReactElement {
   // (alle Termine oeffnen gemeinsam an diesem Tag). Gleiches Piggyback,
   // eigener mode 'fixed' — die Anmeldeseite wertet beide Formen aus.
   const [openRuleFixedDate, setOpenRuleFixedDate] = React.useState<string>(() => {
-    try {
-      const r = JSON.parse(editEvent?.emailTemplateOverrides || '{}')._subEventOpenRule;
-      return (r && r.mode === 'fixed' && r.date) ? isoToLocal(r.date) : '';
-    } catch { return ''; }
+    // v30.66: Das `try` umschliesst nur noch das Parsen. Vorher lag auch der
+    // `isoToLocal`-Aufruf darin — und weil der Helfer damals weiter unten im
+    // Funktionskoerper stand, verschluckte dieses catch bei JEDEM Oeffnen einen
+    // TypeError. Das Feld startete leer, und beim Speichern loeschte
+    // `subEventOpenRulePiggyback` die Regel aus den Overrides. Ein catch, das
+    // mehr abfaengt als es soll, macht aus einem Programmierfehler eine stille
+    // Datenloeschung.
+    let r: { mode?: string; date?: string } | null = null;
+    try { r = JSON.parse(editEvent?.emailTemplateOverrides || '{}')._subEventOpenRule; } catch { r = null; }
+    return (r && r.mode === 'fixed' && r.date) ? isoToLocal(r.date) : '';
   });
   const subEventOpenRulePiggyback = (): Record<string, unknown> => {
     if (!subEventsOptIn) return {};
@@ -339,51 +346,6 @@ export default function EventCreationPage(): React.ReactElement {
   // welche Zeitzone der Browser hat. Wir nutzen Intl.DateTimeFormat um den Offset
   // für einen konkreten Zeitpunkt zu bestimmen (DST-aware).
 
-  /** Gibt den Offset von Europe/Berlin zu UTC an dem gegebenen Zeitpunkt in ms zurück.
-   *  Im Winter: +3600000 (+1h). Im Sommer: +7200000 (+2h). */
-  const berlinOffsetMs = (dateUtc: Date): number => {
-    const dtf = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'Europe/Berlin',
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-    });
-    const parts = dtf.formatToParts(dateUtc);
-    const get = (type: string): number => parseInt(parts.find(p => p.type === type)?.value || '0', 10);
-    let h = get('hour');
-    if (h === 24) h = 0; // en-US hour12:false liefert manchmal 24 statt 0
-    const asIfUtc = Date.UTC(get('year'), get('month') - 1, get('day'), h, get('minute'), get('second'));
-    return asIfUtc - dateUtc.getTime();
-  };
-
-  /** datetime-local-String ("2026-04-23T19:00") als Europe/Berlin interpretieren
-   *  und nach UTC-ISO konvertieren ("2026-04-23T17:00:00.000Z"). */
-  const berlinLocalToUtcIso = (localStr: string): string => {
-    if (!localStr) return '';
-    // Parse den String erstmal als ob er UTC wäre -> das sind UTC-Zahlen die den Berlin-Werten entsprechen
-    const asUtc = new Date(localStr.length === 16 ? localStr + ':00Z' : localStr + 'Z');
-    if (isNaN(asUtc.getTime())) return '';
-    // Der echte UTC-Zeitpunkt ist asUtc minus Berlin-Offset an diesem Zeitpunkt
-    const offset = berlinOffsetMs(asUtc);
-    return new Date(asUtc.getTime() - offset).toISOString();
-  };
-
-  /** UTC-ISO ("2026-04-23T17:00:00.000Z") nach datetime-local in Europe/Berlin
-   *  ("2026-04-23T19:00") konvertieren — für das Input-Feld. */
-  const isoToLocal = (iso: string): string => {
-    if (!iso) return '';
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return '';
-    const dtf = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'Europe/Berlin',
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', hour12: false,
-    });
-    const parts = dtf.formatToParts(d);
-    const get = (type: string): string => parts.find(p => p.type === type)?.value || '00';
-    let hour = get('hour');
-    if (hour === '24') hour = '00';
-    return `${get('year')}-${get('month')}-${get('day')}T${hour}:${get('minute')}`;
-  };
 
   // Deadline-Datum als Ende-des-Tages (23:59 Europe/Berlin) speichern, damit:
   //  a) Die Uhrzeit-Anzeige in der EventCard nicht mehr "02:00" zeigt
