@@ -17,7 +17,7 @@ Wird aktualisiert wenn Flows geändert werden.
 
 **Trigger:** Neuer Eintrag in DEX_IDReorder
 **Zweck:** TeilnehmerIDs neu vergeben (Aktive + Warteliste lückenlos sortiert) + Nachrücken von Warteliste (seit v6.7 inkl. typ-bewusster Promotion für B2Run-Split-Wartelisten; seit v10.20 mit optionalem Shared-Waitlist-Modus)
-**Letztes Update:** 2026-09-03 (`Counter_Body`: `if()` wertet BEIDE Zweige aus — Gruppen-Zähler null-sicher gelesen). Davor 2026-09-01 (Platzzähler-Kette: `Count_Seats_Active/Waitlist/Durch/Fun` + `Sync_Seat_Counter` hinter `DEX_IDReorder`; **im Tenant umgesetzt und am 01.09.2026 gegen den Export verifiziert** — alle acht `runAfter` stimmen, alle fünf Uris sind Text ohne `@`). Davor 2026-06-11 (Audit-Fixes: Status-Sortierung in der Renummerierung, Folge-Reorder nach jeder Promotion, Fehler-Sichtbarkeit).
+**Letztes Update:** 2026-09-03 (zwei Korrekturen: SharePoint Online liefert bei Listeneinträgen KEIN `__count` — Zählung über `length(d.results)` mit `$top=5000`; und `if()` wertet BEIDE Zweige aus — Gruppen-Zähler null-sicher gelesen). Davor 2026-09-01 (Platzzähler-Kette: `Count_Seats_Active/Waitlist/Durch/Fun` + `Sync_Seat_Counter` hinter `DEX_IDReorder`; **im Tenant umgesetzt und am 01.09.2026 gegen den Export verifiziert** — alle acht `runAfter` stimmen, alle fünf Uris sind Text ohne `@`). Davor 2026-06-11 (Audit-Fixes: Status-Sortierung in der Renummerierung, Folge-Reorder nach jeder Promotion, Fehler-Sichtbarkeit).
 
 > **Der vollständige JSON weiter unten ist der Stand vom 2026-06-11** und enthält
 > die fünf Platzzähler-Actions **nicht**. Wer den Ist-Stand braucht, nimmt die
@@ -26,11 +26,11 @@ Wird aktualisiert wenn Flows geändert werden.
 
 ### UI-Anleitung 2026-09-02 — Gruppen-Zählung bricht Events ohne Gruppen
 
-> ## 🔴 Korrektur 03.09.2026 — `Counter_Body` scheitert mit „function 'int' … not valid"
+> ## 🔴 Korrektur 03.09.2026 — `Counter_Body` scheitert mit „function 'int' … not valid" (ZWEI Ursachen)
 >
 > Seit dem Umbau vom 02.09. dauern die Läufe wieder Sekunden (Run history:
-> 10–54 s statt 1–2 h, der Stau ist weg) — aber **jeder Lauf auf einem Event ohne
-> Gruppen endet weiter rot**, jetzt an `Counter_Body`:
+> 10–54 s statt 1–2 h, der Stau ist weg) — aber **jeder Lauf endet weiter rot**,
+> jetzt an `Counter_Body`:
 >
 > ```
 > InvalidTemplate. Unable to process template language expressions in action
@@ -41,50 +41,103 @@ Wird aktualisiert wenn Flows geändert werden.
 > `Sync_Seat_Counter` hängt an `Counter_Body` **is successful** und wird
 > übersprungen — der Platzzähler wird also auf keinem Event mehr geschrieben.
 >
-> **Ursache — mein Fehler im Ausdruck von gestern:** Die Funktion `if()` in
-> Power Automate wertet **beide Zweige aus**, nicht nur den gewählten. Der
-> True-Zweig enthält `int(body('Count_Seats_Durch')?['d']?['__count'])`; auf
-> einem Event ohne Gruppen ist die Action rot, das Feld ist `null`, und
-> `int(null)` wirft — obwohl das Ergebnis aus dem False-Zweig kommen sollte.
-> Die Bedingung war richtig, der Zweig dahinter durfte nur nicht werfen.
+> **Ursache 1 — die Zählung selbst war von Anfang an falsch (01.09.).** Die
+> Uris fragten `$top=1&$inlinecount=allpages` ab und der Ausdruck las
+> `body('…')?['d']?['__count']`. **SharePoint Online liefert bei
+> Listeneinträgen kein `__count`** — belegt an den Raw outputs von
+> `Count_Seats_Active` am 03.09. (Accept `odata=verbose` kam an, im Body steht
+> nur `d.results` mit einer Zeile, kein `__count`). `int(null)` wirft. Deshalb
+> ist **kein einziger Lauf seit dem 01.09.** je bis `Sync_Seat_Counter`
+> gekommen. Die App liest übrigens nirgends `__count` (sie zählt über die
+> Listen-Eigenschaft `ItemCount`) — die Annahme war nie belegt.
 >
-> **Die Korrektur:** Die beiden Gruppen-Zählungen werden über
-> `actions('…')?['outputs']?['body']` gelesen (null-sicher, auch wenn die Action
-> rot oder übersprungen ist) und mit `coalesce(…, '0')` abgefangen. Die
-> Bedingung prüft jetzt `actions('…')?['status']` auf `Succeeded` statt den
-> `statusCode` — dasselbe Ergebnis, aber ohne einen weiteren Zugriff, der auf
-> einer übersprungenen Action werfen könnte. Das Verhalten bleibt: Gruppen-Felder
-> nur dann im Body, wenn beide Zählungen grün waren.
+> **Ursache 2 — `if()` wertet beide Zweige aus.** Die Funktion `if()` in Power
+> Automate wertet **beide Zweige aus**, nicht nur den gewählten. Der True-Zweig
+> las den Gruppen-Zähler ohne Absicherung; auf einem Event ohne Gruppen ist die
+> Action rot und der Wert `null` — obwohl das Ergebnis aus dem False-Zweig
+> kommen sollte.
+>
+> **Die Korrektur:** Die vier Zähl-Uris holen bis zu `$top=5000` Zeilen (nur
+> `Id`, das ist klein), und der Ausdruck zählt mit `length(…?['d']?['results'])`.
+> Die beiden Gruppen-Zählungen werden über `actions('…')?['outputs']?['body']`
+> gelesen (null-sicher, auch wenn die Action rot oder übersprungen ist) und mit
+> `coalesce(…, json('[]'))` abgefangen. Die Bedingung prüft
+> `actions('…')?['status']` auf `Succeeded`. Verhalten wie geplant: Gruppen-
+> Felder nur dann im Body, wenn beide Zählungen grün waren. `SeatsTaken` und
+> `WaitlistTaken` bleiben **absichtlich** ohne `coalesce` — fehlt dort das
+> Ergebnis, soll der Lauf rot werden statt eine 0 zu schreiben.
 >
 > #### Klick-Anleitung als Tabelle
 >
 > | # | NEU/GEÄNDERT | Name der Action | Art der Action | Stelle |
 > |---|---|---|---|---|
-> | 1 | GEÄNDERT | `Counter_Body` | Compose | zwischen `Count_Seats_Fun` und `Sync_Seat_Counter` — nur das Feld **Inputs** |
+> | 1 | GEÄNDERT | `Count_Seats_Active`, `Count_Seats_Waitlist`, `Count_Seats_Durch`, `Count_Seats_Fun` | Send an HTTP request to SharePoint | direkt nach `DEX_IDReorder` — nur das Feld **Uri**, Ende der Zeile |
+> | 2 | GEÄNDERT | `Counter_Body` | Compose | zwischen `Count_Seats_Fun` und `Sync_Seat_Counter` — nur das Feld **Inputs** |
 >
-> #### Zeile 1 — `Counter_Body` (Compose) · GEÄNDERT
+> #### Zeile 1 — die vier `Count_Seats_*` (Send an HTTP request to SharePoint) · GEÄNDERT
 >
-> - [ ] Flow öffnen → **Edit** → Action `Counter_Body` anklicken.
+> In jeder der vier Actions endet die **Uri** bisher auf
+> `&$select=Id&$top=5000`. Der Rest der Uri bleibt, nur
+> dieses Ende wird ersetzt.
+>
+> - [ ] Flow öffnen → **Edit** → `Count_Seats_Active` anklicken → im Feld **Uri** ans Ende gehen.
+> - [ ] `&$top=1&$inlinecount=allpages` löschen, stattdessen anhängen (als Text, kein fx):
+>
+> ```
+> &$top=5000
+> ```
+>
+> - [ ] Kontrolle — die Uri von `Count_Seats_Active` lautet jetzt komplett:
+>
+> ```
+> _api/web/lists/getbytitle('Teilnehmer')/items?$filter=(Status eq 'Angemeldet') or (Status eq 'QR versendet') or (Status eq 'Eingecheckt')&$select=Id&$top=5000
+> ```
+>
+> - [ ] Dasselbe in `Count_Seats_Waitlist`:
+>
+> ```
+> _api/web/lists/getbytitle('Teilnehmer')/items?$filter=Status eq 'Warteliste'&$select=Id&$top=5000
+> ```
+>
+> - [ ] Dasselbe in `Count_Seats_Durch`:
+>
+> ```
+> _api/web/lists/getbytitle('Teilnehmer')/items?$filter=StarterType eq 'Durchstarter' and ((Status eq 'Angemeldet') or (Status eq 'QR versendet') or (Status eq 'Eingecheckt'))&$select=Id&$top=5000
+> ```
+>
+> - [ ] Dasselbe in `Count_Seats_Fun`:
+>
+> ```
+> _api/web/lists/getbytitle('Teilnehmer')/items?$filter=StarterType eq 'Funstarter' and ((Status eq 'Angemeldet') or (Status eq 'QR versendet') or (Status eq 'Eingecheckt'))&$select=Id&$top=5000
+> ```
+>
+> - [ ] **Method**, **Headers** (`Accept` / `application/json;odata=verbose`) und **Site Address** bleiben unverändert.
+>
+> #### Zeile 2 — `Counter_Body` (Compose) · GEÄNDERT
+>
+> - [ ] Action `Counter_Body` anklicken.
 > - [ ] Im Feld **Inputs** die vorhandene Kachel (das Ausdruck-Token) mit **Backspace** entfernen — das Feld muss leer sein.
 > - [ ] In das leere Feld klicken → **Expression**-Tab (fx) → den folgenden Ausdruck **komplett** einfügen → **Update**. Nie als Text.
 >
 > ```
-> if(and(equals(actions('Count_Seats_Durch')?['status'],'Succeeded'),equals(actions('Count_Seats_Fun')?['status'],'Succeeded')),concat('{"__metadata":{"type":"SP.Data.DEX_x005f_TeilnehmerCounterListItem"},"SeatsTaken":',string(int(body('Count_Seats_Active')?['d']?['__count'])),',"WaitlistTaken":',string(int(body('Count_Seats_Waitlist')?['d']?['__count'])),',"SeatsTakenDurch":',string(int(coalesce(actions('Count_Seats_Durch')?['outputs']?['body']?['d']?['__count'],'0'))),',"SeatsTakenFun":',string(int(coalesce(actions('Count_Seats_Fun')?['outputs']?['body']?['d']?['__count'],'0'))),'}'),concat('{"__metadata":{"type":"SP.Data.DEX_x005f_TeilnehmerCounterListItem"},"SeatsTaken":',string(int(body('Count_Seats_Active')?['d']?['__count'])),',"WaitlistTaken":',string(int(body('Count_Seats_Waitlist')?['d']?['__count'])),'}'))
+> if(and(equals(actions('Count_Seats_Durch')?['status'],'Succeeded'),equals(actions('Count_Seats_Fun')?['status'],'Succeeded')),concat('{"__metadata":{"type":"SP.Data.DEX_x005f_TeilnehmerCounterListItem"},"SeatsTaken":',string(length(body('Count_Seats_Active')?['d']?['results'])),',"WaitlistTaken":',string(length(body('Count_Seats_Waitlist')?['d']?['results'])),',"SeatsTakenDurch":',string(length(coalesce(actions('Count_Seats_Durch')?['outputs']?['body']?['d']?['results'],json('[]')))),',"SeatsTakenFun":',string(length(coalesce(actions('Count_Seats_Fun')?['outputs']?['body']?['d']?['results'],json('[]')))),'}'),concat('{"__metadata":{"type":"SP.Data.DEX_x005f_TeilnehmerCounterListItem"},"SeatsTaken":',string(length(body('Count_Seats_Active')?['d']?['results'])),',"WaitlistTaken":',string(length(body('Count_Seats_Waitlist')?['d']?['results'])),'}'))
 > ```
 >
 > - [ ] Kontrolle: Im Feld steht **eine** lila Kachel `if(...)`, kein schwarzer Text.
-> - [ ] Sonst nichts anfassen — **Run after** von `Counter_Body` und `Sync_Seat_Counter` stimmen laut Export vom 02.09.
+> - [ ] **Run after** von `Counter_Body` und `Sync_Seat_Counter` stimmen laut Export vom 02.09. — nicht anfassen.
 > - [ ] Oben rechts **Save**.
 >
 > #### Test
 >
 > - [ ] Event **ohne** geteilte Gruppen: eine Person abmelden. **Run history** → frischer Lauf: `Count_Seats_Durch`/`Count_Seats_Fun` rot, `Counter_Body` **grün**, `Sync_Seat_Counter` **grün**, Lauf **Succeeded**.
-> - [ ] `Counter_Body` aufklappen → **Outputs**: ein JSON mit nur `SeatsTaken` und `WaitlistTaken`.
+> - [ ] `Counter_Body` aufklappen → **Outputs**: ein JSON mit nur `SeatsTaken` und `WaitlistTaken` — und die Zahlen stimmen mit der Teilnehmerliste überein (nicht `1`: das wäre das alte `$top=1`).
 > - [ ] Event **mit** geteilten Gruppen (B2Run): alle vier Zählungen grün, im Output von `Counter_Body` stehen alle vier Felder.
 >
 > | Beobachtung im Lauf | Ursache | Abhilfe |
 > |---|---|---|
 > | `Counter_Body` weiter „function 'int' … not valid" | Der alte Ausdruck ist noch drin (Kachel nicht entfernt, neuer Text dahinter) | Feld komplett leeren, Ausdruck neu über fx einfügen |
+> | `Counter_Body` „function 'length' … not valid" | `body('…')?['d']?['results']` ist `null` — der Accept-Header fehlt (Antwort dann `value` statt `d.results`) | Header `Accept` = `application/json;odata=verbose` in allen vier Zähl-Actions prüfen |
+> | `SeatsTaken` ist immer `1` | Eine Uri hat noch `$top=1` | Zeile 1: alle vier Uris auf `$top=5000` |
 > | `Counter_Body` „function 'actions' … not found" oder ähnlich | Ein Action-Name ist anders geschrieben als im Flow | Namen in `actions('…')` exakt gegen die Actions im Designer abgleichen (Unterstriche!) |
 > | `Sync_Seat_Counter` 400 „Invalid JSON" | `Counter_Body` wurde als Text statt als Ausdruck gespeichert | Feld leeren, über den **Expression**-Tab neu setzen |
 > | `Counter_Body` grün, aber `SeatsTakenDurch` fehlt auf einem B2Run-Event | Eine der beiden Gruppen-Zählungen war nicht `Succeeded` | Deren Fehlermeldung im Lauf lesen — das ist dann ein echter Fehler, kein erwarteter |
@@ -149,8 +202,8 @@ vorgestern und war nie ein Problem.
 ```
 {
   "__metadata": { "type": "SP.Data.DEX_x005f_TeilnehmerCounterListItem" },
-  "SeatsTaken": @{int(body('Count_Seats_Active')?['d']?['__count'])},
-  "WaitlistTaken": @{int(body('Count_Seats_Waitlist')?['d']?['__count'])}
+  "SeatsTaken": @{length(body('Count_Seats_Active')?['d']?['results'])},
+  "WaitlistTaken": @{length(body('Count_Seats_Waitlist')?['d']?['results'])}
 }
 ```
 
@@ -219,7 +272,7 @@ geliefert haben — sonst ohne sie.
 - [ ] Ins Feld **Inputs** über den **Expression**-Tab (fx) — nie als Text:
 
 ```
-if(and(equals(actions('Count_Seats_Durch')?['status'],'Succeeded'),equals(actions('Count_Seats_Fun')?['status'],'Succeeded')),concat('{"__metadata":{"type":"SP.Data.DEX_x005f_TeilnehmerCounterListItem"},"SeatsTaken":',string(int(body('Count_Seats_Active')?['d']?['__count'])),',"WaitlistTaken":',string(int(body('Count_Seats_Waitlist')?['d']?['__count'])),',"SeatsTakenDurch":',string(int(coalesce(actions('Count_Seats_Durch')?['outputs']?['body']?['d']?['__count'],'0'))),',"SeatsTakenFun":',string(int(coalesce(actions('Count_Seats_Fun')?['outputs']?['body']?['d']?['__count'],'0'))),'}'),concat('{"__metadata":{"type":"SP.Data.DEX_x005f_TeilnehmerCounterListItem"},"SeatsTaken":',string(int(body('Count_Seats_Active')?['d']?['__count'])),',"WaitlistTaken":',string(int(body('Count_Seats_Waitlist')?['d']?['__count'])),'}'))
+if(and(equals(actions('Count_Seats_Durch')?['status'],'Succeeded'),equals(actions('Count_Seats_Fun')?['status'],'Succeeded')),concat('{"__metadata":{"type":"SP.Data.DEX_x005f_TeilnehmerCounterListItem"},"SeatsTaken":',string(length(body('Count_Seats_Active')?['d']?['results'])),',"WaitlistTaken":',string(length(body('Count_Seats_Waitlist')?['d']?['results'])),',"SeatsTakenDurch":',string(length(coalesce(actions('Count_Seats_Durch')?['outputs']?['body']?['d']?['results'],json('[]')))),',"SeatsTakenFun":',string(length(coalesce(actions('Count_Seats_Fun')?['outputs']?['body']?['d']?['results'],json('[]')))),'}'),concat('{"__metadata":{"type":"SP.Data.DEX_x005f_TeilnehmerCounterListItem"},"SeatsTaken":',string(length(body('Count_Seats_Active')?['d']?['results'])),',"WaitlistTaken":',string(length(body('Count_Seats_Waitlist')?['d']?['results'])),'}'))
 ```
 
 > Der Ausdruck ist lang, aber er tut nur eines: Er prüft, ob beide
@@ -227,12 +280,14 @@ if(and(equals(actions('Count_Seats_Durch')?['status'],'Succeeded'),equals(action
 > weniger in denselben JSON. `SeatsTaken` und `WaitlistTaken` stehen in **beiden**
 > Zweigen — die hängen an `Status` und funktionieren auf jedem Event.
 >
-> **Korrigiert 03.09.2026:** `if()` wertet in Power Automate **beide** Zweige
-> aus. Die erste Fassung las im True-Zweig `int(body('Count_Seats_Durch')…)`
-> ohne Absicherung; auf einem Event ohne Gruppen war das `int(null)` und der
-> ganze Compose rot, obwohl der False-Zweig gewählt war. Deshalb jetzt
-> `actions('…')?['outputs']?['body']` + `coalesce(…, '0')` — kein Zweig kann
-> mehr werfen. Merksatz: **Alles, was in einem `if()` steht, muss auf JEDEM
+> **Korrigiert 03.09.2026 (zweimal):** (1) SharePoint Online liefert bei
+> Listeneinträgen kein `__count` — gezählt wird jetzt `length(d.results)`, die
+> Uris holen `$top=5000`. (2) `if()` wertet in Power Automate **beide** Zweige
+> aus. Die erste Fassung las im True-Zweig den Gruppen-Zähler ohne
+> Absicherung; auf einem Event ohne Gruppen war das `null` und der ganze
+> Compose rot, obwohl der False-Zweig gewählt war. Deshalb jetzt
+> `actions('…')?['outputs']?['body']` + `coalesce(…, json('[]'))` — kein Zweig
+> kann mehr werfen. Merksatz: **Alles, was in einem `if()` steht, muss auf JEDEM
 > Event auswertbar sein — auch der Zweig, der nicht gewinnt.**
 
 ---
@@ -333,19 +388,19 @@ outputs('Counter_Body')
 > **verdoppelt** — das ist die einzige Stelle, an der die Schreibweise abweicht.
 >
 > ```
-> concat('_api/web/lists/getbytitle(''Teilnehmer'')/items?$filter=(Status eq ''Angemeldet'') or (Status eq ''QR versendet'') or (Status eq ''Eingecheckt'')&$select=Id&$top=1&$inlinecount=allpages')
+> concat('_api/web/lists/getbytitle(''Teilnehmer'')/items?$filter=(Status eq ''Angemeldet'') or (Status eq ''QR versendet'') or (Status eq ''Eingecheckt'')&$select=Id&$top=5000')
 > ```
 >
 > ```
-> concat('_api/web/lists/getbytitle(''Teilnehmer'')/items?$filter=Status eq ''Warteliste''&$select=Id&$top=1&$inlinecount=allpages')
+> concat('_api/web/lists/getbytitle(''Teilnehmer'')/items?$filter=Status eq ''Warteliste''&$select=Id&$top=5000')
 > ```
 >
 > ```
-> concat('_api/web/lists/getbytitle(''Teilnehmer'')/items?$filter=StarterType eq ''Durchstarter'' and ((Status eq ''Angemeldet'') or (Status eq ''QR versendet'') or (Status eq ''Eingecheckt''))&$select=Id&$top=1&$inlinecount=allpages')
+> concat('_api/web/lists/getbytitle(''Teilnehmer'')/items?$filter=StarterType eq ''Durchstarter'' and ((Status eq ''Angemeldet'') or (Status eq ''QR versendet'') or (Status eq ''Eingecheckt''))&$select=Id&$top=5000')
 > ```
 >
 > ```
-> concat('_api/web/lists/getbytitle(''Teilnehmer'')/items?$filter=StarterType eq ''Funstarter'' and ((Status eq ''Angemeldet'') or (Status eq ''QR versendet'') or (Status eq ''Eingecheckt''))&$select=Id&$top=1&$inlinecount=allpages')
+> concat('_api/web/lists/getbytitle(''Teilnehmer'')/items?$filter=StarterType eq ''Funstarter'' and ((Status eq ''Angemeldet'') or (Status eq ''QR versendet'') or (Status eq ''Eingecheckt''))&$select=Id&$top=5000')
 > ```
 >
 > ```
@@ -495,7 +550,7 @@ Zählt, wie viele Personen aktuell wirklich einen Platz belegen.
 - [ ] **Uri** — als Text einfügen, **ohne** `@` am Anfang (kein fx):
 
 ```
-_api/web/lists/getbytitle('Teilnehmer')/items?$filter=(Status eq 'Angemeldet') or (Status eq 'QR versendet') or (Status eq 'Eingecheckt')&$select=Id&$top=1&$inlinecount=allpages
+_api/web/lists/getbytitle('Teilnehmer')/items?$filter=(Status eq 'Angemeldet') or (Status eq 'QR versendet') or (Status eq 'Eingecheckt')&$select=Id&$top=5000
 ```
 
 - [ ] **Run after:** `DEX_IDReorder` → nur **is successful**.
@@ -517,10 +572,12 @@ Accept
 application/json;odata=verbose
 ```
 
-> `$top=1` ist Absicht: Uns interessiert nur `__count`, nicht die Zeilen. Damit
-> bleibt die Antwort winzig, egal wie groß die Liste ist. `$inlinecount=allpages`
-> liefert die Gesamtzahl **ohne** Paginierung — der Grund, warum hier
-> `odata=verbose` steht und nicht `nometadata`.
+> **Korrigiert 03.09.2026:** Ursprünglich stand hier `$top=1&$inlinecount=allpages`
+> mit der Begründung, nur `__count` sei interessant. **SharePoint Online liefert
+> bei Listeneinträgen kein `__count`** — deshalb `$top=5000` (das Maximum) und
+> `length(…)` über `d.results`. Mit `$select=Id` bleibt die Antwort klein
+> (rund 250 Byte je Zeile). `odata=verbose` bleibt Pflicht: Nur dann heißt das
+> Array `d.results`, auf das der Ausdruck zeigt.
 
 ---
 
@@ -530,7 +587,7 @@ application/json;odata=verbose
 - [ ] **Uri:**
 
 ```
-_api/web/lists/getbytitle('Teilnehmer')/items?$filter=Status eq 'Warteliste'&$select=Id&$top=1&$inlinecount=allpages
+_api/web/lists/getbytitle('Teilnehmer')/items?$filter=Status eq 'Warteliste'&$select=Id&$top=5000
 ```
 
 - [ ] **Headers:** dieselbe eine Zeile wie oben (`Accept` / `application/json;odata=verbose`).
@@ -546,7 +603,7 @@ liefert die Abfrage schlicht `0` — deshalb braucht es keine Bedingung drumheru
 - [ ] **Uri:**
 
 ```
-_api/web/lists/getbytitle('Teilnehmer')/items?$filter=StarterType eq 'Durchstarter' and ((Status eq 'Angemeldet') or (Status eq 'QR versendet') or (Status eq 'Eingecheckt'))&$select=Id&$top=1&$inlinecount=allpages
+_api/web/lists/getbytitle('Teilnehmer')/items?$filter=StarterType eq 'Durchstarter' and ((Status eq 'Angemeldet') or (Status eq 'QR versendet') or (Status eq 'Eingecheckt'))&$select=Id&$top=5000
 ```
 
 - [ ] **Headers:** `Accept` / `application/json;odata=verbose`.
@@ -559,7 +616,7 @@ _api/web/lists/getbytitle('Teilnehmer')/items?$filter=StarterType eq 'Durchstart
 - [ ] **Uri:**
 
 ```
-_api/web/lists/getbytitle('Teilnehmer')/items?$filter=StarterType eq 'Funstarter' and ((Status eq 'Angemeldet') or (Status eq 'QR versendet') or (Status eq 'Eingecheckt'))&$select=Id&$top=1&$inlinecount=allpages
+_api/web/lists/getbytitle('Teilnehmer')/items?$filter=StarterType eq 'Funstarter' and ((Status eq 'Angemeldet') or (Status eq 'QR versendet') or (Status eq 'Eingecheckt'))&$select=Id&$top=5000
 ```
 
 - [ ] **Headers:** `Accept` / `application/json;odata=verbose`.
@@ -616,32 +673,32 @@ MERGE
 ```
 {
   "__metadata": { "type": "SP.Data.DEX_x005f_TeilnehmerCounterListItem" },
-  "SeatsTaken": @{int(body('Count_Seats_Active')?['d']?['__count'])},
-  "SeatsTakenDurch": @{int(body('Count_Seats_Durch')?['d']?['__count'])},
-  "SeatsTakenFun": @{int(body('Count_Seats_Fun')?['d']?['__count'])},
-  "WaitlistTaken": @{int(body('Count_Seats_Waitlist')?['d']?['__count'])}
+  "SeatsTaken": @{length(body('Count_Seats_Active')?['d']?['results'])},
+  "SeatsTakenDurch": @{length(body('Count_Seats_Durch')?['d']?['results'])},
+  "SeatsTakenFun": @{length(body('Count_Seats_Fun')?['d']?['results'])},
+  "WaitlistTaken": @{length(body('Count_Seats_Waitlist')?['d']?['results'])}
 }
 ```
 
 Die vier Ausdrücke einzeln zum Kopieren:
 
 ```
-int(body('Count_Seats_Active')?['d']?['__count'])
+length(body('Count_Seats_Active')?['d']?['results'])
 ```
 
 ```
-int(body('Count_Seats_Durch')?['d']?['__count'])
+length(body('Count_Seats_Durch')?['d']?['results'])
 ```
 
 ```
-int(body('Count_Seats_Fun')?['d']?['__count'])
+length(body('Count_Seats_Fun')?['d']?['results'])
 ```
 
 ```
-int(body('Count_Seats_Waitlist')?['d']?['__count'])
+length(body('Count_Seats_Waitlist')?['d']?['results'])
 ```
 
-> `int(…)` ist Pflicht: `__count` kommt als **Zeichenkette** zurück, das
+> **Veraltet seit 02.09.** — der Body kommt seither aus `Counter_Body`. Ursprünglich: `int(…)` ist Pflicht: `__count` kommt als **Zeichenkette** zurück, das
 > SharePoint-Feld ist eine **Zahl**. Ohne die Umwandlung antwortet SharePoint mit
 > HTTP 400 und der Zähler bleibt stehen.
 
@@ -708,7 +765,7 @@ als gescheitert protokolliert.
 | `Sync_Seat_Counter` = HTTP 400, Feldtyp-Meldung | `int(…)` fehlt um einen der vier Werte | Ausdruck korrigieren |
 | `Sync_Seat_Counter` = HTTP 404 | Die Liste `DEX_TeilnehmerCounter` gibt es auf dieser Subsite nicht | Im Admin Center **Spalten fixen (alle Events)** ausführen |
 | `Sync_Seat_Counter` = HTTP 403 | Die Flow-Verbindung darf auf der Subsite nicht schreiben | Rechte der Verbindung prüfen — die Zähler-Liste erlaubt **Contribute** für Besucher |
-| `Count_Seats_*` liefert `__count` = `"0"` bei vollem Event | Der Listenname ist nicht `Teilnehmer` | In der Uri den tatsächlichen Listentitel eintragen |
+| `Count_Seats_*` liefert leere `results` bei vollem Event | Der Listenname ist nicht `Teilnehmer` | In der Uri den tatsächlichen Listentitel eintragen |
 | Zähler stimmt, Kachel zeigt trotzdem falsch | Browser-Cache | Anmeldeseite neu laden; die Zahl wird bei jedem Öffnen frisch geholt |
 
 ---
