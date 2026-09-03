@@ -16,6 +16,7 @@ import { DocumentsStep } from '../wizard/steps/DocumentsStep';
 import { FunZoneStep } from '../wizard/steps/FunZoneStep';
 import { BillingStep } from '../wizard/steps/BillingStep';
 import { Send, Trash2 } from '../Icons';
+import { SubmitOverlay } from '../registration/RegistrationBanners';
 
 export interface WizardFormShellProps {
   actionRowRef: React.MutableRefObject<HTMLDivElement>;
@@ -527,47 +528,19 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
             </div>
           )}
 
-          {/* Fortschrittsanzeige */}
+          {/* v30.73: Speichern als MODAL mit Ladebalken statt Balken im Formular —
+              dasselbe Overlay wie die Anmeldeseite (Nutzer-Ansage 02.09.2026:
+              „genauso wie Event-An- und -Abmeldung"). Solange es steht, ist die
+              Seite nicht bedienbar, und EventCreationPage warnt per beforeunload
+              vor dem Schließen des Fensters — ein halb gespeichertes Event mit
+              19 Terminen ist teurer als ein Moment Warten. */}
           {isSubmitting && (
-            <div className="mt-24" style={{ padding: '20px 0' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--dex-gray-700)' }}>
-                  {progressLabel}
-                </span>
-                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--dex-green)' }}>
-                  {progress}%
-                </span>
-              </div>
-              <div style={{
-                width: '100%', height: 8, background: 'var(--dex-gray-200)',
-                borderRadius: 4, overflow: 'hidden',
-              }}>
-                {/* v29.57: Derselbe Schimmer wie im Boot-Balken (v29.41). Beim
-                    Speichern eines Events mit vielen Terminen steht der Balken
-                    zwischen zwei Abschnitten sekundenlang fast still — ohne
-                    Lebenszeichen liest sich das als Hänger, und Organizer
-                    klicken dann ein zweites Mal auf Speichern. Bewusst schwach
-                    (weiß auf Grün, 45 %) und langsam, kein Blinken. */}
-                <div style={{
-                  width: `${progress}%`, height: '100%',
-                  background: progress === 100
-                    ? 'var(--dex-green)'
-                    : 'linear-gradient(90deg, var(--dex-green), #0076a8)',
-                  borderRadius: 4,
-                  transition: 'width 0.5s ease',
-                  position: 'relative',
-                  overflow: 'hidden',
-                }}>
-                  {progress < 100 && (
-                    <div style={{
-                      position: 'absolute', top: 0, bottom: 0, left: 0, width: '35%',
-                      background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.45) 50%, rgba(255,255,255,0) 100%)',
-                      animation: 'dexProgressShimmer 2.1s ease-in-out infinite',
-                    }} />
-                  )}
-                </div>
-              </div>
-            </div>
+            <SubmitOverlay
+              displayProgress={progress}
+              locale={isDe ? 'de' : 'en'}
+              submitProgressLabel={progressLabel}
+              title={isDe ? 'Event wird gespeichert …' : 'Saving event …'}
+            />
           )}
 
           {!isSubmitting && (

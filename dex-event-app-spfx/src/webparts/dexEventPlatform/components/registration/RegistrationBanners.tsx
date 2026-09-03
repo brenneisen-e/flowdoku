@@ -90,14 +90,17 @@ export interface SubmitOverlayProps {
   displayProgress: number;
   locale: Locale;
   submitProgressLabel: string;
+  /** v30.73: Überschrift — der Wizard nutzt dasselbe Overlay fürs Speichern. */
+  title?: string;
 }
 export const SubmitOverlay: React.FC<SubmitOverlayProps> = (p) => {
   const { displayProgress, locale, submitProgressLabel } = p;
+  const title = p.title || (locale === 'de' ? 'Anmeldung läuft …' : 'Submitting registration …');
   return (
         <div
           role="dialog"
           aria-modal="true"
-          aria-label={locale === 'de' ? 'Anmeldung läuft' : 'Submitting registration'}
+          aria-label={title}
           style={{
             position: 'fixed', inset: 0, zIndex: 2000,
             background: 'rgba(0,0,0,0.55)',
@@ -116,7 +119,7 @@ export const SubmitOverlay: React.FC<SubmitOverlayProps> = (p) => {
                 Die zusätzliche indeterministische „Pulse"-Bar war für den
                 User verwirrend. */}
             <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--dex-gray-800)' }}>
-              {locale === 'de' ? 'Anmeldung läuft …' : 'Submitting registration …'}
+              {title}
             </div>
             <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', textAlign: 'center', minHeight: 18 }}>
               {submitProgressLabel}

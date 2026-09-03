@@ -1789,6 +1789,19 @@ export default function EventCreationPage(): React.ReactElement {
     return () => obs.disconnect();
   }, [isSubmitting, submitted]);
 
+  // v30.73: Während des Speicherns warnt der Browser vor dem Schließen des
+  // Fensters/Tabs — dasselbe Netz wie beim Anmelden (RegistrationPage v30.19).
+  // Ein abgebrochenes Speichern hinterlässt halbe Zustände: Termine ohne
+  // Subsite, Outlook-Termine, die nie aktualisiert wurden, ein Hauptevent,
+  // dessen Sub-Events noch auf dem alten Stand sind. Der Text im Dialog
+  // kommt vom Browser; entscheidend ist preventDefault + returnValue.
+  React.useEffect(() => {
+    if (!isSubmitting) return undefined;
+    const warnBeforeUnload = (e: BeforeUnloadEvent): void => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload);
+  }, [isSubmitting]);
+
   // v22.23: Das Organizer-Tutorial steuert den aktiven Wizard-Schritt von
   // außen (TutorialGuide dispatcht ein CustomEvent pro Tour-Schritt), damit
   // die Tour alle 9 Schritte nacheinander zeigen kann. Bewusst entkoppelt —

@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.72.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.73.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -385,6 +385,17 @@ Merksatz: Wenn „dieselbe Technik" an EINER Stelle immer scheitert, ist es
 eine Prüfung (Frist, Kapazität, Berechtigung, Spalten) — die unterscheidet
 sich je Liste, die Technik nicht. Erst den Ablehnungsgrund lesen (v30.58
 `detail`), dann über Drosselung reden.
+
+**Die Klammer-Zeile hat seit v30.73 ZWEI Existenz-Quellen.** Die Klammer-
+Liste zeigt jedem nur die selbst angelegten Zeilen (`ReadSecurity=2`, Autor);
+`getMyRegistration` allein sagt also nichts über die Zeile einer anderen
+Assistenz. Deshalb fragt `registerForEvent` für die Schattenzeile zusätzlich
+`DEX_Participants` (Haupt-Site, keine Zeilen-Sicherheit, bei jeder An-/
+Abmeldung mitgeschrieben). Und: Ist eine der beiden Quellen nicht lesbar,
+wird NICHT eingefügt (`dup-check-failed`), der v30.68-Nachzug übernimmt. Die
+alte Toleranz „Dublette auf der Klammer ist harmlos" war die Ursache für drei
+Zeilen je Person über 19 Office-Tage — harmlos für die Zähler, nicht für den
+Organizer, der sie sieht.
 
 **Die Klammer-Zeile wird seit v30.68 ZUERST geschrieben — und blockiert
 nie.** `registerForEvent` stellt sie vor dem Termin sicher (erster
