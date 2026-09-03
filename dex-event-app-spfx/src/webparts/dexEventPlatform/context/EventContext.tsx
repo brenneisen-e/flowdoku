@@ -807,6 +807,42 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       return { ok: false, status: 'Warteliste' };
     }
 
+    // v30.73: Zweite Quelle für die Klammer-Schattenzeile — das Register
+    // DEX_Participants auf der Haupt-Site. Die Teilnehmerlisten haben
+    // Zeilen-Sicherheit („nur eigene Elemente", geprüft am Zeilen-AUTOR):
+    // Eine Assistenz sieht die Klammer-Zeile nicht, die eine andere Assistenz
+    // oder die Person selbst angelegt hat — `getMyRegistration` oben meldet
+    // dann „keine Zeile", und der Insert unten legte eine zweite an. Dazu kam
+    // seit v30.68, dass ein GESCHEITERTER Lesevorgang für die Schattenzeile
+    // toleriert wurde („Dublette ist harmlos") und ebenfalls in den Insert
+    // lief — bei 19 Office-Tagen mit Drosselung oft genug für drei Zeilen je
+    // Person (Befund 03.09.2026, „Doppelte Klammer-Zeilen (3)").
+    //
+    // Das Register kennt keine Zeilen-Sicherheit und wird bei JEDER An- und
+    // Abmeldung mitgeschrieben — auch für die Schattenzeile (upsertParticipant
+    // unten). Steht die Klammer-Nummer dort, existiert die Zeile, nur nicht
+    // sichtbar: Zielzustand, kein Insert. Ist EINE der beiden Quellen nicht
+    // lesbar und die andere sagt nicht „vorhanden", wird NICHT eingefügt —
+    // der Aufrufer (Klammer-zuerst in registerForEvent / submitFlow) zieht
+    // über den zweiten Versuch und den Nachzug-Merker nach. Ein leeres
+    // Ergebnis ohne geprüften Status ist keine Aussage (CLAUDE.md).
+    if (isShadowParent && !existing) {
+      let registryReadFailed = false;
+      const rec = await eventService.getParticipantByEmail((emailToUse || '').trim(), () => { registryReadFailed = true; });
+      const nums = (v?: string): number[] => v ? v.split(',').map(x => parseInt(x.trim(), 10)).filter(n => !isNaN(n)) : [];
+      const parentNo = event ? (event.eventNumber || 0) : 0;
+      const knownInRegistry = parentNo > 0 && !!rec
+        && (nums(rec.EventRegistered).indexOf(parentNo) >= 0 || nums(rec.EventOnWaitlist).indexOf(parentNo) >= 0);
+      if (knownInRegistry) {
+        dlog('seats', '[DEX] Klammer-Zeile laut Register vorhanden (für diesen Nutzer unsichtbar) — kein zweiter Insert:', emailToUse, parentNo);
+        return { ok: true, status: 'Angemeldet' };
+      }
+      if (regReadFailed || registryReadFailed) {
+        console.warn('[DEX] Klammer-Zeile: Bestand nicht prüfbar (Liste/Register nicht lesbar) — kein Insert, Nachzug folgt:', emailToUse, parentNo);
+        return { ok: false, status: 'Warteliste', reason: 'dup-check-failed' };
+      }
+    }
+
     // v30.68: Die Klammer-Zeile wird VOR dem Termin geschrieben — als
     // erster Schreibvorgang, nicht als letzter. Bis v30.67 kam sie zuletzt,
     // also genau dort, wo die Drosselung nach 19 Terminen greift, und ein

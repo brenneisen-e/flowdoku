@@ -768,8 +768,8 @@ export class EventService {
     return participantsRegistry.ensureParticipantsList(this);
   }
 
-  public async getParticipantByEmail(email: string): Promise<SPParticipant | null> {
-    return participantsRegistry.getParticipantByEmail(this, email);
+  public async getParticipantByEmail(email: string, onHttpError?: (_status: number) => void): Promise<SPParticipant | null> {
+    return participantsRegistry.getParticipantByEmail(this, email, onHttpError);
   }
 
   public async upsertParticipant(

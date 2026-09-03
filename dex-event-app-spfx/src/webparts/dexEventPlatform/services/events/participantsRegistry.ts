@@ -132,17 +132,22 @@ async function ensureMissingParticipantsFields(svc: EventService, listName: stri
 /**
  * Teilnehmer-Eintrag per Email suchen
  */
-export async function getParticipantByEmail(svc: EventService, email: string): Promise<SPParticipant | null> {
+export async function getParticipantByEmail(svc: EventService, email: string, onHttpError?: (_status: number) => void): Promise<SPParticipant | null> {
+  // v30.73: `null` hiess bisher „kein Eintrag" UND „nicht lesbar". Fuer die
+  // Klammer-Schattenzeile ist der Unterschied entscheidend (s. registerForEvent):
+  // aus „nicht lesbar" darf kein Insert werden. Wer den Rueckruf mitgibt,
+  // erfaehrt den Status; ohne Rueckruf bleibt das Verhalten wie bisher.
   try {
     const response = await svc._sp.get(
       `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items?$filter=Email eq '${email.replace(/'/g, "''")}'&$select=Id,Title,Vorname,Nachname,Email,EventRegistered,EventOnWaitlist&$top=1`,
       SPHttpClient.configurations.v1
     );
-    if (!response.ok) return null;
+    if (!response.ok) { if (onHttpError) onHttpError(response.status); return null; }
     const data = await response.json();
     if (data.value && data.value.length > 0) return data.value[0];
     return null;
   } catch {
+    if (onHttpError) onHttpError(0);
     return null;
   }
 }
