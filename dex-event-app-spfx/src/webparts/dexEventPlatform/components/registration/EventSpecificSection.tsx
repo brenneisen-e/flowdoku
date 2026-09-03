@@ -202,8 +202,12 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                           )}
                           {/* v19.19: Warteliste pro Gruppe — nur bei GETRENNTEN
                               Wartelisten. Bei gemeinsamer Warteliste steht die
-                              Zahl gesammelt in der Kapazitäts-Zusammenfassung. */}
-                          {!event.splitSharedWaitlist && opt.wait > 0 && (
+                              Zahl gesammelt in der Kapazitäts-Zusammenfassung.
+                              v30.72: Bei einer vollen Gruppe auch „0 Personen auf
+                              der Warteliste" zeigen — wer sieht, dass niemand
+                              wartet, meldet sich eher an, als wenn die Zeile
+                              fehlt und offen bleibt, wie lang die Schlange ist. */}
+                          {!event.splitSharedWaitlist && (opt.wait > 0 || isFull) && (
                             <span style={{ display: 'block', color: 'var(--dex-gray-500)', marginTop: 2 }}>
                               {opt.wait} {locale === 'de'
                                 ? (opt.wait === 1 ? 'Person auf der Warteliste' : 'Personen auf der Warteliste')
