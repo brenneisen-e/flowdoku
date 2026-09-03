@@ -17,7 +17,7 @@ Wird aktualisiert wenn Flows geändert werden.
 
 **Trigger:** Neuer Eintrag in DEX_IDReorder
 **Zweck:** TeilnehmerIDs neu vergeben (Aktive + Warteliste lückenlos sortiert) + Nachrücken von Warteliste (seit v6.7 inkl. typ-bewusster Promotion für B2Run-Split-Wartelisten; seit v10.20 mit optionalem Shared-Waitlist-Modus)
-**Letztes Update:** 2026-09-01 (Platzzähler-Kette: `Count_Seats_Active/Waitlist/Durch/Fun` + `Sync_Seat_Counter` hinter `DEX_IDReorder`; **im Tenant umgesetzt und am 01.09.2026 gegen den Export verifiziert** — alle acht `runAfter` stimmen, alle fünf Uris sind Text ohne `@`). Davor 2026-06-11 (Audit-Fixes: Status-Sortierung in der Renummerierung, Folge-Reorder nach jeder Promotion, Fehler-Sichtbarkeit).
+**Letztes Update:** 2026-09-03 (`Counter_Body`: `if()` wertet BEIDE Zweige aus — Gruppen-Zähler null-sicher gelesen). Davor 2026-09-01 (Platzzähler-Kette: `Count_Seats_Active/Waitlist/Durch/Fun` + `Sync_Seat_Counter` hinter `DEX_IDReorder`; **im Tenant umgesetzt und am 01.09.2026 gegen den Export verifiziert** — alle acht `runAfter` stimmen, alle fünf Uris sind Text ohne `@`). Davor 2026-06-11 (Audit-Fixes: Status-Sortierung in der Renummerierung, Folge-Reorder nach jeder Promotion, Fehler-Sichtbarkeit).
 
 > **Der vollständige JSON weiter unten ist der Stand vom 2026-06-11** und enthält
 > die fünf Platzzähler-Actions **nicht**. Wer den Ist-Stand braucht, nimmt die
@@ -26,7 +26,70 @@ Wird aktualisiert wenn Flows geändert werden.
 
 ### UI-Anleitung 2026-09-02 — Gruppen-Zählung bricht Events ohne Gruppen
 
-> ## ✅ Umgesetzt am 02.09.2026 (vollständige Lösung, gegen den Export verifiziert)
+> ## 🔴 Korrektur 03.09.2026 — `Counter_Body` scheitert mit „function 'int' … not valid"
+>
+> Seit dem Umbau vom 02.09. dauern die Läufe wieder Sekunden (Run history:
+> 10–54 s statt 1–2 h, der Stau ist weg) — aber **jeder Lauf auf einem Event ohne
+> Gruppen endet weiter rot**, jetzt an `Counter_Body`:
+>
+> ```
+> InvalidTemplate. Unable to process template language expressions in action
+> 'Counter_Body' … The template language function 'int' was invoked with a
+> parameter that is not valid. The value cannot be converted to the target type.
+> ```
+>
+> `Sync_Seat_Counter` hängt an `Counter_Body` **is successful** und wird
+> übersprungen — der Platzzähler wird also auf keinem Event mehr geschrieben.
+>
+> **Ursache — mein Fehler im Ausdruck von gestern:** Die Funktion `if()` in
+> Power Automate wertet **beide Zweige aus**, nicht nur den gewählten. Der
+> True-Zweig enthält `int(body('Count_Seats_Durch')?['d']?['__count'])`; auf
+> einem Event ohne Gruppen ist die Action rot, das Feld ist `null`, und
+> `int(null)` wirft — obwohl das Ergebnis aus dem False-Zweig kommen sollte.
+> Die Bedingung war richtig, der Zweig dahinter durfte nur nicht werfen.
+>
+> **Die Korrektur:** Die beiden Gruppen-Zählungen werden über
+> `actions('…')?['outputs']?['body']` gelesen (null-sicher, auch wenn die Action
+> rot oder übersprungen ist) und mit `coalesce(…, '0')` abgefangen. Die
+> Bedingung prüft jetzt `actions('…')?['status']` auf `Succeeded` statt den
+> `statusCode` — dasselbe Ergebnis, aber ohne einen weiteren Zugriff, der auf
+> einer übersprungenen Action werfen könnte. Das Verhalten bleibt: Gruppen-Felder
+> nur dann im Body, wenn beide Zählungen grün waren.
+>
+> #### Klick-Anleitung als Tabelle
+>
+> | # | NEU/GEÄNDERT | Name der Action | Art der Action | Stelle |
+> |---|---|---|---|---|
+> | 1 | GEÄNDERT | `Counter_Body` | Compose | zwischen `Count_Seats_Fun` und `Sync_Seat_Counter` — nur das Feld **Inputs** |
+>
+> #### Zeile 1 — `Counter_Body` (Compose) · GEÄNDERT
+>
+> - [ ] Flow öffnen → **Edit** → Action `Counter_Body` anklicken.
+> - [ ] Im Feld **Inputs** die vorhandene Kachel (das Ausdruck-Token) mit **Backspace** entfernen — das Feld muss leer sein.
+> - [ ] In das leere Feld klicken → **Expression**-Tab (fx) → den folgenden Ausdruck **komplett** einfügen → **Update**. Nie als Text.
+>
+> ```
+> if(and(equals(actions('Count_Seats_Durch')?['status'],'Succeeded'),equals(actions('Count_Seats_Fun')?['status'],'Succeeded')),concat('{"__metadata":{"type":"SP.Data.DEX_x005f_TeilnehmerCounterListItem"},"SeatsTaken":',string(int(body('Count_Seats_Active')?['d']?['__count'])),',"WaitlistTaken":',string(int(body('Count_Seats_Waitlist')?['d']?['__count'])),',"SeatsTakenDurch":',string(int(coalesce(actions('Count_Seats_Durch')?['outputs']?['body']?['d']?['__count'],'0'))),',"SeatsTakenFun":',string(int(coalesce(actions('Count_Seats_Fun')?['outputs']?['body']?['d']?['__count'],'0'))),'}'),concat('{"__metadata":{"type":"SP.Data.DEX_x005f_TeilnehmerCounterListItem"},"SeatsTaken":',string(int(body('Count_Seats_Active')?['d']?['__count'])),',"WaitlistTaken":',string(int(body('Count_Seats_Waitlist')?['d']?['__count'])),'}'))
+> ```
+>
+> - [ ] Kontrolle: Im Feld steht **eine** lila Kachel `if(...)`, kein schwarzer Text.
+> - [ ] Sonst nichts anfassen — **Run after** von `Counter_Body` und `Sync_Seat_Counter` stimmen laut Export vom 02.09.
+> - [ ] Oben rechts **Save**.
+>
+> #### Test
+>
+> - [ ] Event **ohne** geteilte Gruppen: eine Person abmelden. **Run history** → frischer Lauf: `Count_Seats_Durch`/`Count_Seats_Fun` rot, `Counter_Body` **grün**, `Sync_Seat_Counter` **grün**, Lauf **Succeeded**.
+> - [ ] `Counter_Body` aufklappen → **Outputs**: ein JSON mit nur `SeatsTaken` und `WaitlistTaken`.
+> - [ ] Event **mit** geteilten Gruppen (B2Run): alle vier Zählungen grün, im Output von `Counter_Body` stehen alle vier Felder.
+>
+> | Beobachtung im Lauf | Ursache | Abhilfe |
+> |---|---|---|
+> | `Counter_Body` weiter „function 'int' … not valid" | Der alte Ausdruck ist noch drin (Kachel nicht entfernt, neuer Text dahinter) | Feld komplett leeren, Ausdruck neu über fx einfügen |
+> | `Counter_Body` „function 'actions' … not found" oder ähnlich | Ein Action-Name ist anders geschrieben als im Flow | Namen in `actions('…')` exakt gegen die Actions im Designer abgleichen (Unterstriche!) |
+> | `Sync_Seat_Counter` 400 „Invalid JSON" | `Counter_Body` wurde als Text statt als Ausdruck gespeichert | Feld leeren, über den **Expression**-Tab neu setzen |
+> | `Counter_Body` grün, aber `SeatsTakenDurch` fehlt auf einem B2Run-Event | Eine der beiden Gruppen-Zählungen war nicht `Succeeded` | Deren Fehlermeldung im Lauf lesen — das ist dann ein echter Fehler, kein erwarteter |
+>
+> ## ✅ Umgesetzt am 02.09.2026 (vollständige Lösung, gegen den Export verifiziert) — Ausdruck in Zeile 3 am 03.09. korrigiert
 >
 > `Count_Seats_Durch`/`Count_Seats_Fun` mit `retryPolicy: none`, `Count_Seats_Fun`
 > und `Counter_Body` mit tolerantem Run after, `Sync_Seat_Counter` liest den Body
@@ -156,13 +219,21 @@ geliefert haben — sonst ohne sie.
 - [ ] Ins Feld **Inputs** über den **Expression**-Tab (fx) — nie als Text:
 
 ```
-if(and(equals(int(coalesce(outputs('Count_Seats_Durch')?['statusCode'],0)),200),equals(int(coalesce(outputs('Count_Seats_Fun')?['statusCode'],0)),200)),concat('{"__metadata":{"type":"SP.Data.DEX_x005f_TeilnehmerCounterListItem"},"SeatsTaken":',string(int(body('Count_Seats_Active')?['d']?['__count'])),',"WaitlistTaken":',string(int(body('Count_Seats_Waitlist')?['d']?['__count'])),',"SeatsTakenDurch":',string(int(body('Count_Seats_Durch')?['d']?['__count'])),',"SeatsTakenFun":',string(int(body('Count_Seats_Fun')?['d']?['__count'])),'}'),concat('{"__metadata":{"type":"SP.Data.DEX_x005f_TeilnehmerCounterListItem"},"SeatsTaken":',string(int(body('Count_Seats_Active')?['d']?['__count'])),',"WaitlistTaken":',string(int(body('Count_Seats_Waitlist')?['d']?['__count'])),'}'))
+if(and(equals(actions('Count_Seats_Durch')?['status'],'Succeeded'),equals(actions('Count_Seats_Fun')?['status'],'Succeeded')),concat('{"__metadata":{"type":"SP.Data.DEX_x005f_TeilnehmerCounterListItem"},"SeatsTaken":',string(int(body('Count_Seats_Active')?['d']?['__count'])),',"WaitlistTaken":',string(int(body('Count_Seats_Waitlist')?['d']?['__count'])),',"SeatsTakenDurch":',string(int(coalesce(actions('Count_Seats_Durch')?['outputs']?['body']?['d']?['__count'],'0'))),',"SeatsTakenFun":',string(int(coalesce(actions('Count_Seats_Fun')?['outputs']?['body']?['d']?['__count'],'0'))),'}'),concat('{"__metadata":{"type":"SP.Data.DEX_x005f_TeilnehmerCounterListItem"},"SeatsTaken":',string(int(body('Count_Seats_Active')?['d']?['__count'])),',"WaitlistTaken":',string(int(body('Count_Seats_Waitlist')?['d']?['__count'])),'}'))
 ```
 
 > Der Ausdruck ist lang, aber er tut nur eines: Er prüft, ob beide
-> Gruppen-Zählungen **200** waren, und setzt danach zwei Felder mehr oder
+> Gruppen-Zählungen **Succeeded** waren, und setzt danach zwei Felder mehr oder
 > weniger in denselben JSON. `SeatsTaken` und `WaitlistTaken` stehen in **beiden**
 > Zweigen — die hängen an `Status` und funktionieren auf jedem Event.
+>
+> **Korrigiert 03.09.2026:** `if()` wertet in Power Automate **beide** Zweige
+> aus. Die erste Fassung las im True-Zweig `int(body('Count_Seats_Durch')…)`
+> ohne Absicherung; auf einem Event ohne Gruppen war das `int(null)` und der
+> ganze Compose rot, obwohl der False-Zweig gewählt war. Deshalb jetzt
+> `actions('…')?['outputs']?['body']` + `coalesce(…, '0')` — kein Zweig kann
+> mehr werfen. Merksatz: **Alles, was in einem `if()` steht, muss auf JEDEM
+> Event auswertbar sein — auch der Zweig, der nicht gewinnt.**
 
 ---
 
@@ -202,6 +273,7 @@ outputs('Counter_Body')
 |---|---|---|
 | `Count_Seats_Durch` 502 „Die Spalte 'StarterType' ist nicht vorhanden" | Event ohne geteilte Gruppen — **erwartet**, kein Fehler | Nichts. Nach dieser Änderung läuft der Flow trotzdem grün weiter |
 | Die Action braucht immer noch Minuten | **Retry Policy** steht noch auf **Default** | Zeile 1 und 2 abarbeiten |
+| `Counter_Body` „function 'int' was invoked with a parameter that is not valid" | Alte Fassung des Ausdrucks — `if()` wertet beide Zweige aus, `int(null)` wirft | Korrektur vom 03.09. (ganz oben in diesem Abschnitt): Inputs durch den null-sicheren Ausdruck ersetzen |
 | `Sync_Seat_Counter` 400 „Invalid JSON" | `Counter_Body` steht als Text statt als Ausdruck | Inputs über den **Expression**-Tab (fx) neu setzen |
 | `SeatsTakenDurch` wird auf 0 gesetzt | Der alte Body ist noch drin | Zeile 4: Body durch `outputs('Counter_Body')` ersetzen |
 | Läufe stehen weiter auf *Waiting* | Der Stau baut sich erst ab | Warten, bis die laufenden Läufe durch sind — sie brauchen noch je bis zu 1 h |
