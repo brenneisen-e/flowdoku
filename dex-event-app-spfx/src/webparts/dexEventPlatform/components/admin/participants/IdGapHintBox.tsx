@@ -45,6 +45,19 @@ export const IdGapHintBox: React.FC<IdGapHintBoxProps> = (p) => {
             ? Math.floor((Date.now() - new Date(info.whenIso).getTime()) / 60000)
             : 999;
           const probablyStillRunning = minutesSinceCancel >= 0 && minutesSinceCancel < 10;
+          // v30.74: In den ersten Minuten nach einer Abmeldung GAR NICHTS
+          // zeigen. Die App nummeriert bewusst nicht selbst (seit v6.7 macht
+          // das der Flow DEX_IDReorder_TeilnehmerIDs); der Trigger fragt die
+          // Queue etwa minütlich ab, dazu die Laufzeit. Die Lücke ist in
+          // dieser Phase also der Normalfall — und die orange Box las sich
+          // nach jeder Organizer-Abmeldung wie ein Fehler (Nutzer-Ansage
+          // 03.09.2026: „erst, wenn ein paar Minuten nichts passiert ist").
+          // Die 30-Sekunden-Nachlade-Schleife (useTeamActions) läuft
+          // unabhängig von dieser Box weiter; ist der Flow schneller, sieht
+          // niemand je eine Box. Ein Gruppenwechsel setzt kein Abmeldedatum
+          // → minutesSinceCancel 999 → die Box erscheint wie bisher sofort.
+          const ID_GAP_GRACE_MINUTES = 3;
+          if (minutesSinceCancel >= 0 && minutesSinceCancel < ID_GAP_GRACE_MINUTES) return null;
           return (
             <div style={{
               margin: '0 0 16px',
@@ -62,7 +75,7 @@ export const IdGapHintBox: React.FC<IdGapHintBoxProps> = (p) => {
               <div style={{ fontSize: '0.82rem', lineHeight: 1.5 }}>
                 <strong>Geprüft an der geladenen Teilnehmerliste:</strong> {info.detail}.{whenStr ? <> Letzte Abmeldung: <strong>{whenStr}</strong>.</> : ''}{' '}
                 {probablyStillRunning ? (
-                  <>Die automatische Korrektur — <strong>Nachrücken von der Warteliste</strong> und <strong>Neu-Nummerierung</strong> — braucht nach einer Abmeldung typischerweise 1–5 Minuten. Die Liste wird hier <strong>automatisch alle 30 Sekunden neu geladen</strong>; diese Box verschwindet von selbst, sobald alles stimmt. Bitte in dieser Phase NICHT manuell korrigieren (sonst laufen zwei Korrekturen ineinander).</>
+                  <>Die automatische Korrektur — <strong>Nachrücken von der Warteliste</strong> und <strong>Neu-Nummerierung</strong> — übernimmt der Nachrück-Flow und braucht nach einer Abmeldung typischerweise 1–5 Minuten; seit der Abmeldung sind schon {minutesSinceCancel} Minuten vergangen. Die Liste wird hier <strong>automatisch alle 30 Sekunden neu geladen</strong>; diese Box verschwindet von selbst, sobald alles stimmt. Bitte in dieser Phase NICHT manuell korrigieren (sonst laufen zwei Korrekturen ineinander).</>
                 ) : (
                   <>Die letzte Abmeldung liegt länger zurück. Die Lücke kann trotzdem frisch sein — ein <strong>Gruppenwechsel</strong> auf die Warteliste vergibt eine neue Nummer und lässt die alte leer, setzt aber kein Abmeldedatum; und wenn der Nachrück-Flow <strong>gestaut oder ausgefallen</strong> ist, kommt die automatische Korrektur verspätet oder gar nicht (Admin: <strong>Run history</strong> des Flows prüfen). Die Lücke ist rein kosmetisch (Nachrücken/Check-in funktionieren trotzdem) und <strong>gefahrlos per Klick zu beheben</strong>:</>
                 )}
