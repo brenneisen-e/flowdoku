@@ -161,8 +161,8 @@ export const CommPreviewCard: React.FC<CommPreviewCardProps> = (p) => {
   // Klasse). Ein abgeschalteter Kanal wird nicht mehr durchgestrichen —
   // das las sich wie „gelöscht" — sondern trägt den Zusatz „aus".
   const tabBtn = (key: 'mail' | 'outlook', icon: React.ReactNode, label: string, off: boolean): React.ReactElement => (
-    <button key={key} type="button" className={cx('dex-ui-tab', pane === key && 'is-active')} onClick={() => setPane(key)}
-      aria-pressed={pane === key} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: off ? 0.6 : 1 }}>
+    <button key={key} type="button" className={cx('dex-ui-tab', pane === key && 'is-active', off && 'is-off')} onClick={() => setPane(key)}
+      aria-pressed={pane === key} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
       {icon}{label}{off && <span style={{ fontWeight: 500, fontSize: '0.72rem' }}>· {isDe ? 'aus' : 'off'}</span>}
     </button>
   );
@@ -213,12 +213,12 @@ export const CommPreviewCard: React.FC<CommPreviewCardProps> = (p) => {
               <Send size={14} />{testState === 'busy' ? (isDe ? 'Wird verschickt…' : 'Sending…') : (isDe ? 'Testmail an mich' : 'Send me a test email')}
             </button>
             {testState === 'sent' ? (
-              <span className="dex-ui-callout dex-ui-callout--success" role="status" style={{ padding: '6px 12px', fontSize: '0.78rem' }}>
+              <span className="dex-ui-callout dex-ui-callout--success dex-ui-callout--sm" role="status">
                 <span className="dex-ui-callout-icon"><Check size={14} /></span>
                 <span>{isDe ? `Unterwegs an ${currentUser.email} — kommt in wenigen Minuten, Betreff beginnt mit [Test].` : `On its way to ${currentUser.email} — arrives within minutes, subject starts with [Test].`}</span>
               </span>
             ) : testState === 'error' ? (
-              <span className="dex-ui-callout dex-ui-callout--danger" role="alert" style={{ padding: '6px 12px', fontSize: '0.78rem' }}>
+              <span className="dex-ui-callout dex-ui-callout--danger dex-ui-callout--sm" role="alert">
                 <span className="dex-ui-callout-icon"><AlertCircle size={14} /></span>
                 <span>{isDe ? 'Konnte nicht in die Mail-Warteschlange geschrieben werden — bitte später erneut.' : 'Could not be queued — please try again later.'}</span>
               </span>

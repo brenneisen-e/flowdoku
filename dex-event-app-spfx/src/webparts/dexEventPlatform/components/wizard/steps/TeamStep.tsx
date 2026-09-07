@@ -160,6 +160,9 @@ export const TeamStep: React.FC<TeamStepProps> = ({
           <span className="dex-ui-toggle-row-body">
             <span className="dex-ui-toggle-row-title">
               {isDe ? 'Der Team-Lead gibt dem Team einen Namen' : 'The team lead gives the team a name'}
+              {/* v31.2: Das Tooltip-Symbol liegt im <label> — ohne preventDefault
+                  schaltet ein Klick auf das „i" die Checkbox mit. */}
+              <span onClick={e => e.preventDefault()}>
               <InfoTooltip text={isDe
             ? <>
                 <strong>Was du hier einstellst:</strong> ob der Team-Lead beim Anmelden zusätzlich einen <strong>frei wählbaren Team-Namen</strong> eingeben muss (z.B. &bdquo;Die schnellen Sieben&ldquo;).<br /><br />
@@ -172,6 +175,7 @@ export const TeamStep: React.FC<TeamStepProps> = ({
                 <strong>For attendees:</strong> makes the team identifiable. If turned off, teams are referenced internally only via the team lead&apos;s name.
               </>
               } />
+              </span>
             </span>
             <span className="dex-ui-toggle-row-desc">
               {isDe
@@ -195,7 +199,7 @@ export const TeamStep: React.FC<TeamStepProps> = ({
           <button type="button" role="radio" aria-checked={!teamMembersCannotCreate} disabled={!teamRegistrationEnabled}
             className={cx('dex-ui-choice', !teamMembersCannotCreate && 'is-active')} onClick={() => setTeamMembersCannotCreate(false)}>
             <span className="dex-ui-choice-icon"><Users size={18} /></span>
-            <span className="dex-ui-choice-body" style={{ display: 'grid' }}>
+            <span className="dex-ui-choice-body">
               <span className="dex-ui-choice-title">{isDe ? 'Die Teilnehmer selbst' : 'The participants themselves'}</span>
               <span className="dex-ui-choice-desc">
                 {isDe
@@ -208,7 +212,7 @@ export const TeamStep: React.FC<TeamStepProps> = ({
           <button type="button" role="radio" aria-checked={teamMembersCannotCreate} disabled={!teamRegistrationEnabled}
             className={cx('dex-ui-choice', teamMembersCannotCreate && 'is-active')} onClick={() => setTeamMembersCannotCreate(true)}>
             <span className="dex-ui-choice-icon"><Settings size={18} /></span>
-            <span className="dex-ui-choice-body" style={{ display: 'grid' }}>
+            <span className="dex-ui-choice-body">
               <span className="dex-ui-choice-title">{isDe ? 'Du als Organizer' : 'You as the organizer'}</span>
               <span className="dex-ui-choice-desc">
                 {isDe
@@ -243,7 +247,7 @@ export const TeamStep: React.FC<TeamStepProps> = ({
           <div className="dex-ui-grid-2" role="radiogroup" aria-label={isDe ? 'Vollständige oder Teil-Teams' : 'Complete or partial teams'}>
             <button type="button" role="radio" aria-checked={!teamPartialAllowed} disabled={!teamRegistrationEnabled}
               className={cx('dex-ui-choice', !teamPartialAllowed && 'is-active')} onClick={() => setTeamPartialAllowed(false)}>
-              <span className="dex-ui-choice-body" style={{ display: 'grid' }}>
+              <span className="dex-ui-choice-body">
                 <span className="dex-ui-choice-title">{isDe ? 'Ja, nur komplette Teams' : 'Yes, only complete teams'}</span>
                 <span className="dex-ui-choice-desc">
                   {isDe
@@ -255,7 +259,7 @@ export const TeamStep: React.FC<TeamStepProps> = ({
             </button>
             <button type="button" role="radio" aria-checked={teamPartialAllowed} disabled={!teamRegistrationEnabled}
               className={cx('dex-ui-choice', teamPartialAllowed && 'is-active')} onClick={() => setTeamPartialAllowed(true)}>
-              <span className="dex-ui-choice-body" style={{ display: 'grid' }}>
+              <span className="dex-ui-choice-body">
                 <span className="dex-ui-choice-title">{isDe ? 'Nein, Teil-Teams sind erlaubt' : 'No, partial teams are allowed'}</span>
                 <span className="dex-ui-choice-desc">
                   {isDe
@@ -284,6 +288,7 @@ export const TeamStep: React.FC<TeamStepProps> = ({
             <span className="dex-ui-toggle-row-body">
               <span className="dex-ui-toggle-row-title">
                 {isDe ? 'Offene Teams stehen auf der Anmeldeseite' : 'Open teams are listed on the registration page'}
+                <span onClick={e => e.preventDefault()}>
                 <InfoTooltip text={isDe
             ? <>
                 <strong>Was du hier einstellst:</strong> ob andere Teilnehmer Teams mit offenen Slots in der Anmeldeseite sehen und beitreten können.<br /><br />
@@ -296,6 +301,7 @@ export const TeamStep: React.FC<TeamStepProps> = ({
                 <strong>For attendees:</strong> anyone not yet in a team can join an open slot with one click — either immediately or only after lead approval (see next option).
               </>
                 } />
+                </span>
               </span>
               <span className="dex-ui-toggle-row-desc">
                 {isDe
@@ -316,6 +322,7 @@ export const TeamStep: React.FC<TeamStepProps> = ({
             <span className="dex-ui-toggle-row-body">
               <span className="dex-ui-toggle-row-title">
                 {isDe ? 'Der Team-Lead bestätigt jeden Beitritt' : 'The team lead approves every join'}
+                <span onClick={e => e.preventDefault()}>
                 <InfoTooltip text={isDe
             ? <>
                 <strong>Was du hier einstellst:</strong> ob jede Beitrittsanfrage zu einem offenen Team-Slot erst vom Team-Lead bestätigt werden muss.<br /><br />
@@ -328,6 +335,7 @@ export const TeamStep: React.FC<TeamStepProps> = ({
                 <strong>For attendees:</strong> if active, the join only becomes valid after confirmation — and the joiner receives their confirmation mail and (if Outlook is enabled) the calendar invite only at that point. If off: join is immediately valid.
               </>
                 } />
+                </span>
               </span>
               <span className="dex-ui-toggle-row-desc">
                 {isDe
@@ -347,7 +355,7 @@ export const TeamStep: React.FC<TeamStepProps> = ({
         Team-Anmeldung bedienbar. */}
     <div className="dex-ui-section">
       <button type="button" className={cx('dex-ui-disclosure', moreOpen && 'is-open')} aria-expanded={moreOpen} onClick={() => setMoreOpen(o => !o)}>
-        <span className="dex-ui-disclosure-chevron" style={{ transform: moreOpen ? 'none' : 'rotate(-90deg)' }}><ChevronDown size={16} /></span>
+        <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
         {isDe ? 'Weitere Einstellungen' : 'More settings'}
         <span className="dex-ui-disclosure-count">
           {hasCustomTerm ? (isDe ? '1 angepasst' : '1 customised') : (isDe ? 'Standard' : 'default')}

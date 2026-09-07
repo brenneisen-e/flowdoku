@@ -13,7 +13,7 @@
  * (Ergänzung zum Drag & Drop), alle Texte zweisprachig. Props/Verhalten gleich.
  */
 import * as React from 'react';
-import { Check, Plus, Star, X } from '../../Icons';
+import { Check, ImageIcon, Plus, Star, X } from '../../Icons';
 import { cx } from '../../dexUi';
 import { StepBadge } from '../StepBadge';
 import { useLanguage } from '../../../context/LanguageContext';
@@ -220,7 +220,7 @@ export const FunZoneStep: React.FC<FunZoneStepProps> = ({
                   </>
                 ) : (
                   <label className="dex-ui-textbtn dex-ui-textbtn--muted" title={isDe ? 'Erscheint über der Frage im Quiz' : 'Shown above the question in the quiz'}>
-                    <Plus size={14} /> {isDe ? 'Bild zur Frage (optional)' : 'Image for the question (optional)'}
+                    <ImageIcon size={14} /> {isDe ? 'Bild zur Frage (optional)' : 'Image for the question (optional)'}
                     <input
                       type="file"
                       accept="image/*"
@@ -282,15 +282,16 @@ export const FunZoneStep: React.FC<FunZoneStepProps> = ({
 
         const unsortedQuiz = quiz.filter(q => !q.section);
         const globalIndexOf = (qid: string): number => quiz.findIndex(x => x.id === qid);
-        // v31.2: Ablageflächen bleiben gestrichelt („hier kann etwas hinein"); während
-        // eine Frage gezogen wird, heben sich ALLE Ziele ab — vorher sah man das nicht.
+        // v31.2: Ablageflächen sind die zentrale dex-ui-dropzone (gestrichelt, „hier kann
+        // etwas hinein"); während eine Frage gezogen wird, tragen ALLE Ziele is-over —
+        // vorher sah man das nicht. Die Klasse zentriert für Datei-Ablagen; hier liegen
+        // Kopfzeile und Fragekarten drin, deshalb Layout auf Block/links zurückgestellt.
         const dragging = !!draggedQuestionId;
-        const zoneStyle = (accent: boolean): React.CSSProperties => ({
-          padding: 12, marginBottom: 12, borderRadius: 14,
-          border: `2px dashed ${accent ? 'rgba(134,188,37,0.7)' : 'var(--dex-gray-300, #d1d1d1)'}`,
-          background: dragging ? 'rgba(134,188,37,0.09)' : (accent ? 'rgba(134,188,37,0.04)' : 'var(--dex-gray-50, #fafafa)'),
-          transition: 'background 0.18s ease, border-color 0.18s ease',
-        });
+        const zoneClass = cx('dex-ui-dropzone', dragging && 'is-over');
+        const zoneStyle: React.CSSProperties = {
+          alignItems: 'stretch', textAlign: 'left', cursor: 'default', gap: 0,
+          padding: 12, marginBottom: 12,
+        };
 
         return (
           <>
@@ -301,7 +302,8 @@ export const FunZoneStep: React.FC<FunZoneStepProps> = ({
                   key={`sec-${sec}`}
                   onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
                   onDrop={e => handleDrop(e, sec)}
-                  style={zoneStyle(true)}
+                  className={zoneClass}
+                  style={zoneStyle}
                 >
                   <div className="dex-ui-inline" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
                     <div className="dex-ui-inline">
@@ -341,7 +343,8 @@ export const FunZoneStep: React.FC<FunZoneStepProps> = ({
             <div
               onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
               onDrop={e => handleDrop(e, undefined)}
-              style={allSections.length > 0 ? zoneStyle(false) : undefined}
+              className={allSections.length > 0 ? zoneClass : undefined}
+              style={allSections.length > 0 ? zoneStyle : undefined}
             >
               {allSections.length > 0 && (
                 <div className="dex-ui-inline" style={{ marginBottom: 10 }}>

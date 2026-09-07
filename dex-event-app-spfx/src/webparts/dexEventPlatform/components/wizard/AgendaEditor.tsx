@@ -253,16 +253,15 @@ export const AgendaEditor: React.FC<AgendaEditorProps> = (p) => {
           )}
           {!isMobile && groups.length > 1 && (
             <select value={g.key} onChange={e => moveItem(item.id, e.target.value)} title={moveTitle} aria-label={moveTitle}
-              className="dex-ui-select dex-ui-input--sm" style={{ paddingRight: 26, fontSize: '0.78rem', color: 'var(--dex-gray-600)', cursor: 'pointer' }}>
+              className="dex-ui-select dex-ui-select--sm" style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', cursor: 'pointer' }}>
               {groups.map((x, i) => <option key={x.key} value={x.key}>{i + 1}: {labelOf(x, i)}</option>)}
             </select>
           )}
           <button type="button" onClick={() => setDescOpen(o => ({ ...o, [item.id]: !showDesc }))}
-            className={cx('dex-ui-iconbtn', showDesc && 'dex-ui-iconbtn--green')}
+            className={cx('dex-ui-iconbtn', showDesc && 'dex-ui-iconbtn--green is-active')}
             title={isDe ? 'Beschreibung ein-/ausblenden' : 'Toggle description'}
             aria-label={isDe ? 'Beschreibung' : 'Description'}
-            aria-pressed={showDesc}
-            style={showDesc ? { background: 'rgba(134,188,37,0.14)', color: 'var(--dex-green-dark, #4a7c1f)' } : undefined}>
+            aria-pressed={showDesc}>
             <FileText size={15} />
           </button>
           <button type="button" className="dex-ui-iconbtn dex-ui-iconbtn--danger" onClick={() => remove(item.id)} aria-label={isDe ? 'Punkt entfernen' : 'Remove item'} title={isDe ? 'Punkt entfernen' : 'Remove item'}>
@@ -275,7 +274,7 @@ export const AgendaEditor: React.FC<AgendaEditorProps> = (p) => {
             <div className="dex-ui-inline" style={{ gap: 6 }}>
               {isMobile && <input type="text" className="dex-ui-input dex-ui-input--sm" value={item.location || ''} onChange={e => patch(item.id, { location: e.target.value })} aria-label={isDe ? 'Raum' : 'Room'} placeholder={isDe ? 'Raum (optional)' : 'Room (optional)'} style={{ flex: '0 1 40%' }} />}
               {isMobile && groups.length > 1 && (
-                <select value={g.key} onChange={e => moveItem(item.id, e.target.value)} title={moveTitle} aria-label={moveTitle} className="dex-ui-select dex-ui-input--sm" style={{ paddingRight: 26, flex: '0 1 40%' }}>
+                <select value={g.key} onChange={e => moveItem(item.id, e.target.value)} title={moveTitle} aria-label={moveTitle} className="dex-ui-select dex-ui-select--sm" style={{ flex: '0 1 40%' }}>
                   {groups.map((x, i) => <option key={x.key} value={x.key}>{labelOf(x, i)}</option>)}
                 </select>
               )}
@@ -377,7 +376,7 @@ export const AgendaEditor: React.FC<AgendaEditorProps> = (p) => {
                 Knopf zwischen den Aktionen — deshalb eine eigene Hinweiszeile
                 mit dem Grund und dem Knopf daneben. */}
             {prefixed > 0 && (
-              <div className="dex-ui-callout dex-ui-callout--info" style={{ borderRadius: 0, borderWidth: '0 0 1px 0', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div className="dex-ui-callout dex-ui-callout--info dex-ui-callout--flush" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
                 <span className="dex-ui-callout-icon"><Info size={15} /></span>
                 <span style={{ flex: 1, minWidth: 200 }}>{isDe ? `„${g.cluster} - “ steht noch in ${prefixed} Titeln — der Cluster-Name übernimmt das jetzt.` : `“${g.cluster} - ” still prefixes ${prefixed} titles — the cluster name now carries that.`}</span>
                 <button type="button" className="dex-ui-textbtn" onClick={() => stripPrefixes(g)}>{isDe ? `Präfix aus ${prefixed} Titeln entfernen` : `Strip prefix from ${prefixed} titles`}</button>
@@ -386,7 +385,7 @@ export const AgendaEditor: React.FC<AgendaEditorProps> = (p) => {
             {/* v31.2: Rückfrage nennt Cluster, Anzahl und Folge — statt
                 „5 Punkte löschen?" neben dem X. */}
             {confirmKey === g.key && (
-              <div className="dex-ui-callout dex-ui-callout--danger" style={{ borderRadius: 0, borderWidth: '0 0 1px 0', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div className="dex-ui-callout dex-ui-callout--danger dex-ui-callout--flush" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
                 <span className="dex-ui-callout-icon"><AlertCircle size={15} /></span>
                 <span style={{ flex: 1, minWidth: 200 }}>
                   <strong>{isDe ? `Cluster „${label}“ mit ${g.items.length} ${g.items.length === 1 ? termS : termP} löschen?` : `Delete cluster “${label}” with ${g.items.length} ${(g.items.length === 1 ? termS : termP).toLowerCase()}?`}</strong>{' '}

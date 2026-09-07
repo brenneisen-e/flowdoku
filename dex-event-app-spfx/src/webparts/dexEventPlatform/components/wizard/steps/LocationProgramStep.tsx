@@ -52,6 +52,27 @@ export interface LocationProgramStepProps {
 
 type TransferTime = LocationProgramStepProps['transferTimes'][number];
 
+/* v31.2: Ein Tooltip für beide Transfer-Zweige — vorher hatte nur das
+   Hauptevent einen, das Sub-Event keinen, obwohl dieselbe Frage gestellt wird. */
+const TRANSFERS_TOOLTIP: { de: React.ReactNode; en: React.ReactNode } = {
+  de: (
+    <>
+      <strong>Was du hier einstellst:</strong> <strong>An- und Abreise-Infos</strong> für Teilnehmer — z.B. Bus-/Shuttle-/Bahn-Treffpunkte mit Datum, Abfahrt, Ankunft und optionaler Zusatzinfo (Bus-Kennzeichen, Treffpunkt-Schild, Wagen-Nr.). Pro Stadt ein eigener Eintrag möglich.<br /><br />
+      <strong>Anzeige in der App:</strong> erscheint als <strong>eigener Block</strong> auf der Anmelde-Seite und in Meine Events mit allen Details auf einen Blick.<br /><br />
+      <strong>Automatismen:</strong> Transferzeiten gehen <strong>nicht</strong> in den Outlook-Termin (sonst würde der Termin Bus als Konkurrenz-Termin im Kalender blocken). Sie sind nur in der App sichtbar.<br /><br />
+      <strong>Empfehlung:</strong> bei Auswärtsterminen mit organisierter Anreise sehr empfohlen — bei rein lokalen Office-Events nicht nötig.
+    </>
+  ),
+  en: (
+    <>
+      <strong>What you set here:</strong> <strong>arrival and departure info</strong> for attendees — e.g. bus/shuttle/train pickups with date, departure, arrival and an optional note (bus number, meeting-point sign, carriage no.). One entry per city.<br /><br />
+      <strong>Shown in the app:</strong> shown as a <strong>dedicated block</strong> on the registration page and in My Events with all details at a glance.<br /><br />
+      <strong>Automation:</strong> transfer times do <strong>not</strong> end up in the Outlook event (otherwise the bus trip would clash with the actual event in the calendar). They live only in the app.<br /><br />
+      <strong>Tip:</strong> strongly recommended for off-site events with organised travel — not needed for local office events.
+    </>
+  ),
+};
+
 /* v31.2: Adresse als vier beschriftete Felder — vorher standen die
    Bezeichnungen nur im Platzhalter und verschwanden beim Tippen; und sie
    waren auch auf Englisch deutsch. Einmal gebaut, zweimal genutzt
@@ -186,13 +207,13 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
               {renderStepIntro(
                 [
                   'Veranstaltungsort und Adresse erfassen',
-                  'Agenda pflegen — Tagesablauf für die Teilnehmer',
                   'Optional: Transferzeiten (Bus/Bahn/Treffpunkt) hinterlegen',
+                  'Programm pflegen — Tagesablauf für die Teilnehmer',
                 ],
                 [
                   'Set event location and address',
-                  'Maintain the agenda — schedule shown to participants',
                   'Optional: add transfer times (bus/train/meeting point)',
+                  'Maintain the programme — schedule shown to participants',
                 ]
               )}
               {/* v22.38: Der frühere blaue Info-Banner ist in die
@@ -322,6 +343,7 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                         isMobile={isMobile}
                         t={t}
                         defaultDate={seDefaultDate}
+                        tooltip={isDe ? TRANSFERS_TOOLTIP.de : TRANSFERS_TOOLTIP.en}
                       />
                     </div>
                     <div className="dex-ui-section">
@@ -446,8 +468,8 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                           <span className="dex-ui-choice-title">{isDe ? 'Ich stelle den Teams-Link selbst' : 'I provide the Teams link myself'}</span>
                           <span className="dex-ui-choice-desc">
                             {isDe
-                              ? <>Du legst die Besprechung wie gewohnt in Outlook oder Teams an und trägst den Link unten ein. <strong>Empfohlen</strong>, wenn du Lobby, Aufzeichnung oder Referenten-Rollen brauchst — die kannst du nur an deiner eigenen Besprechung ändern.</>
-                              : <>You create the meeting in Outlook or Teams as usual and paste the link below. <strong>Recommended</strong> if you need lobby, recording or presenter roles — those can only be changed on your own meeting.</>}
+                              ? <><strong>Empfohlen</strong>, wenn du Lobby, Aufzeichnung oder Referenten-Rollen brauchst.</>
+                              : <><strong>Recommended</strong> if you need lobby, recording or presenter roles.</>}
                           </span>
                         </span>
                         <span className="dex-ui-choice-check"><Check size={12} /></span>
@@ -457,8 +479,8 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                           <span className="dex-ui-choice-title">{isDe ? 'DEX erzeugt den Teams-Link automatisch' : 'DEX creates the Teams link automatically'}</span>
                           <span className="dex-ui-choice-desc">
                             {isDe
-                              ? <>Der Termin wird als echte Teams-Besprechung angelegt — mit &bdquo;Teilnehmen&ldquo;-Knopf direkt im Kalender, ohne dass du etwas vorbereiten musst.</>
-                              : <>The event is created as a real Teams meeting — with a &bdquo;Join&ldquo; button right in the calendar, with nothing to prepare.</>}
+                              ? <>Der Termin wird als echte Teams-Besprechung angelegt — mit &bdquo;Teilnehmen&ldquo;-Knopf direkt im Kalender, ohne Vorbereitung. Besprechungsoptionen danach nicht änderbar.</>
+                              : <>The event is created as a real Teams meeting — with a &bdquo;Join&ldquo; button right in the calendar, nothing to prepare. Meeting options cannot be changed afterwards.</>}
                           </span>
                         </span>
                         <span className="dex-ui-choice-check"><Check size={12} /></span>
@@ -486,14 +508,14 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                           <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>
                           <InfoTooltip text={isDe ? (
                             <>
-                              <strong>Was du hier einstellst:</strong> den <strong>Teilnahme-Link deiner eigenen Teams-Besprechung</strong>. Lege die Besprechung wie gewohnt in Outlook oder Teams an und kopiere den Link hierher — in diesem Modus erzeugt DEX selbst keine Teams-Besprechung.<br /><br />
+                              <strong>Was du hier einstellst:</strong> den <strong>Teilnahme-Link deiner eigenen Teams-Besprechung</strong>. Lege die Besprechung wie gewohnt in Outlook oder Teams an und kopiere den Link hierher — in diesem Modus erzeugt DEX selbst keine Teams-Besprechung. Lobby, Aufzeichnung und Referenten-Rollen kannst du nur an deiner eigenen Besprechung ändern — deshalb ist dieser Weg empfohlen, wenn du sie brauchst.<br /><br />
                               <strong>Anzeige in der App:</strong> im <strong>Outlook-Termin</strong> als Knopf &bdquo;An Microsoft-Teams-Besprechung teilnehmen&ldquo;, im <strong>Organizer Center</strong> und in <strong>Meine Events</strong> als Teilnahme-Knopf.<br /><br />
                               <strong>Wichtig:</strong> Der Link steht im <strong>Text</strong> des Termins. Outlook kennt den Termin dadurch <strong>nicht</strong> als Online-Besprechung — es gibt also keinen &bdquo;Teilnehmen&ldquo;-Knopf in der Kalenderleiste und keinen Direktaufruf aus Teams heraus. Die Teilnehmer klicken den Link im Termin bzw. in der App.<br /><br />
                               <strong>Gilt für:</strong> das ganze Event, also auch für die Termine der Sub-Events.
                             </>
                           ) : (
                             <>
-                              <strong>What you set here:</strong> the <strong>join link of your own Teams meeting</strong>. Create the meeting in Outlook or Teams as usual and paste the link here — in this mode DEX does not create a Teams meeting itself.<br /><br />
+                              <strong>What you set here:</strong> the <strong>join link of your own Teams meeting</strong>. Create the meeting in Outlook or Teams as usual and paste the link here — in this mode DEX does not create a Teams meeting itself. Lobby, recording and presenter roles can only be changed on your own meeting — which is why this option is recommended if you need them.<br /><br />
                               <strong>Shown in the app:</strong> in the <strong>Outlook event</strong> as a &bdquo;Join the Microsoft Teams meeting&ldquo; button, and in the <strong>Organizer Center</strong> and <strong>My Events</strong> as a join button.<br /><br />
                               <strong>Important:</strong> The link sits in the <strong>body</strong> of the event. Outlook therefore does <strong>not</strong> treat it as an online meeting — there is no &bdquo;Join&ldquo; button in the calendar bar and no direct join from Teams. Attendees click the link in the event or in the app.<br /><br />
                               <strong>Applies to:</strong> the whole event, including the sub-event calendar entries.
@@ -581,21 +603,7 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                   t={t}
                   locationOptions={locationOptions}
                   defaultDate={startDate ? startDate.slice(0, 10) : ''}
-                  tooltip={isDe ? (
-                    <>
-                      <strong>Was du hier einstellst:</strong> <strong>An- und Abreise-Infos</strong> für Teilnehmer — z.B. Bus-/Shuttle-/Bahn-Treffpunkte mit Datum, Abfahrt, Ankunft und optionaler Zusatzinfo (Bus-Kennzeichen, Treffpunkt-Schild, Wagen-Nr.). Pro Stadt ein eigener Eintrag möglich.<br /><br />
-                      <strong>Anzeige in der App:</strong> erscheint als <strong>eigener Block</strong> auf der Anmelde-Seite und in Meine Events mit allen Details auf einen Blick.<br /><br />
-                      <strong>Automatismen:</strong> Transferzeiten gehen <strong>nicht</strong> in den Outlook-Termin (sonst würde der Termin Bus als Konkurrenz-Termin im Kalender blocken). Sie sind nur in der App sichtbar.<br /><br />
-                      <strong>Empfehlung:</strong> bei Auswärtsterminen mit organisierter Anreise sehr empfohlen — bei rein lokalen Office-Events nicht nötig.
-                    </>
-                  ) : (
-                    <>
-                      <strong>What you set here:</strong> <strong>arrival and departure info</strong> for attendees — e.g. bus/shuttle/train pickups with date, departure, arrival and an optional note (bus number, meeting-point sign, carriage no.). One entry per city.<br /><br />
-                      <strong>Shown in the app:</strong> shown as a <strong>dedicated block</strong> on the registration page and in My Events with all details at a glance.<br /><br />
-                      <strong>Automation:</strong> transfer times do <strong>not</strong> end up in the Outlook event (otherwise the bus trip would clash with the actual event in the calendar). They live only in the app.<br /><br />
-                      <strong>Tip:</strong> strongly recommended for off-site events with organised travel — not needed for local office events.
-                    </>
-                  )}
+                  tooltip={isDe ? TRANSFERS_TOOLTIP.de : TRANSFERS_TOOLTIP.en}
                 />
               </div>
 
@@ -605,7 +613,8 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                 <label className="dex-ui-label" style={{ fontSize: '0.95rem' }}>
                   <StepBadge n={16} />
                   {agendaCheckIn ? agendaPlural : (isDe ? 'Wie sieht das Programm aus?' : 'What does the programme look like?')}
-                  <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>
+                  {/* v31.2: Im Programmpunkte-Modus ist die Liste die Check-in-Liste — dann nicht „optional". */}
+                  {!agendaCheckIn && <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>}
                   {agendaCheckIn && (
                     <span className="dex-ui-pill dex-ui-pill--green">
                       {isDe ? 'Check-in je Punkt' : 'Check-in per item'}

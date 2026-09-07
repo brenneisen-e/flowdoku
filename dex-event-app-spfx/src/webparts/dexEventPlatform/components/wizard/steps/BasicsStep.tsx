@@ -369,7 +369,12 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   als Abschnitt „Veröffentlichung" am Ende des Schritts. */}
               </>)}{/* v28.89: Ende der event-weiten Angaben */}
 
+              {/* v31.2: Jeder Abschnitt trägt eine Versal-Überschrift — vorher
+                  hatten nur „Teilnahme" und „Veröffentlichung" eine, die vier
+                  vorderen nicht. Auf einem Sub-Event-Reiter heißt der erste
+                  Abschnitt wie der Termin selbst, nicht „Event". */}
               <div className="dex-ui-section">
+                <div className="dex-ui-section-title">{scopeSub ? (childTermSingular || 'Sub-Event') : 'Event'}</div>
                 <label className="dex-ui-label">
                   <StepBadge n={2} />
                   {!scopeSub && <span className="required">*</span>}
@@ -407,8 +412,8 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                 {!scopeSub && (
                   <div className="dex-ui-help">
                     {isDe
-                      ? 'Steht auf der Kachel, in Meine Events und wird 1:1 Betreff aller Mails und Titel des Outlook-Termins.'
-                      : 'Shown on the tile, in My Events, and used 1:1 as the subject of every mail and the Outlook invite title.'}
+                      ? 'Steht auf der Kachel, in Meine Events und wird Betreff aller automatischen Mails und Titel des Outlook-Termins.'
+                      : 'Shown on the tile, in My Events, and used as the subject of every automatic mail and the Outlook invite title.'}
                   </div>
                 )}
               </div>
@@ -416,6 +421,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
               {/* v9.24: Event-Datum direkt nach Title — auto-fillt die Deadlines.
                   Vorher in Step 1, jetzt in Step 0 weil das fundamentale Info ist. */}
               <div className="dex-ui-section">
+                <div className="dex-ui-section-title">{isDe ? 'Zeitraum' : 'Dates'}</div>
                 <div className="dex-ui-label">
                   <StepBadge n={3} />
                   {scopeSub
@@ -549,14 +555,30 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   der umgekehrte Wert `showAsFree` — siehe Kommentar an
                   DeloitteEvent.showAsFree. Die Umkehrung passiert genau hier,
                   an einer Stelle, und nirgends sonst. */}
+              {/* v31.2: Sichtbar bleibt eine Zeile Folge; der Satz zur
+                  Arbeitstag-Belegung bei „ganztägig" liegt im Tooltip am Titel
+                  — sonst lief die Zeile auf drei bis vier Zeilen. */}
               <label className={cx('dex-ui-toggle-row', !scShowAsFree && 'is-active')}>
                 <input type="checkbox" checked={!scShowAsFree} onChange={e => setScShowAsFree(!e.target.checked)} />
                 <span className="dex-ui-toggle-row-body">
-                  <span className="dex-ui-toggle-row-title">{isDe ? 'Termin blockiert den Kalender' : 'Entry blocks the calendar'}</span>
+                  <span className="dex-ui-toggle-row-title">
+                    {isDe ? 'Termin blockiert den Kalender' : 'Entry blocks the calendar'}
+                    <InfoTooltip text={isDe ? (
+                      <>
+                        <strong>Mit Haken</strong> steht der Termin bei den Teilnehmern auf <strong>Beschäftigt</strong>, <strong>ohne Haken</strong> auf <strong>Frei</strong> — er blockiert dann nichts.<br /><br />
+                        <strong>Bei einem ganztägigen Termin</strong> gilt mit Haken der <strong>komplette Arbeitstag</strong> als belegt; für ein Angebot, zu dem man nur zeitweise dazukommt, nimmst du den Haken besser raus.
+                      </>
+                    ) : (
+                      <>
+                        <strong>Ticked</strong>, the entry shows as <strong>busy</strong> for attendees; <strong>unticked</strong> it shows as <strong>free</strong> and blocks nothing.<br /><br />
+                        <strong>For an all-day entry</strong> ticking marks the <strong>entire working day</strong> as taken; for something people only drop into, better untick it.
+                      </>
+                    )} />
+                  </span>
                   <span className="dex-ui-toggle-row-desc">
                     {isDe
-                      ? <>Der Termin steht bei den Teilnehmern auf <strong>Beschäftigt</strong> — Kollegen sehen sie als nicht verfügbar. {scAllDay ? <>Bei einem ganztägigen Termin gilt damit der <strong>komplette Arbeitstag</strong> als belegt; für ein Angebot, zu dem man nur zeitweise dazukommt, nimmst du den Haken besser raus.</> : <>Ohne Haken erscheint der Termin als <strong>Frei</strong> und blockiert nichts.</>}</>
-                      : <>The entry shows as <strong>busy</strong> for attendees — colleagues see them as unavailable. {scAllDay ? <>For an all-day entry that marks the <strong>entire working day</strong> as taken; for something people only drop into, better untick it.</> : <>Without it the entry shows as <strong>free</strong> and blocks nothing.</>}</>}
+                      ? <>Steht bei den Teilnehmern auf <strong>Beschäftigt</strong>; ohne Haken als <strong>Frei</strong>.</>
+                      : <>Shows as <strong>busy</strong> for attendees; unticked it shows as <strong>free</strong>.</>}
                   </span>
                 </span>
               </label>
@@ -581,6 +603,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                     der „Beschreibung anzeigen"-Schalter mit eigenem <label>;
                     verschachtelte Labels würden Klicks auf die Überschrift
                     fälschlich auf den Schalter umleiten. */}
+                <div className="dex-ui-section-title">{isDe ? 'Beschreibung' : 'Description'}</div>
                 <div className="dex-ui-label" style={{ flexWrap: 'wrap' }}>
                   <StepBadge n={4} />
                   {isDe ? 'Was sollen Teilnehmer vorab wissen?' : 'What should attendees know beforehand?'}
@@ -702,6 +725,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
               </div>
 
               <div className="dex-ui-section">
+                <div className="dex-ui-section-title">{isDe ? 'Bild' : 'Image'}</div>
                 <div className="dex-ui-label">
                   <StepBadge n={5} />
                   {scopeSub
@@ -1143,10 +1167,12 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                         {isDe ? 'Noch nicht veröffentlichen — als Entwurf speichern' : 'Don’t publish yet — save as draft'}
                         <InfoTooltip text={t('create.fictive.hint')} />
                       </span>
+                      {/* v31.2: Nur der erste Satz bleibt sichtbar — wie man live
+                          geht, steht im Tooltip und unter „Ab wann … live gehen?". */}
                       <span className="dex-ui-toggle-row-desc">
                         {isDe
-                          ? <>Standard. Nur Admins, Organizer und das Test-Team sehen das Event und können sich anmelden — niemand meldet sich versehentlich an. Live gehst du, indem du den Haken entfernst und speicherst oder im Admin Center auf &bdquo;Event aktivieren&ldquo; klickst.</>
-                          : <>Default. Only admins, organizers and the test team see the event and can register — nobody signs up by accident. To go live, untick and save, or click &bdquo;Activate event&ldquo; in the admin center.</>}
+                          ? <>Standard. Nur Admins, Organizer und das Test-Team sehen das Event und können sich anmelden — niemand meldet sich versehentlich an.</>
+                          : <>Default. Only admins, organizers and the test team see the event and can register — nobody signs up by accident.</>}
                       </span>
                     </span>
                   </label>

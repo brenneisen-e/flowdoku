@@ -52,8 +52,8 @@ export const BillingStep: React.FC<BillingStepProps> = ({
   const choice = (active: boolean, onPick: () => void, title: React.ReactNode, desc: React.ReactNode): React.ReactElement => (
     <button type="button" role="radio" aria-checked={active} className={cx('dex-ui-choice', active && 'is-active')} onClick={onPick}>
       <div className="dex-ui-choice-body">
-        <div className="dex-ui-choice-title">{title}</div>
-        <div className="dex-ui-choice-desc">{desc}</div>
+        <span className="dex-ui-choice-title">{title}</span>
+        <span className="dex-ui-choice-desc">{desc}</span>
       </div>
       <span className="dex-ui-choice-check" aria-hidden="true">{active && <Check size={12} />}</span>
     </button>
@@ -129,8 +129,9 @@ export const BillingStep: React.FC<BillingStepProps> = ({
                   // v30.4: Flex-Spalte, Label wächst — die Eingabefelder
                   // einer Zeile stehen damit auf gleicher Höhe, auch wenn
                   // ein Label („Name der Veranstaltung bzw. Anlass …")
-                  // zweizeilig umbricht.
-                  <div key={f.id} className="dex-ui-field" style={{ display: 'flex', flexDirection: 'column', marginBottom: 0 }}>
+                  // zweizeilig umbricht. v31.2: Den unteren Abstand nimmt
+                  // dex-ui-grid-2 > .dex-ui-field zentral weg (das Raster hat den gap).
+                  <div key={f.id} className="dex-ui-field" style={{ display: 'flex', flexDirection: 'column' }}>
                     <label className="dex-ui-label" style={{ flexGrow: 1, alignItems: 'flex-start' }}>
                       {f.label} <span className="required">*</span>
                     </label>

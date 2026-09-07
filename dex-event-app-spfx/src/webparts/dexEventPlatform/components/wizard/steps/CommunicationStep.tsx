@@ -15,7 +15,7 @@ import { Icon } from '@fluentui/react/lib/Icon';
 import { StepBadge } from '../../wizard/StepBadge';
 import WizardHint from '../../WizardHint';
 import DatePicker from 'react-datepicker';
-import { AlertCircle, Calendar, Check, ChevronDown, ChevronUp, Info, Mail, Pencil, Plus, Send, X } from '../../Icons';
+import { AlertCircle, Calendar, Check, ChevronDown, Info, Mail, Pencil, Plus, Send, X } from '../../Icons';
 import { cx } from '../../dexUi';
 import { compressImage } from '../../../utils/imageCompress';
 import { COMM_TOPICS } from '../logic/commTabs';
@@ -274,7 +274,9 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                                 : <><strong>You are editing: {currentTabLabel}.</strong> Each row shows whether this date has something of its own or inherits from the main event. “Apply to all” copies exactly that topic to the other dates.</>)}
                           </span>
                         </div>
-                        <div className="dex-ui-card" style={{ marginTop: 10, padding: '2px 6px' }}>
+                        {/* v31.2: Listen-Karte (dex-ui-card--list) statt Inline-Innenabstand —
+                            die Zeilen sind dex-ui-row, ihre Aktion hebt sich bei Hover. */}
+                        <div className="dex-ui-card dex-ui-card--list" style={{ marginTop: 10 }}>
                           {COMM_TOPICS.map(topic => {
                             const own = activeCommTabIdx > 0 && topicDiffersFromParent(topic.key);
                             return (
@@ -624,7 +626,9 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                         ))}
                       </div>
                       <button type="button" className={cx('dex-ui-disclosure', advOpen && 'is-open')} aria-expanded={advOpen} onClick={() => setAdvOpen(v => !v)} style={{ marginTop: 10 }}>
-                        <span className="dex-ui-disclosure-chevron" style={{ transform: 'none' }}>{advOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</span>
+                        {/* v31.2: Ruhezustand ChevronDown, die Klasse dreht geöffnet um 180° —
+                            kein Inline-Transform und kein Icon-Wechsel mehr. */}
+                        <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
                         {advOpen ? (isDe ? 'Anpassen schließen' : 'Close customisation') : (isDe ? 'Texte und Bilder anpassen' : 'Customise texts and images')}
                         <span className="dex-ui-disclosure-count">{changedCount > 0 ? (isDe ? `${changedCount} angepasst` : `${changedCount} customised`) : (isDe ? 'alles Standard' : 'all default')}</span>
                       </button>
