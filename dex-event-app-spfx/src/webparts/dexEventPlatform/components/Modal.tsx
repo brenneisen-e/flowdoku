@@ -241,7 +241,8 @@ export default function Modal({
             {icon && <span className="dex-ui-modal-head-icon" aria-hidden="true">{icon}</span>}
             <div style={{ flex: 1, minWidth: 0 }}>
               <h3 className="dex-ui-modal-title">{title}</h3>
-              {subtitle && <p className="dex-ui-modal-subtitle">{subtitle}</p>}
+              {/* div statt p: Aufrufer geben auch Blöcke (JSX mit <p>) herein. */}
+              {subtitle && <div className="dex-ui-modal-subtitle">{subtitle}</div>}
             </div>
             {!hideClose && (
               <button

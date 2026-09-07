@@ -297,6 +297,34 @@ export const DEX_UI_CSS = `
 .dex-ui-empty-icon { display: inline-flex; width: 44px; height: 44px; border-radius: 50%; background: ${G100}; color: ${G500}; align-items: center; justify-content: center; margin-bottom: 10px; }
 .dex-ui-empty-title { font-weight: 700; color: ${G700}; font-size: 0.92rem; margin-bottom: 4px; }
 
+/* ---- Nachzug aus der v31.2-Runde (Wünsche der Umbau-Agenten) ---------- */
+.dex-ui-choice-title, .dex-ui-choice-desc { display: block; }
+.dex-ui-row.is-active { background: rgba(134,188,37,0.08); box-shadow: inset 3px 0 0 ${G}; }
+.dex-ui-row.is-done { opacity: 0.6; }
+.dex-ui-row.is-done:hover { opacity: 1; }
+.dex-ui-rowbtn { width: 100%; text-align: left; background: transparent; border: none; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; }
+.dex-ui-btn-reset { background: none; border: none; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; }
+.dex-ui-card--list { padding: 6px; }
+.dex-ui-select--sm { padding: 6px 28px 6px 10px; font-size: 0.84rem; border-radius: 8px; background-position: right 10px center; }
+.dex-ui-input--error, .dex-ui-select--error, .dex-ui-textarea--error { border-color: var(--dex-red, #da291c) !important; }
+.dex-ui-input--error:focus, .dex-ui-select--error:focus, .dex-ui-textarea--error:focus { box-shadow: 0 0 0 3px rgba(218,41,28,0.15) !important; }
+.dex-ui-label-required { color: var(--dex-red, #da291c); margin-left: 2px; }
+.dex-ui-range { width: 100%; accent-color: #86bc25; cursor: pointer; }
+.dex-ui-dropzone { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center; padding: 22px 16px; border: 1.5px dashed ${G300}; border-radius: 14px; background: ${SOFT}; color: ${G600}; font-size: 0.86rem; cursor: pointer; transition: border-color ${EASE}, background ${EASE}; }
+.dex-ui-dropzone:hover, .dex-ui-dropzone.is-over { border-color: ${G}; background: rgba(134,188,37,0.06); color: ${GDT}; }
+.dex-ui-callout--sm { padding: 6px 10px; font-size: 0.76rem; border-radius: 8px; }
+.dex-ui-callout--flush { border-radius: 0; border-width: 0 0 1px 0; }
+.dex-ui-tab.is-off { opacity: 0.55; }
+.dex-ui-iconbtn.is-active { background: rgba(134,188,37,0.14); color: ${GDT}; }
+.dex-ui-grid-2 > .dex-ui-field, .dex-ui-grid-3 > .dex-ui-field, .dex-ui-grid-auto > .dex-ui-field { margin-bottom: 0; }
+.dex-ui-grid-3-1 { display: grid; grid-template-columns: 3fr 1fr; gap: 10px; }
+.dex-ui-grid-1-3 { display: grid; grid-template-columns: 1fr 3fr; gap: 10px; }
+@media (max-width: 768px) { .dex-ui-grid-3-1, .dex-ui-grid-1-3 { grid-template-columns: 1fr; } }
+.dex-ui-disclosure-chevron.is-open { transform: rotate(90deg); }
+.dex-ui-chip-remove { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; margin-left: 2px; margin-right: -4px; background: rgba(0,0,0,0.08); color: inherit; font-size: 0.7rem; line-height: 1; transition: background ${EASE}; }
+.dex-ui-chip:hover .dex-ui-chip-remove { background: rgba(0,0,0,0.16); }
+.dex-ui-chip.is-active .dex-ui-chip-remove { background: rgba(255,255,255,0.25); }
+
 /* ---- Barrierefreiheit ---------------------------------------------- */
 .dex-ui-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 `;

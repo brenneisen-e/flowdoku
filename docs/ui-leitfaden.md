@@ -220,9 +220,37 @@ Zustände als zusätzliche Klasse: `is-active`, `is-open`, `is-disabled`,
 | `dex-ui-field` + `dex-ui-label` + `dex-ui-help` | Feldgruppe: Beschriftung (mit `InfoTooltip` daneben), Eingabe, Hilfetext darunter. `dex-ui-label-optional` für „(optional)" |
 | `dex-ui-grid-2` / `-3` / `-auto` | Raster, mobil eine Spalte |
 | `dex-ui-input` / `dex-ui-select` / `dex-ui-textarea` | Kompakte Eingaben (Modale, Zeilen). `--sm` noch kleiner. Im Wizard-Formular bleiben `form-input`/`form-select` (48 px) für Hauptfelder |
-| `dex-ui-disclosure` | Aufklapper-Knopf: `<button className={cx('dex-ui-disclosure', open && 'is-open')}><span className="dex-ui-disclosure-chevron"><ChevronDown size={16}/></span>Weitere Einstellungen<span className="dex-ui-disclosure-count">3</span></button>` und darunter `dex-ui-disclosure-body` |
+| `dex-ui-disclosure` | Aufklapper-Knopf: `<button className={cx('dex-ui-disclosure', open && 'is-open')}><span className="dex-ui-disclosure-chevron"><ChevronRight size={16}/></span>Weitere Einstellungen<span className="dex-ui-disclosure-count">3</span></button>` und darunter `dex-ui-disclosure-body` (Chevron zeigt zu nach rechts, offen nach unten) |
 | `dex-ui-callout` | Hinweiskasten: `--info`, `--success`, `--warn`, `--danger`, `--neutral`; Symbol in `dex-ui-callout-icon` |
 | `dex-ui-divider`, `dex-ui-muted`, `dex-ui-stack`, `dex-ui-inline` | Trennlinie, Kleintext, vertikaler Stapel (gap 10), horizontale Reihe (gap 8, wrap) |
+
+### Nachzug aus der Runde (Wünsche der Umbau-Agenten, seit v31.2)
+
+| Klasse | Wofür |
+|---|---|
+| `dex-ui-row.is-active` / `.is-done` | Aktive Zeile (grüne Kante) · erledigte Zeile (gedämpft, bei Hover voll) |
+| `dex-ui-rowbtn` | `<button>` als ganze Zeile (Reset: kein Rand, volle Breite, linksbündig) — zusammen mit `dex-ui-row` |
+| `dex-ui-btn-reset` | Nackter `<button>` ohne Browser-Optik, z.B. um eine Karte klickbar zu machen |
+| `dex-ui-card--list` | Karte als Container für `dex-ui-row`-Zeilen (Innenabstand 6 px) |
+| `dex-ui-select--sm` | Kompaktes Select passend zu `dex-ui-input--sm` (Pfeil bleibt frei) |
+| `dex-ui-input--error` (auch `-select-`, `-textarea-`) | Roter Rand und roter Fokus-Ring bei ungültiger Eingabe |
+| `dex-ui-label-required` | Roter Stern hinter der Beschriftung eines Pflichtfelds |
+| `dex-ui-range` | Schieberegler in Markenfarbe |
+| `dex-ui-dropzone` (+ `is-over`) | Ablagefläche für Dateien (gestrichelt, hebt sich beim Ziehen) |
+| `dex-ui-callout--sm` / `--flush` | Kompakter Hinweis neben einem Knopf · randloser Hinweis innerhalb einer Karte (nur Linie unten) |
+| `dex-ui-tab.is-off` | Gedämpfter Reiter für einen abgeschalteten Bereich |
+| `dex-ui-iconbtn.is-active` | Gedrückter Symbol-Knopf (z.B. Beschreibung sichtbar) |
+| `dex-ui-grid-3-1` / `dex-ui-grid-1-3` | Zwei Spalten 3:1 bzw. 1:3 (Straße/Hausnummer, PLZ/Ort), mobil eine Spalte |
+| `dex-ui-disclosure-chevron.is-open` | Chevron-Drehung auch ohne umgebenden `dex-ui-disclosure`-Knopf |
+| `dex-ui-chip-remove` | Kleines rundes „×" im Chip (kein `<button>` im `<button>`) |
+
+Der Chevron eines Aufklappers zeigt im Ruhezustand nach **rechts**
+(`ChevronRight` aus Icons.tsx) und dreht geöffnet um 90° nach unten. Wer
+`ChevronDown` nimmt, muss die Drehung selbst setzen. Neue Symbole in
+Icons.tsx seit v31.2: `ChevronRight`, `ImageIcon`, `Crop`. `.dex-ui-field`
+verliert innerhalb eines `dex-ui-grid-*` seinen unteren Abstand (das Raster
+hat den `gap`). Der Untertitel des Modals ist ein `<div>` — auch Blöcke sind
+erlaubt.
 
 ### Modale
 
