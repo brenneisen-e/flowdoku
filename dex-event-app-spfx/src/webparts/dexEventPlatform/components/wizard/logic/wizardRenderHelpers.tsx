@@ -79,16 +79,21 @@ export function renderHeaderSizeControlImpl(ctx: RenderHeaderSizeControlCtx, pre
                 <img src={previewSrc} alt="" style={{ display: 'inline-block', width: '100%', maxWidth: Math.max(20, Math.round(headerImageLayout.width * sc)), height: 'auto' }} />
               </div>
               <div style={{ borderTop: '2px solid var(--dex-green, #86bc25)' }} />
-              <div style={{ fontSize: '0.68rem', color: 'var(--dex-gray-500)', textAlign: 'center', padding: '3px 0' }}>{isDe ? 'So groß im Mail-Kopf (verkleinert)' : 'Size in the mail header (scaled)'}</div>
+              <div className="dex-ui-muted" style={{ fontSize: '0.68rem', textAlign: 'center', padding: '3px 0' }}>{isDe ? 'So groß erscheint das Bild im Mail-Kopf (verkleinert).' : 'This is how large the image appears in the mail header (scaled).'}</div>
             </div>
           )}
         </div>
         {/* v28.29: sagt, WOHER das gezeigte Bild kommt (eigenes / vom Hauptevent
             geerbt / Standardlogo). Vorher zeigte die Vorschau kommentarlos das
             Event-Foto, obwohl gespeichert etwas anderes wurde. */}
+        {/* v31.2 (Nachzug): Als kompakter neutraler Hinweiskasten statt loser
+            Hilfezeile — der Satz erklärt die Herkunft des Bilds, er gehört
+            nicht zu einem Feld. Neutral, weil es keine Warnung ist: geerbt
+            oder Standardlogo ist ein gültiger Zustand. */}
         {note && (
-          <div className="dex-ui-help" style={{ marginTop: 10 }}>
-            {note}
+          <div className="dex-ui-callout dex-ui-callout--neutral dex-ui-callout--sm" style={{ marginTop: 10 }}>
+            <span className="dex-ui-callout-icon"><Info size={14} /></span>
+            <div>{note}</div>
           </div>
         )}
       </div>
@@ -455,8 +460,11 @@ export function renderGlobalScopeBarImpl(ctx: RenderGlobalScopeBarCtx): React.Re
             <div className="dex-ui-callout dex-ui-callout--neutral">
               <span className="dex-ui-callout-icon"><Info size={16} /></span>
               <div>
+                {/* v31.2 (Nachzug): Der Kasten antwortet als ganzer Satz auf die
+                    Frage darüber — „Dieser Schritt gilt für das gesamte Event",
+                    nicht das Stichwort „Für das gesamte Event". */}
                 <strong style={{ color: 'var(--dex-gray-800)' }}>
-                  {isDe ? 'Für das gesamte Event' : 'The entire event'}
+                  {isDe ? 'Dieser Schritt gilt für das gesamte Event' : 'This step applies to the entire event'}
                 </strong>
                 {isDe
                   ? ` — ${subEventsOnlyMode ? 'Klammer' : 'Haupt-Event'} und alle ${named.length} ${named.length === 1 ? (childTermSingular || 'Sub-Event') : (childTermPlural || 'Sub-Events')} gemeinsam. Eine Auswahl gibt es hier nicht.`

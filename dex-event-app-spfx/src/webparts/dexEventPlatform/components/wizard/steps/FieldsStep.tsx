@@ -80,11 +80,16 @@ export interface FieldsStepProps {
 export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
   const { visible } = p;
   const { activeFieldsTabIdx, addCustomField, addStartblock, addSubEventCustomField, askSalutation, b2runStartblocks, bilingualFields, childTermPlural, confirmDialogEnabled, confirmDialogMode, confirmDialogText, copyParentFieldsToSubEvent, customFields, dragFieldId, dragOverFieldId, fieldExpandOverride, isDe, moveCustomField, newStartblock, openSuggestedModal, registrationLanguage, removeCustomField, removeStartblock, removeSubEventCustomField, renderShowIfConfig, renderStepIntro, reorderMode, setAskSalutation, setBilingualFields, setConfirmDialogEnabled, setConfirmDialogMode, setConfirmDialogText, setCustomFields, setDragFieldId, setDragOverFieldId, setNewStartblock, setRegistrationLanguage, setReorderMode, setSubEvents, splitLabelA, splitLabelB, subEvents, subEventsOnlyMode, t, title, toggleFieldExpand, updateCustomField, updateSubEventCustomField, useSplitCapacities } = p;
+  // v31.2: Einziger Hook des Schritts — der Datenschutz-Kasten zeigt nur die
+  // Kernaussage dauerhaft, die vollständige Aufzählung klappt auf. Steht vor
+  // allen Konstanten und vor dem einzigen return; die Komponente hat keine
+  // frühen Returns, die Hook-Reihenfolge ist damit fest.
+  const [privacyOpen, setPrivacyOpen] = React.useState(false);
   // v31.2: Wiederkehrende Bausteine des Schritts an EINER Stelle — Typ-
   // Beschriftung, Nummern-Kreis, Sprach-/Kategorie-Marke, Breite des Typ-
   // Dropdowns. Vorher stand jeder davon drei- bis sechsmal als Inline-Style-
-  // Block im JSX (Hauptevent, Sub-Event-Reiter, toter Bereich 2). Keine
-  // Hooks, nur Konstanten — die Hook-Reihenfolge bleibt leer wie zuvor.
+  // Block im JSX (Hauptevent, Sub-Event-Reiter, toter Bereich 2). Nur
+  // Konstanten, keine weiteren Hooks.
   const typeLabel = (ty: CustomFieldInput['type']): string => {
     switch (ty) {
       case 'text': return isDe ? 'Text (Freitext)' : 'Text (free text)';
@@ -142,18 +147,38 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                 ]
               )}
 
-              {/* v31.2: Der Datenschutz-Hinweis ist kein Aufklapper mehr, sondern
-                  ein sichtbarer Kasten — der Organizer soll ihn lesen, BEVOR er
-                  die erste Frage anlegt. Der Wortlaut bleibt deckungsgleich mit
-                  den Nutzungsbedingungen (v7.35). */}
+              {/* v31.2: Der Datenschutz-Hinweis ist ein sichtbarer Kasten — der
+                  Organizer soll ihn lesen, BEVOR er die erste Frage anlegt.
+                  Dauerhaft sichtbar sind Kernaussage und der erste Halbsatz;
+                  die vollständige Aufzählung und der privacy@-Kontakt klappen
+                  im Kasten auf (sonst fünf bis sechs Zeilen über jedem Schritt-
+                  Besuch). Der Wortlaut bleibt deckungsgleich mit den
+                  Nutzungsbedingungen (v7.35) — nichts gekürzt. */}
               <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginBottom: 16 }}>
                 <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
-                <span>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <strong>{isDe ? 'Sammle keine sensiblen personenbezogenen Daten.' : 'Do not collect sensitive personal data.'}</strong>{' '}
                   {isDe
-                    ? <>Das heißt: keine Daten bezüglich Rasse oder ethnischer Herkunft, religiöser oder philosophischer Überzeugungen, Gewerkschaftsmitgliedschaft, politischer Meinungen, medizinischer oder gesundheitlicher Zustände oder Informationen über das Sexualleben oder die sexuelle Orientierung einer Person. Falls sensible personenbezogene Daten gesammelt werden müssen, kontaktiere zuerst das Team unter <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>
-                    : <>That means: no data on race or ethnic origin, religious or philosophical beliefs, trade-union membership, political opinions, medical or health conditions, or information about a person&apos;s sex life or sexual orientation. If sensitive personal data must be collected, contact the team first at <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>}
-                </span>
+                    ? 'Das heißt: keine Daten bezüglich Rasse oder ethnischer Herkunft, religiöser oder philosophischer Überzeugungen …'
+                    : 'That means: no data on race or ethnic origin, religious or philosophical beliefs …'}
+                  <button
+                    type="button"
+                    className={cx('dex-ui-disclosure', privacyOpen && 'is-open')}
+                    onClick={() => setPrivacyOpen(o => !o)}
+                    aria-expanded={privacyOpen}
+                    style={{ marginTop: 4, color: 'inherit', fontSize: '0.8rem' }}
+                  >
+                    <span className="dex-ui-disclosure-chevron" style={{ color: 'inherit' }}><ChevronDown size={14} /></span>
+                    {isDe ? 'Vollständige Aufzählung und Kontakt' : 'Full list and contact'}
+                  </button>
+                  {privacyOpen && (
+                    <div className="dex-ui-disclosure-body">
+                      {isDe
+                        ? <>Das heißt: keine Daten bezüglich Rasse oder ethnischer Herkunft, religiöser oder philosophischer Überzeugungen, Gewerkschaftsmitgliedschaft, politischer Meinungen, medizinischer oder gesundheitlicher Zustände oder Informationen über das Sexualleben oder die sexuelle Orientierung einer Person. Falls sensible personenbezogene Daten gesammelt werden müssen, kontaktiere zuerst das Team unter <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>
+                        : <>That means: no data on race or ethnic origin, religious or philosophical beliefs, trade-union membership, political opinions, medical or health conditions, or information about a person&apos;s sex life or sexual orientation. If sensitive personal data must be collected, contact the team first at <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* v26.48: B2Run-Köln-Vorlage — Vorschlags-Box, erscheint nur
@@ -628,19 +653,22 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                   <InfoTooltip text={isDe
                     ? <>
                         <strong>Automatisch erfasst</strong> (aus dem Deloitte-Profil, bei jeder Anmeldung): Vorname, Nachname, E-Mail, Job Title, Standort, Department.<br /><br />
-                        Hier ergänzt du <strong>nur zusätzliche Fragen</strong>, die du speziell für dieses Event brauchst — vom T-Shirt-Größen-Dropdown bis zur Pflicht-Checkbox für AGB / Datenschutz. Die <strong>Anrede</strong> holst du bei Bedarf über &bdquo;Vorgeschlagene Felder&ldquo; dazu.<br /><br />
+                        Hier ergänzt du <strong>nur zusätzliche Fragen</strong>, die du speziell für dieses Event brauchst — vom T-Shirt-Größen-Dropdown bis zur Pflicht-Checkbox für AGB / Datenschutz. Die <strong>Anrede</strong> holst du bei Bedarf über &bdquo;Vorgeschlagene Fragen&ldquo; dazu.<br /><br />
                         Fragen nur für einen Termin stellst du im Reiter des jeweiligen Sub-Events oben.
                       </>
                     : <>
                         <strong>Captured automatically</strong> (from the Deloitte profile, for every registration): first name, last name, email, job title, location, department.<br /><br />
-                        Here you only add <strong>extra questions</strong> specific to this event — from a T-shirt size dropdown to a required privacy / terms checkbox. Add the <strong>salutation</strong> via &ldquo;Suggested fields&rdquo; if you need it.<br /><br />
+                        Here you only add <strong>extra questions</strong> specific to this event — from a T-shirt size dropdown to a required privacy / terms checkbox. Add the <strong>salutation</strong> via &ldquo;Suggested questions&rdquo; if you need it.<br /><br />
                         Questions for one date only go into that sub-event&apos;s tab above.
                       </>} />
                 </p>
 
                 <div className="dex-ui-inline" style={{ marginBottom: 12 }}>
+                  {/* v31.2: Der Schritt heißt „Fragen im Anmeldeformular" — die Knöpfe
+                      sprechen dieselbe Sprache („Frage", nicht „Feld"). Lokal über isDe,
+                      der i18n-Schlüssel create.addfield bleibt unangetastet. */}
                   <button className="btn btn-primary dex-ui-btn-sm" onClick={addCustomField}>
-                    <Plus size={14} /> {t('create.addfield')}
+                    <Plus size={14} /> {isDe ? 'Frage hinzufügen' : 'Add question'}
                   </button>
                   <button
                     type="button"
@@ -648,7 +676,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                     onClick={openSuggestedModal}
                     title={isDe ? 'Fertige Fragen aus dem Katalog übernehmen (Anrede, T-Shirt, Allergien …)' : 'Adopt ready-made questions from the catalog (salutation, T-shirt, allergies …)'}
                   >
-                    {isDe ? 'Vorgeschlagene Felder' : 'Suggested fields'}
+                    {isDe ? 'Vorgeschlagene Fragen' : 'Suggested questions'}
                   </button>
                   {customFields.length > 1 && (
                     <button
@@ -1265,7 +1293,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                           </span>
                           <span className="dex-ui-toggle-row-desc">
                             {isDe
-                              ? 'Sie bekommt direkt nach der Anmeldung eine eigene Zimmerpartner-Anfrage-Mail — unabhängig vom CC-Schalter.'
+                              ? 'Die Person bekommt direkt nach der Anmeldung eine eigene Zimmerpartner-Anfrage-Mail — unabhängig vom CC-Schalter.'
                               : 'They receive a dedicated roommate request email right after the registration — independent of the CC toggle.'}
                           </span>
                         </span>

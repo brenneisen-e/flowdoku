@@ -57,6 +57,9 @@ export const QrEditModal: React.FC<QrEditModalProps> = (p) => {
         // zu, weil Sprache und Hinweis selten geändert werden. Einziger Hook der
         // Komponente; sie hat keinen frühen Return.
         const [fineOpen, setFineOpen] = React.useState(false);
+        // v31.2: Anzahl der Feineinstellungen, die vom Standard abweichen
+        // (Sprache fest gewählt, eigener Hinweis) — für den Zähler am Aufklapper.
+        const fineCount = (qrBlockLang ? 1 : 0) + (qrBlockNote.trim() ? 1 : 0);
         // v29.26: Editor-Ziel — das Event selbst ODER ein vom Hauptevent aus
         // geöffnetes Sub-Event (qrEditTarget). Alle Texte/Vergleiche laufen
         // gegen das Ziel; die Versand-Spalte links gehört dagegen zum
@@ -115,10 +118,13 @@ export const QrEditModal: React.FC<QrEditModalProps> = (p) => {
         // Testmail (sekundär), Versand (der einzige Primär-Knopf) und Zurück
         // als Textknopf. Der Satz zur Live-Vorschau steht im Tooltip neben der
         // Überschrift — als Fließtext hat er die Knöpfe auseinandergeschoben.
+        // v31.2: Nachzug — keine Inline-Karten mehr in der Spalte: Überschrift
+        // als Abschnittstitel (der Tooltip steht wie zuvor rechts außen),
+        // Hinweise als kompakte Callouts, das Versand-Ergebnis als weiche Karte.
         const leftPanel = (
           <div className="dex-ui-stack">
-            <div className="dex-ui-inline" style={{ justifyContent: 'space-between' }}>
-              <span style={{ fontWeight: 700, fontSize: '0.92rem' }}>{isDe ? 'QR-Codes versenden' : 'Send QR codes'}</span>
+            <div className="dex-ui-section-title" style={{ margin: 0 }}>
+              <span>{isDe ? 'QR-Codes versenden' : 'Send QR codes'}</span>
               <InfoTooltip placement="right" text={isDe
                 ? 'Die Live-Vorschau rechts zeigt deinen aktuellen Text. Die Testmail nutzt ebenfalls den aktuellen Text — der Versand an die Teilnehmer immer den gespeicherten.'
                 : 'The live preview on the right shows your current text. The test email also uses the current text — sending to participants always uses the saved one.'} />
@@ -128,7 +134,7 @@ export const QrEditModal: React.FC<QrEditModalProps> = (p) => {
                 geöffneten Events geladen) — stattdessen sagt ein Hinweis,
                 wo der Versand mit diesem Text stattfindet. */}
             {isSubTarget && (
-              <div className="dex-ui-callout dex-ui-callout--info" style={{ fontSize: '0.76rem' }}>
+              <div className="dex-ui-callout dex-ui-callout--info dex-ui-callout--sm">
                 <span>
                   {isDe
                     ? <>Du gestaltest die QR-Mail des Sub-Events <strong>{qrTgt.title}</strong>. Der gespeicherte Text gilt für dessen manuellen Versand (Sub-Event im Organizer Center öffnen → &bdquo;QR-Codes versenden&ldquo;) und den automatischen Versand bei neuen Anmeldungen.</>
@@ -172,7 +178,7 @@ export const QrEditModal: React.FC<QrEditModalProps> = (p) => {
               </button>
             )}
             {qrEditDirty && (
-              <div className="dex-ui-callout dex-ui-callout--warn" style={{ fontSize: '0.76rem' }}>
+              <div className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm">
                 <span>
                   {isDe
                     ? <>Noch nicht gespeichert — erst &bdquo;Für dieses Event speichern&ldquo; klicken, dann an die Teilnehmer senden.</>
@@ -181,7 +187,7 @@ export const QrEditModal: React.FC<QrEditModalProps> = (p) => {
               </div>
             )}
             {qrSendResult && (
-              <div className="dex-ui-muted" style={{ lineHeight: 1.5, borderTop: '1px solid var(--dex-gray-200)', paddingTop: 8 }}>
+              <div className="dex-ui-card dex-ui-card--soft dex-ui-muted" style={{ padding: '10px 14px', lineHeight: 1.5 }}>
                 {qrSendResult}
               </div>
             )}
@@ -239,7 +245,12 @@ export const QrEditModal: React.FC<QrEditModalProps> = (p) => {
               >
                 <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
                 {isDe ? 'Block neben dem QR-Code anpassen' : 'Customize the block next to the QR code'}
-                <span className="dex-ui-disclosure-count">2</span>
+                {/* v31.2: Der Zähler nennt, WIE VIELE der beiden Einstellungen
+                    vom Standard abweichen — eine feste „2" sagte nur, dass es
+                    zwei Felder gibt. Leer, wenn alles auf Standard steht. */}
+                {fineCount > 0 && (
+                  <span className="dex-ui-disclosure-count">{fineCount} {isDe ? 'angepasst' : 'customized'}</span>
+                )}
               </button>
               {fineOpen && (
                 <div className="dex-ui-disclosure-body">

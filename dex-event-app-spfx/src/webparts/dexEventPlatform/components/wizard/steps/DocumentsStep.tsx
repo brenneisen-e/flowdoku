@@ -129,18 +129,18 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
         )}
 
         {/* v31.2: Der Erklärtext versprach Drag & Drop, es gab aber nur den Datei-Dialog.
-            Die Zone nimmt jetzt beides und führt es durch denselben Pfad (addFiles). */}
+            Die Zone nimmt jetzt beides und führt es durch denselben Pfad (addFiles).
+            Gestrichelte Fläche und Hervorhebung beim Ziehen kommen aus dex-ui-dropzone
+            (+ is-over) — kein Inline-Ersatz mehr, damit alle Ablage-Zonen gleich aussehen. */}
         <label
-          className="dex-ui-empty"
-          style={{ display: 'block', cursor: 'pointer', padding: '22px 16px', transition: 'border-color 0.18s ease, background 0.18s ease',
-            borderColor: dragOver ? 'var(--dex-green, #86bc25)' : undefined, background: dragOver ? 'rgba(134,188,37,0.08)' : undefined }}
+          className={cx('dex-ui-dropzone', dragOver && 'is-over')}
           onDragOver={e => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
           onDrop={e => { e.preventDefault(); setDragOver(false); addFiles(e.dataTransfer.files); }}
         >
           <span className="dex-ui-empty-icon"><Download size={20} /></span>
           <div className="dex-ui-empty-title">{isDe ? 'Dateien hier ablegen' : 'Drop files here'}</div>
-          <div style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 6 }}>
             {isDe ? 'Mehrere auf einmal — per Drag & Drop oder Mehrfachauswahl im Datei-Dialog.' : 'Several at once — via drag & drop or multi-select in the file dialog.'}
           </div>
           <span className="btn btn-outline dex-ui-btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -186,10 +186,11 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
                 </>
               )} />
             </span>
+            {/* v31.2: Zwei sichtbare Zeilen — Beispiele und „Standard: aus" stehen im Tooltip. */}
             <span className="dex-ui-toggle-row-desc">
               {isDe
-                ? <>Dann sehen sie nach der Anmeldung in &bdquo;Meine Events&ldquo; einen Upload-Block mit deiner Beschriftung — z.B. für einen Reisekostenbeleg oder eine unterschriebene Einverständniserklärung. Die Datei landet an ihrer Teilnehmer-Zeile; du siehst sie im Organizer Center. Standard: aus.</>
-                : <>Then, after registering, they see an upload block in &bdquo;My Events&ldquo; with your label — e.g. for a travel-expense receipt or a signed consent form. The file attaches to their attendee row; you see it in the organizer center. Default: off.</>}
+                ? <>Dann sehen sie nach der Anmeldung in &bdquo;Meine Events&ldquo; einen Upload-Block mit deiner Beschriftung. Die Datei landet an ihrer Teilnehmer-Zeile; du siehst sie im Organizer Center.</>
+                : <>Then, after registering, they see an upload block in &bdquo;My Events&ldquo; with your label. The file attaches to their attendee row; you see it in the organizer center.</>}
             </span>
           </span>
         </label>

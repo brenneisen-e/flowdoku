@@ -318,6 +318,13 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                         Kacheln statt Schieberegler; die Handler sind dieselben
                         (Unbegrenzt = 0 Plätze + Warteliste aus, Begrenzt = 50 als
                         Startwert), nur gegen Klick auf die aktive Kachel geschützt. */}
+                    {/* v31.2 (Review): Abschnitts-Überschrift wie auf der Klammer,
+                        damit Plätze, Fristen und Sichtbarkeit gleichrangig lesen. */}
+                    <div className="dex-ui-section">
+                      <div className="dex-ui-section-title">
+                        <Users size={14} />
+                        {isDe ? 'Plätze — wie viele dürfen kommen?' : 'Seats — how many may come?'}
+                      </div>
                     <div className="dex-ui-card" style={{ marginBottom: 12 }}>
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <StepBadge n={seBothFilters ? 22 : 21} />
@@ -389,9 +396,15 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                           : <em>Note: <strong>Split capacity</strong> (two groups with separate seat counts) is currently main-event-only — sub-events use the simple total capacity.</em>}
                       </p>
                     </div>
+                    </div>{/* v31.2: Ende Abschnitt Plätze */}
 
                     {/* Deadlines: zwei DatePicker nebeneinander, gleicher Look
                         wie im Hauptevent. */}
+                    <div className="dex-ui-section">
+                      <div className="dex-ui-section-title">
+                        <Icon iconName="Clock" style={{ fontSize: 14 }} />
+                        {isDe ? 'Fristen — bis wann?' : 'Deadlines — until when?'}
+                      </div>
                     <div className="dex-ui-card" style={{ marginBottom: 12 }}>
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <StepBadge n={seBothFilters ? 21 : 20} />
@@ -537,6 +550,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                         </div>
                       </div>
                     </div>
+                    </div>{/* v31.2: Ende Abschnitt Fristen */}
 
                     {/* v15.6: Sichtbarkeits-Sektion analog Hauptevent. */}
                     <div className="dex-ui-section" style={{ marginTop: 22 }}>
@@ -678,6 +692,15 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                   als Overlay, das die Weiter-Knöpfe überdeckte), die sagt WARUM
                   es hier nicht gilt und mit einem Klick ins erste Sub-Event
                   führt, wo die Plätze tatsächlich gepflegt werden. */}
+              {/* v31.2 (Review): Plätze und Fristen bekommen dieselbe Abschnitts-
+                  Überschrift wie die Sichtbarkeit — drei gleichrangige Fragen,
+                  drei gleich aussehende Abschnitte. Der visHeader mit Badge
+                  bleibt in der Karte, weil Support auf die Nummer verweist. */}
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">
+                  <Users size={14} />
+                  {isDe ? 'Plätze — wie viele dürfen kommen?' : 'Seats — how many may come?'}
+                </div>
               {subEventsOnlyMode && subEvents.length > 0 ? (
                 <div className="dex-ui-callout dex-ui-callout--neutral" style={{ alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
                   <span className="dex-ui-callout-icon"><Users size={18} /></span>
@@ -929,7 +952,14 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                     >
                       <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
                       {isDe ? 'Texte & Reihenfolge auf der Anmeldeseite' : 'Texts & order on the registration page'}
-                      <span className="dex-ui-disclosure-count">{b2runStartblocks.length > 0 ? 6 : 5}</span>
+                      {/* v31.2 (Review): Statt der Feldzahl steht hier, ob etwas
+                          vom Standard abweicht — die Zahl sagte nur, wie viele
+                          Felder drin sind, nicht ob der Organizer sie braucht. */}
+                      <span className="dex-ui-disclosure-count">
+                        {(splitSectionTitle.trim() || splitDescA.trim() || splitDescB.trim() || splitHelpText.trim() || splitDisplayOrderReversed || durchstarterStartblock || funstarterStartblock)
+                          ? (isDe ? 'angepasst' : 'customized')
+                          : (isDe ? 'Standard' : 'default')}
+                      </span>
                     </button>
                     {splitMoreOpen && (
                       <div className="dex-ui-disclosure-body">
@@ -1242,6 +1272,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
               </div>{/* v15.6: close hauptGreyoutWrapperStyle div (Step 4) */}
                 </>
               )}{/* v28.76: Ende Klammer-Fall / Normalfall */}
+              </div>{/* v31.2: Ende Abschnitt Plätze */}
 
               {/* ===== v31.2: Abschnitt 2 — Fristen. „Anmeldung ab / bis" und
                   „Abmeldung bis" als eine Familie, direkt darunter die
@@ -1252,6 +1283,11 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                   none) — im Klammer-Modus liess sich der Abschnitt deshalb nicht
                   einmal aufklappen, obwohl die Klammer seit v28.20 eine EIGENE,
                   wirksame Anmeldefrist haben kann. */}
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">
+                  <Icon iconName="Clock" style={{ fontSize: 14 }} />
+                  {isDe ? 'Fristen — bis wann?' : 'Deadlines — until when?'}
+                </div>
               <div className="dex-ui-card" style={{ marginBottom: 12 }}>
                 {visHeader('vis_fristen', <StepBadge n={(locationFilter && audience) ? 22 : 21} />, <>{isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}<InfoTooltip text={isDe
                     ? 'Bis wann können sich Teilnehmer anmelden bzw. fristgerecht abmelden? Die Abmeldefrist ist die kommunizierte Deadline — abmelden geht danach standardmäßig weiterhin bis zum Event-Ende, die Organizer werden dann aber automatisch informiert. Über die Option unter den Fristen lässt sich die Selbst-Abmeldung nach der Frist auch komplett sperren. Beide Werte werden anhand des Event-Datums automatisch vorgeschlagen, du kannst sie jederzeit überschreiben.'
@@ -1862,6 +1898,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
               {fieldHasError('deregAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: 8, marginBottom: 0 }}>{t('create.error.deregAfterStart')}</p>}
               </>)}
               </div>
+              </div>{/* v31.2: Ende Abschnitt Fristen */}
 
               {/* ===== v31.2: Abschnitt 3 — Sichtbarkeit. Jetzt ZULETZT: erst
                   „wie viele", dann „bis wann", dann „wer sieht es". ===== */}

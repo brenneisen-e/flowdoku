@@ -270,6 +270,10 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
   const [currentFontPx, setCurrentFontPx] = React.useState<number | null>(null);
   // v18.22: freier Hex-Code für die Body-Textfarbe (Picker/Eingabe).
   const [bodyHexDraft, setBodyHexDraft] = React.useState('#000000');
+  // v31.2: Auszeichnung der aktuellen Auswahl (fett/kursiv/unterstrichen) —
+  // reine Anzeige für `is-active` auf den Toolbar-Knöpfen, wie in Word. Wird
+  // bei jeder Auswahl-Änderung im Editor und nach jedem Toolbar-Klick gelesen.
+  const [activeFmt, setActiveFmt] = React.useState<{ bold: boolean; italic: boolean; underline: boolean }>({ bold: false, italic: false, underline: false });
   // v30.51: Offener Link-Dialog samt eingefrorenem Ausgangszustand.
   const [linkState, setLinkState] = React.useState<null | {
     href: string;
@@ -342,8 +346,21 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     setCurrentFontPx(isNaN(px) ? null : px);
   };
 
+  // v31.2: Welche Auszeichnung am Cursor gilt — nur für die Optik der Toolbar.
+  // `queryCommandState` kann in alten Engines werfen, deshalb je Befehl gekapselt.
+  const detectActiveFmt = (): void => {
+    const sel = window.getSelection();
+    const el = editorRef.current;
+    if (!sel || sel.rangeCount === 0 || !el || !el.contains(sel.anchorNode)) {
+      setActiveFmt({ bold: false, italic: false, underline: false });
+      return;
+    }
+    const q = (cmd: string): boolean => { try { return document.queryCommandState(cmd); } catch { return false; } };
+    setActiveFmt({ bold: q('bold'), italic: q('italic'), underline: q('underline') });
+  };
+
   // Auswahl sichern UND Größen-Anzeige aktualisieren (mouseup/keyup im Editor).
-  const syncSelection = (): void => { saveSelection(); detectFontSize(); };
+  const syncSelection = (): void => { saveSelection(); detectFontSize(); detectActiveFmt(); };
 
   const restoreSelection = (): void => {
     const el = editorRef.current;
@@ -375,6 +392,8 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     restoreSelection();
     try { document.execCommand(cmd, false, arg); } catch { /* ignore */ }
     fireChange();
+    // v31.2: Nach „Fett" soll der Knopf sofort gedrückt aussehen.
+    detectActiveFmt();
   };
 
   // v18.39: nächstgelegenes <a> der aktuellen Auswahl finden (für „Link
@@ -700,10 +719,24 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
   );
   // Toolbar-Knopf: runder Iconknopf mit Hover; `onMouseDown` verhindert, dass
   // der Klick die Editor-Auswahl kollabiert (dann liefe „Fett" ins Leere).
-  const tb = (label: string, onClick: () => void, children: React.ReactNode): React.ReactElement => (
-    <button type="button" className="dex-ui-iconbtn" title={label} aria-label={label} onMouseDown={e => e.preventDefault()} onClick={onClick} style={{ width: 30, height: 30, borderRadius: 8, fontWeight: 700, fontSize: '0.85rem' }}>{children}</button>
+  // v31.2: `active` setzt `is-active` (gedrückt), wenn die Auswahl die
+  // Auszeichnung schon trägt; nur Schriftmaße bleiben inline, weil die Knöpfe
+  // Buchstaben statt Symbole zeigen.
+  const tb = (label: string, onClick: () => void, children: React.ReactNode, active?: boolean): React.ReactElement => (
+    <button
+      type="button"
+      className={cx('dex-ui-iconbtn', active && 'is-active')}
+      title={label}
+      aria-label={label}
+      aria-pressed={active === undefined ? undefined : active}
+      onMouseDown={e => e.preventDefault()}
+      onClick={onClick}
+      style={{ fontWeight: 700, fontSize: '0.85rem' }}
+    >{children}</button>
   );
-  const tbDivider = <span style={{ width: 1, height: 20, background: 'var(--dex-gray-200, #e8e8e8)', margin: '0 4px', flexShrink: 0 }} />;
+  // v31.2: Trenner zwischen den Toolbar-Gruppen — `dex-ui-divider` hochkant
+  // (die Klasse ist für die waagerechte Linie gebaut, daher Maße inline).
+  const tbDivider = <span className="dex-ui-divider" aria-hidden="true" style={{ width: 1, height: 20, margin: '0 4px', flexShrink: 0 }} />;
 
   const modeIcon = previewMode === 'outlook' ? <Calendar size={20} /> : previewMode === 'plain' ? <FileText size={20} /> : <Mail size={20} />;
   const modeLabel = previewMode === 'outlook' ? t('Outlook-Termin', 'Outlook appointment') : previewMode === 'plain' ? t('Anmeldeseite', 'Registration page') : t('Deloitte-Mail', 'Deloitte email');
@@ -1038,9 +1071,9 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                   border: '1px solid var(--dex-gray-200, #e8e8e8)', borderBottom: 'none',
                   borderRadius: '10px 10px 0 0', background: 'var(--dex-gray-50, #fafafa)',
                 }}>
-                  {tb(t('Fett', 'Bold'), () => exec('bold'), <strong>B</strong>)}
-                  {tb(t('Kursiv', 'Italic'), () => exec('italic'), <em>I</em>)}
-                  {tb(t('Unterstrichen', 'Underline'), () => exec('underline'), <span style={{ textDecoration: 'underline' }}>U</span>)}
+                  {tb(t('Fett', 'Bold'), () => exec('bold'), <strong>B</strong>, activeFmt.bold)}
+                  {tb(t('Kursiv', 'Italic'), () => exec('italic'), <em>I</em>, activeFmt.italic)}
+                  {tb(t('Unterstrichen', 'Underline'), () => exec('underline'), <span style={{ textDecoration: 'underline' }}>U</span>, activeFmt.underline)}
                   {tbDivider}
                   {/* v18.20: kontrolliertes Größen-Dropdown — zeigt (wie in Word)
                       die Größe des aktuell markierten Texts und setzt sie beim
@@ -1197,11 +1230,9 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
 
         {/* v31.2: Fuß wie in `Modal` — genau ein Primärknopf (die Aktion des
             Aufrufers), links daneben Abbrechen bzw. „Fertig", wenn es nichts
-            zu senden gibt. */}
-        <div className="dex-ui-modal-foot dex-ui-modal-foot--split" style={{ padding: '12px 20px 14px', marginTop: 0, flexShrink: 0, borderTop: '1px solid var(--dex-gray-200, #e8e8e8)' }}>
-          <span className="dex-ui-muted dex-ui-modal-foot-left" style={{ fontSize: '0.76rem' }}>
-            {t('Die Vorschau rechts zeigt jede Änderung sofort.', 'The preview on the right reflects every change instantly.')}
-          </span>
+            zu senden gibt. Der Hinweis „Vorschau zeigt jede Änderung sofort"
+            stand hier doppelt — der Untertitel im Kopf sagt dasselbe. */}
+        <div className="dex-ui-modal-foot" style={{ padding: '12px 20px 14px', marginTop: 0, flexShrink: 0 }}>
           <button type="button" className="btn btn-secondary" onClick={onClose}>{extraAction ? t('Abbrechen', 'Cancel') : t('Fertig', 'Done')}</button>
           {extraAction && (
             <button

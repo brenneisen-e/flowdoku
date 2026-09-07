@@ -151,8 +151,10 @@ interface PersonPickerProps {
  * Keine Hooks — der Timer kommt vom Aufrufer, wie vorher. */
 const PersonPicker: React.FC<PersonPickerProps> = ({ isDe, value, setValue, timerRef, results, setResults, includeIntl, setIncludeIntl, searchUsers, placeholder, inputStyle, searching, isAdded, onPick }) => (
   <div style={{ position: 'relative' }}>
+    {/* v31.2: Suchfeld als dex-ui-input in voller Breite — es ist eine
+        Personensuche in einer Karte, kein 48-px-Hauptfeld des Formulars. */}
     <input
-      className="form-input"
+      className="dex-ui-input"
       value={value}
       onChange={e => {
         const val = e.target.value;
@@ -602,7 +604,7 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
                       includeIntl={qrScannerIncludeIntl}
                       setIncludeIntl={setQrScannerIncludeIntl}
                       searchUsers={searchUsers}
-                      placeholder={t('create.qrscanners.placeholder') || 'Name oder E-Mail eingeben (alle Deloitte-User)'}
+                      placeholder={t('create.qrscanners.placeholder') || (isDe ? 'Name oder E-Mail eingeben (alle Deloitte-User)' : 'Type name or email (any Deloitte user)')}
                       isAdded={u => qrScannerEmails.indexOf(u.email) >= 0}
                       onPick={u => {
                         if (!u.email) return;
@@ -815,7 +817,9 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
                   onClick={() => setContactExpanded(v => !v)}
                   aria-expanded={contactExpanded}
                 >
-                  <span className="dex-ui-disclosure-chevron"><Icon iconName="ChevronRight" style={{ fontSize: 12 }} /></span>
+                  {/* v31.2: ChevronDown ohne eigene Drehung — die Klasse dreht ihn
+                      geöffnet um 180°; ein ChevronRight zeigte dann nach links. */}
+                  <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
                   {isDe ? 'Zusätzlichen Ansprechpartner ohne App-Zugang angeben' : 'Add an extra contact without app access'}
                   <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>
                   {!!(contactName.trim() || contactEmail.trim() || contactInfo.trim()) && (
@@ -866,9 +870,12 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
                     {isDe ? 'Wie und wann ist die Person erreichbar?' : 'How and when can this person be reached?'}
                     <span className="dex-ui-label-optional">{isDe ? '(Freitext)' : '(free text)'}</span>
                   </label>
+                  {/* v31.2: dex-ui-textarea in voller Breite statt form-input —
+                      die Klasse ist für Eingabefelder gedacht und ließ das
+                      Textfeld schmal in der Zeile stehen. */}
                   <textarea
                     id="dex-details-contact-info"
-                    className="form-input"
+                    className="dex-ui-textarea"
                     value={contactInfo}
                     onChange={e => setContactInfo(e.target.value)}
                     rows={3}
@@ -937,11 +944,16 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
                   onClick={() => setMoreOpen(v => !v)}
                   aria-expanded={moreOpen}
                 >
-                  <span className="dex-ui-disclosure-chevron"><Icon iconName="ChevronRight" style={{ fontSize: 12 }} /></span>
+                  {/* v31.2: ChevronDown ohne eigene Drehung (s. oben). Der Zähler
+                      steht immer da — „Standard" sagt, dass sich das Öffnen sparen
+                      kann, wer nichts geändert hat. */}
+                  <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
                   {isDe ? 'Weitere Einstellungen — wie erscheinen die Organizer auf der Anmeldeseite?' : 'More settings — how do organizers appear on the registration page?'}
-                  {changedMore > 0 && (
-                    <span className="dex-ui-disclosure-count">{isDe ? `${changedMore} geändert` : `${changedMore} changed`}</span>
-                  )}
+                  <span className="dex-ui-disclosure-count">
+                    {changedMore > 0
+                      ? (isDe ? `${changedMore} angepasst` : `${changedMore} customized`)
+                      : (isDe ? 'Standard' : 'Default')}
+                  </span>
                 </button>
                 {moreOpen && (
                   <div className="dex-ui-disclosure-body dex-ui-stack">

@@ -9,7 +9,9 @@ import { isExternalEmail } from '../../../utils/deloitteDomain';
 // Dialog soll aussehen wie alle anderen Modale, und Inline-Styles können
 // kein :hover (CLAUDE.md).
 import { cx } from '../../dexUi';
-import { AlertCircle, ChevronRight, Pencil, QrCode } from '../../Icons';
+// v31.2: ChevronDown, nicht ChevronRight — die Klasse dex-ui-disclosure dreht
+// den Chevron geöffnet um 180°; ein Rechts-Pfeil zeigte dann nach links.
+import { AlertCircle, ChevronDown, Pencil, QrCode } from '../../Icons';
 import { InfoTooltip } from '../../InfoTooltip';
 import { DeloitteEvent } from '../../../types';
 import { SPRegistration } from '../../../services/EventService';
@@ -193,7 +195,7 @@ export const QrSendModal: React.FC<QrSendModalProps> = (p) => {
                 return (
                   <>
                     <button type="button" className={cx('dex-ui-disclosure', qrSubMailsOpen && 'is-open')} aria-expanded={qrSubMailsOpen} onClick={() => setQrSubMailsOpen(v => !v)}>
-                      <span className="dex-ui-disclosure-chevron"><ChevronRight size={16} /></span>
+                      <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
                       {isDe ? `Mail-Texte der ${term} einzeln anpassen` : `Customize the ${term} emails individually`}
                       {/* Dieselbe grüne Pill wie an den Terminen darunter — ein Zeichen für dasselbe. */}
                       {customized > 0 && <span className="dex-ui-pill dex-ui-pill--green" style={{ marginLeft: 'auto' }}>{isDe ? `${customized} angepasst` : `${customized} customized`}</span>}
@@ -232,7 +234,7 @@ export const QrSendModal: React.FC<QrSendModalProps> = (p) => {
               })()}
 
               <button type="button" className={cx('dex-ui-disclosure', qrHelpOpen && 'is-open')} aria-expanded={qrHelpOpen} onClick={() => setQrHelpOpen(v => !v)}>
-                <span className="dex-ui-disclosure-chevron"><ChevronRight size={16} /></span>
+                <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
                 {isDe ? 'Wie lange dauert der Versand?' : 'How long does sending take?'}
               </button>
               {qrHelpOpen && (

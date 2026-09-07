@@ -106,14 +106,15 @@ const Choice: React.FC<{
 );
 
 /** v31.2: Aufklapper-Knopf (Leitfaden 1.6 — Selten Gebrauchtes ist zu).
- *  Der Pfeil dreht inline: zu = nach rechts, offen = nach unten. Die
- *  Klassen-Drehung (90°) setzt einen Rechts-Pfeil voraus, den Icons.tsx
- *  nicht hat — ChevronDown um 90° gedreht zeigte nach links. */
+ *  Der Pfeil ist im Ruhezustand ChevronDown und dreht geöffnet um 180° nach
+ *  oben — das macht `dex-ui-disclosure.is-open` seit dem Nachzug; eine
+ *  Inline-Drehung hier würde die Klasse überstimmen und den Pfeil doppelt
+ *  drehen. */
 const Disclosure: React.FC<{
   open: boolean; onToggle: () => void; label: React.ReactNode; count?: number | string;
 }> = ({ open, onToggle, label, count }) => (
   <button type="button" className={cx('dex-ui-disclosure', open && 'is-open')} aria-expanded={open} onClick={onToggle}>
-    <span className="dex-ui-disclosure-chevron" style={{ transform: open ? 'none' : 'rotate(-90deg)' }}><ChevronDown size={16} /></span>
+    <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
     {label}
     {count !== undefined && <span className="dex-ui-disclosure-count">{count}</span>}
   </button>
@@ -1010,9 +1011,12 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                               {/* v29.22: zum Löschen vorgemerkte Termine —
                                   orange, mit Rückholknopf. */}
                               {removedRows.map(({ se }) => (
+                                // v31.2: Auch die vorgemerkte Zeile hat eine Aktion
+                                // (Wiederherstellen) und hebt sich deshalb wie die
+                                // aktiven Termin-Karten beim Überfahren.
                                 <div
                                   key={se.id}
-                                  className="dex-ui-card"
+                                  className="dex-ui-card dex-ui-card--hover"
                                   style={{
                                     display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 14px',
                                     background: 'rgba(237,139,0,0.07)',

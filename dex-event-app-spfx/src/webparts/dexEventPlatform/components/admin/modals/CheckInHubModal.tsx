@@ -33,8 +33,9 @@ const HubChoice: React.FC<{ icon: React.ReactNode; title: string; desc: string; 
   <button type="button" className="dex-ui-choice" onClick={onClick} disabled={disabled}>
     <span className="dex-ui-choice-icon" aria-hidden="true">{icon}</span>
     <span className="dex-ui-choice-body">
-      <span className="dex-ui-choice-title" style={{ display: 'block' }}>{title}</span>
-      <span className="dex-ui-choice-desc" style={{ display: 'block' }}>{desc}</span>
+      {/* v31.2: display:block kommt seit dem Nachzug aus der Klasse selbst — kein Inline-Stil mehr nötig. */}
+      <span className="dex-ui-choice-title">{title}</span>
+      <span className="dex-ui-choice-desc">{desc}</span>
     </span>
   </button>
 );
@@ -57,11 +58,14 @@ export const CheckInHubModal: React.FC<CheckInHubModalProps> = (p) => {
             ? (isDe ? 'Was möchtest du tun?' : 'What would you like to do?')
             : (isDe ? 'Wer scannt die Codes am Eingang?' : 'Who scans the codes at the entrance?')}
           // v31.2: „Zurück" steht im Fuß statt als loser Textknopf unter den
-          // Kacheln — so ist die Navigation von den Aktionen getrennt.
+          // Kacheln — so ist die Navigation von den Aktionen getrennt. Links
+          // außen über `dex-ui-modal-foot-left` (Nebenaktion), nicht per Inline-Stil.
           footer={!isChoose && (
-            <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" style={{ marginRight: 'auto' }} onClick={() => setCheckInHubStep('choose')}>
-              <ChevronLeft size={16} />{isDe ? 'Zurück' : 'Back'}
-            </button>
+            <span className="dex-ui-modal-foot-left">
+              <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" onClick={() => setCheckInHubStep('choose')}>
+                <ChevronLeft size={16} />{isDe ? 'Zurück' : 'Back'}
+              </button>
+            </span>
           )}
         >
           {/* key: beim Stufenwechsel blendet der Inhalt neu ein, statt zu springen. */}
