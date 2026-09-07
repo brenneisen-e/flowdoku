@@ -18,6 +18,7 @@ import { CustomFieldInput } from '../../wizard/customFieldInput';
 import { ImgView, SubEventDraft } from '../../wizard/wizardTypes';
 import { EmailOverrideEntry } from '../../wizard/emailOverrideEntry';
 import { outlookDefaultBodyTemplate, outlookOrganizerFallback } from '../../../utils/outlookDefaultBody';
+import { buildProgramHtml, applyProgramPlaceholder } from '../../../utils/programPlaceholder';
 
 export interface WizardSubmitCtx {
   activeFrom: string;
@@ -416,9 +417,10 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
       // („Standardtext laden", Vorschau bei leerem Body) und in der
       // Vorschau-Karte; replacePlaceholders escapet Titel und Namen.
       const defaultOutlookBody = replacePlaceholders(outlookDefaultBodyTemplate(effEmailLanguage), { ...outlookVars, Organizer: orgNames || outlookOrganizerFallback(effEmailLanguage) });
-      const resolvedBody = effOutlookBody
+      // v30.95: {{Programm}} roh NACH dem Escapen (utils/programPlaceholder).
+      const resolvedBody = applyProgramPlaceholder(effOutlookBody
         ? replacePlaceholders(effOutlookBody, outlookVars)
-        : defaultOutlookBody;
+        : defaultOutlookBody, buildProgramHtml(agenda, effEmailLanguage));
       const resolvedOlHeading = effOutlookHeading ? replacePlaceholders(effOutlookHeading, outlookVars) : title;
       // v27.5: Default-Unter-Überschrift = Ort (nicht Datum).
       const resolvedOlSub = effOutlookSubheading ? replacePlaceholders(effOutlookSubheading, outlookVars) : (location || undefined);
@@ -1489,7 +1491,8 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
           // v9.8: gleicher Default-Body wie im Update-Pfad — inkl. Abmelde-Hinweis
           // mit Link auf die App ("Meine Events"-Tab). v30.94: aus utils/outlookDefaultBody.
           const defaultBody = replacePlaceholders(outlookDefaultBodyTemplate(effEmailLanguage), { ...vars, Organizer: orgNames || outlookOrganizerFallback(effEmailLanguage) });
-          const resolvedBody = effOutlookBody ? replacePlaceholders(effOutlookBody, vars) : defaultBody;
+          // v30.95: {{Programm}} roh NACH dem Escapen (utils/programPlaceholder).
+          const resolvedBody = applyProgramPlaceholder(effOutlookBody ? replacePlaceholders(effOutlookBody, vars) : defaultBody, buildProgramHtml(agenda, effEmailLanguage));
           const resolvedHeading = effOutlookHeading ? replacePlaceholders(effOutlookHeading, vars) : title;
           // v27.5: Default-Unter-Überschrift = Ort (nicht Datum).
           const resolvedSub = effOutlookSubheading ? replacePlaceholders(effOutlookSubheading, vars) : (location || undefined);

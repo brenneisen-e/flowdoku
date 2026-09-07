@@ -37,6 +37,7 @@
 import { EventService, SPRegistration } from '../../../services/EventService';
 import { applyEventTemplateOverride, formatOrganizerList } from '../../../context/EventContext';
 import { buildEmailFromTemplate, promotionEmail } from '../../../services/EmailTemplates';
+import { buildProgramHtml } from '../../../utils/programPlaceholder';
 import { withParentTitleSubject } from '../../../utils/mailSubject';
 import { shortSubEventTitle } from '../../../utils/subEventTitle';
 import { buildPromotionPlan, promotionPlanLines, isSplitCapacityOf, PromotionPlan } from '../../../utils/promotionPlan';
@@ -105,6 +106,7 @@ export async function notifyPromotedFor(
         Organizer: formatOrganizerList(ev.organizers, lang),
         AppUrl: `${svc.siteUrl}/SitePages/DEX.aspx?env=WebView`,
         WaitlistPosition: '',
+        Programm: buildProgramHtml(ev.agenda, lang, ev.agendaTermPlural),
       };
       let emailData: { subject: string; body: string };
       const spTplRaw = await svc.getEmailTemplate('Nachruecken', lang).catch(() => null);

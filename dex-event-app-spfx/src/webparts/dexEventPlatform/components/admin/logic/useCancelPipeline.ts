@@ -9,6 +9,7 @@ import { DeloitteEvent } from '../../../types';
 import { EventService, SPRegistration } from '../../../services/EventService';
 import { applyEventTemplateOverride, formatOrganizerList } from '../../../context/EventContext';
 import { buildEmailFromTemplate, cancellationEmail, promotionEmail } from '../../../services/EmailTemplates';
+import { buildProgramHtml } from '../../../utils/programPlaceholder';
 import { invalidateInactiveAccountCache } from '../../../utils/accountCheckCache';
 import { isEventOver } from '../../../utils/eventFormat';
 import { withParentTitleSubject } from '../../../utils/mailSubject';
@@ -72,6 +73,7 @@ export function useCancelPipeline(ctx: UseCancelPipelineCtx): UseCancelPipelineR
         Name: (reg.Vorname || '').trim() || fullName,
         EventTitle: ev.title,
         AppUrl: `${eventServiceRef.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+        Programm: buildProgramHtml(ev.agenda, lang, ev.agendaTermPlural),
       });
     } catch { return fallback; }
   };
@@ -134,6 +136,7 @@ export function useCancelPipeline(ctx: UseCancelPipelineCtx): UseCancelPipelineR
                 Organizer: formatOrganizerList(selectedEvent.organizers, lang),
                 AppUrl: `${eventServiceRef.siteUrl}/SitePages/DEX.aspx?env=WebView`,
                 WaitlistPosition: '',
+                Programm: buildProgramHtml(selectedEvent.agenda, lang, selectedEvent.agendaTermPlural),
               };
               let emailData: { subject: string; body: string };
               const spTplRaw = await eventServiceRef.getEmailTemplate('Nachruecken', lang).catch(() => null);

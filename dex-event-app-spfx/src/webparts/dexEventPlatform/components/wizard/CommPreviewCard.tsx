@@ -20,6 +20,8 @@ import * as React from 'react';
 import { buildEmailFromTemplate, buildOutlookBody, replacePlaceholders, getCachedLogoBase64, getCachedOrbBase64 } from '../../services/EmailTemplates';
 import { formatOrganizerList } from '../../context/eventTextHelpers';
 import { outlookDefaultBodyTemplate } from '../../utils/outlookDefaultBody';
+import { buildProgramHtml, applyProgramPlaceholder } from '../../utils/programPlaceholder';
+import { AgendaItem } from '../../types';
 import { useCurrentUser } from '../../context/UserContext';
 import { EventService } from '../../services/EventService';
 import { EmailOverrideEntry } from './emailOverrideEntry';
@@ -46,6 +48,8 @@ export interface CommPreviewCardProps {
   disableOutlook: boolean;
   /** Id des bearbeiteten Events; leer beim Anlegen. */
   eventId: string;
+  /** v30.95: Programmpunkte des offenen Reiters für {{Programm}}. */
+  agenda: AgendaItem[];
 }
 
 export const CommPreviewCard: React.FC<CommPreviewCardProps> = (p) => {
@@ -75,6 +79,8 @@ export const CommPreviewCard: React.FC<CommPreviewCardProps> = (p) => {
     StartDate: fmt(p.startDate, true),
     EndDate: fmt(p.endDate, true),
     EventDate: fmt(p.startDate, true),
+    // v30.95: Programm-Tabelle (buildEmailFromTemplate setzt sie roh ein).
+    Programm: buildProgramHtml(p.agenda, p.emailLanguage),
   };
 
   const mail = React.useMemo((): { subject: string; html: string } => {
@@ -110,7 +116,7 @@ export const CommPreviewCard: React.FC<CommPreviewCardProps> = (p) => {
     const heading = replacePlaceholders(p.outlookHeading || '', vars) || vars.EventTitle;
     const sub = replacePlaceholders(p.outlookSubheading || '', vars) || vars.Location;
     const eff = p.effectiveHeaderImage('outlook', p.outlookLogoPreview);
-    return buildOutlookBody(heading, replacePlaceholders(bodyRaw, vars), sub, p.headerLayoutFor(p.outlookLogoPreview), undefined, isDe)
+    return buildOutlookBody(heading, applyProgramPlaceholder(replacePlaceholders(bodyRaw, vars), vars.Programm), sub, p.headerLayoutFor(p.outlookLogoPreview), undefined, isDe)
       .replace(/\{\{LOGO_URL\}\}/g, getCachedLogoBase64() || '')
       .replace(/\{\{ORB_URL\}\}/g, eff.src || getCachedOrbBase64() || '');
     // eslint-disable-next-line react-hooks/exhaustive-deps

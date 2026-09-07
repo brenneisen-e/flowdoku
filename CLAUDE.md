@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.94.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.95.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -807,10 +807,15 @@ dazu erledigt. Offen und **noch nicht begonnen**:
    anderes als die Mail.
 
 3. **Programmpunkte** — Stufen 1–4 sind ausgeliefert (v30.86, v30.91,
-   v30.92, v30.93; `docs/konzept-programmpunkte.md`). Offen: Self-Check-in
-   je Punkt (Live-QR je Programmpunkt; die Self-Check-in-Seite ist
-   event-bezogen), `{{Programm}}`-Platzhalter für Mail/Outlook,
-   Teilnahmebescheinigung. Vor dem Einsatz am 20er-Event: einmal an einer
+   v30.92, v30.93; `docs/konzept-programmpunkte.md`), dazu Cluster (v30.94),
+   `{{Programm}}` und Self-Check-in je Punkt (v30.95). Offen:
+   Teilnahmebescheinigung, Programmpunkte unter Kalender-Tagen. Zum
+   Platzhalter: Er ist ein HTML-Block (RAW_HTML_KEYS in
+   `buildEmailFromTemplate`; für Outlook `applyProgramPlaceholder` NACH
+   `replacePlaceholders`), und der gebackene Block steht zwischen Markern,
+   die `reinsertProgramPlaceholder` beim Laden zurückverwandelt — sonst
+   friert das Programm im Termin ein (dieselbe Roundtrip-Falle wie
+   `{{Organizer}}`, v30.74). Vor dem Einsatz am 20er-Event: einmal an einer
    Kopie durchspielen — die Aktion ist dafür gebaut (Test-Event, altes Event
    bleibt). Anwesenheit liegt in `AgendaCheckIns` je Teilnehmerzeile;
    Bestandslisten brauchen einmal „Spalten fixen".

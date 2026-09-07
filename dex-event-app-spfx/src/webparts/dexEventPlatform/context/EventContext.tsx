@@ -14,6 +14,7 @@ import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
 import { EventService, SPEvent, SPRegistration, ReseedSummary } from '../services/EventService';
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
+import { buildProgramHtml } from '../utils/programPlaceholder';
 import { buildHashDeepLink } from '../utils/deepLink';
 import { isEventOver } from '../utils/eventFormat';
 import { isExternalEmail } from '../utils/deloitteDomain';
@@ -1090,7 +1091,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       const posText = waitlistPosition > 0 ? String(waitlistPosition) : '';
       // {{Name}} in E-Mail-Anreden: nur Vorname (firstNameToUse ist bei Self-Reg
       // aus dem displayName gesplittet, bei "Für andere registrieren" explizit gesetzt).
-      const vars = { Name: firstNameToUse, EventTitle: event.title, Organizer: formatOrganizerList(event.organizers, lang), AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, WaitlistPosition: posText };
+      const vars = { Name: firstNameToUse, EventTitle: event.title, Organizer: formatOrganizerList(event.organizers, lang), AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, WaitlistPosition: posText, Programm: buildProgramHtml(event.agenda, lang, event.agendaTermPlural) };
       // v26.47: Externe Dritte (kein Deloitte-Postfach), die stellvertretend
       // angemeldet wurden — der Mail-Flow kann externe Adressen NICHT erreichen.
       // Deshalb: (1) Registrierung als „Datenschutzrückmeldung offen" markieren
@@ -1801,6 +1802,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         Organizer: formatOrganizerList(event.organizers, lang),
         AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
         WaitlistPosition: '',
+        Programm: buildProgramHtml(event.agenda, lang, event.agendaTermPlural),
       };
       let emailData: { subject: string; body: string };
       const spTemplateRaw = await eventService.getEmailTemplate(templateType, lang).catch(() => null);
@@ -2097,6 +2099,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       Organizer: formatOrganizerList(event.organizers, lang),
       AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
       WaitlistPosition: '',
+      Programm: buildProgramHtml(event.agenda, lang, event.agendaTermPlural),
     };
     let emailData: { subject: string; body: string };
     const spTplRaw = await eventService.getEmailTemplate(templateType, lang).catch(() => null);
@@ -2563,6 +2566,24 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       const eventTitle = sp.Title;
       const eventStart = sp.StartDate;
 
+      // v30.95: Programmpunkt aus dem Link auflösen (docs/konzept-programmpunkte.md,
+      // 2.2). Nur bei Events im Programmpunkte-Modus; ein Link mit unbekanntem
+      // Punkt (Programm geändert, alter Aushang) ist 'not-found' — nicht
+      // stillschweigend ein Event-Check-in, den niemand wollte.
+      let agendaItem: { id: string; title: string } | null = null;
+      let agendaTerm: string | undefined;
+      if (params.agendaItemId) {
+        let ov: Record<string, unknown> = {};
+        try { ov = JSON.parse(sp.EmailTemplateOverrides || '{}') || {}; } catch { ov = {}; }
+        const term = ov._agendaTerm as { singular?: string } | undefined;
+        agendaTerm = (term && term.singular) || undefined;
+        let items: Array<{ id: string; title: string }> = [];
+        try { items = JSON.parse(sp.Agenda || '[]') || []; } catch { items = []; }
+        const hit = ov._agendaCheckIn ? items.find(a => a && a.id === params.agendaItemId) : undefined;
+        if (!hit) return { status: 'not-found', eventTitle, eventStart, agendaTerm };
+        agendaItem = { id: hit.id, title: hit.title || '' };
+      }
+
       // 2) Self-Check-in muss aktiviert sein.
       if (!sp.SelfCheckInEnabled) {
         return { status: 'disabled', eventTitle, eventStart };
@@ -2607,9 +2628,18 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail, () => { regReadFailed = true; });
       if (regReadFailed) return { status: 'error', eventTitle, eventStart };
       if (!myReg) return { status: 'not-registered', eventTitle, eventStart };
-      if (myReg.Status === 'Eingecheckt') return { status: 'already', eventTitle, eventStart };
       if (myReg.Status === 'Warteliste') return { status: 'on-waitlist', eventTitle, eventStart };
       if (myReg.Status === 'Abgemeldet') return { status: 'not-registered', eventTitle, eventStart };
+
+      // 6a) v30.95: Programmpunkt — nur diesen Punkt setzen, Status bleibt
+      // (Nutzer-Entscheidung 07.09.2026). Idempotent: zweiter Scan = 'already'.
+      if (agendaItem) {
+        const r = await eventService.checkInAgendaItem(subsiteUrl, myReg.Id, agendaItem.id);
+        const base = { eventTitle, eventStart, agendaItemTitle: agendaItem.title, agendaTerm };
+        if (!r.ok) return { status: 'error', ...base };
+        return { status: r.already ? 'already' : 'success', ...base };
+      }
+      if (myReg.Status === 'Eingecheckt') return { status: 'already', eventTitle, eventStart };
 
       // 6) Einchecken (eigener Eintrag — Item-Level-Security erlaubt das Schreiben).
       const ok = await eventService.checkInParticipant(subsiteUrl, myReg.Id);

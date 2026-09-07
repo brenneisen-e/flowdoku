@@ -13,6 +13,7 @@ import { commSharedOf } from '../../../utils/bundledComm';
 import { BundledComm, bundledCommOf } from '../../../utils/bundledComm';
 import { CustomFieldInput } from '../../wizard/customFieldInput';
 import { reinsertOrganizerPlaceholder } from '../../wizard/wizardHelpers';
+import { reinsertProgramPlaceholder } from '../../../utils/programPlaceholder';
 import { parseOutlookHeadings, stripOutlookWrapper } from '../../../services/EmailTemplates';
 
 export interface UseWizardEventFieldStateCtx {
@@ -309,7 +310,8 @@ export function useWizardEventFieldState(ctx: UseWizardEventFieldStateCtx) {
       ...(typeof f.maxNights === 'number' && f.maxNights > 0 ? { maxNights: f.maxNights } : {}),
     })) : []
   );
-  const [outlookBody, setOutlookBody] = React.useState(editEvent ? reinsertOrganizerPlaceholder(stripOutlookWrapper(editEvent.outlookBody || ''), editEvent.organizers || []) : '');
+  // v30.95: gebackene Programm-Tabelle wieder zu {{Programm}} (Roundtrip, s. utils/programPlaceholder).
+  const [outlookBody, setOutlookBody] = React.useState(editEvent ? reinsertProgramPlaceholder(reinsertOrganizerPlaceholder(stripOutlookWrapper(editEvent.outlookBody || ''), editEvent.organizers || [])) : '');
   // Outlook-Termin-Header: beide Überschriften sind pro Event editierbar.
   // Default: eventTitle + formatiertes Startdatum. Parsed aus bestehendem
   // OutlookBody, falls der User sie schon angepasst hat.

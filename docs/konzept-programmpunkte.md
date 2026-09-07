@@ -256,7 +256,10 @@ Kopie jederzeit verworfen und wiederholt werden.
 | 2 | Check-in je Programmpunkt (Scanner, Teilnehmer-ID, Name), Punkt-Wahl mit Vorschlag „läuft gerade", Zähler je Punkt, Doppel-Scan-Meldung; Spalte `AgendaCheckIns` (neue Listen + „Spalten fixen"); Haken in Meine Events | **v30.91 — ausgeliefert** (offen: Self-Check-in/Live-QR je Punkt) |
 | 3 | Abschnitt „Anwesenheit je Programmpunkt" im Organizer Center (Matrix Person × Punkt, „nach Punkt"), Excel mit zwei Blättern, manuelles Nachtragen/Zurücknehmen mit Audit | **v30.92 — ausgeliefert** |
 | 4 | „Als neues Event mit Programmpunkten kopieren" (Abschnitt 5) — Prüfen, neues Test-Event, stille Anmeldungen, Check-ins → Anwesenheit, optional altes Event schließen | **v30.93 — ausgeliefert** |
-| 5 (später) | `{{Programm}}`-Platzhalter für Mail/Outlook, Teilnahmebescheinigung, Programmpunkte unter Kalender-Tagen | offen |
+| 5a | Cluster („Tag 1", frei benennbar) statt Karten-Wand im Editor, deutsches Datums-/Zeitformat, kompakte Anwesenheits-Sicht — `AgendaItem.cluster`, `utils/agendaGroups`, `components/wizard/AgendaEditor.tsx` | ausgeliefert (v30.94) |
+| 5b | `{{Programm}}`-Platzhalter für Mail und Outlook (`utils/programPlaceholder`, Tabelle nach Clustern, Roundtrip über Marker) | ausgeliefert (v30.95) |
+| 5c | Self-Check-in je Programmpunkt: Live-QR-Anzeige mit Punkt-Auswahl (`&item=`), `selfCheckIn` setzt nur `AgendaCheckIns` | ausgeliefert (v30.95) |
+| 5d | Teilnahmebescheinigung (PDF mit besuchten Punkten), Programmpunkte unter Kalender-Tagen | offen |
 
 Stufen 2 bis 4 sind je ein Release; Stufe 4 braucht einen Testlauf an einer
 Kopie des 20er-Events, bevor sie am echten läuft — was mit dem Kopier-Ansatz

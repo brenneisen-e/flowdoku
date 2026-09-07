@@ -2817,6 +2817,7 @@ export default function EventCreationPage(): React.ReactElement {
     updateSubEventCustomField, useSplitCapacities,
   };
   const communicationStepProps = {
+    agenda, // v30.95: {{Programm}} in der Vorschau-Karte
     activeCommTabIdx, applyCommToAllSubEvents, applyCommTopicToAllSubEvents, applyEventPhotoToLogo, autoDeregisterOnDecline, bundledComm, commShared, childTermPlural,
     flushActiveCommTabToState, resolveTopLevelCommState,
     commToggleRow, confirmDialog, disableCancellationEmail, disableEmails, disableOutlook,

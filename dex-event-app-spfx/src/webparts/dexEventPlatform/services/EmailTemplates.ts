@@ -363,7 +363,8 @@ export function buildEmailFromTemplate(
   // keine Nutzereingabe) — deshalb duerfen sie roh gesetzt werden. Dasselbe
   // Muster wie `{{OrganizerHtml}}` direkt darunter: erst escapen, was Text ist,
   // dann die HTML-Bloecke einsetzen.
-  const RAW_HTML_KEYS = ['NewLeadBlock', 'WaitlistPositionBlock'];
+  // v30.95: `Programm` (utils/programPlaceholder) ist der dritte HTML-Block.
+  const RAW_HTML_KEYS = ['NewLeadBlock', 'WaitlistPositionBlock', 'Programm'];
   const textVars: Record<string, string> = {};
   const htmlVars: Record<string, string> = {};
   for (const [k, v] of Object.entries(vars)) {

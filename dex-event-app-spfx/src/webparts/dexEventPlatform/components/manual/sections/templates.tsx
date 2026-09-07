@@ -47,6 +47,7 @@ export function templatesSection(locale: 'de' | 'en'): ManualSection {
                   <li><code>{'{{OrganizerHtml}}'}</code> — {isDe ? 'Liste der Organizer-Namen, sprachsensitiv formatiert (Namen fett)' : 'list of organizer names, language-aware formatting (names in bold)'}</li>
                   <li><code>{'{{AppUrl}}'}</code> — {isDe ? 'Link zurück in die App' : 'link back to the app'}</li>
                   <li><code>{'{{WaitlistPosition}}'}</code> — {isDe ? 'nur in Warteliste-Mails: aktuelle Position' : 'waitlist mails only: current position'}</li>
+                  <li><code>{'{{Programm}}'}</code> — {isDe ? 'das Programm des Events als Tabelle (Cluster, Zeit, Titel, Raum) — auch im Outlook-Termin; ohne Programmpunkte verschwindet der Platzhalter' : 'the event programme as a table (cluster, time, title, room) — also in the Outlook invite; disappears when there are no items'}</li>
                 </ul>
                 <p style={{ margin: 0 }}>
                   {isDe

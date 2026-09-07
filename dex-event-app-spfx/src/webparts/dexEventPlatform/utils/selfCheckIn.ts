@@ -86,22 +86,30 @@ export function appPageBaseUrl(): string {
   return window.location.origin + window.location.pathname;
 }
 
+/** v30.95: Programmpunkt-Parameter (`&item=<agendaItemId>`). Steht er im Link,
+ *  setzt der Self-Check-in NUR die Anwesenheit an diesem Punkt (AgendaCheckIns),
+ *  nicht den Event-Status — Konzept docs/konzept-programmpunkte.md, 2.2. */
+function itemParam(agendaItemId?: string): string {
+  return agendaItemId ? `&item=${encodeURIComponent(agendaItemId)}` : '';
+}
+
 /** Statischer Check-in-Link für das druckbare PDF. */
-export function buildStaticCheckInUrl(token: string): string {
-  return `${appPageBaseUrl()}?action=selfcheckin&token=${encodeURIComponent(token)}`;
+export function buildStaticCheckInUrl(token: string, agendaItemId?: string): string {
+  return `${appPageBaseUrl()}?action=selfcheckin&token=${encodeURIComponent(token)}${itemParam(agendaItemId)}`;
 }
 
 /** Rotierender Check-in-Link für die Live-Anzeige (frischen Code berechnen). */
 export async function buildRotatingCheckInUrl(
   secret: string,
   eventNumber: number,
-  nowMs: number = Date.now()
+  nowMs: number = Date.now(),
+  agendaItemId?: string
 ): Promise<{ url: string; windowIndex: number; expiresInSeconds: number }> {
   const windowIndex = currentWindowIndex(nowMs);
   const code = await computeRotatingCode(secret, windowIndex);
   const url =
     `${appPageBaseUrl()}?action=selfcheckin&event=${eventNumber}` +
-    `&code=${code}&t=${windowIndex}`;
+    `&code=${code}&t=${windowIndex}${itemParam(agendaItemId)}`;
   const elapsed = (nowMs / 1000) % SELF_CHECKIN_STEP_SECONDS;
   const expiresInSeconds = Math.max(1, Math.ceil(SELF_CHECKIN_STEP_SECONDS - elapsed));
   return { url, windowIndex, expiresInSeconds };
