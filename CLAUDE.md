@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v31.1.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v31.2.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -625,8 +625,35 @@ Wizard-Save löscht den Bestand. Die Verteilung (`shirtAllocate`) ist die
 EINE Rechnung für Aktion „Benötigte T-Shirts" und Check-in-Seite; wer eine
 zweite Stelle baut, die Größen zuteilt, ruft dieselbe Funktion.
 
-**Inline-Styles können kein `:hover`.** Interaktive Elemente brauchen einen
-Hover-State (`hoverIdx`, `evTabHover`), sonst lesen sie sich als Beschriftung.
+**Inline-Styles können kein `:hover` — deshalb gibt es seit v31.2 EINEN
+Klassensatz: `components/dexUi.ts` (`dex-ui-*`) und den verbindlichen
+`docs/ui-leitfaden.md`.** `ensureDexUiStyles()` injiziert das Stylesheet einmal
+in `document.head` (Modal und WizardFormShell rufen es); Karten, Auswahl-
+Kacheln, Chips, Schalter, Zeilen, Aufklapper, Hinweiskästen, Modal-Kopf/-Fuß
+haben dort ihren Hover. `Modal` hat seit v31.2 `title/subtitle/icon/footer`.
+Wer eine Oberfläche baut oder anfasst: erst den Leitfaden (Abschnitte 2a–2d:
+Reihenfolge Pflicht→Optional→Fein, Frageform je Fragetyp, Formulierung als
+Frage/Aussage, was nicht verändert werden darf), dann die Klassen — keine
+neue Karte mit eigenem Inline-Hover-State. Neue Klassen: in `dexUi.ts` UND im
+Leitfaden eintragen. 57 Dateien wurden in v31.2 danach parallel umgebaut; der
+Leitfaden ist das, was sie zusammenhält.
+
+**No-Show hat seit v31.2 zwei Ebenen — Event-Status und Punkt-Marke.**
+`Status = 'No-Show'` gilt fürs ganze Event; ein No-Show an EINEM
+Programmpunkt ist eine Marke `{ at, by, noShow: true }` in `AgendaCheckIns`
+(`markAgendaNoShow`). `parseAgendaCheckIns` liefert NUR Anwesenheiten (die
+No-Show-Marken sind für Auswertung, Bescheinigung und Zähler unsichtbar);
+wer die Spalte liest, um sie zurückzuschreiben, nimmt `parseAgendaMarks` —
+sonst löscht ein Check-in die No-Shows derselben Zeile (das war der erste
+Entwurf). Beides ist über „Letzte Check-ins" rücknehmbar (`kind: 'noshow'`).
+
+**Gleichzeitiges Bearbeiten ist sichtbar, nicht gesperrt (v31.2).**
+`DEX_EditPresence` (Haupt-Site, kein Flow): Herzschlag alle 20 s im
+Edit-Modus, frisch = jünger als 75 s, eigene Zeile beim Verlassen gelöscht
+(`useEditPresence`, `EditPresenceBadge`). Bewusst kein Lock — ein Lock, den
+ein geschlossener Tab hält, wäre die schlimmere Falle; der Kasten sagt „wer
+zuletzt speichert, überschreibt". Ein Lesefehler lässt den letzten Stand
+stehen, statt „niemand da" zu behaupten.
 
 **Der Scope-Umschalter gehört genau einmal auf die Seite.** Seit v28.78 rendert
 `renderGlobalScopeBar` die Reiter global über dem Formular; die alten
