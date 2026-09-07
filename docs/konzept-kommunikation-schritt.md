@@ -1,6 +1,6 @@
 # Konzept: Kommunikations-Schritt im Wizard entlasten
 
-Stand 07.09.2026 (v30.88). Auftrag: „Informier dich im Netz mit Best Practices,
+Stand 07.09.2026 (v30.88; Stufe A+D umgesetzt in v30.89). Auftrag: „Informier dich im Netz mit Best Practices,
 wie wir den Wizard-Schritt Kommunikation noch intuitiver und besser aufbauen.
 Der ist für die meisten Organizer in der jetzigen Form überfordernd."
 
@@ -137,12 +137,12 @@ Terminen im Normalfall dieselbe Seite wie einer ohne Sub-Events.
 
 ## 5. Umsetzung in Stufen
 
-| Stufe | Inhalt | Aufwand |
+| Stufe | Inhalt | Stand |
 |---|---|---|
-| A | Ebene 1 (drei Radio-Karten) + Ebene 3 als Reiter-Bereich hinter einem Link; Kasten 26 aufteilen; Übersichtsbox auf die Chip-Zeile eindampfen | 1 Release, nur `CommunicationStep.tsx` + ein Chip-Helfer |
-| B | Vorschau-Karte (Mail + Outlook) aus der `HtmlEditorModal`-Preview herausziehen | 1 Release |
-| C | „Testmail an mich" | klein, mit B |
-| D | Sub-Event-Frage als vierte Karte; Reiter nur im Einzel-Modus | mit A |
+| A | Ebene 1 (drei Karten) + Ebene 3 als Reiter-Bereich hinter einem Knopf; Kasten 26 aufgeteilt; Übersichtsbox durch die Chip-Zeile ersetzt | **v30.89 — ausgeliefert** |
+| B | Vorschau-Karte (Mail + Outlook) aus der `HtmlEditorModal`-Preview herausziehen | offen |
+| C | „Testmail an mich" | offen, mit B |
+| D | Sub-Event-Frage bleibt die Karte am Kopf; Reiter-Vergleich nur im Einzel-Modus | **v30.89** (der bestehende Schalter erfüllt es bereits) |
 
 Stufe A ist der eigentliche Hebel: Sie macht aus „sieben Kästen, in denen
 alles gleich wichtig aussieht" eine Seite mit drei Fragen, deren Antworten
