@@ -79,6 +79,8 @@ interface RoleContextType {
    *  auf einmal aus dem Verzeichnis (Graph, `User.Read.All` nötig). Leere Map
    *  = nicht erlaubt oder nicht gepflegt — nicht „gibt es nicht". */
   getEmployeeData: (emails: string[]) => Promise<Record<string, { employeeId?: string; costCenter?: string; companyName?: string; country?: string; department?: string }>>;
+  /** v30.82: Position + Standort vieler Personen in einem Graph-Batch (20 je Request). */
+  getBasicProfiles: (emails: string[]) => Promise<Record<string, { displayName: string; jobTitle: string; location: string }>>;
   searchGroups: (query: string) => Promise<Array<{ email: string; displayName: string }>>;
   getGroupMembers: (groupEmail: string) => Promise<{ groupName: string; members: Array<{ email: string; displayName: string; firstName?: string; lastName?: string; jobTitle?: string; location?: string }> } | null>;
   searchUsersByLocation: (location: string) => Promise<Array<{ email: string; displayName: string; firstName: string; lastName: string; location: string; jobTitle: string }>>;
@@ -410,6 +412,10 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     return spService.getEmployeeData(emails);
   }
 
+  async function getBasicProfiles(emails: string[]): Promise<Record<string, { displayName: string; jobTitle: string; location: string }>> {
+    return spService.getBasicProfiles(emails);
+  }
+
   async function searchUsersByLocation(location: string): Promise<Array<{ email: string; displayName: string; firstName: string; lastName: string; location: string; jobTitle: string }>> {
     return spService.searchUsersByLocation(location);
   }
@@ -457,7 +463,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     isAdmin, isOrganizer, canCreateEvents, isPowerUser, siteUrl,
     originalIsAdmin, isImpersonating, previewAsUser, setPreviewAsUser, isFA,
     addRole, updateRole, hadRoleRightsIssue, setPowerUser, updateRoleLocation, removeRole, refreshRoles, searchUser, searchUsers, searchGroups, getGroupMembers, searchUsersByLocation, getEmployeeData,
-    auditRolesAccess,
+    auditRolesAccess, getBasicProfiles,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [roles, currentUserRole, isRolesLoading, rolesReadStatus, isImpersonating, previewAsUser, siteUrl]);
 

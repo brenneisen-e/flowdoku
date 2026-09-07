@@ -2,6 +2,7 @@ import * as React from 'react';
 import { X } from './Icons';
 import InternationalSearchToggle from './InternationalSearchToggle';
 import { useLanguage } from '../context/LanguageContext';
+import { useRoles } from '../context/RoleContext';
 
 /**
  * Generischer Massenimport-Dialog für Team-Felder im Event-Wizard.
@@ -80,6 +81,11 @@ const sortByLastFirst = (a: { lastname: string; firstname: string }, b: { lastna
 const BulkUserImportModal: React.FC<Props> = ({ open, onClose, title, description, existingEmails, searchUsers, onAdd }) => {
   const { locale } = useLanguage();
   const isDe = locale === 'de';
+  // v30.82: E-Mail-Einträge vorab in EINEM Graph-Batch auflösen — vorher je
+  // Adresse eine Personensuche plus Profil-Nachladen (bis zu fünf Aufrufe),
+  // bei einem Paste mit 100 Adressen also Hunderte sequentielle Requests.
+  // In der Handbuch-Vorschau (Stub-Context) fehlt die Funktion → Einzelweg.
+  const { getBasicProfiles } = useRoles();
   const [text, setText] = React.useState('');
   const [running, setRunning] = React.useState(false);
   const [report, setReport] = React.useState<BulkImportReport | null>(null);
@@ -156,12 +162,25 @@ const BulkUserImportModal: React.FC<Props> = ({ open, onClose, title, descriptio
     const notFound: string[] = [];
     const ambiguous: BulkImportReport['ambiguous'] = [];
 
+    // v30.82: Vorab-Batch für alle E-Mail-Einträge (s. Kommentar oben).
+    let pre: Record<string, { displayName: string; jobTitle: string; location: string }> = {};
+    try {
+      const mails = queue.filter(q => q.kind === 'email').map(q => q.value);
+      if (mails.length > 0 && typeof getBasicProfiles === 'function') pre = await getBasicProfiles(mails);
+    } catch { pre = {}; }
+
     for (const item of queue) {
       const f = item.value;
       const fLc = f.toLowerCase();
 
       // Schon drin (Email-Identität, case-insensitive)?
       if (item.kind === 'email' && existingLc.has(fLc)) {
+        const preHit = pre[fLc];
+        if (preHit && preHit.displayName) {
+          const { lastname, firstname } = parseDisplayName(preHit.displayName, f);
+          alreadyIn.push({ lastname, firstname, email: f });
+          continue;
+        }
         try {
           const hits = await searchUsers(f, includeIntl);
           if (hits.length > 0) {
@@ -177,6 +196,14 @@ const BulkUserImportModal: React.FC<Props> = ({ open, onClose, title, descriptio
       }
 
       if (item.kind === 'email') {
+        const preHit = pre[fLc];
+        if (preHit && preHit.displayName) {
+          const { lastname, firstname } = parseDisplayName(preHit.displayName, f);
+          onAdd({ email: f, displayName: preHit.displayName });
+          existingLc.add(fLc);
+          added.push({ lastname, firstname, email: f });
+          continue;
+        }
         try {
           const hits = await searchUsers(f, includeIntl);
           const exact = hits.find(h => h.email && h.email.toLowerCase() === fLc);

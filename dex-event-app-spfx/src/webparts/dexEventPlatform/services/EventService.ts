@@ -1939,6 +1939,11 @@ export class EventService {
     return profileData.getUserProfileByEmail(this, email);
   }
 
+  /** v30.82: Profile vieler Personen in einem Graph-Batch (20 je Request). */
+  public async getProfilesByEmails(emails: string[]): Promise<Record<string, profileData.ProfileShape>> {
+    return profileData.getProfilesByEmails(this, emails);
+  }
+
   // v30.66: `onProgress` fehlte hier seit dem Auszug in v30.7. Das Modul ruft den
   // Rueckruf an zwei Stellen auf (je Zeile und am Schluss), der Stub nahm ihn aber
   // gar nicht erst entgegen — ueber die Klasse war der Fortschritt also nicht
