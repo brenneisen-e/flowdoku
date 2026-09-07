@@ -77,6 +77,30 @@ wird deshalb auf drei Ebenen überarbeitet:
   State-Bindungen behält und die Hook-Reihenfolge unangetastet bleibt (Hooks
   stehen ohnehin am Komponentenanfang).
 
+### 2a′. Ausrichtung — wo steht der Knopf?
+
+Nutzer-Ansage 07.09.2026 (nach den ersten Screenshots): „Es hängt immer sehr
+viel rechts, z.B. der Button für Bearbeiten, obwohl das gar nicht notwendig
+ist — dann ist nur der Button rechts. Sinnvoll auflösen, dass der Button
+links ausgerichtet ist."
+
+- **Aktionen stehen links beim Inhalt, nicht rechts außen.** Ein Knopf, der
+  zu einem Text oder einer Zeile gehört („Bearbeiten", „Bearbeiten &
+  Vorschau", „Massenimport", „für alle übernehmen", „+ Programmpunkt"), folgt
+  dem Inhalt unmittelbar (in derselben Zeile mit `gap`, oder darunter
+  linksbündig) — nicht mit `justify-content: space-between` oder
+  `margin-left: auto` an den rechten Rand geschoben. Ein Knopf allein rechts
+  in einer sonst leeren Zeilenhälfte ist der Fehler.
+- **Rechts außen bleibt nur, was WEG vom Inhalt gehört:** Entfernen/Löschen
+  (`dex-ui-iconbtn--danger`), Schließen (×), der Zähler eines Aufklappers
+  („3 angepasst") und die Knöpfe einer Modal-Fußzeile.
+- **Eine Zeile, die eine Aktion hat, ist selbst klickbar** — mit Hover
+  (`dex-ui-row`/`dex-ui-card--hover`) und `cursor: pointer`; der Klick auf die
+  Zeile tut dasselbe wie ihr Hauptknopf („Bearbeiten"). Die Sub-Event-Zeilen
+  in Schritt 1 sind das Beispiel des Nutzers: Zeile überfahren → hebt sich,
+  Zeile anklicken → Bearbeiten. Nebenknöpfe in der Zeile stoppen die
+  Weitergabe (`e.stopPropagation()`), damit „Entfernen" nicht öffnet.
+
 ### 2b. Frageform — wie wird eine Frage gestellt?
 
 | Die Frage ist … | Dann ist das Bedienelement … |
@@ -220,7 +244,7 @@ Zustände als zusätzliche Klasse: `is-active`, `is-open`, `is-disabled`,
 | `dex-ui-field` + `dex-ui-label` + `dex-ui-help` | Feldgruppe: Beschriftung (mit `InfoTooltip` daneben), Eingabe, Hilfetext darunter. `dex-ui-label-optional` für „(optional)" |
 | `dex-ui-grid-2` / `-3` / `-auto` | Raster, mobil eine Spalte |
 | `dex-ui-input` / `dex-ui-select` / `dex-ui-textarea` | Kompakte Eingaben (Modale, Zeilen). `--sm` noch kleiner. Im Wizard-Formular bleiben `form-input`/`form-select` (48 px) für Hauptfelder |
-| `dex-ui-disclosure` | Aufklapper-Knopf: `<button className={cx('dex-ui-disclosure', open && 'is-open')}><span className="dex-ui-disclosure-chevron"><ChevronRight size={16}/></span>Weitere Einstellungen<span className="dex-ui-disclosure-count">3</span></button>` und darunter `dex-ui-disclosure-body` (Chevron zeigt zu nach rechts, offen nach unten) |
+| `dex-ui-disclosure` | Aufklapper-Knopf: `<button className={cx('dex-ui-disclosure', open && 'is-open')}><span className="dex-ui-disclosure-chevron"><ChevronDown size={16}/></span>Weitere Einstellungen<span className="dex-ui-disclosure-count">3</span></button>` und darunter `dex-ui-disclosure-body` (Chevron zeigt zu nach unten, offen nach oben) |
 | `dex-ui-callout` | Hinweiskasten: `--info`, `--success`, `--warn`, `--danger`, `--neutral`; Symbol in `dex-ui-callout-icon` |
 | `dex-ui-divider`, `dex-ui-muted`, `dex-ui-stack`, `dex-ui-inline` | Trennlinie, Kleintext, vertikaler Stapel (gap 10), horizontale Reihe (gap 8, wrap) |
 
@@ -244,9 +268,9 @@ Zustände als zusätzliche Klasse: `is-active`, `is-open`, `is-disabled`,
 | `dex-ui-disclosure-chevron.is-open` | Chevron-Drehung auch ohne umgebenden `dex-ui-disclosure`-Knopf |
 | `dex-ui-chip-remove` | Kleines rundes „×" im Chip (kein `<button>` im `<button>`) |
 
-Der Chevron eines Aufklappers zeigt im Ruhezustand nach **rechts**
-(`ChevronRight` aus Icons.tsx) und dreht geöffnet um 90° nach unten. Wer
-`ChevronDown` nimmt, muss die Drehung selbst setzen. Neue Symbole in
+Der Chevron eines Aufklappers ist im Ruhezustand `ChevronDown` und dreht
+geöffnet um 180° nach oben (die Klasse macht das). Wer einen anderen Pfeil
+nimmt, setzt die Drehung selbst. Neue Symbole in
 Icons.tsx seit v31.2: `ChevronRight`, `ImageIcon`, `Crop`. `.dex-ui-field`
 verliert innerhalb eines `dex-ui-grid-*` seinen unteren Abstand (das Raster
 hat den `gap`). Der Untertitel des Modals ist ein `<div>` — auch Blöcke sind

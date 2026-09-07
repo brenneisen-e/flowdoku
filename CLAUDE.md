@@ -673,7 +673,19 @@ prüfen, welche der Bedingungen den Fall wirklich erzeugt hat
 Und: leere Auswahl heißt nicht „nichts zu tun" — wer alle gebuchten Sub-Events
 abwählt, meldet sie ab (`sessionsChanged` in `RegistrationPage`).
 
-## Der Wizard, Stand v28.89
+## Der Wizard, Stand v31.2
+
+**Seit v31.2 sind alle Schritte nach `docs/ui-leitfaden.md` gebaut:** weißer
+Schritt-Kopf mit grüner Kante und Zeile „Schritt N von 9" (`dex-step-eyebrow`
+im `h2.dex-step-head-title`), Abschnitte als `dex-ui-section` in der
+Reihenfolge Pflicht → Optional → Aufklapper „Weitere Einstellungen",
+Beschriftungen als Fragen, Ja/Nein als `dex-ui-switch`/`dex-ui-toggle-row`,
+Alternativen als `dex-ui-choice`-Kacheln. Schritt 5 heißt „Fragen im
+Anmeldeformular", Schritt 4 stellt Plätze und Fristen vor die Sichtbarkeit
+(`vis_capacity`/`vis_fristen` standardmäßig offen in `useWizardOptionState`).
+Wer einen Schritt anfasst: Leitfaden zuerst, dann die Klassen aus `dexUi.ts`.
+**Ansehen ohne SharePoint:** `dex-event-app-spfx/tools/wizard-harness`
+(`node build.js && node shot.js edit` → ein PNG je Schritt; README dort).
 
 Neun Schritte. Über dem Formular steht die **Scope-Karte**
 (`renderGlobalScopeBar`): Klammer/Haupt-Event und die Sub-Events als Reiter, ein
@@ -863,6 +875,12 @@ zusätzlich: in Schritt 1 zwischen Klammer und mehreren Sub-Events umschalten
 (Titel/Zeiten/Beschreibung/Bild müssen dem Reiter folgen), ein Sub-Event über
 die Liste anlegen und entfernen, und die Reiter-Leiste mit mehr als sechs
 Sub-Events auf Pfeile, Zählung und Auto-Scroll ansehen.
+
+**Eigene Bildschirmfotos gibt es seit v31.2 aus dem Harness** —
+`tools/wizard-harness` rendert den Wizard mit Beispiel-Event in Chromium
+(zehn PNGs in einer Minute). Vor jedem Release, das einen Schritt anfasst,
+einmal laufen lassen und die Bilder ansehen; der `:global`-Block des SCSS
+wird dort flach kompiliert, Dienst-Aufrufe sind leer.
 
 **Bildschirmfotos zeigen den installierten Stand, nicht den Repo-Stand.** Ein
 Screenshot mit zehn Wizard-Schritten kam aus einem Build vor v28.87; wer daraus

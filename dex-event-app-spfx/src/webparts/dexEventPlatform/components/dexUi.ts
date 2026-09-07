@@ -223,7 +223,9 @@ export const DEX_UI_CSS = `
 }
 .dex-ui-disclosure:hover { color: ${GDT}; background: rgba(134,188,37,0.06); }
 .dex-ui-disclosure-chevron { display: inline-flex; align-items: center; color: ${G500}; transition: transform 0.2s ease; flex-shrink: 0; }
-.dex-ui-disclosure.is-open .dex-ui-disclosure-chevron { transform: rotate(90deg); }
+/* Ruhezustand ist ChevronDown (18 von 19 Aufrufern) — geöffnet zeigt er nach
+   oben. Die 90°-Drehung des ersten Entwurfs zeigte bei ChevronDown nach links. */
+.dex-ui-disclosure.is-open .dex-ui-disclosure-chevron { transform: rotate(180deg); }
 .dex-ui-disclosure-count { margin-left: auto; font-weight: 600; font-size: 0.74rem; color: ${G500}; }
 .dex-ui-disclosure-body { padding: 4px 0 8px 2px; }
 
@@ -320,7 +322,7 @@ export const DEX_UI_CSS = `
 .dex-ui-grid-3-1 { display: grid; grid-template-columns: 3fr 1fr; gap: 10px; }
 .dex-ui-grid-1-3 { display: grid; grid-template-columns: 1fr 3fr; gap: 10px; }
 @media (max-width: 768px) { .dex-ui-grid-3-1, .dex-ui-grid-1-3 { grid-template-columns: 1fr; } }
-.dex-ui-disclosure-chevron.is-open { transform: rotate(90deg); }
+.dex-ui-disclosure-chevron.is-open { transform: rotate(180deg); }
 .dex-ui-chip-remove { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; margin-left: 2px; margin-right: -4px; background: rgba(0,0,0,0.08); color: inherit; font-size: 0.7rem; line-height: 1; transition: background ${EASE}; }
 .dex-ui-chip:hover .dex-ui-chip-remove { background: rgba(0,0,0,0.16); }
 .dex-ui-chip.is-active .dex-ui-chip-remove { background: rgba(255,255,255,0.25); }

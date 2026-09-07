@@ -179,7 +179,10 @@ export function useWizardOptionState(ctx: UseWizardOptionStateCtx) {
   // wird ein-/ausgeblendet, die Überschrift ist der Klappschalter.
   // Bei ausgelöster Validierung (triedNext) klappt automatisch ALLES auf, damit
   // keine Fehlermeldung in einem eingeklappten Block versteckt bleibt.
-  const [expandedVisBlocks, setExpandedVisBlocks] = React.useState<Set<string>>(() => new Set());
+  // v31.2: Plätze und Fristen sind die Hauptfragen von Schritt 4 und stehen
+  // offen; nur die Sichtbarkeits-Blöcke (Standortfilter, Verteiler, Assistenz)
+  // bleiben eingeklappt, bis man sie braucht.
+  const [expandedVisBlocks, setExpandedVisBlocks] = React.useState<Set<string>>(() => new Set(['vis_capacity', 'vis_fristen']));
   const isVisOpen = (k: string): boolean => triedNext || expandedVisBlocks.has(k);
   const toggleVis = (k: string): void => setExpandedVisBlocks(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const visHeader = (key: string, badge: React.ReactNode, title: React.ReactNode): React.ReactElement => (
