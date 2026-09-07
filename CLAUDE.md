@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.82.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.84.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -437,7 +437,7 @@ Organizer-Zuweisung setzt Read best-effort nach. Fehlt es (Drosselung bei
 `ensureuser`, Zeile direkt in SharePoint angelegt), antwortet `getRoles` mit
 403, `RoleContext` macht die Person still zum „User", und die Startseite
 zeigte bis v30.80 nur „Organizer werden?". „Steht in der Liste, sieht keine
-Kachel" heißt also ZUERST: Rollenverwaltung → „Leserechte prüfen"
+Kachel" heißt also ZUERST: Rollenverwaltung → „Rechte prüfen" (seit v30.84 alle drei Rechte: Rollenliste, DEX_Events, Web)
 (`auditRolesListAccess`, v30.81), dann installierte Version (>100 Zeilen
 ist seit v30.67 erledigt), dann E-Mail-Schreibweise (seit v30.81 über
 `isCurrentUser`, beide Adressen).

@@ -343,58 +343,95 @@ export class SharePointService {
   public async auditRolesListAccess(
     rows: Array<{ email: string; name: string; role: string }>,
     onProgress?: (done: number, total: number) => void,
-  ): Promise<{ checked: number; missing: Array<{ email: string; name: string; role: string }>; fixed: string[]; failed: string[]; readFailed: boolean }> {
-    const out = { checked: 0, missing: [] as Array<{ email: string; name: string; role: string }>, fixed: [] as string[], failed: [] as string[], readFailed: false };
+  ): Promise<{ checked: number; missing: Array<{ email: string; name: string; role: string; scopes: string[] }>; fixed: string[]; failed: string[]; readFailed: boolean }> {
+    const out = { checked: 0, missing: [] as Array<{ email: string; name: string; role: string; scopes: string[] }>, fixed: [] as string[], failed: [] as string[], readFailed: false };
     const FULL = 1073741829;
-    const READ_OK = new Set([1073741826, 1073741827, 1073741830, FULL]); // Read, Contribute, Edit, Full Control
-    // 1) Direkte Zuweisungen lesen: E-Mail/Login → Menge der RoleDefinition-Ids.
-    const byPrincipal = new Map<string, Set<number>>();
-    try {
-      let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Email,Member/LoginName,Member/PrincipalType,RoleDefinitionBindings/Id&$top=5000`;
-      let guard = 0;
-      while (url && guard < 20) {
-        guard++;
-        const resp = await this._sp.get(url, SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } });
-        if (!resp.ok) { out.readFailed = true; return out; }
-        const d = await resp.json();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const items: any[] = d.value || d.d?.results || [];
-        for (const ra of items) {
-          const m = ra.Member || {};
-          const ids = new Set<number>();
+    const READ = 1073741826;
+    const READ_OK = new Set([READ, 1073741827, 1073741830, FULL]); // Read, Contribute, Edit, Full Control
+    // v30.84: DREI Rechte, nicht eines. Der erste Lauf (v30.81) prüfte nur das
+    // Leserecht auf DEX_Roles — die Person sah danach ihre Kachel, bekam beim
+    // Anlegen aber „Subsite konnte nicht erstellt werden": Für die Subsite
+    // braucht sie Full Control auf der SITE, für die Event-Zeile Full Control
+    // auf DEX_Events. Beides setzt `grantOrganizerPermissions` beim Zuweisen —
+    // best-effort, ohne Rückgabe, mit demselben Ausfallmuster (Drosselung
+    // bei ensureuser, Zeile direkt in SharePoint). Befund 07.09.2026: „bei
+    // jemandem mit Organizer-Rechten kommt nun dieser Fehler, obwohl ich
+    // Leserechte korrigiert hatte."
+    const scopes: Array<{ key: string; label: string; base: string; need: (_isAdmin: boolean) => number; ok: (_have: Set<number>, _isAdmin: boolean) => boolean }> = [
+      { key: 'roles', label: 'Rollenliste (Lesen)', base: `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')`, need: a => (a ? FULL : READ), ok: (h, a) => (a ? h.has(FULL) : Array.from(h).some(id => READ_OK.has(id))) },
+      { key: 'events', label: 'Event-Liste (Vollzugriff)', base: `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')`, need: () => FULL, ok: h => h.has(FULL) },
+      { key: 'web', label: 'Site (Vollzugriff für Subsites)', base: `${this.siteUrl}/_api/web`, need: () => FULL, ok: h => h.has(FULL) },
+    ];
+    // 1) Direkte Zuweisungen je Scope lesen: E-Mail/Login → Menge der RoleDefinition-Ids.
+    const readAssignments = async (base: string): Promise<Map<string, Set<number>> | null> => {
+      const byPrincipal = new Map<string, Set<number>>();
+      try {
+        let url: string | null = `${base}/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Email,Member/LoginName,Member/PrincipalType,RoleDefinitionBindings/Id&$top=5000`;
+        let guard = 0;
+        while (url && guard < 20) {
+          guard++;
+          const resp = await this._sp.get(url, SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } });
+          if (!resp.ok) return null;
+          const d = await resp.json();
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          for (const b of (ra.RoleDefinitionBindings?.results || ra.RoleDefinitionBindings || []) as any[]) ids.add(Number(b.Id));
-          const keys: string[] = [];
-          if (m.Email) keys.push(String(m.Email).toLowerCase().trim());
-          const lm = String(m.LoginName || '').toLowerCase().match(/[^|]+@[^|\s]+$/);
-          if (lm) keys.push(lm[0].trim());
-          for (const k of keys) {
-            const prev = byPrincipal.get(k) || new Set<number>();
-            ids.forEach(i => prev.add(i));
-            byPrincipal.set(k, prev);
+          const items: any[] = d.value || d.d?.results || [];
+          for (const ra of items) {
+            const m = ra.Member || {};
+            const ids = new Set<number>();
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            for (const b of (ra.RoleDefinitionBindings?.results || ra.RoleDefinitionBindings || []) as any[]) ids.add(Number(b.Id));
+            const keys: string[] = [];
+            if (m.Email) keys.push(String(m.Email).toLowerCase().trim());
+            const lm = String(m.LoginName || '').toLowerCase().match(/[^|]+@[^|\s]+$/);
+            if (lm) keys.push(lm[0].trim());
+            for (const k of keys) {
+              const prev = byPrincipal.get(k) || new Set<number>();
+              ids.forEach(i => prev.add(i));
+              byPrincipal.set(k, prev);
+            }
           }
+          url = d['odata.nextLink'] || d['@odata.nextLink'] || (d.d && d.d.__next) || null;
         }
-        url = d['odata.nextLink'] || d['@odata.nextLink'] || (d.d && d.d.__next) || null;
+        return byPrincipal;
+      } catch (e) {
+        console.warn('[DEX] auditRolesListAccess: Zuweisungen nicht lesbar', base, e);
+        return null;
       }
-    } catch (e) {
-      console.warn('[DEX] auditRolesListAccess: Zuweisungen nicht lesbar', e);
-      out.readFailed = true;
-      return out;
+    };
+    const assignments: Record<string, Map<string, Set<number>>> = {};
+    for (const s of scopes) {
+      const m = await readAssignments(s.base);
+      if (!m) { out.readFailed = true; return out; }
+      assignments[s.key] = m;
     }
-    // 2) Je Rollen-Zeile prüfen, was nötig ist, und fehlendes nachsetzen.
+    // 2) Je Rollen-Zeile und Scope prüfen, fehlendes nachsetzen. Die User-Id
+    //    nur EINMAL je Person auflösen (ensureuser ist der teure Teil).
     const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
     const relevant = rows.filter(r => !!(r.email || '').trim() && r.role !== 'User');
     for (let i = 0; i < relevant.length; i++) {
       const r = relevant[i];
       const em = r.email.toLowerCase().trim();
       const isAdminRole = r.role === 'Admin' || r.role === 'IT-Admin';
-      const have = byPrincipal.get(em) || new Set<number>();
-      const ok = isAdminRole ? have.has(FULL) : Array.from(have).some(id => READ_OK.has(id));
+      const missingScopes = scopes.filter(s => !s.ok(assignments[s.key].get(em) || new Set<number>(), isAdminRole));
       out.checked += 1;
-      if (!ok) {
-        out.missing.push(r);
-        const granted = await this._grantOnRolesList(r.email, isAdminRole ? FULL : 1073741826, 'auditRolesListAccess');
-        if (granted) out.fixed.push(r.name || r.email); else out.failed.push(r.name || r.email);
+      if (missingScopes.length > 0) {
+        out.missing.push({ ...r, scopes: missingScopes.map(s => s.label) });
+        let allOk = true;
+        const userId = await this.getUserIdByEmail(r.email);
+        if (!userId) {
+          allOk = false;
+        } else {
+          for (const s of missingScopes) {
+            try {
+              if (s.key !== 'web') await this.ensureListHasUniquePermissions(s.key === 'roles' ? 'DEX_Roles' : 'DEX_Events');
+              const resp = await this._post(`${s.base}/roleassignments/addroleassignment(principalid=${userId}, roledefid=${s.need(isAdminRole)})`, {});
+              if (!resp.ok) { allOk = false; console.warn(`[DEX] auditRolesListAccess: ${s.label} für ${em} nicht setzbar (HTTP ${resp.status})`); }
+            } catch (e) { allOk = false; console.warn(`[DEX] auditRolesListAccess: ${s.label} für ${em} Fehler`, e); }
+            await sleep(150);
+          }
+        }
+        if (allOk) out.fixed.push(`${r.name || r.email} (${missingScopes.map(s => s.label).join(', ')})`);
+        else out.failed.push(`${r.name || r.email} (${missingScopes.map(s => s.label).join(', ')})`);
         await sleep(250);
       }
       if (onProgress) onProgress(i + 1, relevant.length);
@@ -444,23 +481,28 @@ export class SharePointService {
    * Manage auf Site-Ebene erlaubt Subsite-Erstellung (webs/add).
    */
   public async grantOrganizerPermissions(userEmail: string): Promise<void> {
+    // v30.84: Ergebnis sichtbar machen — bis hier schluckte der catch alles,
+    // und ein gescheitertes Web-Recht fiel erst beim Anlegen des ersten
+    // Events auf („Subsite konnte nicht erstellt werden").
     try {
       const userId = await this.getUserIdByEmail(userEmail);
-      if (!userId) return;
+      if (!userId) { console.error('[DEX] grantOrganizerPermissions: Keine User-ID für', userEmail); return; }
 
       // 1. Full Control auf DEX_Events (wie Admin)
       await this.ensureListHasUniquePermissions('DEX_Events');
-      await this._post(
+      const r1 = await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
         {}
       );
+      if (!r1.ok) console.error(`[DEX] grantOrganizerPermissions: DEX_Events Full Control für ${userEmail} nicht setzbar (HTTP ${r1.status})`);
 
       // 2. Full Control auf Site-Ebene (für Subsite-Erstellung)
       // Full Control = 1073741829
-      await this._post(
+      const r2 = await this._post(
         `${this.siteUrl}/_api/web/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
         {}
       );
+      if (!r2.ok) console.error(`[DEX] grantOrganizerPermissions: Web Full Control für ${userEmail} nicht setzbar (HTTP ${r2.status}) — Subsite-Anlage wird scheitern; Rollenverwaltung → „Rechte prüfen"`);
     } catch (e) {
       console.error('[DEX] grantOrganizerPermissions Error:', e);
     }

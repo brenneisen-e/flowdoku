@@ -401,8 +401,19 @@ export async function createEvent(svc: EventService, event: {
       reportProgress('subsite-creating');
       const createdSubsite = await svc.createEventSubsite(event.title, event.description);
       if (!createdSubsite) {
-        console.error('[DEX] Subsite konnte nicht erstellt werden');
-        throw new Error('Subsite konnte nicht erstellt werden. Fehlende Berechtigung? Bitte wende dich an einen Site-Administrator.');
+        // v30.84: den Grund nennen. 403 = fehlender Vollzugriff auf der Site
+        // (das Recht wird bei der Rollen-Zuweisung gesetzt und kann an der
+        // Drosselung gescheitert sein) → ein Admin behebt es über
+        // Rollenverwaltung → „Rechte prüfen". 429/503 = Drosselung → warten.
+        const st = svc._lastSubsiteCreateStatus;
+        console.error('[DEX] Subsite konnte nicht erstellt werden, HTTP', st);
+        if (st === 403 || st === 401) {
+          throw new Error('Subsite konnte nicht erstellt werden: Dein Konto hat keinen Vollzugriff auf die DEX-Site (HTTP 403). Das Recht wird bei der Organizer-Zuweisung gesetzt und ist bei dir nicht angekommen. Bitte einen Admin, in der Rollenverwaltung „Rechte prüfen" auszuführen — danach die App neu laden und erneut speichern.');
+        }
+        if (st === 429 || st === 503) {
+          throw new Error('Subsite konnte nicht erstellt werden: SharePoint drosselt gerade (HTTP ' + st + '). Bitte ein bis zwei Minuten warten und erneut speichern — der Entwurf bleibt erhalten.');
+        }
+        throw new Error('Subsite konnte nicht erstellt werden' + (st ? ' (HTTP ' + st + ')' : '') + '. Bitte erneut versuchen; bleibt es dabei, einen Admin bitten, in der Rollenverwaltung „Rechte prüfen" auszuführen.');
       }
       subsiteUrl = createdSubsite;
       reportProgress('subsite-done');

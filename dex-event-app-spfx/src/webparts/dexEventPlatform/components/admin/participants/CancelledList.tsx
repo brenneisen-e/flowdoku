@@ -5,6 +5,7 @@
 import * as React from 'react';
 import { EventService, SPRegistration } from '../../../services/EventService';
 import { shortSubEventTitle } from '../../../utils/subEventTitle';
+import { groupSubEventTabs, stripGroupPrefix } from '../../../utils/subEventGroups';
 import { formatDate } from '../../../utils/eventStatus';
 import { PersonContactHover } from '../../PersonContactHover';
 import { Trash2 } from '../../Icons';
@@ -36,6 +37,11 @@ export interface CancelledListProps {
 
 export const CancelledList: React.FC<CancelledListProps> = (p) => {
   const { cancelledRegs, cancelledSortAsc, cancelledSortColumn, confirmDialog, consolidatedChildren, eventServiceRef, hasWaitlistActivity, isAdmin, isConsolidatedMode, isDe, isOrganizerFor, registrations, reloadRegistrations, selectedEvent, setCancelledSortAsc, setCancelledSortColumn, setSubRegReloadTick, showAlert, stripLocPrefix, subEventRegsByEventId } = p;
+  // v30.83: Sicht der konsolidierten Abmeldungen („nach Person" / „nach Tag")
+  // und der aufgeklappte Tag. Hooks VOR dem isConsolidatedMode-Zweig — der
+  // hat ein eigenes return (rules-of-hooks).
+  const [cancelView, setCancelView] = React.useState<'person' | 'day'>('person');
+  const [openDay, setOpenDay] = React.useState<string | null>(null);
           // v18.11: Abmeldungs-Liste mit denselben Spalten + Sortierung wie
           // Teilnehmer-/Warteliste. Unterscheidet proaktive Absagen
           // (CustomData _declined = „Ich nehme nicht teil", ohne vorherige
@@ -219,16 +225,157 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
                   { variant: 'error' });
               }
             };
+            // v30.83: Die Abmelde-MATRIX (eine Spalte je Termin) ist bei
+            // Kalender-Events unlesbar: 20 Datumsspalten, in denen 27 von 28
+            // Zeilen fast nur „–" stehen, horizontales Scrollen, und die Frage
+            // des Organizers („welcher Tag bröckelt?") bleibt unbeantwortet
+            // (Nutzer-Befund 07.09.2026: „nicht so gelungen"). Jetzt zwei
+            // Sichten: „nach Person" mit Termin-Chips je Zeile (kein Informations-
+            // verlust, keine Breite) und „nach Termin" mit Anzahl, Balken und
+            // aufklappbaren Namen je Tag. Die Teilnehmer-Matrix darüber bleibt —
+            // dort stehen die Haken dicht, dort trägt das Raster.
+            const isCal = !!selectedEvent.subEventCalendar;
+            const childById = new Map<string, DeloitteEvent>();
+            consolidatedChildren.forEach(c => childById.set(c.id, c));
+            const fmtDay = (iso?: string): string => {
+              if (!iso) return '';
+              const d = new Date(iso);
+              return isFinite(d.getTime()) ? d.toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { weekday: 'short', day: '2-digit', month: '2-digit' }) : '';
+            };
+            const secLabel = (id: string): string => {
+              if (id === '__parent') return isDe ? 'Gesamt-Event' : 'Overall event';
+              const ch = childById.get(id);
+              if (!ch) return id;
+              return (isCal && fmtDay(ch.startDate)) || shortSubEventTitle(ch.title, selectedEvent.title) || ch.title;
+            };
+            const secOrder = new Map<string, number>();
+            sectionCols.forEach((sc, i) => secOrder.set(sc.id, i));
+            const chipStyle = (declined: boolean): React.CSSProperties => ({
+              display: 'inline-block', fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, whiteSpace: 'nowrap',
+              background: declined ? 'rgba(0,118,168,0.10)' : 'rgba(218,41,28,0.08)',
+              color: declined ? 'var(--dex-blue, #0076a8)' : 'var(--dex-red, #da291c)',
+            });
+            const chipsFor = (p: CancelPerson): React.ReactElement[] => Object.keys(p.bySection)
+              .sort((a, b) => (secOrder.get(a) ?? 999) - (secOrder.get(b) ?? 999))
+              .map(id => {
+                const r = p.bySection[id];
+                const declined = isDeclined(r);
+                const label = id === '__parent'
+                  ? (declined ? (isDe ? 'Absage (gesamt)' : 'Decline (overall)') : (isDe ? 'Gesamt-Event' : 'Overall event'))
+                  : secLabel(id);
+                return (
+                  <span key={id} style={chipStyle(declined)} title={`${declined ? (isDe ? 'Absage ohne Anmeldung' : 'Decline without registration') : (isDe ? 'Abgemeldet' : 'Cancelled')} — ${formatDate(r.CancellationDate)}`}>
+                    {label}
+                  </span>
+                );
+              });
+            // Sicht „nach Termin": eine Zeile je Termin mit Abmeldungen, Gesamt-Event zuerst.
+            const perSection = sectionCols.map(sc => {
+              const rows = people.filter(p => !!p.bySection[sc.id]);
+              const declinedOnly = rows.length > 0 && rows.every(p => isDeclined(p.bySection[sc.id]));
+              return { id: sc.id, label: secLabel(sc.id), fullTitle: sc.id === '__parent' ? '' : ((childById.get(sc.id) || { title: '' }).title || ''), rows, declinedOnly };
+            });
+            const maxCount = perSection.reduce((m, s) => Math.max(m, s.rows.length), 0) || 1;
+            const quietChildren = consolidatedChildren.length - sectionCols.filter(sc => sc.id !== '__parent').length;
+            // Präfix-Gruppen („Day 1 - …") wie überall — nur bei Titel-, nicht bei Datums-Chips.
+            const childSections = perSection.filter(s => s.id !== '__parent');
+            const grouping = isCal ? { grouped: false, groups: [] as Array<{ label: string; idxs: number[] }> } : groupSubEventTabs(childSections.map(s => s.fullTitle));
+            const dayRow = (s: typeof perSection[number], shownLabel: string): React.ReactElement => {
+              const open = openDay === s.id;
+              return (
+                <div key={s.id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
+                  <button
+                    type="button"
+                    onClick={() => setOpenDay(open ? null : s.id)}
+                    aria-expanded={open}
+                    style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 220px) 48px 1fr 18px', alignItems: 'center', gap: 12, width: '100%', padding: '8px 4px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', font: 'inherit', color: 'inherit' }}
+                  >
+                    <span style={{ fontWeight: 600, color: 'var(--dex-gray-800)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={s.fullTitle || shownLabel}>{shownLabel}</span>
+                    <span style={{ fontWeight: 800, textAlign: 'right', color: s.declinedOnly ? 'var(--dex-blue, #0076a8)' : 'var(--dex-red, #da291c)' }}>{s.rows.length}</span>
+                    <span style={{ display: 'block', height: 10, borderRadius: 999, background: 'var(--dex-gray-100)', overflow: 'hidden' }}>
+                      <span style={{ display: 'block', height: '100%', width: `${Math.max(4, Math.round((s.rows.length / maxCount) * 100))}%`, background: s.declinedOnly ? 'var(--dex-blue, #0076a8)' : 'var(--dex-red, #da291c)', opacity: 0.75 }} />
+                    </span>
+                    <span aria-hidden="true" style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{open ? '▾' : '▸'}</span>
+                  </button>
+                  {open && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 4px 10px 4px' }}>
+                      {s.rows
+                        .slice()
+                        .sort((a, b) => a.lastName.toLowerCase().localeCompare(b.lastName.toLowerCase(), 'de'))
+                        .map(p => {
+                          const r = p.bySection[s.id];
+                          const nm = `${p.firstName} ${p.lastName}`.trim() || p.email;
+                          return (
+                            <span key={p.email} title={`${p.email}${p.jobTitle ? ' · ' + p.jobTitle : ''}${p.location ? ' · ' + stripLocPrefix(p.location) : ''} — ${formatDate(r.CancellationDate)}`}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 999, border: '1px solid var(--dex-gray-200)', background: '#fff', fontSize: '0.8rem', color: 'var(--dex-gray-700)' }}>
+                              <span style={{ fontWeight: 600 }}>{nm}</span>
+                              <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.72rem' }}>{formatDate(r.CancellationDate)}</span>
+                              {isDeclined(r) && <span style={chipStyle(true)}>{isDe ? 'Absage' : 'Decline'}</span>}
+                            </span>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              );
+            };
+            const viewBtn = (v: 'person' | 'day', label: string): React.ReactElement => (
+              <button
+                type="button"
+                onClick={() => setCancelView(v)}
+                aria-pressed={cancelView === v}
+                style={{
+                  fontSize: '0.78rem', fontWeight: 700, padding: '4px 12px', borderRadius: 999, cursor: 'pointer',
+                  border: `1px solid ${cancelView === v ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                  background: cancelView === v ? 'var(--dex-green, #86bc25)' : '#fff',
+                  color: cancelView === v ? '#fff' : 'var(--dex-gray-700)',
+                }}
+              >{label}</button>
+            );
             return (
               <>
-                <h4 style={{ marginTop: 24, color: 'var(--dex-gray-400)' }}>
-                  {isDe ? 'Abmeldungen' : 'Cancellations'} ({people.length})
-                  {declinePeople > 0 && (
-                    <span style={{ fontSize: '0.8rem', fontWeight: 400, marginLeft: 8, color: 'var(--dex-gray-500)' }}>
-                      {isDe ? `davon ${declinePeople} Absage(n) ohne Anmeldung` : `incl. ${declinePeople} decline(s) without registration`}
-                    </span>
-                  )}
+                <h4 style={{ marginTop: 24, color: 'var(--dex-gray-400)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span>
+                    {isDe ? 'Abmeldungen' : 'Cancellations'} ({people.length})
+                    {declinePeople > 0 && (
+                      <span style={{ fontSize: '0.8rem', fontWeight: 400, marginLeft: 8, color: 'var(--dex-gray-500)' }}>
+                        {isDe ? `davon ${declinePeople} Absage(n) ohne Anmeldung` : `incl. ${declinePeople} decline(s) without registration`}
+                      </span>
+                    )}
+                  </span>
+                  <span style={{ display: 'inline-flex', gap: 6, marginLeft: 'auto' }}>
+                    {viewBtn('person', isDe ? 'Nach Person' : 'By person')}
+                    {viewBtn('day', isCal ? (isDe ? 'Nach Tag' : 'By day') : (isDe ? 'Nach Termin' : 'By date'))}
+                  </span>
                 </h4>
+                {cancelView === 'day' ? (
+                  <div style={{ fontSize: '0.85rem' }}>
+                    {perSection.filter(s => s.id === '__parent').map(s => dayRow(s, s.label))}
+                    {!grouping.grouped
+                      ? childSections.map(s => dayRow(s, s.label))
+                      : grouping.groups.map(g => {
+                        const members = g.idxs.map(i => childSections[i]).filter(Boolean);
+                        const sum = members.reduce((n, s) => n + s.rows.length, 0);
+                        const label = g.label === 'Weitere' ? (isDe ? 'Weitere' : 'Other') : g.label;
+                        return (
+                          <div key={g.label} style={{ marginTop: 8 }}>
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '4px 4px 2px', borderBottom: '2px solid var(--dex-gray-200)' }}>
+                              <span style={{ fontWeight: 800, color: 'var(--dex-gray-800)' }}>{label}</span>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{sum} {isDe ? (sum === 1 ? 'Abmeldung' : 'Abmeldungen') : (sum === 1 ? 'cancellation' : 'cancellations')}</span>
+                            </div>
+                            {members.map(s => dayRow(s, stripGroupPrefix(s.fullTitle, g.label) || s.label))}
+                          </div>
+                        );
+                      })}
+                    {quietChildren > 0 && (
+                      <div style={{ padding: '10px 4px 0', fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
+                        {isDe
+                          ? `${quietChildren} ${isCal ? (quietChildren === 1 ? 'Tag' : 'Tage') : (quietChildren === 1 ? 'Termin' : 'Termine')} ohne Abmeldung.`
+                          : `${quietChildren} ${isCal ? (quietChildren === 1 ? 'day' : 'days') : (quietChildren === 1 ? 'date' : 'dates')} without cancellations.`}
+                      </div>
+                    )}
+                  </div>
+                ) : (
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                     <thead>
@@ -238,9 +385,7 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
                         <th style={thClickable} onClick={() => toggleSort('email')}>Email{arrow('email')}</th>
                         <th style={{ ...thClickable, cursor: 'default' }}>Job Title</th>
                         <th style={{ ...thClickable, cursor: 'default' }}>Standort</th>
-                        {sectionCols.map(sc => (
-                          <th key={sc.id} style={{ ...thClickable, cursor: 'default', textAlign: 'center' }} title={sc.title}>{sc.title}</th>
-                        ))}
+                        <th style={{ ...thClickable, cursor: 'default' }}>{isDe ? 'Abgemeldet von' : 'Cancelled from'}</th>
                         <th style={thClickable} onClick={() => toggleSort('date')}>{isDe ? 'Letzte Abmeldung' : 'Last cancellation'}{arrow('date')}</th>
                         {canDelete && (
                           <th style={{ ...thClickable, cursor: 'default', textAlign: 'right' }}>{isDe ? 'Löschen' : 'Delete'}</th>
@@ -255,44 +400,10 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
                           <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{p.email}</td>
                           <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{p.jobTitle || '-'}</td>
                           <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{p.location || '-'}</td>
-                          {sectionCols.map(sc => {
-                            const r = p.bySection[sc.id];
-                            // v23.2/v23.6: In der „Gesamt-Event"-Spalte kein nacktes
-                            // X, sondern dieselbe Darstellung wie in der Status-
-                            // Spalte der Teilnehmerliste: blaue Pille „Absage (nicht
-                            // angemeldet)" für Leute, die sich NIE angemeldet, aber
-                            // hinterlegt haben, dass sie nicht teilnehmen können;
-                            // rotes „Abgemeldet" für echte Abmeldungen vom Gesamt-Event.
-                            if (sc.id === '__parent') {
-                              return (
-                                <td key={sc.id} style={{ padding: 8, textAlign: 'center' }}>
-                                  {r
-                                    ? (isDeclined(r)
-                                        ? <span
-                                            title={`${isDe ? 'Diese Person hat sich NICHT angemeldet, sondern hinterlegt, dass sie nicht am Event teilnehmen kann (Absage ohne Anmeldung).' : 'This person did NOT register but recorded that they cannot attend the event (decline without registration).'} — ${formatDate(r.CancellationDate)}`}
-                                            style={{ display: 'inline-block', fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(0,118,168,0.10)', color: 'var(--dex-blue, #0076a8)', whiteSpace: 'nowrap' }}
-                                          >
-                                            {isDe ? 'Absage (nicht angemeldet)' : 'Decline (never registered)'}
-                                          </span>
-                                        : <span
-                                            title={`${isDe ? 'Diese Person war für das Gesamt-Event angemeldet und hat sich wieder abgemeldet.' : 'This person was registered for the overall event and later cancelled.'} — ${formatDate(r.CancellationDate)}`}
-                                            style={{ display: 'inline-block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--dex-red, #da291c)', whiteSpace: 'nowrap' }}
-                                          >
-                                            {isDe ? 'Abgemeldet' : 'Cancelled'}
-                                          </span>)
-                                    : <span style={{ color: 'var(--dex-gray-300)' }}>–</span>}
-                                </td>
-                              );
-                            }
-                            return (
-                              <td key={sc.id} style={{ padding: 8, textAlign: 'center' }}>
-                                {r
-                                  ? <span title={`${isDeclined(r) ? (isDe ? 'Absage (nicht angemeldet)' : 'Decline (never registered)') : (isDe ? 'Abgemeldet' : 'Cancelled')} — ${formatDate(r.CancellationDate)}`} style={{ color: 'var(--dex-red, #da291c)', fontWeight: 700, fontSize: '1rem' }}>&#10007;</span>
-                                  : <span style={{ color: 'var(--dex-gray-300)' }}>–</span>}
-                              </td>
-                            );
-                          })}
-                          <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{p.latest ? formatDate(new Date(p.latest).toISOString()) : '-'}</td>
+                          <td style={{ padding: 8 }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{chipsFor(p)}</div>
+                          </td>
+                          <td style={{ padding: 8, color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>{p.latest ? formatDate(new Date(p.latest).toISOString()) : '-'}</td>
                           {canDelete && (
                             <td style={{ padding: 8, textAlign: 'right' }}>
                               <button
@@ -310,6 +421,7 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
                     </tbody>
                   </table>
                 </div>
+                )}
               </>
             );
           }
