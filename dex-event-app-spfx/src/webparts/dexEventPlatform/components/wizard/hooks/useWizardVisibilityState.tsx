@@ -7,7 +7,7 @@
  * thematisch — der Name beschreibt den Schwerpunkt, nicht eine reine Trennung. */
 import * as React from 'react';
 import { EmailOverrideEntry } from '../../wizard/emailOverrideEntry';
-import { readOutlookLogo } from '../../wizard/wizardHelpers';
+import { readOutlookLogo, reinsertOrganizerPlaceholder } from '../../wizard/wizardHelpers';
 import { compressImage } from '../../../utils/imageCompress';
 import { applyEventPhotoToLogoImpl } from '../../wizard/logic/wizardMisc';
 import { renderHeaderSizeControlImpl } from '../../wizard/logic/wizardRenderHelpers';
@@ -425,7 +425,10 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
       emailLogoBase64: emailLogo,
       outlookLogoBase64: outlookLogo,
       emailTemplateOverrides: subOverrides,
-      outlookBody: stripOutlookWrapper(k.outlookBody || ''),
+      // v30.75: derselbe Reinsert wie beim Hauptevent — ein Termin mit
+      // eingebackenen Namen bekam sonst nie einen Organizer-Wechsel mit, und
+      // ein aufgeblähter Body (s. wizardHelpers) wäre hier stehen geblieben.
+      outlookBody: reinsertOrganizerPlaceholder(stripOutlookWrapper(k.outlookBody || ''), k.organizers || []),
       outlookHeading: parsedHeads.heading || k.title || '',
       outlookSubheading: parsedHeads.subheading && parsedHeads.subheading !== 'Event Details' ? parsedHeads.subheading : '',
       outlookSubject: k.outlookSubject || '',
