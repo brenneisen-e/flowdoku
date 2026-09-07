@@ -18,6 +18,7 @@ import { useRoles } from '../context/RoleContext';
 import { useCurrentUser } from '../context/UserContext';
 import { EventService } from '../services/EventService';
 import { checkInExtras, parseCustomData, CheckInExtra, shirtAllocate, parseShirtStock, ShirtAllocationResult } from '../utils/checkInExtras';
+import { parseAgendaCheckIns, formatMarkTime, suggestCurrentAgendaItem } from '../utils/agendaCheckIns';
 import { useLanguage } from '../context/LanguageContext';
 import { useIsMobile } from '../utils/useIsMobile';
 import OrganizerList from './OrganizerList';
@@ -116,6 +117,9 @@ export default function CheckInPage(): React.ReactElement {
     regId: number; status: string; department?: string; jobTitle?: string; location?: string; photoUrl?: string;
     /** v30.53: Startnummer, Trikotgröße, Gruppe — was am Tisch gebraucht wird. */
     extras?: CheckInExtra[];
+    /** v30.91: Programmpunkt, an dem eingecheckt wird (statt Event-Status). */
+    agendaItemId?: string;
+    agendaLabel?: string;
   } | null>(null);
 
 
@@ -190,6 +194,46 @@ export default function CheckInPage(): React.ReactElement {
   const [nameSearchEventId, setNameSearchEventId] = React.useState<string>(selectedEventId || '');
   const [searchRegsCache, setSearchRegsCache] = React.useState<Record<string, import('../services/EventService').SPRegistration[]>>({});
   searchRegsCacheRef.current = searchRegsCache; // v30.88 (s. shirtAllocFor)
+
+  // v30.91: Programmpunkte (Konzept docs/konzept-programmpunkte.md, Stufe 2).
+  // Bei einem Event mit `agendaCheckIn` wird nicht das Event, sondern EIN
+  // Programmpunkt eingecheckt: Das Team wählt oben den Punkt, jeder Scan,
+  // jede ID und jeder Klick setzt nur diesen Punkt in `AgendaCheckIns`. Der
+  // Event-Status bleibt unberührt (Nutzer-Entscheidung 07.09.2026).
+  const agendaEv = React.useMemo(() => events.find(e => e.id === nameSearchEventId) || null, [events, nameSearchEventId]);
+  const agendaItems = React.useMemo(() => (agendaEv && agendaEv.agendaCheckIn
+    ? (agendaEv.agenda || []).slice().sort((a, b) => ((a.date || '') + (a.time || '')).localeCompare((b.date || '') + (b.time || '')))
+    : []), [agendaEv]);
+  const agendaMode = agendaItems.length > 0;
+  const agendaTermSingular = (agendaEv && agendaEv.agendaTermSingular) || (isDe ? 'Programmpunkt' : 'Agenda item');
+  const [agendaPointId, setAgendaPointId] = React.useState<string>('');
+  React.useEffect(() => {
+    if (!agendaMode) { setAgendaPointId(''); return; }
+    let stored = '';
+    try { stored = window.localStorage.getItem(`dex_checkin_point_${nameSearchEventId}`) || ''; } catch { /* */ }
+    if (agendaItems.some(a => a.id === stored)) { setAgendaPointId(stored); return; }
+    const s = suggestCurrentAgendaItem(agendaItems);
+    setAgendaPointId(s ? s.id : '');
+  }, [agendaMode, nameSearchEventId, agendaItems]);
+  const choosePoint = (id: string): void => {
+    setAgendaPointId(id);
+    try { window.localStorage.setItem(`dex_checkin_point_${nameSearchEventId}`, id); } catch { /* */ }
+  };
+  const agendaPoint = agendaItems.find(a => a.id === agendaPointId) || null;
+  const presentAt = (reg: { AgendaCheckIns?: string } | null | undefined, pointId: string): boolean =>
+    !!(reg && pointId && parseAgendaCheckIns(reg.AgendaCheckIns)[pointId]);
+  // Zähler je Punkt (aktive Anmeldungen) — für die Chips der Punkt-Wahl.
+  const agendaCounts = React.useMemo((): Record<string, number> => {
+    const out: Record<string, number> = {};
+    if (!agendaMode) return out;
+    const regs = searchRegsCache[nameSearchEventId] || [];
+    for (const r of regs) {
+      if (r.Status === 'Abgemeldet') continue;
+      const marks = parseAgendaCheckIns(r.AgendaCheckIns);
+      Object.keys(marks).forEach(k => { out[k] = (out[k] || 0) + 1; });
+    }
+    return out;
+  }, [agendaMode, searchRegsCache, nameSearchEventId]);
   const [isLoadingSearchRegs, setIsLoadingSearchRegs] = React.useState(false);
   const [searchLoadError, setSearchLoadError] = React.useState('');
   // v20.1: Busy-Flag für die Self-Check-in-Aktionen (Live-QR / PDF).
@@ -260,11 +304,14 @@ export default function CheckInPage(): React.ReactElement {
     let noShow = 0;
     for (const r of regs) {
       if (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt') registered++;
-      if (r.Status === 'Eingecheckt') checkedIn++;
+      // v30.91: Im Programmpunkt-Modus zählt die Kachel die Anwesenden am
+      // gewählten Punkt — der Event-Status sagt dort nichts.
+      if (agendaMode ? presentAt(r, agendaPointId) : r.Status === 'Eingecheckt') checkedIn++;
       if (r.Status === 'No-Show') noShow++;
     }
     return { registered, checkedIn, noShow };
-  }, [nameSearchEventId, searchRegsCache]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nameSearchEventId, searchRegsCache, agendaMode, agendaPointId]);
 
   // v7.14: Live-Filter über die ganze Liste — leerer Query zeigt alle
   // Teilnehmer. Sortiert nach Status (Aktive zuerst), dann Nachname.
@@ -298,7 +345,9 @@ export default function CheckInPage(): React.ReactElement {
         });
     // v7.16: optionaler Quick-Filter "nur offene Anmeldungen"
     const filtered = onlyOpen
-      ? matchesQuery.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet')
+      ? matchesQuery.filter(r => agendaMode
+        ? (r.Status !== 'Abgemeldet' && r.Status !== 'Warteliste' && !presentAt(r, agendaPointId))
+        : (r.Status === 'Angemeldet' || r.Status === 'QR versendet'))
       : matchesQuery;
     // Sortierung: Angemeldet/QR versendet zuerst, dann Eingecheckt, dann
     // Warteliste, dann Abgemeldet. Innerhalb der Gruppe alphabetisch nach
@@ -317,7 +366,8 @@ export default function CheckInPage(): React.ReactElement {
       const nb = (b.Nachname || b.ParticipantName || '').toLowerCase();
       return na.localeCompare(nb);
     });
-  }, [nameSearchQuery, nameSearchEventId, searchRegsCache, onlyOpen]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nameSearchQuery, nameSearchEventId, searchRegsCache, onlyOpen, agendaMode, agendaPointId]);
 
   /**
    * v30.35: Check-in über die eingetippte Teilnehmer-ID.
@@ -384,6 +434,21 @@ export default function CheckInPage(): React.ReactElement {
       return;
     }
     const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || reg.ParticipantEmail);
+    // v30.91: Programmpunkt-Modus — ohne gewählten Punkt kein Check-in;
+    // schon erfasst → Hinweis mit Uhrzeit, kein zweiter Schreibvorgang.
+    if (agendaMode) {
+      if (!agendaPoint) {
+        setResultMessage(isDe ? `Bitte oben den ${agendaTermSingular} wählen, an dem eingecheckt wird.` : `Please pick the ${agendaTermSingular.toLowerCase()} above first.`);
+        setResultType('error');
+        return;
+      }
+      const marks = parseAgendaCheckIns(reg.AgendaCheckIns);
+      if (marks[agendaPoint.id]) {
+        setResultMessage(`${name} — ${isDe ? 'bereits erfasst' : 'already recorded'} (${agendaPoint.title}, ${formatMarkTime(marks[agendaPoint.id].at)})`);
+        setResultType('info');
+        return;
+      }
+    }
     let photoUrl = '';
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -399,6 +464,8 @@ export default function CheckInPage(): React.ReactElement {
       event: { id: ev.id, subsiteUrl: ev.subsiteUrl, title: ev.title },
       regId: reg.Id,
       status: reg.Status,
+      agendaItemId: agendaMode && agendaPoint ? agendaPoint.id : undefined,
+      agendaLabel: agendaMode && agendaPoint ? agendaPoint.title : undefined,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       department: (reg as any).Department || '',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -721,15 +788,36 @@ export default function CheckInPage(): React.ReactElement {
 
     const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
 
-    if (reg.Status === 'Eingecheckt') {
-      setResultMessage(`${name} — ${t('checkin.alreadycheckedin')}`);
-      setResultType('info');
-      setIsProcessing(false);
-      return;
-    }
     if (reg.Status === 'Abgemeldet') {
       setResultMessage(`${name} — ${t('checkin.cancelled')}`);
       setResultType('error');
+      setIsProcessing(false);
+      return;
+    }
+    // v30.91: Programmpunkt-Modus des GESCANNTEN Events. Der Punkt wird
+    // unten beim Event gewählt; ein Scan zu einem anderen Event oder ohne
+    // Punkt wird nicht geraten, sondern abgelehnt.
+    const scanEv = events.find(e => e.id === event.id);
+    const scanAgenda = !!(scanEv && scanEv.agendaCheckIn && (scanEv.agenda || []).length > 0);
+    if (scanAgenda) {
+      if (event.id !== nameSearchEventId || !agendaPoint) {
+        setResultMessage(isDe
+          ? `Dieses Event hat Programmpunkte — bitte unten das Event und den ${agendaTermSingular} wählen, an dem eingecheckt wird.`
+          : `This event has agenda items — please pick the event and the ${agendaTermSingular.toLowerCase()} below first.`);
+        setResultType('error');
+        setIsProcessing(false);
+        return;
+      }
+      const marks = parseAgendaCheckIns(reg.AgendaCheckIns);
+      if (marks[agendaPoint.id]) {
+        setResultMessage(`${name} — ${isDe ? 'bereits erfasst' : 'already recorded'} (${agendaPoint.title}, ${formatMarkTime(marks[agendaPoint.id].at)})`);
+        setResultType('info');
+        setIsProcessing(false);
+        return;
+      }
+    } else if (reg.Status === 'Eingecheckt') {
+      setResultMessage(`${name} — ${t('checkin.alreadycheckedin')}`);
+      setResultType('info');
       setIsProcessing(false);
       return;
     }
@@ -752,6 +840,8 @@ export default function CheckInPage(): React.ReactElement {
       event: { id: event.id, subsiteUrl: event.subsiteUrl, title: event.title },
       regId: reg.Id,
       status: reg.Status,
+      agendaItemId: scanAgenda && agendaPoint ? agendaPoint.id : undefined,
+      agendaLabel: scanAgenda && agendaPoint ? agendaPoint.title : undefined,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       department: (reg as any).Department || '',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -782,6 +872,41 @@ export default function CheckInPage(): React.ReactElement {
       // durchging, steht NUR im Rückgabewert. Vorher stieg der Zähler und die
       // grüne Meldung kam auch dann, wenn in der Liste weiter „Angemeldet"
       // stand — und die Person tauchte später in der No-Show-Auswertung auf.
+      // v30.91: Programmpunkt — nur der Punkt wird gesetzt, der Status bleibt.
+      if (pendingCheckIn.agendaItemId) {
+        const pointId = pendingCheckIn.agendaItemId;
+        const label = pendingCheckIn.agendaLabel || '';
+        const r = await eventService.checkInAgendaItem(pendingCheckIn.event.subsiteUrl, pendingCheckIn.regId, pointId);
+        if (!r.ok) {
+          setResultMessage(isDe
+            ? `${pendingCheckIn.name} — Anwesenheit konnte nicht gespeichert werden${r.status ? ` (HTTP ${r.status})` : ''}. ${r.status === 400 ? 'Fehlt die Spalte AgendaCheckIns? Organizer: „Spalten fixen" ausführen.' : 'Bitte erneut versuchen.'}`
+            : `${pendingCheckIn.name} — attendance could not be saved${r.status ? ` (HTTP ${r.status})` : ''}.`);
+          setResultType('error');
+          setPendingCheckIn(null);
+          processingRef.current = false;
+          return;
+        }
+        const evId = pendingCheckIn.event.id;
+        const regId = pendingCheckIn.regId;
+        const at = r.already || new Date().toISOString();
+        if (evId) {
+          setSearchRegsCache(prev => {
+            const list = prev[evId];
+            if (!list) return prev;
+            return { ...prev, [evId]: list.map(x => x.Id === regId
+              ? { ...x, AgendaCheckIns: JSON.stringify({ ...parseAgendaCheckIns(x.AgendaCheckIns), [pointId]: { at, by: '' } }) }
+              : x) };
+          });
+        }
+        if (!r.already) setCheckedInCount(prev => prev + 1);
+        setResultMessage(r.already
+          ? `${pendingCheckIn.name} — ${isDe ? 'bereits erfasst' : 'already recorded'} (${label}, ${formatMarkTime(r.already)})`
+          : `${pendingCheckIn.name} — ${isDe ? 'anwesend bei' : 'present at'} ${label}`);
+        setResultType(r.already ? 'info' : 'success');
+        setPendingCheckIn(null);
+        processingRef.current = false;
+        return;
+      }
       const ok = await eventService.checkInParticipant(pendingCheckIn.event.subsiteUrl, pendingCheckIn.regId);
       if (!ok) {
         setResultMessage(isDe
@@ -1143,6 +1268,9 @@ export default function CheckInPage(): React.ReactElement {
           </div>
           <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', margin: '0 0 16px' }}>
             {isDe ? 'Event: ' : 'Event: '}<strong>{pendingCheckIn.event.title}</strong>
+            {pendingCheckIn.agendaLabel && (
+              <><br />{agendaTermSingular}: <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>{pendingCheckIn.agendaLabel}</strong></>
+            )}
           </p>
           <div style={{ display: 'flex', gap: 12 }}>
             <button
@@ -1150,7 +1278,7 @@ export default function CheckInPage(): React.ReactElement {
               onClick={confirmCheckIn}
               style={{ flex: 1, fontSize: '1rem', padding: '12px 0', background: 'var(--dex-green)' }}
             >
-              {isDe ? 'Einchecken' : 'Check in'}
+              {pendingCheckIn.agendaItemId ? (isDe ? 'Anwesenheit erfassen' : 'Record attendance') : (isDe ? 'Einchecken' : 'Check in')}
             </button>
             <button
               className="btn btn-secondary"
@@ -1400,6 +1528,39 @@ export default function CheckInPage(): React.ReactElement {
             ))}
           </select>
         )}
+        {/* v30.91: Programmpunkt wählen — hier wird eingecheckt. Vorschlag ist
+            der Punkt, der gerade läuft (suggestCurrentAgendaItem); die Wahl
+            bleibt je Event im Gerät gespeichert. */}
+        {agendaMode && (
+          <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(134,188,37,0.08)', border: '1px solid rgba(134,188,37,0.45)' }}>
+            <div style={{ fontSize: '0.8rem', fontWeight: 700, marginBottom: 6 }}>
+              {isDe ? `${agendaTermSingular} wählen — hier wird eingecheckt` : `Pick the ${agendaTermSingular.toLowerCase()} — attendance is recorded there`}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {agendaItems.map(it => {
+                const active = it.id === agendaPointId;
+                const cnt = agendaCounts[it.id] || 0;
+                return (
+                  <button key={it.id} type="button" onClick={() => choosePoint(it.id)} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999, cursor: 'pointer',
+                    border: `1px solid ${active ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                    background: active ? 'var(--dex-green, #86bc25)' : '#fff', color: active ? '#fff' : 'var(--dex-gray-800)',
+                    fontSize: '0.8rem', fontWeight: active ? 700 : 500, textAlign: 'left',
+                  }}>
+                    <span style={{ fontVariantNumeric: 'tabular-nums', opacity: 0.85 }}>{it.date ? new Date(it.date + 'T00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' ' : ''}{it.time}</span>
+                    <span>{it.title || (isDe ? '(ohne Titel)' : '(untitled)')}</span>
+                    <span style={{ fontSize: '0.72rem', padding: '1px 7px', borderRadius: 999, background: active ? 'rgba(255,255,255,0.25)' : 'var(--dex-gray-100)', color: active ? '#fff' : 'var(--dex-gray-600)' }}>{cnt}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-600)', marginTop: 6 }}>
+              {isDe
+                ? 'Jeder Scan, jede ID und jeder Klick setzt nur diesen Punkt. Der Event-Status der Person bleibt unverändert.'
+                : 'Every scan, ID and click records only this item. The person\'s event status stays unchanged.'}
+            </div>
+          </div>
+        )}
         {/* v7.16: KPI-Bereich — angemeldet vs. eingecheckt, plus Quick-Filter
             "Nur offene anzeigen" der die Liste auf Angemeldet/QR versendet
             reduziert. Sichtbar nur wenn Event gewählt + Liste geladen. */}
@@ -1430,7 +1591,7 @@ export default function CheckInPage(): React.ReactElement {
                 </span>
               </div>
               <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-600)', marginTop: 4 }}>
-                Eingecheckt
+                {agendaMode ? (agendaPoint ? `${isDe ? 'Anwesend' : 'Present'} · ${agendaPoint.title}` : (isDe ? 'Anwesend' : 'Present')) : 'Eingecheckt'}
               </div>
             </div>
             {/* v23.28: No-Show-Zähler. */}
@@ -1529,7 +1690,8 @@ export default function CheckInPage(): React.ReactElement {
                   {searchHits.map(reg => {
                     const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || reg.ParticipantEmail || '-');
                     const status = reg.Status;
-                    const alreadyIn = status === 'Eingecheckt';
+                    // v30.91: Im Programmpunkt-Modus heißt „drin": am gewählten Punkt erfasst.
+                    const alreadyIn = agendaMode ? presentAt(reg, agendaPointId) : status === 'Eingecheckt';
                     const cancelled = status === 'Abgemeldet';
                     const waitlist = status === 'Warteliste';
                     const noShow = status === 'No-Show';
@@ -1640,7 +1802,7 @@ export default function CheckInPage(): React.ReactElement {
                             disabled={alreadyIn || cancelled || isProcessing}
                             onClick={() => startManualCheckInFromSearch(reg)}
                           >
-                            {alreadyIn ? '✓ Eingecheckt' : cancelled ? 'Abgemeldet' : 'Einchecken'}
+                            {alreadyIn ? (agendaMode ? (isDe ? '✓ Anwesend' : '✓ Present') : '✓ Eingecheckt') : cancelled ? 'Abgemeldet' : (agendaMode ? (isDe ? 'Anwesend erfassen' : 'Record') : 'Einchecken')}
                           </button>
                           <button
                             type="button"

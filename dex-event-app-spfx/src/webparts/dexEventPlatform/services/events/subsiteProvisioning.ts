@@ -147,6 +147,7 @@ export async function createRegistrationList(
     { title: 'CheckedInDate', type: 4 },     // v7.16: Check-In-Audit — Zeitpunkt
     { title: 'CheckedInByName', type: 2 },   // v7.16: Check-In-Audit — Helfer-Name
     { title: 'CheckedInByEmail', type: 2 },  // v7.16: Check-In-Audit — Helfer-E-Mail
+    { title: 'AgendaCheckIns', type: 3 },    // v30.91: Anwesenheit je Programmpunkt (JSON, s. utils/agendaCheckIns)
     // v17.15: Nachrück-Audit (siehe SPRegistration-Interface):
     // - PromotedDate: gesetzt beim Promote auf die nachrückende Person.
     // - ReplacedParticipantEmail: E-Mail der Person, deren Cancel den

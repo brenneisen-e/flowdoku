@@ -12,6 +12,7 @@ import { CachedImg } from '../CachedImage';
 import { UserFieldPicker } from '../UserFieldPicker';
 import { isEventVisibleForUser } from '../EventListPage';
 import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime } from '../../types';
+import { parseAgendaCheckIns, formatMarkTime } from '../../utils/agendaCheckIns';
 import { SPRegistration } from '../../services/EventService';
 import { isEventOver, formatAllDayPeriod } from '../../utils/eventFormat';
 import { selfCancelLocked, selfCancelLockReason } from '../../utils/cancelPolicy';
@@ -903,6 +904,13 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                                   {item.location && (
                                     <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-600)', marginTop: 1, wordBreak: 'break-word' }}>{item.location}</div>
                                   )}
+                                  {/* v30.91: Anwesenheit je Programmpunkt (AgendaCheckIns der eigenen Zeile). */}
+                                  {event.agendaCheckIn && (() => {
+                                    const m = parseAgendaCheckIns(registration && registration.AgendaCheckIns)[item.id];
+                                    return m
+                                      ? <div style={{ fontSize: '0.72rem', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, marginTop: 2 }}>✓ {t('myevents.agenda') === 'Programm' ? 'anwesend' : 'present'} {formatMarkTime(m.at)}</div>
+                                      : null;
+                                  })()}
                                   {item.description && (
                                     <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 1, wordBreak: 'break-word' }}>{item.description}</div>
                                   )}

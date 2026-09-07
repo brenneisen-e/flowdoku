@@ -12,6 +12,7 @@
 import { SPHttpClient } from '@microsoft/sp-http';
 import type { EventService, SPRegistration } from '../EventService';
 import { ACTIVE_STATI, REG_LIST_ITEM_TYPE, REG_LIST_NAME } from '../EventService';
+import { parseAgendaCheckIns } from '../../utils/agendaCheckIns';
 
 /**
  * v10.27: User wechselt seine Split-Capacity-Gruppe.
@@ -335,6 +336,61 @@ export async function checkInParticipant(
 }
 
 /**
+ * v30.91: Anwesenheit an EINEM Programmpunkt erfassen (Spalte AgendaCheckIns,
+ * s. utils/agendaCheckIns). Setzt NICHT den Event-Status — Nutzer-Entscheidung
+ * 07.09.2026: „Check-in an einem Punkt setzt nur den einen Punkt."
+ *
+ * Vor dem MERGE wird die Zeile frisch gelesen: Zwei Scanner an zwei Punkten
+ * können dieselbe Person im selben Moment erfassen, und wer den Cache-Stand
+ * zurückschreibt, löscht den Punkt des anderen. Ist der Punkt schon gesetzt,
+ * bleibt der erste Zeitstempel stehen (`already`), nichts wird geschrieben.
+ */
+export async function checkInAgendaItem(
+  svc: EventService,
+  subsiteUrl: string,
+  itemId: number,
+  agendaItemId: string
+): Promise<{ ok: boolean; already?: string; status: number }> {
+  const base = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`;
+  try {
+    const r = await svc._sp.get(`${base}?$select=AgendaCheckIns`, SPHttpClient.configurations.v1);
+    if (!r.ok) return { ok: false, status: r.status };
+    const d = await r.json();
+    const raw: string = (d.AgendaCheckIns ?? d.d?.AgendaCheckIns ?? '') as string;
+    const cur = parseAgendaCheckIns(raw);
+    if (cur[agendaItemId]) return { ok: true, already: cur[agendaItemId].at, status: 200 };
+    const me = svc.context.pageContext.user;
+    cur[agendaItemId] = { at: new Date().toISOString(), by: me.email || me.loginName || '' };
+    const resp = await svc._merge(base, { 'AgendaCheckIns': JSON.stringify(cur) });
+    return { ok: resp.ok, status: resp.status };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
+
+/** v30.91: Anwesenheit an einem Punkt wieder entfernen (Organizer Center, Stufe 3). */
+export async function removeAgendaCheckIn(
+  svc: EventService,
+  subsiteUrl: string,
+  itemId: number,
+  agendaItemId: string
+): Promise<{ ok: boolean; status: number }> {
+  const base = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`;
+  try {
+    const r = await svc._sp.get(`${base}?$select=AgendaCheckIns`, SPHttpClient.configurations.v1);
+    if (!r.ok) return { ok: false, status: r.status };
+    const d = await r.json();
+    const cur = parseAgendaCheckIns((d.AgendaCheckIns ?? d.d?.AgendaCheckIns ?? '') as string);
+    if (!cur[agendaItemId]) return { ok: true, status: 200 };
+    delete cur[agendaItemId];
+    const resp = await svc._merge(base, { 'AgendaCheckIns': Object.keys(cur).length ? JSON.stringify(cur) : null });
+    return { ok: resp.ok, status: resp.status };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
+
+/**
  * v23.28/v23.29: Teilnehmer als „No-Show" markieren (war angemeldet, aber
  * nicht erschienen). Reuse der Check-in-Audit-Spalten (CheckedInBy*), damit
  * kein neues Schema nötig ist. **Nur für Events, deren Teilnehmerliste die
@@ -420,7 +476,7 @@ export async function getRegistrationByEmail(
 ): Promise<SPRegistration | null> {
   try {
     const response = await svc._sp.get(
-      `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=ParticipantEmail eq '${email.trim().replace(/'/g, "''")}'&$select=Id,Title,Vorname,Nachname,ParticipantName,ParticipantEmail,Status,RegistrationDate,RegisteredByName,RegisteredByEmail,CancellationDate,CancelledByName,CancelledByEmail,CustomData,Department,JobTitle,Location,Company&$orderby=Id desc&$top=20`,
+      `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=ParticipantEmail eq '${email.trim().replace(/'/g, "''")}'&$select=Id,Title,Vorname,Nachname,ParticipantName,ParticipantEmail,Status,RegistrationDate,RegisteredByName,RegisteredByEmail,CancellationDate,CancelledByName,CancelledByEmail,CustomData,Department,JobTitle,Location,Company,AgendaCheckIns&$orderby=Id desc&$top=20`,
       SPHttpClient.configurations.v1
     );
     if (!response.ok) return null;

@@ -210,6 +210,7 @@ export async function fixRegistrationListColumns(
     { title: 'CheckedInDate', type: 4 },     // v7.16: Check-In-Audit — Zeitpunkt
     { title: 'CheckedInByName', type: 2 },   // v7.16: Check-In-Audit — Helfer-Name
     { title: 'CheckedInByEmail', type: 2 },  // v7.16: Check-In-Audit — Helfer-E-Mail
+    { title: 'AgendaCheckIns', type: 3 },    // v30.91: Anwesenheit je Programmpunkt (JSON)
     // v19.3: Nachrück-Audit-Spalten auch beim „Spalten fixen" nachziehen, damit
     // der DEX_IDReorder-Flow (und der App-Button) sie auf Bestands-Events
     // beschreiben kann → „Nachgerückt am / Ersetzt / Ersetzt durch" in der App.
