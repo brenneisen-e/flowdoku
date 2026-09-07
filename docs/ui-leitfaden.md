@@ -25,9 +25,15 @@ eintragen.**
    Frage und beantwortet sie mit einem Bedienelement. Erklärtext maximal zwei
    Zeilen sichtbar; alles Weitere in `InfoTooltip` oder einen Aufklapper
    (`dex-ui-disclosure`, standardmäßig zu).
-3. **Jedes klickbare Element hat einen Hover.** Inline-Styles können kein
-   `:hover` — deshalb die Klassen unten. Ein Element ohne Hover liest sich als
-   Beschriftung. Kein `onMouseEnter`-State mehr für reine Optik.
+3. **Jedes klickbare Element hat einen Hover — und nur klickbare.** Inline-
+   Styles können kein `:hover` — deshalb die Klassen unten. Ein Element ohne
+   Hover liest sich als Beschriftung; umgekehrt verspricht ein Hover eine
+   Aktion. Nutzer-Ansage 07.09.2026: „Mouseover natürlich nur dort, wo es Sinn
+   ergibt, und kein Mouseover um des Mouseovers willen." Also: Karte mit
+   Hover nur, wenn Klick sie öffnet/bearbeitet; Zeile mit Hover nur, wenn
+   Klick etwas tut; reine Anzeigen (Kennzahlen, Statuspillen, Hinweiskästen,
+   Vorschau) bleiben ruhig — `dex-ui-card` ohne `--hover`, `dex-ui-pill`
+   statt `dex-ui-chip`. Kein `onMouseEnter`-State mehr für reine Optik.
 4. **Der Knopf ist der Schritt.** Wo ein Ablauf erklärt wird („1. Vorschau,
    2. Test, 3. Senden"), sitzt der Knopf in derselben Zeile wie die Nummer
    (`dex-ui-step`). Nummern und Knöpfe getrennt zwingen zum Zuordnen.
