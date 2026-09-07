@@ -114,6 +114,7 @@ import { AdminActionsCard } from './admin/sections/AdminActionsCard';
 import { KpiTiles } from './admin/sections/KpiTiles';
 import { HotelPlanningSection } from './admin/sections/HotelPlanningSection';
 import { QuizStatsSection } from './admin/sections/QuizStatsSection';
+import { AgendaAttendanceSection } from './admin/sections/AgendaAttendanceSection';
 import { ActiveEventHintsBox } from './admin/sections/ActiveEventHintsBox';
 import { AudienceVisibilityRow } from './admin/sections/AudienceVisibilityRow';
 import { DangerZoneModal } from './admin/sections/DangerZoneModal';
@@ -2218,6 +2219,12 @@ export default function AdminPage(): React.ReactElement {
   const quizStatsSectionProps = {
     registrations, selectedEvent,
   };
+  // v30.92: Anwesenheit je Programmpunkt (Stufe 3) — nur bei Events mit agendaCheckIn.
+  const agendaAttendanceSectionProps = {
+    event: selectedEvent, registrations, regsUnknown, isDe,
+    canEdit: isAdmin || isOrganizerFor(selectedEvent),
+    eventServiceRef, reloadRegistrations, showAlert, confirmDialog,
+  };
   // v30.87: Angemeldete ohne QR-Code — über die Klammer UND alle Termin-
   // Listen. null, solange eine Liste nicht lesbar ist (keine Aussage).
   const qrPendingCount: number | null = (() => {
@@ -2404,6 +2411,10 @@ export default function AdminPage(): React.ReactElement {
 
       {/* ===== QUIZ-STATISTIK (collapsible, oberhalb Teilnehmerliste) ===== */}
       {selectedEvent && selectedEvent.quiz && selectedEvent.quiz.length > 0 && <QuizStatsSection {...quizStatsSectionProps} />}
+
+      {/* v30.92: Anwesenheit je Programmpunkt — Matrix und „nach Punkt", Excel,
+          manuelles Nachtragen mit Audit. Nur bei Events mit Programmpunkten. */}
+      {selectedEvent && selectedEvent.agendaCheckIn && (selectedEvent.agenda || []).length > 0 && <AgendaAttendanceSection {...agendaAttendanceSectionProps} />}
 
         {/* v22.16: „Hinweise"-Box für AKTIVE Events. v30.87: nicht mehr hier
             als eigene Kachel, sondern als Zeile in der Event-Details-Karte

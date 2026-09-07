@@ -254,7 +254,7 @@ Kopie jederzeit verworfen und wiederholt werden.
 |---|---|---|
 | 1 | Modus-Flag + Bezeichnung, Wahl in Schritt 1, Agenda-Editor mit Raum und „Tag kopieren", Programm-Block auf Anmeldeseite und in Meine Events | **v30.86 — ausgeliefert** |
 | 2 | Check-in je Programmpunkt (Scanner, Teilnehmer-ID, Name), Punkt-Wahl mit Vorschlag „läuft gerade", Zähler je Punkt, Doppel-Scan-Meldung; Spalte `AgendaCheckIns` (neue Listen + „Spalten fixen"); Haken in Meine Events | **v30.91 — ausgeliefert** (offen: Self-Check-in/Live-QR je Punkt) |
-| 3 | Anwesenheits-Reiter im Organizer Center (Matrix Person × Punkt, „nach Punkt"), Excel-Spalten, manuelles Nachtragen mit Audit | offen |
+| 3 | Abschnitt „Anwesenheit je Programmpunkt" im Organizer Center (Matrix Person × Punkt, „nach Punkt"), Excel mit zwei Blättern, manuelles Nachtragen/Zurücknehmen mit Audit | **v30.92 — ausgeliefert** |
 | 4 | „Als neues Event mit Programmpunkten kopieren" (Abschnitt 5) | offen |
 | 5 (später) | `{{Programm}}`-Platzhalter für Mail/Outlook, Teilnahmebescheinigung, Programmpunkte unter Kalender-Tagen | offen |
 
