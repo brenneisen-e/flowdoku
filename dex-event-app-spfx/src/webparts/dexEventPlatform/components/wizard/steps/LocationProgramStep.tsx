@@ -44,9 +44,32 @@ export interface LocationProgramStepProps {
   teamsLink: string;
   transferTimes: { id: string; location: string; meetingPoint: string; address: string; date: string; departureTime: string; arrivalTime: string; description: string; }[];
   updateAgendaItem: (id: string, updates: Partial<AgendaItem>) => void;
+  /** v30.86: Programmpunkte mit Check-in — die Agenda ist dann die Check-in-Liste. */
+  agendaCheckIn: boolean;
+  agendaTermPlural: string;
+  agendaTermSingular: string;
+  setAgenda: React.Dispatch<React.SetStateAction<AgendaItem[]>>;
 }
 export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
   const { visible } = p;
+  const { agendaCheckIn, agendaTermPlural, agendaTermSingular, setAgenda } = p;
+  // v30.86: „Letzten Tag kopieren" — bei einer Tagung über drei Tage ist der
+  // Ablauf oft je Tag ähnlich; statt zwanzig Zeilen neu zu tippen, klont man
+  // den letzten Tag mit +1 Tag und passt Titel an. Neue Ids, damit spätere
+  // Check-ins (Stufe 2) am richtigen Punkt hängen.
+  const copyLastAgendaDay = (): void => {
+    const dated = p.agenda.filter(a => a.date);
+    if (dated.length === 0) return;
+    const lastDay = dated.map(a => a.date).sort().slice(-1)[0];
+    const d = new Date(lastDay + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    const next = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const clones = dated.filter(a => a.date === lastDay).map((a, i) => ({
+      ...a, id: `ag-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`, date: next,
+    }));
+    setAgenda(prev => [...prev, ...clones]);
+  };
+  const agendaPlural = agendaTermPlural.trim() || (p.isDe ? 'Programmpunkte' : 'Agenda items');
   const { activeLocationTabIdx, addAgendaItem, addrCity, addrHouseNo, addrStreet, addrZip, agenda, isDe, isMobile, isoToLocal, location, locationOptions, onlineMeetingMode, outlookLocationOverride, removeAgendaItem, renderStepIntro, setAddrCity, setAddrHouseNo, setAddrStreet, setAddrZip, setLocation, setOnlineMeetingMode, setOutlookLocationOverride, setSubEvents, setTeamsLink, setTransferTimes, startDate, subEvents, t, teamsLink, transferTimes, updateAgendaItem } = p;
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
@@ -498,7 +521,12 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
               <div className="form-group" style={{ marginTop: 24 }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
                   <StepBadge n={16} />
-                  {t('create.agenda')}
+                  {agendaCheckIn ? agendaPlural : t('create.agenda')}
+                  {agendaCheckIn && (
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(134,188,37,0.15)', color: 'var(--dex-green-dark, #6b9a1e)' }}>
+                      {isDe ? 'Check-in je Punkt' : 'Check-in per item'}
+                    </span>
+                  )}
                   <InfoTooltip text={isDe ? (
                     <>
                       <strong>Was du hier einstellst:</strong> den <strong>Programmablauf des Events</strong> als Liste — pro Punkt: Datum, Start- und Endzeit, Titel, optionale Beschreibung und ein Icon (z.B. Kaffee, Vortrag, Pause).<br /><br />
@@ -515,6 +543,17 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                     </>
                   )} />
                 </label>
+                {/* v30.86: Im Programmpunkte-Modus (Schritt 1) ist diese Liste
+                    mehr als Anzeige: Jeder Punkt ist eine Check-in-Station.
+                    Ohne diesen Satz sucht der Organizer die Punkte in Schritt 1,
+                    wo der Schalter steht. */}
+                {agendaCheckIn && (
+                  <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', background: 'rgba(134,188,37,0.08)', border: '1px solid rgba(134,188,37,0.4)', borderRadius: 8, padding: '10px 14px', margin: '6px 0 12px' }}>
+                    {isDe
+                      ? <>Du hast in Schritt 1 <strong>Programmpunkte mit Anwesenheits-Check-in</strong> gewählt. Jede Zeile hier ist ein Punkt, an dem später eingecheckt wird — Titel, Datum, Start, Ende und Raum reichen. Teilnehmer sehen die Liste auf der Anmeldeseite und in &bdquo;Meine Events&ldquo;; angemeldet wird nur fürs Event.</>
+                      : <>In step 1 you chose <strong>agenda items with attendance check-in</strong>. Every row here is an item people check in at — title, date, start, end and room are enough. Attendees see the list on the registration page and in “My events”; they register for the event only.</>}
+                  </div>
+                )}
                 {agenda
                   .slice()
                   .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
@@ -559,6 +598,13 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                       <input type="text" className="form-input" value={item.title} onChange={e => updateAgendaItem(item.id, { title: e.target.value })} placeholder={t('create.agenda.title')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
                     </div>
 
+                    {/* v30.86: Raum/Ort je Punkt — bei parallelen Sessions
+                        die einzige Angabe, die Teilnehmer wirklich suchen. */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 120, flex: '0 1 160px' }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'Raum / Ort (optional)' : 'Room / place (optional)'}</label>
+                      <input type="text" className="form-input" value={item.location || ''} onChange={e => updateAgendaItem(item.id, { location: e.target.value })} placeholder={isDe ? 'z.B. Plenum' : 'e.g. Plenary'} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+
                     {/* Description */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
                       <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.desc')}</label>
@@ -576,9 +622,17 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                     </div>
                   </div>
                 ))}
-                <button type="button" className="btn btn-outline" onClick={addAgendaItem} style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}>
-                  <Plus size={14} /> {t('create.agenda.add')}
-                </button>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                  <button type="button" className="btn btn-outline" onClick={addAgendaItem} style={{ fontSize: '0.85rem', padding: '6px 16px' }}>
+                    <Plus size={14} /> {agendaCheckIn ? (isDe ? `${agendaTermSingular.trim() || 'Programmpunkt'} hinzufügen` : `Add ${agendaTermSingular.trim() || 'agenda item'}`) : t('create.agenda.add')}
+                  </button>
+                  {agenda.some(a => a.date) && (
+                    <button type="button" className="btn btn-outline" onClick={copyLastAgendaDay} style={{ fontSize: '0.85rem', padding: '6px 16px' }}
+                      title={isDe ? 'Alle Punkte des letzten Tages auf den Folgetag kopieren' : 'Copy all items of the last day to the next day'}>
+                      {isDe ? 'Letzten Tag kopieren (+1 Tag)' : 'Copy last day (+1 day)'}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* ===== Transferzeiten Editor ===== */}

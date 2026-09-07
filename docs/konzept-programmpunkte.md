@@ -38,28 +38,28 @@ Programmpunkte kosten davon nichts.
 
 ### 2.1 Programmpunkte am Hauptevent
 
-Neue Spalte **`AgendaJson`** (mehrzeiliger Text) auf `DEX_Events`, angelegt
-idempotent über `ensureEventsList` (eventsListSchema.ts, wie
-`SelfCheckInEnabled` in v18.33). Bewusst eine eigene Spalte und **kein**
-Piggyback in `EmailTemplateOverrides`: Das Piggyback-JSON ist schon der Ort für
-zwölf Flags, und jedes davon muss beim Laden gestrippt werden (CLAUDE.md-
-Falle). Ein Programm mit 20 Einträgen ist Fachdatum, kein Flag.
+**Stand v30.86: kein neues Feld — die bestehende Agenda IST die Liste.**
+Beim Umsetzen zeigte sich, dass es die Struktur längst gibt: Die Spalte
+`Agenda` auf `DEX_Events` trägt seit v22 ein `AgendaItem[]` (`id`, `date`,
+`time`, `endTime`, `title`, `description`, `icon`), gepflegt in Schritt 3
+„Ort & Programm", angezeigt in „Meine Events" als „Programm". Eine zweite
+Spalte `AgendaJson` daneben wäre genau die Doppelung, vor der CLAUDE.md warnt
+(„Vor einer neuen Ansicht prüfen, ob es sie schon gibt"). Also:
 
-```json
-[
-  { "id": "a1", "title": "Begrüßung", "start": "2026-10-12T08:00:00Z", "end": "2026-10-12T08:30:00Z", "location": "Plenum", "description": "", "order": 1 },
-  { "id": "a2", "title": "Keynote", "start": "…", "end": "…", "location": "Plenum", "order": 2 }
-]
-```
+- `AgendaItem` bekommt `location?` (Raum). Sonst unverändert.
+- Neu ist nur ein **Modus-Flag** am Event: `agendaCheckIn` (Piggyback
+  `_agendaCheckIn` in `EmailTemplateOverrides`) — „die Agenda ist nicht nur
+  Anzeige, sondern die Liste der Check-in-Stationen". Dazu die Bezeichnung
+  `_agendaTerm = { singular, plural }` (leer = „Programmpunkt(e)").
+- Beide werden beim Laden gestrippt (`useWizardVisibilityState`) und in
+  beiden Save-Pfaden über `agendaCheckInPiggyback()` frisch gebaut; das Flag
+  wird nie zusammen mit `subEventsOptIn` geschrieben.
+- `id` ist stabil (`ag-<ts>-…`), damit Check-ins (Stufe 2) auch nach
+  Umbenennen oder Umsortieren am richtigen Punkt hängen. Zeiten bleiben
+  Lokal-Strings (`YYYY-MM-DD` + `HH:mm`) wie bisher in der Agenda.
 
-- `id` ist stabil (kurze Zufalls-Id), damit Check-ins auch nach Umbenennen
-  oder Umsortieren am richtigen Punkt hängen.
-- Zeiten als UTC-ISO wie bei Sub-Events; Umrechnung nur über `subIsoToDate`/
-  `subDateToIso` (dieselbe Regel wie im Wizard).
-- Größe: 20 Einträge ≈ 4 KB. Keine Grenze in Sicht.
-
-Im `DeloitteEvent`-Typ: `agenda?: AgendaItem[]`. Ein Event hat **entweder**
-Sub-Events **oder** Programmpunkte, nie beides (Abschnitt 4 begründet das).
+Ein Event hat **entweder** Sub-Events **oder** Programmpunkte, nie beides
+(Entscheidung 2, Abschnitt 4).
 
 ### 2.2 Anwesenheit in der Teilnehmerzeile
 
@@ -90,30 +90,32 @@ Warum in der Teilnehmerzeile und nicht in einer neuen Liste `DEX_Checkins`:
    der erste Zeitstempel bleibt).
 
 Der bisherige Event-Check-in (`Status = Eingecheckt`, `CheckedInDate`) bleibt
-unverändert und bedeutet weiterhin „ist heute da". Vorschlag: Der **erste**
-Check-in an irgendeinem Programmpunkt setzt ihn automatisch mit — wer um 9 Uhr
-in der Keynote sitzt, ist angekommen. (Entscheidung 1, s. Abschnitt 8.)
+unverändert und bedeutet weiterhin „ist heute da". **Entscheidung 1
+(07.09.2026): Ein Check-in an einem Programmpunkt setzt NUR diesen Punkt** —
+„ich möchte wissen, ob die Person bei 1, 3, 5 da war". Kein automatischer
+Event-Check-in; wer den will, checkt zusätzlich am Event ein (wie heute).
+Die Auswertung (Stufe 3) zeigt beides getrennt.
 
 ## 3. Wo Programmpunkte in der App auftauchen
 
 ### 3.1 Wizard, Schritt 1
 
-Im Abschnitt, in dem heute die Sub-Event-Liste steht, kommt **vor** die Liste
-eine Wahl mit drei Karten (einmalig, danach umschaltbar nur solange keine
-Anmeldung existiert):
+**Umgesetzt (v30.86):** Unter „Nutzung von Sub-Events" steht neben der
+Kachel „Sub-Events aktivieren" eine zweite Kachel **„Programmpunkte mit
+Anwesenheits-Check-in nutzen"** — mit Erklärkasten „Was ist ein
+Programmpunkt?" nach dem Muster der Sub-Event-Kachel. Ist sie an, ist der
+Sub-Event-Haken gesperrt („nicht kombinierbar"), und umgekehrt verschwindet
+die Programmpunkt-Kachel, sobald Sub-Events aktiv sind. In der Kachel:
+Bezeichnung (Presets Programmpunkt, Session, Vortrag, Workshop, Slot oder
+eigener Begriff), die Zahl der angelegten Punkte und ein Knopf, der zu
+Schritt 3 springt.
 
-- **Nur das Event** — wie heute ohne Sub-Events.
-- **Sub-Events mit eigener Anmeldung** — wie heute; Erklärsatz: „Jeder Termin
-  hat eigene Plätze, Fristen und Kommunikation. Teilnehmer wählen aus."
-- **Programmpunkte (Agenda)** — neu; Erklärsatz: „Ein Ablauf mit Zeiten. Die
-  Anmeldung gilt fürs ganze Event; je Programmpunkt wird nur die Anwesenheit
-  per Check-in erfasst. Keine eigenen Listen, keine eigenen Mails."
-
-Die Programmpunkt-Liste ist bewusst schlank: Titel, Start, Ende, Ort — eine
-Zeile je Punkt, Drag-Reihenfolge, „Punkt hinzufügen", „aus Tag kopieren" (den
-Vortag klonen mit +1 Tag), Sammelaktion „Alle Zeiten um X Minuten schieben".
-Keine Kommunikations-Reiter, keine Kapazität, keine Frist, keine Pflicht —
-genau das, was der Nutzer will: Agenda-Bausteine.
+Die Punkte selbst werden **nicht** in Schritt 1 gepflegt, sondern dort, wo
+die Agenda schon immer war: Schritt 3 „Ort & Programm". Der Editor trägt im
+Programmpunkte-Modus die gewählte Bezeichnung, ein Badge „Check-in je
+Punkt", einen Erklärkasten, neu ein Feld **Raum** je Punkt und den Knopf
+**„Letzten Tag kopieren (+1 Tag)"** für mehrtägige Abläufe. Keine
+Kommunikations-Reiter, keine Kapazität, keine Frist, keine Pflicht.
 
 Die Scope-Karte (Reiter Klammer/Sub-Events) erscheint bei Programmpunkten
 **nicht**; sie hängt an `subEvents`, und die bleiben leer.
@@ -193,76 +195,47 @@ gehört nicht in den ersten Wurf.
 
 ## 5. Migration eines bestehenden Events mit Sub-Events
 
-Als Aktion im Organizer Center: **„Sub-Events in Programmpunkte umwandeln"**.
-Sie läuft in drei Phasen und ist bis zur letzten reversibel — nach dem Muster,
-das v30.67 für alle Löschpfade festgelegt hat: erst anlegen, dann prüfen, der
-unumkehrbare Schritt kommt zuletzt.
+**Entscheidung 3 (07.09.2026): Migration = ein NEUES Event.** „Migration
+würde ich gerne als neues Event machen, damit das alte nicht verloren geht."
+Das alte Event bleibt vollständig stehen (Sub-Events, Listen, Check-ins,
+Mails, Historie); der In-Place-Umbau mit drei Phasen aus der ersten Fassung
+entfällt. Stattdessen eine Aktion im Organizer Center:
 
-### Phase 1 — Prüfen (nichts wird geschrieben)
+**„Als neues Event mit Programmpunkten kopieren"** (Stufe 4)
 
-Die Aktion lädt alle Sub-Event-Listen (mit `onHttpError`; eine nicht lesbare
-Liste bricht die Prüfung ab, sie wird nicht als leer gerechnet) und zeigt:
+1. **Prüfen (nichts wird geschrieben).** Alle Sub-Event-Listen mit
+   `onHttpError` laden — eine nicht lesbare Liste bricht ab, sie zählt nicht
+   als leer. Anzeige: N Sub-Events → N Programmpunkte (Titel, Datum, Zeiten,
+   Ort), M Personen, die auf mindestens einem Sub-Event oder der Klammer
+   aktiv angemeldet sind, K davon mit Check-in, Wartelisten-Personen
+   (werden NICHT kopiert — sie hatten keinen Platz; namentlich aufgeführt),
+   Formularantworten je Sub-Event (werden in `CustomData` der neuen
+   Hauptzeile unter dem Präfix des Punkts abgelegt).
+2. **Neues Event anlegen** über den normalen `createEvent`-Pfad: Titel
+   (Vorgabe „<alt> (Programmpunkte)"), Bild, Beschreibung, Ort, Organizer,
+   Kommunikation der Klammer; `_agendaCheckIn: true`; `Agenda` aus den
+   Sub-Events (neue Ids). `MaxParticipants` mindestens M. Das neue Event
+   startet als **Test-Event/Entwurf**, damit vor der Freigabe alles geprüft
+   werden kann.
+3. **Anmeldungen still kopieren:** je Person eine echte Zeile am neuen Event
+   (Status `Angemeldet`, `TeilnehmerID` neu, **ohne Mail, ohne Outlook** —
+   die Person ist schon eingeladen; das alte Event trägt Mail und Termin
+   weiter). `AgendaCheckIns` aus den Sub-Event-Check-ins füllen (Punkt-Id
+   ↔ Sub-Event-Id aus Schritt 2). Sequentiell, mit Fehlerzähler und
+   Overlay; jeder Fehler wird gezählt, am Ende Bericht. Nichts am alten
+   Event wird verändert.
+4. **Optional, per Haken:** Anmeldung am alten Event schließen
+   (`_klammerDeadline` = jetzt, Sub-Event-Fristen = jetzt), damit sich
+   niemand mehr doppelt anmeldet. Kein Löschen, keine Ausladung — die
+   Outlook-Termine der Sub-Events bleiben als Erinnerung; das ist der
+   Preis dafür, dass nichts verloren geht, und er ist bewusst gewählt.
+5. Audit: ChangeLog `CopiedToAgendaEvent` (alt) / `CreatedFromSubEvents`
+   (neu) mit Zahlen.
 
-- N Sub-Events → N Programmpunkte (Titel, Zeiten, Ort übernommen).
-- M Personen, die auf mindestens einem Sub-Event angemeldet sind.
-- Davon **K ohne Anmeldung am Hauptevent** (im Modus „Nur Sub-Events" sind das
-  die, deren Klammer-Schattenzeile fehlt; im Normalmodus alle, die nur Termine
-  gebucht haben). Für sie legt Phase 2 eine echte Anmeldung am Hauptevent an.
-- Check-ins auf Sub-Events → werden zu Anwesenheiten.
-- **Blocker**, bei denen die Migration nicht startet:
-  - Personen auf einer **Warteliste** eines Sub-Events (sie haben keinen
-    Platz; am Hauptevent gäbe es plötzlich einen). Der Organizer entscheidet
-    vorher: nachrücken lassen oder abmelden.
-  - **Geteilte Kapazitäten** (Durchstarter/Funstarter) auf einem Sub-Event.
-  - Sub-Events mit eigenen **Formularfeldern und Antworten**: Die Antworten
-    hängen an der Sub-Event-Zeile. Phase 2 kopiert sie in `CustomData` der
-    Hauptzeile unter dem Präfix des Programmpunkts, aber der Organizer muss
-    das sehen und bestätigen, denn die Felder gibt es danach als Fragen nicht
-    mehr.
-- **Hinweise**: eigene Kommunikationstexte je Sub-Event (gehen verloren, das
-  Event hat künftig einen Text), Hotelplanung (bezieht sich auf Sub-Events,
-  wird auf das Event umgehängt).
-
-### Phase 2 — Anlegen (alles additiv, jederzeit abbrechbar)
-
-1. `AgendaJson` am Hauptevent schreiben (Punkte aus den Sub-Events, Ids neu).
-2. Für jede Person: fehlende Hauptevent-Anmeldung anlegen (echte Zeile, Status
-   `Angemeldet`, ohne Mail, ohne Outlook — sie ist ja schon eingeladen).
-   Hat das Hauptevent `MaxParticipants`, wird die Zahl vorher auf mindestens
-   M gesetzt; im Modus „Nur Sub-Events" wird der Modus abgeschaltet, die
-   Schattenzeilen werden zu echten Anmeldungen.
-3. `AgendaCheckIns` je Person aus den Sub-Event-Check-ins füllen.
-4. Formularantworten kopieren (s. Blocker oben).
-5. Sequentiell, mit Fehlerzähler, mit Fortschritt (dasselbe Overlay wie bei
-   der Abmeldung). **Ein einziger Fehler stoppt vor Phase 3** — der alte Stand
-   ist dann noch vollständig da, die neuen Daten sind zusätzlich da und
-   stören nicht (Programmpunkte werden erst mit Phase 3 sichtbar, über ein
-   Flag `agendaMigrationPending`).
-
-### Phase 3 — Abschalten (erst hier wird etwas weggenommen)
-
-1. Outlook: für jede Person und jedes Sub-Event `Ausladen` in die Queue —
-   der Termin des Hauptevents bleibt. Das sind M × N Queue-Zeilen; bei 20
-   Sub-Events und 80 Personen 1.600 Ausladungen. Die Aktion pace-t das und
-   sagt vorher, wie viele es sind. Alternative, die der Organizer wählen
-   kann: **keine** Ausladung, wenn die Sub-Event-Termine als Kalender-Erinnerung
-   erwünscht bleiben (sie schaden nicht, sie sind nur nicht mehr mit DEX
-   verbunden).
-2. `DEX_Participants`: die Sub-Event-Nummern je Person entfernen.
-3. Die Sub-Event-Zeilen in `DEX_Events` auf `Status = Migrated` setzen — sie
-   verschwinden aus allen Ansichten, **Subsites und Listen bleiben 30 Tage
-   stehen** (Archiv-Konzept, „Altes Archiv löschen" räumt sie nach der Frist
-   weg). Das ist die Rücktür: Solange die Listen stehen, kann ein Admin die
-   Migration mit einem Klick zurücknehmen (Status zurück, `AgendaJson`
-   leeren, Hauptevent-Anmeldungen, die Phase 2 angelegt hat, wieder
-   entfernen — sie sind markiert).
-4. Audit: ChangeLog `SubEventsMigratedToAgenda` mit Zahlen.
-
-### Für das konkrete Event mit 20 Sub-Events
-
-Phase 1 sagt dir vorab, ob Wartelisten oder Formularantworten im Weg stehen.
-Wenn nicht, ist der Lauf eine Sache von Minuten; die Ausladungen sind der
-teuerste Teil und der einzige, den Teilnehmer merken — deshalb die Wahl.
+Für das konkrete Event mit 20 Sub-Events: Schritt 1 sagt vorab, ob
+Wartelisten oder Formularantworten betroffen sind; der Lauf ist eine
+Sache von Minuten, und weil das alte Event unangetastet bleibt, kann die
+Kopie jederzeit verworfen und wiederholt werden.
 
 ## 6. Was sich NICHT ändert
 
@@ -277,27 +250,30 @@ teuerste Teil und der einzige, den Teilnehmer merken — deshalb die Wahl.
 
 ## 7. Umsetzung in Stufen
 
-| Stufe | Inhalt | Ergebnis für dich |
+| Stufe | Inhalt | Stand |
 |---|---|---|
-| 1 | Spalten, Typ, Wizard-Wahl mit Programmpunkt-Liste, Anzeige auf Anmeldeseite und Meine Events, `{{Programm}}` | Neue Events können Programmpunkte haben |
-| 2 | Check-in je Programmpunkt (Scanner, ID, Foto-Weg), Live-QR je Punkt, Kacheln, Doppel-Scan-Meldung | Anwesenheit wird erfasst |
-| 3 | Anwesenheits-Reiter im Organizer Center (Matrix + „nach Punkt"), Excel-Spalten, manuelles Nachtragen | Auswertung |
-| 4 | Migration (drei Phasen, Rücknahme) | Dein 20er-Event umziehen |
-| 5 (später) | Teilnahmebescheinigung, Programmpunkte unter Kalender-Tagen | |
+| 1 | Modus-Flag + Bezeichnung, Wahl in Schritt 1, Agenda-Editor mit Raum und „Tag kopieren", Programm-Block auf Anmeldeseite und in Meine Events | **v30.86 — ausgeliefert** |
+| 2 | Check-in je Programmpunkt (Scanner, Teilnehmer-ID, Foto-Weg), Live-QR je Punkt, Kacheln, Doppel-Scan-Meldung; Spalte `AgendaCheckIns` auf Teilnehmerlisten | offen |
+| 3 | Anwesenheits-Reiter im Organizer Center (Matrix Person × Punkt, „nach Punkt"), Excel-Spalten, manuelles Nachtragen mit Audit | offen |
+| 4 | „Als neues Event mit Programmpunkten kopieren" (Abschnitt 5) | offen |
+| 5 (später) | `{{Programm}}`-Platzhalter für Mail/Outlook, Teilnahmebescheinigung, Programmpunkte unter Kalender-Tagen | offen |
 
-Stufen 1 bis 3 sind je ein Release; Stufe 4 braucht einen Testlauf an einer
-Kopie deines Events, bevor sie am echten läuft.
+Stufen 2 bis 4 sind je ein Release; Stufe 4 braucht einen Testlauf an einer
+Kopie des 20er-Events, bevor sie am echten läuft — was mit dem Kopier-Ansatz
+ohnehin der normale Weg ist.
 
-## 8. Entscheidungen, die ich von dir brauche
+## 8. Entscheidungen (getroffen am 07.09.2026)
 
-1. **Ankunft automatisch:** Setzt der erste Check-in an einem Programmpunkt
-   auch den Event-Check-in („ist da")? Mein Vorschlag: ja.
-2. **Entweder/oder:** Ein Event hat Sub-Events oder Programmpunkte, nie beides.
-   Mein Vorschlag: ja, s. Abschnitt 4.
-3. **Migration und Outlook:** Sollen die Sub-Event-Termine bei der Migration
-   aus den Kalendern ausgeladen werden, oder bleiben sie als Erinnerung
-   stehen? Ich würde die Wahl im Dialog anbieten, Vorgabe „ausladen".
-4. **Name:** „Programmpunkte" (Vorschlag) oder „Agenda"? Der Begriff steht
-   dann in Wizard, Anmeldeseite, Check-in und Mails; wie bei
-   `childTermSingular` sollte er je Event umbenennbar sein („Session",
-   „Workshop", „Slot").
+1. **Ankunft automatisch: NEIN.** Ein Check-in an einem Programmpunkt setzt
+   nur diesen Punkt. Der Event-Check-in bleibt eine eigene Handlung.
+2. **Entweder/oder: JA.** Ein Event hat Sub-Events oder Programmpunkte, nie
+   beides. Der Assistent sperrt die jeweils andere Wahl.
+3. **Migration: als NEUES Event.** Das alte Event bleibt unverändert
+   erhalten; keine Ausladungen, kein Umbau in place (Abschnitt 5).
+4. **Name: „Programmpunkte" als Vorgabe, je Event umbenennbar** (Session,
+   Vortrag, Workshop, Slot, eigener Begriff) — Piggyback `_agendaTerm`.
+
+Ergänzt bei der Umsetzung: **Kein neues Datenfeld** — die vorhandene Agenda
+wird zur Programmpunkt-Liste (Abschnitt 2.1). Und die Anmeldeseite zeigt das
+Programm jetzt für ALLE Events mit Agenda; das hatte der Assistent seit v22
+versprochen und nie eingelöst.

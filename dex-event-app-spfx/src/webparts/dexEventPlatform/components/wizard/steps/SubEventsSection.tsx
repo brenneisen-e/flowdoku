@@ -11,6 +11,7 @@ import DatePicker from 'react-datepicker';
 import { shortSubEventTitle } from '../../../utils/subEventTitle';
 import { Plus, X } from '../../Icons';
 import { SubEventDraft } from '../../wizard/wizardTypes';
+import { AgendaItem } from '../../../types';
 import ImageCropModal from '../../ImageCropModal';
 export interface SubEventsSectionProps {
   visible: boolean;
@@ -72,9 +73,23 @@ export interface SubEventsSectionProps {
   terminListOpen: boolean;
   title: string;
   toggleDaySubEvent: (d: Date | null) => void;
+  /** v30.86: Programmpunkte mit Anwesenheits-Check-in — die Alternative zu
+   *  Sub-Events. Die Punkte selbst sind die Agenda aus „Ort & Programm". */
+  agenda: AgendaItem[];
+  agendaCheckIn: boolean;
+  agendaTermPlural: string;
+  agendaTermSingular: string;
+  setAgendaCheckIn: React.Dispatch<React.SetStateAction<boolean>>;
+  setAgendaTermPlural: React.Dispatch<React.SetStateAction<string>>;
+  setAgendaTermSingular: React.Dispatch<React.SetStateAction<string>>;
+  goToProgramStep: () => void;
 }
 export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
   const { visible } = p;
+  const { agenda, agendaCheckIn, agendaTermPlural, agendaTermSingular, setAgendaCheckIn, setAgendaTermPlural, setAgendaTermSingular, goToProgramStep } = p;
+  // v30.86: „Eigene Bezeichnung…" bleibt gewählt, auch solange beide Felder
+  // leer sind — dieselbe Sticky-Logik wie customTermMode bei den Sub-Events.
+  const [agendaTermCustom, setAgendaTermCustom] = React.useState<boolean>(false);
   const { activeScopeIdx, audience, berlinLocalToUtcIso, childGender, childTermPlural, childTermSingular, confirmDialog, customTermMode, dayKeyOfSub, endDate, filterMode, goToScopeBar, isDe, isoToLocal, klammerDeadline, locationFilter, mainEventLabel, mainEventLabelMode, openRuleDays, openRuleEnabled, openRuleMode, orgGetsSubInvites, orgInvitesTouchedRef, removedSavedSubs, removeSubEventDraft, requireSubEventSelection, setAllSubsAllDay, setAllSubsShowAsFree, setChildGender, setChildTermPlural, setChildTermSingular, setCustomTermMode, setEndDate, setMainEventLabel, setMainEventLabelMode, setOrgGetsSubInvites, setRemovedSavedSubs, setRequireSubEventSelection, setScope, setStartDate, setSubEventCalendar, setSubEvents, setSubEventSingleChoice, setSubEventsOnlyMode, setSubEventsOptIn, setSubImageCropIdx, setTerminListOpen, startDate, subEventCalendar, subEvents, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn, subImageCropIdx, t, terminListOpen, title, toggleDaySubEvent } = p;
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
@@ -129,7 +144,8 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                   <input
                     type="checkbox"
                     checked={subEventsOptIn}
-                    style={{ width: 18, height: 18, flexShrink: 0, cursor: 'pointer' }}
+                    disabled={agendaCheckIn && !subEventsOptIn}
+                    style={{ width: 18, height: 18, flexShrink: 0, cursor: agendaCheckIn && !subEventsOptIn ? 'not-allowed' : 'pointer' }}
                     onChange={e => {
                       const on = e.target.checked;
                       if (!on && subEvents.length > 0) {
@@ -185,7 +201,12 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                         ? (isDe
                           ? ` — deaktiviert. ${subEvents.length} Sub-Event(s) bleiben mit allen Anmeldungen gespeichert, sind für Teilnehmer aber unsichtbar. Einschalten stellt alles wieder her.`
                           : ` — deactivated. ${subEvents.length} sub-event(s) remain stored with all registrations but are hidden from attendees. Re-enable to restore.`)
-                        : '')}
+                        : (agendaCheckIn
+                          // v30.86: Entweder Sub-Events oder Programmpunkte —
+                          // beides nebeneinander liest der Organizer als zwei
+                          // Navigationen (s. CLAUDE.md, Scope-Umschalter).
+                          ? (isDe ? ' — nicht kombinierbar mit Programmpunkten (unten). Schalte die Programmpunkte ab, wenn du Sub-Events brauchst.' : ' — cannot be combined with agenda items (below). Turn agenda check-in off if you need sub-events.')
+                          : ''))}
                   </span>
                 </label>
 
@@ -203,6 +224,110 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                   : <>A sub-event is a <strong>separate programme building block</strong> inside your event — e.g. a workshop, a session, a networking dinner or a run distance. Each sub-event has <strong>its own seats, its own schedule and its own attendee list</strong>, optionally its own custom fields; attendees pick their sub-events directly in the registration form. Typical examples: a conference with selectable workshops or a summer party with an optional evening programme. Simple events (meeting, lunch, celebration) do <strong>not</strong> need sub-events.</>}
               </WizardHint>
               </div>{/* Ende Kachel: Schalter + Erklaerung */}
+
+              {/* v30.86: Programmpunkte mit Anwesenheits-Check-in. Der zweite
+                  Weg, ein Event zu gliedern — ohne eigene Teilnehmerlisten,
+                  Subsites, Mails oder Outlook-Termine je Teil. Die Anmeldung
+                  gilt fürs ganze Event; je Punkt wird nur erfasst, wer da war.
+                  Die Punkte selbst sind die Agenda aus Schritt 3 — sie ist
+                  seit v22 Anzeige und wird hier zur Check-in-Liste. Nur
+                  sichtbar, solange keine Sub-Events aktiv sind (entweder/oder). */}
+              {!subEventsOptIn && (
+              <div style={{ background: agendaCheckIn ? 'rgba(134,188,37,0.06)' : 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: '12px 16px', marginBottom: 12, border: `1px solid ${agendaCheckIn ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}` }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={agendaCheckIn}
+                    style={{ width: 18, height: 18, flexShrink: 0, cursor: 'pointer' }}
+                    onChange={e => setAgendaCheckIn(e.target.checked)}
+                  />
+                  <StepBadge n={7} />
+                  <span style={{ fontSize: '0.9rem' }}>
+                    <strong>{isDe ? 'Programmpunkte mit Anwesenheits-Check-in nutzen' : 'Use agenda items with attendance check-in'}</strong>
+                    {agendaCheckIn
+                      ? (isDe
+                        ? ` — ${agenda.length === 0 ? 'noch keine Punkte angelegt' : `${agenda.length} ${agenda.length === 1 ? (agendaTermSingular.trim() || 'Programmpunkt') : (agendaTermPlural.trim() || 'Programmpunkte')} angelegt`}; gepflegt werden sie in Schritt 3 „Ort & Programm".`
+                        : ` — ${agenda.length === 0 ? 'no items yet' : `${agenda.length} ${agenda.length === 1 ? (agendaTermSingular.trim() || 'agenda item') : (agendaTermPlural.trim() || 'agenda items')} set up`}; you maintain them in step 3 “Location & Programme”.`)
+                      : ''}
+                  </span>
+                </label>
+                <WizardHint
+                  isDe={isDe}
+                  variant="description"
+                  title={isDe ? 'Was ist ein Programmpunkt?' : 'What is an agenda item?'}
+                  style={{ marginTop: 14, marginBottom: 0 }}
+                >
+                  {isDe
+                    ? <>Ein Programmpunkt ist ein <strong>Baustein im Ablauf</strong> deines Events — Begrüßung, Keynote, Workshop-Block, Abendprogramm. Anders als ein Sub-Event hat er <strong>keine eigene Anmeldung</strong>: Teilnehmer melden sich einmal fürs Event an, bekommen eine Mail und einen Outlook-Termin. Je Programmpunkt wird nur per <strong>Check-in</strong> erfasst, wer dabei war — du siehst später, wer bei Punkt 1, 3 und 5 da war. Richtig für Tagungen und Trainings mit vielen Teilen, bei denen niemand einzelne Teile buchen soll. Wer je Teil eigene Plätze, Fristen oder Mails braucht, nimmt stattdessen Sub-Events.</>
+                    : <>An agenda item is a <strong>building block in the schedule</strong> of your event — welcome, keynote, workshop block, evening programme. Unlike a sub-event it has <strong>no registration of its own</strong>: attendees register once for the event and receive one mail and one Outlook entry. Per agenda item only <strong>check-in</strong> records who was there — later you see who attended items 1, 3 and 5. Right for conferences and trainings with many parts that nobody books individually. If each part needs its own seats, deadlines or mails, use sub-events instead.</>}
+                </WizardHint>
+                {agendaCheckIn && (() => {
+                  const presets = [
+                    { key: 'programmpunkt', singular: isDe ? 'Programmpunkt' : 'Agenda item', plural: isDe ? 'Programmpunkte' : 'Agenda items' },
+                    { key: 'session',      singular: 'Session',                               plural: 'Sessions' },
+                    { key: 'vortrag',      singular: isDe ? 'Vortrag' : 'Talk',              plural: isDe ? 'Vorträge' : 'Talks' },
+                    { key: 'workshop',     singular: 'Workshop',                              plural: 'Workshops' },
+                    { key: 'slot',         singular: 'Slot',                                  plural: 'Slots' },
+                  ];
+                  const sTrim = agendaTermSingular.trim();
+                  const pTrim = agendaTermPlural.trim();
+                  const matchKey = agendaTermCustom ? 'custom'
+                    : (!sTrim && !pTrim) ? 'programmpunkt'
+                    : ((presets.find(x => x.singular === sTrim && x.plural === pTrim) || { key: 'custom' }).key);
+                  return (
+                    <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
+                      <label className="form-label" style={{ fontSize: '0.9rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {isDe ? 'Bezeichnung der Programmpunkte' : 'Naming of agenda items'}
+                        <InfoTooltip text={isDe
+                          ? <>Der Begriff steht überall, wo die App die Punkte nennt — auf der Anmeldeseite, in &bdquo;Meine Events&ldquo; und beim Check-in. Standard ist &bdquo;Programmpunkt&ldquo;.</>
+                          : <>The term is used wherever the app names the items — on the registration page, in “My events” and at check-in. Default is “Agenda item”.</>} />
+                      </label>
+                      <select
+                        className="form-input"
+                        value={matchKey}
+                        onChange={e => {
+                          const k = e.target.value;
+                          if (k === 'custom') { setAgendaTermCustom(true); return; }
+                          setAgendaTermCustom(false);
+                          const preset = presets.find(x => x.key === k);
+                          if (!preset) return;
+                          // Standard = leer speichern, damit der Blob keinen
+                          // Rest trägt, wenn niemand etwas umbenannt hat.
+                          if (k === 'programmpunkt') { setAgendaTermSingular(''); setAgendaTermPlural(''); return; }
+                          setAgendaTermSingular(preset.singular); setAgendaTermPlural(preset.plural);
+                        }}
+                        style={{ marginTop: 6, maxWidth: 360 }}
+                      >
+                        {presets.map(x => <option key={x.key} value={x.key}>{x.plural}</option>)}
+                        <option value="custom">{isDe ? 'Eigene Bezeichnung…' : 'Custom term…'}</option>
+                      </select>
+                      {matchKey === 'custom' && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10, maxWidth: 480 }}>
+                          <div>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>Singular</label>
+                            <input type="text" className="form-input" value={agendaTermSingular} onChange={e => setAgendaTermSingular(e.target.value)} placeholder={isDe ? 'z.B. Modul' : 'e.g. Module'} style={{ padding: '6px 10px', fontSize: '0.9rem' }} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>Plural</label>
+                            <input type="text" className="form-input" value={agendaTermPlural} onChange={e => setAgendaTermPlural(e.target.value)} placeholder={isDe ? 'z.B. Module' : 'e.g. Modules'} style={{ padding: '6px 10px', fontSize: '0.9rem' }} />
+                          </div>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginTop: 14 }}>
+                        <button type="button" className="btn btn-outline" onClick={goToProgramStep} style={{ fontSize: '0.85rem', padding: '6px 14px' }}>
+                          {isDe ? `${pTrim || 'Programmpunkte'} pflegen (Schritt 3)` : `Maintain ${pTrim || 'agenda items'} (step 3)`}
+                        </button>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
+                          {isDe
+                            ? 'Titel, Datum, Start, Ende, Ort — eine Zeile je Punkt. Der Check-in je Punkt folgt in der nächsten Version.'
+                            : 'Title, date, start, end, room — one row per item. Per-item check-in follows in the next version.'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+              )}
 
               {/* v28.84: Bezeichnung und Anmelde-Modus gehoeren zur
                   Grundsatzfrage aus dem Schalter darüber — nicht in einen

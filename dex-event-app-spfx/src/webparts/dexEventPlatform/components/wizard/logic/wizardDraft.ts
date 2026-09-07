@@ -18,6 +18,9 @@ export interface ApplyDraftPayloadCtx {
   setAddrStreet: React.Dispatch<React.SetStateAction<string>>;
   setAddrZip: React.Dispatch<React.SetStateAction<string>>;
   setAgenda: React.Dispatch<React.SetStateAction<AgendaItem[]>>;
+  setAgendaCheckIn: React.Dispatch<React.SetStateAction<boolean>>;
+  setAgendaTermSingular: React.Dispatch<React.SetStateAction<string>>;
+  setAgendaTermPlural: React.Dispatch<React.SetStateAction<string>>;
   setAskSalutation: React.Dispatch<React.SetStateAction<boolean>>;
   setAskTeamName: React.Dispatch<React.SetStateAction<boolean>>;
   setAudience: React.Dispatch<React.SetStateAction<string>>;
@@ -74,7 +77,7 @@ export interface ApplyDraftPayloadCtx {
 }
 
 export function applyDraftPayloadImpl(ctx: ApplyDraftPayloadCtx, d: Record<string, unknown>): void {
-  const { canBilling, setActiveFrom, setAddrCity, setAddrHouseNo, setAddrStreet, setAddrZip, setAgenda, setAskSalutation, setAskTeamName, setAudience, setBillingFields, setBillingRelevant, setBillingSendMode, setCancelRuleAfter, setCancelRuleAmount, setCancelRuleEnabled, setCancelRuleUnit, setContactEmail, setContactInfo, setContactName, setCurrentStep, setCustomFields, setDescription, setDisableEmails, setDisableOutlook, setEmailTemplateOverrides, setEndDate, setExcludedUsers, setFilterMode, setKlammerDeadline, setLastDeregisterDate, setLocation, setLocationFilter, setMaxParticipants, setNoCancelAfterDeadline, setOnlineMeetingMode, setOpenRuleDays, setOpenRuleEnabled, setOpenRuleFixedDate, setOpenRuleMode, setOrganizer, setOrganizerEmails, setRegistrationDeadline, setRegRuleAmount, setRegRuleEnabled, setRegRuleUnit, setRequireSubEventSelection, setStartDate, setSubEventCalendar, setSubEvents, setSubEventSingleChoice, setSubEventsOnlyMode, setSubEventsOptIn, setTeamRegistrationEnabled, setTeamSize, setTeamsLink, setTitle, setUserCancelAllowed, setVisAllSubs, setWaitlistEnabled } = ctx;
+  const { canBilling, setActiveFrom, setAddrCity, setAddrHouseNo, setAddrStreet, setAddrZip, setAgenda, setAgendaCheckIn, setAgendaTermPlural, setAgendaTermSingular, setAskSalutation, setAskTeamName, setAudience, setBillingFields, setBillingRelevant, setBillingSendMode, setCancelRuleAfter, setCancelRuleAmount, setCancelRuleEnabled, setCancelRuleUnit, setContactEmail, setContactInfo, setContactName, setCurrentStep, setCustomFields, setDescription, setDisableEmails, setDisableOutlook, setEmailTemplateOverrides, setEndDate, setExcludedUsers, setFilterMode, setKlammerDeadline, setLastDeregisterDate, setLocation, setLocationFilter, setMaxParticipants, setNoCancelAfterDeadline, setOnlineMeetingMode, setOpenRuleDays, setOpenRuleEnabled, setOpenRuleFixedDate, setOpenRuleMode, setOrganizer, setOrganizerEmails, setRegistrationDeadline, setRegRuleAmount, setRegRuleEnabled, setRegRuleUnit, setRequireSubEventSelection, setStartDate, setSubEventCalendar, setSubEvents, setSubEventSingleChoice, setSubEventsOnlyMode, setSubEventsOptIn, setTeamRegistrationEnabled, setTeamSize, setTeamsLink, setTitle, setUserCancelAllowed, setVisAllSubs, setWaitlistEnabled } = ctx;
     const str = (v: unknown): string => (typeof v === 'string' ? v : '');
     const bool = (v: unknown, dflt: boolean): boolean => (typeof v === 'boolean' ? v : dflt);
     const num = (v: unknown, dflt: number): number => (typeof v === 'number' && isFinite(v) ? v : dflt);
@@ -97,6 +100,9 @@ export function applyDraftPayloadImpl(ctx: ApplyDraftPayloadCtx, d: Record<strin
     setSubEventsOnlyMode(bool(d.subEventsOnlyMode, false));
     setSubEventCalendar(bool(d.subEventCalendar, false));
     setSubEventSingleChoice(bool(d.subEventSingleChoice, false));
+    // v30.86: Programmpunkte mit Check-in.
+    setAgendaCheckIn(bool(d.agendaCheckIn, false));
+    setAgendaTermSingular(str(d.agendaTermSingular)); setAgendaTermPlural(str(d.agendaTermPlural));
     setRequireSubEventSelection(bool(d.requireSubEventSelection, false));
     setAskSalutation(bool(d.askSalutation, false));
     setTeamRegistrationEnabled(bool(d.teamRegistrationEnabled, false));

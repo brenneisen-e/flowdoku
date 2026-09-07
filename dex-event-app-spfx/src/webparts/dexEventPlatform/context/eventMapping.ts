@@ -347,6 +347,28 @@ export async function mapSPEventToDeloitteEvent(e: SPEvent, subsiteMap: { curren
         return (v === 'm' || v === 'f' || v === 'n') ? v : undefined;
       } catch { return undefined; }
     })(),
+    // v30.86: Programmpunkte mit Anwesenheits-Check-in (Piggyback
+    // _agendaCheckIn) und ihre Bezeichnung (_agendaTerm, analog _childEventTerm).
+    agendaCheckIn: ((): boolean => {
+      try {
+        const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+        return !!(ov && ov._agendaCheckIn);
+      } catch { return false; }
+    })(),
+    agendaTermSingular: ((): string | undefined => {
+      try {
+        const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+        const v = ov && ov._agendaTerm && typeof ov._agendaTerm.singular === 'string' ? ov._agendaTerm.singular : '';
+        return v || undefined;
+      } catch { return undefined; }
+    })(),
+    agendaTermPlural: ((): string | undefined => {
+      try {
+        const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+        const v = ov && ov._agendaTerm && typeof ov._agendaTerm.plural === 'string' ? ov._agendaTerm.plural : '';
+        return v || undefined;
+      } catch { return undefined; }
+    })(),
     // v22.78: frei benennbarer Team-Begriff + „keine neuen Teams"-Flag
     // (Piggyback im EmailTemplateOverrides-JSON, analog _childEventTerm).
     teamTermSingular: ((): string | undefined => {

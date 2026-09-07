@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.85.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.86.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -555,6 +555,22 @@ Roundtrip. (2) Ein Teil-Ersatz („irgendein enthaltener Name") ist nie ein
 sicherer Fallback, sondern der Anfang einer Endlosschleife. Seit v30.75
 erkennt ein Regex den ganzen Namens-Lauf und heilt aufgeblähte Bodies beim
 Laden; `outlookBodyOrganizerBloated` erzwingt dann das Outlook-Update.
+
+**Programmpunkte sind die Agenda — kein zweites Datenfeld (v30.86).** Die
+Anforderung „Sub-Events ohne Teilnehmerliste, nur für den Check-in" wird
+über die bestehende Spalte `Agenda` (`AgendaItem[]`, Editor in Schritt 3
+„Ort & Programm") gelöst, plus Modus-Flag `_agendaCheckIn` und Bezeichnung
+`_agendaTerm` (Piggyback, gestrippt in `useWizardVisibilityState`, gebaut in
+`agendaCheckInPiggyback()` in EventCreationPage — nie zusammen mit
+`subEventsOptIn`). Entweder Sub-Events oder Programmpunkte, der Wizard
+sperrt die andere Wahl. Entscheidungen des Nutzers (07.09.2026): Check-in
+an einem Punkt setzt NUR diesen Punkt (kein Auto-Event-Check-in); Migration
+= Kopie in ein NEUES Event, das alte bleibt; „Programmpunkte" als Vorgabe,
+je Event umbenennbar. Konzept und Stufenplan: `docs/konzept-programmpunkte.md`.
+Stufe 2 (Check-in je Punkt, Spalte `AgendaCheckIns` auf den Teilnehmerlisten
+— über `ensureRegistrationList` UND `fixRegistrationListColumns`) ist offen.
+Wer eine Auswertung über Anwesenheit baut: die Bezeichnung IMMER aus
+`agendaTermSingular/Plural` nehmen, nie „Programmpunkt" fest verdrahten.
 
 **Inline-Styles können kein `:hover`.** Interaktive Elemente brauchen einen
 Hover-State (`hoverIdx`, `evTabHover`), sonst lesen sie sich als Beschriftung.
