@@ -10,10 +10,10 @@ import { StepBadge } from '../../wizard/StepBadge';
 import { buildOutlookLocation } from '../../../utils/eventFormat';
 import { Plus, X } from '../../Icons';
 import { InfoTooltip } from '../../InfoTooltip';
+import { AgendaEditor } from '../AgendaEditor';
 export interface LocationProgramStepProps {
   visible: boolean;
   activeLocationTabIdx: number;
-  addAgendaItem: () => void;
   addrCity: string;
   addrHouseNo: string;
   addrStreet: string;
@@ -26,7 +26,6 @@ export interface LocationProgramStepProps {
   locationOptions: string[];
   onlineMeetingMode: "none" | "own" | "auto";
   outlookLocationOverride: string;
-  removeAgendaItem: (id: string) => void;
   renderStepIntro: (_bulletsDe: string[], _bulletsEn: string[]) => React.ReactElement | null;
   setAddrCity: React.Dispatch<React.SetStateAction<string>>;
   setAddrHouseNo: React.Dispatch<React.SetStateAction<string>>;
@@ -43,7 +42,6 @@ export interface LocationProgramStepProps {
   t: (key: string) => string;
   teamsLink: string;
   transferTimes: { id: string; location: string; meetingPoint: string; address: string; date: string; departureTime: string; arrivalTime: string; description: string; }[];
-  updateAgendaItem: (id: string, updates: Partial<AgendaItem>) => void;
   /** v30.86: Programmpunkte mit Check-in — die Agenda ist dann die Check-in-Liste. */
   agendaCheckIn: boolean;
   agendaTermPlural: string;
@@ -53,24 +51,10 @@ export interface LocationProgramStepProps {
 export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
   const { visible } = p;
   const { agendaCheckIn, agendaTermPlural, agendaTermSingular, setAgenda } = p;
-  // v30.86: „Letzten Tag kopieren" — bei einer Tagung über drei Tage ist der
-  // Ablauf oft je Tag ähnlich; statt zwanzig Zeilen neu zu tippen, klont man
-  // den letzten Tag mit +1 Tag und passt Titel an. Neue Ids, damit spätere
-  // Check-ins (Stufe 2) am richtigen Punkt hängen.
-  const copyLastAgendaDay = (): void => {
-    const dated = p.agenda.filter(a => a.date);
-    if (dated.length === 0) return;
-    const lastDay = dated.map(a => a.date).sort().slice(-1)[0];
-    const d = new Date(lastDay + 'T00:00:00');
-    d.setDate(d.getDate() + 1);
-    const next = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const clones = dated.filter(a => a.date === lastDay).map((a, i) => ({
-      ...a, id: `ag-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`, date: next,
-    }));
-    setAgenda(prev => [...prev, ...clones]);
-  };
+  // v30.94: „Letzten Tag kopieren" (v30.86) ist in den AgendaEditor gewandert
+  // (je Cluster „Kopieren", Name zählt hoch).
   const agendaPlural = agendaTermPlural.trim() || (p.isDe ? 'Programmpunkte' : 'Agenda items');
-  const { activeLocationTabIdx, addAgendaItem, addrCity, addrHouseNo, addrStreet, addrZip, agenda, isDe, isMobile, isoToLocal, location, locationOptions, onlineMeetingMode, outlookLocationOverride, removeAgendaItem, renderStepIntro, setAddrCity, setAddrHouseNo, setAddrStreet, setAddrZip, setLocation, setOnlineMeetingMode, setOutlookLocationOverride, setSubEvents, setTeamsLink, setTransferTimes, startDate, subEvents, t, teamsLink, transferTimes, updateAgendaItem } = p;
+  const { activeLocationTabIdx, addrCity, addrHouseNo, addrStreet, addrZip, agenda, isDe, isMobile, isoToLocal, location, locationOptions, onlineMeetingMode, outlookLocationOverride, renderStepIntro, setAddrCity, setAddrHouseNo, setAddrStreet, setAddrZip, setLocation, setOnlineMeetingMode, setOutlookLocationOverride, setSubEvents, setTeamsLink, setTransferTimes, startDate, subEvents, t, teamsLink, transferTimes } = p;
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">
@@ -115,9 +99,6 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                 const seTransfers = se.transferTimes || [];
                 const updateSub = (patch: Partial<SubEventDraft>): void => {
                   setSubEvents(prev => prev.map((x, i) => i === seIdx ? { ...x, ...patch } : x));
-                };
-                const updateSubAgendaItem = (id: string, patch: Partial<AgendaItem>): void => {
-                  updateSub({ agenda: seAgenda.map(a => a.id === id ? { ...a, ...patch } : a) });
                 };
                 return (
                   <div>
@@ -190,62 +171,19 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                         <StepBadge n={16} />
                         {t('create.agenda')}
                       </label>
-                      {seAgenda
-                        .slice()
-                        .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
-                        .map(item => (
-                        <div key={item.id} style={{
-                          display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start',
-                          padding: '10px 12px', marginBottom: 8,
-                          background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
-                          border: '1px solid var(--dex-gray-200)',
-                        }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 120, flexBasis: isMobile ? '100%' : undefined }}>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.date')}</label>
-                            <input type="date" className="form-input" value={item.date} onChange={e => updateSubAgendaItem(item.id, { date: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80, flexBasis: isMobile ? '100%' : undefined }}>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.time')}</label>
-                            <input type="time" className="form-input" value={item.time} onChange={e => updateSubAgendaItem(item.id, { time: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80, flexBasis: isMobile ? '100%' : undefined }}>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.endtime')}</label>
-                            <input type="time" className="form-input" value={item.endTime || ''} onChange={e => updateSubAgendaItem(item.id, { endTime: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150, flexBasis: isMobile ? '100%' : undefined }}>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.title')}</label>
-                            <input type="text" className="form-input" value={item.title} onChange={e => updateSubAgendaItem(item.id, { title: e.target.value })} placeholder={t('create.agenda.title')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150, flexBasis: isMobile ? '100%' : undefined }}>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.desc')}</label>
-                            <input type="text" className="form-input" value={item.description || ''} onChange={e => updateSubAgendaItem(item.id, { description: e.target.value })} placeholder={t('create.agenda.desc')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 2 }}>
-                            <button type="button" onClick={() => updateSub({ agenda: seAgenda.filter(a => a.id !== item.id) })} style={{
-                              background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)',
-                              fontSize: '1.1rem', padding: '4px', lineHeight: 1,
-                            }} title={t('general.delete')}>
-                              <X size={16} />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                      <button type="button" className="btn btn-outline" onClick={() => updateSub({
-                        agenda: [...seAgenda, {
-                          id: `ag-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                          // v29.21 (Audit): Berliner Tag statt UTC-Tag —
-                          // se.startDate ist UTC-ISO; slice(0,10) lieferte bei
-                          // Startzeiten 00:00-01:59 Berlin den VORTAG.
-                          date: se.startDate ? (isoToLocal(se.startDate) || '').slice(0, 10) : '',
-                          time: '',
-                          endTime: '',
-                          icon: 'Calendar',
-                          title: '',
-                          description: '',
-                        }],
-                      })} style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}>
-                        <Plus size={14} /> {t('create.agenda.add')}
-                      </button>
+                      {/* v30.94: gemeinsamer Tages-Editor (AgendaEditor) — s. dort.
+                          v29.21 (Audit): Berliner Tag statt UTC-Tag als Vorbelegung —
+                          se.startDate ist UTC-ISO; slice(0,10) lieferte bei
+                          Startzeiten 00:00-01:59 Berlin den VORTAG. */}
+                      <AgendaEditor
+                        items={seAgenda}
+                        onChange={upd => updateSub({ agenda: upd(seAgenda) })}
+                        isDe={isDe}
+                        isMobile={isMobile}
+                        termSingular={agendaCheckIn ? agendaTermSingular : (isDe ? 'Programmpunkt' : 'Agenda item')}
+                        termPlural={agendaCheckIn ? agendaTermPlural : (isDe ? 'Programmpunkte' : 'Agenda items')}
+                        defaultDate={se.startDate ? (isoToLocal(se.startDate) || '').slice(0, 10) : ''}
+                      />
                     </div>
                     <div className="form-group" style={{ marginTop: 24 }}>
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
@@ -554,85 +492,22 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                       : <>In step 1 you chose <strong>agenda items with attendance check-in</strong>. Every row here is an item people check in at — title, date, start, end and room are enough. Attendees see the list on the registration page and in “My events”; they register for the event only.</>}
                   </div>
                 )}
-                {agenda
-                  .slice()
-                  .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
-                  .map((item, agendaIdx) => (
-                  <div key={item.id} style={{
-                    display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start',
-                    padding: '10px 12px', marginBottom: 8,
-                    background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
-                    border: '1px solid var(--dex-gray-200)',
-                  }}>
-                    {/* v22.36: Laufende Nummer statt Icon-Picker.
-                        v22.38: kleiner (24px), vertikal mittig zur Zeile
-                        (alignSelf center) und im Header-Grün (--dex-green). */}
-                    <span style={{
-                      alignSelf: 'center', flexShrink: 0,
-                      width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      borderRadius: '50%', background: 'var(--dex-green, #86bc25)', color: '#fff',
-                      fontWeight: 700, fontSize: '0.78rem', lineHeight: 1,
-                    }}>{agendaIdx + 1}</span>
-
-                    {/* Date */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 120 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.date')}</label>
-                      <input type="date" className="form-input" value={item.date} onChange={e => updateAgendaItem(item.id, { date: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                    </div>
-
-                    {/* Start Time */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.time')}</label>
-                      <input type="time" className="form-input" value={item.time} onChange={e => updateAgendaItem(item.id, { time: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                    </div>
-
-                    {/* End Time */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.endtime')}</label>
-                      <input type="time" className="form-input" value={item.endTime || ''} onChange={e => updateAgendaItem(item.id, { endTime: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                    </div>
-
-                    {/* Title */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.title')}</label>
-                      <input type="text" className="form-input" value={item.title} onChange={e => updateAgendaItem(item.id, { title: e.target.value })} placeholder={t('create.agenda.title')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                    </div>
-
-                    {/* v30.86: Raum/Ort je Punkt — bei parallelen Sessions
-                        die einzige Angabe, die Teilnehmer wirklich suchen. */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 120, flex: '0 1 160px' }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'Raum / Ort (optional)' : 'Room / place (optional)'}</label>
-                      <input type="text" className="form-input" value={item.location || ''} onChange={e => updateAgendaItem(item.id, { location: e.target.value })} placeholder={isDe ? 'z.B. Plenum' : 'e.g. Plenary'} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                    </div>
-
-                    {/* Description */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.desc')}</label>
-                      <input type="text" className="form-input" value={item.description || ''} onChange={e => updateAgendaItem(item.id, { description: e.target.value })} placeholder={t('create.agenda.desc')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                    </div>
-
-                    {/* Delete */}
-                    <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 2 }}>
-                      <button type="button" onClick={() => removeAgendaItem(item.id)} style={{
-                        background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)',
-                        fontSize: '1.1rem', padding: '4px', lineHeight: 1,
-                      }} title={t('general.delete')}>
-                        <X size={16} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-                  <button type="button" className="btn btn-outline" onClick={addAgendaItem} style={{ fontSize: '0.85rem', padding: '6px 16px' }}>
-                    <Plus size={14} /> {agendaCheckIn ? (isDe ? `${agendaTermSingular.trim() || 'Programmpunkt'} hinzufügen` : `Add ${agendaTermSingular.trim() || 'agenda item'}`) : t('create.agenda.add')}
-                  </button>
-                  {agenda.some(a => a.date) && (
-                    <button type="button" className="btn btn-outline" onClick={copyLastAgendaDay} style={{ fontSize: '0.85rem', padding: '6px 16px' }}
-                      title={isDe ? 'Alle Punkte des letzten Tages auf den Folgetag kopieren' : 'Copy all items of the last day to the next day'}>
-                      {isDe ? 'Letzten Tag kopieren (+1 Tag)' : 'Copy last day (+1 day)'}
-                    </button>
-                  )}
-                </div>
+                {/* v30.94: Tages-Editor statt einer Karte je Punkt (Nutzer-
+                    Befund 07.09.2026: 27 Karten mit je sechs Labels und
+                    US-Datumsanzeige aus den nativen Feldern). Datum einmal je
+                    Tag über den DatePicker (dd.MM.yyyy), Zeiten als HH:MM-
+                    Text, Beschreibung aufklappbar. Tag kopieren/löschen und
+                    „Weiterer Tag" liegen im Editor — `copyLastAgendaDay`
+                    (v30.86) ist damit abgelöst. */}
+                <AgendaEditor
+                  items={agenda}
+                  onChange={setAgenda}
+                  isDe={isDe}
+                  isMobile={isMobile}
+                  termSingular={agendaCheckIn ? agendaTermSingular : (isDe ? 'Programmpunkt' : 'Agenda item')}
+                  termPlural={agendaCheckIn ? agendaTermPlural : (isDe ? 'Programmpunkte' : 'Agenda items')}
+                  defaultDate={startDate ? startDate.slice(0, 10) : ''}
+                />
               </div>
 
               {/* ===== Transferzeiten Editor ===== */}

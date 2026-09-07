@@ -30,6 +30,9 @@ import { useEvents } from '../../context/EventContext';
 import { DeloitteEvent, AgendaItem } from '../../types';
 import { EventService, SPRegistration, CustomField } from '../../services/EventService';
 import { shortSubEventTitle } from '../../utils/subEventTitle';
+import { subEventGroupKey, stripGroupPrefix } from '../../utils/subEventGroups';
+import { suggestClusterName } from '../../utils/agendaGroups';
+import { useCurrentUser } from '../../context/UserContext';
 
 const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
 
@@ -66,6 +69,10 @@ export default function CopyToAgendaModal(props: {
   const { event, childEvents, isDe, onClose, onDone } = props;
   const { getAllRegistrations, createEvent, registerForEvent, refreshEvents, updateEvent } = useEvents();
   const { showAlert } = useDialog();
+  // v30.94 (Nutzer-Ansage 07.09.2026): Organizer des neuen Events ist NUR die
+  // Person, die überführt — nicht das ganze Team des alten Events. Sonst
+  // bekommen alle bei jedem Test-Lauf die Organizer-Mails.
+  const { currentUser } = useCurrentUser();
   // registerForEvent liest die Events aus dem Context-State; nach dem Anlegen
   // und refreshEvents muss die FRISCHE Closure genutzt werden, nicht die vom
   // Start der Aktion (React 17 rendert nach setState außerhalb von Handlern
@@ -85,17 +92,27 @@ export default function CopyToAgendaModal(props: {
     let cancelled = false;
     (async () => {
       const kids = childEvents.slice().sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
-      const items: Analysis['items'] = kids.map((k, i) => ({
-        childId: k.id,
-        id: `ag-${Date.now().toString(36)}-${i}-${Math.random().toString(36).slice(2, 6)}`,
-        date: localDate(k.startDate),
-        time: localTime(k.startDate),
-        endTime: k.endDate ? localTime(k.endDate) : '',
-        icon: 'Calendar',
-        title: shortSubEventTitle(k.title, event.title) || k.title,
-        description: '',
-        location: k.location || '',
-      }));
+      // v30.94: Cluster mitnehmen. Trägt der Termin-Titel ein Präfix („Day 1 -
+      // Welcome"), wird das Präfix der Cluster und der Titel verliert es; sonst
+      // heißt der Cluster nach dem Tag („Tag 1", „Tag 2" — je Datum eins).
+      const days = kids.map(k => localDate(k.startDate)).filter((d, i, arr) => d && arr.indexOf(d) === i).sort();
+      const items: Analysis['items'] = kids.map((k, i) => {
+        const shortTitle = shortSubEventTitle(k.title, event.title) || k.title;
+        const prefix = subEventGroupKey(shortTitle);
+        const date = localDate(k.startDate);
+        return {
+          childId: k.id,
+          id: `ag-${Date.now().toString(36)}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+          date,
+          time: localTime(k.startDate),
+          endTime: k.endDate ? localTime(k.endDate) : '',
+          icon: 'Calendar',
+          title: prefix ? (stripGroupPrefix(shortTitle, prefix) || shortTitle) : shortTitle,
+          description: '',
+          location: k.location || '',
+          cluster: prefix || (date ? suggestClusterName(days.indexOf(date), isDe) : undefined),
+        };
+      });
       const byEmail = new Map<string, Person>();
       const waitlisted = new Set<string>();
       const unreadable: string[] = [];
@@ -179,8 +196,10 @@ export default function CopyToAgendaModal(props: {
         maxParticipants: event.maxParticipants && event.maxParticipants > 0 ? Math.max(event.maxParticipants, analysis.persons.length) : 0,
         waitlistEnabled: !!event.waitlistEnabled,
         eventImageUrl: '',
-        organizer: (event.organizers || []).join(';'),
-        organizerEmail: (event.organizerEmails || []).join(';'),
+        // v30.94: nur die überführende Person (s. useCurrentUser oben). Das
+        // alte Team lässt sich im Wizard des neuen Events jederzeit nachtragen.
+        organizer: (`${currentUser.surname || ''}, ${currentUser.firstName || ''}`.replace(/^,\s*|,\s*$/g, '').trim()) || (event.organizers || [])[0] || '',
+        organizerEmail: (currentUser.email || '').trim() || (event.organizerEmails || [])[0] || '',
         contactName: event.contactName || '', contactEmail: event.contactEmail || '', contactInfo: event.contactInfo || '', contactOrganizerEmail: event.contactOrganizerEmail || '',
         outlookEventId: '',
         outlookBody: event.outlookBody || '',

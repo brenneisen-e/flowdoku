@@ -19,6 +19,7 @@
 import * as React from 'react';
 import { buildEmailFromTemplate, buildOutlookBody, replacePlaceholders, getCachedLogoBase64, getCachedOrbBase64 } from '../../services/EmailTemplates';
 import { formatOrganizerList } from '../../context/eventTextHelpers';
+import { outlookDefaultBodyTemplate } from '../../utils/outlookDefaultBody';
 import { useCurrentUser } from '../../context/UserContext';
 import { EventService } from '../../services/EventService';
 import { EmailOverrideEntry } from './emailOverrideEntry';
@@ -103,9 +104,9 @@ export const CommPreviewCard: React.FC<CommPreviewCardProps> = (p) => {
   }, [p.emailTemplates, p.emailTemplateOverrides, p.emailLanguage, p.emailLogoPreview, p.title, p.location, p.startDate, p.endDate, p.organizer, p.contactEmail, isDe, meName]);
 
   const outlookHtml = React.useMemo((): string => {
-    const bodyRaw = p.outlookBody || (isDe
-      ? `<p>Hallo {{Name}},</p><p>hier ist dein Kalendereintrag zu <strong>{{EventTitle}}</strong>.</p>`
-      : `<p>Hi {{Name}},</p><p>here is your calendar entry for <strong>{{EventTitle}}</strong>.</p>`);
+    // v30.94: Leerer Body = der Standard-Text, der auch gespeichert wird
+    // (utils/outlookDefaultBody) — nicht ein erfundener Vorschau-Satz.
+    const bodyRaw = p.outlookBody || outlookDefaultBodyTemplate(p.emailLanguage);
     const heading = replacePlaceholders(p.outlookHeading || '', vars) || vars.EventTitle;
     const sub = replacePlaceholders(p.outlookSubheading || '', vars) || vars.Location;
     const eff = p.effectiveHeaderImage('outlook', p.outlookLogoPreview);

@@ -11,8 +11,9 @@
  * Organizer gewählte Bezeichnung, sonst „Programm". */
 import * as React from 'react';
 import { Icon } from '@fluentui/react/lib/Icon';
-import { AgendaItem, DeloitteEvent } from '../../types';
+import { DeloitteEvent } from '../../types';
 import { Locale } from '../../context/LanguageContext';
+import { agendaGroups, sortAgenda, groupLabel, groupDateLabel } from '../../utils/agendaGroups';
 
 export interface AgendaProgramBlockProps {
   event: DeloitteEvent;
@@ -23,20 +24,12 @@ export const AgendaProgramBlock: React.FC<AgendaProgramBlockProps> = ({ event, l
   const items = (event.agenda || []).filter(a => a && (a.title || a.time));
   if (items.length === 0) return null;
   const isDe = locale === 'de';
-  const sorted = items.slice().sort((a, b) => ((a.date || '') + (a.time || '')).localeCompare((b.date || '') + (b.time || '')));
-  const byDay: Array<[string, AgendaItem[]]> = [];
-  sorted.forEach(it => {
-    const key = it.date || '';
-    const last = byDay[byDay.length - 1];
-    if (last && last[0] === key) last[1].push(it); else byDay.push([key, [it]]);
-  });
+  const sorted = sortAgenda(items);
+  // v30.94: Cluster (utils/agendaGroups) — benannte Gruppe, sonst der Tag.
+  const byDay = agendaGroups(items);
   const heading = event.agendaCheckIn
     ? (event.agendaTermPlural || (isDe ? 'Programmpunkte' : 'Agenda items'))
     : (isDe ? 'Programm' : 'Schedule');
-  const fmtDay = (d: string): string => {
-    if (!d) return isDe ? 'Termin folgt' : 'Date to be announced';
-    try { return new Date(d + 'T00:00').toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }); } catch { return d; }
-  };
   return (
     <div style={{ padding: '12px 16px', borderTop: '1px solid var(--dex-gray-200)', background: '#fff' }}>
       <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--dex-gray-700)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -50,12 +43,15 @@ export const AgendaProgramBlock: React.FC<AgendaProgramBlockProps> = ({ event, l
         )}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: byDay.length > 1 ? 'repeat(auto-fit, minmax(240px, 1fr))' : '1fr', gap: 12 }}>
-        {byDay.map(([day, list]) => (
-          <div key={day || 'tbd'} style={{ background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)', borderRadius: 10, padding: 10, minWidth: 0 }}>
-            {(byDay.length > 1 || day) && (
-              <div style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--dex-green-dark, #6b9a1e)', marginBottom: 6 }}>{fmtDay(day)}</div>
+        {byDay.map((g, gi) => (
+          <div key={g.key} style={{ background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)', borderRadius: 10, padding: 10, minWidth: 0 }}>
+            {(byDay.length > 1 || g.date || g.cluster) && (
+              <div style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--dex-green-dark, #6b9a1e)', marginBottom: 6, display: 'flex', gap: 6, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                <span>{groupLabel(g, gi, isDe)}</span>
+                <span style={{ fontWeight: 500, color: 'var(--dex-gray-500)' }}>{g.dates.length ? groupDateLabel(g, isDe) : (isDe ? 'Termin folgt' : 'Date to be announced')}</span>
+              </div>
             )}
-            {list.map(it => (
+            {g.items.map(it => (
               <div key={it.id} style={{ display: 'flex', gap: 10, padding: '5px 0', borderLeft: '2px solid var(--dex-green, #86bc25)', paddingLeft: 10, marginLeft: 2 }}>
                 <div style={{ flexShrink: 0, minWidth: 92, fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-gray-700)', fontVariantNumeric: 'tabular-nums' }}>
                   {it.time || '—'}{it.endTime ? ` – ${it.endTime}` : ''}

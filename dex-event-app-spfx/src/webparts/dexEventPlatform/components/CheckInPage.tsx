@@ -19,6 +19,7 @@ import { useCurrentUser } from '../context/UserContext';
 import { EventService } from '../services/EventService';
 import { checkInExtras, parseCustomData, CheckInExtra, shirtAllocate, parseShirtStock, ShirtAllocationResult } from '../utils/checkInExtras';
 import { parseAgendaCheckIns, formatMarkTime, suggestCurrentAgendaItem } from '../utils/agendaCheckIns';
+import { agendaGroups, groupLabel, groupDateLabel } from '../utils/agendaGroups';
 import { useLanguage } from '../context/LanguageContext';
 import { useIsMobile } from '../utils/useIsMobile';
 import OrganizerList from './OrganizerList';
@@ -1536,23 +1537,36 @@ export default function CheckInPage(): React.ReactElement {
             <div style={{ fontSize: '0.8rem', fontWeight: 700, marginBottom: 6 }}>
               {isDe ? `${agendaTermSingular} wählen — hier wird eingecheckt` : `Pick the ${agendaTermSingular.toLowerCase()} — attendance is recorded there`}
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {agendaItems.map(it => {
-                const active = it.id === agendaPointId;
-                const cnt = agendaCounts[it.id] || 0;
-                return (
-                  <button key={it.id} type="button" onClick={() => choosePoint(it.id)} style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999, cursor: 'pointer',
-                    border: `1px solid ${active ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-                    background: active ? 'var(--dex-green, #86bc25)' : '#fff', color: active ? '#fff' : 'var(--dex-gray-800)',
-                    fontSize: '0.8rem', fontWeight: active ? 700 : 500, textAlign: 'left',
-                  }}>
-                    <span style={{ fontVariantNumeric: 'tabular-nums', opacity: 0.85 }}>{it.date ? new Date(it.date + 'T00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' ' : ''}{it.time}</span>
-                    <span>{it.title || (isDe ? '(ohne Titel)' : '(untitled)')}</span>
-                    <span style={{ fontSize: '0.72rem', padding: '1px 7px', borderRadius: 999, background: active ? 'rgba(255,255,255,0.25)' : 'var(--dex-gray-100)', color: active ? '#fff' : 'var(--dex-gray-600)' }}>{cnt}</span>
-                  </button>
-                );
-              })}
+            {/* v30.94: Chips je Cluster (utils/agendaGroups) — bei 27 Punkten
+                über vier Tage war eine flache Chip-Wolke nicht mehr lesbar. */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {agendaGroups(agendaItems).map((grp, gi) => (
+                <div key={grp.key}>
+                  {(agendaGroups(agendaItems).length > 1 || grp.cluster) && (
+                    <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)', marginBottom: 4 }}>
+                      {groupLabel(grp, gi, isDe)} <span style={{ fontWeight: 500, color: 'var(--dex-gray-500)' }}>· {groupDateLabel(grp, isDe, false)}</span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {grp.items.map(it => {
+                      const active = it.id === agendaPointId;
+                      const cnt = agendaCounts[it.id] || 0;
+                      return (
+                        <button key={it.id} type="button" onClick={() => choosePoint(it.id)} style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999, cursor: 'pointer',
+                          border: `1px solid ${active ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                          background: active ? 'var(--dex-green, #86bc25)' : '#fff', color: active ? '#fff' : 'var(--dex-gray-800)',
+                          fontSize: '0.8rem', fontWeight: active ? 700 : 500, textAlign: 'left',
+                        }}>
+                          <span style={{ fontVariantNumeric: 'tabular-nums', opacity: 0.85 }}>{it.time}</span>
+                          <span>{it.title || (isDe ? '(ohne Titel)' : '(untitled)')}</span>
+                          <span style={{ fontSize: '0.72rem', padding: '1px 7px', borderRadius: 999, background: active ? 'rgba(255,255,255,0.25)' : 'var(--dex-gray-100)', color: active ? '#fff' : 'var(--dex-gray-600)' }}>{cnt}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
             <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-600)', marginTop: 6 }}>
               {isDe

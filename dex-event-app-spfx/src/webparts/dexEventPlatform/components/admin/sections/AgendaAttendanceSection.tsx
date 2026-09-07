@@ -18,6 +18,7 @@ import * as React from 'react';
 import { DeloitteEvent, AgendaItem } from '../../../types';
 import { EventService, SPRegistration } from '../../../services/EventService';
 import { parseAgendaCheckIns, formatMarkTime } from '../../../utils/agendaCheckIns';
+import { agendaGroups, sortAgenda, groupLabel, groupDateLabel } from '../../../utils/agendaGroups';
 import { PersonContactHover } from '../../PersonContactHover';
 
 export interface AgendaAttendanceSectionProps {
@@ -44,10 +45,9 @@ export const AgendaAttendanceSection: React.FC<AgendaAttendanceSectionProps> = (
 
   const termS = event.agendaTermSingular || (isDe ? 'Programmpunkt' : 'Agenda item');
   const termP = event.agendaTermPlural || (isDe ? 'Programmpunkte' : 'Agenda items');
-  const items: AgendaItem[] = React.useMemo(
-    () => (event.agenda || []).slice().sort((a, b) => ((a.date || '') + (a.time || '')).localeCompare((b.date || '') + (b.time || ''))),
-    [event.agenda],
-  );
+  const items: AgendaItem[] = React.useMemo(() => sortAgenda(event.agenda || []), [event.agenda]);
+  // v30.94: Cluster (utils/agendaGroups) für die Sicht „nach Punkt".
+  const groups = React.useMemo(() => agendaGroups(items), [items]);
   const active = React.useMemo(
     () => registrations.filter(r => ACTIVE.indexOf(r.Status || '') >= 0).slice().sort((a, b) => {
       const na = (a.Nachname || a.ParticipantName || '').toLowerCase();
@@ -63,7 +63,6 @@ export const AgendaAttendanceSection: React.FC<AgendaAttendanceSectionProps> = (
   }, [active]);
   const countFor = (itemId: string): number => active.reduce((n, r) => n + ((marksOf.get(r.Id) || {})[itemId] ? 1 : 0), 0);
   const nameOf = (r: SPRegistration): string => `${r.Vorname || ''} ${r.Nachname || ''}`.trim() || r.ParticipantName || r.ParticipantEmail || '—';
-  const fmtDay = (d: string): string => d ? new Date(d + 'T00:00').toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }) : '';
 
   const toggle = async (r: SPRegistration, it: AgendaItem): Promise<void> => {
     if (!canEdit || !eventServiceRef || !event.subsiteUrl) return;
@@ -180,22 +179,48 @@ export const AgendaAttendanceSection: React.FC<AgendaAttendanceSectionProps> = (
                 </p>
               )}
 
+              {view === 'point' && totalMarks === 0 && (
+                <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', padding: '8px 12px', borderRadius: 8, background: 'var(--dex-gray-50, #fafafa)', border: '1px dashed var(--dex-gray-300)' }}>
+                  {isDe
+                    ? `Noch keine Anwesenheit erfasst. Sobald am ersten ${termS} eingecheckt wird (Check-in-Seite oder Klick hier), erscheinen Anzahl und Anteil.`
+                    : `No attendance recorded yet. Once someone checks in at the first ${termS.toLowerCase()} (check-in page or a click here), counts and shares appear.`}
+                </p>
+              )}
+              {/* v30.94: kompakt und nach Cluster gegliedert. Vorher stand jeder
+                  der 27 Punkte als eigene Vollbreite-Zeile mit leerem Balken —
+                  „was zur Hölle ist das" (Nutzer, 07.09.2026). Jetzt: ein
+                  Kasten je Cluster mit Tages-Kopf und Summe, darin schmale
+                  Zeilen: Zeit · Titel · Raum · n / N · kurzer Balken. */}
               {view === 'point' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {items.map(it => {
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 980 }}>
+                  {groups.map((g, gi) => {
+                    const gMarks = g.items.reduce((n, it) => n + countFor(it.id), 0);
+                    const gMax = g.items.length * active.length;
+                    return (
+                  <div key={g.key} style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 10, overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', background: 'var(--dex-gray-50, #fafafa)', borderBottom: '1px solid var(--dex-gray-200)', fontSize: '0.8rem' }}>
+                      <span style={{ fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)' }}>{groupLabel(g, gi, isDe)}</span>
+                      <span style={{ color: 'var(--dex-gray-500)' }}>{groupDateLabel(g, isDe)}</span>
+                      <span style={{ color: 'var(--dex-gray-400)' }}>· {g.items.length} {g.items.length === 1 ? termS : termP}</span>
+                      <span style={{ flex: 1 }} />
+                      <span style={{ color: 'var(--dex-gray-600)', fontVariantNumeric: 'tabular-nums' }} title={isDe ? 'Anwesenheiten in diesem Cluster / mögliche' : 'attendances in this cluster / possible'}>
+                        <strong>{gMarks}</strong> / {gMax}{gMax ? ` · ${Math.round(100 * gMarks / gMax)} %` : ''}
+                      </span>
+                    </div>
+                  {g.items.map(it => {
                     const c = countFor(it.id);
                     const pct = active.length ? Math.round(100 * c / active.length) : 0;
                     const isOpen = openPoint === it.id;
                     return (
-                      <div key={it.id} style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 8, overflow: 'hidden' }}>
-                        <button type="button" onClick={() => setOpenPoint(isOpen ? null : it.id)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', border: 'none', cursor: 'pointer', textAlign: 'left', background: isOpen ? 'var(--dex-gray-100)' : '#fff' }}>
-                          <span style={{ minWidth: 110, fontSize: '0.78rem', color: 'var(--dex-gray-500)', fontVariantNumeric: 'tabular-nums' }}>{fmtDay(it.date)} {it.time}{it.endTime ? `–${it.endTime}` : ''}</span>
-                          <span style={{ fontWeight: 600, fontSize: '0.9rem', flex: '0 1 320px', minWidth: 120 }}>{it.title || (isDe ? '(ohne Titel)' : '(untitled)')}{it.location ? <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)' }}> · {it.location}</span> : null}</span>
-                          <span style={{ flex: 1, minWidth: 60, height: 8, borderRadius: 999, background: 'var(--dex-gray-100)' }}>
-                            <span style={{ display: 'block', height: 8, width: `${pct}%`, borderRadius: 999, background: 'var(--dex-green, #86bc25)' }} />
+                      <div key={it.id} style={{ borderTop: '1px solid var(--dex-gray-100)' }}>
+                        <button type="button" onClick={() => setOpenPoint(isOpen ? null : it.id)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', border: 'none', cursor: 'pointer', textAlign: 'left', background: isOpen ? 'var(--dex-gray-100)' : '#fff' }}>
+                          <span style={{ width: 92, flexShrink: 0, fontSize: '0.78rem', color: 'var(--dex-gray-500)', fontVariantNumeric: 'tabular-nums' }}>{it.time}{it.endTime ? `–${it.endTime}` : ''}</span>
+                          <span style={{ fontWeight: 600, fontSize: '0.86rem', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.title || (isDe ? '(ohne Titel)' : '(untitled)')}{it.location ? <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)' }}> · {it.location}</span> : null}</span>
+                          <strong style={{ width: 64, flexShrink: 0, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: c ? 'var(--dex-gray-800)' : 'var(--dex-gray-400)' }}>{c}<span style={{ fontWeight: 400, color: 'var(--dex-gray-400)' }}> / {active.length}</span></strong>
+                          <span style={{ width: 110, flexShrink: 0, height: 6, borderRadius: 999, background: 'var(--dex-gray-100)' }}>
+                            <span style={{ display: 'block', height: 6, width: `${pct}%`, borderRadius: 999, background: 'var(--dex-green, #86bc25)' }} />
                           </span>
-                          <strong style={{ minWidth: 70, textAlign: 'right' }}>{c}<span style={{ fontWeight: 400, color: 'var(--dex-gray-400)' }}> / {active.length}</span></strong>
-                          <span style={{ color: 'var(--dex-gray-400)', fontSize: '0.8rem' }}>{isOpen ? '▾' : '▸'}</span>
+                          <span style={{ width: 12, color: 'var(--dex-gray-400)', fontSize: '0.8rem' }}>{isOpen ? '▾' : '▸'}</span>
                         </button>
                         {isOpen && (
                           <div style={{ padding: '8px 14px 12px', borderTop: '1px solid var(--dex-gray-100)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12, fontSize: '0.82rem' }}>
@@ -227,6 +252,9 @@ export const AgendaAttendanceSection: React.FC<AgendaAttendanceSectionProps> = (
                           </div>
                         )}
                       </div>
+                    );
+                  })}
+                  </div>
                     );
                   })}
                 </div>

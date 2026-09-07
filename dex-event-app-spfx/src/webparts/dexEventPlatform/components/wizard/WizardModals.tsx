@@ -20,6 +20,7 @@ import { Icon } from '@fluentui/react/lib/Icon';
 import { InfoTooltip } from '../InfoTooltip';
 import { AgendaItem } from '../../types';
 import { CustomFieldInput } from '../wizard/customFieldInput';
+import { outlookDefaultBodyTemplate } from '../../utils/outlookDefaultBody';
 
 export interface WizardModalsProps {
   activeCommTabIdx: number;
@@ -416,13 +417,8 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
         );
         // v18.46: Standard-Body-Vorlage (mit Platzhaltern) für „Standardtext laden"
         // im Outlook-Editor — Sprache folgt der aktiven Mail-Sprache.
-        const outlookDefaultBody = (emailLanguage === 'EN')
-          ? '<p>You are registered for the event <strong>{{EventTitle}}</strong>.</p>'
-            + '<p>If you are unable to attend, please cancel your registration in time via the <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView" style="color:#86bc25;font-weight:600;">DEX App</a> („My Events").</p>'
-            + '<p>For organizational questions please contact <strong>{{Organizer}}</strong>.</p>'
-          : '<p>Ihr seid für das Event <strong>{{EventTitle}}</strong> angemeldet.</p>'
-            + '<p>Falls ihr nicht teilnehmen könnt, meldet euch bitte rechtzeitig über die <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView" style="color:#86bc25;font-weight:600;">DEX App</a> („Meine Events") ab.</p>'
-            + '<p>Bei organisatorischen Fragen wendet euch bitte an <strong>{{Organizer}}</strong>.</p>';
+        // v30.94: dieselbe Vorlage wie Speichern und Vorschau-Karte (utils/outlookDefaultBody).
+        const outlookDefaultBody = outlookDefaultBodyTemplate(emailLanguage);
         // v19.2: Einladender Beispieltext für die Beschreibung — über den
         // „Standardtext laden"-Button im Beschreibungs-Editor übernehmbar (statt
         // wie früher als Inline-Box im Wizard).

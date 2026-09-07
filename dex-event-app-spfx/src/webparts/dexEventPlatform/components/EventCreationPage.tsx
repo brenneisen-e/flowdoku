@@ -17,7 +17,7 @@ import { EventService } from '../services/EventService';
 // v26.48: zentrale B2Run-Köln-Vorlage (Titel-Erkennung + 7 Meldefelder mit
 // deterministischen IDs für den offiziellen Excel-Export).
 import { getCachedOrbBase64 } from '../services/EmailTemplates';
-import { EventType, AgendaItem } from '../types';
+import { EventType } from '../types';
 import { InfoTooltip } from './InfoTooltip';
 import WizardHint from './WizardHint';
 // v20.2: Self-Check-in ist aus dem Wizard ausgezogen — Aktivierung läuft
@@ -1099,26 +1099,8 @@ export default function EventCreationPage(): React.ReactElement {
     setQuiz(quiz.map(q => q.id === id ? { ...q, ...updates } : q));
   };
 
-  // ===== Agenda helpers =====
-  const addAgendaItem = (): void => {
-    setAgenda([...agenda, {
-      id: `ag-${Date.now()}`,
-      date: startDate ? startDate.slice(0, 10) : '',
-      time: '',
-      endTime: '',
-      icon: 'Calendar',
-      title: '',
-      description: '',
-    }]);
-  };
-
-  const removeAgendaItem = (id: string): void => {
-    setAgenda(agenda.filter(a => a.id !== id));
-  };
-
-  const updateAgendaItem = (id: string, updates: Partial<AgendaItem>): void => {
-    setAgenda(agenda.map(a => a.id === id ? { ...a, ...updates } : a));
-  };
+  // v30.94: Die Agenda-Helfer (add/remove/update) sind in den AgendaEditor
+  // gewandert — er arbeitet mit funktionalen Updates direkt auf `setAgenda`.
 
   /**
    * Persistiert die Sub-Event-Drafts nach dem Parent-Save. Seit v6.4 sind Sub-Events
@@ -2779,12 +2761,12 @@ export default function EventCreationPage(): React.ReactElement {
     testTeamTimerRef, title, toggleOrganizerHidden,
   };
   const locationProgramStepProps = {
-    activeLocationTabIdx, addAgendaItem, addrCity, addrHouseNo, addrStreet, addrZip,
+    activeLocationTabIdx, addrCity, addrHouseNo, addrStreet, addrZip,
     agenda, isDe, isMobile, isoToLocal, location,
-    locationOptions, onlineMeetingMode, outlookLocationOverride, removeAgendaItem, renderStepIntro, setAddrCity,
+    locationOptions, onlineMeetingMode, outlookLocationOverride, renderStepIntro, setAddrCity,
     setAddrHouseNo, setAddrStreet, setAddrZip, setLocation, setOnlineMeetingMode, setOutlookLocationOverride,
     setSubEvents, setTeamsLink, setTransferTimes, startDate, subEvents, t,
-    teamsLink, transferTimes, updateAgendaItem,
+    teamsLink, transferTimes,
     agendaCheckIn, agendaTermPlural, agendaTermSingular, setAgenda, // v30.86
   };
   const subEventsSectionProps = {

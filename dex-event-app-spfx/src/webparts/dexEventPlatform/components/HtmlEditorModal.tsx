@@ -521,6 +521,18 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     fireChange();
   };
 
+  // v30.94: Orb-Schutz auch in DIESER Vorschau. Ohne eigenes Mail-Logo zeigt
+  // der Kopf den DEX-Orb; der wurde mit dem Vollbild-Layout (600/0/0, seit
+  // v30.87 Standard) auf volle Breite gezogen — die Vorschau-Karte im Schritt
+  // rechnet über headerLayoutFor schon richtig, das Modal nahm die Rohwerte.
+  // Dieselbe Regel wie dort: ohne eigenes Bild höchstens 180 px, mindestens
+  // 20 px Abstand. Die Eingabefelder zeigen weiter die gespeicherten Werte —
+  // sie gelten, sobald ein Logo hochgeladen ist.
+  const ownHeaderImage = !!(imageBase64 && imageBase64.trim());
+  const effImageWidth = ownHeaderImage || imageWidth === undefined ? imageWidth : Math.min(imageWidth, 180);
+  const effImagePaddingV = ownHeaderImage || imagePaddingV === undefined ? imagePaddingV : Math.max(imagePaddingV, 20);
+  const effImagePaddingH = ownHeaderImage || imagePaddingH === undefined ? imagePaddingH : Math.max(imagePaddingH, 20);
+
   const renderPreviewHtml = (): string => {
     let bodyWithVars = replacePlaceholders(value || '', previewVars);
     // v22.18: HTML-Platzhalter (z.B. {{QR_BLOCK}}) RAW ersetzen — nach den
@@ -567,7 +579,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
           subheadingBold: emailSubheadingBold,
           subheadingItalic: emailSubheadingItalic,
           // v18.73: Header-Bild Größe + Innenabstand live mitvorschauen.
-          imageWidth, imagePaddingV, imagePaddingH,
+          imageWidth: effImageWidth, imagePaddingV: effImagePaddingV, imagePaddingH: effImagePaddingH,
         });
       return wrapped
         .replace(/\{\{LOGO_URL\}\}/g, logoBase64 || cachedLogo || '')
@@ -580,14 +592,21 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     const olHeading = replacePlaceholdersPlain(outlookHeading || '', previewVars) || previewVars.EventTitle || 'Event Title';
     // v27.5: Default-Unter-Überschrift = Ort (nicht mehr Datum/Uhrzeit).
     const olSub = replacePlaceholdersPlain(outlookSubheading || '', previewVars) || previewVars.Location || previewVars.EventDate || 'Event Details';
-    const bodyForOutlook = bodyWithVars || '<p style="color:#999;font-style:italic;">Hier erscheint der Body — beginne im Editor links zu tippen.</p>';
+    // v30.94: Leerer Body zeigt den Standard-Text, der beim Speichern tatsächlich
+    // in den Termin kommt (defaultBodyHtml = utils/outlookDefaultBody) — mit dem
+    // Hinweis, dass er nur gilt, solange hier nichts steht. Vorher stand hier
+    // ein Platzhalter-Satz, die Vorschau-Karte zeigte etwas anderes.
+    const bodyForOutlook = bodyWithVars
+      || (defaultBodyHtml
+        ? replacePlaceholders(defaultBodyHtml, previewVars) + '<p style="color:#999;font-style:italic;font-size:12px;margin-top:18px;">Standardtext — gilt, solange du links nichts eingibst. Klick „Standardtext laden", um ihn zu übernehmen und anzupassen.</p>'
+        : '<p style="color:#999;font-style:italic;">Hier erscheint der Body — beginne im Editor links zu tippen.</p>');
     // Wenn der Body bereits ein kompletter wrapTemplate-Output ist (z.B. aus editEvent
     // ohne Strip), 1:1 anzeigen — sonst doppelt wickeln.
     const isAlreadyWrapped = /<!doctype|<html/i.test(bodyForOutlook);
     const wrapped = isAlreadyWrapped
       ? bodyForOutlook
       // v18.73: Header-Bild Größe + Innenabstand live mitvorschauen.
-      : wrapTemplate('#86bc25', olHeading, olSub, bodyForOutlook, undefined, { imageWidth, imagePaddingV, imagePaddingH });
+      : wrapTemplate('#86bc25', olHeading, olSub, bodyForOutlook, undefined, { imageWidth: effImageWidth, imagePaddingV: effImagePaddingV, imagePaddingH: effImagePaddingH });
     return wrapped
       .replace(/\{\{LOGO_URL\}\}/g, logoBase64 || cachedLogo || '')
       .replace(/\{\{ORB_URL\}\}/g, imageBase64 || cachedOrb || '');
@@ -854,6 +873,11 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                   <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', margin: '0 0 10px', lineHeight: 1.45 }}>
                     Größe und Innenabstand des Bildes im Kopf. Gilt für den <strong>Mail-</strong> und den <strong>Outlook-Termin-Kopf</strong>. Bei einem <strong>breiten Foto</strong> klick auf <strong>Volle Breite</strong> — dann füllt es den Kopf komplett aus (Höhe passt sich automatisch an). Bei einem <strong>runden Logo</strong> (z.B. DEX-Orb) nimm eine kleinere Breite, dann steht es zentriert in der Mitte. Die Vorschau rechts zeigt es sofort.
                   </p>
+                  {!ownHeaderImage && (
+                    <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45, padding: '6px 10px', borderRadius: 6, background: 'rgba(134,188,37,0.10)' }}>
+                      <strong>Noch kein eigenes Mail-Logo:</strong> Der Kopf zeigt den DEX-Orb in fester Größe (max. 180 px). Die Werte hier greifen, sobald du im Reiter <strong>Mail-Logo</strong> ein Bild hinterlegst.
+                    </p>
+                  )}
                   <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap' }}>
                     <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.72rem', color: 'var(--dex-gray-600)' }}>
                       Breite (px)
