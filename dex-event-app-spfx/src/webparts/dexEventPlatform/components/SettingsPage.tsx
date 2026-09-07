@@ -57,6 +57,7 @@ export default function SettingsPage(): React.ReactElement {
   const {
     roles, isAdmin, originalIsAdmin,
     addRole, updateRole, setPowerUser, removeRole, hadRoleRightsIssue, isRolesLoading, siteUrl, searchUsers, searchUser,
+    auditRolesAccess,
   } = useRoles();
   const { events, sendOrganizerOnboarding } = useEvents();
   const { locale } = useLanguage();
@@ -172,6 +173,35 @@ export default function SettingsPage(): React.ReactElement {
   const [isAdding, setIsAdding] = React.useState(false);
   const [showAddForm, setShowAddForm] = React.useState(false);
   const [statusMsg, setStatusMsg] = React.useState('');
+  // v30.81: Leserechte auf DEX_Roles prüfen — Fortschritt und Ergebnis.
+  const [accessAudit, setAccessAudit] = React.useState<{ running: boolean; done: number; total: number; result: string }>({ running: false, done: 0, total: 0, result: '' });
+  const runAccessAudit = async (): Promise<void> => {
+    if (accessAudit.running) return;
+    setAccessAudit({ running: true, done: 0, total: 0, result: '' });
+    try {
+      const r = await auditRolesAccess((done, total) => setAccessAudit(prev => ({ ...prev, done, total })));
+      let msg: string;
+      if (r.readFailed) {
+        msg = isDe
+          ? 'Die Berechtigungen der Rollenliste konnten nicht gelesen werden — bitte später erneut versuchen.'
+          : 'The permissions of the roles list could not be read — please try again later.';
+      } else if (r.missing.length === 0) {
+        msg = isDe
+          ? `${r.checked} Rollen-Einträge geprüft — alle haben Leserecht auf die Rollenliste.`
+          : `${r.checked} role entries checked — all have read access to the roles list.`;
+      } else {
+        const fixed = r.fixed.length ? (isDe ? ` Nachgesetzt: ${r.fixed.join(', ')}.` : ` Granted: ${r.fixed.join(', ')}.`) : '';
+        const failed = r.failed.length ? (isDe ? ` NICHT setzbar (Konto nicht auflösbar oder Drosselung): ${r.failed.join(', ')}.` : ` Could NOT be granted (account not resolvable or throttling): ${r.failed.join(', ')}.`) : '';
+        msg = isDe
+          ? `${r.checked} Rollen-Einträge geprüft, ${r.missing.length} ohne Leserecht auf die Rollenliste — diese Personen sahen die Organizer-Kachel nicht, obwohl sie in der Liste stehen.${fixed}${failed} Betroffene müssen die App einmal neu laden.`
+          : `${r.checked} role entries checked, ${r.missing.length} without read access to the roles list — these people did not see the organizer tile although they are in the list.${fixed}${failed} Affected people need to reload the app once.`;
+      }
+      setAccessAudit({ running: false, done: 0, total: 0, result: msg });
+    } catch (e) {
+      console.warn('[DEX] auditRolesAccess failed:', e);
+      setAccessAudit({ running: false, done: 0, total: 0, result: isDe ? 'Prüfung abgebrochen — bitte erneut versuchen.' : 'Check aborted — please try again.' });
+    }
+  };
   const [isSearching, setIsSearching] = React.useState(false);
   const [userFound, setUserFound] = React.useState<boolean | null>(null);
   const [suggestions, setSuggestions] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
@@ -736,6 +766,43 @@ export default function SettingsPage(): React.ReactElement {
                 {statusMsg}
               </div>
             )}
+
+            {/* v30.81: Leserechte prüfen. Eine Rolle wirkt nur, wenn die Person
+                die Rollenliste lesen darf — das Recht wird beim Zuweisen
+                best-effort gesetzt und kann an der Drosselung scheitern; wer
+                die Zeile direkt in SharePoint bekam, hat es nie. Die Person
+                steht dann in der Liste und sieht trotzdem „Organizer werden?"
+                (Befund 07.09.2026). */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+              padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: '0.85rem',
+              background: 'var(--dex-gray-50, #f7f7f7)', border: '1px solid var(--dex-gray-200)',
+            }}>
+              <div style={{ flex: 1, minWidth: 240, color: 'var(--dex-gray-700)', lineHeight: 1.45 }}>
+                <strong>{isDe ? 'Leserechte auf die Rollenliste' : 'Read access to the roles list'}</strong>
+                <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
+                  {isDe
+                    ? 'Eine Rolle wirkt nur, wenn die Person die Liste DEX_Roles lesen darf. Fehlt das Recht, sieht sie „Organizer werden?" statt ihrer Kachel. Prüft alle Einträge und setzt fehlende Rechte nach.'
+                    : 'A role only takes effect if the person can read the DEX_Roles list. Without it they see "Want to become an organizer?" instead of their tile. Checks all entries and grants missing rights.'}
+                </div>
+                {accessAudit.result && (
+                  <div style={{ marginTop: 6, color: accessAudit.result.indexOf('NICHT') >= 0 || accessAudit.result.indexOf('NOT') >= 0 || accessAudit.result.indexOf('nicht gelesen') >= 0 ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600 }}>
+                    {accessAudit.result}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={accessAudit.running || isRolesLoading}
+                onClick={() => { void runAccessAudit(); }}
+                style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}
+              >
+                {accessAudit.running
+                  ? (accessAudit.total > 0 ? `${isDe ? 'Prüft' : 'Checking'} ${accessAudit.done}/${accessAudit.total} …` : (isDe ? 'Liest Berechtigungen …' : 'Reading permissions …'))
+                  : (isDe ? 'Leserechte prüfen' : 'Check read access')}
+              </button>
+            </div>
 
             {/* Neue Rolle hinzufügen — v11.72: nach OBEN verschoben, damit der
                 Admin nicht erst durch die Tabelle scrollen muss. Form ist auf

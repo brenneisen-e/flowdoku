@@ -653,6 +653,16 @@ export class EventService {
     return idReorder.queueIDReorder(this, eventId, eventNumber, subsiteUrl, eventTitle, cancelledName, cancelledEmail);
   }
 
+  /** v30.80: geprüfter Reorder-Auftrag (Wiederholungen, Event-Log, Merker). */
+  public async queueIDReorderChecked(job: idReorder.ReorderJob, via: string): Promise<idReorder.QueueReorderResult> {
+    return idReorder.queueIDReorderChecked(this, job, via);
+  }
+
+  /** v30.80: offene Reorder-Merker nachziehen (App-Start). */
+  public async replayPendingReorders(): Promise<number> {
+    return idReorder.replayPendingReorders(this);
+  }
+
   public async ensureChangeLogList(): Promise<void> {
     return changeLog.ensureChangeLogList(this);
   }

@@ -16,6 +16,8 @@ import { isCurrentUser } from '../utils/sessionIdentities';
 export class SharePointService {
   private context: WebPartContext;
   private siteUrl: string;
+  /** v30.81: HTTP-Status des letzten getRoles-Lesens (0 = Ausnahme/nie). */
+  public lastRolesReadStatus = 0;
 
     /**
    * v29.48/v29.50: Ersatz für `this.context.spHttpClient` — gleiche Signatur.
@@ -289,56 +291,123 @@ export class SharePointService {
    * Ermittelt die User-ID per E-Mail und setzt Read-Berechtigung.
    */
   public async grantReadOnRolesList(userEmail: string): Promise<void> {
+    // Read = 1073741826 (Standard SharePoint ID, sprachunabhängig)
+    await this._grantOnRolesList(userEmail, 1073741826, 'grantReadOnRolesList');
+  }
+
+  /**
+   * v30.81: Gemeinsamer Kern von grantRead/grantFullControl — MIT Rückgabe.
+   * Bis v30.80 schluckten beide jeden Fehler (`console.error`, kein Ergebnis):
+   * Scheiterte `ensureuser` oder der POST an der Drosselung, stand die Person
+   * in DEX_Roles, konnte die Liste aber nicht lesen — und die App machte sie
+   * beim nächsten Start still zum „User" (getRoles → 403 → null). Genau so
+   * verschwindet die Organizer-Kachel bei jemandem, der in der Liste steht.
+   */
+  private async _grantOnRolesList(userEmail: string, roleDefId: number, label: string): Promise<boolean> {
     try {
-      // User-ID per E-Mail ermitteln
       const userId = await this.getUserIdByEmail(userEmail);
       if (!userId) {
-        console.error('[DEX] grantReadOnRolesList: Keine User-ID für', userEmail);
-        return;
+        console.error(`[DEX] ${label}: Keine User-ID für`, userEmail);
+        return false;
       }
-
-      // Sicherstellen dass Liste unique permissions hat
       await this.ensureListHasUniquePermissions('DEX_Roles');
-
-      // Read = 1073741826 (Standard SharePoint ID, sprachunabhängig)
-      const readRoleId = 1073741826;
-
-      // Leseberechtigung setzen
-      await this._post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/roleassignments/addroleassignment(principalid=${userId}, roledefid=${readRoleId})`,
+      const resp = await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/roleassignments/addroleassignment(principalid=${userId}, roledefid=${roleDefId})`,
         {}
       );
+      if (!resp.ok) {
+        const errorText = await resp.text().catch(() => 'no body');
+        console.error(`[DEX] ${label} Fehler-Response:`, resp.status, errorText);
+      }
+      return resp.ok;
     } catch (e) {
-      console.error('[DEX] grantReadOnRolesList Error:', e);
+      console.error(`[DEX] ${label} Error:`, e);
+      return false;
     }
+  }
+
+  /**
+   * v30.81: Leserechte auf DEX_Roles für ALLE Rollen-Zeilen prüfen und
+   * fehlende nachsetzen. Hintergrund: Die Rolle wirkt nur, wenn die Person
+   * die Rollenliste lesen darf (Berechtigungskonzept oben: User = kein
+   * Zugriff). Das Recht wird bei `addRole` gesetzt — best-effort, ohne
+   * Rückmeldung. Wer die Zeile direkt in SharePoint bekam oder bei wessen
+   * Zuweisung `ensureuser` gedrosselt wurde, steht in der Liste und sieht
+   * trotzdem keine Kachel (Befund 07.09.2026, Zeile über ID 100).
+   *
+   * Gelesen werden die DIREKTEN Zuweisungen der Liste (Member expandiert).
+   * Mitglieder der Owners-Gruppe tauchen dort nicht einzeln auf — Admins
+   * bekommen dann eine direkte Full-Control-Zuweisung dazu, harmlos. Rollen-
+   * Zeilen ohne E-Mail werden übersprungen.
+   */
+  public async auditRolesListAccess(
+    rows: Array<{ email: string; name: string; role: string }>,
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<{ checked: number; missing: Array<{ email: string; name: string; role: string }>; fixed: string[]; failed: string[]; readFailed: boolean }> {
+    const out = { checked: 0, missing: [] as Array<{ email: string; name: string; role: string }>, fixed: [] as string[], failed: [] as string[], readFailed: false };
+    const FULL = 1073741829;
+    const READ_OK = new Set([1073741826, 1073741827, 1073741830, FULL]); // Read, Contribute, Edit, Full Control
+    // 1) Direkte Zuweisungen lesen: E-Mail/Login → Menge der RoleDefinition-Ids.
+    const byPrincipal = new Map<string, Set<number>>();
+    try {
+      let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Email,Member/LoginName,Member/PrincipalType,RoleDefinitionBindings/Id&$top=5000`;
+      let guard = 0;
+      while (url && guard < 20) {
+        guard++;
+        const resp = await this._sp.get(url, SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } });
+        if (!resp.ok) { out.readFailed = true; return out; }
+        const d = await resp.json();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const items: any[] = d.value || d.d?.results || [];
+        for (const ra of items) {
+          const m = ra.Member || {};
+          const ids = new Set<number>();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          for (const b of (ra.RoleDefinitionBindings?.results || ra.RoleDefinitionBindings || []) as any[]) ids.add(Number(b.Id));
+          const keys: string[] = [];
+          if (m.Email) keys.push(String(m.Email).toLowerCase().trim());
+          const lm = String(m.LoginName || '').toLowerCase().match(/[^|]+@[^|\s]+$/);
+          if (lm) keys.push(lm[0].trim());
+          for (const k of keys) {
+            const prev = byPrincipal.get(k) || new Set<number>();
+            ids.forEach(i => prev.add(i));
+            byPrincipal.set(k, prev);
+          }
+        }
+        url = d['odata.nextLink'] || d['@odata.nextLink'] || (d.d && d.d.__next) || null;
+      }
+    } catch (e) {
+      console.warn('[DEX] auditRolesListAccess: Zuweisungen nicht lesbar', e);
+      out.readFailed = true;
+      return out;
+    }
+    // 2) Je Rollen-Zeile prüfen, was nötig ist, und fehlendes nachsetzen.
+    const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
+    const relevant = rows.filter(r => !!(r.email || '').trim() && r.role !== 'User');
+    for (let i = 0; i < relevant.length; i++) {
+      const r = relevant[i];
+      const em = r.email.toLowerCase().trim();
+      const isAdminRole = r.role === 'Admin' || r.role === 'IT-Admin';
+      const have = byPrincipal.get(em) || new Set<number>();
+      const ok = isAdminRole ? have.has(FULL) : Array.from(have).some(id => READ_OK.has(id));
+      out.checked += 1;
+      if (!ok) {
+        out.missing.push(r);
+        const granted = await this._grantOnRolesList(r.email, isAdminRole ? FULL : 1073741826, 'auditRolesListAccess');
+        if (granted) out.fixed.push(r.name || r.email); else out.failed.push(r.name || r.email);
+        await sleep(250);
+      }
+      if (onProgress) onProgress(i + 1, relevant.length);
+    }
+    return out;
   }
 
   /**
    * Einem SuperAdmin Full Control auf die Rollen-Liste geben.
    */
   public async grantFullControlOnRolesList(userEmail: string): Promise<void> {
-    try {
-      const userId = await this.getUserIdByEmail(userEmail);
-      if (!userId) {
-        console.error('[DEX] grantFullControlOnRolesList: Keine User-ID für', userEmail);
-        return;
-      }
-
-      // Sicherstellen dass DEX_Roles unique permissions hat
-      await this.ensureListHasUniquePermissions('DEX_Roles');
-
-      // Full Control = 1073741829
-      const response = await this._post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
-        {}
-      );
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => 'no body');
-        console.error('[DEX] grantFullControlOnRolesList Fehler-Response:', response.status, errorText);
-      }
-    } catch (e) {
-      console.error('[DEX] grantFullControlOnRolesList Error:', e);
-    }
+    // Full Control = 1073741829
+    await this._grantOnRolesList(userEmail, 1073741829, 'grantFullControlOnRolesList');
   }
 
   /**
@@ -676,13 +745,22 @@ export class SharePointService {
     // für die Aufrufer wie eine vollständige aus.
     const itemsUrl = (withPowerUser: boolean): string =>
       `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$select=${baseSelect}${withPowerUser ? ',IsPowerUser' : ''}&$orderby=Role,UserName&$top=5000`;
+    this.lastRolesReadStatus = 0;
     try {
       let response = await this._sp.get(itemsUrl(true), SPHttpClient.configurations.v1);
       if (!response.ok) {
         // Retry ohne IsPowerUser (Spalte existiert evtl. noch nicht).
         response = await this._sp.get(itemsUrl(false), SPHttpClient.configurations.v1);
-        if (!response.ok) return null;
+        if (!response.ok) {
+          // v30.81: Status merken — 403 heißt „kein Leserecht auf DEX_Roles",
+          // und das ist für eine Person, die in der Liste steht, ein
+          // Rechte-Fehler, kein Rollen-Fehler. Die Startseite sagt es ihr.
+          this.lastRolesReadStatus = response.status;
+          console.warn(`[DEX] getRoles: DEX_Roles nicht lesbar (HTTP ${response.status})${response.status === 403 ? ' — kein Leserecht auf der Rollenliste; wer in DEX_Roles steht, braucht es (Rollenverwaltung → Leserechte prüfen)' : ''}.`);
+          return null;
+        }
       }
+      this.lastRolesReadStatus = response.status;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const out: any[] = [];
       let guard = 0;

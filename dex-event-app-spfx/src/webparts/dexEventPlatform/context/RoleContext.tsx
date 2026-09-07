@@ -22,6 +22,11 @@ interface RoleContextType {
   roles: RoleAssignment[];
   currentUserRole: UserRole;
   isRolesLoading: boolean;
+  /** v30.81: 'forbidden' = DEX_Roles antwortete 403 — die Person darf die
+   *  Rollenliste nicht lesen. Steht sie darin, ist ihre Rolle wirkungslos. */
+  rolesReadStatus: 'loading' | 'ok' | 'forbidden' | 'error';
+  /** v30.81: Leserechte aller Rollen-Zeilen prüfen und fehlende nachsetzen (Admin). */
+  auditRolesAccess: (onProgress?: (done: number, total: number) => void) => Promise<{ checked: number; missing: Array<{ email: string; name: string; role: string }>; fixed: string[]; failed: string[]; readFailed: boolean }>;
   isAdmin: boolean;
   /** v12.7: Echte Rolle aus DEX_Roles, unabhängig von Demo-Impersonation.
    *  Wird genutzt um in der Header-UI das „Demo: als User testen"-Menü
@@ -93,6 +98,10 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   const [roles, setRoles] = React.useState<RoleAssignment[]>([]);
   const [currentUserRole, setCurrentUserRole] = React.useState<UserRole>('User');
   const [isRolesLoading, setIsRolesLoading] = React.useState<boolean>(true);
+  // v30.81: Wie das Lesen der Rollenliste ausging — 'forbidden' (403) ist
+  // für jemanden, der in DEX_Roles steht, ein Rechte-Fehler, den die
+  // Startseite benennen soll, statt „Organizer werden?" anzubieten.
+  const [rolesReadStatus, setRolesReadStatus] = React.useState<'loading' | 'ok' | 'forbidden' | 'error'>('loading');
   const spService = React.useMemo(() => new SharePointService(props.context), []);
 
   const currentUserEmail = props.context.pageContext.user.email;
@@ -138,14 +147,14 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
       // umgehen. Besser: der User sieht nichts, als dass er plötzlich Admin ist.
       setRoles([]);
       setCurrentUserRole('User');
+      setRolesReadStatus(spService.lastRolesReadStatus === 403 ? 'forbidden' : 'error');
       setIsRolesLoading(false);
       console.warn('[DEX] RoleContext: DEX_Roles konnte nicht gelesen werden — User-Rolle bleibt auf "User" (keine Admin-Auto-Upgrade).');
       return;
     }
+    setRolesReadStatus('ok');
 
-    const myRole = spRoles.find(
-      r => r.Title && r.Title.toLowerCase() === currentUserEmail.toLowerCase()
-    );
+    const myRole = spRoles.find(r => isCurrentUser(props.context, r.Title));
 
     if (isNewlyCreated && spRoles.length === 0) {
       // Echte Erstinstallation: Liste wurde gerade von ensureRolesList angelegt
@@ -195,6 +204,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
       console.warn('[DEX] RoleContext.refresh: DEX_Roles nicht lesbar, bestehender State bleibt.');
       return;
     }
+    setRolesReadStatus('ok');
     const mapped: RoleAssignment[] = spRoles.map(r => ({
       id: r.Id, userEmail: r.Title || '', userName: r.UserName || '',
       role: migrateRole(r.Role), location: r.UserLocation || '',
@@ -202,9 +212,11 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
       isPowerUser: !!r.IsPowerUser,
     }));
     setRoles(mapped);
-    const myRole = spRoles.find(
-      r => r.Title && r.Title.toLowerCase() === currentUserEmail.toLowerCase()
-    );
+    // v30.81: über ALLE Schreibweisen der angemeldeten Person (SMTP-Adresse
+    // UND Adresse aus dem loginName) — wie canRegisterForOthers seit v19.6.
+    // Vorher zählte nur pageContext.user.email: Stand die DEX_Roles-Zeile
+    // unter dem Alias, war die Person „User".
+    const myRole = spRoles.find(r => isCurrentUser(props.context, r.Title));
     setCurrentUserRole(myRole ? migrateRole(myRole.Role) : 'User');
   }
 
@@ -426,7 +438,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   // v26: Power-User-Flag des aktuellen Users aus DEX_Roles. Im Demo-/
   // Impersonations-Modus bewusst false (wie isAdmin) — der Demo-User soll
   // exakt das sehen, was ein normaler User sieht.
-  const myRoleEntry = roles.find(r => (r.userEmail || '').toLowerCase() === currentUserEmail.toLowerCase());
+  const myRoleEntry = roles.find(r => isCurrentUser(props.context, r.userEmail));
   const isPowerUser = !isImpersonating && !previewAsUser && !!myRoleEntry?.isPowerUser;
   const originalIsAdmin = currentUserRole === 'Admin' || currentUserRole === 'IT-Admin';
   const siteUrl = props.context.pageContext.web.absoluteUrl;
@@ -436,13 +448,18 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   // ist als Dependency enthalten, daher bleiben die Closures frisch. Die
   // Funktions-Identitäten selbst sind bewusst keine Dependencies (sie werden
   // pro Render neu erzeugt und würden das Memo wirkungslos machen).
+  // v30.81: Leserechte aller Rollen-Zeilen auf DEX_Roles prüfen/nachsetzen.
+  const auditRolesAccess = (onProgress?: (done: number, total: number) => void): ReturnType<SharePointService['auditRolesListAccess']> =>
+    spService.auditRolesListAccess(roles.map(r => ({ email: r.userEmail, name: r.userName, role: r.role })), onProgress);
+
   const value = React.useMemo<RoleContextType>(() => ({
-    roles, currentUserRole, isRolesLoading,
+    roles, currentUserRole, isRolesLoading, rolesReadStatus,
     isAdmin, isOrganizer, canCreateEvents, isPowerUser, siteUrl,
     originalIsAdmin, isImpersonating, previewAsUser, setPreviewAsUser, isFA,
     addRole, updateRole, hadRoleRightsIssue, setPowerUser, updateRoleLocation, removeRole, refreshRoles, searchUser, searchUsers, searchGroups, getGroupMembers, searchUsersByLocation, getEmployeeData,
+    auditRolesAccess,
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [roles, currentUserRole, isRolesLoading, isImpersonating, previewAsUser, siteUrl]);
+  }), [roles, currentUserRole, isRolesLoading, rolesReadStatus, isImpersonating, previewAsUser, siteUrl]);
 
   return React.createElement(
     RoleContext.Provider,

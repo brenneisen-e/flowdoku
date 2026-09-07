@@ -14,7 +14,7 @@ import { useIsMobile } from '../utils/useIsMobile';
 export default function StartPage(): React.ReactElement {
   const isMobile = useIsMobile();
   const { navigate } = useNavigation();
-  const { canCreateEvents, isAdmin, isPowerUser, isFA } = useRoles();
+  const { canCreateEvents, isAdmin, isPowerUser, isFA, rolesReadStatus } = useRoles();
   const { events, isEventsLoading, getMyProxyRegistrations } = useEvents();
   const { powerUserQueue } = useTickets();
   const { currentUser } = useCurrentUser();
@@ -118,7 +118,7 @@ export default function StartPage(): React.ReactElement {
       <div className="start-card__icon"><Settings size={64} strokeWidth={1} /></div>
       <h2>{t('start.admin')}</h2>
       <p>{t('start.admin.desc')}</p>
-      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10 }}>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center', justifyContent: 'center', padding: 10 }}>
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); setShowInquiry(true); }}
@@ -130,6 +130,17 @@ export default function StartPage(): React.ReactElement {
         >
           {isDe ? 'Organizer werden?' : 'Want to become an organizer?'}
         </button>
+        {/* v30.81: 403 auf DEX_Roles heißt „Rollenliste nicht lesbar" — wer
+            dort als Organizer steht, hat dann keine Rolle, sondern ein
+            fehlendes Leserecht. Vorher sah die Person nur „Organizer werden?"
+            und niemand wusste, warum die Kachel grau ist. */}
+        {rolesReadStatus === 'forbidden' && (
+          <div style={{ fontSize: '0.7rem', lineHeight: 1.3, textAlign: 'center', color: 'var(--dex-orange-dark, #b35a00)', background: 'rgba(255,255,255,0.92)', borderRadius: 8, padding: '6px 8px', maxWidth: 240 }}>
+            {isDe
+              ? 'Rollen konnten nicht geladen werden (kein Leserecht auf der Rollenliste). Bist du bereits Organizer? Dann bitte einen Admin, in der Rollenverwaltung „Leserechte prüfen" auszuführen.'
+              : 'Roles could not be loaded (no read access to the roles list). Already an organizer? Ask an admin to run "Check read access" in role management.'}
+          </div>
+        )}
       </div>
     </div>
   );

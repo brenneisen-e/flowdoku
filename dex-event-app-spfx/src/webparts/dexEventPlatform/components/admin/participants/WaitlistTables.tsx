@@ -164,18 +164,18 @@ export const WaitlistTables: React.FC<WaitlistTablesProps> = (p) => {
                                   eventServiceRef.removeParticipantEvent(reg.ParticipantEmail, selectedEvent.eventNumber).catch(err => console.warn('[DEX]', err));
                                 }
                                 if (selectedEvent.subsiteUrl && !eventWasOver) {
-                                  try {
-                                    const ok = await eventServiceRef.queueIDReorder(
-                                      selectedEvent.id, selectedEvent.eventNumber || 0,
-                                      selectedEvent.subsiteUrl, selectedEvent.title,
-                                      `${reg.Vorname || ''} ${reg.Nachname || ''}`.trim() || reg.ParticipantName || undefined,
-                                      reg.ParticipantEmail || undefined
-                                    );
-                                    if (!ok) {
-                                      showAlert(isDe ? 'Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.' : 'Cancellation successful, but the ID reorder entry could not be written to the queue. Please click "Reassign IDs" once.');
-                                    }
-                                  } catch {
-                                    showAlert(isDe ? 'Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.' : 'Cancellation successful, but the ID reorder entry could not be written to the queue. Please click "Reassign IDs" once.');
+                                  // v30.80: geprüfter Pfad (Wiederholungen, Event-Log, Merker).
+                                  const r = await eventServiceRef.queueIDReorderChecked({
+                                    eventId: selectedEvent.id, eventNumber: selectedEvent.eventNumber || 0,
+                                    subsiteUrl: selectedEvent.subsiteUrl, eventTitle: selectedEvent.title,
+                                    cancelledName: `${reg.Vorname || ''} ${reg.Nachname || ''}`.trim() || reg.ParticipantName || undefined,
+                                    cancelledEmail: reg.ParticipantEmail || undefined,
+                                  }, 'waitlist-remove');
+                                  if (!r.ok) {
+                                    showAlert(isDe
+                                      ? `Entfernt, aber der Reorder-Auftrag konnte nach ${r.attempts} Versuchen nicht in die Queue geschrieben werden (HTTP ${r.status}). Die App holt ihn beim nächsten App-Start nach; sonst einmal „IDs neu vergeben" klicken.`
+                                      : `Removed, but the reorder job could not be written to the queue after ${r.attempts} attempts (HTTP ${r.status}). The app retries on the next start; otherwise click "Reassign IDs" once.`,
+                                      { variant: 'error' });
                                   }
                                 }
                                 // v30.67 (Review): gemeinsamer Nachlade-Pfad statt `[]` bei 429.

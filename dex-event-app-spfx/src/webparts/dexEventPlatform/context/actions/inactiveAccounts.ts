@@ -151,10 +151,10 @@ export function makeInactiveAccountActions(deps: InactiveAccountDeps) {
           catch (err) { console.warn('[DEX] removeParticipantEvent (inactive) failed:', err); }
         }
         const cancelledName = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || p.name || em);
-        try {
-          const queued = await eventService.queueIDReorder(eventId, event.eventNumber || 0, event.subsiteUrl, event.title, cancelledName, em);
-          if (!queued) console.warn('[DEX] queueIDReorder (inactive) returned false for', em);
-        } catch (err) { console.warn('[DEX] queueIDReorder (inactive) failed:', err); }
+        // v30.80: geprüfter Pfad (Wiederholungen, Event-Log, Merker).
+        await eventService.queueIDReorderChecked({
+          eventId, eventNumber: event.eventNumber || 0, subsiteUrl: event.subsiteUrl, eventTitle: event.title, cancelledName, cancelledEmail: em,
+        }, 'inactive-account');
         try {
           const isSplit = typeof event.durchstarterCapacity === 'number'
             && typeof event.funstarterCapacity === 'number'
