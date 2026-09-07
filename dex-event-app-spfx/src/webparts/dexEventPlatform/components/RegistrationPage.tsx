@@ -34,7 +34,7 @@ import { looksLikeAssistantJobTitle } from '../utils/jobTitleHeuristics';
 // v30.66: Modul-Ebene (Formatierer, Sanitizer, CollapsibleSection, Bild-Cache)
 // liegt in einer eigenen Datei — die ausgelagerten Teilbaeume der Seite brauchen
 // dieselben Helfer und duerfen sie nicht aus der Seite zurueckimportieren.
-import { formatDate, isExternalEmailAddr, renderFieldDescHtml, IMG_ASPECT_CACHE } from './registration/regHelpers';
+import { formatDateRange, isExternalEmailAddr, renderFieldDescHtml, IMG_ASPECT_CACHE } from './registration/regHelpers';
 import { SubEventFieldsModal } from './registration/SubEventFieldsModal';
 import { AssistantModal, CcSelfModal, ExternalEmailWarningModal, FallbackDialogModal } from './registration/SmallModals';
 import { SubmitConfirmModal } from './registration/SubmitConfirmModal';
@@ -1912,10 +1912,15 @@ export default function RegistrationPage(): React.ReactElement {
                     const valid = !!d && isFinite(d.getTime());
                     const dayStr = valid ? d!.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
                     const timeStr = valid ? d!.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '';
+                    // v30.79: Endzeit mitnehmen — „13:00" allein sagt nicht, wie
+                    // lange der Termin geht (Nutzer 07.09.2026).
+                    const e = ce.endDate ? new Date(ce.endDate) : null;
+                    const endTimeStr = e && isFinite(e.getTime()) ? e.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '';
+                    const timeRange = timeStr && endTimeStr && endTimeStr !== timeStr ? `${timeStr} – ${endTimeStr}` : timeStr;
                     const titleHasDate = !!dayStr && name.indexOf(dayStr) >= 0;
                     const label = titleHasDate
-                      ? (timeStr && timeStr !== '00:00' ? `${name} | ${timeStr}` : name)
-                      : (valid ? `${name} | ${formatDate(ce.startDate)}` : name);
+                      ? (timeRange && timeRange !== '00:00' ? `${name} | ${timeRange}` : name)
+                      : (valid ? `${name} | ${formatDateRange(ce.startDate, ce.endDate || '')}` : name);
                     return (
                       <li key={ce.id} style={{ marginBottom: 3 }}>{label}</li>
                     );

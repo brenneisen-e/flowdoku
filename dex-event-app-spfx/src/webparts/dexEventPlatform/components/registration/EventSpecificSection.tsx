@@ -3,7 +3,7 @@
  * (Liste und Kalender) und die eventspezifischen Felder. Inhalt zeichengleich
  * uebernommen; die Anzeige-Bedingung ist beim Aufrufer geblieben. */
 import * as React from 'react';
-import { CollapsibleSection, formatDate, subEventDescHtml } from './regHelpers';
+import { CollapsibleSection, formatDateRange, subEventDescHtml } from './regHelpers';
 import { subEventRegDeadline } from '../../utils/eventFormat';
 import { isoToLocal } from '../../utils/berlinTime';
 import { Icon } from '@fluentui/react/lib/Icon';
@@ -770,7 +770,9 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                                   {/* v11.97: Icon-Größe an Standard-Body angepasst. */}
                                   <Icon iconName="Calendar" style={{ fontSize: 15, color: 'var(--dex-green-dark, #4a7c1f)' }} />
-                                  {formatDate(ce.startDate)}
+                                  {/* v30.79: von–bis statt nur Start (Nutzer 07.09.2026:
+                                      „da steht nur eine Zeit … an ganz vielen Stellen"). */}
+                                  {formatDateRange(ce.startDate, ce.endDate || '')}
                                 </span>
                               )}
                               {ce.location && (

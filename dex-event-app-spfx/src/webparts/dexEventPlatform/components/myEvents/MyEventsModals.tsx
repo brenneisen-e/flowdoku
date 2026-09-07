@@ -10,7 +10,8 @@ import { Icon } from '@fluentui/react/lib/Icon';
 import Modal from '../Modal';
 import InternationalSearchToggle from '../InternationalSearchToggle';
 import { SPRegistration, EventCommRow } from '../../services/EventService';
-import { formatDate } from './myEventsHelpers';
+import { formatDate, formatDateTimeRange } from './myEventsHelpers';
+import { groupSubEventTabs, stripGroupPrefix } from '../../utils/subEventGroups';
 
 
 export interface AddMemberModalProps {
@@ -443,7 +444,7 @@ export function ManageTeamModal(props: ManageTeamModalProps): React.ReactElement
 
 
 export interface CascadeCancelModalProps {
-  cascadeDialog: { parentTitle: string; subEvents: { id: string; title: string; startDate?: string; location?: string; }[]; resolve: (_choice: "cascade" | "parent-only" | "abort") => void; isSectionedEvent?: boolean; };
+  cascadeDialog: { parentTitle: string; subEvents: { id: string; title: string; startDate?: string; endDate?: string; location?: string; }[]; resolve: (_choice: "cascade" | "parent-only" | "abort") => void; isSectionedEvent?: boolean; };
   isDe: boolean;
 }
 
@@ -481,24 +482,49 @@ export function CascadeCancelModal(props: CascadeCancelModalProps): React.ReactE
                       : <>You are registered for <strong>{dlg.subEvents.length}</strong> sub-event{dlg.subEvents.length === 1 ? '' : 's'} of <strong>&bdquo;{dlg.parentTitle}&ldquo;</strong>:</>)
                 }
               </p>
-              <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.85rem', color: 'var(--dex-gray-700)', maxHeight: 200, overflowY: 'auto' }}>
+              <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', maxHeight: 240, overflowY: 'auto' }}>
                 {/* v15.8: pro Sub-Event Titel + Datum + Ort listen, damit
-                    der User auf einen Blick sieht was er da abmeldet. */}
-                {dlg.subEvents.map(s => {
-                  const dateStr = s.startDate
-                    ? new Date(s.startDate).toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-                    : '';
-                  const subParts = [dateStr, s.location].filter(Boolean).join(' · ');
-                  return (
-                    <li key={s.id} style={{ marginBottom: 4 }}>
-                      <div style={{ fontWeight: 600 }}>{s.title}</div>
-                      {subParts && (
-                        <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>{subParts}</div>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
+                    der User auf einen Blick sieht was er da abmeldet.
+                    v30.79: von–bis statt nur Start, und bei vielen Terminen
+                    dieselbe Präfix-Gruppierung wie in der Termin-Liste
+                    („Day 1", „Day 2" …) als Zwischenüberschriften. */}
+                {(() => {
+                  const renderItem = (s: { id: string; title: string; startDate?: string; endDate?: string; location?: string }, shownTitle: string): React.ReactElement => {
+                    const subParts = [formatDateTimeRange(s.startDate, s.endDate, isDe), s.location].filter(Boolean).join(' · ');
+                    return (
+                      <li key={s.id} style={{ marginBottom: 4 }}>
+                        <div style={{ fontWeight: 600 }}>{shownTitle}</div>
+                        {subParts && (
+                          <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>{subParts}</div>
+                        )}
+                      </li>
+                    );
+                  };
+                  const grouping = groupSubEventTabs(dlg.subEvents.map(s => s.title));
+                  if (!grouping.grouped) {
+                    return (
+                      <ul style={{ margin: 0, paddingLeft: 20 }}>
+                        {dlg.subEvents.map(s => renderItem(s, s.title))}
+                      </ul>
+                    );
+                  }
+                  return grouping.groups.map(g => {
+                    const members = g.idxs.map(i => dlg.subEvents[i]).filter(Boolean);
+                    const label = g.label === 'Weitere' ? (isDe ? 'Weitere' : 'Other') : g.label;
+                    return (
+                      <div key={g.label} style={{ marginBottom: 6 }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '4px 0 2px', borderBottom: '1px solid var(--dex-gray-200)', marginBottom: 4 }}>
+                          <span style={{ fontWeight: 800, fontSize: '0.86rem', color: 'var(--dex-gray-800)' }}>{label}</span>
+                          <span style={{ fontSize: '0.74rem', color: 'var(--dex-gray-600)' }}>{members.length} {isDe ? (members.length === 1 ? 'Termin' : 'Termine') : (members.length === 1 ? 'date' : 'dates')}</span>
+                        </div>
+                        <ul style={{ margin: 0, paddingLeft: 20 }}>
+                          {members.map(s => renderItem(s, stripGroupPrefix(s.title, g.label)))}
+                        </ul>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
               {isSec && (
                 <div style={{
                   padding: '10px 12px', borderRadius: 8,

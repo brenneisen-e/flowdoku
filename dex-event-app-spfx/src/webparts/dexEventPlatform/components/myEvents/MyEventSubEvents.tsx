@@ -18,7 +18,9 @@ import { isEventVisibleForUser } from '../EventListPage';
 import { InfoTooltip } from '../InfoTooltip';
 import Modal from '../Modal';
 import StayRangePicker from '../StayRangePickerLazy';
-import { FieldAnswerTag } from './myEventsHelpers';
+import { FieldAnswerTag, formatDateTimeRange } from './myEventsHelpers';
+import { groupSubEventTabs, stripGroupPrefix } from '../../utils/subEventGroups';
+import { SubmitOverlay } from '../registration/RegistrationBanners';
 
 // ==================== Sub-Events im "My Events"-Tab ====================
 // Seit v6.4: Sub-Events sind eigene DEX_Events-Items (childEventsOf(parentId)).
@@ -59,6 +61,8 @@ export default function MyEventSubEvents(props: {
   // war nur die einzelne Karte mit „…" markiert — bei Peer-Cancels haben die
   // peers visuell nicht reagiert, weil busyId nur die EINE id hält.
   const [processingMessage, setProcessingMessage] = React.useState<string>('');
+  // v30.79: Prozentwert für das SubmitOverlay (0–100), s. handleToggle.
+  const [processingProgress, setProcessingProgress] = React.useState<number>(0);
   // v30.19: Während der Verarbeitung warnt der Browser vor dem Schließen des
   // Fensters/Tabs (nativer „Website verlassen?"-Dialog) — ein Abbruch mitten
   // im (Peer-)Cancel oder Anmelden hinterlässt halbe Zustände. Gleiche
@@ -110,6 +114,10 @@ export default function MyEventSubEvents(props: {
   } | null>(null);
   // v30.9: Hover-State für die Kalender-Zellen (Inline-Styles können kein :hover).
   const [dayHoverKey, setDayHoverKey] = React.useState<string>('');
+  // v30.79: Termin-Gruppen („Day 1 - …") wie auf der Anmeldeseite (v30.76) —
+  // alle offen, ein Klick auf den Kopf klappt zu. Nutzer-Ansage 07.09.2026:
+  // „hier auch noch strukturiert anzeigen".
+  const [collapsedGroups, setCollapsedGroups] = React.useState<Set<string>>(() => new Set<string>());
 
   const refresh = React.useCallback(async (): Promise<void> => {
     try {
@@ -218,6 +226,7 @@ export default function MyEventSubEvents(props: {
           id: ce.id,
           title: ce.title || (isDe ? 'Sub-Event' : 'Sub-event'),
           startDate: ce.startDate || '',
+          endDate: ce.endDate || '',
           location: ce.location || '',
         }));
       if (peers.length > 0) {
@@ -252,24 +261,57 @@ export default function MyEventSubEvents(props: {
     // v15.21: Voll-Bild-Progress mit Beschreibung — bei Peer-Cancels
     // zählen wir die Fortschritte fortlaufend mit, damit der User sieht
     // dass auch die peers verarbeitet werden.
+    // v30.79: echter Prozent-Balken (SubmitOverlay wie beim Anmelden) —
+    // ein Schritt mehr für das Nachladen am Ende.
     const totalSteps = (currentlyRegistered ? 1 + peerIdsToCancel.length : 1);
+    const progressTotal = totalSteps + 1;
+    const stepPct = (done: number): number => Math.min(99, Math.round((done / progressTotal) * 100));
     const initialMsg = currentlyRegistered
       ? (isDe
           ? `Abmeldung wird verarbeitet… (1/${totalSteps})`
           : `Cancellation in progress… (1/${totalSteps})`)
       : (isDe ? 'Anmeldung wird verarbeitet…' : 'Registration in progress…');
+    setProcessingProgress(stepPct(0));
     setProcessingMessage(initialMsg);
     try {
       if (currentlyRegistered) {
         await props.cancelRegistration(childEventId);
         let done = 1;
+        setProcessingProgress(stepPct(done));
+        // v30.79: Sechs Abmeldungen hintereinander sind rund vierzig
+        // SharePoint-Schreibvorgänge am Stück (Status, Register, Mail-Queue,
+        // Outlook-Queue, Reorder-Queue, Platz-Sync je Termin) — SharePoint
+        // drosselte (Nutzer 07.09.2026: „hat zu throttle geführt"), und ein
+        // gedrosselter Termin blieb still angemeldet. Jetzt: kurze Pause
+        // zwischen den Terminen, und ein gescheiterter Termin wird nach
+        // einer längeren Pause ein zweites Mal versucht; was dann noch
+        // scheitert, wird gemeldet statt geschluckt.
+        const failedPeers: string[] = [];
         for (const peerId of peerIdsToCancel) {
           done++;
           setProcessingMessage(isDe
             ? `Abmeldung wird verarbeitet… (${done}/${totalSteps})`
             : `Cancellation in progress… (${done}/${totalSteps})`);
-          try { await props.cancelRegistration(peerId); }
+          await new Promise<void>(resolve => setTimeout(resolve, 600));
+          let ok = false;
+          try { ok = await props.cancelRegistration(peerId); }
           catch (err) { console.warn('[DEX] peer-cancel failed:', peerId, err); }
+          if (!ok) {
+            setProcessingMessage(isDe
+              ? `SharePoint ist ausgelastet — zweiter Versuch… (${done}/${totalSteps})`
+              : `SharePoint is busy — retrying… (${done}/${totalSteps})`);
+            await new Promise<void>(resolve => setTimeout(resolve, 2500));
+            try { ok = await props.cancelRegistration(peerId); }
+            catch (err) { console.warn('[DEX] peer-cancel retry failed:', peerId, err); }
+          }
+          if (!ok) failedPeers.push(peerId);
+          setProcessingProgress(stepPct(done));
+        }
+        if (failedPeers.length > 0) {
+          const names = failedPeers.map(id => (props.childEvents.find(c => c.id === id) || { title: '' }).title || id).join(', ');
+          await showAlert(isDe
+            ? `${failedPeers.length} Termin${failedPeers.length === 1 ? '' : 'e'} konnte${failedPeers.length === 1 ? '' : 'n'} nicht abgemeldet werden (SharePoint ausgelastet): ${names}. Die Anmeldung dort bleibt bestehen — bitte in ein paar Minuten erneut abmelden.`
+            : `${failedPeers.length} date${failedPeers.length === 1 ? '' : 's'} could not be cancelled (SharePoint busy): ${names}. Those registrations remain — please cancel again in a few minutes.`, { variant: 'error' });
         }
         // v15.26: Im subEventsOnlyMode war das Hauptevent als Schatten-
         // Registrierung angelegt. Wenn die letzte aktive Sub-Event-
@@ -315,11 +357,14 @@ export default function MyEventSubEvents(props: {
         // Merker (utils/shadowHeal). Der eigene Nachzug hier ist entfallen.
       }
       setProcessingMessage(isDe ? 'Aktualisiere…' : 'Refreshing…');
+      setProcessingProgress(stepPct(totalSteps));
       await refresh();
       await props.onMutated();
+      setProcessingProgress(100);
     } finally {
       setBusyId(null);
       setProcessingMessage('');
+      setProcessingProgress(0);
     }
   };
 
@@ -632,7 +677,8 @@ export default function MyEventSubEvents(props: {
 
       {!props.parentEvent.subEventCalendar && (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {visibleChildren.map(ce => {
+        {(() => {
+        const renderRow = (ce: DeloitteEvent, shownTitle: string): React.ReactElement => {
           const isReg = registeredSet.has(ce.id);
           const isBusy = busyId === ce.id;
           // v28.20: Auch die explizite Klammer-Frist des Hauptevents sperrt
@@ -715,7 +761,7 @@ export default function MyEventSubEvents(props: {
               opacity: notYetOpen ? 0.7 : 1,
             }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{ce.title || (isDe ? 'Session ohne Titel' : 'Untitled session')}</div>
+                <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{shownTitle}</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
                   {ce.startDate && <>{fmt(ce.startDate)}{ce.endDate ? ` – ${fmt(ce.endDate)}` : ''}</>}
                   {ce.location && <>&nbsp;·&nbsp;{ce.location}</>}
@@ -776,7 +822,49 @@ export default function MyEventSubEvents(props: {
               </div>
             </div>
           );
-        })}
+        };
+        const untitled = isDe ? 'Session ohne Titel' : 'Untitled session';
+        const grouping = groupSubEventTabs(visibleChildren.map(ce => ce.title || ''));
+        if (!grouping.grouped) return visibleChildren.map(ce => renderRow(ce, ce.title || untitled));
+        // v30.79: gruppiert — Kopf je Gruppe mit Anzahl und eigenen Anmeldungen,
+        // darunter die Zeilen ohne das wiederholte Präfix.
+        return grouping.groups.map(g => {
+          const members = g.idxs.map(i => visibleChildren[i]).filter(Boolean);
+          const mine = members.filter(ce => registeredSet.has(ce.id)).length;
+          const collapsed = collapsedGroups.has(g.label);
+          const label = g.label === 'Weitere' ? (isDe ? 'Weitere' : 'Other') : g.label;
+          return (
+            <div key={g.label} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <button
+                type="button"
+                aria-expanded={!collapsed}
+                onClick={() => setCollapsedGroups(prev => { const next = new Set(prev); if (next.has(g.label)) next.delete(g.label); else next.add(g.label); return next; })}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
+                  padding: '7px 12px', borderRadius: 8, cursor: 'pointer',
+                  border: `1px solid ${mine > 0 ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+                  background: mine > 0 ? 'rgba(134,188,37,0.10)' : 'var(--dex-gray-50, #fafafa)',
+                  color: 'var(--dex-gray-800)', font: 'inherit',
+                }}
+              >
+                <span style={{ fontSize: '0.72rem', width: 12, color: 'var(--dex-gray-500)' }}>{collapsed ? '▸' : '▾'}</span>
+                <span style={{ fontWeight: 800, fontSize: '0.9rem' }}>{label}</span>
+                <span style={{ fontSize: '0.74rem', color: 'var(--dex-gray-600)' }}>{members.length} {isDe ? 'Termine' : 'dates'}</span>
+                {mine > 0 && (
+                  <span style={{ marginLeft: 'auto', fontSize: '0.7rem', fontWeight: 700, color: '#fff', background: 'var(--dex-green, #86bc25)', borderRadius: 999, padding: '2px 8px' }}>
+                    {mine} {isDe ? 'angemeldet' : 'registered'}
+                  </span>
+                )}
+              </button>
+              {!collapsed && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 14 }}>
+                  {members.map(ce => renderRow(ce, stripGroupPrefix(ce.title || untitled, g.label)))}
+                </div>
+              )}
+            </div>
+          );
+        });
+        })()}
       </div>
       )}
 
@@ -1020,61 +1108,16 @@ export default function MyEventSubEvents(props: {
       {/* v15.21: Globaler Progress-Overlay während (Peer-)Cancel +
           Registrierung — blockiert die ganze Seite, damit der User nicht
           versehentlich nochmal klickt und sieht, dass die Aktion läuft. */}
+      {/* v30.79: dasselbe Overlay wie beim Anmelden (SubmitOverlay) — mit
+          echtem Prozent-Balken statt der laufenden Animation. Der
+          beforeunload-Guard (Hook oben) bleibt. */}
       {processingMessage && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={isDe ? 'Wird verarbeitet' : 'Processing'}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 2000,
-            background: 'rgba(0,0,0,0.55)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 16,
-          }}
-        >
-          <div style={{
-            background: '#fff', borderRadius: 12, padding: '28px 32px',
-            maxWidth: 420, width: '100%',
-            boxShadow: '0 16px 48px rgba(0,0,0,0.35)',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16,
-            textAlign: 'center',
-          }}>
-            <div aria-hidden="true" style={{
-              width: '100%', height: 6, borderRadius: 3,
-              background: '#e5e5e5',
-              overflow: 'hidden', position: 'relative',
-            }}>
-              <div style={{
-                position: 'absolute', top: 0, bottom: 0,
-                width: '40%',
-                background: 'var(--dex-green, #86bc25)',
-                borderRadius: 3,
-                animation: 'dexProgressSlide 1.2s ease-in-out infinite',
-              }} />
-            </div>
-            <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--dex-gray-800)' }}>
-              {processingMessage}
-            </div>
-            <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-500)' }}>
-              {isDe ? 'Bitte einen Moment Geduld…' : 'Please wait a moment…'}
-            </div>
-            {/* v30.19: pulsierender Warnhinweis — wie im Anmelde-Overlay der
-                RegistrationPage; zusätzlich beforeunload-Guard (Hook oben). */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '8px 16px', borderRadius: 999,
-              background: 'rgba(237,139,0,0.12)', border: '1px solid var(--dex-orange, #ed8b00)',
-              color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 700, fontSize: '0.85rem',
-              animation: 'dexWaitPulse 1.5s ease-in-out infinite',
-            }}>
-              {isDe
-                ? 'Bitte warten — Fenster nicht schließen'
-                : 'Please wait — do not close this window'}
-            </div>
-          </div>
-          <style>{`@keyframes dexProgressSlide { 0% { left: -40%; } 100% { left: 100%; } }
-@keyframes dexWaitPulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.55; transform: scale(1.04); } }`}</style>
-        </div>
+        <SubmitOverlay
+          displayProgress={processingProgress}
+          locale={isDe ? 'de' : 'en'}
+          submitProgressLabel={processingMessage}
+          title={isDe ? 'Wird verarbeitet …' : 'Processing …'}
+        />
       )}
     </div>
   );
@@ -1087,7 +1130,7 @@ export default function MyEventSubEvents(props: {
 function PeerCancelCheckboxModal(props: {
   dlg: {
     targetTitle: string;
-    peers: { id: string; title: string; startDate?: string; location?: string }[];
+    peers: { id: string; title: string; startDate?: string; endDate?: string; location?: string }[];
     resolve: (_choice: { peerIds: string[] } | 'abort') => void;
   };
   isDe: boolean;
@@ -1105,11 +1148,39 @@ function PeerCancelCheckboxModal(props: {
       return next;
     });
   };
-  const formatLine = (startDate?: string, location?: string): string => {
-    const dateStr = startDate
-      ? new Date(startDate).toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-      : '';
-    return [dateStr, location].filter(Boolean).join(' · ');
+  // v30.79: von–bis statt nur Start (gleicher Tag: „12.10.2026, 13:00 – 14:30").
+  const formatLine = (startDate?: string, endDate?: string, location?: string): string =>
+    [formatDateTimeRange(startDate, endDate, isDe), location].filter(Boolean).join(' · ');
+  // v30.79: dieselbe Präfix-Gruppierung wie in der Termin-Liste — bei vielen
+  // Terminen sonst eine lange Liste gleich beginnender Namen. Gruppen sind
+  // hier nur Zwischenüberschriften, nichts klappt zu (Auswahl muss sichtbar sein).
+  const peerGrouping = groupSubEventTabs(dlg.peers.map(p => p.title));
+  const renderPeer = (p: { id: string; title: string; startDate?: string; endDate?: string; location?: string }, shownTitle: string): React.ReactElement => {
+    const checked = selectedPeerIds.has(p.id);
+    const meta = formatLine(p.startDate, p.endDate, p.location);
+    return (
+      <label key={p.id} style={{
+        display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10,
+        borderRadius: 8,
+        border: `1px solid ${checked ? 'var(--dex-red, #d62828)' : 'var(--dex-gray-200)'}`,
+        background: checked ? 'rgba(214,40,40,0.04)' : '#fff',
+        cursor: 'pointer',
+        transition: 'border-color 0.15s, background 0.15s',
+      }}>
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={() => togglePeer(p.id)}
+          style={{ marginTop: 3, accentColor: 'var(--dex-red, #d62828)', cursor: 'pointer' }}
+        />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 600, color: 'var(--dex-gray-800)' }}>{shownTitle}</div>
+          {meta && (
+            <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>{meta}</div>
+          )}
+        </div>
+      </label>
+    );
   };
   const totalCount = 1 + selectedPeerIds.size;
   return (
@@ -1142,33 +1213,37 @@ function PeerCancelCheckboxModal(props: {
             </div>
           </div>
         </label>
-        {dlg.peers.map(p => {
-          const checked = selectedPeerIds.has(p.id);
-          const meta = formatLine(p.startDate, p.location);
-          return (
-            <label key={p.id} style={{
-              display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10,
-              borderRadius: 8,
-              border: `1px solid ${checked ? 'var(--dex-red, #d62828)' : 'var(--dex-gray-200)'}`,
-              background: checked ? 'rgba(214,40,40,0.04)' : '#fff',
-              cursor: 'pointer',
-              transition: 'border-color 0.15s, background 0.15s',
-            }}>
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={() => togglePeer(p.id)}
-                style={{ marginTop: 3, accentColor: 'var(--dex-red, #d62828)', cursor: 'pointer' }}
-              />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, color: 'var(--dex-gray-800)' }}>{p.title}</div>
-                {meta && (
-                  <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>{meta}</div>
-                )}
+        {!peerGrouping.grouped
+          ? dlg.peers.map(p => renderPeer(p, p.title))
+          : peerGrouping.groups.map(g => {
+            const members = g.idxs.map(i => dlg.peers[i]).filter(Boolean);
+            const picked = members.filter(p => selectedPeerIds.has(p.id)).length;
+            const label = g.label === 'Weitere' ? (isDe ? 'Weitere' : 'Other') : g.label;
+            const allOn = picked === members.length;
+            return (
+              <div key={g.label} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 4px 2px', borderBottom: '1px solid var(--dex-gray-200)' }}>
+                  <span style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>{label}</span>
+                  <span style={{ fontSize: '0.74rem', color: 'var(--dex-gray-600)' }}>{picked}/{members.length} {isDe ? 'gewählt' : 'picked'}</span>
+                  {/* Alle Termine der Gruppe auf einmal an- oder abwählen —
+                      bei „Day 2 komplett absagen" sonst fünf Einzelklicks. */}
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ marginLeft: 'auto', fontSize: '0.72rem', padding: '2px 10px' }}
+                    onClick={() => setSelectedPeerIds(prev => {
+                      const next = new Set(prev);
+                      members.forEach(p => { if (allOn) next.delete(p.id); else next.add(p.id); });
+                      return next;
+                    })}
+                  >
+                    {allOn ? (isDe ? 'Keine' : 'None') : (isDe ? 'Alle' : 'All')}
+                  </button>
+                </div>
+                {members.map(p => renderPeer(p, stripGroupPrefix(p.title, g.label)))}
               </div>
-            </label>
-          );
-        })}
+            );
+          })}
       </div>
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
         <button
