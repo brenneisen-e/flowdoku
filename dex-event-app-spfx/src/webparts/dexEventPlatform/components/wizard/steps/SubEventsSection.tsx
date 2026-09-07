@@ -697,6 +697,20 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                           isDe
                             ? <>Setzt <strong>alle {n} Termine</strong> auf Beschäftigt. Ohne Haken erscheinen sie als Frei — bei ganztägigen Terminen meist die bessere Wahl, sonst gilt jeder Tag als komplett belegt.</>
                             : <>Marks <strong>all {n} dates</strong> as busy. Without it they show as free — usually the better choice for all-day entries, otherwise every day counts as fully booked.</>)}
+                        {/* v30.76: Pflichtanmeldung für alle Termine auf einmal.
+                            Der Einzel-Haken sitzt in der Termin-Liste bzw. am
+                            Reiter; bei 27 Terminen mit „Pflicht" auf jedem gab
+                            es keinen Weg, das gesammelt abzuschalten
+                            (Nutzer-Ansage 07.09.2026). Dreizustand wie oben. */}
+                        {(() => {
+                          const nMand = subEvents.filter(se => se.mandatory).length;
+                          return row('bulk-mandatory', nMand === n, nMand > 0 && nMand < n,
+                            (v) => setSubEvents(prev => prev.map(se => (!!se.mandatory === v ? se : { ...se, mandatory: v }))),
+                            isDe ? 'Alle Termine sind Pflichttermine' : 'All dates are mandatory',
+                            isDe
+                              ? <>Setzt die <strong>Pflichtanmeldung für alle {n} Termine</strong> auf einmal — an oder aus. Pflicht heißt: Wer sich anmeldet, ist auf diesem Termin automatisch dabei und kann ihn nicht abwählen. Einzelne Termine kannst du danach in der Liste unten abweichend setzen.</>
+                              : <>Turns <strong>mandatory registration for all {n} dates</strong> on or off at once. Mandatory means: whoever registers is automatically on this date and cannot deselect it. Individual dates can still be changed in the list below.</>);
+                        })()}
                       </>
                     );
                   })()}

@@ -9,6 +9,7 @@ import { isoToLocal } from '../../utils/berlinTime';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { Locale } from '../../context/LanguageContext';
 import { DeloitteEvent, EventSpecificField } from '../../types';
+import { groupSubEventTabs, stripGroupPrefix } from '../../utils/subEventGroups';
 
 /** Station 3 — Starter-Typ, Sub-Event-Auswahl und eventspezifische Felder. */
 export interface EventSpecificSectionProps {
@@ -60,6 +61,14 @@ export interface EventSpecificSectionProps {
 }
 export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => {
   const { childEvents, childOneDe, childTermPlural, childTermSingular, dayHoverKey, durchCap, event, eventSpecific, funCap, hasStarterBlockMapping, hiddenChildCount, isAdmin, isMobile, isOrganizer, isSessionsOnlyMode, isSplitGroup, locale, parentAlreadyRegistered, parentFullNoWaitlist, parentRegBlocked, preferredStarterType, registerForOther, registerForParent, renderMainFieldsSection, renderRegField, renderSubEventInlineFields, resolveMainEventLabel, selectedSessions, sessionFieldValues, sessionMeta, setDayHoverKey, setEventSpecific, setPendingSubEventModal, setPreferredStarterType, setRegisterForParent, setSelectedSessions, setSessionFieldValues, showErrors, splitLabelA, splitLabelB, starterCounts, subOpenFrom, t, tEvent } = p;
+  // v30.76: Termin-Liste nach gemeinsamem Präfix gruppieren („Day 1 - …"),
+  // mit derselben Entscheidung wie Organizer Center und Wizard
+  // (utils/subEventGroups). Nutzer-Ansage 07.09.2026: „genauso wie beim
+  // Organizer muss das auch hier automatisch sauber geordnet sein". Anders
+  // als dort sind hier alle Gruppen offen — wer sich anmeldet, muss alle
+  // Pflichttermine sehen; ein Klick auf den Gruppenkopf klappt nur zu.
+  const [collapsedGroups, setCollapsedGroups] = React.useState<Set<string>>(() => new Set<string>());
+  const sessionGrouping = React.useMemo(() => groupSubEventTabs(childEvents.map(ce => ce.title || '')), [childEvents]);
   return (
         <div className="registration-specific">
           {/* v11.97: Section-Header + „* = Required field"-Legende in
@@ -675,7 +684,8 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                 {!event.subEventCalendar && (
                 <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', fontWeight: 600 }}>{childTermPlural || tEvent('reg.selection.sessions') || 'Sessions'}</div>
-                  {childEvents.map(ce => {
+                  {(() => {
+                  const renderSessionCard = (ce: DeloitteEvent, shownTitle: string): React.ReactElement => {
                     const meta = sessionMeta[ce.id] || { count: null, wasRegistered: false };
                     const isSel = selectedSessions.has(ce.id);
                     const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
@@ -735,7 +745,7 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                           />
                           <div style={{ flex: 1 }}>
                             <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                              {ce.title || tEvent('reg.subevents.untitled')}
+                              {shownTitle}
                               {ce.mandatoryRegistration && (
                                 <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#fff', background: 'var(--dex-orange, #ed8b00)', borderRadius: 999, padding: '2px 8px' }}>
                                   {locale === 'de' ? 'Pflicht' : 'Required'}
@@ -826,7 +836,55 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                         {isSel && renderSubEventInlineFields(ce)}
                       </div>
                     );
-                  })}
+                  };
+                  const untitled = tEvent('reg.subevents.untitled');
+                  if (!sessionGrouping.grouped) {
+                    return childEvents.map(ce => renderSessionCard(ce, ce.title || untitled));
+                  }
+                  // v30.76: gruppiert — je Gruppe ein Kopf mit Anzahl und Auswahl,
+                  // darunter die Karten OHNE das Präfix („Welcome & Intro" statt
+                  // „Day 1 - Welcome & Intro"). Die Restgruppe heißt wie im Helfer.
+                  return sessionGrouping.groups.map(g => {
+                    const members = g.idxs.map(i => childEvents[i]).filter(Boolean);
+                    const picked = members.filter(ce => selectedSessions.has(ce.id)).length;
+                    const mandatory = members.filter(ce => ce.mandatoryRegistration).length;
+                    const collapsed = collapsedGroups.has(g.label);
+                    const label = g.label === 'Weitere' ? (locale === 'de' ? 'Weitere' : 'Other') : g.label;
+                    return (
+                      <div key={g.label} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <button
+                          type="button"
+                          aria-expanded={!collapsed}
+                          onClick={() => setCollapsedGroups(prev => { const next = new Set(prev); if (next.has(g.label)) next.delete(g.label); else next.add(g.label); return next; })}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
+                            padding: '8px 12px', borderRadius: 8, cursor: 'pointer',
+                            border: `1px solid ${picked > 0 ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+                            background: picked > 0 ? 'rgba(134,188,37,0.10)' : 'var(--dex-gray-50, #f7f7f7)',
+                            color: 'var(--dex-gray-800)', font: 'inherit',
+                          }}
+                        >
+                          <span style={{ fontSize: '0.75rem', width: 12, color: 'var(--dex-gray-500)' }}>{collapsed ? '▸' : '▾'}</span>
+                          <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>{label}</span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>
+                            {members.length} {locale === 'de' ? 'Termine' : 'dates'}
+                            {mandatory > 0 && <> · {mandatory} {locale === 'de' ? 'Pflicht' : 'required'}</>}
+                          </span>
+                          {picked > 0 && (
+                            <span style={{ marginLeft: 'auto', fontSize: '0.72rem', fontWeight: 700, color: '#fff', background: 'var(--dex-green, #86bc25)', borderRadius: 999, padding: '2px 8px' }}>
+                              {picked} {locale === 'de' ? 'gewählt' : 'picked'}
+                            </span>
+                          )}
+                        </button>
+                        {!collapsed && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: isMobile ? 0 : 14 }}>
+                            {members.map(ce => renderSessionCard(ce, stripGroupPrefix(ce.title || untitled, g.label)))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  });
+                  })()}
                 </div>
                 )}
 

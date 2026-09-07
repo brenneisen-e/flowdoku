@@ -13,7 +13,7 @@ import { buildOutlookBody, eventCreatedEmail, getCachedOrbBase64, replacePlaceho
 import { BundledComm, bundledCommConfig, commSharedConfig } from '../../../utils/bundledComm';
 import { EventService } from '../../../services/EventService';
 import { compressImage } from '../../../utils/imageCompress';
-import { AgendaItem, EventType } from '../../../types';
+import { AgendaItem, DeloitteEvent, EventType } from '../../../types';
 import { CustomFieldInput } from '../../wizard/customFieldInput';
 import { ImgView, SubEventDraft } from '../../wizard/wizardTypes';
 import { EmailOverrideEntry } from '../../wizard/emailOverrideEntry';
@@ -1056,21 +1056,41 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
             // weglassen, sondern lehnt den GANZEN Insert ab: Die Anmeldung
             // scheitert, sobald jemand dieses Feld ausfüllt. Der Befund aus
             // dem Bestand (12 fehlende Spalten über 100 Listen) ist genau das.
-            for (const sub of childEventsOf(editEvent.id)) {
-              if (!sub.subsiteUrl) continue;
+            // v30.76: nicht mehr streng nacheinander. Bei 25 Terminen stand der
+            // Balken minutenlang auf 82 % („sehr, sehr lange", 07.09.2026) —
+            // jeder Abgleich ist eine Kette aus Feldliste lesen, Duplikate
+            // prüfen, fehlende Spalten anlegen, Ansicht ergänzen. Vier Listen
+            // gleichzeitig halbieren die Wartezeit mehrfach, ohne SharePoint
+            // in die Drosselung zu treiben; der Balken nennt jetzt, wie viele
+            // Termine schon durch sind.
+            const subsToFix = childEventsOf(editEvent.id).filter(s => !!s.subsiteUrl);
+            let fixedSubs = 0;
+            const fixOne = async (sub: DeloitteEvent): Promise<void> => {
               try {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const subCf = ((sub as any).eventSpecificFields || []).map((f: any) => ({
                   id: f.id, label: f.label, type: f.type, required: f.required, options: f.options,
                   visible: true, spInternalName: f.spInternalName || '',
                 }));
-                await svc.fixRegistrationListColumns(sub.subsiteUrl, {
+                await svc.fixRegistrationListColumns(sub.subsiteUrl!, {
                   isB2Run: !!(sub.durchstarterCapacity || sub.funstarterCapacity),
                   hasQuiz: !!(sub.quiz && sub.quiz.length > 0),
                   customFields: subCf,
                 });
               } catch (e) { console.warn('[DEX] Spalten-Abgleich für Sub-Event fehlgeschlagen:', sub.id, e); }
-            }
+              fixedSubs++;
+              setProgressLabel(isDe
+                ? `Teilnehmerlisten-Spalten werden geprüft (${fixedSubs}/${subsToFix.length} Termine)...`
+                : `Verifying participant list columns (${fixedSubs}/${subsToFix.length} dates)...`);
+            };
+            const runLimited = async <T,>(items: T[], limit: number, fn: (it: T) => Promise<void>): Promise<void> => {
+              let next = 0;
+              const worker = async (): Promise<void> => {
+                while (next < items.length) { const it = items[next++]; await fn(it); }
+              };
+              await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
+            };
+            await runLimited(subsToFix, 4, fixOne);
 
             // v30.60: NACHSEHEN und MELDEN, statt still weiterzugehen.
             //
@@ -1081,17 +1101,18 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
             // erfahren, dass etwas nicht sitzt; sonst wird aus einem
             // behebbaren Zustand ein unerklärlicher Ausfall.
             const stillBroken: string[] = [];
-            for (const target of [editEvent, ...childEventsOf(editEvent.id)]) {
-              if (!target.subsiteUrl) continue;
+            setProgressLabel(isDe ? 'Teilnehmerlisten-Spalten werden nachgesehen...' : 'Re-checking participant list columns...');
+            // v30.76: dieselbe begrenzte Parallelität wie beim Abgleich oben.
+            await runLimited([editEvent, ...childEventsOf(editEvent.id)].filter(tg => !!tg.subsiteUrl), 4, async (target) => {
               try {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const flds = ((target as any).eventSpecificFields || []).map((f: any) => ({ id: f.id, label: f.label, spInternalName: f.spInternalName || '' }));
-                const d = await svc.diagnoseRegistrationList(target.subsiteUrl, flds);
+                const d = await svc.diagnoseRegistrationList(target.subsiteUrl!, flds);
                 if (d.missingColumns.length > 0) {
                   stillBroken.push(`${target.title}: ${d.missingColumns.map(m => m.label).join(', ')}`);
                 }
               } catch { /* nicht lesbar — dann bleibt es beim Konsolen-Hinweis */ }
-            }
+            });
             if (stillBroken.length > 0) {
               showAlert(
                 (isDe
