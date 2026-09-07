@@ -13,6 +13,7 @@
  */
 import * as React from 'react';
 import Modal from './Modal';
+import { cx } from './dexUi';
 import { Icon } from '@fluentui/react/lib/Icon';
 
 interface Box { x: number; y: number; w: number; h: number; } // Anteile 0..1
@@ -95,40 +96,54 @@ export default function ImageAnnotateModal(props: {
     background: 'rgba(237,139,0,0.22)', border: '2px solid #ed8b00', pointerEvents: 'none', boxSizing: 'border-box',
   });
 
+  // v31.2: Der Status-Text sagt, was der Organizer bisher getan hat und was
+  // als Nächstes geht — vorher gab es nur zwei ausgegraute Knöpfe, aus denen
+  // man den Zustand erraten musste.
+  const n = boxes.length;
+  const statusText = n === 0
+    ? (isDe ? 'Noch keine Markierung' : 'No marks yet')
+    : (isDe ? `${n} Markierung${n === 1 ? '' : 'en'}` : `${n} mark${n === 1 ? '' : 's'}`);
+
   return (
-    <Modal open={open} onClose={props.onClose} maxWidth={920} dismissable={!busy} ariaLabel={isDe ? 'Screenshot markieren' : 'Annotate screenshot'}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <Icon iconName="InsertTextBox" style={{ fontSize: 18, color: 'var(--dex-green,#86bc25)' }} />
-        <h2 style={{ margin: 0, fontSize: '1.1rem' }}>{isDe ? 'Screenshot vergrößern & markieren' : 'Enlarge & mark up screenshot'}</h2>
+    <Modal open={open} onClose={props.onClose} maxWidth={920} dismissable={!busy} ariaLabel={isDe ? 'Screenshot markieren' : 'Annotate screenshot'}
+      // v31.2: Kopf und Fuß über die Modal-Props — ein Look für alle Dialoge
+      // statt eines eigenen <h2> mit eigenen Abständen.
+      title={isDe ? 'Stelle im Screenshot markieren' : 'Mark the spot in the screenshot'}
+      subtitle={isDe
+        ? 'Ziehe mit gedrückter Maustaste ein Rechteck über die Stelle, die du meinst. Mehrere Markierungen sind möglich — beim Übernehmen werden sie fest ins Bild gebacken.'
+        : 'Drag a rectangle over the area you mean. You can add several marks — when you apply them, they become part of the image.'}
+      icon={<Icon iconName="InsertTextBox" style={{ fontSize: 18 }} />}
+      footer={<>
+        <button type="button" className="btn btn-secondary" disabled={busy} onClick={props.onClose}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
+        <button type="button" className="btn btn-primary" disabled={busy} onClick={save}>
+          {busy ? (isDe ? 'Speichert …' : 'Saving …') : (isDe ? 'Ins Bild übernehmen' : 'Apply to image')}
+        </button>
+      </>}>
+      {/* v31.2: Werkzeugleiste direkt über dem Bild — Symbol-Knöpfe mit Hover
+          und Tooltip statt zwei Textknöpfen im Fuß, damit der Fuß nur noch
+          die Entscheidung (Abbrechen / Übernehmen) trägt. */}
+      <div className="dex-ui-inline" style={{ justifyContent: 'space-between' }}>
+        <span className={cx('dex-ui-pill', n > 0 ? 'dex-ui-pill--orange' : 'dex-ui-pill--gray')} aria-live="polite">{statusText}</span>
+        <span className="dex-ui-inline" style={{ gap: 2 }} role="toolbar" aria-label={isDe ? 'Markierungen bearbeiten' : 'Edit marks'}>
+          <button type="button" className="dex-ui-iconbtn" disabled={busy || n === 0} onClick={() => setBoxes((b) => b.slice(0, -1))}
+            title={isDe ? 'Letzte Markierung zurücknehmen' : 'Undo last mark'} aria-label={isDe ? 'Letzte Markierung zurücknehmen' : 'Undo last mark'}>
+            <Icon iconName="Undo" style={{ fontSize: 16 }} />
+          </button>
+          <button type="button" className="dex-ui-iconbtn dex-ui-iconbtn--danger" disabled={busy || n === 0} onClick={() => setBoxes([])}
+            title={isDe ? 'Alle Markierungen entfernen' : 'Remove all marks'} aria-label={isDe ? 'Alle Markierungen entfernen' : 'Remove all marks'}>
+            <Icon iconName="Delete" style={{ fontSize: 16 }} />
+          </button>
+        </span>
       </div>
-      <p style={{ margin: '0 0 10px', fontSize: '0.84rem', color: 'var(--dex-gray-600,#666)' }}>
-        {isDe
-          ? 'Ziehe mit gedrückter Maustaste ein Rechteck über die Stelle, die du meinst. Du kannst mehrere Markierungen setzen — sie werden fest ins Bild übernommen.'
-          : 'Drag a rectangle over the area you mean. You can add several marks — they are baked into the image.'}
-      </p>
-      <div style={{ maxHeight: '62vh', overflow: 'auto', border: '1px solid var(--dex-gray-200,#e8e8e8)', borderRadius: 8, background: 'var(--dex-gray-50,#fafafa)', textAlign: 'center' }}>
+      <div style={{ maxHeight: '62vh', overflow: 'auto', border: '1px solid var(--dex-gray-200,#e8e8e8)', borderRadius: 12, background: 'var(--dex-gray-50,#fafafa)', textAlign: 'center' }}>
         <div style={{ position: 'relative', display: 'inline-block', userSelect: 'none' }}
           onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}>
           <img ref={imgRef} src={src} alt="Screenshot" draggable={false}
             style={{ display: 'block', maxWidth: '100%', cursor: 'crosshair' }} />
           {boxes.map((b, i) => <div key={i} style={boxStyle(b)} />)}
-          {draft && <div style={boxStyle(draft)} />}
-        </div>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn btn-secondary" style={{ padding: '7px 12px' }} disabled={busy || boxes.length === 0} onClick={() => setBoxes((b) => b.slice(0, -1))}>
-            {isDe ? 'Letzte Markierung entfernen' : 'Undo last'}
-          </button>
-          <button className="btn btn-secondary" style={{ padding: '7px 12px' }} disabled={busy || boxes.length === 0} onClick={() => setBoxes([])}>
-            {isDe ? 'Alle entfernen' : 'Clear all'}
-          </button>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-secondary" style={{ padding: '7px 16px' }} disabled={busy} onClick={props.onClose}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
-          <button className="btn btn-primary" style={{ padding: '7px 16px' }} disabled={busy} onClick={save}>
-            {busy ? (isDe ? 'Speichert …' : 'Saving …') : (isDe ? 'Übernehmen' : 'Apply')}
-          </button>
+          {/* v31.2: Der noch gezogene Rahmen ist gestrichelt — so sieht man, was
+              schon steht und was gerade erst entsteht. */}
+          {draft && <div style={{ ...boxStyle(draft), borderStyle: 'dashed' }} />}
         </div>
       </div>
     </Modal>

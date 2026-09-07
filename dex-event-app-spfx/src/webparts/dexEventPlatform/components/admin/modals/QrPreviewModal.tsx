@@ -1,10 +1,15 @@
 /* QrPreviewModal — 1:1 aus AdminPage.tsx ausgelagert (Zeilen 14780-14828 des
  * Stands vor dem Schnitt). Der Inhalt ist zeichengleich uebernommen; die
  * Anzeige-Bedingung bleibt beim Aufrufer.
+ *
+ * v31.2: Kopf (Titel, Untertitel, Schließen-X) und Fuß kommen aus `Modal`;
+ * der eigene Kopf mit zweitem X entfällt. Texte zweisprachig — bis v31.1
+ * war der Dialog fest deutsch. Der Betreff steht als eigene Zeile über der
+ * Vorschau, weil er im Postfach das Erste ist, was die Person liest.
  */
 import * as React from 'react';
 import Modal from '../../Modal';
-import { X } from '../../Icons';
+import { QrCode } from '../../Icons';
 
 export interface QrPreviewModalProps {
   isDe: boolean;
@@ -21,49 +26,32 @@ export const QrPreviewModal: React.FC<QrPreviewModalProps> = (p) => {
           open={qrPreviewOpen}
           onClose={() => setQrPreviewOpen(false)}
           maxWidth={720}
-          padding={0}
-          ariaLabel="Vorschau: QR-Code-Mail"
+          ariaLabel={isDe ? 'Vorschau: QR-Code-Mail' : 'Preview: QR code email'}
+          title={isDe ? 'Vorschau: QR-Code-Mail' : 'Preview: QR code email'}
+          subtitle={isDe
+            ? 'So sieht die Mail aus, die jede angemeldete Person bekommt — der QR-Code hier ist auf dich ausgestellt.'
+            : 'This is the email every registered person receives — the QR code shown here is issued to you.'}
+          icon={<QrCode size={20} />}
+          footer={(
+            <button type="button" className="btn btn-primary" onClick={() => setQrPreviewOpen(false)}>
+              {isDe ? 'Schließen' : 'Close'}
+            </button>
+          )}
         >
-            <div style={{
-              padding: '14px 18px', borderBottom: '1px solid var(--dex-gray-200)',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
-            }}>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <h3 style={{ margin: 0, fontSize: '1.05rem' }}>Vorschau: QR-Code-Mail</h3>
-                <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
-                  So sieht die Mail aus, die jeder angemeldete Teilnehmer bekommt — der QR-Code in der Vorschau ist auf dich ausgestellt.
-                </p>
-                <p style={{ margin: '6px 0 0', fontSize: '0.8rem', color: 'var(--dex-gray-700)' }}>
-                  <strong>Betreff:</strong> <span style={{ color: 'var(--dex-gray-600)' }}>{qrPreviewSubject}</span>
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setQrPreviewOpen(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-gray-500)', padding: 4 }}
-                aria-label="Schließen"
-              >
-                <X size={22} />
-              </button>
+            <div className="dex-ui-inline" style={{ fontSize: '0.85rem' }}>
+              <span className="dex-ui-pill dex-ui-pill--gray">{isDe ? 'Betreff' : 'Subject'}</span>
+              <strong style={{ color: 'var(--dex-gray-800)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }} title={qrPreviewSubject}>
+                {qrPreviewSubject}
+              </strong>
             </div>
-            <div style={{ flex: 1, overflow: 'hidden', background: '#f5f5f5', padding: 12 }}>
+            <div className="dex-ui-card dex-ui-card--soft" style={{ padding: 10 }}>
               <iframe
                 title={isDe ? 'QR-Code-Mail-Vorschau' : 'QR code email preview'}
                 srcDoc={qrPreviewHtml}
                 sandbox=""
-                style={{ width: '100%', height: '100%', minHeight: 480, border: 'none', borderRadius: 6, background: '#fff' }}
+                style={{ display: 'block', width: '100%', minHeight: 480, border: 'none', borderRadius: 8, background: '#fff' }}
               />
-            </div>
-            <div style={{ padding: '12px 18px', borderTop: '1px solid var(--dex-gray-200)', display: 'flex', justifyContent: 'flex-end' }}>
-              <button
-                className="btn btn-secondary"
-                onClick={() => setQrPreviewOpen(false)}
-                style={{ fontSize: '0.85rem' }}
-              >
-                Schließen
-              </button>
             </div>
         </Modal>
   );
 };
-

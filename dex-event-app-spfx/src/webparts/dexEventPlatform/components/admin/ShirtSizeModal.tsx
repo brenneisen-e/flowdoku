@@ -31,14 +31,21 @@ import * as React from 'react';
 import Modal from '../Modal';
 import { useDialog } from '../../context/DialogContext';
 import { useEvents } from '../../context/EventContext';
+import { useLocaleSafe } from '../../context/LanguageContext';
 import { DeloitteEvent } from '../../types';
 import { EventService, SPRegistration } from '../../services/EventService';
 import { shirtTally, ShirtTallyResult, shirtAllocate, ShirtAllocationResult, ShirtStock, parseShirtStock, shirtSizeKey } from '../../utils/checkInExtras';
+import { cx } from '../dexUi';
+import { Shirt, Download, Plus, Check, ChevronDown, AlertCircle } from '../Icons';
 
 export default function ShirtSizeModal(props: {
   event: DeloitteEvent;
   onClose: () => void;
 }): React.ReactElement {
+  // v31.2: Zweisprachig wie jeder andere Dialog — bisher nur Deutsch. Die
+  // Props bleiben unverändert (kein `isDe`-Prop), die Sprache kommt aus dem
+  // Context; ohne Provider fällt sie auf Deutsch zurück.
+  const isDe = useLocaleSafe() === 'de';
   const { getAllRegistrations, events, refreshEvents } = useEvents();
   const { showAlert } = useDialog();
   const [loading, setLoading] = React.useState(true);
@@ -100,7 +107,7 @@ export default function ShirtSizeModal(props: {
         setSkipped(failed);
       } catch (err) {
         console.warn('[DEX] Trikot-Auswertung fehlgeschlagen:', err);
-        showAlert('Die Trikotgrößen konnten nicht gelesen werden.', { variant: 'error' });
+        showAlert(isDe ? 'Die Trikotgrößen konnten nicht gelesen werden.' : 'The shirt sizes could not be read.', { variant: 'error' });
       } finally { if (!cancelled) setLoading(false); }
     })().catch(() => { /* im finally behandelt */ });
     return () => { cancelled = true; };
@@ -142,10 +149,10 @@ export default function ShirtSizeModal(props: {
       if (!ok) throw new Error('patch failed');
       setSavedStock({ ...stockFromInput });
       await refreshEvents();
-      showAlert('Bestand gespeichert — die Check-in-Seite zeigt Gegenvorschläge jetzt je Person an.', { variant: 'success' });
+      showAlert(isDe ? 'Bestand gespeichert — die Check-in-Seite zeigt Gegenvorschläge jetzt je Person an.' : 'Stock saved — the check-in page now shows the alternative size per person.', { variant: 'success' });
     } catch (err) {
       console.warn('[DEX] Trikot-Bestand speichern fehlgeschlagen:', err);
-      showAlert('Der Bestand konnte nicht gespeichert werden — bitte erneut versuchen.', { variant: 'error' });
+      showAlert(isDe ? 'Der Bestand konnte nicht gespeichert werden — bitte erneut versuchen.' : 'The stock could not be saved — please try again.', { variant: 'error' });
     } finally { setStockSaving(false); }
   };
 
@@ -194,7 +201,7 @@ export default function ShirtSizeModal(props: {
       setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 400);
     } catch (err) {
       console.warn('[DEX] Trikot-Export fehlgeschlagen:', err);
-      showAlert('Die Excel-Datei konnte nicht erzeugt werden.', { variant: 'error' });
+      showAlert(isDe ? 'Die Excel-Datei konnte nicht erzeugt werden.' : 'The Excel file could not be created.', { variant: 'error' });
     } finally { setXlsxBusy(false); }
   };
 
@@ -205,7 +212,11 @@ export default function ShirtSizeModal(props: {
     const seen: Record<string, string> = {};
     (result ? result.rows : []).forEach(r => { if (r.size) seen[shirtSizeKey(r.size)] = r.size; });
     Object.keys(stockInput).forEach(k => { if (!seen[k]) seen[k] = k.toUpperCase(); });
-    return (alloc ? alloc.rows.map(r => r.key) : Object.keys(seen))
+    // v31.2: Die Schlüssel aus `seen` hinten anhängen — eine über „Größe
+    // ergänzen" neu angelegte Größe steht mit leerem Wert noch nicht in
+    // `stockFromInput`, also auch nicht in `alloc.rows`, und fiel bis dahin
+    // aus der Liste, bevor man ihr eine Zahl geben konnte.
+    return (alloc ? alloc.rows.map(r => r.key).concat(Object.keys(seen)) : Object.keys(seen))
       .filter((k, i, arr) => arr.indexOf(k) === i && !!seen[k])
       .map(k => ({ key: k, label: seen[k] }));
   }, [result, stockInput, alloc]);
@@ -220,148 +231,178 @@ export default function ShirtSizeModal(props: {
       .filter((x): x is { name: string; tid: number | undefined; wish: string; proposal: string | null } => !!x);
   }, [alloc, regs]);
 
-  return (
-    <Modal open onClose={props.onClose} maxWidth={760} ariaLabel="Benötigte T-Shirts">
-      <h3 style={{ margin: '0 0 4px' }}>Benötigte T-Shirts</h3>
-      <p style={{ margin: '0 0 16px', color: 'var(--dex-gray-500)', fontSize: '0.85rem' }}>
-        {props.event.title}
-      </p>
+  // v31.2: Bedarf und Bestand stehen in EINER Tabelle je Größe (vorher zwei
+  // Blöcke zum selben Thema: Balkenliste oben, Eingabe-Raster unten). Die
+  // Zählung je Größe wird dafür über den Schlüssel nachgeschlagen; die Zeile
+  // „ohne Angabe" hat keinen Schlüssel und kommt zuletzt.
+  const hasStock = !!(alloc && alloc.hasStock);
+  const ready = !loading && !!result && !!result.fieldLabel;
+  const tallyByKey: Record<string, { count: number; names: string[] }> = {};
+  (result ? result.rows : []).forEach(r => { if (r.size) tallyByKey[shirtSizeKey(r.size)] = { count: r.count, names: r.names }; });
+  const noneRow = result ? result.rows.filter(r => !r.size)[0] : undefined;
+  const totalMissing = alloc ? alloc.rows.reduce((s, r) => s + r.missing, 0) : 0;
+  const pillInTitle: React.CSSProperties = { textTransform: 'none', letterSpacing: 0 };
+  const stickyTh: React.CSSProperties = { position: 'sticky', top: 0 };
 
-      {loading && <p style={{ color: 'var(--dex-gray-500)' }}>Trikotgrößen werden gelesen…</p>}
+  // Eine Zeile der Größen-Tabelle; `key` ist der Aufklapp-Schlüssel für die Namen.
+  const renderSizeRow = (key: string, label: string, count: number, names: string[], none: boolean): React.ReactElement => {
+    const open = openSize === key;
+    const pct = maxCount > 0 ? Math.round((count / maxCount) * 100) : 0;
+    const a = (!none && hasStock && alloc) ? alloc.rows.filter(x => x.key === key)[0] : undefined;
+    return (
+      <React.Fragment key={key}>
+        <tr>
+          <td style={{ fontWeight: 700, fontSize: '0.95rem', whiteSpace: 'nowrap', color: none ? 'var(--dex-orange-dark, #b35a00)' : undefined }}>{label}</td>
+          <td>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <strong style={{ minWidth: 24, textAlign: 'right', fontSize: '0.95rem' }}>{count}</strong>
+              {/* Balken statt nur Zahl: Beim Bestellen zählt vor allem, welche Größen die Masse ausmachen. */}
+              {count > 0
+                ? <span style={{ flex: 1, minWidth: 50, height: 8, borderRadius: 999, background: 'var(--dex-gray-100)' }}>
+                  <span style={{ display: 'block', height: 8, width: `${pct}%`, borderRadius: 999, background: none ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)', transition: 'width 0.18s ease' }} />
+                </span>
+                : <span className="dex-ui-muted">{isDe ? 'niemand gewünscht' : 'nobody asked'}</span>}
+            </div>
+          </td>
+          <td>
+            {none ? <span className="dex-ui-muted">—</span> : (
+              <input type="number" min={0} inputMode="numeric" className="dex-ui-input dex-ui-input--sm" placeholder="0"
+                aria-label={`${isDe ? 'Bestand' : 'Stock'} ${label}`} value={stockInput[key] ?? ''} style={{ width: 76, textAlign: 'center', fontWeight: 700 }}
+                onChange={e => setStockInput(prev => ({ ...prev, [key]: e.target.value.replace(/[^\d]/g, '') }))} />
+            )}
+          </td>
+          <td>
+            {/* v30.88: Soll/Ist-Abgleich je Zeile, sobald ein Bestand eingetragen ist. */}
+            {none
+              ? <span className="dex-ui-pill dex-ui-pill--orange">{isDe ? 'nachfragen' : 'ask them'}</span>
+              : a
+                ? (a.missing > 0
+                  ? <span className="dex-ui-pill dex-ui-pill--red">{isDe ? `fehlt ${a.missing}` : `${a.missing} short`}</span>
+                  : <span className="dex-ui-pill dex-ui-pill--green"><Check size={12} /> {isDe ? 'reicht' : 'enough'}{a.spare > 0 ? ` (+${a.spare})` : ''}</span>)
+                : <span className="dex-ui-muted">—</span>}
+          </td>
+          <td style={{ textAlign: 'right', width: 40 }}>
+            {count > 0 && (
+              <button type="button" className="dex-ui-iconbtn" aria-expanded={open} title={isDe ? 'Personen anzeigen' : 'Show people'}
+                aria-label={isDe ? `Personen mit Größe ${label} anzeigen` : `Show people with size ${label}`} onClick={() => setOpenSize(open ? null : key)}>
+                <span style={{ display: 'inline-flex', transition: 'transform 0.2s ease', transform: open ? 'rotate(180deg)' : 'none' }}><ChevronDown size={16} /></span>
+              </button>
+            )}
+          </td>
+        </tr>
+        {open && (
+          <tr><td colSpan={5} style={{ background: 'var(--dex-gray-50, #fafafa)', color: 'var(--dex-gray-600)', fontSize: '0.82rem', lineHeight: 1.6 }}>{names.join(' · ')}</td></tr>
+        )}
+      </React.Fragment>
+    );
+  };
+
+  // v31.2: Genau ein Primär-Knopf — Speichern schreibt Daten, Excel ist die
+  // Nebenaktion links im Fuß. Vorher standen zwei grüne Knöpfe im Inhalt.
+  const footer = (
+    <>
+      {ready && (
+        <span className="dex-ui-modal-foot-left">
+          <button type="button" className="btn btn-outline dex-ui-btn-sm" disabled={xlsxBusy} onClick={() => { void downloadXlsx(); }}>
+            <Download size={14} /> {xlsxBusy ? (isDe ? 'Wird erzeugt…' : 'Generating…') : (isDe ? 'Als Excel laden' : 'Download as Excel')}
+          </button>
+        </span>
+      )}
+      <button type="button" className="btn btn-secondary" onClick={props.onClose}>{isDe ? 'Schließen' : 'Close'}</button>
+      {ready && (
+        <button type="button" className="btn btn-primary" disabled={!stockDirty || stockSaving} onClick={() => { void saveStock(); }}>
+          {stockSaving ? (isDe ? 'Speichert…' : 'Saving…') : (stockDirty ? (isDe ? 'Bestand speichern' : 'Save stock') : (isDe ? 'Bestand gespeichert' : 'Stock saved'))}
+        </button>
+      )}
+    </>
+  );
+
+  return (
+    <Modal open onClose={props.onClose} maxWidth={760} icon={<Shirt size={20} />} footer={footer}
+      ariaLabel={isDe ? 'Benötigte T-Shirts' : 'T-shirts needed'} title={isDe ? 'Benötigte T-Shirts' : 'T-shirts needed'}
+      subtitle={<>{props.event.title}{result && result.fieldLabel && <> · {isDe ? 'gezählt über das Feld' : 'counted via the field'} <strong>{result.fieldLabel}</strong></>}</>}>
+      {loading && <p className="dex-ui-muted" style={{ margin: 0 }}>{isDe ? 'Trikotgrößen werden gelesen…' : 'Reading shirt sizes…'}</p>}
 
       {!loading && result && !result.fieldLabel && (
-        <div style={{ padding: '14px 16px', borderRadius: 8, background: 'rgba(237,139,0,0.09)', fontSize: '0.85rem', lineHeight: 1.6 }}>
-          Dieses Event hat kein Abfragefeld, das nach einer Trikot- oder Konfektionsgröße aussieht.
-          Lege im Assistenten unter <strong>Felder</strong> ein Feld an, dessen Bezeichnung die Größe
-          benennt (z.B. &bdquo;T-Shirt Größe&ldquo; oder &bdquo;Trikotgröße&ldquo;) — danach zählt diese Ansicht
-          automatisch mit, und die Größe steht auch am Check-in-Tisch.
+        <div className="dex-ui-callout dex-ui-callout--warn">
+          <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+          <span>
+            {isDe
+              ? <>Dieses Event hat kein Abfragefeld, das nach einer Trikot- oder Konfektionsgröße aussieht.
+                Lege im Assistenten unter <strong>Felder</strong> ein Feld an, dessen Bezeichnung die Größe
+                benennt (z.B. &bdquo;T-Shirt Größe&ldquo; oder &bdquo;Trikotgröße&ldquo;) — danach zählt diese Ansicht
+                automatisch mit, und die Größe steht auch am Check-in-Tisch.</>
+              : <>This event has no form field that looks like a shirt or clothing size.
+                In the wizard, under <strong>Fields</strong>, add a field whose label names the size
+                (e.g. &ldquo;T-shirt size&rdquo; or &ldquo;Jersey size&rdquo;) — this view then counts automatically,
+                and the size also shows at the check-in desk.</>}
+          </span>
         </div>
       )}
 
       {!loading && result && result.fieldLabel && (
         <>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-            <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', flex: '1 1 240px' }}>
-              Gezählt über das Feld <strong>{result.fieldLabel}</strong> · {result.total} angemeldete {result.total === 1 ? 'Person' : 'Personen'}
-              {result.missing > 0 && <> · <strong>{result.missing} ohne Angabe</strong></>}
-            </div>
-            <button
-              type="button"
-              className="btn btn-primary"
-              style={{ fontSize: '0.8rem', padding: '6px 16px' }}
-              disabled={xlsxBusy}
-              onClick={() => { void downloadXlsx(); }}
-            >
-              {xlsxBusy ? 'Wird erzeugt…' : 'Als Excel laden'}
-            </button>
-          </div>
-
           {skipped.length > 0 && (
-            <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 8, background: 'rgba(218,41,28,0.08)', fontSize: '0.8rem', lineHeight: 1.5 }}>
-              Für {skipped.length === 1 ? 'diesen Termin' : 'diese Termine'} konnte die Teilnehmerliste nicht gelesen werden —
-              die Zahlen unten sind deshalb unvollständig: <strong>{skipped.join(', ')}</strong>.
-            </div>
-          )}
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {result.rows.map((r, i) => {
-              const key = r.size || '__none__';
-              const open = openSize === key;
-              const pct = maxCount > 0 ? Math.round((r.count / maxCount) * 100) : 0;
-              const none = !r.size;
-              const a = (alloc && alloc.hasStock && r.size) ? alloc.rows.find(x => x.key === shirtSizeKey(r.size)) : undefined;
-              return (
-                <div key={i} style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 8, overflow: 'hidden' }}>
-                  <button
-                    type="button"
-                    onClick={() => setOpenSize(open ? null : key)}
-                    style={{
-                      width: '100%', display: 'flex', alignItems: 'center', gap: 12,
-                      padding: '10px 14px', border: 'none', cursor: 'pointer', textAlign: 'left',
-                      background: open ? 'var(--dex-gray-100)' : '#fff',
-                    }}
-                  >
-                    <span style={{
-                      minWidth: 76, fontWeight: 700, fontSize: '0.95rem',
-                      color: none ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-gray-800)',
-                    }}>{r.size || 'ohne Angabe'}</span>
-                    {/* Balken statt nur Zahl: Beim Bestellen zählt vor allem,
-                        welche Größen die Masse ausmachen. */}
-                    <span style={{ flex: 1, minWidth: 60, height: 8, borderRadius: 999, background: 'var(--dex-gray-100)' }}>
-                      <span style={{
-                        display: 'block', height: 8, width: `${pct}%`, borderRadius: 999,
-                        background: none ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)',
-                      }} />
-                    </span>
-                    <strong style={{ minWidth: 34, textAlign: 'right', fontSize: '1rem' }}>{r.count}</strong>
-                    {/* v30.88: Soll/Ist-Abgleich je Zeile, sobald ein Bestand eingetragen ist. */}
-                    {a && (
-                      a.missing > 0
-                        ? <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(218,41,28,0.10)', color: 'var(--dex-red, #da291c)', whiteSpace: 'nowrap' }}>fehlt {a.missing}</span>
-                        : <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(134,188,37,0.15)', color: 'var(--dex-green-dark, #4a7c1f)', whiteSpace: 'nowrap' }}>reicht{a.spare > 0 ? ` (+${a.spare})` : ''}</span>
-                    )}
-                    <span style={{ color: 'var(--dex-gray-400)', fontSize: '0.8rem' }}>{open ? '▾' : '▸'}</span>
-                  </button>
-                  {open && (
-                    <div style={{ padding: '8px 14px 12px', fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.6, borderTop: '1px solid var(--dex-gray-100)' }}>
-                      {r.names.join(' · ')}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {result.missing > 0 && (
-            <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 8, background: 'rgba(237,139,0,0.09)', fontSize: '0.8rem', lineHeight: 1.55 }}>
-              <strong>{result.missing} {result.missing === 1 ? 'Person hat' : 'Personen haben'} keine Größe angegeben.</strong>{' '}
-              Die Namen stehen in der Zeile &bdquo;ohne Angabe&ldquo; — frag dort nach, bevor du bestellst.
-              Sonst fehlt am Lauftag genau diese Anzahl Trikots.
-            </div>
-          )}
-
-          {/* v30.88: Ist-Bestand je Größe + Gegenvorschläge. */}
-          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '2px solid var(--dex-gray-200)' }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
-              <h4 style={{ margin: 0, fontSize: '0.98rem' }}>Vorhandene T-Shirts (Bestand)</h4>
-              <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', flex: '1 1 240px' }}>
-                Trag ein, wie viele Shirts du je Größe wirklich hast. Die App prüft, ob es reicht, und macht je Person einen
-                Gegenvorschlag — den sieht das Check-in-Team bei der Abholung direkt an der Person.
+            <div className="dex-ui-callout dex-ui-callout--danger">
+              <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+              <span>
+                {isDe
+                  ? <>Für {skipped.length === 1 ? 'diesen Termin' : 'diese Termine'} konnte die Teilnehmerliste nicht gelesen werden —
+                    die Zahlen unten sind deshalb unvollständig: <strong>{skipped.join(', ')}</strong>.</>
+                  : <>The attendee list of {skipped.length === 1 ? 'this date' : 'these dates'} could not be read —
+                    the numbers below are therefore incomplete: <strong>{skipped.join(', ')}</strong>.</>}
               </span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8 }}>
-              {stockKeys.map(s => {
-                const a = alloc ? alloc.rows.find(x => x.key === s.key) : undefined;
-                return (
-                  <label key={s.key} style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
-                    <span><strong style={{ color: 'var(--dex-gray-800)' }}>{s.label}</strong>{a && a.need > 0 ? ` · benötigt ${a.need}` : ' · niemand gewünscht'}</span>
-                    <input
-                      type="number"
-                      min={0}
-                      inputMode="numeric"
-                      className="form-input"
-                      value={stockInput[s.key] ?? ''}
-                      placeholder="0"
-                      onChange={e => setStockInput(prev => ({ ...prev, [s.key]: e.target.value.replace(/[^\d]/g, '') }))}
-                      style={{ padding: '6px 10px', fontSize: '0.95rem', fontWeight: 700, textAlign: 'center' }}
-                    />
-                  </label>
-                );
-              })}
+          )}
+
+          {/* v31.2: Kennzahlen zuerst — die Antwort auf „reicht es?" steht oben, bevor die Tabelle ins Detail geht. */}
+          <div className="dex-ui-grid-3">
+            <div className="dex-ui-kpi"><div className="dex-ui-kpi-value">{result.total}</div>
+              <div className="dex-ui-kpi-label">{isDe ? (result.total === 1 ? 'Person angemeldet' : 'Personen angemeldet') : (result.total === 1 ? 'person registered' : 'people registered')}</div></div>
+            <div className={cx('dex-ui-kpi', result.missing > 0 && 'dex-ui-kpi--orange')}><div className="dex-ui-kpi-value">{result.missing}</div>
+              <div className="dex-ui-kpi-label">{isDe ? 'ohne Größenangabe' : 'without a size'}</div></div>
+            {hasStock
+              ? <div className={cx('dex-ui-kpi', totalMissing > 0 ? 'dex-ui-kpi--orange' : 'dex-ui-kpi--green')}><div className="dex-ui-kpi-value">{totalMissing}</div>
+                <div className="dex-ui-kpi-label">{isDe ? 'ohne Wunschgröße' : 'wished size short'}</div></div>
+              : <div className="dex-ui-kpi"><div className="dex-ui-kpi-value">{Object.keys(tallyByKey).length}</div>
+                <div className="dex-ui-kpi-label">{isDe ? 'Größen gewünscht' : 'sizes requested'}</div></div>}
+          </div>
+
+          <div className="dex-ui-section">
+            <div className="dex-ui-section-title">
+              {isDe ? 'Bedarf und Bestand je Größe' : 'Need and stock per size'}
+              {stockDirty && <span className="dex-ui-pill dex-ui-pill--orange" style={pillInTitle}>{isDe ? 'Bestand noch nicht gespeichert' : 'stock not saved yet'}</span>}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-              <input
-                type="text"
-                className="form-input"
-                value={newSize}
-                onChange={e => setNewSize(e.target.value)}
-                placeholder="weitere Größe, z.B. XXL"
-                style={{ padding: '6px 10px', fontSize: '0.85rem', maxWidth: 200 }}
-              />
+            <p className="dex-ui-section-desc">
+              {isDe
+                ? <>Trag unter <strong>Bestand</strong> ein, wie viele Shirts du je Größe wirklich hast. Die App prüft, ob es reicht, und macht je Person einen
+                  Gegenvorschlag — den sieht das Check-in-Team bei der Abholung direkt an der Person.</>
+                : <>Under <strong>Stock</strong>, enter how many shirts you really have per size. The app checks whether that is enough and proposes an
+                  alternative per person — the check-in team sees it right at the person when handing out.</>}
+            </p>
+            <div className="dex-ui-table-wrap">
+              <table className="dex-ui-table">
+                <thead>
+                  <tr>
+                    <th>{isDe ? 'Größe' : 'Size'}</th>
+                    <th style={{ width: '36%' }}>{isDe ? 'Benötigt' : 'Needed'}</th>
+                    <th>{isDe ? 'Bestand' : 'Stock'}</th>
+                    <th>{isDe ? 'Reicht es?' : 'Enough?'}</th>
+                    <th><span className="dex-ui-sr-only">{isDe ? 'Personen' : 'People'}</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stockKeys.map(s => { const t = tallyByKey[s.key]; return renderSizeRow(s.key, s.label, t ? t.count : 0, t ? t.names : [], false); })}
+                  {noneRow && renderSizeRow('__none__', isDe ? 'ohne Angabe' : 'no answer', noneRow.count, noneRow.names, true)}
+                </tbody>
+              </table>
+            </div>
+            <div className="dex-ui-inline" style={{ marginTop: 10 }}>
+              <input type="text" className="dex-ui-input dex-ui-input--sm" value={newSize} onChange={e => setNewSize(e.target.value)} style={{ maxWidth: 200 }}
+                placeholder={isDe ? 'Weitere Größe, z.B. XXL' : 'Another size, e.g. XXL'} aria-label={isDe ? 'Weitere Größe' : 'Another size'} />
               <button
                 type="button"
-                className="btn btn-secondary"
-                style={{ fontSize: '0.78rem', padding: '6px 12px' }}
+                className="dex-ui-textbtn"
                 disabled={!shirtSizeKey(newSize)}
                 onClick={() => {
                   const k = shirtSizeKey(newSize);
@@ -370,71 +411,82 @@ export default function ShirtSizeModal(props: {
                   setNewSize('');
                 }}
               >
-                Größe ergänzen
+                <Plus size={14} /> {isDe ? 'Größe ergänzen' : 'Add size'}
               </button>
-              <span style={{ flex: 1 }} />
-              <button
-                type="button"
-                className="btn btn-primary"
-                style={{ fontSize: '0.8rem', padding: '6px 16px' }}
-                disabled={!stockDirty || stockSaving}
-                onClick={() => { void saveStock(); }}
-              >
-                {stockSaving ? 'Speichert…' : (stockDirty ? 'Bestand speichern' : 'Bestand gespeichert')}
-              </button>
+              <span className="dex-ui-muted">{isDe ? 'Erscheint als neue Zeile — für Reserve-Größen, die niemand gewünscht hat.' : 'Adds a row — for spare sizes nobody asked for.'}</span>
             </div>
 
-            {alloc && alloc.hasStock && (
-              <div style={{ marginTop: 14 }}>
-                {proposals.length === 0 && alloc.noneLeft.length === 0 ? (
-                  <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(134,188,37,0.10)', fontSize: '0.82rem', lineHeight: 1.5 }}>
-                    <strong>Der Bestand reicht für alle Wünsche.</strong> Jede Person bekommt ihre Größe.
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: 6 }}>
-                      Gegenvorschläge ({proposals.length})
-                      <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)', marginLeft: 8, fontSize: '0.76rem' }}>
-                        Reihenfolge nach Teilnehmer-ID: Wer zuerst angemeldet war, bekommt seine Wunschgröße. Ausweichgröße = nächste mit Rest, zuerst eine Nummer größer.
-                      </span>
-                    </div>
-                    <div style={{ maxHeight: 260, overflow: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 8 }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                        <thead>
-                          <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
-                            <th style={{ textAlign: 'left', padding: 8, position: 'sticky', top: 0, background: '#fff' }}>ID</th>
-                            <th style={{ textAlign: 'left', padding: 8, position: 'sticky', top: 0, background: '#fff' }}>Person</th>
-                            <th style={{ textAlign: 'left', padding: 8, position: 'sticky', top: 0, background: '#fff' }}>Wunsch</th>
-                            <th style={{ textAlign: 'left', padding: 8, position: 'sticky', top: 0, background: '#fff' }}>Vorschlag</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {proposals.map((p, i) => (
-                            <tr key={i} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                              <td style={{ padding: 8, color: 'var(--dex-gray-400)' }}>{p.tid ?? '—'}</td>
-                              <td style={{ padding: 8, fontWeight: 600 }}>{p.name}</td>
-                              <td style={{ padding: 8 }}><span style={{ textDecoration: 'line-through', color: 'var(--dex-gray-500)' }}>{p.wish}</span></td>
-                              <td style={{ padding: 8 }}>
-                                {p.proposal
-                                  ? <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>{p.proposal}</strong>
-                                  : <strong style={{ color: 'var(--dex-red, #da291c)' }}>keine Größe mehr vorrätig</strong>}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                )}
+            {result.missing > 0 && (
+              <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginTop: 12 }}>
+                <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                <span>
+                  {isDe
+                    ? <><strong>{result.missing} {result.missing === 1 ? 'Person hat' : 'Personen haben'} keine Größe angegeben.</strong>{' '}
+                      Die Namen stehen in der Zeile &bdquo;ohne Angabe&ldquo; — frag dort nach, bevor du bestellst.
+                      Sonst fehlt am Lauftag genau diese Anzahl Trikots.</>
+                    : <><strong>{result.missing} {result.missing === 1 ? 'person has' : 'people have'} not given a size.</strong>{' '}
+                      Their names are in the &ldquo;no answer&rdquo; row — ask them before you order.
+                      Otherwise exactly that many shirts will be missing on race day.</>}
+                </span>
               </div>
             )}
           </div>
+
+          {/* v30.88: Gegenvorschläge je Person — erst, wenn ein Bestand eingetragen ist. */}
+          {alloc && alloc.hasStock && (
+            <div className="dex-ui-section">
+              <div className="dex-ui-section-title">
+                {isDe ? 'Wer bekommt eine andere Größe?' : 'Who gets a different size?'}
+                {proposals.length > 0 && <span className="dex-ui-pill dex-ui-pill--gray" style={pillInTitle}>{proposals.length}</span>}
+              </div>
+              {proposals.length === 0 && alloc.noneLeft.length === 0 ? (
+                <div className="dex-ui-callout dex-ui-callout--success">
+                  <span className="dex-ui-callout-icon"><Check size={16} /></span>
+                  <span>
+                    {isDe
+                      ? <><strong>Der Bestand reicht für alle Wünsche.</strong> Jede Person bekommt ihre Größe.</>
+                      : <><strong>The stock covers every wish.</strong> Everyone gets their size.</>}
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <p className="dex-ui-section-desc">
+                    {isDe
+                      ? 'Reihenfolge nach Teilnehmer-ID: Wer zuerst angemeldet war, bekommt seine Wunschgröße. Ausweichgröße = nächste mit Rest, zuerst eine Nummer größer.'
+                      : 'Order by attendee ID: whoever registered first gets their wished size. Alternative = next size with stock left, one size up first.'}
+                  </p>
+                  <div className="dex-ui-table-wrap" style={{ maxHeight: 260, overflowY: 'auto' }}>
+                    <table className="dex-ui-table">
+                      <thead>
+                        <tr>
+                          <th style={stickyTh}>ID</th>
+                          <th style={stickyTh}>{isDe ? 'Person' : 'Person'}</th>
+                          <th style={stickyTh}>{isDe ? 'Wunsch' : 'Wish'}</th>
+                          <th style={stickyTh}>{isDe ? 'Vorschlag' : 'Proposal'}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {proposals.map((p, i) => (
+                          <tr key={i}>
+                            <td style={{ color: 'var(--dex-gray-400)' }}>{p.tid ?? '—'}</td>
+                            <td style={{ fontWeight: 600 }}>{p.name}</td>
+                            <td><span style={{ textDecoration: 'line-through', color: 'var(--dex-gray-500)' }}>{p.wish}</span></td>
+                            <td>
+                              {p.proposal
+                                ? <span className="dex-ui-pill dex-ui-pill--green">{p.proposal}</span>
+                                : <span className="dex-ui-pill dex-ui-pill--red">{isDe ? 'keine Größe mehr vorrätig' : 'no size left in stock'}</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </>
       )}
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
-        <button type="button" className="btn btn-secondary" onClick={props.onClose}>Schließen</button>
-      </div>
     </Modal>
   );
 }

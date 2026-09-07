@@ -6,6 +6,10 @@ import * as React from 'react';
 import Modal from '../Modal';
 import { Locale } from '../../context/LanguageContext';
 import { DeloitteEvent } from '../../types';
+// v31.2: Gemeinsame Klassen (Toggle-Zeilen, Callouts, Pills) statt
+// Inline-Styles — nur so bekommen die Zeilen einen Hover (docs/ui-leitfaden.md).
+import { cx } from '../dexUi';
+import { AlertCircle, Check } from '../Icons';
 
 /** Sicherheitshinweis-Dialog vor dem Absenden (v18.75). */
 export interface SubmitConfirmModalProps {
@@ -58,109 +62,35 @@ export const SubmitConfirmModal: React.FC<SubmitConfirmModalProps> = (p) => {
           const a = fmtDT(s); const b = fmtDT(e);
           return a && b ? `${a} – ${b}` : (a || b);
         };
+        const isDe = locale === 'de';
+        // v19.0: statt generischem „Punkte/items" den konfigurierten
+        // Section-Begriff verwenden (Default „Event-Sections").
+        const sectionTerm = childTermPlural || (isDe ? 'Event-Sections' : 'event sections');
+        // v31.2: Zähler „gewählt / gesamt" über der Liste — die Person sieht
+        // auf einen Blick, wofür sie sich gleich anmeldet; eine fest gebuchte
+        // Klammer-Zeile (Stellvertreter-Modus) zählt dabei mit.
+        const parentChecked = parentEditable ? confirmDraftParent : true;
+        const selectedCount = (showParent && parentChecked ? 1 : 0) + confirmDraftSessions.size;
+        const totalCount = (showParent ? 1 : 0) + allChildren.length;
         return (
           <Modal
             open={confirmDialogOpen}
             onClose={() => setConfirmDialogOpen(false)}
             maxWidth={560}
-            padding={24}
-            ariaLabel={locale === 'de' ? 'Anmeldung bestätigen' : 'Confirm registration'}
-          >
-            <h3 style={{ margin: '0 0 12px', fontSize: '1.05rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
-              {locale === 'de' ? 'Bitte bestätigen' : 'Please confirm'}
-            </h3>
-            {isFree ? (
-              <>
-                <div style={{
-                  margin: '0 0 14px', padding: '12px 14px', whiteSpace: 'pre-wrap',
-                  background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200)',
-                  borderRadius: 8, fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--dex-gray-800)',
-                }}>
-                  {(event.confirmDialogText || '').trim() || (locale === 'de' ? 'Bitte bestätige deine Anmeldung.' : 'Please confirm your registration.')}
-                </div>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginBottom: 4 }}>
-                  <input type="checkbox" checked={confirmDialogAck} onChange={e => setConfirmDialogAck(e.target.checked)} style={{ marginTop: 3 }} />
-                  <span style={{ flex: 1, fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>
-                    {locale === 'de' ? 'Ich habe den Hinweis gelesen und bestätige.' : 'I have read and acknowledge the note.'}
-                  </span>
-                </label>
-              </>
-            ) : (() => {
-              // v19.0: statt generischem „Punkte/items" den konfigurierten
-              // Section-Begriff verwenden (Default „Event-Sections").
-              const sectionTerm = childTermPlural || (locale === 'de' ? 'Event-Sections' : 'event sections');
-              return (
-              <>
-                <p style={{ margin: '0 0 12px', fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--dex-gray-700)' }}>
-                  {locale === 'de'
-                    ? `Du meldest dich für die angehakten ${sectionTerm} an. Du kannst vor dem Absenden einzelne ${sectionTerm} ab- oder zuwählen:`
-                    : `You are registering for the checked ${sectionTerm}. You can de-/select ${sectionTerm} before submitting:`}
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
-                  {showParent && (
-                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: parentEditable ? 'pointer' : 'default', padding: '8px 10px', background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200)', borderRadius: 6 }}>
-                      <input
-                        type="checkbox"
-                        checked={parentEditable ? confirmDraftParent : true}
-                        disabled={!parentEditable}
-                        onChange={e => setConfirmDraftParent(e.target.checked)}
-                        style={{ marginTop: 2 }}
-                      />
-                      <span style={{ flex: 1 }}>
-                        <span style={{ fontSize: '0.88rem', fontWeight: 600, display: 'block' }}>{event.title}{(() => { const lbl = resolveMainEventLabel(locale === 'de' ? 'Haupt-Event' : 'main event'); return lbl ? <> <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>({lbl})</span></> : null; })()}</span>
-                        {dtRange(event.startDate, event.endDate) && (
-                          <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', display: 'block', marginTop: 1 }}>{dtRange(event.startDate, event.endDate)}</span>
-                        )}
-                      </span>
-                    </label>
-                  )}
-                  {allChildren.map(ce => (
-                    <label key={ce.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: '8px 10px', background: confirmDraftSessions.has(ce.id) ? 'rgba(134,188,37,0.06)' : 'var(--dex-gray-50, #f7f7f5)', border: `1px solid ${confirmDraftSessions.has(ce.id) ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`, borderRadius: 6 }}>
-                      <input
-                        type="checkbox"
-                        checked={confirmDraftSessions.has(ce.id)}
-                        style={{ marginTop: 2 }}
-                        onChange={e => {
-                          if (e.target.checked) {
-                            // v18.76: Sub-Event mit eigenen Pflichtfeldern erst über
-                            // das Sub-Event-Modal erfassen, damit keine leeren
-                            // Pflicht-Antworten entstehen. Dialog schließen, Modal
-                            // öffnen; nach dem Ausfüllen erscheint der Dialog erneut.
-                            const hasCF = (ce.eventSpecificFields || []).length > 0;
-                            if (hasCF && !sessionFieldValues[ce.id] && !selectedSessions.has(ce.id)) {
-                              confirmDialogConfirmedRef.current = false;
-                              setConfirmDialogOpen(false);
-                              setPendingSubEventModal({ subEventId: ce.id, draftValues: { ...(sessionFieldValues[ce.id] || {}) } });
-                            } else {
-                              setConfirmDraftSessions(prev => { const n = new Set(prev); n.add(ce.id); return n; });
-                            }
-                          } else {
-                            setConfirmDraftSessions(prev => { const n = new Set(prev); n.delete(ce.id); return n; });
-                          }
-                        }}
-                      />
-                      <span style={{ flex: 1 }}>
-                        <span style={{ fontSize: '0.88rem', display: 'block' }}>{ce.title}</span>
-                        {dtRange(ce.startDate, ce.endDate) && (
-                          <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', display: 'block', marginTop: 1 }}>{dtRange(ce.startDate, ce.endDate)}</span>
-                        )}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-                {!canConfirm && (
-                  <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: 'var(--dex-red, #c00)' }}>
-                    {locale === 'de' ? `Bitte mindestens eine ${sectionTerm} auswählen.` : `Please select at least one of the ${sectionTerm}.`}
-                  </p>
-                )}
-              </>
-            );
-            })()}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-              <button className="btn btn-secondary" onClick={() => setConfirmDialogOpen(false)} style={{ fontSize: '0.85rem' }}>
-                {locale === 'de' ? 'Abbrechen' : 'Cancel'}
+            ariaLabel={isDe ? 'Anmeldung bestätigen' : 'Confirm registration'}
+            // v31.2: Kopf und Fuß über die Modal-Props — Erklärsatz als Untertitel,
+            // Aktionen in der Fußzeile, damit alle Dialoge gleich aufgebaut sind.
+            title={isDe ? 'Bitte bestätigen' : 'Please confirm'}
+            subtitle={isFree
+              ? (isDe ? 'Lies den Hinweis kurz durch und bestätige ihn — dann geht deine Anmeldung raus.' : 'Read the note briefly and acknowledge it — then your registration goes out.')
+              : (isDe ? `Du meldest dich für die angehakten ${sectionTerm} an. Vor dem Absenden kannst du hier noch ab- oder zuwählen.` : `You are registering for the checked ${sectionTerm}. You can still select or deselect here before submitting.`)}
+            icon={<Check size={20} />}
+            footer={<>
+              <button type="button" className="btn btn-secondary" onClick={() => setConfirmDialogOpen(false)}>
+                {isDe ? 'Abbrechen' : 'Cancel'}
               </button>
               <button
+                type="button"
                 className="btn btn-primary"
                 disabled={!canConfirm}
                 onClick={() => {
@@ -179,11 +109,104 @@ export const SubmitConfirmModal: React.FC<SubmitConfirmModalProps> = (p) => {
                   // abgewählte Haupt-Event wurde trotzdem gebucht).
                   setTimeout(() => { handleSubmitRef.current().catch(() => { /* */ }); }, 60);
                 }}
-                style={{ fontSize: '0.85rem' }}
               >
-                {locale === 'de' ? 'Anmeldung bestätigen' : 'Confirm registration'}
+                {isDe ? 'Anmeldung bestätigen' : 'Confirm registration'}
               </button>
-            </div>
+            </>}
+          >
+            {isFree ? (
+              <div className="dex-ui-stack">
+                {/* v31.2: Der Organizer-Text als ruhiger Kasten; die Bestätigung
+                    als Toggle-Zeile mit Hover und einer Zeile, was der Haken bewirkt. */}
+                <div className="dex-ui-callout dex-ui-callout--neutral" style={{ whiteSpace: 'pre-wrap', color: 'var(--dex-gray-800, #333)', fontSize: '0.9rem' }}>
+                  {(event.confirmDialogText || '').trim() || (isDe ? 'Bitte bestätige deine Anmeldung.' : 'Please confirm your registration.')}
+                </div>
+                <label className={cx('dex-ui-toggle-row', confirmDialogAck && 'is-active')}>
+                  <input type="checkbox" checked={confirmDialogAck} onChange={e => setConfirmDialogAck(e.target.checked)} />
+                  <span className="dex-ui-toggle-row-body">
+                    <span className="dex-ui-toggle-row-title">{isDe ? 'Ich habe den Hinweis gelesen und bestätige.' : 'I have read and acknowledge the note.'}</span>
+                    <span className="dex-ui-toggle-row-desc">{isDe ? 'Mit dem Haken wird der Knopf „Anmeldung bestätigen“ frei.' : 'Ticking this unlocks the “Confirm registration” button.'}</span>
+                  </span>
+                </label>
+              </div>
+            ) : (
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">
+                  {isDe ? 'Deine Auswahl' : 'Your selection'}
+                  <span className={cx('dex-ui-pill', selectedCount > 0 ? 'dex-ui-pill--green' : 'dex-ui-pill--gray')}>
+                    {isDe ? `${selectedCount} von ${totalCount} gewählt` : `${selectedCount} of ${totalCount} selected`}
+                  </span>
+                </div>
+                <div className="dex-ui-stack" style={{ gap: 8 }}>
+                  {showParent && (() => {
+                    const lbl = resolveMainEventLabel(isDe ? 'Haupt-Event' : 'main event');
+                    const when = dtRange(event.startDate, event.endDate);
+                    return (
+                      // v31.2: Im Stellvertreter-Modus ist die Klammer fest gebucht —
+                      // dann kein Zeiger-Cursor und eine Zeile, warum der Haken nicht geht.
+                      <label className={cx('dex-ui-toggle-row', parentChecked && 'is-active')} style={parentEditable ? undefined : { cursor: 'default' }}>
+                        <input
+                          type="checkbox"
+                          checked={parentChecked}
+                          disabled={!parentEditable}
+                          onChange={e => setConfirmDraftParent(e.target.checked)}
+                        />
+                        <span className="dex-ui-toggle-row-body">
+                          <span className="dex-ui-toggle-row-title">
+                            {event.title}
+                            {lbl ? <span className="dex-ui-pill dex-ui-pill--gray">{lbl}</span> : null}
+                          </span>
+                          {when && <span className="dex-ui-toggle-row-desc">{when}</span>}
+                          {!parentEditable && (
+                            <span className="dex-ui-toggle-row-desc">{isDe ? 'Fester Teil dieser Anmeldung — lässt sich hier nicht abwählen.' : 'A fixed part of this registration — cannot be deselected here.'}</span>
+                          )}
+                        </span>
+                      </label>
+                    );
+                  })()}
+                  {allChildren.map(ce => {
+                    const on = confirmDraftSessions.has(ce.id);
+                    const when = dtRange(ce.startDate, ce.endDate);
+                    return (
+                      <label key={ce.id} className={cx('dex-ui-toggle-row', on && 'is-active')}>
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={e => {
+                            if (e.target.checked) {
+                              // v18.76: Sub-Event mit eigenen Pflichtfeldern erst über
+                              // das Sub-Event-Modal erfassen, damit keine leeren
+                              // Pflicht-Antworten entstehen. Dialog schließen, Modal
+                              // öffnen; nach dem Ausfüllen erscheint der Dialog erneut.
+                              const hasCF = (ce.eventSpecificFields || []).length > 0;
+                              if (hasCF && !sessionFieldValues[ce.id] && !selectedSessions.has(ce.id)) {
+                                confirmDialogConfirmedRef.current = false;
+                                setConfirmDialogOpen(false);
+                                setPendingSubEventModal({ subEventId: ce.id, draftValues: { ...(sessionFieldValues[ce.id] || {}) } });
+                              } else {
+                                setConfirmDraftSessions(prev => { const n = new Set(prev); n.add(ce.id); return n; });
+                              }
+                            } else {
+                              setConfirmDraftSessions(prev => { const n = new Set(prev); n.delete(ce.id); return n; });
+                            }
+                          }}
+                        />
+                        <span className="dex-ui-toggle-row-body">
+                          <span className="dex-ui-toggle-row-title">{ce.title}</span>
+                          {when && <span className="dex-ui-toggle-row-desc">{when}</span>}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {!canConfirm && (
+                  <div className="dex-ui-callout dex-ui-callout--warn" role="alert" style={{ marginTop: 10 }}>
+                    <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                    <span>{isDe ? `Wähl mindestens eine der ${sectionTerm} aus — sonst gibt es nichts anzumelden.` : `Select at least one of the ${sectionTerm} — otherwise there is nothing to register.`}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </Modal>
         );
 };
