@@ -250,11 +250,14 @@ export default function CheckInPage(): React.ReactElement {
     // Eindeutig ist die Zahl, weil der Check-in immer AUF EIN EVENT bezogen
     // ist (Event-Picker davor) und TeilnehmerID je Event fortlaufend vergeben
     // wird. Ein Event-Präfix braucht es hier deshalb nicht.
-    const numericQ = /^\d+$/.test(q) ? q : '';
+    // v30.83: numerisch vergleichen — „005" (so steht die Nummer mit
+    // führenden Nullen in der QR-Mail) ist dieselbe ID wie 5. Der String-
+    // Vergleich lieferte „Kein Treffer" (Befund 07.09.2026).
+    const numericQ = /^\d+$/.test(q) ? parseInt(q, 10) : NaN;
     const matchesQuery = q.length === 0
       ? regs
       : regs.filter(r => {
-          if (numericQ && String(r.TeilnehmerID || '') === numericQ) return true;
+          if (isFinite(numericQ) && r.TeilnehmerID !== undefined && r.TeilnehmerID !== null && Number(r.TeilnehmerID) === numericQ) return true;
           const full = `${r.Vorname || ''} ${r.Nachname || ''} ${r.ParticipantName || ''} ${r.ParticipantEmail || ''}`.toLowerCase();
           return full.indexOf(q) >= 0;
         });
@@ -315,7 +318,9 @@ export default function CheckInPage(): React.ReactElement {
       void loadRegsForSearch(nameSearchEventId);
       return;
     }
-    const hit = regs.filter(r => String(r.TeilnehmerID || '') === raw);
+    // v30.83: numerisch — „005" aus der QR-Mail ist ID 5.
+    const rawNum = parseInt(raw, 10);
+    const hit = regs.filter(r => r.TeilnehmerID !== undefined && r.TeilnehmerID !== null && Number(r.TeilnehmerID) === rawNum);
     if (hit.length === 0) {
       setIdError(isDe
         ? `Keine Anmeldung mit der Teilnehmer-ID ${raw} bei diesem Event. Bitte die Nummer aus der QR-Mail prüfen — oder unten nach dem Namen suchen.`
