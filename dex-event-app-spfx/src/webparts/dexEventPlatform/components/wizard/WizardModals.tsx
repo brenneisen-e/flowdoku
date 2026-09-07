@@ -1,9 +1,16 @@
 /* WizardModals — aus EventCreationPage.tsx ausgelagert (Zeilen 6907-8577 des
  * urspruenglichen Stands). Das JSX ist unveraendert uebernommen; die Komponente
  * gibt ein Fragment zurueck, damit die Geschwister-Reihenfolge im Elternbaum
- * exakt bleibt. */
+ * exakt bleibt.
+ * v31.2: Alle Dialoge auf den einheitlichen Modal-Kopf/-Fuß (title/subtitle/
+ * icon/footer) und die dex-ui-Klassen umgestellt — Ergebnis bzw. Frage zuerst,
+ * Details darunter, Aktionen im Fuß. Handler, Bedingungen und State-Bindungen
+ * sind unverändert; nur Darstellung, Reihenfolge und Wortwahl. */
 import * as React from 'react';
-import { Plus, Send, X } from '../Icons';
+import { AlertCircle, Calendar, Check, ChevronDown, Copy, Download, FileText, Info, Plus, Send, Star, Users, X } from '../Icons';
+// v31.2: Gemeinsame UI-Klassen (Zeilen, Chips, Hinweiskästen) — siehe dexUi.ts
+// und docs/ui-leitfaden.md.
+import { cx } from '../dexUi';
 import { EmailOverrideEntry } from '../wizard/emailOverrideEntry';
 import { buildOutlookLocation } from '../../utils/eventFormat';
 import DatePicker from 'react-datepicker';
@@ -207,31 +214,44 @@ export interface WizardModalsProps {
 
 export const WizardModals: React.FC<WizardModalsProps> = (p) => {
   const { activeCommTabIdx, activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, addSelectedSuggestedFields, agenda, applySubTransfer, askSalutation, attemptSubmit, audience, berlinLocalToUtcIso, bilingualFields, buildDraftPayload, bulkOrganizerOpen, bulkQrScannerOpen, bulkTestTeamOpen, cancelOutlookSave, childTermPlural, childTermSingular, closeVisCopy, confirmOutlookSave, contactEmail, customFields, DEMO_VARIANTS, description, disableEmails, disableOutlook, documents, DRAFT_KEY, dragOverSectionId, dragSectionId, durchstarterCapacity, emailLanguage, emailLogoPreview, emailTemplateOverrides, emailTemplates, endDate, eventImageUrl, excludedUsers, filterMode, funstarterCapacity, headerImageLayout, htmlEditorMode, htmlEditorOpen, htmlEditorTemplateType, imagePreview, isDe, isEditMode, isFictive, isMobile, isoToLocal, lastDeregisterDate, location, locationFilter, maxParticipants, newSectionError, newSectionModalOpen, newSectionName, organizer, organizerEmails, outlookBody, outlookConfirmChecks, outlookConfirmItems, outlookConfirmOpen, outlookEndOverride, outlookHeading, outlookLocationOverride, outlookLogoPreview, outlookStartOverride, outlookSubheading, outlookSubject, pendingSections, pendingSuccessDispatch, pendingSuccessDispatchRef, previewSections, qrScannerEmails, qrScannerNames, quiz, registrationDeadline, registrationLanguage, renderPreviewSection, requireSubEventSelection, resolveTopLevelCommState, scDescription, scopeSub, searchUsers, setBulkOrganizerOpen, setBulkQrScannerOpen, setBulkTestTeamOpen, setDragOverSectionId, setDragSectionId, setEmailTemplateOverrides, setHeaderImageLayout, setHtmlEditorOpen, setNewSectionError, setNewSectionModalOpen, setNewSectionName, setOrganizer, setOrganizerEmails, setOutlookBody, setOutlookConfirmChecks, setOutlookEndOverride, setOutlookHeading, setOutlookLocationOverride, setOutlookStartOverride, setOutlookSubheading, setOutlookSubject, setPendingSections, setPendingSuccessDispatch, setPreviewSections, setQrScannerEmails, setQrScannerNames, setScDescription, setShowB2runSuggested, setShowConfigCheck, setShowDemoVariantModal, setShowPreview, setShowRegisterPreview, setShowSuggestedModal, setShowSummaryModal, setSubEvents, setSubTransfer, setSuggestedSelection, setTestTeamEmails, setTestTeamNames, setUnsavedConfirmOpen, showB2runSuggested, showConfigCheck, showDemoVariantModal, showPreview, showRegisterPreview, showSuggestedModal, showSummaryModal, splitLabelA, splitLabelB, splitSharedWaitlist, startDate, SUB_TRANSFER_GROUPS, subEvents, subEventsOnlyMode, subGroupDiffCount, subTransfer, SUGGESTED_FIELDS_CATALOG, suggestedSelection, t, teamRegistrationEnabled, teamSize, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, unsavedConfirmOpen, useSplitCapacities, visCopyModalOpen, waitlistEnabled, allowAttendeeUpload, askTeamName, attendeeUploadHint, attendeeUploadLabel, contactInfo, contactName, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, quizClusterSize, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitSectionTitle, teamJoinRequiresApproval, teamOpenSlotsVisible, teamPartialAllowed } = p;
+  // v31.2: Eine Prüf-und-Anlege-Logik für Enter-Taste UND Knopf im Dialog
+  // „Neuer Bereich" — vorher stand derselbe Block zweimal. Kein Hook, nur
+  // eine Funktion über den destrukturierten Props.
+  const submitNewSection = (): void => {
+    const name = newSectionName.trim();
+    if (!name) { setNewSectionError(isDe ? 'Bitte einen Namen eingeben.' : 'Please enter a name.'); return; }
+    const existing = new Set<string>();
+    for (const q of quiz) if (q.section) existing.add(q.section);
+    for (const s of pendingSections) existing.add(s);
+    if (existing.has(name)) { setNewSectionError(isDe ? 'Ein Bereich mit diesem Namen existiert bereits.' : 'A section with this name already exists.'); return; }
+    setPendingSections([...pendingSections, name]);
+    setNewSectionModalOpen(false);
+  };
   return (
     <>
       {/* ===== Vollbild-Vorschau Modal ===== */}
       {showPreview && (
-        <div className="preview-modal" style={{
-          position: 'fixed', inset: 0, background: '#fff', zIndex: 1000,
+        <div className="preview-modal" role="dialog" aria-modal="true" aria-label={isDe ? 'Vorschau der Anmeldeseite' : 'Registration page preview'} style={{
+          position: 'fixed', inset: 0, background: 'var(--dex-gray-50, #fafafa)', zIndex: 1000,
           display: 'flex', flexDirection: 'column',
         }}>
           <div className="preview-modal-inner" style={{
-            background: '#fff', borderRadius: 0, width: '100%', maxWidth: '100%',
+            width: '100%', maxWidth: '100%',
             height: '100%', overflow: 'auto', padding: 0,
           }}>
             <div style={{
-              padding: '16px 24px', borderBottom: '1px solid var(--dex-gray-200)',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              position: 'sticky', top: 0, background: '#fff', zIndex: 1, borderRadius: '16px 16px 0 0',
+              padding: '14px 24px', borderBottom: '1px solid var(--dex-gray-200)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+              position: 'sticky', top: 0, background: '#fff', zIndex: 1,
             }}>
-              <div>
-                <h3 style={{ margin: 0 }}>Vorschau: Registrierungsseite</h3>
-                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--dex-gray-400)' }}>
-                  Sektionen per Drag &amp; Drop verschieben
+              <div style={{ minWidth: 0 }}>
+                <h3 className="dex-ui-modal-title">{isDe ? 'Vorschau der Anmeldeseite' : 'Registration page preview'}</h3>
+                <p className="dex-ui-modal-subtitle">
+                  {isDe ? 'So sehen Teilnehmer dein Formular. Zieh einen Abschnitt am Griff, um die Reihenfolge zu ändern.' : 'This is what attendees see. Drag a section by its handle to change the order.'}
                 </p>
               </div>
-              <button onClick={() => setShowPreview(false)} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: 'var(--dex-gray-500)' }}>
-                <X size={24} />
+              <button type="button" className="dex-ui-iconbtn" aria-label={isDe ? 'Schließen' : 'Close'} title={isDe ? 'Schließen' : 'Close'} onClick={() => setShowPreview(false)}>
+                <X size={20} />
               </button>
             </div>
 
@@ -260,16 +280,21 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                   onDragEnd={() => { setDragSectionId(null); setDragOverSectionId(null); }}
                   style={{
                     opacity: dragSectionId === section.id ? 0.4 : 1,
-                    borderTop: dragOverSectionId === section.id ? '3px solid var(--dex-green)' : undefined,
+                    // v31.2: Einwurf-Marke als Schatten statt Rahmen — ein
+                    // borderTop ließ den Abschnitt beim Überfahren springen.
+                    boxShadow: dragOverSectionId === section.id ? 'inset 0 3px 0 var(--dex-green, #86bc25)' : undefined,
+                    borderRadius: 12,
                     cursor: 'grab',
                     position: 'relative',
+                    transition: 'opacity 0.15s ease, box-shadow 0.15s ease',
                   }}
                 >
-                  <div style={{
-                    position: 'absolute', top: 4, right: 8, fontSize: '0.65rem',
-                    color: 'var(--dex-gray-300)', fontWeight: 600, userSelect: 'none',
-                  }}>
-                    ⠿ verschieben
+                  <div
+                    className="dex-ui-drag-handle"
+                    title={isDe ? 'Zum Verschieben ziehen' : 'Drag to move'}
+                    style={{ position: 'absolute', top: 4, right: 8, fontSize: '0.7rem', fontWeight: 600, userSelect: 'none', zIndex: 1, gap: 4 }}
+                  >
+                    ⠿ {isDe ? 'verschieben' : 'move'}
                   </div>
                   {renderPreviewSection(section.id)}
                 </div>
@@ -277,16 +302,18 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
             </div>
 
             <div style={{
-              padding: '16px 24px', borderTop: '1px solid var(--dex-gray-200)',
-              display: 'flex', gap: 12, justifyContent: 'flex-end',
-              position: 'sticky', bottom: 0, background: '#fff', borderRadius: '0 0 16px 16px',
+              padding: '14px 24px', borderTop: '1px solid var(--dex-gray-200)',
+              display: 'flex', gap: 12, justifyContent: 'flex-end', flexWrap: 'wrap',
+              position: 'sticky', bottom: 0, background: '#fff',
             }}>
-              <button className="btn btn-secondary" onClick={() => setShowPreview(false)}>
-                Zurück zum Formular
+              <button type="button" className="btn btn-secondary" onClick={() => setShowPreview(false)}>
+                {isDe ? 'Zurück zum Formular' : 'Back to the form'}
               </button>
               <button
+                type="button"
                 className="btn btn-primary"
                 disabled={!title}
+                title={!title ? (isDe ? 'Ohne Event-Titel kann nicht gespeichert werden' : 'A title is required before saving') : undefined}
                 onClick={() => { setShowPreview(false); attemptSubmit(); }}
               >
                 <Send size={16} /> {isEditMode ? t('create.save') : t('create.submit')}
@@ -399,20 +426,24 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
           return berlinLocalToUtcIso(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`);
         };
         const dpCommon = {
-          showTimeSelect: true, timeFormat: 'HH:mm', timeIntervals: 15, timeCaption: 'Uhrzeit',
+          showTimeSelect: true, timeFormat: 'HH:mm', timeIntervals: 15, timeCaption: isDe ? 'Uhrzeit' : 'Time',
           dateFormat: 'dd.MM.yyyy, HH:mm', locale: 'de', className: 'form-input',
           wrapperClassName: 'dex-datepicker-wrapper', calendarClassName: 'dex-datepicker-calendar',
           popperPlacement: 'bottom-start' as const, isClearable: true, autoComplete: 'off',
         };
+        // v31.2: Der Platzhalter sagt, welcher Wert ohne Eingabe gilt
+        // („… (aus dem Event)") — leer heißt hier nicht „kein Termin", sondern
+        // „wie in Schritt 1".
+        const inherited = isDe ? ' (aus dem Event)' : ' (from the event)';
         const outlookDateEditor = (
-          <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <label style={{ fontSize: '0.68rem', color: 'var(--dex-gray-400)' }}>Start</label>
-              <DatePicker {...dpCommon} selected={olIsoToDate(olStartOverrideVal)} onChange={(d: Date | null) => setOlStart(olDateToIso(d))} placeholderText={olStart ? olFmt(olStart) + ' (übernommen)' : 'Start'} />
+          <div className="form-grid-2col dex-ui-grid-2" style={{ gap: 8 }}>
+            <div className="dex-ui-field" style={{ marginBottom: 0 }}>
+              <label className="dex-ui-label" style={{ fontSize: '0.78rem', marginBottom: 4 }}>{isDe ? 'Beginn im Termin' : 'Start in the invite'}</label>
+              <DatePicker {...dpCommon} selected={olIsoToDate(olStartOverrideVal)} onChange={(d: Date | null) => setOlStart(olDateToIso(d))} placeholderText={olStart ? olFmt(olStart) + inherited : (isDe ? 'Beginn' : 'Start')} />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <label style={{ fontSize: '0.68rem', color: 'var(--dex-gray-400)' }}>Ende</label>
-              <DatePicker {...dpCommon} selected={olIsoToDate(olEndOverrideVal)} onChange={(d: Date | null) => setOlEnd(olDateToIso(d))} placeholderText={olEnd ? olFmt(olEnd) + ' (übernommen)' : 'Ende'} />
+            <div className="dex-ui-field" style={{ marginBottom: 0 }}>
+              <label className="dex-ui-label" style={{ fontSize: '0.78rem', marginBottom: 4 }}>{isDe ? 'Ende im Termin' : 'End in the invite'}</label>
+              <DatePicker {...dpCommon} selected={olIsoToDate(olEndOverrideVal)} onChange={(d: Date | null) => setOlEnd(olDateToIso(d))} placeholderText={olEnd ? olFmt(olEnd) + inherited : (isDe ? 'Ende' : 'End')} />
             </div>
           </div>
         );
@@ -432,21 +463,24 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
             onClose={() => setHtmlEditorOpen(false)}
             defaultBodyHtml={isOutlook ? outlookDefaultBody : (isDescription ? descriptionExampleHtml : undefined)}
             title={isOutlook
-              ? 'Outlook-Termin: Body bearbeiten'
+              ? (isDe ? 'Outlook-Termin: Text bearbeiten' : 'Outlook invite: edit text')
               : isDescription
                 ? (scopeSub
                   ? (isDe
                     ? `Beschreibung: ${shortSubEventTitle(scopeSub.title, title) || (childTermSingular || 'Sub-Event')}`
                     : `Description: ${shortSubEventTitle(scopeSub.title, title) || (childTermSingular || 'sub-event')}`)
                   : (isDe ? 'Event-Beschreibung bearbeiten' : 'Edit event description'))
-                : `E-Mail-Template: ${tType}`}
+                : (isDe ? `Mail-Vorlage: ${tType}` : `Email template: ${tType}`)}
             // v28.7: Die Starthilfe (Tipp-Text + Vorschlags-Chips) lebt jetzt
             // HIER im Editor statt als Dauer-Box im Wizard-Schritt.
             headerExtra={isDescription ? (
-              <div style={{ padding: '10px 12px', borderRadius: 'var(--dex-radius)', background: 'var(--dex-gray-50, #f7f7f7)', border: '1px solid var(--dex-gray-200)', fontSize: '0.78rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
-                {isDe
-                  ? <>Die Beschreibung ist der <strong>einladende Einleitungstext ganz oben auf der Anmeldemaske</strong> — das Erste, was deine Teilnehmenden lesen. Erzähl hier gern, <strong>worum es geht, für wen das Event ist und was man wissen sollte</strong>.<br />Ein kleiner Tipp: <strong>Zeitpunkt, Ort, Organizer und Kontaktperson musst du hier nicht angeben</strong> — die zeigt die App bereits als eigene Felder darüber an. So bleibt dein Text schön schlank und einladend.</>
-                  : <>The description is the <strong>inviting intro text right at the top of the registration form</strong> — the first thing your attendees read. Feel free to tell them <strong>what the event is about, who it&rsquo;s for and what to know</strong>.<br />A little tip: <strong>you don&rsquo;t need to add the date, location, organizer or contact person here</strong> — the app already shows those as their own fields above. That keeps your text nice and inviting.</>}
+              <div className="dex-ui-callout dex-ui-callout--info">
+                <span className="dex-ui-callout-icon"><Info size={16} /></span>
+                <span>
+                  {isDe
+                    ? <>Die Beschreibung ist der <strong>einladende Einstieg ganz oben auf der Anmeldeseite</strong> — das Erste, was deine Teilnehmenden lesen. Erzähl, <strong>worum es geht, für wen das Event ist und was man wissen sollte</strong>. <strong>Zeit, Ort, Organizer und Kontaktperson kannst du weglassen</strong> — die zeigt die App darüber als eigene Felder.</>
+                    : <>The description is the <strong>inviting intro right at the top of the registration page</strong> — the first thing your attendees read. Tell them <strong>what the event is about, who it&rsquo;s for and what to know</strong>. <strong>You can skip date, location, organizer and contact person</strong> — the app shows those above as their own fields.</>}
+                </span>
               </div>
             ) : undefined}
             bodyTemplates={isDescription ? DESCRIPTION_TEMPLATES.map(tpl => ({
@@ -688,12 +722,12 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
       <BulkUserImportModal
         open={bulkOrganizerOpen}
         onClose={() => setBulkOrganizerOpen(false)}
-        title="Massenimport — Co-Organizer"
+        title={isDe ? 'Mehrere Co-Organizer hinzufügen' : 'Add several co-organizers'}
         description={(
           <p style={{ marginTop: 0 }}>
-            Mehrere <strong>Co-Organizer</strong> auf einmal hinzufügen. Reihenfolge
-            spielt eine Rolle — der erste Eintrag in der Liste bleibt der Haupt-Organizer.
-            Massenimport hängt neue Personen <strong>hinten</strong> an.
+            {isDe
+              ? <>Neue Personen werden <strong>hinten</strong> angehängt — der erste Eintrag der Liste bleibt Haupt-Organizer.</>
+              : <>New people are appended at the <strong>end</strong> — the first entry in the list stays the main organizer.</>}
           </p>
         )}
         existingEmails={organizerEmails}
@@ -715,11 +749,12 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
       <BulkUserImportModal
         open={bulkTestTeamOpen}
         onClose={() => setBulkTestTeamOpen(false)}
-        title="Massenimport — Test-Team"
+        title={isDe ? 'Mehrere Test-Team-Mitglieder hinzufügen' : 'Add several test-team members'}
         description={(
           <p style={{ marginTop: 0 }}>
-            Mehrere <strong>Test-Team-Mitglieder</strong> auf einmal hinzufügen. Test-Team
-            sieht das Event schon im Entwurfsmodus und kann sich testweise anmelden.
+            {isDe
+              ? <>Das Test-Team sieht das Event schon <strong>im Entwurf</strong> und kann sich testweise anmelden.</>
+              : <>The test team sees the event <strong>while it is a draft</strong> and can register for testing.</>}
           </p>
         )}
         existingEmails={testTeamEmails}
@@ -732,12 +767,12 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
       <BulkUserImportModal
         open={bulkQrScannerOpen}
         onClose={() => setBulkQrScannerOpen(false)}
-        title="Massenimport — Check-In Team"
+        title={isDe ? 'Mehrere Check-in-Team-Mitglieder hinzufügen' : 'Add several check-in team members'}
         description={(
           <p style={{ marginTop: 0 }}>
-            Mehrere <strong>Check-In-Team-Mitglieder</strong> auf einmal hinzufügen. Diese
-            Personen dürfen am Eventtag den QR-Scanner / Check-In-Tool benutzen, haben aber
-            keine weiteren Admin-Rechte.
+            {isDe
+              ? <>Diese Personen dürfen am Eventtag den <strong>QR-Scanner und das Check-in-Tool</strong> benutzen — weitere Organizer-Rechte bekommen sie nicht.</>
+              : <>These people may use the <strong>QR scanner and the check-in tool</strong> on the event day — they get no further organizer rights.</>}
           </p>
         )}
         existingEmails={qrScannerEmails}
@@ -789,14 +824,8 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
             { label: 'Status', value: isFictive ? (activeFrom ? (isDe ? `Entwurf — geht automatisch live am ${fmtDt(activeFrom)}` : `Draft — goes live automatically on ${fmtDt(activeFrom)}`) : (isDe ? 'Entwurf (nur Admins, Organizer, Test-Team)' : 'Draft (admins, organizers, test team only)')) : (isDe ? 'Aktiv — für berechtigte Teilnehmer sichtbar' : 'Active — visible to eligible attendees'), status: isFictive ? 'default' : 'ok' },
           ],
         });
-        sections.push({
-          title: isDe ? 'Schritt 2 — Organizer & Team' : 'Step 2 — Organizers & Team',
-          rows: [
-            { label: 'Organizer', value: orgList.length ? `${orgList.length} ${isDe ? 'Person(en)' : 'person(s)'}` : '—', status: orgList.length ? 'ok' : 'missing' },
-            { label: isDe ? 'Test-Team' : 'Test team', value: testTeamEmails.length ? `${testTeamEmails.length} ${isDe ? 'Person(en)' : 'person(s)'}` : '—', status: testTeamEmails.length ? 'ok' : 'empty' },
-            { label: isDe ? 'Check-In-Team' : 'Check-in team', value: qrScannerEmails.length ? `${qrScannerEmails.length} ${isDe ? 'Person(en)' : 'person(s)'}` : '—', status: qrScannerEmails.length ? 'ok' : 'empty' },
-          ],
-        });
+        // v31.2: Die Sub-Events gehören zu Schritt 1 und stehen deshalb direkt
+        // hinter den Grundlagen — vorher lagen sie hinter Schritt 2.
         sections.push({
           title: isDe ? 'Schritt 1 — Sub-Events' : 'Step 1 — Sub-events',
           rows: subEvents.length === 0
@@ -805,6 +834,14 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                 { label: 'Sub-Events', value: `${subEvents.length} (${subEvents.map(s => s.title || '?').join(', ').slice(0, 90)})`, status: 'ok' },
                 { label: isDe ? 'Anmelde-Modus' : 'Registration mode', value: subEventsOnlyMode ? (isDe ? 'Nur für Sub-Events (Klammer nicht buchbar)' : 'Sub-events only (bracket not bookable)') : (isDe ? 'Hauptevent + Sub-Events' : 'Main event + sub-events'), status: 'ok' },
               ],
+        });
+        sections.push({
+          title: isDe ? 'Schritt 2 — Organizer & Team' : 'Step 2 — Organizers & Team',
+          rows: [
+            { label: 'Organizer', value: orgList.length ? `${orgList.length} ${isDe ? 'Person(en)' : 'person(s)'}` : '—', status: orgList.length ? 'ok' : 'missing' },
+            { label: isDe ? 'Test-Team' : 'Test team', value: testTeamEmails.length ? `${testTeamEmails.length} ${isDe ? 'Person(en)' : 'person(s)'}` : '—', status: testTeamEmails.length ? 'ok' : 'empty' },
+            { label: isDe ? 'Check-In-Team' : 'Check-in team', value: qrScannerEmails.length ? `${qrScannerEmails.length} ${isDe ? 'Person(en)' : 'person(s)'}` : '—', status: qrScannerEmails.length ? 'ok' : 'empty' },
+          ],
         });
         sections.push({
           title: isDe ? 'Schritt 3 — Ort & Programm' : 'Step 3 — Location & programme',
@@ -860,184 +897,138 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
           title: isDe ? 'Schritt 9 — Fun-Zone' : 'Step 9 — Fun zone',
           rows: [{ label: 'Quiz', value: quiz.length ? `${quiz.length} ${isDe ? 'Fragen' : 'questions'}` : '—', status: quiz.length ? 'ok' : 'empty' }],
         });
-        const allRows = sections.reduce((acc, s) => acc + s.rows.length, 0);
-        void allRows;
         const missingCount = sections.reduce((acc, s) => acc + s.rows.filter(r => r.status === 'missing').length, 0);
         const emptyCount = sections.reduce((acc, s) => acc + s.rows.filter(r => r.status === 'empty').length, 0);
+        // v31.2: Das Ergebnis steht zuerst und nennt die fehlenden Angaben
+        // beim Namen — vorher musste man neun Abschnitte nach roten Chips
+        // absuchen, um zu wissen, WAS fehlt.
+        const missingLabels: string[] = [];
+        sections.forEach(s => s.rows.forEach(r => { if (r.status === 'missing') missingLabels.push(r.label); }));
         const chip = (st: CheckStatus): React.ReactElement | null => {
-          if (st === 'default') return <span style={{ fontSize: '0.66rem', fontWeight: 700, padding: '1px 8px', borderRadius: 999, background: 'var(--dex-gray-100)', color: 'var(--dex-gray-500)', flexShrink: 0 }}>{isDe ? 'Standard' : 'Default'}</span>;
-          if (st === 'empty') return <span style={{ fontSize: '0.66rem', fontWeight: 700, padding: '1px 8px', borderRadius: 999, background: 'rgba(237,139,0,0.12)', color: 'var(--dex-orange-dark, #b35a00)', flexShrink: 0 }}>{isDe ? 'leer (optional)' : 'empty (optional)'}</span>;
-          if (st === 'missing') return <span style={{ fontSize: '0.66rem', fontWeight: 700, padding: '1px 8px', borderRadius: 999, background: 'rgba(218,41,28,0.12)', color: 'var(--dex-red, #c00)', flexShrink: 0 }}>{isDe ? 'fehlt' : 'missing'}</span>;
-          return null;
+          if (st === 'default') return <span className="dex-ui-pill dex-ui-pill--gray">{isDe ? 'Standard' : 'Default'}</span>;
+          if (st === 'empty') return <span className="dex-ui-pill dex-ui-pill--orange">{isDe ? 'leer (optional)' : 'empty (optional)'}</span>;
+          if (st === 'missing') return <span className="dex-ui-pill dex-ui-pill--red">{isDe ? 'fehlt' : 'missing'}</span>;
+          return <span className="dex-ui-pill dex-ui-pill--green" aria-label={isDe ? 'gesetzt' : 'set'}><Check size={12} /></span>;
         };
+        const verdictClass = missingCount > 0 ? 'dex-ui-callout--danger' : emptyCount > 0 ? 'dex-ui-callout--warn' : 'dex-ui-callout--success';
         return (
-          <div
-            role="dialog"
-            aria-modal="true"
-            onClick={() => setShowConfigCheck(false)}
-            style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1250,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-            }}
+          <Modal
+            open={true}
+            onClose={() => setShowConfigCheck(false)}
+            maxWidth={760}
+            ariaLabel={isDe ? 'Event prüfen' : 'Review event'}
+            icon={<Check size={20} />}
+            title={isDe ? 'Event prüfen' : 'Review event'}
+            subtitle={isDe
+              ? 'Alle Einstellungen im Überblick — was gesetzt ist, wo Standards greifen und was noch fehlt. Geändert wird hier nichts.'
+              : 'All settings at a glance — what is set, where defaults apply and what is still missing. Nothing is changed here.'}
+            footer={(
+              <button type="button" className="btn btn-primary" onClick={() => setShowConfigCheck(false)}>{isDe ? 'Schließen' : 'Close'}</button>
+            )}
           >
-            <div
-              onClick={e => e.stopPropagation()}
-              className="card"
-              style={{ width: '100%', maxWidth: 760, maxHeight: '88vh', overflow: 'auto', padding: 24, borderRadius: 16, background: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{isDe ? 'Event prüfen — alle Einstellungen im Überblick' : 'Review event — all settings at a glance'}</h3>
-                <button type="button" onClick={() => setShowConfigCheck(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} aria-label={isDe ? 'Schließen' : 'Close'}><X size={20} /></button>
-              </div>
-              <p style={{ margin: '0 0 14px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+            <div className={cx('dex-ui-callout', verdictClass)} role="status">
+              <span className="dex-ui-callout-icon">{missingCount > 0 ? <AlertCircle size={16} /> : <Check size={16} />}</span>
+              <span>
                 {missingCount > 0
-                  ? (isDe ? <><strong style={{ color: 'var(--dex-red, #c00)' }}>{missingCount} Pflichtangabe(n) fehlen</strong>{emptyCount > 0 ? <> · {emptyCount} optionale Punkte sind noch leer</> : null}.</> : <><strong style={{ color: 'var(--dex-red, #c00)' }}>{missingCount} required item(s) missing</strong>{emptyCount > 0 ? <> · {emptyCount} optional items still empty</> : null}.</>)
+                  ? (isDe
+                    ? <><strong>{missingCount === 1 ? '1 Pflichtangabe fehlt' : `${missingCount} Pflichtangaben fehlen`}:</strong> {missingLabels.join(', ')}.{emptyCount > 0 ? <> Dazu {emptyCount === 1 ? 'ist 1 optionaler Punkt' : `sind ${emptyCount} optionale Punkte`} noch leer.</> : null}</>
+                    : <><strong>{missingCount === 1 ? '1 required item missing' : `${missingCount} required items missing`}:</strong> {missingLabels.join(', ')}.{emptyCount > 0 ? <> Plus {emptyCount} optional {emptyCount === 1 ? 'item is' : 'items are'} still empty.</> : null}</>)
                   : emptyCount > 0
-                    ? (isDe ? <>Alle Pflichtangaben sind gesetzt — <strong>{emptyCount} optionale Punkte</strong> sind noch leer.</> : <>All required items are set — <strong>{emptyCount} optional items</strong> are still empty.</>)
+                    ? (isDe ? <>Alle Pflichtangaben sind gesetzt — <strong>{emptyCount === 1 ? '1 optionaler Punkt ist' : `${emptyCount} optionale Punkte sind`}</strong> noch leer.</> : <>All required items are set — <strong>{emptyCount} optional {emptyCount === 1 ? 'item is' : 'items are'}</strong> still empty.</>)
                     : (isDe ? 'Alles gesetzt — keine offenen Punkte.' : 'Everything set — nothing open.')}
-              </p>
+              </span>
+            </div>
+            <div>
               {sections.map((sec, si) => (
-                <div key={si} style={{ marginBottom: 14 }}>
-                  <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--dex-green-dark, #4a7c1f)', borderBottom: '1px solid var(--dex-gray-100)', paddingBottom: 4, marginBottom: 6 }}>{sec.title}</div>
-                  {sec.rows.map((r, ri) => (
-                    <div key={ri} style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: 'flex-start', gap: isMobile ? 2 : 10, padding: '4px 0', fontSize: '0.8rem' }}>
-                      <span style={{ flex: isMobile ? '0 0 auto' : '0 0 230px', width: isMobile ? '100%' : undefined, color: 'var(--dex-gray-500)' }}>{r.label}</span>
-                      <span style={{ flex: 1, color: 'var(--dex-gray-800)', minWidth: 0, overflowWrap: 'anywhere' }}>{r.value}</span>
-                      {chip(r.status)}
-                    </div>
-                  ))}
+                <div key={si} className="dex-ui-section">
+                  <div className="dex-ui-section-title">{sec.title}</div>
+                  <div className="dex-ui-card" style={{ padding: '2px 8px' }}>
+                    {sec.rows.map((r, ri) => (
+                      <div key={ri} className="dex-ui-row dex-ui-row--bordered" style={{ flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? 4 : 10, padding: '8px 6px', fontSize: '0.82rem' }}>
+                        <span style={{ flex: isMobile ? '0 0 auto' : '0 0 220px', color: 'var(--dex-gray-500)' }}>{r.label}</span>
+                        <span style={{ flex: 1, color: 'var(--dex-gray-800)', minWidth: 0, overflowWrap: 'anywhere' }}>{r.value}</span>
+                        {chip(r.status)}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
-              <div style={{ textAlign: 'right', marginTop: 6 }}>
-                <button className="btn btn-primary" onClick={() => setShowConfigCheck(false)}>{isDe ? 'Schließen' : 'Close'}</button>
-              </div>
             </div>
-          </div>
+          </Modal>
         );
       })()}
 
-      {showDemoVariantModal && (
-        <div
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1200,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-          }}
-          onClick={() => setShowDemoVariantModal(false)}
-        >
-          <div
-            className="card"
-            style={{
-              width: '100%', maxWidth: 760, maxHeight: '90vh', overflow: 'auto',
-              padding: 24, borderRadius: 16, background: '#fff',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex-between mb-16">
-              <h3 style={{ margin: 0, color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                {isDe ? 'Demo-Daten laden' : 'Load demo data'}
-              </h3>
-              <button
-                style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--dex-gray-600)' }}
-                onClick={() => setShowDemoVariantModal(false)}
-                aria-label={isDe ? 'Schließen' : 'Close'}
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
-              {isDe
-                ? 'Wähle eine Vorlage. Die ausgewählte Variante überschreibt deine aktuellen Eingaben — verworfen wird nichts, falls du noch nichts gespeichert hast.'
-                : 'Choose a template. The selected variant overrides your current input — nothing is lost if you haven\'t saved yet.'}
-            </p>
-            {(() => {
-              const cards: Array<{ key: keyof typeof DEMO_VARIANTS; titleDe: string; titleEn: string; descDe: string; descEn: string }> = [
-                {
-                  key: 'standard',
-                  titleDe: 'Standard',
-                  titleEn: 'Standard',
-                  descDe: 'Ein Event, eine Gruppe. Typisches Meeting / Lunch.',
-                  descEn: 'One event, one group. Typical meeting or lunch.',
-                },
-                {
-                  key: 'groups',
-                  titleDe: 'Mit Gruppen',
-                  titleEn: 'With groups',
-                  descDe: 'Event mit zwei Teilnehmer-Gruppen (Split Capacity), z.B. Vormittag / Nachmittag.',
-                  descEn: 'Event with two participant groups (split capacity), e.g. morning / afternoon.',
-                },
-                {
-                  key: 'subevent',
-                  titleDe: 'Mit Sub-Event',
-                  titleEn: 'With sub-event',
-                  descDe: 'Haupt-Event + 1 Sub-Event, z.B. Conference + Dinner.',
-                  descEn: 'Main event + 1 sub-event, e.g. conference + dinner.',
-                },
-                {
-                  key: 'subeventTeam',
-                  titleDe: 'Mit Sub-Event + Team',
-                  titleEn: 'With sub-event + team',
-                  descDe: 'Wie links, aber mit Team-Anmeldung (Teams à 4 Personen).',
-                  descEn: 'Same as on the left, but with team registration (teams of 4 people).',
-                },
-              ];
-              return (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
-                  {cards.map(card => (
-                    <button
-                      key={card.key}
-                      type="button"
-                      onClick={() => {
-                        DEMO_VARIANTS[card.key]();
-                        setShowDemoVariantModal(false);
-                      }}
-                      style={{
-                        textAlign: 'left',
-                        padding: 16,
-                        borderRadius: 12,
-                        border: '1px solid var(--dex-gray-200)',
-                        background: '#fff',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 8,
-                        minHeight: 120,
-                      }}
-                      onMouseEnter={e => {
-                        e.currentTarget.style.borderColor = 'var(--dex-green-dark, #4a7c1f)';
-                        e.currentTarget.style.boxShadow = '0 6px 16px rgba(74,124,31,0.12)';
-                        e.currentTarget.style.transform = 'translateY(-2px)';
-                      }}
-                      onMouseLeave={e => {
-                        e.currentTarget.style.borderColor = 'var(--dex-gray-200)';
-                        e.currentTarget.style.boxShadow = 'none';
-                        e.currentTarget.style.transform = 'translateY(0)';
-                      }}
-                    >
-                      <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                        {isDe ? card.titleDe : card.titleEn}
-                      </div>
-                      <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
-                        {isDe ? card.descDe : card.descEn}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              );
-            })()}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
-              <button
-                type="button"
-                className="btn btn-outline"
-                onClick={() => setShowDemoVariantModal(false)}
-              >
+      {showDemoVariantModal && (() => {
+        const cards: Array<{ key: keyof typeof DEMO_VARIANTS; titleDe: string; titleEn: string; descDe: string; descEn: string }> = [
+          {
+            key: 'standard',
+            titleDe: 'Standard',
+            titleEn: 'Standard',
+            descDe: 'Ein Event, eine Gruppe — typisches Meeting oder Lunch.',
+            descEn: 'One event, one group — a typical meeting or lunch.',
+          },
+          {
+            key: 'groups',
+            titleDe: 'Mit Gruppen',
+            titleEn: 'With groups',
+            descDe: 'Zwei Teilnehmer-Gruppen mit geteilter Kapazität, z.B. Vormittag / Nachmittag.',
+            descEn: 'Two participant groups with split capacity, e.g. morning / afternoon.',
+          },
+          {
+            key: 'subevent',
+            titleDe: 'Mit Sub-Event',
+            titleEn: 'With sub-event',
+            descDe: 'Haupt-Event + 1 Sub-Event, z.B. Konferenz + Dinner.',
+            descEn: 'Main event + 1 sub-event, e.g. conference + dinner.',
+          },
+          {
+            key: 'subeventTeam',
+            titleDe: 'Mit Sub-Event + Team',
+            titleEn: 'With sub-event + team',
+            // v31.2: „Wie links" stimmt im Raster nicht mehr, sobald die
+            // Kacheln umbrechen — deshalb die Vorlage beim Namen nennen.
+            descDe: 'Wie „Mit Sub-Event“, zusätzlich Team-Anmeldung (Teams à 4 Personen).',
+            descEn: 'Like “With sub-event”, plus team registration (teams of 4 people).',
+          },
+        ];
+        return (
+          <Modal
+            open={true}
+            onClose={() => setShowDemoVariantModal(false)}
+            maxWidth={720}
+            ariaLabel={isDe ? 'Demo-Daten laden' : 'Load demo data'}
+            icon={<Star size={20} />}
+            title={isDe ? 'Demo-Daten laden' : 'Load demo data'}
+            subtitle={isDe
+              ? 'Wähle eine Vorlage — sie überschreibt deine aktuellen Eingaben. Solange du noch nichts gespeichert hast, geht dabei nichts verloren.'
+              : 'Pick a template — it overrides your current input. As long as you haven’t saved yet, nothing is lost.'}
+            footer={(
+              <button type="button" className="btn btn-secondary" onClick={() => setShowDemoVariantModal(false)}>
                 {isDe ? 'Abbrechen' : 'Cancel'}
               </button>
+            )}
+          >
+            <div className="dex-ui-grid-2">
+              {cards.map(card => (
+                <button
+                  key={card.key}
+                  type="button"
+                  className="dex-ui-choice"
+                  onClick={() => {
+                    DEMO_VARIANTS[card.key]();
+                    setShowDemoVariantModal(false);
+                  }}
+                >
+                  <span className="dex-ui-choice-body">
+                    <span className="dex-ui-choice-title" style={{ display: 'block' }}>{isDe ? card.titleDe : card.titleEn}</span>
+                    <span className="dex-ui-choice-desc" style={{ display: 'block' }}>{isDe ? card.descDe : card.descEn}</span>
+                  </span>
+                </button>
+              ))}
             </div>
-          </div>
-        </div>
-      )}
+          </Modal>
+        );
+      })()}
 
       {/* v17.21: A4-Zusammenfassungs-Modal nach erfolgreichem Save — fragt
           den Organizer, ob er das gesamte Event als PDF oder Word herunter-
@@ -1057,95 +1048,92 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
           targets: prev.targets.indexOf(i) >= 0 ? prev.targets.filter(x => x !== i) : [...prev.targets, i],
         }));
         const canApply = subTransfer.groups.length > 0 && subTransfer.targets.length > 0;
+        const allTargetsOn = subTransfer.targets.length === subEvents.length - 1;
         return (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-            <div className="card" style={{ width: '100%', maxWidth: 680, maxHeight: '88vh', overflow: 'auto', padding: 24, borderRadius: 14, background: '#fff' }}>
-              <h3 style={{ margin: '0 0 4px', fontSize: '1.1rem' }}>
-                {isDe ? 'Einstellungen übertragen' : 'Transfer settings'}
-              </h3>
-              <p style={{ margin: '0 0 16px', fontSize: '0.84rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+          <Modal
+            open={true}
+            onClose={() => setSubTransfer(null)}
+            maxWidth={680}
+            // v31.2: Wie vorher schließt ein Klick neben die Karte NICHT —
+            // sonst ist die Auswahl weg. Escape und X wirken wie „Abbrechen".
+            backdropClose={false}
+            ariaLabel={isDe ? 'Einstellungen übertragen' : 'Transfer settings'}
+            icon={<Copy size={20} />}
+            title={isDe ? 'Einstellungen übertragen' : 'Transfer settings'}
+            subtitle={isDe
+              ? <>Von <strong>&bdquo;{srcName}&ldquo;</strong> auf andere {childTermPlural || 'Sub-Events'} — die Werte dort werden <strong>überschrieben</strong>. Gespeichert wird erst, wenn du den Assistenten speicherst.</>
+              : <>From <strong>&bdquo;{srcName}&ldquo;</strong> to other sub-events — their values are <strong>overwritten</strong>. Nothing is stored until you save the wizard.</>}
+            footer={<>
+              <button type="button" className="btn btn-secondary" onClick={() => setSubTransfer(null)}>
+                {isDe ? 'Abbrechen' : 'Cancel'}
+              </button>
+              <button type="button" className="btn btn-primary" disabled={!canApply} onClick={applySubTransfer}>
                 {isDe
-                  ? <>Die ausgewählten Einstellungen von <strong>„{srcName}“</strong> werden auf die ausgewählten {childTermPlural || 'Sub-Events'} übertragen und <strong>überschreiben</strong> die dortigen Werte. Gespeichert wird erst, wenn du den Assistenten speicherst.</>
-                  : <>The selected settings of <strong>„{srcName}“</strong> are applied to the selected sub-events and <strong>overwrite</strong> their values. Nothing is stored until you save the wizard.</>}
-              </p>
-
-              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: 8 }}>
-                {isDe ? '1. Was soll übertragen werden?' : '1. What should be transferred?'}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 18 }}>
-                {SUB_TRANSFER_GROUPS.map(g => {
-                  const on = subTransfer.groups.indexOf(g.key) >= 0;
-                  const n = subGroupDiffCount(subTransfer.fromIdx, g.fields);
-                  return (
-                    <label key={g.key} style={{
-                      display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 12px', borderRadius: 8,
-                      border: `1px solid ${on ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-                      background: on ? 'rgba(134,188,37,0.06)' : '#fff', cursor: 'pointer', fontSize: '0.84rem',
-                    }}>
-                      <input type="checkbox" checked={on} onChange={() => toggleGroup(g.key)} style={{ marginTop: 3 }} />
-                      <span>
-                        {isDe ? g.de : g.en}
-                        {n > 0 && (
-                          <span style={{ marginLeft: 8, fontSize: '0.72rem', fontWeight: 700, padding: '1px 7px', borderRadius: 10, background: '#fff3d6', color: '#7a5a12', border: '1px solid #e0b34d' }}>
-                            {isDe ? `${n}× abweichend` : `${n}× differing`}
+                  ? `Auf ${subTransfer.targets.length} übertragen`
+                  : `Transfer to ${subTransfer.targets.length}`}
+              </button>
+            </>}
+          >
+            <div>
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">{isDe ? '1 · Was soll übertragen werden?' : '1 · What should be transferred?'}</div>
+                <div className="dex-ui-stack" style={{ gap: 6 }}>
+                  {SUB_TRANSFER_GROUPS.map(g => {
+                    const on = subTransfer.groups.indexOf(g.key) >= 0;
+                    const n = subGroupDiffCount(subTransfer.fromIdx, g.fields);
+                    return (
+                      <label key={g.key} className={cx('dex-ui-toggle-row', on && 'is-active')} style={{ padding: '9px 12px' }}>
+                        <input type="checkbox" checked={on} onChange={() => toggleGroup(g.key)} />
+                        <span className="dex-ui-toggle-row-body">
+                          <span className="dex-ui-toggle-row-title">
+                            {isDe ? g.de : g.en}
+                            {n > 0 && (
+                              <span className="dex-ui-pill dex-ui-pill--orange" title={isDe ? 'So viele Ziel-Termine haben hier andere Werte' : 'That many target sessions have different values here'}>
+                                {isDe ? `${n}× abweichend` : `${n}× differing`}
+                              </span>
+                            )}
                           </span>
-                        )}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>
-                  {isDe ? '2. Auf welche übertragen?' : '2. Transfer to which ones?'}
+                        </span>
+                      </label>
+                    );
+                  })}
                 </div>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  style={{ fontSize: '0.75rem', padding: '4px 10px' }}
-                  onClick={() => setSubTransfer(prev => prev && ({
-                    ...prev,
-                    targets: prev.targets.length === subEvents.length - 1
-                      ? []
-                      : subEvents.map((_, i) => i).filter(i => i !== prev.fromIdx),
-                  }))}
-                >
-                  {subTransfer.targets.length === subEvents.length - 1
-                    ? (isDe ? 'Keine' : 'None')
-                    : (isDe ? 'Alle' : 'All')}
-                </button>
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 20 }}>
-                {subEvents.map((s, i) => {
-                  if (i === subTransfer.fromIdx) return null;
-                  const on = subTransfer.targets.indexOf(i) >= 0;
-                  const nm = shortSubEventTitle(s.title, title) || (isDe ? 'Ohne Titel' : 'Untitled');
-                  return (
-                    <label key={s.id || i} style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8,
-                      border: `1px solid ${on ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-                      background: on ? 'rgba(134,188,37,0.10)' : '#fff', cursor: 'pointer', fontSize: '0.8rem',
-                    }}>
-                      <input type="checkbox" checked={on} onChange={() => toggleTarget(i)} />
-                      {nm}
-                    </label>
-                  );
-                })}
               </div>
 
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setSubTransfer(null)}>
-                  {isDe ? 'Abbrechen' : 'Cancel'}
-                </button>
-                <button type="button" className="btn btn-primary" disabled={!canApply} onClick={applySubTransfer}>
-                  {isDe
-                    ? `Auf ${subTransfer.targets.length} übertragen`
-                    : `Transfer to ${subTransfer.targets.length}`}
-                </button>
+              <div className="dex-ui-section">
+                <div className="dex-ui-inline" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
+                  <div className="dex-ui-section-title" style={{ flex: 1, margin: 0 }}>{isDe ? '2 · Auf welche übertragen?' : '2 · Transfer to which ones?'}</div>
+                  <button
+                    type="button"
+                    className="dex-ui-textbtn"
+                    onClick={() => setSubTransfer(prev => prev && ({
+                      ...prev,
+                      targets: prev.targets.length === subEvents.length - 1
+                        ? []
+                        : subEvents.map((_, i) => i).filter(i => i !== prev.fromIdx),
+                    }))}
+                  >
+                    {allTargetsOn
+                      ? (isDe ? 'Keine auswählen' : 'Select none')
+                      : (isDe ? 'Alle auswählen' : 'Select all')}
+                  </button>
+                </div>
+                <div className="dex-ui-inline" style={{ gap: 6 }}>
+                  {subEvents.map((s, i) => {
+                    if (i === subTransfer.fromIdx) return null;
+                    const on = subTransfer.targets.indexOf(i) >= 0;
+                    const nm = shortSubEventTitle(s.title, title) || (isDe ? 'Ohne Titel' : 'Untitled');
+                    return (
+                      <button key={s.id || i} type="button" className={cx('dex-ui-chip', on && 'is-active')} aria-pressed={on} onClick={() => toggleTarget(i)}>
+                        {on && <Check size={12} />}
+                        {nm}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
-          </div>
+          </Modal>
         );
       })()}
 
@@ -1299,51 +1287,51 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
           closeAndDispatch();
         };
         return (
-          <div
-            style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1300,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-            }}
-            onClick={closeAndDispatch}
-          >
-            <div
-              className="card"
-              style={{
-                width: '100%', maxWidth: 560, padding: 24, borderRadius: 16,
-                background: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
-              }}
-              onClick={e => e.stopPropagation()}
-            >
-              <h3 style={{ margin: 0, color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                {isDe ? 'Event-Zusammenfassung herunterladen?' : 'Download event summary?'}
-              </h3>
-              <p style={{ marginTop: 12, color: 'var(--dex-gray-700)', lineHeight: 1.55, fontSize: '0.95rem' }}>
-                {isDe
-                  ? <>Das Event wurde gespeichert. Möchtest du jetzt eine <strong>A4-Zusammenfassung</strong> mit allen Sektionen (Foto, Beschreibung, Sichtbarkeit, Felder, Kommunikation, Dokumente, Sub-Events…) herunterladen? Du kannst sie z.B. einem Partner zur Durchsicht weiterleiten.</>
-                  : <>The event has been saved. Would you like to download a <strong>one-page A4 summary</strong> with every section (photo, description, visibility, fields, communication, documents, sub-events…)? You can forward it to a partner for review.</>}
-              </p>
-              <div style={{
-                marginTop: 18, padding: '10px 14px', background: 'rgba(0,90,156,0.06)',
-                border: '1px solid rgba(0,90,156,0.25)', borderRadius: 8,
-                fontSize: '0.82rem', color: 'var(--dex-gray-700)',
-              }}>
-                {isDe
-                  ? <><strong>Hinweis:</strong> Beim PDF-Export öffnet sich der Browser-Druckdialog. Wähle dort <strong>&bdquo;Als PDF speichern&ldquo;</strong> als Ziel. Word-Export lädt direkt eine .doc-Datei herunter.</>
-                  : <><strong>Note:</strong> The PDF export opens the browser print dialog — pick <strong>&ldquo;Save as PDF&rdquo;</strong> as the destination. Word export downloads a .doc file directly.</>}
-              </div>
-              <div style={{ marginTop: 22, display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'flex-end' }}>
-                <button className="btn btn-outline" onClick={closeAndDispatch}>
+          <Modal
+            open={true}
+            onClose={closeAndDispatch}
+            maxWidth={560}
+            ariaLabel={isDe ? 'Event-Zusammenfassung herunterladen' : 'Download event summary'}
+            icon={<FileText size={20} />}
+            title={isDe ? 'Gespeichert — Zusammenfassung herunterladen?' : 'Saved — download a summary?'}
+            subtitle={isDe
+              ? 'Eine A4-Seite mit allen Angaben zum Event — zum Beispiel für einen Partner zur Durchsicht.'
+              : 'A one-page A4 overview of the whole event — for example for a partner to review.'}
+            // v31.2: „Nein, danke" links mit Abstand, die beiden Export-Wege
+            // rechts; PDF ist der Hauptweg.
+            footer={<>
+              <div className="dex-ui-modal-foot-left">
+                <button type="button" className="btn btn-secondary" onClick={closeAndDispatch}>
                   {isDe ? 'Nein, danke' : 'No, thanks'}
                 </button>
-                <button className="btn btn-secondary" onClick={onDoc}>
-                  {isDe ? 'Als Word (.doc)' : 'As Word (.doc)'}
-                </button>
-                <button className="btn btn-primary" onClick={onPdf}>
-                  {isDe ? 'Als PDF' : 'As PDF'}
-                </button>
+              </div>
+              <button type="button" className="btn btn-outline" onClick={onDoc}>
+                <Download size={14} /> {isDe ? 'Als Word (.doc)' : 'As Word (.doc)'}
+              </button>
+              <button type="button" className="btn btn-primary" onClick={onPdf}>
+                <Download size={14} /> {isDe ? 'Als PDF' : 'As PDF'}
+              </button>
+            </>}
+          >
+            <div className="dex-ui-stack">
+              <div className="dex-ui-callout dex-ui-callout--success">
+                <span className="dex-ui-callout-icon"><Check size={16} /></span>
+                <span>
+                  {isDe
+                    ? <>Das Event wurde gespeichert. Die Zusammenfassung enthält <strong>alle Sektionen</strong>: Foto, Beschreibung, Sichtbarkeit, Felder, Kommunikation, Dokumente, Sub-Events …</>
+                    : <>The event has been saved. The summary contains <strong>every section</strong>: photo, description, visibility, fields, communication, documents, sub-events …</>}
+                </span>
+              </div>
+              <div className="dex-ui-callout dex-ui-callout--info">
+                <span className="dex-ui-callout-icon"><Info size={16} /></span>
+                <span>
+                  {isDe
+                    ? <><strong>PDF:</strong> Der Browser-Druckdialog öffnet sich — wähle dort <strong>&bdquo;Als PDF speichern&ldquo;</strong> als Ziel. <strong>Word:</strong> lädt direkt eine .doc-Datei herunter.</>
+                    : <><strong>PDF:</strong> the browser print dialog opens — pick <strong>&ldquo;Save as PDF&rdquo;</strong> as the destination. <strong>Word:</strong> downloads a .doc file directly.</>}
+                </span>
               </div>
             </div>
-          </div>
+          </Modal>
         );
       })()}
 
@@ -1359,114 +1347,122 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
         open={newSectionModalOpen}
         onClose={() => setNewSectionModalOpen(false)}
         maxWidth={460}
+        // v31.2: Eingabe-Dialog — ein Klick neben die Karte soll den
+        // getippten Namen nicht wegwerfen (Escape, X und Abbrechen schließen).
+        backdropClose={false}
         ariaLabel="Neuen Quiz-Bereich anlegen"
+        icon={<Plus size={20} />}
+        title={isDe ? 'Neuen Bereich anlegen' : 'Create a new section'}
+        subtitle={isDe
+          ? 'Ein Bereich bündelt Quiz-Fragen auf einer gemeinsamen Seite.'
+          : 'A section groups quiz questions on one shared page.'}
+        footer={<>
+          <button type="button" className="btn btn-secondary" onClick={() => setNewSectionModalOpen(false)}>
+            {isDe ? 'Abbrechen' : 'Cancel'}
+          </button>
+          <button type="button" className="btn btn-primary" onClick={submitNewSection}>
+            <Plus size={14} /> {isDe ? 'Bereich anlegen' : 'Create section'}
+          </button>
+        </>}
       >
         {newSectionModalOpen && (
-          <>
-            <h3 style={{ marginTop: 0, marginBottom: 8, fontSize: '1.15rem' }}>
-              Neuen Bereich anlegen
-            </h3>
-            <p style={{ margin: '0 0 14px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-              Bereiche bündeln Quiz-Fragen auf einer gemeinsamen Seite. Vergib einen
-              kurzen, sprechenden Namen — z.B. <em>Orte</em>, <em>Geschichte</em> oder <em>Foto-Quiz</em>.
-            </p>
+          <div className="dex-ui-field">
+            <label className="dex-ui-label" htmlFor="dex-new-section-name">
+              {isDe ? 'Wie soll der Bereich heißen?' : 'What should the section be called?'}
+            </label>
             <input
+              id="dex-new-section-name"
               type="text"
-              className="form-input"
+              className="dex-ui-input"
               autoFocus
               value={newSectionName}
-              placeholder='z.B. "Orte"'
+              placeholder={isDe ? 'z.B. Orte, Geschichte, Foto-Quiz' : 'e.g. Places, History, Photo quiz'}
+              aria-invalid={!!newSectionError}
               onChange={e => { setNewSectionName(e.target.value); setNewSectionError(''); }}
               onKeyDown={e => {
                 if (e.key === 'Enter') {
-                  const name = newSectionName.trim();
-                  if (!name) { setNewSectionError('Bitte einen Namen eingeben.'); return; }
-                  const existing = new Set<string>();
-                  for (const q of quiz) if (q.section) existing.add(q.section);
-                  for (const p of pendingSections) existing.add(p);
-                  if (existing.has(name)) { setNewSectionError('Ein Bereich mit diesem Namen existiert bereits.'); return; }
-                  setPendingSections([...pendingSections, name]);
-                  setNewSectionModalOpen(false);
+                  submitNewSection();
                 } else if (e.key === 'Escape') {
                   setNewSectionModalOpen(false);
                 }
               }}
-              style={{ fontSize: '0.95rem', marginBottom: 8 }}
             />
-            {newSectionError && (
-              <div style={{ color: 'var(--dex-red, #c00)', fontSize: '0.78rem', marginBottom: 10 }}>{newSectionError}</div>
+            {newSectionError ? (
+              <div className="dex-ui-help" role="alert" style={{ color: 'var(--dex-red, #c00)', fontWeight: 600 }}>{newSectionError}</div>
+            ) : (
+              <div className="dex-ui-help">
+                {isDe ? 'Kurz und sprechend — der Name steht als Überschrift über den Fragen des Bereichs.' : 'Short and descriptive — the name appears as the heading above the section’s questions.'}
+              </div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setNewSectionModalOpen(false)}
-              >
-                Abbrechen
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => {
-                  const name = newSectionName.trim();
-                  if (!name) { setNewSectionError('Bitte einen Namen eingeben.'); return; }
-                  const existing = new Set<string>();
-                  for (const q of quiz) if (q.section) existing.add(q.section);
-                  for (const p of pendingSections) existing.add(p);
-                  if (existing.has(name)) { setNewSectionError('Ein Bereich mit diesem Namen existiert bereits.'); return; }
-                  setPendingSections([...pendingSections, name]);
-                  setNewSectionModalOpen(false);
-                }}
-              >
-                <Plus size={14} /> Bereich anlegen
-              </button>
-            </div>
-          </>
+          </div>
         )}
       </Modal>
 
       {/* Modal: Vorgeschlagene Felder auswählen (Multi-Select) — v13.4 über <Modal>. */}
-      <Modal
-        open={showSuggestedModal}
-        onClose={() => setShowSuggestedModal(false)}
-        maxWidth={540}
-        ariaLabel="Vorgeschlagene Felder auswählen"
-      >
-        {showSuggestedModal && (
-          <div
-            style={{
-              display: 'flex', flexDirection: 'column', gap: 14,
-            }}
+      {(() => {
+        const suggestedCount = Object.values(suggestedSelection).filter(Boolean).length;
+        return (
+          <Modal
+            open={showSuggestedModal}
+            onClose={() => setShowSuggestedModal(false)}
+            maxWidth={560}
+            ariaLabel="Vorgeschlagene Felder auswählen"
+            icon={<Plus size={20} />}
+            title={isDe ? 'Vorgeschlagene Felder' : 'Suggested fields'}
+            subtitle={isDe
+              ? 'Welche Fragen soll dein Anmeldeformular zusätzlich stellen? Anpassen kannst du jedes Feld danach weiter.'
+              : 'Which extra questions should your registration form ask? You can still tweak every field afterwards.'}
+            // v31.2: Sammel-Aktionen links als Textknöpfe, Entscheidung rechts —
+            // der Primär-Knopf zählt mit, damit klar ist, was gleich passiert.
+            footer={<>
+              <div className="dex-ui-modal-foot-left">
+                <button
+                  type="button"
+                  className="dex-ui-textbtn"
+                  onClick={() => {
+                    const all: Record<string, boolean> = {};
+                    for (const s of SUGGESTED_FIELDS_CATALOG) all[s.key] = true;
+                    setSuggestedSelection(all);
+                  }}
+                >
+                  {isDe ? 'Alle auswählen' : 'Select all'}
+                </button>
+                <button
+                  type="button"
+                  className="dex-ui-textbtn dex-ui-textbtn--muted"
+                  onClick={() => setSuggestedSelection({})}
+                  disabled={suggestedCount === 0}
+                >
+                  {isDe ? 'Auswahl aufheben' : 'Clear selection'}
+                </button>
+              </div>
+              <button type="button" className="btn btn-secondary" onClick={() => setShowSuggestedModal(false)}>
+                {isDe ? 'Abbrechen' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={addSelectedSuggestedFields}
+                disabled={suggestedCount === 0}
+              >
+                <Plus size={14} /> {suggestedCount > 0
+                  ? (isDe ? `${suggestedCount} ${suggestedCount === 1 ? 'Feld' : 'Felder'} hinzufügen` : `Add ${suggestedCount} ${suggestedCount === 1 ? 'field' : 'fields'}`)
+                  : (isDe ? 'Hinzufügen' : 'Add')}
+              </button>
+            </>}
           >
-            <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--dex-gray-800)' }}>
-              {isDe ? 'Vorgeschlagene Felder' : 'Suggested fields'}
-            </h2>
-            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>
-              {isDe
-                ? 'Wähle aus dem Katalog, welche Felder dem Event hinzugefügt werden sollen. Du kannst die Felder danach weiter anpassen.'
-                : 'Pick the fields you want to add to the event. You can still tweak them afterwards.'}
-            </p>
             {/* v10.21: Catalog gruppiert nach Kategorie. Allgemeine Felder
                 immer ausgeklappt, B2Run-Felder default eingeklappt mit
                 Toggle. Jeder Eintrag bekommt ein Badge mit der Kategorie. */}
-            {(() => {
+            {showSuggestedModal && (() => {
               const generalEntries = SUGGESTED_FIELDS_CATALOG.filter(s => s.category === 'general');
               const b2runEntries = SUGGESTED_FIELDS_CATALOG.filter(s => s.category === 'b2run');
               const renderEntry = (s: SuggestedEntry): React.ReactElement => (
-                <label
-                  key={s.key}
-                  style={{
-                    display: 'flex', gap: 10, alignItems: 'flex-start',
-                    padding: '10px 12px', border: '1px solid var(--dex-gray-200)',
-                    borderRadius: 8, cursor: 'pointer',
-                    background: suggestedSelection[s.key] ? 'var(--dex-gray-50, #fafafa)' : '#fff',
-                  }}
-                >
+                <label key={s.key} className={cx('dex-ui-toggle-row', !!suggestedSelection[s.key] && 'is-active')}>
                   <input
                     type="checkbox"
                     checked={!!suggestedSelection[s.key]}
                     onChange={e => setSuggestedSelection({ ...suggestedSelection, [s.key]: e.target.checked })}
-                    style={{ marginTop: 3, flexShrink: 0 }}
                   />
                   {/* v10.23: passendes Fluent-UI-Icon links neben dem Label,
                       damit die Auswahl auf einen Blick visuell wiedererkennbar
@@ -1475,20 +1471,14 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                   <Icon
                     iconName={s.icon}
                     style={{
-                      fontSize: 20, flexShrink: 0, marginTop: 2,
+                      fontSize: 20, flexShrink: 0, marginTop: 1,
                       color: s.category === 'b2run' ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-green-dark, #4a7c1f)',
                     }}
                   />
-                  <span style={{ flex: 1 }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <strong style={{ fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>{s.label}</strong>
-                      <span style={{
-                        fontSize: '0.65rem', fontWeight: 600,
-                        padding: '2px 8px', borderRadius: 999,
-                        textTransform: 'uppercase', letterSpacing: 0.5,
-                        background: s.category === 'b2run' ? 'rgba(237,139,0,0.12)' : 'rgba(134,188,37,0.12)',
-                        color: s.category === 'b2run' ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-green-dark, #4a7c1f)',
-                      }}>
+                  <span className="dex-ui-toggle-row-body">
+                    <span className="dex-ui-toggle-row-title">
+                      {s.label}
+                      <span className={cx('dex-ui-pill', s.category === 'b2run' ? 'dex-ui-pill--orange' : 'dex-ui-pill--green')}>
                         {s.category === 'b2run' ? 'B2Run' : (isDe ? 'Allgemein' : 'General')}
                       </span>
                       {/* v10.23: i-Tooltip mit ausführlichem Hinweis was das
@@ -1504,43 +1494,31 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                         <InfoTooltip text={s.tooltip || s.description} />
                       </span>
                     </span>
-                    <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>{s.description}</div>
+                    <span className="dex-ui-toggle-row-desc" style={{ display: 'block' }}>{s.description}</span>
                   </span>
                 </label>
               );
               return (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 4 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {generalEntries.map(renderEntry)}
-                  </div>
-                  <div style={{ borderTop: '1px solid var(--dex-gray-200)', paddingTop: 14 }}>
+                <div className="dex-ui-stack">
+                  {generalEntries.map(renderEntry)}
+                  <div>
                     <button
                       type="button"
+                      className={cx('dex-ui-disclosure', showB2runSuggested && 'is-open')}
+                      aria-expanded={showB2runSuggested}
                       onClick={() => setShowB2runSuggested(v => !v)}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 8,
-                        background: 'none', border: 'none', padding: 0,
-                        fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
-                        color: 'var(--dex-gray-700)',
-                      }}
                     >
-                      <span style={{ display: 'inline-flex', transform: showB2runSuggested ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }}>▶</span>
+                      <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
                       {isDe ? 'B2Run-spezifische Felder' : 'B2Run-specific fields'}
-                      <span style={{
-                        fontSize: '0.65rem', fontWeight: 600,
-                        padding: '2px 8px', borderRadius: 999,
-                        background: 'rgba(237,139,0,0.12)',
-                        color: 'var(--dex-orange-dark, #b35a00)',
-                      }}>
-                        B2Run · {b2runEntries.length}
-                      </span>
+                      <span className="dex-ui-pill dex-ui-pill--orange">B2Run</span>
+                      <span className="dex-ui-disclosure-count">{b2runEntries.length}</span>
                     </button>
                     {showB2runSuggested && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
-                        <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--dex-gray-500)', lineHeight: 1.45 }}>
+                      <div className="dex-ui-disclosure-body dex-ui-stack">
+                        <p className="dex-ui-muted" style={{ margin: 0 }}>
                           {isDe
-                            ? 'Diese Felder sind speziell für B2Run-Lauf-Events vorgesehen (Startblock, Altersklasse, Datenschutz-Checkbox mit b2run.de-Links etc.). Bei normalen Events brauchst du sie nicht.'
-                            : 'These fields are intended for B2Run running events (start block, age group, B2Run-specific privacy checkbox etc.). Skip them for standard events.'}
+                            ? 'Nur für B2Run-Lauf-Events (Startblock, Altersklasse, Datenschutz-Checkbox mit b2run.de-Links). Bei normalen Events brauchst du sie nicht.'
+                            : 'Only for B2Run running events (start block, age group, B2Run-specific privacy checkbox). Skip them for standard events.'}
                         </p>
                         {b2runEntries.map(renderEntry)}
                       </div>
@@ -1549,50 +1527,9 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                 </div>
               );
             })()}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', marginTop: 6 }}>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  style={{ fontSize: '0.8rem', padding: '4px 12px' }}
-                  onClick={() => {
-                    const all: Record<string, boolean> = {};
-                    for (const s of SUGGESTED_FIELDS_CATALOG) all[s.key] = true;
-                    setSuggestedSelection(all);
-                  }}
-                >
-                  {isDe ? 'Alle' : 'All'}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  style={{ fontSize: '0.8rem', padding: '4px 12px' }}
-                  onClick={() => setSuggestedSelection({})}
-                >
-                  {isDe ? 'Keine' : 'None'}
-                </button>
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowSuggestedModal(false)}
-                >
-                  {isDe ? 'Abbrechen' : 'Cancel'}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={addSelectedSuggestedFields}
-                  disabled={!Object.values(suggestedSelection).some(Boolean)}
-                >
-                  {isDe ? 'Hinzufügen' : 'Add'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </Modal>
+          </Modal>
+        );
+      })()}
 
       {/* v22.62: „Sichtbarkeit auf Sub-Events übernehmen?" — erscheint beim
           ersten „Weiter"/Speichern, sobald die Klammer eine Sichtbarkeit hat
@@ -1602,25 +1539,39 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
         onClose={() => closeVisCopy(false)}
         maxWidth={560}
         dismissable={false}
+        hideClose
         ariaLabel={isDe ? 'Sichtbarkeit übernehmen' : 'Apply visibility'}
+        icon={<Users size={20} />}
+        title={isDe ? 'Sichtbarkeit auf alle Sub-Events übernehmen?' : 'Apply visibility to all sub-events?'}
+        subtitle={isDe
+          ? <>Du hast für {subEventsOnlyMode ? 'die Klammer' : 'das Hauptevent'} eine Sichtbarkeit gesetzt. Sollen <strong>alle {subEvents.length} Sub-Events</strong> dieselbe übernehmen — Standortfilter, Mailverteiler und Verknüpfung?</>
+          : <>You set a visibility for {subEventsOnlyMode ? 'the bracket' : 'the main event'}. Should <strong>all {subEvents.length} sub-events</strong> adopt the same one — location filter, mailing lists and combination?</>}
+        footer={<>
+          <button type="button" className="btn btn-secondary" onClick={() => closeVisCopy(false)}>
+            {isDe ? 'Nein, eigene behalten' : 'No, keep their own'}
+          </button>
+          <button type="button" className="btn btn-primary" onClick={() => closeVisCopy(true)}>
+            {isDe ? `Ja, auf alle ${subEvents.length} übernehmen` : `Yes, apply to all ${subEvents.length}`}
+          </button>
+        </>}
       >
         {visCopyModalOpen && (
-          <div>
-            <h2 style={{ margin: '0 0 10px', fontSize: '1.15rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)' }}>
-              {isDe ? 'Sichtbarkeit auf alle Sub-Events übernehmen?' : 'Apply visibility to all sub-events?'}
-            </h2>
-            <p style={{ margin: '0 0 16px', fontSize: '0.9rem', color: 'var(--dex-gray-700)', lineHeight: 1.55 }}>
-              {isDe
-                ? <>Du hast für {subEventsOnlyMode ? 'die Klammer' : 'das Hauptevent'} eine Sichtbarkeit gesetzt. Sollen <strong>alle {subEvents.length} Sub-Events</strong> dieselbe Sichtbarkeit (Standortfilter + Mailverteiler + Verknüpfung) übernehmen?<br /><br />Das ist meist sinnvoll, damit jeder, der das Event sehen soll, auch die Sub-Events erreicht — der Zugang läuft ohnehin über die Sichtbarkeit des Gesamt-Events. Bereits gesetzte, abweichende Sub-Event-Sichtbarkeiten werden dabei <strong>überschrieben</strong>.</>
-                : <>You set a visibility for {subEventsOnlyMode ? 'the bracket' : 'the main event'}. Should <strong>all {subEvents.length} sub-events</strong> adopt the same visibility (location filter + mailing lists + combination)?<br /><br />This usually makes sense so that everyone who should see the event can also reach the sub-events — access runs through the overall event’s visibility anyway. Any existing, differing sub-event visibilities will be <strong>overwritten</strong>.</>}
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
-              <button className="btn btn-secondary" onClick={() => closeVisCopy(false)}>
-                {isDe ? 'Nein, eigene behalten' : 'No, keep their own'}
-              </button>
-              <button className="btn btn-primary" onClick={() => closeVisCopy(true)}>
-                {isDe ? `Ja, auf alle ${subEvents.length} übernehmen` : `Yes, apply to all ${subEvents.length}`}
-              </button>
+          <div className="dex-ui-stack">
+            <div className="dex-ui-callout dex-ui-callout--info">
+              <span className="dex-ui-callout-icon"><Info size={16} /></span>
+              <span>
+                {isDe
+                  ? 'Meist sinnvoll: Wer das Event sehen soll, erreicht so auch die Sub-Events — der Zugang läuft ohnehin über die Sichtbarkeit des Gesamt-Events.'
+                  : 'Usually a good idea: everyone who should see the event can then also reach the sub-events — access runs through the overall event’s visibility anyway.'}
+              </span>
+            </div>
+            <div className="dex-ui-callout dex-ui-callout--warn">
+              <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+              <span>
+                {isDe
+                  ? <>Bereits gesetzte, abweichende Sub-Event-Sichtbarkeiten werden dabei <strong>überschrieben</strong>.</>
+                  : <>Any existing, differing sub-event visibilities will be <strong>overwritten</strong>.</>}
+              </span>
             </div>
           </div>
         )}
@@ -1628,65 +1579,64 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
 
       {/* v11.57 / v11.63 / v13.4: Outlook-Update-Confirm-Modal über <Modal>-Wrapper.
           dismissable=false, da Schließen nur über Cancel-Button erlaubt. */}
-      <Modal
-        open={outlookConfirmOpen}
-        onClose={cancelOutlookSave}
-        maxWidth={620}
-        dismissable={false}
-        ariaLabel="Outlook-Update bestätigen"
-      >
-        {outlookConfirmOpen && (
-          <div>
-            <h2 id="outlook-confirm-title" style={{
-              margin: '0 0 10px', fontSize: '1.15rem', fontWeight: 700,
-              color: 'var(--dex-green-dark, #4a7c1f)',
-            }}>
-              {isDe ? 'Outlook-Termin der Teilnehmer aktualisieren?' : 'Update Outlook invite for attendees?'}
-            </h2>
-            <p style={{ margin: '0 0 14px', fontSize: '0.9rem', color: 'var(--dex-gray-700)', lineHeight: 1.55 }}>
-              {isDe
-                ? 'Du hast Felder geändert, die für die Teilnehmer-Outlook-Termine relevant sind. Wähle aus, welche Termine du jetzt neu rausschicken willst — der Rest wird gespeichert, aber Outlook bleibt unangetastet (du kannst das später jederzeit nachholen).'
-                : 'You changed fields that are relevant to the attendees’ Outlook invites. Pick which invites you want to resend now — everything else is saved, but Outlook is left alone (you can resend later at any time).'}
-            </p>
-            <div style={{
-              border: '1px solid var(--dex-gray-200)',
-              borderRadius: 8,
-              marginBottom: 14,
-              background: 'var(--dex-gray-50, #f8f9fa)',
-            }}>
-              {outlookConfirmItems.map((it, idx) => {
-                const isLast = idx === outlookConfirmItems.length - 1;
-                const fieldLabelMap: Record<'title'|'startDate'|'endDate'|'outlookBody'|'location'|'subject'|'layout'|'organizer'|'logo', { de: string; en: string }> = {
-                  title: { de: 'Titel', en: 'Title' },
-                  startDate: { de: 'Startzeit', en: 'Start time' },
-                  endDate: { de: 'Endzeit', en: 'End time' },
-                  outlookBody: { de: 'Termin-Text', en: 'Calendar body' },
-                  location: { de: 'Ort', en: 'Location' },
-                  subject: { de: 'Betreff', en: 'Subject' },
-                  layout: { de: 'Kopfbild (Größe/Abstand)', en: 'Header image (size/spacing)' },
-                  organizer: { de: 'Organizer (im Termin-Text)', en: 'Organizer (in calendar body)' },
-                  logo: { de: 'Kopfbild', en: 'Header image' },
-                };
-                const changedLabels = it.changedFields.map(f => isDe ? fieldLabelMap[f].de : fieldLabelMap[f].en).join(', ');
-                const checked = !!outlookConfirmChecks[it.eventId];
-                // v11.69: noOutlookYet-Items bekommen wieder eine Checkbox.
-                // Default UNCHECKED. Beim Anhaken wird das Sub-Event in der
-                // Eventverwaltung komplett neu angelegt (DEX_Events-Item
-                // delete + create mit `existingSubsiteUrl`), damit der
-                // Outlook-Termin entsteht. Die bestehende Teilnehmerliste
-                // mit allen Anmeldungen bleibt unangetastet.
-                if (it.noOutlookYet) {
+      {(() => {
+        // v31.2: Der Primär-Knopf nennt die Folge — „nur speichern" oder
+        // „speichern und N Termine aktualisieren" — statt eines nackten
+        // „Speichern", bei dem unklar bleibt, ob jetzt Mails rausgehen.
+        const checkedCount = outlookConfirmItems.filter(it => !!outlookConfirmChecks[it.eventId]).length;
+        const fieldLabelMap: Record<'title'|'startDate'|'endDate'|'outlookBody'|'location'|'subject'|'layout'|'organizer'|'logo', { de: string; en: string }> = {
+          title: { de: 'Titel', en: 'Title' },
+          startDate: { de: 'Startzeit', en: 'Start time' },
+          endDate: { de: 'Endzeit', en: 'End time' },
+          outlookBody: { de: 'Termin-Text', en: 'Calendar body' },
+          location: { de: 'Ort', en: 'Location' },
+          subject: { de: 'Betreff', en: 'Subject' },
+          layout: { de: 'Kopfbild (Größe/Abstand)', en: 'Header image (size/spacing)' },
+          organizer: { de: 'Organizer (im Termin-Text)', en: 'Organizer (in calendar body)' },
+          logo: { de: 'Kopfbild', en: 'Header image' },
+        };
+        return (
+          <Modal
+            open={outlookConfirmOpen}
+            onClose={cancelOutlookSave}
+            maxWidth={620}
+            dismissable={false}
+            hideClose
+            ariaLabel="Outlook-Update bestätigen"
+            icon={<Calendar size={20} strokeWidth={2} />}
+            title={<span id="outlook-confirm-title">{isDe ? 'Outlook-Termin der Teilnehmer aktualisieren?' : 'Update Outlook invite for attendees?'}</span>}
+            subtitle={isDe
+              ? 'Du hast Felder geändert, die im Outlook-Termin der Teilnehmer stehen. Hake an, welche Termine jetzt neu rausgehen — alles andere wird gespeichert, Outlook bleibt dort unangetastet. Nachholen geht jederzeit.'
+              : 'You changed fields that appear in the attendees’ Outlook invites. Tick the invites to resend now — everything else is saved, Outlook is left alone there. You can resend later at any time.'}
+            footer={<>
+              <button type="button" className="btn btn-secondary" onClick={cancelOutlookSave}>
+                {isDe ? 'Abbrechen' : 'Cancel'}
+              </button>
+              <button type="button" className="btn btn-primary" onClick={() => confirmOutlookSave()}>
+                {checkedCount > 0
+                  ? (isDe ? `Speichern & ${checkedCount} Termin${checkedCount === 1 ? '' : 'e'} aktualisieren` : `Save & update ${checkedCount} invite${checkedCount === 1 ? '' : 's'}`)
+                  : (isDe ? 'Nur speichern' : 'Save only')}
+              </button>
+            </>}
+          >
+            {outlookConfirmOpen && (
+              <div className="dex-ui-stack">
+                {outlookConfirmItems.map(it => {
+                  const changedLabels = it.changedFields.map(f => isDe ? fieldLabelMap[f].de : fieldLabelMap[f].en).join(', ');
+                  const checked = !!outlookConfirmChecks[it.eventId];
+                  // v15.3: leere changedFields-Liste = Item kommt aus dem
+                  // persistierten OutlookDirty-Flag (frühere Session,
+                  // wurde damals nicht synchronisiert). Klartext-Hinweis
+                  // statt leerer „Geändert:"-Zeile.
+                  const isFromPersistedDirty = !it.noOutlookYet && it.changedFields.length === 0;
+                  // v11.69: noOutlookYet-Items bekommen wieder eine Checkbox.
+                  // Default UNCHECKED. Beim Anhaken wird das Sub-Event in der
+                  // Eventverwaltung komplett neu angelegt (DEX_Events-Item
+                  // delete + create mit `existingSubsiteUrl`), damit der
+                  // Outlook-Termin entsteht. Die bestehende Teilnehmerliste
+                  // mit allen Anmeldungen bleibt unangetastet.
                   return (
-                    <label
-                      key={it.eventId}
-                      style={{
-                        display: 'flex', alignItems: 'flex-start', gap: 12,
-                        padding: '12px 14px',
-                        borderBottom: isLast ? 'none' : '1px solid var(--dex-gray-200)',
-                        cursor: 'pointer',
-                        background: '#fffaf0',
-                      }}
-                    >
+                    <label key={it.eventId} className={cx('dex-ui-toggle-row', checked && 'is-active')}>
                       <input
                         type="checkbox"
                         checked={checked}
@@ -1694,97 +1644,50 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                           const next = e.target.checked;
                           setOutlookConfirmChecks(prev => ({ ...prev, [it.eventId]: next }));
                         }}
-                        style={{ width: 18, height: 18, marginTop: 2, cursor: 'pointer', flexShrink: 0 }}
                       />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--dex-gray-800)', wordBreak: 'break-word' }}>
-                          {isDe ? `Sub-Event: ${it.title}` : `Sub-event: ${it.title}`}
-                        </div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 3 }}>
-                          {isDe ? 'Geändert: ' : 'Changed: '}{changedLabels}
-                        </div>
-                        <div style={{ fontSize: '0.76rem', color: '#8a6d3b', marginTop: 6, lineHeight: 1.45, background: '#fcf8e3', border: '1px solid #faebcc', borderRadius: 4, padding: '6px 8px' }}>
-                          {isDe
-                            ? <>Für dieses Sub-Event gibt es noch keinen Outlook-Termin. Wenn du den Haken setzt, wird das Sub-Event in der Eventverwaltung neu angelegt, damit der Outlook-Termin entsteht. <strong>Die bestehende Teilnehmerliste mit allen Anmeldungen bleibt erhalten</strong> — nur die DEX_Events-Zeile bekommt eine neue ID.</>
-                            : <>This sub-event does not have an Outlook event yet. If you tick the box, the sub-event is re-created in the event admin so the Outlook event can be generated. <strong>The existing participant list with all registrations stays intact</strong> — only the DEX_Events row gets a new ID.</>}
-                        </div>
-                      </div>
+                      <span className="dex-ui-toggle-row-body">
+                        <span className="dex-ui-toggle-row-title" style={{ wordBreak: 'break-word' }}>
+                          {it.kind === 'top' && !it.noOutlookYet
+                            ? (isDe ? `Hauptevent: ${it.title}` : `Main event: ${it.title}`)
+                            : (isDe ? `Sub-Event: ${it.title}` : `Sub-event: ${it.title}`)}
+                          {it.noOutlookYet && <span className="dex-ui-pill dex-ui-pill--orange">{isDe ? 'noch kein Outlook-Termin' : 'no Outlook invite yet'}</span>}
+                          {isFromPersistedDirty && <span className="dex-ui-pill dex-ui-pill--orange">{isDe ? 'nicht synchronisiert' : 'not synced'}</span>}
+                        </span>
+                        {isFromPersistedDirty ? (
+                          <span className="dex-ui-toggle-row-desc" style={{ display: 'block' }}>
+                            {isDe
+                              ? <><strong>Frühere Änderung nicht synchronisiert</strong> — beim letzten Speichern dieses Events wurden Outlook-relevante Felder geändert, der Outlook-Sync wurde aber damals übersprungen. Haken setzen, um die Teilnehmer jetzt nachträglich per Outlook-Update zu informieren.</>
+                              : <><strong>Earlier change not yet synced</strong> — Outlook-relevant fields were changed in a previous save of this event, but the Outlook sync was skipped at the time. Tick the box to send the catch-up Outlook update to attendees now.</>}
+                          </span>
+                        ) : (
+                          <span className="dex-ui-toggle-row-desc" style={{ display: 'block' }}>
+                            {isDe ? 'Geändert: ' : 'Changed: '}{changedLabels}
+                          </span>
+                        )}
+                        {it.noOutlookYet && (
+                          <span className="dex-ui-callout dex-ui-callout--warn" style={{ marginTop: 8, fontSize: '0.76rem', padding: '8px 10px' }}>
+                            {isDe
+                              ? <>Für dieses Sub-Event gibt es noch keinen Outlook-Termin. Mit dem Haken wird es in der Eventverwaltung neu angelegt, damit der Termin entsteht. <strong>Die Teilnehmerliste mit allen Anmeldungen bleibt erhalten</strong> — nur die DEX_Events-Zeile bekommt eine neue ID.</>
+                              : <>This sub-event has no Outlook event yet. Ticking re-creates it in the event admin so the invite can be generated. <strong>The participant list with all registrations stays intact</strong> — only the DEX_Events row gets a new ID.</>}
+                          </span>
+                        )}
+                      </span>
                     </label>
                   );
-                }
-                // v15.3: leere changedFields-Liste = Item kommt aus dem
-                // persistierten OutlookDirty-Flag (frühere Session,
-                // wurde damals nicht synchronisiert). Klartext-Hinweis
-                // statt leerer „Geändert:"-Zeile.
-                const isFromPersistedDirty = it.changedFields.length === 0;
-                return (
-                  <label
-                    key={it.eventId}
-                    style={{
-                      display: 'flex', alignItems: 'flex-start', gap: 12,
-                      padding: '12px 14px',
-                      borderBottom: isLast ? 'none' : '1px solid var(--dex-gray-200)',
-                      cursor: 'pointer',
-                      background: isFromPersistedDirty ? '#fff8e8' : '#fff',
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={e => {
-                        const next = e.target.checked;
-                        setOutlookConfirmChecks(prev => ({ ...prev, [it.eventId]: next }));
-                      }}
-                      style={{ width: 18, height: 18, marginTop: 2, cursor: 'pointer', flexShrink: 0 }}
-                    />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--dex-gray-800)', wordBreak: 'break-word' }}>
-                        {it.kind === 'top'
-                          ? (isDe ? `Hauptevent: ${it.title}` : `Main event: ${it.title}`)
-                          : (isDe ? `Sub-Event: ${it.title}` : `Sub-event: ${it.title}`)}
-                      </div>
-                      {isFromPersistedDirty ? (
-                        <div style={{ fontSize: '0.78rem', color: '#8a6d3b', marginTop: 4, lineHeight: 1.45 }}>
-                          {isDe
-                            ? <>⏳ <strong>Frühere Änderung nicht synchronisiert</strong> — beim letzten Speichern dieses Events wurden Outlook-relevante Felder geändert, der Outlook-Sync wurde aber damals übersprungen. Haken setzen, um die Teilnehmer jetzt nachträglich per Outlook-Update zu informieren.</>
-                            : <>⏳ <strong>Earlier change not yet synced</strong> — Outlook-relevant fields were changed in a previous save of this event, but the Outlook sync was skipped at the time. Tick the box to send the catch-up Outlook update to attendees now.</>}
-                        </div>
-                      ) : (
-                        <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 3 }}>
-                          {isDe ? 'Geändert: ' : 'Changed: '}{changedLabels}
-                        </div>
-                      )}
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
-            <p style={{
-              margin: '0 0 12px', fontSize: '0.8rem', color: 'var(--dex-gray-500)',
-              lineHeight: 1.5,
-            }}>
-              {isDe
-                ? 'Bei angehakten Events bekommen die Teilnehmer eine „Aktualisierter Termin"-Benachrichtigung von Outlook. Nicht angehakte Termine werden für später als „ausstehender Outlook-Sync" markiert.'
-                : 'Ticked events trigger an “updated meeting” notification from Outlook for attendees. Unticked invites are flagged as “pending Outlook sync” for later.'}
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
-              <button
-                className="btn btn-secondary"
-                onClick={cancelOutlookSave}
-              >
-                {isDe ? 'Abbrechen' : 'Cancel'}
-              </button>
-              <button
-                className="btn btn-primary"
-                style={{ background: 'var(--dex-green, #86bc25)', borderColor: 'var(--dex-green, #86bc25)' }}
-                onClick={() => confirmOutlookSave()}
-              >
-                {isDe ? 'Speichern' : 'Save'}
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
+                })}
+                <div className="dex-ui-callout dex-ui-callout--neutral">
+                  <span className="dex-ui-callout-icon"><Info size={16} /></span>
+                  <span>
+                    {isDe
+                      ? <>Angehakt: Die Teilnehmer bekommen von Outlook eine Benachrichtigung &bdquo;Aktualisierter Termin&ldquo;. Nicht angehakt: Der Termin wird als &bdquo;ausstehender Outlook-Sync&ldquo; markiert — du kannst ihn später nachschicken.</>
+                      : <>Ticked: attendees get an &ldquo;updated meeting&rdquo; notification from Outlook. Unticked: the invite is flagged as &ldquo;pending Outlook sync&rdquo; so you can resend it later.</>}
+                  </span>
+                </div>
+              </div>
+            )}
+          </Modal>
+        );
+      })()}
 
       {/* v17.3: Unsaved-Changes-Confirm-Modal. Erscheint, wenn der User
           auf „Zurück" klickt und das Formular gegenüber dem Initial-
@@ -1802,25 +1705,48 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
         <Modal
           open={true}
           onClose={() => { unsavedConfirmOpen.resolve(false); setUnsavedConfirmOpen(null); }}
-          maxWidth={480}
+          maxWidth={540}
           padding={24}
           ariaLabel={isDe ? 'Ungespeicherte Änderungen' : 'Unsaved changes'}
-        >
-          <h3 style={{ margin: '0 0 12px', fontSize: '1.1rem', color: 'var(--dex-orange-dark, #b35a00)' }}>
-            {isDe
-              ? (isEditMode ? 'Ungespeicherte Änderungen' : 'Entwurf noch nicht gespeichert')
-              : (isEditMode ? 'Unsaved changes' : 'Draft not saved yet')}
-          </h3>
-          <p style={{ margin: '0 0 16px', fontSize: '0.9rem', lineHeight: 1.5, color: 'var(--dex-gray-700)' }}>
-            {isDe
-              ? (isEditMode
-                ? <>Du hast Änderungen am Event vorgenommen, die noch <strong>nicht gespeichert</strong> sind. Was möchtest du tun?</>
-                : <>Dein Event ist noch <strong>nicht angelegt</strong>. Du kannst den Stand als Entwurf behalten — beim nächsten Öffnen der Event-Erstellung machst du genau hier weiter. Hochgeladene Bilder sind im Entwurf nicht enthalten.</>)
-              : (isEditMode
-                ? <>You have made changes to this event that are <strong>not saved yet</strong>. What do you want to do?</>
-                : <>Your event is <strong>not created yet</strong>. You can keep this state as a draft — next time you open event creation you continue right here. Uploaded images are not part of the draft.</>)}
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          icon={<AlertCircle size={20} />}
+          title={isDe
+            ? (isEditMode ? 'Ungespeicherte Änderungen' : 'Entwurf noch nicht gespeichert')
+            : (isEditMode ? 'Unsaved changes' : 'Draft not saved yet')}
+          subtitle={isDe
+            ? (isEditMode ? 'Du hast Änderungen am Event vorgenommen, die noch nicht gespeichert sind.' : 'Dein Event ist noch nicht angelegt.')
+            : (isEditMode ? 'You have made changes to this event that are not saved yet.' : 'Your event is not created yet.')}
+          // v31.2: Drei Wege im Fuß statt gestapelt — Verwerfen steht links
+          // mit Abstand, damit es nie direkt neben „Fortsetzen" liegt.
+          footer={<>
+            <div className="dex-ui-modal-foot-left">
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={() => {
+                  if (!isEditMode) {
+                    // Verwerfen heisst verwerfen — auch den Entwurfs-
+                    // Zwischenspeicher, sonst bietet ihn der naechste
+                    // Besuch wieder an.
+                    try { localStorage.removeItem(DRAFT_KEY); } catch { /* */ }
+                  }
+                  unsavedConfirmOpen.resolve(true);
+                  setUnsavedConfirmOpen(null);
+                }}
+              >
+                {isDe
+                  ? (isEditMode ? 'Änderungen verwerfen' : 'Event verwerfen')
+                  : (isEditMode ? 'Discard changes' : 'Discard event')}
+              </button>
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => { unsavedConfirmOpen.resolve(false); setUnsavedConfirmOpen(null); }}
+            >
+              {isDe
+                ? (isEditMode ? 'Weiter bearbeiten' : 'Weiter erstellen')
+                : (isEditMode ? 'Continue editing' : 'Continue creating')}
+            </button>
             {isEditMode ? (
               /* v17.7: blockt die laufende Back-Nav (resolve(false)) und
                  triggert attemptSubmit; nach erfolgreichem Save dispatched
@@ -1834,7 +1760,6 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                   setUnsavedConfirmOpen(null);
                   window.setTimeout(() => { attemptSubmit(); }, 0);
                 }}
-                style={{ fontSize: '0.9rem', width: '100%', justifyContent: 'center' }}
               >
                 <Send size={14} /> {isDe ? 'Änderungen speichern' : 'Save changes'}
               </button>
@@ -1849,40 +1774,23 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                   unsavedConfirmOpen.resolve(true);
                   setUnsavedConfirmOpen(null);
                 }}
-                style={{ fontSize: '0.9rem', width: '100%', justifyContent: 'center' }}
               >
                 <Send size={14} /> {isDe ? 'Entwurf speichern' : 'Save draft'}
               </button>
             )}
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => { unsavedConfirmOpen.resolve(false); setUnsavedConfirmOpen(null); }}
-              style={{ fontSize: '0.9rem', width: '100%', justifyContent: 'center' }}
-            >
+          </>}
+        >
+          <div className="dex-ui-callout dex-ui-callout--neutral">
+            <span className="dex-ui-callout-icon"><Info size={16} /></span>
+            <span>
               {isDe
-                ? (isEditMode ? 'Bearbeitung fortsetzen' : 'Eventerstellung fortsetzen')
-                : (isEditMode ? 'Continue editing' : 'Continue creating')}
-            </button>
-            <button
-              type="button"
-              className="btn btn-danger"
-              onClick={() => {
-                if (!isEditMode) {
-                  // Verwerfen heisst verwerfen — auch den Entwurfs-
-                  // Zwischenspeicher, sonst bietet ihn der naechste
-                  // Besuch wieder an.
-                  try { localStorage.removeItem(DRAFT_KEY); } catch { /* */ }
-                }
-                unsavedConfirmOpen.resolve(true);
-                setUnsavedConfirmOpen(null);
-              }}
-              style={{ fontSize: '0.9rem', width: '100%', justifyContent: 'center' }}
-            >
-              {isDe
-                ? (isEditMode ? 'Änderungen verwerfen' : 'Event verwerfen')
-                : (isEditMode ? 'Discard changes' : 'Discard event')}
-            </button>
+                ? (isEditMode
+                  ? <><strong>Änderungen speichern</strong> speichert und verlässt den Assistenten. <strong>Änderungen verwerfen</strong> verlässt ihn ohne zu speichern — das Event bleibt, wie es zuletzt gespeichert war.</>
+                  : <><strong>Entwurf speichern</strong> behält den Stand — beim nächsten Öffnen der Event-Erstellung machst du genau hier weiter. Hochgeladene Bilder sind im Entwurf nicht enthalten. <strong>Event verwerfen</strong> löscht auch den Entwurf.</>)
+                : (isEditMode
+                  ? <><strong>Save changes</strong> saves and leaves the wizard. <strong>Discard changes</strong> leaves without saving — the event stays as it was last saved.</>
+                  : <><strong>Save draft</strong> keeps this state — next time you open event creation you continue right here. Uploaded images are not part of the draft. <strong>Discard event</strong> also deletes the draft.</>)}
+            </span>
           </div>
         </Modal>
       )}

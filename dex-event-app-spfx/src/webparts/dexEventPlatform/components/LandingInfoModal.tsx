@@ -1,16 +1,23 @@
 /**
- * Info-Modal auf der Landing-Page.
+ * Info-Modal auf der Landing-Page („Über die App").
  *
  * Erklärt die DEX Event Experience Platform für neue User, die noch nicht
- * wissen was die App kann. Strukturiert in Abschnitte: Pitch - Zielgruppe -
- * Features - Sicherheit - Status - Kontakt.
+ * wissen, was die App kann. Abschnitte: Einsatzbereich - Ablauf - Funktionen
+ * (Aufklapper) - Status - Kontakt.
+ *
+ * v31.2: Auf das gemeinsame `Modal` (Kopf, Fuß, Escape, Backdrop) und die
+ * `dex-ui-*`-Klassen umgestellt. Vorher baute die Datei ihr eigenes Overlay
+ * mit Farbverlauf-Hero, klebendem X und drei Inline-Style-Helfern — der
+ * einzige Dialog der App, der anders aussah als alle anderen.
  *
  * Zweisprachig DE + EN.
  */
 
 import * as React from 'react';
 import { Icon } from '@fluentui/react/lib/Icon';
-import { X, Mail } from './Icons';
+import { Mail, Info, Check, AlertCircle, ChevronDown } from './Icons';
+import Modal from './Modal';
+import { cx } from './dexUi';
 import { APP_VERSION } from '../version';
 import { DEX_TEAM_EMAIL } from '../utils/supportContact';
 
@@ -28,52 +35,26 @@ interface Feature {
   body: string;
 }
 
-const GREEN = 'var(--dex-green)';
-const GREEN_DARK = 'var(--dex-green-dark, #6b9a1e)';
-const GRAY_700 = 'var(--dex-gray-700)';
+/** v31.2: Ein Ablauf-Schritt — kurzer Titel plus eine Zeile, was dabei passiert. */
+interface Step { title: string; hint: string; }
 
-function FeatureList({ items }: { items: Feature[] }): React.ReactElement {
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14 }}>
-      {items.map((f, i) => (
-        <div key={i} style={{
-          background: 'var(--dex-gray-50, #f9fafb)',
-          border: '1px solid var(--dex-gray-200)',
-          borderRadius: 10, padding: 14,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-            <span style={{
-              width: 34, height: 34, borderRadius: 8, flexShrink: 0,
-              background: GREEN, color: '#fff',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Icon iconName={f.icon} style={{ fontSize: 16, color: '#fff' }} />
-            </span>
-            <div style={{ fontWeight: 700, fontSize: '0.92rem', color: GRAY_700 }}>{f.title}</div>
-          </div>
-          <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>{f.body}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
+/** v31.2: Ein Einsatzbeispiel — Kategorie plus konkrete Beispiele. */
+interface UseCase { title: string; sub: string; }
 
-function SectionHeading({ children }: { children: React.ReactNode }): React.ReactElement {
-  return (
-    <h3 style={{
-      fontSize: '1.05rem', fontWeight: 700, color: GREEN_DARK,
-      borderBottom: `2px solid ${GREEN}`, paddingBottom: 6, marginTop: 24, marginBottom: 14,
-    }}>
-      {children}
-    </h3>
-  );
-}
+const EVENT_MGMT_URL = 'https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx';
 
 export default function LandingInfoModal({ open, locale, onClose, onStartTutorial }: Props): React.ReactElement | null {
+  // v31.2: Die 15 Funktions-Kacheln sind der längste Block des Dialogs. Zum
+  // Einstieg reichen Einsatzbereich und Ablauf; die Kacheln bleiben zu, bis
+  // jemand sie sehen will — sonst zeigt der Dialog beim Öffnen drei Bildschirme.
+  const [showFeatures, setShowFeatures] = React.useState(false);
   if (!open) return null;
 
   const isDE = locale === 'de';
 
+  // v31.2: Der Punkt „Wofür DEX gedacht ist" (v28.40) steht jetzt im Hinweis-
+  // kasten unter den Einsatzbeispielen — zwei Blöcke zum selben Thema waren
+  // getrennt, die Aussage ist vollständig dort.
   const featuresDE: Feature[] = [
     { icon: 'Calendar', title: 'Event in Minuten anlegen', body: 'Geführter Wizard durch alle Schritte: Titel, strukturierte Adresse, Zeit, Teilnehmerlimit, Deadline, Bild, Organizer. Fertig.' },
     { icon: 'People', title: 'Zielgruppen-Steuerung', body: 'Sichtbar für bestimmte Standorte (z.B. Köln+Düsseldorf), Entra-Verteilerlisten (z.B. SAPAlliance@) oder einzeln eingeladene Personen. UND/ODER-verknüpft.' },
@@ -90,9 +71,6 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
     { icon: 'Globe', title: 'Deutsch + Englisch', body: 'Kompletter Language-Switch oben links. Mails werden in der Sprache verschickt, die der Organizer pro Event festgelegt hat.' },
     { icon: 'CellPhone', title: 'Mobile-optimiert', body: 'Responsive Layout, große Touch-Targets, optimierte PDF-Vorschau für iOS/Android. Check-in geht mit Handy + QR-Scan.' },
     { icon: 'Shield', title: 'Sicher & DSGVO-konform', body: 'Läuft komplett im Deloitte-SharePoint-Tenant. Keine externen APIs. Item-Level-Security: jeder sieht nur seine eigenen Registrierungen.' },
-    // v28.40: Einsatzbereich als eigener Punkt — vorher stand nirgends, für
-    // welche Art von Events DEX gedacht ist.
-    { icon: 'Info', title: 'Wofür DEX gedacht ist', body: 'Für interne Deloitte Events und für die Koordination der Deloitte-Teilnahme an externen Veranstaltungen. Für externe Events mit externen Teilnehmern ist das Tool nicht vorgesehen.' },
   ];
 
   const featuresEN: Feature[] = [
@@ -111,175 +89,170 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
     { icon: 'Globe', title: 'German + English', body: 'Full language switch top left. Emails are sent in the language the organizer set on the event.' },
     { icon: 'CellPhone', title: 'Mobile-optimized', body: 'Responsive layout, large touch targets, optimized PDF preview for iOS/Android. Check-in works on-the-go with phone + QR scan.' },
     { icon: 'Shield', title: 'Secure & GDPR-compliant', body: 'Runs entirely inside the Deloitte SharePoint tenant. No external APIs. Item-level security: users only see their own registrations.' },
-    { icon: 'Info', title: 'What DEX is for', body: 'Deloitte-internal events and coordinating Deloitte participation in external events. The tool is not intended for external events with external attendees.' },
   ];
 
+  const useCases: UseCase[] = isDE ? [
+    { title: 'Leadership & Strategy Meetings', sub: 'z.B. SR&T P/MD/D Meeting mit 450 Teilnehmern' },
+    { title: 'Firmen-Events', sub: 'Sommerfeste, Weihnachtsfeiern, Abteilungs-Offsites' },
+    { title: 'Assistenz- & Team-Meetings', sub: 'mit Transfer- und Hotelbuchung' },
+    { title: 'Lauf-Events', sub: 'B2Run, JPMorgan Corporate Challenge (mit Startblöcken, Split-Capacity)' },
+    { title: 'Alles dazwischen', sub: 'von 10 Leuten am Lunch bis 500+ Personen auf einer Großveranstaltung' },
+  ] : [
+    { title: 'Leadership & strategy meetings', sub: 'e.g. SR&T P/MD/D with 450+ participants' },
+    { title: 'Company events', sub: 'summer parties, Christmas celebrations, team offsites' },
+    { title: 'Assistant & team meetings', sub: 'with transfer and hotel booking' },
+    { title: 'Running events', sub: 'B2Run, JPMorgan Corporate Challenge (with start-blocks & split capacity)' },
+    { title: 'Everything in between', sub: 'from 10 people at lunch to 500+ at a flagship event' },
+  ];
+
+  // v31.2: Ablauf als nummerierte Schritt-Zeilen (Titel + Folge) statt einer
+  // Aufzählung mit Fettdruck mitten im Satz — man sieht auf einen Blick, wer
+  // was tut und was die App daraufhin automatisch erledigt.
+  const steps: Step[] = isDE ? [
+    { title: 'Ein Organizer legt das Event an', hint: 'Selbst im Wizard — oder wir helfen beim ersten Mal.' },
+    { title: 'Die App legt eine eigene SharePoint-Subsite an', hint: 'Mit Teilnehmerliste nur für dieses Event.' },
+    { title: 'Nur berechtigte Kollegen sehen das Event', hint: 'Je nach Standort- und Zielgruppen-Filter erscheint es in ihrer App.' },
+    { title: 'Teilnehmer melden sich mit einem Klick an', hint: 'Bestätigungsmail und Outlook-Termin kommen automatisch.' },
+    { title: 'Ist das Event voll, geht es auf die Warteliste', hint: 'Bei Absagen rückt automatisch die nächste Person nach.' },
+    { title: 'Der Organizer verwaltet alles im Admin Center', hint: 'Teilnehmer, Massen-Mails, Dokumente, Quiz.' },
+    { title: 'Am Event-Tag: QR-Code-Check-in', hint: 'Mit Live-Statistik. Fertig.' },
+  ] : [
+    { title: 'An organizer creates the event', hint: 'Via the wizard — or we help on the first try.' },
+    { title: 'The app creates a dedicated SharePoint subsite', hint: 'With a participant list just for this event.' },
+    { title: 'Only eligible colleagues see the event', hint: 'Based on location and audience filter it shows up in their app.' },
+    { title: 'Participants register with one click', hint: 'Confirmation email and Outlook invite arrive automatically.' },
+    { title: 'If the event is full, they join the waitlist', hint: 'When someone cancels, the next person is promoted automatically.' },
+    { title: 'The organizer manages everything in the Admin Center', hint: 'Attendees, mass emails, documents, quizzes.' },
+    { title: 'On event day: QR-code check-in', hint: 'With live statistics. Done.' },
+  ];
+
+  const features = isDE ? featuresDE : featuresEN;
+
   return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 10000,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
-      }}
-      onClick={onClose}
+    <Modal
+      open
+      onClose={onClose}
+      maxWidth={860}
+      ariaLabel={isDE ? 'Über die App' : 'About the app'}
+      icon={<Info size={20} />}
+      title={<>DEX Event Experience Platform <span className="dex-ui-pill dex-ui-pill--gray" style={{ verticalAlign: 'middle', marginLeft: 6 }}>v{APP_VERSION}</span></>}
+      // v28.45: „alle Deloitte-Events" war zu weit gefasst — DEX ist auf
+      // interne Events ausgelegt, nicht auf externe mit externen Gästen.
+      subtitle={isDE
+        ? 'Deine zentrale Plattform für interne Deloitte Events: von der Ausschreibung bis zum Check-in in einer App. Registrierung, Outlook-Einladungen, Warteliste, Massen-Mails, QR-Codes, Dokumente — alles im Deloitte-SharePoint-Tenant.'
+        : 'Your central platform for internal Deloitte events: from announcement to check-in in a single app. Registration, Outlook invites, waitlist, mass emails, QR codes, documents — all inside the Deloitte SharePoint tenant.'}
+      footer={<>
+        {/* v30.25: Tutorial-Einstieg für JEDE Rolle. Die „Neu hier?"-Pille auf
+            der Startseite wird Organizern und Admins nicht mehr angeboten (sie
+            kennen die App) — über „Über die App" bleibt die geführte Tour aber
+            jederzeit erreichbar, z.B. um sie neuen Kolleg:innen zu zeigen. */}
+        {onStartTutorial && (
+          <span className="dex-ui-modal-foot-left">
+            <button type="button" className="btn btn-outline" onClick={() => { onClose(); window.setTimeout(() => onStartTutorial(), 250); }}>
+              {isDE ? 'Geführtes Tutorial starten' : 'Start the guided tutorial'}
+            </button>
+          </span>
+        )}
+        <button type="button" className="btn btn-secondary" onClick={onClose}>{isDE ? 'Schließen' : 'Close'}</button>
+        <a className="btn btn-primary" href={`mailto:${DEX_TEAM_EMAIL}?subject=DEX Event Experience Platform – Interesse`}>
+          <Mail size={16} /> {isDE ? 'Kontakt aufnehmen' : 'Get in touch'}
+        </a>
+      </>}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: '#fff', borderRadius: 16, width: '100%', maxWidth: 960,
-          maxHeight: '90vh', overflowY: 'auto',
-          boxShadow: '0 24px 60px rgba(0,0,0,0.28)',
-          position: 'relative',
-        }}
-      >
-        {/* Sticky Close-Button */}
-        <button
-          onClick={onClose}
-          aria-label="Close"
-          style={{
-            position: 'sticky', top: 12, float: 'right', marginRight: 12, zIndex: 5,
-            background: 'rgba(0,0,0,0.6)', color: '#fff', border: 'none', borderRadius: '50%',
-            width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer',
-          }}
-        >
-          <X size={18} />
-        </button>
-
-        {/* Hero */}
-        <div style={{
-          padding: '32px 32px 24px',
-          background: 'linear-gradient(135deg, #86bc25 0%, #0076a8 55%, #00bcd4 100%)',
-          color: '#fff', borderRadius: '16px 16px 0 0',
-        }}>
-          <div style={{ fontSize: '0.78rem', letterSpacing: 2, textTransform: 'uppercase', opacity: 0.85, marginBottom: 6 }}>
-            DEX · {isDE ? 'Event Experience Platform' : 'Event Experience Platform'} · v{APP_VERSION}
+      <div>
+        {/* Einsatzbereich */}
+        <section className="dex-ui-section">
+          <h4 className="dex-ui-section-title">{isDE ? 'Für diese Events ist DEX gemacht' : 'DEX is built for these events'}</h4>
+          <div className="dex-ui-card dex-ui-card--soft" style={{ padding: '4px 6px' }}>
+            {useCases.map((u, i) => (
+              <div key={i} className="dex-ui-row dex-ui-row--bordered">
+                <span className="dex-ui-choice-check" aria-hidden="true" style={{ borderColor: 'var(--dex-green)', background: 'var(--dex-green)' }}><Check size={12} /></span>
+                <div className="dex-ui-row-main">
+                  <div className="dex-ui-row-title">{u.title}</div>
+                  <div className="dex-ui-row-sub">{u.sub}</div>
+                </div>
+              </div>
+            ))}
           </div>
-          <h2 style={{ fontSize: '1.8rem', fontWeight: 700, margin: 0, marginBottom: 8, lineHeight: 1.2 }}>
-            {/* v28.45: „alle Deloitte-Events" war zu weit gefasst — DEX ist auf
-                interne Events ausgelegt, nicht auf externe mit externen Gaesten. */}
-            {isDE
-              ? 'Deine zentrale Plattform für interne Deloitte Events'
-              : 'Your central platform for internal Deloitte events'}
-          </h2>
-          <p style={{ fontSize: '0.95rem', lineHeight: 1.5, opacity: 0.95, margin: 0, maxWidth: 720 }}>
-            {isDE
-              ? 'Von der Ausschreibung bis zum Check-In in einer App. Registrierung, Outlook-Einladungen, Warteliste, Mass-Mails, QR-Codes, Dokumente — alles integriert in den Deloitte-SharePoint-Tenant.'
-              : 'From announcement to check-in in a single app. Registration, Outlook invites, waitlist, mass emails, QR codes, documents — all integrated in the Deloitte SharePoint tenant.'}
-          </p>
-        </div>
+          <div className="dex-ui-callout dex-ui-callout--neutral" style={{ marginTop: 10 }}>
+            <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+            <span>
+              {isDE
+                ? <>Gedacht für <strong>interne Deloitte Events</strong> und die Koordination der Deloitte-Teilnahme an externen Veranstaltungen. <strong>Nicht</strong> für externe Events mit externen Teilnehmern — alles dazu findest du im <a href={EVENT_MGMT_URL} target="_blank" rel="noopener noreferrer">Event Management im DeloitteNet</a>.</>
+                : <>Built for <strong>Deloitte-internal events</strong> and for coordinating Deloitte participation in external events. <strong>Not</strong> for external events with external attendees — everything about those is on <a href={EVENT_MGMT_URL} target="_blank" rel="noopener noreferrer">Event Management on DeloitteNet</a>.</>}
+            </span>
+          </div>
+        </section>
 
-        <div style={{ padding: '8px 32px 32px' }}>
-          {/* Für wen eignet sich DEX */}
-          <SectionHeading>{isDE ? 'Für welche Events eignet sich DEX?' : 'What kind of events is DEX good for?'}</SectionHeading>
-          <ul style={{ margin: 0, paddingLeft: 22, lineHeight: 1.7, fontSize: '0.9rem', color: GRAY_700 }}>
-            {isDE ? (
-              <>
-                <li><strong>Leadership & Strategy Meetings</strong> — z.B. SR&amp;T P/MD/D Meeting mit 450 Teilnehmern</li>
-                <li><strong>Firmen-Events</strong> — Sommerfeste, Weihnachtsfeiern, Abteilungs-Offsites</li>
-                <li><strong>Assistenz- &amp; Team-Meetings</strong> — mit Transfer- und Hotelbuchung</li>
-                <li><strong>Lauf-Events</strong> — B2Run, JPMorgan Corporate Challenge (mit Startblöcken, Split-Capacity)</li>
-                <li><strong>Alles dazwischen</strong> — von 10 Leuten am Lunch bis 500+ Personen auf einer Großveranstaltung</li>
-                <li style={{ color: 'var(--dex-gray-500)' }}><strong>Nicht</strong> für externe Events mit externen Teilnehmern — alles dazu findest du im <a href="https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx" target="_blank" rel="noopener noreferrer">Event Management im DeloitteNet</a>.</li>
-              </>
-            ) : (
-              <>
-                <li><strong>Leadership &amp; strategy meetings</strong> — e.g. SR&amp;T P/MD/D with 450+ participants</li>
-                <li><strong>Company events</strong> — summer parties, Christmas celebrations, team offsites</li>
-                <li><strong>Assistant &amp; team meetings</strong> — with transfer and hotel booking</li>
-                <li><strong>Running events</strong> — B2Run, JPMorgan Corporate Challenge (with start-blocks &amp; split capacity)</li>
-                <li><strong>Everything in between</strong> — from 10 people at lunch to 500+ at a flagship event</li>
-                <li style={{ color: 'var(--dex-gray-500)' }}><strong>Not</strong> for external events with external attendees — everything about those is on <a href="https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx" target="_blank" rel="noopener noreferrer">Event Management on DeloitteNet</a>.</li>
-              </>
-            )}
-          </ul>
+        {/* So funktioniert es */}
+        <section className="dex-ui-section">
+          <h4 className="dex-ui-section-title">{isDE ? 'So läuft ein Event mit DEX' : 'How an event runs with DEX'}</h4>
+          <div className="dex-ui-stack" style={{ gap: 8 }}>
+            {steps.map((s, i) => (
+              <div key={i} className="dex-ui-step">
+                <span className="dex-ui-step-num">{i + 1}</span>
+                <div className="dex-ui-step-body">
+                  <div className="dex-ui-step-title">{s.title}</div>
+                  <div className="dex-ui-step-hint">{s.hint}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
 
-          {/* Features */}
-          <SectionHeading>{isDE ? 'Alle Funktionen im Überblick' : 'All features at a glance'}</SectionHeading>
-          <FeatureList items={isDE ? featuresDE : featuresEN} />
+        {/* Features — Aufklapper, Standard zu */}
+        <section className="dex-ui-section">
+          <button
+            type="button"
+            className={cx('dex-ui-disclosure', showFeatures && 'is-open')}
+            aria-expanded={showFeatures}
+            onClick={() => setShowFeatures(v => !v)}
+          >
+            <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+            {isDE ? 'Alle Funktionen im Überblick' : 'All features at a glance'}
+            <span className="dex-ui-disclosure-count">{features.length}</span>
+          </button>
+          {showFeatures && (
+            <div className="dex-ui-disclosure-body dex-ui-fade-in">
+              <div className="dex-ui-grid-auto">
+                {features.map((f, i) => (
+                  <div key={i} className="dex-ui-card dex-ui-card--soft dex-ui-card--hover" style={{ padding: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                      <span className="dex-ui-choice-icon" aria-hidden="true"><Icon iconName={f.icon} style={{ fontSize: 16 }} /></span>
+                      <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>{f.title}</div>
+                    </div>
+                    <div className="dex-ui-muted" style={{ lineHeight: 1.5 }}>{f.body}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
 
-          {/* So funktioniert es */}
-          <SectionHeading>{isDE ? 'So funktioniert es' : 'How it works'}</SectionHeading>
-          <ol style={{ margin: 0, paddingLeft: 22, lineHeight: 1.7, fontSize: '0.9rem', color: GRAY_700 }}>
-            {isDE ? (
-              <>
-                <li><strong>Organizer</strong> legt ein Event an — entweder selbst via Wizard oder wir helfen beim ersten Mal</li>
-                <li>App erstellt automatisch eine <strong>dedizierte SharePoint-Subsite</strong> für das Event mit Teilnehmerliste</li>
-                <li>Je nach Standort- und Zielgruppen-Filter sehen <strong>nur berechtigte Kollegen</strong> das Event in ihrer App</li>
-                <li>Teilnehmer registrieren sich mit einem Klick — automatische Mail-Bestätigung und Outlook-Termin</li>
-                <li>Bei vollem Event kommen sie auf die <strong>Warteliste</strong>; bei Absagen wird automatisch nachgerückt</li>
-                <li>Der Organizer verwaltet Teilnehmer im <strong>Admin Center</strong>, versendet Massen-Mails, fügt Dokumente hinzu, erstellt Quiz</li>
-                <li>Am Event-Tag: <strong>QR-Code-Check-In</strong> mit Live-Statistik. Fertig.</li>
-              </>
-            ) : (
-              <>
-                <li>An <strong>organizer</strong> creates an event — either via wizard themselves or we help on their first try</li>
-                <li>The app automatically creates a <strong>dedicated SharePoint subsite</strong> with participant list</li>
-                <li>Based on location and audience filter, <strong>only eligible colleagues</strong> see the event in their app</li>
-                <li>Participants register with one click — automatic email confirmation and Outlook invite</li>
-                <li>If the event is full, they go to the <strong>waitlist</strong>; when someone cancels, the next is promoted automatically</li>
-                <li>The organizer manages attendees in the <strong>Admin Center</strong>, sends mass emails, uploads documents, sets up quizzes</li>
-                <li>On event day: <strong>QR-code check-in</strong> with live statistics. Done.</li>
-              </>
-            )}
-          </ol>
-
-          {/* Status */}
-          <SectionHeading>{isDE ? 'Aktueller Status' : 'Current status'}</SectionHeading>
-          <p style={{ fontSize: '0.9rem', color: GRAY_700, lineHeight: 1.6, margin: 0 }}>
+        {/* Status */}
+        <section className="dex-ui-section">
+          <h4 className="dex-ui-section-title">{isDE ? 'Wo DEX heute steht' : 'Where DEX stands today'}</h4>
+          <p className="dex-ui-muted" style={{ margin: 0, fontSize: '0.86rem', lineHeight: 1.6 }}>
             {isDE
               ? 'DEX ist aktuell in der Pilotphase mit mehreren Flagship-Events: SAP All Hands Event (ca. 1000 Teilnehmer), SR&T P/MD/D Meeting (450 Teilnehmer), Assistenz Meeting 2026 (130 Teilnehmer), Sommerfest Berlin 2026, verschiedene B2Run-Läufe. Neue Events und Funktionen kommen laufend dazu.'
               : 'DEX is currently in pilot with several flagship events: SAP All Hands Event (~1000 participants), SR&T P/MD/D Meeting (450 participants), Assistenz Meeting 2026 (130 participants), Summer party Berlin 2026, several B2Run races. New events and features are added continuously.'}
           </p>
+        </section>
 
-          {/* Interesse? */}
-          <SectionHeading>{isDE ? 'Interesse?' : 'Interested?'}</SectionHeading>
-          <p style={{ fontSize: '0.9rem', color: GRAY_700, lineHeight: 1.6, marginTop: 0, marginBottom: 16 }}>
+        {/* Interesse? — der Knopf dazu sitzt im Fuß */}
+        <section className="dex-ui-section">
+          <h4 className="dex-ui-section-title">{isDE ? 'Interesse?' : 'Interested?'}</h4>
+          <p className="dex-ui-muted" style={{ margin: 0, fontSize: '0.86rem', lineHeight: 1.6 }}>
             {isDE
-              ? 'Dein Event oder deine Abteilung will DEX nutzen? Schreib uns — wir melden uns schnell und helfen beim Einrichten.'
-              : 'Your event or department wants to use DEX? Drop us a line — we\'ll respond quickly and help with setup.'}
+              ? 'Dein Event oder deine Abteilung will DEX nutzen? Schreib uns — der Knopf unten öffnet eine Mail an uns. Wir melden uns schnell und helfen beim Einrichten.'
+              : 'Your event or department wants to use DEX? Drop us a line — the button below opens an email to us. We\'ll respond quickly and help with setup.'}
           </p>
-          <a
-            href={`mailto:${DEX_TEAM_EMAIL}?subject=DEX Event Experience Platform – Interesse`}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 8,
-              padding: '10px 20px', borderRadius: 8,
-              background: GREEN, color: '#fff', textDecoration: 'none',
-              fontWeight: 600, fontSize: '0.9rem',
-            }}
-          >
-            <Mail size={16} /> {isDE ? 'Kontakt aufnehmen' : 'Get in touch'}
-          </a>
-          {/* v30.25: Tutorial-Einstieg für JEDE Rolle. Die „Neu hier?"-Pille
-              auf der Startseite wird Organizern und Admins nicht mehr
-              angeboten (sie kennen die App) — über „Über die App" bleibt die
-              geführte Tour aber jederzeit erreichbar, z.B. um sie neuen
-              Kolleg:innen zu zeigen. */}
-          {onStartTutorial && (
-            <button
-              type="button"
-              onClick={() => { onClose(); window.setTimeout(() => onStartTutorial(), 250); }}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 8, marginLeft: 10,
-                padding: '10px 20px', borderRadius: 8,
-                background: '#fff', color: GREEN, border: `2px solid ${GREEN}`,
-                fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', fontFamily: 'inherit',
-              }}
-            >
-              {isDE ? 'Geführtes Tutorial starten' : 'Start the guided tutorial'}
-            </button>
-          )}
-
-          {/* Credits */}
-          <div style={{
-            marginTop: 32, paddingTop: 16,
-            borderTop: '1px solid var(--dex-gray-200)',
-            fontSize: '0.78rem', color: 'var(--dex-gray-500)', textAlign: 'center',
-          }}>
+          <p className="dex-ui-muted" style={{ margin: '16px 0 0', fontSize: '0.76rem', textAlign: 'center' }}>
             {isDE ? 'Entwickelt von ' : 'Built by '}
             <strong>Eike Brenneisen</strong> {isDE ? 'und' : 'and'} <strong>Nils Felten</strong>.
-          </div>
-        </div>
+          </p>
+        </section>
       </div>
-    </div>
+    </Modal>
   );
 }

@@ -13,12 +13,19 @@
  */
 
 import * as React from 'react';
-import { X } from './Icons';
+import { X, Users } from './Icons';
 import { PreviewContextStack } from './manual/previews/PreviewProviders';
 import RegistrationPage from './RegistrationPage';
 import Header from './Header';
 import { DeloitteEvent } from '../types';
 import { useIsMobile } from '../utils/useIsMobile';
+// v31.2: Sprache ohne Provider-Zwang (wie in Modal.tsx) — die Vorschau kann
+// auch außerhalb eines LanguageProviders gerendert werden und darf daran
+// nicht scheitern; dann gilt Deutsch.
+import { useLocaleSafe } from '../context/LanguageContext';
+// v31.2: Gemeinsame UI-Klassen (Kopf, Pill, Symbol-Knopf, Fuß) — dieselbe
+// Quelle wie Modal.tsx, damit dieser Dialog aussieht wie alle anderen.
+import { ensureDexUiStyles } from './dexUi';
 
 export interface RegisterPreviewData {
   title: string;
@@ -248,54 +255,72 @@ export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open
   const isMobile = useIsMobile();
   const synthEvent = React.useMemo(() => buildSynthEvent(data), [data]);
   const synthChildren = React.useMemo(() => buildSynthChildEvents(data), [data]);
+  // v31.2: Sprache und Stylesheet — ebenfalls VOR dem Return (siehe oben).
+  const isDe = useLocaleSafe() === 'de';
+  React.useEffect(() => { ensureDexUiStyles(); }, []);
   if (!open) return null;
+
+  const closeLabel = isDe ? 'Vorschau schließen' : 'Close preview';
 
   return (
     <div
       role="dialog"
       aria-modal="true"
+      aria-label={isDe ? 'Vorschau der Anmeldeseite' : 'Registration page preview'}
       onClick={onClose}
       style={{
+        // v31.2: Dunkles Blau mit Unschärfe wie in Modal.tsx — die Vorschau
+        // ist ein Dialog wie jeder andere und soll sich auch so anfühlen.
         position: 'fixed', inset: 0, zIndex: 1300,
-        background: 'rgba(0,0,0,0.55)',
+        background: 'rgba(15,23,42,0.5)',
+        backdropFilter: 'blur(2px)', WebkitBackdropFilter: 'blur(2px)',
         display: 'flex', alignItems: 'stretch', justifyContent: 'center',
         padding: '24px 16px', overflowY: 'auto',
       }}
     >
       <div
+        className="dex-ui-modal-card"
         onClick={e => e.stopPropagation()}
         style={{
           width: '100%', maxWidth: 1280,
-          background: '#fff', borderRadius: 'var(--dex-radius, 12px)',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          background: '#fff', borderRadius: 18,
+          boxShadow: '0 24px 64px rgba(0,0,0,0.22), 0 0 0 1px rgba(0,0,0,0.04)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
           maxHeight: 'calc(100vh - 48px)',
         }}
       >
-        {/* Header */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '14px 20px', borderBottom: '1px solid var(--dex-gray-200)',
-          background: '#fff', flexShrink: 0,
-        }}>
-          <h3 style={{ margin: 0, fontSize: '1.05rem' }}>
-            Registrierungsseite — Vorschau
-            {data.isFictive && (
-              <span style={{ marginLeft: 10, padding: '2px 10px', borderRadius: 999, background: 'var(--dex-orange, #ed8b00)', color: '#fff', fontSize: '0.7rem', fontWeight: 700, letterSpacing: 0.5 }}>
-                ENTWURF
+        {/* v31.2: Kopf im Format aller Dialoge (Symbol, Titel, ein Satz, X).
+            Der Hinweis „echte Anmeldung deaktiviert" steht jetzt als Satz im
+            Untertitel — vorher hing er als Kleintext hinter dem Titel. */}
+        <div className="dex-ui-modal-head" style={{ padding: '16px 20px 12px', flexShrink: 0, borderBottomColor: 'var(--dex-gray-200, #e8e8e8)' }}>
+          <span className="dex-ui-modal-head-icon" aria-hidden="true"><Users size={20} /></span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h3 className="dex-ui-modal-title" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              {isDe ? 'Vorschau der Anmeldeseite' : 'Registration page preview'}
+              {data.isFictive && (
+                <span className="dex-ui-pill dex-ui-pill--orange">{isDe ? 'Entwurf' : 'Draft'}</span>
+              )}
+              <span className="dex-ui-pill dex-ui-pill--gray">
+                {isMobile
+                  ? (isDe ? 'Handy-Ansicht' : 'Mobile view')
+                  : (isDe ? 'Desktop-Ansicht' : 'Desktop view')}
               </span>
-            )}
-            <span style={{ marginLeft: 10, fontSize: '0.7rem', fontWeight: 500, color: 'var(--dex-gray-500)' }}>
-              · Vorschau · echte Anmeldung deaktiviert
-            </span>
-          </h3>
+            </h3>
+            <p className="dex-ui-modal-subtitle">
+              {isDe
+                ? 'So sehen Teilnehmer dein Event. Du kannst alles durchklicken — es wird nichts gespeichert und keine Mail verschickt.'
+                : 'This is what attendees see. Click through as much as you like — nothing is saved and no mail is sent.'}
+            </p>
+          </div>
           <button
             type="button"
+            className="dex-ui-iconbtn"
             onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
-            aria-label="Schließen"
+            aria-label={closeLabel}
+            title={closeLabel}
+            style={{ marginTop: -4, marginRight: -6 }}
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
 
@@ -305,7 +330,7 @@ export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open
           flex: 1,
           padding: isMobile ? '8px 8px 12px' : '24px 24px 36px',
           overflow: 'auto',
-          background: 'var(--dex-gray-100, #f4f4f5)',
+          background: 'var(--dex-gray-100, #f5f5f5)',
           display: 'flex', justifyContent: 'center',
         }}>
           <div style={{ width: '100%', maxWidth: 1200, position: 'relative', paddingBottom: isMobile ? 0 : 14 }}>
@@ -373,12 +398,15 @@ export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open
           </div>
         </div>
 
-        <div style={{
-          display: 'flex', justifyContent: 'flex-end', gap: 8,
-          padding: '12px 20px', borderTop: '1px solid var(--dex-gray-200)',
-          background: '#fff', flexShrink: 0,
-        }}>
-          <button type="button" className="btn btn-primary" onClick={onClose}>Schließen</button>
+        {/* v31.2: Fuß im Format aller Dialoge — links der nächste Schritt
+            („zum Ändern zurück in den Wizard"), rechts der einzige Knopf. */}
+        <div className="dex-ui-modal-foot dex-ui-modal-foot--split" style={{ padding: '12px 20px', marginTop: 0, flexShrink: 0, borderTopColor: 'var(--dex-gray-200, #e8e8e8)' }}>
+          <span className="dex-ui-modal-foot-left dex-ui-muted">
+            {isDe
+              ? 'Etwas ändern? Schließe die Vorschau und passe die Felder im Wizard an.'
+              : 'Want to change something? Close the preview and edit the fields in the wizard.'}
+          </span>
+          <button type="button" className="btn btn-primary" onClick={onClose}>{closeLabel}</button>
         </div>
       </div>
     </div>

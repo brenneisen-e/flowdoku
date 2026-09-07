@@ -10,11 +10,11 @@
  *  2. Personen einsammeln — über denselben Massenimport-Matcher wie im
  *     Wizard (BulkUserImportModal: E-Mails direkt, Namen per Tenant-Suche,
  *     Mehrdeutige zum Auflösen).
- *  3. Optionen: Bestätigungs-Mail ja/nein, Outlook-Termin ja/nein
+ *  3. Falls ein gewähltes Ziel Formular-Felder hat: die Angaben pro Person
+ *     ausfüllen (optional — der Organizer kennt nicht jede Antwort, deshalb
+ *     seit v31.2 im Aufklapper). Ohne Felder entfällt der Schritt.
+ *  4. Benachrichtigung: Bestätigungs-Mail ja/nein, Outlook-Termin ja/nein
  *     (registerForEvent kennt suppressMail/suppressOutlook).
- *  4. Falls ein gewähltes Ziel Formular-Felder hat: die Angaben pro Person
- *     ausfüllen (optional — der Organizer kennt nicht jede Antwort). Ohne
- *     Felder wird direkt angemeldet.
  *
  * Die Anmeldungen laufen sequentiell (Drosselungs-Schonung) über
  * registerForEvent — derselbe Pfad wie die stellvertretende Anmeldung auf
@@ -24,7 +24,12 @@ import * as React from 'react';
 import { DeloitteEvent, EventSpecificField } from '../../types';
 import BulkUserImportModal, { BulkImportItem } from '../BulkUserImportModal';
 import { formatDateTimeRange } from '../myEvents/myEventsHelpers';
-import { X, Users } from '../Icons';
+import { X, Users, Check, Plus, ChevronDown } from '../Icons';
+// v31.2: Gemeinsamer Modal-Rahmen (Kopf/Fuß/Portal) und die dex-ui-Klassen
+// statt eines eigenen Overlays mit Inline-Styles — siehe docs/ui-leitfaden.md.
+import Modal from '../Modal';
+import { cx } from '../dexUi';
+import { InfoTooltip } from '../InfoTooltip';
 
 interface SearchHit { email: string; displayName: string; location?: string }
 
@@ -67,6 +72,21 @@ const splitName = (displayName: string, email: string): { first: string; last: s
 const askableFields = (ev: DeloitteEvent): EventSpecificField[] =>
   (ev.eventSpecificFields || []).filter(f => f && f.label && f.label.trim() && f.type !== 'document');
 
+// v31.2: Ablauf-Zeile „Nummer · Frage · Knopf" mit Platz darunter für Chips,
+// Karten oder Schalter (Leitfaden: „Der Knopf ist der Schritt"). Erledigte
+// Schritte zeigen einen Haken — so sieht man, was dem Primär-Knopf noch fehlt.
+const StepRow = (p: { num: number; title: React.ReactNode; hint?: React.ReactNode; action?: React.ReactNode; done?: boolean; children?: React.ReactNode }): React.ReactElement => (
+  <div className={cx('dex-ui-step', p.done && 'is-done')} style={{ alignItems: 'flex-start', flexWrap: 'wrap' }}>
+    <span className="dex-ui-step-num" aria-hidden="true">{p.done ? <Check size={14} /> : p.num}</span>
+    <div className="dex-ui-step-body">
+      <div className="dex-ui-step-title">{p.title}</div>
+      {p.hint && <div className="dex-ui-step-hint">{p.hint}</div>}
+    </div>
+    {p.action && <div className="dex-ui-step-action">{p.action}</div>}
+    {p.children && <div style={{ flexBasis: '100%', paddingLeft: 40, boxSizing: 'border-box' }}>{p.children}</div>}
+  </div>
+);
+
 export default function AddParticipantsModal(props: AddParticipantsModalProps): React.ReactElement | null {
   const { open, onClose, onDone, mainEvent, childEvents, preselectedId, searchUsers, registerForEvent, isDe } = props;
 
@@ -81,6 +101,9 @@ export default function AddParticipantsModal(props: AddParticipantsModalProps): 
   const [running, setRunning] = React.useState(false);
   const [progress, setProgress] = React.useState('');
   const [report, setReport] = React.useState<Array<{ person: string; target: string; status: string; ok: boolean }> | null>(null);
+  // v31.2: Die optionalen Formular-Antworten liegen in einem Aufklapper — bei
+  // fünf Personen × vier Feldern füllten sie sonst den ganzen Dialog.
+  const [answersOpen, setAnswersOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
@@ -94,6 +117,7 @@ export default function AddParticipantsModal(props: AddParticipantsModalProps): 
     setReport(null);
     setProgress('');
     setRunning(false);
+    setAnswersOpen(false);
   }, [open, preselectedId, mainEvent.id, mainBookable, childEvents.length]);
 
   if (!open) return null;
@@ -119,57 +143,57 @@ export default function AddParticipantsModal(props: AddParticipantsModalProps): 
 
   const renderFieldInput = (evId: string, emailLc: string, f: EventSpecificField): React.ReactElement => {
     const val = ((fieldValues[evId] || {})[emailLc] || {})[f.id] || '';
-    const small: React.CSSProperties = { fontSize: '0.8rem', padding: '5px 8px' };
+    // v31.2: kompakte dex-ui-Eingaben statt form-input mit Inline-Maßen; Auswahl-
+    // Optionen als Chips (mehrfach aktiv) — ein Klick, und der Hover zeigt, was klickbar ist.
+    const cls = 'dex-ui-input dex-ui-input--sm';
     if (f.type === 'select' && f.multi) {
       // Mehrfachauswahl wird ' | '-getrennt gespeichert (Konvention v7.11).
       const chosen = val ? val.split(' | ').map(s => s.trim()).filter(Boolean) : [];
       return (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {(f.options || []).map(opt => (
-            <label key={opt} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.78rem', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={chosen.indexOf(opt) >= 0}
-                onChange={e => {
-                  const next = e.target.checked ? chosen.concat(opt) : chosen.filter(c => c !== opt);
-                  setFieldValue(evId, emailLc, f.id, next.join(' | '));
-                }}
-              />
-              {opt}
-            </label>
-          ))}
+        <div className="dex-ui-inline" style={{ gap: 6 }}>
+          {(f.options || []).map(opt => {
+            const on = chosen.indexOf(opt) >= 0;
+            return (
+              <button key={opt} type="button" className={cx('dex-ui-chip', on && 'is-active')} aria-pressed={on}
+                onClick={() => setFieldValue(evId, emailLc, f.id, (on ? chosen.filter(c => c !== opt) : chosen.concat(opt)).join(' | '))}>
+                {on && <Check size={12} />}{opt}
+              </button>
+            );
+          })}
         </div>
       );
     }
     if (f.type === 'select') {
       return (
-        <select className="form-input" style={small} value={val} onChange={e => setFieldValue(evId, emailLc, f.id, e.target.value)}>
+        <select className="dex-ui-select" style={{ padding: '6px 32px 6px 10px', fontSize: '0.84rem' }} value={val} onChange={e => setFieldValue(evId, emailLc, f.id, e.target.value)}>
           <option value="">{isDe ? '— keine Angabe —' : '— no answer —'}</option>
           {(f.options || []).map(opt => <option key={opt} value={opt}>{opt}</option>)}
         </select>
       );
     }
     if (f.type === 'checkbox') {
+      const on = val === 'Ja' || val === 'Yes' || val === 'true';
       return (
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer' }}>
-          <input type="checkbox" checked={val === 'Ja' || val === 'Yes' || val === 'true'} onChange={e => setFieldValue(evId, emailLc, f.id, e.target.checked ? 'Ja' : '')} />
-          {isDe ? 'Ja' : 'Yes'}
-        </label>
+        <button type="button" className={cx('dex-ui-chip', on && 'is-active')} aria-pressed={on}
+          onClick={() => setFieldValue(evId, emailLc, f.id, on ? '' : 'Ja')}>
+          {on && <Check size={12} />}{isDe ? 'Ja' : 'Yes'}
+        </button>
       );
     }
     if (f.type === 'date') {
+      // Bestand aus v29.26 — kein neues natives Datumsfeld, nur neu eingekleidet.
       return (
-        <input type={f.withTime ? 'datetime-local' : 'date'} className="form-input" style={small} value={val}
+        <input type={f.withTime ? 'datetime-local' : 'date'} className={cls} value={val}
           onChange={e => setFieldValue(evId, emailLc, f.id, e.target.value)} />
       );
     }
     if (f.type === 'number') {
-      return <input type="number" className="form-input" style={small} value={val} onChange={e => setFieldValue(evId, emailLc, f.id, e.target.value)} />;
+      return <input type="number" className={cls} value={val} onChange={e => setFieldValue(evId, emailLc, f.id, e.target.value)} />;
     }
     // text, user, roommate, daterange: freie Eingabe (user/roommate = E-Mail;
     // daterange im Antwort-Format 'YYYY-MM-DD – YYYY-MM-DD').
     return (
-      <input type="text" className="form-input" style={small} value={val}
+      <input type="text" className={cls} value={val}
         placeholder={f.type === 'user' || f.type === 'roommate' ? 'email@deloitte.de' : (f.type === 'daterange' ? 'YYYY-MM-DD – YYYY-MM-DD' : '')}
         onChange={e => setFieldValue(evId, emailLc, f.id, e.target.value)} />
     );
@@ -253,186 +277,226 @@ export default function AddParticipantsModal(props: AddParticipantsModalProps): 
     onDone();
   };
 
-  const box: React.CSSProperties = { border: '1px solid var(--dex-gray-200)', borderRadius: 10, padding: '12px 14px', marginBottom: 14 };
-  const secTitle: React.CSSProperties = { fontWeight: 700, fontSize: '0.85rem', marginBottom: 8, color: 'var(--dex-gray-800, #333)' };
+  // v31.2: Pill-Farbe aus dem Status-Text, den `run` schreibt — kein zweites
+  // Feld im Bericht, der Bericht selbst bleibt unverändert.
+  const isWaitRow = (r: { ok: boolean; status: string }): boolean => r.ok && (r.status === 'Warteliste' || r.status === 'Waitlist');
+  const okCount = report ? report.filter(r => r.ok && !isWaitRow(r)).length : 0;
+  const waitCount = report ? report.filter(isWaitRow).length : 0;
+  const failCount = report ? report.filter(r => !r.ok).length : 0;
+  const allSelected = targets.length > 0 && selectedTargets.length === targets.length;
+  const showAnswers = targetsWithFields.length > 0 && people.length > 0;
+  const answerFieldCount = targetsWithFields.reduce((n, t) => n + askableFields(t).length, 0);
+  const notifyNum = showAnswers ? 4 : 3;
+  const notifyRows = [
+    { on: sendMail, set: setSendMail, title: isDe ? 'Bestätigungs-Mail senden' : 'Send confirmation mail',
+      desc: isDe ? 'Die Person bekommt die Bestätigungs-Mail des Events — wie nach einer eigenen Anmeldung.' : 'The person gets the event’s confirmation mail — as after registering themselves.' },
+    { on: sendOutlook, set: setSendOutlook, title: isDe ? 'Outlook-Termin senden' : 'Send Outlook invitation',
+      desc: isDe ? 'Die Kalendereinladung landet im Outlook der Person.' : 'The calendar invitation lands in the person’s Outlook.' },
+  ];
+  const runLabel = running ? (isDe ? 'Anmeldungen laufen…' : 'Registering…') : (isDe
+    ? `${people.length || '–'} ${people.length === 1 ? 'Person' : 'Personen'} anmelden`
+    : `Register ${people.length || '–'} ${people.length === 1 ? 'person' : 'people'}`);
 
   return (
-    <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1050, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-      onClick={() => { if (!running) onClose(); }}
-    >
-      <div className="card" style={{ width: '92%', maxWidth: 860, maxHeight: '88vh', overflow: 'auto', padding: 24 }} onClick={e => e.stopPropagation()}>
-        <div className="flex-between mb-16">
-          <h3 style={{ margin: 0, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <Users size={18} /> {isDe ? 'Teilnehmer hinzufügen' : 'Add attendees'}
-          </h3>
-          <button type="button" onClick={() => { if (!running) onClose(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} aria-label="Schließen">
-            <X size={18} />
+    <Modal
+      open={open}
+      onClose={onClose}
+      // v31.2: Läuft die Anmeldung oder ist der Personen-Dialog offen, schließt weder
+      // Escape noch der Backdrop — sonst ginge die Auswahl hinter dem zweiten Dialog verloren.
+      dismissable={!running && !bulkOpen}
+      maxWidth={860}
+      ariaLabel={isDe ? 'Teilnehmer hinzufügen' : 'Add attendees'}
+      icon={<Users size={20} />}
+      title={isDe ? 'Teilnehmer hinzufügen' : 'Add attendees'}
+      subtitle={isDe
+        ? 'Der Ausnahme-Weg für nachträgliche Zusagen oder übernommene Listen — normalerweise melden sich Teilnehmer selbst über die Anmeldeseite an.'
+        : 'The exception path for late confirmations or imported lists — attendees normally register themselves via the registration page.'}
+      footer={<>
+        {running && <span className="dex-ui-modal-foot-left dex-ui-muted" aria-live="polite">{progress}</span>}
+        <button type="button" className="btn btn-secondary" disabled={running} onClick={onClose}>
+          {report ? (isDe ? 'Schließen' : 'Close') : (isDe ? 'Abbrechen' : 'Cancel')}
+        </button>
+        {!report && (
+          <button type="button" className="btn btn-primary" disabled={running || people.length === 0 || selectedTargets.length === 0} onClick={() => { void run(); }}>
+            <Users size={16} /> {runLabel}
           </button>
-        </div>
-        <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginTop: 0, marginBottom: 14, lineHeight: 1.5 }}>
-          {isDe
-            ? 'Teilnehmer registrieren sich normalerweise selbst über die Anmeldeseite — dieser Weg ist für Ausnahmen gedacht (nachträgliche Zusagen, übernommene Listen). Die Personen werden regulär angemeldet: mit Platz-/Wartelisten-Logik und, je nach Auswahl unten, mit Bestätigungs-Mail und Outlook-Termin.'
-            : 'Attendees normally register themselves via the registration page — this path is for exceptions (late confirmations, imported lists). People are registered through the regular flow: seat/waitlist logic and, depending on the options below, confirmation mail and Outlook invite.'}
-        </p>
-
-        {/* 1 · Ziel */}
-        <div style={box}>
-          <div style={secTitle}>{isDe ? '1 · Wofür anmelden?' : '1 · Register for what?'}</div>
-          {targets.length === 0 && (
-            <div style={{ fontSize: '0.8rem', color: 'var(--dex-red, #c00)' }}>
-              {isDe ? 'Kein buchbares Ziel vorhanden.' : 'No bookable target available.'}
+        )}
+      </>}
+    >
+      <div className="dex-ui-stack">
+        {/* 1 · Ziel — mehrere aus vielen → Chips, mehrfach aktiv */}
+        <StepRow
+          num={1}
+          done={selectedTargets.length > 0}
+          title={isDe ? 'Wofür anmelden?' : 'Register for what?'}
+          hint={isDe ? 'Mehrfachauswahl möglich — jede Person wird für jedes gewählte Ziel angemeldet.' : 'Pick one or more — each person is registered for every selected target.'}
+          action={targets.length > 2 ? (
+            <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" disabled={running}
+              onClick={() => setTargetIds(allSelected ? [] : targets.map(t => t.id))}>
+              {allSelected ? (isDe ? 'Auswahl aufheben' : 'Clear selection') : (isDe ? 'Alle auswählen' : 'Select all')}
+            </button>
+          ) : undefined}
+        >
+          {targets.length === 0 ? (
+            <div className="dex-ui-callout dex-ui-callout--warn">{isDe ? 'Kein buchbares Ziel vorhanden.' : 'No bookable target available.'}</div>
+          ) : (
+            <div className="dex-ui-inline" style={{ gap: 6 }}>
+              {targets.map(t => {
+                const on = targetIds.indexOf(t.id) >= 0;
+                // v30.79: von–bis statt nur Datum.
+                const meta = t.id === mainEvent.id ? (isDe ? 'Haupt-Event' : 'main event') : (t.startDate ? formatDateTimeRange(t.startDate, t.endDate, isDe) : '');
+                return (
+                  <button key={t.id} type="button" className={cx('dex-ui-chip', on && 'is-active')} aria-pressed={on} disabled={running} onClick={() => toggleTarget(t.id)}>
+                    {on && <Check size={12} />}
+                    {t.title || (isDe ? 'Sub-Event ohne Titel' : 'Untitled sub-event')}
+                    {meta && <span style={{ fontWeight: 500, opacity: 0.8 }}>· {meta}</span>}
+                  </button>
+                );
+              })}
             </div>
           )}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {mainBookable && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.84rem', cursor: 'pointer' }}>
-                <input type="checkbox" checked={targetIds.indexOf(mainEvent.id) >= 0} onChange={() => toggleTarget(mainEvent.id)} disabled={running} />
-                <strong>{mainEvent.title}</strong>
-                <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.75rem' }}>{isDe ? '(Haupt-Event)' : '(main event)'}</span>
-              </label>
-            )}
-            {childEvents.map(ce => (
-              <label key={ce.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.84rem', cursor: 'pointer', marginLeft: mainBookable ? 18 : 0 }}>
-                <input type="checkbox" checked={targetIds.indexOf(ce.id) >= 0} onChange={() => toggleTarget(ce.id)} disabled={running} />
-                {ce.title || (isDe ? 'Sub-Event ohne Titel' : 'Untitled sub-event')}
-                {ce.startDate && (
-                  <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.75rem' }}>
-                    {/* v30.79: von–bis statt nur Datum. */}
-                    {formatDateTimeRange(ce.startDate, ce.endDate, isDe)}
-                  </span>
-                )}
-              </label>
-            ))}
-          </div>
-        </div>
+        </StepRow>
 
-        {/* 2 · Personen */}
-        <div style={box}>
-          <div style={secTitle}>{isDe ? '2 · Wen anmelden?' : '2 · Whom to register?'}</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: people.length > 0 ? 10 : 0 }}>
-            {people.map(p => (
-              <span key={p.email} style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 999,
-                background: 'rgba(134,188,37,0.12)', border: '1px solid var(--dex-green, #86bc25)', fontSize: '0.78rem',
-              }}>
-                {p.displayName || p.email}
-                <button type="button" onClick={() => setPeople(prev => prev.filter(x => x.email !== p.email))} disabled={running}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'inline-flex' }} aria-label={isDe ? 'Entfernen' : 'Remove'}>
-                  <X size={12} />
-                </button>
-              </span>
-            ))}
-          </div>
-          <button type="button" className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '6px 12px' }} disabled={running} onClick={() => setBulkOpen(true)}>
-            {people.length === 0
-              ? (isDe ? 'Personen einfügen (Namen oder E-Mails)' : 'Add people (names or emails)')
-              : (isDe ? 'Weitere Personen einfügen' : 'Add more people')}
-          </button>
-          <span style={{ marginLeft: 10, fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>
-            {isDe
-              ? 'E-Mails werden direkt übernommen, Namen im Tenant gesucht — wie beim Massenimport im Assistenten.'
-              : 'Emails are taken directly, names are matched in the tenant — same as the bulk import in the wizard.'}
-          </span>
-        </div>
-
-        {/* 3 · Optionen */}
-        <div style={box}>
-          <div style={secTitle}>{isDe ? '3 · Benachrichtigung' : '3 · Notifications'}</div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.84rem', cursor: 'pointer', marginBottom: 6 }}>
-            <input type="checkbox" checked={sendMail} onChange={e => setSendMail(e.target.checked)} disabled={running} />
-            {isDe ? 'Bestätigungs-Mail an die Person senden' : 'Send the confirmation mail to the person'}
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.84rem', cursor: 'pointer' }}>
-            <input type="checkbox" checked={sendOutlook} onChange={e => setSendOutlook(e.target.checked)} disabled={running} />
-            {isDe ? 'Outlook-Kalendereinladung erzeugen' : 'Create the Outlook calendar invitation'}
-          </label>
-        </div>
-
-        {/* 4 · Felder (nur wenn ein Ziel welche hat) */}
-        {targetsWithFields.length > 0 && people.length > 0 && (
-          <div style={box}>
-            <div style={secTitle}>{isDe ? '4 · Angaben zu den Formular-Feldern (optional)' : '4 · Registration-form answers (optional)'}</div>
-            <p style={{ fontSize: '0.76rem', color: 'var(--dex-gray-600)', marginTop: 0, marginBottom: 10, lineHeight: 1.5 }}>
-              {isDe
-                ? 'Diese Felder fragt das Anmeldeformular normalerweise ab. Fülle aus, was du weißt — leere Felder werden ohne Antwort gespeichert und können später über „Bearbeiten" in der Teilnehmerliste nachgetragen werden. Datei-Upload-Felder können hier nicht befüllt werden.'
-                : 'The registration form normally asks these questions. Fill in what you know — empty fields are saved without an answer and can be completed later via “Edit” in the attendee list. File-upload fields cannot be filled here.'}
-            </p>
-            {targetsWithFields.map(t => (
-              <div key={t.id} style={{ marginBottom: 12 }}>
-                {targetsWithFields.length > 1 || selectedTargets.length > 1 ? (
-                  <div style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--dex-green-dark, #4a7c1f)', marginBottom: 6 }}>{t.title}</div>
-                ) : null}
-                {people.map(p => {
-                  const emailLc = (p.email || '').toLowerCase();
-                  return (
-                    <div key={p.email} style={{ border: '1px solid var(--dex-gray-100)', borderRadius: 8, padding: '8px 10px', marginBottom: 6, background: 'var(--dex-gray-50, #fafafa)' }}>
-                      <div style={{ fontWeight: 600, fontSize: '0.8rem', marginBottom: 6 }}>{p.displayName || p.email}</div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
-                        {askableFields(t).map(f => (
-                          <div key={f.id}>
-                            <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 2 }}>
-                              {f.label}{f.required ? ' *' : ''}
-                            </div>
-                            {renderFieldInput(t.id, emailLc, f)}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Ergebnis */}
-        {report && (
-          <div style={{ ...box, background: 'var(--dex-gray-50, #fafafa)' }}>
-            <div style={secTitle}>{isDe ? 'Ergebnis' : 'Result'}</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.8rem' }}>
-              {report.map((r, i) => (
-                <div key={i} style={{ color: r.ok ? 'var(--dex-gray-700)' : 'var(--dex-red, #c00)' }}>
-                  {r.ok ? '✓' : '✗'} <strong>{r.person}</strong> → {r.target}: {r.status}
-                </div>
+        {/* 2 · Personen — der Knopf sitzt in der Zeile, die Auswahl darunter */}
+        <StepRow
+          num={2}
+          done={people.length > 0}
+          title={<>{isDe ? 'Wen anmelden?' : 'Whom to register?'}
+            {people.length > 0 && <span className="dex-ui-pill dex-ui-pill--green" style={{ marginLeft: 8 }}>{people.length} {people.length === 1 ? (isDe ? 'Person' : 'person') : (isDe ? 'Personen' : 'people')}</span>}</>}
+          hint={isDe
+            ? 'Namen oder E-Mails einfügen, z.B. aus Outlook oder Excel kopiert. E-Mails werden direkt übernommen, Namen im Tenant gesucht — wie beim Massenimport im Assistenten.'
+            : 'Paste names or emails, e.g. copied from Outlook or Excel. Emails are taken directly, names are matched in the tenant — same as the bulk import in the wizard.'}
+          action={
+            <button type="button" className="btn btn-secondary dex-ui-btn-sm" disabled={running} onClick={() => setBulkOpen(true)}>
+              <Plus size={14} /> {people.length === 0 ? (isDe ? 'Personen einfügen' : 'Add people') : (isDe ? 'Weitere einfügen' : 'Add more')}
+            </button>
+          }
+        >
+          {people.length > 0 ? (
+            <div className="dex-ui-inline" style={{ gap: 6 }}>
+              {people.map(p => (
+                <span key={p.email} className="dex-ui-pill dex-ui-pill--green" style={{ paddingRight: 4 }}>
+                  {p.displayName || p.email}
+                  <button type="button" className="dex-ui-iconbtn dex-ui-iconbtn--danger" style={{ width: 20, height: 20 }} disabled={running}
+                    onClick={() => setPeople(prev => prev.filter(x => x.email !== p.email))} aria-label={isDe ? 'Entfernen' : 'Remove'} title={isDe ? 'Entfernen' : 'Remove'}>
+                    <X size={12} />
+                  </button>
+                </span>
               ))}
             </div>
-          </div>
+          ) : (
+            <div className="dex-ui-muted">{isDe ? 'Noch niemand ausgewählt.' : 'Nobody selected yet.'}</div>
+          )}
+        </StepRow>
+
+        {/* 3 · Formular-Antworten (nur wenn ein Ziel Felder hat) — optional, deshalb im Aufklapper */}
+        {showAnswers && (
+          <StepRow
+            num={3}
+            title={<>{isDe ? 'Antworten zum Anmeldeformular' : 'Registration-form answers'}
+              <span className="dex-ui-label-optional" style={{ marginLeft: 6 }}>(optional)</span>
+              <InfoTooltip text={isDe ? 'Diese Felder fragt das Anmeldeformular normalerweise ab. Datei-Upload-Felder lassen sich hier nicht befüllen.' : 'The registration form normally asks these questions. File-upload fields cannot be filled here.'} /></>}
+            hint={isDe
+              ? 'Fülle aus, was du weißt — Leeres wird ohne Antwort gespeichert und lässt sich später in der Teilnehmerliste über „Bearbeiten“ nachtragen.'
+              : 'Fill in what you know — empty fields are saved without an answer and can be completed later via “Edit” in the attendee list.'}
+            action={
+              <button type="button" className={cx('dex-ui-disclosure', answersOpen && 'is-open')} style={{ width: 'auto', margin: 0 }} aria-expanded={answersOpen} onClick={() => setAnswersOpen(o => !o)}>
+                <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                {answersOpen ? (isDe ? 'Ausblenden' : 'Hide') : (isDe ? `${answerFieldCount} ${answerFieldCount === 1 ? 'Feld' : 'Felder'} eintragen` : `Fill in ${answerFieldCount} ${answerFieldCount === 1 ? 'field' : 'fields'}`)}
+              </button>
+            }
+          >
+            {answersOpen && (
+              <div className="dex-ui-stack dex-ui-fade-in">
+                {targetsWithFields.map(t => (
+                  <div key={t.id} className="dex-ui-stack" style={{ gap: 8 }}>
+                    {targetsWithFields.length > 1 || selectedTargets.length > 1 ? (
+                      <div className="dex-ui-section-title" style={{ margin: 0 }}>{t.title}</div>
+                    ) : null}
+                    {people.map(p => {
+                      const emailLc = (p.email || '').toLowerCase();
+                      return (
+                        <div key={p.email} className="dex-ui-card dex-ui-card--soft" style={{ padding: '10px 14px' }}>
+                          <div className="dex-ui-row-title" style={{ marginBottom: 8 }}>{p.displayName || p.email}</div>
+                          <div className="dex-ui-grid-auto" style={{ gap: 10 }}>
+                            {askableFields(t).map(f => (
+                              <div key={f.id}>
+                                <div className="dex-ui-muted" style={{ fontWeight: 600, fontSize: '0.74rem', marginBottom: 3 }}>{f.label}{f.required ? ' *' : ''}</div>
+                                {renderFieldInput(t.id, emailLc, f)}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
+          </StepRow>
         )}
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
-          {running && <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginRight: 'auto' }}>{progress}</span>}
-          <button type="button" className="btn btn-secondary" disabled={running} onClick={onClose}>
-            {report ? (isDe ? 'Schließen' : 'Close') : (isDe ? 'Abbrechen' : 'Cancel')}
-          </button>
-          {!report && (
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={running || people.length === 0 || selectedTargets.length === 0}
-              onClick={() => { void run(); }}
-            >
-              {running
-                ? (isDe ? 'Anmeldungen laufen…' : 'Registering…')
-                : (isDe
-                  ? `${people.length || '–'} ${people.length === 1 ? 'Person' : 'Personen'} anmelden`
-                  : `Register ${people.length || '–'} ${people.length === 1 ? 'person' : 'people'}`)}
-            </button>
-          )}
-        </div>
+        {/* 3/4 · Benachrichtigung — Ja/Nein mit Folge → Schalter-Zeilen */}
+        <StepRow
+          num={notifyNum}
+          done
+          title={isDe ? 'Was bekommt die Person mit?' : 'What does the person receive?'}
+          hint={isDe
+            ? 'Angemeldet wird in jedem Fall regulär — mit Platz- und Wartelisten-Logik. Du entscheidest nur über die Benachrichtigung.'
+            : 'Registration always runs the regular way — with seat and waitlist logic. You only decide about the notification.'}
+        >
+          <div className="dex-ui-grid-2" style={{ gap: 10 }}>
+            {notifyRows.map(n => (
+              <label key={n.title} className={cx('dex-ui-toggle-row', n.on && 'is-active', running && 'is-disabled')}>
+                <input type="checkbox" checked={n.on} onChange={e => n.set(e.target.checked)} disabled={running} />
+                <span className="dex-ui-toggle-row-body">
+                  <span className="dex-ui-toggle-row-title">{n.title}</span>
+                  <span className="dex-ui-toggle-row-desc">{n.desc}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </StepRow>
 
-        <BulkUserImportModal
-          open={bulkOpen}
-          onClose={() => setBulkOpen(false)}
-          title={isDe ? 'Personen einfügen' : 'Add people'}
-          description={isDe
-            ? 'Namen oder E-Mail-Adressen einfügen (z.B. aus Outlook oder Excel kopiert). Die Personen landen als Auswahl im Dialog — angemeldet wird erst über den Knopf unten.'
-            : 'Paste names or email addresses (e.g. copied from Outlook or Excel). People are collected in the dialog — registration only happens via the button below.'}
-          existingEmails={people.map(p => p.email)}
-          searchUsers={searchUsers}
-          onAdd={item => setPeople(prev => prev.some(x => x.email.toLowerCase() === item.email.toLowerCase()) ? prev : prev.concat(item))}
-        />
+        {/* Ergebnis — Zähler als Pills, Zeilen als Tabelle mit Status-Pill */}
+        {report && (
+          <div className="dex-ui-section dex-ui-fade-in">
+            <div className="dex-ui-section-title">{isDe ? 'Ergebnis' : 'Result'}</div>
+            <div className="dex-ui-inline" style={{ marginBottom: 10 }}>
+              <span className="dex-ui-pill dex-ui-pill--green">{okCount} {isDe ? 'angemeldet' : 'registered'}</span>
+              {waitCount > 0 && <span className="dex-ui-pill dex-ui-pill--orange">{waitCount} {isDe ? 'auf der Warteliste' : 'on the waitlist'}</span>}
+              {failCount > 0 && <span className="dex-ui-pill dex-ui-pill--red">{failCount} {isDe ? 'nicht angemeldet' : 'not registered'}</span>}
+            </div>
+            <div className="dex-ui-table-wrap">
+              <table className="dex-ui-table">
+                <thead><tr><th>Person</th><th>{isDe ? 'Ziel' : 'Target'}</th><th>Status</th></tr></thead>
+                <tbody>
+                  {report.map((r, i) => (
+                    <tr key={i}>
+                      <td style={{ fontWeight: 600 }}>{r.person}</td><td>{r.target}</td>
+                      <td><span className={cx('dex-ui-pill', r.ok ? (isWaitRow(r) ? 'dex-ui-pill--orange' : 'dex-ui-pill--green') : 'dex-ui-pill--red')} style={{ whiteSpace: 'normal' }}>
+                        {r.ok ? <Check size={12} /> : <X size={12} />}{r.status}
+                      </span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
-    </div>
+
+      <BulkUserImportModal
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        title={isDe ? 'Personen einfügen' : 'Add people'}
+        description={isDe
+          ? 'Namen oder E-Mail-Adressen einfügen (z.B. aus Outlook oder Excel kopiert). Die Personen landen als Auswahl im Dialog — angemeldet wird erst über den Knopf unten.'
+          : 'Paste names or email addresses (e.g. copied from Outlook or Excel). People are collected in the dialog — registration only happens via the button below.'}
+        existingEmails={people.map(p => p.email)}
+        searchUsers={searchUsers}
+        onAdd={item => setPeople(prev => prev.some(x => x.email.toLowerCase() === item.email.toLowerCase()) ? prev : prev.concat(item))}
+      />
+    </Modal>
   );
 }
