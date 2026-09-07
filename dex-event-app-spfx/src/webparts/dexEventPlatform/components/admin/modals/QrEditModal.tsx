@@ -4,7 +4,7 @@
  */
 import * as React from 'react';
 import { QrEmailOverride, buildQrBlockHtml, qrEmailDefaults } from '../../../services/EmailTemplates';
-import { MailHeaderImage, normalizeMailHeaderImage } from '../../../utils/mailHeaderImage';
+import { MailHeaderImage, resolveMailHeaderImage } from '../../../utils/mailHeaderImage';
 import MailHeaderImageChooser from '../../admin/MailHeaderImageChooser';
 import { SAMPLE_QR_ID } from '../../admin/adminConstants';
 import { HtmlEditorModal } from '../../HtmlEditorModal';
@@ -83,7 +83,15 @@ export const QrEditModal: React.FC<QrEditModalProps> = (p) => {
         const savedHeading = (savedOv && savedOv.heading) || def.heading;
         const savedSubheading = (savedOv && savedOv.subheading) || def.subheading;
         const savedBody = (savedOv && savedOv.bodyHtml) || def.body;
-        const savedHeaderImage = normalizeMailHeaderImage(savedOv && savedOv.headerImage);
+        // v31.0: derselbe Default wie beim Öffnen (eigenes Mail-Logo → volle
+        // Breite), sonst gälte der Editor sofort als „ungespeichert geändert".
+        const savedHeaderImage = resolveMailHeaderImage(savedOv && savedOv.headerImage, qrTgt.emailTemplateOverrides, qrTgt.mailImageBase64);
+        // v31.0: eigene Teilnehmer-ID in der Vorschau, sonst Beispiel-ID.
+        const ownId = ((): number => {
+          const me = (currentUser.email || '').toLowerCase();
+          const mine = me ? registrations.find(r => (r.ParticipantEmail || '').toLowerCase() === me) : undefined;
+          return mine && mine.TeilnehmerID ? mine.TeilnehmerID : SAMPLE_QR_ID;
+        })();
         const qrEditDirty = qrEditSubject.trim() !== savedSubject.trim()
           || qrEditHeading.trim() !== savedHeading.trim()
           || qrEditSubheading.trim() !== savedSubheading.trim()
@@ -219,7 +227,7 @@ export const QrEditModal: React.FC<QrEditModalProps> = (p) => {
                         // Sprache und sieht rechts weiter die alte.
                         if (qrEditSampleImg) {
                           const myNm = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email;
-                          setQrEditSampleBlock(buildQrBlockHtml(qrEditSampleImg, myNm, SAMPLE_QR_ID, opt.v || qrTgt.emailLanguage || 'EN', qrBlockNote));
+                          setQrEditSampleBlock(buildQrBlockHtml(qrEditSampleImg, myNm, ownId,opt.v || qrTgt.emailLanguage || 'EN', qrBlockNote));
                         }
                       }}
                       style={{
@@ -254,7 +262,7 @@ export const QrEditModal: React.FC<QrEditModalProps> = (p) => {
                     setQrBlockNote(e.target.value);
                     if (qrEditSampleImg) {
                       const myNm = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email;
-                      setQrEditSampleBlock(buildQrBlockHtml(qrEditSampleImg, myNm, SAMPLE_QR_ID, qrBlockLang || qrTgt.emailLanguage || 'EN', e.target.value));
+                      setQrEditSampleBlock(buildQrBlockHtml(qrEditSampleImg, myNm, ownId,qrBlockLang || qrTgt.emailLanguage || 'EN', e.target.value));
                     }
                   }}
                   placeholder={isDe
