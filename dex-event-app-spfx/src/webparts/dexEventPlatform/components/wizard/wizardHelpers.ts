@@ -120,34 +120,74 @@ export function serializeCustomFields(
 // Beim Edit-Laden mappen wir den eingebackenen Organizer-Namen wieder auf
 // {{Organizer}} zurück — dann löst der nächste Save mit ALLEN aktuellen
 // Organizern neu auf. Sicher: findet sich nichts, bleibt der Body unverändert.
-export function reinsertOrganizerPlaceholder(body: string, organizers: string[]): string {
-  if (!body || !organizers || organizers.length === 0) return body;
-  if (body.indexOf('{{Organizer}}') >= 0) return body; // schon Platzhalter
-  const names = organizers.map(n => (n || '').trim()).filter(Boolean);
-  // v29.21 (Audit): Der Save backt den Platzhalter über formatOrganizerList
-  // — aus „Nachname, Vorname" (People-Picker-Format der Organizer-Spalte)
-  // wird dort „Vorname Nachname". Genau diese Form steht also im
-  // gespeicherten Body; die rohen Spalten-Namen matchen beim Regelfall mit
-  // Komma NIE, und der v27.3-Mechanismus („Organizer-Wechsel löst beim
-  // nächsten Save neu auf") war wirkungslos. Beide Formen probieren.
+//
+// v30.75: Die Fassung bis v30.74 hat den Termin-Text bei JEDEM Speichern
+// aufgebläht. Der Save backt „Vorname Nachname" und verbindet mit „und"/„and"
+// (formatOrganizerList: „A, B und C"); die Rück-Suche verglich aber nur gegen
+// „A; B" und „A, B" — bei zwei oder mehr Organizern also NIE ein Treffer. Dann
+// griff der Notnagel „ersten enthaltenen Namen ersetzen" und machte aus
+// „A, B und C" ein „A, B und {{Organizer}}"; der nächste Save setzte dort
+// wieder „A, B und C" ein → „A, B und A, B und C". Nach zwanzig Saves stand
+// im Outlook-Termin ein halber Bildschirm Namen (Befund 07.09.2026, DTP
+// Basics Training). Seit v30.71 („Kommunikation gemeinsam") wurde dieser
+// Body außerdem in jeden Termin kopiert.
+//
+// Jetzt: EIN regulärer Ausdruck erkennt einen ganzen LAUF aus Organizer-Namen
+// (beide Schreibweisen), verbunden mit Komma, Semikolon, „und" oder „and", und
+// ersetzt ihn komplett. Ein aufgeblähter Absatz enthält u.U. mehrere Läufe
+// (dazwischen ein Name, der kein Organizer mehr ist) — dann wird alles vom
+// ersten bis zum letzten Lauf zu EINEM Platzhalter. Damit heilt das Laden
+// die kaputten Bodies, statt sie weiter zu füttern. Einen Einzelnamen
+// irgendwo im Text ersetzt die Funktion nicht mehr teilweise.
+function organizerNameCandidates(organizers: string[]): string[] {
+  const names = (organizers || []).map(n => (n || '').trim()).filter(Boolean);
   const flipped = names.map(n => {
     const c = n.indexOf(',');
     return c > 0 ? `${n.slice(c + 1).trim()} ${n.slice(0, c).trim()}` : n;
   });
-  const seenCand: Record<string, boolean> = {};
-  const candidates = [...flipped, ...names].filter(n => (seenCand[n] ? false : (seenCand[n] = true)));
-  for (const joiner of ['; ', ', ']) {
-    const full = candidates.length > 1 ? flipped.join(joiner) : '';
-    if (full && body.indexOf(full) >= 0) return body.split(full).join('{{Organizer}}');
+  const seen: Record<string, boolean> = {};
+  const out: string[] = [];
+  for (const n of [...flipped, ...names]) {
+    if (n.length < 3 || seen[n]) continue;
+    seen[n] = true;
+    out.push(n);
   }
-  const fullRaw = names.join('; ');
-  if (fullRaw && body.indexOf(fullRaw) >= 0) return body.split(fullRaw).join('{{Organizer}}');
-  // Bereits „kaputte"/veraltete Bodies: den ersten enthaltenen Organizer-Namen
-  // (längster zuerst, um Teil-Treffer zu vermeiden) auf den Platzhalter mappen.
-  for (const n of [...candidates].sort((a, b) => b.length - a.length)) {
-    if (n.length >= 3 && body.indexOf(n) >= 0) return body.split(n).join('{{Organizer}}');
-  }
-  return body;
+  // Längste zuerst, damit „Anna Berg-Meier" nicht an „Anna Berg" hängen bleibt.
+  return out.sort((a, b) => b.length - a.length);
+}
+const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function organizerRunRegex(candidates: string[]): RegExp {
+  const name = `(?:${candidates.map(escapeRegExp).join('|')})`;
+  const sep = '(?:\\s*[,;]\\s*|\\s+(?:und|and)\\s+)';
+  return new RegExp(`${name}(?:${sep}${name})*`, 'g');
+}
+const ORGANIZER_PH = '{{Organizer}}';
+
+export function reinsertOrganizerPlaceholder(body: string, organizers: string[]): string {
+  if (!body || !organizers || organizers.length === 0) return body;
+  if (body.indexOf(ORGANIZER_PH) >= 0) return body; // schon Platzhalter
+  const candidates = organizerNameCandidates(organizers);
+  if (candidates.length === 0) return body;
+  const run = organizerRunRegex(candidates);
+  return body.split('</p>').map(par => {
+    const replaced = par.replace(run, ORGANIZER_PH);
+    const first = replaced.indexOf(ORGANIZER_PH);
+    const last = replaced.lastIndexOf(ORGANIZER_PH);
+    if (first < 0 || first === last) return replaced;
+    return replaced.slice(0, first) + ORGANIZER_PH + replaced.slice(last + ORGANIZER_PH.length);
+  }).join('</p>');
+}
+
+/** v30.75: Trägt der gespeicherte Body die Aufblähung aus dem Fehler oben
+ *  (mehr als ein Organizer-Lauf in einem Absatz)? Dann muss der Wizard beim
+ *  Speichern ein Outlook-Update anbieten — der Vergleich „Text geändert?"
+ *  sieht nach der Heilung auf beiden Seiten denselben Platzhalter. */
+export function outlookBodyOrganizerBloated(body: string, organizers: string[]): boolean {
+  if (!body || body.indexOf(ORGANIZER_PH) >= 0) return false;
+  const candidates = organizerNameCandidates(organizers);
+  if (candidates.length === 0) return false;
+  const run = organizerRunRegex(candidates);
+  return body.split('</p>').some(par => (par.match(run) || []).length >= 2);
 }
 
 /**

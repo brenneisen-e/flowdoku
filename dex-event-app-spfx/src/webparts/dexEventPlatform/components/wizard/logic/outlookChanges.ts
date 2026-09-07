@@ -6,7 +6,7 @@
  * laufenden Renders, wie die Closure vorher auch. */
 import * as React from 'react';
 import { OutlookConfirmItem, SubEventDraft } from '../../wizard/wizardTypes';
-import { reinsertOrganizerPlaceholder } from '../../wizard/wizardHelpers';
+import { reinsertOrganizerPlaceholder, outlookBodyOrganizerBloated } from '../../wizard/wizardHelpers';
 import { stripOutlookWrapper } from '../../../services/EmailTemplates';
 import { buildOutlookLocation } from '../../../utils/eventFormat';
 import { dlog } from '../../../utils/debugLog';
@@ -72,7 +72,8 @@ export function detectOutlookRelevantChangesImpl(ctx: OutlookChangesCtx): { item
     // anwenden — sonst enthält der State den Platzhalter, der Snapshot den
     // gebackenen Namen, und der Vergleich meldete bei JEDEM Save „Termin-Text
     // geändert" (Dauer-False-Positive des Update-Modals).
-    const initialStripped = reinsertOrganizerPlaceholder(stripOutlookWrapper(snap.outlookBody || ''), editEvent?.organizers || []);
+    const initialRawStripped = stripOutlookWrapper(snap.outlookBody || '');
+    const initialStripped = reinsertOrganizerPlaceholder(initialRawStripped, editEvent?.organizers || []);
     // v29.21 (Audit): Auf einem Sub-Tab liegt der AKTUELLE Top-Level-Body im
     // Top-Level-Slot (resolveTopLevelCommState) — der alte Fallback verglich
     // den Mount-Snapshot mit sich selbst, eine Hauptevent-Body-Änderung vor
@@ -103,6 +104,12 @@ export function detectOutlookRelevantChangesImpl(ctx: OutlookChangesCtx): { item
     if (!sameInstant(currentStart, snap.startDate || '')) topChangedFields.push('startDate');
     if (!sameInstant(currentEnd, snap.endDate || '')) topChangedFields.push('endDate');
     if (currentStripped !== initialStripped) topChangedFields.push('outlookBody');
+    // v30.75: Ein durch den Reinsert-Fehler aufgeblähter Body (s.
+    // wizardHelpers) wird beim Laden geheilt — State UND Snapshot tragen
+    // danach denselben Platzhalter, der Vergleich oben meldet nichts. Der
+    // Termin in den Kalendern der Teilnehmer trägt aber noch die Namensflut;
+    // das Update muss angeboten werden.
+    if (outlookBodyOrganizerBloated(initialRawStripped, editEvent?.organizers || []) && topChangedFields.indexOf('outlookBody') < 0) topChangedFields.push('outlookBody');
     if (layoutChanged) topChangedFields.push('layout');
     // v29.38: reine Teams-Link-Änderung ebenfalls als Kopf-/Layout-Änderung
     // melden (eigener Grund wäre eine weitere Feld-Variante — der Termin-Text

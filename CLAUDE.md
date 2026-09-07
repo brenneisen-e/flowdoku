@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.73.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.75.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -506,6 +506,22 @@ Lehre aus demselben Tag: **Die Queue-Liste `DEX_IDReorder` zeigte nur `Done`,
 während die Run history nur rote Läufe hatte** — `DEX_IDReorder` (Status →
 Done) läuft VOR der Zähler-Kette. Wer den Zustand eines Flows an seiner Queue
 misst, misst dort nichts. Immer die Run history ansehen.
+
+**Der Outlook-Body wird mit eingebackenen Organizer-Namen gespeichert — und
+die Rück-Umwandlung muss EXAKT das erkennen, was der Save schreibt.**
+`{{Organizer}}` wird beim Save über `formatOrganizerList` aufgelöst („A, B und
+C"), beim Laden macht `reinsertOrganizerPlaceholder` daraus wieder den
+Platzhalter. Bis v30.74 suchte sie nach „A; B"/„A, B" — bei zwei oder mehr
+Organizern nie ein Treffer — und ersetzte dann als Notnagel EINEN Namen. Der
+nächste Save setzte dort die ganze Liste ein: der Text wuchs mit jedem
+Speichern, über Monate unbemerkt, weil ihn nur der Teilnehmer im Kalender
+sieht. Zwei Lehren: (1) Wer einen Wert beim Speichern „backt", schreibt den
+Umkehrweg gegen dieselbe Funktion und testet den Roundtrip Save→Load→Save
+auf Stabilität — ein Diff-Audit des Codes findet das nicht, nur der
+Roundtrip. (2) Ein Teil-Ersatz („irgendein enthaltener Name") ist nie ein
+sicherer Fallback, sondern der Anfang einer Endlosschleife. Seit v30.75
+erkennt ein Regex den ganzen Namens-Lauf und heilt aufgeblähte Bodies beim
+Laden; `outlookBodyOrganizerBloated` erzwingt dann das Outlook-Update.
 
 **Inline-Styles können kein `:hover`.** Interaktive Elemente brauchen einen
 Hover-State (`hoverIdx`, `evTabHover`), sonst lesen sie sich als Beschriftung.
