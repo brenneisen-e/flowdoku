@@ -290,9 +290,9 @@ export class SharePointService {
    * Einem User Leseberechtigung auf die Rollen-Liste geben (für EventAdmins).
    * Ermittelt die User-ID per E-Mail und setzt Read-Berechtigung.
    */
-  public async grantReadOnRolesList(userEmail: string): Promise<void> {
+  public async grantReadOnRolesList(userEmail: string): Promise<boolean> {
     // Read = 1073741826 (Standard SharePoint ID, sprachunabhängig)
-    await this._grantOnRolesList(userEmail, 1073741826, 'grantReadOnRolesList');
+    return this._grantOnRolesList(userEmail, 1073741826, 'grantReadOnRolesList');
   }
 
   /**
@@ -311,19 +311,56 @@ export class SharePointService {
         return false;
       }
       await this.ensureListHasUniquePermissions('DEX_Roles');
-      const resp = await this._post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/roleassignments/addroleassignment(principalid=${userId}, roledefid=${roleDefId})`,
-        {}
-      );
-      if (!resp.ok) {
-        const errorText = await resp.text().catch(() => 'no body');
-        console.error(`[DEX] ${label} Fehler-Response:`, resp.status, errorText);
-      }
-      return resp.ok;
+      return await this._grantVerified(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')`, userId, roleDefId, label);
     } catch (e) {
       console.error(`[DEX] ${label} Error:`, e);
       return false;
     }
+  }
+
+  /**
+   * v30.85: Recht setzen UND nachlesen — mit Wiederholung. Bis v30.84 war
+   * jede Rechtevergabe ein einzelner POST ohne Kontrolle; die Prüfung vom
+   * 07.09.2026 fand 18 von 126 Rollen-Einträgen mit mindestens einem
+   * fehlenden Recht. Ein 429 beim Zuweisen kostete das Recht still, und es
+   * fiel erst auf, wenn die Person die Kachel vermisste oder kein Event
+   * anlegen konnte. Jetzt: bis zu drei Versuche (1,5 s / 4 s Pause), danach
+   * `getbyprincipalid(...)/roledefinitionbindings` lesen — nur wenn die
+   * RoleDefinition wirklich dransteht, gilt das Recht als gesetzt.
+   * Full Control deckt jedes niedrigere Recht ab.
+   */
+  private async _grantVerified(base: string, userId: number, roleDefId: number, label: string): Promise<boolean> {
+    const FULL = 1073741829;
+    const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
+    const verify = async (): Promise<boolean> => {
+      try {
+        const chk = await this._sp.get(
+          `${base}/roleassignments/getbyprincipalid(${userId})/roledefinitionbindings?$select=Id`,
+          SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } }
+        );
+        if (!chk.ok) return false;
+        const d = await chk.json();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ids: number[] = ((d.value || d.d?.results || []) as any[]).map(b => Number(b.Id));
+        return ids.indexOf(roleDefId) >= 0 || ids.indexOf(FULL) >= 0;
+      } catch { return false; }
+    };
+    const delays = [1500, 4000];
+    let lastStatus = 0;
+    for (let i = 0; i <= delays.length; i++) {
+      try {
+        const resp = await this._post(`${base}/roleassignments/addroleassignment(principalid=${userId}, roledefid=${roleDefId})`, {});
+        lastStatus = resp.status;
+        // Die Zuweisung kann schon dagestanden haben (SharePoint antwortet dann
+        // trotzdem 200) — deshalb immer nachlesen, nicht dem POST glauben.
+        if (await verify()) return true;
+      } catch (e) {
+        console.warn(`[DEX] ${label}: Versuch ${i + 1} Ausnahme`, e);
+      }
+      if (i < delays.length) await sleep(delays[i]);
+    }
+    console.error(`[DEX] ${label}: Recht ${roleDefId} für Principal ${userId} auf ${base} nach 3 Versuchen NICHT gesetzt (letzter HTTP-Status ${lastStatus}).`);
+    return false;
   }
 
   /**
@@ -424,8 +461,9 @@ export class SharePointService {
           for (const s of missingScopes) {
             try {
               if (s.key !== 'web') await this.ensureListHasUniquePermissions(s.key === 'roles' ? 'DEX_Roles' : 'DEX_Events');
-              const resp = await this._post(`${s.base}/roleassignments/addroleassignment(principalid=${userId}, roledefid=${s.need(isAdminRole)})`, {});
-              if (!resp.ok) { allOk = false; console.warn(`[DEX] auditRolesListAccess: ${s.label} für ${em} nicht setzbar (HTTP ${resp.status})`); }
+              // v30.85: mit Wiederholung und Nachlesen — sonst wäre der Audit
+              // genauso blind wie die Zuweisung, die er reparieren soll.
+              if (!(await this._grantVerified(s.base, userId, s.need(isAdminRole), `auditRolesListAccess/${s.key}`))) allOk = false;
             } catch (e) { allOk = false; console.warn(`[DEX] auditRolesListAccess: ${s.label} für ${em} Fehler`, e); }
             await sleep(150);
           }
@@ -480,32 +518,32 @@ export class SharePointService {
    * Einem Organizer Full Control auf die DEX_Events-Liste + Manage auf Site-Ebene geben.
    * Manage auf Site-Ebene erlaubt Subsite-Erstellung (webs/add).
    */
-  public async grantOrganizerPermissions(userEmail: string): Promise<void> {
-    // v30.84: Ergebnis sichtbar machen — bis hier schluckte der catch alles,
-    // und ein gescheitertes Web-Recht fiel erst beim Anlegen des ersten
-    // Events auf („Subsite konnte nicht erstellt werden").
+  /**
+   * Liefert die Rechte, die NICHT gesetzt werden konnten (leer = alles ok).
+   * v30.84: Ergebnis sichtbar machen — bis dahin schluckte der catch alles,
+   * und ein gescheitertes Web-Recht fiel erst beim Anlegen des ersten Events
+   * auf („Subsite konnte nicht erstellt werden"). v30.85: mit Wiederholung
+   * und Nachlesen (`_grantVerified`) statt eines einzelnen POSTs.
+   */
+  public async grantOrganizerPermissions(userEmail: string): Promise<string[]> {
+    const FULL = 1073741829;
+    const missing: string[] = [];
     try {
       const userId = await this.getUserIdByEmail(userEmail);
-      if (!userId) { console.error('[DEX] grantOrganizerPermissions: Keine User-ID für', userEmail); return; }
-
+      if (!userId) {
+        console.error('[DEX] grantOrganizerPermissions: Keine User-ID für', userEmail);
+        return ['Event-Liste (Vollzugriff)', 'Site (Vollzugriff für Subsites)'];
+      }
       // 1. Full Control auf DEX_Events (wie Admin)
       await this.ensureListHasUniquePermissions('DEX_Events');
-      const r1 = await this._post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
-        {}
-      );
-      if (!r1.ok) console.error(`[DEX] grantOrganizerPermissions: DEX_Events Full Control für ${userEmail} nicht setzbar (HTTP ${r1.status})`);
-
+      if (!(await this._grantVerified(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')`, userId, FULL, 'grantOrganizerPermissions/DEX_Events'))) missing.push('Event-Liste (Vollzugriff)');
       // 2. Full Control auf Site-Ebene (für Subsite-Erstellung)
-      // Full Control = 1073741829
-      const r2 = await this._post(
-        `${this.siteUrl}/_api/web/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
-        {}
-      );
-      if (!r2.ok) console.error(`[DEX] grantOrganizerPermissions: Web Full Control für ${userEmail} nicht setzbar (HTTP ${r2.status}) — Subsite-Anlage wird scheitern; Rollenverwaltung → „Rechte prüfen"`);
+      if (!(await this._grantVerified(`${this.siteUrl}/_api/web`, userId, FULL, 'grantOrganizerPermissions/Web'))) missing.push('Site (Vollzugriff für Subsites)');
     } catch (e) {
       console.error('[DEX] grantOrganizerPermissions Error:', e);
+      return ['Event-Liste (Vollzugriff)', 'Site (Vollzugriff für Subsites)'];
     }
+    return missing;
   }
 
   /**
