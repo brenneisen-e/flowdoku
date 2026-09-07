@@ -44,6 +44,10 @@ export async function createEventSubsite(svc: EventService, title: string, descr
   // Templates in Reihenfolge versuchen:
   // STS#3 = Modern ohne Group, STS#0 = Classic Team Site, STS = Blank
   const templates = ['STS#3', 'STS#0', 'STS'];
+  // v30.84: letzten HTTP-Status merken — der Aufrufer (createEvent) kann so
+  // „fehlendes Recht" (403) von „Drosselung" (429) unterscheiden, statt
+  // pauschal „Fehlende Berechtigung?" zu raten.
+  svc._lastSubsiteCreateStatus = 0;
 
   for (const template of templates) {
     try {
@@ -67,6 +71,7 @@ export async function createEventSubsite(svc: EventService, title: string, descr
         return subsiteAbsoluteUrl || `${svc.siteUrl}/${urlSuffix}`;
       }
 
+      svc._lastSubsiteCreateStatus = response.status;
       // Fehlerdetails loggen
       try {
         const err = await response.json();

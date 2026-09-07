@@ -641,6 +641,8 @@ export class EventService {
   // v18.65: Session-Merker der CancelledName-Spalten-Nachruestung — bleibt
   // als Instanz-Zustand an der Klasse, das Modul liest/setzt ihn ueber svc.
   public _idReorderCancelledFieldEnsured = false;
+  /** v30.84: HTTP-Status des letzten Subsite-Anlage-Versuchs (0 = keiner/Ausnahme). */
+  public _lastSubsiteCreateStatus = 0;
 
   public async queueIDReorder(
     eventId: string,

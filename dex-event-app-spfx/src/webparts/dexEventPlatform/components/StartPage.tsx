@@ -137,8 +137,8 @@ export default function StartPage(): React.ReactElement {
         {rolesReadStatus === 'forbidden' && (
           <div style={{ fontSize: '0.7rem', lineHeight: 1.3, textAlign: 'center', color: 'var(--dex-orange-dark, #b35a00)', background: 'rgba(255,255,255,0.92)', borderRadius: 8, padding: '6px 8px', maxWidth: 240 }}>
             {isDe
-              ? 'Rollen konnten nicht geladen werden (kein Leserecht auf der Rollenliste). Bist du bereits Organizer? Dann bitte einen Admin, in der Rollenverwaltung „Leserechte prüfen" auszuführen.'
-              : 'Roles could not be loaded (no read access to the roles list). Already an organizer? Ask an admin to run "Check read access" in role management.'}
+              ? 'Rollen konnten nicht geladen werden (kein Leserecht auf der Rollenliste). Bist du bereits Organizer? Dann bitte einen Admin, in der Rollenverwaltung „Rechte prüfen" auszuführen.'
+              : 'Roles could not be loaded (no read access to the roles list). Already an organizer? Ask an admin to run "Check rights" in role management.'}
           </div>
         )}
       </div>

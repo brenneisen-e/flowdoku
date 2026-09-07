@@ -187,14 +187,14 @@ export default function SettingsPage(): React.ReactElement {
           : 'The permissions of the roles list could not be read — please try again later.';
       } else if (r.missing.length === 0) {
         msg = isDe
-          ? `${r.checked} Rollen-Einträge geprüft — alle haben Leserecht auf die Rollenliste.`
-          : `${r.checked} role entries checked — all have read access to the roles list.`;
+          ? `${r.checked} Rollen-Einträge geprüft — alle haben ihre drei Rechte (Rollenliste lesen, Event-Liste, Site).`
+          : `${r.checked} role entries checked — all have their three rights (read roles list, events list, site).`;
       } else {
-        const fixed = r.fixed.length ? (isDe ? ` Nachgesetzt: ${r.fixed.join(', ')}.` : ` Granted: ${r.fixed.join(', ')}.`) : '';
-        const failed = r.failed.length ? (isDe ? ` NICHT setzbar (Konto nicht auflösbar oder Drosselung): ${r.failed.join(', ')}.` : ` Could NOT be granted (account not resolvable or throttling): ${r.failed.join(', ')}.`) : '';
+        const fixed = r.fixed.length ? (isDe ? ` Nachgesetzt: ${r.fixed.join('; ')}.` : ` Granted: ${r.fixed.join('; ')}.`) : '';
+        const failed = r.failed.length ? (isDe ? ` NICHT setzbar (Konto nicht auflösbar oder Drosselung): ${r.failed.join('; ')}.` : ` Could NOT be granted (account not resolvable or throttling): ${r.failed.join('; ')}.`) : '';
         msg = isDe
-          ? `${r.checked} Rollen-Einträge geprüft, ${r.missing.length} ohne Leserecht auf die Rollenliste — diese Personen sahen die Organizer-Kachel nicht, obwohl sie in der Liste stehen.${fixed}${failed} Betroffene müssen die App einmal neu laden.`
-          : `${r.checked} role entries checked, ${r.missing.length} without read access to the roles list — these people did not see the organizer tile although they are in the list.${fixed}${failed} Affected people need to reload the app once.`;
+          ? `${r.checked} Rollen-Einträge geprüft, bei ${r.missing.length} fehlte mindestens ein Recht — ohne Leserecht fehlt die Kachel, ohne Site-Vollzugriff scheitert das Anlegen eines Events („Subsite konnte nicht erstellt werden").${fixed}${failed} Betroffene müssen die App einmal neu laden.`
+          : `${r.checked} role entries checked, ${r.missing.length} lacked at least one right — without read access the tile is missing, without site full control creating an event fails.${fixed}${failed} Affected people need to reload the app once.`;
       }
       setAccessAudit({ running: false, done: 0, total: 0, result: msg });
     } catch (e) {
@@ -814,11 +814,11 @@ export default function SettingsPage(): React.ReactElement {
               background: 'var(--dex-gray-50, #f7f7f7)', border: '1px solid var(--dex-gray-200)',
             }}>
               <div style={{ flex: 1, minWidth: 240, color: 'var(--dex-gray-700)', lineHeight: 1.45 }}>
-                <strong>{isDe ? 'Leserechte auf die Rollenliste' : 'Read access to the roles list'}</strong>
+                <strong>{isDe ? 'SharePoint-Rechte der Rollen' : 'SharePoint rights of the roles'}</strong>
                 <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
                   {isDe
-                    ? 'Eine Rolle wirkt nur, wenn die Person die Liste DEX_Roles lesen darf. Fehlt das Recht, sieht sie „Organizer werden?" statt ihrer Kachel. Prüft alle Einträge und setzt fehlende Rechte nach.'
-                    : 'A role only takes effect if the person can read the DEX_Roles list. Without it they see "Want to become an organizer?" instead of their tile. Checks all entries and grants missing rights.'}
+                    ? 'Eine Rolle braucht drei Rechte, die beim Zuweisen gesetzt werden, aber an der Drosselung scheitern können: Lesen auf DEX_Roles (sonst „Organizer werden?" statt Kachel), Vollzugriff auf DEX_Events und auf die Site (sonst „Subsite konnte nicht erstellt werden" beim Anlegen). Prüft alle Einträge gegen die tatsächlichen Berechtigungen und setzt fehlende nach.'
+                    : 'A role needs three rights that are set on assignment but can fail under throttling: read on DEX_Roles (otherwise "Want to become an organizer?" instead of the tile), full control on DEX_Events and on the site (otherwise "Subsite could not be created"). Checks all entries against the actual permissions and grants what is missing.'}
                 </div>
                 {accessAudit.result && (
                   <div style={{ marginTop: 6, color: accessAudit.result.indexOf('NICHT') >= 0 || accessAudit.result.indexOf('NOT') >= 0 || accessAudit.result.indexOf('nicht gelesen') >= 0 ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600 }}>
@@ -835,7 +835,7 @@ export default function SettingsPage(): React.ReactElement {
               >
                 {accessAudit.running
                   ? (accessAudit.total > 0 ? `${isDe ? 'Prüft' : 'Checking'} ${accessAudit.done}/${accessAudit.total} …` : (isDe ? 'Liest Berechtigungen …' : 'Reading permissions …'))
-                  : (isDe ? 'Leserechte prüfen' : 'Check read access')}
+                  : (isDe ? 'Rechte prüfen' : 'Check rights')}
               </button>
             </div>
 
