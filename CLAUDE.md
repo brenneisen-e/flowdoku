@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.95.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.98.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -808,8 +808,10 @@ dazu erledigt. Offen und **noch nicht begonnen**:
 
 3. **Programmpunkte** — Stufen 1–4 sind ausgeliefert (v30.86, v30.91,
    v30.92, v30.93; `docs/konzept-programmpunkte.md`), dazu Cluster (v30.94),
-   `{{Programm}}` und Self-Check-in je Punkt (v30.95). Offen:
-   Teilnahmebescheinigung, Programmpunkte unter Kalender-Tagen. Zum
+   `{{Programm}}` und Self-Check-in je Punkt (v30.95), Teilnahme-
+   bescheinigung (v30.96, `utils/attendanceCertificatePdf` — sie bescheinigt
+   NUR erfasste Anwesenheit und nennt den Erfassungsweg). Offen:
+   Programmpunkte unter Kalender-Tagen. Zum
    Platzhalter: Er ist ein HTML-Block (RAW_HTML_KEYS in
    `buildEmailFromTemplate`; für Outlook `applyProgramPlaceholder` NACH
    `replacePlaceholders`), und der gebackene Block steht zwischen Markern,

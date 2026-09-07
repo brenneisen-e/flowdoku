@@ -259,7 +259,8 @@ Kopie jederzeit verworfen und wiederholt werden.
 | 5a | Cluster („Tag 1", frei benennbar) statt Karten-Wand im Editor, deutsches Datums-/Zeitformat, kompakte Anwesenheits-Sicht — `AgendaItem.cluster`, `utils/agendaGroups`, `components/wizard/AgendaEditor.tsx` | ausgeliefert (v30.94) |
 | 5b | `{{Programm}}`-Platzhalter für Mail und Outlook (`utils/programPlaceholder`, Tabelle nach Clustern, Roundtrip über Marker) | ausgeliefert (v30.95) |
 | 5c | Self-Check-in je Programmpunkt: Live-QR-Anzeige mit Punkt-Auswahl (`&item=`), `selfCheckIn` setzt nur `AgendaCheckIns` | ausgeliefert (v30.95) |
-| 5d | Teilnahmebescheinigung (PDF mit besuchten Punkten), Programmpunkte unter Kalender-Tagen | offen |
+| 5d | Teilnahmebescheinigung (PDF, eine Seite je Person: Programm nach Clustern, besuchte Punkte mit Haken und Uhrzeit; `utils/attendanceCertificatePdf`, Knopf in „Meine Events" und in der Anwesenheits-Auswertung) | ausgeliefert (v30.96) |
+| 5e | Programmpunkte unter Kalender-Tagen (Sub-Event-Kalender + Punkte je Tag) | offen |
 
 Stufen 2 bis 4 sind je ein Release; Stufe 4 braucht einen Testlauf an einer
 Kopie des 20er-Events, bevor sie am echten läuft — was mit dem Kopier-Ansatz

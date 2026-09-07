@@ -14,6 +14,7 @@ import { isEventVisibleForUser } from '../EventListPage';
 import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime } from '../../types';
 import { parseAgendaCheckIns, formatMarkTime } from '../../utils/agendaCheckIns';
 import { agendaGroups, sortAgenda, groupDateLabel } from '../../utils/agendaGroups';
+import { downloadAttendanceCertificate } from '../../utils/attendanceCertificatePdf';
 import { SPRegistration } from '../../services/EventService';
 import { isEventOver, formatAllDayPeriod } from '../../utils/eventFormat';
 import { selfCancelLocked, selfCancelLockReason } from '../../utils/cancelPolicy';
@@ -751,6 +752,32 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                           <QrCode size={12} /> {isDe ? 'Mein QR-Code' : 'My QR code'}
                         </button>
                       )}
+                      {/* v30.96: Teilnahmebescheinigung — sobald mindestens ein
+                          Programmpunkt als anwesend erfasst ist. Die Daten sind
+                          die eigene Zeile (AgendaCheckIns) und das Programm des
+                          Events; ohne Erfassung gibt es nichts zu bescheinigen. */}
+                      {!hiddenRow && event.agendaCheckIn && (() => {
+                        const marks = parseAgendaCheckIns(registration && registration.AgendaCheckIns);
+                        const n = (event.agenda || []).filter(a => !!marks[a.id]).length;
+                        if (n === 0) return null;
+                        return (
+                          <button
+                            type="button"
+                            className="btn btn-outline"
+                            onClick={() => {
+                              downloadAttendanceCertificate(
+                                { title: event.title, startDate: event.startDate, endDate: event.endDate, location: event.location, organizers: event.organizers, agenda: event.agenda || [], agendaTermSingular: event.agendaTermSingular, agendaTermPlural: event.agendaTermPlural },
+                                { name: `${registration.Vorname || ''} ${registration.Nachname || ''}`.trim() || registration.ParticipantName || '', email: registration.ParticipantEmail, marks },
+                                isDe,
+                              ).catch(() => showAlert(isDe ? 'Die Bescheinigung konnte nicht erzeugt werden.' : 'The certificate could not be created.', { variant: 'error' }));
+                            }}
+                            style={{ fontSize: '0.78rem', padding: '5px 12px', borderRadius: 6, width: 'auto', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            title={isDe ? `Teilnahmebescheinigung als PDF — ${n} von ${(event.agenda || []).length} ${event.agendaTermPlural || 'Programmpunkte'} erfasst` : `Certificate of attendance as PDF — ${n} of ${(event.agenda || []).length} items recorded`}
+                          >
+                            <Icon iconName="Certificate" style={{ fontSize: 12 }} /> {isDe ? 'Teilnahmebescheinigung' : 'Certificate'}
+                          </button>
+                        );
+                      })()}
                       {/* Nachrichten zum Event: Broadcast-Mails (Einladung,
                           Ankündigungen) aus dem Kommunikations-Log lesen. */}
                       <button
