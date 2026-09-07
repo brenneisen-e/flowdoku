@@ -23,6 +23,7 @@
 import * as React from 'react';
 import { DeloitteEvent, EventSpecificField } from '../../types';
 import BulkUserImportModal, { BulkImportItem } from '../BulkUserImportModal';
+import { formatDateTimeRange } from '../myEvents/myEventsHelpers';
 import { X, Users } from '../Icons';
 
 interface SearchHit { email: string; displayName: string; location?: string }
@@ -297,7 +298,8 @@ export default function AddParticipantsModal(props: AddParticipantsModalProps): 
                 {ce.title || (isDe ? 'Sub-Event ohne Titel' : 'Untitled sub-event')}
                 {ce.startDate && (
                   <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.75rem' }}>
-                    {new Date(ce.startDate).toLocaleDateString(isDe ? 'de-DE' : 'en-GB')}
+                    {/* v30.79: von–bis statt nur Datum. */}
+                    {formatDateTimeRange(ce.startDate, ce.endDate, isDe)}
                   </span>
                 )}
               </label>

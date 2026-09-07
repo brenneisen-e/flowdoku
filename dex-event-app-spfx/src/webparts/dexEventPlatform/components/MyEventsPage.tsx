@@ -30,6 +30,7 @@ import { MyEventEntry, formatDate } from './myEvents/myEventsHelpers';
 import CancelledEventsCollapsible from './myEvents/CancelledEventsCollapsible';
 import MyEventCard from './myEvents/MyEventCard';
 import { AddMemberModal, ManageTeamModal, CascadeCancelModal, MyQrModal, EventCommsModal } from './myEvents/MyEventsModals';
+import { SubmitOverlay } from './registration/RegistrationBanners';
 
 export default function MyEventsPage(): React.ReactElement {
   const { navigate, selectedEventId, navIntent, clearIntent } = useNavigation();
@@ -314,6 +315,17 @@ export default function MyEventsPage(): React.ReactElement {
   const [isLoading, setIsLoading] = React.useState(true);
   const [cancellingId, setCancellingId] = React.useState<string | null>(null);
   const [isCancelling, setIsCancelling] = React.useState(false);
+  // v30.79: Fortschritts-Overlay während der (Kaskaden-)Abmeldung — wie beim
+  // Anmelden (SubmitOverlay): Seite gesperrt, Prozent-Balken, Warnhinweis.
+  // Bisher zeigte nur der rote Knopf „…", und bei 27 Terminen klickte man
+  // weiter (Nutzer-Ansage 07.09.2026). null = kein Overlay.
+  const [cancelProgress, setCancelProgress] = React.useState<{ pct: number; label: string } | null>(null);
+  React.useEffect(() => {
+    if (!cancelProgress) return undefined;
+    const warnBeforeUnload = (e: BeforeUnloadEvent): void => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload);
+  }, [cancelProgress]);
   // v22.46: Erfolgs-Screen nach erfolgreicher Selbst-Abmeldung — analog zum
   // Anmelde-Success-Screen (persönliche Ansprache, Event-Bild, Organizer).
   const [cancelSuccess, setCancelSuccess] = React.useState<null | {
@@ -349,7 +361,7 @@ export default function MyEventsPage(): React.ReactElement {
     // v15.8: zusätzlich Start-Datum und Ort pro Sub-Event mitliefern,
     // damit das Modal eine vollständige Info-Liste zeigen kann (vorher
     // nur Titel). Felder optional, fallbacks im Render.
-    subEvents: { id: string; title: string; startDate?: string; location?: string }[];
+    subEvents: { id: string; title: string; startDate?: string; endDate?: string; location?: string }[];
     resolve: (_choice: 'cascade' | 'parent-only' | 'abort') => void;
     /** v14.7: Wenn das Event `requireSubEventSelection` hat, ist „nur
      *  Hauptevent abmelden, Sub-Events behalten" sinnlos (Teilnehmer
@@ -680,7 +692,7 @@ export default function MyEventsPage(): React.ReactElement {
       const kids = childEventsOf(eventId);
       // v15.8: zusätzlich startDate und location pro Sub-Event mitschicken
       // damit das Cancel-Modal Ort + Zeit anzeigen kann.
-      const activeKids: { id: string; title: string; startDate?: string; location?: string }[] = [];
+      const activeKids: { id: string; title: string; startDate?: string; endDate?: string; location?: string }[] = [];
       for (const ce of kids) {
         try {
           // v29.25: Sub-Events mit gesperrter Selbst-Abmeldung gar nicht erst
@@ -693,6 +705,7 @@ export default function MyEventsPage(): React.ReactElement {
               id: ce.id,
               title: ce.title || (isDe ? 'Sub-Event' : 'Sub-event'),
               startDate: ce.startDate || '',
+              endDate: ce.endDate || '',
               location: ce.location || '',
             });
           }
@@ -727,13 +740,38 @@ export default function MyEventsPage(): React.ReactElement {
     // Person auf dem Termin ohne Klammer. Bei normalen Events bleibt die
     // Reihenfolge (die Klammer IST dort die Anmeldung).
     const kidsFirst = !!(entry && entry.event.subEventsOnlyMode);
+    // v30.79: Fortschritt + Drossel-Schutz. Jede Termin-Abmeldung sind
+    // rund sieben SharePoint-Schreibvorgänge; 27 am Stück liefen in die
+    // Drosselung (429) und einzelne Termine blieben still angemeldet. Deshalb
+    // eine kurze Pause zwischen den Terminen und ein zweiter Versuch nach
+    // längerer Pause, bevor ein Termin als gescheitert zählt.
+    const totalSteps = childIdsToCancel.length + 2; // Termine + Klammer + Nachladen
+    let stepsDone = 0;
+    const pct = (): number => Math.min(99, Math.round((stepsDone / totalSteps) * 100));
+    const kidTitle = (id: string): string => (childEventsOf(eventId).find(c => c.id === id) || { title: '' }).title || (isDe ? 'Termin' : 'date');
+    const cancelKidPaced = async (childId: string, idx: number, opts?: { skipReload?: boolean }): Promise<boolean> => {
+      setCancelProgress({ pct: pct(), label: isDe ? `Termin ${idx + 1}/${childIdsToCancel.length} wird abgemeldet: ${kidTitle(childId)}` : `Cancelling date ${idx + 1}/${childIdsToCancel.length}: ${kidTitle(childId)}` });
+      if (idx > 0) await new Promise<void>(resolve => setTimeout(resolve, 600));
+      let ok = false;
+      try { ok = await cancelRegistration(childId, opts); }
+      catch (err) { console.warn('[DEX] cascade-cancel sub-event failed:', childId, err); }
+      if (!ok) {
+        setCancelProgress({ pct: pct(), label: isDe ? `SharePoint ist ausgelastet — zweiter Versuch: ${kidTitle(childId)}` : `SharePoint is busy — retrying: ${kidTitle(childId)}` });
+        await new Promise<void>(resolve => setTimeout(resolve, 2500));
+        try { ok = await cancelRegistration(childId, opts); }
+        catch (err) { console.warn('[DEX] cascade-cancel retry failed:', childId, err); }
+      }
+      stepsDone += 1;
+      return ok;
+    };
+    setCancelProgress({ pct: 0, label: isDe ? 'Abmeldung wird vorbereitet…' : 'Preparing cancellation…' });
     if (kidsFirst) {
       let kidsFailed = 0;
-      for (const childId of childIdsToCancel) {
-        try { if (!(await cancelRegistration(childId, { skipReload: true }))) kidsFailed += 1; }
-        catch (err) { console.warn('[DEX] cascade-cancel sub-event failed:', childId, err); kidsFailed += 1; }
+      for (let i = 0; i < childIdsToCancel.length; i++) {
+        if (!(await cancelKidPaced(childIdsToCancel[i], i, { skipReload: true }))) kidsFailed += 1;
       }
       if (kidsFailed > 0) {
+        setCancelProgress(null);
         showAlert(isDe
           ? `${kidsFailed} Termin${kidsFailed === 1 ? '' : 'e'} konnte${kidsFailed === 1 ? '' : 'n'} nicht abgemeldet werden — deine Anmeldung bleibt bestehen. Bitte versuche es in ein paar Minuten erneut.`
           : `${kidsFailed} date${kidsFailed === 1 ? '' : 's'} could not be cancelled — your registration remains in place. Please try again in a few minutes.`,
@@ -744,7 +782,9 @@ export default function MyEventsPage(): React.ReactElement {
         return;
       }
     }
+    setCancelProgress({ pct: pct(), label: isDe ? `„${(entry && entry.event.title) || ''}" wird abgemeldet…` : `Cancelling „${(entry && entry.event.title) || ''}"…` });
     const success = await cancelRegistration(eventId);
+    stepsDone += 1;
     if (success) {
       // Late cancellation: alle Organizer zusammen benachrichtigen (EINE Mail an
       // die semikolon-separierte Liste), im Deloitte-Layout via wrapTemplate,
@@ -787,11 +827,18 @@ export default function MyEventsPage(): React.ReactElement {
       // brechen den Reload nicht ab. v30.68: im Klammer-Modus liefen sie oben
       // schon VOR der Klammer (kidsFirst).
       if (!kidsFirst) {
-        for (const childId of childIdsToCancel) {
-          try { await cancelRegistration(childId); }
-          catch (err) { console.warn('[DEX] cascade-cancel sub-event failed:', childId, err); }
+        const failedKids: string[] = [];
+        for (let i = 0; i < childIdsToCancel.length; i++) {
+          if (!(await cancelKidPaced(childIdsToCancel[i], i))) failedKids.push(childIdsToCancel[i]);
+        }
+        if (failedKids.length > 0) {
+          showAlert(isDe
+            ? `${failedKids.length} Termin${failedKids.length === 1 ? '' : 'e'} konnte${failedKids.length === 1 ? '' : 'n'} nicht abgemeldet werden (SharePoint ausgelastet): ${failedKids.map(kidTitle).join(', ')}. Bitte diese Termine in ein paar Minuten einzeln abmelden.`
+            : `${failedKids.length} date${failedKids.length === 1 ? '' : 's'} could not be cancelled (SharePoint busy): ${failedKids.map(kidTitle).join(', ')}. Please cancel them individually in a few minutes.`,
+            { variant: 'error' });
         }
       }
+      setCancelProgress({ pct: pct(), label: isDe ? 'Aktualisiere…' : 'Refreshing…' });
       await loadMyRegistrations();
       // v22.46: Erfolgs-Screen mit persönlicher Ansprache anzeigen.
       if (entry) {
@@ -812,6 +859,7 @@ export default function MyEventsPage(): React.ReactElement {
         });
       }
     }
+    setCancelProgress(null);
     setCancellingId(null);
     setIsCancelling(false);
   };
@@ -1260,6 +1308,19 @@ export default function MyEventsPage(): React.ReactElement {
         <CascadeCancelModal
           cascadeDialog={cascadeDialog}
           isDe={isDe}
+        />
+      )}
+      {/* v30.79: Sperr-Overlay mit Prozent-Balken während der
+          Kaskaden-Abmeldung (wie beim Anmelden) — bei 27 Terminen lief die
+          Abmeldung vorher minutenlang ohne sichtbaren Fortschritt, und ein
+          Tab-Wechsel oder Reload brach sie mittendrin ab (beforeunload-Guard
+          hängt am cancelProgress-State, s. oben). */}
+      {cancelProgress && (
+        <SubmitOverlay
+          displayProgress={cancelProgress.pct}
+          locale={isDe ? 'de' : 'en'}
+          submitProgressLabel={cancelProgress.label}
+          title={isDe ? 'Abmeldung läuft …' : 'Cancelling …'}
         />
       )}
 

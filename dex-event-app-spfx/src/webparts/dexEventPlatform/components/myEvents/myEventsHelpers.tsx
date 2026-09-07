@@ -96,6 +96,26 @@ export function formatDateRange(start: string, end: string): string {
   return `${sDate}, ${sTime} – ${eDate}, ${eTime}`;
 }
 
+/**
+ * v30.79: Kompaktes von–bis für Termin-Zeilen in Dialogen (ohne Wochentag,
+ * damit die Zeile kurz bleibt): „12.10.2026, 13:00 – 14:30" bzw. bei
+ * Tageswechsel „12.10.2026, 13:00 – 13.10.2026, 09:00". Nutzer-Befund
+ * 07.09.2026: „bei den Subevents fehlt irgendwie immer die zweite Zeit …
+ * muss natürlich immer von bis stehen." Ungültige Werte liefern ''.
+ */
+export function formatDateTimeRange(start?: string, end?: string, isDe: boolean = true): string {
+  const loc = isDe ? 'de-DE' : 'en-GB';
+  const s = start ? new Date(start) : null;
+  if (!s || !isFinite(s.getTime())) return '';
+  const e = end ? new Date(end) : null;
+  const sDay = s.toLocaleDateString(loc, { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const sTime = s.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit' });
+  if (!e || !isFinite(e.getTime())) return `${sDay}, ${sTime}`;
+  const eDay = e.toLocaleDateString(loc, { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const eTime = e.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit' });
+  return sDay === eDay ? `${sDay}, ${sTime} – ${eTime}` : `${sDay}, ${sTime} – ${eDay}, ${eTime}`;
+}
+
 export function getStatusBadgeClass(status: string): string {
   switch (status) {
     case 'Angemeldet': return 'badge-green';
