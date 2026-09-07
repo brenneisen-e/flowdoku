@@ -17,6 +17,9 @@ import { FunZoneStep } from '../wizard/steps/FunZoneStep';
 import { BillingStep } from '../wizard/steps/BillingStep';
 import { Send, Trash2 } from '../Icons';
 import { SubmitOverlay } from '../registration/RegistrationBanners';
+// v31.2: gemeinsame UI-Klassen (Karten, Chips, Schalter, Aufklapper …) —
+// dieselbe Quelle wie in den Modalen, siehe dexUi.ts und docs/ui-leitfaden.md.
+import { ensureDexUiStyles } from '../dexUi';
 
 export interface WizardFormShellProps {
   actionRowRef: React.MutableRefObject<HTMLDivElement>;
@@ -102,6 +105,9 @@ export interface WizardFormShellProps {
 
 export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
   const { actionRowRef, actionRowVisible, activeScopeIdx, addQuizQuestion, allowAttendeeUpload, askTeamName, attemptSubmitGuarded, attendeeUploadHint, attendeeUploadLabel, basicsStepProps, billingFields, billingPromptOpen, billingRelevant, billingSendMode, canBilling, capacityStepProps, communicationStepProps, currentStep, detailsStepProps, documents, draftSavedAt, draggedQuestionId, error, fieldsStepProps, getStepErrorsFor, goBack, hintStepIdx, isDe, isEditMode, isSubmitting, locationProgramStepProps, pendingSections, proceedNext, progress, progressLabel, quiz, removeQuizQuestion, renderGlobalScopeBar, renderStepIntro, setAllowAttendeeUpload, setAskTeamName, setAttendeeUploadHint, setAttendeeUploadLabel, setBillingFields, setBillingPromptOpen, setBillingRelevant, setBillingSendMode, setCurrentStep, setDocuments, setDraggedQuestionId, setHintStepIdx, setNewSectionError, setNewSectionModalOpen, setNewSectionName, setPendingSections, setShowConfigCheck, setShowRegisterPreview, setTeamJoinRequiresApproval, setTeamMembersCannotCreate, setTeamOpenSlotsVisible, setTeamPartialAllowed, setTeamRegistrationEnabled, setTeamSize, setTeamTermPlural, setTeamTermSingular, setTriedNext, steps, subEventsSectionProps, t, teamJoinRequiresApproval, teamMembersCannotCreate, teamOpenSlotsVisible, teamPartialAllowed, teamRegistrationEnabled, teamSize, teamTermPlural, teamTermSingular, title, updateQuizQuestion } = p;
+  // v31.2: Die gemeinsamen UI-Klassen einmal ins Dokument — die Schritte
+  // (dex-ui-card, dex-ui-chip, dex-ui-toggle-row …) verlassen sich darauf.
+  React.useEffect(() => { ensureDexUiStyles(); }, []);
   return (
     <>
       <div>
@@ -126,45 +132,68 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
             .dex-wizard-step:hover { transform: translateY(-2px); }
             .dex-wizard-step:hover .dex-step-circle { border-color: var(--dex-green, #86bc25) !important; box-shadow: 0 4px 12px rgba(134,188,37,0.35) !important; }
             .dex-wizard-step:hover .dex-step-label { color: var(--dex-green-dark, #4a7c1f) !important; }
-            /* v22.30: Gefüllter grüner Schritt-Header — sitzt bündig als
-               Kopf der weißen Karte (negative Margins überbrücken das
-               Karten-Padding): oben rund wie die Karte, unten gerade Kante,
-               darunter beginnt der Schritt-Inhalt. */
+            /* v22.30: Schritt-Kopf bündig als Kopf der weißen Karte (negative
+               Margins überbrücken das Karten-Padding).
+               v31.2: Vom gefüllten grünen Balken zum ruhigen Kopf — weiße
+               Fläche, schmale grüne Kante oben, kleine grüne Zeile („SCHRITT
+               3 · von 9") über einem großen Titel, Beschreibung in Grau. Der
+               grüne Block trug die Farbe der Marke, aber er war das
+               schwerste Element jeder Seite und konkurrierte mit dem Inhalt;
+               die Farbe sitzt jetzt in der Kante, der Zeile und den aktiven
+               Elementen — dort, wo sie etwas bedeutet. Die Klassen bleiben,
+               alle Schritte nutzen sie weiter; die Schritt-Zeile setzen sie
+               über .dex-step-eyebrow innerhalb des h2. (Kein Backtick in
+               diesem Kommentar — er steht in einem Template-String.) */
             .dex-step-head-title {
-              margin: -32px -32px 0; padding: 16px 24px 4px;
-              background: var(--dex-green, #86bc25); color: #fff;
-              font-size: 1.3rem; font-weight: 700;
+              position: relative;
+              margin: -32px -32px 0; padding: 26px 32px 0;
+              background: #fff; color: var(--dex-gray-800, #333);
+              font-size: 1.45rem; font-weight: 800; letter-spacing: -0.015em; line-height: 1.2;
+              border-radius: 15px 15px 0 0;
+              display: flex; flex-direction: column; gap: 6px;
+            }
+            .dex-step-head-title::before {
+              content: ''; position: absolute; left: 0; right: 0; top: 0; height: 5px;
+              background: linear-gradient(90deg, var(--dex-green, #86bc25), var(--dex-green-dark, #6b9a1e));
               border-radius: 15px 15px 0 0;
             }
+            .dex-step-eyebrow {
+              display: inline-flex; align-items: center; gap: 8px;
+              font-size: 0.7rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+              color: var(--dex-green-dark, #4a7c1f);
+            }
             .dex-step-head-lead {
-              margin: 0 -32px 20px; padding: 0 24px 14px;
-              background: var(--dex-green, #86bc25); color: rgba(255,255,255,0.95);
-              font-size: 0.85rem; line-height: 1.55;
+              margin: 0 -32px 22px; padding: 8px 32px 20px;
+              background: #fff; color: var(--dex-gray-600, #666);
+              font-size: 0.9rem; line-height: 1.6;
+              border-bottom: 1px solid var(--dex-gray-100, #f0f0f0);
               border-radius: 0;
             }
+            .dex-step-head-lead strong { color: var(--dex-gray-800, #333); }
             @media (max-width: 768px) {
-              .dex-step-head-title { margin: -20px -16px 0; padding: 14px 16px 4px; }
-              .dex-step-head-lead { margin: 0 -16px 16px; padding: 0 16px 12px; }
+              .dex-step-head-title { margin: -20px -16px 0; padding: 20px 16px 0; font-size: 1.2rem; }
+              .dex-step-head-lead { margin: 0 -16px 16px; padding: 6px 16px 14px; }
             }
-            /* v29.7: Zwischen-Trenner INNERHALB eines Schritts — gleicher
-               grüner Balken wie der Schritt-Kopf, nur ohne die runden Ecken
-               oben (die gehören dem Kartenanfang) und eine Spur kleiner, damit
-               der Schritt-Kopf die Überschrift bleibt. Der frühere Trenner war
-               eine graue Haarlinie mit Kleinschrift; die trennt zu leise für
-               den Themenwechsel „was ist das Event" → „woraus besteht es". */
+            /* v29.7: Zwischen-Trenner INNERHALB eines Schritts — für den
+               Themenwechsel „was ist das Event" → „woraus besteht es".
+               v31.2: hellgraue Fläche mit Haarlinie statt zweitem grünen
+               Balken; die Hierarchie kommt aus Größe und Fläche, nicht aus
+               einer zweiten Vollfarbe. */
             .dex-step-sub-head {
-              margin: 32px -32px 0; padding: 13px 24px 3px;
-              background: var(--dex-green, #86bc25); color: #fff;
-              font-size: 1.1rem; font-weight: 700;
+              margin: 36px -32px 0; padding: 18px 32px 0;
+              background: var(--dex-gray-50, #fafafa); color: var(--dex-gray-800, #333);
+              border-top: 1px solid var(--dex-gray-200, #e8e8e8);
+              font-size: 1.15rem; font-weight: 800; letter-spacing: -0.01em;
             }
             .dex-step-sub-lead {
-              margin: 0 -32px 20px; padding: 0 24px 13px;
-              background: var(--dex-green, #86bc25); color: rgba(255,255,255,0.95);
-              font-size: 0.85rem; line-height: 1.55;
+              margin: 0 -32px 22px; padding: 6px 32px 16px;
+              background: var(--dex-gray-50, #fafafa); color: var(--dex-gray-600, #666);
+              border-bottom: 1px solid var(--dex-gray-200, #e8e8e8);
+              font-size: 0.86rem; line-height: 1.55;
             }
             @media (max-width: 768px) {
-              .dex-step-sub-head { margin: 24px -16px 0; padding: 12px 16px 3px; }
-              .dex-step-sub-lead { margin: 0 -16px 16px; padding: 0 16px 11px; }
+              .dex-step-sub-head { margin: 24px -16px 0; padding: 14px 16px 0; font-size: 1.05rem; }
+              .dex-step-sub-lead { margin: 0 -16px 16px; padding: 4px 16px 12px; }
             }
             /* v22.36: Ausgefüllte Eingaben — pastellgrün wie auf der
                Anmeldeseite (Klasse wird per Sweep/Listener getoggelt). */

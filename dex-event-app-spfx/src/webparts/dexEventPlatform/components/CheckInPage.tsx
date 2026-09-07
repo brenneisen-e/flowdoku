@@ -1272,6 +1272,15 @@ export default function CheckInPage(): React.ReactElement {
       <span style={{ fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dex-green-dark, #4a7c1f)' }}>{label}</span>
     </div>
   );
+  // v31.2: Trenner OHNE Nummer für die Werkzeuge unter dem Ablauf. Nutzer
+  // 07.09.2026: „das sollte nicht Schritt 4 und 5 sein, sondern einfach
+  // optisch getrennt sein — sonst denkt man, das wäre chronologisch."
+  const sideLabel = (label: string): React.ReactElement => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '22px 0 10px' }}>
+      <span style={{ fontSize: '0.74rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dex-gray-500)' }}>{label}</span>
+      <span style={{ flex: 1, height: 1, background: 'var(--dex-gray-200)' }} />
+    </div>
+  );
   const cardToggle = (title: string, open: boolean, onToggle: () => void, hint: string): React.ReactElement => (
     <button type="button" onClick={onToggle} aria-expanded={open} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', color: 'inherit', font: 'inherit' }}>
       <h3 style={{ margin: 0 }}>{title}</h3>
@@ -1485,9 +1494,11 @@ export default function CheckInPage(): React.ReactElement {
         </div>
       </div>
 
-      {/* v31.1 — Abschnitt 4: Live-Scanner, eingeklappt bis gebraucht. */}
+      {/* v31.1 — Live-Scanner, eingeklappt bis gebraucht. v31.2: ohne Nummer —
+          Scanner und Self-Check-in sind Werkzeuge neben dem Ablauf, keine
+          Schritte danach. */}
       <div style={{ order: 4 }}>
-      {sectionLabel(4, isDe ? 'Live-Scanner' : 'Live scanner')}
+      {sideLabel(isDe ? 'Weitere Wege zum Einchecken' : 'Other ways to check in')}
       {/* Live-Scanner — Kamerabild + Steuerung */}
       <div className="card" style={{ padding: 24, marginBottom: 16 }}>
         {!isScanning ? (
@@ -1626,9 +1637,9 @@ export default function CheckInPage(): React.ReactElement {
 
       </div>
 
-      {/* v31.1 — Abschnitt 5: Self-Check-in, eingeklappt bis gebraucht. */}
+      {/* v31.1 — Self-Check-in, eingeklappt bis gebraucht (v31.2: ohne
+          Nummer, direkt unter dem Live-Scanner). */}
       <div style={{ order: 5 }}>
-      {sectionLabel(5, 'Self-Check-in')}
       {/* v20.1: Self-Check-in — prominent direkt unter dem Live-Scanner.
           Teilnehmer scannen den Event-QR mit der NATIVEN Handy-Kamera (kein
           Kamera-Zugriff in der App nötig) und checken sich selbst ein. */}
