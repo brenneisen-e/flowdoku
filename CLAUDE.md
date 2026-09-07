@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.87.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.88.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -594,6 +594,13 @@ Stufe 2 (Check-in je Punkt, Spalte `AgendaCheckIns` auf den Teilnehmerlisten
 Wer eine Auswertung über Anwesenheit baut: die Bezeichnung IMMER aus
 `agendaTermSingular/Plural` nehmen, nie „Programmpunkt" fest verdrahten.
 
+**Trikot-Bestand (`_shirtStock`, v30.88) ist Organizer-Center-Daten im
+Wizard-Blob.** Wie `_hotels`: im Wizard gestrippt (`useWizardVisibilityState`)
+UND in `hotelCarryConfig` mitgetragen — nur strippen hieße, der nächste
+Wizard-Save löscht den Bestand. Die Verteilung (`shirtAllocate`) ist die
+EINE Rechnung für Aktion „Benötigte T-Shirts" und Check-in-Seite; wer eine
+zweite Stelle baut, die Größen zuteilt, ruft dieselbe Funktion.
+
 **Inline-Styles können kein `:hover`.** Interaktive Elemente brauchen einen
 Hover-State (`hoverIdx`, `evTabHover`), sonst lesen sie sich als Beschriftung.
 
@@ -762,6 +769,15 @@ dazu erledigt. Offen und **noch nicht begonnen**:
    00:00/23:59 gesetzt. Leer lassen wäre falsch — ein Sub-Event ohne Zeiten
    erbt seit v28.66 die Zeiten des Hauptevents, bei einer Reihe also den
    gesamten Zeitraum statt des einen Tages.
+
+2. **Kommunikations-Schritt entlasten.** Nutzer-Ansage 07.09.2026: „der ist
+   für die meisten Organizer in der jetzigen Form überfordernd". Recherche
+   und Vorschlag (drei Entscheidungs-Karten, eine Vorschau, ein Anpassen-
+   Bereich mit Reitern) stehen in `docs/konzept-kommunikation-schritt.md`,
+   Stufen A–D. Wartet auf Freigabe; kein Datenmodell-Change nötig.
+
+3. **Programmpunkte Stufe 2–4** (`docs/konzept-programmpunkte.md`): Check-in
+   je Punkt, Anwesenheits-Matrix, Kopie in ein neues Event.
 
 Bewusst **nicht** gebaut: ein Dropdown zum Springen zwischen Sub-Event-Reitern.
 Es wäre eine zweite Bedienung für dieselbe Auswahl; die gescrollte Leiste hat

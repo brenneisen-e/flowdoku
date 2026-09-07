@@ -116,6 +116,8 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
           _commShared,
           // v30.86: Programmpunkte mit Check-in + Bezeichnung — eigene States.
           _agendaCheckIn, _agendaTerm,
+          // v30.88: Trikot-Bestand — Organizer Center, wird beim Save aus editEvent mitgetragen.
+          _shirtStock,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -133,7 +135,7 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
         void _noSelfCancel; void _noCancelAfterDeadline; void _teamsLink;
         void _hotels; void _hotelStays; void _hotelVisible; void _hotelRules;
         void _commBundledMail; void _commBundledOutlook; void _commBundledQr;
-        void _commShared; void _agendaCheckIn; void _agendaTerm;
+        void _commShared; void _agendaCheckIn; void _agendaTerm; void _shirtStock;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
     })() : {}

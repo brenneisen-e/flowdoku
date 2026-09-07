@@ -17,7 +17,7 @@ import { useDialog } from '../context/DialogContext';
 import { useRoles } from '../context/RoleContext';
 import { useCurrentUser } from '../context/UserContext';
 import { EventService } from '../services/EventService';
-import { checkInExtras, parseCustomData, CheckInExtra } from '../utils/checkInExtras';
+import { checkInExtras, parseCustomData, CheckInExtra, shirtAllocate, parseShirtStock, ShirtAllocationResult } from '../utils/checkInExtras';
 import { useLanguage } from '../context/LanguageContext';
 import { useIsMobile } from '../utils/useIsMobile';
 import OrganizerList from './OrganizerList';
@@ -133,19 +133,53 @@ export default function CheckInPage(): React.ReactElement {
    * daneben eine Excel offen sein — genau dort entsteht die Schlange. Die
    * Regel, WELCHE Felder das sind, steht in utils/checkInExtras.
    */
+  // v30.88: Trikot-Verteilung je Event — dieselbe Rechnung wie in der Aktion
+  // „Benötigte T-Shirts" (utils/checkInExtras.shirtAllocate), gecacht je
+  // Registrierungs-Array. Der Cache der Teilnehmerlisten wird weiter unten
+  // deklariert; extrasFor liest ihn über eine Ref, damit die Closure nie einen
+  // veralteten Stand sieht.
+  const searchRegsCacheRef = React.useRef<Record<string, import('../services/EventService').SPRegistration[]>>({});
+  const shirtAllocCacheRef = React.useRef<Map<object, ShirtAllocationResult>>(new Map());
+  const shirtAllocFor = React.useCallback((eventId: string): ShirtAllocationResult | null => {
+    const ev = events.find(e => e.id === eventId);
+    const rs = searchRegsCacheRef.current[eventId];
+    if (!ev || !rs) return null;
+    const stock = parseShirtStock(ev.emailTemplateOverrides);
+    if (Object.keys(stock).length === 0) return null;
+    const hit = shirtAllocCacheRef.current.get(rs);
+    if (hit) return hit;
+    const res = shirtAllocate(ev.eventSpecificFields, rs, stock);
+    shirtAllocCacheRef.current.set(rs, res);
+    return res;
+  }, [events]);
   const extrasFor = React.useCallback((
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     reg: any,
     eventId: string,
   ): CheckInExtra[] => {
     const ev = events.find(e => e.id === eventId);
-    return checkInExtras(
+    const out = checkInExtras(
       ev?.eventSpecificFields,
       parseCustomData(reg?.CustomData),
       reg,
       { bib: isDe ? 'Startnummer' : 'Bib number', group: isDe ? 'Gruppe' : 'Group' },
     );
-  }, [events, isDe]);
+    // v30.88: Gegenvorschlag, wenn die Wunschgröße laut Bestand nicht reicht —
+    // die Antwort auf „passt es überhaupt?" gehört an den Tisch, nicht in eine Excel.
+    const alloc = shirtAllocFor(eventId);
+    const em = String((reg && reg.ParticipantEmail) || '').toLowerCase().trim();
+    const a = alloc && em ? alloc.byEmail[em] : undefined;
+    if (a && a.short) {
+      out.push({
+        label: isDe ? 'Trikot-Vorschlag' : 'Shirt proposal',
+        value: a.proposal
+          ? (isDe ? `${a.proposal} statt ${a.wish} (nicht mehr vorrätig)` : `${a.proposal} instead of ${a.wish} (out of stock)`)
+          : (isDe ? `${a.wish} nicht mehr vorrätig — keine Ausweichgröße` : `${a.wish} out of stock — no alternative left`),
+        strong: true,
+      });
+    }
+    return out;
+  }, [events, isDe, shirtAllocFor]);
 
   // v7.12: Name-Suche für manuelles Einchecken — wenn der QR-Scanner in der
   // SP-App nicht funktioniert (Camera-API gesperrt) oder der Teilnehmer den
@@ -155,6 +189,7 @@ export default function CheckInPage(): React.ReactElement {
   const [nameSearchQuery, setNameSearchQuery] = React.useState('');
   const [nameSearchEventId, setNameSearchEventId] = React.useState<string>(selectedEventId || '');
   const [searchRegsCache, setSearchRegsCache] = React.useState<Record<string, import('../services/EventService').SPRegistration[]>>({});
+  searchRegsCacheRef.current = searchRegsCache; // v30.88 (s. shirtAllocFor)
   const [isLoadingSearchRegs, setIsLoadingSearchRegs] = React.useState(false);
   const [searchLoadError, setSearchLoadError] = React.useState('');
   // v20.1: Busy-Flag für die Self-Check-in-Aktionen (Live-QR / PDF).

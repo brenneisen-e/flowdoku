@@ -115,6 +115,157 @@ export interface ShirtTallyResult {
 
 const SHIRT_ACTIVE_STATI = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
 
+/** Größe → Zählschlüssel (Groß-/Kleinschreibung, Leerzeichen egal). */
+export function shirtSizeKey(size: string): string {
+  return (size || '').toLowerCase().replace(/\s+/g, '');
+}
+
+/** Bekannte Konfektionsgrößen in natürlicher Reihenfolge (für Sortierung UND Nachbarschaft). */
+export const SHIRT_SIZE_ORDER = ['xxs', 'xs', 's', 'm', 'l', 'xl', 'xxl', 'xxxl', '3xl', '4xl'];
+
+/**
+ * v30.88: Ist-Bestand je Größe (Piggyback `_shirtStock` in EmailTemplateOverrides
+ * des Hauptevents), Schlüssel = `shirtSizeKey`, Wert = Stückzahl. Leer, wenn
+ * der Organizer nie einen Bestand eingetragen hat — dann gibt es keine
+ * Gegenvorschläge, nur die Bestellliste wie bisher.
+ */
+export type ShirtStock = Record<string, number>;
+
+export function parseShirtStock(overridesJson: string | undefined | null): ShirtStock {
+  try {
+    const o = JSON.parse(overridesJson || '{}');
+    const raw = o && o._shirtStock;
+    if (!raw || typeof raw !== 'object') return {};
+    const out: ShirtStock = {};
+    Object.keys(raw).forEach(k => {
+      const n = Number(raw[k]);
+      const key = shirtSizeKey(k);
+      if (key && isFinite(n) && n >= 0) out[key] = Math.floor(n);
+    });
+    return out;
+  } catch { return {}; }
+}
+
+export interface ShirtAllocation {
+  /** Gewünschte Größe (Anzeige-Schreibweise). */
+  wish: string;
+  /** Gegenvorschlag, wenn die Wunschgröße nicht mehr reicht; null = auch keine Nachbargröße mehr da. */
+  proposal: string | null;
+  /** true = Wunschgröße reicht NICHT für diese Person. */
+  short: boolean;
+}
+
+export interface ShirtAllocationRow {
+  size: string;
+  key: string;
+  /** Wünsche (angemeldete Personen mit dieser Größe). */
+  need: number;
+  /** Eingetragener Bestand. */
+  stock: number;
+  /** Personen, die diese Größe wollten und sie NICHT bekommen. */
+  missing: number;
+  /** Nach der Verteilung noch übrig (inkl. an Ausweichende vergebener Stücke). */
+  spare: number;
+}
+
+export interface ShirtAllocationResult {
+  /** Gibt es überhaupt einen Bestand? Ohne Bestand keine Aussage. */
+  hasStock: boolean;
+  byEmail: Record<string, ShirtAllocation>;
+  rows: ShirtAllocationRow[];
+  /** Personen mit Wunsch, aber ohne jede passende Größe. */
+  noneLeft: string[];
+}
+
+/**
+ * v30.88: Verteilt den Ist-Bestand auf die Wünsche und macht Gegenvorschläge.
+ *
+ * Nutzer-Ansage (07.09.2026, B2Run Köln): „neben der Anzahl an Shirts auch
+ * ermöglichen, dass man angibt, wie viele Shirts man wirklich hat, und dann
+ * wird geguckt, ob es überhaupt passt — und bei jeder Person, wo es nicht
+ * mehr passt, ein Gegenvorschlag." Gebraucht am Check-in bzw. bei der Abholung.
+ *
+ * Regeln — bewusst einfach, damit Tisch und Bestellliste dasselbe sagen:
+ *  - Reihenfolge = Teilnehmer-ID aufsteigend (wer zuerst angemeldet war,
+ *    bekommt seine Größe). Dieselbe Reihenfolge wie die Warteliste nutzt.
+ *  - Reicht die Wunschgröße nicht, kommt die NÄCHSTE Größe mit Restbestand:
+ *    erst eine größer, dann eine kleiner, dann zwei größer, zwei kleiner …
+ *    Ein Trikot eine Nummer zu groß trägt man; zu klein passt nicht.
+ *  - Der Vorschlag verbraucht den Bestand der Ausweichgröße — zwei Personen
+ *    bekommen nicht dasselbe letzte L.
+ *  - Unbekannte Größenbezeichnungen (z.B. „Damen M") haben keine Nachbarn in
+ *    SHIRT_SIZE_ORDER; für sie gibt es nur „reicht / reicht nicht".
+ */
+export function shirtAllocate(
+  fields: FieldDef[] | undefined | null,
+  regs: Array<{ Status?: string; CustomData?: string; ParticipantName?: string; ParticipantEmail?: string; TeilnehmerID?: number | string | null; Id?: number }> | undefined | null,
+  stock: ShirtStock,
+): ShirtAllocationResult {
+  const result: ShirtAllocationResult = { hasStock: Object.keys(stock || {}).length > 0, byEmail: {}, rows: [], noneLeft: [] };
+  const field = (fields || []).filter(f => SHIRT_PATTERN.test(f.label || ''))[0];
+  if (!field) return result;
+  const remaining: ShirtStock = {};
+  Object.keys(stock || {}).forEach(k => { remaining[k] = stock[k]; });
+  const display: Record<string, string> = {};
+  const need: Record<string, number> = {};
+  const missing: Record<string, number> = {};
+  const idOf = (r: { TeilnehmerID?: number | string | null; Id?: number }): number => {
+    const n = Number(r.TeilnehmerID);
+    return isFinite(n) && n > 0 ? n : 1e9 + (r.Id || 0);
+  };
+  const active = (regs || [])
+    .filter(r => SHIRT_ACTIVE_STATI.indexOf(r.Status || '') >= 0)
+    .slice()
+    .sort((a, b) => idOf(a) - idOf(b));
+  const neighbours = (key: string): string[] => {
+    const i = SHIRT_SIZE_ORDER.indexOf(key);
+    if (i < 0) return [];
+    const out: string[] = [];
+    for (let d = 1; d < SHIRT_SIZE_ORDER.length; d++) {
+      if (i + d < SHIRT_SIZE_ORDER.length) out.push(SHIRT_SIZE_ORDER[i + d]);
+      if (i - d >= 0) out.push(SHIRT_SIZE_ORDER[i - d]);
+    }
+    return out;
+  };
+  for (const r of active) {
+    const cd = parseCustomData(r.CustomData);
+    const raw = cd[field.id];
+    const wish = (raw === undefined || raw === null) ? '' : String(raw).trim();
+    if (!wish) continue;
+    const key = shirtSizeKey(wish);
+    if (!display[key]) display[key] = wish;
+    need[key] = (need[key] || 0) + 1;
+    const email = (r.ParticipantEmail || '').toLowerCase().trim();
+    const name = (r.ParticipantName || r.ParticipantEmail || '—').trim();
+    if (!result.hasStock) continue;
+    if ((remaining[key] || 0) > 0) {
+      remaining[key]--;
+      if (email) result.byEmail[email] = { wish, proposal: null, short: false };
+      continue;
+    }
+    missing[key] = (missing[key] || 0) + 1;
+    let proposal: string | null = null;
+    for (const nk of neighbours(key)) {
+      if ((remaining[nk] || 0) > 0) { remaining[nk]--; proposal = nk.toUpperCase(); break; }
+    }
+    if (!proposal) result.noneLeft.push(name);
+    if (email) result.byEmail[email] = { wish, proposal, short: true };
+  }
+  const keys = Array.from(new Set(Object.keys(need).concat(Object.keys(stock || {}))));
+  const rank = (k: string): number => { const i = SHIRT_SIZE_ORDER.indexOf(k); return i >= 0 ? i : 500; };
+  result.rows = keys
+    .sort((a, b) => (rank(a) - rank(b)) || a.localeCompare(b, 'de'))
+    .map(k => ({
+      size: display[k] || k.toUpperCase(),
+      key: k,
+      need: need[k] || 0,
+      stock: (stock && stock[k]) || 0,
+      missing: missing[k] || 0,
+      spare: result.hasStock ? (remaining[k] || 0) : 0,
+    }));
+  return result;
+}
+
 export function shirtTally(
   fields: FieldDef[] | undefined | null,
   regs: Array<{ Status?: string; CustomData?: string; ParticipantName?: string; ParticipantEmail?: string }> | undefined | null

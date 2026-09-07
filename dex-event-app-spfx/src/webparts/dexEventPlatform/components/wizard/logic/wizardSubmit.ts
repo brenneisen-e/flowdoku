@@ -599,7 +599,8 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
         try {
           const raw = JSON.parse(editEvent?.emailTemplateOverrides || '{}') as Record<string, unknown>;
           const out: Record<string, unknown> = {};
-          for (const k of ['_hotels', '_hotelStays', '_hotelVisible', '_hotelRules']) {
+          // v30.88: Trikot-Bestand (_shirtStock) wird im Organizer Center gepflegt — mittragen.
+          for (const k of ['_hotels', '_hotelStays', '_hotelVisible', '_hotelRules', '_shirtStock']) {
             if (raw && raw[k] !== undefined) out[k] = raw[k];
           }
           return out;
