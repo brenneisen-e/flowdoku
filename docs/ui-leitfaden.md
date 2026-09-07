@@ -1,4 +1,4 @@
-# UI-Leitfaden — Wizard, Organizer Center, Modale (Stand v31.2)
+# UI-Leitfaden — Wizard, Organizer Center, Modale (Stand v31.3)
 
 Dieser Leitfaden ist die **verbindliche Arbeitsgrundlage** für jede Änderung an
 der Oberfläche des Event-Wizards, des Organizer Centers und aller Modale. Er
@@ -329,9 +329,128 @@ oder `dex-ui-toggle-row`; Ja/Nein-Alternativen mit Erklärung als zwei
 einen Schalter ausgeschaltet sind, bleiben sichtbar, aber `dex-ui-card--muted`.
 `StepBadge`-Nummern bleiben vor den Beschriftungen stehen.
 
+### Organizer Center (seit v31.3)
+
+| Klasse | Wofür |
+|---|---|
+| `dex-ui-page-head` | Seitenkopf: `dex-ui-page-head-title` (h2), `dex-ui-page-head-meta` (Datum · Ort · Pillen), `dex-ui-page-head-actions` (Zurück, Bearbeiten — rechts, weil sie WEG von der Seite führen) |
+| `dex-ui-kpi-row` | Raster für Kennzahl-Kacheln (auto-fit, min 140 px). Neue KPI-Modifier `--red`, `--blue`, `--gray`; `dex-ui-kpi-sub` für eine Zeile unter der Beschriftung; `is-clickable` + `is-active`, wenn die Kachel die Liste filtert |
+| `dex-ui-toolbar` | Werkzeugleiste über einer Tabelle: `dex-ui-searchbar` (Eingabe mit `dex-ui-searchbar-icon`) links, Filter-`dex-ui-chip`s daneben, `dex-ui-toolbar-spacer`, Export/Spalten rechts |
+| `dex-ui-table--compact` | Engere Tabelle für lange Listen. Kopfzellen `is-sortable` (Zeiger, Hover) und `is-sorted` (grün) mit `dex-ui-table-sort` (▲/▼); Zeilen `is-clickable` (nur wenn Klick öffnet), `is-selected`, `is-muted` (abgemeldet/inaktiv); Zellen `is-num` (rechtsbündig, Tabellenziffern), `is-actions` (Symbol-Knöpfe, erscheinen bei Zeilen-Hover kräftiger). `dex-ui-table-wrap--sticky` hält den Kopf beim Scrollen; `dex-ui-table-foot` für Zähler/Seitenwechsel |
+| `dex-ui-person` | Personen-Zelle: `dex-ui-avatar` + `dex-ui-person-name` + `dex-ui-person-sub` (E-Mail/Standort), abgeschnitten mit Ellipse |
+| `dex-ui-dot` | Statuspunkt vor einem Text: `--green`, `--orange`, `--red`, `--blue` |
+| `dex-ui-action-group` | Gruppe von Aktionen mit `dex-ui-action-group-title` (Versal) und `dex-ui-action-grid` (auto-fill, min 240 px) |
+| `dex-ui-action` | EINE Aktion als `<button>`: `dex-ui-action-icon`, `dex-ui-action-body` (`-title`, `-desc` = eine Zeile Folge), optional `dex-ui-action-badge` (Pill rechts). `--danger` für Unwiderrufliches; `:disabled` gedämpft — der Grund steht dann in `-desc` |
+| `dex-ui-card-head` | Kopfzeile einer Karte/Sektion: `dex-ui-card-head-title` (h3 mit Symbol), `dex-ui-card-head-meta` (Zähler), `dex-ui-card-head-actions` (rechts: Aufklapper-Chevron, Export) |
+| `dex-ui-tile` | Navigations-Kachel (Admin Hub): `dex-ui-tile-icon`, `dex-ui-tile-title`, `dex-ui-tile-desc`; ganze Kachel ist der Knopf |
+| `dex-ui-progress` | Auslastungsbalken: `dex-ui-progress-bar` mit `style={{ width: pct+'%' }}`, `--orange` ab 90 %, `--red` bei Überbuchung |
+
 ---
 
-## 5. Symbole
+## 5. Organizer Center
+
+Das Organizer Center (`AdminPage`, `AdminHubPage`, `components/admin/**`) ist
+keine Formular-Seite, sondern ein **Arbeitsplatz**: Der Organizer kommt mit
+einer Absicht („Wer ist angemeldet?", „QR-Codes raus", „Warum steht da eine
+Warnung?") und soll in einem Blick sehen, wo er klickt. Die Grundsätze aus
+Abschnitt 1 und die Regeln aus 2a′–2d gelten unverändert; dazu kommt:
+
+### 5a. Reihenfolge der Event-Seite
+
+Von oben nach unten, nach der Frage „was muss ich JETZT wissen oder tun?":
+
+1. **Seitenkopf** (`dex-ui-page-head`): Titel, Status-Pille (Entwurf/Aktiv/
+   Vergangen/Archiviert), Datum · Ort · Sub-Event-Zahl als Meta-Zeile; rechts
+   „Zurück zur Übersicht" und „Event bearbeiten" (die einzigen Knöpfe, die
+   rechts stehen dürfen — sie führen weg von der Seite).
+2. **Hinweise, die Handeln verlangen** (`dex-ui-callout--warn/--danger`):
+   nicht lesbare Listen, Dubletten, ID-Lücken, Überbuchung, fehlende
+   Rechte. Jeder Hinweis nennt die Folge und trägt seinen Knopf IN der
+   Zeile („3 Dubletten — Bereinigen"). Reihenfolge nach Dringlichkeit:
+   Datenverlust > Rechte > Dubletten > Kosmetik.
+3. **Kennzahlen** (`dex-ui-kpi-row`): Angemeldet, Warteliste, Eingecheckt,
+   Abgemeldet, freie Plätze — mit Auslastungsbalken. Eine Kachel, die die
+   Liste filtert, ist `is-clickable` und zeigt `is-active`. Nicht lesbar
+   heißt „–" plus Hinweis, **nie 0** (CLAUDE.md: ein Lesefehler ist keine
+   Null).
+4. **Nächste Schritte** (`dex-ui-step`, `is-done`): der Ablauf eines Events
+   (Einladen → QR versenden → Check-in → Abrechnung) mit dem Knopf in der
+   Zeile. Erledigtes bleibt sichtbar, aber gedämpft.
+5. **Aktionen** (`dex-ui-action-group`): gruppiert nach Absicht —
+   *Kommunikation* (Einladung, Massenmail, QR-Codes), *Teilnehmer*
+   (Hinzufügen, Nachrücken, Teams, Import), *Daten & Export* (Excel, Liste
+   an F&A, Bescheinigungen), *Einstellungen* (Spalten, Sichtbarkeit,
+   Rechte reparieren), *Gefahrenzone* zuletzt (`--danger`: Alle abmelden,
+   Event löschen). Jede Aktion: Titel + eine Zeile, was passiert. Eine
+   Aktion, die gerade nicht geht, bleibt sichtbar als `:disabled` — mit dem
+   Grund in der Folgezeile („noch keine Anmeldungen").
+6. **Teilnehmer** — Werkzeugleiste (`dex-ui-toolbar`: Suche links, Status-
+   Chips, Spaltenwahl und Export rechts), darunter die Tabelle (5b).
+7. **Warteliste** (mit Position und „Nachrücken" in der Zeile), dann
+   **Abmeldungen** — beide als Karten mit `dex-ui-card-head` und Aufklapper,
+   Abmeldungen standardmäßig zu.
+8. **Auswertungen** zuletzt (Anwesenheit je Programmpunkt, Quiz, Hotel,
+   Teams): eingeklappt, Kopf mit Zähler.
+
+Die Übersichtsseite (kein Event gewählt) folgt demselben Muster: Kopf mit
+„+ Neues Event", Suche und Sortierung als Werkzeugleiste, Events als
+klickbare Zeilen oder Kacheln (`dex-ui-row`/`dex-ui-tile`) mit Status-Pille,
+Datum, Anmeldezahl; Vergangenes und Archiviertes hinter Aufklappern.
+
+### 5b. Tabellen
+
+- **Ruhiger Kopf, sichtbare Sortierung.** `dex-ui-table` in
+  `dex-ui-table-wrap`; sortierbare Spalten `is-sortable` mit Pfeil nur an
+  der sortierten Spalte. Lange Listen `--compact` und `--sticky`.
+- **Die Person ist eine Zelle.** Avatar, Name, darunter E-Mail oder Standort
+  (`dex-ui-person`) — nicht drei Spalten. Status als `dex-ui-pill`
+  (grün angemeldet, blau eingecheckt, orange Warteliste, grau abgemeldet,
+  rot No-Show). Zahlen rechtsbündig (`is-num`). Aktionen in der letzten
+  Spalte als `dex-ui-iconbtn` (`is-actions`), Löschen/Abmelden rot.
+- **Zeilen-Hover nur mit Klick.** Öffnet ein Klick auf die Zeile das Detail
+  (`ParticipantDetailModal`), ist sie `is-clickable`; Nebenknöpfe stoppen die
+  Weitergabe. Reine Anzeige-Tabellen (Auswertungen) behalten den leichten
+  Zeilen-Hover der Klasse, aber keinen Zeiger.
+- **Leer ist ein Zustand, unbekannt ein anderer.** Keine Zeilen →
+  `dex-ui-empty` mit einem Satz, was zu tun ist („Noch niemand angemeldet —
+  Einladung verschicken?"). Nicht lesbar (`null`, `regStaleHint`, gesperrte
+  Sub-Event-Listen) → `dex-ui-callout--warn` mit den Namen der gesperrten
+  Listen; die Zahlen darüber zeigen „–".
+- **Fußzeile statt Kopfzähler:** „47 von 120 · 3 gefiltert" in
+  `dex-ui-table-foot`. Massenauswahl (Checkbox-Spalte) zeigt ihre Aktionen
+  in der Werkzeugleiste, nicht unter der Tabelle.
+- **Mobil**: Tabelle scrollt in `dex-ui-table-wrap` horizontal; bestehende
+  `isMobile`-Kartenansichten bleiben.
+
+### 5c. Was im Organizer Center NICHT verändert werden darf
+
+Zusätzlich zu 2d — hier steckt die Logik, die CLAUDE.md in zwanzig Fallen
+beschreibt:
+
+- **`reloadRegistrations()` ist der einzige Nachlade-Pfad**, `onHttpError`-
+  Rückrufe, `regStaleHint`, `deniedSubEventLists`, `null` = unbekannt — kein
+  Umbau macht daraus eine leere Liste oder eine 0.
+- **Anker und IDs bleiben:** `#admin-waitlist-anchor`, `data-tour`,
+  Element-IDs, auf die `JumpButtons`, Deep-Links (`?action=admin&event=…
+  &ticket=…`) und die Tour zeigen.
+- **`ActionsRegistryProvider`/`ActionTile`-Registrierung** (ActionsMenu):
+  Kacheln melden sich beim Mount an; wer eine Kachel umbaut, behält
+  `ActionTile` als Wurzel und dessen Props.
+- **Bestätigungen und Folgen-Texte** vor destruktiven Aktionen (Alle
+  abmelden, Event löschen mit Tipp-Bestätigung, Subsite recyceln) bleiben
+  wortgleich in beiden Sprachen.
+- **Spaltenkonfiguration (`useColumnConfig`), Sortier-/Filter-State,
+  Excel-Export-Spalten** — Darstellung ja, Reihenfolge der Datenfelder im
+  Export nein.
+- **Hotel-Dateien** (`HotelPlanningPanel`, `HotelSetupWizard`,
+  `HotelImportModal`) tragen Alt-Warnungen (`no-explicit-any`): die dürfen
+  bleiben, neue kommen nicht dazu. Der `<thead>`/`<tbody>`-Spaltenabgleich
+  aus CLAUDE.md (v29.2) ist Pflichtprüfung nach jedem Umbau einer Tabelle
+  mit `.map`-Spalten.
+
+---
+
+## 6. Symbole
 
 `components/Icons.tsx` (Inline-SVG, Props `size`, `strokeWidth`):
 `ChevronLeft ChevronUp ChevronDown Settings GraduationCap BarChart3 CaptainHat
@@ -343,7 +462,7 @@ Keine neuen Icon-Bibliotheken.
 
 ---
 
-## 6. Prüfen vor dem Abschluss
+## 7. Prüfen vor dem Abschluss
 
 ```bash
 cd dex-event-app-spfx

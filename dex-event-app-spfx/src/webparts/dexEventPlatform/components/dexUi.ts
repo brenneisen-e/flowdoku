@@ -327,6 +327,82 @@ export const DEX_UI_CSS = `
 .dex-ui-chip:hover .dex-ui-chip-remove { background: rgba(0,0,0,0.16); }
 .dex-ui-chip.is-active .dex-ui-chip-remove { background: rgba(255,255,255,0.25); }
 
+/* ---- Organizer Center (v31.3) ---------------------------------------
+   Seitenkopf, Kennzahlen-Reihe, Werkzeugleiste über Tabellen, sortier- und
+   klickbare Tabellen, Personen-Zelle, Aktions-Kacheln in Gruppen, Karten-
+   Kopf mit Aufklapper, Hub-Kacheln, Fortschrittsbalken. Ohne diese Klassen
+   hätte jede der 35 Organizer-Center-Dateien ihre eigene Tabelle gebaut. */
+.dex-ui-page-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px 18px; margin-bottom: 18px; }
+.dex-ui-page-head-title { margin: 0; font-size: 1.45rem; font-weight: 800; color: ${G800}; letter-spacing: -0.01em; line-height: 1.2; }
+.dex-ui-page-head-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; color: ${G600}; font-size: 0.86rem; margin-top: 4px; }
+.dex-ui-page-head-actions { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-left: auto; }
+.dex-ui-kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.dex-ui-kpi--red .dex-ui-kpi-value { color: var(--dex-red, #da291c); }
+.dex-ui-kpi--blue .dex-ui-kpi-value { color: #3860b2; }
+.dex-ui-kpi--gray .dex-ui-kpi-value { color: ${G500}; }
+.dex-ui-kpi-sub { font-size: 0.74rem; color: ${G500}; margin-top: 2px; }
+.dex-ui-kpi.is-clickable { cursor: pointer; }
+.dex-ui-kpi.is-clickable:hover { border-color: ${G}; box-shadow: 0 4px 14px rgba(0,0,0,0.07); transform: translateY(-1px); }
+.dex-ui-kpi.is-active { border-color: ${G}; background: rgba(134,188,37,0.08); }
+.dex-ui-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0 0 12px; }
+.dex-ui-toolbar-spacer { flex: 1 1 auto; }
+.dex-ui-searchbar { position: relative; flex: 1 1 220px; min-width: 180px; max-width: 420px; }
+.dex-ui-searchbar .dex-ui-input { padding-left: 34px; width: 100%; box-sizing: border-box; }
+.dex-ui-searchbar-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: ${G400}; pointer-events: none; display: inline-flex; }
+.dex-ui-table--compact th { padding: 6px 8px; font-size: 0.68rem; }
+.dex-ui-table--compact td { padding: 6px 8px; font-size: 0.8rem; }
+.dex-ui-table th.is-sortable { cursor: pointer; user-select: none; transition: color ${EASE}; }
+.dex-ui-table th.is-sortable:hover { color: ${G800}; }
+.dex-ui-table th.is-sorted { color: ${GDT}; }
+.dex-ui-table-sort { display: inline-block; margin-left: 4px; font-size: 0.65rem; opacity: 0.8; }
+.dex-ui-table tbody tr.is-clickable { cursor: pointer; }
+.dex-ui-table tbody tr.is-selected td { background: rgba(134,188,37,0.08); }
+.dex-ui-table tbody tr.is-muted td { color: ${G500}; }
+.dex-ui-table tbody tr.is-muted:hover td { color: ${G700}; }
+.dex-ui-table td.is-num, .dex-ui-table th.is-num { text-align: right; font-variant-numeric: tabular-nums; }
+.dex-ui-table td.is-actions { text-align: right; white-space: nowrap; }
+.dex-ui-table td.is-actions .dex-ui-iconbtn { opacity: 0.55; transition: opacity ${EASE}; }
+.dex-ui-table tbody tr:hover td.is-actions .dex-ui-iconbtn { opacity: 1; }
+.dex-ui-table-wrap--sticky { max-height: 70vh; overflow: auto; }
+.dex-ui-table-wrap--sticky th { position: sticky; top: 0; z-index: 1; }
+.dex-ui-table-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; font-size: 0.78rem; color: ${G500}; border-top: 1px solid ${G200}; }
+.dex-ui-person { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.dex-ui-person-name { font-weight: 600; color: ${G800}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dex-ui-person-sub { font-size: 0.76rem; color: ${G500}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dex-ui-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${G400}; flex-shrink: 0; }
+.dex-ui-dot--green { background: ${G}; }
+.dex-ui-dot--orange { background: var(--dex-orange, #ed8b00); }
+.dex-ui-dot--red { background: var(--dex-red, #da291c); }
+.dex-ui-dot--blue { background: #3860b2; }
+.dex-ui-action-group { margin-top: 16px; }
+.dex-ui-action-group:first-child { margin-top: 0; }
+.dex-ui-action-group-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: ${G500}; margin: 0 0 6px 4px; }
+.dex-ui-action-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+.dex-ui-action { display: flex; align-items: flex-start; gap: 10px; text-align: left; width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid ${G200}; background: #fff; font: inherit; color: inherit; cursor: pointer; box-sizing: border-box; transition: border-color ${EASE}, box-shadow ${EASE}, transform ${EASE}; }
+.dex-ui-action:hover { border-color: ${G}; box-shadow: 0 4px 14px rgba(0,0,0,0.07); transform: translateY(-1px); }
+.dex-ui-action:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; border-color: ${G200}; }
+.dex-ui-action-icon { display: inline-flex; width: 30px; height: 30px; border-radius: 9px; background: rgba(134,188,37,0.12); color: ${GDT}; align-items: center; justify-content: center; flex-shrink: 0; }
+.dex-ui-action--danger .dex-ui-action-icon { background: var(--dex-red-light, #fce8e6); color: var(--dex-red, #da291c); }
+.dex-ui-action--danger:hover { border-color: var(--dex-red, #da291c); }
+.dex-ui-action-body { min-width: 0; flex: 1 1 auto; }
+.dex-ui-action-title { display: block; font-weight: 600; font-size: 0.86rem; color: ${G800}; line-height: 1.3; }
+.dex-ui-action-desc { display: block; font-size: 0.76rem; color: ${G500}; margin-top: 2px; line-height: 1.35; }
+.dex-ui-action-badge { margin-left: auto; align-self: center; flex-shrink: 0; }
+.dex-ui-card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dex-ui-card-head-title { margin: 0; font-size: 1rem; font-weight: 700; color: ${G800}; display: inline-flex; align-items: center; gap: 8px; }
+.dex-ui-card-head-meta { color: ${G500}; font-size: 0.8rem; }
+.dex-ui-card-head-actions { display: inline-flex; gap: 8px; align-items: center; margin-left: auto; }
+.dex-ui-tile { display: flex; flex-direction: column; gap: 8px; text-align: left; width: 100%; padding: 16px 18px; border-radius: 14px; border: 1px solid ${G200}; background: #fff; font: inherit; color: inherit; cursor: pointer; box-sizing: border-box; transition: border-color ${EASE}, box-shadow ${EASE}, transform ${EASE}; }
+.dex-ui-tile:hover { border-color: ${G}; box-shadow: 0 6px 20px rgba(0,0,0,0.07); transform: translateY(-1px); }
+.dex-ui-tile-icon { display: inline-flex; width: 38px; height: 38px; border-radius: 11px; background: rgba(134,188,37,0.12); color: ${GDT}; align-items: center; justify-content: center; }
+.dex-ui-tile-title { font-weight: 700; font-size: 0.95rem; color: ${G800}; }
+.dex-ui-tile-desc { font-size: 0.8rem; color: ${G500}; line-height: 1.4; }
+.dex-ui-progress { height: 6px; border-radius: 999px; background: ${G100}; overflow: hidden; }
+.dex-ui-progress-bar { height: 100%; border-radius: 999px; background: ${G}; transition: width 0.3s ease; }
+.dex-ui-progress-bar--orange { background: var(--dex-orange, #ed8b00); }
+.dex-ui-progress-bar--red { background: var(--dex-red, #da291c); }
+@media (max-width: 768px) { .dex-ui-page-head-actions, .dex-ui-card-head-actions { margin-left: 0; width: 100%; } }
+
 /* ---- Barrierefreiheit ---------------------------------------------- */
 .dex-ui-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 `;
