@@ -184,6 +184,67 @@ export async function getCurrentUserProfile(svc: EventService): Promise<{ depart
  * und JobTitle/Department/Location/Phone updaten falls abweichend.
  * Wird per Admin-Button im Admin Center pro Event getriggert.
  */
+export type ProfileShape = { department: string; location: string; jobTitle: string; phone: string; firstName: string; lastName: string; displayName: string; company: string };
+
+/**
+ * v30.82: Profile VIELER Personen in einem Graph-Batch (20 je Request) statt
+ * je Person bis zu drei SharePoint-Aufrufe (PeopleManager, siteusers,
+ * PeopleManager mit LoginName). Nutzer-Frage 07.09.2026: „Die Daten für die
+ * User laden nacheinander nach … ist das so sinnvoll wegen Throttle?" — und
+ * dieselbe Schleife steckte in den Reparatur-Aktionen (Profildaten
+ * nachziehen, Claims-Namen reparieren) über ALLE Teilnehmer aller Events.
+ *
+ * Graph zählt getrennt von der SharePoint-Drosselung, und die Felder sind
+ * dieselbe Quelle wie die SP-Profil-Properties: `officeLocation` = „Office",
+ * `jobTitle` = „Title", `givenName`/`surname` = FirstName/LastName,
+ * `businessPhones[0] || mobilePhone` = WorkPhone/CellPhone. Wer im Batch
+ * fehlt (Alias, Gast, kein Graph), bleibt für `getUserProfileByEmail` übrig —
+ * die Aufrufer fallen darauf zurück, aber nur für die Lücken.
+ */
+export async function getProfilesByEmails(svc: EventService, emails: string[]): Promise<Record<string, ProfileShape>> {
+  const out: Record<string, ProfileShape> = {};
+  const list = Array.from(new Set((emails || []).map(e => (e || '').trim().toLowerCase()).filter(e => !!e && e.indexOf('@') > 0)));
+  if (list.length === 0) return out;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ctx = svc.context as any;
+    if (!ctx.msGraphClientFactory) return out;
+    const client = await ctx.msGraphClientFactory.getClient('3');
+    const SELECT = 'displayName,givenName,surname,jobTitle,officeLocation,department,mobilePhone,businessPhones,companyName,mail,userPrincipalName';
+    for (let i = 0; i < list.length; i += 20) {
+      const chunk = list.slice(i, i + 20);
+      const requests = chunk.map((mail, n) => ({
+        id: String(n),
+        method: 'GET',
+        url: `/users?$select=${SELECT}&$filter=mail eq '${mail.replace(/'/g, "''")}' or userPrincipalName eq '${mail.replace(/'/g, "''")}'&$top=1`,
+      }));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const resp: any = await client.api('/$batch').post({ requests });
+      for (const r of (resp?.responses || [])) {
+        const idx = parseInt(r.id, 10);
+        const mail = chunk[idx];
+        if (!mail || r.status !== 200) continue;
+        const u = (r.body && r.body.value && r.body.value[0]) || null;
+        if (!u) continue;
+        const phones: string[] = Array.isArray(u.businessPhones) ? u.businessPhones : [];
+        out[mail] = {
+          department: (u.department || '').trim(),
+          location: (u.officeLocation || '').trim(),
+          jobTitle: (u.jobTitle || '').trim(),
+          phone: ((phones[0] || '') || (u.mobilePhone || '')).trim(),
+          firstName: (u.givenName || '').trim(),
+          lastName: (u.surname || '').trim(),
+          displayName: (u.displayName || '').trim(),
+          company: (u.companyName || '').trim(),
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('[DEX] getProfilesByEmails (Graph) fehlgeschlagen — Einzelweg übernimmt:', err);
+  }
+  return out;
+}
+
 export async function fixEventParticipantsProfileData(svc: EventService, subsiteUrl: string, n: number = 1000): Promise<{ scanned: number; updated: number; failedLookups: number }> {
   let scanned = 0;
   let updated = 0;
@@ -201,13 +262,20 @@ export async function fixEventParticipantsProfileData(svc: EventService, subsite
     // v22.58: erkennt kaputte Namen (SharePoint-Claims-Token), die durch den
     // sauberen Profil-Namen ersetzt werden müssen.
     const looksLikeClaim = (s: string): boolean => /\|membership\||0#\.f\||^i:0#/i.test((s || '').trim());
+    // v30.82: erst ALLE Profile in einem Graph-Batch, der Einzelweg nur für
+    // die Lücken — vorher bis zu drei SP-Aufrufe je Person, mal drei Versuche.
+    const batch = await getProfilesByEmails(svc, items.map((it: { ParticipantEmail?: string }) => (it.ParticipantEmail || '').trim()));
     for (const it of items) {
       scanned += 1;
       const email: string = (it.ParticipantEmail || '').trim();
       if (!email) continue;
       let profile = { department: '', location: '', jobTitle: '', phone: '', firstName: '', lastName: '', displayName: '' };
       let success = false;
-      for (let attempt = 0; attempt < 3; attempt += 1) {
+      const hit = batch[email.toLowerCase()];
+      if (hit && (hit.jobTitle || hit.department || hit.location || hit.firstName || hit.lastName)) {
+        profile = hit; success = true;
+      }
+      for (let attempt = 0; !success && attempt < 3; attempt += 1) {
         try {
           const p = await svc.getUserProfileByEmail(email);
           if (p && (p.jobTitle || p.department || p.location || p.firstName || p.lastName)) {
@@ -270,6 +338,8 @@ export async function fixRecentParticipantsProfileData(svc: EventService, n: num
         if (!listResp.ok) continue;
         const listData = await listResp.json();
         const items = listData.value || listData.d?.results || [];
+        // v30.82: ein Graph-Batch je Liste, Einzelweg nur für die Lücken.
+        const batch = await getProfilesByEmails(svc, items.map((it: { ParticipantEmail?: string }) => (it.ParticipantEmail || '').trim()));
         for (const it of items) {
           scanned += 1;
           const email: string = (it.ParticipantEmail || '').trim();
@@ -277,7 +347,9 @@ export async function fixRecentParticipantsProfileData(svc: EventService, n: num
           // Profil-Lookup mit Retry on Failure (max 3 Versuche, exponential backoff)
           let profile = { department: '', location: '', jobTitle: '', phone: '' };
           let success = false;
-          for (let attempt = 0; attempt < 3; attempt += 1) {
+          const hit = batch[email.toLowerCase()];
+          if (hit && (hit.jobTitle || hit.department || hit.location)) { profile = hit; success = true; }
+          for (let attempt = 0; !success && attempt < 3; attempt += 1) {
             try {
               const p = await svc.getUserProfileByEmail(email);
               if (p && (p.jobTitle || p.department || p.location)) {
@@ -430,6 +502,26 @@ export async function repairClaimNamesInRegistrations(
   // Profile je E-Mail nur einmal holen — dieselbe Person taucht oft mehrfach
   // auf (Klammer-Schattenzeile plus Sub-Events).
   const cache: Record<string, { firstName: string; lastName: string; displayName: string }> = {};
+  // v30.82: Cache aus einem Graph-Batch vorbefüllen; der Einzelweg unten
+  // bleibt nur für Adressen, die Graph nicht kennt.
+  try {
+    const wanted: string[] = [];
+    for (const r of affected) {
+      wanted.push((r.ParticipantEmail || r.Title || '').trim() || mailFromClaim(r.ParticipantName || ''));
+      if (looksLikeClaim(r.RegisteredByName || '')) wanted.push((r.RegisteredByEmail || '').trim() || mailFromClaim(r.RegisteredByName || ''));
+      if (looksLikeClaim(r.CancelledByName || '')) wanted.push((r.CancelledByEmail || '').trim() || mailFromClaim(r.CancelledByName || ''));
+    }
+    const batch = await getProfilesByEmails(svc, wanted);
+    for (const k of Object.keys(batch)) {
+      const prof = batch[k];
+      const p = {
+        firstName: looksLikeClaim(prof.firstName) ? '' : prof.firstName,
+        lastName: looksLikeClaim(prof.lastName) ? '' : prof.lastName,
+        displayName: looksLikeClaim(prof.displayName) ? '' : prof.displayName,
+      };
+      if (p.firstName || p.lastName || p.displayName) cache[k] = p;
+    }
+  } catch { /* Einzelweg */ }
   const nameFor = async (email: string): Promise<{ firstName: string; lastName: string; displayName: string }> => {
     const key = (email || '').toLowerCase();
     if (!key) return { firstName: '', lastName: '', displayName: '' };

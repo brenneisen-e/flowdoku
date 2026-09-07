@@ -71,7 +71,7 @@ export default function RegistrationPage(): React.ReactElement {
   // v30.3: previewAsUser = „Übersicht als User sehen" (Organizer-/Admin-
   // Vorschau). isAdmin kommt aus dem RoleContext bereits absenkt zurück;
   // nur der per-Event-Organizer-Check unten muss lokal mitziehen.
-  const { searchUsers, searchUser, isAdmin, previewAsUser } = useRoles();
+  const { searchUsers, searchUser, isAdmin, previewAsUser, getBasicProfiles } = useRoles();
   const { locale: appLocale } = useLanguage();
   // v20.4: App-Modal statt nativem Browser-Alert.
   const { showAlert, confirmDialog } = useDialog();
@@ -1645,6 +1645,14 @@ export default function RegistrationPage(): React.ReactElement {
     setMassImportResolving(true);
     const rows: typeof massImportRows = [];
     const seen = new Set<string>();
+    // v30.82: Alle Adressen des Pastes in EINEM Graph-Batch auflösen (20 je
+    // Request), der Einzelweg nur noch für Adressen ohne Treffer — vorher je
+    // Zeile bis zu vier SharePoint-Aufrufe, bei 200 Zeilen also Hunderte.
+    let prefetched: Record<string, { displayName: string; jobTitle: string; location: string }> = {};
+    try {
+      const allMails = lines.map(l => { const mm = l.match(EMAIL_RE); return mm ? mm[1].toLowerCase() : ''; }).filter(Boolean);
+      if (allMails.length > 0) { setMassImportProgress(locale === 'de' ? 'Profile werden geladen …' : 'Loading profiles …'); prefetched = await getBasicProfiles(allMails); }
+    } catch { prefetched = {}; }
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       setMassImportProgress(`${i + 1} / ${lines.length}`);
@@ -1654,7 +1662,12 @@ export default function RegistrationPage(): React.ReactElement {
       let jobTitle = ''; let location = ''; let displayName = nameRaw;
       if (email) {
         // Profil per E-Mail nachschlagen (für Position + Standort + Name).
-        try { const p = await searchUser(email); if (p) { displayName = p.displayName || nameRaw; jobTitle = p.jobTitle || ''; location = p.location || ''; } } catch { /* */ }
+        const pre = prefetched[email];
+        if (pre && (pre.displayName || pre.jobTitle || pre.location)) {
+          displayName = pre.displayName || nameRaw; jobTitle = pre.jobTitle || ''; location = pre.location || '';
+        } else {
+          try { const p = await searchUser(email); if (p) { displayName = p.displayName || nameRaw; jobTitle = p.jobTitle || ''; location = p.location || ''; } } catch { /* */ }
+        }
       } else if (nameRaw) {
         // Kein E-Mail in der Zeile → Personensuche, besten Treffer nehmen.
         try {

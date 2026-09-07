@@ -805,13 +805,19 @@ export class SharePointService {
     out.scanned = rows.length;
     const affected = rows.filter(r => looksLikeClaim(r.UserName || '') || looksLikeClaim(r.AssignedBy || ''));
     out.hits = affected.length;
+    // v30.82: Namen in einem Graph-Batch, Einzelweg nur für die Lücken.
+    const batch = await this.getBasicProfiles(affected.map(r => (r.Title || '').trim()));
     for (const r of affected) {
       const email = (r.Title || '').trim();
       let name = '';
-      try {
-        const prof = await this.searchUserByEmail(email);
-        name = (prof && prof.displayName && !looksLikeClaim(prof.displayName)) ? prof.displayName.trim() : '';
-      } catch { /* nicht auflösbar */ }
+      const b = batch[email.toLowerCase()];
+      if (b && b.displayName && !looksLikeClaim(b.displayName)) name = b.displayName;
+      if (!name) {
+        try {
+          const prof = await this.searchUserByEmail(email);
+          name = (prof && prof.displayName && !looksLikeClaim(prof.displayName)) ? prof.displayName.trim() : '';
+        } catch { /* nicht auflösbar */ }
+      }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const patch: Record<string, any> = {};
       if (looksLikeClaim(r.UserName || '')) patch['UserName'] = name || email;
@@ -1310,9 +1316,20 @@ export class SharePointService {
 
     // Location + JobTitle per User Profile nachladen.
     // v20.0 (Audit): parallel statt sequentiell — vorher bis zu N serielle
-    // Profil-Roundtrips pro Tipp-Suche (spürbare Picker-Latenz). Reine
-    // Lese-Calls auf max. ~10 Treffer, daher unkritisch fürs Throttling.
-    await Promise.all(all.map(async user => {
+    // Profil-Roundtrips pro Tipp-Suche (spürbare Picker-Latenz).
+    // v30.82: EIN Graph-Batch statt bis zu 10 × 4 paralleler SharePoint-
+    // Aufrufe je Tastendruck — der People-Picker war die häufigste Quelle
+    // von Profil-Requests in der App. Einzelweg nur für Treffer ohne Batch-
+    // Ergebnis (Gäste, Aliase).
+    const batch = await this.getBasicProfiles(all.map(u => u.email));
+    const rest = all.filter(u => {
+      const b = batch[(u.email || '').toLowerCase()];
+      if (!b) return true;
+      if (b.location) u.location = b.location;
+      if (b.jobTitle) u.jobTitle = b.jobTitle;
+      return !(b.location || b.jobTitle);
+    });
+    await Promise.all(rest.map(async user => {
       try {
         const profile = await this.searchUserByEmail(user.email);
         if (profile) {
@@ -1668,6 +1685,59 @@ export class SharePointService {
       // Bewusst kein Wegwerfen: Der Aufrufer unterscheidet „nichts gefunden"
       // von „gar nicht gefragt" an der Größe der Map — deshalb hier melden.
       console.warn('[DEX] getEmployeeData (Graph) fehlgeschlagen:', err);
+    }
+    return out;
+  }
+
+  /**
+   * v30.82: Position + Standort vieler Personen auf einmal — Graph-Batch (20 je
+   * Request) statt eines SharePoint-Profil-Aufrufs je Person.
+   *
+   * Nutzer-Frage 07.09.2026 zur Rollenverwaltung: „Die Daten für die User
+   * laden nacheinander nach … ist das so sinnvoll wegen Throttle?" Nein.
+   * `searchUserByEmail` macht je Person bis zu vier Aufrufe (PeopleManager,
+   * siteusers-Fallback, zweites Profil, Graph für die Firma); bei 130
+   * Rollen-Zeilen waren das 130 bis 500 sequentielle Requests gegen
+   * SharePoint — bei JEDEM Öffnen der Seite, weil der Zwischenspeicher nur
+   * im Seitenzustand lag. Graph zählt getrennt von der SharePoint-Drosselung,
+   * und `officeLocation` ist dieselbe Quelle wie das SP-Profilfeld „Office"
+   * („DE - Koeln"). Wer im Batch nicht gefunden wird (Alias, kein Graph-
+   * Zugriff), bleibt für den Einzelweg des Aufrufers übrig.
+   */
+  public async getBasicProfiles(emails: string[]): Promise<Record<string, { displayName: string; jobTitle: string; location: string }>> {
+    const out: Record<string, { displayName: string; jobTitle: string; location: string }> = {};
+    const list = Array.from(new Set((emails || []).map(e => (e || '').trim().toLowerCase()).filter(Boolean)));
+    if (list.length === 0) return out;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ctx = this.context as any;
+      if (!ctx.msGraphClientFactory) return out;
+      const client = await ctx.msGraphClientFactory.getClient('3');
+      const SELECT = 'displayName,jobTitle,officeLocation,mail,userPrincipalName';
+      for (let i = 0; i < list.length; i += 20) {
+        const chunk = list.slice(i, i + 20);
+        const requests = chunk.map((mail, n) => ({
+          id: String(n),
+          method: 'GET',
+          url: `/users?$select=${SELECT}&$filter=mail eq '${mail.replace(/'/g, "''")}' or userPrincipalName eq '${mail.replace(/'/g, "''")}'&$top=1`,
+        }));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const resp: any = await client.api('/$batch').post({ requests });
+        for (const r of (resp?.responses || [])) {
+          const idx = parseInt(r.id, 10);
+          const mail = chunk[idx];
+          if (!mail || r.status !== 200) continue;
+          const u = (r.body && r.body.value && r.body.value[0]) || null;
+          if (!u) continue;
+          out[mail] = {
+            displayName: (u.displayName || '').trim(),
+            jobTitle: (u.jobTitle || '').trim(),
+            location: (u.officeLocation || '').trim(),
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('[DEX] getBasicProfiles (Graph) fehlgeschlagen:', err);
     }
     return out;
   }

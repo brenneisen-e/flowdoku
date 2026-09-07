@@ -57,7 +57,7 @@ export default function SettingsPage(): React.ReactElement {
   const {
     roles, isAdmin, originalIsAdmin,
     addRole, updateRole, setPowerUser, removeRole, hadRoleRightsIssue, isRolesLoading, siteUrl, searchUsers, searchUser,
-    auditRolesAccess,
+    auditRolesAccess, getBasicProfiles,
   } = useRoles();
   const { events, sendOrganizerOnboarding } = useEvents();
   const { locale } = useLanguage();
@@ -417,8 +417,22 @@ export default function SettingsPage(): React.ReactElement {
   const checkinList = React.useMemo(() => aggregateTeam(e => ({ emails: e.qrScannerEmails, names: e.qrScannerNames })), [aggregateTeam]);
 
   // Position (Job Title) + Standort pro Person live nachladen — DEX_Roles
-  // speichert die Position nicht. Best-effort, 1× pro E-Mail gecacht.
-  const [profiles, setProfiles] = React.useState<Record<string, { jobTitle?: string; location?: string }>>({});
+  // speichert die Position nicht. Best-effort.
+  // v30.82: Vorher EIN searchUser je Person, sequentiell — je Person bis zu
+  // vier SharePoint-/Graph-Aufrufe, bei 130 Zeilen 130 bis 500 Requests bei
+  // jedem Öffnen der Seite (Nutzer-Frage 07.09.2026: „ist das so sinnvoll
+  // wegen Throttle?"). Jetzt: 24-h-Cache in localStorage, dann EIN Graph-
+  // Batch für alle noch fehlenden (20 je Request), und nur für die, die Graph
+  // nicht kennt, der alte Einzelweg — gedrosselt mit Pause.
+  const [profiles, setProfiles] = React.useState<Record<string, { jobTitle?: string; location?: string }>>(() => {
+    try {
+      const raw = window.localStorage.getItem('dex_role_profiles_v1');
+      if (!raw) return {};
+      const parsed = JSON.parse(raw) as { ts: number; data: Record<string, { jobTitle?: string; location?: string }> };
+      if (!parsed || !parsed.data || (Date.now() - (parsed.ts || 0)) > 24 * 60 * 60 * 1000) return {};
+      return parsed.data;
+    } catch { return {}; }
+  });
   const profileAttemptedRef = React.useRef<Set<string>>(new Set());
   React.useEffect(() => {
     const emails = new Set<string>();
@@ -426,15 +440,31 @@ export default function SettingsPage(): React.ReactElement {
     coOrganizersList.forEach(c => emails.add(c.email));
     testersList.forEach(c => emails.add(c.email));
     checkinList.forEach(c => emails.add(c.email));
+    const todo = Array.from(emails).filter(em => !!em && !profileAttemptedRef.current.has(em) && !profiles[em]);
+    if (todo.length === 0) return;
+    todo.forEach(em => profileAttemptedRef.current.add(em));
     let cancelled = false;
     (async () => {
-      for (const em of Array.from(emails)) {
-        if (!em || profileAttemptedRef.current.has(em)) continue;
-        profileAttemptedRef.current.add(em);
+      const found: Record<string, { jobTitle?: string; location?: string }> = {};
+      try {
+        const batch = await getBasicProfiles(todo);
+        for (const em of Object.keys(batch)) {
+          const b = batch[em];
+          if (b.jobTitle || b.location) found[em] = { jobTitle: b.jobTitle, location: b.location };
+        }
+      } catch { /* Graph nicht erreichbar → Einzelweg unten */ }
+      if (cancelled) return;
+      if (Object.keys(found).length > 0) setProfiles(prev => ({ ...prev, ...found }));
+      // Rest über den Einzelweg — mit Pause, damit die Seite SharePoint nicht
+      // in die Drosselung treibt; typischerweise nur Aliase und Externe.
+      const rest = todo.filter(em => !found[em]);
+      for (let i = 0; i < rest.length; i++) {
+        if (cancelled) return;
+        if (i > 0) await new Promise<void>(resolve => setTimeout(resolve, 400));
         try {
-          const u = await searchUser(em);
+          const u = await searchUser(rest[i]);
           if (u && !cancelled && (u.jobTitle || u.location)) {
-            setProfiles(prev => ({ ...prev, [em]: { jobTitle: u.jobTitle, location: u.location } }));
+            setProfiles(prev => ({ ...prev, [rest[i]]: { jobTitle: u.jobTitle, location: u.location } }));
           }
         } catch { /* best-effort */ }
       }
@@ -442,6 +472,11 @@ export default function SettingsPage(): React.ReactElement {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roles, coOrganizersList, testersList, checkinList]);
+  // Cache schreiben — verschmerzbar, wenn localStorage gesperrt ist.
+  React.useEffect(() => {
+    if (Object.keys(profiles).length === 0) return;
+    try { window.localStorage.setItem('dex_role_profiles_v1', JSON.stringify({ ts: Date.now(), data: profiles })); } catch { /* */ }
+  }, [profiles]);
 
   // Klapp-Status pro Kategorie (Default: alle offen).
   const [openSections, setOpenSections] = React.useState<Set<string>>(() => new Set(['admins', 'organizer', 'coorg', 'tester', 'checkin', 'user']));
