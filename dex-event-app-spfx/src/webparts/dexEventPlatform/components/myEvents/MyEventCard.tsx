@@ -12,6 +12,7 @@ import { CachedImg } from '../CachedImage';
 import { UserFieldPicker } from '../UserFieldPicker';
 import { isEventVisibleForUser } from '../EventListPage';
 import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime } from '../../types';
+import { parseAgendaCheckIns, formatMarkTime } from '../../utils/agendaCheckIns';
 import { SPRegistration } from '../../services/EventService';
 import { isEventOver, formatAllDayPeriod } from '../../utils/eventFormat';
 import { selfCancelLocked, selfCancelLockReason } from '../../utils/cancelPolicy';
@@ -856,7 +857,8 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                     <div style={{ marginTop: 12 }}>
                       <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
                         <Icon iconName="Calendar" style={{ fontSize: 14, color: 'var(--dex-green-dark, #6b9a1e)' }} />
-                        {t('myevents.agenda')} {dayCount > 1 && <span style={{ fontWeight: 400, fontSize: '0.72rem', color: 'var(--dex-gray-400)' }}>· {dayCount} {t('myevents.agenda') === 'Programm' ? 'Tage (seitwärts scrollen)' : 'days (swipe)'}</span>}
+                        {/* v30.86: Im Programmpunkte-Modus die Bezeichnung des Organizers. */}
+                        {event.agendaCheckIn ? (event.agendaTermPlural || (t('myevents.agenda') === 'Programm' ? 'Programmpunkte' : 'Agenda items')) : t('myevents.agenda')} {dayCount > 1 && <span style={{ fontWeight: 400, fontSize: '0.72rem', color: 'var(--dex-gray-400)' }}>· {dayCount} {t('myevents.agenda') === 'Programm' ? 'Tage (seitwärts scrollen)' : 'days (swipe)'}</span>}
                       </div>
                       {/* Horizontal scrollbarer Container - funktioniert auf Desktop und Mobile */}
                       <div
@@ -899,6 +901,16 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                                     {item.time}{item.endTime ? ` – ${item.endTime}` : ''}
                                   </div>
                                   <div style={{ fontSize: '0.8rem', wordBreak: 'break-word' }}>{item.title}</div>
+                                  {item.location && (
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-600)', marginTop: 1, wordBreak: 'break-word' }}>{item.location}</div>
+                                  )}
+                                  {/* v30.91: Anwesenheit je Programmpunkt (AgendaCheckIns der eigenen Zeile). */}
+                                  {event.agendaCheckIn && (() => {
+                                    const m = parseAgendaCheckIns(registration && registration.AgendaCheckIns)[item.id];
+                                    return m
+                                      ? <div style={{ fontSize: '0.72rem', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, marginTop: 2 }}>✓ {t('myevents.agenda') === 'Programm' ? 'anwesend' : 'present'} {formatMarkTime(m.at)}</div>
+                                      : null;
+                                  })()}
                                   {item.description && (
                                     <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 1, wordBreak: 'break-word' }}>{item.description}</div>
                                   )}

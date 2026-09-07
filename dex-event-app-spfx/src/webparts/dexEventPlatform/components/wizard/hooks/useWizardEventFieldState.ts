@@ -216,6 +216,13 @@ export function useWizardEventFieldState(ctx: UseWizardEventFieldStateCtx) {
   // sie über einen Kalender an, die Anmeldeseite zeigt sie als Kalender.
   // Piggyback _subEventCalendar.
   const [subEventCalendar, setSubEventCalendar] = React.useState<boolean>(!!(editEvent && editEvent.subEventCalendar));
+  // v30.86: Programmpunkte mit Anwesenheits-Check-in — die Agenda aus
+  // „Ort & Programm" wird zur Check-in-Liste, Anmeldung und Kommunikation
+  // bleiben beim Hauptevent. Alternative zu Sub-Events, nie beides.
+  // Piggyback _agendaCheckIn; Bezeichnung in _agendaTerm (leer = Programmpunkt).
+  const [agendaCheckIn, setAgendaCheckIn] = React.useState<boolean>(!!(editEvent && editEvent.agendaCheckIn));
+  const [agendaTermSingular, setAgendaTermSingular] = React.useState<string>((editEvent && editEvent.agendaTermSingular) || '');
+  const [agendaTermPlural, setAgendaTermPlural] = React.useState<string>((editEvent && editEvent.agendaTermPlural) || '');
   // v29.22: Zum Löschen vorgemerkte, GESPEICHERTE Termine (Drafts mit dbId,
   // per Kalender-Klick oder X abgewählt). Sie bleiben hier geparkt statt
   // einfach zu verschwinden: Der Kalender zeigt sie ORANGE („wird beim
@@ -486,6 +493,7 @@ export function useWizardEventFieldState(ctx: UseWizardEventFieldStateCtx) {
   // Anmeldung durch, und erst wenn alles passt wird der Schalter rausgenommen.
 
   return {
+    agendaCheckIn, agendaTermPlural, agendaTermSingular, setAgendaCheckIn, setAgendaTermPlural, setAgendaTermSingular,
     allDay, audience, autoDeregisterOnDecline, bundledComm, commShared, childGender, childTermPlural,
     childTermSingular, customFields, customTermMode, description, disableCancellationEmail, disableEmails,
     disableOutlook, disableRegistrationEmail, emailLanguage, emailLogoFromPhoto, endDate, eventImageUrl,

@@ -166,6 +166,8 @@ export interface WizardSubmitCtx {
   subDeadlineRulePiggyback: () => Record<string, unknown>;
   subEventCalendar: boolean;
   subEventOpenRulePiggyback: () => Record<string, unknown>;
+  /** v30.86: Programmpunkte mit Check-in + Bezeichnung (Piggyback, s. EventCreationPage). */
+  agendaCheckInPiggyback: () => Record<string, unknown>;
   subEventSingleChoice: boolean;
   subEventsOnlyMode: boolean;
   subEventsOptIn: boolean;
@@ -192,7 +194,7 @@ export interface WizardSubmitCtx {
 }
 
 export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
-  const { activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, agenda, allDay, allowAttendeeUpload, askSalutation, askTeamName, assistantsCanSee, attendeeUploadHint, attendeeUploadLabel, audience, berlinLocalToUtcIso, bilingualFields, billingPiggyback, bundledComm, commShared, childEventsOf, childGender, childTermPlural, childTermSingular, computeFormSnapshot, confirmDialog, confirmDialogEnabled, confirmDialogMode, confirmDialogText, contactEmail, contactInfo, contactName, contactOrganizerEmail, coOrganizerEmails, coOrganizerNames, createdEventIdRef, createEvent, currentUser, customFields, deadlineToEndOfDayIso, description, documents, DRAFT_KEY, durchstarterCapacity, durchstarterRequiresProof, durchstarterStartblock, editEvent, effTeamsLink, endDate, eventImageUrl, eventType, excludedUsers, filterMode, funstarterCapacity, funstarterStartblock, getGroupMembers, getLastEventUpdateError, headerImageLayoutConfig, headerLayoutFor, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly, imageBanner, imageDisplay, imageFile, imageOrigAspect, imageOrigFile, initialDocumentNames, initialFormSnapshotRef, initialOrgGetsSubInvitesRef, initialSubEventDbIds, isB2runTemplate, isDe, isEditMode, isFictive, klammerDeadline, lastDeregisterDate, lastDraftJsonRef, location, locationFilter, mainCommDisabledAck, mainEventLabel, mainEventLabelMode, maxParticipants, noCancelAfterDeadline, noDescription, notifyAdminsExternalAudienceAccess, notifyNewCoOrganizers, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, onlineMeetingMode, organizer, organizerDisplayLarge, organizerEmails, orgGetsSubInvites, outlookEndOverride, outlookLocationOverride, outlookStartOverride, outlookTeamsLink, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs, pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, pendingSuccessDispatchRef, persistSubEventsForParent, previewBeforeActive, qrScannerEmails, qrScannerNames, quiz, quizClusterSize, refreshEventDocuments, refreshEvents, registrationDeadline, registrationLanguage, regRuleEnabled, requestCoOrganizerApprovals, requireSubEventSelection, resolveTopLevelCommState, sanitizeOrganizerPairs, selectedEventId, setDraftSavedAt, setError, setImageUploadError, setIsSubmitting, setNavigationGuard, setPendingDraft, setPendingSuccessDispatch, setProgress, setProgressLabel, setRemovedSavedSubs, setShowSummaryModal, showAlert, showAsFree, shrinkLogoB64, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitLabelA, splitLabelB, splitSectionTitle, splitSharedWaitlist, startDate, subDeadlineRulePiggyback, subEventCalendar, subEventOpenRulePiggyback, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn, subEventsRef, teamJoinRequiresApproval, teamMembersCannotCreate, teamOpenSlotsVisible, teamPartialAllowed, teamRegistrationEnabled, teamSize, teamTermPlural, teamTermSingular, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, updateEvent, userCancelAllowed, useSplitCapacities, visAllSubsPiggyback, waitlistEnabled, wizardImgAspect } = ctx;
+  const { activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, agenda, allDay, allowAttendeeUpload, askSalutation, askTeamName, assistantsCanSee, attendeeUploadHint, attendeeUploadLabel, audience, berlinLocalToUtcIso, bilingualFields, billingPiggyback, bundledComm, commShared, childEventsOf, childGender, childTermPlural, childTermSingular, computeFormSnapshot, confirmDialog, confirmDialogEnabled, confirmDialogMode, confirmDialogText, contactEmail, contactInfo, contactName, contactOrganizerEmail, coOrganizerEmails, coOrganizerNames, createdEventIdRef, createEvent, currentUser, customFields, deadlineToEndOfDayIso, description, documents, DRAFT_KEY, durchstarterCapacity, durchstarterRequiresProof, durchstarterStartblock, editEvent, effTeamsLink, endDate, eventImageUrl, eventType, excludedUsers, filterMode, funstarterCapacity, funstarterStartblock, getGroupMembers, getLastEventUpdateError, headerImageLayoutConfig, headerLayoutFor, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly, imageBanner, imageDisplay, imageFile, imageOrigAspect, imageOrigFile, initialDocumentNames, initialFormSnapshotRef, initialOrgGetsSubInvitesRef, initialSubEventDbIds, isB2runTemplate, isDe, isEditMode, isFictive, klammerDeadline, lastDeregisterDate, lastDraftJsonRef, location, locationFilter, mainCommDisabledAck, mainEventLabel, mainEventLabelMode, maxParticipants, noCancelAfterDeadline, noDescription, notifyAdminsExternalAudienceAccess, notifyNewCoOrganizers, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, onlineMeetingMode, organizer, organizerDisplayLarge, organizerEmails, orgGetsSubInvites, outlookEndOverride, outlookLocationOverride, outlookStartOverride, outlookTeamsLink, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs, pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, pendingSuccessDispatchRef, persistSubEventsForParent, previewBeforeActive, qrScannerEmails, qrScannerNames, quiz, quizClusterSize, refreshEventDocuments, refreshEvents, registrationDeadline, registrationLanguage, regRuleEnabled, requestCoOrganizerApprovals, requireSubEventSelection, resolveTopLevelCommState, sanitizeOrganizerPairs, selectedEventId, setDraftSavedAt, setError, setImageUploadError, setIsSubmitting, setNavigationGuard, setPendingDraft, setPendingSuccessDispatch, setProgress, setProgressLabel, setRemovedSavedSubs, setShowSummaryModal, showAlert, showAsFree, shrinkLogoB64, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitLabelA, splitLabelB, splitSectionTitle, splitSharedWaitlist, startDate, subDeadlineRulePiggyback, subEventCalendar, subEventOpenRulePiggyback, agendaCheckInPiggyback, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn, subEventsRef, teamJoinRequiresApproval, teamMembersCannotCreate, teamOpenSlotsVisible, teamPartialAllowed, teamRegistrationEnabled, teamSize, teamTermPlural, teamTermSingular, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, updateEvent, userCancelAllowed, useSplitCapacities, visAllSubsPiggyback, waitlistEnabled, wizardImgAspect } = ctx;
     // v9.14: Beschreibung ist jetzt optional. Nur Title bleibt Pflicht.
     if (!title) return;
 
@@ -546,6 +548,9 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
       const childTermConfig = (childTermSingular.trim() || childTermPlural.trim())
         ? { _childEventTerm: { singular: childTermSingular.trim(), plural: childTermPlural.trim(), ...(childGender ? { gender: childGender } : {}) } }
         : {};
+      // v30.86: Programmpunkte mit Check-in — nie zusammen mit aktiven
+      // Sub-Events (der Wizard lässt beides nicht zu; hier die zweite Sperre).
+      const agendaCheckInConfig = agendaCheckInPiggyback();
       // v18.9: Organizer-Anzeige ausblenden (Piggyback).
       const hideOrganizerConfig = hideOrganizer ? { _hideOrganizer: true } : {};
       const hiddenOrganizersConfig: Record<string, unknown> = hiddenOrganizerEmails.length > 0 ? { _hiddenOrganizers: hiddenOrganizerEmails } : {};
@@ -594,7 +599,8 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
         try {
           const raw = JSON.parse(editEvent?.emailTemplateOverrides || '{}') as Record<string, unknown>;
           const out: Record<string, unknown> = {};
-          for (const k of ['_hotels', '_hotelStays', '_hotelVisible', '_hotelRules']) {
+          // v30.88: Trikot-Bestand (_shirtStock) wird im Organizer Center gepflegt — mittragen.
+          for (const k of ['_hotels', '_hotelStays', '_hotelVisible', '_hotelRules', '_shirtStock']) {
             if (raw && raw[k] !== undefined) out[k] = raw[k];
           }
           return out;
@@ -603,7 +609,7 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
       const topPiggybackConfigs: Array<Record<string, unknown>> = [
         b2runExtraConfig, qrScannerConfig, coOrganizerConfig, testTeamConfig,
         splitDispRevConfig, requireSubEventConfig, subEventsOnlyConfig,
-        subEventsDisabledConfig, imageBannerConfig, imageOrigUrlConfig, klammerDeadlineConfig, childTermConfig, teamTermConfig,
+        subEventsDisabledConfig, imageBannerConfig, imageOrigUrlConfig, klammerDeadlineConfig, childTermConfig, agendaCheckInConfig, teamTermConfig,
         teamNoCreateConfig, mainEventLabelConfig, assistantsCanSeeConfig,
         organizerDisplayLargeConfig, previewBeforeActiveConfig,
         imageDisplayConfig, hideOrganizerConfig, hiddenOrganizersConfig,
@@ -884,17 +890,24 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
               organizerEmails.join(';'),
               coOrganizerEmails.join(';'),
             ].filter(Boolean).join(';');
+            // v30.37: Klammer UND alle Sub-Events. Jeder Termin hat eine
+            // eigene Subsite mit eigener Teilnehmerliste — bis v30.36 lief
+            // der Sync nur über die Klammer. Ein nachträglich benannter
+            // Co-Organizer konnte die Klammer sehen und KEINEN einzigen
+            // Termin; weil getAllRegistrations bei 403 `[]` liefert, kam das
+            // in der App als „0 Teilnehmer" an statt als Fehler.
+            const permSites = [editEvent.subsiteUrl]
+              .concat(childEventsOf(editEvent.id).map(k => k.subsiteUrl || ''))
+              .filter(Boolean);
             if (allOrgEmailsForPerm) {
-              // v30.37: Klammer UND alle Sub-Events. Jeder Termin hat eine
-              // eigene Subsite mit eigener Teilnehmerliste — bis v30.36 lief
-              // der Sync nur über die Klammer. Ein nachträglich benannter
-              // Co-Organizer konnte die Klammer sehen und KEINEN einzigen
-              // Termin; weil getAllRegistrations bei 403 `[]` liefert, kam das
-              // in der App als „0 Teilnehmer" an statt als Fehler.
-              const permSites = [editEvent.subsiteUrl]
-                .concat(childEventsOf(editEvent.id).map(k => k.subsiteUrl || ''))
-                .filter(Boolean);
               await svcPerm.ensureOrganizerPermissionsMulti(permSites, allOrgEmailsForPerm);
+            }
+            // v30.87: Check-in-Team auf den Teilnehmerlisten (Edit, nicht Web).
+            // Wer gestrichen wurde, verliert die Zuweisung — Organizer nie.
+            const prevScanners = (editEvent.qrScannerEmails || []);
+            const orgKeep = organizerEmails.concat(coOrganizerEmails);
+            if (qrScannerEmails.length > 0 || prevScanners.length > 0) {
+              await svcPerm.ensureScannerListPermissions(permSites, qrScannerEmails, prevScanners, orgKeep);
             }
           }
         } catch (err) { console.warn('[DEX] Permission-Sync für Organizer fehlgeschlagen:', err); }
@@ -1591,7 +1604,7 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
           const createPiggybackConfigs: Array<Record<string, unknown>> = [
             b2runExtra, qrExtra, coExtra, ttExtra, splitDispRevExtra,
             reqSubEvtExtra, subEvtsOnlyExtra, subEvtsDisabledExtra,
-            imageBannerExtra, klammerDeadlineExtra, childTermExtra, teamTermExtra, teamNoCreateExtra,
+            imageBannerExtra, klammerDeadlineExtra, childTermExtra, agendaCheckInPiggyback(), teamTermExtra, teamNoCreateExtra,
             mainEventLabelExtra, assistantsCanSeeExtra,
             organizerDisplayLargeExtra, previewBeforeActiveExtra,
             imageDisplayExtra, hideOrganizerExtra, hiddenOrganizersExtra,
@@ -1842,6 +1855,14 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
             const allEvents = await svc.getEvents();
             const created = allEvents.find(e => String(e.Id) === String(eventId));
             const subsiteUrl = created?.SubsiteUrl || '';
+            // v30.87: Check-in-Team schon beim Anlegen auf die Teilnehmerliste
+            // berechtigen (Edit auf der Liste). Sub-Event-Listen entstehen erst
+            // danach — die bekommt der nächste Speichervorgang bzw. die Aktion
+            // „Organizer-Berechtigungen reparieren".
+            if (subsiteUrl && qrScannerEmails.length > 0) {
+              try { await svc.ensureScannerListPermissions([subsiteUrl], qrScannerEmails, []); }
+              catch (err) { console.warn('[DEX] Check-in-Team-Rechte beim Anlegen fehlgeschlagen:', err); }
+            }
             // Event-Created Mail an alle Organizer senden.
             // {{Name}} in der Anrede = nur Vorname (nicht voller Name), darum
             // den Organizer-String anhand von ";" in Namen splitten und pro

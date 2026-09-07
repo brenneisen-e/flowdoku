@@ -12,6 +12,7 @@ import OrganizerList from '../OrganizerList';
 import { formatOrganizerList } from '../../context/EventContext';
 import { Locale } from '../../context/LanguageContext';
 import { DeloitteEvent } from '../../types';
+import { AgendaProgramBlock } from './AgendaProgramBlock';
 
 /** Station 1 — Dein Event: Bild, Eckdaten, Organizer, Beschreibung. */
 export interface EventCardProps {
@@ -457,6 +458,10 @@ export const EventCard: React.FC<EventCardProps> = (p) => {
               }}
             />
           )}
+          {/* v30.86: Programm / Programmpunkte unter der Beschreibung — bisher
+              nur in „Meine Events" sichtbar, obwohl der Wizard es für die
+              Anmeldeseite versprach. */}
+          <AgendaProgramBlock event={event} locale={locale} />
           {/* v24.59: Der frühere rote „Alle Plätze belegt …"-Text unter der
               Event-Karte ist entfernt — die Info steht jetzt im Badge über den
               Buttons (Status „Alle Plätze belegt") und in der Button-Beschriftung

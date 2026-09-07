@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.85.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.93.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -305,6 +305,28 @@ Teilnehmerliste: `reloadRegistrations()` in `AdminPage` (Status geprüft, bei
 Fehler bleibt die alte Liste, `regStaleHint`). Wer nach einem Schreibvorgang
 nachlädt, ruft ihn — nie `setRegistrations(await getAllRegistrations(id))`.
 
+**Das Check-in-Team braucht eigene Listen-Rechte (v30.87).** Die
+Teilnehmerliste ist zeilenweise gesichert (ReadSecurity/WriteSecurity=2);
+Visitors haben Contribute und sehen damit nur die EIGENE Zeile. Nur „Manage
+Lists" hebt das auf (Edit, Design, Full Control). `_qrScanners` bekamen bis
+v30.86 gar nichts — deshalb „sah der Scanner nicht die ganze Liste" und
+brauchte Organizer-Rechte. Seit v30.87: `ensureScannerListPermissions`
+(Edit 1073741830 auf der Liste, nicht auf dem Web; Fallback Full Control;
+Entzug beim Streichen mit Nachlesen; Organizer nie entzogen), gerufen im
+Edit-/Create-Pfad des Wizards und in „Organizer-Berechtigungen reparieren".
+Wer eine neue Rolle mit Listenzugriff baut: Contribute reicht bei
+Item-Level-Security NIE für fremde Zeilen.
+
+**Mail-Kopfbild: `eventHeaderImageOpts` an JEDER wrapTemplate-Stelle mit
+Event (v30.87).** `wrapTemplate` ohne Bildmaße heißt 180 px — der alte
+Default. Rund zwanzig App-Mails (Team, Zimmerpartner, Hotel, Abrechnung,
+Organizer-Hinweise) riefen es so und zeigten das Event-Bild klein, obwohl
+der Vollbild-Kopf seit v29.29 Standard ist. Regel: gespeichertes
+`_headerImageLayout` gewinnt, sonst 600/0/0 bei eigenem Mail-Logo, sonst
+Orb-Schutz. Wer eine neue Mail zu einem Event baut, übergibt
+`eventHeaderImageOpts(ev.emailTemplateOverrides, ev.mailImageBase64)` als
+sechstes Argument — sonst ist es die nächste „bei dieser Mail fehlt es".
+
 **Berechtigungen gelten je Subsite — und jedes Sub-Event hat eine eigene.**
 `ensureOrganizerPermissions` lief bis v30.36 nur über `editEvent.subsiteUrl`.
 Wer bei `createEvent` noch nicht Organizer war, hatte danach Full Control auf
@@ -556,6 +578,29 @@ sicherer Fallback, sondern der Anfang einer Endlosschleife. Seit v30.75
 erkennt ein Regex den ganzen Namens-Lauf und heilt aufgeblähte Bodies beim
 Laden; `outlookBodyOrganizerBloated` erzwingt dann das Outlook-Update.
 
+**Programmpunkte sind die Agenda — kein zweites Datenfeld (v30.86).** Die
+Anforderung „Sub-Events ohne Teilnehmerliste, nur für den Check-in" wird
+über die bestehende Spalte `Agenda` (`AgendaItem[]`, Editor in Schritt 3
+„Ort & Programm") gelöst, plus Modus-Flag `_agendaCheckIn` und Bezeichnung
+`_agendaTerm` (Piggyback, gestrippt in `useWizardVisibilityState`, gebaut in
+`agendaCheckInPiggyback()` in EventCreationPage — nie zusammen mit
+`subEventsOptIn`). Entweder Sub-Events oder Programmpunkte, der Wizard
+sperrt die andere Wahl. Entscheidungen des Nutzers (07.09.2026): Check-in
+an einem Punkt setzt NUR diesen Punkt (kein Auto-Event-Check-in); Migration
+= Kopie in ein NEUES Event, das alte bleibt; „Programmpunkte" als Vorgabe,
+je Event umbenennbar. Konzept und Stufenplan: `docs/konzept-programmpunkte.md`.
+Stufe 2 (Check-in je Punkt, Spalte `AgendaCheckIns` auf den Teilnehmerlisten
+— über `ensureRegistrationList` UND `fixRegistrationListColumns`) ist offen.
+Wer eine Auswertung über Anwesenheit baut: die Bezeichnung IMMER aus
+`agendaTermSingular/Plural` nehmen, nie „Programmpunkt" fest verdrahten.
+
+**Trikot-Bestand (`_shirtStock`, v30.88) ist Organizer-Center-Daten im
+Wizard-Blob.** Wie `_hotels`: im Wizard gestrippt (`useWizardVisibilityState`)
+UND in `hotelCarryConfig` mitgetragen — nur strippen hieße, der nächste
+Wizard-Save löscht den Bestand. Die Verteilung (`shirtAllocate`) ist die
+EINE Rechnung für Aktion „Benötigte T-Shirts" und Check-in-Seite; wer eine
+zweite Stelle baut, die Größen zuteilt, ruft dieselbe Funktion.
+
 **Inline-Styles können kein `:hover`.** Interaktive Elemente brauchen einen
 Hover-State (`hoverIdx`, `evTabHover`), sonst lesen sie sich als Beschriftung.
 
@@ -724,6 +769,27 @@ dazu erledigt. Offen und **noch nicht begonnen**:
    00:00/23:59 gesetzt. Leer lassen wäre falsch — ein Sub-Event ohne Zeiten
    erbt seit v28.66 die Zeiten des Hauptevents, bei einer Reihe also den
    gesamten Zeitraum statt des einen Tages.
+
+2. **Kommunikations-Schritt** — alle vier Stufen des Konzepts
+   (`docs/konzept-kommunikation-schritt.md`) sind ausgeliefert: A+D in
+   v30.89 (drei Karten, Chip-Zeile, Anpassen-Reiter), B+C in v30.90
+   (`CommPreviewCard`: Vorschau von Mail und Outlook-Termin mit den
+   Versand-Funktionen selbst, „Testmail an mich" über die Mail-Queue mit
+   fest eingebettetem Kopfbild). Regel seither: neue Kommunikations-
+   Einstellungen gehören in Ebene 3 (Reiter), nie als weiterer Kasten in
+   Ebene 1 — sonst ist die Seite in einem Jahr wieder da, wo sie war. Und
+   eine Vorschau baut man NIE mit eigener Logik, sondern mit
+   `buildEmailFromTemplate`/`buildOutlookBody` — sonst zeigt sie etwas
+   anderes als die Mail.
+
+3. **Programmpunkte** — Stufen 1–4 sind ausgeliefert (v30.86, v30.91,
+   v30.92, v30.93; `docs/konzept-programmpunkte.md`). Offen: Self-Check-in
+   je Punkt (Live-QR je Programmpunkt; die Self-Check-in-Seite ist
+   event-bezogen), `{{Programm}}`-Platzhalter für Mail/Outlook,
+   Teilnahmebescheinigung. Vor dem Einsatz am 20er-Event: einmal an einer
+   Kopie durchspielen — die Aktion ist dafür gebaut (Test-Event, altes Event
+   bleibt). Anwesenheit liegt in `AgendaCheckIns` je Teilnehmerzeile;
+   Bestandslisten brauchen einmal „Spalten fixen".
 
 Bewusst **nicht** gebaut: ein Dropdown zum Springen zwischen Sub-Event-Reitern.
 Es wäre eine zweite Bedienung für dieselbe Auswahl; die gescrollte Leiste hat

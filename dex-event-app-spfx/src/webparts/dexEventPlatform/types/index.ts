@@ -389,6 +389,18 @@ export interface DeloitteEvent {
    *  „ein Office-Tag". Raten hilft da nicht weiter, deshalb fragt der
    *  Assistent es ab. Leer = alte Heuristik (rückwärtskompatibel). */
   childEventTermGender?: 'm' | 'f' | 'n';
+  /** v30.86: Programmpunkte mit Anwesenheits-Check-in. Die Agenda (Spalte
+   *  `Agenda`, Schritt „Ort & Programm") ist dann nicht nur Anzeige, sondern
+   *  die Liste der Punkte, an denen je Person eingecheckt wird. Die Anmeldung
+   *  und die Kommunikation bleiben beim Hauptevent — ein Programmpunkt hat
+   *  keine Teilnehmerliste, keine Subsite, keine Mail, keinen Outlook-Termin.
+   *  Schliesst Sub-Events aus (ein Event entscheidet sich einmal). Piggyback
+   *  `_agendaCheckIn` in EmailTemplateOverrides. */
+  agendaCheckIn?: boolean;
+  /** v30.86: Bezeichnung der Programmpunkte, je Event umbenennbar („Session",
+   *  „Vortrag", „Slot"). Leer = „Programmpunkt(e)". Piggyback `_agendaTerm`. */
+  agendaTermSingular?: string;
+  agendaTermPlural?: string;
   /** v8.5: Granulare Organizer-Benachrichtigung bei Anmeldungen.
    *  - 'never' (Default): Organizer bekommt nichts mit
    *  - 'always': Organizer wird bei jeder Anmeldung als BCC dazugesetzt
@@ -567,6 +579,8 @@ export interface AgendaItem {
   icon: string;         // FluentUI icon name (z.B. 'Calendar', 'People', 'Food')
   title: string;
   description?: string;
+  /** v30.86: Raum/Ort des Punkts (Plenum, Raum 3.12). Optional, frei. */
+  location?: string;
 }
 
 export interface TransferTime {

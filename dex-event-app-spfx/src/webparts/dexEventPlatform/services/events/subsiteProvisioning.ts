@@ -147,6 +147,7 @@ export async function createRegistrationList(
     { title: 'CheckedInDate', type: 4 },     // v7.16: Check-In-Audit — Zeitpunkt
     { title: 'CheckedInByName', type: 2 },   // v7.16: Check-In-Audit — Helfer-Name
     { title: 'CheckedInByEmail', type: 2 },  // v7.16: Check-In-Audit — Helfer-E-Mail
+    { title: 'AgendaCheckIns', type: 3 },    // v30.91: Anwesenheit je Programmpunkt (JSON, s. utils/agendaCheckIns)
     // v17.15: Nachrück-Audit (siehe SPRegistration-Interface):
     // - PromotedDate: gesetzt beim Promote auf die nachrückende Person.
     // - ReplacedParticipantEmail: E-Mail der Person, deren Cancel den
@@ -390,6 +391,110 @@ export async function ensureOrganizerPermissionsMulti(
     // Personen wären es sonst über hundert Zeilen.
     const lines = result.failed.map(f => `${f.site} [${f.scope}] user ${f.userId} → HTTP ${f.status}`);
     console.warn(`[DEX] ensureOrganizerPermissionsMulti: ${result.failed.length} Zuweisung(en) NICHT gesetzt:\n${lines.join('\n')}`);
+  }
+  return result;
+}
+
+/**
+ * v30.87: Rechte des CHECK-IN-TEAMS (`_qrScanners`) auf den Teilnehmerlisten.
+ *
+ * Befund (Nutzer, 07.09.2026): „wenn jemand nur im Check-in-Team ist, sah er
+ * nicht die ganze Teilnehmerliste — man musste ihm Organizer-Rechte geben."
+ * Ursache: Die Teilnehmerliste ist zeilenweise gesichert (ReadSecurity=2 /
+ * WriteSecurity=2, s. `setRegistrationListPermissions`). Visitors haben
+ * Contribute — sehen damit aber nur die EIGENE Zeile und dürfen nur die
+ * eigene ändern. Das Check-in-Team bekam bis v30.86 GAR KEINE Zuweisung;
+ * die Check-in-Seite las die Liste als `[]` bzw. 403, und der Status-MERGE
+ * auf fremde Zeilen scheiterte. Die Zeilen-Sicherheit hebt nur auf, wer
+ * „Manage Lists" hat — das steckt in Edit (1073741830), Design und Full
+ * Control, nicht in Contribute.
+ *
+ * Deshalb: Scanner bekommen **Edit auf der Liste** (lesen alle Zeilen,
+ * schreiben den Status), NICHT auf dem Web — sie sollen weder Listen anlegen
+ * noch die Subsite verwalten. Fehlt die Edit-Rolle im Tenant (404/500 beim
+ * Zuweisen), fällt die Vergabe auf Full Control zurück, damit der Check-in
+ * nicht an einer Rollendefinition scheitert.
+ *
+ * Und spiegelbildlich (CLAUDE.md: „Rechte werden vergeben UND entzogen"):
+ * Wer aus dem Check-in-Team gestrichen wird, verliert die Zuweisung wieder —
+ * ausser er ist zugleich Organizer/Co-Organizer (`keepEmails`). Jeder Entzug
+ * wird NACHGELESEN; der DELETE-Status allein ist nicht belastbar (v30.67).
+ */
+export interface ScannerPermissionsResult {
+  sites: number;
+  granted: number;
+  revoked: number;
+  unresolved: string[];
+  failed: Array<{ site: string; email: string; op: 'grant' | 'revoke'; status: number }>;
+}
+export async function ensureScannerListPermissions(
+  svc: EventService,
+  subsiteUrls: string[],
+  scannerEmails: string[],
+  revokeEmails: string[],
+  keepEmails: string[] = [],
+): Promise<ScannerPermissionsResult> {
+  const sites = (subsiteUrls || []).map(s => (s || '').trim()).filter(Boolean);
+  const norm = (arr: string[]): string[] => Array.from(new Set((arr || []).map(s => (s || '').trim().toLowerCase()).filter(Boolean)));
+  const grantList = norm(scannerEmails);
+  const keep = new Set(norm(keepEmails).concat(grantList));
+  const revokeList = norm(revokeEmails).filter(e => !keep.has(e));
+  const result: ScannerPermissionsResult = { sites: sites.length, granted: 0, revoked: 0, unresolved: [], failed: [] };
+  if (sites.length === 0 || (grantList.length === 0 && revokeList.length === 0)) return result;
+
+  const resolve = async (em: string): Promise<number | null> => {
+    try {
+      const r = await svc._sp.get(
+        `${svc.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(em)}')?$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      if (!r.ok) return null;
+      const d = await r.json();
+      return (d.d?.Id || d.Id) || null;
+    } catch { return null; }
+  };
+  const ids = new Map<string, number>();
+  for (const em of grantList.concat(revokeList)) {
+    const id = await resolve(em);
+    if (id) ids.set(em, id); else result.unresolved.push(em);
+  }
+  const listBase = (site: string): string => `${site}/_api/web/lists/getbytitle('${REG_LIST_NAME}')`;
+
+  for (const site of sites) {
+    for (const em of grantList) {
+      const id = ids.get(em); if (!id) continue;
+      let status = 0;
+      try {
+        const r = await svc._post(`${listBase(site)}/roleassignments/addroleassignment(principalid=${id}, roledefid=1073741830)`, {});
+        status = r.status;
+        if (r.ok) { result.granted++; continue; }
+        // Edit-Rolle nicht vorhanden/ablehnend → Full Control wie die Organizer.
+        const r2 = await svc._post(`${listBase(site)}/roleassignments/addroleassignment(principalid=${id}, roledefid=1073741829)`, {});
+        status = r2.status;
+        if (r2.ok) { result.granted++; continue; }
+      } catch { status = 0; }
+      result.failed.push({ site, email: em, op: 'grant', status });
+    }
+    for (const em of revokeList) {
+      const id = ids.get(em); if (!id) continue;
+      let status = 0;
+      try {
+        const del = await svc._sp.post(
+          `${listBase(site)}/roleassignments/getbyprincipalid(${id})`,
+          SPHttpClient.configurations.v1,
+          { headers: { 'Accept': 'application/json;odata=verbose', 'X-HTTP-Method': 'DELETE' } }
+        );
+        status = del.status;
+        // Nachlesen: steht der Principal noch drin, ist der Entzug gescheitert.
+        const chk = await svc._sp.get(`${listBase(site)}/roleassignments/getbyprincipalid(${id})?$select=PrincipalId`, SPHttpClient.configurations.v1);
+        if (!chk.ok) { result.revoked++; continue; }
+      } catch { status = 0; }
+      result.failed.push({ site, email: em, op: 'revoke', status });
+    }
+  }
+  if (result.failed.length > 0) {
+    const lines = result.failed.map(f => `${f.site} [${f.op}] ${f.email} → HTTP ${f.status}`);
+    console.warn(`[DEX] ensureScannerListPermissions: ${result.failed.length} Zuweisung(en) NICHT umgesetzt:\n${lines.join('\n')}`);
   }
   return result;
 }

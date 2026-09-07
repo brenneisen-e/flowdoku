@@ -7,6 +7,7 @@
  * beziehen sie ihre Umgebung aus dem `deps`-Objekt.
  */
 
+import { eventHeaderImageOpts } from '../../utils/mailHeaderImage';
 import { DeloitteEvent } from '../../types';
 import { EventService, SPRegistration } from '../../services/EventService';
 import { wrapTemplate, buildEmailFromTemplate, cancellationEmail } from '../../services/EmailTemplates';
@@ -709,7 +710,7 @@ export function makeCancellationActions(deps: CancellationDeps) {
           : `<p>Hello ${mFirst},</p><p>${cancelledFullName} cancelled their registration from team ${teamNameStr} (${remaining.length}/${teamSizeCfg}).</p>${isNewLead ? newLeadBlockHtml : ''}`;
         mail = {
           subject: isDe ? `Team-Update — ${event.title}` : `Team update — ${event.title}`,
-          body: wrapTemplate('#ed8b00', isDe ? 'Team-Update' : 'Team update', `Event ${event.title}`, inner),
+          body: wrapTemplate('#ed8b00', isDe ? 'Team-Update' : 'Team update', `Event ${event.title}`, inner, undefined, eventHeaderImageOpts(event.emailTemplateOverrides, event.mailImageBase64)),
         };
       }
       try {

@@ -7,6 +7,7 @@
  * beziehen sie ihre Umgebung aus dem `deps`-Objekt.
  */
 
+import { eventHeaderImageOpts } from '../../utils/mailHeaderImage';
 import { DeloitteEvent } from '../../types';
 import { EventService, SPRegistration, AssistantLink } from '../../services/EventService';
 import { buildHashDeepLink } from '../../utils/deepLink';
@@ -153,7 +154,8 @@ export function makeAssistantActions(deps: AssistantDeps) {
       const subject = isDe
         ? `Anforderung: ${actionLabel} — ${link.eventTitle || ''}`
         : `Request: ${actionLabel} — ${link.eventTitle || ''}`;
-      const wrapped = wrapTemplate('#86bc25', heading, sub, body);
+      const evHdr = events.find(e => e.id === link.eventId); // v30.87: Kopf-Maße des Events
+      const wrapped = wrapTemplate('#86bc25', heading, sub, body, undefined, evHdr ? eventHeaderImageOpts(evHdr.emailTemplateOverrides, evHdr.mailImageBase64) : undefined);
       await eventService.queueEmail(subject, link.ownerEmail, link.ownerEmail, wrapped, 'Info', link.eventTitle || '', link.eventId);
     } catch (err) { console.warn('[DEX] requestAssistantChange mail failed:', err); }
     return true;

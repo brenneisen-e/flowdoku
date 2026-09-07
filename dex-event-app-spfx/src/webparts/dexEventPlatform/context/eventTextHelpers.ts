@@ -7,6 +7,7 @@
  * auf den Provider-State. `EventContext.tsx` re-exportiert die oeffentlichen
  * Funktionen unveraendert, damit keine Aufrufstelle angefasst werden musste.
  */
+import { eventHeaderImageOpts } from '../utils/mailHeaderImage';
 
 /**
  * Organizer-Namen für Mail-Anreden sauber formatieren:
@@ -52,12 +53,10 @@ export function applyEventTemplateOverride(
     // Template-Typen des Events — daher hier einmal gelesen und in jeden
     // Rückgabe-Zweig gespreadet (auch wenn der konkrete Typ keinen Text-
     // Override hat).
-    const il = (all as unknown as { _headerImageLayout?: { width?: number; paddingV?: number; paddingH?: number } })._headerImageLayout || {};
-    const imgSpread = {
-      ...(typeof il.width === 'number' && il.width > 0 ? { imageWidth: il.width } : {}),
-      ...(typeof il.paddingV === 'number' && il.paddingV >= 0 ? { imagePaddingV: il.paddingV } : {}),
-      ...(typeof il.paddingH === 'number' && il.paddingH >= 0 ? { imagePaddingH: il.paddingH } : {}),
-    };
+    // v30.87: Ohne gespeichertes Layout gilt der Vollbild-Kopf, sobald das
+    // Event ein eigenes Mail-Logo hat (`_eventLogo`) — derselbe Default wie in
+    // allen anderen App-Mails (utils/mailHeaderImage.eventHeaderImageOpts).
+    const imgSpread = eventHeaderImageOpts(overridesJson);
     const o = all[templateType];
     if (!o || (!o.subject && !o.heading && o.subheading === undefined && !o.bodyHtml && !o.headingColor && !o.headingFontSize && o.headingBold === undefined && o.headingItalic === undefined && !o.subheadingColor && !o.subheadingFontSize && o.subheadingBold === undefined && o.subheadingItalic === undefined)) {
       if (!spTemplate) return null;

@@ -213,6 +213,18 @@ export default function EventCreationPage(): React.ReactElement {
     try { r = JSON.parse(editEvent?.emailTemplateOverrides || '{}')._subEventOpenRule; } catch { r = null; }
     return (r && r.mode === 'fixed' && r.date) ? isoToLocal(r.date) : '';
   });
+  // v30.86: Programmpunkte mit Check-in. Nur ohne aktive Sub-Events — der
+  // Wizard sperrt die Kombination, das hier ist die zweite Sperre beim Save.
+  // Die Bezeichnung nur mitschreiben, wenn der Modus an ist: Ein Rest-Begriff
+  // ohne Modus hätte in keiner Ansicht eine Wirkung, würde aber im Blob liegen.
+  const agendaCheckInPiggyback = (): Record<string, unknown> => {
+    if (!agendaCheckIn || subEventsOptIn) return {};
+    const out: Record<string, unknown> = { _agendaCheckIn: true };
+    if (agendaTermSingular.trim() || agendaTermPlural.trim()) {
+      out._agendaTerm = { singular: agendaTermSingular.trim(), plural: agendaTermPlural.trim() };
+    }
+    return out;
+  };
   const subEventOpenRulePiggyback = (): Record<string, unknown> => {
     if (!subEventsOptIn) return {};
     if (openRuleEnabled && openRuleDays > 0) return { _subEventOpenRule: { mode: openRuleMode, days: openRuleDays } };
@@ -518,6 +530,7 @@ export default function EventCreationPage(): React.ReactElement {
   // Override vorbelegen, wenn der gespeicherte Wert vom Auto-Standard abweicht —
   // sonst bleibt das Feld leer und der Ort zieht weiter automatisch nach.
   const {
+    agendaCheckIn, agendaTermPlural, agendaTermSingular, setAgendaCheckIn, setAgendaTermPlural, setAgendaTermSingular,
     allDay, audience, autoDeregisterOnDecline, bundledComm, commShared, childGender, childTermPlural,
     childTermSingular, customFields, customTermMode, description, disableCancellationEmail, disableEmails,
     disableOutlook, disableRegistrationEmail, emailLanguage, emailLogoFromPhoto, endDate, eventImageUrl,
@@ -1394,7 +1407,7 @@ export default function EventCreationPage(): React.ReactElement {
       setPendingSuccessDispatch, setProgress, setProgressLabel, setRemovedSavedSubs, setShowSummaryModal, showAlert,
       showAsFree, shrinkLogoB64, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText,
       splitLabelA, splitLabelB, splitSectionTitle, splitSharedWaitlist, startDate, subDeadlineRulePiggyback,
-      subEventCalendar, subEventOpenRulePiggyback, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn, subEventsRef,
+      subEventCalendar, subEventOpenRulePiggyback, agendaCheckInPiggyback, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn, subEventsRef,
       teamJoinRequiresApproval, teamMembersCannotCreate, teamOpenSlotsVisible, teamPartialAllowed, teamRegistrationEnabled, teamSize,
       teamTermPlural, teamTermSingular, testTeamEmails, testTeamNames, title, transferTimes,
       unlimitedParticipants, updateEvent, userCancelAllowed, useSplitCapacities, visAllSubsPiggyback, waitlistEnabled,
@@ -1893,6 +1906,7 @@ export default function EventCreationPage(): React.ReactElement {
     // File-Objekte serialisieren zu {} — bewusst strippen statt Muell speichern.
     subEvents: subEvents.map(sd => ({ ...sd, imageFile: null })),
     subEventsOptIn, subEventsOnlyMode, subEventCalendar, subEventSingleChoice,
+    agendaCheckIn, agendaTermSingular, agendaTermPlural, // v30.86
     requireSubEventSelection, askSalutation,
     teamRegistrationEnabled, teamSize, askTeamName,
     userCancelAllowed, noCancelAfterDeadline, teamsLink, onlineMeetingMode, // v30.26
@@ -1908,7 +1922,7 @@ export default function EventCreationPage(): React.ReactElement {
   const applyDraftPayload = (d: Record<string, unknown>): void => {
     return applyDraftPayloadImpl({
       canBilling, setActiveFrom, setAddrCity, setAddrHouseNo, setAddrStreet, setAddrZip,
-      setAgenda, setAskSalutation, setAskTeamName, setAudience, setBillingFields, setBillingRelevant,
+      setAgenda, setAgendaCheckIn, setAgendaTermPlural, setAgendaTermSingular, setAskSalutation, setAskTeamName, setAudience, setBillingFields, setBillingRelevant,
       setBillingSendMode, setCancelRuleAfter, setCancelRuleAmount, setCancelRuleEnabled, setCancelRuleUnit, setContactEmail,
       setContactInfo, setContactName, setCurrentStep, setCustomFields, setDescription, setDisableEmails,
       setDisableOutlook, setEmailTemplateOverrides, setEndDate, setExcludedUsers, setFilterMode, setKlammerDeadline,
@@ -2771,6 +2785,7 @@ export default function EventCreationPage(): React.ReactElement {
     setAddrHouseNo, setAddrStreet, setAddrZip, setLocation, setOnlineMeetingMode, setOutlookLocationOverride,
     setSubEvents, setTeamsLink, setTransferTimes, startDate, subEvents, t,
     teamsLink, transferTimes, updateAgendaItem,
+    agendaCheckIn, agendaTermPlural, agendaTermSingular, setAgenda, // v30.86
   };
   const subEventsSectionProps = {
     activeScopeIdx, audience, berlinLocalToUtcIso, childGender, childTermPlural, childTermSingular,
@@ -2783,6 +2798,9 @@ export default function EventCreationPage(): React.ReactElement {
     setSubEvents, setSubEventSingleChoice, setSubEventsOnlyMode, setSubEventsOptIn, setSubImageCropIdx, setTerminListOpen,
     startDate, subEventCalendar, subEvents, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn,
     subImageCropIdx, t, terminListOpen, title, toggleDaySubEvent,
+    // v30.86: Programmpunkte mit Check-in (Alternative zu Sub-Events).
+    agenda, agendaCheckIn, agendaTermPlural, agendaTermSingular, setAgendaCheckIn, setAgendaTermPlural, setAgendaTermSingular,
+    goToProgramStep: () => { setCurrentStep(2); try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* */ } },
   };
   const capacityStepProps = {
     activeCapacityTabIdx, activeFrom, assistantsCanSee, audience, b2runStartblocks, berlinLocalToUtcIso,
@@ -2830,6 +2848,8 @@ export default function EventCreationPage(): React.ReactElement {
     setNotifyOrgCancelMode, setNotifyOrgRegisterFromDate, setNotifyOrgRegisterMode, setOutlookLogoFromPhoto, setOutlookLogoPreview, setSubTransfer,
     subEvents, subEventsOnlyMode, t, title, unlimitedParticipants, useSplitCapacities,
     waitlistEnabled,
+    // v30.90: Vorschau-Karte + Testmail.
+    headerLayoutFor, location, startDate, endDate, contactEmail, editEventId: editEvent ? String(editEvent.id) : '',
   };
   const wizardTermsModalProps = {
     canBilling, goBack, internalCheckbox, isDe, setBillingPromptOpen, setInternalCheckbox,

@@ -326,6 +326,8 @@ export interface SPRegistration {
   /** v28.38: An-/Abreise als ISO-DateTime. Die Naechte ergeben sich daraus. */
   HotelFrom?: string;
   HotelTo?: string;
+  /** v30.91: Anwesenheit je Programmpunkt als JSON (s. utils/agendaCheckIns). */
+  AgendaCheckIns?: string;
   RegisteredByName?: string;   // Audit: Name des Users der die Anmeldung durchführte
   RegisteredByEmail?: string;  // Audit: E-Mail des Users der die Anmeldung durchführte
   /** v27.12: SP-Item-Metadaten als Fallback für „Registriert am/von", wenn die
@@ -1191,6 +1193,16 @@ export class EventService {
     return subsiteProvisioning.ensureOrganizerPermissionsMulti(this, subsiteUrls, organizerEmails);
   }
 
+  /** v30.87: Check-in-Team auf den Teilnehmerlisten berechtigen bzw. entziehen (s. Modul). */
+  public async ensureScannerListPermissions(
+    subsiteUrls: string[],
+    scannerEmails: string[],
+    revokeEmails: string[],
+    keepEmails: string[] = [],
+  ): Promise<subsiteProvisioning.ScannerPermissionsResult> {
+    return subsiteProvisioning.ensureScannerListPermissions(this, subsiteUrls, scannerEmails, revokeEmails, keepEmails);
+  }
+
   public async setSubsitePermissions(subsiteUrl: string, organizerEmail: string): Promise<void> {
     return subsiteProvisioning.setSubsitePermissions(this, subsiteUrl, organizerEmail);
   }
@@ -1796,6 +1808,15 @@ export class EventService {
     itemId: number
   ): Promise<boolean> {
     return registrationStatus.checkInParticipant(this, subsiteUrl, itemId);
+  }
+
+  /** v30.91: Anwesenheit an einem Programmpunkt (Spalte AgendaCheckIns). */
+  public async checkInAgendaItem(subsiteUrl: string, itemId: number, agendaItemId: string): Promise<{ ok: boolean; already?: string; status: number }> {
+    return registrationStatus.checkInAgendaItem(this, subsiteUrl, itemId, agendaItemId);
+  }
+
+  public async removeAgendaCheckIn(subsiteUrl: string, itemId: number, agendaItemId: string): Promise<{ ok: boolean; status: number }> {
+    return registrationStatus.removeAgendaCheckIn(this, subsiteUrl, itemId, agendaItemId);
   }
 
   public async markNoShowParticipant(

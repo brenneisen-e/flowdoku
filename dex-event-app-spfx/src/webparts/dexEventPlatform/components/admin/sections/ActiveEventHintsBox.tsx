@@ -25,10 +25,18 @@ export interface ActiveEventHintsBoxProps {
   setSelectedEvent: React.Dispatch<React.SetStateAction<DeloitteEvent>>;
   showAlert: (message: React.ReactNode, opts?: import("../../../context/DialogContext").AlertOptions) => void;
   updateEvent: (eventId: string, updates: Record<string, unknown>, opts?: { skipReload?: boolean; }) => Promise<boolean>;
+  /** v30.87: 'row' = kompakte Zeile in der Event-Details-Karte (unter „Aktionen"),
+   *  'card' (Default) = die bisherige eigene Kachel. */
+  variant?: 'card' | 'row';
+  /** v30.87: Angemeldete OHNE QR-Code (Status „Angemeldet"). null = nicht lesbar.
+   *  0 → der Hinweis „QR-Codes versenden möglich" entfällt (alle haben einen). */
+  qrPendingCount?: number | null;
 }
 
 export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
   const { childEventsOf, expandedHintIds, hintLangBusy, hintsDismissTick, isDe, parentEventForSelected, refreshEvents, selectedEvent, setExpandedHintIds, setHintLangBusy, setHintsDismissTick, setQrSendModalOpen, setSelectedEvent, showAlert, updateEvent } = p;
+  const variant = p.variant || 'card';
+  const qrPendingCount = p.qrPendingCount === undefined ? null : p.qrPendingCount;
           void hintsDismissTick; // erzwingt Re-Render nach „Ausblenden"
           const dismissKey = (id: string): string => `dex_hint_dismiss_${selectedEvent.id}_${id}`;
           const isDismissed = (id: string): boolean => {
@@ -335,7 +343,13 @@ export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
           if (!parentEventForSelected) {
             const startMs = selectedEvent.startDate ? new Date(selectedEvent.startDate).getTime() : 0;
             const daysUntilStart = startMs ? (startMs - Date.now()) / 86400000 : Infinity;
-            if (daysUntilStart <= 5 && !isEventOver(selectedEvent)) {
+            // v30.87: Nur, solange es Angemeldete OHNE QR-Code gibt. Bei „96
+            // angemeldet, 96 QR versendet" stand der Hinweis trotzdem da
+            // (Befund 07.09.2026) — er hatte die Teilnehmerliste nie gelesen.
+            // Nicht lesbar (null) → wie bisher zeigen, das ist keine Aussage
+            // über die Daten.
+            const qrStillOpen = qrPendingCount === null || qrPendingCount > 0;
+            if (daysUntilStart <= 5 && !isEventOver(selectedEvent) && qrStillOpen) {
               hints.unshift({
                 id: 'qr-send-window',
                 title: isDe ? 'QR-Codes versenden möglich' : 'QR codes can be sent now',
@@ -363,6 +377,54 @@ export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
           }
           const visible = hints.filter(h => !isDismissed(h.id));
           if (visible.length === 0) return null;
+          // v30.87: Als ZEILE unter „Aktionen" in der Event-Details-Karte
+          // (Nutzer-Ansage 07.09.2026: „als Zeile packen und nicht mehr als
+          // eigene Kachel"). Gleiche Hinweise, gleiches Auf-/Zuklappen und
+          // Ausblenden — nur ohne eigenen Kachelrahmen und Vorspann.
+          if (variant === 'row') {
+            return (
+              <div style={{ background: 'rgba(237,139,0,0.06)', border: '1px solid rgba(237,139,0,0.45)', borderRadius: 10, padding: '8px 12px', textAlign: 'left' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {visible.map(h => {
+                    const open = expandedHintIds.has(h.id);
+                    return (
+                      <div key={h.id}>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedHintIds(prev => { const n = new Set(prev); if (n.has(h.id)) n.delete(h.id); else n.add(h.id); return n; })}
+                          style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '2px 0', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+                        >
+                          <span style={{ color: 'var(--dex-orange, #ed8b00)', display: 'inline-flex', flexShrink: 0 }}><Info size={14} /></span>
+                          <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--dex-gray-800)', flex: 1 }}>{h.title}</span>
+                          <span style={{ color: 'var(--dex-orange, #ed8b00)', display: 'inline-flex', flexShrink: 0 }}>
+                            {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                          </span>
+                        </button>
+                        {open && (
+                          <div style={{ marginTop: 4, paddingLeft: 22 }}>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>{h.body}</div>
+                            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                              {h.action}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  try { window.localStorage.setItem(dismissKey(h.id), '1'); } catch { /* */ }
+                                  setHintsDismissTick(t => t + 1);
+                                }}
+                                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--dex-gray-500)', fontSize: '0.74rem', textDecoration: 'underline' }}
+                              >
+                                {isDe ? 'Hinweis ausblenden' : 'Dismiss hint'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          }
           return (
             // v26.77: Hinweise-Box jetzt in VOLLER BREITE direkt über der
             // Teilnehmerliste (vorher schmale rechte Spalte) — so fällt sie

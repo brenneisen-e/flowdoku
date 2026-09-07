@@ -7,6 +7,7 @@
  * beziehen sie ihre Umgebung aus dem `deps`-Objekt.
  */
 
+import { eventHeaderImageOpts } from '../../utils/mailHeaderImage';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../../types';
 import { EventService } from '../../services/EventService';
@@ -93,7 +94,7 @@ export function makeAutoMailActions(deps: AutoMailDeps) {
           <p style="margin:0 0 12px;">Ein kurzer Hinweis zur Aufbewahrung: Die <strong>Teilnehmerübersicht bleibt noch 3 Monate gespeichert</strong> (Datenschutz-/Aufbewahrungsvorgabe). Danach wird sie gelöscht — das Event und die wichtigsten Kennzahlen bleiben im Statistik-Archiv erhalten. Ihr werdet rund eine Woche vorher noch einmal erinnert.</p>
           ${linkLine}
           <p style="margin:0 0 12px;">Vielen Dank, dass ihr das Event organisiert habt!</p>`;
-        const body = wrapTemplate('#86bc25', 'Danke für euer Event!', ev.title, inner);
+        const body = wrapTemplate('#86bc25', 'Danke für euer Event!', ev.title, inner, undefined, eventHeaderImageOpts(ev.emailTemplateOverrides, ev.mailImageBase64));
         try {
           await eventService.queueEmail(
             `Dein Event „${ev.title}" — danke & Hinweis zur Aufbewahrung`,

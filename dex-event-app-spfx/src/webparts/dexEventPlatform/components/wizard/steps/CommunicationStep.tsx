@@ -5,7 +5,6 @@
  * Schrittwechsel genauso wie vorher. */
 import * as React from 'react';
 import { InfoTooltip } from '../../InfoTooltip';
-import { shortSubEventTitle } from '../../../utils/subEventTitle';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { StepBadge } from '../../wizard/StepBadge';
 import WizardHint from '../../WizardHint';
@@ -17,6 +16,7 @@ import { COMM_TOPICS } from '../logic/commTabs';
 import { BundledComm } from '../../../utils/bundledComm';
 import { SubEventDraft } from '../../wizard/wizardTypes';
 import { EmailOverrideEntry } from '../../wizard/emailOverrideEntry';
+import { CommPreviewCard } from '../../wizard/CommPreviewCard';
 export interface CommunicationStepProps {
   visible: boolean;
   activeCommTabIdx: number;
@@ -92,11 +92,24 @@ export interface CommunicationStepProps {
   unlimitedParticipants: boolean;
   useSplitCapacities: boolean;
   waitlistEnabled: boolean;
+  /** v30.90: für die Vorschau-Karte (Stufe B) und „Testmail an mich" (Stufe C). */
+  headerLayoutFor: (logoB64: string) => { imageWidth: number; imagePaddingV: number; imagePaddingH: number };
+  location: string;
+  startDate: string;
+  endDate: string;
+  contactEmail: string;
+  editEventId: string;
 }
 export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
   const { visible } = p;
-  const { activeCommTabIdx, applyCommTopicToAllSubEvents, commShared, setCommShared, flushActiveCommTabToState, resolveTopLevelCommState, applyEventPhotoToLogo, autoDeregisterOnDecline, bundledComm, childTermPlural, commToggleRow, confirmDialog, disableCancellationEmail, disableEmails, disableOutlook, disableRegistrationEmail, durchstarterCapacity, effectiveHeaderImage, emailLanguage, emailLogoFromPhoto, emailLogoPreview, emailTemplateOverrides, emailTemplates, funstarterCapacity, imageFile, imagePreview, inactiveHandling, isDe, mainCommDisabledAck, maxParticipants, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, offerLogoToSubEvents, organizer, outlookBody, outlookLogoFromPhoto, outlookLogoPreview, renderHeaderSizeControl, renderOutlookUpdateButton, renderStepIntro, setAutoDeregisterOnDecline, setBundledComm, setDisableCancellationEmail, setDisableEmails, setDisableOutlook, setDisableRegistrationEmail, setEmailLanguage, setEmailLogoFromPhoto, setEmailLogoPreview, setEmailTemplateOverrides, setHtmlEditorMode, setHtmlEditorOpen, setHtmlEditorTemplateType, setInactiveHandling, setLogoCropTarget, setMainCommDisabledAck, setNotifyOrgCancelMode, setNotifyOrgRegisterFromDate, setNotifyOrgRegisterMode, setOutlookLogoFromPhoto, setOutlookLogoPreview, subEvents, subEventsOnlyMode, t, title, unlimitedParticipants, useSplitCapacities, waitlistEnabled } = p;
+  const { activeCommTabIdx, applyCommTopicToAllSubEvents, commShared, setCommShared, flushActiveCommTabToState, resolveTopLevelCommState, applyEventPhotoToLogo, autoDeregisterOnDecline, bundledComm, childTermPlural, commToggleRow, confirmDialog, disableCancellationEmail, disableEmails, disableOutlook, disableRegistrationEmail, effectiveHeaderImage, emailLanguage, emailLogoFromPhoto, emailLogoPreview, emailTemplateOverrides, emailTemplates, imageFile, imagePreview, inactiveHandling, isDe, mainCommDisabledAck, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, offerLogoToSubEvents, organizer, outlookBody, outlookLogoFromPhoto, outlookLogoPreview, renderHeaderSizeControl, renderOutlookUpdateButton, renderStepIntro, setAutoDeregisterOnDecline, setBundledComm, setDisableCancellationEmail, setDisableEmails, setDisableOutlook, setDisableRegistrationEmail, setEmailLanguage, setEmailLogoFromPhoto, setEmailLogoPreview, setEmailTemplateOverrides, setHtmlEditorMode, setHtmlEditorOpen, setHtmlEditorTemplateType, setInactiveHandling, setLogoCropTarget, setMainCommDisabledAck, setNotifyOrgCancelMode, setNotifyOrgRegisterFromDate, setNotifyOrgRegisterMode, setOutlookLogoFromPhoto, setOutlookLogoPreview, subEvents, subEventsOnlyMode, t, title, unlimitedParticipants, waitlistEnabled } = p;
 
+  // v30.89: Ebene 3 („Texte und Bilder anpassen“) — zu, bis jemand sie braucht;
+  // die Chip-Zeile öffnet den passenden Reiter. Abmelde-Regel der Organizer-Kopie
+  // eingeklappt, solange sie nur gelesen werden muss.
+  const [advOpen, setAdvOpen] = React.useState<boolean>(false);
+  const [advTab, setAdvTab] = React.useState<'templates' | 'mailLogo' | 'outlook' | 'fine'>('templates');
+  const [orgCancelOpen, setOrgCancelOpen] = React.useState<boolean>(false);
   // v30.71: Hilfen für den Schalter "gemeinsam / einzeln" (s. Box oben im Schritt).
   const namedSubCount = subEvents.filter(s => s.title && s.title.trim()).length;
   const mainTabLabel = subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt-Event' : 'Main event');
@@ -325,20 +338,14 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                 )}
                 {renderStepIntro(
                   [
-                    'Sprache der automatischen E-Mails wählen (Deutsch oder Englisch)',
-                    'An- oder ausschalten, ob Teilnehmer überhaupt E-Mails und Outlook-Termine bekommen — z.B. um intern zu testen, ohne echte Mails zu verschicken',
-                    'Festlegen, wann die Organizer eine Kopie der Anmelde-/Abmelde-Mails bekommen sollen (immer, nie oder erst kurz vorm Event)',
-                    'Eigenes Bild für die E-Mails und für den Outlook-Termin hochladen — ersetzt das Standard-Logo',
-                    'Den Text im Outlook-Termin individuell formulieren (mit Live-Vorschau)',
-                    'Jede einzelne E-Mail (Anmelde-Bestätigung, Abmelde-Bestätigung, Wartelisten-Mail, Nachrück-Mail) mit eigenem Betreff und Text anpassen',
+                    'Drei Entscheidungen oben: Sprache der Mails, Weg der Kommunikation (Mail und/oder Outlook-Termin) und ob die Organizer in Kopie stehen',
+                    'Die Zeile darunter zeigt, was mit diesen Einstellungen tatsächlich rausgeht — Standard heißt: fertig, nichts weiter zu tun',
+                    'Nur wer Texte, Bilder oder Feineinstellungen ändern will, öffnet „Texte und Bilder anpassen“ — dort liegen Mail-Vorlagen, Mail-Logo, Outlook-Termin und die seltenen Schalter',
                   ],
                   [
-                    'Pick the language for automated emails (German or English)',
-                    'Switch on/off whether attendees receive emails and Outlook entries at all — e.g. for internal testing without sending real mails',
-                    'Decide when organizers get a copy of the registration / cancellation emails (always, never, or only close to the event)',
-                    'Upload a custom image for the emails and the Outlook entry — replaces the default logo',
-                    'Phrase the text inside the Outlook entry yourself (with live preview)',
-                    'Customise each individual email (registration, cancellation, waitlist, promotion) — own subject and body',
+                    'Three decisions at the top: mail language, communication channel (email and/or Outlook invite) and whether organizers are copied',
+                    'The line below shows what actually goes out with these settings — default means: done, nothing else to do',
+                    'Only if you want to change texts, images or fine-tuning, open “Customise texts and images” — that is where mail templates, mail logo, Outlook invite and the rare switches live',
                   ]
                 )}
                 <h3 className="mb-16">{t('create.step.communication')}</h3>
@@ -405,81 +412,6 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                   </div>
                 )}
 
-                {/* v19.23: Übersichts-Box ganz oben im Kommunikations-Reiter —
-                    fasst für den Organizer zusammen, was für den aktiven Tab
-                    automatisch kommuniziert wird (und was bewusst NICHT). */}
-                {!(subEventsOnlyMode && activeCommTabIdx === 0) && (() => {
-                  const emailsOn = !disableEmails;
-                  const regOn = !disableRegistrationEmail;
-                  const cancOn = !disableCancellationEmail;
-                  const outlookOn = !disableOutlook;
-                  const isMainTab = activeCommTabIdx === 0;
-                  // v19.24: Warteliste nur erwähnen, wenn es für den aktiven Tab
-                  // wirklich eine gibt (Master-Schalter an UND endliche Kapazität).
-                  // Bei unbegrenzter Teilnehmerzahl oder ausgeschalteter Warteliste
-                  // entfällt der „inkl. Warteliste/Nachrücken"-Zusatz.
-                  const capForTab = isMainTab
-                    ? (useSplitCapacities
-                        ? ((parseInt(durchstarterCapacity, 10) || 0) + (parseInt(funstarterCapacity, 10) || 0))
-                        : (parseInt(maxParticipants, 10) || 0))
-                    : (subEvents[activeCommTabIdx - 1]?.maxParticipants || 0);
-                  const hasWaitlist = waitlistEnabled && capForTab > 0;
-                  const tabName = isMainTab
-                    ? (isDe ? 'Hauptevent' : 'Main event')
-                    : (shortSubEventTitle(subEvents[activeCommTabIdx - 1]?.title, title) || (isDe ? 'Sub-Event' : 'Sub-event'));
-                  const bccLabel = notifyOrgRegisterMode === 'always'
-                    ? (isDe ? 'immer in Kopie (BCC)' : 'always copied (BCC)')
-                    : notifyOrgRegisterMode === 'fromDate'
-                      ? (isDe ? 'ab einem Stichtag in Kopie' : 'copied from a cut-off date')
-                      : (isDe ? 'nicht in Kopie' : 'not copied');
-                  const row = (state: 'on' | 'off' | 'info', label: string, detail: string, indent?: boolean): React.ReactElement => (
-                    <div key={label} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: '0.82rem', marginLeft: indent ? 26 : 0 }}>
-                      <Icon
-                        iconName={state === 'info' ? 'Info' : state === 'on' ? 'CompletedSolid' : 'Blocked2Solid'}
-                        style={{ fontSize: 14, marginTop: 2, flexShrink: 0, color: state === 'on' ? 'var(--dex-green, #86bc25)' : state === 'off' ? 'var(--dex-gray-400)' : 'var(--dex-gray-500)' }}
-                      />
-                      <span style={{ color: 'var(--dex-gray-700)' }}><strong>{label}:</strong> {detail}</span>
-                    </div>
-                  );
-                  return (
-                    <div style={{
-                      marginBottom: 18, padding: '14px 16px', borderRadius: 10,
-                      background: 'var(--dex-gray-50, #f7f7f7)', border: '1px solid var(--dex-gray-200)',
-                      display: 'flex', flexDirection: 'column', gap: 7,
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                        <Icon iconName="Megaphone" style={{ fontSize: 16, color: 'var(--dex-green-dark, #4a7c1f)' }} />
-                        <strong style={{ fontSize: '0.9rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                          {isDe ? `Übersicht: automatische Kommunikation — ${tabName}` : `Overview: automatic communication — ${tabName}`}
-                        </strong>
-                      </div>
-                      {row(emailsOn ? 'on' : 'off', isDe ? 'Bestätigungs-E-Mails an Teilnehmer' : 'Confirmation emails to attendees',
-                        emailsOn
-                          ? (isDe ? 'aktiv' : 'active')
-                          : (isDe ? 'komplett deaktiviert — es geht keine einzige Mail an Teilnehmer raus' : 'completely disabled — not a single mail goes out to attendees'))}
-                      {emailsOn && row(regOn ? 'on' : 'off', isDe ? 'Anmelde-Bestätigung' : 'Registration confirmation',
-                        regOn
-                          ? (isDe ? `wird verschickt${hasWaitlist ? ' (inkl. Warteliste/Nachrücken)' : ''}` : `is sent${hasWaitlist ? ' (incl. waitlist/promotion)' : ''}`)
-                          : (isDe ? 'wird NICHT verschickt' : 'is NOT sent'), true)}
-                      {emailsOn && row(cancOn ? 'on' : 'off', isDe ? 'Abmelde-Bestätigung' : 'Cancellation confirmation',
-                        cancOn ? (isDe ? 'wird verschickt' : 'is sent') : (isDe ? 'wird NICHT verschickt' : 'is NOT sent'), true)}
-                      {row(outlookOn ? 'on' : 'off', isDe ? 'Outlook-Kalendereintrag' : 'Outlook calendar entry',
-                        outlookOn
-                          ? (isDe ? 'angemeldete Teilnehmer bekommen einen Termin (bei Abmeldung wird er entfernt)' : 'registered attendees get a calendar entry (removed on cancellation)')
-                          : (isDe ? 'kein Termin — Teilnehmer planen den Termin selbst ein' : 'no entry — attendees schedule it themselves'))}
-                      {outlookOn && row(autoDeregisterOnDecline ? 'on' : 'off', isDe ? 'Outlook-Absage → Auto-Abmeldung' : 'Outlook decline → auto-deregistration',
-                        autoDeregisterOnDecline
-                          ? (isDe ? 'eine Termin-Absage meldet die Person automatisch vom Event ab' : 'declining the invite auto-deregisters the person')
-                          : (isDe ? 'eine Termin-Absage löst nur eine Erinnerung aus, keine automatische Abmeldung' : 'declining only triggers a reminder, no auto-deregistration'), true)}
-                      {row('info', isDe ? 'Person nicht mehr bei Deloitte' : 'Person no longer at Deloitte',
-                        inactiveHandling === 'autoderegister'
-                          ? (isDe ? 'wird automatisch abgemeldet (beim Öffnen der App durch einen Organizer)' : 'is auto-deregistered (when an organizer opens the app)')
-                          : (isDe ? 'Organizer wird per E-Mail informiert (Standard)' : 'the organizer is notified by email (default)'))}
-                      {row('info', isDe ? 'Mail-Sprache' : 'Mail language', emailLanguage === 'DE' ? (isDe ? 'Deutsch' : 'German') : (isDe ? 'Englisch' : 'English'))}
-                      {row('info', isDe ? 'Organizer bei An-/Abmeldungen' : 'Organizers on registrations/cancellations', bccLabel)}
-                    </div>
-                  );
-                })()}
 
                 {/* v14.8: „Nur Sub-Events"-Modus + auf Haupt-Event-Tab → Banner
                     statt Kommunikations-Settings rendern. Der User soll keine
@@ -513,6 +445,9 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                     eigenen Felder — der Kasten oben sagt, wo man ändert. */}
                 {!(subEventsOnlyMode && activeCommTabIdx === 0) && !(commShared && activeCommTabIdx > 0 && subEvents.length > 0) && (
                 <>
+                {/* v30.89: Ebene 1 — drei Entscheidungen, immer sichtbar (Konzept
+                    docs/konzept-kommunikation-schritt.md). Alles Seltene liegt unten
+                    hinter „Texte und Bilder anpassen“. */}
                 <div className="form-group">
                   <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <StepBadge n={25} />
@@ -534,158 +469,46 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                     {t('create.emaillanguage.hint')}
                   </p>
                 </div>
-
-                {/* Benachrichtigungen abschalten — v9.39: collapsed by default.
-                    v14.4: pre-open, wenn wir auf dem Haupt-Event-Tab sind und
-                    Sub-Events existieren — der Organizer soll die Toggles
-                    sehen können, um das Hauptevent stumm zu stellen während
-                    Sub-Events einzeln kommunizieren. */}
-                <details
-                  className="form-group"
-                  open={activeCommTabIdx === 0 && subEvents.length > 0 ? true : undefined}
-                  style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}
-                >
-                  <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
+                {/* v30.89: Kanal-Karte ersetzt die zwei Master-Haken aus dem alten
+                    Kasten 26 — eine Frage, vier Antworten, die Folge steht direkt darunter. */}
+                <div className="form-group" style={{ marginTop: 24 }}>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <StepBadge n={26} />
-                    {t('create.notifications')}
-                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
-                      {(disableEmails || disableOutlook)
-                        ? (isDe ? '⚠ Kommunikation deaktiviert' : '⚠ Communication disabled')
-                        : (isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust')}
-                    </span>
-                  </summary>
-                  <div style={{ marginTop: 12 }}>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
-                    {t('create.notifications.hint')}
-                  </p>
-                  {/* v28.28: Zwei klar getrennte Blöcke (E-Mails / Outlook) statt
-                      einer langen Haken-Liste mit Fließtext-Wüste. Details
-                      stecken in den Info-Tooltips neben den Bezeichnungen. */}
-                  <div style={{ background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 10, padding: '10px 14px', marginBottom: 10 }}>
-                  {commToggleRow({
-                    checked: !disableEmails,
-                    onChange: v => setDisableEmails(!v),
-                    label: t('create.notifications.email'),
-                    short: isDe
-                      ? 'An- und Abmelde-Bestätigungen sowie Wartelisten-Mails.'
-                      : 'Registration and cancellation confirmations plus waitlist emails.',
-                    info: t('create.notifications.email.desc'),
-                  })}
-                  {/* v19.21/v19.22: granulare Sub-Schalter — einzeln die Anmelde-
-                      bzw. Abmelde-Bestätigung abschalten. Ab v19.22 pro Tab
-                      (Hauptevent UND Sub-Events), nur wenn E-Mails grundsätzlich
-                      aktiv sind (Master an). Der gebundene State spiegelt je nach
-                      aktivem Tab den Haupt- oder Sub-Event-Wert. */}
-                  {!disableEmails && (
-                    <div style={{ marginLeft: 26, paddingLeft: 12, borderLeft: '3px solid var(--dex-green, #86bc25)' }}>
-                      {commToggleRow({
-                        checked: !disableRegistrationEmail,
-                        onChange: v => setDisableRegistrationEmail(!v),
-                        label: isDe ? 'Anmelde-Bestätigung' : 'Registration confirmation',
-                        short: isDe ? 'Mail bei der Anmeldung (inkl. Wartelisten-Mail).' : 'Email on registration (incl. waitlist email).',
-                        info: isDe
-                          ? 'Wenn aktiv: Teilnehmer bekommen bei der Anmeldung eine Bestätigungs-Mail (und, falls Warteliste aktiv, die Warteliste-Mail). Haken aus = es geht keine Anmelde-Bestätigung raus — die Abmelde-Mail bleibt davon unberührt.'
-                          : 'When active: attendees receive a confirmation email on registration (plus the waitlist email if a waitlist is active). Unchecked = no registration confirmation is sent — the cancellation email is unaffected.',
-                      })}
-                      {commToggleRow({
-                        checked: !disableCancellationEmail,
-                        onChange: v => setDisableCancellationEmail(!v),
-                        label: isDe ? 'Abmelde-Bestätigung' : 'Cancellation confirmation',
-                        short: isDe ? 'Mail bei der Abmeldung.' : 'Email on cancellation.',
-                        info: isDe
-                          ? 'Wenn aktiv: Teilnehmer bekommen bei einer Abmeldung eine Bestätigungs-Mail. Haken aus = es geht keine Abmelde-Bestätigung raus (z.B. wenn du Teilnehmer still abmeldest) — die Anmelde-Mail bleibt davon unberührt.'
-                          : 'When active: attendees receive a confirmation email when cancelled. Unchecked = no cancellation confirmation is sent (e.g. when you remove attendees silently) — the registration email is unaffected.',
-                      })}
-                    </div>
+                    {isDe ? 'Wie erreicht DEX die Teilnehmer?' : 'How does DEX reach attendees?'}
+                    <InfoTooltip text={t('create.notifications.hint')} />
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }}>
+                    {([
+                      { key: 'both', mails: true, outlook: true, de: 'Mail + Outlook-Termin', en: 'Email + Outlook invite', subDe: 'Standard — Bestätigung per Mail und Termin im Kalender', subEn: 'Default — confirmation by email and calendar entry' },
+                      { key: 'mail', mails: true, outlook: false, de: 'Nur Mail', en: 'Email only', subDe: 'Kein Kalendereintrag — Teilnehmer planen selbst', subEn: 'No calendar entry — attendees schedule themselves' },
+                      { key: 'outlook', mails: false, outlook: true, de: 'Nur Outlook-Termin', en: 'Outlook invite only', subDe: 'Keine Mails — der Termin ist die Bestätigung', subEn: 'No emails — the invite is the confirmation' },
+                      { key: 'none', mails: false, outlook: false, de: 'Keine Kommunikation', en: 'No communication', subDe: 'Nichts geht raus — z.B. zum internen Testen', subEn: 'Nothing goes out — e.g. for internal testing' },
+                    ]).map(opt => {
+                      const selected = !disableEmails === opt.mails && !disableOutlook === opt.outlook;
+                      return (
+                        <label key={opt.key} style={{
+                          display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
+                          border: `1px solid ${selected ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+                          background: selected ? 'rgba(134,188,37,0.06)' : '#fff',
+                        }}>
+                          <input type="radio" name="commChannel" checked={selected} onChange={() => { setDisableEmails(!opt.mails); setDisableOutlook(!opt.outlook); }} style={{ marginTop: 3, flexShrink: 0 }} />
+                          <span style={{ minWidth: 0 }}>
+                            <span style={{ display: 'block', fontSize: '0.88rem', fontWeight: 700 }}>{isDe ? opt.de : opt.en}</span>
+                            <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--dex-gray-500)', lineHeight: 1.45, marginTop: 2 }}>{isDe ? opt.subDe : opt.subEn}</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {(disableEmails || disableOutlook) && (
+                    <p style={{ margin: '8px 0 0', fontSize: '0.8rem', color: 'var(--dex-orange-dark, #b35a00)', lineHeight: 1.5 }}>
+                      {disableEmails && disableOutlook
+                        ? (isDe ? 'Achtung: Niemand erfährt von seiner Anmeldung — weder per Mail noch im Kalender. Nur sinnvoll, wenn du selbst einlädst.' : 'Careful: nobody hears about their registration — neither by email nor in the calendar. Only sensible if you invite people yourself.')
+                        : disableEmails
+                          ? (isDe ? 'Es geht keine einzige Mail an Teilnehmer raus — auch keine Wartelisten- oder Abmelde-Mail.' : 'Not a single email goes out to attendees — no waitlist or cancellation email either.')
+                          : (isDe ? 'Kein Termin im Kalender — bei einer Abmeldung gibt es entsprechend auch nichts zu entfernen.' : 'No calendar entry — accordingly nothing is removed on cancellation.')}
+                    </p>
                   )}
-                  </div>
-                  <div style={{ background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 10, padding: '10px 14px', marginBottom: 10 }}>
-                  {commToggleRow({
-                    checked: !disableOutlook,
-                    onChange: v => setDisableOutlook(!v),
-                    label: t('create.notifications.outlook'),
-                    short: isDe
-                      ? 'Kalendereintrag mit Datum, Ort und Infos — bei Abmeldung wieder entfernt.'
-                      : 'Calendar entry with date, location and details — removed again on cancellation.',
-                    info: t('create.notifications.outlook.desc'),
-                  })}
-                  {/* v28.28: Der Haken „Outlook-Termin der Teilnehmer
-                      aktualisieren" ist hier ENTFALLEN. Er war doppelt gemoppelt:
-                      Seit v11.57 fragt die App beim Speichern ohnehin pro
-                      betroffenem Termin (Hauptevent + jedes Sub-Event einzeln),
-                      ob die Teilnehmer eine „Aktualisierter Termin"-Mail bekommen
-                      sollen — und zwar nur dann, wenn sich wirklich etwas
-                      Outlook-Relevantes geändert hat. Ein zusätzlicher Vorab-Haken
-                      an dieser Stelle konnte dem Dialog nur widersprechen. */}
-                  {/* v19.23/v19.24: Outlook-Absage = automatische Abmeldung vom
-                      Event. Ab v19.24 pro Tab (Hauptevent UND Sub-Events), nur
-                      sinnvoll wenn Outlook aktiv ist. Die eigentliche
-                      Auto-Abmeldung läuft im Outlook-Absage-Verarbeitungsschritt
-                      (Power-Automate-Flow), die App hinterlegt nur den Schalter. */}
-                  {!disableOutlook && (
-                    <div style={{ marginLeft: 26, paddingLeft: 12, borderLeft: '3px solid var(--dex-orange, #ed8b00)' }}>
-                      {commToggleRow({
-                        checked: autoDeregisterOnDecline,
-                        onChange: v => setAutoDeregisterOnDecline(v),
-                        label: isDe ? 'Outlook-Absage = Abmeldung' : 'Outlook decline = deregistration',
-                        short: isDe
-                          ? 'Termin abgesagt → Platz wird frei, Warteliste rückt nach.'
-                          : 'Invite declined → the spot is freed, the waitlist moves up.',
-                        accent: 'var(--dex-orange, #ed8b00)',
-                        info: isDe
-                          ? 'Wenn aktiv: Sagt ein Teilnehmer den Outlook-Termin ab, wird er automatisch auch vom Event abgemeldet — der Platz wird frei und die Warteliste rückt nach. Ohne diesen Haken bekommt die Person bei einer Outlook-Absage nur eine Erinnerung, sich bei Bedarf selbst abzumelden. Hinweis: Diese Automatik greift erst, sobald die einmalige Anpassung im Outlook-Absage-Verarbeitungsschritt im Tenant eingerichtet ist.'
-                          : 'When active: if an attendee declines the Outlook invite, they are automatically deregistered from the event — the spot is freed and the waitlist moves up. Without this, a decline only triggers a reminder asking the person to deregister themselves if needed. Note: this automation only takes effect once the one-time change in the Outlook-decline processing step is set up in the tenant.',
-                      })}
-                    </div>
-                  )}
-                  </div>
-                  {/* inactiveHandling: Verhalten, wenn eine angemeldete Person
-                      nicht mehr bei Deloitte arbeitet. 'notify' = Organizer per
-                      Mail informieren (Standard), 'autoderegister' = automatisch
-                      abmelden (beim Öffnen der App durch einen Organizer). */}
-                  <div style={{ background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 10, padding: '10px 14px' }}>
-                    <div style={{ fontSize: '0.88rem', fontWeight: 600, marginBottom: 6 }}>
-                      {isDe ? 'Person arbeitet nicht mehr bei Deloitte' : 'Person no longer works at Deloitte'}
-                      <InfoTooltip text={isDe
-                        ? 'Die App erkennt beim Öffnen durch einen Organizer, wenn das Deloitte-Konto einer angemeldeten Person nicht mehr aktiv ist. „Organizer informieren" schickt dann eine Hinweis-Mail; „Automatisch abmelden" entfernt die Person direkt aus der Teilnehmerliste (Platz wird frei, Warteliste rückt nach).'
-                        : 'When an organizer opens the app, it detects registered people whose Deloitte account is no longer active. „Notify organizer" sends an info email; „Auto-deregister" removes the person from the attendee list right away (the spot is freed, the waitlist moves up).'} />
-                    </div>
-                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginBottom: 6 }}>
-                      <input
-                        type="radio"
-                        name="inactiveHandling"
-                        value="notify"
-                        checked={inactiveHandling === 'notify'}
-                        onChange={() => setInactiveHandling('notify')}
-                        style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 1, flexShrink: 0 }}
-                      />
-                      <span style={{ fontSize: '0.85rem' }}>
-                        {isDe ? 'Organizer per E-Mail informieren (Standard)' : 'Notify the organizer by email (default)'}
-                      </span>
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                      <input
-                        type="radio"
-                        name="inactiveHandling"
-                        value="autoderegister"
-                        checked={inactiveHandling === 'autoderegister'}
-                        onChange={() => setInactiveHandling('autoderegister')}
-                        style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 1, flexShrink: 0 }}
-                      />
-                      <span style={{ fontSize: '0.85rem' }}>
-                        {isDe ? 'Automatisch abmelden (beim Öffnen der App durch einen Organizer)' : 'Auto-deregister (when an organizer opens the app)'}
-                      </span>
-                    </label>
-                  </div>
-                  {/* v15.3: Toggle „Anmeldung für mindestens ein Sub-Event
-                      verpflichtend" wurde entfernt — der gleiche Effekt wird
-                      jetzt komplett über den „Nur Sub-Events"-Modus in
-                      Schritt 2 (Sub-Events) erzielt. Doppelte Konfiguration
-                      an zwei Stellen war verwirrend. Die requireSubEventSelection-
-                      State-Variable bleibt aus Backward-Compat erhalten (alte
-                      Events haben sie ggf. als Piggyback gesetzt). */}
-                  {/* v14.4: Acknowledgement-Pflicht bei deaktivierter
-                      Hauptevent-Kommunikation + vorhandenen Sub-Events. */}
                   {activeCommTabIdx === 0 && subEvents.length > 0 && (disableEmails || disableOutlook) && (
                     <WizardHint
                       isDe={isDe}
@@ -716,20 +539,15 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                       </label>
                     </WizardHint>
                   )}
-                  </div>
-                </details>
-
-                {/* v8.5: Organizer-BCC-Konfiguration (pro Event) — granular
-                    für An- und Abmeldungen getrennt einstellbar. v9.39: collapsed by default. */}
-                <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
-                  <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
+                </div>
+                {/* v30.89: Mitleser-Karte — immer sichtbar (vorher Aufklapper 27). Die
+                    Abmelde-Regel bleibt eingeklappt, bis jemand sie abweichend braucht. */}
+                <div className="form-group" style={{ marginTop: 24 }}>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <StepBadge n={27} />
                     {isDe ? 'Sollen die Organizer bei An- und Abmeldungen mitlesen?' : 'Should organizers be looped in on registrations / cancellations?'}
-                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
-                      {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
-                    </span>
-                  </summary>
-                  <div style={{ marginTop: 12 }}>
+                  </label>
+                  <div style={{ padding: '12px 14px', borderRadius: 10, border: '1px solid var(--dex-gray-200)', background: '#fff' }}>
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>
                     {/* v28.28: Präzisiert — die Organizer-Kopie ist normalerweise
                         BCC (unsichtbar), bei EXTERNEN Empfängern steht der
@@ -789,7 +607,8 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                       </div>
                     )}
                   </div>
-
+                  {orgCancelOpen ? (
+                    <>
                   {/* Abmeldung */}
                   <div>
                     <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 6 }}>
@@ -815,203 +634,115 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                         : '„Only after the last cancellation date" uses the date set in step 4 (Capacity & Visibility) under „Last cancellation date". Cancellations before that are considered routine — after that, organizers usually want to know about late drop-outs.'}
                     </p>
                   </div>
-                  </div>
-                </details>
-
-                {/* Custom-Logo für E-Mails — v9.39: collapsed by default. v9.40: gleiche graue Box wie 21/22. */}
-                <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
-                  <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
-                    <StepBadge n={28} />
-                    {t('create.eventlogo.mail')}
-                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
-                      {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
-                    </span>
-                  </summary>
-                  <div style={{ marginTop: 12 }}>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 8 }}>
-                    {t('create.eventlogo.mail.hint')}
-                  </p>
-                  <label style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 8,
-                    padding: '8px 16px', borderRadius: 'var(--dex-radius)',
-                    border: '2px dashed var(--dex-gray-300)', cursor: 'pointer',
-                    fontSize: '0.85rem', color: 'var(--dex-gray-600)',
-                    transition: 'border-color 0.2s, background 0.2s',
-                  }}>
-                    <Plus size={16} />
-                    {t('create.eventlogo.select')}
-                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      // v9.17: Hinweis vor Upload — Stockfotos / komplexe Bilder
-                      // funktionieren nicht zuverlässig in Mails (siehe
-                      // EmailImageBase64-Pipeline). Empfehlung sind die
-                      // offiziellen Deloitte Circular Motifs.
-                      const ok = await confirmDialog(t('create.logoupload.warning'), { confirmLabel: isDe ? 'Trotzdem verwenden' : 'Use anyway' });
-                      if (!ok) { e.target.value = ''; return; }
-                      const compressed = await compressImage(file, 600, 0.9);
-                      const reader = new FileReader();
-                      reader.onload = (ev) => { setEmailLogoPreview(ev.target?.result as string || ''); setEmailLogoFromPhoto(false); };
-                      reader.readAsDataURL(compressed);
-                    }} />
-                  </label>
-                  {/* v26.95: Event-Foto (falls hinterlegt) mit einem Klick als
-                      Mail-Kopfbild übernehmen — kein Extra-Upload nötig. */}
-                  {/* v28.29: neutral statt gruen gefüllt. Der gruene Rahmen plus
-                      die gruene Füllung lasen sich wie ein AKTIVER Zustand
-                      („Event-Foto ist schon übernommen") — war es aber nicht,
-                      und genau deshalb blieb der Kopf beim Standardlogo. */}
-                  {(imagePreview || imageFile) && (
-                    <button
-                      type="button"
-                      onClick={() => { void (async () => { const b = await applyEventPhotoToLogo(setEmailLogoPreview); if (b) setEmailLogoFromPhoto(true); await offerLogoToSubEvents('email', b); })(); }}
-                      style={{
-                        marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px',
-                        borderRadius: 'var(--dex-radius)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
-                        border: emailLogoFromPhoto ? '1.5px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-300)',
-                        background: emailLogoFromPhoto ? 'rgba(134,188,37,0.12)' : '#fff',
-                        color: emailLogoFromPhoto ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)',
-                      }}
-                    >
-                      {emailLogoFromPhoto
-                        ? <><Check size={14} /> {isDe ? 'Event-Foto \u00fcbernommen' : 'Event photo applied'}</>
-                        : <><Icon iconName="Photo2" style={{ fontSize: 14 }} /> {isDe ? 'Event-Foto \u00fcbernehmen' : 'Copy event photo here'}</>}
-                    </button>
-                  )}
-                  {/* v28.30: Zuschneiden/Entfernen sitzen jetzt hier statt in einer
-                      eigenen Zeile mit zweitem Vorschaubild — das Bild stand dadurch
-                      doppelt auf dem Schirm (Thumbnail oben, Größen-Vorschau unten). */}
-                  {emailLogoPreview && (
-                    <>
-                      <button type="button" className="btn btn-secondary" style={{ marginLeft: 8, fontSize: '0.78rem', padding: '7px 12px' }}
-                        onClick={() => setLogoCropTarget('email')}>{isDe ? 'Zuschneiden' : 'Crop'}</button>
-                      <button type="button" className="btn btn-secondary" style={{ marginLeft: 8, fontSize: '0.78rem', padding: '7px 12px', color: 'var(--dex-red, #c00)' }}
-                        onClick={() => { setEmailLogoPreview(''); setEmailLogoFromPhoto(false); }}>{t('create.eventlogo.remove')}</button>
                     </>
-                  )}
-                  {/* v28.29: zeigt das TATSÄCHLICH verwendete Kopfbild (eigenes /
-                      vom Hauptevent geerbt / Standardlogo) statt blind das Event-Foto. */}
-                  {((): React.ReactNode => {
-                    const eff = effectiveHeaderImage('email', emailLogoPreview);
-                    return renderHeaderSizeControl(eff.src, eff.note);
-                  })()}
-                  </div>
-                </details>
-
-                {/* Custom-Logo für Outlook-Termin — v9.39: collapsed by default. v9.40: gleiche graue Box. */}
-                <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
-                  <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
-                    <StepBadge n={29} />
-                    {t('create.outlooklogo')}
-                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
-                      {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
-                    </span>
-                  </summary>
-                  <div style={{ marginTop: 12 }}>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 8 }}>
-                    {t('create.outlooklogo.hint')}
-                  </p>
-                  <label style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 8,
-                    padding: '8px 16px', borderRadius: 'var(--dex-radius)',
-                    border: '2px dashed var(--dex-gray-300)', cursor: 'pointer',
-                    fontSize: '0.85rem', color: 'var(--dex-gray-600)',
-                    transition: 'border-color 0.2s, background 0.2s',
-                  }}>
-                    <Plus size={16} />
-                    {t('create.eventlogo.select')}
-                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      const ok = await confirmDialog(t('create.logoupload.warning'), { confirmLabel: isDe ? 'Trotzdem verwenden' : 'Use anyway' });
-                      if (!ok) { e.target.value = ''; return; }
-                      const compressed = await compressImage(file, 600, 0.9);
-                      const reader = new FileReader();
-                      reader.onload = (ev) => { setOutlookLogoPreview(ev.target?.result as string || ''); setOutlookLogoFromPhoto(false); };
-                      reader.readAsDataURL(compressed);
-                    }} />
-                  </label>
-                  {/* v26.95: Event-Foto mit einem Klick als Outlook-Kopfbild. */}
-                  {/* v28.29: neutral statt gruen gefüllt. Der gruene Rahmen plus
-                      die gruene Füllung lasen sich wie ein AKTIVER Zustand
-                      („Event-Foto ist schon übernommen") — war es aber nicht,
-                      und genau deshalb blieb der Kopf beim Standardlogo. */}
-                  {(imagePreview || imageFile) && (
-                    <button
-                      type="button"
-                      onClick={() => { void (async () => { const b = await applyEventPhotoToLogo(setOutlookLogoPreview); if (b) setOutlookLogoFromPhoto(true); await offerLogoToSubEvents('outlook', b); })(); }}
-                      style={{
-                        marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px',
-                        borderRadius: 'var(--dex-radius)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
-                        border: outlookLogoFromPhoto ? '1.5px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-300)',
-                        background: outlookLogoFromPhoto ? 'rgba(134,188,37,0.12)' : '#fff',
-                        color: outlookLogoFromPhoto ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)',
-                      }}
-                    >
-                      {outlookLogoFromPhoto
-                        ? <><Check size={14} /> {isDe ? 'Event-Foto \u00fcbernommen' : 'Event photo applied'}</>
-                        : <><Icon iconName="Photo2" style={{ fontSize: 14 }} /> {isDe ? 'Event-Foto \u00fcbernehmen' : 'Copy event photo here'}</>}
+                  ) : (
+                    <button type="button" onClick={() => setOrgCancelOpen(true)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '0.8rem', color: 'var(--dex-gray-600)', textDecoration: 'underline' }}>
+                      {isDe
+                        ? `Bei Abmeldungen: ${notifyOrgCancelMode === 'always' ? 'bei jeder Abmeldung' : notifyOrgCancelMode === 'afterDeadline' ? 'erst nach der letzten Abmeldemöglichkeit' : 'nicht informieren'} — ändern`
+                        : `On cancellations: ${notifyOrgCancelMode === 'always' ? 'on every cancellation' : notifyOrgCancelMode === 'afterDeadline' ? 'only after the last cancellation date' : 'do not notify'} — change`}
                     </button>
                   )}
-                  {/* v28.30: Zuschneiden/Entfernen sitzen jetzt hier statt in einer
-                      eigenen Zeile mit zweitem Vorschaubild — das Bild stand dadurch
-                      doppelt auf dem Schirm (Thumbnail oben, Größen-Vorschau unten). */}
-                  {outlookLogoPreview && (
-                    <>
-                      <button type="button" className="btn btn-secondary" style={{ marginLeft: 8, fontSize: '0.78rem', padding: '7px 12px' }}
-                        onClick={() => setLogoCropTarget('outlook')}>{isDe ? 'Zuschneiden' : 'Crop'}</button>
-                      <button type="button" className="btn btn-secondary" style={{ marginLeft: 8, fontSize: '0.78rem', padding: '7px 12px', color: 'var(--dex-red, #c00)' }}
-                        onClick={() => { setOutlookLogoPreview(''); setOutlookLogoFromPhoto(false); }}>{t('create.eventlogo.remove')}</button>
-                    </>
-                  )}
-                  {/* v27.2: Größensteuerung + Vorschau auch hier in Schritt 24. */}
-                  {/* v28.29: siehe Schritt 23 — echte statt geratener Vorschau. */}
-                  {((): React.ReactNode => {
-                    const eff = effectiveHeaderImage('outlook', outlookLogoPreview);
-                    return renderHeaderSizeControl(eff.src, eff.note);
-                  })()}
-                  {renderOutlookUpdateButton()}
                   </div>
-                </details>
-
-                {/* v9.39: collapsed by default. v9.40: gleiche graue Box. */}
-                <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
-                  <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
-                    <StepBadge n={30} />
-                    {t('create.outlookdesc')}
-                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
-                      {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
-                    </span>
-                  </summary>
-                  <div style={{ marginTop: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => { setHtmlEditorMode('outlook'); setHtmlEditorOpen(true); }}
-                      style={{ fontSize: '0.85rem' }}
-                    >
-                      {t('create.outlookdesc.edit')}
-                    </button>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)' }}>
-                      {outlookBody
-                        ? `${outlookBody.replace(/<[^>]+>/g, '').substring(0, 80)}${outlookBody.length > 80 ? '…' : ''}`
-                        : t('create.outlookdesc.placeholder')}
-                    </span>
-                  </div>
-                  {renderOutlookUpdateButton()}
-                  </div>
-                </details>
-
-                {/* v9.39: E-Mail-Texte-Block collapsed by default. v9.40: gleiche graue Box, gleiche Schriftgröße wie 21-25. */}
-                <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
-                  <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
-                    <StepBadge n={31} />
-                    {t('create.templates.title')} ({emailLanguage})
-                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
-                      {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
-                    </span>
-                  </summary>
+                </div>
+                {/* v30.90: Ebene 2 — die gerenderte Vorschau (Stufe B) plus
+                    „Testmail an mich" (Stufe C). Überschrift/Unterzeile des
+                    Outlook-Termins kommen vom offenen Reiter: Top-Level aus dem
+                    aufgelösten State, Termin aus seinem Slot. */}
+                {(() => {
+                  const top = resolveTopLevelCommState();
+                  const slot: Partial<SubEventDraft> = activeCommTabIdx > 0 ? (subEvents[activeCommTabIdx - 1] || {}) : {};
+                  const olHeading = activeCommTabIdx > 0 ? (slot.outlookHeading || '') : (top.outlookHeading || '');
+                  const olSub = activeCommTabIdx > 0 ? (slot.outlookSubheading || '') : (top.outlookSubheading || '');
+                  const tabTitle = activeCommTabIdx > 0 ? ((slot.title || '').trim() || title) : title;
+                  return (
+                    <CommPreviewCard
+                      isDe={isDe}
+                      emailLanguage={emailLanguage}
+                      emailTemplates={emailTemplates}
+                      emailTemplateOverrides={emailTemplateOverrides}
+                      emailLogoPreview={emailLogoPreview}
+                      outlookLogoPreview={outlookLogoPreview}
+                      effectiveHeaderImage={effectiveHeaderImage}
+                      headerLayoutFor={p.headerLayoutFor}
+                      title={tabTitle}
+                      location={p.location}
+                      startDate={p.startDate}
+                      endDate={p.endDate}
+                      organizer={organizer}
+                      contactEmail={p.contactEmail}
+                      outlookBody={outlookBody}
+                      outlookHeading={olHeading}
+                      outlookSubheading={olSub}
+                      disableEmails={disableEmails}
+                      disableOutlook={disableOutlook}
+                      eventId={p.editEventId}
+                    />
+                  );
+                })()}
+                {/* v30.89: Ebene 2 — was mit diesen Einstellungen rausgeht, als Chips.
+                    Ersetzt die achtzeilige Übersichtsbox (v19.23) am Kopf des Schritts:
+                    Jeder Chip nennt ein Thema und seinen Stand; ein Klick öffnet den
+                    passenden Reiter unten. Das ist die Antwort auf „gilt der Standard,
+                    wenn ich nichts aufgeklappt habe?“ — ja, und hier steht welcher. */}
+                {(() => {
+                  const tplCount = Object.keys(emailTemplateOverrides || {}).filter(k => k.charAt(0) !== '_').length;
+                  const fineChanged = disableRegistrationEmail || disableCancellationEmail || autoDeregisterOnDecline || inactiveHandling === 'autoderegister';
+                  const std = isDe ? 'Standard' : 'default';
+                  const chips: Array<{ tab: 'templates' | 'mailLogo' | 'outlook' | 'fine'; label: string; value: string; changed: boolean }> = [
+                    { tab: 'templates', label: isDe ? 'Mail-Texte' : 'Mail texts', value: tplCount > 0 ? (isDe ? `${tplCount} angepasst` : `${tplCount} customised`) : std, changed: tplCount > 0 },
+                    { tab: 'mailLogo', label: isDe ? 'Mail-Logo' : 'Mail logo', value: emailLogoPreview ? (emailLogoFromPhoto ? (isDe ? 'Event-Foto' : 'event photo') : (isDe ? 'eigenes Bild' : 'own image')) : std, changed: !!emailLogoPreview },
+                    { tab: 'outlook', label: isDe ? 'Outlook-Termin' : 'Outlook invite', value: (outlookBody || outlookLogoPreview) ? (isDe ? 'angepasst' : 'customised') : std, changed: !!(outlookBody || outlookLogoPreview) },
+                    { tab: 'fine', label: isDe ? 'Feineinstellungen' : 'Fine-tuning', value: fineChanged ? (isDe ? 'angepasst' : 'customised') : std, changed: fineChanged },
+                  ];
+                  return (
+                    <div style={{ marginTop: 28, paddingTop: 16, borderTop: '2px solid var(--dex-gray-200)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                        <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', fontWeight: 600 }}>{isDe ? 'So geht es raus:' : 'What goes out:'}</span>
+                        {chips.map(c => (
+                          <button key={c.tab} type="button" onClick={() => { setAdvTab(c.tab); setAdvOpen(true); }}
+                            title={isDe ? 'Anpassen' : 'Customise'}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 999, cursor: 'pointer', fontSize: '0.76rem',
+                              border: `1px solid ${c.changed ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-300)'}`,
+                              background: c.changed ? 'rgba(237,139,0,0.10)' : '#fff', color: c.changed ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-gray-700)',
+                            }}>
+                            <span style={{ fontWeight: 600 }}>{c.label}:</span> {c.value}
+                          </button>
+                        ))}
+                      </div>
+                      <button type="button" className={`btn ${advOpen ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setAdvOpen(v => !v)} style={{ fontSize: '0.85rem', padding: '7px 16px' }}>
+                        {advOpen ? (isDe ? 'Anpassen schließen' : 'Close customisation') : (isDe ? 'Texte und Bilder anpassen' : 'Customise texts and images')}
+                      </button>
+                    </div>
+                  );
+                })()}
+                {/* v30.89: Ebene 3 — vier Reiter statt fünf Aufklapper untereinander.
+                    Wenige, lange Inhalte → Reiter (NN/G); die alten Kästen 26 (Rest), 28,
+                    29+30 und 31 liegen hier zeichengleich, nur ohne <details>/<summary>. */}
+                {advOpen && (
+                  <div style={{ marginTop: 14, border: '1px solid var(--dex-gray-200)', borderRadius: 12, background: 'var(--dex-gray-50, #f8f9fa)' }}>
+                    <div role="tablist" style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '8px 8px 0', borderBottom: '1px solid var(--dex-gray-200)' }}>
+                      {([
+                        { key: 'templates' as const, n: 31, label: `${t('create.templates.title')} (${emailLanguage})` },
+                        { key: 'mailLogo' as const, n: 28, label: t('create.eventlogo.mail') },
+                        { key: 'outlook' as const, n: 29, label: isDe ? 'Outlook-Termin (Bild + Text)' : 'Outlook invite (image + text)' },
+                        { key: 'fine' as const, n: 26, label: isDe ? 'Feineinstellungen' : 'Fine-tuning' },
+                      ]).map(tab => {
+                        const active = advTab === tab.key;
+                        return (
+                          <button key={tab.key} type="button" role="tab" aria-selected={active} onClick={() => setAdvTab(tab.key)} style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 14px', border: 'none', cursor: 'pointer',
+                            borderBottom: `3px solid ${active ? 'var(--dex-green, #86bc25)' : 'transparent'}`, background: 'transparent',
+                            fontWeight: active ? 700 : 500, fontSize: '0.86rem', color: active ? 'var(--dex-gray-900)' : 'var(--dex-gray-600)',
+                          }}>
+                            <StepBadge n={tab.n} /> {tab.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ padding: 16 }}>
+                    {advTab === 'templates' && (<>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', margin: '0 0 6px' }}>{isDe ? 'Standard aktiv, solange kein Text angepasst ist. Jede Vorlage lässt sich einzeln zurücksetzen.' : 'Default applies while no text is customised. Each template can be reset individually.'}</p>
                   <div style={{ marginTop: 12 }}>
                 <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 12 }}>
                   {t('create.templates.hint')}
@@ -1101,7 +832,254 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                   );
                 })}
                   </div>
-                </details>
+                    </>)}
+                    {advTab === 'mailLogo' && (<>
+                  <div style={{ marginTop: 12 }}>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 8 }}>
+                    {t('create.eventlogo.mail.hint')}
+                  </p>
+                  <label style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 8,
+                    padding: '8px 16px', borderRadius: 'var(--dex-radius)',
+                    border: '2px dashed var(--dex-gray-300)', cursor: 'pointer',
+                    fontSize: '0.85rem', color: 'var(--dex-gray-600)',
+                    transition: 'border-color 0.2s, background 0.2s',
+                  }}>
+                    <Plus size={16} />
+                    {t('create.eventlogo.select')}
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      // v9.17: Hinweis vor Upload — Stockfotos / komplexe Bilder
+                      // funktionieren nicht zuverlässig in Mails (siehe
+                      // EmailImageBase64-Pipeline). Empfehlung sind die
+                      // offiziellen Deloitte Circular Motifs.
+                      const ok = await confirmDialog(t('create.logoupload.warning'), { confirmLabel: isDe ? 'Trotzdem verwenden' : 'Use anyway' });
+                      if (!ok) { e.target.value = ''; return; }
+                      const compressed = await compressImage(file, 600, 0.9);
+                      const reader = new FileReader();
+                      reader.onload = (ev) => { setEmailLogoPreview(ev.target?.result as string || ''); setEmailLogoFromPhoto(false); };
+                      reader.readAsDataURL(compressed);
+                    }} />
+                  </label>
+                  {/* v26.95: Event-Foto (falls hinterlegt) mit einem Klick als
+                      Mail-Kopfbild übernehmen — kein Extra-Upload nötig. */}
+                  {/* v28.29: neutral statt gruen gefüllt. Der gruene Rahmen plus
+                      die gruene Füllung lasen sich wie ein AKTIVER Zustand
+                      („Event-Foto ist schon übernommen") — war es aber nicht,
+                      und genau deshalb blieb der Kopf beim Standardlogo. */}
+                  {(imagePreview || imageFile) && (
+                    <button
+                      type="button"
+                      onClick={() => { void (async () => { const b = await applyEventPhotoToLogo(setEmailLogoPreview); if (b) setEmailLogoFromPhoto(true); await offerLogoToSubEvents('email', b); })(); }}
+                      style={{
+                        marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px',
+                        borderRadius: 'var(--dex-radius)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
+                        border: emailLogoFromPhoto ? '1.5px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-300)',
+                        background: emailLogoFromPhoto ? 'rgba(134,188,37,0.12)' : '#fff',
+                        color: emailLogoFromPhoto ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)',
+                      }}
+                    >
+                      {emailLogoFromPhoto
+                        ? <><Check size={14} /> {isDe ? 'Event-Foto \u00fcbernommen' : 'Event photo applied'}</>
+                        : <><Icon iconName="Photo2" style={{ fontSize: 14 }} /> {isDe ? 'Event-Foto \u00fcbernehmen' : 'Copy event photo here'}</>}
+                    </button>
+                  )}
+                  {/* v28.30: Zuschneiden/Entfernen sitzen jetzt hier statt in einer
+                      eigenen Zeile mit zweitem Vorschaubild — das Bild stand dadurch
+                      doppelt auf dem Schirm (Thumbnail oben, Größen-Vorschau unten). */}
+                  {emailLogoPreview && (
+                    <>
+                      <button type="button" className="btn btn-secondary" style={{ marginLeft: 8, fontSize: '0.78rem', padding: '7px 12px' }}
+                        onClick={() => setLogoCropTarget('email')}>{isDe ? 'Zuschneiden' : 'Crop'}</button>
+                      <button type="button" className="btn btn-secondary" style={{ marginLeft: 8, fontSize: '0.78rem', padding: '7px 12px', color: 'var(--dex-red, #c00)' }}
+                        onClick={() => { setEmailLogoPreview(''); setEmailLogoFromPhoto(false); }}>{t('create.eventlogo.remove')}</button>
+                    </>
+                  )}
+                  {/* v28.29: zeigt das TATSÄCHLICH verwendete Kopfbild (eigenes /
+                      vom Hauptevent geerbt / Standardlogo) statt blind das Event-Foto. */}
+                  {((): React.ReactNode => {
+                    const eff = effectiveHeaderImage('email', emailLogoPreview);
+                    return renderHeaderSizeControl(eff.src, eff.note);
+                  })()}
+                  </div>
+                    </>)}
+                    {advTab === 'outlook' && (<>
+                      <div style={{ fontWeight: 600, fontSize: '0.86rem' }}>{t('create.outlooklogo')}</div>
+                  <div style={{ marginTop: 12 }}>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 8 }}>
+                    {t('create.outlooklogo.hint')}
+                  </p>
+                  <label style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 8,
+                    padding: '8px 16px', borderRadius: 'var(--dex-radius)',
+                    border: '2px dashed var(--dex-gray-300)', cursor: 'pointer',
+                    fontSize: '0.85rem', color: 'var(--dex-gray-600)',
+                    transition: 'border-color 0.2s, background 0.2s',
+                  }}>
+                    <Plus size={16} />
+                    {t('create.eventlogo.select')}
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const ok = await confirmDialog(t('create.logoupload.warning'), { confirmLabel: isDe ? 'Trotzdem verwenden' : 'Use anyway' });
+                      if (!ok) { e.target.value = ''; return; }
+                      const compressed = await compressImage(file, 600, 0.9);
+                      const reader = new FileReader();
+                      reader.onload = (ev) => { setOutlookLogoPreview(ev.target?.result as string || ''); setOutlookLogoFromPhoto(false); };
+                      reader.readAsDataURL(compressed);
+                    }} />
+                  </label>
+                  {/* v26.95: Event-Foto mit einem Klick als Outlook-Kopfbild. */}
+                  {/* v28.29: neutral statt gruen gefüllt. Der gruene Rahmen plus
+                      die gruene Füllung lasen sich wie ein AKTIVER Zustand
+                      („Event-Foto ist schon übernommen") — war es aber nicht,
+                      und genau deshalb blieb der Kopf beim Standardlogo. */}
+                  {(imagePreview || imageFile) && (
+                    <button
+                      type="button"
+                      onClick={() => { void (async () => { const b = await applyEventPhotoToLogo(setOutlookLogoPreview); if (b) setOutlookLogoFromPhoto(true); await offerLogoToSubEvents('outlook', b); })(); }}
+                      style={{
+                        marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px',
+                        borderRadius: 'var(--dex-radius)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
+                        border: outlookLogoFromPhoto ? '1.5px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-300)',
+                        background: outlookLogoFromPhoto ? 'rgba(134,188,37,0.12)' : '#fff',
+                        color: outlookLogoFromPhoto ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)',
+                      }}
+                    >
+                      {outlookLogoFromPhoto
+                        ? <><Check size={14} /> {isDe ? 'Event-Foto \u00fcbernommen' : 'Event photo applied'}</>
+                        : <><Icon iconName="Photo2" style={{ fontSize: 14 }} /> {isDe ? 'Event-Foto \u00fcbernehmen' : 'Copy event photo here'}</>}
+                    </button>
+                  )}
+                  {/* v28.30: Zuschneiden/Entfernen sitzen jetzt hier statt in einer
+                      eigenen Zeile mit zweitem Vorschaubild — das Bild stand dadurch
+                      doppelt auf dem Schirm (Thumbnail oben, Größen-Vorschau unten). */}
+                  {outlookLogoPreview && (
+                    <>
+                      <button type="button" className="btn btn-secondary" style={{ marginLeft: 8, fontSize: '0.78rem', padding: '7px 12px' }}
+                        onClick={() => setLogoCropTarget('outlook')}>{isDe ? 'Zuschneiden' : 'Crop'}</button>
+                      <button type="button" className="btn btn-secondary" style={{ marginLeft: 8, fontSize: '0.78rem', padding: '7px 12px', color: 'var(--dex-red, #c00)' }}
+                        onClick={() => { setOutlookLogoPreview(''); setOutlookLogoFromPhoto(false); }}>{t('create.eventlogo.remove')}</button>
+                    </>
+                  )}
+                  {/* v27.2: Größensteuerung + Vorschau auch hier in Schritt 24. */}
+                  {/* v28.29: siehe Schritt 23 — echte statt geratener Vorschau. */}
+                  {((): React.ReactNode => {
+                    const eff = effectiveHeaderImage('outlook', outlookLogoPreview);
+                    return renderHeaderSizeControl(eff.src, eff.note);
+                  })()}
+                  {renderOutlookUpdateButton()}
+                  </div>
+                      <div style={{ fontWeight: 600, fontSize: '0.86rem', marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--dex-gray-200)' }}>{t('create.outlookdesc')}</div>
+                  <div style={{ marginTop: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => { setHtmlEditorMode('outlook'); setHtmlEditorOpen(true); }}
+                      style={{ fontSize: '0.85rem' }}
+                    >
+                      {t('create.outlookdesc.edit')}
+                    </button>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)' }}>
+                      {outlookBody
+                        ? `${outlookBody.replace(/<[^>]+>/g, '').substring(0, 80)}${outlookBody.length > 80 ? '…' : ''}`
+                        : t('create.outlookdesc.placeholder')}
+                    </span>
+                  </div>
+                  {renderOutlookUpdateButton()}
+                  </div>
+                    </>)}
+                    {advTab === 'fine' && (<>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', margin: '0 0 12px' }}>{isDe ? 'Seltene Schalter — die meisten Events lassen sie auf Standard.' : 'Rare switches — most events leave them at default.'}</p>
+                      {disableEmails && disableOutlook && (<p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'Kommunikation ist oben komplett abgeschaltet — hier gibt es nichts feinzustellen.' : 'Communication is switched off above — nothing to fine-tune here.'}</p>)}
+                      {!disableEmails && (<div style={{ background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 10, padding: '10px 14px', marginBottom: 10 }}>
+                        <div style={{ fontSize: '0.88rem', fontWeight: 600, marginBottom: 4 }}>{t('create.notifications.email')}</div>
+                  {!disableEmails && (
+                    <div style={{ marginLeft: 26, paddingLeft: 12, borderLeft: '3px solid var(--dex-green, #86bc25)' }}>
+                      {commToggleRow({
+                        checked: !disableRegistrationEmail,
+                        onChange: v => setDisableRegistrationEmail(!v),
+                        label: isDe ? 'Anmelde-Bestätigung' : 'Registration confirmation',
+                        short: isDe ? 'Mail bei der Anmeldung (inkl. Wartelisten-Mail).' : 'Email on registration (incl. waitlist email).',
+                        info: isDe
+                          ? 'Wenn aktiv: Teilnehmer bekommen bei der Anmeldung eine Bestätigungs-Mail (und, falls Warteliste aktiv, die Warteliste-Mail). Haken aus = es geht keine Anmelde-Bestätigung raus — die Abmelde-Mail bleibt davon unberührt.'
+                          : 'When active: attendees receive a confirmation email on registration (plus the waitlist email if a waitlist is active). Unchecked = no registration confirmation is sent — the cancellation email is unaffected.',
+                      })}
+                      {commToggleRow({
+                        checked: !disableCancellationEmail,
+                        onChange: v => setDisableCancellationEmail(!v),
+                        label: isDe ? 'Abmelde-Bestätigung' : 'Cancellation confirmation',
+                        short: isDe ? 'Mail bei der Abmeldung.' : 'Email on cancellation.',
+                        info: isDe
+                          ? 'Wenn aktiv: Teilnehmer bekommen bei einer Abmeldung eine Bestätigungs-Mail. Haken aus = es geht keine Abmelde-Bestätigung raus (z.B. wenn du Teilnehmer still abmeldest) — die Anmelde-Mail bleibt davon unberührt.'
+                          : 'When active: attendees receive a confirmation email when cancelled. Unchecked = no cancellation confirmation is sent (e.g. when you remove attendees silently) — the registration email is unaffected.',
+                      })}
+                    </div>
+                  )}
+                      </div>)}
+                      {!disableOutlook && (<div style={{ background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 10, padding: '10px 14px', marginBottom: 10 }}>
+                        <div style={{ fontSize: '0.88rem', fontWeight: 600, marginBottom: 4 }}>{t('create.notifications.outlook')}</div>
+                  {!disableOutlook && (
+                    <div style={{ marginLeft: 26, paddingLeft: 12, borderLeft: '3px solid var(--dex-orange, #ed8b00)' }}>
+                      {commToggleRow({
+                        checked: autoDeregisterOnDecline,
+                        onChange: v => setAutoDeregisterOnDecline(v),
+                        label: isDe ? 'Outlook-Absage = Abmeldung' : 'Outlook decline = deregistration',
+                        short: isDe
+                          ? 'Termin abgesagt → Platz wird frei, Warteliste rückt nach.'
+                          : 'Invite declined → the spot is freed, the waitlist moves up.',
+                        accent: 'var(--dex-orange, #ed8b00)',
+                        info: isDe
+                          ? 'Wenn aktiv: Sagt ein Teilnehmer den Outlook-Termin ab, wird er automatisch auch vom Event abgemeldet — der Platz wird frei und die Warteliste rückt nach. Ohne diesen Haken bekommt die Person bei einer Outlook-Absage nur eine Erinnerung, sich bei Bedarf selbst abzumelden. Hinweis: Diese Automatik greift erst, sobald die einmalige Anpassung im Outlook-Absage-Verarbeitungsschritt im Tenant eingerichtet ist.'
+                          : 'When active: if an attendee declines the Outlook invite, they are automatically deregistered from the event — the spot is freed and the waitlist moves up. Without this, a decline only triggers a reminder asking the person to deregister themselves if needed. Note: this automation only takes effect once the one-time change in the Outlook-decline processing step is set up in the tenant.',
+                      })}
+                    </div>
+                  )}
+                      </div>)}
+                  {/* inactiveHandling: Verhalten, wenn eine angemeldete Person
+                      nicht mehr bei Deloitte arbeitet. 'notify' = Organizer per
+                      Mail informieren (Standard), 'autoderegister' = automatisch
+                      abmelden (beim Öffnen der App durch einen Organizer). */}
+                  <div style={{ background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 10, padding: '10px 14px' }}>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 600, marginBottom: 6 }}>
+                      {isDe ? 'Person arbeitet nicht mehr bei Deloitte' : 'Person no longer works at Deloitte'}
+                      <InfoTooltip text={isDe
+                        ? 'Die App erkennt beim Öffnen durch einen Organizer, wenn das Deloitte-Konto einer angemeldeten Person nicht mehr aktiv ist. „Organizer informieren" schickt dann eine Hinweis-Mail; „Automatisch abmelden" entfernt die Person direkt aus der Teilnehmerliste (Platz wird frei, Warteliste rückt nach).'
+                        : 'When an organizer opens the app, it detects registered people whose Deloitte account is no longer active. „Notify organizer" sends an info email; „Auto-deregister" removes the person from the attendee list right away (the spot is freed, the waitlist moves up).'} />
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginBottom: 6 }}>
+                      <input
+                        type="radio"
+                        name="inactiveHandling"
+                        value="notify"
+                        checked={inactiveHandling === 'notify'}
+                        onChange={() => setInactiveHandling('notify')}
+                        style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 1, flexShrink: 0 }}
+                      />
+                      <span style={{ fontSize: '0.85rem' }}>
+                        {isDe ? 'Organizer per E-Mail informieren (Standard)' : 'Notify the organizer by email (default)'}
+                      </span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="inactiveHandling"
+                        value="autoderegister"
+                        checked={inactiveHandling === 'autoderegister'}
+                        onChange={() => setInactiveHandling('autoderegister')}
+                        style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 1, flexShrink: 0 }}
+                      />
+                      <span style={{ fontSize: '0.85rem' }}>
+                        {isDe ? 'Automatisch abmelden (beim Öffnen der App durch einen Organizer)' : 'Auto-deregister (when an organizer opens the app)'}
+                      </span>
+                    </label>
+                  </div>
+                    </>)}
+                    </div>
+                  </div>
+                )}
                 </>
                 )}{/* end !(subEventsOnlyMode && tab===0) wrapper, v14.8 */}
 

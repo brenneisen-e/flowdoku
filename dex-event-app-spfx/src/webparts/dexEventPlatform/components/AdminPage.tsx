@@ -21,6 +21,7 @@ import { Users } from './Icons';
 import B2RunBibImportModal from './admin/B2RunBibImportModal';
 import B2RunTodoModal from './admin/B2RunTodoModal';
 import ShirtSizeModal from './admin/ShirtSizeModal';
+import CopyToAgendaModal from './admin/CopyToAgendaModal';
 import { SHIRT_PATTERN } from '../utils/checkInExtras';
 import { isEventOver } from '../utils/eventFormat';
 import AddParticipantsModal from './admin/AddParticipantsModal';
@@ -114,6 +115,7 @@ import { AdminActionsCard } from './admin/sections/AdminActionsCard';
 import { KpiTiles } from './admin/sections/KpiTiles';
 import { HotelPlanningSection } from './admin/sections/HotelPlanningSection';
 import { QuizStatsSection } from './admin/sections/QuizStatsSection';
+import { AgendaAttendanceSection } from './admin/sections/AgendaAttendanceSection';
 import { ActiveEventHintsBox } from './admin/sections/ActiveEventHintsBox';
 import { AudienceVisibilityRow } from './admin/sections/AudienceVisibilityRow';
 import { DangerZoneModal } from './admin/sections/DangerZoneModal';
@@ -1024,6 +1026,8 @@ export default function AdminPage(): React.ReactElement {
   const [b2runTodoOpen, setB2runTodoOpen] = React.useState(false);
   // v30.60: Bestellliste der Trikots (s. components/admin/ShirtSizeModal).
   const [shirtSizeOpen, setShirtSizeOpen] = React.useState(false);
+  // v30.93: Programmpunkte, Stufe 4 — Kopie in ein neues Event.
+  const [copyToAgendaOpen, setCopyToAgendaOpen] = React.useState(false);
   // v30.60: Aufgeklappte Reiter-Gruppe („Day 1" …). null = die zuletzt
   // sinnvolle Gruppe wird beim Rendern bestimmt (die des gewählten Termins).
   const [openTabGroup, setOpenTabGroup] = React.useState<string | null>(null);
@@ -2205,7 +2209,7 @@ export default function AdminPage(): React.ReactElement {
     setRepairAccessResult, setRepairNamesResult, setRepairOrganizersResult, setRepairPermsResult, setResetCounterResult,
     setShirtSizeOpen, setShowDeclineModal, setShowExportMenu, setSubRegReloadTick, setSyncRegistryResult, shirtFieldExists,
     showAlert, showExportMenu, siteUrl, spServiceRef, syncRegistryResult, t,
-    updateEvent,
+    updateEvent, setCopyToAgendaOpen,
   };
   const kpiTilesProps = {
     isConsolidatedMode, isDe, isSplitCapacity, registrations, regsUnknown, selectedEvent, subEventRegsByEventId, subListsIncomplete, t,
@@ -2218,11 +2222,33 @@ export default function AdminPage(): React.ReactElement {
   const quizStatsSectionProps = {
     registrations, selectedEvent,
   };
+  // v30.92: Anwesenheit je Programmpunkt (Stufe 3) — nur bei Events mit agendaCheckIn.
+  const agendaAttendanceSectionProps = {
+    event: selectedEvent, registrations, regsUnknown, isDe,
+    canEdit: isAdmin || isOrganizerFor(selectedEvent),
+    eventServiceRef, reloadRegistrations, showAlert, confirmDialog,
+  };
+  // v30.87: Angemeldete ohne QR-Code — über die Klammer UND alle Termin-
+  // Listen. null, solange eine Liste nicht lesbar ist (keine Aussage).
+  const qrPendingCount: number | null = (() => {
+    if (regsUnknown || subListsIncomplete) return null;
+    let n = registrations.filter(r => r.Status === 'Angemeldet').length;
+    Object.keys(subEventRegsByEventId || {}).forEach(k => {
+      n += (subEventRegsByEventId[k] || []).filter(r => r.Status === 'Angemeldet').length;
+    });
+    return n;
+  })();
   const activeEventHintsBoxProps = {
     childEventsOf, expandedHintIds, hintLangBusy, hintsDismissTick, isDe,
     parentEventForSelected, refreshEvents, selectedEvent, setExpandedHintIds, setHintLangBusy,
     setHintsDismissTick, setQrSendModalOpen, setSelectedEvent, showAlert, updateEvent,
+    qrPendingCount,
   };
+  // v30.87: Die Hinweise wandern als Zeile in die Event-Details-Karte (unter
+  // „Aktionen"); die eigene Kachel unter den KPI-Kacheln entfällt.
+  const hintsSlot: React.ReactNode = ((isAdmin || isOrganizerFor(selectedEvent)) && !selectedEvent.isFictive && !selectedEvent.isDemoShowcase)
+    ? <ActiveEventHintsBox {...activeEventHintsBoxProps} variant="row" />
+    : null;
   const audienceVisibilityRowProps = {
     isAdmin, isDe, isOrganizerFor, openPendingReminder, orgPastLock, pendingCheckBusy,
     resolveAudienceEmails, selectedEvent, setVisibilityAllAddresses, setVisibilityBusy, setVisibilityOpen, setVisibilityResolved,
@@ -2271,7 +2297,7 @@ export default function AdminPage(): React.ReactElement {
             stapelt auf Mobile via flex-wrap). Die Box erscheint nur für Entwürfe
             und nur für Admin/Organizer. */}
         <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <EventDetailCard {...eventDetailCardProps} />
+        <EventDetailCard {...eventDetailCardProps} hintsSlot={hintsSlot} />
         {/* v22.5: „Nächste Schritte"-Box rechts neben der Detail-Card — nur für
             Entwürfe (Admin/Organizer). Erklärt, was nach dem Anlegen noch zu tun
             ist: finalisieren, Test-An-/Abmeldung, live schalten (+ wer es sieht),
@@ -2389,12 +2415,13 @@ export default function AdminPage(): React.ReactElement {
       {/* ===== QUIZ-STATISTIK (collapsible, oberhalb Teilnehmerliste) ===== */}
       {selectedEvent && selectedEvent.quiz && selectedEvent.quiz.length > 0 && <QuizStatsSection {...quizStatsSectionProps} />}
 
-        {/* v22.16: „Hinweise"-Box für AKTIVE Events — Pendant zur „Nächste
-            Schritte"-Box bei Entwürfen. Zeigt smarte Empfehlungen (z.B.
-            englischer Inhalt → Anmeldesprache fest auf Englisch stellen).
-            Erscheint nur, wenn mindestens ein Hinweis zutrifft; jeder Hinweis
-            ist pro Event ausblendbar (localStorage). */}
-        {(isAdmin || isOrganizerFor(selectedEvent)) && !selectedEvent.isFictive && !selectedEvent.isDemoShowcase && <ActiveEventHintsBox {...activeEventHintsBoxProps} />}
+      {/* v30.92: Anwesenheit je Programmpunkt — Matrix und „nach Punkt", Excel,
+          manuelles Nachtragen mit Audit. Nur bei Events mit Programmpunkten. */}
+      {selectedEvent && selectedEvent.agendaCheckIn && (selectedEvent.agenda || []).length > 0 && <AgendaAttendanceSection {...agendaAttendanceSectionProps} />}
+
+        {/* v22.16: „Hinweise"-Box für AKTIVE Events. v30.87: nicht mehr hier
+            als eigene Kachel, sondern als Zeile in der Event-Details-Karte
+            (`hintsSlot`, unter „Aktionen"). */}
 
       {/* v29.32: Sichtbarkeits-Zeile — wer kann das Event überhaupt sehen, und
           wer davon hat noch nicht geantwortet? Steht bewusst DIREKT über der
@@ -2695,6 +2722,17 @@ export default function AdminPage(): React.ReactElement {
       {/* v30.54: Offene Aufgaben beim Veranstalter (B2Run Köln). */}
       {shirtSizeOpen && selectedEvent && (
         <ShirtSizeModal event={selectedEvent} onClose={() => setShirtSizeOpen(false)} />
+      )}
+
+      {/* v30.93: Programmpunkte, Stufe 4. */}
+      {copyToAgendaOpen && selectedEvent && (
+        <CopyToAgendaModal
+          event={selectedEvent}
+          childEvents={childEventsOf(selectedEvent.id)}
+          isDe={isDe}
+          onClose={() => setCopyToAgendaOpen(false)}
+          onDone={() => { void refreshEvents(); }}
+        />
       )}
 
       {b2runTodoOpen && selectedEvent && eventServiceRef && (
