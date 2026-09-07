@@ -7,6 +7,7 @@
 import * as React from 'react';
 import { OutlookConfirmItem, SubEventDraft } from '../../wizard/wizardTypes';
 import { reinsertOrganizerPlaceholder, outlookBodyOrganizerBloated } from '../../wizard/wizardHelpers';
+import { reinsertProgramPlaceholder } from '../../../utils/programPlaceholder';
 import { stripOutlookWrapper } from '../../../services/EmailTemplates';
 import { buildOutlookLocation } from '../../../utils/eventFormat';
 import { dlog } from '../../../utils/debugLog';
@@ -73,7 +74,7 @@ export function detectOutlookRelevantChangesImpl(ctx: OutlookChangesCtx): { item
     // gebackenen Namen, und der Vergleich meldete bei JEDEM Save „Termin-Text
     // geändert" (Dauer-False-Positive des Update-Modals).
     const initialRawStripped = stripOutlookWrapper(snap.outlookBody || '');
-    const initialStripped = reinsertOrganizerPlaceholder(initialRawStripped, editEvent?.organizers || []);
+    const initialStripped = reinsertProgramPlaceholder(reinsertOrganizerPlaceholder(initialRawStripped, editEvent?.organizers || []));
     // v29.21 (Audit): Auf einem Sub-Tab liegt der AKTUELLE Top-Level-Body im
     // Top-Level-Slot (resolveTopLevelCommState) — der alte Fallback verglich
     // den Mount-Snapshot mit sich selbst, eine Hauptevent-Body-Änderung vor

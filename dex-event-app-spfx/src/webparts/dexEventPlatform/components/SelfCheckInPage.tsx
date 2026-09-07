@@ -45,11 +45,14 @@ const SelfCheckInPage: React.FC<{ onLeave?: (_page: 'start' | 'my-events') => vo
         const eventParam = params.get('event');
         const code = params.get('code') || undefined;
         const t = params.get('t');
+        // v30.95: Programmpunkt aus dem Link (Live-QR je Punkt).
+        const item = params.get('item') || undefined;
         const res = await selfCheckIn({
           token,
           eventNumber: eventParam ? parseInt(eventParam, 10) : undefined,
           code,
           windowIndex: t ? parseInt(t, 10) : undefined,
+          agendaItemId: item,
         });
         setResult(res);
       } catch {
@@ -73,9 +76,18 @@ const SelfCheckInPage: React.FC<{ onLeave?: (_page: 'start' | 'my-events') => vo
   const view = React.useMemo(() => {
     const s = result?.status;
     const title = result?.eventTitle ? `„${result.eventTitle}“` : (isDe ? 'das Event' : 'the event');
+    // v30.95: Programmpunkt im Link — die Texte nennen den Punkt, nicht das Event.
+    const point = result?.agendaItemTitle ? `„${result.agendaItemTitle}“` : '';
+    const term = result?.agendaTerm || (isDe ? 'Programmpunkt' : 'agenda item');
     switch (s) {
       case 'success':
-        return {
+        return point ? {
+          color: '#86bc25', icon: 'SkypeCircleCheck',
+          head: isDe ? 'Anwesenheit erfasst!' : 'Attendance recorded!',
+          body: isDe
+            ? `Du bist beim ${term} ${point} (${title}) als anwesend erfasst. Viel Spaß!`
+            : `You are recorded as present at ${point} (${title}). Enjoy!`,
+        } : {
           color: '#86bc25', icon: 'SkypeCircleCheck',
           head: isDe ? 'Eingecheckt!' : 'Checked in!',
           body: isDe
@@ -83,7 +95,13 @@ const SelfCheckInPage: React.FC<{ onLeave?: (_page: 'start' | 'my-events') => vo
             : `You are successfully checked in for ${title}. Enjoy the event!`,
         };
       case 'already':
-        return {
+        return point ? {
+          color: '#86bc25', icon: 'CompletedSolid',
+          head: isDe ? 'Schon erfasst' : 'Already recorded',
+          body: isDe
+            ? `Deine Anwesenheit beim ${term} ${point} war schon erfasst — alles in Ordnung.`
+            : `Your attendance at ${point} was already recorded — all good.`,
+        } : {
           color: '#86bc25', icon: 'CompletedSolid',
           head: isDe ? 'Bereits eingecheckt' : 'Already checked in',
           body: isDe
@@ -133,10 +151,14 @@ const SelfCheckInPage: React.FC<{ onLeave?: (_page: 'start' | 'my-events') => vo
       case 'not-found':
         return {
           color: '#d83b01', icon: 'StatusErrorFull',
-          head: isDe ? 'Event nicht gefunden' : 'Event not found',
-          body: isDe
-            ? 'Zu diesem QR-Code konnte kein Event gefunden werden. Möglicherweise ist der Link veraltet.'
-            : 'No event could be found for this QR code. The link may be outdated.',
+          head: result?.eventTitle ? (isDe ? `${term} nicht gefunden` : `${term} not found`) : (isDe ? 'Event nicht gefunden' : 'Event not found'),
+          body: result?.eventTitle
+            ? (isDe
+              ? `Der ${term} aus diesem QR-Code gehört nicht (mehr) zum Programm von ${title}. Bitte den aktuell angezeigten Code am Raum scannen oder das Check-in-Team ansprechen.`
+              : `The ${term} in this QR code is not (or no longer) part of the programme of ${title}. Please scan the code currently shown at the room or ask the check-in team.`)
+            : (isDe
+              ? 'Zu diesem QR-Code konnte kein Event gefunden werden. Möglicherweise ist der Link veraltet.'
+              : 'No event could be found for this QR code. The link may be outdated.'),
         };
       default:
         return {

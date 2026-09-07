@@ -15,6 +15,7 @@ import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
 import { COMM_TOPICS } from '../logic/commTabs';
 import { BundledComm } from '../../../utils/bundledComm';
 import { SubEventDraft } from '../../wizard/wizardTypes';
+import { AgendaItem } from '../../../types';
 import { EmailOverrideEntry } from '../../wizard/emailOverrideEntry';
 import { CommPreviewCard } from '../../wizard/CommPreviewCard';
 export interface CommunicationStepProps {
@@ -30,6 +31,8 @@ export interface CommunicationStepProps {
   resolveTopLevelCommState: () => { emailLanguage: string; emailLogoBase64: string; outlookLogoBase64: string; outlookBody: string; outlookHeading: string; outlookSubheading: string; outlookSubject: string; disableEmails: boolean; disableRegistrationEmail: boolean; disableCancellationEmail: boolean; autoDeregisterOnDecline: boolean; inactiveHandling?: 'notify' | 'autoderegister'; disableOutlook: boolean; emailTemplateOverrides: Record<string, EmailOverrideEntry> };
   applyEventPhotoToLogo: (setter: (b64: string) => void) => Promise<string>;
   autoDeregisterOnDecline: boolean;
+  /** v30.95: Programmpunkte des Hauptevents — für {{Programm}} in der Vorschau-Karte. */
+  agenda: AgendaItem[];
   bundledComm: BundledComm;
   childTermPlural: string;
   commToggleRow: (opts: { checked: boolean; onChange: (v: boolean) => void; label: string; short: string; info: React.ReactNode; accent?: string; }) => React.ReactElement;
@@ -572,6 +575,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                       disableEmails={disableEmails}
                       disableOutlook={disableOutlook}
                       eventId={p.editEventId}
+                      agenda={activeCommTabIdx > 0 ? (slot.agenda || []) : p.agenda}
                     />
                   );
                 })()}

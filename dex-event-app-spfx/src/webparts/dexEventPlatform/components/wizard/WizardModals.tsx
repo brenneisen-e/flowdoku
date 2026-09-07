@@ -21,6 +21,7 @@ import { InfoTooltip } from '../InfoTooltip';
 import { AgendaItem } from '../../types';
 import { CustomFieldInput } from '../wizard/customFieldInput';
 import { outlookDefaultBodyTemplate } from '../../utils/outlookDefaultBody';
+import { buildProgramHtml } from '../../utils/programPlaceholder';
 
 export interface WizardModalsProps {
   activeCommTabIdx: number;
@@ -528,6 +529,8 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
               EndDate: endDate ? new Date(endDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
               EventDate: startDate ? new Date(startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
             }}
+            // v30.95: {{Programm}} als fertiges HTML in die Vorschau (roh, wie QR_BLOCK).
+            previewHtmlVars={{ Programm: buildProgramHtml(activeCommTabIdx > 0 ? ((subEvents[activeCommTabIdx - 1] || {}).agenda || []) : agenda, emailLanguage) }}
             insertableVars={isOutlook ? [
               // v17.16: {{Name}} hier ENTFERNT — der Outlook-Termin geht
               // an alle Teilnehmer gleichzeitig, eine pro-Person-Anrede
@@ -544,6 +547,8 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
               { key: '{{StartDate}}', label: 'Start' },
               { key: '{{EndDate}}', label: 'Ende' },
               { key: '{{AppUrl}}', label: 'App Link' },
+              // v30.95: Programm-Tabelle — nur anbieten, wenn es Punkte gibt.
+              ...((activeCommTabIdx > 0 ? ((subEvents[activeCommTabIdx - 1] || {}).agenda || []) : agenda).length ? [{ key: '{{Programm}}', label: 'Programm' }] : []),
             ] : [
               { key: '{{Name}}', label: 'Name' },
               { key: '{{EventTitle}}', label: 'Event' },
@@ -551,6 +556,7 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
               ...(contactEmail.trim() ? [{ key: '{{ContactEmail}}', label: 'Kontakt-Mail' }] : []),
               { key: '{{AppUrl}}', label: 'App Link' },
               { key: '{{WaitlistPosition}}', label: 'Waitlist #' },
+              ...((activeCommTabIdx > 0 ? ((subEvents[activeCommTabIdx - 1] || {}).agenda || []) : agenda).length ? [{ key: '{{Programm}}', label: 'Programm' }] : []),
             ]}
             imageBase64={(isOutlook ? outlookLogoPreview : emailLogoPreview) || ''}
           />

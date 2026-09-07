@@ -11,6 +11,7 @@ import { eventHeaderImageOpts } from '../../utils/mailHeaderImage';
 import { DeloitteEvent } from '../../types';
 import { EventService, SPRegistration } from '../../services/EventService';
 import { wrapTemplate, buildEmailFromTemplate, cancellationEmail } from '../../services/EmailTemplates';
+import { buildProgramHtml } from '../../utils/programPlaceholder';
 import { applyEventTemplateOverride, collectCcEmailsFromFields, mergeCcLists } from '../eventTextHelpers';
 import { isEventOver } from '../../utils/eventFormat';
 import { isDemoShowcaseId } from '../../services/demoShowcaseEvent';
@@ -132,7 +133,7 @@ export function makeCancellationActions(deps: CancellationDeps) {
             const lang = event.emailLanguage || 'EN';
             // {{Name}} in Anreden: nur Vorname (displayName ist im Deloitte-Tenant
             // "Nachname, Vorname" -> getFirstName extrahiert den Vornamen).
-            const cancelVars = { Name: currentUserFirstName, EventTitle: event.title, AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView` };
+            const cancelVars = { Name: currentUserFirstName, EventTitle: event.title, AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, Programm: buildProgramHtml(event.agenda, lang, event.agendaTermPlural) };
             let emailData: { subject: string; body: string };
             const spTplRaw = await eventService.getEmailTemplate('Abmeldung', lang).catch(() => null);
             const spTpl = applyEventTemplateOverride(spTplRaw, event.emailTemplateOverrides, 'Abmeldung');
@@ -339,6 +340,7 @@ export function makeCancellationActions(deps: CancellationDeps) {
             Name: cancelledFirst,
             EventTitle: event.title,
             AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+            Programm: buildProgramHtml(event.agenda, lang, event.agendaTermPlural),
           };
           let emailData: { subject: string; body: string };
           const spTplRaw = await eventService.getEmailTemplate('Abmeldung', lang).catch(() => null);
@@ -500,6 +502,7 @@ export function makeCancellationActions(deps: CancellationDeps) {
             Name: cancelledFirst,
             EventTitle: event.title,
             AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+            Programm: buildProgramHtml(event.agenda, lang, event.agendaTermPlural),
           };
           let emailData: { subject: string; body: string };
           const spTplRaw = await eventService.getEmailTemplate('Abmeldung', lang).catch(() => null);

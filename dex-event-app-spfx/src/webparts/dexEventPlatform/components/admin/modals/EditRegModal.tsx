@@ -6,6 +6,7 @@ import * as React from 'react';
 import { Pencil, X } from '../../Icons';
 import { MultiSelectDropdown } from '../../MultiSelectDropdown';
 import { DeloitteEvent } from '../../../types';
+import { FieldSelectInput, fieldVisibleByShowIf } from './FieldSelectInput';
 
 export interface EditRegModalProps {
   closeEditModal: () => void;
@@ -188,6 +189,15 @@ export const EditRegModal: React.FC<EditRegModalProps> = (p) => {
                           // eslint-disable-next-line @typescript-eslint/no-explicit-any
                           const sp = (cf as any).spInternalName || '';
                           if (!sp) return null;
+                          // v30.95: Sichtbarkeitsregel wie auf der Anmeldeseite —
+                          // „Mobilnummer" hing als Pflichtfeld mit Stern im Dialog,
+                          // obwohl der Infoservice auf Nein stand.
+                          const spOf = (fieldId: string): string => {
+                            const src = (selectedEvent.eventSpecificFields || []).find(f => f.id === fieldId);
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            return src ? ((src as any).spInternalName || '') : '';
+                          };
+                          if (!fieldVisibleByShowIf(cf, fid => editForm[spOf(fid)] || '')) return null;
                           const value = editForm[sp] || '';
                           const setVal = (v: string): void => setEditForm(prev => ({ ...prev, [sp]: v }));
                           const labelEl = (
@@ -196,20 +206,13 @@ export const EditRegModal: React.FC<EditRegModalProps> = (p) => {
                             </label>
                           );
 
-                          // Single-Select-Dropdown
+                          // Single-Select-Dropdown. v30.95: dieselbe Kombibox wie
+                          // die Anmeldeseite (Kategorien, Wert „Kategorie Option").
                           if (cf.type === 'select' && !cf.multi && cf.options && cf.options.length > 0) {
                             return (
                               <div key={cf.id}>
                                 {labelEl}
-                                <select
-                                  className="form-select"
-                                  value={value}
-                                  onChange={e => setVal(e.target.value)}
-                                  style={{ width: '100%' }}
-                                >
-                                  <option value="">{isDe ? '— bitte wählen —' : '— please choose —'}</option>
-                                  {cf.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                </select>
+                                <FieldSelectInput field={cf} value={value} onChange={setVal} isDe={isDe} />
                               </div>
                             );
                           }

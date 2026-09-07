@@ -14,6 +14,7 @@ import { dlog } from '../../../utils/debugLog';
 import { SubEventDraft } from '../../wizard/wizardTypes';
 import { EmailOverrideEntry } from '../../wizard/emailOverrideEntry';
 import { outlookDefaultBodyTemplate, outlookOrganizerFallback } from '../../../utils/outlookDefaultBody';
+import { buildProgramHtml, applyProgramPlaceholder } from '../../../utils/programPlaceholder';
 
 export interface PersistSubEventsCtx {
   // v30.67: Adresse des Hauptevents — Fallback für {{Address}} im Outlook-
@@ -277,7 +278,8 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
         // v30.94: Standard-Text aus utils/outlookDefaultBody — derselbe wie
         // Hauptevent, Editor und Vorschau-Karte.
         const defaultSubBody = replacePlaceholders(outlookDefaultBodyTemplate(subEmailLang), { ...vars, Organizer: orgNamesSub || outlookOrganizerFallback(subEmailLang) });
-        const resolvedBody = subOutlookBodyRaw ? replacePlaceholders(subOutlookBodyRaw, vars) : defaultSubBody;
+        // v30.95: {{Programm}} = das Programm DIESES Termins (draft.agenda), roh nach dem Escapen.
+        const resolvedBody = applyProgramPlaceholder(subOutlookBodyRaw ? replacePlaceholders(subOutlookBodyRaw, vars) : defaultSubBody, buildProgramHtml(draft.agenda, subEmailLang));
         const resolvedHead = subOutlookHeading ? replacePlaceholders(subOutlookHeading, vars) : draft.title.trim();
         // v27.5: Default-Unter-Überschrift = Ort (nicht Datum).
         const resolvedSub2 = subOutlookSub ? replacePlaceholders(subOutlookSub, vars) : (draft.location || undefined);

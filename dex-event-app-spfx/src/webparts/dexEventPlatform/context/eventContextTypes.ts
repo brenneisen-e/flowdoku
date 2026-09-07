@@ -20,6 +20,9 @@ export interface SelfCheckInParams {
   eventNumber?: number;
   code?: string;
   windowIndex?: number;
+  /** v30.95: Programmpunkt — gesetzt, wird nur die Anwesenheit an diesem
+   *  Punkt erfasst (AgendaCheckIns), der Event-Status bleibt unberührt. */
+  agendaItemId?: string;
 }
 
 /** v18.33: Strukturiertes Ergebnis des Self-Check-ins für die Ergebnis-UI. */
@@ -40,6 +43,10 @@ export interface SelfCheckInResult {
   eventStart?: string;
   opensAt?: string;   // ISO, bei status='closed'
   closesAt?: string;  // ISO, bei status='closed'
+  /** v30.95: Titel des Programmpunkts, wenn der Link einen trug. */
+  agendaItemTitle?: string;
+  /** v30.95: Bezeichnung („Programmpunkt", „Session", …) des Events. */
+  agendaTerm?: string;
 }
 
 /** v26.33: Eine Zeile aus dem Statistik-Archiv (DEX_EventStats) — reine KPIs

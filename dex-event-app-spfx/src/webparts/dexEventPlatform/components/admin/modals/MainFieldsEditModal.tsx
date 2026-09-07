@@ -8,6 +8,7 @@ import { Pencil, X } from '../../Icons';
 import { MultiSelectDropdown } from '../../MultiSelectDropdown';
 import { DeloitteEvent } from '../../../types';
 import { SPRegistration } from '../../../services/EventService';
+import { FieldSelectInput, fieldVisibleByShowIf } from './FieldSelectInput';
 
 export interface MainFieldsEditModalProps {
   closeMainFieldsEdit: () => void;
@@ -70,14 +71,14 @@ export const MainFieldsEditModal: React.FC<MainFieldsEditModalProps> = (p) => {
                       {cf.label}{cf.required && <span style={{ color: 'var(--dex-red, #c00)' }}> *</span>}
                     </label>
                   );
+                  // v30.95: Sichtbarkeitsregel + Kombibox mit Kategorien wie auf der
+                  // Anmeldeseite (s. FieldSelectInput).
+                  if (!fieldVisibleByShowIf(cf, fid => mainFieldsEditForm[fid] || '')) return null;
                   if (cf.type === 'select' && !cf.multi && cf.options && cf.options.length > 0) {
                     return (
                       <div key={cf.id}>
                         {labelEl}
-                        <select className="form-select" value={value} onChange={e => setVal(e.target.value)} style={{ width: '100%' }}>
-                          <option value="">{isDe ? '— bitte wählen —' : '— please choose —'}</option>
-                          {cf.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                        </select>
+                        <FieldSelectInput field={cf} value={value} onChange={setVal} isDe={isDe} />
                       </div>
                     );
                   }

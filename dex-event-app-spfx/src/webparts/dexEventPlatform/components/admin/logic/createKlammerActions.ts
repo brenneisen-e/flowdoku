@@ -10,6 +10,7 @@ import { DeloitteEvent } from '../../../types';
 import { EventService, SPRegistration } from '../../../services/EventService';
 import { applyEventTemplateOverride, formatOrganizerList } from '../../../context/EventContext';
 import { buildEmailFromTemplate, promotionEmail } from '../../../services/EmailTemplates';
+import { buildProgramHtml } from '../../../utils/programPlaceholder';
 import { invalidateInactiveAccountCache } from '../../../utils/accountCheckCache';
 import { isEventOver } from '../../../utils/eventFormat';
 import { withParentTitleSubject } from '../../../utils/mailSubject';
@@ -637,6 +638,7 @@ export function createKlammerActions(ctx: CreateKlammerActionsCtx): CreateKlamme
                   Organizer: formatOrganizerList(child.organizers, lang),
                   AppUrl: `${eventServiceRef.siteUrl}/SitePages/DEX.aspx?env=WebView`,
                   WaitlistPosition: '',
+                  Programm: buildProgramHtml(child.agenda, lang, child.agendaTermPlural),
                 };
                 let emailData: { subject: string; body: string };
                 const spTplRaw = await eventServiceRef.getEmailTemplate('Nachruecken', lang).catch(() => null);
