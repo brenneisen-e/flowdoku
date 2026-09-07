@@ -157,6 +157,47 @@ export function eventHeaderImageOpts(
   return mailHeaderOpts(base, own);
 }
 
+/** v31.0: Hat das Event ein eigenes Mail-Logo (`_eventLogo` im Blob oder
+ *  die Spalte EmailImageBase64)? Nur dann darf „Volle Breite" ohne Event-Foto
+ *  gelten — sonst wäre es der Orb in 600 px. */
+export function hasOwnMailLogo(overridesJson: string | undefined | null, mailLogoB64?: string | null): boolean {
+  if (mailLogoB64 && mailLogoB64.trim()) return true;
+  try {
+    const o = JSON.parse(overridesJson || '{}') || {};
+    return typeof o._eventLogo === 'string' && o._eventLogo.trim().length > 0;
+  } catch { return false; }
+}
+
+/**
+ * v31.0: Kopf-Maße einer Mail mit eigenem Override (QR-Mail): gespeicherte
+ * Werte gewinnen; OHNE gespeicherte Werte gilt die v30.87-Regel aus
+ * `eventHeaderImageOpts` — gespeichertes `_headerImageLayout`, sonst volle
+ * Breite bei eigenem Mail-Logo, sonst der kleine Standard. Vorher lieferte
+ * `normalizeMailHeaderImage(undefined)` hier immer 180/30/30, und die QR-Mail
+ * zeigte ein eigenes Logo klein, während alle anderen Mails es voll zeigten
+ * (Nutzer 07.09.2026: „warum ist die Vorschau vom QR-Code schon wieder so
+ * klein?").
+ */
+export function resolveMailHeaderImage(raw: unknown, overridesJson: string | undefined | null, mailLogoB64?: string | null): MailHeaderImage {
+  const o = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : null;
+  const storedWidth = o ? (typeof o.width === 'number' ? o.width : parseInt(String(o.width ?? ''), 10)) : NaN;
+  if (o && isFinite(storedWidth) && storedWidth > 0) return normalizeMailHeaderImage(o);
+  let il: { width?: unknown; paddingV?: unknown; paddingH?: unknown } = {};
+  try {
+    const ov = JSON.parse(overridesJson || '{}') || {};
+    il = (ov._headerImageLayout && typeof ov._headerImageLayout === 'object') ? ov._headerImageLayout : {};
+  } catch { /* Defaults */ }
+  if (typeof il.width === 'number' && il.width > 0) {
+    return {
+      hero: 'logo',
+      width: il.width,
+      paddingV: (typeof il.paddingV === 'number' && il.paddingV >= 0) ? il.paddingV : 30,
+      paddingH: (typeof il.paddingH === 'number' && il.paddingH >= 0) ? il.paddingH : 30,
+    };
+  }
+  return hasOwnMailLogo(overridesJson, mailLogoB64) ? { hero: 'logo', width: 600, paddingV: 0, paddingH: 0 } : { ...MAIL_HEADER_IMAGE_DEFAULT };
+}
+
 export function isDefaultMailHeaderImage(img: MailHeaderImage): boolean {
   return img.hero === MAIL_HEADER_IMAGE_DEFAULT.hero
     && img.width === MAIL_HEADER_IMAGE_DEFAULT.width

@@ -9,7 +9,7 @@ import { QrEmailOverride, buildQrBlockHtml, getCachedOrbBase64, injectIntoEmailC
 import { SAMPLE_QR_ID } from '../../admin/adminConstants';
 import { buildParticipantQrDataUrl } from '../../../utils/qrWithMark';
 import { getCachedImage } from '../../../utils/imageCache';
-import { MailHeaderImage, isDefaultMailHeaderImage, normalizeMailHeaderImage } from '../../../utils/mailHeaderImage';
+import { MailHeaderImage, isDefaultMailHeaderImage, normalizeMailHeaderImage, resolveMailHeaderImage } from '../../../utils/mailHeaderImage';
 import { isExternalEmail } from '../../../utils/deloitteDomain';
 import { EventService, SPRegistration } from '../../../services/EventService';
 
@@ -117,7 +117,9 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
     setQrEditBody((ov && ov.bodyHtml) || def.body);
     // v30.52: gespeichertes Kopf-Bild laden; Event-Foto für die Auswahl
     // nachziehen (leer = „Event-Foto" bleibt deaktiviert).
-    setQrHeaderImage(normalizeMailHeaderImage(ov && ov.headerImage));
+    // v31.0: ohne gespeicherte Kopf-Maße gilt die v30.87-Regel (eigenes
+    // Mail-Logo → volle Breite), nicht mehr der alte 180-px-Default.
+    setQrHeaderImage(resolveMailHeaderImage(ov && ov.headerImage, tgt.emailTemplateOverrides, tgt.mailImageBase64));
     setQrBlockLang((ov && ov.blockLang) || '');
     setQrBlockNote((ov && ov.blockNote) || '');
     setQrEventPhotoB64('');
@@ -134,7 +136,10 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
     // tatsaechliche Nummer der Person.
     const qrImageHtml = await buildQrImageHtml(qrData);
     setQrEditSampleImg(qrImageHtml);
-    setQrEditSampleBlock(buildQrBlockHtml(qrImageHtml, myName, SAMPLE_QR_ID, ((ov && ov.blockLang) || tgt.emailLanguage || 'EN'), (ov && ov.blockNote) || ''));
+    // v31.0: die EIGENE Teilnehmer-ID, wenn ich in der Liste stehe — sonst
+    // die Beispiel-ID (Nutzer 07.09.2026: „warum bin ich 017, obwohl ich 003
+    // bin?"). Bei einem Sub-Event-Ziel ist die Liste die des Hauptevents.
+    setQrEditSampleBlock(buildQrBlockHtml(qrImageHtml, myName, ownQrId(), ((ov && ov.blockLang) || tgt.emailLanguage || 'EN'), (ov && ov.blockNote) || ''));
     // v22.19: Versand-Modal schließen — der Editor zeigt die Versand-Aktionen
     // in einer eigenen linken Spalte (nebeneinander statt übereinander).
     // Beim Schließen des Editors öffnet das Versand-Modal wieder.
@@ -237,6 +242,14 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
    * Flow setzt wie bisher das Standard-Bild. `getCachedImage` cacht — pro
    * Sitzung fällt der Abruf also einmal an, nicht je Teilnehmer.
    */
+  /** v31.0: Teilnehmer-ID der angemeldeten Person in der geladenen Liste,
+   *  sonst die Beispiel-ID — für Vorschau und Test an mich. */
+  const ownQrId = (): number => {
+    const me = (currentUser.email || '').toLowerCase();
+    const mine = me ? registrations.find(r => (r.ParticipantEmail || '').toLowerCase() === me) : undefined;
+    return mine && mine.TeilnehmerID ? mine.TeilnehmerID : SAMPLE_QR_ID;
+  };
+
   const qrHeroPhotoFor = async (ev: DeloitteEvent, override?: QrEmailOverride): Promise<string> => {
     const hdr = normalizeMailHeaderImage(override && override.headerImage);
     if (hdr.hero !== 'event' || !ev.imageUrl) return '';
@@ -256,7 +269,7 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
       const qrData = `DEX|${selectedEvent.eventNumber}|${orgEmail}`;
       const qrImageHtml = await buildQrImageHtml(qrData);
       const qrOv = getQrMailOverride(selectedEvent);
-      const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName, qrOv, SAMPLE_QR_ID, await qrHeroPhotoFor(selectedEvent, qrOv));
+      const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName, qrOv, ownQrId(), await qrHeroPhotoFor(selectedEvent, qrOv), selectedEvent);
       let eventOrb = '';
       try {
         const ov = JSON.parse(selectedEvent.emailTemplateOverrides || '{}');
@@ -297,7 +310,7 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
         const firstName = raw.indexOf(',') >= 0 ? (raw.substring(raw.indexOf(',') + 1).trim().split(/\s+/)[0] || fullName) : (fullName.split(/\s+/)[0] || fullName);
         const qrData = `DEX|${ev.eventNumber}|${r.email}`;
         const qrImageHtml = await buildQrImageHtml(qrData);
-        const emailData = qrCodeEmail(firstName, ev.title, qrImageHtml, ev.emailLanguage || 'EN', fullName, testOverride, SAMPLE_QR_ID, testHeroPhoto);
+        const emailData = qrCodeEmail(firstName, ev.title, qrImageHtml, ev.emailLanguage || 'EN', fullName, testOverride, r.email.toLowerCase() === (currentUser.email || '').toLowerCase() ? ownQrId() : SAMPLE_QR_ID, testHeroPhoto, ev);
         await eventServiceRef.queueEmail(emailData.subject, r.email, fullName, emailData.body, 'QRCode', ev.title, ev.id);
         sent++; setQrSentCount(sent);
       }
@@ -325,7 +338,7 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
       const firstName = reg.Vorname || (reg.ParticipantName || '').trim().split(/\s+/)[0] || name;
       const qrImageHtml = await buildQrImageHtml(qrData);
       const sendOv = getQrMailOverride(selectedEvent);
-      const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', name, sendOv, reg.TeilnehmerID, await qrHeroPhotoFor(selectedEvent, sendOv));
+      const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', name, sendOv, reg.TeilnehmerID, await qrHeroPhotoFor(selectedEvent, sendOv), selectedEvent);
       // v27.11: Member-Firm-Adressen zählen als intern → QR-Mail direkt.
       const isExternal = isExternalEmail(reg.ParticipantEmail);
       if (isExternal) {

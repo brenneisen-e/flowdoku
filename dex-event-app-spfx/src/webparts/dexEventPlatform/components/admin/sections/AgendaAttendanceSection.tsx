@@ -38,7 +38,9 @@ const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
 
 export const AgendaAttendanceSection: React.FC<AgendaAttendanceSectionProps> = (p) => {
   const { event, registrations, regsUnknown, isDe, canEdit, eventServiceRef, reloadRegistrations, showAlert, confirmDialog } = p;
-  const [open, setOpen] = React.useState<boolean>(true);
+  // v31.0: standardmäßig eingeklappt (Nutzer 07.09.2026) — die Kopfzeile
+  // nennt Punkte, Angemeldete und Anwesenheiten, das reicht für den Überblick.
+  const [open, setOpen] = React.useState<boolean>(false);
   const [view, setView] = React.useState<'person' | 'point'>('point');
   const [openPoint, setOpenPoint] = React.useState<string | null>(null);
   const [busyKey, setBusyKey] = React.useState<string>('');
@@ -170,11 +172,13 @@ export const AgendaAttendanceSection: React.FC<AgendaAttendanceSectionProps> = (
     <div className="card" style={{ padding: 20, marginBottom: 24 }}>
       <button type="button" onClick={() => setOpen(v => !v)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}>
         <h3 style={{ margin: 0, fontSize: '1rem' }}>{isDe ? 'Anwesenheit je ' : 'Attendance per '}{termS}</h3>
-        <span style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
-          {regsUnknown
-            ? (isDe ? '— Teilnehmerliste nicht lesbar' : '— attendee list not readable')
-            : (isDe ? `— ${items.length} ${termP}, ${active.length} Angemeldete, ${totalMarks} Anwesenheiten` : `— ${items.length} ${termP}, ${active.length} registered, ${totalMarks} attendances`)}
-        </span>
+        {/* v31.0: keine Zusammenfassung mehr im Kopf (Nutzer: „den Text brauch
+            ich nicht") — nur der Zustand „nicht lesbar" bleibt, der ist Information. */}
+        {regsUnknown && (
+          <span style={{ fontSize: '0.8rem', color: 'var(--dex-red, #da291c)' }}>
+            {isDe ? '— Teilnehmerliste nicht lesbar' : '— attendee list not readable'}
+          </span>
+        )}
         <span style={{ marginLeft: 'auto', color: 'var(--dex-gray-400)' }}>{open ? '▾' : '▸'}</span>
       </button>
       {open && (

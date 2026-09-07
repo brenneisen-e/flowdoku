@@ -1409,7 +1409,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
               // Massenversand und Test hatten sie. Die Zeile wurde ohnehin
               // gleich darauf für setQRSentStatus geladen — jetzt nur einmal.
               const myReg = event.subsiteUrl ? await eventService.getMyRegistration(event.subsiteUrl, emailToUse) : null;
-              const qrMail = qrCodeEmail(firstNameToUse, event.title, qrImageHtml, lang, nameToUse, qrOverride, myReg?.TeilnehmerID, qrHeroPhoto);
+              const qrMail = qrCodeEmail(firstNameToUse, event.title, qrImageHtml, lang, nameToUse, qrOverride, myReg?.TeilnehmerID, qrHeroPhoto, event);
               // v9.22: Auto-Send-QR für externe Empfänger ebenfalls an den
               // Organizer umleiten (mit klarem Subject-Präfix), nicht an den
               // externen Mail-Empfänger.

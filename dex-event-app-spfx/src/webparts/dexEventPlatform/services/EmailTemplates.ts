@@ -7,7 +7,7 @@
  * Generiert den kompletten HTML-Body für Power Automate.
  */
 
-import { normalizeMailHeaderImage } from '../utils/mailHeaderImage';
+import { resolveMailHeaderImage, hasOwnMailLogo } from '../utils/mailHeaderImage';
 import { SPHttpClient } from '@microsoft/sp-http';
 import { buildHashDeepLink } from '../utils/deepLink';
 
@@ -1010,7 +1010,14 @@ export function qrCodeEmail(
    * Wert bleibt `{{ORB_URL}}` stehen und der Flow setzt das Standard-Bild —
    * genau das Verhalten von vorher.
    */
-  eventPhotoB64?: string
+  eventPhotoB64?: string,
+  /**
+   * v31.0: das Event (Overrides + Mail-Logo), damit ohne gespeicherte
+   * Kopf-Maße die v30.87-Regel gilt: eigenes Mail-Logo → volle Breite. Bis
+   * dahin zählte nur das Event-Foto als „eigenes Bild", ein eigenes Mail-Logo
+   * wurde wie der Orb auf 180 px gekappt — „warum ist das Bild so klein?".
+   */
+  ev?: { emailTemplateOverrides?: string; mailImageBase64?: string }
 ): { subject: string; body: string } {
   // Fallback: wenn kein fullName übergeben, nutze nur firstName
   const fullDisplayName = (fullName || firstName || '').trim();
@@ -1037,10 +1044,13 @@ export function qrCodeEmail(
   }
   // v30.52: Kopf-Bild aus dem Override anwenden — Maße über wrapTemplate,
   // das Foto (falls gewählt UND vom Aufrufer aufgelöst) statt {{ORB_URL}}.
-  const hdr = normalizeMailHeaderImage(override && override.headerImage);
+  const hdr = resolveMailHeaderImage(override && override.headerImage, ev && ev.emailTemplateOverrides, ev && ev.mailImageBase64);
   // Der Orb-Schutz gilt auch hier: Ohne eigenes Bild wäre „Volle Breite" ein
   // bildschirmfüllender, unten abgeschnittener Orb (s. utils/mailHeaderImage).
-  const ownImage = hdr.hero === 'event' && !!eventPhotoB64;
+  // v31.0: Ein eigenes Mail-Logo (hero 'logo', vom Flow für {{ORB_URL}}
+  // eingesetzt) ist ebenfalls ein eigenes Bild.
+  const ownImage = (hdr.hero === 'event' && !!eventPhotoB64)
+    || (hdr.hero === 'logo' && hasOwnMailLogo(ev && ev.emailTemplateOverrides, ev && ev.mailImageBase64));
   const wrapped = wrapTemplate(
     GREEN,
     replacePlaceholdersPlain(headingTpl, vars),
@@ -1055,7 +1065,7 @@ export function qrCodeEmail(
   );
   return {
     subject: replacePlaceholdersPlain(subjectTpl, vars),
-    body: ownImage ? wrapped.replace(/\{\{ORB_URL\}\}/g, eventPhotoB64!) : wrapped,
+    body: (hdr.hero === 'event' && eventPhotoB64) ? wrapped.replace(/\{\{ORB_URL\}\}/g, eventPhotoB64) : wrapped,
   };
 }
 

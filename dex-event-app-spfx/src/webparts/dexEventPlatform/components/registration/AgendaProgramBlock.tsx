@@ -58,7 +58,10 @@ export const AgendaProgramBlock: React.FC<AgendaProgramBlockProps> = ({ event, l
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: '0.82rem', fontWeight: 600, wordBreak: 'break-word' }}>
-                    {sorted.indexOf(it) + 1}. {it.title || (isDe ? '(ohne Titel)' : '(untitled)')}
+                    {/* v30.99: ohne laufende Nummer — sie stand vor jedem Titel
+                        („17. Post Merger …") und störte (Nutzer 07.09.2026); die
+                        Reihenfolge ergibt sich aus Cluster und Uhrzeit. */}
+                    {it.title || (isDe ? '(ohne Titel)' : '(untitled)')}
                   </div>
                   {(it.location || it.description) && (
                     <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 1, wordBreak: 'break-word' }}>
