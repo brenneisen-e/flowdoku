@@ -442,6 +442,31 @@ export async function checkOutParticipant(
 /**
  * Status eines Teilnehmers auf 'QR versendet' setzen
  */
+/**
+ * v31.1: Check-in zurücknehmen — Status wieder auf den Stand VOR dem Check-in
+ * („QR versendet" oder „Angemeldet"), Check-in-Stempel leeren. Für die Liste
+ * „Letzte Check-ins" auf der Check-in-Seite (Nutzer 07.09.2026: „die
+ * Möglichkeit, das rückgängig zu machen"). Nur diese beiden Ziel-Status sind
+ * erlaubt — ein Revert darf niemanden abmelden oder auf die Warteliste setzen.
+ */
+export async function revertCheckIn(
+  svc: EventService,
+  subsiteUrl: string,
+  itemId: number,
+  previousStatus: string
+): Promise<boolean> {
+  const target = previousStatus === 'QR versendet' ? 'QR versendet' : 'Angemeldet';
+  try {
+    const response = await svc._merge(
+      `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+      { 'Status': target, 'CheckedInDate': null, 'CheckedInByName': '', 'CheckedInByEmail': '' }
+    );
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function setQRSentStatus(
   svc: EventService,
   subsiteUrl: string,
