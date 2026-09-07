@@ -19,6 +19,7 @@ import { isExternalEmail } from '../utils/deloitteDomain';
 import { registrationEmail, externalInviteInstructionEmail, externalInvitationEmail, waitlistEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
 import { buildUnsentEmlDraft } from '../utils/emlDraft';
 import { readPendingShadowParents, removePendingShadowParent, addPendingShadowParent } from '../utils/shadowHeal';
+import { readPendingReorders } from '../utils/reorderHeal';
 import { withParentTitleSubject } from '../utils/mailSubject';
 import { APP_VERSION } from '../version';
 import { BundledItem, bundledCommOf, bundledItemsTableHtml, bundledItemsHeading } from '../utils/bundledComm';
@@ -1039,8 +1040,11 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       // der Flow sie sofort korrekt einsortiert (statt erst bei der nächsten
       // Abmeldung). Best-effort, blockiert die Anmeldung nicht.
       if (existing && existing.Status === 'Abgemeldet' && status === 'Angemeldet') {
-        eventService.queueIDReorder(eventId, event.eventNumber, subsiteUrl, event.title)
-          .catch(err => console.warn('[DEX] queueIDReorder (reactivate) failed:', err));
+        // v30.80: geprüfter Pfad, weiter fire-and-forget (blockiert die
+        // Anmeldung nicht) — aber mit Wiederholungen und Merker.
+        void eventService.queueIDReorderChecked({
+          eventId, eventNumber: event.eventNumber, subsiteUrl, eventTitle: event.title,
+        }, 'reactivate');
       }
       // v9.0: Audit-Log (fire-and-forget)
       eventService.writeChangeLog({
@@ -3018,9 +3022,10 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       // besetzt einen in der ALTEN Gruppe frei gewordenen Platz direkt nach,
       // statt erst bei der nächsten Abmeldung. Name/E-Mail des Wechslers gehen
       // mit, damit Nachrück-Mail + Audit den Platz-Vorgänger korrekt benennen.
-      try {
-        await eventService.queueIDReorder(eventId, event.eventNumber, subsiteUrl, event.title, currentUserName, currentUserEmail);
-      } catch (err) { console.warn('[DEX] queueIDReorder (group switch) failed:', err); }
+      // v30.80: geprüfter Pfad (Wiederholungen, Event-Log, Merker).
+      await eventService.queueIDReorderChecked({
+        eventId, eventNumber: event.eventNumber, subsiteUrl, eventTitle: event.title, cancelledName: currentUserName, cancelledEmail: currentUserEmail,
+      }, 'group-switch');
       await loadEvents();
     }
     return result;
@@ -3161,6 +3166,29 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
   }, [events]);
   React.useEffect(() => () => {
     if (shadowHealTimerRef.current !== null) window.clearTimeout(shadowHealTimerRef.current);
+  }, []);
+
+  // v30.80: Offene Reorder-Aufträge aus localStorage nachziehen (s.
+  // utils/reorderHeal) — dieselbe Mechanik wie die Klammer-Heilung oben, 25 s
+  // nach dem Boot, ohne clearTimeout-Cleanup (s. Kommentar am
+  // shadowHealTimerRef). Der Merker entsteht, wenn der Reorder-POST einer
+  // Abmeldung trotz vier Versuchen an der Drosselung scheiterte.
+  const reorderHealRanRef = React.useRef(false);
+  const reorderHealTimerRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    if (reorderHealRanRef.current) return;
+    if (!eventService) return;
+    if (readPendingReorders().length === 0) { reorderHealRanRef.current = true; return; }
+    reorderHealRanRef.current = true;
+    reorderHealTimerRef.current = window.setTimeout(() => {
+      eventService.replayPendingReorders()
+        .then(n => { if (n > 0) console.warn(`[DEX] ${n} offene(r) Reorder-Auftrag/-Aufträge nachgeholt`); })
+        .catch(() => { /* bleibt im Merker — nächster App-Start (14-Tage-Verfall) */ });
+    }, 25000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventService]);
+  React.useEffect(() => () => {
+    if (reorderHealTimerRef.current !== null) window.clearTimeout(reorderHealTimerRef.current);
   }, []);
 
 

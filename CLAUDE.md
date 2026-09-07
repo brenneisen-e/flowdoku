@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.79.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.80.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -413,6 +413,23 @@ nur, wenn kein Termin mehr aktiv ist (`runDeregModal`, „Person überall
 löschen", `MyEventsPage`). Das Gegenstück „Klammer ohne Termin" fängt der
 Kasten „Unvollständige Anmeldungen" — harmlos (kein Platz, keine Mail) und
 seit v30.67 ausgesetzt, solange eine Termin-Liste nicht lesbar ist.
+
+**Der Reorder-Auftrag hat seit v30.80 genau EINEN Schreibpfad:
+`eventService.queueIDReorderChecked(job, via)`.** Das Audit vom 07.09.2026
+fand zehn Aufrufstellen von `queueIDReorder`, sechs davon mit einem Versuch
+und `console.warn` — und bei der Selbst-Abmeldung einen Zweig, der ohne
+Event im State GAR NICHTS schrieb. Der Auftrag ist der fünfte bis siebte
+Schreibvorgang derselben Abmeldung, also der, den die Drosselung trifft;
+und er ist der einzige Anstoß für Nachrücken und Neu-Nummerierung. Wer eine
+neue Stelle baut, die einen Platz freigibt (Abmelden, Löschen einer aktiven
+Zeile, Gruppenwechsel, Reaktivierung): den geprüften Pfad rufen, `via`
+benennen, NIE das rohe `queueIDReorder`. Der geprüfte Pfad wiederholt
+(1,5/4/8 s, Retry-After), bricht bei 403 ab, schreibt `IDReorderQueueFailed`
+ins Event-Log und legt einen Merker in `utils/reorderHeal` ab, den der
+nächste Erfolg bzw. der App-Start nachzieht (`IDReorderQueueHealed`). Wenn
+„eine Abmeldung nicht in DEX_IDReorder gelandet ist": zuerst das Event-Log
+des Events auf diese beiden Aktionen prüfen, dann die installierte Version
+(`Was ist neu?`) — vor v30.80 gab es die Zeilen nicht.
 
 **Nachgerückt wird nur beim Abmelden — nicht bei einer Kapazitätsänderung.**
 `promoteFirstWaitlistItem` hängt am Cancel-Pfad. Erhöht der Organizer eine

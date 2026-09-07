@@ -659,11 +659,13 @@ export function createKlammerActions(ctx: CreateKlammerActionsCtx): CreateKlamme
         } catch (err) { console.warn('[DEX] promoteFirstWaitlistItem failed:', err); }
         }
         // ID-Reorder in die Queue (Flow macht nur noch Reorder).
-        try {
-          await eventServiceRef.queueIDReorder(
-            child.id, child.eventNumber || 0, sub, child.title, name, reg.ParticipantEmail || undefined
-          );
-        } catch (err) { console.warn('[DEX] queueIDReorder threw:', err); }
+        // v30.80: geprüfter Pfad — vorher ein Versuch und console.warn; bei
+        // einer Sammel-Abmeldung über viele Termine ist das der Schreibvorgang,
+        // den die Drosselung trifft, und niemand sah es.
+        await eventServiceRef.queueIDReorderChecked({
+          eventId: child.id, eventNumber: child.eventNumber || 0, subsiteUrl: sub, eventTitle: child.title,
+          cancelledName: name, cancelledEmail: reg.ParticipantEmail || undefined,
+        }, 'consolidated-deregister');
         }
       } catch (err) {
         console.warn('[DEX] consolidated deregister failed for child', child.id, err);

@@ -160,18 +160,17 @@ export function useCancelPipeline(ctx: UseCancelPipelineCtx): UseCancelPipelineR
       }
     }
     if (selectedEvent.subsiteUrl && !eventWasOver) {
-      try {
-        const ok = await eventServiceRef.queueIDReorder(
-          selectedEvent.id, selectedEvent.eventNumber || 0,
-          selectedEvent.subsiteUrl, selectedEvent.title, name, reg.ParticipantEmail || undefined
-        );
-        if (!ok) {
-          console.warn('[DEX] queueIDReorder returned false');
-          showAlert(isDe ? 'Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.' : 'Cancellation successful, but the ID reorder entry could not be written to the queue. Please click "Reassign IDs" once.');
-        }
-      } catch (err) {
-        console.warn('[DEX] queueIDReorder threw:', err);
-        showAlert('Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.');
+      // v30.80: geprüfter Pfad — bis zu vier Versuche, Event-Log, Merker.
+      const r = await eventServiceRef.queueIDReorderChecked({
+        eventId: selectedEvent.id, eventNumber: selectedEvent.eventNumber || 0,
+        subsiteUrl: selectedEvent.subsiteUrl, eventTitle: selectedEvent.title,
+        cancelledName: name, cancelledEmail: reg.ParticipantEmail || undefined,
+      }, 'organizer-cancel');
+      if (!r.ok) {
+        showAlert(isDe
+          ? `Abmeldung erfolgreich, aber der Reorder-Auftrag konnte nach ${r.attempts} Versuchen nicht in die Queue geschrieben werden (HTTP ${r.status}). Die App holt ihn beim nächsten App-Start nach; wer nicht warten will, klickt einmal „IDs neu vergeben" bzw. „Freie Plätze mit Warteliste füllen".`
+          : `Cancellation successful, but the reorder job could not be written to the queue after ${r.attempts} attempts (HTTP ${r.status}). The app retries on the next start; to fix now, click "Reassign IDs" or "Fill free seats from waitlist" once.`,
+          { variant: 'error' });
       }
     }
     // v30.67 (Review): gemeinsamer Nachlade-Pfad — bei 429 nach dem Abmelden

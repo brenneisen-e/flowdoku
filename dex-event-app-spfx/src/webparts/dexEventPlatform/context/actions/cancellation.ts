@@ -36,36 +36,18 @@ export function makeCancellationActions(deps: CancellationDeps) {
   // Liste), blieb es an allen drei Stellen bei einem console.warn: niemand
   // rückte nach, die TeilnehmerID-Lücke blieb, und in der Run history fehlte
   // der Lauf, ohne dass irgendwo stand, warum (Befund 07.09.2026, B2Run Köln:
-  // Abmeldung ohne Lauf, ohne Nachrücker). Jetzt: ein zweiter Versuch nach
-  // kurzer Pause, und wenn auch der scheitert, eine Zeile im Event-Log, die
-  // der Organizer im Organizer Center sieht — mit dem Hinweis auf die
-  // Admin-Aktion „Nachrücken & IDs für ALLE Events nachholen".
+  // Abmeldung ohne Lauf, ohne Nachrücker).
+  // v30.80: Wiederholungen, Event-Log und Merker liegen jetzt im Service
+  // (`queueIDReorderChecked`, services/events/idReorder.ts) — ein Pfad für
+  // alle zehn Aufrufstellen statt einer Kopie je Datei.
   async function queueReorderChecked(
     eventId: string, event: DeloitteEvent, subsiteUrl: string,
     cancelledName: string | undefined, cancelledEmail: string | undefined, via: string,
   ): Promise<boolean> {
-    const attempt = async (): Promise<boolean> => {
-      try { return await eventService.queueIDReorder(eventId, event.eventNumber || 0, subsiteUrl, event.title, cancelledName, cancelledEmail); }
-      catch (err) { console.warn('[DEX] queueIDReorder (' + via + ') threw:', err); return false; }
-    };
-    let ok = await attempt();
-    if (!ok) {
-      await new Promise<void>(resolve => setTimeout(resolve, 1500));
-      ok = await attempt();
-    }
-    if (!ok) {
-      console.warn('[DEX] queueIDReorder (' + via + ') failed twice — Neu-Nummerierung und Nachrücken bleiben aus');
-      eventService.writeChangeLog({
-        action: 'IDReorderQueueFailed',
-        targetType: 'Participant',
-        targetId: cancelledEmail || '',
-        targetName: cancelledName || cancelledEmail || '',
-        eventId,
-        eventTitle: event.title,
-        details: { via, hint: 'Kein DEX_IDReorder-Auftrag geschrieben — im Admin Center „Nachrücken & IDs für ALLE Events nachholen" ausführen.' },
-      }).catch(() => { /* Log ist best-effort */ });
-    }
-    return ok;
+    const r = await eventService.queueIDReorderChecked({
+      eventId, eventNumber: event.eventNumber || 0, subsiteUrl, eventTitle: event.title, cancelledName, cancelledEmail,
+    }, via);
+    return r.ok;
   }
 
   async function cancelRegistration(eventId: string, opts?: { suppressNotifications?: boolean; skipReload?: boolean }): Promise<boolean> {
@@ -258,7 +240,17 @@ export function makeCancellationActions(deps: CancellationDeps) {
           } catch { /* best-effort */ }
         }
       } else {
-        console.warn('[DEX] cancelRegistration: event not found in state for id', eventId);
+        // v30.80: Bis hierher hieß „Event nicht im Zustand" (Liste nach einem
+        // 429 unvollständig geladen): Status geschrieben, und SONST NICHTS —
+        // keine Mail, keine Ausladung, kein Reorder. Mail und Outlook brauchen
+        // die Event-Daten; der Reorder-Auftrag braucht nur die Subsite, die
+        // wir haben. Titel/Nummer bleiben leer, der Flow liest EventId und
+        // SubsiteUrl aus dem Trigger.
+        console.warn('[DEX] cancelRegistration: event not found in state for id', eventId, '— Reorder-Auftrag trotzdem');
+        const cancelledDisplayName = (myReg.Vorname && myReg.Nachname) ? `${myReg.Vorname} ${myReg.Nachname}` : (myReg.ParticipantName || currentUserName);
+        await eventService.queueIDReorderChecked({
+          eventId, eventNumber: 0, subsiteUrl, eventTitle: eventId, cancelledName: cancelledDisplayName, cancelledEmail: currentUserEmail,
+        }, 'self-cancel-no-event-state');
       }
       // v11.83: Team-Cancel-Nachlauf — Auto-Promote des früheren Members
       // zum neuen Lead (falls Self-Cancel der Lead war), Info-Mails an die
