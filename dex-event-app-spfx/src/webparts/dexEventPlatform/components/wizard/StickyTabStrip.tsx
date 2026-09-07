@@ -283,18 +283,28 @@ export function StickyTabStrip(props: {
                   {grouping.groups.map(g => {
                     const on = g.label === openLabel;
                     const hasSel = selSub >= 0 && g.idxs.indexOf(selSub) >= 0;
+                    // v30.78: „aufgeklappt" und „enthält den gewählten Reiter"
+                    // sind zwei Zustände. Bisher war die offene Gruppe grün
+                    // GEFÜLLT — auf dem Hauptevent-Reiter ist immer die erste
+                    // Gruppe offen, und „Day 1" las sich als gewählt, obwohl
+                    // man im Hauptevent arbeitet (Nutzer-Frage 07.09.2026).
+                    // Jetzt: gefüllt nur, wenn der gewählte Reiter darin liegt;
+                    // offen ohne Auswahl = heller Grünton mit grünem Rand.
+                    const bg = hasSel ? 'var(--dex-green, #86bc25)' : (on ? 'rgba(134,188,37,0.14)' : '#fff');
+                    const fg = hasSel ? '#fff' : (on ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)');
                     return (
                       <button
                         key={g.label}
                         type="button"
+                        aria-expanded={on}
                         onClick={() => setOpenGroup(on ? '' : g.label)}
                         title={`${g.label} — ${g.idxs.length}`}
                         style={{
                           display: 'inline-flex', alignItems: 'center', gap: 7,
                           padding: '5px 13px', borderRadius: 999, cursor: 'pointer',
                           border: `1px solid ${on || hasSel ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-                          background: on ? 'var(--dex-green, #86bc25)' : '#fff',
-                          color: on ? '#fff' : 'var(--dex-gray-700)',
+                          background: bg,
+                          color: fg,
                           fontWeight: on || hasSel ? 700 : 500, fontSize: '0.8rem',
                           transition: 'background 0.15s, border-color 0.15s',
                         }}
@@ -303,8 +313,8 @@ export function StickyTabStrip(props: {
                         <span style={{
                           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                           minWidth: 20, height: 17, padding: '0 5px', borderRadius: 999,
-                          background: on ? 'rgba(255,255,255,0.28)' : 'var(--dex-gray-100)',
-                          color: on ? '#fff' : 'var(--dex-gray-600)',
+                          background: hasSel ? 'rgba(255,255,255,0.28)' : (on ? 'rgba(134,188,37,0.22)' : 'var(--dex-gray-100)'),
+                          color: hasSel ? '#fff' : (on ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)'),
                           fontSize: '0.67rem', fontWeight: 700,
                         }}>{g.idxs.length}</span>
                         <span style={{ fontSize: '0.68rem' }}>{on ? '\u25BE' : '\u25B8'}</span>
