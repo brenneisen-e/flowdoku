@@ -581,6 +581,10 @@ export interface AgendaItem {
   description?: string;
   /** v30.86: Raum/Ort des Punkts (Plenum, Raum 3.12). Optional, frei. */
   location?: string;
+  /** v30.94: Cluster — benannte Gruppe, unter der Punkte zusammenstehen
+   *  („Tag 1", „Vormittag", „Track A"). Der Wizard schlägt „Tag N" vor; ohne
+   *  Cluster gruppieren alle Ansichten nach Datum (`agendaGroups`). */
+  cluster?: string;
 }
 
 export interface TransferTime {

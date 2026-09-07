@@ -540,110 +540,6 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                     </WizardHint>
                   )}
                 </div>
-                {/* v30.89: Mitleser-Karte — immer sichtbar (vorher Aufklapper 27). Die
-                    Abmelde-Regel bleibt eingeklappt, bis jemand sie abweichend braucht. */}
-                <div className="form-group" style={{ marginTop: 24 }}>
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <StepBadge n={27} />
-                    {isDe ? 'Sollen die Organizer bei An- und Abmeldungen mitlesen?' : 'Should organizers be looped in on registrations / cancellations?'}
-                  </label>
-                  <div style={{ padding: '12px 14px', borderRadius: 10, border: '1px solid var(--dex-gray-200)', background: '#fff' }}>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>
-                    {/* v28.28: Präzisiert — die Organizer-Kopie ist normalerweise
-                        BCC (unsichtbar), bei EXTERNEN Empfängern steht der
-                        Organizer aber bewusst sichtbar auf CC (v18.74), damit die
-                        externe Person den Ansprechpartner kennt. Die frühere
-                        Formulierung „der Teilnehmer sieht nicht, dass jemand
-                        mitliest" stimmte für diesen Fall nicht. */}
-                    {/* v28.28: Die Organizer-Kopie läuft jetzt durchgehend auf
-                        CC (vorher Bcc bei internen Empfängern) — der Organizer
-                        steht damit sichtbar im Verteiler, „Allen antworten"
-                        landet beim richtigen Ansprechpartner. */}
-                    {isDe
-                      ? <>Wenn aktiv, steht der Organizer bei der Bestätigungs-Mail an den Teilnehmer sichtbar auf <strong>Kopie (Cc)</strong> — praktisch, um zu wissen, wer sich gerade an- oder abmeldet, und der Teilnehmer sieht direkt, wer sein Ansprechpartner ist. Bei großen Events willst du das vielleicht nicht für jede einzelne Anmeldung — dann kannst du es hier gezielt einschränken (z.B. nur kurz vorm Event, wenn kurzfristige Änderungen wichtig sind).</>
-                      : <>When on, the organizer is visibly on <strong>copy (Cc)</strong> of the confirmation email sent to the attendee — handy to know who is signing up or off, and the attendee immediately sees who to contact. For large events you might not want this for every single sign-up — you can narrow it down here (e.g. only close to the event when last-minute changes matter).</>}
-                  </p>
-
-                  {/* Anmeldung */}
-                  <div style={{ marginBottom: 16 }}>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 6 }}>
-                      {isDe ? 'Bei Anmeldungen' : 'On registrations'}
-                    </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
-                        <input type="radio" name="notifyOrgRegister" checked={notifyOrgRegisterMode === 'never'} onChange={() => setNotifyOrgRegisterMode('never')} />
-                        {isDe ? 'Nicht informieren' : 'Don\'t notify'}
-                      </label>
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
-                        <input type="radio" name="notifyOrgRegister" checked={notifyOrgRegisterMode === 'always'} onChange={() => setNotifyOrgRegisterMode('always')} />
-                        {isDe ? 'Bei jeder Anmeldung' : 'On every registration'}
-                      </label>
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
-                        <input type="radio" name="notifyOrgRegister" checked={notifyOrgRegisterMode === 'fromDate'} onChange={() => setNotifyOrgRegisterMode('fromDate')} />
-                        {isDe ? 'Erst ab Datum' : 'Only from date'}
-                      </label>
-                    </div>
-                    {notifyOrgRegisterMode === 'fromDate' && (
-                      <div style={{ marginTop: 10, paddingLeft: 24 }}>
-                        <DatePicker
-                          selected={notifyOrgRegisterFromDate ? new Date(notifyOrgRegisterFromDate) : null}
-                          onChange={(date: Date | null) => setNotifyOrgRegisterFromDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
-                          showTimeSelect
-                          timeFormat="HH:mm"
-                          timeIntervals={15}
-                          timeCaption={isDe ? 'Uhrzeit' : 'Time'}
-                          dateFormat="dd.MM.yyyy, HH:mm"
-                          locale="de"
-                          placeholderText={isDe ? 'Ab diesem Datum BCC' : 'BCC from this date'}
-                          className="form-input"
-                          wrapperClassName="dex-datepicker-wrapper"
-                          calendarClassName="dex-datepicker-calendar"
-                          isClearable
-                          autoComplete="off"
-                        />
-                        <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                          {isDe ? 'Z.B. eine Woche vor dem Event — kurzfristige Anmeldungen werden dann an die Organizer gespiegelt.' : 'E.g. one week before the event — last-minute registrations are mirrored to organizers from then on.'}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                  {orgCancelOpen ? (
-                    <>
-                  {/* Abmeldung */}
-                  <div>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 6 }}>
-                      {isDe ? 'Bei Abmeldungen' : 'On cancellations'}
-                    </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
-                        <input type="radio" name="notifyOrgCancel" checked={notifyOrgCancelMode === 'never'} onChange={() => setNotifyOrgCancelMode('never')} />
-                        {isDe ? 'Nicht informieren' : 'Don\'t notify'}
-                      </label>
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
-                        <input type="radio" name="notifyOrgCancel" checked={notifyOrgCancelMode === 'always'} onChange={() => setNotifyOrgCancelMode('always')} />
-                        {isDe ? 'Bei jeder Abmeldung' : 'On every cancellation'}
-                      </label>
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
-                        <input type="radio" name="notifyOrgCancel" checked={notifyOrgCancelMode === 'afterDeadline'} onChange={() => setNotifyOrgCancelMode('afterDeadline')} />
-                        {isDe ? 'Erst nach der letzten Abmeldemöglichkeit' : 'Only after the last cancellation date'}
-                      </label>
-                    </div>
-                    <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 6 }}>
-                      {isDe
-                        ? '„Erst nach der letzten Abmeldemöglichkeit" nutzt das in Schritt 4 (Kapazität & Sichtbarkeit) gesetzte Datum „Letzte Abmeldemöglichkeit". Vor diesem Stichtag gelten Abmeldungen als unproblematisch — danach möchtest du als Organizer aber wissen, wer noch abspringt.'
-                        : '„Only after the last cancellation date" uses the date set in step 4 (Capacity & Visibility) under „Last cancellation date". Cancellations before that are considered routine — after that, organizers usually want to know about late drop-outs.'}
-                    </p>
-                  </div>
-                    </>
-                  ) : (
-                    <button type="button" onClick={() => setOrgCancelOpen(true)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '0.8rem', color: 'var(--dex-gray-600)', textDecoration: 'underline' }}>
-                      {isDe
-                        ? `Bei Abmeldungen: ${notifyOrgCancelMode === 'always' ? 'bei jeder Abmeldung' : notifyOrgCancelMode === 'afterDeadline' ? 'erst nach der letzten Abmeldemöglichkeit' : 'nicht informieren'} — ändern`
-                        : `On cancellations: ${notifyOrgCancelMode === 'always' ? 'on every cancellation' : notifyOrgCancelMode === 'afterDeadline' ? 'only after the last cancellation date' : 'do not notify'} — change`}
-                    </button>
-                  )}
-                  </div>
-                </div>
                 {/* v30.90: Ebene 2 — die gerenderte Vorschau (Stufe B) plus
                     „Testmail an mich" (Stufe C). Überschrift/Unterzeile des
                     Outlook-Termins kommen vom offenen Reiter: Top-Level aus dem
@@ -1026,10 +922,14 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                       {commToggleRow({
                         checked: autoDeregisterOnDecline,
                         onChange: v => setAutoDeregisterOnDecline(v),
-                        label: isDe ? 'Outlook-Absage = Abmeldung' : 'Outlook decline = deregistration',
+                        // v30.94: ausformuliert — „Termin abgesagt → Platz wird frei"
+                        // las sich als Pfeil-Rätsel (Nutzer: „das versteht man
+                        // textuell nicht"). Jetzt steht da, WER was tut und was
+                        // ohne den Haken passiert.
+                        label: isDe ? 'Outlook-Absage gilt als Abmeldung' : 'Declining in Outlook counts as cancelling',
                         short: isDe
-                          ? 'Termin abgesagt → Platz wird frei, Warteliste rückt nach.'
-                          : 'Invite declined → the spot is freed, the waitlist moves up.',
+                          ? 'Wenn ein Teilnehmer den Kalendertermin in Outlook absagt, meldet DEX ihn automatisch vom Event ab: Sein Platz wird frei und die Warteliste rückt nach. Ohne diesen Haken bekommt er nur eine Erinnerung, sich in der App selbst abzumelden.'
+                          : 'If an attendee declines the calendar invite in Outlook, DEX automatically cancels their registration: the seat is freed and the waitlist moves up. Without this, they only get a reminder to cancel in the app themselves.',
                         accent: 'var(--dex-orange, #ed8b00)',
                         info: isDe
                           ? 'Wenn aktiv: Sagt ein Teilnehmer den Outlook-Termin ab, wird er automatisch auch vom Event abgemeldet — der Platz wird frei und die Warteliste rückt nach. Ohne diesen Haken bekommt die Person bei einer Outlook-Absage nur eine Erinnerung, sich bei Bedarf selbst abzumelden. Hinweis: Diese Automatik greift erst, sobald die einmalige Anpassung im Outlook-Absage-Verarbeitungsschritt im Tenant eingerichtet ist.'
@@ -1038,6 +938,113 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                     </div>
                   )}
                       </div>)}
+                {!disableEmails && (<>
+                {/* v30.89: Mitleser-Karte. v30.94: aus Ebene 1 in die Feineinstellungen
+                    verlegt (Nutzer-Ansage 07.09.2026: das ist Feineinstellung). Die
+                    Abmelde-Regel bleibt eingeklappt, bis jemand sie abweichend braucht. */}
+                <div className="form-group" style={{ marginTop: 0, marginBottom: 10 }}>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <StepBadge n={27} />
+                    {isDe ? 'Sollen die Organizer bei An- und Abmeldungen mitlesen?' : 'Should organizers be looped in on registrations / cancellations?'}
+                  </label>
+                  <div style={{ padding: '12px 14px', borderRadius: 10, border: '1px solid var(--dex-gray-200)', background: '#fff' }}>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>
+                    {/* v28.28: Präzisiert — die Organizer-Kopie ist normalerweise
+                        BCC (unsichtbar), bei EXTERNEN Empfängern steht der
+                        Organizer aber bewusst sichtbar auf CC (v18.74), damit die
+                        externe Person den Ansprechpartner kennt. Die frühere
+                        Formulierung „der Teilnehmer sieht nicht, dass jemand
+                        mitliest" stimmte für diesen Fall nicht. */}
+                    {/* v28.28: Die Organizer-Kopie läuft jetzt durchgehend auf
+                        CC (vorher Bcc bei internen Empfängern) — der Organizer
+                        steht damit sichtbar im Verteiler, „Allen antworten"
+                        landet beim richtigen Ansprechpartner. */}
+                    {isDe
+                      ? <>Wenn aktiv, steht der Organizer bei der Bestätigungs-Mail an den Teilnehmer sichtbar auf <strong>Kopie (Cc)</strong> — praktisch, um zu wissen, wer sich gerade an- oder abmeldet, und der Teilnehmer sieht direkt, wer sein Ansprechpartner ist. Bei großen Events willst du das vielleicht nicht für jede einzelne Anmeldung — dann kannst du es hier gezielt einschränken (z.B. nur kurz vorm Event, wenn kurzfristige Änderungen wichtig sind).</>
+                      : <>When on, the organizer is visibly on <strong>copy (Cc)</strong> of the confirmation email sent to the attendee — handy to know who is signing up or off, and the attendee immediately sees who to contact. For large events you might not want this for every single sign-up — you can narrow it down here (e.g. only close to the event when last-minute changes matter).</>}
+                  </p>
+
+                  {/* Anmeldung */}
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 6 }}>
+                      {isDe ? 'Bei Anmeldungen' : 'On registrations'}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
+                        <input type="radio" name="notifyOrgRegister" checked={notifyOrgRegisterMode === 'never'} onChange={() => setNotifyOrgRegisterMode('never')} />
+                        {isDe ? 'Nicht informieren' : 'Don\'t notify'}
+                      </label>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
+                        <input type="radio" name="notifyOrgRegister" checked={notifyOrgRegisterMode === 'always'} onChange={() => setNotifyOrgRegisterMode('always')} />
+                        {isDe ? 'Bei jeder Anmeldung' : 'On every registration'}
+                      </label>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
+                        <input type="radio" name="notifyOrgRegister" checked={notifyOrgRegisterMode === 'fromDate'} onChange={() => setNotifyOrgRegisterMode('fromDate')} />
+                        {isDe ? 'Erst ab Datum' : 'Only from date'}
+                      </label>
+                    </div>
+                    {notifyOrgRegisterMode === 'fromDate' && (
+                      <div style={{ marginTop: 10, paddingLeft: 24 }}>
+                        <DatePicker
+                          selected={notifyOrgRegisterFromDate ? new Date(notifyOrgRegisterFromDate) : null}
+                          onChange={(date: Date | null) => setNotifyOrgRegisterFromDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
+                          showTimeSelect
+                          timeFormat="HH:mm"
+                          timeIntervals={15}
+                          timeCaption={isDe ? 'Uhrzeit' : 'Time'}
+                          dateFormat="dd.MM.yyyy, HH:mm"
+                          locale="de"
+                          placeholderText={isDe ? 'Ab diesem Datum BCC' : 'BCC from this date'}
+                          className="form-input"
+                          wrapperClassName="dex-datepicker-wrapper"
+                          calendarClassName="dex-datepicker-calendar"
+                          isClearable
+                          autoComplete="off"
+                        />
+                        <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                          {isDe ? 'Z.B. eine Woche vor dem Event — kurzfristige Anmeldungen werden dann an die Organizer gespiegelt.' : 'E.g. one week before the event — last-minute registrations are mirrored to organizers from then on.'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  {orgCancelOpen ? (
+                    <>
+                  {/* Abmeldung */}
+                  <div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 6 }}>
+                      {isDe ? 'Bei Abmeldungen' : 'On cancellations'}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
+                        <input type="radio" name="notifyOrgCancel" checked={notifyOrgCancelMode === 'never'} onChange={() => setNotifyOrgCancelMode('never')} />
+                        {isDe ? 'Nicht informieren' : 'Don\'t notify'}
+                      </label>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
+                        <input type="radio" name="notifyOrgCancel" checked={notifyOrgCancelMode === 'always'} onChange={() => setNotifyOrgCancelMode('always')} />
+                        {isDe ? 'Bei jeder Abmeldung' : 'On every cancellation'}
+                      </label>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
+                        <input type="radio" name="notifyOrgCancel" checked={notifyOrgCancelMode === 'afterDeadline'} onChange={() => setNotifyOrgCancelMode('afterDeadline')} />
+                        {isDe ? 'Erst nach der letzten Abmeldemöglichkeit' : 'Only after the last cancellation date'}
+                      </label>
+                    </div>
+                    <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 6 }}>
+                      {isDe
+                        ? '„Erst nach der letzten Abmeldemöglichkeit" nutzt das in Schritt 4 (Kapazität & Sichtbarkeit) gesetzte Datum „Letzte Abmeldemöglichkeit". Vor diesem Stichtag gelten Abmeldungen als unproblematisch — danach möchtest du als Organizer aber wissen, wer noch abspringt.'
+                        : '„Only after the last cancellation date" uses the date set in step 4 (Capacity & Visibility) under „Last cancellation date". Cancellations before that are considered routine — after that, organizers usually want to know about late drop-outs.'}
+                    </p>
+                  </div>
+                    </>
+                  ) : (
+                    <button type="button" onClick={() => setOrgCancelOpen(true)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '0.8rem', color: 'var(--dex-gray-600)', textDecoration: 'underline' }}>
+                      {isDe
+                        ? `Bei Abmeldungen: ${notifyOrgCancelMode === 'always' ? 'bei jeder Abmeldung' : notifyOrgCancelMode === 'afterDeadline' ? 'erst nach der letzten Abmeldemöglichkeit' : 'nicht informieren'} — ändern`
+                        : `On cancellations: ${notifyOrgCancelMode === 'always' ? 'on every cancellation' : notifyOrgCancelMode === 'afterDeadline' ? 'only after the last cancellation date' : 'do not notify'} — change`}
+                    </button>
+                  )}
+                  </div>
+                </div>
+                </>)}
                   {/* inactiveHandling: Verhalten, wenn eine angemeldete Person
                       nicht mehr bei Deloitte arbeitet. 'notify' = Organizer per
                       Mail informieren (Standard), 'autoderegister' = automatisch

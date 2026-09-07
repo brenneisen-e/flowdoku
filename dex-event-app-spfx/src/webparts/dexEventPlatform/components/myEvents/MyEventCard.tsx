@@ -13,6 +13,7 @@ import { UserFieldPicker } from '../UserFieldPicker';
 import { isEventVisibleForUser } from '../EventListPage';
 import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime } from '../../types';
 import { parseAgendaCheckIns, formatMarkTime } from '../../utils/agendaCheckIns';
+import { agendaGroups, sortAgenda, groupDateLabel } from '../../utils/agendaGroups';
 import { SPRegistration } from '../../services/EventService';
 import { isEventOver, formatAllDayPeriod } from '../../utils/eventFormat';
 import { selfCancelLocked, selfCancelLockReason } from '../../utils/cancelPolicy';
@@ -836,22 +837,14 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
 
                 {/* Agenda / Timeline - mehrspaltig bei mehreren Tagen, horizontal scrollbar auf Mobile */}
                 {event.agenda && event.agenda.length > 0 && (() => {
-                  const grouped = Object.entries(
-                    event.agenda.reduce((groups: Record<string, AgendaItem[]>, item: AgendaItem) => {
-                      const key = item.date || 'TBD';
-                      if (!groups[key]) groups[key] = [];
-                      groups[key].push(item);
-                      return groups;
-                    }, {} as Record<string, AgendaItem[]>)
-                  ).sort(([a], [b]) => a.localeCompare(b));
+                  // v30.94: Cluster statt roher Datums-Gruppen (utils/agendaGroups) —
+                  // ohne Cluster-Namen bleibt es der Tag, wie bisher.
+                  const grouped = agendaGroups(event.agenda);
                   const dayCount = grouped.length;
                   // v22.36: Durchlaufende Nummerierung der Agenda-Schritte
                   // (über alle Tage, sortiert nach Datum + Uhrzeit) — die
                   // Einzel-Schritte zeigen keine Icons mehr, nur die Sektion.
-                  const agendaOrderIds = event.agenda
-                    .slice()
-                    .sort((a: AgendaItem, b: AgendaItem) => ((a.date || '') + (a.time || '')).localeCompare((b.date || '') + (b.time || '')))
-                    .map((x: AgendaItem) => x.id);
+                  const agendaOrderIds = sortAgenda(event.agenda).map((x: AgendaItem) => x.id);
 
                   return (
                     <div style={{ marginTop: 12 }}>
@@ -873,8 +866,10 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                           paddingBottom: 4,
                         }}
                       >
-                        {grouped.map(([date, items]) => (
-                          <div key={date} style={{
+                        {grouped.map((grp) => {
+                          const items = grp.items;
+                          return (
+                          <div key={grp.key} style={{
                             flex: `0 0 ${dayCount === 1 ? '100%' : dayCount === 2 ? 'calc(50% - 8px)' : 'min(280px, 85%)'}`,
                             scrollSnapAlign: 'start',
                             background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: 12,
@@ -886,9 +881,9 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                               background: 'var(--dex-green-dark, #6b9a1e)', borderRadius: 8, padding: '6px 12px',
                               textAlign: 'center',
                             }}>
-                              {date !== 'TBD' ? new Date(date + 'T00:00').toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }) : 'TBD'}
+                              {grp.cluster ? <>{grp.cluster}<span style={{ fontWeight: 500, opacity: 0.85 }}> · {groupDateLabel(grp, isDe)}</span></> : (grp.dates.length ? groupDateLabel(grp, isDe) : 'TBD')}
                             </div>
-                            {items.sort((a: AgendaItem, b: AgendaItem) => (a.time || '').localeCompare(b.time || '')).map((item: AgendaItem) => (
+                            {items.map((item: AgendaItem) => (
                               <div key={item.id} style={{
                                 display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 0',
                                 borderLeft: '2px solid var(--dex-green)', marginLeft: 4, paddingLeft: 10,
@@ -918,7 +913,8 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                               </div>
                             ))}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   );

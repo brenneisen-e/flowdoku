@@ -17,6 +17,7 @@ import { AgendaItem, DeloitteEvent, EventType } from '../../../types';
 import { CustomFieldInput } from '../../wizard/customFieldInput';
 import { ImgView, SubEventDraft } from '../../wizard/wizardTypes';
 import { EmailOverrideEntry } from '../../wizard/emailOverrideEntry';
+import { outlookDefaultBodyTemplate, outlookOrganizerFallback } from '../../../utils/outlookDefaultBody';
 
 export interface WizardSubmitCtx {
   activeFrom: string;
@@ -407,19 +408,14 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
       // v24.60: Namen wie die Anmelde-Mail normalisieren („Schwartz, Eva" →
       // „Eva Schwartz") und mit „und"/„and" verbinden — nicht stumpf mit Komma.
       const orgNames = formatOrganizerList([organizer], effEmailLanguage);
-      const escHtml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
       // v9.8: Default-Body enthält jetzt auch den Abmelde-Hinweis analog zur
       // Anmeldebestätigungs-Mail. Sonst weiß der Empfänger nicht, wie er
       // sich abmelden kann — die Outlook-Decline-Funktion triggert zwar einen
       // Reminder-Flow, aber der eigentliche App-Abmelde-Pfad ist sauberer.
-      const APP_URL_OL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
-      const defaultOutlookBody = effEmailLanguage === 'EN'
-        ? `<p>You are registered for the event <strong>${escHtml(title)}</strong>.</p>`
-          + `<p>If you are unable to attend, please cancel your registration in time via the <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;My Events&ldquo;).</p>`
-          + `<p>For organizational questions please contact <strong>${escHtml(orgNames || 'the organizer')}</strong>.</p>`
-        : `<p>Ihr seid für das Event <strong>${escHtml(title)}</strong> angemeldet.</p>`
-          + `<p>Falls ihr nicht teilnehmen könnt, meldet euch bitte rechtzeitig über die <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
-          + `<p>Bei organisatorischen Fragen wendet euch bitte an <strong>${escHtml(orgNames || 'den Organizer')}</strong>.</p>`;
+      // v30.94: Vorlage aus utils/outlookDefaultBody — dieselbe wie im Editor
+      // („Standardtext laden", Vorschau bei leerem Body) und in der
+      // Vorschau-Karte; replacePlaceholders escapet Titel und Namen.
+      const defaultOutlookBody = replacePlaceholders(outlookDefaultBodyTemplate(effEmailLanguage), { ...outlookVars, Organizer: orgNames || outlookOrganizerFallback(effEmailLanguage) });
       const resolvedBody = effOutlookBody
         ? replacePlaceholders(effOutlookBody, outlookVars)
         : defaultOutlookBody;
@@ -1490,17 +1486,9 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
             StartDate: startDate ? new Date(startDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
             EndDate: endDate ? new Date(endDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
           };
-          const escHtml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
           // v9.8: gleicher Default-Body wie im Update-Pfad — inkl. Abmelde-Hinweis
-          // mit Link auf die App ("Meine Events"-Tab).
-          const APP_URL_OL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
-          const defaultBody = effEmailLanguage === 'EN'
-            ? `<p>You are registered for the event <strong>${escHtml(title)}</strong>.</p>`
-              + `<p>If you are unable to attend, please cancel your registration in time via the <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;My Events&ldquo;).</p>`
-              + `<p>For organizational questions please contact <strong>${escHtml(orgNames || 'the organizer')}</strong>.</p>`
-            : `<p>Ihr seid für das Event <strong>${escHtml(title)}</strong> angemeldet.</p>`
-              + `<p>Falls ihr nicht teilnehmen könnt, meldet euch bitte rechtzeitig über die <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
-              + `<p>Bei organisatorischen Fragen wendet euch bitte an <strong>${escHtml(orgNames || 'den Organizer')}</strong>.</p>`;
+          // mit Link auf die App ("Meine Events"-Tab). v30.94: aus utils/outlookDefaultBody.
+          const defaultBody = replacePlaceholders(outlookDefaultBodyTemplate(effEmailLanguage), { ...vars, Organizer: orgNames || outlookOrganizerFallback(effEmailLanguage) });
           const resolvedBody = effOutlookBody ? replacePlaceholders(effOutlookBody, vars) : defaultBody;
           const resolvedHeading = effOutlookHeading ? replacePlaceholders(effOutlookHeading, vars) : title;
           // v27.5: Default-Unter-Überschrift = Ort (nicht Datum).

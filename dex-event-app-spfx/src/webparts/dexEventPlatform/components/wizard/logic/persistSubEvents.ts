@@ -13,6 +13,7 @@ import { isThrottled } from '../../../utils/spThrottle';
 import { dlog } from '../../../utils/debugLog';
 import { SubEventDraft } from '../../wizard/wizardTypes';
 import { EmailOverrideEntry } from '../../wizard/emailOverrideEntry';
+import { outlookDefaultBodyTemplate, outlookOrganizerFallback } from '../../../utils/outlookDefaultBody';
 
 export interface PersistSubEventsCtx {
   // v30.67: Adresse des Hauptevents — Fallback für {{Address}} im Outlook-
@@ -273,15 +274,9 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
           StartDate: draft.startDate ? new Date(draft.startDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
           EndDate: draft.endDate ? new Date(draft.endDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
         };
-        const escHtmlSub = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-        const APP_URL_SUB = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
-        const defaultSubBody = subEmailLang === 'EN'
-          ? `<p>You are registered for the event <strong>${escHtmlSub(draft.title.trim())}</strong>.</p>`
-            + `<p>If you are unable to attend, please cancel your registration in time via the <a href="${APP_URL_SUB}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;My Events&ldquo;).</p>`
-            + `<p>For organizational questions please contact <strong>${escHtmlSub(orgNamesSub || 'the organizer')}</strong>.</p>`
-          : `<p>Ihr seid für das Event <strong>${escHtmlSub(draft.title.trim())}</strong> angemeldet.</p>`
-            + `<p>Falls ihr nicht teilnehmen könnt, meldet euch bitte rechtzeitig über die <a href="${APP_URL_SUB}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
-            + `<p>Bei organisatorischen Fragen wendet euch bitte an <strong>${escHtmlSub(orgNamesSub || 'den Organizer')}</strong>.</p>`;
+        // v30.94: Standard-Text aus utils/outlookDefaultBody — derselbe wie
+        // Hauptevent, Editor und Vorschau-Karte.
+        const defaultSubBody = replacePlaceholders(outlookDefaultBodyTemplate(subEmailLang), { ...vars, Organizer: orgNamesSub || outlookOrganizerFallback(subEmailLang) });
         const resolvedBody = subOutlookBodyRaw ? replacePlaceholders(subOutlookBodyRaw, vars) : defaultSubBody;
         const resolvedHead = subOutlookHeading ? replacePlaceholders(subOutlookHeading, vars) : draft.title.trim();
         // v27.5: Default-Unter-Überschrift = Ort (nicht Datum).

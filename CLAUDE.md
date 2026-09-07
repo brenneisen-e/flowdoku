@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.93.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.94.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -593,6 +593,30 @@ Stufe 2 (Check-in je Punkt, Spalte `AgendaCheckIns` auf den Teilnehmerlisten
 — über `ensureRegistrationList` UND `fixRegistrationListColumns`) ist offen.
 Wer eine Auswertung über Anwesenheit baut: die Bezeichnung IMMER aus
 `agendaTermSingular/Plural` nehmen, nie „Programmpunkt" fest verdrahten.
+
+**Programmpunkte haben seit v30.94 Cluster — und genau EINE Gruppierungs-
+regel: `utils/agendaGroups.agendaGroups()`.** `AgendaItem.cluster` ist ein
+freier Name („Tag 1", „Track A"); ohne Namen gruppiert das Datum. Wizard
+(`components/wizard/AgendaEditor.tsx`, gemeinsam für Haupt- und Sub-Event),
+Anmeldeseite, Meine Events, Check-in-Chips und Anwesenheit rufen alle
+dieselbe Funktion — wer eine neue Ansicht über die Agenda baut, auch. Im
+Editor gibt es KEINE nativen `<input type="date">`/`type="time">` mehr:
+Chrome/Edge zeigen sie in der Browser-Sprache (10/12/2026, 11:00 AM), das
+`lang`-Attribut aus v30.60 hilft dort nicht (Screenshot 07.09.2026). Datum
+über react-datepicker (`dd.MM.yyyy`, locale de), Zeit als Text mit
+`normalizeTimeInput`. Wer irgendwo ein neues Datums-/Zeitfeld baut: nie
+nativ.
+
+**Der Outlook-Standardtext steht an EINER Stelle:
+`utils/outlookDefaultBody.ts`.** Bis v30.93 stand er dreimal im Code
+(wizardSubmit Update/Create, persistSubEvents) und die zwei Vorschauen
+zeigten zwei ANDERE Texte (Editor: Platzhalter-Satz, Vorschau-Karte:
+erfunden). Wer einen Default-Text für Mail oder Termin braucht, baut ihn
+als Vorlage mit Platzhaltern und löst ihn mit `replacePlaceholders` auf —
+Vorschau und Speichern müssen dieselbe Quelle lesen, sonst „wird es zweimal
+unterschiedlich gerendert". Dasselbe für den Orb: `HtmlEditorModal` wendet
+denselben Orb-Schutz an wie `headerLayoutFor` (ohne eigenes Logo max.
+180 px); Rohwerte aus dem Layout-State gehören nie direkt in eine Vorschau.
 
 **Trikot-Bestand (`_shirtStock`, v30.88) ist Organizer-Center-Daten im
 Wizard-Blob.** Wie `_hotels`: im Wizard gestrippt (`useWizardVisibilityState`)
