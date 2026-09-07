@@ -21,6 +21,7 @@ import { Users } from './Icons';
 import B2RunBibImportModal from './admin/B2RunBibImportModal';
 import B2RunTodoModal from './admin/B2RunTodoModal';
 import ShirtSizeModal from './admin/ShirtSizeModal';
+import CopyToAgendaModal from './admin/CopyToAgendaModal';
 import { SHIRT_PATTERN } from '../utils/checkInExtras';
 import { isEventOver } from '../utils/eventFormat';
 import AddParticipantsModal from './admin/AddParticipantsModal';
@@ -1025,6 +1026,8 @@ export default function AdminPage(): React.ReactElement {
   const [b2runTodoOpen, setB2runTodoOpen] = React.useState(false);
   // v30.60: Bestellliste der Trikots (s. components/admin/ShirtSizeModal).
   const [shirtSizeOpen, setShirtSizeOpen] = React.useState(false);
+  // v30.93: Programmpunkte, Stufe 4 — Kopie in ein neues Event.
+  const [copyToAgendaOpen, setCopyToAgendaOpen] = React.useState(false);
   // v30.60: Aufgeklappte Reiter-Gruppe („Day 1" …). null = die zuletzt
   // sinnvolle Gruppe wird beim Rendern bestimmt (die des gewählten Termins).
   const [openTabGroup, setOpenTabGroup] = React.useState<string | null>(null);
@@ -2206,7 +2209,7 @@ export default function AdminPage(): React.ReactElement {
     setRepairAccessResult, setRepairNamesResult, setRepairOrganizersResult, setRepairPermsResult, setResetCounterResult,
     setShirtSizeOpen, setShowDeclineModal, setShowExportMenu, setSubRegReloadTick, setSyncRegistryResult, shirtFieldExists,
     showAlert, showExportMenu, siteUrl, spServiceRef, syncRegistryResult, t,
-    updateEvent,
+    updateEvent, setCopyToAgendaOpen,
   };
   const kpiTilesProps = {
     isConsolidatedMode, isDe, isSplitCapacity, registrations, regsUnknown, selectedEvent, subEventRegsByEventId, subListsIncomplete, t,
@@ -2719,6 +2722,17 @@ export default function AdminPage(): React.ReactElement {
       {/* v30.54: Offene Aufgaben beim Veranstalter (B2Run Köln). */}
       {shirtSizeOpen && selectedEvent && (
         <ShirtSizeModal event={selectedEvent} onClose={() => setShirtSizeOpen(false)} />
+      )}
+
+      {/* v30.93: Programmpunkte, Stufe 4. */}
+      {copyToAgendaOpen && selectedEvent && (
+        <CopyToAgendaModal
+          event={selectedEvent}
+          childEvents={childEventsOf(selectedEvent.id)}
+          isDe={isDe}
+          onClose={() => setCopyToAgendaOpen(false)}
+          onDone={() => { void refreshEvents(); }}
+        />
       )}
 
       {b2runTodoOpen && selectedEvent && eventServiceRef && (

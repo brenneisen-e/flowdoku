@@ -97,6 +97,8 @@ export interface AdminActionsCardProps {
   setRepairPermsResult: React.Dispatch<React.SetStateAction<string>>;
   setResetCounterResult: React.Dispatch<React.SetStateAction<string>>;
   setShirtSizeOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  /** v30.93: Kopie in ein neues Event mit Programmpunkten (Programmpunkte, Stufe 4). */
+  setCopyToAgendaOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setShowDeclineModal: React.Dispatch<React.SetStateAction<boolean>>;
   setShowExportMenu: React.Dispatch<React.SetStateAction<boolean>>;
   setSubRegReloadTick: React.Dispatch<React.SetStateAction<number>>;
@@ -113,6 +115,7 @@ export interface AdminActionsCardProps {
 
 export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
   const { adminEvents, allEvents, childEventsOf, confirmDialog, copiedDeepLink, copiedEmails, detectOverbookResult, eventServiceRef, fixColumnsResult, fixFieldsResult, isAdmin, isCheckingDeclines, isDe, isDetectingOverbook, isFixingColumns, isFixingFields, isOrganizerFor, isPromoting, isRefreshingProfiles, isReorderingIDs, isRepairingAccess, isRepairingNames, isRepairingOrganizers, isRepairingPerms, isResettingCounter, isSendingQR, isSplitCapacity, isSyncingRegistry, navigate, openChangeLogForEvent, openCommsModal, openInviteModal, openMassmailPicker, promoteResult, qrSentCount, refreshEvents, refreshProfilesResult, registrations, reloadRegistrations, reorderResult, repairAccessResult, repairNamesResult, repairOrganizersResult, repairPermsResult, resetCounterResult, runIdReorder, runManualPromote, searchUsers, selectedEvent, setAccessFixModal, setB2runTodoOpen, setBibImportOpen, setBillingPanelOpen, setCheckInHubOpen, setCheckInHubStep, setCopiedDeepLink, setCopiedEmails, setDeclineCopied, setDeclineResult, setDetectOverbookResult, setExcelAudience, setExcelTargetModal, setFixColumnsResult, setFixFieldsResult, setIsCheckingDeclines, setIsDetectingOverbook, setIsFixingColumns, setIsFixingFields, setIsRefreshingProfiles, setIsRepairingAccess, setIsRepairingNames, setIsRepairingOrganizers, setIsRepairingPerms, setIsResettingCounter, setIsSyncingRegistry, setNameFixModal, setRefreshProfilesResult, setRepairAccessResult, setRepairNamesResult, setRepairOrganizersResult, setRepairPermsResult, setResetCounterResult, setShirtSizeOpen, setShowDeclineModal, setShowExportMenu, setSubRegReloadTick, setSyncRegistryResult, shirtFieldExists, showAlert, showExportMenu, siteUrl, spServiceRef, syncRegistryResult, t, updateEvent } = p;
+  const { setCopyToAgendaOpen } = p;
   return (
         <ActionsCollapsibleCard isDe={isDe}>
           <div className="admin-actions-grid" style={{
@@ -417,6 +420,22 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                   : 'Totals the shirt sizes of all registered people — the order list per size, with names and as Excel. People without a size are listed by name instead of dropped.'}
                 badge="organizer"
                 onClick={() => setShirtSizeOpen(true)}
+              />
+            )}
+
+            {/* 5c-3. v30.93: Programmpunkte, Stufe 4 — ein Event mit Sub-Events
+                in ein NEUES Event mit Programmpunkten überführen. Nur bei
+                Klammern mit Terminen; das alte Event bleibt unangetastet. */}
+            {selectedEvent && !selectedEvent.parentEventId && childEventsOf(selectedEvent.id).length > 0 && (
+              <ActionTile
+                icon={<Copy size={18} />}
+                category="event"
+                title={isDe ? 'Als neues Event mit Programmpunkten kopieren' : 'Copy as new event with agenda items'}
+                desc={isDe
+                  ? 'Legt ein NEUES Event an, dessen Programmpunkte die bisherigen Sub-Events sind: Anmeldungen werden still kopiert (keine Mail, kein Outlook), Check-ins werden zu Anwesenheiten. Dieses Event bleibt vollständig erhalten.'
+                  : 'Creates a NEW event whose agenda items are the current sub-events: registrations are copied silently (no mail, no Outlook), check-ins become attendances. This event stays intact.'}
+                badge="organizer"
+                onClick={() => setCopyToAgendaOpen(true)}
               />
             )}
 

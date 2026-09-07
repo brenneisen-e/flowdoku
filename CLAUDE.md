@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.92.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.93.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -782,8 +782,14 @@ dazu erledigt. Offen und **noch nicht begonnen**:
    `buildEmailFromTemplate`/`buildOutlookBody` — sonst zeigt sie etwas
    anderes als die Mail.
 
-3. **Programmpunkte Stufe 2–4** (`docs/konzept-programmpunkte.md`): Check-in
-   je Punkt, Anwesenheits-Matrix, Kopie in ein neues Event.
+3. **Programmpunkte** — Stufen 1–4 sind ausgeliefert (v30.86, v30.91,
+   v30.92, v30.93; `docs/konzept-programmpunkte.md`). Offen: Self-Check-in
+   je Punkt (Live-QR je Programmpunkt; die Self-Check-in-Seite ist
+   event-bezogen), `{{Programm}}`-Platzhalter für Mail/Outlook,
+   Teilnahmebescheinigung. Vor dem Einsatz am 20er-Event: einmal an einer
+   Kopie durchspielen — die Aktion ist dafür gebaut (Test-Event, altes Event
+   bleibt). Anwesenheit liegt in `AgendaCheckIns` je Teilnehmerzeile;
+   Bestandslisten brauchen einmal „Spalten fixen".
 
 Bewusst **nicht** gebaut: ein Dropdown zum Springen zwischen Sub-Event-Reitern.
 Es wäre eine zweite Bedienung für dieselbe Auswahl; die gescrollte Leiste hat
