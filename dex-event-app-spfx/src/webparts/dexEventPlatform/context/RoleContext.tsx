@@ -69,6 +69,10 @@ interface RoleContextType {
    *  brauchen — als ein boolean war die Rollenverwaltung im ersten Fall
    *  falsch („Rolle entfernt — aber …", obwohl sie noch stand). */
   hadRoleRightsIssue: () => boolean;
+  /** v30.85: welche Rechte beim letzten addRole/updateRole nicht gesetzt werden konnten. */
+  lastRoleRightsMissing: () => string[];
+  /** v30.85: Ergebnis der letzten automatischen Rechte-Prüfung (Admin-Start, 1×/24 h). */
+  lastRightsAudit: { ts: number; checked: number; missing: number; fixed: number; failed: number } | null;
   setPowerUser: (itemId: number, isPowerUser: boolean) => Promise<boolean>;
   updateRoleLocation: (itemId: number, location: string) => Promise<boolean>;
   removeRole: (itemId: number) => Promise<boolean>;
@@ -267,17 +271,28 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
       return updateRole(existing.id, role);
     }
     const success = await spService.addRole(userEmail, userName, role, location, currentUserName);
+    roleRightsIssueRef.current = false;
+    roleRightsMissingRef.current = [];
     if (success) {
+      // v30.85: Rechte-Ergebnis NICHT mehr schlucken. Die Prüfung vom
+      // 07.09.2026 fand 18 von 126 Einträgen mit fehlenden Rechten — jede
+      // dieser Zuweisungen hatte hier „Role assigned successfully" gemeldet.
       try {
+        const missing: string[] = [];
         if (role === 'Admin' || role === 'IT-Admin') {
           await spService.grantFullControlOnRolesList(userEmail);
           await spService.grantFullControlOnEventsList(userEmail);
-          await spService.grantOrganizerPermissions(userEmail); // Site-Rechte für Subsite-Erstellung
+          missing.push(...await spService.grantOrganizerPermissions(userEmail)); // Site-Rechte für Subsite-Erstellung
         } else if (role === 'Organizer' || role === 'F&A') {
-          await spService.grantReadOnRolesList(userEmail);
-          await spService.grantOrganizerPermissions(userEmail);
+          if (!(await spService.grantReadOnRolesList(userEmail))) missing.push('Rollenliste (Lesen)');
+          missing.push(...await spService.grantOrganizerPermissions(userEmail));
         }
-      } catch (err) { console.warn('[DEX] permission grant for addRole failed (best-effort):', err); }
+        if (missing.length > 0) { roleRightsIssueRef.current = true; roleRightsMissingRef.current = missing; }
+      } catch (err) {
+        console.warn('[DEX] permission grant for addRole failed:', err);
+        roleRightsIssueRef.current = true;
+        roleRightsMissingRef.current = ['Rechte nicht prüfbar'];
+      }
       await refreshRoles();
     }
     return success;
@@ -307,6 +322,43 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   // v30.67 (Review): s. hadRoleRightsIssue im Interface.
   const roleRightsIssueRef = React.useRef(false);
   function hadRoleRightsIssue(): boolean { return roleRightsIssueRef.current; }
+  // v30.85: WELCHE Rechte beim letzten addRole/updateRole fehlten.
+  const roleRightsMissingRef = React.useRef<string[]>([]);
+  function lastRoleRightsMissing(): string[] { return roleRightsMissingRef.current; }
+
+  // v30.85: Automatische Rechte-Prüfung für Admins, einmal je 24 h, 30 s nach
+  // dem Boot. Die Zuweisung setzt die drei Rechte jetzt mit Wiederholung und
+  // Nachlesen — aber Zeilen, die direkt in SharePoint entstehen, und
+  // Zuweisungen aus alten Versionen erreicht das nicht. Statt zu warten, bis
+  // jemand seine Kachel vermisst, holt der erste Admin-Start des Tages nach.
+  const [lastRightsAudit, setLastRightsAudit] = React.useState<{ ts: number; checked: number; missing: number; fixed: number; failed: number } | null>(() => {
+    try {
+      const raw = window.localStorage.getItem('dex_roles_rights_audit_v1');
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  });
+  const autoAuditRanRef = React.useRef(false);
+  React.useEffect(() => {
+    if (autoAuditRanRef.current) return;
+    if (isRolesLoading || roles.length === 0) return;
+    if (!(currentUserRole === 'Admin' || currentUserRole === 'IT-Admin')) return;
+    if (lastRightsAudit && (Date.now() - lastRightsAudit.ts) < 24 * 60 * 60 * 1000) { autoAuditRanRef.current = true; return; }
+    autoAuditRanRef.current = true;
+    const t = window.setTimeout(() => {
+      spService.auditRolesListAccess(roles.map(r => ({ email: r.userEmail, name: r.userName, role: r.role })))
+        .then(r => {
+          if (r.readFailed) return; // nächster Start versucht es wieder
+          const entry = { ts: Date.now(), checked: r.checked, missing: r.missing.length, fixed: r.fixed.length, failed: r.failed.length };
+          setLastRightsAudit(entry);
+          try { window.localStorage.setItem('dex_roles_rights_audit_v1', JSON.stringify(entry)); } catch { /* */ }
+          if (r.missing.length > 0) console.warn(`[DEX] Automatische Rechte-Prüfung: ${r.missing.length} Einträge ohne vollständige Rechte, ${r.fixed.length} nachgesetzt, ${r.failed.length} nicht setzbar.`);
+        })
+        .catch(() => { /* still — Knopf in der Rollenverwaltung bleibt */ });
+    }, 30000);
+    // Kein clearTimeout-Cleanup (s. EventContext shadowHeal, v30.67).
+    void t;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRolesLoading, roles, currentUserRole]);
 
   async function updateRole(itemId: number, newRole: UserRole): Promise<boolean> {
     const oldRole = roles.find(r => r.id === itemId);
@@ -317,12 +369,14 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     // weggeloggt und nur `success` (die DEX_Roles-Zeile) zurückgegeben —
     // die App meldete Erfolg, während die alten Rechte stehen blieben.
     let rightsOk = true;
+    roleRightsMissingRef.current = [];
     if (success && oldRole) {
       try {
         if (newRole === 'Admin' || newRole === 'IT-Admin') {
           await spService.grantFullControlOnRolesList(oldRole.userEmail);
           await spService.grantFullControlOnEventsList(oldRole.userEmail);
-          await spService.grantOrganizerPermissions(oldRole.userEmail);
+          const miss = await spService.grantOrganizerPermissions(oldRole.userEmail);
+          if (miss.length > 0) { rightsOk = false; roleRightsMissingRef.current = miss; }
         } else if (newRole === 'Organizer' || newRole === 'F&A') {
           // v30.67: Downgrade Admin → Organizer/F&A. `addroleassignment` ist
           // ADDITIV — Read auf DEX_Roles kam bisher NEBEN das bestehende Full
@@ -333,8 +387,10 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
           if (isAdminRole(oldRole.role)) {
             rightsOk = await spService.revokeAccessOnRolesList(oldRole.userEmail) && rightsOk;
           }
-          await spService.grantReadOnRolesList(oldRole.userEmail);
-          await spService.grantOrganizerPermissions(oldRole.userEmail);
+          const miss: string[] = [];
+          if (!(await spService.grantReadOnRolesList(oldRole.userEmail))) miss.push('Rollenliste (Lesen)');
+          miss.push(...await spService.grantOrganizerPermissions(oldRole.userEmail));
+          if (miss.length > 0) { rightsOk = false; roleRightsMissingRef.current = miss; }
         } else if (newRole === 'User') {
           rightsOk = await revokeAllAccess(oldRole.userEmail) && rightsOk;
         }
@@ -462,10 +518,10 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     roles, currentUserRole, isRolesLoading, rolesReadStatus,
     isAdmin, isOrganizer, canCreateEvents, isPowerUser, siteUrl,
     originalIsAdmin, isImpersonating, previewAsUser, setPreviewAsUser, isFA,
-    addRole, updateRole, hadRoleRightsIssue, setPowerUser, updateRoleLocation, removeRole, refreshRoles, searchUser, searchUsers, searchGroups, getGroupMembers, searchUsersByLocation, getEmployeeData,
-    auditRolesAccess, getBasicProfiles,
+    addRole, updateRole, hadRoleRightsIssue, lastRoleRightsMissing, setPowerUser, updateRoleLocation, removeRole, refreshRoles, searchUser, searchUsers, searchGroups, getGroupMembers, searchUsersByLocation, getEmployeeData,
+    auditRolesAccess, getBasicProfiles, lastRightsAudit,
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [roles, currentUserRole, isRolesLoading, rolesReadStatus, isImpersonating, previewAsUser, siteUrl]);
+  }), [roles, currentUserRole, isRolesLoading, rolesReadStatus, isImpersonating, previewAsUser, siteUrl, lastRightsAudit]);
 
   return React.createElement(
     RoleContext.Provider,

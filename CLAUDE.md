@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.84.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.85.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -440,7 +440,12 @@ zeigte bis v30.80 nur „Organizer werden?". „Steht in der Liste, sieht keine
 Kachel" heißt also ZUERST: Rollenverwaltung → „Rechte prüfen" (seit v30.84 alle drei Rechte: Rollenliste, DEX_Events, Web)
 (`auditRolesListAccess`, v30.81), dann installierte Version (>100 Zeilen
 ist seit v30.67 erledigt), dann E-Mail-Schreibweise (seit v30.81 über
-`isCurrentUser`, beide Adressen).
+`isCurrentUser`, beide Adressen). Seit v30.85 setzt JEDE Rechtevergabe
+über `_grantVerified` (3 Versuche, dann `roledefinitionbindings`
+nachlesen) — ein `addroleassignment`-POST allein ist keine Vergabe, und
+`grantOrganizerPermissions` liefert die fehlenden Scopes zurück. Der
+Tages-Audit für Admins (30 s nach Boot, `dex_roles_rights_audit_v1`)
+fängt Zeilen, die direkt in SharePoint entstehen.
 
 **Nachgerückt wird nur beim Abmelden — nicht bei einer Kapazitätsänderung.**
 `promoteFirstWaitlistItem` hängt am Cancel-Pfad. Erhöht der Organizer eine

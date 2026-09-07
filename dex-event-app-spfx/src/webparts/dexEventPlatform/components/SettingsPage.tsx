@@ -57,7 +57,7 @@ export default function SettingsPage(): React.ReactElement {
   const {
     roles, isAdmin, originalIsAdmin,
     addRole, updateRole, setPowerUser, removeRole, hadRoleRightsIssue, isRolesLoading, siteUrl, searchUsers, searchUser,
-    auditRolesAccess, getBasicProfiles,
+    auditRolesAccess, getBasicProfiles, lastRoleRightsMissing, lastRightsAudit,
   } = useRoles();
   const { events, sendOrganizerOnboarding } = useEvents();
   const { locale } = useLanguage();
@@ -290,7 +290,14 @@ export default function SettingsPage(): React.ReactElement {
     }
     const success = await addRole(assignedEmail, assignedName, assignedRole, newLocation);
     if (success) {
-      setStatusMsg('Role assigned successfully.');
+      // v30.85: Zeile gesetzt heißt nicht Rechte gesetzt — das war der Weg,
+      // auf dem 18 Organizer ohne Site-Recht entstanden sind.
+      const missing = hadRoleRightsIssue() ? lastRoleRightsMissing() : [];
+      setStatusMsg(missing.length > 0
+        ? (isDe
+          ? `Rolle zugewiesen — aber diese Rechte konnten trotz Wiederholung NICHT gesetzt werden: ${missing.join(', ')}. Bitte in ein paar Minuten „Rechte prüfen" ausführen, sonst fehlt der Person die Kachel bzw. das Anlegen scheitert.`
+          : `Role assigned — but these rights could NOT be granted despite retries: ${missing.join(', ')}. Please run "Check rights" in a few minutes, otherwise the tile is missing or creating events fails.`)
+        : 'Role assigned successfully.');
       setNewEmail('');
       setNewName('');
       setNewLocation('');
@@ -300,7 +307,7 @@ export default function SettingsPage(): React.ReactElement {
       // der neue Organizer ohne Links, Handbuch und Einsatzbereich-Hinweis.
       // Die User-Rolle bleibt aussen vor: Die Mail erklärt Organizer-/Admin-
       // Funktionen, die Standard-User gar nicht haben.
-      if (assignedRole === 'Organizer' || assignedRole === 'Admin') {
+      if ((assignedRole === 'Organizer' || assignedRole === 'Admin') && missing.length === 0) {
         void sendOrganizerOnboarding(assignedEmail, assignedName, assignedRole)
           .then(sent => setStatusMsg(sent
             ? 'Rolle zugewiesen — Onboarding-Mail wurde verschickt.'
@@ -820,6 +827,13 @@ export default function SettingsPage(): React.ReactElement {
                     ? 'Eine Rolle braucht drei Rechte, die beim Zuweisen gesetzt werden, aber an der Drosselung scheitern können: Lesen auf DEX_Roles (sonst „Organizer werden?" statt Kachel), Vollzugriff auf DEX_Events und auf die Site (sonst „Subsite konnte nicht erstellt werden" beim Anlegen). Prüft alle Einträge gegen die tatsächlichen Berechtigungen und setzt fehlende nach.'
                     : 'A role needs three rights that are set on assignment but can fail under throttling: read on DEX_Roles (otherwise "Want to become an organizer?" instead of the tile), full control on DEX_Events and on the site (otherwise "Subsite could not be created"). Checks all entries against the actual permissions and grants what is missing.'}
                 </div>
+                {lastRightsAudit && (
+                  <div style={{ marginTop: 4, fontSize: '0.76rem', color: 'var(--dex-gray-500)' }}>
+                    {isDe
+                      ? `Letzte automatische Prüfung (läuft bei Admins einmal täglich beim Start): ${new Date(lastRightsAudit.ts).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })} — ${lastRightsAudit.checked} geprüft, ${lastRightsAudit.missing} mit Lücke, ${lastRightsAudit.fixed} nachgesetzt${lastRightsAudit.failed > 0 ? `, ${lastRightsAudit.failed} NICHT setzbar` : ''}.`
+                      : `Last automatic check (runs once a day for admins at start): ${new Date(lastRightsAudit.ts).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })} — ${lastRightsAudit.checked} checked, ${lastRightsAudit.missing} with gaps, ${lastRightsAudit.fixed} granted${lastRightsAudit.failed > 0 ? `, ${lastRightsAudit.failed} NOT grantable` : ''}.`}
+                  </div>
+                )}
                 {accessAudit.result && (
                   <div style={{ marginTop: 6, color: accessAudit.result.indexOf('NICHT') >= 0 || accessAudit.result.indexOf('NOT') >= 0 || accessAudit.result.indexOf('nicht gelesen') >= 0 ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600 }}>
                     {accessAudit.result}
