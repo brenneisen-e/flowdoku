@@ -222,8 +222,11 @@ export const AgendaAttendanceSection: React.FC<AgendaAttendanceSectionProps> = (
                   „was zur Hölle ist das" (Nutzer, 07.09.2026). Jetzt: ein
                   Kasten je Cluster mit Tages-Kopf und Summe, darin schmale
                   Zeilen: Zeit · Titel · Raum · n / N · kurzer Balken. */}
+              {/* v30.97: Cluster nebeneinander (Raster, auto-fit) statt
+                  untereinander — vier Tage à sechs Punkte streckten die Seite
+                  auf eine Bildschirmhöhe je Cluster (Nutzer-Screenshot 07.09.). */}
               {view === 'point' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 980 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 12, alignItems: 'start' }}>
                   {groups.map((g, gi) => {
                     const gMarks = g.items.reduce((n, it) => n + countFor(it.id), 0);
                     const gMax = g.items.length * active.length;
