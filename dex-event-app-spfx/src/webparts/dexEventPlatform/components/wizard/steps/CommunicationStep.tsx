@@ -16,6 +16,7 @@ import { COMM_TOPICS } from '../logic/commTabs';
 import { BundledComm } from '../../../utils/bundledComm';
 import { SubEventDraft } from '../../wizard/wizardTypes';
 import { EmailOverrideEntry } from '../../wizard/emailOverrideEntry';
+import { CommPreviewCard } from '../../wizard/CommPreviewCard';
 export interface CommunicationStepProps {
   visible: boolean;
   activeCommTabIdx: number;
@@ -91,6 +92,13 @@ export interface CommunicationStepProps {
   unlimitedParticipants: boolean;
   useSplitCapacities: boolean;
   waitlistEnabled: boolean;
+  /** v30.90: für die Vorschau-Karte (Stufe B) und „Testmail an mich" (Stufe C). */
+  headerLayoutFor: (logoB64: string) => { imageWidth: number; imagePaddingV: number; imagePaddingH: number };
+  location: string;
+  startDate: string;
+  endDate: string;
+  contactEmail: string;
+  editEventId: string;
 }
 export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
   const { visible } = p;
@@ -636,6 +644,41 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                   )}
                   </div>
                 </div>
+                {/* v30.90: Ebene 2 — die gerenderte Vorschau (Stufe B) plus
+                    „Testmail an mich" (Stufe C). Überschrift/Unterzeile des
+                    Outlook-Termins kommen vom offenen Reiter: Top-Level aus dem
+                    aufgelösten State, Termin aus seinem Slot. */}
+                {(() => {
+                  const top = resolveTopLevelCommState();
+                  const slot: Partial<SubEventDraft> = activeCommTabIdx > 0 ? (subEvents[activeCommTabIdx - 1] || {}) : {};
+                  const olHeading = activeCommTabIdx > 0 ? (slot.outlookHeading || '') : (top.outlookHeading || '');
+                  const olSub = activeCommTabIdx > 0 ? (slot.outlookSubheading || '') : (top.outlookSubheading || '');
+                  const tabTitle = activeCommTabIdx > 0 ? ((slot.title || '').trim() || title) : title;
+                  return (
+                    <CommPreviewCard
+                      isDe={isDe}
+                      emailLanguage={emailLanguage}
+                      emailTemplates={emailTemplates}
+                      emailTemplateOverrides={emailTemplateOverrides}
+                      emailLogoPreview={emailLogoPreview}
+                      outlookLogoPreview={outlookLogoPreview}
+                      effectiveHeaderImage={effectiveHeaderImage}
+                      headerLayoutFor={p.headerLayoutFor}
+                      title={tabTitle}
+                      location={p.location}
+                      startDate={p.startDate}
+                      endDate={p.endDate}
+                      organizer={organizer}
+                      contactEmail={p.contactEmail}
+                      outlookBody={outlookBody}
+                      outlookHeading={olHeading}
+                      outlookSubheading={olSub}
+                      disableEmails={disableEmails}
+                      disableOutlook={disableOutlook}
+                      eventId={p.editEventId}
+                    />
+                  );
+                })()}
                 {/* v30.89: Ebene 2 — was mit diesen Einstellungen rausgeht, als Chips.
                     Ersetzt die achtzeilige Übersichtsbox (v19.23) am Kopf des Schritts:
                     Jeder Chip nennt ein Thema und seinen Stand; ein Klick öffnet den

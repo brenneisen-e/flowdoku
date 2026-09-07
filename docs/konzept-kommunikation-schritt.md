@@ -1,6 +1,6 @@
 # Konzept: Kommunikations-Schritt im Wizard entlasten
 
-Stand 07.09.2026 (v30.88; Stufe A+D umgesetzt in v30.89). Auftrag: „Informier dich im Netz mit Best Practices,
+Stand 07.09.2026 (v30.88; Stufe A+D in v30.89, B+C in v30.90 umgesetzt). Auftrag: „Informier dich im Netz mit Best Practices,
 wie wir den Wizard-Schritt Kommunikation noch intuitiver und besser aufbauen.
 Der ist für die meisten Organizer in der jetzigen Form überfordernd."
 
@@ -140,8 +140,8 @@ Terminen im Normalfall dieselbe Seite wie einer ohne Sub-Events.
 | Stufe | Inhalt | Stand |
 |---|---|---|
 | A | Ebene 1 (drei Karten) + Ebene 3 als Reiter-Bereich hinter einem Knopf; Kasten 26 aufgeteilt; Übersichtsbox durch die Chip-Zeile ersetzt | **v30.89 — ausgeliefert** |
-| B | Vorschau-Karte (Mail + Outlook) aus der `HtmlEditorModal`-Preview herausziehen | offen |
-| C | „Testmail an mich" | offen, mit B |
+| B | Vorschau-Karte (Mail + Outlook), gebaut mit den Versand-Funktionen selbst (`CommPreviewCard`) | **v30.90 — ausgeliefert** |
+| C | „Testmail an mich" (Mail-Queue, Kopfbild fest eingebettet) | **v30.90 — ausgeliefert** |
 | D | Sub-Event-Frage bleibt die Karte am Kopf; Reiter-Vergleich nur im Einzel-Modus | **v30.89** (der bestehende Schalter erfüllt es bereits) |
 
 Stufe A ist der eigentliche Hebel: Sie macht aus „sieben Kästen, in denen

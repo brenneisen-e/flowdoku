@@ -2848,6 +2848,8 @@ export default function EventCreationPage(): React.ReactElement {
     setNotifyOrgCancelMode, setNotifyOrgRegisterFromDate, setNotifyOrgRegisterMode, setOutlookLogoFromPhoto, setOutlookLogoPreview, setSubTransfer,
     subEvents, subEventsOnlyMode, t, title, unlimitedParticipants, useSplitCapacities,
     waitlistEnabled,
+    // v30.90: Vorschau-Karte + Testmail.
+    headerLayoutFor, location, startDate, endDate, contactEmail, editEventId: editEvent ? String(editEvent.id) : '',
   };
   const wizardTermsModalProps = {
     canBilling, goBack, internalCheckbox, isDe, setBillingPromptOpen, setInternalCheckbox,

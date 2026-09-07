@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.89.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.90.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -770,14 +770,17 @@ dazu erledigt. Offen und **noch nicht begonnen**:
    erbt seit v28.66 die Zeiten des Hauptevents, bei einer Reihe also den
    gesamten Zeitraum statt des einen Tages.
 
-2. **Kommunikations-Schritt, Stufe B und C.** Stufe A+D sind mit v30.89
-   ausgeliefert (drei Karten, Chip-Zeile, Anpassen-Reiter — Konzept in
-   `docs/konzept-kommunikation-schritt.md`). Offen: die gerenderte
-   Vorschau-Karte (Mail + Outlook, aus der `HtmlEditorModal`-Preview) und
-   „Testmail an mich". Beim Bauen beachten: Der Schritt hat seit v30.89
-   drei Ebenen; neue Kommunikations-Einstellungen gehören in Ebene 3
-   (Reiter), nie als weiterer Kasten in Ebene 1 — sonst ist die Seite in
-   einem Jahr wieder da, wo sie war.
+2. **Kommunikations-Schritt** — alle vier Stufen des Konzepts
+   (`docs/konzept-kommunikation-schritt.md`) sind ausgeliefert: A+D in
+   v30.89 (drei Karten, Chip-Zeile, Anpassen-Reiter), B+C in v30.90
+   (`CommPreviewCard`: Vorschau von Mail und Outlook-Termin mit den
+   Versand-Funktionen selbst, „Testmail an mich" über die Mail-Queue mit
+   fest eingebettetem Kopfbild). Regel seither: neue Kommunikations-
+   Einstellungen gehören in Ebene 3 (Reiter), nie als weiterer Kasten in
+   Ebene 1 — sonst ist die Seite in einem Jahr wieder da, wo sie war. Und
+   eine Vorschau baut man NIE mit eigener Logik, sondern mit
+   `buildEmailFromTemplate`/`buildOutlookBody` — sonst zeigt sie etwas
+   anderes als die Mail.
 
 3. **Programmpunkte Stufe 2–4** (`docs/konzept-programmpunkte.md`): Check-in
    je Punkt, Anwesenheits-Matrix, Kopie in ein neues Event.
