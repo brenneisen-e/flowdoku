@@ -18,12 +18,21 @@
 export interface AgendaCheckInMark {
   at: string;
   by: string;
+  /**
+   * v31.2: No-Show an GENAU diesem Punkt (Nutzer 07.09.2026: „man soll
+   * gefragt werden, ob das für das ganze Event No-Show ist oder nur für den
+   * Programmpunkt"). Eine Marke mit `noShow: true` ist KEINE Anwesenheit —
+   * `parseAgendaCheckIns` blendet sie aus, damit Auswertung, Bescheinigung
+   * und Zähler sie nie mitzählen. Wer die Zeile zurückschreibt, muss ALLE
+   * Marken lesen (`parseAgendaMarks`), sonst löscht er die No-Shows.
+   */
+  noShow?: boolean;
 }
 
 export type AgendaCheckIns = Record<string, AgendaCheckInMark>;
 
-/** Defensiv — das Feld ist Freitext, auch Flows oder Hand-Edits könnten es berühren. */
-export function parseAgendaCheckIns(raw: string | undefined | null): AgendaCheckIns {
+/** v31.2: ALLE Marken (Anwesenheit UND No-Show) — für Lesen-Ändern-Schreiben. */
+export function parseAgendaMarks(raw: string | undefined | null): AgendaCheckIns {
   try {
     const o = JSON.parse(raw || '{}');
     if (!o || typeof o !== 'object' || Array.isArray(o)) return {};
@@ -33,10 +42,28 @@ export function parseAgendaCheckIns(raw: string | undefined | null): AgendaCheck
       if (!k || !v || typeof v !== 'object') return;
       const at = typeof v.at === 'string' ? v.at : '';
       if (!at) return;
-      out[k] = { at, by: typeof v.by === 'string' ? v.by : '' };
+      const mark: AgendaCheckInMark = { at, by: typeof v.by === 'string' ? v.by : '' };
+      if (v.noShow === true) mark.noShow = true;
+      out[k] = mark;
     });
     return out;
   } catch { return {}; }
+}
+
+/** Nur Anwesenheiten. Defensiv — das Feld ist Freitext, auch Flows oder Hand-Edits könnten es berühren. */
+export function parseAgendaCheckIns(raw: string | undefined | null): AgendaCheckIns {
+  const all = parseAgendaMarks(raw);
+  const out: AgendaCheckIns = {};
+  Object.keys(all).forEach(k => { if (!all[k].noShow) out[k] = all[k]; });
+  return out;
+}
+
+/** v31.2: Nur die No-Show-Marken je Punkt. */
+export function parseAgendaNoShows(raw: string | undefined | null): AgendaCheckIns {
+  const all = parseAgendaMarks(raw);
+  const out: AgendaCheckIns = {};
+  Object.keys(all).forEach(k => { if (all[k].noShow) out[k] = all[k]; });
+  return out;
 }
 
 /** Zeitstempel als „HH:MM" in Berliner Lokalzeit — für Kacheln und Chips. */

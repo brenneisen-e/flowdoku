@@ -53,6 +53,9 @@ import { applyDraftPayloadImpl } from './wizard/logic/wizardDraft';
 import { confirmOutlookSaveImpl, createMissingOutlookAppointmentsImpl, triggerOutlookUpdateAllImpl, triggerOutlookUpdateNowImpl } from './wizard/logic/outlookActions';
 import { loadDemoSubEventImpl, loadDemoSubEventTeamImpl } from './wizard/logic/wizardTemplates';
 import { WizardFormShell } from './wizard/WizardFormShell';
+// v31.2: „Wer bearbeitet dieses Event gerade auch?" — Herzschlag + Anzeige.
+import { useEditPresence } from './wizard/hooks/useEditPresence';
+import { EditPresenceBadge } from './wizard/EditPresenceBadge';
 import { useWizardEventFieldState } from './wizard/hooks/useWizardEventFieldState';
 import { useWizardVisibilityState } from './wizard/hooks/useWizardVisibilityState';
 import { useWizardOptionState } from './wizard/hooks/useWizardOptionState';
@@ -129,6 +132,15 @@ export default function EventCreationPage(): React.ReactElement {
   // Edit-Modus: wenn wir auf 'edit-event' sind und eine selectedEventId haben
   const isEditMode = currentPage === 'edit-event' && !!selectedEventId;
   const editEvent = isEditMode ? events.find(e => e.id === selectedEventId) : null;
+  // v31.2: Andere Organizer im Edit-Modus desselben Events (Nutzer
+  // 07.09.2026: „soll pulsieren und die Person mit Foto anzeigen"). Nur im
+  // Edit-Modus — beim Anlegen kann noch niemand dasselbe bearbeiten.
+  const presenceOthers = useEditPresence({
+    enabled: isEditMode && !!editEvent,
+    eventId: selectedEventId || '',
+    email: currentUser?.email || '',
+    name: `${currentUser?.firstName || ''} ${currentUser?.surname || ''}`.trim() || currentUser?.email || '',
+  });
   // v30.46: Wer darf den Abrechnungs-Schritt sehen? EINE Ableitung für alle
   // Stellen — Schritt-Array, Rendering, Speichern-Dialog und die Obergrenze des
   // Sprung-Index hängen ab jetzt hier dran, nicht mehr je einzeln an
@@ -2890,6 +2902,7 @@ export default function EventCreationPage(): React.ReactElement {
   return (
     <div ref={wizardRootRef} className="page-container" style={{ maxWidth: 1100, marginLeft: 'auto', marginRight: 'auto' }}>
       <WizardTermsModal {...wizardTermsModalProps} />
+      <EditPresenceBadge others={presenceOthers} isDe={isDe} />
       <WizardFormShell {...wizardFormShellProps} />
 
       <WizardModals {...wizardModalsProps} />

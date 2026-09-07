@@ -64,6 +64,8 @@ export default function ArchitecturePage(): React.ReactElement {
     { name: 'DEX_AssistantAccess', de: 'Delegation an eine Assistenz — Auftrag für den Flow, den Zeilen-Autor umzusetzen, plus Info-Zeile für die betreute Person.', en: 'Delegation to an assistant — job for the flow to move the row author, plus an info row for the delegating person.', link: true },
     { name: 'DEX_PostEventMails', de: 'Warteschlange der Nachbereitungsmails an Organizer.', en: 'Queue for follow-up mails to organizers.', link: true },
     { name: 'DEX_TeamJoinRequests', de: 'Beitritts-Anfragen für Team-Anmeldungen (Kapitän bestätigt).', en: 'Join requests for team registrations (captain approves).', link: true },
+    // v31.2: Herzschlag-Liste des Wizards — kein Flow, die App liest und schreibt selbst.
+    { name: 'DEX_EditPresence', de: 'Wer bearbeitet gerade welches Event im Wizard (Herzschlag alle 20 s, Anzeige mit Foto). Kein Flow.', en: 'Who is editing which event in the wizard right now (heartbeat every 20 s, shown with photo). No flow.', link: true },
     { name: 'DEX_OrganizerRequests', de: 'Anträge „Organizer werden" zur Admin-Freigabe.', en: '“Become organizer” requests for admin approval.', link: true },
     { name: 'DEX_Tickets', de: 'Fragen & Antworten (Support-Tickets) zu Events und zur App.', en: 'Questions & answers (support tickets) for events and the app.', link: true },
   ];
