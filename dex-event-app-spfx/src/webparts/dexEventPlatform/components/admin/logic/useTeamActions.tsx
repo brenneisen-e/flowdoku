@@ -3,6 +3,7 @@
  * Gruppe aus dem Komponenten-Scope liest, kommt als `ctx` herein, was sie
  * nach aussen liefert, geht als Objekt zurueck.
  */
+import { eventHeaderImageOpts } from '../../../utils/mailHeaderImage';
 import * as React from 'react';
 import { EventService, SPRegistration } from '../../../services/EventService';
 import { wrapTemplate } from '../../../services/EmailTemplates';
@@ -152,7 +153,7 @@ export function useTeamActions(ctx: UseTeamActionsCtx): UseTeamActionsResult {
         const subjectFilled = teamMailSubject
           .replace(/\{\{TeamName\}\}/g, tName)
           .replace(/\{\{EventTitle\}\}/g, selectedEvent.title);
-        const wrapped = wrapTemplate('#86bc25', subjectFilled, tName, bodyFilled);
+        const wrapped = wrapTemplate('#86bc25', subjectFilled, tName, bodyFilled, undefined, eventHeaderImageOpts(selectedEvent.emailTemplateOverrides, selectedEvent.mailImageBase64));
         try {
           const ok = await eventServiceRef.queueEmail(subjectFilled, m.ParticipantEmail, fullName, wrapped, 'TeamInfo', selectedEvent.title, selectedEvent.id);
           if (ok) sent += 1;

@@ -1191,6 +1191,16 @@ export class EventService {
     return subsiteProvisioning.ensureOrganizerPermissionsMulti(this, subsiteUrls, organizerEmails);
   }
 
+  /** v30.87: Check-in-Team auf den Teilnehmerlisten berechtigen bzw. entziehen (s. Modul). */
+  public async ensureScannerListPermissions(
+    subsiteUrls: string[],
+    scannerEmails: string[],
+    revokeEmails: string[],
+    keepEmails: string[] = [],
+  ): Promise<subsiteProvisioning.ScannerPermissionsResult> {
+    return subsiteProvisioning.ensureScannerListPermissions(this, subsiteUrls, scannerEmails, revokeEmails, keepEmails);
+  }
+
   public async setSubsitePermissions(subsiteUrl: string, organizerEmail: string): Promise<void> {
     return subsiteProvisioning.setSubsitePermissions(this, subsiteUrl, organizerEmail);
   }

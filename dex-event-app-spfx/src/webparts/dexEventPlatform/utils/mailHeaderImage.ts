@@ -115,6 +115,48 @@ export function normalizeMailHeaderImage(raw: unknown): MailHeaderImage {
   };
 }
 
+/**
+ * v30.87: Kopf-Maße für eine Mail ZU EINEM EVENT — aus dessen Overrides.
+ *
+ * Befund (Nutzer, 07.09.2026, Organizer-Mail „Verspätete Abmeldung"): Das
+ * Event-Bild stand klein und zentriert im Kopf, obwohl der Vollbild-Kopf seit
+ * v29.29 der Standard ist. Grund: Rund zwanzig App-Mails (Team-, Zimmer-,
+ * Hotel-, Abrechnungs-, Erinnerungs- und Organizer-Mails) riefen
+ * `wrapTemplate` ohne Bildmaße auf — also mit dem alten 180-px-Default. Der
+ * Vollbild-Kopf griff nur dort, wo der Wizard ihn beim Speichern
+ * ausdrücklich in `_headerImageLayout` ablegte.
+ *
+ * Regel: Ein gespeichertes `_headerImageLayout` gewinnt (der Organizer hat es
+ * eingestellt). Ohne gespeichertes Layout gilt der Vollbild-Kopf (600/0/0),
+ * sobald das Event ein eigenes Mail-Logo hat (`_eventLogo` im Blob bzw. die
+ * Spalte EmailImageBase64, vom Flow für {{ORB_URL}} eingesetzt). Ohne
+ * eigenes Bild bleibt es beim kleinen Kopf — der DEX-Orb in 600 px wäre ein
+ * bildschirmfüllender, abgeschnittener Kreis (Orb-Schutz, s. oben).
+ */
+export function eventHeaderImageOpts(
+  overridesJson: string | undefined | null,
+  mailLogoB64?: string | null
+): { imageWidth: number; imagePaddingV: number; imagePaddingH: number } {
+  let il: { width?: unknown; paddingV?: unknown; paddingH?: unknown } = {};
+  let logo = '';
+  try {
+    const o = JSON.parse(overridesJson || '{}') || {};
+    il = (o._headerImageLayout && typeof o._headerImageLayout === 'object') ? o._headerImageLayout : {};
+    logo = typeof o._eventLogo === 'string' ? o._eventLogo : '';
+  } catch { /* kein Blob → Defaults */ }
+  const own = !!(mailLogoB64 || logo);
+  const stored = typeof il.width === 'number' && il.width > 0;
+  const base: MailHeaderImage = stored
+    ? {
+      hero: 'logo',
+      width: il.width as number,
+      paddingV: (typeof il.paddingV === 'number' && il.paddingV >= 0) ? il.paddingV : 30,
+      paddingH: (typeof il.paddingH === 'number' && il.paddingH >= 0) ? il.paddingH : 30,
+    }
+    : (own ? { hero: 'logo', width: 600, paddingV: 0, paddingH: 0 } : { ...MAIL_HEADER_IMAGE_DEFAULT });
+  return mailHeaderOpts(base, own);
+}
+
 export function isDefaultMailHeaderImage(img: MailHeaderImage): boolean {
   return img.hero === MAIL_HEADER_IMAGE_DEFAULT.hero
     && img.width === MAIL_HEADER_IMAGE_DEFAULT.width

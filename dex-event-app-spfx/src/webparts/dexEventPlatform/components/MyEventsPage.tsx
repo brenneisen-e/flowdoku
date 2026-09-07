@@ -8,6 +8,7 @@
  * unten sind deshalb kurz geworden.
  */
 
+import { eventHeaderImageOpts } from '../utils/mailHeaderImage';
 import * as React from 'react';
 import { Icon } from '@fluentui/react/lib/Icon';
 import OrganizerList from './OrganizerList';
@@ -809,7 +810,7 @@ export default function MyEventsPage(): React.ReactElement {
               : `<p><strong>${userName}</strong> has cancelled their registration for <strong>${entry.event.title}</strong> after the cancellation deadline (${deadlineStr}).</p><p><strong>E-Mail:</strong> <a href="mailto:${userEmail}">${userEmail}</a></p>`;
             const heading = isDe ? 'Verspätete Abmeldung' : 'Late cancellation';
             const subheading = entry.event.title;
-            const body = wrapTemplate('#ed8b00', heading, subheading, innerBody);
+            const body = wrapTemplate('#ed8b00', heading, subheading, innerBody, undefined, eventHeaderImageOpts(entry.event.emailTemplateOverrides, entry.event.mailImageBase64));
             // EINE Mail mit ';'-separierter Recipient-Liste - die Recipient-Spalte
             // ist Multi-Line (Note), kann also mehrere E-Mails enthalten. So sehen
             // alle Organizer die Mail gemeinsam (statt N separate Einzel-Mails).

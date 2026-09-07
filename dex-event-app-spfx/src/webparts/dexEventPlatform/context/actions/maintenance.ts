@@ -197,21 +197,23 @@ export function makeMaintenanceActions(deps: MaintenanceDeps) {
     onProgress?: (done: number, total: number, label: string) => void
   ): Promise<{ trees: number; sites: number; grants: number; unresolved: string[]; errors: number }> {
     // 1) Nach Event-Baum gruppieren: Wurzel ist parentEventId oder die eigene Id.
-    const trees: Record<string, { title: string; sites: string[]; emails: Set<string> }> = {};
+    const trees: Record<string, { title: string; sites: string[]; emails: Set<string>; scanners: Set<string> }> = {};
     for (const e of events) {
       const rootId = e.parentEventId || e.id;
-      if (!trees[rootId]) trees[rootId] = { title: '', sites: [], emails: new Set<string>() };
+      if (!trees[rootId]) trees[rootId] = { title: '', sites: [], emails: new Set<string>(), scanners: new Set<string>() };
       const t = trees[rootId];
       if (!e.parentEventId) t.title = e.title || rootId;
       const site = (e.subsiteUrl || '').trim();
       if (site && t.sites.indexOf(site) < 0) t.sites.push(site);
-      const add = (arr?: string[]): void => {
-        (arr || []).forEach(x => { const v = (x || '').trim(); if (v) t.emails.add(v); });
+      const add = (set: Set<string>, arr?: string[]): void => {
+        (arr || []).forEach(x => { const v = (x || '').trim(); if (v) set.add(v); });
       };
-      add(e.organizerEmails);
-      add(e.coOrganizerEmails);
+      add(t.emails, e.organizerEmails);
+      add(t.emails, e.coOrganizerEmails);
+      // v30.87: Check-in-Team — Edit auf den Teilnehmerlisten (s. ensureScannerListPermissions).
+      add(t.scanners, e.qrScannerEmails);
     }
-    const keys = Object.keys(trees).filter(k => trees[k].sites.length > 0 && trees[k].emails.size > 0);
+    const keys = Object.keys(trees).filter(k => trees[k].sites.length > 0 && (trees[k].emails.size > 0 || trees[k].scanners.size > 0));
     const total = keys.length;
     let sites = 0; let grants = 0; let errors = 0;
     const unresolved = new Set<string>();
@@ -219,17 +221,29 @@ export function makeMaintenanceActions(deps: MaintenanceDeps) {
       const t = trees[keys[i]];
       if (onProgress) onProgress(i, total, t.title || keys[i]);
       try {
-        const r = await eventService.ensureOrganizerPermissionsMulti(
-          t.sites, Array.from(t.emails).join(';')
-        );
-        sites += r.sites;
-        grants += r.grants;
-        r.unresolved.forEach(u => unresolved.add(u));
-        // v30.67: fehlgeschlagene Rechtevergaben zaehlen — vorher meldete die
-        // Reparatur Erfolg, ohne eine einzige Antwort gesehen zu haben.
-        if (r.failed && r.failed.length) {
-          errors += r.failed.length;
-          r.failed.forEach(f => unresolved.add(`${f.site} (${f.scope}, HTTP ${f.status})`));
+        if (t.emails.size > 0) {
+          const r = await eventService.ensureOrganizerPermissionsMulti(
+            t.sites, Array.from(t.emails).join(';')
+          );
+          sites += r.sites;
+          grants += r.grants;
+          r.unresolved.forEach(u => unresolved.add(u));
+          // v30.67: fehlgeschlagene Rechtevergaben zaehlen — vorher meldete die
+          // Reparatur Erfolg, ohne eine einzige Antwort gesehen zu haben.
+          if (r.failed && r.failed.length) {
+            errors += r.failed.length;
+            r.failed.forEach(f => unresolved.add(`${f.site} (${f.scope}, HTTP ${f.status})`));
+          }
+        }
+        if (t.scanners.size > 0) {
+          const rs = await eventService.ensureScannerListPermissions(t.sites, Array.from(t.scanners), [], Array.from(t.emails));
+          if (t.emails.size === 0) sites += rs.sites;
+          grants += rs.granted;
+          rs.unresolved.forEach(u => unresolved.add(u));
+          if (rs.failed.length) {
+            errors += rs.failed.length;
+            rs.failed.forEach(f => unresolved.add(`${f.site} (Check-in-Team ${f.email}, HTTP ${f.status})`));
+          }
         }
       } catch (err) {
         errors++;

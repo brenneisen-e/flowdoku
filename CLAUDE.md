@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.86.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.87.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -304,6 +304,28 @@ Organizer Center gibt es seither genau EINEN Nachlade-Pfad für die
 Teilnehmerliste: `reloadRegistrations()` in `AdminPage` (Status geprüft, bei
 Fehler bleibt die alte Liste, `regStaleHint`). Wer nach einem Schreibvorgang
 nachlädt, ruft ihn — nie `setRegistrations(await getAllRegistrations(id))`.
+
+**Das Check-in-Team braucht eigene Listen-Rechte (v30.87).** Die
+Teilnehmerliste ist zeilenweise gesichert (ReadSecurity/WriteSecurity=2);
+Visitors haben Contribute und sehen damit nur die EIGENE Zeile. Nur „Manage
+Lists" hebt das auf (Edit, Design, Full Control). `_qrScanners` bekamen bis
+v30.86 gar nichts — deshalb „sah der Scanner nicht die ganze Liste" und
+brauchte Organizer-Rechte. Seit v30.87: `ensureScannerListPermissions`
+(Edit 1073741830 auf der Liste, nicht auf dem Web; Fallback Full Control;
+Entzug beim Streichen mit Nachlesen; Organizer nie entzogen), gerufen im
+Edit-/Create-Pfad des Wizards und in „Organizer-Berechtigungen reparieren".
+Wer eine neue Rolle mit Listenzugriff baut: Contribute reicht bei
+Item-Level-Security NIE für fremde Zeilen.
+
+**Mail-Kopfbild: `eventHeaderImageOpts` an JEDER wrapTemplate-Stelle mit
+Event (v30.87).** `wrapTemplate` ohne Bildmaße heißt 180 px — der alte
+Default. Rund zwanzig App-Mails (Team, Zimmerpartner, Hotel, Abrechnung,
+Organizer-Hinweise) riefen es so und zeigten das Event-Bild klein, obwohl
+der Vollbild-Kopf seit v29.29 Standard ist. Regel: gespeichertes
+`_headerImageLayout` gewinnt, sonst 600/0/0 bei eigenem Mail-Logo, sonst
+Orb-Schutz. Wer eine neue Mail zu einem Event baut, übergibt
+`eventHeaderImageOpts(ev.emailTemplateOverrides, ev.mailImageBase64)` als
+sechstes Argument — sonst ist es die nächste „bei dieser Mail fehlt es".
 
 **Berechtigungen gelten je Subsite — und jedes Sub-Event hat eine eigene.**
 `ensureOrganizerPermissions` lief bis v30.36 nur über `editEvent.subsiteUrl`.

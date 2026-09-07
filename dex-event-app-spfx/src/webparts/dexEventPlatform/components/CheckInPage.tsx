@@ -336,6 +336,7 @@ export default function CheckInPage(): React.ReactElement {
       return;
     }
     setIdInput('');
+    setNameSearchQuery(''); // v30.87: Live-Filter der Liste zurücksetzen
     startManualCheckInFromSearch(hit[0]);
   };
 
@@ -1177,7 +1178,11 @@ export default function CheckInPage(): React.ReactElement {
                 >
                   <input
                     value={idInput}
-                    onChange={e => { setIdInput(e.target.value.replace(/\D/g, '')); setIdError(''); }}
+                    // v30.87: Die Nummer filtert die Liste unten LIVE mit —
+                    // Nutzer-Frage 07.09.2026: „warum kann man hier oben nicht die
+                    // Nummer eingeben und es wird unten live gefiltert". Dasselbe
+                    // Suchfeld, derselbe Filterzustand; leeren setzt beides zurück.
+                    onChange={e => { const v = e.target.value.replace(/\D/g, ''); setIdInput(v); setIdError(''); setNameSearchQuery(v); }}
                     inputMode="numeric"
                     pattern="[0-9]*"
                     placeholder="17"

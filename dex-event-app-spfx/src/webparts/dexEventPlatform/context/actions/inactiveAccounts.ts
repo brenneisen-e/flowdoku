@@ -7,6 +7,7 @@
  * beziehen sie ihre Umgebung aus dem `deps`-Objekt.
  */
 
+import { eventHeaderImageOpts } from '../../utils/mailHeaderImage';
 import { DeloitteEvent } from '../../types';
 import { EventService, SPRegistration, EventCommRow } from '../../services/EventService';
 import { buildHashDeepLink } from '../../utils/deepLink';
@@ -104,7 +105,7 @@ export function makeInactiveAccountActions(deps: InactiveAccountDeps) {
          <p><a href="${appUrl}" style="display:inline-block;background:#86bc25;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">Open event in the Organizer Center</a></p>
          <p>Thanks!</p>`;
     const subject = isDe ? `Hinweis: möglicherweise inaktives Konto — ${event.title}` : `Heads-up: possibly inactive account — ${event.title}`;
-    const wrapped = wrapTemplate('#86bc25', heading, sub, body);
+    const wrapped = wrapTemplate('#86bc25', heading, sub, body, undefined, eventHeaderImageOpts(event.emailTemplateOverrides, event.mailImageBase64));
     try {
       // Eine Mail an alle Organizer (Semikolon-getrennt, der Flow mappt To direkt).
       await eventService.queueEmail(subject, orgEmails.join(';'), orgEmails.join(';'), wrapped, 'Info', event.title, eventId);

@@ -52,6 +52,8 @@ export interface EventDetailCardProps {
   t: (key: string) => string;
   toggleDraftStatus: () => Promise<void>;
   waitlistRegs: SPRegistration[];
+  /** v30.87: „Hinweise zu diesem Event" als Zeile unter „Aktionen" (statt eigener Kachel). */
+  hintsSlot?: React.ReactNode;
 }
 
 export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
@@ -694,6 +696,17 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
                       </div>
                       <ActionsDropdown isDe={isDe} />
                     </div>
+                    {/* v30.87: Hinweise direkt unter den Aktionen — dort, wo der
+                        Organizer ohnehin hinschaut, statt als vierte Kachel
+                        unter den KPI-Kacheln. */}
+                    {p.hintsSlot && (
+                      <div style={{ marginTop: 14 }}>
+                        <div style={{ ...labelStyle, marginBottom: 6 }}>
+                          {isDe ? 'Hinweise zu diesem Event' : 'Hints for this event'}
+                        </div>
+                        {p.hintsSlot}
+                      </div>
+                    )}
                     {/* v12.2: 'Abgefragte Felder'-Zeile entfernt — die
                         Custom-Field-Pills hier waren redundant; sie tauchen
                         ohnehin als Spalten in der Teilnehmer-Tabelle auf. */}

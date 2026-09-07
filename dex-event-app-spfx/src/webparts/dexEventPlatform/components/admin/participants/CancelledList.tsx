@@ -72,7 +72,11 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
             else { setCancelledSortColumn(k); setCancelledSortAsc(true); }
           };
           // v24.93: NICHT sticky (steht in overflowX-Wrapper, s.o.).
-          const thClickable: React.CSSProperties = { textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', background: '#fff', borderBottom: '2px solid var(--dex-gray-200)' };
+          // v30.87: Dieselbe Kopfzeile wie die Anmeldungen-Tabelle — sticky im
+          // eigenen Scroll-Container (Nutzer-Ansage 07.09.2026: „Abmeldungen in
+          // die gleiche Struktur, Logik und Anzeige wie Anmeldungen — mit
+          // Inline-Scroll").
+          const thClickable: React.CSSProperties = { textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', background: '#fff', borderBottom: '2px solid var(--dex-gray-200)', position: 'sticky', top: 0, zIndex: 5, verticalAlign: 'top', lineHeight: 1.3 };
           const declineCount = cancelledRegs.filter(isDeclined).length;
           // v24.82: Abmeldungen dürfen NUR bei Entwurf-Events (isFictive)
           // gelöscht werden — z.B. zum Aufräumen von Test-Anmeldungen, BEVOR
@@ -376,7 +380,7 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
                     )}
                   </div>
                 ) : (
-                <div style={{ overflowX: 'auto' }}>
+                <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                     <thead>
                       <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
@@ -431,7 +435,7 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
           // Anmeldungen zu unterscheiden sind. Ein „Löschen"-Button erscheint
           // NUR bei Entwurf-Events (canDelete) — sonst bleiben Abmeldungen
           // wegen der einjährigen Aufbewahrungsfrist erhalten.
-          const greyText = 'var(--dex-gray-400)';
+          const greyText = 'var(--dex-gray-600)';
           return (
             <>
               <h4 style={{ marginTop: 24, color: 'var(--dex-gray-400)' }}>
@@ -442,10 +446,13 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
                   </span>
                 )}
               </h4>
-              <div style={{ overflowX: 'auto' }}>
+              {/* v30.87: eigener Scroll-Container (70vh) wie bei den Anmeldungen —
+                  bei 48 Abmeldungen lief die Tabelle sonst über die ganze Seite. */}
+              <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                   <thead>
                     <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
+                      <th style={{ ...thClickable, cursor: 'default', width: 36 }}>#</th>
                       <th style={thClickable} onClick={() => toggleSort('nachname')}>{isDe ? 'Teilnehmer' : 'Attendee'}{arrow('nachname')}</th>
                       <th style={thClickable} onClick={() => toggleSort('type')}>{isDe ? 'Art' : 'Type'}{arrow('type')}</th>
                       <th style={{ ...thClickable, cursor: 'default' }}>{isDe ? 'Abgemeldet von' : 'Cancelled by'}</th>
@@ -467,7 +474,7 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {sorted.map(reg => {
+                    {sorted.map((reg, rowIdx) => {
                       // eslint-disable-next-line @typescript-eslint/no-explicit-any
                       const anyReg = reg as any;
                       const declined = isDeclined(reg);
@@ -483,12 +490,16 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
                         : (isDe ? 'Abgemeldet' : 'Cancelled');
                       return (
                         <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
+                          {/* v30.87: laufende Nummer + Personen-Zelle exakt wie in der
+                              Anmeldungen-Tabelle (Name fett, Zweitzeile grau) — die
+                              durchgehend ausgegraute Zeile las sich wie deaktiviert. */}
+                          <td style={{ padding: 8, color: 'var(--dex-gray-400)' }}>{rowIdx + 1}</td>
                           <td style={{ padding: 8 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                               <PersonContactHover email={reg.ParticipantEmail || ''} name={fullName} size={30} subline={sub} isDe={isDe} />
                               <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.25 }}>
-                                <span style={{ fontWeight: 600, color: greyText, whiteSpace: 'nowrap' }}>{fullName}</span>
-                                {sub && <span style={{ fontSize: '0.78rem', color: greyText, whiteSpace: 'nowrap' }}>{sub}</span>}
+                                <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{fullName}</span>
+                                {sub && <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>{sub}</span>}
                               </div>
                             </div>
                           </td>

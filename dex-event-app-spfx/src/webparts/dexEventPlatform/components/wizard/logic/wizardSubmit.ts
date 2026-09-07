@@ -889,17 +889,24 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
               organizerEmails.join(';'),
               coOrganizerEmails.join(';'),
             ].filter(Boolean).join(';');
+            // v30.37: Klammer UND alle Sub-Events. Jeder Termin hat eine
+            // eigene Subsite mit eigener Teilnehmerliste — bis v30.36 lief
+            // der Sync nur über die Klammer. Ein nachträglich benannter
+            // Co-Organizer konnte die Klammer sehen und KEINEN einzigen
+            // Termin; weil getAllRegistrations bei 403 `[]` liefert, kam das
+            // in der App als „0 Teilnehmer" an statt als Fehler.
+            const permSites = [editEvent.subsiteUrl]
+              .concat(childEventsOf(editEvent.id).map(k => k.subsiteUrl || ''))
+              .filter(Boolean);
             if (allOrgEmailsForPerm) {
-              // v30.37: Klammer UND alle Sub-Events. Jeder Termin hat eine
-              // eigene Subsite mit eigener Teilnehmerliste — bis v30.36 lief
-              // der Sync nur über die Klammer. Ein nachträglich benannter
-              // Co-Organizer konnte die Klammer sehen und KEINEN einzigen
-              // Termin; weil getAllRegistrations bei 403 `[]` liefert, kam das
-              // in der App als „0 Teilnehmer" an statt als Fehler.
-              const permSites = [editEvent.subsiteUrl]
-                .concat(childEventsOf(editEvent.id).map(k => k.subsiteUrl || ''))
-                .filter(Boolean);
               await svcPerm.ensureOrganizerPermissionsMulti(permSites, allOrgEmailsForPerm);
+            }
+            // v30.87: Check-in-Team auf den Teilnehmerlisten (Edit, nicht Web).
+            // Wer gestrichen wurde, verliert die Zuweisung — Organizer nie.
+            const prevScanners = (editEvent.qrScannerEmails || []);
+            const orgKeep = organizerEmails.concat(coOrganizerEmails);
+            if (qrScannerEmails.length > 0 || prevScanners.length > 0) {
+              await svcPerm.ensureScannerListPermissions(permSites, qrScannerEmails, prevScanners, orgKeep);
             }
           }
         } catch (err) { console.warn('[DEX] Permission-Sync für Organizer fehlgeschlagen:', err); }
@@ -1847,6 +1854,14 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
             const allEvents = await svc.getEvents();
             const created = allEvents.find(e => String(e.Id) === String(eventId));
             const subsiteUrl = created?.SubsiteUrl || '';
+            // v30.87: Check-in-Team schon beim Anlegen auf die Teilnehmerliste
+            // berechtigen (Edit auf der Liste). Sub-Event-Listen entstehen erst
+            // danach — die bekommt der nächste Speichervorgang bzw. die Aktion
+            // „Organizer-Berechtigungen reparieren".
+            if (subsiteUrl && qrScannerEmails.length > 0) {
+              try { await svc.ensureScannerListPermissions([subsiteUrl], qrScannerEmails, []); }
+              catch (err) { console.warn('[DEX] Check-in-Team-Rechte beim Anlegen fehlgeschlagen:', err); }
+            }
             // Event-Created Mail an alle Organizer senden.
             // {{Name}} in der Anrede = nur Vorname (nicht voller Name), darum
             // den Organizer-String anhand von ";" in Namen splitten und pro

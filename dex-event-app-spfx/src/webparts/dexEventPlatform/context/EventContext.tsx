@@ -8,6 +8,7 @@
  * - Eike, Maerz 2026
  */
 
+import { eventHeaderImageOpts } from '../utils/mailHeaderImage';
 import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
@@ -1481,7 +1482,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
               : `<p>Hello ${partnerFirstName || partnerName},</p><p><strong>${registrantFullName}</strong> has selected you as their <strong>roommate</strong> for the event <strong>${event.title}</strong>.</p>`;
             mail = {
               subject: isDe ? `Zimmerpartner-Anfrage: ${event.title}` : `Roommate request: ${event.title}`,
-              body: wrapTemplate('#86bc25', isDe ? 'Zimmerpartner-Anfrage' : 'Roommate request', event.title, inner),
+              body: wrapTemplate('#86bc25', isDe ? 'Zimmerpartner-Anfrage' : 'Roommate request', event.title, inner, undefined, eventHeaderImageOpts(event.emailTemplateOverrides, event.mailImageBase64)),
             };
           }
           eventService.queueEmail(
@@ -1924,7 +1925,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
           ? `<p>Hallo ${first || fullName},</p><p>du wurdest für das Event <strong>${event.title}</strong> dem Team ${teamNameStr} zugeordnet. Deine bestehende Anmeldung bleibt unverändert — du musst nichts weiter tun.</p>`
           : `<p>Hello ${first || fullName},</p><p>you have been assigned to team ${teamNameStr} for the event <strong>${event.title}</strong>. Your existing registration stays unchanged — nothing else to do.</p>`;
         const subject = isDe ? `Team-Zuordnung: ${event.title}` : `Team assignment: ${event.title}`;
-        const body = wrapTemplate('#86bc25', isDe ? 'Team-Zuordnung' : 'Team assignment', `Event ${event.title}`, inner + teamInfoHtml);
+        const body = wrapTemplate('#86bc25', isDe ? 'Team-Zuordnung' : 'Team assignment', `Event ${event.title}`, inner + teamInfoHtml, undefined, eventHeaderImageOpts(event.emailTemplateOverrides, event.mailImageBase64));
         await eventService.queueEmail(subject, opts.recipientEmail, fullName, body, 'TeamMemberJoined', event.title, eventId, opts.ccEmail || undefined);
       } catch (err) { console.warn('[DEX] assignTeamlessToTeam mail failed:', err); }
     }
@@ -1975,7 +1976,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
             : `<p>Hello ${otherFirst},</p><p><strong>${newStr}</strong> joined your team ${teamNameStr}.</p>`;
           mail = {
             subject: isDe ? `Neues Team-Mitglied — ${event.title}` : `New team member — ${event.title}`,
-            body: wrapTemplate('#86bc25', isDe ? 'Team-Update' : 'Team update', `Event ${event.title}`, inner),
+            body: wrapTemplate('#86bc25', isDe ? 'Team-Update' : 'Team update', `Event ${event.title}`, inner, undefined, eventHeaderImageOpts(event.emailTemplateOverrides, event.mailImageBase64)),
           };
         }
         await eventService.queueEmail(mail.subject, other.ParticipantEmail, otherFull, mail.body, 'TeamMemberJoined', event.title, eventId).catch(() => { /* */ });
@@ -2178,7 +2179,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
             : `<p>Hello ${otherFirst},</p><p><strong>${newMemberFullName}</strong> joined your team ${teamNameStr}.</p>`;
           mail = {
             subject: isDe ? `Neues Team-Mitglied — ${event.title}` : `New team member — ${event.title}`,
-            body: wrapTemplate('#86bc25', isDe ? 'Team-Update' : 'Team update', `Event ${event.title}`, inner),
+            body: wrapTemplate('#86bc25', isDe ? 'Team-Update' : 'Team update', `Event ${event.title}`, inner, undefined, eventHeaderImageOpts(event.emailTemplateOverrides, event.mailImageBase64)),
           };
         }
         eventService.queueEmail(
@@ -2293,7 +2294,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
             : `<p>Hello ${otherFirst},</p><p>The team lead role in your team ${teamNameStr} has been transferred to <strong>${newLeadName}</strong>.</p>${isNewLeadMember ? newLeadBlockHtml : ''}`;
           mail = {
             subject: isDe ? `Team-Lead-Wechsel — ${event.title}` : `Team lead change — ${event.title}`,
-            body: wrapTemplate('#86bc25', isDe ? 'Team-Lead-Wechsel' : 'Team lead change', `Event ${event.title}`, inner),
+            body: wrapTemplate('#86bc25', isDe ? 'Team-Lead-Wechsel' : 'Team lead change', `Event ${event.title}`, inner, undefined, eventHeaderImageOpts(event.emailTemplateOverrides, event.mailImageBase64)),
           };
         }
         eventService.queueEmail(
@@ -2383,7 +2384,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
           : `<p>Hello ${leadFirst},</p><p><strong>${currentUserName}</strong> would like to join your team ${teamNameStr}.</p><p style="text-align:center;margin:18px 0;"><a href="${appUrl}&decision=approve" style="display:inline-block;padding:10px 18px;background:#86bc25;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;margin-right:8px;">Approve</a> <a href="${appUrl}&decision=reject" style="display:inline-block;padding:10px 18px;background:#999;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;">Reject</a></p>`;
         mail = {
           subject: isDe ? `Team-Beitritts-Anfrage — ${event.title}` : `Team join request — ${event.title}`,
-          body: wrapTemplate('#86bc25', isDe ? 'Team-Beitritts-Anfrage' : 'Team join request', `Event ${event.title}`, inner),
+          body: wrapTemplate('#86bc25', isDe ? 'Team-Beitritts-Anfrage' : 'Team join request', `Event ${event.title}`, inner, undefined, eventHeaderImageOpts(event.emailTemplateOverrides, event.mailImageBase64)),
         };
       }
       eventService.queueEmail(
@@ -2476,7 +2477,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
           : `<p>Hello ${requesterFirst},</p><p>your join request for the team at event „${event.title}" was declined by the team lead.</p>`;
         mail = {
           subject: isDe ? `Team-Beitritts-Anfrage abgelehnt — ${event.title}` : `Team join request declined — ${event.title}`,
-          body: wrapTemplate('#ed8b00', isDe ? 'Team-Beitritts-Anfrage abgelehnt' : 'Team join request declined', `Event ${event.title}`, inner),
+          body: wrapTemplate('#ed8b00', isDe ? 'Team-Beitritts-Anfrage abgelehnt' : 'Team join request declined', `Event ${event.title}`, inner, undefined, eventHeaderImageOpts(event.emailTemplateOverrides, event.mailImageBase64)),
         };
       }
       eventService.queueEmail(
@@ -3010,7 +3011,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
               subject: isDeMail
                 ? (isWaitlist ? `Gruppen-Wechsel — auf Warteliste: ${event.title}` : `Gruppen-Wechsel bestätigt: ${event.title}`)
                 : (isWaitlist ? `Group switch — added to waitlist: ${event.title}` : `Group switch confirmed: ${event.title}`),
-              body: wrapTemplate(isWaitlist ? '#ed8b00' : '#86bc25', isDeMail ? 'Gruppen-Wechsel' : 'Group switch', event.title, innerBody),
+              body: wrapTemplate(isWaitlist ? '#ed8b00' : '#86bc25', isDeMail ? 'Gruppen-Wechsel' : 'Group switch', event.title, innerBody, undefined, eventHeaderImageOpts(event.emailTemplateOverrides, event.mailImageBase64)),
             };
           }
           await eventService.queueEmail(mail.subject, currentUserEmail, currentUserName, mail.body, templateType, event.title, eventId)

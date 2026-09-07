@@ -2218,11 +2218,27 @@ export default function AdminPage(): React.ReactElement {
   const quizStatsSectionProps = {
     registrations, selectedEvent,
   };
+  // v30.87: Angemeldete ohne QR-Code — über die Klammer UND alle Termin-
+  // Listen. null, solange eine Liste nicht lesbar ist (keine Aussage).
+  const qrPendingCount: number | null = (() => {
+    if (regsUnknown || subListsIncomplete) return null;
+    let n = registrations.filter(r => r.Status === 'Angemeldet').length;
+    Object.keys(subEventRegsByEventId || {}).forEach(k => {
+      n += (subEventRegsByEventId[k] || []).filter(r => r.Status === 'Angemeldet').length;
+    });
+    return n;
+  })();
   const activeEventHintsBoxProps = {
     childEventsOf, expandedHintIds, hintLangBusy, hintsDismissTick, isDe,
     parentEventForSelected, refreshEvents, selectedEvent, setExpandedHintIds, setHintLangBusy,
     setHintsDismissTick, setQrSendModalOpen, setSelectedEvent, showAlert, updateEvent,
+    qrPendingCount,
   };
+  // v30.87: Die Hinweise wandern als Zeile in die Event-Details-Karte (unter
+  // „Aktionen"); die eigene Kachel unter den KPI-Kacheln entfällt.
+  const hintsSlot: React.ReactNode = ((isAdmin || isOrganizerFor(selectedEvent)) && !selectedEvent.isFictive && !selectedEvent.isDemoShowcase)
+    ? <ActiveEventHintsBox {...activeEventHintsBoxProps} variant="row" />
+    : null;
   const audienceVisibilityRowProps = {
     isAdmin, isDe, isOrganizerFor, openPendingReminder, orgPastLock, pendingCheckBusy,
     resolveAudienceEmails, selectedEvent, setVisibilityAllAddresses, setVisibilityBusy, setVisibilityOpen, setVisibilityResolved,
@@ -2271,7 +2287,7 @@ export default function AdminPage(): React.ReactElement {
             stapelt auf Mobile via flex-wrap). Die Box erscheint nur für Entwürfe
             und nur für Admin/Organizer. */}
         <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <EventDetailCard {...eventDetailCardProps} />
+        <EventDetailCard {...eventDetailCardProps} hintsSlot={hintsSlot} />
         {/* v22.5: „Nächste Schritte"-Box rechts neben der Detail-Card — nur für
             Entwürfe (Admin/Organizer). Erklärt, was nach dem Anlegen noch zu tun
             ist: finalisieren, Test-An-/Abmeldung, live schalten (+ wer es sieht),
@@ -2389,12 +2405,9 @@ export default function AdminPage(): React.ReactElement {
       {/* ===== QUIZ-STATISTIK (collapsible, oberhalb Teilnehmerliste) ===== */}
       {selectedEvent && selectedEvent.quiz && selectedEvent.quiz.length > 0 && <QuizStatsSection {...quizStatsSectionProps} />}
 
-        {/* v22.16: „Hinweise"-Box für AKTIVE Events — Pendant zur „Nächste
-            Schritte"-Box bei Entwürfen. Zeigt smarte Empfehlungen (z.B.
-            englischer Inhalt → Anmeldesprache fest auf Englisch stellen).
-            Erscheint nur, wenn mindestens ein Hinweis zutrifft; jeder Hinweis
-            ist pro Event ausblendbar (localStorage). */}
-        {(isAdmin || isOrganizerFor(selectedEvent)) && !selectedEvent.isFictive && !selectedEvent.isDemoShowcase && <ActiveEventHintsBox {...activeEventHintsBoxProps} />}
+        {/* v22.16: „Hinweise"-Box für AKTIVE Events. v30.87: nicht mehr hier
+            als eigene Kachel, sondern als Zeile in der Event-Details-Karte
+            (`hintsSlot`, unter „Aktionen"). */}
 
       {/* v29.32: Sichtbarkeits-Zeile — wer kann das Event überhaupt sehen, und
           wer davon hat noch nicht geantwortet? Steht bewusst DIREKT über der

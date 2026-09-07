@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { eventHeaderImageOpts } from '../utils/mailHeaderImage';
 import * as React from 'react';
 import { EventService, SPRegistration } from '../services/EventService';
 import { DeloitteEvent, DexHotel, DexHotelRules, DexHotelStay } from '../types';
@@ -1230,6 +1231,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
         replacePlaceholders(mailHeading, vars),
         replacePlaceholders(mailSubheading, vars),
         replacePlaceholders(mailBody, vars),
+        undefined, eventHeaderImageOpts(event.emailTemplateOverrides, event.mailImageBase64), // v30.87
       );
       return svc.queueEmail(
         replacePlaceholders(mailSubject, vars), to, name, body,
