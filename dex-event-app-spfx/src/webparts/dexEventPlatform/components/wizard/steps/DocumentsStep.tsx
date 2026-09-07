@@ -78,7 +78,7 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
       {/* v31.2: Zwei Zeilen sichtbar, der Rest (Live-Gang, Tipp zu internen Dokumenten) im Tooltip. */}
       <div className="dex-ui-section">
         <div className="dex-ui-section-title">
-          <StepBadge n={33} />
+          <StepBadge n={32} />
           {isDe ? 'Unterlagen für Teilnehmer' : 'Documents for attendees'}
           {documents.length > 0 && <span className="dex-ui-pill dex-ui-pill--gray">{documents.length}</span>}
         </div>
@@ -178,7 +178,7 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
           was er beim Einschalten bekommt — vorher tauchten sie erst nach dem Klick auf. */}
       <div className="dex-ui-section">
         <div className="dex-ui-section-title">
-          <StepBadge n={34} />
+          <StepBadge n={33} />
           {isDe ? 'Upload durch Teilnehmer' : 'Upload by attendees'}
         </div>
         <label className={cx('dex-ui-toggle-row', allowAttendeeUpload && 'is-active')}>

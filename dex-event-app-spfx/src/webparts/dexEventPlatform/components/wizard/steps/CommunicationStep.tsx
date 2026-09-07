@@ -488,7 +488,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                 <div className="dex-ui-section">
                   <div className="dex-ui-section-title">{isDe ? 'Kanal' : 'Channel'}</div>
                   <div className="dex-ui-label">
-                    <StepBadge n={26} />
+                    <StepBadge n={25} />
                     {isDe ? 'Wie erreicht DEX die Teilnehmer?' : 'How does DEX reach attendees?'}
                     <InfoTooltip text={t('create.notifications.hint')} />
                   </div>
@@ -567,7 +567,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                   <div className="dex-ui-section-title">{isDe ? 'Sprache' : 'Language'}</div>
                   <div className={cx('dex-ui-card', disableEmails && disableOutlook && 'dex-ui-card--muted')}>
                     <div className="dex-ui-label">
-                      <StepBadge n={25} />
+                      <StepBadge n={26} />
                       {isDe ? 'In welcher Sprache gehen die automatischen Mails raus?' : 'Which language should the automated emails be in?'}
                       <InfoTooltip text={t('create.emaillanguage.hint')} />
                     </div>
@@ -676,10 +676,10 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                   <div className="dex-ui-card dex-ui-card--soft dex-ui-fade-in" style={{ marginTop: 10 }}>
                     <div className="dex-ui-tabs" role="tablist" style={{ marginBottom: 16 }}>
                       {([
-                        { key: 'templates' as const, n: 31, label: `${isDe ? 'Mail-Texte' : 'Mail texts'} (${emailLanguage})` },
+                        { key: 'templates' as const, n: 27, label: `${isDe ? 'Mail-Texte' : 'Mail texts'} (${emailLanguage})` },
                         { key: 'mailLogo' as const, n: 28, label: isDe ? 'Mail-Logo' : 'Mail logo' },
                         { key: 'outlook' as const, n: 29, label: isDe ? 'Outlook-Termin' : 'Outlook invite' },
-                        { key: 'fine' as const, n: 26, label: isDe ? 'Feineinstellungen' : 'Fine-tuning' },
+                        { key: 'fine' as const, n: 25, label: isDe ? 'Feineinstellungen' : 'Fine-tuning' },
                       ]).map(tab => {
                         const active = advTab === tab.key;
                         return (
@@ -692,7 +692,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                     <div>
                     {advTab === 'templates' && (<>
                       <div className="dex-ui-label">
-                        <StepBadge n={31} />
+                        <StepBadge n={27} />
                         {t('create.templates.title')}
                         <InfoTooltip text={t('create.templates.hint')} />
                       </div>
@@ -984,7 +984,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                   <div className="dex-ui-section-title">{isDe ? 'Organizer in Kopie' : 'Organizers in copy'}</div>
                   <div className="dex-ui-card">
                     <div className="dex-ui-label">
-                      <StepBadge n={27} />
+                      <StepBadge n={31} />
                       {isDe ? 'Sollen die Organizer bei An- und Abmeldungen mitlesen?' : 'Should organizers be looped in on registrations / cancellations?'}
                       {/* v28.28: Präzisiert — die Organizer-Kopie läuft durchgehend auf
                           CC (vorher Bcc bei internen Empfängern) — der Organizer steht

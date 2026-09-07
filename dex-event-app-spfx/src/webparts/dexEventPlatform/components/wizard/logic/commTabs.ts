@@ -264,18 +264,18 @@ export function resolveTopLevelCommStateImpl(ctx: ResolveTopLevelCommStateCtx): 
 
 /**
  * v30.71: Die Themen des Kommunikations-Schritts, die ein Termin eigenständig
- * haben kann — je Thema die Felder des Slots. Schritt 27 (Organizer in Kopie)
+ * haben kann — je Thema die Felder des Slots. Schritt 31 (Organizer in Kopie)
  * fehlt bewusst: Er gilt event-weit und hat keinen Sub-Event-Slot.
  * `labelKey` ist der Übersetzungsschlüssel der Schritt-Überschrift, damit die
  * Themenliste im Schalter dieselben Namen trägt wie die Abschnitte darunter.
  */
 export const COMM_TOPICS: Array<{ key: string; step: number; labelKey: string; fields: string[] }> = [
-  { key: 'language', step: 25, labelKey: 'create.emaillanguage', fields: ['emailLanguage'] },
-  { key: 'switches', step: 26, labelKey: 'create.notifications', fields: ['disableEmails', 'disableRegistrationEmail', 'disableCancellationEmail', 'autoDeregisterOnDecline', 'inactiveHandling', 'disableOutlook'] },
+  { key: 'switches', step: 25, labelKey: 'create.notifications', fields: ['disableEmails', 'disableRegistrationEmail', 'disableCancellationEmail', 'autoDeregisterOnDecline', 'inactiveHandling', 'disableOutlook'] },
+  { key: 'language', step: 26, labelKey: 'create.emaillanguage', fields: ['emailLanguage'] },
+  { key: 'templates', step: 27, labelKey: 'create.templates.title', fields: ['emailTemplateOverrides'] },
   { key: 'mailLogo', step: 28, labelKey: 'create.eventlogo.mail', fields: ['emailLogoBase64'] },
   { key: 'outlookLogo', step: 29, labelKey: 'create.outlooklogo', fields: ['outlookLogoBase64'] },
   { key: 'outlookText', step: 30, labelKey: 'create.outlookdesc', fields: ['outlookBody', 'outlookHeading', 'outlookSubheading', 'outlookSubject'] },
-  { key: 'templates', step: 31, labelKey: 'create.templates.title', fields: ['emailTemplateOverrides'] },
 ];
 
 /**

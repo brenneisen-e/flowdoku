@@ -10,8 +10,8 @@
  * dex-ui-toggle-row/-switch, Alternativen (unbegrenzt/begrenzt, ODER/UND,
  * getrennte/gemeinsame Warteliste) als dex-ui-choice-Kacheln. Handler,
  * Bedingungen, Speicher-Semantik (maxParticipants bleibt bei geteilten
- * Gruppen 0) und die StepBadge-Nummern sind unverändert — die Nummern laufen
- * deshalb optisch nicht mehr aufsteigend (22/23 vor 18–21). */
+ * Gruppen 0) sind unverändert. Die StepBadge-Nummern folgen seit der
+ * Umnummerierung (07.09.2026) wieder der Renderreihenfolge (18–23). */
 import * as React from 'react';
 import { SubEventDraft } from '../../wizard/wizardTypes';
 import { Icon } from '@fluentui/react/lib/Icon';
@@ -206,8 +206,8 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                   setSubEvents(prev => prev.map((x, i) => i === seIdx ? { ...x, ...patch } : x));
                 };
                 const seLocationFilterList = (se.locationFilter || '').split(',').map(s => s.trim()).filter(Boolean);
-                // v31.2: Die Badge-Nummern hängen daran, ob die Filterverknüpfung
-                // (Badge 20) sichtbar ist — einmal ausrechnen statt viermal.
+                // v31.2: Ob die Filterverknüpfung (Badge 22) sichtbar ist — einmal
+                // ausrechnen; sie ist der letzte Block, die Nummern davor hängen nicht daran.
                 const seBothFilters = seLocationFilterList.length > 0 && (se.audience || '').trim().length > 0;
                 const seUnlimited = (se.maxParticipants || 0) === 0;
                 const seWaitlist = typeof se.waitlistEnabled === 'boolean' ? se.waitlistEnabled : true;
@@ -312,8 +312,8 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                     })()}
 
                     {/* ===== v31.2: dieselbe Reihenfolge wie auf der Klammer —
-                        Plätze → Fristen → Sichtbarkeit. Die Badge-Nummern bleiben
-                        die alten (18–22), weil Support darauf verweist. ===== */}
+                        Plätze → Fristen → Sichtbarkeit — mit denselben Badge-Nummern
+                        wie dort (18–22; Umnummerierung 07.09.2026). ===== */}
 
                     {/* Teilnehmerzahl & Warteliste — Split-Capacity bleibt
                         Hauptevent-only (Scope-Eingrenzung, siehe v15.6
@@ -330,7 +330,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                       </div>
                     <div className="dex-ui-card" style={{ marginBottom: 12 }}>
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <StepBadge n={seBothFilters ? 22 : 21} />
+                        <StepBadge n={18} />
                         {isDe ? 'Plätze & Warteliste' : 'Seats & waitlist'}
                       </label>
                       <div className="dex-ui-grid-2">
@@ -410,7 +410,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                       </div>
                     <div className="dex-ui-card" style={{ marginBottom: 12 }}>
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <StepBadge n={seBothFilters ? 21 : 20} />
+                        <StepBadge n={19} />
                         {isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}
                       </label>
                       <p className="dex-ui-help" style={{ margin: '0 0 12px' }}>
@@ -587,7 +587,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                       <div className={visAllSubs ? 'dex-ui-card--muted' : undefined} style={visAllSubs ? { pointerEvents: 'none' as const, userSelect: 'none' as const } : undefined}>
                       <div className="dex-ui-card" style={{ marginBottom: 12 }}>
                         <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <StepBadge n={18} />
+                          <StepBadge n={20} />
                           {isDe ? 'Standortfilter' : 'Location filter'}
                         </label>
                         <p className="dex-ui-help" style={{ margin: '0 0 12px' }}>
@@ -622,7 +622,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                         // den aktuellen Stand des Sub-Events anwenden.
                         excludedUsers={se.excludedUsers || []}
                         onExcludedUsersChange={updater => setSubEvents(prev => prev.map((x, i) => i === seIdx ? { ...x, excludedUsers: updater(x.excludedUsers || []) } : x))}
-                        stepBadge={<StepBadge n={19} />}
+                        stepBadge={<StepBadge n={21} />}
                         cardBgPrimary={zebraS3Bg()}
                         summarySlot={renderVisibilitySummaryBox(
                           seLocationFilterList,
@@ -633,7 +633,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                         middleSlot={seBothFilters ? (
                           <div className="dex-ui-card" style={{ marginBottom: 12 }}>
                             <div className="dex-ui-label">
-                              <StepBadge n={20} />
+                              <StepBadge n={22} />
                               {isDe ? 'Wie greifen die beiden Filter zusammen?' : 'How do the two filters combine?'}
                             </div>
                             <p className="dex-ui-help" style={{ margin: '-2px 0 10px' }}>
@@ -683,8 +683,8 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
               {/* ===== v31.2: Abschnitt 1 — Plätze & Warteliste. Steht jetzt
                   ZUERST: „Wie viele dürfen kommen?" ist die Frage, die jeder
                   Organizer sofort beantworten kann; Fristen und Sichtbarkeit
-                  bauen darauf auf. Die StepBadge-Nummern bleiben unverändert,
-                  weil Support und Tour darauf verweisen. ===== */}
+                  bauen darauf auf. Die StepBadge-Nummern laufen seit der
+                  Umnummerierung (07.09.2026) mit: 18 Plätze … 23 Assistenz. ===== */}
               {/* v9.17: Standard-Teilnehmerzahl zuerst, Split-Toggle darunter —
                   die Mehrheit der Events nutzt nur eine Gesamtkapazität; der
                   B2Run-Sonderfall ist Opt-in. */}
@@ -746,7 +746,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                 <>
               <div style={hauptGreyoutWrapperStyle()}>
               <div className="dex-ui-card" style={{ marginBottom: 12 }}>
-                {visHeader('vis_capacity', <StepBadge n={(locationFilter && audience) ? 23 : 22} />, isDe ? 'Plätze & Warteliste' : 'Seats & waitlist')}
+                {visHeader('vis_capacity', <StepBadge n={18} />, isDe ? 'Plätze & Warteliste' : 'Seats & waitlist')}
                 {isVisOpen('vis_capacity') && (<>
                 {/* v22.38 stellte die Frage als Checkbox „Teilnehmeranzahl
                     begrenzen?". v31.2: zwei Kacheln „Unbegrenzt" / „Begrenzt"
@@ -1311,7 +1311,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                   {isDe ? 'Fristen — bis wann?' : 'Deadlines — until when?'}
                 </div>
               <div className="dex-ui-card" style={{ marginBottom: 12 }}>
-                {visHeader('vis_fristen', <StepBadge n={(locationFilter && audience) ? 22 : 21} />, <>{isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}<InfoTooltip text={isDe
+                {visHeader('vis_fristen', <StepBadge n={19} />, <>{isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}<InfoTooltip text={isDe
                     ? 'Bis wann können sich Teilnehmer anmelden bzw. fristgerecht abmelden? Die Abmeldefrist ist die kommunizierte Deadline — abmelden geht danach standardmäßig weiterhin bis zum Event-Ende, die Organizer werden dann aber automatisch informiert. Über die Option unter den Fristen lässt sich die Selbst-Abmeldung nach der Frist auch komplett sperren. Beide Werte werden anhand des Event-Datums automatisch vorgeschlagen, du kannst sie jederzeit überschreiben.'
                     : 'Until when can attendees register or cancel within the deadline? The cancellation deadline is the communicated cutoff — by default cancelling remains possible until the event ends, but organizers are then notified automatically. The option below the deadlines can instead lock self-cancellation completely after the cutoff. Both values are auto-suggested from the event date and can be overridden at any time.'} /></>)}
                 {isVisOpen('vis_fristen') && (<>
@@ -1955,7 +1955,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                 {renderKlammerVisibilityMismatch()}
 
                 <div className="dex-ui-card" style={{ marginBottom: 12 }}>
-                  {visHeader('vis_locfilter', <StepBadge n={18} />, isDe ? 'Standortfilter' : 'Location filter')}
+                  {visHeader('vis_locfilter', <StepBadge n={20} />, isDe ? 'Standortfilter' : 'Location filter')}
                   {isVisOpen('vis_locfilter') && (<>
                   <p className="dex-ui-help" style={{ margin: '0 0 12px' }}>
                     {isDe
@@ -1995,7 +1995,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                   isDe={isDe}
                   excludedUsers={excludedUsers}
                   onExcludedUsersChange={setExcludedUsers}
-                  headerSlot={visHeader('vis_audience', <StepBadge n={19} />, isDe ? 'Mailverteiler / einzelne User' : 'Mailing lists / individual users')}
+                  headerSlot={visHeader('vis_audience', <StepBadge n={21} />, isDe ? 'Mailverteiler / einzelne User' : 'Mailing lists / individual users')}
                   bodyOpen={isVisOpen('vis_audience')}
                   cardBgPrimary={zebraS3Bg()}
                   visibilityTabs={subEvents.length > 0 ? [
@@ -2009,7 +2009,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                        einer Zeile Folge; die Beispiele stehen im Tooltip. */
                     <div className="dex-ui-card" style={{ marginBottom: 12 }}>
                       <div className="dex-ui-label">
-                        <StepBadge n={20} />
+                        <StepBadge n={22} />
                         {isDe ? 'Wie greifen die beiden Filter zusammen?' : 'How do the two filters combine?'}
                         <InfoTooltip text={isDe ? (
                           <>
@@ -2139,7 +2139,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                     AUSSERHALB des Greyout-Wrappers (laufzeit-/sichtbarkeitsrelevant,
                     wie der AudiencePicker oben — auch im Klammer-Modus editierbar). */}
                 <div className="dex-ui-card" style={{ marginBottom: 12 }}>
-                  {visHeader('vis_assist', <StepBadge n={(locationFilter && audience) ? 21 : 20} />, isDe ? 'Sichtbarkeit für Assistenzen' : 'Visibility for assistants')}
+                  {visHeader('vis_assist', <StepBadge n={(locationFilter && audience) ? 23 : 22} />, isDe ? 'Sichtbarkeit für Assistenzen' : 'Visibility for assistants')}
                   {isVisOpen('vis_assist') && (
                     <label className={cx('dex-ui-toggle-row', assistantsCanSee && 'is-active')}>
                       <input type="checkbox" checked={assistantsCanSee} onChange={e => setAssistantsCanSee(e.target.checked)} />

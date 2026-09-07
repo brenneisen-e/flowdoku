@@ -375,28 +375,28 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
 
               {renderStepIntro(
                 [
-                  '1. Als Entwurf speichern (Abschnitt „Veröffentlichung" ganz unten) — Event nur für Admins, Organizer und Test-Team sichtbar; optional Aktiv-Ab-Datum für automatisches Go-Live',
-                  '2. Event-Titel',
-                  '3. Datum (Start &amp; Ende) — füllt die Anmelde- und Storno-Deadlines automatisch vor',
-                  '4. Beschreibung (optional, HTML-Editor)',
-                  '5. Event-Bild hochladen — oben auf der Detailseite und in den Mails verwendet',
+                  '5. Als Entwurf speichern (Abschnitt „Veröffentlichung" ganz unten) — Event nur für Admins, Organizer und Test-Team sichtbar; optional Aktiv-Ab-Datum für automatisches Go-Live',
+                  '1. Event-Titel',
+                  '2. Datum (Start &amp; Ende) — füllt die Anmelde- und Storno-Deadlines automatisch vor',
+                  '3. Beschreibung (optional, HTML-Editor)',
+                  '4. Event-Bild hochladen — oben auf der Detailseite und in den Mails verwendet',
                   '6. Organizer auswählen — bekommen alle Organizer-Mails',
                   '7. Test-Team — sieht das Event schon im Entwurfsmodus',
                   '8. Check-In Team — darf nur das QR-/Check-In-Tool nutzen',
                 ],
                 [
-                  '1. Save as draft (section “Publishing” at the bottom) — visible only to admins, organizers, and the test team; optional active-from date for automatic go-live',
-                  '2. Event title',
-                  '3. Date (start &amp; end) — pre-fills the registration and cancellation deadlines',
-                  '4. Description (optional, HTML editor)',
-                  '5. Upload an event image — shown at the top of the detail page and in emails',
+                  '5. Save as draft (section “Publishing” at the bottom) — visible only to admins, organizers, and the test team; optional active-from date for automatic go-live',
+                  '1. Event title',
+                  '2. Date (start &amp; end) — pre-fills the registration and cancellation deadlines',
+                  '3. Description (optional, HTML editor)',
+                  '4. Upload an event image — shown at the top of the detail page and in emails',
                   '6. Pick organizers — they receive all organizer emails',
                   '7. Test team — can see the event already in draft mode',
                   '8. Check-in team — may only use the QR / check-in tool',
                 ]
               )}
 
-              {/* v31.2: Der Entwurfs-/Aktivierungs-Block (Badge 1) steht jetzt
+              {/* v31.2: Der Entwurfs-/Aktivierungs-Block (Badge 5) steht jetzt
                   als Abschnitt „Veröffentlichung" am Ende des Schritts. */}
               </>)}{/* v28.89: Ende der event-weiten Angaben */}
 
@@ -407,7 +407,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
               <div className="dex-ui-section">
                 <div className="dex-ui-section-title">{scopeSub ? (childTermSingular || 'Sub-Event') : 'Event'}</div>
                 <label className="dex-ui-label">
-                  <StepBadge n={2} />
+                  <StepBadge n={1} />
                   {!scopeSub && <span className="required">*</span>}
                   {scopeSub
                     ? (isDe ? `Wie heißt dieses ${childTermSingular || 'Sub-Event'}?` : `What is this ${childTermSingular || 'sub-event'} called?`)
@@ -454,7 +454,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
               <div className="dex-ui-section">
                 <div className="dex-ui-section-title">{isDe ? 'Zeitraum' : 'Dates'}</div>
                 <div className="dex-ui-label">
-                  <StepBadge n={3} />
+                  <StepBadge n={2} />
                   {scopeSub
                     ? (isDe ? `Wann findet dieses ${childTermSingular || 'Sub-Event'} statt?` : `When does this ${childTermSingular || 'sub-event'} take place?`)
                     : (isDe ? 'Wann findet das Event statt?' : 'When does the event take place?')}
@@ -636,7 +636,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                     fälschlich auf den Schalter umleiten. */}
                 <div className="dex-ui-section-title">{isDe ? 'Beschreibung' : 'Description'}</div>
                 <div className="dex-ui-label" style={{ flexWrap: 'wrap' }}>
-                  <StepBadge n={4} />
+                  <StepBadge n={3} />
                   {isDe ? 'Was sollen Teilnehmer vorab wissen?' : 'What should attendees know beforehand?'}
                   <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>
                   <InfoTooltip text={isDe ? (
@@ -770,7 +770,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
               <div className="dex-ui-section">
                 <div className="dex-ui-section-title">{isDe ? 'Bild' : 'Image'}</div>
                 <div className="dex-ui-label">
-                  <StepBadge n={5} />
+                  <StepBadge n={4} />
                   {scopeSub
                     ? (isDe ? `Welches Bild zeigt dieses ${childTermSingular || 'Sub-Event'}?` : `Which image shows this ${childTermSingular || 'sub-event'}?`)
                     : (isDe ? 'Welches Bild zeigt das Event?' : 'Which image represents the event?')}
@@ -1198,7 +1198,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   v31.2: vom Anfang ans Ende des Schritts gewandert — erst
                   beschreibt man das Event, dann entscheidet man, wann es
                   jemand sieht. Bleibt event-weit (nur auf der Klammer-Ebene);
-                  die Badge-Nummer 1 bleibt, Support verweist darauf. */}
+                  Badge 5 — die Nummern folgen der Reihenfolge (07.09.2026). */}
               {activeScopeIdx === 0 && (
                 <div className="dex-ui-section">
                   <div className="dex-ui-section-title">{isDe ? 'Veröffentlichung' : 'Publishing'}</div>
@@ -1206,7 +1206,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                     <input type="checkbox" checked={isFictive} onChange={e => setIsFictive(e.target.checked)} />
                     <span className="dex-ui-toggle-row-body">
                       <span className="dex-ui-toggle-row-title">
-                        <StepBadge n={1} />
+                        <StepBadge n={5} />
                         {isDe ? 'Noch nicht veröffentlichen — als Entwurf speichern' : 'Don’t publish yet — save as draft'}
                         <InfoTooltip text={t('create.fictive.hint')} />
                       </span>

@@ -123,7 +123,7 @@ const TransfersSection: React.FC<{
   return (
     <div className="dex-ui-field">
       <label className="dex-ui-label" style={{ fontSize: '0.95rem' }}>
-        <StepBadge n={17} />
+        <StepBadge n={16} />
         {isDe ? 'Gibt es organisierte Anreisen (Bus, Shuttle, Bahn)?' : 'Is there organised travel (bus, shuttle, train)?'}
         <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>
         {tooltip && <InfoTooltip text={tooltip} />}
@@ -352,7 +352,7 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                     <div className="dex-ui-section">
                       <div className="dex-ui-section-title">{isDe ? 'Was passiert wann?' : 'What happens when?'}</div>
                       <label className="dex-ui-label" style={{ fontSize: '0.95rem' }}>
-                        <StepBadge n={16} />
+                        <StepBadge n={17} />
                         {isDe ? 'Wie sieht das Programm aus?' : 'What does the programme look like?'}
                         <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>
                       </label>
@@ -595,7 +595,7 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
 
               {/* ===== Transferzeiten ===== v31.2: vor dem Programm — die
                   Geschichte des Schritts ist „Wo? → Wie kommt man hin? → Was
-                  passiert wann?". Die Badge-Nummer 17 bleibt (Support). */}
+                  passiert wann?". Badge 16, das Programm 17 — Nummern in Renderreihenfolge (07.09.2026). */}
               <div className="dex-ui-section">
                 <div className="dex-ui-section-title">{isDe ? 'Wie kommen die Teilnehmer hin?' : 'How do attendees get there?'}</div>
                 <TransfersSection
@@ -614,7 +614,7 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
               <div className="dex-ui-section">
                 <div className="dex-ui-section-title">{isDe ? 'Was passiert wann?' : 'What happens when?'}</div>
                 <label className="dex-ui-label" style={{ fontSize: '0.95rem' }}>
-                  <StepBadge n={16} />
+                  <StepBadge n={17} />
                   {agendaCheckIn ? agendaPlural : (isDe ? 'Wie sieht das Programm aus?' : 'What does the programme look like?')}
                   {/* v31.2: Im Programmpunkte-Modus ist die Liste die Check-in-Liste — dann nicht „optional". */}
                   {!agendaCheckIn && <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>}
