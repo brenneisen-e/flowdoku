@@ -4,7 +4,8 @@
  */
 import * as React from 'react';
 import Modal from '../../Modal';
-import { Download, FileText, Plus, X } from '../../Icons';
+import { cx } from '../../dexUi';
+import { Download, FileText, Plus, Trash2 } from '../../Icons';
 import { DeloitteEvent } from '../../../types';
 import { EventService, SPRegistration } from '../../../services/EventService';
 
@@ -52,7 +53,15 @@ export const AttachmentsModal: React.FC<AttachmentsModalProps> = (p) => {
         };
         const onDelete = async (fileName: string): Promise<void> => {
           if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-          if (!(await confirmDialog(isDe ? `Datei „${fileName}" wirklich löschen?` : `Really delete file „${fileName}"?`, { danger: true, confirmLabel: isDe ? 'Löschen' : 'Delete' }))) return;
+          // v31.2: Die Rückfrage nennt die Folge und den lesbaren Namen — der
+          // rohe Name trägt Präfix und Zeitstempel, die niemand wiedererkennt.
+          const shown = prettyFileName(fileName);
+          if (!(await confirmDialog(
+            isDe
+              ? `Datei „${shown}“ löschen? Sie wird aus dieser Anmeldung entfernt.`
+              : `Delete file “${shown}”? It will be removed from this registration.`,
+            { danger: true, confirmLabel: isDe ? 'Löschen' : 'Delete' },
+          ))) return;
           setAttachmentsBusy(true);
           try {
             await eventServiceRef.deleteRegistrationAttachment(selectedEvent.subsiteUrl, reg.Id, fileName);
@@ -74,86 +83,96 @@ export const AttachmentsModal: React.FC<AttachmentsModalProps> = (p) => {
           } finally { setAttachmentsBusy(false); }
         };
         const fullName = `${reg.Vorname || ''} ${reg.Nachname || ''}`.trim() || reg.ParticipantEmail || '–';
+        // v31.2: Die Liste kennt keine Dateigröße — aber die Endung sagt dem
+        // Organizer vor dem Klick, was aufgeht (PDF, Bild, Word).
+        const kindOf = (fileName: string): string => {
+          const ext = (fileName.split('.').pop() || '').toLowerCase();
+          if (ext === 'pdf') return 'PDF';
+          if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'bmp', 'svg'].indexOf(ext) >= 0) return isDe ? 'Bild' : 'Image';
+          if (ext === 'doc' || ext === 'docx') return 'Word';
+          return ext ? ext.toUpperCase() : (isDe ? 'Datei' : 'File');
+        };
+        const dlLabel = isDe ? 'Herunterladen' : 'Download';
+        const delLabel = isDe ? 'Löschen' : 'Delete';
+        // v31.2: Kopf und Fuß kommen vom Modal; Zeilen mit Hover und Symbol-
+        // Knöpfen statt grüner Kästen, Leerzustand statt kursivem Satz, Upload
+        // als Kachel mit Formaten und Grenze — vorher stand „10 MB" nur im
+        // Fehlerdialog NACH dem gescheiterten Versuch.
         return (
-          <Modal
-            open={true}
-            onClose={close}
-            dismissable={!attachmentsBusy}
-            maxWidth={560}
-            padding={24}
+          <Modal open={true} onClose={close} dismissable={!attachmentsBusy} maxWidth={560}
             ariaLabel={isDe ? 'Hochgeladene Dateien' : 'Uploaded files'}
+            title={isDe ? 'Dateien zur Anmeldung' : 'Files for this registration'}
+            subtitle={<>{fullName}{reg.ParticipantEmail ? ` · ${reg.ParticipantEmail}` : ''}</>}
+            icon={<FileText size={20} />}
+            footer={
+              <button type="button" className="btn btn-primary" onClick={close} disabled={attachmentsBusy}>
+                {isDe ? 'Schließen' : 'Close'}
+              </button>
+            }
           >
-              <h3 style={{ margin: '0 0 4px', fontSize: '1.1rem' }}>
-                {isDe ? 'Hochgeladene Dateien' : 'Uploaded files'}
-              </h3>
-              <p style={{ margin: '0 0 14px', fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
-                {fullName}{reg.ParticipantEmail ? ` · ${reg.ParticipantEmail}` : ''}
-              </p>
-              {list.length === 0 ? (
-                <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)', fontStyle: 'italic', margin: '12px 0' }}>
-                  {isDe ? 'Noch keine Dateien hochgeladen.' : 'No files uploaded yet.'}
-                </p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-                  {list.map(f => (
-                    <div key={f.fileName} style={{
-                      display: 'flex', alignItems: 'center', gap: 10,
-                      padding: '8px 12px', borderRadius: 6,
-                      background: 'rgba(134,188,37,0.08)',
-                      border: '1px solid rgba(134,188,37,0.30)',
-                      fontSize: '0.85rem',
-                    }}>
-                      <FileText size={16} />
-                      <a
-                        href={f.serverRelativeUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ flex: 1, color: 'var(--dex-gray-800)', textDecoration: 'none', wordBreak: 'break-all' }}
-                      >
-                        {fieldLabelForFile(f.fileName) && (
-                          <span style={{ display: 'inline-block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)', background: 'rgba(134,188,37,0.15)', borderRadius: 4, padding: '1px 6px', marginRight: 6 }}>
-                            {fieldLabelForFile(f.fileName)}
-                          </span>
-                        )}
-                        {prettyFileName(f.fileName)}
-                      </a>
-                      <a
-                        href={f.serverRelativeUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn btn-secondary"
-                        style={{ fontSize: '0.72rem', padding: '2px 10px', textDecoration: 'none' }}
-                      >
-                        <Download size={12} /> {isDe ? 'Download' : 'Download'}
-                      </a>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        style={{ fontSize: '0.72rem', padding: '2px 10px', color: 'var(--dex-red, #c00)' }}
-                        disabled={attachmentsBusy}
-                        onClick={() => onDelete(f.fileName)}
-                        title={isDe ? 'Löschen' : 'Delete'}
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ))}
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">
+                  {isDe ? 'Hochgeladen' : 'Uploaded'}
+                  <span className="dex-ui-pill dex-ui-pill--gray">{list.length}</span>
                 </div>
-              )}
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
-                <label className="btn btn-outline" style={{ fontSize: '0.82rem', padding: '6px 14px', cursor: attachmentsBusy ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <Plus size={14} /> {attachmentsBusy ? (isDe ? 'Wird übertragen…' : 'Uploading…') : (isDe ? 'Datei hinzufügen' : 'Add file')}
-                  <input
-                    type="file"
-                    accept="application/pdf,image/*,.doc,.docx"
-                    style={{ display: 'none' }}
-                    onChange={onAdd}
-                    disabled={attachmentsBusy}
-                  />
+                {list.length === 0 ? (
+                  <div className="dex-ui-empty">
+                    <span className="dex-ui-empty-icon"><FileText size={20} /></span>
+                    <div className="dex-ui-empty-title">{isDe ? 'Noch keine Dateien' : 'No files yet'}</div>
+                    {isDe
+                      ? 'Was die Person beim Anmelden hochlädt oder du hier hinzufügst, erscheint in dieser Liste.'
+                      : 'Whatever the person uploads when registering or you add here shows up in this list.'}
+                  </div>
+                ) : (
+                  <div className="dex-ui-card" style={{ padding: '4px 6px' }}>
+                    {list.map(f => {
+                      const label = fieldLabelForFile(f.fileName);
+                      return (
+                        <div key={f.fileName} className="dex-ui-row dex-ui-row--bordered">
+                          <span style={{ color: 'var(--dex-gray-500)', display: 'inline-flex', flexShrink: 0 }}><FileText size={18} /></span>
+                          <div className="dex-ui-row-main">
+                            <a href={f.serverRelativeUrl} target="_blank" rel="noopener noreferrer" className="dex-ui-row-title"
+                              title={isDe ? 'Datei öffnen' : 'Open file'} style={{ display: 'block', color: 'inherit', textDecoration: 'none' }}>
+                              {prettyFileName(f.fileName)}
+                            </a>
+                            <div className="dex-ui-row-sub dex-ui-inline" style={{ gap: 6 }}>
+                              {label && <span className="dex-ui-pill dex-ui-pill--green">{label}</span>}
+                              <span>{kindOf(f.fileName)}</span>
+                            </div>
+                          </div>
+                          <div className="dex-ui-row-actions">
+                            <a href={f.serverRelativeUrl} target="_blank" rel="noopener noreferrer" className="dex-ui-iconbtn" title={dlLabel} aria-label={dlLabel}>
+                              <Download size={16} />
+                            </a>
+                            <button type="button" className="dex-ui-iconbtn dex-ui-iconbtn--danger" disabled={attachmentsBusy}
+                              onClick={() => onDelete(f.fileName)} title={delLabel} aria-label={delLabel}>
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">{isDe ? 'Datei hinzufügen' : 'Add a file'}</div>
+                <label className={cx('dex-ui-choice', attachmentsBusy && 'is-disabled')} style={{ cursor: attachmentsBusy ? 'wait' : 'pointer' }}>
+                  <span className="dex-ui-choice-icon"><Plus size={18} /></span>
+                  <span className="dex-ui-choice-body">
+                    <span className="dex-ui-choice-title" style={{ display: 'block' }}>
+                      {attachmentsBusy
+                        ? (isDe ? 'Wird übertragen…' : 'Uploading…')
+                        : (isDe ? 'Datei auswählen und hochladen' : 'Choose a file and upload it')}
+                    </span>
+                    <span className="dex-ui-choice-desc" style={{ display: 'block' }}>
+                      {isDe
+                        ? 'PDF, Bild oder Word, höchstens 10 MB. Die Datei wird dieser Anmeldung angehängt.'
+                        : 'PDF, image or Word, up to 10 MB. The file is attached to this registration.'}
+                    </span>
+                  </span>
+                  <input type="file" accept="application/pdf,image/*,.doc,.docx" style={{ display: 'none' }} onChange={onAdd} disabled={attachmentsBusy} />
                 </label>
-                <button className="btn btn-primary" onClick={close} disabled={attachmentsBusy}>
-                  {isDe ? 'Schließen' : 'Close'}
-                </button>
               </div>
           </Modal>
         );

@@ -18,12 +18,17 @@ import { useEvents } from '../../context/EventContext';
 import { DeloitteEvent } from '../../types';
 import { EventService, SPRegistration } from '../../services/EventService';
 import { mergeB2RunTodos, B2RunTodo, StoredB2RunTodo, B2RUN_TODO_LABELS } from '../../utils/b2runTodos';
+import { cx } from '../dexUi';
+import { Check, ChevronDown, Download, Hash } from '../Icons';
 
-const KIND_COLOR: Record<B2RunTodo['kind'], { bg: string; fg: string }> = {
-  transfer: { bg: 'rgba(237,139,0,0.12)', fg: 'var(--dex-orange-dark, #b35a00)' },
-  assign: { bg: 'rgba(237,139,0,0.12)', fg: 'var(--dex-orange-dark, #b35a00)' },
-  unregister: { bg: 'rgba(218,41,28,0.10)', fg: 'var(--dex-red, #da291c)' },
-  register: { bg: 'rgba(21,101,192,0.10)', fg: '#1565c0' },
+// v31.2: Die Art der Aufgabe als Status-Pill (dex-ui-pill) statt eigener
+// Farbwerte — dieselbe Farblogik wie vorher: Ummelden orange, Abmelden rot,
+// Nachmelden blau.
+const KIND_PILL: Record<B2RunTodo['kind'], string> = {
+  transfer: 'dex-ui-pill--orange',
+  assign: 'dex-ui-pill--orange',
+  unregister: 'dex-ui-pill--red',
+  register: 'dex-ui-pill--blue',
 };
 
 export default function B2RunTodoModal(props: {
@@ -174,45 +179,38 @@ export default function B2RunTodoModal(props: {
     } finally { setXlsxBusy(false); }
   };
 
+  // v31.2: Eine Aufgabe ist eine Zeile mit Hover (dex-ui-row) — der Haken
+  // links, rechts daneben Art, Nummer, Satz und ggf. der Übertragen-Knopf.
+  // Erledigte bleiben sichtbar, aber gedämpft (voll erst beim Überfahren),
+  // damit die Person sieht, was sie schon abgehakt hat.
   const renderTodo = (t: B2RunTodo, isDone: boolean): React.ReactElement => (
-    <div
-      key={t.key}
-      style={{
-        display: 'flex', alignItems: 'flex-start', gap: 10,
-        padding: '10px 12px', border: '1px solid var(--dex-gray-200)',
-        borderRadius: 10, marginBottom: 8,
-        background: isDone ? 'var(--dex-gray-50, #fafafa)' : '#fff',
-        opacity: isDone ? 0.65 : 1,
-      }}
-    >
+    <div key={t.key} className={cx('dex-ui-row dex-ui-row--bordered', isDone && 'dex-ui-card--muted')} style={{ alignItems: 'flex-start' }}>
       <input
         type="checkbox"
         checked={isDone}
         disabled={saving}
         onChange={() => { void toggle(t.key); }}
-        style={{ marginTop: 3, flexShrink: 0, width: 18, height: 18, cursor: saving ? 'wait' : 'pointer' }}
+        style={{ marginTop: 3, flexShrink: 0, width: 18, height: 18, cursor: saving ? 'wait' : 'pointer', accentColor: '#86bc25' }}
         aria-label={isDone ? 'Als offen markieren' : 'Als erledigt markieren'}
+        title={isDone ? 'Als offen markieren' : 'Als erledigt markieren'}
       />
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
-          <span style={{
-            fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999,
-            background: KIND_COLOR[t.kind].bg, color: KIND_COLOR[t.kind].fg,
-          }}>{B2RUN_TODO_LABELS[t.kind]}</span>
+      <div className="dex-ui-row-main">
+        <div className="dex-ui-inline" style={{ marginBottom: 3 }}>
+          <span className={cx('dex-ui-pill', KIND_PILL[t.kind])}>{B2RUN_TODO_LABELS[t.kind]}</span>
           {t.bib && (
             <span style={{ fontFamily: "'Courier New',Courier,monospace", fontWeight: 700, fontSize: '0.95rem' }}>{t.bib}</span>
           )}
           {!t.certain && (
-            <span style={{ fontSize: '0.7rem', color: 'var(--dex-orange-dark, #b35a00)' }}>
+            <span className="dex-ui-pill dex-ui-pill--gray" title="Nicht in DEX aufgezeichnet, sondern aus der Teilnehmerliste erschlossen — bitte beim Veranstalter prüfen.">
               erschlossen, nicht aufgezeichnet
             </span>
           )}
         </div>
-        <div style={{ fontSize: '0.83rem', lineHeight: 1.5, textDecoration: isDone ? 'line-through' : undefined }}>
+        <div style={{ fontSize: '0.85rem', lineHeight: 1.5, whiteSpace: 'normal', textDecoration: isDone ? 'line-through' : undefined }}>
           {t.action}
         </div>
         {(t.fromEmail || t.toEmail) && (
-          <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+          <div className="dex-ui-row-sub">
             {t.fromEmail ? <>von {t.fromEmail}</> : null}
             {t.fromEmail && t.toEmail ? ' · ' : ''}
             {t.toEmail ? <>auf {t.toEmail}</> : null}
@@ -222,19 +220,21 @@ export default function B2RunTodoModal(props: {
             muss aber auch in DEX bei der richtigen Person stehen, sonst zeigt
             der Check-in für die Person, die wirklich läuft, gar keine Nummer. */}
         {!isDone && t.bib && t.toReg && !t.bibInDex && (
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={!!bibBusy}
-            onClick={() => { void moveBibInDex(t); }}
-            style={{ fontSize: '0.75rem', padding: '4px 12px', marginTop: 6 }}
-          >
-            {bibBusy === t.key ? 'Wird übertragen…' : `Startnummer ${t.bib} in DEX auf ${t.toName} übertragen`}
-          </button>
+          <div style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              className="btn btn-secondary dex-ui-btn-sm"
+              disabled={!!bibBusy}
+              onClick={() => { void moveBibInDex(t); }}
+            >
+              {bibBusy === t.key ? 'Wird übertragen…' : `Startnummer ${t.bib} in DEX auf ${t.toName} übertragen`}
+            </button>
+            <div className="dex-ui-help">Danach zeigt der Check-in die Nummer bei {t.toName}; die Aufgabe verschwindet von selbst.</div>
+          </div>
         )}
         {t.bib && t.bibInDex && (
-          <div style={{ fontSize: '0.72rem', color: 'var(--dex-green-dark, #4a7c1f)', marginTop: 4 }}>
-            In DEX steht die Nummer bereits bei {t.toName}.
+          <div className="dex-ui-pill dex-ui-pill--green" style={{ marginTop: 6 }}>
+            <Check size={12} /> In DEX steht die Nummer bereits bei {t.toName}.
           </div>
         )}
       </div>
@@ -242,70 +242,78 @@ export default function B2RunTodoModal(props: {
   );
 
   return (
-    <Modal open onClose={props.onClose} maxWidth={780} ariaLabel="Offen beim Veranstalter">
-      <div style={{ fontSize: '0.87rem', lineHeight: 1.55 }}>
-        <h3 style={{ margin: '0 0 4px', fontSize: '1.05rem' }}>Offen beim Veranstalter (B2Run)</h3>
-        <p style={{ margin: '0 0 14px', color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>
-          Wird bei jedem Öffnen neu aus der Teilnehmerliste berechnet — spätere Abmeldungen tauchen
-          also von selbst hier auf. Abgehakte Aufgaben bleiben gespeichert.
-        </p>
-
-        {loading ? (
-          <p style={{ color: 'var(--dex-gray-500)' }}>Teilnehmerliste wird gelesen…</p>
-        ) : todos.length === 0 ? (
-          <p style={{
-            padding: '12px 14px', borderRadius: 10,
-            background: 'rgba(134,188,37,0.09)', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600,
-          }}>
-            Nichts offen — alle Startnummern sind zugeordnet.
-          </p>
-        ) : (
-          <>
-            {open.length === 0 ? (
-              <p style={{
-                padding: '12px 14px', borderRadius: 10, marginBottom: 12,
-                background: 'rgba(134,188,37,0.09)', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600,
-              }}>
-                Alles abgehakt — {closed.length} Aufgabe{closed.length === 1 ? '' : 'n'} erledigt.
-              </p>
-            ) : (
-              <>
-                <div style={{ fontWeight: 700, marginBottom: 8 }}>Offen ({open.length})</div>
-                {open.map(t => renderTodo(t, false))}
-              </>
-            )}
-
-            {closed.length > 0 && (
-              <div style={{ marginTop: 10 }}>
-                <button
-                  type="button"
-                  onClick={() => setShowDone(v => !v)}
-                  style={{
-                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                    color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, fontSize: '0.8rem',
-                    textDecoration: 'underline',
-                  }}
-                >
-                  {showDone ? 'Erledigte ausblenden' : `Erledigte anzeigen (${closed.length})`}
-                </button>
-                {showDone && <div style={{ marginTop: 8 }}>{closed.map(t => renderTodo(t, true))}</div>}
-              </div>
-            )}
-          </>
-        )}
-
-        <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
+    <Modal
+      open
+      onClose={props.onClose}
+      maxWidth={780}
+      ariaLabel="Offen beim Veranstalter"
+      title="Offen beim B2Run-Veranstalter"
+      subtitle="Was du beim Veranstalter noch ummelden, ab- oder nachmelden musst. Bei jedem Öffnen neu aus der Teilnehmerliste berechnet — spätere Abmeldungen tauchen von selbst auf, abgehakte Aufgaben bleiben gespeichert."
+      icon={<Hash size={20} />}
+      footer={<>
+        <div className="dex-ui-modal-foot-left">
           <button
             type="button"
             className="btn btn-secondary"
             disabled={xlsxBusy || todos.length === 0}
             onClick={() => { void downloadXlsx(); }}
           >
-            {xlsxBusy ? 'Wird erzeugt…' : 'Als Excel laden'}
+            <Download size={16} /> {xlsxBusy ? 'Wird erzeugt…' : 'Als Excel laden'}
           </button>
-          <span style={{ flex: 1 }} />
-          <button type="button" className="btn btn-primary" onClick={props.onClose}>Schließen</button>
         </div>
+        <button type="button" className="btn btn-primary" onClick={props.onClose}>Schließen</button>
+      </>}
+    >
+      <div className="dex-ui-modal-body">
+        {loading ? (
+          <p className="dex-ui-muted" style={{ margin: 0 }}>Teilnehmerliste wird gelesen…</p>
+        ) : todos.length === 0 ? (
+          <div className="dex-ui-empty">
+            <div className="dex-ui-empty-icon"><Check size={20} /></div>
+            <div className="dex-ui-empty-title">Nichts offen</div>
+            Alle Startnummern sind zugeordnet — beim Veranstalter ist nichts zu tun.
+          </div>
+        ) : (
+          <>
+            {open.length === 0 ? (
+              <div className="dex-ui-callout dex-ui-callout--success">
+                <span className="dex-ui-callout-icon"><Check size={16} /></span>
+                <span><strong>Alles abgehakt</strong> — {closed.length} Aufgabe{closed.length === 1 ? '' : 'n'} erledigt.</span>
+              </div>
+            ) : (
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">
+                  Offen <span className="dex-ui-pill dex-ui-pill--orange">{open.length}</span>
+                </div>
+                <div className="dex-ui-card" style={{ padding: '4px 6px' }}>
+                  {open.map(t => renderTodo(t, false))}
+                </div>
+              </div>
+            )}
+
+            {closed.length > 0 && (
+              <div>
+                <button
+                  type="button"
+                  className={cx('dex-ui-disclosure', showDone && 'is-open')}
+                  aria-expanded={showDone}
+                  onClick={() => setShowDone(v => !v)}
+                >
+                  <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                  {showDone ? 'Erledigte ausblenden' : 'Erledigte anzeigen'}
+                  <span className="dex-ui-disclosure-count">{closed.length}</span>
+                </button>
+                {showDone && (
+                  <div className="dex-ui-disclosure-body">
+                    <div className="dex-ui-card dex-ui-card--soft" style={{ padding: '4px 6px' }}>
+                      {closed.map(t => renderTodo(t, true))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
       </div>
     </Modal>
   );

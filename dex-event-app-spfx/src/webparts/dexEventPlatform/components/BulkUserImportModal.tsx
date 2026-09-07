@@ -1,6 +1,9 @@
 import * as React from 'react';
-import { X } from './Icons';
+import { AlertCircle, Check, Users } from './Icons';
 import InternationalSearchToggle from './InternationalSearchToggle';
+import Modal from './Modal';
+import { InfoTooltip } from './InfoTooltip';
+import { cx } from './dexUi';
 import { useLanguage } from '../context/LanguageContext';
 import { useRoles } from '../context/RoleContext';
 
@@ -298,158 +301,217 @@ const BulkUserImportModal: React.FC<Props> = ({ open, onClose, title, descriptio
 
   if (!open) return null;
 
+  // v31.2: Der Dialog erzählt seinen Ablauf als drei nummerierte Schritte
+  // (Einfügen → Prüfen → Ergebnis), der Knopf sitzt IN der Schritt-Zeile.
+  // Vorher standen Erklärliste, Textfeld, Ergebnis-Absätze und fünf Knöpfe
+  // untereinander, und „Verwerfen" versprach ein Rückgängig, das es nie gab —
+  // die Treffer sind beim Prüfen bereits übernommen (Eager-Add, s. oben).
+  const t = (de: string, en: string): string => (isDe ? de : en);
+  const hasText = !!text.trim();
+  const close = (): void => { if (!running) onClose(); };
+  // Ein Ergebnis gilt erst als „erledigt", wenn nichts mehr zu klären ist —
+  // mehrdeutige Namen brauchen einen Klick, nicht gefundene eine Korrektur.
+  const openIssues = report ? report.ambiguous.length + report.notFound.length : 0;
+
+  type RowKind = 'added' | 'alreadyIn' | 'notFound';
+  const personCell = (a: { lastname: string; firstname: string }): React.ReactNode => (
+    <><strong>{a.lastname}</strong>{a.firstname ? `, ${a.firstname}` : ''}</>
+  );
+  // Eine Tabelle statt drei Listen: gleiche Spalten, Status als Pill —
+  // Reihenfolge wie bisher (hinzugefügt, schon drin, nicht gefunden).
+  const rows: Array<{ kind: RowKind; name: React.ReactNode; email: string; from?: string }> = report ? [
+    ...report.added.map(a => ({ kind: 'added' as RowKind, name: personCell(a), email: a.email, from: a.originalInput })),
+    ...report.alreadyIn.map(a => ({ kind: 'alreadyIn' as RowKind, name: personCell(a), email: a.email })),
+    ...report.notFound.map(n => ({ kind: 'notFound' as RowKind, name: <strong>{n}</strong>, email: '' })),
+  ] : [];
+  const PILL: Record<RowKind, { cls: string; de: string; en: string }> = {
+    added: { cls: 'dex-ui-pill--green', de: 'Hinzugefügt', en: 'Added' },
+    alreadyIn: { cls: 'dex-ui-pill--gray', de: 'Schon in der Liste', en: 'Already listed' },
+    notFound: { cls: 'dex-ui-pill--red', de: 'Nicht gefunden', en: 'Not found' },
+  };
+  // Aufrufer geben die Beschreibung mal als String, mal als <p> — ein <p> im
+  // <p>-Untertitel des Modals wäre ungültiges HTML, deshalb landet JSX im Körper.
+  const descIsText = typeof description === 'string';
+
   return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}
-      onClick={() => { if (!running) onClose(); }}
+    <Modal
+      open={open}
+      onClose={close}
+      maxWidth={720}
+      dismissable={!running}
+      ariaLabel={title}
+      title={title}
+      subtitle={descIsText ? description : undefined}
+      icon={<Users size={20} />}
+      footer={report ? (
+        <>
+          <button type="button" className="btn btn-secondary" onClick={() => { setText(''); setReport(null); }} disabled={running}>
+            {t('Weitere Liste einfügen', 'Paste another list')}
+          </button>
+          <button type="button" className="btn btn-primary" onClick={close} disabled={running}>
+            {t('Fertig', 'Done')}
+          </button>
+        </>
+      ) : (
+        <button type="button" className="btn btn-secondary" onClick={close} disabled={running}>
+          {t('Abbrechen', 'Cancel')}
+        </button>
+      )}
     >
-      <div className="card" style={{ width: '90%', maxWidth: 720, maxHeight: '85vh', overflow: 'auto', padding: 24 }} onClick={e => e.stopPropagation()}>
-        <div className="flex-between mb-16">
-          <h3 style={{ margin: 0 }}>{title}</h3>
+      {description && !descIsText && (
+        <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>{description}</div>
+      )}
+
+      {/* Schritt 1 — Einfügen */}
+      <div className={cx('dex-ui-step', hasText && 'is-done')} style={{ alignItems: 'flex-start' }}>
+        <span className="dex-ui-step-num">1</span>
+        <div className="dex-ui-step-body">
+          <div className="dex-ui-step-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {t('Namen oder E-Mail-Adressen einfügen', 'Paste names or email addresses')}
+            <InfoTooltip text={isDe ? (
+              <ul style={{ margin: 0, paddingLeft: 16 }}>
+                <li><strong>E-Mail-Adressen</strong> (z.B. vorname.nachname@deloitte.de) werden direkt übernommen.</li>
+                <li><strong>Namen</strong> werden im Deloitte-Verzeichnis gesucht — eindeutige Treffer kommen automatisch dazu, mehrdeutige klärst du in Schritt 3.</li>
+                <li>Wer <strong>schon in der Liste</strong> steht, wird übersprungen — keine Doppel-Einträge.</li>
+                <li>Trennzeichen: Komma, Semikolon, Tab oder Zeilenumbruch.</li>
+              </ul>
+            ) : (
+              <ul style={{ margin: 0, paddingLeft: 16 }}>
+                <li><strong>Email addresses</strong> (e.g. first.last@deloitte.de) are taken over directly.</li>
+                <li><strong>Names</strong> are looked up in the Deloitte directory — unique hits are added automatically, ambiguous ones you resolve in step 3.</li>
+                <li>People <strong>already on the list</strong> are skipped — no duplicates.</li>
+                <li>Separators: comma, semicolon, tab or line break.</li>
+              </ul>
+            )} />
+          </div>
+          <div className="dex-ui-step-hint">
+            {t('Aus Outlook oder Excel kopiert — eine Person je Zeile oder getrennt durch Komma, Semikolon oder Tab.',
+              'Copied from Outlook or Excel — one person per line or separated by comma, semicolon or tab.')}
+          </div>
+          <textarea
+            className="dex-ui-textarea"
+            style={{ marginTop: 10, minHeight: 140, fontFamily: 'monospace', fontSize: '0.8rem' }}
+            placeholder={isDe
+              ? 'z.B.:\nmax.mustermann@deloitte.de; erika.mustermann@deloitte.de\nSchmitz, Alexander; Kraus, Annika\noder aus Excel kopiert (Tab-getrennt)'
+              : 'e.g.:\nmax.mustermann@deloitte.de; erika.mustermann@deloitte.de\nSchmitz, Alexander; Kraus, Annika\nor copied from Excel (tab-separated)'}
+            value={text}
+            onChange={e => setText(e.target.value)}
+            disabled={running}
+          />
+          <InternationalSearchToggle query={text} checked={includeIntl} onChange={setIncludeIntl} isDe={isDe} />
+        </div>
+      </div>
+
+      {/* Schritt 2 — Prüfen und übernehmen (der Knopf ist der Schritt) */}
+      <div className={cx('dex-ui-step', report ? 'is-done' : !hasText && 'is-pending')}>
+        <span className="dex-ui-step-num">2</span>
+        <div className="dex-ui-step-body">
+          <div className="dex-ui-step-title">{t('Prüfen und übernehmen', 'Check and add')}</div>
+          <div className="dex-ui-step-hint">
+            {t('E-Mail-Adressen kommen direkt dazu, Namen werden im Verzeichnis gesucht. Wer schon in der Liste steht, wird übersprungen.',
+              'Email addresses are added directly, names are looked up in the directory. People already on the list are skipped.')}
+          </div>
+        </div>
+        <div className="dex-ui-step-action">
           <button
             type="button"
-            onClick={() => { if (!running) onClose(); }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
-            aria-label="Schließen"
+            className={cx('btn', report ? 'btn-secondary' : 'btn-primary', 'dex-ui-btn-sm')}
+            onClick={runImport}
+            disabled={running || !hasText}
           >
-            <X size={18} />
+            {running ? t('Suche läuft…', 'Searching…') : report ? t('Erneut prüfen', 'Check again') : t('Prüfen und übernehmen', 'Check and add')}
           </button>
         </div>
-        {description && (
-          <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', marginTop: 0, lineHeight: 1.55, marginBottom: 12 }}>
-            {description}
-          </div>
-        )}
-        <ul style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginTop: 0, marginBottom: 12, paddingLeft: 18, lineHeight: 1.5 }}>
-          <li><strong>Email-Adressen</strong> (z.B. <code>vorname.nachname@deloitte.de</code>) werden direkt übernommen.</li>
-          <li><strong>Namen</strong> werden im Deloitte-Tenant gesucht — eindeutige Treffer werden automatisch hinzugefügt, mehrdeutige Namen musst du unten manuell auflösen.</li>
-          <li>Personen die <strong>schon in der Liste sind</strong>, werden übersprungen (keine Doppel-Einträge).</li>
-          <li>Trennzeichen: <code>,</code>&nbsp; <code>;</code>&nbsp; <code>Tab</code> oder <code>Zeilenumbruch</code>.</li>
-        </ul>
-        <textarea
-          className="form-input"
-          style={{ width: '100%', minHeight: 160, fontFamily: 'monospace', fontSize: '0.8rem' }}
-          placeholder="z.B.:&#10;max.mustermann@deloitte.de; erika.mustermann@deloitte.de&#10;Schmitz, Alexander, Kraus, Annika&#10;oder aus Excel kopiert (Tab-getrennt)"
-          value={text}
-          onChange={e => setText(e.target.value)}
-          disabled={running}
-        />
-        <InternationalSearchToggle query={text} checked={includeIntl} onChange={setIncludeIntl} isDe={isDe} />
+      </div>
 
-        {report && (
-          <div style={{ marginTop: 16, padding: 12, background: 'var(--dex-gray-50)', borderRadius: 'var(--dex-radius)', fontSize: '0.8rem' }}>
-            {report.added.length > 0 && (
-              <div style={{ marginBottom: 10 }}>
-                <strong style={{ color: 'var(--dex-green-dark)' }}>✓ Hinzugefügt ({report.added.length}):</strong>
-                <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
-                  {report.added.map((a, i) => (
-                    <li key={`a-${i}`}>
-                      <strong>{a.lastname}</strong>{a.firstname ? `, ${a.firstname}` : ''} <span style={{ color: 'var(--dex-gray-400)', overflowWrap: 'anywhere' }}>— {a.email}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {report.alreadyIn.length > 0 && (
-              <div style={{ marginBottom: 10 }}>
-                <strong style={{ color: 'var(--dex-gray-500)' }}>— Bereits in der Liste ({report.alreadyIn.length}):</strong>
-                <ul style={{ margin: '4px 0 0 16px', padding: 0, color: 'var(--dex-gray-500)' }}>
-                  {report.alreadyIn.map((a, i) => (
-                    <li key={`w-${i}`}>
-                      <strong>{a.lastname}</strong>{a.firstname ? `, ${a.firstname}` : ''} <span style={{ overflowWrap: 'anywhere' }}>— {a.email}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {report.notFound.length > 0 && (
-              <div style={{ marginBottom: 10 }}>
-                <strong style={{ color: 'var(--dex-red)' }}>✗ Nicht gefunden ({report.notFound.length}):</strong>
-                <ul style={{ margin: '4px 0 0 16px', padding: 0, color: 'var(--dex-red)' }}>
-                  {report.notFound.map((a, i) => <li key={`n-${i}`}>{a} — bitte manuell suchen oder als Email eintragen</li>)}
-                </ul>
-              </div>
-            )}
-            {report.ambiguous.length > 0 && (
-              <div style={{ marginBottom: 10 }}>
-                <strong style={{ color: 'var(--dex-orange, #ed8b00)' }}>? Mehrdeutig — bitte auswählen ({report.ambiguous.length}):</strong>
-                {report.ambiguous.map((a, i) => (
-                  <div key={`m-${i}`} style={{ marginTop: 6, padding: 8, background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 4 }}>
-                    <div style={{ fontWeight: 600, marginBottom: 4 }}>&bdquo;{a.input}&ldquo;</div>
-                    {a.matches.map((m, j) => (
-                      <button
-                        key={`mm-${i}-${j}`}
-                        type="button"
-                        onClick={() => resolveAmbiguous(a.input, m.email, m.displayName)}
-                        style={{
-                          display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px',
-                          marginTop: 4, background: '#fff', border: '1px solid var(--dex-gray-200)',
-                          borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem',
-                        }}
-                      >
-                        <strong>{m.displayName}</strong> <span style={{ color: 'var(--dex-gray-400)', overflowWrap: 'anywhere' }}>{m.email}</span>
-                      </button>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => { if (!running) onClose(); }}
-            disabled={running}
-          >
-            {report ? 'Verwerfen' : 'Schließen'}
-          </button>
-          {!report && (
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={runImport}
-              disabled={running || !text.trim()}
-            >
-              {running ? 'Suche läuft...' : 'Verarbeiten'}
-            </button>
-          )}
-          {report && (
+      {/* Schritt 3 — Ergebnis: erst offene Entscheidungen, dann die Tabelle */}
+      <div className={cx('dex-ui-step', report ? (openIssues === 0 && 'is-done') : 'is-pending')} style={{ alignItems: 'flex-start' }}>
+        <span className="dex-ui-step-num">3</span>
+        <div className="dex-ui-step-body">
+          <div className="dex-ui-step-title">{t('Ergebnis', 'Result')}</div>
+          {!report ? (
+            <div className="dex-ui-step-hint">
+              {running
+                ? t('Die Liste wird gerade aufgelöst …', 'Resolving the list …')
+                : t('Erscheint nach der Prüfung — alles Eindeutige ist dann schon übernommen.', 'Appears after the check — everything unambiguous is already added by then.')}
+            </div>
+          ) : (
             <>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={runImport}
-                disabled={running || !text.trim()}
-              >
-                Erneut verarbeiten
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => { setText(''); setReport(null); }}
-                disabled={running}
-              >
-                Weitere Liste hinzufügen
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => { if (!running) onClose(); }}
-                disabled={running}
-              >
-                Speichern und schließen
-              </button>
+              <div className="dex-ui-inline" style={{ marginTop: 6 }}>
+                <span className="dex-ui-pill dex-ui-pill--green">{report.added.length} {t('hinzugefügt', 'added')}</span>
+                {report.alreadyIn.length > 0 && <span className="dex-ui-pill dex-ui-pill--gray">{report.alreadyIn.length} {t('schon in der Liste', 'already listed')}</span>}
+                {report.notFound.length > 0 && <span className="dex-ui-pill dex-ui-pill--red">{report.notFound.length} {t('nicht gefunden', 'not found')}</span>}
+                {report.ambiguous.length > 0 && <span className="dex-ui-pill dex-ui-pill--orange">{report.ambiguous.length} {t('zu klären', 'to resolve')}</span>}
+              </div>
+              <div className="dex-ui-step-hint" style={{ marginTop: 6 }}>
+                {t('Hinzugefügte Personen stehen bereits in der Liste hinter dem Dialog — „Fertig“ schließt nur das Fenster.',
+                  'Added people are already on the list behind this dialog — “Done” only closes the window.')}
+              </div>
+
+              {report.ambiguous.length > 0 && (
+                <div className="dex-ui-callout dex-ui-callout--warn" style={{ flexDirection: 'column', gap: 10, marginTop: 10 }}>
+                  <div><strong>{t('Mehrdeutig — wähle die richtige Person', 'Ambiguous — pick the right person')}</strong> ({report.ambiguous.length})</div>
+                  {report.ambiguous.map((a, i) => (
+                    <div key={`m-${i}`}>
+                      <div style={{ fontWeight: 600, marginBottom: 6 }}>&bdquo;{a.input}&ldquo;</div>
+                      <div className="dex-ui-stack" style={{ gap: 6 }}>
+                        {a.matches.map((m, j) => (
+                          <button
+                            key={`mm-${i}-${j}`}
+                            type="button"
+                            className="dex-ui-choice"
+                            style={{ padding: '8px 12px', alignItems: 'center' }}
+                            onClick={() => resolveAmbiguous(a.input, m.email, m.displayName)}
+                          >
+                            <span className="dex-ui-choice-body">
+                              <span className="dex-ui-choice-title">{m.displayName}</span>
+                              <span className="dex-ui-choice-desc" style={{ overflowWrap: 'anywhere' }}>{m.email}</span>
+                            </span>
+                            <span className="dex-ui-choice-check"><Check size={12} /></span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {report.notFound.length > 0 && (
+                <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginTop: 10 }}>
+                  <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                  <span>
+                    {t('Nicht gefunden: Prüf die Schreibweise oder trag die E-Mail-Adresse ein und lass erneut prüfen — oder such die Person einzeln über das Suchfeld.',
+                      'Not found: check the spelling or enter the email address and check again — or look the person up individually via the search field.')}
+                  </span>
+                </div>
+              )}
+
+              {rows.length > 0 && (
+                <div className="dex-ui-table-wrap" style={{ marginTop: 10 }}>
+                  <table className="dex-ui-table">
+                    <thead>
+                      <tr><th>{t('Person', 'Person')}</th><th>{t('E-Mail', 'Email')}</th><th>{t('Status', 'Status')}</th></tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r, i) => (
+                        <tr key={`${r.kind}-${i}`} style={r.kind === 'alreadyIn' ? { opacity: 0.7 } : undefined}>
+                          <td>
+                            {r.name}
+                            {r.from && <div className="dex-ui-muted" style={{ fontSize: '0.72rem' }}>{t('gesucht als', 'searched as')} &bdquo;{r.from}&ldquo;</div>}
+                          </td>
+                          <td style={{ overflowWrap: 'anywhere', color: 'var(--dex-gray-500)' }}>{r.email || '—'}</td>
+                          <td><span className={cx('dex-ui-pill', PILL[r.kind].cls)}>{isDe ? PILL[r.kind].de : PILL[r.kind].en}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </>
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 };
 

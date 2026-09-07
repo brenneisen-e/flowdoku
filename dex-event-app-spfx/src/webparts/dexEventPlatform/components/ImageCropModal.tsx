@@ -1,5 +1,7 @@
 import * as React from 'react';
 import Modal from './Modal';
+import { cx } from './dexUi';
+import { AlertCircle, Check, Info } from './Icons';
 
 /**
  * v23.15/v23.17: Bild-Editor zum Zuschneiden des Event-Bildes.
@@ -47,6 +49,20 @@ interface Props {
 
 const FRAME = 320; // Anzeige-Breite der Vorschau (px)
 const OUT = 700;   // Ausgabe-Breite (px)
+
+// v31.2: Symbole nur für diesen Dialog — Icons.tsx wird zentral gepflegt und
+// hat (noch) kein Zuschneide-Symbol; ein lokales SVG hält die Datei
+// unabhängig, statt im Portal auf die Fluent-Schrift zu warten.
+const CropIcon = ({ size = 20 }: { size?: number }): React.ReactElement => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M6 2v14a2 2 0 0 0 2 2h14" /><path d="M18 22V8a2 2 0 0 0-2-2H2" />
+  </svg>
+);
+const ShapeIcon = ({ circle }: { circle: boolean }): React.ReactElement => (
+  <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+    {circle ? <circle cx="12" cy="12" r="9" /> : <rect x="3" y="3" width="18" height="18" rx="3" />}
+  </svg>
+);
 
 // v27.5: Aspekt-Presets für Kopfbilder (Breite : Höhe).
 const ASPECT_PRESETS: Array<{ a: number; de: string; en: string }> = [
@@ -178,112 +194,136 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
     }
   };
 
+  // v31.2: Regler mit Wert daneben — ein Slider ohne Zahl sagt nicht, wie weit
+  // man schon ist, und „4,0×" erklärt die Grenze von selbst. Ein <label> um
+  // Titel und Eingabe, damit der Klick auf den Titel den Regler fokussiert.
+  const slider = (title: string, value: string, input: React.ReactElement, help?: string): React.ReactElement => (
+    <label className="dex-ui-field dex-ui-fade-in" style={{ display: 'block', marginTop: 12 }}>
+      <span className="dex-ui-label" style={{ justifyContent: 'space-between' }}>
+        <span>{title}</span><span className="dex-ui-pill dex-ui-pill--gray">{value}</span>
+      </span>
+      {React.cloneElement(input, { style: { width: '100%', accentColor: '#86bc25', cursor: 'pointer', margin: 0 } })}
+      {help && <span className="dex-ui-help" style={{ display: 'block' }}>{help}</span>}
+    </label>
+  );
+  const shapeChoice = (kind: 'circle' | 'rect'): React.ReactElement => {
+    const on = shape === kind;
+    const circle = kind === 'circle';
+    const desc = circle
+      ? (recommendCircle
+        ? (isDe ? 'Sitzt rund oben mittig in der Event-Karte.' : 'Sits round at the top centre of the event card.')
+        : (isDe ? 'Runder Ausschnitt, Ecken bleiben transparent.' : 'Round crop, corners stay transparent.'))
+      : (isDe ? 'Rechteckiger Ausschnitt.' : 'Rectangular crop.');
+    return (
+      <button type="button" className={cx('dex-ui-choice', on && 'is-active')} style={{ padding: '10px 12px', alignItems: 'center' }} aria-pressed={on} onClick={() => setShape(kind)}>
+        <span className="dex-ui-choice-icon" style={{ width: 30, height: 30 }}><ShapeIcon circle={circle} /></span>
+        <span className="dex-ui-choice-body" style={{ display: 'block' }}>
+          <span className="dex-ui-choice-title" style={{ display: 'block' }}>{circle ? (isDe ? 'Kreis' : 'Circle') : (isDe ? 'Quadrat' : 'Square')}</span>
+          <span className="dex-ui-choice-desc" style={{ display: 'block' }}>{desc}</span>
+        </span>
+        <span className="dex-ui-choice-check">{on && <Check size={12} />}</span>
+      </button>
+    );
+  };
+
   return (
-    <Modal open={open} onClose={onClose} maxWidth={560} padding={24} ariaLabel={isDe ? 'Bild zuschneiden' : 'Crop image'}>
-      <h3 style={{ marginTop: 0, marginBottom: 4, color: 'var(--dex-green-dark, #4a7c1f)' }}>
-        {isDe ? 'Bild zuschneiden' : 'Crop image'}
-      </h3>
-      <p style={{ marginTop: 0, fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
-        {allowAspect
-          ? (isDe
-            ? 'Wähle ein Seitenverhältnis und ziehe das Bild in Position (z.B. oben/unten wegschneiden). So erscheint es im Mail-/Outlook-Kopf.'
-            : 'Pick an aspect ratio and drag the image into place (e.g. crop off top/bottom). This is how it appears in the mail/Outlook header.')
-          : (isDe
-            ? 'So erscheint das Bild auf der Anmeldeseite und der Event-Karte. In den E-Mails und im Outlook-Termin wird automatisch das unbeschnittene Originalfoto verwendet — dort ist der Kopf rechteckig. Ziehen zum Verschieben, Slider zum Zoomen.'
-            : 'This is how the image appears on the registration page and the event card. Emails and the Outlook invite automatically use the uncropped original photo — their header is rectangular. Drag to move, slider to zoom.')}
-      </p>
-
-      {/* Live-Canvas-Vorschau = exaktes Ergebnis.
-          Das Backing-Store bleibt FRAME-basiert (Zeichen-/Export-Mathematik
-          unverändert); per CSS wird die Canvas nur responsiv verkleinert, damit
-          sie auf schmalen Karten (Handy ~295px) nicht überläuft. Die Drag-Math
-          rechnet die CSS-Pixel über den Skalierungsfaktor in FRAME-Einheiten um. */}
-      <div style={{ display: 'flex', justifyContent: 'center' }}>
-        <canvas
-          ref={canvasRef}
-          width={FRAME}
-          height={Math.round(FRAME / (aspect || 1))}
-          onMouseDown={onPointerDown}
-          onMouseMove={onPointerMove}
-          onMouseUp={endDrag}
-          onMouseLeave={endDrag}
-          style={{
-            width: '100%', maxWidth: FRAME, aspectRatio: String(aspect || 1), height: 'auto',
-            cursor: 'grab', userSelect: 'none',
-            borderRadius: 12, boxShadow: 'inset 0 0 0 1px var(--dex-gray-200)',
-            background: '#f3f3f1', touchAction: 'none',
-          }}
-        />
+    <Modal
+      open={open} onClose={onClose} maxWidth={560} ariaLabel={isDe ? 'Bild zuschneiden' : 'Crop image'}
+      title={isDe ? 'Bild zuschneiden' : 'Crop image'}
+      icon={<CropIcon size={20} />}
+      subtitle={allowAspect
+        ? (isDe
+          ? 'Wähle das Seitenverhältnis und ziehe das Bild in Position — so erscheint es im Mail- und Outlook-Kopf.'
+          : 'Pick an aspect ratio and drag the image into place — this is how it appears in the mail and Outlook header.')
+        : (isDe
+          ? 'So erscheint das Bild auf der Anmeldeseite und der Event-Karte.'
+          : 'This is how the image appears on the registration page and the event card.')}
+      footer={<>
+        <button type="button" className="btn btn-secondary" onClick={onClose}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
+        <button type="button" className="btn btn-primary" onClick={apply} disabled={!nat}>{isDe ? 'Übernehmen' : 'Apply'}</button>
+      </>}
+    >
+      {/* Live-Canvas-Vorschau = exaktes Ergebnis. Das Backing-Store bleibt
+          FRAME-basiert (Zeichen-/Export-Mathematik unverändert); per CSS wird die
+          Canvas nur responsiv verkleinert (Handy ~295px). Die Drag-Math rechnet
+          CSS-Pixel über den Skalierungsfaktor in FRAME-Einheiten um.
+          v31.2: Zoom steht direkt unter der Vorschau — Verschieben und Zoomen
+          sind EINE Frage („welcher Ausschnitt?"), die Form eine andere. */}
+      <div className="dex-ui-section" style={{ margin: 0 }}>
+        <div className="dex-ui-section-title">{isDe ? 'Ausschnitt' : 'Crop area'}</div>
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <canvas
+            ref={canvasRef} width={FRAME} height={Math.round(FRAME / (aspect || 1))}
+            onMouseDown={onPointerDown} onMouseMove={onPointerMove} onMouseUp={endDrag} onMouseLeave={endDrag}
+            title={isDe ? 'Ziehen, um das Bild zu verschieben' : 'Drag to move the image'}
+            style={{
+              width: '100%', maxWidth: FRAME, aspectRatio: String(aspect || 1), height: 'auto', cursor: 'grab', userSelect: 'none',
+              borderRadius: 12, boxShadow: 'inset 0 0 0 1px var(--dex-gray-200)', background: '#f3f3f1', touchAction: 'none',
+            }}
+          />
+        </div>
+        <p className="dex-ui-help" style={{ textAlign: 'center', margin: '8px 0 0' }}>
+          {allowAspect
+            ? (isDe ? 'Ziehe das Bild in Position, z.B. um oben oder unten etwas wegzuschneiden.' : 'Drag the image into place, e.g. to crop off the top or bottom.')
+            : (isDe ? 'Ziehe das Bild mit der Maus in Position — die Vorschau zeigt genau das Ergebnis.' : 'Drag the image into place — the preview shows exactly what you get.')}
+        </p>
+        {slider('Zoom', `${zoom.toFixed(1).replace('.', isDe ? ',' : '.')}×`,
+          <input type="range" min={1} max={4} step={0.01} value={zoom} onChange={e => setZoom(parseFloat(e.target.value))} />)}
       </div>
 
-      {/* v27.5: Seitenverhältnis-Wahl (nur Kopfbild-Modus) ODER Form-Wahl. */}
-      {allowAspect ? (
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 14, flexWrap: 'wrap' }}>
-          {ASPECT_PRESETS.map(p => (
-            <button
-              key={p.a}
-              type="button"
-              className={`btn ${Math.abs(aspect - p.a) < 0.001 ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ fontSize: '0.82rem' }}
-              onClick={() => setAspect(p.a)}
-            >
-              {isDe ? p.de : p.en}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 14 }}>
-          {/* v30.98: „Empfohlen"-Badge und Tipp entfallen (Nutzer-Ansage
-              07.09.2026: „nimm das Empfohlen hier raus") — Kreis bleibt die
-              Vorauswahl, aber ohne Wertung. `recommendCircle` bleibt als Prop
-              für die Aufrufer bestehen und wirkt nur noch nicht sichtbar. */}
-          <button type="button" className={`btn ${shape === 'circle' ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: '0.82rem', position: 'relative' }} onClick={() => setShape('circle')}>
-            {isDe ? 'Kreis' : 'Circle'}
-          </button>
-          <button type="button" className={`btn ${shape === 'rect' ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: '0.82rem' }} onClick={() => setShape('rect')}>
-            {isDe ? 'Quadrat' : 'Square'}
-          </button>
-        </div>
-        {recommendCircle && (
-          <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: 'var(--dex-gray-500)', textAlign: 'center', lineHeight: 1.45 }}>
-            {isDe
-              ? 'Kreis: das Bild sitzt auf der Anmeldeseite rund oben mittig in der Event-Karte. Quadrat: rechteckiger Ausschnitt.'
-              : 'Circle: the image sits round at the top centre of the event card on the registration page. Square: rectangular crop.'}
-          </p>
+      {/* v27.5: Seitenverhältnis-Wahl (nur Kopfbild-Modus) ODER Form-Wahl.
+          v30.98: „Empfohlen"-Badge und Tipp entfallen (Nutzer-Ansage 07.09.2026:
+          „nimm das Empfohlen hier raus") — Kreis bleibt die Vorauswahl, ohne
+          Wertung. `recommendCircle` bleibt als Prop und steuert nur noch die
+          Erklärzeile der Kreis-Kachel (Event-Karte vs. allgemeiner Kreis).
+          v31.2: Der Kreis-Rand steht direkt unter der Form-Wahl, weil er nur
+          zum Kreis gehört — vorher stand der Zoom dazwischen. */}
+      <div className="dex-ui-section" style={{ margin: 0 }}>
+        <div className="dex-ui-section-title">{allowAspect ? (isDe ? 'Seitenverhältnis' : 'Aspect ratio') : (isDe ? 'Form' : 'Shape')}</div>
+        {allowAspect ? (
+          <div className="dex-ui-tabs" role="group" aria-label={isDe ? 'Seitenverhältnis' : 'Aspect ratio'}>
+            {ASPECT_PRESETS.map(p => (
+              <button key={p.a} type="button" className={cx('dex-ui-tab', Math.abs(aspect - p.a) < 0.001 && 'is-active')} onClick={() => setAspect(p.a)}>
+                {isDe ? p.de : p.en}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="dex-ui-grid-2" style={{ gap: 10 }}>{shapeChoice('circle')}{shapeChoice('rect')}</div>
         )}
-        </>
-      )}
-
-      {/* Zoom */}
-      <div style={{ marginTop: 14 }}>
-        <label style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Zoom' : 'Zoom'}</label>
-        <input type="range" min={1} max={4} step={0.01} value={zoom} onChange={e => setZoom(parseFloat(e.target.value))} style={{ width: '100%' }} />
+        {isCircle && slider(
+          isDe ? 'Weißer Rand um den Kreis' : 'White margin around the circle', `${Math.round(padding * 100)} %`,
+          <input type="range" min={0} max={0.35} step={0.01} value={padding} onChange={e => setPadding(parseFloat(e.target.value))} />,
+          isDe ? '0 % = der Kreis füllt den Rahmen; mehr = kleinerer Kreis mit weißem Rand außen.' : '0 % = the circle fills the frame; more = smaller circle with a white margin outside.')}
       </div>
 
-      {/* Kreis-Rand (nur im Kreis-Modus) */}
-      {isCircle && (
-        <div style={{ marginTop: 10 }}>
-          <label style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
-            {isDe ? 'Weißer Rand um den Kreis' : 'White margin around the circle'}
-          </label>
-          <input type="range" min={0} max={0.35} step={0.01} value={padding} onChange={e => setPadding(parseFloat(e.target.value))} style={{ width: '100%' }} />
+      {/* v31.2: Der Hinweis auf das Original in Mail und Termin stand vorher im
+          Einleitungssatz — als eigener Kasten liest man ihn erst, wenn man ihn
+          braucht, und die Einleitung bleibt eine Zeile. */}
+      {!allowAspect && (
+        <div className="dex-ui-callout dex-ui-callout--neutral">
+          <span className="dex-ui-callout-icon"><Info size={16} /></span>
+          <span>
+            {isDe
+              ? 'E-Mails und der Outlook-Termin nutzen automatisch das unbeschnittene Originalfoto — dort ist der Kopf rechteckig.'
+              : 'Emails and the Outlook invite automatically use the uncropped original photo — their header is rectangular.'}
+          </span>
         </div>
       )}
 
-      {error && <p style={{ color: 'var(--dex-red, #c00)', fontSize: '0.8rem', marginTop: 8 }}>{error}</p>}
+      {error && (
+        <div className="dex-ui-callout dex-ui-callout--danger" role="alert">
+          <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+          <span>{error}</span>
+        </div>
+      )}
 
       {/* v23.25: Zusatzblock (Darstellung pro Ansicht), abgesetzt mit Trennlinie. */}
       {children && (
-        <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--dex-gray-200)' }}>
+        <div style={{ paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
           {children}
         </div>
       )}
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
-        <button type="button" className="btn btn-secondary" onClick={onClose}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
-        <button type="button" className="btn btn-primary" onClick={apply} disabled={!nat}>{isDe ? 'Übernehmen' : 'Apply'}</button>
-      </div>
     </Modal>
   );
 }

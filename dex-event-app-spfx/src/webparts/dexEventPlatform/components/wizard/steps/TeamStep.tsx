@@ -10,6 +10,10 @@
 import * as React from 'react';
 import { InfoTooltip } from '../../InfoTooltip';
 import { useLanguage } from '../../../context/LanguageContext';
+// v31.2: Gemeinsame UI-Klassen (Schalter, Kacheln, Aufklapper) statt
+// Inline-Styles — nur so gibt es Hover, siehe docs/ui-leitfaden.md.
+import { cx } from '../../dexUi';
+import { Check, ChevronDown, Settings, Users } from '../../Icons';
 
 export interface TeamStepProps {
   visible: boolean;
@@ -47,32 +51,38 @@ export const TeamStep: React.FC<TeamStepProps> = ({
 }) => {
   const { locale } = useLanguage();
   const isDe = locale === 'de';
+  // v31.2: Aufklapper „Weitere Einstellungen" (eigene Bezeichnung). Standard
+  // zu — der Zähler daneben zeigt, ob dort etwas gesetzt ist.
+  const [moreOpen, setMoreOpen] = React.useState(false);
+  const hasCustomTerm = !!((teamTermSingular || '').trim() || (teamTermPlural || '').trim());
   return (
     <div style={{ display: visible ? 'block' : 'none' }}>
     <h2 className="dex-step-head-title">
-      {isDe ? 'Schritt 7 — Team-Anmeldung' : 'Step 7 — Team Registration'}
+      <span className="dex-step-eyebrow">{isDe ? 'Schritt 7 von 9' : 'Step 7 of 9'}</span>
+      {isDe ? 'Team-Anmeldung' : 'Team registration'}
     </h2>
     <p className="dex-step-head-lead">
       {isDe
-        ? <><strong>Optional</strong> — erlaube einer Person, ein ganzes Team gleichzeitig anzumelden. Praktisch z.B. für Lauf-Teams, Workshop-Gruppen oder Tische bei einer Abendveranstaltung. Default: aus.</>
-        : <><strong>Optional</strong> — let a single person register an entire team in one go. Handy e.g. for running teams, workshop groups or tables at an evening event. Default: off.</>}
+        ? <><strong>Optional.</strong> Eine Person meldet ein ganzes Team auf einmal an — praktisch für Lauf-Teams, Workshop-Gruppen oder Tische bei einer Abendveranstaltung. Standard: aus.</>
+        : <><strong>Optional.</strong> One person registers an entire team in one go — handy for running teams, workshop groups or tables at an evening event. Default: off.</>}
     </p>
 
-    {/* Toggle Team-Anmeldung erlauben */}
-    <div style={{
-      background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-      padding: '14px 16px', marginBottom: 12,
-      border: '1px solid var(--dex-gray-200)',
-    }}>
-      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-        <input
-          type="checkbox"
-          checked={teamRegistrationEnabled}
-          onChange={e => setTeamRegistrationEnabled(e.target.checked)}
-          style={{ marginTop: 3, cursor: 'pointer' }}
-        />
-        <span style={{ flex: 1 }}>
-          <strong>{isDe ? 'Team-Anmeldung erlauben' : 'Allow team registration'}</strong>
+    {/* Haupt-Ein/Aus des Schritts.
+        v31.2: Schalter statt Checkbox (Leitfaden 2b: Ein/Aus für einen
+        ganzen Bereich); die grüne Kante zeigt an, dass darunter etwas gilt.
+        Der Satz darunter nennt die Folge für BEIDE Zustände. */}
+    <div className="dex-ui-section">
+      <div className={cx('dex-ui-card', teamRegistrationEnabled && 'dex-ui-card--accent')}>
+        <div className="dex-ui-inline">
+          <label className="dex-ui-switch">
+            <input
+              type="checkbox"
+              checked={teamRegistrationEnabled}
+              onChange={e => setTeamRegistrationEnabled(e.target.checked)}
+            />
+            <span className="dex-ui-switch-track" />
+            <span className="dex-ui-switch-label">{isDe ? 'Team-Anmeldung erlauben' : 'Allow team registration'}</span>
+          </label>
           <InfoTooltip text={isDe
             ? <>
                 <strong>Was du hier einstellst:</strong> ob eine Person ein <strong>ganzes Team</strong> über das Anmeldeformular anmelden darf — statt sich nur selbst einzutragen.<br /><br />
@@ -85,27 +95,25 @@ export const TeamStep: React.FC<TeamStepProps> = ({
                 <strong>For attendees:</strong> co-registered members automatically receive their own confirmation email and (if Outlook is enabled) their own calendar invite — they do not have to register themselves.
               </>
           } />
-          <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-            {isDe
-              ? 'Wenn aktiviert, kann eine Person ein ganzes Team anmelden — die anderen Mitglieder bekommen Bestätigungsmail + Outlook-Termin automatisch.'
-              : 'When enabled, one person can register an entire team — the other members automatically receive a confirmation mail + Outlook invite.'}
-          </span>
-        </span>
-      </label>
+        </div>
+        <div className="dex-ui-help" style={{ marginTop: 8 }}>
+          {isDe
+            ? 'An: Der Team-Lead trägt im Anmeldeformular je Mitglied Name und E-Mail ein; jedes Mitglied bekommt Bestätigungsmail und Outlook-Termin automatisch. Aus: Jede Person meldet sich selbst an — wie gewohnt.'
+            : 'On: The team lead enters name and email per member in the registration form; every member automatically gets a confirmation mail and Outlook invite. Off: Everyone registers themselves — as usual.'}
+        </div>
+      </div>
     </div>
 
-    {/* Team-Größe + Team-Name-Frage — ausgegraut wenn Team-Anmeldung aus */}
-    <div style={{
-      background: teamRegistrationEnabled ? '#ffffff' : 'var(--dex-gray-50, #fafafa)',
-      borderRadius: 12, padding: '14px 16px', marginBottom: 12,
-      border: '1px solid var(--dex-gray-200)',
-      opacity: teamRegistrationEnabled ? 1 : 0.55,
-      transition: 'opacity 0.2s ease',
-    }}>
-      <div style={{ marginBottom: 14 }}>
-        <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <strong>{isDe ? 'Team-Größe' : 'Team size'}</strong>
-          <InfoTooltip text={isDe
+    {/* Team-Größe + Team-Name-Frage — gedämpft, wenn Team-Anmeldung aus.
+        v31.2: Die Beschriftung ist die Frage, die Grenzen (2–20, Vorgabe 4)
+        stehen sichtbar im Hilfetext statt nur im Tooltip. */}
+    <div className="dex-ui-section">
+      <div className="dex-ui-section-title">{isDe ? 'Größe und Name' : 'Size and name'}</div>
+      <div className={cx('dex-ui-card', !teamRegistrationEnabled && 'dex-ui-card--muted')}>
+        <div className="dex-ui-field">
+          <label className="dex-ui-label" htmlFor="dex-wizard-team-size">
+            {isDe ? 'Wie viele Personen passen in ein Team?' : 'How many people fit in a team?'}
+            <InfoTooltip text={isDe
             ? <>
                 <strong>Was du hier einstellst:</strong> die maximale Anzahl Personen pro Team (inkl. Team-Lead). Min. 2, Max. 20. Default 4.<br /><br />
                 <strong>Anzeige in der App:</strong> der Team-Lead sieht so viele Mitglied-Slots wie hier gesetzt; einzelne Slots können leer bleiben, ein Team ist also nicht zwingend voll.<br /><br />
@@ -116,34 +124,43 @@ export const TeamStep: React.FC<TeamStepProps> = ({
                 <strong>Where you see it:</strong> the team lead sees as many member slots as configured here; slots can stay empty, so teams are not required to be full.<br /><br />
                 <strong>For attendees:</strong> a team caps at this size — attempting to add more members is blocked.
               </>
-          } />
-        </label>
-        <input
-          type="number"
-          className="form-input"
-          min={2}
-          max={20}
-          value={teamSize}
-          disabled={!teamRegistrationEnabled}
-          onChange={e => {
-            const v = parseInt(e.target.value, 10);
-            if (isNaN(v)) { setTeamSize(2); return; }
-            setTeamSize(Math.max(2, Math.min(20, v)));
-          }}
-          style={{ maxWidth: 120 }}
-        />
-      </div>
-      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}>
-        <input
-          type="checkbox"
-          checked={askTeamName}
-          disabled={!teamRegistrationEnabled}
-          onChange={e => setAskTeamName(e.target.checked)}
-          style={{ marginTop: 3, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}
-        />
-        <span style={{ flex: 1 }}>
-          <strong>{isDe ? 'Team-Namen abfragen' : 'Ask for team name'}</strong>
-          <InfoTooltip text={isDe
+            } />
+          </label>
+          <div className="dex-ui-inline">
+            <input
+              id="dex-wizard-team-size"
+              type="number"
+              className="form-input"
+              min={2}
+              max={20}
+              value={teamSize}
+              disabled={!teamRegistrationEnabled}
+              onChange={e => {
+                const v = parseInt(e.target.value, 10);
+                if (isNaN(v)) { setTeamSize(2); return; }
+                setTeamSize(Math.max(2, Math.min(20, v)));
+              }}
+              style={{ maxWidth: 120 }}
+            />
+            <span className="dex-ui-muted">{isDe ? 'Personen, Team-Lead eingeschlossen' : 'people, including the team lead'}</span>
+          </div>
+          <div className="dex-ui-help">
+            {isDe
+              ? 'Mindestens 2, höchstens 20 (Vorgabe 4). Plätze dürfen leer bleiben — ein Team muss nicht voll sein; mehr Mitglieder als hier gesetzt lässt das Formular nicht zu.'
+              : 'At least 2, at most 20 (default 4). Seats may stay empty — a team does not have to be full; the form does not allow more members than set here.'}
+          </div>
+        </div>
+        <label className={cx('dex-ui-toggle-row', askTeamName && 'is-active', !teamRegistrationEnabled && 'is-disabled')}>
+          <input
+            type="checkbox"
+            checked={askTeamName}
+            disabled={!teamRegistrationEnabled}
+            onChange={e => setAskTeamName(e.target.checked)}
+          />
+          <span className="dex-ui-toggle-row-body">
+            <span className="dex-ui-toggle-row-title">
+              {isDe ? 'Der Team-Lead gibt dem Team einen Namen' : 'The team lead gives the team a name'}
+              <InfoTooltip text={isDe
             ? <>
                 <strong>Was du hier einstellst:</strong> ob der Team-Lead beim Anmelden zusätzlich einen <strong>frei wählbaren Team-Namen</strong> eingeben muss (z.B. &bdquo;Die schnellen Sieben&ldquo;).<br /><br />
                 <strong>Anzeige in der App:</strong> der Team-Name erscheint auf der Seite &bdquo;Meine Events&ldquo; beim Team-Lead und allen Mitgliedern. Bei offenen Slots (Team noch nicht voll) wird der Team-Name in der Slot-Liste angezeigt, damit andere Teilnehmer bei Interesse beitreten können.<br /><br />
@@ -154,136 +171,120 @@ export const TeamStep: React.FC<TeamStepProps> = ({
                 <strong>Where you see it:</strong> the team name appears on &ldquo;My Events&rdquo; for the team lead and all members. For open slots (team not full yet), the name is displayed in the slot list so other attendees can join.<br /><br />
                 <strong>For attendees:</strong> makes the team identifiable. If turned off, teams are referenced internally only via the team lead&apos;s name.
               </>
-          } />
-          <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-            {isDe
-              ? 'Wenn aktiv, gibt der Team-Lead bei der Anmeldung einen Team-Namen ein, der dann auf der MyEvents-Seite und in offenen Slots angezeigt wird.'
-              : 'When enabled, the team lead enters a team name during registration which is shown on the MyEvents page and in open slots.'}
-          </span>
-        </span>
-      </label>
-    </div>
-
-    {/* v22.78: Eigener Team-Begriff (frei benennbar wie Event-Sections)
-        + „Teilnehmer dürfen keine neuen Teams erstellen". */}
-    <div style={{
-      background: teamRegistrationEnabled ? '#ffffff' : 'var(--dex-gray-50, #fafafa)',
-      borderRadius: 12, padding: '14px 16px', marginBottom: 12,
-      border: '1px solid var(--dex-gray-200)',
-      opacity: teamRegistrationEnabled ? 1 : 0.55, transition: 'opacity 0.2s ease',
-    }}>
-      <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <strong>{isDe ? 'Bezeichnung (statt „Team")' : 'Label (instead of “Team”)'}</strong>
-        <InfoTooltip text={isDe
-          ? <><strong>Was du hier einstellst:</strong> einen eigenen Begriff für die Teams — z.B. <strong>„Break-Out Session“</strong>, „Gruppe“ oder „Tisch“. Leer = Standard „Team“.<br /><br /><strong>Anzeige in der App:</strong> ersetzt das Wort „Team“ überall (Organizer Center, „Meine Events“, Anmeldeformular).</>
-          : <><strong>What this controls:</strong> a custom term for the teams — e.g. <strong>“Break-Out session”</strong>, “group” or “table”. Empty = default “Team”.<br /><br /><strong>Where you see it:</strong> replaces the word “Team” everywhere (organizer center, “My Events”, registration form).</>} />
-      </label>
-      <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <input
-          type="text" className="form-input"
-          value={teamTermSingular}
-          disabled={!teamRegistrationEnabled}
-          onChange={e => setTeamTermSingular(e.target.value)}
-          placeholder={isDe ? 'Einzahl, z.B. Break-Out Session' : 'Singular, e.g. Break-out session'}
-        />
-        <input
-          type="text" className="form-input"
-          value={teamTermPlural}
-          disabled={!teamRegistrationEnabled}
-          onChange={e => setTeamTermPlural(e.target.value)}
-          placeholder={isDe ? 'Mehrzahl, z.B. Break-Out Sessions' : 'Plural, e.g. Break-out sessions'}
-        />
-      </div>
-      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 14, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}>
-        <input
-          type="checkbox"
-          checked={teamMembersCannotCreate}
-          disabled={!teamRegistrationEnabled}
-          onChange={e => setTeamMembersCannotCreate(e.target.checked)}
-          style={{ marginTop: 3, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}
-        />
-        <span style={{ flex: 1 }}>
-          <strong>{isDe ? 'Teilnehmer dürfen keine neuen Teams erstellen' : 'Participants cannot create new teams'}</strong>
-          <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-            {isDe
-              ? 'Empfohlen für Break-Out-Sessions: Die Teilnehmer melden sich normal an, die Zuordnung in die Teams/Break-outs nimmst DU als Organizer vor (per Drag & Drop im Organizer Center).'
-              : 'Recommended for break-out sessions: participants register normally, and YOU assign them to teams/break-outs as the organizer (drag & drop in the Organizer Center).'}
-          </span>
-        </span>
-      </label>
-    </div>
-
-    {/* v11.81: Beitritts-Modus — Sub-Box mit Modus + Sichtbarkeit + Approval */}
-    <div style={{
-      background: teamRegistrationEnabled ? '#ffffff' : 'var(--dex-gray-50, #fafafa)',
-      borderRadius: 12, padding: '14px 16px', marginBottom: 12,
-      border: '1px solid var(--dex-gray-200)',
-      opacity: teamRegistrationEnabled ? 1 : 0.55,
-      transition: 'opacity 0.2s ease',
-      // v22.78: Beitritts-Modus ist irrelevant, wenn Teilnehmer keine
-      // Teams erstellen/beitreten (Organizer ordnet zu) — dann ausgrauen.
-      ...(teamMembersCannotCreate ? { opacity: 0.45 } : {}),
-    }}>
-      <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 10, color: 'var(--dex-gray-800)' }}>
-        {isDe ? 'Beitritts-Modus' : 'Join mode'}
-      </div>
-
-      {/* Radio-Group: komplette vs. Teil-Teams */}
-      <div style={{ marginBottom: 14 }}>
-        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}>
-          <input
-            type="radio"
-            name="teamPartialMode"
-            checked={!teamPartialAllowed}
-            disabled={!teamRegistrationEnabled}
-            onChange={() => setTeamPartialAllowed(false)}
-            style={{ marginTop: 3, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}
-          />
-          <span style={{ flex: 1 }}>
-            <strong>{isDe ? 'Nur komplette Teams' : 'Only complete teams'}</strong>
-            <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-              {isDe
-                ? 'Der Team-Lead muss alle N Mitglieder beim Anmelden eintragen. Halbe Teams sind nicht möglich.'
-                : 'The team lead must enter all N members during registration. Partial teams are not possible.'}
+              } />
             </span>
-          </span>
-        </label>
-        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}>
-          <input
-            type="radio"
-            name="teamPartialMode"
-            checked={teamPartialAllowed}
-            disabled={!teamRegistrationEnabled}
-            onChange={() => setTeamPartialAllowed(true)}
-            style={{ marginTop: 3, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}
-          />
-          <span style={{ flex: 1 }}>
-            <strong>{isDe ? 'Auch Teil-Teams erlaubt' : 'Partial teams allowed'}</strong>
-            <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+            <span className="dex-ui-toggle-row-desc">
               {isDe
-                ? 'Der Team-Lead kann z.B. 2 von 4 Mitgliedern anmelden, die restlichen 2 Slots bleiben offen — andere Personen können später beitreten (siehe nächste Option).'
-                : 'The team lead can register e.g. 2 of 4 members; the remaining 2 slots stay open — others can join later (see next option).'}
+                ? <>Dann fragt das Formular einen frei wählbaren Namen ab (z.B. &bdquo;Die schnellen Sieben&ldquo;); er steht bei allen Mitgliedern unter &bdquo;Meine Events&ldquo; und in der Liste offener Teams. Aus: das Team heißt intern nach dem Team-Lead.</>
+                : <>Then the form asks for a freely chosen name (e.g. &bdquo;The Fast Seven&ldquo;); it appears for all members under &bdquo;My Events&ldquo; and in the list of open teams. Off: the team is referenced internally by its lead.</>}
             </span>
           </span>
         </label>
       </div>
+    </div>
 
-      {/* Checkbox: Sichtbarkeit offener Slots */}
-      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}>
-        <input
-          type="checkbox"
-          checked={teamOpenSlotsVisible}
-          disabled={!teamRegistrationEnabled}
-          onChange={e => {
-            const v = e.target.checked;
-            setTeamOpenSlotsVisible(v);
-            if (!v) setTeamJoinRequiresApproval(false);
-          }}
-          style={{ marginTop: 3, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}
-        />
-        <span style={{ flex: 1 }}>
-          <strong>{isDe ? 'Unvollständige Teams öffentlich für Beitritt sichtbar' : 'Open teams publicly visible for joining'}</strong>
-          <InfoTooltip text={isDe
+    {/* v22.78: „Teilnehmer dürfen keine neuen Teams erstellen".
+        v31.2: Als Frage mit zwei Kacheln statt einer verneinten Checkbox —
+        „dürfen keine … erstellen" musste man zweimal lesen. Dieselbe
+        boolesche Bindung: rechte Kachel = true. Steht VOR dem Beitritts-
+        Block, weil der davon abhängt. */}
+    <div className="dex-ui-section">
+      <div className="dex-ui-section-title">{isDe ? 'Wer stellt die Teams zusammen?' : 'Who puts the teams together?'}</div>
+      <div className={cx('dex-ui-card', !teamRegistrationEnabled && 'dex-ui-card--muted')}>
+        <div className="dex-ui-grid-2" role="radiogroup" aria-label={isDe ? 'Wer stellt die Teams zusammen?' : 'Who puts the teams together?'}>
+          <button type="button" role="radio" aria-checked={!teamMembersCannotCreate} disabled={!teamRegistrationEnabled}
+            className={cx('dex-ui-choice', !teamMembersCannotCreate && 'is-active')} onClick={() => setTeamMembersCannotCreate(false)}>
+            <span className="dex-ui-choice-icon"><Users size={18} /></span>
+            <span className="dex-ui-choice-body" style={{ display: 'grid' }}>
+              <span className="dex-ui-choice-title">{isDe ? 'Die Teilnehmer selbst' : 'The participants themselves'}</span>
+              <span className="dex-ui-choice-desc">
+                {isDe
+                  ? 'Der Team-Lead meldet sein Team im Formular an. Wer noch kein Team hat, kann später einem offenen Team beitreten.'
+                  : 'The team lead registers their team in the form. Anyone without a team can join an open team later.'}
+              </span>
+            </span>
+            <span className="dex-ui-choice-check"><Check size={12} /></span>
+          </button>
+          <button type="button" role="radio" aria-checked={teamMembersCannotCreate} disabled={!teamRegistrationEnabled}
+            className={cx('dex-ui-choice', teamMembersCannotCreate && 'is-active')} onClick={() => setTeamMembersCannotCreate(true)}>
+            <span className="dex-ui-choice-icon"><Settings size={18} /></span>
+            <span className="dex-ui-choice-body" style={{ display: 'grid' }}>
+              <span className="dex-ui-choice-title">{isDe ? 'Du als Organizer' : 'You as the organizer'}</span>
+              <span className="dex-ui-choice-desc">
+                {isDe
+                  ? 'Alle melden sich einzeln an; du verteilst sie im Organizer Center per Drag & Drop auf die Teams. Empfohlen für Break-Out-Sessions.'
+                  : 'Everyone registers individually; you assign them to teams in the Organizer Center via drag & drop. Recommended for break-out sessions.'}
+              </span>
+            </span>
+            <span className="dex-ui-choice-check"><Check size={12} /></span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {/* v11.81: Beitritts-Modus — Modus + Sichtbarkeit + Approval.
+        v31.2: Als Abschnitt mit Frage-Überschrift; die beiden Radios sind
+        Auswahl-Kacheln (zwei Alternativen mit Folge), die Checkboxen
+        Schalter-Zeilen. v22.78: Beitritt ist irrelevant, wenn der Organizer
+        selbst zuordnet — dann gedämpft, aber weiter bedienbar (wie zuvor),
+        und ein Satz sagt WARUM statt nur auszugrauen. */}
+    <div className="dex-ui-section">
+      <div className="dex-ui-section-title">{isDe ? 'Beitritt zu offenen Teams' : 'Joining open teams'}</div>
+      <div className={cx('dex-ui-card', (!teamRegistrationEnabled || teamMembersCannotCreate) && 'dex-ui-card--muted')}>
+        {teamMembersCannotCreate && (
+          <div className="dex-ui-callout dex-ui-callout--neutral" style={{ marginBottom: 14 }}>
+            {isDe
+              ? 'Du ordnest die Teams selbst zu — niemand tritt einem Team bei. Die Einstellungen hier greifen dann nicht.'
+              : 'You assign the teams yourself — nobody joins a team. These settings then have no effect.'}
+          </div>
+        )}
+        <div className="dex-ui-field">
+          <div className="dex-ui-label">{isDe ? 'Muss ein Team beim Anmelden vollständig sein?' : 'Does a team have to be complete at registration?'}</div>
+          <div className="dex-ui-grid-2" role="radiogroup" aria-label={isDe ? 'Vollständige oder Teil-Teams' : 'Complete or partial teams'}>
+            <button type="button" role="radio" aria-checked={!teamPartialAllowed} disabled={!teamRegistrationEnabled}
+              className={cx('dex-ui-choice', !teamPartialAllowed && 'is-active')} onClick={() => setTeamPartialAllowed(false)}>
+              <span className="dex-ui-choice-body" style={{ display: 'grid' }}>
+                <span className="dex-ui-choice-title">{isDe ? 'Ja, nur komplette Teams' : 'Yes, only complete teams'}</span>
+                <span className="dex-ui-choice-desc">
+                  {isDe
+                    ? `Der Team-Lead trägt alle ${teamSize} Mitglieder beim Anmelden ein. Halbe Teams gibt es nicht.`
+                    : `The team lead enters all ${teamSize} members at registration. Partial teams are not possible.`}
+                </span>
+              </span>
+              <span className="dex-ui-choice-check"><Check size={12} /></span>
+            </button>
+            <button type="button" role="radio" aria-checked={teamPartialAllowed} disabled={!teamRegistrationEnabled}
+              className={cx('dex-ui-choice', teamPartialAllowed && 'is-active')} onClick={() => setTeamPartialAllowed(true)}>
+              <span className="dex-ui-choice-body" style={{ display: 'grid' }}>
+                <span className="dex-ui-choice-title">{isDe ? 'Nein, Teil-Teams sind erlaubt' : 'No, partial teams are allowed'}</span>
+                <span className="dex-ui-choice-desc">
+                  {isDe
+                    ? `Der Team-Lead meldet z.B. 2 von ${teamSize} an; die übrigen Plätze bleiben offen und andere können später beitreten (Schalter unten).`
+                    : `The team lead registers e.g. 2 of ${teamSize}; the remaining seats stay open and others can join later (switches below).`}
+                </span>
+              </span>
+              <span className="dex-ui-choice-check"><Check size={12} /></span>
+            </button>
+          </div>
+        </div>
+
+        <div className="dex-ui-stack">
+          {/* Sichtbarkeit offener Slots */}
+          <label className={cx('dex-ui-toggle-row', teamOpenSlotsVisible && 'is-active', !teamRegistrationEnabled && 'is-disabled')}>
+            <input
+              type="checkbox"
+              checked={teamOpenSlotsVisible}
+              disabled={!teamRegistrationEnabled}
+              onChange={e => {
+                const v = e.target.checked;
+                setTeamOpenSlotsVisible(v);
+                if (!v) setTeamJoinRequiresApproval(false);
+              }}
+            />
+            <span className="dex-ui-toggle-row-body">
+              <span className="dex-ui-toggle-row-title">
+                {isDe ? 'Offene Teams stehen auf der Anmeldeseite' : 'Open teams are listed on the registration page'}
+                <InfoTooltip text={isDe
             ? <>
                 <strong>Was du hier einstellst:</strong> ob andere Teilnehmer Teams mit offenen Slots in der Anmeldeseite sehen und beitreten können.<br /><br />
                 <strong>Anzeige in der App:</strong> auf der Anmeldeseite erscheint eine Liste &bdquo;Teams mit freien Plätzen&ldquo; — pro Team mit der Anzahl freier Slots und (falls aktiviert) dem Team-Namen, aber <strong>ohne</strong> die Namen der bereits angemeldeten Mitglieder (Privatsphäre).<br /><br />
@@ -294,32 +295,28 @@ export const TeamStep: React.FC<TeamStepProps> = ({
                 <strong>Where you see it:</strong> the registration page shows a list &ldquo;teams with free seats&rdquo; — per team with the count of free slots and (if enabled) the team name, but <strong>without</strong> the names of already-registered members (privacy).<br /><br />
                 <strong>For attendees:</strong> anyone not yet in a team can join an open slot with one click — either immediately or only after lead approval (see next option).
               </>
-          } />
-          <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-            {isDe
-              ? <>Wenn aktiv: andere Teilnehmer sehen offene Slots in der Registrierungsseite als &bdquo;Team mit X freien Plätzen&ldquo; — <strong>ohne</strong> die Namen der bereits angemeldeten Mitglieder (Privatsphäre).</>
-              : <>When active: other attendees see open slots on the registration page as &ldquo;team with X free seats&rdquo; — <strong>without</strong> the names of already-registered members (privacy).</>}
-          </span>
-        </span>
-      </label>
+                } />
+              </span>
+              <span className="dex-ui-toggle-row-desc">
+                {isDe
+                  ? <>Dann sehen andere &bdquo;Team mit X freien Plätzen&ldquo; und treten mit einem Klick bei — <strong>ohne</strong> die Namen der schon angemeldeten Mitglieder (Privatsphäre).</>
+                  : <>Then others see &bdquo;team with X free seats&ldquo; and join with one click — <strong>without</strong> the names of already-registered members (privacy).</>}
+              </span>
+            </span>
+          </label>
 
-      {/* Checkbox: Approval-Pflicht durch Team-Lead */}
-      <label style={{
-        display: 'flex', alignItems: 'flex-start', gap: 10,
-        cursor: (teamRegistrationEnabled && teamOpenSlotsVisible) ? 'pointer' : 'not-allowed',
-        opacity: (teamRegistrationEnabled && teamOpenSlotsVisible) ? 1 : 0.55,
-        transition: 'opacity 0.2s ease',
-      }}>
-        <input
-          type="checkbox"
-          checked={teamJoinRequiresApproval}
-          disabled={!teamRegistrationEnabled || !teamOpenSlotsVisible}
-          onChange={e => setTeamJoinRequiresApproval(e.target.checked)}
-          style={{ marginTop: 3, cursor: (teamRegistrationEnabled && teamOpenSlotsVisible) ? 'pointer' : 'not-allowed' }}
-        />
-        <span style={{ flex: 1 }}>
-          <strong>{isDe ? 'Beitritt erfordert Bestätigung durch Team-Kapitän' : 'Joining requires team captain approval'}</strong>
-          <InfoTooltip text={isDe
+          {/* Approval-Pflicht durch Team-Lead — nur sinnvoll, wenn offene Teams sichtbar sind */}
+          <label className={cx('dex-ui-toggle-row', teamJoinRequiresApproval && 'is-active', (!teamRegistrationEnabled || !teamOpenSlotsVisible) && 'is-disabled')}>
+            <input
+              type="checkbox"
+              checked={teamJoinRequiresApproval}
+              disabled={!teamRegistrationEnabled || !teamOpenSlotsVisible}
+              onChange={e => setTeamJoinRequiresApproval(e.target.checked)}
+            />
+            <span className="dex-ui-toggle-row-body">
+              <span className="dex-ui-toggle-row-title">
+                {isDe ? 'Der Team-Lead bestätigt jeden Beitritt' : 'The team lead approves every join'}
+                <InfoTooltip text={isDe
             ? <>
                 <strong>Was du hier einstellst:</strong> ob jede Beitrittsanfrage zu einem offenen Team-Slot erst vom Team-Lead bestätigt werden muss.<br /><br />
                 <strong>Anzeige in der App:</strong> der Team-Lead bekommt eine Mail mit <strong>&bdquo;Bestätigen&ldquo;</strong>- und <strong>&bdquo;Ablehnen&ldquo;</strong>-Buttons pro Anfrage. Bis zur Bestätigung steht der Beitretende in einer Approve-Queue und ist noch nicht offiziell im Team.<br /><br />
@@ -330,14 +327,69 @@ export const TeamStep: React.FC<TeamStepProps> = ({
                 <strong>Where you see it:</strong> the team lead receives an email with <strong>&ldquo;Confirm&rdquo;</strong> and <strong>&ldquo;Reject&rdquo;</strong> buttons per request. Until confirmed, the joiner sits in an approve queue and is not yet officially in the team.<br /><br />
                 <strong>For attendees:</strong> if active, the join only becomes valid after confirmation — and the joiner receives their confirmation mail and (if Outlook is enabled) the calendar invite only at that point. If off: join is immediately valid.
               </>
-          } />
-          <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-            {isDe
-              ? 'Wenn aktiv: jeder Beitritt zu einem offenen Team geht erst in eine Approve-Queue. Der Team-Lead bekommt eine Mail mit „Bestätigen / Ablehnen"-Buttons. Erst nach Bestätigung ist die Person im Team. Wenn aus: Beitritt ist sofort gültig.'
-              : 'When active: every join to an open team enters an approve queue. The team lead gets an email with "Confirm / Reject" buttons. Only after confirmation is the person in the team. When off: joins are immediately valid.'}
-          </span>
+                } />
+              </span>
+              <span className="dex-ui-toggle-row-desc">
+                {isDe
+                  ? <>Dann bekommt der Team-Lead je Anfrage eine Mail mit &bdquo;Bestätigen / Ablehnen&ldquo;; erst nach seiner Zusage ist die Person im Team und erhält Mail und Termin. Aus: der Beitritt gilt sofort.</>
+                  : <>Then the team lead gets an email with &bdquo;Confirm / Reject&ldquo; per request; only after approval is the person in the team and receives mail and invite. Off: the join is valid immediately.</>}
+              </span>
+            </span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    {/* v22.78: Eigener Team-Begriff (frei benennbar wie Event-Sections).
+        v31.2: Feinschliff, deshalb im Aufklapper — die Seite endet mit den
+        vier Kernfragen. Der Zähler verrät, ob etwas gesetzt ist, auch wenn
+        der Aufklapper zu ist; die Eingaben sind wie zuvor nur bei aktiver
+        Team-Anmeldung bedienbar. */}
+    <div className="dex-ui-section">
+      <button type="button" className={cx('dex-ui-disclosure', moreOpen && 'is-open')} aria-expanded={moreOpen} onClick={() => setMoreOpen(o => !o)}>
+        <span className="dex-ui-disclosure-chevron" style={{ transform: moreOpen ? 'none' : 'rotate(-90deg)' }}><ChevronDown size={16} /></span>
+        {isDe ? 'Weitere Einstellungen' : 'More settings'}
+        <span className="dex-ui-disclosure-count">
+          {hasCustomTerm ? (isDe ? '1 angepasst' : '1 customised') : (isDe ? 'Standard' : 'default')}
         </span>
-      </label>
+      </button>
+      {moreOpen && (
+        <div className="dex-ui-disclosure-body">
+          <div className={cx('dex-ui-card', !teamRegistrationEnabled && 'dex-ui-card--muted')}>
+            <div className="dex-ui-field">
+              <label className="dex-ui-label" htmlFor="dex-wizard-team-term-singular">
+                {isDe ? <>Wie sollen die Teams heißen? <span className="dex-ui-label-optional">(optional)</span></> : <>What should the teams be called? <span className="dex-ui-label-optional">(optional)</span></>}
+                <InfoTooltip text={isDe
+                  ? <><strong>Was du hier einstellst:</strong> einen eigenen Begriff für die Teams — z.B. <strong>„Break-Out Session“</strong>, „Gruppe“ oder „Tisch“. Leer = Standard „Team“.<br /><br /><strong>Anzeige in der App:</strong> ersetzt das Wort „Team“ überall (Organizer Center, „Meine Events“, Anmeldeformular).</>
+                  : <><strong>What this controls:</strong> a custom term for the teams — e.g. <strong>“Break-Out session”</strong>, “group” or “table”. Empty = default “Team”.<br /><br /><strong>Where you see it:</strong> replaces the word “Team” everywhere (organizer center, “My Events”, registration form).</>} />
+              </label>
+              <div className="dex-ui-grid-2" style={{ gap: 10 }}>
+                <input
+                  id="dex-wizard-team-term-singular"
+                  type="text" className="form-input"
+                  value={teamTermSingular}
+                  disabled={!teamRegistrationEnabled}
+                  onChange={e => setTeamTermSingular(e.target.value)}
+                  placeholder={isDe ? 'Einzahl, z.B. Break-Out Session' : 'Singular, e.g. Break-out session'}
+                />
+                <input
+                  type="text" className="form-input"
+                  value={teamTermPlural}
+                  disabled={!teamRegistrationEnabled}
+                  onChange={e => setTeamTermPlural(e.target.value)}
+                  placeholder={isDe ? 'Mehrzahl, z.B. Break-Out Sessions' : 'Plural, e.g. Break-out sessions'}
+                  aria-label={isDe ? 'Bezeichnung Mehrzahl' : 'Label plural'}
+                />
+              </div>
+              <div className="dex-ui-help">
+                {isDe
+                  ? <>Leer heißt &bdquo;Team&ldquo;. Der Begriff ersetzt das Wort überall: Anmeldeformular, &bdquo;Meine Events&ldquo;, Organizer Center.</>
+                  : <>Empty means &bdquo;Team&ldquo;. The term replaces the word everywhere: registration form, &bdquo;My Events&ldquo;, Organizer Center.</>}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
 
     {/* v15: alter Hinweis „Logik folgt mit v11.82+" entfernt —

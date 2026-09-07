@@ -1,12 +1,17 @@
 /* SubEventFieldsModal — aus RegistrationPage.tsx ausgelagert (v30.66).
  * Custom-Fields eines Sub-Events (v10.12): erst ausfuellen, dann wandert die
  * Session in `selectedSessions`. Inhalt zeichengleich uebernommen; die
- * Anzeige-Bedingung (`pendingSubEventModal`) ist beim Aufrufer geblieben. */
+ * Anzeige-Bedingung (`pendingSubEventModal`) ist beim Aufrufer geblieben.
+ * v31.2: Optik auf dex-ui-Klassen umgestellt; Logik, Werteformat, Speichern gleich. */
 import * as React from 'react';
 import { DeloitteEvent, EventSpecificField } from '../../types';
 import Modal from '../Modal';
 import { InfoTooltip } from '../InfoTooltip';
 import { Locale } from '../../context/LanguageContext';
+// v31.2: Gemeinsame UI-Klassen statt Inline-Styles — Inline kann kein :hover,
+// und die Optionen eines Multi-Select lasen sich vorher wie Beschriftungen.
+import { cx } from '../dexUi';
+import { MessageSquare, AlertCircle, Check } from '../Icons';
 
 /** Custom-Fields eines Sub-Events (v10.12). */
 export interface SubEventFieldsModalProps {
@@ -67,92 +72,117 @@ export const SubEventFieldsModal: React.FC<SubEventFieldsModalProps> = (p) => {
         };
         const onCancel = (): void => setPendingSubEventModal(null);
 
+        const isDe = locale === 'de';
+        const termLc = childTermSingular || (isDe ? 'Sub-Event' : 'sub-event');
+        const modalTitle = ce.title || childTermSingular || (isDe ? 'Sub-Event' : 'Sub-event');
+        // v31.2: Beschriftung — Frage, Pflicht-Stern bzw. „(optional)", InfoTooltip
+        // (v11.16: Tooltip statt grauer Inline-Beschreibung, wie auf der Anmeldeseite).
+        // Einmal gebaut, weil die Schalter-Frage sie IN der Zeile trägt, alle anderen darüber.
+        const labelBody = (f: EventSpecificField): React.ReactNode => (
+          <>
+            {fLabel(f)}
+            {f.required
+              ? <span style={{ color: 'var(--dex-red, #da291c)' }} aria-hidden="true">*</span>
+              : <span className="dex-ui-label-optional">(optional)</span>}
+            {fHelp(f) && <InfoTooltip text={fHelp(f)} />}
+          </>
+        );
+
         return (
           <Modal
             open={true}
             onClose={onCancel}
             maxWidth={520}
-            padding={24}
-            ariaLabel={ce.title || childTermSingular || (locale === 'de' ? 'Sub-Event' : 'Sub-event')}
+            ariaLabel={modalTitle}
+            icon={<MessageSquare size={20} strokeWidth={2} />}
+            title={modalTitle}
+            // v31.2: Untertitel nennt die Folge — ausgewählt ja, angemeldet erst mit dem Formular.
+            subtitle={isDe
+              ? `Beantworte kurz die Fragen zu diesem ${termLc} — danach ist es ausgewählt.`
+              : `Answer a few questions about this ${termLc} — then it is selected.`}
+            footer={<>
+              <button type="button" className="btn btn-secondary" onClick={onCancel}>
+                {isDe ? 'Abbrechen' : 'Cancel'}
+              </button>
+              <button type="button" className="btn btn-primary" onClick={onConfirm} disabled={!canSubmit}>
+                {isDe ? 'Übernehmen' : 'Apply'}
+              </button>
+            </>}
           >
-              <h3 style={{ margin: '0 0 6px', fontSize: '1.1rem' }}>
-                {ce.title || childTermSingular || (locale === 'de' ? 'Sub-Event' : 'Sub-event')}
-              </h3>
-              <p style={{ margin: '0 0 18px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-                {locale === 'de'
-                  ? `Bitte beantworte die Fragen für dieses ${childTermSingular || 'Sub-Event'}:`
-                  : `Please answer the questions for this ${childTermSingular || 'sub-event'}:`}
-              </p>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 20 }}>
+              <div>
                 {fields.map(f => {
                   const val = draft[f.id] || '';
+                  // v31.2: Ja/Nein-Frage als Schalter-Zeile — die Frage steht IN
+                  // der Zeile, nicht als Beschriftung über einem nackten „Ja".
+                  if (f.type === 'checkbox') {
+                    const on = val === 'true';
+                    return (
+                      <div key={f.id} className="dex-ui-field">
+                        <label className={cx('dex-ui-toggle-row', on && 'is-active')}>
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            onChange={e => updateFieldValue(f.id, e.target.checked ? 'true' : 'false')}
+                          />
+                          <span className="dex-ui-toggle-row-body">
+                            <span className="dex-ui-toggle-row-title">{labelBody(f)}</span>
+                            <span className="dex-ui-toggle-row-desc">{on ? (isDe ? 'Ja' : 'Yes') : (isDe ? 'Nein' : 'No')}</span>
+                          </span>
+                        </label>
+                      </div>
+                    );
+                  }
                   return (
-                    <div key={f.id}>
-                      <label className="form-label" style={{ display: 'block', fontSize: '0.85rem', marginBottom: 4 }}>
-                        {fLabel(f)}
-                        {f.required && <span style={{ color: 'var(--dex-red, #c00)', marginLeft: 4 }}>*</span>}
-                        {/* v11.16: konsistenter InfoTooltip statt grauer
-                            Inline-Beschreibung — gleicher Look wie auf
-                            der Haupt-Register-Page. */}
-                        {fHelp(f) && <InfoTooltip text={fHelp(f)} />}
-                      </label>
+                    <div key={f.id} className="dex-ui-field">
+                      <label className="dex-ui-label">{labelBody(f)}</label>
                       {f.type === 'select' && f.multi ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        // v31.2: Mehrfachauswahl als Chips — jede Option ist ein
+                        // Knopf mit Hover; der gespeicherte Wert bleibt „A | B".
+                        <div className="dex-ui-inline" role="group" aria-label={fLabel(f)}>
                           {(f.options || []).map((opt, optIdx) => {
                             const current = val.split(' | ').map(s => s.trim()).filter(Boolean);
                             const checked = current.indexOf(opt) >= 0;
                             return (
-                              <label key={opt} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', cursor: 'pointer' }}>
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={e => {
-                                    const next = e.target.checked
-                                      ? [...current, opt]
-                                      : current.filter(x => x !== opt);
-                                    updateFieldValue(f.id, next.join(' | '));
-                                  }}
-                                />
+                              <button
+                                key={opt}
+                                type="button"
+                                className={cx('dex-ui-chip', checked && 'is-active')}
+                                aria-pressed={checked}
+                                onClick={() => {
+                                  const next = !checked
+                                    ? [...current, opt]
+                                    : current.filter(x => x !== opt);
+                                  updateFieldValue(f.id, next.join(' | '));
+                                }}
+                              >
+                                {checked && <Check size={12} />}
                                 {fOpt(f, opt, optIdx)}
-                              </label>
+                              </button>
                             );
                           })}
                         </div>
                       ) : f.type === 'select' ? (
                         <select
-                          className="form-input"
+                          className="dex-ui-select"
                           value={val}
                           onChange={e => updateFieldValue(f.id, e.target.value)}
-                          style={{ width: '100%', fontSize: '0.9rem' }}
                         >
-                          <option value="">{locale === 'de' ? '— bitte wählen —' : '— please select —'}</option>
+                          <option value="">{isDe ? '— bitte wählen —' : '— please select —'}</option>
                           {(f.options || []).map((opt, optIdx) => <option key={opt} value={opt}>{fOpt(f, opt, optIdx)}</option>)}
                         </select>
-                      ) : f.type === 'checkbox' ? (
-                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.85rem' }}>
-                          <input
-                            type="checkbox"
-                            checked={val === 'true'}
-                            onChange={e => updateFieldValue(f.id, e.target.checked ? 'true' : 'false')}
-                          />
-                          {locale === 'de' ? 'Ja' : 'Yes'}
-                        </label>
                       ) : f.type === 'number' ? (
                         <input
                           type="number"
-                          className="form-input"
+                          className="dex-ui-input"
                           value={val}
                           onChange={e => updateFieldValue(f.id, e.target.value)}
-                          style={{ width: '100%', fontSize: '0.9rem' }}
                         />
                       ) : (
                         <input
                           type="text"
-                          className="form-input"
+                          className="dex-ui-input"
                           value={val}
                           onChange={e => updateFieldValue(f.id, e.target.value)}
-                          style={{ width: '100%', fontSize: '0.9rem' }}
                         />
                       )}
                     </div>
@@ -161,19 +191,15 @@ export const SubEventFieldsModal: React.FC<SubEventFieldsModalProps> = (p) => {
               </div>
 
               {!canSubmit && requiredMissing.length > 0 && (
-                <div style={{ fontSize: '0.78rem', color: 'var(--dex-red, #c00)', marginBottom: 12 }}>
-                  {locale === 'de' ? 'Pflichtfelder fehlen: ' : 'Required fields missing: '}{requiredMissing.join(', ')}
+                <div className="dex-ui-callout dex-ui-callout--warn" role="status">
+                  <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                  <span>
+                    {isDe ? 'Noch offen: ' : 'Still open: '}
+                    <strong>{requiredMissing.join(', ')}</strong>
+                    {isDe ? ' — danach kannst du übernehmen.' : ' — then you can apply.'}
+                  </span>
                 </div>
               )}
-
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button type="button" className="btn btn-secondary" onClick={onCancel}>
-                  {locale === 'de' ? 'Abbrechen' : 'Cancel'}
-                </button>
-                <button type="button" className="btn btn-primary" onClick={onConfirm} disabled={!canSubmit}>
-                  {locale === 'de' ? 'Bestätigen' : 'Confirm'}
-                </button>
-              </div>
           </Modal>
         );
 };

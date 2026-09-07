@@ -23,6 +23,12 @@
  */
 import * as React from 'react';
 import Modal from './Modal';
+// v31.2: Der Editor drumherum spricht längst beide Sprachen (HtmlEditorModal,
+// isDe); der Link-Dialog war bis hier deutsch fest verdrahtet. `useLocaleSafe`
+// braucht keinen Provider-Zwang und fällt auf Deutsch zurück.
+import { useLocaleSafe } from '../context/LanguageContext';
+import { cx } from './dexUi';
+import { AlertCircle, Link2, Mail, Trash2 } from './Icons';
 
 export interface LinkDialogResult {
   /** Fertige href — bei E-Mail bereits mit `mailto:`. */
@@ -49,11 +55,6 @@ export interface LinkDialogProps {
 
 const MAILTO = 'mailto:';
 
-const labelStyle: React.CSSProperties = {
-  display: 'block', fontSize: '0.78rem', fontWeight: 600,
-  color: 'var(--dex-gray-700, #444)', marginBottom: 4,
-};
-
 export default function LinkDialog(props: LinkDialogProps): React.ReactElement | null {
   const { open, initialHref = '', initialText = '', editing = false, textLocked = false } = props;
 
@@ -79,6 +80,11 @@ export default function LinkDialog(props: LinkDialogProps): React.ReactElement |
     setError('');
   }, [open, initialHref, initialText]);
 
+  // v31.2: Hinter den bestehenden Hooks, vor dem frühen Return — die
+  // Reihenfolge der alten Hooks bleibt damit unangetastet.
+  const isDe = useLocaleSafe() === 'de';
+  const t = (de: string, en: string): string => (isDe ? de : en);
+
   if (!open) return null;
 
   const apply = (): void => {
@@ -88,14 +94,20 @@ export default function LinkDialog(props: LinkDialogProps): React.ReactElement |
       // eine versehentlich eingefügte URL zu erwischen, nicht darum, die
       // Adress-Syntax nachzubauen.
       if (raw.indexOf('@') < 1 || raw.indexOf('.', raw.indexOf('@')) < 0 || /\s/.test(raw)) {
-        setError('Das sieht nicht nach einer E-Mail-Adresse aus — erwartet wird z.B. b2runkoeln@deloitte.de.');
+        setError(t(
+          'Das sieht nicht nach einer E-Mail-Adresse aus — erwartet wird z.B. b2runkoeln@deloitte.de.',
+          'That does not look like an email address — expected something like b2runkoeln@deloitte.de.',
+        ));
         return;
       }
       props.onApply({ href: MAILTO + raw, text: text.trim() });
       return;
     }
     if (!raw || raw === 'https://' || raw === 'http://') {
-      setError('Bitte trage die Adresse der Seite ein, auf die der Link führen soll.');
+      setError(t(
+        'Trag die Adresse der Seite ein, auf die der Link führen soll.',
+        'Enter the address of the page the link should open.',
+      ));
       return;
     }
     // Ohne Schema landet der Link relativ zur SharePoint-Seite — der
@@ -104,9 +116,13 @@ export default function LinkDialog(props: LinkDialogProps): React.ReactElement |
     props.onApply({ href, text: text.trim() });
   };
 
-  const seg = (m: 'web' | 'mail', label: string): React.ReactElement => (
+  // v31.2: Die Wahl Web/E-Mail ist eine Entscheidung mit Folge (Browser oder
+  // Mailprogramm) — deshalb zwei Kacheln mit je einer Zeile „was das heißt"
+  // statt zweier Wörter in einer Pill (Leitfaden 2b).
+  const choice = (m: 'web' | 'mail', icon: React.ReactNode, title: string, desc: string): React.ReactElement => (
     <button
       type="button"
+      className={cx('dex-ui-choice', mode === m && 'is-active')}
       onClick={() => {
         setError('');
         setMode(prev => {
@@ -119,106 +135,105 @@ export default function LinkDialog(props: LinkDialogProps): React.ReactElement |
         });
       }}
       aria-pressed={mode === m}
-      style={{
-        border: 'none', cursor: 'pointer', padding: '7px 16px',
-        borderRadius: 999, fontSize: '0.82rem', fontWeight: 700,
-        background: mode === m ? 'var(--dex-green, #86bc25)' : 'transparent',
-        color: mode === m ? '#fff' : 'var(--dex-gray-700, #444)',
-        transition: 'background 140ms ease, color 140ms ease',
-      }}
     >
-      {label}
+      <span className="dex-ui-choice-icon">{icon}</span>
+      <span className="dex-ui-choice-body">
+        <span className="dex-ui-choice-title">{title}</span>
+        <span className="dex-ui-choice-desc">{desc}</span>
+      </span>
     </button>
   );
 
-  return (
-    <Modal open onClose={props.onCancel} backdropClose={false} maxWidth={520} ariaLabel="Link">
-      <h3 style={{ margin: 0, fontSize: '1.02rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
-        {editing ? 'Link bearbeiten' : 'Link einfügen'}
-      </h3>
+  const isMail = mode === 'mail';
 
-      <div style={{
-        display: 'inline-flex', gap: 4, padding: 3, alignSelf: 'flex-start',
-        background: 'var(--dex-gray-100, #f5f5f5)', borderRadius: 999,
-      }}>
-        {seg('web', 'Web-Adresse')}
-        {seg('mail', 'E-Mail')}
+  return (
+    <Modal
+      open
+      onClose={props.onCancel}
+      backdropClose={false}
+      maxWidth={520}
+      ariaLabel="Link"
+      title={editing ? t('Link bearbeiten', 'Edit link') : t('Link einfügen', 'Insert link')}
+      subtitle={t('Wohin soll der Link führen — und was soll dort stehen?', 'Where should the link go — and what should it say?')}
+      icon={<Link2 size={20} />}
+      footer={<>
+        {editing && props.onRemove && (
+          // v31.2: Links außen und mit Abstand zu „Abbrechen" — der Text bleibt
+          // stehen, nur die Verlinkung geht weg, deshalb ohne Rückfrage.
+          <span className="dex-ui-modal-foot-left">
+            <button type="button" className="dex-ui-textbtn dex-ui-textbtn--danger" onClick={props.onRemove}>
+              <Trash2 size={15} />
+              {t('Link entfernen', 'Remove link')}
+            </button>
+          </span>
+        )}
+        <button type="button" className="btn btn-secondary dex-ui-btn-sm" onClick={props.onCancel}>
+          {t('Abbrechen', 'Cancel')}
+        </button>
+        <button type="button" className="btn btn-primary dex-ui-btn-sm" onClick={apply}>
+          {t('Übernehmen', 'Apply')}
+        </button>
+      </>}
+    >
+      <div className="dex-ui-grid-2" role="group" aria-label={t('Art des Links', 'Link type')}>
+        {choice('web', <Link2 size={18} />, t('Web-Adresse', 'Web address'),
+          t('Öffnet eine Seite im Browser.', 'Opens a page in the browser.'))}
+        {choice('mail', <Mail size={18} />, t('E-Mail', 'Email'),
+          t('Öffnet das Mailprogramm mit dieser Adresse.', 'Opens the mail app with this address.'))}
       </div>
 
-      <div>
-        <label style={labelStyle} htmlFor="dex-link-target">
-          {mode === 'mail' ? 'E-Mail-Adresse' : 'Link-Adresse (URL)'}
+      <div className="dex-ui-field">
+        <label className="dex-ui-label" htmlFor="dex-link-target">
+          {isMail
+            ? t('An welche E-Mail-Adresse soll geschrieben werden?', 'Which email address should be written to?')
+            : t('Auf welche Seite soll der Link führen?', 'Which page should the link open?')}
         </label>
         <input
           id="dex-link-target"
-          className="form-input"
+          className="dex-ui-input"
           value={target}
           onChange={e => { setTarget(e.target.value); setError(''); }}
           onKeyDown={e => { if (e.key === 'Enter') apply(); }}
-          placeholder={mode === 'mail' ? 'b2runkoeln@deloitte.de' : 'https://www.b2run.de/koeln'}
+          placeholder={isMail ? 'b2runkoeln@deloitte.de' : 'https://www.b2run.de/koeln'}
           autoFocus
-          style={{ fontSize: '0.9rem', padding: '9px 12px', width: '100%' }}
         />
+        <div className="dex-ui-help">
+          {isMail
+            ? t('Das mailto: setzen wir selbst — trag nur die Adresse ein.', 'We add mailto: for you — just enter the address.')
+            : t('Fehlt https:// am Anfang, ergänzen wir es beim Übernehmen.', 'If https:// is missing, we add it when you apply.')}
+        </div>
       </div>
 
-      <div>
-        <label style={labelStyle} htmlFor="dex-link-text">
-          Angezeigter Text {textLocked ? '' : <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)' }}>(leer = die Adresse selbst)</span>}
+      <div className="dex-ui-field">
+        <label className="dex-ui-label" htmlFor="dex-link-text">
+          {t('Was soll als Link-Text stehen?', 'What should the link text say?')}
+          {!textLocked && <span className="dex-ui-label-optional">{t('(optional)', '(optional)')}</span>}
         </label>
         <input
           id="dex-link-text"
-          className="form-input"
+          className="dex-ui-input"
           value={text}
           disabled={textLocked}
           onChange={e => setText(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') apply(); }}
-          placeholder={mode === 'mail' ? 'Schreib uns' : 'Zur Anmeldung'}
-          style={{ fontSize: '0.9rem', padding: '9px 12px', width: '100%' }}
+          placeholder={isMail ? t('Schreib uns', 'Write to us') : t('Zur Anmeldung', 'Go to registration')}
         />
-        {textLocked && (
-          <p style={{ margin: '5px 0 0', fontSize: '0.74rem', color: 'var(--dex-gray-500)', lineHeight: 1.45 }}>
-            Deine Auswahl geht über mehrere Absätze — der markierte Text bleibt dann unverändert und wird
-            nur verlinkt.
-          </p>
-        )}
+        <div className="dex-ui-help">
+          {textLocked
+            ? t(
+              'Deine Auswahl geht über mehrere Absätze — der markierte Text bleibt unverändert und wird nur verlinkt.',
+              'Your selection spans several paragraphs — the marked text stays as it is and only gets linked.',
+            )
+            : t('Leer gelassen erscheint die Adresse selbst als Text.', 'Leave it empty and the address itself is shown.')}
+        </div>
       </div>
 
       {error && (
-        <p style={{
-          margin: 0, padding: '8px 12px', borderRadius: 8,
-          background: 'rgba(218,41,28,0.08)', color: 'var(--dex-red, #da291c)',
-          fontSize: '0.8rem', lineHeight: 1.45,
-        }}>{error}</p>
+        <div className="dex-ui-callout dex-ui-callout--danger" role="alert">
+          <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+          <span>{error}</span>
+        </div>
       )}
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
-        {editing && props.onRemove && (
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={props.onRemove}
-            style={{ fontSize: '0.88rem', padding: '9px 18px', marginRight: 'auto' }}
-          >
-            Link entfernen
-          </button>
-        )}
-        <button
-          type="button"
-          className="btn btn-secondary"
-          onClick={props.onCancel}
-          style={{ fontSize: '0.88rem', padding: '9px 18px' }}
-        >
-          Abbrechen
-        </button>
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={apply}
-          style={{ fontSize: '0.88rem', padding: '9px 18px' }}
-        >
-          Übernehmen
-        </button>
-      </div>
     </Modal>
   );
 }

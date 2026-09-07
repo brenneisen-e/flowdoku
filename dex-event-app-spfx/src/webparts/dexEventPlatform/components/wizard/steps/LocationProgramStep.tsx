@@ -8,9 +8,10 @@ import { SubEventDraft } from '../../wizard/wizardTypes';
 import { AgendaItem } from '../../../types';
 import { StepBadge } from '../../wizard/StepBadge';
 import { buildOutlookLocation } from '../../../utils/eventFormat';
-import { Plus, X } from '../../Icons';
+import { AlertCircle, Check, ChevronDown, Plus, X } from '../../Icons';
 import { InfoTooltip } from '../../InfoTooltip';
 import { AgendaEditor } from '../AgendaEditor';
+import { cx } from '../../dexUi';
 export interface LocationProgramStepProps {
   visible: boolean;
   activeLocationTabIdx: number;
@@ -48,9 +49,125 @@ export interface LocationProgramStepProps {
   agendaTermSingular: string;
   setAgenda: React.Dispatch<React.SetStateAction<AgendaItem[]>>;
 }
+
+type TransferTime = LocationProgramStepProps['transferTimes'][number];
+
+/* v31.2: Adresse als vier beschriftete Felder — vorher standen die
+   Bezeichnungen nur im Platzhalter und verschwanden beim Tippen; und sie
+   waren auch auf Englisch deutsch. Einmal gebaut, zweimal genutzt
+   (Hauptevent und Sub-Event), damit beide Zweige gleich aussehen. */
+const AddressFields: React.FC<{
+  isDe: boolean; street: string; houseNo: string; zip: string; city: string;
+  onStreet: (_v: string) => void; onHouseNo: (_v: string) => void; onZip: (_v: string) => void; onCity: (_v: string) => void;
+}> = ({ isDe, street, houseNo, zip, city, onStreet, onHouseNo, onZip, onCity }) => {
+  const field = (label: string, value: string, onChange: (v: string) => void, placeholder: string): React.ReactElement => (
+    <div>
+      <span className="dex-ui-muted" style={{ display: 'block', fontSize: '0.72rem', marginBottom: 3 }}>{label}</span>
+      <input className="form-input" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} aria-label={label} />
+    </div>
+  );
+  return (
+    <div className="dex-ui-stack" style={{ gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: 8 }}>
+        {field(isDe ? 'Straße' : 'Street', street, onStreet, isDe ? 'z.B. Schwannstraße' : 'e.g. Schwannstraße')}
+        {field(isDe ? 'Hausnr.' : 'No.', houseNo, onHouseNo, '6')}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 3fr', gap: 8 }}>
+        {field(isDe ? 'PLZ' : 'ZIP', zip, onZip, '40476')}
+        {field(isDe ? 'Ort' : 'City', city, onCity, isDe ? 'Düsseldorf' : 'Düsseldorf')}
+      </div>
+    </div>
+  );
+};
+
+/* v31.2: Transferzeiten — eine Karte je Eintrag, Löschen als runder Symbol-
+   Knopf mit Hover, leerer Zustand statt leerer Fläche. Ein Helfer für beide
+   Zweige (Hauptevent schreibt über setTransferTimes, Sub-Event über
+   updateSub) — vorher stand derselbe 45-Zeilen-Block zweimal in der Datei,
+   mit leicht abweichenden Platzhaltern. Die nativen Datums-/Zeitfelder
+   bleiben (kein neues, aber auch kein Umbau — s. Bericht). */
+const TransfersSection: React.FC<{
+  items: TransferTime[]; onChange: (_next: TransferTime[]) => void;
+  isDe: boolean; isMobile: boolean; t: (_key: string) => string;
+  defaultDate: string; locationOptions?: string[]; tooltip?: React.ReactNode;
+}> = ({ items, onChange, isDe, isMobile, t, defaultDate, locationOptions, tooltip }) => {
+  const patch = (id: string, pt: Partial<TransferTime>): void => onChange(items.map(x => x.id === id ? { ...x, ...pt } : x));
+  const small = (label: string, input: React.ReactElement): React.ReactElement => (
+    <div>
+      <label className="dex-ui-muted" style={{ display: 'block', fontSize: '0.72rem', marginBottom: 3 }}>{label}</label>
+      {input}
+    </div>
+  );
+  const inStyle: React.CSSProperties = { padding: '6px 8px', fontSize: '0.85rem' };
+  return (
+    <div className="dex-ui-field">
+      <label className="dex-ui-label" style={{ fontSize: '0.95rem' }}>
+        <StepBadge n={17} />
+        {isDe ? 'Gibt es organisierte Anreisen (Bus, Shuttle, Bahn)?' : 'Is there organised travel (bus, shuttle, train)?'}
+        <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>
+        {tooltip && <InfoTooltip text={tooltip} />}
+      </label>
+      <div className="dex-ui-help" style={{ margin: '-2px 0 10px' }}>
+        {isDe
+          ? 'Je Stadt ein Eintrag mit Treffpunkt, Abfahrt und Ankunft. Teilnehmer sehen die Transfers auf der Anmeldeseite und in „Meine Events" — nicht im Outlook-Termin.'
+          : 'One entry per city with meeting point, departure and arrival. Attendees see transfers on the registration page and in “My Events” — not in the Outlook event.'}
+      </div>
+      {items.length === 0 && (
+        <div className="dex-ui-empty" style={{ padding: '18px 16px', marginBottom: 10 }}>
+          <div className="dex-ui-empty-title">{isDe ? 'Noch keine Transferzeiten' : 'No transfer times yet'}</div>
+          {isDe ? 'Bei rein lokalen Office-Events kannst du das leer lassen.' : 'For purely local office events you can leave this empty.'}
+        </div>
+      )}
+      {items.map(tt => (
+        <div key={tt.id} className="dex-ui-card dex-ui-card--soft" style={{ padding: '12px 14px', marginBottom: 8 }}>
+          {/* Zeile 1: Stadt + Treffpunkt + Adresse + Löschen */}
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr auto', gap: 8, marginBottom: 8 }}>
+            {small(t('create.transfers.location'), (
+              <>
+                <input type="text" className="form-input" list={locationOptions ? `transfer-locations-${tt.id}` : undefined} value={tt.location} onChange={e => patch(tt.id, { location: e.target.value })} placeholder={isDe ? 'Stadt, z.B. Köln' : 'City, e.g. Cologne'} style={inStyle} />
+                {locationOptions && (
+                  <datalist id={`transfer-locations-${tt.id}`}>
+                    {locationOptions.filter(o => o !== 'All').map(opt => (
+                      <option key={opt} value={opt} />
+                    ))}
+                  </datalist>
+                )}
+              </>
+            ))}
+            {small(t('create.transfers.meetingpoint'), <input type="text" className="form-input" value={tt.meetingPoint || ''} onChange={e => patch(tt.id, { meetingPoint: e.target.value })} placeholder={isDe ? 'z.B. Flughafen, Hbf Gleis 4' : 'e.g. airport, main station platform 4'} style={inStyle} />)}
+            {small(t('create.transfers.address'), <input type="text" className="form-input" value={tt.address || ''} onChange={e => patch(tt.id, { address: e.target.value })} placeholder={isDe ? 'Straße, PLZ Ort' : 'Street, ZIP City'} style={inStyle} />)}
+            <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+              <button type="button" className="dex-ui-iconbtn dex-ui-iconbtn--danger" onClick={() => onChange(items.filter(x => x.id !== tt.id))} title={t('general.delete')} aria-label={t('general.delete')}>
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+          {/* Zeile 2: Datum + Abfahrt + Ankunft + Beschreibung */}
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr 2fr', gap: 8 }}>
+            {small(t('create.transfers.date'), <input type="date" className="form-input" value={tt.date} onChange={e => patch(tt.id, { date: e.target.value })} style={inStyle} />)}
+            {small(t('create.transfers.departure'), <input type="time" className="form-input" value={tt.departureTime} onChange={e => patch(tt.id, { departureTime: e.target.value })} style={inStyle} />)}
+            {small(t('create.transfers.arrival'), <input type="time" className="form-input" value={tt.arrivalTime} onChange={e => patch(tt.id, { arrivalTime: e.target.value })} style={inStyle} />)}
+            {small(t('create.transfers.desc'), <input type="text" className="form-input" value={tt.description || ''} onChange={e => patch(tt.id, { description: e.target.value })} placeholder={isDe ? 'z.B. Bus-Kennzeichen, Schild am Treffpunkt' : 'e.g. bus number, sign at the meeting point'} style={inStyle} />)}
+          </div>
+        </div>
+      ))}
+      <button type="button" className="btn btn-outline dex-ui-btn-sm" onClick={() => onChange([...items, {
+        id: `tr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        location: '', meetingPoint: '', address: '', date: defaultDate, departureTime: '', arrivalTime: '', description: '',
+      }])}>
+        <Plus size={14} /> {t('create.transfers.add')}
+      </button>
+    </div>
+  );
+};
+
 export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
   const { visible } = p;
   const { agendaCheckIn, agendaTermPlural, agendaTermSingular, setAgenda } = p;
+  // v31.2: Aufklapper „Weitere Einstellungen zum Ort" (Outlook-Ort) je Zweig —
+  // reiner Anzeige-State, standardmäßig zu (Leitfaden: Seltenes ist zu).
+  const [moreOpenMain, setMoreOpenMain] = React.useState(false);
+  const [moreOpenSub, setMoreOpenSub] = React.useState(false);
   // v30.94: „Letzten Tag kopieren" (v30.86) ist in den AgendaEditor gewandert
   // (je Cluster „Kopieren", Name zählt hoch).
   const agendaPlural = agendaTermPlural.trim() || (p.isDe ? 'Programmpunkte' : 'Agenda items');
@@ -58,12 +175,13 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">
-                {isDe ? 'Schritt 3 — Ort & Programm' : 'Step 3 — Location & Programme'}
+                <span className="dex-step-eyebrow">{isDe ? 'Schritt 3 von 9' : 'Step 3 of 9'}</span>
+                {isDe ? 'Ort & Programm' : 'Location & Programme'}
               </h2>
               <p className="dex-step-head-lead">
                 {isDe
-                  ? 'Hier sagst du, wo das Event stattfindet, wie der Tagesablauf aussieht und wie Teilnehmer hinkommen — alle Eingaben (Veranstaltungsort, Adresse, Agenda, Transferzeiten) sehen die Teilnehmer direkt auf der Anmelde-Seite und später unter „Meine Events".'
-                  : 'Here you say where the event takes place, what the schedule looks like and how attendees get there — all inputs (venue, address, agenda, transfers) are shown to attendees directly on the registration page and later under "My Events".'}
+                  ? <>Wo findet das Event statt, wie kommen die Teilnehmer hin, was passiert wann? Alles hier sehen sie auf der <strong>Anmeldeseite</strong> und in <strong>&bdquo;Meine Events&ldquo;</strong>; Ort und Adresse landen auch im Outlook-Termin.</>
+                  : <>Where does the event take place, how do attendees get there, what happens when? Everything here is shown on the <strong>registration page</strong> and in <strong>&bdquo;My Events&ldquo;</strong>; venue and address also go into the Outlook event.</>}
               </p>
               {renderStepIntro(
                 [
@@ -100,16 +218,26 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                 const updateSub = (patch: Partial<SubEventDraft>): void => {
                   setSubEvents(prev => prev.map((x, i) => i === seIdx ? { ...x, ...patch } : x));
                 };
+                // v29.21 (Audit): Berliner Tag statt UTC-Tag als Vorbelegung —
+                // se.startDate ist UTC-ISO; slice(0,10) lieferte bei
+                // Startzeiten 00:00-01:59 Berlin den VORTAG.
+                const seDefaultDate = se.startDate ? (isoToLocal(se.startDate) || '').slice(0, 10) : '';
                 return (
                   <div>
                     {/* v15.3: „Vom Hauptevent kopieren"-Button. Übernimmt
                         Ort, Adresse, Agenda und Transferzeiten vom Hauptevent
-                        als Startwerte für dieses Sub-Event. */}
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+                        als Startwerte für dieses Sub-Event.
+                        v31.2: als Hinweiszeile mit dem Knopf daran — vorher
+                        stand er allein rechts, ohne zu sagen, wofür. */}
+                    <div className="dex-ui-callout dex-ui-callout--neutral" style={{ alignItems: 'center', marginBottom: 16 }}>
+                      <span style={{ flex: 1 }}>
+                        {isDe
+                          ? 'Dieser Termin hat eigene Angaben zu Ort, Anreise und Programm. Du kannst die Werte des Hauptevents als Startpunkt übernehmen.'
+                          : 'This date has its own venue, travel and programme details. You can take the main event’s values as a starting point.'}
+                      </span>
                       <button
                         type="button"
-                        className="btn btn-secondary"
-                        style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+                        className="btn btn-secondary dex-ui-btn-sm"
                         onClick={() => updateSub({
                           location: location,
                           locationAddress: { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity },
@@ -123,58 +251,87 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                         {isDe ? 'Vom Hauptevent kopieren' : 'Copy from main event'}
                       </button>
                     </div>
-                    <div className="form-group">
-                      <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <StepBadge n={14} />
-                        {t('create.location')}
-                      </label>
-                      <input
-                        className="form-input"
-                        value={se.location || ''}
-                        onChange={e => updateSub({ location: e.target.value })}
-                        placeholder={isDe ? 'z.B. RheinEnergieStadion, Köln' : 'e.g. RheinEnergieStadion, Cologne'}
+                    <div className="dex-ui-section">
+                      <div className="dex-ui-section-title">{isDe ? 'Wo findet dieser Termin statt?' : 'Where does this date take place?'}</div>
+                      <div className="dex-ui-field">
+                        <label className="dex-ui-label">
+                          <StepBadge n={14} />
+                          {isDe ? 'Wie heißt der Veranstaltungsort?' : 'What is the venue called?'}
+                        </label>
+                        <input
+                          className="form-input"
+                          value={se.location || ''}
+                          onChange={e => updateSub({ location: e.target.value })}
+                          placeholder={isDe ? 'z.B. RheinEnergieStadion, Köln' : 'e.g. RheinEnergieStadion, Cologne'}
+                        />
+                        <div className="dex-ui-help">
+                          {isDe
+                            ? 'Erscheint auf der Anmeldeseite, in „Meine Events" und als Ort im Outlook-Termin dieses Termins.'
+                            : 'Appears on the registration page, in “My Events” and as the location of this date’s Outlook event.'}
+                        </div>
+                      </div>
+                      <div className="dex-ui-field">
+                        <label className="dex-ui-label">
+                          <StepBadge n={15} />
+                          {isDe ? 'Wie lautet die Adresse?' : 'What is the address?'}
+                          <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>
+                        </label>
+                        <AddressFields
+                          isDe={isDe}
+                          street={seAddr.street} houseNo={seAddr.houseNo} zip={seAddr.zip} city={seAddr.city}
+                          onStreet={v => updateSub({ locationAddress: { ...seAddr, street: v } })}
+                          onHouseNo={v => updateSub({ locationAddress: { ...seAddr, houseNo: v } })}
+                          onZip={v => updateSub({ locationAddress: { ...seAddr, zip: v } })}
+                          onCity={v => updateSub({ locationAddress: { ...seAddr, city: v } })}
+                        />
+                      </div>
+                      {/* v18.44: Outlook-Ort pro Sub-Event überschreibbar (auch hier, nicht nur im Outlook-Editor).
+                          v31.2: im Aufklapper, wie beim Hauptevent. */}
+                      <button type="button" className={cx('dex-ui-disclosure', moreOpenSub && 'is-open')} onClick={() => setMoreOpenSub(o => !o)} aria-expanded={moreOpenSub}>
+                        <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                        {isDe ? 'Weitere Einstellungen zum Ort' : 'More location settings'}
+                        {(se.outlookLocation || '').trim() && <span className="dex-ui-disclosure-count">{isDe ? '1 angepasst' : '1 customised'}</span>}
+                      </button>
+                      {moreOpenSub && (
+                        <div className="dex-ui-disclosure-body">
+                          <div className="dex-ui-field">
+                            <label className="dex-ui-label">
+                              {isDe ? 'Was soll im Outlook-Termin als Ort stehen?' : 'What should the Outlook event show as location?'}
+                            </label>
+                            <input
+                              className="form-input"
+                              value={se.outlookLocation || ''}
+                              onChange={e => updateSub({ outlookLocation: e.target.value })}
+                              placeholder={buildOutlookLocation(se.location, seAddr) || (isDe ? 'z.B. Mezzomar, Harffstraße 110a, Düsseldorf' : 'e.g. Mezzomar, Harffstraße 110a, Düsseldorf')}
+                            />
+                            <div className="dex-ui-help">
+                              {isDe
+                                ? 'Leer lassen = automatisch aus Veranstaltungsort + Adresse dieses Sub-Events (siehe Platzhalter).'
+                                : 'Leave empty = automatic from this sub-event\'s venue + address (see placeholder).'}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="dex-ui-section">
+                      <div className="dex-ui-section-title">{isDe ? 'Wie kommen die Teilnehmer hin?' : 'How do attendees get there?'}</div>
+                      <TransfersSection
+                        items={seTransfers}
+                        onChange={next => updateSub({ transferTimes: next })}
+                        isDe={isDe}
+                        isMobile={isMobile}
+                        t={t}
+                        defaultDate={seDefaultDate}
                       />
                     </div>
-                    <div className="form-group">
-                      <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <StepBadge n={15} />
-                        {isDe ? 'Adresse' : 'Address'}
-                      </label>
-                      <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: 8, marginBottom: 8 }}>
-                        <input className="form-input" value={seAddr.street} onChange={e => updateSub({ locationAddress: { ...seAddr, street: e.target.value } })} placeholder="Straße" />
-                        <input className="form-input" value={seAddr.houseNo} onChange={e => updateSub({ locationAddress: { ...seAddr, houseNo: e.target.value } })} placeholder="Hausnr." />
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 3fr', gap: 8 }}>
-                        <input className="form-input" value={seAddr.zip} onChange={e => updateSub({ locationAddress: { ...seAddr, zip: e.target.value } })} placeholder="PLZ" />
-                        <input className="form-input" value={seAddr.city} onChange={e => updateSub({ locationAddress: { ...seAddr, city: e.target.value } })} placeholder="Ort" />
-                      </div>
-                    </div>
-                    {/* v18.44: Outlook-Ort pro Sub-Event überschreibbar (auch hier, nicht nur im Outlook-Editor). */}
-                    <div className="form-group" style={{ marginTop: 16 }}>
-                      <label className="form-label">
-                        {isDe ? 'Ort im Outlook-Termin' : 'Location in the Outlook event'}
-                      </label>
-                      <input
-                        className="form-input"
-                        value={se.outlookLocation || ''}
-                        onChange={e => updateSub({ outlookLocation: e.target.value })}
-                        placeholder={buildOutlookLocation(se.location, seAddr) || (isDe ? 'z.B. Mezzomar, Harffstraße 110a, Düsseldorf' : 'e.g. Mezzomar, Harffstraße 110a, Düsseldorf')}
-                      />
-                      <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                        {isDe
-                          ? 'Leer lassen = automatisch aus Veranstaltungsort + Adresse dieses Sub-Events.'
-                          : 'Leave empty = automatic from this sub-event\'s venue + address.'}
-                      </span>
-                    </div>
-                    <div className="form-group" style={{ marginTop: 24 }}>
-                      <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
+                    <div className="dex-ui-section">
+                      <div className="dex-ui-section-title">{isDe ? 'Was passiert wann?' : 'What happens when?'}</div>
+                      <label className="dex-ui-label" style={{ fontSize: '0.95rem' }}>
                         <StepBadge n={16} />
-                        {t('create.agenda')}
+                        {isDe ? 'Wie sieht das Programm aus?' : 'What does the programme look like?'}
+                        <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>
                       </label>
-                      {/* v30.94: gemeinsamer Tages-Editor (AgendaEditor) — s. dort.
-                          v29.21 (Audit): Berliner Tag statt UTC-Tag als Vorbelegung —
-                          se.startDate ist UTC-ISO; slice(0,10) lieferte bei
-                          Startzeiten 00:00-01:59 Berlin den VORTAG. */}
+                      {/* v30.94: gemeinsamer Tages-Editor (AgendaEditor) — s. dort. */}
                       <AgendaEditor
                         items={seAgenda}
                         onChange={upd => updateSub({ agenda: upd(seAgenda) })}
@@ -182,76 +339,8 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                         isMobile={isMobile}
                         termSingular={agendaCheckIn ? agendaTermSingular : (isDe ? 'Programmpunkt' : 'Agenda item')}
                         termPlural={agendaCheckIn ? agendaTermPlural : (isDe ? 'Programmpunkte' : 'Agenda items')}
-                        defaultDate={se.startDate ? (isoToLocal(se.startDate) || '').slice(0, 10) : ''}
+                        defaultDate={seDefaultDate}
                       />
-                    </div>
-                    <div className="form-group" style={{ marginTop: 24 }}>
-                      <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
-                        <StepBadge n={17} />
-                        {t('create.transfers')}
-                      </label>
-                      {seTransfers.map(tt => (
-                        <div key={tt.id} style={{
-                          padding: '12px 14px', marginBottom: 8,
-                          background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-                          border: '1px solid var(--dex-gray-200)',
-                        }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr auto', gap: 8, marginBottom: 8 }}>
-                            <div>
-                              <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.location')}</label>
-                              <input type="text" className="form-input" value={tt.location} onChange={e => updateSub({ transferTimes: seTransfers.map(x => x.id === tt.id ? { ...x, location: e.target.value } : x) })} placeholder="Stadt..." style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                            </div>
-                            <div>
-                              <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.meetingpoint')}</label>
-                              <input type="text" className="form-input" value={tt.meetingPoint || ''} onChange={e => updateSub({ transferTimes: seTransfers.map(x => x.id === tt.id ? { ...x, meetingPoint: e.target.value } : x) })} placeholder="z.B. Hbf..." style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                            </div>
-                            <div>
-                              <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.address')}</label>
-                              <input type="text" className="form-input" value={tt.address || ''} onChange={e => updateSub({ transferTimes: seTransfers.map(x => x.id === tt.id ? { ...x, address: e.target.value } : x) })} placeholder="Straße, PLZ Ort" style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 4 }}>
-                              <button type="button" onClick={() => updateSub({ transferTimes: seTransfers.filter(x => x.id !== tt.id) })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)', padding: '4px', lineHeight: 1 }} title={t('general.delete')}>
-                                <X size={16} />
-                              </button>
-                            </div>
-                          </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr 2fr', gap: 8 }}>
-                            <div>
-                              <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.date')}</label>
-                              <input type="date" className="form-input" value={tt.date} onChange={e => updateSub({ transferTimes: seTransfers.map(x => x.id === tt.id ? { ...x, date: e.target.value } : x) })} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                            </div>
-                            <div>
-                              <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.departure')}</label>
-                              <input type="time" className="form-input" value={tt.departureTime} onChange={e => updateSub({ transferTimes: seTransfers.map(x => x.id === tt.id ? { ...x, departureTime: e.target.value } : x) })} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                            </div>
-                            <div>
-                              <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.arrival')}</label>
-                              <input type="time" className="form-input" value={tt.arrivalTime} onChange={e => updateSub({ transferTimes: seTransfers.map(x => x.id === tt.id ? { ...x, arrivalTime: e.target.value } : x) })} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                            </div>
-                            <div>
-                              <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.desc')}</label>
-                              <input type="text" className="form-input" value={tt.description || ''} onChange={e => updateSub({ transferTimes: seTransfers.map(x => x.id === tt.id ? { ...x, description: e.target.value } : x) })} placeholder={t('create.transfers.desc')} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      <button type="button" className="btn btn-outline" onClick={() => updateSub({
-                        transferTimes: [...seTransfers, {
-                          id: `tr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                          location: '',
-                          meetingPoint: '',
-                          address: '',
-                          // v29.21 (Audit): Berliner Tag statt UTC-Tag —
-                          // se.startDate ist UTC-ISO; slice(0,10) lieferte bei
-                          // Startzeiten 00:00-01:59 Berlin den VORTAG.
-                          date: se.startDate ? (isoToLocal(se.startDate) || '').slice(0, 10) : '',
-                          departureTime: '',
-                          arrivalTime: '',
-                          description: '',
-                        }],
-                      })} style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}>
-                        <Plus size={14} /> {t('create.transfers.add')}
-                      </button>
                     </div>
                   </div>
                 );
@@ -264,10 +353,12 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                   Events"-Card usw.). Sie bleiben immer relevant, auch wenn
                   das Hauptevent nicht anmeldbar ist. */}
               <div>
-              <div className="form-group">
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div className="dex-ui-section">
+              <div className="dex-ui-section-title">{isDe ? 'Wo findet das Event statt?' : 'Where does the event take place?'}</div>
+              <div className="dex-ui-field">
+                <label className="dex-ui-label">
                   <StepBadge n={14} />
-                  {t('create.location')}
+                  {isDe ? 'Wie heißt der Veranstaltungsort?' : 'What is the venue called?'}
                   <InfoTooltip text={isDe ? (
                     <>
                       <strong>Was du hier einstellst:</strong> den <strong>Namen des Veranstaltungsortes</strong> (z.B. RheinEnergieStadion, Köln oder Deloitte Düsseldorf, Schwannstraße 6).<br /><br />
@@ -284,12 +375,18 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                     </>
                   )} />
                 </label>
-                <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="z.B. RheinEnergieStadion, Köln" />
+                <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder={isDe ? 'z.B. RheinEnergieStadion, Köln' : 'e.g. RheinEnergieStadion, Cologne'} />
+                <div className="dex-ui-help">
+                  {isDe
+                    ? 'Sprechender Name + Stadt reicht — er erscheint auf der Anmeldeseite, in der Eventliste und als Ort im Outlook-Termin der Teilnehmer.'
+                    : 'A descriptive name + city is enough — it appears on the registration page, in the event list and as the location of the attendees’ Outlook event.'}
+                </div>
               </div>
-              <div className="form-group">
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div className="dex-ui-field">
+                <label className="dex-ui-label">
                   <StepBadge n={15} />
-                  Adresse
+                  {isDe ? 'Wie lautet die Adresse?' : 'What is the address?'}
+                  <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>
                   <InfoTooltip text={isDe ? (
                     <>
                       <strong>Was du hier einstellst:</strong> die <strong>strukturierte Adresse</strong> (Straße, Hausnr., PLZ, Ort) — getrennt eingegeben, damit die Adresse einheitlich aussieht.<br /><br />
@@ -306,162 +403,211 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                     </>
                   )} />
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: 8, marginBottom: 8 }}>
-                  <input className="form-input" value={addrStreet} onChange={e => setAddrStreet(e.target.value)} placeholder="Straße" />
-                  <input className="form-input" value={addrHouseNo} onChange={e => setAddrHouseNo(e.target.value)} placeholder="Hausnr." />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 3fr', gap: 8 }}>
-                  <input className="form-input" value={addrZip} onChange={e => setAddrZip(e.target.value)} placeholder="PLZ" />
-                  <input className="form-input" value={addrCity} onChange={e => setAddrCity(e.target.value)} placeholder="Ort" />
-                </div>
-              </div>
-
-              {/* v18.40: Ort im Outlook-Termin (überschreibbar) */}
-              <div className="form-group" style={{ marginTop: 16 }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {isDe ? 'Ort im Outlook-Termin' : 'Location in the Outlook event'}
-                  <InfoTooltip text={isDe ? (
-                    <>
-                      <strong>Was du hier einstellst:</strong> den Text, der im <strong>&bdquo;Ort&ldquo;-Feld des Outlook-Termins</strong> der Teilnehmer steht.<br /><br />
-                      <strong>Standard:</strong> wird automatisch aus <strong>Veranstaltungsort + Adresse</strong> oben zusammengebaut (siehe Platzhalter). Lässt du das Feld <strong>leer</strong>, wird immer dieser aktuelle Standard verwendet.<br /><br />
-                      <strong>Überschreiben:</strong> Trägst du hier etwas ein, wird genau dieser Text als Termin-Ort genommen — z.&nbsp;B. ein abweichender Raum, ein Online-Link oder ein Kurzname.
-                    </>
-                  ) : (
-                    <>
-                      <strong>What you set here:</strong> the text shown in the <strong>&bdquo;Location&ldquo; field of attendees&apos; Outlook event</strong>.<br /><br />
-                      <strong>Default:</strong> built automatically from <strong>venue + address</strong> above (see placeholder). Leave it <strong>empty</strong> to always use that current default.<br /><br />
-                      <strong>Override:</strong> type something here to use exactly that text as the event location — e.g. a different room, an online link or a short name.
-                    </>
-                  )} />
-                </label>
-                <input
-                  className="form-input"
-                  value={outlookLocationOverride}
-                  onChange={e => setOutlookLocationOverride(e.target.value)}
-                  placeholder={buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity }) || (isDe ? 'z.B. Mezzomar, Harffstraße 110a, Düsseldorf' : 'e.g. Mezzomar, Harffstraße 110a, Düsseldorf')}
+                <AddressFields
+                  isDe={isDe}
+                  street={addrStreet} houseNo={addrHouseNo} zip={addrZip} city={addrCity}
+                  onStreet={setAddrStreet} onHouseNo={setAddrHouseNo} onZip={setAddrZip} onCity={setAddrCity}
                 />
-                <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                <div className="dex-ui-help">
                   {isDe
-                    ? 'Leer lassen = automatisch aus Veranstaltungsort + Adresse. Eingabe überschreibt den Termin-Ort.'
-                    : 'Leave empty = automatic from venue + address. Any input overrides the event location.'}
-                </span>
+                    ? 'Teilnehmer können sie anklicken und z.B. in Google Maps öffnen; sie steht auch in der Bestätigungsmail und im Termin-Text.'
+                    : 'Attendees can click it and open it e.g. in Google Maps; it also goes into the confirmation mail and the event text.'}
+                </div>
               </div>
 
-              {/* v30.26: Online-Meeting — Checkbox bei Ort, darunter die Wahl
+              {/* v30.26: Online-Meeting — Schalter bei Ort, darunter die Wahl
                   zwischen eigenem Link und automatischer Teams-Besprechung.
                   Der Unterschied ist eine echte Entscheidung (Besprechungs-
                   optionen behalten oder Bequemlichkeit), deshalb steht die
-                  Konsequenz direkt an der Auswahl und nicht im Tooltip. */}
-              <div className="form-group" style={{ marginTop: 16, padding: '14px 16px', borderRadius: 12, border: '1px solid var(--dex-gray-200)', background: 'var(--dex-gray-50, #fafafa)' }}>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  Konsequenz direkt an der Auswahl und nicht im Tooltip.
+                  v31.2: Switch + zwei Auswahl-Kacheln statt Checkbox + Radios;
+                  die Warnung zum Gruppenpostfach steht als eigener Kasten unter
+                  der gewählten Kachel, nicht mehr im Kleingedruckten. */}
+              <div className="dex-ui-card" style={{ marginTop: 16 }}>
+                <label className="dex-ui-switch">
                   <input
                     type="checkbox"
                     checked={onlineMeetingMode !== 'none'}
                     onChange={e => setOnlineMeetingMode(e.target.checked ? 'own' : 'none')}
-                    style={{ marginTop: 3, cursor: 'pointer' }}
                   />
-                  <span style={{ flex: 1 }}>
-                    <strong>{isDe ? 'Online-Meeting (Microsoft Teams)' : 'Online meeting (Microsoft Teams)'}</strong>
-                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                      {isDe
-                        ? 'Für Events, an denen man per Teams teilnimmt — auch zusätzlich zu einem Präsenz-Ort (hybrid).'
-                        : 'For events attended via Teams — also possible in addition to a physical location (hybrid).'}
-                    </span>
-                  </span>
+                  <span className="dex-ui-switch-track" />
+                  <span className="dex-ui-switch-label">{isDe ? 'Teilnahme per Microsoft Teams möglich' : 'Attendance via Microsoft Teams possible'}</span>
                 </label>
+                <div className="dex-ui-help" style={{ marginLeft: 50 }}>
+                  {isDe
+                    ? 'Dann bekommt der Outlook-Termin einen Teams-Link — auch zusätzlich zu einem Präsenz-Ort (hybrid).'
+                    : 'Then the Outlook event gets a Teams link — also in addition to a physical location (hybrid).'}
+                </div>
                 {onlineMeetingMode !== 'none' && (
-                  <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                      <input
-                        type="radio"
-                        name="dexOnlineMeetingMode"
-                        checked={onlineMeetingMode === 'own'}
-                        onChange={() => setOnlineMeetingMode('own')}
-                        style={{ marginTop: 3, cursor: 'pointer' }}
-                      />
-                      <span style={{ flex: 1, fontSize: '0.88rem' }}>
-                        <strong>{isDe ? 'Ich stelle den Teams-Link selbst' : 'I provide the Teams link myself'}</strong>
-                        <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 3, lineHeight: 1.5 }}>
-                          {isDe
-                            ? <>Du legst die Besprechung wie gewohnt in Outlook oder Teams an und trägst den Link unten ein. <strong>Empfohlen</strong>, wenn du die Besprechungsoptionen brauchst: Lobby, Aufzeichnung, Referenten-Rollen — die kannst du nur an deiner eigenen Besprechung ändern.</>
-                            : <>You create the meeting in Outlook or Teams and paste the link below. <strong>Recommended</strong> if you need the meeting options: lobby, recording, presenter roles — those can only be changed on your own meeting.</>}
+                  <div className="dex-ui-stack" style={{ marginTop: 14 }}>
+                    <div className="dex-ui-grid-2" role="radiogroup" aria-label={isDe ? 'Woher kommt der Teams-Link?' : 'Where does the Teams link come from?'}>
+                      <button type="button" role="radio" aria-checked={onlineMeetingMode === 'own'} className={cx('dex-ui-choice', onlineMeetingMode === 'own' && 'is-active')} onClick={() => setOnlineMeetingMode('own')}>
+                        <span className="dex-ui-choice-body">
+                          <span className="dex-ui-choice-title">{isDe ? 'Ich stelle den Teams-Link selbst' : 'I provide the Teams link myself'}</span>
+                          <span className="dex-ui-choice-desc">
+                            {isDe
+                              ? <>Du legst die Besprechung wie gewohnt in Outlook oder Teams an und trägst den Link unten ein. <strong>Empfohlen</strong>, wenn du Lobby, Aufzeichnung oder Referenten-Rollen brauchst — die kannst du nur an deiner eigenen Besprechung ändern.</>
+                              : <>You create the meeting in Outlook or Teams as usual and paste the link below. <strong>Recommended</strong> if you need lobby, recording or presenter roles — those can only be changed on your own meeting.</>}
+                          </span>
                         </span>
-                      </span>
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                      <input
-                        type="radio"
-                        name="dexOnlineMeetingMode"
-                        checked={onlineMeetingMode === 'auto'}
-                        onChange={() => setOnlineMeetingMode('auto')}
-                        style={{ marginTop: 3, cursor: 'pointer' }}
-                      />
-                      <span style={{ flex: 1, fontSize: '0.88rem' }}>
-                        <strong>{isDe ? 'DEX erzeugt den Teams-Link automatisch' : 'DEX creates the Teams link automatically'}</strong>
-                        <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 3, lineHeight: 1.5 }}>
-                          {isDe
-                            ? <>Der Termin wird als echte Teams-Besprechung angelegt — mit &bdquo;Teilnehmen&ldquo;-Knopf direkt im Kalender, ohne dass du etwas vorbereiten musst.<br /><strong style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>Wichtig:</strong> Die Besprechung gehört dem Gruppenpostfach (no_reply.events). <strong>Du kannst danach keine Besprechungsoptionen mehr ändern</strong> — keine Lobby-Einstellung, keine Aufzeichnung, keine Referenten-Rollen.</>
-                            : <>The event is created as a real Teams meeting — with a &bdquo;Join&ldquo; button right in the calendar, with nothing to prepare.<br /><strong style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>Important:</strong> the meeting belongs to the group mailbox (no_reply.events). <strong>You cannot change any meeting options afterwards</strong> — no lobby settings, no recording, no presenter roles.</>}
+                        <span className="dex-ui-choice-check"><Check size={12} /></span>
+                      </button>
+                      <button type="button" role="radio" aria-checked={onlineMeetingMode === 'auto'} className={cx('dex-ui-choice', onlineMeetingMode === 'auto' && 'is-active')} onClick={() => setOnlineMeetingMode('auto')}>
+                        <span className="dex-ui-choice-body">
+                          <span className="dex-ui-choice-title">{isDe ? 'DEX erzeugt den Teams-Link automatisch' : 'DEX creates the Teams link automatically'}</span>
+                          <span className="dex-ui-choice-desc">
+                            {isDe
+                              ? <>Der Termin wird als echte Teams-Besprechung angelegt — mit &bdquo;Teilnehmen&ldquo;-Knopf direkt im Kalender, ohne dass du etwas vorbereiten musst.</>
+                              : <>The event is created as a real Teams meeting — with a &bdquo;Join&ldquo; button right in the calendar, with nothing to prepare.</>}
+                          </span>
                         </span>
-                      </span>
-                    </label>
+                        <span className="dex-ui-choice-check"><Check size={12} /></span>
+                      </button>
+                    </div>
+                    {onlineMeetingMode === 'auto' && (
+                      <div className="dex-ui-callout dex-ui-callout--warn">
+                        <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                        <span>
+                          {isDe
+                            ? <><strong>Wichtig:</strong> Die Besprechung gehört dem Gruppenpostfach (no_reply.events). <strong>Du kannst danach keine Besprechungsoptionen mehr ändern</strong> — keine Lobby-Einstellung, keine Aufzeichnung, keine Referenten-Rollen.</>
+                            : <><strong>Important:</strong> the meeting belongs to the group mailbox (no_reply.events). <strong>You cannot change any meeting options afterwards</strong> — no lobby settings, no recording, no presenter roles.</>}
+                        </span>
+                      </div>
+                    )}
+                    {/* v29.39: Teams-Link. Steht hier bei Ort und Adresse, weil er
+                        dieselbe Frage beantwortet („wo findet es statt?") — und
+                        bewusst NUR hier: Ein zweites Feld im Outlook-Editor wären
+                        zwei Bedienwege für denselben Wert.
+                        v30.26: nur noch im Modus „eigener Link" sichtbar. */}
+                    {onlineMeetingMode === 'own' && (
+                      <div className="dex-ui-field">
+                        <label className="dex-ui-label">
+                          {isDe ? 'Wie lautet der Teilnahme-Link?' : 'What is the join link?'}
+                          <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>
+                          <InfoTooltip text={isDe ? (
+                            <>
+                              <strong>Was du hier einstellst:</strong> den <strong>Teilnahme-Link deiner eigenen Teams-Besprechung</strong>. Lege die Besprechung wie gewohnt in Outlook oder Teams an und kopiere den Link hierher — in diesem Modus erzeugt DEX selbst keine Teams-Besprechung.<br /><br />
+                              <strong>Anzeige in der App:</strong> im <strong>Outlook-Termin</strong> als Knopf &bdquo;An Microsoft-Teams-Besprechung teilnehmen&ldquo;, im <strong>Organizer Center</strong> und in <strong>Meine Events</strong> als Teilnahme-Knopf.<br /><br />
+                              <strong>Wichtig:</strong> Der Link steht im <strong>Text</strong> des Termins. Outlook kennt den Termin dadurch <strong>nicht</strong> als Online-Besprechung — es gibt also keinen &bdquo;Teilnehmen&ldquo;-Knopf in der Kalenderleiste und keinen Direktaufruf aus Teams heraus. Die Teilnehmer klicken den Link im Termin bzw. in der App.<br /><br />
+                              <strong>Gilt für:</strong> das ganze Event, also auch für die Termine der Sub-Events.
+                            </>
+                          ) : (
+                            <>
+                              <strong>What you set here:</strong> the <strong>join link of your own Teams meeting</strong>. Create the meeting in Outlook or Teams as usual and paste the link here — in this mode DEX does not create a Teams meeting itself.<br /><br />
+                              <strong>Shown in the app:</strong> in the <strong>Outlook event</strong> as a &bdquo;Join the Microsoft Teams meeting&ldquo; button, and in the <strong>Organizer Center</strong> and <strong>My Events</strong> as a join button.<br /><br />
+                              <strong>Important:</strong> The link sits in the <strong>body</strong> of the event. Outlook therefore does <strong>not</strong> treat it as an online meeting — there is no &bdquo;Join&ldquo; button in the calendar bar and no direct join from Teams. Attendees click the link in the event or in the app.<br /><br />
+                              <strong>Applies to:</strong> the whole event, including the sub-event calendar entries.
+                            </>
+                          )} />
+                        </label>
+                        <input
+                          className="form-input"
+                          value={teamsLink}
+                          onChange={e => setTeamsLink(e.target.value)}
+                          placeholder="https://teams.microsoft.com/l/meetup-join/..."
+                        />
+                        <div className="dex-ui-help">
+                          {isDe
+                            ? 'Erscheint im Outlook-Termin, im Organizer Center und in „Meine Events" — für das ganze Event samt Sub-Events. Für Outlook ist der Termin damit keine Online-Besprechung: kein „Teilnehmen"-Knopf im Kalender, Teilnehmer klicken den Link im Termin.'
+                            : 'Appears in the Outlook event, in the Organizer Center and in “My Events” — for the whole event including sub-events. Outlook does not treat it as an online meeting: no “Join” button in the calendar, attendees click the link inside the event.'}
+                        </div>
+                        {teamsLink.trim() && !/^https?:\/\//i.test(teamsLink.trim()) && (
+                          <div className="dex-ui-help" style={{ color: 'var(--dex-red, #da291c)', fontWeight: 600 }}>
+                            {isDe
+                              ? 'Das sieht nicht nach einem Link aus — er muss mit https:// beginnen, sonst wird er nicht übernommen.'
+                              : 'That does not look like a link — it must start with https://, otherwise it is ignored.'}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
 
-              {/* v29.39: Teams-Link. Steht hier bei Ort und Adresse, weil er
-                  dieselbe Frage beantwortet („wo findet es statt?") — und
-                  bewusst NUR hier: Ein zweites Feld im Outlook-Editor wären
-                  zwei Bedienwege für denselben Wert.
-                  v30.26: nur noch im Modus „eigener Link" sichtbar. */}
-              {onlineMeetingMode === 'own' && (
-              <div className="form-group" style={{ marginTop: 16 }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {isDe ? 'Teams-Link (optional)' : 'Teams link (optional)'}
-                  <InfoTooltip text={isDe ? (
+              {/* v31.2: Aufklapper „Weitere Einstellungen zum Ort" — der
+                  Outlook-Ort ist eine Feineinstellung, die fast niemand
+                  anfasst; offen stehend las sie sich als drittes Pflichtfeld. */}
+              <button type="button" className={cx('dex-ui-disclosure', moreOpenMain && 'is-open')} onClick={() => setMoreOpenMain(o => !o)} aria-expanded={moreOpenMain}>
+                <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                {isDe ? 'Weitere Einstellungen zum Ort' : 'More location settings'}
+                {outlookLocationOverride.trim() && <span className="dex-ui-disclosure-count">{isDe ? '1 angepasst' : '1 customised'}</span>}
+              </button>
+              {moreOpenMain && (
+                <div className="dex-ui-disclosure-body">
+                  {/* v18.40: Ort im Outlook-Termin (überschreibbar) */}
+                  <div className="dex-ui-field">
+                    <label className="dex-ui-label">
+                      {isDe ? 'Was soll im Outlook-Termin als Ort stehen?' : 'What should the Outlook event show as location?'}
+                      <InfoTooltip text={isDe ? (
+                        <>
+                          <strong>Was du hier einstellst:</strong> den Text, der im <strong>&bdquo;Ort&ldquo;-Feld des Outlook-Termins</strong> der Teilnehmer steht.<br /><br />
+                          <strong>Standard:</strong> wird automatisch aus <strong>Veranstaltungsort + Adresse</strong> oben zusammengebaut (siehe Platzhalter). Lässt du das Feld <strong>leer</strong>, wird immer dieser aktuelle Standard verwendet.<br /><br />
+                          <strong>Überschreiben:</strong> Trägst du hier etwas ein, wird genau dieser Text als Termin-Ort genommen — z.&nbsp;B. ein abweichender Raum, ein Online-Link oder ein Kurzname.
+                        </>
+                      ) : (
+                        <>
+                          <strong>What you set here:</strong> the text shown in the <strong>&bdquo;Location&ldquo; field of attendees&apos; Outlook event</strong>.<br /><br />
+                          <strong>Default:</strong> built automatically from <strong>venue + address</strong> above (see placeholder). Leave it <strong>empty</strong> to always use that current default.<br /><br />
+                          <strong>Override:</strong> type something here to use exactly that text as the event location — e.g. a different room, an online link or a short name.
+                        </>
+                      )} />
+                    </label>
+                    <input
+                      className="form-input"
+                      value={outlookLocationOverride}
+                      onChange={e => setOutlookLocationOverride(e.target.value)}
+                      placeholder={buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity }) || (isDe ? 'z.B. Mezzomar, Harffstraße 110a, Düsseldorf' : 'e.g. Mezzomar, Harffstraße 110a, Düsseldorf')}
+                    />
+                    <div className="dex-ui-help">
+                      {isDe
+                        ? 'Leer lassen = automatisch aus Veranstaltungsort + Adresse (siehe Platzhalter). Eine Eingabe überschreibt den Termin-Ort.'
+                        : 'Leave empty = automatic from venue + address (see placeholder). Any input overrides the event location.'}
+                    </div>
+                  </div>
+                </div>
+              )}
+              </div>
+
+              {/* ===== Transferzeiten ===== v31.2: vor dem Programm — die
+                  Geschichte des Schritts ist „Wo? → Wie kommt man hin? → Was
+                  passiert wann?". Die Badge-Nummer 17 bleibt (Support). */}
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">{isDe ? 'Wie kommen die Teilnehmer hin?' : 'How do attendees get there?'}</div>
+                <TransfersSection
+                  items={transferTimes}
+                  onChange={setTransferTimes}
+                  isDe={isDe}
+                  isMobile={isMobile}
+                  t={t}
+                  locationOptions={locationOptions}
+                  defaultDate={startDate ? startDate.slice(0, 10) : ''}
+                  tooltip={isDe ? (
                     <>
-                      <strong>Was du hier einstellst:</strong> den <strong>Teilnahme-Link deiner eigenen Teams-Besprechung</strong>. Lege die Besprechung wie gewohnt in Outlook oder Teams an und kopiere den Link hierher — DEX erzeugt selbst keine Teams-Meetings.<br /><br />
-                      <strong>Anzeige in der App:</strong> im <strong>Outlook-Termin</strong> als Knopf &bdquo;An Microsoft-Teams-Besprechung teilnehmen&ldquo;, im <strong>Organizer Center</strong> und in <strong>Meine Events</strong> als Teilnahme-Knopf.<br /><br />
-                      <strong>Wichtig:</strong> Der Link steht im <strong>Text</strong> des Termins. Outlook kennt den Termin dadurch <strong>nicht</strong> als Online-Besprechung — es gibt also keinen &bdquo;Teilnehmen&ldquo;-Knopf in der Kalenderleiste und keinen Direktaufruf aus Teams heraus. Die Teilnehmer klicken den Link im Termin bzw. in der App.<br /><br />
-                      <strong>Gilt für:</strong> das ganze Event, also auch für die Termine der Sub-Events.
+                      <strong>Was du hier einstellst:</strong> <strong>An- und Abreise-Infos</strong> für Teilnehmer — z.B. Bus-/Shuttle-/Bahn-Treffpunkte mit Datum, Abfahrt, Ankunft und optionaler Zusatzinfo (Bus-Kennzeichen, Treffpunkt-Schild, Wagen-Nr.). Pro Stadt ein eigener Eintrag möglich.<br /><br />
+                      <strong>Anzeige in der App:</strong> erscheint als <strong>eigener Block</strong> auf der Anmelde-Seite und in Meine Events mit allen Details auf einen Blick.<br /><br />
+                      <strong>Automatismen:</strong> Transferzeiten gehen <strong>nicht</strong> in den Outlook-Termin (sonst würde der Termin Bus als Konkurrenz-Termin im Kalender blocken). Sie sind nur in der App sichtbar.<br /><br />
+                      <strong>Empfehlung:</strong> bei Auswärtsterminen mit organisierter Anreise sehr empfohlen — bei rein lokalen Office-Events nicht nötig.
                     </>
                   ) : (
                     <>
-                      <strong>What you set here:</strong> the <strong>join link of your own Teams meeting</strong>. Create the meeting in Outlook or Teams as usual and paste the link here — DEX does not create Teams meetings itself.<br /><br />
-                      <strong>Shown in the app:</strong> in the <strong>Outlook event</strong> as a &bdquo;Join the Microsoft Teams meeting&ldquo; button, and in the <strong>Organizer Center</strong> and <strong>My Events</strong> as a join button.<br /><br />
-                      <strong>Important:</strong> The link sits in the <strong>body</strong> of the event. Outlook therefore does <strong>not</strong> treat it as an online meeting — there is no &bdquo;Join&ldquo; button in the calendar bar and no direct join from Teams. Attendees click the link in the event or in the app.<br /><br />
-                      <strong>Applies to:</strong> the whole event, including the sub-event calendar entries.
+                      <strong>What you set here:</strong> <strong>arrival and departure info</strong> for attendees — e.g. bus/shuttle/train pickups with date, departure, arrival and an optional note (bus number, meeting-point sign, carriage no.). One entry per city.<br /><br />
+                      <strong>Shown in the app:</strong> shown as a <strong>dedicated block</strong> on the registration page and in My Events with all details at a glance.<br /><br />
+                      <strong>Automation:</strong> transfer times do <strong>not</strong> end up in the Outlook event (otherwise the bus trip would clash with the actual event in the calendar). They live only in the app.<br /><br />
+                      <strong>Tip:</strong> strongly recommended for off-site events with organised travel — not needed for local office events.
                     </>
-                  )} />
-                </label>
-                <input
-                  className="form-input"
-                  value={teamsLink}
-                  onChange={e => setTeamsLink(e.target.value)}
-                  placeholder="https://teams.microsoft.com/l/meetup-join/..."
+                  )}
                 />
-                <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                  {isDe
-                    ? 'Der Link erscheint im Outlook-Termin, im Organizer Center und in „Meine Events". Hinweis: Der Termin ist damit für Outlook keine Online-Besprechung — es gibt keinen „Teilnehmen"-Knopf im Kalender und keinen Direktaufruf aus Teams, sondern den Link im Termin.'
-                    : 'The link appears in the Outlook event, in the Organizer Center and in „My Events". Note: Outlook does not treat the event as an online meeting — there is no „Join" button in the calendar and no direct join from Teams, just the link inside the event.'}
-                </span>
-                {teamsLink.trim() && !/^https?:\/\//i.test(teamsLink.trim()) && (
-                  <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-red, #da291c)', fontWeight: 600, marginTop: 4 }}>
-                    {isDe
-                      ? 'Das sieht nicht nach einem Link aus — er muss mit https:// beginnen, sonst wird er nicht übernommen.'
-                      : 'That does not look like a link — it must start with https://, otherwise it is ignored.'}
-                  </span>
-                )}
               </div>
-              )}
 
               {/* ===== Agenda Editor ===== */}
-              <div className="form-group" style={{ marginTop: 24 }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">{isDe ? 'Was passiert wann?' : 'What happens when?'}</div>
+                <label className="dex-ui-label" style={{ fontSize: '0.95rem' }}>
                   <StepBadge n={16} />
-                  {agendaCheckIn ? agendaPlural : t('create.agenda')}
+                  {agendaCheckIn ? agendaPlural : (isDe ? 'Wie sieht das Programm aus?' : 'What does the programme look like?')}
+                  <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>
                   {agendaCheckIn && (
-                    <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(134,188,37,0.15)', color: 'var(--dex-green-dark, #6b9a1e)' }}>
+                    <span className="dex-ui-pill dex-ui-pill--green">
                       {isDe ? 'Check-in je Punkt' : 'Check-in per item'}
                     </span>
                   )}
@@ -481,15 +627,22 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                     </>
                   )} />
                 </label>
+                <div className="dex-ui-help" style={{ margin: '-2px 0 10px' }}>
+                  {isDe
+                    ? 'Teilnehmer sehen den Ablauf als Zeitleiste auf der Anmeldeseite und in „Meine Events" — nach Tag und Uhrzeit sortiert.'
+                    : 'Attendees see the schedule as a timeline on the registration page and in “My Events” — sorted by day and time.'}
+                </div>
                 {/* v30.86: Im Programmpunkte-Modus (Schritt 1) ist diese Liste
                     mehr als Anzeige: Jeder Punkt ist eine Check-in-Station.
                     Ohne diesen Satz sucht der Organizer die Punkte in Schritt 1,
                     wo der Schalter steht. */}
                 {agendaCheckIn && (
-                  <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', background: 'rgba(134,188,37,0.08)', border: '1px solid rgba(134,188,37,0.4)', borderRadius: 8, padding: '10px 14px', margin: '6px 0 12px' }}>
-                    {isDe
-                      ? <>Du hast in Schritt 1 <strong>Programmpunkte mit Anwesenheits-Check-in</strong> gewählt. Jede Zeile hier ist ein Punkt, an dem später eingecheckt wird — Titel, Datum, Start, Ende und Raum reichen. Teilnehmer sehen die Liste auf der Anmeldeseite und in &bdquo;Meine Events&ldquo;; angemeldet wird nur fürs Event.</>
-                      : <>In step 1 you chose <strong>agenda items with attendance check-in</strong>. Every row here is an item people check in at — title, date, start, end and room are enough. Attendees see the list on the registration page and in “My events”; they register for the event only.</>}
+                  <div className="dex-ui-callout dex-ui-callout--success" style={{ marginBottom: 12 }}>
+                    <span>
+                      {isDe
+                        ? <>Du hast in Schritt 1 <strong>Programmpunkte mit Anwesenheits-Check-in</strong> gewählt. Jede Zeile hier ist ein Punkt, an dem später eingecheckt wird — Titel, Datum, Start, Ende und Raum reichen. Teilnehmer sehen die Liste auf der Anmeldeseite und in &bdquo;Meine Events&ldquo;; angemeldet wird nur fürs Event.</>
+                        : <>In step 1 you chose <strong>agenda items with attendance check-in</strong>. Every row here is an item people check in at — title, date, start, end and room are enough. Attendees see the list on the registration page and in “My events”; they register for the event only.</>}
+                    </span>
                   </div>
                 )}
                 {/* v30.94: Tages-Editor statt einer Karte je Punkt (Nutzer-
@@ -508,84 +661,6 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                   termPlural={agendaCheckIn ? agendaTermPlural : (isDe ? 'Programmpunkte' : 'Agenda items')}
                   defaultDate={startDate ? startDate.slice(0, 10) : ''}
                 />
-              </div>
-
-              {/* ===== Transferzeiten Editor ===== */}
-              <div className="form-group" style={{ marginTop: 24 }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
-                  <StepBadge n={17} />
-                  {t('create.transfers')}
-                  <InfoTooltip text={isDe ? (
-                    <>
-                      <strong>Was du hier einstellst:</strong> <strong>An- und Abreise-Infos</strong> für Teilnehmer — z.B. Bus-/Shuttle-/Bahn-Treffpunkte mit Datum, Abfahrt, Ankunft und optionaler Zusatzinfo (Bus-Kennzeichen, Treffpunkt-Schild, Wagen-Nr.). Pro Stadt ein eigener Eintrag möglich.<br /><br />
-                      <strong>Anzeige in der App:</strong> erscheint als <strong>eigener Block</strong> auf der Anmelde-Seite und in Meine Events mit allen Details auf einen Blick.<br /><br />
-                      <strong>Automatismen:</strong> Transferzeiten gehen <strong>nicht</strong> in den Outlook-Termin (sonst würde der Termin Bus als Konkurrenz-Termin im Kalender blocken). Sie sind nur in der App sichtbar.<br /><br />
-                      <strong>Empfehlung:</strong> bei Auswärtsterminen mit organisierter Anreise sehr empfohlen — bei rein lokalen Office-Events nicht nötig.
-                    </>
-                  ) : (
-                    <>
-                      <strong>What you set here:</strong> <strong>arrival and departure info</strong> for attendees — e.g. bus/shuttle/train pickups with date, departure, arrival and an optional note (bus number, meeting-point sign, carriage no.). One entry per city.<br /><br />
-                      <strong>Shown in the app:</strong> shown as a <strong>dedicated block</strong> on the registration page and in My Events with all details at a glance.<br /><br />
-                      <strong>Automation:</strong> transfer times do <strong>not</strong> end up in the Outlook event (otherwise the bus trip would clash with the actual event in the calendar). They live only in the app.<br /><br />
-                      <strong>Tip:</strong> strongly recommended for off-site events with organised travel — not needed for local office events.
-                    </>
-                  )} />
-                </label>
-                {transferTimes.map((tt) => (
-                  <div key={tt.id} style={{
-                    padding: '12px 14px', marginBottom: 8,
-                    background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-                    border: '1px solid var(--dex-gray-200)',
-                  }}>
-                    {/* Zeile 1: Stadt + Treffpunkt + Adresse + Löschen */}
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr auto', gap: 8, marginBottom: 8 }}>
-                      <div>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.location')}</label>
-                        <input type="text" className="form-input" list={`transfer-locations-${tt.id}`} value={tt.location} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, location: e.target.value } : x))} placeholder="Stadt eingeben..." style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                        <datalist id={`transfer-locations-${tt.id}`}>
-                          {locationOptions.filter(o => o !== 'All').map(opt => (
-                            <option key={opt} value={opt} />
-                          ))}
-                        </datalist>
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.meetingpoint')}</label>
-                        <input type="text" className="form-input" value={tt.meetingPoint || ''} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, meetingPoint: e.target.value } : x))} placeholder="z.B. Flughafen, Hbf..." style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.address')}</label>
-                        <input type="text" className="form-input" value={tt.address || ''} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, address: e.target.value } : x))} placeholder="Straße, PLZ Ort" style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 4 }}>
-                        <button type="button" onClick={() => setTransferTimes(transferTimes.filter(x => x.id !== tt.id))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)', padding: '4px', lineHeight: 1 }} title={t('general.delete')}>
-                          <X size={16} />
-                        </button>
-                      </div>
-                    </div>
-                    {/* Zeile 2: Datum + Abfahrt + Ankunft + Beschreibung */}
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr 2fr', gap: 8 }}>
-                      <div>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.date')}</label>
-                        <input type="date" className="form-input" value={tt.date} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, date: e.target.value } : x))} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.departure')}</label>
-                        <input type="time" className="form-input" value={tt.departureTime} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, departureTime: e.target.value } : x))} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.arrival')}</label>
-                        <input type="time" className="form-input" value={tt.arrivalTime} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, arrivalTime: e.target.value } : x))} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.desc')}</label>
-                        <input type="text" className="form-input" value={tt.description || ''} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, description: e.target.value } : x))} placeholder={t('create.transfers.desc')} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                <button type="button" className="btn btn-outline" onClick={() => setTransferTimes([...transferTimes, { id: `tr-${Date.now()}`, location: '', meetingPoint: '', address: '', date: startDate ? startDate.slice(0, 10) : '', departureTime: '', arrivalTime: '', description: '' }])} style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}>
-                  <Plus size={14} /> {t('create.transfers.add')}
-                </button>
               </div>
 
               </div>{/* v15.6: close hauptGreyoutWrapperStyle div (Step 3) */}

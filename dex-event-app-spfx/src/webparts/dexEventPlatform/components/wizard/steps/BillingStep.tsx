@@ -10,11 +10,21 @@
  * erhalten bleiben (gleiches Muster wie alle anderen Schritte).
  * Texte bewusst nur deutsch — der Pilot ist auf Admins begrenzt (isDe
  * kommt mit der Freischaltung für Organizer).
+ *
+ * v31.2: Umbau nach docs/ui-leitfaden.md. Beide Fragen des Schritts (relevant
+ * ja/nein, Versand manuell/automatisch) sind Auswahl-Kacheln mit einer Zeile
+ * Folge statt nackter Radios; die Pflichtangaben stehen VOR dem Versandmodus
+ * (Pflicht vor Optional), und der Status-Kasten sitzt direkt über den Feldern,
+ * die er zählt. Die langen Erklärabsätze stecken in InfoTooltips — nichts
+ * davon ist gestrichen, nur nachrangig. Bindungen und Setter sind unverändert.
  */
 import * as React from 'react';
 import { BILLING_FIELDS } from '../../../data/billingFields';
 import { UserFieldPicker } from '../../UserFieldPicker';
 import { useRoles } from '../../../context/RoleContext';
+import { cx } from '../../dexUi';
+import { InfoTooltip } from '../../InfoTooltip';
+import { AlertCircle, Check } from '../../Icons';
 
 export interface BillingStepProps {
   visible: boolean;
@@ -35,103 +45,82 @@ export const BillingStep: React.FC<BillingStepProps> = ({
   // selbst, statt es durch den Props-Vertrag zu schleifen.
   const { searchUsers, searchUser } = useRoles();
   const billingMissing = BILLING_FIELDS.filter(f => !(billingFields[f.id] || '').trim());
+  const complete = billingMissing.length === 0;
+  // v31.2: EINE Kachel-Form für beide Fragen des Schritts — Titel, eine Zeile
+  // Folge, Häkchen rechts. Radios ohne Konsequenz-Zeile ließen den Organizer
+  // raten, was „Ja" nach sich zieht; hier steht es in der Kachel.
+  const choice = (active: boolean, onPick: () => void, title: React.ReactNode, desc: React.ReactNode): React.ReactElement => (
+    <button type="button" role="radio" aria-checked={active} className={cx('dex-ui-choice', active && 'is-active')} onClick={onPick}>
+      <div className="dex-ui-choice-body">
+        <div className="dex-ui-choice-title">{title}</div>
+        <div className="dex-ui-choice-desc">{desc}</div>
+      </div>
+      <span className="dex-ui-choice-check" aria-hidden="true">{active && <Check size={12} />}</span>
+    </button>
+  );
   return (
     <div style={{ display: visible ? 'block' : 'none' }}>
       {/* v30.28: Der grüne Schritt-Kopf fehlte seit der Extraktion in v30.13 —
           jeder andere Schritt bringt ihn mit, hier blieb an seiner Stelle ein
           leerer weißer Streifen (die Form-Karte kompensiert per marginBottom
           die negative Top-Margin des Kopfs, der nie kam). */}
-      <h2 className="dex-step-head-title">Schritt 10 — Abrechnung</h2>
+      <h2 className="dex-step-head-title">
+        <span className="dex-step-eyebrow">Schritt 10</span>
+        Abrechnung
+      </h2>
       <p className="dex-step-head-lead">
         Nur für Admins: Ist das Event abrechnungsrelevant, sammelt DEX hier die
         Angaben für Finance &amp; Accounting und verschickt sie nach dem Event.
       </p>
-      <div style={{ background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: '16px 18px', marginBottom: 16, border: '1px solid var(--dex-gray-200)' }}>
-        <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 6 }}>
-          Handelt es sich um ein abrechnungsrelevantes Event?
-        </label>
-        <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px' }}>
-          Abrechnungsrelevante Events sind Veranstaltungen, deren Kosten oder
-          Bewirtungsaufwendungen gegenüber Finance &amp; Accounting dokumentiert
-          oder abgerechnet werden müssen. Das ist der Fall, wenn im Nachgang
-          <strong> Rechnungen über die Kreditorenbuchhaltung eingereicht
-          werden</strong> — etwa für Catering, eine externe Raumbuchung oder
-          Anmeldegebühren (z.B. Startgelder für Läufer) — oder wenn für das
-          Event <strong>Ariba-Bestellungen</strong> ausgelöst werden.
+
+      <div className="dex-ui-section">
+        <div className="dex-ui-section-title">Abrechnungsrelevanz</div>
+        <div className="dex-ui-label" style={{ fontSize: '0.95rem' }}>
+          Muss dieses Event gegenüber Finance &amp; Accounting abgerechnet werden?
+          <InfoTooltip text={<>
+            Abrechnungsrelevante Events sind Veranstaltungen, deren Kosten oder
+            Bewirtungsaufwendungen gegenüber Finance &amp; Accounting dokumentiert
+            oder abgerechnet werden müssen. Das ist der Fall, wenn im Nachgang
+            <strong> Rechnungen über die Kreditorenbuchhaltung eingereicht
+            werden</strong> — etwa für Catering, eine externe Raumbuchung oder
+            Anmeldegebühren (z.B. Startgelder für Läufer) — oder wenn für das
+            Event <strong>Ariba-Bestellungen</strong> ausgelöst werden.
+          </>} />
+        </div>
+        <p className="dex-ui-section-desc">
+          Ja, wenn danach Rechnungen über die Kreditorenbuchhaltung laufen oder
+          Ariba-Bestellungen ausgelöst werden — etwa Catering, Raumbuchung, Startgelder.
         </p>
-        <div style={{ display: 'flex', gap: 18 }}>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: '0.9rem' }}>
-            <input type="radio" name="dexBillingRelevant" checked={billingRelevant === true} onChange={() => setBillingRelevant(true)} />
-            Ja
-          </label>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: '0.9rem' }}>
-            <input type="radio" name="dexBillingRelevant" checked={billingRelevant === false} onChange={() => setBillingRelevant(false)} />
-            Nein
-          </label>
+        <div className="dex-ui-grid-2" role="radiogroup" aria-label="Abrechnungsrelevant">
+          {choice(billingRelevant === true, () => setBillingRelevant(true),
+            'Ja, abrechnungsrelevant',
+            <>Es fallen Kosten an, die F&amp;A dokumentiert oder abrechnet. Du trägst unten die Pflichtangaben ein, DEX meldet sie an F&amp;A.</>)}
+          {choice(billingRelevant === false, () => setBillingRelevant(false),
+            'Nein, nicht abrechnungsrelevant',
+            <>Keine Rechnungen, keine Ariba-Bestellungen. Es gibt nichts an F&amp;A zu melden — der Schritt ist damit erledigt.</>)}
         </div>
       </div>
 
       {billingRelevant === true && (
         <>
-          {/* Status — systemseitig aus den Pflichtfeldern abgeleitet,
-              nie gespeichert und nie von Hand setzbar. */}
-          <div style={{
-            padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: '0.85rem',
-            background: billingMissing.length > 0 ? 'rgba(237,139,0,0.10)' : 'rgba(134,188,37,0.12)',
-            border: `1px solid ${billingMissing.length > 0 ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)'}`,
-            color: 'var(--dex-gray-800)',
-          }}>
-            {billingMissing.length > 0
-              ? <><strong>Status: Abrechnungsrelevante Informationen unvollständig</strong> — {billingMissing.length} von {BILLING_FIELDS.length} Pflichtfeldern fehlen noch. Speichern ist trotzdem möglich.</>
-              : <><strong>Status: Vollständig</strong> — alle {BILLING_FIELDS.length} Pflichtangaben sind gepflegt.</>}
-          </div>
-
-          <div style={{ background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: '16px 18px', marginBottom: 16, border: '1px solid var(--dex-gray-200)' }}>
-            <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 6 }}>
-              Informationen zur Abrechnung
-            </label>
-            <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 12px' }}>
-              Abrechnungsrelevante Informationen müssen an die Finance &amp; Accounting
-              Abteilung gemeldet werden. Dies beinhaltet insbesondere allgemeine
-              Eventinformationen, Teilnehmerlisten sowie Rechnungen und Belege. Die
-              folgenden Einstellungen unterstützen die standardisierte und teilweise
-              automatisierte Übermittlung dieser Informationen.
-            </p>
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginBottom: 10 }}>
-              <input type="radio" name="dexBillingSend" checked={billingSendMode === 'auto'} onChange={() => setBillingSendMode('auto')} style={{ marginTop: 3 }} />
-              <span style={{ fontSize: '0.88rem' }}>
-                <strong>Automatisierter Versand</strong>
-                <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2 }}>
-                  Abrechnungsinformationen 7 Kalendertage vor dem Event (bei kurzfristiger
-                  Erstellung: sofort nach Aktivierung), finale Teilnehmerliste 7 Kalendertage
-                  danach — jeweils an F&amp;A, Organizer in CC.
-                  <em style={{ display: 'block', marginTop: 2, color: 'var(--dex-orange, #b96a00)' }}>
-                    Pilot: Die Auswahl wird bereits gespeichert, der Automatik-Flow existiert noch nicht.
-                  </em>
-                </span>
-              </span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-              <input type="radio" name="dexBillingSend" checked={billingSendMode === 'manual'} onChange={() => setBillingSendMode('manual')} style={{ marginTop: 3 }} />
-              <span style={{ fontSize: '0.88rem' }}>
-                <strong>Manueller Versand</strong> <span style={{ color: 'var(--dex-gray-500)', fontWeight: 400 }}>(Standard)</span>
-                <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2 }}>
-                  Kein automatischer Versand — Abrechnungsinformationen und Teilnehmerliste
-                  werden über das Organizer Center aktiv an F&amp;A gesendet.
-                </span>
-              </span>
-            </label>
-          </div>
-
-          <div style={{ background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: '16px 18px', marginBottom: 16, border: '1px solid var(--dex-gray-200)' }}>
-            <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 2 }}>
-              Abrechnungsrelevante Informationen
-            </label>
+          <div className="dex-ui-section">
+            <div className="dex-ui-section-title">Angaben für Finance &amp; Accounting</div>
             {/* v30.4: Legende — die Sternchen standen unerklärt im Raum. */}
-            <p style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', margin: '0 0 10px' }}>
+            <p className="dex-ui-section-desc">
               <span className="required">*</span> Pflichtangabe — ohne sie gilt die Abrechnungsmeldung an Finance &amp; Accounting als unvollständig. Speichern kannst du trotzdem jederzeit.
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px 16px' }}>
+            {/* Status — systemseitig aus den Pflichtfeldern abgeleitet,
+                nie gespeichert und nie von Hand setzbar. v31.2: steht direkt
+                über den Feldern, die er zählt, statt drei Kästen weiter oben. */}
+            <div className={cx('dex-ui-callout', complete ? 'dex-ui-callout--success' : 'dex-ui-callout--warn')} role="status" style={{ marginBottom: 14 }}>
+              <span className="dex-ui-callout-icon">{complete ? <Check size={16} /> : <AlertCircle size={16} />}</span>
+              <span>
+                {complete
+                  ? <><strong>Vollständig</strong> — alle {BILLING_FIELDS.length} Pflichtangaben sind gepflegt.</>
+                  : <><strong>Noch unvollständig</strong> — {billingMissing.length} von {BILLING_FIELDS.length} Pflichtangaben fehlen (orange Rahmen). Speichern ist trotzdem möglich.</>}
+              </span>
+            </div>
+            <div className="dex-ui-grid-2">
               {BILLING_FIELDS.map(f => {
                 const val = billingFields[f.id] || '';
                 const empty = !val.trim();
@@ -141,8 +130,8 @@ export const BillingStep: React.FC<BillingStepProps> = ({
                   // einer Zeile stehen damit auf gleicher Höhe, auch wenn
                   // ein Label („Name der Veranstaltung bzw. Anlass …")
                   // zweizeilig umbricht.
-                  <div key={f.id} style={{ display: 'flex', flexDirection: 'column' }}>
-                    <label style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', display: 'block', marginBottom: 3, flexGrow: 1 }}>
+                  <div key={f.id} className="dex-ui-field" style={{ display: 'flex', flexDirection: 'column', marginBottom: 0 }}>
+                    <label className="dex-ui-label" style={{ flexGrow: 1, alignItems: 'flex-start' }}>
                       {f.label} <span className="required">*</span>
                     </label>
                     {f.type === 'user' ? (
@@ -184,6 +173,37 @@ export const BillingStep: React.FC<BillingStepProps> = ({
                   </div>
                 );
               })}
+            </div>
+          </div>
+
+          {/* v31.2: Der Versandmodus ist optional (Vorgabe „manuell") und steht
+              deshalb HINTER den Pflichtangaben; die Vorgabe steht links. */}
+          <div className="dex-ui-section">
+            <div className="dex-ui-section-title">Übermittlung an Finance &amp; Accounting</div>
+            <div className="dex-ui-label" style={{ fontSize: '0.95rem' }}>
+              Wie sollen die Abrechnungsinformationen an F&amp;A gehen?
+              <InfoTooltip text={<>
+                Abrechnungsrelevante Informationen müssen an die Finance &amp; Accounting
+                Abteilung gemeldet werden. Dies beinhaltet insbesondere allgemeine
+                Eventinformationen, Teilnehmerlisten sowie Rechnungen und Belege. Die
+                Einstellung hier unterstützt die standardisierte und teilweise
+                automatisierte Übermittlung dieser Informationen.
+              </>} />
+            </div>
+            <div className="dex-ui-grid-2" role="radiogroup" aria-label="Versand an Finance & Accounting">
+              {choice(billingSendMode === 'manual', () => setBillingSendMode('manual'),
+                <>Manuell senden <span className="dex-ui-pill dex-ui-pill--gray" style={{ marginLeft: 6 }}>Standard</span></>,
+                <>Kein automatischer Versand. Du schickst Abrechnungsinformationen und Teilnehmerliste selbst aus dem Organizer Center an F&amp;A.</>)}
+              {choice(billingSendMode === 'auto', () => setBillingSendMode('auto'),
+                'Automatisch senden',
+                <>
+                  DEX schickt die Abrechnungsinformationen 7 Kalendertage vor dem Event
+                  (bei kurzfristiger Erstellung: sofort nach Aktivierung) und die finale
+                  Teilnehmerliste 7 Kalendertage danach — jeweils an F&amp;A, Organizer in CC.
+                  <em style={{ display: 'block', marginTop: 4, color: 'var(--dex-orange-dark, #b35a00)' }}>
+                    Pilot: Die Auswahl wird bereits gespeichert, der Automatik-Flow existiert noch nicht.
+                  </em>
+                </>)}
             </div>
           </div>
         </>

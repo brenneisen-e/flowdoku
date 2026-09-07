@@ -30,11 +30,16 @@
  * Datenmodell: `AgendaItem[]` mit `date`, `time`/`endTime` und neu `cluster`.
  * Der Cluster ist keine eigene Struktur, sondern die Gruppe aller Punkte mit
  * demselben Namen (ohne Namen: demselben Datum). Cluster-Aktionen (Umbenennen,
- * Datum ändern, kopieren, löschen) wirken deshalb auf alle Punkte der Gruppe. */
+ * Datum ändern, kopieren, löschen) wirken deshalb auf alle Punkte der Gruppe.
+ *
+ * v31.2 (UI-Leitfaden): dex-ui-Klassen statt Inline-Styles — Zeilen und
+ * Knöpfe mit Hover, beschrifteter Kopf, leerer Zustand, Rückfrage mit Folge.
+ * Verhalten, Props und Datenmodell unverändert. */
 import * as React from 'react';
 import DatePicker from 'react-datepicker';
 import { AgendaItem } from '../../types';
-import { Plus, X, Copy } from '../Icons';
+import { Plus, X, Copy, Trash2, FileText, Calendar, Info, AlertCircle } from '../Icons';
+import { cx } from '../dexUi';
 import { agendaGroups, AgendaGroup, sortAgenda, suggestClusterName, stripClusterPrefix, countClusterPrefixed, nextClusterName } from '../../utils/agendaGroups';
 
 export interface AgendaEditorProps {
@@ -106,15 +111,16 @@ const TimeField: React.FC<{ value: string; onCommit: (_v: string) => void; place
     <input
       type="text"
       inputMode="numeric"
-      className="form-input"
+      className="dex-ui-input dex-ui-input--sm"
       value={txt}
       placeholder={placeholder}
       title={bad ? `${title} — HH:MM` : title}
+      aria-label={title}
       aria-invalid={bad || undefined}
       onChange={e => setTxt(e.target.value)}
       onBlur={commit}
       onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); } }}
-      style={{ padding: '5px 4px', fontSize: '0.85rem', width: '100%', textAlign: 'center', fontVariantNumeric: 'tabular-nums', borderColor: bad ? 'var(--dex-red, #da291c)' : undefined, background: bad ? 'rgba(218,41,28,0.06)' : undefined }}
+      style={{ padding: '6px 4px', textAlign: 'center', fontVariantNumeric: 'tabular-nums', borderColor: bad ? 'var(--dex-red, #da291c)' : undefined, background: bad ? 'rgba(218,41,28,0.06)' : undefined }}
     />
   );
 };
@@ -216,59 +222,64 @@ export const AgendaEditor: React.FC<AgendaEditorProps> = (p) => {
   };
 
   // Spalten: # | Start | Ende | Titel | Raum | Cluster-Wechsel | Beschreibung | Löschen
+  // v31.2: Cluster-Wechsel zeigt den Zielnamen statt eines 34-px-Pfeils; Symbol-Knöpfe 32 px.
   const cols = isMobile
-    ? '24px 60px 60px 1fr 28px 28px'
-    : `28px 66px 66px minmax(160px, 1fr) minmax(110px, 190px) ${groups.length > 1 ? '34px ' : ''}30px 30px`;
-  const head: React.CSSProperties = { fontSize: '0.68rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.3, padding: '0 4px' };
-  const smallBtn: React.CSSProperties = { fontSize: '0.78rem', padding: '4px 10px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--dex-gray-300)', background: '#fff', color: 'var(--dex-gray-700)', display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' };
+    ? '24px 60px 60px 1fr 32px 32px'
+    : `28px 66px 66px minmax(160px, 1fr) minmax(110px, 190px) ${groups.length > 1 ? 'minmax(96px, 120px) ' : ''}32px 32px`;
+  const head: React.CSSProperties = { fontSize: '0.68rem', fontWeight: 600, color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.3, padding: '0 4px', marginBottom: 2 };
 
   const renderRow = (item: AgendaItem, g: AgendaGroup): React.ReactElement => {
     const showDesc = descOpen[item.id] || !!(item.description || '').trim();
+    const moveTitle = isDe ? 'In einen anderen Cluster verschieben' : 'Move to another cluster';
     return (
-      <div key={item.id} style={{ borderTop: '1px solid var(--dex-gray-100)', padding: '4px 0' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 6, alignItems: 'center' }}>
+      <div key={item.id} style={{ borderTop: '1px solid var(--dex-gray-100)', padding: '2px 0' }}>
+        {/* v31.2: dex-ui-row liefert den Zeilen-Hover, das Raster hält die
+            Spalten unter dem Kopf — deshalb Klasse UND display:grid. */}
+        <div className="dex-ui-row" style={{ display: 'grid', gridTemplateColumns: cols, gap: 6, padding: '3px 4px' }}>
           <span style={{ width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: 'var(--dex-green, #86bc25)', color: '#fff', fontWeight: 700, fontSize: '0.74rem', lineHeight: 1 }}>{globalNo(item.id)}</span>
           <TimeField value={item.time || ''} onCommit={v => patch(item.id, { time: v })} placeholder="09:00" title="Start" />
           <TimeField value={item.endTime || ''} onCommit={v => patch(item.id, { endTime: v })} placeholder="10:30" title={isDe ? 'Ende' : 'End'} />
           <input
-            type="text" className="form-input" value={item.title}
+            type="text" className="dex-ui-input dex-ui-input--sm" value={item.title}
             ref={el => focusIfPending(el, item.id)}
             onChange={e => patch(item.id, { title: e.target.value })}
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTo(g, item.id); } }}
+            aria-label={isDe ? 'Titel' : 'Title'}
             placeholder={isDe ? `Titel — Enter legt den nächsten ${termS} an` : `Title — Enter adds the next ${termS.toLowerCase()}`}
-            style={{ padding: '5px 8px', fontSize: '0.88rem' }}
+            style={{ fontSize: '0.88rem' }}
           />
           {!isMobile && (
-            <input type="text" className="form-input" value={item.location || ''} onChange={e => patch(item.id, { location: e.target.value })} placeholder={isDe ? 'Raum (optional)' : 'Room (optional)'} style={{ padding: '5px 8px', fontSize: '0.85rem' }} />
+            <input type="text" className="dex-ui-input dex-ui-input--sm" value={item.location || ''} onChange={e => patch(item.id, { location: e.target.value })} aria-label={isDe ? 'Raum' : 'Room'} placeholder={isDe ? 'Raum (optional)' : 'Room (optional)'} />
           )}
           {!isMobile && groups.length > 1 && (
-            <select value={g.key} onChange={e => moveItem(item.id, e.target.value)} title={isDe ? 'In einen anderen Cluster verschieben' : 'Move to another cluster'} aria-label={isDe ? 'Cluster' : 'Cluster'}
-              style={{ width: 34, height: 28, border: '1px solid var(--dex-gray-200)', borderRadius: 6, background: '#fff', color: 'var(--dex-gray-500)', fontSize: '0.75rem', cursor: 'pointer', padding: '0 2px' }}>
+            <select value={g.key} onChange={e => moveItem(item.id, e.target.value)} title={moveTitle} aria-label={moveTitle}
+              className="dex-ui-select dex-ui-input--sm" style={{ paddingRight: 26, fontSize: '0.78rem', color: 'var(--dex-gray-600)', cursor: 'pointer' }}>
               {groups.map((x, i) => <option key={x.key} value={x.key}>{i + 1}: {labelOf(x, i)}</option>)}
             </select>
           )}
           <button type="button" onClick={() => setDescOpen(o => ({ ...o, [item.id]: !showDesc }))}
+            className={cx('dex-ui-iconbtn', showDesc && 'dex-ui-iconbtn--green')}
             title={isDe ? 'Beschreibung ein-/ausblenden' : 'Toggle description'}
+            aria-label={isDe ? 'Beschreibung' : 'Description'}
             aria-pressed={showDesc}
-            style={{ border: 'none', background: showDesc ? 'rgba(134,188,37,0.18)' : 'transparent', color: showDesc ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-400)', borderRadius: 6, width: 28, height: 28, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>≡</button>
-          <button type="button" onClick={() => remove(item.id)} title={isDe ? 'Punkt entfernen' : 'Remove item'}
-            style={{ border: 'none', background: 'transparent', color: 'var(--dex-gray-400)', width: 28, height: 28, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--dex-red, #da291c)'; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--dex-gray-400)'; }}>
+            style={showDesc ? { background: 'rgba(134,188,37,0.14)', color: 'var(--dex-green-dark, #4a7c1f)' } : undefined}>
+            <FileText size={15} />
+          </button>
+          <button type="button" className="dex-ui-iconbtn dex-ui-iconbtn--danger" onClick={() => remove(item.id)} aria-label={isDe ? 'Punkt entfernen' : 'Remove item'} title={isDe ? 'Punkt entfernen' : 'Remove item'}>
             <X size={14} />
           </button>
         </div>
         {(showDesc || isMobile) && (
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '24px 1fr' : '28px 1fr 64px', gap: 6, marginTop: 4 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '24px 1fr' : '28px 1fr 70px', gap: 6, margin: '2px 0 4px', padding: '0 4px' }}>
             <span />
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {isMobile && <input type="text" className="form-input" value={item.location || ''} onChange={e => patch(item.id, { location: e.target.value })} placeholder={isDe ? 'Raum (optional)' : 'Room (optional)'} style={{ padding: '5px 8px', fontSize: '0.85rem', flex: '0 1 40%' }} />}
+            <div className="dex-ui-inline" style={{ gap: 6 }}>
+              {isMobile && <input type="text" className="dex-ui-input dex-ui-input--sm" value={item.location || ''} onChange={e => patch(item.id, { location: e.target.value })} aria-label={isDe ? 'Raum' : 'Room'} placeholder={isDe ? 'Raum (optional)' : 'Room (optional)'} style={{ flex: '0 1 40%' }} />}
               {isMobile && groups.length > 1 && (
-                <select value={g.key} onChange={e => moveItem(item.id, e.target.value)} className="form-input" style={{ padding: '5px 8px', fontSize: '0.85rem', flex: '0 1 40%' }}>
+                <select value={g.key} onChange={e => moveItem(item.id, e.target.value)} title={moveTitle} aria-label={moveTitle} className="dex-ui-select dex-ui-input--sm" style={{ paddingRight: 26, flex: '0 1 40%' }}>
                   {groups.map((x, i) => <option key={x.key} value={x.key}>{labelOf(x, i)}</option>)}
                 </select>
               )}
-              {showDesc && <input type="text" className="form-input" value={item.description || ''} onChange={e => patch(item.id, { description: e.target.value })} placeholder={isDe ? 'Beschreibung (optional) — sehen Teilnehmer unter dem Titel' : 'Description (optional) — shown to attendees under the title'} style={{ padding: '5px 8px', fontSize: '0.85rem', flex: '1 1 200px' }} />}
+              {showDesc && <input type="text" className="dex-ui-input dex-ui-input--sm" value={item.description || ''} onChange={e => patch(item.id, { description: e.target.value })} aria-label={isDe ? 'Beschreibung' : 'Description'} placeholder={isDe ? 'Beschreibung (optional) — sehen Teilnehmer unter dem Titel' : 'Description (optional) — shown to attendees under the title'} style={{ flex: '1 1 200px' }} />}
             </div>
           </div>
         )}
@@ -277,70 +288,115 @@ export const AgendaEditor: React.FC<AgendaEditorProps> = (p) => {
   };
 
   const renderHeadRow = (): React.ReactElement | null => isMobile ? null : (
-    <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 6, marginBottom: 2 }}>
-      <span /><span style={head}>Start</span><span style={head}>{isDe ? 'Ende' : 'End'}</span><span style={head}>{isDe ? 'Titel' : 'Title'}</span><span style={head}>{isDe ? 'Raum' : 'Room'}</span>{groups.length > 1 && <span />}<span /><span />
+    <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 6, marginBottom: 2, padding: '0 4px' }}>
+      <span /><span style={head}>Start</span><span style={head}>{isDe ? 'Ende' : 'End'}</span><span style={head}>{isDe ? 'Titel' : 'Title'}</span><span style={head}>{isDe ? 'Raum' : 'Room'}</span>{groups.length > 1 && <span style={head}>Cluster</span>}<span /><span />
     </div>
   );
 
+  // v31.2: Der Knopf für den ersten Punkt bzw. den nächsten Cluster ist EIN
+  // Handler an zwei Stellen: im leeren Zustand mitten im Kasten (dort sucht
+  // ihn der Blick), sonst unter der Liste.
+  const addGroupButton = (
+    <button type="button" className="btn btn-outline dex-ui-btn-sm" onClick={addGroup}>
+      <Plus size={14} /> {groups.length === 0 ? (isDe ? `Ersten ${termS} anlegen` : `Add first ${termS.toLowerCase()}`) : (isDe ? 'Weiterer Cluster' : 'Another cluster')}
+    </button>
+  );
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div className="dex-ui-stack" style={{ gap: 12 }}>
+      {/* v31.2: Leerer Zustand statt einsamem Knopf — sagt, wo Teilnehmer das Programm sehen und dass es Cluster gibt. */}
+      {groups.length === 0 && (
+        <div className="dex-ui-empty">
+          <span className="dex-ui-empty-icon"><Calendar size={20} /></span>
+          <div className="dex-ui-empty-title">{isDe ? `Noch keine ${termP}` : `No ${termP.toLowerCase()} yet`}</div>
+          <div style={{ marginBottom: 14, lineHeight: 1.5 }}>
+            {isDe
+              ? <>Teilnehmer sehen das Programm auf der Anmeldeseite und unter &bdquo;Meine Events&ldquo;. Du ordnest die {termP} in Cluster — z.B. Tag 1, Vormittag oder Track A.</>
+              : <>Attendees see the programme on the registration page and under &ldquo;My events&rdquo;. You group the {termP.toLowerCase()} into clusters — e.g. Day 1, Morning or Track A.</>}
+          </div>
+          {addGroupButton}
+        </div>
+      )}
       {groups.map((g, gi) => {
         const d = fromYmd(g.date);
         const nameValue = nameEdit && nameEdit.key === g.key ? nameEdit.value : g.cluster;
         const prefixed = countClusterPrefixed(g);
         const undated = g.dates.length === 0;
+        const label = labelOf(g, gi);
         return (
-          <div key={g.key} style={{ border: `1px ${undated ? 'dashed var(--dex-orange, #ed8b00)' : 'solid var(--dex-gray-200)'}`, borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '8px 12px', background: 'var(--dex-gray-50, #fafafa)', borderBottom: '1px solid var(--dex-gray-200)' }}>
-              <span style={{ fontSize: '0.7rem', fontWeight: 700, width: 22, height: 22, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: 'var(--dex-green-dark, #4a7c1f)', color: '#fff' }}>{gi + 1}</span>
-              <input
-                type="text" className="form-input" value={nameValue}
-                placeholder={suggestClusterName(gi, isDe)}
-                title={isDe ? 'Cluster-Name — steht als Überschrift über diesen Punkten (z.B. Tag 1, Vormittag, Track A)' : 'Cluster name — heading above these items (e.g. Day 1, Morning, Track A)'}
-                onChange={e => setNameEdit({ key: g.key, value: e.target.value })}
-                onBlur={() => { if (nameEdit && nameEdit.key === g.key) { renameGroup(g, nameEdit.value); setNameEdit(null); } }}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); } }}
-                style={{ padding: '5px 8px', fontSize: '0.9rem', fontWeight: 700, width: 150 }}
-              />
-              <div style={{ width: 128 }}>
-                <DatePicker
-                  selected={d}
-                  onChange={(nd: Date | null) => { if (nd) redateGroup(g, toYmd(nd)); }}
-                  dateFormat="dd.MM.yyyy"
-                  locale="de"
-                  className="form-input"
-                  wrapperClassName="dex-datepicker-wrapper"
-                  calendarClassName="dex-datepicker-calendar"
-                  popperPlacement="bottom-start"
-                  placeholderText="TT.MM.JJJJ"
-                  autoComplete="off"
-                  title={isDe ? 'Datum — verschiebt alle Punkte dieses Clusters' : 'Date — moves every item of this cluster'}
+          <div key={g.key} className="dex-ui-card" style={{ padding: 0, overflow: 'hidden', borderColor: undated ? 'var(--dex-orange, #ed8b00)' : undefined, borderStyle: undated ? 'dashed' : undefined }}>
+            {/* v31.2: Kopf als weiche Karte; Name und Datum beschriftet, damit niemand
+                raten muss, was das erste Feld ist. Aktionen rechts als Symbol-Knöpfe. */}
+            <div className="dex-ui-card dex-ui-card--soft" style={{ border: 'none', borderRadius: 0, borderBottom: '1px solid var(--dex-gray-200)', padding: '8px 14px 10px', display: 'flex', alignItems: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: 700, width: 22, height: 22, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: 'var(--dex-green-dark, #4a7c1f)', color: '#fff', marginBottom: 5 }}>{gi + 1}</span>
+              <div>
+                <div style={head}>Cluster</div>
+                <input
+                  type="text" className="dex-ui-input dex-ui-input--sm" value={nameValue}
+                  placeholder={suggestClusterName(gi, isDe)}
+                  aria-label={isDe ? 'Cluster-Name' : 'Cluster name'}
+                  title={isDe ? 'Cluster-Name — steht als Überschrift über diesen Punkten (z.B. Tag 1, Vormittag, Track A)' : 'Cluster name — heading above these items (e.g. Day 1, Morning, Track A)'}
+                  onChange={e => setNameEdit({ key: g.key, value: e.target.value })}
+                  onBlur={() => { if (nameEdit && nameEdit.key === g.key) { renameGroup(g, nameEdit.value); setNameEdit(null); } }}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); } }}
+                  style={{ fontWeight: 700, width: 160 }}
                 />
               </div>
-              <span style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', minWidth: 70 }}>
-                {undated ? (isDe ? 'ohne Datum' : 'no date') : weekdayOf(g.date, isDe)}{g.dates.length > 1 ? ` +${g.dates.length - 1}` : ''}
-              </span>
-              <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>{g.items.length} {g.items.length === 1 ? termS : termP}</span>
+              <div>
+                <div style={head}>{isDe ? 'Datum' : 'Date'}</div>
+                <div style={{ width: 128 }}>
+                  <DatePicker
+                    selected={d}
+                    onChange={(nd: Date | null) => { if (nd) redateGroup(g, toYmd(nd)); }}
+                    dateFormat="dd.MM.yyyy"
+                    locale="de"
+                    className="dex-ui-input dex-ui-input--sm"
+                    wrapperClassName="dex-datepicker-wrapper"
+                    calendarClassName="dex-datepicker-calendar"
+                    popperPlacement="bottom-start"
+                    placeholderText="TT.MM.JJJJ"
+                    autoComplete="off"
+                    title={isDe ? 'Datum — verschiebt alle Punkte dieses Clusters' : 'Date — moves every item of this cluster'}
+                  />
+                </div>
+              </div>
+              <div className="dex-ui-inline" style={{ gap: 6, marginBottom: 4 }}>
+                {undated
+                  ? <span className="dex-ui-pill dex-ui-pill--orange">{isDe ? 'ohne Datum' : 'no date'}</span>
+                  : <span className="dex-ui-muted" style={{ minWidth: 70 }}>{weekdayOf(g.date, isDe)}{g.dates.length > 1 ? ` +${g.dates.length - 1}` : ''}</span>}
+                <span className="dex-ui-pill dex-ui-pill--gray">{g.items.length} {g.items.length === 1 ? termS : termP}</span>
+              </div>
               <span style={{ flex: 1 }} />
-              {prefixed > 0 && (
-                <button type="button" style={{ ...smallBtn, borderColor: 'var(--dex-green, #86bc25)', color: 'var(--dex-green-dark, #4a7c1f)' }} onClick={() => stripPrefixes(g)}
-                  title={isDe ? `„${g.cluster} - " steht in ${prefixed} Titeln — der Cluster-Name übernimmt das jetzt` : `"${g.cluster} - " prefixes ${prefixed} titles — the cluster name now carries that`}>
-                  {isDe ? `Präfix aus ${prefixed} Titeln entfernen` : `Strip prefix from ${prefixed} titles`}
-                </button>
-              )}
-              <button type="button" style={smallBtn} onClick={() => addTo(g)}><Plus size={12} /> {termS}</button>
-              <button type="button" style={smallBtn} onClick={() => duplicateGroup(g, gi)} title={isDe ? 'Alle Punkte dieses Clusters auf den nächsten freien Tag kopieren' : 'Copy all items of this cluster to the next free day'}><Copy size={12} /> {isDe ? 'Kopieren' : 'Copy'}</button>
-              {confirmKey === g.key ? (
-                <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', fontSize: '0.78rem' }}>
-                  <span style={{ color: 'var(--dex-red, #da291c)', fontWeight: 600 }}>{isDe ? `${g.items.length} Punkte löschen?` : `Delete ${g.items.length} items?`}</span>
-                  <button type="button" style={{ ...smallBtn, borderColor: 'var(--dex-red, #da291c)', color: 'var(--dex-red, #da291c)' }} onClick={() => deleteGroup(g)}>{isDe ? 'Ja, löschen' : 'Yes, delete'}</button>
-                  <button type="button" style={smallBtn} onClick={() => setConfirmKey('')}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
-                </span>
-              ) : (
-                <button type="button" style={{ ...smallBtn, color: 'var(--dex-gray-500)' }} onClick={() => setConfirmKey(g.key)} title={isDe ? 'Diesen Cluster mit allen Punkten entfernen' : 'Remove this cluster with all its items'}><X size={12} /></button>
-              )}
+              <div className="dex-ui-inline" style={{ gap: 2, marginBottom: 1 }}>
+                <button type="button" className="dex-ui-textbtn" onClick={() => addTo(g)} title={isDe ? `${termS} am Ende dieses Clusters anlegen` : `Add ${termS.toLowerCase()} at the end of this cluster`}><Plus size={14} /> {termS}</button>
+                <button type="button" className="dex-ui-iconbtn" onClick={() => duplicateGroup(g, gi)} aria-label={isDe ? 'Cluster kopieren' : 'Copy cluster'} title={isDe ? 'Alle Punkte dieses Clusters auf den nächsten freien Tag kopieren' : 'Copy all items of this cluster to the next free day'}><Copy size={15} /></button>
+                <button type="button" className="dex-ui-iconbtn dex-ui-iconbtn--danger" onClick={() => setConfirmKey(g.key)} aria-label={isDe ? 'Cluster löschen' : 'Delete cluster'} title={isDe ? 'Diesen Cluster mit allen Punkten entfernen' : 'Remove this cluster with all its items'}><Trash2 size={15} /></button>
+              </div>
             </div>
-            <div style={{ padding: '6px 12px 8px' }}>
+            {/* v31.2: Das Präfix-Angebot ist eine Frage an den Organizer, kein
+                Knopf zwischen den Aktionen — deshalb eine eigene Hinweiszeile
+                mit dem Grund und dem Knopf daneben. */}
+            {prefixed > 0 && (
+              <div className="dex-ui-callout dex-ui-callout--info" style={{ borderRadius: 0, borderWidth: '0 0 1px 0', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span className="dex-ui-callout-icon"><Info size={15} /></span>
+                <span style={{ flex: 1, minWidth: 200 }}>{isDe ? `„${g.cluster} - “ steht noch in ${prefixed} Titeln — der Cluster-Name übernimmt das jetzt.` : `“${g.cluster} - ” still prefixes ${prefixed} titles — the cluster name now carries that.`}</span>
+                <button type="button" className="dex-ui-textbtn" onClick={() => stripPrefixes(g)}>{isDe ? `Präfix aus ${prefixed} Titeln entfernen` : `Strip prefix from ${prefixed} titles`}</button>
+              </div>
+            )}
+            {/* v31.2: Rückfrage nennt Cluster, Anzahl und Folge — statt
+                „5 Punkte löschen?" neben dem X. */}
+            {confirmKey === g.key && (
+              <div className="dex-ui-callout dex-ui-callout--danger" style={{ borderRadius: 0, borderWidth: '0 0 1px 0', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span className="dex-ui-callout-icon"><AlertCircle size={15} /></span>
+                <span style={{ flex: 1, minWidth: 200 }}>
+                  <strong>{isDe ? `Cluster „${label}“ mit ${g.items.length} ${g.items.length === 1 ? termS : termP} löschen?` : `Delete cluster “${label}” with ${g.items.length} ${(g.items.length === 1 ? termS : termP).toLowerCase()}?`}</strong>{' '}
+                  {isDe ? 'Die Punkte verschwinden aus dem Programm.' : 'The items disappear from the programme.'}
+                </span>
+                <button type="button" className="btn btn-danger dex-ui-btn-sm" onClick={() => deleteGroup(g)}>{isDe ? 'Ja, löschen' : 'Yes, delete'}</button>
+                <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" onClick={() => setConfirmKey('')}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
+              </div>
+            )}
+            <div style={{ padding: '6px 10px 8px' }}>
               {renderHeadRow()}
               {g.items.map(item => renderRow(item, g))}
             </div>
@@ -348,18 +404,16 @@ export const AgendaEditor: React.FC<AgendaEditorProps> = (p) => {
         );
       })}
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-        <button type="button" className="btn btn-outline" onClick={addGroup} style={{ fontSize: '0.85rem', padding: '6px 16px' }}>
-          <Plus size={14} /> {groups.length === 0 ? (isDe ? `Ersten ${termS} anlegen` : `Add first ${termS.toLowerCase()}`) : (isDe ? 'Weiterer Cluster' : 'Another cluster')}
-        </button>
-        {groups.length > 0 && (
-          <span style={{ fontSize: '0.76rem', color: 'var(--dex-gray-500)' }}>
+      {groups.length > 0 && (
+        <div className="dex-ui-inline">
+          {addGroupButton}
+          <span className="dex-ui-muted" style={{ fontSize: '0.76rem' }}>
             {isDe
               ? `${sortedAll.length} ${termP} in ${groups.length} ${groups.length === 1 ? 'Cluster' : 'Clustern'} · Zeiten im 24-Stunden-Format · Enter im Titel legt den nächsten Punkt an.`
               : `${sortedAll.length} ${termP.toLowerCase()} in ${groups.length} ${groups.length === 1 ? 'cluster' : 'clusters'} · 24-hour times · Enter in the title adds the next item.`}
           </span>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

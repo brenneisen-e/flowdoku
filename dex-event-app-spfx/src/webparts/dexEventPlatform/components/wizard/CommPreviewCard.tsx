@@ -15,7 +15,10 @@
  * „Testmail an mich" schickt genau dieses HTML an die angemeldete Person über
  * die normale Mail-Queue. {{ORB_URL}}/{{LOGO_URL}} werden dafür fest
  * eingebettet: Der Flow löst sie sonst über die Event-Zeile auf, und die gibt
- * es beim Anlegen noch nicht. */
+ * es beim Anlegen noch nicht.
+ *
+ * v31.2: Optik auf die dex-ui-Klassen umgestellt (Reiter mit Hover, Warnungen
+ * als Callouts, Karte als dex-ui-card). Aufbau, Memos, Testmail-Pfad unverändert. */
 import * as React from 'react';
 import { buildEmailFromTemplate, buildOutlookBody, replacePlaceholders, getCachedLogoBase64, getCachedOrbBase64 } from '../../services/EmailTemplates';
 import { formatOrganizerList } from '../../context/eventTextHelpers';
@@ -25,6 +28,10 @@ import { AgendaItem } from '../../types';
 import { useCurrentUser } from '../../context/UserContext';
 import { EventService } from '../../services/EventService';
 import { EmailOverrideEntry } from './emailOverrideEntry';
+// v31.2: Gemeinsame Klassen (Reiter, Callouts, Karte) statt Inline-Styles —
+// Inline kann kein :hover, und die Reiter hatten bis dahin keinen.
+import { cx } from '../dexUi';
+import { Mail, Calendar, Send, Check, AlertCircle } from '../Icons';
 
 export interface CommPreviewCardProps {
   isDe: boolean;
@@ -149,39 +156,44 @@ export const CommPreviewCard: React.FC<CommPreviewCardProps> = (p) => {
   };
 
   const nothing = p.disableEmails && p.disableOutlook;
-  const frameStyle: React.CSSProperties = { width: '100%', height: 420, border: '1px solid var(--dex-gray-200)', borderRadius: 8, background: '#fff' };
-  const tabBtn = (key: 'mail' | 'outlook', label: string, off: boolean): React.ReactElement => (
-    <button key={key} type="button" onClick={() => setPane(key)} style={{
-      padding: '6px 14px', borderRadius: 999, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
-      border: `1px solid ${pane === key ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-      background: pane === key ? 'rgba(134,188,37,0.12)' : '#fff', color: off ? 'var(--dex-gray-400)' : 'var(--dex-gray-800)',
-      textDecoration: off ? 'line-through' : 'none',
-    }}>{label}</button>
+  const frameStyle: React.CSSProperties = { width: '100%', height: 420, border: '1px solid var(--dex-gray-200, #e8e8e8)', borderRadius: 12, background: '#fff', display: 'block' };
+  // v31.2: Reiter als dex-ui-tabs (Hover, aktiver Zustand kommen aus der
+  // Klasse). Ein abgeschalteter Kanal wird nicht mehr durchgestrichen —
+  // das las sich wie „gelöscht" — sondern trägt den Zusatz „aus".
+  const tabBtn = (key: 'mail' | 'outlook', icon: React.ReactNode, label: string, off: boolean): React.ReactElement => (
+    <button key={key} type="button" className={cx('dex-ui-tab', pane === key && 'is-active')} onClick={() => setPane(key)}
+      aria-pressed={pane === key} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: off ? 0.6 : 1 }}>
+      {icon}{label}{off && <span style={{ fontWeight: 500, fontSize: '0.72rem' }}>· {isDe ? 'aus' : 'off'}</span>}
+    </button>
+  );
+  const warn = (text: string): React.ReactElement => (
+    <div className="dex-ui-callout dex-ui-callout--warn" role="status">
+      <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span><span>{text}</span>
+    </div>
   );
 
   return (
-    <div style={{ marginTop: 24, padding: 14, borderRadius: 12, border: '1px solid var(--dex-gray-200)', background: 'var(--dex-gray-50, #f8f9fa)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-        <strong style={{ fontSize: '0.9rem' }}>{isDe ? 'So sieht es aus' : 'This is what goes out'}</strong>
-        <span style={{ fontSize: '0.76rem', color: 'var(--dex-gray-500)' }}>
-          {isDe ? '— Vorschau mit deinen aktuellen Einstellungen, Empfänger: du' : '— preview with your current settings, recipient: you'}
-        </span>
-        <span style={{ flex: 1 }} />
-        {tabBtn('mail', isDe ? 'Anmeldebestätigung' : 'Registration email', p.disableEmails)}
-        {tabBtn('outlook', isDe ? 'Outlook-Termin' : 'Outlook invite', p.disableOutlook)}
-      </div>
-      {nothing ? (
-        <div style={{ padding: '14px 16px', borderRadius: 8, background: 'rgba(237,139,0,0.09)', fontSize: '0.85rem', lineHeight: 1.5 }}>
-          {isDe ? 'Kommunikation ist abgeschaltet — es gibt nichts zu zeigen. Wähle oben „Mail + Outlook-Termin", „Nur Mail" oder „Nur Outlook-Termin".' : 'Communication is switched off — nothing to show. Pick “Email + Outlook invite”, “Email only” or “Outlook invite only” above.'}
+    <div className="dex-ui-card dex-ui-card--soft">
+      {/* v31.2: Kein eigener Titel mehr — der Schritt setzt darüber bereits die
+          Abschnitts-Überschrift „So geht es raus"; zwei Überschriften für eine
+          Karte lasen sich wie zwei Kästen. Reiter links, Hinweis rechts. */}
+      <div className="dex-ui-inline" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
+        <div className="dex-ui-tabs" role="tablist" aria-label={isDe ? 'Vorschau wählen' : 'Choose preview'}>
+          {tabBtn('mail', <Mail size={14} />, isDe ? 'Anmeldebestätigung' : 'Registration email', p.disableEmails)}
+          {tabBtn('outlook', <Calendar size={14} strokeWidth={2} />, isDe ? 'Outlook-Termin' : 'Outlook invite', p.disableOutlook)}
         </div>
-      ) : (
+        <span className="dex-ui-muted" style={{ fontSize: '0.76rem' }}>
+          {isDe ? 'Vorschau mit deinen aktuellen Einstellungen · Empfänger: du' : 'Preview with your current settings · recipient: you'}
+        </span>
+      </div>
+      {nothing ? warn(isDe ? 'Kommunikation ist abgeschaltet — es gibt nichts zu zeigen. Wähle oben „Mail + Outlook-Termin", „Nur Mail" oder „Nur Outlook-Termin".' : 'Communication is switched off — nothing to show. Pick “Email + Outlook invite”, “Email only” or “Outlook invite only” above.') : (
         <>
           {pane === 'mail' && (
             p.disableEmails
-              ? <div style={{ padding: '12px 14px', borderRadius: 8, background: 'rgba(237,139,0,0.09)', fontSize: '0.82rem' }}>{isDe ? 'Mails sind für dieses Event abgeschaltet — diese Mail geht nicht raus.' : 'Emails are switched off for this event — this mail is not sent.'}</div>
+              ? warn(isDe ? 'Mails sind für dieses Event abgeschaltet — diese Mail geht nicht raus.' : 'Emails are switched off for this event — this mail is not sent.')
               : (
                 <>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginBottom: 6 }}>
+                  <div className="dex-ui-muted" style={{ marginBottom: 8, color: 'var(--dex-gray-600, #666)' }}>
                     <strong>{isDe ? 'Betreff:' : 'Subject:'}</strong> {mail.subject}
                   </div>
                   <iframe title={isDe ? 'Vorschau Anmeldebestätigung' : 'Registration email preview'} sandbox="" srcDoc={mail.html} style={frameStyle} />
@@ -190,20 +202,31 @@ export const CommPreviewCard: React.FC<CommPreviewCardProps> = (p) => {
           )}
           {pane === 'outlook' && (
             p.disableOutlook
-              ? <div style={{ padding: '12px 14px', borderRadius: 8, background: 'rgba(237,139,0,0.09)', fontSize: '0.82rem' }}>{isDe ? 'Der Outlook-Termin ist für dieses Event abgeschaltet.' : 'The Outlook invite is switched off for this event.'}</div>
+              ? warn(isDe ? 'Der Outlook-Termin ist für dieses Event abgeschaltet.' : 'The Outlook invite is switched off for this event.')
               : <iframe title={isDe ? 'Vorschau Outlook-Termin' : 'Outlook invite preview'} sandbox="" srcDoc={outlookHtml} style={frameStyle} />
           )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
-            <button type="button" className="btn btn-secondary" disabled={p.disableEmails || testState === 'busy'} onClick={() => { void sendTest(); }} style={{ fontSize: '0.82rem', padding: '6px 14px' }}>
-              {testState === 'busy' ? (isDe ? 'Wird verschickt…' : 'Sending…') : (isDe ? 'Testmail an mich' : 'Send me a test email')}
+          {/* v31.2: Knopf und Folge in EINER Zeile; Erfolg und Fehler als
+              farbige Callouts statt eines grauen Satzes, den man übersieht. */}
+          <div className="dex-ui-inline" style={{ marginTop: 12, gap: 10 }}>
+            <button type="button" className="btn btn-secondary dex-ui-btn-sm" disabled={p.disableEmails || testState === 'busy'} onClick={() => { void sendTest(); }}
+              title={p.disableEmails ? (isDe ? 'Mails sind für dieses Event abgeschaltet.' : 'Emails are switched off for this event.') : undefined}>
+              <Send size={14} />{testState === 'busy' ? (isDe ? 'Wird verschickt…' : 'Sending…') : (isDe ? 'Testmail an mich' : 'Send me a test email')}
             </button>
-            <span style={{ fontSize: '0.76rem', color: testState === 'error' ? 'var(--dex-red, #c00)' : 'var(--dex-gray-500)' }}>
-              {testState === 'sent'
-                ? (isDe ? `Unterwegs an ${currentUser.email} — kommt in wenigen Minuten, Betreff beginnt mit [Test].` : `On its way to ${currentUser.email} — arrives within minutes, subject starts with [Test].`)
-                : testState === 'error'
-                  ? (isDe ? 'Konnte nicht in die Mail-Warteschlange geschrieben werden — bitte später erneut.' : 'Could not be queued — please try again later.')
-                  : (isDe ? 'Schickt genau diese Anmeldebestätigung an deine Adresse, ohne etwas am Event zu ändern.' : 'Sends exactly this registration email to your address without changing the event.')}
-            </span>
+            {testState === 'sent' ? (
+              <span className="dex-ui-callout dex-ui-callout--success" role="status" style={{ padding: '6px 12px', fontSize: '0.78rem' }}>
+                <span className="dex-ui-callout-icon"><Check size={14} /></span>
+                <span>{isDe ? `Unterwegs an ${currentUser.email} — kommt in wenigen Minuten, Betreff beginnt mit [Test].` : `On its way to ${currentUser.email} — arrives within minutes, subject starts with [Test].`}</span>
+              </span>
+            ) : testState === 'error' ? (
+              <span className="dex-ui-callout dex-ui-callout--danger" role="alert" style={{ padding: '6px 12px', fontSize: '0.78rem' }}>
+                <span className="dex-ui-callout-icon"><AlertCircle size={14} /></span>
+                <span>{isDe ? 'Konnte nicht in die Mail-Warteschlange geschrieben werden — bitte später erneut.' : 'Could not be queued — please try again later.'}</span>
+              </span>
+            ) : (
+              <span className="dex-ui-muted" style={{ fontSize: '0.76rem' }}>
+                {isDe ? 'Schickt genau diese Anmeldebestätigung an deine Adresse, ohne etwas am Event zu ändern.' : 'Sends exactly this registration email to your address without changing the event.'}
+              </span>
+            )}
           </div>
         </>
       )}

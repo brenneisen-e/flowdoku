@@ -7,9 +7,14 @@
  * die drei Setter des „Neuer Bereich"-Modals (das Modal selbst bleibt am
  * Wizard). `visible` ersetzt `currentStep === 8` — display:none statt
  * unmount, damit Eingaben beim Schrittwechsel erhalten bleiben.
+ *
+ * v31.2: Modernisiert nach docs/ui-leitfaden.md — Fragen vor Bereichen, Karte
+ * in Ausfüll-Reihenfolge, „Richtig" als Chip, Bereichs-Auswahl an der Frage
+ * (Ergänzung zum Drag & Drop), alle Texte zweisprachig. Props/Verhalten gleich.
  */
 import * as React from 'react';
-import { Plus, X } from '../../Icons';
+import { Check, Plus, Star, X } from '../../Icons';
+import { cx } from '../../dexUi';
 import { StepBadge } from '../StepBadge';
 import { useLanguage } from '../../../context/LanguageContext';
 import { useDialog } from '../../../context/DialogContext';
@@ -43,15 +48,18 @@ export const FunZoneStep: React.FC<FunZoneStepProps> = ({
   const { t, locale } = useLanguage();
   const isDe = locale === 'de';
   const { confirmDialog, showAlert } = useDialog();
+  // v31.2: Zähler-Text der Pills („3 Fragen") — eine Singular/Plural-Weiche statt drei.
+  const countLabel = (n: number): string => `${n} ${n === 1 ? (isDe ? 'Frage' : 'question') : (isDe ? 'Fragen' : 'questions')}`;
   return (
     <div style={{ display: visible ? 'block' : 'none' }}>
       <h2 className="dex-step-head-title">
-        {isDe ? 'Schritt 9 — Fun-Zone' : 'Step 9 — Fun Zone'}
+        <span className="dex-step-eyebrow">{isDe ? 'Schritt 9 von 9' : 'Step 9 of 9'}</span>
+        {t('create.step.funzone')}
       </h2>
       <p className="dex-step-head-lead">
         {isDe
-          ? 'Optional: ein Quiz für die Teilnehmer — Multiple-Choice-Fragen mit Live-Highscore. Perfekt für Networking, Tagungs-Pausen oder Foto-Quiz.'
-          : 'Optional: a quiz for attendees — multiple-choice questions with live highscore. Perfect for networking, breaks at conferences, or photo quizzes.'}
+          ? <><strong>Optional</strong> — ein Quiz für die Teilnehmer: Multiple-Choice-Fragen mit Live-Highscore, gespielt unter &bdquo;Meine Events&ldquo;. Perfekt für Networking, Tagungs-Pausen oder ein Foto-Quiz.</>
+          : <><strong>Optional</strong> — a quiz for attendees: multiple-choice questions with a live highscore, played under &bdquo;My Events&ldquo;. Perfect for networking, conference breaks or a photo quiz.</>}
       </p>
       {renderStepIntro(
         [
@@ -69,37 +77,20 @@ export const FunZoneStep: React.FC<FunZoneStepProps> = ({
           'See live highscore + statistics in the admin center (which questions are most often answered incorrectly)',
         ]
       )}
-      <h3 className="mb-16">{t('create.step.funzone')}</h3>
-      <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 16 }}>
-        {t('create.funzone.hint')}
-      </p>
-
-      <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <StepBadge n={34} />
-        {isDe ? 'Quiz-Bereiche' : 'Quiz sections'}
-      </label>
-      {/* Bereiche: Header + "+ Bereich"-Button. Fragen können per Drag&Drop
-          in Bereiche gezogen werden; jeder Bereich wird im Quiz zusammen
-          auf einer Seite angezeigt. */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap',
-      }}>
-        <button
-          type="button"
-          className="btn btn-outline"
-          style={{ fontSize: '0.82rem', padding: '6px 14px' }}
-          onClick={() => {
-            setNewSectionName('');
-            setNewSectionError('');
-            setNewSectionModalOpen(true);
-          }}
-        >
-          <Plus size={14} /> Bereich
-        </button>
-        <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
-          Fragen per Drag &amp; Drop in einen Bereich ziehen — alle Fragen eines Bereichs werden im Quiz zusammen angezeigt.
-        </span>
-      </div>
+      {/* v31.2: Erst die Fragen (der Kern), dann die Gliederung — bis v31.1 war die
+          erste angebotene Handlung der optionale Bereichs-Knopf. h3 + Hint stehen im Kopf. */}
+      <div className="dex-ui-section">
+        <div className="dex-ui-section-title">
+          {isDe ? 'Quiz-Fragen' : 'Quiz questions'}
+          {quiz.length > 0 && (
+            <span className="dex-ui-pill dex-ui-pill--gray" style={{ textTransform: 'none', letterSpacing: 0 }}>{countLabel(quiz.length)}</span>
+          )}
+        </div>
+        <p className="dex-ui-section-desc">
+          {isDe
+            ? 'Jede Frage hat beliebig viele Antworten, mehrere richtige sind möglich. Live-Highscore und Statistik siehst du später im Organizer Center.'
+            : 'Each question can have any number of answers, several correct ones are fine. You will see the live highscore and statistics in the Organizer Center later.'}
+        </p>
 
       {(() => {
         // Section-Reihenfolge: zuerst die in Fragen verwendeten (nach erster Erwähnung),
@@ -124,10 +115,13 @@ export const FunZoneStep: React.FC<FunZoneStepProps> = ({
           setDraggedQuestionId(null);
         };
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const renderQuestionCard = (q: any, qi: number): React.ReactElement => (
+        // v31.2: Karte in Ausfüll-Reihenfolge: Frage → Antworten → richtige markieren →
+        // Bild/Bereich in der Fußzeile (der Upload stand vorher ZWISCHEN Frage und
+        // Antworten). Bereich zusätzlich als Auswahl — Drag & Drop gibt es auf Touch nicht.
+        const renderQuestionCard = (q: QuizQuestionDraft, qi: number): React.ReactElement => (
           <div
             key={q.id}
+            className="dex-ui-card dex-ui-card--hover"
             draggable={true}
             onDragStart={ev => {
               setDraggedQuestionId(q.id);
@@ -135,19 +129,17 @@ export const FunZoneStep: React.FC<FunZoneStepProps> = ({
               ev.dataTransfer.effectAllowed = 'move';
             }}
             onDragEnd={() => setDraggedQuestionId(null)}
-            style={{
-              padding: 16, marginBottom: 10, background: 'var(--dex-gray-50, #fafafa)',
-              borderRadius: 12, border: '1px solid var(--dex-gray-200)',
-              cursor: 'grab',
-              opacity: draggedQuestionId === q.id ? 0.5 : 1,
-            }}
+            style={{ marginBottom: 10, opacity: draggedQuestionId === q.id ? 0.5 : 1 }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ cursor: 'grab', color: 'var(--dex-gray-400)' }} title="Ziehen, um in einen Bereich zu verschieben">⋮⋮</span>
-                {t('create.funzone.question')} {qi + 1}
-              </label>
-              <button type="button" onClick={() => removeQuizQuestion(q.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red)', padding: 4 }}>
+            <div className="dex-ui-inline" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
+              <div className="dex-ui-inline" style={{ gap: 6 }}>
+                <span className="dex-ui-drag-handle" aria-hidden="true" title={isDe ? 'Ziehen, um die Frage in einen Bereich zu verschieben' : 'Drag to move the question into a section'}>⋮⋮</span>
+                <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--dex-gray-800)' }}>
+                  {t('create.funzone.question')} {qi + 1}
+                </span>
+              </div>
+              <button type="button" className="dex-ui-iconbtn dex-ui-iconbtn--danger" onClick={() => removeQuizQuestion(q.id)}
+                title={isDe ? 'Frage entfernen' : 'Remove question'} aria-label={isDe ? 'Frage entfernen' : 'Remove question'}>
                 <X size={16} />
               </button>
             </div>
@@ -156,129 +148,149 @@ export const FunZoneStep: React.FC<FunZoneStepProps> = ({
               value={q.question}
               onChange={e => updateQuizQuestion(q.id, { question: e.target.value })}
               placeholder={t('create.funzone.questionplaceholder')}
-              style={{ marginBottom: 10 }}
+              style={{ marginBottom: 14 }}
             />
-            <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              {q.imageBase64 ? (
-                <>
-                  <img
-                    src={q.imageBase64}
-                    alt="Frage-Bild"
-                    style={{ maxHeight: 80, maxWidth: 160, borderRadius: 8, border: '1px solid var(--dex-gray-200)' }}
-                  />
+            <div className="dex-ui-label" style={{ marginBottom: 2 }}>
+              {isDe ? 'Welche Antworten stehen zur Wahl?' : 'Which answers can be chosen?'}
+            </div>
+            <div className="dex-ui-help" style={{ marginTop: 0, marginBottom: 8 }}>
+              {isDe
+                ? 'Markiere jede richtige Antwort mit „Richtig" — auch mehrere. Für volle Punkte müssen Teilnehmer alle richtigen wählen.'
+                : 'Mark every correct answer with "Correct" — several are fine. For full points, attendees must pick all correct ones.'}
+            </div>
+            {q.options.map((opt: string, oi: number) => {
+              const isCorrect = q.correctIndices?.includes(oi) || false;
+              return (
+                <div key={oi} className="dex-ui-row" style={{ padding: '4px 6px', gap: 8, marginLeft: -6, marginRight: -6 }}>
                   <button
                     type="button"
-                    onClick={() => updateQuizQuestion(q.id, { imageBase64: undefined })}
-                    style={{
-                      fontSize: '0.72rem', padding: '4px 10px',
-                      border: '1px solid var(--dex-gray-300)', borderRadius: 6,
-                      background: '#fff', color: 'var(--dex-red)', cursor: 'pointer',
+                    className={cx('dex-ui-chip', isCorrect && 'is-active')}
+                    aria-pressed={isCorrect}
+                    title={t('create.funzone.correct')}
+                    onClick={() => {
+                      const indices = q.correctIndices || [];
+                      const newIndices = indices.includes(oi) ? indices.filter((x: number) => x !== oi) : [...indices, oi];
+                      updateQuizQuestion(q.id, { correctIndices: newIndices.length > 0 ? newIndices : [0] });
                     }}
                   >
-                    Bild entfernen
+                    <Check size={12} /> {isDe ? 'Richtig' : 'Correct'}
                   </button>
-                </>
-              ) : (
-                <label style={{
-                  fontSize: '0.78rem', padding: '6px 12px',
-                  border: '1px dashed var(--dex-gray-300)', borderRadius: 8,
-                  cursor: 'pointer', color: 'var(--dex-gray-600)',
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                }}>
-                  Bild hochladen (optional)
                   <input
-                    type="file"
-                    accept="image/*"
-                    style={{ display: 'none' }}
-                    onChange={async e => {
-                      const file = e.target.files && e.target.files[0];
-                      if (!file) return;
-                      try {
-                        const dataUrl = await new Promise<string>((resolve, reject) => {
-                          const reader = new FileReader();
-                          reader.onload = () => resolve(String(reader.result || ''));
-                          reader.onerror = reject;
-                          reader.readAsDataURL(file);
-                        });
-                        const img = new Image();
-                        await new Promise<void>((resolve, reject) => {
-                          img.onload = () => resolve();
-                          img.onerror = reject;
-                          img.src = dataUrl;
-                        });
-                        const maxW = 800;
-                        const scale = img.width > maxW ? maxW / img.width : 1;
-                        const w = Math.round(img.width * scale);
-                        const h = Math.round(img.height * scale);
-                        const canvas = document.createElement('canvas');
-                        canvas.width = w;
-                        canvas.height = h;
-                        const ctx = canvas.getContext('2d');
-                        if (!ctx) return;
-                        ctx.drawImage(img, 0, 0, w, h);
-                        const compressed = canvas.toDataURL('image/jpeg', 0.8);
-                        updateQuizQuestion(q.id, { imageBase64: compressed });
-                      } catch {
-                        showAlert('Bild konnte nicht verarbeitet werden.');
-                      }
-                      e.target.value = '';
+                    className="dex-ui-input"
+                    value={opt}
+                    onChange={e => {
+                      const newOpts = [...q.options];
+                      newOpts[oi] = e.target.value;
+                      updateQuizQuestion(q.id, { options: newOpts });
                     }}
+                    placeholder={`${t('create.funzone.option')} ${oi + 1}`}
+                    style={{ flex: 1 }}
                   />
-                </label>
-              )}
-            </div>
-            <label style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginBottom: 4, display: 'block' }}>
-              {t('create.funzone.options')}
-            </label>
-            {q.options.map((opt: string, oi: number) => (
-              <div key={oi} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                <input
-                  type="checkbox"
-                  checked={q.correctIndices?.includes(oi) || false}
-                  onChange={() => {
-                    const indices = q.correctIndices || [];
-                    const newIndices = indices.includes(oi) ? indices.filter((x: number) => x !== oi) : [...indices, oi];
-                    updateQuizQuestion(q.id, { correctIndices: newIndices.length > 0 ? newIndices : [0] });
-                  }}
-                  title={t('create.funzone.correct')}
-                  style={{ accentColor: 'var(--dex-green)' }}
-                />
-                <input
-                  className="form-input"
-                  value={opt}
-                  onChange={e => {
-                    const newOpts = [...q.options];
-                    newOpts[oi] = e.target.value;
-                    updateQuizQuestion(q.id, { options: newOpts });
-                  }}
-                  placeholder={`${t('create.funzone.option')} ${oi + 1}`}
-                  style={{ flex: 1, padding: '6px 10px', fontSize: '0.85rem' }}
-                />
-                {q.options.length > 2 && (
-                  <button type="button" onClick={() => {
-                    const newOpts = q.options.filter((_: string, i: number) => i !== oi);
-                    const newCorrect = (q.correctIndices || []).filter((ci: number) => ci !== oi).map((ci: number) => ci > oi ? ci - 1 : ci);
-                    updateQuizQuestion(q.id, { options: newOpts, correctIndices: newCorrect.length > 0 ? newCorrect : [0] });
-                  }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-gray-400)', padding: 2 }}>
-                    <X size={14} />
-                  </button>
+                  {q.options.length > 2 && (
+                    <button type="button" className="dex-ui-iconbtn dex-ui-iconbtn--danger"
+                      title={isDe ? 'Antwort entfernen' : 'Remove answer'} aria-label={isDe ? 'Antwort entfernen' : 'Remove answer'}
+                      onClick={() => {
+                        const newOpts = q.options.filter((_: string, i: number) => i !== oi);
+                        const newCorrect = (q.correctIndices || []).filter((ci: number) => ci !== oi).map((ci: number) => ci > oi ? ci - 1 : ci);
+                        updateQuizQuestion(q.id, { options: newOpts, correctIndices: newCorrect.length > 0 ? newCorrect : [0] });
+                      }}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+            <button type="button" className="dex-ui-textbtn" onClick={() => updateQuizQuestion(q.id, { options: [...q.options, ''] })} style={{ marginTop: 4 }}>
+              <Plus size={14} /> {t('create.funzone.addoption')}
+            </button>
+            <div className="dex-ui-divider" style={{ margin: '12px 0' }} />
+            <div className="dex-ui-inline" style={{ justifyContent: 'space-between' }}>
+              <div className="dex-ui-inline">
+                {q.imageBase64 ? (
+                  <>
+                    <img
+                      src={q.imageBase64}
+                      alt={isDe ? 'Frage-Bild' : 'Question image'}
+                      style={{ maxHeight: 64, maxWidth: 140, borderRadius: 8, border: '1px solid var(--dex-gray-200)' }}
+                    />
+                    <button type="button" className="dex-ui-textbtn dex-ui-textbtn--danger" onClick={() => updateQuizQuestion(q.id, { imageBase64: undefined })}>
+                      <X size={14} /> {isDe ? 'Bild entfernen' : 'Remove image'}
+                    </button>
+                  </>
+                ) : (
+                  <label className="dex-ui-textbtn dex-ui-textbtn--muted" title={isDe ? 'Erscheint über der Frage im Quiz' : 'Shown above the question in the quiz'}>
+                    <Plus size={14} /> {isDe ? 'Bild zur Frage (optional)' : 'Image for the question (optional)'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={async e => {
+                        const file = e.target.files && e.target.files[0];
+                        if (!file) return;
+                        try {
+                          const dataUrl = await new Promise<string>((resolve, reject) => {
+                            const reader = new FileReader();
+                            reader.onload = () => resolve(String(reader.result || ''));
+                            reader.onerror = reject;
+                            reader.readAsDataURL(file);
+                          });
+                          const img = new Image();
+                          await new Promise<void>((resolve, reject) => {
+                            img.onload = () => resolve();
+                            img.onerror = reject;
+                            img.src = dataUrl;
+                          });
+                          const maxW = 800;
+                          const scale = img.width > maxW ? maxW / img.width : 1;
+                          const w = Math.round(img.width * scale);
+                          const h = Math.round(img.height * scale);
+                          const canvas = document.createElement('canvas');
+                          canvas.width = w;
+                          canvas.height = h;
+                          const ctx = canvas.getContext('2d');
+                          if (!ctx) return;
+                          ctx.drawImage(img, 0, 0, w, h);
+                          const compressed = canvas.toDataURL('image/jpeg', 0.8);
+                          updateQuizQuestion(q.id, { imageBase64: compressed });
+                        } catch {
+                          showAlert(isDe ? 'Bild konnte nicht verarbeitet werden.' : 'The image could not be processed.');
+                        }
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
                 )}
               </div>
-            ))}
-            <button type="button" onClick={() => updateQuizQuestion(q.id, { options: [...q.options, ''] })} style={{
-              fontSize: '0.78rem', padding: '4px 12px', border: '1px dashed var(--dex-gray-300)',
-              borderRadius: 8, background: 'none', color: 'var(--dex-green-dark)', cursor: 'pointer', marginTop: 4,
-            }}>
-              + {t('create.funzone.addoption')}
-            </button>
-            <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-400)', marginTop: 6 }}>
-              {t('create.funzone.correcthint')}
+              {allSections.length > 0 && (
+                <label className="dex-ui-inline" style={{ gap: 6, fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+                  {isDe ? 'Bereich' : 'Section'}
+                  <select
+                    className="dex-ui-select dex-ui-input--sm"
+                    value={q.section || ''}
+                    onChange={e => updateQuizQuestion(q.id, { section: e.target.value || undefined })}
+                    style={{ width: 'auto', minWidth: 150, paddingRight: 28 }}
+                  >
+                    <option value="">{isDe ? 'Ohne Bereich' : 'No section'}</option>
+                    {allSections.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </label>
+              )}
             </div>
           </div>
         );
 
         const unsortedQuiz = quiz.filter(q => !q.section);
         const globalIndexOf = (qid: string): number => quiz.findIndex(x => x.id === qid);
+        // v31.2: Ablageflächen bleiben gestrichelt („hier kann etwas hinein"); während
+        // eine Frage gezogen wird, heben sich ALLE Ziele ab — vorher sah man das nicht.
+        const dragging = !!draggedQuestionId;
+        const zoneStyle = (accent: boolean): React.CSSProperties => ({
+          padding: 12, marginBottom: 12, borderRadius: 14,
+          border: `2px dashed ${accent ? 'rgba(134,188,37,0.7)' : 'var(--dex-gray-300, #d1d1d1)'}`,
+          background: dragging ? 'rgba(134,188,37,0.09)' : (accent ? 'rgba(134,188,37,0.04)' : 'var(--dex-gray-50, #fafafa)'),
+          transition: 'background 0.18s ease, border-color 0.18s ease',
+        });
 
         return (
           <>
@@ -289,18 +301,18 @@ export const FunZoneStep: React.FC<FunZoneStepProps> = ({
                   key={`sec-${sec}`}
                   onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
                   onDrop={e => handleDrop(e, sec)}
-                  style={{
-                    padding: 12, marginBottom: 14, borderRadius: 12,
-                    border: '2px dashed var(--dex-green)',
-                    background: 'rgba(134,188,37,0.04)',
-                  }}
+                  style={zoneStyle(true)}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 8, flexWrap: 'wrap' }}>
-                    <h4 style={{ margin: 0, color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1rem' }}>
-                      Bereich: {sec} <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>({inSec.length} {inSec.length === 1 ? 'Frage' : 'Fragen'})</span>
-                    </h4>
+                  <div className="dex-ui-inline" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
+                    <div className="dex-ui-inline">
+                      <h4 style={{ margin: 0, color: 'var(--dex-green-darker, #4a7c1f)', fontSize: '0.95rem' }}>
+                        {isDe ? 'Bereich' : 'Section'}: {sec}
+                      </h4>
+                      <span className="dex-ui-pill dex-ui-pill--green">{countLabel(inSec.length)}</span>
+                    </div>
                     <button
                       type="button"
+                      className="dex-ui-textbtn dex-ui-textbtn--danger"
                       onClick={() => {
                         confirmDialog(isDe ? `Bereich "${sec}" entfernen? Die Fragen bleiben erhalten und landen in "Ohne Bereich".` : `Remove section "${sec}"? The questions are kept and move to "No section".`, { confirmLabel: isDe ? 'Entfernen' : 'Remove' }).then(ok => {
                           if (!ok) return;
@@ -310,18 +322,13 @@ export const FunZoneStep: React.FC<FunZoneStepProps> = ({
                           setPendingSections(prev => prev.filter(p => p !== sec));
                         }).catch(() => { /* */ });
                       }}
-                      style={{
-                        fontSize: '0.72rem', padding: '4px 10px',
-                        border: '1px solid var(--dex-gray-300)', borderRadius: 6,
-                        background: '#fff', color: 'var(--dex-red)', cursor: 'pointer',
-                      }}
                     >
-                      Bereich entfernen
+                      <X size={14} /> {isDe ? 'Bereich entfernen' : 'Remove section'}
                     </button>
                   </div>
                   {inSec.length === 0 ? (
-                    <div style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic', fontSize: '0.82rem', padding: '12px 8px', textAlign: 'center' }}>
-                      Fragen hierher ziehen
+                    <div className="dex-ui-muted" style={{ fontStyle: 'italic', padding: '12px 8px', textAlign: 'center' }}>
+                      {isDe ? 'Fragen am Griff hierher ziehen — oder unten an der Frage den Bereich wählen.' : 'Drag questions here by their handle — or pick the section at the bottom of a question.'}
                     </div>
                   ) : (
                     inSec.map(q => renderQuestionCard(q, globalIndexOf(q.id)))
@@ -334,32 +341,62 @@ export const FunZoneStep: React.FC<FunZoneStepProps> = ({
             <div
               onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
               onDrop={e => handleDrop(e, undefined)}
-              style={allSections.length > 0 ? {
-                padding: 12, marginBottom: 14, borderRadius: 12,
-                border: '2px dashed var(--dex-gray-300)',
-                background: 'var(--dex-gray-50, #fafafa)',
-              } : undefined}
+              style={allSections.length > 0 ? zoneStyle(false) : undefined}
             >
               {allSections.length > 0 && (
-                <h4 style={{ margin: '0 0 10px', color: 'var(--dex-gray-600)', fontSize: '0.95rem' }}>
-                  Ohne Bereich <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>({unsortedQuiz.length} {unsortedQuiz.length === 1 ? 'Frage' : 'Fragen'})</span>
-                </h4>
+                <div className="dex-ui-inline" style={{ marginBottom: 10 }}>
+                  <h4 style={{ margin: 0, color: 'var(--dex-gray-600)', fontSize: '0.95rem' }}>{isDe ? 'Ohne Bereich' : 'No section'}</h4>
+                  <span className="dex-ui-pill dex-ui-pill--gray">{countLabel(unsortedQuiz.length)}</span>
+                </div>
               )}
               {allSections.length > 0 && unsortedQuiz.length === 0 ? (
-                <div style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic', fontSize: '0.82rem', padding: '8px', textAlign: 'center' }}>
-                  (leer)
+                <div className="dex-ui-muted" style={{ fontStyle: 'italic', padding: 8, textAlign: 'center' }}>
+                  {isDe ? '(leer)' : '(empty)'}
                 </div>
               ) : (
                 unsortedQuiz.map(q => renderQuestionCard(q, globalIndexOf(q.id)))
               )}
             </div>
+
+            {/* v31.2: Leerer Zustand statt leerer Fläche — man soll sehen, was der erste Klick bewirkt. */}
+            {quiz.length === 0 && allSections.length === 0 && (
+              <div className="dex-ui-empty" style={{ marginBottom: 12 }}>
+                <span className="dex-ui-empty-icon"><Star size={20} /></span>
+                <div className="dex-ui-empty-title">{isDe ? 'Noch keine Quiz-Frage' : 'No quiz question yet'}</div>
+                <div>
+                  {isDe
+                    ? 'Leg die erste Frage an — Multiple-Choice, gern mit Bild. Ohne Fragen sehen Teilnehmer keine Fun-Zone.'
+                    : 'Create the first question — multiple choice, with an image if you like. Without questions, attendees see no Fun Zone.'}
+                </div>
+              </div>
+            )}
           </>
         );
       })()}
 
-      <button type="button" className="btn btn-outline" onClick={addQuizQuestion} style={{ fontSize: '0.85rem', padding: '8px 20px' }}>
+      <button type="button" className="btn btn-outline dex-ui-btn-sm" onClick={addQuizQuestion}>
         <Plus size={14} /> {t('create.funzone.addquestion')}
       </button>
+      </div>
+
+      {/* v31.2: Bereiche als optionaler Abschnitt HINTER den Fragen — erst was gefragt wird,
+          dann wie es gegliedert wird. Der Satz nennt, WO der neue Bereich auftaucht (oben). */}
+      <div className="dex-ui-section">
+        <div className="dex-ui-section-title">
+          <StepBadge n={34} />
+          {isDe ? 'Quiz in Bereiche gliedern' : 'Group the quiz into sections'}
+          <span className="dex-ui-label-optional" style={{ textTransform: 'none', letterSpacing: 0 }}>{isDe ? '(optional)' : '(optional)'}</span>
+        </div>
+        <p className="dex-ui-section-desc">
+          {isDe
+            ? <>Alle Fragen eines Bereichs erscheinen im Quiz zusammen auf einer Seite. Ein neuer Bereich taucht oben in der Fragenliste als Ablagefläche auf — zieh Fragen am Griff <span aria-hidden="true">⋮⋮</span> hinein oder wähl den Bereich direkt an der Frage.</>
+            : <>All questions of a section are shown together on one page in the quiz. A new section appears at the top of the question list as a drop area — drag questions in by their handle <span aria-hidden="true">⋮⋮</span> or pick the section right on the question.</>}
+        </p>
+        <button type="button" className="btn btn-outline dex-ui-btn-sm"
+          onClick={() => { setNewSectionName(''); setNewSectionError(''); setNewSectionModalOpen(true); }}>
+          <Plus size={14} /> {isDe ? 'Bereich anlegen' : 'Create section'}
+        </button>
+      </div>
     </div>
   );
 };

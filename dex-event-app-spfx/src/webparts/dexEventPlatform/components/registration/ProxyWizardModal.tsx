@@ -7,6 +7,10 @@ import Modal from '../Modal';
 import InternationalSearchToggle from '../InternationalSearchToggle';
 import { Locale } from '../../context/LanguageContext';
 import { DeloitteEvent } from '../../types';
+// v31.2: Gemeinsame Klassen (Zeilen, Kacheln, Callouts) statt Inline-Stapel —
+// Hover geht nur über Klassen, und die Treffer-Liste hatte bis dahin keinen.
+import { cx } from '../dexUi';
+import { AlertCircle, Check, ChevronLeft, Pencil, Search, Users } from '../Icons';
 
 /** Gefuehrter Wizard fuer die stellvertretende Anmeldung (v26.76). */
 export interface ProxyWizardModalProps {
@@ -66,174 +70,208 @@ export const ProxyWizardModal: React.FC<ProxyWizardModalProps> = (p) => {
           setFirstName(''); setSurname(''); setEmail(''); setUserSearch(''); setUserResults([]);
           setThirdPartyCheck(null); setPickedUserProfile(null);
         };
-        const linkBtn: React.CSSProperties = { background: 'none', border: 'none', padding: 0, color: 'var(--dex-blue, #0076a8)', textDecoration: 'underline', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 };
+        const isDe = locale === 'de';
         const picked = !!email.trim();
         const blocked = !!(thirdPartyCheck && thirdPartyCheck.alreadyRegistered);
         const pName = `${firstName} ${surname}`.trim() || email;
+        const emailValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
+        const ellipsis: React.CSSProperties = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+        // v31.2: Ein Foto-Helfer für Treffer, Auswahl und Zusammenfassung — vorher stand derselbe <img> dreimal mit je eigenen Maßen.
+        const photoOf = (mail: string, alt: string, lg?: boolean): React.ReactElement => (
+          <img className={cx('dex-ui-avatar', lg && 'dex-ui-avatar--lg')} src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(mail)}&size=S`} alt={alt} onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }} />
+        );
+        // v31.2: Alternative Wege als Kacheln mit einer Zeile Folge statt zweier
+        // Textlinks — so sieht man, was der andere Weg bedeutet, bevor man klickt.
+        const choice = (title: string, desc: string, onClick: () => void): React.ReactElement => (
+          <button type="button" className="dex-ui-choice" onClick={onClick}>
+            <span className="dex-ui-choice-body"><span className="dex-ui-choice-title">{title}</span><span className="dex-ui-choice-desc" style={{ display: 'block' }}>{desc}</span></span>
+          </button>
+        );
+        const continueExternal = (): void => {
+          // v27.11 (Bug „Externe können mehrfach angemeldet
+          // werden"): Duplikat-Check jetzt auch für externe
+          // Personen — vorher lief er NUR beim Personen-Picker
+          // (interne), Externe rutschten ungeprüft durch.
+          // thirdPartyCheck aktiviert zugleich die bestehende
+          // Submit-Sperre + den Button-Disable am Formular.
+          (async () => {
+            const existing = await checkRegistrationByEmail(event.id, email.trim()).catch(() => null);
+            const alreadyRegistered = !!existing && existing.Status !== 'Abgemeldet';
+            setThirdPartyCheck({
+              alreadyRegistered,
+              notInAudience: false,
+              registeredName: (existing && (existing.ParticipantName || `${existing.Vorname || ''} ${existing.Nachname || ''}`.trim())) || `${firstName} ${surname}`.trim(),
+              registeredDate: (existing && existing.RegistrationDate) || '',
+            });
+            if (alreadyRegistered) {
+              showAlert(isDe
+                ? `${email.trim()} ist bereits für dieses Event angemeldet — eine erneute Anmeldung ist nicht möglich.`
+                : `${email.trim()} is already registered for this event — registering again is not possible.`, { variant: 'error' });
+              return;
+            }
+            setProxyStep(2);
+          })().catch(() => setProxyStep(2));
+        };
+        // v31.2: Die Knöpfe sitzen im Modal-Fuß (eine Knopfzeile für beide
+        // Schritte, Primär rechts) — vorher hatte jeder Schritt seine eigene.
+        const footer = proxyStep === 1 ? (<>
+          <button type="button" className="btn btn-secondary" onClick={cancelWizard}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
+          <button type="button" className="btn btn-primary" disabled={externalPerson ? !(firstName.trim() && surname.trim() && emailValid) : (!picked || blocked)} onClick={externalPerson ? continueExternal : () => setProxyStep(2)}>{isDe ? 'Weiter' : 'Next'}</button>
+        </>) : (<>
+          <button type="button" className="btn btn-secondary" onClick={() => setProxyStep(1)}>{isDe ? 'Zurück' : 'Back'}</button>
+          <button type="button" className="btn btn-primary" disabled={!otherConsentConfirmed} onClick={() => setProxyStep(0)}><Check size={16} />{isDe ? 'Person übernehmen' : 'Use this person'}</button>
+        </>);
         return (
           <Modal
             open={proxyStep > 0}
             onClose={cancelWizard}
             maxWidth={560}
-            padding={24}
-            ariaLabel={locale === 'de' ? 'Für eine andere Person anmelden' : 'Register another person'}
+            ariaLabel={isDe ? 'Für eine andere Person anmelden' : 'Register another person'}
+            title={isDe ? 'Für eine andere Person anmelden' : 'Register another person'}
+            subtitle={isDe
+              ? `Schritt ${proxyStep} von 2 · ${proxyStep === 1 ? 'Wen meldest du an?' : 'Hat die Person zugestimmt?'}`
+              : `Step ${proxyStep} of 2 · ${proxyStep === 1 ? 'Who are you registering?' : 'Has the person consented?'}`}
+            icon={<Users size={20} />}
+            footer={footer}
           >
-            <h3 style={{ margin: '0 0 2px', fontSize: '1.1rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
-              {locale === 'de' ? 'Für eine andere Person anmelden' : 'Register another person'}
-            </h3>
-            <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginBottom: 14 }}>
-              {locale === 'de' ? `Schritt ${proxyStep} von 2 — ${proxyStep === 1 ? 'Person suchen' : 'Zustimmung'}` : `Step ${proxyStep} of 2 — ${proxyStep === 1 ? 'find person' : 'consent'}`}
+            {/* v31.2: Fortschritt als zwei Schritt-Nummern — erledigt grün mit Haken, offen grau. */}
+            <div className="dex-ui-inline" aria-hidden="true" style={{ gap: 18 }}>
+              {([1, 2] as const).map(n => (
+                <span key={n} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', fontWeight: 600, color: proxyStep === n ? 'var(--dex-gray-800)' : 'var(--dex-gray-500)' }}>
+                  <span className="dex-ui-step-num" style={proxyStep > n ? { background: 'var(--dex-green-darker, #4a7c1f)' } : proxyStep < n ? { background: 'var(--dex-gray-300)' } : undefined}>{proxyStep > n ? <Check size={14} /> : n}</span>
+                  {n === 1 ? (isDe ? 'Person wählen' : 'Pick person') : (isDe ? 'Zustimmung' : 'Consent')}
+                </span>
+              ))}
             </div>
 
             {proxyStep === 1 && (
               <>
                 {!externalPerson && !picked && (
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      className="form-input"
-                      autoFocus
-                      value={userSearch}
-                      onChange={e => {
-                        const val = e.target.value;
-                        setUserSearch(val);
-                        if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-                        if (val.length >= 2) {
-                          searchTimerRef.current = setTimeout(async () => {
-                            setIsSearchingUser(true);
-                            const results = await searchUsers(val, userSearchIncludeIntl);
-                            setUserResults(results);
-                            setIsSearchingUser(false);
-                          }, 300);
-                        } else { setUserResults([]); }
-                      }}
-                      placeholder={t('reg.searchplaceholder') || 'Name oder E-Mail eingeben...'}
-                    />
-                    <InternationalSearchToggle
-                      query={userSearch}
-                      checked={userSearchIncludeIntl}
-                      onChange={async next => {
-                        setUserSearchIncludeIntl(next);
-                        const val = userSearch.trim();
-                        if (val.length >= 2) { setIsSearchingUser(true); try { setUserResults(await searchUsers(val, next)); } catch { /* */ } setIsSearchingUser(false); }
-                      }}
-                    />
-                    {isSearchingUser && <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: 8 }}>{locale === 'de' ? 'Wird gesucht…' : 'Searching…'}</p>}
+                  <div>
+                    <div className="dex-ui-field">
+                      <label className="dex-ui-label" htmlFor="dex-proxy-search">{isDe ? 'Wen möchtest du anmelden?' : 'Who do you want to register?'}</label>
+                      <div style={{ position: 'relative' }}>
+                        <span aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', display: 'inline-flex', color: 'var(--dex-gray-400)', pointerEvents: 'none' }}><Search size={16} /></span>
+                        <input
+                          id="dex-proxy-search"
+                          className="dex-ui-input"
+                          style={{ paddingLeft: 38 }}
+                          autoFocus
+                          value={userSearch}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setUserSearch(val);
+                            if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+                            if (val.length >= 2) {
+                              searchTimerRef.current = setTimeout(async () => {
+                                setIsSearchingUser(true);
+                                const results = await searchUsers(val, userSearchIncludeIntl);
+                                setUserResults(results);
+                                setIsSearchingUser(false);
+                              }, 300);
+                            } else { setUserResults([]); }
+                          }}
+                          placeholder={t('reg.searchplaceholder') || 'Name oder E-Mail eingeben...'}
+                        />
+                      </div>
+                      <InternationalSearchToggle
+                        query={userSearch}
+                        checked={userSearchIncludeIntl}
+                        onChange={async next => {
+                          setUserSearchIncludeIntl(next);
+                          const val = userSearch.trim();
+                          if (val.length >= 2) { setIsSearchingUser(true); try { setUserResults(await searchUsers(val, next)); } catch { /* */ } setIsSearchingUser(false); }
+                        }}
+                      />
+                      <div className="dex-ui-help">{isSearchingUser ? (isDe ? 'Wird gesucht…' : 'Searching…') : (isDe ? 'Name oder E-Mail eingeben — ab zwei Zeichen suchen wir im Deloitte-Verzeichnis.' : 'Type a name or email — from two characters on we search the Deloitte directory.')}</div>
+                    </div>
                     {userResults.length > 0 && (
-                      <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 8, marginTop: 8 }}>
+                      <div className="dex-ui-card" style={{ padding: 4, maxHeight: 260, overflowY: 'auto' }}>
                         {userResults.map(u => {
                           const assistantOnly = isAssistant && !canCreateEvents;
                           const targetAllowed = !assistantOnly || isAllowedTargetForAssistant(u.jobTitle);
                           return (
                             <div
                               key={u.email}
+                              role="button"
+                              tabIndex={targetAllowed ? 0 : -1}
+                              aria-disabled={!targetAllowed}
+                              className="dex-ui-row"
                               onClick={() => { if (targetAllowed) pickProxyUser(u); }}
-                              title={targetAllowed ? '' : 'Assistants can only register Partners or Directors for events.'}
-                              style={{ padding: '8px 12px', cursor: targetAllowed ? 'pointer' : 'not-allowed', opacity: targetAllowed ? 1 : 0.45, borderBottom: '1px solid var(--dex-gray-100)', display: 'flex', alignItems: 'center', gap: 10 }}
+                              onKeyDown={e => { if (targetAllowed && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); pickProxyUser(u); } }}
+                              title={targetAllowed ? '' : (isDe ? 'Assistenzen dürfen nur Partner oder Directors für Events anmelden.' : 'Assistants can only register Partners or Directors for events.')}
+                              style={{ cursor: targetAllowed ? 'pointer' : 'not-allowed', opacity: targetAllowed ? 1 : 0.45 }}
                             >
-                              <img src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(u.email)}&size=S`} alt={u.displayName} onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }} style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }} />
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{u.displayName}</div>
-                                <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}{u.jobTitle ? ` · ${u.jobTitle}` : ''}{u.location ? ` · ${u.location}` : ''}</div>
+                              {photoOf(u.email, u.displayName)}
+                              <div className="dex-ui-row-main">
+                                <div className="dex-ui-row-title">{u.displayName}</div>
+                                <div className="dex-ui-row-sub" style={ellipsis}>{u.email}{u.jobTitle ? ` · ${u.jobTitle}` : ''}{u.location ? ` · ${u.location}` : ''}</div>
                               </div>
+                              {targetAllowed && <span className="dex-ui-row-actions"><span className="dex-ui-pill dex-ui-pill--green">{isDe ? 'Auswählen' : 'Select'}</span></span>}
                             </div>
                           );
                         })}
                       </div>
                     )}
                     {canCreateEvents && (
-                      <div style={{ marginTop: 14, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
-                        {locale === 'de' ? 'Person außerhalb Deloitte oder mehrere auf einmal? ' : 'External person or several at once? '}
-                        <button type="button" style={linkBtn} onClick={() => { setExternalPerson(true); clearPick(); setOtherConsentConfirmed(false); }}>{locale === 'de' ? 'Externe Person' : 'External person'}</button>
-                        {' · '}
-                        <button type="button" style={linkBtn} onClick={() => { setProxyStep(0); setMassImportResult(null); setMassImportRows([]); setMassImportStep('input'); setMassImportOpen(true); }}>{locale === 'de' ? 'Massenimport' : 'Bulk import'}</button>
+                      <div className="dex-ui-section">
+                        <div className="dex-ui-section-title">{isDe ? 'Nicht im Verzeichnis?' : 'Not in the directory?'}</div>
+                        <div className="dex-ui-grid-2">
+                          {choice(isDe ? 'Person außerhalb Deloitte' : 'Person outside Deloitte', isDe ? 'Externe E-Mail-Adresse — du trägst Name und Adresse selbst ein.' : 'External email address — you enter name and address yourself.', () => { setExternalPerson(true); clearPick(); setOtherConsentConfirmed(false); })}
+                          {choice(isDe ? 'Mehrere auf einmal' : 'Several at once', isDe ? 'Massenimport: Liste einfügen, jede Zeile wird geprüft.' : 'Bulk import: paste a list, every row gets checked.', () => { setProxyStep(0); setMassImportResult(null); setMassImportRows([]); setMassImportStep('input'); setMassImportOpen(true); })}
+                        </div>
                       </div>
                     )}
                   </div>
                 )}
                 {!externalPerson && picked && (
-                  <>
-                    <div style={{ padding: '10px 12px', border: '1px solid var(--dex-green, #86bc25)', borderRadius: 8, background: 'rgba(134,188,37,0.06)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <img src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(email)}&size=S`} alt={pName} onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }} style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 700 }}>{pName}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}{pickedUserProfile?.jobTitle ? ` · ${pickedUserProfile.jobTitle}` : ''}</div>
+                  <div>
+                    <div className="dex-ui-card dex-ui-card--accent" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      {photoOf(email, pName, true)}
+                      <div className="dex-ui-row-main">
+                        <div className="dex-ui-row-title">{pName}</div>
+                        <div className="dex-ui-row-sub" style={ellipsis}>{email}{pickedUserProfile?.jobTitle ? ` · ${pickedUserProfile.jobTitle}` : ''}</div>
                       </div>
-                      <button type="button" style={linkBtn} onClick={clearPick}>{locale === 'de' ? 'Ändern' : 'Change'}</button>
+                      <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" onClick={clearPick}><Pencil size={14} />{isDe ? 'Ändern' : 'Change'}</button>
                     </div>
                     {thirdPartyCheck && (thirdPartyCheck.alreadyRegistered || thirdPartyCheck.notInAudience) && (
-                      <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, fontSize: '0.8rem', background: thirdPartyCheck.alreadyRegistered ? 'rgba(200,30,30,0.07)' : 'rgba(237,139,0,0.08)', border: `1px solid ${thirdPartyCheck.alreadyRegistered ? 'var(--dex-red)' : 'var(--dex-orange)'}`, color: thirdPartyCheck.alreadyRegistered ? 'var(--dex-red)' : 'var(--dex-orange)' }}>
-                        {thirdPartyCheck.alreadyRegistered
-                          ? (locale === 'de' ? 'Diese Person ist bereits für dieses Event angemeldet.' : 'This person is already registered for this event.')
-                          : (locale === 'de' ? 'Hinweis: Diese Person ist nicht im Gästekreis dieses Events — die Anmeldung ist trotzdem möglich.' : 'Note: this person is not in this event’s audience — registration is still possible.')}
+                      <div className={cx('dex-ui-callout', thirdPartyCheck.alreadyRegistered ? 'dex-ui-callout--danger' : 'dex-ui-callout--warn')} style={{ marginTop: 10 }}>
+                        <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                        <span>{thirdPartyCheck.alreadyRegistered
+                          ? (isDe ? 'Diese Person ist bereits für dieses Event angemeldet — ein zweites Mal geht nicht.' : 'This person is already registered for this event — registering twice is not possible.')
+                          : (isDe ? 'Diese Person ist nicht im Gästekreis dieses Events — die Anmeldung ist trotzdem möglich.' : 'This person is not in this event’s audience — registration is still possible.')}</span>
                       </div>
                     )}
-                  </>
+                  </div>
                 )}
                 {/* v26.85: Externe Person direkt IM Wizard erfassen (statt unten
                     im Formular). Vor-/Nachname + E-Mail hier eingeben, „Weiter"
                     führt zur Zustimmung. */}
                 {externalPerson && (
-                  <div>
-                    <div style={{ padding: '10px 12px', marginBottom: 12, borderRadius: 8, background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.82rem', color: 'var(--dex-orange-dark, #b35a00)', lineHeight: 1.5 }}>
-                      {/* v27.12: Wording-Feinschliff (Feedback Datenschutz-Review). */}
-                      {locale === 'de'
-                        ? 'Person außerhalb von Deloitte (externe E-Mail-Adresse). Trage Vorname, Nachname und E-Mail-Adresse ein. Nach der Zustimmung meldest du die Person stellvertretend an — die Einladung und die Datenschutz-Rückmeldung laufen anschließend über dich.'
-                        : 'Person outside Deloitte (external email address). Enter first name, last name and email address. After consent you register the person on their behalf — the invitation and the privacy confirmation are then handled through you.'}
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: 3 }}>{t('reg.firstname') || 'Vorname'}</label>
-                        <input className="form-input" autoFocus value={firstName} onChange={e => setFirstName(e.target.value)} placeholder={t('reg.firstname') || 'Vorname'} />
+                  <div className="dex-ui-section">
+                    <div className="dex-ui-section-title">{isDe ? 'Person außerhalb von Deloitte' : 'Person outside Deloitte'}</div>
+                    {/* v27.12: Wording-Feinschliff (Feedback Datenschutz-Review). */}
+                    <div className="dex-ui-section-desc">{isDe
+                      ? 'Trage Vorname, Nachname und die externe E-Mail-Adresse ein. Einladung und Datenschutz-Rückmeldung laufen anschließend über dich.'
+                      : 'Enter first name, last name and the external email address. The invitation and the privacy confirmation are then handled through you.'}</div>
+                    <div className="dex-ui-grid-2">
+                      <div className="dex-ui-field" style={{ marginBottom: 0 }}>
+                        <label className="dex-ui-label" htmlFor="dex-proxy-first">{t('reg.firstname') || 'Vorname'}</label>
+                        <input id="dex-proxy-first" className="dex-ui-input" autoFocus value={firstName} onChange={e => setFirstName(e.target.value)} placeholder={t('reg.firstname') || 'Vorname'} />
                       </div>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: 3 }}>{t('reg.surname') || 'Nachname'}</label>
-                        <input className="form-input" value={surname} onChange={e => setSurname(e.target.value)} placeholder={t('reg.surname') || 'Nachname'} />
+                      <div className="dex-ui-field" style={{ marginBottom: 0 }}>
+                        <label className="dex-ui-label" htmlFor="dex-proxy-last">{t('reg.surname') || 'Nachname'}</label>
+                        <input id="dex-proxy-last" className="dex-ui-input" value={surname} onChange={e => setSurname(e.target.value)} placeholder={t('reg.surname') || 'Nachname'} />
                       </div>
                     </div>
-                    <div style={{ marginBottom: 6 }}>
-                      <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: 3 }}>E-Mail</label>
-                      <input className="form-input" type="email" value={email} onChange={e => { setEmail(e.target.value); externalEmailConfirmedRef.current = false; setThirdPartyCheck(null); /* v27.11: Duplikat-Check bei Adress-Änderung zurücksetzen */ }} placeholder="name@firma.de" />
+                    <div className="dex-ui-field" style={{ marginTop: 14 }}>
+                      <label className="dex-ui-label" htmlFor="dex-proxy-mail">{isDe ? 'E-Mail-Adresse' : 'Email address'}</label>
+                      <input id="dex-proxy-mail" className="dex-ui-input" type="email" value={email} onChange={e => { setEmail(e.target.value); externalEmailConfirmedRef.current = false; setThirdPartyCheck(null); /* v27.11: Duplikat-Check bei Adress-Änderung zurücksetzen */ }} placeholder="name@firma.de" />
+                      <div className="dex-ui-help">{isDe ? 'An diese Adresse geht die Einladung.' : 'The invitation goes to this address.'}</div>
                     </div>
-                    <button type="button" style={linkBtn} onClick={() => { setExternalPerson(false); clearPick(); }}>{locale === 'de' ? '← Zurück zur Personensuche' : '← Back to search'}</button>
+                    <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" style={{ marginTop: 10 }} onClick={() => { setExternalPerson(false); clearPick(); }}><ChevronLeft size={14} />{isDe ? 'Zurück zur Personensuche' : 'Back to search'}</button>
                   </div>
                 )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 18 }}>
-                  <button type="button" className="btn btn-secondary" onClick={cancelWizard}>{locale === 'de' ? 'Abbrechen' : 'Cancel'}</button>
-                  {externalPerson ? (
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      disabled={!(firstName.trim() && surname.trim() && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim()))}
-                      onClick={() => {
-                        // v27.11 (Bug „Externe können mehrfach angemeldet
-                        // werden"): Duplikat-Check jetzt auch für externe
-                        // Personen — vorher lief er NUR beim Personen-Picker
-                        // (interne), Externe rutschten ungeprüft durch.
-                        // thirdPartyCheck aktiviert zugleich die bestehende
-                        // Submit-Sperre + den Button-Disable am Formular.
-                        (async () => {
-                          const existing = await checkRegistrationByEmail(event.id, email.trim()).catch(() => null);
-                          const alreadyRegistered = !!existing && existing.Status !== 'Abgemeldet';
-                          setThirdPartyCheck({
-                            alreadyRegistered,
-                            notInAudience: false,
-                            registeredName: (existing && (existing.ParticipantName || `${existing.Vorname || ''} ${existing.Nachname || ''}`.trim())) || `${firstName} ${surname}`.trim(),
-                            registeredDate: (existing && existing.RegistrationDate) || '',
-                          });
-                          if (alreadyRegistered) {
-                            showAlert(locale === 'de'
-                              ? `${email.trim()} ist bereits für dieses Event angemeldet — eine erneute Anmeldung ist nicht möglich.`
-                              : `${email.trim()} is already registered for this event — registering again is not possible.`, { variant: 'error' });
-                            return;
-                          }
-                          setProxyStep(2);
-                        })().catch(() => setProxyStep(2));
-                      }}
-                    >{locale === 'de' ? 'Weiter' : 'Next'}</button>
-                  ) : (
-                    <button type="button" className="btn btn-primary" disabled={!picked || blocked} onClick={() => setProxyStep(2)}>{locale === 'de' ? 'Weiter' : 'Next'}</button>
-                  )}
-                </div>
               </>
             )}
 
@@ -243,30 +281,32 @@ export const ProxyWizardModal: React.FC<ProxyWizardModalProps> = (p) => {
                     Wizard-Schritt „Zustimmung" (statt als große Box auf der
                     Anmeldeseite). Auf der Anmeldeseite bleibt danach nur ein
                     kurzer Hinweis + der Pflicht-Haken. */}
-                <div style={{ padding: '12px 14px', background: 'rgba(237,139,0,0.10)', border: '2px solid var(--dex-orange, #ed8b00)', borderRadius: 8, color: '#7a4a00', fontSize: '0.86rem', lineHeight: 1.55 }}>
-                  {locale === 'de'
-                    ? <>Mit dem Absenden meldest du <strong>{pName}</strong> stellvertretend an. Bitte stelle sicher, dass die Person ihrer Anmeldung <strong>vorher zugestimmt</strong> hat — eine Anmeldung ohne Einverständnis ist nicht erlaubt.</>
-                    : <>By submitting you register <strong>{pName}</strong> on their behalf. Please make sure the person has <strong>consented up front</strong> — registering people without their consent is not allowed.</>}
-                  <div style={{ marginTop: 8 }}>
-                    {/* v27.12: Wording-Feinschliff (Feedback Datenschutz-Review). */}
-                    {locale === 'de'
-                      ? <>Die Person erscheint anschließend regulär in der Teilnehmerliste. Falls sie doch nicht teilnehmen kann, lässt sich die Anmeldung jederzeit stornieren — bitte gib in dem Fall kurz Bescheid, damit Wartelisten-Plätze nachrücken können.</>
-                      : <>The person then appears in the participant list as usual. If they are unable to attend after all, the registration can be cancelled at any time — please let us know in that case so waitlist spots can be filled.</>}
+                {/* v31.2: Zusammenfassung zuerst — wer hier landet, soll sehen, um WEN es geht,
+                    bevor er die Zustimmung bestätigt. Externe haben kein Verzeichnis-Foto → Initialen. */}
+                <div className="dex-ui-card dex-ui-card--soft" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  {externalPerson ? <span className="dex-ui-avatar dex-ui-avatar--lg" aria-hidden="true">{`${firstName.trim().charAt(0)}${surname.trim().charAt(0)}`.toUpperCase() || '?'}</span> : photoOf(email, pName, true)}
+                  <div className="dex-ui-row-main">
+                    <div className="dex-ui-row-title">{pName}</div>
+                    <div className="dex-ui-row-sub" style={ellipsis}>{email}{externalPerson ? (isDe ? ' · extern' : ' · external') : (pickedUserProfile?.jobTitle ? ` · ${pickedUserProfile.jobTitle}` : '')}</div>
                   </div>
                 </div>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 12, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={otherConsentConfirmed} onChange={e => setOtherConsentConfirmed(e.target.checked)} style={{ marginTop: 3 }} />
-                  <span style={{ flex: 1, color: 'var(--dex-gray-800)' }}>
-                    <span style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>
-                    {locale === 'de'
-                      ? 'Ich bestätige, dass die Person ihrer stellvertretenden Anmeldung zugestimmt hat.'
-                      : 'I confirm that the person has consented to this registration on their behalf.'}
+                <div className="dex-ui-callout dex-ui-callout--warn">
+                  <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                  <span>{isDe
+                    ? <>Du meldest <strong>{pName}</strong> stellvertretend an. Die Person muss <strong>vorher zugestimmt</strong> haben — eine Anmeldung ohne Einverständnis ist nicht erlaubt.</>
+                    : <>You register <strong>{pName}</strong> on their behalf. The person must have <strong>consented up front</strong> — registering people without their consent is not allowed.</>}</span>
+                </div>
+                <label className={cx('dex-ui-toggle-row', otherConsentConfirmed && 'is-active')}>
+                  <input type="checkbox" checked={otherConsentConfirmed} onChange={e => setOtherConsentConfirmed(e.target.checked)} />
+                  <span className="dex-ui-toggle-row-body">
+                    <span className="dex-ui-toggle-row-title">{isDe ? 'Die Person hat zugestimmt' : 'The person has consented'}<span style={{ color: 'var(--dex-red)' }} aria-hidden="true">*</span></span>
+                    <span className="dex-ui-toggle-row-desc">{isDe ? 'Ich bestätige, dass die Person ihrer stellvertretenden Anmeldung zugestimmt hat.' : 'I confirm that the person has consented to this registration on their behalf.'}</span>
                   </span>
                 </label>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 18 }}>
-                  <button type="button" className="btn btn-secondary" onClick={() => setProxyStep(1)}>{locale === 'de' ? 'Zurück' : 'Back'}</button>
-                  <button type="button" className="btn btn-primary" disabled={!otherConsentConfirmed} onClick={() => setProxyStep(0)}>{locale === 'de' ? 'OK, Person übernehmen' : 'OK, take over person'}</button>
-                </div>
+                {/* v27.12: Wording-Feinschliff (Feedback Datenschutz-Review). */}
+                <p className="dex-ui-muted" style={{ margin: 0, lineHeight: 1.5 }}>{isDe
+                  ? <>Mit <strong>Person übernehmen</strong> landet sie im Anmeldeformular; abgeschickt wird erst dort. Danach erscheint sie regulär in der Teilnehmerliste. Kann sie doch nicht teilnehmen, lässt sich die Anmeldung jederzeit stornieren — gib dann kurz Bescheid, damit Wartelisten-Plätze nachrücken können.</>
+                  : <><strong>Use this person</strong> puts them into the registration form; nothing is sent before you submit there. They then appear in the participant list as usual. If they cannot attend after all, the registration can be cancelled at any time — please let us know in that case so waitlist spots can be filled.</>}</p>
               </>
             )}
           </Modal>
