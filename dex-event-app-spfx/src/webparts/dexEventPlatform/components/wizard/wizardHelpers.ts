@@ -187,7 +187,22 @@ export function outlookBodyOrganizerBloated(body: string, organizers: string[]):
   const candidates = organizerNameCandidates(organizers);
   if (candidates.length === 0) return false;
   const run = organizerRunRegex(candidates);
-  return body.split('</p>').some(par => (par.match(run) || []).length >= 2);
+  // v30.77: Ein Lauf ist auch dann aufgebläht, wenn er einen Namen ZWEIMAL
+  // enthält. Die erste Fassung zählte nur die Läufe je Absatz — sobald aber
+  // alle Namen der Flut noch Organizer sind, ist die ganze Flut EIN Lauf, und
+  // das Update fürs Hauptevent blieb aus (Befund 07.09.2026, DTP Basics:
+  // „leider Outlook nicht geändert").
+  const single = new RegExp(`(?:${candidates.map(escapeRegExp).join('|')})`, 'g');
+  return body.split('</p>').some(par => {
+    const runs = par.match(run) || [];
+    if (runs.length >= 2) return true;
+    return runs.some(r => {
+      const names = r.match(single) || [];
+      const distinct: Record<string, true> = {};
+      names.forEach(n => { distinct[n] = true; });
+      return names.length > Object.keys(distinct).length;
+    });
+  });
 }
 
 /**

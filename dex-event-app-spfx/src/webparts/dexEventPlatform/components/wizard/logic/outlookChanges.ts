@@ -43,7 +43,7 @@ export interface OutlookChangesCtx {
 }
 
 export function detectOutlookRelevantChangesImpl(ctx: OutlookChangesCtx): { items: OutlookConfirmItem[] } {
-  const { activeCommTabIdx, addrCity, addrHouseNo, addrStreet, addrZip, allDay, berlinLocalToUtcIso, childEventsOf, editEvent, endDate, headerImageLayout, initialHeaderImageLayoutRef, initialOutlookSnapshot, location, onlineMeetingChanged, organizer, outlookBody, outlookEndOverride, outlookLocationOverride, outlookStartOverride, resolveTopLevelCommState, showAsFree, startDate, subEventCalendar, subEventsOnlyMode, subEventsRef, title } = ctx;
+  const { activeCommTabIdx, addrCity, addrHouseNo, addrStreet, addrZip, allDay, berlinLocalToUtcIso, childEventsOf, editEvent, endDate, headerImageLayout, initialHeaderImageLayoutRef, initialOutlookSnapshot, location, onlineMeetingChanged, organizer, outlookBody, outlookEndOverride, outlookLocationOverride, outlookStartOverride, resolveTopLevelCommState, showAsFree, startDate, subEventCalendar, subEventsRef, title } = ctx;
     const items: OutlookConfirmItem[] = [];
     if (!editEvent) return { items };
     const snap = initialOutlookSnapshot.current;
@@ -151,7 +151,14 @@ export function detectOutlookRelevantChangesImpl(ctx: OutlookChangesCtx): { item
     // Hauptevent von der Teilnehmer-Anmeldung ausgenommen — niemand meldet sich
     // direkt fürs Hauptevent an. Ein Outlook-Update-Hinweis fürs Hauptevent ist
     // dann sinnlos und wird unterdrückt (Sub-Events bekommen weiter ihre Hinweise).
-    if (topChangedFields.length > 0 && !topDisableOutlook && topHasOutlook && !subEventsOnlyMode) {
+    // v30.77: Die v18.51-Sperre „im Nur-Sub-Events-Modus nie" ist gefallen.
+    // Sie ging davon aus, dass es dort keinen Hauptevent-Termin gibt — es
+    // gibt ihn aber (Organizer-Einladung, Klammer-Termin über die ganze
+    // Woche), und `topHasOutlook` belegt das je Event. Der aufgeblähte Body
+    // (DTP Basics, 07.09.2026) stand genau in so einem Termin und bekam
+    // deshalb nie ein Update angeboten. Existiert ein Termin, wird er
+    // aktualisiert; existiert keiner, sperrt `topHasOutlook` ohnehin.
+    if (topChangedFields.length > 0 && !topDisableOutlook && topHasOutlook) {
       items.push({
         kind: 'top',
         eventId: editEvent.id,
@@ -261,7 +268,7 @@ export function detectOutlookRelevantChangesImpl(ctx: OutlookChangesCtx): { item
     // Update-Modal als „Frühere Änderung nicht synchronisiert" auf, obwohl
     // dort Outlook deaktiviert ist (Event mit Outlook nur auf Sub-Event-Ebene).
     // Gleiche Falle wie v18.45 im Changed-Fields-Pfad oben.
-    if (editEvent.outlookDirty && !topDisableOutlook && !subEventsOnlyMode
+    if (editEvent.outlookDirty && !topDisableOutlook
         && (editEvent.outlookEventId || editEvent.calendarLink)
         && !hasItemForEvent(editEvent.id)) {
       items.push({
