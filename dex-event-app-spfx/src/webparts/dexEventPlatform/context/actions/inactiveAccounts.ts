@@ -137,7 +137,35 @@ export function makeInactiveAccountActions(deps: InactiveAccountDeps) {
       if (!reg) continue;
       try {
         const ok = await eventService.cancelRegistration(event.subsiteUrl, reg.Id, actorName, currentUserEmail);
-        if (ok) removed.push({ email: em, name: p.name || em });
+        if (!ok) continue;
+        removed.push({ email: em, name: p.name || em });
+        // v30.76: Der Kommentar oben versprach „Nachrücken via Flow" — geschrieben
+        // wurde aber nur der Status. Kein DEX_IDReorder-Auftrag, kein Register-
+        // Update, kein Platz-Sync: die TeilnehmerID-Lücke blieb stehen, niemand
+        // rückte nach, und in der Run history des Flows gab es zu dieser
+        // Abmeldung keinen Lauf (Befund 07.09.2026, B2Run Köln). Mail und
+        // Outlook-Ausladung bleiben hier bewusst weg — das Konto existiert
+        // nicht mehr. Alles andere wie im Proxy-Cancel (cancellation.ts).
+        if (event.eventNumber) {
+          try { await eventService.removeParticipantEvent(em, event.eventNumber); }
+          catch (err) { console.warn('[DEX] removeParticipantEvent (inactive) failed:', err); }
+        }
+        const cancelledName = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || p.name || em);
+        try {
+          const queued = await eventService.queueIDReorder(eventId, event.eventNumber || 0, event.subsiteUrl, event.title, cancelledName, em);
+          if (!queued) console.warn('[DEX] queueIDReorder (inactive) returned false for', em);
+        } catch (err) { console.warn('[DEX] queueIDReorder (inactive) failed:', err); }
+        try {
+          const isSplit = typeof event.durchstarterCapacity === 'number'
+            && typeof event.funstarterCapacity === 'number'
+            && ((event.durchstarterCapacity || 0) > 0 || (event.funstarterCapacity || 0) > 0);
+          await eventService.releaseSeatAfterCancel(event.subsiteUrl, {
+            isSplit,
+            previousStatus: reg.Status || '',
+            starterType: reg.StarterType || undefined,
+            waitlistDisabled: event.waitlistEnabled === false,
+          });
+        } catch { /* best-effort */ }
       } catch (err) { console.warn('[DEX] autoDeregisterInactive failed for', em, err); }
     }
     if (removed.length > 0) { try { await loadEvents(); } catch { /* */ } }

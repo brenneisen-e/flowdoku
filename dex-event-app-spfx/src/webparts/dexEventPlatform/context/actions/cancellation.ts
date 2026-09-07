@@ -30,6 +30,44 @@ export interface CancellationDeps {
 export function makeCancellationActions(deps: CancellationDeps) {
   const { eventService, events, subsiteMap, currentUserEmail, currentUserName, currentUserFirstName, calDayParentOf, getMyRegistration, loadEvents } = deps;
 
+  // v30.76: Der DEX_IDReorder-Auftrag ist der EINZIGE Anstoß für Neu-
+  // Nummerierung und Nachrücken — die App macht seit v6.7 beides nicht selbst.
+  // Scheiterte der POST (Drosselung, fehlendes Schreibrecht auf der Queue-
+  // Liste), blieb es an allen drei Stellen bei einem console.warn: niemand
+  // rückte nach, die TeilnehmerID-Lücke blieb, und in der Run history fehlte
+  // der Lauf, ohne dass irgendwo stand, warum (Befund 07.09.2026, B2Run Köln:
+  // Abmeldung ohne Lauf, ohne Nachrücker). Jetzt: ein zweiter Versuch nach
+  // kurzer Pause, und wenn auch der scheitert, eine Zeile im Event-Log, die
+  // der Organizer im Organizer Center sieht — mit dem Hinweis auf die
+  // Admin-Aktion „Nachrücken & IDs für ALLE Events nachholen".
+  async function queueReorderChecked(
+    eventId: string, event: DeloitteEvent, subsiteUrl: string,
+    cancelledName: string | undefined, cancelledEmail: string | undefined, via: string,
+  ): Promise<boolean> {
+    const attempt = async (): Promise<boolean> => {
+      try { return await eventService.queueIDReorder(eventId, event.eventNumber || 0, subsiteUrl, event.title, cancelledName, cancelledEmail); }
+      catch (err) { console.warn('[DEX] queueIDReorder (' + via + ') threw:', err); return false; }
+    };
+    let ok = await attempt();
+    if (!ok) {
+      await new Promise<void>(resolve => setTimeout(resolve, 1500));
+      ok = await attempt();
+    }
+    if (!ok) {
+      console.warn('[DEX] queueIDReorder (' + via + ') failed twice — Neu-Nummerierung und Nachrücken bleiben aus');
+      eventService.writeChangeLog({
+        action: 'IDReorderQueueFailed',
+        targetType: 'Participant',
+        targetId: cancelledEmail || '',
+        targetName: cancelledName || cancelledEmail || '',
+        eventId,
+        eventTitle: event.title,
+        details: { via, hint: 'Kein DEX_IDReorder-Auftrag geschrieben — im Admin Center „Nachrücken & IDs für ALLE Events nachholen" ausführen.' },
+      }).catch(() => { /* Log ist best-effort */ });
+    }
+    return ok;
+  }
+
   async function cancelRegistration(eventId: string, opts?: { suppressNotifications?: boolean; skipReload?: boolean }): Promise<boolean> {
     // v17.25: Demo-Showcase-Event → No-Op.
     if (isDemoShowcaseId(eventId)) return true;
@@ -197,10 +235,7 @@ export function makeCancellationActions(deps: CancellationDeps) {
             const cancelledDisplayName = (myReg.Vorname && myReg.Nachname)
               ? `${myReg.Vorname} ${myReg.Nachname}`
               : (myReg.ParticipantName || currentUserName);
-            const reorderOk = await eventService.queueIDReorder(
-              eventId, event.eventNumber || 0, subsiteUrl, event.title, cancelledDisplayName, currentUserEmail
-            );
-            if (!reorderOk) console.warn('[DEX] queueIDReorder returned false');
+            await queueReorderChecked(eventId, event, subsiteUrl, cancelledDisplayName, currentUserEmail, 'self-cancel');
           } catch (err) { console.warn('[DEX] queueIDReorder failed:', err); }
           // v11.36 → v27.10: Sitzplatz-Counter nach der Abmeldung pflegen.
           // NICHT mehr blind syncSeatsToActiveCount — ein normaler User sieht
@@ -353,13 +388,11 @@ export function makeCancellationActions(deps: CancellationDeps) {
       }
       // ID-Reorder + Sitzplatz-Sync.
       if (subsiteUrl) {
-        try {
-          await eventService.queueIDReorder(
-            eventId, event.eventNumber || 0, subsiteUrl, event.title,
-            `${memberRegistration.Vorname || ''} ${memberRegistration.Nachname || ''}`.trim() || memberRegistration.ParticipantName || undefined,
-            memberRegistration.ParticipantEmail || undefined
-          );
-        } catch (err) { console.warn('[DEX] queueIDReorder (team-lead cancel) failed:', err); }
+        await queueReorderChecked(
+          eventId, event, subsiteUrl,
+          `${memberRegistration.Vorname || ''} ${memberRegistration.Nachname || ''}`.trim() || memberRegistration.ParticipantName || undefined,
+          memberRegistration.ParticipantEmail || undefined, 'team-lead-cancel',
+        );
         // v27.10: ILS-sichere Counter-Pflege statt blindem Voll-Sync (der
         // Team-Lead ist ein normaler User — siehe Kommentar im Self-Cancel).
         try {
@@ -509,13 +542,11 @@ export function makeCancellationActions(deps: CancellationDeps) {
         } catch (err) { console.warn('[DEX] queueOutlookEvent (proxy cancel) failed:', err); }
       }
       // ID-Reorder + Sitzplatz-Sync (treibt das Nachrücken der Warteliste).
-      try {
-        await eventService.queueIDReorder(
-          eventId, event.eventNumber || 0, subsiteUrl, event.title,
-          `${registration.Vorname || ''} ${registration.Nachname || ''}`.trim() || registration.ParticipantName || undefined,
-          registration.ParticipantEmail || undefined
-        );
-      } catch (err) { console.warn('[DEX] queueIDReorder (proxy cancel) failed:', err); }
+      await queueReorderChecked(
+        eventId, event, subsiteUrl,
+        `${registration.Vorname || ''} ${registration.Nachname || ''}`.trim() || registration.ParticipantName || undefined,
+        registration.ParticipantEmail || undefined, 'proxy-cancel',
+      );
       // v27.10: ILS-sichere Counter-Pflege statt blindem Voll-Sync (die
       // Assistenz ist ein normaler User — siehe Kommentar im Self-Cancel).
       try {
