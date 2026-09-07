@@ -19,6 +19,7 @@ import { DeloitteEvent, AgendaItem } from '../../../types';
 import { EventService, SPRegistration } from '../../../services/EventService';
 import { parseAgendaCheckIns, formatMarkTime } from '../../../utils/agendaCheckIns';
 import { agendaGroups, sortAgenda, groupLabel, groupDateLabel } from '../../../utils/agendaGroups';
+import { downloadAttendanceCertificate, downloadAttendanceCertificates } from '../../../utils/attendanceCertificatePdf';
 import { PersonContactHover } from '../../PersonContactHover';
 
 export interface AgendaAttendanceSectionProps {
@@ -98,6 +99,31 @@ export const AgendaAttendanceSection: React.FC<AgendaAttendanceSectionProps> = (
     } finally { setBusyKey(''); }
   };
 
+  // v30.96: Teilnahmebescheinigungen (utils/attendanceCertificatePdf).
+  const [pdfBusy, setPdfBusy] = React.useState(false);
+  const certEvent = (): import('../../../utils/attendanceCertificatePdf').CertificateEvent => ({
+    title: event.title, startDate: event.startDate, endDate: event.endDate, location: event.location, organizers: event.organizers,
+    agenda: items, agendaTermSingular: event.agendaTermSingular, agendaTermPlural: event.agendaTermPlural,
+  });
+  const certPerson = (r: SPRegistration): import('../../../utils/attendanceCertificatePdf').CertificatePerson =>
+    ({ name: nameOf(r), email: r.ParticipantEmail || '', marks: marksOf.get(r.Id) || {} });
+  const downloadCertificate = async (r: SPRegistration): Promise<void> => {
+    if (pdfBusy) return;
+    setPdfBusy(true);
+    try { await downloadAttendanceCertificate(certEvent(), certPerson(r), isDe); }
+    catch (err) { console.warn('[DEX] Bescheinigung fehlgeschlagen:', err); showAlert(isDe ? 'Die Bescheinigung konnte nicht erzeugt werden.' : 'The certificate could not be created.', { variant: 'error' }); }
+    finally { setPdfBusy(false); }
+  };
+  const downloadCertificates = async (): Promise<void> => {
+    if (pdfBusy) return;
+    const withMarks = active.filter(r => items.some(it => !!(marksOf.get(r.Id) || {})[it.id]));
+    if (withMarks.length === 0) { showAlert(isDe ? 'Noch keine Anwesenheit erfasst — es gibt nichts zu bescheinigen.' : 'No attendance recorded yet — nothing to certify.'); return; }
+    setPdfBusy(true);
+    try { await downloadAttendanceCertificates(certEvent(), withMarks.map(certPerson), isDe); }
+    catch (err) { console.warn('[DEX] Bescheinigungen fehlgeschlagen:', err); showAlert(isDe ? 'Die PDF-Datei konnte nicht erzeugt werden.' : 'The PDF could not be created.', { variant: 'error' }); }
+    finally { setPdfBusy(false); }
+  };
+
   const downloadXlsx = async (): Promise<void> => {
     if (xlsxBusy) return;
     setXlsxBusy(true);
@@ -169,6 +195,11 @@ export const AgendaAttendanceSection: React.FC<AgendaAttendanceSectionProps> = (
                   ))}
                 </div>
                 <span style={{ flex: 1 }} />
+                {/* v30.96: Bescheinigungen für alle mit mindestens einer Erfassung — eine PDF, eine Seite je Person. */}
+                <button type="button" className="btn btn-secondary" disabled={pdfBusy || totalMarks === 0} onClick={() => { void downloadCertificates(); }} style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+                  title={isDe ? 'Teilnahmebescheinigungen als PDF (eine Seite je Person mit erfasster Anwesenheit)' : 'Certificates of attendance as PDF (one page per person with recorded attendance)'}>
+                  {pdfBusy ? (isDe ? 'Wird erzeugt…' : 'Creating…') : (isDe ? 'Bescheinigungen (PDF)' : 'Certificates (PDF)')}
+                </button>
                 <button type="button" className="btn btn-secondary" disabled={xlsxBusy} onClick={() => { void downloadXlsx(); }} style={{ fontSize: '0.8rem', padding: '6px 14px' }}>
                   {xlsxBusy ? (isDe ? 'Wird erzeugt…' : 'Creating…') : (isDe ? 'Als Excel laden' : 'Download Excel')}
                 </button>
@@ -274,6 +305,7 @@ export const AgendaAttendanceSection: React.FC<AgendaAttendanceSectionProps> = (
                           </th>
                         ))}
                         <th style={{ position: 'sticky', top: 0, zIndex: 5, background: '#fff', padding: 8, borderBottom: '2px solid var(--dex-gray-200)', textAlign: 'right' }}>Σ</th>
+                        <th style={{ position: 'sticky', top: 0, zIndex: 5, background: '#fff', padding: 8, borderBottom: '2px solid var(--dex-gray-200)', textAlign: 'center', fontSize: '0.72rem', fontWeight: 600 }}>{isDe ? 'Bescheinigung' : 'Certificate'}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -304,11 +336,17 @@ export const AgendaAttendanceSection: React.FC<AgendaAttendanceSectionProps> = (
                               );
                             })}
                             <td style={{ padding: 6, textAlign: 'right', fontWeight: 700, color: sum === items.length ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)' }}>{sum}/{items.length}</td>
+                            <td style={{ padding: 4, textAlign: 'center' }}>
+                              {sum > 0 && (
+                                <button type="button" disabled={pdfBusy} onClick={() => { void downloadCertificate(r); }} title={isDe ? 'Teilnahmebescheinigung (PDF)' : 'Certificate of attendance (PDF)'}
+                                  style={{ border: '1px solid var(--dex-gray-200)', background: '#fff', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontSize: '0.72rem', color: 'var(--dex-gray-700)' }}>PDF</button>
+                              )}
+                            </td>
                           </tr>
                         );
                       })}
                       {active.length === 0 && (
-                        <tr><td colSpan={items.length + 2} style={{ padding: 12, color: 'var(--dex-gray-400)' }}>{isDe ? 'Keine aktiven Anmeldungen.' : 'No active registrations.'}</td></tr>
+                        <tr><td colSpan={items.length + 3} style={{ padding: 12, color: 'var(--dex-gray-400)' }}>{isDe ? 'Keine aktiven Anmeldungen.' : 'No active registrations.'}</td></tr>
                       )}
                     </tbody>
                   </table>
