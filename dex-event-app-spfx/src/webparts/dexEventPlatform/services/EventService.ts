@@ -1840,6 +1840,11 @@ export class EventService {
     return registrationStatus.setQRSentStatus(this, subsiteUrl, itemId);
   }
 
+  /** v31.1: Check-in rückgängig — Status zurück auf „QR versendet"/„Angemeldet". */
+  public async revertCheckIn(subsiteUrl: string, itemId: number, previousStatus: string): Promise<boolean> {
+    return registrationStatus.revertCheckIn(this, subsiteUrl, itemId, previousStatus);
+  }
+
   public async getRegistrationByEmail(
     subsiteUrl: string,
     email: string

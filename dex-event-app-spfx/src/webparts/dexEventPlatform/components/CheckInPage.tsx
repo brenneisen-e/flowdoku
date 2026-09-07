@@ -113,7 +113,7 @@ export default function CheckInPage(): React.ReactElement {
   const [idError, setIdError] = React.useState('');
   const [checkedInCount, setCheckedInCount] = React.useState(0);
   const confirmCardRef = React.useRef<HTMLDivElement>(null);
-  const [pendingCheckIn, setPendingCheckIn] = React.useState<{
+  type PendingCheckInInfo = {
     name: string; email: string; event: { id?: string; subsiteUrl: string; title: string };
     regId: number; status: string; department?: string; jobTitle?: string; location?: string; photoUrl?: string;
     /** v30.53: Startnummer, Trikotgröße, Gruppe — was am Tisch gebraucht wird. */
@@ -121,7 +121,21 @@ export default function CheckInPage(): React.ReactElement {
     /** v30.91: Programmpunkt, an dem eingecheckt wird (statt Event-Status). */
     agendaItemId?: string;
     agendaLabel?: string;
-  } | null>(null);
+  };
+  const [pendingCheckIn, setPendingCheckIn] = React.useState<PendingCheckInInfo | null>(null);
+  // v31.1: „Letzte Check-ins" dieser Sitzung — mit Rückgängig. Nur was HIER
+  // eingecheckt wurde (Scan, ID, Liste); der vorherige Status wird gemerkt,
+  // damit der Revert nichts erfindet.
+  type RecentCheckIn = {
+    key: string; at: string; name: string; regId: number; eventId: string; subsiteUrl: string;
+    prevStatus: string; agendaItemId?: string; agendaLabel?: string;
+  };
+  const [recentCheckIns, setRecentCheckIns] = React.useState<RecentCheckIn[]>([]);
+  const [undoBusyKey, setUndoBusyKey] = React.useState<string>('');
+  // v31.1: Live-Scanner und Self-Check-in sind Kacheln zum Aufklappen —
+  // Standard zu (Nutzer 07.09.2026). Läuft der Scanner, ist die Kachel offen.
+  const [scannerOpen, setScannerOpen] = React.useState(false);
+  const [selfOpen, setSelfOpen] = React.useState(false);
 
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -459,7 +473,9 @@ export default function CheckInPage(): React.ReactElement {
         photoUrl = `${siteBase}/_layouts/15/userphoto.aspx?size=L&accountname=${encodeURIComponent(reg.ParticipantEmail || '')}`;
       }
     } catch { /* */ }
-    setPendingCheckIn({
+    // v31.1: Liste und Teilnehmer-ID checken DIREKT ein — die Person ist hier
+    // schon eindeutig gewählt, eine zweite Bestätigung war nur ein Klick mehr.
+    const info: PendingCheckInInfo = {
       name,
       email: reg.ParticipantEmail || '',
       event: { id: ev.id, subsiteUrl: ev.subsiteUrl, title: ev.title },
@@ -475,13 +491,12 @@ export default function CheckInPage(): React.ReactElement {
       location: (reg as any).Location || '',
       photoUrl,
       extras: extrasFor(reg, ev.id),
-    });
+    };
     setResultMessage('');
     setResultType('');
     setNameSearchQuery('');
-    setTimeout(() => {
-      confirmCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 100);
+    setIsProcessing(true);
+    void performCheckIn(info).finally(() => setIsProcessing(false));
   };
 
   // v23.28: Teilnehmer als „No-Show" markieren (nicht erschienen). Direkt aus
@@ -863,9 +878,20 @@ export default function CheckInPage(): React.ReactElement {
     }, 100);
   };
 
-  // Check-in bestätigen
-  const confirmCheckIn = async (): Promise<void> => {
-    if (!pendingCheckIn || !eventService) return;
+  // Check-in ausführen. v31.1: aus `confirmCheckIn` herausgelöst — Liste und
+  // Teilnehmer-ID checken direkt ein (Nutzer 07.09.2026: „wenn ich auf
+  // Einchecken klicke, soll er direkt eingecheckt sein"); nur der Scan zeigt
+  // vorher die Bestätigungskarte, weil dort die Person erst identifiziert wird.
+  const performCheckIn = async (pendingCheckIn: PendingCheckInInfo): Promise<void> => {
+    if (!eventService) return;
+    const remember = (): void => {
+      setRecentCheckIns(prev => [{
+        key: `${pendingCheckIn.regId}:${pendingCheckIn.agendaItemId || 'status'}:${Date.now()}`,
+        at: new Date().toISOString(), name: pendingCheckIn.name, regId: pendingCheckIn.regId,
+        eventId: pendingCheckIn.event.id || '', subsiteUrl: pendingCheckIn.event.subsiteUrl,
+        prevStatus: pendingCheckIn.status, agendaItemId: pendingCheckIn.agendaItemId, agendaLabel: pendingCheckIn.agendaLabel,
+      }, ...prev].slice(0, 30));
+    };
     try {
       // v30.67: `checkInParticipant` wirft nie — es liefert `response.ok` bzw.
       // false. Der catch unten fängt also nur Unerwartetes; ob der MERGE
@@ -899,7 +925,7 @@ export default function CheckInPage(): React.ReactElement {
               : x) };
           });
         }
-        if (!r.already) setCheckedInCount(prev => prev + 1);
+        if (!r.already) { setCheckedInCount(prev => prev + 1); remember(); }
         setResultMessage(r.already
           ? `${pendingCheckIn.name} — ${isDe ? 'bereits erfasst' : 'already recorded'} (${label}, ${formatMarkTime(r.already)})`
           : `${pendingCheckIn.name} — ${isDe ? 'anwesend bei' : 'present at'} ${label}`);
@@ -919,6 +945,7 @@ export default function CheckInPage(): React.ReactElement {
         return;
       }
       setCheckedInCount(prev => prev + 1);
+      remember();
       // v30.67: Den neuen Status auch in der Trefferliste nachführen — sie
       // liest nur aus dem Cache, und der wurde bisher nur beim No-Show
       // gepatcht. Ohne den Patch blieb die Person „Angemeldet", die KPI-
@@ -941,6 +968,54 @@ export default function CheckInPage(): React.ReactElement {
     }
     setPendingCheckIn(null);
     processingRef.current = false;
+  };
+  const confirmCheckIn = (): Promise<void> => pendingCheckIn ? performCheckIn(pendingCheckIn) : Promise.resolve();
+
+  /** v31.1: Check-in aus „Letzte Check-ins" zurücknehmen. Programmpunkt →
+   *  Anwesenheit entfernen; Event-Status → zurück auf den gemerkten Stand.
+   *  Das Ergebnis wird geprüft, der Cache nachgeführt, der Zähler korrigiert. */
+  const undoCheckIn = async (e: RecentCheckIn): Promise<void> => {
+    if (!eventService || undoBusyKey) return;
+    setUndoBusyKey(e.key);
+    try {
+      let ok = false;
+      if (e.agendaItemId) {
+        ok = (await eventService.removeAgendaCheckIn(e.subsiteUrl, e.regId, e.agendaItemId)).ok;
+        if (ok && e.eventId) {
+          setSearchRegsCache(prev => {
+            const list = prev[e.eventId];
+            if (!list) return prev;
+            return { ...prev, [e.eventId]: list.map(x => {
+              if (x.Id !== e.regId) return x;
+              const m = parseAgendaCheckIns(x.AgendaCheckIns);
+              delete m[e.agendaItemId as string];
+              return { ...x, AgendaCheckIns: Object.keys(m).length ? JSON.stringify(m) : '' };
+            }) };
+          });
+        }
+      } else {
+        ok = await eventService.revertCheckIn(e.subsiteUrl, e.regId, e.prevStatus);
+        if (ok && e.eventId) {
+          const back = e.prevStatus === 'QR versendet' ? 'QR versendet' : 'Angemeldet';
+          setSearchRegsCache(prev => {
+            const list = prev[e.eventId];
+            if (!list) return prev;
+            return { ...prev, [e.eventId]: list.map(x => x.Id === e.regId ? { ...x, Status: back } : x) };
+          });
+        }
+      }
+      if (!ok) {
+        setResultMessage(isDe ? `${e.name} — Rückgängig fehlgeschlagen, bitte erneut versuchen.` : `${e.name} — undo failed, please retry.`);
+        setResultType('error');
+        return;
+      }
+      setRecentCheckIns(prev => prev.filter(x => x.key !== e.key));
+      setCheckedInCount(prev => Math.max(0, prev - 1));
+      setResultMessage(isDe
+        ? `${e.name} — Check-in zurückgenommen${e.agendaLabel ? ` (${e.agendaLabel})` : ''}.`
+        : `${e.name} — check-in reverted${e.agendaLabel ? ` (${e.agendaLabel})` : ''}.`);
+      setResultType('info');
+    } finally { setUndoBusyKey(''); }
   };
 
   const cancelCheckIn = (): void => {
@@ -1169,6 +1244,43 @@ export default function CheckInPage(): React.ReactElement {
     } finally { setSelfCheckInBusy(false); }
   };
 
+  // v31.1: Aufbau wie das Anmeldeformular (Nutzer 07.09.2026: „oben den Kreis
+  // des Event-Logos und dann kommen die sinnvollen Check-in-Sektionen") —
+  // nummerierte Abschnitte, das Event mit rundem Bild zuerst. Die Reihenfolge
+  // kommt über CSS `order`, damit die bestehenden Karten (Scanner, Self-
+  // Check-in, Liste) nicht im JSX verschoben werden müssen.
+  const heroEv = events.find(e => e.id === nameSearchEventId) || selectedEvent || null;
+  const heroImg = ((): string => {
+    if (!heroEv) return '';
+    if (heroEv.imageUrl) return heroEv.imageUrl;
+    try {
+      const o = JSON.parse(heroEv.emailTemplateOverrides || '{}');
+      if (o && typeof o._eventLogo === 'string' && o._eventLogo) return o._eventLogo;
+    } catch { /* */ }
+    return heroEv.mailImageBase64 || '';
+  })();
+  const heroDate = ((): string => {
+    if (!heroEv || !heroEv.startDate) return '';
+    const f = (iso: string): string => new Date(iso).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+    const a = f(heroEv.startDate);
+    const b = heroEv.endDate ? f(heroEv.endDate) : '';
+    return b && b !== a ? `${a} – ${b}` : a;
+  })();
+  const sectionLabel = (n: number, label: string): React.ReactElement => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '6px 0 10px' }}>
+      <span style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--dex-green, #86bc25)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.95rem', boxShadow: '0 0 0 4px rgba(134,188,37,0.18)', flexShrink: 0 }}>{n}</span>
+      <span style={{ fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dex-green-dark, #4a7c1f)' }}>{label}</span>
+    </div>
+  );
+  const cardToggle = (title: string, open: boolean, onToggle: () => void, hint: string): React.ReactElement => (
+    <button type="button" onClick={onToggle} aria-expanded={open} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', color: 'inherit', font: 'inherit' }}>
+      <h3 style={{ margin: 0 }}>{title}</h3>
+      {!open && <span style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{hint}</span>}
+      {open && <span style={{ flex: 1 }} />}
+      <span style={{ color: 'var(--dex-gray-400)', display: 'inline-flex' }}>{open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}</span>
+    </button>
+  );
+
   // v20.3: Breite begrenzen — vorher lief die Check-in-Ansicht auf großen
   // Monitoren über die volle Viewport-Breite (Event-Picker-Branch hatte
   // bereits maxWidth 1100, die Haupt-Ansicht nicht). Schmaler = lesbarer.
@@ -1292,12 +1404,97 @@ export default function CheckInPage(): React.ReactElement {
         </div>
       )}
 
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+      {/* v31.1 — Abschnitt 1: das Event, wie auf der Anmeldeseite mit rundem Bild. */}
+      <div style={{ order: 1 }}>
+        {sectionLabel(1, isDe ? 'Event' : 'Event')}
+        <div className="card" style={{ padding: heroImg ? '86px 24px 20px' : 24, marginBottom: 16, marginTop: heroImg ? 72 : 0, position: 'relative', overflow: 'visible' }}>
+          {heroImg && (
+            <div style={{ position: 'absolute', top: -72, left: '50%', transform: 'translateX(-50%)', width: 144, height: 144, borderRadius: '50%', background: '#fff', boxShadow: '0 8px 26px rgba(0,0,0,0.14)', padding: 6 }}>
+              <img src={heroImg} alt={heroEv ? heroEv.title : ''} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', display: 'block' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+            </div>
+          )}
+          {heroEv ? (
+            <div style={{ textAlign: 'center', marginBottom: (accessibleEvents.length > 1 || agendaMode) ? 14 : 0 }}>
+              <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--dex-gray-800)' }}>{heroEv.title}</div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', marginTop: 4 }}>
+                {heroDate}{heroEv.location ? ` · ${heroEv.location}` : ''}
+              </div>
+            </div>
+          ) : (
+            <p style={{ margin: 0, textAlign: 'center', color: 'var(--dex-gray-500)', fontSize: '0.9rem' }}>{isDe ? 'Bitte ein Event wählen.' : 'Please pick an event.'}</p>
+          )}
+          {accessibleEvents.length > 1 && (
+            <select
+              className="form-input"
+              value={nameSearchEventId}
+              onChange={e => { setNameSearchEventId(e.target.value); setNameSearchQuery(''); }}
+              style={{ marginBottom: agendaMode ? 12 : 0, padding: '8px 12px', fontSize: '0.9rem', width: '100%' }}
+            >
+              <option value="">— Event auswählen —</option>
+              {accessibleEvents.map(ev => (
+                <option key={ev.id} value={ev.id}>{ev.title}</option>
+              ))}
+            </select>
+          )}
+          {/* v30.91: Programmpunkt wählen — hier wird eingecheckt. Vorschlag ist
+              der Punkt, der gerade läuft (suggestCurrentAgendaItem); die Wahl
+              bleibt je Event im Gerät gespeichert. */}
+          {agendaMode && (
+            <div style={{ padding: '10px 12px', borderRadius: 10, background: 'rgba(134,188,37,0.08)', border: '1px solid rgba(134,188,37,0.45)' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, marginBottom: 6 }}>
+                {isDe ? `${agendaTermSingular} wählen — hier wird eingecheckt` : `Pick the ${agendaTermSingular.toLowerCase()} — attendance is recorded there`}
+              </div>
+              {/* v30.94: Chips je Cluster (utils/agendaGroups). */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {agendaGroups(agendaItems).map((grp, gi) => (
+                  <div key={grp.key}>
+                    {(agendaGroups(agendaItems).length > 1 || grp.cluster) && (
+                      <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)', marginBottom: 4 }}>
+                        {groupLabel(grp, gi, isDe)} <span style={{ fontWeight: 500, color: 'var(--dex-gray-500)' }}>· {groupDateLabel(grp, isDe, false)}</span>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {grp.items.map(it => {
+                        const active = it.id === agendaPointId;
+                        const cnt = agendaCounts[it.id] || 0;
+                        return (
+                          <button key={it.id} type="button" onClick={() => choosePoint(it.id)} style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999, cursor: 'pointer',
+                            border: `1px solid ${active ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                            background: active ? 'var(--dex-green, #86bc25)' : '#fff', color: active ? '#fff' : 'var(--dex-gray-800)',
+                            fontSize: '0.8rem', fontWeight: active ? 700 : 500, textAlign: 'left',
+                          }}>
+                            <span style={{ fontVariantNumeric: 'tabular-nums', opacity: 0.85 }}>{it.time}</span>
+                            <span>{it.title || (isDe ? '(ohne Titel)' : '(untitled)')}</span>
+                            <span style={{ fontSize: '0.72rem', padding: '1px 7px', borderRadius: 999, background: active ? 'rgba(255,255,255,0.25)' : 'var(--dex-gray-100)', color: active ? '#fff' : 'var(--dex-gray-600)' }}>{cnt}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-600)', marginTop: 6 }}>
+                {isDe
+                  ? 'Jeder Scan, jede ID und jeder Klick setzt nur diesen Punkt. Der Event-Status der Person bleibt unverändert.'
+                  : 'Every scan, ID and click records only this item. The person\'s event status stays unchanged.'}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* v31.1 — Abschnitt 4: Live-Scanner, eingeklappt bis gebraucht. */}
+      <div style={{ order: 4 }}>
+      {sectionLabel(4, isDe ? 'Live-Scanner' : 'Live scanner')}
       {/* Live-Scanner — Kamerabild + Steuerung */}
       <div className="card" style={{ padding: 24, marginBottom: 16 }}>
         {!isScanning ? (
           <>
-            <h3 style={{ marginBottom: 12 }}>{isDe ? 'Live-Scanner' : 'Live scanner'}</h3>
-            <div style={{ textAlign: 'center' }}>
+            {cardToggle(isDe ? 'Live-Scanner' : 'Live scanner', scannerOpen, () => setScannerOpen(o => !o), isDe ? 'QR-Code mit der Kamera scannen oder Foto vom Code machen' : 'Scan the QR code with the camera or take a photo of it')}
+            {scannerOpen && (
+            <div style={{ textAlign: 'center', marginTop: 14 }}>
               {/* v30.35: EIN Knopf statt zwei. Zwei gleich große Scan-Knöpfe
                   nebeneinander sind zwei Bedienwege für dieselbe Absicht — man
                   muss am Einlass erst entscheiden, statt zu scannen. Der
@@ -1325,51 +1522,8 @@ export default function CheckInPage(): React.ReactElement {
                 </button>
               </div>
 
-              {/* v30.35: Die Teilnehmer-ID steht in der Mail groß unter dem
-                  QR-Code — also gehört sie hier genauso groß hin und nicht
-                  versteckt ins Filterfeld der Liste weiter unten. Auf Android
-                  ist sie der Weg, der überhaupt funktioniert; wer sie erst
-                  suchen muss, nimmt sie am Einlass nicht. */}
-              <div style={{
-                marginTop: 20, paddingTop: 18, borderTop: '1px solid var(--dex-gray-200)',
-              }}>
-                <div style={{ fontSize: '0.8rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--dex-gray-500)', marginBottom: 8 }}>
-                  {isDe ? 'Oder Teilnehmer-ID eingeben' : 'Or enter attendee ID'}
-                </div>
-                <form
-                  onSubmit={e => { e.preventDefault(); void checkInByParticipantId(); }}
-                  style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}
-                >
-                  <input
-                    value={idInput}
-                    // v30.87: Die Nummer filtert die Liste unten LIVE mit —
-                    // Nutzer-Frage 07.09.2026: „warum kann man hier oben nicht die
-                    // Nummer eingeben und es wird unten live gefiltert". Dasselbe
-                    // Suchfeld, derselbe Filterzustand; leeren setzt beides zurück.
-                    onChange={e => { const v = e.target.value.replace(/\D/g, ''); setIdInput(v); setIdError(''); setNameSearchQuery(v); }}
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    placeholder="17"
-                    aria-label={isDe ? 'Teilnehmer-ID' : 'Attendee ID'}
-                    style={{
-                      width: 130, padding: '12px 14px', textAlign: 'center',
-                      fontFamily: "'Courier New', Courier, monospace", fontSize: '1.5rem', fontWeight: 700,
-                      border: '2px solid var(--dex-gray-300)', borderRadius: 10,
-                    }}
-                  />
-                  <button type="submit" className="btn btn-primary" disabled={!idInput.trim()} style={{ fontSize: '1rem', padding: '12px 24px' }}>
-                    {isDe ? 'Einchecken' : 'Check in'}
-                  </button>
-                </form>
-                {idError && (
-                  <p style={{ color: 'var(--dex-orange)', fontSize: '0.85rem', margin: '10px 0 0' }}>{idError}</p>
-                )}
-                <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: '8px 0 0' }}>
-                  {isDe
-                    ? 'Die Nummer steht in der QR-Mail groß unter dem Code — sie funktioniert auf jedem Gerät.'
-                    : 'The number is printed in large type below the code in the QR email — it works on every device.'}
-                </p>
-              </div>
+              {/* v31.1: Das Teilnehmer-ID-Feld steht jetzt in Abschnitt 2
+                  „Einchecken" — dort, wo auch die Liste ist. */}
               {/* v30.30: `capture="environment"` öffnet die NATIVE Kamera-App des
                   Geräts und liefert eine Datei zurück — ohne getUserMedia, ohne
                   Kamera-Berechtigung für die Seite. Damit ist es der einzige
@@ -1424,12 +1578,13 @@ export default function CheckInPage(): React.ReactElement {
                     </button>
                   )}
                   <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-700)', marginTop: 8, fontWeight: 600 }}>
-                    Alternativ: Du kannst Teilnehmer auch in der Liste unten suchen
+                    Alternativ: Du kannst Teilnehmer auch in der Liste oben suchen
                     und per Klick auf &quot;Einchecken&quot; manuell einchecken.
                   </p>
                 </div>
               )}
             </div>
+            )}
           </>
         ) : (
           <>
@@ -1469,12 +1624,18 @@ export default function CheckInPage(): React.ReactElement {
         </div>
       </div>
 
+      </div>
+
+      {/* v31.1 — Abschnitt 5: Self-Check-in, eingeklappt bis gebraucht. */}
+      <div style={{ order: 5 }}>
+      {sectionLabel(5, 'Self-Check-in')}
       {/* v20.1: Self-Check-in — prominent direkt unter dem Live-Scanner.
           Teilnehmer scannen den Event-QR mit der NATIVEN Handy-Kamera (kein
           Kamera-Zugriff in der App nötig) und checken sich selbst ein. */}
       <div className="card" style={{ padding: 24, marginBottom: 16 }}>
-        <h3 style={{ marginBottom: 6 }}>Self-Check-in</h3>
-        <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', margin: '0 0 14px' }}>
+        {cardToggle('Self-Check-in', selfOpen, () => setSelfOpen(o => !o), isDe ? 'Live-QR für einen Bildschirm am Eingang oder PDF zum Aushängen' : 'Live QR for a screen at the entrance or a printable PDF')}
+        {selfOpen && (<>
+        <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', margin: '12px 0 14px' }}>
           {isDe
             ? 'Teilnehmer scannen den Event-QR mit der normalen Handy-Kamera und checken sich selbst ein — ohne Scanner-Team und ohne Kamera-Freigabe in der App. Live-Anzeige für einen Bildschirm am Eingang (Code rotiert, foto-sicher) oder PDF zum Ausdrucken und Aushängen.'
             : 'Attendees scan the event QR with their regular phone camera and check themselves in — no scanner team and no in-app camera access needed. Live display for a screen at the entrance (rotating code, photo-safe) or a printable PDF to post.'}
@@ -1502,79 +1663,53 @@ export default function CheckInPage(): React.ReactElement {
             {isDe ? 'Wird vorbereitet…' : 'Preparing…'}
           </p>
         )}
+        </>)}
+      </div>
       </div>
 
-      {/* v30.30: Der in v7.16 entfernte Foto-Weg ist zurück — aber oben, direkt
-          neben dem Live-Scanner, nicht als versteckter Notausgang. Grund für die
-          Rückkehr: Er ist der einzige Scan-Weg ohne getUserMedia und damit der
-          einzige, der auch in der SharePoint-App und in Teams-Registerkarten
-          trägt. Das Handbuch hat ihn ohnehin die ganze Zeit beschrieben. */}
-
+      {/* v31.1 — Abschnitt 2: Einchecken (ID, Suche, Liste). Event-Auswahl und
+          Programmpunkt stehen jetzt in Abschnitt 1. */}
+      <div style={{ order: 2 }}>
+      {sectionLabel(2, isDe ? 'Einchecken' : 'Check in')}
       {/* v7.14: Live-Teilnehmerliste mit Foto / Position / Standort + Filter.
           Liste wird sofort beim Auswählen des Events geladen, kein "ab 2
           Zeichen tippen" mehr — der Helfer sieht direkt alle Leute, kann den
           gesuchten Eintrag scrollen oder das Suchfeld zum Filtern nutzen. */}
       <div className="card" style={{ padding: 24, marginBottom: 16 }}>
-        <h3 style={{ marginBottom: 12 }}>Teilnehmer einchecken</h3>
-        {accessibleEvents.length > 1 && (
-          <select
-            className="form-input"
-            value={nameSearchEventId}
-            onChange={e => { setNameSearchEventId(e.target.value); setNameSearchQuery(''); }}
-            style={{ marginBottom: 10, padding: '8px 12px', fontSize: '0.9rem', width: '100%' }}
-          >
-            <option value="">— Event auswählen —</option>
-            {accessibleEvents.map(ev => (
-              <option key={ev.id} value={ev.id}>{ev.title}</option>
-            ))}
-          </select>
+        {/* v30.35/v31.1: Die Teilnehmer-ID steht in der Mail groß unter dem
+            QR-Code — also gehört sie hier genauso groß hin. „Einchecken" checkt
+            direkt ein (kein zweiter Dialog). Die Nummer filtert die Liste
+            darunter live mit (v30.87). */}
+        <form
+          onSubmit={e => { e.preventDefault(); void checkInByParticipantId(); }}
+          style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}
+        >
+          <label htmlFor="dex-checkin-id" style={{ fontSize: '0.78rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--dex-gray-500)', flex: '1 1 100%', textAlign: 'center' }}>
+            {isDe ? 'Teilnehmer-ID aus der QR-Mail' : 'Attendee ID from the QR email'}
+          </label>
+          <input
+            id="dex-checkin-id"
+            value={idInput}
+            onChange={e => { const v = e.target.value.replace(/\D/g, ''); setIdInput(v); setIdError(''); setNameSearchQuery(v); }}
+            inputMode="numeric"
+            pattern="[0-9]*"
+            placeholder="17"
+            disabled={!nameSearchEventId}
+            aria-label={isDe ? 'Teilnehmer-ID' : 'Attendee ID'}
+            style={{
+              width: 130, padding: '12px 14px', textAlign: 'center',
+              fontFamily: "'Courier New', Courier, monospace", fontSize: '1.5rem', fontWeight: 700,
+              border: '2px solid var(--dex-gray-300)', borderRadius: 10,
+            }}
+          />
+          <button type="submit" className="btn btn-primary" disabled={!idInput.trim() || isProcessing} style={{ fontSize: '1rem', padding: '12px 24px' }}>
+            {agendaMode ? (isDe ? 'Anwesend erfassen' : 'Record') : (isDe ? 'Einchecken' : 'Check in')}
+          </button>
+        </form>
+        {idError && (
+          <p style={{ color: 'var(--dex-orange)', fontSize: '0.85rem', margin: '4px 0 10px', textAlign: 'center' }}>{idError}</p>
         )}
-        {/* v30.91: Programmpunkt wählen — hier wird eingecheckt. Vorschlag ist
-            der Punkt, der gerade läuft (suggestCurrentAgendaItem); die Wahl
-            bleibt je Event im Gerät gespeichert. */}
-        {agendaMode && (
-          <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(134,188,37,0.08)', border: '1px solid rgba(134,188,37,0.45)' }}>
-            <div style={{ fontSize: '0.8rem', fontWeight: 700, marginBottom: 6 }}>
-              {isDe ? `${agendaTermSingular} wählen — hier wird eingecheckt` : `Pick the ${agendaTermSingular.toLowerCase()} — attendance is recorded there`}
-            </div>
-            {/* v30.94: Chips je Cluster (utils/agendaGroups) — bei 27 Punkten
-                über vier Tage war eine flache Chip-Wolke nicht mehr lesbar. */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {agendaGroups(agendaItems).map((grp, gi) => (
-                <div key={grp.key}>
-                  {(agendaGroups(agendaItems).length > 1 || grp.cluster) && (
-                    <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)', marginBottom: 4 }}>
-                      {groupLabel(grp, gi, isDe)} <span style={{ fontWeight: 500, color: 'var(--dex-gray-500)' }}>· {groupDateLabel(grp, isDe, false)}</span>
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {grp.items.map(it => {
-                      const active = it.id === agendaPointId;
-                      const cnt = agendaCounts[it.id] || 0;
-                      return (
-                        <button key={it.id} type="button" onClick={() => choosePoint(it.id)} style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999, cursor: 'pointer',
-                          border: `1px solid ${active ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-                          background: active ? 'var(--dex-green, #86bc25)' : '#fff', color: active ? '#fff' : 'var(--dex-gray-800)',
-                          fontSize: '0.8rem', fontWeight: active ? 700 : 500, textAlign: 'left',
-                        }}>
-                          <span style={{ fontVariantNumeric: 'tabular-nums', opacity: 0.85 }}>{it.time}</span>
-                          <span>{it.title || (isDe ? '(ohne Titel)' : '(untitled)')}</span>
-                          <span style={{ fontSize: '0.72rem', padding: '1px 7px', borderRadius: 999, background: active ? 'rgba(255,255,255,0.25)' : 'var(--dex-gray-100)', color: active ? '#fff' : 'var(--dex-gray-600)' }}>{cnt}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-600)', marginTop: 6 }}>
-              {isDe
-                ? 'Jeder Scan, jede ID und jeder Klick setzt nur diesen Punkt. Der Event-Status der Person bleibt unverändert.'
-                : 'Every scan, ID and click records only this item. The person\'s event status stays unchanged.'}
-            </div>
-          </div>
-        )}
+        <div style={{ borderTop: '1px solid var(--dex-gray-200)', margin: '12px 0 14px' }} />
         {/* v7.16: KPI-Bereich — angemeldet vs. eingecheckt, plus Quick-Filter
             "Nur offene anzeigen" der die Liste auf Angemeldet/QR versendet
             reduziert. Sichtbar nur wenn Event gewählt + Liste geladen. */}
@@ -1837,6 +1972,38 @@ export default function CheckInPage(): React.ReactElement {
             )}
           </div>
         )}
+      </div>
+      </div>
+
+      {/* v31.1 — Abschnitt 3: Letzte Check-ins dieser Sitzung, mit Rückgängig
+          (Nutzer 07.09.2026). Nur was hier eingecheckt wurde — der Revert setzt
+          den gemerkten vorherigen Status bzw. entfernt die Punkt-Anwesenheit. */}
+      <div style={{ order: 3 }}>
+        {sectionLabel(3, isDe ? 'Letzte Check-ins' : 'Recent check-ins')}
+        <div className="card" style={{ padding: recentCheckIns.length ? '14px 20px' : '14px 20px', marginBottom: 16 }}>
+          {recentCheckIns.length === 0 ? (
+            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>
+              {isDe ? 'Noch kein Check-in in dieser Sitzung. Jeder Check-in erscheint hier und lässt sich zurücknehmen.' : 'No check-in in this session yet. Every check-in appears here and can be reverted.'}
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 260, overflowY: 'auto' }}>
+              {recentCheckIns.map(e => (
+                <div key={e.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px', borderRadius: 8, background: 'var(--dex-gray-50, #fafafa)' }}>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', fontVariantNumeric: 'tabular-nums', width: 44, flexShrink: 0 }}>{formatMarkTime(e.at)}</span>
+                  <span style={{ fontWeight: 600, fontSize: '0.88rem', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {e.name}
+                    {e.agendaLabel && <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)' }}> · {e.agendaLabel}</span>}
+                  </span>
+                  <button type="button" className="btn btn-secondary" disabled={!!undoBusyKey} onClick={() => { void undoCheckIn(e); }} style={{ fontSize: '0.76rem', padding: '4px 10px', whiteSpace: 'nowrap' }}
+                    title={isDe ? (e.agendaItemId ? 'Anwesenheit an diesem Punkt entfernen' : `Status zurück auf „${e.prevStatus === 'QR versendet' ? 'QR versendet' : 'Angemeldet'}“`) : 'Revert this check-in'}>
+                    {undoBusyKey === e.key ? '…' : (isDe ? 'Rückgängig' : 'Undo')}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
       </div>
 
       {/* v7.14: Die alte "Manuell QR-Code als String tippen"-Card ist raus.
