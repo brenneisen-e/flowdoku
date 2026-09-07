@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.80.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v30.81.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -430,6 +430,17 @@ nächste Erfolg bzw. der App-Start nachzieht (`IDReorderQueueHealed`). Wenn
 „eine Abmeldung nicht in DEX_IDReorder gelandet ist": zuerst das Event-Log
 des Events auf diese beiden Aktionen prüfen, dann die installierte Version
 (`Was ist neu?`) — vor v30.80 gab es die Zeilen nicht.
+
+**Eine Rolle in DEX_Roles wirkt nur mit Leserecht auf DEX_Roles.** Die
+Liste hat eigene Rechte (Owners Full Control, sonst niemand); jede
+Organizer-Zuweisung setzt Read best-effort nach. Fehlt es (Drosselung bei
+`ensureuser`, Zeile direkt in SharePoint angelegt), antwortet `getRoles` mit
+403, `RoleContext` macht die Person still zum „User", und die Startseite
+zeigte bis v30.80 nur „Organizer werden?". „Steht in der Liste, sieht keine
+Kachel" heißt also ZUERST: Rollenverwaltung → „Leserechte prüfen"
+(`auditRolesListAccess`, v30.81), dann installierte Version (>100 Zeilen
+ist seit v30.67 erledigt), dann E-Mail-Schreibweise (seit v30.81 über
+`isCurrentUser`, beide Adressen).
 
 **Nachgerückt wird nur beim Abmelden — nicht bei einer Kapazitätsänderung.**
 `promoteFirstWaitlistItem` hängt am Cancel-Pfad. Erhöht der Organizer eine
