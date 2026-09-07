@@ -873,6 +873,37 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                     >
                       <Icon iconName="Crop" style={{ fontSize: 13 }} /> {isDe ? 'Bild editieren' : 'Edit image'}
                     </button>
+                    {/* v30.98: Bild herunterladen (Nutzer-Ansage 07.09.2026: „ich
+                        möchte auch die Möglichkeit haben, das Bild zu speichern").
+                        Data-URL direkt, http-URL über fetch → Blob, damit der
+                        Browser speichert statt das Bild nur zu öffnen. */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void (async () => {
+                          try {
+                            const src = scImagePreview;
+                            const isData = src.indexOf('data:') === 0;
+                            const blob = isData ? await (await fetch(src)).blob() : await (await fetch(src, { credentials: 'include' })).blob();
+                            const ext = (blob.type || '').indexOf('png') >= 0 ? 'png' : (blob.type || '').indexOf('webp') >= 0 ? 'webp' : 'jpg';
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url; a.download = `${(title || 'Event-Bild').replace(/[^\w\-äöüÄÖÜß ]+/g, '').trim().replace(/\s+/g, '_') || 'Event-Bild'}.${ext}`; a.style.display = 'none';
+                            document.body.appendChild(a); a.click();
+                            setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 400);
+                          } catch { window.open(scImagePreview, '_blank'); }
+                        })();
+                      }}
+                      title={isDe ? 'Bild als Datei speichern' : 'Save image as file'}
+                      style={{
+                        position: 'absolute', bottom: 8, left: 8, background: 'rgba(0,0,0,0.6)',
+                        color: '#fff', border: 'none', borderRadius: 999, padding: '4px 12px',
+                        cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                      }}
+                    >
+                      <Icon iconName="Download" style={{ fontSize: 13 }} /> {isDe ? 'Speichern' : 'Save'}
+                    </button>
                   </div>
                 )}
                 {/* v23.15: Bild-Zuschnitt-Modal — liefert das Ergebnis als

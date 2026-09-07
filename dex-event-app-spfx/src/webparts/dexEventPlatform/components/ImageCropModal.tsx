@@ -234,13 +234,12 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
       ) : (
         <>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 14 }}>
+          {/* v30.98: „Empfohlen"-Badge und Tipp entfallen (Nutzer-Ansage
+              07.09.2026: „nimm das Empfohlen hier raus") — Kreis bleibt die
+              Vorauswahl, aber ohne Wertung. `recommendCircle` bleibt als Prop
+              für die Aufrufer bestehen und wirkt nur noch nicht sichtbar. */}
           <button type="button" className={`btn ${shape === 'circle' ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: '0.82rem', position: 'relative' }} onClick={() => setShape('circle')}>
             {isDe ? 'Kreis' : 'Circle'}
-            {recommendCircle && (
-              <span style={{ marginLeft: 6, padding: '1px 7px', borderRadius: 999, background: 'var(--dex-orange, #ed8b00)', color: '#fff', fontSize: '0.62rem', fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', verticalAlign: 'middle' }}>
-                {isDe ? 'Empfohlen' : 'Recommended'}
-              </span>
-            )}
           </button>
           <button type="button" className={`btn ${shape === 'rect' ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: '0.82rem' }} onClick={() => setShape('rect')}>
             {isDe ? 'Quadrat' : 'Square'}
@@ -249,8 +248,8 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
         {recommendCircle && (
           <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: 'var(--dex-gray-500)', textAlign: 'center', lineHeight: 1.45 }}>
             {isDe
-              ? 'Tipp: Der kreisförmige Zuschnitt wird empfohlen — das Bild wird auf der Anmeldeseite als Kreis oben mittig in die Event-Karte eingebaut.'
-              : 'Tip: the circular crop is recommended — the image is embedded as a circle at the top center of the event card on the registration page.'}
+              ? 'Kreis: das Bild sitzt auf der Anmeldeseite rund oben mittig in der Event-Karte. Quadrat: rechteckiger Ausschnitt.'
+              : 'Circle: the image sits round at the top centre of the event card on the registration page. Square: rectangular crop.'}
           </p>
         )}
         </>

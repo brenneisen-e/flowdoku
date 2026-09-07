@@ -83,6 +83,15 @@ export const CommPreviewCard: React.FC<CommPreviewCardProps> = (p) => {
     Programm: buildProgramHtml(p.agenda, p.emailLanguage),
   };
 
+  // v30.98: Layout und Bildquelle VOR den Memos auflösen und als Abhängigkeit
+  // führen. Vorher hingen beide Memos nur am Logo-String — ein Klick auf
+  // „Volle Breite" änderte den Layout-State, die Karte rechnete nicht neu und
+  // zeigte das Bild weiter klein (Nutzer-Screenshot 07.09.2026).
+  const mailLayout = p.headerLayoutFor(p.emailLogoPreview);
+  const mailSrc = p.effectiveHeaderImage('email', p.emailLogoPreview).src || '';
+  const olLayout = p.headerLayoutFor(p.outlookLogoPreview);
+  const olSrc = p.effectiveHeaderImage('outlook', p.outlookLogoPreview).src || '';
+
   const mail = React.useMemo((): { subject: string; html: string } => {
     const tpl = p.emailTemplates.find(x => x.templateType === 'Anmeldung' && x.language === p.emailLanguage);
     const ov = p.emailTemplateOverrides['Anmeldung'];
@@ -98,16 +107,15 @@ export const CommPreviewCard: React.FC<CommPreviewCardProps> = (p) => {
       headingFontSize: ov && ov.headingFontSize, headingBold: ov && ov.headingBold, headingItalic: ov && ov.headingItalic,
       subheadingColor: ov && ov.subheadingColor, subheadingFontSize: ov && ov.subheadingFontSize,
       subheadingBold: ov && ov.subheadingBold, subheadingItalic: ov && ov.subheadingItalic,
-      ...p.headerLayoutFor(p.emailLogoPreview),
+      ...mailLayout,
     };
     const built = buildEmailFromTemplate(merged, vars);
-    const eff = p.effectiveHeaderImage('email', p.emailLogoPreview);
     const html = built.body
       .replace(/\{\{LOGO_URL\}\}/g, getCachedLogoBase64() || '')
-      .replace(/\{\{ORB_URL\}\}/g, eff.src || getCachedOrbBase64() || '');
+      .replace(/\{\{ORB_URL\}\}/g, mailSrc || getCachedOrbBase64() || '');
     return { subject: built.subject, html };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [p.emailTemplates, p.emailTemplateOverrides, p.emailLanguage, p.emailLogoPreview, p.title, p.location, p.startDate, p.endDate, p.organizer, p.contactEmail, isDe, meName]);
+  }, [p.emailTemplates, p.emailTemplateOverrides, p.emailLanguage, p.emailLogoPreview, p.title, p.location, p.startDate, p.endDate, p.organizer, p.contactEmail, isDe, meName, mailSrc, mailLayout.imageWidth, mailLayout.imagePaddingV, mailLayout.imagePaddingH, p.agenda]);
 
   const outlookHtml = React.useMemo((): string => {
     // v30.94: Leerer Body = der Standard-Text, der auch gespeichert wird
@@ -115,12 +123,11 @@ export const CommPreviewCard: React.FC<CommPreviewCardProps> = (p) => {
     const bodyRaw = p.outlookBody || outlookDefaultBodyTemplate(p.emailLanguage);
     const heading = replacePlaceholders(p.outlookHeading || '', vars) || vars.EventTitle;
     const sub = replacePlaceholders(p.outlookSubheading || '', vars) || vars.Location;
-    const eff = p.effectiveHeaderImage('outlook', p.outlookLogoPreview);
-    return buildOutlookBody(heading, applyProgramPlaceholder(replacePlaceholders(bodyRaw, vars), vars.Programm), sub, p.headerLayoutFor(p.outlookLogoPreview), undefined, isDe)
+    return buildOutlookBody(heading, applyProgramPlaceholder(replacePlaceholders(bodyRaw, vars), vars.Programm), sub, olLayout, undefined, isDe)
       .replace(/\{\{LOGO_URL\}\}/g, getCachedLogoBase64() || '')
-      .replace(/\{\{ORB_URL\}\}/g, eff.src || getCachedOrbBase64() || '');
+      .replace(/\{\{ORB_URL\}\}/g, olSrc || getCachedOrbBase64() || '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [p.outlookBody, p.outlookHeading, p.outlookSubheading, p.outlookLogoPreview, p.title, p.location, p.startDate, p.endDate, isDe, meName]);
+  }, [p.outlookBody, p.outlookHeading, p.outlookSubheading, p.outlookLogoPreview, p.title, p.location, p.startDate, p.endDate, isDe, meName, olSrc, olLayout.imageWidth, olLayout.imagePaddingV, olLayout.imagePaddingH, p.agenda, p.emailLanguage]);
 
   const sendTest = async (): Promise<void> => {
     if (testState === 'busy') return;
