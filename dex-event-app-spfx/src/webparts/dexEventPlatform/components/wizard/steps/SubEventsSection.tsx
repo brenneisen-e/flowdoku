@@ -969,13 +969,27 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                                 const cap = (se.maxParticipants || 0) > 0
                                   ? `${se.maxParticipants} ${isDe ? 'Plätze' : 'seats'}`
                                   : (isDe ? 'unbegrenzt' : 'unlimited');
+                                // v31.2: Die Zeile selbst öffnet den Termin (Leitfaden 2a′) —
+                                // derselbe Handler wie „Bearbeiten"; Enter/Leertaste nur, wenn
+                                // der Fokus auf der Zeile liegt, nicht auf einem Knopf darin.
+                                const openRow = (): void => { setScope(idx + 1); goToScopeBar(); };
                                 return (
                                   <div
                                     key={se.id}
                                     className={cx('dex-ui-card', 'dex-ui-card--hover', active && 'dex-ui-card--accent')}
-                                    style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 14px' }}
+                                    style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 14px', cursor: 'pointer' }}
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={openRow}
+                                    onKeyDown={e => {
+                                      if (e.target !== e.currentTarget) return;
+                                      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openRow(); }
+                                    }}
                                   >
-                                    <div style={{ flex: 1, minWidth: 160 }}>
+                                    {/* v31.2: Kein flex:1 mehr am Textblock — „Bearbeiten" steht
+                                        direkt hinter Titel und Zeitraum, nur das Entfernen-×
+                                        bleibt rechts außen (margin-left: auto). */}
+                                    <div style={{ minWidth: 160 }}>
                                       <div className="dex-ui-row-title" style={{ whiteSpace: 'normal' }}>
                                         {shortSubEventTitle(se.title, title) || (isDe ? 'Ohne Titel' : 'Untitled')}
                                       </div>
@@ -989,7 +1003,8 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                                     <button
                                       type="button"
                                       className="btn btn-secondary dex-ui-btn-sm"
-                                      onClick={() => { setScope(idx + 1); goToScopeBar(); }}
+                                      onClick={e => { e.stopPropagation(); openRow(); }}
+                                      onKeyDown={e => e.stopPropagation()}
                                       title={isDe
                                         ? 'Öffnet diesen Termin oben im Reiter — Titel, Zeiten, Beschreibung und Bild stehen dann in den Feldern darüber, Plätze und Frist in Schritt 4.'
                                         : 'Opens this date in the tab above — title, times, description and image then live in the fields above, seats and deadline in step 4.'}
@@ -999,7 +1014,9 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                                     <button
                                       type="button"
                                       className="dex-ui-iconbtn dex-ui-iconbtn--danger"
-                                      onClick={() => removeSubEventDraft(se)}
+                                      style={{ marginLeft: 'auto' }}
+                                      onClick={e => { e.stopPropagation(); removeSubEventDraft(se); }}
+                                      onKeyDown={e => e.stopPropagation()}
                                       title={t('create.subevents.remove')}
                                       aria-label={t('create.subevents.remove')}
                                     >
@@ -1010,21 +1027,35 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                               })}
                               {/* v29.22: zum Löschen vorgemerkte Termine —
                                   orange, mit Rückholknopf. */}
-                              {removedRows.map(({ se }) => (
+                              {removedRows.map(({ se }) => {
                                 // v31.2: Auch die vorgemerkte Zeile hat eine Aktion
                                 // (Wiederherstellen) und hebt sich deshalb wie die
-                                // aktiven Termin-Karten beim Überfahren.
+                                // aktiven Termin-Karten beim Überfahren. Seit dem
+                                // Ausrichtungs-Nachzug (Leitfaden 2a′) ist die Zeile
+                                // selbst klickbar und ruft denselben Handler wie der Knopf.
+                                const restore = (): void => {
+                                  setRemovedSavedSubs(prev => prev.filter(x => x.id !== se.id));
+                                  setSubEvents(prev => prev.some(x => x.id === se.id) ? prev : [...prev, se]);
+                                };
+                                return (
                                 <div
                                   key={se.id}
                                   className="dex-ui-card dex-ui-card--hover"
                                   style={{
-                                    display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 14px',
+                                    display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 14px', cursor: 'pointer',
                                     background: 'rgba(237,139,0,0.07)',
                                     borderColor: 'var(--dex-orange, #ed8b00)',
                                     borderLeft: '3px solid var(--dex-orange, #ed8b00)',
                                   }}
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={restore}
+                                  onKeyDown={e => {
+                                    if (e.target !== e.currentTarget) return;
+                                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); restore(); }
+                                  }}
                                 >
-                                  <div style={{ flex: 1, minWidth: 160 }}>
+                                  <div style={{ minWidth: 160 }}>
                                     <div className="dex-ui-row-title" style={{ whiteSpace: 'normal', textDecoration: 'line-through' }}>
                                       {shortSubEventTitle(se.title, title) || (isDe ? 'Ohne Titel' : 'Untitled')}
                                     </div>
@@ -1037,15 +1068,14 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                                   <button
                                     type="button"
                                     className="btn btn-secondary dex-ui-btn-sm"
-                                    onClick={() => {
-                                      setRemovedSavedSubs(prev => prev.filter(x => x.id !== se.id));
-                                      setSubEvents(prev => prev.some(x => x.id === se.id) ? prev : [...prev, se]);
-                                    }}
+                                    onClick={e => { e.stopPropagation(); restore(); }}
+                                    onKeyDown={e => e.stopPropagation()}
                                   >
                                     {isDe ? 'Wiederherstellen' : 'Restore'}
                                   </button>
                                 </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           );
                         })()}
@@ -1130,8 +1160,24 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                     })() : null;
                     // v15: deadlineObj entfernt — der Anmeldeschluss-Editor
                     // wandert nach Schritt 4 (Kapazität) in den Sub-Event-Tab.
+                    // v31.2: Die Karte selbst öffnet das Sub-Event (Leitfaden 2a′,
+                    // Nutzer-Ansage 07.09.2026: Zeile überfahren → hebt sich, Zeile
+                    // anklicken → Bearbeiten). Derselbe Handler wie der Knopf;
+                    // Enter/Leertaste nur, wenn der Fokus auf der Karte liegt.
+                    const openCard = (): void => setScope(idx + 1);
                     return (
-                      <div key={se.id} className="dex-ui-card dex-ui-card--hover dex-ui-card--accent" style={{ padding: '12px 16px' }}>
+                      <div
+                        key={se.id}
+                        className="dex-ui-card dex-ui-card--hover dex-ui-card--accent"
+                        style={{ padding: '12px 16px', cursor: 'pointer' }}
+                        role="button"
+                        tabIndex={0}
+                        onClick={openCard}
+                        onKeyDown={e => {
+                          if (e.target !== e.currentTarget) return;
+                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openCard(); }
+                        }}
+                      >
                         {/* v28.89: Die Karte ist kein Editor mehr. Titel,
                             Zeiten, Beschreibung und Bild eines Sub-Events
                             werden oben in DENSELBEN Feldern gepflegt wie beim
@@ -1140,8 +1186,11 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                             wusste, welcher gilt. Hier bleibt, was es sonst
                             nirgends gibt: die Liste selbst (anlegen,
                             umschalten, entfernen) und die Pflichtanmeldung. */}
+                        {/* v31.2: „Bearbeiten" steht LINKS direkt hinter Titel und
+                            Zeitraum (kein flex:1 am Textblock mehr); nur das
+                            Entfernen-× bleibt rechts außen. */}
                         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                          <div style={{ flex: 1, minWidth: 180 }}>
+                          <div style={{ minWidth: 180 }}>
                             <div className="dex-ui-row-title" style={{ whiteSpace: 'normal' }}>
                               {shortSubEventTitle(se.title, title) || (isDe ? 'Ohne Titel' : 'Untitled')}
                             </div>
@@ -1160,7 +1209,8 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                           <button
                             type="button"
                             className="btn btn-secondary dex-ui-btn-sm"
-                            onClick={() => setScope(idx + 1)}
+                            onClick={e => { e.stopPropagation(); openCard(); }}
+                            onKeyDown={e => e.stopPropagation()}
                             title={isDe
                               ? 'Öffnet dieses Sub-Event oben im Reiter — Titel, Zeiten, Beschreibung und Bild stehen dann in den Feldern darüber.'
                               : 'Opens this sub-event in the tab above — title, times, description and image then live in the fields above.'}
@@ -1170,12 +1220,16 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                           <button
                             type="button"
                             className="dex-ui-iconbtn dex-ui-iconbtn--danger"
+                            style={{ marginLeft: 'auto' }}
                             // v27.11: Entfernen bestätigen lassen — vorher
                             // löschte EIN Klick den Draft sofort; bei bereits
                             // gespeicherten Sub-Events wurden beim nächsten
                             // Speichern still Teilnehmerliste + Anmeldungen
                             // mitgelöscht. v29.13: gemeinsamer Handler.
-                            onClick={() => removeSubEventDraft(se)}
+                            // v31.2: stopPropagation — sonst öffnet die klickbare
+                            // Karte zugleich das Sub-Event, das gerade entfernt wird.
+                            onClick={e => { e.stopPropagation(); removeSubEventDraft(se); }}
+                            onKeyDown={e => e.stopPropagation()}
                             title={t('create.subevents.remove')}
                             aria-label={t('create.subevents.remove')}
                           >

@@ -124,6 +124,17 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
   const mainTabLabel = subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt-Event' : 'Main event');
   const currentTabLabel = activeCommTabIdx > 0 ? ((subEvents[activeCommTabIdx - 1] && subEvents[activeCommTabIdx - 1].title) || '') : mainTabLabel;
   const childOneDe = 'Jeden Termin';
+  // v31.2: Welcher Anpassen-Reiter zeigt ein Thema aus COMM_TOPICS? Sprache hat
+  // keinen (Ebene-1-Karte) — die Zeile bleibt dann reine Anzeige.
+  const topicAdvTab = (key: string): 'templates' | 'mailLogo' | 'outlook' | 'fine' | undefined => {
+    switch (key) {
+      case 'templates': return 'templates';
+      case 'mailLogo': return 'mailLogo';
+      case 'outlookLogo': case 'outlookText': return 'outlook';
+      case 'switches': return 'fine';
+      default: return undefined;
+    }
+  };
   // Weicht der offene Termin beim Thema vom Haupt-Event ab? Live-State für die
   // Felder, die der Schritt als Props hat; Betreff/Unterzeile aus dem Slot
   // (die hält der Reiter erst nach dem nächsten Flush aktuell).
@@ -276,31 +287,50 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                         </div>
                         {/* v31.2: Listen-Karte (dex-ui-card--list) statt Inline-Innenabstand —
                             die Zeilen sind dex-ui-row, ihre Aktion hebt sich bei Hover. */}
+                        {/* v31.2: „für alle N übernehmen" steht direkt hinter dem Themen-Titel
+                            (Leitfaden 2a′) statt rechts außen; die Zeile selbst öffnet den
+                            passenden Anpassen-Reiter — derselbe Handler wie die Stand-Chips
+                            unten. Rechts bleibt nur die Statuspille. Sprache hat keinen
+                            Reiter (sie ist eine Ebene-1-Karte) und bleibt deshalb reine
+                            Anzeige. */}
                         <div className="dex-ui-card dex-ui-card--list" style={{ marginTop: 10 }}>
                           {COMM_TOPICS.map(topic => {
                             const own = activeCommTabIdx > 0 && topicDiffersFromParent(topic.key);
+                            const topicTab = topicAdvTab(topic.key);
+                            const openTopic = topicTab ? (): void => { setAdvTab(topicTab); setAdvOpen(true); } : undefined;
                             return (
-                              <div key={topic.key} className="dex-ui-row dex-ui-row--bordered">
+                              <div
+                                key={topic.key}
+                                className="dex-ui-row dex-ui-row--bordered"
+                                style={openTopic ? { cursor: 'pointer' } : undefined}
+                                role={openTopic ? 'button' : undefined}
+                                tabIndex={openTopic ? 0 : undefined}
+                                onClick={openTopic}
+                                onKeyDown={openTopic ? (e => {
+                                  if (e.target !== e.currentTarget) return;
+                                  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTopic(); }
+                                }) : undefined}
+                                title={openTopic ? (isDe ? 'Öffnet dieses Thema unter „Texte und Bilder anpassen“' : 'Opens this topic under “Customise texts and images”') : undefined}
+                              >
                                 <StepBadge n={topic.step} />
-                                <div className="dex-ui-row-main">
-                                  <div className="dex-ui-row-title">{t(topic.labelKey)}</div>
+                                <div className="dex-ui-row-main" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                  <div className="dex-ui-row-title" style={{ whiteSpace: 'normal' }}>{t(topic.labelKey)}</div>
+                                  {namedSubCount > (activeCommTabIdx > 0 ? 1 : 0) && (
+                                    <button
+                                      type="button"
+                                      className="dex-ui-textbtn"
+                                      onClick={e => { e.stopPropagation(); void applyCommTopicToAllSubEvents(topic.key); }}
+                                      onKeyDown={e => e.stopPropagation()}
+                                      title={isDe ? `Nur „${t(topic.labelKey)}" von diesem Reiter auf alle ${childTermPlural || 'Termine'} übertragen` : `Copy only this topic from this tab to all dates`}
+                                    >
+                                      {isDe ? `für alle ${namedSubCount} übernehmen` : `apply to all ${namedSubCount}`}
+                                    </button>
+                                  )}
                                 </div>
                                 {activeCommTabIdx > 0 && (
                                   <span className={cx('dex-ui-pill', own ? 'dex-ui-pill--orange' : 'dex-ui-pill--gray')}>
                                     {own ? (isDe ? 'eigen' : 'own') : (isDe ? 'wie Haupt-Event' : 'as main event')}
                                   </span>
-                                )}
-                                {namedSubCount > (activeCommTabIdx > 0 ? 1 : 0) && (
-                                  <div className="dex-ui-row-actions">
-                                    <button
-                                      type="button"
-                                      className="dex-ui-textbtn"
-                                      onClick={() => { void applyCommTopicToAllSubEvents(topic.key); }}
-                                      title={isDe ? `Nur „${t(topic.labelKey)}" von diesem Reiter auf alle ${childTermPlural || 'Termine'} übertragen` : `Copy only this topic from this tab to all dates`}
-                                    >
-                                      {isDe ? `für alle ${namedSubCount} übernehmen` : `apply to all ${namedSubCount}`}
-                                    </button>
-                                  </div>
                                 )}
                               </div>
                             );
@@ -372,7 +402,9 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                     überhaupt getrennt einstellbar ist. */}
                 {subEvents.length > 0 && (
                   <div className="dex-ui-inline" style={{ marginTop: 22 }}>
-                    <span className="dex-ui-muted" style={{ flex: 1, minWidth: 0 }}>
+                    {/* v31.2: kein flex:1 — der Tooltip steht direkt hinter dem Satz,
+                        nicht allein am rechten Rand. */}
+                    <span className="dex-ui-muted" style={{ minWidth: 0 }}>
                       {isDe
                         ? 'Die Einstellungen unten gelten für den oben gewählten Reiter.'
                         : 'The settings below apply to the tab selected above.'}
@@ -684,8 +716,28 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                             const override = emailTemplateOverrides[tType];
                             const currentSubject = override?.subject || defaultTpl?.subject || '';
                             // Bearbeiten öffnet das HtmlEditorModal mit Live-Preview (kein Inline-Editor).
+                            // v31.2: Die Zeile selbst öffnet den Editor (Leitfaden 2a′); „Bearbeiten
+                            // & Vorschau" steht unter dem Betreff statt rechts außen. Nur das
+                            // Zurücksetzen bleibt rechts — es nimmt etwas weg und darf nicht
+                            // zugleich öffnen (stopPropagation).
+                            const openTpl = (): void => {
+                              setHtmlEditorMode('email');
+                              setHtmlEditorTemplateType(tType);
+                              setHtmlEditorOpen(true);
+                            };
                             return (
-                              <div key={tType} className="dex-ui-row dex-ui-row--bordered">
+                              <div
+                                key={tType}
+                                className="dex-ui-row dex-ui-row--bordered"
+                                style={{ cursor: 'pointer' }}
+                                role="button"
+                                tabIndex={0}
+                                onClick={openTpl}
+                                onKeyDown={e => {
+                                  if (e.target !== e.currentTarget) return;
+                                  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTpl(); }
+                                }}
+                              >
                                 <div className="dex-ui-row-main">
                                   <div className="dex-ui-row-title" style={{ display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'normal' }}>
                                     {t(`create.tpl.${tType}`)}
@@ -694,33 +746,34 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                                   <div className="dex-ui-row-sub">
                                     {t('create.templates.subject')}: {currentSubject.replace(/\{\{EventTitle\}\}/g, title || '...')}
                                   </div>
+                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary dex-ui-btn-sm"
+                                      onClick={e => { e.stopPropagation(); openTpl(); }}
+                                      onKeyDown={e => e.stopPropagation()}
+                                    >
+                                      <Pencil size={14} /> {isDe ? `${t('create.templates.edit')} & Vorschau` : `${t('create.templates.edit')} & preview`}
+                                    </button>
+                                  </div>
                                 </div>
-                                <div className="dex-ui-row-actions">
-                                  {override && (
+                                {override && (
+                                  <div className="dex-ui-row-actions">
                                     <button
                                       type="button"
                                       className="dex-ui-textbtn dex-ui-textbtn--danger"
-                                      onClick={() => {
+                                      onClick={e => {
+                                        e.stopPropagation();
                                         const copy = { ...emailTemplateOverrides };
                                         delete copy[tType];
                                         setEmailTemplateOverrides(copy);
                                       }}
+                                      onKeyDown={e => e.stopPropagation()}
                                     >
                                       {t('create.templates.reset')}
                                     </button>
-                                  )}
-                                  <button
-                                    type="button"
-                                    className="btn btn-secondary dex-ui-btn-sm"
-                                    onClick={() => {
-                                      setHtmlEditorMode('email');
-                                      setHtmlEditorTemplateType(tType);
-                                      setHtmlEditorOpen(true);
-                                    }}
-                                  >
-                                    <Pencil size={14} /> {isDe ? `${t('create.templates.edit')} & Vorschau` : `${t('create.templates.edit')} & preview`}
-                                  </button>
-                                </div>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}

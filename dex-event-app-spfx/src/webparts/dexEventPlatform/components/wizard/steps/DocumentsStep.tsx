@@ -108,23 +108,41 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 
         {documents.length > 0 && (
           <div className="dex-ui-card" style={{ padding: '4px 6px', marginBottom: 12 }}>
-            {documents.map((doc, idx) => (
-              <div key={idx} className="dex-ui-row dex-ui-row--bordered">
-                <span style={{ color: 'var(--dex-gray-500)', display: 'inline-flex', flexShrink: 0 }}><FileText size={18} /></span>
-                <div className="dex-ui-row-main">
-                  <div className="dex-ui-row-title" title={doc.name}>{doc.name}</div>
-                  {doc.size > 0 && <div className="dex-ui-row-sub">{(doc.size / 1024).toFixed(0)} KB</div>}
+            {documents.map((doc, idx) => {
+              // v31.2: Die Zeile ist selbst die Aktion (Leitfaden 2a′): mit URL öffnet ein
+              // Klick das Dokument in einem neuen Tab. Frisch gewählte Dateien haben noch
+              // keine URL — dort gibt es nichts zu öffnen, die Zeile bleibt passiv.
+              const openDoc = doc.url ? (): void => { window.open(doc.url, '_blank', 'noopener'); } : undefined;
+              return (
+                <div
+                  key={idx}
+                  className="dex-ui-row dex-ui-row--bordered"
+                  style={openDoc ? { cursor: 'pointer' } : undefined}
+                  role={openDoc ? 'button' : undefined}
+                  tabIndex={openDoc ? 0 : undefined}
+                  title={openDoc ? (isDe ? 'Dokument öffnen' : 'Open document') : undefined}
+                  onClick={openDoc}
+                  onKeyDown={openDoc ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDoc(); } } : undefined}
+                >
+                  <span style={{ color: 'var(--dex-gray-500)', display: 'inline-flex', flexShrink: 0 }}><FileText size={18} /></span>
+                  <div className="dex-ui-row-main">
+                    <div className="dex-ui-row-title" title={doc.name}>{doc.name}</div>
+                    {doc.size > 0 && <div className="dex-ui-row-sub">{(doc.size / 1024).toFixed(0)} KB</div>}
+                  </div>
+                  {/* v31.2: Frisch gewählt (noch ohne URL) heißt: wird erst beim Speichern hochgeladen. */}
+                  {doc.file && <span className="dex-ui-pill dex-ui-pill--green">{isDe ? 'Neu' : 'New'}</span>}
+                  {/* v31.2: Entfernen bleibt rechts außen (weg vom Inhalt) und stoppt die Weitergabe —
+                      Klick UND Tastatur — damit „Entfernen" nicht zugleich öffnet. */}
+                  <div className="dex-ui-row-actions">
+                    <button type="button" className="dex-ui-iconbtn dex-ui-iconbtn--danger" title={t('general.delete')} aria-label={t('general.delete')}
+                      onClick={(e) => { e.stopPropagation(); setDocuments(documents.filter((_, i) => i !== idx)); }}
+                      onKeyDown={(e) => e.stopPropagation()}>
+                      <X size={16} />
+                    </button>
+                  </div>
                 </div>
-                {/* v31.2: Frisch gewählt (noch ohne URL) heißt: wird erst beim Speichern hochgeladen. */}
-                {doc.file && <span className="dex-ui-pill dex-ui-pill--green">{isDe ? 'Neu' : 'New'}</span>}
-                <div className="dex-ui-row-actions">
-                  <button type="button" className="dex-ui-iconbtn dex-ui-iconbtn--danger" title={t('general.delete')} aria-label={t('general.delete')}
-                    onClick={() => setDocuments(documents.filter((_, i) => i !== idx))}>
-                    <X size={16} />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

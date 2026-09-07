@@ -111,13 +111,16 @@ const PersonAvatar: React.FC<{ email: string; name: string; muted?: boolean }> =
   );
 };
 
-/* v31.2: „Massenimport" als Textknopf rechts in der Beschriftungszeile —
- * dreimal gleich, deshalb einmal definiert. Bisher stand er nur deutsch da. */
+/* v31.2: „Massenimport" als Textknopf in der Beschriftungszeile — dreimal
+ * gleich, deshalb einmal definiert. Bisher stand er nur deutsch da.
+ * Leitfaden 2a′: Der Knopf folgt der Beschriftung direkt (Label-gap 6 + 4 px
+ * = 10 px), statt mit margin-left:auto allein am rechten Rand zu hängen —
+ * „dann ist nur der Button rechts" war die Nutzer-Kritik. */
 const BulkImportButton: React.FC<{ isDe: boolean; onClick: () => void }> = ({ isDe, onClick }) => (
   <button
     type="button"
     className="dex-ui-textbtn"
-    style={{ marginLeft: 'auto', whiteSpace: 'nowrap' }}
+    style={{ marginLeft: 4, whiteSpace: 'nowrap' }}
     onClick={onClick}
     title={isDe ? 'Mehrere Personen auf einmal einfügen (Liste von E-Mail-Adressen)' : 'Add several people at once (list of email addresses)'}
   >
@@ -256,7 +259,9 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
                     ? 'Organizer können das Event bearbeiten, die Teilnehmerliste einsehen und Mails versenden. Die erste Person in der Liste ist Haupt-Organizer und steht in Mails als Absender-Name.'
                     : 'Organizers can edit the event, see the attendee list and send mails. The first person in the list is the main organizer and appears as the sender name in mails.'}
                 </p>
-                <div className="dex-ui-label">
+                {/* v31.2: flexWrap — bei schmaler Breite bricht der Massenimport-Knopf
+                    linksbündig unter die Beschriftung, statt sie zu quetschen. */}
+                <div className="dex-ui-label" style={{ flexWrap: 'wrap' }}>
                   <StepBadge n={11} />
                   <span className="required">*</span> {t('create.organizer')}
                   <InfoTooltip text={isDe ? (
@@ -453,7 +458,7 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
                 </p>
                 <div className="dex-ui-stack">
                   <div className="dex-ui-card">
-                    <div className="dex-ui-label">
+                    <div className="dex-ui-label" style={{ flexWrap: 'wrap' }}>
                       <StepBadge n={12} />
                       {isDe ? 'Test-Team' : 'Test team'}
                       <InfoTooltip text={isDe ? (
@@ -527,7 +532,7 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
                   </div>
 
                   <div className="dex-ui-card">
-                    <div className="dex-ui-label">
+                    <div className="dex-ui-label" style={{ flexWrap: 'wrap' }}>
                       <StepBadge n={13} />
                       {t('create.qrscanners') || 'QR-Code-Scanner'}
                       <InfoTooltip text={isDe ? (
@@ -703,9 +708,12 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
                           if (d.inOrg) teamsLabel.push(isDe ? 'Co-Organizer' : 'Co-organizer');
                           if (d.inTt) teamsLabel.push(isDe ? 'Test-Team' : 'Test team');
                           if (d.inQr) teamsLabel.push(isDe ? 'Check-in-Team' : 'Check-in team');
+                          // v31.2 (Leitfaden 2a′): Die Entfernen-Knöpfe folgen dem Namen
+                          // direkt (gap 12, umbrechend) — vorher schob `flex: 1` auf dem
+                          // Textblock sie allein an den rechten Rand.
                           return (
                             <div key={d.email} className="dex-ui-row dex-ui-row--bordered" style={{ flexWrap: 'wrap', padding: '8px 0' }}>
-                              <div className="dex-ui-row-main" style={{ flex: '1 1 200px' }}>
+                              <div className="dex-ui-row-main" style={{ flex: '0 1 auto' }}>
                                 <div className="dex-ui-row-title" style={{ whiteSpace: 'normal' }}>{d.name} <span style={{ color: 'var(--dex-gray-500)', fontWeight: 400, fontSize: '0.8rem' }}>{d.email}</span></div>
                                 <div className="dex-ui-row-sub">{isDe ? 'Aktuell in' : 'Currently in'}: {teamsLabel.join(', ')}</div>
                               </div>

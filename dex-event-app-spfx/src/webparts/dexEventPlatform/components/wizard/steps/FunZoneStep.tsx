@@ -205,7 +205,10 @@ export const FunZoneStep: React.FC<FunZoneStepProps> = ({
               <Plus size={14} /> {t('create.funzone.addoption')}
             </button>
             <div className="dex-ui-divider" style={{ margin: '12px 0' }} />
-            <div className="dex-ui-inline" style={{ justifyContent: 'space-between' }}>
+            {/* v31.2: Bild und Bereich stehen LINKS nebeneinander (Leitfaden 2a′) — bis v31.1
+                hing die Bereichs-Auswahl per space-between allein am rechten Rand, obwohl sie
+                zur Frage gehört wie das Bild. Rechts außen bleibt nur das Entfernen im Kopf. */}
+            <div className="dex-ui-inline" style={{ gap: 12 }}>
               <div className="dex-ui-inline">
                 {q.imageBase64 ? (
                   <>

@@ -217,8 +217,11 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                         Kapazitäts-/Sichtbarkeits-/Deadline-/Filter-Werte
                         vom Hauptevent als Startwerte für dieses Sub-Event.
                         v28.74: Gegenstück — Werte dieses Sub-Events auf die
-                        anderen übertragen (was und wohin wählt der Organizer). */}
-                    <div className="dex-ui-inline" style={{ justifyContent: 'flex-end', marginBottom: 12 }}>
+                        anderen übertragen (was und wohin wählt der Organizer).
+                        v31.2: linksbündig statt rechts außen (Leitfaden 2a′) —
+                        zwei Knöpfe allein am rechten Rand lasen sich wie eine
+                        Fußzeile, nicht wie der Einstieg in den Reiter. */}
+                    <div className="dex-ui-inline" style={{ gap: 10, marginBottom: 12 }}>
                       <button
                         type="button"
                         className="btn btn-secondary dex-ui-btn-sm"
@@ -701,10 +704,27 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                   <Users size={14} />
                   {isDe ? 'Plätze — wie viele dürfen kommen?' : 'Seats — how many may come?'}
                 </div>
-              {subEventsOnlyMode && subEvents.length > 0 ? (
-                <div className="dex-ui-callout dex-ui-callout--neutral" style={{ alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+              {subEventsOnlyMode && subEvents.length > 0 ? (() => {
+                // v31.2 (Leitfaden 2a′): Der Kasten hat genau EINE Aktion — ins
+                // erste Sub-Event springen. Also ist der ganze Kasten klickbar
+                // (Hover, Enter/Leertaste), und der Knopf steht links direkt
+                // hinter dem Text statt allein am rechten Rand. Derselbe
+                // Handler wie bisher.
+                const goFirstSub = (): void => setActiveCapacityTabIdx(1);
+                return (
+                <div
+                  className="dex-ui-callout dex-ui-callout--neutral dex-ui-card--hover"
+                  style={{ alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 12, cursor: 'pointer' }}
+                  role="button"
+                  tabIndex={0}
+                  onClick={goFirstSub}
+                  onKeyDown={e => {
+                    if (e.target !== e.currentTarget) return;
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goFirstSub(); }
+                  }}
+                >
                   <span className="dex-ui-callout-icon"><Users size={18} /></span>
-                  <span style={{ flex: 1, minWidth: 260 }}>
+                  <span style={{ minWidth: 0 }}>
                     {isDe
                       ? <><strong>Plätze &amp; Warteliste</strong> werden pro {childTermSingular || 'Sub-Event'} vergeben — bei einer Klammer hätte eine Teilnehmerzahl hier keine Wirkung.</>
                       : <><strong>Seats &amp; waitlist</strong> are set per sub-event — for a bracket a capacity here would have no effect.</>}
@@ -713,14 +733,16 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                     type="button"
                     className="btn btn-secondary dex-ui-btn-sm"
                     style={{ flexShrink: 0 }}
-                    onClick={() => setActiveCapacityTabIdx(1)}
+                    onClick={e => { e.stopPropagation(); goFirstSub(); }}
+                    onKeyDown={e => e.stopPropagation()}
                   >
                     {isDe
                       ? `Zu „${shortSubEventTitle(subEvents[0].title, title) || (childTermSingular || 'Sub-Event')}“`
                       : `Go to „${shortSubEventTitle(subEvents[0].title, title) || 'sub-event'}“`}
                   </button>
                 </div>
-              ) : (
+                );
+              })() : (
                 <>
               <div style={hauptGreyoutWrapperStyle()}>
               <div className="dex-ui-card" style={{ marginBottom: 12 }}>
@@ -2064,9 +2086,13 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                   }));
                   if (missing.length === 0) return null;
                   return (
-                    <div className="dex-ui-callout dex-ui-callout--warn" style={{ alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+                    /* v31.2 (Leitfaden 2a′): Knopf links direkt hinter dem Text
+                       statt rechts außen. Der Kasten selbst bleibt bewusst
+                       NICHT klickbar — die Aktion schreibt in den Verteiler,
+                       ein Fehlklick auf die Fläche soll das nicht auslösen. */
+                    <div className="dex-ui-callout dex-ui-callout--warn" style={{ alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
                       <span className="dex-ui-callout-icon"><AlertCircle size={18} /></span>
-                      <span style={{ flex: 1, minWidth: 260 }}>
+                      <span style={{ minWidth: 0 }}>
                         {isDe
                           ? <>In den {childTermPlural || 'Sub-Events'} stehen <strong>{missing.length} Verteiler/Personen</strong>, die der Klammer fehlen. Der Zugang läuft immer über die Klammer — wer hier fehlt, sieht das Event nicht.</>
                           : <>The {childTermPlural || 'sub-events'} contain <strong>{missing.length} lists/people</strong> missing from the bracket. Access always goes through the bracket — anyone missing here cannot see the event.</>}

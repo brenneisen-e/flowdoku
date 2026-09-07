@@ -108,13 +108,27 @@ export interface BasicsStepProps {
 export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
   const { visible } = p;
   const { activeFrom, activeScopeIdx, applyDraftPayload, applyEventTemplate, childEventsOf, childTermSingular, currentUser, dayKeyOfDate, description, DRAFT_KEY, draftSavedAt, editEvent, emailLogoPreview, errorBorderStyle, events, fieldHasError, fileToBase64, imageBanner, imageDisplay, imageDisplayOpen, imageEditOpen, imageFile, imageOrigFile, imagePreview, imageUploadError, isDe, isEditMode, isFictive, location, logoCropTarget, noDescription, outlookLogoPreview, patchScopeSub, pendingDraft, previewBeforeActive, renderStepIntro, scAllDay, scDescription, scEnd, scImagePreview, scopeSub, scShowAsFree, scStart, scTitle, setActiveFrom, setDescription, setEmailLogoFromPhoto, setEmailLogoPreview, setEventImageUrl, setHtmlEditorMode, setHtmlEditorOpen, setImageBanner, setImageDisplay, setImageDisplayOpen, setImageEditOpen, setImageFile, setImageOrigAspect, setImageOrigFile, setImagePreview, setImageUploadError, setIsFictive, setLogoCropTarget, setNoDescription, setOutlookLogoFromPhoto, setOutlookLogoPreview, setPendingDraft, setPreviewBeforeActive, setScAllDay, setScEnd, setScShowAsFree, setScStart, setScTitle, setShowDemoVariantModal, setShowTemplatePicker, setSubEvents, setSubImageCropIdx, showTemplatePicker, shrinkLogoB64, startDate, subEvents, subEventsOnlyMode, t, templateLoadingId, title, wizardImgAspect } = p;
+  // v31.2 (Leitfaden 2a′): Eine Kachel mit Hauptaktion ist selbst klickbar —
+  // Enter/Leertaste lösen dieselbe Aktion aus wie der Klick. Nebenknöpfe in
+  // der Kachel stoppen die Weitergabe (Klick UND Taste), damit „Verwerfen"
+  // nicht zugleich „Fortsetzen" ist.
+  const rowKeyHandler = (fn: () => void) => (e: React.KeyboardEvent<HTMLElement>): void => {
+    if (e.target !== e.currentTarget) return;
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); }
+  };
+  const stopBubble = (e: React.SyntheticEvent): void => { e.stopPropagation(); };
+  // Ein Handler für Knopf UND Kachel — sonst zeigen beide irgendwann
+  // verschiedene Dinge.
+  const openDescriptionEditor = (): void => { setHtmlEditorMode('description'); setHtmlEditorOpen(true); };
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
               {/* v23.6: Demo-Button sitzt jetzt IM grünen Schritt-1-Header
                   (oben rechts), nicht mehr in einer eigenen Zeile darüber. */}
-              {/* v31.2: Kopf nach Leitfaden (Eyebrow + Titel); der Demo-Knopf
-                  bleibt oben rechts, jetzt als Chip mit Hover. */}
-              <h2 className="dex-step-head-title" style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+              {/* v31.2: Kopf nach Leitfaden (Eyebrow + Titel). Der Demo-Chip
+                  steht nach 2a′ direkt HINTER dem Titel statt allein am rechten
+                  Rand — ein Knopf in einer sonst leeren Zeilenhälfte war der
+                  Fehler aus den ersten Screenshots. */}
+              <h2 className="dex-step-head-title" style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
                 <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <span className="dex-step-eyebrow">{isDe ? 'Schritt 1 von 9' : 'Step 1 of 9'}</span>
                   <span>{isDe ? 'Grundlagen' : 'Basics'}</span>
@@ -126,7 +140,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                     data-tour="wizard-demo"
                     onClick={() => setShowDemoVariantModal(true)}
                     title={isDe ? 'Demo-Vorlage auswählen' : 'Choose demo template'}
-                    style={{ flexShrink: 0, marginTop: 4 }}
+                    style={{ flexShrink: 0, marginBottom: 4 }}
                   >
                     {isDe ? 'Demo-Vorlage' : 'Demo template'}
                   </button>
@@ -213,8 +227,10 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                               ? <>Übernimm Einstellungen und Bild aus einem deiner <strong>{tmpl.length}</strong> bisherigen Events — Datum und Anmeldungen legst du danach neu fest.</>
                               : <>Reuse settings and image from one of your <strong>{tmpl.length}</strong> past events — date and registrations start fresh.</>}
                           </div>
+                          {/* v31.2 (2a′): Aktion linksbündig unter dem Text, nicht
+                              rechts außen — die ganze Kachel ist ohnehin der Knopf. */}
+                          <span className="dex-ui-textbtn" style={{ display: 'inline-flex', marginTop: 6 }}>{isDe ? 'Auswählen ▸' : 'Choose ▸'}</span>
                         </div>
-                        <span className="dex-ui-textbtn" style={{ flexShrink: 0 }}>{isDe ? 'Auswählen ▸' : 'Choose ▸'}</span>
                       </button>
                     ) : (
                       <div style={{ padding: '16px 20px' }}>
@@ -268,8 +284,23 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                 const dTitle = (typeof pendingDraft.data.title === 'string' && (pendingDraft.data.title as string).trim())
                   ? (pendingDraft.data.title as string).trim()
                   : (isDe ? '(ohne Titel)' : '(untitled)');
+                const continueDraft = (): void => {
+                  try { applyDraftPayload(pendingDraft.data); } catch (err) { console.warn('[DEX] Entwurf-Wiederherstellung fehlgeschlagen:', err); }
+                  setPendingDraft(null);
+                };
+                // v31.2 (2a′): Die ganze Kachel öffnet den Entwurf (Hover,
+                // Tastatur); die Knöpfe stehen linksbündig unter dem Text.
+                // „Verwerfen" stoppt die Weitergabe, sonst würde es zugleich
+                // fortsetzen.
                 return (
-                  <div className="dex-ui-card dex-ui-fade-in" style={{ margin: '0 0 16px', borderColor: 'var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.05)', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                  <div
+                    className="dex-ui-card dex-ui-card--hover dex-ui-fade-in"
+                    role="button"
+                    tabIndex={0}
+                    onClick={continueDraft}
+                    onKeyDown={rowKeyHandler(continueDraft)}
+                    style={{ margin: '0 0 16px', borderColor: 'var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.05)', display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap', cursor: 'pointer' }}
+                  >
                     <span className="dex-ui-choice-icon" style={{ background: 'rgba(237,139,0,0.14)', color: 'var(--dex-orange-dark, #b35a00)' }} aria-hidden="true"><Pencil size={18} /></span>
                     <div style={{ flex: 1, minWidth: 220 }}>
                       <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--dex-orange-dark, #b35a00)', marginBottom: 2 }}>
@@ -280,28 +311,28 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                           ? <><strong>&bdquo;{dTitle}&ldquo;</strong> — zwischengespeichert am {when}. Hochgeladene Bilder sind im Entwurf nicht enthalten und müssten neu gewählt werden.</>
                           : <><strong>&bdquo;{dTitle}&ldquo;</strong> — auto-saved on {when}. Uploaded images are not part of the draft and would need to be re-selected.</>}
                       </div>
-                    </div>
-                    <div className="dex-ui-inline" style={{ flexShrink: 0 }}>
-                      <button
-                        type="button"
-                        className="btn btn-primary dex-ui-btn-sm"
-                        onClick={() => {
-                          try { applyDraftPayload(pendingDraft.data); } catch (err) { console.warn('[DEX] Entwurf-Wiederherstellung fehlgeschlagen:', err); }
-                          setPendingDraft(null);
-                        }}
-                      >
-                        {isDe ? 'Entwurf fortsetzen' : 'Continue draft'}
-                      </button>
-                      <button
-                        type="button"
-                        className="dex-ui-textbtn dex-ui-textbtn--danger"
-                        onClick={() => {
-                          try { localStorage.removeItem(DRAFT_KEY); } catch { /* */ }
-                          setPendingDraft(null);
-                        }}
-                      >
-                        {isDe ? 'Entwurf verwerfen' : 'Discard draft'}
-                      </button>
+                      <div className="dex-ui-inline" style={{ marginTop: 10, gap: 12 }}>
+                        <button
+                          type="button"
+                          className="btn btn-primary dex-ui-btn-sm"
+                          onClick={e => { e.stopPropagation(); continueDraft(); }}
+                          onKeyDown={stopBubble}
+                        >
+                          {isDe ? 'Entwurf fortsetzen' : 'Continue draft'}
+                        </button>
+                        <button
+                          type="button"
+                          className="dex-ui-textbtn dex-ui-textbtn--danger"
+                          onClick={e => {
+                            e.stopPropagation();
+                            try { localStorage.removeItem(DRAFT_KEY); } catch { /* */ }
+                            setPendingDraft(null);
+                          }}
+                          onKeyDown={stopBubble}
+                        >
+                          {isDe ? 'Entwurf verwerfen' : 'Discard draft'}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -631,9 +662,10 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                       Ein Sub-Event lässt seine Beschreibung schlicht leer. */}
                   {/* v31.2: Schalter mit positiver Aussage („anzeigen") statt
                       Häkchen „Keine Beschreibung nutzen" — gespeichert wird
-                      weiter `noDescription`, die Umkehr passiert nur hier. */}
+                      weiter `noDescription`, die Umkehr passiert nur hier.
+                      2a′: direkt hinter der Beschriftung, nicht rechts außen. */}
                   {!scopeSub && (
-                    <label className="dex-ui-switch" style={{ marginLeft: 'auto' }}>
+                    <label className="dex-ui-switch" style={{ display: 'inline-flex', marginLeft: 12 }}>
                       <input
                         type="checkbox"
                         checked={!noDescription}
@@ -656,11 +688,21 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                     bodyTemplates) — der Wizard-Schritt bleibt schlank. */}
                 {(!scopeSub && noDescription) ? (
                   <div className="dex-ui-card dex-ui-card--soft dex-ui-card--muted dex-ui-muted">
-                    {isDe ? 'Auf der Anmelde-Seite wird keine Beschreibung angezeigt. Schalter oben rechts einschalten, um eine zu schreiben.' : 'No description will be shown on the registration page. Turn the switch above on to write one.'}
+                    {isDe ? 'Auf der Anmelde-Seite wird keine Beschreibung angezeigt. Schalter oben einschalten, um eine zu schreiben.' : 'No description will be shown on the registration page. Turn the switch above on to write one.'}
                   </div>
                 ) : (
-                <div className="dex-ui-card dex-ui-card--soft" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                  <span className="dex-ui-muted" style={{ flex: 1, minWidth: 200, lineHeight: 1.5 }}>
+                // v31.2 (2a′): Auszug und Knopf stehen zusammen links (kein
+                // flex:1, das den Knopf an den Rand schiebt); die Kachel selbst
+                // öffnet den Editor — Hover, Zeiger, Enter/Leertaste.
+                <div
+                  className="dex-ui-card dex-ui-card--soft dex-ui-card--hover"
+                  role="button"
+                  tabIndex={0}
+                  onClick={openDescriptionEditor}
+                  onKeyDown={rowKeyHandler(openDescriptionEditor)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: 'pointer' }}
+                >
+                  <span className="dex-ui-muted" style={{ minWidth: 200, lineHeight: 1.5 }}>
                     {scDescription
                       ? `${scDescription.replace(/<[^>]+>/g, '').substring(0, 120)}${scDescription.length > 120 ? '…' : ''}`
                       : (isDe ? 'Noch keine Beschreibung — sie steht oben auf der Anmeldeseite und in Meine Events. HTML-Formatierung ist möglich.' : 'No description yet — it appears at the top of the registration page and in My Events. HTML formatting is possible.')}
@@ -668,7 +710,8 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   <button
                     type="button"
                     className="btn btn-secondary dex-ui-btn-sm"
-                    onClick={() => { setHtmlEditorMode('description'); setHtmlEditorOpen(true); }}
+                    onClick={e => { e.stopPropagation(); openDescriptionEditor(); }}
+                    onKeyDown={stopBubble}
                   >
                     {scDescription ? (isDe ? 'Bearbeiten & Vorschau' : 'Edit & preview') : (isDe ? 'Beschreibung schreiben' : 'Write a description')}
                   </button>

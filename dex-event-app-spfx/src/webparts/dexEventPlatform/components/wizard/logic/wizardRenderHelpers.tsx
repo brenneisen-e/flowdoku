@@ -699,8 +699,13 @@ export function renderPreviewSectionImpl(ctx: RenderPreviewSectionCtx, sectionId
           </div>
         );
       case 'actions':
+        // v31.2: Die Vorschau zeigt die Knopfzeile so, wie die Anmeldeseite sie
+        // wirklich rendert (`registration-actions`: zentriert, gap 16, mobil
+        // gestapelt). Vorher hingen die beiden Knöpfe rechts außen — ein Layout,
+        // das es auf der echten Seite nicht gibt und das die Vorschau falsch
+        // vorwegnahm.
         return (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 16 }}>
+          <div className="registration-actions">
             <button className="btn btn-danger" disabled style={{ opacity: 0.5 }}><Trash2 size={16} /> Delete</button>
             <button className="btn btn-primary" disabled style={{ opacity: 0.5 }}><Send size={16} /> Register</button>
           </div>

@@ -381,10 +381,12 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
 
                     {/* v15.3: „Anrede abfragen"-Toggle pro Sub-Event.
                         v31.2: als Schalter-Zeile mit Folge-Satz; der Kopier-Knopf
-                        steht NEBEN der Zeile, nicht im Label — ein Knopf im Label
-                        würde beim Klick zugleich die Checkbox umschalten. */}
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'stretch', flexWrap: 'wrap', marginBottom: 12 }}>
-                      <label className={cx('dex-ui-toggle-row', !!se.askSalutation && 'is-active')} style={{ flex: '1 1 280px' }}>
+                        steht UNTER der Zeile linksbündig, nicht im Label — ein
+                        Knopf im Label würde beim Klick zugleich die Checkbox
+                        umschalten. (Leitfaden 2a′: vorher hing er allein am
+                        rechten Rand neben der Zeile.) */}
+                    <div className="dex-ui-stack" style={{ gap: 6, marginBottom: 12 }}>
+                      <label className={cx('dex-ui-toggle-row', !!se.askSalutation && 'is-active')}>
                         <input
                           type="checkbox"
                           checked={!!se.askSalutation}
@@ -408,6 +410,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                         title={isDe
                           ? 'Übernimmt die Anrede-Abfrage-Einstellung vom Hauptevent'
                           : 'Copies the salutation toggle from the main event'}
+                        style={{ alignSelf: 'flex-start' }}
                       >
                         {isDe ? 'Wie Hauptevent' : 'Same as main event'}
                       </button>
@@ -791,14 +794,35 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                         als Titel + Typ-Dropdown rechts daneben + Pflicht-Pill
                         + Lösch-X. Reorder-Pfeile nur im Reorder-Modus.
                         v31.2: Griff-Symbol davor, damit man sieht, dass die
-                        Karte ziehbar ist (draggable war sie schon). */}
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                        Karte ziehbar ist (draggable war sie schon).
+                        v31.2 (Leitfaden 2a′): Die Kopfzeile ist selbst die
+                        Aufklapp-Aktion — Hover, Zeiger, Klick/Enter/Leertaste
+                        rufen denselben Handler wie „Details". Pflicht-Chip und
+                        „Details" stehen direkt hinter Frage/Typ; rechts außen
+                        bleibt nur das Lösch-X. Eingabefelder und Nebenknöpfe
+                        stoppen die Weitergabe, damit Tippen, Typ-Wahl oder
+                        „Löschen" nicht zugleich auf-/zuklappen. Die Tastatur
+                        wirkt nur auf der Zeile selbst (target === currentTarget),
+                        ein Leerzeichen in der Frage bleibt ein Leerzeichen.
+                        Das Drag-Verhalten hängt weiter an der Karte. */}
+                    <div
+                      className="dex-ui-row"
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={isExpanded}
+                      onClick={() => toggleFieldExpand(field.id, isExpanded)}
+                      onKeyDown={e => {
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleFieldExpand(field.id, isExpanded); }
+                      }}
+                      style={{ gap: 10, flexWrap: 'wrap', padding: '6px 8px', margin: '-6px -8px', cursor: 'pointer' }}
+                    >
                       {reorderMode ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
                           <button
                             type="button"
                             className="dex-ui-iconbtn"
-                            onClick={() => moveCustomField(field.id, 'up')}
+                            onClick={e => { e.stopPropagation(); moveCustomField(field.id, 'up'); }}
                             disabled={idx === 0}
                             style={{ width: 24, height: 20 }}
                             title={isDe ? 'Nach oben' : 'Move up'}
@@ -807,7 +831,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                           <button
                             type="button"
                             className="dex-ui-iconbtn"
-                            onClick={() => moveCustomField(field.id, 'down')}
+                            onClick={e => { e.stopPropagation(); moveCustomField(field.id, 'down'); }}
                             disabled={idx === customFields.length - 1}
                             style={{ width: 24, height: 20 }}
                             title={isDe ? 'Nach unten' : 'Move down'}
@@ -815,7 +839,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                           ><ChevronDown size={14} /></button>
                         </div>
                       ) : customFields.length > 1 && (
-                        <span className="dex-ui-drag-handle" title={isDe ? 'Ziehen, um die Reihenfolge zu ändern' : 'Drag to reorder'} aria-hidden="true">≡</span>
+                        <span className="dex-ui-drag-handle" title={isDe ? 'Ziehen, um die Reihenfolge zu ändern' : 'Drag to reorder'} aria-hidden="true" onClick={e => e.stopPropagation()}>≡</span>
                       )}
                       <span style={numBadge}>{idx + 1}</span>
                       {/* v18.56: Textarea statt Input — lange Fragen brechen jetzt
@@ -828,6 +852,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                         rows={1}
                         placeholder={isDe ? 'Wie lautet die Frage? (z.B. „Welche T-Shirt-Größe brauchst du?")' : 'What is the question? (e.g. „Which T-shirt size do you need?")'}
                         onChange={e => updateCustomField(field.id, { label: e.target.value })}
+                        onClick={e => e.stopPropagation()}
                         ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; } }}
                         style={{
                           flex: '1 1 260px', minWidth: 180,
@@ -849,40 +874,47 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                         className="dex-ui-select"
                         value={field.type}
                         onChange={e => updateCustomField(field.id, { type: e.target.value as CustomFieldInput['type'] })}
+                        onClick={e => e.stopPropagation()}
                         title={isDe ? 'Art der Antwort' : 'Answer type'}
                         style={typeSelectStyle}
                       >
                         {MAIN_TYPES.map(ty => <option key={ty} value={ty}>{typeLabel(ty)}</option>)}
                       </select>
-                      <label
-                        className={cx('dex-ui-chip', field.required && 'is-active')}
-                        title={isDe ? 'Pflicht: ohne Antwort lässt sich die Anmeldung nicht absenden' : 'Required: the registration cannot be submitted without an answer'}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={field.required}
-                          onChange={e => updateCustomField(field.id, { required: e.target.checked })}
-                          style={{ display: 'none' }}
-                        />
-                        {field.required && <Check size={12} />}
-                        {t('create.required')}
-                      </label>
-                      <button
-                        type="button"
-                        className="dex-ui-textbtn"
-                        onClick={() => toggleFieldExpand(field.id, isExpanded)}
-                        title={isExpanded ? (isDe ? 'Details einklappen' : 'Collapse details') : (isDe ? 'Details bearbeiten' : 'Edit details')}
-                        aria-expanded={isExpanded}
-                        style={{ marginLeft: 'auto' }}
-                      >
-                        {isExpanded ? (isDe ? 'Weniger' : 'Less') : (isDe ? 'Details' : 'Details')}
-                        {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                      </button>
+                      {/* v31.2: Pflicht-Chip und „Details" gehören zur Frage und
+                          stehen links direkt hinter Frage/Typ (gap 8) — nicht mehr
+                          per margin-left:auto am rechten Rand. */}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <label
+                          className={cx('dex-ui-chip', field.required && 'is-active')}
+                          title={isDe ? 'Pflicht: ohne Antwort lässt sich die Anmeldung nicht absenden' : 'Required: the registration cannot be submitted without an answer'}
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={field.required}
+                            onChange={e => updateCustomField(field.id, { required: e.target.checked })}
+                            style={{ display: 'none' }}
+                          />
+                          {field.required && <Check size={12} />}
+                          {t('create.required')}
+                        </label>
+                        <button
+                          type="button"
+                          className="dex-ui-textbtn"
+                          onClick={e => { e.stopPropagation(); toggleFieldExpand(field.id, isExpanded); }}
+                          title={isExpanded ? (isDe ? 'Details einklappen' : 'Collapse details') : (isDe ? 'Details bearbeiten' : 'Edit details')}
+                          aria-expanded={isExpanded}
+                        >
+                          {isExpanded ? (isDe ? 'Weniger' : 'Less') : (isDe ? 'Details' : 'Details')}
+                          {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </button>
+                      </span>
                       <button
                         className="dex-ui-iconbtn dex-ui-iconbtn--danger"
-                        onClick={() => removeCustomField(field.id)}
+                        onClick={e => { e.stopPropagation(); removeCustomField(field.id); }}
                         title={isDe ? 'Frage löschen' : 'Delete question'}
                         aria-label={isDe ? 'Frage löschen' : 'Delete question'}
+                        style={{ marginLeft: 'auto' }}
                       >
                         <X size={16} />
                       </button>
@@ -1008,7 +1040,11 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                         Nur sichtbar wenn type === 'select'. */}
                     {field.type === 'select' && (
                       <div className="dex-ui-card dex-ui-card--soft" style={{ padding: '12px 14px' }}>
-                        <div className="dex-ui-inline" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
+                        {/* v31.2 (Leitfaden 2a′): Die Chips „Mehrfachauswahl" und
+                            „Vorfilter" gehören zur Optionsliste und stehen links
+                            direkt hinter der Überschrift — nicht mehr per
+                            space-between am rechten Rand. */}
+                        <div className="dex-ui-inline" style={{ gap: 12, marginBottom: 8 }}>
                           <span className="dex-ui-label" style={{ marginBottom: 0 }}>
                             {isDe ? 'Antwortmöglichkeiten' : 'Answer options'}
                           </span>

@@ -325,7 +325,9 @@ export const AgendaEditor: React.FC<AgendaEditorProps> = (p) => {
         return (
           <div key={g.key} className="dex-ui-card" style={{ padding: 0, overflow: 'hidden', borderColor: undated ? 'var(--dex-orange, #ed8b00)' : undefined, borderStyle: undated ? 'dashed' : undefined }}>
             {/* v31.2: Kopf als weiche Karte; Name und Datum beschriftet, damit niemand
-                raten muss, was das erste Feld ist. Aktionen rechts als Symbol-Knöpfe. */}
+                raten muss, was das erste Feld ist. „+ Programmpunkt" und „Kopieren"
+                stehen links direkt hinter Wochentag und Zähler (Leitfaden 2a′) —
+                rechts außen bleibt nur das Löschen, weil es WEG vom Inhalt gehört. */}
             <div className="dex-ui-card dex-ui-card--soft" style={{ border: 'none', borderRadius: 0, borderBottom: '1px solid var(--dex-gray-200)', padding: '8px 14px 10px', display: 'flex', alignItems: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
               <span style={{ fontSize: '0.7rem', fontWeight: 700, width: 22, height: 22, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: 'var(--dex-green-dark, #4a7c1f)', color: '#fff', marginBottom: 5 }}>{gi + 1}</span>
               <div>
@@ -359,35 +361,36 @@ export const AgendaEditor: React.FC<AgendaEditorProps> = (p) => {
                   />
                 </div>
               </div>
-              <div className="dex-ui-inline" style={{ gap: 6, marginBottom: 4 }}>
+              <div className="dex-ui-inline" style={{ gap: 8, marginBottom: 2 }}>
                 {undated
                   ? <span className="dex-ui-pill dex-ui-pill--orange">{isDe ? 'ohne Datum' : 'no date'}</span>
                   : <span className="dex-ui-muted" style={{ minWidth: 70 }}>{weekdayOf(g.date, isDe)}{g.dates.length > 1 ? ` +${g.dates.length - 1}` : ''}</span>}
                 <span className="dex-ui-pill dex-ui-pill--gray">{g.items.length} {g.items.length === 1 ? termS : termP}</span>
-              </div>
-              <span style={{ flex: 1 }} />
-              <div className="dex-ui-inline" style={{ gap: 2, marginBottom: 1 }}>
                 <button type="button" className="dex-ui-textbtn" onClick={() => addTo(g)} title={isDe ? `${termS} am Ende dieses Clusters anlegen` : `Add ${termS.toLowerCase()} at the end of this cluster`}><Plus size={14} /> {termS}</button>
                 <button type="button" className="dex-ui-iconbtn" onClick={() => duplicateGroup(g, gi)} aria-label={isDe ? 'Cluster kopieren' : 'Copy cluster'} title={isDe ? 'Alle Punkte dieses Clusters auf den nächsten freien Tag kopieren' : 'Copy all items of this cluster to the next free day'}><Copy size={15} /></button>
-                <button type="button" className="dex-ui-iconbtn dex-ui-iconbtn--danger" onClick={() => setConfirmKey(g.key)} aria-label={isDe ? 'Cluster löschen' : 'Delete cluster'} title={isDe ? 'Diesen Cluster mit allen Punkten entfernen' : 'Remove this cluster with all its items'}><Trash2 size={15} /></button>
               </div>
+              <span style={{ flex: 1 }} />
+              <button type="button" className="dex-ui-iconbtn dex-ui-iconbtn--danger" style={{ marginBottom: 1 }} onClick={() => setConfirmKey(g.key)} aria-label={isDe ? 'Cluster löschen' : 'Delete cluster'} title={isDe ? 'Diesen Cluster mit allen Punkten entfernen' : 'Remove this cluster with all its items'}><Trash2 size={15} /></button>
             </div>
             {/* v31.2: Das Präfix-Angebot ist eine Frage an den Organizer, kein
                 Knopf zwischen den Aktionen — deshalb eine eigene Hinweiszeile
-                mit dem Grund und dem Knopf daneben. */}
+                mit dem Grund und dem Knopf UNMITTELBAR dahinter (kein flex:1,
+                das ihn an den rechten Rand schöbe — Leitfaden 2a′). */}
             {prefixed > 0 && (
               <div className="dex-ui-callout dex-ui-callout--info dex-ui-callout--flush" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
                 <span className="dex-ui-callout-icon"><Info size={15} /></span>
-                <span style={{ flex: 1, minWidth: 200 }}>{isDe ? `„${g.cluster} - “ steht noch in ${prefixed} Titeln — der Cluster-Name übernimmt das jetzt.` : `“${g.cluster} - ” still prefixes ${prefixed} titles — the cluster name now carries that.`}</span>
+                <span style={{ minWidth: 200 }}>{isDe ? `„${g.cluster} - “ steht noch in ${prefixed} Titeln — der Cluster-Name übernimmt das jetzt.` : `“${g.cluster} - ” still prefixes ${prefixed} titles — the cluster name now carries that.`}</span>
                 <button type="button" className="dex-ui-textbtn" onClick={() => stripPrefixes(g)}>{isDe ? `Präfix aus ${prefixed} Titeln entfernen` : `Strip prefix from ${prefixed} titles`}</button>
               </div>
             )}
             {/* v31.2: Rückfrage nennt Cluster, Anzahl und Folge — statt
-                „5 Punkte löschen?" neben dem X. */}
+                „5 Punkte löschen?" neben dem X. Die Antwort-Knöpfe folgen der
+                Frage direkt (kein flex:1 auf dem Text — Leitfaden 2a′); die
+                Zeile ist ein Hinweis im Kasten, keine Modal-Fußzeile. */}
             {confirmKey === g.key && (
               <div className="dex-ui-callout dex-ui-callout--danger dex-ui-callout--flush" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
                 <span className="dex-ui-callout-icon"><AlertCircle size={15} /></span>
-                <span style={{ flex: 1, minWidth: 200 }}>
+                <span style={{ minWidth: 200 }}>
                   <strong>{isDe ? `Cluster „${label}“ mit ${g.items.length} ${g.items.length === 1 ? termS : termP} löschen?` : `Delete cluster “${label}” with ${g.items.length} ${(g.items.length === 1 ? termS : termP).toLowerCase()}?`}</strong>{' '}
                   {isDe ? 'Die Punkte verschwinden aus dem Programm.' : 'The items disappear from the programme.'}
                 </span>

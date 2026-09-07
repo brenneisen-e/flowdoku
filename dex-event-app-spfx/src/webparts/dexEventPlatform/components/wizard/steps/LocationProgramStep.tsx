@@ -249,9 +249,12 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                         Ort, Adresse, Agenda und Transferzeiten vom Hauptevent
                         als Startwerte für dieses Sub-Event.
                         v31.2: als Hinweiszeile mit dem Knopf daran — vorher
-                        stand er allein rechts, ohne zu sagen, wofür. */}
-                    <div className="dex-ui-callout dex-ui-callout--neutral" style={{ alignItems: 'center', marginBottom: 16 }}>
-                      <span style={{ flex: 1 }}>
+                        stand er allein rechts, ohne zu sagen, wofür. Der Knopf
+                        folgt dem Text unmittelbar (Leitfaden 2a′): kein
+                        flex:1 am Text, das ihn an den rechten Rand schöbe;
+                        bei Umbruch steht er linksbündig unter dem Satz. */}
+                    <div className="dex-ui-callout dex-ui-callout--neutral" style={{ alignItems: 'center', flexWrap: 'wrap', gap: '6px 12px', marginBottom: 16 }}>
+                      <span>
                         {isDe
                           ? 'Dieser Termin hat eigene Angaben zu Ort, Anreise und Programm. Du kannst die Werte des Hauptevents als Startpunkt übernehmen.'
                           : 'This date has its own venue, travel and programme details. You can take the main event’s values as a starting point.'}
