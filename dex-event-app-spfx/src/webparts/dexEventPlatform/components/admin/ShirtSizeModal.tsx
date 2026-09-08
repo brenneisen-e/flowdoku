@@ -47,6 +47,16 @@
  * sitzt (Nutzer-Wunsch: „Gib mir die Möglichkeit, zu den Teilnehmern zu
  * springen mit diesem Wert").
  *
+ * v31.4 (Nachtrag 2): Dieser Sprung läuft je Größen-Zeile über die
+ * E-MAIL-ADRESSEN der Zeile (`onJumpToParticipants`), nicht mehr über das
+ * Suchfeld. Nutzer-Wunsch 08.09.2026: „Hier würde ich gerne auf ‚L' und ‚XL'
+ * klicken können und kriege dann gefiltert die TN mit dieser falschen Größe."
+ * Genau das ging über die Textsuche nicht — ein einzelnes „L" trifft jede
+ * zweite Adresse, weshalb der Knopf eine Mindestlänge von drei Zeichen hatte
+ * und ausgerechnet den beiden Werten fehlte, die korrigiert gehören. Mit dem
+ * Adress-Filter fällt die Bedingung weg, und die Zeile „ohne Angabe" bekommt
+ * den Knopf ebenfalls.
+ *
  * v31.4 (Nachtrag): Der Ausgabe-Knopf am Tisch ist jünger als der Lauftag —
  * wer vorher eingecheckt wurde, hat sein Trikot trotzdem bekommen. Diese
  * Personen zählen deshalb mit ihrer Wunschgröße als abgeholt (Ansage des
@@ -91,6 +101,20 @@ export default function ShirtSizeModal(props: {
    * ohne die Prop bleibt die Liste wie bisher.
    */
   onJumpToParticipant?: (_query: string) => void;
+  /**
+   * v31.4: Sprung zu ALLEN Personen einer Größen-Zeile (Nutzer 08.09.2026:
+   * „Hier würde ich gerne auf ‚L' und ‚XL' klicken können und kriege dann
+   * gefiltert die TN mit dieser falschen Größe."). Bewusst über die
+   * E-Mail-Adressen aus `row.people` statt über das Suchfeld: Ein Textsprung
+   * mit „L" trifft jede zweite Adresse — deshalb hatte der Knopf bis v31.4
+   * eine Mindestlänge von drei Zeichen und ausgerechnet die kurzen Größen,
+   * die korrigiert gehören, keinen.
+   *
+   * Der dritte Parameter zählt die Personen der Zeile OHNE Adresse. Sie
+   * lassen sich so nicht filtern; der Aufrufer muss sie in seiner Filterzeile
+   * benennen, statt sie stillschweigend wegzulassen.
+   */
+  onJumpToParticipants?: (_emails: string[], _label: string, _withoutEmail?: number) => void;
 }): React.ReactElement {
   // v31.2: Zweisprachig wie jeder andere Dialog — bisher nur Deutsch. Die
   // Props bleiben unverändert (kein `isDe`-Prop), die Sprache kommt aus dem
@@ -523,12 +547,48 @@ export default function ShirtSizeModal(props: {
                   : <span className="dex-ui-muted">—</span>}
           </td>
           <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-            {/* v31.4: Sprung in die Teilnehmerliste, wo „Bearbeiten" sitzt.
-                Nur bei Werten ab drei Zeichen: Die Suche findet auch Antworten,
-                aber ein einzelnes „L" steckt in jeder zweiten Adresse — dann
-                wäre der Sprung ein Versprechen, das die Trefferliste bricht.
-                Für kurze Werte bleibt der Sprung je Person unten. */}
-            {props.onJumpToParticipant && kind !== 'none' && label.trim().length >= 3 && count > 0 && (
+            {/* v31.4: Sprung in die Teilnehmerliste, wo „Bearbeiten" sitzt —
+                seit dem Nachtrag über die ADRESSEN dieser Zeile statt über das
+                Suchfeld. Damit fällt die alte Mindestlänge von drei Zeichen
+                weg: „L" und „XL" waren genau die Werte, die der Organizer
+                korrigieren wollte, und ein Textsprung mit „L" hätte jede
+                zweite Adresse getroffen. Auch „ohne Angabe" bekommt den Knopf
+                — „wer hat keine Größe angegeben?" ist die nächste Frage, nicht
+                die letzte. */}
+            {/* Ohne Personen-Liste gäbe es nichts zu filtern — dann bliebe ein
+                Knopf stehen, der die Teilnehmerliste leer räumt. */}
+            {props.onJumpToParticipants && count > 0 && !!(people && people.length > 0) && (
+              <button
+                type="button"
+                className="dex-ui-textbtn"
+                onClick={() => {
+                  const list = people || [];
+                  // Die Beschriftung nennt das FELD mit: „T-Shirt Größe: L"
+                  // steht später allein über einer fremden Tabelle, und dort
+                  // sagt ein nacktes „L" niemandem mehr, wonach gefiltert ist.
+                  // Die Zeile „ohne Angabe" hat keinen Wert, der sich lesen
+                  // liesse — dort steht die Frage selbst.
+                  const val = kind === 'none' ? (isDe ? 'ohne Angabe' : 'no answer') : label.trim();
+                  const flt = (result && result.fieldLabel) ? `${result.fieldLabel}: ${val}` : val;
+                  if (props.onJumpToParticipants) {
+                    props.onJumpToParticipants(
+                      list.map(p => p.email).filter(e => !!e),
+                      flt,
+                      // Ohne Adresse kein Filter — die Zahl geht mit, damit der
+                      // Aufrufer sie nennen kann (CLAUDE.md: keine stille Kürzung).
+                      list.filter(p => !p.email).length,
+                    );
+                  }
+                }}
+                title={isDe
+                  ? `Teilnehmerliste auf diese ${count === 1 ? 'Person' : `${count} Personen`} filtern`
+                  : `Filter the attendee list to ${count === 1 ? 'this person' : `these ${count} people`}`}>
+                {isDe ? 'Zu den Teilnehmern' : 'Show participants'}
+              </button>
+            )}
+            {/* Ohne den neuen Rückruf bleibt der alte Textsprung — mit seiner
+                Mindestlänge, denn über die Suche gilt der Grund von oben. */}
+            {!props.onJumpToParticipants && props.onJumpToParticipant && kind !== 'none' && label.trim().length >= 3 && count > 0 && (
               <button type="button" className="dex-ui-textbtn" onClick={() => props.onJumpToParticipant && props.onJumpToParticipant(label.trim())}
                 title={isDe ? `Teilnehmerliste nach „${label}“ durchsuchen` : `Search the attendee list for “${label}”`}>
                 {isDe ? 'Zu den Teilnehmern' : 'Show participants'}

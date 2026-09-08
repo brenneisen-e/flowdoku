@@ -378,6 +378,16 @@ export default function QrSentIdBackfillModal(props: {
                 ? <><strong>{found.length}</strong> von <strong>{rows.length}</strong> angemeldeten Personen konnten aus den QR-Mails belegt werden.</>
                 : <><strong>{found.length}</strong> of <strong>{rows.length}</strong> registered people could be matched from the QR emails.</>}
             </p>
+            {/* v31.4 (Nachtrag): Wie viele Mail-Zeilen ueberhaupt lesbar waren,
+                stand bisher nur im Kasten fuer den Fall „gar kein Fund". Genau
+                diese Zahl trennt aber die beiden Ursachen: Sind es so viele
+                Zeilen wie Personen, ist es der Parser; sind es eine Handvoll,
+                ist es die Sichtbarkeit. Ohne sie raet man. */}
+            <p style={{ margin: '0 0 8px', fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
+              {isDe
+                ? <>Dafuer wurden <strong>{scannedMails}</strong> Mail-Zeile(n) in der Warteschlange gelesen{unparsedMails > 0 ? <>, davon {unparsedMails} ohne erkennbare Nummer</> : null}.</>
+                : <><strong>{scannedMails}</strong> mail row(s) were read in the queue{unparsedMails > 0 ? <>, {unparsedMails} of them without a readable number</> : null}.</>}
+            </p>
             <div className="dex-ui-inline">
               <span className="dex-ui-pill dex-ui-pill--orange">{isDe ? `${diffCount} weichen ab` : `${diffCount} differ`}</span>
               <span className="dex-ui-pill dex-ui-pill--green">{isDe ? `${sameCount} gleich` : `${sameCount} same`}</span>
@@ -403,8 +413,28 @@ export default function QrSentIdBackfillModal(props: {
                     ? `In der Mail-Warteschlange wurde keine QR-Mail zu diesem Event gefunden (${scannedMails} Zeile(n) gelesen). Zwei mögliche Ursachen: Es wurden noch keine QR-Mails verschickt — oder du hast keine Leserechte auf DEX_Emails. Die Liste zeigt jeder Person nur die Zeilen, die sie selbst angelegt hat; wenn der Massenversand von einem anderen Organizer lief, sieht ihn nur diese Person oder ein Site-Owner.`
                     : `No QR email for this event was found in the mail queue (${scannedMails} row(s) read). Two possible causes: no QR emails have been sent yet — or you lack read access to DEX_Emails. The list shows each person only the rows they created themselves; if the mass send was run by another organizer, only that person or a site owner can see it.`)
                   : (isDe
-                    ? `Bei ${missing.length} Person(en) wurde keine QR-Mail gefunden — das heißt nicht zwingend, dass sie keine bekommen haben. DEX_Emails zeigt jeder Person nur die Zeilen, die sie selbst angelegt hat: Die automatischen QR-Mails der Nachzügler entstehen im Browser der Teilnehmerin, ein anderer Massenversand im Browser der Organizerin, die ihn gestartet hat. Wenn die Zahl unerwartet hoch ist, lass den Nachtrag von einem Site-Owner oder von der Person laufen, die den Versand gemacht hat — statt diesen Personen neue QR-Codes mit neuen Nummern zu schicken.`
-                    : `For ${missing.length} person(s) no QR email was found — that does not necessarily mean they never received one. DEX_Emails shows each person only the rows they created themselves: the automatic QR emails of late registrants are queued in the attendee's browser, another mass send in the browser of the organizer who ran it. If the number looks unexpectedly high, have a site owner — or the person who ran the send — run the backfill instead of sending these people new QR codes with new numbers.`)}
+                    ? `Bei ${missing.length} Person(en) wurde keine QR-Mail gefunden — das heißt nicht zwingend, dass sie keine bekommen haben. Es wurden nur ${scannedMails} Mail-Zeile(n) gelesen; liegt diese Zahl weit unter der Personenzahl, ist es eine Frage der Sichtbarkeit, nicht der Daten. DEX_Emails zeigt jeder Person nur die Zeilen, die sie selbst angelegt hat: Die automatischen QR-Mails der Nachzügler entstehen im Browser der Teilnehmerin, ein anderer Massenversand im Browser der Organizerin, die ihn gestartet hat. Wichtig: Die Rolle „Admin" in DEX hebt das NICHT auf — dafür braucht es „Manage Lists" auf der Liste, also Mitgliedschaft in der Owners-Gruppe der Site oder Site-Collection-Admin. Lass den Nachtrag deshalb von genau dieser Person laufen oder von der, die den Versand gemacht hat — statt diesen Personen neue QR-Codes mit neuen Nummern zu schicken.`
+                    : `For ${missing.length} person(s) no QR email was found — that does not necessarily mean they never received one. Only ${scannedMails} mail row(s) were read; if that number is far below the number of people, it is a question of visibility, not of the data. DEX_Emails shows each person only the rows they created themselves: the automatic QR emails of late registrants are queued in the attendee's browser, another mass send in the browser of the organizer who ran it. Note: the DEX role "Admin" does NOT override this — it takes "Manage Lists" on the list, i.e. membership in the site's Owners group or site collection admin. Have that person — or whoever ran the send — run the backfill instead of sending these people new QR codes with new numbers.`)}
+              </div>
+            </div>
+          )}
+
+          {/* v31.4 (Nachtrag): Die Folge eines TEILWEISEN Nachtrags gehoert vor
+              den Klick, nicht in die Release Notes. Sobald das Event auch nur
+              EINE hinterlegte Nummer hat, geht am Check-in jeder Treffer, der
+              nur ueber die laufende Nummer kommt, in die Bestaetigungskarte
+              statt direkt in den Schreibvorgang. Das ist richtig — die
+              gedruckte Nummer dieser Leute kann auf jemand anderen zeigen —
+              aber es kostet je Person einen Klick, und bei einem Ueberhang wie
+              81 zu 12 ist das der ganze Tisch. Wer das nicht weiss, wundert
+              sich morgen frueh. */}
+          {found.length > 0 && missing.length > found.length && (
+            <div className="dex-ui-callout dex-ui-callout--warn">
+              <span className="dex-ui-callout-icon" aria-hidden="true"><AlertCircle size={16} /></span>
+              <div>
+                {isDe
+                  ? `Bedenke die Folge: Sobald für dieses Event auch nur eine Nummer hinterlegt ist, fragt der Check-in bei jeder eingetippten Zahl ohne hinterlegte QR-Mail einmal nach, statt direkt einzuchecken — das beträfe die ${missing.length} Person(en) ohne Fund, also die Mehrheit. Das ist so gewollt (ihre gedruckte Nummer kann auf jemand anderen zeigen), kostet am Tisch aber je Person einen Klick. Kommst du an den vollständigen Stand — über einen Site-Owner oder die Person, die den Versand gemacht hat —, hol ihn zuerst.`
+                  : `Consider the consequence: as soon as this event has even one stored number, check-in asks once for every typed number without a stored QR email instead of checking in directly — that would affect the ${missing.length} person(s) without a match, i.e. the majority. That is intended (their printed number may point to someone else), but it costs one extra click per person at the desk. If you can get the complete picture — via a site owner or whoever ran the send — get it first.`}
               </div>
             </div>
           )}
