@@ -11,6 +11,12 @@ import HotelSetupWizard from './HotelSetupWizard';
 import PersonContactHover from './PersonContactHover';
 import { parseStayValue } from './StayRangePicker';
 import { HOTEL_RE, EXTRA_RE, parseExtraAnswer } from '../utils/hotelAnswers';
+// v31.3: Gemeinsamer Klassensatz des Organizer Centers (docs/ui-leitfaden.md).
+// Inline-Styles können kein `:hover` — genau daran hing hier bis v31.2 jeder
+// Knopf, jede Karte und jede Tabellenzeile ohne sichtbare Reaktion.
+import { cx, ensureDexUiStyles } from './dexUi';
+import { InfoTooltip } from './InfoTooltip';
+import { AlertCircle, ChevronDown, Download, Plus, RefreshCw, Search, Send, Trash2, Users } from './Icons';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -114,6 +120,11 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
       return ctx ? new EventService(ctx) : null;
     } catch { return null; }
   }, []);
+
+  // v31.3: Das Stylesheet der `dex-ui-*`-Klassen liegt einmal im Dokument.
+  // Idempotent und bewusst KEIN Hook — Modal und WizardFormShell rufen es
+  // ebenfalls, dieses Panel rendert aber auch ohne offenen Dialog.
+  ensureDexUiStyles();
 
   /**
    * v28.57: Stammdaten lokal spiegeln. Vorher hing jedes Anlegen eines Hotels
@@ -1295,114 +1306,184 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     return { label: '', from: start ? addDays(start, -1) : '', to: end };
   });
 
-  const card: React.CSSProperties = {
-    background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 10,
-    padding: 16, marginBottom: 14,
+  /* ---------------- Darstellung (v31.3) ----------------
+   * Karten, Eingaben und die Tabelle kommen aus `dexUi.ts`; die Sticky-Kopfzeile
+   * der Zuordnungstabelle (v28.56) steckt jetzt in `dex-ui-table-wrap--sticky`
+   * — derselbe eigene Scroll-Container wie vorher, nur ohne Inline-Styles. */
+  type SortKey = typeof sortKey;
+  const toggleSort = (k: SortKey): void => {
+    if (sortKey === k) { setSortAsc(a => !a); } else { setSortKey(k); setSortAsc(true); }
   };
-  const h3: React.CSSProperties = { margin: '0 0 4px', fontSize: '1rem', fontWeight: 700, color: 'var(--dex-gray-800)' };
-  const hint: React.CSSProperties = { margin: '0 0 12px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 };
-  const inp: React.CSSProperties = { height: 30, fontSize: '0.8rem', padding: '0 8px', border: '1px solid var(--dex-gray-300)', borderRadius: 6, minWidth: 0 };
-  // v28.56: Kopfzeile der Zuordnungstabelle klebt am oberen Rand des eigenen
-  // Scroll-Containers (nicht am Fenster — das verrutscht im SharePoint-Canvas).
-  const thSticky: React.CSSProperties = {
-    position: 'sticky', top: 0, background: '#fff', zIndex: 3,
-    borderBottom: '2px solid var(--dex-gray-200)',
-  };
+  const sortMark = (k: SortKey): React.ReactNode =>
+    (sortKey === k ? <span className="dex-ui-table-sort" aria-hidden="true">{sortAsc ? '▲' : '▼'}</span> : null);
+  const sortableTh = (k: SortKey): string => cx('is-sortable', sortKey === k && 'is-sorted');
+  /** v31.3 (Nachzug): Der Sortier-Auslöser ist die Kopfzelle selbst — als `<th>`
+   *  wäre sie ohne diese Props nur mit der Maus erreichbar. Vorher saß in der
+   *  Zelle ein `<button>`; der Tastaturweg darf beim Umbau nicht verloren gehen. */
+  const sortThProps = (k: SortKey): React.ThHTMLAttributes<HTMLTableCellElement> => ({
+    tabIndex: 0,
+    'aria-sort': sortKey === k ? (sortAsc ? 'ascending' : 'descending') : 'none',
+    onClick: () => toggleSort(k),
+    onKeyDown: (e: React.KeyboardEvent<HTMLTableCellElement>) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      toggleSort(k);
+    },
+  });
+  /** Summe aller hinterlegten Kontingente — 0 heißt „keins gepflegt", nicht „null Plätze". */
+  const totalCapacity = hotels.reduce((n, h) => n + (h.capacity || 0), 0);
+  /** Spaltenzahl der Zuordnungstabelle: Haken + Person(en) + drei Bedarfs-Spalten
+   *  + je Sub-Event eine + Hotel + Zeitraum + Nächte. Nur für den colSpan der
+   *  leeren Zeile — die Reihenfolge selbst steht in thead/tbody. */
+  const tableColCount = 1 + (personColsExpanded ? 5 : 1) + 3 + (childEvents || []).length + 3;
 
   return (
-    <div>
-      {/* ---- Kopf: Freigabe + Kennzahlen ---- */}
-      <div style={card}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
-          <div style={{ flex: 1, minWidth: 240 }}>
-            <h3 style={h3}>{isDe ? 'Hotel-Planung' : 'Hotel planning'}</h3>
-            <p style={{ ...hint, marginBottom: 0 }}>
-              {isDe
-                ? <>Lege die Hotels an, gib Zeiträume als Vorlage vor und ordne die Teilnehmer zu. Die Zuordnung steht danach in der Teilnehmerliste und läuft in jeden Export mit.</>
-                : <>Create the hotels, define stay templates and assign attendees. The assignment then lives in the participant list and is part of every export.</>}
-            </p>
-            {/* v28.58: Der Assistent ist der empfohlene Einstieg — bei einem
-                leeren Event als große Karte, danach als unauffälliger Link. */}
-            {hotels.length > 0 && (
-              <button type="button" onClick={() => setWizardOpen(true)}
-                style={{ marginTop: 8, border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '0.8rem', color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline' }}>
-                {isDe ? 'Einrichtungs-Assistent öffnen (Zeiträume, Kontingente, Extranächte)' : 'Open setup wizard (periods, capacity, extra nights)'}
-              </button>
-            )}
-          </div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ padding: '8px 14px', borderRadius: 8, background: 'var(--dex-gray-50, #f7f7f5)', textAlign: 'center', minWidth: 92 }}>
-              <div style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)' }}>{assignedCount}</div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'zugeordnet' : 'assigned'}</div>
+    <div className="dex-ui-stack" style={{ gap: 14 }}>
+      {/* ---- Kopf: worum es geht und wie weit du bist ----
+           v31.3: Kennzahlen als `dex-ui-kpi-row`, der Stand der Freigabe als
+           Pille daneben. Der Schalter dafür steht jetzt unten bei „Freigabe" —
+           er ist der letzte Schritt der Planung, nicht der erste. */}
+      <div className="dex-ui-card">
+        <div className="dex-ui-card-head">
+          <h3 className="dex-ui-card-head-title">{isDe ? 'Hotel-Planung' : 'Hotel planning'}</h3>
+          <span className={cx('dex-ui-pill', visible ? 'dex-ui-pill--green' : 'dex-ui-pill--gray')}>
+            {visible
+              ? (isDe ? 'Für Teilnehmer sichtbar' : 'Visible to attendees')
+              : (isDe ? 'Noch nicht freigegeben' : 'Not released yet')}
+          </span>
+        </div>
+        <p className="dex-ui-muted" style={{ margin: '6px 0 0' }}>
+          {isDe
+            ? 'Hotels anlegen, Zeiträume als Vorlage vorgeben, Teilnehmer zuordnen. Die Zuordnung steht danach in der Teilnehmerliste und läuft in jeden Export mit.'
+            : 'Create hotels, define stay templates, assign attendees. The assignment then lives in the participant list and is part of every export.'}
+        </p>
+        <div className="dex-ui-kpi-row" style={{ marginTop: 12 }}>
+          <div className="dex-ui-kpi dex-ui-kpi--green">
+            <div className="dex-ui-kpi-value">{assignedCount}</div>
+            <div className="dex-ui-kpi-label">{isDe ? 'zugeordnet' : 'assigned'}</div>
+            <div className="dex-ui-kpi-sub">
+              {isDe ? `von ${people.length} aktiven Personen` : `of ${people.length} active people`}
             </div>
-            <div style={{ padding: '8px 14px', borderRadius: 8, background: openCount > 0 ? '#fff6e5' : 'var(--dex-gray-50, #f7f7f5)', textAlign: 'center', minWidth: 92 }}>
-              <div style={{ fontSize: '1.3rem', fontWeight: 700, color: openCount > 0 ? '#b35a00' : 'var(--dex-gray-600)' }}>{openCount}</div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'offen' : 'open'}</div>
+          </div>
+          <div className={cx('dex-ui-kpi', openCount > 0 && 'dex-ui-kpi--orange')}>
+            <div className="dex-ui-kpi-value">{openCount}</div>
+            <div className="dex-ui-kpi-label">{isDe ? 'offen' : 'open'}</div>
+            <div className="dex-ui-kpi-sub">
+              {openCount > 0
+                ? (isDe ? 'noch ohne Hotel' : 'still without a hotel')
+                : (isDe ? 'alle haben ein Zimmer' : 'everyone has a room')}
+            </div>
+          </div>
+          <div className="dex-ui-kpi">
+            <div className="dex-ui-kpi-value">{hotels.length}</div>
+            <div className="dex-ui-kpi-label">{isDe ? 'Hotels' : 'Hotels'}</div>
+            <div className="dex-ui-kpi-sub">
+              {totalCapacity > 0
+                ? (isDe ? `${totalCapacity} Plätze im Kontingent` : `${totalCapacity} places in the contingent`)
+                : (isDe ? 'kein Kontingent hinterlegt' : 'no capacity set')}
             </div>
           </div>
         </div>
-
-        <label style={{
-          display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 14, padding: '10px 12px',
-          borderRadius: 8, cursor: busy ? 'wait' : 'pointer',
-          border: `1px solid ${visible ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-          background: visible ? 'rgba(134,188,37,0.07)' : '#fff',
-        }}>
-          <input
-            type="checkbox"
-            checked={visible}
-            disabled={busy !== ''}
-            onChange={() => { void toggleVisible(); }}
-            style={{ width: 18, height: 18, marginTop: 1, cursor: 'pointer', accentColor: 'var(--dex-green, #86bc25)' }}
-          />
-          <span style={{ fontSize: '0.85rem' }}>
-            <strong>{isDe ? 'Teilnehmer sehen ihr Hotel unter „Meine Events"' : 'Attendees see their hotel under „My events"'}</strong>
-            <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2, lineHeight: 1.45 }}>
-              {visible
-                ? (isDe
-                  ? `Freigegeben — ${assignedCount} von ${people.length} Personen sehen aktuell ihr Hotel${openCount > 0 ? `, ${openCount} sehen nichts (noch nicht zugeordnet)` : ''}. Jede Umbuchung ist sofort sichtbar.`
-                  : `Released — ${assignedCount} of ${people.length} people currently see their hotel${openCount > 0 ? `, ${openCount} see nothing (not assigned yet)` : ''}. Every change is visible immediately.`)
-                : (isDe
-                  ? 'Aus — niemand sieht seine Zuordnung. Plane in Ruhe und gib frei, wenn alles steht.'
-                  : 'Off — nobody sees their assignment. Plan in peace and release when everything is set.')}
-            </span>
-          </span>
-        </label>
-
-        {/* v28.62: Neu anfangen. Bewusst unauffällig und zweistufig — nur die
-            Zuordnungen (Hotels und Zeiträume bleiben, man verteilt direkt neu)
-            oder alles. Beides mit Rückfrage, die den Umfang benennt. */}
-        {(assignedRows.length > 0 || hotels.length > 0 || stays.length > 0) && (
-          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 10, fontSize: '0.76rem' }}>
-            <button type="button" disabled={busy !== ''}
-              onClick={() => { void resetAssignments(); }}
-              style={{ border: 'none', background: 'none', padding: 0, cursor: busy !== '' ? 'wait' : 'pointer', color: 'var(--dex-gray-600)', textDecoration: 'underline' }}>
-              {isDe ? `Alle Zuordnungen löschen${assignedRows.length > 0 ? ` (${assignedRows.length})` : ''}` : `Clear all assignments${assignedRows.length > 0 ? ` (${assignedRows.length})` : ''}`}
+        {/* v31.3: Die Aktionen stehen links beim Inhalt (Leitfaden 2a′). Vorher
+            hing der Assistent als unterstrichener Link im Fließtext und der
+            Versand ganz rechts in der Werkzeugleiste der Tabelle.
+            v28.58: Der Assistent ist der empfohlene Einstieg — bei einem leeren
+            Event als große Karte darunter, danach hier. */}
+        {hotels.length > 0 && (
+          <div className="dex-ui-inline" style={{ marginTop: 12 }}>
+            <button type="button" className="btn btn-secondary dex-ui-btn-sm"
+              title={isDe ? 'Zeiträume, Kontingente und Extranächte in vier Schritten' : 'Periods, capacity and extra nights in four steps'}
+              onClick={() => setWizardOpen(true)}>
+              {isDe ? 'Einrichtungs-Assistent' : 'Setup wizard'}
             </button>
-            <button type="button" disabled={busy !== ''}
-              onClick={() => { void resetAll(); }}
-              style={{ border: 'none', background: 'none', padding: 0, cursor: busy !== '' ? 'wait' : 'pointer', color: 'var(--dex-red, #c00)', textDecoration: 'underline' }}>
-              {isDe ? 'Hotel-Planung komplett zurücksetzen' : 'Reset hotel planning completely'}
+            <button type="button" className="btn btn-secondary dex-ui-btn-sm"
+              title={isDe ? 'Eine fertige Hotel-Liste als Zuordnung übernehmen' : 'Take an existing hotel list as assignments'}
+              onClick={() => setImportOpen(true)}>
+              {isDe ? 'Liste importieren' : 'Import list'}
+            </button>
+            <button type="button" className="btn btn-primary dex-ui-btn-sm"
+              disabled={hotels.length === 0} onClick={openMail}>
+              <Send size={14} /> {isDe ? 'Hotel-Info verschicken' : 'Send hotel details'}
             </button>
           </div>
         )}
       </div>
 
+      {/* ---- Was jetzt Handeln verlangt (Leitfaden 5a.2) ----
+           v31.3: Beide Prüfungen standen bisher UNTER Hotels und Zeiträumen —
+           also hinter dem, was man selten anfasst. Sie stehen jetzt oben, weil
+           sie sagen, wem ein Bett fehlt. */}
+      {wantsHotelWithout.length > 0 && (
+        <div className="dex-ui-callout dex-ui-callout--warn">
+          <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+          <div>
+            <strong>
+              {isDe ? `${wantsHotelWithout.length} Person(en) mit Unterkunftsbedarf ohne Hotel` : `${wantsHotelWithout.length} person(s) needing accommodation without a hotel`}
+            </strong>
+            <div style={{ marginTop: 2 }}>
+              {isDe
+                ? 'Sie haben im Anmeldeformular eine Unterkunft angefragt, sind aber noch keinem Hotel zugeordnet — genau der Fall, der in einer Excel-Liste durchrutscht.'
+                : 'They requested accommodation during registration but are not assigned to a hotel yet — exactly the case that slips through in a spreadsheet.'}
+            </div>
+            <div style={{ marginTop: 4, color: 'var(--dex-gray-700)' }}>
+              {wantsHotelWithout.slice(0, 15).map(p => p.ParticipantName || p.ParticipantEmail).join(', ')}
+              {wantsHotelWithout.length > 15 ? ` … (+${wantsHotelWithout.length - 15})` : ''}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* v29.6: Zugeordnet, aber die Nächtezahl passt nicht zum Bedarf.
+          Das fällt sonst erst im Hotel auf — wenn die Nacht schon fehlt. */}
+      {((): React.ReactNode => {
+        const off = people.filter(p => {
+          const wn = wishNightsOf(p);
+          if (!wn || wn.nights <= 0 || !(p.Hotel || '').trim()) return false;
+          return nightsBetween(toDay(p.HotelFrom), toDay(p.HotelTo)) !== wn.nights;
+        });
+        if (off.length === 0) return null;
+        return (
+          <div className="dex-ui-callout dex-ui-callout--danger">
+            <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+            <div>
+              <strong>
+                {isDe ? `${off.length} Person(en) mit abweichender Nächtezahl` : `${off.length} person(s) with a mismatching number of nights`}
+              </strong>
+              <div style={{ marginTop: 2 }}>
+                {isDe
+                  ? 'Diese Personen sind einem Hotel zugeordnet, der gebuchte Zeitraum deckt aber nicht die im Formular angefragten Nächte ab. In der Tabelle unten steht die Abweichung in der Spalte „Bedarf = Zuordnung".'
+                  : 'These people are assigned to a hotel, but the booked period does not match the nights requested in the form. The table below shows the difference in the „Request = assignment" column.'}
+              </div>
+              <div style={{ marginTop: 4, color: 'var(--dex-gray-700)' }}>
+                {off.slice(0, 15).map(p => {
+                  const wn = wishNightsOf(p);
+                  const have = nightsBetween(toDay(p.HotelFrom), toDay(p.HotelTo));
+                  return `${p.ParticipantName || p.ParticipantEmail} (${wn ? wn.nights : '?'}\u2009\u2192\u2009${have})`;
+                }).join(', ')}
+                {off.length > 15 ? ` … (+${off.length - 15})` : ''}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ---- v28.58: Einstieg für ein noch leeres Event ---- */}
       {hotels.length === 0 && (
-        <div style={{ ...card, borderColor: 'var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.06)' }}>
-          <h3 style={h3}>{isDe ? 'In vier Schritten eingerichtet' : 'Set up in four steps'}</h3>
-          <p style={{ ...hint, marginBottom: 10 }}>
+        <div className="dex-ui-card dex-ui-card--accent">
+          <div className="dex-ui-card-head">
+            <h3 className="dex-ui-card-head-title">{isDe ? 'In vier Schritten eingerichtet' : 'Set up in four steps'}</h3>
+          </div>
+          <p className="dex-ui-muted" style={{ margin: '6px 0 12px' }}>
             {isDe
-              ? <>Der Assistent führt dich durch Zeiträume, Hotels mit Kontingent und die Verteil-Regeln — und rechnet am Ende aus, wie viele <strong>Extranächte</strong> ihr über das Kontingent hinaus buchen müsst, weil einzelne Personen früher anreisen. Vorschläge für die Zeiträume kommen aus dem Event-Datum.</>
-              : <>The wizard walks you through stay periods, hotels with capacity and the distribution rules — and works out how many <strong>extra nights</strong> you have to book beyond the contingent because some people arrive earlier. Period suggestions come from the event dates.</>}
+              ? <>Der Assistent führt dich durch Zeiträume, Hotels mit Kontingent und die Verteil-Regeln — und rechnet aus, wie viele <strong>Extranächte</strong> ihr über das Kontingent hinaus buchen müsst, weil einzelne Personen früher anreisen. Die Zeiträume schlägt er aus dem Event-Datum vor.</>
+              : <>The wizard walks you through stay periods, hotels with capacity and the distribution rules — and works out how many <strong>extra nights</strong> you have to book beyond the contingent because some people arrive earlier. It suggests the periods from the event dates.</>}
           </p>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button type="button" className="btn btn-primary" style={{ fontSize: '0.85rem', padding: '9px 20px' }}
+          <div className="dex-ui-inline">
+            <button type="button" className="btn btn-primary dex-ui-btn-sm"
               onClick={() => setWizardOpen(true)}>
               {isDe ? 'Einrichtung starten' : 'Start setup'}
             </button>
-            <button type="button" className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '9px 20px' }}
+            <button type="button" className="btn btn-secondary dex-ui-btn-sm"
               onClick={() => setImportOpen(true)}>
               {isDe ? 'Bestehende Liste importieren' : 'Import existing list'}
             </button>
@@ -1411,150 +1492,223 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
       )}
 
       {/* ---- Hotels ---- */}
-      <div style={card}>
-        <h3 style={h3}>{isDe ? 'Hotels' : 'Hotels'}</h3>
-        <p style={hint}>
+      <div className="dex-ui-card">
+        <div className="dex-ui-card-head">
+          <h3 className="dex-ui-card-head-title">{isDe ? 'Hotels' : 'Hotels'}</h3>
+          <InfoTooltip text={isDe
+            ? 'Ein Kontingent gilt fast immer nur für bestimmte Nächte. Deshalb steht auf jeder Karte, für welchen Zeitraum es gilt — alles darüber hinaus zählt als Extranacht und muss zusätzlich gebucht werden.'
+            : 'A contingent usually covers specific nights only. Each card therefore shows the period it applies to — anything beyond counts as an extra night and has to be booked on top.'} />
+          <span className="dex-ui-card-head-meta">
+            {isDe ? `${hotels.length} angelegt` : `${hotels.length} created`}
+          </span>
+        </div>
+        <p className="dex-ui-muted" style={{ margin: '6px 0 12px' }}>
           {isDe
-            ? 'Kontingent = Zimmer bzw. Betten, die euch zustehen. Ist es gesetzt, warnt die Ampel bei Überbuchung. Weil ein Kontingent fast immer nur für bestimmte Nächte gilt, steht darunter, für welchen Zeitraum — alles darüber hinaus zählt als Extranacht und muss zusätzlich gebucht werden.'
-            : 'Capacity = rooms or beds available to you. If set, the indicator warns about overbooking. Because a contingent usually covers specific nights only, the period it applies to is shown below — anything beyond counts as an extra night and has to be booked on top.'}
+            ? 'Kontingent = Zimmer bzw. Betten, die euch zustehen. Ist es gesetzt, meldet die Karte eine Überbuchung.'
+            : 'Capacity = rooms or beds available to you. If set, the card reports an overbooking.'}
         </p>
         {perHotel.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10, marginBottom: 12 }}>
-            {perHotel.map(ph => (
-              <div key={ph.hotel.id} style={{
-                border: `1px solid ${ph.over ? 'var(--dex-red, #c00)' : 'var(--dex-gray-200)'}`,
-                borderRadius: 8, padding: 10, background: ph.over ? '#fef3f2' : '#fff',
-              }}>
-                <div style={{ fontWeight: 700, fontSize: '0.88rem' }}>{ph.hotel.name}</div>
-                {ph.hotel.address && <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)' }}>{ph.hotel.address}</div>}
-                <div style={{ marginTop: 6, fontSize: '0.78rem' }}>
-                  <strong>{ph.count}</strong>{ph.hotel.capacity ? ` / ${ph.hotel.capacity}` : ''} {isDe ? 'Personen' : 'people'}
-                  {ph.free !== null && !ph.over && <span style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}> · {ph.free} {isDe ? 'frei' : 'free'}</span>}
-                  {ph.over && <span style={{ color: 'var(--dex-red, #c00)', fontWeight: 700 }}> · {isDe ? 'überbucht' : 'overbooked'}</span>}
-                </div>
-                <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)' }}>
-                  {ph.nights} {isDe ? 'Übernachtungen gesamt' : 'room nights total'}
-                </div>
-                {/* v28.58: Kontingent-Zeitraum + Extranächte. Das Kontingent
-                    gilt nur für seinen Zeitraum — frühere Anreisen und spätere
-                    Abreisen muss das Hotel zusätzlich buchen. */}
-                {stays.length > 0 && (
-                  <div style={{ marginTop: 6, fontSize: '0.72rem', color: 'var(--dex-gray-600)' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-                      <span>{isDe ? 'Kontingent für:' : 'Capacity for:'}</span>
-                      <select
-                        value={ph.hotel.capacityStayId || (ph.base ? ph.base.id : '')}
-                        disabled={busy !== ''}
-                        onChange={e => { void saveHotels(hotels.map(x => x.id === ph.hotel.id ? { ...x, capacityStayId: e.target.value } : x)); }}
-                        style={{ ...inp, height: 24, fontSize: '0.72rem', flex: '1 1 120px' }}>
-                        {stays.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-                      </select>
-                    </label>
-                    {(ph.extraBefore > 0 || ph.extraAfter > 0) && (
-                      <div style={{ marginTop: 4, color: '#b35a00', fontWeight: 600 }}>
-                        {isDe
-                          ? `${ph.extraBefore + ph.extraAfter}× Extranacht zusätzlich buchen${ph.extraBefore > 0 ? ` (${ph.extraBefore}× vorab` : ''}${ph.extraBefore > 0 && ph.extraAfter > 0 ? `, ${ph.extraAfter}× danach)` : (ph.extraBefore > 0 ? ')' : `(${ph.extraAfter}× danach)`)}`
-                          : `${ph.extraBefore + ph.extraAfter}× extra night to book on top${ph.extraBefore > 0 ? ` (${ph.extraBefore}× before` : ''}${ph.extraBefore > 0 && ph.extraAfter > 0 ? `, ${ph.extraAfter}× after)` : (ph.extraBefore > 0 ? ')' : `(${ph.extraAfter}× after)`)}`}
-                      </div>
+          <div className="dex-ui-grid-auto" style={{ marginBottom: 14 }}>
+            {perHotel.map(ph => {
+              const cap = ph.hotel.capacity || 0;
+              const pct = cap > 0 ? Math.min(100, Math.round((ph.count / cap) * 100)) : 0;
+              return (
+                <div key={ph.hotel.id} className="dex-ui-card" style={{
+                  padding: '12px 14px',
+                  borderColor: ph.over ? 'var(--dex-red, #c00)' : undefined,
+                  background: ph.over ? '#fef3f2' : undefined,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>{ph.hotel.name}</div>
+                      {ph.hotel.address && <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)' }}>{ph.hotel.address}</div>}
+                    </div>
+                    {/* Entfernen gehört WEG vom Inhalt — also rechts (Leitfaden 2a′). */}
+                    <button type="button" className="dex-ui-iconbtn dex-ui-iconbtn--danger"
+                      title={isDe ? 'Hotel entfernen' : 'Remove hotel'}
+                      aria-label={isDe ? 'Hotel entfernen' : 'Remove hotel'}
+                      onClick={() => {
+                        (async () => {
+                          const ok = await confirmDialog(
+                            isDe
+                              ? `Hotel „${ph.hotel.name}" entfernen?${ph.count > 0 ? `\n\n${ph.count} Person(en) sind ihm zugeordnet — die Zuordnung bleibt bestehen und muss dann neu gesetzt werden.` : ''}`
+                              : `Remove hotel „${ph.hotel.name}"?${ph.count > 0 ? `\n\n${ph.count} person(s) are assigned — their assignment stays and must be re-set.` : ''}`,
+                            { confirmLabel: isDe ? 'Entfernen' : 'Remove', danger: true },
+                          );
+                          if (ok) await saveHotels(hotels.filter(h => h.id !== ph.hotel.id));
+                        })().catch(() => { /* */ });
+                      }}>
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                  <div className="dex-ui-inline" style={{ marginTop: 8, fontSize: '0.78rem' }}>
+                    <span><strong>{ph.count}</strong>{cap ? ` / ${cap}` : ''} {isDe ? 'Personen' : 'people'}</span>
+                    {ph.free !== null && !ph.over && (
+                      <span className="dex-ui-pill dex-ui-pill--green">{ph.free} {isDe ? 'frei' : 'free'}</span>
+                    )}
+                    {ph.over && (
+                      <span className="dex-ui-pill dex-ui-pill--red">{isDe ? 'überbucht' : 'overbooked'}</span>
                     )}
                   </div>
-                )}
-                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                  <button type="button" onClick={() => exportRooming(ph.hotel.name)}
-                    style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '0.74rem', color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline' }}>
-                    {isDe ? 'Rooming-Liste' : 'Rooming list'}
-                  </button>
-                  <button type="button"
-                    onClick={() => {
-                      (async () => {
-                        const ok = await confirmDialog(
-                          isDe
-                            ? `Hotel „${ph.hotel.name}" entfernen?${ph.count > 0 ? `\n\n${ph.count} Person(en) sind ihm zugeordnet — die Zuordnung bleibt bestehen und muss dann neu gesetzt werden.` : ''}`
-                            : `Remove hotel „${ph.hotel.name}"?${ph.count > 0 ? `\n\n${ph.count} person(s) are assigned — their assignment stays and must be re-set.` : ''}`,
-                          { confirmLabel: isDe ? 'Entfernen' : 'Remove', danger: true },
-                        );
-                        if (ok) await saveHotels(hotels.filter(h => h.id !== ph.hotel.id));
-                      })().catch(() => { /* */ });
-                    }}
-                    style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '0.74rem', color: 'var(--dex-red, #c00)', textDecoration: 'underline' }}>
-                    {isDe ? 'Entfernen' : 'Remove'}
+                  {/* v31.3: Auslastung als Balken — die „Ampel" war vorher nur ein
+                      roter Rand, der erst BEI der Überbuchung etwas sagte. */}
+                  {cap > 0 && (
+                    <div className="dex-ui-progress" style={{ marginTop: 6 }}>
+                      <div className={cx('dex-ui-progress-bar', ph.over ? 'dex-ui-progress-bar--red' : pct >= 90 && 'dex-ui-progress-bar--orange')}
+                        style={{ width: `${ph.over ? 100 : pct}%` }} />
+                    </div>
+                  )}
+                  <div style={{ marginTop: 6, fontSize: '0.74rem', color: 'var(--dex-gray-500)' }}>
+                    {ph.nights} {isDe ? 'Übernachtungen gesamt' : 'room nights total'}
+                  </div>
+                  {/* v28.58: Kontingent-Zeitraum + Extranächte. Das Kontingent
+                      gilt nur für seinen Zeitraum — frühere Anreisen und spätere
+                      Abreisen muss das Hotel zusätzlich buchen. */}
+                  {stays.length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      <label className="dex-ui-inline" style={{ fontSize: '0.74rem', color: 'var(--dex-gray-600)' }}>
+                        <span>{isDe ? 'Kontingent gilt für:' : 'Capacity applies to:'}</span>
+                        <select
+                          className="dex-ui-select dex-ui-select--sm"
+                          value={ph.hotel.capacityStayId || (ph.base ? ph.base.id : '')}
+                          disabled={busy !== ''}
+                          onChange={e => { void saveHotels(hotels.map(x => x.id === ph.hotel.id ? { ...x, capacityStayId: e.target.value } : x)); }}
+                          style={{ flex: '1 1 120px', width: 'auto' }}>
+                          {stays.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                        </select>
+                      </label>
+                      {(ph.extraBefore > 0 || ph.extraAfter > 0) && (
+                        <div className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm" style={{ marginTop: 6 }}>
+                          {isDe
+                            ? `${ph.extraBefore + ph.extraAfter}× Extranacht zusätzlich buchen${ph.extraBefore > 0 ? ` (${ph.extraBefore}× vorab` : ''}${ph.extraBefore > 0 && ph.extraAfter > 0 ? `, ${ph.extraAfter}× danach)` : (ph.extraBefore > 0 ? ')' : `(${ph.extraAfter}× danach)`)}`
+                            : `${ph.extraBefore + ph.extraAfter}× extra night to book on top${ph.extraBefore > 0 ? ` (${ph.extraBefore}× before` : ''}${ph.extraBefore > 0 && ph.extraAfter > 0 ? `, ${ph.extraAfter}× after)` : (ph.extraBefore > 0 ? ')' : `(${ph.extraAfter}× after)`)}`}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div style={{ marginTop: 8 }}>
+                    <button type="button" className="dex-ui-textbtn" onClick={() => exportRooming(ph.hotel.name)}
+                      title={isDe ? 'Nur dieses Hotel als CSV für Excel' : 'This hotel only, as CSV for Excel'}>
+                      <Download size={14} /> {isDe ? 'Rooming-Liste' : 'Rooming list'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {/* v31.3: Anlegen als eigener Abschnitt mit Beschriftungen — die drei
+            Felder standen als nackte Platzhalter nebeneinander. */}
+        <div className="dex-ui-section">
+          <div className="dex-ui-section-title">{isDe ? 'Hotel hinzufügen' : 'Add a hotel'}</div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div className="dex-ui-field" style={{ flex: '2 1 160px', marginBottom: 0 }}>
+              <label className="dex-ui-label" htmlFor="dex-hotel-new-name">{isDe ? 'Wie heißt das Hotel?' : 'What is the hotel called?'}</label>
+              <input id="dex-hotel-new-name" className="dex-ui-input dex-ui-input--sm" placeholder={isDe ? 'z.B. Motel One Berlin' : 'e.g. Motel One Berlin'}
+                value={newHotel.name} onChange={e => setNewHotel({ ...newHotel, name: e.target.value })} />
+            </div>
+            <div className="dex-ui-field" style={{ flex: '3 1 200px', marginBottom: 0 }}>
+              <label className="dex-ui-label" htmlFor="dex-hotel-new-addr">
+                {isDe ? 'Adresse' : 'Address'} <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>
+              </label>
+              <input id="dex-hotel-new-addr" className="dex-ui-input dex-ui-input--sm" placeholder={isDe ? 'Straße, PLZ Ort' : 'Street, ZIP city'}
+                value={newHotel.address} onChange={e => setNewHotel({ ...newHotel, address: e.target.value })} />
+            </div>
+            <div className="dex-ui-field" style={{ width: 130, marginBottom: 0 }}>
+              <label className="dex-ui-label" htmlFor="dex-hotel-new-cap">{isDe ? 'Kontingent' : 'Capacity'}</label>
+              <input id="dex-hotel-new-cap" className="dex-ui-input dex-ui-input--sm" type="number" min={0} placeholder={isDe ? 'leer = offen' : 'empty = open'}
+                value={newHotel.capacity || ''} onChange={e => setNewHotel({ ...newHotel, capacity: parseInt(e.target.value, 10) || 0 })} />
+            </div>
+            <button type="button" className="btn btn-secondary dex-ui-btn-sm"
+              disabled={busy !== ''}
+              onClick={() => {
+                const name = (newHotel.name || '').trim();
+                if (!name) { showAlert(isDe ? 'Bitte einen Hotelnamen eingeben.' : 'Please enter a hotel name.', { variant: 'error' }); return; }
+                if (hotels.some(h => h.name.toLowerCase() === name.toLowerCase())) {
+                  showAlert(isDe ? 'Ein Hotel mit diesem Namen gibt es schon.' : 'A hotel with that name already exists.', { variant: 'error' }); return;
+                }
+                void saveHotels(hotels.concat([{ ...newHotel, id: uid('h'), name }]));
+                setNewHotel({ id: '', name: '', address: '', capacity: 0, notes: '' });
+              }}>
+              <Plus size={14} /> {isDe ? 'Hotel' : 'Hotel'}
+            </button>
+          </div>
+          <div className="dex-ui-help">
+            {isDe ? 'Ohne Kontingent gilt das Hotel als unbegrenzt — die automatische Verteilung füllt es zuletzt.' : 'Without a capacity the hotel counts as unlimited — auto-distribution fills it last.'}
+          </div>
+        </div>
+      </div>
+
+      {/* ---- Zeitraum-Vorlagen ---- */}
+      <div className="dex-ui-card">
+        <div className="dex-ui-card-head">
+          <h3 className="dex-ui-card-head-title">{isDe ? 'Zeiträume' : 'Stay templates'}</h3>
+          <InfoTooltip text={isDe
+            ? 'Der Standard-Zeitraum wird jeder neuen Zuordnung automatisch mitgegeben — auch bei „Automatisch verteilen" und beim Zuordnen eines ganzen Sub-Events.'
+            : 'The default period is applied to every new assignment — including auto-distribution and assigning a whole sub-event.'} />
+          <span className="dex-ui-card-head-meta">
+            {isDe ? `${stays.length} angelegt` : `${stays.length} created`}
+          </span>
+        </div>
+        <p className="dex-ui-muted" style={{ margin: '6px 0 12px' }}>
+          {isDe
+            ? 'Statt bei jeder Person zweimal ein Datum zu wählen: Zeiträume einmal anlegen, dann Personen markieren und mit einem Klick zuweisen.'
+            : 'Instead of picking two dates per person: define the ranges once, then select people and apply with one click.'}
+        </p>
+        {stays.length === 0 ? (
+          <div className="dex-ui-empty">
+            <div className="dex-ui-empty-title">{isDe ? 'Noch kein Zeitraum angelegt.' : 'No template yet.'}</div>
+            {isDe ? 'Lege unten den ersten an — er wird automatisch der Standard.' : 'Create the first one below — it automatically becomes the default.'}
+          </div>
+        ) : (
+          <div className="dex-ui-card dex-ui-card--soft dex-ui-card--list">
+            {stays.map(st => (
+              <div key={st.id} className={cx('dex-ui-row', 'dex-ui-row--bordered', st.isDefault && 'is-active')}>
+                <div className="dex-ui-row-main">
+                  <div className="dex-ui-row-title">
+                    {st.label}
+                    {st.isDefault && (
+                      <span className="dex-ui-pill dex-ui-pill--green" style={{ marginLeft: 8 }}>
+                        {isDe ? 'Standard' : 'Default'}
+                      </span>
+                    )}
+                  </div>
+                  <div className="dex-ui-row-sub">
+                    {fmtDay(st.from, isDe)} – {fmtDay(st.to, isDe)} · {nightsBetween(st.from, st.to)} {isDe ? 'Nächte' : 'nights'}
+                  </div>
+                </div>
+                <div className="dex-ui-row-actions">
+                  {!st.isDefault && (
+                    <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted"
+                      title={isDe ? 'Neue Zuordnungen bekommen dann diesen Zeitraum' : 'New assignments will then use this period'}
+                      disabled={busy !== ''}
+                      onClick={() => { void saveStays(stays.map(x => ({ ...x, isDefault: x.id === st.id }))); }}>
+                      {isDe ? 'Als Standard' : 'Make default'}
+                    </button>
+                  )}
+                  {/* v28.60: Während ein Schreibvorgang läuft gesperrt — zwei
+                      parallele Löschungen sind ein Read-Modify-Write auf denselben
+                      Datensatz und haetten sich gegenseitig überschrieben. */}
+                  <button type="button" className="dex-ui-iconbtn dex-ui-iconbtn--danger"
+                    title={isDe ? 'Zeitraum löschen' : 'Delete template'}
+                    aria-label={isDe ? 'Zeitraum löschen' : 'Delete template'}
+                    disabled={busy !== ''}
+                    onClick={() => { void saveStays(stays.filter(x => x.id !== st.id)); }}>
+                    <Trash2 size={16} />
                   </button>
                 </div>
               </div>
             ))}
           </div>
         )}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <input style={{ ...inp, flex: '2 1 160px' }} placeholder={isDe ? 'Hotelname' : 'Hotel name'}
-            value={newHotel.name} onChange={e => setNewHotel({ ...newHotel, name: e.target.value })} />
-          <input style={{ ...inp, flex: '3 1 200px' }} placeholder={isDe ? 'Adresse (optional)' : 'Address (optional)'}
-            value={newHotel.address} onChange={e => setNewHotel({ ...newHotel, address: e.target.value })} />
-          <input style={{ ...inp, width: 110 }} type="number" min={0} placeholder={isDe ? 'Kontingent' : 'Capacity'}
-            value={newHotel.capacity || ''} onChange={e => setNewHotel({ ...newHotel, capacity: parseInt(e.target.value, 10) || 0 })} />
-          <button type="button" className="btn btn-secondary" style={{ fontSize: '0.78rem', padding: '5px 14px' }}
-            disabled={busy !== ''}
-            onClick={() => {
-              const name = (newHotel.name || '').trim();
-              if (!name) { showAlert(isDe ? 'Bitte einen Hotelnamen eingeben.' : 'Please enter a hotel name.', { variant: 'error' }); return; }
-              if (hotels.some(h => h.name.toLowerCase() === name.toLowerCase())) {
-                showAlert(isDe ? 'Ein Hotel mit diesem Namen gibt es schon.' : 'A hotel with that name already exists.', { variant: 'error' }); return;
-              }
-              void saveHotels(hotels.concat([{ ...newHotel, id: uid('h'), name }]));
-              setNewHotel({ id: '', name: '', address: '', capacity: 0, notes: '' });
-            }}>
-            {isDe ? '+ Hotel' : '+ Hotel'}
-          </button>
-        </div>
-      </div>
-
-      {/* ---- Zeitraum-Vorlagen ---- */}
-      <div style={card}>
-        <h3 style={h3}>{isDe ? 'Zeiträume' : 'Stay templates'}</h3>
-        <p style={hint}>
-          {isDe
-            ? 'Statt bei jeder Person zweimal ein Datum zu wählen: Zeiträume einmal anlegen, dann markieren und mit einem Klick zuweisen. Der Standard wird neuen Zuordnungen automatisch gegeben.'
-            : 'Instead of picking two dates per person: define the ranges once, then select people and apply with one click. The default is used for new assignments.'}
-        </p>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-          {stays.map(st => (
-            <span key={st.id} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 8, padding: '5px 10px', borderRadius: 999,
-              border: `1px solid ${st.isDefault ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-              background: st.isDefault ? 'rgba(134,188,37,0.10)' : '#fff', fontSize: '0.76rem',
-            }}>
-              <strong>{st.label}</strong>
-              <span style={{ color: 'var(--dex-gray-500)' }}>
-                {fmtDay(st.from, isDe)} – {fmtDay(st.to, isDe)} · {nightsBetween(st.from, st.to)} {isDe ? 'N.' : 'n.'}
-              </span>
-              {!st.isDefault && (
-                <button type="button" title={isDe ? 'Als Standard setzen' : 'Set as default'}
-                  disabled={busy !== ''}
-                  onClick={() => { void saveStays(stays.map(x => ({ ...x, isDefault: x.id === st.id }))); }}
-                  style={{ border: 'none', background: 'none', cursor: busy !== '' ? 'wait' : 'pointer', padding: 0, fontSize: '0.72rem', color: 'var(--dex-gray-600)', opacity: busy !== '' ? 0.5 : 1 }}>
-                  {isDe ? 'Standard' : 'Default'}
-                </button>
-              )}
-              {/* v28.60: Während ein Schreibvorgang läuft gesperrt — zwei
-                  parallele Löschungen sind ein Read-Modify-Write auf denselben
-                  Datensatz und haetten sich gegenseitig überschrieben. */}
-              <button type="button" title={isDe ? 'Zeitraum löschen' : 'Delete template'}
-                disabled={busy !== ''}
-                onClick={() => { void saveStays(stays.filter(x => x.id !== st.id)); }}
-                style={{ border: 'none', background: 'none', cursor: busy !== '' ? 'wait' : 'pointer', padding: 0, color: 'var(--dex-red, #c00)', fontSize: '0.85rem', lineHeight: 1, opacity: busy !== '' ? 0.5 : 1 }}>×</button>
-            </span>
-          ))}
-          {stays.length === 0 && (
-            <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
-              {isDe ? 'Noch kein Zeitraum angelegt.' : 'No template yet.'}
-            </span>
-          )}
-        </div>
         {/* v28.57: Feld-Layout wie im Event-Wizard — form-group/form-label/form-input
             plus derselbe react-datepicker (deutsche Locale, TT.MM.JJJJ). */}
+        <div className="dex-ui-section">
+          <div className="dex-ui-section-title">{isDe ? 'Zeitraum hinzufügen' : 'Add a period'}</div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div className="form-group" style={{ marginBottom: 0, flex: '2 1 190px' }}>
             <label className="form-label" style={{ fontSize: '0.8rem', marginBottom: 4 }}>
-              {isDe ? 'Bezeichnung' : 'Label'}
+              {isDe ? 'Wie soll der Zeitraum heißen?' : 'What should the period be called?'}
             </label>
             <input className="form-input" placeholder={isDe ? 'z.B. „Mit Vorabend"' : 'e.g. „With prior evening"'}
               value={newStay.label} onChange={e => setNewStay({ ...newStay, label: e.target.value })} />
@@ -1586,10 +1740,10 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
               calendarClassName="dex-datepicker-calendar" popperPlacement="bottom-start"
               isClearable autoComplete="off" />
           </div>
-          <span style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', paddingBottom: 14 }}>
+          <span className="dex-ui-pill dex-ui-pill--gray" style={{ marginBottom: 16 }}>
             {nightsBetween(newStay.from, newStay.to)} {isDe ? 'Nächte' : 'nights'}
           </span>
-          <button type="button" className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '11px 18px', marginBottom: 1 }}
+          <button type="button" className="btn btn-secondary dex-ui-btn-sm" style={{ marginBottom: 14 }}
             disabled={busy !== ''}
             onClick={() => {
               const n = nightsBetween(newStay.from, newStay.to);
@@ -1598,106 +1752,86 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
               void saveStays(stays.concat([{ id: uid('s'), label, from: newStay.from, to: newStay.to, isDefault: stays.length === 0 }]));
               setNewStay({ ...newStay, label: '' });
             }}>
-            {isDe ? '+ Zeitraum' : '+ Template'}
+            <Plus size={14} /> {isDe ? 'Zeitraum' : 'Template'}
           </button>
+        </div>
+        <div className="dex-ui-help">
+          {isDe ? 'Ohne Bezeichnung heißt der Zeitraum nach seiner Nächtezahl. Der erste Zeitraum wird automatisch der Standard.' : 'Without a label the period is named after its number of nights. The first one automatically becomes the default.'}
+        </div>
         </div>
       </div>
 
-      {/* ---- Vollständigkeits-Check ---- */}
-      {wantsHotelWithout.length > 0 && (
-        <div style={{ ...card, borderColor: '#e8a33d', background: '#fff8ec' }}>
-          <h3 style={{ ...h3, color: '#b35a00' }}>
-            {isDe ? `${wantsHotelWithout.length} Person(en) mit Unterkunftsbedarf ohne Hotel` : `${wantsHotelWithout.length} person(s) needing accommodation without a hotel`}
-          </h3>
-          <p style={{ ...hint, marginBottom: 8 }}>
-            {isDe
-              ? 'Diese Personen haben im Anmeldeformular eine Unterkunft angefragt, sind aber noch keinem Hotel zugeordnet — genau der Fall, der in einer Excel-Liste durchrutscht.'
-              : 'These people requested accommodation during registration but are not assigned to a hotel yet — exactly the case that slips through in a spreadsheet.'}
-          </p>
-          <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-700)' }}>
-            {wantsHotelWithout.slice(0, 15).map(p => p.ParticipantName || p.ParticipantEmail).join(', ')}
-            {wantsHotelWithout.length > 15 ? ` … (+${wantsHotelWithout.length - 15})` : ''}
-          </div>
-        </div>
-      )}
-
-      {/* v29.6: Zugeordnet, aber die Nächtezahl passt nicht zum Bedarf.
-          Das fällt sonst erst im Hotel auf — wenn die Nacht schon fehlt. */}
-      {((): React.ReactNode => {
-        const off = people.filter(p => {
-          const wn = wishNightsOf(p);
-          if (!wn || wn.nights <= 0 || !(p.Hotel || '').trim()) return false;
-          return nightsBetween(toDay(p.HotelFrom), toDay(p.HotelTo)) !== wn.nights;
-        });
-        if (off.length === 0) return null;
-        return (
-          <div style={{ ...card, borderColor: 'var(--dex-red, #c00)', background: '#fef3f2' }}>
-            <h3 style={{ ...h3, color: 'var(--dex-red, #c00)' }}>
-              {isDe ? `${off.length} Person(en) mit abweichender Nächtezahl` : `${off.length} person(s) with a mismatching number of nights`}
-            </h3>
-            <p style={{ ...hint, marginBottom: 8 }}>
-              {isDe
-                ? 'Diese Personen sind einem Hotel zugeordnet, der gebuchte Zeitraum deckt aber nicht die im Formular angefragten Nächte ab. In der Tabelle unten steht das in der Spalte „Bedarf = Zuordnung" mit der Abweichung.'
-                : 'These people are assigned to a hotel, but the booked period does not match the nights requested in the form. The table below shows the difference in the „Request = assignment" column.'}
-            </p>
-            <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-700)' }}>
-              {off.slice(0, 15).map(p => {
-                const wn = wishNightsOf(p);
-                const have = nightsBetween(toDay(p.HotelFrom), toDay(p.HotelTo));
-                return `${p.ParticipantName || p.ParticipantEmail} (${wn ? wn.nights : '?'}\u2009\u2192\u2009${have})`;
-              }).join(', ')}
-              {off.length > 15 ? ` … (+${off.length - 15})` : ''}
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* ---- Belegung je Nacht ---- */}
-      {perNight.length > 0 && (
-        <div style={card}>
-          <h3 style={h3}>{isDe ? 'Belegung je Nacht' : 'Occupancy per night'}</h3>
-          <p style={hint}>
-            {isDe ? 'Das ist die Zahl, die das Hotel fürs Abrufkontingent braucht.' : 'This is the figure the hotel needs for the room allotment.'}
-          </p>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ borderCollapse: 'collapse', fontSize: '0.78rem', minWidth: 380 }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: 'left', padding: '4px 10px 4px 0' }}>{isDe ? 'Nacht' : 'Night'}</th>
-                  <th style={{ textAlign: 'right', padding: '4px 12px' }}>{isDe ? 'Gesamt' : 'Total'}</th>
-                  {hotels.map(h => <th key={h.id} style={{ textAlign: 'right', padding: '4px 12px' }}>{h.name}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {perNight.map(n => (
-                  <tr key={n.day} style={{ borderTop: '1px solid var(--dex-gray-100)' }}>
-                    <td style={{ padding: '4px 10px 4px 0' }}>{fmtDay(n.day, isDe)}</td>
-                    <td style={{ textAlign: 'right', padding: '4px 12px', fontWeight: 700 }}>{n.total}</td>
-                    {hotels.map(h => <td key={h.id} style={{ textAlign: 'right', padding: '4px 12px' }}>{n.byHotel[h.name] || 0}</td>)}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
       {/* ---- Zuordnung ---- */}
-      <div style={card}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
-          <h3 style={{ ...h3, margin: 0 }}>{isDe ? 'Zuordnung' : 'Assignment'}</h3>
-          <button type="button" onClick={() => setShowRoster(o => !o)}
-            style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.76rem', color: 'var(--dex-gray-600)', textDecoration: 'underline' }}>
-            {showRoster ? (isDe ? 'einklappen' : 'collapse') : (isDe ? 'aufklappen' : 'expand')}
-          </button>
-          <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-              placeholder={isDe ? 'Suchen (Name, Standort, Hotel …)' : 'Search (name, location, hotel …)'}
-              style={{ ...inp, minWidth: 210 }} />
+      <div className="dex-ui-card">
+        <div className="dex-ui-card-head">
+          <h3 className="dex-ui-card-head-title">{isDe ? 'Zuordnung' : 'Assignment'}</h3>
+          <span className="dex-ui-card-head-meta">
+            {isDe ? `${people.length} aktive Personen` : `${people.length} active people`}
+          </span>
+          <div className="dex-ui-card-head-actions">
+            {/* v31.3 (Nachzug): Verteilen und Export stehen im Kartenkopf, nicht
+                in der Werkzeugleiste — die hängt am Aufklapper, beide Aktionen
+                gelten aber für die ganze Liste und wirkten vorher auch
+                eingeklappt. Ein Knopf, der beim Zuklappen verschwindet, ist
+                eine Funktion weniger. */}
+            <button type="button" className="btn btn-secondary dex-ui-btn-sm"
+              disabled={hotels.length === 0 || busy !== ''}
+              title={isDe ? 'Verteilt alle noch nicht zugeordneten Personen nach Kontingent' : 'Distributes everyone not yet assigned according to capacity'}
+              onClick={() => { void autoDistribute(); }}>
+              {isDe ? 'Automatisch verteilen' : 'Auto-distribute'}
+            </button>
+            <button type="button" className="btn btn-secondary dex-ui-btn-sm"
+              title={isDe ? 'Alle Personen mit Hotel, Zeitraum und Nächten als CSV' : 'Everyone with hotel, period and nights as CSV'}
+              onClick={() => exportRooming()}>
+              <Download size={14} /> {isDe ? 'Alles als Excel (CSV)' : 'Export all (CSV)'}
+            </button>
+            <button type="button" className={cx('dex-ui-disclosure', showRoster && 'is-open')}
+              style={{ width: 'auto' }}
+              aria-expanded={showRoster}
+              onClick={() => setShowRoster(o => !o)}>
+              <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+              {showRoster ? (isDe ? 'einklappen' : 'collapse') : (isDe ? 'aufklappen' : 'expand')}
+            </button>
+          </div>
+        </div>
+
+        {/* v31.3: EINE Werkzeugleiste (Leitfaden 5a.6): Suche links, die Filter
+            als Chips daneben, rechts Sortierung und die Aktionen auf der Liste.
+            Vorher standen neun Bedienelemente in einer rechtsbündigen Zeile —
+            die Suche war das letzte, was man fand. */}
+        {showRoster && (
+          <div className="dex-ui-toolbar" style={{ marginTop: 10 }}>
+            <div className="dex-ui-searchbar">
+              <span className="dex-ui-searchbar-icon"><Search size={16} /></span>
+              <input type="text" className="dex-ui-input dex-ui-input--sm" value={search} onChange={e => setSearch(e.target.value)}
+                placeholder={isDe ? 'Suchen (Name, Standort, Hotel …)' : 'Search (name, location, hotel …)'} />
+            </div>
+            <button type="button" className={cx('dex-ui-chip', filterHotel === '__all' && 'is-active')}
+              onClick={() => setFilterHotel('__all')}>
+              {isDe ? 'Alle' : 'All'}
+            </button>
+            <button type="button" className={cx('dex-ui-chip', filterHotel === '__none' && 'is-active')}
+              onClick={() => setFilterHotel('__none')}>
+              {isDe ? 'Ohne Hotel' : 'Without hotel'}
+            </button>
+            {hotels.map(h => (
+              <button key={h.id} type="button" className={cx('dex-ui-chip', filterHotel === h.name && 'is-active')}
+                onClick={() => setFilterHotel(h.name)}>
+                {h.name}
+              </button>
+            ))}
+            <button type="button" className={cx('dex-ui-chip', hideNoWish && 'is-active')}
+              title={isDe ? 'Blendet aus, wer im Formular ausdrücklich KEINE Unterkunft wollte' : 'Hides everyone who explicitly declined accommodation in the form'}
+              onClick={() => setHideNoWish(!hideNoWish)}>
+              {isDe ? 'Ohne Hotel-Wunsch ausblenden' : 'Hide without request'}
+            </button>
+            <span className="dex-ui-toolbar-spacer" />
             {/* v28.54: Nachname/Vorname/Standort/Unternehmen sind in die
                 Teilnehmer-Spalte gewandert — die Sortierung danach bleibt hier
                 erhalten. */}
-            <select style={{ ...inp }} value={sortKey} onChange={e => { setSortKey(e.target.value as any); setSortAsc(true); }}>
+            <select className="dex-ui-select dex-ui-select--sm" style={{ width: 'auto' }}
+              aria-label={isDe ? 'Sortierung' : 'Sorting'}
+              value={sortKey} onChange={e => { setSortKey(e.target.value as any); setSortAsc(true); }}>
               <option value="name">{isDe ? 'Sortieren: Nachname' : 'Sort: last name'}</option>
               <option value="first">{isDe ? 'Sortieren: Vorname' : 'Sort: first name'}</option>
               <option value="job">{isDe ? 'Sortieren: Position' : 'Sort: position'}</option>
@@ -1709,35 +1843,8 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
               <option value="hotel">{isDe ? 'Sortieren: Hotel' : 'Sort: hotel'}</option>
               {(childEvents || []).length > 0 && <option value="subs">{isDe ? 'Sortieren: Sub-Events' : 'Sort: sub-events'}</option>}
             </select>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.76rem', color: 'var(--dex-gray-600)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-              <input type="checkbox" checked={hideNoWish} onChange={e => setHideNoWish(e.target.checked)} />
-              {isDe ? 'ohne Hotel-Wunsch ausblenden' : 'hide without request'}
-            </label>
-            <select style={{ ...inp }} value={filterHotel} onChange={e => setFilterHotel(e.target.value)}>
-              <option value="__all">{isDe ? 'Alle anzeigen' : 'Show all'}</option>
-              <option value="__none">{isDe ? 'Nur ohne Hotel' : 'Only without hotel'}</option>
-              {hotels.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
-            </select>
-            <button type="button" className="btn btn-secondary" style={{ fontSize: '0.76rem', padding: '5px 12px' }}
-              disabled={hotels.length === 0 || busy !== ''}
-              title={isDe ? 'Verteilt alle noch nicht zugeordneten Personen nach Kontingent' : 'Distributes everyone not yet assigned according to capacity'}
-              onClick={() => { void autoDistribute(); }}>
-              {isDe ? 'Automatisch verteilen' : 'Auto-distribute'}
-            </button>
-            <button type="button" className="btn btn-secondary" style={{ fontSize: '0.76rem', padding: '5px 12px' }}
-              onClick={() => setImportOpen(true)}>
-              {isDe ? 'Liste importieren' : 'Import list'}
-            </button>
-            <button type="button" className="btn btn-secondary" style={{ fontSize: '0.76rem', padding: '5px 12px' }}
-              onClick={() => exportRooming()}>
-              {isDe ? 'Alles als Excel (CSV)' : 'Export all (CSV)'}
-            </button>
-            <button type="button" className="btn btn-primary" style={{ fontSize: '0.76rem', padding: '5px 12px' }}
-              disabled={hotels.length === 0} onClick={openMail}>
-              {isDe ? 'Hotel-Info verschicken' : 'Send hotel details'}
-            </button>
-          </span>
-        </div>
+          </div>
+        )}
 
         {/* v30.67: Der Balken hängt allein an bulkProgress. Er stand in der
             Markierungs-Leiste (v28.48, als es nur „markieren → zuordnen" gab)
@@ -1746,9 +1853,8 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
             jede Rückmeldung; die Seite wirkte eingefroren. */}
         {bulkProgress && (
           <div style={{ width: '100%', margin: '6px 0 10px' }}>
-            <div style={{ height: 8, background: 'var(--dex-gray-100)', borderRadius: 999, overflow: 'hidden' }}>
-              <div style={{
-                height: '100%', transition: 'width 0.2s', background: 'var(--dex-green, #86bc25)',
+            <div className="dex-ui-progress">
+              <div className="dex-ui-progress-bar" style={{
                 width: `${bulkProgress.total > 0 ? Math.round((bulkProgress.done / bulkProgress.total) * 100) : 0}%`,
               }} />
             </div>
@@ -1761,184 +1867,197 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
         {showRoster && (
           <>
             {hotels.length === 0 && (
-              <p style={{ ...hint, marginTop: 8 }}>
-                {isDe ? 'Lege zuerst oben mindestens ein Hotel an.' : 'Create at least one hotel above first.'}
-              </p>
+              <div className="dex-ui-callout dex-ui-callout--info" style={{ marginBottom: 10 }}>
+                <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                <div>{isDe ? 'Lege zuerst oben mindestens ein Hotel an — ohne Hotel lässt sich niemand zuordnen.' : 'Create at least one hotel above first — without a hotel nobody can be assigned.'}</div>
+              </div>
             )}
             {/* v28.51: Ganzes Sub-Event auf einmal — der Fall „alle Teilnehmer
                 vom Her-Space-Event in ein Hotel". Nur bei einer Klammer sinnvoll,
                 deshalb an childEvents gebunden. */}
             {(childEvents || []).length > 0 && hotels.length > 0 && (
-              <div style={{
-                display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
-                padding: '8px 10px', marginBottom: 10, borderRadius: 8,
-                background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200)',
-              }}>
-                <strong style={{ fontSize: '0.8rem' }}>
-                  {isDe ? 'Ganzes Sub-Event zuordnen:' : 'Assign a whole sub-event:'}
-                </strong>
-                <select style={{ ...inp }} value={subPick} disabled={busy !== '' || subLoading}
-                  onChange={e => setSubPick(e.target.value)}>
-                  <option value="">{isDe ? '— Sub-Event wählen —' : '— pick a sub-event —'}</option>
-                  {(childEvents || []).map(c => (
-                    <option key={c.id} value={c.id}>
-                      {(c.title || '').split('|').slice(-1)[0].trim()}
-                      {subEmails[c.id] ? ` (${subEmails[c.id].length})` : ''}
-                    </option>
-                  ))}
-                </select>
-                <span style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>→</span>
-                <select style={{ ...inp }} value={subHotelPick} disabled={busy !== '' || subLoading}
-                  onChange={e => setSubHotelPick(e.target.value)}>
-                  <option value="">{isDe ? '— Hotel wählen —' : '— pick a hotel —'}</option>
-                  {hotels.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
-                </select>
-                <button type="button" className="btn btn-secondary" style={{ fontSize: '0.76rem', padding: '5px 12px' }}
-                  disabled={busy !== '' || subLoading || !subPick || !subHotelPick}
-                  onClick={() => { void assignWholeSub(); }}>
-                  {subLoading ? (isDe ? 'Lädt …' : 'Loading …') : (isDe ? 'Zuordnen' : 'Assign')}
-                </button>
-                <span style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', flexBasis: '100%' }}>
+              <div className="dex-ui-card dex-ui-card--soft" style={{ padding: '10px 12px', marginBottom: 10 }}>
+                <div className="dex-ui-inline">
+                  <strong style={{ fontSize: '0.82rem', color: 'var(--dex-gray-800)' }}>
+                    {isDe ? 'Ganzes Sub-Event zuordnen:' : 'Assign a whole sub-event:'}
+                  </strong>
+                  <select className="dex-ui-select dex-ui-select--sm" style={{ width: 'auto' }}
+                    aria-label={isDe ? 'Sub-Event wählen' : 'Pick a sub-event'}
+                    value={subPick} disabled={busy !== '' || subLoading}
+                    onChange={e => setSubPick(e.target.value)}>
+                    <option value="">{isDe ? '— Sub-Event wählen —' : '— pick a sub-event —'}</option>
+                    {(childEvents || []).map(c => (
+                      <option key={c.id} value={c.id}>
+                        {(c.title || '').split('|').slice(-1)[0].trim()}
+                        {subEmails[c.id] ? ` (${subEmails[c.id].length})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>→</span>
+                  <select className="dex-ui-select dex-ui-select--sm" style={{ width: 'auto' }}
+                    aria-label={isDe ? 'Hotel wählen' : 'Pick a hotel'}
+                    value={subHotelPick} disabled={busy !== '' || subLoading}
+                    onChange={e => setSubHotelPick(e.target.value)}>
+                    <option value="">{isDe ? '— Hotel wählen —' : '— pick a hotel —'}</option>
+                    {hotels.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
+                  </select>
+                  <button type="button" className="btn btn-secondary dex-ui-btn-sm"
+                    disabled={busy !== '' || subLoading || !subPick || !subHotelPick}
+                    onClick={() => { void assignWholeSub(); }}>
+                    {subLoading ? (isDe ? 'Lädt …' : 'Loading …') : (isDe ? 'Zuordnen' : 'Assign')}
+                  </button>
+                </div>
+                <div className="dex-ui-help">
                   {isDe
                     ? 'Bereits gesetzte Zeiträume bleiben erhalten; wer noch keinen hat, bekommt den Standard-Zeitraum.'
                     : 'Existing stay periods are kept; anyone without one gets the default template.'}
-                </span>
+                </div>
               </div>
             )}
+            {/* v31.3: Die Aktionen der Markierung stehen über der Tabelle
+                (Leitfaden 5b) — Hotels und Zeiträume als Knöpfe, „Zuordnung
+                aufheben" als roter Textknopf am Ende. */}
             {selectedRows.length > 0 && (
-              <div style={{
-                display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
-                padding: '8px 10px', marginBottom: 10, borderRadius: 8,
-                background: 'rgba(134,188,37,0.08)', border: '1px solid var(--dex-green, #86bc25)',
-              }}>
-                <strong style={{ fontSize: '0.8rem' }}>
-                  {isDe ? `${selectedRows.length} markiert:` : `${selectedRows.length} selected:`}
-                </strong>
-                {hotels.map(h => (
-                  <button key={h.id} type="button" className="btn btn-secondary" disabled={busy !== ''}
-                    style={{ fontSize: '0.74rem', padding: '4px 10px' }}
-                    onClick={() => { void assignSelectedTo(h.name); }}>
-                    → {h.name}
+              <div className="dex-ui-card dex-ui-card--accent" style={{ padding: '10px 12px', marginBottom: 10, background: 'rgba(134,188,37,0.06)' }}>
+                <div className="dex-ui-inline">
+                  <strong style={{ fontSize: '0.82rem', color: 'var(--dex-gray-800)' }}>
+                    {isDe ? `${selectedRows.length} markiert:` : `${selectedRows.length} selected:`}
+                  </strong>
+                  {hotels.map(h => (
+                    <button key={h.id} type="button" className="btn btn-secondary dex-ui-btn-sm" disabled={busy !== ''}
+                      title={isDe ? `Die Markierten dem Hotel „${h.name}" zuordnen` : `Assign the selected to „${h.name}"`}
+                      onClick={() => { void assignSelectedTo(h.name); }}>
+                      → {h.name}
+                    </button>
+                  ))}
+                  {stays.map(st => (
+                    <button key={st.id} type="button" className="btn btn-secondary dex-ui-btn-sm" disabled={busy !== ''}
+                      title={isDe ? `Zeitraum „${st.label}" bei den Markierten setzen (nur mit Hotel)` : `Set period „${st.label}" for the selected (hotel required)`}
+                      onClick={() => { void applyStayToSelected(st); }}>
+                      ⏱ {st.label}
+                    </button>
+                  ))}
+                  <button type="button" className="dex-ui-textbtn dex-ui-textbtn--danger" disabled={busy !== ''}
+                    onClick={() => { void writeAssignment(selectedRows, '', '', '').then(ok => { if (ok) setSelected(new Set()); }); }}>
+                    {isDe ? 'Zuordnung aufheben' : 'Clear assignment'}
                   </button>
-                ))}
-                {stays.map(st => (
-                  <button key={st.id} type="button" className="btn btn-secondary" disabled={busy !== ''}
-                    style={{ fontSize: '0.74rem', padding: '4px 10px' }}
-                    onClick={() => { void applyStayToSelected(st); }}>
-                    ⏱ {st.label}
-                  </button>
-                ))}
-                <button type="button" disabled={busy !== ''}
-                  style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.74rem', color: 'var(--dex-red, #c00)', textDecoration: 'underline' }}
-                  onClick={() => { void writeAssignment(selectedRows, '', '', '').then(ok => { if (ok) setSelected(new Set()); }); }}>
-                  {isDe ? 'Zuordnung aufheben' : 'Clear assignment'}
-                </button>
+                </div>
               </div>
             )}
             {/* v28.55: eigener Scroll-Container wie bei der Teilnehmerliste
                 (renderTable, maxHeight 70vh). Vorher lief die Zuordnungstabelle
                 bei mehreren hundert Personen inline über die volle Höhe — man
                 musste an der ganzen Tabelle vorbeiscrollen, um an die Abschnitte
-                darunter zu kommen. */}
-            <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
-                <thead>
-                  <tr style={{ textAlign: 'left', color: 'var(--dex-gray-600)' }}>
-                    <th style={{ ...thSticky, padding: '4px 6px', width: 28 }}>
-                      {/* v30.67: „Alle markieren" meint die SICHTBAREN Zeilen —
-                          vorher das ungefilterte `people` (s. visiblePeople). */}
-                      <input type="checkbox"
-                        checked={visiblePeople.length > 0 && selectedRows.length === visiblePeople.length}
-                        onChange={e => setSelected(e.target.checked ? new Set(visiblePeople.map(p => p.Id)) : new Set())} />
-                    </th>
-                    {personColsExpanded ? (
-                      <>
-                        <th style={{ ...thSticky, padding: '4px 6px', whiteSpace: 'nowrap' }}>
-                          <button type="button"
-                            onClick={() => { if (sortKey === 'name') { setSortAsc(a => !a); } else { setSortKey('name'); setSortAsc(true); } }}
-                            style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', font: 'inherit', color: 'inherit', fontWeight: sortKey === 'name' ? 700 : 400 }}>
-                            {isDe ? 'Nachname' : 'Last name'}{sortKey === 'name' ? (sortAsc ? ' ▲' : ' ▼') : ''}
-                          </button>
-                          <button type="button" onClick={() => setPersonColsExpanded(false)}
-                            title={isDe ? 'Personen-Spalten einklappen' : 'Collapse personal columns'}
-                            style={{ marginLeft: 6, border: 'none', cursor: 'pointer', background: 'var(--dex-green, #86bc25)', color: '#fff', width: 18, height: 18, borderRadius: '50%', fontSize: '0.7rem', fontWeight: 700, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle' }}>«</button>
-                        </th>
-                        {([
-                          { k: 'first' as const, l: isDe ? 'Vorname' : 'First name' },
-                          { k: 'job' as const, l: isDe ? 'Position' : 'Position' },
-                          { k: 'loc' as const, l: isDe ? 'Standort' : 'Location' },
-                          { k: 'comp' as const, l: isDe ? 'Unternehmen' : 'Company' },
-                        ]).map(col => (
-                          <th key={col.k} style={{ ...thSticky, padding: '4px 6px', whiteSpace: 'nowrap' }}>
-                            <button type="button"
-                              onClick={() => { if (sortKey === col.k) { setSortAsc(a => !a); } else { setSortKey(col.k); setSortAsc(true); } }}
-                              style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', font: 'inherit', color: 'inherit', fontWeight: sortKey === col.k ? 700 : 400 }}>
-                              {col.l}{sortKey === col.k ? (sortAsc ? ' ▲' : ' ▼') : ''}
-                            </button>
+                darunter zu kommen.
+                v31.3: Genau das leistet `dex-ui-table-wrap--sticky` (max-height
+                70vh, eigener Scroll-Container, Kopf klebt oben); der äußere
+                `dex-ui-table-wrap` gibt Rand und Radius, die Fußzeile bleibt
+                außerhalb des Scrollbereichs stehen. */}
+            <div className="dex-ui-table-wrap">
+              <div className="dex-ui-table-wrap--sticky">
+                <table className="dex-ui-table dex-ui-table--compact">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 28 }}>
+                        {/* v30.67: „Alle markieren" meint die SICHTBAREN Zeilen —
+                            vorher das ungefilterte `people` (s. visiblePeople). */}
+                        <input type="checkbox"
+                          aria-label={isDe ? 'Alle sichtbaren Zeilen markieren' : 'Select all visible rows'}
+                          style={{ accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer' }}
+                          checked={visiblePeople.length > 0 && selectedRows.length === visiblePeople.length}
+                          onChange={e => setSelected(e.target.checked ? new Set(visiblePeople.map(p => p.Id)) : new Set())} />
+                      </th>
+                      {personColsExpanded ? (
+                        <>
+                          <th className={sortableTh('name')} style={{ whiteSpace: 'nowrap' }} {...sortThProps('name')}>
+                            {isDe ? 'Nachname' : 'Last name'}{sortMark('name')}
+                            {/* v31.3: Der Aufklapp-Knopf ist ein Chip (Hover aus der
+                                Klasse) und stoppt die Weitergabe — sonst sortiert
+                                ein leicht versetzter Klick, statt einzuklappen. */}
+                            <button type="button" className="dex-ui-chip" style={{ marginLeft: 6, padding: '1px 8px' }}
+                              title={isDe ? 'Personen-Spalten einklappen' : 'Collapse personal columns'}
+                              onClick={e => { e.stopPropagation(); setPersonColsExpanded(false); }}>«</button>
                           </th>
-                        ))}
-                      </>
-                    ) : (
-                      <th style={{ ...thSticky, padding: '4px 6px', whiteSpace: 'nowrap' }}>
-                        <button type="button"
-                          onClick={() => { if (sortKey === 'name') { setSortAsc(a => !a); } else { setSortKey('name'); setSortAsc(true); } }}
-                          style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', font: 'inherit', color: 'inherit', fontWeight: sortKey === 'name' ? 700 : 400 }}>
-                          {isDe ? 'Teilnehmer' : 'Participant'}{sortKey === 'name' ? (sortAsc ? ' ▲' : ' ▼') : ''}
-                        </button>
-                        <button type="button" onClick={() => setPersonColsExpanded(true)}
-                          title={isDe ? 'Personen-Spalten ausklappen' : 'Expand personal columns'}
-                          style={{ marginLeft: 6, border: 'none', cursor: 'pointer', background: 'var(--dex-green, #86bc25)', color: '#fff', width: 18, height: 18, borderRadius: '50%', fontSize: '0.7rem', fontWeight: 700, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle' }}>»</button>
+                          {([
+                            { k: 'first' as const, l: isDe ? 'Vorname' : 'First name' },
+                            { k: 'job' as const, l: isDe ? 'Position' : 'Position' },
+                            { k: 'loc' as const, l: isDe ? 'Standort' : 'Location' },
+                            { k: 'comp' as const, l: isDe ? 'Unternehmen' : 'Company' },
+                          ]).map(col => (
+                            <th key={col.k} className={sortableTh(col.k)} style={{ whiteSpace: 'nowrap' }}
+                              {...sortThProps(col.k)}>
+                              {col.l}{sortMark(col.k)}
+                            </th>
+                          ))}
+                        </>
+                      ) : (
+                        <th className={sortableTh('name')} style={{ whiteSpace: 'nowrap' }} {...sortThProps('name')}>
+                          {isDe ? 'Teilnehmer' : 'Participant'}{sortMark('name')}
+                          <button type="button" className="dex-ui-chip" style={{ marginLeft: 6, padding: '1px 8px' }}
+                            title={isDe ? 'Personen-Spalten ausklappen' : 'Expand personal columns'}
+                            onClick={e => { e.stopPropagation(); setPersonColsExpanded(true); }}>»</button>
+                        </th>
+                      )}
+                      {([
+                        { k: 'wish' as const, l: isDe ? 'Hotel-Wunsch' : 'Hotel request' },
+                        { k: 'wishn' as const, l: isDe ? 'Nächte gewünscht' : 'Nights requested' },
+                        { k: 'match' as const, l: isDe ? 'Bedarf = Zuordnung' : 'Request = assignment' },
+                      ]).map(col => (
+                        // Nächte-Spalte rechtsbündig wie ihre Zellen (Leitfaden 5b).
+                        <th key={col.k} className={cx(sortableTh(col.k), col.k === 'wishn' && 'is-num')}
+                          {...sortThProps(col.k)}>
+                          {col.l}{sortMark(col.k)}
+                        </th>
+                      ))}
+                      {/* v28.53: je Sub-Event eine eigene Haken-Spalte — dieselbe
+                          Darstellung wie in der konsolidierten Teilnehmerliste. */}
+                      {(childEvents || []).map(c => (
+                        <th key={c.id} style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          <span style={{ display: 'block' }}>{shortTitle(c.title || '')}</span>
+                          <span style={{ display: 'block', fontSize: '0.62rem', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600 }}>
+                            {isDe ? 'angemeldet?' : 'registered?'}
+                          </span>
+                        </th>
+                      ))}
+                      <th className={sortableTh('hotel')} {...sortThProps('hotel')}>
+                        {isDe ? 'Hotel' : 'Hotel'}{sortMark('hotel')}
                       </th>
+                      <th>{isDe ? 'Zeitraum' : 'Stay'}</th>
+                      <th className="is-num">{isDe ? 'Nächte' : 'Nights'}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* v31.3: Leer ist ein Zustand mit eigener Ansage (Leitfaden 5b)
+                        — vorher blieb einfach eine Tabelle ohne Zeilen stehen. */}
+                    {visiblePeople.length === 0 && (
+                      <tr>
+                        <td colSpan={tableColCount} style={{ padding: 0 }}>
+                          <div className="dex-ui-empty" style={{ border: 'none', borderRadius: 0 }}>
+                            <span className="dex-ui-empty-icon"><Users size={20} /></span>
+                            <div className="dex-ui-empty-title">
+                              {people.length === 0
+                                ? (isDe ? 'Keine aktiven Anmeldungen in dieser Liste.' : 'No active registrations in this list.')
+                                : (isDe ? 'Keine Person passt zu Suche und Filter.' : 'Nobody matches search and filter.')}
+                            </div>
+                            {people.length === 0
+                              ? (isDe ? 'Sobald sich jemand anmeldet, steht die Person hier.' : 'As soon as somebody registers they appear here.')
+                              : (isDe ? 'Suche leeren oder wieder auf „Alle" stellen.' : 'Clear the search or switch back to „All".')}
+                          </div>
+                        </td>
+                      </tr>
                     )}
-                    {([
-                      { k: 'wish' as const, l: isDe ? 'Hotel-Wunsch' : 'Hotel request' },
-                      { k: 'wishn' as const, l: isDe ? 'Nächte gewünscht' : 'Nights requested' },
-                      { k: 'match' as const, l: isDe ? 'Bedarf = Zuordnung' : 'Request = assignment' },
-                    ]).map(col => (
-                      <th key={col.k} style={{ ...thSticky, padding: '4px 6px' }}>
-                        <button type="button"
-                          onClick={() => { if (sortKey === col.k) { setSortAsc(a => !a); } else { setSortKey(col.k); setSortAsc(true); } }}
-                          style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', font: 'inherit', color: 'inherit', fontWeight: sortKey === col.k ? 700 : 400 }}
-                        >
-                          {col.l}{sortKey === col.k ? (sortAsc ? ' ▲' : ' ▼') : ''}
-                        </button>
-                      </th>
-                    ))}
-                    {/* v28.53: je Sub-Event eine eigene Haken-Spalte — dieselbe
-                        Darstellung wie in der konsolidierten Teilnehmerliste. */}
-                    {(childEvents || []).map(c => (
-                      <th key={c.id} style={{ ...thSticky, padding: '4px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                        <span style={{ display: 'block', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: 0.3 }}>
-                          {shortTitle(c.title || '')}
-                        </span>
-                        <span style={{ display: 'block', fontSize: '0.66rem', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 400 }}>
-                          {isDe ? 'angemeldet?' : 'registered?'}
-                        </span>
-                      </th>
-                    ))}
-                    <th style={{ ...thSticky, padding: '4px 6px' }}>
-                      <button type="button"
-                        onClick={() => { if (sortKey === 'hotel') { setSortAsc(a => !a); } else { setSortKey('hotel'); setSortAsc(true); } }}
-                        style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', font: 'inherit', color: 'inherit', fontWeight: sortKey === 'hotel' ? 700 : 400 }}
-                      >
-                        {isDe ? 'Hotel' : 'Hotel'}{sortKey === 'hotel' ? (sortAsc ? ' ▲' : ' ▼') : ''}
-                      </button>
-                    </th>
-                    <th style={{ ...thSticky, padding: '4px 6px' }}>{isDe ? 'Zeitraum' : 'Stay'}</th>
-                    <th style={{ ...thSticky, padding: '4px 6px', textAlign: 'right' }}>{isDe ? 'Nächte' : 'Nights'}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visiblePeople
+                    {visiblePeople
                     .map(p => {
                       const from = toDay(p.HotelFrom);
                       const to = toDay(p.HotelTo);
                       const n = nightsBetween(from, to);
                       const matchesStay = stays.some(st => st.from === from && st.to === to);
                       return (
-                        <tr key={p.Id} style={{ borderTop: '1px solid var(--dex-gray-100)' }}>
-                          <td style={{ padding: '4px 6px' }}>
+                        <tr key={p.Id} className={cx(selected.has(p.Id) && 'is-selected')}>
+                          <td>
                             <input type="checkbox" checked={selected.has(p.Id)}
+                              aria-label={isDe ? 'Zeile markieren' : 'Select row'}
+                              style={{ accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer' }}
                               onChange={e => setSelected(prev => {
                                 const nx = new Set(prev);
                                 if (e.target.checked) nx.add(p.Id); else nx.delete(p.Id);
@@ -1964,16 +2083,16 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                             if (!personColsExpanded) return null;
                             return (
                               <>
-                                <td style={{ padding: '4px 6px' }} title={p.ParticipantEmail || ''}>{nn0 || '—'}</td>
-                                <td style={{ padding: '4px 6px' }}>{vn0 || '—'}</td>
-                                <td style={{ padding: '4px 6px' }}>{String((p as any).JobTitle || '') || '—'}</td>
-                                <td style={{ padding: '4px 6px' }}>{stripLocPrefix(String(p.Location || '')) || '—'}</td>
-                                <td style={{ padding: '4px 6px' }}>{p.Company || '—'}</td>
+                                <td title={p.ParticipantEmail || ''}>{nn0 || '—'}</td>
+                                <td>{vn0 || '—'}</td>
+                                <td>{String((p as any).JobTitle || '') || '—'}</td>
+                                <td>{stripLocPrefix(String(p.Location || '')) || '—'}</td>
+                                <td>{p.Company || '—'}</td>
                               </>
                             );
                           })()}
                           {!personColsExpanded && (
-                          <td style={{ padding: '4px 6px' }}>
+                          <td>
                             {((): React.ReactNode => {
                               const vn = p.Vorname || ((p.ParticipantName || '').split(' ')[0] || '');
                               let nn = p.Nachname || '';
@@ -1987,11 +2106,11 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                               const comp = String(p.Company || '');
                               const sub = [jt, loc, comp].filter(Boolean).join(' • ');
                               return (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                                <div className="dex-ui-person">
                                   <PersonContactHover email={p.ParticipantEmail || ''} name={fullName} size={28} subline={sub} isDe={isDe} />
                                   <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.25 }}>
-                                    <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{fullName}</span>
-                                    {sub && <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>{sub}</span>}
+                                    <span className="dex-ui-person-name">{fullName}</span>
+                                    {sub && <span className="dex-ui-person-sub">{sub}</span>}
                                   </div>
                                 </div>
                               );
@@ -2009,20 +2128,25 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                               als „braucht kein Hotel" bei Leuten, die eines
                               angefragt hatten — und widersprach der
                               Teilnehmerliste. */}
-                          <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
+                          <td style={{ whiteSpace: 'nowrap' }}>
                             {((): React.ReactNode => {
                               const w = wishOf(p);
-                              if (w === null) return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
+                              // Keine Hotel-Frage im Formular heißt „unbekannt" —
+                              // deshalb ein Strich und kein „Nein" (CLAUDE.md).
+                              if (w === null) {
+                                return <span style={{ color: 'var(--dex-gray-300)' }}
+                                  title={isDe ? 'Im Anmeldeformular gibt es keine Hotel-Frage — unbekannt.' : 'The registration form has no hotel question — unknown.'}>—</span>;
+                              }
                               return w
-                                ? <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Ja' : 'Yes'}</strong>
-                                : <span style={{ color: 'var(--dex-gray-500)' }}>{isDe ? 'Nein' : 'No'}</span>;
+                                ? <span className="dex-ui-pill dex-ui-pill--green">{isDe ? 'Ja' : 'Yes'}</span>
+                                : <span className="dex-ui-pill dex-ui-pill--gray">{isDe ? 'Nein' : 'No'}</span>;
                             })()}
                           </td>
                           {/* v29.6: Wie viele Nächte wurden angefragt — und
                               deckt die Zuordnung das ab? Ohne diese beiden
                               Spalten sieht man erst beim Hotel, dass jemand
                               eine Nacht mehr braucht als gebucht ist. */}
-                          <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
+                          <td className="is-num" style={{ whiteSpace: 'nowrap' }}>
                             {((): React.ReactNode => {
                               const wn = wishNightsOf(p);
                               if (!wn) return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
@@ -2040,7 +2164,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                               );
                             })()}
                           </td>
-                          <td style={{ padding: '4px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                             {((): React.ReactNode => {
                               const wn = wishNightsOf(p);
                               const assigned = (p.Hotel || '').trim();
@@ -2055,16 +2179,16 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                                 }>—</span>;
                               }
                               if (n === wn.nights) {
-                                return <span style={{ color: 'var(--dex-green, #86bc25)', fontWeight: 700 }}
+                                return <span className="dex-ui-pill dex-ui-pill--green"
                                   title={isDe ? `${n} Nächte gewünscht, ${n} zugeordnet.` : `${n} nights requested, ${n} assigned.`}>✓</span>;
                               }
                               const diff = n - wn.nights;
                               return (
-                                <span style={{ color: 'var(--dex-red, #c00)', fontWeight: 700 }}
+                                <span className="dex-ui-pill dex-ui-pill--red"
                                   title={isDe
                                     ? `${wn.nights} Nächte gewünscht, ${n} zugeordnet (${diff > 0 ? '+' : ''}${diff}). Zeitraum rechts anpassen.`
                                     : `${wn.nights} nights requested, ${n} assigned (${diff > 0 ? '+' : ''}${diff}). Adjust the period on the right.`}>
-                                  ✕ <span style={{ fontWeight: 400, fontSize: '0.76rem' }}>{diff > 0 ? '+' : ''}{diff}</span>
+                                  ✕ {diff > 0 ? '+' : ''}{diff}
                                 </span>
                               );
                             })()}
@@ -2073,17 +2197,22 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                             const em = (p.ParticipantEmail || '').trim().toLowerCase();
                             const inSub = !!em && (subEmails[c.id] || []).indexOf(em) >= 0;
                             return (
-                              <td key={c.id} style={{ padding: '4px 6px', textAlign: 'center' }}>
+                              <td key={c.id} style={{ textAlign: 'center' }}>
+                                {/* Noch nicht gelesen heißt „unbekannt", nicht „nicht
+                                    angemeldet" — deshalb Punkte statt Strich. */}
                                 {!subsLoaded
-                                  ? <span style={{ color: 'var(--dex-gray-300)' }}>…</span>
+                                  ? <span style={{ color: 'var(--dex-gray-300)' }}
+                                    title={isDe ? 'Teilnehmerliste dieses Sub-Events noch nicht gelesen — unbekannt.' : 'Participant list of this sub-event not read yet — unknown.'}>…</span>
                                   : inSub
                                     ? <span style={{ color: 'var(--dex-green, #86bc25)', fontWeight: 700 }}>✓</span>
                                     : <span style={{ color: 'var(--dex-gray-300)' }}>—</span>}
                               </td>
                             );
                           })}
-                          <td style={{ padding: '4px 6px' }}>
-                            <select style={{ ...inp, height: 26 }} value={(p.Hotel || '').trim()} disabled={busy !== ''}
+                          <td>
+                            <select className="dex-ui-select dex-ui-select--sm" style={{ minWidth: 120 }}
+                              aria-label={isDe ? 'Hotel' : 'Hotel'}
+                              value={(p.Hotel || '').trim()} disabled={busy !== ''}
                               onChange={e => {
                                 const h = e.target.value;
                                 void writeAssignment([p], h,
@@ -2094,14 +2223,15 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                               {hotels.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
                             </select>
                           </td>
-                          <td style={{ padding: '4px 6px' }}>
+                          <td>
                             {/* v28.48: Statt zweier Datumsfelder je Person nur noch
                                 die Auswahl aus den oben angelegten Zeiträumen —
                                 das war der eigentliche Zweck der Vorlagen. Passt
                                 ein bestehender Eintrag zu keiner Vorlage, steht er
                                 als eigener Eintrag drin und geht nicht verloren. */}
                             <select
-                              style={{ ...inp, height: 26, minWidth: 190 }}
+                              className="dex-ui-select dex-ui-select--sm" style={{ minWidth: 190 }}
+                              aria-label={isDe ? 'Zeitraum' : 'Stay'}
                               value={matchesStay ? (stays.filter(st => st.from === from && st.to === to)[0] || { id: '' }).id : (from && to ? '__custom' : '')}
                               disabled={busy !== '' || stays.length === 0}
                               onChange={e => {
@@ -2124,7 +2254,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                               )}
                             </select>
                           </td>
-                          <td style={{ padding: '4px 6px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <td className="is-num" style={{ whiteSpace: 'nowrap' }}>
                             {n > 0 ? n : '—'}
                             {n > 0 && !matchesStay && stays.length > 0 && (
                               <span title={isDe ? 'Weicht von allen Vorlagen ab' : 'Differs from all templates'}
@@ -2134,17 +2264,129 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                         </tr>
                       );
                     })}
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
+              </div>
+              <div className="dex-ui-table-foot">
+                <span>
+                  {isDe ? `${visiblePeople.length} von ${people.length} angezeigt` : `${visiblePeople.length} of ${people.length} shown`}
+                  {selectedRows.length > 0 ? (isDe ? ` · ${selectedRows.length} markiert` : ` · ${selectedRows.length} selected`) : ''}
+                </span>
+                {stays.length > 0 && (
+                  <span>{isDe ? '* = abweichender Zeitraum, passt zu keiner Vorlage.' : '* = custom period, matches no template.'}</span>
+                )}
+              </div>
             </div>
-            {stays.length > 0 && (
-              <p style={{ ...hint, margin: '10px 0 0' }}>
-                {isDe ? '* = abweichender Zeitraum, passt zu keiner Vorlage.' : '* = custom period, matches no template.'}
-              </p>
-            )}
           </>
         )}
       </div>
+
+      {/* ---- Belegung je Nacht ----
+           v31.3: Auswertungen stehen unter der Arbeit an der Liste
+           (Leitfaden 5a.8), nicht davor. */}
+      {perNight.length > 0 && (
+        <div className="dex-ui-card">
+          <div className="dex-ui-card-head">
+            <h3 className="dex-ui-card-head-title">{isDe ? 'Belegung je Nacht' : 'Occupancy per night'}</h3>
+            <span className="dex-ui-card-head-meta">
+              {isDe ? `${perNight.length} Nächte` : `${perNight.length} nights`}
+            </span>
+          </div>
+          <p className="dex-ui-muted" style={{ margin: '6px 0 10px' }}>
+            {isDe ? 'Das ist die Zahl, die das Hotel fürs Abrufkontingent braucht.' : 'This is the figure the hotel needs for the room allotment.'}
+          </p>
+          <div className="dex-ui-table-wrap">
+            <table className="dex-ui-table dex-ui-table--compact">
+              <thead>
+                <tr>
+                  <th>{isDe ? 'Nacht' : 'Night'}</th>
+                  <th className="is-num">{isDe ? 'Gesamt' : 'Total'}</th>
+                  {hotels.map(h => <th key={h.id} className="is-num">{h.name}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {perNight.map(n => (
+                  <tr key={n.day}>
+                    <td>{fmtDay(n.day, isDe)}</td>
+                    <td className="is-num" style={{ fontWeight: 700 }}>{n.total}</td>
+                    {hotels.map(h => <td key={h.id} className="is-num">{n.byHotel[h.name] || 0}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ---- Freigabe ----
+           v31.3: Der Schalter stand ganz oben, obwohl er der LETZTE Schritt der
+           Planung ist. Sein Stand steht weiterhin oben als Pille — hier ist die
+           Entscheidung samt Folge. */}
+      <div className="dex-ui-card">
+        <div className="dex-ui-card-head">
+          <h3 className="dex-ui-card-head-title">{isDe ? 'Freigabe für Teilnehmer' : 'Release to attendees'}</h3>
+        </div>
+        <label className={cx('dex-ui-toggle-row', visible && 'is-active', busy !== '' && 'is-disabled')} style={{ marginTop: 10 }}>
+          <input
+            type="checkbox"
+            checked={visible}
+            disabled={busy !== ''}
+            onChange={() => { void toggleVisible(); }}
+          />
+          <span className="dex-ui-toggle-row-body">
+            <span className="dex-ui-toggle-row-title">
+              {isDe ? 'Teilnehmer sehen ihr Hotel unter „Meine Events"' : 'Attendees see their hotel under „My events"'}
+            </span>
+            <span className="dex-ui-toggle-row-desc">
+              {visible
+                ? (isDe
+                  ? `Freigegeben — ${assignedCount} von ${people.length} Personen sehen aktuell ihr Hotel${openCount > 0 ? `, ${openCount} sehen nichts (noch nicht zugeordnet)` : ''}. Jede Umbuchung ist sofort sichtbar.`
+                  : `Released — ${assignedCount} of ${people.length} people currently see their hotel${openCount > 0 ? `, ${openCount} see nothing (not assigned yet)` : ''}. Every change is visible immediately.`)
+                : (isDe
+                  ? 'Aus — niemand sieht seine Zuordnung. Plane in Ruhe und gib frei, wenn alles steht.'
+                  : 'Off — nobody sees their assignment. Plan in peace and release when everything is set.')}
+            </span>
+          </span>
+        </label>
+      </div>
+
+      {/* v28.62: Neu anfangen. Bewusst zweistufig — nur die Zuordnungen (Hotels
+          und Zeiträume bleiben, man verteilt direkt neu) oder alles. Beides mit
+          Rückfrage, die den Umfang benennt.
+          v31.3: als Gefahrenzone ganz unten, jede Aktion mit ihrer Folge. */}
+      {(assignedRows.length > 0 || hotels.length > 0 || stays.length > 0) && (
+        <div className="dex-ui-card">
+          <div className="dex-ui-action-group">
+            <div className="dex-ui-action-group-title">{isDe ? 'Neu anfangen' : 'Start over'}</div>
+            <div className="dex-ui-action-grid">
+              <button type="button" className="dex-ui-action dex-ui-action--danger" disabled={busy !== ''}
+                onClick={() => { void resetAssignments(); }}>
+                <span className="dex-ui-action-icon"><RefreshCw size={16} /></span>
+                <span className="dex-ui-action-body">
+                  <span className="dex-ui-action-title">
+                    {isDe ? `Alle Zuordnungen löschen${assignedRows.length > 0 ? ` (${assignedRows.length})` : ''}` : `Clear all assignments${assignedRows.length > 0 ? ` (${assignedRows.length})` : ''}`}
+                  </span>
+                  <span className="dex-ui-action-desc">
+                    {isDe ? 'Hotels und Zeiträume bleiben — du verteilst direkt neu.' : 'Hotels and periods remain — you redistribute right away.'}
+                  </span>
+                </span>
+              </button>
+              <button type="button" className="dex-ui-action dex-ui-action--danger" disabled={busy !== ''}
+                onClick={() => { void resetAll(); }}>
+                <span className="dex-ui-action-icon"><Trash2 size={16} /></span>
+                <span className="dex-ui-action-body">
+                  <span className="dex-ui-action-title">
+                    {isDe ? 'Hotel-Planung komplett zurücksetzen' : 'Reset hotel planning completely'}
+                  </span>
+                  <span className="dex-ui-action-desc">
+                    {isDe ? 'Zuordnungen, Hotels, Zeiträume und Regeln weg, Anzeige aus.' : 'Assignments, hotels, periods and rules gone, display off.'}
+                  </span>
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ---- Import einer bestehenden Hotel-Liste ---- */}
       <HotelImportModal
@@ -2206,37 +2448,42 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
           : (isDe ? `${people.filter(p => (p.Hotel || '').trim()).length} zugeordnete Teilnehmer (Assistenz automatisch in CC)` : `${people.filter(p => (p.Hotel || '').trim()).length} assigned attendees (assistant auto-CC'd)`)}
         previewSubjectLine={replacePlaceholders(mailSubject, varsFor(null, hotels.filter(x => x.id === testHotelId)[0]))}
         headerExtra={
-          <div style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 12, marginBottom: 12, background: 'var(--dex-gray-50, #f7f7f5)' }}>
-            <div style={{ fontSize: '0.78rem', fontWeight: 700, marginBottom: 8, color: 'var(--dex-gray-700)' }}>
-              {isDe ? 'Versand' : 'Sending'}
-            </div>
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, cursor: 'pointer', fontSize: '0.8rem' }}>
-              <input type="radio" name="hotelMailMode" checked={testMode} onChange={() => setTestMode(true)} style={{ marginTop: 3 }} />
-              <span>
-                <strong>{isDe ? 'Versand testen' : 'Test the send'}</strong>
-                <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>
+          /* v31.3: Test oder echt ist eine Entscheidung mit Folgen — deshalb zwei
+             `dex-ui-toggle-row`-Zeilen mit je einer Zeile „was dann passiert",
+             und die Testfelder direkt unter ihrer Wahl (Leitfaden 2a/2b). */
+          <div className="dex-ui-section" style={{ marginTop: 0, marginBottom: 12 }}>
+            <div className="dex-ui-section-title">{isDe ? 'Versand' : 'Sending'}</div>
+            <label className={cx('dex-ui-toggle-row', testMode && 'is-active')} style={{ marginBottom: 8 }}>
+              <input type="radio" name="hotelMailMode" checked={testMode} onChange={() => setTestMode(true)} />
+              <span className="dex-ui-toggle-row-body">
+                <span className="dex-ui-toggle-row-title">{isDe ? 'Versand testen' : 'Test the send'}</span>
+                <span className="dex-ui-toggle-row-desc">
                   {isDe ? 'Eine einzelne Mail mit Beispielwerten an eine selbst gewählte Adresse. Es geht garantiert nichts an Teilnehmer.' : 'A single mail with sample values to an address you pick. Nothing reaches attendees.'}
                 </span>
               </span>
             </label>
             {testMode && (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '0 0 10px 26px' }}>
-                <select value={testTo} onChange={e => setTestTo(e.target.value)}
-                  style={{ height: 30, fontSize: '0.78rem', padding: '0 8px', border: '1px solid var(--dex-gray-300)', borderRadius: 6, minWidth: 200 }}>
+              <div className="dex-ui-inline" style={{ margin: '0 0 10px 26px' }}>
+                <select className="dex-ui-select dex-ui-select--sm" style={{ width: 'auto', minWidth: 200 }}
+                  aria-label={isDe ? 'Empfänger der Testmail' : 'Test mail recipient'}
+                  value={testTo} onChange={e => setTestTo(e.target.value)}>
                   <option value="">{isDe ? '— Empfänger wählen —' : '— pick a recipient —'}</option>
                   {(event.organizerEmails || []).map(oe => <option key={oe} value={oe}>{oe}</option>)}
                 </select>
-                <select value={testHotelId} onChange={e => setTestHotelId(e.target.value)}
-                  style={{ height: 30, fontSize: '0.78rem', padding: '0 8px', border: '1px solid var(--dex-gray-300)', borderRadius: 6, minWidth: 160 }}>
+                <select className="dex-ui-select dex-ui-select--sm" style={{ width: 'auto', minWidth: 160 }}
+                  aria-label={isDe ? 'Hotel für die Beispielwerte' : 'Hotel for the sample values'}
+                  value={testHotelId} onChange={e => setTestHotelId(e.target.value)}>
                   {hotels.map(h => <option key={h.id} value={h.id}>{isDe ? 'als wäre: ' : 'as if: '}{h.name}</option>)}
                 </select>
               </div>
             )}
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.8rem' }}>
-              <input type="radio" name="hotelMailMode" checked={!testMode} onChange={() => setTestMode(false)} style={{ marginTop: 3 }} />
-              <span>
-                <strong>{isDe ? `Echt verschicken (${people.filter(p => (p.Hotel || '').trim()).length} Personen)` : `Send for real (${people.filter(p => (p.Hotel || '').trim()).length} people)`}</strong>
-                <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>
+            <label className={cx('dex-ui-toggle-row', !testMode && 'is-active')}>
+              <input type="radio" name="hotelMailMode" checked={!testMode} onChange={() => setTestMode(false)} />
+              <span className="dex-ui-toggle-row-body">
+                <span className="dex-ui-toggle-row-title">
+                  {isDe ? `Echt verschicken (${people.filter(p => (p.Hotel || '').trim()).length} Personen)` : `Send for real (${people.filter(p => (p.Hotel || '').trim()).length} people)`}
+                </span>
+                <span className="dex-ui-toggle-row-desc">
                   {isDe
                     ? 'Jede zugeordnete Person bekommt ihre eigenen Daten. Eine im Anmeldeformular hinterlegte Assistenz steht automatisch im CC. Nicht zugeordnete Personen bekommen nichts.'
                     : 'Each assigned person receives their own data. An assistant named during registration is CC’d automatically. Unassigned people receive nothing.'}

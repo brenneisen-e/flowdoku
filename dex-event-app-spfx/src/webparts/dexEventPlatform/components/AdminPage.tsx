@@ -17,7 +17,15 @@ import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
-import { Users } from './Icons';
+// v31.3: Icons der Werkzeugleiste und der Hinweiskästen (Leitfaden 6 — keine
+// neue Icon-Bibliothek, alles aus Icons.tsx).
+import { AlertCircle, Check, Plus, Search, Users } from './Icons';
+// v31.3: Gemeinsame UI-Klassen des Organizer Centers. `ensureDexUiStyles`
+// steht hier, weil diese Seite ausserhalb von Modal/WizardFormShell rendert —
+// ohne den Aufruf gäbe es die `dex-ui-*`-Klassen erst, wenn zufällig ein
+// Dialog offen war.
+import { cx, ensureDexUiStyles } from './dexUi';
+import { InfoTooltip } from './InfoTooltip';
 import B2RunBibImportModal from './admin/B2RunBibImportModal';
 import B2RunTodoModal from './admin/B2RunTodoModal';
 import ShirtSizeModal from './admin/ShirtSizeModal';
@@ -218,6 +226,11 @@ export default function AdminPage(): React.ReactElement {
   // greift nicht) immer nach oben scrollen. Betrifft besonders „Zurück" aus der
   // Detailansicht: vorher blieb die Liste weit unten gescrollt.
   React.useEffect(() => {
+    // v31.3: Das gemeinsame Stylesheet einmal ins Dokument legen. Modal und
+    // WizardFormShell tun das schon; das Organizer Center rendert aber ohne
+    // beides — ohne diesen Aufruf wären Karten, Chips und Hinweiskästen hier
+    // ungestylt, bis irgendwann ein Dialog aufging.
+    ensureDexUiStyles();
     const toTop = (el: Element | null): void => { if (el) { try { (el as HTMLElement).scrollTop = 0; } catch { /* */ } } };
     try { window.scrollTo(0, 0); } catch { /* */ }
     toTop(document.scrollingElement);
@@ -1425,14 +1438,18 @@ export default function AdminPage(): React.ReactElement {
     return (
       <div className="page-container" role="main">
         <h2 className="mb-16">{t('admin.title')}</h2>
-        <div className="card" style={{ padding: 48, textAlign: 'center' }}>
-          <p style={{ color: 'var(--dex-gray-700)', marginBottom: 8, fontWeight: 600 }}>
+        {/* v31.3: Leerer Zustand statt einer weissen Karte mit zwei Absätzen —
+            gestrichelter Rahmen sagt „hier ist nichts", die zwei Knöpfe sagen,
+            wo es weitergeht (Leitfaden 1.6). */}
+        <div className="dex-ui-empty" style={{ padding: '36px 20px' }}>
+          <div className="dex-ui-empty-icon" aria-hidden="true"><Users size={20} /></div>
+          <div className="dex-ui-empty-title">
             {t('admin.noaccess.title') || 'Kein Zugriff'}
-          </p>
-          <p style={{ color: 'var(--dex-gray-500)', fontSize: '0.88rem', maxWidth: 520, margin: '0 auto' }}>
+          </div>
+          <p style={{ maxWidth: 520, margin: '0 auto' }}>
             {t('admin.noaccess.msg')}
           </p>
-          <div style={{ marginTop: 24, display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <div style={{ marginTop: 20, display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
             {/* v7.2: Organizer ohne eigenes Event sehen hier einen direkten
                 Shortcut zum Event-Erstellen — sonst sitzen sie in dieser
                 Sackgasse ohne sichtbaren nächsten Schritt. Admins sehen den
@@ -2277,26 +2294,22 @@ export default function AdminPage(): React.ReactElement {
           Eventauswahl-Reset („zurück zur Event-Liste") triggern wir über den Header-Back —
           siehe Listener weiter oben, der bei navigate-Wechsel selectedEvent zurücksetzt. */}
 
-      {/* v22.7: Hinweisbox, wenn Teilnehmer-Konten nicht mehr aktiv sind
-          (Person hat womöglich Deloitte verlassen). Hintergrund-Check beim
-          Öffnen, max. 1×/Tag pro Event. */}
-      {inactiveAccounts.length > 0 && <InactiveAccountsBox {...inactiveAccountsBoxProps} />}
-
-      {/* v26.18/v26.22: Duplikat-Warnung — gleicher/ähnlicher Name + gleicher Tag.
-          Es werden ALLE betroffenen Versionen gelistet (auch die gerade geöffnete),
-          jeweils mit Erstell-Zeitstempel + Löschen-Knopf. */}
-      {duplicateEvents.length > 0 && selectedEvent && <DuplicateEventsBox {...duplicateEventsBoxProps} />}
-
       {/* v12.7: Aktionen-Card aufgelöst — alle ActionTiles registrieren
           sich jetzt im ActionsRegistryProvider. Die Dropdown-Liste sitzt
           unten in der linken Event-Detail-Card. Daher 1-Spalten-Grid
           statt vorher 2-Spalten. */}
+      {/* v31.3: Reihenfolge nach ui-leitfaden 5a — Kopf, dann Hinweise, dann
+          Kennzahlen, dann Aktionen. Bis v31.2 standen die Warnungen ÜBER dem
+          Event-Kopf (man las eine Warnung, bevor man wusste, zu welchem Event)
+          und die Kennzahlen UNTER dem Aktionen-Grid. Alles bleibt im selben
+          `ActionsRegistryProvider`: Die ActionTiles melden sich beim Mount an,
+          das Dropdown in der Detail-Karte liest sie — beide müssen unter
+          demselben Provider hängen. */}
       <ActionsRegistryProvider>
-      <div className="admin-event-info-grid" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 24, marginBottom: 24 }}>
-        {/* v22.5: Detail-Card + „Nächste Schritte"-Box rechts daneben (Desktop;
-            stapelt auf Mobile via flex-wrap). Die Box erscheint nur für Entwürfe
-            und nur für Admin/Organizer. */}
-        <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        {/* 1. Seitenkopf: Detail-Card + „Nächste Schritte"-Box rechts daneben
+            (Desktop; stapelt auf Mobile via flex-wrap). Die Box erscheint nur
+            für Entwürfe und nur für Admin/Organizer. */}
+        <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 20 }}>
         <EventDetailCard {...eventDetailCardProps} hintsSlot={hintsSlot} />
         {/* v22.5: „Nächste Schritte"-Box rechts neben der Detail-Card — nur für
             Entwürfe (Admin/Organizer). Erklärt, was nach dem Anlegen noch zu tun
@@ -2309,6 +2322,97 @@ export default function AdminPage(): React.ReactElement {
         {(isAdmin || isOrganizerFor(selectedEvent)) && !!selectedEvent.isFictive && !selectedEvent.isDemoShowcase && <NextStepsBox {...nextStepsBoxProps} />}
         </div>
 
+      {/* 2. Hinweise, die Handeln verlangen (Leitfaden 5a) — in der Reihenfolge
+          Datenverlust > Rechte > Dubletten. Sie stehen VOR den Kennzahlen, weil
+          sie erklären, warum eine Zahl unvollständig ist oder ganz fehlt. */}
+      {/* v22.7: Hinweisbox, wenn Teilnehmer-Konten nicht mehr aktiv sind
+          (Person hat womöglich Deloitte verlassen). Hintergrund-Check beim
+          Öffnen, max. 1×/Tag pro Event. */}
+      {inactiveAccounts.length > 0 && <InactiveAccountsBox {...inactiveAccountsBoxProps} />}
+
+      {/* v26.18/v26.22: Duplikat-Warnung — gleicher/ähnlicher Name + gleicher Tag.
+          Es werden ALLE betroffenen Versionen gelistet (auch die gerade geöffnete),
+          jeweils mit Erstell-Zeitstempel + Löschen-Knopf. */}
+      {duplicateEvents.length > 0 && selectedEvent && <DuplicateEventsBox {...duplicateEventsBoxProps} />}
+
+      {/* v30.37: Fehlende Leserechte auf einzelnen Termin-Listen. Das gehört
+          ÜBER die Kennzahlen und nicht anstelle von irgendetwas — die Termine,
+          die gelesen werden konnten, sind ja korrekt. Ohne diesen Hinweis sah
+          ein Organizer ohne Rechte auf den Sub-Event-Subsites ein volles Event
+          als leeres (jede Spalte „0").
+          v31.3: von unterhalb der Teilnehmer-Überschrift hierher gezogen; die
+          Bedingung `!isQRScannerOnlyForSelected` steht jetzt ausdrücklich davor,
+          damit das Check-in-Team wie bisher nichts davon sieht. */}
+      {!isQRScannerOnlyForSelected && deniedSubEventLists.length > 0 && (() => {
+        // v30.67 (Review): Die Ursache „erst nachträglich als Organizer
+        // benannt" gilt nur für 401/403/404. Eine 429 oder ein Netzfehler
+        // ist keine Rechtefrage — dafür hilft „Aktualisieren", nicht die
+        // Reparatur-Aktion. Bei Mischung zählt die Rechte-Ursache, die
+        // Statuscodes je Termin stehen dahinter.
+        const permDenied = deniedSubEventLists.some(d => d.status === 401 || d.status === 403 || d.status === 404);
+        const n = deniedSubEventLists.length;
+        return (
+        <div className={cx('dex-ui-callout', permDenied ? 'dex-ui-callout--danger' : 'dex-ui-callout--warn')} style={{ marginBottom: 16 }}>
+          <span className="dex-ui-callout-icon" aria-hidden="true"><AlertCircle size={16} /></span>
+          <div>
+            <strong>
+              {permDenied
+                ? (isDe ? `Kein Zugriff auf ${n} Teilnehmerliste(n)` : `No access to ${n} participant list(s)`)
+                : (isDe ? `${n} Teilnehmerliste(n) konnten gerade nicht gelesen werden` : `${n} participant list(s) could not be read right now`)}
+            </strong>
+            <div style={{ marginTop: 6 }}>
+              {permDenied
+                ? (isDe
+                  ? 'Die Zahlen unten sind deshalb unvollständig — betroffene Termine erscheinen mit 0 Teilnehmern, obwohl dort Anmeldungen liegen können. Grund ist fast immer, dass du erst nachträglich als Organizer benannt wurdest: Die Berechtigung wurde dann nur auf dem Haupt-Event gesetzt, nicht auf den einzelnen Terminen. Ein Admin oder der Haupt-Organizer behebt das über die Aktion „Organizer-Berechtigungen reparieren“.'
+                  : 'The numbers below are therefore incomplete — affected dates show 0 participants even though registrations may exist. This almost always happens when you were named organizer after the event was created: permissions were then set on the main event only, not on the individual dates. An admin or the main organizer can fix this via the action „Repair organizer permissions“.')
+                : (isDe
+                  ? 'Die Zahlen unten sind deshalb unvollständig — betroffene Termine erscheinen mit 0 Teilnehmern, obwohl dort Anmeldungen liegen können. Ursache ist eine SharePoint-Drosselung oder ein Netzfehler, keine fehlende Berechtigung — bitte „Aktualisieren“ klicken.'
+                  : 'The numbers below are therefore incomplete — affected dates show 0 participants even though registrations may exist. The cause is SharePoint throttling or a network error, not a missing permission — please click „Refresh“.')}
+            </div>
+            <div style={{ marginTop: 6, color: 'var(--dex-gray-500)' }}>
+              {deniedSubEventLists.slice(0, 8).map(d => d.status > 0 ? `${d.title} (HTTP ${d.status})` : d.title).join(' · ')}
+              {n > 8 ? ` … (+${n - 8})` : ''}
+            </div>
+          </div>
+        </div>
+        );
+      })()}
+
+      {/* v30.67: Nachladen fehlgeschlagen — die Tabelle bleibt (alter Stand),
+          der Hinweis kommt dazu. Vorher wurde die Liste bei jedem HTTP-Fehler
+          eines Pushs still durch `[]` ersetzt. */}
+      {!isQRScannerOnlyForSelected && regStaleHint && !regLoadError && (
+        <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginBottom: 16 }}>
+          <span className="dex-ui-callout-icon" aria-hidden="true"><AlertCircle size={16} /></span>
+          <div>
+            {regStaleHint === 'denied'
+              ? (isDe
+                ? 'Aktualisierung fehlgeschlagen: kein Zugriff auf die Teilnehmerliste. Angezeigt wird der zuletzt geladene Stand.'
+                : 'Refresh failed: no access to the participant list. Showing the last loaded state.')
+              : (isDe
+                ? 'Aktualisierung fehlgeschlagen (Drosselung oder Netz). Angezeigt wird der zuletzt geladene Stand — bitte „Aktualisieren“ erneut versuchen.'
+                : 'Refresh failed (throttling or network). Showing the last loaded state — please try „Refresh“ again.')}
+          </div>
+        </div>
+      )}
+
+      {/* v26: Box „Offene Fragen (User)" — die Fragen normaler User zu diesem
+          Event (Ticketsystem). Steht bei den Hinweisen, weil sie eine Antwort
+          verlangen. */}
+      {selectedEvent && <TicketEventBox eventId={selectedEvent.id} />}
+
+      {/* 3. Kennzahlen (Leitfaden 5a).
+          v9.14: Warteliste-KPI wird nur gerendert wenn Event eine Warteliste hat.
+          Sonst Grid auf 4 Spalten.
+          v11.32: Bei Split-Capacity wird die separate Kapazitäts-Karten-Reihe
+          unten in die „Angemeldet"-Kachel hochgezogen. Die Kachel bekommt
+          dann doppelte Breite (2fr) damit Group-A/B-Breakdown sauber drin
+          Platz hat — keine zwei breiten Vollbreite-Karten mehr. */}
+      <KpiTiles {...kpiTilesProps} />
+
+      {/* 5. Aktionen (Leitfaden 5a) — nach den Zahlen, denn die Zahl sagt, welche
+          Aktion dran ist. */}
+      <div className="admin-event-info-grid" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 24, marginBottom: 24 }}>
         {/* v7.6: Aktionen-Bereich als Kachel-Grid (auto-fit ab 220px, max 4
             pro Zeile auf Desktop). Default Grau, beim Hover Deloitte-Grün mit
             leichtem Schatten. Jede Kachel zeigt SVG-Icon + Titel + ausführliche
@@ -2342,82 +2446,12 @@ export default function AdminPage(): React.ReactElement {
         <BillingActionPanel event={selectedEvent} onClose={() => setBillingPanelOpen(false)} />
       )}
 
-      {/* Zähler + QR/Check-in Aktionen.
-          v9.14: Warteliste-KPI wird nur gerendert wenn Event eine Warteliste hat.
-          Sonst Grid auf 4 Spalten.
-          v11.32: Bei Split-Capacity wird die separate Kapazitäts-Karten-Reihe
-          unten in die „Angemeldet"-Kachel hochgezogen. Die Kachel bekommt
-          dann doppelte Breite (2fr) damit Group-A/B-Breakdown sauber drin
-          Platz hat — keine zwei breiten Vollbreite-Karten mehr. */}
-      {/* v26: Box „Offene Fragen (User)" — zwischen Event-Infos und KPI-Kacheln.
-          Zeigt die Fragen normaler User zu diesem Event (Ticketsystem). */}
-      {selectedEvent && <TicketEventBox eventId={selectedEvent.id} />}
-      <KpiTiles {...kpiTilesProps} />
-
       {/* v9.20: Check-In starten + QR-Codes versenden sind jetzt im Aktionen-Grid
           unten als ActionTile gerendert (nicht mehr als eigene Button-Reihe).
           Damit sind alle Quick-Actions an EINEM Ort zusammengefasst. Auch für
           Check-In-only-User (qrScanner-Mode) — die sehen weiterhin nur den
           Check-In-Tile, da das Aktionen-Grid für sie unten gefiltert ist. */}
       {!isQRScannerOnlyForSelected && (<>
-
-      {/* v28.47: Hinweis-Box für Events, die im Anmeldeformular nach einer
-          Unterkunft fragen, aber noch keine Hotels hinterlegt haben. Genau die
-          Organizer pflegen die Zuordnung sonst weiter in Excel, weil sie nicht
-          wissen, dass es das Tool gibt. Sobald das erste Hotel angelegt ist,
-          verschwindet die Box wieder. */}
-      {selectedEvent && selectedEvent.subsiteUrl && (isAdmin || isOrganizerFor(selectedEvent))
-        && (selectedEvent.hotels || []).length === 0
-        && (selectedEvent.eventSpecificFields || []).some(f =>
-          /hotel|unterkunft|übernacht|übernacht|accommodation|lodging/i.test(`${f.label || ''} ${(f.options || []).join(' ')}`))
-        && !hotelPanelOpen && (
-        <div className="card" style={{ marginBottom: 16, borderLeft: '4px solid var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.06)' }}>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, minWidth: 240 }}>
-              <div style={{ fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)', marginBottom: 4 }}>
-                {isDe ? 'Dieses Event fragt nach einer Unterkunft — nutze die Hotel-Planung' : 'This event asks about accommodation — use the hotel planning'}
-              </div>
-              <div style={{ fontSize: '0.84rem', color: 'var(--dex-gray-700)', lineHeight: 1.55 }}>
-                {isDe
-                  ? <>Lege deine Hotels an, gib Zeiträume als Vorlage vor und ordne die Teilnehmer zu — mit Kontingent-Warnung, Belegung je Nacht, Rooming-Liste als Excel und personalisierter Hotel-Mail (Assistenz automatisch in Cc). Das ersetzt die Excel-Liste nebenher.</>
-                  : <>Create your hotels, define stay templates and assign attendees — with capacity warnings, occupancy per night, a rooming list as Excel and a personalised hotel email (assistant auto-CC&apos;d). It replaces the spreadsheet on the side.</>}
-              </div>
-            </div>
-            <button type="button" className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', flexShrink: 0 }}
-              onClick={() => setHotelPanelOpen(true)}>
-              {isDe ? 'Hotel-Planung öffnen' : 'Open hotel planning'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ===== HOTEL-PLANUNG (v28.39, collapsible) =====
-          Nur für Organizer/Admin und nur, wenn das Event eine eigene
-          Teilnehmerliste hat. Standardmaessig eingeklappt — Events ohne
-          Übernachtung sollen davon nichts merken. */}
-      {/* v28.47: auch im Klammer-Modus. Die Übernachtung hängt an der PERSON,
-          nicht am einzelnen Sub-Event — und genau eine Zeile je Person hat die
-          Teilnehmerliste der Klammer (die Schattenzeilen aus v15.25). Das ist die
-          richtige Ebene für die Hotel-Zuordnung; vorher war der Abschnitt bei
-          Klammer-Events komplett ausgeblendet. */}
-      {/* v28.90: …und nur, wenn es überhaupt eine Hotelfrage GIBT. Der
-          eingeklappte Balken stand bisher unter jedem Event — auch unter einem
-          zweistündigen Lunch, wo niemand übernachtet. Erkannt wird die Frage am
-          Feldtyp „daterange" (Übernachtungs-Zeitraum, v28.63) oder an der
-          Beschriftung eines Abfragefelds; geprüft wird das Event selbst UND
-          seine Sub-Events, weil die Frage bei einer Klammer auf beiden Ebenen
-          stehen kann. Ist die Planung schon im Gange (Hotels angelegt oder
-          Personen zugeordnet), bleibt der Abschnitt in jedem Fall sichtbar —
-          sonst verschwände eine bestehende Planung mitsamt ihrer Bedienung,
-          wenn jemand das Abfragefeld nachträglich entfernt. */}
-      {selectedEvent && selectedEvent.subsiteUrl && (isAdmin || isOrganizerFor(selectedEvent)) && <HotelPlanningSection {...hotelPlanningSectionProps} />}
-
-      {/* ===== QUIZ-STATISTIK (collapsible, oberhalb Teilnehmerliste) ===== */}
-      {selectedEvent && selectedEvent.quiz && selectedEvent.quiz.length > 0 && <QuizStatsSection {...quizStatsSectionProps} />}
-
-      {/* v30.92: Anwesenheit je Programmpunkt — Matrix und „nach Punkt", Excel,
-          manuelles Nachtragen mit Audit. Nur bei Events mit Programmpunkten. */}
-      {selectedEvent && selectedEvent.agendaCheckIn && (selectedEvent.agenda || []).length > 0 && <AgendaAttendanceSection {...agendaAttendanceSectionProps} />}
 
         {/* v22.16: „Hinweise"-Box für AKTIVE Events. v30.87: nicht mehr hier
             als eigene Kachel, sondern als Zeile in der Event-Details-Karte
@@ -2430,53 +2464,89 @@ export default function AdminPage(): React.ReactElement {
           die Zusammensetzung erst auf Klick. */}
       {selectedEvent && <AudienceVisibilityRow {...audienceVisibilityRowProps} />}
 
-      {/* Teilnehmerliste */}
+      {/* 6. Teilnehmer (Leitfaden 5a) — Kopf, Hinweise, Werkzeugleiste, Tabelle. */}
       <div ref={participantListRef} className="card" style={{ padding: 24 }}>
-        {/* v11.28: Suchfeld direkt neben dem „Teilnehmer (N)"-Header
-            statt rechtsbündig — flüssiger Lese-Flow von links nach
-            rechts, kein Sprung über die ganze Card-Breite mehr. */}
-        <div className="mb-16" style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-          <h3 style={{ margin: 0, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <Users size={18} /> Teilnehmer ({isConsolidatedMode ? consolidatedFiltered.length : activeRegs.length})
-            {isConsolidatedMode && (() => {
-              const term = (selectedEvent && selectedEvent.childEventTermPlural) || (isDe ? 'Sub-Events' : 'sub-events');
-              return (
-                <span style={{ marginLeft: 8, fontSize: '0.72rem', fontWeight: 500, color: 'var(--dex-gray-500)' }}>
-                  — {isDe ? 'konsolidiert über' : 'consolidated across'} {consolidatedChildren.length} {term}
-                </span>
-              );
-            })()}
+        {/* v31.3: Karten-Kopf statt Kopfzeile mit eingestreuten Knöpfen. Der
+            Titel sagt, was hier steht, die Pille sagt wie viele; die Bedienung
+            steht eine Zeile tiefer in der Werkzeugleiste — vorher hing sie
+            zwischen Überschrift und Suchfeld und las sich als Teil des Titels. */}
+        <div className="dex-ui-card-head" style={{ marginBottom: 12 }}>
+          <h3 className="dex-ui-card-head-title">
+            <Users size={18} />
+            {isDe ? 'Teilnehmer' : 'Attendees'}
+            <span className="dex-ui-pill dex-ui-pill--gray">{isConsolidatedMode ? consolidatedFiltered.length : activeRegs.length}</span>
           </h3>
-          <input
-            type="text"
-            className="form-input"
-            placeholder="Teilnehmer suchen..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            style={{ maxWidth: 280, padding: '6px 12px', fontSize: '0.85rem' }}
-          />
+          {isConsolidatedMode && (() => {
+            const term = (selectedEvent && selectedEvent.childEventTermPlural) || (isDe ? 'Sub-Events' : 'sub-events');
+            return (
+              <span className="dex-ui-card-head-meta">
+                {isDe ? 'konsolidiert über' : 'consolidated across'} {consolidatedChildren.length} {term}
+              </span>
+            );
+          })()}
+        </div>
+
+        {/* v31.3: Zuerst, was Handeln verlangt (Leitfaden 5a) — ID-Lücken,
+            Dubletten, Anmeldungen ohne Adresse, Überbuchung. Sie standen bis
+            v31.2 UNTER Suchfeld und Legende und damit hinter dem, worauf sie
+            sich beziehen. Reihenfolge nach Dringlichkeit: Datenverlust zuerst. */}
+        {/* v11.70: Inline-Hinweisbox statt Modal — bei einer kürzlich
+            erfolgten Abmeldung läuft die automatische Korrektur evtl. noch
+            (Nachrücken + ID-Neuvergabe per Power-Automate-Batch). Solange
+            sich die IDs evtl. noch verschieben, soll der Organizer nicht
+            parallel manuell „IDs neu vergeben" anstoßen. */}
+        <IdGapHintBox {...idGapHintBoxProps} />
+
+        <DuplicateRegHintBox {...duplicateRegHintBoxProps} />
+
+        <DuplicateInSubEventHintBox {...duplicateInSubEventHintBoxProps} />
+
+        <MissingEmailHintBox {...missingEmailHintBoxProps} />
+
+        <OverbookReviewBox {...overbookReviewBoxProps} />
+
+        {/* v29.36: Schritt 1 des Nachfassens — WER fehlt noch. Personen mit Foto,
+            Name und Position in Zeilen, damit man sieht, wen man anschreibt.
+            Erst der Knopf unten öffnet den Mail-Dialog (Schritt 2). */}
+        {pendingPeople && <PendingPeopleBox {...pendingPeopleBoxProps} />}
+
+        {/* v31.3: Werkzeugleiste (Leitfaden 5a/5b) — Suche links, danach die
+            Aktionen, die zur Liste gehören. Knöpfe stehen beim Inhalt, nicht am
+            rechten Rand (Leitfaden 2a′). */}
+        <div className="dex-ui-toolbar">
+          <div className="dex-ui-searchbar">
+            <span className="dex-ui-searchbar-icon" aria-hidden="true"><Search size={15} /></span>
+            <input
+              type="text"
+              className="dex-ui-input"
+              aria-label={isDe ? 'Teilnehmer suchen' : 'Search attendees'}
+              placeholder={isDe ? 'Name, E-Mail, ID oder Antwort suchen' : 'Search name, email, ID or answer'}
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
+          </div>
           {/* v29.26: Teilnehmer manuell anmelden — Ausnahme-Weg für
               Organizer. Der Hinweis auf die Selbst-Registrierung steht im
               Tooltip UND prominent im Dialog selbst. */}
           <button
             type="button"
-            className="btn btn-secondary"
-            style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+            className="btn btn-secondary dex-ui-btn-sm"
             onClick={() => setAddParticipantsOpen(true)}
             title={isDe
               ? 'Teilnehmer registrieren sich normalerweise selbst über die Anmeldeseite — dieser Weg ist für Ausnahmen (nachträgliche Zusagen, übernommene Listen).'
               : 'Attendees normally register themselves via the registration page — this path is for exceptions (late confirmations, imported lists).'}
           >
-            + {isDe ? 'Teilnehmer hinzufügen' : 'Add attendees'}
+            <Plus size={14} /> {isDe ? 'Teilnehmer hinzufügen' : 'Add attendees'}
           </button>
           {/* v26.44: „Matches anzeigen" — nur bei Events mit Roommate-Spalte.
               Gruppiert die Tabelle in gegenseitige Paare (Match 1, 2, …) +
-              Rest-Cluster; wirkt auf die aktuell gefilterte Trefferliste. */}
+              Rest-Cluster; wirkt auf die aktuell gefilterte Trefferliste.
+              v31.3: als Chip — es ist ein Filter auf die Ansicht, kein
+              Hauptknopf (Leitfaden 2b). */}
           {!isConsolidatedMode && hasRoommateColumn && (
             <button
               type="button"
-              className={showMatches ? 'btn btn-primary' : 'btn btn-secondary'}
-              style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+              className={cx('dex-ui-chip', showMatches && 'is-active')}
               onClick={() => setShowMatches(v => !v)}
               title={isDe
                 ? 'Gegenseitige Roommate-Auswahlen als Paare gruppiert anzeigen'
@@ -2485,6 +2555,11 @@ export default function AdminPage(): React.ReactElement {
               {showMatches
                 ? (isDe ? 'Matches ausblenden' : 'Hide matches')
                 : (isDe ? 'Matches anzeigen' : 'Show matches')}
+            </button>
+          )}
+          {!!query && (
+            <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" onClick={() => setSearchQuery('')}>
+              {isDe ? 'Suche zurücksetzen' : 'Clear search'}
             </button>
           )}
         </div>
@@ -2510,10 +2585,6 @@ export default function AdminPage(): React.ReactElement {
             isDe={isDe}
           />
         )}
-        {/* v29.36: Schritt 1 des Nachfassens — WER fehlt noch. Personen mit Foto,
-            Name und Position in Zeilen, damit man sieht, wen man anschreibt.
-            Erst der Knopf unten öffnet den Mail-Dialog (Schritt 2). */}
-        {pendingPeople && <PendingPeopleBox {...pendingPeopleBoxProps} />}
         {/* v15.14: Legende für die Pastel-Hintergründe — sowohl in der
             Sub-Event-Detail-Ansicht (Parent-CFs + eigene CFs) als auch im
             konsolidierten Hauptevent-View. Vorher war die Legende NUR im
@@ -2538,101 +2609,27 @@ export default function AdminPage(): React.ReactElement {
           </div>
         )}
 
-        {/* v11.70: Inline-Hinweisbox statt Modal — bei einer kürzlich
-            erfolgten Abmeldung läuft die automatische Korrektur evtl. noch
-            (Nachrücken + ID-Neuvergabe per Power-Automate-Batch). Solange
-            sich die IDs evtl. noch verschieben, soll der Organizer nicht
-            parallel manuell „IDs neu vergeben" anstoßen. */}
-        <IdGapHintBox {...idGapHintBoxProps} />
-
-        <DuplicateRegHintBox {...duplicateRegHintBoxProps} />
-
-        <DuplicateInSubEventHintBox {...duplicateInSubEventHintBoxProps} />
-
-        <MissingEmailHintBox {...missingEmailHintBoxProps} />
-
-        <OverbookReviewBox {...overbookReviewBoxProps} />
-
-        <TeamsSection {...teamsSectionProps} />
-
-        {teamsToast && (
-          <div style={{
-            marginBottom: 14, padding: '10px 14px', borderRadius: 8,
-            background: 'rgba(134,188,37,0.12)', border: '1px solid var(--dex-green, #86bc25)',
-            color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.88rem',
-          }}>
-            {teamsToast}
-          </div>
-        )}
-
-        {/* v23.0: Per-Team-Info-Mail. Jedes aktive Mitglied bekommt eine eigene
-            Mail; pro Team trägt der Organizer eine team-spezifische Info ein
-            (z.B. einen eigenen Teams-Einwahllink). */}
-        {teamMailOpen && selectedEvent && <TeamMailModal {...teamMailModalProps} />}
-
-        {/* v30.37: Fehlende Leserechte auf einzelnen Termin-Listen. Das
-            gehört ÜBER die Tabelle und nicht anstelle davon — die Termine,
-            die gelesen werden konnten, sind ja korrekt. Ohne diesen Hinweis
-            sah ein Organizer ohne Rechte auf den Sub-Event-Subsites ein
-            volles Event als leeres (jede Spalte „0"). */}
-        {deniedSubEventLists.length > 0 && (() => {
-          // v30.67 (Review): Die Ursache „erst nachträglich als Organizer
-          // benannt" gilt nur für 401/403/404. Eine 429 oder ein Netzfehler
-          // ist keine Rechtefrage — dafür hilft „Aktualisieren", nicht die
-          // Reparatur-Aktion. Bei Mischung zählt die Rechte-Ursache, die
-          // Statuscodes je Termin stehen dahinter.
-          const permDenied = deniedSubEventLists.some(d => d.status === 401 || d.status === 403 || d.status === 404);
-          const n = deniedSubEventLists.length;
-          return (
-          <div style={{
-            border: '1px solid var(--dex-red)', background: '#fff5f5', borderRadius: 8,
-            padding: '12px 14px', marginBottom: 12, fontSize: 13, lineHeight: 1.5,
-          }}>
-            <strong style={{ color: 'var(--dex-red)' }}>
-              {permDenied
-                ? (isDe ? `Kein Zugriff auf ${n} Teilnehmerliste(n)` : `No access to ${n} participant list(s)`)
-                : (isDe ? `${n} Teilnehmerliste(n) konnten gerade nicht gelesen werden` : `${n} participant list(s) could not be read right now`)}
-            </strong>
-            <div style={{ marginTop: 6 }}>
-              {permDenied
-                ? (isDe
-                  ? 'Die Zahlen unten sind deshalb unvollständig — betroffene Termine erscheinen mit 0 Teilnehmern, obwohl dort Anmeldungen liegen können. Grund ist fast immer, dass du erst nachträglich als Organizer benannt wurdest: Die Berechtigung wurde dann nur auf dem Haupt-Event gesetzt, nicht auf den einzelnen Terminen. Ein Admin oder der Haupt-Organizer behebt das über die Aktion „Organizer-Berechtigungen reparieren“.'
-                  : 'The numbers below are therefore incomplete — affected dates show 0 participants even though registrations may exist. This almost always happens when you were named organizer after the event was created: permissions were then set on the main event only, not on the individual dates. An admin or the main organizer can fix this via the action „Repair organizer permissions“.')
-                : (isDe
-                  ? 'Die Zahlen unten sind deshalb unvollständig — betroffene Termine erscheinen mit 0 Teilnehmern, obwohl dort Anmeldungen liegen können. Ursache ist eine SharePoint-Drosselung oder ein Netzfehler, keine fehlende Berechtigung — bitte „Aktualisieren“ klicken.'
-                  : 'The numbers below are therefore incomplete — affected dates show 0 participants even though registrations may exist. The cause is SharePoint throttling or a network error, not a missing permission — please click „Refresh“.')}
-            </div>
-            <div style={{ marginTop: 6, color: 'var(--dex-gray-500)' }}>
-              {deniedSubEventLists.slice(0, 8).map(d => d.status > 0 ? `${d.title} (HTTP ${d.status})` : d.title).join(' · ')}
-              {n > 8 ? ` … (+${n - 8})` : ''}
-            </div>
-          </div>
-          );
-        })()}
-        {/* v30.67: Nachladen fehlgeschlagen — die Tabelle bleibt (alter Stand),
-            der Hinweis kommt dazu. Vorher wurde die Liste bei jedem HTTP-Fehler
-            eines Pushs still durch `[]` ersetzt. */}
-        {regStaleHint && !regLoadError && (
-          <p style={{ color: 'var(--dex-orange-dark, #b35a00)', background: 'rgba(237,139,0,0.10)', border: '1px solid var(--dex-orange, #ed8b00)', borderRadius: 6, padding: '8px 10px', fontSize: 13, marginBottom: 12 }}>
-            {regStaleHint === 'denied'
-              ? (isDe
-                ? 'Aktualisierung fehlgeschlagen: kein Zugriff auf die Teilnehmerliste. Angezeigt wird der zuletzt geladene Stand.'
-                : 'Refresh failed: no access to the participant list. Showing the last loaded state.')
-              : (isDe
-                ? 'Aktualisierung fehlgeschlagen (Drosselung oder Netz). Angezeigt wird der zuletzt geladene Stand — bitte „Aktualisieren“ erneut versuchen.'
-                : 'Refresh failed (throttling or network). Showing the last loaded state — please try „Refresh“ again.')}
-          </p>
-        )}
+        {/* v31.3: Die beiden Hinweise „Termin-Liste gesperrt" und „Nachladen
+            fehlgeschlagen" stehen jetzt oben im Hinweis-Block — sie erklären
+            die Kennzahlen, und die stehen über dieser Karte. Hier bleibt nur
+            der Fall, der die Tabelle wirklich ersetzt: Liste nicht lesbar. */}
         {regLoadError ? (
-          <p style={{ color: 'var(--dex-red)', fontStyle: 'italic' }}>
-            {regLoadError === ACCESS_DENIED_MSG
-              ? (isDe
-                ? 'Du hast keinen Zugriff auf die Teilnehmerliste dieses Events. Das ist kein leeres Event — die Liste lässt sich mit deinem Konto nur nicht lesen. Ein Admin oder der Haupt-Organizer kann das über die Aktion „Organizer-Berechtigungen reparieren" beheben.'
-                : 'You do not have access to this event’s participant list. This is not an empty event — the list simply cannot be read with your account. An admin or the main organizer can fix this via the action "Repair organizer permissions".')
-              : regLoadError}
-          </p>
+          // v31.3: „Nicht lesbar" ist ein Zustand, kein leeres Ergebnis — als
+          // Hinweiskasten statt als kursive Zeile, damit er nicht wie eine
+          // Fussnote unter einer leeren Tabelle wirkt (CLAUDE.md: ein
+          // Lesefehler ist keine Null).
+          <div className="dex-ui-callout dex-ui-callout--danger">
+            <span className="dex-ui-callout-icon" aria-hidden="true"><AlertCircle size={16} /></span>
+            <div>
+              {regLoadError === ACCESS_DENIED_MSG
+                ? (isDe
+                  ? 'Du hast keinen Zugriff auf die Teilnehmerliste dieses Events. Das ist kein leeres Event — die Liste lässt sich mit deinem Konto nur nicht lesen. Ein Admin oder der Haupt-Organizer kann das über die Aktion „Organizer-Berechtigungen reparieren" beheben.'
+                  : 'You do not have access to this event’s participant list. This is not an empty event — the list simply cannot be read with your account. An admin or the main organizer can fix this via the action "Repair organizer permissions".')
+                : regLoadError}
+            </div>
+          </div>
         ) : isLoadingRegs ? (
-          <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>{isDe ? 'Lade Teilnehmer...' : 'Loading participants...'}</p>
+          <p className="dex-ui-muted" style={{ fontStyle: 'italic' }}>{isDe ? 'Lade Teilnehmer...' : 'Loading participants...'}</p>
         ) : isConsolidatedMode ? (
           // v14.11: konsolidierter Matrix-View für Events im
           // „Nur Sub-Events"-Modus. Eine Zeile pro eindeutigem Teilnehmer,
@@ -2640,7 +2637,33 @@ export default function AdminPage(): React.ReactElement {
           // Sub-Event-Level- (Pastel B) Custom-Field-Spalten gruppiert.
           <ConsolidatedView {...consolidatedViewProps} />
         ) : activeRegs.length === 0 ? (
-          <p style={{ color: 'var(--dex-gray-400)' }}>{isDe ? 'Noch keine Teilnehmer registriert.' : 'No participants registered yet.'}</p>
+          // v31.3: Leerer Zustand mit dem nächsten Schritt statt einer grauen
+          // Zeile — „leer" heisst hier wirklich leer (der Lesefehler steht
+          // eine Ebene höher), also darf hier auch etwas angeboten werden.
+          <div className="dex-ui-empty">
+            <div className="dex-ui-empty-icon" aria-hidden="true"><Users size={20} /></div>
+            <div className="dex-ui-empty-title">
+              {query
+                ? (isDe ? 'Kein Treffer' : 'No match')
+                : (isDe ? 'Noch niemand angemeldet' : 'Nobody registered yet')}
+            </div>
+            <div>
+              {query
+                ? (isDe ? 'Zu deiner Suche gibt es keine angemeldete Person.' : 'No registered person matches your search.')
+                : (isDe ? 'Sobald sich jemand anmeldet, steht die Person hier — mit Status, Antworten und Check-in.' : 'As soon as someone registers they appear here — with status, answers and check-in.')}
+            </div>
+            <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+              {query ? (
+                <button type="button" className="btn btn-secondary dex-ui-btn-sm" onClick={() => setSearchQuery('')}>
+                  {isDe ? 'Suche zurücksetzen' : 'Clear search'}
+                </button>
+              ) : (isAdmin || isOrganizerFor(selectedEvent)) ? (
+                <button type="button" className="btn btn-secondary dex-ui-btn-sm" onClick={openInviteModal}>
+                  {isDe ? 'Einladung verschicken' : 'Send invitation'}
+                </button>
+              ) : null}
+            </div>
+          </div>
         ) : (
           <ParticipantTable {...participantTableProps} />
         )}
@@ -2650,7 +2673,93 @@ export default function AdminPage(): React.ReactElement {
         <WaitlistTables {...waitlistTablesProps} />
 
         {cancelledRegs.length > 0 && <CancelledList {...cancelledListProps} />}
+
+        {/* v31.3: Teams stehen NACH der Liste (Leitfaden 5a: Auswertungen und
+            Gruppierungen zuletzt). Vorher schob die Teams-Sektion die
+            Teilnehmerliste nach unten, obwohl die Frage „wer ist angemeldet?"
+            immer zuerst kommt. Zuordnung und Mailversand bleiben unverändert. */}
+        <TeamsSection {...teamsSectionProps} />
+
+        {teamsToast && (
+          <div className="dex-ui-callout dex-ui-callout--success" style={{ marginBottom: 14 }}>
+            <span className="dex-ui-callout-icon" aria-hidden="true"><Check size={14} /></span>
+            <div>{teamsToast}</div>
+          </div>
+        )}
+
+        {/* v23.0: Per-Team-Info-Mail. Jedes aktive Mitglied bekommt eine eigene
+            Mail; pro Team trägt der Organizer eine team-spezifische Info ein
+            (z.B. einen eigenen Teams-Einwahllink). */}
+        {teamMailOpen && selectedEvent && <TeamMailModal {...teamMailModalProps} />}
       </div>
+
+      {/* v31.3: 8. Auswertungen zuletzt (Leitfaden 5a) — Hotel, Quiz und
+          Anwesenheit sind Auswertungen über die Liste. Sie standen bis v31.2
+          ÜBER der Teilnehmerliste und haben sie bei jedem Öffnen nach unten
+          geschoben, auch wenn niemand übernachtet oder Quiz gespielt hat. */}
+
+      {/* v28.47: Hinweis-Box für Events, die im Anmeldeformular nach einer
+          Unterkunft fragen, aber noch keine Hotels hinterlegt haben. Genau die
+          Organizer pflegen die Zuordnung sonst weiter in Excel, weil sie nicht
+          wissen, dass es das Tool gibt. Sobald das erste Hotel angelegt ist,
+          verschwindet die Box wieder. */}
+      {selectedEvent && selectedEvent.subsiteUrl && (isAdmin || isOrganizerFor(selectedEvent))
+        && (selectedEvent.hotels || []).length === 0
+        && (selectedEvent.eventSpecificFields || []).some(f =>
+          /hotel|unterkunft|übernacht|übernacht|accommodation|lodging/i.test(`${f.label || ''} ${(f.options || []).join(' ')}`))
+        && !hotelPanelOpen && (
+        // v31.3: Knopf direkt unter dem Text statt rechts aussen (Leitfaden 2a′
+        // — ein Knopf allein am rechten Rand zwingt zum Zuordnen). Die
+        // Aufzählung der Funktionen steht im Tooltip: sichtbar bleiben zwei
+        // Zeilen, verloren geht nichts.
+        <div className="dex-ui-card dex-ui-card--accent" style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)', marginBottom: 4 }}>
+            {isDe ? 'Dieses Event fragt nach einer Unterkunft — nutze die Hotel-Planung' : 'This event asks about accommodation — use the hotel planning'}
+            <InfoTooltip
+              text={isDe
+                ? <>Lege deine Hotels an, gib Zeiträume als Vorlage vor und ordne die Teilnehmer zu — mit Kontingent-Warnung, Belegung je Nacht, Rooming-Liste als Excel und personalisierter Hotel-Mail (Assistenz automatisch in Cc). Das ersetzt die Excel-Liste nebenher.</>
+                : <>Create your hotels, define stay templates and assign attendees — with capacity warnings, occupancy per night, a rooming list as Excel and a personalised hotel email (assistant auto-CC&apos;d). It replaces the spreadsheet on the side.</>}
+            />
+          </div>
+          <div className="dex-ui-muted" style={{ lineHeight: 1.55 }}>
+            {isDe
+              ? 'Hotels anlegen, Zeiträume vorgeben, Teilnehmer zuordnen — inklusive Rooming-Liste und Hotel-Mail.'
+              : 'Create hotels, define stays, assign attendees — including rooming list and hotel email.'}
+          </div>
+          <button type="button" className="btn btn-secondary dex-ui-btn-sm" style={{ marginTop: 10 }}
+            onClick={() => setHotelPanelOpen(true)}>
+            {isDe ? 'Hotel-Planung öffnen' : 'Open hotel planning'}
+          </button>
+        </div>
+      )}
+
+      {/* ===== HOTEL-PLANUNG (v28.39, collapsible) =====
+          Nur für Organizer/Admin und nur, wenn das Event eine eigene
+          Teilnehmerliste hat. Standardmaessig eingeklappt — Events ohne
+          Übernachtung sollen davon nichts merken. */}
+      {/* v28.47: auch im Klammer-Modus. Die Übernachtung hängt an der PERSON,
+          nicht am einzelnen Sub-Event — und genau eine Zeile je Person hat die
+          Teilnehmerliste der Klammer (die Schattenzeilen aus v15.25). Das ist die
+          richtige Ebene für die Hotel-Zuordnung; vorher war der Abschnitt bei
+          Klammer-Events komplett ausgeblendet. */}
+      {/* v28.90: …und nur, wenn es überhaupt eine Hotelfrage GIBT. Der
+          eingeklappte Balken stand bisher unter jedem Event — auch unter einem
+          zweistündigen Lunch, wo niemand übernachtet. Erkannt wird die Frage am
+          Feldtyp „daterange" (Übernachtungs-Zeitraum, v28.63) oder an der
+          Beschriftung eines Abfragefelds; geprüft wird das Event selbst UND
+          seine Sub-Events, weil die Frage bei einer Klammer auf beiden Ebenen
+          stehen kann. Ist die Planung schon im Gange (Hotels angelegt oder
+          Personen zugeordnet), bleibt der Abschnitt in jedem Fall sichtbar —
+          sonst verschwände eine bestehende Planung mitsamt ihrer Bedienung,
+          wenn jemand das Abfragefeld nachträglich entfernt. */}
+      {selectedEvent && selectedEvent.subsiteUrl && (isAdmin || isOrganizerFor(selectedEvent)) && <HotelPlanningSection {...hotelPlanningSectionProps} />}
+
+      {/* ===== QUIZ-STATISTIK (collapsible) ===== */}
+      {selectedEvent && selectedEvent.quiz && selectedEvent.quiz.length > 0 && <QuizStatsSection {...quizStatsSectionProps} />}
+
+      {/* v30.92: Anwesenheit je Programmpunkt — Matrix und „nach Punkt", Excel,
+          manuelles Nachtragen mit Audit. Nur bei Events mit Programmpunkten. */}
+      {selectedEvent && selectedEvent.agendaCheckIn && (selectedEvent.agenda || []).length > 0 && <AgendaAttendanceSection {...agendaAttendanceSectionProps} />}
 
       {/* ===== TEILNEHMER-EDIT MODAL (v8.0) ===== */}
       {dangerZoneModal}
