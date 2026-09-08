@@ -150,9 +150,39 @@ export async function scanQrMailsForEvent(svc: EventService, eventId: string, ev
    * Muster, das dieser Dialog sonst überall vermeidet.
    */
   const filter = `${scope} and EmailType eq 'QRCode'`;
+  /**
+   * v31.4.5 — DAS war die Ursache, und sie stand seit einem früheren Vorfall
+   * im Projekt (`registrationEdit.ts:713-717`):
+   *
+   *   „SharePoint liefert bei $orderby+$top in Kombination mit
+   *    Item-Level-Security nicht zuverlässig nextLink, wenn die erste Page
+   *    exakt voll ist."
+   *
+   * Genau diese Kombination stand hier: `$orderby=Id asc&$top=20` auf
+   * `DEX_Emails`, und die Liste HAT Zeilen-Sicherheit (`ReadSecurity: 2`,
+   * emailQueue.ts:240). Die erste Seite war exakt voll, es kam kein
+   * `nextLink`, die Schleife endete — gelesen wurden immer genau 20 Zeilen.
+   * Am Filter zu drehen half deshalb nichts; das Ergebnis war von Anfang an
+   * gedeckelt.
+   *
+   * Zwei Konsequenzen, beide nach dem Vorbild von `getAllRegistrations`:
+   *  - **Kein `$orderby` mehr.** Es ist der Auslöser und wird nicht gebraucht:
+   *    Welche Mail je Person gewinnt, entscheidet der Aufrufer ohnehin selbst
+   *    über die höchste `mailId`.
+   *  - **`$top=500` statt 20.** Der Filter schneidet auf die QR-Mails EINES
+   *    Events zu; das sind Größenordnungen von hundert, nicht von tausend.
+   *    Der Body ist groß (Base64-QR), 500 ist die Grenze, ab der das
+   *    unangenehm würde — und sie liegt weit über jedem realen Event.
+   *
+   * Der `nextLink` bleibt als Schleife stehen (für den Fall, dass es doch
+   * mehr wird), jetzt aber mit ALLEN drei Schreibweisen, die SharePoint je
+   * nach OData-Modus liefert — `@odata.nextLink` fehlte, und drei andere
+   * Stellen im Projekt kennen ihn bereits (`permissionsAudit.ts:239`,
+   * `subsiteProvisioning.ts:763`, `eventsCrud.ts:1090`).
+   */
   let url: string | null = `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items`
     + `?$select=Id,Recipient,Body,Status,EventId&$filter=${encodeURIComponent(filter)}`
-    + `&$orderby=Id asc&$top=20`;
+    + `&$top=500`;
   while (url) {
     let resp;
     try {
@@ -181,7 +211,8 @@ export async function scanQrMailsForEvent(svc: EventService, eventId: string, ev
         status: String(it.Status || ''),
       });
     }
-    url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
+    // v31.4.5: alle drei Schreibweisen — `@odata.nextLink` fehlte hier.
+    url = data['odata.nextLink'] || data['@odata.nextLink'] || (data.d && data.d.__next) || null;
   }
   return out;
 }

@@ -12,7 +12,9 @@ import { eventHeaderImageOpts } from '../utils/mailHeaderImage';
 import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
-import { EventService, SPEvent, SPRegistration, ReseedSummary } from '../services/EventService';
+// v31.5: ACTIVE_STATI, um beim Gruppenwechsel „hatte schon einen Platz" von
+// „rückt gerade nach" zu unterscheiden — nur Letzteres braucht einen Termin.
+import { EventService, SPEvent, SPRegistration, ReseedSummary, ACTIVE_STATI } from '../services/EventService';
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
 import { buildProgramHtml } from '../utils/programPlaceholder';
 import { buildHashDeepLink } from '../utils/deepLink';
@@ -3051,6 +3053,47 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
           await eventService.queueEmail(mail.subject, currentUserEmail, currentUserName, mail.body, templateType, event.title, eventId)
             .catch(err => console.warn('[DEX] switchSplitGroup mail failed:', err));
         } catch { /* */ }
+      }
+      // v31.5: Der Wechsel in eine Gruppe mit freiem Platz IST ein Nachrücken —
+      // und war der einzige Nachrück-Weg ohne Kalendereintrag. Beim Abmelde-
+      // Nachrücken (`useCancelPipeline`), beim manuellen Nachrücken und beim
+      // Heilungslauf (`healAllEvents`) folgt auf die Nachrück-Mail ein
+      // `queueOutlookEvent(..., 'Einladen')`; hier stand nur die Mail. Die
+      // Gates sind die des Anmelde-Pfads (s. `registerForEvent`,
+      // „Outlook-Termin-Einladung in Queue eintragen"): kein Termin bei
+      // abgeschaltetem Outlook, keiner an externe Adressen (Microsoft bounct
+      // sie ohne Federation) und keiner, wenn die Klammer den einen
+      // Kalendereintrag für alle Termine trägt.
+      //
+      // Und nur, wenn vorher KEIN Platz belegt war: Beim Wechsel aktiv → aktiv
+      // steht die Person längst im Termin. Der Flow hängt bei „Einladen" den
+      // Attendee an die bestehende Liste an und PATCHt den Termin — ein zweiter
+      // Eintrag derselben Person plus eine Aktualisierungs-Mail an ALLE.
+      const hadSeatBefore = ACTIVE_STATI.indexOf(myReg.Status || '') >= 0;
+      const switchParent = event.parentEventId ? events.find(e => e.id === event.parentEventId) : undefined;
+      const switchOutlookOnParent = !!switchParent && !!switchParent.subEventsOnlyMode && bundledCommOf(switchParent).outlook;
+      if (result.status === 'Angemeldet' && !hadSeatBefore && !event.disableOutlook
+        && !isExternalEmail(currentUserEmail) && !switchOutlookOnParent) {
+        await eventService.queueOutlookEvent(currentUserEmail, eventId, event.title, 'Einladen')
+          .catch(err => console.warn('[DEX] switchSplitGroup queueOutlookEvent failed:', err));
+      }
+      // v31.5: Und der Gegenweg, spiegelbildlich. Wer aktiv war und in eine
+      // VOLLE Gruppe wechselt, landet auf der Warteliste — verliert also den
+      // Platz, behielt aber bis hierher den Kalendereintrag. Der Termin hätte
+      // ihm dann weiter zugesagt, was die App ihm gerade genommen hat; er
+      // stünde außerdem in der Eingeladenen-Liste des Organizers und im
+      // Decline-Handler wie ein echter Teilnehmer.
+      //
+      // Dieselben Gates, aus demselben Grund — mit einer Ausnahme: Auf
+      // `disableOutlook` wird hier NICHT geprüft. Ein Event kann Outlook
+      // nachträglich abgeschaltet bekommen; die vorher verschickten Termine
+      // existieren trotzdem, und ein Ausladen darf nie daran scheitern, dass
+      // ein neuer Termin heute nicht mehr verschickt würde. Aufräumen ist
+      // immer erlaubt, Zusagen nicht.
+      if (result.status === 'Warteliste' && hadSeatBefore
+        && !isExternalEmail(currentUserEmail) && !switchOutlookOnParent) {
+        await eventService.queueOutlookEvent(currentUserEmail, eventId, event.title, 'Ausladen')
+          .catch(err => console.warn('[DEX] switchSplitGroup queueOutlookEvent (Ausladen) failed:', err));
       }
       // v22.20: Nach jedem Gruppenwechsel einen ID-Reorder anstoßen — der Flow
       // zieht die Nummerierung sofort glatt (Wechsler korrekt einsortiert) und
