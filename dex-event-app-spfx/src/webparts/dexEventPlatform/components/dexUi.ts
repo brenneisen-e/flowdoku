@@ -403,6 +403,69 @@ export const DEX_UI_CSS = `
 .dex-ui-progress-bar--red { background: var(--dex-red, #da291c); }
 @media (max-width: 768px) { .dex-ui-page-head-actions, .dex-ui-card-head-actions { margin-left: 0; width: 100%; } }
 
+/* ---- Teilnehmer-Seiten (v31.8) --------------------------------------
+   Nachzug aus der Umbau-Runde. Jede Klasse hier ersetzt einen Inline-Style,
+   den mindestens zwei Agenten unabhaengig voneinander gebaut haben — das ist
+   das Signal, dass sie fehlte. Der Unterschied zum Organizer Center ist
+   ueberall derselbe: Dort gibt es einen Mauszeiger, hier oft nur einen
+   Finger. Was nur im Hover sichtbar wird, existiert auf dem Handy nicht
+   (Leitfaden 6b). */
+.dex-ui-pill--wrap { white-space: normal; max-width: 100%; }
+.dex-ui-pill--sm { font-size: 0.72rem; padding: 3px 8px; }
+.dex-ui-avatar--xs { width: 22px; height: 22px; font-size: 0.66rem; }
+/* Eine Zeile, die sich auch OHNE Hover vom Fliesstext abhebt. dex-ui-row
+   ist ohne Hover vollstaendig transparent — auf dem Handy also unsichtbar
+   als Zeile. */
+.dex-ui-row--filled { background: ${SOFT}; }
+.dex-ui-row--filled:hover { background: ${G100}; }
+/* Eine Zeile, die NICHT klickbar ist: Abstaende und Trennlinie wie
+   dex-ui-row, aber kein Hover — Hover ohne Aktion verspricht etwas, das es
+   nicht gibt (Grundsatz 3). Zusammen mit dex-ui-row setzen; die Regel steht
+   weiter unten im Stylesheet und gewinnt deshalb bei gleicher Spezifitaet. */
+.dex-ui-row--static:hover { background: transparent; }
+.dex-ui-row-title--wrap { white-space: normal; overflow: visible; text-overflow: clip; word-break: break-word; }
+.dex-ui-row-link { color: ${GDT}; text-decoration: none; }
+.dex-ui-row-link:hover { text-decoration: underline; }
+/* Aktionen in einer Zeile bleiben auf dem Handy voll sichtbar — die
+   Abblendung auf 0.7 setzt einen Hover voraus, den es dort nicht gibt. */
+@media (hover: none) { .dex-ui-row-actions { opacity: 1; } }
+/* Datum-und-Ort-Zeile. Gab es bisher viermal handgebaut: Kachel, aktive
+   Karte, Termin-Zeile, abgemeldete Zeile. */
+.dex-ui-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 0.8rem; color: ${G600}; }
+.dex-ui-meta-item { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+.dex-ui-meta-item > svg { flex-shrink: 0; color: ${G400}; }
+/* Mehrfachauswahl: eckiges Kaestchen statt Kreis. Ein Kreis liest sich
+   ueberall sonst in dieser App als „genau eine". */
+.dex-ui-choice--multi .dex-ui-choice-check { border-radius: 6px; }
+.dex-ui-choice-label { display: block; font-size: 0.88rem; font-weight: 400; color: ${G800}; line-height: 1.35; }
+.dex-ui-choice.is-active .dex-ui-choice-label { font-weight: 600; }
+/* Kleine Karte innerhalb eines Callouts — die Standard-Karte ist dort zu
+   wuchtig. */
+.dex-ui-card--sm { padding: 10px 12px; }
+.dex-ui-callout-body { min-width: 0; flex: 1 1 auto; }
+.dex-ui-empty-desc { font-size: 0.84rem; color: ${G500}; line-height: 1.45; margin-top: 2px; }
+.dex-ui-empty-action { margin-top: 14px; }
+/* Ladebalken ohne bekannten Fortschritt. Stand bisher zweimal handgebaut im
+   Code (Boot-Loader und „Meine Events") mit demselben Keyframe. */
+.dex-ui-progress--indeterminate .dex-ui-progress-bar { width: 40%; animation: dexUiSlide 1.1s ease-in-out infinite; }
+@keyframes dexUiSlide { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }
+/* Ein gesperrter Knopf faerbt beim Ueberfahren nicht nach — sonst
+   verspricht er eine Aktion, die er nicht ausfuehrt (Grundsatz 3). Bewusst
+   OPT-IN und nicht als globale .btn:disabled-Regel: die traefe jede Flaeche
+   der App, auch die Check-in-Seite. Die Farben wiederholen die Ausgangswerte
+   aus dem SCSS-Modul, weil .btn-*:hover dort nur background setzt; das
+   !important ist dasselbe Muster wie im Modal-Overlay (v24.63). */
+.dex-ui-btn--locked { opacity: 0.55; cursor: not-allowed; }
+.dex-ui-btn--locked:hover { box-shadow: none; transform: none; }
+.dex-ui-btn--locked.btn-primary:hover { background: var(--dex-green, #86bc25) !important; }
+.dex-ui-btn--locked.btn-secondary:hover { background: var(--dex-gray-200, #e8e8e8) !important; }
+.dex-ui-btn--locked.btn-danger:hover { background: var(--dex-gray-600, #666) !important; }
+.dex-ui-btn--locked.btn-outline:hover { background: transparent !important; color: var(--dex-green-dark, #6b9a1e) !important; }
+/* Vergangenes und Abgemeldetes: gedaempft, aber OHNE Aufhellung im Hover —
+   --muted hellt auf, was auf dem Handy nie passiert und dort deshalb
+   dauerhaft blass wirkt. */
+.dex-ui-card--dim { opacity: 0.72; }
+
 /* ---- Barrierefreiheit ---------------------------------------------- */
 .dex-ui-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 `;

@@ -169,7 +169,10 @@ export const translations: Record<Locale, Record<string, string>> = {
     'myevents.loading': 'Deine Anmeldungen werden geladen …',
     'myevents.empty': 'Du bist noch für kein Event angemeldet.',
     'myevents.loaderror': 'Deine Anmeldungen konnten nicht geladen werden.',
-    'myevents.loaderror.hint': 'Der Stand unten kann unvollständig sein. Lade die Seite neu.',
+    // v31.8: Der Satz sagt, was der Kasten BEDEUTET — nicht, was man klicken
+    // soll. Der Weg ist der Knopf daneben; „Lade die Seite neu" war ein
+    // zweiter, schlechterer Bedienweg direkt darüber.
+    'myevents.loaderror.hint': 'Der Stand unten kann unvollständig sein — eine Anmeldung kann fehlen, obwohl es sie gibt.',
     'myevents.retry': 'Erneut versuchen',
     'myevents.browse': 'Events durchsuchen',
     'myevents.cancel': 'Abmelden',
@@ -633,7 +636,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'myevents.loading': 'Loading your registrations …',
     'myevents.empty': 'You are not registered for any event yet.',
     'myevents.loaderror': 'Your registrations could not be loaded.',
-    'myevents.loaderror.hint': 'What you see below may be incomplete. Please reload the page.',
+    'myevents.loaderror.hint': 'What you see below may be incomplete — a registration can be missing even though it exists.',
     'myevents.retry': 'Try again',
     'myevents.browse': 'Browse events',
     'myevents.cancel': 'Cancel registration',

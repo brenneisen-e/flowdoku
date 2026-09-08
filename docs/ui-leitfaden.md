@@ -284,6 +284,43 @@ verliert innerhalb eines `dex-ui-grid-*` seinen unteren Abstand (das Raster
 hat den `gap`). Der Untertitel des Modals ist ein `<div>` — auch Blöcke sind
 erlaubt.
 
+### Teilnehmer-Seiten (seit v31.8)
+
+Nachzug aus der Umbau-Runde über die teilnehmersichtbaren Seiten. Jede dieser
+Klassen ersetzt einen Inline-Style, den **mindestens zwei Agenten unabhängig
+voneinander gebaut haben** — das war das Signal, dass sie fehlte. Der rote
+Faden ist immer derselbe Unterschied zum Organizer Center: dort gibt es einen
+Mauszeiger, hier oft nur einen Finger.
+
+| Klasse | Wofür |
+|---|---|
+| `dex-ui-pill--wrap` / `--sm` | Pille mit umbrechendem Text (Freitext-Antworten) · kompakte Pille |
+| `dex-ui-avatar--xs` | 22-px-Foto, damit eine Pille flach bleibt |
+| `dex-ui-row--filled` | Zeile mit dauerhaftem Grund — `dex-ui-row` ist ohne Hover transparent und auf dem Handy als Zeile unsichtbar (6b) |
+| `dex-ui-row--static` | Zeile ohne Hover: Anzeige, kein Klick (zusammen mit `dex-ui-row`) |
+| `dex-ui-row-title--wrap` | Zeilentitel, der umbricht statt zu kürzen — ein gekürzter Dateiname steht sonst nur im `title` |
+| `dex-ui-row-link` | Anklickbarer Text in einer Zeile (unterstreicht bei Hover), leiser als `dex-ui-textbtn` |
+| `dex-ui-meta` / `dex-ui-meta-item` | Die Zeile „Symbol + Wann · Symbol + Wo" — gab es viermal handgebaut |
+| `dex-ui-choice--multi` | Auswahl-Kachel für MEHRFACHauswahl (eckiges Kästchen statt Kreis) |
+| `dex-ui-choice-label` | Leichte Beschriftung in einer Auswahl-Kachel (`-title` ist immer fett) |
+| `dex-ui-card--sm` | Kleine Karte innerhalb eines `dex-ui-callout` |
+| `dex-ui-callout-body` | Der Textblock neben dem Callout-Symbol (`min-width:0; flex:1`) |
+| `dex-ui-empty-desc` / `dex-ui-empty-action` | Erklärsatz und Knopfzeile unter `dex-ui-empty-title` |
+| `dex-ui-progress--indeterminate` | Ladebalken ohne bekannten Fortschritt (stand zweimal handgebaut im Code) |
+| `dex-ui-btn--locked` | Gesperrter Knopf, der beim Überfahren NICHT nachfärbt |
+| `dex-ui-card--dim` | Vergangen/abgemeldet: gedämpft, aber ohne Aufhellung im Hover |
+
+Zwei Regeln dazu, die nicht in der Tabelle stehen können:
+
+- **`dex-ui-row-actions` ist auf Zeigegeräten gedämpft (0.7) und wird erst bei
+  Hover voll sichtbar.** Auf `@media (hover: none)` steht es seit v31.8
+  dauerhaft auf 1 — sonst ist ein Download-Knopf auf dem Handy dauerhaft
+  blass. Wer eine ähnliche Hover-Abblendung baut, braucht dieselbe Ausnahme.
+- **`dex-ui-btn--locked` ist bewusst opt-in und keine globale
+  `.btn:disabled`-Regel.** Eine globale Regel träfe jede Fläche der App,
+  auch die Check-in-Seite. Die Farbwerte darin wiederholen die Ausgangswerte
+  aus dem SCSS-Modul, weil `.btn-*:hover` dort nur `background` setzt.
+
 ### Modale
 
 `Modal` (components/Modal.tsx) hat seit v31.2 `title`, `subtitle`, `icon`,
