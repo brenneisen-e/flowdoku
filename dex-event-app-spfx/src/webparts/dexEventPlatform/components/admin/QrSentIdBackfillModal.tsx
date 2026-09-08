@@ -82,6 +82,8 @@ export default function QrSentIdBackfillModal(props: {
   const [testSkipped, setTestSkipped] = React.useState(0);
   const [scannedMails, setScannedMails] = React.useState(0);
   const [unparsedMails, setUnparsedMails] = React.useState(0);
+  /** v31.4.1: Wie viele Mails NUR ueber den Titel gefunden wurden. */
+  const [titleMails, setTitleMails] = React.useState(0);
   const [progress, setProgress] = React.useState({ done: 0, total: 0 });
   const [resultMsg, setResultMsg] = React.useState('');
   const [resultIsError, setResultIsError] = React.useState(false);
@@ -107,6 +109,8 @@ export default function QrSentIdBackfillModal(props: {
       let skipped = 0;
       let scanned = 0;
       let unparsed = 0;
+      // v31.4.1: Getrennt zaehlen, ueber welche Spur eine Mail gefunden wurde.
+      let viaTitle = 0;
       for (const ev of targets) {
         // 1) Teilnehmerliste — ein Lesefehler beendet den Lauf. Eine leere
         //    Liste wegen fehlender Rechte würde sonst als „niemand angemeldet"
@@ -126,7 +130,10 @@ export default function QrSentIdBackfillModal(props: {
           return;
         }
         // 2) Die verschickten QR-Mails dieses Events.
-        const scan = await service.scanQrMailsForEvent(ev.id);
+        // v31.4.1: Titel mitgeben — die Queue-Zeilen des Massenversands tragen
+        // nicht zwingend die EventId des heute geöffneten Events (Befund
+        // 08.09.2026: 12 statt 93 gefunden, s. scanQrMailsForEvent).
+        const scan = await service.scanQrMailsForEvent(ev.id, ev.title);
         if (cancelled) return;
         if (!scan.ok) {
           setAbortMsg(isDe
@@ -138,6 +145,7 @@ export default function QrSentIdBackfillModal(props: {
         }
         scanned += scan.scanned;
         unparsed += scan.unparsed;
+        viaTitle += scan.byTitle;
 
         // 3) Organizer-Adressen dieses Events UND des Elternevents — die
         //    Test-Mail geht an die Organizer, und bei einem Termin stehen sie
@@ -228,6 +236,7 @@ export default function QrSentIdBackfillModal(props: {
       setTestSkipped(skipped);
       setScannedMails(scanned);
       setUnparsedMails(unparsed);
+      setTitleMails(viaTitle);
       setPhase('preview');
     })().catch(() => {
       if (cancelled) return;
@@ -385,8 +394,8 @@ export default function QrSentIdBackfillModal(props: {
                 ist es die Sichtbarkeit. Ohne sie raet man. */}
             <p style={{ margin: '0 0 8px', fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
               {isDe
-                ? <>Dafuer wurden <strong>{scannedMails}</strong> Mail-Zeile(n) in der Warteschlange gelesen{unparsedMails > 0 ? <>, davon {unparsedMails} ohne erkennbare Nummer</> : null}.</>
-                : <><strong>{scannedMails}</strong> mail row(s) were read in the queue{unparsedMails > 0 ? <>, {unparsedMails} of them without a readable number</> : null}.</>}
+                ? <>Dafür wurden <strong>{scannedMails}</strong> Mail-Zeile(n) in der Warteschlange gelesen{unparsedMails > 0 ? <>, davon {unparsedMails} ohne erkennbare Nummer</> : null}{titleMails > 0 ? <>; {titleMails} davon über den Event-Titel gefunden, weil die Queue-Zeile eine andere Event-Kennung trägt</> : null}.</>
+                : <><strong>{scannedMails}</strong> mail row(s) were read in the queue{unparsedMails > 0 ? <>, {unparsedMails} of them without a readable number</> : null}{titleMails > 0 ? <>; {titleMails} of them found via the event title because the queue row carries a different event id</> : null}.</>}
             </p>
             <div className="dex-ui-inline">
               <span className="dex-ui-pill dex-ui-pill--orange">{isDe ? `${diffCount} weichen ab` : `${diffCount} differ`}</span>
