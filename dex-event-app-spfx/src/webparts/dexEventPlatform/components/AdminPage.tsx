@@ -761,8 +761,38 @@ export default function AdminPage(): React.ReactElement {
   // v26.11: Sprung zur Person in der Teilnehmerliste (aus der „Konto inaktiv"-
   // Hinweisbox) — filtert die Liste auf die Adresse und scrollt sie in den Blick.
   const participantListRef = React.useRef<HTMLDivElement>(null);
+  // v31.4: Ein zweiter, EXPLIZITER Filter neben der Freitextsuche — eine feste
+  // Liste von E-Mail-Adressen. Die Aktion „Benötigte T-Shirts" springt damit
+  // von einer Größen-Zeile zu genau den Personen mit dieser Größe (Nutzer
+  // 08.09.2026: „Hier würde ich gerne auf ‚L' und ‚XL' klicken können und
+  // kriege dann gefiltert die TN mit dieser falschen Größe."). Über das
+  // Suchfeld geht das nicht: Ein einzelnes „L" steckt in jeder zweiten Adresse
+  // — genau deshalb hatte der Sprung bis v31.4 eine Mindestlänge von drei
+  // Zeichen, und ausgerechnet die kurzen Werte sind die, die korrigiert
+  // gehören. `label` beschriftet die Filterzeile über der Tabelle (ein Filter,
+  // den man nicht sieht, ist die nächste Fehlersuche), `withoutEmail` zählt
+  // die Personen, die sich mangels Adresse nicht filtern lassen — die müssen
+  // benannt werden, statt still aus der Auswahl zu fallen.
+  const [emailFilter, setEmailFilter] = React.useState<{ emails: string[]; label: string; withoutEmail: number } | null>(null);
   const jumpToParticipant = (email: string): void => {
     setSearchQuery(email);
+    // v31.4: Der Adress-Filter muss weg — zwei Filter schneiden sich, und die
+    // gesuchte Person steht meist NICHT in der Auswahl, aus der man kommt.
+    // Die Liste wäre dann leer, obwohl die Person da ist.
+    setEmailFilter(null);
+    window.setTimeout(() => {
+      try { participantListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { /* */ }
+    }, 80);
+  };
+  const jumpToParticipantsByEmail = (emails: string[], label: string, withoutEmail?: number): void => {
+    const clean = emails
+      .map(e => (e || '').toLowerCase().trim())
+      .filter((e, i, arr) => !!e && arr.indexOf(e) === i);
+    // Die Freitextsuche wird geleert: Beide Filter zusammen ergeben die
+    // Schnittmenge und damit fast immer eine leere Liste — der Organizer
+    // suchte den Fehler dann in den Daten statt im Suchfeld.
+    setSearchQuery('');
+    setEmailFilter({ emails: clean, label, withoutEmail: withoutEmail || 0 });
     window.setTimeout(() => {
       try { participantListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { /* */ }
     }, 80);
@@ -1554,6 +1584,28 @@ export default function AdminPage(): React.ReactElement {
     return tokens.every(t => hay.indexOf(t) >= 0);
   };
 
+  // v31.4: Der zweite Filter — eine Adressliste statt eines Suchworts (s.
+  // `jumpToParticipantsByEmail`). Er greift an denselben zwei Stellen wie die
+  // Freitextsuche, an denen die Teilnehmerliste entsteht: der normalen Liste
+  // (`activeRegsShown`) und der konsolidierten Matrix — sonst filtert man je
+  // nach Event-Art mal etwas und mal nichts.
+  // BEWUSST NICHT auf Warteliste und Abmeldungen: Die Auswahl kommt aus der
+  // Trikot-Auswertung, und die zählt ausschliesslich aktive Anmeldungen
+  // (`SHIRT_ACTIVE_STATI` in utils/checkInExtras). Dort könnte der Filter
+  // deshalb keine Zeile erklären, sondern nur welche verstecken — beide Listen
+  // bleiben vollständig, und die Filterzeile über der Tabelle sagt das.
+  const emailFilterSet: Record<string, true> | null = emailFilter
+    ? emailFilter.emails.reduce<Record<string, true>>((acc, e) => { acc[e] = true; return acc; }, {})
+    : null;
+  const matchesEmailFilter = (email: string | undefined): boolean => {
+    if (!emailFilterSet) return true;
+    const em = (email || '').toLowerCase().trim();
+    // Ohne Adresse gibt es keinen Schlüssel — die Zeile kann nicht in der
+    // Auswahl sein. Wie viele das betrifft, steht in `emailFilter.withoutEmail`
+    // und in der Filterzeile; still weglassen wäre die stille Kürzung.
+    return !!em && !!emailFilterSet[em];
+  };
+
   const sortRegs = (a: SPRegistration, b: SPRegistration): number => {
     let cmp = 0;
     switch (sortColumn) {
@@ -1621,6 +1673,11 @@ export default function AdminPage(): React.ReactElement {
     .filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt')
     .filter(matchesSearch)
     .sort(sortRegs);
+  // v31.4: Was die Teilnehmerliste WIRKLICH zeigt — zusätzlich durch den
+  // Adress-Filter eingeschränkt. Bewusst eine eigene Größe: `activeRegs` geht
+  // auch in die Event-Details-Karte (Pille „N angemeldet"), und die soll ein
+  // Sprung aus der Trikot-Liste nicht auf „2 angemeldet" schrumpfen lassen.
+  const activeRegsShown = emailFilterSet ? activeRegs.filter(r => matchesEmailFilter(r.ParticipantEmail)) : activeRegs;
   const waitlistRegs = registrations.filter(r => r.Status === 'Warteliste').filter(matchesSearch)
     // v12.10: Warteliste nach TeilnehmerID asc sortieren statt
     // RegistrationDate. Damit ist die UI-Reihenfolge konsistent mit
@@ -1791,6 +1848,10 @@ export default function AdminPage(): React.ReactElement {
     // egal → „Knoth Alexander" findet dieselbe Person, Job Title/Standort/Custom-
     // Felder werden weiter mitdurchsucht).
     const matches = (row: ConsolidatedRow): boolean => {
+      // v31.4: Der Adress-Filter gilt hier genauso — im Klammer-Modus IST die
+      // Matrix die Teilnehmerliste. Er steht vor der Textsuche, weil er die
+      // Auswahl hart begrenzt; die Suche ist nach einem Sprung ohnehin leer.
+      if (!matchesEmailFilter(row.emailKey)) return false;
       if (!q) return true;
       const tokens = q.split(/\s+/).filter(Boolean);
       if (tokens.length === 0) return true;
@@ -1837,6 +1898,10 @@ export default function AdminPage(): React.ReactElement {
     };
     return filtered.sort(cmp);
   })();
+  // v31.4: Wie viele Zeilen zeigt die Teilnehmerliste gerade wirklich? Kopf-
+  // Pille, Filterzeile und der leere Zustand müssen dieselbe Zahl nennen —
+  // sonst widerspricht sich eine Karte in sich selbst.
+  const participantsShown = isConsolidatedMode ? consolidatedFiltered.length : activeRegsShown.length;
   // v14.11: konsolidierter Matrix-View. Wird nur gerendert, wenn das
   // selektierte Hauptevent `subEventsOnlyMode === true` ist und mind.
   // ein Sub-Event hat. Standard-Spalten neutral, parent-event-level
@@ -2176,7 +2241,10 @@ export default function AdminPage(): React.ReactElement {
     teamMailSubject,
   };
   const participantTableProps = {
-    activeRegs, allEvents, attachmentsByReg, availableColumns, colToggleHover, columnOrder,
+    // v31.4: Die Tabelle bekommt die Liste MIT Adress-Filter; die Fußzeile
+    // „N von M" der Tabelle rechnet M selbst aus `registrations` und bleibt
+    // damit die ungefilterte Gesamtzahl.
+    activeRegs: activeRegsShown, allEvents, attachmentsByReg, availableColumns, colToggleHover, columnOrder,
     computeRoommatePairs, confirmDialog, duplicateEmails, eventServiceRef, getRoommateInfo,
     handleSort, hasRoommateColumn, hiddenColumns, hideColumn, highlightMatch, inactiveAccounts,
     isDe, isSplitCapacity, moveColumn, openEditModal, orgPastLock, parentEventForSelected,
@@ -2490,7 +2558,7 @@ export default function AdminPage(): React.ReactElement {
           <h3 className="dex-ui-card-head-title">
             <Users size={18} />
             {isDe ? 'Teilnehmer' : 'Attendees'}
-            <span className="dex-ui-pill dex-ui-pill--gray">{isConsolidatedMode ? consolidatedFiltered.length : activeRegs.length}</span>
+            <span className="dex-ui-pill dex-ui-pill--gray">{participantsShown}</span>
           </h3>
           {isConsolidatedMode && (() => {
             const term = (selectedEvent && selectedEvent.childEventTermPlural) || (isDe ? 'Sub-Events' : 'sub-events');
@@ -2579,6 +2647,45 @@ export default function AdminPage(): React.ReactElement {
             </button>
           )}
         </div>
+        {/* v31.4: Der Adress-Filter ist sichtbar und mit einem Klick wieder
+            weg. Er kommt aus einer ANDEREN Ansicht („Benötigte T-Shirts") und
+            überlebt deren Schließen — ohne diese Zeile stünde der Organizer
+            vor einer Liste mit zwei von 37 Personen und suchte den Fehler in
+            den Daten. Sie nennt deshalb beides: wonach gefiltert ist und wer
+            aus der Auswahl hier trotzdem nicht auftaucht. */}
+        {emailFilter && (() => {
+          const n = participantsShown;
+          // Nicht jede ausgewählte Adresse muss in dieser Liste stehen: Die
+          // Trikot-Auswertung liest die Klammer UND alle Termine, diese Liste
+          // zeigt nur die Anmeldungen dieses Events — dazu kommen Abmeldungen
+          // seit dem Öffnen des Dialogs. Die Zahl wird deshalb benannt und
+          // nicht verschwiegen.
+          const off = Math.max(0, emailFilter.emails.length - n);
+          const k = emailFilter.withoutEmail;
+          return (
+            <div className="dex-ui-callout dex-ui-callout--info" style={{ marginBottom: 12 }}>
+              <span className="dex-ui-callout-icon" aria-hidden="true"><Users size={16} /></span>
+              <div>
+                {isDe
+                  ? <>Gefiltert auf <strong>{emailFilter.label}</strong> — die Teilnehmerliste zeigt {n === 1 ? 'eine Person' : `${n} Personen`}.{' '}
+                    {off > 0 && <>{off === 1 ? 'Eine weitere Person aus dieser Auswahl steht' : `${off} weitere aus dieser Auswahl stehen`} nicht in dieser Liste —
+                      nur in einem Termin angemeldet, auf der Warteliste oder inzwischen abgemeldet.{' '}</>}
+                    {k > 0 && <>{k === 1 ? 'Eine Person aus dieser Auswahl hat' : `${k} Personen aus dieser Auswahl haben`} keine E-Mail-Adresse hinterlegt
+                      und {k === 1 ? 'lässt' : 'lassen'} sich deshalb nicht filtern — {k === 1 ? 'sie fehlt' : 'sie fehlen'} hier.{' '}</>}
+                    Warteliste und Abmeldungen sind nicht gefiltert.</>
+                  : <>Filtered by <strong>{emailFilter.label}</strong> — the attendee list shows {n === 1 ? 'one person' : `${n} people`}.{' '}
+                    {off > 0 && <>{off === 1 ? 'One more person from this selection is' : `${off} more from this selection are`} not in this list —
+                      registered for one date only, on the waitlist or cancelled in the meantime.{' '}</>}
+                    {k > 0 && <>{k === 1 ? 'One person in this selection has' : `${k} people in this selection have`} no email address on file
+                      and cannot be filtered — {k === 1 ? 'that person is' : 'those are'} missing here.{' '}</>}
+                    The waitlist and the cancellations are not filtered.</>}
+                <button type="button" className="dex-ui-textbtn" style={{ marginLeft: 8 }} onClick={() => setEmailFilter(null)}>
+                  {isDe ? 'Filter aufheben' : 'Clear filter'}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
         {/* v29.26: Manuelles Anmelden — Ziel-Auswahl, Massenimport-Match,
             Mail/Outlook-Optionen, Feld-Abfrage pro Person. */}
         {selectedEvent && (
@@ -2652,24 +2759,34 @@ export default function AdminPage(): React.ReactElement {
           // X-Spalten pro Sub-Event, plus Event-Level- (Pastel A) und
           // Sub-Event-Level- (Pastel B) Custom-Field-Spalten gruppiert.
           <ConsolidatedView {...consolidatedViewProps} />
-        ) : activeRegs.length === 0 ? (
+        ) : activeRegsShown.length === 0 ? (
           // v31.3: Leerer Zustand mit dem nächsten Schritt statt einer grauen
           // Zeile — „leer" heisst hier wirklich leer (der Lesefehler steht
           // eine Ebene höher), also darf hier auch etwas angeboten werden.
+          // v31.4: „Kein Treffer" gilt auch für den Adress-Filter — ohne ihn
+          // stünde bei einer gefilterten, aber leeren Auswahl „Noch niemand
+          // angemeldet", und das ist eine Aussage über die Daten, die der
+          // Filter gar nicht treffen kann.
           <div className="dex-ui-empty">
             <div className="dex-ui-empty-icon" aria-hidden="true"><Users size={20} /></div>
             <div className="dex-ui-empty-title">
-              {query
+              {(query || emailFilter)
                 ? (isDe ? 'Kein Treffer' : 'No match')
                 : (isDe ? 'Noch niemand angemeldet' : 'Nobody registered yet')}
             </div>
             <div>
-              {query
-                ? (isDe ? 'Zu deiner Suche gibt es keine angemeldete Person.' : 'No registered person matches your search.')
-                : (isDe ? 'Sobald sich jemand anmeldet, steht die Person hier — mit Status, Antworten und Check-in.' : 'As soon as someone registers they appear here — with status, answers and check-in.')}
+              {emailFilter
+                ? (isDe ? 'Keine der gefilterten Personen steht in dieser Liste — heb den Filter oben auf, um wieder alle zu sehen.' : 'None of the filtered people are in this list — clear the filter above to see everyone again.')
+                : query
+                  ? (isDe ? 'Zu deiner Suche gibt es keine angemeldete Person.' : 'No registered person matches your search.')
+                  : (isDe ? 'Sobald sich jemand anmeldet, steht die Person hier — mit Status, Antworten und Check-in.' : 'As soon as someone registers they appear here — with status, answers and check-in.')}
             </div>
             <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-              {query ? (
+              {emailFilter ? (
+                <button type="button" className="btn btn-secondary dex-ui-btn-sm" onClick={() => setEmailFilter(null)}>
+                  {isDe ? 'Filter aufheben' : 'Clear filter'}
+                </button>
+              ) : query ? (
                 <button type="button" className="btn btn-secondary dex-ui-btn-sm" onClick={() => setSearchQuery('')}>
                   {isDe ? 'Suche zurücksetzen' : 'Clear search'}
                 </button>
@@ -2854,6 +2971,11 @@ export default function AdminPage(): React.ReactElement {
           // Such-/Scroll-Weg der Seite; der Dialog schließt dabei, sonst liegt
           // er über der Liste, zu der er gesprungen ist.
           onJumpToParticipant={(q) => { setShirtSizeOpen(false); jumpToParticipant(q); }}
+          // v31.4: Sprung von einer GRÖSSEN-Zeile zu allen Personen dieser
+          // Zeile — über ihre Adressen, nicht über die Suche. Nur so trifft
+          // „L" die zwei Personen mit „L" statt jeder Adresse, in der ein L
+          // vorkommt (Nutzer 08.09.2026).
+          onJumpToParticipants={(emails, label, withoutEmail) => { setShirtSizeOpen(false); jumpToParticipantsByEmail(emails, label, withoutEmail); }}
         />
       )}
 
