@@ -1912,8 +1912,8 @@ export class EventService {
 
   /** v31.4: QR-Mails EINES Events aus `DEX_Emails` lesen und die gedruckten
    *  Nummern parsen. `ok: false` heißt ABGEBROCHEN — nicht „nichts gefunden". */
-  public async scanQrMailsForEvent(eventId: string): Promise<qrSentBackfill.QrMailScan> {
-    return qrSentBackfill.scanQrMailsForEvent(this, eventId);
+  public async scanQrMailsForEvent(eventId: string, eventTitle?: string): Promise<qrSentBackfill.QrMailScan> {
+    return qrSentBackfill.scanQrMailsForEvent(this, eventId, eventTitle);
   }
 
   /** v31.1: Check-in rückgängig — Status zurück auf „QR versendet"/„Angemeldet". */

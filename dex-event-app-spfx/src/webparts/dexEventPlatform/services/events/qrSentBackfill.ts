@@ -56,6 +56,12 @@ export interface QrMailScan {
   scanned: number;
   /** Zeilen, in denen keine gedruckte Nummer stand (alte Mails vor v30.35). */
   unparsed: number;
+  /** v31.4.1: Gelesene Zeilen, deren `EventId` zum Event passt. */
+  byId: number;
+  /** v31.4.1: Gelesene Zeilen, die NUR über den Titel gefunden wurden. Ist die
+   *  Zahl hoch, trägt die Queue eine andere EventId als das geöffnete Event —
+   *  genau der Fall, an dem der Nachtrag am 08.09.2026 vorbeigelaufen ist. */
+  byTitle: number;
 }
 
 /**
@@ -104,12 +110,34 @@ function firstAddress(recipient: string): string {
  * sehen darf, bekommt eine LEERE Antwort ohne Fehler, und „leer" darf hier
  * niemals als „es gab keine Mails" durchgehen.
  */
-export async function scanQrMailsForEvent(svc: EventService, eventId: string): Promise<QrMailScan> {
-  const out: QrMailScan = { ok: true, status: 0, hits: [], scanned: 0, unparsed: 0 };
+export async function scanQrMailsForEvent(svc: EventService, eventId: string, eventTitle?: string): Promise<QrMailScan> {
+  const out: QrMailScan = { ok: true, status: 0, hits: [], scanned: 0, unparsed: 0, byId: 0, byTitle: 0 };
   const safeId = (eventId || '').replace(/'/g, "''");
   if (!safeId) return out;
+  /**
+   * v31.4.1 (Live-Befund 08.09.2026): Der Filter lief NUR über `EventId` und
+   * fand 12 von 93 Mails — während die Liste in SharePoint, nach `EventTitle`
+   * gefiltert, rund neunzig zeigte. Bewiesen war das am eigenen Ergebnis: Der
+   * Kasten „N Mails ohne gedruckte Nummer" blieb aus, es waren also ALLE
+   * gelesenen Mails auswertbar — gelesen wurden schlicht nur zwölf.
+   *
+   * `EventId` steht auf einer Queue-Zeile so, wie sie beim Versand geschrieben
+   * wurde; ältere Zeilen (anderer Versandweg, kopiertes oder neu angelegtes
+   * Event, Zeile aus einer Zeit vor einer Umstellung) tragen dort etwas
+   * anderes oder nichts. Der Titel ist die zweite, unabhängige Spur.
+   *
+   * Warum das trotzdem nicht die falsche Person trifft: Der Aufrufer ordnet
+   * jeden Treffer über die E-Mail-Adresse einer Zeile DIESER Teilnehmerliste
+   * zu. Eine Mail aus einem gleichnamigen Fremd-Event findet dort niemanden
+   * und fällt weg. Getrennt gezählt wird trotzdem (`byId`/`byTitle`), damit
+   * die Oberfläche sagen kann, worüber gefunden wurde.
+   */
+  const safeTitle = (eventTitle || '').replace(/'/g, "''");
+  const scope = safeTitle
+    ? `(EventId eq '${safeId}' or EventTitle eq '${safeTitle}')`
+    : `EventId eq '${safeId}'`;
   let url: string | null = `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items`
-    + `?$select=Id,Recipient,Body,Status&$filter=EventId eq '${safeId}' and EmailType eq 'QRCode'`
+    + `?$select=Id,Recipient,Body,Status,EventId&$filter=${scope} and EmailType eq 'QRCode'`
     + `&$orderby=Id asc&$top=20`;
   while (url) {
     let resp;
@@ -124,6 +152,7 @@ export async function scanQrMailsForEvent(svc: EventService, eventId: string): P
     const items = data.value || data.d?.results || [];
     for (const it of items) {
       out.scanned++;
+      if (String(it.EventId || '') === eventId) out.byId++; else out.byTitle++;
       const body = String(it.Body || '');
       const qrId = parseQrIdFromBody(body);
       if (qrId === null) { out.unparsed++; continue; }
