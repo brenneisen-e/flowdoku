@@ -407,6 +407,13 @@ export async function adminUpdateRegistration(
     });
     if (oldValues) {
       for (const key of Object.keys(patch)) {
+        // v31.4.3: `CustomData` ist der JSON-Spiegel der Einzelfelder und steht
+        // seit v19.30 (`saveMainFieldsEdit`) bzw. v31.4.3 (`saveEdit`) mit im
+        // Patch. Die Einzelfelder stehen ohnehin je Zeile im Log; das ganze
+        // JSON zusätzlich hineinzuschreiben, macht den ChangeLog der Person
+        // unlesbar (eine Zeile über hunderte Zeichen) und sagt nichts, was
+        // nicht daneben steht.
+        if (key === 'CustomData') continue;
         const oldV = oldValues[key];
         const newV = patch[key];
         // Vergleich als String, damit number vs string nicht stört

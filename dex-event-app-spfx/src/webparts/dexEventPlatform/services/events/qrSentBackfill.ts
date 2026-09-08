@@ -136,8 +136,22 @@ export async function scanQrMailsForEvent(svc: EventService, eventId: string, ev
   const scope = safeTitle
     ? `(EventId eq '${safeId}' or EventTitle eq '${safeTitle}')`
     : `EventId eq '${safeId}'`;
+  /**
+   * v31.4.3: `encodeURIComponent` um den GANZEN Filter — so macht es jede
+   * andere gefilterte Abfrage im Projekt (`waitlist.ts:83`,
+   * `registration.ts:588`, `eventsCrud.ts:632` …), und meine war die einzige,
+   * die den Ausdruck roh in die URL geschrieben hat.
+   *
+   * Warum das genau hier weh tut: Der Event-Titel steht seit v31.4.2 im
+   * Filter, und er heißt „B2Run Köln". Ein roher Umlaut in der Query-Zeichen-
+   * kette wird nicht verlässlich als UTF-8 übertragen; SharePoint vergleicht
+   * dann gegen einen anderen Text und findet still NICHTS. Kein Fehler, keine
+   * Meldung — nur ein Zweig der ODER-Bedingung, der nie zutrifft. Genau das
+   * Muster, das dieser Dialog sonst überall vermeidet.
+   */
+  const filter = `${scope} and EmailType eq 'QRCode'`;
   let url: string | null = `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items`
-    + `?$select=Id,Recipient,Body,Status,EventId&$filter=${scope} and EmailType eq 'QRCode'`
+    + `?$select=Id,Recipient,Body,Status,EventId&$filter=${encodeURIComponent(filter)}`
     + `&$orderby=Id asc&$top=20`;
   while (url) {
     let resp;

@@ -6,7 +6,7 @@
 import * as React from 'react';
 import { EventService, REG_LIST_NAME, SPRegistration } from '../../../services/EventService';
 import { isDeloitteInternalEmail } from '../../../utils/deloitteDomain';
-import { SHIRT_ISSUED_FORM_KEY, parseShirtIssue } from '../../../utils/checkInExtras';
+import { SHIRT_ISSUED_FORM_KEY, parseCustomData, parseShirtIssue } from '../../../utils/checkInExtras';
 import { DeloitteEvent } from '../../../types';
 
 export interface UseEditModalHandlersCtx {
@@ -172,6 +172,34 @@ export function useEditModalHandlers(ctx: UseEditModalHandlersCtx): UseEditModal
       // sich tatsächlich geändert haben — sonst sendet ein unverändertes
       // Choice-Feld ohne ausgewählten Wert einen leeren String an SP, der
       // mit HTTP 400 'Invalid choice' kippt und das ganze Update abbricht.
+      /**
+       * v31.4.3: Eine Antwort steht an ZWEI Stellen — beide gehören ins Patch.
+       *
+       * Der Live-Fall vom 08.09.2026 (B2Run Köln, Lauftag am nächsten Tag):
+       * Der Organizer korrigierte hier zwei Trikotgrößen von „L"/„XL" auf
+       * „Herrengröße L"/„Herrengröße XL". Die Teilnehmertabelle zeigte danach
+       * den neuen Wert, die Bestellliste „Benötigte T-Shirts" weiter den alten
+       * — bei jedem Neuladen wieder, also nicht zu übersehen und nicht zu
+       * beheben.
+       *
+       * Ursache: Dieser Pfad schrieb nur die SP-Spalte (`spInternalName`), das
+       * JSON `CustomData` (Schlüssel = `f.id`) blieb auf dem Anmelde-Stand.
+       * Die Anmeldung schreibt beide (`registration.ts`), die Selbst-Änderung
+       * schreibt beide (`updateRegistrationData`), das Schwester-Formular für
+       * die Hauptevent-Felder schreibt beide seit v19.30
+       * (`createKlammerActions.saveMainFieldsEdit`) — nur dieser eine Dialog
+       * nicht. Alles, was über `CustomData` liest (Trikot-Zählung,
+       * Check-in-Tisch, konsolidierte Matrix als Rückfall), sah deshalb
+       * dauerhaft den alten Wert.
+       *
+       * Geschrieben wird eine KOPIE des bestehenden JSON mit den geänderten
+       * Schlüsseln — nie ein neu gebautes Objekt: In `CustomData` stehen auch
+       * Schlüssel, die dieser Dialog gar nicht kennt (`salutation`,
+       * `_declined`, Felder der Klammer). Und nur, wenn sich wirklich ein Feld
+       * geändert hat: Eine Namenskorrektur soll die Spalte nicht anfassen.
+       */
+      const nextCustomData: Record<string, unknown> = parseCustomData(r.CustomData);
+      let customDataChanged = false;
       if (selectedEvent?.eventSpecificFields) {
         for (const f of selectedEvent.eventSpecificFields) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -183,8 +211,11 @@ export function useEditModalHandlers(ctx: UseEditModalHandlersCtx): UseEditModal
           fieldLabelMap[sp] = f.label;
           oldValues[sp] = oldVal;
           patch[sp] = newVal;
+          nextCustomData[f.id] = newVal;
+          customDataChanged = true;
         }
       }
+      if (customDataChanged) patch.CustomData = JSON.stringify(nextCustomData);
 
       // v10.13+: B2Run-Felder explizit ins Patch aufnehmen, wenn sich was
       // geändert hat. Sind keine regulären customFields, daher werden sie
@@ -278,6 +309,10 @@ export function useEditModalHandlers(ctx: UseEditModalHandlersCtx): UseEditModal
       try {
         const changes: Record<string, { old: unknown; new: unknown }> = {};
         for (const k of Object.keys(patch)) {
+          // v31.4.3: `CustomData` ist der Spiegel der Einzelfelder — die stehen
+          // hier schon je Feld mit Vorher/Nachher. Das ganze JSON zusätzlich in
+          // die Audit-Zeile zu legen, macht sie unlesbar und sagt nichts Neues.
+          if (k === 'CustomData') continue;
           if (oldValues[k] !== patch[k]) changes[k] = { old: oldValues[k], new: patch[k] };
         }
         await eventServiceRef.writeChangeLog({
