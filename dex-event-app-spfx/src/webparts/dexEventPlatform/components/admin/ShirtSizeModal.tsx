@@ -57,6 +57,22 @@
  * Adress-Filter fällt die Bedingung weg, und die Zeile „ohne Angabe" bekommt
  * den Knopf ebenfalls.
  *
+ * v31.4.3: Zwei Dinge, die derselbe Live-Fall am 08.09.2026 nachgelegt hat —
+ * „ich habe die Größe auf ‚Herrengröße L' korrigiert, hier steht weiter ‚L',
+ * und der Sprung aus dieser Zeile führt zu genau dieser Person":
+ *
+ *  1. **Die Ursache lag im Speichern, nicht im Zählen.** Eine Antwort steht an
+ *     zwei Stellen derselben Zeile — in `CustomData` und in der SP-Spalte des
+ *     Feldes. Der Bearbeiten-Dialog schrieb nur die Spalte, dieses Modul las
+ *     nur `CustomData`. Gelesen wird jetzt über `shirtAnswerOf` (Spalte zuerst,
+ *     wie in der Teilnehmertabelle), geschrieben werden beide.
+ *  2. **Die Feldwahl ist nicht mehr still.** Trifft mehr als ein Abfragefeld
+ *     das Trikot-Muster, nennt ein Hinweiskasten alle — mit Herkunft und
+ *     Antwortzahl — und der Organizer schaltet um, welches zählt. Die Wahl
+ *     fällt EINMAL (`fieldOnly`) und geht in jede Rechnung dieses Dialogs;
+ *     vorher wählten `pickShirtAnswerRows`, `shirtTally` und `shirtAllocate`
+ *     jeweils selbst, und zwar über verschiedene Zeilenmengen.
+ *
  * v31.4 (Nachtrag): Der Ausgabe-Knopf am Tisch ist jünger als der Lauftag —
  * wer vorher eingecheckt wurde, hat sein Trikot trotzdem bekommen. Diese
  * Personen zählen deshalb mit ihrer Wunschgröße als abgeholt (Ansage des
@@ -74,9 +90,11 @@ import { DeloitteEvent } from '../../types';
 import { EventService, SPRegistration } from '../../services/EventService';
 import {
   shirtTally, ShirtTallyResult, shirtAllocate, ShirtAllocationResult, ShirtStock, parseShirtStock, shirtSizeKey,
-  pickShirtAnswerRows, ShirtAnswerConflict, shirtSizeLabel, splitShirtSize, isShirtSizeKey,
+  pickShirtAnswerRows, shirtSizeLabel, splitShirtSize, isShirtSizeKey,
   // v31.4: Herkunft der gelesenen Zeile + ausgegebene Trikots.
-  shirtFieldOf, parseCustomData, parseShirtIssue,
+  shirtFieldOf, parseShirtIssue,
+  // v31.4.3: Feldwahl sichtbar machen und EINMAL treffen.
+  FieldDef, SHIRT_PATTERN, shirtAnswerOf,
 } from '../../utils/checkInExtras';
 import { cx } from '../dexUi';
 import { Shirt, Download, Plus, Check, ChevronDown, AlertCircle } from '../Icons';
@@ -89,6 +107,32 @@ type ShirtOrigin = {
   issued: string;
   /** Zeilen derselben Person, die NICHT gewonnen haben — mit ihrem Wert. */
   others: Array<{ source: string; value: string }>;
+  /**
+   * v31.4.3: Abweichende Werte derselben Person in einem ANDEREN Trikot-Feld.
+   *
+   * Genau dieser Fall war von außen nicht erkennbar: Die Tabelle zeigt das eine
+   * Feld, die Bestellliste zählt das andere, beide sagen die Wahrheit über
+   * verschiedene Spalten — und niemand sieht, dass es zwei sind.
+   */
+  otherFields: Array<{ label: string; source: string; value: string }>;
+};
+
+/**
+ * v31.4.3: Ein Feld, das nach einer Trikot-/Konfektionsgröße aussieht — mit
+ * allem, was der Organizer zum Auseinanderhalten braucht.
+ */
+type ShirtCandidate = {
+  id: string;
+  label: string;
+  spInternalName?: string;
+  /** Weitere SP-Spalten desselben Feldes (Klammer + Termine), s. `FieldDef`. */
+  spInternalNames: string[];
+  /** Titel der Events, auf denen dieses Feld definiert ist. */
+  sources: string[];
+  /** Zeilen mit irgendeiner Antwort in diesem Feld. */
+  answers: number;
+  /** Davon Antworten, die wirklich wie eine Größe aussehen. */
+  sizeAnswers: number;
 };
 
 export default function ShirtSizeModal(props: {
@@ -123,20 +167,30 @@ export default function ShirtSizeModal(props: {
   const { getAllRegistrations, events, refreshEvents } = useEvents();
   const { showAlert } = useDialog();
   const [loading, setLoading] = React.useState(true);
-  const [result, setResult] = React.useState<ShirtTallyResult | null>(null);
-  const [regs, setRegs] = React.useState<SPRegistration[]>([]);
-  const [fields, setFields] = React.useState<Array<{ id: string; label: string }>>([]);
+  /**
+   * v31.4.3: Die ROHEN Zeilen aller Ebenen bleiben liegen — die Auswertung ist
+   * jetzt abgeleitet, nicht eingefroren.
+   *
+   * Grund: Welches Feld gezählt wird, darf der Organizer umschalten (s.
+   * `chosenFieldId`). Rechnete der Effect die Zeilen wie bisher einmal fertig,
+   * müsste jede Umschaltung neu von SharePoint lesen — und je nach Drosselung
+   * mit einem anderen Ergebnis zurückkommen als die Zeile daneben.
+   */
+  const [rawRegs, setRawRegs] = React.useState<SPRegistration[]>([]);
+  /** Aus welchem Event stammt eine Zeile? Über die Objekt-Identität, weil
+   *  `pickShirtAnswerRows` filtert und nicht kopiert. */
+  const [rowSource, setRowSource] = React.useState<Map<SPRegistration, string>>(() => new Map());
+  const [fields, setFields] = React.useState<FieldDef[]>([]);
+  /** Feld-Id → Titel der Events, die dieses Feld definieren. */
+  const [fieldSources, setFieldSources] = React.useState<Record<string, string[]>>({});
+  /**
+   * v31.4.3: Vom Organizer gewähltes Größenfeld ('' = die Vorauswahl der App).
+   *
+   * Vorher entschied `shirtFieldOf` still — bei zwei gleich benannten Feldern
+   * sah man weder, dass es zwei gibt, noch welches gewinnt.
+   */
+  const [chosenFieldId, setChosenFieldId] = React.useState<string>('');
   const [skipped, setSkipped] = React.useState<string[]>([]);
-  // v31.3: Dieselbe Person mit zwei verschiedenen Größen auf zwei Zeilen —
-  // gerechnet wird mit der maßgeblichen, gesagt wird es trotzdem.
-  const [conflicts, setConflicts] = React.useState<ShirtAnswerConflict[]>([]);
-  // v31.4: Herkunft je E-Mail — welche Zeile hat gewonnen, welche gibt es noch.
-  const [origins, setOrigins] = React.useState<Record<string, ShirtOrigin>>({});
-  // v31.4 (Nachtrag): Wer ist IRGENDWO eingecheckt? Unten bleibt je Person nur
-  // eine Zeile stehen (`pickShirtAnswerRows`) — und das ist bei einem
-  // Klammer-Event meist die Zeile MIT der Antwort, nicht die mit dem Check-in.
-  // Ohne diese Sammlung wäre die Ausgabe-Annahme dort blind.
-  const [checkedInEmails, setCheckedInEmails] = React.useState<Record<string, true>>({});
   const [openSize, setOpenSize] = React.useState<string | null>(null);
   const [xlsxBusy, setXlsxBusy] = React.useState(false);
   // v30.88: Bestand — Eingabe als Text je Größe (leer = kein Bestand für die
@@ -153,6 +207,10 @@ export default function ShirtSizeModal(props: {
 
   React.useEffect(() => {
     let cancelled = false;
+    // v31.4.3: Ein anderes Event heißt andere Felder — eine stehengebliebene
+    // Feldwahl zeigte sonst auf eine Id, die es hier nicht gibt (dann greift
+    // zwar die Vorauswahl, aber der Kasten behauptete eine Wahl, die keine ist).
+    setChosenFieldId('');
     (async () => {
       try {
         const children = events.filter(e => e.parentEventId === props.event.id);
@@ -183,54 +241,22 @@ export default function ShirtSizeModal(props: {
         // Die Feld-Definitionen des Hauptevents plus die der Termine: Das
         // Trikot-Feld kann auf beiden Ebenen stehen (CLAUDE.md: Antworten
         // stehen dort, wo angemeldet wurde).
-        const flds = targets
+        // v31.4.3: Dazu die Herkunft je Feld-Id. Ohne sie kann der Hinweiskasten
+        // unten nicht sagen, WO ein zweites gleichnamiges Feld herkommt — und
+        // genau das ist die Frage, die man dann hat.
+        const flds: FieldDef[] = [];
+        const fsrc: Record<string, string[]> = {};
+        targets.forEach(ev => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .reduce<Array<{ id: string; label: string }>>((acc, ev) => acc.concat(((ev as any).eventSpecificFields || []) as Array<{ id: string; label: string }>), []);
-        // v31.3: Eine Zeile je Person — die, die die Größenfrage wirklich
-        // beantwortet (Antwort vor keiner Antwort, aktiv vor abgemeldet, sonst
-        // die zuletzt geänderte). Vorher gewann die zuerst gelesene Ebene.
-        const picked = pickShirtAnswerRows(flds, all);
-        // v31.4: Zwei Nachbesserungen an den gewählten Zeilen:
-        //  1. Die AUSGABE steht dort, wo eingecheckt wurde — meist auf der
-        //     Termin-Zeile, während die Größenfrage die Klammer-Zeile gewinnen
-        //     kann. Ohne diesen Übertrag zählt die Bestellliste ein Trikot als
-        //     „noch im Karton", das längst jemand trägt.
-        //  2. Die Herkunft je Person, damit die aufgeklappte Namensliste sagen
-        //     kann, welche Zeile gemeint ist (und welche es sonst noch gibt).
-        const field = shirtFieldOf(flds, all);
-        const answerOf = (r: SPRegistration): string => {
-          if (!field) return '';
-          const v = parseCustomData(r.CustomData)[field.id];
-          return (v === undefined || v === null) ? '' : String(v).trim();
-        };
-        const issuedByEmail: Record<string, string> = {};
-        // v31.4 (Nachtrag): Der Check-in steht auf derselben Zeile wie die
-        // Ausgabe — und damit ebenfalls meist NICHT auf der Zeile, die die
-        // Größenfrage gewinnt. Deshalb hier über ALLE Zeilen gesammelt.
-        const checkedIn: Record<string, true> = {};
-        all.forEach(r => {
-          const em = (r.ParticipantEmail || '').toLowerCase().trim();
-          if (em && r.ShirtIssued && !issuedByEmail[em]) issuedByEmail[em] = r.ShirtIssued;
-          if (em && r.Status === 'Eingecheckt') checkedIn[em] = true;
-        });
-        const org: Record<string, ShirtOrigin> = {};
-        const rows = picked.rows.map(r => {
-          const em = (r.ParticipantEmail || '').toLowerCase().trim();
-          if (!em) return r;
-          const iss = parseShirtIssue(r.ShirtIssued || issuedByEmail[em]);
-          org[em] = {
-            source: srcOf.get(r) || '',
-            issued: iss ? iss.size : '',
-            others: (picked.othersByEmail[em] || []).map(o => ({ source: srcOf.get(o) || '', value: answerOf(o) })),
-          };
-          return (!r.ShirtIssued && issuedByEmail[em]) ? { ...r, ShirtIssued: issuedByEmail[em] } : r;
+          (((ev as any).eventSpecificFields || []) as FieldDef[]).forEach(f => {
+            flds.push(f);
+            (fsrc[f.id] = fsrc[f.id] || []).push(ev.title);
+          });
         });
         setFields(flds);
-        setRegs(rows);
-        setCheckedInEmails(checkedIn);
-        setOrigins(org);
-        setConflicts(picked.conflicts);
-        setResult(shirtTally(flds, rows));
+        setFieldSources(fsrc);
+        setRawRegs(all);
+        setRowSource(srcOf);
         setSkipped(failed);
       } catch (err) {
         console.warn('[DEX] Trikot-Auswertung fehlgeschlagen:', err);
@@ -240,6 +266,142 @@ export default function ShirtSizeModal(props: {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.event.id]);
+
+  /**
+   * v31.4.3: ALLE Felder, die nach einer Größe aussehen — nicht nur der Sieger.
+   *
+   * Zusammengefasst wird über die Feld-Id: Dasselbe Feld auf der Klammer und
+   * auf drei Terminen ist EINE Frage, keine vier (dieselbe Regel wie
+   * `CheckInPage.shirtFieldsFor`). Zwei Felder mit gleicher Bezeichnung, aber
+   * verschiedenen Ids sind dagegen wirklich zwei — und genau die kann man von
+   * außen nicht auseinanderhalten, weshalb hier Herkunft und Antwortzahl
+   * mitgezählt werden.
+   */
+  const shirtCandidates = React.useMemo((): ShirtCandidate[] => {
+    const byId: Record<string, ShirtCandidate> = {};
+    const order: string[] = [];
+    fields.forEach(f => {
+      if (!SHIRT_PATTERN.test(f.label || '')) return;
+      const cur = byId[f.id];
+      if (cur) {
+        // Die SP-Spalte heißt je Liste anders — alle sammeln, sonst liest die
+        // Zählung auf der falschen Ebene ins Leere (s. `FieldDef.spInternalNames`).
+        const sp = f.spInternalName || '';
+        if (sp && sp !== cur.spInternalName && cur.spInternalNames.indexOf(sp) < 0) cur.spInternalNames.push(sp);
+        return;
+      }
+      byId[f.id] = {
+        id: f.id, label: f.label, spInternalName: f.spInternalName, spInternalNames: [],
+        sources: fieldSources[f.id] || [], answers: 0, sizeAnswers: 0,
+      };
+      order.push(f.id);
+    });
+    order.forEach(id => {
+      const c = byId[id];
+      rawRegs.forEach(r => {
+        const v = shirtAnswerOf(c, r);
+        if (!v) return;
+        c.answers++;
+        if (splitShirtSize(v).isSize) c.sizeAnswers++;
+      });
+    });
+    return order.map(id => byId[id]);
+  }, [fields, fieldSources, rawRegs]);
+
+  /** Die Vorauswahl der App — dieselbe Regel wie am Check-in-Tisch. */
+  const autoField = React.useMemo(() => shirtFieldOf(shirtCandidates, rawRegs), [shirtCandidates, rawRegs]);
+  /**
+   * v31.4.3: **Die EINE Feldwahl des ganzen Dialogs.**
+   *
+   * Sie wird bewusst als Liste mit genau EINEM Eintrag weitergereicht:
+   * `pickShirtAnswerRows`, `shirtTally` und `shirtAllocate` rufen intern alle
+   * wieder `shirtFieldOf` — und zwar mit unterschiedlichen Zeilenmengen (einmal
+   * alle Zeilen, einmal die schon je Person zusammengeführten). Bei mehr als
+   * einem Treffer entscheiden dort die Antworten, und eine andere Eingabemenge
+   * kann einen anderen Sieger ergeben: Dann rechnete die Namensliste mit Feld A
+   * und die Bestellsumme mit Feld B, im selben Dialog, ohne dass es irgendwo
+   * steht. Mit genau einem Treffer ist `shirtFieldOf` per Vertrag ein
+   * Durchreicher (`if (hits.length <= 1 …) return hits[0]`) — die Wahl fällt
+   * hier, einmal, sichtbar.
+   */
+  const field = React.useMemo((): ShirtCandidate | undefined => {
+    if (chosenFieldId) {
+      const hit = shirtCandidates.filter(c => c.id === chosenFieldId)[0];
+      if (hit) return hit;
+    }
+    return autoField as ShirtCandidate | undefined;
+  }, [chosenFieldId, shirtCandidates, autoField]);
+  /** Genau diese Liste geht in JEDE Rechnung dieses Dialogs — s. oben. */
+  const fieldOnly = React.useMemo((): FieldDef[] => (field ? [field] : []), [field]);
+
+  /**
+   * v31.4.3: Zeilenwahl, Ausgabe-Übertrag und Herkunft — abgeleitet statt im
+   * Effect gerechnet, damit ein Umschalten des Feldes alles mitzieht.
+   */
+  const picked = React.useMemo(() => {
+    const all = rawRegs;
+    // v31.3: Eine Zeile je Person — die, die die Größenfrage wirklich
+    // beantwortet (Antwort vor keiner Antwort, aktiv vor abgemeldet, sonst
+    // die zuletzt geänderte). Vorher gewann die zuerst gelesene Ebene.
+    const p = pickShirtAnswerRows(fieldOnly, all);
+    // v31.4: Zwei Nachbesserungen an den gewählten Zeilen:
+    //  1. Die AUSGABE steht dort, wo eingecheckt wurde — meist auf der
+    //     Termin-Zeile, während die Größenfrage die Klammer-Zeile gewinnen
+    //     kann. Ohne diesen Übertrag zählt die Bestellliste ein Trikot als
+    //     „noch im Karton", das längst jemand trägt.
+    //  2. Die Herkunft je Person, damit die aufgeklappte Namensliste sagen
+    //     kann, welche Zeile gemeint ist (und welche es sonst noch gibt).
+    const issuedByEmail: Record<string, string> = {};
+    // v31.4 (Nachtrag): Der Check-in steht auf derselben Zeile wie die
+    // Ausgabe — und damit ebenfalls meist NICHT auf der Zeile, die die
+    // Größenfrage gewinnt. Deshalb hier über ALLE Zeilen gesammelt.
+    const checkedIn: Record<string, true> = {};
+    const rowsByEmail: Record<string, SPRegistration[]> = {};
+    all.forEach(r => {
+      const em = (r.ParticipantEmail || '').toLowerCase().trim();
+      if (!em) return;
+      (rowsByEmail[em] = rowsByEmail[em] || []).push(r);
+      if (r.ShirtIssued && !issuedByEmail[em]) issuedByEmail[em] = r.ShirtIssued;
+      if (r.Status === 'Eingecheckt') checkedIn[em] = true;
+    });
+    const org: Record<string, ShirtOrigin> = {};
+    const rows = p.rows.map(r => {
+      const em = (r.ParticipantEmail || '').toLowerCase().trim();
+      if (!em) return r;
+      const iss = parseShirtIssue(r.ShirtIssued || issuedByEmail[em]);
+      const counted = shirtAnswerOf(field, r);
+      // v31.4.3: Was steht bei derselben Person in den ANDEREN Trikot-Feldern?
+      // Nur Abweichendes wird genannt — ein gleicher Wert ist keine Auskunft,
+      // sondern Lärm.
+      const otherFields: Array<{ label: string; source: string; value: string }> = [];
+      const seen: Record<string, true> = {};
+      shirtCandidates.forEach(c => {
+        if (!field || c.id === field.id) return;
+        (rowsByEmail[em] || []).forEach(row => {
+          const v = shirtAnswerOf(c, row);
+          if (!v || v.toLowerCase() === (counted || '').toLowerCase()) return;
+          const key = `${c.id}|${v.toLowerCase()}`;
+          if (seen[key]) return;
+          seen[key] = true;
+          otherFields.push({ label: c.label, source: rowSource.get(row) || '', value: v });
+        });
+      });
+      org[em] = {
+        source: rowSource.get(r) || '',
+        issued: iss ? iss.size : '',
+        others: (p.othersByEmail[em] || []).map(o => ({ source: rowSource.get(o) || '', value: shirtAnswerOf(field, o) })),
+        otherFields,
+      };
+      return (!r.ShirtIssued && issuedByEmail[em]) ? { ...r, ShirtIssued: issuedByEmail[em] } : r;
+    });
+    return { rows, origins: org, conflicts: p.conflicts, checkedInEmails: checkedIn };
+  }, [rawRegs, fieldOnly, field, shirtCandidates, rowSource]);
+
+  const regs = picked.rows;
+  const origins = picked.origins;
+  const conflicts = picked.conflicts;
+  const checkedInEmails = picked.checkedInEmails;
+  const result: ShirtTallyResult = React.useMemo(() => shirtTally(fieldOnly, regs), [fieldOnly, regs]);
 
   // Bestand aus den Eingaben (nur gültige Zahlen zählen).
   const stockFromInput = React.useMemo((): ShirtStock => {
@@ -259,9 +421,11 @@ export default function ShirtSizeModal(props: {
   }, [stockFromInput, savedStock]);
   // Die Verteilung rechnet LIVE mit den Eingaben — der Organizer sieht sofort,
   // was eine Zahl mehr oder weniger bedeutet; gespeichert wird bewusst extra.
+  // v31.4.3: `fieldOnly` statt aller Felder — dieselbe eine Wahl wie oben,
+  // sonst sucht sich die Verteilung ihr Feld selbst (s. `field`).
   const alloc: ShirtAllocationResult | null = React.useMemo(
-    () => (result && result.fieldLabel) ? shirtAllocate(fields, regs, stockFromInput, checkedInEmails) : null,
-    [result, fields, regs, stockFromInput, checkedInEmails],
+    () => result.fieldLabel ? shirtAllocate(fieldOnly, regs, stockFromInput, checkedInEmails) : null,
+    [result, fieldOnly, regs, stockFromInput, checkedInEmails],
   );
 
   const saveStock = async (): Promise<void> => {
@@ -633,15 +797,29 @@ export default function ShirtSizeModal(props: {
                       )}
                       {(o || assumed) && (
                         <div className="dex-ui-muted" style={{ fontSize: '0.74rem', lineHeight: 1.5 }}>
-                          {o && o.source && <>{isDe ? 'aus: ' : 'from: '}{o.source}</>}
+                          {/* v31.4.3: Zur Zeile gehört das FELD — bei zwei
+                              gleich benannten Feldern ist der Event-Titel
+                              allein keine Antwort auf „woher kommt der Wert?". */}
+                          {result.fieldLabel && <>{isDe ? 'Feld: ' : 'field: '}{result.fieldLabel}</>}
+                          {o && o.source && <>{result.fieldLabel ? ' · ' : ''}{isDe ? 'aus: ' : 'from: '}{o.source}</>}
                           {o && o.issued
-                            ? <>{o.source ? ' · ' : ''}{isDe ? `Trikot ${o.issued} ausgegeben` : `shirt ${o.issued} handed out`}</>
+                            ? <>{(o.source || result.fieldLabel) ? ' · ' : ''}{isDe ? `Trikot ${o.issued} ausgegeben` : `shirt ${o.issued} handed out`}</>
                             : assumed
-                              ? <span style={{ fontStyle: 'italic' }}>{(o && o.source) ? ' · ' : ''}{isDe ? `abgeholt (angenommen — eingecheckt, ${av && av.issued ? av.issued : ''} gewünscht)` : `collected (assumed — checked in, wished ${av && av.issued ? av.issued : ''})`}</span>
+                              ? <span style={{ fontStyle: 'italic' }}>{((o && o.source) || result.fieldLabel) ? ' · ' : ''}{isDe ? `abgeholt (angenommen — eingecheckt, ${av && av.issued ? av.issued : ''} gewünscht)` : `collected (assumed — checked in, wished ${av && av.issued ? av.issued : ''})`}</span>
                               : null}
                           {(o ? o.others : []).map((x, k) => (
                             <div key={k}>
                               {isDe ? 'weitere Zeile: ' : 'other row: '}{x.source || (isDe ? 'unbekannt' : 'unknown')} · {x.value || (isDe ? 'ohne Angabe' : 'no answer')}
+                            </div>
+                          ))}
+                          {/* v31.4.3: Ein abweichender Wert in einem ANDEREN
+                              Trikot-Feld. Genau das war von außen unsichtbar —
+                              und genau das ist die Erklärung, wenn Tabelle und
+                              Bestellliste sich widersprechen. */}
+                          {(o ? o.otherFields : []).map((x, k) => (
+                            <div key={`f${k}`} style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>
+                              {isDe ? 'anderes Feld: ' : 'other field: '}<strong>{x.label}</strong>
+                              {x.source ? <> ({x.source})</> : null} · {x.value}
                             </div>
                           ))}
                         </div>
@@ -711,6 +889,63 @@ export default function ShirtSizeModal(props: {
                     die Zahlen unten sind deshalb unvollständig: <strong>{skipped.join(', ')}</strong>.</>
                   : <>The attendee list of {skipped.length === 1 ? 'this date' : 'these dates'} could not be read —
                     the numbers below are therefore incomplete: <strong>{skipped.join(', ')}</strong>.</>}
+              </span>
+            </div>
+          )}
+
+          {/* v31.4.3: Mehr als ein Feld, das nach einer Größe aussieht — dann
+              muss dastehen, welches zählt, welche es sonst gibt und was das für
+              eine Korrektur bedeutet. Vorher entschied `shirtFieldOf` still,
+              und eine im Organizer Center geänderte Größe konnte im anderen
+              Feld landen als dem, das diese Liste zählt: Die Tabelle zeigte den
+              neuen Wert, die Bestellliste den alten, und nichts sagte, warum. */}
+          {shirtCandidates.length > 1 && (
+            <div className="dex-ui-callout dex-ui-callout--warn">
+              <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+              <span>
+                {isDe
+                  ? <><strong>Dieses Event hat {shirtCandidates.length} Felder, die nach einer Größe aussehen.</strong>{' '}
+                    Gezählt wird gerade <strong>{result.fieldLabel}</strong>. Deine Korrektur landet immer in dem Feld, das
+                    im Bearbeiten-Dialog der Zeile steht — zählt hier ein anderes Feld, siehst du sie in dieser Liste nicht.
+                    Wähle das Feld, das gelten soll:</>
+                  : <><strong>This event has {shirtCandidates.length} fields that look like a size.</strong>{' '}
+                    Right now <strong>{result.fieldLabel}</strong> is counted. Your correction always lands in the field shown
+                    in the edit dialog of that row — if a different field is counted here, you will not see it in this list.
+                    Pick the field that should count:</>}
+                <span className="dex-ui-inline" style={{ marginTop: 8 }}>
+                  {shirtCandidates.map(c => {
+                    const active = !!field && field.id === c.id;
+                    const auto = !!autoField && autoField.id === c.id;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className={cx('dex-ui-chip', active && 'is-active')}
+                        aria-pressed={active}
+                        onClick={() => { setChosenFieldId(c.id); setOpenSize(null); }}
+                        title={isDe
+                          ? `${c.label} — aus: ${c.sources.join(', ') || 'unbekannt'} · ${c.sizeAnswers} von ${c.answers} Antworten sehen aus wie eine Größe`
+                          : `${c.label} — from: ${c.sources.join(', ') || 'unknown'} · ${c.sizeAnswers} of ${c.answers} answers look like a size`}>
+                        {c.label}
+                        <span style={{ opacity: 0.75, fontWeight: 400 }}>
+                          {' · '}{c.sizeAnswers}{isDe ? ' Größen' : ' sizes'}
+                          {auto ? (isDe ? ' · Vorauswahl' : ' · default') : ''}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </span>
+                <span style={{ display: 'block', marginTop: 6 }}>
+                  {shirtCandidates.map(c => (
+                    <span key={c.id} style={{ display: 'block' }} className="dex-ui-muted">
+                      <strong>{c.label}</strong>{' — '}
+                      {isDe ? 'aus: ' : 'from: '}{c.sources.join(', ') || (isDe ? 'unbekannt' : 'unknown')}
+                      {' · '}{isDe
+                        ? `${c.answers} ${c.answers === 1 ? 'Antwort' : 'Antworten'}, davon ${c.sizeAnswers} wie eine Größe`
+                        : `${c.answers} ${c.answers === 1 ? 'answer' : 'answers'}, ${c.sizeAnswers} of them size-shaped`}
+                    </span>
+                  ))}
+                </span>
               </span>
             </div>
           )}

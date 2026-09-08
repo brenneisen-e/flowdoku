@@ -78,6 +78,18 @@ export interface FieldDef {
    * (Feld nachträglich angelegt, „Custom Fields prüfen" nie gelaufen).
    */
   spInternalName?: string;
+  /**
+   * v31.4.3: Weitere SP-Spaltennamen DESSELBEN Feldes auf anderen Ebenen.
+   *
+   * Dasselbe Abfragefeld (gleiche `id`) hat auf der Klammer und auf jedem
+   * Termin eine eigene SharePoint-Spalte, und die Namen müssen nicht gleich
+   * sein (SharePoint hängt bei Namenskollisionen eine Ziffer an). Wer wie die
+   * Bestellliste Zeilen MEHRERER Ebenen in einem Topf zählt, kennt sonst je
+   * Zeile die falsche Spalte und fällt still auf den alten `CustomData`-Stand
+   * zurück. Aufrufer, die nur eine Ebene lesen (Check-in-Tisch,
+   * Bearbeiten-Dialog), lassen das Feld weg.
+   */
+  spInternalNames?: string[];
 }
 
 /**
@@ -109,13 +121,13 @@ export function shirtAnswerOf(
   row: any,
 ): string {
   if (!field || !row) return '';
-  const sp = field.spInternalName || '';
-  if (sp) {
+  const names = [field.spInternalName || ''].concat(field.spInternalNames || []);
+  for (const sp of names) {
+    if (!sp) continue;
     const v = row[sp];
-    if (v !== undefined && v !== null) {
-      const s = typeof v === 'boolean' ? (v ? 'true' : 'false') : String(v).trim();
-      if (s) return s;
-    }
+    if (v === undefined || v === null) continue;
+    const s = typeof v === 'boolean' ? (v ? 'true' : 'false') : String(v).trim();
+    if (s) return s;
   }
   const raw = parseCustomData(row.CustomData)[field.id];
   return (raw === undefined || raw === null) ? '' : String(raw).trim();
@@ -190,15 +202,16 @@ export function checkInExtras(
   const cd = customData || {};
   for (const f of (fields || [])) {
     if (!SHIRT_PATTERN.test(f.label || '')) continue;
-    // v31.4.3: Erst die SP-Spalte der Zeile, dann das übergebene `CustomData`
-    // — eine im Organizer Center korrigierte Größe stand bis dahin nur in der
-    // Spalte, und der Tisch las die alte (s. `shirtAnswerOf`). `reg` liegt hier
-    // ohnehin vor; ohne Zeile bleibt es beim bisherigen Weg.
-    const v = shirtAnswerOf(f, reg) || (() => {
+    // v31.4.3: Erst die SP-Spalte der Zeile, dann das übergebene `CustomData`.
+    // Eine im Organizer Center korrigierte Größe stand bis dahin NUR in der
+    // Spalte — der Tisch las die alte (s. `shirtAnswerOf`). `reg` liegt hier
+    // ohnehin vor; ohne Zeile bleibt es beim bisherigen Weg über `customData`.
+    let v = shirtAnswerOf(f, reg);
+    if (!v) {
       const raw = cd[f.id];
-      if (raw === undefined || raw === null) return '';
-      return typeof raw === 'boolean' ? (raw ? 'Ja' : 'Nein') : String(raw).trim();
-    })();
+      if (raw === undefined || raw === null) continue;
+      v = typeof raw === 'boolean' ? (raw ? 'Ja' : 'Nein') : String(raw).trim();
+    }
     if (!v) continue;
     out.push({ label: f.label, value: v });
   }
