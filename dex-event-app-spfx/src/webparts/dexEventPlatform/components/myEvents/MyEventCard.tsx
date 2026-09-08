@@ -4,6 +4,17 @@
  * Events": Kopfzeile, Antworten, Dokumente, Quiz, Team, Sub-Events und die
  * Abmelde-Wege. Der Rumpf ist zeichengleich uebernommen; die 49 Werte, die er
  * aus dem Seiten-Scope gelesen hat, kommen jetzt als Props herein.
+ *
+ * v31.8: Reihenfolge und Optik nach `docs/ui-leitfaden.md` 6a. Die Karte
+ * beantwortet jetzt von oben nach unten: Was ist das Event (Kopfzone mit Bild,
+ * Titel, Status, Wann/Wo, QR-Code) → welche Termine habe ich → was gilt
+ * besonders für mich (Hinweise) → was habe ich angegeben → wer hilft weiter
+ * (Team, Unterkunft, Ansprechpartner) → Inhalt → Aktionen. Vorher standen Ort
+ * und Datum hinter einer mehrere hundert Pixel hohen Team-Box und der
+ * QR-Knopf war der vierte Chip weit unten. Bedingungen, Handler und
+ * Datenschutz-Schalter sind unverändert — nur Reihenfolge, Klassen und Texte.
+ * Das Stylesheet der `dex-ui-`-Klassen injiziert die Seiten-Komponente
+ * (`MyEventsPage`) über `ensureDexUiStyles()`; Unterkomponenten rufen es nie.
  */
 import * as React from 'react';
 import { Icon } from '@fluentui/react/lib/Icon';
@@ -18,7 +29,8 @@ import { downloadAttendanceCertificate } from '../../utils/attendanceCertificate
 import { SPRegistration } from '../../services/EventService';
 import { isEventOver, formatAllDayPeriod } from '../../utils/eventFormat';
 import { selfCancelLocked, selfCancelLockReason } from '../../utils/cancelPolicy';
-import { X, Pencil, QrCode, Mail } from '../Icons';
+import { X, Pencil, QrCode, Mail, Info, AlertCircle, ChevronDown } from '../Icons';
+import { cx } from '../dexUi';
 import { TeamsJoinButton } from '../TeamsJoinButton';
 import { eventTeamsLink, locationWithoutTeamsUrl } from '../../utils/teamsLink';
 import DocumentsViewer from './DocumentsViewer';
@@ -153,9 +165,47 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                 };
               });
 
+            // v31.8: Die drei Bedingungen, die vorher an ihren Blöcken klebten,
+            // stehen jetzt einmal oben — Wortlaut unverändert. `notEditing` ist
+            // die alte Bedingung `!editingId || editingId !== event.id`; sie
+            // entscheidet weiterhin, ob die Anzeige oder das Formular rendert.
+            const notEditing = !editingId || editingId !== event.id;
+            const hasEditableFields = (event.eventSpecificFields || []).filter((f: EventSpecificField) => f.label).length > 0;
+            // v31.8: „Du hast bisher nichts angegeben." ist eine Aussage über
+            // die DATEN — und `displayData` kennt ausschließlich das CustomData
+            // DIESER einen Zeile. Drei Fälle, in denen das nichts über die
+            // Antworten der Person aussagt: Bei einem `subEventsOnlyMode`-Event
+            // ist die Klammer-Zeile eine Schattenzeile (v15.25) und trägt oft
+            // gar kein CustomData — die Formularantworten stehen auf den
+            // Sub-Event-Zeilen. Bei `sessionsOnly` ist die Zeile ein
+            // Platzhalter, dessen CustomData nur best-effort nachgeladen wird
+            // (`MyEventsPage`, Lesefehler → leer). Bei `hiddenRow` ist die echte
+            // Zeile für die Person gar nicht lesbar. Dort sagt die Karte lieber
+            // nichts, statt Leere zu behaupten — Leitfaden 6c: „unbekannt" wird
+            // nie als „nichts" gerendert. Der Satz bleibt genau dort, wo diese
+            // Zeile wirklich die einzige Quelle ist.
+            const answersKnown = !sessionsOnly && !hiddenRow && !event.subEventsOnlyMode;
+            // v24.12: einzelne Organizer sind ausblendbar — die Bedingung ist
+            // ein Datenschutz-Schalter und bleibt exakt so, sie wandert nur mit
+            // ihrem Block in die gemeinsame Ansprechpartner-Sektion.
+            const showOrganizers = event.organizers.length > 0 && !(event.hideOrganizer && !event.hideOrganizerIndividualOnly);
+            const showContact = !!(event.contactName || event.contactEmail || event.contactInfo);
+            // v31.8: Beschriftung des Abmelde-Knopfs — sie ist auch dann
+            // dieselbe, wenn der Knopf gesperrt ist (Leitfaden 6b: gesperrte
+            // Aktion behält ihre Beschriftung, der Grund steht darunter).
+            const cancelLabel = event.subEventCalendar
+              ? (isDe ? 'Alle Termine abmelden' : 'Cancel all dates')
+              : t('myevents.cancel');
+
             return (
               <div key={event.id} id={`dex-myevent-${event.id}`} className="card my-event-card">
-                {/* Header-Zeile: Thumbnail links + Titel/Details rechts */}
+
+                {/* ============================================================
+                    1. KOPFZONE — Bild, Titel, Status, Wann/Wo, QR, „Angemeldet am"
+                    v31.8: Ort und Datum standen vorher hinter Team-Box, Hotel
+                    und zwei Hinweiskästen; der QR-Knopf war der vierte Chip
+                    weit unten. Beides ist das, was man am Eventmorgen sucht.
+                   ============================================================ */}
                 <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
                   {event.imageUrl && (
                     <div
@@ -188,8 +238,8 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                     </div>
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    {/* Header: Titel + Status Badge */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    {/* Titel + Status-Pille + Gruppe (alles reine Anzeige) */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{event.title}</h3>
                       {sessionsOnly ? (() => {
                         // v15.15: Im subEventsOnlyMode komplett ausblenden —
@@ -206,7 +256,7 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                             className="badge"
                             title={t('myevents.sessionsonly.hint')}
                             style={{
-                              flexShrink: 0, marginLeft: 12,
+                              flexShrink: 0,
                               background: 'var(--dex-orange, #ed8b00)', color: '#fff',
                             }}
                           >
@@ -214,340 +264,37 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                           </span>
                         );
                       })() : (
-                        <span className={`badge ${getStatusBadgeClass(registration.Status)}`} style={{ flexShrink: 0, marginLeft: 12 }}>
+                        <span className={`badge ${getStatusBadgeClass(registration.Status)}`} style={{ flexShrink: 0 }}>
                           {registration.Status === 'Warteliste' && registration.TeilnehmerID && event.maxParticipants > 0
                             ? `${getStatusLabel(registration.Status, t)} #${registration.TeilnehmerID - event.maxParticipants}`
                             : getStatusLabel(registration.Status, t)}
                         </span>
                       )}
+                      {/* v27.7: Gruppe (Durchstarter/Funstarter bzw. eigene
+                          Beschriftung) anzeigen, in der die Person angemeldet ist.
+                          StarterType = effektive Gruppe; auf der Warteliste ist er
+                          leer, dann steht der Wunsch in PreferredStarterType.
+                          v31.8: reine Anzeige → `dex-ui-pill`, kein Chip (der
+                          echte Umschalter steht unten in der Aktionszeile). */}
+                      {(() => {
+                        const grp = (registration.StarterType || registration.PreferredStarterType || '').trim();
+                        if (!grp) return null;
+                        const grpLabel = grp === 'Durchstarter'
+                          ? ((event.splitLabelA && event.splitLabelA.trim()) || 'Durchstarter')
+                          : grp === 'Funstarter'
+                            ? ((event.splitLabelB && event.splitLabelB.trim()) || 'Funstarter')
+                            : grp;
+                        return (
+                          <span className="dex-ui-pill dex-ui-pill--green">
+                            <Icon iconName="Group" style={{ fontSize: 13 }} />
+                            {(isDe ? 'Gruppe: ' : 'Group: ')}{grpLabel}
+                          </span>
+                        );
+                      })()}
                     </div>
-                    {/* v28.23: Stellvertretend angelegte Anmeldung, deren Zeile
-                        für die Person (noch) nicht lesbar ist. Sie SIEHT die
-                        Anmeldung jetzt — inkl. Status —, kann sie aber nicht
-                        selbst bearbeiten oder stornieren. */}
-                    {hiddenRow && (
-                      <div style={{
-                        marginTop: 6, padding: '8px 10px', borderRadius: 6,
-                        background: 'rgba(0,118,168,0.07)', border: '1px solid rgba(0,118,168,0.35)',
-                        color: 'var(--dex-gray-700)', fontSize: '0.78rem', lineHeight: 1.5,
-                      }}>
-                        {isDe
-                          ? <>Diese Anmeldung wurde <strong>für dich angelegt</strong> (z.B. durch deine Assistenz oder die Organizer). Deine Anmeldung ist gültig — die Detailangaben und das Abmelden liegen aber bei der Person, die dich angemeldet hat. Bitte wende dich für Änderungen an sie oder an die Organizer. <strong>Melde dich nicht erneut an</strong>, sonst entsteht eine doppelte Anmeldung.</>
-                          : <>This registration was <strong>created for you</strong> (e.g. by your assistant or the organizers). Your registration is valid — the details and cancellation stay with whoever registered you. Please contact them or the organizers for changes. <strong>Do not register again</strong>, that would create a duplicate.</>}
-                      </div>
-                    )}
-                    {/* v28.39: Hotel-Zuordnung — nur wenn der Organizer die
-                        Anzeige im Hotel-Bereich freigegeben hat UND für diese
-                        Person ein Hotel hinterlegt ist. Rein lesend; Änderungen
-                        laufen über die Organizer. */}
-                    {event.hotelVisibleToAttendees && (registration.Hotel || '').trim() && (() => {
-                      const hotelName = (registration.Hotel || '').trim();
-                      const h = (event.hotels || []).filter(x => x.name === hotelName)[0];
-                      const day = (iso?: string): string => (iso ? String(iso).substring(0, 10) : '');
-                      const from = day(registration.HotelFrom);
-                      const to = day(registration.HotelTo);
-                      const nights = (from && to)
-                        ? Math.max(0, Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000))
-                        : 0;
-                      const fmt = (d: string): string => {
-                        if (!d) return '—';
-                        const t = Date.parse(`${d}T00:00:00Z`);
-                        return isNaN(t) ? d : new Date(t).toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
-                      };
-                      return (
-                        <div style={{
-                          marginTop: 6, padding: '10px 12px', borderRadius: 8,
-                          background: 'rgba(134,188,37,0.07)', border: '1px solid var(--dex-green, #86bc25)',
-                          color: 'var(--dex-gray-700)', fontSize: '0.82rem', lineHeight: 1.55,
-                        }}>
-                          <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                            {isDe ? 'Deine Unterkunft' : 'Your accommodation'}
-                          </strong>
-                          <div style={{ marginTop: 2 }}>
-                            <strong>{hotelName}</strong>
-                            {h && h.address && <span style={{ color: 'var(--dex-gray-600)' }}> · {h.address}</span>}
-                          </div>
-                          {(from || to) && (
-                            <div style={{ color: 'var(--dex-gray-600)' }}>
-                              {isDe ? 'Anreise' : 'Arrival'} {fmt(from)} · {isDe ? 'Abreise' : 'Departure'} {fmt(to)}
-                              {nights > 0 && <> · {nights} {isDe ? (nights === 1 ? 'Nacht' : 'Nächte') : (nights === 1 ? 'night' : 'nights')}</>}
-                            </div>
-                          )}
-                          <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                            {isDe ? 'Für Änderungen wende dich bitte an die Organizer.' : 'For changes please contact the organizers.'}
-                          </div>
-                        </div>
-                      );
-                    })()}
-                    {/* v15.15: Hinweisbox „nur für Sub-Events angemeldet"
-                        nur außerhalb des subEventsOnlyMode anzeigen — dort
-                        ist sie redundant, weil es gar keine andere Option
-                        gibt. */}
-                    {sessionsOnly && !event.subEventsOnlyMode && (() => {
-                      const term = event.childEventTermPlural || '';
-                      const subList = (subEventTitles && subEventTitles.length > 0)
-                        ? ` (${subEventTitles.join(', ')})`
-                        : '';
-                      const hintText = term
-                        ? (isDe
-                            ? `Du bist für ${term} dieses Events angemeldet, aber NICHT für das Haupt-Event selbst`
-                            : `You are registered for ${term} of this event but NOT for the main event itself`)
-                        : t('myevents.sessionsonly.hint');
-                      return (
-                        <div style={{
-                          marginTop: 6, padding: '6px 10px', borderRadius: 6,
-                          background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange)',
-                          color: 'var(--dex-orange)', fontSize: '0.78rem',
-                        }}>
-                          {hintText}{subList}.
-                        </div>
-                      );
-                    })()}
 
-                    {/* v11.82: Team-Badge — sichtbar wenn die eigene Anmeldung
-                        eine TeamId hat. Lazy-Load der anderen Mitglieder via
-                        getTeamMembers. Zeigt: Team-Name (falls vorhanden),
-                        Belegungs-Anzahl, Liste der Mitglieder (Lead zuerst). */}
-                    {registration.TeamId && (() => {
-                      const cacheKey = `${event.id}|${registration.TeamId}`;
-                      const cached = teamMembersCache[cacheKey];
-                      if (!cached) {
-                        // Async laden (nur einmal pro Karte, idempotent über ref-Set).
-                        enqueueTeamFetch(event.id, registration.TeamId);
-                        return null;
-                      }
-                      const activeMembers = cached.filter(m => m.Status !== 'Abgemeldet');
-                      const total = activeMembers.length;
-                      const teamSizeCfg = event.teamSize || total;
-                      const tn = registration.TeamName || (cached.find(m => m.TeamName)?.TeamName) || '';
-                      const teamTermS = event.teamTermSingular || 'Team';
-                      const isLead = !!registration.TeamLead;
-                      // v11.86: Sortierung — Lead zuerst, dann nach TeilnehmerID,
-                      // dann nach Id. Abgemeldete Mitglieder werden ausgegraut
-                      // mit eigenem Badge weiter unten gerendert.
-                      const sortedAll = [...cached].sort((a, b) => {
-                        const aLead = a.TeamLead ? 0 : 1;
-                        const bLead = b.TeamLead ? 0 : 1;
-                        if (aLead !== bLead) return aLead - bLead;
-                        const aTid = typeof a.TeilnehmerID === 'number' ? a.TeilnehmerID : Number.MAX_SAFE_INTEGER;
-                        const bTid = typeof b.TeilnehmerID === 'number' ? b.TeilnehmerID : Number.MAX_SAFE_INTEGER;
-                        if (aTid !== bTid) return aTid - bTid;
-                        return a.Id - b.Id;
-                      });
-                      return (
-                        <div style={{
-                          marginTop: 8, padding: '10px 14px', borderRadius: 6,
-                          background: 'rgba(134,188,37,0.08)', border: '1px solid var(--dex-green, #86bc25)',
-                          color: 'var(--dex-green-dark, #3f5f10)', fontSize: '0.82rem', lineHeight: 1.45,
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <Icon iconName="People" style={{ fontSize: 14 }} />
-                            <strong>
-                              {isDe
-                                ? `${teamTermS} „${tn || 'Unbenannt'}" — ${total}/${teamSizeCfg} belegt`
-                                : `${teamTermS} „${tn || 'Unnamed'}" — ${total}/${teamSizeCfg} taken`}
-                            </strong>
-                            {isLead && (
-                              <span style={{
-                                padding: '1px 8px', borderRadius: 999,
-                                background: 'var(--dex-green, #86bc25)', color: '#fff',
-                                fontSize: '0.7rem', fontWeight: 600,
-                              }}>
-                                {isDe ? `du bist ${teamTermS}-Lead` : `you are ${teamTermS} lead`}
-                              </span>
-                            )}
-                          </div>
-                          {/* v11.86: Mitglieder-Karten — pro Person Foto + Name + Email + Standort. */}
-                          {sortedAll.length > 0 && (
-                            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              {sortedAll.map(m => {
-                                const isCancelled = m.Status === 'Abgemeldet';
-                                const isMemberLead = !!m.TeamLead && !isCancelled;
-                                const fullName = `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantEmail;
-                                const loc = (m.Location || '').trim();
-                                return (
-                                  <div
-                                    key={m.Id}
-                                    style={{
-                                      display: 'flex', alignItems: 'center', gap: 12,
-                                      padding: '6px 8px', borderRadius: 6,
-                                      background: isCancelled ? 'rgba(0,0,0,0.04)' : '#fff',
-                                      border: '1px solid var(--dex-gray-200)',
-                                      opacity: isCancelled ? 0.55 : 1,
-                                      position: 'relative',
-                                    }}
-                                  >
-                                    <div
-                                      style={{
-                                        width: 40, height: 40, borderRadius: '50%',
-                                        overflow: 'visible', flexShrink: 0,
-                                        position: 'relative',
-                                      }}
-                                    >
-                                      <img
-                                        src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(m.ParticipantEmail)}&size=L`}
-                                        alt={fullName}
-                                        onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-                                        style={{
-                                          width: 40, height: 40, borderRadius: '50%',
-                                          objectFit: 'cover', background: 'var(--dex-gray-100)',
-                                          transition: 'transform 160ms ease, box-shadow 160ms ease',
-                                          transformOrigin: 'left center',
-                                          /* v11.94: kein zoom-in-Cursor */
-                                        }}
-                                        onMouseEnter={e => {
-                                          if (isCancelled) return;
-                                          const img = e.currentTarget as HTMLImageElement;
-                                          img.style.transform = 'scale(2.4)';
-                                          img.style.boxShadow = '0 8px 24px rgba(0,0,0,0.35)';
-                                          img.style.zIndex = '50';
-                                          img.style.position = 'relative';
-                                        }}
-                                        onMouseLeave={e => {
-                                          const img = e.currentTarget as HTMLImageElement;
-                                          img.style.transform = 'scale(1)';
-                                          img.style.boxShadow = 'none';
-                                          img.style.zIndex = '';
-                                          img.style.position = '';
-                                        }}
-                                      />
-                                    </div>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ fontWeight: 600, color: 'var(--dex-gray-800)', fontSize: '0.85rem' }}>
-                                        {fullName}
-                                      </div>
-                                      <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-600)' }}>
-                                        {m.ParticipantEmail}{loc ? ` · ${loc}` : ''}
-                                      </div>
-                                    </div>
-                                    {isCancelled ? (
-                                      <span style={{
-                                        padding: '2px 8px', borderRadius: 999,
-                                        background: 'var(--dex-gray-300, #c8c8c8)', color: '#fff',
-                                        fontSize: '0.68rem', fontWeight: 600, flexShrink: 0,
-                                      }}>
-                                        {isDe ? 'abgemeldet' : 'cancelled'}
-                                      </span>
-                                    ) : isMemberLead && (
-                                      <span style={{
-                                        padding: '2px 8px', borderRadius: 999,
-                                        background: 'var(--dex-green, #86bc25)', color: '#fff',
-                                        fontSize: '0.68rem', fontWeight: 600, flexShrink: 0,
-                                      }}>
-                                        Lead
-                                      </span>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                          {/* v11.83/v11.86: Aktion-Buttons — Edit (alle Leads) +
-                              Add (nur bei freien Slots). */}
-                          {isLead && (
-                            <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                              <button
-                                type="button"
-                                className="btn btn-secondary"
-                                onClick={() => openManageTeamDialog(
-                                  event.id,
-                                  registration.TeamId!,
-                                  tn || '',
-                                  teamSizeCfg,
-                                  cached
-                                )}
-                                style={{ fontSize: '0.78rem', padding: '4px 10px' }}
-                              >
-                                <Icon iconName="Edit" style={{ fontSize: 12, marginRight: 6 }} />
-                                {isDe ? 'Team bearbeiten' : 'Edit team'}
-                              </button>
-                              {total < teamSizeCfg && (
-                                <button
-                                  type="button"
-                                  className="btn btn-secondary"
-                                  onClick={() => {
-                                    setAddMemberDialog({
-                                      eventId: event.id,
-                                      teamId: registration.TeamId!,
-                                      teamName: tn || '',
-                                      freeSlots: teamSizeCfg - total,
-                                    });
-                                    setAddMemberPick(null);
-                                    setAddMemberQuery('');
-                                    setAddMemberResults([]);
-                                    setAddMemberConsent(false);
-                                    setAddMemberError('');
-                                  }}
-                                  style={{ fontSize: '0.78rem', padding: '4px 10px' }}
-                                >
-                                  <Icon iconName="AddFriend" style={{ fontSize: 12, marginRight: 6 }} />
-                                  {isDe
-                                    ? `Mitglied hinzufügen (${teamSizeCfg - total} Slot${(teamSizeCfg - total) === 1 ? '' : 's'} frei)`
-                                    : `Add member (${teamSizeCfg - total} slot${(teamSizeCfg - total) === 1 ? '' : 's'} free)`}
-                                </button>
-                              )}
-                            </div>
-                          )}
-                          {/* v11.83: Beitritts-Anfragen-Block — nur für Leads, wenn das
-                              Event Approval aktiviert hat UND es Pending-Anfragen gibt. */}
-                          {isLead && event.teamJoinRequiresApproval && (() => {
-                            const jKey = `${event.id}|${registration.TeamId}`;
-                            const jReqs = joinRequestsCache[jKey];
-                            if (jReqs === undefined) {
-                              enqueueJoinReqFetch(event.id, registration.TeamId!);
-                              return null;
-                            }
-                            if (jReqs.length === 0) return null;
-                            return (
-                              <div style={{
-                                marginTop: 10,
-                                padding: '8px 12px',
-                                borderRadius: 6,
-                                background: 'rgba(237,139,0,0.10)',
-                                border: '1px solid var(--dex-orange, #ed8b00)',
-                                color: '#7a4a00',
-                              }}>
-                                <div style={{ fontWeight: 700, marginBottom: 6 }}>
-                                  {isDe ? 'Beitritts-Anfragen' : 'Join requests'} ({jReqs.length})
-                                </div>
-                                {jReqs.map(r => {
-                                  const busy = joinReqBusyId === r.Id;
-                                  return (
-                                    <div key={r.Id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderTop: '1px solid rgba(237,139,0,0.25)' }}>
-                                      <div style={{ flex: 1, fontSize: '0.82rem' }}>
-                                        <div style={{ fontWeight: 600 }}>{r.RequesterDisplayName || r.RequesterEmail}</div>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-600)' }}>{r.RequesterEmail}</div>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        className="btn btn-primary"
-                                        disabled={busy}
-                                        onClick={() => handleDecideJoinRequest(event.id, registration.TeamId!, r.Id, 'Approved')}
-                                        style={{ fontSize: '0.75rem', padding: '4px 10px' }}
-                                      >
-                                        {isDe ? 'Bestätigen' : 'Approve'}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="btn btn-secondary"
-                                        disabled={busy}
-                                        onClick={() => handleDecideJoinRequest(event.id, registration.TeamId!, r.Id, 'Rejected')}
-                                        style={{ fontSize: '0.75rem', padding: '4px 10px' }}
-                                      >
-                                        {isDe ? 'Ablehnen' : 'Reject'}
-                                      </button>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      );
-                    })()}
-
-                    {/* Kompakte Info-Zeile: Location + Datum inline, umbricht auf schmalen Bildschirmen */}
-                    <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '6px 24px', fontSize: '0.88rem', color: 'var(--dex-gray-700)' }}>
+                    {/* Wann · Wo · Teilnahme-Link */}
+                    <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 24px', fontSize: '0.88rem', color: 'var(--dex-gray-700)' }}>
                       {/* v27.8: Ort einzeilig als „Name, Stadt" (vorher zweizeilig
                           mit voller Adresse). */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -571,232 +318,152 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                       )}
                     </div>
 
-                    {/* v27.7: Gruppe (Durchstarter/Funstarter bzw. eigene
-                        Beschriftung) anzeigen, in der die Person angemeldet ist.
-                        StarterType = effektive Gruppe; auf der Warteliste ist er
-                        leer, dann steht der Wunsch in PreferredStarterType. */}
-                    {(() => {
-                      const grp = (registration.StarterType || registration.PreferredStarterType || '').trim();
-                      if (!grp) return null;
-                      const grpLabel = grp === 'Durchstarter'
-                        ? ((event.splitLabelA && event.splitLabelA.trim()) || 'Durchstarter')
-                        : grp === 'Funstarter'
-                          ? ((event.splitLabelB && event.splitLabelB.trim()) || 'Funstarter')
-                          : grp;
-                      return (
-                        <div style={{ marginTop: 8 }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', fontWeight: 600, padding: '4px 10px', borderRadius: 999, background: 'rgba(134,188,37,0.14)', color: 'var(--dex-green-dark, #4a7c1f)', border: '1px solid rgba(134,188,37,0.30)' }}>
-                            <Icon iconName="Group" style={{ fontSize: 13 }} />
-                            {(isDe ? 'Gruppe: ' : 'Group: ')}{grpLabel}
+                    {/* QR-Code und „Angemeldet am …" — die beiden Angaben, die
+                        am Einlass gebraucht werden. */}
+                    {!sessionsOnly && !hiddenRow && (
+                      <div className="dex-ui-inline" style={{ marginTop: 10 }}>
+                        {/* v20.7: Persönlicher Check-in-QR — gleicher Code wie
+                            in der QR-Mail. v28.7: erst sichtbar, NACHDEM die
+                            QR-Codes fürs Event versendet wurden (Status
+                            'QR versendet'/'Eingecheckt') — vorher wirkte der
+                            Button, als gäbe es schon einen gültigen Check-in. */}
+                        {notEditing && !sessionsOnly && !hiddenRow && !!event.eventNumber && ['QR versendet', 'Eingecheckt'].indexOf(registration.Status) >= 0 && (
+                          <button
+                            type="button"
+                            className="btn btn-outline dex-ui-btn-sm"
+                            onClick={() => { openMyQr(event, registration).catch(() => { /* */ }); }}
+                            title={isDe ? 'Deinen persönlichen Check-in-QR-Code anzeigen' : 'Show your personal check-in QR code'}
+                          >
+                            <QrCode size={14} /> {isDe ? 'Mein QR-Code' : 'My QR code'}
+                          </button>
+                        )}
+                        {/* v31.8: Auf der Warteliste ist „Angemeldet am" die
+                            falsche Aussage — der Zustand steht sonst nur in der
+                            Farbe der Pille (Leitfaden 6c). */}
+                        {!sessionsOnly && !hiddenRow && (
+                          <span className="dex-ui-muted">
+                            {registration.Status === 'Warteliste'
+                              ? (isDe ? 'Auf der Warteliste seit' : 'On the waiting list since')
+                              : t('myevents.registeredon')}: {formatDate(registration.RegistrationDate)}
                           </span>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Organizer mit Foto (Hover vergrößert). v24.12: einzelne ausblendbar. */}
-                    {event.organizers.length > 0 && !(event.hideOrganizer && !event.hideOrganizerIndividualOnly) && (
-                      <div style={{ marginTop: 10 }}>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Organizer</div>
-                        <OrganizerList
-                          names={event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map(o => {
-                            const trimmed = o.trim();
-                            const parts = trimmed.split(',').map(s => s.trim());
-                            return parts.length === 2 ? `${parts[1]} ${parts[0]}` : trimmed;
-                          }).filter(Boolean)}
-                          emails={event.organizerEmails}
-                          hiddenEmails={(event.hideOrganizer && event.hideOrganizerIndividualOnly) ? event.hiddenOrganizerEmails : []}
-                          size="sm"
-                        />
-                      </div>
-                    )}
-                    {/* v10.26: Optionaler Ansprechpartner — frei eingegebene Person
-                        außerhalb des App-User-Pools. Reines Anzeige-Feld; Mailto-Link
-                        wenn Email gesetzt. Wird nur gerendert wenn mindestens Name
-                        oder Email gepflegt sind. Spiegelt das Verhalten der
-                        Registration-Page in My Events wider. */}
-                    {(event.contactName || event.contactEmail || event.contactInfo) && (
-                      <div style={{ marginTop: 10 }}>
-                        {/* v28.7: Überschrift AUSSERHALB der Box — gleiches
-                            Muster wie „Organizer" darüber (und wie auf der
-                            Anmelde-Seite seit v28.6). */}
-                        <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
-                          {(event.emailLanguage || 'EN').toUpperCase() === 'DE' ? 'Ansprechpartner' : 'Contact'}
-                        </div>
-                        <div style={{ padding: '8px 10px', background: 'var(--dex-gray-50, #f7f7f7)', borderRadius: 6, border: '1px solid var(--dex-gray-200)' }}>
-                        {event.contactName && (
-                          <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-800)' }}>{event.contactName}</div>
                         )}
-                        {event.contactEmail && (
-                          <div style={{ fontSize: '0.78rem', marginTop: 2 }}>
-                            <a href={`mailto:${event.contactEmail}`} style={{ color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'none' }}>{event.contactEmail}</a>
-                          </div>
-                        )}
-                        {event.contactInfo && (
-                          <div style={{ fontSize: '0.76rem', color: 'var(--dex-gray-700)', marginTop: 4, whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>{event.contactInfo}</div>
-                        )}
-                        </div>
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* v17.22: Event-Beschreibung auch unter „Meine Events"
-                    anzeigen (vorher nur auf der Anmeldeseite). RichText-HTML
-                    aus dem eigenen Tenant — gleiche Render-Logik wie auf der
-                    RegistrationPage (HTML erlaubt, sonst \n→<br>).
-                    v17.23: standardmäßig eingeklappt, per Button aufklappbar. */}
-                {event.description && (!editingId || editingId !== event.id) && (() => {
-                  const isOpen = !!descExpanded[event.id];
+                {/* ============================================================
+                    2. TERMINE — bei einem Klammer-Event ist die Terminliste die
+                    eigentliche Anmeldung und stand vorher hinter Programm,
+                    Transfer, Dokumenten und Quiz.
+                    Seit v6.4: Sub-Events sind eigene DEX_Events-Items, werden über
+                    childEventsOf(parentId) aus dem Context gezogen.
+                   ============================================================ */}
+                {childEventsOf(event.id).length > 0 && (
+                  <MyEventSubEvents
+                    parentEvent={event}
+                    childEvents={childEventsOf(event.id)}
+                    registerForEvent={registerForEvent}
+                    cancelRegistration={cancelRegistration}
+                    getMyRegistration={getMyRegistration}
+                    getAllRegistrations={getAllRegistrations}
+                    updateMyRegistration={updateMyRegistration}
+                    onMutated={loadMyRegistrations}
+                  />
+                )}
+
+                {/* ============================================================
+                    3. HINWEISE — was für diese Anmeldung besonders gilt.
+                    v31.8: als `dex-ui-callout`, kurz. Der hiddenRow-Hinweis war
+                    ein Fünfzeiler mit vier Fettungen.
+                   ============================================================ */}
+                {/* v28.23: Stellvertretend angelegte Anmeldung, deren Zeile
+                    für die Person (noch) nicht lesbar ist. Sie SIEHT die
+                    Anmeldung jetzt — inkl. Status —, kann sie aber nicht
+                    selbst bearbeiten oder stornieren. */}
+                {hiddenRow && (
+                  <div className="dex-ui-callout dex-ui-callout--info" style={{ marginTop: 12 }}>
+                    <span className="dex-ui-callout-icon"><Info size={16} /></span>
+                    <span>
+                      {isDe
+                        ? <><strong>Für dich angelegt</strong> (z.B. von deiner Assistenz) — deine Anmeldung ist gültig. Angaben und Abmeldung laufen über diese Person oder die Organizer. Melde dich nicht erneut an, sonst entsteht eine doppelte Anmeldung.</>
+                        : <><strong>Registered on your behalf</strong> (e.g. by your assistant) — your registration is valid. Details and cancellation go through that person or the organizers. Do not register again, that would create a duplicate.</>}
+                    </span>
+                  </div>
+                )}
+                {/* v15.15: Hinweisbox „nur für Sub-Events angemeldet"
+                    nur außerhalb des subEventsOnlyMode anzeigen — dort
+                    ist sie redundant, weil es gar keine andere Option
+                    gibt. */}
+                {sessionsOnly && !event.subEventsOnlyMode && (() => {
+                  const term = event.childEventTermPlural || '';
+                  const subList = (subEventTitles && subEventTitles.length > 0)
+                    ? ` (${subEventTitles.join(', ')})`
+                    : '';
+                  const hintText = term
+                    ? (isDe
+                        ? `Du bist für ${term} dieses Events angemeldet, aber NICHT für das Haupt-Event selbst`
+                        : `You are registered for ${term} of this event but NOT for the main event itself`)
+                    : t('myevents.sessionsonly.hint');
                   return (
-                    <div style={{ marginTop: 10 }}>
-                      <button
-                        type="button"
-                        onClick={() => setDescExpanded(prev => ({ ...prev, [event.id]: !prev[event.id] }))}
-                        aria-expanded={isOpen}
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 6,
-                          background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                          fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-green-dark, #4a7c1f)',
-                        }}
-                      >
-                        <span style={{
-                          display: 'inline-block', transition: 'transform 0.15s',
-                          transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: '0.7rem',
-                        }}>▶</span>
-                        {isDe ? 'Beschreibung' : 'Description'}
-                      </button>
-                      {isOpen && (
-                        <div
-                          className="dex-event-desc"
-                          style={{
-                            marginTop: 6, padding: '10px 14px',
-                            color: 'var(--dex-gray-700)', background: 'var(--dex-gray-50, #fafafa)',
-                            borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)',
-                            wordBreak: 'break-word',
-                          }}
-                          dangerouslySetInnerHTML={{
-                            __html: (() => {
-                              const raw = event.description || '';
-                              const isHtml = /<[a-z][\s\S]*>/i.test(raw);
-                              return isHtml
-                                ? raw
-                                : raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
-                            })(),
-                          }}
-                        />
-                      )}
+                    <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginTop: 10 }}>
+                      <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                      <span>{hintText}{subList}.</span>
                     </div>
                   );
                 })()}
 
-                {/* v10.26: Custom-Field-Antworten als rechteckige
-                    pastellgrüne Tags — visuell eindeutig von den
-                    abgerundeten grauen Organizer-Chips getrennt, damit der
-                    User sofort sieht: das ist „was ich angegeben habe", nicht
-                    „wer organisiert das". */}
-                {!editingId || editingId !== event.id ? (
+                {/* ============================================================
+                    4. DEINE ANGABEN — die Antworten aus dem Anmeldeformular.
+                   ============================================================ */}
+                {notEditing ? (
                   // v18.38: Edit-Bereich anzeigen, sobald das Event überhaupt
                   // bearbeitbare Felder hat — NICHT mehr nur wenn schon Werte
                   // ausgefüllt sind. Sonst kann ein Teilnehmer, der ein
                   // optionales Feld leer gelassen hat (z.B. „zusätzliche
                   // Nacht"), es später nicht mehr nachtragen.
-                  // v20.9 BUG-FIX: Der Block rendert jetzt AUCH, wenn das Event
-                  // keine Custom-Felder hat, aber die Anmeldung QR-fähig ist —
-                  // sonst fehlte der „Mein QR-Code"-Button bei Events ohne
-                  // Abfragefelder (z.B. einfaches Sommerfest).
-                  // Die Aktions-Zeile rendert immer, da sie jetzt mindestens den
-                  // „Nachrichten zum Event"-Button enthält (zusätzlich zu den
-                  // optionalen Angaben-Tags und dem QR-Button).
-                  (
-                    <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-                      {displayData.map(({ label, value, type }) => (
-                        <FieldAnswerTag key={label} label={label} value={value} type={type} />
-                      ))}
+                  // v31.8: Die Sektion rendert nur, wenn sie etwas zu zeigen hat
+                  // — die beiden Bedingungen darunter sind unverändert.
+                  (displayData.length > 0 || (!hiddenRow && hasEditableFields)) && (
+                    <div className="dex-ui-section">
+                      <div className="dex-ui-section-title">{isDe ? 'Deine Angaben' : 'Your details'}</div>
+                      {displayData.length > 0 && (
+                        <div className="dex-ui-inline">
+                          {displayData.map(({ label, value, type }) => (
+                            <FieldAnswerTag key={label} label={label} value={value} type={type} />
+                          ))}
+                        </div>
+                      )}
+                      {/* v31.8: Der Leer-Satz nur, wo diese Zeile die Antworten
+                          wirklich trägt (`answersKnown`, s.o.) — sonst bliebe
+                          hier „nichts angegeben" stehen, während die Person auf
+                          den Sub-Event-Zeilen längst geantwortet hat. */}
+                      {displayData.length === 0 && answersKnown && (
+                        <div className="dex-ui-muted">
+                          {isDe ? 'Du hast bisher nichts angegeben.' : 'You have not entered anything yet.'}
+                        </div>
+                      )}
                       {/* v11.30: Edit-Button direkt neben den Angaben-Tags
                           (statt unten in der Aktions-Zeile). Näher am Inhalt
                           den er bearbeitet.
                           v18.38: zeigt jetzt „Angaben ergänzen", wenn noch
                           nichts ausgefüllt wurde — sonst „Angaben bearbeiten". */}
-                      {!hiddenRow && (event.eventSpecificFields || []).filter((f: EventSpecificField) => f.label).length > 0 && (
-                      <button
-                        type="button"
-                        className="btn btn-outline"
-                        onClick={() => { setEditData(customData); setEditingId(event.id); }}
-                        style={{
-                          fontSize: '0.78rem', padding: '5px 12px', borderRadius: 6,
-                          width: 'auto', cursor: 'pointer',
-                          display: 'inline-flex', alignItems: 'center', gap: 4,
-                        }}
-                        title={displayData.length > 0 ? t('myevents.edit') : (isDe ? 'Angaben ergänzen' : 'Add details')}
-                      >
-                        <Pencil size={12} /> {displayData.length > 0 ? t('myevents.edit') : (isDe ? 'Angaben ergänzen' : 'Add details')}
-                      </button>
-                      )}
-                      {/* v20.7: Persönlicher Check-in-QR — gleicher Code wie
-                          in der QR-Mail. v28.7: erst sichtbar, NACHDEM die
-                          QR-Codes fürs Event versendet wurden (Status
-                          'QR versendet'/'Eingecheckt') — vorher wirkte der
-                          Button, als gäbe es schon einen gültigen Check-in. */}
-                      {!sessionsOnly && !hiddenRow && !!event.eventNumber && ['QR versendet', 'Eingecheckt'].indexOf(registration.Status) >= 0 && (
-                        <button
-                          type="button"
-                          className="btn btn-outline"
-                          onClick={() => { openMyQr(event, registration).catch(() => { /* */ }); }}
-                          style={{
-                            fontSize: '0.78rem', padding: '5px 12px', borderRadius: 6,
-                            width: 'auto', cursor: 'pointer',
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                          }}
-                          title={isDe ? 'Deinen persönlichen Check-in-QR-Code anzeigen' : 'Show your personal check-in QR code'}
-                        >
-                          <QrCode size={12} /> {isDe ? 'Mein QR-Code' : 'My QR code'}
-                        </button>
-                      )}
-                      {/* v30.96: Teilnahmebescheinigung — sobald mindestens ein
-                          Programmpunkt als anwesend erfasst ist. Die Daten sind
-                          die eigene Zeile (AgendaCheckIns) und das Programm des
-                          Events; ohne Erfassung gibt es nichts zu bescheinigen. */}
-                      {!hiddenRow && event.agendaCheckIn && (() => {
-                        const marks = parseAgendaCheckIns(registration && registration.AgendaCheckIns);
-                        const n = (event.agenda || []).filter(a => !!marks[a.id]).length;
-                        if (n === 0) return null;
-                        return (
+                      {!hiddenRow && hasEditableFields && (
+                        <div style={{ marginTop: 8 }}>
                           <button
                             type="button"
-                            className="btn btn-outline"
-                            onClick={() => {
-                              downloadAttendanceCertificate(
-                                { title: event.title, startDate: event.startDate, endDate: event.endDate, location: event.location, organizers: event.organizers, agenda: event.agenda || [], agendaTermSingular: event.agendaTermSingular, agendaTermPlural: event.agendaTermPlural },
-                                { name: `${registration.Vorname || ''} ${registration.Nachname || ''}`.trim() || registration.ParticipantName || '', email: registration.ParticipantEmail, marks },
-                                isDe,
-                              ).catch(() => showAlert(isDe ? 'Die Bescheinigung konnte nicht erzeugt werden.' : 'The certificate could not be created.', { variant: 'error' }));
-                            }}
-                            style={{ fontSize: '0.78rem', padding: '5px 12px', borderRadius: 6, width: 'auto', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                            title={isDe ? `Teilnahmebescheinigung als PDF — ${n} von ${(event.agenda || []).length} ${event.agendaTermPlural || 'Programmpunkte'} erfasst` : `Certificate of attendance as PDF — ${n} of ${(event.agenda || []).length} items recorded`}
+                            className="btn btn-outline dex-ui-btn-sm"
+                            onClick={() => { setEditData(customData); setEditingId(event.id); }}
                           >
-                            <Icon iconName="Certificate" style={{ fontSize: 12 }} /> {isDe ? 'Teilnahmebescheinigung' : 'Certificate'}
+                            <Pencil size={14} /> {displayData.length > 0 ? t('myevents.edit') : (isDe ? 'Angaben ergänzen' : 'Add details')}
                           </button>
-                        );
-                      })()}
-                      {/* Nachrichten zum Event: Broadcast-Mails (Einladung,
-                          Ankündigungen) aus dem Kommunikations-Log lesen. */}
-                      <button
-                        type="button"
-                        className="btn btn-outline"
-                        onClick={() => openComms(event)}
-                        style={{
-                          fontSize: '0.78rem', padding: '5px 12px', borderRadius: 6,
-                          width: 'auto', cursor: 'pointer',
-                          display: 'inline-flex', alignItems: 'center', gap: 4,
-                        }}
-                        title={isDe ? 'Nachrichten zu diesem Event ansehen' : 'View messages for this event'}
-                      >
-                        <Mail size={12} /> {isDe ? 'Nachrichten zum Event' : 'Event messages'}
-                      </button>
+                        </div>
+                      )}
                     </div>
                   )
                 ) : (
-                  <div style={{ marginTop: 12 }}>
+                  <div className="dex-ui-section">
+                    <div className="dex-ui-section-title">{isDe ? 'Angaben bearbeiten' : 'Edit your details'}</div>
                     {/* v17.22: EN-Varianten auch im „Meine Events"-Edit-Formular
                         berücksichtigen — vorher rein DE, obwohl der Teilnehmer
                         sich auf der Anmeldeseite die EN-Labels angesehen hatte. */}
@@ -838,14 +505,20 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                               errorStyle={{}}
                             />
                           ) : field.type === 'checkbox' ? (
-                            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.85rem' }}>
+                            /* v31.8: Ja/Nein mit Erklärung → `dex-ui-toggle-row`
+                               (Leitfaden 2b). Gleiches Feld, gleicher Setter —
+                               nur die rohe Checkbox ohne Hover ist weg. */
+                            <label className={cx('dex-ui-toggle-row', editData[field.id] === 'true' && 'is-active')}>
                               <input
                                 type="checkbox"
                                 checked={editData[field.id] === 'true'}
                                 onChange={e => setEditData({ ...editData, [field.id]: e.target.checked ? 'true' : 'false' })}
-                                style={{ marginTop: 2 }}
                               />
-                              <span>{(useEnEdit && field.confirmLabelEn && field.confirmLabelEn.trim() ? field.confirmLabelEn : field.confirmLabel) || eLabel(field)}</span>
+                              <span className="dex-ui-toggle-row-body">
+                                <span className="dex-ui-toggle-row-title">
+                                  {(useEnEdit && field.confirmLabelEn && field.confirmLabelEn.trim() ? field.confirmLabelEn : field.confirmLabel) || eLabel(field)}
+                                </span>
+                              </span>
                             </label>
                           ) : (
                             <input className="form-input" value={editData[field.id] || ''} onChange={e => setEditData({ ...editData, [field.id]: e.target.value })} placeholder={eLabel(field)} type={field.type === 'number' ? 'number' : 'text'} />
@@ -862,6 +535,334 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                   </div>
                 )}
 
+                {/* ============================================================
+                    5. WER HILFT DIR WEITER — Team, Unterkunft, Ansprechpartner.
+                    Sie ergänzen die Anmeldung, sie sind nicht die Anmeldung.
+                   ============================================================ */}
+                {/* v11.82: Team-Badge — sichtbar wenn die eigene Anmeldung
+                    eine TeamId hat. Lazy-Load der anderen Mitglieder via
+                    getTeamMembers. Zeigt: Team-Name (falls vorhanden),
+                    Belegungs-Anzahl, Liste der Mitglieder (Lead zuerst). */}
+                {registration.TeamId && (() => {
+                  const cacheKey = `${event.id}|${registration.TeamId}`;
+                  const cached = teamMembersCache[cacheKey];
+                  if (!cached) {
+                    // Async laden (nur einmal pro Karte, idempotent über ref-Set).
+                    enqueueTeamFetch(event.id, registration.TeamId);
+                    return null;
+                  }
+                  const activeMembers = cached.filter(m => m.Status !== 'Abgemeldet');
+                  const total = activeMembers.length;
+                  const teamSizeCfg = event.teamSize || total;
+                  const tn = registration.TeamName || (cached.find(m => m.TeamName)?.TeamName) || '';
+                  const teamTermS = event.teamTermSingular || 'Team';
+                  const isLead = !!registration.TeamLead;
+                  // v11.86: Sortierung — Lead zuerst, dann nach TeilnehmerID,
+                  // dann nach Id. Abgemeldete Mitglieder werden ausgegraut
+                  // mit eigenem Badge weiter unten gerendert.
+                  const sortedAll = [...cached].sort((a, b) => {
+                    const aLead = a.TeamLead ? 0 : 1;
+                    const bLead = b.TeamLead ? 0 : 1;
+                    if (aLead !== bLead) return aLead - bLead;
+                    const aTid = typeof a.TeilnehmerID === 'number' ? a.TeilnehmerID : Number.MAX_SAFE_INTEGER;
+                    const bTid = typeof b.TeilnehmerID === 'number' ? b.TeilnehmerID : Number.MAX_SAFE_INTEGER;
+                    if (aTid !== bTid) return aTid - bTid;
+                    return a.Id - b.Id;
+                  });
+                  return (
+                    <div className="dex-ui-section">
+                      <div className="dex-ui-section-title">{teamTermS}</div>
+                      <div className="dex-ui-card">
+                        <div className="dex-ui-card-head">
+                          <h4 className="dex-ui-card-head-title">
+                            <Icon iconName="People" style={{ fontSize: 15 }} />
+                            {teamTermS} &bdquo;{tn || (isDe ? 'Unbenannt' : 'Unnamed')}&ldquo;
+                          </h4>
+                          <span className="dex-ui-card-head-meta">
+                            {total}/{teamSizeCfg} {isDe ? 'belegt' : 'taken'}
+                          </span>
+                          {isLead && (
+                            <span className="dex-ui-pill dex-ui-pill--green">
+                              {isDe ? `du bist ${teamTermS}-Lead` : `you are ${teamTermS} lead`}
+                            </span>
+                          )}
+                        </div>
+                        {/* v11.86: Mitglieder-Karten — pro Person Foto + Name + Email + Standort.
+                            v31.8: kein 240-%-Zoom mehr beim Überfahren — ein Hover
+                            verspricht eine Aktion, und ein Klick tut hier nichts. */}
+                        {sortedAll.length > 0 && (
+                          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {sortedAll.map(m => {
+                              const isCancelled = m.Status === 'Abgemeldet';
+                              const isMemberLead = !!m.TeamLead && !isCancelled;
+                              const fullName = `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantEmail;
+                              const loc = (m.Location || '').trim();
+                              return (
+                                <div
+                                  key={m.Id}
+                                  style={{
+                                    display: 'flex', alignItems: 'center', gap: 12,
+                                    padding: '6px 8px', borderRadius: 10,
+                                    background: isCancelled ? 'var(--dex-gray-50, #fafafa)' : '#fff',
+                                    border: '1px solid var(--dex-gray-200)',
+                                    opacity: isCancelled ? 0.55 : 1,
+                                  }}
+                                >
+                                  <img
+                                    className="dex-ui-avatar dex-ui-avatar--lg"
+                                    src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(m.ParticipantEmail)}&size=L`}
+                                    alt={fullName}
+                                    onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                                  />
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div className="dex-ui-person-name">{fullName}</div>
+                                    <div className="dex-ui-person-sub">
+                                      {m.ParticipantEmail}{loc ? ` · ${loc}` : ''}
+                                    </div>
+                                  </div>
+                                  {isCancelled ? (
+                                    <span className="dex-ui-pill dex-ui-pill--gray">
+                                      {isDe ? 'abgemeldet' : 'cancelled'}
+                                    </span>
+                                  ) : isMemberLead && (
+                                    <span className="dex-ui-pill dex-ui-pill--green">Lead</span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {/* v11.83/v11.86: Aktion-Buttons — Edit (alle Leads) +
+                            Add (nur bei freien Slots). */}
+                        {isLead && (
+                          <div className="dex-ui-inline" style={{ marginTop: 10 }}>
+                            <button
+                              type="button"
+                              className="btn btn-secondary dex-ui-btn-sm"
+                              onClick={() => openManageTeamDialog(
+                                event.id,
+                                registration.TeamId!,
+                                tn || '',
+                                teamSizeCfg,
+                                cached
+                              )}
+                            >
+                              <Icon iconName="Edit" style={{ fontSize: 12 }} />
+                              {/* v31.8: `teamTermS` ist ein vom Organizer frei
+                                  vergebener Begriff — meist deutsch. Klein
+                                  geschrieben ergäbe das im EN-Zweig „Edit
+                                  mannschaft"; deshalb steht er dort unverändert,
+                                  wie schon in der Lead-Pille darüber. */}
+                              {isDe ? `${teamTermS} bearbeiten` : `Edit ${teamTermS}`}
+                            </button>
+                            {total < teamSizeCfg && (
+                              <button
+                                type="button"
+                                className="btn btn-secondary dex-ui-btn-sm"
+                                onClick={() => {
+                                  setAddMemberDialog({
+                                    eventId: event.id,
+                                    teamId: registration.TeamId!,
+                                    teamName: tn || '',
+                                    freeSlots: teamSizeCfg - total,
+                                  });
+                                  setAddMemberPick(null);
+                                  setAddMemberQuery('');
+                                  setAddMemberResults([]);
+                                  setAddMemberConsent(false);
+                                  setAddMemberError('');
+                                }}
+                              >
+                                <Icon iconName="AddFriend" style={{ fontSize: 12 }} />
+                                {isDe
+                                  ? `Mitglied hinzufügen (${teamSizeCfg - total} ${(teamSizeCfg - total) === 1 ? 'Platz' : 'Plätze'} frei)`
+                                  : `Add member (${teamSizeCfg - total} slot${(teamSizeCfg - total) === 1 ? '' : 's'} free)`}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        {/* v11.83: Beitritts-Anfragen-Block — nur für Leads, wenn das
+                            Event Approval aktiviert hat UND es Pending-Anfragen gibt. */}
+                        {isLead && event.teamJoinRequiresApproval && (() => {
+                          const jKey = `${event.id}|${registration.TeamId}`;
+                          const jReqs = joinRequestsCache[jKey];
+                          if (jReqs === undefined) {
+                            enqueueJoinReqFetch(event.id, registration.TeamId!);
+                            return null;
+                          }
+                          if (jReqs.length === 0) return null;
+                          return (
+                            <div className="dex-ui-card dex-ui-card--soft" style={{ marginTop: 10, padding: '10px 12px' }}>
+                              <div className="dex-ui-card-head">
+                                <h4 className="dex-ui-card-head-title">
+                                  {isDe ? 'Beitritts-Anfragen' : 'Join requests'}
+                                </h4>
+                                <span className="dex-ui-pill dex-ui-pill--orange">{jReqs.length}</span>
+                              </div>
+                              {jReqs.map(r => {
+                                const busy = joinReqBusyId === r.Id;
+                                return (
+                                  <div key={r.Id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '6px 0', borderTop: '1px solid var(--dex-gray-200)' }}>
+                                    <div className="dex-ui-row-main">
+                                      <div className="dex-ui-row-title">{r.RequesterDisplayName || r.RequesterEmail}</div>
+                                      <div className="dex-ui-row-sub">{r.RequesterEmail}</div>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="btn btn-primary dex-ui-btn-sm"
+                                      disabled={busy}
+                                      onClick={() => handleDecideJoinRequest(event.id, registration.TeamId!, r.Id, 'Approved')}
+                                    >
+                                      {isDe ? 'Bestätigen' : 'Approve'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary dex-ui-btn-sm"
+                                      disabled={busy}
+                                      onClick={() => handleDecideJoinRequest(event.id, registration.TeamId!, r.Id, 'Rejected')}
+                                    >
+                                      {isDe ? 'Ablehnen' : 'Reject'}
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* v28.39: Hotel-Zuordnung — nur wenn der Organizer die
+                    Anzeige im Hotel-Bereich freigegeben hat UND für diese
+                    Person ein Hotel hinterlegt ist. Rein lesend; Änderungen
+                    laufen über die Organizer. */}
+                {event.hotelVisibleToAttendees && (registration.Hotel || '').trim() && (() => {
+                  const hotelName = (registration.Hotel || '').trim();
+                  const h = (event.hotels || []).filter(x => x.name === hotelName)[0];
+                  const day = (iso?: string): string => (iso ? String(iso).substring(0, 10) : '');
+                  const from = day(registration.HotelFrom);
+                  const to = day(registration.HotelTo);
+                  const nights = (from && to)
+                    ? Math.max(0, Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000))
+                    : 0;
+                  const fmt = (d: string): string => {
+                    if (!d) return '—';
+                    const t = Date.parse(`${d}T00:00:00Z`);
+                    return isNaN(t) ? d : new Date(t).toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+                  };
+                  return (
+                    <div className="dex-ui-section">
+                      <div className="dex-ui-section-title">{isDe ? 'Deine Unterkunft' : 'Your accommodation'}</div>
+                      <div className="dex-ui-card">
+                        <div style={{ fontWeight: 700, color: 'var(--dex-gray-800)' }}>
+                          {hotelName}
+                          {h && h.address && <span style={{ fontWeight: 400, color: 'var(--dex-gray-600)' }}> · {h.address}</span>}
+                        </div>
+                        {(from || to) && (
+                          <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', marginTop: 2 }}>
+                            {isDe ? 'Anreise' : 'Arrival'} {fmt(from)} · {isDe ? 'Abreise' : 'Departure'} {fmt(to)}
+                            {nights > 0 && <> · {nights} {isDe ? (nights === 1 ? 'Nacht' : 'Nächte') : (nights === 1 ? 'night' : 'nights')}</>}
+                          </div>
+                        )}
+                        <div className="dex-ui-help">
+                          {isDe ? 'Für Änderungen wende dich bitte an die Organizer.' : 'For changes please contact the organizers.'}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* v31.8: „Organizer" und „Ansprechpartner" beantworten dieselbe
+                    Frage — wen frage ich? — und standen vorher in zwei Optiken
+                    untereinander. Jetzt eine Sektion, beide Bedingungen
+                    unverändert (v10.26 Ansprechpartner, v24.12 Organizer). */}
+                {(showOrganizers || showContact) && (
+                  <div className="dex-ui-section">
+                    <div className="dex-ui-section-title">{isDe ? 'Ansprechpartner' : 'Contact'}</div>
+                    <div className="dex-ui-card">
+                      {showOrganizers && (
+                        <>
+                          <div className="dex-ui-muted" style={{ marginBottom: 6 }}>Organizer</div>
+                          <OrganizerList
+                            names={event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map(o => {
+                              const trimmed = o.trim();
+                              const parts = trimmed.split(',').map(s => s.trim());
+                              return parts.length === 2 ? `${parts[1]} ${parts[0]}` : trimmed;
+                            }).filter(Boolean)}
+                            emails={event.organizerEmails}
+                            hiddenEmails={(event.hideOrganizer && event.hideOrganizerIndividualOnly) ? event.hiddenOrganizerEmails : []}
+                            size="sm"
+                          />
+                        </>
+                      )}
+                      {showOrganizers && showContact && <div className="dex-ui-divider" />}
+                      {showContact && (
+                        <>
+                          {event.contactName && (
+                            <div style={{ fontSize: '0.86rem', fontWeight: 600, color: 'var(--dex-gray-800)' }}>{event.contactName}</div>
+                          )}
+                          {event.contactEmail && (
+                            <div style={{ fontSize: '0.82rem', marginTop: 2 }}>
+                              <a href={`mailto:${event.contactEmail}`} style={{ color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'none' }}>{event.contactEmail}</a>
+                            </div>
+                          )}
+                          {event.contactInfo && (
+                            <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-700)', marginTop: 4, whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>{event.contactInfo}</div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ============================================================
+                    6. INHALT — Beschreibung, Programm, Transfer, Dokumente,
+                    Uploads, Quiz.
+                   ============================================================ */}
+                {/* v17.22: Event-Beschreibung auch unter „Meine Events"
+                    anzeigen (vorher nur auf der Anmeldeseite). RichText-HTML
+                    aus dem eigenen Tenant — gleiche Render-Logik wie auf der
+                    RegistrationPage (HTML erlaubt, sonst \n→<br>).
+                    v17.23: standardmäßig eingeklappt, per Button aufklappbar. */}
+                {event.description && notEditing && (() => {
+                  const isOpen = !!descExpanded[event.id];
+                  return (
+                    <div className="dex-ui-section">
+                      <button
+                        type="button"
+                        className={cx('dex-ui-disclosure', isOpen && 'is-open')}
+                        onClick={() => setDescExpanded(prev => ({ ...prev, [event.id]: !prev[event.id] }))}
+                        aria-expanded={isOpen}
+                      >
+                        <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                        {isDe ? 'Beschreibung' : 'Description'}
+                      </button>
+                      {isOpen && (
+                        <div
+                          className="dex-event-desc"
+                          style={{
+                            marginTop: 6, padding: '10px 14px',
+                            color: 'var(--dex-gray-700)', background: 'var(--dex-gray-50, #fafafa)',
+                            borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)',
+                            wordBreak: 'break-word',
+                          }}
+                          dangerouslySetInnerHTML={{
+                            __html: (() => {
+                              const raw = event.description || '';
+                              const isHtml = /<[a-z][\s\S]*>/i.test(raw);
+                              return isHtml
+                                ? raw
+                                : raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+                            })(),
+                          }}
+                        />
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* Agenda / Timeline - mehrspaltig bei mehreren Tagen, horizontal scrollbar auf Mobile */}
                 {event.agenda && event.agenda.length > 0 && (() => {
                   // v30.94: Cluster statt roher Datums-Gruppen (utils/agendaGroups) —
@@ -874,11 +875,12 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                   const agendaOrderIds = sortAgenda(event.agenda).map((x: AgendaItem) => x.id);
 
                   return (
-                    <div style={{ marginTop: 12 }}>
-                      <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div className="dex-ui-section">
+                      <div className="dex-ui-section-title">
                         <Icon iconName="Calendar" style={{ fontSize: 14, color: 'var(--dex-green-dark, #6b9a1e)' }} />
                         {/* v30.86: Im Programmpunkte-Modus die Bezeichnung des Organizers. */}
-                        {event.agendaCheckIn ? (event.agendaTermPlural || (t('myevents.agenda') === 'Programm' ? 'Programmpunkte' : 'Agenda items')) : t('myevents.agenda')} {dayCount > 1 && <span style={{ fontWeight: 400, fontSize: '0.72rem', color: 'var(--dex-gray-400)' }}>· {dayCount} {t('myevents.agenda') === 'Programm' ? 'Tage (seitwärts scrollen)' : 'days (swipe)'}</span>}
+                        {event.agendaCheckIn ? (event.agendaTermPlural || (isDe ? 'Programmpunkte' : 'Agenda items')) : t('myevents.agenda')}
+                        {dayCount > 1 && <span style={{ fontWeight: 500, letterSpacing: 0, textTransform: 'none', color: 'var(--dex-gray-400)' }}>· {dayCount} {isDe ? 'Tage (seitwärts scrollen)' : 'days (swipe)'}</span>}
                       </div>
                       {/* Horizontal scrollbarer Container - funktioniert auf Desktop und Mobile */}
                       <div
@@ -930,7 +932,7 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                                   {event.agendaCheckIn && (() => {
                                     const m = parseAgendaCheckIns(registration && registration.AgendaCheckIns)[item.id];
                                     return m
-                                      ? <div style={{ fontSize: '0.72rem', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, marginTop: 2 }}>✓ {t('myevents.agenda') === 'Programm' ? 'anwesend' : 'present'} {formatMarkTime(m.at)}</div>
+                                      ? <div style={{ fontSize: '0.72rem', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, marginTop: 2 }}>✓ {isDe ? 'anwesend' : 'present'} {formatMarkTime(m.at)}</div>
                                       : null;
                                   })()}
                                   {item.description && (
@@ -949,10 +951,8 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
 
                 {/* Transferzeiten */}
                 {event.transferTimes && event.transferTimes.length > 0 && (
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 6 }}>
-                      {t('myevents.transfers')}
-                    </div>
+                  <div className="dex-ui-section">
+                    <div className="dex-ui-section-title">{t('myevents.transfers')}</div>
                     {event.transferTimes.sort((a: TransferTime, b: TransferTime) => (a.date + a.departureTime).localeCompare(b.date + b.departureTime)).map((tr: TransferTime) => (
                       <div key={tr.id} style={{
                         display: 'flex', gap: 10, padding: '8px 12px', marginBottom: 6, fontSize: '0.82rem',
@@ -985,14 +985,41 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
 
                 {/* Dokumente mit Viewer */}
                 {event.documents && event.documents.length > 0 && (
-                  <DocumentsViewer documents={event.documents} t={t} />
+                  <DocumentsViewer documents={event.documents} t={t} isDe={isDe} />
                 )}
+
+                {/* v11.0: Datei-Upload-Block — wird nur gerendert, wenn der
+                    Organizer beim Event den Upload erlaubt hat und die
+                    Anmeldung aktiv ist (nicht sessionsOnly oder abgemeldet). */}
+                {event.allowAttendeeUpload && !sessionsOnly && !hiddenRow && (
+                  <MyEventUpload
+                    event={event}
+                    list={listMyEventAttachments}
+                    upload={uploadMyEventAttachment}
+                    remove={deleteMyEventAttachment}
+                  />
+                )}
+
+                {/* v19.0: Dokument-Custom-Felder — pro Feld ein Upload-Block,
+                    damit der User die Datei auch nachträglich ergänzen/ersetzen
+                    kann. */}
+                {!sessionsOnly && !hiddenRow && (event.eventSpecificFields || []).filter(f => f.type === 'document').map(df => (
+                  <MyEventDocField
+                    key={df.id}
+                    event={event}
+                    field={df}
+                    list={listFieldDocuments}
+                    upload={uploadFieldDocument}
+                    remove={deleteFieldDocument}
+                  />
+                ))}
 
                 {/* Fun-Zone Quiz */}
                 {!sessionsOnly && !hiddenRow && event.quiz && event.quiz.length > 0 && (
                   <QuizPlayer
                     quiz={event.quiz}
                     t={t}
+                    isDe={isDe}
                     clusterSize={event.quizClusterSize}
                     initialAnswers={(() => {
                       // Zuvor gespeicherte Antworten aus der Teilnehmer-Registrierung laden
@@ -1060,226 +1087,234 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                   />
                 )}
 
-                {/* Sub-Events (Trainingssessions etc.) — nur wenn Event welche hat.
-                    Seit v6.4: Sub-Events sind eigene DEX_Events-Items, werden über
-                    childEventsOf(parentId) aus dem Context gezogen. */}
-                {childEventsOf(event.id).length > 0 && (
-                  <MyEventSubEvents
-                    parentEvent={event}
-                    childEvents={childEventsOf(event.id)}
-                    registerForEvent={registerForEvent}
-                    cancelRegistration={cancelRegistration}
-                    getMyRegistration={getMyRegistration}
-                    getAllRegistrations={getAllRegistrations}
-                    updateMyRegistration={updateMyRegistration}
-                    onMutated={loadMyRegistrations}
-                  />
-                )}
+                {/* ============================================================
+                    7. AKTIONEN — zuletzt und linksbündig beim Inhalt.
+                    v31.8: „Abmelden" stand per `justify-content: space-between`
+                    rechts außen neben „Angemeldet am …" (Leitfaden 2a′); die
+                    Metazeile ist jetzt oben, die Knöpfe stehen links.
+                   ============================================================ */}
+                {/* v31.8: Die Trennlinie nur, wenn darunter auch etwas steht —
+                    sonst endet eine Karte im Bearbeiten-Modus mit einem Strich. */}
+                {(notEditing || (!sessionsOnly && !hiddenRow)) && (
+                <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-start' }}>
+                  {notEditing && (
+                    <div className="dex-ui-inline" style={{ alignItems: 'flex-start' }}>
+                      {/* v30.96: Teilnahmebescheinigung — sobald mindestens ein
+                          Programmpunkt als anwesend erfasst ist. Die Daten sind
+                          die eigene Zeile (AgendaCheckIns) und das Programm des
+                          Events; ohne Erfassung gibt es nichts zu bescheinigen. */}
+                      {!hiddenRow && event.agendaCheckIn && (() => {
+                        const marks = parseAgendaCheckIns(registration && registration.AgendaCheckIns);
+                        const n = (event.agenda || []).filter(a => !!marks[a.id]).length;
+                        if (n === 0) return null;
+                        const termP = event.agendaTermPlural || (isDe ? 'Programmpunkte' : 'agenda items');
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+                            <button
+                              type="button"
+                              className="btn btn-outline dex-ui-btn-sm"
+                              onClick={() => {
+                                downloadAttendanceCertificate(
+                                  { title: event.title, startDate: event.startDate, endDate: event.endDate, location: event.location, organizers: event.organizers, agenda: event.agenda || [], agendaTermSingular: event.agendaTermSingular, agendaTermPlural: event.agendaTermPlural },
+                                  { name: `${registration.Vorname || ''} ${registration.Nachname || ''}`.trim() || registration.ParticipantName || '', email: registration.ParticipantEmail, marks },
+                                  isDe,
+                                ).catch(() => showAlert(isDe ? 'Die Bescheinigung konnte nicht erzeugt werden.' : 'The certificate could not be created.', { variant: 'error' }));
+                              }}
+                            >
+                              <Icon iconName="Certificate" style={{ fontSize: 13 }} /> {isDe ? 'Teilnahmebescheinigung' : 'Certificate'}
+                            </button>
+                            {/* v31.8: Der Umfang stand nur im `title` — auf dem
+                                Handy also nirgends (Leitfaden 6b). */}
+                            <span className="dex-ui-muted">
+                              {isDe
+                                ? `als PDF · ${n} von ${(event.agenda || []).length} ${termP} erfasst`
+                                : `as PDF · ${n} of ${(event.agenda || []).length} items recorded`}
+                            </span>
+                          </div>
+                        );
+                      })()}
+                      {/* Nachrichten zum Event: Broadcast-Mails (Einladung,
+                          Ankündigungen) aus dem Kommunikations-Log lesen. */}
+                      <button
+                        type="button"
+                        className="btn btn-outline dex-ui-btn-sm"
+                        onClick={() => openComms(event)}
+                        title={isDe ? 'Nachrichten zu diesem Event ansehen' : 'View messages for this event'}
+                      >
+                        <Mail size={14} /> {isDe ? 'Nachrichten zum Event' : 'Event messages'}
+                      </button>
+                    </div>
+                  )}
 
-                {/* v11.0: Datei-Upload-Block — wird nur gerendert, wenn der
-                    Organizer beim Event den Upload erlaubt hat und die
-                    Anmeldung aktiv ist (nicht sessionsOnly oder abgemeldet). */}
-                {event.allowAttendeeUpload && !sessionsOnly && !hiddenRow && (
-                  <MyEventUpload
-                    event={event}
-                    list={listMyEventAttachments}
-                    upload={uploadMyEventAttachment}
-                    remove={deleteMyEventAttachment}
-                  />
-                )}
-
-                {/* v19.0: Dokument-Custom-Felder — pro Feld ein Upload-Block,
-                    damit der User die Datei auch nachträglich ergänzen/ersetzen
-                    kann. */}
-                {!sessionsOnly && !hiddenRow && (event.eventSpecificFields || []).filter(f => f.type === 'document').map(df => (
-                  <MyEventDocField
-                    key={df.id}
-                    event={event}
-                    field={df}
-                    list={listFieldDocuments}
-                    upload={uploadFieldDocument}
-                    remove={deleteFieldDocument}
-                  />
-                ))}
-                {/* Registriert am + Aktionen — im Sessions-Only-Modus ausblenden,
-                    weil es keine echte Parent-Registrierung gibt. Sessions werden
-                    über die Sub-Event-Sektion oben gemanagt. */}
-                {!sessionsOnly && !hiddenRow && (
-                  <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--dex-gray-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                    <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)' }}>
-                      {t('myevents.registeredon')}: {formatDate(registration.RegistrationDate)}
-                    </span>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  {/* Abmelde-Wege — im Sessions-Only-Modus ausblenden, weil es
+                      keine echte Parent-Registrierung gibt. Sessions werden
+                      über die Termin-Sektion oben gemanagt. */}
+                  {!sessionsOnly && !hiddenRow && (
+                    <>
                       {cancellingId === event.id && !isCancelling && event.lastDeregisterDate && new Date(event.lastDeregisterDate) < new Date() && (
                         // v9.17: prominenter Late-Cancel-Hinweis — der User soll
                         // klar sehen, dass der Organizer durch die Abmeldung
                         // automatisch informiert wird (entscheidend wenn z.B.
                         // Hotel/Catering noch reagieren muss).
-                        <span style={{
-                          fontSize: '0.82rem', color: 'var(--dex-orange-dark, #b35a00)',
-                          background: 'var(--dex-orange-light, #fff3e0)',
-                          border: '1px solid var(--dex-orange, #ed8b00)',
-                          padding: '6px 10px', borderRadius: 6,
-                          display: 'block', marginBottom: 6, width: '100%',
-                          fontWeight: 500,
-                        }}>
-                          {t('myevents.latecancel')}
-                        </span>
+                        <div className="dex-ui-callout dex-ui-callout--warn" style={{ width: '100%' }}>
+                          <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                          <span>{t('myevents.latecancel')}</span>
+                        </div>
                       )}
-                      {/* v11.30: „Angaben bearbeiten"-Button wandert nach
-                          oben neben die Angaben-Tags. Hier in der Aktions-
-                          Zeile nur noch der Cancel-Edit-Button während
-                          aktiver Bearbeitung — sonst leer. */}
-                      {editingId === event.id && (
-                        <button className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '8px 16px' }} onClick={() => setEditingId(null)}>
-                          {t('general.cancel')}
-                        </button>
-                      )}
-                      {/* v10.27: Gruppe wechseln bei Split-Capacity-Events.
-                          Sichtbar nur wenn beide Kapazitäten > 0 sind und der
-                          User aktiv angemeldet (nicht abgemeldet) ist. Ein
-                          Klick öffnet einen window.confirm-Dialog mit klarem
-                          Hinweis, dass der Wechsel evtl. auf die Warteliste
-                          der Ziel-Gruppe führt, falls diese voll ist. */}
-                      {(() => {
-                        const dCap = event.durchstarterCapacity || 0;
-                        const fCap = event.funstarterCapacity || 0;
-                        if (dCap <= 0 || fCap <= 0) return null;
-                        const labelA = (event.splitLabelA && event.splitLabelA.trim()) || 'Durchstarter';
-                        const labelB = (event.splitLabelB && event.splitLabelB.trim()) || 'Funstarter';
-                        const currentType = registration.StarterType || registration.PreferredStarterType || '';
-                        const currentLabel = currentType === 'Durchstarter' ? labelA : currentType === 'Funstarter' ? labelB : '?';
-                        const targetType: 'Durchstarter' | 'Funstarter' = currentType === 'Durchstarter' ? 'Funstarter' : 'Durchstarter';
-                        const targetLabel = targetType === 'Durchstarter' ? labelA : labelB;
-                        return (
-                          <button
-                            className="btn btn-secondary"
-                            style={{ fontSize: '0.85rem', padding: '8px 16px' }}
-                            title={t('myevents.switchgroup.title') || `Aktuell in: ${currentLabel}`}
-                            onClick={async () => {
-                              const msg = `${t('myevents.switchgroup.confirm') || 'Gruppe wechseln zu'} „${targetLabel}"?\n\n` +
-                                ((t('myevents.switchgroup.hint') || 'Falls die Ziel-Gruppe bereits voll ist, kommst du auf deren Warteliste und rückst nach, sobald ein Platz frei wird.'));
-                              if (!(await confirmDialog(msg, { confirmLabel: isDe ? 'Wechseln' : 'Switch' }))) return;
-                              const r = await switchSplitGroup(event.id, targetType);
-                              if (!r.ok) {
-                                showAlert(t('myevents.switchgroup.failed') || 'Gruppen-Wechsel fehlgeschlagen.', { variant: 'error' });
-                                return;
-                              }
-                              const okMsg = r.full
-                                ? `${t('myevents.switchgroup.waitlist') || 'Wechsel registriert — du stehst auf der Warteliste der Gruppe'} „${targetLabel}".`
-                                : `${t('myevents.switchgroup.success') || 'Wechsel erfolgreich — du bist jetzt in Gruppe'} „${targetLabel}".`;
-                              showAlert(okMsg, { variant: 'success' });
-                              await loadMyRegistrations();
-                            }}
-                          >
-                            {(t('myevents.switchgroup.btn') || 'Gruppe wechseln')} → {targetLabel}
+                      <div className="dex-ui-inline" style={{ alignItems: 'flex-start' }}>
+                        {/* v11.30: „Angaben bearbeiten"-Button wandert nach
+                            oben neben die Angaben-Tags. Hier in der Aktions-
+                            Zeile nur noch der Cancel-Edit-Button während
+                            aktiver Bearbeitung — sonst leer. */}
+                        {editingId === event.id && (
+                          <button className="btn btn-secondary dex-ui-btn-sm" onClick={() => setEditingId(null)}>
+                            {t('general.cancel')}
                           </button>
-                        );
-                      })()}
-                      {/* Abmelden-Button: prominent ausgelegt damit er auf der Karte
-                          sofort gefunden wird (User-Feedback v9.8). 2-Klick-Confirm
-                          bleibt — der erste Klick färbt rot und blendet den
-                          "Doch behalten"-Button daneben ein.
-                          v22.22: Bei bereits vergangenen Events entfällt der Button —
-                          stattdessen ein grauer Hinweis (performCancel blockt
-                          zusätzlich, auch für den Auto-Cancel-Deep-Link). */}
-                      {/* v28.23: Fremd angelegte, für die Person nicht lesbare
-                          Zeile — die Selbst-Abmeldung würde an denselben
-                          Zeilen-Rechten scheitern. Statt eines Buttons, der
-                          nicht funktioniert, ein klarer Hinweis. */}
-                      {hiddenRow ? (
-                        <span style={{
-                          fontSize: '0.8rem', color: 'var(--dex-gray-500)',
-                          padding: '8px 12px', borderRadius: 8,
-                          background: 'var(--dex-gray-50, #fafafa)',
-                          border: '1px solid var(--dex-gray-200)',
-                          lineHeight: 1.4,
-                        }}>
-                          {isDe
-                            ? 'Abmelden über die Person, die dich angemeldet hat, oder über die Organizer.'
-                            : 'To cancel, contact whoever registered you, or the organizers.'}
-                        </span>
-                      ) : isEventOver(event) ? (
-                        <span style={{
-                          fontSize: '0.8rem', color: 'var(--dex-gray-500)',
-                          padding: '8px 12px', borderRadius: 8,
-                          background: 'var(--dex-gray-50, #fafafa)',
-                          border: '1px solid var(--dex-gray-200)',
-                          lineHeight: 1.4,
-                        }}>
-                          {isDe
-                            ? 'Dieses Event liegt in der Vergangenheit — eine Abmeldung ist nicht mehr möglich.'
-                            : 'This event is in the past — cancelling is no longer possible.'}
-                        </span>
-                      ) : selfCancelLocked(event) ? (
-                        /* v29.25: Selbst-Abmeldung gesperrt (komplett oder
-                           nach der Frist) — statt eines Knopfs, der nur eine
-                           Fehlermeldung produziert, steht hier der Grund und
-                           der Weg (performCancel blockt zusätzlich, auch für
-                           den Auto-Cancel-Deep-Link aus der Mail). */
-                        <span style={{
-                          fontSize: '0.8rem', color: 'var(--dex-orange-dark, #b35a00)',
-                          padding: '8px 12px', borderRadius: 8,
-                          background: 'var(--dex-orange-light, #fff3e0)',
-                          border: '1px solid var(--dex-orange, #ed8b00)',
-                          lineHeight: 1.4,
-                        }}>
-                          {selfCancelLockReason(event) === 'always'
-                            ? (isDe
-                              ? 'Bei diesem Event ist die Selbst-Abmeldung deaktiviert. Bitte wende dich zum Abmelden an die Organizer.'
-                              : 'Self-cancellation is disabled for this event. Please contact the organizers to cancel.')
-                            : (isDe
-                              ? 'Die Abmeldefrist ist abgelaufen — bei diesem Event ist eine Selbst-Abmeldung danach nicht mehr möglich. Bitte wende dich an die Organizer.'
-                              : 'The cancellation deadline has passed — for this event self-cancellation is no longer possible after the deadline. Please contact the organizers.')}
-                        </span>
-                      ) : (
-                        <>
-                      <button
-                        className={`btn dex-cancel-btn${cancellingId === event.id ? ' dex-cancel-btn--armed' : ''}`}
-                        onClick={() => handleCancel(event.id)}
-                        disabled={isCancelling}
-                        style={{
-                          fontSize: '0.95rem',
-                          fontWeight: 600,
-                          padding: '10px 20px',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 8,
-                          background: cancellingId === event.id ? 'var(--dex-red)' : '#fff',
-                          color: cancellingId === event.id ? '#fff' : 'var(--dex-red)',
-                          border: `2px solid var(--dex-red)`,
-                          borderRadius: 8,
-                          boxShadow: cancellingId === event.id ? '0 2px 8px rgba(218,41,28,0.3)' : 'none',
-                          cursor: isCancelling ? 'not-allowed' : 'pointer',
-                        }}
-                      >
-                        <X size={16} />
-                        {/* v30.20: Bei Kalender-Events sagt der Knopf, WAS er
-                            abmeldet — er kappt die GANZE Buchung (alle Tage).
-                            Nutzer-Befund: „man versteht den großen Abmelde-
-                            Button nicht" — er wirkte wie der Weg, EINEN Tag
-                            abzumelden. Einzelne Tage laufen über den Kalender
-                            (Klick auf grünen Tag + Bestätigung, s.u.). */}
-                        {cancellingId === event.id
-                          ? (isCancelling ? '...' : t('myevents.confirmcancel'))
-                          : (event.subEventCalendar
-                            ? (isDe ? 'Alle Termine abmelden' : 'Cancel all dates')
-                            : t('myevents.cancel'))}
-                      </button>
-                      {cancellingId === event.id && !isCancelling && (
-                        <button className="btn btn-secondary" onClick={() => setCancellingId(null)} style={{ fontSize: '0.85rem', padding: '8px 16px' }}>{t('myevents.keepreg')}</button>
-                      )}
-                      {event.subEventCalendar && cancellingId !== event.id && (
-                        <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', lineHeight: 1.4 }}>
-                          {isDe
-                            ? 'Einzelne Tage meldest du unten im Kalender ab: auf den grünen Tag klicken und bestätigen.'
-                            : 'To cancel a single day, use the calendar below: click the green day and confirm.'}
-                        </span>
-                      )}
-                        </>
-                      )}
-                    </div>
-                  </div>
+                        )}
+                        {/* v10.27: Gruppe wechseln bei Split-Capacity-Events.
+                            Sichtbar nur wenn beide Kapazitäten > 0 sind und der
+                            User aktiv angemeldet (nicht abgemeldet) ist. Ein
+                            Klick öffnet einen Bestätigungs-Dialog mit klarem
+                            Hinweis, dass der Wechsel evtl. auf die Warteliste
+                            der Ziel-Gruppe führt, falls diese voll ist. */}
+                        {(() => {
+                          const dCap = event.durchstarterCapacity || 0;
+                          const fCap = event.funstarterCapacity || 0;
+                          if (dCap <= 0 || fCap <= 0) return null;
+                          const labelA = (event.splitLabelA && event.splitLabelA.trim()) || 'Durchstarter';
+                          const labelB = (event.splitLabelB && event.splitLabelB.trim()) || 'Funstarter';
+                          const currentType = registration.StarterType || registration.PreferredStarterType || '';
+                          const currentLabel = currentType === 'Durchstarter' ? labelA : currentType === 'Funstarter' ? labelB : '?';
+                          const targetType: 'Durchstarter' | 'Funstarter' = currentType === 'Durchstarter' ? 'Funstarter' : 'Durchstarter';
+                          const targetLabel = targetType === 'Durchstarter' ? labelA : labelB;
+                          return (
+                            <button
+                              className="btn btn-secondary dex-ui-btn-sm"
+                              title={t('myevents.switchgroup.title') || `Aktuell in: ${currentLabel}`}
+                              onClick={async () => {
+                                const msg = `${t('myevents.switchgroup.confirm') || 'Gruppe wechseln zu'} „${targetLabel}“?\n\n` +
+                                  ((t('myevents.switchgroup.hint') || 'Falls die Ziel-Gruppe bereits voll ist, kommst du auf deren Warteliste und rückst nach, sobald ein Platz frei wird.'));
+                                if (!(await confirmDialog(msg, { confirmLabel: isDe ? 'Wechseln' : 'Switch' }))) return;
+                                const r = await switchSplitGroup(event.id, targetType);
+                                if (!r.ok) {
+                                  showAlert(t('myevents.switchgroup.failed') || 'Gruppen-Wechsel fehlgeschlagen.', { variant: 'error' });
+                                  return;
+                                }
+                                const okMsg = r.full
+                                  ? `${t('myevents.switchgroup.waitlist') || 'Wechsel registriert — du stehst auf der Warteliste der Gruppe'} „${targetLabel}“.`
+                                  : `${t('myevents.switchgroup.success') || 'Wechsel erfolgreich — du bist jetzt in Gruppe'} „${targetLabel}“.`;
+                                showAlert(okMsg, { variant: 'success' });
+                                await loadMyRegistrations();
+                              }}
+                            >
+                              {(t('myevents.switchgroup.btn') || 'Gruppe wechseln')} → {targetLabel}
+                            </button>
+                          );
+                        })()}
+                        {/* Abmelden-Button: prominent ausgelegt damit er auf der Karte
+                            sofort gefunden wird (User-Feedback v9.8). 2-Klick-Confirm
+                            bleibt — der erste Klick färbt rot und blendet den
+                            „Doch behalten"-Button daneben ein.
+                            v22.22: Bei bereits vergangenen Events entfällt der Button —
+                            stattdessen ein grauer Hinweis (performCancel blockt
+                            zusätzlich, auch für den Auto-Cancel-Deep-Link).
+                            v31.8: Wo die Abmeldung gesperrt ist, steht jetzt der
+                            gesperrte Knopf mit seiner normalen Beschriftung und
+                            der Grund darunter — vorher waren es drei `<span>` in
+                            Knopf-Optik, die wie ein Knopf aussahen und nichts
+                            taten (Leitfaden 6b). */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+                          {/* v31.8: Hier stand seit v28.23 ein `hiddenRow`-Zweig
+                              für fremd angelegte Zeilen. Die ganze Zone hängt
+                              außen an `!sessionsOnly && !hiddenRow`, der Zweig
+                              war also nie erreichbar — der Umbau hatte ihn nur
+                              mitgewachsen lassen. Der Hinweis geht nicht
+                              verloren: Der Kasten „Für dich angelegt" oben nennt
+                              den Abmeldeweg über die anmeldende Person bzw. die
+                              Organizer. */}
+                          {isEventOver(event) ? (
+                            <>
+                              <button type="button" className="btn btn-secondary dex-ui-btn-sm" disabled style={{ opacity: 0.55 }}>
+                                <X size={14} /> {cancelLabel}
+                              </button>
+                              <span className="dex-ui-callout dex-ui-callout--neutral dex-ui-callout--sm">
+                                {isDe
+                                  ? 'Dieses Event liegt in der Vergangenheit — eine Abmeldung ist nicht mehr möglich.'
+                                  : 'This event is in the past — cancelling is no longer possible.'}
+                              </span>
+                            </>
+                          ) : selfCancelLocked(event) ? (
+                            /* v29.25: Selbst-Abmeldung gesperrt (komplett oder
+                               nach der Frist) — statt eines Knopfs, der nur eine
+                               Fehlermeldung produziert, steht hier der Grund und
+                               der Weg (performCancel blockt zusätzlich, auch für
+                               den Auto-Cancel-Deep-Link aus der Mail). */
+                            <>
+                              <button type="button" className="btn btn-secondary dex-ui-btn-sm" disabled style={{ opacity: 0.55 }}>
+                                <X size={14} /> {cancelLabel}
+                              </button>
+                              <span className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm">
+                                {selfCancelLockReason(event) === 'always'
+                                  ? (isDe
+                                    ? 'Bei diesem Event ist die Selbst-Abmeldung deaktiviert. Bitte wende dich zum Abmelden an die Organizer.'
+                                    : 'Self-cancellation is disabled for this event. Please contact the organizers to cancel.')
+                                  : (isDe
+                                    ? 'Die Abmeldefrist ist abgelaufen — bei diesem Event ist eine Selbst-Abmeldung danach nicht mehr möglich. Bitte wende dich an die Organizer.'
+                                    : 'The cancellation deadline has passed — for this event self-cancellation is no longer possible after the deadline. Please contact the organizers.')}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <div className="dex-ui-inline">
+                                <button
+                                  className={`btn dex-cancel-btn${cancellingId === event.id ? ' dex-cancel-btn--armed' : ''}`}
+                                  onClick={() => handleCancel(event.id)}
+                                  disabled={isCancelling}
+                                  style={{
+                                    fontSize: '0.95rem',
+                                    fontWeight: 600,
+                                    padding: '10px 20px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 8,
+                                    background: cancellingId === event.id ? 'var(--dex-red)' : '#fff',
+                                    color: cancellingId === event.id ? '#fff' : 'var(--dex-red)',
+                                    border: `2px solid var(--dex-red)`,
+                                    borderRadius: 8,
+                                    boxShadow: cancellingId === event.id ? '0 2px 8px rgba(218,41,28,0.3)' : 'none',
+                                    cursor: isCancelling ? 'not-allowed' : 'pointer',
+                                  }}
+                                >
+                                  <X size={16} />
+                                  {/* v30.20: Bei Kalender-Events sagt der Knopf, WAS er
+                                      abmeldet — er kappt die GANZE Buchung (alle Tage).
+                                      Nutzer-Befund: „man versteht den großen Abmelde-
+                                      Button nicht" — er wirkte wie der Weg, EINEN Tag
+                                      abzumelden. Einzelne Tage laufen über den Kalender
+                                      (Klick auf grünen Tag + Bestätigung; er steht
+                                      seit v31.8 OBEN, direkt unter der Kopfzone). */}
+                                  {cancellingId === event.id
+                                    ? (isCancelling ? (isDe ? 'Wird abgemeldet…' : 'Cancelling…') : t('myevents.confirmcancel'))
+                                    : cancelLabel}
+                                </button>
+                                {cancellingId === event.id && !isCancelling && (
+                                  <button className="btn btn-secondary dex-ui-btn-sm" onClick={() => setCancellingId(null)}>{t('myevents.keepreg')}</button>
+                                )}
+                              </div>
+                              {event.subEventCalendar && cancellingId !== event.id && (
+                                <span className="dex-ui-muted">
+                                  {isDe
+                                    ? 'Einzelne Tage meldest du oben im Kalender ab: auf den grünen Tag klicken und bestätigen.'
+                                    : 'To cancel a single day, use the calendar above: click the green day and confirm.'}
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
                 )}
               </div>
             );

@@ -418,6 +418,10 @@ export const DEX_UI_CSS = `
    als Zeile. */
 .dex-ui-row--filled { background: ${SOFT}; }
 .dex-ui-row--filled:hover { background: ${G100}; }
+/* Dasselbe Ziel ueber den Rahmen statt ueber die Flaeche. Vorzuziehen,
+   sobald die Zeile einen Hover- ODER einen is-active-Zustand hat: ein
+   gesetzter Grund uebertoent beide, ein Rahmen nicht. */
+.dex-ui-row--framed { border: 1px solid ${G200}; border-radius: 10px; }
 /* Eine Zeile, die NICHT klickbar ist: Abstaende und Trennlinie wie
    dex-ui-row, aber kein Hover — Hover ohne Aktion verspricht etwas, das es
    nicht gibt (Grundsatz 3). Zusammen mit dex-ui-row setzen; die Regel steht

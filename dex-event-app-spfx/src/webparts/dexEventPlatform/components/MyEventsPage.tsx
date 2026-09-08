@@ -10,8 +10,14 @@
 
 import { eventHeaderImageOpts } from '../utils/mailHeaderImage';
 import * as React from 'react';
-import { Icon } from '@fluentui/react/lib/Icon';
 import OrganizerList from './OrganizerList';
+// v31.8: Seite nach docs/ui-leitfaden.md (Abschnitt 6) — die handgebauten
+// Kästen dieser Seite werden zu `dex-ui-`-Klassen. Das Stylesheet dazu kommt
+// nicht aus dem SCSS-Modul, sondern wird von `ensureDexUiStyles()` einmal ins
+// document.head gelegt; die Symbole stehen im eigenen Satz (Abschnitt 7), der
+// Fluent-`Icon` wird hier deshalb nicht mehr gebraucht.
+import { ensureDexUiStyles } from './dexUi';
+import { AlertCircle, Calendar, Info, Mail } from './Icons';
 
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
@@ -631,7 +637,7 @@ export default function MyEventsPage(): React.ReactElement {
     }
 
     if (entries.length === 0 && allMyNumbers.length > 0) {
-      setLoadError('Registrierungen konnten nicht geladen werden.');
+      setLoadError(t('myevents.loaderror'));
     }
     setMyEvents(entries);
     if (!silent) setIsLoading(false);
@@ -788,7 +794,8 @@ export default function MyEventsPage(): React.ReactElement {
         return;
       }
     }
-    setCancelProgress({ pct: pct(), label: isDe ? `„${(entry && entry.event.title) || ''}" wird abgemeldet…` : `Cancelling „${(entry && entry.event.title) || ''}"…` });
+    // v31.8: Nur Typografie — das schließende Zeichen war ein gerades ".
+    setCancelProgress({ pct: pct(), label: isDe ? `„${(entry && entry.event.title) || ''}“ wird abgemeldet…` : `Cancelling “${(entry && entry.event.title) || ''}”…` });
     const success = await cancelRegistration(eventId);
     stepsDone += 1;
     if (success) {
@@ -902,10 +909,20 @@ export default function MyEventsPage(): React.ReactElement {
 
   const activeEntries = myEvents.filter(e => e.registration.Status !== 'Abgemeldet');
   const cancelledEntries = myEvents.filter(e => e.registration.Status === 'Abgemeldet');
-  // v22.22: Cluster „Aktive Events" / „Vergangene Events" — gleiche Karte,
-  // getrennte Sektionen (plus die bestehende „Abgemeldete Events"-Sektion).
+  // v22.22: Cluster „Kommende Events“ / „Vergangene Events“ — gleiche Karte,
+  // getrennte Sektionen (plus die bestehende „Abgemeldete Events“-Sektion).
+  // v31.8: Der erste Cluster hieß „Aktive Events“; er zeigt aber
+  // `upcomingEntries`, also die kommenden — ein Wartelisten-Eintrag ist dort
+  // kein „aktiver" Platz. Nur die Überschrift, die Filter bleiben.
   const upcomingEntries = activeEntries.filter(e => !isEventOver(e.event));
   const pastEntries = activeEntries.filter(e => isEventOver(e.event));
+
+  // v31.8: `ensureDexUiStyles()` ist KEIN Hook (idempotenter DOM-Aufruf) und
+  // darf deshalb im Rumpf stehen. Es steht bewusst VOR den frühen Returns:
+  // Ladezustand und Erfolgs-Screen sind vollwertige Seiten und nutzen die
+  // dex-ui-Klassen ebenfalls; nach dem Return gerufen bekämen genau sie
+  // unformatiertes Markup. Genau ein Aufruf je Seite, Unterkomponenten nie.
+  ensureDexUiStyles();
 
   if (isLoading) {
     // v11.79: Border-Ring-Spinner (v11.33/v11.70) durch eine saubere
@@ -915,6 +932,13 @@ export default function MyEventsPage(): React.ReactElement {
     // dasselbe Markup wie im App-Boot-Loader (siehe DexEventPlatform.tsx,
     // dexProgressSlide-Keyframe): eine endlos durchlaufende grüne Zone
     // über einer grauen Spur. Kein Rotations-Element, kein Strich-Quirk.
+    // v31.8: Der Ladeschirm trug kurzzeitig `dex-ui-empty`. Das ist die Optik
+    // für LEERE Listen — gestrichelter Rahmen, grauer Grund, also ausgerechnet
+    // das Bild von „hier ist nichts“. Während geladen wird, weiß die Seite
+    // aber noch gar nichts; sie darf keine Aussage über die Daten machen.
+    // Deshalb wieder die neutrale, rahmenlose Fläche; `dex-ui-empty` bleibt
+    // dem echten Leerzustand weiter unten. Balken und Keyframe sind unberührt
+    // der v11.79-Fix gegen den SharePoint-Quirk.
     return (
       <div className="page-container text-center" style={{ padding: '64px 16px' }}>
         <div style={{
@@ -1088,6 +1112,40 @@ export default function MyEventsPage(): React.ReactElement {
     uploadMyEventAttachment,
   };
 
+  // v22.22: Der Karten-Renderer ist die frühere map-Callback-Funktion —
+  // unverändert, nur extrahiert, damit „Kommende Events“ und „Vergangene
+  // Events“ dieselbe Karte in getrennten Clustern rendern können.
+  const renderMyEventCard = (entry: MyEventEntry): React.ReactElement | null => (
+    <MyEventCard key={entry.event.id} entry={entry} {...myEventCardProps} />
+  );
+  // v24.41: INFO-Anmeldungen — jemand anderes (Assistenz) hat MICH
+  // angemeldet und verwaltet die Anmeldung; ich sehe nur Info. Nur die
+  // zeigen, die nicht ohnehin schon als eigene Karte erscheinen.
+  // v31.8: Die Liste stand bis hierher in einer IIFE INNERHALB von
+  // `activeEntries.length > 0`. Sie gehört nicht an die Zahl der eigenen
+  // Anmeldungen — wer selbst nirgends angemeldet ist, aber eine fremde
+  // Anmeldung verwaltet, sah sonst den Leerzustand statt seiner Aufgabe.
+  const shownEventIds = new Set<string>([...upcomingEntries, ...pastEntries].map(e => e.event.id));
+  const visibleInfo = (infoAsParticipant || []).filter(d => d.eventId && !shownEventIds.has(d.eventId));
+  // Pro Event nur EINEN Info-Eintrag (Klammer + Sub-Events teilen sich
+  // dieselbe verwaltende Person).
+  const infoByEvent = new Map<string, typeof visibleInfo[number]>();
+  for (const d of visibleInfo) { if (!infoByEvent.has(d.eventId)) infoByEvent.set(d.eventId, d); }
+  const infoList = Array.from(infoByEvent.values());
+
+  // v31.8: Der Leerzustand ist eine Aussage über die GANZE Seite („hier steht
+  // nichts“), nicht über die eigenen Anmeldungen. Seit die beiden seitenweiten
+  // Kästen nicht mehr an `activeEntries.length > 0` hängen — was so gewollt
+  // ist —, können sie zusammen mit ihm rendern: Die Seite behauptete dann
+  // „Du bist noch für kein Event angemeldet“ über einem Kasten mit offenen
+  // Aufgaben. Er zeigt sich deshalb nur, wenn wirklich sonst nichts da ist.
+  // Die Bedingungen der Kästen selbst bleiben unangetastet.
+  const pageHasContent =
+    activeEntries.length > 0
+    || cancelledEntries.length > 0
+    || openRequestsToMe.length > 0
+    || infoList.length > 0;
+
   return (
     // v9.9: max-width damit "Meine Events" auf Desktop nicht die volle Breite
     // einnimmt — die einspaltige Karten-Liste sieht sonst auf >1400px-Screens
@@ -1106,146 +1164,182 @@ export default function MyEventsPage(): React.ReactElement {
       `}</style>
       {/* v11.99: Page-Level-Refresh-Button entfernt — der Header oben
           rechts hat bereits einen Aktualisieren-Button, doppelt verwirrt. */}
-      <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: 0 }}>{t('myevents.title')}</h2>
+      <div className="dex-ui-page-head">
+        <h2 className="dex-ui-page-head-title">{t('myevents.title')}</h2>
       </div>
 
+      {/* v31.8: Der Ladefehler war eine rote Textzeile — ohne Symbol, ohne
+          englische Fassung und ohne Ausweg. Er sagt jetzt, was er bedeutet
+          (der Stand unten kann unvollständig sein) und bietet den zweiten
+          Versuch an: Ein Lesefehler ist keine Aussage über die Daten, und wer
+          hier nichts sieht, soll nicht glauben, er sei nirgends angemeldet. */}
       {loadError && (
-        <div className="card" style={{ padding: 16, marginBottom: 16, color: 'var(--dex-red)' }}>
-          {loadError}
+        <div className="dex-ui-callout dex-ui-callout--danger" style={{ marginBottom: 16 }}>
+          <span className="dex-ui-callout-icon"><AlertCircle size={18} /></span>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontWeight: 700 }}>{loadError}</div>
+            {/* v31.8: Der Hinweis sagt, was der Kasten BEDEUTET — nicht, was
+                man klicken soll. Vorher stand hier „… Lade die Seite neu.“,
+                direkt über dem Knopf, der genau das ohne Reload tut: zwei
+                Bedienwege für dieselbe Sache nebeneinander, und der
+                schlechtere zuerst. Der Schlüssel ist entsprechend umgetextet. */}
+            <div style={{ marginTop: 3 }}>{t('myevents.loaderror.hint')}</div>
+            <div style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="btn btn-secondary dex-ui-btn-sm"
+                onClick={() => {
+                  loadMyRegistrations().catch(err => {
+                    console.warn('[DEX] Erneutes Laden der Anmeldungen fehlgeschlagen:', err);
+                    // Ohne das bliebe der Ladeschirm stehen — loadMyRegistrations
+                    // setzt isLoading nur im Erfolgsfall zurück.
+                    setIsLoading(false);
+                  });
+                }}
+              >
+                {t('myevents.retry')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
-      {activeEntries.length === 0 && cancelledEntries.length === 0 && !loadError && (
-        <div className="card text-center" style={{ padding: 48 }}>
-          <p style={{ color: 'var(--dex-gray-400)' }}>{t('myevents.empty')}</p>
-          <button className="btn btn-primary mt-24" onClick={() => navigate('register')}>{t('myevents.browse')}</button>
+      {/* v24.42: Offene Anforderungen AN MICH (ich verwalte die Anmeldung).
+          v31.8: Der Kasten hing an `activeEntries.length > 0` und war damit
+          für alle unsichtbar, die selbst nirgends angemeldet sind — also für
+          genau die Assistenzen, an die er sich richtet. Der Erklärsatz stand
+          zudem unter JEDER Anforderung; er gehört einmal nach oben. */}
+      {openRequestsToMe.length > 0 && (
+        <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginBottom: 16 }}>
+          <span className="dex-ui-callout-icon"><Mail size={18} /></span>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontWeight: 700 }}>
+              {isDe ? `Offene Anforderungen an dich (${openRequestsToMe.length})` : `Open requests for you (${openRequestsToMe.length})`}
+            </div>
+            <div style={{ marginTop: 3 }}>
+              {isDe
+                ? 'Du verwaltest diese Anmeldungen. Führe die Änderung oder Abmeldung wie gewohnt aus — in der Liste unten oder in der Kachel „Assistenz“ — und markiere sie danach hier als erledigt.'
+                : 'You manage these registrations. Carry out the change or cancellation as usual — in the list below or in the “Assistance” tile — and then mark it as done here.'}
+            </div>
+            <div className="dex-ui-stack" style={{ marginTop: 10 }}>
+              {openRequestsToMe.map(l => (
+                <div key={l.id} className="dex-ui-card" style={{ padding: '10px 12px' }}>
+                  <div style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>
+                    {l.requestType === 'cancel' ? (isDe ? 'Abmeldung' : 'Cancellation') : (isDe ? 'Änderung' : 'Change')}
+                    {' · '}{l.eventTitle || l.eventId} · {l.participantName || l.participantEmail}
+                  </div>
+                  <div className="dex-ui-row-sub">
+                    {isDe ? 'von' : 'from'} {l.requestedByName || l.requestedByEmail}{l.requestNote ? ` — „${l.requestNote}“` : ''}
+                  </div>
+                  <div className="dex-ui-inline" style={{ marginTop: 8 }}>
+                    <button type="button" className="btn btn-secondary dex-ui-btn-sm" onClick={() => { void resolveReq(l, 'Done'); }}>
+                      {isDe ? 'Als erledigt markieren' : 'Mark as done'}
+                    </button>
+                    <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" onClick={() => { void resolveReq(l, 'Rejected'); }}>
+                      {isDe ? 'Ablehnen' : 'Reject'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
-      {activeEntries.length > 0 && (() => {
-        // v22.22: Der Karten-Renderer ist die frühere map-Callback-Funktion —
-        // unverändert, nur extrahiert, damit „Aktive Events" und „Vergangene
-        // Events" dieselbe Karte in getrennten Clustern rendern können.
-        const renderMyEventCard = (entry: MyEventEntry): React.ReactElement | null => (
-          <MyEventCard key={entry.event.id} entry={entry} {...myEventCardProps} />
-        );
-        const clusterHeadingStyle: React.CSSProperties = {
-          margin: '0 0 12px', fontSize: '1.05rem',
-          color: 'var(--dex-gray-700)', display: 'flex', alignItems: 'center', gap: 8,
-        };
-        // v24.41: INFO-Anmeldungen — jemand anderes (Assistenz) hat MICH
-        // angemeldet und verwaltet die Anmeldung; ich sehe nur Info. Nur die
-        // zeigen, die nicht ohnehin schon als eigene Karte erscheinen.
-        const shownEventIds = new Set<string>([...upcomingEntries, ...pastEntries].map(e => e.event.id));
-        const visibleInfo = (infoAsParticipant || []).filter(d => d.eventId && !shownEventIds.has(d.eventId));
-        // Pro Event nur EINEN Info-Eintrag (Klammer + Sub-Events teilen sich
-        // dieselbe verwaltende Person).
-        const infoByEvent = new Map<string, typeof visibleInfo[number]>();
-        for (const d of visibleInfo) { if (!infoByEvent.has(d.eventId)) infoByEvent.set(d.eventId, d); }
-        const infoList = Array.from(infoByEvent.values());
-        return (
-          <>
-            {/* v24.42: Offene Anforderungen AN MICH (ich verwalte die Anmeldung). */}
-            {openRequestsToMe.length > 0 && (
-              <div style={{ marginBottom: 24, background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange, #ed8b00)', borderRadius: 12, padding: '14px 16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <Icon iconName="Mail" style={{ fontSize: 18, color: 'var(--dex-orange, #ed8b00)' }} />
-                  <strong style={{ fontSize: '0.95rem', color: '#b35a00' }}>
-                    {isDe ? `Offene Anforderungen (${openRequestsToMe.length})` : `Open requests (${openRequestsToMe.length})`}
-                  </strong>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {openRequestsToMe.map(l => (
-                    <div key={l.id} style={{ fontSize: '0.85rem', borderTop: '1px solid rgba(237,139,0,0.25)', paddingTop: 8 }}>
-                      <div>
-                        <strong>{l.requestType === 'cancel' ? (isDe ? 'Abmeldung' : 'Cancellation') : (isDe ? 'Änderung' : 'Change')}</strong>
-                        {' · '}{l.eventTitle || l.eventId} · {l.participantName || l.participantEmail}
-                      </div>
-                      <div style={{ color: 'var(--dex-gray-600)', fontSize: '0.8rem', marginTop: 2 }}>
-                        {isDe ? 'von' : 'from'} {l.requestedByName || l.requestedByEmail}{l.requestNote ? ` — „${l.requestNote}"` : ''}
-                      </div>
-                      <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-                        <button type="button" className="btn btn-primary" style={{ fontSize: '0.78rem', padding: '4px 12px' }} onClick={() => { void resolveReq(l, 'Done'); }}>
-                          {isDe ? 'Als erledigt markieren' : 'Mark as done'}
-                        </button>
-                        <button type="button" className="btn btn-secondary" style={{ fontSize: '0.78rem', padding: '4px 12px' }} onClick={() => { void resolveReq(l, 'Rejected'); }}>
-                          {isDe ? 'Ablehnen' : 'Reject'}
-                        </button>
-                      </div>
-                      <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.76rem', marginTop: 4 }}>
-                        {isDe ? 'Bitte führe die Änderung/Abmeldung wie gewohnt aus (oben in dieser Liste bzw. in der „Assistenz"-Kachel), dann hier als erledigt markieren.' : 'Please perform the change/cancellation as usual, then mark it done here.'}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {infoList.length > 0 && (
-              <div style={{ marginBottom: 24, background: 'rgba(134,188,37,0.06)', border: '1px solid var(--dex-green, #86bc25)', borderRadius: 12, padding: '14px 16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <Icon iconName="ContactCard" style={{ fontSize: 18, color: 'var(--dex-green-dark, #4a7c1f)' }} />
-                  <strong style={{ fontSize: '0.95rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                    {isDe ? 'Von deiner Assistenz verwaltet' : 'Managed by your assistant'}
-                  </strong>
-                </div>
-                <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-                  {isDe
-                    ? 'Diese Anmeldungen wurden für dich vorgenommen und werden von der angegebenen Person verwaltet. Du siehst sie hier zur Info und kannst eine Änderung oder Abmeldung anfordern (die verwaltende Person bekommt eine Mail mit Direktlink).'
-                    : 'These registrations were made for you and are managed by the person below. Shown here for your information; you can request a change or cancellation (the managing person gets a mail with a direct link).'}
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {infoList.map((d, i) => (
-                    <div key={`${d.eventId}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.86rem' }}>
-                      <strong>{d.eventTitle || d.eventId}</strong>
-                      <span style={{ color: 'var(--dex-gray-500)' }}>
-                        · {isDe ? 'verwaltet von' : 'managed by'} {d.assistantName || d.assistantEmail}
+      {/* v31.8: Grün hieß auf diesen Seiten dreimal etwas anderes (Hotel, Team,
+          Assistenz). Dieser Kasten erklärt nur, deshalb blau. */}
+      {infoList.length > 0 && (
+        <div className="dex-ui-callout dex-ui-callout--info" style={{ marginBottom: 16 }}>
+          <span className="dex-ui-callout-icon"><Info size={18} /></span>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontWeight: 700 }}>
+              {isDe ? 'Von deiner Assistenz verwaltet' : 'Managed by your assistant'}
+            </div>
+            <div style={{ marginTop: 3 }}>
+              {isDe
+                ? 'Diese Anmeldungen wurden für dich vorgenommen und werden von der genannten Person verwaltet. Du siehst sie hier zur Info und kannst eine Änderung oder Abmeldung anfordern — die verwaltende Person bekommt eine Mail mit Direktlink.'
+                : 'These registrations were made for you and are managed by the person named below. They are shown here for your information; you can request a change or cancellation — the managing person gets a mail with a direct link.'}
+            </div>
+            <div className="dex-ui-stack" style={{ marginTop: 10 }}>
+              {infoList.map((d, i) => (
+                <div key={`${d.eventId}-${i}`} className="dex-ui-card" style={{ padding: '10px 12px' }}>
+                  <div style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>
+                    {d.eventTitle || d.eventId}
+                  </div>
+                  <div className="dex-ui-row-sub">
+                    {isDe ? 'verwaltet von' : 'managed by'} {d.assistantName || d.assistantEmail}
+                  </div>
+                  <div className="dex-ui-inline" style={{ marginTop: 8 }}>
+                    {d.requestStatus === 'Open' ? (
+                      <span className="dex-ui-pill dex-ui-pill--orange">
+                        {isDe ? 'Anforderung gesendet' : 'Request sent'}
                       </span>
-                      {d.requestStatus === 'Open' ? (
-                        <span style={{ color: 'var(--dex-orange-dark, #b35a00)', fontSize: '0.78rem' }}>
-                          · {isDe ? 'Anforderung gesendet' : 'Request sent'}
-                        </span>
-                      ) : (
-                        <span style={{ display: 'inline-flex', gap: 6 }}>
-                          <button type="button" className="btn btn-secondary" style={{ fontSize: '0.76rem', padding: '3px 10px' }} onClick={() => { void submitAssistantRequest(d, 'change'); }}>
-                            {isDe ? 'Änderung anfordern' : 'Request change'}
-                          </button>
-                          <button type="button" className="btn btn-secondary" style={{ fontSize: '0.76rem', padding: '3px 10px', color: 'var(--dex-red, #c00)' }} onClick={() => { void submitAssistantRequest(d, 'cancel'); }}>
-                            {isDe ? 'Abmeldung anfordern' : 'Request cancellation'}
-                          </button>
-                        </span>
-                      )}
-                    </div>
-                  ))}
+                    ) : (
+                      <>
+                        <button type="button" className="btn btn-secondary dex-ui-btn-sm" onClick={() => { void submitAssistantRequest(d, 'change'); }}>
+                          {isDe ? 'Änderung anfordern' : 'Request change'}
+                        </button>
+                        {/* .btn-danger ist in dieser App bewusst grau und roter
+                            Text auf btn-secondary ist laut Leitfaden 6b keine
+                            Warnung — die Folge steht im Rückfrage-Dialog. */}
+                        <button type="button" className="btn btn-secondary dex-ui-btn-sm" onClick={() => { void submitAssistantRequest(d, 'cancel'); }}>
+                          {isDe ? 'Abmeldung anfordern' : 'Request cancellation'}
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
-            {upcomingEntries.length > 0 && (
-              <>
-                <h3 style={clusterHeadingStyle}>
-                  {isDe ? 'Aktive Events' : 'Active events'}
-                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-400)' }}>({upcomingEntries.length})</span>
-                </h3>
-                <div className="my-events-list">{upcomingEntries.map(renderMyEventCard)}</div>
-              </>
-            )}
-            {pastEntries.length > 0 && (
-              <>
-                <h3 style={{ ...clusterHeadingStyle, marginTop: upcomingEntries.length > 0 ? 28 : 0 }}>
-                  {isDe ? 'Vergangene Events' : 'Past events'}
-                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-400)' }}>({pastEntries.length})</span>
-                </h3>
-                <p style={{ margin: '-6px 0 12px', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
-                  {isDe
-                    ? 'Diese Events liegen in der Vergangenheit — eine Abmeldung ist hier nicht mehr möglich.'
-                    : 'These events are in the past — cancelling is no longer possible here.'}
-                </p>
-                <div className="my-events-list">{pastEntries.map(renderMyEventCard)}</div>
-              </>
-            )}
-          </>
-        );
-      })()}
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!pageHasContent && !loadError && (
+        <div className="dex-ui-empty">
+          <span className="dex-ui-empty-icon"><Calendar size={22} strokeWidth={1.6} /></span>
+          <div className="dex-ui-empty-title">{t('myevents.empty')}</div>
+          <div>
+            {isDe
+              ? 'Sobald du dich für ein Event anmeldest, findest du es hier — mit Terminen, Unterlagen und deinem Code für den Check-in.'
+              : 'As soon as you register for an event you will find it here — with dates, documents and your check-in code.'}
+          </div>
+          <div style={{ marginTop: 14 }}>
+            <button className="btn btn-primary" onClick={() => navigate('register')}>{t('myevents.browse')}</button>
+          </div>
+        </div>
+      )}
+
+      {upcomingEntries.length > 0 && (
+        <section className="dex-ui-section">
+          {/* v31.8: hieß bis hierher „Aktive Events“ — gemeint ist
+              `upcomingEntries`, also die kommenden. Ein Wartelisten-Eintrag
+              stand darunter als „aktiv“, obwohl er noch kein Platz ist. */}
+          <h3 className="dex-ui-section-title">
+            {isDe ? 'Kommende Events' : 'Upcoming events'}
+            <span className="dex-ui-pill dex-ui-pill--gray">{upcomingEntries.length}</span>
+          </h3>
+          <div className="my-events-list">{upcomingEntries.map(renderMyEventCard)}</div>
+        </section>
+      )}
+      {pastEntries.length > 0 && (
+        <section className="dex-ui-section">
+          <h3 className="dex-ui-section-title">
+            {isDe ? 'Vergangene Events' : 'Past events'}
+            <span className="dex-ui-pill dex-ui-pill--gray">{pastEntries.length}</span>
+          </h3>
+          {/* v31.8: Der Satz sagte nur, was NICHT mehr geht. Wonach man nach
+              einem Event sucht — Unterlagen, Programm, Bescheinigung — steht
+              jetzt zuerst; die Bescheinigung nur unter ihrer Bedingung, sie
+              gibt es ausschließlich bei erfasster Anwesenheit. */}
+          <p className="dex-ui-section-desc">
+            {isDe
+              ? 'Unterlagen, Programm und — wenn deine Anwesenheit erfasst wurde — die Teilnahmebescheinigung findest du weiterhin auf der Karte. Abmelden ist bei vergangenen Events nicht mehr möglich.'
+              : 'Documents, schedule and — if your attendance was recorded — your attendance certificate are still on the card. Cancelling is no longer possible for past events.'}
+          </p>
+          <div className="my-events-list">{pastEntries.map(renderMyEventCard)}</div>
+        </section>
+      )}
 
       {cancelledEntries.length > 0 && (
         // v11.97: Cancelled-Liste einklappbar — Default eingeklappt, damit

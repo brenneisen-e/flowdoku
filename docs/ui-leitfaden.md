@@ -297,6 +297,7 @@ Mauszeiger, hier oft nur einen Finger.
 | `dex-ui-pill--wrap` / `--sm` | Pille mit umbrechendem Text (Freitext-Antworten) · kompakte Pille |
 | `dex-ui-avatar--xs` | 22-px-Foto, damit eine Pille flach bleibt |
 | `dex-ui-row--filled` | Zeile mit dauerhaftem Grund — `dex-ui-row` ist ohne Hover transparent und auf dem Handy als Zeile unsichtbar (6b) |
+| `dex-ui-row--framed` | Dasselbe über den Rahmen. **Vorzuziehen, sobald die Zeile einen Hover- oder `is-active`-Zustand hat** — ein gesetzter Grund übertönt beide, ein Rahmen nicht |
 | `dex-ui-row--static` | Zeile ohne Hover: Anzeige, kein Klick (zusammen mit `dex-ui-row`) |
 | `dex-ui-row-title--wrap` | Zeilentitel, der umbricht statt zu kürzen — ein gekürzter Dateiname steht sonst nur im `title` |
 | `dex-ui-row-link` | Anklickbarer Text in einer Zeile (unterstreicht bei Hover), leiser als `dex-ui-textbtn` |
