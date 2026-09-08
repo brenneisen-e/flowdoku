@@ -78,6 +78,23 @@ type ShirtDeskInfo = {
   proposal: string | null;
   preset: string;
   issued: ShirtIssue | null;
+  /**
+   * v31.6: Kein Eintrag in der Spalte — und trotzdem zählt die Bestellliste
+   * diese Person als versorgt, weil sie eingecheckt ist (`issuedAssumed`,
+   * v31.4.4). Am Tisch war diese Annahme bisher unsichtbar: Der Knopf sagte
+   * „Trikot ausgeben", die Bestellliste sagte „abgeholt" — zwei Zahlen, die
+   * sich widersprechen, und nichts erklärte es (Nutzer 08.09.2026). Deshalb
+   * steht sie jetzt an der Zeile. Der Knopf bleibt: Eine Annahme ist kein
+   * Eintrag, und wer wirklich ein Trikot herausgibt, hält es fest.
+   */
+  assumed: boolean;
+  /**
+   * v31.6 (Nachzug): Die Wunschgröße ist vergeben UND es gibt keine
+   * Ausweichgröße mehr. `proposal` allein sagt das nicht — es ist auch dann
+   * leer, wenn die Wunschgröße schlicht verfügbar ist. Genau diese
+   * Verwechslung hätte das automatische Festhalten für ALLE abgeschaltet.
+   */
+  noneLeft: boolean;
   sizes: string[];
 };
 
@@ -281,7 +298,11 @@ export default function CheckInPage(): React.ReactElement {
   // v31.4: Trikot-Ausgabe — Größenwahl der Bestätigungskarte, Größenwahl des
   // Zeilen-Dialogs und ein gemeinsames Busy-Flag. Zwei getrennte Werte, weil
   // beide Stellen gleichzeitig offen sein können (Karte oben, Liste darunter).
-  const [shirtAsk, setShirtAsk] = React.useState<{ reg: import('../services/EventService').SPRegistration; name: string; eventId: string } | null>(null);
+  // v31.6: `correct` — dieselbe Größenwahl, aber die Person hat ihr Trikot
+  // schon. Dann ist es keine Ausgabe, sondern eine Korrektur, und der Dialog
+  // muss das sagen; „Trikot ausgeben" an einer Zeile mit Eintrag liest sich
+  // wie ein zweites Trikot aus dem Karton.
+  const [shirtAsk, setShirtAsk] = React.useState<{ reg: import('../services/EventService').SPRegistration; name: string; eventId: string; correct: boolean } | null>(null);
   const [cardShirtSize, setCardShirtSize] = React.useState('');
   const [askShirtSize, setAskShirtSize] = React.useState('');
   const [shirtBusy, setShirtBusy] = React.useState(false);
@@ -297,6 +318,18 @@ export default function CheckInPage(): React.ReactElement {
     prevStatus: string; agendaItemId?: string; agendaLabel?: string; kind?: 'checkin' | 'noshow' | 'shirt';
     /** v31.4: Ausgegebene Größe — die Zeile nennt sie, sonst weiß niemand, was er zurücknimmt. */
     shirtSize?: string;
+    /**
+     * v31.6: Die Ausgabe, die DIESER Check-in mitgeschrieben hat (Größe und
+     * der Zeitstempel, den `setShirtIssued` dafür vergeben hat).
+     *
+     * Der Zeitstempel ist das Unterscheidungsmerkmal beim Rückgängig: Jeder
+     * Schreibvorgang vergibt ein neues `at`, eine von Hand gesetzte oder
+     * korrigierte Ausgabe trägt deshalb einen anderen. Stimmt er noch, steht
+     * unverändert das in der Zeile, was der Check-in geschrieben hat — nur das
+     * darf mit zurückgenommen werden.
+     */
+    autoShirtSize?: string;
+    autoShirtAt?: string;
   };
   const [recentCheckIns, setRecentCheckIns] = React.useState<RecentCheckIn[]>([]);
   const [undoBusyKey, setUndoBusyKey] = React.useState<string>('');
@@ -522,6 +555,12 @@ export default function CheckInPage(): React.ReactElement {
       proposal: (a && a.proposal) || null,
       preset: (a && a.proposal) || (splitShirtSize(wish).isSize ? wish : ''),
       issued,
+      // v31.6: Nur wo KEIN Eintrag steht — sonst wäre „angenommen" eine
+      // Aussage über eine Zeile, die längst eine Tatsache trägt.
+      assumed: !issued && !!(a && a.issued && a.issuedAssumed),
+      // v31.6: `short` heißt „Wunschgröße vergeben"; ohne `proposal` ist auch
+      // keine Ausweichgröße mehr da. Erst beides zusammen ist „nichts mehr".
+      noneLeft: !!(a && a.short && !a.proposal),
       sizes: alloc ? alloc.rows.map(r => r.size) : [],
     };
   }, [shirtAllocFor, shirtFieldsFor]);
@@ -1364,12 +1403,16 @@ export default function CheckInPage(): React.ReactElement {
    * Abhilfe — und die gehört in den Satz, sonst probiert das Team es am
    * Lauftag zehnmal.
    */
+  // v31.6: Die Abhilfe getrennt — sie hängt am Status, nicht am Satzbau. Die
+  // Meldung nach einem Check-in nennt den Namen schon selbst und braucht nur
+  // diesen Teil (sonst stünde er zweimal im selben Satz).
+  const shirtFixHint = (status: number): string => (status === 400
+    ? (isDe
+      ? 'Auf dieser Teilnehmerliste fehlt die Spalte ShirtIssued — ein Organizer führt im Organizer Center einmal „Spalten fixen" aus, danach klappt es.'
+      : 'This attendee list is missing the ShirtIssued column — an organizer runs "Fix columns" in the organizer center once, then it works.')
+    : (isDe ? 'Bitte erneut versuchen.' : 'Please try again.'));
   const shirtFailMsg = (name: string, status: number, undo: boolean): string => {
-    const fix = status === 400
-      ? (isDe
-        ? 'Auf dieser Teilnehmerliste fehlt die Spalte ShirtIssued — ein Organizer führt im Organizer Center einmal „Spalten fixen" aus, danach klappt es.'
-        : 'This attendee list is missing the ShirtIssued column — an organizer runs "Fix columns" in the organizer center once, then it works.')
-      : (isDe ? 'Bitte erneut versuchen.' : 'Please try again.');
+    const fix = shirtFixHint(status);
     const what = isDe
       ? (undo ? 'die Rücknahme der Trikot-Ausgabe' : 'die Trikot-Ausgabe')
       : (undo ? 'undoing the shirt handout' : 'the shirt handout');
@@ -1377,6 +1420,20 @@ export default function CheckInPage(): React.ReactElement {
       ? `${name} — ${what} konnte nicht gespeichert werden${status ? ` (HTTP ${status})` : ''}. ${fix}`
       : `${name} — ${what} could not be saved${status ? ` (HTTP ${status})` : ''}. ${fix}`;
   };
+  /**
+   * v31.6: Die Größe von der Check-in-Zeile in „Letzte Check-ins" nehmen.
+   *
+   * Sie steht dort als „das hat der Check-in mitgeschrieben". Sobald jemand von
+   * Hand korrigiert oder zurücknimmt, stimmt das nicht mehr — die Pille wäre
+   * eine Angabe über einen Stand, den es nicht mehr gibt. Der Zeitstempel
+   * bleibt bewusst stehen: An ihm erkennt das Rückgängig, dass die Ausgabe in
+   * der Zeile nicht mehr die automatische ist und deshalb NICHT mitgelöscht
+   * werden darf.
+   */
+  const dropAutoShirtLabel = (list: RecentCheckIn[], regId: number, subsiteUrl: string): RecentCheckIn[] =>
+    list.map(x => (x.autoShirtSize && x.regId === regId && x.subsiteUrl === subsiteUrl)
+      ? { ...x, autoShirtSize: undefined }
+      : x);
   /** v31.4: Zeile schreiben, Cache-Zeile ersetzen, Merker setzen. Der
    *  Cache-Patch ist Pflicht: Die Verteilung rechnet aus genau diesen Zeilen,
    *  und ohne den Patch verplant sie das Stück ein zweites Mal (dasselbe
@@ -1384,6 +1441,9 @@ export default function CheckInPage(): React.ReactElement {
   const applyShirtIssue = async (
     target: { regId: number; name: string; eventId: string; subsiteUrl: string; prevStatus: string },
     size: string,
+    // v31.6: Dieselbe Schreibweise, andere Ansage — die Person hatte schon
+    // einen Eintrag, es geht also nicht ein zweites Trikot aus dem Karton.
+    correction?: boolean,
   ): Promise<ShirtIssue | null> => {
     const clean = (size || '').trim();
     if (!eventService || !clean || !target.subsiteUrl) return null;
@@ -1403,13 +1463,79 @@ export default function CheckInPage(): React.ReactElement {
         eventId: target.eventId, subsiteUrl: target.subsiteUrl,
         prevStatus: target.prevStatus, kind: 'shirt', shirtSize: clean,
       };
-      setRecent([entry, ...recentRef.current]);
+      setRecent([entry, ...dropAutoShirtLabel(recentRef.current, target.regId, target.subsiteUrl)]);
       setResultMessage(isDe
-        ? `${target.name} — Trikot ${clean} ausgegeben.`
-        : `${target.name} — shirt ${clean} handed out.`);
+        ? (correction ? `${target.name} — Größe auf ${clean} geändert.` : `${target.name} — Trikot ${clean} ausgegeben.`)
+        : (correction ? `${target.name} — size changed to ${clean}.` : `${target.name} — shirt ${clean} handed out.`));
       setResultType('success');
       return issue;
     } finally { setShirtBusy(false); }
+  };
+  /**
+   * v31.6: Der Check-in hält die Ausgabe mit fest.
+   *
+   * Nutzer-Entscheidung 08.09.2026 auf die Frage „Bekommt bei euch jeder, der
+   * eincheckt, in dem Moment auch sein Trikot?": „Ja, immer zusammen." Damit
+   * ist die v31.4-Trennung („Ausgabe ohne Check-in und Check-in ohne Ausgabe
+   * gibt es beide") für dieses Team falsch herum — sie ließ eine eingecheckte
+   * Person am Tisch weiter mit dem Knopf „Trikot ausgeben" stehen, während die
+   * Bestellliste sie über `issuedAssumed` längst als abgeholt zählte.
+   *
+   * Festgehalten wird die Größe, die der Tisch tatsächlich herausgeben würde:
+   * `shirtDeskInfoFor(...).preset` — der Gegenvorschlag, wenn die Wunschgröße
+   * vergeben ist, sonst die Wunschgröße. Bewusst dieselbe Rechnung, die die
+   * Größenwahl vorbelegt; eine zweite wäre die nächste Stelle, an der zwei
+   * Zahlen auseinanderlaufen.
+   *
+   * Vier Fälle bekommen KEINEN Eintrag, jeder aus eigenem Grund:
+   *  - kein Größenfeld am Event → `shirtDeskInfoFor` liefert `null`;
+   *  - keine Antwort → `preset` ist leer;
+   *  - eine Antwort, die gar keine Größe ist („T-Shirt bereits aus Vorjahren
+   *    vorhanden") → `splitShirtSize(...).isSize === false`, `preset` bleibt
+   *    ebenfalls leer. Diese Person bekommt kein Trikot; ein Eintrag wäre eine
+   *    Erfindung und würde den Bestand falsch reduzieren;
+   *  - ein bereits festgehaltener Eintrag → eine Korrektur vom Tisch schlägt
+   *    jede Automatik.
+   *
+   * Aufgerufen wird das VOR dem Status-Patch auf „Eingecheckt": Sobald die
+   * Zeile im Cache eingecheckt ist, greift die Annahme aus v31.4.4, und
+   * `shirtAllocate` liefert für die Person weder `short` noch `proposal` —
+   * der Gegenvorschlag wäre still weg und wir hielten die vergebene
+   * Wunschgröße fest.
+   */
+  type AutoShirtResult =
+    | { done: 'skip' }
+    | { done: 'ok'; issue: ShirtIssue }
+    | { done: 'fail'; status: number };
+  const autoIssueShirtOnCheckIn = async (
+    target: { regId: number; eventId: string; subsiteUrl: string; email: string },
+  ): Promise<AutoShirtResult> => {
+    if (!eventService || !target.subsiteUrl || !target.regId) return { done: 'skip' };
+    const si = shirtDeskInfoFor({ Id: target.regId, ParticipantEmail: target.email }, target.eventId);
+    if (!si || si.issued) return { done: 'skip' };
+    const size = (si.preset || '').trim();
+    if (!size) return { done: 'skip' };
+    /**
+     * v31.6 (Nachzug): Ist die Wunschgröße vergeben UND keine Ausweichgröße
+     * mehr da, hält der Tisch NICHTS fest.
+     *
+     * `preset` fällt in diesem Fall auf die Wunschgröße zurück — die ist aber
+     * gerade das, was es nicht mehr gibt. Automatisch einzutragen hieße, eine
+     * Ausgabe zu behaupten, die niemand gemacht hat: In der Zeile stünde eine
+     * Tatsache, in der Bestellliste eine Über-Ausgabe, und beides wäre
+     * erfunden. Die Karte sagt hier ohnehin „bitte am Ausgabetisch klären";
+     * was dabei herauskommt, trägt der Helfer über „Trikot ausgeben" nach.
+     *
+     * Gezählt ist die Person trotzdem: Sobald sie eingecheckt ist, greift die
+     * Annahme aus v31.4.4 — aber als ANNAHME, sichtbar als solche, und nicht
+     * als festgehaltene Ausgabe.
+     */
+    if (si.noneLeft) return { done: 'skip' };
+    const r = await eventService.setShirtIssued(target.subsiteUrl, target.regId, size);
+    if (!r.ok) return { done: 'fail', status: r.status };
+    const issue: ShirtIssue = { size, at: r.at || new Date().toISOString(), by: currentEmailLc };
+    patchCachedReg(target.eventId, target.regId, { shirtIssued: JSON.stringify(issue) });
+    return { done: 'ok', issue };
   };
   /** v31.4: Ausgabe zurücknehmen — schreibt, patcht den Cache und räumt den
    *  Merker in „Letzte Check-ins" mit weg. */
@@ -1426,7 +1552,12 @@ export default function CheckInPage(): React.ReactElement {
         return false;
       }
       patchCachedReg(target.eventId, target.regId, { shirtIssued: '' });
-      setRecent(recentRef.current.filter(x => !(x.kind === 'shirt' && x.regId === target.regId && x.subsiteUrl === target.subsiteUrl)));
+      // v31.6: Auch die Größe an der Check-in-Zeile geht weg — es ist nichts
+      // mehr festgehalten, was sie zeigen könnte.
+      setRecent(dropAutoShirtLabel(
+        recentRef.current.filter(x => !(x.kind === 'shirt' && x.regId === target.regId && x.subsiteUrl === target.subsiteUrl)),
+        target.regId, target.subsiteUrl,
+      ));
       setResultMessage(isDe
         ? `${target.name} — Trikot-Ausgabe zurückgenommen, die Größe zählt wieder zum Bestand.`
         : `${target.name} — shirt handout reverted, the size counts towards the stock again.`);
@@ -1435,8 +1566,39 @@ export default function CheckInPage(): React.ReactElement {
     } finally { setShirtBusy(false); }
   };
   const openShirtAsk = (reg: import('../services/EventService').SPRegistration, name: string, info: ShirtDeskInfo): void => {
-    setAskShirtSize(info.preset);
-    setShirtAsk({ reg, name, eventId: nameSearchEventId });
+    // v31.6: Bei einer Korrektur steht die AUSGEGEBENE Größe im Feld, nicht der
+    // Vorschlag — der Helfer ändert eine Tatsache, er wählt nicht neu.
+    setAskShirtSize(info.issued ? info.issued.size : info.preset);
+    setShirtAsk({ reg, name, eventId: nameSearchEventId, correct: !!info.issued });
+  };
+  /**
+   * v31.6: Nimmt das Rückgängig auch die Ausgabe zurück?
+   *
+   * Nur, wenn sie in genau diesem Zug entstanden ist — sonst bliebe ein Trikot
+   * gebucht, das niemand bekommen hat. Erkannt wird das am Zeitstempel:
+   * `setShirtIssued` vergibt bei JEDEM Schreibvorgang ein neues `at`; hat der
+   * Helfer die Größe von Hand korrigiert, weicht es vom Merker des Check-ins
+   * ab, und seine Entscheidung bleibt stehen.
+   *
+   * Gelesen wird aus der zwischengespeicherten Teilnehmerliste — sie trägt
+   * über `patchCachedReg` auch das, was dieses Gerät gerade selbst geschrieben
+   * hat. Ist sie für dieses Event gar nicht geladen (anderes Event gewählt,
+   * Nachladen gescheitert), wird NICHTS gelöscht: Ein Lesefehler ist keine
+   * Aussage über die Daten, und „unbekannt" sperrt (CLAUDE.md).
+   */
+  const undoAutoShirt = async (e: RecentCheckIn): Promise<'none' | 'cleared' | 'kept' | 'unknown' | 'failed'> => {
+    if (!e.autoShirtAt || !eventService || !e.subsiteUrl) return 'none';
+    const rs = searchRegsCacheRef.current[e.eventId];
+    if (!rs) return 'unknown';
+    const row = rs.filter(x => x.Id === e.regId)[0];
+    if (!row) return 'unknown';
+    const iss = parseShirtIssue(row.ShirtIssued);
+    if (!iss) return 'none';             // schon zurückgenommen — nichts zu tun
+    if (iss.at !== e.autoShirtAt) return 'kept';  // von Hand gesetzt/korrigiert
+    const r = await eventService.clearShirtIssued(e.subsiteUrl, e.regId);
+    if (!r.ok) return 'failed';
+    patchCachedReg(e.eventId, e.regId, { shirtIssued: '' });
+    return 'cleared';
   };
 
 
@@ -1803,12 +1965,16 @@ export default function CheckInPage(): React.ReactElement {
   // vorher die Bestätigungskarte, weil dort die Person erst identifiziert wird.
   const performCheckIn = async (pendingCheckIn: PendingCheckInInfo): Promise<void> => {
     if (!eventService) return;
-    const remember = (): void => {
+    // v31.6: `auto` = die Ausgabe, die dieser Check-in mitgeschrieben hat.
+    // Sie gehört an DENSELBEN Eintrag, nicht an einen zweiten: Es war ein
+    // Handgriff, und „Rückgängig" muss beides zusammen zurücknehmen können.
+    const remember = (auto?: ShirtIssue | null): void => {
       setRecent([{
         key: `${pendingCheckIn.regId}:${pendingCheckIn.agendaItemId || 'status'}:${Date.now()}`,
         at: new Date().toISOString(), name: pendingCheckIn.name, regId: pendingCheckIn.regId,
         eventId: pendingCheckIn.event.id || '', subsiteUrl: pendingCheckIn.event.subsiteUrl,
         prevStatus: pendingCheckIn.status, agendaItemId: pendingCheckIn.agendaItemId, agendaLabel: pendingCheckIn.agendaLabel,
+        autoShirtSize: auto ? auto.size : undefined, autoShirtAt: auto ? auto.at : undefined,
       }, ...recentRef.current]);
     };
     try {
@@ -1854,15 +2020,51 @@ export default function CheckInPage(): React.ReactElement {
         return;
       }
       setCheckedInCount(prev => prev + 1);
-      remember();
+      /**
+       * v31.6: Jetzt die Ausgabe mitschreiben — NACH dem Check-in und in einem
+       * eigenen `try`.
+       *
+       * Der Check-in ist der wichtige Teil: Er ist zu diesem Zeitpunkt bereits
+       * geschrieben und bleibt bestehen, egal was hier passiert. Ein 400
+       * (Spalte `ShirtIssued` fehlt auf einer Bestandsliste), eine Drosselung
+       * oder ein unerwarteter Fehler dürfen nicht in den `catch` unten fallen,
+       * der „Check-in fehlgeschlagen" meldet — das wäre eine Falschaussage über
+       * den Vorgang, der geklappt hat.
+       *
+       * Und vor dem Status-Patch, s. `autoIssueShirtOnCheckIn`.
+       */
+      let auto: AutoShirtResult = { done: 'skip' };
+      try {
+        auto = await autoIssueShirtOnCheckIn({
+          regId: pendingCheckIn.regId,
+          eventId: pendingCheckIn.event.id || '',
+          subsiteUrl: pendingCheckIn.event.subsiteUrl,
+          email: pendingCheckIn.email,
+        });
+      } catch { auto = { done: 'fail', status: 0 }; }
+      remember(auto.done === 'ok' ? auto.issue : null);
       // v30.67: Den neuen Status auch in der Trefferliste nachführen — sie
       // liest nur aus dem Cache, und der wurde bisher nur beim No-Show
       // gepatcht. Ohne den Patch blieb die Person „Angemeldet", die KPI-
       // Kachel stand, und unter „Nur offene" stand sie weiter bei den Offenen;
       // ein zweiter Helfer checkte sie erneut ein.
       patchCachedReg(pendingCheckIn.event.id || '', pendingCheckIn.regId, { status: 'Eingecheckt' });
-      setResultMessage(`${pendingCheckIn.name} — ${t('checkin.success')}`);
-      setResultType('success');
+      // v31.6: Die Meldung sagt beides. Beim Fehlschlag bewusst „info" statt
+      // „error": Rot liest der Helfer als „Check-in fehlgeschlagen" und tippt
+      // ein zweites Mal — dabei ist genau der Teil gelungen. Der Grund und die
+      // Abhilfe stehen trotzdem im Satz (`shirtFixHint`).
+      if (auto.done === 'fail') {
+        setResultMessage(isDe
+          ? `${pendingCheckIn.name} — eingecheckt, aber die Trikot-Ausgabe wurde NICHT festgehalten${auto.status ? ` (HTTP ${auto.status})` : ''}. ${shirtFixHint(auto.status)} Bis dahin die Größe über „Trikot ausgeben" in der Liste nachtragen.`
+          : `${pendingCheckIn.name} — checked in, but the shirt handout was NOT recorded${auto.status ? ` (HTTP ${auto.status})` : ''}. ${shirtFixHint(auto.status)} Until then, record the size via "Hand out shirt" in the list.`);
+        setResultType('info');
+      } else if (auto.done === 'ok') {
+        setResultMessage(`${pendingCheckIn.name} — ${t('checkin.success')} ${isDe ? `Trikot ${auto.issue.size} festgehalten.` : `Shirt ${auto.issue.size} recorded.`}`);
+        setResultType('success');
+      } else {
+        setResultMessage(`${pendingCheckIn.name} — ${t('checkin.success')}`);
+        setResultType('success');
+      }
     } catch {
       setResultMessage(`${pendingCheckIn.name} — Check-in fehlgeschlagen.`);
       setResultType('error');
@@ -1888,6 +2090,19 @@ export default function CheckInPage(): React.ReactElement {
         await clearShirtIssue({ regId: e.regId, name: e.name, eventId: e.eventId, subsiteUrl: e.subsiteUrl });
         return;
       }
+      /**
+       * v31.6: Die mit dem Check-in festgehaltene Ausgabe zuerst zurücknehmen.
+       *
+       * Reihenfolge mit Absicht: Bleibt der Status stehen, weil der zweite
+       * Schreibvorgang scheitert, gilt die Person weiter als eingecheckt und
+       * die Bestellliste zählt sie über `issuedAssumed` als versorgt — der
+       * Stand ist in sich stimmig. Andersherum stünde eine nicht eingecheckte
+       * Person mit einem gebuchten Trikot da, also genau das, was dieser Zug
+       * verhindern soll. Ein Fehlschlag hier BRICHT das Rückgängig trotzdem
+       * nicht ab — der Helfer hat den Check-in zurückgenommen, nicht die
+       * Ausgabe; er erfährt es im Satz.
+       */
+      const shirtUndo = (e.kind === 'checkin' || !e.kind) ? await undoAutoShirt(e) : 'none';
       if (e.agendaItemId) {
         // v31.2: entfernt die Marke am Punkt — Anwesenheit ODER No-Show.
         ok = (await eventService.removeAgendaCheckIn(e.subsiteUrl, e.regId, e.agendaItemId)).ok;
@@ -1902,15 +2117,39 @@ export default function CheckInPage(): React.ReactElement {
         }
       }
       if (!ok) {
-        setResultMessage(isDe ? `${e.name} — Rückgängig fehlgeschlagen, bitte erneut versuchen.` : `${e.name} — undo failed, please retry.`);
+        // v31.6: Ist die Ausgabe schon zurückgenommen, der Status aber nicht,
+        // steht das im Satz — sonst probiert der Helfer es erneut und weiß
+        // nicht, dass die Hälfte bereits passiert ist.
+        setResultMessage((isDe ? `${e.name} — Rückgängig fehlgeschlagen, bitte erneut versuchen.` : `${e.name} — undo failed, please retry.`)
+          + (shirtUndo === 'cleared'
+            ? (isDe ? ' Die Trikot-Ausgabe wurde bereits zurückgenommen.' : ' The shirt handout was already reverted.')
+            : ''));
         setResultType('error');
         return;
       }
       setRecent(recentRef.current.filter(x => x.key !== e.key));
       if (!isNoShow) setCheckedInCount(prev => Math.max(0, prev - 1));
-      setResultMessage(isDe
+      // v31.6: Was mit der Ausgabe passiert ist, gehört in denselben Satz —
+      // „stehengeblieben" ist am Tisch genauso eine Nachricht wie „mit
+      // zurückgenommen", und beides muss der Helfer erfahren, ohne nachzusehen.
+      const shirtTail = isDe
+        ? ({
+          cleared: ` Die Trikot-Ausgabe (${e.autoShirtSize || ''}) wurde mit zurückgenommen.`,
+          kept: ' Die von Hand gesetzte Trikot-Größe bleibt stehen — sie ist über „Rücknehmen" in der Zeile zu entfernen.',
+          failed: ' Die Trikot-Ausgabe konnte NICHT zurückgenommen werden — bitte über „Rücknehmen" in der Zeile erneut versuchen.',
+          unknown: ' Ob die Trikot-Ausgabe noch steht, ist hier nicht bekannt (Teilnehmerliste nicht geladen) — bitte in der Zeile nachsehen.',
+          none: '',
+        })[shirtUndo]
+        : ({
+          cleared: ` The shirt handout (${e.autoShirtSize || ''}) was reverted as well.`,
+          kept: ' The manually set shirt size stays — remove it via "Undo" in the row.',
+          failed: ' The shirt handout could NOT be reverted — please retry via "Undo" in the row.',
+          unknown: ' Whether the shirt handout still stands is unknown here (attendee list not loaded) — please check in the row.',
+          none: '',
+        })[shirtUndo];
+      setResultMessage((isDe
         ? `${e.name} — ${isNoShow ? 'No-Show' : 'Check-in'} zurückgenommen${e.agendaLabel ? ` (${e.agendaLabel})` : ''}.`
-        : `${e.name} — ${isNoShow ? 'no-show' : 'check-in'} reverted${e.agendaLabel ? ` (${e.agendaLabel})` : ''}.`);
+        : `${e.name} — ${isNoShow ? 'no-show' : 'check-in'} reverted${e.agendaLabel ? ` (${e.agendaLabel})` : ''}.`) + shirtTail);
       setResultType('info');
     } finally { setUndoBusyKey(''); }
   };
@@ -2306,10 +2545,14 @@ export default function CheckInPage(): React.ReactElement {
               ))}
               {/* v31.4: Die Ausgabe direkt unter dem Ausweich-Satz — dort steht,
                   WAS angeboten werden soll, hier wird festgehalten, was die
-                  Person tatsächlich mitgenommen hat. Eigener Knopf statt eine
-                  Ausgabe am Check-in mitzuschreiben: Ausgabe ohne Check-in gibt
-                  es (Abholung am Vortag) und Check-in ohne Ausgabe erst recht
-                  (wer schon eins hat). */}
+                  Person tatsächlich mitgenommen hat.
+                  v31.6: Der Knopf ist nicht mehr der Normalweg — „Einchecken"
+                  hält die vorbelegte Größe selbst fest (Nutzer 08.09.2026:
+                  „Ja, immer zusammen"). Er bleibt für die Abweichung: eine
+                  andere Größe aus dem Karton, oder eine Ausgabe VOR dem
+                  Check-in. Wer hier etwas festhält, dem schreibt der Check-in
+                  nichts mehr dazwischen — ein bestehender Eintrag schlägt die
+                  Automatik. */}
               {pendingCheckIn.shirt && (
                 <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)' }}>
                   {pendingCheckIn.shirt.issued ? (
@@ -2337,6 +2580,26 @@ export default function CheckInPage(): React.ReactElement {
                       <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--dex-gray-600)', marginBottom: 6 }}>
                         {isDe ? 'Welches Trikot gibst du aus?' : 'Which shirt are you handing out?'}
                       </div>
+                      {/* v31.6: Was beim Einchecken von selbst passiert, steht
+                          VOR dem Klick da — sonst hält der Helfer eine Größe
+                          fest, die er gar nicht festhalten musste, oder er
+                          wundert sich hinterher über den Eintrag. */}
+                      {pendingCheckIn.shirt.preset && (
+                        <div className="dex-ui-muted" style={{ fontSize: '0.74rem', marginBottom: 6 }}>
+                          {isDe
+                            ? `Beim Einchecken wird ${pendingCheckIn.shirt.preset} automatisch festgehalten — hier nur ändern, wenn du eine andere Größe herausgibst.`
+                            : `Checking in records ${pendingCheckIn.shirt.preset} automatically — change it here only if you hand out a different size.`}
+                        </div>
+                      )}
+                      {/* v31.6: Kein Eintrag, aber die Bestellliste zählt die
+                          Person schon als versorgt (eingecheckt vor v31.6). */}
+                      {pendingCheckIn.shirt.assumed && (
+                        <div className="dex-ui-muted" style={{ fontSize: '0.74rem', marginBottom: 6 }}>
+                          {isDe
+                            ? 'Zählt in der Bestellliste bereits als abgeholt (eingecheckt, ohne Eintrag).'
+                            : 'Already counts as picked up in the order list (checked in, no record).'}
+                        </div>
+                      )}
                       <div className="dex-ui-inline">
                         {/* key: Bei der nächsten Person soll die Wahl wieder bei
                             der Liste anfangen, nicht im Freitext der vorigen. */}
@@ -3127,7 +3390,14 @@ export default function CheckInPage(): React.ReactElement {
                               Knopfs die Tatsache (Größe, Uhrzeit) und kann sie
                               zurücknehmen. Bewusst NICHT gesperrt bei Abgemeldet/
                               No-Show: Ein ausgegebenes Trikot ist aus dem Karton,
-                              egal was der Status sagt. */}
+                              egal was der Status sagt.
+                              v31.6: Seit der Check-in die Ausgabe mitschreibt, ist
+                              der Knopf an einer Zeile MIT Eintrag eine Korrektur —
+                              er heißt deshalb „Größe ändern". Und wo die
+                              Bestellliste jemanden nur ANNIMMT (eingecheckt vor
+                              v31.6, kein Eintrag), steht das jetzt daneben, statt
+                              den Widerspruch zwischen Tisch und Liste unerklärt zu
+                              lassen. */}
                           {(() => {
                             const si = shirtDeskInfoFor(reg, nameSearchEventId);
                             if (!si) return null;
@@ -3141,6 +3411,15 @@ export default function CheckInPage(): React.ReactElement {
                                   </span>
                                   <button
                                     type="button"
+                                    className="dex-ui-textbtn"
+                                    disabled={shirtBusy}
+                                    onClick={() => openShirtAsk(reg, name, si)}
+                                    title={isDe ? 'Eine andere Größe herausgegeben? Hier korrigieren.' : 'Handed out a different size? Correct it here.'}
+                                  >
+                                    {isDe ? 'Größe ändern' : 'Change size'}
+                                  </button>
+                                  <button
+                                    type="button"
                                     className="dex-ui-textbtn dex-ui-textbtn--danger"
                                     disabled={shirtBusy}
                                     onClick={() => { void clearShirtIssue({ regId: reg.Id, name, eventId: nameSearchEventId, subsiteUrl: sub }); }}
@@ -3151,16 +3430,25 @@ export default function CheckInPage(): React.ReactElement {
                               );
                             }
                             return (
-                              <button
-                                type="button"
-                                className="btn btn-secondary"
-                                style={{ fontSize: '0.78rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
-                                disabled={shirtBusy}
-                                onClick={() => openShirtAsk(reg, name, si)}
-                                title={isDe ? 'Festhalten, welche Größe diese Person bekommen hat' : 'Record which size this person received'}
-                              >
-                                {isDe ? 'Trikot ausgeben' : 'Hand out shirt'}
-                              </button>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  style={{ fontSize: '0.78rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                                  disabled={shirtBusy}
+                                  onClick={() => openShirtAsk(reg, name, si)}
+                                  title={isDe ? 'Festhalten, welche Größe diese Person bekommen hat' : 'Record which size this person received'}
+                                >
+                                  {isDe ? 'Trikot ausgeben' : 'Hand out shirt'}
+                                </button>
+                                {si.assumed && (
+                                  <span className="dex-ui-muted" style={{ fontSize: '0.72rem', maxWidth: 220, lineHeight: 1.35 }}>
+                                    {isDe
+                                      ? `Zählt in der Bestellliste als abgeholt (eingecheckt, ohne Eintrag)${si.wish ? ` — angenommen: ${si.wish}` : ''}.`
+                                      : `Counts as picked up in the order list (checked in, no record)${si.wish ? ` — assumed: ${si.wish}` : ''}.`}
+                                  </span>
+                                )}
+                              </span>
                             );
                           })()}
                         </div>
@@ -3209,13 +3497,21 @@ export default function CheckInPage(): React.ReactElement {
                   {e.kind === 'shirt' && (
                     <span className="dex-ui-pill dex-ui-pill--green">{isDe ? 'Trikot' : 'Shirt'} {e.shirtSize}</span>
                   )}
+                  {/* v31.6: Ein Check-in, der die Ausgabe mitgeschrieben hat,
+                      zeigt sie an DERSELBEN Zeile — es war ein Handgriff, und
+                      „Rückgängig" nimmt beides zusammen zurück. */}
+                  {e.kind !== 'shirt' && e.autoShirtSize && (
+                    <span className="dex-ui-pill dex-ui-pill--green">{isDe ? 'Trikot' : 'Shirt'} {e.autoShirtSize}</span>
+                  )}
                   <button type="button" className="btn btn-secondary" disabled={!!undoBusyKey} onClick={() => { void undoCheckIn(e); }} style={{ fontSize: '0.76rem', padding: '4px 10px', whiteSpace: 'nowrap' }}
                     title={isDe
                       ? (e.kind === 'shirt'
                         ? `Trikot-Ausgabe (${e.shirtSize}) zurücknehmen — die Größe zählt wieder zum Bestand`
                         : e.agendaItemId
                           ? (e.kind === 'noshow' ? 'No-Show an diesem Punkt entfernen' : 'Anwesenheit an diesem Punkt entfernen')
-                          : `Status zurück auf „${(e.prevStatus === 'QR versendet' || (e.kind === 'noshow' && e.prevStatus === 'Eingecheckt')) ? e.prevStatus : 'Angemeldet'}“`)
+                          // v31.6: Der Zusatz nennt die mitgeschriebene Ausgabe — sie
+                          // verschwindet mit, solange niemand die Größe korrigiert hat.
+                          : `Status zurück auf „${(e.prevStatus === 'QR versendet' || (e.kind === 'noshow' && e.prevStatus === 'Eingecheckt')) ? e.prevStatus : 'Angemeldet'}“${e.autoShirtSize ? ` — die mitgeschriebene Trikot-Ausgabe (${e.autoShirtSize}) wird mit zurückgenommen, eine von Hand korrigierte Größe bleibt` : ''}`)
                       : (e.kind === 'shirt' ? 'Revert this shirt handout' : e.kind === 'noshow' ? 'Revert this no-show' : 'Revert this check-in')}>
                     {undoBusyKey === e.key ? '…' : (isDe ? 'Rückgängig' : 'Undo')}
                   </button>
@@ -3313,13 +3609,19 @@ export default function CheckInPage(): React.ReactElement {
 
       {/* v31.4: Trikot-Ausgabe aus der Trefferliste. Dieselbe Größenwahl wie in
           der Bestätigungskarte — vorbelegt mit dem Gegenvorschlag, sonst der
-          Wunschgröße; „Andere Größe" für den Griff in den falschen Karton. */}
+          Wunschgröße; „Andere Größe" für den Griff in den falschen Karton.
+          v31.6: Bei einem bestehenden Eintrag ist es eine Korrektur — Titel,
+          Frage und Knopf sagen das, und vorbelegt ist die ausgegebene Größe. */}
       <Modal
         open={!!shirtAsk}
         onClose={() => setShirtAsk(null)}
         maxWidth={520}
-        title={isDe ? `${shirtAsk ? shirtAsk.name : ''} — Trikot ausgeben` : `${shirtAsk ? shirtAsk.name : ''} — hand out shirt`}
-        subtitle={isDe ? 'Welche Größe hast du herausgegeben?' : 'Which size did you hand out?'}
+        title={shirtAsk && shirtAsk.correct
+          ? (isDe ? `${shirtAsk.name} — Größe ändern` : `${shirtAsk.name} — change size`)
+          : (isDe ? `${shirtAsk ? shirtAsk.name : ''} — Trikot ausgeben` : `${shirtAsk ? shirtAsk.name : ''} — hand out shirt`)}
+        subtitle={shirtAsk && shirtAsk.correct
+          ? (isDe ? 'Welche Größe hat die Person wirklich bekommen?' : 'Which size did the person actually get?')
+          : (isDe ? 'Welche Größe hast du herausgegeben?' : 'Which size did you hand out?')}
         footer={<>
           <button type="button" className="btn btn-secondary" onClick={() => setShirtAsk(null)}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
           <button
@@ -3335,10 +3637,13 @@ export default function CheckInPage(): React.ReactElement {
               void applyShirtIssue(
                 { regId: a.reg.Id, name: a.name, eventId: a.eventId, subsiteUrl: (ev && ev.subsiteUrl) || '', prevStatus: a.reg.Status },
                 size,
+                a.correct,
               );
             }}
           >
-            {isDe ? 'Ausgabe festhalten' : 'Record handout'}
+            {shirtAsk && shirtAsk.correct
+              ? (isDe ? 'Größe speichern' : 'Save size')
+              : (isDe ? 'Ausgabe festhalten' : 'Record handout')}
           </button>
         </>}
       >
@@ -3353,13 +3658,21 @@ export default function CheckInPage(): React.ReactElement {
                 <p className="dex-ui-muted" style={{ margin: 0 }}>
                   {si.wish && <>{isDe ? 'Wunschgröße: ' : 'Wished size: '}<strong>{si.wish}</strong></>}
                   {si.proposal && <>{si.wish ? ' · ' : ''}{isDe ? 'vorgeschlagen: ' : 'proposed: '}<strong>{si.proposal}</strong></>}
+                  {/* v31.6: Bei einer Korrektur gehört der bisherige Eintrag
+                      dazu — sonst ändert der Helfer eine Größe, die er nicht
+                      sieht. */}
+                  {si.issued && <>{(si.wish || si.proposal) ? ' · ' : ''}{isDe ? 'festgehalten: ' : 'recorded: '}<strong>{si.issued.size}</strong></>}
                 </p>
               )}
               <div className="dex-ui-callout dex-ui-callout--neutral">
                 <span>
-                  {isDe
-                    ? <>Die Größe wird dauerhaft vom Bestand abgezogen — auch wenn die Person später abgemeldet oder als No-Show markiert wird. Zurücknehmen geht über &bdquo;Rücknehmen&ldquo; in der Zeile oder unter &bdquo;Letzte Check-ins&ldquo;.</>
-                    : <>The size is permanently deducted from the stock — even if the person is cancelled or marked as a no-show later. You can revert it via &ldquo;Undo&rdquo; in the row or under &ldquo;Recent check-ins&rdquo;.</>}
+                  {shirtAsk.correct
+                    ? (isDe
+                      ? <>Die bisher festgehaltene Größe zählt danach wieder zum Bestand, die neue wird abgezogen. Ganz zurücknehmen kannst du die Ausgabe über &bdquo;Rücknehmen&ldquo; in der Zeile.</>
+                      : <>The size recorded so far counts towards the stock again, the new one is deducted. To revert the handout entirely, use &ldquo;Undo&rdquo; in the row.</>)
+                    : (isDe
+                      ? <>Die Größe wird dauerhaft vom Bestand abgezogen — auch wenn die Person später abgemeldet oder als No-Show markiert wird. Zurücknehmen geht über &bdquo;Rücknehmen&ldquo; in der Zeile oder unter &bdquo;Letzte Check-ins&ldquo;.</>
+                      : <>The size is permanently deducted from the stock — even if the person is cancelled or marked as a no-show later. You can revert it via &ldquo;Undo&rdquo; in the row or under &ldquo;Recent check-ins&rdquo;.</>)}
                 </span>
               </div>
             </div>
