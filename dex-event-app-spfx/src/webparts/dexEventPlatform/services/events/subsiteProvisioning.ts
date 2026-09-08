@@ -152,6 +152,12 @@ export async function createRegistrationList(
     // `{ size, at, by }` (s. utils/checkInExtras.parseShirtIssue). Ohne diese
     // Spalte ist die Trikot-Verteilung nur ein Plan, der sich stündlich ändert.
     { title: 'ShirtIssued', type: 3 },
+    // v31.4: Die offizielle Startnummer des Veranstalters (Text, nicht Zahl —
+    // führende Nullen und Präfixe kommen vor). Bisher legte sie nur
+    // `ensureStartNumberColumn` beim ersten Import an; damit hing der Import
+    // an einem Schreibvorgang, der auf einer frischen Liste gar nicht nötig
+    // ist. Anlegen kostet nichts, Nachlegen unter Drosselung schon.
+    { title: 'Startnummer', type: 2 },
     // v31.4: Die Teilnehmer-ID, die in der zuletzt versendeten QR-Mail dieser
     // Person GEDRUCKT wurde. Sie wird nach dem Versand nie wieder geändert —
     // das ist der ganze Zweck: `TeilnehmerID` wird bei jeder Abmeldung neu

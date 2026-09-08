@@ -331,6 +331,13 @@ export interface SPRegistration {
   HotelTo?: string;
   /** v30.91: Anwesenheit je Programmpunkt als JSON (s. utils/agendaCheckIns). */
   AgendaCheckIns?: string;
+  /** v31.4: Die offizielle Startnummer des Veranstalters (Text, nicht Zahl —
+   *  führende Nullen und Präfixe kommen vor, gerechnet wird damit nie).
+   *  Angelegt über `ensureStartNumberColumn`, gefüllt über „Startnummern
+   *  importieren" bzw. „Startnummern zuteilen". Leer = diese Person hat in
+   *  DEX keine Nummer; ob sie beim Veranstalter eine hat, weiß DEX nicht.
+   *  Kommt über `$select=*` automatisch mit. */
+  Startnummer?: string;
   /** v31.4: Welches Shirt diese Person bekommen hat, als JSON
    *  `{ size, at, by }` (s. utils/checkInExtras.parseShirtIssue). Leer =
    *  noch keins ausgegeben. Kommt über `$select=*` automatisch mit. */

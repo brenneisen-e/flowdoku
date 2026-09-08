@@ -20,7 +20,10 @@ import { useCurrentUser } from '../../context/UserContext';
 import { DeloitteEvent } from '../../types';
 import { SPRegistration, EventService } from '../../services/EventService';
 import { parseBibSheet, buildBibReport, suggestOrphanPairs, BibImportReport, BibMatch } from '../../utils/b2runBibImport';
-import { StoredB2RunTodo, b2runNameOf } from '../../utils/b2runTodos';
+import { StoredB2RunTodo, b2runNameOf, mergeStoredTodos } from '../../utils/b2runTodos';
+// v31.4: „0412" und „412" sind dieselbe Nummer — die Doppelbelegungs-Sperre
+// unten muss beide erkennen (s. utils/b2runBibPool).
+import { bibKey } from '../../utils/b2runBibPool';
 import { cx } from '../dexUi';
 import { InfoTooltip } from '../InfoTooltip';
 import { AlertCircle, Check, Download, Hash } from '../Icons';
@@ -76,14 +79,17 @@ export default function B2RunBibImportModal(props: {
   onClose: () => void;
   onDone: () => void;
 }): React.ReactElement {
-  const { getAllRegistrations, refreshEvents } = useEvents();
+  const { getAllRegistrations, refreshEvents, events } = useEvents();
   const { showAlert } = useDialog();
   const { currentUser } = useCurrentUser();
   const [busy, setBusy] = React.useState(false);
   const [progress, setProgress] = React.useState('');
   const [report, setReport] = React.useState<BibImportReport | null>(null);
   const [fileName, setFileName] = React.useState('');
-  const [written, setWritten] = React.useState<{ ok: number; failed: number; todos: number; todoSaved: boolean } | null>(null);
+  /** v31.4: Die gelesene Teilnehmerliste — der Abgleich braucht sie nur zum
+   *  Bauen, die Doppelbelegungs-Sperre beim Schreiben aber auch. */
+  const [regs, setRegs] = React.useState<SPRegistration[]>([]);
+  const [written, setWritten] = React.useState<{ ok: number; failed: number; todos: number; todoSaved: boolean; skipped: string[] } | null>(null);
   /**
    * v30.54: Zuordnung „freie Nummer → Person ohne Nummer" (Startnummer → E-Mail).
    *
@@ -97,6 +103,7 @@ export default function B2RunBibImportModal(props: {
   const readFile = async (file: File): Promise<void> => {
     setBusy(true); setProgress('Datei wird gelesen…'); setReport(null); setWritten(null);
     try {
+      setRegs([]);
       const buf = await file.arrayBuffer();
       // Bundle-Regel: xlsx MUSS dynamisch importiert werden (s. HotelImportModal).
       const XLSX = await import('xlsx');
@@ -110,17 +117,18 @@ export default function B2RunBibImportModal(props: {
       // v30.67 (Review): Auch eine TEILWEISE gelesene Liste ist keine Basis —
       // die fehlenden Personen würden als „nicht gefunden" gelten.
       let readFailed = false;
-      const regs = await getAllRegistrations(props.event.id, () => { readFailed = true; });
+      const loaded = await getAllRegistrations(props.event.id, () => { readFailed = true; });
       if (readFailed) {
         await showAlert('Die Teilnehmerliste konnte gerade nicht (vollständig) gelesen werden — ohne sie kann nichts zugeordnet werden. Bitte später erneut versuchen.', { variant: 'error' });
         return;
       }
-      if (regs.length === 0) {
+      if (loaded.length === 0) {
         await showAlert('Die Teilnehmerliste dieses Events ist leer — ohne sie kann nichts zugeordnet werden.', { variant: 'error' });
         return;
       }
       setFileName(file.name);
-      const rep = buildBibReport(parsed.rows, regs);
+      setRegs(loaded);
+      const rep = buildBibReport(parsed.rows, loaded);
       setReport(rep);
       setOrphanAssign(suggestOrphanPairs(rep));
     } catch (err) {
@@ -152,18 +160,61 @@ export default function B2RunBibImportModal(props: {
       return;
     }
     let ok = 0; let failed = 0;
+    const skipped: string[] = [];
+    /**
+     * v31.4: Drei Fehler in dieser Schleife, alle still.
+     *
+     *  1. **Der Rückgabewert wurde nie angesehen.** `adminUpdateRegistration`
+     *     wirft nicht, sie liefert `response.ok` — das `catch` feuerte also
+     *     nie, `failed` blieb immer 0, und der grüne Kasten meldete Erfolg
+     *     für Zeilen, die SharePoint abgelehnt hat. Aus jeder solchen Zeile
+     *     wird eine „aktive Person ohne Nummer", der die Aktion
+     *     „Startnummern zuteilen" später eine ZWEITE Nummer gibt.
+     *  2. **Keine Prüfung auf Doppelbelegung.** Trägt die Nummer bereits
+     *     jemand, der nicht abgemeldet ist (Übertragen-Knopf, frühere
+     *     Zuteilung), schrieb der Import sie hier ein zweites Mal — der Stand
+     *     der DATEI überschrieb den neueren Stand in DEX. Danach steht
+     *     dieselbe Nummer auf zwei Zeilen, und am Einlass erscheinen zwei
+     *     Personen mit demselben Zettel.
+     *  3. **Eine andere Nummer auf der Zielzeile wurde überschrieben.** Der
+     *     zweite Import setzt den Stand der DATEI — wer inzwischen von Hand
+     *     umgetragen hat (`moveBibInDex`) oder eine Zuteilung bekommen hat,
+     *     bekam die alte Nummer zurück, und die neue verschwand aus DEX,
+     *     während sie beim Veranstalter weiterläuft. Nutzer-Ansage
+     *     (08.09.2026): „Ich habe … bereits 20 Nummern vergeben bzw.
+     *     eingecheckt. Die dürfen nun nicht geändert werden."
+     *     Geschrieben wird deshalb nur auf eine LEERE Zelle oder auf dieselbe
+     *     Nummer (der Normalfall eines wiederholten Imports).
+     *
+     * Übersprungene Zeilen verschwinden nicht, sie werden namentlich gemeldet.
+     */
+    const bibHolder = (bib: string, targetId: number): SPRegistration | undefined =>
+      regs.filter(r => r.Status !== 'Abgemeldet'
+        && r.Id !== targetId
+        && bibKey(String(r.Startnummer || '')) === bibKey(bib))[0];
     // Sequentiell: Die Teilnehmerliste laeuft mit Item-Level-Security, und ein
     // Promise.all ueber 300 Zeilen ist die 429-Welle, vor der CLAUDE.md warnt.
     for (let i = 0; i < toWrite.length; i++) {
       const m = toWrite[i];
       setProgress(`Startnummern werden geschrieben… ${i + 1} / ${toWrite.length}`);
+      const target = regs.filter(r => r.Id === m.id)[0];
+      const already = bibKey(String((target && target.Startnummer) || ''));
+      if (already && already !== bibKey(m.bib)) {
+        skipped.push(`${m.bib} — ${nameOf(target)} trägt in DEX bereits ${String(target.Startnummer || '').trim()}; der Stand in DEX ist neuer als die Datei`);
+        continue;
+      }
+      const holder = bibHolder(m.bib, m.id);
+      if (holder) {
+        skipped.push(`${m.bib} — steht bereits bei ${nameOf(holder)} (${holder.Status || 'unbekannt'})`);
+        continue;
+      }
       try {
-        await props.service.adminUpdateRegistration(
+        const wrote = await props.service.adminUpdateRegistration(
           props.event.subsiteUrl, m.id,
           { Startnummer: m.bib },
           { name: `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email, email: currentUser.email },
         );
-        ok++;
+        if (wrote) ok++; else failed++;
       } catch { failed++; }
     }
     // v30.55: Die Aufgaben beim Veranstalter FESTHALTEN.
@@ -214,10 +265,44 @@ export default function B2RunBibImportModal(props: {
         action: `${b2runNameOf(r)} beim Veranstalter nachmelden — angemeldet, aber ohne Startnummer.`,
       });
     }
+    /**
+     * v31.4: MERGEN statt ersetzen.
+     *
+     * Bis v31.3 schrieb der Import `_b2runTodo` komplett neu. Solange er die
+     * einzige Stelle war, die schrieb, fiel das nicht auf — seit die Aktion
+     * „Startnummern zuteilen" ebenfalls Verpflichtungen anlegt, löschte ein
+     * zweiter Import genau die Aufgaben, die noch niemand erledigt hat. Das
+     * wäre der v30.54-Fehler ein zweites Mal, diesmal selbst verursacht: eine
+     * Verpflichtung ist ein Ereignis der Vergangenheit und darf nur
+     * verschwinden, wenn sie erledigt ist.
+     *
+     * Erledigt ist sie durch DIESEN Import genau dann, wenn er die Nummer
+     * vergeben hat („abmelden" hinfällig) bzw. die Person versorgt hat
+     * („nachmelden" hinfällig) — das sind die `removeKeys`.
+     */
+    const liveEv = events.filter(e => e.id === props.event.id)[0] || props.event;
+    let existingTodos: StoredB2RunTodo[] = [];
+    try {
+      const o = JSON.parse(liveEv.emailTemplateOverrides || '{}');
+      if (Array.isArray(o?._b2runTodo)) existingTodos = o._b2runTodo.filter((x: unknown) => !!x && typeof x === 'object');
+    } catch { /* kein Piggyback — dann gibt es nichts zu erhalten */ }
+    const writtenKeys = toWrite.map(m => bibKey(m.bib));
+    const servedEmails = toWrite
+      .map(m => (regs.filter(r => r.Id === m.id)[0]?.ParticipantEmail || '').toLowerCase().trim())
+      .filter(Boolean);
+    const removeKeys = existingTodos.filter(t => {
+      if (t.kind === 'unregister') return writtenKeys.indexOf(bibKey(t.bib)) >= 0;
+      if (t.kind === 'register') return servedEmails.indexOf((t.toEmail || '').toLowerCase().trim()) >= 0;
+      return false;
+    }).map(t => t.key);
+    const merged = mergeStoredTodos(existingTodos, todos, removeKeys);
     let todoSaved = true;
-    if (todos.length > 0) {
+    // Geschrieben wird, sobald sich etwas ändern KANN — der alte Guard
+    // (`todos.length > 0`) stammt aus der Ersetzen-Logik und hätte ein reines
+    // Aufräumen (nur `removeKeys`) verschluckt.
+    if (todos.length > 0 || removeKeys.length > 0 || merged.length !== existingTodos.length) {
       todoSaved = await props.service
-        .patchEventOverridesValue(Number(props.event.id), '_b2runTodo', todos)
+        .patchEventOverridesValue(Number(props.event.id), '_b2runTodo', merged)
         .catch(() => false);
       // v30.56: Den lokalen Event-Stand nachziehen. `patchEventOverridesValue`
       // schreibt NUR nach SharePoint — das Event-Objekt im Speicher trägt
@@ -227,7 +312,7 @@ export default function B2RunBibImportModal(props: {
       if (todoSaved) { try { await refreshEvents(); } catch { /* beim nächsten Laden */ } }
     }
     setBusy(false); setProgress('');
-    setWritten({ ok, failed, todos: todos.length, todoSaved });
+    setWritten({ ok, failed, todos: todos.length, todoSaved, skipped });
     props.onDone();
   };
 
@@ -398,10 +483,21 @@ export default function B2RunBibImportModal(props: {
         </Step>
 
         {written && (
-          <div className={cx('dex-ui-callout', written.failed ? 'dex-ui-callout--danger' : 'dex-ui-callout--success')}>
-            <span className="dex-ui-callout-icon">{written.failed ? <AlertCircle size={16} /> : <Check size={16} />}</span>
+          <div className={cx('dex-ui-callout', (written.failed || written.skipped.length) ? 'dex-ui-callout--danger' : 'dex-ui-callout--success')}>
+            <span className="dex-ui-callout-icon">{(written.failed || written.skipped.length) ? <AlertCircle size={16} /> : <Check size={16} />}</span>
             <div>
               <strong>{written.ok} Startnummer(n) geschrieben{written.failed ? `, ${written.failed} fehlgeschlagen` : ''}.</strong>
+              {/* v31.4: Übersprungene Nummern namentlich — sie sind der Fall,
+                  der ohne diese Zeile zur Doppelvergabe geworden wäre. */}
+              {written.skipped.length > 0 && (
+                <div style={{ marginTop: 4 }}>
+                  <strong>{written.skipped.length} Nummer(n) NICHT geschrieben</strong>, weil DEX sonst eine bereits vergebene Nummer überschrieben hätte:
+                  <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                    {written.skipped.map((s, i) => <li key={i}>{s}</li>)}
+                  </ul>
+                  Bitte klären, wem die Nummer gehört. Ist die Datei richtig, trage sie von Hand in der Teilnehmerliste nach.
+                </div>
+              )}
               {written.todos > 0 && (
                 <div style={{ marginTop: 4 }}>
                   {written.todoSaved

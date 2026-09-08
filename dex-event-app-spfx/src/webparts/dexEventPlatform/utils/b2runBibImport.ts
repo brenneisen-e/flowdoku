@@ -73,6 +73,30 @@ export interface BibImportReport {
 
 const lc = (s: string | undefined | null): string => (s || '').toLowerCase().trim();
 
+/** v31.4: Startnummer einer Zeile — Rohwert, getrimmt. */
+const bibOf = (r: SPRegistration): string => String(r.Startnummer || '').trim();
+
+/** Startblock einer Zeile: bei geteilten Kapazitäten `StarterType`, auf der
+ *  Warteliste `PreferredStarterType`. */
+const blockOfReg = (r: SPRegistration | undefined): string =>
+  r ? String(r.StarterType || r.PreferredStarterType || '').trim() : '';
+
+/**
+ * v31.4: Widersprechen sich zwei Startblock-Angaben?
+ *
+ * Bewusst dieselbe (tolerante) Regel wie der `blockMismatch`-Hinweis unten:
+ * In DEX steht „Funstarter", beim Veranstalter „17:00 Uhr Funstarter (Grün)" —
+ * verglichen wird auf Enthaltensein, nicht auf Gleichheit. Und **fehlt eine
+ * der beiden Angaben, ist das kein Widerspruch**: Events ohne geteilte
+ * Kapazitäten haben gar keinen Startblock, und eine Regel, die dort alles
+ * ausschließt, hätte jede Vorbelegung abgeschaltet.
+ */
+function blockConflict(a: string, b: string): boolean {
+  const x = lc(a), y = lc(b);
+  if (!x || !y) return false;
+  return x.indexOf(y) < 0 && y.indexOf(x) < 0;
+}
+
 /**
  * Folgt der Nachrück-Kette von einer abgemeldeten Person bis zu der Person,
  * die heute tatsächlich läuft.
@@ -160,8 +184,15 @@ export function buildBibReport(rows: BibRow[], regs: SPRegistration[]): BibImpor
     }
   }
 
+  // v31.4: „ohne Nummer" heißt auch WIRKLICH ohne Nummer. Der Filter ging
+  // bisher nur über `consumed` (steht die Person in der Datei?) — wer seine
+  // Nummer nachträglich bekommen hat (Übertragen-Knopf, Aktion „Startnummern
+  // zuteilen"), stand in der Datei nicht und war damit beim nächsten Import
+  // wieder Kandidat für eine ZWEITE Nummer. Genau die Doppelvergabe, die am
+  // Lauftag niemandem auffällt: Zwei Zettel, eine Person, und die Nummer, die
+  // dabei überschrieben wird, läuft beim Veranstalter auf jemand anderen.
   const missingFromFile = regs.filter(r =>
-    ACTIVE_STATI.indexOf(r.Status) >= 0 && !consumed.has(lc(r.ParticipantEmail)));
+    ACTIVE_STATI.indexOf(r.Status) >= 0 && !consumed.has(lc(r.ParticipantEmail)) && !bibOf(r));
 
   return { matches, missingFromFile, duplicateBibs };
 }
@@ -186,6 +217,15 @@ export function buildBibReport(rows: BibRow[], regs: SPRegistration[]): BibImpor
  * bestätigt (und bei Bedarf umgestellt) werden, bevor irgendetwas geschrieben
  * wird — sonst trägt DEX eine Startnummer ein, die beim Veranstalter jemand
  * anderem gehört, und der Fehler fällt erst am Einlass auf.
+ *
+ * **v31.4: Der Startblock entscheidet mit.** Vorher lief die Paarung rein
+ * zeitlich und konnte einen Funstarter-Zettel an eine Durchstarterin vergeben.
+ * Das ist am Lauftag kein Datenproblem mehr, sondern ein Startproblem: Die
+ * Person steht im falschen Startfeld und wird dort weggeschickt. Deshalb wird
+ * gruppenfremd GAR NICHT mehr vorbelegt (der Organizer kann die Nummer im
+ * Fenster weiterhin von Hand zuordnen) — dieselbe Regel, die die Aktion
+ * „Startnummern zuteilen" über `blockMismatch` fährt. Ohne Startblock-Angabe
+ * auf einer der beiden Seiten bleibt es beim bisherigen Verhalten.
  */
 export function suggestOrphanPairs(report: BibImportReport): Record<string, string> {
   const ts = (v: string | undefined): number => {
@@ -200,9 +240,29 @@ export function suggestOrphanPairs(report: BibImportReport): Record<string, stri
     .slice()
     .sort((a, b) => ts(a.RegistrationDate) - ts(b.RegistrationDate));
   const out: Record<string, string> = {};
-  const n = Math.min(orphans.length, candidates.length);
-  for (let i = 0; i < n; i++) {
-    out[orphans[i].row.bib] = lc(candidates[i].ParticipantEmail);
+  const used: number[] = [];
+  for (const o of orphans) {
+    // Startblock der Nummer: was die Datei sagt, sonst die Gruppe der Person,
+    // die sie gemeldet hatte.
+    const oBlock = (o.row.block || '').trim() || blockOfReg(o.listed);
+    // Erst die gleiche Gruppe (beide Angaben vorhanden UND passend), dann die
+    // Fälle ohne Angabe — nie eine widersprechende.
+    const pick = (wantSameBlock: boolean): number => {
+      for (let i = 0; i < candidates.length; i++) {
+        if (used.indexOf(i) >= 0) continue;
+        const cBlock = blockOfReg(candidates[i]);
+        if (blockConflict(oBlock, cBlock)) continue;
+        const same = !!oBlock && !!cBlock;
+        if (same !== wantSameBlock) continue;
+        return i;
+      }
+      return -1;
+    };
+    const sameIdx = pick(true);
+    const idx = sameIdx >= 0 ? sameIdx : pick(false);
+    if (idx < 0) continue; // niemand ohne Startblock-Widerspruch übrig — nicht vorbelegen
+    used.push(idx);
+    out[o.row.bib] = lc(candidates[idx].ParticipantEmail);
   }
   return out;
 }

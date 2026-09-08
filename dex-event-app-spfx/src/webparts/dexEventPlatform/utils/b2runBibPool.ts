@@ -58,11 +58,8 @@ const ACTIVE_STATI = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
 
 const lc = (s: string | undefined | null): string => (s || '').toLowerCase().trim();
 
-/** Rohwert der Startnummer. `Startnummer` steht (noch) nicht im Interface
- *  SPRegistration, kommt aber über `$select=*` mit — wie in `b2runTodos`. */
-const rawBib = (r: SPRegistration): string =>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  String((r as any).Startnummer || '').trim();
+/** Rohwert der Startnummer, so wie er auf dem Zettel steht. */
+const rawBib = (r: SPRegistration): string => String(r.Startnummer || '').trim();
 
 /** Gruppe/Startblock einer Zeile. Bei geteilten Kapazitäten steht sie in
  *  `StarterType`, bei Warteliste/Wunsch in `PreferredStarterType`. */

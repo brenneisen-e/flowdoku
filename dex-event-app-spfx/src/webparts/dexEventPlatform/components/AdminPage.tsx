@@ -28,6 +28,8 @@ import { cx, ensureDexUiStyles } from './dexUi';
 import { InfoTooltip } from './InfoTooltip';
 import B2RunBibImportModal from './admin/B2RunBibImportModal';
 import B2RunTodoModal from './admin/B2RunTodoModal';
+// v31.4: Freie Startnummern an Personen ohne Nummer zuteilen.
+import B2RunAssignBibsModal from './admin/B2RunAssignBibsModal';
 import ShirtSizeModal from './admin/ShirtSizeModal';
 import CopyToAgendaModal from './admin/CopyToAgendaModal';
 // v31.4: Gedruckte QR-Nummern aus DEX_Emails in die Teilnehmerliste zurück.
@@ -1039,6 +1041,8 @@ export default function AdminPage(): React.ReactElement {
   const [bibImportOpen, setBibImportOpen] = React.useState(false);
   // v30.54: Offene Ummeldungen beim Veranstalter — live aus der Liste.
   const [b2runTodoOpen, setB2runTodoOpen] = React.useState(false);
+  // v31.4: Freie Startnummern an Personen ohne Nummer (s. B2RunAssignBibsModal).
+  const [assignBibsOpen, setAssignBibsOpen] = React.useState(false);
   // v30.60: Bestellliste der Trikots (s. components/admin/ShirtSizeModal).
   const [shirtSizeOpen, setShirtSizeOpen] = React.useState(false);
   // v30.93: Programmpunkte, Stufe 4 — Kopie in ein neues Event.
@@ -2230,7 +2234,7 @@ export default function AdminPage(): React.ReactElement {
     navigate, openChangeLogForEvent, openCommsModal, openInviteModal, openMassmailPicker, promoteResult,
     qrSentCount, refreshEvents, refreshProfilesResult, registrations, reloadRegistrations, reorderResult, repairAccessResult,
     repairNamesResult, repairOrganizersResult, repairPermsResult, resetCounterResult, runIdReorder, runManualPromote,
-    searchUsers, selectedEvent, setAccessFixModal, setB2runTodoOpen, setBibImportOpen, setBillingPanelOpen,
+    searchUsers, selectedEvent, setAccessFixModal, setAssignBibsOpen, setB2runTodoOpen, setBibImportOpen, setBillingPanelOpen,
     setCheckInHubOpen, setCheckInHubStep, setCopiedDeepLink, setCopiedEmails, setDeclineCopied, setDeclineResult,
     setDetectOverbookResult, setExcelAudience, setExcelTargetModal, setFixColumnsResult, setFixFieldsResult, setIsCheckingDeclines,
     setIsDetectingOverbook, setIsFixingColumns, setIsFixingFields, setIsRefreshingProfiles, setIsRepairingAccess, setIsRepairingNames,
@@ -2895,6 +2899,19 @@ export default function AdminPage(): React.ReactElement {
           event={selectedEvent}
           service={eventServiceRef}
           onClose={() => setBibImportOpen(false)}
+          onDone={() => { reloadRegistrationsForIdCheck().catch(() => { /* best-effort */ }); }}
+        />
+      )}
+
+      {/* v31.4: Freie Startnummern zuteilen (B2Run Köln). Nachgeladen wird über
+          denselben EINEN Pfad wie beim Import — `reloadRegistrationsForIdCheck`
+          ruft `reloadRegistrations()`, das bei einem Lesefehler den alten Stand
+          stehen lässt (nie `setRegistrations(await getAllRegistrations(id))`). */}
+      {assignBibsOpen && selectedEvent && eventServiceRef && (
+        <B2RunAssignBibsModal
+          event={selectedEvent}
+          service={eventServiceRef}
+          onClose={() => setAssignBibsOpen(false)}
           onDone={() => { reloadRegistrationsForIdCheck().catch(() => { /* best-effort */ }); }}
         />
       )}

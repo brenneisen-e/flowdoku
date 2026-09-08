@@ -97,16 +97,31 @@ export function shirtFieldOf(
  *
  * `reg` wird strukturell getypt, damit dieses Modul nicht vom EventService
  * abhängt. `customData` ist das bereits geparste `CustomData`-JSON der Zeile.
+ *
+ * **v31.4 — `bibNote`: der Zettel trägt noch den alten Namen.** Eine in DEX
+ * frei gewordene Startnummer ist immer eine GEBRAUCHTE: Sie wurde beim
+ * Veranstalter für jemand anderen gedruckt, und die Ummeldung dort ändert den
+ * Aufdruck nicht. Am Ausgabetisch muss also jemand den Namen überkleben —
+ * das ist eine Handlungsanweisung und kein Nachschlagewert, deshalb Warnton
+ * statt Chip (Muster der Trikot-Ausweichgröße, v31.3).
+ *
+ * Der WORTLAUT kommt vom Aufrufer (wie `labels`): Dieses Modul kennt die
+ * Sprache nicht. Die REGEL steht hier — angezeigt wird der Hinweis nur, wenn
+ * die Zeile überhaupt eine Nummer trägt, und direkt unter ihr.
  */
 export function checkInExtras(
   fields: FieldDef[] | undefined | null,
   customData: Record<string, unknown> | undefined | null,
   reg: { Startnummer?: string; StarterType?: string; PreferredStarterType?: string } | undefined | null,
-  labels: { bib: string; group: string }
+  labels: { bib: string; group: string },
+  bibNote?: { label: string; text: string } | null,
 ): CheckInExtra[] {
   const out: CheckInExtra[] = [];
   const bib = String((reg && reg.Startnummer) || '').trim();
   if (bib) out.push({ label: labels.bib, value: bib, strong: true });
+  if (bib && bibNote && bibNote.text) {
+    out.push({ label: bibNote.label, value: bibNote.text, tone: 'warn' });
+  }
 
   const cd = customData || {};
   for (const f of (fields || [])) {

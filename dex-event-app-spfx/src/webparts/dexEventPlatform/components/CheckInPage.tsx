@@ -22,6 +22,9 @@ import {
   // v31.4: Trikot-Ausgabe am Tisch — was rausgegeben wurde, steht in der Zeile.
   parseShirtIssue, ShirtIssue, shirtFieldOf, splitShirtSize,
 } from '../utils/checkInExtras';
+// v31.4: „0412" und „412" sind auf dem Zettel dieselbe Nummer — der
+// Überkleben-Hinweis muss beide finden.
+import { bibKey } from '../utils/b2runBibPool';
 import { parseAgendaCheckIns, parseAgendaMarks, parseAgendaNoShows, formatMarkTime, suggestCurrentAgendaItem } from '../utils/agendaCheckIns';
 import Modal from './Modal';
 // v31.4: Klassensatz aus docs/ui-leitfaden.md (Kästen, Pillen, Werkzeugleiste).
@@ -376,16 +379,79 @@ export default function CheckInPage(): React.ReactElement {
     shirtAllocCacheRef.current.set(rs, res);
     return res;
   }, [events, shirtParentOf, shirtFieldsFor]);
+  /**
+   * v31.4: Welche Startnummer trägt noch den Namen einer ANDEREN Person?
+   *
+   * Eine in DEX frei gewordene Nummer ist immer eine gebrauchte: Sie wurde
+   * beim Veranstalter für jemand anderen gedruckt, und die Ummeldung dort
+   * ändert den Aufdruck nicht. Am Ausgabetisch muss deshalb jemand den Namen
+   * überkleben — sonst läuft die Person mit einem fremden Namen auf der Brust
+   * und wird bei der Zeitnahme der falschen Person zugeordnet.
+   *
+   * Quelle ist der bereits geladene `_b2runTodo`-Blob des Events (kein
+   * zusätzlicher Lesevorgang am Tisch, wo das Netz am schlechtesten ist).
+   * **Abgehakte Aufgaben zählen ausdrücklich MIT**: Abgehakt heißt „beim
+   * Veranstalter umgemeldet", nicht „Aufdruck geändert" — der Zettel bleibt
+   * falsch, bis jemand klebt. Deshalb wird `_b2runTodoDone` hier gar nicht
+   * gelesen.
+   *
+   * Der Cache ist kein Luxus: `extrasFor` läuft je Zeile der Trefferliste, und
+   * `emailTemplateOverrides` trägt bei Events mit eingebettetem Mail-Logo
+   * mehrere hundert Kilobyte. Neu geparst wird nur, wenn sich der Blob ändert.
+   */
+  const bibRelabelCacheRef = React.useRef<Record<string, { src: string; map: Record<string, string> }>>({});
+  const bibRelabelNames = React.useCallback((eventId: string): Record<string, string> => {
+    const ev = events.find(e => e.id === eventId);
+    const parent = shirtParentOf(eventId);
+    const src = `${(ev && ev.emailTemplateOverrides) || ''} ${(parent && parent.emailTemplateOverrides) || ''}`;
+    const hit = bibRelabelCacheRef.current[eventId];
+    if (hit && hit.src === src) return hit.map;
+    const map: Record<string, string> = {};
+    const collect = (raw: string | undefined): void => {
+      if (!raw) return;
+      try {
+        const o = JSON.parse(raw);
+        const list = (o && Array.isArray(o._b2runTodo)) ? o._b2runTodo : [];
+        for (const t of list) {
+          if (!t || typeof t !== 'object') continue;
+          if (t.kind !== 'transfer' && t.kind !== 'assign') continue;
+          const bib = String(t.bib || '').trim();
+          const from = String(t.fromName || '').trim();
+          if (!bib || !from) continue;
+          const key = bibKey(bib);
+          if (key && !map[key]) map[key] = from;
+        }
+      } catch { /* kein oder kaputtes Piggyback — dann gibt es keinen Hinweis */ }
+    };
+    // Eigenes Event zuerst: Bei einem Klammer-Event kann die Aufgabenliste auf
+    // der Klammer liegen, der Tisch steht aber auf dem Termin.
+    collect(ev && ev.emailTemplateOverrides);
+    collect(parent && parent.emailTemplateOverrides);
+    bibRelabelCacheRef.current[eventId] = { src, map };
+    return map;
+  }, [events, shirtParentOf]);
   const extrasFor = React.useCallback((
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     reg: any,
     eventId: string,
   ): CheckInExtra[] => {
+    // v31.4: Der Überkleben-Hinweis hängt an der Nummer AUF DER ZEILE — trägt
+    // die Person keine, gibt es am Tisch auch nichts zu kleben.
+    const bibRaw = String((reg && reg.Startnummer) || '').trim();
+    const otherName = bibRaw ? (bibRelabelNames(eventId)[bibKey(bibRaw)] || '') : '';
     const out = checkInExtras(
       shirtFieldsFor(eventId),
       parseCustomData(reg?.CustomData),
       reg,
       { bib: isDe ? 'Startnummer' : 'Bib number', group: isDe ? 'Gruppe' : 'Group' },
+      otherName
+        ? {
+          label: isDe ? 'Überkleben' : 'Relabel',
+          text: isDe
+            ? `Die Nummer läuft beim Veranstalter noch auf ${otherName} — bitte den Namen auf der Startnummer überkleben.`
+            : `With the organiser this number is still registered to ${otherName} — please cover the name on the bib.`,
+        }
+        : null,
     );
     // v30.88: Gegenvorschlag, wenn die Wunschgröße laut Bestand nicht reicht —
     // die Antwort auf „passt es überhaupt?" gehört an den Tisch, nicht in eine Excel.
@@ -414,7 +480,7 @@ export default function CheckInPage(): React.ReactElement {
       });
     }
     return out;
-  }, [isDe, shirtAllocFor, shirtFieldsFor]);
+  }, [isDe, shirtAllocFor, shirtFieldsFor, bibRelabelNames]);
 
   /**
    * v31.4: Trikot-Angaben zu EINER Person am Ausgabetisch.

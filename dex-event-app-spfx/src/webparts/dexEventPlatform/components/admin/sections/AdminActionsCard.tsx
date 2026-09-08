@@ -71,6 +71,8 @@ export interface AdminActionsCardProps {
   searchUsers: (query: string, includeInternational?: boolean) => Promise<{ email: string; displayName: string; location: string; jobTitle: string; }[]>;
   selectedEvent: DeloitteEvent;
   setAccessFixModal: React.Dispatch<React.SetStateAction<{ running: boolean; evIdx: number; evTotal: number; evTitle: string; itemDone: number; itemTotal: number; summary: string[]; }>>;
+  /** v31.4: Dialog „Startnummern zuteilen" (s. B2RunAssignBibsModal). */
+  setAssignBibsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setB2runTodoOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setBibImportOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setBillingPanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -124,7 +126,7 @@ export interface AdminActionsCardProps {
 
 export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
   const { adminEvents, allEvents, childEventsOf, confirmDialog, copiedDeepLink, copiedEmails, detectOverbookResult, eventServiceRef, fixColumnsResult, fixFieldsResult, isAdmin, isCheckingDeclines, isDe, isDetectingOverbook, isFixingColumns, isFixingFields, isOrganizerFor, isPromoting, isRefreshingProfiles, isReorderingIDs, isRepairingAccess, isRepairingNames, isRepairingOrganizers, isRepairingPerms, isResettingCounter, isSendingQR, isSplitCapacity, isSyncingRegistry, navigate, openChangeLogForEvent, openCommsModal, openInviteModal, openMassmailPicker, promoteResult, qrSentCount, refreshEvents, refreshProfilesResult, registrations, reloadRegistrations, reorderResult, repairAccessResult, repairNamesResult, repairOrganizersResult, repairPermsResult, resetCounterResult, runIdReorder, runManualPromote, searchUsers, selectedEvent, setAccessFixModal, setB2runTodoOpen, setBibImportOpen, setBillingPanelOpen, setCheckInHubOpen, setCheckInHubStep, setCopiedDeepLink, setCopiedEmails, setDeclineCopied, setDeclineResult, setDetectOverbookResult, setExcelAudience, setExcelTargetModal, setFixColumnsResult, setFixFieldsResult, setIsCheckingDeclines, setIsDetectingOverbook, setIsFixingColumns, setIsFixingFields, setIsRefreshingProfiles, setIsRepairingAccess, setIsRepairingNames, setIsRepairingOrganizers, setIsRepairingPerms, setIsResettingCounter, setIsSyncingRegistry, setNameFixModal, setRefreshProfilesResult, setRepairAccessResult, setRepairNamesResult, setRepairOrganizersResult, setRepairPermsResult, setResetCounterResult, setQrBackfillOpen, setShirtSizeOpen, setShowDeclineModal, setShowExportMenu, setSubRegReloadTick, setSyncRegistryResult, shirtFieldExists, showAlert, showExportMenu, siteUrl, spServiceRef, syncRegistryResult, t, updateEvent } = p;
-  const { setCopyToAgendaOpen } = p;
+  const { setCopyToAgendaOpen, setAssignBibsOpen } = p;
   // v31.3: Gesperrte Aktionen bleiben sichtbar — mit dem Grund in der
   // Folgezeile (Leitfaden 5a, Punkt 5). Fast alle Sperren haben dieselbe
   // Ursache: Das Event hat (noch) keine Teilnehmerliste. Der Grund steht VOR
@@ -633,6 +635,26 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                   : 'Shows which bib numbers still need to be transferred, cancelled or newly registered with the organiser. Recalculated each time you open it, so later cancellations show up by themselves.'}
                 badge="organizer"
                 onClick={() => setB2runTodoOpen(true)}
+              />
+            )}
+
+            {/* 5d. v31.4: Freie Startnummern an Personen ohne Nummer.
+                Frei ist ausschließlich, was DEX gesehen hat — Nummern auf
+                abgemeldeten Zeilen und Nummern aus festgehaltenen
+                „abmelden"-Aufgaben. Es wird kein Nummernkreis gespeichert und
+                keiner aus Lücken abgeleitet; bereits vergebene Nummern
+                bleiben unangetastet (s. B2RunAssignBibsModal). Dieselbe
+                Gate-Bedingung wie die beiden Nachbarn. */}
+            {selectedEvent && isB2RunKoelnTitle(selectedEvent.title) && (
+              <ActionTile
+                icon={<Hash size={18} />}
+                category="participants"
+                title={isDe ? 'Startnummern zuteilen' : 'Assign bib numbers'}
+                desc={isDe
+                  ? 'Zeigt dir, welche freien Startnummern es gibt und wer noch keine hat — vergeben wird erst, wenn du bestätigst. Frei ist nur, was durch eine Abmeldung frei geworden ist; bereits vergebene Nummern werden nicht angefasst.'
+                  : 'Shows which bib numbers are free and who still has none — nothing is assigned until you confirm. Free means freed up by a cancellation; numbers already handed out are never touched.'}
+                badge="organizer"
+                onClick={() => setAssignBibsOpen(true)}
               />
             )}
 
