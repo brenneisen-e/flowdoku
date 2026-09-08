@@ -15,6 +15,8 @@ import { DeloitteEvent } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 // v11.99: RefreshCw nicht mehr benötigt (Page-Level-Refresh-Button entfernt).
 import { Icon } from '@fluentui/react/lib/Icon';
+import { AlertCircle } from './Icons';
+import { ensureDexUiStyles } from './dexUi';
 import EventCard from './EventCard';
 import { CachedBg } from './CachedImage';
 import { prewarmImages } from '../utils/imageCache';
@@ -179,7 +181,7 @@ export function isEventVisibleForUser(
 export default function EventListPage(): React.ReactElement {
   // Seit v6.4: nur Top-Level-Events anzeigen. Sub-Events (parentEventId gesetzt)
   // erscheinen im Details-View des Parents (RegistrationPage), nicht eigenständig.
-  const { topLevelEvents: events, isEventsLoading, getMyEventNumbers, childEventsOf, refreshParticipantCounts } = useEvents();
+  const { topLevelEvents: events, isEventsLoading, eventsReadStatus, getMyEventNumbers, childEventsOf, refreshParticipantCounts, refreshEvents } = useEvents();
   const { currentUser, groupEmails } = useCurrentUser();
   // v30.4: previewAsUser senkt isAdmin/canCreateEvents bereits im RoleContext
   // ab; nur der E-Mail-basierte Organizer-Check unten muss lokal mitziehen,
@@ -202,8 +204,12 @@ export default function EventListPage(): React.ReactElement {
   React.useEffect(() => {
     prewarmImages((events || []).map(e => e.imageUrl));
   }, [events]);
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  const isDe = locale === 'de';
   const [onlyActive, setOnlyActive] = React.useState(true);
+  // v31.6: Der Kasten „Event-Liste nicht lesbar" bietet einen zweiten Versuch
+  // an — bei Drosselung/Netz ist das die ganze Lösung.
+  const [retrying, setRetrying] = React.useState(false);
   // View-Mode (Cards | List) - persistiert in localStorage
   const [viewMode, setViewMode] = React.useState<'cards' | 'list'>(() => {
     try { return (localStorage.getItem('dex-eventlist-view') as 'cards' | 'list') || 'cards'; }
@@ -356,6 +362,11 @@ export default function EventListPage(): React.ReactElement {
     );
   }
 
+  // v31.6: Der Hinweiskasten unten nutzt `dex-ui-callout`; die Seite hängt
+  // weder an Modal noch an WizardFormShell, die das Stylesheet sonst
+  // einziehen. Idempotent, kein Hook.
+  ensureDexUiStyles();
+
   return (
     <div className="page-container">
       {/* v11.99: Page-Level-Refresh-Button entfernt — Header oben rechts
@@ -375,6 +386,53 @@ export default function EventListPage(): React.ReactElement {
           {t('eventlist.hint')}
         </p>
       </div>
+      {/* v31.6: „Kein Zugriff" sah bis hierher aus wie „keine Events" — beides
+          war eine leere Liste. Wer aus einer Member Firm nur ein persönliches
+          Leserecht auf der Site hat (genehmigte Zugriffsanfrage), darf
+          DEX_Events NICHT lesen: Alle Rechte hängen an der Besucher-Gruppe.
+          Die Person meldete dem Organizer „ich sehe das Event nicht", und der
+          suchte am Event statt an ihren Rechten. Deshalb sagt der Kasten, was
+          fehlt und wen sie fragen muss. */}
+      {(eventsReadStatus === 'forbidden' || eventsReadStatus === 'error') && (
+        <div className="dex-ui-callout dex-ui-callout--warn" style={{ flexDirection: 'column', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+            <span className="dex-ui-callout-icon"><AlertCircle size={18} /></span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700 }}>
+                {eventsReadStatus === 'forbidden'
+                  ? (isDe ? 'Dir fehlt noch der Zugriff auf die Event-Liste' : 'You do not have access to the event list yet')
+                  : (isDe ? 'Die Event-Liste ließ sich gerade nicht laden' : 'The event list could not be loaded right now')}
+              </div>
+              <div style={{ marginTop: 3 }}>
+                {eventsReadStatus === 'forbidden'
+                  ? (isDe
+                    ? 'Diese Seite kannst du öffnen, die Liste mit den Events darfst du aber noch nicht lesen. Das ist eine Frage der Berechtigung und liegt nicht an dir: Ein Organizer oder ein Admin muss dich in die Besucher-Gruppe dieser Site aufnehmen — ein einzelnes Leserecht aus einer Zugriffsanfrage reicht dafür nicht. Danach siehst du die Events sofort.'
+                    : 'You can open this page, but you are not allowed to read the event list yet. That is a permissions question and not your fault: an organizer or an admin needs to add you to the visitors group of this site — an individual read permission from an access request is not enough. After that you will see the events straight away.')
+                  : (isDe
+                    ? 'Das war ein Netz- oder Serverfehler, keine fehlende Berechtigung. Versuch es gleich noch einmal. Bleibt es dabei, sag einem Organizer oder Admin Bescheid.'
+                    : 'That was a network or server error, not a missing permission. Please try again in a moment. If it keeps happening, tell an organizer or admin.')}
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary dex-ui-btn-sm"
+                  disabled={retrying}
+                  onClick={() => {
+                    setRetrying(true);
+                    refreshEvents()
+                      .catch(err => console.warn('[DEX] Erneutes Laden der Events fehlgeschlagen:', err))
+                      .then(() => setRetrying(false));
+                  }}
+                >
+                  {retrying
+                    ? (isDe ? 'Wird geladen …' : 'Loading …')
+                    : (isDe ? 'Erneut versuchen' : 'Try again')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex-between mb-16" style={{ alignItems: 'flex-end' }}>
         {/* View-Mode Switcher: Cards / List — mit „Ansicht"-Label darüber,
             damit klar ist, was die beiden Buttons umschalten (v19.6). */}
@@ -521,7 +579,10 @@ export default function EventListPage(): React.ReactElement {
                 {renderSection(otherEvents)}
               </>
             )}
-            {filteredEvents.length === 0 && (
+            {/* v31.6: Nur wenn die Liste WIRKLICH gelesen wurde, heißt leer auch
+                leer. Sonst steht oben der Kasten, der den Grund nennt — die
+                beiden Fälle dürfen sich nicht wieder vermischen. */}
+            {filteredEvents.length === 0 && eventsReadStatus !== 'forbidden' && eventsReadStatus !== 'error' && (
               <p className="text-center mt-24" style={{ color: 'var(--dex-gray-400)' }}>
                 Keine Events für dich gefunden.
               </p>

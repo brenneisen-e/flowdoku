@@ -10,6 +10,18 @@
  * fehlgeschlagen.
  *
  * Nur für Admins; ohne Admin-Rechte passiert nichts (analog approveorg).
+ *
+ * v31.6: Der Knopf fragte bis hierher `userHasSiteAccess` — „darf die Person
+ * die Seite öffnen?" — und meldete bei „ja" ungeprüft „war bereits
+ * berechtigt". Genau das trifft die Personen, um die es geht: Wer aus einer
+ * Member Firm über eine genehmigte SharePoint-Zugriffsanfrage ein
+ * PERSÖNLICHES Leserecht hat, erfüllt die Prüfung — und sieht trotzdem kein
+ * Event, weil DEX jedes Teilnehmer-Recht an die BESUCHER-GRUPPE vergibt (nie
+ * an eine einzelne Person). Der Knopf tat für sie also nichts und meldete
+ * Erfolg. Geprüft wird deshalb jetzt die Gruppen-Mitgliedschaft; wer nicht
+ * drin ist, wird aufgenommen, egal ob er die Seite schon öffnen kann. Ist die
+ * Prüfung selbst nicht möglich, wird aufgenommen (idempotent) und dazugesagt,
+ * dass der Vorher-Stand unbekannt war — behauptet wird nichts.
  */
 import * as React from 'react';
 import { useRoles } from '../context/RoleContext';
@@ -19,7 +31,10 @@ import { deepLinkParams } from '../utils/deepLink';
 import { EventService } from '../services/EventService';
 import { Check, X } from './Icons';
 
-type GrantResult = { email: string; status: 'granted' | 'already' | 'failed' };
+// v31.6: `unverified` = die Mitgliedschaft in der Besucher-Gruppe ließ sich
+// vorher nicht prüfen (keine Gruppe gefunden, fehlende Rechte, Netzfehler).
+// Dann wird trotzdem aufgenommen — aber die Zeile sagt, was offen blieb.
+type GrantResult = { email: string; status: 'granted' | 'already' | 'failed'; unverified?: boolean };
 
 export default function GrantAccessHandler(): React.ReactElement | null {
   const { isAdmin, originalIsAdmin } = useRoles();
@@ -52,10 +67,14 @@ export default function GrantAccessHandler(): React.ReactElement | null {
       const out: GrantResult[] = [];
       for (const mail of emails) {
         try {
-          const has = await svc.userHasSiteAccess(mail);
-          if (has === true) { out.push({ email: mail, status: 'already' }); continue; }
+          // v31.6: Nicht „darf sie die Seite öffnen", sondern „ist sie in der
+          // Besucher-Gruppe" — daran hängen die Event-Liste und jede
+          // Teilnehmerliste. null (nicht prüfbar) zählt bewusst NICHT als
+          // „drin": dann wird aufgenommen, das ist idempotent.
+          const inGroup = await svc.isInVisitorsGroup(mail);
+          if (inGroup === true) { out.push({ email: mail, status: 'already' }); continue; }
           const ok = await svc.grantSiteReadAccess(mail);
-          out.push({ email: mail, status: ok ? 'granted' : 'failed' });
+          out.push({ email: mail, status: ok ? 'granted' : 'failed', unverified: inGroup === null });
         } catch { out.push({ email: mail, status: 'failed' }); }
       }
       setResults(out);
@@ -65,10 +84,12 @@ export default function GrantAccessHandler(): React.ReactElement | null {
 
   if (!open) return null;
 
+  // v31.6: Die Texte benennen jetzt die Besucher-Gruppe statt „berechtigt" —
+  // ein persönliches Leserecht ist genau NICHT das, was hier zählt.
   const label = (s: GrantResult['status']): { txt: string; col: string; icon: React.ReactNode } => {
-    if (s === 'granted') return { txt: isDe ? 'Leserechte vergeben' : 'Read access granted', col: 'var(--dex-green-dark, #4a7c1f)', icon: <Check size={14} /> };
-    if (s === 'already') return { txt: isDe ? 'War bereits berechtigt' : 'Already had access', col: 'var(--dex-gray-600, #666)', icon: <Check size={14} /> };
-    return { txt: isDe ? 'Fehlgeschlagen — bitte manuell über die Site-Berechtigungen vergeben' : 'Failed — please grant manually via site permissions', col: 'var(--dex-red, #c00)', icon: <X size={14} /> };
+    if (s === 'granted') return { txt: isDe ? 'In die Besucher-Gruppe aufgenommen' : 'Added to the visitors group', col: 'var(--dex-green-dark, #4a7c1f)', icon: <Check size={14} /> };
+    if (s === 'already') return { txt: isDe ? 'War schon in der Besucher-Gruppe' : 'Already in the visitors group', col: 'var(--dex-gray-600, #666)', icon: <Check size={14} /> };
+    return { txt: isDe ? 'Fehlgeschlagen — bitte manuell in die Besucher-Gruppe der Site aufnehmen' : 'Failed — please add manually to the site visitors group', col: 'var(--dex-red, #c00)', icon: <X size={14} /> };
   };
 
   return (
@@ -84,8 +105,8 @@ export default function GrantAccessHandler(): React.ReactElement | null {
         <>
           <p style={{ marginTop: 0, fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
             {isDe
-              ? 'Ergebnis der automatischen Freigabe (Leserechte über die Besucher-Gruppe der Site):'
-              : 'Result of the automatic grant (read access via the site visitors group):'}
+              ? 'Ergebnis der automatischen Freigabe. Aufgenommen wird in die Besucher-Gruppe der Site — nur darüber sieht jemand die Events und die Anmeldeseiten:'
+              : 'Result of the automatic grant. People are added to the site visitors group — that group alone opens the events and registration pages:'}
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
             {(results || []).map(r => {
@@ -94,7 +115,19 @@ export default function GrantAccessHandler(): React.ReactElement | null {
                 <div key={r.email} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: '1px solid var(--dex-gray-200)', borderRadius: 10, background: '#fff' }}>
                   <span style={{ color: l.col, display: 'inline-flex', flexShrink: 0 }}>{l.icon}</span>
                   <span style={{ flex: 1, minWidth: 0, fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.email}</span>
-                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: l.col, textAlign: 'right' }}>{l.txt}</span>
+                  <span style={{ minWidth: 0, textAlign: 'right' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: l.col, display: 'block' }}>{l.txt}</span>
+                    {/* v31.6: Ehrlich bleiben — wenn die Mitgliedschaft vorher
+                        nicht zu lesen war, steht das hier, statt sie zu
+                        behaupten. Die Aufnahme selbst schadet nicht. */}
+                    {r.unverified && r.status === 'granted' && (
+                      <span className="dex-ui-muted" style={{ display: 'block', fontSize: '0.72rem', marginTop: 2 }}>
+                        {isDe
+                          ? 'Vorheriger Stand war nicht prüfbar — sicherheitshalber aufgenommen.'
+                          : 'Previous membership could not be checked — added to be safe.'}
+                      </span>
+                    )}
+                  </span>
                 </div>
               );
             })}

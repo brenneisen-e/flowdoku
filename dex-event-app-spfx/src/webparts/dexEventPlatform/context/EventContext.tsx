@@ -63,6 +63,13 @@ export const EventContext = React.createContext<EventContextType | undefined>(un
 export function EventProvider(props: { context: WebPartContext; children: React.ReactNode }): React.ReactElement {
   const [events, setEvents] = React.useState<DeloitteEvent[]>([]);
   const [isEventsLoading, setIsEventsLoading] = React.useState(true);
+  // v31.6: Wie das Lesen von DEX_Events ausging — Vorbild ist `rolesReadStatus`
+  // im RoleContext (v30.81). 'forbidden' (401/403) heißt: die Person darf die
+  // Liste nicht lesen, und eine leere Übersicht wäre dann keine Aussage über
+  // die Events, sondern über ihre Rechte. Genau daran scheitern Personen aus
+  // Member Firms, die per Zugriffsanfrage ein persönliches Leserecht auf der
+  // Site bekommen haben, aber nicht in der Besucher-Gruppe stehen.
+  const [eventsReadStatus, setEventsReadStatus] = React.useState<'loading' | 'ok' | 'forbidden' | 'error'>('loading');
   // Map von EventId -> SubsiteUrl für schnellen Zugriff
   const subsiteMap = React.useRef<Record<string, string>>({});
 
@@ -282,10 +289,25 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // danach und aktualisiert die Ansicht nach.
     emitBootStage('events');
     const tGet = performance.now();
-    const spEvents = await eventService.getEvents();
+    // v31.6: Ein Lesefehler ist keine Null. Ohne diesen Rückruf lieferte
+    // getEvents bei 403 dieselbe leere Liste wie bei „es gibt gerade keine
+    // Events" — die Übersicht sah für jemanden ohne Rechte genauso aus wie
+    // für jemanden mit Rechten und leerem Kalender.
+    // -1 = gelesen (gleiche Schreibweise wie `useEventSelection`).
+    let failedStatus = -1;
+    const spEvents = await eventService.getEvents(st => { failedStatus = st; });
     const dGet = Math.round(performance.now() - tGet);
     // eslint-disable-next-line no-console
     dlog('perf', `[DEX][perf][loadEvents] getEvents = ${dGet} ms (n=${spEvents.length})`);
+    if (failedStatus >= 0) {
+      // Nicht lesbar heißt „unbekannt", nicht „keine Events": Der bisherige
+      // Stand bleibt stehen (wie `reloadRegistrations` im Organizer Center),
+      // und die Übersicht sagt, dass die Liste fehlt, statt sie leer zu malen.
+      setEventsReadStatus(failedStatus === 401 || failedStatus === 403 ? 'forbidden' : 'error');
+      console.warn(`[DEX] loadEvents: DEX_Events konnte nicht gelesen werden (HTTP ${failedStatus}) — bisheriger Stand bleibt stehen.`);
+      return;
+    }
+    setEventsReadStatus('ok');
     emitBootStage('mapping');
     const tMap = performance.now();
     // v9.41: jedes Event-Mapping einzeln in try/catch wrappen — wenn EIN
@@ -3312,7 +3334,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       value: {
         events: eventsForConsumer,
         topLevelEvents: eventsForConsumer.filter(e => !e.parentEventId),
-        childEventsOf, isEventsLoading, ensureEventDocuments, refreshEventDocuments,
+        childEventsOf, isEventsLoading, eventsReadStatus, ensureEventDocuments, refreshEventDocuments,
         createEvent, registerForEvent, registerTeam,
         getTeamMembers: async (eventId: string, teamId: string): Promise<SPRegistration[]> => {
           const subsiteUrl = subsiteMap.current[eventId];

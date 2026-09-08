@@ -74,14 +74,24 @@ export async function seedEvents(svc: EventService): Promise<void> {
 
 /**
  * Alle Events laden
+ *
+ * @param onHttpError v31.6: Meldet, dass DEX_Events NICHT gelesen werden
+ *   konnte — `status` ist der HTTP-Status, `0` bei Netz-/Parse-Fehler. Ohne
+ *   diesen Rückruf ist „keine Rechte auf der Liste" von „zurzeit keine
+ *   Events" nicht zu unterscheiden: Beides kam als `[]` zurück, und wer aus
+ *   einer Member Firm nur ein persönliches Leserecht auf der Site hat (statt
+ *   der Besucher-Gruppe), sah eine leere Übersicht und meldete dem Organizer
+ *   „ich sehe das Event nicht" — der dann am Event suchte statt an den
+ *   Rechten. Dieselbe Falle wie bei `getAllRegistrations` (CLAUDE.md: „Ein
+ *   Lesefehler ist keine Null").
  */
-export async function getEvents(svc: EventService): Promise<SPEvent[]> {
+export async function getEvents(svc: EventService, onHttpError?: (_status: number) => void): Promise<SPEvent[]> {
   try {
     const response = await svc._sp.get(
       `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=${EVENT_SELECT}&$orderby=StartDate desc&$top=100`,
       SPHttpClient.configurations.v1
     );
-    if (!response.ok) return [];
+    if (!response.ok) { if (onHttpError) onHttpError(response.status); return []; }
     // v29.51 (Messpunkt): Das ist die EINZIGE blockierende Datenabfrage des
     // Starts — und EVENT_SELECT holt 79 Spalten, darunter EmailImageBase64
     // und EmailTemplateOverrides mit eingebetteten Bildern. Ob das ein paar
@@ -99,6 +109,7 @@ export async function getEvents(svc: EventService): Promise<SPEvent[]> {
     );
     return rows;
   } catch {
+    if (onHttpError) onHttpError(0);
     return [];
   }
 }
