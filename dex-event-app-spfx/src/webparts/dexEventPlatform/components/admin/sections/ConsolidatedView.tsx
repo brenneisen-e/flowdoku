@@ -1,18 +1,24 @@
 /* ConsolidatedView — 1:1 aus AdminPage.tsx ausgelagert (Zeilen 5377-6469 des Stands
- * vor dem Schnitt). Der Inhalt ist zeichengleich uebernommen; die
+ * vor dem Schnitt). Der Inhalt ist zeichengleich übernommen; die
  * Anzeige-Bedingung bleibt beim Aufrufer.
+ *
+ * v31.3: Nach `docs/ui-leitfaden.md` (Abschnitte 4, 5a/5b) modernisiert —
+ * Hinweiskästen als `dex-ui-callout` ausserhalb des Scrollbereichs,
+ * Werkzeugleiste über der Tabelle, `dex-ui-table--compact` mit
+ * Personen-Zelle und Status-Pillen. Die Auflösung der Werte (Parent-Zeile
+ * zuerst, dann Sub-Event-CustomData) ist unverändert.
  */
 import * as React from 'react';
 import { DeloitteEvent } from '../../../types';
 import { isEventOver } from '../../../utils/eventFormat';
 import { ConsolidatedRow, DeniedSubEventList } from '../../admin/adminTypes';
-import { Icon } from '@fluentui/react/lib/Icon';
 import { PersonContactHover } from '../../PersonContactHover';
 import { formatDate, translateStatus } from '../../../utils/eventStatus';
 import { SPRegistration } from '../../../services/EventService';
-import { Check, ExternalLink, Plus, Trash2 } from '../../Icons';
+import { AlertCircle, Check, ChevronDown, Columns, ExternalLink, Plus, Trash2, Users } from '../../Icons';
 import { shortSubEventTitle } from '../../../utils/subEventTitle';
 import { activeParentRegOf } from '../logic/parentRegs';
+import { cx, ensureDexUiStyles } from '../../dexUi';
 
 export interface ConsolidatedViewProps {
   addAllToKlammer: (rows: ConsolidatedRow[]) => Promise<void>;
@@ -64,13 +70,51 @@ export interface ConsolidatedViewProps {
 }
 
 export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
-  const { addAllToKlammer, addingToKlammer, addToKlammer, bulkKlammerProgress, colToggleHover, confirmDialog, consolidatedChildren, consolidatedFiltered, consolidatedRows, consolidatedSort, consolidatedSortAsc, deniedSubEventLists, expandedConsolidatedEmail, highlightMatch, inactiveAccounts, isAdmin, isConsolidatedMode, isDe, isLoadingSubEventRegs, isOrganizerFor, missingReminderKey, openDeregModal, openMainFieldsEdit, orgPastLock, performSilentDuplicateDelete, personalColsCollapsed, registrations, reminderBusyId, searchQuery, selectedEvent, sendCompleteRegistrationReminder, setAssignAssistRow, setAssignAssistValue, setColToggleHover, setConsolidatedSort, setConsolidatedSortAsc, setExpandedConsolidatedEmail, setMissingReminderKey, setParticipantDetail, setPersonalColsCollapsed, setReminderBusyId, setSelectedEvent, showAlert, stripLocPrefix, subEventRegsByEventId } = p;
+  // v31.3: `colToggleHover`/`setColToggleHover` bleiben in der Schnittstelle
+  // (AdminPage übergibt sie unverändert weiter), werden hier aber nicht mehr
+  // gelesen — der Aufklapp-Knopf holt seinen Hover jetzt aus `dex-ui-chip`
+  // (Leitfaden 1.3: kein onMouseEnter-State für reine Optik).
+  const { addAllToKlammer, addingToKlammer, addToKlammer, bulkKlammerProgress, confirmDialog, consolidatedChildren, consolidatedFiltered, consolidatedRows, consolidatedSort, consolidatedSortAsc, deniedSubEventLists, expandedConsolidatedEmail, highlightMatch, inactiveAccounts, isAdmin, isConsolidatedMode, isDe, isLoadingSubEventRegs, isOrganizerFor, missingReminderKey, openDeregModal, openMainFieldsEdit, orgPastLock, performSilentDuplicateDelete, personalColsCollapsed, registrations, reminderBusyId, searchQuery, selectedEvent, sendCompleteRegistrationReminder, setAssignAssistRow, setAssignAssistValue, setConsolidatedSort, setConsolidatedSortAsc, setExpandedConsolidatedEmail, setMissingReminderKey, setParticipantDetail, setPersonalColsCollapsed, setReminderBusyId, setSelectedEvent, showAlert, stripLocPrefix, subEventRegsByEventId } = p;
+  // Idempotent — Modal und WizardFormShell rufen es ebenfalls; hier nötig, weil
+  // die Matrix auch ohne offenes Modal gerendert wird.
+  ensureDexUiStyles();
+  // v31.3: Ein Aufklapper je Hinweiskasten. Sichtbar bleiben Befund und Knöpfe,
+  // die ausführliche Erklärung steckt darin (Leitfaden 2c: höchstens zwei
+  // Zeilen Erklärtext). Der Hook steht VOR den frühen Returns — sonst kippt die
+  // Hook-Reihenfolge (react-hooks/rules-of-hooks ist `error`).
+  const [openHelp, setOpenHelp] = React.useState<string>('');
+  const toggleHelp = (k: string): void => setOpenHelp(openHelp === k ? '' : k);
     if (!selectedEvent) return null;
     if (isLoadingSubEventRegs) {
-      return <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>{isDe ? 'Lade Sub-Event-Teilnehmer...' : 'Loading sub-event participants...'}</p>;
+      return <p className="dex-ui-muted" style={{ fontStyle: 'italic' }}>{isDe ? 'Lade Sub-Event-Teilnehmer...' : 'Loading sub-event participants...'}</p>;
     }
     if (consolidatedRows.length === 0) {
-      return <p style={{ color: 'var(--dex-gray-400)' }}>{isDe ? 'Noch keine Anmeldungen in den Sub-Events.' : 'No registrations in the sub-events yet.'}</p>;
+      // v31.3: „Leer" heißt nur dann „niemand angemeldet", wenn ALLE
+      // Termin-Listen gelesen wurden. War eine gesperrt, ist der Stand
+      // unbekannt — und unbekannt wird benannt, nicht als leere Liste
+      // gerendert (CLAUDE.md: ein Lesefehler ist keine Null).
+      if (deniedSubEventLists.length > 0) {
+        return (
+          <div className="dex-ui-callout dex-ui-callout--warn">
+            <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <strong>{isDe ? 'Teilnehmer unbekannt' : 'Participants unknown'}</strong>
+              {' — '}
+              {isDe
+                ? `${deniedSubEventLists.length} Termin-Liste(n) konnten nicht gelesen werden, in den übrigen steht keine Anmeldung. Ob jemand angemeldet ist, lässt sich hier nicht sagen. Betroffen: `
+                : `${deniedSubEventLists.length} date list(s) could not be read, the others contain no registration. Whether anyone is registered cannot be said here. Affected: `}
+              {deniedSubEventLists.map(d => d.status > 0 ? `${d.title} (HTTP ${d.status})` : d.title).join(' · ')}
+            </div>
+          </div>
+        );
+      }
+      return (
+        <div className="dex-ui-empty">
+          <span className="dex-ui-empty-icon"><Users size={20} /></span>
+          <div className="dex-ui-empty-title">{isDe ? 'Noch keine Anmeldungen in den Sub-Events.' : 'No registrations in the sub-events yet.'}</div>
+          <div>{isDe ? 'Sobald sich jemand für einen Termin anmeldet, steht hier eine Zeile je Person.' : 'As soon as someone registers for a date, a row per person appears here.'}</div>
+        </div>
+      );
     }
     // v14.11: pastel A = event-level (parent) fields, pastel B = sub-event-specific fields
     const PASTEL_A_HEADER: React.CSSProperties = { background: 'rgba(0, 118, 168, 0.15)' };
@@ -115,11 +159,44 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
     }
     const dimColStyle = (id: string): React.CSSProperties =>
       (childColState[id] && (childColState[id].past || childColState[id].notYetOpen)) ? { opacity: 0.45 } : {};
+    // v31.3: Termine, deren Teilnehmerliste nicht gelesen wurde. `deniedSubEventLists`
+    // trägt nur Titel und Status (adminTypes) — AdminPage legt `ch.title || ch.id`
+    // ab, deshalb wird genau darüber verglichen. Wozu das gut ist: Ohne diesen
+    // Abgleich zeigen Kopf, Summenzeile und Zellen einer gesperrten Spalte „0"
+    // bzw. „—", also eine Aussage über Daten, die niemand gelesen hat.
+    const deniedTitles = new Set(deniedSubEventLists.map(d => d.title));
+    const isDeniedChild = (c: DeloitteEvent): boolean => deniedTitles.has(c.title || c.id);
     const handleSortConsolidated = (key: string): void => {
       if (consolidatedSort === key) setConsolidatedSortAsc(!consolidatedSortAsc);
       else { setConsolidatedSort(key); setConsolidatedSortAsc(true); }
     };
-    const sortArrow = (key: string): string => key === consolidatedSort ? (consolidatedSortAsc ? ' ▲' : ' ▼') : '';
+    // v31.3: Der Pfeil ist jetzt ein `dex-ui-table-sort`-Element, die Kopfzelle
+    // trägt `is-sortable`/`is-sorted` (Leitfaden 5b) — vorher war „sortierbar"
+    // nur am Mauszeiger erkennbar, „sortiert" nur am angehängten Zeichen.
+    const sortArrow = (key: string): React.ReactNode =>
+      key === consolidatedSort ? <span className="dex-ui-table-sort" aria-hidden="true">{consolidatedSortAsc ? '▲' : '▼'}</span> : null;
+    const sortCls = (key: string): string => cx('is-sortable', consolidatedSort === key && 'is-sorted');
+    // v31.3: Ein Aufklapper, viermal gebraucht — als Helfer, damit die
+    // Hinweiskästen nicht viermal dieselben zehn Zeilen tragen.
+    const helpBlock = (key: string, label: string, body: React.ReactNode): React.ReactNode => (
+      <>
+        <button type="button" className={cx('dex-ui-disclosure', openHelp === key && 'is-open')} onClick={() => toggleHelp(key)}>
+          <span className="dex-ui-disclosure-chevron"><ChevronDown size={14} /></span>{label}
+        </button>
+        {openHelp === key && <div className="dex-ui-disclosure-body">{body}</div>}
+      </>
+    );
+    // v31.3: Status-Pille nach Leitfaden 5b — grün angemeldet, blau eingecheckt,
+    // orange Warteliste, grau abgemeldet, rot No-Show.
+    const statusPillClass = (status: string | undefined): string => {
+      switch (status) {
+        case 'Eingecheckt': return 'dex-ui-pill dex-ui-pill--blue';
+        case 'Angemeldet': case 'QR versendet': return 'dex-ui-pill dex-ui-pill--green';
+        case 'Warteliste': return 'dex-ui-pill dex-ui-pill--orange';
+        case 'No-Show': return 'dex-ui-pill dex-ui-pill--red';
+        default: return 'dex-ui-pill dex-ui-pill--gray';
+      }
+    };
     const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
     const abbreviate = (s: string, max: number): string => s.length > max ? s.substring(0, max - 1) + '…' : s;
     // v23.5: 6 Personen-Spalten (#, Vorname, Nachname, Email, Job Title,
@@ -216,47 +293,59 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
       if (em && typeof rr.TeilnehmerID === 'number' && !(em in bracketTidByEmail)) bracketTidByEmail[em] = rr.TeilnehmerID;
     }
     return (
-      // v28.53: Eigener Scroll-Container mit Höhenbegrenzung — analog zur
-      // Sub-Event-Teilnehmerliste (renderTable, maxHeight 70vh). Vorher hatte
-      // der Klammer-View nur overflowX, lief also über die volle Zeilenhöhe
-      // inline mit: Bei 400+ Teilnehmern musste man an der ganzen Tabelle
-      // vorbeiscrollen, und der sticky-thead hätte keinen Bezugsrahmen.
-      <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
+      // v31.3: Die Höhenbegrenzung (v28.53) sitzt jetzt am Tabellen-Container
+      // weiter unten, nicht mehr an dieser Wurzel. Grund: Hier lagen auch die
+      // Hinweiskästen im Scrollbereich — wer zur Tabelle scrollte, scrollte die
+      // Warnung weg. Der sticky-thead bekommt seinen Bezugsrahmen unverändert
+      // aus dem eigenen Scroll-Container.
+      <div className="dex-ui-fade-in">
         {/* v30.67: Prüfung ausgesetzt, solange eine Termin-Liste nicht lesbar war —
             sonst löscht „Rest-Anmeldung entfernen" echte Anmeldungen. */}
         {orphanCheckBlocked && (
-          <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 10, border: '1px solid var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.07)', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
-            <strong style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>
-              {isDe ? 'Prüfung auf unvollständige Anmeldungen ausgesetzt' : 'Check for incomplete registrations suspended'}
-            </strong>
-            {' — '}
-            {isDe
-              ? `${deniedSubEventLists.length} Termin-Liste(n) konnten nicht gelesen werden. Wer nur dort angemeldet ist, sähe hier wie ein Rest aus, und „Rest-Anmeldung entfernen“ würde eine echte Anmeldung löschen. Sobald alle Listen lesbar sind, erscheint die Prüfung wieder.`
-              : `${deniedSubEventLists.length} date list(s) could not be read. Anyone registered only there would look like a leftover here, and „Remove leftover“ would delete a real registration. The check returns as soon as all lists are readable.`}
+          <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginBottom: 12 }}>
+            <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <strong>
+                {isDe ? 'Prüfung auf unvollständige Anmeldungen ausgesetzt' : 'Check for incomplete registrations suspended'}
+              </strong>
+              {' — '}
+              {isDe
+                ? `${deniedSubEventLists.length} Termin-Liste(n) konnten nicht gelesen werden. Wer nur dort angemeldet ist, sähe hier wie ein Rest aus, und „Rest-Anmeldung entfernen“ würde eine echte Anmeldung löschen. Sobald alle Listen lesbar sind, erscheint die Prüfung wieder.`
+                : `${deniedSubEventLists.length} date list(s) could not be read. Anyone registered only there would look like a leftover here, and „Remove leftover“ would delete a real registration. The check returns as soon as all lists are readable.`}
+            </div>
           </div>
         )}
         {/* v23.7: Unvollständige Klammer-Anmeldungen (nur Klammer, kein Sub-Event)
             sichtbar machen — mit Erinnerungs- oder Entfernen-Option, damit eine
             blockierte (Neu-)Anmeldung wieder möglich wird. */}
         {orphanShadowRegs.length > 0 && (
-          <div style={{ marginBottom: 16, padding: 14, borderRadius: 10, border: '1px solid var(--dex-red, #c00)', background: 'rgba(200,0,0,0.06)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <Icon iconName="Warning" style={{ fontSize: 16, color: 'var(--dex-red, #c00)' }} />
-              <strong style={{ color: 'var(--dex-red, #c00)', fontSize: '0.9rem' }}>
+          <div className="dex-ui-callout dex-ui-callout--danger" style={{ marginBottom: 12 }}>
+            <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <strong style={{ fontSize: '0.9rem' }}>
                 {isDe ? `Unvollständige Anmeldungen (${orphanShadowRegs.length})` : `Incomplete registrations (${orphanShadowRegs.length})`}
               </strong>
-            </div>
-            <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
-              {isDe
-                ? 'Diese Personen haben eine Klammer-Anmeldung, sind aber in keinem Sub-Event aktiv angemeldet — in der Regel ein unvollständiger Rest aus einer abgebrochenen Anmeldung. Solche Rest-Anmeldungen erscheinen in der Teilnehmerliste unten nicht, blockieren aber eine erneute (auch stellvertretende) Anmeldung. Du hast zwei Möglichkeiten: über „Erinnerung senden“ der Person – bzw. der Person, die sie angemeldet hat – einen Link zum Abschließen der Anmeldung schicken, oder die Rest-Anmeldung entfernen, sodass eine Neuanmeldung wieder möglich ist.'
-                : 'These people have an umbrella registration but are not actively registered for any sub-event — usually an incomplete leftover from an interrupted registration. Such leftover registrations don’t appear in the participant list below, but they block a new (or on-behalf) registration. You have two options: use „Send reminder“ to send the person – or whoever registered them – a link to complete the registration, or remove the leftover registration so a new one becomes possible.'}
-            </p>
-            <p style={{ margin: '0 0 10px', padding: '8px 10px', borderRadius: 6, background: 'rgba(237,139,0,0.10)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.8rem', color: 'var(--dex-orange-dark, #b35a00)', lineHeight: 1.5 }}>
-              {isDe
-                ? <><strong>Hinweis:</strong> Nach dem Entfernen ist die Person <strong>nicht</strong> angemeldet. Informiere die Person – bzw. die Person, die sie angemeldet hat –, dass eine <strong>erneute Anmeldung</strong> nötig ist. Alternativ kannst du über <strong>„Erinnerung senden“</strong> direkt einen Link zum Abschließen verschicken.</>
-                : <><strong>Note:</strong> After removal the person is <strong>not</strong> registered. Let the person – or whoever registered them – know that a <strong>new registration</strong> is required. Alternatively, use <strong>„Send reminder“</strong> to send a completion link directly.</>}
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              {/* v31.3: Sichtbar bleibt der Befund; was zu tun ist und was nach dem
+                  Entfernen passiert, steht im Aufklapper (Leitfaden 2c: höchstens
+                  zwei Zeilen Erklärtext sichtbar). Kein Satz entfällt. */}
+              <p style={{ margin: '4px 0 6px' }}>
+                {isDe
+                  ? 'Diese Personen haben eine Klammer-Anmeldung, sind aber in keinem Sub-Event aktiv angemeldet — in der Regel ein unvollständiger Rest aus einer abgebrochenen Anmeldung. Solche Rest-Anmeldungen erscheinen in der Teilnehmerliste unten nicht, blockieren aber eine erneute (auch stellvertretende) Anmeldung.'
+                  : 'These people have an umbrella registration but are not actively registered for any sub-event — usually an incomplete leftover from an interrupted registration. Such leftover registrations don’t appear in the participant list below, but they block a new (or on-behalf) registration.'}
+              </p>
+              {helpBlock('orphan', isDe ? 'Was du tun kannst' : 'What you can do', <>
+                <p style={{ margin: '0 0 8px' }}>
+                  {isDe
+                    ? 'Du hast zwei Möglichkeiten: über „Erinnerung senden“ der Person – bzw. der Person, die sie angemeldet hat – einen Link zum Abschließen der Anmeldung schicken, oder die Rest-Anmeldung entfernen, sodass eine Neuanmeldung wieder möglich ist.'
+                    : 'You have two options: use „Send reminder“ to send the person – or whoever registered them – a link to complete the registration, or remove the leftover registration so a new one becomes possible.'}
+                </p>
+                <div className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm">
+                  {isDe
+                    ? <><strong>Hinweis:</strong> Nach dem Entfernen ist die Person <strong>nicht</strong> angemeldet. Informiere die Person – bzw. die Person, die sie angemeldet hat –, dass eine <strong>erneute Anmeldung</strong> nötig ist. Alternativ kannst du über <strong>„Erinnerung senden“</strong> direkt einen Link zum Abschließen verschicken.</>
+                    : <><strong>Note:</strong> After removal the person is <strong>not</strong> registered. Let the person – or whoever registered them – know that a <strong>new registration</strong> is required. Alternatively, use <strong>„Send reminder“</strong> to send a completion link directly.</>}
+                </div>
+              </>)}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 4 }}>
               {orphanShadowRegs.map((r, oi) => {
                 const nm = (r.Vorname && r.Nachname) ? `${r.Vorname} ${r.Nachname}` : (r.ParticipantName || r.ParticipantEmail);
                 // v23.8: Bei stellvertretender Anmeldung (RegisteredBy ≠ Teilnehmer)
@@ -302,8 +391,7 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                               statt sie nur zu entfernen. */}
                           <button
                             type="button"
-                            className="btn btn-outline"
-                            style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-green-dark, #4a7c1f)', borderColor: 'var(--dex-green, #86bc25)' }}
+                            className="btn btn-outline dex-ui-btn-sm"
                             disabled={reminderBusyId === r.Id}
                             onClick={async () => {
                               if (!selectedEvent) return;
@@ -328,10 +416,12 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                           >
                             {reminderBusyId === r.Id ? (isDe ? 'Wird gesendet…' : 'Sending…') : (isDe ? 'Erinnerung senden' : 'Send reminder')}
                           </button>
+                          {/* v31.3: `btn-danger` statt rot eingefärbtem Outline —
+                              Unwiderrufliches sieht im ganzen Center gleich aus
+                              (Leitfaden 1.5). Die Rückfrage bleibt wortgleich. */}
                           <button
                             type="button"
-                            className="btn btn-outline"
-                            style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-red, #c00)', borderColor: 'var(--dex-red, #c00)' }}
+                            className="btn btn-danger dex-ui-btn-sm"
                             onClick={async () => {
                               if (!(await confirmDialog(isDe ? `Unvollständige Anmeldung von ${nm} entfernen? Die Person kann sich danach neu anmelden.` : `Remove the incomplete registration of ${nm}? The person can register again afterwards.`, { danger: true, confirmLabel: isDe ? 'Entfernen' : 'Remove' }))) return;
                               // v30.67: `deleteRegistration` wirft nicht, es liefert false —
@@ -351,6 +441,7 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                   </div>
                 );
               })}
+              </div>
             </div>
           </div>
         )}
@@ -404,64 +495,75 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
           if (missing.length === 0) {
             // Nur Adress-Dubletten — kein Fehler, aber erklärungsbedürftig.
             return (
-              <div style={{ marginBottom: 16, padding: 14, borderRadius: 10, border: '1px solid var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.07)' }}>
-                <strong style={{ color: 'var(--dex-orange-dark, #b35a00)', fontSize: '0.9rem' }}>
-                  {isDe ? `Klammer-Zeile unter anderer Adresse (${aliasCases.length})` : `Umbrella row under a different address (${aliasCases.length})`}
-                </strong>
-                <p style={{ margin: '6px 0 8px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
-                  {isDe
-                    ? 'Diese Personen haben eine Klammer-Anmeldung — sie steht nur unter einer anderen Schreibweise ihrer E-Mail-Adresse (SMTP-Adresse gegen UPN/Alias). Es fehlt also nichts. Trag sie NICHT über „Zur Klammer hinzufügen" nach, das würde eine zweite Zeile mit einer zweiten Teilnehmer-ID erzeugen. Wenn die beiden Schreibweisen stören, korrigiere die Adresse in der Teilnehmerzeile.'
-                    : 'These people do have an umbrella registration — it is just stored under a different spelling of their email address. Nothing is missing; do NOT use „Add to umbrella", it would create a duplicate row.'}
-                </p>
-                {aliasCases.map(x => (
-                  <div key={x.row.emailKey} style={{ fontSize: '0.82rem', marginBottom: 2 }}>
-                    <strong>{x.row.vorname} {x.row.nachname}</strong>{' '}
-                    <span style={{ color: 'var(--dex-gray-600)' }}>Sub-Events: {x.row.email} · Klammer: {x.alt.ParticipantEmail}</span>
+              <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginBottom: 12 }}>
+                <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <strong style={{ fontSize: '0.9rem' }}>
+                    {isDe ? `Klammer-Zeile unter anderer Adresse (${aliasCases.length})` : `Umbrella row under a different address (${aliasCases.length})`}
+                  </strong>
+                  <p style={{ margin: '4px 0 6px' }}>
+                    {isDe
+                      ? 'Diese Personen haben eine Klammer-Anmeldung — sie steht nur unter einer anderen Schreibweise ihrer E-Mail-Adresse (SMTP-Adresse gegen UPN/Alias). Es fehlt also nichts.'
+                      : 'These people do have an umbrella registration — it is just stored under a different spelling of their email address. Nothing is missing.'}
+                  </p>
+                  {helpBlock('alias', isDe ? 'Was du tun kannst' : 'What you can do',
+                    isDe
+                      ? 'Trag sie NICHT über „Zur Klammer hinzufügen" nach, das würde eine zweite Zeile mit einer zweiten Teilnehmer-ID erzeugen. Wenn die beiden Schreibweisen stören, korrigiere die Adresse in der Teilnehmerzeile.'
+                      : 'Do NOT use „Add to umbrella", it would create a duplicate row. If the two spellings bother you, correct the address in the participant row.')}
+                  <div className="dex-ui-stack" style={{ gap: 2, marginTop: 4 }}>
+                    {aliasCases.map(x => (
+                      <div key={x.row.emailKey}>
+                        <strong>{x.row.vorname} {x.row.nachname}</strong>{' '}
+                        <span className="dex-ui-muted">Sub-Events: {x.row.email} · Klammer: {x.alt.ParticipantEmail}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </div>
               </div>
             );
           }
           return (
-            <div style={{ marginBottom: 16, padding: 14, borderRadius: 10, border: '1px solid var(--dex-red, #c00)', background: 'rgba(200,0,0,0.06)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <Icon iconName="Warning" style={{ fontSize: 16, color: 'var(--dex-red, #c00)' }} />
-                <strong style={{ color: 'var(--dex-red, #c00)', fontSize: '0.9rem' }}>
+            <div className="dex-ui-callout dex-ui-callout--danger" style={{ marginBottom: 12 }}>
+              <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <strong style={{ fontSize: '0.9rem' }}>
                   {isDe ? `Fehlende Klammer-Anmeldung (${missing.length})` : `Missing umbrella registration (${missing.length})`}
                 </strong>
-              </div>
-              <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
-                {isDe
-                  ? 'Diese Personen sind in einem oder mehreren Sub-Events angemeldet, fehlen aber am Klammer-/Hauptevent selbst (z.B. durch eine abgebrochene Anmeldung). Dadurch fehlen u.a. die übergreifenden Hauptevent-Angaben. Du hast zwei Möglichkeiten: über „Erinnerung senden“ bittest du die Person (bzw. die anmeldende Person) per Mail mit Direkt-Link, die fehlenden Hauptevent-Angaben in der App nachzutragen — oder du trägst die fehlende Klammer-Anmeldung mit „Zur Klammer hinzufügen“ selbst nach (versendet KEINE Mail und KEINEN Outlook-Termin, reine Datenkorrektur).'
-                  : 'These people are registered for one or more sub-events but are missing on the umbrella/main event itself (e.g. due to an interrupted registration), so the cross-cutting main-event details are missing. You have two options: use „Send reminder“ to ask the person (or whoever registered them) via email with a direct link to add the missing main-event details in the app — or add the missing umbrella registration yourself with „Add to umbrella“ (sends NO email and NO Outlook invite, data correction only).'}
-              </p>
-              {/* v30.56: Adress-Dubletten auch hier benennen, wenn es
-                  DANEBEN echte Lücken gibt — sonst verschwinden sie
-                  kommentarlos aus dem Kasten und der Organizer fragt sich,
-                  wo die dritte Person geblieben ist. */}
-              {aliasCases.length > 0 && (
-                <p style={{ margin: '0 0 10px', padding: '8px 12px', borderRadius: 8, background: 'rgba(237,139,0,0.10)', fontSize: '0.8rem', color: 'var(--dex-orange-dark, #b35a00)', lineHeight: 1.5 }}>
+                <p style={{ margin: '4px 0 6px' }}>
                   {isDe
-                    ? <>Nicht aufgeführt, weil dort nichts fehlt: {aliasCases.map(x => `${x.row.vorname} ${x.row.nachname}`).join(', ')} — die Klammer-Zeile steht unter einer anderen Schreibweise der Adresse ({aliasCases.map(x => x.alt.ParticipantEmail).join(', ')}).</>
-                    : <>Not listed because nothing is missing there: {aliasCases.map(x => `${x.row.vorname} ${x.row.nachname}`).join(', ')} — the umbrella row exists under a different spelling of the address.</>}
+                    ? 'Diese Personen sind in einem oder mehreren Sub-Events angemeldet, fehlen aber am Klammer-/Hauptevent selbst (z.B. durch eine abgebrochene Anmeldung). Dadurch fehlen u.a. die übergreifenden Hauptevent-Angaben.'
+                    : 'These people are registered for one or more sub-events but are missing on the umbrella/main event itself (e.g. due to an interrupted registration), so the cross-cutting main-event details are missing.'}
                 </p>
-              )}
-              {/* v30.14: Sammel-Fix — alle auf einmal, still, sequentiell. */}
-              <div style={{ marginBottom: 10 }}>
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  style={{ fontSize: '0.8rem', padding: '5px 14px', color: 'var(--dex-orange, #ed8b00)', borderColor: 'var(--dex-orange, #ed8b00)' }}
-                  disabled={!!bulkKlammerProgress || !!addingToKlammer}
-                  onClick={() => { void addAllToKlammer(missing); }}
-                >
-                  <Plus size={12} />{' '}
-                  {bulkKlammerProgress
-                    ? (isDe ? `Wird nachgetragen… (${bulkKlammerProgress})` : `Adding… (${bulkKlammerProgress})`)
-                    : (isDe ? `Alle ${missing.length} still zur Klammer hinzufügen` : `Silently add all ${missing.length} to the umbrella`)}
-                </button>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {helpBlock('missing', isDe ? 'Was die beiden Knöpfe tun' : 'What the two buttons do',
+                  isDe
+                    ? 'Du hast zwei Möglichkeiten: über „Erinnerung senden“ bittest du die Person (bzw. die anmeldende Person) per Mail mit Direkt-Link, die fehlenden Hauptevent-Angaben in der App nachzutragen — oder du trägst die fehlende Klammer-Anmeldung mit „Zur Klammer hinzufügen“ selbst nach (versendet KEINE Mail und KEINEN Outlook-Termin, reine Datenkorrektur).'
+                    : 'You have two options: use „Send reminder“ to ask the person (or whoever registered them) via email with a direct link to add the missing main-event details in the app — or add the missing umbrella registration yourself with „Add to umbrella“ (sends NO email and NO Outlook invite, data correction only).')}
+                {/* v30.56: Adress-Dubletten auch hier benennen, wenn es
+                    DANEBEN echte Lücken gibt — sonst verschwinden sie
+                    kommentarlos aus dem Kasten und der Organizer fragt sich,
+                    wo die dritte Person geblieben ist. */}
+                {aliasCases.length > 0 && (
+                  <div className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm" style={{ margin: '6px 0' }}>
+                    {isDe
+                      ? <>Nicht aufgeführt, weil dort nichts fehlt: {aliasCases.map(x => `${x.row.vorname} ${x.row.nachname}`).join(', ')} — die Klammer-Zeile steht unter einer anderen Schreibweise der Adresse ({aliasCases.map(x => x.alt.ParticipantEmail).join(', ')}).</>
+                      : <>Not listed because nothing is missing there: {aliasCases.map(x => `${x.row.vorname} ${x.row.nachname}`).join(', ')} — the umbrella row exists under a different spelling of the address.</>}
+                  </div>
+                )}
+                {/* v30.14: Sammel-Fix — alle auf einmal, still, sequentiell. */}
+                <div style={{ margin: '6px 0 8px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-outline dex-ui-btn-sm"
+                    disabled={!!bulkKlammerProgress || !!addingToKlammer}
+                    onClick={() => { void addAllToKlammer(missing); }}
+                  >
+                    <Plus size={12} />{' '}
+                    {bulkKlammerProgress
+                      ? (isDe ? `Wird nachgetragen… (${bulkKlammerProgress})` : `Adding… (${bulkKlammerProgress})`)
+                      : (isDe ? `Alle ${missing.length} still zur Klammer hinzufügen` : `Silently add all ${missing.length} to the umbrella`)}
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {missing.map(r => {
                   const nm = `${r.vorname || ''} ${r.nachname || ''}`.trim() || r.email;
                   // v26.85: Akteur (selbst/stellvertretend) aus den Sub-Event-
@@ -473,17 +575,19 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                   }
                   const isProxy = !!byEmail && byEmail.toLowerCase() !== (r.email || '').toLowerCase();
                   return (
-                    <div key={r.emailKey} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.84rem' }}>
+                    <div key={r.emailKey} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       <strong>{nm}</strong>
-                      <span style={{ color: 'var(--dex-gray-500)' }}>{r.email}</span>
-                      <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.78rem' }}>· {isDe ? `${r.activeCount} Sub-Event(s)` : `${r.activeCount} sub-event(s)`}</span>
-                      <div style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
+                      <span className="dex-ui-muted">{r.email}</span>
+                      <span className="dex-ui-muted">· {isDe ? `${r.activeCount} Sub-Event(s)` : `${r.activeCount} sub-event(s)`}</span>
+                      {/* v31.3: Die Knöpfe folgen der Zeile direkt statt per
+                          `margin-left:auto` an den rechten Rand zu rutschen
+                          (Leitfaden 2a′). */}
+                      <div style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
                         {/* v26.85: Erinnerung senden — Person (bzw. Anmeldende:r) bitten,
                             die fehlenden Hauptevent-Angaben in der App nachzutragen. */}
                         <button
                           type="button"
-                          className="btn btn-outline"
-                          style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-green-dark, #4a7c1f)', borderColor: 'var(--dex-green, #86bc25)' }}
+                          className="btn btn-outline dex-ui-btn-sm"
                           disabled={missingReminderKey === r.emailKey}
                           onClick={async () => {
                             if (!selectedEvent) return;
@@ -510,8 +614,7 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                         </button>
                         <button
                           type="button"
-                          className="btn btn-outline"
-                          style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-orange, #ed8b00)', borderColor: 'var(--dex-orange, #ed8b00)' }}
+                          className="btn btn-outline dex-ui-btn-sm"
                           disabled={addingToKlammer === r.emailKey}
                           onClick={() => { void addToKlammer(r); }}
                         >
@@ -521,6 +624,7 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                     </div>
                   );
                 })}
+                </div>
               </div>
             </div>
           );
@@ -534,19 +638,22 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
           const incomplete = consolidatedRows.filter(row => hasParentReg(row.emailKey) && row.activeCount > 0 && requiredMainFields.some(f => !parentFieldFilled(row, f)));
           if (incomplete.length === 0) return null;
           return (
-            <div style={{ marginBottom: 16, padding: 14, borderRadius: 10, border: '1px solid var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.07)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <Icon iconName="Warning" style={{ fontSize: 16, color: 'var(--dex-orange-dark, #b35a00)' }} />
-                <strong style={{ color: 'var(--dex-orange-dark, #b35a00)', fontSize: '0.9rem' }}>
+            <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginBottom: 12 }}>
+              <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <strong style={{ fontSize: '0.9rem' }}>
                   {isDe ? `Unvollständige Hauptevent-Angaben (${incomplete.length})` : `Incomplete main-event details (${incomplete.length})`}
                 </strong>
-              </div>
-              <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
-                {isDe
-                  ? 'Diese Personen haben eine Anmeldung (Hauptevent + Sub-Event), es fehlen aber Pflicht-Angaben aus dem Hauptevent-Schritt — meist, weil die Anmeldung vorzeitig abgebrochen wurde. Über „Erinnerung senden“ bittest du die Person (bzw. die anmeldende Person) per Mail mit Direkt-Link, die fehlenden Angaben in der App nachzutragen. Alternativ kannst du sie über „Hauptevent-Felder bearbeiten“ direkt selbst ergänzen.'
-                  : 'These people have a registration (main event + sub-event), but required answers from the main-event step are missing — usually because the registration was interrupted. Use „Send reminder“ to ask the person (or whoever registered them) via email with a direct link to add the missing answers in the app. Alternatively, add them yourself via „Edit main-event fields“.'}
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <p style={{ margin: '4px 0 6px' }}>
+                  {isDe
+                    ? 'Diese Personen haben eine Anmeldung (Hauptevent + Sub-Event), es fehlen aber Pflicht-Angaben aus dem Hauptevent-Schritt — meist, weil die Anmeldung vorzeitig abgebrochen wurde.'
+                    : 'These people have a registration (main event + sub-event), but required answers from the main-event step are missing — usually because the registration was interrupted.'}
+                </p>
+                {helpBlock('incomplete', isDe ? 'Was die beiden Knöpfe tun' : 'What the two buttons do',
+                  isDe
+                    ? 'Über „Erinnerung senden“ bittest du die Person (bzw. die anmeldende Person) per Mail mit Direkt-Link, die fehlenden Angaben in der App nachzutragen. Alternativ kannst du sie über „Hauptevent-Felder bearbeiten“ direkt selbst ergänzen.'
+                    : 'Use „Send reminder“ to ask the person (or whoever registered them) via email with a direct link to add the missing answers in the app. Alternatively, add them yourself via „Edit main-event fields“.')}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
                 {incomplete.map(row => {
                   const nm = `${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email;
                   const missingLabels = requiredMainFields.filter(f => !parentFieldFilled(row, f)).map(f => f.label);
@@ -557,15 +664,16 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                   }
                   const isProxy = !!byEmail && byEmail.toLowerCase() !== (row.email || '').toLowerCase();
                   return (
-                    <div key={row.emailKey} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.84rem' }}>
+                    <div key={row.emailKey} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       <strong>{nm}</strong>
-                      <span style={{ color: 'var(--dex-gray-500)' }}>{row.email}</span>
-                      <span style={{ color: 'var(--dex-orange-dark, #b35a00)', fontSize: '0.76rem' }} title={missingLabels.join(', ')}>· {isDe ? 'fehlt: ' : 'missing: '}{missingLabels.slice(0, 3).join(', ')}{missingLabels.length > 3 ? ` +${missingLabels.length - 3}` : ''}</span>
-                      <div style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
+                      <span className="dex-ui-muted">{row.email}</span>
+                      <span className="dex-ui-pill dex-ui-pill--orange" title={missingLabels.join(', ')}>{isDe ? 'fehlt: ' : 'missing: '}{missingLabels.slice(0, 3).join(', ')}{missingLabels.length > 3 ? ` +${missingLabels.length - 3}` : ''}</span>
+                      {/* v31.3: Knöpfe direkt hinter der Zeile statt rechts außen
+                          (Leitfaden 2a′). */}
+                      <div style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
                         <button
                           type="button"
-                          className="btn btn-outline"
-                          style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-green-dark, #4a7c1f)', borderColor: 'var(--dex-green, #86bc25)' }}
+                          className="btn btn-outline dex-ui-btn-sm"
                           disabled={missingReminderKey === row.emailKey}
                           onClick={async () => {
                             if (!selectedEvent) return;
@@ -592,8 +700,7 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                         </button>
                         <button
                           type="button"
-                          className="btn btn-outline"
-                          style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-orange, #ed8b00)', borderColor: 'var(--dex-orange, #ed8b00)' }}
+                          className="btn btn-outline dex-ui-btn-sm"
                           onClick={() => openMainFieldsEdit(row.emailKey, nm)}
                         >
                           {isDe ? 'Hauptevent-Felder bearbeiten' : 'Edit main-event fields'}
@@ -602,6 +709,7 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                     </div>
                   );
                 })}
+                </div>
               </div>
             </div>
           );
@@ -636,177 +744,173 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
               .map(ch => shortSubEventTitle(ch.title, selectedEvent?.title))
               .join(', ') || (isDe ? 'keine' : 'none');
           return (
-            <div style={{ marginBottom: 16, padding: 14, borderRadius: 10, border: '1px solid var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.07)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <Icon iconName="Warning" style={{ fontSize: 16, color: 'var(--dex-orange-dark, #b35a00)' }} />
-                <strong style={{ color: 'var(--dex-orange-dark, #b35a00)', fontSize: '0.9rem' }}>
+            <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginBottom: 12 }}>
+              <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <strong style={{ fontSize: '0.9rem' }}>
                   {isDe ? `Gleiche Person, mehrere E-Mail-Adressen (${groups.length})` : `Same person, several email addresses (${groups.length})`}
                 </strong>
-              </div>
-              <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
-                {isDe
-                  ? 'Diese Namen kommen in der Tabelle mehrfach vor — jeweils mit einer anderen E-Mail-Adresse. Die Teilnehmerliste fasst pro E-Mail zusammen, deshalb wird die Person auf zwei Zeilen aufgeteilt und jede Zeile zeigt beim Sub-Event der anderen Zeile ein „—“. Die Anmeldungen selbst sind vorhanden. Typische Ursache: Die eine Anmeldung lief über die Anmeldeseite (SMTP-Adresse), die andere stellvertretend über die Personenauswahl (UPN-/Alias-Adresse). Prüfe unten, welche Adresse die richtige ist, und melde die Person über die falsche Adresse ab und über die richtige neu an.'
-                  : 'These names appear more than once in the table — each with a different email address. The participant list aggregates per email, so the person is split across two rows and each row shows a „—“ for the other row’s sub-event. The registrations themselves exist. Typical cause: one registration came from the registration page (SMTP address), the other on-behalf via the people picker (UPN/alias address). Check below which address is the correct one, then cancel the registration on the wrong address and re-register on the correct one.'}
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {groups.map(rows => (
-                  <div key={rows.map(r => r.emailKey).join('|')} style={{ fontSize: '0.84rem' }}>
-                    <strong>{`${rows[0].vorname || ''} ${rows[0].nachname || ''}`.trim()}</strong>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
-                      {rows.map(r => (
-                        <div key={r.emailKey} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: '0.8rem' }}>
-                          <span style={{ color: 'var(--dex-gray-600)', minWidth: 260 }}>{r.email}</span>
-                          <span style={{ color: 'var(--dex-gray-500)' }}>{isDe ? 'angemeldet für: ' : 'registered for: '}{subsOfRow(r)}</span>
-                        </div>
-                      ))}
+                <p style={{ margin: '4px 0 6px' }}>
+                  {isDe
+                    ? 'Diese Namen kommen in der Tabelle mehrfach vor — jeweils mit einer anderen E-Mail-Adresse. Die Teilnehmerliste fasst pro E-Mail zusammen, deshalb wird die Person auf zwei Zeilen aufgeteilt und jede Zeile zeigt beim Sub-Event der anderen Zeile ein „—“. Die Anmeldungen selbst sind vorhanden.'
+                    : 'These names appear more than once in the table — each with a different email address. The participant list aggregates per email, so the person is split across two rows and each row shows a „—“ for the other row’s sub-event. The registrations themselves exist.'}
+                </p>
+                {helpBlock('dupes', isDe ? 'Woran das liegt und was du tun kannst' : 'Why this happens and what you can do',
+                  isDe
+                    ? 'Typische Ursache: Die eine Anmeldung lief über die Anmeldeseite (SMTP-Adresse), die andere stellvertretend über die Personenauswahl (UPN-/Alias-Adresse). Prüfe unten, welche Adresse die richtige ist, und melde die Person über die falsche Adresse ab und über die richtige neu an.'
+                    : 'Typical cause: one registration came from the registration page (SMTP address), the other on-behalf via the people picker (UPN/alias address). Check below which address is the correct one, then cancel the registration on the wrong address and re-register on the correct one.')}
+                <div className="dex-ui-stack" style={{ marginTop: 4 }}>
+                  {groups.map(rows => (
+                    <div key={rows.map(r => r.emailKey).join('|')}>
+                      <strong>{`${rows[0].vorname || ''} ${rows[0].nachname || ''}`.trim()}</strong>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
+                        {rows.map(r => (
+                          <div key={r.emailKey} style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                            <span style={{ minWidth: 260 }}>{r.email}</span>
+                            <span className="dex-ui-muted">{isDe ? 'angemeldet für: ' : 'registered for: '}{subsOfRow(r)}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           );
         })()}
-        {/* v15.3.1: Legende für die Pastell-Spalten — sonst rät der Organizer,
-            was die zwei Hintergrundfarben bedeuten. */}
-        {(parentCustomFields.length > 0 || childCustomFieldsByChild.some(x => x.fields.length > 0)) && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 10, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
-            {parentCustomFields.length > 0 && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 14, height: 14, borderRadius: 3, ...PASTEL_A_HEADER, border: '1px solid rgba(0, 118, 168, 0.3)' }} />
-                {isDe ? 'Felder des Hauptevents' : 'Main-event fields'}
-              </span>
-            )}
-            {childCustomFieldsByChild.some(x => x.fields.length > 0) && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 14, height: 14, borderRadius: 3, ...PASTEL_B_HEADER, border: '1px solid rgba(255, 191, 0, 0.4)' }} />
-                {isDe ? 'Felder eines Sub-Events' : 'Sub-event fields'}
-              </span>
-            )}
-          </div>
-        )}
-        {/* v26.84: minWidth max-content, damit die Tabelle bei vielen Spalten
-            NICHT gestaucht wird, sondern über den overflowX:auto-Wrapper (oben)
-            horizontal scrollbar wird — wie in der Sub-Event-Teilnehmerliste. */}
-        <table style={{ width: '100%', minWidth: 'max-content', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-          {/* v30.38: Kopf bleibt beim Scrollen stehen. Bei 19 Termin-Spalten
-              und 77 Zeilen war nach wenigen Zeilen nicht mehr erkennbar, zu
-              welchem Tag eine Haken-Spalte gehört — man musste hochscrollen,
-              zählen, zurückscrollen. Sticky sitzt am `<thead>` und nicht an den
-              einzelnen `<tr>`: Die drei Kopfzeilen (Spaltentitel, „∑ angemeldet",
-              „Anmeldung ab") sind unterschiedlich hoch, für zeilenweises Sticky
-              müsste man die Offsets messen. Dieselbe Lösung wie in der
-              Sub-Event-Teilnehmerliste (`renderTable`).
-              `background` ist Pflicht — ohne ihn scrollen die Datenzeilen
-              sichtbar durch den Kopf hindurch. Die Pastell-Kopfzellen setzen
-              ihren eigenen Hintergrund inline und gewinnen dadurch. */}
-          {/* Der Schatten ersetzt die Kopf-Unterkante: Bei `border-collapse:
-              collapse` bleiben die Rahmen der Kopfzeilen beim Ankleben zurück
-              (Browser-Verhalten, nicht abstellbar) — ohne ihn schwebt der Kopf
-              ohne Abgrenzung über den Daten. */}
+        {/* v31.3: Werkzeugleiste über der Tabelle (Leitfaden 5a). Links der
+            Umschalter der Personen-Spalten — er saß bis v31.2 IN der Kopfzelle
+            und teilte sich das Klickziel mit der Sortierung. Daneben die
+            Legende der beiden Pastell-Farben, rechts der Hinweis auf nicht
+            lesbare Termin-Listen. */}
+        <div className="dex-ui-toolbar">
+          <button
+            type="button"
+            className={cx('dex-ui-chip', !personalColsCollapsed && 'is-active')}
+            onClick={() => setPersonalColsCollapsed(!personalColsCollapsed)}
+            title={personalColsCollapsed
+              ? (isDe ? 'Vorname, Nachname, E-Mail, Job Title, Standort und Unternehmen als eigene Spalten anzeigen' : 'Show first/last name, email, job title, location and company as separate columns')
+              : (isDe ? 'Personen-Spalten einklappen (nur Foto + Name)' : 'Collapse personal columns (photo + name only)')}
+          >
+            <Columns size={13} />
+            {personalColsCollapsed
+              ? (isDe ? 'Personen-Spalten aufklappen' : 'Expand person columns')
+              : (isDe ? 'Personen-Spalten zuklappen' : 'Collapse person columns')}
+          </button>
+          {/* v15.3.1: Legende für die Pastell-Spalten — sonst rät der Organizer,
+              was die zwei Hintergrundfarben bedeuten. */}
+          {parentCustomFields.length > 0 && (
+            <span className="dex-ui-muted" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 13, height: 13, borderRadius: 3, ...PASTEL_A_HEADER, border: '1px solid rgba(0, 118, 168, 0.3)' }} />
+              {isDe ? 'Felder des Hauptevents' : 'Main-event fields'}
+            </span>
+          )}
+          {childCustomFieldsByChild.some(x => x.fields.length > 0) && (
+            <span className="dex-ui-muted" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 13, height: 13, borderRadius: 3, ...PASTEL_B_HEADER, border: '1px solid rgba(255, 191, 0, 0.4)' }} />
+              {isDe ? 'Felder eines Sub-Events' : 'Sub-event fields'}
+            </span>
+          )}
+          <span className="dex-ui-toolbar-spacer" />
+          {deniedSubEventLists.length > 0 && (
+            <span className="dex-ui-pill dex-ui-pill--orange" title={deniedSubEventLists.map(d => d.status > 0 ? `${d.title} (HTTP ${d.status})` : d.title).join(' · ')}>
+              {isDe ? `${deniedSubEventLists.length} Termin-Liste(n) nicht lesbar` : `${deniedSubEventLists.length} date list(s) not readable`}
+            </span>
+          )}
+        </div>
+        {/* v28.53/v30.38: Eigener Scroll-Container mit Höhenbegrenzung — der
+            `<thead>` klebt an dessen oberem Rand. Bewusst NICHT
+            `dex-ui-table-wrap--sticky`: Die Klasse setzt JEDES `th` auf
+            `top: 0`, hier gibt es aber drei verschieden hohe Kopfzeilen
+            (Spaltentitel, „∑ angemeldet", „Anmeldung ab") — die lägen dann
+            übereinander. Sticky bleibt deshalb am `<thead>`; `background` ist
+            Pflicht, sonst scrollen die Datenzeilen sichtbar durch den Kopf, und
+            der Schatten ersetzt die beim Ankleben zurückbleibende Kopf-Unterkante.
+            v31.3: Die Hinweiskästen liegen jetzt AUSSERHALB des Scrollbereichs —
+            eine Warnung, die man wegscrollt, ist keine Warnung.
+            v26.84: minWidth max-content, damit die Tabelle bei vielen Spalten
+            nicht gestaucht wird, sondern horizontal scrollt. */}
+        <div className="dex-ui-table-wrap">
+        <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
+        <table className="dex-ui-table dex-ui-table--compact" style={{ minWidth: 'max-content' }}>
           <thead style={{ position: 'sticky', top: 0, zIndex: 2, background: 'var(--dex-gray-50, #fafafa)', boxShadow: '0 2px 4px rgba(0,0,0,0.08)' }}>
-            <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
+            <tr>
               {/* v26.65: Header-Tooltip stellt klar, dass „#" die laufende Zeilen-
                   nummer dieser Ansicht ist — NICHT die Teilnehmer-ID der SharePoint-
                   Liste (die pro Sub-Event unterschiedlich ist). Sortiert nach
                   Erst-Anmeldung. */}
-              <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', verticalAlign: 'bottom' }} onClick={() => handleSortConsolidated('id')}
+              <th className={cx(sortCls('id'), 'is-num')} style={{ verticalAlign: 'bottom' }} onClick={() => handleSortConsolidated('id')}
                 title={isDe ? 'Laufende Nummer in dieser Ansicht (nicht die Teilnehmer-ID der Liste — die ist pro Sub-Event unterschiedlich)' : 'Row number in this view (not the SharePoint participant ID — that differs per sub-event)'}>#{sortArrow('id')}</th>
               {/* v26.68: echte Teilnehmer-ID (Klammer-Liste) — nur bei aktiver Suche. */}
               {searchActive && (
-                <th style={{ textAlign: 'left', padding: 8, verticalAlign: 'bottom' }} title={isDe ? 'Teilnehmer-ID in der Hauptevent-/Klammer-Teilnehmerliste' : 'Participant ID in the main-event / bracket list'}>ID</th>
+                <th className="is-num" style={{ verticalAlign: 'bottom' }} title={isDe ? 'Teilnehmer-ID in der Hauptevent-/Klammer-Teilnehmerliste' : 'Participant ID in the main-event / bracket list'}>ID</th>
               )}
               {personalColsCollapsed ? (
                 // v26.65 BUG-FIX: Sortier-Klick auf das GANZE <th> (vorher nur auf
                 // den kleinen Text-<span> — daneben klicken sortierte nicht).
-                // v30.21: Der Klapp-Knopf sitzt jetzt als beschriftete Pille in
-                // einer EIGENEN Zeile ÜBER der Spaltenüberschrift — der kleine
-                // runde Knopf lag direkt neben dem Sortier-Klickziel, ein leicht
-                // versetzter Klick sortierte statt zu klappen (Nutzer-Befund).
-                // Hover-Effekt über colToggleHover (Inline-Styles können kein :hover).
-                <th style={{ textAlign: 'left', padding: 8, userSelect: 'none', whiteSpace: 'nowrap', cursor: 'pointer', verticalAlign: 'bottom' }} onClick={() => handleSortConsolidated('nachname')}>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setPersonalColsCollapsed(false); setColToggleHover(false); }}
-                      onMouseEnter={() => setColToggleHover(true)}
-                      onMouseLeave={() => setColToggleHover(false)}
-                      title={isDe ? 'Vorname, Nachname, E-Mail, Job Title, Standort und Unternehmen als eigene Spalten anzeigen' : 'Show first/last name, email, job title, location and company as separate columns'}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 4,
-                        padding: '2px 10px', borderRadius: 999,
-                        border: '1px solid var(--dex-green, #86bc25)',
-                        background: colToggleHover ? 'var(--dex-green, #86bc25)' : '#fff',
-                        color: colToggleHover ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
-                        fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', lineHeight: 1.4,
-                        transition: 'background 120ms ease, color 120ms ease',
-                      }}
-                    >» {isDe ? 'Aufklappen' : 'Expand'}</button>
-                    <span>{isDe ? 'Teilnehmer' : 'Participant'}{sortArrow('nachname')}</span>
-                  </div>
+                // v31.3: Der Aufklapp-Knopf ist aus der Kopfzelle in die
+                // Werkzeugleiste über der Tabelle gewandert. Er lag im selben
+                // Klickziel wie die Sortierung — genau die v30.21-Falle, nur eine
+                // Zeile höher. Jetzt tut die Kopfzelle genau eine Sache: sortieren.
+                <th className={sortCls('nachname')} style={{ verticalAlign: 'bottom', whiteSpace: 'nowrap' }} onClick={() => handleSortConsolidated('nachname')}>
+                  {isDe ? 'Teilnehmer' : 'Participant'}{sortArrow('nachname')}
                 </th>
               ) : (
                 <>
-                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', verticalAlign: 'bottom' }} onClick={() => handleSortConsolidated('vorname')}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); setPersonalColsCollapsed(true); setColToggleHover(false); }}
-                        onMouseEnter={() => setColToggleHover(true)}
-                        onMouseLeave={() => setColToggleHover(false)}
-                        title={isDe ? 'Personen-Spalten einklappen (nur Foto + Name)' : 'Collapse personal columns (photo + name only)'}
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 4,
-                          padding: '2px 10px', borderRadius: 999,
-                          border: '1px solid var(--dex-green, #86bc25)',
-                          background: colToggleHover ? 'var(--dex-green, #86bc25)' : '#fff',
-                          color: colToggleHover ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
-                          fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', lineHeight: 1.4,
-                          transition: 'background 120ms ease, color 120ms ease',
-                        }}
-                      >« {isDe ? 'Zuklappen' : 'Collapse'}</button>
-                      <span>{isDe ? 'Vorname' : 'First name'}{sortArrow('vorname')}</span>
-                    </div>
-                  </th>
-                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', verticalAlign: 'bottom' }} onClick={() => handleSortConsolidated('nachname')}>{isDe ? 'Nachname' : 'Last name'}{sortArrow('nachname')}</th>
-                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', verticalAlign: 'bottom' }} onClick={() => handleSortConsolidated('email')}>Email{sortArrow('email')}</th>
-                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', verticalAlign: 'bottom' }} onClick={() => handleSortConsolidated('jobTitle')}>Job Title{sortArrow('jobTitle')}</th>
-                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', verticalAlign: 'bottom' }} onClick={() => handleSortConsolidated('location')}>{isDe ? 'Standort' : 'Location'}{sortArrow('location')}</th>
-                  <th style={{ textAlign: 'left', padding: 8, verticalAlign: 'bottom' }}>{isDe ? 'Unternehmen' : 'Company'}</th>
+                  <th className={sortCls('vorname')} style={{ verticalAlign: 'bottom' }} onClick={() => handleSortConsolidated('vorname')}>{isDe ? 'Vorname' : 'First name'}{sortArrow('vorname')}</th>
+                  <th className={sortCls('nachname')} style={{ verticalAlign: 'bottom' }} onClick={() => handleSortConsolidated('nachname')}>{isDe ? 'Nachname' : 'Last name'}{sortArrow('nachname')}</th>
+                  <th className={sortCls('email')} style={{ verticalAlign: 'bottom' }} onClick={() => handleSortConsolidated('email')}>Email{sortArrow('email')}</th>
+                  <th className={sortCls('jobTitle')} style={{ verticalAlign: 'bottom' }} onClick={() => handleSortConsolidated('jobTitle')}>Job Title{sortArrow('jobTitle')}</th>
+                  <th className={sortCls('location')} style={{ verticalAlign: 'bottom' }} onClick={() => handleSortConsolidated('location')}>{isDe ? 'Standort' : 'Location'}{sortArrow('location')}</th>
+                  <th style={{ verticalAlign: 'bottom' }}>{isDe ? 'Unternehmen' : 'Company'}</th>
                 </>
               )}
               {/* v26.84: „Registriert von" auch im Klammer-View — selbst /
                   Assistenz / stellvertretend. */}
-              <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap', verticalAlign: 'bottom' }}>{isDe ? 'Registriert von' : 'Registered by'}</th>
+              <th style={{ whiteSpace: 'nowrap', verticalAlign: 'bottom' }}>{isDe ? 'Registriert von' : 'Registered by'}</th>
               {parentCustomFields.map(f => (
-                <th key={`pf-${f.id}`} onClick={() => handleSortConsolidated(`pf:${f.id}`)} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 150, verticalAlign: 'top', lineHeight: 1.25, cursor: 'pointer', userSelect: 'none', ...PASTEL_A_HEADER }} title={`${f.label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
+                <th key={`pf-${f.id}`} className={sortCls(`pf:${f.id}`)} onClick={() => handleSortConsolidated(`pf:${f.id}`)} style={{ textTransform: 'none', fontSize: '0.74rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 150, verticalAlign: 'top', lineHeight: 1.25, ...PASTEL_A_HEADER }} title={`${f.label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
                   {f.label}{sortArrow(`pf:${f.id}`)}
                 </th>
               ))}
               {/* v23.32: People-Picker-Felder des Hauptevents (Foto + Name). */}
               {parentUserFields.map(f => (
-                <th key={`puf-${f.id}`} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 170, verticalAlign: 'top', lineHeight: 1.25, ...PASTEL_A_HEADER }} title={`${f.label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
+                <th key={`puf-${f.id}`} style={{ textTransform: 'none', fontSize: '0.74rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 170, verticalAlign: 'top', lineHeight: 1.25, ...PASTEL_A_HEADER }} title={`${f.label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
                   {f.label}
                 </th>
               ))}
-              {childCustomFieldsByChild.map(({ child, fields }) => (
+              {childCustomFieldsByChild.map(({ child, fields }) => {
+                // v31.3: Der Spaltenkopf sagt selbst, wenn die Liste dieses Termins
+                // nicht gelesen werden konnte — sonst liest man die „?"-Zellen
+                // darunter als Datenlücke statt als Rechte-/Drosselungsproblem.
+                const unknown = isDeniedChild(child);
+                return (
                 <React.Fragment key={`sub-${child.id}`}>
                   <th
-                    style={{ textAlign: 'center', padding: 8, cursor: 'pointer', userSelect: 'none', borderLeft: '1px solid var(--dex-gray-200)', ...dimColStyle(child.id) }}
+                    className={sortCls(`child:${child.id}`)}
+                    style={{ textAlign: 'center', textTransform: 'none', borderLeft: '1px solid var(--dex-gray-200)', ...dimColStyle(child.id) }}
                     onClick={() => handleSortConsolidated(`child:${child.id}`)}
-                    title={child.title}
+                    title={unknown
+                      ? `${child.title} — ${isDe ? 'Teilnehmerliste nicht lesbar' : 'participant list not readable'}`
+                      : child.title}
                   >
-                    <div style={{ fontSize: '0.78rem', fontWeight: 600 }}>{abbreviate(shortSubEventTitle(child.title, selectedEvent?.title) || '?', 16)}</div>
-                    <div style={{ fontSize: '0.68rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>{isDe ? 'angemeldet?' : 'registered?'}{sortArrow(`child:${child.id}`)}</div>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 700 }}>{abbreviate(shortSubEventTitle(child.title, selectedEvent?.title) || '?', 16)}</div>
+                    <div style={{ fontSize: '0.68rem', color: unknown ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-500)', fontWeight: 400 }}>
+                      {unknown ? (isDe ? 'nicht lesbar' : 'not readable') : (isDe ? 'angemeldet?' : 'registered?')}{sortArrow(`child:${child.id}`)}
+                    </div>
                   </th>
                   {fields.map(f => (
-                    <th key={`scf-${child.id}-${f.id}`} onClick={() => handleSortConsolidated(`cf:${child.id}|${f.id}`)} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 150, verticalAlign: 'top', lineHeight: 1.25, cursor: 'pointer', userSelect: 'none', ...PASTEL_B_HEADER }} title={`${f.label} — ${child.title}`}>
+                    <th key={`scf-${child.id}-${f.id}`} className={sortCls(`cf:${child.id}|${f.id}`)} onClick={() => handleSortConsolidated(`cf:${child.id}|${f.id}`)} style={{ textTransform: 'none', fontSize: '0.74rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 150, verticalAlign: 'top', lineHeight: 1.25, ...PASTEL_B_HEADER }} title={`${f.label} — ${child.title}`}>
                       <div style={{ color: 'var(--dex-gray-500)', fontWeight: 400, fontSize: '0.68rem' }}>{abbreviate(shortSubEventTitle(child.title, selectedEvent?.title) || '?', 18)}</div>
-                      <div style={{ fontWeight: 600 }}>{f.label}{sortArrow(`cf:${child.id}|${f.id}`)}</div>
+                      <div style={{ fontWeight: 700 }}>{f.label}{sortArrow(`cf:${child.id}|${f.id}`)}</div>
                     </th>
                   ))}
                 </React.Fragment>
-              ))}
-              <th style={{ textAlign: 'left', padding: 8, verticalAlign: 'bottom' }}>{isDe ? 'Details' : 'Details'}</th>
+                );
+              })}
+              {/* v31.3: Die Spalte hieß „Details", enthält aber das Aktionsmenü —
+                  der Kopf nennt jetzt, was in der Zelle steckt. */}
+              <th style={{ verticalAlign: 'bottom' }}>{isDe ? 'Aktionen' : 'Actions'}</th>
             </tr>
             {/* v30.15: Summenzeile je Termin-Spalte — bei einer Office-Tage-
                 Reihe sieht man sonst nicht, wie voll ein Tag ist. Zählt über
@@ -816,10 +920,10 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                 sonst alle. Kapazität aus dem Sub-Event als „/max".
                 Spalten-Vorlauf MUSS der Kopfzeile folgen (v28.53-Falle:
                 Kopf- und Zeilen-Reihenfolge nebeneinanderlegen!). */}
-            <tr style={{ borderBottom: '2px solid var(--dex-gray-200)', background: 'var(--dex-gray-50, #fafafa)' }}>
+            <tr>
               <th
                 colSpan={1 + (searchActive ? 1 : 0) + (personalColsCollapsed ? 1 : 6) + 1 + parentCustomFields.length + parentUserFields.length}
-                style={{ textAlign: 'right', padding: '4px 8px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}
+                style={{ textAlign: 'right', padding: '4px 8px', textTransform: 'none', fontSize: '0.72rem', whiteSpace: 'nowrap' }}
               >
                 {isDe ? '∑ angemeldet:' : '∑ registered:'}
               </th>
@@ -832,15 +936,27 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                   if (r.Status === 'Warteliste') wlCount++; else regCount++;
                 }
                 const cap = (typeof child.maxParticipants === 'number' && child.maxParticipants > 0) ? child.maxParticipants : 0;
+                // v31.3: War die Liste dieses Termins nicht lesbar, ist die Summe
+                // KEINE Null, sondern unbekannt — sonst liest sich ein volles
+                // Sub-Event als leer (CLAUDE.md v30.37/v30.67).
+                const unknown = isDeniedChild(child);
                 return (
                   <React.Fragment key={`sum-${child.id}`}>
-                    <th style={{ textAlign: 'center', padding: '4px 8px', borderLeft: '1px solid var(--dex-gray-200)', fontSize: '0.8rem', whiteSpace: 'nowrap', ...dimColStyle(child.id) }}
-                        title={isDe
-                          ? `${regCount} angemeldet${cap ? ` von ${cap} Plätzen` : ''}${wlCount ? ` · ${wlCount} auf der Warteliste` : ''}`
-                          : `${regCount} registered${cap ? ` of ${cap} seats` : ''}${wlCount ? ` · ${wlCount} on the waitlist` : ''}`}>
-                      <span style={{ fontWeight: 700, color: (cap > 0 && regCount >= cap) ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)' }}>{regCount}</span>
-                      {cap > 0 && <span style={{ color: 'var(--dex-gray-400)', fontWeight: 400 }}>/{cap}</span>}
-                      {wlCount > 0 && <span style={{ color: 'var(--dex-orange, #ed8b00)', fontWeight: 600 }}> +{wlCount} W</span>}
+                    <th style={{ textAlign: 'center', padding: '4px 8px', borderLeft: '1px solid var(--dex-gray-200)', textTransform: 'none', fontSize: '0.8rem', whiteSpace: 'nowrap', ...dimColStyle(child.id) }}
+                        title={unknown
+                          ? (isDe ? 'Unbekannt — die Teilnehmerliste dieses Termins konnte nicht gelesen werden' : 'Unknown — the participant list of this date could not be read')
+                          : isDe
+                            ? `${regCount} angemeldet${cap ? ` von ${cap} Plätzen` : ''}${wlCount ? ` · ${wlCount} auf der Warteliste` : ''}`
+                            : `${regCount} registered${cap ? ` of ${cap} seats` : ''}${wlCount ? ` · ${wlCount} on the waitlist` : ''}`}>
+                      {unknown ? (
+                        <span style={{ fontWeight: 700, color: 'var(--dex-orange, #ed8b00)' }}>?</span>
+                      ) : (
+                        <>
+                          <span style={{ fontWeight: 700, color: (cap > 0 && regCount >= cap) ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)' }}>{regCount}</span>
+                          {cap > 0 && <span style={{ color: 'var(--dex-gray-400)', fontWeight: 400 }}>/{cap}</span>}
+                          {wlCount > 0 && <span style={{ color: 'var(--dex-orange, #ed8b00)', fontWeight: 600 }}> +{wlCount} W</span>}
+                        </>
+                      )}
                     </th>
                     {fields.map(f => <th key={`sum-${child.id}-${f.id}`} style={{ padding: 0 }} />)}
                   </React.Fragment>
@@ -852,10 +968,10 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                 Vergangene Tage heißen „vorbei", noch gesperrte zeigen ihr
                 Öffnungsdatum (orange), offene das Datum in grün. */}
             {hasOpenRule && (
-              <tr style={{ borderBottom: '2px solid var(--dex-gray-200)', background: 'var(--dex-gray-50, #fafafa)' }}>
+              <tr>
                 <th
                   colSpan={1 + (searchActive ? 1 : 0) + (personalColsCollapsed ? 1 : 6) + 1 + parentCustomFields.length + parentUserFields.length}
-                  style={{ textAlign: 'right', padding: '2px 8px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}
+                  style={{ textAlign: 'right', padding: '2px 8px', textTransform: 'none', fontSize: '0.72rem', whiteSpace: 'nowrap' }}
                 >
                   {isDe ? 'Anmeldung ab:' : 'Opens:'}
                 </th>
@@ -865,7 +981,7 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                     <React.Fragment key={`open-${child.id}`}>
                       <th style={{
                         textAlign: 'center', padding: '2px 8px', borderLeft: '1px solid var(--dex-gray-200)',
-                        fontSize: '0.72rem', whiteSpace: 'nowrap', fontWeight: 600,
+                        textTransform: 'none', fontSize: '0.72rem', whiteSpace: 'nowrap', fontWeight: 600,
                         color: st.past
                           ? 'var(--dex-gray-400)'
                           : st.notYetOpen ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green-dark, #4a7c1f)',
@@ -889,20 +1005,27 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
               const isExpanded = expandedConsolidatedEmail === row.emailKey;
               return (
                 <React.Fragment key={row.emailKey}>
-                  <tr style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
+                  <tr>
                     {/* v15.20: Im konsolidierten View einfach fortlaufend
                         durchnummerieren (idx+1). Die Sub-Event-TeilnehmerID
                         macht hier keinen Sinn, weil jede Person eine eigene
                         TID pro Sub-Event hat — sortbar bleibt es über
                         Vorname/Nachname/Email-Spalten. */}
-                    <td style={{ padding: 8, color: 'var(--dex-gray-400)' }}>{idx + 1}</td>
+                    <td className="is-num" style={{ color: 'var(--dex-gray-400)' }}>{idx + 1}</td>
                     {/* v26.68: echte Teilnehmer-ID (Klammer-Liste) — nur bei Suche. */}
                     {searchActive && (
-                      <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontWeight: 600 }}>{bracketTidByEmail[row.emailKey] ?? row.teilnehmerId ?? '–'}</td>
+                      <td className="is-num" style={{ color: 'var(--dex-gray-600)', fontWeight: 600 }}>{bracketTidByEmail[row.emailKey] ?? row.teilnehmerId ?? '–'}</td>
                     )}
                     {personalColsCollapsed ? (
-                      <td style={{ padding: 8 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                      <td>
+                        {/* v31.3: Personen-Zelle nach Leitfaden 5b — Foto, Name,
+                            darunter Position • Standort. Der Name ist jetzt ein
+                            echter Knopf mit Hover (öffnet die Detailinfos); vorher
+                            war es ein div mit cursor:pointer, dem man das Klicken
+                            nicht ansah. Die Zeile bleibt bewusst NICHT klickbar:
+                            Wer eine E-Mail markieren will, würde sonst das Detail
+                            öffnen. */}
+                        <div className="dex-ui-person">
                           {/* v24.56: Foto-Hover = Kontaktkarte (E-Mail + Teams). */}
                           {(() => {
                             const nm = `${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email || '-';
@@ -915,13 +1038,17 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                             const loc = stripLocPrefix(row.location || '');
                             const sub = [row.jobTitle || '', loc, row.company || ''].filter(Boolean).join(' • ');
                             return (
-                              <div
-                                style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.25, cursor: 'pointer' }}
-                                title={isDe ? 'Detailinfos anzeigen' : 'Show details'}
-                                onClick={() => setParticipantDetail({ name: fullName, email: row.email || '', jobTitle: row.jobTitle || '', location: row.location || '', company: row.company || '', department: '', phone: '', status: '', tid: row.teilnehmerId })}
-                              >
-                                <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{highlightMatch(fullName)}</span>
-                                {sub && <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>{highlightMatch(sub)}</span>}
+                              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, alignItems: 'flex-start', lineHeight: 1.25 }}>
+                                <button
+                                  type="button"
+                                  className="dex-ui-textbtn dex-ui-textbtn--muted dex-ui-person-name"
+                                  style={{ padding: '1px 6px', margin: '0 -6px', fontSize: 'inherit' }}
+                                  title={isDe ? 'Detailinfos anzeigen' : 'Show details'}
+                                  onClick={() => setParticipantDetail({ name: fullName, email: row.email || '', jobTitle: row.jobTitle || '', location: row.location || '', company: row.company || '', department: '', phone: '', status: '', tid: row.teilnehmerId })}
+                                >
+                                  {highlightMatch(fullName)}
+                                </button>
+                                {sub && <span className="dex-ui-person-sub">{highlightMatch(sub)}</span>}
                               </div>
                             );
                           })()}
@@ -932,8 +1059,8 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                         {/* v26.68: auch in der aufgeklappten Ansicht ein Foto mit
                             Hover-Kontaktkarte zeigen (vorher nur im eingeklappten
                             2-Spalten-Modus) — links neben dem Vornamen. */}
-                        <td style={{ padding: 8, fontWeight: 500 }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <td>
+                          <span className="dex-ui-person">
                             <PersonContactHover
                               email={row.email || ''}
                               name={`${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email || '-'}
@@ -941,14 +1068,14 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                               subline={[row.jobTitle || '', stripLocPrefix(row.location || ''), row.company || ''].filter(Boolean).join(' • ')}
                               isDe={isDe}
                             />
-                            <span>{highlightMatch(row.vorname || '-')}</span>
+                            <span className="dex-ui-person-name">{highlightMatch(row.vorname || '-')}</span>
                           </span>
                         </td>
-                        <td style={{ padding: 8, fontWeight: 500 }}>{highlightMatch(row.nachname || '-')}</td>
-                        <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{highlightMatch(row.email)}</td>
-                        <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{highlightMatch(row.jobTitle || '-')}</td>
-                        <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{row.location ? highlightMatch(stripLocPrefix(row.location)) : '-'}</td>
-                        <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{row.company ? highlightMatch(row.company) : '-'}</td>
+                        <td><span className="dex-ui-person-name">{highlightMatch(row.nachname || '-')}</span></td>
+                        <td style={{ color: 'var(--dex-gray-600)' }}>{highlightMatch(row.email)}</td>
+                        <td style={{ color: 'var(--dex-gray-600)' }}>{highlightMatch(row.jobTitle || '-')}</td>
+                        <td style={{ color: 'var(--dex-gray-600)' }}>{row.location ? highlightMatch(stripLocPrefix(row.location)) : '-'}</td>
+                        <td style={{ color: 'var(--dex-gray-600)' }}>{row.company ? highlightMatch(row.company) : '-'}</td>
                       </>
                     )}
                     {/* v26.84: „Registriert von" — Akteur aus den Sub-Event-
@@ -967,8 +1094,16 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                         }
                       }
                       return (
-                        <td style={{ padding: 8, fontSize: '0.8rem', whiteSpace: 'nowrap', color: isProxy ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-gray-500)' }} title={isProxy ? actorEmail : ''}>
-                          {isProxy ? (actorName || actorEmail) : (isDe ? 'Selbst' : 'Self')}
+                        <td style={{ whiteSpace: 'nowrap' }} title={isProxy ? actorEmail : ''}>
+                          {/* v31.3: Statuspunkt statt Farbtext — „stellvertretend"
+                              erkennt man jetzt am orangen Punkt, nicht nur an einer
+                              Schriftfarbe (Leitfaden 5b). */}
+                          <span className="dex-ui-inline" style={{ gap: 6, flexWrap: 'nowrap' }}>
+                            <span className={isProxy ? 'dex-ui-dot dex-ui-dot--orange' : 'dex-ui-dot'} aria-hidden="true" />
+                            <span style={{ color: isProxy ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-gray-500)' }}>
+                              {isProxy ? (actorName || actorEmail) : (isDe ? 'Selbst' : 'Self')}
+                            </span>
+                          </span>
                         </td>
                       );
                     })()}
@@ -1008,7 +1143,7 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                         }
                       }
                       return (
-                        <td key={`pcv-${f.id}`} style={{ padding: 8, fontSize: '0.8rem', color: 'var(--dex-gray-700)', whiteSpace: 'nowrap', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', ...PASTEL_A_CELL }} title={val}>
+                        <td key={`pcv-${f.id}`} style={{ color: 'var(--dex-gray-700)', whiteSpace: 'nowrap', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', ...PASTEL_A_CELL }} title={val}>
                           {val ? highlightMatch(val) : '-'}
                         </td>
                       );
@@ -1037,7 +1172,7 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                         return { name, email };
                       });
                       return (
-                        <td key={`puv-${f.id}`} style={{ padding: 8, fontSize: '0.8rem', color: 'var(--dex-gray-700)', maxWidth: 190, ...PASTEL_A_CELL }} title={raw}>
+                        <td key={`puv-${f.id}`} style={{ color: 'var(--dex-gray-700)', maxWidth: 190, ...PASTEL_A_CELL }} title={raw}>
                           {persons.length === 0 ? '-' : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                               {persons.map((p, pi) => (
@@ -1059,14 +1194,24 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                     {childCustomFieldsByChild.map(({ child, fields }) => {
                       const r = row.perChild[child.id];
                       const isReg = !!r && ACTIVE.indexOf(r.Status) >= 0;
+                      // v31.3: Keine Zeile UND keine lesbare Liste heißt „unbekannt",
+                      // nicht „nicht angemeldet" — ein Lesefehler ist keine Null
+                      // (CLAUDE.md v30.67). Vorher stand hier in beiden Fällen „—".
+                      const unknown = !r && isDeniedChild(child);
                       return (
                         <React.Fragment key={`scv-${child.id}`}>
-                          <td style={{ padding: 8, textAlign: 'center', borderLeft: '1px solid var(--dex-gray-200)', ...dimColStyle(child.id) }}
-                              title={r ? `${translateStatus(r.Status, isDe)} — TID ${r.TeilnehmerID || '?'}` : (isDe ? 'Nicht angemeldet' : 'Not registered')}>
+                          <td style={{ textAlign: 'center', borderLeft: '1px solid var(--dex-gray-200)', ...dimColStyle(child.id) }}
+                              title={r
+                                ? `${translateStatus(r.Status, isDe)} — TID ${r.TeilnehmerID || '?'}`
+                                : unknown
+                                  ? (isDe ? 'Unbekannt — die Teilnehmerliste dieses Termins konnte nicht gelesen werden' : 'Unknown — the participant list of this date could not be read')
+                                  : (isDe ? 'Nicht angemeldet' : 'Not registered')}>
                             {isReg ? (
                               r.Status === 'Warteliste'
-                                ? <span style={{ color: 'var(--dex-orange, #ed8b00)', fontSize: '0.78rem' }} title={translateStatus(r.Status, isDe)}>W</span>
-                                : <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', display: 'inline-flex' }}><Check size={16} /></span>
+                                ? <span className="dex-ui-pill dex-ui-pill--orange" style={{ padding: '1px 8px' }} title={translateStatus(r.Status, isDe)}>W</span>
+                                : <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', display: 'inline-flex' }}><Check size={15} /></span>
+                            ) : unknown ? (
+                              <span style={{ color: 'var(--dex-orange, #ed8b00)', fontWeight: 700 }}>?</span>
                             ) : (
                               <span style={{ color: 'var(--dex-gray-300)' }}>—</span>
                             )}
@@ -1084,7 +1229,7 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                               if (v !== undefined && v !== null && v !== '') val = String(v);
                             }
                             return (
-                              <td key={`scv-${child.id}-${f.id}`} style={{ padding: 8, fontSize: '0.8rem', color: 'var(--dex-gray-700)', whiteSpace: 'nowrap', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', ...PASTEL_B_CELL, ...dimColStyle(child.id) }} title={val}>
+                              <td key={`scv-${child.id}-${f.id}`} style={{ color: 'var(--dex-gray-700)', whiteSpace: 'nowrap', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', ...PASTEL_B_CELL, ...dimColStyle(child.id) }} title={val}>
                                 {val ? highlightMatch(val) : (r ? '-' : '')}
                               </td>
                             );
@@ -1092,7 +1237,7 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                         </React.Fragment>
                       );
                     })}
-                    <td style={{ padding: 8 }}>
+                    <td>
                       {/* v26.68: Die früheren Einzel-Buttons (Details / Felder /
                           Zur Klammer / Assistenz zuordnen / Abmelden) in EIN
                           Auswahl-Dropdown zusammengefasst — spart Platz und hält
@@ -1104,11 +1249,15 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                         const showKlammer = canManage && !orgPastLock && isConsolidatedMode && !hasParentReg(row.emailKey);
                         const showAssist = canManage && !orgPastLock;
                         const showAbmelden = canManage && !orgPastLock;
+                        // v31.3: kompaktes Auswahlfeld statt Knopf-Optik — ein
+                        // `btn` mit Klapp-Pfeil versprach eine Aktion, öffnete aber
+                        // nur eine Liste. Native `<select>` bleibt (v26.68: robust
+                        // im horizontal scrollbaren Container).
                         return (
                           <select
-                            className="btn btn-secondary"
+                            className="dex-ui-select dex-ui-select--sm"
                             value=""
-                            style={{ fontSize: '0.75rem', padding: '4px 10px', cursor: 'pointer', maxWidth: 170 }}
+                            style={{ width: 'auto', maxWidth: 180, cursor: 'pointer' }}
                             aria-label={isDe ? 'Aktionen für diese Person' : 'Actions for this person'}
                             onChange={(e) => {
                               const v = e.target.value;
@@ -1136,47 +1285,60 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                       {canManage && !orgPastLock && inactiveAccounts.indexOf(row.emailKey) >= 0 && (
                         <button
                           type="button"
-                          className="btn btn-secondary"
+                          className="dex-ui-textbtn dex-ui-textbtn--danger"
                           onClick={() => openDeregModal(row)}
                           title={isDe
                             ? 'Kein aktives Konto — Abmelde-Dialog öffnen (still, inklusive Klammer und aller Sub-Events)'
                             : 'No active account — open the cancellation dialog (silent, including umbrella and all sub-events)'}
-                          style={{ marginTop: 4, fontSize: '0.72rem', padding: '3px 8px', color: 'var(--dex-red, #c00)', borderColor: 'var(--dex-red, #c00)', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                          style={{ marginTop: 2, display: 'flex' }}
                         >
-                          <Trash2 size={11} /> {isDe ? 'Abmelden' : 'Deregister'}
+                          <Trash2 size={12} /> {isDe ? 'Abmelden' : 'Deregister'}
                         </button>
                       )}
                     </td>
                   </tr>
                   {isExpanded && (
-                    <tr style={{ background: 'var(--dex-gray-50, #f7f7f7)' }}>
-                      <td colSpan={totalColSpan} style={{ padding: '12px 16px' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)' }}>
-                            {isDe ? 'Anmeldungen von' : 'Registrations of'} {row.vorname} {row.nachname}
-                          </div>
+                    <tr>
+                      <td colSpan={totalColSpan} style={{ background: 'var(--dex-gray-50, #fafafa)', padding: '10px 14px' }}>
+                        {/* v31.3: Aufgeklappte Details als Zeilenliste (Leitfaden 4).
+                            Der Knopf steht jetzt direkt hinter den Angaben und nicht
+                            mehr per `margin-left:auto` am rechten Rand (Leitfaden 2a′). */}
+                        <div className="dex-ui-section-title" style={{ marginBottom: 6 }}>
+                          {isDe ? 'Anmeldungen von' : 'Registrations of'} {row.vorname} {row.nachname}
+                        </div>
+                        <div className="dex-ui-card dex-ui-card--list">
                           {consolidatedChildren.map(ch => {
                             const r = row.perChild[ch.id];
                             if (!r) {
+                              // v31.3: Keine Zeile heißt „nicht angemeldet" — es sei
+                              // denn, die Liste war gar nicht lesbar. Dann ist es
+                              // unbekannt (CLAUDE.md: ein Lesefehler ist keine Null).
+                              const unknown = isDeniedChild(ch);
                               return (
-                                <div key={`exp-${ch.id}`} style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)' }}>
-                                  {shortSubEventTitle(ch.title, selectedEvent?.title)} — {isDe ? 'nicht angemeldet' : 'not registered'}
+                                <div key={`exp-${ch.id}`} className="dex-ui-row--bordered" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 10px' }}>
+                                  <span className="dex-ui-row-title" style={{ minWidth: 180, whiteSpace: 'normal', color: 'var(--dex-gray-500)' }}>{shortSubEventTitle(ch.title, selectedEvent?.title)}</span>
+                                  <span className={unknown ? 'dex-ui-pill dex-ui-pill--orange' : 'dex-ui-pill dex-ui-pill--gray'}>
+                                    {unknown
+                                      ? (isDe ? 'unbekannt — Liste nicht lesbar' : 'unknown — list not readable')
+                                      : (isDe ? 'nicht angemeldet' : 'not registered')}
+                                  </span>
                                 </div>
                               );
                             }
                             return (
-                              <div key={`exp-${ch.id}`} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: '0.82rem' }}>
-                                <span style={{ fontWeight: 500, minWidth: 200 }}>{shortSubEventTitle(ch.title, selectedEvent?.title)}</span>
-                                <span className={`badge ${r.Status === 'Eingecheckt' ? 'badge-green' : 'badge-gray'}`}>{translateStatus(r.Status, isDe)}</span>
-                                <span style={{ color: 'var(--dex-gray-500)' }}>TID {r.TeilnehmerID || '?'}</span>
-                                <span style={{ color: 'var(--dex-gray-400)', fontSize: '0.75rem' }}>{formatDate(r.RegistrationDate)}</span>
-                                <button
-                                  className="btn btn-secondary"
-                                  style={{ marginLeft: 'auto', fontSize: '0.72rem', padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                                  onClick={() => setSelectedEvent(ch)}
-                                >
-                                  {isDe ? 'In Sub-Event öffnen' : 'Open in sub-event'} <ExternalLink size={12} />
-                                </button>
+                              <div key={`exp-${ch.id}`} className="dex-ui-row dex-ui-row--bordered">
+                                <div className="dex-ui-row-main" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                  <span className="dex-ui-row-title" style={{ minWidth: 180, whiteSpace: 'normal' }}>{shortSubEventTitle(ch.title, selectedEvent?.title)}</span>
+                                  <span className={statusPillClass(r.Status)}>{translateStatus(r.Status, isDe)}</span>
+                                  <span className="dex-ui-row-sub" style={{ marginTop: 0 }}>TID {r.TeilnehmerID || '?'} · {formatDate(r.RegistrationDate)}</span>
+                                  <button
+                                    type="button"
+                                    className="dex-ui-textbtn"
+                                    onClick={() => setSelectedEvent(ch)}
+                                  >
+                                    {isDe ? 'In Sub-Event öffnen' : 'Open in sub-event'} <ExternalLink size={12} />
+                                  </button>
+                                </div>
                               </div>
                             );
                           })}
@@ -1189,6 +1351,22 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
             })}
           </tbody>
         </table>
+        </div>
+        {/* v31.3: Fußzeile statt Kopfzähler (Leitfaden 5b) — sie steht
+            AUSSERHALB des Scrollbereichs und bleibt damit sichtbar. */}
+        <div className="dex-ui-table-foot">
+          <span>
+            {isDe
+              ? `${consolidatedFiltered.length} von ${consolidatedRows.length} Personen${searchActive ? ` · Suche „${(searchQuery || '').trim()}“` : ''}`
+              : `${consolidatedFiltered.length} of ${consolidatedRows.length} people${searchActive ? ` · search “${(searchQuery || '').trim()}”` : ''}`}
+          </span>
+          {/* Der Hinweis gilt nur für die eingeklappte Ansicht — dort ist der
+              Name der Knopf, der die Detailinfos öffnet. */}
+          {personalColsCollapsed && (
+            <span>{isDe ? 'Namen anklicken öffnet die Detailinfos' : 'Click a name to open the details'}</span>
+          )}
+        </div>
+        </div>
       </div>
     );
 };

@@ -116,7 +116,14 @@ export const KpiTiles: React.FC<KpiTilesProps> = (p) => {
         // v31.3: Auslastung nur mit Kapazität und lesbarer Liste — im Klammer-Modus
         // ist `maxParticipants` ein Alt-Wert, bei geteilten Gruppen zählt je Gruppe.
         const capTotal = selectedEvent?.maxParticipants || 0;
-        const showCap = !isConsolidatedMode && !isSplitCapacity && !unknownAll && capTotal > 0;
+        // v31.3 (Nachzug): Der Schutz hing an `isConsolidatedMode` — das ist
+        // im Aufrufer `subEventsOnlyMode && childEventsOf(id).length > 0`.
+        // Eine Klammer, deren Kinder noch nicht geladen sind, fiel damit
+        // durch und bekäme „N von M Plätzen frei" für etwas, das niemand
+        // buchen kann (CLAUDE.md: `MaxParticipants` ist dort ein Alt-Wert).
+        // Jetzt hängt die Aussage am Modus selbst, nicht an der Kinderzahl.
+        const showCap = !isConsolidatedMode && !selectedEvent?.subEventsOnlyMode
+          && !isSplitCapacity && !unknownAll && capTotal > 0;
         const over = totalActive - capTotal;
         const capText = over > 0
           ? (isDe ? `${over} über der Kapazität von ${capTotal}` : `${over} over the capacity of ${capTotal}`)
@@ -126,7 +133,14 @@ export const KpiTiles: React.FC<KpiTilesProps> = (p) => {
           ? (isDe ? 'Die Teilnehmerliste war nicht lesbar — diese Zahlen sind unbekannt, nicht 0.' : 'The participant list could not be read — these numbers are unknown, not 0.')
           : (isConsolidatedMode && subListsIncomplete
             ? (isDe ? 'Mindestens eine Termin-Liste war nicht lesbar — die Zahlen sind Untergrenzen.' : 'At least one date list could not be read — these numbers are lower bounds.')
-            : '');
+            // v31.3 (Nachzug): Dritter Fall — im Klammer-Modus hängt die
+            // Kachel „Abgemeldet" allein an `regsUnknown`. War nur die
+            // Klammer-Liste gesperrt, stand ihr Strich bisher ohne jeden
+            // Satz da; der Hinweis versprach eine Vollständigkeit, die er
+            // nicht hatte.
+            : (isConsolidatedMode && regsUnknown
+              ? (isDe ? 'Die Klammer-Liste war nicht lesbar — die Zahl der Abmeldungen ist unbekannt, nicht 0.' : 'The umbrella list could not be read — the number of cancellations is unknown, not 0.')
+              : ''));
         // Vier gleich gebaute Kacheln; Farbe nur mit Bedeutung (Leitfaden 5b:
         // orange Warteliste, blau eingecheckt, grau abgemeldet). Kein Hover —
         // sie filtern nichts, sie zeigen nur.

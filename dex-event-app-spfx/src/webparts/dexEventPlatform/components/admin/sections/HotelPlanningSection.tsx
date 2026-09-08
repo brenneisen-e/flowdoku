@@ -1,11 +1,18 @@
 /* HotelPlanningSection — 1:1 aus AdminPage.tsx ausgelagert (Zeilen 9570-9621 des
- * Stands vor dem Schnitt). Der Inhalt ist zeichengleich uebernommen; die
+ * Stands vor dem Schnitt). Der Inhalt ist zeichengleich übernommen; die
  * Anzeige-Bedingung bleibt beim Aufrufer.
+ *
+ * v31.3: Nur der Rahmen um `HotelPlanningPanel` — Kopfzeile nach
+ * docs/ui-leitfaden.md 5a Punkt 8 (Auswertungen zuletzt, eingeklappt, Kopf mit
+ * Zähler und Chevron rechts). Das Panel selbst ist eine eigene Datei und
+ * bleibt unangetastet.
  */
 import * as React from 'react';
 import HotelPlanningPanel from '../../HotelPlanningPanel';
 import { DeloitteEvent } from '../../../types';
 import { SPRegistration } from '../../../services/EventService';
+import { ChevronDown, Pin } from '../../Icons';
+import { cx, ensureDexUiStyles } from '../../dexUi';
 
 export interface HotelPlanningSectionProps {
   childEventsOf: (parentEventId: string) => DeloitteEvent[];
@@ -24,6 +31,9 @@ export interface HotelPlanningSectionProps {
 
 export const HotelPlanningSection: React.FC<HotelPlanningSectionProps> = (p) => {
   const { childEventsOf, confirmDialog, hotelPanelOpen, isDe, refreshEvents, registrations, reloadRegistrations, selectedEvent, setHotelPanelOpen, showAlert, subEventRegsByEventId } = p;
+        // v31.3: Die gemeinsamen Klassen sicherstellen — das Organizer Center
+        // rendert nicht zwangsläufig vorher ein Modal, das sie injiziert.
+        ensureDexUiStyles();
         const HOTEL_LABEL = /hotel|unterkunft|übernacht|uebernacht|accommodation|lodging/i;
         const asksForHotel = (ev: { eventSpecificFields?: Array<{ type?: string; label?: string; labelEn?: string }> }): boolean =>
           (ev.eventSpecificFields || []).some(f =>
@@ -31,31 +41,36 @@ export const HotelPlanningSection: React.FC<HotelPlanningSectionProps> = (p) => 
         const planningStarted = (selectedEvent.hotels || []).length > 0
           || registrations.some(r => (r.Hotel || '').trim());
         if (!planningStarted && !asksForHotel(selectedEvent) && !childEventsOf(selectedEvent.id).some(asksForHotel)) return null;
+        const hotelCount = (selectedEvent.hotels || []).length;
+        const assignedCount = registrations.filter(r => (r.Hotel || '').trim()).length;
         return (
-        <div className="card" style={{ marginBottom: 16 }}>
-          <button
-            type="button"
-            onClick={() => setHotelPanelOpen(o => !o)}
-            style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', display: 'flex', alignItems: 'center', gap: 10 }}
-          >
-            <span style={{ transform: hotelPanelOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s', color: 'var(--dex-gray-400)' }}>▶</span>
-            <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--dex-gray-800)' }}>
+        <div className="dex-ui-card" style={{ marginBottom: 16, padding: 12 }}>
+          {/* v31.3: Die ganze Kopfzeile ist der Aufklapper (Hover über
+              `dex-ui-row`) — vorher lag der Klick auf einem Knopf ohne Hover,
+              und das Dreieck stand links vor dem Titel statt rechts.
+              span statt h3: Überschriften gehören nicht in einen <button>. */}
+          <button type="button" onClick={() => setHotelPanelOpen(o => !o)} aria-expanded={hotelPanelOpen}
+            className="dex-ui-rowbtn dex-ui-row dex-ui-card-head">
+            <span className="dex-ui-card-head-title">
+              <Pin size={16} strokeWidth={2} />
               {isDe ? 'Hotels & Übernachtungen' : 'Hotels & accommodation'}
             </span>
-            {(selectedEvent.hotels || []).length > 0 && (
-              <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
-                {(selectedEvent.hotels || []).length} {isDe ? 'Hotels' : 'hotels'} ·{' '}
-                {registrations.filter(r => (r.Hotel || '').trim()).length} {isDe ? 'zugeordnet' : 'assigned'}
+            {hotelCount > 0 && (
+              <span className="dex-ui-card-head-meta">
+                {hotelCount} {isDe ? 'Hotels' : 'hotels'} · {assignedCount} {isDe ? 'Personen zugeordnet' : 'people assigned'}
               </span>
             )}
             {selectedEvent.hotelVisibleToAttendees && (
-              <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(134,188,37,0.15)', color: 'var(--dex-green-dark, #4a7c1f)' }}>
+              <span className="dex-ui-pill dex-ui-pill--green">
                 {isDe ? 'für Teilnehmer sichtbar' : 'visible to attendees'}
               </span>
             )}
+            <span className={cx('dex-ui-disclosure-chevron', hotelPanelOpen && 'is-open')} style={{ marginLeft: 'auto' }}>
+              <ChevronDown size={18} />
+            </span>
           </button>
           {hotelPanelOpen && (
-            <div style={{ marginTop: 12 }}>
+            <div style={{ marginTop: 12, padding: '0 2px 2px' }}>
               <HotelPlanningPanel
                 event={selectedEvent}
                 registrations={registrations}

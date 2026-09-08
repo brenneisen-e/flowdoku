@@ -1,12 +1,19 @@
 /* QuizStatsSection — 1:1 aus AdminPage.tsx ausgelagert (Zeilen 9624-9879 des
- * Stands vor dem Schnitt). Der Inhalt ist zeichengleich uebernommen; die
+ * Stands vor dem Schnitt). Der Inhalt ist zeichengleich übernommen; die
  * Anzeige-Bedingung bleibt beim Aufrufer.
+ *
+ * v31.3: Auswertungs-Karte nach docs/ui-leitfaden.md 5a Punkt 8 — eingeklappt,
+ * Kopf mit Zähler und Chevron rechts, darin Kennzahlen (`dex-ui-kpi`), die
+ * Fragen-Balken als `dex-ui-progress` und die Top 10 als `dex-ui-table` mit
+ * Personen-Zelle (5b). Die Rechenwege sind unverändert.
  */
 import * as React from 'react';
-import { FileText } from '../../Icons';
+import { ChevronDown, FileText } from '../../Icons';
 import { formatDate } from '../../../utils/eventStatus';
 import { DeloitteEvent } from '../../../types';
 import { SPRegistration } from '../../../services/EventService';
+import { cx, ensureDexUiStyles } from '../../dexUi';
+import { PersonContactHover } from '../../PersonContactHover';
 
 export interface QuizStatsSectionProps {
   registrations: SPRegistration[];
@@ -15,6 +22,11 @@ export interface QuizStatsSectionProps {
 
 export const QuizStatsSection: React.FC<QuizStatsSectionProps> = (p) => {
   const { registrations, selectedEvent } = p;
+        // v31.3: eigener Aufklapp-Zustand statt <details>/<summary>. Der native
+        // Marker liess sich weder ausrichten noch drehen; jetzt trägt die
+        // Kopfzeile denselben Chevron wie alle anderen Auswertungs-Karten.
+        const [open, setOpen] = React.useState(false);
+        ensureDexUiStyles();
         // Teilnehmer mit mindestens einer beantworteten Frage (nicht nur "komplett durchgeführt").
         // Dadurch erscheinen auch Teilnehmer, die mittendrin aufgehört haben.
         const regsWithQuiz = registrations.filter(r => {
@@ -64,91 +76,104 @@ export const QuizStatsSection: React.FC<QuizStatsSectionProps> = (p) => {
           return ta - tb;
         }).slice(0, 10);
 
+        // Gruppen in Reihenfolge der ersten Erwähnung
+        const hasSections = perQuestion.some(pq => !!pq.section);
+        const sectionsInOrder: string[] = [];
+        for (const pq of perQuestion) {
+          if (pq.section && sectionsInOrder.indexOf(pq.section) < 0) sectionsInOrder.push(pq.section);
+        }
+
+        // v31.3: EINE Zeilen-Darstellung für alle drei Fälle (mit Bereich, ohne
+        // Bereich, ganz ohne Bereiche) — vorher stand derselbe Block dreimal im
+        // JSX und lief bei jeder Änderung auseinander.
+        const renderQuestion = (pq: (typeof perQuestion)[number], idx: number): React.ReactElement => {
+          const pct = pq.answeredCount > 0 ? Math.round((pq.correctCount / pq.answeredCount) * 100) : 0;
+          return (
+            <div key={idx} className="dex-ui-card dex-ui-card--soft" style={{ padding: '8px 10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                {pq.imageBase64 && (
+                  <img src={pq.imageBase64} alt="" style={{ width: 60, height: 44, objectFit: 'cover', borderRadius: 6, flexShrink: 0, border: '1px solid var(--dex-gray-200)' }} />
+                )}
+                <span style={{ fontSize: '0.85rem', fontWeight: 500, flex: 1, minWidth: 0 }}>{idx + 1}. {pq.question}</span>
+                <span className="dex-ui-muted" style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                  {pq.correctCount} / {pq.answeredCount} richtig ({pct} %)
+                </span>
+              </div>
+              <div className="dex-ui-progress">
+                <div
+                  className={cx('dex-ui-progress-bar', pct < 40 && 'dex-ui-progress-bar--red', pct >= 40 && pct < 70 && 'dex-ui-progress-bar--orange')}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+          );
+        };
+
         return (
-          <details className="card" style={{ padding: 0, marginBottom: 16 }}>
-            <summary style={{
-              padding: '16px 24px', cursor: 'pointer', listStyle: 'none',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-              fontSize: '1rem', fontWeight: 600,
-            }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <FileText size={18} /> Quiz-Statistik
-              </span>
-              <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
+          <div className="dex-ui-card" style={{ padding: 12, marginBottom: 16 }}>
+            {/* v31.3: Die Kopfzeile IST der Aufklapper — Hover über `dex-ui-row`,
+                Zähler links beim Titel, Chevron rechts (Leitfaden 5a.8). */}
+            <button
+              type="button"
+              onClick={() => setOpen(o => !o)}
+              aria-expanded={open}
+              className="dex-ui-rowbtn dex-ui-row dex-ui-card-head"
+            >
+              <span className="dex-ui-card-head-title"><FileText size={18} /> Quiz-Statistik</span>
+              <span className="dex-ui-card-head-meta">
                 {totalQuizzes === 0
-                  ? 'Keine Daten'
-                  : `${totalCompleted} abgeschlossen, ${totalQuizzes - totalCompleted} teilweise (Klick zum Ausklappen)`}
+                  ? 'Noch niemand teilgenommen'
+                  : `${totalCompleted} abgeschlossen · ${totalQuizzes - totalCompleted} teilweise`}
               </span>
-            </summary>
-            <div style={{ padding: '0 24px 24px 24px' }}>
+              <span className={cx('dex-ui-disclosure-chevron', open && 'is-open')} style={{ marginLeft: 'auto' }}>
+                <ChevronDown size={18} />
+              </span>
+            </button>
+            {open && (
+            <div style={{ padding: '4px 6px 6px' }}>
               {totalQuizzes === 0 ? (
-                <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic', margin: 0 }}>
+                <div className="dex-ui-empty">
+                  <div className="dex-ui-empty-title">Noch kein Ergebnis</div>
                   Noch kein Teilnehmer hat das Quiz gestartet.
-                </p>
+                </div>
               ) : (
                 <>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 24 }}>
-                    <div style={{ padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 12, textAlign: 'center' }}>
-                      <div style={{ fontSize: '1.6rem', fontWeight: 700, color: 'var(--dex-green-dark, #6b9a1e)' }}>{totalCompleted}</div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>Abgeschlossen</div>
+                  <div className="dex-ui-kpi-row">
+                    <div className="dex-ui-kpi dex-ui-kpi--green">
+                      <div className="dex-ui-kpi-value">{totalCompleted}</div>
+                      <div className="dex-ui-kpi-label">Abgeschlossen</div>
                     </div>
-                    <div style={{ padding: 16, background: 'var(--dex-orange-light, #fff7ed)', borderRadius: 12, textAlign: 'center' }}>
-                      <div style={{ fontSize: '1.6rem', fontWeight: 700, color: 'var(--dex-orange, #ed8b00)' }}>{totalQuizzes - totalCompleted}</div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>Teilweise</div>
+                    <div className="dex-ui-kpi dex-ui-kpi--orange">
+                      <div className="dex-ui-kpi-value">{totalQuizzes - totalCompleted}</div>
+                      <div className="dex-ui-kpi-label">Teilweise</div>
                     </div>
-                    <div style={{ padding: 16, background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, textAlign: 'center' }}>
-                      <div style={{ fontSize: '1.6rem', fontWeight: 700 }}>{selectedEvent.quiz.length}</div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>Fragen</div>
+                    <div className="dex-ui-kpi">
+                      <div className="dex-ui-kpi-value">{selectedEvent.quiz.length}</div>
+                      <div className="dex-ui-kpi-label">Fragen</div>
                     </div>
-                    <div style={{ padding: 16, background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, textAlign: 'center' }}>
-                      <div style={{ fontSize: '1.6rem', fontWeight: 700 }}>
+                    <div className="dex-ui-kpi">
+                      <div className="dex-ui-kpi-value">
                         {totalQuizzes > 0
                           ? (regsWithQuiz.reduce((sum, r) => sum + (r.QuizScore || 0), 0) / totalQuizzes).toFixed(1)
                           : '0'}
                       </div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>Ø Score</div>
+                      <div className="dex-ui-kpi-label">Ø Punkte</div>
+                      <div className="dex-ui-kpi-sub">von {selectedEvent.quiz.length} möglichen</div>
                     </div>
                   </div>
 
                   {/* Pro Frage - gruppiert nach Bereich falls vorhanden */}
-                  <h4 style={{ marginTop: 0, marginBottom: 12 }}>Pro Frage</h4>
-                  {(() => {
-                    const hasSections = perQuestion.some(pq => !!pq.section);
-                    if (!hasSections) return null;
-                    // Gruppen in Reihenfolge der ersten Erwähnung
-                    const sectionsInOrder: string[] = [];
-                    for (const pq of perQuestion) {
-                      if (pq.section && sectionsInOrder.indexOf(pq.section) < 0) sectionsInOrder.push(pq.section);
-                    }
-                    return (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 24 }}>
+                  <div className="dex-ui-section">
+                    <div className="dex-ui-section-title">Wie oft richtig beantwortet?</div>
+                    {hasSections ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                         {sectionsInOrder.map(sec => (
                           <div key={`stat-sec-${sec}`}>
                             <h5 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.92rem' }}>
                               Bereich: {sec}
                             </h5>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              {perQuestion.map((pq, idx) => pq.section === sec ? (() => {
-                                const pct = pq.answeredCount > 0 ? Math.round((pq.correctCount / pq.answeredCount) * 100) : 0;
-                                return (
-                                  <div key={idx} style={{ padding: 10, background: 'var(--dex-gray-50, #fafafa)', borderRadius: 8 }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4, gap: 12 }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
-                                        {pq.imageBase64 && (
-                                          <img src={pq.imageBase64} alt="" style={{ width: 60, height: 44, objectFit: 'cover', borderRadius: 6, flexShrink: 0, border: '1px solid var(--dex-gray-200)' }} />
-                                        )}
-                                        <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>{idx + 1}. {pq.question}</span>
-                                      </div>
-                                      <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>
-                                        {pq.correctCount} / {pq.answeredCount} richtig ({pct}%)
-                                      </span>
-                                    </div>
-                                    <div style={{ height: 6, background: 'var(--dex-gray-200)', borderRadius: 3, overflow: 'hidden' }}>
-                                      <div style={{ height: '100%', width: `${pct}%`, background: pct >= 70 ? 'var(--dex-green, #86bc25)' : pct >= 40 ? 'var(--dex-orange, #ff8c00)' : 'var(--dex-red, #c00)', transition: 'width 0.3s' }} />
-                                    </div>
-                                  </div>
-                                );
-                              })() : null)}
+                              {perQuestion.map((pq, idx) => pq.section === sec ? renderQuestion(pq, idx) : null)}
                             </div>
                           </div>
                         ))}
@@ -157,117 +182,82 @@ export const QuizStatsSection: React.FC<QuizStatsSectionProps> = (p) => {
                           <div>
                             <h5 style={{ margin: '0 0 6px', color: 'var(--dex-gray-600)', fontSize: '0.92rem' }}>Ohne Bereich</h5>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              {perQuestion.map((pq, idx) => !pq.section ? (() => {
-                                const pct = pq.answeredCount > 0 ? Math.round((pq.correctCount / pq.answeredCount) * 100) : 0;
-                                return (
-                                  <div key={idx} style={{ padding: 10, background: 'var(--dex-gray-50, #fafafa)', borderRadius: 8 }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4, gap: 12 }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
-                                        {pq.imageBase64 && (
-                                          <img src={pq.imageBase64} alt="" style={{ width: 60, height: 44, objectFit: 'cover', borderRadius: 6, flexShrink: 0, border: '1px solid var(--dex-gray-200)' }} />
-                                        )}
-                                        <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>{idx + 1}. {pq.question}</span>
-                                      </div>
-                                      <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>
-                                        {pq.correctCount} / {pq.answeredCount} richtig ({pct}%)
-                                      </span>
-                                    </div>
-                                    <div style={{ height: 6, background: 'var(--dex-gray-200)', borderRadius: 3, overflow: 'hidden' }}>
-                                      <div style={{ height: '100%', width: `${pct}%`, background: pct >= 70 ? 'var(--dex-green, #86bc25)' : pct >= 40 ? 'var(--dex-orange, #ff8c00)' : 'var(--dex-red, #c00)', transition: 'width 0.3s' }} />
-                                    </div>
-                                  </div>
-                                );
-                              })() : null)}
+                              {perQuestion.map((pq, idx) => !pq.section ? renderQuestion(pq, idx) : null)}
                             </div>
                           </div>
                         )}
                       </div>
-                    );
-                  })()}
-                  {!perQuestion.some(pq => !!pq.section) && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
-                    {perQuestion.map((pq, idx) => {
-                      const pct = pq.answeredCount > 0 ? Math.round((pq.correctCount / pq.answeredCount) * 100) : 0;
-                      return (
-                        <div key={idx} style={{ padding: 10, background: 'var(--dex-gray-50, #fafafa)', borderRadius: 8 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4, gap: 12 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
-                              {pq.imageBase64 && (
-                                <img
-                                  src={pq.imageBase64}
-                                  alt=""
-                                  style={{ width: 60, height: 44, objectFit: 'cover', borderRadius: 6, flexShrink: 0, border: '1px solid var(--dex-gray-200)' }}
-                                />
-                              )}
-                              <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>
-                                {idx + 1}. {pq.question}
-                              </span>
-                            </div>
-                            <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>
-                              {pq.correctCount} / {pq.answeredCount} richtig ({pct}%)
-                            </span>
-                          </div>
-                          <div style={{ height: 6, background: 'var(--dex-gray-200)', borderRadius: 3, overflow: 'hidden' }}>
-                            <div style={{
-                              height: '100%',
-                              width: `${pct}%`,
-                              background: pct >= 70 ? 'var(--dex-green, #86bc25)' : pct >= 40 ? 'var(--dex-orange, #ff8c00)' : 'var(--dex-red, #c00)',
-                              transition: 'width 0.3s',
-                            }} />
-                          </div>
-                        </div>
-                      );
-                    })}
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {perQuestion.map((pq, idx) => renderQuestion(pq, idx))}
+                      </div>
+                    )}
                   </div>
-                  )}
 
                   {/* Top 10 */}
-                  <h4 style={{ marginTop: 0, marginBottom: 12 }}>Top 10 Teilnehmer</h4>
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
-                          <th style={{ textAlign: 'left', padding: 8, width: 40 }}>#</th>
-                          <th style={{ textAlign: 'left', padding: 8 }}>Name</th>
-                          <th style={{ textAlign: 'left', padding: 8 }}>E-Mail</th>
-                          <th style={{ textAlign: 'left', padding: 8, width: 80 }}>Score</th>
-                          <th style={{ textAlign: 'left', padding: 8 }}>Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {top10.map((reg, i) => {
-                          const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
-                          const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-                          const done = !!reg.QuizCompletedAt;
-                          // Beantwortete Fragen zählen (für Partial)
-                          let answeredN = 0;
-                          try {
-                            const parsed = JSON.parse(reg.QuizAnswers || '[]');
-                            if (Array.isArray(parsed)) answeredN = parsed.filter((a: number[]) => Array.isArray(a) && a.length > 0).length;
-                          } catch { /* */ }
-                          return (
-                            <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                              <td style={{ padding: 8, fontWeight: 700 }}>{medal}</td>
-                              <td style={{ padding: 8, fontWeight: 500 }}>{name}</td>
-                              <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
-                              <td style={{ padding: 8, fontWeight: 700, color: 'var(--dex-green-dark, #6b9a1e)' }}>
-                                {reg.QuizScore ?? 0} / {selectedEvent.quiz.length}
-                              </td>
-                              <td style={{ padding: 8, color: done ? 'var(--dex-gray-500)' : 'var(--dex-orange, #ed8b00)' }}>
-                                {done
-                                  ? `Abgeschlossen ${formatDate(reg.QuizCompletedAt || '')}`
-                                  : `Teilweise (${answeredN}/${selectedEvent.quiz.length})`}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                  <div className="dex-ui-section">
+                    <div className="dex-ui-section-title">Top 10 Teilnehmer</div>
+                    <div className="dex-ui-table-wrap">
+                      <table className="dex-ui-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: 44 }}>#</th>
+                            <th>Teilnehmer</th>
+                            <th className="is-num" style={{ width: 90 }}>Punkte</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {top10.map((reg, i) => {
+                            const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+                            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+                            const done = !!reg.QuizCompletedAt;
+                            // Beantwortete Fragen zählen (für Partial)
+                            let answeredN = 0;
+                            try {
+                              const parsed = JSON.parse(reg.QuizAnswers || '[]');
+                              if (Array.isArray(parsed)) answeredN = parsed.filter((a: number[]) => Array.isArray(a) && a.length > 0).length;
+                            } catch { /* */ }
+                            return (
+                              <tr key={reg.Id}>
+                                <td style={{ fontWeight: 700 }}>{medal}</td>
+                                {/* v31.3: Name und E-Mail sind EINE Personen-Zelle (Leitfaden 5b). */}
+                                <td>
+                                  <span className="dex-ui-person">
+                                    <PersonContactHover email={reg.ParticipantEmail || ''} name={name || ''} size={26} />
+                                    <span style={{ minWidth: 0 }}>
+                                      <span className="dex-ui-person-name" style={{ display: 'block' }}>{name}</span>
+                                      <span className="dex-ui-person-sub" style={{ display: 'block' }}>{reg.ParticipantEmail}</span>
+                                    </span>
+                                  </span>
+                                </td>
+                                <td className="is-num" style={{ fontWeight: 700, color: 'var(--dex-green-dark, #6b9a1e)' }}>
+                                  {reg.QuizScore ?? 0} / {selectedEvent.quiz.length}
+                                </td>
+                                <td>
+                                  {done ? (
+                                    <span className="dex-ui-inline">
+                                      <span className="dex-ui-pill dex-ui-pill--green">Abgeschlossen</span>
+                                      <span className="dex-ui-muted">{formatDate(reg.QuizCompletedAt || '')}</span>
+                                    </span>
+                                  ) : (
+                                    <span className="dex-ui-pill dex-ui-pill--orange">
+                                      Teilweise ({answeredN}/{selectedEvent.quiz.length})
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </>
               )}
             </div>
-          </details>
+            )}
+          </div>
         );
 };
 
