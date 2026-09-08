@@ -961,8 +961,10 @@ export class EventService {
     return eventsCrud.seedEvents(this);
   }
 
-  public async getEvents(): Promise<SPEvent[]> {
-    return eventsCrud.getEvents(this);
+  /** @param onHttpError v31.6: „Liste nicht lesbar" von „keine Events"
+   *  trennen — ohne den Rückruf ist ein 403 eine leere Übersicht. */
+  public async getEvents(onHttpError?: (_status: number) => void): Promise<SPEvent[]> {
+    return eventsCrud.getEvents(this, onHttpError);
   }
 
   public async getEvent(eventId: number): Promise<SPEvent | null> {
@@ -2374,6 +2376,13 @@ export class EventService {
 
   public async grantSiteReadAccess(email: string): Promise<boolean> {
     return organizer.grantSiteReadAccess(this, email);
+  }
+
+  /** v31.6: Mitglied der Besucher-Gruppe? true/false/null (= nicht prüfbar).
+   *  Das ist die Frage, an der für Teilnehmer alles hängt — nicht
+   *  `userHasSiteAccess` (siehe organizer.isInVisitorsGroup). */
+  public async isInVisitorsGroup(email: string): Promise<boolean | null> {
+    return organizer.isInVisitorsGroup(this, email);
   }
 
   public async updateOrganizerRequestStatus(id: number, status: 'Approved' | 'Rejected', decidedByEmail: string): Promise<boolean> {

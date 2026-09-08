@@ -218,6 +218,59 @@ export async function grantSiteReadAccess(svc: EventService, email: string): Pro
   } catch { return false; }
 }
 
+/**
+ * v31.6: Ist die Person MITGLIED der Besucher-Gruppe dieser Site?
+ *
+ * Warum diese Frage und nicht „darf sie die Seite öffnen": DEX vergibt jedes
+ * Recht, das ein Teilnehmer braucht, an die Besucher-Gruppe — nie an eine
+ * einzelne Person (`getVisitorsGroupId` in subsiteProvisioning, emailQueue,
+ * teilnehmerIdCounter, eventsListSchema, changeLog; die Listen haben ihre
+ * Vererbung gekappt). Wer über eine genehmigte SharePoint-Zugriffsanfrage ein
+ * PERSÖNLICHES Leserecht bekommen hat, kann die Seite öffnen und sieht
+ * trotzdem kein einziges Event. „Kann die Seite öffnen" beantwortet also die
+ * falsche Frage — deshalb prüft der grantaccess-Deep-Link seit v31.6 hier.
+ *
+ * Weg: die Person in der User Information List auflösen (dieselbe Auflösung
+ * wie in `userHasSiteAccess` — bei Gästen weicht der LoginName von der Mail
+ * ab), dann ihre Gruppen lesen. Zwei kleine GETs statt der ganzen
+ * Mitgliederliste.
+ *
+ * Rückgabe: true = drin · false = sicher nicht drin (auch: der Site gar nicht
+ * bekannt) · null = nicht prüfbar (keine Besucher-Gruppe, fehlende Rechte des
+ * Aufrufers, Netzfehler). null heißt NICHT „drin": der Aufrufer nimmt die
+ * Person dann auf (die Aufnahme ist idempotent) und sagt ehrlich dazu, dass
+ * der Vorher-Stand nicht zu prüfen war.
+ */
+export async function isInVisitorsGroup(svc: EventService, email: string): Promise<boolean | null> {
+  const mail = (email || '').trim();
+  if (!mail) return null;
+  const gid = await svc.getVisitorsGroupId();
+  if (!gid) return null;
+  try {
+    const uResp = await svc._sp.get(
+      `${svc.siteUrl}/_api/web/siteusers?$filter=Email eq '${encodeURIComponent(mail.replace(/'/g, "''"))}'&$select=Id&$top=1`,
+      SPHttpClient.configurations.v1
+    );
+    if (!uResp.ok) return null;
+    const uData = await uResp.json();
+    const user = (uData.value || uData.d?.results || [])[0];
+    const userId = Number(user?.Id || 0);
+    // Kein Eintrag in der User Information List heißt: die Site hat diese
+    // Person noch nie gesehen — dann ist sie auch in keiner ihrer Gruppen.
+    if (!userId) return false;
+    const gResp = await svc._sp.get(
+      `${svc.siteUrl}/_api/web/getuserbyid(${userId})/groups?$select=Id&$top=200`,
+      SPHttpClient.configurations.v1
+    );
+    if (!gResp.ok) return null;
+    const gData = await gResp.json();
+    const groups = gData.value || gData.d?.results || [];
+    return groups.some((g: { Id?: number }) => Number(g?.Id || 0) === Number(gid));
+  } catch {
+    return null;
+  }
+}
+
 export async function updateOrganizerRequestStatus(svc: EventService, id: number, status: 'Approved' | 'Rejected', decidedByEmail: string): Promise<boolean> {
   try {
     const r = await svc._merge(`${svc.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerRequests')/items(${id})`, {

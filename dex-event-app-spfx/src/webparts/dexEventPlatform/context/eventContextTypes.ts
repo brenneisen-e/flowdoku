@@ -99,6 +99,12 @@ export interface EventContextType {
   /** Kind-Events eines Parents (Sub-Events / Trainingssessions), sortiert nach StartDate. */
   childEventsOf: (parentEventId: string) => DeloitteEvent[];
   isEventsLoading: boolean;
+  /** v31.6: Wie das Lesen von DEX_Events ausging (Vorbild: `rolesReadStatus`).
+   *  'forbidden' = die Person darf die Event-Liste nicht lesen — eine leere
+   *  Übersicht wäre dann eine Aussage über ihre Rechte, nicht über die Events.
+   *  'error' = Netz/Drosselung/Serverfehler. Wer aus `events` auf „es gibt
+   *  keine" schließt, muss diesen Wert mitlesen. */
+  eventsReadStatus: 'loading' | 'ok' | 'forbidden' | 'error';
   /** v29.47: Dokumente eines Events bei Bedarf nachladen (Boot lädt sie nicht mehr). */
   ensureEventDocuments: (eventIds: string[]) => Promise<void>;
   /** v30.67 (Review): Anhänge eines Events verwerfen und neu laden — nach Änderungen am Context vorbei (Wizard). */
