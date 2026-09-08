@@ -29,6 +29,8 @@ import { DeloitteEvent } from '../../../types';
 import { SPRegistration } from '../../../services/EventService';
 import {
   SHIRT_ISSUED_FORM_KEY, parseShirtIssue, parseShirtStock, shirtAllocate, shirtFieldOf,
+  // v31.4.3: Für den Hinweis, welche Größenfelder es gibt und welches zählt.
+  SHIRT_PATTERN,
 } from '../../../utils/checkInExtras';
 import { FieldSelectInput, fieldVisibleByShowIf } from './FieldSelectInput';
 
@@ -98,6 +100,35 @@ export const EditRegModal: React.FC<EditRegModalProps> = (p) => {
   ];
   const customFields = selectedEvent.eventSpecificFields || [];
   const hasAnswers = hasStarterType || customFields.length > 0;
+
+  /**
+   * v31.4.3: Welche Felder dieser Zeile sehen nach einer Trikotgröße aus — und
+   * welches davon zählt die Bestellliste?
+   *
+   * Anlass ist der Live-Fall vom 08.09.2026: Eine hier korrigierte Größe kam in
+   * „Benötigte T-Shirts" nicht an. Zwei Dinge kann dieser Dialog dazu sagen,
+   * ohne etwas zu riskieren:
+   *
+   *  - **Gibt es mehr als ein solches Feld**, korrigiert man leicht das
+   *    falsche. Dann stehen sie hier beide mit Namen, und dabei, welches die
+   *    Bestellliste vorauswählt.
+   *  - **Steht das Feld auf der KLAMMER**, kann dieser Dialog es gar nicht
+   *    ändern: Editierbar sind nur die Felder des gewählten Events
+   *    (`customFields`), und die SP-Spalten der Klammer gibt es auf einer
+   *    Termin-Liste in der Regel nicht (dieselbe Grenze wie in
+   *    `createKlammerActions`). Das wird gesagt statt verschwiegen — sonst
+   *    tippt jemand dreimal in ein Feld, das es hier nicht gibt.
+   */
+  const shirtFieldInfo = React.useMemo(() => {
+    const own = (selectedEvent.eventSpecificFields || []).filter(f => SHIRT_PATTERN.test(f.label || ''));
+    const fromParent = ((parentEvent && parentEvent.eventSpecificFields) || [])
+      .filter(f => SHIRT_PATTERN.test(f.label || ''))
+      .filter(f => !own.some(o => o.id === f.id));
+    const flds = (selectedEvent.eventSpecificFields || [])
+      .concat((parentEvent && parentEvent.eventSpecificFields) || []);
+    const counted = shirtFieldOf(flds, registrations);
+    return { own, fromParent, counted, total: own.length + fromParent.length };
+  }, [selectedEvent, parentEvent, registrations]);
 
   /**
    * v31.4 (Nachtrag): Das ausgegebene Trikot — nur an Events mit Größenfeld.
@@ -243,6 +274,39 @@ export const EditRegModal: React.FC<EditRegModalProps> = (p) => {
               ? 'Diese Antworten werden gespeichert — das M365-Profil unten nicht.'
               : 'These answers are saved — the M365 profile below is not.'}
           </p>
+          {/* v31.4.3: Größenfelder benennen, wenn es mehr als eines gibt oder
+              eines nur auf der Klammer steht. Beides führte am 08.09.2026 dazu,
+              dass eine Korrektur „nicht ankam" — sie kam an, nur woanders. */}
+          {(shirtFieldInfo.total > 1 || shirtFieldInfo.fromParent.length > 0) && (
+            <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginBottom: 12 }}>
+              <span className="dex-ui-callout-icon"><Shirt size={16} /></span>
+              <span>
+                {isDe
+                  ? <><strong>Achtung, Größenfelder:</strong>{' '}
+                    {shirtFieldInfo.total > 1
+                      ? <>Zu diesem Termin gehören {shirtFieldInfo.total} Felder, die nach einer Größe aussehen. </>
+                      : null}
+                    {shirtFieldInfo.own.length > 0 && <>Hier änderbar: {shirtFieldInfo.own.map(f => f.label).join(', ')}. </>}
+                    {shirtFieldInfo.fromParent.length > 0 && (
+                      <>Nur auf dem Haupt-Event {parentEvent ? <>„{parentEvent.title}“</> : null} und deshalb hier
+                        <strong> nicht änderbar</strong>: {shirtFieldInfo.fromParent.map(f => f.label).join(', ')} —
+                        dafür das Haupt-Event in der Teilnehmerliste wählen. </>
+                    )}
+                    {shirtFieldInfo.counted && <>Die Bestellliste &bdquo;Benötigte T-Shirts&ldquo; zählt vorausgewählt <strong>{shirtFieldInfo.counted.label}</strong> und lässt dich dort umschalten.</>}</>
+                  : <><strong>Careful, size fields:</strong>{' '}
+                    {shirtFieldInfo.total > 1
+                      ? <>This date has {shirtFieldInfo.total} fields that look like a size. </>
+                      : null}
+                    {shirtFieldInfo.own.length > 0 && <>Editable here: {shirtFieldInfo.own.map(f => f.label).join(', ')}. </>}
+                    {shirtFieldInfo.fromParent.length > 0 && (
+                      <>Only on the main event {parentEvent ? <>“{parentEvent.title}”</> : null} and therefore
+                        <strong> not editable here</strong>: {shirtFieldInfo.fromParent.map(f => f.label).join(', ')} —
+                        pick the main event in the attendee list for those. </>
+                    )}
+                    {shirtFieldInfo.counted && <>The order list &ldquo;T-shirts needed&rdquo; counts <strong>{shirtFieldInfo.counted.label}</strong> by default and lets you switch there.</>}</>}
+              </span>
+            </div>
+          )}
           <div className="dex-ui-grid-2">
             {hasStarterType && (
               <div className="dex-ui-field" style={{ gridColumn: '1 / -1' }}>

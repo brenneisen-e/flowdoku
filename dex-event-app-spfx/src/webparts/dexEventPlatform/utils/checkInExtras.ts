@@ -33,6 +33,18 @@
  * (s. `ShirtIssue`) fest, was wirklich ausgegeben wurde; die Ausgabe wird
  * ZUERST vom Bestand abgezogen und schlägt jede Berechnung.
  *
+ * **v31.4.3: Eine Antwort steht an ZWEI Stellen — und der Organizer schrieb
+ * nur eine davon.** Jede Formularantwort liegt sowohl im JSON `CustomData`
+ * (Schlüssel = `f.id`) als auch in der echten SP-Spalte (`f.spInternalName`);
+ * die Anmeldung schreibt beide. Der Bearbeiten-Dialog des Organizer Centers
+ * schrieb bis v31.4.3 nur die Spalte — dieses Modul las nur `CustomData`.
+ * Folge im Live-Fall (08.09.2026, Lauftag am nächsten Tag): Die
+ * Teilnehmertabelle zeigte die korrigierte Größe, Bestellliste und
+ * Check-in-Tisch dauerhaft die alte. Gelesen wird jetzt überall über
+ * `shirtAnswerOf` (Spalte zuerst, `CustomData` als Rückfall — dieselbe
+ * Reihenfolge wie `ParticipantTable`), damit auch die vor v31.4.3
+ * auseinandergelaufenen Zeilen ohne erneutes Speichern stimmen.
+ *
  * **Was das weiterhin kostet, offen gesagt:** Ein Muster trifft irgendwann
  * etwas Falsches. Das ist am Check-in-Tisch harmlos (eine Zeile zu viel), aber
  * es ist geraten und nicht gesagt. Der saubere Weg wäre ein Haken „am Check-in
@@ -57,7 +69,69 @@ export interface CheckInExtra {
   tone?: 'warn' | 'danger';
 }
 
-export interface FieldDef { id: string; label: string }
+export interface FieldDef {
+  id: string;
+  label: string;
+  /**
+   * v31.4.3: Die SharePoint-Spalte des Feldes. Sie ist NICHT dasselbe wie
+   * `CustomData[id]` — s. `shirtAnswerOf`. Optional, weil sie fehlen kann
+   * (Feld nachträglich angelegt, „Custom Fields prüfen" nie gelaufen).
+   */
+  spInternalName?: string;
+  /**
+   * v31.4.3: Weitere SP-Spaltennamen DESSELBEN Feldes auf anderen Ebenen.
+   *
+   * Dasselbe Abfragefeld (gleiche `id`) hat auf der Klammer und auf jedem
+   * Termin eine eigene SharePoint-Spalte, und die Namen müssen nicht gleich
+   * sein (SharePoint hängt bei Namenskollisionen eine Ziffer an). Wer wie die
+   * Bestellliste Zeilen MEHRERER Ebenen in einem Topf zählt, kennt sonst je
+   * Zeile die falsche Spalte und fällt still auf den alten `CustomData`-Stand
+   * zurück. Aufrufer, die nur eine Ebene lesen (Check-in-Tisch,
+   * Bearbeiten-Dialog), lassen das Feld weg.
+   */
+  spInternalNames?: string[];
+}
+
+/**
+ * v31.4.3: Die Antwort EINER Person auf das Größenfeld — aus der Spalte, sonst
+ * aus `CustomData`.
+ *
+ * Warum es diese Funktion überhaupt gibt (Live-Fall 08.09.2026, B2Run Köln,
+ * Lauftag am nächsten Tag): Der Organizer korrigierte im Organizer Center zwei
+ * Größen von „L"/„XL" auf „Herrengröße L"/„Herrengröße XL". Die
+ * Teilnehmertabelle zeigte danach den neuen Wert, die Bestellliste weiter den
+ * alten — und zwar dauerhaft, jedes Neuladen wieder.
+ *
+ * Ursache ist kein Zähl-, sondern ein SPEICHER-Unterschied: Eine Antwort steht
+ * an ZWEI Stellen derselben Zeile — im JSON `CustomData` (Schlüssel = `f.id`)
+ * und in der echten SP-Spalte (`f.spInternalName`). Die Anmeldung schreibt
+ * beide (`registration.ts`), der Bearbeiten-Dialog des Organizer Centers bis
+ * v31.4.3 nur die Spalte (`useEditModalHandlers.saveEdit` →
+ * `adminUpdateRegistration`). Alles, was über `CustomData` liest, sah deshalb
+ * ewig den Anmelde-Stand.
+ *
+ * Die Reihenfolge ist bewusst dieselbe wie in `ParticipantTable`: Spalte zuerst,
+ * `CustomData` nur als Rückfall. Damit sagen Tabelle, Check-in-Tisch und
+ * Bestellliste dasselbe — auch für Zeilen, die vor v31.4.3 auseinandergelaufen
+ * sind. Sie brauchen kein erneutes Speichern.
+ */
+export function shirtAnswerOf(
+  field: FieldDef | undefined | null,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  row: any,
+): string {
+  if (!field || !row) return '';
+  const names = [field.spInternalName || ''].concat(field.spInternalNames || []);
+  for (const sp of names) {
+    if (!sp) continue;
+    const v = row[sp];
+    if (v === undefined || v === null) continue;
+    const s = typeof v === 'boolean' ? (v ? 'true' : 'false') : String(v).trim();
+    if (s) return s;
+  }
+  const raw = parseCustomData(row.CustomData)[field.id];
+  return (raw === undefined || raw === null) ? '' : String(raw).trim();
+}
 
 /**
  * v31.3: Das Größenfeld eines Events — an EINER Stelle, damit Bestellliste,
@@ -83,9 +157,11 @@ export function shirtFieldOf(
   for (const f of hits) {
     let score = 0;
     for (const r of regs) {
-      const raw = parseCustomData(r.CustomData)[f.id];
-      if (raw === undefined || raw === null) continue;
-      if (splitShirtSize(String(raw)).isSize) score++;
+      // v31.4.3: über `shirtAnswerOf` — sonst bewertet die Wahl den
+      // Anmelde-Stand und nicht den korrigierten.
+      const val = shirtAnswerOf(f, r);
+      if (!val) continue;
+      if (splitShirtSize(val).isSize) score++;
     }
     if (score > bestScore) { bestScore = score; best = f; }
   }
@@ -126,9 +202,16 @@ export function checkInExtras(
   const cd = customData || {};
   for (const f of (fields || [])) {
     if (!SHIRT_PATTERN.test(f.label || '')) continue;
-    const raw = cd[f.id];
-    if (raw === undefined || raw === null) continue;
-    const v = typeof raw === 'boolean' ? (raw ? 'Ja' : 'Nein') : String(raw).trim();
+    // v31.4.3: Erst die SP-Spalte der Zeile, dann das übergebene `CustomData`.
+    // Eine im Organizer Center korrigierte Größe stand bis dahin NUR in der
+    // Spalte — der Tisch las die alte (s. `shirtAnswerOf`). `reg` liegt hier
+    // ohnehin vor; ohne Zeile bleibt es beim bisherigen Weg über `customData`.
+    let v = shirtAnswerOf(f, reg);
+    if (!v) {
+      const raw = cd[f.id];
+      if (raw === undefined || raw === null) continue;
+      v = typeof raw === 'boolean' ? (raw ? 'Ja' : 'Nein') : String(raw).trim();
+    }
     if (!v) continue;
     out.push({ label: f.label, value: v });
   }
@@ -623,8 +706,8 @@ export function shirtAllocate(
     const em = (r.ParticipantEmail || '').toLowerCase().trim();
     if ((r.Status || '') !== 'Eingecheckt' && !(em && checkedInEmails && checkedInEmails[em])) continue;
     if (em && issuedSeen[em]) continue;
-    const raw = parseCustomData(r.CustomData)[field.id];
-    const wish = (raw === undefined || raw === null) ? '' : String(raw).trim();
+    // v31.4.3: Spalte vor `CustomData` (s. `shirtAnswerOf`).
+    const wish = shirtAnswerOf(field, r);
     if (!wish || !splitShirtSize(wish).isSize) continue;
     // `at`/`by` bleiben leer — das ist der Unterschied zu einer festgehaltenen
     // Ausgabe und macht sie auch im Datenobjekt erkennbar.
@@ -639,9 +722,8 @@ export function shirtAllocate(
     remaining[ik] = (remaining[ik] || 0) - 1;
   }
   for (const r of active) {
-    const cd = parseCustomData(r.CustomData);
-    const raw = cd[field.id];
-    const wish = (raw === undefined || raw === null) ? '' : String(raw).trim();
+    // v31.4.3: Spalte vor `CustomData` (s. `shirtAnswerOf`).
+    const wish = shirtAnswerOf(field, r);
     const email = (r.ParticipantEmail || '').toLowerCase().trim();
     const name = (r.ParticipantName || r.ParticipantEmail || '—').trim();
     const issued = (email && issuedByEmail[email]) || issuedOf.get(r);
@@ -787,11 +869,10 @@ export function pickShirtAnswerRows<T extends ShirtRowLike>(
   const scores: number[] = [];
   const times: number[] = [];
   list.forEach((r, i) => {
-    let val = '';
-    if (field) {
-      const raw = parseCustomData(r.CustomData)[field.id];
-      val = (raw === undefined || raw === null) ? '' : String(raw).trim();
-    }
+    // v31.4.3: Spalte vor `CustomData` (s. `shirtAnswerOf`) — sonst gewinnt
+    // hier eine Zeile „mit Antwort", deren Antwort der Organizer längst
+    // überschrieben hat.
+    const val = field ? shirtAnswerOf(field, r) : '';
     answers[i] = val;
     scores[i] = (val ? 2 : 0) + (SHIRT_ACTIVE_STATI.indexOf(r.Status || '') >= 0 ? 1 : 0);
     const t = Date.parse(String(r.Modified || ''));
@@ -844,9 +925,9 @@ export function shirtTally(
   for (const r of (regs || [])) {
     if (SHIRT_ACTIVE_STATI.indexOf(r.Status || '') < 0) continue;
     out.total++;
-    const cd = parseCustomData(r.CustomData);
-    const raw = cd[field.id];
-    const val = (raw === undefined || raw === null) ? '' : String(raw).trim();
+    // v31.4.3: Spalte vor `CustomData` (s. `shirtAnswerOf`) — das war der
+    // Grund, warum eine korrigierte Größe hier nie ankam.
+    const val = shirtAnswerOf(field, r);
     const key = shirtSizeKey(val);
     const optOut = !!val && !splitShirtSize(val).isSize;
     if (!byKey[key]) { byKey[key] = { size: val, count: 0, names: [], people: [], optOut }; order.push(key); }
