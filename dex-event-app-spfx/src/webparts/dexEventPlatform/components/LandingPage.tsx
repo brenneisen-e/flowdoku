@@ -395,6 +395,8 @@ export default function LandingPage(): React.ReactElement {
   const [checkInBoxes, setCheckInBoxes] = React.useState<Array<{
     eventId: string; title: string; qrSmall: string; qrData: string;
     name: string; tid?: number;
+    /** v31.4: Person ist schon eingecheckt — die Box bleibt trotzdem stehen. */
+    checkedIn?: boolean;
   }>>([]);
   const [qrBigModal, setQrBigModal] = React.useState<{ dataUrl: string; title: string; name: string; tid?: number } | null>(null);
   React.useEffect(() => {
@@ -422,18 +424,28 @@ export default function LandingPage(): React.ReactElement {
         return now >= windowOpens && now <= end;
       }).slice(0, 4);
       if (candidates.length === 0) { if (!cancelled) setCheckInBoxes([]); return; }
-      const boxes: Array<{ eventId: string; title: string; qrSmall: string; qrData: string; name: string; tid?: number }> = [];
+      const boxes: Array<{ eventId: string; title: string; qrSmall: string; qrData: string; name: string; tid?: number; checkedIn?: boolean }> = [];
       const QRCode = await import('qrcode');
       for (const ev of candidates) {
         try {
           const reg = await getMyRegistration(ev.id);
-          // Nur wenn der QR-Versand für diese Person bereits lief — Status
-          // 'QR versendet' (Massen-Versand ODER Auto-Versand nach Phase-Start).
-          if (!reg || reg.Status !== 'QR versendet') continue;
+          // v31.4: Die Box hing an EINEM Status ('QR versendet') — und
+          // verschwand damit in drei Lagen, in denen der Code weiter gilt:
+          // nach dem eigenen Check-in ('Eingecheckt'), nach einem Auschecken
+          // im Organizer Center (setzt hart 'Angemeldet' zurück) und bei
+          // jeder Anmeldung vor dem QR-Massenversand. Der Code selbst hängt
+          // an gar keinem Status: Er ist `DEX|<EventNr>|<E-Mail>` und wird
+          // hier im Browser erzeugt; der Check-in-Tisch nimmt ihn immer an.
+          // Das Fenster ist ohnehin schon eng (zwei Tage vor dem Event), und
+          // ein aktiv Angemeldeter, der seinen Code sucht, findet ihn sonst
+          // nirgends. Warteliste, Abmeldung und No-Show bleiben draußen —
+          // dort wäre der Code eine falsche Zusage.
+          const st = reg ? reg.Status : '';
+          if (!reg || (st !== 'QR versendet' && st !== 'Angemeldet' && st !== 'Eingecheckt')) continue;
           const qrData = `DEX|${ev.eventNumber}|${reg.ParticipantEmail || myEmail}`;
           const qrSmall = await QRCode.toDataURL(qrData, { width: 132, margin: 1 });
           const name = `${reg.Vorname || ''} ${reg.Nachname || ''}`.trim() || (reg.ParticipantEmail || myEmail);
-          boxes.push({ eventId: ev.id, title: ev.title || '', qrSmall, qrData, name, tid: reg.TeilnehmerID || undefined });
+          boxes.push({ eventId: ev.id, title: ev.title || '', qrSmall, qrData, name, tid: reg.TeilnehmerID || undefined, checkedIn: st === 'Eingecheckt' });
         } catch { /* einzelner Lookup-Fehler — Box entfällt */ }
         if (cancelled) return;
       }
@@ -1090,13 +1102,32 @@ export default function LandingPage(): React.ReactElement {
                     <img src={box.qrSmall} alt="QR" style={{ width: 66, height: 66, flexShrink: 0, borderRadius: 6, background: '#fff', border: '1px solid var(--dex-gray-200)' }} />
                     <span style={{ minWidth: 0 }}>
                       <span style={{ display: 'block', fontWeight: 700, fontSize: '0.92rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                        {isDe ? 'Check-in für' : 'Check-in for'} {box.title}
+                        {box.checkedIn
+                          ? (isDe ? 'Eingecheckt für' : 'Checked in for')
+                          : (isDe ? 'Check-in für' : 'Check-in for')} {box.title}
                       </span>
                       <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
-                        {isDe
-                          ? 'Dein persönlicher QR-Code — antippen zum Vergrößern und am Eingang vorzeigen.'
-                          : 'Your personal QR code — tap to enlarge and show at the entrance.'}
+                        {box.checkedIn
+                          ? (isDe
+                            ? 'Du bist schon eingecheckt. Der Code bleibt hier, falls du ihn noch einmal brauchst.'
+                            : 'You are already checked in. The code stays here in case you need it again.')
+                          : (isDe
+                            ? 'Dein persönlicher QR-Code — antippen zum Vergrößern und am Eingang vorzeigen.'
+                            : 'Your personal QR code — tap to enlarge and show at the entrance.')}
                       </span>
+                      {/* v31.4: Die Nummer gehört sichtbar in die Box, nicht erst
+                          ins große Modal. Auf Android scheitert der Kamera-Scan
+                          in der SharePoint-App regelmäßig (s. CLAUDE.md
+                          „Kamera-Scan"); dann ist genau diese Zahl der Weg, und
+                          man will sie vorlesen können, ohne erst zu tippen. */}
+                      {box.tid !== undefined && (
+                        <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
+                          {isDe ? 'Deine Nummer am Einlass: ' : 'Your number at the entrance: '}
+                          <strong style={{ fontFamily: "'Courier New', Courier, monospace", fontSize: '0.9rem', letterSpacing: '0.04em', color: 'var(--dex-gray-800)' }}>
+                            {`00${box.tid}`.slice(-Math.max(3, String(box.tid).length))}
+                          </strong>
+                        </span>
+                      )}
                     </span>
                   </button>
                 ))}
