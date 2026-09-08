@@ -20,8 +20,12 @@ import Modal from './Modal';
 import { useIsMobile } from '../utils/useIsMobile';
 import { GraduationCap } from './Icons';
 import { INACTIVE_SUMMARY_CACHE_KEY } from '../utils/accountCheckCache';
+import { ensureDexUiStyles } from './dexUi';
 
 export default function LandingPage(): React.ReactElement {
+  // v31.4 (Review): Der Hinweiskasten „Code nicht ladbar" unten nutzt
+  // `dex-ui-callout` — das Stylesheet hängt sonst an einem geöffneten Modal.
+  ensureDexUiStyles();
   const { navigate } = useNavigation();
   const { locale, setLocale, t } = useLanguage();
   const isDe = locale === 'de';
@@ -395,8 +399,19 @@ export default function LandingPage(): React.ReactElement {
   const [checkInBoxes, setCheckInBoxes] = React.useState<Array<{
     eventId: string; title: string; qrSmall: string; qrData: string;
     name: string; tid?: number;
+    /** v31.4: Person ist schon eingecheckt — die Box bleibt trotzdem stehen. */
+    checkedIn?: boolean;
   }>>([]);
   const [qrBigModal, setQrBigModal] = React.useState<{ dataUrl: string; title: string; name: string; tid?: number } | null>(null);
+  /**
+   * v31.4 (Review): Ein Lesefehler ist keine Null. `getMyRegistration` liefert
+   * bei 403/429/500 dasselbe `null` wie bei „keine Zeile" — die Box wäre dann
+   * wortlos weg, und der neue Kommentar unten erhebt sie ausdrücklich zur
+   * einzigen Fundstelle für den eigenen Code. Wer nichts sieht, schließt
+   * daraus „ich bin nicht angemeldet" und stellt sich am falschen Tisch an.
+   * Deshalb: unbekannt wird BENANNT, statt als „nichts" gerendert.
+   */
+  const [checkInBoxError, setCheckInBoxError] = React.useState(false);
   React.useEffect(() => {
     if (isEventsLoading) return undefined;
     const myEmail = (currentUser?.email || '').trim();
@@ -411,6 +426,16 @@ export default function LandingPage(): React.ReactElement {
       // 12.06. 18:00 → Box ab 10.06. 00:00 sichtbar, nicht erst ab 18:00).
       const candidates = events.filter(e => {
         if (!e.eventNumber || !e.startDate) return false;
+        // v31.4 (Review): Die Klammer eines `subEventsOnlyMode`-Events ist
+        // keine Anmeldeeinheit — ihre Zeile ist die Schattenzeile und
+        // konstruktionsbedingt IMMER 'Angemeldet' (kein `reserveSeat`, der
+        // Wartelisten-Riegel nimmt den Modus aus, und seit v30.68 wird sie
+        // VOR dem Termin geschrieben). Ein QR-Kasten auf der Klammer hieße
+        // deshalb „Einlass zugesagt" auch für Warteliste und für „Klammer
+        // ohne Termin". Der Termin selbst hat eine eigene EventNumber und
+        // damit einen eigenen Kasten — dieselbe Regel, nach der „Meine
+        // Events" den QR-Knopf auf der Klammer seit v28.7 auslässt.
+        if (e.subEventsOnlyMode) return false;
         const startDt = new Date(e.startDate);
         const start = startDt.getTime();
         if (!Number.isFinite(start)) return false;
@@ -421,23 +446,48 @@ export default function LandingPage(): React.ReactElement {
         const windowOpens = new Date(startDt.getFullYear(), startDt.getMonth(), startDt.getDate() - 2, 0, 0, 0).getTime();
         return now >= windowOpens && now <= end;
       }).slice(0, 4);
-      if (candidates.length === 0) { if (!cancelled) setCheckInBoxes([]); return; }
-      const boxes: Array<{ eventId: string; title: string; qrSmall: string; qrData: string; name: string; tid?: number }> = [];
+      if (candidates.length === 0) { if (!cancelled) { setCheckInBoxes([]); setCheckInBoxError(false); } return; }
+      const boxes: Array<{ eventId: string; title: string; qrSmall: string; qrData: string; name: string; tid?: number; checkedIn?: boolean }> = [];
+      let readFailed = false;
       const QRCode = await import('qrcode');
       for (const ev of candidates) {
         try {
-          const reg = await getMyRegistration(ev.id);
-          // Nur wenn der QR-Versand für diese Person bereits lief — Status
-          // 'QR versendet' (Massen-Versand ODER Auto-Versand nach Phase-Start).
-          if (!reg || reg.Status !== 'QR versendet') continue;
+          // Nur die Status, die „versuch es gleich nochmal" heißen, zählen als
+          // Lesefehler: Drosselung (429), Server-Fehler (5xx) und 0
+          // (Netz/Abbruch). 401/403/404 sind hier KEINE Störung — die
+          // Kandidatenliste enthält auch Events, für die die Person keine
+          // Anmeldung und keinen Zugriff hat; daraus einen Warnkasten zu
+          // bauen hieße, ihn allen zu zeigen.
+          const reg = await getMyRegistration(ev.id, (status) => {
+            if (status === 0 || status === 429 || status >= 500) readFailed = true;
+          });
+          // v31.4: Die Box hing an EINEM Status ('QR versendet') — und
+          // verschwand damit in drei Lagen, in denen der Code weiter gilt:
+          // nach dem eigenen Check-in ('Eingecheckt'), nach einem Auschecken
+          // im Organizer Center (setzt hart 'Angemeldet' zurück) und bei
+          // jeder Anmeldung vor dem QR-Massenversand. Der Code selbst hängt
+          // an gar keinem Status: Er ist `DEX|<EventNr>|<E-Mail>` und wird
+          // hier im Browser erzeugt; der Check-in-Tisch nimmt ihn immer an.
+          // Das Fenster ist ohnehin schon eng (zwei Tage vor dem Event), und
+          // ein aktiv Angemeldeter, der seinen Code sucht, findet ihn sonst
+          // nirgends. Warteliste, Abmeldung und No-Show bleiben draußen —
+          // dort wäre der Code eine falsche Zusage.
+          const st = reg ? reg.Status : '';
+          if (!reg || (st !== 'QR versendet' && st !== 'Angemeldet' && st !== 'Eingecheckt')) continue;
           const qrData = `DEX|${ev.eventNumber}|${reg.ParticipantEmail || myEmail}`;
           const qrSmall = await QRCode.toDataURL(qrData, { width: 132, margin: 1 });
           const name = `${reg.Vorname || ''} ${reg.Nachname || ''}`.trim() || (reg.ParticipantEmail || myEmail);
-          boxes.push({ eventId: ev.id, title: ev.title || '', qrSmall, qrData, name, tid: reg.TeilnehmerID || undefined });
-        } catch { /* einzelner Lookup-Fehler — Box entfällt */ }
+          // v31.4 (Review): Wenn eine QR-Mail verschickt wurde, gilt DEREN
+          // Nummer — nicht die laufende von heute. Der Check-in löst die
+          // vorgelesene Zahl seit v31.4 zuerst über `QrSentId` auf; stünde
+          // hier die laufende Nummer, hätte dieselbe Person zwei
+          // verschiedene Zahlen (App und Mail), und eine davon zeigt am
+          // Tisch auf jemand anderen. Wortgleich zu MyEventsPage.
+          boxes.push({ eventId: ev.id, title: ev.title || '', qrSmall, qrData, name, tid: reg.QrSentId || reg.TeilnehmerID || undefined, checkedIn: st === 'Eingecheckt' });
+        } catch { readFailed = true; /* einzelner Lookup-Fehler — Box entfällt, aber nicht wortlos */ }
         if (cancelled) return;
       }
-      if (!cancelled) setCheckInBoxes(boxes);
+      if (!cancelled) { setCheckInBoxes(boxes); setCheckInBoxError(readFailed && boxes.length === 0); }
     })().catch(() => { /* best-effort */ });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1070,9 +1120,21 @@ export default function LandingPage(): React.ReactElement {
           {(() => {
             const checkInIds = new Set(checkInBoxes.map(b => b.eventId));
             const regList = myRegBoxes.filter(b => !checkInIds.has(b.eventId));
-            if (checkInBoxes.length === 0 && regList.length === 0) return null;
+            if (checkInBoxes.length === 0 && regList.length === 0 && !checkInBoxError) return null;
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>
+                {/* v31.4 (Review): Der Kasten fehlte bei einem Lesefehler
+                    wortlos — und wortlos liest sich wie „du bist nicht
+                    angemeldet". Am Eventmorgen ist eine Drosselung (429) auf
+                    der Teilnehmerliste der Normalfall, und dann stellt sich
+                    die Person am Organizer-Tisch an statt am Check-in. */}
+                {checkInBoxError && (
+                  <div className="dex-ui-callout dex-ui-callout--warn">
+                    {isDe
+                      ? 'Dein Check-in-Code konnte gerade nicht geladen werden — bitte lade die Seite neu. Deinen Code findest du auch in „Meine Events" und in deiner QR-Mail.'
+                      : 'Your check-in code could not be loaded right now — please reload the page. You will also find your code in “My events” and in your QR email.'}
+                  </div>
+                )}
                 {checkInBoxes.map(box => (
                   <button
                     key={box.eventId}
@@ -1090,13 +1152,32 @@ export default function LandingPage(): React.ReactElement {
                     <img src={box.qrSmall} alt="QR" style={{ width: 66, height: 66, flexShrink: 0, borderRadius: 6, background: '#fff', border: '1px solid var(--dex-gray-200)' }} />
                     <span style={{ minWidth: 0 }}>
                       <span style={{ display: 'block', fontWeight: 700, fontSize: '0.92rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                        {isDe ? 'Check-in für' : 'Check-in for'} {box.title}
+                        {box.checkedIn
+                          ? (isDe ? 'Eingecheckt für' : 'Checked in for')
+                          : (isDe ? 'Check-in für' : 'Check-in for')} {box.title}
                       </span>
                       <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
-                        {isDe
-                          ? 'Dein persönlicher QR-Code — antippen zum Vergrößern und am Eingang vorzeigen.'
-                          : 'Your personal QR code — tap to enlarge and show at the entrance.'}
+                        {box.checkedIn
+                          ? (isDe
+                            ? 'Du bist schon eingecheckt. Der Code bleibt hier, falls du ihn noch einmal brauchst.'
+                            : 'You are already checked in. The code stays here in case you need it again.')
+                          : (isDe
+                            ? 'Dein persönlicher QR-Code — antippen zum Vergrößern und am Eingang vorzeigen.'
+                            : 'Your personal QR code — tap to enlarge and show at the entrance.')}
                       </span>
+                      {/* v31.4: Die Nummer gehört sichtbar in die Box, nicht erst
+                          ins große Modal. Auf Android scheitert der Kamera-Scan
+                          in der SharePoint-App regelmäßig (s. CLAUDE.md
+                          „Kamera-Scan"); dann ist genau diese Zahl der Weg, und
+                          man will sie vorlesen können, ohne erst zu tippen. */}
+                      {box.tid !== undefined && (
+                        <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
+                          {isDe ? 'Deine Nummer am Einlass: ' : 'Your number at the entrance: '}
+                          <strong style={{ fontFamily: "'Courier New', Courier, monospace", fontSize: '0.9rem', letterSpacing: '0.04em', color: 'var(--dex-gray-800)' }}>
+                            {`00${box.tid}`.slice(-Math.max(3, String(box.tid).length))}
+                          </strong>
+                        </span>
+                      )}
                     </span>
                   </button>
                 ))}

@@ -119,6 +119,13 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
           _agendaCheckIn, _agendaTerm,
           // v30.88: Trikot-Bestand — Organizer Center, wird beim Save aus editEvent mitgetragen.
           _shirtStock,
+          // v31.4: B2Run-Aufgaben und -Haken werden im Organizer Center
+          // gepflegt — sonst schreibt ein parallel offener Wizard den
+          // Ladestand zurück und löscht die Ummelde-Verpflichtungen, die
+          // zwischendurch entstanden sind. Nur zusammen mit dem Mittragen in
+          // `hotelCarryConfig` (wizardSubmit) — strippen allein löschte sie
+          // beim nächsten Save.
+          _b2runTodo, _b2runTodoDone,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -137,6 +144,7 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
         void _hotels; void _hotelStays; void _hotelVisible; void _hotelRules;
         void _commBundledMail; void _commBundledOutlook; void _commBundledQr;
         void _commShared; void _agendaCheckIn; void _agendaTerm; void _shirtStock;
+        void _b2runTodo; void _b2runTodoDone;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
     })() : {}

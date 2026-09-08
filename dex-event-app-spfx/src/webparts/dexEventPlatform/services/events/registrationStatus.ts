@@ -182,11 +182,25 @@ export async function cancelRegistration(
     const auditName = cancelledByName || svc.context.pageContext.user.displayName || '';
     const auditEmail = (cancelledByEmail || svc.context.pageContext.user.email || '').toLowerCase();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const corePayload: Record<string, any> = {
+    const minimalPayload: Record<string, any> = {
       'Status': 'Abgemeldet',
       'CancellationDate': new Date().toISOString(),
       'TeilnehmerID': null,
     };
+    // v31.4 (Review): `QrSentId` MUSS mit der laufenden Nummer weichen.
+    // Die freigewordene Zahl wandert über `reorderParticipantIDs` an die
+    // nächste Person, und der nächste QR-Versand bedruckt deren Mail mit
+    // exakt dieser Zahl. Bliebe die alte Zusage auf der abgemeldeten Zeile
+    // stehen, träfe die getippte Nummer am Tisch zwei Zeilen — der Check-in
+    // wertet das als Datenfehler und sperrt die Zahl (oder er landet auf der
+    // stornierten Zeile und weist die aktive Person mit fremdem Namen ab).
+    // Das ist keine Ausnahme, sondern die Regelfolge JEDER Abmeldung nach
+    // einem Versand. Bewusst in Kauf genommen: Die Spur „welche Nummer stand
+    // einmal in ihrer Mail" ist danach weg — sie hilft nur einer Person, die
+    // sich abgemeldet hat und trotzdem am Einlass steht, und kostet dafür
+    // allen anderen den Nummern-Check-in.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const corePayload: Record<string, any> = { ...minimalPayload, 'QrSentId': null };
     // Audit-Felder optional dazu - aeltere Subsites haben die Spalten evtl. noch
     // nicht (kommt erst mit Commit a10a608). Ein 400 von SP würde dann die
     // ganze Abmeldung blocken. Strategie: erst mit Audit-Feldern versuchen,
@@ -201,6 +215,13 @@ export async function cancelRegistration(
       // Fallback ohne Audit-Felder (Subsite-Liste hat die Spalten noch nicht)
       console.warn('[DEX] cancelRegistration with audit failed (' + response.status + '), retrying without audit fields');
       response = await svc._merge(url, corePayload);
+    }
+    if (!response.ok) {
+      // v31.4: Letzte Stufe OHNE `QrSentId` — die Spalte gibt es erst seit
+      // v31.4, auf einer Bestandsliste ohne „Spalten fixen" quittiert
+      // SharePoint sie mit 400. Eine Abmeldung darf daran nie scheitern.
+      console.warn('[DEX] cancelRegistration failed (' + response.status + '), retrying without QrSentId');
+      response = await svc._merge(url, minimalPayload);
     }
     // v7.31: Counter mit aktuellem Max syncen, damit er nicht "davonrast"
     // wenn der höchste ID-Inhaber sich abmeldet. Best-effort, blockiert
@@ -426,6 +447,65 @@ export async function markAgendaNoShow(
 }
 
 /**
+ * v31.4: Welches Shirt hat die Person WIRKLICH bekommen? (Spalte `ShirtIssued`,
+ * Aufbau s. `utils/checkInExtras.parseShirtIssue`).
+ *
+ * Nutzer-Wunsch 08.09.2026 (B2Run Köln): „beim Check-In … da muss der Button
+ * dann auch sein, dass man nicht nur eincheckt, sondern auch sagt, welches
+ * Shirt man rausgegeben hat." Die Verteilung (`shirtAllocate`) ist ein Plan,
+ * der bei jedem Aufruf neu rechnet — erst dieser Eintrag macht daraus ein
+ * Kassenbuch, das einen Seiten-Reload und ein zweites Tablet übersteht.
+ *
+ * Warum ohne vorheriges Lesen (anders als `markAgendaNoShow`): Dort steht ein
+ * ganzer Satz Marken in der Spalte, von denen keine verloren gehen darf. Hier
+ * ist es EIN Objekt — eine Person bekommt ein Shirt; ein zweiter Schreibvorgang
+ * ist eine Korrektur und soll den alten Wert ersetzen.
+ *
+ * Der HTTP-Status wandert mit nach oben, weil ein 400 hier genau eine Ursache
+ * hat: Auf dieser (Bestands-)Liste fehlt die Spalte. Die Oberfläche muss auf
+ * „Spalten fixen" zeigen können, statt „hat nicht geklappt" zu sagen.
+ */
+export async function setShirtIssued(
+  svc: EventService,
+  subsiteUrl: string,
+  itemId: number,
+  size: string,
+): Promise<{ ok: boolean; status: number; at?: string }> {
+  const clean = (size || '').trim();
+  if (!clean) return { ok: false, status: 0 };
+  try {
+    const me = svc.context.pageContext.user;
+    const at = new Date().toISOString();
+    const resp = await svc._merge(
+      `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+      { 'ShirtIssued': JSON.stringify({ size: clean, at, by: me.email || me.loginName || '' }) }
+    );
+    return { ok: resp.ok, status: resp.status, at };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
+
+/** v31.4: Ausgabe zurücknehmen (falsche Größe getippt, Shirt wieder
+ *  eingesammelt). Die Größe wandert damit zurück in den rechnerischen
+ *  Bestand — deshalb ist das ein eigener Schreibvorgang und kein „egal". */
+export async function clearShirtIssued(
+  svc: EventService,
+  subsiteUrl: string,
+  itemId: number,
+): Promise<{ ok: boolean; status: number; at?: string }> {
+  try {
+    const resp = await svc._merge(
+      `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+      { 'ShirtIssued': null }
+    );
+    return { ok: resp.ok, status: resp.status };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
+
+/**
  * v23.28/v23.29: Teilnehmer als „No-Show" markieren (war angemeldet, aber
  * nicht erschienen). Reuse der Check-in-Audit-Spalten (CheckedInBy*), damit
  * kein neues Schema nötig ist. **Nur für Events, deren Teilnehmerliste die
@@ -506,19 +586,94 @@ export async function revertCheckIn(
   }
 }
 
+/**
+ * v31.4: Der vierte Parameter ist die Nummer, die in DIESER Mail GEDRUCKT
+ * wurde — nicht die, die beim nächsten Lesen in der Zeile steht.
+ *
+ * Warum das eine eigene Spalte braucht: `TeilnehmerID` wird bei jeder
+ * Abmeldung neu vergeben (`reorderParticipantIDs`, Flow
+ * `DEX_IDReorder_TeilnehmerIDs`). Die Zahl unter dem QR-Code in der Mail des
+ * Teilnehmers ändert sich dabei natürlich nicht. Ohne `QrSentId` checkt der
+ * Tisch beim Abtippen der Mail-Nummer nach der ersten Abmeldung die falsche
+ * Person ein (Befund 08.09.2026, laufendes Event).
+ *
+ * Der Rückgabewert unterscheidet „Status gesetzt" von „ID auch gesetzt":
+ * Auf einer Bestandsliste OHNE die Spalte antwortet SharePoint auf den MERGE
+ * mit HTTP 400. Dann wird SOFORT ein zweiter MERGE nur mit dem Status
+ * geschickt — sonst würde der QR-Massenversand auf jedem Event scheitern,
+ * das nie „Spalten fixen" gelaufen ist, und ein Fix, der den Normalbetrieb
+ * kaputtmacht, ist schlimmer als der Fehler, den er behebt.
+ *
+ * v31.4 (Review): `idWritten: false` hieß drei verschiedene Dinge, und der
+ * Aufrufer meldete immer nur „Spalte fehlt". Deshalb sagt `reason` jetzt,
+ * WELCHER Fall vorlag:
+ *  - `'no-id'`      — der Aufrufer hat gar keine Nummer übergeben. Das ist ein
+ *                     dokumentierter Normalzustand (`registration.ts` lässt
+ *                     `TeilnehmerID` leer, wenn der Counter beim Anlegen nicht
+ *                     erreichbar war); die Mail druckt dann auch keine Nummer,
+ *                     es fehlt also nichts.
+ *  - `'column-missing'` — der MERGE mit der Spalte kam mit 400/500 zurück.
+ *  - `'other'`      — der Statuswechsel selbst ging schief (403/429/Netz).
+ * `skipIdColumn` erspart dem Massenversand den zweiten MERGE je Person,
+ * sobald einmal feststeht, dass die Liste die Spalte nicht hat.
+ */
 export async function setQRSentStatus(
   svc: EventService,
   subsiteUrl: string,
-  itemId: number
-): Promise<boolean> {
+  itemId: number,
+  qrSentId?: number,
+  skipIdColumn?: boolean
+): Promise<{ ok: boolean; idWritten: boolean; reason: 'ok' | 'no-id' | 'column-missing' | 'other' }> {
+  const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`;
+  const id = Number(qrSentId);
+  const withId = !skipIdColumn && qrSentId !== undefined && qrSentId !== null && isFinite(id) && id > 0;
+  const noId = qrSentId === undefined || qrSentId === null || !isFinite(id) || id <= 0;
   try {
-    const response = await svc._merge(
-      `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
-      { 'Status': 'QR versendet' }
-    );
-    return response.ok;
+    if (withId) {
+      const withIdResp = await svc._merge(url, { 'Status': 'QR versendet', 'QrSentId': id });
+      if (withIdResp.ok) return { ok: true, idWritten: true, reason: 'ok' };
+      // „Spalte fehlt" ist ein 400 — SharePoint verpackt Schema-Fehler aber
+      // nicht immer sauber (dieselbe Beobachtung wie beim Rechte-Entzug in
+      // v30.67: 404 ODER 500), deshalb gilt der 500 hier mit. Bei 403/429
+      // wird NICHT nachgefasst: Der zweite Versuch scheiterte genauso, und
+      // eine zusätzliche Anfrage mitten in der Versandwelle verschärft nur
+      // die Drosselung.
+      if (withIdResp.status !== 400 && withIdResp.status !== 500) return { ok: false, idWritten: false, reason: 'other' };
+      const fallback = await svc._merge(url, { 'Status': 'QR versendet' });
+      return { ok: fallback.ok, idWritten: false, reason: fallback.ok ? 'column-missing' : 'other' };
+    }
+    const response = await svc._merge(url, { 'Status': 'QR versendet' });
+    if (!response.ok) return { ok: false, idWritten: false, reason: 'other' };
+    return { ok: true, idWritten: false, reason: noId ? 'no-id' : 'column-missing' };
   } catch {
-    return false;
+    return { ok: false, idWritten: false, reason: 'other' };
+  }
+}
+
+/**
+ * v31.4: `QrSentId` nachträglich setzen — für die Aktion „QR-Nummern
+ * nachtragen", die die gedruckten Nummern aus der Mail-Warteschlange
+ * `DEX_Emails` zurückholt. Getrennt von `setQRSentStatus`, weil der Status
+ * dabei NICHT angefasst werden darf: Wer inzwischen eingecheckt oder
+ * abgemeldet ist, bleibt es. Der Status im Rückgabewert unterscheidet
+ * „Spalte fehlt" (400 → einmal „Spalten fixen") von „ging schief".
+ */
+export async function setQrSentId(
+  svc: EventService,
+  subsiteUrl: string,
+  itemId: number,
+  qrSentId: number
+): Promise<{ ok: boolean; status: number }> {
+  const id = Number(qrSentId);
+  if (!isFinite(id) || id <= 0) return { ok: false, status: 0 };
+  try {
+    const resp = await svc._merge(
+      `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+      { 'QrSentId': id }
+    );
+    return { ok: resp.ok, status: resp.status };
+  } catch {
+    return { ok: false, status: 0 };
   }
 }
 

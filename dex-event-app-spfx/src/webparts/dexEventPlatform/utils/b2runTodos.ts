@@ -93,14 +93,21 @@ const ts = (v: string | undefined): number => {
 export function deriveB2RunTodos(regs: SPRegistration[] | null | undefined): StoredB2RunTodo[] {
   const rows = (regs || []).filter(r => !!r.ParticipantEmail);
   const active = rows.filter(r => ACTIVE_STATI.indexOf(r.Status) >= 0);
-  const activeBibs = new Set(active.map(bibOf).filter(Boolean));
+  // v31.4: Warteliste/No-Show sind rücknehmbar — eine Nummer darauf ist belegt,
+  // nicht frei. Vorher stand hier `activeBibs` (nur ACTIVE_STATI); damit galt
+  // die Nummer einer Person auf der Warteliste als herrenlos, und die
+  // Aufgabenliste hätte sie an jemand anderen weitergereicht, während die
+  // Aktion „Startnummern zuteilen" (utils/b2runBibPool) sie sperrt. Beide
+  // müssen über dieselbe Nummer dasselbe sagen — die Ableitung wird dadurch
+  // ausschließlich STRENGER, nie großzügiger.
+  const occupiedBibs = new Set(rows.filter(r => r.Status !== 'Abgemeldet').map(bibOf).filter(Boolean));
 
   // Nummern, die nur noch auf abgemeldeten Zeilen stehen. Bei mehreren
   // Kandidaten zählt die ZULETZT abgemeldete — sie war die letzte Halterin.
   const freeBib = new Map<string, SPRegistration>();
   for (const r of rows) {
     const b = bibOf(r);
-    if (!b || r.Status !== 'Abgemeldet' || activeBibs.has(b)) continue;
+    if (!b || r.Status !== 'Abgemeldet' || occupiedBibs.has(b)) continue;
     const prev = freeBib.get(b);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (!prev || ts((r as any).CancellationDate) > ts((prev as any).CancellationDate)) freeBib.set(b, r);
@@ -217,6 +224,95 @@ export function mergeB2RunTodos(
       const d = order.indexOf(a.kind) - order.indexOf(b.kind);
       return d !== 0 ? d : (a.bib || '').localeCompare(b.bib || '');
     });
+}
+
+/**
+ * v31.4: Festgehaltene Aufgaben ZUSAMMENFÜHREN statt ersetzen.
+ *
+ * `_b2runTodo` wurde bis v31.3 an jeder Schreibstelle komplett überschrieben.
+ * Solange nur der Import schrieb, fiel das nicht auf; sobald eine zweite Stelle
+ * Verpflichtungen anlegt (die Zuteilung), löscht der nächste Import genau die
+ * Aufgaben, die noch niemand erledigt hat — der v30.54-Fehler ein zweites Mal,
+ * diesmal selbst verursacht. Eine Verpflichtung ist ein Ereignis der
+ * Vergangenheit: Sie darf nur verschwinden, wenn jemand sie ausdrücklich
+ * entfernt (`removeKeys`), nie als Nebenwirkung eines Schreibvorgangs.
+ *
+ * Bei gleichem Schlüssel gewinnt `added` — es ist der frischere Stand.
+ * Zusätzlich bleibt pro Nummer höchstens EINE transfer/assign-Aufgabe stehen
+ * (die jüngere): Zwei davon wären im Aufgaben-Dialog zwei „Nummer in DEX
+ * übertragen"-Knöpfe für dieselbe Nummer, und zwei Klicks sind zwei aktive
+ * Vergaben derselben Startnummer.
+ */
+export function mergeStoredTodos(
+  existing: StoredB2RunTodo[] | null | undefined,
+  added: StoredB2RunTodo[] | null | undefined,
+  removeKeys: string[] | null | undefined
+): StoredB2RunTodo[] {
+  const map = new Map<string, StoredB2RunTodo>();
+  for (const t of (existing || [])) if (t && t.key) map.set(t.key, t);
+  for (const t of (added || [])) if (t && t.key) map.set(t.key, t);
+  for (const k of (removeKeys || [])) map.delete(k);
+
+  // Ein unlesbarer Zeitstempel zählt hier als ALT (0) — anders als bei `ts()`
+  // oben, wo „unbekannt" ans Ende sortiert. Eine kaputte Aufgabe darf keine
+  // gültige verdrängen.
+  const tsOf = (v: string | undefined): number => {
+    const t = new Date(v || '').getTime();
+    return isFinite(t) ? t : 0;
+  };
+  // Verglichen wird der ROHWERT der Nummer, nicht der Schlüssel aus
+  // `b2runBibPool.bibKey`: Ein Import von dort würde einen Modul-Zyklus
+  // aufmachen (b2runBibPool liest StoredB2RunTodo aus dieser Datei), und die
+  // Regel zweimal hinzuschreiben wären zwei Wahrheiten. „0900" und „900" in
+  // zwei Aufgaben bleiben deshalb hier zwei Einträge — die Zuteilung sperrt
+  // diesen Fall ohnehin als mehrdeutig, bevor jemand etwas vergibt.
+  const all = Array.from(map.values());
+  const newestPerBib = new Map<string, StoredB2RunTodo>();
+  for (const t of all) {
+    if (t.kind !== 'transfer' && t.kind !== 'assign') continue;
+    const b = (t.bib || '').trim();
+    if (!b) continue;
+    const prev = newestPerBib.get(b);
+    if (!prev || tsOf(t.ts) >= tsOf(prev.ts)) newestPerBib.set(b, t);
+  }
+  return all.filter(t => {
+    if (t.kind !== 'transfer' && t.kind !== 'assign') return true;
+    const b = (t.bib || '').trim();
+    if (!b) return true;
+    const keep = newestPerBib.get(b);
+    return !keep || keep.key === t.key;
+  });
+}
+
+/**
+ * v31.4: Haken aufräumen, zu denen es keine Aufgabe mehr gibt.
+ *
+ * `_b2runTodoDone` ist eine reine Schlüsselliste. Verschwindet die zugehörige
+ * Aufgabe (die Nummer ist übertragen, die Person wieder angemeldet), bleibt der
+ * Haken als Karteileiche liegen — und markiert eine später neu entstehende
+ * Aufgabe zur selben Nummer sofort als erledigt. Genau das ist die Art Fehler,
+ * die niemandem auffällt: Die Zeile steht dann unter „Erledigt", obwohl beim
+ * Veranstalter nichts passiert ist.
+ *
+ * **`todos` muss die VOLLSTÄNDIGE Liste sein** — festgehalten UND abgeleitet
+ * (also `mergeB2RunTodos(...)` bzw. `mergeStoredTodos(...)` plus
+ * `deriveB2RunTodos(regs)`). Wer nur die festgehaltenen übergibt, löscht die
+ * Haken zu allen abgeleiteten Aufgaben, und der Organizer hakt sie morgen
+ * erneut ab.
+ */
+export function cleanDoneKeys(
+  done: string[] | null | undefined,
+  todos: StoredB2RunTodo[] | null | undefined
+): string[] {
+  const known: string[] = [];
+  for (const t of (todos || [])) if (t && t.key) known.push(t.key);
+  const out: string[] = [];
+  for (const k of (done || [])) {
+    if (typeof k !== 'string' || !k) continue;
+    if (known.indexOf(k) < 0) continue;
+    if (out.indexOf(k) < 0) out.push(k);
+  }
+  return out;
 }
 
 export const B2RUN_TODO_LABELS: Record<B2RunTodoKind, string> = {

@@ -6,6 +6,7 @@
 import * as React from 'react';
 import { EventService, REG_LIST_NAME, SPRegistration } from '../../../services/EventService';
 import { isDeloitteInternalEmail } from '../../../utils/deloitteDomain';
+import { SHIRT_ISSUED_FORM_KEY, parseShirtIssue } from '../../../utils/checkInExtras';
 import { DeloitteEvent } from '../../../types';
 
 export interface UseEditModalHandlersCtx {
@@ -56,6 +57,12 @@ export function useEditModalHandlers(ctx: UseEditModalHandlersCtx): UseEditModal
       // sowieso nicht angezeigt.
       StarterType: r.StarterType || '',
       PreferredStarterType: r.PreferredStarterType || '',
+      // v31.4 (Nachtrag): Das ausgegebene Trikot ist KEINE SP-Spalte des
+      // Patches, sondern ein eigener Schreibvorgang (s. `saveEdit`). Vorbelegt
+      // wird nur der wirklich festgehaltene Eintrag — die Check-in-Annahme aus
+      // `shirtAllocate` bleibt bewusst draußen, sonst schriebe der nächste
+      // Klick auf „Speichern" eine Vermutung in die Spalte.
+      [SHIRT_ISSUED_FORM_KEY]: (parseShirtIssue(r.ShirtIssued) || { size: '' }).size,
     };
     // Custom-Field-Werte aus dem reg laden (sie sind als SP-Spalten gespeichert)
     if (selectedEvent?.eventSpecificFields) {
@@ -202,8 +209,51 @@ export function useEditModalHandlers(ctx: UseEditModalHandlersCtx): UseEditModal
           fieldLabelMap.PreferredStarterType = isDe ? 'Wunsch-Starter-Typ' : 'Preferred starter type';
         }
       }
+      /**
+       * v31.4 (Nachtrag): Das ausgegebene Trikot steht in der eigenen Spalte
+       * `ShirtIssued` (JSON mit Größe, Zeitpunkt und Ausgebendem) und wird
+       * deshalb NICHT über `adminUpdateRegistration` geschrieben, sondern über
+       * dieselben Wege wie am Check-in-Tisch.
+       *
+       * Zwei Dinge sind daran wichtig:
+       *  - Der Schreibvorgang läuft ZUSÄTZLICH und darf den Rest nicht
+       *    mitreißen. Auf einer Bestandsliste ohne die Spalte antwortet
+       *    SharePoint mit 400; die Namenskorrektur wäre sonst mit weg.
+       *  - Er läuft NACH dem Zeilen-Patch: Erst das, was der Dialog ohnehin
+       *    tut, dann der Zusatz. Scheitert er, sagt die Meldung den Grund.
+       */
+      const oldIssuedSize = (parseShirtIssue(r.ShirtIssued) || { size: '' }).size;
+      const newIssuedSize = (editForm[SHIRT_ISSUED_FORM_KEY] || '').trim();
+      const shirtChanged = newIssuedSize !== oldIssuedSize;
+      const writeShirtIssue = async (): Promise<string> => {
+        if (!shirtChanged) return '';
+        const res = newIssuedSize
+          ? await eventServiceRef.setShirtIssued(selectedEvent.subsiteUrl, editingReg.Id, newIssuedSize)
+          : await eventServiceRef.clearShirtIssued(selectedEvent.subsiteUrl, editingReg.Id);
+        if (res && res.ok) return '';
+        const st = res ? res.status : 0;
+        if (st === 400) {
+          return isDe
+            ? 'Das ausgegebene Trikot konnte nicht gespeichert werden: Auf dieser Teilnehmerliste fehlt die Spalte ShirtIssued. Führe einmal „Spalten fixen" für das Event aus, dann noch einmal speichern. Die übrigen Änderungen sind gespeichert.'
+            : 'The handed-out shirt could not be saved: this attendee list is missing the ShirtIssued column. Run “Fix columns” for the event once, then save again. The other changes were saved.';
+        }
+        // Status 0 heißt: gar keine Antwort (Netz, Abbruch) — „HTTP 0" wäre
+        // eine Zahl, die nichts erklärt.
+        const why = st > 0 ? ` (HTTP ${st})` : (isDe ? ' (keine Antwort vom Server)' : ' (no answer from the server)');
+        return isDe
+          ? `Das ausgegebene Trikot konnte nicht gespeichert werden${why}. Die übrigen Änderungen sind gespeichert — bitte noch einmal versuchen.`
+          : `The handed-out shirt could not be saved${why}. The other changes were saved — please try again.`;
+      };
+
       if (Object.keys(patch).length === 0) {
         // Keine Änderung — nichts zu tun.
+        // v31.4 (Nachtrag): … es sei denn, nur das Trikot wurde geändert. Dann
+        // gibt es keinen Zeilen-Patch, aber sehr wohl etwas zu schreiben.
+        if (shirtChanged) {
+          const shirtOnlyError = await writeShirtIssue();
+          if (shirtOnlyError) { setEditError(shirtOnlyError); return; }
+          await reloadRegistrations();
+        }
         closeEditModal();
         return;
       }
@@ -221,7 +271,7 @@ export function useEditModalHandlers(ctx: UseEditModalHandlersCtx): UseEditModal
         // fixen'-Run). Hilfreicher Hinweis auf den Repair-Button.
         setEditError(isDe
           ? 'Speichern fehlgeschlagen — vermutlich fehlt eine SP-Spalte in der Teilnehmerliste. Klicke einmal „Spalten fixen" im Toolbox-Bereich des Events, dann erneut versuchen.'
-          : 'Save failed — likely a missing SP column on the participant list. Click „Fix columns" in the event toolbox once, then retry.');
+          : 'Save failed — likely a missing SP column on the participant list. Click “Fix columns” in the event toolbox once, then retry.');
         return;
       }
       // v9.0: Audit-Log mit Diff der geänderten Felder
@@ -272,6 +322,9 @@ export function useEditModalHandlers(ctx: UseEditModalHandlersCtx): UseEditModal
         // sie ihre eigene Zeile sonst nicht (Zeilen-Autor bleibt die alte).
         try { await eventServiceRef.trySetItemAuthor(selectedEvent.subsiteUrl, REG_LIST_NAME, editingReg.Id, newEmail); } catch { /* best-effort, s. trySetItemAuthor */ }
       }
+      // v31.4 (Nachtrag): Erst jetzt das Trikot — der Zeilen-Patch ist durch,
+      // ein Fehler hier kostet nur diesen einen Wert.
+      const shirtError = await writeShirtIssue();
       // v30.67 (Review): gemeinsamer Nachlade-Pfad — 429 nach dem Speichern
       // machte aus der Liste still `[]`.
       await reloadRegistrations();
@@ -279,6 +332,12 @@ export function useEditModalHandlers(ctx: UseEditModalHandlersCtx): UseEditModal
         setEditError(isDe
           ? 'Die Zeile ist gespeichert, aber das Teilnehmer-Register (DEX_Participants) konnte nicht auf die neue Adresse umgeschrieben werden. Die Person sieht das Event unter „Meine Events“ erst, wenn ein Admin das Register abgleicht. Bitte noch einmal speichern oder den Admin informieren.'
           : 'The row was saved, but the participant registry (DEX_Participants) could not be switched to the new address. The person will not see the event under „My events“ until an admin reconciles the registry. Please save again or inform the admin.');
+        return;
+      }
+      // v31.4 (Nachtrag): Nach dem Register-Fehler, weil der schwerer wiegt —
+      // ein Dialog zeigt nur eine Meldung, und das ist die wichtigere.
+      if (shirtError) {
+        setEditError(shirtError);
         return;
       }
       closeEditModal();

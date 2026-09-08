@@ -1437,7 +1437,11 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
               // sofort zeigt, dass der QR-Code raus ist (analog zum
               // manuellen Massen-QR-Versand).
               if (event.subsiteUrl && myReg && myReg.Id) {
-                await eventService.setQRSentStatus(event.subsiteUrl, myReg.Id);
+                // v31.4: Dieselbe Nummer, die oben in `qrCodeEmail` gedruckt
+                // wurde, wird als `QrSentId` festgehalten — sonst zeigt die
+                // Mail dieser Person nach der nächsten Abmeldung auf jemand
+                // anderen (`TeilnehmerID` wird neu vergeben, die Mail nicht).
+                await eventService.setQRSentStatus(event.subsiteUrl, myReg.Id, myReg.TeilnehmerID);
               }
             } catch (err) { console.warn('[DEX] auto-send QR failed:', err); }
           })().catch(err => console.warn('[DEX] auto-send QR outer failed:', err));
@@ -2539,10 +2543,10 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     cancelRegistration, cancelTeamMember, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, declineEvent,
   } = makeCancellationActions({ eventService, events, subsiteMap, currentUserEmail, currentUserName, currentUserFirstName, calDayParentOf, getMyRegistration, loadEvents });
 
-  async function getMyRegistration(eventId: string): Promise<SPRegistration | null> {
+  async function getMyRegistration(eventId: string, onHttpError?: (status: number) => void): Promise<SPRegistration | null> {
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return null;
-    return eventService.getMyRegistration(subsiteUrl, currentUserEmail);
+    return eventService.getMyRegistration(subsiteUrl, currentUserEmail, onHttpError);
   }
 
   async function checkRegistrationByEmail(eventId: string, email: string): Promise<SPRegistration | null> {

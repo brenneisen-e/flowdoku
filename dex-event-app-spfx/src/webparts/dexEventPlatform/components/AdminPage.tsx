@@ -28,8 +28,12 @@ import { cx, ensureDexUiStyles } from './dexUi';
 import { InfoTooltip } from './InfoTooltip';
 import B2RunBibImportModal from './admin/B2RunBibImportModal';
 import B2RunTodoModal from './admin/B2RunTodoModal';
+// v31.4: Freie Startnummern an Personen ohne Nummer zuteilen.
+import B2RunAssignBibsModal from './admin/B2RunAssignBibsModal';
 import ShirtSizeModal from './admin/ShirtSizeModal';
 import CopyToAgendaModal from './admin/CopyToAgendaModal';
+// v31.4: Gedruckte QR-Nummern aus DEX_Emails in die Teilnehmerliste zurück.
+import QrSentIdBackfillModal from './admin/QrSentIdBackfillModal';
 import { SHIRT_PATTERN } from '../utils/checkInExtras';
 import { isEventOver } from '../utils/eventFormat';
 import AddParticipantsModal from './admin/AddParticipantsModal';
@@ -1037,10 +1041,15 @@ export default function AdminPage(): React.ReactElement {
   const [bibImportOpen, setBibImportOpen] = React.useState(false);
   // v30.54: Offene Ummeldungen beim Veranstalter — live aus der Liste.
   const [b2runTodoOpen, setB2runTodoOpen] = React.useState(false);
+  // v31.4: Freie Startnummern an Personen ohne Nummer (s. B2RunAssignBibsModal).
+  const [assignBibsOpen, setAssignBibsOpen] = React.useState(false);
   // v30.60: Bestellliste der Trikots (s. components/admin/ShirtSizeModal).
   const [shirtSizeOpen, setShirtSizeOpen] = React.useState(false);
   // v30.93: Programmpunkte, Stufe 4 — Kopie in ein neues Event.
   const [copyToAgendaOpen, setCopyToAgendaOpen] = React.useState(false);
+  // v31.4: „QR-Nummern nachtragen“ — die in den verschickten QR-Mails
+  // gedruckten Nummern zurückholen (s. QrSentIdBackfillModal).
+  const [qrBackfillOpen, setQrBackfillOpen] = React.useState(false);
   // v30.60: Aufgeklappte Reiter-Gruppe („Day 1" …). null = die zuletzt
   // sinnvolle Gruppe wird beim Rendern bestimmt (die des gewählten Termins).
   const [openTabGroup, setOpenTabGroup] = React.useState<string | null>(null);
@@ -2028,8 +2037,15 @@ export default function AdminPage(): React.ReactElement {
     setQrEditSampleBlock, setQrEditSubheading, setQrEditSubject, setQrHeaderImage,
   };
   const editRegModalProps = {
-    closeEditModal, editError, editForm, isDe, isSavingEdit,
-    saveEdit, selectedEvent, setEditForm,
+    // v31.4: `editingReg` und `registrations` für das Feld „Ausgegebenes
+    // Trikot" — der Dialog liest daraus den festgehaltenen Eintrag, die
+    // Größen des Events und die Check-in-Annahme.
+    // v31.4 (Review): Das Eltern-Event dazu — die Größenfrage kann auf der
+    // Klammer stehen, ohne dass die Termine sie erben. Ohne diese Ebene fehlte
+    // der ganze Abschnitt „Trikot-Ausgabe" genau dort, wo das Team eingecheckt
+    // und die Größe festgehalten hat.
+    closeEditModal, editError, editForm, editingReg, isDe, isSavingEdit,
+    registrations, saveEdit, selectedEvent, parentEvent: parentEventForSelected, setEditForm,
   };
   const participantDetailModalProps = {
     isDe, participantDetail, setParticipantDetail,
@@ -2218,7 +2234,7 @@ export default function AdminPage(): React.ReactElement {
     navigate, openChangeLogForEvent, openCommsModal, openInviteModal, openMassmailPicker, promoteResult,
     qrSentCount, refreshEvents, refreshProfilesResult, registrations, reloadRegistrations, reorderResult, repairAccessResult,
     repairNamesResult, repairOrganizersResult, repairPermsResult, resetCounterResult, runIdReorder, runManualPromote,
-    searchUsers, selectedEvent, setAccessFixModal, setB2runTodoOpen, setBibImportOpen, setBillingPanelOpen,
+    searchUsers, selectedEvent, setAccessFixModal, setAssignBibsOpen, setB2runTodoOpen, setBibImportOpen, setBillingPanelOpen,
     setCheckInHubOpen, setCheckInHubStep, setCopiedDeepLink, setCopiedEmails, setDeclineCopied, setDeclineResult,
     setDetectOverbookResult, setExcelAudience, setExcelTargetModal, setFixColumnsResult, setFixFieldsResult, setIsCheckingDeclines,
     setIsDetectingOverbook, setIsFixingColumns, setIsFixingFields, setIsRefreshingProfiles, setIsRepairingAccess, setIsRepairingNames,
@@ -2226,7 +2242,7 @@ export default function AdminPage(): React.ReactElement {
     setRepairAccessResult, setRepairNamesResult, setRepairOrganizersResult, setRepairPermsResult, setResetCounterResult,
     setShirtSizeOpen, setShowDeclineModal, setShowExportMenu, setSubRegReloadTick, setSyncRegistryResult, shirtFieldExists,
     showAlert, showExportMenu, siteUrl, spServiceRef, syncRegistryResult, t,
-    updateEvent, setCopyToAgendaOpen,
+    updateEvent, setCopyToAgendaOpen, setQrBackfillOpen,
   };
   const kpiTilesProps = {
     isConsolidatedMode, isDe, isSplitCapacity, registrations, regsUnknown, selectedEvent, subEventRegsByEventId, subListsIncomplete, t,
@@ -2830,7 +2846,32 @@ export default function AdminPage(): React.ReactElement {
 
       {/* v30.54: Offene Aufgaben beim Veranstalter (B2Run Köln). */}
       {shirtSizeOpen && selectedEvent && (
-        <ShirtSizeModal event={selectedEvent} onClose={() => setShirtSizeOpen(false)} />
+        <ShirtSizeModal
+          event={selectedEvent}
+          onClose={() => setShirtSizeOpen(false)}
+          // v31.4: Von einer Größen-Zeile in die Teilnehmerliste springen, wo
+          // „Bearbeiten" sitzt (Nutzer 08.09.2026). Nutzt den vorhandenen
+          // Such-/Scroll-Weg der Seite; der Dialog schließt dabei, sonst liegt
+          // er über der Liste, zu der er gesprungen ist.
+          onJumpToParticipant={(q) => { setShirtSizeOpen(false); jumpToParticipant(q); }}
+        />
+      )}
+
+      {/* v31.4: QR-Nummern nachtragen — liest die gedruckten Nummern aus den
+          bereits verschickten QR-Mails zurück. Läuft über die Klammer UND
+          alle Termine, weil `EventId` in DEX_Emails die Id des jeweiligen
+          Events ist (CLAUDE.md: „Der Klammer-Pfad ist nie der ganze Pfad"). */}
+      {qrBackfillOpen && selectedEvent && eventServiceRef && (
+        <QrSentIdBackfillModal
+          event={selectedEvent}
+          childEvents={childEventsOf(selectedEvent.id)}
+          service={eventServiceRef}
+          isDe={isDe}
+          onClose={() => setQrBackfillOpen(false)}
+          // Nach dem Schreiben die Teilnehmerliste über den EINEN
+          // Nachlade-Pfad der Seite auffrischen (CLAUDE.md, v30.67).
+          onDone={() => { void reloadRegistrations(); }}
+        />
       )}
 
       {/* v30.93: Programmpunkte, Stufe 4. */}
@@ -2858,6 +2899,19 @@ export default function AdminPage(): React.ReactElement {
           event={selectedEvent}
           service={eventServiceRef}
           onClose={() => setBibImportOpen(false)}
+          onDone={() => { reloadRegistrationsForIdCheck().catch(() => { /* best-effort */ }); }}
+        />
+      )}
+
+      {/* v31.4: Freie Startnummern zuteilen (B2Run Köln). Nachgeladen wird über
+          denselben EINEN Pfad wie beim Import — `reloadRegistrationsForIdCheck`
+          ruft `reloadRegistrations()`, das bei einem Lesefehler den alten Stand
+          stehen lässt (nie `setRegistrations(await getAllRegistrations(id))`). */}
+      {assignBibsOpen && selectedEvent && eventServiceRef && (
+        <B2RunAssignBibsModal
+          event={selectedEvent}
+          service={eventServiceRef}
+          onClose={() => setAssignBibsOpen(false)}
           onDone={() => { reloadRegistrationsForIdCheck().catch(() => { /* best-effort */ }); }}
         />
       )}

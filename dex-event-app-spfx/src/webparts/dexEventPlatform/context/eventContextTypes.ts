@@ -170,7 +170,13 @@ export interface EventContextType {
     eventId: string,
     memberRegistration: SPRegistration
   ) => Promise<boolean>;
-  getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
+  /** v31.4 (Review): `onHttpError` wird durchgereicht — der Service liefert
+   *  bei 403/429/500 dasselbe `null` wie bei „keine Zeile", und ohne diesen
+   *  Rückruf macht der Aufrufer aus einem Lesefehler die Aussage „nicht
+   *  angemeldet" (CLAUDE.md: ein leeres Ergebnis ohne geprüften Status ist
+   *  keine Aussage über die Daten). Optional, damit die bestehenden
+   *  Aufrufstellen unverändert bleiben. */
+  getMyRegistration: (eventId: string, onHttpError?: (status: number) => void) => Promise<SPRegistration | null>;
   /** v24.36: Assistenz — alle Anmeldungen (Haupt- + Sub-Events), die der
    *  eingeloggte User STELLVERTRETEND für eine andere Person durchgeführt hat
    *  (RegisteredByEmail = ich, ParticipantEmail ≠ ich). Liefert Event +

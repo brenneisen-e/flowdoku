@@ -287,7 +287,12 @@ export default function MyEventsPage(): React.ReactElement {
       const email = reg.ParticipantEmail || currentUser.email || '';
       const dataUrl = await QRCode.toDataURL(`DEX|${ev.eventNumber}|${email}`, { width: 320, margin: 2 });
       const name = `${reg.Vorname || currentUser.firstName || ''} ${reg.Nachname || currentUser.surname || ''}`.trim() || email;
-      setMyQrModal({ dataUrl, name, tid: reg.TeilnehmerID || undefined, eventTitle: ev.title || '' });
+      // v31.4: Wenn eine QR-Mail verschickt wurde, gilt DEREN Nummer — nicht
+      // die laufende von heute. Der Check-in löst die vorgelesene Zahl seit
+      // v31.4 zuerst über `QrSentId` auf; stünde hier die laufende Nummer,
+      // hätte dieselbe Person zwei verschiedene Zahlen (App und Mail), und
+      // eine davon zeigt am Tisch auf jemand anderen.
+      setMyQrModal({ dataUrl, name, tid: reg.QrSentId || reg.TeilnehmerID || undefined, eventTitle: ev.title || '' });
     } catch {
       showAlert(isDe ? 'QR-Code konnte nicht erzeugt werden.' : 'QR code could not be generated.', { variant: 'error' });
     }

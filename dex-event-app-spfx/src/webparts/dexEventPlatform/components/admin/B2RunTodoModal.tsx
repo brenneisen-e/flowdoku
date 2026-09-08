@@ -15,9 +15,13 @@ import * as React from 'react';
 import Modal from '../Modal';
 import { useDialog } from '../../context/DialogContext';
 import { useEvents } from '../../context/EventContext';
+import { useCurrentUser } from '../../context/UserContext';
 import { DeloitteEvent } from '../../types';
 import { EventService, SPRegistration } from '../../services/EventService';
 import { mergeB2RunTodos, B2RunTodo, StoredB2RunTodo, B2RUN_TODO_LABELS } from '../../utils/b2runTodos';
+// v31.4: „0412" und „412" sind auf dem Zettel dieselbe Nummer — die Sperre
+// unten muss beide erkennen (s. utils/b2runBibPool).
+import { bibKey } from '../../utils/b2runBibPool';
 import { cx } from '../dexUi';
 import { Check, ChevronDown, Download, Hash } from '../Icons';
 
@@ -38,6 +42,10 @@ export default function B2RunTodoModal(props: {
 }): React.ReactElement {
   const { getAllRegistrations, events } = useEvents();
   const { showAlert } = useDialog();
+  // v31.4: Wer die Nummer umgetragen hat, gehört in den ChangeLog der Zeile.
+  // Vorher stand dort „DEX" — im Nachhinein war nicht mehr feststellbar, wer
+  // am Vorabend welche Nummer verschoben hat.
+  const { currentUser } = useCurrentUser();
   const [loading, setLoading] = React.useState(true);
   const [todos, setTodos] = React.useState<B2RunTodo[]>([]);
   const [regs, setRegs] = React.useState<SPRegistration[]>([]);
@@ -107,20 +115,63 @@ export default function B2RunTodoModal(props: {
    * Check-in für die Person, die wirklich läuft, keine Nummer an. Der Knopf
    * setzt sie deshalb um und räumt sie bei der Vorgängerin weg; danach
    * verschwindet die Aufgabe von selbst aus der abgeleiteten Liste.
+   *
+   * **v31.4: Reihenfolge umgedreht und Rückgabewerte geprüft.** Vorher wurde
+   * ERST die neue Zeile gesetzt und DANN die alte geleert, ohne einen der
+   * beiden Rückgabewerte anzusehen — und `bibInDex: true` samt grüner Pille
+   * kam bedingungslos hinterher. Zwei Fehler in einem:
+   *
+   *  1. `adminUpdateRegistration` wirft nicht, sie liefert `response.ok`. Ein
+   *     403/429 lief also stillschweigend durch und die Anzeige meldete
+   *     Erfolg. Genau daraus entsteht eine aktive Zeile ohne Nummer — der
+   *     die Aktion „Startnummern zuteilen" später eine ZWEITE gibt.
+   *  2. Eine Startnummer ist ein ausschließliches Recht. Scheitert das Leeren
+   *     der Altzeile, tragen zwei Zeilen dieselbe Nummer. Deshalb kommt hier
+   *     der Entzug ZUERST (anders als beim Austausch von Datensätzen, wo der
+   *     unumkehrbare Schritt zuletzt kommt): Bleibt die neue Zeile leer, ist
+   *     das sichtbar und behebbar; eine doppelt vergebene Nummer fällt erst
+   *     am Einlass auf.
    */
   const moveBibInDex = async (t: B2RunTodo): Promise<void> => {
     if (bibBusy || !t.toReg || !t.bib || !props.event.subsiteUrl) return;
+    // v31.4: Trägt die Nummer schon jemand, der nicht abgemeldet ist? Dann
+    // wird nichts geschrieben. Warteliste und No-Show zählen als BELEGT — die
+    // Person kann zurückkommen (dieselbe Regel wie utils/b2runBibPool).
+    const holder = regs.filter(r => r.Status !== 'Abgemeldet'
+      && bibKey(String(r.Startnummer || '')) === bibKey(t.bib)
+      && r.Id !== t.toReg!.Id)[0];
+    if (holder) {
+      await showAlert(
+        `Startnummer ${t.bib} steht bereits bei ${holder.Vorname || ''} ${holder.Nachname || ''}`.trim()
+        + ` (Status ${holder.Status || 'unbekannt'}). Es wurde nichts geändert — bitte erst klären, wem die Nummer gehört.`,
+        { variant: 'error' });
+      return;
+    }
     setBibBusy(t.key);
     try {
-      const actor = { name: 'DEX', email: '' };
-      await props.service.adminUpdateRegistration(props.event.subsiteUrl, t.toReg.Id, { Startnummer: t.bib }, actor);
-      // Bei der Vorgängerin leeren, damit die Nummer nicht zweimal in der
-      // Liste steht — sonst hält die Ableitung sie für weiterhin belegt.
-      const from = regs.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === (t.fromEmail || '').toLowerCase().trim()
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        && String((r as any).Startnummer || '').trim() === t.bib);
+      const actor = {
+        name: `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email,
+        email: currentUser.email,
+      };
+      // 1) Bei der Vorgängerin leeren — GEPRÜFT, und vor dem Setzen.
+      const from = regs.filter(r => (r.ParticipantEmail || '').toLowerCase().trim() === (t.fromEmail || '').toLowerCase().trim()
+        && bibKey(String(r.Startnummer || '')) === bibKey(t.bib))[0];
       if (from) {
-        await props.service.adminUpdateRegistration(props.event.subsiteUrl, from.Id, { Startnummer: '' }, actor);
+        const cleared = await props.service.adminUpdateRegistration(props.event.subsiteUrl, from.Id, { Startnummer: '' }, actor);
+        if (!cleared) {
+          await showAlert(
+            `Die Startnummer konnte bei ${t.fromName || 'der bisherigen Person'} nicht entfernt werden — deshalb wurde sie auch NICHT auf ${t.toName} übertragen. Sonst stünde dieselbe Nummer auf zwei Zeilen. Bitte erneut versuchen.`,
+            { variant: 'error' });
+          return;
+        }
+      }
+      // 2) Erst jetzt die neue Zeile setzen — ebenfalls geprüft.
+      const set = await props.service.adminUpdateRegistration(props.event.subsiteUrl, t.toReg.Id, { Startnummer: t.bib }, actor);
+      if (!set) {
+        await showAlert(
+          `Startnummer ${t.bib} trägt jetzt niemand: Bei ${t.fromName || 'der bisherigen Person'} ist sie entfernt, bei ${t.toName} konnte sie nicht gesetzt werden. Die Aufgabe bleibt offen — bitte gleich noch einmal übertragen.`,
+          { variant: 'error' });
+        return;
       }
       // v30.67 (Review): Die Übertragung ist durch — scheitert nur das
       // Nachlesen, bleibt der alte Stand stehen und die Aufgabe gilt als
@@ -218,18 +269,29 @@ export default function B2RunTodoModal(props: {
         )}
         {/* v30.55: Die Ummeldung beim Veranstalter ist das eine — die Nummer
             muss aber auch in DEX bei der richtigen Person stehen, sonst zeigt
-            der Check-in für die Person, die wirklich läuft, gar keine Nummer. */}
-        {!isDone && t.bib && t.toReg && !t.bibInDex && (
+            der Check-in für die Person, die wirklich läuft, gar keine Nummer.
+            v31.4: Der Knopf hing an `!isDone`. Wer zuerst beim Veranstalter
+            ummeldet und abhakt — die naheliegende Reihenfolge —, konnte die
+            Nummer danach NIE mehr in DEX nachtragen. Genau daraus entsteht
+            die aktive Zeile ohne Nummer, der die Aktion „Startnummern
+            zuteilen" später eine zweite gibt. Abgehakt heißt „beim
+            Veranstalter erledigt", nicht „in DEX eingetragen". */}
+        {t.bib && t.toReg && !t.bibInDex && (
           <div style={{ marginTop: 8 }}>
             <button
               type="button"
               className="btn btn-secondary dex-ui-btn-sm"
               disabled={!!bibBusy}
+              style={isDone ? { opacity: 0.75 } : undefined}
               onClick={() => { void moveBibInDex(t); }}
             >
               {bibBusy === t.key ? 'Wird übertragen…' : `Startnummer ${t.bib} in DEX auf ${t.toName} übertragen`}
             </button>
-            <div className="dex-ui-help">Danach zeigt der Check-in die Nummer bei {t.toName}; die Aufgabe verschwindet von selbst.</div>
+            <div className="dex-ui-help">
+              {isDone
+                ? <>Beim Veranstalter ist das erledigt — in DEX steht die Nummer aber noch nicht bei {t.toName}. Nur nachtragen, nichts beim Veranstalter ändern.</>
+                : <>Danach zeigt der Check-in die Nummer bei {t.toName}; die Aufgabe verschwindet von selbst.</>}
+            </div>
           </div>
         )}
         {t.bib && t.bibInDex && (

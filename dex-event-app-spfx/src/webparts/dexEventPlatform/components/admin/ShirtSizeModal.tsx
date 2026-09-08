@@ -35,6 +35,25 @@
  * Bestand liegt als Piggyback `_shirtStock` am Hauptevent; die Verteilung
  * rechnet `utils/checkInExtras.shirtAllocate` — dieselbe Funktion, die die
  * Check-in-Seite je Person anzeigt, damit Tisch und Liste dasselbe sagen.
+ *
+ * v31.4: Die Liste zeigt jetzt auch, was AUSGEGEBEN wurde (Spalte
+ * `ShirtIssued`, gesetzt am Check-in-Tisch). Damit sind „Bestand" und
+ * „verfügbar" zwei verschiedene Zahlen — beide stehen nebeneinander, sonst
+ * bestellt jemand nach einer Zahl, die schon halb im Umlauf ist. Dazu zwei
+ * Auskünfte aus dem Live-Fall vom 08.09.2026 („die korrigierte Größe kommt in
+ * der Liste nicht an"): Die aufgeklappte Namensliste nennt je Person die
+ * Herkunft der gelesenen Zeile und die weiteren Zeilen derselben Person, und
+ * von jeder Zeile führt ein Sprung in die Teilnehmerliste, wo „Bearbeiten"
+ * sitzt (Nutzer-Wunsch: „Gib mir die Möglichkeit, zu den Teilnehmern zu
+ * springen mit diesem Wert").
+ *
+ * v31.4 (Nachtrag): Der Ausgabe-Knopf am Tisch ist jünger als der Lauftag —
+ * wer vorher eingecheckt wurde, hat sein Trikot trotzdem bekommen. Diese
+ * Personen zählen deshalb mit ihrer Wunschgröße als abgeholt (Ansage des
+ * Organizers, der am Tisch stand). Es bleibt eine ANNAHME: Sie wird nie in
+ * die Spalte geschrieben, und jede Zahl, die sie enthält, nennt sie
+ * daneben — Kachel, Spalte, Namensliste und Excel. Ändern lässt sie sich je
+ * Person über „Bearbeiten" in der Teilnehmerliste.
  */
 import * as React from 'react';
 import Modal from '../Modal';
@@ -46,13 +65,32 @@ import { EventService, SPRegistration } from '../../services/EventService';
 import {
   shirtTally, ShirtTallyResult, shirtAllocate, ShirtAllocationResult, ShirtStock, parseShirtStock, shirtSizeKey,
   pickShirtAnswerRows, ShirtAnswerConflict, shirtSizeLabel, splitShirtSize, isShirtSizeKey,
+  // v31.4: Herkunft der gelesenen Zeile + ausgegebene Trikots.
+  shirtFieldOf, parseCustomData, parseShirtIssue,
 } from '../../utils/checkInExtras';
 import { cx } from '../dexUi';
 import { Shirt, Download, Plus, Check, ChevronDown, AlertCircle } from '../Icons';
 
+/** v31.4: Woher stammt der Wert, mit dem diese Liste rechnet? */
+type ShirtOrigin = {
+  /** Titel des Events, dessen Teilnehmerzeile gewonnen hat. */
+  source: string;
+  /** Ausgegebene Größe, falls die Person ihr Trikot schon hat. */
+  issued: string;
+  /** Zeilen derselben Person, die NICHT gewonnen haben — mit ihrem Wert. */
+  others: Array<{ source: string; value: string }>;
+};
+
 export default function ShirtSizeModal(props: {
   event: DeloitteEvent;
   onClose: () => void;
+  /**
+   * v31.4: Sprung in die Teilnehmerliste (Nutzer 08.09.2026: „Gib mir die
+   * Möglichkeit, zu den Teilnehmern zu springen mit diesem Wert, und dann kann
+   * ich auf Bearbeiten klicken."). Der Aufrufer setzt die Suche und scrollt;
+   * ohne die Prop bleibt die Liste wie bisher.
+   */
+  onJumpToParticipant?: (_query: string) => void;
 }): React.ReactElement {
   // v31.2: Zweisprachig wie jeder andere Dialog — bisher nur Deutsch. Die
   // Props bleiben unverändert (kein `isDe`-Prop), die Sprache kommt aus dem
@@ -68,6 +106,13 @@ export default function ShirtSizeModal(props: {
   // v31.3: Dieselbe Person mit zwei verschiedenen Größen auf zwei Zeilen —
   // gerechnet wird mit der maßgeblichen, gesagt wird es trotzdem.
   const [conflicts, setConflicts] = React.useState<ShirtAnswerConflict[]>([]);
+  // v31.4: Herkunft je E-Mail — welche Zeile hat gewonnen, welche gibt es noch.
+  const [origins, setOrigins] = React.useState<Record<string, ShirtOrigin>>({});
+  // v31.4 (Nachtrag): Wer ist IRGENDWO eingecheckt? Unten bleibt je Person nur
+  // eine Zeile stehen (`pickShirtAnswerRows`) — und das ist bei einem
+  // Klammer-Event meist die Zeile MIT der Antwort, nicht die mit dem Check-in.
+  // Ohne diese Sammlung wäre die Ausgabe-Annahme dort blind.
+  const [checkedInEmails, setCheckedInEmails] = React.useState<Record<string, true>>({});
   const [openSize, setOpenSize] = React.useState<string | null>(null);
   const [xlsxBusy, setXlsxBusy] = React.useState(false);
   // v30.88: Bestand — Eingabe als Text je Größe (leer = kein Bestand für die
@@ -90,6 +135,12 @@ export default function ShirtSizeModal(props: {
         const targets = [props.event, ...children];
         const all: SPRegistration[] = [];
         const failed: string[] = [];
+        // v31.4: Woher kam welche Zeile? Die Liste soll ihre Herkunft nennen
+        // können — der Live-Fall vom 08.09.2026 („die Korrektur kommt nicht
+        // an") ließ sich sonst von außen nicht von „nie gespeichert"
+        // unterscheiden. Über die Objekt-Identität, weil `pickShirtAnswerRows`
+        // filtert und nicht kopiert.
+        const srcOf = new Map<SPRegistration, string>();
         for (const ev of targets) {
           if (!ev.subsiteUrl) continue;
           let ok = true;
@@ -102,7 +153,7 @@ export default function ShirtSizeModal(props: {
           // v31.3: Hier wird NICHT mehr zusammengeführt — welche Zeile die
           // Größenfrage beantwortet, lässt sich erst sagen, wenn das Feld
           // bekannt ist und alle Ebenen gelesen sind (s. unten).
-          for (const r of rs) all.push(r);
+          for (const r of rs) { all.push(r); srcOf.set(r, ev.title); }
         }
         if (cancelled) return;
         // Die Feld-Definitionen des Hauptevents plus die der Termine: Das
@@ -115,10 +166,47 @@ export default function ShirtSizeModal(props: {
         // beantwortet (Antwort vor keiner Antwort, aktiv vor abgemeldet, sonst
         // die zuletzt geänderte). Vorher gewann die zuerst gelesene Ebene.
         const picked = pickShirtAnswerRows(flds, all);
+        // v31.4: Zwei Nachbesserungen an den gewählten Zeilen:
+        //  1. Die AUSGABE steht dort, wo eingecheckt wurde — meist auf der
+        //     Termin-Zeile, während die Größenfrage die Klammer-Zeile gewinnen
+        //     kann. Ohne diesen Übertrag zählt die Bestellliste ein Trikot als
+        //     „noch im Karton", das längst jemand trägt.
+        //  2. Die Herkunft je Person, damit die aufgeklappte Namensliste sagen
+        //     kann, welche Zeile gemeint ist (und welche es sonst noch gibt).
+        const field = shirtFieldOf(flds, all);
+        const answerOf = (r: SPRegistration): string => {
+          if (!field) return '';
+          const v = parseCustomData(r.CustomData)[field.id];
+          return (v === undefined || v === null) ? '' : String(v).trim();
+        };
+        const issuedByEmail: Record<string, string> = {};
+        // v31.4 (Nachtrag): Der Check-in steht auf derselben Zeile wie die
+        // Ausgabe — und damit ebenfalls meist NICHT auf der Zeile, die die
+        // Größenfrage gewinnt. Deshalb hier über ALLE Zeilen gesammelt.
+        const checkedIn: Record<string, true> = {};
+        all.forEach(r => {
+          const em = (r.ParticipantEmail || '').toLowerCase().trim();
+          if (em && r.ShirtIssued && !issuedByEmail[em]) issuedByEmail[em] = r.ShirtIssued;
+          if (em && r.Status === 'Eingecheckt') checkedIn[em] = true;
+        });
+        const org: Record<string, ShirtOrigin> = {};
+        const rows = picked.rows.map(r => {
+          const em = (r.ParticipantEmail || '').toLowerCase().trim();
+          if (!em) return r;
+          const iss = parseShirtIssue(r.ShirtIssued || issuedByEmail[em]);
+          org[em] = {
+            source: srcOf.get(r) || '',
+            issued: iss ? iss.size : '',
+            others: (picked.othersByEmail[em] || []).map(o => ({ source: srcOf.get(o) || '', value: answerOf(o) })),
+          };
+          return (!r.ShirtIssued && issuedByEmail[em]) ? { ...r, ShirtIssued: issuedByEmail[em] } : r;
+        });
         setFields(flds);
-        setRegs(picked.rows);
+        setRegs(rows);
+        setCheckedInEmails(checkedIn);
+        setOrigins(org);
         setConflicts(picked.conflicts);
-        setResult(shirtTally(flds, picked.rows));
+        setResult(shirtTally(flds, rows));
         setSkipped(failed);
       } catch (err) {
         console.warn('[DEX] Trikot-Auswertung fehlgeschlagen:', err);
@@ -148,8 +236,8 @@ export default function ShirtSizeModal(props: {
   // Die Verteilung rechnet LIVE mit den Eingaben — der Organizer sieht sofort,
   // was eine Zahl mehr oder weniger bedeutet; gespeichert wird bewusst extra.
   const alloc: ShirtAllocationResult | null = React.useMemo(
-    () => (result && result.fieldLabel) ? shirtAllocate(fields, regs, stockFromInput) : null,
-    [result, fields, regs, stockFromInput],
+    () => (result && result.fieldLabel) ? shirtAllocate(fields, regs, stockFromInput, checkedInEmails) : null,
+    [result, fields, regs, stockFromInput, checkedInEmails],
   );
 
   const saveStock = async (): Promise<void> => {
@@ -176,7 +264,14 @@ export default function ShirtSizeModal(props: {
     setXlsxBusy(true);
     try {
       const hasStock = !!(alloc && alloc.hasStock);
-      const rows: string[][] = [hasStock ? ['Größe', 'Benötigt', 'Bestand', 'Fehlt', 'Reserve', 'Personen'] : ['Größe', 'Anzahl', 'Personen']];
+      // v31.4: „Ausgegeben" ans ENDE — die bestehende Spaltenfolge bleibt, wer
+      // die Datei jedes Jahr gleich liest, findet sich weiter zurecht.
+      // v31.4 (Nachtrag): „davon angenommen" als eigene Spalte hinter
+      // „Ausgegeben" — in einer weitergereichten Datei muss stehen, welcher
+      // Teil der Zahl aus der Spalte kommt und welcher aus dem Check-in-Status.
+      const rows: string[][] = [hasStock
+        ? ['Größe', 'Benötigt', 'Bestand', 'Fehlt', 'Reserve', 'Personen', 'Ausgegeben', 'davon angenommen']
+        : ['Größe', 'Anzahl', 'Personen', 'Ausgegeben', 'davon angenommen']];
       for (const r of result.rows) {
         // v31.3: Eine Abwahl-Antwort ist keine Größe — sie steht mit ihrem
         // Wortlaut in der Datei, bekommt aber keine Bestands-Spalten, damit
@@ -184,8 +279,23 @@ export default function ShirtSizeModal(props: {
         const a = (alloc && r.size && !r.optOut) ? alloc.rows.find(x => x.key === shirtSizeKey(r.size)) : undefined;
         const label = r.size ? (r.optOut ? `${r.size} (kein Shirt nötig)` : r.size) : 'ohne Angabe';
         rows.push(hasStock
-          ? [label, String(r.count), a ? String(a.stock) : '—', a ? String(a.missing) : '—', a ? String(a.spare) : '—', r.names.join(', ')]
-          : [label, String(r.count), r.names.join(', ')]);
+          ? [label, String(r.count), a ? String(a.stock) : '—', a ? String(a.missing) : '—', a ? String(a.spare) : '—', r.names.join(', '), a ? String(a.issued) : '—', a ? String(a.issuedAssumed) : '—']
+          : [label, String(r.count), r.names.join(', '), a ? String(a.issued) : '—', a ? String(a.issuedAssumed) : '—']);
+      }
+      // v31.4 (Review): Größen, die NUR ausgegeben wurden, haben keine
+      // Tally-Zeile (der Tally kennt nur aktive Wünsche). Ohne diese Ergänzung
+      // summiert sich die Spalte „Ausgegeben" nicht auf die Summenzeile
+      // „davon bereits ausgegeben" — und wer den Karton nachzählt, sucht die
+      // fehlende Zeile.
+      if (alloc) {
+        const tallyKeys: Record<string, true> = {};
+        result.rows.forEach(r => { if (r.size && !r.optOut) tallyKeys[shirtSizeKey(r.size)] = true; });
+        alloc.rows.forEach(a2 => {
+          if (tallyKeys[a2.key] || a2.issued <= 0) return;
+          rows.push(hasStock
+            ? [a2.size, '0', String(a2.stock), String(a2.missing), String(a2.spare), '', String(a2.issued), String(a2.issuedAssumed)]
+            : [a2.size, '0', '', String(a2.issued), String(a2.issuedAssumed)]);
+        });
       }
       rows.push([]);
       rows.push(['Summe', String(result.total), '']);
@@ -194,6 +304,22 @@ export default function ShirtSizeModal(props: {
       rows.push(['davon kein Shirt nötig', String(result.optOut), '']);
       rows.push(['davon ohne Größenangabe', String(result.missing), '']);
       rows.push(['Shirts zu bestellen', String(result.sizeTotal), '']);
+      // v31.4: Was am Tisch wirklich rausgegangen ist — und was danach noch da
+      // sein müsste. Die Bestellliste wird weitergereicht; die Abendzahl gehört
+      // deshalb in die Datei, nicht nur in den Dialog.
+      if (totalIssued > 0) {
+        // v31.4 (Review): Dieselbe Beschriftung wie im Dialog. Ist ein Termin
+        // nicht lesbar, ist „ausgegeben" eine Untergrenze und „im Karton" eine
+        // OBERGRENZE (die fehlenden Ausgaben lassen ihn rechnerisch wachsen) —
+        // in einer Datei, die weitergereicht wird, ist eine harte Zahl dafür
+        // die schlechteste Wahl.
+        rows.push([partial ? 'davon bereits ausgegeben (mind.)' : 'davon bereits ausgegeben', String(totalIssued), '']);
+        // v31.4 (Nachtrag): Eine Annahme, die in einer Excel als harte Zahl
+        // steht, ist die schlechteste Sorte Zahl — deshalb steht sie hier
+        // getrennt und mit ihrem Grund.
+        if (totalIssuedAssumed > 0) rows.push([`davon angenommen (eingecheckt, ohne Ausgabe-Eintrag)`, String(totalIssuedAssumed), '']);
+        if (hasStock) rows.push([partial ? 'rechnerisch noch im Karton (höchstens)' : 'rechnerisch noch im Karton', String(totalInBox), '']);
+      }
       if (skipped.length > 0) {
         // v31.3: Der Hinweis gehört IN die Datei — eine Bestellliste wird
         // weitergereicht, der rote Kasten im Dialog bleibt zurück.
@@ -205,7 +331,9 @@ export default function ShirtSizeModal(props: {
       const XLSX = await import('xlsx');
       const ws = XLSX.utils.aoa_to_sheet(rows);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (ws as any)['!cols'] = hasStock ? [{ wch: 16 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 90 }] : [{ wch: 16 }, { wch: 10 }, { wch: 90 }];
+      (ws as any)['!cols'] = hasStock
+        ? [{ wch: 16 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 90 }, { wch: 12 }, { wch: 18 }]
+        : [{ wch: 16 }, { wch: 10 }, { wch: 90 }, { wch: 12 }, { wch: 18 }];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Trikots');
       if (hasStock && alloc) {
@@ -252,6 +380,14 @@ export default function ShirtSizeModal(props: {
     // B2Run-Event standen so in der Bestellung.
     (result ? result.rows : []).forEach(r => { if (r.size && !r.optOut) seen[shirtSizeKey(r.size)] = r.size; });
     Object.keys(stockInput).forEach(k => { if (!seen[k] && isShirtSizeKey(k)) seen[k] = shirtSizeLabel(k); });
+    // v31.4 (Review): `shirtAllocate` legt seit v31.4 ausdrücklich auch für
+    // Größen eine Zeile an, die NUR ausgegeben wurden (Reserve aus einem
+    // anderen Karton, oder die einzige Wünscherin ist inzwischen No-Show).
+    // Der Filter `!!seen[k]` unten warf sie wieder weg: Die Kachel zählte die
+    // Ausgabe, die Tabelle kannte die Größe nicht — und ohne Zeile gibt es
+    // auch kein Bestandsfeld, über das man sie je in die Rechnung holen
+    // könnte. Der Vertrag wurde geändert, der Aufrufer war nicht nachgezogen.
+    (alloc ? alloc.rows : []).forEach(r => { if (!seen[r.key] && r.issued > 0 && r.size) seen[r.key] = r.size; });
     // v31.2: Die Schlüssel aus `seen` hinten anhängen — eine über „Größe
     // ergänzen" neu angelegte Größe steht mit leerem Wert noch nicht in
     // `stockFromInput`, also auch nicht in `alloc.rows`, und fiel bis dahin
@@ -277,8 +413,8 @@ export default function ShirtSizeModal(props: {
   // „ohne Angabe" hat keinen Schlüssel und kommt zuletzt.
   const hasStock = !!(alloc && alloc.hasStock);
   const ready = !loading && !!result && !!result.fieldLabel;
-  const tallyByKey: Record<string, { count: number; names: string[] }> = {};
-  (result ? result.rows : []).forEach(r => { if (r.size && !r.optOut) tallyByKey[shirtSizeKey(r.size)] = { count: r.count, names: r.names }; });
+  const tallyByKey: Record<string, { count: number; names: string[]; people: Array<{ name: string; email: string }> }> = {};
+  (result ? result.rows : []).forEach(r => { if (r.size && !r.optOut) tallyByKey[shirtSizeKey(r.size)] = { count: r.count, names: r.names, people: r.people }; });
   // v31.3: Abwahl-Antworten sind eine eigene Gruppe zwischen Größen und
   // „ohne Angabe" — sichtbar (der Organizer will wissen, wie viele keins
   // brauchen), aber ohne Bestand, ohne Soll/Ist und ohne Bestellposition.
@@ -286,6 +422,16 @@ export default function ShirtSizeModal(props: {
   const optOutTotal = result ? result.optOut : 0;
   const noneRow = result ? result.rows.filter(r => !r.size)[0] : undefined;
   const totalMissing = alloc ? alloc.rows.reduce((s, r) => s + r.missing, 0) : 0;
+  // v31.4: Was ist raus, was liegt noch da? „Im Karton" ist Bestand minus
+  // Ausgaben — nicht `spare`: Das ist der Rest NACH der geplanten Verteilung
+  // und beantwortet eine andere Frage (reicht es für die Wünsche?).
+  const totalIssued = alloc ? alloc.rows.reduce((s, r) => s + r.issued, 0) : 0;
+  const totalInBox = alloc ? alloc.rows.reduce((s, r) => s + Math.max(0, r.stock - r.issued), 0) : 0;
+  // v31.4 (Nachtrag): Davon ist ein Teil ANGENOMMEN — eingecheckte Personen
+  // ohne Ausgabe-Eintrag. Die Zahl steht überall neben `totalIssued`, nie
+  // allein: „5 ausgegeben" und „5 ausgegeben, davon 3 angenommen" sind zwei
+  // verschiedene Auskünfte, und nur die zweite ist wahr.
+  const totalIssuedAssumed = alloc ? alloc.rows.reduce((s, r) => s + r.issuedAssumed, 0) : 0;
   // v31.3: Solange ein Termin nicht lesbar ist, ist JEDE dieser Zahlen eine
   // Untergrenze — dann wird sie auch so beschriftet (CLAUDE.md: ein
   // Lesefehler ist keine Null).
@@ -296,10 +442,19 @@ export default function ShirtSizeModal(props: {
 
   // Eine Zeile der Größen-Tabelle; `key` ist der Aufklapp-Schlüssel für die Namen.
   // v31.3: drei Arten — echte Größe, Abwahl („habe schon eins"), ohne Angabe.
-  const renderSizeRow = (key: string, label: string, count: number, names: string[], kind: 'size' | 'optout' | 'none'): React.ReactElement => {
+  // v31.4: `people` (mit E-Mail) statt nur Namen — daran hängen der Sprung in
+  // die Teilnehmerliste und die Herkunfts-Zeile.
+  const renderSizeRow = (
+    key: string, label: string, count: number, names: string[],
+    kind: 'size' | 'optout' | 'none',
+    people?: Array<{ name: string; email: string }>,
+  ): React.ReactElement => {
     const open = openSize === key;
     const pct = maxCount > 0 ? Math.round((count / maxCount) * 100) : 0;
-    const a = (kind === 'size' && hasStock && alloc) ? alloc.rows.filter(x => x.key === key)[0] : undefined;
+    // v31.4: Die Zeile der Verteilung wird auch OHNE Bestand gebraucht — die
+    // Ausgabe-Spalte hängt nicht daran, ob jemand Kartons gezählt hat.
+    const row = (kind === 'size' && alloc) ? alloc.rows.filter(x => x.key === key)[0] : undefined;
+    const a = hasStock ? row : undefined;
     const barColor = kind === 'none' ? 'var(--dex-orange, #ed8b00)' : kind === 'optout' ? 'var(--dex-gray-400, #9e9e9e)' : 'var(--dex-green, #86bc25)';
     return (
       <React.Fragment key={key}>
@@ -324,6 +479,27 @@ export default function ShirtSizeModal(props: {
             )}
           </td>
           <td>
+            {/* v31.4: Was wirklich raus ist. „Bestand" ist die Zahl, die der
+                Organizer eingetragen hat — im Karton liegt sie MINUS der
+                Ausgaben. Beides steht nebeneinander, damit niemand die eine
+                für die andere hält. */}
+            {kind !== 'size' || !row ? <span className="dex-ui-muted">—</span> : row.issued > 0 ? (
+              <span>
+                <strong>{row.issued}</strong>
+                {/* v31.4 (Nachtrag): Angenommene Ausgaben zählen mit, heißen aber
+                    so. Ohne den Zusatz läse der Organizer eine Schätzung als
+                    Protokoll — und suchte abends nach Trikots, die nie jemand
+                    festgehalten hat. */}
+                {row.issuedAssumed > 0 && (
+                  <span className="dex-ui-muted"> {isDe ? `(davon ${row.issuedAssumed} angenommen)` : `(${row.issuedAssumed} assumed)`}</span>
+                )}
+                {row.stock > 0 && (
+                  <span className="dex-ui-muted" style={{ whiteSpace: 'nowrap' }}> · {isDe ? `noch ${Math.max(0, row.stock - row.issued)} im Karton` : `${Math.max(0, row.stock - row.issued)} left in the box`}</span>
+                )}
+              </span>
+            ) : <span className="dex-ui-muted">0</span>}
+          </td>
+          <td>
             {/* v30.88: Soll/Ist-Abgleich je Zeile, sobald ein Bestand eingetragen ist. */}
             {kind === 'none'
               ? <span className="dex-ui-pill dex-ui-pill--orange">{isDe ? 'nachfragen' : 'ask them'}</span>
@@ -332,14 +508,32 @@ export default function ShirtSizeModal(props: {
                 : a
                   ? (a.missing > 0
                     ? <span className="dex-ui-pill dex-ui-pill--red">{isDe ? `fehlt ${a.missing}` : `${a.missing} short`}</span>
-                    // v31.3: Mit einem gesperrten Termin ist „reicht" eine Zusage,
-                    // die die Daten nicht decken — dann heißt es „reicht bisher".
-                    : partial
-                      ? <span className="dex-ui-pill dex-ui-pill--gray">{isDe ? 'reicht bisher' : 'enough so far'}{a.spare > 0 ? ` (+${a.spare})` : ''}</span>
-                      : <span className="dex-ui-pill dex-ui-pill--green"><Check size={12} /> {isDe ? 'reicht' : 'enough'}{a.spare > 0 ? ` (+${a.spare})` : ''}</span>)
+                    // v31.4 (Review): Über-Ausgabe ist derselbe Mangel, nur
+                    // später bemerkt. Der Annahme-Vorlauf zieht auch dann ein
+                    // Stück ab, wenn der Bestand längst leer ist; ohne diesen
+                    // Zweig kippte „fehlt 5" am Lauftag auf „reicht" — genau
+                    // in dem Moment, in dem die fünf Trikots real fehlen.
+                    : a.over > 0
+                      ? <span className="dex-ui-pill dex-ui-pill--red">{isDe ? `${a.over} mehr ausgegeben als da` : `${a.over} more handed out than in stock`}</span>
+                      // v31.3: Mit einem gesperrten Termin ist „reicht" eine Zusage,
+                      // die die Daten nicht decken — dann heißt es „reicht bisher".
+                      : partial
+                        ? <span className="dex-ui-pill dex-ui-pill--gray">{isDe ? 'reicht bisher' : 'enough so far'}{a.spare > 0 ? ` (+${a.spare})` : ''}</span>
+                        : <span className="dex-ui-pill dex-ui-pill--green"><Check size={12} /> {isDe ? 'reicht' : 'enough'}{a.spare > 0 ? ` (+${a.spare})` : ''}</span>)
                   : <span className="dex-ui-muted">—</span>}
           </td>
-          <td style={{ textAlign: 'right', width: 40 }}>
+          <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+            {/* v31.4: Sprung in die Teilnehmerliste, wo „Bearbeiten" sitzt.
+                Nur bei Werten ab drei Zeichen: Die Suche findet auch Antworten,
+                aber ein einzelnes „L" steckt in jeder zweiten Adresse — dann
+                wäre der Sprung ein Versprechen, das die Trefferliste bricht.
+                Für kurze Werte bleibt der Sprung je Person unten. */}
+            {props.onJumpToParticipant && kind !== 'none' && label.trim().length >= 3 && count > 0 && (
+              <button type="button" className="dex-ui-textbtn" onClick={() => props.onJumpToParticipant && props.onJumpToParticipant(label.trim())}
+                title={isDe ? `Teilnehmerliste nach „${label}“ durchsuchen` : `Search the attendee list for “${label}”`}>
+                {isDe ? 'Zu den Teilnehmern' : 'Show participants'}
+              </button>
+            )}
             {count > 0 && (
               <button type="button" className="dex-ui-iconbtn" aria-expanded={open} title={isDe ? 'Personen anzeigen' : 'Show people'}
                 aria-label={kind === 'size'
@@ -351,7 +545,53 @@ export default function ShirtSizeModal(props: {
           </td>
         </tr>
         {open && (
-          <tr><td colSpan={5} style={{ background: 'var(--dex-gray-50, #fafafa)', color: 'var(--dex-gray-600)', fontSize: '0.82rem', lineHeight: 1.6 }}>{names.join(' · ')}</td></tr>
+          <tr><td colSpan={6} style={{ background: 'var(--dex-gray-50, #fafafa)', color: 'var(--dex-gray-600)', fontSize: '0.82rem', lineHeight: 1.6 }}>
+            {/* v31.4: Statt einer Namenskette je Person eine Zeile — mit dem
+                Sprung in die Teilnehmerliste und der Herkunft des Werts. Die
+                Herkunft ist keine Debug-Ausgabe: Sie beantwortet die Frage
+                „warum steht hier noch der alte Wert?" (bearbeitet wurde die
+                andere Zeile) in zehn Sekunden. */}
+            {(people && people.length > 0) ? (
+              <div className="dex-ui-stack" style={{ gap: 8 }}>
+                {people.map((p, i) => {
+                  const o = p.email ? origins[p.email] : undefined;
+                  // v31.4 (Nachtrag): Festgehalten oder angenommen? `origins`
+                  // kennt nur die Spalte; die Annahme steht in der Verteilung.
+                  // Beides muss verschieden aussehen, sonst ist „abgeholt"
+                  // eine Behauptung, die niemand nachprüfen kann.
+                  const av = (p.email && alloc) ? alloc.byEmail[p.email] : undefined;
+                  const assumed = !!(av && av.issued && av.issuedAssumed);
+                  return (
+                    <div key={p.email || `${i}`}>
+                      <span style={{ fontWeight: 600, color: 'var(--dex-gray-800)' }}>{p.name}</span>
+                      {props.onJumpToParticipant && p.email && (
+                        <button type="button" className="dex-ui-textbtn" style={{ marginLeft: 8 }}
+                          onClick={() => props.onJumpToParticipant && props.onJumpToParticipant(p.email)}
+                          title={isDe ? 'In der Teilnehmerliste öffnen — dort sitzt „Bearbeiten"' : 'Open in the attendee list — that is where "Edit" sits'}>
+                          {isDe ? 'zu dieser Person' : 'go to this person'}
+                        </button>
+                      )}
+                      {(o || assumed) && (
+                        <div className="dex-ui-muted" style={{ fontSize: '0.74rem', lineHeight: 1.5 }}>
+                          {o && o.source && <>{isDe ? 'aus: ' : 'from: '}{o.source}</>}
+                          {o && o.issued
+                            ? <>{o.source ? ' · ' : ''}{isDe ? `Trikot ${o.issued} ausgegeben` : `shirt ${o.issued} handed out`}</>
+                            : assumed
+                              ? <span style={{ fontStyle: 'italic' }}>{(o && o.source) ? ' · ' : ''}{isDe ? `abgeholt (angenommen — eingecheckt, ${av && av.issued ? av.issued : ''} gewünscht)` : `collected (assumed — checked in, wished ${av && av.issued ? av.issued : ''})`}</span>
+                              : null}
+                          {(o ? o.others : []).map((x, k) => (
+                            <div key={k}>
+                              {isDe ? 'weitere Zeile: ' : 'other row: '}{x.source || (isDe ? 'unbekannt' : 'unknown')} · {x.value || (isDe ? 'ohne Angabe' : 'no answer')}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : names.join(' · ')}
+          </td></tr>
         )}
       </React.Fragment>
     );
@@ -434,7 +674,9 @@ export default function ShirtSizeModal(props: {
           {/* v31.2: Kennzahlen zuerst — die Antwort auf „reicht es?" steht oben, bevor die Tabelle ins Detail geht.
               v31.3: „Shirts zu bestellen" statt „Größen gewünscht" — die Abwahl-Antworten sind keine Bestellung,
               und bei einem gesperrten Termin steht vor jeder Zahl „mind.". */}
-          <div className="dex-ui-grid-3">
+          {/* v31.4: `dex-ui-kpi-row` statt eines starren Dreier-Rasters — sobald
+              Trikots ausgegeben sind, kommt eine vierte Kachel dazu. */}
+          <div className="dex-ui-kpi-row">
             <div className="dex-ui-kpi"><div className="dex-ui-kpi-value">{atLeast(result.total)}</div>
               <div className="dex-ui-kpi-label">{isDe ? (result.total === 1 ? 'Person angemeldet' : 'Personen angemeldet') : (result.total === 1 ? 'person registered' : 'people registered')}</div></div>
             <div className="dex-ui-kpi"><div className="dex-ui-kpi-value">{atLeast(result.sizeTotal)}</div>
@@ -446,6 +688,21 @@ export default function ShirtSizeModal(props: {
                 {result.missing > 0 && <div className="dex-ui-kpi-sub">{isDe ? `+ ${result.missing} ohne Angabe` : `+ ${result.missing} without a size`}</div>}</div>
               : <div className={cx('dex-ui-kpi', result.missing > 0 && 'dex-ui-kpi--orange')}><div className="dex-ui-kpi-value">{atLeast(result.missing)}</div>
                 <div className="dex-ui-kpi-label">{isDe ? 'ohne Größenangabe' : 'without a size'}</div></div>}
+            {/* v31.4: Die Abend-Frage: Wie viele sind raus, was liegt noch da? */}
+            {totalIssued > 0 && (
+              <div className="dex-ui-kpi dex-ui-kpi--blue"><div className="dex-ui-kpi-value">{atLeast(totalIssued)}</div>
+                <div className="dex-ui-kpi-label">{isDe ? 'Trikots ausgegeben' : 'shirts handed out'}</div>
+                {/* v31.4 (Nachtrag): Die Kachel zählt die Annahmen mit — und sagt es. */}
+                {totalIssuedAssumed > 0 && <div className="dex-ui-kpi-sub">{isDe ? `davon ${totalIssuedAssumed} angenommen` : `${totalIssuedAssumed} of them assumed`}</div>}
+                {/* v31.4 (Review): „noch X im Karton" ist bei einem gesperrten
+                    Termin keine Untergrenze, sondern eine OBERGRENZE — die dort
+                    fehlenden Ausgaben lassen den rechnerischen Inhalt STEIGEN.
+                    Deshalb hier „höchstens", nicht „mind." (CLAUDE.md: ein
+                    Lesefehler ist keine Null). */}
+                {hasStock && <div className="dex-ui-kpi-sub">{partial
+                  ? (isDe ? `höchstens ${totalInBox} im Karton` : `at most ${totalInBox} left in the box`)
+                  : (isDe ? `noch ${totalInBox} im Karton` : `${totalInBox} left in the box`)}</div>}</div>
+            )}
           </div>
 
           <div className="dex-ui-section">
@@ -467,20 +724,55 @@ export default function ShirtSizeModal(props: {
                     <th>{isDe ? 'Größe' : 'Size'}</th>
                     <th style={{ width: '36%' }}>{isDe ? 'Benötigt' : 'Needed'}</th>
                     <th>{isDe ? 'Bestand' : 'Stock'}</th>
+                    <th>{isDe ? 'Ausgegeben' : 'Handed out'}</th>
                     <th>{isDe ? 'Reicht es?' : 'Enough?'}</th>
                     <th><span className="dex-ui-sr-only">{isDe ? 'Personen' : 'People'}</span></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {stockKeys.map(s => { const t = tallyByKey[s.key]; return renderSizeRow(s.key, s.label, t ? t.count : 0, t ? t.names : [], 'size'); })}
+                  {stockKeys.map(s => { const t = tallyByKey[s.key]; return renderSizeRow(s.key, s.label, t ? t.count : 0, t ? t.names : [], 'size', t ? t.people : []); })}
                   {/* v31.3: Abwahl-Antworten stehen mit ihrem echten Wortlaut in der
                       Liste — der Organizer sieht, wie viele keins brauchen, ohne dass
                       daraus eine Bestellposition wird. */}
-                  {optOutRows.map(r => renderSizeRow(`__opt__${shirtSizeKey(r.size)}`, r.size, r.count, r.names, 'optout'))}
-                  {noneRow && renderSizeRow('__none__', isDe ? 'ohne Angabe' : 'no answer', noneRow.count, noneRow.names, 'none')}
+                  {optOutRows.map(r => renderSizeRow(`__opt__${shirtSizeKey(r.size)}`, r.size, r.count, r.names, 'optout', r.people))}
+                  {noneRow && renderSizeRow('__none__', isDe ? 'ohne Angabe' : 'no answer', noneRow.count, noneRow.names, 'none', noneRow.people)}
                 </tbody>
               </table>
             </div>
+            {/* v31.4: Sobald ausgegeben wurde, sind „Bestand" und „verfügbar"
+                zwei verschiedene Zahlen — das muss dastehen, sonst liest der
+                Organizer den eingetragenen Bestand als Kartoninhalt. */}
+            {totalIssued > 0 && (
+              <div className="dex-ui-callout dex-ui-callout--info" style={{ marginTop: 12 }}>
+                <span className="dex-ui-callout-icon"><Shirt size={16} /></span>
+                <span>
+                  {isDe
+                    ? <><strong>{atLeast(totalIssued)} {totalIssued === 1 ? 'Trikot ist' : 'Trikots sind'} ausgegeben</strong>{hasStock ? <> — nach deinem Bestand liegen {partial ? 'höchstens' : 'noch'} <strong>{totalInBox}</strong> im Karton{partial ? <> (für {skipped.length === 1 ? 'einen Termin' : 'einige Termine'} fehlen die Ausgaben — die echte Zahl ist kleiner)</> : null}.</> : <>. Trag oben einen Bestand ein, dann rechnet die App dir aus, was noch da ist.</>}{' '}
+                      {/* v31.4 (Review): Der Satz gilt nur für die FESTGEHALTENEN
+                          Ausgaben. Der angenommene Teil hängt am Status
+                          'Eingecheckt' und fällt bei Abmeldung/No-Show wieder in
+                          den Bestand zurück — genau das Gegenteil dessen, was
+                          hier stand. (Auf `CheckedInDate` umzustellen geht
+                          nicht: `markNoShowParticipant` schreibt dieselbe
+                          Spalte, ein No-Show sähe dann aus wie ein Check-in.) */}
+                      {totalIssued > totalIssuedAssumed && <>Festgehaltene Ausgaben bleiben abgezogen, auch wenn die Person später abgemeldet oder als No-Show markiert wird — sie hat es ja mitgenommen.{' '}</>}
+                      {/* v31.4 (Nachtrag): Die Annahme muss dastehen, sonst hält der Organizer eine Schätzung für ein Protokoll. */}
+                      {totalIssuedAssumed > 0 && <> <strong>{totalIssuedAssumed} davon {totalIssuedAssumed === 1 ? 'ist angenommen' : 'sind angenommen'}:</strong>{' '}
+                        Wer eingecheckt ist, aber keinen Ausgabe-Eintrag hat, zählt mit seiner Wunschgröße als abgeholt — den Ausgabe-Knopf am
+                        Check-in-Tisch gibt es erst seit v31.4. Sobald jemand dort eine Größe festhält, gilt diese. Auf eine ANDERE Größe ändern
+                        kannst du das je Person in der Teilnehmerliste über &bdquo;Bearbeiten&ldquo;. Angenommene Ausgaben verschwinden allerdings wieder, sobald die Person
+                        abgemeldet oder als No-Show markiert wird — halt sie am Tisch fest, wenn die Zahl den Abend überstehen soll.</>}</>
+                    : <><strong>{atLeast(totalIssued)} {totalIssued === 1 ? 'shirt has' : 'shirts have'} been handed out</strong>{hasStock ? <> — going by your stock, {partial ? 'at most' : ''} <strong>{totalInBox}</strong> are still in the box{partial ? <> (handouts are missing for {skipped.length === 1 ? 'one date' : 'some dates'} — the real number is lower)</> : null}.</> : <>. Enter a stock above and the app works out what is left.</>}{' '}
+                      {totalIssued > totalIssuedAssumed && <>Recorded handouts stay deducted even if the person is cancelled or marked as a no-show later — they took it with them.{' '}</>}
+                      {totalIssuedAssumed > 0 && <> <strong>{totalIssuedAssumed} of {totalIssuedAssumed === 1 ? 'them is assumed' : 'them are assumed'}:</strong>{' '}
+                        anyone who is checked in but has no handout entry counts as served with their wished size — the handout button at the
+                        check-in desk only exists since v31.4. As soon as someone records a size there, that one counts. You can change it per
+                        person in the attendee list via &ldquo;Edit&rdquo;. Assumed handouts do disappear again once the person is cancelled or
+                        marked as a no-show — record them at the desk if the number should survive the evening.</>}</>}
+                </span>
+              </div>
+            )}
+
             <div className="dex-ui-inline" style={{ marginTop: 10 }}>
               <input type="text" className="dex-ui-input dex-ui-input--sm" value={newSize} onChange={e => setNewSize(e.target.value)} style={{ maxWidth: 200 }}
                 placeholder={isDe ? 'Weitere Größe, z.B. XXL' : 'Another size, e.g. XXL'} aria-label={isDe ? 'Weitere Größe' : 'Another size'} />

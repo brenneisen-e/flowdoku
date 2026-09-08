@@ -211,6 +211,25 @@ export async function fixRegistrationListColumns(
     { title: 'CheckedInByName', type: 2 },   // v7.16: Check-In-Audit — Helfer-Name
     { title: 'CheckedInByEmail', type: 2 },  // v7.16: Check-In-Audit — Helfer-E-Mail
     { title: 'AgendaCheckIns', type: 3 },    // v30.91: Anwesenheit je Programmpunkt (JSON)
+    // v31.4: Ausgegebenes Trikot (JSON `{ size, at, by }`). Muss hier stehen,
+    // sonst hat kein BESTANDS-Event die Spalte — und der Ausgabe-Knopf am
+    // Check-in-Tisch scheitert dort mit HTTP 400 (genau die Events, bei denen
+    // gerade Trikots verteilt werden).
+    { title: 'ShirtIssued', type: 3 },
+    // v31.4: Die offizielle Startnummer des Veranstalters. Bisher legte sie
+    // NUR `ensureStartNumberColumn` beim Import an — „Spalten fixen" kannte
+    // sie nicht und hätte sie deshalb auch nie wiederhergestellt. Sie steht
+    // bewusst NICHT in `deletableFields`: Wer sie auf einem Nicht-B2Run-Event
+    // löscht, löscht die zugeteilten Nummern unwiderruflich mit; in DEX gibt
+    // es keine zweite Quelle dafür (die Rücklauf-Datei des Veranstalters ist
+    // nach dem ersten Umtragen überholt).
+    { title: 'Startnummer', type: 2 },
+    // v31.4: Gedruckte Nummer der letzten QR-Mail (s. createRegistrationList).
+    // Muss hier stehen — sonst hat kein BESTANDS-Event die Spalte, und das
+    // sind genau die Events, bei denen der Fehler weh tut: Wer schon
+    // QR-Mails verschickt hat und seitdem Abmeldungen hatte, checkt beim
+    // Abtippen der Mail-Nummer die falsche Person ein.
+    { title: 'QrSentId', type: 9 },
     // v19.3: Nachrück-Audit-Spalten auch beim „Spalten fixen" nachziehen, damit
     // der DEX_IDReorder-Flow (und der App-Button) sie auf Bestands-Events
     // beschreiben kann → „Nachgerückt am / Ersetzt / Ersetzt durch" in der App.

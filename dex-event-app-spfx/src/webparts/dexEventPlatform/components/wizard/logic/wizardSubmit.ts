@@ -598,7 +598,11 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
           const raw = JSON.parse(editEvent?.emailTemplateOverrides || '{}') as Record<string, unknown>;
           const out: Record<string, unknown> = {};
           // v30.88: Trikot-Bestand (_shirtStock) wird im Organizer Center gepflegt — mittragen.
-          for (const k of ['_hotels', '_hotelStays', '_hotelVisible', '_hotelRules', '_shirtStock']) {
+          // v31.4: dasselbe für die B2Run-Aufgabenliste und ihre Haken. Sie
+          // sind eine Verpflichtung gegenüber dem Veranstalter (v30.54) und
+          // entstehen im Organizer Center; ein Wizard-Save darf sie nicht
+          // stillschweigend wegräumen, nur weil er sie nicht kennt.
+          for (const k of ['_hotels', '_hotelStays', '_hotelVisible', '_hotelRules', '_shirtStock', '_b2runTodo', '_b2runTodoDone']) {
             if (raw && raw[k] !== undefined) out[k] = raw[k];
           }
           return out;

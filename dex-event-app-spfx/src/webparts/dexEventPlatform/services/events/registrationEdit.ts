@@ -127,6 +127,13 @@ export async function reactivateRegistration(
     void existingTeilnehmerId;
     const nextId = await svc.getNextTeilnehmerId(subsiteUrl);
 
+    // v31.4: Startnummer wird bewusst NICHT geleert — die Nummer läuft beim
+    // Veranstalter weiter auf diese Person. Dass sie nach einer Reaktivierung
+    // nicht doppelt aktiv ist, sichert die Zuteilung dadurch ab, dass sie die
+    // abgemeldete Altzeile ZUERST und GEPRÜFT leert (utils/b2runBibPool,
+    // components/admin/B2RunAssignBibsModal). Wer das hier ändert, verliert
+    // die Nummer für DEX vollständig: In DEX steht sie nur auf der Zeile, in
+    // der Rücklauf-Datei des Veranstalters steht sie nicht mehr.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const body: Record<string, any> = {
       'Vorname': firstName,
@@ -637,25 +644,44 @@ export async function confirmConsentReview(svc: EventService, subsiteUrl: string
  *
  * Idempotent: Existiert die Spalte, passiert nichts. Wirft nicht — der
  * Import meldet den Fehlschlag selbst, statt hier abzubrechen.
+ *
+ * **v31.4: Der POST wird jetzt ausgewertet.** Vorher lieferte die Funktion
+ * auch dann `true`, wenn das Anlegen scheiterte (Rechte, Drosselung) — danach
+ * liefen ALLE Schreibvorgänge in ein HTTP 400 auf eine unbekannte Spalte, und
+ * `adminUpdateRegistration` meldet das nur als `false`. Der Aufrufer sah also
+ * „0 von 90 geschrieben" und keinen Grund. Ein „true" ohne geprüften POST ist
+ * dieselbe Falle wie ein leeres Leseergebnis: eine Aussage über gar nichts.
  */
 export async function ensureStartNumberColumn(svc: EventService, subsiteUrl: string): Promise<boolean> {
-  try {
+  const fieldsUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields`;
+  const exists = async (): Promise<boolean> => {
     const resp = await svc._sp.get(
-      `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields?$filter=InternalName eq 'Startnummer'&$select=InternalName`,
+      `${fieldsUrl}?$filter=InternalName eq 'Startnummer'&$select=InternalName`,
       SPHttpClient.configurations.v1
     );
-    if (resp.ok) {
-      const d = await resp.json();
-      const arr = d.value || d.d?.results || [];
-      if (arr.length > 0) return true;
-    }
-    await svc._post(`${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields`, {
+    if (!resp.ok) return false;
+    const d = await resp.json();
+    const arr = d.value || d.d?.results || [];
+    return arr.length > 0;
+  };
+  try {
+    if (await exists()) return true;
+    const p = await svc._post(fieldsUrl, {
       '__metadata': { 'type': 'SP.Field' },
       'Title': 'Startnummer',
       'FieldTypeKind': 2, // Text
       'Required': false,
     });
-    return true;
+    if (p.ok) return true;
+    // v31.4: Ein gescheiterter POST heißt nicht zwingend „keine Spalte". Der
+    // GET oben kann gedrosselt worden sein (dann liefert er `false`, obwohl es
+    // die Spalte gibt), und der POST scheitert anschließend GERADE DESHALB.
+    // Also nachlesen statt behaupten — dasselbe Muster wie beim
+    // Rechte-Nachlesen in v30.85: Der Status eines Schreibvorgangs ist nicht
+    // belastbar, der Zustand danach schon.
+    try { if (await exists()) return true; } catch { /* dann bleibt der Fehlschlag */ }
+    console.warn('[DEX] ensureStartNumberColumn: Spalte konnte nicht angelegt werden, HTTP', p.status);
+    return false;
   } catch (e) {
     console.warn('[DEX] ensureStartNumberColumn failed:', e);
     return false;

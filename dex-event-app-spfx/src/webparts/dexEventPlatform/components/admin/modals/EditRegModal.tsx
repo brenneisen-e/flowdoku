@@ -10,28 +10,58 @@
  * Erklär-Absatz (sieben Zeilen) steht als je ein Satz dort, wo er gilt:
  * Tenant-Prüfung unter der E-Mail, Profil-Herkunft im Aufklapper,
  * Protokollierung im Untertitel. Gespeichert wird exakt dasselbe wie vorher.
+ *
+ * v31.4 (Nachtrag): Dazu kommt „Ausgegebenes Trikot". Nutzer-Wunsch vom
+ * 08.09.2026 (B2Run Köln, Lauftag am nächsten Tag): „Zudem soll man im
+ * Nachhinein unter der TN-Liste auch über Bearbeiten das rausgegebene Shirt
+ * ändern und speichern können." Der Wert steht NICHT im Zeilen-Patch, sondern
+ * in der eigenen Spalte `ShirtIssued` — geschrieben wird er deshalb im
+ * Save-Pfad über `setShirtIssued`/`clearShirtIssued` (s.
+ * `logic/useEditModalHandlers`), der Dialog hält ihn nur unter
+ * `SHIRT_ISSUED_FORM_KEY` im Formular.
  */
 import * as React from 'react';
 import Modal from '../../Modal';
-import { AlertCircle, ChevronDown, Pencil } from '../../Icons';
+import { AlertCircle, ChevronDown, Pencil, Shirt } from '../../Icons';
 import { cx } from '../../dexUi';
 import { MultiSelectDropdown } from '../../MultiSelectDropdown';
 import { DeloitteEvent } from '../../../types';
+import { SPRegistration } from '../../../services/EventService';
+import {
+  SHIRT_ISSUED_FORM_KEY, parseShirtIssue, parseShirtStock, shirtAllocate, shirtFieldOf,
+} from '../../../utils/checkInExtras';
 import { FieldSelectInput, fieldVisibleByShowIf } from './FieldSelectInput';
 
 export interface EditRegModalProps {
   closeEditModal: () => void;
   editError: string;
   editForm: Record<string, string>;
+  /** v31.4: Die bearbeitete Zeile — für den gespeicherten Ausgabe-Eintrag. */
+  editingReg: SPRegistration;
   isDe: boolean;
   isSavingEdit: boolean;
+  /**
+   * v31.4: Alle Zeilen des Events. Daraus kommen das Größenfeld
+   * (`shirtFieldOf` entscheidet über die Antworten, nicht über die
+   * Feld-Reihenfolge) und die Größen, die es an diesem Event überhaupt gibt.
+   */
+  registrations: SPRegistration[];
   saveEdit: () => Promise<void>;
   selectedEvent: DeloitteEvent;
+  /**
+   * v31.4 (Review): Das Eltern-Event, wenn ein Termin gewählt ist. Die
+   * Größenfrage kann auf der Klammer stehen und wird von den Terminen nicht
+   * geerbt — dann fand `shirtFieldOf` hier nichts und der ganze Abschnitt
+   * „Trikot-Ausgabe" fiel ersatzlos weg, obwohl das Check-in-Team am Termin
+   * eine Größe festgehalten hat. Der Tisch (`CheckInPage.shirtFieldsFor`) und
+   * die Bestellliste (`ShirtSizeModal`) lösen längst über BEIDE Ebenen auf.
+   */
+  parentEvent?: DeloitteEvent | null;
   setEditForm: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 }
 
 export const EditRegModal: React.FC<EditRegModalProps> = (p) => {
-  const { closeEditModal, editError, editForm, isDe, isSavingEdit, saveEdit, selectedEvent, setEditForm } = p;
+  const { closeEditModal, editError, editForm, editingReg, isDe, isSavingEdit, registrations, saveEdit, selectedEvent, parentEvent, setEditForm } = p;
   // v31.2: Der Aufrufer mountet den Dialog je Öffnen neu — der Aufklapper
   // startet deshalb verlässlich geschlossen.
   const [profileOpen, setProfileOpen] = React.useState(false);
@@ -68,6 +98,60 @@ export const EditRegModal: React.FC<EditRegModalProps> = (p) => {
   ];
   const customFields = selectedEvent.eventSpecificFields || [];
   const hasAnswers = hasStarterType || customFields.length > 0;
+
+  /**
+   * v31.4 (Nachtrag): Das ausgegebene Trikot — nur an Events mit Größenfeld.
+   *
+   * Die Größen kommen aus derselben Rechnung wie am Check-in-Tisch
+   * (`shirtAllocate`), damit hier keine Größe auswählbar ist, die es am Event
+   * gar nicht gibt — und keine fehlt, die im Karton liegt. `null` heißt: Das
+   * Event hat kein Größenfeld, dann gibt es auch nichts auszugeben.
+   *
+   * `assumedWish` ist die Annahme aus dem Check-in (s. `shirtAllocate`): Sie
+   * wird bewusst NICHT als Wert vorgetragen — sonst schriebe ein Klick auf
+   * „Speichern" eine Vermutung in die Spalte und machte sie zur Tatsache.
+   *
+   * v31.4 (Review): Gesucht wird über Termin UND Klammer (das Größenfeld darf
+   * auf beiden Ebenen stehen), und der Abschnitt bleibt sichtbar, sobald die
+   * Zeile einen `ShirtIssued`-Wert trägt — auch ohne gefundenes Feld. Sonst
+   * gäbe es für eine am Tisch festgehaltene, falsche Größe keinen einzigen
+   * Weg zurück.
+   */
+  const shirt = React.useMemo(() => {
+    const flds = (selectedEvent.eventSpecificFields || [])
+      .concat((parentEvent && parentEvent.eventSpecificFields) || []);
+    const field = shirtFieldOf(flds, registrations);
+    const savedIssue = parseShirtIssue(editingReg && editingReg.ShirtIssued);
+    if (!field) {
+      // Kein Größenfeld, aber ein festgehaltener Wert: nur der Wert selbst als
+      // Auswahl — mehr weiß die App an dieser Stelle ehrlicherweise nicht.
+      if (!savedIssue || !savedIssue.size) return null;
+      return { sizes: [savedIssue.size], assumedWish: '', noField: true };
+    }
+    // Der Bestand hängt am Hauptevent; bei einem Termin ohne eigenen Bestand
+    // bleibt die Liste trotzdem vollständig — `shirtAllocate` nimmt auch die
+    // gewünschten und die bereits ausgegebenen Größen auf. v31.4 (Review):
+    // Deshalb zuerst die Klammer fragen, dann das gewählte Event.
+    const alloc = shirtAllocate(flds, registrations, parseShirtStock(
+      (parentEvent && parentEvent.emailTemplateOverrides) || selectedEvent.emailTemplateOverrides
+    ));
+    const em = ((editingReg && editingReg.ParticipantEmail) || '').toLowerCase().trim();
+    const a = em ? alloc.byEmail[em] : undefined;
+    return {
+      // Doppelte Beschriftungen wären doppelte React-Keys — zwei Schlüssel
+      // können dieselbe Anzeige-Schreibweise tragen.
+      sizes: alloc.rows.map(r => r.size).filter((s, i, arr) => !!s && arr.indexOf(s) === i),
+      assumedWish: (a && a.issued && a.issuedAssumed) ? a.issued : '',
+      noField: false,
+    };
+  }, [selectedEvent, parentEvent, registrations, editingReg]);
+  // „andere Größe" bleibt offen, sobald der Nutzer sie gewählt hat; von selbst
+  // geht sie auf, wenn der gespeicherte Wert in keiner Kachel steckt.
+  const [shirtOther, setShirtOther] = React.useState(false);
+  const shirtIssued = editForm[SHIRT_ISSUED_FORM_KEY] || '';
+  const setShirtIssued = (v: string): void => setEditForm(prev => ({ ...prev, [SHIRT_ISSUED_FORM_KEY]: v }));
+  const shirtOtherOpen = shirtOther || (!!shirtIssued && !!shirt && shirt.sizes.indexOf(shirtIssued) < 0);
+  const shirtSaved = parseShirtIssue(editingReg && editingReg.ShirtIssued);
 
   const spOf = (fieldId: string): string => {
     const src = (selectedEvent.eventSpecificFields || []).find(f => f.id === fieldId);
@@ -285,7 +369,111 @@ export const EditRegModal: React.FC<EditRegModalProps> = (p) => {
         </div>
       )}
 
-      {/* 3) Profil aus M365 — nur lesen, deshalb zu */}
+      {/* 3) Trikot-Ausgabe — was die Person am Tisch WIRKLICH bekommen hat.
+          v31.4 (Nachtrag): Keine Antwort aus dem Formular, sondern ein
+          Protokoll des Organisators — deshalb ein eigener Abschnitt und ein
+          eigener Schreibvorgang (Spalte `ShirtIssued`). */}
+      {shirt && (
+        <div className="dex-ui-section">
+          <div className="dex-ui-section-title">{isDe ? 'Trikot-Ausgabe' : 'Shirt handout'}</div>
+          <p className="dex-ui-section-desc">
+            {isDe
+              ? 'Korrigiere hier, was am Ausgabetisch wirklich rausgegangen ist. Der Wert zieht den Bestand ab und schlägt jeden Vorschlag der App.'
+              : 'Correct here what really went out at the handout desk. The value is deducted from the stock and beats every proposal the app makes.'}
+          </p>
+          <div className="dex-ui-field">
+            <span className="dex-ui-label" id="editreg-shirt-label">
+              {isDe ? 'Welches Trikot hat die Person bekommen?' : 'Which shirt did this person get?'}
+            </span>
+            <div className="dex-ui-inline" role="group" aria-labelledby="editreg-shirt-label">
+              <button
+                type="button"
+                className={cx('dex-ui-chip', !shirtOtherOpen && !shirtIssued && 'is-active')}
+                aria-pressed={!shirtOtherOpen && !shirtIssued}
+                onClick={() => { setShirtOther(false); setShirtIssued(''); }}
+              >
+                {isDe ? 'nichts ausgegeben' : 'nothing handed out'}
+              </button>
+              {shirt.sizes.map(s => {
+                const active = !shirtOtherOpen && shirtIssued === s;
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    className={cx('dex-ui-chip', active && 'is-active')}
+                    aria-pressed={active}
+                    onClick={() => { setShirtOther(false); setShirtIssued(active ? '' : s); }}
+                  >
+                    <Shirt size={13} /> {s}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                className={cx('dex-ui-chip', shirtOtherOpen && 'is-active')}
+                aria-pressed={shirtOtherOpen}
+                onClick={() => setShirtOther(true)}
+              >
+                {isDe ? 'andere Größe' : 'other size'}
+              </button>
+            </div>
+            {shirtOtherOpen && (
+              <input
+                id="editreg-shirt-other"
+                className="dex-ui-input dex-ui-input--sm"
+                style={{ marginTop: 8, maxWidth: 260 }}
+                value={shirtIssued}
+                onChange={e => setShirtIssued(e.target.value)}
+                placeholder={isDe ? 'z.B. Herrengröße XXL' : 'e.g. Men XXL'}
+                aria-label={isDe ? 'Andere ausgegebene Größe' : 'Other size handed out'}
+              />
+            )}
+            <p className="dex-ui-help">
+              {isDe
+                ? 'Gespeichert wird mit „Speichern" unten — zusammen mit den übrigen Änderungen. Fehlt auf dieser Teilnehmerliste die Spalte, sagt die Meldung es dir.'
+                : 'Saved with “Save” below, together with the other changes. If the column is missing on this attendee list, the message will say so.'}
+            </p>
+            {/* v31.4 (Review): „Nichts ausgegeben" lässt sich speichern, aber
+                nicht durchhalten: `shirtAllocate` zählt jede eingecheckte
+                Person OHNE Spalteneintrag wieder mit ihrer Wunschgröße als
+                abgeholt. Eine gelöschte Ausgabe fällt damit sofort in die
+                Annahme zurück — und der Hinweiskasten darunter erscheint
+                gerade dann NICHT, weil `assumedWish` bei einem erfassten Wert
+                leer ist. Der Satz gehört also genau hierhin. */}
+            {shirtSaved && !shirtIssued && (
+              <div className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm" style={{ marginTop: 8 }}>
+                <span className="dex-ui-callout-icon"><AlertCircle size={14} /></span>
+                <span>
+                  {isDe
+                    ? <>Der bisherige Eintrag <strong>{shirtSaved.size}</strong> wird beim Speichern gelöscht. Ist die Person eingecheckt,
+                      zählt sie danach wieder mit ihrer Wunschgröße als abgeholt (Annahme) — in der Bestellliste ändert sich die Zahl
+                      dann nicht. Wer wirklich keins bekommen hat, muss dafür ausgecheckt oder als No-Show markiert werden.</>
+                    : <>The existing entry <strong>{shirtSaved.size}</strong> is deleted when you save. If the person is checked in, they
+                      count as collected with their wished size again (assumption) — the number in the order list will not change.
+                      For someone who really got none, check them out or mark them as a no-show.</>}
+                </span>
+              </div>
+            )}
+            {/* Die Annahme aus der Bestellliste benennen, statt sie als Wert
+                vorzutragen: Ein vorbelegtes Feld, das nur eine Vermutung ist,
+                wird beim nächsten Speichern zur Tatsache. */}
+            {!shirtSaved && !shirtIssued && !!shirt.assumedWish && (
+              <div className="dex-ui-callout dex-ui-callout--info dex-ui-callout--sm" style={{ marginTop: 8 }}>
+                <span className="dex-ui-callout-icon"><Shirt size={14} /></span>
+                <span>
+                  {isDe
+                    ? <>Zählt aktuell als abgeholt, weil die Person eingecheckt ist — Wunschgröße <strong>{shirt.assumedWish}</strong>.
+                      Sobald du hier eine Größe auswählst, gilt deine Angabe. &bdquo;Nichts ausgegeben&ldquo; lässt die Annahme bestehen.</>
+                    : <>Currently counts as collected because the person is checked in — wished size <strong>{shirt.assumedWish}</strong>.
+                      As soon as you pick a size here, your entry counts. &ldquo;Nothing handed out&rdquo; leaves the assumption in place.</>}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 4) Profil aus M365 — nur lesen, deshalb zu */}
       <div className="dex-ui-section">
         <button
           type="button"
