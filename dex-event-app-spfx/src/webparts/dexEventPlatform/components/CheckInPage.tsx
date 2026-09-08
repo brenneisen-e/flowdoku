@@ -165,26 +165,58 @@ export default function CheckInPage(): React.ReactElement {
   // veralteten Stand sieht.
   const searchRegsCacheRef = React.useRef<Record<string, import('../services/EventService').SPRegistration[]>>({});
   const shirtAllocCacheRef = React.useRef<Map<object, ShirtAllocationResult>>(new Map());
+  /**
+   * v31.3: Bestand und Größenfeld fallen auf das Elternevent zurück.
+   *
+   * `ShirtSizeModal` speichert `_shirtStock` am gewählten Event — im Organizer
+   * Center ist das bei einem Klammer-Event die Klammer. Am Lauftag steht das
+   * Team aber auf dem TERMIN: Der Dialog meldete „Bestand gespeichert — die
+   * Check-in-Seite zeigt Gegenvorschläge jetzt je Person an", und am Tisch kam
+   * nie einer an. Dasselbe gilt für die Feld-Definition; das Größenfeld steht
+   * oft nur im Formular der Klammer.
+   *
+   * Bewusst nur ein Rückgriff: Ein eigener Bestand am Termin gewinnt weiter
+   * (jemand hat dort Kartons stehen), und die Antworten selbst werden NICHT
+   * vom Elternevent nachgeladen — die Teilnehmerliste der Klammer ist eine
+   * andere Liste (s. Bericht).
+   */
+  const shirtParentOf = React.useCallback((eventId: string) => {
+    const ev = events.find(e => e.id === eventId);
+    if (!ev || !ev.parentEventId) return undefined;
+    return events.find(e => e.id === ev.parentEventId);
+  }, [events]);
+  const shirtFieldsFor = React.useCallback((eventId: string): Array<{ id: string; label: string }> => {
+    const ev = events.find(e => e.id === eventId);
+    const out: Array<{ id: string; label: string }> = ((ev && ev.eventSpecificFields) || []).slice();
+    const parent = shirtParentOf(eventId);
+    ((parent && parent.eventSpecificFields) || []).forEach(f => {
+      if (!out.some(x => x.id === f.id)) out.push(f);
+    });
+    return out;
+  }, [events, shirtParentOf]);
   const shirtAllocFor = React.useCallback((eventId: string): ShirtAllocationResult | null => {
     const ev = events.find(e => e.id === eventId);
     const rs = searchRegsCacheRef.current[eventId];
     if (!ev || !rs) return null;
-    const stock = parseShirtStock(ev.emailTemplateOverrides);
+    let stock = parseShirtStock(ev.emailTemplateOverrides);
+    if (Object.keys(stock).length === 0) {
+      const parent = shirtParentOf(eventId);
+      if (parent) stock = parseShirtStock(parent.emailTemplateOverrides);
+    }
     if (Object.keys(stock).length === 0) return null;
     const hit = shirtAllocCacheRef.current.get(rs);
     if (hit) return hit;
-    const res = shirtAllocate(ev.eventSpecificFields, rs, stock);
+    const res = shirtAllocate(shirtFieldsFor(eventId), rs, stock);
     shirtAllocCacheRef.current.set(rs, res);
     return res;
-  }, [events]);
+  }, [events, shirtParentOf, shirtFieldsFor]);
   const extrasFor = React.useCallback((
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     reg: any,
     eventId: string,
   ): CheckInExtra[] => {
-    const ev = events.find(e => e.id === eventId);
     const out = checkInExtras(
-      ev?.eventSpecificFields,
+      shirtFieldsFor(eventId),
       parseCustomData(reg?.CustomData),
       reg,
       { bib: isDe ? 'Startnummer' : 'Bib number', group: isDe ? 'Gruppe' : 'Group' },
@@ -195,16 +227,28 @@ export default function CheckInPage(): React.ReactElement {
     const em = String((reg && reg.ParticipantEmail) || '').toLowerCase().trim();
     const a = alloc && em ? alloc.byEmail[em] : undefined;
     if (a && a.short) {
+      // v31.3: Ein Satz statt eines Chips. Nutzer-Ansage (07.09.2026): „hier ist
+      // eine Person, die ein T-Shirt hat, was es zu wenig gibt — also biete XX an
+      // (das, was wir zu viel haben)." Der Helfer soll nicht rechnen müssen; die
+      // Rest-Stückzahl kommt aus derselben Verteilung (`spare`), damit „übrig"
+      // belegt ist und nicht geraten.
+      const spare = (a.proposalKey && alloc)
+        ? (alloc.rows.filter(r => r.key === a.proposalKey)[0] || { spare: 0 }).spare
+        : 0;
       out.push({
-        label: isDe ? 'Trikot-Vorschlag' : 'Shirt proposal',
+        label: isDe ? 'Trikot' : 'Shirt',
         value: a.proposal
-          ? (isDe ? `${a.proposal} statt ${a.wish} (nicht mehr vorrätig)` : `${a.proposal} instead of ${a.wish} (out of stock)`)
-          : (isDe ? `${a.wish} nicht mehr vorrätig — keine Ausweichgröße` : `${a.wish} out of stock — no alternative left`),
-        strong: true,
+          ? (isDe
+            ? `Wunschgröße ${a.wish} ist vergeben — bitte ${a.proposal} anbieten.${spare > 0 ? ` Davon sind nach der Planung noch ${spare} übrig.` : ' Dieses Stück ist für diese Person eingeplant.'}`
+            : `Wished size ${a.wish} is gone — please offer ${a.proposal} instead.${spare > 0 ? ` ${spare} of those are still spare after planning.` : ' That one is reserved for this person.'}`)
+          : (isDe
+            ? `Wunschgröße ${a.wish} ist vergeben, und es ist auch keine Ausweichgröße mehr da — bitte am Ausgabetisch klären.`
+            : `Wished size ${a.wish} is gone and there is no alternative left — please sort this out at the handout desk.`),
+        tone: a.proposal ? 'warn' : 'danger',
       });
     }
     return out;
-  }, [events, isDe, shirtAllocFor]);
+  }, [isDe, shirtAllocFor, shirtFieldsFor]);
 
   // v7.12: Name-Suche für manuelles Einchecken — wenn der QR-Scanner in der
   // SP-App nicht funktioniert (Camera-API gesperrt) oder der Teilnehmer den
@@ -1416,10 +1460,13 @@ export default function CheckInPage(): React.ReactElement {
                 <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>{pendingCheckIn.location}</p>
               )}
               {/* v30.53: Startnummer + Trikotgröße gut sichtbar — sie werden
-                  hier vorgelesen bzw. ausgegeben, nicht nur nachgeschlagen. */}
-              {(pendingCheckIn.extras || []).length > 0 && (
+                  hier vorgelesen bzw. ausgegeben, nicht nur nachgeschlagen.
+                  v31.3: Angaben zum Nachschlagen bleiben Chips; eine
+                  Handlungsanweisung (Ausweichgröße) ist ein Satz in Warnfarbe —
+                  zwischen sechs grauen Chips liest sie sonst niemand. */}
+              {(pendingCheckIn.extras || []).filter(x => !x.tone).length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                  {(pendingCheckIn.extras || []).map((x, i) => (
+                  {(pendingCheckIn.extras || []).filter(x => !x.tone).map((x, i) => (
                     <span key={i} style={{
                       display: 'inline-flex', alignItems: 'baseline', gap: 6,
                       padding: x.strong ? '5px 12px' : '4px 10px',
@@ -1438,6 +1485,16 @@ export default function CheckInPage(): React.ReactElement {
                   ))}
                 </div>
               )}
+              {(pendingCheckIn.extras || []).filter(x => !!x.tone).map((x, i) => (
+                <div key={`tone-${i}`} style={{
+                  marginTop: 8, padding: '8px 12px', borderRadius: 8, fontSize: '0.86rem', lineHeight: 1.45,
+                  background: x.tone === 'danger' ? 'var(--dex-red-light, #fce8e6)' : '#fff7e6',
+                  border: `1px solid ${x.tone === 'danger' ? '#f2b1ab' : '#f5c77a'}`,
+                  color: x.tone === 'danger' ? '#9b2018' : '#7a4a00',
+                }}>
+                  <strong>{x.label}</strong> — {x.value}
+                </div>
+              ))}
             </div>
           </div>
           <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', margin: '0 0 16px' }}>
@@ -1984,23 +2041,43 @@ export default function CheckInPage(): React.ReactElement {
                           {(() => {
                             const ex = extrasFor(reg, nameSearchEventId);
                             if (ex.length === 0) return null;
+                            // v31.3: Der Ausweich-Satz steht auch hier in Warnfarbe
+                            // unter den Chips — der Helfer sieht schon in der Liste,
+                            // bei wem er nachdenken muss.
+                            const chips = ex.filter(x => !x.tone);
+                            const notes = ex.filter(x => !!x.tone);
                             return (
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-                                {ex.map((x, i) => (
-                                  <span key={i} style={{
-                                    display: 'inline-flex', alignItems: 'baseline', gap: 5,
-                                    fontSize: '0.7rem', padding: '2px 8px', borderRadius: 6,
-                                    background: x.strong ? 'rgba(134,188,37,0.14)' : 'var(--dex-gray-100, #f5f5f5)',
-                                    color: 'var(--dex-gray-700)',
+                              <>
+                                {chips.length > 0 && (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                                    {chips.map((x, i) => (
+                                      <span key={i} style={{
+                                        display: 'inline-flex', alignItems: 'baseline', gap: 5,
+                                        fontSize: '0.7rem', padding: '2px 8px', borderRadius: 6,
+                                        background: x.strong ? 'rgba(134,188,37,0.14)' : 'var(--dex-gray-100, #f5f5f5)',
+                                        color: 'var(--dex-gray-700)',
+                                      }}>
+                                        <span style={{ color: 'var(--dex-gray-500)' }}>{x.label}</span>
+                                        <strong style={{
+                                          fontFamily: x.strong ? "'Courier New',Courier,monospace" : 'inherit',
+                                          color: x.strong ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-800)',
+                                        }}>{x.value}</strong>
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                {notes.map((x, i) => (
+                                  <div key={`tone-${i}`} style={{
+                                    marginTop: 4, padding: '4px 8px', borderRadius: 6, fontSize: '0.72rem', lineHeight: 1.4,
+                                    whiteSpace: 'normal',
+                                    background: x.tone === 'danger' ? 'var(--dex-red-light, #fce8e6)' : '#fff7e6',
+                                    border: `1px solid ${x.tone === 'danger' ? '#f2b1ab' : '#f5c77a'}`,
+                                    color: x.tone === 'danger' ? '#9b2018' : '#7a4a00',
                                   }}>
-                                    <span style={{ color: 'var(--dex-gray-500)' }}>{x.label}</span>
-                                    <strong style={{
-                                      fontFamily: x.strong ? "'Courier New',Courier,monospace" : 'inherit',
-                                      color: x.strong ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-800)',
-                                    }}>{x.value}</strong>
-                                  </span>
+                                    <strong>{x.label}</strong> — {x.value}
+                                  </div>
                                 ))}
-                              </div>
+                              </>
                             );
                           })()}
                         </div>
