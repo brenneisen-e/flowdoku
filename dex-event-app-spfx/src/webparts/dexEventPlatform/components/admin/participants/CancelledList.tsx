@@ -1,6 +1,8 @@
 /* CancelledList — 1:1 aus AdminPage.tsx ausgelagert (Zeilen 13066-13454 des
- * Stands vor dem Schnitt). Der Inhalt ist zeichengleich uebernommen; die
- * Anzeige-Bedingung bleibt beim Aufrufer.
+ * Stands vor dem Schnitt). Die Logik ist seither unverändert; die Oberfläche
+ * folgt seit v31.3 dem UI-Leitfaden (Karte mit klickbarer Kopfzeile,
+ * dex-ui-Tabelle, Personen-Zelle, Status-Pillen). Die Anzeige-Bedingung bleibt
+ * beim Aufrufer.
  */
 import * as React from 'react';
 import { EventService, SPRegistration } from '../../../services/EventService';
@@ -8,7 +10,8 @@ import { shortSubEventTitle } from '../../../utils/subEventTitle';
 import { groupSubEventTabs, stripGroupPrefix } from '../../../utils/subEventGroups';
 import { formatDate } from '../../../utils/eventStatus';
 import { PersonContactHover } from '../../PersonContactHover';
-import { Trash2 } from '../../Icons';
+import { ChevronDown, Trash2, Users } from '../../Icons';
+import { cx, ensureDexUiStyles } from '../../dexUi';
 import { DeloitteEvent } from '../../../types';
 
 export interface CancelledListProps {
@@ -37,11 +40,18 @@ export interface CancelledListProps {
 
 export const CancelledList: React.FC<CancelledListProps> = (p) => {
   const { cancelledRegs, cancelledSortAsc, cancelledSortColumn, confirmDialog, consolidatedChildren, eventServiceRef, hasWaitlistActivity, isAdmin, isConsolidatedMode, isDe, isOrganizerFor, registrations, reloadRegistrations, selectedEvent, setCancelledSortAsc, setCancelledSortColumn, setSubRegReloadTick, showAlert, stripLocPrefix, subEventRegsByEventId } = p;
+  // v31.3: Die gemeinsamen Klassen einmal ins Dokument — Inline-Styles können
+  // kein :hover, und hier sind Kopfzeile, Kopfzellen und Termin-Zeilen klickbar.
+  ensureDexUiStyles();
   // v30.83: Sicht der konsolidierten Abmeldungen („nach Person" / „nach Tag")
   // und der aufgeklappte Tag. Hooks VOR dem isConsolidatedMode-Zweig — der
   // hat ein eigenes return (rules-of-hooks).
   const [cancelView, setCancelView] = React.useState<'person' | 'day'>('person');
   const [openDay, setOpenDay] = React.useState<string | null>(null);
+  // v31.3: Auf-/zugeklappte Karte (siehe `shell`). Startet ZU (Leitfaden 5a,
+  // Punkt 7) — wer die Event-Seite öffnet, will wissen, wer da IST; der Zähler
+  // im Kopf sagt, ob sich das Aufklappen lohnt.
+  const [openCard, setOpenCard] = React.useState(false);
           // v18.11: Abmeldungs-Liste mit denselben Spalten + Sortierung wie
           // Teilnehmer-/Warteliste. Unterscheidet proaktive Absagen
           // (CustomData _declined = „Ich nehme nicht teil", ohne vorherige
@@ -66,7 +76,6 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
             }
             return 0;
           });
-          const arrow = (k: typeof cancelledSortColumn): string => k === cancelledSortColumn ? (cancelledSortAsc ? ' ▲' : ' ▼') : '';
           const toggleSort = (k: typeof cancelledSortColumn): void => {
             if (cancelledSortColumn === k) setCancelledSortAsc(v => !v);
             else { setCancelledSortColumn(k); setCancelledSortAsc(true); }
@@ -76,7 +85,34 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
           // eigenen Scroll-Container (Nutzer-Ansage 07.09.2026: „Abmeldungen in
           // die gleiche Struktur, Logik und Anzeige wie Anmeldungen — mit
           // Inline-Scroll").
-          const thClickable: React.CSSProperties = { textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', background: '#fff', borderBottom: '2px solid var(--dex-gray-200)', position: 'sticky', top: 0, zIndex: 5, verticalAlign: 'top', lineHeight: 1.3 };
+          // v31.3: Das übernehmen jetzt `dex-ui-table-wrap--sticky` und
+          // `th.is-sortable` — ein Stil-Objekt je Kopfzelle konnte keinen Hover
+          // zeigen, obwohl ein Klick darauf sortiert (Leitfaden 1.3).
+          const sortMark = (k: typeof cancelledSortColumn): React.ReactNode => k === cancelledSortColumn ? <span className="dex-ui-table-sort">{cancelledSortAsc ? '▲' : '▼'}</span> : null;
+          const thSort = (k: typeof cancelledSortColumn, label: string): React.ReactElement => (
+            <th
+              className={cx('is-sortable', k === cancelledSortColumn && 'is-sorted')}
+              onClick={() => toggleSort(k)}
+              title={isDe ? 'Nach dieser Spalte sortieren' : 'Sort by this column'}
+            >
+              {label}{sortMark(k)}
+            </th>
+          );
+          // v31.3 (Nachzug): Beide Namen stecken in EINER Personen-Zelle — die
+          // Sortierung nach Vorname bleibt als kleiner Knopf im Kopf (wie in
+          // `WaitlistTables`), mit gestoppter Weitergabe an die Kopfzelle.
+          const miniSortBtn = (k: typeof cancelledSortColumn, label: string, hint: string): React.ReactElement => (
+            <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" title={hint}
+              style={{ fontSize: '0.66rem', padding: '1px 6px', marginLeft: 4, textTransform: 'none', letterSpacing: 0 }}
+              onClick={e => { e.stopPropagation(); toggleSort(k); }}
+            >{label}{sortMark(k)}</button>
+          );
+          // Ein fehlender Wert bleibt ein Strich — nie eine 0 und nie leer,
+          // sonst liest sich „unbekannt" wie „nichts" (CLAUDE.md).
+          const dash = <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
+          // v24.88/v31.3: Farblogik der Status-Pille — blau = Absage ohne
+          // vorherige Anmeldung, rot = abgemeldet. Beide Sichten nutzen sie.
+          const pillCls = (declined: boolean): string => cx('dex-ui-pill', declined ? 'dex-ui-pill--blue' : 'dex-ui-pill--red');
           const declineCount = cancelledRegs.filter(isDeclined).length;
           // v24.82: Abmeldungen dürfen NUR bei Entwurf-Events (isFictive)
           // gelöscht werden — z.B. zum Aufräumen von Test-Anmeldungen, BEVOR
@@ -84,6 +120,47 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
           // Abmeldungen wegen der einjährigen Aufbewahrungsfrist erhalten
           // (dann kein „Löschen"-Button).
           const canDelete = !!selectedEvent && selectedEvent.isFictive === true && (isAdmin || isOrganizerFor(selectedEvent)) && !!selectedEvent.subsiteUrl;
+          // v31.3: Beide Sichten (Klammer-Matrix und Einzel-Event) stecken in
+          // derselben Karte mit klickbarer Kopfzeile — Titel, Zähler, Chevron
+          // (Leitfaden 5a, Punkt 7).
+          const shell = (count: number, declines: number, toolbar: React.ReactNode, body: React.ReactNode): React.ReactElement => (
+            <div className={cx('dex-ui-card', 'dex-ui-card--list')} style={{ marginTop: 24 }}>
+              <div
+                role="button"
+                tabIndex={0}
+                aria-expanded={openCard}
+                className="dex-ui-row"
+                style={{ cursor: 'pointer', userSelect: 'none', flexWrap: 'wrap' }}
+                onClick={() => setOpenCard(v => !v)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenCard(v => !v); } }}
+              >
+                {/* v31.3 (Nachzug): echte Überschrift — sonst verliert die Sprungnavigation über Überschriften den Abschnitt. */}
+                <h3 className="dex-ui-card-head-title"><Users size={18} /> {isDe ? 'Abmeldungen' : 'Cancellations'}</h3>
+                <span className="dex-ui-pill dex-ui-pill--gray">{count}</span>
+                {declines > 0 && (
+                  <span className="dex-ui-pill dex-ui-pill--blue">
+                    {isDe
+                      ? `${declines} ${declines === 1 ? 'Absage' : 'Absagen'} ohne Anmeldung`
+                      : `${declines} ${declines === 1 ? 'decline' : 'declines'} without registration`}
+                  </span>
+                )}
+                <span className={cx('dex-ui-disclosure-chevron', openCard && 'is-open')} style={{ marginLeft: 'auto' }} aria-hidden="true">
+                  <ChevronDown size={18} />
+                </span>
+              </div>
+              {openCard && (
+                <div style={{ padding: '0 6px 6px' }}>
+                  <div className="dex-ui-muted" style={{ margin: '0 0 10px' }}>
+                    {isDe
+                      ? 'Wer sich abgemeldet hat — und wer von vornherein abgesagt hat. Löschen geht nur, solange das Event ein Entwurf ist.'
+                      : 'Who cancelled — and who declined right away. Rows can only be deleted while the event is a draft.'}
+                  </div>
+                  {toolbar}
+                  {body}
+                </div>
+              )}
+            </div>
+          );
           const deleteCancelled = async (reg: SPRegistration): Promise<void> => {
             if (!selectedEvent) return;
             // v22.59: im Klammer-Modus die Subsite der jeweiligen Sub-Section
@@ -254,11 +331,6 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
             };
             const secOrder = new Map<string, number>();
             sectionCols.forEach((sc, i) => secOrder.set(sc.id, i));
-            const chipStyle = (declined: boolean): React.CSSProperties => ({
-              display: 'inline-block', fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, whiteSpace: 'nowrap',
-              background: declined ? 'rgba(0,118,168,0.10)' : 'rgba(218,41,28,0.08)',
-              color: declined ? 'var(--dex-blue, #0076a8)' : 'var(--dex-red, #da291c)',
-            });
             const chipsFor = (p: CancelPerson): React.ReactElement[] => Object.keys(p.bySection)
               .sort((a, b) => (secOrder.get(a) ?? 999) - (secOrder.get(b) ?? 999))
               .map(id => {
@@ -268,7 +340,7 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
                   ? (declined ? (isDe ? 'Absage (gesamt)' : 'Decline (overall)') : (isDe ? 'Gesamt-Event' : 'Overall event'))
                   : secLabel(id);
                 return (
-                  <span key={id} style={chipStyle(declined)} title={`${declined ? (isDe ? 'Absage ohne Anmeldung' : 'Decline without registration') : (isDe ? 'Abgemeldet' : 'Cancelled')} — ${formatDate(r.CancellationDate)}`}>
+                  <span key={id} className={pillCls(declined)} title={`${declined ? (isDe ? 'Absage ohne Anmeldung' : 'Decline without registration') : (isDe ? 'Abgemeldet' : 'Cancelled')} — ${formatDate(r.CancellationDate)}`}>
                     {label}
                   </span>
                 );
@@ -284,37 +356,49 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
             // Präfix-Gruppen („Day 1 - …") wie überall — nur bei Titel-, nicht bei Datums-Chips.
             const childSections = perSection.filter(s => s.id !== '__parent');
             const grouping = isCal ? { grouped: false, groups: [] as Array<{ label: string; idxs: number[] }> } : groupSubEventTabs(childSections.map(s => s.fullTitle));
+            // v31.3: Die Termin-Zeile ist der Aufklapper — deshalb Zeilen-Hover
+            // (`dex-ui-row`) und ein Chevron, der sich beim Öffnen dreht. Der
+            // Balken nutzt `dex-ui-progress`; blau, wenn es an diesem Termin nur
+            // Absagen ohne Anmeldung gab (Farblogik v24.88).
             const dayRow = (s: typeof perSection[number], shownLabel: string): React.ReactElement => {
               const open = openDay === s.id;
               return (
+                // v31.3 (Nachzug): Trennlinie am Wrapper — am Knopf nahm
+                // `--bordered:last-child` sie jeder zugeklappten Zeile weg.
                 <div key={s.id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
                   <button
                     type="button"
                     onClick={() => setOpenDay(open ? null : s.id)}
                     aria-expanded={open}
-                    style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 220px) 48px 1fr 18px', alignItems: 'center', gap: 12, width: '100%', padding: '8px 4px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', font: 'inherit', color: 'inherit' }}
+                    className={cx('dex-ui-row', 'dex-ui-rowbtn', open && 'is-active')}
+                    style={{ padding: '8px 10px' }}
                   >
-                    <span style={{ fontWeight: 600, color: 'var(--dex-gray-800)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={s.fullTitle || shownLabel}>{shownLabel}</span>
-                    <span style={{ fontWeight: 800, textAlign: 'right', color: s.declinedOnly ? 'var(--dex-blue, #0076a8)' : 'var(--dex-red, #da291c)' }}>{s.rows.length}</span>
-                    <span style={{ display: 'block', height: 10, borderRadius: 999, background: 'var(--dex-gray-100)', overflow: 'hidden' }}>
-                      <span style={{ display: 'block', height: '100%', width: `${Math.max(4, Math.round((s.rows.length / maxCount) * 100))}%`, background: s.declinedOnly ? 'var(--dex-blue, #0076a8)' : 'var(--dex-red, #da291c)', opacity: 0.75 }} />
+                    <span className="dex-ui-row-title" style={{ flex: '0 1 220px' }} title={s.fullTitle || shownLabel}>{shownLabel}</span>
+                    <span className={pillCls(s.declinedOnly)}>{s.rows.length}</span>
+                    <span className="dex-ui-progress" style={{ flex: '1 1 60px' }}>
+                      {/* v31.3 (Nachzug): `display:block` ist Pflicht — auf einem Inline-Span wirkt width nicht, der Füllstand hatte null Größe. */}
+                      <span
+                        className="dex-ui-progress-bar dex-ui-progress-bar--red"
+                        style={{ display: 'block', width: `${Math.max(4, Math.round((s.rows.length / maxCount) * 100))}%`, background: s.declinedOnly ? 'var(--dex-blue, #3860b2)' : undefined }}
+                      />
                     </span>
-                    <span aria-hidden="true" style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{open ? '▾' : '▸'}</span>
+                    <span aria-hidden="true" className={cx('dex-ui-disclosure-chevron', open && 'is-open')}><ChevronDown size={16} /></span>
                   </button>
                   {open && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 4px 10px 4px' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '6px 10px 12px' }}>
                       {s.rows
                         .slice()
                         .sort((a, b) => a.lastName.toLowerCase().localeCompare(b.lastName.toLowerCase(), 'de'))
                         .map(p => {
                           const r = p.bySection[s.id];
                           const nm = `${p.firstName} ${p.lastName}`.trim() || p.email;
+                          const decl = isDeclined(r);
                           return (
-                            <span key={p.email} title={`${p.email}${p.jobTitle ? ' · ' + p.jobTitle : ''}${p.location ? ' · ' + stripLocPrefix(p.location) : ''} — ${formatDate(r.CancellationDate)}`}
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 999, border: '1px solid var(--dex-gray-200)', background: '#fff', fontSize: '0.8rem', color: 'var(--dex-gray-700)' }}>
-                              <span style={{ fontWeight: 600 }}>{nm}</span>
-                              <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.72rem' }}>{formatDate(r.CancellationDate)}</span>
-                              {isDeclined(r) && <span style={chipStyle(true)}>{isDe ? 'Absage' : 'Decline'}</span>}
+                            <span key={p.email} className={cx('dex-ui-pill', decl ? 'dex-ui-pill--blue' : 'dex-ui-pill--gray')}
+                              title={`${p.email}${p.jobTitle ? ' · ' + p.jobTitle : ''}${p.location ? ' · ' + stripLocPrefix(p.location) : ''} — ${formatDate(r.CancellationDate)}`}>
+                              {nm}
+                              <span style={{ opacity: 0.75, fontWeight: 500 }}>· {formatDate(r.CancellationDate)}</span>
+                              {decl && <span>· {isDe ? 'Absage' : 'Decline'}</span>}
                             </span>
                           );
                         })}
@@ -323,249 +407,114 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
                 </div>
               );
             };
-            const viewBtn = (v: 'person' | 'day', label: string): React.ReactElement => (
+            const viewTab = (v: 'person' | 'day', label: string): React.ReactElement => (
               <button
                 type="button"
                 onClick={() => setCancelView(v)}
                 aria-pressed={cancelView === v}
-                style={{
-                  fontSize: '0.78rem', fontWeight: 700, padding: '4px 12px', borderRadius: 999, cursor: 'pointer',
-                  border: `1px solid ${cancelView === v ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-                  background: cancelView === v ? 'var(--dex-green, #86bc25)' : '#fff',
-                  color: cancelView === v ? '#fff' : 'var(--dex-gray-700)',
-                }}
+                className={cx('dex-ui-tab', cancelView === v && 'is-active')}
               >{label}</button>
             );
-            return (
-              <>
-                <h4 style={{ marginTop: 24, color: 'var(--dex-gray-400)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                  <span>
-                    {isDe ? 'Abmeldungen' : 'Cancellations'} ({people.length})
-                    {declinePeople > 0 && (
-                      <span style={{ fontSize: '0.8rem', fontWeight: 400, marginLeft: 8, color: 'var(--dex-gray-500)' }}>
-                        {isDe ? `davon ${declinePeople} Absage(n) ohne Anmeldung` : `incl. ${declinePeople} decline(s) without registration`}
-                      </span>
-                    )}
-                  </span>
-                  <span style={{ display: 'inline-flex', gap: 6, marginLeft: 'auto' }}>
-                    {viewBtn('person', isDe ? 'Nach Person' : 'By person')}
-                    {viewBtn('day', isCal ? (isDe ? 'Nach Tag' : 'By day') : (isDe ? 'Nach Termin' : 'By date'))}
-                  </span>
-                </h4>
-                {cancelView === 'day' ? (
-                  <div style={{ fontSize: '0.85rem' }}>
-                    {perSection.filter(s => s.id === '__parent').map(s => dayRow(s, s.label))}
-                    {!grouping.grouped
-                      ? childSections.map(s => dayRow(s, s.label))
-                      : grouping.groups.map(g => {
-                        const members = g.idxs.map(i => childSections[i]).filter(Boolean);
-                        const sum = members.reduce((n, s) => n + s.rows.length, 0);
-                        const label = g.label === 'Weitere' ? (isDe ? 'Weitere' : 'Other') : g.label;
-                        return (
-                          <div key={g.label} style={{ marginTop: 8 }}>
-                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '4px 4px 2px', borderBottom: '2px solid var(--dex-gray-200)' }}>
-                              <span style={{ fontWeight: 800, color: 'var(--dex-gray-800)' }}>{label}</span>
-                              <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{sum} {isDe ? (sum === 1 ? 'Abmeldung' : 'Abmeldungen') : (sum === 1 ? 'cancellation' : 'cancellations')}</span>
-                            </div>
-                            {members.map(s => dayRow(s, stripGroupPrefix(s.fullTitle, g.label) || s.label))}
-                          </div>
-                        );
-                      })}
-                    {quietChildren > 0 && (
-                      <div style={{ padding: '10px 4px 0', fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
-                        {isDe
-                          ? `${quietChildren} ${isCal ? (quietChildren === 1 ? 'Tag' : 'Tage') : (quietChildren === 1 ? 'Termin' : 'Termine')} ohne Abmeldung.`
-                          : `${quietChildren} ${isCal ? (quietChildren === 1 ? 'day' : 'days') : (quietChildren === 1 ? 'date' : 'dates')} without cancellations.`}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
-                        <th style={thClickable} onClick={() => toggleSort('vorname')}>Vorname{arrow('vorname')}</th>
-                        <th style={thClickable} onClick={() => toggleSort('nachname')}>Nachname{arrow('nachname')}</th>
-                        <th style={thClickable} onClick={() => toggleSort('email')}>Email{arrow('email')}</th>
-                        <th style={{ ...thClickable, cursor: 'default' }}>Job Title</th>
-                        <th style={{ ...thClickable, cursor: 'default' }}>Standort</th>
-                        <th style={{ ...thClickable, cursor: 'default' }}>{isDe ? 'Abgemeldet von' : 'Cancelled from'}</th>
-                        <th style={thClickable} onClick={() => toggleSort('date')}>{isDe ? 'Letzte Abmeldung' : 'Last cancellation'}{arrow('date')}</th>
-                        {canDelete && (
-                          <th style={{ ...thClickable, cursor: 'default', textAlign: 'right' }}>{isDe ? 'Löschen' : 'Delete'}</th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {people.map(p => (
-                        <tr key={p.email} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                          <td style={{ padding: 8, fontWeight: 500 }}>{p.firstName || '-'}</td>
-                          <td style={{ padding: 8, fontWeight: 500 }}>{p.lastName || '-'}</td>
-                          <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{p.email}</td>
-                          <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{p.jobTitle || '-'}</td>
-                          <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{p.location || '-'}</td>
-                          <td style={{ padding: 8 }}>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{chipsFor(p)}</div>
-                          </td>
-                          <td style={{ padding: 8, color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>{p.latest ? formatDate(new Date(p.latest).toISOString()) : '-'}</td>
-                          {canDelete && (
-                            <td style={{ padding: 8, textAlign: 'right' }}>
-                              <button
-                                type="button"
-                                className="btn btn-outline"
-                                style={{ fontSize: '0.75rem', padding: '4px 10px', color: 'var(--dex-red, #da291c)', borderColor: 'var(--dex-red, #da291c)' }}
-                                onClick={() => { deletePerson(p).catch(() => { /* */ }); }}
-                              >
-                                {isDe ? 'Löschen' : 'Delete'}
-                              </button>
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+            // v31.3: Der Sicht-Umschalter steht als Reiter-Paar LINKS über der
+            // Tabelle (Leitfaden 2a′) — vorher hing er rechts außen in der
+            // Überschrift, wo er wie eine Beschriftung aussah.
+            return shell(people.length, declinePeople, (
+              <div className="dex-ui-toolbar">
+                <div className="dex-ui-tabs">
+                  {viewTab('person', isDe ? 'Nach Person' : 'By person')}
+                  {viewTab('day', isCal ? (isDe ? 'Nach Tag' : 'By day') : (isDe ? 'Nach Termin' : 'By date'))}
                 </div>
+              </div>
+            ), people.length === 0 ? (
+              // Abmeldungen ohne E-Mail lassen sich keiner Person zuordnen —
+              // besser ein benannter leerer Zustand als eine leere Fläche.
+              <div className="dex-ui-empty">
+                <div className="dex-ui-empty-title">{isDe ? 'Keine Abmeldung ist einer Person zuzuordnen' : 'No cancellation can be matched to a person'}</div>
+                {isDe
+                  ? 'Den Zeilen fehlt die E-Mail-Adresse — sie ist der Schlüssel dieser Übersicht.'
+                  : 'The rows have no e-mail address — that is the key of this overview.'}
+              </div>
+            ) : cancelView === 'day' ? (
+              <div>
+                {perSection.filter(s => s.id === '__parent').map(s => dayRow(s, s.label))}
+                {!grouping.grouped
+                  ? childSections.map(s => dayRow(s, s.label))
+                  : grouping.groups.map(g => {
+                    const members = g.idxs.map(i => childSections[i]).filter(Boolean);
+                    const sum = members.reduce((n, s) => n + s.rows.length, 0);
+                    const label = g.label === 'Weitere' ? (isDe ? 'Weitere' : 'Other') : g.label;
+                    return (
+                      <div key={g.label} style={{ marginTop: 12 }}>
+                        <div className="dex-ui-section-title">
+                          {/* v31.3 (Nachzug): Gruppenname aus dem Sub-Event-Titel — die Versalien machten aus „Day 1" ein „DAY 1". */}
+                          <span style={{ textTransform: 'none', letterSpacing: 0 }}>{label}</span>
+                          <span style={{ textTransform: 'none', letterSpacing: 0 }}>{sum} {isDe ? (sum === 1 ? 'Abmeldung' : 'Abmeldungen') : (sum === 1 ? 'cancellation' : 'cancellations')}</span>
+                        </div>
+                        {members.map(s => dayRow(s, stripGroupPrefix(s.fullTitle, g.label) || s.label))}
+                      </div>
+                    );
+                  })}
+                {quietChildren > 0 && (
+                  <div className="dex-ui-muted" style={{ padding: '10px 4px 0' }}>
+                    {isDe
+                      ? `${quietChildren} ${isCal ? (quietChildren === 1 ? 'Tag' : 'Tage') : (quietChildren === 1 ? 'Termin' : 'Termine')} ohne Abmeldung.`
+                      : `${quietChildren} ${isCal ? (quietChildren === 1 ? 'day' : 'days') : (quietChildren === 1 ? 'date' : 'dates')} without cancellations.`}
+                  </div>
                 )}
-              </>
-            );
-          }
-          // v24.82: Abmeldungen im selben Zeilen-Layout wie die aktiven
-          // Anmeldungen (Foto + Name + „Position • Standort • Firma"), aber
-          // alle Texte in hellem Grau, damit sie klar von den aktiven
-          // Anmeldungen zu unterscheiden sind. Ein „Löschen"-Button erscheint
-          // NUR bei Entwurf-Events (canDelete) — sonst bleiben Abmeldungen
-          // wegen der einjährigen Aufbewahrungsfrist erhalten.
-          const greyText = 'var(--dex-gray-600)';
-          return (
-            <>
-              <h4 style={{ marginTop: 24, color: 'var(--dex-gray-400)' }}>
-                {isDe ? 'Abmeldungen' : 'Cancellations'} ({cancelledRegs.length})
-                {declineCount > 0 && (
-                  <span style={{ fontSize: '0.8rem', fontWeight: 400, marginLeft: 8, color: 'var(--dex-gray-500)' }}>
-                    {isDe ? `davon ${declineCount} Absage(n)` : `incl. ${declineCount} decline(s)`}
-                  </span>
-                )}
-              </h4>
-              {/* v30.87: eigener Scroll-Container (70vh) wie bei den Anmeldungen —
-                  bei 48 Abmeldungen lief die Tabelle sonst über die ganze Seite. */}
-              <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+              </div>
+            ) : (
+              <div className="dex-ui-table-wrap dex-ui-table-wrap--sticky">
+                <table className="dex-ui-table dex-ui-table--compact">
                   <thead>
-                    <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
-                      <th style={{ ...thClickable, cursor: 'default', width: 36 }}>#</th>
-                      <th style={thClickable} onClick={() => toggleSort('nachname')}>{isDe ? 'Teilnehmer' : 'Attendee'}{arrow('nachname')}</th>
-                      <th style={thClickable} onClick={() => toggleSort('type')}>{isDe ? 'Art' : 'Type'}{arrow('type')}</th>
-                      <th style={{ ...thClickable, cursor: 'default' }}>{isDe ? 'Abgemeldet von' : 'Cancelled by'}</th>
-                      {isConsolidatedMode && (
-                        <th style={{ ...thClickable, cursor: 'default' }}>{isDe ? 'Sub-Event' : 'Sub-event'}</th>
-                      )}
-                      <th style={thClickable} onClick={() => toggleSort('date')}>{isDe ? 'Abgemeldet am' : 'Cancelled on'}{arrow('date')}</th>
-                      <th style={{ ...thClickable, cursor: 'default' }}>{isDe ? 'Nach Frist?' : 'After deadline?'}</th>
-                      {/* v19.4: „Wurde ersetzt durch" — die nachgerückte Person, die
-                          den frei gewordenen Platz übernommen hat (vom Flow gesetzt).
-                          v19.11: nur bei Events mit echter Warteliste-/Nachrück-
-                          Aktivität (sonst durchgehend leer). */}
-                      {hasWaitlistActivity && (
-                        <th style={{ ...thClickable, cursor: 'default' }}>{isDe ? 'Wurde ersetzt durch' : 'Replaced by'}</th>
-                      )}
+                    {/* v31.3: Aus Vorname/Nachname/Job Title/Standort wird EINE
+                        Personen-Zelle (Leitfaden 5b) — fünf Spalten weniger,
+                        keine Angabe weniger. Die E-Mail bleibt eigene Spalte:
+                        sie ist der Schlüssel, über den diese Übersicht baut. */}
+                    <tr>
+                      <th className={cx('is-sortable', (cancelledSortColumn === 'nachname' || cancelledSortColumn === 'vorname') && 'is-sorted')}
+                        onClick={() => toggleSort('nachname')} title={isDe ? 'Nach Nachname sortieren' : 'Sort by last name'}>
+                        Person{sortMark('nachname')}
+                        {miniSortBtn('vorname', isDe ? 'Vorname' : 'First name', isDe ? 'Nach Vorname sortieren' : 'Sort by first name')}
+                      </th>
+                      {thSort('email', 'E-Mail')}
+                      <th>{isDe ? 'Abgemeldet bei' : 'Cancelled from'}</th>
+                      {thSort('date', isDe ? 'Letzte Abmeldung' : 'Last cancellation')}
                       {canDelete && (
-                        <th style={{ ...thClickable, cursor: 'default', textAlign: 'right' }}>{isDe ? 'Löschen' : 'Delete'}</th>
+                        <th style={{ textAlign: 'right' }}>{isDe ? 'Löschen' : 'Delete'}</th>
                       )}
                     </tr>
                   </thead>
                   <tbody>
-                    {sorted.map((reg, rowIdx) => {
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      const anyReg = reg as any;
-                      const declined = isDeclined(reg);
-                      const vn = reg.Vorname || ((reg.ParticipantName || '').split(' ')[0] || '');
-                      let nn = reg.Nachname || '';
-                      if (!nn && reg.ParticipantName) { const pp = reg.ParticipantName.trim().split(/\s+/); if (pp.length > 1) nn = pp.slice(1).join(' '); }
-                      const fullName = `${vn} ${nn}`.trim() || reg.ParticipantEmail || '-';
-                      const sub = [String(anyReg.JobTitle || ''), stripLocPrefix(String(anyReg.Location || '')), String(anyReg.Company || '')].filter(Boolean).join(' • ');
-                      // v24.88: Status-Pille wieder FARBIG (blau = Absage ohne
-                      // Anmeldung, rot = abgemeldet) — der Rest der Zeile bleibt grau.
-                      const artLabel = declined
-                        ? (isDe ? 'Absage (nicht angemeldet)' : 'Decline (never registered)')
-                        : (isDe ? 'Abgemeldet' : 'Cancelled');
+                    {people.map(p => {
+                      const nm = `${p.firstName} ${p.lastName}`.trim() || p.email;
+                      const sub = [p.jobTitle, stripLocPrefix(p.location || '')].filter(Boolean).join(' • ');
                       return (
-                        <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                          {/* v30.87: laufende Nummer + Personen-Zelle exakt wie in der
-                              Anmeldungen-Tabelle (Name fett, Zweitzeile grau) — die
-                              durchgehend ausgegraute Zeile las sich wie deaktiviert. */}
-                          <td style={{ padding: 8, color: 'var(--dex-gray-400)' }}>{rowIdx + 1}</td>
-                          <td style={{ padding: 8 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                              <PersonContactHover email={reg.ParticipantEmail || ''} name={fullName} size={30} subline={sub} isDe={isDe} />
-                              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.25 }}>
-                                <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{fullName}</span>
-                                {sub && <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>{sub}</span>}
+                        <tr key={p.email} className="is-muted">
+                          <td>
+                            <div className="dex-ui-person">
+                              <PersonContactHover email={p.email} name={nm} size={30} subline={sub} isDe={isDe} />
+                              <div style={{ minWidth: 0 }}>
+                                <div className="dex-ui-person-name">{nm}</div>
+                                {/* v31.3 (Nachzug): Position/Standort hatten eigene Spalten — die Zweitzeile schneidet ab, voller Text im title. */}
+                                {sub && <div className="dex-ui-person-sub" title={sub}>{sub}</div>}
                               </div>
                             </div>
                           </td>
-                          <td style={{ padding: 8 }}>
-                            {declined
-                              ? <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(0,118,168,0.10)', color: 'var(--dex-blue, #0076a8)' }}>{artLabel}</span>
-                              : <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(218,41,28,0.08)', color: 'var(--dex-red, #da291c)' }}>{artLabel}</span>}
+                          <td>{p.email}</td>
+                          <td>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{chipsFor(p)}</div>
                           </td>
-                          {/* v24.88: „Abgemeldet von" — selbst abgemeldet vs. durch
-                              jemand anderen (Audit CancelledBy*), analog „Angemeldet von". */}
-                          <td style={{ padding: 8, color: greyText, fontSize: '0.8rem' }}>
-                            {(() => {
-                              const cby = (anyReg.CancelledByEmail || '').toLowerCase();
-                              const pe = (reg.ParticipantEmail || '').toLowerCase();
-                              if (!cby) return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
-                              if (cby === pe) return <span>{isDe ? 'Selbst abgemeldet' : 'Self'}</span>;
-                              return <span title={anyReg.CancelledByEmail}>{anyReg.CancelledByName || anyReg.CancelledByEmail}</span>;
-                            })()}
-                          </td>
-                          {isConsolidatedMode && (
-                            <td style={{ padding: 8, color: greyText, fontSize: '0.8rem' }}>{(reg as SPRegistration & { _sectionTitle?: string })._sectionTitle || '-'}</td>
-                          )}
-                          <td style={{ padding: 8, color: greyText }}>{formatDate(reg.CancellationDate)}</td>
-                          {/* v24.88: Markierung, wenn die Abmeldung NACH der
-                              kommunizierten Abmeldefrist (lastDeregisterDate) erfolgte. */}
-                          <td style={{ padding: 8, fontSize: '0.8rem' }}>
-                            {(() => {
-                              if (declined) return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
-                              let ev = selectedEvent;
-                              if (isConsolidatedMode) {
-                                const sid = (reg as SPRegistration & { _sectionId?: string })._sectionId;
-                                if (sid && sid !== '__parent') { const ch = consolidatedChildren.find(c => c.id === sid); if (ch) ev = ch; }
-                              }
-                              const dlRaw = ev?.lastDeregisterDate;
-                              if (!dlRaw || !reg.CancellationDate) return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
-                              const isLate = new Date(reg.CancellationDate).getTime() > new Date(dlRaw).getTime();
-                              return isLate
-                                ? <span title={`${isDe ? 'Abmeldefrist war' : 'Deadline was'}: ${formatDate(dlRaw)}`} style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(237,139,0,0.15)', color: 'var(--dex-orange-dark, #b35a00)' }}>{isDe ? 'Nach Frist' : 'After deadline'}</span>
-                                : <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
-                            })()}
-                          </td>
-                          {hasWaitlistActivity && (
-                            <td style={{ padding: 8, color: greyText, fontSize: '0.8rem' }}>
-                              {(() => {
-                                const email = (anyReg.ReplacedByParticipantEmail as string | undefined) || '';
-                                if (!email) return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
-                                const other = registrations.find(r => (r.ParticipantEmail || '').toLowerCase() === email.toLowerCase());
-                                const label = other ? (((other.Vorname || '') + ' ' + (other.Nachname || '')).trim() || other.ParticipantName || email) : email;
-                                return <span title={email}>{label}</span>;
-                              })()}
-                            </td>
-                          )}
+                          <td style={{ whiteSpace: 'nowrap' }}>{p.latest ? formatDate(new Date(p.latest).toISOString()) : dash}</td>
                           {canDelete && (
-                            <td style={{ padding: 8, textAlign: 'right' }}>
+                            <td className="is-actions">
                               <button
                                 type="button"
-                                title={isDe ? 'Registrierung endgültig löschen (nur im Entwurf möglich)' : 'Permanently delete registration (drafts only)'}
-                                onClick={() => { deleteCancelled(reg).catch(() => { /* */ }); }}
-                                style={{
-                                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                                  border: '1px solid var(--dex-red, #da291c)', background: 'rgba(218,41,28,0.06)',
-                                  color: 'var(--dex-red, #da291c)', borderRadius: 6, padding: '4px 9px',
-                                  fontSize: '0.74rem', fontWeight: 600, cursor: 'pointer',
-                                }}
+                                className="dex-ui-iconbtn dex-ui-iconbtn--danger"
+                                title={isDe ? 'Diese Person überall endgültig löschen (nur im Entwurf möglich)' : 'Permanently delete this person everywhere (drafts only)'}
+                                aria-label={isDe ? 'Person überall löschen' : 'Delete person everywhere'}
+                                onClick={() => { deletePerson(p).catch(() => { /* */ }); }}
                               >
-                                <Trash2 size={13} /> {isDe ? 'Löschen' : 'Delete'}
+                                <Trash2 size={14} />
                               </button>
                             </td>
                           )}
@@ -575,7 +524,145 @@ export const CancelledList: React.FC<CancelledListProps> = (p) => {
                   </tbody>
                 </table>
               </div>
-            </>
-          );
+            ));
+          }
+          // v24.82: Abmeldungen im selben Zeilen-Layout wie die aktiven
+          // Anmeldungen (Foto + Name + „Position • Standort • Firma"), aber
+          // alle Texte in hellem Grau, damit sie klar von den aktiven
+          // Anmeldungen zu unterscheiden sind. Ein „Löschen"-Button erscheint
+          // NUR bei Entwurf-Events (canDelete) — sonst bleiben Abmeldungen
+          // wegen der einjährigen Aufbewahrungsfrist erhalten.
+          // v31.3: Das Grau kommt jetzt aus `is-muted` (Zeile wird beim
+          // Überfahren wieder lesbar) statt aus einer Farbe je Zelle. Neue
+          // Spaltenfolge nach der Frage, in der ein Organizer liest: wer →
+          // was → wann → wer hat abgemeldet → was ist auffällig.
+          return shell(cancelledRegs.length, declineCount, null, (
+            /* v30.87: eigener Scroll-Container (70vh) wie bei den Anmeldungen —
+               bei 48 Abmeldungen lief die Tabelle sonst über die ganze Seite.
+               v31.3: das macht `dex-ui-table-wrap--sticky` samt stehendem Kopf. */
+            <div className="dex-ui-table-wrap dex-ui-table-wrap--sticky">
+              <table className="dex-ui-table dex-ui-table--compact">
+                <thead>
+                  <tr>
+                    <th style={{ width: 36 }}>#</th>
+                    {thSort('nachname', isDe ? 'Teilnehmer' : 'Attendee')}
+                    {thSort('type', isDe ? 'Art' : 'Type')}
+                    {thSort('date', isDe ? 'Abgemeldet am' : 'Cancelled on')}
+                    <th>{isDe ? 'Abgemeldet von' : 'Cancelled by'}</th>
+                    {isConsolidatedMode && (
+                      <th>{isDe ? 'Sub-Event' : 'Sub-event'}</th>
+                    )}
+                    <th>{isDe ? 'Nach Frist' : 'After deadline'}</th>
+                    {/* v19.4: „Wurde ersetzt durch" — die nachgerückte Person, die
+                        den frei gewordenen Platz übernommen hat (vom Flow gesetzt).
+                        v19.11: nur bei Events mit echter Warteliste-/Nachrück-
+                        Aktivität (sonst durchgehend leer). */}
+                    {hasWaitlistActivity && (
+                      <th>{isDe ? 'Wurde ersetzt durch' : 'Replaced by'}</th>
+                    )}
+                    {canDelete && (
+                      <th style={{ textAlign: 'right' }}>{isDe ? 'Löschen' : 'Delete'}</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((reg, rowIdx) => {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const anyReg = reg as any;
+                    const declined = isDeclined(reg);
+                    const vn = reg.Vorname || ((reg.ParticipantName || '').split(' ')[0] || '');
+                    let nn = reg.Nachname || '';
+                    if (!nn && reg.ParticipantName) { const pp = reg.ParticipantName.trim().split(/\s+/); if (pp.length > 1) nn = pp.slice(1).join(' '); }
+                    const fullName = `${vn} ${nn}`.trim() || reg.ParticipantEmail || '-';
+                    const sub = [String(anyReg.JobTitle || ''), stripLocPrefix(String(anyReg.Location || '')), String(anyReg.Company || '')].filter(Boolean).join(' • ');
+                    // v24.88: Status-Pille wieder FARBIG (blau = Absage ohne
+                    // Anmeldung, rot = abgemeldet) — der Rest der Zeile bleibt grau.
+                    const artLabel = declined
+                      ? (isDe ? 'Absage (nicht angemeldet)' : 'Decline (never registered)')
+                      : (isDe ? 'Abgemeldet' : 'Cancelled');
+                    return (
+                      <tr key={reg.Id} className="is-muted">
+                        {/* v30.87: laufende Nummer + Personen-Zelle exakt wie in der
+                            Anmeldungen-Tabelle (Name fett, Zweitzeile grau) — die
+                            durchgehend ausgegraute Zeile las sich wie deaktiviert. */}
+                        <td style={{ color: 'var(--dex-gray-400)' }}>{rowIdx + 1}</td>
+                        <td>
+                          <div className="dex-ui-person">
+                            <PersonContactHover email={reg.ParticipantEmail || ''} name={fullName} size={30} subline={sub} isDe={isDe} />
+                            <div style={{ minWidth: 0 }}>
+                              <div className="dex-ui-person-name">{fullName}</div>
+                              {/* v31.3 (Nachzug): Zweitzeile schneidet ab — voller Text im title. */}
+                              {sub && <div className="dex-ui-person-sub" title={sub}>{sub}</div>}
+                            </div>
+                          </div>
+                        </td>
+                        <td><span className={pillCls(declined)}>{artLabel}</span></td>
+                        <td style={{ whiteSpace: 'nowrap' }}>{formatDate(reg.CancellationDate)}</td>
+                        {/* v24.88: „Abgemeldet von" — selbst abgemeldet vs. durch
+                            jemand anderen (Audit CancelledBy*), analog „Angemeldet von". */}
+                        <td>
+                          {(() => {
+                            const cby = (anyReg.CancelledByEmail || '').toLowerCase();
+                            const pe = (reg.ParticipantEmail || '').toLowerCase();
+                            if (!cby) return dash;
+                            if (cby === pe) return <span>{isDe ? 'Selbst abgemeldet' : 'Cancelled themselves'}</span>;
+                            return <span title={anyReg.CancelledByEmail}>{anyReg.CancelledByName || anyReg.CancelledByEmail}</span>;
+                          })()}
+                        </td>
+                        {isConsolidatedMode && (
+                          <td>{(reg as SPRegistration & { _sectionTitle?: string })._sectionTitle || '-'}</td>
+                        )}
+                        {/* v24.88: Markierung, wenn die Abmeldung NACH der
+                            kommunizierten Abmeldefrist (lastDeregisterDate) erfolgte. */}
+                        <td>
+                          {(() => {
+                            if (declined) return dash;
+                            let ev = selectedEvent;
+                            if (isConsolidatedMode) {
+                              const sid = (reg as SPRegistration & { _sectionId?: string })._sectionId;
+                              if (sid && sid !== '__parent') { const ch = consolidatedChildren.find(c => c.id === sid); if (ch) ev = ch; }
+                            }
+                            const dlRaw = ev?.lastDeregisterDate;
+                            if (!dlRaw || !reg.CancellationDate) return dash;
+                            const isLate = new Date(reg.CancellationDate).getTime() > new Date(dlRaw).getTime();
+                            return isLate
+                              ? <span className="dex-ui-pill dex-ui-pill--orange" title={`${isDe ? 'Abmeldefrist war' : 'Deadline was'}: ${formatDate(dlRaw)}`}>{isDe ? 'Nach Frist' : 'After deadline'}</span>
+                              : dash;
+                          })()}
+                        </td>
+                        {hasWaitlistActivity && (
+                          <td>
+                            {(() => {
+                              const email = (anyReg.ReplacedByParticipantEmail as string | undefined) || '';
+                              if (!email) return dash;
+                              const other = registrations.find(r => (r.ParticipantEmail || '').toLowerCase() === email.toLowerCase());
+                              const label = other ? (((other.Vorname || '') + ' ' + (other.Nachname || '')).trim() || other.ParticipantName || email) : email;
+                              return <span title={email}>{label}</span>;
+                            })()}
+                          </td>
+                        )}
+                        {canDelete && (
+                          <td className="is-actions">
+                            {/* v31.3: Symbol-Knopf statt Rahmen-Knopf — er erscheint
+                                beim Überfahren der Zeile kräftiger (is-actions) und
+                                steht damit dort, wo Löschen hingehört: rechts außen. */}
+                            <button
+                              type="button"
+                              className="dex-ui-iconbtn dex-ui-iconbtn--danger"
+                              title={isDe ? 'Registrierung endgültig löschen (nur im Entwurf möglich)' : 'Permanently delete registration (drafts only)'}
+                              aria-label={isDe ? 'Registrierung endgültig löschen' : 'Permanently delete registration'}
+                              onClick={() => { deleteCancelled(reg).catch(() => { /* */ }); }}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ));
 };
 
