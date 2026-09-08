@@ -14,7 +14,13 @@ import { useEvents, FixColumnsDetail } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useDialog } from '../context/DialogContext';
 import { useIsMobile } from '../utils/useIsMobile';
-import { Settings, Users, Mail, Book, FileText, Trash2, Columns, BarChart3, Wrench, GraduationCap } from './Icons';
+import { Settings, Users, Mail, Book, FileText, Trash2, Columns, BarChart3, Wrench, GraduationCap, Search, ChevronDown } from './Icons';
+// v31.3: Gemeinsame Klassen des Organizer Centers (Kacheln, Aktions-Gruppen,
+// Tabellen). Inline-Styles können kein `:hover` — bis v31.2 hing der Hover der
+// Hub-Kacheln deshalb an onMouseEnter/Leave, und die Wartungs-Karten hatten
+// gar keinen, obwohl ihr Knopf etwas tut.
+import { cx, ensureDexUiStyles } from './dexUi';
+import { InfoTooltip } from './InfoTooltip';
 import { useTutorial } from './tutorial/TutorialGuide';
 import { splitReleaseNote, RELEASE_NOTES, RELEASE_BEREICHE } from '../data/releaseNotes';
 import { EventService, PermCleanupReport, OrphanScanResult } from '../services/EventService';
@@ -52,9 +58,19 @@ export default function AdminHubPage(): React.ReactElement {
   const isDe = locale === 'de';
   const isMobile = useIsMobile();
   const adminLike = isAdmin || originalIsAdmin;
+  // v31.3: Das gemeinsame Stylesheet direkt beim Rendern sicherstellen (nicht im
+  // Effect) — der Hub ist die erste Admin-Seite und rendert oft, bevor irgendein
+  // Modal es injiziert hätte; im Effect gäbe es einen Moment ohne Klassen.
+  ensureDexUiStyles();
 
   const [archTotal, setArchTotal] = React.useState(0);
   const [delTotal, setDelTotal] = React.useState(0);
+  // v31.3: Ob die beiden Zähler überhaupt gelesen werden konnten. Solange nicht
+  // (noch am Laden oder Lesefehler), ist die Zahl UNBEKANNT — die alte Anzeige
+  // schrieb dort „0 Zeilen stehen an" und behauptete damit etwas über Daten, die
+  // niemand gesehen hat (CLAUDE.md: ein Lesefehler ist keine Null). Rein für die
+  // Anzeige; die Sperre der Knöpfe hängt weiter an der Zahl selbst.
+  const [countsRead, setCountsRead] = React.useState<{ arch: boolean; del: boolean }>({ arch: false, del: false });
   const [busy, setBusy] = React.useState<'' | 'arch' | 'del' | 'fixcols' | 'perms' | 'restoredesc' | 'reseed' | 'weekly' | 'kpi'>('');
   // v26.63: zuletzt neu berechnete Events-Zahl (für die Erfolgs-Anzeige).
   const [kpiResult, setKpiResult] = React.useState<number | null>(null);
@@ -108,6 +124,11 @@ export default function AdminHubPage(): React.ReactElement {
   const logoInputRef = React.useRef<HTMLInputElement>(null);
   const orbInputRef = React.useRef<HTMLInputElement>(null);
   const videoInputRef = React.useRef<HTMLInputElement>(null);
+  // v31.3: Welcher Aufklapper „Was diese Aktionen genau tun" offen ist ('' = keiner).
+  // Die ausführlichen Erklärungen der Wartungs-Aktionen stehen dort — auf der
+  // Kachel selbst steht nur eine Zeile Folge, sonst liest niemand mehr, was ein
+  // Klick auslöst.
+  const [openInfo, setOpenInfo] = React.useState<string>('');
   // Release-Notes: Volltext-Suche + Bereichs-Filter + Art-Filter.
   const [rnSearch, setRnSearch] = React.useState('');
   const [rnBereich, setRnBereich] = React.useState<string>('');
@@ -134,12 +155,18 @@ export default function AdminHubPage(): React.ReactElement {
 
   React.useEffect(() => {
     if (!adminLike) { navigate('start'); return; }
+    // v31.3 (Nachzug): Erst zählen, wenn die Event-Liste da ist. `getArchivableCount`
+    // antwortet bei leerer Liste mit 0 (archiveAndPurge.ts: `allIds.size === 0`) —
+    // das ist die Aussage „noch nichts gelesen", nicht „nichts zu archivieren".
+    // Ohne diese Sperre stünde eine ehrliche 0 neben einer erfundenen, und der
+    // Zähler-Merker (countsRead) würde die erfundene als gelesen ausweisen.
+    if (!allEvents.length) return;
     let cancelled = false;
-    getArchivableCount().then(r => { if (!cancelled) setArchTotal(r.total); }).catch(() => { /* */ });
-    getDeletableArchiveCount().then(n => { if (!cancelled) setDelTotal(n); }).catch(() => { /* */ });
+    getArchivableCount().then(r => { if (!cancelled) { setArchTotal(r.total); setCountsRead(p => ({ ...p, arch: true })); } }).catch(() => { /* */ });
+    getDeletableArchiveCount().then(n => { if (!cancelled) { setDelTotal(n); setCountsRead(p => ({ ...p, del: true })); } }).catch(() => { /* */ });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adminLike]);
+  }, [adminLike, allEvents.length]);
 
   // v26.51: aktuelles Branding (Default-Logo + Logo-Video) einmalig laden.
   React.useEffect(() => {
@@ -448,6 +475,201 @@ export default function AdminHubPage(): React.ReactElement {
     finally { setBusy(''); }
   };
 
+  // v31.3: Der Ablauf der Register-Bereinigung stand als 170-zeiliger
+  // onClick-Ausdruck mitten im JSX — unlesbar und beim Umbau der Kacheln nicht
+  // verschiebbar. Reiner Umzug, kein Schritt verändert.
+  const doRegistryCleanup = (): void => {
+    (async () => {
+      if (!eventServiceRef) return;
+      setRegCleanBusy(true);
+      setRegCleanResult(null);
+      setRegCleanIsError(false);
+      setRegCleanProgress({ done: 0, total: 0, label: isDe ? 'Teilnehmer-Register wird gelesen…' : 'Reading participant registry…' });
+      try {
+        const validNumbers = allEvents
+          .map(e => e.eventNumber)
+          .filter((n): n is number => typeof n === 'number' && n > 0);
+        const info = await eventServiceRef.analyzeParticipantRegistry(validNumbers, loaded => {
+          setRegCleanProgress({ done: loaded, total: 0, label: isDe ? `${loaded} Einträge gelesen…` : `${loaded} records read…` });
+        });
+        const orphanNote = info.orphanNumbers > 0
+          ? (isDe
+            ? ` ${info.orphanNumbers} Verweis(e) zeigen auf gelöschte Events.`
+            : ` ${info.orphanNumbers} reference(s) point to deleted events.`)
+          : '';
+        // v29.0: Zweite Stufe — das Register gegen die
+        // TEILNEHMERLISTEN abgleichen. Die Dubletten-Prüfung oben
+        // sieht nur mehrfache Einträge und Verweise auf gelöschte
+        // Events; ein Verweis auf ein EXISTIERENDES Event ohne Zeile
+        // in dessen Liste fiel bisher durch. Genau der lässt „Meine
+        // Events" eine Anmeldung zeigen, die es nicht gibt (v28.99).
+        const cmp = await eventServiceRef.analyzeRegistryAgainstLists(
+          allEvents.map(e => ({ eventNumber: e.eventNumber, title: e.title, subsiteUrl: e.subsiteUrl })),
+          (done, total, title) => setRegCleanProgress({
+            done, total,
+            label: isDe
+              ? `Teilnehmerlisten werden verglichen… ${done}/${total}${title ? ` — ${title}` : ''}`
+              : `Comparing attendee lists… ${done}/${total}${title ? ` — ${title}` : ''}`,
+          }),
+        );
+        setRegCleanProgress(null);
+        /**
+         * v29.4: Verweise auf GELÖSCHTE Events mitnehmen. Bis v29.3
+         * wurden sie nur gezählt („wirkungslos, aber harmlos") — das
+         * stimmt technisch, aber es sind personenbezogene Reste
+         * gelöschter Events, und genau die soll das Register nicht
+         * behalten. Die Event-Nummern kommen dafür STRIKT aus
+         * DEX_Events (nicht aus der geladenen Event-Liste, die bei
+         * einem Mapping-Fehler still Events auslässt) — sonst würde
+         * ein Lesefehler gültige Verweise als verwaist ausweisen.
+         */
+        let orphanPairs: Array<{ email: string; eventNumber: number }> = [];
+        let orphanReadError = '';
+        try {
+          orphanPairs = await eventServiceRef.collectOrphanRegistryNumbers(loaded =>
+            setRegCleanProgress({
+              done: loaded, total: 0,
+              label: isDe ? `Verweise auf gelöschte Events werden gesucht… ${loaded}` : `Looking for references to deleted events… ${loaded}`,
+            }));
+        } catch (e) {
+          orphanReadError = (e instanceof Error ? e.message : String(e || '')).slice(0, 200);
+        }
+        const orphanErrNote = orphanReadError
+          ? (isDe
+            ? `\n\nVerweise auf gelöschte Events konnten NICHT geprüft werden (${orphanReadError}) — sie bleiben unangetastet.`
+            : `\n\nReferences to deleted events could NOT be checked (${orphanReadError}) — they stay untouched.`)
+          : '';
+        const staleAll: Array<{ email: string; eventNumber: number; title: string }> = [
+          ...cmp.stale,
+          ...orphanPairs.map(o => ({
+            email: o.email, eventNumber: o.eventNumber,
+            title: isDe ? `gelöschtes Event #${o.eventNumber}` : `deleted event #${o.eventNumber}`,
+          })),
+        ];
+        const orphanFoundNote = orphanPairs.length > 0
+          ? (isDe
+            ? `\n\nEnthalten sind ${orphanPairs.length} Verweis(e) auf Events, die es in der Event-Liste NICHT MEHR GIBT (gelöschte Events). Sie laufen ins Leere und werden mit entfernt.`
+            : `\n\nIncluded are ${orphanPairs.length} reference(s) to events that NO LONGER EXIST in the event list (deleted events). They point nowhere and are removed as well.`)
+          : '';
+        const staleNote = cmp.stale.length > 0
+          ? (isDe
+            ? ` ${cmp.stale.length} Verweis(e) zeigen auf ein Event, in dessen Teilnehmerliste die Person NICHT steht.`
+            : ` ${staleAll.length} reference(s) point to an event whose attendee list does not contain the person.`)
+          : '';
+        // v29.1: Events, bei denen (fast) ALLE Verweise ins Leere zeigen,
+        // sind kein Aufräum-Fall, sondern ein Hinweis darauf, dass
+        // Register und Liste dort nicht vergleichbar sind. Sie werden
+        // benannt statt stillschweigend bereinigt.
+        const suspNote = cmp.suspiciousEvents.length > 0
+          ? (isDe
+            ? `\n\nNICHT bereinigt werden ${cmp.suspiciousEvents.length} Event(s), bei denen nahezu ALLE Verweise ins Leere zeigen — dort stimmt eher die Zuordnung nicht als hunderte Abmeldungen:\n`
+              + cmp.suspiciousEvents.slice(0, 8).map(e => `• ${e.title || e.eventNumber}: ${e.missing} von ${e.referenced} Verweisen ohne Zeile, Liste hat ${e.rows} aktive Zeile(n)`).join('\n')
+              + (cmp.suspiciousEvents.length > 8 ? `\n… und ${cmp.suspiciousEvents.length - 8} weitere` : '')
+            : `\n\nNOT cleaned: ${cmp.suspiciousEvents.length} event(s) where nearly ALL references point nowhere — there the mapping is more likely wrong than hundreds of cancellations:\n`
+              + cmp.suspiciousEvents.slice(0, 8).map(e => `• ${e.title || e.eventNumber}: ${e.missing} of ${e.referenced} references without a row, list has ${e.rows} active row(s)`).join('\n')
+              + (cmp.suspiciousEvents.length > 8 ? `\n… and ${cmp.suspiciousEvents.length - 8} more` : ''))
+          : '';
+        // v29.3: Events, deren Teilnehmerliste NICHT MEHR EXISTIERT
+        // (HTTP 404). Das ist der Regelfall hinter den meisten
+        // verwaisten Verweisen: Das 3-Monats-Löschkonzept recycelt
+        // die Subsite und lässt das Event-Item stehen — die
+        // Register-Verweise darauf sind genau der Rückstand, den
+        // diese Löschung hätte mitnehmen sollen. Sie werden bereinigt
+        // (das ist kein Datenverlust, sondern der fehlende Rest der
+        // Löschung), aber vorher benannt.
+        const goneNote = cmp.deletedListEvents.length > 0
+          ? (isDe
+            ? `\n\nDavon entfallen ${cmp.deletedListEvents.reduce((n, e) => n + e.referenced, 0)} Verweis(e) auf ${cmp.deletedListEvents.length} Event(s), deren Teilnehmerliste es NICHT MEHR GIBT — typischerweise nach dem 3-Monats-Löschkonzept (Liste gelöscht, Event bleibt bestehen). Hier ist das Entfernen der Rest der Löschung, kein Datenverlust:\n`
+              + cmp.deletedListEvents.slice(0, 8).map(e => `• ${e.title || e.eventNumber}: ${e.referenced} Verweis(e)`).join('\n')
+              + (cmp.deletedListEvents.length > 8 ? `\n… und ${cmp.deletedListEvents.length - 8} weitere` : '')
+            : `\n\nOf these, ${cmp.deletedListEvents.reduce((n, e) => n + e.referenced, 0)} reference(s) belong to ${cmp.deletedListEvents.length} event(s) whose attendee list NO LONGER EXISTS — typically after the 3-month retention deletion (list deleted, event kept). Removing them completes that deletion, it does not lose data:\n`
+              + cmp.deletedListEvents.slice(0, 8).map(e => `• ${e.title || e.eventNumber}: ${e.referenced} reference(s)`).join('\n')
+              + (cmp.deletedListEvents.length > 8 ? `\n… and ${cmp.deletedListEvents.length - 8} more` : ''))
+          : '';
+        const skipNote = cmp.skippedEvents > 0
+          ? (isDe
+            ? ` ${cmp.skippedEvents} Event(s) konnten nicht gelesen werden (z.B. fehlende Rechte oder Drosselung) und wurden übersprungen — ihre Verweise bleiben unangetastet.`
+            : ` ${cmp.skippedEvents} event(s) could not be read (e.g. missing permissions or throttling) and were skipped — their references stay untouched.`)
+          : '';
+        if (info.duplicateGroups === 0 && staleAll.length === 0 && cmp.suspiciousEvents.length > 0) {
+          setRegCleanIsError(true);
+          setRegCleanResult(isDe
+            ? `Keine Dubletten und keine einzeln verwaisten Verweise — ABER bei ${cmp.suspiciousEvents.length} Event(s) zeigen nahezu alle Verweise ins Leere. Das sieht nach einem Zuordnungsproblem aus und wurde deshalb NICHT bereinigt: ${cmp.suspiciousEvents.slice(0, 5).map(e => `${e.title || e.eventNumber} (${e.missing}/${e.referenced}, Liste ${e.rows})`).join('; ')}.${skipNote}`
+            : `No duplicates and no individually orphaned references — BUT for ${cmp.suspiciousEvents.length} event(s) nearly all references point nowhere. That looks like a mapping problem and was NOT cleaned: ${cmp.suspiciousEvents.slice(0, 5).map(e => `${e.title || e.eventNumber} (${e.missing}/${e.referenced}, list ${e.rows})`).join('; ')}.${skipNote}`);
+          setRegCleanProgress(null);
+          setRegCleanBusy(false);
+          return;
+        }
+        if (info.duplicateGroups === 0 && staleAll.length === 0) {
+          setRegCleanResult(isDe
+            ? `Alles sauber: keine Dubletten, und alle Verweise haben eine Zeile in der Teilnehmerliste (${info.total} Einträge, ${cmp.checkedEvents} Event(s) verglichen).${orphanNote}${skipNote}${info.noEmail > 0 ? ` ${info.noEmail} Eintrag/Einträge ohne E-Mail-Adresse.` : ''}`
+            : `All clean: no duplicates, and every reference has a row in the attendee list (${info.total} records, ${cmp.checkedEvents} event(s) compared).${orphanNote}${skipNote}${info.noEmail > 0 ? ` ${info.noEmail} record(s) without an email address.` : ''}`);
+          setRegCleanProgress(null);
+          setRegCleanBusy(false);
+          return;
+        }
+        if (info.duplicateGroups === 0) {
+          // Nur verwaiste Verweise — einzeln nachfragen und entfernen.
+          const examples = staleAll.slice(0, 5)
+            .map(x => `• ${x.email} → ${x.title || x.eventNumber}`).join('\n');
+          const okStale = await confirmDialog(isDe
+            ? `${staleAll.length} Verweis(e) im Register zeigen auf ein Event, in dessen Teilnehmerliste die Person nicht steht — typischerweise eine Abmeldung, bei der das Nachziehen scheiterte, oder eine von Hand gelöschte Zeile.\n\n${examples}${staleAll.length > 5 ? `\n… und ${staleAll.length - 5} weitere` : ''}\n\nDiese Verweise jetzt entfernen? Die Einträge selbst bleiben mit ihren übrigen Events bestehen. An den Teilnehmerlisten wird nichts geändert.${orphanFoundNote}${goneNote}${suspNote}${orphanErrNote}${skipNote ? `\n\nHinweis:${skipNote}` : ''}`
+            : `${staleAll.length} reference(s) point to an event whose attendee list does not contain the person — typically a cancellation whose registry update failed, or a manually deleted row.\n\n${examples}${staleAll.length > 5 ? `\n… and ${staleAll.length - 5} more` : ''}\n\nRemove these references now? The records themselves stay with their remaining events. Attendee lists are not touched.${orphanFoundNote}${goneNote}${suspNote}${orphanErrNote}${skipNote ? `\n\nNote:${skipNote}` : ''}`,
+            { confirmLabel: isDe ? 'Verweise entfernen' : 'Remove references' });
+          if (!okStale) { setRegCleanProgress(null); setRegCleanBusy(false); return; }
+          setRegCleanProgress({ done: 0, total: 0, label: isDe ? 'Verweise werden entfernt…' : 'Removing references…' });
+          const pr = await eventServiceRef.pruneStaleRegistryNumbers(staleAll, (done, total) =>
+            setRegCleanProgress({ done, total, label: isDe ? 'Verweise werden entfernt…' : 'Removing references…' }));
+          setRegCleanIsError(pr.failed > 0);
+          setRegCleanResult(isDe
+            ? `${pr.removed} Verweis(e) bei ${pr.updated} Person(en) entfernt${pr.failed > 0 ? `, ${pr.failed} fehlgeschlagen` : ''}.${orphanNote}`
+            : `${pr.removed} reference(s) removed for ${pr.updated} person(s)${pr.failed > 0 ? `, ${pr.failed} failed` : ''}.${orphanNote}`);
+          setRegCleanProgress(null);
+          setRegCleanBusy(false);
+          return;
+        }
+        setRegCleanProgress(null);
+        const ok = await confirmDialog(isDe
+          ? `${info.duplicateGroups} Person(en) haben mehrere Einträge im Teilnehmer-Register (${info.surplusRecords} überzählige Zeile(n) von ${info.total} insgesamt).\n\nJetzt zusammenführen? Je Person bleibt der älteste Eintrag und erhält ALLE Event-Nummern der Dubletten; die überzähligen Zeilen werden gelöscht. Anmeldungen gehen dabei nicht verloren.${orphanNote || staleNote ? `\n\nHinweis:${orphanNote}${staleNote} Die Verweise räumst du auf, indem du die Aktion nach dem Zusammenführen noch einmal startest.` : ''}`
+          : `${info.duplicateGroups} person(s) have multiple records in the participant registry (${info.surplusRecords} surplus row(s) out of ${info.total} total).\n\nMerge now? Per person the oldest record is kept and receives ALL event numbers; the surplus rows are deleted. No registrations are lost.${orphanNote ? `\n\nNote:${orphanNote}` : ''}`,
+          { confirmLabel: isDe ? 'Zusammenführen' : 'Merge' });
+        if (!ok) { setRegCleanProgress(null); setRegCleanBusy(false); return; }
+        setRegCleanProgress({ done: 0, total: info.duplicateGroups, label: isDe ? 'Einträge werden zusammengeführt…' : 'Merging records…' });
+        const r = await eventServiceRef.mergeDuplicateParticipants(
+          (done, total) => setRegCleanProgress({
+            done, total,
+            label: isDe ? 'Einträge werden zusammengeführt…' : 'Merging records…',
+          }),
+          loaded => setRegCleanProgress({ done: loaded, total: 0, label: isDe ? `${loaded} Einträge gelesen…` : `${loaded} records read…` }),
+        );
+        setRegCleanIsError(r.failed > 0);
+        setRegCleanResult(isDe
+          ? `${r.groups} Person(en) zusammengeführt, ${r.deleted} überzählige Zeile(n) entfernt${r.failed > 0 ? `, ${r.failed} fehlgeschlagen` : ''}.${staleNote ? `${staleNote} Starte die Aktion noch einmal, um sie zu entfernen.` : ''}`
+          : `${r.groups} person(s) merged, ${r.deleted} surplus row(s) removed${r.failed > 0 ? `, ${r.failed} failed` : ''}.`);
+      } catch (err) {
+        setRegCleanIsError(true);
+        setRegCleanResult((isDe ? 'Fehler: ' : 'Error: ') + (err instanceof Error ? err.message : String(err || '')).slice(0, 300));
+      }
+      setRegCleanProgress(null);
+      setRegCleanBusy(false);
+    })().catch(() => { /* */ });
+  };
+
+  // v31.3: Ebenfalls aus dem JSX gezogen — Sammel-Heilung „Nachrücken & IDs".
+  const doHealAll = (): void => {
+    if (!eventServiceRef) return;
+    setHealBusy(true);
+    setHealResult(null);
+    healAllEvents({
+      svc: eventServiceRef, allEvents, isDe, getAllRegistrations, confirmDialog,
+      onProgress: setHealProgress,
+    }).then(r => {
+      if (!r.cancelled) setHealResult({ text: r.text, isError: r.isError });
+    }).catch(err => {
+      setHealResult({ text: (isDe ? 'Fehler: ' : 'Error: ') + (err instanceof Error ? err.message : String(err || '')).slice(0, 300), isError: true });
+    }).then(() => { setHealProgress(null); setHealBusy(false); });
+  };
+
   // v26.51: Logo & Branding — Download des aktuellen Logos (Data-URI → Datei).
   const doDownloadLogo = (): void => {
     if (!branding || !branding.logoBase64) return;
@@ -571,687 +793,540 @@ export default function AdminHubPage(): React.ReactElement {
   };
 
   const tools: Array<{ icon: React.ReactNode; title: string; desc: string; onClick: () => void }> = [
-    { icon: <Users size={28} />, title: isDe ? 'Organizer Center' : 'Organizer center', desc: isDe ? 'Teilnehmer, Prozesse, Audit-Log, SharePoint-Liste — alle Event-Werkzeuge pro Event.' : 'Attendees, processes, audit log, SharePoint list — all per-event tools.', onClick: () => navigate('admin') },
-    { icon: <Settings size={28} />, title: isDe ? 'Prozessübersicht' : 'Process overview', desc: isDe ? 'Wie die Abläufe in DEX funktionieren — verständlich erklärt.' : 'How the DEX processes work — explained simply.', onClick: () => navigate('flowcharts') },
-    { icon: <FileText size={28} />, title: isDe ? 'Architektur' : 'Architecture', desc: isDe ? 'Gesamtarchitektur (App, SharePoint-Listen, Power-Automate-Flows, M365-Dienste) — mit PDF-Export.' : 'Overall architecture (app, SharePoint lists, Power Automate flows, M365 services) — with PDF export.', onClick: () => navigate('architecture') },
-    { icon: <Users size={28} />, title: isDe ? 'Rollenverwaltung' : 'Role management', desc: isDe ? 'User, Organizer und Admins zuweisen oder entfernen.' : 'Assign or remove users, organizers and admins.', onClick: () => navigate('settings') },
-    { icon: <Columns size={28} />, title: isDe ? 'Rollenmatrix' : 'Role matrix', desc: isDe ? 'Übersicht: wer welche Rechte hat (User, Organizer, Admin).' : 'Overview: who has which permissions (user, organizer, admin).', onClick: () => navigate('role-matrix') },
-    { icon: <Mail size={28} />, title: isDe ? 'Mail-Vorlagen' : 'Mail templates', desc: isDe ? 'Globale Standard-Mails (Anmeldung, Warteliste, Abmeldung …) ansehen und bearbeiten — mit Live-Vorschau.' : 'View and edit the global default emails — with live preview.', onClick: () => navigate('email-templates') },
-    { icon: <BarChart3 size={28} />, title: isDe ? 'Statistik-Archiv' : 'Statistics archive', desc: isDe ? 'Kennzahlen gelöschter Teilnehmerlisten: welches Event, wann, von wem organisiert, mit welcher Teilnehmerzahl (ohne PII).' : 'KPIs of deleted participant lists: which event, when, organized by whom, with how many participants (no PII).', onClick: () => navigate('stats-archive') },
-    { icon: <Book size={28} />, title: isDe ? 'Handbuch' : 'Manual', desc: isDe ? 'Ausführliche Anleitung zu allen Funktionen.' : 'Detailed guide for all features.', onClick: () => navigate('manual') },
+    { icon: <Users size={20} />, title: isDe ? 'Organizer Center' : 'Organizer center', desc: isDe ? 'Teilnehmer, Prozesse, Audit-Log, SharePoint-Liste — alle Event-Werkzeuge pro Event.' : 'Attendees, processes, audit log, SharePoint list — all per-event tools.', onClick: () => navigate('admin') },
+    { icon: <Settings size={20} />, title: isDe ? 'Prozessübersicht' : 'Process overview', desc: isDe ? 'Wie die Abläufe in DEX funktionieren — verständlich erklärt.' : 'How the DEX processes work — explained simply.', onClick: () => navigate('flowcharts') },
+    { icon: <FileText size={20} />, title: isDe ? 'Architektur' : 'Architecture', desc: isDe ? 'App, SharePoint-Listen, Power-Automate-Flows und M365-Dienste — mit PDF-Export.' : 'App, SharePoint lists, Power Automate flows and M365 services — with PDF export.', onClick: () => navigate('architecture') },
+    { icon: <Users size={20} />, title: isDe ? 'Rollenverwaltung' : 'Role management', desc: isDe ? 'User, Organizer und Admins zuweisen oder entfernen.' : 'Assign or remove users, organizers and admins.', onClick: () => navigate('settings') },
+    { icon: <Columns size={20} />, title: isDe ? 'Rollenmatrix' : 'Role matrix', desc: isDe ? 'Übersicht: wer welche Rechte hat (User, Organizer, Admin).' : 'Overview: who has which permissions (user, organizer, admin).', onClick: () => navigate('role-matrix') },
+    { icon: <Mail size={20} />, title: isDe ? 'Mail-Vorlagen' : 'Mail templates', desc: isDe ? 'Globale Standard-Mails (Anmeldung, Warteliste, Abmeldung …) bearbeiten — mit Live-Vorschau.' : 'Edit the global default emails (registration, waitlist, cancellation …) — with live preview.', onClick: () => navigate('email-templates') },
+    { icon: <BarChart3 size={20} />, title: isDe ? 'Statistik-Archiv' : 'Statistics archive', desc: isDe ? 'Kennzahlen gelöschter Teilnehmerlisten — welches Event, wann, von wem, wie viele (ohne Personendaten).' : 'KPIs of deleted participant lists — which event, when, by whom, how many (no personal data).', onClick: () => navigate('stats-archive') },
+    { icon: <Book size={20} />, title: isDe ? 'Handbuch' : 'Manual', desc: isDe ? 'Ausführliche Anleitung zu allen Funktionen.' : 'Detailed guide for all features.', onClick: () => navigate('manual') },
     // v29.24: Onepager für die Einführungsveranstaltung — Zyklus, Einsatzbereich (Venn), Rollen, Kernfunktionen.
-    { icon: <GraduationCap size={28} />, title: isDe ? 'Einführungs-Onepager' : 'Introduction one-pager', desc: isDe ? 'DEX auf einen Blick für die Einführungsveranstaltung: Event-Zyklus, Einsatzbereich, Rollen, Kernfunktionen.' : 'DEX at a glance for the introduction session: event cycle, scope, roles, core functions.', onClick: () => navigate('intro-onepager') },
+    { icon: <GraduationCap size={20} />, title: isDe ? 'Einführungs-Onepager' : 'Introduction one-pager', desc: isDe ? 'DEX auf einen Blick: Event-Zyklus, Einsatzbereich, Rollen, Kernfunktionen.' : 'DEX at a glance: event cycle, scope, roles, core functions.', onClick: () => navigate('intro-onepager') },
     // v30.25: Ersatz-Einstieg für Admins — die „Neu hier?"-Pille auf der
     // Startseite wird ihnen nicht mehr angeboten (s. Header). Das Tutorial
     // startet auf der Landing Page, deshalb erst dorthin navigieren und die
     // Tour anschließend anstoßen.
-    { icon: <GraduationCap size={28} />, title: isDe ? 'DEX Tutorial' : 'DEX tutorial', desc: isDe ? 'Die geführte Tour durch die App starten — praktisch, um sie neuen Kolleg:innen zu zeigen.' : 'Start the guided tour through the app — handy for showing it to new colleagues.', onClick: () => { navigate('start'); window.setTimeout(() => { try { openTutorial(); } catch { /* Tour nicht verfügbar */ } }, 350); } },
+    { icon: <GraduationCap size={20} />, title: isDe ? 'DEX Tutorial' : 'DEX tutorial', desc: isDe ? 'Die geführte Tour durch die App starten — praktisch, um sie neuen Kolleg:innen zu zeigen.' : 'Start the guided tour through the app — handy for showing it to new colleagues.', onClick: () => { navigate('start'); window.setTimeout(() => { try { openTutorial(); } catch { /* Tour nicht verfügbar */ } }, 350); } },
   ];
 
-  const cardStyle: React.CSSProperties = { background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 12, padding: 18, boxShadow: '0 2px 8px rgba(0,0,0,0.05)', transition: 'border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease' };
-  // v24.70: Hover-Effekt für die klickbaren Kacheln — grüner Rand, leichter
-  // Lift + Schatten (wie die Kacheln auf der Startseite).
-  const onCardHover = (e: React.MouseEvent<HTMLDivElement>): void => {
-    const el = e.currentTarget;
-    el.style.borderColor = 'var(--dex-green, #86bc25)';
-    el.style.boxShadow = '0 8px 22px rgba(134,188,37,0.20)';
-    el.style.transform = 'translateY(-2px)';
-  };
-  const onCardLeave = (e: React.MouseEvent<HTMLDivElement>): void => {
-    const el = e.currentTarget;
-    el.style.borderColor = 'var(--dex-gray-200)';
-    el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)';
-    el.style.transform = '';
-  };
+  /**
+   * v31.3: EINE Aktions-Kachel (`dex-ui-action`): Symbol, Titel, eine Zeile
+   * Folge, optional eine Zähler-Pille. Vorher war jede Wartungs-Aktion eine
+   * Karte mit vier Zeilen Erklärung und einem Knopf ganz unten — bei zehn
+   * Karten liest man weder das eine noch das andere. Die ausführliche
+   * Erklärung steht jetzt im Aufklapper unter der Gruppe.
+   */
+  const hubAction = (
+    key: string,
+    icon: React.ReactNode,
+    title: string,
+    desc: string,
+    onClick: () => void,
+    opts?: { disabled?: boolean; danger?: boolean; badge?: React.ReactNode },
+  ): React.ReactElement => (
+    <button
+      key={key}
+      type="button"
+      className={cx('dex-ui-action', opts && opts.danger && 'dex-ui-action--danger')}
+      disabled={!!(opts && opts.disabled)}
+      onClick={onClick}
+    >
+      <span className="dex-ui-action-icon" aria-hidden="true">{icon}</span>
+      <span className="dex-ui-action-body">
+        <span className="dex-ui-action-title">{title}</span>
+        <span className="dex-ui-action-desc">{desc}</span>
+      </span>
+      {opts && opts.badge ? <span className="dex-ui-action-badge">{opts.badge}</span> : null}
+    </button>
+  );
+
+  // v31.3: Fortschrittsbalken einer laufenden Aktion — bis v31.2 stand derselbe
+  // Balken sechsmal als Inline-Style im JSX.
+  const runProgress = (pct: number, label: string): React.ReactElement => (
+    <div>
+      <div className="dex-ui-progress"><div className="dex-ui-progress-bar" style={{ width: `${pct}%` }} /></div>
+      <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
+    </div>
+  );
+
+  // v31.3: Eine Zeile im Aufklapper „Was diese Aktionen genau tun".
+  const actionDetail = (title: string, text: string): React.ReactElement => (
+    <p key={title} style={{ margin: '0 0 10px', fontSize: '0.8rem', lineHeight: 1.55, color: 'var(--dex-gray-600)' }}>
+      <strong style={{ color: 'var(--dex-gray-800)' }}>{title}</strong> — {text}
+    </p>
+  );
+
+  /**
+   * v31.3: Die Fußzeilen der beiden Dialoge. `Modal` rendert sie seit v31.2
+   * selbst (Trennlinie oben, rechtsbündig) — vorher baute jeder Dialog seine
+   * eigene Knopfzeile mitten in den Inhalt. Primär-Knopf rechts außen.
+   */
+  const permCleanupFooter = permCleanupBusy ? undefined : (permCleanupReport ? (
+    !permCleanupReport.apply && (permCleanupReport.strayWriteFound > 0 || permCleanupReport.ilsIssues > 0) ? (
+      <>
+        <button type="button" className="btn btn-outline dex-ui-btn-sm" onClick={() => { setPermCleanupOpen(false); setPermCleanupReport(null); }}>
+          {isDe ? 'Schließen' : 'Close'}
+        </button>
+        <button type="button" className="btn btn-secondary dex-ui-btn-sm" onClick={() => { void runPermCleanup(false); }}>
+          {isDe ? 'Erneut prüfen' : 'Re-check'}
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary dex-ui-btn-sm"
+          onClick={() => {
+            (async () => {
+              const ok = await confirmDialog(isDe
+                ? `${permCleanupReport.strayWriteFound} Über-Freigabe(n) entfernen und ${permCleanupReport.ilsIssues} Element-Sicherheit(en) korrigieren?\n\nLeserechte und Gruppen-Berechtigungen bleiben erhalten. Der Vorgang kann je nach Größe einige Minuten dauern.`
+                : `Remove ${permCleanupReport.strayWriteFound} over-grant(s) and fix ${permCleanupReport.ilsIssues} item-security setting(s)?\n\nRead access and group permissions are preserved. Depending on size this can take a few minutes.`,
+                { confirmLabel: isDe ? 'Jetzt korrigieren' : 'Fix now' });
+              if (ok) await runPermCleanup(true);
+            })().catch(() => { /* */ });
+          }}
+        >
+          {isDe ? 'Jetzt korrigieren' : 'Fix now'}
+        </button>
+      </>
+    ) : (
+      <>
+        <button type="button" className="btn btn-secondary dex-ui-btn-sm" onClick={() => { void runPermCleanup(false); }}>
+          {isDe ? 'Erneut prüfen' : 'Re-check'}
+        </button>
+        <button type="button" className="btn btn-primary dex-ui-btn-sm" onClick={() => { setPermCleanupOpen(false); setPermCleanupReport(null); }}>
+          {isDe ? 'Schließen' : 'Close'}
+        </button>
+      </>
+    )
+  ) : (
+    <>
+      <button type="button" className="btn btn-secondary dex-ui-btn-sm" onClick={() => setPermCleanupOpen(false)}>
+        {isDe ? 'Abbrechen' : 'Cancel'}
+      </button>
+      <button type="button" className="btn btn-primary dex-ui-btn-sm" onClick={() => { void runPermCleanup(false); }}>
+        {isDe ? 'Prüfen (ohne Änderung)' : 'Check (no changes)'}
+      </button>
+    </>
+  ));
+
+  const orphanFooter = orphanBusy ? undefined : (orphanResult ? (
+    <>
+      <button type="button" className="btn btn-secondary dex-ui-btn-sm" onClick={() => { void runOrphanScan(); }}>
+        {isDe ? 'Erneut prüfen' : 'Re-check'}
+      </button>
+      <button type="button" className="btn btn-primary dex-ui-btn-sm" onClick={() => { setOrphanOpen(false); setOrphanResult(null); }}>
+        {isDe ? 'Schließen' : 'Close'}
+      </button>
+    </>
+  ) : (
+    <>
+      <button type="button" className="btn btn-secondary dex-ui-btn-sm" onClick={() => setOrphanOpen(false)}>
+        {isDe ? 'Abbrechen' : 'Cancel'}
+      </button>
+      <button type="button" className="btn btn-primary dex-ui-btn-sm" onClick={() => { void runOrphanScan(); }}>
+        {isDe ? 'Jetzt prüfen' : 'Check now'}
+      </button>
+    </>
+  ));
+
+  // v31.3: Aufklapper-Knopf je Aktions-Gruppe (nur einer offen).
+  const detailToggle = (key: string): React.ReactElement => (
+    <button
+      type="button"
+      className={cx('dex-ui-disclosure', openInfo === key && 'is-open')}
+      onClick={() => setOpenInfo(openInfo === key ? '' : key)}
+    >
+      <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+      {isDe ? 'Was diese Aktionen genau tun' : 'What these actions do in detail'}
+    </button>
+  );
 
   return (
     <div className="page-container">
-      <h1 style={{ marginTop: 0 }}>{isDe ? 'Admin' : 'Admin'}</h1>
-      <p style={{ color: 'var(--dex-gray-600)', marginTop: 0 }}>
-        {isDe ? 'Zentrale Anlaufstelle für Admin-Themen.' : 'Central place for admin topics.'}
-      </p>
-
-      {/* Werkzeuge */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14, marginBottom: 28 }}>
-        {tools.map((t, i) => (
-          <div key={i} className="card-clickable" style={{ ...cardStyle, cursor: 'pointer', display: 'flex', gap: 14, alignItems: 'flex-start' }} onClick={t.onClick} onMouseEnter={onCardHover} onMouseLeave={onCardLeave}>
-            <span style={{ color: 'var(--dex-green, #86bc25)', flexShrink: 0 }}>{t.icon}</span>
-            <span>
-              <span style={{ display: 'block', fontWeight: 700, color: 'var(--dex-gray-800)', marginBottom: 2 }}>{t.title}</span>
-              <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.4 }}>{t.desc}</span>
-            </span>
+      {/* v31.3: Seitenkopf wie im Organizer Center — Titel und eine Zeile, was
+          die Seite ist. */}
+      <div className="dex-ui-page-head">
+        <div style={{ minWidth: 0 }}>
+          <h1 className="dex-ui-page-head-title" style={{ marginTop: 0 }}>{isDe ? 'Admin' : 'Admin'}</h1>
+          <div className="dex-ui-page-head-meta">
+            {isDe
+              ? 'Zentrale Anlaufstelle für Admin-Themen: Werkzeuge öffnen, Daten prüfen, reparieren, archivieren.'
+              : 'Central place for admin topics: open tools, check data, repair, archive.'}
           </div>
-        ))}
-        {/* v23.44: eigene Kachel zum direkten Springen in eine SharePoint-Liste. */}
-        <div style={{ ...cardStyle, display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-          <span style={{ color: 'var(--dex-green, #86bc25)', flexShrink: 0 }}><FileText size={28} /></span>
-          <span style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ display: 'block', fontWeight: 700, color: 'var(--dex-gray-800)', marginBottom: 2 }}>{isDe ? 'SharePoint-Liste öffnen' : 'Open SharePoint list'}</span>
-            <span style={{ display: 'block', fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.4, marginBottom: 8 }}>{isDe ? 'Direkt in eine der Hintergrund-Listen springen.' : 'Jump straight into one of the background lists.'}</span>
-            <select
-              defaultValue=""
-              onChange={e => { const v = e.target.value; if (v) { window.open(listUrl(v), '_blank', 'noopener'); e.target.value = ''; } }}
-              style={{ width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--dex-gray-300)', fontSize: '0.82rem', cursor: 'pointer' }}
-            >
-              <option value="">{isDe ? 'Zu Liste springen…' : 'Jump to list…'}</option>
-              {LIST_DOCS.map(l => <option key={l.name} value={l.name}>{l.name}</option>)}
-            </select>
-          </span>
         </div>
       </div>
 
-      {/* v26.51: Logo & Branding — Default-Mail-Logo tauschen/herunterladen + Logo-Video */}
-      {adminLike && (
-        <>
-          <h2 style={{ fontSize: '1.15rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Logo & Branding' : 'Logo & branding'}</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14, marginBottom: 28 }}>
-            {/* v26.58: DEX-Logo = der bunte Orb-Ring (vorher zeigte diese Karte
-                fälschlich das Deloitte-Mail-Logo, dessen weißer Schriftzug auf
-                weißem Grund unsichtbar war — „nur ein grüner Punkt"). */}
-            <div style={cardStyle}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><FileText size={18} /></span>
-                <span style={{ fontWeight: 700 }}>{isDe ? 'DEX-Logo (Orb, PNG)' : 'DEX logo (orb, PNG)'}</span>
-              </div>
-              {branding && branding.orbBase64 ? (
-                <img src={branding.orbBase64} alt="DEX Orb" style={{ maxWidth: '100%', maxHeight: 90, display: 'block', margin: '0 auto 10px', background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 8 }} />
-              ) : (
-                <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-400)', fontStyle: 'italic', margin: '0 0 10px' }}>{isDe ? 'Noch kein DEX-Logo hinterlegt.' : 'No DEX logo stored yet.'}</p>
-              )}
-              <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
-                {isDe
-                  ? 'Der bunte DEX-Ring — Standard-Bild in Mails von Events ohne eigenes Event-Bild und zentrale Download-Quelle (z. B. für Intranet-Artikel). Neue Mails nutzen nach einem Tausch automatisch das neue Bild.'
-                  : 'The colourful DEX ring — default image in emails of events without their own image and central download source (e.g. for intranet articles). New emails automatically use the new image after a swap.'}
-              </p>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '8px 12px', flex: 1 }} disabled={!branding || !branding.orbBase64} onClick={doDownloadOrb}>
-                  {isDe ? 'Herunterladen' : 'Download'}
-                </button>
-                <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 12px', flex: 1 }} disabled={brandingBusy !== '' || !eventServiceRef} onClick={() => { if (orbInputRef.current) orbInputRef.current.click(); }}>
-                  {brandingBusy === 'orb' ? (isDe ? 'Wird gespeichert…' : 'Saving…') : (isDe ? 'Neues hochladen (PNG)' : 'Upload new (PNG)')}
-                </button>
-              </div>
-              <input ref={orbInputRef} type="file" accept="image/png" style={{ display: 'none' }} onChange={onOrbFileChosen} />
-            </div>
-            <div style={cardStyle}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><FileText size={18} /></span>
-                <span style={{ fontWeight: 700 }}>{isDe ? 'Deloitte-Logo (E-Mail-Kopfzeile)' : 'Deloitte logo (email header)'}</span>
-              </div>
-              {branding && branding.logoBase64 ? (
-                // Dunkle Vorschau-Fläche: das Logo ist ein WEISSER Schriftzug für
-                // den schwarzen Mail-Header — auf Weiß wäre nur der grüne Punkt sichtbar.
-                <img src={branding.logoBase64} alt="Deloitte Logo" style={{ maxWidth: '100%', maxHeight: 90, display: 'block', margin: '0 auto 10px', background: '#0d0d0d', border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 12 }} />
-              ) : (
-                <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-400)', fontStyle: 'italic', margin: '0 0 10px' }}>{isDe ? 'Noch kein Logo hinterlegt.' : 'No logo stored yet.'}</p>
-              )}
-              <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
-                {isDe
-                  ? 'Weißer Deloitte-Schriftzug in der schwarzen Kopfzeile aller App-Mails (Vorschau deshalb auf Dunkel). Nach einem Tausch tragen alle NEU versendeten Mails automatisch das neue Logo — bereits versendete bleiben unverändert.'
-                  : 'White Deloitte wordmark in the black header of all app emails (hence the dark preview). After a swap, all NEWLY sent emails automatically carry the new logo — emails already sent remain unchanged.'}
-              </p>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '8px 12px', flex: 1 }} disabled={!branding || !branding.logoBase64} onClick={doDownloadLogo}>
-                  {isDe ? 'Herunterladen' : 'Download'}
-                </button>
-                <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 12px', flex: 1 }} disabled={brandingBusy !== '' || !eventServiceRef} onClick={() => { if (logoInputRef.current) logoInputRef.current.click(); }}>
-                  {brandingBusy === 'logo' ? (isDe ? 'Wird gespeichert…' : 'Saving…') : (isDe ? 'Neues hochladen (PNG)' : 'Upload new (PNG)')}
-                </button>
-              </div>
-              <input ref={logoInputRef} type="file" accept="image/png" style={{ display: 'none' }} onChange={onLogoFileChosen} />
-            </div>
-            <div style={cardStyle}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><FileText size={18} /></span>
-                <span style={{ fontWeight: 700 }}>{isDe ? 'DEX-Logo-Video' : 'DEX logo video'}</span>
-              </div>
-              {branding && branding.videoUrl ? (
-                <video key={videoVer} src={branding.videoUrl + (videoVer ? `?ver=${videoVer}` : '')} controls style={{ width: '100%', maxHeight: 160, borderRadius: 8, background: '#000', marginBottom: 10 }} />
-              ) : (
-                <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-400)', fontStyle: 'italic', margin: '0 0 10px' }}>{isDe ? 'Noch kein Video hinterlegt.' : 'No video stored yet.'}</p>
-              )}
-              <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
-                {isDe
-                  ? 'Zentral abgelegtes Logo-Video (z. B. für Intranet-Artikel und Präsentationen) — hier tauschen und herunterladen. Hinweis: Der animierte Ring in der App selbst ist KEIN Video, sondern wird von der App live gerendert — hier liegt die Video-Datei zum Weitergeben, sobald sie einmal hochgeladen wurde.'
-                  : 'Centrally stored logo video (e.g. for intranet articles and presentations) — swap and download it here. Note: the animated ring in the app itself is NOT a video but rendered live by the app — this slot stores the shareable video file once uploaded.'}
-              </p>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {branding && branding.videoUrl ? (
-                  <a className="btn btn-secondary" href={branding.videoUrl} download={branding.videoFileName || 'DEX_Logo_Video.mp4'} style={{ fontSize: '0.82rem', padding: '8px 12px', flex: 1, textAlign: 'center', textDecoration: 'none' }}>
-                    {isDe ? 'Video herunterladen' : 'Download video'}
-                  </a>
-                ) : null}
-                <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 12px', flex: 1 }} disabled={brandingBusy !== '' || !eventServiceRef} onClick={() => { if (videoInputRef.current) videoInputRef.current.click(); }}>
-                  {brandingBusy === 'video' ? (isDe ? 'Wird hochgeladen…' : 'Uploading…') : (isDe ? 'Neues Video hochladen' : 'Upload new video')}
-                </button>
-              </div>
-              <input ref={videoInputRef} type="file" accept="video/mp4,video/webm,video/quicktime" style={{ display: 'none' }} onChange={onVideoFileChosen} />
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Archiv & Löschung */}
-      <h2 style={{ fontSize: '1.15rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Archiv & Löschung' : 'Archive & deletion'}</h2>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14, marginBottom: 28 }}>
-        <div style={cardStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><FileText size={18} /></span>
-            <span style={{ fontWeight: 700 }}>{isDe ? 'Archivieren' : 'Archive'}</span>
-          </div>
-          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
-            {isDe
-              ? <><strong>{archTotal}</strong> Zeilen aus abgelaufenen oder gelöschten Events stehen zur Archivierung an. Sie wandern aus den Arbeitslisten ins Archiv.</>
-              : <><strong>{archTotal}</strong> rows from expired or deleted events are ready to archive. They move from the working lists into the archive.</>}
-          </p>
-          <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== '' || archTotal === 0} onClick={() => { void doArchive(); }}>
-            {busy === 'arch' ? (isDe ? 'Wird archiviert…' : 'Archiving…') : (isDe ? 'Jetzt archivieren' : 'Archive now')}
-          </button>
+      {/* v31.3: Werkzeuge sind reine Navigation — die ganze Kachel ist der
+          Knopf, deshalb ein <button> mit Hover aus der Klasse statt einer
+          <div>-Karte mit onMouseEnter-Optik. */}
+      <section className="dex-ui-section">
+        <h2 className="dex-ui-section-title">{isDe ? 'Werkzeuge' : 'Tools'}</h2>
+        <div className="dex-ui-grid-auto">
+          {tools.map((t, i) => (
+            <button key={i} type="button" className="dex-ui-tile" onClick={t.onClick}>
+              <span className="dex-ui-tile-icon" aria-hidden="true">{t.icon}</span>
+              <span className="dex-ui-tile-title">{t.title}</span>
+              <span className="dex-ui-tile-desc">{t.desc}</span>
+            </button>
+          ))}
         </div>
-        <div style={cardStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ color: 'var(--dex-red, #c00)', display: 'inline-flex' }}><Trash2 size={18} /></span>
-            <span style={{ fontWeight: 700 }}>{isDe ? 'Altes Archiv löschen' : 'Delete old archive'}</span>
-          </div>
-          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
-            {isDe
-              ? <><strong>{delTotal}</strong> Archiv-Einträge sind älter als 1 Monat (Event vorbei) und können endgültig gelöscht werden.</>
-              : <><strong>{delTotal}</strong> archive entries are older than 1 month and can be permanently deleted.</>}
-          </p>
-          <button className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%', color: 'var(--dex-red, #c00)' }} disabled={busy !== '' || delTotal === 0} onClick={() => { void doDelete(); }}>
-            {busy === 'del' ? (isDe ? 'Wird gelöscht…' : 'Deleting…') : (isDe ? 'Alte Einträge löschen' : 'Delete old entries')}
-          </button>
-        </div>
-      </div>
+      </section>
 
-      {/* v24.33: Wartung — globales Spalten fixen (alle Events inkl. Sub-Events) */}
-      <h2 style={{ fontSize: '1.15rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Wartung' : 'Maintenance'}</h2>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14, marginBottom: 28 }}>
-        <div style={cardStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><Settings size={18} /></span>
-            <span style={{ fontWeight: 700 }}>{isDe ? 'Spalten fixen (alle Events)' : 'Fix columns (all events)'}</span>
+      {/* v31.3: Wartung als Aktions-Gruppen statt zwölf Karten — geordnet nach
+          Absicht: erst was nur prüft, dann was repariert, dann Mails, zuletzt
+          das Unwiderrufliche (Archiv & Löschen). Jede Kachel trägt eine Zeile
+          Folge; die ausführliche Begründung steht im Aufklapper darunter. */}
+      <section className="dex-ui-section">
+        <h2 className="dex-ui-section-title">{isDe ? 'Wartung & Daten' : 'Maintenance & data'}</h2>
+        <p className="dex-ui-section-desc">
+          {isDe
+            ? 'Jede Aktion sagt in einer Zeile, was sie tut. Vor jeder Änderung kommt eine Rückfrage; Fortschritt und Ergebnis stehen unter der Gruppe.'
+            : 'Every action says in one line what it does. Every change asks first; progress and result appear below its group.'}
+        </p>
+
+        {/* Prüfen — findet und zeigt, ändert von sich aus nichts. */}
+        <div className="dex-ui-action-group">
+          <div className="dex-ui-action-group-title">{isDe ? 'Prüfen — ändert nichts' : 'Check — changes nothing'}</div>
+          <div className="dex-ui-action-grid">
+            {hubAction('permcheck', <Wrench size={16} />,
+              isDe ? 'Berechtigungen prüfen' : 'Check permissions',
+              isDe ? 'Findet Einzel-Freigaben mit Schreibrecht im ganzen SharePoint — erst der Bericht, korrigiert wird nur auf Knopfdruck.' : 'Finds individual write grants across the whole SharePoint — report first, fixes only on request.',
+              () => { setPermCleanupReport(null); setPermCleanupOpen(true); },
+              { disabled: busy !== '' })}
+            {hubAction('orphanscan', <Search size={16} />,
+              isDe ? 'Verwaiste Subsites suchen' : 'Find orphan subsites',
+              isDe ? 'Zeigt Subsites, die zu keinem Event mehr gehören — löschen kannst du danach jede einzeln.' : 'Shows subsites that no longer belong to any event — you then delete each one individually.',
+              () => { setOrphanResult(null); setOrphanOpen(true); },
+              { disabled: busy !== '' })}
           </div>
-          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
-            {isDe
-              ? 'Prüft die Teilnehmerlisten ALLER Events inkl. Sub-Events, legt fehlende Spalten an (z.B. „Unternehmen") und trägt die Unternehmenszugehörigkeit für bestehende Teilnehmer nach.'
-              : 'Checks the participant lists of ALL events incl. sub-events, adds missing columns (e.g. „Company") and backfills the company affiliation for existing attendees.'}
-          </p>
-          {busy === 'fixcols' && fixProgress && (
-            <div style={{ margin: '0 0 10px' }}>
-              <div style={{ height: 8, background: 'var(--dex-gray-100)', borderRadius: 999, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${fixProgress.total > 0 ? Math.round((fixProgress.done / fixProgress.total) * 100) : 0}%`, background: 'var(--dex-green, #86bc25)', transition: 'width 0.2s' }} />
-              </div>
-              <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {fixProgress.done}/{fixProgress.total}{fixProgress.label ? ` · ${fixProgress.label}` : ''}
-              </div>
+          {detailToggle('check')}
+          {openInfo === 'check' && (
+            <div className="dex-ui-disclosure-body">
+              {actionDetail(
+                isDe ? 'Berechtigungen prüfen' : 'Check permissions',
+                isDe
+                  ? 'Prüft die gesamte SharePoint-Seite (Hauptseite, alle Listen/Bibliotheken und alle Event-Subsites) auf manuelle Einzel-Freigaben, die einzelnen Personen mehr Rechte geben als im Berechtigungskonzept vorgesehen (z.B. Schreib-/Vollzugriff auf ganze Listen). Erst kommt ein Bericht ohne Änderung, danach kannst du die Über-Freigaben mit einem Klick entfernen. Leserechte bleiben immer erhalten (auch für internationale Kolleg:innen); Schreiben ist danach nur über die Gruppen und für Admins/Organizer möglich.'
+                  : 'Scans the whole SharePoint site (main site, all lists/libraries and every event subsite) for manual individual grants that give single people more rights than the permission concept allows (e.g. write/full control on entire lists). First a report without changes, then you can remove the over-grants with one click. Read access always stays (including for international colleagues); writing is afterwards only via the groups and for admins/organizers.')}
+              {actionDetail(
+                isDe ? 'Verwaiste Subsites suchen' : 'Find orphan subsites',
+                isDe
+                  ? 'Findet Event-Subsites, die noch existieren, aber zu KEINEM Event mehr gehören — z.B. Test-Subsites, deren Event bereits gelöscht wurde. Zeigt pro Rest, ob eine Teilnehmerliste (und wie viele Zeilen) vorhanden ist. Anschließend kannst du jeden Rest einzeln und bewusst löschen.'
+                  : 'Finds event subsites that still exist but no longer belong to any event — e.g. test subsites whose event was already deleted. Shows per orphan whether a participant list exists (and how many rows). You can then delete each orphan individually and deliberately.')}
             </div>
           )}
-          {/* v30.58: Der Befund je Event. Das ist der Punkt des Laufs — eine
-              Zahl allein beantwortet nicht, warum eine Anmeldung scheitert. */}
-          {fixReport && (
-            <div style={{
-              margin: '0 0 10px', padding: '10px 12px', borderRadius: 8,
-              border: `1px solid ${fixReport.some(d => d.stillMissing.length > 0 || d.listMissing || d.error) ? 'var(--dex-red, #da291c)' : 'var(--dex-green, #86bc25)'}`,
-              background: fixReport.some(d => d.stillMissing.length > 0 || d.listMissing || d.error) ? 'rgba(218,41,28,0.06)' : 'rgba(134,188,37,0.08)',
-              fontSize: '0.78rem', lineHeight: 1.5, maxHeight: 300, overflowY: 'auto',
-            }}>
-              {fixReport.length === 0 ? (
-                <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                  Kein Befund — auf allen Teilnehmerlisten sind alle Spalten der Abfragefelder vorhanden.
-                </strong>
-              ) : (
-                <>
-                  <strong>Befund ({fixReport.length} {fixReport.length === 1 ? 'Event' : 'Events'})</strong>
-                  <p style={{ margin: '4px 0 8px', color: 'var(--dex-gray-700)' }}>
-                    Fehlt auf einer Liste die Spalte zu einem Abfragefeld, lehnt SharePoint die
-                    <strong> gesamte Anmeldung</strong> ab — aber nur bei den Personen, die dieses Feld
-                    ausfüllen. Deshalb sieht es aus wie ein Einzelfall.
-                  </p>
-                  {fixReport.map(d => (
-                    <div key={d.eventId} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--dex-gray-200)' }}>
-                      <div style={{ fontWeight: 600 }}>
-                        {d.eventTitle}{' '}
-                        <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
-                          ({d.isParent ? 'Haupt-/Klammer-Event' : 'Sub-Event'})
-                        </span>
-                      </div>
-                      {d.listMissing && (
-                        <div style={{ color: 'var(--dex-red, #da291c)' }}>Teilnehmerliste existiert nicht (mehr).</div>
-                      )}
-                      {d.fixedColumns.length > 0 && (
-                        <div style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>Ergänzt: {d.fixedColumns.join(', ')}</div>
-                      )}
-                      {d.stillMissing.length > 0 && (
-                        <div style={{ color: 'var(--dex-red, #da291c)' }}>
-                          <strong>Fehlt weiterhin:</strong> {d.stillMissing.join(', ')}
+        </div>
+
+        {/* Reparieren — schreibt, fragt aber vorher. */}
+        <div className="dex-ui-action-group">
+          <div className="dex-ui-action-group-title">{isDe ? 'Reparieren — fragt vor jeder Änderung' : 'Repair — asks before every change'}</div>
+          <div className="dex-ui-action-grid">
+            {hubAction('fixcols', <Columns size={16} />,
+              isDe ? 'Spalten fixen (alle Events)' : 'Fix columns (all events)',
+              busy === 'fixcols'
+                ? (isDe ? 'Wird geprüft…' : 'Checking…')
+                : (isDe ? 'Legt fehlende Spalten an und trägt die Unternehmenszugehörigkeit nach — ohne sie scheitert jede Anmeldung mit diesem Feld.' : 'Adds missing columns and backfills the company — without them every registration using that field fails.'),
+              () => { void doFixAllColumns(); },
+              { disabled: busy !== '' })}
+            {/* v30.39: Organizer-Berechtigungen über alle Events. Der Einzel-Fix im
+                Organizer Center (v30.37) hilft nur dem, der von dem Problem schon
+                weiß — und sichtbar wird es erst, wenn jemand vor einer leeren
+                Teilnehmerliste steht. Diese Aktion geht über den Bestand. */}
+            {hubAction('perms', <Users size={16} />,
+              isDe ? 'Organizer-Rechte prüfen (alle Events)' : 'Check organizer permissions (all events)',
+              busy === 'perms'
+                ? (isDe ? 'Wird geprüft…' : 'Checking…')
+                : (isDe ? 'Ergänzt fehlende Rechte auf jeder Teilnehmerliste — auch auf jedem Sub-Event. Es wird nichts entzogen.' : 'Adds missing rights on every participant list — including every sub-event. Nothing is revoked.'),
+              () => { void doRepairPermissions(); },
+              { disabled: busy !== '' })}
+            {/* v28.26: Teilnehmer-Register bereinigen — Dubletten (mehrere Einträge
+                zur selben E-Mail) zusammenführen. Sie entstehen, wenn der Lookup vor
+                dem Schreiben scheitert (siehe v28.25): Ab da landen Anmeldungen mal
+                im einen, mal im anderen Eintrag, und „Meine Events" zeigt je nach
+                Treffer nur einen Teil der Events. Site-weit, daher hier statt im
+                Organizer Center. */}
+            {hubAction('regclean', <Users size={16} />,
+              isDe ? 'Teilnehmer-Register bereinigen' : 'Clean up participant registry',
+              regCleanBusy
+                ? (isDe ? 'Wird geprüft…' : 'Checking…')
+                : (isDe ? 'Führt Dubletten zusammen und entfernt Verweise ins Leere — Anmeldungen gehen dabei nicht verloren.' : 'Merges duplicates and removes dead references — no registrations are lost.'),
+              doRegistryCleanup,
+              { disabled: regCleanBusy || busy !== '' || !eventServiceRef })}
+            {/* v30.70: Sammel-Heilung nach einem Ausfall des Flows
+                DEX_IDReorder_TeilnehmerIDs (02.09.2026). Erst planen und im Dialog
+                zeigen, wer nachrückt — dann ausführen. Logik in
+                admin/logic/healAllEvents.ts. */}
+            {hubAction('healall', <Wrench size={16} />,
+              isDe ? 'Nachrücken & IDs nachholen' : 'Catch up promotions & IDs',
+              healBusy
+                ? (isDe ? 'Heilung läuft…' : 'Healing…')
+                : (isDe ? 'Rückt überall dort nach, wo Plätze frei sind, und nummeriert lückenhafte IDs neu — Vorschau vor dem Versand.' : 'Promotes wherever seats are free and renumbers IDs with gaps — preview before anything is sent.'),
+              doHealAll,
+              { disabled: busy !== '' || healBusy || !eventServiceRef })}
+            {/* v26.13: Feld-Eigenschaften aus der Versionshistorie — erst der
+                Trockenlauf, dann das Auffüllen. */}
+            {hubAction('restorepreview', <FileText size={16} />,
+              isDe ? 'Feld-Beschreibungen: Vorschau' : 'Field descriptions: preview',
+              isDe ? 'Zeigt aus der Versionshistorie, was zurückkäme — es wird nichts geändert.' : 'Shows from the version history what would come back — nothing is changed.',
+              () => { void doPreviewDescriptions(); },
+              { disabled: busy !== '' })}
+            {hubAction('restoredesc', <FileText size={16} />,
+              isDe ? 'Feld-Beschreibungen wiederherstellen' : 'Restore field descriptions',
+              busy === 'restoredesc'
+                ? (isDe ? 'Läuft…' : 'Running…')
+                : (isDe ? 'Füllt nur FEHLENDE Eigenschaften der Abfragefelder auf — aktuelle Eingaben bleiben unangetastet.' : 'Fills in only MISSING properties of the form fields — current entries stay untouched.'),
+              () => { void doRestoreDescriptions(); },
+              { disabled: busy !== '' })}
+            {/* v26.63: Startseiten-Zähler (Events/Teilnehmer) neu berechnen. */}
+            {hubAction('kpi', <BarChart3 size={16} />,
+              isDe ? 'Startseiten-Zähler neu berechnen' : 'Recompute landing-page counter',
+              busy === 'kpi'
+                ? (isDe ? 'Wird berechnet…' : 'Computing…')
+                : (isDe ? 'Rechnet die Kennzahl „Events" frisch aus der Event-Liste — der Teilnehmer-Zähler bleibt unverändert.' : 'Recomputes the „Events" KPI straight from the event list — the attendee counter stays unchanged.'),
+              () => { void doRecomputeKpi(); },
+              { disabled: busy !== '' })}
+          </div>
+
+          {/* Fortschritt und Ergebnis der Gruppe — direkt unter den Kacheln,
+              damit man nicht sucht, wo die Antwort steht. */}
+          <div className="dex-ui-stack" style={{ marginTop: 10 }}>
+            {busy === 'fixcols' && fixProgress && runProgress(
+              fixProgress.total > 0 ? Math.round((fixProgress.done / fixProgress.total) * 100) : 0,
+              `${isDe ? 'Spalten fixen' : 'Fix columns'} · ${fixProgress.done}/${fixProgress.total}${fixProgress.label ? ` · ${fixProgress.label}` : ''}`)}
+            {busy === 'perms' && permProgress && runProgress(
+              permProgress.total > 0 ? Math.round((permProgress.done / permProgress.total) * 100) : 0,
+              `${isDe ? 'Organizer-Rechte' : 'Organizer permissions'} · ${permProgress.done}/${permProgress.total}${permProgress.label ? ` · ${permProgress.label}` : ''}`)}
+            {/* Lese-Phase (total = 0): Gesamtzahl ist noch unbekannt, der Balken
+                waechst mit den gelesenen Zeilen (2000 je Seite) und bleibt unter
+                90 %, damit er nie faelschlich „fertig" wirkt. */}
+            {regCleanBusy && regCleanProgress && runProgress(
+              regCleanProgress.total > 0
+                ? Math.min(100, Math.round((regCleanProgress.done / regCleanProgress.total) * 100))
+                : Math.max(6, Math.min(90, Math.round(regCleanProgress.done / 100))),
+              `${regCleanProgress.total > 0 ? `${regCleanProgress.done}/${regCleanProgress.total} · ` : ''}${regCleanProgress.label}`)}
+            {busy === 'restoredesc' && restoreProgress && runProgress(
+              restoreProgress.total > 0 ? Math.round((restoreProgress.done / restoreProgress.total) * 100) : 0,
+              `${isDe ? 'Feld-Beschreibungen' : 'Field descriptions'} · ${restoreProgress.done}/${restoreProgress.total}${restoreProgress.label ? ` · ${restoreProgress.label}` : ''}`)}
+            {healBusy && healProgress && (
+              <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {healProgress}
+              </div>
+            )}
+            {kpiResult !== null && (
+              <div className="dex-ui-callout dex-ui-callout--success">
+                <span className="dex-ui-callout-icon"><BarChart3 size={15} /></span>
+                <span>{isDe ? `Ergebnis: ${kpiResult} Events` : `Result: ${kpiResult} events`}</span>
+              </div>
+            )}
+            {regCleanResult && (
+              <div className={cx('dex-ui-callout', regCleanIsError ? 'dex-ui-callout--danger' : 'dex-ui-callout--success')}>
+                <span className="dex-ui-callout-icon"><Users size={15} /></span>
+                <span>{regCleanResult}</span>
+              </div>
+            )}
+            {healResult && !healBusy && (
+              <div className={cx('dex-ui-callout', healResult.isError ? 'dex-ui-callout--danger' : 'dex-ui-callout--success')}>
+                <span className="dex-ui-callout-icon"><Wrench size={15} /></span>
+                <span>{healResult.text}</span>
+              </div>
+            )}
+            {/* v30.58: Der Befund je Event. Das ist der Punkt des Laufs — eine
+                Zahl allein beantwortet nicht, warum eine Anmeldung scheitert. */}
+            {fixReport && (
+              <div
+                className={cx('dex-ui-callout', fixReport.some(d => d.stillMissing.length > 0 || d.listMissing || d.error) ? 'dex-ui-callout--danger' : 'dex-ui-callout--success')}
+                style={{ display: 'block', maxHeight: 300, overflowY: 'auto' }}
+              >
+                {fixReport.length === 0 ? (
+                  <strong>
+                    {isDe
+                      ? 'Kein Befund — auf allen Teilnehmerlisten sind alle Spalten der Abfragefelder vorhanden.'
+                      : 'Nothing found — every participant list has all columns of the form fields.'}
+                  </strong>
+                ) : (
+                  <>
+                    <strong>
+                      {isDe
+                        ? `Befund (${fixReport.length} ${fixReport.length === 1 ? 'Event' : 'Events'})`
+                        : `Findings (${fixReport.length} ${fixReport.length === 1 ? 'event' : 'events'})`}
+                    </strong>
+                    <p style={{ margin: '4px 0 8px' }}>
+                      {isDe
+                        ? <>Fehlt auf einer Liste die Spalte zu einem Abfragefeld, lehnt SharePoint die <strong>gesamte Anmeldung</strong> ab — aber nur bei den Personen, die dieses Feld ausfüllen. Deshalb sieht es aus wie ein Einzelfall.</>
+                        : <>If a list is missing the column of a form field, SharePoint rejects the <strong>entire registration</strong> — but only for the people who fill in that field. That is why it looks like a one-off.</>}
+                    </p>
+                    {fixReport.map(d => (
+                      <div key={d.eventId} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--dex-gray-200)' }}>
+                        <div style={{ fontWeight: 600 }}>
+                          {d.eventTitle}{' '}
+                          <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
+                            ({d.isParent ? (isDe ? 'Haupt-/Klammer-Event' : 'Main/umbrella event') : (isDe ? 'Sub-Event' : 'Sub-event')})
+                          </span>
                         </div>
-                      )}
-                      {d.error && (
-                        <div style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>Hinweis: {d.error}</div>
-                      )}
-                    </div>
-                  ))}
-                </>
-              )}
-            </div>
-          )}
-          <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { void doFixAllColumns(); }}>
-            {busy === 'fixcols' ? (isDe ? 'Wird geprüft…' : 'Checking…') : (isDe ? 'Jetzt alle prüfen' : 'Check all now')}
-          </button>
-        </div>
-
-        {/* v30.39: Organizer-Berechtigungen über alle Events. Der Einzel-Fix im
-            Organizer Center (v30.37) hilft nur dem, der von dem Problem schon
-            weiß — und sichtbar wird es erst, wenn jemand vor einer leeren
-            Teilnehmerliste steht. Diese Kachel geht über den Bestand. */}
-        <div style={cardStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><Users size={18} /></span>
-            <span style={{ fontWeight: 700 }}>{isDe ? 'Organizer-Rechte prüfen (alle Events)' : 'Check organizer permissions (all events)'}</span>
-          </div>
-          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
-            {isDe
-              ? 'Stellt sicher, dass jeder Organizer und Co-Organizer die Teilnehmerliste seiner Events lesen darf — auf dem Haupt-Event UND auf jedem Sub-Event. Bis v30.36 wurde die Berechtigung beim Speichern nur auf dem Haupt-Event gesetzt: Wer nachträglich als Organizer dazukam, sah bei einem Event mit mehreren Terminen überall 0 Teilnehmer, obwohl Anmeldungen vorlagen. Fehlende Rechte werden ergänzt, es wird nichts entzogen und nichts gelöscht.'
-              : 'Ensures every organizer and co-organizer can read the participant list of their events — on the main event AND on every sub-event. Until v30.36 permissions were set on the main event only: anyone added as organizer later saw 0 participants everywhere on multi-date events although registrations existed. Missing permissions are added; nothing is revoked or deleted.'}
-          </p>
-          {busy === 'perms' && permProgress && (
-            <div style={{ margin: '0 0 10px' }}>
-              <div style={{ height: 8, background: 'var(--dex-gray-100)', borderRadius: 999, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${permProgress.total > 0 ? Math.round((permProgress.done / permProgress.total) * 100) : 0}%`, background: 'var(--dex-green, #86bc25)', transition: 'width 0.2s' }} />
+                        {d.listMissing && (
+                          <div style={{ color: 'var(--dex-red, #da291c)' }}>
+                            {isDe ? 'Teilnehmerliste existiert nicht (mehr).' : 'The participant list does not exist (any more).'}
+                          </div>
+                        )}
+                        {d.fixedColumns.length > 0 && (
+                          <div style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Ergänzt: ' : 'Added: '}{d.fixedColumns.join(', ')}</div>
+                        )}
+                        {d.stillMissing.length > 0 && (
+                          <div style={{ color: 'var(--dex-red, #da291c)' }}>
+                            <strong>{isDe ? 'Fehlt weiterhin:' : 'Still missing:'}</strong> {d.stillMissing.join(', ')}
+                          </div>
+                        )}
+                        {d.error && (
+                          <div style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>{isDe ? 'Hinweis: ' : 'Note: '}{d.error}</div>
+                        )}
+                      </div>
+                    ))}
+                  </>
+                )}
               </div>
-              <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {permProgress.done}/{permProgress.total}{permProgress.label ? ` \u00b7 ${permProgress.label}` : ''}
-              </div>
-            </div>
-          )}
-          <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { void doRepairPermissions(); }}>
-            {busy === 'perms' ? (isDe ? 'Wird geprüft…' : 'Checking…') : (isDe ? 'Jetzt alle prüfen' : 'Check all now')}
-          </button>
-        </div>
-
-        {/* v28.26: Teilnehmer-Register bereinigen — Dubletten (mehrere Einträge
-            zur selben E-Mail) zusammenführen. Sie entstehen, wenn der Lookup vor
-            dem Schreiben scheitert (siehe v28.25): Ab da landen Anmeldungen mal
-            im einen, mal im anderen Eintrag, und „Meine Events" zeigt je nach
-            Treffer nur einen Teil der Events. Site-weit, daher hier statt im
-            Organizer Center. */}
-        <div style={cardStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><Users size={18} /></span>
-            <span style={{ fontWeight: 700 }}>{isDe ? 'Teilnehmer-Register bereinigen' : 'Clean up participant registry'}</span>
-          </div>
-          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
-            {isDe
-              ? 'Sucht in der zentralen Teilnehmer-Übersicht (DEX_Participants) nach Dubletten — mehrere Einträge zur selben E-Mail — und führt sie zusammen: Der älteste Eintrag bleibt und bekommt ALLE Event-Nummern, die überzähligen Zeilen werden gelöscht. Es geht nichts verloren; wessen Anmeldungen auf zwei Einträge verteilt waren, sieht danach wieder alle Events unter „Meine Events". Prüft zuerst und fragt vor dem Zusammenführen nach. Danach gleicht die Aktion das Register gegen die TEILNEHMERLISTEN ab: Zeigt ein Verweis auf ein Event, in dessen Liste die Person gar nicht steht — typischerweise eine Abmeldung, bei der das Nachziehen scheiterte —, wird er auf Rückfrage entfernt. Genau solche Verweise lassen „Meine Events" eine Anmeldung anzeigen, die es nicht gibt.'
-              : 'Searches the central participant registry (DEX_Participants) for duplicates — several records for the same email — and merges them: the oldest record is kept and receives ALL event numbers, the surplus rows are deleted. Nothing is lost; anyone whose registrations were split across two records sees all their events in „My events" again. Checks first and asks before merging.'}
-          </p>
-          {regCleanBusy && regCleanProgress && (
-            <div style={{ margin: '0 0 10px' }}>
-              <div style={{ height: 8, background: 'var(--dex-gray-100)', borderRadius: 999, overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%',
-                  // Lese-Phase (total = 0): Gesamtzahl ist noch unbekannt, der
-                  // Balken waechst mit den gelesenen Zeilen (2000 je Seite) und
-                  // bleibt unter 90 %, damit er nie faelschlich „fertig" wirkt.
-                  width: regCleanProgress.total > 0
-                    ? `${Math.min(100, Math.round((regCleanProgress.done / regCleanProgress.total) * 100))}%`
-                    : `${Math.max(6, Math.min(90, Math.round(regCleanProgress.done / 100)))}%`,
-                  background: 'var(--dex-green, #86bc25)',
-                  transition: 'width 0.3s',
-                }} />
-              </div>
-              <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {regCleanProgress.total > 0 ? `${regCleanProgress.done}/${regCleanProgress.total} · ` : ''}{regCleanProgress.label}
-              </div>
-            </div>
-          )}
-          {regCleanResult && (
-            <div style={{
-              margin: '0 0 10px', padding: '8px 12px', borderRadius: 8, fontSize: '0.8rem', lineHeight: 1.45,
-              background: regCleanIsError ? 'rgba(218,41,28,0.07)' : '#f1f7e8',
-              border: `1px solid ${regCleanIsError ? 'var(--dex-red, #c00)' : 'var(--dex-green, #86bc25)'}`,
-              color: regCleanIsError ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)',
-              fontWeight: 600,
-            }}>
-              {regCleanResult}
-            </div>
-          )}
-          <button
-            className="btn btn-primary"
-            style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }}
-            disabled={regCleanBusy || busy !== '' || !eventServiceRef}
-            onClick={() => {
-              (async () => {
-                if (!eventServiceRef) return;
-                setRegCleanBusy(true);
-                setRegCleanResult(null);
-                setRegCleanIsError(false);
-                setRegCleanProgress({ done: 0, total: 0, label: isDe ? 'Teilnehmer-Register wird gelesen…' : 'Reading participant registry…' });
-                try {
-                  const validNumbers = allEvents
-                    .map(e => e.eventNumber)
-                    .filter((n): n is number => typeof n === 'number' && n > 0);
-                  const info = await eventServiceRef.analyzeParticipantRegistry(validNumbers, loaded => {
-                    setRegCleanProgress({ done: loaded, total: 0, label: isDe ? `${loaded} Einträge gelesen…` : `${loaded} records read…` });
-                  });
-                  const orphanNote = info.orphanNumbers > 0
-                    ? (isDe
-                      ? ` ${info.orphanNumbers} Verweis(e) zeigen auf gelöschte Events.`
-                      : ` ${info.orphanNumbers} reference(s) point to deleted events.`)
-                    : '';
-                  // v29.0: Zweite Stufe — das Register gegen die
-                  // TEILNEHMERLISTEN abgleichen. Die Dubletten-Prüfung oben
-                  // sieht nur mehrfache Einträge und Verweise auf gelöschte
-                  // Events; ein Verweis auf ein EXISTIERENDES Event ohne Zeile
-                  // in dessen Liste fiel bisher durch. Genau der lässt „Meine
-                  // Events" eine Anmeldung zeigen, die es nicht gibt (v28.99).
-                  const cmp = await eventServiceRef.analyzeRegistryAgainstLists(
-                    allEvents.map(e => ({ eventNumber: e.eventNumber, title: e.title, subsiteUrl: e.subsiteUrl })),
-                    (done, total, title) => setRegCleanProgress({
-                      done, total,
-                      label: isDe
-                        ? `Teilnehmerlisten werden verglichen… ${done}/${total}${title ? ` — ${title}` : ''}`
-                        : `Comparing attendee lists… ${done}/${total}${title ? ` — ${title}` : ''}`,
-                    }),
-                  );
-                  setRegCleanProgress(null);
-                  /**
-                   * v29.4: Verweise auf GELÖSCHTE Events mitnehmen. Bis v29.3
-                   * wurden sie nur gezählt („wirkungslos, aber harmlos") — das
-                   * stimmt technisch, aber es sind personenbezogene Reste
-                   * gelöschter Events, und genau die soll das Register nicht
-                   * behalten. Die Event-Nummern kommen dafür STRIKT aus
-                   * DEX_Events (nicht aus der geladenen Event-Liste, die bei
-                   * einem Mapping-Fehler still Events auslässt) — sonst würde
-                   * ein Lesefehler gültige Verweise als verwaist ausweisen.
-                   */
-                  let orphanPairs: Array<{ email: string; eventNumber: number }> = [];
-                  let orphanReadError = '';
-                  try {
-                    orphanPairs = await eventServiceRef.collectOrphanRegistryNumbers(loaded =>
-                      setRegCleanProgress({
-                        done: loaded, total: 0,
-                        label: isDe ? `Verweise auf gelöschte Events werden gesucht… ${loaded}` : `Looking for references to deleted events… ${loaded}`,
-                      }));
-                  } catch (e) {
-                    orphanReadError = (e instanceof Error ? e.message : String(e || '')).slice(0, 200);
-                  }
-                  const orphanErrNote = orphanReadError
-                    ? (isDe
-                      ? `\n\nVerweise auf gelöschte Events konnten NICHT geprüft werden (${orphanReadError}) — sie bleiben unangetastet.`
-                      : `\n\nReferences to deleted events could NOT be checked (${orphanReadError}) — they stay untouched.`)
-                    : '';
-                  const staleAll: Array<{ email: string; eventNumber: number; title: string }> = [
-                    ...cmp.stale,
-                    ...orphanPairs.map(o => ({
-                      email: o.email, eventNumber: o.eventNumber,
-                      title: isDe ? `gelöschtes Event #${o.eventNumber}` : `deleted event #${o.eventNumber}`,
-                    })),
-                  ];
-                  const orphanFoundNote = orphanPairs.length > 0
-                    ? (isDe
-                      ? `\n\nEnthalten sind ${orphanPairs.length} Verweis(e) auf Events, die es in der Event-Liste NICHT MEHR GIBT (gelöschte Events). Sie laufen ins Leere und werden mit entfernt.`
-                      : `\n\nIncluded are ${orphanPairs.length} reference(s) to events that NO LONGER EXIST in the event list (deleted events). They point nowhere and are removed as well.`)
-                    : '';
-                  const staleNote = cmp.stale.length > 0
-                    ? (isDe
-                      ? ` ${cmp.stale.length} Verweis(e) zeigen auf ein Event, in dessen Teilnehmerliste die Person NICHT steht.`
-                      : ` ${staleAll.length} reference(s) point to an event whose attendee list does not contain the person.`)
-                    : '';
-                  // v29.1: Events, bei denen (fast) ALLE Verweise ins Leere zeigen,
-                  // sind kein Aufräum-Fall, sondern ein Hinweis darauf, dass
-                  // Register und Liste dort nicht vergleichbar sind. Sie werden
-                  // benannt statt stillschweigend bereinigt.
-                  const suspNote = cmp.suspiciousEvents.length > 0
-                    ? (isDe
-                      ? `\n\nNICHT bereinigt werden ${cmp.suspiciousEvents.length} Event(s), bei denen nahezu ALLE Verweise ins Leere zeigen — dort stimmt eher die Zuordnung nicht als hunderte Abmeldungen:\n`
-                        + cmp.suspiciousEvents.slice(0, 8).map(e => `• ${e.title || e.eventNumber}: ${e.missing} von ${e.referenced} Verweisen ohne Zeile, Liste hat ${e.rows} aktive Zeile(n)`).join('\n')
-                        + (cmp.suspiciousEvents.length > 8 ? `\n… und ${cmp.suspiciousEvents.length - 8} weitere` : '')
-                      : `\n\nNOT cleaned: ${cmp.suspiciousEvents.length} event(s) where nearly ALL references point nowhere — there the mapping is more likely wrong than hundreds of cancellations:\n`
-                        + cmp.suspiciousEvents.slice(0, 8).map(e => `• ${e.title || e.eventNumber}: ${e.missing} of ${e.referenced} references without a row, list has ${e.rows} active row(s)`).join('\n')
-                        + (cmp.suspiciousEvents.length > 8 ? `\n… and ${cmp.suspiciousEvents.length - 8} more` : ''))
-                    : '';
-                  // v29.3: Events, deren Teilnehmerliste NICHT MEHR EXISTIERT
-                  // (HTTP 404). Das ist der Regelfall hinter den meisten
-                  // verwaisten Verweisen: Das 3-Monats-Löschkonzept recycelt
-                  // die Subsite und lässt das Event-Item stehen — die
-                  // Register-Verweise darauf sind genau der Rückstand, den
-                  // diese Löschung hätte mitnehmen sollen. Sie werden bereinigt
-                  // (das ist kein Datenverlust, sondern der fehlende Rest der
-                  // Löschung), aber vorher benannt.
-                  const goneNote = cmp.deletedListEvents.length > 0
-                    ? (isDe
-                      ? `\n\nDavon entfallen ${cmp.deletedListEvents.reduce((n, e) => n + e.referenced, 0)} Verweis(e) auf ${cmp.deletedListEvents.length} Event(s), deren Teilnehmerliste es NICHT MEHR GIBT — typischerweise nach dem 3-Monats-Löschkonzept (Liste gelöscht, Event bleibt bestehen). Hier ist das Entfernen der Rest der Löschung, kein Datenverlust:\n`
-                        + cmp.deletedListEvents.slice(0, 8).map(e => `• ${e.title || e.eventNumber}: ${e.referenced} Verweis(e)`).join('\n')
-                        + (cmp.deletedListEvents.length > 8 ? `\n… und ${cmp.deletedListEvents.length - 8} weitere` : '')
-                      : `\n\nOf these, ${cmp.deletedListEvents.reduce((n, e) => n + e.referenced, 0)} reference(s) belong to ${cmp.deletedListEvents.length} event(s) whose attendee list NO LONGER EXISTS — typically after the 3-month retention deletion (list deleted, event kept). Removing them completes that deletion, it does not lose data:\n`
-                        + cmp.deletedListEvents.slice(0, 8).map(e => `• ${e.title || e.eventNumber}: ${e.referenced} reference(s)`).join('\n')
-                        + (cmp.deletedListEvents.length > 8 ? `\n… and ${cmp.deletedListEvents.length - 8} more` : ''))
-                    : '';
-                  const skipNote = cmp.skippedEvents > 0
-                    ? (isDe
-                      ? ` ${cmp.skippedEvents} Event(s) konnten nicht gelesen werden (z.B. fehlende Rechte oder Drosselung) und wurden übersprungen — ihre Verweise bleiben unangetastet.`
-                      : ` ${cmp.skippedEvents} event(s) could not be read (e.g. missing permissions or throttling) and were skipped — their references stay untouched.`)
-                    : '';
-                  if (info.duplicateGroups === 0 && staleAll.length === 0 && cmp.suspiciousEvents.length > 0) {
-                    setRegCleanIsError(true);
-                    setRegCleanResult(isDe
-                      ? `Keine Dubletten und keine einzeln verwaisten Verweise — ABER bei ${cmp.suspiciousEvents.length} Event(s) zeigen nahezu alle Verweise ins Leere. Das sieht nach einem Zuordnungsproblem aus und wurde deshalb NICHT bereinigt: ${cmp.suspiciousEvents.slice(0, 5).map(e => `${e.title || e.eventNumber} (${e.missing}/${e.referenced}, Liste ${e.rows})`).join('; ')}.${skipNote}`
-                      : `No duplicates and no individually orphaned references — BUT for ${cmp.suspiciousEvents.length} event(s) nearly all references point nowhere. That looks like a mapping problem and was NOT cleaned: ${cmp.suspiciousEvents.slice(0, 5).map(e => `${e.title || e.eventNumber} (${e.missing}/${e.referenced}, list ${e.rows})`).join('; ')}.${skipNote}`);
-                    setRegCleanProgress(null);
-                    setRegCleanBusy(false);
-                    return;
-                  }
-                  if (info.duplicateGroups === 0 && staleAll.length === 0) {
-                    setRegCleanResult(isDe
-                      ? `Alles sauber: keine Dubletten, und alle Verweise haben eine Zeile in der Teilnehmerliste (${info.total} Einträge, ${cmp.checkedEvents} Event(s) verglichen).${orphanNote}${skipNote}${info.noEmail > 0 ? ` ${info.noEmail} Eintrag/Einträge ohne E-Mail-Adresse.` : ''}`
-                      : `All clean: no duplicates, and every reference has a row in the attendee list (${info.total} records, ${cmp.checkedEvents} event(s) compared).${orphanNote}${skipNote}${info.noEmail > 0 ? ` ${info.noEmail} record(s) without an email address.` : ''}`);
-                    setRegCleanProgress(null);
-                    setRegCleanBusy(false);
-                    return;
-                  }
-                  if (info.duplicateGroups === 0) {
-                    // Nur verwaiste Verweise — einzeln nachfragen und entfernen.
-                    const examples = staleAll.slice(0, 5)
-                      .map(x => `• ${x.email} → ${x.title || x.eventNumber}`).join('\n');
-                    const okStale = await confirmDialog(isDe
-                      ? `${staleAll.length} Verweis(e) im Register zeigen auf ein Event, in dessen Teilnehmerliste die Person nicht steht — typischerweise eine Abmeldung, bei der das Nachziehen scheiterte, oder eine von Hand gelöschte Zeile.\n\n${examples}${staleAll.length > 5 ? `\n… und ${staleAll.length - 5} weitere` : ''}\n\nDiese Verweise jetzt entfernen? Die Einträge selbst bleiben mit ihren übrigen Events bestehen. An den Teilnehmerlisten wird nichts geändert.${orphanFoundNote}${goneNote}${suspNote}${orphanErrNote}${skipNote ? `\n\nHinweis:${skipNote}` : ''}`
-                      : `${staleAll.length} reference(s) point to an event whose attendee list does not contain the person — typically a cancellation whose registry update failed, or a manually deleted row.\n\n${examples}${staleAll.length > 5 ? `\n… and ${staleAll.length - 5} more` : ''}\n\nRemove these references now? The records themselves stay with their remaining events. Attendee lists are not touched.${orphanFoundNote}${goneNote}${suspNote}${orphanErrNote}${skipNote ? `\n\nNote:${skipNote}` : ''}`,
-                      { confirmLabel: isDe ? 'Verweise entfernen' : 'Remove references' });
-                    if (!okStale) { setRegCleanProgress(null); setRegCleanBusy(false); return; }
-                    setRegCleanProgress({ done: 0, total: 0, label: isDe ? 'Verweise werden entfernt…' : 'Removing references…' });
-                    const pr = await eventServiceRef.pruneStaleRegistryNumbers(staleAll, (done, total) =>
-                      setRegCleanProgress({ done, total, label: isDe ? 'Verweise werden entfernt…' : 'Removing references…' }));
-                    setRegCleanIsError(pr.failed > 0);
-                    setRegCleanResult(isDe
-                      ? `${pr.removed} Verweis(e) bei ${pr.updated} Person(en) entfernt${pr.failed > 0 ? `, ${pr.failed} fehlgeschlagen` : ''}.${orphanNote}`
-                      : `${pr.removed} reference(s) removed for ${pr.updated} person(s)${pr.failed > 0 ? `, ${pr.failed} failed` : ''}.${orphanNote}`);
-                    setRegCleanProgress(null);
-                    setRegCleanBusy(false);
-                    return;
-                  }
-                  setRegCleanProgress(null);
-                  const ok = await confirmDialog(isDe
-                    ? `${info.duplicateGroups} Person(en) haben mehrere Einträge im Teilnehmer-Register (${info.surplusRecords} überzählige Zeile(n) von ${info.total} insgesamt).\n\nJetzt zusammenführen? Je Person bleibt der älteste Eintrag und erhält ALLE Event-Nummern der Dubletten; die überzähligen Zeilen werden gelöscht. Anmeldungen gehen dabei nicht verloren.${orphanNote || staleNote ? `\n\nHinweis:${orphanNote}${staleNote} Die Verweise räumst du auf, indem du die Aktion nach dem Zusammenführen noch einmal startest.` : ''}`
-                    : `${info.duplicateGroups} person(s) have multiple records in the participant registry (${info.surplusRecords} surplus row(s) out of ${info.total} total).\n\nMerge now? Per person the oldest record is kept and receives ALL event numbers; the surplus rows are deleted. No registrations are lost.${orphanNote ? `\n\nNote:${orphanNote}` : ''}`,
-                    { confirmLabel: isDe ? 'Zusammenführen' : 'Merge' });
-                  if (!ok) { setRegCleanProgress(null); setRegCleanBusy(false); return; }
-                  setRegCleanProgress({ done: 0, total: info.duplicateGroups, label: isDe ? 'Einträge werden zusammengeführt…' : 'Merging records…' });
-                  const r = await eventServiceRef.mergeDuplicateParticipants(
-                    (done, total) => setRegCleanProgress({
-                      done, total,
-                      label: isDe ? 'Einträge werden zusammengeführt…' : 'Merging records…',
-                    }),
-                    loaded => setRegCleanProgress({ done: loaded, total: 0, label: isDe ? `${loaded} Einträge gelesen…` : `${loaded} records read…` }),
-                  );
-                  setRegCleanIsError(r.failed > 0);
-                  setRegCleanResult(isDe
-                    ? `${r.groups} Person(en) zusammengeführt, ${r.deleted} überzählige Zeile(n) entfernt${r.failed > 0 ? `, ${r.failed} fehlgeschlagen` : ''}.${staleNote ? `${staleNote} Starte die Aktion noch einmal, um sie zu entfernen.` : ''}`
-                    : `${r.groups} person(s) merged, ${r.deleted} surplus row(s) removed${r.failed > 0 ? `, ${r.failed} failed` : ''}.`);
-                } catch (err) {
-                  setRegCleanIsError(true);
-                  setRegCleanResult((isDe ? 'Fehler: ' : 'Error: ') + (err instanceof Error ? err.message : String(err || '')).slice(0, 300));
-                }
-                setRegCleanProgress(null);
-                setRegCleanBusy(false);
-              })().catch(() => { /* */ });
-            }}
-          >
-            {regCleanBusy
-              ? (isDe ? 'Wird geprüft…' : 'Checking…')
-              : (isDe ? 'Register prüfen & bereinigen' : 'Check & clean registry')}
-          </button>
-        </div>
-
-        {/* v26.63: Startseiten-Zähler (Events/Teilnehmer) neu berechnen. */}
-        <div style={cardStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><BarChart3 size={18} /></span>
-            <span style={{ fontWeight: 700 }}>{isDe ? 'Startseiten-Zähler neu berechnen' : 'Recompute landing-page counter'}</span>
-          </div>
-          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
-            {isDe
-              ? 'Berechnet die Kennzahl „Events" auf der Startseite frisch aus der Event-Liste (ohne Entwürfe, abgesagte und Sub-Events; abgelaufene zählen mit) — schnell, ohne die Teilnehmerlisten zu scannen. Der angezeigte Wert ist ein gespeicherter Zähler, der sonst nur einmal pro Admin-Sitzung automatisch aktualisiert wird. Der Teilnehmer-Zähler bleibt unverändert.'
-              : 'Recomputes the „Events" KPI on the landing page straight from the event list (excluding drafts, cancelled and sub-events; past ones count) — fast, without scanning the participant lists. The shown value is a stored counter that otherwise only refreshes once per admin session. The attendee counter is left unchanged.'}
-          </p>
-          {kpiResult !== null && (
-            <div style={{ margin: '0 0 10px', padding: '8px 12px', background: '#f1f7e8', border: '1px solid var(--dex-green, #86bc25)', borderRadius: 8, fontSize: '0.82rem', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600 }}>
-              {isDe ? `Ergebnis: ${kpiResult} Events` : `Result: ${kpiResult} events`}
-            </div>
-          )}
-          <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { void doRecomputeKpi(); }}>
-            {busy === 'kpi' ? (isDe ? 'Wird berechnet…' : 'Computing…') : (isDe ? 'Events-Zähler neu berechnen' : 'Recompute events counter')}
-          </button>
-        </div>
-
-        {/* v26.13: Feld-Eigenschaften aus der Versionshistorie wiederherstellen. */}
-        <div style={cardStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><Settings size={18} /></span>
-            <span style={{ fontWeight: 700 }}>{isDe ? 'Feld-Beschreibungen wiederherstellen' : 'Restore field descriptions'}</span>
-          </div>
-          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
-            {isDe
-              ? 'Stellt versehentlich verlorene Eigenschaften der Abfrage-/Auswahlfelder (Beschreibungen, Anzeige-Bedingungen, Mehrfachauswahl, Englisch-Varianten u.a.) aus der SharePoint-Versionshistorie wieder her. Füllt nur FEHLENDE Werte auf — aktuelle Eingaben bleiben erhalten.'
-              : 'Restores accidentally lost properties of the form/selection fields (descriptions, display conditions, multi-select, English variants, etc.) from the SharePoint version history. Only fills in MISSING values — current entries are preserved.'}
-          </p>
-          {busy === 'restoredesc' && restoreProgress && (
-            <div style={{ margin: '0 0 10px' }}>
-              <div style={{ height: 8, background: 'var(--dex-gray-100)', borderRadius: 999, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${restoreProgress.total > 0 ? Math.round((restoreProgress.done / restoreProgress.total) * 100) : 0}%`, background: 'var(--dex-green, #86bc25)', transition: 'width 0.2s' }} />
-              </div>
-              <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {restoreProgress.done}/{restoreProgress.total}{restoreProgress.label ? ` · ${restoreProgress.label}` : ''}
-              </div>
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '8px 12px', flex: 1 }} disabled={busy !== ''} onClick={() => { void doPreviewDescriptions(); }}>
-              {isDe ? 'Vorschau (Trockenlauf)' : 'Preview (dry run)'}
-            </button>
-            <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 12px', flex: 1 }} disabled={busy !== ''} onClick={() => { void doRestoreDescriptions(); }}>
-              {busy === 'restoredesc' ? (isDe ? 'Läuft…' : 'Running…') : (isDe ? 'Wiederherstellen' : 'Restore')}
-            </button>
-          </div>
-          {restorePreview && (
-            <div style={{ marginTop: 10, maxHeight: 220, overflowY: 'auto', fontSize: '0.78rem', borderTop: '1px solid var(--dex-gray-100)', paddingTop: 8 }}>
-              {restorePreview.length === 0 ? (
-                <div style={{ color: 'var(--dex-gray-500)' }}>{isDe ? 'Keine wiederherstellbaren Eigenschaften gefunden.' : 'No restorable properties found.'}</div>
-              ) : restorePreview.map(ev => (
-                <div key={ev.eventId} style={{ marginBottom: 8 }}>
-                  <div style={{ fontWeight: 700, color: 'var(--dex-gray-800)' }}>{ev.eventTitle}</div>
-                  {ev.fields.map((f, i) => (
-                    <div key={i} style={{ color: 'var(--dex-gray-600)', paddingLeft: 8 }}>• {f.label}: {f.props.join(', ')}</div>
-                  ))}
+            )}
+            {restorePreview && (
+              <div className="dex-ui-card dex-ui-card--soft" style={{ maxHeight: 220, overflowY: 'auto', fontSize: '0.78rem' }}>
+                <div style={{ fontWeight: 700, color: 'var(--dex-gray-800)', marginBottom: 6 }}>
+                  {isDe ? 'Vorschau: Feld-Beschreibungen' : 'Preview: field descriptions'}
                 </div>
-              ))}
+                {restorePreview.length === 0 ? (
+                  <div style={{ color: 'var(--dex-gray-500)' }}>{isDe ? 'Keine wiederherstellbaren Eigenschaften gefunden.' : 'No restorable properties found.'}</div>
+                ) : restorePreview.map(ev => (
+                  <div key={ev.eventId} style={{ marginBottom: 8 }}>
+                    <div style={{ fontWeight: 700, color: 'var(--dex-gray-800)' }}>{ev.eventTitle}</div>
+                    {ev.fields.map((f, i) => (
+                      <div key={i} style={{ color: 'var(--dex-gray-600)', paddingLeft: 8 }}>• {f.label}: {f.props.join(', ')}</div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {detailToggle('repair')}
+          {openInfo === 'repair' && (
+            <div className="dex-ui-disclosure-body">
+              {actionDetail(
+                isDe ? 'Spalten fixen (alle Events)' : 'Fix columns (all events)',
+                isDe
+                  ? 'Prüft die Teilnehmerlisten ALLER Events inkl. Sub-Events, legt fehlende Spalten an (z.B. „Unternehmen") und trägt die Unternehmenszugehörigkeit für bestehende Teilnehmer nach.'
+                  : 'Checks the participant lists of ALL events incl. sub-events, adds missing columns (e.g. „Company") and backfills the company affiliation for existing attendees.')}
+              {actionDetail(
+                isDe ? 'Organizer-Rechte prüfen (alle Events)' : 'Check organizer permissions (all events)',
+                isDe
+                  ? 'Stellt sicher, dass jeder Organizer und Co-Organizer die Teilnehmerliste seiner Events lesen darf — auf dem Haupt-Event UND auf jedem Sub-Event. Bis v30.36 wurde die Berechtigung beim Speichern nur auf dem Haupt-Event gesetzt: Wer nachträglich als Organizer dazukam, sah bei einem Event mit mehreren Terminen überall 0 Teilnehmer, obwohl Anmeldungen vorlagen. Fehlende Rechte werden ergänzt, es wird nichts entzogen und nichts gelöscht.'
+                  : 'Ensures every organizer and co-organizer can read the participant list of their events — on the main event AND on every sub-event. Until v30.36 permissions were set on the main event only: anyone added as organizer later saw 0 participants everywhere on multi-date events although registrations existed. Missing permissions are added; nothing is revoked or deleted.')}
+              {actionDetail(
+                isDe ? 'Teilnehmer-Register bereinigen' : 'Clean up participant registry',
+                isDe
+                  ? 'Sucht in der zentralen Teilnehmer-Übersicht (DEX_Participants) nach Dubletten — mehrere Einträge zur selben E-Mail — und führt sie zusammen: Der älteste Eintrag bleibt und bekommt ALLE Event-Nummern, die überzähligen Zeilen werden gelöscht. Es geht nichts verloren; wessen Anmeldungen auf zwei Einträge verteilt waren, sieht danach wieder alle Events unter „Meine Events". Prüft zuerst und fragt vor dem Zusammenführen nach. Danach gleicht die Aktion das Register gegen die TEILNEHMERLISTEN ab: Zeigt ein Verweis auf ein Event, in dessen Liste die Person gar nicht steht — typischerweise eine Abmeldung, bei der das Nachziehen scheiterte —, wird er auf Rückfrage entfernt. Genau solche Verweise lassen „Meine Events" eine Anmeldung anzeigen, die es nicht gibt.'
+                  : 'Searches the central participant registry (DEX_Participants) for duplicates — several records for the same email — and merges them: the oldest record is kept and receives ALL event numbers, the surplus rows are deleted. Nothing is lost; anyone whose registrations were split across two records sees all their events in „My events" again. Checks first and asks before merging.')}
+              {actionDetail(
+                isDe ? 'Nachrücken & IDs nachholen' : 'Catch up promotions & IDs',
+                isDe
+                  ? 'Für den Fall, dass der Nachrück-Flow ausgefallen war: Prüft alle aktiven Events, lässt überall dort nachrücken, wo Plätze frei sind und Leute warten, nummeriert lückenhafte TeilnehmerIDs neu und gleicht alle Platzzähler ab. Zeigt VOR dem Ausführen, wer in welchem Event nachrücken würde — erst nach Bestätigung gehen Mails und Einladungen raus. Events ohne Vollzugriff und Events mit gemeinsamer Warteliste bei geteilten Gruppen werden namentlich ausgewiesen statt falsch gerechnet.'
+                  : 'For when the promotion flow was down: checks all active events, promotes wherever seats are free and people are waiting, renumbers participant IDs with gaps and reconciles all seat counters. Shows BEFORE running who would move up in which event — emails and invites only go out after confirmation. Events without full access, and split-group events with a shared waitlist, are listed by name instead of being miscounted.')}
+              {actionDetail(
+                isDe ? 'Feld-Beschreibungen (Vorschau & Wiederherstellen)' : 'Field descriptions (preview & restore)',
+                isDe
+                  ? 'Stellt versehentlich verlorene Eigenschaften der Abfrage-/Auswahlfelder (Beschreibungen, Anzeige-Bedingungen, Mehrfachauswahl, Englisch-Varianten u.a.) aus der SharePoint-Versionshistorie wieder her. Füllt nur FEHLENDE Werte auf — aktuelle Eingaben bleiben erhalten. Die Vorschau zeigt dasselbe Ergebnis, ohne etwas zu schreiben.'
+                  : 'Restores accidentally lost properties of the form/selection fields (descriptions, display conditions, multi-select, English variants, etc.) from the SharePoint version history. Only fills in MISSING values — current entries are preserved. The preview shows the same result without writing anything.')}
+              {actionDetail(
+                isDe ? 'Startseiten-Zähler neu berechnen' : 'Recompute landing-page counter',
+                isDe
+                  ? 'Berechnet die Kennzahl „Events" auf der Startseite frisch aus der Event-Liste (ohne Entwürfe, abgesagte und Sub-Events; abgelaufene zählen mit) — schnell, ohne die Teilnehmerlisten zu scannen. Der angezeigte Wert ist ein gespeicherter Zähler, der sonst nur einmal pro Admin-Sitzung automatisch aktualisiert wird. Der Teilnehmer-Zähler bleibt unverändert.'
+                  : 'Recomputes the „Events" KPI on the landing page straight from the event list (excluding drafts, cancelled and sub-events; past ones count) — fast, without scanning the participant lists. The shown value is a stored counter that otherwise only refreshes once per admin session. The attendee counter is left unchanged.')}
             </div>
           )}
         </div>
 
-        {/* v26.81: Berechtigungen aufräumen (ganze Site-Collection). */}
-        <div style={cardStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><Wrench size={18} /></span>
-            <span style={{ fontWeight: 700 }}>{isDe ? 'Berechtigungen aufräumen (ganzer SharePoint)' : 'Clean up permissions (whole SharePoint)'}</span>
+        {/* v24.97: E-Mails & Berichte — globale Mail-Werkzeuge (Reseed + Wochenbericht) */}
+        <div className="dex-ui-action-group">
+          <div className="dex-ui-action-group-title">{isDe ? 'E-Mails & Berichte' : 'Emails & reports'}</div>
+          <div className="dex-ui-action-grid">
+            {hubAction('weekly', <Mail size={16} />,
+              isDe ? 'Wochenbericht jetzt senden' : 'Send weekly report now',
+              busy === 'weekly'
+                ? (isDe ? 'Wird gesendet…' : 'Sending…')
+                : (isDe ? 'Legt den Bericht sofort für alle Admins in die Mail-Warteschlange — nur zum Testen.' : 'Queues the report for all admins right away — for testing only.'),
+              () => { void doWeekly(); },
+              { disabled: busy !== '' })}
+            {hubAction('reseed', <Mail size={16} />,
+              isDe ? 'Default-Mail-Vorlagen zurücksetzen' : 'Reset default mail templates',
+              busy === 'reseed'
+                ? (isDe ? 'Wird zurückgesetzt…' : 'Resetting…')
+                : (isDe ? 'Überschreibt alle Standard-Vorlagen mit den eingebauten Texten — eigene Anpassungen gehen verloren.' : 'Overwrites all default templates with the built-in texts — customizations are lost.'),
+              () => { void doReseed(); },
+              { disabled: busy !== '', danger: true })}
           </div>
-          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
-            {isDe
-              ? 'Prüft die gesamte SharePoint-Seite (Hauptseite, alle Listen/Bibliotheken und alle Event-Subsites) auf manuelle Einzel-Freigaben, die einzelnen Personen mehr Rechte geben als im Berechtigungskonzept vorgesehen (z.B. Schreib-/Vollzugriff auf ganze Listen). Erst kommt ein Bericht ohne Änderung, danach kannst du die Über-Freigaben mit einem Klick entfernen. Leserechte bleiben immer erhalten (auch für internationale Kolleg:innen); Schreiben ist danach nur über die Gruppen und für Admins/Organizer möglich.'
-              : 'Scans the whole SharePoint site (main site, all lists/libraries and every event subsite) for manual individual grants that give single people more rights than the permission concept allows (e.g. write/full control on entire lists). First a report without changes, then you can remove the over-grants with one click. Read access always stays (including for international colleagues); writing is afterwards only via the groups and for admins/organizers.'}
-          </p>
-          <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { setPermCleanupReport(null); setPermCleanupOpen(true); }}>
-            {isDe ? 'Berechtigungen prüfen…' : 'Check permissions…'}
-          </button>
-        </div>
-
-        {/* v26.81: Verwaiste Subsites prüfen (Reste gelöschter Events). */}
-        <div style={cardStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><Trash2 size={18} /></span>
-            <span style={{ fontWeight: 700 }}>{isDe ? 'Subsites prüfen (verwaiste Reste)' : 'Check subsites (orphans)'}</span>
-          </div>
-          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
-            {isDe
-              ? 'Findet Event-Subsites, die noch existieren, aber zu KEINEM Event mehr gehören — z.B. Test-Subsites, deren Event bereits gelöscht wurde. Zeigt pro Rest, ob eine Teilnehmerliste (und wie viele Zeilen) vorhanden ist. Anschließend kannst du jeden Rest einzeln und bewusst löschen.'
-              : 'Finds event subsites that still exist but no longer belong to any event — e.g. test subsites whose event was already deleted. Shows per orphan whether a participant list exists (and how many rows). You can then delete each orphan individually and deliberately.'}
-          </p>
-          <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { setOrphanResult(null); setOrphanOpen(true); }}>
-            {isDe ? 'Subsites prüfen…' : 'Check subsites…'}
-          </button>
-        </div>
-
-        {/* v30.70: Nachrücken & IDs für ALLE Events nachholen. Sammel-Heilung
-            nach einem Ausfall des Flows DEX_IDReorder_TeilnehmerIDs
-            (02.09.2026). Erst planen und im Dialog zeigen, wer nachrückt —
-            dann ausführen. Logik in admin/logic/healAllEvents.ts. */}
-        <div style={cardStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><Wrench size={18} /></span>
-            <span style={{ fontWeight: 700 }}>{isDe ? 'Nachrücken & IDs für ALLE Events nachholen' : 'Catch up promotions & IDs for ALL events'}</span>
-          </div>
-          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
-            {isDe
-              ? 'Für den Fall, dass der Nachrück-Flow ausgefallen war: Prüft alle aktiven Events, lässt überall dort nachrücken, wo Plätze frei sind und Leute warten, nummeriert lückenhafte TeilnehmerIDs neu und gleicht alle Platzzähler ab. Zeigt VOR dem Ausführen, wer in welchem Event nachrücken würde — erst nach Bestätigung gehen Mails und Einladungen raus. Events ohne Vollzugriff und Events mit gemeinsamer Warteliste bei geteilten Gruppen werden namentlich ausgewiesen statt falsch gerechnet.'
-              : 'For when the promotion flow was down: checks all active events, promotes wherever seats are free and people are waiting, renumbers participant IDs with gaps and reconciles all seat counters. Shows BEFORE running who would move up in which event — emails and invites only go out after confirmation. Events without full access, and split-group events with a shared waitlist, are listed by name instead of being miscounted.'}
-          </p>
-          {healBusy && healProgress && (
-            <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', margin: '0 0 10px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {healProgress}
+          {detailToggle('mail')}
+          {openInfo === 'mail' && (
+            <div className="dex-ui-disclosure-body">
+              {actionDetail(
+                isDe ? 'Wochenbericht jetzt senden' : 'Send weekly report now',
+                isDe
+                  ? 'Löst den wöchentlichen Admin-Bericht sofort aus (überspringt die 7-Tage-Sperre) und legt ihn für alle Admins in die Mail-Warteschlange. Nur zum Testen.'
+                  : 'Triggers the weekly admin report immediately (bypassing the 7-day lock) and queues it for all admins. For testing only.')}
+              {actionDetail(
+                isDe ? 'Default-Mail-Vorlagen zurücksetzen' : 'Reset default mail templates',
+                isDe
+                  ? 'Überschreibt alle Standard-Mail-Vorlagen (Anmeldung, Warteliste, Abmeldung, Nachrücken …) mit den eingebauten Texten aus dem aktuellen Stand der App. Achtung: eigene Anpassungen an den Standard-Vorlagen gehen verloren.'
+                  : 'Overwrites all default mail templates with the built-in texts from the current app version. Note: customizations to the standard templates are lost.')}
             </div>
           )}
-          {healResult && !healBusy && (
-            <div style={{
-              margin: '0 0 10px', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', lineHeight: 1.45,
-              background: healResult.isError ? 'rgba(218,41,28,0.06)' : '#f1f7e8',
-              border: `1px solid ${healResult.isError ? 'var(--dex-red, #da291c)' : 'var(--dex-green, #86bc25)'}`,
-            }}>
-              {healResult.text}
+        </div>
+
+        {/* Zuletzt das Unwiderrufliche — Löschen ist die einzige Aktion, die
+            sich nicht zurücknehmen lässt. */}
+        <div className="dex-ui-action-group">
+          <div className="dex-ui-action-group-title">{isDe ? 'Archiv & Löschen' : 'Archive & deletion'}</div>
+          <div className="dex-ui-action-grid">
+            {hubAction('archive', <FileText size={16} />,
+              isDe ? 'Jetzt archivieren' : 'Archive now',
+              busy === 'arch'
+                ? (isDe ? 'Wird archiviert…' : 'Archiving…')
+                : (!countsRead.arch
+                  ? (isDe ? 'Die Anzahl ist noch nicht gelesen — bis dahin ist unbekannt, ob etwas ansteht.' : 'The count has not been read yet — until then it is unknown whether anything is due.')
+                  : (archTotal === 0
+                    ? (isDe ? 'Zurzeit steht nichts zur Archivierung an.' : 'Nothing is waiting to be archived right now.')
+                    : (isDe ? 'Verschiebt Zeilen abgelaufener und gelöschter Events aus den Arbeitslisten ins Archiv.' : 'Moves rows of expired and deleted events out of the working lists into the archive.'))),
+              () => { void doArchive(); },
+              {
+                disabled: busy !== '' || archTotal === 0,
+                badge: <span className="dex-ui-pill dex-ui-pill--gray">{countsRead.arch ? (isDe ? `${archTotal} Zeilen` : `${archTotal} rows`) : '–'}</span>,
+              })}
+            {hubAction('delarchive', <Trash2 size={16} />,
+              isDe ? 'Alte Archiv-Einträge löschen' : 'Delete old archive entries',
+              busy === 'del'
+                ? (isDe ? 'Wird gelöscht…' : 'Deleting…')
+                : (!countsRead.del
+                  ? (isDe ? 'Die Anzahl ist noch nicht gelesen — bis dahin ist unbekannt, ob etwas zu löschen ist.' : 'The count has not been read yet — until then it is unknown whether anything is due.')
+                  : (delTotal === 0
+                    ? (isDe ? 'Zurzeit ist kein Eintrag älter als 1 Monat.' : 'No entry is older than 1 month right now.')
+                    : (isDe ? 'Löscht Archiv-Einträge endgültig, deren Event länger als 1 Monat vorbei ist.' : 'Permanently deletes archive entries whose event is more than 1 month past.'))),
+              () => { void doDelete(); },
+              {
+                disabled: busy !== '' || delTotal === 0,
+                danger: true,
+                badge: <span className="dex-ui-pill dex-ui-pill--gray">{countsRead.del ? (isDe ? `${delTotal} Einträge` : `${delTotal} entries`) : '–'}</span>,
+              })}
+          </div>
+          {detailToggle('archive')}
+          {openInfo === 'archive' && (
+            <div className="dex-ui-disclosure-body">
+              {actionDetail(
+                isDe ? 'Jetzt archivieren' : 'Archive now',
+                isDe
+                  ? 'Zeilen aus abgelaufenen oder gelöschten Events wandern aus den Arbeitslisten ins Archiv, damit diese schlank bleiben. Die Pille auf der Kachel sagt, wie viele Zeilen gerade anstehen.'
+                  : 'Rows from expired or deleted events move out of the working lists into the archive so they stay lean. The pill on the tile says how many rows are ready.')}
+              {actionDetail(
+                isDe ? 'Alte Archiv-Einträge löschen' : 'Delete old archive entries',
+                isDe
+                  ? 'Archiv-Einträge, deren Event länger als 1 Monat vorbei ist, werden endgültig gelöscht — das lässt sich nicht rückgängig machen. Die Pille auf der Kachel sagt, wie viele Einträge das gerade sind.'
+                  : 'Archive entries whose event is more than 1 month past are deleted permanently — this cannot be undone. The pill on the tile says how many entries that currently is.')}
             </div>
           )}
-          <button
-            className="btn btn-primary"
-            style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }}
-            disabled={busy !== '' || healBusy || !eventServiceRef}
-            onClick={() => {
-              if (!eventServiceRef) return;
-              setHealBusy(true);
-              setHealResult(null);
-              healAllEvents({
-                svc: eventServiceRef, allEvents, isDe, getAllRegistrations, confirmDialog,
-                onProgress: setHealProgress,
-              }).then(r => {
-                if (!r.cancelled) setHealResult({ text: r.text, isError: r.isError });
-              }).catch(err => {
-                setHealResult({ text: (isDe ? 'Fehler: ' : 'Error: ') + (err instanceof Error ? err.message : String(err || '')).slice(0, 300), isError: true });
-              }).then(() => { setHealProgress(null); setHealBusy(false); });
-            }}
-          >
-            {healBusy ? (isDe ? 'Heilung läuft…' : 'Healing…') : (isDe ? 'Prüfen & nachholen…' : 'Check & catch up…')}
-          </button>
         </div>
-      </div>
+      </section>
 
       {/* v30.34: Der Einbettungs-Test aus v30.32 ist wieder raus — die
           Frage, die er beantworten sollte, ist beantwortet: Eine per
@@ -1263,88 +1338,197 @@ export default function AdminHubPage(): React.ReactElement {
           Kein Werkzeug stehen lassen, das nur eine erledigte Frage
           stellt; der Befund steht in CLAUDE.md und den Release Notes. */}
 
-      {/* v24.97: E-Mails & Berichte — globale Mail-Werkzeuge (Reseed + Wochenbericht) */}
-      <h2 style={{ fontSize: '1.15rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'E-Mails & Berichte' : 'Emails & reports'}</h2>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14, marginBottom: 28 }}>
-        <div style={cardStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><Mail size={18} /></span>
-            <span style={{ fontWeight: 700 }}>{isDe ? 'Default-Mail-Vorlagen zurücksetzen' : 'Reset default mail templates'}</span>
+      {/* v26.51: Logo & Branding — Default-Mail-Logo tauschen/herunterladen + Logo-Video.
+          v31.3: hinter die Wartung gerückt — Branding stellt man einmal ein,
+          Wartung braucht man laufend. */}
+      {adminLike && (
+        <section className="dex-ui-section">
+          <h2 className="dex-ui-section-title">{isDe ? 'Logo & Branding' : 'Logo & branding'}</h2>
+          <div className="dex-ui-grid-auto">
+            {/* v26.58: DEX-Logo = der bunte Orb-Ring (vorher zeigte diese Karte
+                fälschlich das Deloitte-Mail-Logo, dessen weißer Schriftzug auf
+                weißem Grund unsichtbar war — „nur ein grüner Punkt"). */}
+            <div className="dex-ui-card">
+              <div className="dex-ui-card-head" style={{ marginBottom: 10 }}>
+                <h3 className="dex-ui-card-head-title"><FileText size={16} /> {isDe ? 'DEX-Logo (Orb, PNG)' : 'DEX logo (orb, PNG)'}</h3>
+                <InfoTooltip text={isDe
+                  ? 'Der bunte DEX-Ring. Neue Mails nutzen nach einem Tausch automatisch das neue Bild. Zugleich die zentrale Download-Quelle, z. B. für Intranet-Artikel.'
+                  : 'The colourful DEX ring. New emails automatically use the new image after a swap. Also the central download source, e.g. for intranet articles.'} />
+              </div>
+              {branding && branding.orbBase64 ? (
+                <img src={branding.orbBase64} alt="DEX Orb" style={{ maxWidth: '100%', maxHeight: 90, display: 'block', margin: '0 auto 10px', background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 8 }} />
+              ) : (
+                <p className="dex-ui-muted" style={{ fontStyle: 'italic', margin: '0 0 10px' }}>{isDe ? 'Noch kein DEX-Logo hinterlegt.' : 'No DEX logo stored yet.'}</p>
+              )}
+              <p className="dex-ui-help" style={{ marginTop: 0 }}>
+                {isDe
+                  ? 'Standard-Bild in Mails von Events ohne eigenes Event-Bild.'
+                  : 'Default image in emails of events without their own image.'}
+              </p>
+              <div className="dex-ui-inline" style={{ marginTop: 10 }}>
+                <button className="btn btn-outline dex-ui-btn-sm" disabled={brandingBusy !== '' || !eventServiceRef} onClick={() => { if (orbInputRef.current) orbInputRef.current.click(); }}>
+                  {brandingBusy === 'orb' ? (isDe ? 'Wird gespeichert…' : 'Saving…') : (isDe ? 'Neues hochladen (PNG)' : 'Upload new (PNG)')}
+                </button>
+                <button className="btn btn-secondary dex-ui-btn-sm" disabled={!branding || !branding.orbBase64} onClick={doDownloadOrb}>
+                  {isDe ? 'Herunterladen' : 'Download'}
+                </button>
+              </div>
+              <input ref={orbInputRef} type="file" accept="image/png" style={{ display: 'none' }} onChange={onOrbFileChosen} />
+            </div>
+            <div className="dex-ui-card">
+              <div className="dex-ui-card-head" style={{ marginBottom: 10 }}>
+                <h3 className="dex-ui-card-head-title"><FileText size={16} /> {isDe ? 'Deloitte-Logo (E-Mail-Kopfzeile)' : 'Deloitte logo (email header)'}</h3>
+                <InfoTooltip text={isDe
+                  ? 'Nach einem Tausch tragen alle NEU versendeten Mails automatisch das neue Logo — bereits versendete bleiben unverändert. Die Vorschau steht auf Dunkel, weil der Schriftzug weiß ist.'
+                  : 'After a swap, all NEWLY sent emails automatically carry the new logo — emails already sent remain unchanged. The preview is dark because the wordmark is white.'} />
+              </div>
+              {branding && branding.logoBase64 ? (
+                // Dunkle Vorschau-Fläche: das Logo ist ein WEISSER Schriftzug für
+                // den schwarzen Mail-Header — auf Weiß wäre nur der grüne Punkt sichtbar.
+                <img src={branding.logoBase64} alt="Deloitte Logo" style={{ maxWidth: '100%', maxHeight: 90, display: 'block', margin: '0 auto 10px', background: '#0d0d0d', border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 12 }} />
+              ) : (
+                <p className="dex-ui-muted" style={{ fontStyle: 'italic', margin: '0 0 10px' }}>{isDe ? 'Noch kein Logo hinterlegt.' : 'No logo stored yet.'}</p>
+              )}
+              <p className="dex-ui-help" style={{ marginTop: 0 }}>
+                {isDe
+                  ? 'Weißer Deloitte-Schriftzug in der schwarzen Kopfzeile aller App-Mails.'
+                  : 'White Deloitte wordmark in the black header of all app emails.'}
+              </p>
+              <div className="dex-ui-inline" style={{ marginTop: 10 }}>
+                <button className="btn btn-outline dex-ui-btn-sm" disabled={brandingBusy !== '' || !eventServiceRef} onClick={() => { if (logoInputRef.current) logoInputRef.current.click(); }}>
+                  {brandingBusy === 'logo' ? (isDe ? 'Wird gespeichert…' : 'Saving…') : (isDe ? 'Neues hochladen (PNG)' : 'Upload new (PNG)')}
+                </button>
+                <button className="btn btn-secondary dex-ui-btn-sm" disabled={!branding || !branding.logoBase64} onClick={doDownloadLogo}>
+                  {isDe ? 'Herunterladen' : 'Download'}
+                </button>
+              </div>
+              <input ref={logoInputRef} type="file" accept="image/png" style={{ display: 'none' }} onChange={onLogoFileChosen} />
+            </div>
+            <div className="dex-ui-card">
+              <div className="dex-ui-card-head" style={{ marginBottom: 10 }}>
+                <h3 className="dex-ui-card-head-title"><FileText size={16} /> {isDe ? 'DEX-Logo-Video' : 'DEX logo video'}</h3>
+                <InfoTooltip text={isDe
+                  ? 'Hier tauschen und herunterladen. Der animierte Ring in der App selbst ist KEIN Video, sondern wird von der App live gerendert — hier liegt die Video-Datei zum Weitergeben, sobald sie einmal hochgeladen wurde.'
+                  : 'Swap and download it here. The animated ring in the app itself is NOT a video but rendered live by the app — this slot stores the shareable video file once uploaded.'} />
+              </div>
+              {branding && branding.videoUrl ? (
+                <video key={videoVer} src={branding.videoUrl + (videoVer ? `?ver=${videoVer}` : '')} controls style={{ width: '100%', maxHeight: 160, borderRadius: 8, background: '#000', marginBottom: 10 }} />
+              ) : (
+                <p className="dex-ui-muted" style={{ fontStyle: 'italic', margin: '0 0 10px' }}>{isDe ? 'Noch kein Video hinterlegt.' : 'No video stored yet.'}</p>
+              )}
+              <p className="dex-ui-help" style={{ marginTop: 0 }}>
+                {isDe
+                  ? 'Zentral abgelegtes Logo-Video zum Weitergeben — z. B. für Intranet-Artikel und Präsentationen.'
+                  : 'Centrally stored logo video for sharing — e.g. for intranet articles and presentations.'}
+              </p>
+              <div className="dex-ui-inline" style={{ marginTop: 10 }}>
+                <button className="btn btn-outline dex-ui-btn-sm" disabled={brandingBusy !== '' || !eventServiceRef} onClick={() => { if (videoInputRef.current) videoInputRef.current.click(); }}>
+                  {brandingBusy === 'video' ? (isDe ? 'Wird hochgeladen…' : 'Uploading…') : (isDe ? 'Neues Video hochladen' : 'Upload new video')}
+                </button>
+                {branding && branding.videoUrl ? (
+                  <a className="btn btn-secondary dex-ui-btn-sm" href={branding.videoUrl} download={branding.videoFileName || 'DEX_Logo_Video.mp4'} style={{ textDecoration: 'none' }}>
+                    {isDe ? 'Video herunterladen' : 'Download video'}
+                  </a>
+                ) : null}
+              </div>
+              <input ref={videoInputRef} type="file" accept="video/mp4,video/webm,video/quicktime" style={{ display: 'none' }} onChange={onVideoFileChosen} />
+            </div>
           </div>
-          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
-            {isDe
-              ? 'Überschreibt alle Standard-Mail-Vorlagen (Anmeldung, Warteliste, Abmeldung, Nachrücken …) mit den eingebauten Texten aus dem aktuellen Stand der App. Achtung: eigene Anpassungen an den Standard-Vorlagen gehen verloren.'
-              : 'Overwrites all default mail templates with the built-in texts from the current app version. Note: customizations to the standard templates are lost.'}
-          </p>
-          <button className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { void doReseed(); }}>
-            {busy === 'reseed' ? (isDe ? 'Wird zurückgesetzt…' : 'Resetting…') : (isDe ? 'Vorlagen zurücksetzen' : 'Reset templates')}
-          </button>
-        </div>
-        <div style={cardStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><Mail size={18} /></span>
-            <span style={{ fontWeight: 700 }}>{isDe ? 'Wochenbericht jetzt senden' : 'Send weekly report now'}</span>
-          </div>
-          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
-            {isDe
-              ? 'Löst den wöchentlichen Admin-Bericht sofort aus (überspringt die 7-Tage-Sperre) und legt ihn für alle Admins in die Mail-Warteschlange. Nur zum Testen.'
-              : 'Triggers the weekly admin report immediately (bypassing the 7-day lock) and queues it for all admins. For testing only.'}
-          </p>
-          <button className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { void doWeekly(); }}>
-            {busy === 'weekly' ? (isDe ? 'Wird gesendet…' : 'Sending…') : (isDe ? 'Wochenbericht senden' : 'Send weekly report')}
-          </button>
-        </div>
-      </div>
+        </section>
+      )}
 
-      {/* Listen-Erklärung */}
-      <h2 style={{ fontSize: '1.15rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'SharePoint-Listen — was macht was' : 'SharePoint lists — what does what'}</h2>
-      <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', marginTop: 6 }}>
-        {isDe ? 'Alle Hintergrund-Listen der DEX-Plattform und wofür sie da sind (Klick öffnet die Liste in SharePoint):' : 'All background lists of the DEX platform and what they are for (click opens the list in SharePoint):'}
-      </p>
-      <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
-        {LIST_DOCS.map((l, i) => (
-          <div key={l.name} style={{ display: 'flex', gap: 14, flexWrap: 'wrap', padding: '12px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--dex-gray-100)', alignItems: 'baseline' }}>
-            <a href={listUrl(l.name)} target="_blank" rel="noopener noreferrer" style={{ flexShrink: 0, fontFamily: 'Consolas, monospace', fontSize: '0.82rem', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700, minWidth: 150, textDecoration: 'none' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
-            >{l.name}</a>
-            <span style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', lineHeight: 1.45 }}>{l.de}</span>
-          </div>
-        ))}
-      </div>
+      {/* Listen-Erklärung.
+          v31.3: Als Tabelle mit ruhigem Kopf — und die Sprung-Auswahl aus der
+          alten Werkzeug-Kachel steht jetzt hier, wo sie hingehört. Zwei
+          Bedienwege für dieselbe Sache an zwei Seitenenden waren die Sucherei,
+          die dieser Umbau abstellen soll. Der Zeilen-Hover kommt aus der Klasse,
+          nicht mehr aus onMouseEnter. */}
+      <section className="dex-ui-section">
+        <h2 className="dex-ui-section-title">{isDe ? 'SharePoint-Listen — was macht was' : 'SharePoint lists — what does what'}</h2>
+        <p className="dex-ui-section-desc">
+          {isDe ? 'Alle Hintergrund-Listen der DEX-Plattform und wofür sie da sind. Ein Klick auf die Zeile öffnet die Liste in SharePoint.' : 'All background lists of the DEX platform and what they are for. A click on the row opens the list in SharePoint.'}
+        </p>
+        {/* v23.44: direktes Springen in eine SharePoint-Liste. */}
+        <div className="dex-ui-toolbar">
+          <label className="dex-ui-muted" htmlFor="dex-hub-listjump">{isDe ? 'Direkt in eine Liste springen' : 'Jump straight into a list'}</label>
+          <select
+            id="dex-hub-listjump"
+            className="dex-ui-select dex-ui-select--sm"
+            style={{ width: 'auto', minWidth: 200 }}
+            defaultValue=""
+            onChange={e => { const v = e.target.value; if (v) { window.open(listUrl(v), '_blank', 'noopener'); e.target.value = ''; } }}
+          >
+            <option value="">{isDe ? 'Zu Liste springen…' : 'Jump to list…'}</option>
+            {LIST_DOCS.map(l => <option key={l.name} value={l.name}>{l.name}</option>)}
+          </select>
+        </div>
+        <div className="dex-ui-table-wrap">
+          <table className="dex-ui-table dex-ui-table--compact">
+            <thead>
+              <tr>
+                <th style={{ minWidth: 160 }}>{isDe ? 'Liste' : 'List'}</th>
+                <th>{isDe ? 'Wofür sie da ist' : 'What it is for'}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {LIST_DOCS.map(l => (
+                <tr key={l.name} className="is-clickable" onClick={() => { window.open(listUrl(l.name), '_blank', 'noopener'); }}>
+                  <td>
+                    <a
+                      href={listUrl(l.name)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      style={{ fontFamily: 'Consolas, monospace', fontSize: '0.8rem', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700, textDecoration: 'none' }}
+                    >{l.name}</a>
+                  </td>
+                  <td style={{ lineHeight: 1.45 }}>{l.de}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {/* Release Notes / Neuerungen — vollständige, durchsuchbare Tabelle. */}
-      <h2 style={{ fontSize: '1.15rem', color: 'var(--dex-green-dark, #4a7c1f)', marginTop: 28 }}>{isDe ? 'Neuerungen (Release Notes)' : 'What’s new (release notes)'}</h2>
-      <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', marginTop: 6 }}>
-        {isDe
-          ? 'Alle Versionen — durchsuchbar und nach Bereich filterbar (neueste oben). Die lückenlose Historie ist ab v18.65 verfügbar; ältere Einträge sind die dokumentierten Meilensteine.'
-          : 'All versions — searchable and filterable by area (newest first).'}
-      </p>
-      {/* Filter-Zeile: Suche + Bereich + Art */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '10px 0 12px', alignItems: 'center' }}>
-        <input
-          type="text"
-          value={rnSearch}
-          onChange={e => setRnSearch(e.target.value)}
-          placeholder={isDe ? 'Suchen (Text, Bereich, Version) …' : 'Search …'}
-          style={{ flex: '1 1 240px', minWidth: 180, padding: '8px 12px', border: '1px solid var(--dex-gray-300)', borderRadius: 8, fontSize: '0.85rem' }}
-        />
-        <select value={rnBereich} onChange={e => setRnBereich(e.target.value)} style={{ padding: '8px 10px', border: '1px solid var(--dex-gray-300)', borderRadius: 8, fontSize: '0.85rem' }}>
-          <option value="">{isDe ? 'Alle Bereiche' : 'All areas'}</option>
-          {RELEASE_BEREICHE.map(b => <option key={b} value={b}>{b}</option>)}
-        </select>
-        <select value={rnType} onChange={e => setRnType(e.target.value)} style={{ padding: '8px 10px', border: '1px solid var(--dex-gray-300)', borderRadius: 8, fontSize: '0.85rem' }}>
-          <option value="">{isDe ? 'Neu & Behoben' : 'All types'}</option>
-          <option value="Feature">{isDe ? 'Nur Neu' : 'Features'}</option>
-          <option value="Bugfix">{isDe ? 'Nur Behoben' : 'Fixes'}</option>
-        </select>
-        <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>
-          {filteredNotes.length} / {RELEASE_NOTES.length}
-        </span>
-      </div>
-      <div style={{ ...cardStyle, padding: 0, overflow: 'auto' }}>
+      <section className="dex-ui-section">
+        <h2 className="dex-ui-section-title">{isDe ? 'Neuerungen (Release Notes)' : 'What’s new (release notes)'}</h2>
+        <p className="dex-ui-section-desc">
+          {isDe
+            ? 'Alle Versionen — durchsuchbar und nach Bereich filterbar (neueste oben). Die lückenlose Historie ist ab v18.65 verfügbar; ältere Einträge sind die dokumentierten Meilensteine.'
+            : 'All versions — searchable and filterable by area (newest first).'}
+        </p>
+        {/* v31.3: Filter als Werkzeugleiste — Suche links, Filter daneben, die
+            Trefferzahl als Pille rechts. */}
+        <div className="dex-ui-toolbar">
+          <div className="dex-ui-searchbar">
+            <span className="dex-ui-searchbar-icon" aria-hidden="true"><Search size={15} /></span>
+            <input
+              className="dex-ui-input dex-ui-input--sm"
+              type="text"
+              value={rnSearch}
+              onChange={e => setRnSearch(e.target.value)}
+              placeholder={isDe ? 'Suchen (Text, Bereich, Version) …' : 'Search …'}
+              aria-label={isDe ? 'Neuerungen durchsuchen' : 'Search release notes'}
+            />
+          </div>
+          <select className="dex-ui-select dex-ui-select--sm" style={{ width: 'auto' }} value={rnBereich} onChange={e => setRnBereich(e.target.value)} aria-label={isDe ? 'Bereich' : 'Area'}>
+            <option value="">{isDe ? 'Alle Bereiche' : 'All areas'}</option>
+            {RELEASE_BEREICHE.map(b => <option key={b} value={b}>{b}</option>)}
+          </select>
+          <select className="dex-ui-select dex-ui-select--sm" style={{ width: 'auto' }} value={rnType} onChange={e => setRnType(e.target.value)} aria-label={isDe ? 'Art' : 'Type'}>
+            <option value="">{isDe ? 'Neu & Behoben' : 'All types'}</option>
+            <option value="Feature">{isDe ? 'Nur Neu' : 'Features'}</option>
+            <option value="Bugfix">{isDe ? 'Nur Behoben' : 'Fixes'}</option>
+          </select>
+          <span className="dex-ui-toolbar-spacer" />
+          <span className="dex-ui-pill dex-ui-pill--gray">
+            {isDe ? `${filteredNotes.length} von ${RELEASE_NOTES.length}` : `${filteredNotes.length} of ${RELEASE_NOTES.length}`}
+          </span>
+        </div>
+      <div className="dex-ui-card" style={{ padding: 0, overflow: 'auto' }}>
         {/* Tabellenkopf */}
-        <div style={{ display: isMobile ? 'none' : 'grid', gridTemplateColumns: '70px 92px 150px 78px 1fr', minWidth: 720, gap: 12, padding: '10px 16px', background: 'var(--dex-gray-50, #f7f8f9)', borderBottom: '1px solid var(--dex-gray-200)', fontSize: '0.72rem', fontWeight: 700, color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.3 }}>
+        <div style={{ display: isMobile ? 'none' : 'grid', gridTemplateColumns: '70px 92px 150px 78px 1fr', minWidth: 720, gap: 12, padding: '10px 16px', background: 'var(--dex-gray-50, #fafafa)', borderBottom: '1px solid var(--dex-gray-200)', fontSize: '0.72rem', fontWeight: 700, color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.3 }}>
           <span>{isDe ? 'Version' : 'Version'}</span>
           <span>{isDe ? 'Datum' : 'Date'}</span>
           <span>{isDe ? 'Bereich' : 'Area'}</span>
@@ -1352,15 +1536,16 @@ export default function AdminHubPage(): React.ReactElement {
           <span>{isDe ? 'Beschreibung' : 'Description'}</span>
         </div>
         {filteredNotes.length === 0 ? (
-          <div style={{ padding: '18px 16px', fontSize: '0.85rem', color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>
-            {isDe ? 'Keine Treffer für diese Filter.' : 'No matches for these filters.'}
+          <div className="dex-ui-empty" style={{ border: 'none', background: 'transparent' }}>
+            <div className="dex-ui-empty-title">{isDe ? 'Keine Treffer für diese Filter.' : 'No matches for these filters.'}</div>
+            {isDe ? 'Suchbegriff kürzen oder die Filter auf „Alle" stellen.' : 'Shorten the search term or set the filters back to „All".'}
           </div>
         ) : filteredNotes.map((n, i) => (
           <div key={`${n.version}-${i}`} style={{ display: 'grid', gridTemplateColumns: isMobile ? '64px 1fr' : '70px 92px 150px 78px 1fr', minWidth: isMobile ? 0 : 720, gap: isMobile ? '2px 10px' : 12, padding: '11px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--dex-gray-100)', alignItems: 'baseline' }}>
             <code style={{ fontFamily: 'Consolas, monospace', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>v{n.version}</code>
             <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>{fmtDate(n.date)}</span>
             <span style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--dex-gray-700)' }}>{n.bereich}</span>
-            <span style={{ fontSize: '0.66rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999, textAlign: 'center', alignSelf: 'start', background: n.type === 'Bugfix' ? 'rgba(218,41,28,0.12)' : 'rgba(134,188,37,0.15)', color: n.type === 'Bugfix' ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)' }}>
+            <span className={cx('dex-ui-pill', n.type === 'Bugfix' ? 'dex-ui-pill--red' : 'dex-ui-pill--green')} style={{ justifySelf: 'start', alignSelf: 'start', fontSize: '0.68rem', padding: '2px 8px' }}>
               {n.type === 'Bugfix' ? (isDe ? 'Behoben' : 'Fix') : (isDe ? 'Neu' : 'New')}
             </span>
             {/* v30.60: Kernaussage fett, Einzelpunkte als Liste. Die Gliederung
@@ -1387,6 +1572,7 @@ export default function AdminHubPage(): React.ReactElement {
           </div>
         ))}
       </div>
+      </section>
 
       {/* v26.81: Berechtigungen aufräumen — Prüf-/Korrektur-Modal. */}
       {permCleanupOpen && (
@@ -1397,26 +1583,21 @@ export default function AdminHubPage(): React.ReactElement {
           maxWidth={720}
           padding={24}
           ariaLabel={isDe ? 'Berechtigungen aufräumen' : 'Clean up permissions'}
+          title={isDe ? 'Berechtigungen aufräumen' : 'Clean up permissions'}
+          icon={<Wrench size={20} />}
+          subtitle={isDe
+            ? 'Der ganze SharePoint (Hauptseite, alle Listen/Bibliotheken und alle Event-Subsites) wird nach manuellen Einzel-Freigaben durchsucht, die einer Person mehr als Leserechte geben, obwohl sie laut Rollen-Konzept kein Admin/Organizer ist. Solche Über-Freigaben lassen sich hier entfernen — Leserechte und alle Gruppen-Berechtigungen bleiben unangetastet.'
+            : 'The whole SharePoint (main site, all lists/libraries and every event subsite) is scanned for manual individual grants that give a person more than read access even though they are not an admin/organizer per the role concept. Such over-grants can be removed here — read access and all group permissions stay untouched.'}
+          footer={permCleanupFooter}
         >
-          <h3 style={{ margin: '0 0 6px', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Wrench size={18} /> {isDe ? 'Berechtigungen aufräumen' : 'Clean up permissions'}
-          </h3>
-          <p style={{ margin: '0 0 14px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
-            {isDe
-              ? 'Der ganze SharePoint (Hauptseite, alle Listen/Bibliotheken und alle Event-Subsites) wird nach manuellen Einzel-Freigaben durchsucht, die einer Person mehr als Leserechte geben, obwohl sie laut Rollen-Konzept kein Admin/Organizer ist. Solche Über-Freigaben lassen sich hier entfernen — Leserechte und alle Gruppen-Berechtigungen bleiben unangetastet.'
-              : 'The whole SharePoint (main site, all lists/libraries and every event subsite) is scanned for manual individual grants that give a person more than read access even though they are not an admin/organizer per the role concept. Such over-grants can be removed here — read access and all group permissions stay untouched.'}
-          </p>
-
           {permCleanupBusy && permCleanupProgress && (() => {
             const { msg, done, total } = permCleanupProgress;
             const pct = Math.min(100, Math.round((done / Math.max(1, total)) * 100));
             return (
-              <div style={{ marginBottom: 12 }}>
+              <div>
                 <p style={{ margin: '0 0 6px', fontSize: '0.85rem', color: 'var(--dex-gray-700)' }}>{msg}</p>
-                <div style={{ background: 'var(--dex-gray-100, #f0f0f0)', borderRadius: 999, height: 10, overflow: 'hidden' }}>
-                  <div style={{ width: `${pct}%`, height: '100%', background: 'var(--dex-green, #86bc25)', borderRadius: 999, transition: 'width 0.2s ease' }} />
-                </div>
-                <p style={{ margin: '8px 0 0', fontSize: '0.76rem', color: 'var(--dex-gray-400)' }}>
+                <div className="dex-ui-progress"><div className="dex-ui-progress-bar" style={{ width: `${pct}%` }} /></div>
+                <p className="dex-ui-help" style={{ marginTop: 8 }}>
                   {isDe ? 'Bitte das Fenster geöffnet lassen, bis der Lauf abgeschlossen ist.' : 'Please keep this window open until the run completes.'}
                 </p>
               </div>
@@ -1431,8 +1612,8 @@ export default function AdminHubPage(): React.ReactElement {
             const errFindings = r.findings.filter(f => f.kind === 'error');
             const SHOW = 200;
             return (
-              <div>
-                <div style={{ padding: 12, borderRadius: 'var(--dex-radius)', background: hasIssues ? 'rgba(237,139,0,0.08)' : 'rgba(134,188,37,0.10)', border: `1px solid ${hasIssues ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)'}`, marginBottom: 12, fontSize: '0.85rem', color: 'var(--dex-gray-700)', lineHeight: 1.6 }}>
+              <div className="dex-ui-stack">
+                <div className={cx('dex-ui-callout', hasIssues ? 'dex-ui-callout--warn' : 'dex-ui-callout--success')} style={{ display: 'block' }}>
                   <div style={{ fontWeight: 700, marginBottom: 4 }}>
                     {r.apply
                       ? (isDe ? 'Korrektur abgeschlossen' : 'Cleanup complete')
@@ -1452,71 +1633,42 @@ export default function AdminHubPage(): React.ReactElement {
                 </div>
 
                 {(strayFindings.length > 0 || ilsFindings.length > 0 || errFindings.length > 0) && (
-                  <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)', marginBottom: 14 }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                  <div className="dex-ui-table-wrap dex-ui-table-wrap--sticky" style={{ maxHeight: 300 }}>
+                    <table className="dex-ui-table dex-ui-table--compact">
                       <thead>
-                        <tr style={{ position: 'sticky', top: 0, background: 'var(--dex-gray-50, #fafafa)', textAlign: 'left' }}>
-                          <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--dex-gray-200)' }}>{isDe ? 'Ort' : 'Location'}</th>
-                          <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--dex-gray-200)' }}>{isDe ? 'Person' : 'Person'}</th>
-                          <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--dex-gray-200)' }}>{isDe ? 'Befund' : 'Finding'}</th>
+                        <tr>
+                          <th>{isDe ? 'Ort' : 'Location'}</th>
+                          <th>{isDe ? 'Person' : 'Person'}</th>
+                          <th>{isDe ? 'Befund' : 'Finding'}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {[...strayFindings, ...ilsFindings, ...errFindings].slice(0, SHOW).map((f, i) => (
-                          <tr key={i} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                            <td style={{ padding: '6px 8px', color: 'var(--dex-gray-600)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }} title={f.scope}>{f.scope}</td>
-                            <td style={{ padding: '6px 8px', color: 'var(--dex-gray-700)', wordBreak: 'break-all' }}>{f.principal || '—'}</td>
-                            <td style={{ padding: '6px 8px', color: f.kind === 'error' ? 'var(--dex-red, #da291c)' : (f.fixed ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-orange-dark, #b35a00)') }}>{f.detail}</td>
+                          <tr key={i}>
+                            <td style={{ color: 'var(--dex-gray-600)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }} title={f.scope}>{f.scope}</td>
+                            <td style={{ color: 'var(--dex-gray-700)', wordBreak: 'break-all' }}>{f.principal || '—'}</td>
+                            <td style={{ color: f.kind === 'error' ? 'var(--dex-red, #da291c)' : (f.fixed ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-orange-dark, #b35a00)') }}>{f.detail}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                     {r.findings.length > SHOW && (
-                      <div style={{ padding: '6px 8px', fontSize: '0.74rem', color: 'var(--dex-gray-500)' }}>
+                      <div className="dex-ui-table-foot">
                         {isDe ? `… und ${r.findings.length - SHOW} weitere (gekürzt).` : `… and ${r.findings.length - SHOW} more (truncated).`}
                       </div>
                     )}
                   </div>
                 )}
-
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                  <button className="btn btn-secondary" onClick={() => { void runPermCleanup(false); }} style={{ fontSize: '0.85rem', padding: '9px 16px' }}>
-                    {isDe ? 'Erneut prüfen' : 'Re-check'}
-                  </button>
-                  {!r.apply && hasIssues && (
-                    <button
-                      className="btn btn-primary"
-                      style={{ fontSize: '0.85rem', padding: '9px 18px' }}
-                      onClick={() => {
-                        (async () => {
-                          const ok = await confirmDialog(isDe
-                            ? `${r.strayWriteFound} Über-Freigabe(n) entfernen und ${r.ilsIssues} Element-Sicherheit(en) korrigieren?\n\nLeserechte und Gruppen-Berechtigungen bleiben erhalten. Der Vorgang kann je nach Größe einige Minuten dauern.`
-                            : `Remove ${r.strayWriteFound} over-grant(s) and fix ${r.ilsIssues} item-security setting(s)?\n\nRead access and group permissions are preserved. Depending on size this can take a few minutes.`,
-                            { confirmLabel: isDe ? 'Jetzt korrigieren' : 'Fix now' });
-                          if (ok) await runPermCleanup(true);
-                        })().catch(() => { /* */ });
-                      }}
-                    >
-                      {isDe ? 'Jetzt korrigieren' : 'Fix now'}
-                    </button>
-                  )}
-                  <button className="btn btn-outline" onClick={() => { setPermCleanupOpen(false); setPermCleanupReport(null); }} style={{ fontSize: '0.85rem', padding: '9px 16px' }}>
-                    {isDe ? 'Schließen' : 'Close'}
-                  </button>
-                </div>
               </div>
             );
           })()}
 
           {!permCleanupBusy && !permCleanupReport && (
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button className="btn btn-outline" onClick={() => setPermCleanupOpen(false)} style={{ fontSize: '0.85rem', padding: '9px 16px' }}>
-                {isDe ? 'Abbrechen' : 'Cancel'}
-              </button>
-              <button className="btn btn-primary" onClick={() => { void runPermCleanup(false); }} style={{ fontSize: '0.85rem', padding: '9px 18px' }}>
-                {isDe ? 'Prüfen (ohne Änderung)' : 'Check (no changes)'}
-              </button>
-            </div>
+            <p className="dex-ui-muted" style={{ margin: 0 }}>
+              {isDe
+                ? 'Der Lauf liest nur — geändert wird erst, wenn du danach „Jetzt korrigieren" wählst. Je nach Größe der Seite dauert er einige Minuten.'
+                : 'The run only reads — nothing changes until you pick „Fix now" afterwards. Depending on the site size it takes a few minutes.'}
+            </p>
           )}
         </Modal>
       )}
@@ -1530,25 +1682,20 @@ export default function AdminHubPage(): React.ReactElement {
           maxWidth={760}
           padding={24}
           ariaLabel={isDe ? 'Subsites prüfen' : 'Check subsites'}
+          title={isDe ? 'Verwaiste Subsites' : 'Orphan subsites'}
+          icon={<Trash2 size={20} />}
+          subtitle={isDe
+            ? 'Subsites, die noch existieren, aber zu keinem Event mehr gehören (z.B. Test-Subsites gelöschter Events). Prüfe pro Eintrag, ob wirklich ein Rest vorliegt, bevor du löschst — das Löschen ist endgültig.'
+            : 'Subsites that still exist but no longer belong to any event (e.g. test subsites of deleted events). Check each entry before deleting — deletion is permanent.'}
+          footer={orphanFooter}
         >
-          <h3 style={{ margin: '0 0 6px', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Trash2 size={18} /> {isDe ? 'Verwaiste Subsites' : 'Orphan subsites'}
-          </h3>
-          <p style={{ margin: '0 0 14px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
-            {isDe
-              ? 'Subsites, die noch existieren, aber zu keinem Event mehr gehören (z.B. Test-Subsites gelöschter Events). Prüfe pro Eintrag, ob wirklich ein Rest vorliegt, bevor du löschst — das Löschen ist endgültig.'
-              : 'Subsites that still exist but no longer belong to any event (e.g. test subsites of deleted events). Check each entry before deleting — deletion is permanent.'}
-          </p>
-
           {orphanBusy && orphanProgress && (() => {
             const { msg, done, total } = orphanProgress;
             const pct = Math.min(100, Math.round((done / Math.max(1, total)) * 100));
             return (
-              <div style={{ marginBottom: 12 }}>
+              <div>
                 <p style={{ margin: '0 0 6px', fontSize: '0.85rem', color: 'var(--dex-gray-700)' }}>{msg}</p>
-                <div style={{ background: 'var(--dex-gray-100, #f0f0f0)', borderRadius: 999, height: 10, overflow: 'hidden' }}>
-                  <div style={{ width: `${pct}%`, height: '100%', background: 'var(--dex-green, #86bc25)', borderRadius: 999, transition: 'width 0.2s ease' }} />
-                </div>
+                <div className="dex-ui-progress"><div className="dex-ui-progress-bar" style={{ width: `${pct}%` }} /></div>
               </div>
             );
           })()}
@@ -1557,8 +1704,8 @@ export default function AdminHubPage(): React.ReactElement {
             const r = orphanResult;
             const remaining = r.orphans.filter(o => !orphanDeleted[o.url]);
             return (
-              <div>
-                <div style={{ padding: 12, borderRadius: 'var(--dex-radius)', background: remaining.length > 0 ? 'rgba(237,139,0,0.08)' : 'rgba(134,188,37,0.10)', border: `1px solid ${remaining.length > 0 ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)'}`, marginBottom: 12, fontSize: '0.85rem', color: 'var(--dex-gray-700)', lineHeight: 1.6 }}>
+              <div className="dex-ui-stack">
+                <div className={cx('dex-ui-callout', remaining.length > 0 ? 'dex-ui-callout--warn' : 'dex-ui-callout--success')} style={{ display: 'block' }}>
                   <div style={{ fontWeight: 700, marginBottom: 4 }}>
                     {remaining.length > 0
                       ? (isDe ? `${remaining.length} verwaiste Subsite(s) gefunden` : `${remaining.length} orphan subsite(s) found`)
@@ -1570,33 +1717,35 @@ export default function AdminHubPage(): React.ReactElement {
                 </div>
 
                 {remaining.length > 0 && (
-                  <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)', marginBottom: 14 }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                  <div className="dex-ui-table-wrap dex-ui-table-wrap--sticky" style={{ maxHeight: 320 }}>
+                    <table className="dex-ui-table dex-ui-table--compact">
                       <thead>
-                        <tr style={{ position: 'sticky', top: 0, background: 'var(--dex-gray-50, #fafafa)', textAlign: 'left' }}>
-                          <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--dex-gray-200)' }}>{isDe ? 'Subsite' : 'Subsite'}</th>
-                          <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--dex-gray-200)' }}>{isDe ? 'Teilnehmerliste' : 'Participant list'}</th>
-                          <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--dex-gray-200)' }} />
+                        <tr>
+                          <th>{isDe ? 'Subsite' : 'Subsite'}</th>
+                          <th>{isDe ? 'Teilnehmerliste' : 'Participant list'}</th>
+                          <th className="is-actions"><span className="dex-ui-sr-only">{isDe ? 'Aktion' : 'Action'}</span></th>
                         </tr>
                       </thead>
                       <tbody>
                         {remaining.map((o) => (
-                          <tr key={o.url} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                            <td style={{ padding: '6px 8px', color: 'var(--dex-gray-700)' }}>
+                          <tr key={o.url}>
+                            <td style={{ color: 'var(--dex-gray-700)' }}>
                               <div style={{ fontWeight: 600 }}>{o.title || o.serverRel}</div>
                               <a href={o.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--dex-green-dark, #4a7c1f)', wordBreak: 'break-all', fontSize: '0.72rem' }}>{o.serverRel || o.url}</a>
                             </td>
-                            <td style={{ padding: '6px 8px', color: o.hasParticipantList ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-gray-500)' }}>
-                              {o.hasParticipantList
-                                ? (isDe ? `ja · ${o.participantCount} Zeilen` : `yes · ${o.participantCount} rows`)
-                                : (isDe ? 'keine' : 'none')}
+                            <td>
+                              <span className={cx('dex-ui-pill', o.hasParticipantList ? 'dex-ui-pill--orange' : 'dex-ui-pill--gray')}>
+                                {o.hasParticipantList
+                                  ? (isDe ? `ja · ${o.participantCount} Zeilen` : `yes · ${o.participantCount} rows`)
+                                  : (isDe ? 'keine' : 'none')}
+                              </span>
                             </td>
-                            <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+                            <td className="is-actions">
                               <button
-                                className="btn btn-outline"
+                                type="button"
+                                className="dex-ui-textbtn dex-ui-textbtn--danger"
                                 disabled={!!orphanDeleting[o.url]}
                                 onClick={() => { void deleteOrphan(o.url, o.title || o.serverRel, o.participantCount); }}
-                                style={{ fontSize: '0.74rem', padding: '5px 10px', color: 'var(--dex-red, #da291c)', borderColor: 'var(--dex-red, #da291c)' }}
                               >
                                 {orphanDeleting[o.url] ? (isDe ? 'Löscht…' : 'Deleting…') : (isDe ? 'Löschen' : 'Delete')}
                               </button>
@@ -1607,28 +1756,16 @@ export default function AdminHubPage(): React.ReactElement {
                     </table>
                   </div>
                 )}
-
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                  <button className="btn btn-secondary" onClick={() => { void runOrphanScan(); }} style={{ fontSize: '0.85rem', padding: '9px 16px' }}>
-                    {isDe ? 'Erneut prüfen' : 'Re-check'}
-                  </button>
-                  <button className="btn btn-outline" onClick={() => { setOrphanOpen(false); setOrphanResult(null); }} style={{ fontSize: '0.85rem', padding: '9px 16px' }}>
-                    {isDe ? 'Schließen' : 'Close'}
-                  </button>
-                </div>
               </div>
             );
           })()}
 
           {!orphanBusy && !orphanResult && (
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button className="btn btn-outline" onClick={() => setOrphanOpen(false)} style={{ fontSize: '0.85rem', padding: '9px 16px' }}>
-                {isDe ? 'Abbrechen' : 'Cancel'}
-              </button>
-              <button className="btn btn-primary" onClick={() => { void runOrphanScan(); }} style={{ fontSize: '0.85rem', padding: '9px 18px' }}>
-                {isDe ? 'Jetzt prüfen' : 'Check now'}
-              </button>
-            </div>
+            <p className="dex-ui-muted" style={{ margin: 0 }}>
+              {isDe
+                ? 'Die Prüfung liest nur — gelöscht wird nichts von allein, jeder Rest einzeln und mit Rückfrage.'
+                : 'The check only reads — nothing is deleted on its own; each orphan goes individually and with a confirmation.'}
+            </p>
           )}
         </Modal>
       )}

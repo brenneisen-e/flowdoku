@@ -13,12 +13,20 @@
  * WICHTIG: Diese Datei importiert EventCreationPage statisch — Konsumenten
  * MÜSSEN sie per React.lazy laden, sonst wandert der komplette Wizard in den
  * Main-Bundle (EventCreationPage ist in DexEventPlatform.tsx lazy).
+ *
+ * v31.3: Rahmen, Kopf und Fuß kommen jetzt vom gemeinsamen `Modal`
+ * (title/subtitle/icon/footer, siehe docs/ui-leitfaden.md) statt aus einem
+ * eigenen Overlay — damit sieht der Dialog aus wie jeder andere, schließt mit
+ * Escape und verliert beim Ziehen der Markierung nicht mehr den Fokus (der
+ * Backdrop von `Modal` schließt nur, wenn Maus-Runter UND Maus-Hoch auf ihm
+ * landen). Die Drag-Mathematik und die Prozent-Koordinaten sind unverändert.
  */
 import * as React from 'react';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { PreviewContextStack } from '../manual/previews/PreviewProviders';
 import Header from '../Header';
 import EventCreationPage from '../EventCreationPage';
+import Modal from '../Modal';
 
 export interface WizardMarker { x: number; y: number; w: number; h: number; }
 
@@ -139,75 +147,71 @@ export default function WizardStepPreviewModal(props: WizardStepPreviewModalProp
   );
 
   return (
-    <div role="dialog" aria-modal="true" onClick={props.onClose}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10500, padding: 20 }}>
-      <div onClick={(e) => e.stopPropagation()}
-        style={{ background: '#fff', borderRadius: 14, maxWidth: PREVIEW_WIDTH + 96, width: '100%', maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 16px 48px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
-
-        {/* Kopfzeile */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--dex-gray-200,#e8e8e8)' }}>
-          <div style={{ fontWeight: 700, fontSize: '0.92rem', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <Icon iconName="DocumentManagement" style={{ fontSize: 14, color: 'var(--dex-green,#86bc25)' }} />
-            {title}
-          </div>
-          <button type="button" onClick={props.onClose} aria-label={isDe ? 'Schließen' : 'Close'}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--dex-gray-500,#808080)', lineHeight: 1 }}>×</button>
-        </div>
-
-        {/* Hinweiszeile */}
-        <div style={{ padding: '8px 16px', background: editable ? '#fff8ef' : 'var(--dex-gray-50,#fafafa)', borderBottom: '1px solid var(--dex-gray-200,#e8e8e8)', fontSize: '0.8rem', color: editable ? '#b35a00' : 'var(--dex-gray-600,#666)', display: 'flex', alignItems: 'center', gap: 7 }}>
+    // v31.3: Der Dialog wird AUS einem offenen Ticket-Dialog heraus geöffnet
+    // (QuestionButton) und muss darüber liegen. Bei gleicher Ebene entschiede
+    // die Einhäng-Reihenfolge der Portale — das ginge heute gut, wäre aber
+    // Zufall; die 10500 stand vor v31.3 fest im eigenen Overlay.
+    <Modal
+      open
+      zIndex={10500}
+      onClose={props.onClose}
+      maxWidth={PREVIEW_WIDTH + 96}
+      padding="18px 20px"
+      ariaLabel={title}
+      title={title}
+      icon={<Icon iconName="DocumentManagement" style={{ fontSize: 18 }} />}
+      subtitle={
+        <span className="dex-ui-inline">
           <Icon iconName={editable ? 'SingleColumnEdit' : 'View'} style={{ fontSize: 13 }} />
           {editable
             ? (isDe ? 'Ziehe mit der Maus einen Rahmen um die Stelle, auf die der Fragesteller klicken soll.' : 'Drag a box around the spot the asker should click.')
             : (isDe ? 'Read-only-Vorschau des echten Wizards mit Demo-Daten — die orange Box zeigt, wo du klicken musst.' : 'Read-only preview of the real wizard with demo data — the orange box shows where to click.')}
-        </div>
-
-        {/* Vorschau (scrollbar) + Markierungs-Overlay */}
-        <div ref={scrollRef} style={{ overflow: 'auto', background: 'var(--dex-gray-100,#f5f5f5)', padding: 16, flex: 1 }}>
-          <div style={{ width: PREVIEW_WIDTH, margin: '0 auto', background: '#fff', borderRadius: 8, boxShadow: '0 2px 12px rgba(0,0,0,0.10)' }}>
-            {/* contentRef = Bezugsrahmen der Prozent-Koordinaten: der komplette
-                gerenderte Wizard-Inhalt (scrollt mit, Marker bleibt „kleben"). */}
-            <div ref={contentRef} style={{ position: 'relative' }}>
-              <div className="dex-preview-scope" style={{ pointerEvents: 'none', userSelect: 'none' }}>
-                <PreviewContextStack role="Organizer" page="create-event">
-                  <Header />
-                  <EventCreationPage />
-                </PreviewContextStack>
-              </div>
-              <div
-                onPointerDown={onPointerDown}
-                onPointerMove={onPointerMove}
-                onPointerUp={onPointerUp}
-                onPointerCancel={onPointerUp}
-                style={{ position: 'absolute', inset: 0, cursor: editable ? 'crosshair' : 'default', touchAction: editable ? 'none' : undefined }}
-              >
-                {shown && (shown.w >= 0.8 || shown.h >= 0.8) && renderMarker(shown)}
-              </div>
+        </span>
+      }
+      footer={editable ? (
+        <>
+          {/* Links, weil „Markierung entfernen" zum Inhalt gehört; Abbrechen und
+              Übernehmen bleiben rechts (Leitfaden: Modal-Fuß). */}
+          {marker && (
+            <button type="button" className="btn btn-secondary dex-ui-btn-sm dex-ui-modal-foot-left" onClick={() => setMarker(null)}>
+              <Icon iconName="EraseTool" style={{ fontSize: 12 }} />{isDe ? 'Markierung entfernen' : 'Remove marker'}
+            </button>
+          )}
+          <button type="button" className="btn btn-secondary" onClick={props.onClose}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
+          <button type="button" className="btn btn-primary"
+            onClick={() => { if (props.onSave) props.onSave(marker); props.onClose(); }}>
+            {isDe ? 'Übernehmen' : 'Apply'}
+          </button>
+        </>
+      ) : (
+        <button type="button" className="btn btn-primary" onClick={props.onClose}>{isDe ? 'Schließen' : 'Close'}</button>
+      )}
+    >
+      {/* Vorschau (scrollbar) + Markierungs-Overlay */}
+      <div ref={scrollRef}
+        style={{ overflow: 'auto', background: 'var(--dex-gray-100,#f5f5f5)', padding: 16, borderRadius: 12, border: '1px solid var(--dex-gray-200,#e8e8e8)', flex: '1 1 auto', minHeight: 0, maxHeight: '70vh' }}>
+        <div style={{ width: PREVIEW_WIDTH, margin: '0 auto', background: '#fff', borderRadius: 8, boxShadow: '0 2px 12px rgba(0,0,0,0.10)' }}>
+          {/* contentRef = Bezugsrahmen der Prozent-Koordinaten: der komplette
+              gerenderte Wizard-Inhalt (scrollt mit, Marker bleibt „kleben"). */}
+          <div ref={contentRef} style={{ position: 'relative' }}>
+            <div className="dex-preview-scope" style={{ pointerEvents: 'none', userSelect: 'none' }}>
+              <PreviewContextStack role="Organizer" page="create-event">
+                <Header />
+                <EventCreationPage />
+              </PreviewContextStack>
+            </div>
+            <div
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={onPointerUp}
+              style={{ position: 'absolute', inset: 0, cursor: editable ? 'crosshair' : 'default', touchAction: editable ? 'none' : undefined }}
+            >
+              {shown && (shown.w >= 0.8 || shown.h >= 0.8) && renderMarker(shown)}
             </div>
           </div>
         </div>
-
-        {/* Fußzeile */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: editable ? 'space-between' : 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--dex-gray-200,#e8e8e8)', flexWrap: 'wrap' }}>
-          {editable ? (
-            <>
-              <button type="button" className="btn btn-secondary" style={{ padding: '7px 14px', visibility: marker ? 'visible' : 'hidden' }}
-                onClick={() => setMarker(null)}>
-                <Icon iconName="EraseTool" style={{ fontSize: 12, marginRight: 6 }} />{isDe ? 'Markierung entfernen' : 'Remove marker'}
-              </button>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" className="btn btn-secondary" style={{ padding: '7px 16px' }} onClick={props.onClose}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
-                <button type="button" className="btn btn-primary" style={{ padding: '7px 16px' }}
-                  onClick={() => { if (props.onSave) props.onSave(marker); props.onClose(); }}>
-                  {isDe ? 'Übernehmen' : 'Apply'}
-                </button>
-              </div>
-            </>
-          ) : (
-            <button type="button" className="btn btn-primary" style={{ padding: '7px 16px' }} onClick={props.onClose}>{isDe ? 'Schließen' : 'Close'}</button>
-          )}
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }

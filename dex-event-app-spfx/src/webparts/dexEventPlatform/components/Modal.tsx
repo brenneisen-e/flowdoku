@@ -119,6 +119,13 @@ interface ModalProps {
   footer?: React.ReactNode;
   /** v31.2: Schließen-Knopf im Kopf unterdrücken (z.B. bei Pflicht-Entscheidung). */
   hideClose?: boolean;
+  /**
+   * v31.3: Stapel-Ebene, Default 9999. Nur setzen, wenn ein Dialog AUS einem
+   * anderen heraus geöffnet wird (Wizard-Vorschau aus dem Ticket-Dialog):
+   * Bei gleicher Ebene entscheidet die Einhäng-Reihenfolge der Portale — das
+   * geht heute gut, ist aber Zufall und nicht Absicht.
+   */
+  zIndex?: number;
   children: React.ReactNode;
 }
 
@@ -135,6 +142,7 @@ export default function Modal({
   icon,
   footer,
   hideClose,
+  zIndex = 9999,
   children,
 }: ModalProps): React.ReactElement | null {
   // v24.64: Globale Modal-Button-Styles einmalig in document.head sicherstellen.
@@ -200,7 +208,7 @@ export default function Modal({
         position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)',
         backdropFilter: 'blur(2px)', WebkitBackdropFilter: 'blur(2px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 9999, padding: 16,
+        zIndex, padding: 16,
         // v24.63: Theme-Variablen direkt am Overlay setzen — so erben alle
         // Modal-Inhalte (Buttons, Eingaben, Texte) die --dex-*-Farben auch dann,
         // wenn das Modal per Portal außerhalb des Web-Part-Containers liegt.

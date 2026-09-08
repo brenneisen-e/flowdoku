@@ -36,6 +36,7 @@ import * as React from 'react';
 import { UserFieldPicker } from '../UserFieldPicker';
 import { X, Plus, AlertCircle } from '../Icons';
 import { ensureDexUiStyles } from '../dexUi';
+import { useLocaleSafe } from '../../context/LanguageContext';
 
 type Profile = { displayName: string; location: string; jobTitle: string };
 
@@ -53,6 +54,11 @@ export interface RecipientPickerProps {
 
 export default function RecipientPicker(props: RecipientPickerProps): React.ReactElement {
   const { value, onChange, searchUsers, searchUserByEmail } = props;
+  // v31.3: Die vier eigenen Texte der Komponente waren als einzige im
+  // Verteiler nur deutsch (label/hint/emptyText kommen zweisprachig von den
+  // Aufrufern herein). Die Sprache kommt aus dem Context; ohne Provider
+  // faellt sie auf Deutsch zurueck — die Props bleiben unveraendert.
+  const isDe = useLocaleSafe() === 'de';
   // v31.3: Der Verteiler steht auch außerhalb eines Modals (F&A Center) —
   // dort injiziert das gemeinsame Stylesheet sonst niemand.
   ensureDexUiStyles();
@@ -87,11 +93,11 @@ export default function RecipientPicker(props: RecipientPickerProps): React.Reac
   const addAddress = (raw: string): boolean => {
     const addr = (raw || '').trim().toLowerCase();
     if (!addr || addr.indexOf('@') < 0 || addr.indexOf('.') < 0) {
-      setAddError('Bitte eine vollständige E-Mail-Adresse eingeben.');
+      setAddError(isDe ? 'Bitte eine vollständige E-Mail-Adresse eingeben.' : 'Please enter a complete email address.');
       return false;
     }
     if (value.some(v => v.toLowerCase() === addr)) {
-      setAddError('Diese Adresse steht bereits im Verteiler.');
+      setAddError(isDe ? 'Diese Adresse steht bereits im Verteiler.' : 'This address is already in the list.');
       return false;
     }
     setAddError('');
@@ -122,7 +128,7 @@ export default function RecipientPicker(props: RecipientPickerProps): React.Reac
       {value.length === 0 ? (
         <div className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm" style={{ marginBottom: 12 }}>
           <span className="dex-ui-callout-icon"><AlertCircle size={14} /></span>
-          <span>{props.emptyText || 'Noch keine Empfänger — an diesen Verteiler kann nichts versendet werden.'}</span>
+          <span>{props.emptyText || (isDe ? 'Noch keine Empfänger — an diesen Verteiler kann nichts versendet werden.' : 'No recipients yet — nothing can be sent to this list.')}</span>
         </div>
       ) : (
         <div className="dex-ui-card dex-ui-card--list" style={{ marginBottom: 12 }}>
@@ -153,7 +159,7 @@ export default function RecipientPicker(props: RecipientPickerProps): React.Reac
                   <div className="dex-ui-row-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {isPerson
                       ? [prof!.jobTitle, prof!.location].filter(Boolean).join(' · ') || addr
-                      : 'Gruppenadresse'}
+                      : (isDe ? 'Gruppenadresse' : 'Group address')}
                   </div>
                 </div>
                 <span className="dex-ui-row-actions">
@@ -176,7 +182,7 @@ export default function RecipientPicker(props: RecipientPickerProps): React.Reac
 
       {/* 3. Hinzufügen — beide Wege unter einer Überschrift, damit die Trennung
           zwischen „steht drin“ und „kommt dazu“ sichtbar ist. */}
-      <div className="dex-ui-section-title">Empfänger hinzufügen</div>
+      <div className="dex-ui-section-title">{isDe ? 'Empfänger hinzufügen' : 'Add recipients'}</div>
       {/* Die Meldung steht ÜBER beiden Feldern: sie kann aus der Personensuche
           genauso kommen wie aus dem Adressfeld (v30.51.1), und unter dem
           Adressfeld hätte sie der Suchende nicht gesehen. */}
