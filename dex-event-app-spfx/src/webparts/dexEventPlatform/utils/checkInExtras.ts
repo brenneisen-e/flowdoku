@@ -23,6 +23,16 @@
  * Trikot/Jersey und die Konfektions-Wörter. „Größe" allein bleibt bewusst
  * draußen — daran hing der alte Fehlgriff „Größe des Gepäckstücks".
  *
+ * **v31.4: Aus dem Plan wird ein Kassenbuch.** `shirtAllocate` rechnet bei
+ * jedem Aufruf frisch aus Wünschen, Bestand und Teilnehmer-ID-Reihenfolge —
+ * das ist eine Planung, kein Protokoll. Am Lauftag reicht das nicht: Person 41
+ * bekommt um 8:05 ein XL statt des gewünschten M und nimmt es mit; um 16:40
+ * markiert das Team fünf Nicht-Erschienene als No-Show, deren Wünsche fallen
+ * aus der Rechnung, und die App schlägt Person 41 wieder M vor — für ein
+ * Trikot, das sie längst trägt. Seither hält die Spalte `ShirtIssued`
+ * (s. `ShirtIssue`) fest, was wirklich ausgegeben wurde; die Ausgabe wird
+ * ZUERST vom Bestand abgezogen und schlägt jede Berechnung.
+ *
  * **Was das weiterhin kostet, offen gesagt:** Ein Muster trifft irgendwann
  * etwas Falsches. Das ist am Check-in-Tisch harmlos (eine Zeile zu viel), aber
  * es ist geraten und nicht gesagt. Der saubere Weg wäre ein Haken „am Check-in
@@ -152,6 +162,13 @@ export interface ShirtTallyRow {
   count: number;
   /** Namen — für die Nachfrage bei fehlender Angabe und zur Kontrolle. */
   names: string[];
+  /**
+   * v31.4: Dieselben Personen MIT E-Mail. Die Bestellliste springt von hier in
+   * die Teilnehmerliste, und dafür braucht sie die Adresse — der Name ist
+   * nicht eindeutig (CLAUDE.md: „Die E-Mail-Adresse ist der einzige
+   * Schlüssel"). `names` bleibt unverändert, daran hängt der Excel-Export.
+   */
+  people: Array<{ name: string; email: string }>;
   /** v31.3: Der Wert ist keine Größe, sondern eine Abwahl („habe schon eins"). */
   optOut?: boolean;
 }
@@ -291,6 +308,46 @@ export function parseShirtStock(overridesJson: string | undefined | null): Shirt
   } catch { return {}; }
 }
 
+/**
+ * v31.4: Was eine Person WIRKLICH bekommen hat — Spalte `ShirtIssued` auf der
+ * Teilnehmerzeile (Note, JSON):
+ *
+ *   { "size": "Herrengröße XL", "at": "2026-09-08T06:05:11Z", "by": "helfer@…" }
+ *
+ * Ein Objekt, keine Liste: Eine Person bekommt ein Shirt. `size` steht in
+ * ANZEIGE-Schreibweise, so wie sie am Ausgabetisch gewählt wurde — der
+ * Zählschlüssel entsteht daraus über `shirtSizeKey`.
+ *
+ * Warum es diese Spalte überhaupt gibt: `shirtAllocate` ist ein PLAN und
+ * rechnet bei jedem Aufruf neu. Ohne festgehaltene Ausgabe schlägt sie
+ * derselben Person am Nachmittag eine andere Größe vor als am Morgen, sobald
+ * sich die Wunschlage ändert (jemand wird No-Show, seine Wünsche fallen aus
+ * der Rechnung) — für ein Shirt, das die Person längst trägt.
+ */
+export interface ShirtIssue {
+  /** Ausgegebene Größe in Anzeige-Schreibweise. */
+  size: string;
+  /** Zeitpunkt der Ausgabe (ISO). */
+  at: string;
+  /** Wer ausgegeben hat (Helfer-Kennung, meist die E-Mail). */
+  by: string;
+}
+
+/** Defensiv wie `parseShirtStock`: kaputtes JSON oder keine Größe → null. */
+export function parseShirtIssue(raw: string | undefined | null): ShirtIssue | null {
+  const s = (raw || '').trim();
+  // Der Normalfall ist die leere Spalte — der darf keine Ausnahme werfen, die
+  // Funktion läuft je Zeile und Aufruf durch die ganze Teilnehmerliste.
+  if (!s) return null;
+  try {
+    const o = JSON.parse(s);
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
+    const size = typeof o.size === 'string' ? o.size.trim() : '';
+    if (!size) return null;
+    return { size, at: typeof o.at === 'string' ? o.at : '', by: typeof o.by === 'string' ? o.by : '' };
+  } catch { return null; }
+}
+
 export interface ShirtAllocation {
   /** Gewünschte Größe (Anzeige-Schreibweise). */
   wish: string;
@@ -302,6 +359,13 @@ export interface ShirtAllocation {
   short: boolean;
   /** v31.3: Die Antwort ist gar keine Größe („habe schon eins") — kein Shirt nötig. */
   optOut?: boolean;
+  /**
+   * v31.4: Diese Person hat ihr Shirt bereits bekommen — Anzeige-Schreibweise
+   * der AUSGEGEBENEN Größe. Ist das gesetzt, gibt es keinen Wunsch-Abgleich
+   * und keinen Gegenvorschlag mehr (`short` ist immer false): Die Tatsache
+   * schlägt den Plan.
+   */
+  issued?: string;
 }
 
 export interface ShirtAllocationRow {
@@ -315,6 +379,9 @@ export interface ShirtAllocationRow {
   missing: number;
   /** Nach der Verteilung noch übrig (inkl. an Ausweichende vergebener Stücke). */
   spare: number;
+  /** v31.4: Wie viele Stück dieser Größe sind schon ausgegeben? Sie sind aus
+   *  dem Karton — „Bestand" ist damit nicht mehr dasselbe wie „verfügbar". */
+  issued: number;
 }
 
 export interface ShirtAllocationResult {
@@ -353,10 +420,12 @@ export interface ShirtAllocationResult {
  *    Bezeichnung gepflegt; gesucht wird „Herrengröße XL", nie „Damengröße XL".
  *  - v31.3: Antworten, die keine Größe sind, verbrauchen nichts und bekommen
  *    keinen Vorschlag (s. `splitShirtSize`).
+ *  - v31.4: Was schon AUSGEGEBEN ist (`ShirtIssued`), wird zuerst abgezogen
+ *    und schlägt jeden Vorschlag (s. den Block unten).
  */
 export function shirtAllocate(
   fields: FieldDef[] | undefined | null,
-  regs: Array<{ Status?: string; CustomData?: string; ParticipantName?: string; ParticipantEmail?: string; TeilnehmerID?: number | string | null; Id?: number }> | undefined | null,
+  regs: Array<{ Status?: string; CustomData?: string; ParticipantName?: string; ParticipantEmail?: string; TeilnehmerID?: number | string | null; Id?: number; ShirtIssued?: string }> | undefined | null,
   stock: ShirtStock,
 ): ShirtAllocationResult {
   const result: ShirtAllocationResult = { hasStock: Object.keys(stock || {}).length > 0, byEmail: {}, rows: [], noneLeft: [], optOut: 0 };
@@ -390,13 +459,70 @@ export function shirtAllocate(
     return out;
   };
   const labelOf = (key: string): string => display[key] || shirtSizeLabel(key);
+  /**
+   * v31.4: ERST die Ausgaben abziehen, dann die Wünsche verteilen.
+   *
+   * Zwei Entscheidungen stecken hier drin, beide bewusst:
+   *
+   *  1. **Der Status ist egal.** Gezählt wird über ALLE Zeilen, nicht nur über
+   *     `SHIRT_ACTIVE_STATI`. Ein ausgegebenes Shirt ist aus dem Karton —
+   *     wer sich abends abmeldet oder als No-Show markiert wird, legt es nicht
+   *     zurück. Würden die Ausgaben mit dem Status verschwinden, wüchse der
+   *     rechnerische Bestand über Nacht wieder an, und die App verspräche
+   *     Shirts, die es nicht mehr gibt.
+   *  2. **Vor der Verteilung.** Sonst verplant die Wunsch-Runde Stücke, die
+   *     längst weg sind: Person 41 nimmt morgens ein XL mit, nachmittags
+   *     rechnet die App das XL erneut jemand anderem zu.
+   */
+  const issuedOf = new Map<object, ShirtIssue>();
+  /**
+   * v31.4 (Nachzug): zusätzlich je E-Mail. Die Ausgabe steht auf der Zeile, an
+   * der das Team eingecheckt hat (meist der Termin), der Wunsch oft auf der
+   * Klammer — beides ist DIESELBE Person. Nur über die Zeilen-Identität zu
+   * gehen hieße: kommt die Wunsch-Zeile in `active` nach der Ausgabe-Zeile,
+   * überschreibt sie den Eintrag wieder mit einem Gegenvorschlag. Die
+   * Reihenfolge der Liste darf über so etwas nicht entscheiden.
+   */
+  const issuedByEmail: Record<string, ShirtIssue> = {};
+  const issuedCount: Record<string, number> = {};
+  const issuedSeen: Record<string, true> = {};
+  for (const r of (regs || [])) {
+    const iss = parseShirtIssue(r.ShirtIssued);
+    if (!iss) continue;
+    const em = (r.ParticipantEmail || '').toLowerCase().trim();
+    // Dieselbe Person kann auf zwei Zeilen stehen (Klammer + Termin) — sie hat
+    // trotzdem EIN Shirt bekommen und darf den Bestand nicht zweimal belasten.
+    if (em && issuedSeen[em]) continue;
+    if (em) { issuedSeen[em] = true; issuedByEmail[em] = iss; }
+    issuedOf.set(r, iss);
+    const ik = shirtSizeKey(iss.size);
+    if (!display[ik]) display[ik] = iss.size;
+    issuedCount[ik] = (issuedCount[ik] || 0) + 1;
+    remaining[ik] = (remaining[ik] || 0) - 1;
+  }
   for (const r of active) {
     const cd = parseCustomData(r.CustomData);
     const raw = cd[field.id];
     const wish = (raw === undefined || raw === null) ? '' : String(raw).trim();
-    if (!wish) continue;
     const email = (r.ParticipantEmail || '').toLowerCase().trim();
     const name = (r.ParticipantName || r.ParticipantEmail || '—').trim();
+    const issued = (email && issuedByEmail[email]) || issuedOf.get(r);
+    if (issued) {
+      // v31.4: Für diese Person gibt es nichts mehr zu rechnen — kein
+      // Wunsch-Abgleich, kein `short`, kein Gegenvorschlag. Der Wunsch wird
+      // trotzdem gezählt: `need` ist die Wunsch-Spalte (was bestellt wurde),
+      // nicht die Ausgabe-Spalte.
+      if (email) result.byEmail[email] = { wish, proposal: null, short: false, issued: issued.size };
+      const wp = wish ? splitShirtSize(wish) : null;
+      if (wp && wp.isSize) {
+        const wk = shirtSizeKey(wish);
+        parts[wk] = wp;
+        if (!display[wk]) display[wk] = wish;
+        need[wk] = (need[wk] || 0) + 1;
+      }
+      continue;
+    }
+    if (!wish) continue;
     const p = splitShirtSize(wish);
     if (!p.isSize) {
       // v31.3: Abwahl statt Größe — kein Bestandsverbrauch, kein
@@ -425,7 +551,10 @@ export function shirtAllocate(
     if (!proposal) result.noneLeft.push(name);
     if (email) result.byEmail[email] = { wish, proposal, proposalKey: proposalKey || undefined, short: true };
   }
-  const keys = Array.from(new Set(Object.keys(need).concat(Object.keys(stock || {}))));
+  // v31.4: Auch Größen, die NUR ausgegeben wurden (Reserve aus einem anderen
+  // Karton, niemand hat sie gewünscht, kein Bestand eingetragen), brauchen
+  // ihre Zeile — sonst verschwindet die Ausgabe aus der Liste.
+  const keys = Array.from(new Set(Object.keys(need).concat(Object.keys(stock || {})).concat(Object.keys(issuedCount))));
   result.rows = keys
     .sort(compareShirtKeys)
     .map(k => ({
@@ -434,7 +563,10 @@ export function shirtAllocate(
       need: need[k] || 0,
       stock: (stock && stock[k]) || 0,
       missing: missing[k] || 0,
-      spare: result.hasStock ? (remaining[k] || 0) : 0,
+      // v31.4: Nie negativ. Mehr ausgegeben als eingetragen heißt „nichts mehr
+      // da" — eine Zahl unter null wäre keine Aussage über den Karton.
+      spare: result.hasStock ? Math.max(0, remaining[k] || 0) : 0,
+      issued: issuedCount[k] || 0,
     }));
   return result;
 }
@@ -449,6 +581,16 @@ export interface ShirtAnswerConflict {
 export interface ShirtRowPick<T> {
   rows: T[];
   conflicts: ShirtAnswerConflict[];
+  /**
+   * v31.4: Die NICHT gewählten Zeilen je E-Mail (lowercase).
+   *
+   * Der Live-Fall vom 08.09.2026: Eine korrigierte Größe kam in der
+   * Bestellliste nicht an, und der Konflikt-Kasten schwieg — weil die zweite
+   * Zeile GAR KEINE Antwort trug und damit kein Widerspruch war. Sichtbar war
+   * nur „L", nicht, aus welcher Zeile das „L" stammt. Wer die Herkunft
+   * anzeigen will, braucht deshalb auch die verworfenen Zeilen.
+   */
+  othersByEmail: Record<string, T[]>;
 }
 
 /** Strukturelle Sicht auf eine Anmeldezeile — dieses Modul kennt den
@@ -491,7 +633,7 @@ export function pickShirtAnswerRows<T extends ShirtRowLike>(
   regs: T[] | undefined | null,
 ): ShirtRowPick<T> {
   const list = regs || [];
-  const out: ShirtRowPick<T> = { rows: [], conflicts: [] };
+  const out: ShirtRowPick<T> = { rows: [], conflicts: [], othersByEmail: {} };
   const field = shirtFieldOf(fields, list);
   const answers: string[] = [];
   const scores: number[] = [];
@@ -526,6 +668,10 @@ export function pickShirtAnswerRows<T extends ShirtRowLike>(
   // Widerspruch benennen statt still zu entscheiden: Zwei verschiedene Größen
   // auf zwei Zeilen heißen meistens, dass nur eine von beiden bearbeitet wurde.
   emailOrder.forEach(em => {
+    // v31.4: Verworfene Zeilen mitgeben — auch die ohne Antwort (die lösen
+    // keinen Konflikt aus und blieben deshalb bisher unsichtbar).
+    const losers = (rowsByEmail[em] || []).filter(i => i !== winner[em]).map(i => list[i]);
+    if (losers.length > 0) out.othersByEmail[em] = losers;
     const idxs = (rowsByEmail[em] || []).filter(i => !!answers[i]);
     const seen: string[] = [];
     idxs.forEach(i => { if (seen.some(v => v.toLowerCase() === answers[i].toLowerCase())) return; seen.push(answers[i]); });
@@ -555,9 +701,13 @@ export function shirtTally(
     const val = (raw === undefined || raw === null) ? '' : String(raw).trim();
     const key = shirtSizeKey(val);
     const optOut = !!val && !splitShirtSize(val).isSize;
-    if (!byKey[key]) { byKey[key] = { size: val, count: 0, names: [], optOut }; order.push(key); }
+    if (!byKey[key]) { byKey[key] = { size: val, count: 0, names: [], people: [], optOut }; order.push(key); }
     byKey[key].count++;
-    byKey[key].names.push((r.ParticipantName || r.ParticipantEmail || '—').trim());
+    const pname = (r.ParticipantName || r.ParticipantEmail || '—').trim();
+    byKey[key].names.push(pname);
+    // v31.4: dieselbe Person nochmal mit Adresse — für den Sprung in die
+    // Teilnehmerliste und die Herkunfts-Zeile darunter.
+    byKey[key].people.push({ name: pname, email: (r.ParticipantEmail || '').toLowerCase().trim() });
     if (!val) out.missing++;
     else if (optOut) out.optOut++;
     else out.sizeTotal++;

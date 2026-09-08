@@ -2830,7 +2830,15 @@ export default function AdminPage(): React.ReactElement {
 
       {/* v30.54: Offene Aufgaben beim Veranstalter (B2Run Köln). */}
       {shirtSizeOpen && selectedEvent && (
-        <ShirtSizeModal event={selectedEvent} onClose={() => setShirtSizeOpen(false)} />
+        <ShirtSizeModal
+          event={selectedEvent}
+          onClose={() => setShirtSizeOpen(false)}
+          // v31.4: Von einer Größen-Zeile in die Teilnehmerliste springen, wo
+          // „Bearbeiten" sitzt (Nutzer 08.09.2026). Nutzt den vorhandenen
+          // Such-/Scroll-Weg der Seite; der Dialog schließt dabei, sonst liegt
+          // er über der Liste, zu der er gesprungen ist.
+          onJumpToParticipant={(q) => { setShirtSizeOpen(false); jumpToParticipant(q); }}
+        />
       )}
 
       {/* v30.93: Programmpunkte, Stufe 4. */}

@@ -426,6 +426,65 @@ export async function markAgendaNoShow(
 }
 
 /**
+ * v31.4: Welches Shirt hat die Person WIRKLICH bekommen? (Spalte `ShirtIssued`,
+ * Aufbau s. `utils/checkInExtras.parseShirtIssue`).
+ *
+ * Nutzer-Wunsch 08.09.2026 (B2Run Köln): „beim Check-In … da muss der Button
+ * dann auch sein, dass man nicht nur eincheckt, sondern auch sagt, welches
+ * Shirt man rausgegeben hat." Die Verteilung (`shirtAllocate`) ist ein Plan,
+ * der bei jedem Aufruf neu rechnet — erst dieser Eintrag macht daraus ein
+ * Kassenbuch, das einen Seiten-Reload und ein zweites Tablet übersteht.
+ *
+ * Warum ohne vorheriges Lesen (anders als `markAgendaNoShow`): Dort steht ein
+ * ganzer Satz Marken in der Spalte, von denen keine verloren gehen darf. Hier
+ * ist es EIN Objekt — eine Person bekommt ein Shirt; ein zweiter Schreibvorgang
+ * ist eine Korrektur und soll den alten Wert ersetzen.
+ *
+ * Der HTTP-Status wandert mit nach oben, weil ein 400 hier genau eine Ursache
+ * hat: Auf dieser (Bestands-)Liste fehlt die Spalte. Die Oberfläche muss auf
+ * „Spalten fixen" zeigen können, statt „hat nicht geklappt" zu sagen.
+ */
+export async function setShirtIssued(
+  svc: EventService,
+  subsiteUrl: string,
+  itemId: number,
+  size: string,
+): Promise<{ ok: boolean; status: number; at?: string }> {
+  const clean = (size || '').trim();
+  if (!clean) return { ok: false, status: 0 };
+  try {
+    const me = svc.context.pageContext.user;
+    const at = new Date().toISOString();
+    const resp = await svc._merge(
+      `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+      { 'ShirtIssued': JSON.stringify({ size: clean, at, by: me.email || me.loginName || '' }) }
+    );
+    return { ok: resp.ok, status: resp.status, at };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
+
+/** v31.4: Ausgabe zurücknehmen (falsche Größe getippt, Shirt wieder
+ *  eingesammelt). Die Größe wandert damit zurück in den rechnerischen
+ *  Bestand — deshalb ist das ein eigener Schreibvorgang und kein „egal". */
+export async function clearShirtIssued(
+  svc: EventService,
+  subsiteUrl: string,
+  itemId: number,
+): Promise<{ ok: boolean; status: number; at?: string }> {
+  try {
+    const resp = await svc._merge(
+      `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+      { 'ShirtIssued': null }
+    );
+    return { ok: resp.ok, status: resp.status };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
+
+/**
  * v23.28/v23.29: Teilnehmer als „No-Show" markieren (war angemeldet, aber
  * nicht erschienen). Reuse der Check-in-Audit-Spalten (CheckedInBy*), damit
  * kein neues Schema nötig ist. **Nur für Events, deren Teilnehmerliste die

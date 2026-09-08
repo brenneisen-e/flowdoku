@@ -148,6 +148,10 @@ export async function createRegistrationList(
     { title: 'CheckedInByName', type: 2 },   // v7.16: Check-In-Audit — Helfer-Name
     { title: 'CheckedInByEmail', type: 2 },  // v7.16: Check-In-Audit — Helfer-E-Mail
     { title: 'AgendaCheckIns', type: 3 },    // v30.91: Anwesenheit je Programmpunkt (JSON, s. utils/agendaCheckIns)
+    // v31.4: Welches Trikot die Person WIRKLICH bekommen hat, als JSON
+    // `{ size, at, by }` (s. utils/checkInExtras.parseShirtIssue). Ohne diese
+    // Spalte ist die Trikot-Verteilung nur ein Plan, der sich stündlich ändert.
+    { title: 'ShirtIssued', type: 3 },
     // v17.15: Nachrück-Audit (siehe SPRegistration-Interface):
     // - PromotedDate: gesetzt beim Promote auf die nachrückende Person.
     // - ReplacedParticipantEmail: E-Mail der Person, deren Cancel den

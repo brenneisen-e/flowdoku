@@ -211,6 +211,11 @@ export async function fixRegistrationListColumns(
     { title: 'CheckedInByName', type: 2 },   // v7.16: Check-In-Audit — Helfer-Name
     { title: 'CheckedInByEmail', type: 2 },  // v7.16: Check-In-Audit — Helfer-E-Mail
     { title: 'AgendaCheckIns', type: 3 },    // v30.91: Anwesenheit je Programmpunkt (JSON)
+    // v31.4: Ausgegebenes Trikot (JSON `{ size, at, by }`). Muss hier stehen,
+    // sonst hat kein BESTANDS-Event die Spalte — und der Ausgabe-Knopf am
+    // Check-in-Tisch scheitert dort mit HTTP 400 (genau die Events, bei denen
+    // gerade Trikots verteilt werden).
+    { title: 'ShirtIssued', type: 3 },
     // v19.3: Nachrück-Audit-Spalten auch beim „Spalten fixen" nachziehen, damit
     // der DEX_IDReorder-Flow (und der App-Button) sie auf Bestands-Events
     // beschreiben kann → „Nachgerückt am / Ersetzt / Ersetzt durch" in der App.

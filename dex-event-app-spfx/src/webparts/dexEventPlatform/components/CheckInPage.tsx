@@ -17,7 +17,11 @@ import { useDialog } from '../context/DialogContext';
 import { useRoles } from '../context/RoleContext';
 import { useCurrentUser } from '../context/UserContext';
 import { EventService } from '../services/EventService';
-import { checkInExtras, parseCustomData, CheckInExtra, shirtAllocate, parseShirtStock, ShirtAllocationResult } from '../utils/checkInExtras';
+import {
+  checkInExtras, parseCustomData, CheckInExtra, shirtAllocate, parseShirtStock, ShirtAllocationResult,
+  // v31.4: Trikot-Ausgabe am Tisch — was rausgegeben wurde, steht in der Zeile.
+  parseShirtIssue, ShirtIssue, shirtFieldOf, splitShirtSize,
+} from '../utils/checkInExtras';
 import { parseAgendaCheckIns, parseAgendaMarks, parseAgendaNoShows, formatMarkTime, suggestCurrentAgendaItem } from '../utils/agendaCheckIns';
 import Modal from './Modal';
 import { agendaGroups, groupLabel, groupDateLabel } from '../utils/agendaGroups';
@@ -30,6 +34,76 @@ import { ChevronDown, ChevronUp } from './Icons';
 import type QrScanner from 'qr-scanner';
 import { shortSubEventTitle } from '../utils/subEventTitle';
 
+
+/** v31.4: Was der Ausgabetisch über EINE Person wissen muss. `issued` ist die
+ *  Tatsache (schlägt alles andere), `preset` die Vorbelegung der Größenwahl:
+ *  der Gegenvorschlag, sonst die Wunschgröße — aber nur, wenn die Antwort
+ *  überhaupt eine Größe ist („T-Shirt bereits vorhanden" wäre keine). */
+type ShirtDeskInfo = {
+  wish: string;
+  proposal: string | null;
+  preset: string;
+  issued: ShirtIssue | null;
+  sizes: string[];
+};
+
+/**
+ * v31.4: Größenwahl für die Trikot-Ausgabe.
+ *
+ * Eigene kleine Komponente, weil dieselbe Wahl an ZWEI Stellen steht
+ * (Bestätigungskarte nach dem Scan, Dialog aus der Trefferliste) — zwei
+ * Kopien liefen sonst irgendwann auseinander, und der „andere Größe"-Modus
+ * bräuchte je Stelle einen eigenen State.
+ *
+ * Die Liste kommt aus der Verteilung des Events (Wünsche + Bestand + bereits
+ * Ausgegebenes); „Andere Größe" bleibt trotzdem möglich, weil der Helfer am
+ * Tisch manchmal einfach in einen anderen Karton greift.
+ */
+function ShirtSizePicker(props: {
+  sizes: string[];
+  value: string;
+  onChange: (_size: string) => void;
+  isDe: boolean;
+}): React.ReactElement {
+  const { sizes, value, onChange, isDe } = props;
+  const OTHER = '__other__';
+  const known = (v: string): boolean => sizes.some(s => s.toLowerCase() === (v || '').toLowerCase());
+  const [free, setFree] = React.useState<boolean>(sizes.length === 0 || (!!value && !known(value)));
+  const label = isDe ? 'Ausgegebene Größe' : 'Handed-out size';
+  if (free) {
+    return (
+      <>
+        <input
+          type="text"
+          className="dex-ui-input dex-ui-input--sm"
+          value={value}
+          aria-label={label}
+          placeholder={isDe ? 'z.B. Herrengröße XL' : 'e.g. Men XL'}
+          onChange={e => onChange(e.target.value)}
+          style={{ maxWidth: 200 }}
+        />
+        {sizes.length > 0 && (
+          <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" onClick={() => { setFree(false); onChange(sizes[0]); }}>
+            {isDe ? 'aus der Liste wählen' : 'pick from the list'}
+          </button>
+        )}
+      </>
+    );
+  }
+  return (
+    <select
+      className="dex-ui-select dex-ui-select--sm"
+      value={known(value) ? sizes.filter(s => s.toLowerCase() === value.toLowerCase())[0] : ''}
+      aria-label={label}
+      onChange={e => { if (e.target.value === OTHER) { setFree(true); onChange(''); } else onChange(e.target.value); }}
+      style={{ maxWidth: 220 }}
+    >
+      {!known(value) && <option value="">{isDe ? '— Größe wählen —' : '— pick a size —'}</option>}
+      {sizes.map(s => <option key={s} value={s}>{s}</option>)}
+      <option value={OTHER}>{isDe ? 'Andere Größe…' : 'Other size…'}</option>
+    </select>
+  );
+}
 
 export default function CheckInPage(): React.ReactElement {
   const { events, getAllRegistrations, updateEvent } = useEvents();
@@ -122,16 +196,29 @@ export default function CheckInPage(): React.ReactElement {
     /** v30.91: Programmpunkt, an dem eingecheckt wird (statt Event-Status). */
     agendaItemId?: string;
     agendaLabel?: string;
+    /** v31.4: Alles, was die Trikot-Ausgabe an dieser Person braucht. */
+    shirt?: ShirtDeskInfo | null;
   };
   const [pendingCheckIn, setPendingCheckIn] = React.useState<PendingCheckInInfo | null>(null);
+  // v31.4: Trikot-Ausgabe — Größenwahl der Bestätigungskarte, Größenwahl des
+  // Zeilen-Dialogs und ein gemeinsames Busy-Flag. Zwei getrennte Werte, weil
+  // beide Stellen gleichzeitig offen sein können (Karte oben, Liste darunter).
+  const [shirtAsk, setShirtAsk] = React.useState<{ reg: import('../services/EventService').SPRegistration; name: string; eventId: string } | null>(null);
+  const [cardShirtSize, setCardShirtSize] = React.useState('');
+  const [askShirtSize, setAskShirtSize] = React.useState('');
+  const [shirtBusy, setShirtBusy] = React.useState(false);
   // v31.1: „Letzte Check-ins" dieser Sitzung — mit Rückgängig. Nur was HIER
   // eingecheckt wurde (Scan, ID, Liste); der vorherige Status wird gemerkt,
   // damit der Revert nichts erfindet.
   // v31.2: `kind` — auch ein No-Show landet hier und ist rücknehmbar (Nutzer
   // 07.09.2026: „No-Show soll auch rückgängig machbar sein").
+  // v31.4: `shirt` — auch die Trikot-Ausgabe steht hier und ist rücknehmbar
+  // (falsche Größe getippt, Shirt wieder eingesammelt).
   type RecentCheckIn = {
     key: string; at: string; name: string; regId: number; eventId: string; subsiteUrl: string;
-    prevStatus: string; agendaItemId?: string; agendaLabel?: string; kind?: 'checkin' | 'noshow';
+    prevStatus: string; agendaItemId?: string; agendaLabel?: string; kind?: 'checkin' | 'noshow' | 'shirt';
+    /** v31.4: Ausgegebene Größe — die Zeile nennt sie, sonst weiß niemand, was er zurücknimmt. */
+    shirtSize?: string;
   };
   const [recentCheckIns, setRecentCheckIns] = React.useState<RecentCheckIn[]>([]);
   const [undoBusyKey, setUndoBusyKey] = React.useState<string>('');
@@ -203,7 +290,11 @@ export default function CheckInPage(): React.ReactElement {
       const parent = shirtParentOf(eventId);
       if (parent) stock = parseShirtStock(parent.emailTemplateOverrides);
     }
-    if (Object.keys(stock).length === 0) return null;
+    // v31.4: Ohne Bestand wurde hier früher abgebrochen — es gab ja nichts zu
+    // verteilen. Seit die Ausgabe festgehalten wird, steht in der Verteilung
+    // aber auch, WER sein Shirt schon hat und welche Größen es an diesem Event
+    // überhaupt gibt. Beides braucht der Tisch auch ohne gepflegten Bestand;
+    // `hasStock` bleibt false, es gibt also weiterhin keine Gegenvorschläge.
     const hit = shirtAllocCacheRef.current.get(rs);
     if (hit) return hit;
     const res = shirtAllocate(shirtFieldsFor(eventId), rs, stock);
@@ -249,6 +340,42 @@ export default function CheckInPage(): React.ReactElement {
     }
     return out;
   }, [isDe, shirtAllocFor, shirtFieldsFor]);
+
+  /**
+   * v31.4: Trikot-Angaben zu EINER Person am Ausgabetisch.
+   *
+   * Gibt `null` zurück, wenn das Event gar kein Größenfeld hat — dann gibt es
+   * am Tisch auch nichts auszugeben, und weder Karte noch Zeile zeigen etwas.
+   *
+   * Die ausgegebene Größe wird notfalls aus der zwischengespeicherten
+   * Teilnehmerliste nachgeschlagen: Der QR-Weg (`getRegistrationByEmail`)
+   * liest mit einer festen Spaltenliste, die `ShirtIssued` bewusst NICHT
+   * nennt — eine unbekannte Spalte im `$select` beantwortet SharePoint mit
+   * einem Fehler auf die ganze Abfrage, und auf einer Bestandsliste ohne die
+   * Spalte wäre damit der Scan tot. Der Cache liest über `$select=*` und hat
+   * den Wert, sobald die Liste geladen ist.
+   */
+  const shirtDeskInfoFor = React.useCallback((
+    reg: { Id?: number; ParticipantEmail?: string; ShirtIssued?: string } | null | undefined,
+    eventId: string,
+  ): ShirtDeskInfo | null => {
+    if (!reg || !eventId) return null;
+    const rs = searchRegsCacheRef.current[eventId];
+    if (!shirtFieldOf(shirtFieldsFor(eventId), rs)) return null;
+    const alloc = shirtAllocFor(eventId);
+    const em = (reg.ParticipantEmail || '').toLowerCase().trim();
+    const a = alloc && em ? alloc.byEmail[em] : undefined;
+    const cached = (rs || []).filter(x => (reg.Id !== undefined && x.Id === reg.Id) || (!!em && (x.ParticipantEmail || '').toLowerCase().trim() === em))[0];
+    const issued = parseShirtIssue(reg.ShirtIssued || (cached ? cached.ShirtIssued : ''));
+    const wish = a ? a.wish : '';
+    return {
+      wish,
+      proposal: (a && a.proposal) || null,
+      preset: (a && a.proposal) || (splitShirtSize(wish).isSize ? wish : ''),
+      issued,
+      sizes: alloc ? alloc.rows.map(r => r.size) : [],
+    };
+  }, [shirtAllocFor, shirtFieldsFor]);
 
   // v7.12: Name-Suche für manuelles Einchecken — wenn der QR-Scanner in der
   // SP-App nicht funktioniert (Camera-API gesperrt) oder der Teilnehmer den
@@ -624,6 +751,102 @@ export default function CheckInPage(): React.ReactElement {
     await applyEventNoShow(reg, name);
   };
 
+  /**
+   * v31.4: Trikot-Ausgabe festhalten.
+   *
+   * Ein 400 heißt hier IMMER dasselbe: Auf dieser Teilnehmerliste fehlt die
+   * Spalte `ShirtIssued` (Bestands-Event, nie „Spalten fixen" gelaufen). Das
+   * ist keine „hat nicht geklappt"-Meldung, sondern eine mit genau einer
+   * Abhilfe — und die gehört in den Satz, sonst probiert das Team es am
+   * Lauftag zehnmal.
+   */
+  const shirtFailMsg = (name: string, status: number, undo: boolean): string => {
+    const fix = status === 400
+      ? (isDe
+        ? 'Auf dieser Teilnehmerliste fehlt die Spalte ShirtIssued — ein Organizer führt im Organizer Center einmal „Spalten fixen" aus, danach klappt es.'
+        : 'This attendee list is missing the ShirtIssued column — an organizer runs "Fix columns" in the organizer center once, then it works.')
+      : (isDe ? 'Bitte erneut versuchen.' : 'Please try again.');
+    const what = isDe
+      ? (undo ? 'die Rücknahme der Trikot-Ausgabe' : 'die Trikot-Ausgabe')
+      : (undo ? 'undoing the shirt handout' : 'the shirt handout');
+    return isDe
+      ? `${name} — ${what} konnte nicht gespeichert werden${status ? ` (HTTP ${status})` : ''}. ${fix}`
+      : `${name} — ${what} could not be saved${status ? ` (HTTP ${status})` : ''}. ${fix}`;
+  };
+  /** v31.4: Zeile schreiben, Cache-Zeile ersetzen, Merker setzen. Der
+   *  Cache-Patch ist Pflicht: Die Verteilung rechnet aus genau diesen Zeilen,
+   *  und ohne den Patch verplant sie das Stück ein zweites Mal (dasselbe
+   *  Muster wie `applyPointNoShow`). */
+  const applyShirtIssue = async (
+    target: { regId: number; name: string; eventId: string; subsiteUrl: string; prevStatus: string },
+    size: string,
+  ): Promise<ShirtIssue | null> => {
+    const clean = (size || '').trim();
+    if (!eventService || !clean || !target.subsiteUrl) return null;
+    setShirtBusy(true);
+    try {
+      const r = await eventService.setShirtIssued(target.subsiteUrl, target.regId, clean);
+      if (!r.ok) {
+        setResultMessage(shirtFailMsg(target.name, r.status, false));
+        setResultType('error');
+        return null;
+      }
+      const issue: ShirtIssue = { size: clean, at: r.at || new Date().toISOString(), by: currentEmailLc };
+      if (target.eventId) {
+        setSearchRegsCache(prev => {
+          const list = prev[target.eventId];
+          if (!list) return prev;
+          return { ...prev, [target.eventId]: list.map(x => x.Id === target.regId ? { ...x, ShirtIssued: JSON.stringify(issue) } : x) };
+        });
+      }
+      const entry: RecentCheckIn = {
+        key: `${target.regId}:shirt:${Date.now()}`,
+        at: issue.at, name: target.name, regId: target.regId,
+        eventId: target.eventId, subsiteUrl: target.subsiteUrl,
+        prevStatus: target.prevStatus, kind: 'shirt', shirtSize: clean,
+      };
+      setRecentCheckIns(prev => [entry, ...prev].slice(0, 30));
+      setResultMessage(isDe
+        ? `${target.name} — Trikot ${clean} ausgegeben.`
+        : `${target.name} — shirt ${clean} handed out.`);
+      setResultType('success');
+      return issue;
+    } finally { setShirtBusy(false); }
+  };
+  /** v31.4: Ausgabe zurücknehmen — schreibt, patcht den Cache und räumt den
+   *  Merker in „Letzte Check-ins" mit weg. */
+  const clearShirtIssue = async (
+    target: { regId: number; name: string; eventId: string; subsiteUrl: string },
+  ): Promise<boolean> => {
+    if (!eventService || !target.subsiteUrl) return false;
+    setShirtBusy(true);
+    try {
+      const r = await eventService.clearShirtIssued(target.subsiteUrl, target.regId);
+      if (!r.ok) {
+        setResultMessage(shirtFailMsg(target.name, r.status, true));
+        setResultType('error');
+        return false;
+      }
+      if (target.eventId) {
+        setSearchRegsCache(prev => {
+          const list = prev[target.eventId];
+          if (!list) return prev;
+          return { ...prev, [target.eventId]: list.map(x => x.Id === target.regId ? { ...x, ShirtIssued: '' } : x) };
+        });
+      }
+      setRecentCheckIns(prev => prev.filter(x => !(x.kind === 'shirt' && x.regId === target.regId && x.subsiteUrl === target.subsiteUrl)));
+      setResultMessage(isDe
+        ? `${target.name} — Trikot-Ausgabe zurückgenommen, die Größe zählt wieder zum Bestand.`
+        : `${target.name} — shirt handout reverted, the size counts towards the stock again.`);
+      setResultType('info');
+      return true;
+    } finally { setShirtBusy(false); }
+  };
+  const openShirtAsk = (reg: import('../services/EventService').SPRegistration, name: string, info: ShirtDeskInfo): void => {
+    setAskShirtSize(info.preset);
+    setShirtAsk({ reg, name, eventId: nameSearchEventId });
+  };
+
 
   // URL für den Browser-Link generieren (für zukünftige Nutzung)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -944,6 +1167,10 @@ export default function CheckInPage(): React.ReactElement {
       }
     } catch { /* */ }
 
+    // v31.4: Trikot-Angaben der Person für die Bestätigungskarte — die
+    // Größenwahl steht dort vorbelegt bereit (Gegenvorschlag vor Wunsch).
+    const shirt = shirtDeskInfoFor(reg, event.id);
+    setCardShirtSize(shirt ? shirt.preset : '');
     setPendingCheckIn({
       name,
       email,
@@ -962,6 +1189,7 @@ export default function CheckInPage(): React.ReactElement {
       // v30.53: auch auf dem QR-Weg — der Tisch braucht dieselben Angaben,
       // egal ob gescannt oder gesucht wurde.
       extras: extrasFor(reg, event.id),
+      shirt,
     });
     setResultMessage('');
     setResultType('');
@@ -1074,6 +1302,13 @@ export default function CheckInPage(): React.ReactElement {
     try {
       let ok = false;
       const isNoShow = e.kind === 'noshow';
+      // v31.4: Eine Trikot-Ausgabe wird über die Spalte zurückgenommen, nicht
+      // über den Status — `clearShirtIssue` meldet das Ergebnis selbst (der
+      // 400-Fall braucht seinen eigenen Satz) und räumt den Merker weg.
+      if (e.kind === 'shirt') {
+        await clearShirtIssue({ regId: e.regId, name: e.name, eventId: e.eventId, subsiteUrl: e.subsiteUrl });
+        return;
+      }
       if (e.agendaItemId) {
         // v31.2: entfernt die Marke am Punkt — Anwesenheit ODER No-Show.
         ok = (await eventService.removeAgendaCheckIn(e.subsiteUrl, e.regId, e.agendaItemId)).ok;
@@ -1116,6 +1351,7 @@ export default function CheckInPage(): React.ReactElement {
 
   const cancelCheckIn = (): void => {
     setPendingCheckIn(null);
+    setCardShirtSize(''); // v31.4: nächste Person, nächste Größe
     lastScannedRef.current = '';
     processingRef.current = false;
   };
@@ -1495,6 +1731,67 @@ export default function CheckInPage(): React.ReactElement {
                   <strong>{x.label}</strong> — {x.value}
                 </div>
               ))}
+              {/* v31.4: Die Ausgabe direkt unter dem Ausweich-Satz — dort steht,
+                  WAS angeboten werden soll, hier wird festgehalten, was die
+                  Person tatsächlich mitgenommen hat. Eigener Knopf statt eine
+                  Ausgabe am Check-in mitzuschreiben: Ausgabe ohne Check-in gibt
+                  es (Abholung am Vortag) und Check-in ohne Ausgabe erst recht
+                  (wer schon eins hat). */}
+              {pendingCheckIn.shirt && (
+                <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)' }}>
+                  {pendingCheckIn.shirt.issued ? (
+                    <div className="dex-ui-inline">
+                      <span style={{ fontSize: '0.86rem' }}>
+                        {isDe ? 'Trikot ausgegeben: ' : 'Shirt handed out: '}
+                        <strong>{pendingCheckIn.shirt.issued.size}</strong>
+                        {pendingCheckIn.shirt.issued.at ? ` · ${formatMarkTime(pendingCheckIn.shirt.issued.at)}` : ''}
+                      </span>
+                      <button
+                        type="button"
+                        className="dex-ui-textbtn dex-ui-textbtn--danger"
+                        disabled={shirtBusy}
+                        onClick={() => {
+                          const p = pendingCheckIn;
+                          void clearShirtIssue({ regId: p.regId, name: p.name, eventId: p.event.id || '', subsiteUrl: p.event.subsiteUrl })
+                            .then(ok => { if (ok) setPendingCheckIn(prev => (prev && prev.regId === p.regId && prev.shirt) ? { ...prev, shirt: { ...prev.shirt, issued: null } } : prev); });
+                        }}
+                      >
+                        {isDe ? 'Ausgabe zurücknehmen' : 'Undo handout'}
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--dex-gray-600)', marginBottom: 6 }}>
+                        {isDe ? 'Welches Trikot gibst du aus?' : 'Which shirt are you handing out?'}
+                      </div>
+                      <div className="dex-ui-inline">
+                        {/* key: Bei der nächsten Person soll die Wahl wieder bei
+                            der Liste anfangen, nicht im Freitext der vorigen. */}
+                        <ShirtSizePicker key={pendingCheckIn.regId} sizes={pendingCheckIn.shirt.sizes} value={cardShirtSize} onChange={setCardShirtSize} isDe={isDe} />
+                        <button
+                          type="button"
+                          className="btn btn-secondary dex-ui-btn-sm"
+                          disabled={shirtBusy || !cardShirtSize.trim()}
+                          onClick={() => {
+                            const p = pendingCheckIn;
+                            void applyShirtIssue(
+                              { regId: p.regId, name: p.name, eventId: p.event.id || '', subsiteUrl: p.event.subsiteUrl, prevStatus: p.status },
+                              cardShirtSize,
+                            ).then(iss => { if (iss) setPendingCheckIn(prev => (prev && prev.regId === p.regId && prev.shirt) ? { ...prev, shirt: { ...prev.shirt, issued: iss } } : prev); });
+                          }}
+                        >
+                          {shirtBusy ? (isDe ? 'Wird gespeichert…' : 'Saving…') : (isDe ? 'Ausgabe festhalten' : 'Record handout')}
+                        </button>
+                      </div>
+                      <div className="dex-ui-muted" style={{ fontSize: '0.74rem', marginTop: 6 }}>
+                        {isDe
+                          ? 'Wird dauerhaft vom Bestand abgezogen — auch wenn die Person später abgemeldet oder als No-Show markiert wird.'
+                          : 'Permanently deducted from the stock — even if the person is cancelled or marked as a no-show later.'}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
           <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', margin: '0 0 16px' }}>
@@ -2108,6 +2405,48 @@ export default function CheckInPage(): React.ReactElement {
                           >
                             {noShow ? (isDe ? 'No-Show' : 'No-show') : 'No-Show'}
                           </button>
+                          {/* v31.4: Die Trikot-Ausgabe steht in derselben Zeile wie
+                              Einchecken und No-Show — am Tisch passiert beides in
+                              einem Handgriff. Wer sein Trikot hat, sieht statt des
+                              Knopfs die Tatsache (Größe, Uhrzeit) und kann sie
+                              zurücknehmen. Bewusst NICHT gesperrt bei Abgemeldet/
+                              No-Show: Ein ausgegebenes Trikot ist aus dem Karton,
+                              egal was der Status sagt. */}
+                          {(() => {
+                            const si = shirtDeskInfoFor(reg, nameSearchEventId);
+                            if (!si) return null;
+                            const ev = events.find(e => e.id === nameSearchEventId);
+                            const sub = (ev && ev.subsiteUrl) || '';
+                            if (si.issued) {
+                              return (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                  <span className="dex-ui-pill dex-ui-pill--green" title={isDe ? 'Trikot ausgegeben' : 'Shirt handed out'}>
+                                    {isDe ? 'Trikot' : 'Shirt'} {si.issued.size}{si.issued.at ? ` · ${formatMarkTime(si.issued.at)}` : ''}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="dex-ui-textbtn dex-ui-textbtn--danger"
+                                    disabled={shirtBusy}
+                                    onClick={() => { void clearShirtIssue({ regId: reg.Id, name, eventId: nameSearchEventId, subsiteUrl: sub }); }}
+                                  >
+                                    {isDe ? 'Rücknehmen' : 'Undo'}
+                                  </button>
+                                </span>
+                              );
+                            }
+                            return (
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                style={{ fontSize: '0.78rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                                disabled={shirtBusy}
+                                onClick={() => openShirtAsk(reg, name, si)}
+                                title={isDe ? 'Festhalten, welche Größe diese Person bekommen hat' : 'Record which size this person received'}
+                              >
+                                {isDe ? 'Trikot ausgeben' : 'Hand out shirt'}
+                              </button>
+                            );
+                          })()}
                         </div>
                       </div>
                     );
@@ -2143,12 +2482,19 @@ export default function CheckInPage(): React.ReactElement {
                   {e.kind === 'noshow' && (
                     <span className="dex-ui-pill dex-ui-pill--gray">No-Show</span>
                   )}
+                  {/* v31.4: Ausgaben ebenso — mit der Größe, sonst weiß niemand,
+                      was „Rückgängig" hier zurücknimmt. */}
+                  {e.kind === 'shirt' && (
+                    <span className="dex-ui-pill dex-ui-pill--green">{isDe ? 'Trikot' : 'Shirt'} {e.shirtSize}</span>
+                  )}
                   <button type="button" className="btn btn-secondary" disabled={!!undoBusyKey} onClick={() => { void undoCheckIn(e); }} style={{ fontSize: '0.76rem', padding: '4px 10px', whiteSpace: 'nowrap' }}
                     title={isDe
-                      ? (e.agendaItemId
-                        ? (e.kind === 'noshow' ? 'No-Show an diesem Punkt entfernen' : 'Anwesenheit an diesem Punkt entfernen')
-                        : `Status zurück auf „${(e.prevStatus === 'QR versendet' || (e.kind === 'noshow' && e.prevStatus === 'Eingecheckt')) ? e.prevStatus : 'Angemeldet'}“`)
-                      : (e.kind === 'noshow' ? 'Revert this no-show' : 'Revert this check-in')}>
+                      ? (e.kind === 'shirt'
+                        ? `Trikot-Ausgabe (${e.shirtSize}) zurücknehmen — die Größe zählt wieder zum Bestand`
+                        : e.agendaItemId
+                          ? (e.kind === 'noshow' ? 'No-Show an diesem Punkt entfernen' : 'Anwesenheit an diesem Punkt entfernen')
+                          : `Status zurück auf „${(e.prevStatus === 'QR versendet' || (e.kind === 'noshow' && e.prevStatus === 'Eingecheckt')) ? e.prevStatus : 'Angemeldet'}“`)
+                      : (e.kind === 'shirt' ? 'Revert this shirt handout' : e.kind === 'noshow' ? 'Revert this no-show' : 'Revert this check-in')}>
                     {undoBusyKey === e.key ? '…' : (isDe ? 'Rückgängig' : 'Undo')}
                   </button>
                 </div>
@@ -2207,6 +2553,62 @@ export default function CheckInPage(): React.ReactElement {
             {isDe ? 'Beides lässt sich unter „Letzte Check-ins“ zurücknehmen.' : 'Both can be reverted under “Recent check-ins”.'}
           </p>
         </div>
+      </Modal>
+
+      {/* v31.4: Trikot-Ausgabe aus der Trefferliste. Dieselbe Größenwahl wie in
+          der Bestätigungskarte — vorbelegt mit dem Gegenvorschlag, sonst der
+          Wunschgröße; „Andere Größe" für den Griff in den falschen Karton. */}
+      <Modal
+        open={!!shirtAsk}
+        onClose={() => setShirtAsk(null)}
+        maxWidth={520}
+        title={isDe ? `${shirtAsk ? shirtAsk.name : ''} — Trikot ausgeben` : `${shirtAsk ? shirtAsk.name : ''} — hand out shirt`}
+        subtitle={isDe ? 'Welche Größe hast du herausgegeben?' : 'Which size did you hand out?'}
+        footer={<>
+          <button type="button" className="btn btn-secondary" onClick={() => setShirtAsk(null)}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={shirtBusy || !askShirtSize.trim()}
+            onClick={() => {
+              const a = shirtAsk;
+              const size = askShirtSize;
+              setShirtAsk(null);
+              if (!a) return;
+              const ev = events.find(e => e.id === a.eventId);
+              void applyShirtIssue(
+                { regId: a.reg.Id, name: a.name, eventId: a.eventId, subsiteUrl: (ev && ev.subsiteUrl) || '', prevStatus: a.reg.Status },
+                size,
+              );
+            }}
+          >
+            {isDe ? 'Ausgabe festhalten' : 'Record handout'}
+          </button>
+        </>}
+      >
+        {shirtAsk && (() => {
+          const si = shirtDeskInfoFor(shirtAsk.reg, shirtAsk.eventId);
+          return (
+            <div className="dex-ui-stack">
+              <div className="dex-ui-inline">
+                <ShirtSizePicker key={shirtAsk.reg.Id} sizes={si ? si.sizes : []} value={askShirtSize} onChange={setAskShirtSize} isDe={isDe} />
+              </div>
+              {si && (si.wish || si.proposal) && (
+                <p className="dex-ui-muted" style={{ margin: 0 }}>
+                  {si.wish && <>{isDe ? 'Wunschgröße: ' : 'Wished size: '}<strong>{si.wish}</strong></>}
+                  {si.proposal && <>{si.wish ? ' · ' : ''}{isDe ? 'vorgeschlagen: ' : 'proposed: '}<strong>{si.proposal}</strong></>}
+                </p>
+              )}
+              <div className="dex-ui-callout dex-ui-callout--neutral">
+                <span>
+                  {isDe
+                    ? <>Die Größe wird dauerhaft vom Bestand abgezogen — auch wenn die Person später abgemeldet oder als No-Show markiert wird. Zurücknehmen geht über &bdquo;Rücknehmen&ldquo; in der Zeile oder unter &bdquo;Letzte Check-ins&ldquo;.</>
+                    : <>The size is permanently deducted from the stock — even if the person is cancelled or marked as a no-show later. You can revert it via &ldquo;Undo&rdquo; in the row or under &ldquo;Recent check-ins&rdquo;.</>}
+                </span>
+              </div>
+            </div>
+          );
+        })()}
       </Modal>
     </div>
   );

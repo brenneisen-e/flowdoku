@@ -329,6 +329,10 @@ export interface SPRegistration {
   HotelTo?: string;
   /** v30.91: Anwesenheit je Programmpunkt als JSON (s. utils/agendaCheckIns). */
   AgendaCheckIns?: string;
+  /** v31.4: Welches Shirt diese Person bekommen hat, als JSON
+   *  `{ size, at, by }` (s. utils/checkInExtras.parseShirtIssue). Leer =
+   *  noch keins ausgegeben. Kommt über `$select=*` automatisch mit. */
+  ShirtIssued?: string;
   RegisteredByName?: string;   // Audit: Name des Users der die Anmeldung durchführte
   RegisteredByEmail?: string;  // Audit: E-Mail des Users der die Anmeldung durchführte
   /** v27.12: SP-Item-Metadaten als Fallback für „Registriert am/von", wenn die
@@ -1838,6 +1842,17 @@ export class EventService {
   /** v31.2: No-Show nur an einem Programmpunkt (Marke mit noShow, Status bleibt). */
   public async markAgendaNoShow(subsiteUrl: string, itemId: number, agendaItemId: string): Promise<{ ok: boolean; status: number; at?: string }> {
     return registrationStatus.markAgendaNoShow(this, subsiteUrl, itemId, agendaItemId);
+  }
+
+  /** v31.4: Ausgegebenes Trikot festhalten (Spalte ShirtIssued) — der Status
+   *  im Rückgabewert unterscheidet „fehlende Spalte" (400) von „ging schief". */
+  public async setShirtIssued(subsiteUrl: string, itemId: number, size: string): Promise<{ ok: boolean; status: number; at?: string }> {
+    return registrationStatus.setShirtIssued(this, subsiteUrl, itemId, size);
+  }
+
+  /** v31.4: Ausgabe zurücknehmen — die Größe zählt danach wieder zum Bestand. */
+  public async clearShirtIssued(subsiteUrl: string, itemId: number): Promise<{ ok: boolean; status: number; at?: string }> {
+    return registrationStatus.clearShirtIssued(this, subsiteUrl, itemId);
   }
 
   public async markNoShowParticipant(
