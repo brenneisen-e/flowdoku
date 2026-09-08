@@ -219,22 +219,24 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
             {t('events.deadlinepassed')}
           </div>
           <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.85rem', marginBottom: 4, maxWidth: 320, lineHeight: 1.4 }}>
-            {(() => {
-              const hint = t('events.deadlinepassed.hint');
-              if (!hasOrgContacts) return hint;
-              // Das Wort „Organizer"/„organizer" unterstrichen + hoverbar machen.
-              const segs = hint.split(/(organizer)/i);
-              return segs.map((seg, i) => /^organizer$/i.test(seg) ? (
+            {!hasOrgContacts ? t('events.deadlinepassed.hint') : (
+              // v31.8: Der Satz steht als drei Schlüssel da (pre/word/post),
+              // damit das anklickbare Wort ein eigener Text ist. Vorher wurde
+              // die übersetzte Zeichenkette mit /(organizer)/i zerlegt — wer
+              // den Satz umformuliert hätte, ohne das Wort „Organizer" zu
+              // treffen, hätte die Kontaktkarte lautlos entfernt.
+              <>
+                {t('events.deadlinepassed.hint.pre')}
                 <span
-                  key={i}
                   ref={orgTriggerRef}
                   onMouseEnter={openOrg}
                   onMouseLeave={scheduleOrgClose}
                   onClick={(e) => { e.stopPropagation(); if (orgOpen) setOrgOpen(false); else openOrg(); }}
                   style={{ textDecoration: 'underline', textUnderlineOffset: 3, cursor: 'pointer', fontWeight: 700, color: '#fff' }}
-                >{seg}</span>
-              ) : <React.Fragment key={i}>{seg}</React.Fragment>);
-            })()}
+                >{t('events.deadlinepassed.hint.word')}</span>
+                {t('events.deadlinepassed.hint.post')}
+              </>
+            )}
           </div>
           <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', marginTop: 4 }}>
             {event.title}

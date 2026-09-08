@@ -584,7 +584,7 @@ export default function EventListPage(): React.ReactElement {
                 beiden Fälle dürfen sich nicht wieder vermischen. */}
             {filteredEvents.length === 0 && eventsReadStatus !== 'forbidden' && eventsReadStatus !== 'error' && (
               <p className="text-center mt-24" style={{ color: 'var(--dex-gray-400)' }}>
-                Keine Events für dich gefunden.
+                {t('events.empty')}
               </p>
             )}
           </>
@@ -662,7 +662,7 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
                       <span style={{
                         padding: '2px 8px', borderRadius: 999, fontSize: '0.65rem', fontWeight: 700,
                         background: 'var(--dex-orange, #ed8b00)', color: '#fff', letterSpacing: 0.5,
-                      }}>Entwurf</span>
+                      }}>{t('events.draft')}</span>
                     )}
                   </h3>
                   <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', margin: 0 }}>
@@ -670,7 +670,7 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
                     {event.location ? ` · ${event.location}` : ''}
                   </p>
                   <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)', margin: '2px 0 0' }}>
-                    Organizer: {event.organizers.map(o => { const p = o.split(',').map(s => s.trim()); return p.length === 2 ? `${p[1]} ${p[0]}` : o; }).join(', ')}
+                    {t('events.organizers')} {event.organizers.map(o => { const p = o.split(',').map(s => s.trim()); return p.length === 2 ? `${p[1]} ${p[0]}` : o; }).join(', ')}
                   </p>
                 </div>
               </div>
@@ -682,17 +682,17 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
                     Anmeldeseite. Gleiche Regel wie auf der Kachel. */}
                 {!event.subEventsOnlyMode && (
                   <span style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
-                    {event.currentParticipants}/{event.maxParticipants || '∞'} Teilnehmer
+                    {event.currentParticipants}/{event.maxParticipants || '∞'} {t('events.participants')}
                   </span>
                 )}
                 {isReg && (
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 700, background: 'rgba(134,188,37,0.22)', color: 'var(--dex-green-dark)' }}>
-                    <Icon iconName="CompletedSolid" style={{ fontSize: 13 }} /> Angemeldet
+                    <Icon iconName="CompletedSolid" style={{ fontSize: 13 }} /> {t('status.registered')}
                   </span>
                 )}
                 {isWait && (
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 700, background: 'rgba(237,139,0,0.22)', color: 'var(--dex-orange, #ed8b00)' }}>
-                    <Icon iconName="Clock" style={{ fontSize: 13 }} /> Warteliste
+                    <Icon iconName="Clock" style={{ fontSize: 13 }} /> {t('status.waitlist')}
                   </span>
                 )}
                 {/* v19.15: Aktionen auch in der Listen-Ansicht — vorher nur in den

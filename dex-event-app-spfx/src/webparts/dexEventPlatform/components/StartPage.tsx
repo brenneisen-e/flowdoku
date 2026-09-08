@@ -15,7 +15,7 @@ export default function StartPage(): React.ReactElement {
   const isMobile = useIsMobile();
   const { navigate } = useNavigation();
   const { canCreateEvents, isAdmin, isPowerUser, isFA, rolesReadStatus } = useRoles();
-  const { events, isEventsLoading, getMyProxyRegistrations } = useEvents();
+  const { events, isEventsLoading, eventsReadStatus, getMyProxyRegistrations } = useEvents();
   const { powerUserQueue } = useTickets();
   const { currentUser } = useCurrentUser();
   const { t, locale } = useLanguage();
@@ -31,6 +31,10 @@ export default function StartPage(): React.ReactElement {
   // AdminPage gewährt ihnen ohnehin Zugriff auf "ihre" Events (siehe
   // isOrganizerFor dort), aber ohne Kachel im Startmenü gab es bisher
   // keinen Einstieg.
+  // v31.8: `events` ist bei einem 403 auf DEX_Events LEER — die beiden
+  // Ableitungen unten sagen dann „kein Organizer, kein Check-in-Team", obwohl
+  // sie in Wahrheit nichts wissen. Der Hinweiskasten unter der Kachel haengt
+  // deshalb seit v31.8 auch an `eventsReadStatus`, nicht nur an den Rollen.
   const currentEmailLc = (currentUser.email || '').toLowerCase();
   const isOrganizerOfAnyEvent = !!currentEmailLc && (events || []).some(e => {
     const inOrg = (e.organizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
@@ -134,11 +138,11 @@ export default function StartPage(): React.ReactElement {
             dort als Organizer steht, hat dann keine Rolle, sondern ein
             fehlendes Leserecht. Vorher sah die Person nur „Organizer werden?"
             und niemand wusste, warum die Kachel grau ist. */}
-        {rolesReadStatus === 'forbidden' && (
+        {(rolesReadStatus === 'forbidden' || eventsReadStatus === 'forbidden') && (
           <div style={{ fontSize: '0.7rem', lineHeight: 1.3, textAlign: 'center', color: 'var(--dex-orange-dark, #b35a00)', background: 'rgba(255,255,255,0.92)', borderRadius: 8, padding: '6px 8px', maxWidth: 240 }}>
             {isDe
-              ? 'Rollen konnten nicht geladen werden (kein Leserecht auf der Rollenliste). Bist du bereits Organizer? Dann bitte einen Admin, in der Rollenverwaltung „Rechte prüfen" auszuführen.'
-              : 'Roles could not be loaded (no read access to the roles list). Already an organizer? Ask an admin to run "Check rights" in role management.'}
+              ? 'Deine Rollen oder die Event-Liste konnten nicht geladen werden (fehlendes Leserecht). Bist du bereits Organizer? Dann bitte einen Admin, in der Rollenverwaltung &bdquo;Rechte prüfen&ldquo; auszuführen.'
+              : 'Your roles or the event list could not be loaded (missing read access). Already an organizer? Ask an admin to run "Check rights" in role management.'}
           </div>
         )}
       </div>
