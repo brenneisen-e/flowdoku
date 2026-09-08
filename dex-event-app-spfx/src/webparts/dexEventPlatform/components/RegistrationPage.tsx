@@ -549,6 +549,14 @@ export default function RegistrationPage(): React.ReactElement {
   // Effekte nach der Anmeldung). Ergebnis war eine Erfolgsseite OHNE die
   // Tages-Liste. Der Ref friert den Stand beim Klick auf „Anmelden" ein.
   const submittedSessionsRef = React.useRef<Set<string>>(new Set());
+  // v31.5: … und welche dieser Termine auf der WARTELISTE gelandet sind.
+  // `registerForEvent` liefert den echten Status je Termin; der Sub-Event-Pfad
+  // hat bis v31.4 nur `ok` ausgewertet und den Status weggeworfen. Im
+  // `subEventsOnlyMode` — dem Normalfall für Events mit Terminen — stand
+  // deshalb „erfolgreich angemeldet" auch dann, wenn kein einziger Platz frei
+  // war. Nur Termine, die in DIESEM Lauf neu geschrieben wurden, stehen hier
+  // drin: Über eine schon vorher bestehende Anmeldung sagt der Lauf nichts.
+  const submittedWaitlistRef = React.useRef<Set<string>>(new Set());
   // v30.66: Der Wert wird nur noch geschrieben (Reset beim Event-Wechsel) —
   // gelesen hat ihn allein die mit v30.66 entfernte Alt-Auswahl `{false && …}`.
   const [, setSessionStarterType] = React.useState<Record<string, string>>({});
@@ -1565,6 +1573,7 @@ export default function RegistrationPage(): React.ReactElement {
     setConfirmDialogAck, setConfirmDialogOpen, setConfirmDraftParent, setConfirmDraftSessions, setError, setExternalEmailWarning,
     setFallbackDialog, setIsSubmitting, setSessionsOnlySubmitted, setShowErrors, setSubmitProgress, setSubmitProgressLabel,
     setSubmitted, setSubmittedAsCancellation, setSubmittedAsWaitlist, setSubmittedJoinKind, showAlert, starterCounts, submittedSessionsRef,
+    submittedWaitlistRef,
     subOnlyTerms, surname, t, teamMemberFields, teamMembersParsed, teamName,
     teamValidation, thirdPartyCheck, updateMyRegistration, uploadFieldDocument, userResults, userSearchIncludeIntl,
     willRegisterParent,
@@ -1784,6 +1793,30 @@ export default function RegistrationPage(): React.ReactElement {
 
   if (submitted) {
     const sessionsOnlyHint = sessionsOnlySubmitted;
+    // v31.5: Welche der eben geschriebenen Termine auf der Warteliste gelandet
+    // sind. Die Überschrift kann nur „alles" oder „nichts" sagen; bei
+    // gemischtem Ergebnis muss der Text es benennen — sonst liest die Person
+    // hier „angemeldet" und erfährt den Widerspruch erst aus der Mail.
+    const waitlistedCount = submittedWaitlistRef.current.size;
+    // „alle" darf nur stehen, wenn die Termine das Ergebnis WAREN — hat sich
+    // die Person zusätzlich am Haupt-Event angemeldet, kommt `submittedAsWaitlist`
+    // von dort und sagt über die Termine nichts.
+    const allSessionsWaitlisted = sessionsOnlyHint && submittedAsWaitlist && waitlistedCount > 0;
+    // Der Kalender-Satz nur, wo es überhaupt Outlook-Termine gibt.
+    const waitlistOutlookHint = childEvents.some(ce => !ce.disableOutlook)
+      ? (locale === 'de' ? ' Einen Outlook-Termin gibt es dafür erst mit dem Platz.' : ' An Outlook invitation follows once you have a spot.')
+      : '';
+    // Zusatz für die Fälle, in denen die Erfolgsseite nur einen Fließtext hat
+    // (also ohne die aufgeschlüsselte Terminliste des subEventsOnlyMode).
+    const waitlistTail = waitlistedCount === 0
+      ? ''
+      : ((allSessionsWaitlisted
+        ? (locale === 'de'
+          ? ` Für alle gewählten ${childTermPlural || 'Termine'} war kein Platz mehr frei — du stehst dort auf der Warteliste und rückst automatisch nach, sobald ein Platz frei wird.`
+          : ` None of the selected ${childTermPlural || 'dates'} had a spot left — you are on their waitlist and will move up automatically as soon as one opens.`)
+        : (locale === 'de'
+          ? ` Bei ${waitlistedCount} der gewählten ${childTermPlural || 'Termine'} war kein Platz mehr frei — dort stehst du auf der Warteliste und rückst automatisch nach, sobald ein Platz frei wird.`
+          : ` ${waitlistedCount} of the selected ${childTermPlural || 'dates'} had no spot left — you are on their waitlist and will move up automatically as soon as one opens.`)) + waitlistOutlookHint);
     // v26.71: Externe stellvertretende Anmeldung — die Person ist NICHT final
     // angemeldet, sondern nur in der Teilnehmerliste hinterlegt (Datenschutz-
     // rückmeldung offen). Es geht KEINE Mail an die externe Adresse und KEIN
@@ -1796,9 +1829,14 @@ export default function RegistrationPage(): React.ReactElement {
       : isExternalProxy
       ? (locale === 'de' ? 'In der Teilnehmerliste hinterlegt' : 'Added to the participant list')
       : sessionsOnlyHint
-      ? (childTermPlural
-          ? (locale === 'de' ? `Für ${childTermPlural} angemeldet` : `Registered for ${childTermPlural}`)
-          : (t('reg.success.sessionsonly.title') || 'Für Sessions angemeldet'))
+      // v31.5: Steht KEIN gebuchter Termin auf einem freien Platz, ist „Für …
+      // angemeldet" schlicht falsch — dieselbe Überschrift wie im
+      // Haupt-Event-Pfad („Auf die Warteliste gesetzt").
+      ? (submittedAsWaitlist
+          ? t('reg.waitlisttitle')
+          : (childTermPlural
+              ? (locale === 'de' ? `Für ${childTermPlural} angemeldet` : `Registered for ${childTermPlural}`)
+              : (t('reg.success.sessionsonly.title') || 'Für Sessions angemeldet')))
       : (submittedAsWaitlist ? t('reg.waitlisttitle') : t('reg.success'));
     const successBody = submittedAsCancellation
       // v30.67 (Review): Alle Termine abgewählt = Abmeldung. Vorher stand hier
@@ -1819,11 +1857,12 @@ export default function RegistrationPage(): React.ReactElement {
               : (locale === 'de'
                   ? `Du hast dich für die ausgewählten Sub-Events im Rahmen von „${event.title}" angemeldet. Du bekommst pro Sub-Event eine separate Bestätigungsmail und einen eigenen Outlook-Kalendereintrag.`
                   : `You registered for the selected sub-events within "${event.title}". You will receive a separate confirmation email and Outlook calendar entry per sub-event.`))
+          // v31.5: … und der Warteliste-Zusatz, wo die Seite nur Fließtext hat.
           : (childTermPlural && childTermSingular
               ? (locale === 'de'
-                  ? `Du hast dich ausschließlich für die ausgewählten ${childTermPlural} angemeldet — NICHT für das Haupt-Event „${event.title}". Du bekommst pro ${childTermSingular} eine separate Bestätigungsmail und einen eigenen Outlook-Kalendereintrag.`
-                  : `You registered exclusively for the selected ${childTermPlural} — NOT for the main event "${event.title}". You will receive a separate confirmation email and Outlook calendar entry per ${childTermSingular}.`)
-              : (t('reg.success.sessionsonly.msg') || 'Du hast dich ausschließlich für die ausgewählten Sessions angemeldet — NICHT für das Haupt-Event "{title}". Du bekommst pro Session eine separate Bestätigungsmail und einen eigenen Outlook-Kalendereintrag.').replace('{title}', event.title)))
+                  ? `Du hast dich ausschließlich für die ausgewählten ${childTermPlural} angemeldet — NICHT für das Haupt-Event „${event.title}". Du bekommst pro ${childTermSingular} eine separate Bestätigungsmail und einen eigenen Outlook-Kalendereintrag.${waitlistTail}`
+                  : `You registered exclusively for the selected ${childTermPlural} — NOT for the main event "${event.title}". You will receive a separate confirmation email and Outlook calendar entry per ${childTermSingular}.${waitlistTail}`)
+              : (t('reg.success.sessionsonly.msg') || 'Du hast dich ausschließlich für die ausgewählten Sessions angemeldet — NICHT für das Haupt-Event "{title}". Du bekommst pro Session eine separate Bestätigungsmail und einen eigenen Outlook-Kalendereintrag.').replace('{title}', event.title) + waitlistTail))
       : (submittedAsWaitlist
           ? (registerForOther
               ? t('reg.waitlistmsg.other').replace('{name}', `${firstName} ${surname}`.trim()).replace('{title}', event.title).replace('{email}', email)
@@ -1860,7 +1899,11 @@ export default function RegistrationPage(): React.ReactElement {
               const base = registerForOther
                 ? t('reg.successmsg.other').replace('{name}', `${firstName} ${surname}`.trim()).replace('{title}', event.title)
                 : t('reg.successmsg').replace('{title}', event.title);
-              return base + confirmTail;
+              // v31.5: Das Haupt-Event hat einen Platz — einzelne mitgebuchte
+              // Termine können trotzdem voll gewesen sein. Ohne diesen Zusatz
+              // stünde hier nur „angemeldet", und die Warteliste-Mail käme
+              // ungeahnt hinterher.
+              return base + confirmTail + waitlistTail;
             })());
     return (
       <div className="page-container text-center">
@@ -1887,16 +1930,30 @@ export default function RegistrationPage(): React.ReactElement {
             const sectionPlural = childTermPlural || (locale === 'de' ? 'Event-Sections' : 'event-sections');
             const sectionSingular = childTermSingular || (locale === 'de' ? 'Event-Section' : 'event-section');
             const greetingName = (firstName || '').trim();
+            // v31.5: Ein Termin auf der Warteliste bekommt KEINEN Outlook-Termin
+            // — der Anmelde-Pfad queut ihn erst ab Status „Angemeldet"
+            // (`registerForEvent`: `status !== 'Warteliste'`). Steht ALLES auf
+            // der Warteliste, darf der Satz ihn deshalb nicht versprechen.
+            const outlookPromised = anyOutlook && !submittedAsWaitlist;
             let confirmLine = '';
-            if (anyEmail && anyOutlook) confirmLine = locale === 'de'
+            if (anyEmail && outlookPromised) confirmLine = locale === 'de'
               ? `Du erhältst pro ${sectionSingular} eine E-Mail-Bestätigung und einen Outlook-Termin.`
               : `You will receive a confirmation email and an Outlook invitation per ${sectionSingular}.`;
             else if (anyEmail) confirmLine = locale === 'de'
               ? `Du erhältst pro ${sectionSingular} eine E-Mail-Bestätigung.`
               : `You will receive a confirmation email per ${sectionSingular}.`;
-            else if (anyOutlook) confirmLine = locale === 'de'
+            else if (outlookPromised) confirmLine = locale === 'de'
               ? `Du erhältst pro ${sectionSingular} einen Outlook-Termin.`
               : `You will receive an Outlook invitation per ${sectionSingular}.`;
+            // Steht ALLES auf der Warteliste, hat der Satz oben es schon gesagt
+            // — dann bleibt hier nur, was als Nächstes passiert.
+            const waitlistLine = waitlistedCount === 0 ? '' : (submittedAsWaitlist
+              ? (locale === 'de'
+                ? `Du rückst automatisch nach, sobald ein Platz frei wird${anyOutlook ? ' — den Outlook-Termin bekommst du dann mit dem Platz' : ''}.`
+                : `You will move up automatically as soon as a spot opens${anyOutlook ? ' — the Outlook invitation arrives together with the spot' : ''}.`)
+              : (locale === 'de'
+                ? `Wo oben „Warteliste" steht, war kein Platz mehr frei: Dort rückst du automatisch nach, sobald einer frei wird${anyOutlook ? ' — den Outlook-Termin bekommst du dann mit dem Platz' : ''}.`
+                : `Where it says „Waitlist" above, no spot was left: you will move up automatically as soon as one opens${anyOutlook ? ' — the Outlook invitation arrives together with the spot' : ''}.`));
             return (
               <div className="mt-8" style={{ color: 'var(--dex-gray-700)', textAlign: 'left', maxWidth: 520, margin: '8px auto 0', lineHeight: 1.6 }}>
                 <p style={{ margin: '0 0 10px' }}>
@@ -1905,9 +1962,17 @@ export default function RegistrationPage(): React.ReactElement {
                     : <>Hi{greetingName ? <> <strong>{greetingName}</strong></> : ''},</>}
                 </p>
                 <p style={{ margin: '0 0 10px' }}>
-                  {locale === 'de'
-                    ? <>du hast dich erfolgreich für das <strong>{event.title}</strong> angemeldet. Wir haben deine Anmeldung für die folgenden {sectionPlural} erhalten:</>
-                    : <>you have successfully registered for <strong>{event.title}</strong>. We received your registration for the following {sectionPlural}:</>}
+                  {/* v31.5: „erfolgreich angemeldet" nur, wenn wenigstens ein
+                      Platz dabei herausgekommen ist. Stand alles auf der
+                      Warteliste, sagt der Satz das — vorher las die Person hier
+                      das Gegenteil ihrer Warteliste-Mail. */}
+                  {submittedAsWaitlist
+                    ? (locale === 'de'
+                      ? <>wir haben deine Anmeldung für das <strong>{event.title}</strong> erhalten — für die folgenden {sectionPlural} war allerdings kein Platz mehr frei, du stehst dort auf der <strong>Warteliste</strong>:</>
+                      : <>we received your registration for <strong>{event.title}</strong> — however, the following {sectionPlural} had no spots left, so you are on their <strong>waitlist</strong>:</>)
+                    : (locale === 'de'
+                      ? <>du hast dich erfolgreich für das <strong>{event.title}</strong> angemeldet. Wir haben deine Anmeldung für die folgenden {sectionPlural} erhalten:</>
+                      : <>you have successfully registered for <strong>{event.title}</strong>. We received your registration for the following {sectionPlural}:</>)}
                 </p>
                 <ul style={{ margin: '0 0 10px', paddingLeft: 22 }}>
                   {selectedChildren.map(ce => {
@@ -1934,12 +1999,32 @@ export default function RegistrationPage(): React.ReactElement {
                     const label = titleHasDate
                       ? (timeRange && timeRange !== '00:00' ? `${name} | ${timeRange}` : name)
                       : (valid ? `${name} | ${formatDateRange(ce.startDate, ce.endDate || '')}` : name);
+                    // v31.5: Nur die in DIESEM Lauf geschriebenen Termine
+                    // tragen eine Marke. Über eine schon vorher bestehende
+                    // Anmeldung weiß der Lauf nichts — sie hier stillschweigend
+                    // als „angemeldet" zu zeigen wäre dieselbe Behauptung
+                    // ohne Deckung, die den Fehler ausgemacht hat.
+                    const onWaitlist = submittedWaitlistRef.current.has(ce.id);
                     return (
-                      <li key={ce.id} style={{ marginBottom: 3 }}>{label}</li>
+                      <li key={ce.id} style={{ marginBottom: 3 }}>
+                        {label}
+                        {onWaitlist && (
+                          <span style={{
+                            marginLeft: 8, padding: '1px 8px', borderRadius: 10,
+                            background: 'var(--dex-orange-light, #fff3e0)',
+                            border: '1px solid var(--dex-orange, #ed8b00)',
+                            color: 'var(--dex-orange-dark, #b36a00)',
+                            fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap',
+                          }}>
+                            {locale === 'de' ? 'Warteliste' : 'Waitlist'}
+                          </span>
+                        )}
+                      </li>
                     );
                   })}
                 </ul>
                 {confirmLine && <p style={{ margin: 0 }}>{confirmLine}</p>}
+                {waitlistLine && <p style={{ margin: '10px 0 0' }}>{waitlistLine}</p>}
               </div>
             );
           })() : (

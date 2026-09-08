@@ -645,6 +645,12 @@ export function waitlistEmail(recipientName: string, eventTitle: string, positio
  * Abmeldebestätigung
  */
 export function cancellationEmail(recipientName: string, eventTitle: string): { subject: string; body: string } {
+  // v31.5: „Der Outlook-Termin wird entfernt" stand hier als Zusage — dieselbe
+  // Mail geht aber auch an Wartelistler, und die haben nie einen bekommen (der
+  // Anmelde-Pfad queut ihn erst ab Status „Angemeldet"). Deshalb konditional.
+  // Der Text steht doppelt: hier als Code-Fallback und als Seed-Vorlage
+  // „Abmeldung" in `events/emailTemplatesList.ts` — im Tenant gilt die Vorlage
+  // aus DEX_EmailTemplates, dieser Fallback nur, wenn sie fehlt.
   // v17.20: Visuell deutlicher Stornierungs-Banner direkt unter der Begrüßung
   // \u2014 Event-Titel ausgegraut + durchgestrichen, damit auf den ersten Blick
   // erkennbar ist, dass die Anmeldung storniert wurde (vorher: Stornierung
@@ -670,7 +676,7 @@ export function cancellationEmail(recipientName: string, eventTitle: string): { 
       eventTitle,
       `<p>Dear ${recipientName},</p>
       ${cancelBanner}
-      <p>your registration for the event above has been <strong>cancelled</strong>. The Outlook calendar entry will be removed from your calendar shortly.</p>
+      <p>your registration for the event above has been <strong>cancelled</strong>. If you had an Outlook invitation for it, it will be removed from your calendar shortly.</p>
       <p>If you change your mind, you can register again via the <a href="${APP_URL}" style="color:${GREEN};font-weight:600;">DEX App</a>.</p>
       <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
     ),

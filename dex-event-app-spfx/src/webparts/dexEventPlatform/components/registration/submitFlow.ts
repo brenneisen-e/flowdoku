@@ -106,6 +106,8 @@ export interface SubmitFlowCtx {
   /** v30.67: null, solange die Belegung nicht ermittelt ist — damit darf nicht gerechnet werden. */
   starterCounts: { durch: number; fun: number; durchWait: number; funWait: number; } | null;
   submittedSessionsRef: React.MutableRefObject<Set<string>>;
+  /** v31.5: Termine dieses Laufs, die auf der Warteliste gelandet sind. */
+  submittedWaitlistRef: React.MutableRefObject<Set<string>>;
   subOnlyTerms: boolean;
   surname: string;
   t: (key: string) => string;
@@ -143,6 +145,7 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
     setConfirmDialogAck, setConfirmDialogOpen, setConfirmDraftParent, setConfirmDraftSessions, setError, setExternalEmailWarning,
     setFallbackDialog, setIsSubmitting, setSessionsOnlySubmitted, setShowErrors, setSubmitProgress, setSubmitProgressLabel,
     setSubmitted, setSubmittedAsCancellation, setSubmittedAsWaitlist, setSubmittedJoinKind, showAlert, starterCounts, submittedSessionsRef,
+    submittedWaitlistRef,
     subOnlyTerms, surname, t, teamMemberFields, teamMembersParsed, teamName,
     teamValidation, thirdPartyCheck, updateMyRegistration, uploadFieldDocument, userResults, userSearchIncludeIntl,
     willRegisterParent,
@@ -168,6 +171,9 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
     }
     // v30.9: Auswahl fuer die Erfolgsseite einfrieren (s. submittedSessionsRef).
     submittedSessionsRef.current = new Set(selectedSessions);
+    // v31.5: Das Warteliste-Ergebnis gehoert zu GENAU diesem Lauf — ein zweiter
+    // Anlauf nach einem Fehlschlag darf die Marken des ersten nicht erben.
+    submittedWaitlistRef.current = new Set();
     // Validierung Pflichtfelder
     setShowErrors(true);
 
@@ -743,6 +749,10 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
 
       let anySuccess = false;
       let parentOk = true;
+      // v31.5: Hat die Haupt-Anmeldung ihren Status schon gemeldet? Nur dann
+      // gehoert `submittedAsWaitlist` ihr; sonst entscheiden die Termine (die
+      // Schatten-/Klammer-Zeile meldet nichts — sie ist keine Anmeldung).
+      let parentStatusReported = false;
       let lastSubReason: string | undefined;
       // v29.48: Schatten-/Klammer-Zeile konnte nicht angelegt werden (s.
       // doParentRegistration). Die Sub-Event-Anmeldungen bleiben gültig, aber
@@ -969,6 +979,7 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
           anySuccess = true;
           // v18.67: echten Status fürs Ergebnis-Modal merken (nicht isFull).
           setSubmittedAsWaitlist(parentResult.status === 'Warteliste');
+          parentStatusReported = true;
         }
         // v23.9: KONKRETE Fehlermeldung statt pauschal „bereits registriert" —
         // der echte Grund (Berechtigung / Deadline / technischer Fehler) wird
@@ -1054,6 +1065,9 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
       // v26.67 (B): mind. eine NEUE Sub-Event-Anmeldung erfolgreich? Gate für
       // die nachgelagerte Schatten-Klammer.
       let anySubRegSuccess = false;
+      // v31.5: Wie viele Termine in diesem Lauf NEU geschrieben wurden — der
+      // Nenner für „alles Warteliste" auf der Erfolgsseite.
+      let subNewCount = 0;
       // v29.25: Abwahlen, die wegen der Abmelde-Sperre NICHT abgemeldet wurden.
       const lockedCancelTitles: string[] = [];
       for (const ce of childEvents) {
@@ -1101,6 +1115,13 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
           if (subRes.ok) {
             anySuccess = true; anySubRegSuccess = true;
             bookedItems.push({ title: ce.title || '', startDate: ce.startDate, endDate: ce.endDate, location: ce.location });
+            // v31.5: `ok` heisst „geschrieben", nicht „hat einen Platz".
+            // `registerForEvent` liefert den echten Status; bis v31.4 wurde er
+            // hier verworfen, und die Erfolgsseite meldete im subEventsOnlyMode
+            // „angemeldet", waehrend die Person auf der Warteliste stand — die
+            // Bestaetigungsmail sagte dann etwas anderes als die Seite davor.
+            subNewCount++;
+            if (subRes.status === 'Warteliste') submittedWaitlistRef.current.add(ce.id);
           }
           else lastSubReason = subRes.reason;
           subOpsDone++;
@@ -1254,6 +1275,14 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
         // Parent diesmal oder schon vorher angemeldet), zeigen wir auf der
         // Success-Seite den Sessions-Only-Hinweis.
         setSessionsOnlySubmitted(!willRegisterParent && !registerForOther);
+        // v31.5: Ohne eigene Haupt-Anmeldung entscheiden die Termine, was auf
+        // der Erfolgsseite steht. Erst wenn KEIN einziger neu geschriebener
+        // Termin einen Platz hat, ist „auf der Warteliste" die ganze Wahrheit;
+        // bei gemischtem Ergebnis bleibt die Anmelde-Überschrift und die Liste
+        // markiert die betroffenen Termine einzeln (s. RegistrationPage).
+        if (!parentStatusReported) {
+          setSubmittedAsWaitlist(subNewCount > 0 && submittedWaitlistRef.current.size === subNewCount);
+        }
         // v30.67 (Review): Alle Termine abgewählt und nichts Neues gebucht =
         // Komplett-Abmeldung. Die Erfolgsseite sagt dann „Abmeldung
         // durchgeführt" statt „erfolgreich angemeldet" mit leerer Liste.
