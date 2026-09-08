@@ -996,6 +996,41 @@ export default function CheckInPage(): React.ReactElement {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nameSearchQuery, nameSearchEventId, searchRegsCache, onlyOpen, agendaMode, agendaPointId]);
+  /**
+   * v31.4 (Nutzer-Befund 08.09.2026): „Warum sehe ich hier nicht die Check-ins?
+   * Nur weil ich sie selber nicht gemacht habe?"
+   *
+   * Genau so ist es — und das war der Fehler in der Darstellung, nicht in der
+   * Sache. „Letzte Check-ins" ist die Rückgängig-Liste DIESES Geräts: Sie lebt
+   * im localStorage, weil nur die Sitzung, die eingecheckt hat, den Status VOR
+   * dem Check-in kennt (`prevStatus`). Ein Check-in vom Nachbar-Tablet steht
+   * dort naturgemäß nicht. Der leere Kasten sagte aber „Noch kein Check-in in
+   * den letzten 12 Stunden" — eine Aussage über das EVENT, obwohl es eine über
+   * das Gerät war. Dieselbe Falle wie an drei anderen Stellen in v31.4.
+   *
+   * Die Gegen-Auskunft kostet keine einzige zusätzliche Abfrage: Jede
+   * eingecheckte Zeile trägt `CheckedInDate` und `CheckedInByName` (v7.16), und
+   * die Liste ist ohnehin geladen. Bewusst OHNE Rückgängig — für eine fremde
+   * Zeile ist der vorherige Status nicht bekannt, und „Angemeldet" zu raten
+   * wäre genau das Erfinden, das der Rest dieser Datei vermeidet.
+   *
+   * `markNoShowParticipant` beschreibt dieselben Audit-Spalten, deshalb wird
+   * der Status je Zeile mitgeführt und nicht unterschlagen.
+   */
+  const serverCheckIns = React.useMemo(() => {
+    const regs = nameSearchEventId ? (searchRegsCache[nameSearchEventId] || []) : [];
+    return regs
+      .filter(r => !!r.CheckedInDate && (r.Status === 'Eingecheckt' || r.Status === 'No-Show'))
+      .map(r => ({
+        id: r.Id,
+        at: String(r.CheckedInDate || ''),
+        name: (r.Vorname && r.Nachname) ? `${r.Vorname} ${r.Nachname}` : (r.ParticipantName || r.ParticipantEmail || '—'),
+        by: String(r.CheckedInByName || '').trim(),
+        noShow: r.Status === 'No-Show',
+      }))
+      .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+      .slice(0, 15);
+  }, [nameSearchEventId, searchRegsCache]);
   // v31.4 (Review): Wird nach einer ZAHL gesucht, zeigt jede Trefferzeile,
   // welche Nummer sie trägt — sonst stehen zwei Namen da und nur einer nennt
   // eine Zahl (s. qrRowNote).
@@ -3148,13 +3183,13 @@ export default function CheckInPage(): React.ReactElement {
           je Event, 12 Stunden) — deshalb heißt sie nicht mehr „diese Sitzung",
           das wäre nach dem Zurückgehen falsch. */}
       <div style={{ order: 3 }}>
-        {sectionLabel(3, isDe ? 'Letzte Check-ins' : 'Recent check-ins')}
+        {sectionLabel(3, isDe ? 'Letzte Check-ins auf diesem Gerät' : 'Recent check-ins on this device')}
         <div className="card" style={{ padding: recentCheckIns.length ? '14px 20px' : '14px 20px', marginBottom: 16 }}>
           {recentCheckIns.length === 0 ? (
             <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>
               {isDe
-                ? 'Noch kein Check-in in den letzten 12 Stunden. Jeder Check-in erscheint hier und lässt sich zurücknehmen — auch nachdem du die Seite zwischendurch verlassen hast.'
-                : 'No check-in in the past 12 hours. Every check-in appears here and can be reverted — also after you have left the page in between.'}
+                ? 'Auf diesem Gerät wurde in den letzten 12 Stunden nichts eingecheckt. Nur was du hier tust, lässt sich hier zurücknehmen — der vorherige Status ist nur der Sitzung bekannt, die den Check-in gemacht hat. Was auf anderen Geräten passiert ist, steht darunter.'
+                : 'Nothing was checked in on this device in the past 12 hours. Only what you do here can be reverted here — the previous status is only known to the session that did the check-in. What happened on other devices is listed below.'}
             </p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 260, overflowY: 'auto' }}>
@@ -3194,6 +3229,33 @@ export default function CheckInPage(): React.ReactElement {
                 ? 'Die letzten 12 Stunden auf diesem Gerät, für dieses Event.'
                 : 'The past 12 hours on this device, for this event.'}
             </p>
+          )}
+          {/* v31.4: Was auf ALLEN Geräten passiert ist — aus den Audit-Spalten
+              der ohnehin geladenen Liste, ohne zusätzliche Abfrage. Bewusst
+              ohne Rückgängig: Für eine fremde Zeile ist der Status vor dem
+              Check-in nicht bekannt, und ihn zu raten wäre schlimmer als der
+              Umweg über die Trefferliste oben. */}
+          {serverCheckIns.length > 0 && (
+            <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
+              <p style={{ margin: '0 0 6px', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)' }}>
+                {isDe ? 'Zuletzt erfasst — alle Geräte' : 'Most recent — all devices'}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 200, overflowY: 'auto' }}>
+                {serverCheckIns.map(e => (
+                  <div key={`srv-${e.id}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 8px', fontSize: '0.82rem' }}>
+                    <span style={{ color: 'var(--dex-gray-500)', fontVariantNumeric: 'tabular-nums', width: 44, flexShrink: 0 }}>{formatMarkTime(e.at)}</span>
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
+                    {e.noShow && <span className="dex-ui-pill dex-ui-pill--gray">No-Show</span>}
+                    {e.by && <span style={{ color: 'var(--dex-gray-500)', flexShrink: 0 }}>{isDe ? 'durch ' : 'by '}{e.by}</span>}
+                  </div>
+                ))}
+              </div>
+              <p className="dex-ui-muted" style={{ fontSize: '0.72rem', margin: '8px 0 0' }}>
+                {isDe
+                  ? 'Aus der Teilnehmerliste, Stand des letzten Nachladens. Zurücknehmen geht hier nicht — dafür die Person oben in der Liste suchen.'
+                  : 'From the attendee list, as of the last refresh. No undo here — search for the person in the list above instead.'}
+              </p>
+            </div>
           )}
         </div>
       </div>
