@@ -8,6 +8,11 @@ import { HOTEL_RE, EXTRA_RE, NO_RE, parseExtraAnswer } from '../utils/hotelAnswe
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale';
 import 'react-datepicker/dist/react-datepicker.css';
+// v31.3: Gemeinsame UI-Klassen (Leitfaden) und Symbole — Hover und Zustände
+// kommen aus dexUi.ts, nicht mehr aus Inline-Styles je Kasten.
+import { cx } from './dexUi';
+import { InfoTooltip } from './InfoTooltip';
+import { AlertCircle, Calendar, Check, ChevronDown, ChevronUp, Info, Plus, Users, X } from './Icons';
 
 registerLocale('de', de);
 
@@ -632,12 +637,11 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
    * Darstellung
    * ------------------------------------------------------------------ */
 
-  const box: React.CSSProperties = { border: '1px solid var(--dex-gray-200)', borderRadius: 10, padding: 12, marginTop: 12 };
-  const smallInp: React.CSSProperties = { height: 34, fontSize: '0.84rem', padding: '0 10px', border: '1px solid var(--dex-gray-300)', borderRadius: 8, minWidth: 0 };
-  const th: React.CSSProperties = { textAlign: 'left', padding: '6px 8px', fontSize: '0.74rem', color: 'var(--dex-gray-600)', borderBottom: '1px solid var(--dex-gray-200)', whiteSpace: 'nowrap' };
-  const td: React.CSSProperties = { padding: '6px 8px', fontSize: '0.82rem', borderBottom: '1px solid var(--dex-gray-100)' };
+  // v31.3: Kästen, Eingaben und Tabellen kommen aus den dex-ui-Klassen
+  // (Hover, Fokus, Radius zentral) — geblieben sind nur die Schritt-Frage und
+  // ihre Erklärzeile, für die es keine passende Klasse gibt.
   const question: React.CSSProperties = { fontSize: '0.95rem', fontWeight: 700, color: 'var(--dex-gray-800)' };
-  const explain: React.CSSProperties = { fontSize: '0.84rem', color: 'var(--dex-gray-600)', lineHeight: 1.5, margin: '4px 0 10px' };
+  const explain: React.CSSProperties = { fontSize: '0.84rem', color: 'var(--dex-gray-600)', lineHeight: 1.5, margin: '4px 0 12px' };
 
   // Die Schritte tragen die Frage, die sie stellen — nicht den Fachbegriff.
   // „Zeiträume" sagt beim ersten Mal niemandem, was zu tun ist; „Wann?" schon.
@@ -668,9 +672,12 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
       { q: 'What does that mean for booking?', a: 'Who stays where — and how many extra nights have to be booked beyond the capacity.' },
     ];
     return (
-      <div>
-        <div style={{ ...box, marginTop: 14, background: 'var(--dex-gray-50, #f7f7f5)' }}>
-          <div style={{ fontSize: '0.86rem', lineHeight: 1.6 }}>
+      <div className="dex-ui-stack">
+        {/* v31.3: Was der Assistent schon weiß, als Hinweiskasten — ruhig,
+            ohne Hover (reine Anzeige, Leitfaden 1.3). */}
+        <div className="dex-ui-callout dex-ui-callout--neutral">
+          <span className="dex-ui-callout-icon"><Users size={16} /></span>
+          <div>
             {isDe
               ? <><strong>{people.length}</strong> Personen sind angemeldet.{fields.main
                 ? <> Die Frage „{fields.main.label}&ldquo; haben <strong>{asked}</strong> mit Ja beantwortet{declined > 0 ? <>, <strong>{declined}</strong> mit Nein</> : ''}.</>
@@ -678,58 +685,60 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
               : <><strong>{people.length}</strong> people are registered.{fields.main
                 ? <> <strong>{asked}</strong> answered „{fields.main.label}&ldquo; with yes{declined > 0 ? <>, <strong>{declined}</strong> with no</> : ''}.</>
                 : <> There is no hotel question in the registration form — the wizard assumes anyone may need a room.</>}</>}
-          </div>
-          {fields.extra && (
-            <div style={{ fontSize: '0.86rem', lineHeight: 1.6, marginTop: 6, color: 'var(--dex-green-dark, #4a7c1f)' }}>
-              {isDe
-                ? <>Außerdem fragt euer Formular unter „{fields.extra.label}&ldquo; nach Zusatznächten — <strong>{withExtra}</strong> Person(en) haben dort etwas angegeben. Der Assistent liest das aus und rechnet die Extranächte daraus.</>
-                : <>Your form also asks about additional nights under „{fields.extra.label}&ldquo; — <strong>{withExtra}</strong> person(s) answered there. The wizard reads that and derives the extra nights from it.</>}
-            </div>
-          )}
-        </div>
-
-        <div style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--dex-gray-800)', marginTop: 16 }}>
-          {isDe ? 'Der Assistent stellt dir vier Fragen:' : 'The wizard asks you four questions:'}
-        </div>
-        <div style={{ marginTop: 8 }}>
-          {items.map((it, i) => (
-            <div key={it.q} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 0', borderTop: i === 0 ? 'none' : '1px solid var(--dex-gray-100)' }}>
-              <span style={{
-                flex: '0 0 24px', width: 24, height: 24, borderRadius: '50%', background: 'var(--dex-green, #86bc25)',
-                color: '#fff', fontSize: '0.76rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>{i + 1}</span>
-              <div>
-                <div style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--dex-gray-800)' }}>{it.q}</div>
-                <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.5, marginTop: 2 }}>{it.a}</div>
+            {fields.extra && (
+              <div style={{ marginTop: 6 }}>
+                {isDe
+                  ? <>Außerdem fragt euer Formular unter „{fields.extra.label}&ldquo; nach Zusatznächten — <strong>{withExtra}</strong> Person(en) haben dort etwas angegeben. Der Assistent liest das aus und rechnet die Extranächte daraus.</>
+                  : <>Your form also asks about additional nights under „{fields.extra.label}&ldquo; — <strong>{withExtra}</strong> person(s) answered there. The wizard reads that and derives the extra nights from it.</>}
               </div>
-            </div>
-          ))}
+            )}
+          </div>
         </div>
 
-        <div style={{ ...box, background: 'rgba(134,188,37,0.07)', borderColor: 'var(--dex-green, #86bc25)' }}>
-          <div style={{ fontSize: '0.82rem', lineHeight: 1.55 }}>
+        <div className="dex-ui-section">
+          <div className="dex-ui-section-title">{isDe ? 'Der Assistent stellt dir vier Fragen' : 'The wizard asks you four questions'}</div>
+          <div className="dex-ui-card dex-ui-card--list">
+            {items.map((it, i) => (
+              <div key={it.q} className="dex-ui-row--bordered" style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '10px 8px' }}>
+                <span className="dex-ui-step-num">{i + 1}</span>
+                <div className="dex-ui-step-body">
+                  <div className="dex-ui-step-title">{it.q}</div>
+                  <div className="dex-ui-step-hint">{it.a}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="dex-ui-callout dex-ui-callout--success">
+          <span className="dex-ui-callout-icon"><Info size={16} /></span>
+          <span>
             {isDe
               ? <>Du kannst jederzeit zurückgehen und alles ändern. <strong>Gespeichert wird nichts</strong>, bevor du am Ende auf „Übernehmen&ldquo; klickst — und die Anzeige für die Teilnehmer bleibt aus, bis du sie separat freigibst.</>
               : <>You can go back and change anything at any time. <strong>Nothing is saved</strong> before you click „Apply&ldquo; at the end — and attendee visibility stays off until you release it separately.</>}
-          </div>
+          </span>
         </div>
       </div>
     );
   };
 
+  // v31.3: Segment-Reiter statt eigener Kacheln. Erledigte Schritte sind
+  // klickbar (dasselbe wie mehrmals „Zurück" — keine Prüfung wird übersprungen),
+  // kommende bleiben gesperrt, weil „Weiter" sie über canNext freigibt.
   const renderStepper = (): JSX.Element => (
-    <div style={{ display: 'flex', gap: 6, margin: '14px 0 4px', flexWrap: 'wrap' }}>
-      {STEPS.map((s, i) => (
-        <div key={s} style={{
-          flex: '1 1 120px', padding: '6px 10px', borderRadius: 8, fontSize: '0.76rem', fontWeight: 600,
-          background: i + 1 === step ? 'var(--dex-green, #86bc25)' : (i + 1 < step ? 'rgba(134,188,37,0.15)' : 'var(--dex-gray-50, #f7f7f5)'),
-          color: i + 1 === step ? '#fff' : 'var(--dex-gray-700)',
-          border: `1px solid ${i + 1 <= step ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-          textAlign: 'center',
-        }}>
-          {i + 1}. {s}
-        </div>
-      ))}
+    <div className="dex-ui-tabs" role="tablist" aria-label={isDe ? 'Schritte' : 'Steps'}>
+      {STEPS.map((s, i) => {
+        const n = i + 1;
+        const done = n < step;
+        return (
+          <button key={s} type="button" role="tab" aria-selected={n === step}
+            className={cx('dex-ui-tab', n === step && 'is-active')}
+            disabled={n > step}
+            onClick={() => { if (done) setStep(n); }}>
+            {done ? <span style={{ display: 'inline-flex', verticalAlign: -1, marginRight: 4 }}><Check size={12} /></span> : `${n}. `}{s}
+          </button>
+        );
+      })}
     </div>
   );
 
@@ -773,10 +782,8 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
     };
 
     return (
-      <div style={{ ...box, padding: 10 }}>
-        <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--dex-gray-800)', marginBottom: 6 }}>
-          {isDe ? 'Im Kalender' : 'On the calendar'}
-        </div>
+      <div className="dex-ui-section">
+        <div className="dex-ui-section-title">{isDe ? 'Im Kalender' : 'On the calendar'}</div>
         <div style={{ overflowX: 'auto' }}>
           <div style={{ minWidth: 132 + days.length * 38 }}>
             {/* Kopfzeile: Wochentag + Datum */}
@@ -894,47 +901,45 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
         </p>
 
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div className="form-group" style={{ marginBottom: 0, flex: '1 1 165px' }}>
-            <label className="form-label" style={{ fontSize: '0.8rem', marginBottom: 4 }}>{isDe ? 'Anreise' : 'Arrival'}</label>
+          <div className="dex-ui-field" style={{ marginBottom: 0, flex: '1 1 165px' }}>
+            <label className="dex-ui-label">{isDe ? 'Anreise am' : 'Arrival on'}</label>
             <DatePicker selected={main && main.from ? new Date(`${main.from}T00:00:00`) : null}
               onChange={(d: Date | null) => { if (d) setMainRange(toLocalDay(d), main ? main.to : ''); }}
               dateFormat="dd.MM.yyyy" locale={isDe ? 'de' : undefined} placeholderText={isDe ? 'TT.MM.JJJJ' : 'dd/mm/yyyy'}
-              className="form-input" wrapperClassName="dex-datepicker-wrapper" calendarClassName="dex-datepicker-calendar"
+              className="dex-ui-input" wrapperClassName="dex-datepicker-wrapper" calendarClassName="dex-datepicker-calendar"
               popperPlacement="bottom-start" autoComplete="off" />
           </div>
-          <div className="form-group" style={{ marginBottom: 0, flex: '1 1 165px' }}>
-            <label className="form-label" style={{ fontSize: '0.8rem', marginBottom: 4 }}>{isDe ? 'Abreise' : 'Departure'}</label>
+          <div className="dex-ui-field" style={{ marginBottom: 0, flex: '1 1 165px' }}>
+            <label className="dex-ui-label">{isDe ? 'Abreise am' : 'Departure on'}</label>
             <DatePicker selected={main && main.to ? new Date(`${main.to}T00:00:00`) : null}
               onChange={(d: Date | null) => { if (d) setMainRange(main ? main.from : '', toLocalDay(d)); }}
               dateFormat="dd.MM.yyyy" locale={isDe ? 'de' : undefined} placeholderText={isDe ? 'TT.MM.JJJJ' : 'dd/mm/yyyy'}
               minDate={main && main.from ? new Date(`${main.from}T00:00:00`) : undefined}
-              className="form-input" wrapperClassName="dex-datepicker-wrapper" calendarClassName="dex-datepicker-calendar"
+              className="dex-ui-input" wrapperClassName="dex-datepicker-wrapper" calendarClassName="dex-datepicker-calendar"
               popperPlacement="bottom-start" autoComplete="off" />
           </div>
-          <div style={{ paddingBottom: 13, fontSize: '0.86rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)' }}>
+          <span className="dex-ui-pill dex-ui-pill--green" style={{ marginBottom: 9 }}>
             = {main ? nightLabel(nightsBetween(main.from, main.to), isDe) : '—'}
-          </div>
+          </span>
         </div>
 
         {/* v28.62: Der Zeitraum steht meist im Namen der Bedarfsfrage
             („Hotel (24-25 Sept)") — der Vorschlag daraus schlägt das
             Event-Datum, weil genau danach gefragt wurde. */}
         {labelRange && main && (labelRange.from !== main.from || labelRange.to !== main.to) && (
-          <div style={{ marginTop: 8, fontSize: '0.78rem', color: 'var(--dex-gray-700)' }}>
+          <div className="dex-ui-help" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
             {isDe
-              ? <>Eure Frage heißt „<strong>{fields.main ? fields.main.label : ''}</strong>&ldquo; — das entspricht {fmtDay(labelRange.from, isDe)}–{fmtDay(labelRange.to, isDe)}:{' '}</>
-              : <>Your question is „<strong>{fields.main ? fields.main.label : ''}</strong>&ldquo; — that means {fmtDay(labelRange.from, isDe)}–{fmtDay(labelRange.to, isDe)}:{' '}</>}
-            <button type="button" onClick={() => setMainRange(labelRange.from, labelRange.to)}
-              style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline', fontSize: '0.78rem' }}>
+              ? <span>Eure Frage heißt „<strong>{fields.main ? fields.main.label : ''}</strong>&ldquo; — das entspricht {fmtDay(labelRange.from, isDe)}–{fmtDay(labelRange.to, isDe)}:</span>
+              : <span>Your question is „<strong>{fields.main ? fields.main.label : ''}</strong>&ldquo; — that means {fmtDay(labelRange.from, isDe)}–{fmtDay(labelRange.to, isDe)}:</span>}
+            <button type="button" className="dex-ui-textbtn" style={{ padding: '2px 6px' }} onClick={() => setMainRange(labelRange.from, labelRange.to)}>
               {isDe ? 'übernehmen' : 'apply'}
             </button>
           </div>
         )}
         {!coreFits && !labelRange && (
-          <div style={{ marginTop: 8, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
-            {isDe ? 'Aus dem Event-Datum' : 'From the event dates'}:{' '}
-            <button type="button" onClick={() => setMainRange(core.from, core.to)}
-              style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline', fontSize: '0.78rem' }}>
+          <div className="dex-ui-help" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
+            <span>{isDe ? 'Aus dem Event-Datum' : 'From the event dates'}:</span>
+            <button type="button" className="dex-ui-textbtn" style={{ padding: '2px 6px' }} onClick={() => setMainRange(core.from, core.to)}>
               {fmtDay(core.from, isDe)} – {fmtDay(core.to, isDe)} {isDe ? 'übernehmen' : 'apply'}
             </button>
           </div>
@@ -943,41 +948,39 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
         {/* v28.63: Nutzt das Event das Zeitraum-Feld, kommt hier keine Deutung
             mehr — die Teilnehmer haben ihre Nächte selbst gewählt. */}
         {fields.range && (
-          <div style={{ ...box, borderColor: 'var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.05)' }}>
-            <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--dex-gray-800)' }}>
-              {isDe ? 'Zeiträume aus dem Anmeldeformular' : 'Periods from the registration form'}
-            </div>
-            <p style={{ ...explain, marginBottom: 8 }}>
+          <div className="dex-ui-section">
+            <div className="dex-ui-section-title">{isDe ? 'Zeiträume aus dem Anmeldeformular' : 'Periods from the registration form'}</div>
+            <p className="dex-ui-section-desc">
               {isDe
                 ? <>Euer Formular fragt unter „<strong>{fields.range.label}</strong>&ldquo; direkt nach An- und Abreise. Jede Person bekommt genau ihren Zeitraum — der Standard oben zählt nur für alle ohne Angabe.</>
                 : <>Your form asks for arrival and departure directly under „<strong>{fields.range.label}</strong>&ldquo;. Everyone gets exactly their own period — the standard above only applies to those without an answer.</>}
             </p>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 420 }}>
+            <div className="dex-ui-table-wrap">
+              <table className="dex-ui-table dex-ui-table--compact" style={{ minWidth: 420 }}>
                 <thead>
                   <tr>
-                    <th style={th}>{isDe ? 'Zeitraum' : 'Period'}</th>
-                    <th style={th}>{isDe ? 'Nächte' : 'Nights'}</th>
-                    <th style={th}>{isDe ? 'Personen' : 'People'}</th>
+                    <th>{isDe ? 'Zeitraum' : 'Period'}</th>
+                    <th className="is-num">{isDe ? 'Nächte' : 'Nights'}</th>
+                    <th className="is-num">{isDe ? 'Personen' : 'People'}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {formRanges.rows.map(r => (
                     <tr key={`${r.from}|${r.to}`}>
-                      <td style={td}>{fmtDay(r.from, isDe)} – {fmtDay(r.to, isDe)}</td>
-                      <td style={td}>{nightsBetween(r.from, r.to)}</td>
-                      <td style={{ ...td, fontWeight: 600 }}>{r.count}</td>
+                      <td>{fmtDay(r.from, isDe)} – {fmtDay(r.to, isDe)}</td>
+                      <td className="is-num">{nightsBetween(r.from, r.to)}</td>
+                      <td className="is-num" style={{ fontWeight: 600 }}>{r.count}</td>
                     </tr>
                   ))}
                   <tr>
-                    <td style={{ ...td, color: 'var(--dex-gray-600)' }}>{isDe ? 'Kein Hotel nötig' : 'No hotel needed'}</td>
-                    <td style={{ ...td, color: 'var(--dex-gray-500)' }}>—</td>
-                    <td style={td}>{formRanges.none}</td>
+                    <td className="dex-ui-muted">{isDe ? 'Kein Hotel nötig' : 'No hotel needed'}</td>
+                    <td className="is-num dex-ui-muted">—</td>
+                    <td className="is-num">{formRanges.none}</td>
                   </tr>
                   <tr>
-                    <td style={{ ...td, color: 'var(--dex-gray-600)' }}>{isDe ? 'Keine Angabe (bekommt den Standard)' : 'No answer (gets the standard)'}</td>
-                    <td style={{ ...td, color: 'var(--dex-gray-500)' }}>—</td>
-                    <td style={td}>{formRanges.unanswered}</td>
+                    <td className="dex-ui-muted">{isDe ? 'Keine Angabe (bekommt den Standard)' : 'No answer (gets the standard)'}</td>
+                    <td className="is-num dex-ui-muted">—</td>
+                    <td className="is-num">{formRanges.unanswered}</td>
                   </tr>
                 </tbody>
               </table>
@@ -989,11 +992,9 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
 
         {/* ---- Zusatznächte aus dem Anmeldeformular ---- */}
         {fields.extra && extraAnswers.length > 0 && (
-          <div style={{ ...box, borderColor: 'var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.05)' }}>
-            <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--dex-gray-800)' }}>
-              {isDe ? 'Zusatznächte — aus dem Anmeldeformular gelesen' : 'Additional nights — read from the registration form'}
-            </div>
-            <p style={{ ...explain, marginBottom: 8 }}>
+          <div className="dex-ui-section">
+            <div className="dex-ui-section-title">{isDe ? 'Zusatznächte aus dem Anmeldeformular' : 'Additional nights from the registration form'}</div>
+            <p className="dex-ui-section-desc">
               {isDe
                 ? <>Eure Teilnehmer haben unter „<strong>{fields.extra.label}</strong>&ldquo; selbst angegeben, ob sie länger brauchen. Der Assistent hat die Antworten gezählt und den passenden Zeitraum vorgeschlagen — prüf die Zuordnung und korrigiere sie, wo sie nicht stimmt.</>
                 : <>Your attendees stated under „<strong>{fields.extra.label}</strong>&ldquo; whether they need longer. The wizard counted the answers and proposed a matching period — check and correct it where needed.</>}
@@ -1002,20 +1003,23 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
                 Bedarfsfrage — nicht diese Tabelle. Ohne den Hinweis las sich die
                 Zeile „(keine Angabe)" so, als bekaeme JEDER den Standard. */}
             {fields.main && (
-              <div style={{ fontSize: '0.79rem', color: 'var(--dex-gray-700)', background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: '7px 10px', marginBottom: 8, lineHeight: 1.5 }}>
-                {isDe
-                  ? <>Die Frage „<strong>{fields.main.label}</strong>&ldquo; ist bereits der Standard-Zeitraum oben: <strong>{roomPeople.length}</strong> von {people.length} haben dort Ja gesagt{declinedCount > 0 ? <>, {declinedCount} Nein</> : ''}. Die Tabelle unten zählt <strong>nur diese {roomPeople.length}</strong> und klärt allein, wer davon zusätzlich früher anreist oder länger bleibt.</>
-                  : <>The question „<strong>{fields.main.label}</strong>&ldquo; already IS the standard period above: <strong>{roomPeople.length}</strong> of {people.length} said yes{declinedCount > 0 ? <>, {declinedCount} said no</> : ''}. The table below counts <strong>only those {roomPeople.length}</strong> and settles solely who arrives earlier or stays longer on top.</>}
+              <div className="dex-ui-callout dex-ui-callout--info dex-ui-callout--sm" style={{ marginBottom: 8 }}>
+                <span className="dex-ui-callout-icon"><Info size={14} /></span>
+                <span>
+                  {isDe
+                    ? <>Die Frage „<strong>{fields.main.label}</strong>&ldquo; ist bereits der Standard-Zeitraum oben: <strong>{roomPeople.length}</strong> von {people.length} haben dort Ja gesagt{declinedCount > 0 ? <>, {declinedCount} Nein</> : ''}. Die Tabelle unten zählt <strong>nur diese {roomPeople.length}</strong> und klärt allein, wer davon zusätzlich früher anreist oder länger bleibt.</>
+                    : <>The question „<strong>{fields.main.label}</strong>&ldquo; already IS the standard period above: <strong>{roomPeople.length}</strong> of {people.length} said yes{declinedCount > 0 ? <>, {declinedCount} said no</> : ''}. The table below counts <strong>only those {roomPeople.length}</strong> and settles solely who arrives earlier or stays longer on top.</>}
+                </span>
               </div>
             )}
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
+            <div className="dex-ui-table-wrap">
+              <table className="dex-ui-table dex-ui-table--compact" style={{ minWidth: 560 }}>
                 <thead>
                   <tr>
-                    <th style={th}>{isDe ? 'Antwort im Formular' : 'Answer in the form'}</th>
-                    <th style={th}>{isDe ? 'Personen' : 'People'}</th>
-                    <th style={th}>{isDe ? 'Zusätzliche Nächte' : 'Additional nights'}</th>
-                    <th style={th}>{isDe ? 'Ergibt den Zeitraum' : 'Resulting period'}</th>
+                    <th>{isDe ? 'Antwort im Formular' : 'Answer in the form'}</th>
+                    <th className="is-num">{isDe ? 'Personen' : 'People'}</th>
+                    <th>{isDe ? 'Zusätzliche Nächte' : 'Additional nights'}</th>
+                    <th>{isDe ? 'Ergibt den Zeitraum' : 'Resulting period'}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1024,16 +1028,16 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
                     const st = m.nights > 0 ? answerStays.filter(s => s.id === `auto_${m.after ? 'a' : 'b'}_${m.nights}`)[0] : mainStay;
                     return (
                       <tr key={a.value || '__empty'}>
-                        <td style={{ ...td, maxWidth: 300 }}>
-                          {a.value || <span style={{ color: 'var(--dex-gray-500)' }}>{isDe ? '(keine Zusatznacht angegeben)' : '(no additional night stated)'}</span>}
+                        <td style={{ maxWidth: 300 }}>
+                          {a.value || <span className="dex-ui-muted">{isDe ? '(keine Zusatznacht angegeben)' : '(no additional night stated)'}</span>}
                         </td>
-                        <td style={{ ...td, whiteSpace: 'nowrap' }}>{a.count}</td>
-                        <td style={td}>
-                          <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                            <input type="number" min={0} max={14} style={{ ...smallInp, width: 64 }} value={m.nights}
+                        <td className="is-num">{a.count}</td>
+                        <td>
+                          <span className="dex-ui-inline" style={{ flexWrap: 'nowrap' }}>
+                            <input type="number" min={0} max={14} className="dex-ui-input dex-ui-input--sm" style={{ width: 64 }} value={m.nights}
                               onChange={e => setAnswerMap({ ...answerMap, [a.value]: { ...m, nights: Math.max(0, parseInt(e.target.value, 10) || 0) } })} />
                             {m.nights > 0 && (
-                              <select style={{ ...smallInp, width: 110 }} value={m.after ? 'after' : 'before'}
+                              <select className="dex-ui-select dex-ui-select--sm" style={{ width: 110 }} value={m.after ? 'after' : 'before'}
                                 onChange={e => setAnswerMap({ ...answerMap, [a.value]: { ...m, after: e.target.value === 'after' } })}>
                                 <option value="before">{isDe ? 'vorher' : 'before'}</option>
                                 <option value="after">{isDe ? 'danach' : 'after'}</option>
@@ -1041,7 +1045,7 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
                             )}
                           </span>
                         </td>
-                        <td style={{ ...td, color: 'var(--dex-gray-600)', whiteSpace: 'nowrap' }}>
+                        <td className="dex-ui-muted" style={{ whiteSpace: 'nowrap' }}>
                           {st ? `${fmtDay(st.from, isDe)} – ${fmtDay(st.to, isDe)} · ${nightLabel(nightsBetween(st.from, st.to), isDe)}` : '—'}
                         </td>
                       </tr>
@@ -1054,29 +1058,27 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
         )}
 
         {/* ---- Manuelle Ausnahmen ---- */}
-        <div style={box}>
-          <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--dex-gray-800)' }}>
+        <div className="dex-ui-section">
+          <div className="dex-ui-section-title">
             {fields.extra
               ? (isDe ? 'Weitere Ausnahmen' : 'Further exceptions')
               : (isDe ? 'Reisen einzelne früher an oder bleiben länger?' : 'Do some arrive earlier or stay longer?')}
-            <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)' }}> · {isDe ? 'optional' : 'optional'}</span>
+            <span className="dex-ui-label-optional" style={{ textTransform: 'none', letterSpacing: 0 }}>({isDe ? 'optional' : 'optional'})</span>
           </div>
-          <p style={{ ...explain, marginBottom: 8 }}>
+          <p className="dex-ui-section-desc">
             {isDe
               ? <>Zeiträume, die du hier anlegst, kannst du beim Zuordnen pro Person mit einem Klick vergeben. Alles, was über den Kontingent-Zeitraum des Hotels hinausgeht, erscheint in Schritt 4 als <strong>Extranacht</strong>.</>
               : <>Periods you add here can be applied per person with one click when assigning. Anything beyond a hotel’s capacity period shows up as an <strong>extra night</strong> in step 4.</>}
           </p>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {/* v31.3: Umschaltbare Chips (Leitfaden 2b „mehrere aus vielen") statt
+              eigener Pillen-Knöpfe — Hover und aktiver Zustand kommen aus der Klasse. */}
+          <div className="dex-ui-inline">
             {variantDefs.map(v => {
               const on = wStays.some(s => s.from === v.from && s.to === v.to && (!main || s.id !== main.id));
               return (
-                <button key={v.label} type="button" onClick={() => toggleVariant(v.from, v.to, v.label)} style={{
-                  textAlign: 'left', cursor: 'pointer', padding: '8px 12px', borderRadius: 999, fontSize: '0.8rem',
-                  border: `1.5px solid ${on ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-                  background: on ? 'rgba(134,188,37,0.10)' : '#fff',
-                }}>
-                  {on ? '✓ ' : '+ '}{v.label}
-                  <span style={{ color: 'var(--dex-gray-500)' }}> · {fmtDay(v.from, isDe)}–{fmtDay(v.to, isDe)}</span>
+                <button key={v.label} type="button" className={cx('dex-ui-chip', on && 'is-active')} onClick={() => toggleVariant(v.from, v.to, v.label)}>
+                  {on ? <Check size={12} /> : <Plus size={12} />}{v.label}
+                  <span style={{ opacity: 0.75, fontWeight: 500 }}>· {fmtDay(v.from, isDe)}–{fmtDay(v.to, isDe)}</span>
                 </button>
               );
             })}
@@ -1089,82 +1091,76 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
               verbleibende lässt sich nicht entfernen. */}
           {wStays.length > 0 && (
             <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 4 }}>
-                {isDe ? 'Eure Zeiträume' : 'Your periods'}
+              <div className="dex-ui-label" style={{ fontSize: '0.8rem' }}>{isDe ? 'Eure Zeiträume' : 'Your periods'}</div>
+              <div className="dex-ui-card dex-ui-card--list">
+                {wStays.map(s => {
+                  const isMain = !!main && s.id === main.id;
+                  return (
+                    <div key={s.id} className="dex-ui-row--bordered" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '6px 8px' }}>
+                      {/* v31.3: „als Standard" steht links beim Namen (Leitfaden
+                          2a′) — nur Entfernen bleibt rechts außen. */}
+                      {isMain ? (
+                        <span className="dex-ui-pill dex-ui-pill--green">{isDe ? 'Standard' : 'Standard'}</span>
+                      ) : (
+                        <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" style={{ padding: '3px 8px', fontSize: '0.74rem' }}
+                          title={isDe ? 'Diesen Zeitraum zum Standard machen' : 'Make this the standard'}
+                          onClick={() => setWStays(wStays.map(x => ({ ...x, isDefault: x.id === s.id })))}>
+                          {isDe ? 'als Standard' : 'make standard'}
+                        </button>
+                      )}
+                      <input className="dex-ui-input dex-ui-input--sm" style={{ flex: '2 1 170px', width: 'auto' }} value={s.label}
+                        onChange={e => setWStays(wStays.map(x => x.id === s.id ? { ...x, label: e.target.value } : x))} />
+                      <span className="dex-ui-muted" style={{ whiteSpace: 'nowrap' }}>
+                        {fmtDay(s.from, isDe)} – {fmtDay(s.to, isDe)} · {nightLabel(nightsBetween(s.from, s.to), isDe)}
+                      </span>
+                      <button type="button" className="dex-ui-iconbtn dex-ui-iconbtn--danger" disabled={wStays.length <= 1}
+                        style={{ marginLeft: 'auto' }}
+                        title={wStays.length <= 1
+                          ? (isDe ? 'Mindestens ein Zeitraum muss bleiben.' : 'At least one period must remain.')
+                          : (isDe ? 'Zeitraum entfernen' : 'Remove period')}
+                        aria-label={isDe ? 'Zeitraum entfernen' : 'Remove period'}
+                        onClick={() => {
+                          const next = wStays.filter(x => x.id !== s.id);
+                          if (next.length > 0 && !next.some(x => x.isDefault)) next[0] = { ...next[0], isDefault: true };
+                          setWStays(next);
+                        }}><X size={16} /></button>
+                    </div>
+                  );
+                })}
               </div>
-              {wStays.map(s => {
-                const isMain = !!main && s.id === main.id;
-                return (
-                  <div key={s.id} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '5px 0', borderTop: '1px solid var(--dex-gray-100)' }}>
-                    {isMain ? (
-                      <span style={{
-                        fontSize: '0.7rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999,
-                        background: 'var(--dex-green, #86bc25)', color: '#fff', whiteSpace: 'nowrap',
-                      }}>{isDe ? 'Standard' : 'Standard'}</span>
-                    ) : (
-                      <button type="button" title={isDe ? 'Diesen Zeitraum zum Standard machen' : 'Make this the standard'}
-                        onClick={() => setWStays(wStays.map(x => ({ ...x, isDefault: x.id === s.id })))}
-                        style={{
-                          fontSize: '0.7rem', padding: '3px 8px', borderRadius: 999, cursor: 'pointer',
-                          border: '1px solid var(--dex-gray-300)', background: '#fff', color: 'var(--dex-gray-600)', whiteSpace: 'nowrap',
-                        }}>{isDe ? 'als Standard' : 'make standard'}</button>
-                    )}
-                    <input style={{ ...smallInp, flex: '2 1 170px' }} value={s.label}
-                      onChange={e => setWStays(wStays.map(x => x.id === s.id ? { ...x, label: e.target.value } : x))} />
-                    <span style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
-                      {fmtDay(s.from, isDe)} – {fmtDay(s.to, isDe)} · {nightLabel(nightsBetween(s.from, s.to), isDe)}
-                    </span>
-                    <button type="button" disabled={wStays.length <= 1}
-                      title={wStays.length <= 1
-                        ? (isDe ? 'Mindestens ein Zeitraum muss bleiben.' : 'At least one period must remain.')
-                        : (isDe ? 'Zeitraum entfernen' : 'Remove period')}
-                      onClick={() => {
-                        const next = wStays.filter(x => x.id !== s.id);
-                        if (next.length > 0 && !next.some(x => x.isDefault)) next[0] = { ...next[0], isDefault: true };
-                        setWStays(next);
-                      }}
-                      style={{
-                        marginLeft: 'auto', border: 'none', background: 'none', fontSize: '0.95rem',
-                        cursor: wStays.length <= 1 ? 'default' : 'pointer',
-                        color: 'var(--dex-red, #c00)', opacity: wStays.length <= 1 ? 0.3 : 1,
-                      }}>×</button>
-                  </div>
-                );
-              })}
             </div>
           )}
 
           {!showCustom && (
-            <button type="button" onClick={() => setShowCustom(true)}
-              style={{ marginTop: 10, border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '0.8rem', color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline' }}>
-              {isDe ? '+ Anderer Zeitraum mit eigenen Daten' : '+ Other period with custom dates'}
+            <button type="button" className="dex-ui-textbtn" style={{ marginTop: 10 }} onClick={() => setShowCustom(true)}>
+              <Plus size={14} />{isDe ? 'Anderer Zeitraum mit eigenen Daten' : 'Other period with custom dates'}
             </button>
           )}
           {showCustom && (
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 12 }}>
-              <div className="form-group" style={{ marginBottom: 0, flex: '2 1 170px' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 4 }}>{isDe ? 'Bezeichnung' : 'Label'}</label>
-                <input className="form-input" placeholder={isDe ? 'z.B. „Nur Sonntagnacht"' : 'e.g. „Sunday night only"'} value={newStay.label}
+              <div className="dex-ui-field" style={{ marginBottom: 0, flex: '2 1 170px' }}>
+                <label className="dex-ui-label">{isDe ? 'Wie soll der Zeitraum heißen?' : 'What should the period be called?'}</label>
+                <input className="dex-ui-input" placeholder={isDe ? 'z.B. „Nur Sonntagnacht"' : 'e.g. „Sunday night only"'} value={newStay.label}
                   onChange={e => setNewStay({ ...newStay, label: e.target.value })} />
               </div>
-              <div className="form-group" style={{ marginBottom: 0, flex: '1 1 145px' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 4 }}>{isDe ? 'Anreise' : 'Arrival'}</label>
+              <div className="dex-ui-field" style={{ marginBottom: 0, flex: '1 1 145px' }}>
+                <label className="dex-ui-label">{isDe ? 'Anreise am' : 'Arrival on'}</label>
                 <DatePicker selected={newStay.from ? new Date(`${newStay.from}T00:00:00`) : null}
                   onChange={(d: Date | null) => setNewStay({ ...newStay, from: d ? toLocalDay(d) : '' })}
                   dateFormat="dd.MM.yyyy" locale={isDe ? 'de' : undefined} placeholderText={isDe ? 'TT.MM.JJJJ' : 'dd/mm/yyyy'}
-                  className="form-input" wrapperClassName="dex-datepicker-wrapper" calendarClassName="dex-datepicker-calendar"
+                  className="dex-ui-input" wrapperClassName="dex-datepicker-wrapper" calendarClassName="dex-datepicker-calendar"
                   popperPlacement="bottom-start" isClearable autoComplete="off" />
               </div>
-              <div className="form-group" style={{ marginBottom: 0, flex: '1 1 145px' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 4 }}>{isDe ? 'Abreise' : 'Departure'}</label>
+              <div className="dex-ui-field" style={{ marginBottom: 0, flex: '1 1 145px' }}>
+                <label className="dex-ui-label">{isDe ? 'Abreise am' : 'Departure on'}</label>
                 <DatePicker selected={newStay.to ? new Date(`${newStay.to}T00:00:00`) : null}
                   onChange={(d: Date | null) => setNewStay({ ...newStay, to: d ? toLocalDay(d) : '' })}
                   dateFormat="dd.MM.yyyy" locale={isDe ? 'de' : undefined} placeholderText={isDe ? 'TT.MM.JJJJ' : 'dd/mm/yyyy'}
                   minDate={newStay.from ? new Date(`${newStay.from}T00:00:00`) : undefined}
-                  className="form-input" wrapperClassName="dex-datepicker-wrapper" calendarClassName="dex-datepicker-calendar"
+                  className="dex-ui-input" wrapperClassName="dex-datepicker-wrapper" calendarClassName="dex-datepicker-calendar"
                   popperPlacement="bottom-start" isClearable autoComplete="off" />
               </div>
-              <button type="button" className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '11px 18px' }}
+              <button type="button" className="btn btn-secondary dex-ui-btn-sm" style={{ marginBottom: 4 }}
                 onClick={() => {
                   const n = nightsBetween(newStay.from, newStay.to);
                   if (n <= 0) return;
@@ -1192,82 +1188,76 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
       <div style={question}>{isDe ? 'Welche Hotels habt ihr?' : 'Which hotels do you have?'}</div>
       <p style={explain}>
         {isDe
-          ? <>Ein Hotel je Zeile. <strong>Kontingent</strong> = die Zimmer, die ihr dort geblockt habt (leer lassen, wenn es keine feste Obergrenze gibt). Weil ein Kontingent fast immer nur für bestimmte Nächte gilt, sag rechts, für welche — alles darüber hinaus wird in Schritt 4 als Extranacht ausgewiesen.</>
-          : <>One hotel per row. <strong>Capacity</strong> = the rooms you blocked there (leave empty if there is no fixed limit). Because a contingent usually covers specific nights only, state which on the right — anything beyond shows as an extra night in step 4.</>}
+          ? <>Eine Karte je Hotel. Weil ein <strong>Kontingent</strong> fast immer nur für bestimmte Nächte gilt, sag je Hotel, für welche — alles darüber hinaus weist Schritt 4 als Extranacht aus.</>
+          : <>One card per hotel. Because a <strong>contingent</strong> usually covers specific nights only, state which per hotel — anything beyond shows as an extra night in step 4.</>}
       </p>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
-          <thead>
-            <tr>
-              <th style={th}>{isDe ? 'Hotel' : 'Hotel'}</th>
-              <th style={th}>{isDe ? 'Adresse (optional)' : 'Address (optional)'}</th>
-              <th style={th}>{isDe ? 'Kontingent' : 'Capacity'}</th>
-              <th style={th}>{isDe ? 'Kontingent gilt für' : 'Capacity applies to'}</th>
-              <th style={th} />
-            </tr>
-          </thead>
-          <tbody>
-            {wHotels.map(h => (
-              <tr key={h.id}>
-                <td style={td}>
-                  <input style={{ ...smallInp, width: '100%' }} value={h.name} placeholder={isDe ? 'Hotelname' : 'Hotel name'}
-                    onChange={e => setWHotels(wHotels.map(x => x.id === h.id ? { ...x, name: e.target.value } : x))} />
-                </td>
-                <td style={td}>
-                  <input style={{ ...smallInp, width: '100%' }} value={h.address || ''}
-                    onChange={e => setWHotels(wHotels.map(x => x.id === h.id ? { ...x, address: e.target.value } : x))} />
-                </td>
-                <td style={td}>
-                  <input style={{ ...smallInp, width: 90 }} type="number" min={0} value={h.capacity || ''}
-                    placeholder={isDe ? 'offen' : 'open'}
-                    onChange={e => setWHotels(wHotels.map(x => x.id === h.id ? { ...x, capacity: parseInt(e.target.value, 10) || 0 } : x))} />
-                </td>
-                <td style={td}>
-                  <select style={{ ...smallInp, width: '100%' }} value={h.capacityStayId || (mainStay ? mainStay.id : '')}
-                    onChange={e => setWHotels(wHotels.map(x => x.id === h.id ? { ...x, capacityStayId: e.target.value } : x))}>
-                    {allStays.map(s => (
-                      <option key={s.id} value={s.id}>
-                        {s.label} ({fmtDay(s.from, isDe)}–{fmtDay(s.to, isDe)})
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td style={{ ...td, textAlign: 'right' }}>
-                  <button type="button" onClick={() => setWHotels(wHotels.filter(x => x.id !== h.id))}
-                    style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)', fontSize: '0.95rem' }}>×</button>
-                </td>
-              </tr>
-            ))}
-            {wHotels.length === 0 && (
-              <tr><td style={{ ...td, color: 'var(--dex-gray-500)' }} colSpan={5}>
-                {isDe ? 'Noch kein Hotel — leg unten das erste an.' : 'No hotel yet — add the first one below.'}
-              </td></tr>
-            )}
-          </tbody>
-        </table>
+      {/* v31.3: Karten statt Tabelle — vier Eingaben je Hotel brauchen ihre
+          Beschriftung neben sich, nicht sechs Spalten weiter oben; und die Karte
+          bricht mobil sauber um. Entfernen bleibt rechts außen (Leitfaden 2a′). */}
+      <div className="dex-ui-stack">
+        {wHotels.map(h => (
+          <div key={h.id} className="dex-ui-card" style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <div className="dex-ui-grid-2" style={{ flex: 1, minWidth: 0 }}>
+              <div className="dex-ui-field">
+                <label className="dex-ui-label">{isDe ? 'Wie heißt das Hotel?' : 'What is the hotel called?'}</label>
+                <input className="dex-ui-input dex-ui-input--sm" value={h.name} placeholder={isDe ? 'Hotelname' : 'Hotel name'}
+                  onChange={e => setWHotels(wHotels.map(x => x.id === h.id ? { ...x, name: e.target.value } : x))} />
+              </div>
+              <div className="dex-ui-field">
+                <label className="dex-ui-label">{isDe ? 'Adresse' : 'Address'} <span className="dex-ui-label-optional">({isDe ? 'optional' : 'optional'})</span></label>
+                <input className="dex-ui-input dex-ui-input--sm" value={h.address || ''}
+                  onChange={e => setWHotels(wHotels.map(x => x.id === h.id ? { ...x, address: e.target.value } : x))} />
+              </div>
+              <div className="dex-ui-field">
+                <label className="dex-ui-label">{isDe ? 'Wie viele Zimmer habt ihr dort geblockt?' : 'How many rooms did you block there?'}</label>
+                <input className="dex-ui-input dex-ui-input--sm" style={{ width: 110 }} type="number" min={0} value={h.capacity || ''}
+                  placeholder={isDe ? 'offen' : 'open'}
+                  onChange={e => setWHotels(wHotels.map(x => x.id === h.id ? { ...x, capacity: parseInt(e.target.value, 10) || 0 } : x))} />
+                <div className="dex-ui-help">{isDe ? 'Leer lassen, wenn es keine feste Obergrenze gibt.' : 'Leave empty if there is no fixed limit.'}</div>
+              </div>
+              <div className="dex-ui-field">
+                <label className="dex-ui-label">{isDe ? 'Für welche Nächte gilt das Kontingent?' : 'Which nights does the contingent cover?'}</label>
+                <select className="dex-ui-select dex-ui-select--sm" value={h.capacityStayId || (mainStay ? mainStay.id : '')}
+                  onChange={e => setWHotels(wHotels.map(x => x.id === h.id ? { ...x, capacityStayId: e.target.value } : x))}>
+                  {allStays.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.label} ({fmtDay(s.from, isDe)}–{fmtDay(s.to, isDe)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <button type="button" className="dex-ui-iconbtn dex-ui-iconbtn--danger"
+              title={isDe ? 'Hotel entfernen' : 'Remove hotel'} aria-label={isDe ? 'Hotel entfernen' : 'Remove hotel'}
+              onClick={() => setWHotels(wHotels.filter(x => x.id !== h.id))}><X size={16} /></button>
+          </div>
+        ))}
+        {wHotels.length === 0 && (
+          <div className="dex-ui-empty">
+            <div className="dex-ui-empty-title">{isDe ? 'Noch kein Hotel' : 'No hotel yet'}</div>
+            {isDe ? 'Leg unten das erste an.' : 'Add the first one below.'}
+          </div>
+        )}
       </div>
-      <button type="button" className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '8px 16px', marginTop: 10 }}
+      <button type="button" className="btn btn-secondary dex-ui-btn-sm" style={{ marginTop: 10 }}
         onClick={() => setWHotels(wHotels.concat([{ id: uid('h'), name: '', address: '', capacity: 0, notes: '', priority: wHotels.length, capacityStayId: mainStay ? mainStay.id : '' }]))}>
-        {isDe ? '+ Hotel' : '+ Hotel'}
+        <Plus size={14} /> {isDe ? 'Hotel' : 'Hotel'}
       </button>
 
-      <div style={{
-        ...box,
-        background: totalCap > 0 && totalCap < needBeds ? '#fff6e5' : 'var(--dex-gray-50, #f7f7f5)',
-        borderColor: totalCap > 0 && totalCap < needBeds ? '#e0a300' : 'var(--dex-gray-200)',
-      }}>
-        <div style={{ fontSize: '0.84rem' }}>
+      <div className={cx('dex-ui-callout', totalCap > 0 && totalCap < needBeds ? 'dex-ui-callout--warn' : 'dex-ui-callout--neutral')} style={{ marginTop: 14 }}>
+        <span className="dex-ui-callout-icon">{totalCap > 0 && totalCap < needBeds ? <AlertCircle size={16} /> : <Users size={16} />}</span>
+        <div>
           {isDe
             ? <>Kontingent gesamt: <strong>{totalCap > 0 ? totalCap : '—'}</strong> · Personen mit Bettenbedarf: <strong>{needBeds}</strong></>
             : <>Total capacity: <strong>{totalCap > 0 ? totalCap : '—'}</strong> · people needing a bed: <strong>{needBeds}</strong></>}
+          {totalCap > 0 && totalCap < needBeds && (
+            <div style={{ marginTop: 2 }}>
+              {isDe
+                ? `Es fehlen ${needBeds - totalCap} Plätze. Du kannst trotzdem weiter — die Vorschau zeigt, wer übrig bleibt.`
+                : `${needBeds - totalCap} places short. You can continue — the preview shows who is left over.`}
+            </div>
+          )}
         </div>
-        {totalCap > 0 && totalCap < needBeds && (
-          <div style={{ fontSize: '0.8rem', color: '#8a5a00', marginTop: 4 }}>
-            {isDe
-              ? `Es fehlen ${needBeds - totalCap} Plätze. Du kannst trotzdem weiter — die Vorschau zeigt, wer übrig bleibt.`
-              : `${needBeds - totalCap} places short. You can continue — the preview shows who is left over.`}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -1283,23 +1273,28 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
       </p>
 
       {childEvents.length > 0 && (
-        <div style={box}>
-          <div style={{ fontSize: '0.84rem', fontWeight: 700, marginBottom: 2 }}>
-            {isDe ? 'Alle Teilnehmer eines Sub-Events in dasselbe Hotel' : 'All attendees of a sub-event into the same hotel'}
+        <div className="dex-ui-section">
+          <div className="dex-ui-section-title">
+            {isDe ? 'Soll ein ganzes Sub-Event in dasselbe Hotel?' : 'Should a whole sub-event go into the same hotel?'}
+            {/* v31.3: Die Folgen der Regel (Wunsch, Reihenfolge, Hülle) waren
+                vier Zeilen Fließtext — hier bleibt der Kern, der Rest im Tooltip. */}
+            <InfoTooltip text={isDe
+              ? <>Das gilt auch für Personen ohne Hotel-Wunsch im Formular und unabhängig von der Füll-Reihenfolge; die Zusage ist stärker als die Automatik. Wer in mehreren Sub-Events ist, bekommt die Hülle aus allen Zeiträumen — früheste Anreise, späteste Abreise.</>
+              : <>This also covers people without a hotel request in the form and overrides the fill order — the commitment beats the automatic distribution. People in several sub-events get the envelope of all periods — earliest arrival, latest departure.</>} />
           </div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginBottom: 8, lineHeight: 1.45 }}>
+          <p className="dex-ui-section-desc">
             {isDe
-              ? <>Hotel neben dem Sub-Event wählen — dann kommen <strong>alle</strong> Teilnehmer dieses Sub-Events dorthin, z.B. &bdquo;alle vom Vorabend-Dinner ins Hotel A, mit 2 Nächten&ldquo;. Das gilt auch für Personen ohne Hotel-Wunsch im Formular und unabhängig von der Füll-Reihenfolge; die Zusage ist stärker als die Automatik. Wer in mehreren Sub-Events ist, bekommt die Hülle aus allen Zeiträumen — früheste Anreise, späteste Abreise.</>
-              : <>Pick a hotel next to a sub-event and <strong>all</strong> of its attendees go there, e.g. &bdquo;everyone from the prior-evening dinner into hotel A, 2 nights&ldquo;. This also covers people without a hotel request in the form and overrides the fill order — the commitment beats the automatic distribution. People in several sub-events get the envelope of all periods — earliest arrival, latest departure.</>}
-          </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
+              ? <>Hotel neben dem Sub-Event wählen — dann kommen <strong>alle</strong> Teilnehmer dieses Sub-Events dorthin, z.B. &bdquo;alle vom Vorabend-Dinner ins Hotel A, mit 2 Nächten&ldquo;.</>
+              : <>Pick a hotel next to a sub-event and <strong>all</strong> of its attendees go there, e.g. &bdquo;everyone from the prior-evening dinner into hotel A, 2 nights&ldquo;.</>}
+          </p>
+          <div className="dex-ui-table-wrap">
+            <table className="dex-ui-table dex-ui-table--compact" style={{ minWidth: 520 }}>
               <thead>
                 <tr>
-                  <th style={th}>{isDe ? 'Sub-Event' : 'Sub-event'}</th>
-                  <th style={th}>{isDe ? 'Personen' : 'People'}</th>
-                  <th style={th}>{isDe ? 'Hotel' : 'Hotel'}</th>
-                  <th style={th}>{isDe ? 'Zeitraum' : 'Period'}</th>
+                  <th>{isDe ? 'Sub-Event' : 'Sub-event'}</th>
+                  <th>{isDe ? 'Personen' : 'People'}</th>
+                  <th>{isDe ? 'Hotel' : 'Hotel'}</th>
+                  <th>{isDe ? 'Zeitraum' : 'Period'}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1318,23 +1313,23 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
                     setWRules({ ...wRules, bySub: { ...(wRules.bySub || {}), [c.id]: { ...r, ...patch } } });
                   return (
                     <tr key={c.id}>
-                      <td style={td}>{shortTitle(c.title || '')}</td>
-                      <td style={{ ...td, color: 'var(--dex-gray-600)' }}>
+                      <td style={{ fontWeight: 600 }}>{shortTitle(c.title || '')}</td>
+                      <td className="dex-ui-muted" style={{ whiteSpace: 'nowrap' }}>
                         {n || '—'}
                         {!!r.hotel && n > 0 && (
-                          <span style={{ display: 'block', fontSize: '0.72rem', color: willMove > 0 ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500)' }}>
+                          <span className={cx('dex-ui-pill', willMove > 0 ? 'dex-ui-pill--green' : 'dex-ui-pill--gray')} style={{ marginLeft: 6 }}>
                             {isDe ? `${willMove} werden zugeordnet` : `${willMove} will be assigned`}
                           </span>
                         )}
                       </td>
-                      <td style={td}>
-                        <select style={{ ...smallInp, width: '100%' }} value={r.hotel || ''} onChange={e => set({ hotel: e.target.value })}>
+                      <td>
+                        <select className="dex-ui-select dex-ui-select--sm" value={r.hotel || ''} onChange={e => set({ hotel: e.target.value })}>
                           <option value="">{isDe ? '— automatisch —' : '— automatic —'}</option>
                           {wHotels.filter(h => (h.name || '').trim()).map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
                         </select>
                       </td>
-                      <td style={td}>
-                        <select style={{ ...smallInp, width: '100%' }} value={r.stayId || ''} onChange={e => set({ stayId: e.target.value })}>
+                      <td>
+                        <select className="dex-ui-select dex-ui-select--sm" value={r.stayId || ''} onChange={e => set({ stayId: e.target.value })}>
                           <option value="">{isDe ? '— Standard —' : '— default —'}</option>
                           {allStays.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                         </select>
@@ -1348,67 +1343,73 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
         </div>
       )}
 
-      <div style={box}>
-        <div style={{ fontSize: '0.84rem', fontWeight: 700, marginBottom: 2 }}>
-          {isDe ? 'Füll-Reihenfolge' : 'Fill order'}
+      <div className="dex-ui-section">
+        <div className="dex-ui-section-title">{isDe ? 'Welches Hotel wird zuerst voll?' : 'Which hotel fills up first?'}</div>
+        <p className="dex-ui-section-desc">
+          {isDe ? 'Oben zuerst. Häuser ohne Kontingent kommen immer zuletzt.' : 'Top first. Houses without capacity always come last.'}
+        </p>
+        {/* v31.3: Reine Anzeige-Zeilen ohne Klick — Hover nur auf den
+            Pfeil-Knöpfen, die etwas tun (Leitfaden 1.3). */}
+        <div className="dex-ui-card dex-ui-card--list">
+          {wHotels.slice().sort((a, b) => (a.priority || 0) - (b.priority || 0)).map((h, i, arr) => (
+            <div key={h.id} className="dex-ui-row--bordered" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px' }}>
+              <span className="dex-ui-step-num" style={{ width: 24, height: 24, fontSize: '0.74rem' }}>{i + 1}</span>
+              <span className="dex-ui-row-main dex-ui-row-title">{h.name || (isDe ? '(ohne Namen)' : '(unnamed)')}</span>
+              <span className={cx('dex-ui-pill', h.capacity ? 'dex-ui-pill--green' : 'dex-ui-pill--gray')}>
+                {h.capacity ? `${h.capacity} ${isDe ? 'Plätze' : 'places'}` : (isDe ? 'kein Kontingent' : 'no capacity')}
+              </span>
+              <button type="button" className="dex-ui-iconbtn" disabled={i === 0}
+                title={isDe ? 'Nach oben' : 'Move up'} aria-label={isDe ? 'Nach oben' : 'Move up'}
+                onClick={() => {
+                  const order = arr.map(x => x.id);
+                  const tmp = order[i - 1]; order[i - 1] = order[i]; order[i] = tmp;
+                  setWHotels(wHotels.map(x => ({ ...x, priority: order.indexOf(x.id) })));
+                }}><ChevronUp size={16} /></button>
+              <button type="button" className="dex-ui-iconbtn" disabled={i === arr.length - 1}
+                title={isDe ? 'Nach unten' : 'Move down'} aria-label={isDe ? 'Nach unten' : 'Move down'}
+                onClick={() => {
+                  const order = arr.map(x => x.id);
+                  const tmp = order[i + 1]; order[i + 1] = order[i]; order[i] = tmp;
+                  setWHotels(wHotels.map(x => ({ ...x, priority: order.indexOf(x.id) })));
+                }}><ChevronDown size={16} /></button>
+            </div>
+          ))}
         </div>
-        <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginBottom: 8 }}>
-          {isDe ? 'Welches Hotel soll zuerst voll werden? Oben zuerst. Häuser ohne Kontingent kommen immer zuletzt.' : 'Which hotel fills up first? Top first. Houses without capacity always come last.'}
-        </div>
-        {wHotels.slice().sort((a, b) => (a.priority || 0) - (b.priority || 0)).map((h, i, arr) => (
-          <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--dex-gray-100)' }}>
-            <span style={{ width: 20, fontWeight: 700, fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{i + 1}.</span>
-            <span style={{ flex: 1, fontSize: '0.85rem' }}>{h.name || (isDe ? '(ohne Namen)' : '(unnamed)')}</span>
-            <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
-              {h.capacity ? `${h.capacity} ${isDe ? 'Plätze' : 'places'}` : (isDe ? 'kein Kontingent' : 'no capacity')}
-            </span>
-            <button type="button" disabled={i === 0} onClick={() => {
-              const order = arr.map(x => x.id);
-              const tmp = order[i - 1]; order[i - 1] = order[i]; order[i] = tmp;
-              setWHotels(wHotels.map(x => ({ ...x, priority: order.indexOf(x.id) })));
-            }} style={{ border: '1px solid var(--dex-gray-300)', background: '#fff', borderRadius: 6, cursor: i === 0 ? 'default' : 'pointer', opacity: i === 0 ? 0.35 : 1, padding: '1px 7px' }}>↑</button>
-            <button type="button" disabled={i === arr.length - 1} onClick={() => {
-              const order = arr.map(x => x.id);
-              const tmp = order[i + 1]; order[i + 1] = order[i]; order[i] = tmp;
-              setWHotels(wHotels.map(x => ({ ...x, priority: order.indexOf(x.id) })));
-            }} style={{ border: '1px solid var(--dex-gray-300)', background: '#fff', borderRadius: 6, cursor: i === arr.length - 1 ? 'default' : 'pointer', opacity: i === arr.length - 1 ? 0.35 : 1, padding: '1px 7px' }}>↓</button>
-          </div>
-        ))}
       </div>
 
-      <div style={box}>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '0.84rem', cursor: 'pointer', marginBottom: 8 }}>
-          <input type="checkbox" checked={!!wRules.keepGroups} onChange={e => setWRules({ ...wRules, keepGroups: e.target.checked })}
-            style={{ width: 16, height: 16, marginTop: 2, accentColor: 'var(--dex-green, #86bc25)' }} />
-          <span>
-            {isDe ? 'Gruppen zusammen unterbringen' : 'Keep groups together'}
-            <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
-              {isDe ? 'Personen mit derselben Sub-Event-Kombination kommen möglichst ins selbe Haus.' : 'People with the same sub-event combination go into the same house where possible.'}
+      <div className="dex-ui-section">
+        <div className="dex-ui-section-title">{isDe ? 'Wie soll verteilt werden?' : 'How should people be distributed?'}</div>
+        <div className="dex-ui-stack">
+          <label className={cx('dex-ui-toggle-row', !!wRules.keepGroups && 'is-active')}>
+            <input type="checkbox" checked={!!wRules.keepGroups} onChange={e => setWRules({ ...wRules, keepGroups: e.target.checked })} />
+            <span className="dex-ui-toggle-row-body">
+              <span className="dex-ui-toggle-row-title">{isDe ? 'Gruppen zusammen unterbringen' : 'Keep groups together'}</span>
+              <span className="dex-ui-toggle-row-desc">
+                {isDe ? 'Personen mit derselben Sub-Event-Kombination kommen möglichst ins selbe Haus.' : 'People with the same sub-event combination go into the same house where possible.'}
+              </span>
             </span>
-          </span>
-        </label>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '0.84rem', cursor: 'pointer', marginBottom: 8 }}>
-          <input type="checkbox" checked={!!wRules.skipNoWish} onChange={e => setWRules({ ...wRules, skipNoWish: e.target.checked })}
-            style={{ width: 16, height: 16, marginTop: 2, accentColor: 'var(--dex-green, #86bc25)' }} />
-          <span>
-            {isDe ? '„Kein Hotel nötig" überspringen' : 'Skip „no accommodation"'}
-            <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
-              {fields.main
-                ? (isDe ? `Wer „${fields.main.label}“ mit Nein beantwortet hat, bekommt kein Zimmer zugeteilt.` : `Anyone who answered „${fields.main.label}“ with no is not assigned a room.`)
-                : (isDe ? 'Wer im Anmeldeformular ausdrücklich kein Hotel wollte, bekommt keins zugeteilt.' : 'Anyone who explicitly declined accommodation is not assigned.')}
+          </label>
+          <label className={cx('dex-ui-toggle-row', !!wRules.skipNoWish && 'is-active')}>
+            <input type="checkbox" checked={!!wRules.skipNoWish} onChange={e => setWRules({ ...wRules, skipNoWish: e.target.checked })} />
+            <span className="dex-ui-toggle-row-body">
+              <span className="dex-ui-toggle-row-title">{isDe ? '„Kein Hotel nötig" überspringen' : 'Skip „no accommodation"'}</span>
+              <span className="dex-ui-toggle-row-desc">
+                {fields.main
+                  ? (isDe ? `Wer „${fields.main.label}“ mit Nein beantwortet hat, bekommt kein Zimmer zugeteilt.` : `Anyone who answered „${fields.main.label}“ with no is not assigned a room.`)
+                  : (isDe ? 'Wer im Anmeldeformular ausdrücklich kein Hotel wollte, bekommt keins zugeteilt.' : 'Anyone who explicitly declined accommodation is not assigned.')}
+              </span>
             </span>
-          </span>
-        </label>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '0.84rem', cursor: 'pointer' }}>
-          <input type="checkbox" checked={overwrite} onChange={e => setOverwrite(e.target.checked)}
-            style={{ width: 16, height: 16, marginTop: 2, accentColor: 'var(--dex-green, #86bc25)' }} />
-          <span>
-            {isDe ? 'Bestehende Zuordnungen überschreiben' : 'Overwrite existing assignments'}
-            <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
-              {isDe ? 'Aus — bereits zugeordnete Personen bleiben, wo sie sind (empfohlen).' : 'Off — already assigned people stay where they are (recommended).'}
+          </label>
+          <label className={cx('dex-ui-toggle-row', overwrite && 'is-active')}>
+            <input type="checkbox" checked={overwrite} onChange={e => setOverwrite(e.target.checked)} />
+            <span className="dex-ui-toggle-row-body">
+              <span className="dex-ui-toggle-row-title">{isDe ? 'Bestehende Zuordnungen überschreiben' : 'Overwrite existing assignments'}</span>
+              <span className="dex-ui-toggle-row-desc">
+                {isDe ? 'Aus — bereits zugeordnete Personen bleiben, wo sie sind (empfohlen).' : 'Off — already assigned people stay where they are (recommended).'}
+              </span>
             </span>
-          </span>
-        </label>
+          </label>
+        </div>
       </div>
     </div>
   );
@@ -1426,65 +1427,68 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
         </p>
 
         {/* Wer wird überhaupt angefasst? */}
-        <div style={{ ...box, marginTop: 0, marginBottom: 12, background: 'var(--dex-gray-50, #f7f7f5)' }}>
-          <div style={{ fontSize: '0.82rem', lineHeight: 1.6 }}>
+        <div className="dex-ui-callout dex-ui-callout--neutral">
+          <span className="dex-ui-callout-icon"><Users size={16} /></span>
+          <div>
             {isDe
               ? <><strong>{people.length}</strong> aktive Teilnehmer · davon werden <strong>{plan.candidates}</strong> jetzt verteilt.</>
               : <><strong>{people.length}</strong> active attendees · <strong>{plan.candidates}</strong> will be distributed now.</>}
+            {(plan.excludedAssigned > 0 || plan.excludedNoWish > 0 || plan.forced > 0) && (
+              <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                {plan.forced > 0 && (
+                  <li>{isDe
+                    ? <><strong>{plan.forced}</strong> davon kommen über eine feste Sub-Event-Zuordnung ins Haus — unabhängig von Hotel-Wunsch und Füll-Reihenfolge.</>
+                    : <><strong>{plan.forced}</strong> of them come from a fixed sub-event assignment — regardless of hotel request and fill order.</>}</li>
+                )}
+                {plan.excludedAssigned > 0 && (
+                  <li>{isDe
+                    ? <><strong>{plan.excludedAssigned}</strong> haben bereits ein Hotel und bleiben unberührt — setz oben in Schritt 3 „Bestehende Zuordnungen überschreiben&ldquo;, wenn sie mit verteilt werden sollen.</>
+                    : <><strong>{plan.excludedAssigned}</strong> already have a hotel and stay untouched — tick „Overwrite existing assignments&ldquo; in step 3 to include them.</>}</li>
+                )}
+                {plan.excludedNoWish > 0 && (
+                  <li>{isDe
+                    ? <><strong>{plan.excludedNoWish}</strong> haben im Anmeldeformular kein Zimmer gewünscht.</>
+                    : <><strong>{plan.excludedNoWish}</strong> declined a room in the registration form.</>}</li>
+                )}
+              </ul>
+            )}
           </div>
-          {(plan.excludedAssigned > 0 || plan.excludedNoWish > 0 || plan.forced > 0) && (
-            <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: '0.79rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
-              {plan.forced > 0 && (
-                <li>{isDe
-                  ? <><strong>{plan.forced}</strong> davon kommen über eine feste Sub-Event-Zuordnung ins Haus — unabhängig von Hotel-Wunsch und Füll-Reihenfolge.</>
-                  : <><strong>{plan.forced}</strong> of them come from a fixed sub-event assignment — regardless of hotel request and fill order.</>}</li>
-              )}
-              {plan.excludedAssigned > 0 && (
-                <li>{isDe
-                  ? <><strong>{plan.excludedAssigned}</strong> haben bereits ein Hotel und bleiben unberührt — setz oben in Schritt 3 „Bestehende Zuordnungen überschreiben&ldquo;, wenn sie mit verteilt werden sollen.</>
-                  : <><strong>{plan.excludedAssigned}</strong> already have a hotel and stay untouched — tick „Overwrite existing assignments&ldquo; in step 3 to include them.</>}</li>
-              )}
-              {plan.excludedNoWish > 0 && (
-                <li>{isDe
-                  ? <><strong>{plan.excludedNoWish}</strong> haben im Anmeldeformular kein Zimmer gewünscht.</>
-                  : <><strong>{plan.excludedNoWish}</strong> declined a room in the registration form.</>}</li>
-              )}
-            </ul>
-          )}
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 660 }}>
+        {/* v31.3: Überbuchung als rote Pille statt roter Zeile — die Zeile
+            färbt sich sonst beim Überfahren grau und die Warnung ist weg. */}
+        <div className="dex-ui-table-wrap" style={{ marginTop: 12 }}>
+          <table className="dex-ui-table dex-ui-table--compact" style={{ minWidth: 660 }}>
             <thead>
               <tr>
-                <th style={th}>{isDe ? 'Hotel' : 'Hotel'}</th>
-                <th style={th}>{isDe ? 'Personen' : 'People'}</th>
-                <th style={th}>{isDe ? 'Kontingent-Zeitraum' : 'Capacity period'}</th>
-                <th style={th}>{isDe ? 'Extranächte vorab' : 'Extra nights before'}</th>
-                <th style={th}>{isDe ? 'Extranächte danach' : 'Extra nights after'}</th>
-                <th style={th}>{isDe ? 'Übernachtungen' : 'Room nights'}</th>
+                <th>{isDe ? 'Hotel' : 'Hotel'}</th>
+                <th>{isDe ? 'Personen' : 'People'}</th>
+                <th>{isDe ? 'Kontingent-Zeitraum' : 'Capacity period'}</th>
+                <th className="is-num">{isDe ? 'Extranächte vorab' : 'Extra nights before'}</th>
+                <th className="is-num">{isDe ? 'Extranächte danach' : 'Extra nights after'}</th>
+                <th className="is-num">{isDe ? 'Übernachtungen' : 'Room nights'}</th>
               </tr>
             </thead>
             <tbody>
               {plan.rows.map(r => {
                 const over = !!r.hotel.capacity && r.people.length > (r.hotel.capacity || 0);
                 return (
-                  <tr key={r.hotel.id} style={{ background: over ? '#fef3f2' : 'transparent' }}>
-                    <td style={{ ...td, fontWeight: 600 }}>{r.hotel.name || (isDe ? '(ohne Namen)' : '(unnamed)')}</td>
-                    <td style={td}>
+                  <tr key={r.hotel.id}>
+                    <td style={{ fontWeight: 600 }}>{r.hotel.name || (isDe ? '(ohne Namen)' : '(unnamed)')}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
                       {r.people.length}{r.hotel.capacity ? ` / ${r.hotel.capacity}` : ''}
-                      {over && <span style={{ color: 'var(--dex-red, #c00)', fontWeight: 700 }}> · {isDe ? 'über' : 'over'}</span>}
+                      {over && <span className="dex-ui-pill dex-ui-pill--red" style={{ marginLeft: 6 }}>{isDe ? 'über Kontingent' : 'over capacity'}</span>}
                     </td>
-                    <td style={{ ...td, color: 'var(--dex-gray-600)' }}>
+                    <td className="dex-ui-muted">
                       {r.base ? `${fmtDay(r.base.from, isDe)}–${fmtDay(r.base.to, isDe)}` : '—'}
                     </td>
-                    <td style={{ ...td, fontWeight: r.extraBefore > 0 ? 700 : 400, color: r.extraBefore > 0 ? '#b35a00' : 'var(--dex-gray-500)' }}>
-                      {r.extraBefore > 0 ? `${r.extraBefore}×` : '—'}
+                    <td className="is-num">
+                      {r.extraBefore > 0 ? <span className="dex-ui-pill dex-ui-pill--orange">{r.extraBefore}×</span> : <span className="dex-ui-muted">—</span>}
                     </td>
-                    <td style={{ ...td, fontWeight: r.extraAfter > 0 ? 700 : 400, color: r.extraAfter > 0 ? '#b35a00' : 'var(--dex-gray-500)' }}>
-                      {r.extraAfter > 0 ? `${r.extraAfter}×` : '—'}
+                    <td className="is-num">
+                      {r.extraAfter > 0 ? <span className="dex-ui-pill dex-ui-pill--orange">{r.extraAfter}×</span> : <span className="dex-ui-muted">—</span>}
                     </td>
-                    <td style={td}>{r.nights}</td>
+                    <td className="is-num">{r.nights}</td>
                   </tr>
                 );
               })}
@@ -1493,51 +1497,56 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
         </div>
 
         {extraTotal > 0 && (
-          <div style={{ ...box, background: '#fff6e5', borderColor: '#e0a300' }}>
-            <div style={{ fontSize: '0.84rem', fontWeight: 700, marginBottom: 4 }}>
-              {isDe ? `${extraTotal} Extranacht/Extranächte über das Kontingent hinaus` : `${extraTotal} extra night(s) beyond the contingent`}
+          <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginTop: 12 }}>
+            <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+            <div>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                {isDe ? `${extraTotal} Extranacht/Extranächte über das Kontingent hinaus` : `${extraTotal} extra night(s) beyond the contingent`}
+              </div>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {plan.rows.filter(r => r.extraBefore + r.extraAfter > 0).map(r => (
+                  <li key={r.hotel.id}>
+                    {isDe
+                      ? <><strong>{r.hotel.name}</strong>: {r.extraBefore > 0 ? `${r.extraBefore}× eine Nacht früher (ab ${r.base ? fmtDay(addDays(r.base.from, -1), isDe) : '—'})` : ''}{r.extraBefore > 0 && r.extraAfter > 0 ? ', ' : ''}{r.extraAfter > 0 ? `${r.extraAfter}× eine Nacht länger` : ''}</>
+                      : <><strong>{r.hotel.name}</strong>: {r.extraBefore > 0 ? `${r.extraBefore}× one night earlier` : ''}{r.extraBefore > 0 && r.extraAfter > 0 ? ', ' : ''}{r.extraAfter > 0 ? `${r.extraAfter}× one night longer` : ''}</>}
+                  </li>
+                ))}
+              </ul>
             </div>
-            <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.82rem', lineHeight: 1.6 }}>
-              {plan.rows.filter(r => r.extraBefore + r.extraAfter > 0).map(r => (
-                <li key={r.hotel.id}>
-                  {isDe
-                    ? <><strong>{r.hotel.name}</strong>: {r.extraBefore > 0 ? `${r.extraBefore}× eine Nacht früher (ab ${r.base ? fmtDay(addDays(r.base.from, -1), isDe) : '—'})` : ''}{r.extraBefore > 0 && r.extraAfter > 0 ? ', ' : ''}{r.extraAfter > 0 ? `${r.extraAfter}× eine Nacht länger` : ''}</>
-                    : <><strong>{r.hotel.name}</strong>: {r.extraBefore > 0 ? `${r.extraBefore}× one night earlier` : ''}{r.extraBefore > 0 && r.extraAfter > 0 ? ', ' : ''}{r.extraAfter > 0 ? `${r.extraAfter}× one night longer` : ''}</>}
-                </li>
-              ))}
-            </ul>
           </div>
         )}
 
         {plan.unplaced > 0 && (
-          <div style={{ ...box, background: '#fef3f2', borderColor: 'var(--dex-red, #c00)' }}>
-            <div style={{ fontSize: '0.84rem' }}>
+          <div className="dex-ui-callout dex-ui-callout--danger" style={{ marginTop: 12 }}>
+            <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+            <span>
               {isDe
                 ? `${plan.unplaced} Person(en) bleiben ohne Hotel — das Kontingent reicht nicht. Geh zurück zu Schritt 2 und erhöhe ein Kontingent oder leg ein weiteres Hotel an.`
                 : `${plan.unplaced} person(s) stay without a hotel — capacity is not sufficient. Go back to step 2 and raise a capacity or add another hotel.`}
-            </div>
+            </span>
           </div>
         )}
 
-        <div style={box}>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '0.84rem', cursor: 'pointer' }}>
-            <input type="checkbox" checked={doAssign} onChange={e => setDoAssign(e.target.checked)}
-              style={{ width: 16, height: 16, marginTop: 2, accentColor: 'var(--dex-green, #86bc25)' }} />
-            <span>
-              {isDe ? `Zuordnung jetzt schreiben (${plan.assignments.length} Person(en))` : `Write assignments now (${plan.assignments.length} person(s))`}
-              <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+        <div className="dex-ui-section">
+          <div className="dex-ui-section-title">{isDe ? 'Was beim Übernehmen passiert' : 'What happens on apply'}</div>
+          <label className={cx('dex-ui-toggle-row', doAssign && 'is-active')}>
+            <input type="checkbox" checked={doAssign} onChange={e => setDoAssign(e.target.checked)} />
+            <span className="dex-ui-toggle-row-body">
+              <span className="dex-ui-toggle-row-title">
+                {isDe ? `Zuordnung jetzt schreiben (${plan.assignments.length} Person(en))` : `Write assignments now (${plan.assignments.length} person(s))`}
+              </span>
+              <span className="dex-ui-toggle-row-desc">
                 {isDe
                   ? 'Aus — es werden nur Zeiträume, Hotels und Regeln gespeichert. Die Verteilung kannst du später jederzeit über „Automatisch verteilen" auslösen.'
                   : 'Off — only periods, hotels and rules are saved. You can run the distribution later via „Auto-distribute".'}
               </span>
             </span>
           </label>
-        </div>
-
-        <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', marginTop: 10, lineHeight: 1.55 }}>
-          {isDe
-            ? <>Gespeichert werden: <strong>{allStays.length}</strong> Zeitraum/Zeiträume, <strong>{wHotels.length}</strong> Hotel(s){doAssign ? <>, <strong>{plan.assignments.length}</strong> Zuordnung(en)</> : ''}. Die Hotel-Anzeige für Teilnehmer bleibt unverändert — die gibst du separat frei.</>
-            : <>Will be saved: <strong>{allStays.length}</strong> period(s), <strong>{wHotels.length}</strong> hotel(s){doAssign ? <>, <strong>{plan.assignments.length}</strong> assignment(s)</> : ''}. Attendee visibility stays as it is — you release that separately.</>}
+          <p className="dex-ui-help" style={{ marginTop: 10 }}>
+            {isDe
+              ? <>Gespeichert werden: <strong>{allStays.length}</strong> Zeitraum/Zeiträume, <strong>{wHotels.length}</strong> Hotel(s){doAssign ? <>, <strong>{plan.assignments.length}</strong> Zuordnung(en)</> : ''}. Die Hotel-Anzeige für Teilnehmer bleibt unverändert — die gibst du separat frei.</>
+              : <>Will be saved: <strong>{allStays.length}</strong> period(s), <strong>{wHotels.length}</strong> hotel(s){doAssign ? <>, <strong>{plan.assignments.length}</strong> assignment(s)</> : ''}. Attendee visibility stays as it is — you release that separately.</>}
+          </p>
         </div>
       </div>
     );
@@ -1548,50 +1557,23 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
     // schliesst ihn nicht mehr. Im Assistenten stecken vier Schritte Eingabe,
     // die beim versehentlichen Schliessen komplett weg waren. Raus geht es nur
     // noch bewusst über „Abbrechen".
+    // v31.3: Kopf und Fußzeile über die Modal-Props (title/subtitle/icon/
+    // footer) — derselbe Dialog-Rahmen wie in allen anderen Modalen seit
+    // v31.2. „Abbrechen" steht links (es verlässt den Assistenten), die
+    // Schritt-Navigation rechts, ganz außen der einzige Primär-Knopf.
     <Modal open={open} onClose={onClose} maxWidth={900} dismissable={false}
-      ariaLabel={isDe ? 'Hotel-Planung einrichten' : 'Set up hotel planning'}>
-      <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--dex-gray-800)' }}>
-        {isDe ? 'Hotel-Planung einrichten' : 'Set up hotel planning'}
-      </h2>
-      <p style={{ margin: '4px 0 0', fontSize: '0.84rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-        {isDe
-          ? 'Wann braucht ihr Zimmer, welche Hotels habt ihr, wer kommt wohin — daraus ergeben sich die Verteilung und die Extranächte. Geschrieben wird erst am Ende.'
-          : 'When do you need rooms, which hotels do you have, who goes where — that gives you the distribution and the extra nights. Nothing is written before the end.'}
-      </p>
-
-      {!showIntro && renderStepper()}
-
-      <div style={{ maxHeight: '58vh', overflowY: 'auto', paddingRight: 4, marginTop: 10 }}>
-        {showIntro && renderIntro()}
-        {!showIntro && step === 1 && renderStays()}
-        {!showIntro && step === 2 && renderHotels()}
-        {!showIntro && step === 3 && renderRules()}
-        {!showIntro && step === 4 && renderPreview()}
-      </div>
-
-      {/* Zwischenstand: eine Zeile mit dem, was der Assistent bis hierhin
-          verstanden hat. Ohne das weiß man beim ersten Mal nicht, ob die
-          Eingabe angekommen ist. */}
-      {!showIntro && (
-        <div style={{ marginTop: 12, padding: '8px 12px', borderRadius: 8, background: 'var(--dex-gray-50, #f7f7f5)', fontSize: '0.78rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
-          <strong>{isDe ? 'Stand: ' : 'So far: '}</strong>
-          {mainStay
-            ? `${isDe ? 'Zimmer' : 'Rooms'} ${fmtDay(mainStay.from, isDe)}–${fmtDay(mainStay.to, isDe)} (${nightLabel(nightsBetween(mainStay.from, mainStay.to), isDe)})`
-            : (isDe ? 'kein Zeitraum' : 'no period')}
-          {allStays.length > 1 ? ` + ${allStays.length - 1} ${isDe ? 'Ausnahme(n)' : 'exception(s)'}` : ''}
-          {' · '}
-          {wHotels.filter(h => (h.name || '').trim()).length > 0
-            ? `${wHotels.filter(h => (h.name || '').trim()).length} ${isDe ? 'Hotel(s)' : 'hotel(s)'}${totalCap > 0 ? `, ${totalCap} ${isDe ? 'Plätze' : 'places'}` : ''}`
-            : (isDe ? 'noch kein Hotel' : 'no hotel yet')}
-          {' · '}
-          {isDe ? `${needBeds} Person(en) mit Bettenbedarf` : `${needBeds} person(s) needing a bed`}
-        </div>
-      )}
-
-      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16, flexWrap: 'wrap' }}>
-        <button type="button" className="btn btn-secondary" disabled={busy} onClick={onClose}>
-          {isDe ? 'Abbrechen' : 'Cancel'}
-        </button>
+      ariaLabel={isDe ? 'Hotel-Planung einrichten' : 'Set up hotel planning'}
+      title={isDe ? 'Hotel-Planung einrichten' : 'Set up hotel planning'}
+      subtitle={isDe
+        ? 'Wann braucht ihr Zimmer, welche Hotels habt ihr, wer kommt wohin — daraus ergeben sich die Verteilung und die Extranächte. Geschrieben wird erst am Ende.'
+        : 'When do you need rooms, which hotels do you have, who goes where — that gives you the distribution and the extra nights. Nothing is written before the end.'}
+      icon={<Calendar size={20} />}
+      footer={<>
+        <span className="dex-ui-modal-foot-left">
+          <button type="button" className="btn btn-secondary" disabled={busy} onClick={onClose}>
+            {isDe ? 'Abbrechen' : 'Cancel'}
+          </button>
+        </span>
         {showIntro && (
           <button type="button" className="btn btn-primary" disabled={busy} onClick={() => setShowIntro(false)}>
             {isDe ? 'Los geht’s' : 'Let’s go'}
@@ -1643,7 +1625,38 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
             {busy ? (isDe ? 'Wird übernommen…' : 'Applying…') : (isDe ? 'Übernehmen' : 'Apply')}
           </button>
         )}
+      </>}>
+      {!showIntro && renderStepper()}
+
+      <div style={{ maxHeight: '58vh', overflowY: 'auto', paddingRight: 4 }}>
+        {showIntro && renderIntro()}
+        {!showIntro && step === 1 && renderStays()}
+        {!showIntro && step === 2 && renderHotels()}
+        {!showIntro && step === 3 && renderRules()}
+        {!showIntro && step === 4 && renderPreview()}
       </div>
+
+      {/* Zwischenstand: eine Zeile mit dem, was der Assistent bis hierhin
+          verstanden hat. Ohne das weiß man beim ersten Mal nicht, ob die
+          Eingabe angekommen ist. */}
+      {!showIntro && (
+        <div className="dex-ui-callout dex-ui-callout--neutral dex-ui-callout--sm">
+          <span className="dex-ui-callout-icon"><Info size={14} /></span>
+          <span>
+            <strong>{isDe ? 'Stand: ' : 'So far: '}</strong>
+            {mainStay
+              ? `${isDe ? 'Zimmer' : 'Rooms'} ${fmtDay(mainStay.from, isDe)}–${fmtDay(mainStay.to, isDe)} (${nightLabel(nightsBetween(mainStay.from, mainStay.to), isDe)})`
+              : (isDe ? 'kein Zeitraum' : 'no period')}
+            {allStays.length > 1 ? ` + ${allStays.length - 1} ${isDe ? 'Ausnahme(n)' : 'exception(s)'}` : ''}
+            {' · '}
+            {wHotels.filter(h => (h.name || '').trim()).length > 0
+              ? `${wHotels.filter(h => (h.name || '').trim()).length} ${isDe ? 'Hotel(s)' : 'hotel(s)'}${totalCap > 0 ? `, ${totalCap} ${isDe ? 'Plätze' : 'places'}` : ''}`
+              : (isDe ? 'noch kein Hotel' : 'no hotel yet')}
+            {' · '}
+            {isDe ? `${needBeds} Person(en) mit Bettenbedarf` : `${needBeds} person(s) needing a bed`}
+          </span>
+        </div>
+      )}
     </Modal>
   );
 };

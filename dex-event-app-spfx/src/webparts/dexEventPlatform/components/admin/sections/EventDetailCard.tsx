@@ -3,9 +3,12 @@
  * Anzeige-Bedingung bleibt beim Aufrufer.
  */
 import * as React from 'react';
-import { formatDate, getStatusColor, localizeStatus } from '../../../utils/eventStatus';
+import { formatDate, localizeStatus } from '../../../utils/eventStatus';
 import { formatAllDayPeriod, isEventOver } from '../../../utils/eventFormat';
-import { Pencil, QrCode } from '../../Icons';
+import { Calendar, Pencil, Pin, QrCode, Users } from '../../Icons';
+// v31.3: Gemeinsame UI-Klassen (Pillen, Chips, Zeilen, Aktions-Kachel) —
+// Hover kommt aus den Klassen, nicht mehr aus `evTabHover`.
+import { cx } from '../../dexUi';
 import { getCachedOrbBase64 } from '../../../services/EmailTemplates';
 import { DEX_ORB_PNG } from '../../../data/brandLogos';
 import { shortSubEventTitle } from '../../../utils/subEventTitle';
@@ -57,70 +60,139 @@ export interface EventDetailCardProps {
 }
 
 export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
-  const { activeRegs, childEventsOf, confirmDialog, detailCardRef, events, evTabHover, handleSelectEvent, isAdmin, isConsolidatedMode, isDe, isImpersonating, isLoadingRegs, isMobile, isOrganizerFor, navigate, openTabGroup, registrations, regsUnknown, reservedDetailHeight, reservedDetailWidth, selectedEvent, setCheckInHubOpen, setCheckInHubStep, setEvTabHover, setOpenTabGroup, subEventRegsByEventId, subListsIncomplete, t, toggleDraftStatus, waitlistRegs } = p;
+  // v31.3: `evTabHover`/`setEvTabHover`/`isMobile` bleiben in der Schnittstelle
+  // (AdminPage reicht sie weiter), werden hier aber nicht mehr gelesen — der
+  // Hover kommt aus den Klassen, die Label/Wert-Zeilen sind Pillen geworden.
+  const { activeRegs, childEventsOf, confirmDialog, detailCardRef, events, handleSelectEvent, isAdmin, isConsolidatedMode, isDe, isImpersonating, isLoadingRegs, isOrganizerFor, navigate, openTabGroup, registrations, regsUnknown, reservedDetailHeight, reservedDetailWidth, selectedEvent, setCheckInHubOpen, setCheckInHubStep, setOpenTabGroup, subEventRegsByEventId, subListsIncomplete, t, toggleDraftStatus, waitlistRegs } = p;
+  // v31.3: Ableitungen für den Seitenkopf — reine Berechnungen, keine Hooks.
+  const isDraft = !!selectedEvent.isFictive;
+  const isFinalState = !isDraft && (selectedEvent.status === 'Completed' || selectedEvent.status === 'Cancelled');
+  const canToggleStatus = (isAdmin || isOrganizerFor(selectedEvent))
+    && !(isImpersonating && selectedEvent.isDemoShowcase)
+    && (isDraft || selectedEvent.status === 'Active' || isFinalState);
+  // Farben wie `getStatusColor`: Aktiv grün, Abgeschlossen grau, Abgesagt rot,
+  // alles andere (und Entwurf) orange.
+  const statusPillClass = isDraft ? 'dex-ui-pill--orange'
+    : selectedEvent.status === 'Active' ? 'dex-ui-pill--green'
+      : selectedEvent.status === 'Completed' ? 'dex-ui-pill--gray'
+        : selectedEvent.status === 'Cancelled' ? 'dex-ui-pill--red'
+          : 'dex-ui-pill--orange';
+  const statusLabel = isDraft ? (isDe ? 'Entwurf' : 'Draft') : (isDe ? localizeStatus(selectedEvent.status) : selectedEvent.status);
+  const eventOver = isEventOver(selectedEvent);
+  const tLink = eventTeamsLink(selectedEvent);
+  const locText = tLink ? locationWithoutTeamsUrl(selectedEvent.location) : (selectedEvent.location || '');
+  const ownChildren = selectedEvent.parentEventId ? [] : childEventsOf(selectedEvent.id);
+  const deadlineRaw = (!selectedEvent.subEventsOnlyMode && selectedEvent.registrationDeadline) ? formatDate(selectedEvent.registrationDeadline) : '-';
+  const deadlineText = deadlineRaw !== '-' ? deadlineRaw : '';
+  // v9.11: B2Run-Events nutzen Split-Kapazität statt maxParticipants —
+  // hier die Summe anzeigen statt "Unbegrenzt". v31.3: Bei reinen Sub-Event-
+  // Events ist `MaxParticipants` 0 und wäre als „Unbegrenzt" eine Aussage über
+  // etwas, das niemand bucht (CLAUDE.md, v29.13) — dann „Plätze je Sub-Event".
+  const splitCapacity = (selectedEvent.durchstarterCapacity || 0) + (selectedEvent.funstarterCapacity || 0);
+  const effCapacity = selectedEvent.maxParticipants && selectedEvent.maxParticipants > 0
+    ? selectedEvent.maxParticipants
+    : splitCapacity;
+  const capacityText = effCapacity
+    ? `${effCapacity} ${isDe ? 'Plätze' : 'seats'}`
+    : (selectedEvent.subEventsOnlyMode ? (isDe ? 'Plätze je Sub-Event' : 'Seats per sub-event') : (isDe ? 'Unbegrenzt' : 'Unlimited'));
+  // Zähl-Pille in Reitern und Gruppen-Chips: auf gefülltem Chip halbtransparent
+  // weiß, sonst grau — reine Anzeige, deshalb inline und ohne Hover.
+  const countBadgeStyle = (filled: boolean): React.CSSProperties => ({
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    minWidth: 20, height: 18, padding: '0 6px', borderRadius: 999,
+    fontSize: '0.7rem', fontWeight: 700,
+    background: filled ? 'rgba(255,255,255,0.28)' : 'var(--dex-gray-100, #f5f5f5)',
+    color: filled ? '#fff' : 'var(--dex-gray-700, #444)',
+  });
   return (
         <div ref={detailCardRef} className="card" style={{ padding: 24, minHeight: reservedDetailHeight, flex: '1 1 420px', minWidth: reservedDetailWidth || 0 }}>
-          {/* Header: Event-Titel + Status-Badge + Schnellaktionen (v13.11) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-            <h2 style={{ margin: 0, fontSize: '1.2rem', lineHeight: 1.2 }}>{selectedEvent.title}</h2>
-            {/* v20.3: Status-Badge ist klickbar — Klick auf „Aktiv" setzt das
-                Event auf Entwurf, Klick auf „Entwurf" schaltet es live
-                (jeweils mit Sicherheitsabfrage). v22.15: auch Abgeschlossen/
-                Abgesagt sind für Admin/Organizer klickbar und lassen sich
-                wieder auf Aktiv setzen (vorher Sackgasse — z.B. wenn der
-                Auto-Cleanup ein Event mit altem Testdatum auf „Abgeschlossen"
-                gesetzt hatte und das Datum später korrigiert wurde). */}
-            {(() => {
-              const isDraft = !!selectedEvent.isFictive;
-              const badgeBg = isDraft ? 'rgba(237,139,0,0.15)' : getStatusColor(selectedEvent.status) + '22';
-              const badgeFg = isDraft ? 'var(--dex-orange-dark, #b35a00)' : getStatusColor(selectedEvent.status);
-              const label = isDraft ? 'ENTWURF' : (isDe ? localizeStatus(selectedEvent.status) : selectedEvent.status);
-              const isFinalState = !isDraft && (selectedEvent.status === 'Completed' || selectedEvent.status === 'Cancelled');
-              const canToggleStatus = (isAdmin || isOrganizerFor(selectedEvent))
-                && !(isImpersonating && selectedEvent.isDemoShowcase)
-                && (isDraft || selectedEvent.status === 'Active' || isFinalState);
-              if (!canToggleStatus) {
-                return (
-                  <span className="badge" style={{ background: badgeBg, color: badgeFg }}>{label}</span>
-                );
-              }
-              return (
-                <button
-                  type="button"
-                  className="badge"
-                  onClick={() => { toggleDraftStatus().catch(() => { /* */ }); }}
-                  title={isDraft
-                    ? (isDe ? 'Klicken: Event live schalten (Aktiv). Alle Berechtigten sehen das Event danach und können sich anmelden.' : 'Click: publish event (Active). All eligible users will see the event and can register.')
-                    : isFinalState
-                      ? (isDe ? 'Klicken: Event wieder auf Aktiv setzen. Danach ist es für die Berechtigten wieder sichtbar und buchbar.' : 'Click: set event back to Active. It will be visible and bookable for eligible users again.')
-                      : (isDe ? 'Klicken: Event auf Entwurf setzen. Reguläre User sehen das Event danach nicht mehr; Anmeldungen bleiben erhalten.' : 'Click: set event to draft. Regular users will no longer see the event; registrations are kept.')}
-                  style={{
-                    background: badgeBg, color: badgeFg,
-                    border: `1px solid ${badgeFg}`,
-                    cursor: 'pointer',
-                    display: 'inline-flex', alignItems: 'center', gap: 5,
-                  }}
-                >
-                  {label}
-                  <span style={{ fontSize: '0.75em', opacity: 0.85 }}>⇄</span>
-                </button>
-              );
-            })()}
-            {/* v13.11: Event bearbeiten + Check-In starten als Schnell-
-                Buttons direkt neben dem Status-Badge — die häufigsten
-                Aktionen aus dem Aktionen-Dropdown nach oben gezogen,
-                damit Organizer am Eventtag nicht erst scrollen müssen. */}
-            <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
+          {/* Header: Event-Titel + Status + Schnellaktionen (v13.11).
+              v31.3: als Seitenkopf nach Leitfaden 5a — Titel, Status-Pille,
+              Meta-Zeile (Zeitraum · Ort · Sub-Events · Frist), rechts nur
+              „Event bearbeiten", weil der Knopf WEG von der Seite führt. */}
+          <div className="dex-ui-page-head" style={{ marginBottom: 14 }}>
+            <div style={{ flex: '1 1 280px', minWidth: 0 }}>
+              <div className="dex-ui-inline" style={{ gap: 10 }}>
+                <h2 className="dex-ui-page-head-title" style={{ fontSize: '1.3rem' }}>{selectedEvent.title}</h2>
+                {/* v31.3: Die Status-Pille ist reine Anzeige (kein Hover). Das
+                    Umschalten sitzt daneben als Textknopf, der SAGT, was der
+                    Klick tut („Live schalten") — vorher ein „⇄" auf der Pille,
+                    das man erst im Tooltip verstand. */}
+                <span className={cx('dex-ui-pill', statusPillClass)}>{statusLabel}</span>
+                {eventOver && !isDraft && selectedEvent.status === 'Active' && (
+                  <span className="dex-ui-pill dex-ui-pill--gray" title={isDe ? 'Das Enddatum liegt in der Vergangenheit.' : 'The end date is in the past.'}>{isDe ? 'Vorbei' : 'Past'}</span>
+                )}
+                {/* v20.3: Status umschalten — „Aktiv" → Entwurf, „Entwurf" → live
+                    (jeweils mit Sicherheitsabfrage). v22.15: auch Abgeschlossen/
+                    Abgesagt sind für Admin/Organizer umschaltbar und lassen sich
+                    wieder auf Aktiv setzen (vorher Sackgasse — z.B. wenn der
+                    Auto-Cleanup ein Event mit altem Testdatum auf „Abgeschlossen"
+                    gesetzt hatte und das Datum später korrigiert wurde). */}
+                {canToggleStatus && (
+                  <button
+                    type="button"
+                    className="dex-ui-textbtn dex-ui-textbtn--muted"
+                    onClick={() => { toggleDraftStatus().catch(() => { /* */ }); }}
+                    title={isDraft
+                      ? (isDe ? 'Klicken: Event live schalten (Aktiv). Alle Berechtigten sehen das Event danach und können sich anmelden.' : 'Click: publish event (Active). All eligible users will see the event and can register.')
+                      : isFinalState
+                        ? (isDe ? 'Klicken: Event wieder auf Aktiv setzen. Danach ist es für die Berechtigten wieder sichtbar und buchbar.' : 'Click: set event back to Active. It will be visible and bookable for eligible users again.')
+                        : (isDe ? 'Klicken: Event auf Entwurf setzen. Reguläre User sehen das Event danach nicht mehr; Anmeldungen bleiben erhalten.' : 'Click: set event to draft. Regular users will no longer see the event; registrations are kept.')}
+                  >
+                    {isDraft
+                      ? (isDe ? 'Live schalten' : 'Publish')
+                      : isFinalState
+                        ? (isDe ? 'Wieder aktivieren' : 'Set active again')
+                        : (isDe ? 'Auf Entwurf setzen' : 'Set to draft')}
+                  </button>
+                )}
+              </div>
+              <div className="dex-ui-page-head-meta">
+                {/* v29.61: Bei ganztägig nur die Daten — 00:00-23:59 ist
+                    die Speicherform, nicht die Aussage. */}
+                <span className="dex-ui-inline" style={{ gap: 5 }} title={isDe ? 'Zeitraum' : 'Time period'}>
+                  <Calendar size={14} />
+                  {selectedEvent.allDay
+                    ? formatAllDayPeriod(selectedEvent.startDate, selectedEvent.endDate, isDe)
+                    : `${formatDate(selectedEvent.startDate)} - ${formatDate(selectedEvent.endDate)}`}
+                </span>
+                {/* v29.39: Steht im Ort eine Teams-URL (so haben Organizer das
+                    vor dem Teams-Feld gelöst), zeigt die Ort-Angabe den Ort ohne
+                    die URL; der Teilnahme-Knopf steht darunter. */}
+                <span className="dex-ui-inline" style={{ gap: 5, wordBreak: 'break-word' }} title={isDe ? 'Ort' : 'Location'}>
+                  <Pin size={14} />
+                  {locText || (tLink ? (isDe ? 'Online' : 'Online') : '-')}
+                </span>
+                {ownChildren.length > 0 && (
+                  <span className="dex-ui-inline" style={{ gap: 5 }}>
+                    <Users size={14} />
+                    {ownChildren.length} {isDe ? 'Sub-Events' : 'sub-events'}
+                  </span>
+                )}
+                {/* v31.3: Anmeldefrist als ruhige Angabe — nicht bei reinen
+                    Sub-Event-Events, dort ist die Klammer-Frist ein Alt-Wert
+                    (CLAUDE.md, v29.13). */}
+                {deadlineText && (
+                  <span className="dex-ui-inline" style={{ gap: 5 }}>
+                    {isDe ? 'Anmeldung bis' : 'Registration until'} {deadlineText}
+                  </span>
+                )}
+              </div>
+              {tLink && (
+                <div style={{ marginTop: 8 }}>
+                  <TeamsJoinButton url={tLink} isDe={isDe} />
+                </div>
+              )}
+            </div>
+            {/* v13.11: Event bearbeiten als Schnell-Knopf oben — die häufigste
+                Aktion aus dem Aktionen-Dropdown nach oben gezogen, damit
+                Organizer nicht erst scrollen müssen. */}
+            <div className="dex-ui-page-head-actions">
               {/* v18.3: Im Demo-Modus ist das Demo-Event read-only — Edit /
                   Check-In / Aktionen sind ausgeblendet (kein SharePoint-
                   Backend), stattdessen ein Demo-Hinweis. */}
               {selectedEvent.isDemoShowcase ? (
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-blue, #0076a8)',
-                  background: 'rgba(0,118,168,0.08)', border: '1px solid var(--dex-blue, #0076a8)',
-                  borderRadius: 999, padding: '4px 12px',
-                }}>
+                <span className="dex-ui-pill dex-ui-pill--blue">
                   {isDe ? 'Demo — nur Ansicht (keine Aktionen)' : 'Demo — view only (no actions)'}
                 </span>
               ) : (
@@ -128,7 +200,7 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
                   {(isAdmin || isOrganizerFor(selectedEvent)) && (
                     <button
                       type="button"
-                      className="btn btn-secondary"
+                      className="btn btn-secondary dex-ui-btn-sm"
                       onClick={async () => {
                         // Admins bearbeiten direkt (voller Zugriff).
                         if (isAdmin) { navigate('edit-event', selectedEvent.id); return; }
@@ -148,7 +220,7 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
                         // abgeschlossenen Events (siehe Zweig oben).
                         navigate('edit-event', selectedEvent.id);
                       }}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', padding: '6px 12px' }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
                       title={t('admin.editbutton') || (isDe ? 'Event bearbeiten' : 'Edit event')}
                     >
                       <Pencil size={14} />
@@ -166,8 +238,17 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
               )}
             </div>
           </div>
-          {/* Foto immer als Kreis links, Detail-Rows rechts. Layout
-              unabhängig vom Bildformat (cover-Crop sorgt für den Kreis). */}
+          {/* v30.87: Hinweise als Zeile in dieser Karte statt als vierte Kachel
+              unter den KPI-Kacheln. v31.3: direkt unter dem Seitenkopf
+              (Leitfaden 5a: Hinweise, die Handeln verlangen, kommen vor den
+              Kennzahlen und Aktionen) — die Box erklärt sich selbst, eine
+              eigene Überschrift davor entfällt. */}
+          {p.hintsSlot && (
+            <div style={{ marginBottom: 14 }}>
+              {p.hintsSlot}
+            </div>
+          )}
+          {/* Foto links, Details rechts. Layout unabhängig vom Bildformat. */}
           <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
             {/* v12.6: Event-Bild jetzt prominent als großes Rechteck-
                 Format (wie auf der Registrierungs-Seite) statt kleinem
@@ -261,29 +342,20 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
                       Vorauswahl heraussprang — genau die Ungleichbehandlung, die
                       v30.36 im Aktionen-Menü aufgelöst hat. Wer hier klickt, will
                       „Check-in", nicht „ausgerechnet die Self-Variante". */}
+                  {/* v31.3: als `dex-ui-action`-Kachel — Hover aus der Klasse,
+                      Titel plus eine Zeile Folge, wie alle Aktionen im
+                      Organizer Center. */}
                   {showSciTile && (
                     <button
                       type="button"
+                      className="dex-ui-action"
                       onClick={() => { setCheckInHubStep('choose'); setCheckInHubOpen(true); }}
                       title={isDe ? 'QR-Codes versenden oder Check-in am Event-Tag starten' : 'Send QR codes or start check-in on event day'}
-                      style={{
-                        background: '#fff',
-                        border: '1px solid var(--dex-green, #86bc25)',
-                        borderRadius: 'var(--dex-radius, 12px)',
-                        padding: 12, cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left',
-                      }}
                     >
-                      <span style={{ width: 64, height: 64, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(134,188,37,0.10)', borderRadius: 8, color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                        <QrCode size={32} />
-                      </span>
-                      <span style={{ minWidth: 0 }}>
-                        <span style={{ display: 'block', fontWeight: 700, fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>
-                          {isDe ? 'QR-Codes und Check-In' : 'QR codes and check-in'}
-                        </span>
-                        <span style={{ display: 'block', fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-                          {isDe ? 'Codes verschicken oder Check-in starten' : 'Send codes or start check-in'}
-                        </span>
+                      <span className="dex-ui-action-icon"><QrCode size={18} /></span>
+                      <span className="dex-ui-action-body">
+                        <span className="dex-ui-action-title">{isDe ? 'QR-Codes und Check-In' : 'QR codes and check-in'}</span>
+                        <span className="dex-ui-action-desc">{isDe ? 'Codes verschicken oder Check-in starten' : 'Send codes or start check-in'}</span>
                       </span>
                     </button>
                   )}
@@ -291,7 +363,9 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
               );
             })()}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <h3 className="mb-16">{isDe ? 'Event-Details' : 'Event details'}</h3>
+              {/* v31.3: Die Zwischenüberschrift „Event-Details" entfällt — der
+                  Seitenkopf oben IST die Überschrift; eine zweite darunter
+                  trug keine Information. */}
                 {/* v11.28: Bookmark-Tabs statt Dropdown für schnelles Umschalten
                     zwischen Hauptevent und Sub-Events. Pro Tab wird die aktuelle
                     Teilnehmerzahl (currentParticipants aus EventContext) als
@@ -367,6 +441,10 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
                   }
                   // v22.70: Einzelnen Tab-Button rendern (für flaches Layout
                   // UND die Sub-Event-Reihe im Klammer-Layout wiederverwendet).
+                  // v28.74 → v31.3: Der Hover-Effekt kommt jetzt aus der Klasse
+                  // `dex-ui-chip` (Leitfaden: kein onMouseEnter-State für reine
+                  // Optik). `evTabHover`/`setEvTabHover` bleiben in der
+                  // Props-Schnittstelle, werden hier aber nicht mehr gelesen.
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const renderTab = (t: { id: string; label: string; count: number; isParent: boolean; ev: any }): React.ReactElement => {
                     const active = t.id === selectedEvent.id;
@@ -376,54 +454,18 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
                         type="button"
                         role="tab"
                         aria-selected={active}
+                        className={cx('dex-ui-chip', active && 'is-active')}
                         onClick={() => handleSelectEvent(t.ev).catch(() => { /* */ })}
-                        onMouseEnter={() => setEvTabHover(t.id)}
-                        onMouseLeave={() => setEvTabHover(prev => (prev === t.id ? null : prev))}
-                        onFocus={() => setEvTabHover(t.id)}
-                        onBlur={() => setEvTabHover(prev => (prev === t.id ? null : prev))}
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 8,
-                          padding: '8px 14px',
-                          // v28.74: Hover-/Fokus-Effekt wie im Wizard — ohne
-                          // Reaktion auf die Maus lasen sich die Reiter wie eine
-                          // Beschriftung statt wie etwas Anklickbares.
-                          border: `1px solid ${(evTabHover === t.id && !active) ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-                          borderBottom: active ? '2px solid var(--dex-green, #86bc25)' : `1px solid ${(evTabHover === t.id) ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-                          borderRadius: '8px 8px 0 0',
-                          background: active ? '#fff' : ((evTabHover === t.id) ? 'rgba(134,188,37,0.14)' : 'var(--dex-gray-50, #fafafa)'),
-                          color: active ? 'var(--dex-green-dark, #4a7c1f)' : ((evTabHover === t.id) ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)'),
-                          fontWeight: active ? 700 : ((evTabHover === t.id) ? 600 : 500),
-                          fontSize: '0.85rem',
-                          cursor: 'pointer',
-                          marginBottom: -1,
-                          whiteSpace: 'nowrap',
-                          maxWidth: 280,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          transform: (evTabHover === t.id && !active) ? 'translateY(-1px)' : 'none',
-                          boxShadow: (evTabHover === t.id && !active) ? '0 -2px 6px rgba(134,188,37,0.20)' : 'none',
-                          transition: 'background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s, box-shadow 0.15s',
-                        }}
+                        style={{ maxWidth: 280, fontSize: '0.82rem', padding: '6px 12px' }}
                         title={t.label}
                       >
                         {t.isParent && (
-                          <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 0.4, color: active ? 'var(--dex-green-dark)' : 'var(--dex-gray-400)' }}>
+                          <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: 0.4, opacity: 0.75 }}>
                             {isDe ? 'Haupt' : 'Main'}
                           </span>
                         )}
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</span>
-                        <span
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                            minWidth: 24, height: 20, padding: '0 6px',
-                            borderRadius: 999,
-                            background: active ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)',
-                            color: active ? '#fff' : 'var(--dex-gray-700)',
-                            fontSize: '0.72rem', fontWeight: 700,
-                          }}
-                        >
-                          {t.count}
-                        </span>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.label}</span>
+                        <span style={countBadgeStyle(active)}>{t.count}</span>
                       </button>
                     );
                   };
@@ -455,35 +497,26 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
                             const on = g.label === openLabel;
                             const hasSel = selIdx >= 0 && g.idxs.indexOf(selIdx) >= 0;
                             const sum = g.idxs.reduce((n, i) => n + (childTabs[i] ? childTabs[i].count : 0), 0);
-                            // v30.78: offen ≠ gewählt — gefüllt nur mit dem gewählten
-                            // Termin darin, sonst heller Grünton (s. StickyTabStrip).
-                            const bg = hasSel ? 'var(--dex-green, #86bc25)' : (on ? 'rgba(134,188,37,0.14)' : '#fff');
-                            const fg = hasSel ? '#fff' : (on ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)');
+                            // v30.78: offen ≠ gewählt — gefüllt (`is-active`) nur mit
+                            // dem gewählten Termin darin; eine offene Gruppe ohne ihn
+                            // bleibt hellgrün (s. StickyTabStrip). v31.3: Hover aus
+                            // `dex-ui-chip`; nur der Offen-Zustand ist inline, weil
+                            // die Klasse dafür keinen dritten Zustand kennt.
+                            const openOnly: React.CSSProperties | undefined = (on && !hasSel)
+                              ? { borderColor: 'var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.12)', color: 'var(--dex-green-darker, #4a7c1f)', fontWeight: 700 }
+                              : undefined;
                             return (
                               <button
                                 key={g.label}
                                 type="button"
                                 aria-expanded={on}
+                                className={cx('dex-ui-chip', hasSel && 'is-active')}
                                 onClick={() => setOpenTabGroup(on ? '' : g.label)}
                                 title={`${g.label} — ${g.idxs.length} ${isDe ? 'Termine' : 'dates'}`}
-                                style={{
-                                  display: 'inline-flex', alignItems: 'center', gap: 7,
-                                  padding: '6px 14px', borderRadius: 999, cursor: 'pointer',
-                                  border: `1px solid ${on || hasSel ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-                                  background: bg,
-                                  color: fg,
-                                  fontWeight: on || hasSel ? 700 : 500, fontSize: '0.82rem',
-                                  transition: 'background 0.15s, border-color 0.15s',
-                                }}
+                                style={openOnly}
                               >
                                 <span>{g.label}</span>
-                                <span style={{
-                                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                  minWidth: 22, height: 18, padding: '0 5px', borderRadius: 999,
-                                  background: hasSel ? 'rgba(255,255,255,0.28)' : (on ? 'rgba(134,188,37,0.22)' : 'var(--dex-gray-100)'),
-                                  color: hasSel ? '#fff' : (on ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)'),
-                                  fontSize: '0.68rem', fontWeight: 700,
-                                }}>{g.idxs.length}</span>
+                                <span style={countBadgeStyle(hasSel)}>{g.idxs.length}</span>
                                 {/* Der Punkt hinter der Zahl ist die Summe der
                                     Anmeldungen dieses Tages — sie ist der Grund,
                                     warum man eine Gruppe überhaupt aufmacht. */}
@@ -513,46 +546,28 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
                     const pActive = parentTab.id === selectedEvent.id;
                     return (
                       <div role="tablist" aria-label={isDe ? 'Event wechseln' : 'Switch event'} style={{ marginBottom: 16 }}>
-                        {/* Klammer-Ebene oben — volle Breite, gefüllter Kopf. */}
+                        {/* Klammer-Ebene oben — volle Breite. */}
                         {/* v28.75: Hover/Fokus auch auf dem Klammer-Balken —
-                            der reagierte als einziger Reiter nicht auf die Maus. */}
+                            der reagierte als einziger Reiter nicht auf die Maus.
+                            v31.3: als `dex-ui-row`-Zeile (Hover aus der Klasse,
+                            gewählt = grüne Kante und heller Grund); die Zahl
+                            links ist eine Pille. */}
                         <button
                           type="button"
                           role="tab"
                           aria-selected={pActive}
+                          className={cx('dex-ui-rowbtn dex-ui-row', pActive && 'is-active')}
                           onClick={() => handleSelectEvent(parentTab.ev).catch(() => { /* */ })}
-                          onMouseEnter={() => setEvTabHover(parentTab.id)}
-                          onMouseLeave={() => setEvTabHover(prev => (prev === parentTab.id ? null : prev))}
-                          onFocus={() => setEvTabHover(parentTab.id)}
-                          onBlur={() => setEvTabHover(prev => (prev === parentTab.id ? null : prev))}
                           title={parentTab.label}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 10, width: '100%',
-                            padding: '10px 16px', cursor: 'pointer', textAlign: 'left',
-                            border: `1.5px solid ${(pActive || evTabHover === parentTab.id) ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-                            borderRadius: '10px 10px 0 0',
-                            // v28.86: Ruhezustand weiß (s. Wizard).
-                            background: pActive
-                              ? 'var(--dex-green, #86bc25)'
-                              : (evTabHover === parentTab.id ? 'rgba(134,188,37,0.14)' : '#fff'),
-                            color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
-                            fontWeight: 700, fontSize: '0.9rem',
-                            boxShadow: (evTabHover === parentTab.id && !pActive) ? 'inset 0 0 0 1px rgba(134,188,37,0.35)' : 'none',
-                            transition: 'background 0.15s, border-color 0.15s, box-shadow 0.15s',
-                          }}
+                          style={{ border: '1px solid var(--dex-gray-200, #e8e8e8)', borderRadius: 12, padding: '10px 14px' }}
                         >
                           {/* v22.73: Zahl LINKS, dann Event-Name, dann „(Klammer)"
                               + Info-Icon mit Erklärung. */}
-                          <span style={{
-                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                            minWidth: 26, height: 22, padding: '0 8px', borderRadius: 999,
-                            background: pActive ? 'rgba(255,255,255,0.25)' : 'var(--dex-green, #86bc25)',
-                            color: '#fff', fontSize: '0.74rem', fontWeight: 700, flexShrink: 0,
-                          }}>{parentTab.count}</span>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }}>
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }}>{parentTab.label}</span>
-                            <span style={{ fontWeight: 600, opacity: 0.9, flexShrink: 0, color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }}>({isDe ? 'Klammer' : 'Bracket'})</span>
-                            <span style={{ flexShrink: 0, display: 'inline-flex', color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }} onClick={e => e.stopPropagation()}>
+                          <span className="dex-ui-pill dex-ui-pill--green" style={{ flexShrink: 0 }}>{parentTab.count}</span>
+                          <span className="dex-ui-row-main" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span className="dex-ui-row-title" style={{ color: pActive ? 'var(--dex-green-darker, #4a7c1f)' : undefined }}>{parentTab.label}</span>
+                            <span style={{ fontWeight: 600, fontSize: '0.8rem', color: 'var(--dex-gray-500)', flexShrink: 0 }}>({isDe ? 'Klammer' : 'Bracket'})</span>
+                            <span style={{ flexShrink: 0, display: 'inline-flex' }} onClick={e => e.stopPropagation()}>
                               <InfoTooltip placement="bottom" text={isDe
                                 ? <>Das <strong>Klammer-Event selbst wird nicht gebucht</strong> — Teilnehmer melden sich nur für die einzelnen <strong>Sub-Events</strong> an. Die Klammer fasst die Sub-Events nur zusammen. Die Zahl links zeigt, <strong>wie viele Personen sich insgesamt (kumuliert) für die Sub-Events angemeldet haben</strong>.</>
                                 : <>The <strong>bracket event itself is not booked</strong> — attendees only register for the individual <strong>sub-events</strong>. The bracket just groups them. The number on the left shows <strong>how many people registered for the sub-events in total (cumulative)</strong>.</>} />
@@ -561,10 +576,9 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
                         </button>
                         {/* Sub-Events darunter — eingerückt unter einer Klammer-Linie. */}
                         <div style={{
-                          display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'flex-end',
-                          marginLeft: 18, paddingLeft: 16, paddingTop: 10,
+                          display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
+                          marginLeft: 18, paddingLeft: 16, paddingTop: 10, paddingBottom: 2,
                           borderLeft: '2px solid var(--dex-green, #86bc25)',
-                          borderBottom: '1px solid var(--dex-gray-200)',
                         }}>
                           {renderChildTabs()}
                         </div>
@@ -575,144 +589,65 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
                     <div
                       role="tablist"
                       aria-label={isDe ? 'Event wechseln' : 'Switch event'}
-                      style={{
-                        display: 'flex', flexWrap: 'wrap', gap: 6,
-                        marginBottom: 16,
-                        borderBottom: '1px solid var(--dex-gray-200)',
-                        paddingBottom: 0,
-                      }}
+                      className="dex-ui-inline"
+                      style={{ gap: 6, marginBottom: 16 }}
                     >
                       {parentTab && renderTab(parentTab)}
                       {renderChildTabs()}
                     </div>
                   );
                 })()}
-              {/* Eigenes Row-Layout (zwei Spalten: Label fett, Wert links-
-                  bündig). Das globale .settings-info SCSS macht stattdessen
-                  space-between (also Wert rechts-bündig) — hier wollen wir
-                  beide Spalten links ausgerichtet. */}
-              {(() => {
-                const rowStyle: React.CSSProperties = {
-                  display: 'grid',
-                  gridTemplateColumns: isMobile ? '1fr' : '160px 1fr',
-                  gap: isMobile ? 2 : 12,
-                  padding: '10px 0',
-                  borderBottom: '1px solid var(--dex-gray-200)',
-                  fontSize: '0.9rem',
-                };
-                const labelStyle: React.CSSProperties = { fontWeight: 700, color: 'var(--dex-gray-700)' };
-                const valueStyle: React.CSSProperties = { fontWeight: 400, color: 'var(--dex-gray-800)' };
-                return (
-                  <>
-                    <div style={rowStyle}>
-                      <span style={labelStyle}>{isDe ? 'Zeitraum' : 'Time period'}</span>
-                      {/* v29.61: Bei ganztägig nur die Daten — 00:00-23:59 ist
-                          die Speicherform, nicht die Aussage. */}
-                      <span style={valueStyle}>
-                        {selectedEvent.allDay
-                          ? formatAllDayPeriod(selectedEvent.startDate, selectedEvent.endDate, isDe)
-                          : `${formatDate(selectedEvent.startDate)} - ${formatDate(selectedEvent.endDate)}`}
-                      </span>
-                    </div>
-                    <div style={rowStyle}>
-                      <span style={labelStyle}>{isDe ? 'Organizer' : 'Organizer'}</span>
-                      {/* v26.23: Organizer als Foto-Chips mit Hover-Kontaktkarte
-                          (Position · Standort + Teams-Chat) statt reinem Klartext —
-                          gleiche Komponente wie auf der Anmeldeseite. */}
-                      <span style={{ ...valueStyle, display: 'inline-flex' }}>
-                        <OrganizerList
-                          names={selectedEvent.organizers}
-                          emails={selectedEvent.organizerEmails}
-                          size="md"
-                          display="chip"
-                          forceIsDe={isDe}
-                        />
-                      </span>
-                    </div>
-                    {/* v29.39: Steht im Ort eine Teams-URL (so haben Organizer
-                        das vor dem Teams-Feld gelöst), lief sie hier als roher
-                        Text aus der Karte und war nicht klickbar. Jetzt zeigt
-                        die Ort-Zeile den Ort ohne die URL, und darunter steht
-                        ein Teilnahme-Knopf. */}
-                    {(() => {
-                      const tLink = eventTeamsLink(selectedEvent);
-                      const locText = tLink ? locationWithoutTeamsUrl(selectedEvent.location) : (selectedEvent.location || '');
-                      return (
-                        <>
-                          <div style={rowStyle}>
-                            <span style={labelStyle}>{isDe ? 'Ort' : 'Location'}</span>
-                            <span style={{ ...valueStyle, wordBreak: 'break-word' }}>{locText || (tLink ? (isDe ? 'Online' : 'Online') : '-')}</span>
-                          </div>
-                          {tLink && (
-                            <div style={rowStyle}>
-                              <span style={labelStyle}>{isDe ? 'Online-Teilnahme' : 'Join online'}</span>
-                              <span style={valueStyle}><TeamsJoinButton url={tLink} isDe={isDe} /></span>
-                            </div>
-                          )}
-                        </>
-                      );
-                    })()}
-                    <div style={rowStyle}>
-                      <span style={labelStyle}>{isDe ? 'Max. Teilnehmer' : 'Max. attendees'}</span>
-                      <span style={valueStyle}>{(() => {
-                        // v9.11: B2Run-Events nutzen Split-Kapazität statt maxParticipants —
-                        // hier die Summe anzeigen statt "Unbegrenzt".
-                        const split = (selectedEvent.durchstarterCapacity || 0) + (selectedEvent.funstarterCapacity || 0);
-                        const eff = selectedEvent.maxParticipants && selectedEvent.maxParticipants > 0
-                          ? selectedEvent.maxParticipants
-                          : split;
-                        return eff || (isDe ? 'Unbegrenzt' : 'Unlimited');
-                      })()}</span>
-                    </div>
-                    <div style={rowStyle}>
-                      <span style={labelStyle}>{isDe ? 'Aktuell registriert' : 'Currently registered'}</span>
-                      {/* v30.67: dieselbe Zählung wie die KPI-Kachel „Angemeldet".
-                          `consolidatedFiltered` enthält bewusst auch die Warteliste
-                          (die Matrix zeigt Wartende als „W") — hier stand dadurch
-                          120, in der Kachel darunter 100. */}
-                      {/* v30.67 (Review): nicht lesbar → „—" statt „0"; im Klammer-
-                          Modus mit nicht lesbarer Termin-Liste nur eine Untergrenze. */}
-                      <span style={valueStyle}>{isConsolidatedMode
-                        ? (subListsIncomplete
-                          ? <span title={isDe ? 'Mindestens — eine Termin-Liste war nicht lesbar' : 'At least — one date list was not readable'}>≥ {countConsolidatedActive(subEventRegsByEventId)}</span>
-                          : countConsolidatedActive(subEventRegsByEventId))
-                        : (regsUnknown
-                          ? <span title={isDe ? 'Liste nicht lesbar' : 'List not readable'}>—</span>
-                          : activeRegs.length)}</span>
-                    </div>
-                    {waitlistRegs.length > 0 && (
-                      <div style={rowStyle}>
-                        <span style={labelStyle}>{isDe ? 'Warteliste' : 'Waitlist'}</span>
-                        <span style={valueStyle}>{waitlistRegs.length}</span>
-                      </div>
-                    )}
-                    {/* v12.7: Aktionen-Dropdown direkt unter „Aktuell
-                        registriert" — alphabetisch sortiert, mit Hover-
-                        Tooltip pro Action (desc-Text rechts daneben).
-                        Ersetzt die separate Aktionen-Card. */}
-                    <div style={{ marginTop: 14 }}>
-                      <div style={{ ...labelStyle, marginBottom: 6 }}>
-                        {isDe ? 'Aktionen' : 'Actions'}
-                      </div>
-                      <ActionsDropdown isDe={isDe} />
-                    </div>
-                    {/* v30.87: Hinweise direkt unter den Aktionen — dort, wo der
-                        Organizer ohnehin hinschaut, statt als vierte Kachel
-                        unter den KPI-Kacheln. */}
-                    {p.hintsSlot && (
-                      <div style={{ marginTop: 14 }}>
-                        <div style={{ ...labelStyle, marginBottom: 6 }}>
-                          {isDe ? 'Hinweise zu diesem Event' : 'Hints for this event'}
-                        </div>
-                        {p.hintsSlot}
-                      </div>
-                    )}
-                    {/* v12.2: 'Abgefragte Felder'-Zeile entfernt — die
-                        Custom-Field-Pills hier waren redundant; sie tauchen
-                        ohnehin als Spalten in der Teilnehmer-Tabelle auf. */}
-                  </>
-                );
-              })()}
+              {/* v31.3: Statt Label/Wert-Zeilen drei ruhige Abschnitte (Leitfaden
+                  5a): Organizer, Plätze und Anmeldungen als Pillen, Aktionen.
+                  Zeitraum, Ort, Teams-Link und Frist stehen seit v31.3 im
+                  Seitenkopf oben; die Hinweise direkt darunter. */}
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">{isDe ? 'Organizer' : 'Organizer'}</div>
+                {/* v26.23: Organizer als Foto-Chips mit Hover-Kontaktkarte
+                    (Position · Standort + Teams-Chat) statt reinem Klartext —
+                    gleiche Komponente wie auf der Anmeldeseite. */}
+                <OrganizerList
+                  names={selectedEvent.organizers}
+                  emails={selectedEvent.organizerEmails}
+                  size="md"
+                  display="chip"
+                  forceIsDe={isDe}
+                />
+              </div>
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">{isDe ? 'Plätze und Anmeldungen' : 'Seats and registrations'}</div>
+                <div className="dex-ui-inline" style={{ gap: 6 }}>
+                  {/* v30.67: dieselbe Zählung wie die KPI-Kachel „Angemeldet".
+                      `consolidatedFiltered` enthält bewusst auch die Warteliste
+                      (die Matrix zeigt Wartende als „W") — hier stand dadurch
+                      120, in der Kachel darunter 100. */}
+                  {/* v30.67 (Review): nicht lesbar → „—" statt „0"; im Klammer-
+                      Modus mit nicht lesbarer Termin-Liste nur eine Untergrenze.
+                      v31.3: Der Grund steht sichtbar in der Pille, nicht nur im
+                      Tooltip — „—" allein liest sich wie ein Anzeigefehler. */}
+                  {isConsolidatedMode
+                    ? (subListsIncomplete
+                      ? <span className="dex-ui-pill dex-ui-pill--orange" title={isDe ? 'Mindestens — eine Termin-Liste war nicht lesbar' : 'At least — one date list was not readable'}>≥ {countConsolidatedActive(subEventRegsByEventId)} {isDe ? 'angemeldet (mindestens)' : 'registered (at least)'}</span>
+                      : <span className="dex-ui-pill dex-ui-pill--green">{countConsolidatedActive(subEventRegsByEventId)} {isDe ? 'angemeldet' : 'registered'}</span>)
+                    : (regsUnknown
+                      ? <span className="dex-ui-pill dex-ui-pill--gray" title={isDe ? 'Liste nicht lesbar' : 'List not readable'}>— {isDe ? 'angemeldet · Liste nicht lesbar' : 'registered · list not readable'}</span>
+                      : <span className="dex-ui-pill dex-ui-pill--green">{activeRegs.length} {isDe ? 'angemeldet' : 'registered'}</span>)}
+                  {waitlistRegs.length > 0 && (
+                    <span className="dex-ui-pill dex-ui-pill--orange">{waitlistRegs.length} {isDe ? 'auf der Warteliste' : 'on the waitlist'}</span>
+                  )}
+                  <span className="dex-ui-pill dex-ui-pill--gray" title={isDe ? 'Maximale Teilnehmerzahl' : 'Maximum attendees'}>{capacityText}</span>
+                </div>
+              </div>
+              {/* v12.7: Aktionen-Dropdown direkt unter den Zahlen — alphabetisch
+                  sortiert, mit Beschreibung je Action. Ersetzt die separate
+                  Aktionen-Card. */}
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">{isDe ? 'Aktionen' : 'Actions'}</div>
+                <ActionsDropdown isDe={isDe} />
+              </div>
+              {/* v12.2: 'Abgefragte Felder'-Zeile entfernt — die
+                  Custom-Field-Pills hier waren redundant; sie tauchen
+                  ohnehin als Spalten in der Teilnehmer-Tabelle auf. */}
             </div>
           </div>
         </div>

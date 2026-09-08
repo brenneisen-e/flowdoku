@@ -1,6 +1,13 @@
 /* AdminActionsCard — 1:1 aus AdminPage.tsx ausgelagert (Zeilen 7972-9375 des
  * Stands vor dem Schnitt). Der Inhalt ist zeichengleich uebernommen; die
  * Anzeige-Bedingung bleibt beim Aufrufer.
+ *
+ * v31.3: Die Kacheln sind nach dem Ablauf eines Events gruppiert (Event →
+ * Kommunikation → Check-in → Teilnehmer → Daten & Export → Wartung), jede
+ * Beschreibung beginnt mit der Folge des Klicks, gesperrte Aktionen nennen
+ * den Grund (`whenList`), und DE/EN sagen dasselbe. Handler, Bedingungen,
+ * Bestätigungstexte und Titel (Handbuch, Tour und Suche verweisen darauf)
+ * sind unverändert.
  */
 import * as React from 'react';
 import { ActionTile, ActionsCollapsibleCard } from '../../admin/ActionsMenu';
@@ -116,84 +123,44 @@ export interface AdminActionsCardProps {
 export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
   const { adminEvents, allEvents, childEventsOf, confirmDialog, copiedDeepLink, copiedEmails, detectOverbookResult, eventServiceRef, fixColumnsResult, fixFieldsResult, isAdmin, isCheckingDeclines, isDe, isDetectingOverbook, isFixingColumns, isFixingFields, isOrganizerFor, isPromoting, isRefreshingProfiles, isReorderingIDs, isRepairingAccess, isRepairingNames, isRepairingOrganizers, isRepairingPerms, isResettingCounter, isSendingQR, isSplitCapacity, isSyncingRegistry, navigate, openChangeLogForEvent, openCommsModal, openInviteModal, openMassmailPicker, promoteResult, qrSentCount, refreshEvents, refreshProfilesResult, registrations, reloadRegistrations, reorderResult, repairAccessResult, repairNamesResult, repairOrganizersResult, repairPermsResult, resetCounterResult, runIdReorder, runManualPromote, searchUsers, selectedEvent, setAccessFixModal, setB2runTodoOpen, setBibImportOpen, setBillingPanelOpen, setCheckInHubOpen, setCheckInHubStep, setCopiedDeepLink, setCopiedEmails, setDeclineCopied, setDeclineResult, setDetectOverbookResult, setExcelAudience, setExcelTargetModal, setFixColumnsResult, setFixFieldsResult, setIsCheckingDeclines, setIsDetectingOverbook, setIsFixingColumns, setIsFixingFields, setIsRefreshingProfiles, setIsRepairingAccess, setIsRepairingNames, setIsRepairingOrganizers, setIsRepairingPerms, setIsResettingCounter, setIsSyncingRegistry, setNameFixModal, setRefreshProfilesResult, setRepairAccessResult, setRepairNamesResult, setRepairOrganizersResult, setRepairPermsResult, setResetCounterResult, setShirtSizeOpen, setShowDeclineModal, setShowExportMenu, setSubRegReloadTick, setSyncRegistryResult, shirtFieldExists, showAlert, showExportMenu, siteUrl, spServiceRef, syncRegistryResult, t, updateEvent } = p;
   const { setCopyToAgendaOpen } = p;
+  // v31.3: Gesperrte Aktionen bleiben sichtbar — mit dem Grund in der
+  // Folgezeile (Leitfaden 5a, Punkt 5). Fast alle Sperren haben dieselbe
+  // Ursache: Das Event hat (noch) keine Teilnehmerliste. Der Grund steht VOR
+  // der Beschreibung, weil das Dropdown die Zeile gedämpft rendert und der
+  // Leser zuerst wissen will, warum er nicht klicken kann — nicht, was er
+  // bekäme, wenn er könnte.
+  const hasList = !!selectedEvent?.subsiteUrl;
+  const noListReason = isDe
+    ? 'Gerade nicht möglich: Dieses Event hat noch keine Teilnehmerliste. '
+    : 'Not available right now: this event has no participant list yet. ';
+  const whenList = (desc: string): string => (hasList ? desc : noListReason + desc);
   return (
         <ActionsCollapsibleCard isDe={isDe}>
-          <div className="admin-actions-grid" style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-            gap: 12,
-          }}>
-            {/* v9.20: Check-In starten — prominent als erster Tile.
-                Sowohl Organizer als auch Check-In-Team-Mitglieder dürfen
-                diese Aktion auslösen (siehe Header.canCheckIn-Logik). */}
-            <ActionTile
-              icon={<Hash size={18} />}
-              category="checkin"
-              title={t('admin.checkin')}
-              desc={isDe
-                ? 'Öffnet das Check-In-Tool: QR-Codes scannen, manuell ein-/auschecken, Live-KPIs (wie viele angemeldet / eingecheckt / ausstehend) sehen. Am Eventtag das wichtigste Werkzeug.'
-                : 'Opens the check-in tool: scan QR codes, check in/out manually, see live KPIs (how many registered / checked in / pending). The most important tool on event day.'}
-              badge="organizer"
-              onClick={() => navigate('check-in', selectedEvent.id)}
-            />
-
-            {/* v11.89/v20.3: Der Event-Live/Entwurf-Toggle ist aus dem
-                Aktionen-Menü ausgezogen — der Status-Badge neben dem
-                Event-Titel ist jetzt selbst der klickbare Umschalter. */}
-
+          {/* v31.3: Die Kacheln registrieren sich im ActionsRegistryProvider und
+              werden im ActionsDropdown (EventDetailCard) nach `category`
+              gruppiert angezeigt — dieser Container bleibt display:none.
+              Die Reihenfolge HIER folgt dem Ablauf eines Events (Event →
+              Kommunikation → Check-in → Teilnehmer → Daten & Export →
+              Wartung), damit ein Leser die Aktionen so findet, wie ein
+              Organizer sie braucht. Sichtbar wirken aus dieser Datei nur
+              `category`, `title`, `desc`, `disabled` und `badge`. */}
+          <div className="admin-actions-grid dex-ui-action-grid">
+            {/* v31.3 · Gruppe EVENT — das Event selbst: bearbeiten, teilen, nachvollziehen. */}
             {/* 1. Event bearbeiten */}
             <ActionTile
               icon={<Pencil size={18} />}
               category="event"
               title={t('admin.editbutton') || 'Event bearbeiten'}
               desc={isDe
-                ? 'Öffnet das Event im Schritt-für-Schritt-Wizard. Titel, Datum, Ort, Kapazität, Custom-Fields, E-Mail-Templates und Quiz nachträglich anpassen.'
-                : 'Opens the event in the step-by-step wizard. Adjust title, date, location, capacity, custom fields, email templates and quiz afterwards.'}
+                ? 'Öffnet das Event im Schritt-für-Schritt-Wizard: Titel, Datum, Ort, Plätze, Anmeldefragen, Mail-Vorlagen und Quiz nachträglich anpassen.'
+                : 'Opens the event in the step-by-step wizard: adjust title, date, location, seats, registration questions, mail templates and quiz afterwards.'}
               badge="organizer"
               onClick={() => navigate('edit-event', selectedEvent.id)}
             />
 
-            {/* v30.5: Event-Abrechnung (Fachkonzept Abschnitt 6) — erscheint
-                AUSSCHLIESSLICH bei abrechnungsrelevanten Events. Versand an
-                F&A + Versandhistorie liegen im Modal (BillingActionPanel). */}
-            {parseBillingOf(selectedEvent)?.relevant === true && (
-              <ActionTile
-                icon={<Send size={18} />}
-                category="event"
-                title="Event-Abrechnung"
-                desc={isDe
-                  ? 'Abrechnungsinformationen oder Teilnehmerliste an Finance & Accounting senden und die Versandhistorie einsehen. Nur bei abrechnungsrelevanten Events sichtbar.'
-                  : 'Send billing information or the participant list to Finance & Accounting and view the send history. Only visible for billing-relevant events.'}
-                badge="organizer"
-                onClick={() => setBillingPanelOpen(true)}
-              />
-            )}
-
-            {/* v27.13: „In SharePoint öffnen" entfernt — alle Teilnehmer-
-                Aktionen (Bearbeiten, Export, Massenimport, Audit) laufen über
-                die App. Direktes Editieren in der rohen SP-Liste erzeugte
-                Zeilen ohne Audit-Felder und ohne Format-Validierung (siehe
-                Feedback Datenschutz-Review 07/2026). */}
-
-            {/* v30.36: Ein Einstieg statt fuenf Kacheln. „QR-Codes versenden"
-                und die drei Self-Check-in-Kacheln standen gleichrangig
-                nebeneinander und haben das Aktionen-Grid dominiert, obwohl sie
-                zusammengehoeren und meist nur EINE davon gebraucht wird. Jetzt
-                ein Knopf, dahinter eine Entscheidung: Codes verschicken oder
-                Check-in am Event-Tag. Die Self-Check-in-Varianten (PDF,
-                Live-Anzeige) erscheinen erst, wenn man sich fuer Check-in
-                entschieden hat — vorher sind sie nur Rauschen. */}
-            <ActionTile
-              icon={<QrCode size={18} />}
-              category="checkin"
-              title={isSendingQR ? (isDe ? `QR-Codes werden versendet... (${qrSentCount})` : `Sending QR codes... (${qrSentCount})`) : (isDe ? 'QR-Codes und Check-In' : 'QR codes and check-in')}
-              desc={isDe
-                ? 'Alles rund um den Event-Tag an einer Stelle: persoenliche QR-Codes an die Teilnehmer verschicken — oder das Check-in vorbereiten und starten (Team scannt, oder Teilnehmer checken sich selbst ein).'
-                : 'Everything about event day in one place: send personal QR codes to attendees — or prepare and start check-in (your team scans, or attendees check themselves in).'}
-              badge="organizer"
-              busy={isSendingQR}
-              onClick={() => { setCheckInHubStep('choose'); setCheckInHubOpen(true); }}
-            />
+            {/* v11.89/v20.3: Der Event-Live/Entwurf-Toggle ist aus dem
+                Aktionen-Menü ausgezogen — der Status-Badge neben dem
+                Event-Titel ist jetzt selbst der klickbare Umschalter. */}
 
             {/* v10.19: Deep-Link kopieren — Organizer/Admin können den Link
                 des aktuell offenen Events in die Zwischenablage legen und z.B.
@@ -206,8 +173,8 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
               category="event"
               title={copiedDeepLink ? (t('admin.copied') || 'Kopiert') : (isDe ? 'Deep-Link kopieren' : 'Copy deep link')}
               desc={isDe
-                ? 'Legt den direkten Link auf dieses Event-Admin in die Zwischenablage. Per Mail / Teams an Co-Organizer schicken — sie landen nach Login direkt hier, ohne sich erst durch die Event-Liste klicken zu müssen.'
-                : 'Copies the direct link to this event admin to the clipboard. Send it via email / Teams to co-organizers — after login they land directly here without clicking through the event list first.'}
+                ? 'Legt den direkten Link auf diese Event-Ansicht in die Zwischenablage. Per Mail oder Teams an Co-Organizer schicken — sie landen nach dem Login direkt hier, ohne die Event-Liste durchzuklicken.'
+                : 'Copies the direct link to this event view to the clipboard. Send it via email or Teams to co-organizers — after login they land right here without clicking through the event list.'}
               badge="organizer"
               onClick={() => {
                 const base = (typeof window !== 'undefined' && window.location)
@@ -226,200 +193,21 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
               }}
             />
 
-            {/* 3. E-Mail-Adressen kopieren */}
-            <ActionTile
-              icon={<Copy size={18} />}
-              category="mails"
-              title={copiedEmails ? (t('admin.copied') || 'Kopiert') : (t('admin.copyemails') || 'E-Mails kopieren')}
-              desc={isDe
-                ? 'Legt alle aktiven Teilnehmer-Mails (Semikolon-getrennt) in die Zwischenablage. Direkt in Outlook-Empfänger oder externe Tools einfügbar.'
-                : 'Copies all active participant emails (semicolon-separated) to the clipboard. Can be pasted directly into Outlook recipients or external tools.'}
-              badge="organizer"
-              onClick={() => {
-                const emails = registrations
-                  .filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt')
-                  .map(r => r.ParticipantEmail)
-                  .join('; ');
-                if (emails) {
-                  navigator.clipboard.writeText(emails).then(() => {
-                    setCopiedEmails(true);
-                    setTimeout(() => setCopiedEmails(false), 2000);
-                  }).catch(() => { showAlert(<span style={{ userSelect: 'all', wordBreak: 'break-all', fontFamily: 'monospace', fontSize: '0.8rem' }}>{emails}</span>, { title: isDe ? 'E-Mail-Adressen manuell kopieren' : 'Copy email addresses manually' }); });
-                }
-              }}
-            />
-
-            {/* 4. Massenmail an alle aktiven Teilnehmer */}
-            <ActionTile
-              icon={<Mail size={18} />}
-              category="mails"
-              title={isDe ? 'E-Mail versenden' : 'Send email'}
-              desc={isDe
-                ? 'Öffnet einen RichText-Editor mit Deloitte-Mail-Template. Geht an alle aktiven Teilnehmer (nicht Wartelistler / Abgemeldete).'
-                : 'Opens a rich-text editor with the Deloitte mail template. Goes to all active participants (not waitlisted / cancelled).'}
-              badge="organizer"
-              onClick={openMassmailPicker}
-            />
-
-            {/* v11.40: 4b. Einladungsmail — Mail mit Anmelde-Link an dich
-                (zum Weiterleiten an Kollegen / Teams / externe Adressen)
-                oder direkt an den auf dem Event hinterlegten Mailverteiler.
-                Default-Text + Link werden vorbefüllt, sind aber im RichText-
-                Editor frei editierbar. */}
-            <ActionTile
-              icon={<Send size={18} />}
-              category="mails"
-              title={isDe ? 'Einladungsmail' : 'Invitation email'}
-              desc={isDe
-                ? 'Versendet eine Einladungs-Mail mit Anmelde-Link — an dich zum Weiterleiten oder direkt an den hinterlegten Mailverteiler des Events.'
-                : 'Sends an invitation email with the registration link — to yourself for forwarding or directly to the configured mail distribution list of the event.'}
-              badge="organizer"
-              onClick={openInviteModal}
-            />
-
-            {/* 4c. Gesendete Rundmails — durabler Kommunikations-Log
-                (DEX_EventComms). Zeigt alle versendeten Broadcast-Mails
-                (Einladung / Massenmail) mit Zeitstempel + Absender; Klick
-                auf eine Zeile blendet den kompletten HTML-Body ein. */}
-            <ActionTile
-              icon={<Mail size={18} />}
-              category="mails"
-              title={isDe ? 'Gesendete Mails' : 'Sent emails'}
-              desc={isDe
-                ? 'Zeigt alle versendeten Rundmails (Einladung / Massenmail) zu diesem Event mit Zeitstempel und Absender. Klick auf eine Zeile öffnet den kompletten Mail-Text.'
-                : 'Shows all broadcast emails (invitation / mass mail) sent for this event with timestamp and sender. Click a row to open the full mail body.'}
-              badge="organizer"
-              onClick={openCommsModal}
-            />
-
-            {/* 5. Excel-Download (mit Dropdown Deloitte/B2Run-View)
-                Wrapper braucht display:flex, damit der innere Button auf die
-                volle Grid-Zellen-Höhe gestreckt wird — sonst sieht die Kachel
-                niedriger aus als ihre Nachbarn, die zwei Zeilen Titel haben. */}
-            <div style={{ position: 'relative', display: 'flex' }}>
+            {/* v19.30 (Feature D): Audit-Log / Änderungsprotokoll dieses
+                Events öffnen — vorgefiltert auf den Event-Titel. Sichtbar für
+                Admin oder Organizer dieses Events. Zeigt pro Eintrag Zeitpunkt,
+                Akteur, Aktion, Ziel-Teilnehmer und bei Daten-Änderungen das
+                Vorher → Nachher je Feld. */}
+            {(isAdmin || isOrganizerFor(selectedEvent)) && (
               <ActionTile
-                icon={<Download size={18} />}
-                category="participants"
-                title={isDe ? 'Excel-Export' : 'Excel export'}
-                desc={selectedEvent && (selectedEvent.type === 'B2Run' || isB2RunKoelnTitle(selectedEvent.title))
-                  ? (isDe
-                    ? "Lädt die Teilnehmerliste als Excel. Wahl zwischen 'Deloitte Felder' (alle internen Spalten + Custom-Fields) oder 'B2Run View' (importierbar in b2run.com)."
-                    : "Downloads the participant list as Excel. Choose between 'Deloitte fields' (all internal columns + custom fields) or 'B2Run view' (importable into b2run.com).")
-                  : (isDe
-                    ? 'Lädt die Teilnehmerliste als Excel mit allen internen Spalten + Custom-Fields des Events.'
-                    : 'Downloads the participant list as Excel with all internal columns + custom fields of the event.')}
-                badge="organizer"
-                onClick={() => {
-                  // v17.12: Erst Zielgruppe abfragen, dann erst exportieren.
-                  // v27.9: Bei B2Run die Format-Auswahl (Deloitte/B2Run) DIREKT
-                  // im Modal treffen — der frühere Anker-Dropdown wurde vom
-                  // „Aktion auswählen"-Menü (overflow:auto) abgeschnitten, daher
-                  // kam die Auswahl gar nicht erst zum Vorschein.
-                  setExcelAudience('active');
-                  if (selectedEvent && (selectedEvent.type === 'B2Run' || isB2RunKoelnTitle(selectedEvent.title))) {
-                    setExcelTargetModal({ mode: 'b2run', chooseMode: true });
-                  } else {
-                    setExcelTargetModal({ mode: 'deloitte' });
-                  }
-                }}
-              />
-              {showExportMenu && (
-                <div style={{
-                  position: 'absolute', top: '100%', left: 0, right: 0,
-                  background: '#fff', border: '1px solid var(--dex-gray-200)',
-                  borderRadius: 'var(--dex-radius, 8px)',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
-                  marginTop: 4, padding: 6, zIndex: 100,
-                }}>
-                  <button
-                    type="button"
-                    onClick={() => { setShowExportMenu(false); setExcelAudience('active'); setExcelTargetModal({ mode: 'deloitte' }); }}
-                    style={{
-                      display: 'block', width: '100%', textAlign: 'left',
-                      padding: '10px 12px', border: 'none', background: 'transparent',
-                      cursor: 'pointer', borderRadius: 6,
-                    }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--dex-gray-50)'; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-                  >
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--dex-gray-800)' }}>{isDe ? 'Deloitte Felder' : 'Deloitte fields'}</div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-600)', lineHeight: 1.4, marginTop: 2 }}>
-                      {isDe
-                        ? 'Alle internen Felder: Name, E-Mail, Department, Standort, Position, Status, Registrierungsdatum + alle Custom-Fields des Events.'
-                        : 'All internal fields: name, email, department, location, position, status, registration date + all custom fields of the event.'}
-                    </div>
-                  </button>
-                  {selectedEvent && (selectedEvent.type === 'B2Run' || isB2RunKoelnTitle(selectedEvent.title)) && (
-                    <button
-                      type="button"
-                      onClick={() => { setShowExportMenu(false); setExcelAudience('active'); setExcelTargetModal({ mode: 'b2run' }); }}
-                      style={{
-                        display: 'block', width: '100%', textAlign: 'left',
-                        padding: '10px 12px', border: 'none', background: 'transparent',
-                        cursor: 'pointer', borderRadius: 6,
-                        borderTop: '1px solid var(--dex-gray-100)',
-                      }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--dex-gray-50)'; }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-                    >
-                      <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--dex-gray-800)' }}>B2Run View</div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-600)', lineHeight: 1.4, marginTop: 2 }}>
-                        Spaltenformat exakt wie das B2Run-Excel-Template (Nr, Anrede, Name, E-Mail, Startblock, AGB, Gruppe, Mobilnummer, Altersklasse, …) — direkt importierbar in b2run.com.
-                      </div>
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* 5b. v30.48: Startnummern-Rücklauf einlesen — nur B2Run Köln.
-                Bewusst NICHT an `type === 'B2Run'` gehängt: Das Spaltenformat
-                der Rücklauf-Datei ist das des Köln-Exports. */}
-            {selectedEvent && isB2RunKoelnTitle(selectedEvent.title) && (
-              <ActionTile
-                icon={<Hash size={18} />}
-                category="participants"
-                title={isDe ? 'Startnummern importieren' : 'Import bib numbers'}
+                icon={<FileText size={18} />}
+                category="event"
+                title={isDe ? 'Audit-Log / Änderungsprotokoll' : 'Audit log / change history'}
                 desc={isDe
-                  ? 'Liest die Rücklauf-Datei des Veranstalters ein und schreibt die echten Startnummern zu den Teilnehmern. Zeigt vorher, welche Nummer wegen einer Abmeldung an einen Nachrücker geht — die musst du beim Veranstalter ummelden.'
-                  : 'Reads the organiser\'s return file and writes the real bib numbers to the participants. Shows beforehand which number moves to a waitlist promotion after a cancellation.'}
+                  ? 'Öffnet das Änderungsprotokoll vorgefiltert auf dieses Event. Du siehst pro Eintrag: wann, wer, welche Aktion (z.B. bearbeitet, abgemeldet, gelöscht), welcher Teilnehmer betroffen war und bei Daten-Änderungen den genauen Vorher → Nachher-Vergleich je Feld.'
+                  : 'Opens the change history pre-filtered to this event. Each entry shows: when, who, which action (e.g. edited, deregistered, deleted), which participant was affected and — for data changes — the exact before → after comparison per field.'}
                 badge="organizer"
-                onClick={() => setBibImportOpen(true)}
-              />
-            )}
-
-            {/* 5c. v30.54: Was beim Veranstalter noch zu tun ist. Eigene
-                Aktion, weil die Liste NACH dem Import weiterlebt: Jede spätere
-                Abmeldung erzeugt eine Ummeldung, und die entsteht, wenn kein
-                Import-Fenster offen ist. */}
-            {selectedEvent && isB2RunKoelnTitle(selectedEvent.title) && (
-              <ActionTile
-                icon={<Check size={18} />}
-                category="participants"
-                title={isDe ? 'Offen beim Veranstalter' : 'Open with the organiser'}
-                desc={isDe
-                  ? 'Zeigt, welche Startnummern du beim Veranstalter noch ummelden, abmelden oder nachmelden musst — jeweils mit Namen und Nummer. Wird bei jedem Öffnen neu berechnet, spätere Abmeldungen tauchen also von selbst auf. Erledigtes lässt sich abhaken.'
-                  : 'Shows which bib numbers still need to be transferred, cancelled or newly registered with the organiser. Recalculated each time you open it, so later cancellations show up by themselves.'}
-                badge="organizer"
-                onClick={() => setB2runTodoOpen(true)}
-              />
-            )}
-
-            {/* 5c-2. v30.60: Bestellliste der Trikots. Bewusst NICHT an B2Run
-                gehängt: Ein Feld mit Konfektionsgröße gibt es auch bei
-                Team-Events mit Hoodie oder Poloshirt. Die Kachel erscheint,
-                sobald es ein passendes Abfragefeld gibt — sonst wäre sie eine
-                Aktion, die nur eine Fehlermeldung zeigt. */}
-            {selectedEvent && shirtFieldExists && (
-              <ActionTile
-                icon={<Shirt size={18} />}
-                category="participants"
-                title={isDe ? 'Benötigte T-Shirts' : 'Required T-shirts'}
-                desc={isDe
-                  ? 'Zählt die angegebenen Trikot-/Konfektionsgrößen aller angemeldeten Personen zusammen — die Bestellliste je Größe, mit Namen und als Excel. Wer keine Größe angegeben hat, wird namentlich ausgewiesen statt weggelassen.'
-                  : 'Totals the shirt sizes of all registered people — the order list per size, with names and as Excel. People without a size are listed by name instead of dropped.'}
-                badge="organizer"
-                onClick={() => setShirtSizeOpen(true)}
+                onClick={openChangeLogForEvent}
               />
             )}
 
@@ -439,23 +227,199 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
               />
             )}
 
-            {/* 5d. v30.56: Die SharePoint-Liste direkt öffnen — Admin only.
-                Für die Fälle, die keine App-Ansicht abbildet: eine Spalte
-                nachsehen, eine Zeile von Hand korrigieren, den echten
-                Datenstand gegen eine Anzeige halten. Bewusst nur für Admins:
-                Die Liste kennt keine der Schutzregeln der App. */}
-            {isAdmin && selectedEvent && selectedEvent.subsiteUrl && (
+            {/* v30.5: Event-Abrechnung (Fachkonzept Abschnitt 6) — erscheint
+                AUSSCHLIESSLICH bei abrechnungsrelevanten Events. Versand an
+                F&A + Versandhistorie liegen im Modal (BillingActionPanel). */}
+            {parseBillingOf(selectedEvent)?.relevant === true && (
               <ActionTile
-                icon={<ExternalLink size={18} />}
-                category="maintenance"
-                title={isDe ? 'Teilnehmerliste in SharePoint öffnen' : 'Open participant list in SharePoint'}
+                icon={<Send size={18} />}
+                category="event"
+                title="Event-Abrechnung"
                 desc={isDe
-                  ? 'Öffnet die zugrunde liegende SharePoint-Liste dieses Events in einem neuen Tab — für Nachschauen und Korrekturen, die die App nicht abbildet. Achtung: Dort gelten die Prüfungen der App nicht, Änderungen wirken sofort und werden nicht ins ChangeLog geschrieben.'
-                  : 'Opens the underlying SharePoint list of this event in a new tab. Note: none of the app\'s checks apply there and changes are not written to the change log.'}
-                badge="admin"
-                onClick={() => {
-                  const url = `${selectedEvent.subsiteUrl}/Lists/${encodeURIComponent(REG_LIST_NAME)}/AllItems.aspx`;
-                  window.open(url, '_blank', 'noopener,noreferrer');
+                  ? 'Sendet Abrechnungsinformationen oder die Teilnehmerliste an Finance & Accounting und zeigt die Versandhistorie. Erscheint nur bei abrechnungsrelevanten Events.'
+                  : 'Sends billing information or the participant list to Finance & Accounting and shows the send history. Appears only for billing-relevant events.'}
+                badge="organizer"
+                onClick={() => setBillingPanelOpen(true)}
+              />
+            )}
+
+            {/* v31.3 · Gruppe KOMMUNIKATION — Einladen, Rundmails, Adressen. */}
+            {/* v11.40: 4b. Einladungsmail — Mail mit Anmelde-Link an dich
+                (zum Weiterleiten an Kollegen / Teams / externe Adressen)
+                oder direkt an den auf dem Event hinterlegten Mailverteiler.
+                Default-Text + Link werden vorbefüllt, sind aber im RichText-
+                Editor frei editierbar. */}
+            <ActionTile
+              icon={<Send size={18} />}
+              category="mails"
+              title={isDe ? 'Einladungsmail' : 'Invitation email'}
+              desc={isDe
+                ? 'Versendet eine Einladungs-Mail mit Anmelde-Link — an dich zum Weiterleiten oder direkt an den hinterlegten Mailverteiler des Events.'
+                : 'Sends an invitation email with the registration link — to yourself for forwarding or directly to the configured mail distribution list of the event.'}
+              badge="organizer"
+              onClick={openInviteModal}
+            />
+
+            {/* 4. Massenmail an alle aktiven Teilnehmer */}
+            <ActionTile
+              icon={<Mail size={18} />}
+              category="mails"
+              title={isDe ? 'E-Mail versenden' : 'Send email'}
+              desc={isDe
+                ? 'Öffnet den Editor mit der Deloitte-Mail-Vorlage. Die Mail geht an alle aktiven Teilnehmer — nicht an Warteliste oder Abgemeldete.'
+                : 'Opens the editor with the Deloitte mail template. The mail goes to all active participants — not to the waitlist or cancelled people.'}
+              badge="organizer"
+              onClick={openMassmailPicker}
+            />
+
+            {/* 4c. Gesendete Rundmails — durabler Kommunikations-Log
+                (DEX_EventComms). Zeigt alle versendeten Broadcast-Mails
+                (Einladung / Massenmail) mit Zeitstempel + Absender; Klick
+                auf eine Zeile blendet den kompletten HTML-Body ein. */}
+            <ActionTile
+              icon={<Mail size={18} />}
+              category="mails"
+              title={isDe ? 'Gesendete Mails' : 'Sent emails'}
+              desc={isDe
+                ? 'Zeigt alle Rundmails zu diesem Event (Einladung, Massenmail) mit Zeitpunkt und Absender. Ein Klick auf eine Zeile öffnet den kompletten Mail-Text.'
+                : 'Shows all broadcast emails for this event (invitation, mass mail) with time and sender. Clicking a row opens the full mail body.'}
+              badge="organizer"
+              onClick={openCommsModal}
+            />
+
+            {/* 3. E-Mail-Adressen kopieren */}
+            <ActionTile
+              icon={<Copy size={18} />}
+              category="mails"
+              title={copiedEmails ? (t('admin.copied') || 'Kopiert') : (t('admin.copyemails') || 'E-Mails kopieren')}
+              desc={isDe
+                ? 'Legt die Adressen aller aktiven Teilnehmer (mit Semikolon getrennt) in die Zwischenablage — direkt in Outlook-Empfänger oder andere Werkzeuge einfügbar. Warteliste und Abgemeldete sind nicht dabei.'
+                : 'Copies the addresses of all active participants (semicolon-separated) to the clipboard — paste them straight into Outlook recipients or other tools. Waitlist and cancelled people are not included.'}
+              badge="organizer"
+              onClick={() => {
+                const emails = registrations
+                  .filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt')
+                  .map(r => r.ParticipantEmail)
+                  .join('; ');
+                if (emails) {
+                  navigator.clipboard.writeText(emails).then(() => {
+                    setCopiedEmails(true);
+                    setTimeout(() => setCopiedEmails(false), 2000);
+                  }).catch(() => { showAlert(<span style={{ userSelect: 'all', wordBreak: 'break-all', fontFamily: 'monospace', fontSize: '0.8rem' }}>{emails}</span>, { title: isDe ? 'E-Mail-Adressen manuell kopieren' : 'Copy email addresses manually' }); });
+                }
+              }}
+            />
+
+            {/* v31.3 · Gruppe CHECK-IN — der Event-Tag. */}
+            {/* v30.36: Ein Einstieg statt fuenf Kacheln. „QR-Codes versenden"
+                und die drei Self-Check-in-Kacheln standen gleichrangig
+                nebeneinander und haben das Aktionen-Grid dominiert, obwohl sie
+                zusammengehoeren und meist nur EINE davon gebraucht wird. Jetzt
+                ein Knopf, dahinter eine Entscheidung: Codes verschicken oder
+                Check-in am Event-Tag. Die Self-Check-in-Varianten (PDF,
+                Live-Anzeige) erscheinen erst, wenn man sich fuer Check-in
+                entschieden hat — vorher sind sie nur Rauschen. */}
+            <ActionTile
+              icon={<QrCode size={18} />}
+              category="checkin"
+              title={isSendingQR ? (isDe ? `QR-Codes werden versendet... (${qrSentCount})` : `Sending QR codes... (${qrSentCount})`) : (isDe ? 'QR-Codes und Check-In' : 'QR codes and check-in')}
+              desc={isDe
+                ? 'Alles rund um den Event-Tag an einer Stelle: persönliche QR-Codes an die Teilnehmer verschicken — oder das Check-in vorbereiten und starten (Team scannt, oder Teilnehmer checken sich selbst ein).'
+                : 'Everything about event day in one place: send personal QR codes to attendees — or prepare and start check-in (your team scans, or attendees check themselves in).'}
+              badge="organizer"
+              busy={isSendingQR}
+              onClick={() => { setCheckInHubStep('choose'); setCheckInHubOpen(true); }}
+            />
+
+            {/* v9.20: Check-In starten — prominent als erster Tile.
+                Sowohl Organizer als auch Check-In-Team-Mitglieder dürfen
+                diese Aktion auslösen (siehe Header.canCheckIn-Logik). */}
+            <ActionTile
+              icon={<Hash size={18} />}
+              category="checkin"
+              title={t('admin.checkin')}
+              desc={isDe
+                ? 'Öffnet das Check-in-Tool: QR-Codes scannen, manuell ein- und auschecken, Live-Zahlen sehen (angemeldet / eingecheckt / ausstehend). Am Eventtag das wichtigste Werkzeug.'
+                : 'Opens the check-in tool: scan QR codes, check in and out manually, see live numbers (registered / checked in / pending). The most important tool on event day.'}
+              badge="organizer"
+              onClick={() => navigate('check-in', selectedEvent.id)}
+            />
+
+            {/* v31.3 · Gruppe TEILNEHMER — Plätze, Nummern, Prüfungen. */}
+            {/* 7a2. Nachrücken — Admin ODER Organizer des Events (v18.70).
+                v29.16: Füllt ALLE freien Plätze, bei geteilten Kapazitäten je
+                Gruppe getrennt gerechnet. Die Rückfrage mit der Aufstellung
+                steht in runManualPromote — dort sind die Zahlen bekannt; eine
+                zweite Rückfrage davor wäre nur eine Frage ohne Inhalt. */}
+            {(isAdmin || (!!selectedEvent && isOrganizerFor(selectedEvent))) && (
+              <ActionTile
+                icon={<Users size={18} />}
+                category="participants"
+                title={isPromoting ? (isDe ? 'Rückt nach…' : 'Promoting…') : (isDe ? 'Freie Plätze mit Warteliste füllen' : 'Fill free seats from waitlist')}
+                desc={(isReorderingIDs && hasList
+                  ? (isDe ? 'Gerade nicht möglich: Die IDs werden gerade neu vergeben — danach wieder verfügbar. ' : 'Not available right now: IDs are being reassigned — available again afterwards. ')
+                  : '') + whenList(isDe
+                  ? 'Rückt so viele Personen von der Warteliste nach, wie Plätze frei sind — in der Reihenfolge der TeilnehmerIDs. Bei zwei Gruppen wird je Gruppe getrennt gerechnet, es rückt also niemand in eine noch volle Gruppe. Vor dem Ausführen siehst du die Aufstellung. Jede nachgerückte Person bekommt Status „Angemeldet", eine Nachrück-Mail und eine Outlook-Einladung; danach werden die IDs neu vergeben. Nötig vor allem, wenn du eine Kapazität erhöht hast — von allein rückt nur bei einer Abmeldung jemand nach.'
+                  : 'Moves as many people up from the waitlist as there are free seats, in participant-ID order. With two groups each group is calculated separately, so nobody moves into a group that is still full. You see the breakdown before it runs. Everyone promoted gets status “Registered”, a promotion email and an Outlook invite; IDs are reassigned afterwards. Mainly needed after you raised a capacity — on its own, promotion only happens on a cancellation.')}
+                badge="organizer"
+                busy={isPromoting}
+                disabled={!selectedEvent?.subsiteUrl || isPromoting || isReorderingIDs}
+                result={promoteResult}
+                resultIsError={!!promoteResult && (promoteResult.indexOf('Fehler') >= 0 || promoteResult.indexOf('Error') >= 0)}
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                  await runManualPromote();
+                }}
+              />
+            )}
+
+            {/* 7c. Überbuchung prüfen — Admin ODER Organizer des Events (v11.36).
+                Markiert pro Gruppe (bzw. gesamt) die zuletzt über Kapazität
+                Angemeldeten mit OverbookReview='Pending'. Ändert KEINEN
+                Status — Admin/Organizer entscheidet danach pro Person über
+                die Buttons in der „Überbuchung – zu prüfen"-Box oben in der
+                Teilnehmerliste. Organizer dürfen das für eigene Events, weil
+                es Teilnehmerverwaltung ist (analog Abmelden/QR/Massenmail). */}
+            {(isAdmin || (!!selectedEvent && isOrganizerFor(selectedEvent))) && (
+              <ActionTile
+                icon={<Users size={18} />}
+                category="participants"
+                title={isDetectingOverbook ? (isDe ? 'Wird geprüft…' : 'Checking…') : (isDe ? 'Überbuchung prüfen' : 'Check overbooking')}
+                desc={whenList(isDe
+                  ? 'Findet pro Gruppe (Durchstarter/Funstarter, bzw. gesamt) die zuletzt angemeldeten Personen ÜBER der Kapazität und markiert sie zur Prüfung. Es wird nichts automatisch geändert — danach entscheidest du pro Person (auf Warteliste / Platz behalten) über die Knöpfe oben in der Teilnehmerliste.'
+                  : 'Finds, per group (Durchstarter/Funstarter, or overall), the most recently registered people OVER capacity and marks them for review. Nothing is changed automatically — afterwards you decide per person (move to waitlist / keep seat) via the buttons at the top of the participant list.')}
+                badge="organizer"
+                busy={isDetectingOverbook}
+                disabled={!selectedEvent?.subsiteUrl}
+                result={detectOverbookResult}
+                resultIsError={!!detectOverbookResult && (detectOverbookResult.indexOf('Fehler') >= 0 || detectOverbookResult.indexOf('Error') >= 0)}
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                  if (!(await confirmDialog(isDe ? 'Überbuchung prüfen und betroffene Personen markieren? (ändert keinen Status)' : 'Check overbooking and mark affected people? (does not change any status)', { confirmLabel: isDe ? 'Prüfen' : 'Check' }))) return;
+                  setIsDetectingOverbook(true);
+                  setDetectOverbookResult(null);
+                  try {
+                    const res = await eventServiceRef.detectOverbooking(selectedEvent.subsiteUrl, {
+                      isSplit: isSplitCapacity,
+                      maxParticipants: selectedEvent.maxParticipants || 0,
+                      durchstarterCapacity: selectedEvent.durchstarterCapacity || 0,
+                      funstarterCapacity: selectedEvent.funstarterCapacity || 0,
+                    });
+                    // Counter mit echtem Bestand abgleichen (best-effort).
+                    try { await eventServiceRef.syncSeatsToActiveCount(selectedEvent.subsiteUrl, { isSplit: isSplitCapacity }); } catch { /* */ }
+                    const parts = res.groups
+                      .map(g => `${g.group}: ${g.activeBefore}/${g.cap || '∞'} → ${g.marked} ${isDe ? 'markiert' : 'marked'}`)
+                      .join(' · ');
+                    setDetectOverbookResult(res.total > 0
+                      ? (isDe
+                        ? `${res.total} markiert (${parts})${res.errors ? ` — ${res.errors} Fehler` : ''}`
+                        : `${res.total} marked (${parts})${res.errors ? ` — ${res.errors} errors` : ''}`)
+                      : (isDe ? `Keine Überbuchung gefunden (${parts})` : `No overbooking found (${parts})`));
+                    await reloadRegistrations();
+                  } catch {
+                    setDetectOverbookResult(isDe ? 'Fehler beim Prüfen der Überbuchung' : 'Error checking overbooking');
+                  }
+                  setIsDetectingOverbook(false);
                 }}
               />
             )}
@@ -467,8 +431,8 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                 category="participants"
                 title={isCheckingDeclines ? (isDe ? 'Outlook wird geprüft…' : 'Checking Outlook…') : (isDe ? 'Outlook-Absagen prüfen' : 'Check Outlook declines')}
                 desc={isDe
-                  ? 'Zeigt dir, wer den Outlook-Termin abgesagt hat, aber noch als Teilnehmer angemeldet ist — damit du diese Personen gezielt ansprechen oder abmelden kannst.'
-                  : 'Reads the Outlook declines from the no_reply.events mailbox and matches them against active participants. Shows who declined the appointment but is still on the list.'}
+                  ? 'Liest die Absagen des Outlook-Termins aus dem Postfach no_reply.events und gleicht sie mit den aktiven Teilnehmern ab: Du siehst, wer abgesagt hat, aber noch angemeldet ist — und kannst diese Personen gezielt ansprechen oder abmelden.'
+                  : 'Reads the declines of the Outlook appointment from the no_reply.events mailbox and matches them against active participants: you see who declined but is still registered — and can contact or deregister those people directly.'}
                 badge="admin"
                 busy={isCheckingDeclines}
                 onClick={async () => {
@@ -529,9 +493,9 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                 icon={<Hash size={18} />}
                 category="participants"
                 title={isReorderingIDs ? (isDe ? 'IDs werden vergeben…' : 'Assigning IDs…') : (isDe ? 'IDs neu vergeben' : 'Reassign IDs')}
-                desc={isDe
-                  ? 'Vergibt die TeilnehmerIDs sequentiell (1, 2, 3, …) nach Erstellungsreihenfolge. Schließt Lücken nach Stornos und sortiert die Liste sauber durch. Hinweis: nicht ausführen während gerade viele Anmeldungen laufen — erst wenn die Anmeldewelle vorbei ist.'
-                  : 'Assigns the participant IDs sequentially (1, 2, 3, …) by creation order. Closes gaps after cancellations and sorts the list cleanly. Note: do not run while many registrations are coming in — wait until the registration wave is over.'}
+                desc={whenList(isDe
+                  ? 'Vergibt die TeilnehmerIDs fortlaufend (1, 2, 3, …) nach Erstellungsreihenfolge: schließt Lücken nach Abmeldungen und sortiert die Liste sauber durch. Nicht ausführen, während gerade viele Anmeldungen laufen — erst wenn die Anmeldewelle vorbei ist.'
+                  : 'Assigns the participant IDs consecutively (1, 2, 3, …) by creation order: closes gaps after cancellations and sorts the list cleanly. Do not run while many registrations are coming in — wait until the registration wave is over.')}
                 badge="organizer"
                 busy={isReorderingIDs}
                 disabled={!selectedEvent?.subsiteUrl}
@@ -547,68 +511,204 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
               />
             )}
 
-            {/* 7a2. Nachrücken — Admin ODER Organizer des Events (v18.70).
-                v29.16: Füllt ALLE freien Plätze, bei geteilten Kapazitäten je
-                Gruppe getrennt gerechnet. Die Rückfrage mit der Aufstellung
-                steht in runManualPromote — dort sind die Zahlen bekannt; eine
-                zweite Rückfrage davor wäre nur eine Frage ohne Inhalt. */}
-            {(isAdmin || (!!selectedEvent && isOrganizerFor(selectedEvent))) && (
+            {/* v31.3 · Gruppe DATEN & EXPORT — Listen für andere Werkzeuge und Veranstalter. */}
+            {/* 5. Excel-Download (mit Dropdown Deloitte/B2Run-View)
+                Wrapper braucht display:flex, damit der innere Button auf die
+                volle Grid-Zellen-Höhe gestreckt wird — sonst sieht die Kachel
+                niedriger aus als ihre Nachbarn, die zwei Zeilen Titel haben. */}
+            <div style={{ position: 'relative', display: 'flex' }}>
               <ActionTile
-                icon={<Users size={18} />}
+                icon={<Download size={18} />}
                 category="participants"
-                title={isPromoting ? (isDe ? 'Rückt nach…' : 'Promoting…') : (isDe ? 'Freie Plätze mit Warteliste füllen' : 'Fill free seats from waitlist')}
-                desc={isDe
-                  ? 'Rückt so viele Personen von der Warteliste nach, wie Plätze frei sind — in der Reihenfolge der TeilnehmerIDs. Bei zwei Gruppen wird je Gruppe getrennt gerechnet, es rückt also niemand in eine noch volle Gruppe. Vor dem Ausführen siehst du die Aufstellung. Jede nachgerückte Person bekommt Status „Angemeldet", eine Nachrück-Mail und eine Outlook-Einladung; danach werden die IDs neu vergeben. Nötig vor allem, wenn du eine Kapazität erhöht hast — von allein rückt nur bei einer Abmeldung jemand nach.'
-                  : 'Moves as many people up from the waitlist as there are free seats, in participant-ID order. With two groups each group is calculated separately, so nobody moves into a group that is still full. You see the breakdown before it runs. Everyone promoted gets status “Registered”, a promotion email and an Outlook invite; IDs are reassigned afterwards. Mainly needed after you raised a capacity — on its own, promotion only happens on a cancellation.'}
+                title={isDe ? 'Excel-Export' : 'Excel export'}
+                desc={selectedEvent && (selectedEvent.type === 'B2Run' || isB2RunKoelnTitle(selectedEvent.title))
+                  ? (isDe
+                    ? 'Lädt die Teilnehmerliste als Excel. Du wählst vorher die Zielgruppe und das Format: „Deloitte Felder“ (alle internen Spalten + Anmeldefragen) oder „B2Run View“ (direkt in b2run.com importierbar).'
+                    : 'Downloads the participant list as Excel. You pick the audience and the format first: “Deloitte fields” (all internal columns + registration questions) or “B2Run view” (importable straight into b2run.com).')
+                  : (isDe
+                    ? 'Lädt die Teilnehmerliste als Excel mit allen internen Spalten und den Anmeldefragen des Events. Die Zielgruppe (z.B. nur aktive, mit Warteliste, mit Abgemeldeten) wählst du vorher.'
+                    : 'Downloads the participant list as Excel with all internal columns and the event’s registration questions. You pick the audience (e.g. active only, with waitlist, with cancelled) first.')}
                 badge="organizer"
-                busy={isPromoting}
-                disabled={!selectedEvent?.subsiteUrl || isPromoting || isReorderingIDs}
-                result={promoteResult}
-                resultIsError={!!promoteResult && (promoteResult.indexOf('Fehler') >= 0 || promoteResult.indexOf('Error') >= 0)}
-                onClick={async () => {
-                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                  await runManualPromote();
+                onClick={() => {
+                  // v17.12: Erst Zielgruppe abfragen, dann erst exportieren.
+                  // v27.9: Bei B2Run die Format-Auswahl (Deloitte/B2Run) DIREKT
+                  // im Modal treffen — der frühere Anker-Dropdown wurde vom
+                  // „Aktion auswählen"-Menü (overflow:auto) abgeschnitten, daher
+                  // kam die Auswahl gar nicht erst zum Vorschein.
+                  setExcelAudience('active');
+                  if (selectedEvent && (selectedEvent.type === 'B2Run' || isB2RunKoelnTitle(selectedEvent.title))) {
+                    setExcelTargetModal({ mode: 'b2run', chooseMode: true });
+                  } else {
+                    setExcelTargetModal({ mode: 'deloitte' });
+                  }
                 }}
+              />
+              {/* v31.3: Das Format-Untermenü als Zeilen-Knöpfe mit Klassen-Hover
+                  statt onMouseEnter-Inline-Styles (Leitfaden 1.3). Seit v27.9
+                  wird die Format-Wahl im Excel-Modal getroffen; `showExportMenu`
+                  bleibt als Prop bestehen, damit der Aufrufer unverändert läuft. */}
+              {showExportMenu && (
+                <div className="dex-ui-card dex-ui-card--list" style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 100, boxShadow: '0 8px 24px rgba(0,0,0,0.15)' }}>
+                  <button
+                    type="button"
+                    className="dex-ui-rowbtn dex-ui-row dex-ui-row--bordered"
+                    onClick={() => { setShowExportMenu(false); setExcelAudience('active'); setExcelTargetModal({ mode: 'deloitte' }); }}
+                  >
+                    <span className="dex-ui-row-main">
+                      <span className="dex-ui-row-title">{isDe ? 'Deloitte Felder' : 'Deloitte fields'}</span>
+                      <span className="dex-ui-row-sub" style={{ whiteSpace: 'normal' }}>
+                        {isDe
+                          ? 'Alle internen Felder: Name, E-Mail, Bereich, Standort, Position, Status, Anmeldedatum + alle Anmeldefragen des Events.'
+                          : 'All internal fields: name, email, department, location, position, status, registration date + all registration questions of the event.'}
+                      </span>
+                    </span>
+                  </button>
+                  {selectedEvent && (selectedEvent.type === 'B2Run' || isB2RunKoelnTitle(selectedEvent.title)) && (
+                    <button
+                      type="button"
+                      className="dex-ui-rowbtn dex-ui-row dex-ui-row--bordered"
+                      onClick={() => { setShowExportMenu(false); setExcelAudience('active'); setExcelTargetModal({ mode: 'b2run' }); }}
+                    >
+                      <span className="dex-ui-row-main">
+                        <span className="dex-ui-row-title">B2Run View</span>
+                        <span className="dex-ui-row-sub" style={{ whiteSpace: 'normal' }}>
+                          {isDe
+                            ? 'Spaltenformat exakt wie die B2Run-Excel-Vorlage (Nr, Anrede, Name, E-Mail, Startblock, AGB, Gruppe, Mobilnummer, Altersklasse, …) — direkt in b2run.com importierbar.'
+                            : 'Column format exactly like the B2Run Excel template (no., salutation, name, email, start block, terms, group, mobile number, age class, …) — importable straight into b2run.com.'}
+                        </span>
+                      </span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 5c-2. v30.60: Bestellliste der Trikots. Bewusst NICHT an B2Run
+                gehängt: Ein Feld mit Konfektionsgröße gibt es auch bei
+                Team-Events mit Hoodie oder Poloshirt. Die Kachel erscheint,
+                sobald es ein passendes Abfragefeld gibt — sonst wäre sie eine
+                Aktion, die nur eine Fehlermeldung zeigt. */}
+            {selectedEvent && shirtFieldExists && (
+              <ActionTile
+                icon={<Shirt size={18} />}
+                category="participants"
+                title={isDe ? 'Benötigte T-Shirts' : 'Required T-shirts'}
+                desc={isDe
+                  ? 'Zählt die angegebenen Trikot-/Konfektionsgrößen aller angemeldeten Personen zusammen — die Bestellliste je Größe, mit Namen und als Excel. Wer keine Größe angegeben hat, wird namentlich ausgewiesen statt weggelassen.'
+                  : 'Totals the shirt sizes of all registered people — the order list per size, with names and as Excel. People without a size are listed by name instead of dropped.'}
+                badge="organizer"
+                onClick={() => setShirtSizeOpen(true)}
               />
             )}
 
-            {/* 7b. Counter zurücksetzen — Admin only (v9.13 → v11.27).
-                Recovery-Button um den DEX_TeilnehmerCounter EXAKT auf
-                max(TeilnehmerID) der Subsite zu setzen. Bidirektional:
-                Counter wird hochgezogen wenn er drunter steht (gegen
-                Doppel-IDs), oder runtergesetzt wenn er drüber steht
-                (z.B. nach vielen Abmeldungen, die TIDs gefressen
-                haben). Vorher (vor v11.27) lief es nur monotonic-up,
-                weshalb ein zu hoher Counter (Counter=11, Max-TID=4)
-                nicht zurückgesetzt wurde — Klick auf den Button
-                hatte dann keinen sichtbaren Effekt. */}
-            {isAdmin && (
+            {/* 5b. v30.48: Startnummern-Rücklauf einlesen — nur B2Run Köln.
+                Bewusst NICHT an `type === 'B2Run'` gehängt: Das Spaltenformat
+                der Rücklauf-Datei ist das des Köln-Exports. */}
+            {selectedEvent && isB2RunKoelnTitle(selectedEvent.title) && (
               <ActionTile
                 icon={<Hash size={18} />}
-                category="maintenance"
-                title={isResettingCounter ? (isDe ? 'Counter wird zurückgesetzt…' : 'Resetting counter…') : (isDe ? 'Counter zurücksetzen' : 'Reset counter')}
+                category="participants"
+                title={isDe ? 'Startnummern importieren' : 'Import bib numbers'}
                 desc={isDe
-                  ? 'Repariert die automatische Nummern-Vergabe: Neue Anmeldungen bekommen danach wieder die nächste passende Teilnehmer-Nummer. Nutzen, wenn neue Anmeldungen mit offensichtlich falschen Nummern starten (viel zu hoch oder wieder bei 1).'
-                  : 'Sets the participant ID counter exactly to the current max ID of the participant list. Helps when new registrations start with IDs that are too high (gaps from earlier cancellations) or when they would accidentally start at IDs that are too low (e.g. back at 1). Bidirectional — regardless of whether the counter is too high or too low.'}
-                badge="admin"
-                busy={isResettingCounter}
+                  ? 'Liest die Rücklauf-Datei des Veranstalters ein und schreibt die echten Startnummern zu den Teilnehmern. Zeigt vorher, welche Nummer wegen einer Abmeldung an einen Nachrücker geht — die musst du beim Veranstalter ummelden.'
+                  : 'Reads the organiser\'s return file and writes the real bib numbers to the participants. Shows beforehand which number moves to a waitlist promotion after a cancellation.'}
+                badge="organizer"
+                onClick={() => setBibImportOpen(true)}
+              />
+            )}
+
+            {/* 5c. v30.54: Was beim Veranstalter noch zu tun ist. Eigene
+                Aktion, weil die Liste NACH dem Import weiterlebt: Jede spätere
+                Abmeldung erzeugt eine Ummeldung, und die entsteht, wenn kein
+                Import-Fenster offen ist. */}
+            {selectedEvent && isB2RunKoelnTitle(selectedEvent.title) && (
+              <ActionTile
+                icon={<Check size={18} />}
+                category="participants"
+                title={isDe ? 'Offen beim Veranstalter' : 'Open with the organiser'}
+                desc={isDe
+                  ? 'Zeigt, welche Startnummern du beim Veranstalter noch ummelden, abmelden oder nachmelden musst — jeweils mit Namen und Nummer. Wird bei jedem Öffnen neu berechnet, spätere Abmeldungen tauchen also von selbst auf. Erledigtes lässt sich abhaken.'
+                  : 'Shows which bib numbers still need to be transferred, cancelled or newly registered with the organiser. Recalculated each time you open it, so later cancellations show up by themselves.'}
+                badge="organizer"
+                onClick={() => setB2runTodoOpen(true)}
+              />
+            )}
+
+            {/* v31.3 · Gruppe WARTUNG (dieses Event) — Reparaturen an Rechten, Spalten, Feldern. */}
+            {/* v24.97: „Default-Mail-Vorlagen zurücksetzen" + „Wochenbericht
+                jetzt senden" sind GLOBALE Admin-Aktionen und liegen jetzt im
+                Admin-Hub (AdminHubPage, Sektion „E-Mails & Berichte") statt hier
+                im per-Event-Aktionsmenü. */}
+
+            {/* v30.37: Organizer-Berechtigungen über Klammer UND alle Termine
+                neu setzen. Bis v30.36 lief der Sync beim Speichern nur über
+                die Klammer-Subsite — nachträglich benannte (Co-)Organizer
+                hatten auf keinem einzigen Sub-Event Leserecht und sahen das
+                Event als leer. Idempotent: wer die Rechte hat, behält sie.
+                Ausführen kann das nur, wer selbst Full Control hat (Admin
+                oder Haupt-Organizer) — die betroffene Person kann sich die
+                Rechte naturgemäß nicht selbst geben. */}
+            {(isAdmin || isOrganizerFor(selectedEvent)) && (
+              <ActionTile
+                icon={<RefreshCw size={18} />}
+                category="maintenance"
+                title={isDe ? 'Organizer-Berechtigungen reparieren' : 'Repair organizer permissions'}
+                desc={whenList(isDe
+                  ? 'Setzt für alle Organizer und Co-Organizer dieses Events das Leserecht auf der Teilnehmerliste — auf dem Haupt-Event UND auf jedem einzelnen Termin. Nötig, wenn jemand nachträglich als Organizer dazugekommen ist und überall „0 Teilnehmer" sieht, obwohl Anmeldungen vorliegen.'
+                  : 'Grants every organizer and co-organizer of this event read access to the participant list — on the main event AND on every single date. Needed when someone was added as organizer later and sees “0 participants” everywhere although registrations exist.')}
+                badge="organizer"
+                busy={isRepairingPerms}
                 disabled={!selectedEvent?.subsiteUrl}
-                result={resetCounterResult}
-                resultIsError={!!resetCounterResult && (resetCounterResult.indexOf('Fehler') >= 0 || resetCounterResult.indexOf('Error') >= 0)}
+                result={repairPermsResult}
+                resultIsError={!!repairPermsResult && (repairPermsResult.indexOf('Fehler') >= 0 || repairPermsResult.indexOf('Error') >= 0)}
                 onClick={async () => {
                   if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                  if (!(await confirmDialog(isDe ? 'Counter auf aktuellen Max-Wert zurücksetzen?' : 'Reset counter to the current max value?'))) return;
-                  setIsResettingCounter(true);
-                  setResetCounterResult(null);
-                  try {
-                    const result = await eventServiceRef.resetCounterToMax(selectedEvent.subsiteUrl);
-                    setResetCounterResult(isDe
-                      ? `Counter steht jetzt auf ${result.counter} (Max-TID: ${result.max})`
-                      : `Counter is now at ${result.counter} (max ID: ${result.max})`);
-                  } catch {
-                    setResetCounterResult(isDe ? 'Fehler beim Zurücksetzen des Counters' : 'Error resetting the counter');
+                  const emails = (selectedEvent.organizerEmails || [])
+                    .concat(selectedEvent.coOrganizerEmails || [])
+                    .map(e => (e || '').trim()).filter(Boolean);
+                  if (emails.length === 0) {
+                    setRepairPermsResult(isDe ? 'Keine Organizer-Adressen hinterlegt' : 'No organizer addresses on file');
+                    return;
                   }
-                  setIsResettingCounter(false);
+                  const sites = [selectedEvent.subsiteUrl]
+                    .concat(childEventsOf(selectedEvent.id).map(k => k.subsiteUrl || ''))
+                    .filter(Boolean);
+                  setIsRepairingPerms(true);
+                  setRepairPermsResult(null);
+                  try {
+                    const r = await eventServiceRef.ensureOrganizerPermissionsMulti(sites, emails.join(';'));
+                    const unresolved = r.unresolved.length
+                      ? (isDe ? ` · ${r.unresolved.length} Adresse(n) nicht gefunden: ${r.unresolved.join(', ')}` : ` · ${r.unresolved.length} address(es) not found: ${r.unresolved.join(', ')}`)
+                      : '';
+                    // v30.67 (Review): `failed` auswerten. Das Ergebnis trägt seit
+                    // v30.67 je fehlgeschlagene Zuweisung Subsite, Scope (web/list)
+                    // und HTTP-Status — die Kachel las nur users/sites und meldete
+                    // bei 40× HTTP 403 grün „3 Person(en) auf 20 Liste(n)
+                    // berechtigt". `grants` ist die Zahl der wirklich gesetzten
+                    // Rechte; `users` sagt nur, wie viele Adressen aufgelöst wurden.
+                    // `resultIsError` hängt am Wort „Fehler"/„Error" — deshalb steht
+                    // es vorn im Text. Vorbild: repairAllOrganizerPermissions
+                    // (context/actions/maintenance.ts). Die Termin-Listen werden nur
+                    // nachgeladen, wenn nichts fehlgeschlagen ist — sonst zeigte der
+                    // Reload dieselben „0", und das Banner verschwände zu Unrecht.
+                    const failed = r.failed || [];
+                    const siteName = (s: string): string => s.replace(/\/+$/, '').split('/').pop() || s;
+                    if (failed.length > 0) {
+                      const shown = failed.slice(0, 5).map(f => `${siteName(f.site)} [${f.scope}] HTTP ${f.status}`).join(', ');
+                      const more = failed.length > 5 ? ' …' : '';
+                      setRepairPermsResult(isDe
+                        ? `Fehler: ${failed.length} Zuweisung(en) fehlgeschlagen — ${shown}${more} · ${r.grants} Recht(e) gesetzt${unresolved}`
+                        : `Error: ${failed.length} assignment(s) failed — ${shown}${more} · ${r.grants} grant(s) set${unresolved}`);
+                    } else {
+                      setRepairPermsResult(isDe
+                        ? `${r.grants} Recht(e) für ${r.users} Person(en) auf ${r.sites} Liste(n) gesetzt${unresolved}`
+                        : `${r.grants} grant(s) for ${r.users} person(s) on ${r.sites} list(s) set${unresolved}`);
+                      setSubRegReloadTick(t => t + 1);
+                    }
+                  } catch {
+                    setRepairPermsResult(isDe ? 'Fehler beim Setzen der Berechtigungen' : 'Error setting permissions');
+                  }
+                  setIsRepairingPerms(false);
                 }}
               />
             )}
@@ -625,9 +725,9 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                 title={isSyncingRegistry
                   ? (isDe ? 'Register wird abgeglichen…' : 'Syncing registry…')
                   : (isDe ? 'Teilnehmer-Register nachziehen' : 'Sync participant registry')}
-                desc={isDe
+                desc={whenList(isDe
                   ? 'Gleicht die zentrale Teilnehmer-Übersicht mit den echten Anmeldungen dieses Events ab (inkl. aller Sub-Events). Nötig, wenn jemand angemeldet ist, das Event aber nicht in „Meine Events" sieht — dann fehlt der zentrale Eintrag, und auch die Warnung vor doppelter Anmeldung greift für diese Person nicht. Ergänzt nur fehlende Einträge; es wird nichts abgemeldet und niemand benachrichtigt.'
-                  : 'Reconciles the central participant registry with this event\'s actual registrations (including all sub-events). Needed when someone is registered but does not see the event in „My events" — the central entry is missing then, and the duplicate-registration warning does not work for that person. Only adds missing entries; nothing is cancelled and nobody is notified.'}
+                  : 'Reconciles the central participant registry with this event\'s actual registrations (including all sub-events). Needed when someone is registered but does not see the event in “My events” — the central entry is missing then, and the duplicate-registration warning does not work for that person. Only adds missing entries; nothing is cancelled and nobody is notified.')}
                 badge="organizer"
                 busy={isSyncingRegistry}
                 disabled={!selectedEvent?.subsiteUrl}
@@ -673,71 +773,15 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
               />
             )}
 
-            {/* 7c. Überbuchung prüfen — Admin ODER Organizer des Events (v11.36).
-                Markiert pro Gruppe (bzw. gesamt) die zuletzt über Kapazität
-                Angemeldeten mit OverbookReview='Pending'. Ändert KEINEN
-                Status — Admin/Organizer entscheidet danach pro Person über
-                die Buttons in der „Überbuchung – zu prüfen"-Box oben in der
-                Teilnehmerliste. Organizer dürfen das für eigene Events, weil
-                es Teilnehmerverwaltung ist (analog Abmelden/QR/Massenmail). */}
-            {(isAdmin || (!!selectedEvent && isOrganizerFor(selectedEvent))) && (
-              <ActionTile
-                icon={<Users size={18} />}
-                category="participants"
-                title={isDetectingOverbook ? (isDe ? 'Wird geprüft…' : 'Checking…') : (isDe ? 'Überbuchung prüfen' : 'Check overbooking')}
-                desc={isDe
-                  ? 'Findet pro Gruppe (Durchstarter/Funstarter, bzw. gesamt) die zuletzt angemeldeten Personen ÜBER der Kapazität und markiert sie zur Prüfung. Es wird nichts automatisch geändert — danach entscheidest du pro Person (auf Warteliste / Platz behalten) über die Buttons oben in der Teilnehmerliste.'
-                  : 'Finds, per group (Durchstarter/Funstarter, or overall), the most recently registered people OVER capacity and marks them for review. Nothing is changed automatically — afterwards you decide per person (move to waitlist / keep seat) via the buttons at the top of the participant list.'}
-                badge="organizer"
-                busy={isDetectingOverbook}
-                disabled={!selectedEvent?.subsiteUrl}
-                result={detectOverbookResult}
-                resultIsError={!!detectOverbookResult && (detectOverbookResult.indexOf('Fehler') >= 0 || detectOverbookResult.indexOf('Error') >= 0)}
-                onClick={async () => {
-                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                  if (!(await confirmDialog(isDe ? 'Überbuchung prüfen und betroffene Personen markieren? (ändert keinen Status)' : 'Check overbooking and mark affected people? (does not change any status)', { confirmLabel: isDe ? 'Prüfen' : 'Check' }))) return;
-                  setIsDetectingOverbook(true);
-                  setDetectOverbookResult(null);
-                  try {
-                    const res = await eventServiceRef.detectOverbooking(selectedEvent.subsiteUrl, {
-                      isSplit: isSplitCapacity,
-                      maxParticipants: selectedEvent.maxParticipants || 0,
-                      durchstarterCapacity: selectedEvent.durchstarterCapacity || 0,
-                      funstarterCapacity: selectedEvent.funstarterCapacity || 0,
-                    });
-                    // Counter mit echtem Bestand abgleichen (best-effort).
-                    try { await eventServiceRef.syncSeatsToActiveCount(selectedEvent.subsiteUrl, { isSplit: isSplitCapacity }); } catch { /* */ }
-                    const parts = res.groups
-                      .map(g => `${g.group}: ${g.activeBefore}/${g.cap || '∞'} → ${g.marked} ${isDe ? 'markiert' : 'marked'}`)
-                      .join(' · ');
-                    setDetectOverbookResult(res.total > 0
-                      ? (isDe
-                        ? `${res.total} markiert (${parts})${res.errors ? ` — ${res.errors} Fehler` : ''}`
-                        : `${res.total} marked (${parts})${res.errors ? ` — ${res.errors} errors` : ''}`)
-                      : (isDe ? `Keine Überbuchung gefunden (${parts})` : `No overbooking found (${parts})`));
-                    await reloadRegistrations();
-                  } catch {
-                    setDetectOverbookResult(isDe ? 'Fehler beim Prüfen der Überbuchung' : 'Error checking overbooking');
-                  }
-                  setIsDetectingOverbook(false);
-                }}
-              />
-            )}
-
-            {/* v24.97: „Default-Mail-Vorlagen zurücksetzen" + „Wochenbericht
-                jetzt senden" sind GLOBALE Admin-Aktionen und liegen jetzt im
-                Admin-Hub (AdminHubPage, Sektion „E-Mails & Berichte") statt hier
-                im per-Event-Aktionsmenü. */}
-
             {/* 8. Spalten fixen — Admin only */}
             {isAdmin && (
               <ActionTile
                 icon={<Columns size={18} />}
                 category="maintenance"
                 title={isFixingColumns ? (isDe ? 'Spalten werden gefixt…' : 'Fixing columns…') : (isDe ? 'Spalten fixen' : 'Fix columns')}
-                desc={isDe
-                  ? 'Bringt die Teilnehmerliste auf den aktuellen Stand: legt fehlende Spalten an, räumt überflüssige weg und sortiert die Spalten-Reihenfolge richtig. Nutzen, wenn in der Liste Spalten fehlen oder Antworten nicht ankommen.'
-                  : 'Creates missing columns in the participant list, removes superfluous ones (e.g. StarterType for non-B2Run events) and fixes the default view order.'}
+                desc={whenList(isDe
+                  ? 'Bringt die Teilnehmerliste (und die aller Sub-Events) auf den aktuellen Stand: legt fehlende Spalten an, räumt überflüssige weg (z.B. StarterType ohne Gruppen) und sortiert die Spalten-Reihenfolge. Nutzen, wenn in der Liste Spalten fehlen oder Antworten nicht ankommen. Leere Duplikat-Spalten werden nach Rückfrage gelöscht.'
+                  : 'Brings the participant list (and those of all sub-events) up to date: creates missing columns, removes superfluous ones (e.g. StarterType without groups) and fixes the column order. Use it when columns are missing or answers do not arrive. Empty duplicate columns are deleted after confirmation.')}
                 badge="admin"
                 busy={isFixingColumns}
                 disabled={!selectedEvent?.subsiteUrl}
@@ -853,6 +897,365 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
               />
             )}
 
+            {/* 9. Felder reparieren — Admin only */}
+            {isAdmin && (
+              <ActionTile
+                icon={<Wrench size={18} />}
+                category="maintenance"
+                title={isFixingFields ? (isDe ? 'Felder werden repariert…' : 'Repairing fields…') : (isDe ? 'Felder reparieren' : 'Repair fields')}
+                desc={isDe
+                  ? 'Räumt die Anmeldefelder dieses Events automatisch auf: AGB/Datenschutz wird eine echte Checkbox, die T-Shirt-Auswahl bekommt „Ohne T-Shirt“ und wird optional, bei B2Run-Events werden die Sonderfelder ergänzt, doppelte „(Pflicht)“-Zusätze verschwinden.'
+                  : 'Cleans up this event’s registration fields automatically: terms/privacy becomes a real checkbox, the T-shirt choice gets “Ohne T-Shirt” and becomes optional, B2Run events get their special fields added, redundant “(required)” suffixes disappear.'}
+                badge="admin"
+                busy={isFixingFields}
+                disabled={!selectedEvent}
+                result={fixFieldsResult}
+                resultIsError={!!fixFieldsResult && (fixFieldsResult.startsWith('Fehler') || fixFieldsResult.startsWith('Update fehl') || fixFieldsResult.startsWith('Error') || fixFieldsResult.startsWith('Update failed'))}
+                onClick={async () => {
+                  if (!selectedEvent) return;
+                  setIsFixingFields(true);
+                  setFixFieldsResult(null);
+                  try {
+                    const changes: string[] = [];
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const raw: any[] = (selectedEvent.eventSpecificFields || []).map((f: any) => ({ ...f }));
+                    const hasField = (id: string): boolean => raw.some(f => f.id === id);
+                    const isB2Run = raw.some(f => String(f.id || '').indexOf('b2run_') === 0);
+                    if (isB2Run) {
+                      if (!hasField('b2run_infoservice')) {
+                        raw.push({ id: 'b2run_infoservice', label: 'Infoservice nutzen (SMS von B2Run — Mobilnummer erforderlich)', type: 'checkbox', required: false, options: [], visible: true });
+                        changes.push("Feld ergänzt: 'Infoservice'");
+                      }
+                      if (!hasField('b2run_anonym')) {
+                        raw.push({ id: 'b2run_anonym', label: 'Anonym teilnehmen', type: 'checkbox', required: false, options: [], visible: true });
+                        changes.push("Feld ergänzt: 'Anonym teilnehmen'");
+                      }
+                      const hasLaufshirt = raw.some(f => f.id === 'b2run_laufshirt' || /laufshirt/i.test(String(f.label || '')));
+                      if (!hasLaufshirt) {
+                        raw.push({ id: 'b2run_laufshirt', label: 'Deloitte-Laufshirt', type: 'select', required: true, options: ['Habe bereits ein Laufshirt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true });
+                        changes.push("Feld ergänzt: 'Deloitte-Laufshirt' (Pflicht)");
+                      }
+                    }
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const fixed = raw.map((f: any) => {
+                      const nf = { ...f };
+                      const label = String(nf.label || '');
+                      const lowLabel = label.toLowerCase();
+                      const isConsent = lowLabel.indexOf('zustimmung') >= 0
+                        || lowLabel.indexOf('agb') >= 0
+                        || lowLabel.indexOf('datenschutz') >= 0;
+                      const isB2RunCheckbox = ['b2run_infoservice', 'b2run_anonym', 'b2run_datenschutz'].indexOf(nf.id) >= 0;
+                      if ((isConsent || isB2RunCheckbox) && nf.type !== 'checkbox') {
+                        nf.type = 'checkbox';
+                        nf.options = [];
+                        changes.push(`${label} -> Checkbox`);
+                      }
+                      // v30.67: Idempotent machen. Der Guard prüfte auf 'kein' — ein
+                      // Wort, das in keinem der beiden eingefügten Texte vorkommt
+                      // ('Ohne T-Shirt', 'Habe bereits ein Laufshirt'). Jeder Klick
+                      // hängte deshalb eine weitere Kopie vorn an. Und 'Laufshirt'
+                      // enthält 'shirt': Ein Laufshirt-Feld lief durch BEIDE Zweige,
+                      // bekam 'Ohne T-Shirt' UND ein zweites 'Habe bereits …', und
+                      // `required` kippte erst auf false, dann zurück auf true.
+                      const uniqOpts = (arr: string[]): string[] => arr.filter((o, i) => arr.indexOf(o) === i);
+                      const hasOpt = (arr: string[], text: string): boolean =>
+                        arr.some((o: string) => o.trim().toLowerCase() === text.toLowerCase() || o.toLowerCase().indexOf('kein') >= 0);
+                      const isLaufshirt = nf.id === 'b2run_laufshirt' || /laufshirt/i.test(label);
+                      const isShirt = !isLaufshirt && (lowLabel.indexOf('t-shirt') >= 0 || lowLabel.indexOf('tshirt') >= 0 || lowLabel.indexOf('shirt') >= 0);
+                      if (isShirt && nf.type === 'select') {
+                        const rawOpts: string[] = Array.isArray(nf.options) ? nf.options.slice() : [];
+                        const opts = uniqOpts(rawOpts);
+                        if (opts.length !== rawOpts.length) {
+                          nf.options = opts;
+                          changes.push(`${label}: doppelte Optionen entfernt`);
+                        }
+                        if (!hasOpt(opts, 'Ohne T-Shirt')) {
+                          opts.unshift('Ohne T-Shirt');
+                          nf.options = opts;
+                          changes.push(`${label} -> 'Ohne T-Shirt'-Option`);
+                        }
+                        if (nf.required) {
+                          nf.required = false;
+                          changes.push(`${label} -> optional`);
+                        }
+                      }
+                      const stripped = label.replace(/\s*\((?:pflicht|mandatory|required)\)\s*$/i, '').trim();
+                      if (stripped && stripped !== label) {
+                        nf.label = stripped;
+                        changes.push(`Label "${label}" -> "${stripped}"`);
+                      }
+                      if (nf.id === 'b2run_mobilnummer') {
+                        if (nf.required) { nf.required = false; changes.push('Mobilnummer -> optional'); }
+                        if (nf.label === 'Mobilnummer') {
+                          nf.label = 'Mobilnummer (nur bei aktiviertem Infoservice)';
+                          changes.push("Mobilnummer-Label präzisiert");
+                        }
+                      }
+                      if (nf.id === 'b2run_infoservice' && nf.label && nf.label.indexOf('benötigt') >= 0) {
+                        nf.label = 'Infoservice nutzen (SMS von B2Run — Mobilnummer erforderlich)';
+                        changes.push('Infoservice-Label modernisiert');
+                      }
+                      if (nf.id === 'b2run_datenschutz') {
+                        const needLinks = !Array.isArray(nf.externalLinks) || nf.externalLinks.length === 0;
+                        if (needLinks) {
+                          nf.externalLinks = [
+                            { label: 'AGB (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/agb/index.html' },
+                            { label: 'Datenschutz (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
+                          ];
+                          changes.push('B2Run-Datenschutz: AGB + Datenschutz Links ergänzt');
+                        }
+                      }
+                      if (isLaufshirt) {
+                        if (!nf.required) {
+                          nf.required = true;
+                          changes.push(`${label || nf.id}: als Pflichtfeld markiert`);
+                        }
+                        if (nf.type === 'select') {
+                          const rawOpts: string[] = Array.isArray(nf.options) ? nf.options.slice() : [];
+                          const opts = uniqOpts(rawOpts);
+                          if (opts.length !== rawOpts.length) {
+                            nf.options = opts;
+                            changes.push(`${label || nf.id}: doppelte Optionen entfernt`);
+                          }
+                          if (!hasOpt(opts, 'Habe bereits ein Laufshirt')) {
+                            opts.unshift('Habe bereits ein Laufshirt');
+                            nf.options = opts;
+                            changes.push(`${label || nf.id}: 'Habe bereits ein Laufshirt'-Option hinzugefügt`);
+                          }
+                        }
+                      }
+                      return nf;
+                    });
+                    const dsIdx = fixed.findIndex((f: { id: string }) => f.id === 'b2run_datenschutz');
+                    if (dsIdx >= 0 && dsIdx !== fixed.length - 1) {
+                      const [ds] = fixed.splice(dsIdx, 1);
+                      fixed.push(ds);
+                      changes.push('Zustimmung-Checkbox ans Ende verschoben');
+                    }
+                    const ok = await updateEvent(selectedEvent.id, { CustomFields: JSON.stringify(fixed) });
+                    if (ok) {
+                      setFixFieldsResult(changes.length > 0
+                        ? (isDe ? `Geändert: ${changes.join(' | ')}` : `Changed: ${changes.join(' | ')}`)
+                        : (isDe ? 'Keine Änderungen nötig.' : 'No changes needed.'));
+                    } else {
+                      setFixFieldsResult(isDe ? 'Update fehlgeschlagen.' : 'Update failed.');
+                    }
+                  } catch (err) {
+                    setFixFieldsResult((isDe ? 'Fehler: ' : 'Error: ') + (err instanceof Error ? err.message : String(err)));
+                  }
+                  setIsFixingFields(false);
+                }}
+              />
+            )}
+
+            {/* 7b. Counter zurücksetzen — Admin only (v9.13 → v11.27).
+                Recovery-Button um den DEX_TeilnehmerCounter EXAKT auf
+                max(TeilnehmerID) der Subsite zu setzen. Bidirektional:
+                Counter wird hochgezogen wenn er drunter steht (gegen
+                Doppel-IDs), oder runtergesetzt wenn er drüber steht
+                (z.B. nach vielen Abmeldungen, die TIDs gefressen
+                haben). Vorher (vor v11.27) lief es nur monotonic-up,
+                weshalb ein zu hoher Counter (Counter=11, Max-TID=4)
+                nicht zurückgesetzt wurde — Klick auf den Button
+                hatte dann keinen sichtbaren Effekt. */}
+            {isAdmin && (
+              <ActionTile
+                icon={<Hash size={18} />}
+                category="maintenance"
+                title={isResettingCounter ? (isDe ? 'Counter wird zurückgesetzt…' : 'Resetting counter…') : (isDe ? 'Counter zurücksetzen' : 'Reset counter')}
+                desc={whenList(isDe
+                  ? 'Setzt den Zähler der Teilnehmer-Nummern exakt auf die höchste vergebene Nummer — nach oben wie nach unten. Neue Anmeldungen bekommen danach wieder die nächste passende Nummer. Nutzen, wenn neue Anmeldungen mit offensichtlich falschen Nummern starten (viel zu hoch nach vielen Abmeldungen, oder wieder bei 1).'
+                  : 'Sets the participant-number counter exactly to the highest number in use — up or down. New registrations then get the next fitting number again. Use it when new registrations start with obviously wrong numbers (far too high after many cancellations, or back at 1).')}
+                badge="admin"
+                busy={isResettingCounter}
+                disabled={!selectedEvent?.subsiteUrl}
+                result={resetCounterResult}
+                resultIsError={!!resetCounterResult && (resetCounterResult.indexOf('Fehler') >= 0 || resetCounterResult.indexOf('Error') >= 0)}
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                  if (!(await confirmDialog(isDe ? 'Counter auf aktuellen Max-Wert zurücksetzen?' : 'Reset counter to the current max value?'))) return;
+                  setIsResettingCounter(true);
+                  setResetCounterResult(null);
+                  try {
+                    const result = await eventServiceRef.resetCounterToMax(selectedEvent.subsiteUrl);
+                    setResetCounterResult(isDe
+                      ? `Counter steht jetzt auf ${result.counter} (Max-TID: ${result.max})`
+                      : `Counter is now at ${result.counter} (max ID: ${result.max})`);
+                  } catch {
+                    setResetCounterResult(isDe ? 'Fehler beim Zurücksetzen des Counters' : 'Error resetting the counter');
+                  }
+                  setIsResettingCounter(false);
+                }}
+              />
+            )}
+
+            {/* 10. Profile neu laden — Admin only */}
+            {isAdmin && (
+              <ActionTile
+                icon={<RefreshCw size={18} />}
+                category="maintenance"
+                title={isRefreshingProfiles ? (isDe ? 'Teilnehmer werden nachgeladen…' : 'Reloading attendees…') : (isDe ? 'Teilnehmer nachladen (Daten reparieren)' : 'Reload attendees (repair data)')}
+                desc={whenList(isDe
+                  ? 'Fragt, wie viele der letzten Anmeldungen geprüft werden sollen, und lädt für sie Name, Position, Standort, Bereich und Telefon frisch aus dem Microsoft-365-Benutzerprofil. Repariert auch kaputte Namen — z.B. wenn statt des Vornamens ein technisches Anmelde-Kürzel in der Liste steht.'
+                  : 'Asks how many of the most recent registrations to check and reloads their name, job title, location, department and phone from the Microsoft 365 user profile. Also repairs broken names — e.g. when a technical login token appears instead of the first name.')}
+                badge="admin"
+                busy={isRefreshingProfiles}
+                disabled={!selectedEvent?.subsiteUrl}
+                result={refreshProfilesResult}
+                resultIsError={!!refreshProfilesResult && (refreshProfilesResult.indexOf('Fehler') >= 0 || refreshProfilesResult.indexOf('Error') >= 0)}
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                  const ans = prompt(isDe
+                    ? 'Wie viele der letzten Teilnehmer sollen aus dem Benutzerprofil neu geladen werden? (JobTitle, Standort, Department, Phone)'
+                    : 'How many of the most recent participants should be reloaded from the user profile? (job title, location, department, phone)', '20');
+                  if (!ans) return;
+                  const n = parseInt(ans, 10);
+                  if (isNaN(n) || n <= 0) { showAlert(isDe ? 'Bitte eine positive Zahl eingeben.' : 'Please enter a positive number.'); return; }
+                  setIsRefreshingProfiles(true);
+                  setRefreshProfilesResult(null);
+                  try {
+                    const result = await eventServiceRef.fixEventParticipantsProfileData(selectedEvent.subsiteUrl, n);
+                    setRefreshProfilesResult(isDe
+                      ? `${result.scanned} geprüft, ${result.updated} aktualisiert, ${result.failedLookups} Profil-Lookups fehlgeschlagen`
+                      : `${result.scanned} checked, ${result.updated} updated, ${result.failedLookups} profile lookups failed`);
+                    await reloadRegistrations();
+                  } catch {
+                    setRefreshProfilesResult(isDe ? 'Fehler beim Auffrischen der Profile' : 'Error refreshing profiles');
+                  }
+                  setIsRefreshingProfiles(false);
+                }}
+              />
+            )}
+
+            {/* v11.11: Custom-Fields aus Versionsverlauf zurückholen.
+                Hilft den Admins, denen die v11.9-Migration die b2run_*-
+                Felder (Altersgruppe, T-Shirt-Größe etc.) versehentlich
+                aus customFields entfernt hat. Liest die SP-Versionen des
+                Event-Items, sucht die jüngste Version mit b2run_*-
+                Feldern und mergt diese zurück in das aktuelle
+                CustomFields-Array. Bestehende Felder bleiben unverändert
+                — es werden NUR fehlende b2run_*-Felder ergänzt. */}
+
+            {isAdmin && selectedEvent && (
+              <ActionTile
+                icon={<RefreshCw size={18} />}
+                category="maintenance"
+                title={isDe ? 'Custom-Fields aus Versionsverlauf zurückholen' : 'Restore custom fields from version history'}
+                desc={isDe
+                  ? 'Liest den Versionsverlauf des Events und holt verloren gegangene b2run_*-Anmeldefelder zurück (Altersgruppe, T-Shirt-Größe, Startblock, Mobilnummer …) — nötig nach der v11.9-Migration, die diese Felder versehentlich entfernt hat. Bestehende Felder bleiben unangetastet, nur Fehlendes wird ergänzt.'
+                  : 'Reads the event’s version history and restores lost b2run_* registration fields (age group, T-shirt size, start block, mobile number …) — needed after the v11.9 migration that deleted these fields by accident. Existing fields stay untouched, only missing ones are added.'}
+                badge="admin"
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent) return;
+                  try {
+                    const history = await eventServiceRef.getEventCustomFieldsHistory(parseInt(selectedEvent.id, 10));
+                    if (history.length === 0) {
+                      showAlert(isDe ? 'Kein Versionsverlauf gefunden — entweder hat das Event keine Versionen oder der Zugriff wurde verweigert.' : 'No version history found — the event has no versions or access was denied.');
+                      return;
+                    }
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const currentFields: any[] = (selectedEvent.eventSpecificFields || []).map(f => ({ ...f }));
+                    const currentIds = new Set(currentFields.map(f => String(f.id || '').toLowerCase()));
+                    // Jüngste Version mit b2run_*-Feldern finden, die noch
+                    // NICHT in currentFields stecken.
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    let foundFields: any[] = [];
+                    let foundVersion = '';
+                    let foundModified = '';
+                    for (const v of history) {
+                      const missingB2run = v.customFields.filter(f => {
+                        const id = String(f.id || '').toLowerCase();
+                        return id.indexOf('b2run_') === 0 && !currentIds.has(id);
+                      });
+                      if (missingB2run.length > 0) {
+                        foundFields = missingB2run;
+                        foundVersion = v.versionLabel;
+                        foundModified = v.modified;
+                        break;
+                      }
+                    }
+                    if (foundFields.length === 0) {
+                      showAlert(isDe ? 'Keine fehlenden b2run_*-Felder im Versionsverlauf gefunden — entweder sind alle Felder schon vorhanden oder es gab nie welche.' : 'No missing b2run_* fields found in the version history — either all fields already exist or there never were any.');
+                      return;
+                    }
+                    const fieldList = foundFields.map(f => `• ${f.label || f.id}`).join('\n');
+                    const modifiedDate = foundModified ? new Date(foundModified).toLocaleString(isDe ? 'de-DE' : 'en-GB') : '?';
+                    if (!(await confirmDialog(isDe
+                      ? `Folgende ${foundFields.length} Custom-Field(s) aus Version ${foundVersion} (${modifiedDate}) zurückholen?\n\n${fieldList}\n\nDie Felder werden ans Ende deiner aktuellen Felder-Liste angehängt. Du kannst sie danach im Wizard frei umbenennen, neu sortieren oder löschen.`
+                      : `Restore the following ${foundFields.length} custom field(s) from version ${foundVersion} (${modifiedDate})?\n\n${fieldList}\n\nThe fields are appended to the end of your current field list. You can rename, reorder or delete them afterwards in the wizard.`, { confirmLabel: isDe ? 'Zurückholen' : 'Restore' }))) {
+                      return;
+                    }
+                    const merged = [...currentFields, ...foundFields];
+                    const ok = await updateEvent(selectedEvent.id, { 'CustomFields': JSON.stringify(merged) });
+                    if (!ok) {
+                      showAlert(isDe ? 'Update fehlgeschlagen — siehe Browser-Console.' : 'Update failed — see browser console.');
+                      return;
+                    }
+                    // Subsite-Spalten gleich mit-syncen, damit die b2run_*-
+                    // Spalten in der Teilnehmerliste wieder existieren.
+                    if (selectedEvent.subsiteUrl) {
+                      try {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const cfForFix: any[] = merged.map((f: any) => ({
+                          id: f.id,
+                          label: f.label,
+                          type: f.type,
+                          required: !!f.required,
+                          visible: true,
+                          options: f.options || [],
+                          spInternalName: f.spInternalName || '',
+                          ...(f.helpText ? { helpText: f.helpText } : {}),
+                          ...(f.multi ? { multi: true } : {}),
+                          ...(f.showIf ? { showIf: f.showIf } : {}),
+                        }));
+                        const splitActive = (selectedEvent.durchstarterCapacity || 0) > 0 && (selectedEvent.funstarterCapacity || 0) > 0;
+                        await eventServiceRef.fixRegistrationListColumns(selectedEvent.subsiteUrl, {
+                          isB2Run: splitActive,
+                          hasQuiz: (selectedEvent.quiz || []).length > 0,
+                          customFields: cfForFix,
+                        });
+                      } catch (err) { console.warn('[DEX] fixRegistrationListColumns nach Restore fehlgeschlagen:', err); }
+                    }
+                    await refreshEvents();
+                    showAlert(isDe
+                      ? `${foundFields.length} Custom-Field(s) erfolgreich aus Version ${foundVersion} zurückgeholt.`
+                      : `${foundFields.length} custom field(s) successfully restored from version ${foundVersion}.`);
+                  } catch (err) {
+                    console.warn('[DEX] restore custom fields from history failed:', err);
+                    showAlert(isDe ? 'Zurückholen fehlgeschlagen — siehe Browser-Console.' : 'Restore failed — see browser console.');
+                  }
+                }}
+              />
+            )}
+
+            {/* v27.13: „In SharePoint öffnen" entfernt — alle Teilnehmer-
+                Aktionen (Bearbeiten, Export, Massenimport, Audit) laufen über
+                die App. Direktes Editieren in der rohen SP-Liste erzeugte
+                Zeilen ohne Audit-Felder und ohne Format-Validierung (siehe
+                Feedback Datenschutz-Review 07/2026). */}
+
+            {/* 5d. v30.56: Die SharePoint-Liste direkt öffnen — Admin only.
+                Für die Fälle, die keine App-Ansicht abbildet: eine Spalte
+                nachsehen, eine Zeile von Hand korrigieren, den echten
+                Datenstand gegen eine Anzeige halten. Bewusst nur für Admins:
+                Die Liste kennt keine der Schutzregeln der App. */}
+            {isAdmin && selectedEvent && selectedEvent.subsiteUrl && (
+              <ActionTile
+                icon={<ExternalLink size={18} />}
+                category="maintenance"
+                title={isDe ? 'Teilnehmerliste in SharePoint öffnen' : 'Open participant list in SharePoint'}
+                desc={isDe
+                  ? 'Öffnet die zugrunde liegende SharePoint-Liste dieses Events in einem neuen Tab — für Nachschauen und Korrekturen, die die App nicht abbildet. Achtung: Dort gelten die Prüfungen der App nicht, Änderungen wirken sofort und werden nicht ins Änderungsprotokoll geschrieben.'
+                  : 'Opens the underlying SharePoint list of this event in a new tab — for lookups and corrections the app does not cover. Caution: none of the app’s checks apply there, changes take effect immediately and are not written to the change history.'}
+                badge="admin"
+                onClick={() => {
+                  const url = `${selectedEvent.subsiteUrl}/Lists/${encodeURIComponent(REG_LIST_NAME)}/AllItems.aspx`;
+                  window.open(url, '_blank', 'noopener,noreferrer');
+                }}
+              />
+            )}
+
+            {/* v31.3 · Gruppe WARTUNG (alle Events) — Admin-Läufe über den gesamten Bestand. */}
             {/* v20.6: Fremd-Anmeldungen: Zugriff reparieren (alle aktiven
                 Events) — Admin only. Geht alle Teilnehmerlisten durch, stellt
                 die "nur eigene Elemente"-Sicherheit sicher und setzt bei
@@ -978,8 +1381,8 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                 category="maintenance"
                 title={isRepairingOrganizers ? (isDe ? 'Reparatur läuft…' : 'Repair running…') : (isDe ? 'Organizer-Mails reparieren (alle Events)' : 'Repair organizer emails (all events)')}
                 desc={isDe
-                  ? 'Scannt alle Events nach Mismatches zwischen Organizer-Namen und Organizer-Emails (Legacy-Korruption aus früheren App-Versionen). Sucht fehlende Emails per Tenant-Suche über den Nachnamen und persistiert die gefixten Paare. Manuell nicht auflösbare Personen bleiben mit leerem Email-Slot — User muss diese im Wizard nachziehen.'
-                  : 'Scans all events for mismatches between organizer names and organizer emails (legacy corruption from earlier app versions). Looks up missing emails via tenant search by last name and persists the fixed pairs. People that cannot be resolved automatically keep an empty email slot — the user must add them in the wizard.'}
+                  ? 'Prüft alle Events auf Organizer-Namen ohne E-Mail (Altlast früherer App-Versionen), sucht die fehlenden Adressen über den Nachnamen im Tenant und speichert die vervollständigten Paare. Personen ohne eindeutig auffindbare Adresse fallen aus dem Organizer-Feld und werden namentlich gemeldet — die trägst du im Wizard neu ein.'
+                  : 'Checks all events for organizer names without an email (legacy data from earlier app versions), looks up the missing addresses by last name in the tenant and saves the completed pairs. People without an unambiguous address are dropped from the organizer field and reported by name — you re-add them in the wizard.'}
                 badge="admin"
                 busy={isRepairingOrganizers}
                 result={repairOrganizersResult}
@@ -1248,387 +1651,6 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                   }
                   setIsRepairingNames(false);
                 }}
-              />
-            )}
-
-            {/* v11.11: Custom-Fields aus Versionsverlauf zurückholen.
-                Hilft den Admins, denen die v11.9-Migration die b2run_*-
-                Felder (Altersgruppe, T-Shirt-Größe etc.) versehentlich
-                aus customFields entfernt hat. Liest die SP-Versionen des
-                Event-Items, sucht die jüngste Version mit b2run_*-
-                Feldern und mergt diese zurück in das aktuelle
-                CustomFields-Array. Bestehende Felder bleiben unverändert
-                — es werden NUR fehlende b2run_*-Felder ergänzt. */}
-
-            {isAdmin && selectedEvent && (
-              <ActionTile
-                icon={<RefreshCw size={18} />}
-                category="maintenance"
-                title={isDe ? 'Custom-Fields aus Versionsverlauf zurückholen' : 'Restore custom fields from version history'}
-                desc={isDe
-                  ? 'Holt versehentlich verloren gegangene Anmeldefelder (z.B. Altersgruppe, T-Shirt-Größe, Startblock, Mobilnummer) aus einer früheren Version des Events zurück. Bestehende Felder bleiben unangetastet — es wird nur Fehlendes ergänzt.'
-                  : 'Reads the SharePoint version history of the event and restores lost b2run_* custom fields (age group, t-shirt size, start block, mobile number etc.). Useful after the v11.9 migration which deleted these fields by accident. Existing fields are NOT overwritten — only missing fields are added.'}
-                badge="admin"
-                onClick={async () => {
-                  if (!eventServiceRef || !selectedEvent) return;
-                  try {
-                    const history = await eventServiceRef.getEventCustomFieldsHistory(parseInt(selectedEvent.id, 10));
-                    if (history.length === 0) {
-                      showAlert(isDe ? 'Kein Versionsverlauf gefunden — entweder hat das Event keine Versionen oder der Zugriff wurde verweigert.' : 'No version history found — the event has no versions or access was denied.');
-                      return;
-                    }
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    const currentFields: any[] = (selectedEvent.eventSpecificFields || []).map(f => ({ ...f }));
-                    const currentIds = new Set(currentFields.map(f => String(f.id || '').toLowerCase()));
-                    // Jüngste Version mit b2run_*-Feldern finden, die noch
-                    // NICHT in currentFields stecken.
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    let foundFields: any[] = [];
-                    let foundVersion = '';
-                    let foundModified = '';
-                    for (const v of history) {
-                      const missingB2run = v.customFields.filter(f => {
-                        const id = String(f.id || '').toLowerCase();
-                        return id.indexOf('b2run_') === 0 && !currentIds.has(id);
-                      });
-                      if (missingB2run.length > 0) {
-                        foundFields = missingB2run;
-                        foundVersion = v.versionLabel;
-                        foundModified = v.modified;
-                        break;
-                      }
-                    }
-                    if (foundFields.length === 0) {
-                      showAlert(isDe ? 'Keine fehlenden b2run_*-Felder im Versionsverlauf gefunden — entweder sind alle Felder schon vorhanden oder es gab nie welche.' : 'No missing b2run_* fields found in the version history — either all fields already exist or there never were any.');
-                      return;
-                    }
-                    const fieldList = foundFields.map(f => `• ${f.label || f.id}`).join('\n');
-                    const modifiedDate = foundModified ? new Date(foundModified).toLocaleString(isDe ? 'de-DE' : 'en-GB') : '?';
-                    if (!(await confirmDialog(isDe
-                      ? `Folgende ${foundFields.length} Custom-Field(s) aus Version ${foundVersion} (${modifiedDate}) zurückholen?\n\n${fieldList}\n\nDie Felder werden ans Ende deiner aktuellen Felder-Liste angehängt. Du kannst sie danach im Wizard frei umbenennen, neu sortieren oder löschen.`
-                      : `Restore the following ${foundFields.length} custom field(s) from version ${foundVersion} (${modifiedDate})?\n\n${fieldList}\n\nThe fields are appended to the end of your current field list. You can rename, reorder or delete them afterwards in the wizard.`, { confirmLabel: isDe ? 'Zurückholen' : 'Restore' }))) {
-                      return;
-                    }
-                    const merged = [...currentFields, ...foundFields];
-                    const ok = await updateEvent(selectedEvent.id, { 'CustomFields': JSON.stringify(merged) });
-                    if (!ok) {
-                      showAlert(isDe ? 'Update fehlgeschlagen — siehe Browser-Console.' : 'Update failed — see browser console.');
-                      return;
-                    }
-                    // Subsite-Spalten gleich mit-syncen, damit die b2run_*-
-                    // Spalten in der Teilnehmerliste wieder existieren.
-                    if (selectedEvent.subsiteUrl) {
-                      try {
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        const cfForFix: any[] = merged.map((f: any) => ({
-                          id: f.id,
-                          label: f.label,
-                          type: f.type,
-                          required: !!f.required,
-                          visible: true,
-                          options: f.options || [],
-                          spInternalName: f.spInternalName || '',
-                          ...(f.helpText ? { helpText: f.helpText } : {}),
-                          ...(f.multi ? { multi: true } : {}),
-                          ...(f.showIf ? { showIf: f.showIf } : {}),
-                        }));
-                        const splitActive = (selectedEvent.durchstarterCapacity || 0) > 0 && (selectedEvent.funstarterCapacity || 0) > 0;
-                        await eventServiceRef.fixRegistrationListColumns(selectedEvent.subsiteUrl, {
-                          isB2Run: splitActive,
-                          hasQuiz: (selectedEvent.quiz || []).length > 0,
-                          customFields: cfForFix,
-                        });
-                      } catch (err) { console.warn('[DEX] fixRegistrationListColumns nach Restore fehlgeschlagen:', err); }
-                    }
-                    await refreshEvents();
-                    showAlert(isDe
-                      ? `${foundFields.length} Custom-Field(s) erfolgreich aus Version ${foundVersion} zurückgeholt.`
-                      : `${foundFields.length} custom field(s) successfully restored from version ${foundVersion}.`);
-                  } catch (err) {
-                    console.warn('[DEX] restore custom fields from history failed:', err);
-                    showAlert(isDe ? 'Zurückholen fehlgeschlagen — siehe Browser-Console.' : 'Restore failed — see browser console.');
-                  }
-                }}
-              />
-            )}
-
-            {/* 9. Felder reparieren — Admin only */}
-            {isAdmin && (
-              <ActionTile
-                icon={<Wrench size={18} />}
-                category="maintenance"
-                title={isFixingFields ? (isDe ? 'Felder werden repariert…' : 'Repairing fields…') : (isDe ? 'Felder reparieren' : 'Repair fields')}
-                desc={isDe
-                  ? "Räumt die Anmeldefelder dieses Events automatisch auf: AGB/Datenschutz wird eine richtige Checkbox, T-Shirt-Auswahl bekommt eine 'Kein T-Shirt'-Option, doppelte '(Pflicht)'-Zusätze verschwinden."
-                  : "Normalizes custom fields: terms/privacy → checkbox, t-shirt → 'no t-shirt' option, add B2Run special fields, remove redundant '(required)' suffixes."}
-                badge="admin"
-                busy={isFixingFields}
-                disabled={!selectedEvent}
-                result={fixFieldsResult}
-                resultIsError={!!fixFieldsResult && (fixFieldsResult.startsWith('Fehler') || fixFieldsResult.startsWith('Update fehl') || fixFieldsResult.startsWith('Error') || fixFieldsResult.startsWith('Update failed'))}
-                onClick={async () => {
-                  if (!selectedEvent) return;
-                  setIsFixingFields(true);
-                  setFixFieldsResult(null);
-                  try {
-                    const changes: string[] = [];
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    const raw: any[] = (selectedEvent.eventSpecificFields || []).map((f: any) => ({ ...f }));
-                    const hasField = (id: string): boolean => raw.some(f => f.id === id);
-                    const isB2Run = raw.some(f => String(f.id || '').indexOf('b2run_') === 0);
-                    if (isB2Run) {
-                      if (!hasField('b2run_infoservice')) {
-                        raw.push({ id: 'b2run_infoservice', label: 'Infoservice nutzen (SMS von B2Run — Mobilnummer erforderlich)', type: 'checkbox', required: false, options: [], visible: true });
-                        changes.push("Feld ergänzt: 'Infoservice'");
-                      }
-                      if (!hasField('b2run_anonym')) {
-                        raw.push({ id: 'b2run_anonym', label: 'Anonym teilnehmen', type: 'checkbox', required: false, options: [], visible: true });
-                        changes.push("Feld ergänzt: 'Anonym teilnehmen'");
-                      }
-                      const hasLaufshirt = raw.some(f => f.id === 'b2run_laufshirt' || /laufshirt/i.test(String(f.label || '')));
-                      if (!hasLaufshirt) {
-                        raw.push({ id: 'b2run_laufshirt', label: 'Deloitte-Laufshirt', type: 'select', required: true, options: ['Habe bereits ein Laufshirt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true });
-                        changes.push("Feld ergänzt: 'Deloitte-Laufshirt' (Pflicht)");
-                      }
-                    }
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    const fixed = raw.map((f: any) => {
-                      const nf = { ...f };
-                      const label = String(nf.label || '');
-                      const lowLabel = label.toLowerCase();
-                      const isConsent = lowLabel.indexOf('zustimmung') >= 0
-                        || lowLabel.indexOf('agb') >= 0
-                        || lowLabel.indexOf('datenschutz') >= 0;
-                      const isB2RunCheckbox = ['b2run_infoservice', 'b2run_anonym', 'b2run_datenschutz'].indexOf(nf.id) >= 0;
-                      if ((isConsent || isB2RunCheckbox) && nf.type !== 'checkbox') {
-                        nf.type = 'checkbox';
-                        nf.options = [];
-                        changes.push(`${label} -> Checkbox`);
-                      }
-                      // v30.67: Idempotent machen. Der Guard prüfte auf 'kein' — ein
-                      // Wort, das in keinem der beiden eingefügten Texte vorkommt
-                      // ('Ohne T-Shirt', 'Habe bereits ein Laufshirt'). Jeder Klick
-                      // hängte deshalb eine weitere Kopie vorn an. Und 'Laufshirt'
-                      // enthält 'shirt': Ein Laufshirt-Feld lief durch BEIDE Zweige,
-                      // bekam 'Ohne T-Shirt' UND ein zweites 'Habe bereits …', und
-                      // `required` kippte erst auf false, dann zurück auf true.
-                      const uniqOpts = (arr: string[]): string[] => arr.filter((o, i) => arr.indexOf(o) === i);
-                      const hasOpt = (arr: string[], text: string): boolean =>
-                        arr.some((o: string) => o.trim().toLowerCase() === text.toLowerCase() || o.toLowerCase().indexOf('kein') >= 0);
-                      const isLaufshirt = nf.id === 'b2run_laufshirt' || /laufshirt/i.test(label);
-                      const isShirt = !isLaufshirt && (lowLabel.indexOf('t-shirt') >= 0 || lowLabel.indexOf('tshirt') >= 0 || lowLabel.indexOf('shirt') >= 0);
-                      if (isShirt && nf.type === 'select') {
-                        const rawOpts: string[] = Array.isArray(nf.options) ? nf.options.slice() : [];
-                        const opts = uniqOpts(rawOpts);
-                        if (opts.length !== rawOpts.length) {
-                          nf.options = opts;
-                          changes.push(`${label}: doppelte Optionen entfernt`);
-                        }
-                        if (!hasOpt(opts, 'Ohne T-Shirt')) {
-                          opts.unshift('Ohne T-Shirt');
-                          nf.options = opts;
-                          changes.push(`${label} -> 'Ohne T-Shirt'-Option`);
-                        }
-                        if (nf.required) {
-                          nf.required = false;
-                          changes.push(`${label} -> optional`);
-                        }
-                      }
-                      const stripped = label.replace(/\s*\((?:pflicht|mandatory|required)\)\s*$/i, '').trim();
-                      if (stripped && stripped !== label) {
-                        nf.label = stripped;
-                        changes.push(`Label "${label}" -> "${stripped}"`);
-                      }
-                      if (nf.id === 'b2run_mobilnummer') {
-                        if (nf.required) { nf.required = false; changes.push('Mobilnummer -> optional'); }
-                        if (nf.label === 'Mobilnummer') {
-                          nf.label = 'Mobilnummer (nur bei aktiviertem Infoservice)';
-                          changes.push("Mobilnummer-Label präzisiert");
-                        }
-                      }
-                      if (nf.id === 'b2run_infoservice' && nf.label && nf.label.indexOf('benötigt') >= 0) {
-                        nf.label = 'Infoservice nutzen (SMS von B2Run — Mobilnummer erforderlich)';
-                        changes.push('Infoservice-Label modernisiert');
-                      }
-                      if (nf.id === 'b2run_datenschutz') {
-                        const needLinks = !Array.isArray(nf.externalLinks) || nf.externalLinks.length === 0;
-                        if (needLinks) {
-                          nf.externalLinks = [
-                            { label: 'AGB (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/agb/index.html' },
-                            { label: 'Datenschutz (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
-                          ];
-                          changes.push('B2Run-Datenschutz: AGB + Datenschutz Links ergänzt');
-                        }
-                      }
-                      if (isLaufshirt) {
-                        if (!nf.required) {
-                          nf.required = true;
-                          changes.push(`${label || nf.id}: als Pflichtfeld markiert`);
-                        }
-                        if (nf.type === 'select') {
-                          const rawOpts: string[] = Array.isArray(nf.options) ? nf.options.slice() : [];
-                          const opts = uniqOpts(rawOpts);
-                          if (opts.length !== rawOpts.length) {
-                            nf.options = opts;
-                            changes.push(`${label || nf.id}: doppelte Optionen entfernt`);
-                          }
-                          if (!hasOpt(opts, 'Habe bereits ein Laufshirt')) {
-                            opts.unshift('Habe bereits ein Laufshirt');
-                            nf.options = opts;
-                            changes.push(`${label || nf.id}: 'Habe bereits ein Laufshirt'-Option hinzugefügt`);
-                          }
-                        }
-                      }
-                      return nf;
-                    });
-                    const dsIdx = fixed.findIndex((f: { id: string }) => f.id === 'b2run_datenschutz');
-                    if (dsIdx >= 0 && dsIdx !== fixed.length - 1) {
-                      const [ds] = fixed.splice(dsIdx, 1);
-                      fixed.push(ds);
-                      changes.push('Zustimmung-Checkbox ans Ende verschoben');
-                    }
-                    const ok = await updateEvent(selectedEvent.id, { CustomFields: JSON.stringify(fixed) });
-                    if (ok) {
-                      setFixFieldsResult(changes.length > 0
-                        ? (isDe ? `Geändert: ${changes.join(' | ')}` : `Changed: ${changes.join(' | ')}`)
-                        : (isDe ? 'Keine Änderungen nötig.' : 'No changes needed.'));
-                    } else {
-                      setFixFieldsResult(isDe ? 'Update fehlgeschlagen.' : 'Update failed.');
-                    }
-                  } catch (err) {
-                    setFixFieldsResult((isDe ? 'Fehler: ' : 'Error: ') + (err instanceof Error ? err.message : String(err)));
-                  }
-                  setIsFixingFields(false);
-                }}
-              />
-            )}
-
-            {/* 10. Profile neu laden — Admin only */}
-            {isAdmin && (
-              <ActionTile
-                icon={<RefreshCw size={18} />}
-                category="maintenance"
-                title={isRefreshingProfiles ? (isDe ? 'Teilnehmer werden nachgeladen…' : 'Reloading attendees…') : (isDe ? 'Teilnehmer nachladen (Daten reparieren)' : 'Reload attendees (repair data)')}
-                desc={isDe
-                  ? 'Lädt Name, JobTitle, Standort, Department und Telefonnummer der letzten N Teilnehmer frisch aus dem Microsoft-365-Benutzerprofil. Repariert auch kaputte Namen — z.B. wenn statt des Vornamens ein technisches Anmelde-Kürzel in der Liste steht.'
-                  : 'Reloads name, job title, location, department and phone of the last N attendees from the Microsoft 365 user profile. Also repairs broken names — e.g. when a technical login token appears instead of the first name.'}
-                badge="admin"
-                busy={isRefreshingProfiles}
-                disabled={!selectedEvent?.subsiteUrl}
-                result={refreshProfilesResult}
-                resultIsError={!!refreshProfilesResult && (refreshProfilesResult.indexOf('Fehler') >= 0 || refreshProfilesResult.indexOf('Error') >= 0)}
-                onClick={async () => {
-                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                  const ans = prompt(isDe
-                    ? 'Wie viele der letzten Teilnehmer sollen aus dem Benutzerprofil neu geladen werden? (JobTitle, Standort, Department, Phone)'
-                    : 'How many of the most recent participants should be reloaded from the user profile? (job title, location, department, phone)', '20');
-                  if (!ans) return;
-                  const n = parseInt(ans, 10);
-                  if (isNaN(n) || n <= 0) { showAlert(isDe ? 'Bitte eine positive Zahl eingeben.' : 'Please enter a positive number.'); return; }
-                  setIsRefreshingProfiles(true);
-                  setRefreshProfilesResult(null);
-                  try {
-                    const result = await eventServiceRef.fixEventParticipantsProfileData(selectedEvent.subsiteUrl, n);
-                    setRefreshProfilesResult(isDe
-                      ? `${result.scanned} geprüft, ${result.updated} aktualisiert, ${result.failedLookups} Profil-Lookups fehlgeschlagen`
-                      : `${result.scanned} checked, ${result.updated} updated, ${result.failedLookups} profile lookups failed`);
-                    await reloadRegistrations();
-                  } catch {
-                    setRefreshProfilesResult(isDe ? 'Fehler beim Auffrischen der Profile' : 'Error refreshing profiles');
-                  }
-                  setIsRefreshingProfiles(false);
-                }}
-              />
-            )}
-
-            {/* v30.37: Organizer-Berechtigungen über Klammer UND alle Termine
-                neu setzen. Bis v30.36 lief der Sync beim Speichern nur über
-                die Klammer-Subsite — nachträglich benannte (Co-)Organizer
-                hatten auf keinem einzigen Sub-Event Leserecht und sahen das
-                Event als leer. Idempotent: wer die Rechte hat, behält sie.
-                Ausführen kann das nur, wer selbst Full Control hat (Admin
-                oder Haupt-Organizer) — die betroffene Person kann sich die
-                Rechte naturgemäß nicht selbst geben. */}
-            {(isAdmin || isOrganizerFor(selectedEvent)) && (
-              <ActionTile
-                icon={<RefreshCw size={18} />}
-                category="maintenance"
-                title={isDe ? 'Organizer-Berechtigungen reparieren' : 'Repair organizer permissions'}
-                desc={isDe
-                  ? 'Setzt für alle Organizer und Co-Organizer dieses Events das Leserecht auf der Teilnehmerliste — auf dem Haupt-Event UND auf jedem einzelnen Termin. Nötig, wenn jemand nachträglich als Organizer dazugekommen ist und überall „0 Teilnehmer" sieht, obwohl Anmeldungen vorliegen.'
-                  : 'Grants every organizer and co-organizer of this event read access to the participant list — on the main event AND on every single date. Needed when someone was added as organizer later and sees "0 participants" everywhere although registrations exist.'}
-                badge="organizer"
-                busy={isRepairingPerms}
-                disabled={!selectedEvent?.subsiteUrl}
-                result={repairPermsResult}
-                resultIsError={!!repairPermsResult && (repairPermsResult.indexOf('Fehler') >= 0 || repairPermsResult.indexOf('Error') >= 0)}
-                onClick={async () => {
-                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                  const emails = (selectedEvent.organizerEmails || [])
-                    .concat(selectedEvent.coOrganizerEmails || [])
-                    .map(e => (e || '').trim()).filter(Boolean);
-                  if (emails.length === 0) {
-                    setRepairPermsResult(isDe ? 'Keine Organizer-Adressen hinterlegt' : 'No organizer addresses on file');
-                    return;
-                  }
-                  const sites = [selectedEvent.subsiteUrl]
-                    .concat(childEventsOf(selectedEvent.id).map(k => k.subsiteUrl || ''))
-                    .filter(Boolean);
-                  setIsRepairingPerms(true);
-                  setRepairPermsResult(null);
-                  try {
-                    const r = await eventServiceRef.ensureOrganizerPermissionsMulti(sites, emails.join(';'));
-                    const unresolved = r.unresolved.length
-                      ? (isDe ? ` · ${r.unresolved.length} Adresse(n) nicht gefunden: ${r.unresolved.join(', ')}` : ` · ${r.unresolved.length} address(es) not found: ${r.unresolved.join(', ')}`)
-                      : '';
-                    // v30.67 (Review): `failed` auswerten. Das Ergebnis trägt seit
-                    // v30.67 je fehlgeschlagene Zuweisung Subsite, Scope (web/list)
-                    // und HTTP-Status — die Kachel las nur users/sites und meldete
-                    // bei 40× HTTP 403 grün „3 Person(en) auf 20 Liste(n)
-                    // berechtigt". `grants` ist die Zahl der wirklich gesetzten
-                    // Rechte; `users` sagt nur, wie viele Adressen aufgelöst wurden.
-                    // `resultIsError` hängt am Wort „Fehler"/„Error" — deshalb steht
-                    // es vorn im Text. Vorbild: repairAllOrganizerPermissions
-                    // (context/actions/maintenance.ts). Die Termin-Listen werden nur
-                    // nachgeladen, wenn nichts fehlgeschlagen ist — sonst zeigte der
-                    // Reload dieselben „0", und das Banner verschwände zu Unrecht.
-                    const failed = r.failed || [];
-                    const siteName = (s: string): string => s.replace(/\/+$/, '').split('/').pop() || s;
-                    if (failed.length > 0) {
-                      const shown = failed.slice(0, 5).map(f => `${siteName(f.site)} [${f.scope}] HTTP ${f.status}`).join(', ');
-                      const more = failed.length > 5 ? ' …' : '';
-                      setRepairPermsResult(isDe
-                        ? `Fehler: ${failed.length} Zuweisung(en) fehlgeschlagen — ${shown}${more} · ${r.grants} Recht(e) gesetzt${unresolved}`
-                        : `Error: ${failed.length} assignment(s) failed — ${shown}${more} · ${r.grants} grant(s) set${unresolved}`);
-                    } else {
-                      setRepairPermsResult(isDe
-                        ? `${r.grants} Recht(e) für ${r.users} Person(en) auf ${r.sites} Liste(n) gesetzt${unresolved}`
-                        : `${r.grants} grant(s) for ${r.users} person(s) on ${r.sites} list(s) set${unresolved}`);
-                      setSubRegReloadTick(t => t + 1);
-                    }
-                  } catch {
-                    setRepairPermsResult(isDe ? 'Fehler beim Setzen der Berechtigungen' : 'Error setting permissions');
-                  }
-                  setIsRepairingPerms(false);
-                }}
-              />
-            )}
-
-            {/* v19.30 (Feature D): Audit-Log / Änderungsprotokoll dieses
-                Events öffnen — vorgefiltert auf den Event-Titel. Sichtbar für
-                Admin oder Organizer dieses Events. Zeigt pro Eintrag Zeitpunkt,
-                Akteur, Aktion, Ziel-Teilnehmer und bei Daten-Änderungen das
-                Vorher → Nachher je Feld. */}
-            {(isAdmin || isOrganizerFor(selectedEvent)) && (
-              <ActionTile
-                icon={<FileText size={18} />}
-                category="event"
-                title={isDe ? 'Audit-Log / Änderungsprotokoll' : 'Audit log / change history'}
-                desc={isDe
-                  ? 'Öffnet das Änderungsprotokoll vorgefiltert auf dieses Event. Du siehst pro Eintrag: wann, wer, welche Aktion (z.B. bearbeitet, abgemeldet, gelöscht), welcher Teilnehmer betroffen war und bei Daten-Änderungen den genauen Vorher → Nachher-Vergleich je Feld.'
-                  : 'Opens the change history pre-filtered to this event. Each entry shows: when, who, which action (e.g. edited, deregistered, deleted), which participant was affected and — for data changes — the exact before → after comparison per field.'}
-                badge="organizer"
-                onClick={openChangeLogForEvent}
               />
             )}
           </div>
