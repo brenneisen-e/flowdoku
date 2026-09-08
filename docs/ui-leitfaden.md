@@ -1082,10 +1082,33 @@ Datenschutz-Schalter.
 
 ### 6f. Prüfen — die sieben Zustandsfälle
 
-`tsc` und ESLint fangen hier fast nichts, und für die Teilnehmer-Seiten gibt es
-**keinen Harness**: `tools/wizard-harness/entry.tsx` bündelt ausschließlich
-`EventCreationPage`. Die einzige Vorschau sind die Handbuch-Seiten (oben) —
-also ist der Stub-Provider Pflichtprüfung, und die Fälle unten werden am Diff
+`tsc` und ESLint fangen hier fast nichts. Seit v31.8 rendert der Harness aber
+auch diese Seiten — **einmal laufen lassen und die Bilder ansehen** ist keine
+Kür:
+
+```bash
+cd dex-event-app-spfx/tools/wizard-harness
+npm i --no-audit --no-fund      # einmalig, VON HIER AUS — sonst landen esbuild
+                                # und playwright im Produkt-Paket
+node build.js
+node shot.js pages              # out/shots/page-*.png, je Seite Desktop UND Handy
+```
+
+Einzelne Seite ohne den ganzen Lauf:
+`out/index.html?page=register&mobile=1` (`landing`, `start`, `list`, `register`,
+`myevents`; dazu `&view=list` und `&event=<id>`). `?mobile=1` setzt
+`window.__dexForceMobile` **und** den 390-px-Viewport — nur zusammen greifen die
+Media-Queries; wer nur das Flag setzt, fotografiert ein 980-px-Layout in klein.
+
+Was der Harness NICHT zeigt und worüber er deshalb nichts beweist: Bilder sind
+Platzhalter (Bildzuschnitt und Orb-Größen kann man dort nicht beurteilen), die
+Fluent-Icon-Schrift fehlt (`<Icon>` rendert leere Kästchen — die eigenen
+SVG-Icons aus `Icons.tsx` stimmen), Profilfotos fehlen, es gibt kein Speichern
+und keine Personensuche. **Ein leeres Kästchen im Bild ist kein Fehler, ein
+falsch sortierter Block schon.** Zweite Vorschau bleiben die Handbuch-Seiten
+mit ihren handgepflegten Stubs (siehe 6e) — der Stub-Provider ist Pflichtprüfung.
+
+Die Zustände unten erzeugt der Harness nicht alle; sie werden am Diff
 durchgegangen. Zusätzlich zu Abschnitt 8:
 
 - [ ] Kachel als normaler User **nach Fristablauf** (Overlay + roter Kasten,
