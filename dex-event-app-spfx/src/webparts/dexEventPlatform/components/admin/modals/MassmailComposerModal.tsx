@@ -8,7 +8,8 @@ import { formatOrganizerList } from '../../../context/eventTextHelpers';
 import { HtmlEditorModal } from '../../HtmlEditorModal';
 import RecipientPicker from '../../admin/RecipientPicker';
 import MailHeaderImageChooser from '../../admin/MailHeaderImageChooser';
-import { Check, Send } from '../../Icons';
+import { Check, ChevronDown, Send, Users } from '../../Icons';
+import { cx } from '../../dexUi';
 import { DeloitteEvent } from '../../../types';
 import { EventService, SPRegistration } from '../../../services/EventService';
 import { MailHeaderImage } from '../../../utils/mailHeaderImage';
@@ -57,6 +58,10 @@ export interface MassmailComposerModalProps {
 
 export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) => {
   const { applyMassmailHero, confirmDialog, emailBody, emailHeading, emailSending, emailSubject, eventServiceRef, isDe, massmailAudience, massmailCc, massmailDraftSaved, massmailEventPhotoB64, massmailHeaderImage, massmailHeaderOpts, massmailPasteRaw, massmailStatuses, massmailSubheading, massmailTesting, massmailTestMsg, registrations, resetMassmailDraft, saveMassmailDraft, searchUser, searchUsers, selectedEvent, sendMassmailTestToOrganizers, setComposerCrop, setEmailBody, setEmailHeading, setEmailSending, setEmailSubject, setMassmailCc, setMassmailHeaderImage, setMassmailMode, setMassmailPasteRaw, setMassmailSubheading, setShowEmailModal, showAlert, showEmailModal } = p;
+        // v31.2: Das zusätzliche CC ist selten nötig und steht deshalb in
+        // einem Aufklapper — offen nur, wenn schon jemand eingetragen ist,
+        // damit ein gesetzter Verteiler nie unsichtbar mitfährt.
+        const [ccOpen, setCcOpen] = React.useState<boolean>(massmailCc.length > 0);
         // v17.10: Empfänger-Filter abhängig vom gewählten massmailAudience.
         const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
         const recipients = (() => {
@@ -135,8 +140,15 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
         })();
         const sendAction = async (): Promise<void> => {
           if (!eventServiceRef || !selectedEvent) return;
-          if (recipients.length === 0) { showAlert('Keine Empfänger in der gewählten Auswahl.'); return; }
-          if (!(await confirmDialog(`E-Mail an ${recipients.length} Teilnehmer senden?`, { confirmLabel: isDe ? 'Senden' : 'Send' }))) return;
+          // v31.2: Meldungen zweisprachig; die Rückfrage nennt die Folge
+          // (Leitfaden 2b), nicht nur die Zahl.
+          if (recipients.length === 0) { showAlert(isDe ? 'In der gewählten Gruppe ist niemand — es gibt keine Empfänger.' : 'The selected group is empty — there are no recipients.'); return; }
+          if (!(await confirmDialog(
+            isDe
+              ? `An ${recipients.length} Empfänger senden? Die Mail geht so raus, wie du sie jetzt in der Vorschau siehst.`
+              : `Send to ${recipients.length} recipients? The email goes out exactly as you see it in the preview now.`,
+            { confirmLabel: isDe ? 'Senden' : 'Send' },
+          ))) return;
           setEmailSending(true);
           // Variablen einmalig auflösen (Massenmail geht an alle zusammen)
           const resolvedSubject = replacePlaceholders(emailSubject, previewVars);
@@ -162,33 +174,40 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
             // liest sich eine höhere Zahl so, als hätte das Event plötzlich
             // mehr Organizer.
             const ccInfo = ccString
-              ? ` (auf CC: ${ccList.join(', ')})`
-              : ' (niemand auf CC — alle Organizer stehen schon im An-Feld)';
-            showAlert(`E-Mail an ${recipients.length} Empfänger in die Warteschlange eingetragen.${ccInfo}`);
+              ? (isDe ? ` Auf CC: ${ccList.join(', ')}.` : ` On CC: ${ccList.join(', ')}.`)
+              : (isDe ? ' Niemand auf CC — alle Organizer stehen schon im An-Feld.' : ' Nobody on CC — all organizers are already in the To field.');
+            showAlert(isDe
+              ? `Die Mail an ${recipients.length} Empfänger steht in der Warteschlange und geht in Kürze raus.${ccInfo}`
+              : `The email to ${recipients.length} recipients is queued and goes out shortly.${ccInfo}`);
             setShowEmailModal(false);
             setMassmailMode('closed');
             setMassmailPasteRaw('');
           } catch {
             setEmailSending(false);
-            showAlert('Fehler beim Eintragen der E-Mail.');
+            showAlert(isDe ? 'Die Mail konnte nicht in die Warteschlange eingetragen werden. Bitte versuch es noch einmal.' : 'The email could not be queued. Please try again.');
           }
         };
         // v22.11: „Briefumschlag"-Kopf über der Vorschau — wie bei der
         // Einladungsmail (An: Empfängergruppe, Betreff: aufgelöster Subject).
         const audienceLabel = massmailAudience === 'custom'
           ? Array.from(massmailStatuses).join(', ')
-          : massmailAudience === 'waitOnly' ? 'Nur Warteliste'
-          : massmailAudience === 'activePlusWait' ? 'Teilnehmer + Warteliste'
-          : massmailAudience === 'nachruecker' ? 'Nachrücker (manueller Abgleich)'
-          : 'Alle aktiven Teilnehmer';
+          : massmailAudience === 'waitOnly' ? (isDe ? 'Nur Warteliste' : 'Waitlist only')
+          : massmailAudience === 'activePlusWait' ? (isDe ? 'Teilnehmer + Warteliste' : 'Attendees + waitlist')
+          : massmailAudience === 'nachruecker' ? (isDe ? 'Nachrücker (manueller Abgleich)' : 'Replacements (manual match)')
+          : (isDe ? 'Alle aktiven Teilnehmer' : 'All active attendees');
         // v30.51.1: Die Vorschau nennt die WIRKLICHE CC-Zahl (s. massmailCcPreview).
-        const previewToLine = `${recipients.length} Empfänger — ${audienceLabel}${massmailCcPreview.length > 0 ? ` · ${massmailCcPreview.length} in CC` : ' · niemand in CC'}`;
+        const ccCount = massmailCcPreview.length;
+        const ccNobody = isDe ? 'niemand in CC' : 'nobody in CC';
+        const previewToLine = `${recipients.length} ${isDe ? 'Empfänger' : 'recipients'} — ${audienceLabel} · ${ccCount > 0 ? `${ccCount} in CC` : ccNobody}`;
         const previewSubjectLine = replacePlaceholders(emailSubject, previewVars);
+        // v31.2: Ob die Testmail-Rückmeldung ein Erfolg war — dieselbe Prüfung
+        // wie bisher, nur einmal benannt statt zweimal im JSX gerechnet.
+        const testOk = !!massmailTestMsg && (massmailTestMsg.indexOf('verschickt') >= 0 || massmailTestMsg.indexOf('sent') >= 0);
         return (
           <HtmlEditorModal
             open={showEmailModal}
             onClose={() => !emailSending && setShowEmailModal(false)}
-            title={`Massenmail an ${recipients.length} Teilnehmer: ${selectedEvent.title}`}
+            title={`${isDe ? `Massenmail an ${recipients.length} Empfänger` : `Mass email to ${recipients.length} recipients`} · ${selectedEvent.title}`}
             value={emailBody}
             onChange={setEmailBody}
             previewMode="email"
@@ -214,84 +233,109 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
             onImagePaddingVChange={(v) => setMassmailHeaderImage(p => ({ ...p, paddingV: v }))}
             onImagePaddingHChange={(h) => setMassmailHeaderImage(p => ({ ...p, paddingH: h }))}
             headerExtra={(
-              <div style={{ padding: 12, background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)', marginBottom: 4 }}>
-                <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginBottom: 8 }}>
-                  {isDe
-                    ? <>Geht an <strong>{recipients.length}</strong> Empfänger (die oben gewählte Gruppe).</>
-                    : <>Goes to <strong>{recipients.length}</strong> recipients (the group selected above).</>}
-                </div>
-                {/* v30.51.1: Was WIRKLICH ins CC geht, statt einer Zusage.
-                    Vorher stand hier „Organizer kommen automatisch auf CC" —
-                    das stimmt aber genau dann nicht, wenn die Organizer selbst
-                    am Event teilnehmen (der Normalfall beim eigenen Event):
-                    Dann stehen sie schon im An-Feld und werden nicht noch
-                    einmal ins CC gesetzt. Wer das nicht weiß, sucht den Fehler
-                    in der App. */}
-                <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginBottom: 8 }}>
-                  <strong style={{ color: 'var(--dex-gray-700)' }}>CC: </strong>
-                  {massmailCcPreview.length === 0
-                    ? <span style={{ color: 'var(--dex-gray-500)' }}>niemand — alle Organizer stehen bereits im An-Feld.</span>
-                    : <span style={{ wordBreak: 'break-word' }}>{massmailCcPreview.join(', ')}</span>}
-                </div>
-                {/* v30.51: Zusätzliches CC. Bewusst hier oben, direkt unter der
-                    Empfänger-Zeile — CC ist eine Aussage über den Verteiler,
-                    nicht über die Gestaltung. */}
-                <div style={{ marginBottom: 10 }}>
-                  <RecipientPicker
-                    label={isDe ? 'Zusätzlich auf CC' : 'Additional CC'}
-                    hint={isDe
-                      ? 'Personen über die Suche, Funktionspostfächer im Feld darunter. Die Organizer des Events sind ohnehin auf CC und müssen hier nicht eingetragen werden.'
-                      : 'People via search, shared mailboxes in the field below. The event organizers are on CC anyway.'}
-                    emptyText={isDe ? 'Kein zusätzliches CC — es gehen nur die Organizer mit.' : 'No additional CC — only the organizers.'}
-                    value={massmailCc}
-                    onChange={setMassmailCc}
-                    searchUsers={searchUsers}
-                    searchUserByEmail={searchUser}
-                    disabled={emailSending}
-                  />
-                </div>
-                {/* v30.52: gemeinsame Auswahl (s. admin/MailHeaderImageChooser) —
-                    vorher stand dieselbe Reiter-Reihe hier und in der
-                    Einladungsmail wortgleich ein zweites Mal. */}
-                <MailHeaderImageChooser
-                  value={massmailHeaderImage}
-                  onChange={setMassmailHeaderImage}
-                  eventPhotoB64={massmailEventPhotoB64}
-                  disabled={emailSending}
-                  onCrop={() => setComposerCrop('massmail')}
-                  isDe={isDe}
-                />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                  <button type="button" className="btn btn-secondary" onClick={saveMassmailDraft} disabled={emailSending} style={{ fontSize: '0.78rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <Check size={14} /> {isDe ? 'Entwurf speichern' : 'Save draft'}
-                  </button>
-                  {massmailDraftSaved && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700, fontSize: '0.78rem' }}>
-                      <Check size={14} /> {isDe ? 'Gespeichert' : 'Saved'}
-                    </span>
-                  )}
-                  <button type="button" className="btn btn-outline" onClick={() => { sendMassmailTestToOrganizers().catch(() => { /* */ }); }} disabled={emailSending || massmailTesting} style={{ fontSize: '0.78rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <Send size={14} /> {massmailTesting ? (isDe ? 'Sendet…' : 'Sending…') : (isDe ? 'Testmail an Organizer' : 'Test email to organizers')}
-                  </button>
-                  <span style={{ flex: 1 }} />
-                  <button type="button" onClick={resetMassmailDraft} disabled={emailSending} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, fontSize: '0.74rem', textDecoration: 'underline' }}>
-                    {isDe ? 'Zurücksetzen' : 'Reset'}
-                  </button>
-                </div>
-                {massmailTestMsg && (
-                  <div style={{ marginTop: 8, fontSize: '0.78rem', color: (massmailTestMsg.indexOf('verschickt') >= 0 || massmailTestMsg.indexOf('sent') >= 0) ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-orange-dark, #b35a00)' }}>
-                    {massmailTestMsg}
+              // v31.2: Drei Fragen in der Reihenfolge, in der ein Organizer sie
+              // beantwortet: An wen? → Wie sieht der Kopf aus? → Was prüfe ich vor
+              // dem Senden? Betreff und Text folgen darunter im Editor, der
+              // Sende-Knopf sitzt im Fuß. Klassen statt Inline-Kästen (Hover kommt mit).
+              <div className="dex-ui-stack" style={{ gap: 20 }}>
+                <div>
+                  <div className="dex-ui-section-title">{isDe ? 'An wen geht die Mail?' : 'Who receives the email?'}</div>
+                  <div className="dex-ui-inline">
+                    <span className={cx('dex-ui-pill', recipients.length > 0 ? 'dex-ui-pill--green' : 'dex-ui-pill--red')}><Users size={13} /> {recipients.length} {isDe ? 'Empfänger' : 'recipients'}</span>
+                    <span className="dex-ui-pill dex-ui-pill--gray">{audienceLabel}</span>
+                    <span className={cx('dex-ui-pill', ccCount > 0 ? 'dex-ui-pill--blue' : 'dex-ui-pill--gray')}>{ccCount > 0 ? `${ccCount} CC` : ccNobody}</span>
                   </div>
-                )}
-                <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
-                  {isDe
-                    ? 'Dein Text wird zusätzlich automatisch gespeichert und beim nächsten Öffnen wiederhergestellt.'
-                    : 'Your text is also saved automatically and restored next time you open it.'}
+                  {/* v30.51.1: Was WIRKLICH ins CC geht, statt einer Zusage. „Organizer
+                      kommen automatisch auf CC" stimmt genau dann nicht, wenn sie selbst
+                      teilnehmen (Normalfall): Dann stehen sie schon im An-Feld. */}
+                  <div className="dex-ui-help" style={{ wordBreak: 'break-word' }}>
+                    {recipients.length === 0
+                      ? (isDe ? 'In dieser Gruppe ist niemand. Schließe den Dialog und wähle im Schritt davor eine andere Gruppe.' : 'This group is empty. Close the dialog and pick another group in the step before.')
+                      : (isDe
+                        ? <>Die Gruppe hast du im Schritt davor gewählt. <strong>CC:</strong> {ccCount === 0 ? 'niemand — alle Organizer stehen bereits im An-Feld.' : massmailCcPreview.join(', ')}</>
+                        : <>You picked the group in the step before. <strong>CC:</strong> {ccCount === 0 ? 'nobody — all organizers are already in the To field.' : massmailCcPreview.join(', ')}</>)}
+                  </div>
+                  {/* v30.51: Zusätzliches CC direkt unter der Empfänger-Zeile — CC ist
+                      eine Aussage über den Verteiler, nicht über die Gestaltung. */}
+                  <button type="button" className={cx('dex-ui-disclosure', ccOpen && 'is-open')} onClick={() => setCcOpen(o => !o)} aria-expanded={ccOpen} style={{ marginTop: 6 }}>
+                    <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                    {isDe ? 'Zusätzlich jemanden auf CC setzen' : 'Put someone else on CC'}
+                    {massmailCc.length > 0 && <span className="dex-ui-disclosure-count">{massmailCc.length}</span>}
+                  </button>
+                  {ccOpen && (
+                    <div className="dex-ui-disclosure-body">
+                      <RecipientPicker
+                        label={isDe ? 'Zusätzlich auf CC' : 'Additional CC'}
+                        hint={isDe
+                          ? 'Personen über die Suche, Funktionspostfächer im Feld darunter. Die Organizer des Events sind ohnehin auf CC und müssen hier nicht eingetragen werden.'
+                          : 'People via search, shared mailboxes in the field below. The event organizers are on CC anyway.'}
+                        emptyText={isDe ? 'Kein zusätzliches CC — es gehen nur die Organizer mit.' : 'No additional CC — only the organizers.'}
+                        value={massmailCc} onChange={setMassmailCc}
+                        searchUsers={searchUsers} searchUserByEmail={searchUser}
+                        disabled={emailSending}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <div className="dex-ui-section-title">{isDe ? 'Wie sieht der Kopf der Mail aus?' : 'What does the email header look like?'}</div>
+                  {/* v30.52: gemeinsame Auswahl (s. admin/MailHeaderImageChooser) — vorher
+                      stand dieselbe Reiter-Reihe hier und in der Einladungsmail zweimal. */}
+                  <MailHeaderImageChooser
+                    value={massmailHeaderImage} onChange={setMassmailHeaderImage}
+                    eventPhotoB64={massmailEventPhotoB64} disabled={emailSending}
+                    onCrop={() => setComposerCrop('massmail')} isDe={isDe}
+                  />
+                  <div className="dex-ui-help">
+                    {isDe ? 'Breite und Abstand des Bildes stellst du weiter unten neben der Vorschau ein.' : 'Width and spacing of the image are set further down, next to the preview.'}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="dex-ui-section-title">{isDe ? 'Bevor du sendest' : 'Before you send'}</div>
+                  <div className="dex-ui-stack">
+                    <div className={cx('dex-ui-step', massmailDraftSaved && 'is-done')}>
+                      <span className="dex-ui-step-num">{massmailDraftSaved ? <Check size={14} /> : 1}</span>
+                      <div className="dex-ui-step-body">
+                        <div className="dex-ui-step-title">{isDe ? 'Zwischenstand sichern' : 'Save your progress'}</div>
+                        <div className="dex-ui-step-hint">{isDe ? 'Dein Text wird ohnehin automatisch gespeichert und beim nächsten Öffnen wiederhergestellt.' : 'Your text is saved automatically anyway and restored next time you open it.'}</div>
+                      </div>
+                      <div className="dex-ui-step-action dex-ui-inline" style={{ justifyContent: 'flex-end' }}>
+                        {massmailDraftSaved && <span className="dex-ui-pill dex-ui-pill--green"><Check size={12} /> {isDe ? 'Gespeichert' : 'Saved'}</span>}
+                        <button type="button" className="btn btn-secondary dex-ui-btn-sm" onClick={saveMassmailDraft} disabled={emailSending}>
+                          <Check size={14} /> {isDe ? 'Entwurf speichern' : 'Save draft'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className={cx('dex-ui-step', massmailTesting && 'is-pending')}>
+                      <span className="dex-ui-step-num">2</span>
+                      <div className="dex-ui-step-body">
+                        <div className="dex-ui-step-title">{isDe ? 'Erst an die Organizer testen' : 'Test with the organizers first'}</div>
+                        <div className="dex-ui-step-hint">{isDe ? 'Schickt die Mail so, wie sie jetzt ist, mit [TEST] im Betreff — nur an die Organizer des Events.' : 'Sends the email as it is now, with [TEST] in the subject — to the event organizers only.'}</div>
+                        {massmailTestMsg && (
+                          <div className={cx('dex-ui-callout', testOk ? 'dex-ui-callout--success' : 'dex-ui-callout--warn')} style={{ marginTop: 8, padding: '6px 10px' }} role="status">{massmailTestMsg}</div>
+                        )}
+                      </div>
+                      <div className="dex-ui-step-action">
+                        <button type="button" className="btn btn-outline dex-ui-btn-sm" onClick={() => { sendMassmailTestToOrganizers().catch(() => { /* */ }); }} disabled={emailSending || massmailTesting}>
+                          <Send size={14} /> {massmailTesting ? (isDe ? 'Sendet…' : 'Sending…') : (isDe ? 'Testmail senden' : 'Send test email')}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="dex-ui-inline" style={{ justifyContent: 'space-between', marginTop: 8 }}>
+                    <span className="dex-ui-muted" style={{ fontSize: '0.76rem' }}>{isDe ? 'Der Versand selbst ist der grüne Knopf unten rechts.' : 'Sending itself is the green button at the bottom right.'}</span>
+                    <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" onClick={resetMassmailDraft} disabled={emailSending}
+                      title={isDe ? 'Setzt Betreff, Überschrift, Text und zusätzliches CC auf die Vorlage zurück.' : 'Resets subject, heading, text and additional CC to the template.'}>
+                      {isDe ? 'Auf Vorlage zurücksetzen' : 'Reset to template'}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
             extraAction={{
-              label: emailSending ? 'Wird eingetragen…' : `An ${recipients.length} Teilnehmer senden`,
+              label: emailSending ? (isDe ? 'Wird eingetragen…' : 'Queuing…') : (isDe ? `An ${recipients.length} Empfänger senden` : `Send to ${recipients.length} recipients`),
               onClick: sendAction,
               disabled: emailSending || !emailSubject.trim() || !emailBody.trim() || recipients.length === 0,
               icon: <Send size={16} />,

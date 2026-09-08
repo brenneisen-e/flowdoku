@@ -4,6 +4,7 @@
  */
 import * as React from 'react';
 import Modal from '../../Modal';
+import { Hash, Info } from '../../Icons';
 import { DeloitteEvent } from '../../../types';
 import { EventService, SPRegistration } from '../../../services/EventService';
 
@@ -60,52 +61,68 @@ export const WaitlistPositionModal: React.FC<WaitlistPositionModalProps> = (p) =
             setWlPosBusy(false);
           }
         };
+        // v31.2: Nur für die Anzeige — `valid` und `apply` bleiben die Wahrheit.
+        // Eine Eingabe außerhalb 1..total zeigte vorher nur einen grauen Knopf;
+        // der Organizer sah nicht, WARUM. Ein leeres Feld ist kein Fehler.
+        const outOfRange = wlPosValue.trim() !== '' && !valid;
+        const unchanged = valid && parsed === wlPosModal.currentPos;
         return (
           <Modal
             open={true}
             onClose={() => { if (!wlPosBusy) close(); }}
             dismissable={!wlPosBusy}
             maxWidth={520}
-            padding={24}
             ariaLabel={isDe ? 'Wartelisten-Platz ändern' : 'Change waitlist position'}
+            title={isDe ? 'Wartelisten-Platz ändern' : 'Change waitlist position'}
+            subtitle={isDe
+              ? <><strong>{name}</strong> steht aktuell auf <strong>Platz {wlPosModal.currentPos}</strong> von {wlPosModal.total}.</>
+              : <><strong>{name}</strong> is currently at <strong>position {wlPosModal.currentPos}</strong> of {wlPosModal.total}.</>}
+            icon={<Hash size={20} />}
+            footer={<>
+              <button type="button" className="btn btn-secondary" onClick={close} disabled={wlPosBusy}>
+                {isDe ? 'Abbrechen' : 'Cancel'}
+              </button>
+              <button type="button" className="btn btn-primary" onClick={() => { void apply(); }} disabled={!valid || wlPosBusy}>
+                {wlPosBusy ? (isDe ? 'Wird gesetzt…' : 'Applying…') : (isDe ? 'Platz setzen' : 'Set position')}
+              </button>
+            </>}
           >
-            <div>
-              <h3 style={{ marginTop: 0 }}>{isDe ? 'Wartelisten-Platz ändern' : 'Change waitlist position'}</h3>
-              <p style={{ fontSize: '0.88rem', lineHeight: 1.55, color: 'var(--dex-gray-700)' }}>
-                {isDe
-                  ? <><strong>{name}</strong> steht aktuell auf <strong>Platz {wlPosModal.currentPos}</strong> von {wlPosModal.total}. Auf welchen Platz soll die Person?</>
-                  : <><strong>{name}</strong> is currently at <strong>position {wlPosModal.currentPos}</strong> of {wlPosModal.total}. Which position should they get?</>}
-              </p>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '12px 0' }}>
-                <input
-                  className="form-input"
-                  type="number"
-                  min={1}
-                  max={wlPosModal.total}
-                  value={wlPosValue}
-                  onChange={e => setWlPosValue(e.target.value)}
-                  disabled={wlPosBusy}
-                  style={{ width: 110 }}
-                />
-                <button type="button" className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '6px 12px' }} disabled={wlPosBusy} onClick={() => setWlPosValue('1')}>
-                  {isDe ? 'Ganz nach oben' : 'To the top'}
-                </button>
+            <div className="dex-ui-modal-body">
+              <div className="dex-ui-field">
+                <label className="dex-ui-label" htmlFor="dex-wlpos-input">
+                  {isDe ? 'Auf welchen Platz soll die Person?' : 'Which position should they get?'}
+                </label>
+                <div className="dex-ui-inline">
+                  <input
+                    id="dex-wlpos-input"
+                    className="dex-ui-input"
+                    type="number"
+                    min={1}
+                    max={wlPosModal.total}
+                    value={wlPosValue}
+                    onChange={e => setWlPosValue(e.target.value)}
+                    disabled={wlPosBusy}
+                    aria-invalid={outOfRange || undefined}
+                    style={{ width: 110, borderColor: outOfRange ? 'var(--dex-red, #da291c)' : undefined }}
+                  />
+                  <button type="button" className="dex-ui-textbtn" disabled={wlPosBusy} onClick={() => setWlPosValue('1')}>
+                    {isDe ? 'Ganz nach oben' : 'To the top'}
+                  </button>
+                  {unchanged && <span className="dex-ui-pill dex-ui-pill--gray">{isDe ? 'schon dort' : 'already there'}</span>}
+                </div>
+                <div className="dex-ui-help" style={outOfRange ? { color: 'var(--dex-red, #da291c)' } : undefined}>
+                  {outOfRange
+                    ? (isDe ? `Bitte eine Zahl zwischen 1 und ${wlPosModal.total}.` : `Enter a number between 1 and ${wlPosModal.total}.`)
+                    : (isDe ? `1 bis ${wlPosModal.total} — Platz 1 rückt als Nächstes nach.` : `1 to ${wlPosModal.total} — position 1 is promoted next.`)}
+                </div>
               </div>
-              <div style={{
-                padding: '8px 10px', borderRadius: 6, fontSize: '0.78rem', lineHeight: 1.5,
-                background: 'var(--dex-gray-50, #f8f9fa)', border: '1px solid var(--dex-gray-200)', color: 'var(--dex-gray-700)',
-              }}>
-                {isDe
-                  ? <>Die anderen Wartenden rücken entsprechend auf oder nach. Angemeldete Teilnehmer sind nicht betroffen, es geht <strong>keine Mail</strong> raus und niemand wird dadurch angemeldet — die Person rückt nur früher nach, sobald ein Platz frei wird. Die Teilnehmer-Nummern <strong>innerhalb der Warteliste</strong> werden dabei neu vergeben.</>
-                  : <>The other waitlisted people shift accordingly. Registered attendees are unaffected, <strong>no email</strong> is sent and nobody gets registered by this — the person is simply promoted earlier once a seat frees up. Attendee numbers <strong>within the waitlist</strong> are reassigned.</>}
-              </div>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 18 }}>
-                <button type="button" className="btn btn-secondary" onClick={close} disabled={wlPosBusy}>
-                  {isDe ? 'Abbrechen' : 'Cancel'}
-                </button>
-                <button type="button" className="btn btn-primary" onClick={() => { void apply(); }} disabled={!valid || wlPosBusy}>
-                  {wlPosBusy ? (isDe ? 'Wird gesetzt…' : 'Applying…') : (isDe ? 'Platz setzen' : 'Set position')}
-                </button>
+              <div className="dex-ui-callout dex-ui-callout--neutral">
+                <span className="dex-ui-callout-icon" aria-hidden="true"><Info size={16} /></span>
+                <div>
+                  {isDe
+                    ? <>Die anderen Wartenden rücken auf oder nach; die Teilnehmer-Nummern <strong>innerhalb der Warteliste</strong> werden neu vergeben. Es geht <strong>keine Mail</strong> raus, niemand wird dadurch angemeldet — die Person rückt nur früher nach, sobald ein Platz frei wird. Angemeldete Teilnehmer sind nicht betroffen.</>
+                    : <>The other waitlisted people shift up or down; attendee numbers <strong>within the waitlist</strong> are reassigned. <strong>No email</strong> is sent and nobody gets registered by this — the person is simply promoted earlier once a seat frees up. Registered attendees are unaffected.</>}
+                </div>
               </div>
             </div>
           </Modal>

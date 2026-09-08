@@ -12,7 +12,9 @@
 import { SPHttpClient } from '@microsoft/sp-http';
 import type { EventService, SPRegistration } from '../EventService';
 import { ACTIVE_STATI, REG_LIST_ITEM_TYPE, REG_LIST_NAME } from '../EventService';
-import { parseAgendaCheckIns } from '../../utils/agendaCheckIns';
+// v31.2: Lesen-Ändern-Schreiben immer über ALLE Marken (`parseAgendaMarks`),
+// sonst würde ein Check-in die No-Show-Marken derselben Zeile mitlöschen.
+import { parseAgendaMarks } from '../../utils/agendaCheckIns';
 
 /**
  * v10.27: User wechselt seine Split-Capacity-Gruppe.
@@ -357,8 +359,10 @@ export async function checkInAgendaItem(
     if (!r.ok) return { ok: false, status: r.status };
     const d = await r.json();
     const raw: string = (d.AgendaCheckIns ?? d.d?.AgendaCheckIns ?? '') as string;
-    const cur = parseAgendaCheckIns(raw);
-    if (cur[agendaItemId]) return { ok: true, already: cur[agendaItemId].at, status: 200 };
+    const cur = parseAgendaMarks(raw);
+    // v31.2: Eine No-Show-Marke am selben Punkt ist KEIN „schon erfasst" —
+    // wer doch noch kommt, wird anwesend; die Marke wird ersetzt.
+    if (cur[agendaItemId] && !cur[agendaItemId].noShow) return { ok: true, already: cur[agendaItemId].at, status: 200 };
     const me = svc.context.pageContext.user;
     cur[agendaItemId] = { at: new Date().toISOString(), by: me.email || me.loginName || '' };
     const resp = await svc._merge(base, { 'AgendaCheckIns': JSON.stringify(cur) });
@@ -368,7 +372,8 @@ export async function checkInAgendaItem(
   }
 }
 
-/** v30.91: Anwesenheit an einem Punkt wieder entfernen (Organizer Center, Stufe 3). */
+/** v30.91: Marke an einem Punkt wieder entfernen — Anwesenheit ODER No-Show
+ *  (Organizer Center Stufe 3, Check-in „Rückgängig"). */
 export async function removeAgendaCheckIn(
   svc: EventService,
   subsiteUrl: string,
@@ -380,11 +385,41 @@ export async function removeAgendaCheckIn(
     const r = await svc._sp.get(`${base}?$select=AgendaCheckIns`, SPHttpClient.configurations.v1);
     if (!r.ok) return { ok: false, status: r.status };
     const d = await r.json();
-    const cur = parseAgendaCheckIns((d.AgendaCheckIns ?? d.d?.AgendaCheckIns ?? '') as string);
+    const cur = parseAgendaMarks((d.AgendaCheckIns ?? d.d?.AgendaCheckIns ?? '') as string);
     if (!cur[agendaItemId]) return { ok: true, status: 200 };
     delete cur[agendaItemId];
     const resp = await svc._merge(base, { 'AgendaCheckIns': Object.keys(cur).length ? JSON.stringify(cur) : null });
     return { ok: resp.ok, status: resp.status };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
+
+/**
+ * v31.2: No-Show an GENAU einem Programmpunkt — Marke `{ at, by, noShow: true }`
+ * in `AgendaCheckIns`; der Event-Status der Zeile bleibt unangetastet.
+ * Nutzer 07.09.2026: „man soll gefragt werden, ob das für das ganze Event
+ * No-Show ist oder nur für den Programmpunkt". Eine vorhandene Anwesenheit am
+ * Punkt wird ÜBERSCHRIEBEN — die Oberfläche sperrt den Knopf bei „anwesend",
+ * der Dienst entscheidet das nicht noch einmal.
+ */
+export async function markAgendaNoShow(
+  svc: EventService,
+  subsiteUrl: string,
+  itemId: number,
+  agendaItemId: string
+): Promise<{ ok: boolean; status: number; at?: string }> {
+  const base = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`;
+  try {
+    const r = await svc._sp.get(`${base}?$select=AgendaCheckIns`, SPHttpClient.configurations.v1);
+    if (!r.ok) return { ok: false, status: r.status };
+    const d = await r.json();
+    const cur = parseAgendaMarks((d.AgendaCheckIns ?? d.d?.AgendaCheckIns ?? '') as string);
+    const me = svc.context.pageContext.user;
+    const at = new Date().toISOString();
+    cur[agendaItemId] = { at, by: me.email || me.loginName || '', noShow: true };
+    const resp = await svc._merge(base, { 'AgendaCheckIns': JSON.stringify(cur) });
+    return { ok: resp.ok, status: resp.status, at };
   } catch {
     return { ok: false, status: 0 };
   }
@@ -455,11 +490,15 @@ export async function revertCheckIn(
   itemId: number,
   previousStatus: string
 ): Promise<boolean> {
-  const target = previousStatus === 'QR versendet' ? 'QR versendet' : 'Angemeldet';
+  // v31.2: Auch ein No-Show lässt sich zurücknehmen — dann kann der Stand
+  // davor „Eingecheckt" sein; der Stempel bleibt in diesem Fall stehen.
+  const target = (previousStatus === 'QR versendet' || previousStatus === 'Eingecheckt') ? previousStatus : 'Angemeldet';
   try {
     const response = await svc._merge(
       `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
-      { 'Status': target, 'CheckedInDate': null, 'CheckedInByName': '', 'CheckedInByEmail': '' }
+      target === 'Eingecheckt'
+        ? { 'Status': target }
+        : { 'Status': target, 'CheckedInDate': null, 'CheckedInByName': '', 'CheckedInByEmail': '' }
     );
     return response.ok;
   } catch {

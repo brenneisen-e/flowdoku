@@ -8,7 +8,9 @@ import { MailHeaderImage, resolveMailHeaderImage } from '../../../utils/mailHead
 import MailHeaderImageChooser from '../../admin/MailHeaderImageChooser';
 import { SAMPLE_QR_ID } from '../../admin/adminConstants';
 import { HtmlEditorModal } from '../../HtmlEditorModal';
-import { Check } from '../../Icons';
+import { Check, ChevronDown, ChevronLeft, QrCode, Send } from '../../Icons';
+import { InfoTooltip } from '../../InfoTooltip';
+import { cx } from '../../dexUi';
 import { DeloitteEvent } from '../../../types';
 import { SPRegistration } from '../../../services/EventService';
 
@@ -51,6 +53,13 @@ export interface QrEditModalProps {
 
 export const QrEditModal: React.FC<QrEditModalProps> = (p) => {
   const { closeQrMailEditor, currentUser, getQrMailOverride, isDe, isSendingQR, qrBlockLang, qrBlockNote, qrEditBody, qrEditHeading, qrEditOpen, qrEditSampleBlock, qrEditSampleImg, qrEditSaving, qrEditSubheading, qrEditSubject, qrEditTarget, qrEventPhotoB64, qrFullSendAction, qrHeaderImage, qrSendResult, qrSentCount, qrTestSendAction, registrations, saveQrMailOverride, selectedEvent, setComposerCrop, setQrBlockLang, setQrBlockNote, setQrEditBody, setQrEditHeading, setQrEditSampleBlock, setQrEditSubheading, setQrEditSubject, setQrHeaderImage } = p;
+        // v31.2: Aufklapper „Block neben dem QR-Code anpassen" — standardmäßig
+        // zu, weil Sprache und Hinweis selten geändert werden. Einziger Hook der
+        // Komponente; sie hat keinen frühen Return.
+        const [fineOpen, setFineOpen] = React.useState(false);
+        // v31.2: Anzahl der Feineinstellungen, die vom Standard abweichen
+        // (Sprache fest gewählt, eigener Hinweis) — für den Zähler am Aufklapper.
+        const fineCount = (qrBlockLang ? 1 : 0) + (qrBlockNote.trim() ? 1 : 0);
         // v29.26: Editor-Ziel — das Event selbst ODER ein vom Hauptevent aus
         // geöffnetes Sub-Event (qrEditTarget). Alle Texte/Vergleiche laufen
         // gegen das Ziel; die Versand-Spalte links gehört dagegen zum
@@ -105,177 +114,222 @@ export const QrEditModal: React.FC<QrEditModalProps> = (p) => {
           || qrHeaderImage.paddingH !== savedHeaderImage.paddingH;
         const noCodeCount = registrations.filter(r => r.Status === 'Angemeldet').length;
         const withCodeCount = registrations.filter(r => r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length;
+        // v31.2: Die Spalte links ist auf das Nötige reduziert: Zähler,
+        // Testmail (sekundär), Versand (der einzige Primär-Knopf) und Zurück
+        // als Textknopf. Der Satz zur Live-Vorschau steht im Tooltip neben der
+        // Überschrift — als Fließtext hat er die Knöpfe auseinandergeschoben.
+        // v31.2: Nachzug — keine Inline-Karten mehr in der Spalte: Überschrift
+        // als Abschnittstitel (der Tooltip steht wie zuvor rechts außen),
+        // Hinweise als kompakte Callouts, das Versand-Ergebnis als weiche Karte.
         const leftPanel = (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontWeight: 700, fontSize: '0.92rem' }}>{isDe ? 'QR-Code-Versand' : 'QR code sending'}</div>
+          <div className="dex-ui-stack">
+            <div className="dex-ui-section-title" style={{ margin: 0 }}>
+              <span>{isDe ? 'QR-Codes versenden' : 'Send QR codes'}</span>
+              <InfoTooltip placement="right" text={isDe
+                ? 'Die Live-Vorschau rechts zeigt deinen aktuellen Text. Die Testmail nutzt ebenfalls den aktuellen Text — der Versand an die Teilnehmer immer den gespeicherten.'
+                : 'The live preview on the right shows your current text. The test email also uses the current text — sending to participants always uses the saved one.'} />
+            </div>
             {/* v29.26: Bei einem Sub-Event-Ziel gehören die Zähler und der
                 Massen-Versand zum FALSCHEN Event (hier ist die Liste des
                 geöffneten Events geladen) — stattdessen sagt ein Hinweis,
                 wo der Versand mit diesem Text stattfindet. */}
             {isSubTarget && (
-              <div style={{ background: 'rgba(134,188,37,0.10)', border: '1px solid var(--dex-green, #86bc25)', borderRadius: 'var(--dex-radius)', padding: '8px 10px', fontSize: '0.74rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
-                {isDe
-                  ? <>Du gestaltest die QR-Mail des Sub-Events <strong>{qrTgt.title}</strong>. Der gespeicherte Text gilt für dessen manuellen Versand (Sub-Event im Organizer Center öffnen → &bdquo;QR-Codes versenden&ldquo;) und den automatischen Versand bei neuen Anmeldungen.</>
-                  : <>You are customizing the QR email of the sub-event <strong>{qrTgt.title}</strong>. The saved text applies to its manual sending (open the sub-event in the Organizer Center → “Send QR codes”) and the automatic send for new registrations.</>}
+              <div className="dex-ui-callout dex-ui-callout--info dex-ui-callout--sm">
+                <span>
+                  {isDe
+                    ? <>Du gestaltest die QR-Mail des Sub-Events <strong>{qrTgt.title}</strong>. Der gespeicherte Text gilt für dessen manuellen Versand (Sub-Event im Organizer Center öffnen → &bdquo;QR-Codes versenden&ldquo;) und den automatischen Versand bei neuen Anmeldungen.</>
+                    : <>You are customizing the QR email of the sub-event <strong>{qrTgt.title}</strong>. The saved text applies to its manual sending (open the sub-event in the Organizer Center → “Send QR codes”) and the automatic send for new registrations.</>}
+                </span>
               </div>
             )}
             {!isSubTarget && (
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <span style={{ background: '#eef6e3', color: 'var(--dex-green-dark, #4a7c1f)', borderRadius: 12, padding: '3px 10px', fontSize: '0.74rem', fontWeight: 600 }}>
-                <strong>{noCodeCount}</strong> {isDe ? 'ohne Code' : 'without code'}
-              </span>
-              <span style={{ background: 'var(--dex-gray-100, #f0f0f0)', color: 'var(--dex-gray-600)', borderRadius: 12, padding: '3px 10px', fontSize: '0.74rem', fontWeight: 600 }}>
-                <strong>{withCodeCount}</strong> {isDe ? 'mit Code' : 'with code'}
-              </span>
-            </div>
+              <div className="dex-ui-inline">
+                <span className="dex-ui-pill dex-ui-pill--green"><strong>{noCodeCount}</strong> {isDe ? 'ohne Code' : 'without code'}</span>
+                <span className="dex-ui-pill dex-ui-pill--gray"><strong>{withCodeCount}</strong> {isDe ? 'mit Code' : 'with code'}</span>
+              </div>
             )}
-            <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', lineHeight: 1.5 }}>
-              {isDe
-                ? 'Die Live-Vorschau rechts zeigt deinen aktuellen Text. Der Test an dich nutzt ebenfalls den aktuellen Text — der Versand an die Teilnehmer immer den gespeicherten.'
-                : 'The live preview on the right shows your current text. The test to yourself also uses the current text — sending to participants always uses the saved one.'}
+            <div>
+              <button
+                type="button"
+                className="btn btn-outline dex-ui-btn-sm"
+                disabled={isSendingQR}
+                onClick={() => { qrTestSendAction({ subject: qrEditSubject, heading: qrEditHeading, subheading: qrEditSubheading, bodyHtml: qrEditBody, headerImage: { ...qrHeaderImage } }, isSubTarget ? qrTgt : undefined).catch(() => { /* */ }); }}
+                style={{ width: '100%' }}
+              >
+                {isDe ? 'Testmail an Organisatoren' : 'Test email to organizers'}
+              </button>
+              <div className="dex-ui-help">{isDe ? 'Nutzt deinen aktuellen Text — auch ungespeichert.' : 'Uses your current text — even if unsaved.'}</div>
             </div>
-            <button
-              type="button"
-              className="btn btn-outline"
-              disabled={isSendingQR}
-              onClick={() => { qrTestSendAction({ subject: qrEditSubject, heading: qrEditHeading, subheading: qrEditSubheading, bodyHtml: qrEditBody, headerImage: { ...qrHeaderImage } }, isSubTarget ? qrTgt : undefined).catch(() => { /* */ }); }}
-              style={{ fontSize: '0.82rem', width: '100%' }}
-            >
-              {isDe ? 'Test an Organisatoren (aktueller Text)' : 'Test to organizers (current text)'}
-            </button>
             {!isSubTarget && (
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={isSendingQR || qrEditDirty || noCodeCount === 0}
-              onClick={() => { qrFullSendAction().catch(() => { /* */ }); }}
-              style={{ fontSize: '0.82rem', width: '100%', fontWeight: 700 }}
-              title={qrEditDirty ? (isDe ? 'Erst speichern — der Versand nutzt den gespeicherten Text.' : 'Save first — sending uses the saved text.') : undefined}
-            >
-              {isSendingQR
-                ? `${isDe ? 'Versende' : 'Sending'}… (${qrSentCount})`
-                : (noCodeCount === 0
-                  ? (isDe ? 'Alle haben ihren QR-Code' : 'Everyone has their QR code')
-                  : (isDe ? `An ${noCodeCount} Teilnehmer senden` : `Send to ${noCodeCount} participant${noCodeCount === 1 ? '' : 's'}`))}
-            </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={isSendingQR || qrEditDirty || noCodeCount === 0}
+                onClick={() => { qrFullSendAction().catch(() => { /* */ }); }}
+                style={{ width: '100%' }}
+                title={qrEditDirty ? (isDe ? 'Erst speichern — der Versand nutzt den gespeicherten Text.' : 'Save first — sending uses the saved text.') : undefined}
+              >
+                <Send size={16} />
+                {isSendingQR
+                  ? `${isDe ? 'Versende' : 'Sending'}… (${qrSentCount})`
+                  : (noCodeCount === 0
+                    ? (isDe ? 'Alle haben ihren QR-Code' : 'Everyone has their QR code')
+                    : (isDe ? `An ${noCodeCount} Teilnehmer senden` : `Send to ${noCodeCount} participant${noCodeCount === 1 ? '' : 's'}`))}
+              </button>
             )}
             {qrEditDirty && (
-              <div style={{ background: '#fff3e0', border: '1px solid #ed8b00', borderRadius: 'var(--dex-radius)', padding: '8px 10px', fontSize: '0.72rem', color: '#7a4a00', lineHeight: 1.5 }}>
-                {isDe
-                  ? 'Ungespeicherte Änderungen — erst „Für dieses Event speichern" klicken, dann an die Teilnehmer senden.'
-                  : 'Unsaved changes — click "Save for this event" first, then send to participants.'}
+              <div className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm">
+                <span>
+                  {isDe
+                    ? <>Noch nicht gespeichert — erst &bdquo;Für dieses Event speichern&ldquo; klicken, dann an die Teilnehmer senden.</>
+                    : <>Not saved yet — click &ldquo;Save for this event&rdquo; first, then send to participants.</>}
+                </span>
               </div>
             )}
             {qrSendResult && (
-              <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-600)', lineHeight: 1.5, borderTop: '1px solid var(--dex-gray-200)', paddingTop: 8 }}>
+              <div className="dex-ui-card dex-ui-card--soft dex-ui-muted" style={{ padding: '10px 14px', lineHeight: 1.5 }}>
                 {qrSendResult}
               </div>
             )}
             <button
               type="button"
-              className="btn btn-secondary"
+              className="dex-ui-textbtn dex-ui-textbtn--muted"
               disabled={isSendingQR}
               onClick={closeQrMailEditor}
-              style={{ fontSize: '0.78rem', width: '100%', marginTop: 4 }}
+              style={{ alignSelf: 'flex-start', marginLeft: -8 }}
             >
-              {isDe ? 'Zurück zum Versand-Modal' : 'Back to the send dialog'}
+              <ChevronLeft size={14} />
+              {isDe ? 'Zurück zum Versand-Dialog' : 'Back to the send dialog'}
             </button>
           </div>
         );
+        // v31.2: Der Kopf über dem Editor war ein Textblock aus fünf Sätzen
+        // („sieht völlig überfordernd aus", Screenshot 07.09.2026). Sichtbar
+        // bleibt EIN Satz zum festen Platzhalter; alles Weitere (Platzhalter-
+        // Liste, Geltung für manuellen UND automatischen Versand) steht im
+        // Tooltip — keine Aussage entfällt, sie steht nur nicht mehr im Weg.
         const headerExtra = (
-          <div style={{ padding: 12, background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)', marginBottom: 4, fontSize: '0.78rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-            {isDe
-              ? <><strong>Fester Bestandteil:</strong> Der Platzhalter <code>{'{{QR_BLOCK}}'}</code> steht für den persönlichen QR-Code mit Name + Event als Klartext — er lässt sich verschieben, aber nicht entfernen (fehlt er im Text, wird der Block beim Versand automatisch ans Ende gesetzt). Verfügbare Platzhalter: <code>{'{{Vorname}}'}</code>, <code>{'{{Name}}'}</code>, <code>{'{{EventTitle}}'}</code>. <strong>Der gespeicherte Text gilt für alle QR-Mails dieses Events</strong> — manueller Versand UND automatischer Versand bei neuen Anmeldungen.</>
-              : <><strong>Fixed element:</strong> the placeholder <code>{'{{QR_BLOCK}}'}</code> represents the personal QR code with name + event as plain text — it can be moved but not removed (if missing, the block is appended automatically when sending). Available placeholders: <code>{'{{Vorname}}'}</code>, <code>{'{{Name}}'}</code>, <code>{'{{EventTitle}}'}</code>. <strong>The saved text applies to all QR emails of this event</strong> — manual sending AND the automatic send for new registrations.</>}
+          <div className="dex-ui-stack">
+            <div className="dex-ui-callout dex-ui-callout--neutral">
+              <span className="dex-ui-callout-icon"><QrCode size={16} /></span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                {isDe
+                  ? <>Der Platzhalter <code>{'{{QR_BLOCK}}'}</code> ist der persönliche QR-Code — er bleibt immer in der Mail und lässt sich im Text verschieben.</>
+                  : <>The placeholder <code>{'{{QR_BLOCK}}'}</code> is the personal QR code — it always stays in the email and can be moved within the text.</>}
+                {' '}
+                <InfoTooltip placement="bottom" text={isDe
+                  ? <><strong>Was der Block zeigt:</strong> den QR-Code mit Name und Event als Klartext. Fehlt <code>{'{{QR_BLOCK}}'}</code> im Text, wird er beim Versand automatisch ans Ende gesetzt.<br /><strong>Weitere Platzhalter:</strong> <code>{'{{Vorname}}'}</code>, <code>{'{{Name}}'}</code>, <code>{'{{EventTitle}}'}</code>.<br /><strong>Auswirkung:</strong> Der gespeicherte Text gilt für alle QR-Mails dieses Events — manueller Versand UND automatischer Versand bei neuen Anmeldungen.</>
+                  : <><strong>What the block shows:</strong> the QR code with name and event as plain text. If <code>{'{{QR_BLOCK}}'}</code> is missing, it is appended automatically when sending.<br /><strong>More placeholders:</strong> <code>{'{{Vorname}}'}</code>, <code>{'{{Name}}'}</code>, <code>{'{{EventTitle}}'}</code>.<br /><strong>Effect:</strong> the saved text applies to all QR emails of this event — manual sending AND the automatic send for new registrations.</>} />
+              </span>
+            </div>
             {/* v30.52: Kopf-Bild — dieselbe Auswahl wie in Massen- und
                 Einladungsmail. Hier wird sie MITGESPEICHERT, weil die QR-Mail
                 auch automatisch rausgeht. */}
-            <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px dashed var(--dex-gray-200)' }}>
-              <MailHeaderImageChooser
-                value={qrHeaderImage}
-                onChange={setQrHeaderImage}
-                eventPhotoB64={qrEventPhotoB64}
-                disabled={qrEditSaving || isSendingQR}
-                onCrop={() => setComposerCrop('qr')}
-                isDe={isDe}
-              />
-            </div>
-            {/* v30.60: Sprache des Blocks NEBEN dem Code. Er trägt „Name",
-                „ID" und den Hinweis zur Nummer und stand bisher immer auf
-                Deutsch — auch unter einer englischen Mail. Voreinstellung
-                bleibt „wie die Mail-Sprache des Events", damit hier kein
-                zweiter Schalter für dieselbe Frage entsteht. */}
-            <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px dashed var(--dex-gray-200)' }}>
-              <div style={{ fontWeight: 600, marginBottom: 6 }}>
-                {isDe ? 'Sprache neben dem QR-Code' : 'Language next to the QR code'}
-              </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {([
-                  { v: '' as const, de: `Wie die Mail-Sprache (${(qrTgt.emailLanguage || 'EN').toUpperCase()})`, en: `Follow the event language (${(qrTgt.emailLanguage || 'EN').toUpperCase()})` },
-                  { v: 'DE' as const, de: 'Immer Deutsch', en: 'Always German' },
-                  { v: 'EN' as const, de: 'Immer Englisch', en: 'Always English' },
-                ]).map(opt => {
-                  const on = qrBlockLang === opt.v;
-                  return (
-                    <button
-                      key={opt.v || 'auto'}
-                      type="button"
+            <MailHeaderImageChooser
+              value={qrHeaderImage}
+              onChange={setQrHeaderImage}
+              eventPhotoB64={qrEventPhotoB64}
+              disabled={qrEditSaving || isSendingQR}
+              onCrop={() => setComposerCrop('qr')}
+              isDe={isDe}
+            />
+            {/* v31.2: Sprache und Hinweis betreffen nur den Block NEBEN dem
+                Code — selten angefasst, deshalb im Aufklapper (standardmäßig
+                zu). Die Vorschau rechts zeigt jede Änderung sofort. */}
+            <div>
+              <button
+                type="button"
+                className={cx('dex-ui-disclosure', fineOpen && 'is-open')}
+                aria-expanded={fineOpen}
+                onClick={() => setFineOpen(o => !o)}
+              >
+                <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                {isDe ? 'Block neben dem QR-Code anpassen' : 'Customize the block next to the QR code'}
+                {/* v31.2: Der Zähler nennt, WIE VIELE der beiden Einstellungen
+                    vom Standard abweichen — eine feste „2" sagte nur, dass es
+                    zwei Felder gibt. Leer, wenn alles auf Standard steht. */}
+                {fineCount > 0 && (
+                  <span className="dex-ui-disclosure-count">{fineCount} {isDe ? 'angepasst' : 'customized'}</span>
+                )}
+              </button>
+              {fineOpen && (
+                <div className="dex-ui-disclosure-body">
+                  {/* v30.60: Sprache des Blocks NEBEN dem Code. Er trägt „Name",
+                      „ID" und den Hinweis zur Nummer und stand bisher immer auf
+                      Deutsch — auch unter einer englischen Mail. Voreinstellung
+                      bleibt „wie die Mail-Sprache des Events", damit hier kein
+                      zweiter Schalter für dieselbe Frage entsteht. */}
+                  <div className="dex-ui-field">
+                    <div className="dex-ui-label">
+                      {isDe ? 'In welcher Sprache steht der Block neben dem Code?' : 'Which language should the block next to the code use?'}
+                    </div>
+                    <div className="dex-ui-inline">
+                      {([
+                        { v: '' as const, de: `Wie die Mail-Sprache (${(qrTgt.emailLanguage || 'EN').toUpperCase()})`, en: `Follow the event language (${(qrTgt.emailLanguage || 'EN').toUpperCase()})` },
+                        { v: 'DE' as const, de: 'Immer Deutsch', en: 'Always German' },
+                        { v: 'EN' as const, de: 'Immer Englisch', en: 'Always English' },
+                      ]).map(opt => {
+                        const on = qrBlockLang === opt.v;
+                        return (
+                          <button
+                            key={opt.v || 'auto'}
+                            type="button"
+                            className={cx('dex-ui-chip', on && 'is-active')}
+                            aria-pressed={on}
+                            disabled={qrEditSaving || isSendingQR}
+                            onClick={() => {
+                              setQrBlockLang(opt.v);
+                              // Vorschau sofort mitziehen — sonst wählt man eine
+                              // Sprache und sieht rechts weiter die alte.
+                              if (qrEditSampleImg) {
+                                const myNm = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email;
+                                setQrEditSampleBlock(buildQrBlockHtml(qrEditSampleImg, myNm, ownId,opt.v || qrTgt.emailLanguage || 'EN', qrBlockNote));
+                              }
+                            }}
+                          >{isDe ? opt.de : opt.en}</button>
+                        );
+                      })}
+                    </div>
+                    <div className="dex-ui-help">
+                      {isDe
+                        ? 'Betrifft „Name", „ID" und den Hinweis unter der Nummer — nicht deinen Mailtext.'
+                        : 'Affects “Name”, “ID” and the note below the number — not your email copy.'}
+                    </div>
+                  </div>
+                  {/* v30.61: Der Hinweis unter der ID stand fest im Code, während
+                      der Mailtext direkt darüber frei ist. „Am Einlass" heißt beim
+                      B2Run „bei der Trikot- und Startnummernübergabe" und bei einer
+                      Konferenz „an der Registrierung". */}
+                  <div className="dex-ui-field">
+                    <label className="dex-ui-label" htmlFor="dex-qr-block-note">
+                      {isDe ? 'Was steht unter der Teilnehmer-ID?' : 'What should appear below the participant ID?'}
+                      <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>
+                    </label>
+                    <input
+                      id="dex-qr-block-note"
+                      type="text"
+                      className="dex-ui-input dex-ui-input--sm"
+                      value={qrBlockNote}
                       disabled={qrEditSaving || isSendingQR}
-                      onClick={() => {
-                        setQrBlockLang(opt.v);
-                        // Vorschau sofort mitziehen — sonst wählt man eine
-                        // Sprache und sieht rechts weiter die alte.
+                      onChange={e => {
+                        setQrBlockNote(e.target.value);
                         if (qrEditSampleImg) {
                           const myNm = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email;
-                          setQrEditSampleBlock(buildQrBlockHtml(qrEditSampleImg, myNm, ownId,opt.v || qrTgt.emailLanguage || 'EN', qrBlockNote));
+                          setQrEditSampleBlock(buildQrBlockHtml(qrEditSampleImg, myNm, ownId,qrBlockLang || qrTgt.emailLanguage || 'EN', e.target.value));
                         }
                       }}
-                      style={{
-                        padding: '4px 12px', borderRadius: 999, cursor: 'pointer',
-                        border: `1px solid ${on ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-                        background: on ? 'var(--dex-green, #86bc25)' : '#fff',
-                        color: on ? '#fff' : 'var(--dex-gray-600)',
-                        fontSize: '0.74rem', fontWeight: 600,
-                      }}
-                    >{isDe ? opt.de : opt.en}</button>
-                  );
-                })}
-              </div>
-              <div style={{ marginTop: 6, color: 'var(--dex-gray-500)' }}>
-                {isDe
-                  ? 'Betrifft „Name", „ID" und den Hinweis unter der Nummer — nicht deinen Mailtext.'
-                  : 'Affects “Name”, “ID” and the note below the number — not your email copy.'}
-              </div>
-              {/* v30.61: Der Hinweis unter der ID stand fest im Code, während
-                  der Mailtext direkt darüber frei ist. „Am Einlass" heißt beim
-                  B2Run „bei der Trikot- und Startnummernübergabe" und bei einer
-                  Konferenz „an der Registrierung". */}
-              <div style={{ marginTop: 10 }}>
-                <label style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>
-                  {isDe ? 'Hinweis unter der Teilnehmer-ID' : 'Note below the participant ID'}
-                </label>
-                <input
-                  type="text"
-                  value={qrBlockNote}
-                  disabled={qrEditSaving || isSendingQR}
-                  onChange={e => {
-                    setQrBlockNote(e.target.value);
-                    if (qrEditSampleImg) {
-                      const myNm = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email;
-                      setQrEditSampleBlock(buildQrBlockHtml(qrEditSampleImg, myNm, ownId,qrBlockLang || qrTgt.emailLanguage || 'EN', e.target.value));
-                    }
-                  }}
-                  placeholder={isDe
-                    ? 'Leer = „Falls der Scan nicht klappt: einfach diese Nummer am Einlass nennen."'
-                    : 'Empty = the default note'}
-                  style={{ width: '100%', padding: '6px 10px', border: '1px solid var(--dex-gray-200)', borderRadius: 6, fontSize: '0.82rem' }}
-                />
-                <div style={{ marginTop: 4, color: 'var(--dex-gray-500)' }}>
-                  {isDe
-                    ? 'Leer lassen für den Standardsatz. Ein einzelner Bindestrich (-) blendet den Hinweis ganz aus.'
-                    : 'Leave empty for the default. A single hyphen (-) hides the note entirely.'}
+                      placeholder={isDe
+                        ? 'Leer = „Falls der Scan nicht klappt: einfach diese Nummer am Einlass nennen."'
+                        : 'Empty = the default note'}
+                    />
+                    <div className="dex-ui-help">
+                      {isDe
+                        ? 'Erscheint in der Mail direkt unter der Teilnehmer-ID. Leer lassen für den Standardsatz; ein einzelner Bindestrich (-) blendet den Hinweis ganz aus.'
+                        : 'Shown in the email right below the participant ID. Leave empty for the default; a single hyphen (-) hides the note entirely.'}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         );

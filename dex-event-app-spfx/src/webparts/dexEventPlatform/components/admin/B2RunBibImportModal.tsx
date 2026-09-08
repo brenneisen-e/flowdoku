@@ -21,14 +21,54 @@ import { DeloitteEvent } from '../../types';
 import { SPRegistration, EventService } from '../../services/EventService';
 import { parseBibSheet, buildBibReport, suggestOrphanPairs, BibImportReport, BibMatch } from '../../utils/b2runBibImport';
 import { StoredB2RunTodo, b2runNameOf } from '../../utils/b2runTodos';
+import { cx } from '../dexUi';
+import { InfoTooltip } from '../InfoTooltip';
+import { AlertCircle, Check, Download, Hash } from '../Icons';
 
 const nameOf = (r?: SPRegistration): string =>
   r ? `${r.Vorname || ''} ${r.Nachname || ''}`.trim() || (r.ParticipantEmail || '') : '—';
 
-const box: React.CSSProperties = {
-  border: '1px solid var(--dex-gray-200)', borderRadius: 10,
-  padding: '12px 14px', marginBottom: 12,
-};
+// v31.2: Jede Gruppe des Abgleichs ist eine Tabelle mit denselben Spalten-
+// Regeln (ruhiger Kopf, Zeilen-Hover, Status-Pill rechts). Vorher waren es
+// sechs verschieden gebaute Kästen mit Fließtext-Zeilen — dieselbe Information
+// in drei Schriftgrößen. Die kleinen Helfer halten das JSX unten lesbar.
+const Tbl = (p: { head: string[]; children: React.ReactNode }): React.ReactElement => (
+  <div className="dex-ui-table-wrap">
+    <table className="dex-ui-table">
+      <thead><tr>{p.head.map(h => <th key={h}>{h}</th>)}</tr></thead>
+      <tbody>{p.children}</tbody>
+    </table>
+  </div>
+);
+/** Eine Zeile — jedes Kind wird eine Zelle. */
+const Row = (p: { children: React.ReactNode }): React.ReactElement => (
+  <tr>{React.Children.map(p.children, (c, i) => <td key={i}>{c}</td>)}</tr>
+);
+/** Startnummer — dicktengleich, damit die Spalte bündig bleibt. */
+const Bib = (p: { children: React.ReactNode }): React.ReactElement => (
+  <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{p.children}</span>
+);
+/** Abgemeldete Person — durchgestrichen, wie in der Excel „gemeldet, läuft nicht". */
+const Gone = (p: { children: React.ReactNode }): React.ReactElement => (
+  <span style={{ textDecoration: 'line-through', color: 'var(--dex-gray-500)' }}>{p.children}</span>
+);
+/** Ablauf-Zeile: Nummer (Haken, wenn erledigt), Titel, Hinweis, rechts der Knopf. */
+const Step = (p: { n: number; done?: boolean; pending?: boolean; title: string; hint: React.ReactNode; children: React.ReactNode }): React.ReactElement => (
+  <div className={cx('dex-ui-step', p.pending && 'is-pending', p.done && 'is-done')}>
+    <span className="dex-ui-step-num">{p.done ? <Check size={14} /> : p.n}</span>
+    <div className="dex-ui-step-body">
+      <div className="dex-ui-step-title">{p.title}</div>
+      <div className="dex-ui-step-hint">{p.hint}</div>
+    </div>
+    <div className="dex-ui-step-action">{p.children}</div>
+  </div>
+);
+const Kpi = (p: { value: number; label: string; tone?: string | false }): React.ReactElement => (
+  <div className={cx('dex-ui-kpi', p.tone)}>
+    <div className="dex-ui-kpi-value">{p.value}</div>
+    <div className="dex-ui-kpi-label">{p.label}</div>
+  </div>
+);
 
 export default function B2RunBibImportModal(props: {
   event: DeloitteEvent;
@@ -293,127 +333,196 @@ export default function B2RunBibImportModal(props: {
   const directs = group('direct');
   const mismatches = directs.filter(m => m.blockMismatch);
 
+  // v31.2: Zähler an EINER Stelle — Kennzahlen, Schritt-Hinweis und
+  // Zusammenfassung lesen dieselben Werte, sonst zeigt das Fenster drei
+  // verschiedene Summen.
+  const writeCount = directs.length + transfers.length + assignedCount;
+  const remeldCount = transfers.length + assignedCount;
+  const checkCount = unknowns.length + mismatches.length + (report ? report.duplicateBibs.length : 0);
+  const nothingToDo = !!report && orphans.length === 0 && transfers.length === 0 && stillWithoutBib.length === 0 && checkCount === 0;
+  const waitLabel = progress || 'Bitte warten…';
+
   return (
-    <Modal open onClose={props.onClose} maxWidth={860} ariaLabel="Startnummern importieren (B2Run)">
-      <div style={{ fontSize: '0.87rem', lineHeight: 1.55 }}>
-        <h3 style={{ margin: '0 0 10px', fontSize: '1.05rem' }}>Startnummern importieren (B2Run)</h3>
-        {!report && (
-          <>
-            <p style={{ marginTop: 0 }}>
-              Lade die Rücklauf-Datei des Veranstalters hoch — dieselbe Liste, die du gemeldet hast,
-              ergänzt um die Spalte <strong>Startnummer</strong>. DEX ordnet die Nummern über die
-              E-Mail-Adresse zu und zeigt dir vor dem Schreiben, was passieren würde.
-            </p>
-            <p style={{ color: 'var(--dex-gray-600)' }}>
-              Besonders wichtig: Wer sich nach der Meldung abgemeldet hat, taucht in der Datei noch auf.
-              DEX sagt dir, <strong>wer für diese Person nachgerückt ist</strong> und die Nummer übernimmt —
-              genau die Ummeldungen, die du beim Veranstalter noch machen musst.
-            </p>
-            <label className="btn btn-primary" style={{ cursor: busy ? 'wait' : 'pointer', display: 'inline-block' }}>
-              {busy ? (progress || 'Bitte warten…') : '+ Datei wählen (.xlsx / .csv)'}
-              <input
-                type="file"
-                accept=".xlsx,.xlsm,.xls,.csv"
-                style={{ display: 'none' }}
-                disabled={busy}
-                onChange={e => { const f = e.target.files?.[0]; if (f) void readFile(f); e.currentTarget.value = ''; }}
-              />
-            </label>
-          </>
+    <Modal open onClose={props.onClose} maxWidth={860} dismissable={!busy}
+      ariaLabel="Startnummern importieren (B2Run)" title="Startnummern importieren (B2Run)" icon={<Hash size={20} />}
+      subtitle={<>Die Rücklauf-Datei des Veranstalters — deine gemeldete Liste, ergänzt um die Spalte <strong>Startnummer</strong>. DEX ordnet über die E-Mail-Adresse zu und zeigt dir, was passieren würde, bevor etwas geschrieben wird.</>}
+      footer={
+        <button type="button" className="btn btn-secondary" disabled={busy} onClick={props.onClose}>
+          {written ? 'Schließen' : 'Abbrechen'}
+        </button>
+      }
+    >
+      <div className="dex-ui-stack" style={{ fontSize: '0.87rem', lineHeight: 1.55 }}>
+        {/* v31.2: Der Ablauf als drei Zeilen, der Knopf sitzt in seiner Zeile
+            („Der Knopf ist der Schritt"). Vorher stand die Erklärung oben,
+            die Knöpfe unten — und dazwischen bis zu sechs Kästen. */}
+        <Step n={1} done={!!report} title="Datei des Veranstalters wählen"
+          hint={report
+            ? <>Gelesen: <strong>{fileName}</strong> · {report.matches.length} Zeilen</>
+            : <>Die unveränderte Excel (.xlsx / .csv). Wer sich nach der Meldung abgemeldet hat, steht dort noch — DEX zeigt dir, <strong>wer nachgerückt ist</strong> und die Nummer übernimmt.</>}
+        >
+          <label
+            className={cx('btn', report ? 'btn-secondary' : 'btn-primary', 'dex-ui-btn-sm')}
+            style={{ cursor: busy ? 'wait' : written ? 'not-allowed' : 'pointer', opacity: written ? 0.55 : 1 }}
+          >
+            {busy && !report ? waitLabel : report ? 'Andere Datei' : 'Datei wählen'}
+            <input type="file" accept=".xlsx,.xlsm,.xls,.csv" style={{ display: 'none' }} disabled={busy || !!written}
+              onChange={e => { const f = e.target.files?.[0]; if (f) void readFile(f); e.currentTarget.value = ''; }}
+            />
+          </label>
+        </Step>
+
+        <Step n={2} pending={!report} done={!!written} title="Zuordnung prüfen"
+          hint={report
+            ? <>Ummeldungen, freie Nummern und Nachmeldungen stehen unten. Die Liste kannst du als Excel mitnehmen — mit einer Spalte &bdquo;Was ist zu tun&ldquo; zum Abarbeiten beim Veranstalter.</>
+            : 'Erscheint, sobald die Datei gelesen ist.'}
+        >
+          <button type="button" className="btn btn-secondary dex-ui-btn-sm" disabled={!report || busy}
+            onClick={() => { void downloadReport(); }}
+            title="Lädt den kompletten Abgleich als Excel — mit einer Spalte „Was ist zu tun“ zum Abarbeiten beim Veranstalter."
+          >
+            <Download size={14} /> Als Excel laden
+          </button>
+        </Step>
+
+        <Step n={3} pending={!report} done={!!written} title="Startnummern schreiben"
+          hint={report
+            ? <>Schreibt <strong>{writeCount}</strong> Startnummer{writeCount === 1 ? '' : 'n'} in die Teilnehmerliste und merkt sich die Aufgaben für den Veranstalter unter &bdquo;Offen beim Veranstalter&ldquo;.</>
+            : 'Erst nach dem Prüfen.'}
+        >
+          <button type="button" className={cx('btn', report ? 'btn-primary' : 'btn-secondary', 'dex-ui-btn-sm')}
+            disabled={!report || busy || !!written} onClick={() => { void write(); }}
+          >
+            {busy && report ? waitLabel : 'Jetzt schreiben'}
+          </button>
+        </Step>
+
+        {written && (
+          <div className={cx('dex-ui-callout', written.failed ? 'dex-ui-callout--danger' : 'dex-ui-callout--success')}>
+            <span className="dex-ui-callout-icon">{written.failed ? <AlertCircle size={16} /> : <Check size={16} />}</span>
+            <div>
+              <strong>{written.ok} Startnummer(n) geschrieben{written.failed ? `, ${written.failed} fehlgeschlagen` : ''}.</strong>
+              {written.todos > 0 && (
+                <div style={{ marginTop: 4 }}>
+                  {written.todoSaved
+                    ? <>{written.todos} Aufgabe{written.todos === 1 ? '' : 'n'} für den Veranstalter stehen jetzt unter <strong>&bdquo;Offen beim Veranstalter&ldquo;</strong> — dort abhaken, wenn du sie erledigt hast.</>
+                    : <span style={{ color: 'var(--dex-red)' }}>Die Aufgabenliste konnte nicht gespeichert werden — bitte den Abgleich als Excel laden, damit nichts verlorengeht.</span>}
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
         {report && (
           <>
-            <p style={{ marginTop: 0, color: 'var(--dex-gray-600)' }}>
-              Datei: <strong>{fileName}</strong> · {report.matches.length} Zeilen gelesen
+            <div className="dex-ui-grid-auto">
+              <Kpi value={writeCount} label="Wird geschrieben" tone="dex-ui-kpi--green" />
+              <Kpi value={remeldCount} label="Ummelden" tone={remeldCount > 0 && 'dex-ui-kpi--orange'} />
+              <Kpi value={stillWithoutBib.length} label="Nachmelden" tone={stillWithoutBib.length > 0 && 'dex-ui-kpi--orange'} />
+              <Kpi value={checkCount} label="Prüfen" />
+            </div>
+            <p className="dex-ui-muted" style={{ margin: 0 }}>
+              {directs.length} direkt zugeordnet, {transfers.length} an Nachrücker übertragen
+              {assignedCount > 0 ? `, ${assignedCount} freie Nummer${assignedCount === 1 ? '' : 'n'} von dir zugeordnet` : ''}.
+              {remeldCount > 0 && (
+                <> Beim Veranstalter musst du <strong>{remeldCount}</strong> Ummeldung{remeldCount === 1 ? '' : 'en'} vornehmen.</>
+              )}
             </p>
 
-            {transfers.length > 0 && (
-              <div style={{ ...box, borderColor: 'var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.07)' }}>
-                <strong style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>
-                  Beim Veranstalter ummelden ({transfers.length})
-                </strong>
-                <p style={{ margin: '4px 0 8px', fontSize: '0.82rem' }}>
-                  Diese Personen stehen auf der Liste, haben sich aber abgemeldet. Die Startnummer geht
-                  an die Person, die nachgerückt ist — in DEX wird sie beim Schreiben übertragen, beim
-                  Veranstalter musst du sie noch ummelden.
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {transfers.map(m => (
-                    <div key={m.row.rowNo} style={{ fontSize: '0.82rem' }}>
-                      <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{m.row.bib}</span>
-                      {'  '}
-                      <span style={{ textDecoration: 'line-through', color: 'var(--dex-gray-500)' }}>{nameOf(m.listed)}</span>
-                      {' → '}
-                      <strong>{nameOf(m.target)}</strong>
-                      <span style={{ color: 'var(--dex-gray-500)' }}> · {m.target?.ParticipantEmail}</span>
-                      {m.chain && m.chain.length > 1 && (
-                        <span style={{ color: 'var(--dex-gray-500)' }}> (über {m.chain.length - 1} weitere Abmeldung{m.chain.length - 1 === 1 ? '' : 'en'})</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
+            {nothingToDo && (
+              <div className="dex-ui-empty">
+                <div className="dex-ui-empty-icon"><Check size={18} /></div>
+                <div className="dex-ui-empty-title">Alles passt</div>
+                Jede Nummer in der Datei gehört einer angemeldeten Person — beim Veranstalter ist nichts zu tun.
               </div>
             )}
 
+            {/* v31.2: Die Entscheidung zuerst — sie verändert die Zähler oben und die
+                Nachmelde-Liste unten. v30.54: Diese Nummern verfallen NICHT automatisch.
+                Wer den Platz eines Abgemeldeten bekommen hat, steht nur dann in den Daten,
+                wenn er über die Warteliste nachgerückt ist. Bei einer Direktanmeldung in
+                die frei gewordene Kapazität — oder wenn der Organizer jemanden von Hand
+                angelegt hat — gibt es keine Kette. Dann ist der Platz trotzdem besetzt:
+                Genau die Personen zur Auswahl sind in DEX angemeldet, stehen aber nicht
+                in der Datei. Deshalb hier zuordnen statt verfallen lassen. */}
             {orphans.length > 0 && (
-              <div style={{ ...box, borderColor: 'var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.07)' }}>
-                <strong style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>
-                  Freie Nummer zuordnen ({orphans.length})
-                </strong>
-                {/* v30.54: Diese Nummern verfallen NICHT automatisch. Wer den
-                    Platz eines Abgemeldeten bekommen hat, steht nur dann in den
-                    Daten, wenn er über die Warteliste nachgerückt ist. Bei einer
-                    Direktanmeldung in die frei gewordene Kapazität — oder wenn
-                    der Organizer jemanden von Hand angelegt hat — gibt es keine
-                    Kette. Dann ist der Platz trotzdem besetzt: Genau die
-                    Personen unten sind in DEX angemeldet, stehen aber nicht in
-                    der Datei. Deshalb hier zuordnen statt verfallen lassen. */}
-                <p style={{ margin: '4px 0 10px', fontSize: '0.82rem' }}>
-                  Diese Personen haben sich nach der Meldung abgemeldet, und DEX hat keinen
-                  Nachrücker aufgezeichnet. Die Nummer ist deshalb <strong>nicht</strong> automatisch
-                  verfallen — wer den Platz übernommen hat, steht rechts zur Auswahl (alle, die in
-                  DEX angemeldet sind, aber in der Datei fehlen). Der Vorschlag folgt der zeitlichen
-                  Reihenfolge: früheste Abmeldung, früheste Neuanmeldung. <strong>Bitte prüfen</strong> —
-                  anders als beim Nachrücken steht diese Zuordnung nicht in den Daten.
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">
+                  Wer übernimmt die freie Nummer?
+                  <span className="dex-ui-pill dex-ui-pill--orange">{orphans.length} · deine Entscheidung</span>
+                </div>
+                <p className="dex-ui-section-desc">
+                  Diese Personen haben sich nach der Meldung abgemeldet, ohne dass DEX einen Nachrücker aufgezeichnet hat.
+                  Die Nummer ist deshalb <strong>nicht</strong> automatisch verfallen — wähle, wer den Platz übernommen hat.
+                  {' '}
+                  <InfoTooltip text={<>Zur Auswahl stehen alle, die in DEX angemeldet sind, aber in der Datei fehlen. Der Vorschlag folgt der zeitlichen Reihenfolge: früheste Abmeldung, früheste Neuanmeldung. <strong>Bitte prüfen</strong> — anders als beim Nachrücken steht diese Zuordnung nicht in den Daten.</>} />
                 </p>
-                {orphans.map(m => {
-                  const bib = m.row.bib;
-                  const chosen = orphanAssign[bib] || '';
-                  // Bereits an eine andere Nummer vergebene Personen ausblenden,
-                  // damit dieselbe Person nicht zwei Startnummern bekommt.
-                  const takenElsewhere = new Set(
-                    Object.entries(orphanAssign)
-                      .filter(([k, v]) => k !== bib && v)
-                      .map(([, v]) => v)
-                  );
-                  return (
-                    <div key={m.row.rowNo} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6, fontSize: '0.82rem' }}>
-                      <span style={{ fontFamily: 'monospace', fontWeight: 700, minWidth: 52 }}>{bib}</span>
-                      <span style={{ textDecoration: 'line-through', color: 'var(--dex-gray-500)', minWidth: 150 }}>{nameOf(m.listed)}</span>
-                      <span style={{ color: 'var(--dex-gray-500)' }}>→</span>
-                      <select
-                        className="form-input"
-                        value={chosen}
-                        disabled={busy || !!written}
-                        onChange={e => setOrphanAssign(prev => ({ ...prev, [bib]: e.target.value }))}
-                        style={{ fontSize: '0.8rem', padding: '5px 8px', flex: '1 1 240px', minWidth: 0 }}
-                      >
-                        <option value="">— niemand, Nummer verfällt —</option>
-                        {report.missingFromFile
-                          .filter(r => {
-                            const em = (r.ParticipantEmail || '').toLowerCase().trim();
-                            return em === chosen || !takenElsewhere.has(em);
-                          })
-                          .map(r => (
-                            <option key={r.Id} value={(r.ParticipantEmail || '').toLowerCase().trim()}>
-                              {nameOf(r)} · {r.ParticipantEmail}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-                  );
-                })}
+                <Tbl head={['Startnummer', 'Abgemeldet', 'Nummer geht an']}>
+                  {orphans.map(m => {
+                    const bib = m.row.bib;
+                    const chosen = orphanAssign[bib] || '';
+                    // Bereits an eine andere Nummer vergebene Personen ausblenden,
+                    // damit dieselbe Person nicht zwei Startnummern bekommt.
+                    const takenElsewhere = new Set(
+                      Object.entries(orphanAssign)
+                        .filter(([k, v]) => k !== bib && v)
+                        .map(([, v]) => v)
+                    );
+                    return (
+                      <Row key={m.row.rowNo}>
+                        <Bib>{bib}</Bib>
+                        <Gone>{nameOf(m.listed)}</Gone>
+                        <select
+                          className="dex-ui-select dex-ui-input--sm"
+                          value={chosen}
+                          disabled={busy || !!written}
+                          onChange={e => setOrphanAssign(prev => ({ ...prev, [bib]: e.target.value }))}
+                          style={{ minWidth: 240 }}
+                        >
+                          <option value="">— niemand, Nummer verfällt —</option>
+                          {report.missingFromFile
+                            .filter(r => {
+                              const em = (r.ParticipantEmail || '').toLowerCase().trim();
+                              return em === chosen || !takenElsewhere.has(em);
+                            })
+                            .map(r => (
+                              <option key={r.Id} value={(r.ParticipantEmail || '').toLowerCase().trim()}>
+                                {nameOf(r)} · {r.ParticipantEmail}
+                              </option>
+                            ))}
+                        </select>
+                      </Row>
+                    );
+                  })}
+                </Tbl>
+              </div>
+            )}
+
+            {transfers.length > 0 && (
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">
+                  Beim Veranstalter ummelden
+                  <span className="dex-ui-pill dex-ui-pill--orange">{transfers.length}</span>
+                </div>
+                <p className="dex-ui-section-desc">
+                  Diese Personen stehen in der Datei, haben sich aber abgemeldet. In DEX geht die Nummer beim Schreiben
+                  an die Person, die nachgerückt ist — beim Veranstalter musst du sie noch ummelden.
+                </p>
+                <Tbl head={['Startnummer', 'Abgemeldet', 'Nachgerückt', 'Status']}>
+                  {transfers.map(m => (
+                    <Row key={m.row.rowNo}>
+                      <Bib>{m.row.bib}</Bib>
+                      <Gone>{nameOf(m.listed)}</Gone>
+                      <><strong>{nameOf(m.target)}</strong><span className="dex-ui-muted"> · {m.target?.ParticipantEmail}</span></>
+                      <>
+                        <span className="dex-ui-pill dex-ui-pill--orange">Ummelden</span>
+                        {m.chain && m.chain.length > 1 && (
+                          <span className="dex-ui-muted"> über {m.chain.length - 1} weitere Abmeldung{m.chain.length - 1 === 1 ? '' : 'en'}</span>
+                        )}
+                      </>
+                    </Row>
+                  ))}
+                </Tbl>
               </div>
             )}
 
@@ -421,99 +530,63 @@ export default function B2RunBibImportModal(props: {
                 hier nicht mehr „ohne Startnummer" — sonst widerspricht sich das
                 Fenster in zwei Kästen übereinander. */}
             {stillWithoutBib.length > 0 && (
-              <div style={{ ...box, borderColor: 'var(--dex-orange, #ed8b00)' }}>
-                <strong>Nachmelden beim Veranstalter ({stillWithoutBib.length})</strong>
-                <p style={{ margin: '4px 0 8px', fontSize: '0.82rem' }}>
-                  In DEX angemeldet, steht nicht in der Datei und hat auch keine freie Nummer bekommen —
-                  diese Personen musst du beim Veranstalter nachmelden.
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">
+                  Beim Veranstalter nachmelden
+                  <span className="dex-ui-pill dex-ui-pill--orange">{stillWithoutBib.length}</span>
+                </div>
+                <p className="dex-ui-section-desc">
+                  In DEX angemeldet, aber nicht in der Datei — und ohne freie Nummer. Diese Personen musst du beim Veranstalter nachmelden.
                 </p>
-                {stillWithoutBib.map(r => (
-                  <div key={r.Id} style={{ fontSize: '0.82rem' }}>{nameOf(r)} · {r.ParticipantEmail}</div>
-                ))}
+                <Tbl head={['Person', 'E-Mail', 'Status']}>
+                  {stillWithoutBib.map(r => (
+                    <Row key={r.Id}>
+                      <strong>{nameOf(r)}</strong>
+                      <span className="dex-ui-muted">{r.ParticipantEmail}</span>
+                      <span className="dex-ui-pill dex-ui-pill--orange">Nachmelden</span>
+                    </Row>
+                  ))}
+                </Tbl>
               </div>
             )}
 
-            {unknowns.length > 0 && (
-              <div style={box}>
-                <strong>In DEX unbekannt ({unknowns.length})</strong>
-                <p style={{ margin: '4px 0 8px', fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
-                  Diese Adressen stehen in der Datei, aber in keiner DEX-Zeile. Häufigster Grund: eine
-                  zweite Schreibweise derselben Person (SMTP-Adresse gegen Alias).
+            {checkCount > 0 && (
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">
+                  Ansehen, nichts blockiert
+                  <span className="dex-ui-pill dex-ui-pill--gray">{checkCount}</span>
+                </div>
+                <p className="dex-ui-section-desc">
+                  Die Startnummern werden trotzdem geschrieben — diese Zeilen solltest du aber einmal ansehen.
                 </p>
-                {unknowns.map(m => (
-                  <div key={m.row.rowNo} style={{ fontSize: '0.82rem' }}>
-                    <span style={{ fontFamily: 'monospace' }}>{m.row.bib}</span>{'  '}
-                    {m.row.firstName} {m.row.lastName} · {m.row.email || '(keine E-Mail)'}
-                  </div>
-                ))}
+                <Tbl head={['Startnummer', 'Person', 'Hinweis', 'Status']}>
+                  {unknowns.map(m => (
+                    <Row key={`u${m.row.rowNo}`}>
+                      <Bib>{m.row.bib}</Bib>
+                      <>{`${m.row.firstName} ${m.row.lastName}`.trim()}<span className="dex-ui-muted"> · {m.row.email || '(keine E-Mail)'}</span></>
+                      <>Adresse steht in keiner DEX-Zeile — häufigster Grund: eine zweite Schreibweise derselben Person (SMTP-Adresse gegen Alias).</>
+                      <span className="dex-ui-pill dex-ui-pill--gray">In DEX unbekannt</span>
+                    </Row>
+                  ))}
+                  {mismatches.map(m => (
+                    <Row key={`m${m.row.rowNo}`}>
+                      <Bib>{m.row.bib}</Bib>
+                      <>{nameOf(m.listed)}</>
+                      <>Startblock DEX &bdquo;{m.blockMismatch!.dex}&ldquo; · Liste &bdquo;{m.blockMismatch!.file}&ldquo; — nur ein Hinweis, die Nummer wird zugeordnet.</>
+                      <span className="dex-ui-pill dex-ui-pill--blue">Startblock weicht ab</span>
+                    </Row>
+                  ))}
+                  {report.duplicateBibs.map(bib => (
+                    <Row key={`d${bib}`}>
+                      <Bib>{bib}</Bib>
+                      <>—</>
+                      <>Diese Startnummer steht mehrfach in der Datei.</>
+                      <span className="dex-ui-pill dex-ui-pill--red">Doppelt in der Datei</span>
+                    </Row>
+                  ))}
+                </Tbl>
               </div>
             )}
-
-            {mismatches.length > 0 && (
-              <div style={box}>
-                <strong>Abweichender Startblock ({mismatches.length})</strong>
-                <p style={{ margin: '4px 0 8px', fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
-                  Nur ein Hinweis — die Startnummer wird trotzdem zugeordnet.
-                </p>
-                {mismatches.map(m => (
-                  <div key={m.row.rowNo} style={{ fontSize: '0.82rem' }}>
-                    {nameOf(m.listed)}: DEX &bdquo;{m.blockMismatch!.dex}&ldquo; · Liste &bdquo;{m.blockMismatch!.file}&ldquo;
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {report.duplicateBibs.length > 0 && (
-              <div style={{ ...box, borderColor: 'var(--dex-red, #da291c)' }}>
-                <strong style={{ color: 'var(--dex-red, #da291c)' }}>Doppelte Startnummern in der Datei</strong>
-                <div style={{ fontSize: '0.82rem' }}>{report.duplicateBibs.join(', ')}</div>
-              </div>
-            )}
-
-            <div style={{ ...box, borderColor: 'var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.07)' }}>
-              <strong>Wird geschrieben: {directs.length + transfers.length + assignedCount} Startnummern</strong>
-              <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
-                {directs.length} direkt zugeordnet, {transfers.length} an Nachrücker übertragen
-                {assignedCount > 0 ? `, ${assignedCount} freie Nummer${assignedCount === 1 ? '' : 'n'} von dir zugeordnet` : ''}.
-                {(transfers.length + assignedCount) > 0 && (
-                  <> Beim Veranstalter musst du <strong>{transfers.length + assignedCount}</strong> Ummeldung{(transfers.length + assignedCount) === 1 ? '' : 'en'} vornehmen.</>
-                )}
-              </div>
-            </div>
-
-            {written && (
-              <div style={{ color: written.failed ? 'var(--dex-red)' : 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600 }}>
-                {written.ok} Startnummer(n) geschrieben{written.failed ? `, ${written.failed} fehlgeschlagen` : ''}.
-                {written.todos > 0 && (
-                  <div style={{ fontWeight: 400, fontSize: '0.82rem', color: 'var(--dex-gray-700)', marginTop: 4 }}>
-                    {written.todoSaved
-                      ? <>{written.todos} Aufgabe{written.todos === 1 ? '' : 'n'} für den Veranstalter stehen jetzt unter <strong>&bdquo;Offen beim Veranstalter&ldquo;</strong> — dort abhaken, wenn du sie erledigt hast.</>
-                      : <span style={{ color: 'var(--dex-red)' }}>Die Aufgabenliste konnte nicht gespeichert werden — bitte den Abgleich als Excel laden, damit nichts verlorengeht.</span>}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
-              <button
-                className="btn btn-primary"
-                disabled={busy || !!written}
-                onClick={() => { void write(); }}
-              >
-                {busy ? (progress || 'Bitte warten…') : 'Startnummern jetzt schreiben'}
-              </button>
-              <button
-                className="btn btn-secondary"
-                disabled={busy}
-                onClick={() => { void downloadReport(); }}
-                title="Lädt den kompletten Abgleich als Excel — mit einer Spalte „Was ist zu tun\u201c zum Abarbeiten beim Veranstalter."
-              >
-                Abgleich als Excel laden
-              </button>
-              <button className="btn btn-secondary" disabled={busy} onClick={props.onClose}>
-                {written ? 'Schließen' : 'Abbrechen'}
-              </button>
-            </div>
           </>
         )}
       </div>

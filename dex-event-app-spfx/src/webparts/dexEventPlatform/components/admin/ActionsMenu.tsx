@@ -8,8 +8,15 @@
  * sie kennt nichts vom Seiten-State ausser dem, was sie als Props bekommt.
  */
 import * as React from 'react';
-import { Search, X } from '../Icons';
+import { Search, X, ChevronDown, ExternalLink } from '../Icons';
+import { cx } from '../dexUi';
 import { ActionCategoryKey, ACTION_CATEGORY_ORDER, ACTION_CATEGORY_LABELS } from '../../data/actionCategories';
+
+// v31.3: Beschreibungen sind bis zu fünf Zeilen lang (z.B. „Zugriff
+// reparieren"). Sichtbar bleiben zwei — der volle Text steht im
+// title-Attribut des Knopfs, und die Suche filtert weiter über den ganzen
+// Text; es geht also keine Aussage verloren, die Liste wird nur lesbar.
+const DESC_CLAMP: React.CSSProperties = { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' };
 
 export interface ActionTileProps {
   icon: React.ReactNode;
@@ -40,7 +47,7 @@ export function ActionTile(props: ActionTileProps): React.ReactElement | null {
   // sichtbar — sonst gingen Modals/Dropdowns verloren.
   const registry = React.useContext(ActionsRegistryContext);
   const registered = !!registry && !props.children;
-  const [hover, setHover] = React.useState(false);
+  // v31.3: kein Hover-State mehr — der Hover kommt aus `dex-ui-action`.
   // v22.6: NUR die (stabilen) register/unregister-Funktionen als Effekt-Deps —
   // nicht das ganze Context-Objekt. Das war vorher bei jedem Provider-Render ein
   // neues Objekt und ließ den Effekt endlos neu feuern (Render-Schleife → das
@@ -66,94 +73,40 @@ export function ActionTile(props: ActionTileProps): React.ReactElement | null {
   }, [registryRegister, registryUnregister, registered, props.title, props.desc, props.badge, props.onClick, props.href, props.disabled, props.busy, props.category, props.subCategory]);
   if (registered) return null;
   const isInteractive = !props.disabled && !props.busy;
-  const greenAccent = isInteractive && hover;
-  // v9.19/v9.20: filled-Look — Tile dezent eingefärbt für
-  // Highlight-Aktionen. Pastell statt voll gesättigt, damit nicht
-  // alarmierend wirkt.
-  const isFilled = !!props.accent;
-  const filledBg = props.accent === 'green' ? '#e3f0c5' : props.accent === 'red' ? '#ffe5e5' : '';
-  const filledBorder = props.accent === 'green' ? 'var(--dex-green, #86bc25)' : props.accent === 'red' ? 'var(--dex-red, #da291c)' : '';
-  const borderColor = isFilled ? filledBorder : (greenAccent ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200, #e5e7eb)');
-  const bg = isFilled ? filledBg : (greenAccent ? 'rgba(134,188,37,0.06)' : '#fff');
-  // v9.20: bei pastell-gefüllten Tiles Text/Icon dunkel halten — auf
-  // hellem Pastell-Hintergrund gut lesbar (im Gegensatz zum vorherigen
-  // weiß auf saturated-Color).
-  const filledIconColor = props.accent === 'green' ? 'var(--dex-green-dark, #4a7c1f)' : props.accent === 'red' ? '#a01e15' : 'var(--dex-gray-500, #6b7280)';
-  const iconColor = isFilled ? filledIconColor : (greenAccent ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500, #6b7280)');
-  const filledTextColor = isFilled
-    ? (props.accent === 'green' ? 'var(--dex-green-dark, #3f5f10)' : props.accent === 'red' ? '#a01e15' : 'var(--dex-gray-800, #1f2937)')
-    : 'var(--dex-gray-800, #1f2937)';
+  // v31.3: Die Kachel ist ein `dex-ui-action` — Symbol, Titel, eine Zeile
+  // Folge (Rest im title-Attribut), Rolle als Pill rechts. Hover kommt aus
+  // der Klasse; der frühere Hover-Tooltip entfällt, weil die Beschreibung
+  // jetzt sichtbar ist. `accent='red'` ist die Gefahren-Variante der Klasse;
+  // `accent='green'` (Hervorheben, v9.19) bleibt eine grüne Kante links —
+  // nur der linke Rand, damit der Hover-Rahmen der Klasse weiter greift.
   const badgeLabel = props.badge === 'admin' ? 'Nur Admin' : 'Organizer';
-  const badgeColors = props.badge === 'admin'
-    ? { bg: 'rgba(237,139,0,0.12)', fg: 'var(--dex-orange, #ed8b00)' }
-    : { bg: 'rgba(134,188,37,0.12)', fg: 'var(--dex-green-dark, #4a7c1f)' };
+  const className = cx('dex-ui-action', props.accent === 'red' && 'dex-ui-action--danger');
   const sharedStyle: React.CSSProperties = {
-    textAlign: 'left', textDecoration: 'none', color: 'inherit',
-    background: bg, border: `1px solid ${borderColor}`,
-    borderRadius: 12, padding: 14,
-    cursor: isInteractive ? 'pointer' : 'not-allowed',
-    opacity: isInteractive ? 1 : 0.55,
-    display: 'flex', flexDirection: 'column', gap: 8,
-    fontFamily: 'inherit', fontSize: 'inherit',
-    transition: 'all 0.15s ease',
-    boxShadow: greenAccent ? '0 4px 12px rgba(134,188,37,0.18)' : 'none',
-    position: 'relative',
     // width:100% sorgt dafür, dass die Kachel auch in einem flex-Wrapper
     // (z.B. Excel-Export hat einen <div display:flex>-Wrapper für das
     // Dropdown-Positioning) auf die volle Grid-Zellen-Breite gestreckt
     // wird — sonst sieht sie schmaler aus als die direkten Grid-Geschwister.
-    width: '100%',
-    boxSizing: 'border-box',
+    width: '100%', textDecoration: 'none', position: 'relative',
+    ...(props.accent === 'green' ? { borderLeft: '4px solid var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.06)' } : {}),
+    // Ein Link kennt kein :disabled — gedämpft wie der Knopf, Klick bleibt (wie bisher).
+    ...(!isInteractive ? { opacity: 0.5, cursor: 'not-allowed' } : {}),
   };
   const inner = (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: iconColor, transition: 'color 0.15s ease' }}>
-          {props.icon}
-          <span style={{ fontWeight: 600, fontSize: '0.88rem', color: filledTextColor }}>{props.title}</span>
-        </span>
-        <span style={{
-          fontSize: '0.65rem', padding: '2px 8px', borderRadius: 999,
-          // v9.20: Badge auf pastell Tiles in normalem badge-Look (auf hellem
-          // Hintergrund gut sichtbar, im Gegensatz zur vorherigen
-          // semi-transparenten weissen Variante auf saturated bg).
-          background: badgeColors.bg,
-          color: badgeColors.fg, fontWeight: 600,
-          whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.02em',
-        }}>{badgeLabel}</span>
-      </div>
-      {props.result && (
-        <p style={{
-          margin: 0, fontSize: '0.72rem',
-          color: props.resultIsError ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)',
-          fontStyle: 'italic',
-        }}>{props.result}</p>
-      )}
-      {props.children}
-      {hover && props.desc && (
-        <div
-          role="tooltip"
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 8px)',
-            left: 0,
-            right: 0,
-            zIndex: 50,
-            background: 'var(--dex-gray-900, #1f2937)',
-            color: '#fff',
-            padding: '10px 12px',
-            borderRadius: 8,
-            fontSize: '0.76rem',
-            lineHeight: 1.45,
-            fontWeight: 400,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
-            pointerEvents: 'none',
-            whiteSpace: 'normal',
-          }}
-        >
-          {props.desc}
-        </div>
-      )}
+      <span className="dex-ui-action-icon" aria-hidden="true">{props.icon}</span>
+      <span className="dex-ui-action-body">
+        <span className="dex-ui-action-title">{props.title}</span>
+        {props.desc && <span className="dex-ui-action-desc" style={DESC_CLAMP}>{props.desc}</span>}
+        {props.result && (
+          <span
+            className="dex-ui-action-desc"
+            role="status"
+            style={{ fontStyle: 'italic', color: props.resultIsError ? 'var(--dex-red, #c00)' : 'var(--dex-green-darker, #4a7c1f)' }}
+          >{props.result}</span>
+        )}
+        {props.children}
+      </span>
+      <span className={cx('dex-ui-pill', 'dex-ui-action-badge', props.badge === 'admin' ? 'dex-ui-pill--orange' : 'dex-ui-pill--gray')}>{badgeLabel}</span>
     </>
   );
   if (props.href) {
@@ -162,9 +115,10 @@ export function ActionTile(props: ActionTileProps): React.ReactElement | null {
         href={props.href}
         target="_blank"
         rel="noopener noreferrer"
+        className={className}
+        title={props.desc || undefined}
+        aria-disabled={!isInteractive || undefined}
         style={sharedStyle}
-        onMouseEnter={() => setHover(true)}
-        onMouseLeave={() => setHover(false)}
       >
         {inner}
       </a>
@@ -173,11 +127,12 @@ export function ActionTile(props: ActionTileProps): React.ReactElement | null {
   return (
     <button
       type="button"
+      className={className}
       disabled={!isInteractive}
+      aria-busy={props.busy || undefined}
       onClick={props.onClick}
+      title={props.desc || undefined}
       style={sharedStyle}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
     >
       {inner}
     </button>
@@ -192,28 +147,21 @@ export function SplitMergeToggle(props: {
   setView: (v: 'split' | 'merged') => void;
   isDe: boolean;
 }): React.ReactElement {
-  const pill = (active: boolean): React.CSSProperties => ({
-    padding: '5px 12px',
-    borderRadius: 999,
-    fontSize: '0.78rem',
-    fontWeight: 600,
-    cursor: 'pointer',
-    border: `1px solid ${active ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-    background: active ? 'rgba(134,188,37,0.10)' : '#fff',
-    color: active ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)',
-    transition: 'all 0.12s ease',
-  });
+  // v31.3: Segment-Reiter (`dex-ui-tabs`) statt zweier Pillen — Hover aus der
+  // Klasse. Die Beschriftung sagt, was der Klick tut („eine Tabelle je
+  // Gruppe" bzw. „eine gemeinsame Tabelle"), nicht nur „getrennt/zusammen".
+  const isSplit = props.view === 'split';
   return (
-    <div style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-      <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginRight: 6 }}>
-        {props.isDe ? 'Ansicht:' : 'View:'}
-      </span>
-      <button type="button" onClick={() => props.setView('split')} style={pill(props.view === 'split')}>
-        {props.isDe ? 'Getrennt' : 'Split'}
-      </button>
-      <button type="button" onClick={() => props.setView('merged')} style={pill(props.view === 'merged')}>
-        {props.isDe ? 'Zusammen' : 'Merged'}
-      </button>
+    <div style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+      <span className="dex-ui-muted">{props.isDe ? 'Ansicht:' : 'View:'}</span>
+      <div className="dex-ui-tabs" role="group" aria-label={props.isDe ? 'Ansicht der Teilnehmerliste' : 'Participant list view'}>
+        <button type="button" className={cx('dex-ui-tab', isSplit && 'is-active')} aria-pressed={isSplit} onClick={() => props.setView('split')}>
+          {props.isDe ? 'Je Gruppe' : 'Per group'}
+        </button>
+        <button type="button" className={cx('dex-ui-tab', !isSplit && 'is-active')} aria-pressed={!isSplit} onClick={() => props.setView('merged')}>
+          {props.isDe ? 'Eine Tabelle' : 'One table'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -374,174 +322,160 @@ export function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | 
       a.onClick();
     }
   };
-  const renderActionRow = (a: RegisteredAction, indent: number): React.ReactElement => {
+  // v31.3: Jede Aktion ist ein `dex-ui-action`-Knopf (Hover aus der Klasse,
+  // per Tastatur erreichbar — die früheren <div onClick> waren es nicht).
+  // Ein Symbol gibt es hier nicht: Die Registrierung trägt keines, und
+  // `RegisteredAction` bleibt unverändert. Die Rolle steht als Pill rechts —
+  // „Nur Admin" orange, weil es eine Einschränkung ist; „Organizer" grau,
+  // weil es der Normalfall ist und Grün nur bedeuten soll, was aktiv ist.
+  const renderActionRow = (a: RegisteredAction): React.ReactElement => {
     const adminOnly = a.badge === 'admin';
     return (
-      <div
+      <button
         key={a.key}
+        type="button"
+        className="dex-ui-action"
+        disabled={!!a.disabled}
         onClick={() => runAction(a)}
-        onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(134,188,37,0.07)'; }}
-        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = '#fff'; }}
-        style={{
-          padding: `9px 12px 9px ${indent}px`,
-          cursor: a.disabled ? 'not-allowed' : 'pointer',
-          borderBottom: '1px solid var(--dex-gray-100)',
-          opacity: a.disabled ? 0.5 : 1,
-          background: '#fff',
-        }}
+        title={a.desc || undefined}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <span style={{ fontWeight: 700, fontSize: '0.87rem', color: 'var(--dex-gray-800)' }}>{a.title}</span>
-          <span style={{
-            fontSize: '0.68rem', padding: '2px 8px', borderRadius: 999,
-            background: adminOnly ? 'rgba(237,139,0,0.12)' : 'rgba(134,188,37,0.12)',
-            color: adminOnly ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green-dark, #4a7c1f)',
-            fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
-          }}>
-            {adminOnly ? (props.isDe ? 'Nur Admin' : 'Admin only') : 'Organizer'}
+        <span className="dex-ui-action-body">
+          <span className="dex-ui-action-title">
+            {a.title}
+            {a.href && (
+              <span
+                style={{ display: 'inline-flex', verticalAlign: 'middle', marginLeft: 5, color: 'var(--dex-gray-400, #a0a0a0)' }}
+                aria-label={props.isDe ? 'Öffnet in neuem Tab' : 'Opens in a new tab'}
+                title={props.isDe ? 'Öffnet in neuem Tab' : 'Opens in a new tab'}
+              >
+                <ExternalLink size={12} />
+              </span>
+            )}
           </span>
-        </div>
-        {a.desc && (
-          <div style={{ marginTop: 3, fontSize: '0.76rem', color: 'var(--dex-gray-500)', lineHeight: 1.45 }}>
-            {a.desc}
-          </div>
-        )}
-      </div>
+          {a.desc && <span className="dex-ui-action-desc" style={DESC_CLAMP}>{a.desc}</span>}
+        </span>
+        <span className={cx('dex-ui-pill', 'dex-ui-action-badge', adminOnly ? 'dex-ui-pill--orange' : 'dex-ui-pill--gray')}>
+          {adminOnly ? (props.isDe ? 'Nur Admin' : 'Admin only') : 'Organizer'}
+        </span>
+      </button>
     );
   };
+  // v31.3: Gruppen- und Untergruppen-Köpfe sind Aufklapper-Knöpfe (Chevron
+  // dreht über die Klasse, `aria-expanded` sagt dem Screenreader den Zustand).
+  const renderGroupHead = (label: React.ReactNode, desc: string | undefined, count: number, isOpen: boolean, onToggle: () => void, sub: boolean): React.ReactElement => (
+    <button
+      type="button"
+      className={cx('dex-ui-disclosure', isOpen && 'is-open')}
+      aria-expanded={isOpen}
+      onClick={onToggle}
+      style={{ margin: 0, padding: sub ? '6px 6px' : '8px 6px', alignItems: 'flex-start' }}
+    >
+      <span className="dex-ui-disclosure-chevron" style={{ marginTop: sub ? 1 : 2 }}><ChevronDown size={16} /></span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        {sub
+          ? <span style={{ display: 'block', fontWeight: 600, fontSize: '0.84rem', color: 'var(--dex-gray-700, #444)' }}>{label}</span>
+          : <span className="dex-ui-action-group-title" style={{ margin: 0, display: 'block' }}>{label}</span>}
+        {/* v20.4: Kurzbeschreibung, was in der Kategorie steckt. */}
+        {desc && <span className="dex-ui-action-desc" style={{ fontWeight: 400 }}>{desc}</span>}
+      </span>
+      <span className="dex-ui-pill dex-ui-pill--gray" style={{ flexShrink: 0 }}>{count}</span>
+    </button>
+  );
   return (
     <div ref={rootRef} style={{ position: 'relative', marginTop: 12 }}>
+      {/* v19.27: grün umrandet, damit die Aktionen-Auswahl deutlich auffällt.
+          v31.3: als `btn-outline` — Hover (grün gefüllt) kommt aus der Klasse. */}
       <button
         type="button"
+        className="btn btn-outline btn-block"
+        aria-haspopup="true"
+        aria-expanded={open}
         onClick={() => setOpen(o => !o)}
-        style={{
-          width: '100%', textAlign: 'left', padding: '10px 14px',
-          // v19.27: grün hinterlegt, damit die Aktionen-Auswahl deutlich auffällt.
-          border: '1.5px solid var(--dex-green, #86bc25)', borderRadius: 10,
-          background: 'rgba(134,188,37,0.12)', color: 'var(--dex-green-dark, #4a7c1f)',
-          fontSize: '0.92rem', fontWeight: 700, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-        }}
+        style={{ justifyContent: 'space-between', textAlign: 'left', cursor: 'pointer' }}
       >
         <span>{props.isDe ? `Aktion auswählen (${ctx.actions.length})` : `Pick an action (${ctx.actions.length})`}</span>
-        <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.85rem', transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease' }}>▾</span>
+        <span className={cx('dex-ui-disclosure-chevron', open && 'is-open')} style={{ color: 'inherit' }} aria-hidden="true"><ChevronDown size={16} /></span>
       </button>
       {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
-          background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 10,
-          boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 50,
-          maxHeight: 480, overflowY: 'auto',
-        }}>
+        <div
+          className="dex-ui-card dex-ui-fade-in"
+          role="region"
+          aria-label={props.isDe ? 'Aktionen' : 'Actions'}
+          style={{
+            position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 50,
+            padding: 0, maxHeight: 480, overflowY: 'auto',
+            boxShadow: '0 12px 32px rgba(0,0,0,0.12)',
+          }}
+        >
           {/* v22.5: Suchfeld — filtert alle Aktionen quer über die Kategorien. */}
-          <div style={{
-            position: 'sticky', top: 0, zIndex: 2, background: '#fff',
-            padding: 10, borderBottom: '1px solid var(--dex-gray-200)',
-          }}>
-            <div style={{ position: 'relative' }}>
-              <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--dex-gray-400)', display: 'inline-flex', pointerEvents: 'none' }}>
-                <Search size={15} />
-              </span>
+          <div style={{ position: 'sticky', top: 0, zIndex: 2, background: '#fff', padding: 10, borderBottom: '1px solid var(--dex-gray-100, #f5f5f5)' }}>
+            <div className="dex-ui-searchbar" style={{ maxWidth: 'none' }}>
+              <span className="dex-ui-searchbar-icon"><Search size={15} /></span>
               <input
                 type="text"
+                className="dex-ui-input dex-ui-input--sm"
                 autoFocus
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 placeholder={props.isDe ? 'Aktion suchen…' : 'Search action…'}
-                style={{
-                  width: '100%', boxSizing: 'border-box', padding: '8px 30px 8px 32px',
-                  border: '1px solid var(--dex-gray-300)', borderRadius: 8, fontSize: '0.85rem',
-                  outline: 'none',
-                }}
+                aria-label={props.isDe ? 'Aktion suchen' : 'Search action'}
+                style={{ paddingRight: 34 }}
               />
               {query && (
                 <button
                   type="button"
+                  className="dex-ui-iconbtn"
                   onClick={() => setQuery('')}
                   aria-label={props.isDe ? 'Suche leeren' : 'Clear search'}
-                  style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-gray-400)', display: 'inline-flex', padding: 4 }}
+                  style={{ position: 'absolute', right: 3, top: '50%', transform: 'translateY(-50%)', width: 26, height: 26 }}
                 >
                   <X size={14} />
                 </button>
               )}
             </div>
           </div>
-          {q && visibleActions.length === 0 && (
-            <div style={{ padding: '18px 14px', textAlign: 'center', color: 'var(--dex-gray-500)', fontSize: '0.85rem' }}>
-              {props.isDe ? 'Keine Aktion gefunden.' : 'No action found.'}
-            </div>
-          )}
-          {sortedCats.map(catKey => {
-            const inCat = visibleActions.filter(a => a.category === catKey);
-            if (inCat.length === 0) return null;
-            const catLabel = props.isDe ? ACTION_CATEGORY_LABELS[catKey].de : ACTION_CATEGORY_LABELS[catKey].en;
-            const catDesc = props.isDe ? ACTION_CATEGORY_LABELS[catKey].descDe : ACTION_CATEGORY_LABELS[catKey].descEn;
-            // v22.5: bei aktiver Suche alle Treffer-Kategorien automatisch öffnen.
-            const catOpen = q ? true : expanded.has(catKey);
-            const direct = inCat.filter(a => !a.subCategory).slice().sort((a, b) => a.title.localeCompare(b.title, lang));
-            const subNames = Array.from(new Set(inCat.filter(a => !!a.subCategory).map(a => a.subCategory as string))).sort((a, b) => a.localeCompare(b, lang));
-            return (
-              <div key={catKey}>
-                <div
-                  onClick={() => toggleKey(catKey)}
-                  onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(134,188,37,0.10)'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'var(--dex-gray-50, #fafafa)'; }}
-                  style={{
-                    padding: '10px 12px', cursor: 'pointer', userSelect: 'none',
-                    display: 'flex', alignItems: 'center', gap: 8,
-                    background: 'var(--dex-gray-50, #fafafa)',
-                    borderBottom: '1px solid var(--dex-gray-200)',
-                    transition: 'background 0.12s ease',
-                  }}
-                >
-                  <span style={{ width: 14, color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.8rem', flexShrink: 0 }}>{catOpen ? '▾' : '▸'}</span>
-                  <span style={{ minWidth: 0, flex: 1 }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>{catLabel}</span>
-                      <span style={{
-                        fontSize: '0.68rem', padding: '1px 7px', borderRadius: 999,
-                        background: 'rgba(134,188,37,0.12)', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700,
-                      }}>{inCat.length}</span>
-                    </span>
-                    {/* v20.4: Kurzbeschreibung, was in der Kategorie steckt. */}
-                    <span style={{ display: 'block', fontSize: '0.74rem', color: 'var(--dex-gray-500)', fontWeight: 400, marginTop: 1, lineHeight: 1.4 }}>
-                      {catDesc}
-                    </span>
-                  </span>
-                </div>
-                {catOpen && direct.map(a => renderActionRow(a, 30))}
-                {catOpen && subNames.map(sub => {
-                  const subKey = `${catKey}::${sub}`;
-                  const subOpen = q ? true : expanded.has(subKey);
-                  const subActions = inCat.filter(a => a.subCategory === sub).slice().sort((a, b) => a.title.localeCompare(b.title, lang));
-                  return (
-                    <div key={subKey}>
-                      <div
-                        onClick={() => toggleKey(subKey)}
-                        onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(134,188,37,0.12)'; }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(134,188,37,0.05)'; }}
-                        style={{
-                          padding: '8px 12px 8px 30px', cursor: 'pointer', userSelect: 'none',
-                          display: 'flex', alignItems: 'center', gap: 8,
-                          background: 'rgba(134,188,37,0.05)',
-                          borderBottom: '1px solid var(--dex-gray-100)',
-                          transition: 'background 0.12s ease',
-                        }}
-                      >
-                        <span style={{ width: 14, color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.75rem' }}>{subOpen ? '▾' : '▸'}</span>
-                        <span style={{ fontWeight: 700, fontSize: '0.84rem', color: 'var(--dex-gray-700)' }}>{sub}</span>
-                        <span style={{
-                          fontSize: '0.66rem', padding: '1px 6px', borderRadius: 999,
-                          background: 'rgba(134,188,37,0.12)', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700,
-                        }}>{subActions.length}</span>
-                      </div>
-                      {subOpen && subActions.map(a => renderActionRow(a, 46))}
-                    </div>
-                  );
-                })}
+          <div style={{ padding: '6px 10px 10px' }}>
+            {q && visibleActions.length === 0 && (
+              <div className="dex-ui-empty" style={{ padding: '18px 14px' }}>
+                {props.isDe ? 'Keine Aktion gefunden.' : 'No action found.'}
               </div>
-            );
-          })}
+            )}
+            {sortedCats.map(catKey => {
+              const inCat = visibleActions.filter(a => a.category === catKey);
+              if (inCat.length === 0) return null;
+              const catLabel = props.isDe ? ACTION_CATEGORY_LABELS[catKey].de : ACTION_CATEGORY_LABELS[catKey].en;
+              const catDesc = props.isDe ? ACTION_CATEGORY_LABELS[catKey].descDe : ACTION_CATEGORY_LABELS[catKey].descEn;
+              // v22.5: bei aktiver Suche alle Treffer-Kategorien automatisch öffnen.
+              const catOpen = q ? true : expanded.has(catKey);
+              const direct = inCat.filter(a => !a.subCategory).slice().sort((a, b) => a.title.localeCompare(b.title, lang));
+              const subNames = Array.from(new Set(inCat.filter(a => !!a.subCategory).map(a => a.subCategory as string))).sort((a, b) => a.localeCompare(b, lang));
+              return (
+                <div key={catKey} className="dex-ui-action-group" style={{ marginTop: 4 }}>
+                  {renderGroupHead(catLabel, catDesc, inCat.length, catOpen, () => toggleKey(catKey), false)}
+                  {catOpen && direct.length > 0 && (
+                    <div className="dex-ui-action-grid" style={{ padding: '4px 0 6px' }}>
+                      {direct.map(a => renderActionRow(a))}
+                    </div>
+                  )}
+                  {catOpen && subNames.map(sub => {
+                    const subKey = `${catKey}::${sub}`;
+                    const subOpen = q ? true : expanded.has(subKey);
+                    const subActions = inCat.filter(a => a.subCategory === sub).slice().sort((a, b) => a.title.localeCompare(b.title, lang));
+                    return (
+                      <div key={subKey} style={{ paddingLeft: 22 }}>
+                        {renderGroupHead(sub, undefined, subActions.length, subOpen, () => toggleKey(subKey), true)}
+                        {subOpen && (
+                          <div className="dex-ui-action-grid" style={{ padding: '4px 0 6px' }}>
+                            {subActions.map(a => renderActionRow(a))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

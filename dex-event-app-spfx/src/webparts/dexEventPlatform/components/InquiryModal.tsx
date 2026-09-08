@@ -11,8 +11,11 @@ import { useCurrentUser } from '../context/UserContext';
 import { useLanguage } from '../context/LanguageContext';
 import Modal from './Modal';
 import LandingInfoModal from './LandingInfoModal';
-import { Info } from './Icons';
+import { Info, Check, AlertCircle, CaptainHat, MessageSquare, Send } from './Icons';
 import { InfoTooltip } from './InfoTooltip';
+// v31.2: Gemeinsame UI-Klassen (Auswahl-Kacheln, Toggle-Zeilen, Callouts) —
+// Modal.tsx injiziert das Stylesheet, hier braucht es nur `cx`.
+import { cx } from './dexUi';
 
 /**
  * v29.45: Was der Organizer für sein Event braucht — ankreuzen statt frei
@@ -194,214 +197,179 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
     }
   }
 
+  // v31.2: Bei „extern" bleibt der Rest des Formulars sichtbar, aber gedämpft —
+  // der Kasten darüber sagt, dass DEX hier nicht passt; die Felder darunter
+  // sollen dann nicht so aussehen, als lohne sich das Ausfüllen noch.
+  const dimmed = !organizerMode && eventScope === 'external';
+  const submitHint = !organizerMode && !canSubmit && !sending
+    ? (eventScope === 'external'
+        ? (isDe ? 'Für externe Events ist DEX nicht nutzbar.' : 'DEX cannot be used for external events.')
+        : (isDe ? 'Wähle die Event-Art und fülle Name und Beschreibung aus.' : 'Choose the event type and fill in name and description.'))
+    : undefined;
+
   // v13.1: Modal-Wrapper-Komponente — kapselt Backdrop/Escape/Padding.
+  // v31.2: Kopf und Fuß über die Modal-Props (title/subtitle/icon/footer) statt
+  // eigenem <h2> und eigener Knopfzeile; der Verweis auf die Info-Seite sitzt
+  // links im Fuß als Textknopf — vorher eine große Farbfläche über dem Formular.
   return (
     <Modal
       open={open}
       onClose={onClose}
       dismissable={!sending}
+      maxWidth={580}
       ariaLabel={organizerMode ? (isDe ? 'Organizer werden' : 'Become an organizer') : (isDe ? 'DEX-Anfrage' : 'DEX inquiry')}
-    >
-        <h2 style={{ margin: 0, fontSize: '1.3rem', color: 'var(--dex-gray-800)' }}>
-          {organizerMode
-            ? (isDe ? 'Organizer werden' : 'Become an organizer')
-            : (isDe ? 'DEX App für dein Event anfragen' : 'Request the DEX App for your event')}
-        </h2>
-        <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>
-          {organizerMode
-            ? (isDe
-                ? 'Stelle einen Antrag, Organizer zu werden — dann kannst du eigene Events anlegen und verwalten. Die Admins prüfen deinen Antrag und schalten dich frei.'
-                : 'Request to become an organizer — you can then create and manage your own events. The admins review your request and grant access.')
-            : (isDe
-                ? 'Wir melden uns kurz bei dir und besprechen, wie wir dein Event unterstützen können.'
-                : 'We will get back to you and discuss how we can support your event.')}
-        </p>
-        {!organizerMode && <button
+      icon={organizerMode ? <CaptainHat size={20} /> : <MessageSquare size={20} />}
+      title={organizerMode
+        ? (isDe ? 'Organizer werden' : 'Become an organizer')
+        : (isDe ? 'DEX App für dein Event anfragen' : 'Request the DEX App for your event')}
+      subtitle={organizerMode
+        ? (isDe
+            ? 'Stelle einen Antrag, Organizer zu werden — dann kannst du eigene Events anlegen und verwalten. Die Admins prüfen deinen Antrag und schalten dich frei.'
+            : 'Request to become an organizer — you can then create and manage your own events. The admins review your request and grant access.')
+        : (isDe
+            ? 'Wir melden uns kurz bei dir und besprechen, wie wir dein Event unterstützen können.'
+            : 'We will get back to you and discuss how we can support your event.')}
+      footer={<>
+        {!organizerMode && (
+          <span className="dex-ui-modal-foot-left">
+            <button
+              type="button"
+              className="dex-ui-textbtn"
+              onClick={() => setShowInfo(true)}
+              title={isDe ? 'Erst mal mehr erfahren? Alle Funktionen, Zielgruppen und Beispiel-Events im Überblick.' : 'Learn more first? All features, audiences and example events at a glance.'}
+            >
+              <Info size={15} />
+              {isDe ? 'Was kann die DEX App?' : 'What can the DEX App do?'}
+            </button>
+          </span>
+        )}
+        <button type="button" className="btn btn-secondary" onClick={onClose} disabled={sending}>
+          {isDe ? 'Abbrechen' : 'Cancel'}
+        </button>
+        <button
           type="button"
-          onClick={() => setShowInfo(true)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            padding: '12px 14px',
-            background: 'linear-gradient(135deg, rgba(134,188,37,0.10), rgba(0,118,168,0.06))',
-            border: '1px solid var(--dex-green, #86bc25)',
-            borderRadius: 10,
-            cursor: 'pointer',
-            textAlign: 'left',
-            fontFamily: 'inherit',
-            transition: 'all 0.15s',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'linear-gradient(135deg, rgba(134,188,37,0.18), rgba(0,118,168,0.10))'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'linear-gradient(135deg, rgba(134,188,37,0.10), rgba(0,118,168,0.06))'; }}
+          className="btn btn-primary"
+          onClick={handleSubmit}
+          disabled={sending || !canSubmit}
+          title={submitHint}
         >
-          <span style={{
-            width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-            background: 'var(--dex-green, #86bc25)', color: '#fff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <Info size={16} />
-          </span>
-          <span style={{ fontSize: '0.85rem', lineHeight: 1.35, color: 'var(--dex-gray-700)' }}>
-            <strong style={{ display: 'block', color: 'var(--dex-gray-800)', marginBottom: 2 }}>
-              {locale === 'de' ? 'Erst mal mehr über die DEX App erfahren?' : 'First learn more about the DEX App?'}
-            </strong>
-            {locale === 'de'
-              ? 'Hier klicken — alle Funktionen, Zielgruppen und Beispiel-Events im Überblick.'
-              : 'Click here — all features, audiences and example events at a glance.'}
-          </span>
-        </button>}
-        {/* v24.24: „Dein Name" ist nicht mehr frei editierbar — stattdessen eine
-            read-only Personen-Karte des eingeloggten Users (Foto, Name, Position,
-            Standort), analog zur Teilnehmerliste. Diese Infos gehen mit in die
-            Anfrage-Mail an die Admins. */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
-          {locale === 'de' ? 'Du fragst an als' : 'Requesting as'}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            padding: '10px 12px', borderRadius: 10,
-            border: '1px solid var(--dex-gray-200)', background: 'var(--dex-gray-50, #fafafa)',
-          }}>
-            {photoUrl
-              ? <img src={photoUrl} alt="" style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-              : <span style={{
-                  width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
-                  background: 'var(--dex-green, #86bc25)', color: '#fff',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontWeight: 700, fontSize: '0.95rem',
-                }}>{userInitials}</span>}
-            <span style={{ minWidth: 0 }}>
-              <span style={{ display: 'block', fontWeight: 600, color: 'var(--dex-gray-800)', fontSize: '0.92rem' }}>
-                {userFullName || (currentUser.email || '')}
-              </span>
-              {(userJobTitle || userLocation) && (
-                <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
-                  {[userJobTitle, userLocation].filter(Boolean).join(' · ')}
-                </span>
-              )}
-              {currentUser.email && (
-                <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-400)' }}>
-                  {currentUser.email}
-                </span>
-              )}
-            </span>
-          </div>
-        </div>
+          <Send size={16} />
+          {sending
+            ? (isDe ? 'Wird gesendet …' : 'Sending …')
+            : organizerMode
+              ? (isDe ? 'Antrag senden' : 'Send request')
+              : (isDe ? 'Anfrage senden' : 'Send inquiry')}
+        </button>
+      </>}
+    >
         {/* v28.40: Einsatzbereich klarstellen. Bis hierhin stand in der
             Anfrage-Strecke nirgends, für welche Art von Events DEX gedacht
             ist — die einzige Erwaehnung von „extern" war die technische
             Aussage „keine externen APIs" in der Info-Box, die man sogar
-            falsch herum lesen kann. */}
+            falsch herum lesen kann.
+            v31.2: Jetzt die ERSTE Frage im Dialog, als zwei Auswahl-Kacheln
+            statt Radio-Paar im grauen Kasten — sie entscheidet, ob der Rest
+            überhaupt Sinn hat (bei „extern" bleibt Senden gesperrt), und eine
+            Kachel mit Hover und Häkchen liest sich als Entscheidung, nicht als
+            Fußnote. Semantik unverändert: eventScope 'internal' | 'external'. */}
         {!organizerMode && (
-          <div style={{
-            padding: '12px 14px', borderRadius: 8,
-            background: 'var(--dex-gray-50, #f7f7f5)',
-            border: '1px solid var(--dex-gray-200)',
-            fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5,
-          }}>
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>
-              {isDe ? 'Um was für ein Event geht es?' : 'What kind of event is it?'}
-            </div>
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, cursor: 'pointer' }}>
-              <input type="radio" name="dexEventScope" checked={eventScope === 'internal'}
-                onChange={() => setEventScope('internal')} disabled={sending} style={{ marginTop: 3 }} />
-              <span>
-                <strong>{isDe ? 'Internes Event' : 'Internal event'}</strong>
-                <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--dex-gray-600)' }}>
-                  {isDe
+          <div role="radiogroup" aria-label={isDe ? 'Um was für ein Event geht es?' : 'What kind of event is it?'}>
+            <div className="dex-ui-label">{isDe ? 'Um was für ein Event geht es?' : 'What kind of event is it?'}</div>
+            <div className="dex-ui-grid-2" style={{ gap: 10 }}>
+              {([
+                {
+                  id: 'internal' as const,
+                  title: isDe ? 'Internes Event' : 'Internal event',
+                  desc: isDe
                     ? 'Ein internes Deloitte Event — oder die Koordination der Deloitte-Teilnahme an einer externen Veranstaltung (z.B. B2Run).'
-                    : 'A Deloitte-internal event — or coordinating Deloitte participation in an external event (e.g. B2Run).'}
-                </span>
-              </span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
-              <input type="radio" name="dexEventScope" checked={eventScope === 'external'}
-                onChange={() => setEventScope('external')} disabled={sending} style={{ marginTop: 3 }} />
-              <span>
-                <strong>{isDe ? 'Externes Event mit externen Teilnehmern' : 'External event with external attendees'}</strong>
-                <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--dex-gray-600)' }}>
-                  {isDe ? 'Gäste außerhalb von Deloitte melden sich selbst an.' : 'Guests from outside Deloitte register themselves.'}
-                </span>
-              </span>
-            </label>
+                    : 'A Deloitte-internal event — or coordinating Deloitte participation in an external event (e.g. B2Run).',
+                },
+                {
+                  id: 'external' as const,
+                  title: isDe ? 'Externes Event mit externen Teilnehmern' : 'External event with external attendees',
+                  desc: isDe ? 'Gäste außerhalb von Deloitte melden sich selbst an.' : 'Guests from outside Deloitte register themselves.',
+                },
+              ]).map(o => (
+                <button
+                  key={o.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={eventScope === o.id}
+                  className={cx('dex-ui-choice', eventScope === o.id && 'is-active')}
+                  onClick={() => setEventScope(o.id)}
+                  disabled={sending}
+                >
+                  <span className="dex-ui-choice-body">
+                    <span className="dex-ui-choice-title" style={{ display: 'block' }}>{o.title}</span>
+                    <span className="dex-ui-choice-desc" style={{ display: 'block' }}>{o.desc}</span>
+                  </span>
+                  <span className="dex-ui-choice-check" aria-hidden="true">{eventScope === o.id && <Check size={12} />}</span>
+                </button>
+              ))}
+            </div>
             {eventScope === 'external' && (
-              <div style={{
-                marginTop: 10, padding: '10px 12px', borderRadius: 8,
-                background: '#fef3f2', border: '1px solid var(--dex-red, #c00)',
-                color: '#7a1f1c', fontSize: '0.8rem', lineHeight: 1.55,
-              }}>
-                {isDe
-                  ? <><strong>Dafür ist DEX nicht nutzbar.</strong> Die Plattform ist auf interne Deloitte Events ausgelegt; externe Gäste bekommen keinen Zugang und können sich nicht selbst anmelden.<br /><br />Alles zu externen Veranstaltungen findest du hier:<br /><a href="https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx" target="_blank" rel="noopener noreferrer" style={{ color: '#7a1f1c', fontWeight: 700 }}>Event Management im DeloitteNet</a></>
-                  : <><strong>DEX cannot be used for this.</strong> The platform is built for Deloitte-internal events; external guests get no access and cannot register themselves.<br /><br />Everything about external events can be found here:<br /><a href="https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx" target="_blank" rel="noopener noreferrer" style={{ color: '#7a1f1c', fontWeight: 700 }}>Event Management on DeloitteNet</a></>}
+              <div className="dex-ui-callout dex-ui-callout--danger" style={{ marginTop: 10 }}>
+                <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                <span>
+                  {isDe
+                    ? <><strong>Dafür ist DEX nicht nutzbar.</strong> Die Plattform ist auf interne Deloitte Events ausgelegt; externe Gäste bekommen keinen Zugang und können sich nicht selbst anmelden.<br /><br />Alles zu externen Veranstaltungen findest du hier:<br /><a href="https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', fontWeight: 700 }}>Event Management im DeloitteNet</a></>
+                    : <><strong>DEX cannot be used for this.</strong> The platform is built for Deloitte-internal events; external guests get no access and cannot register themselves.<br /><br />Everything about external events can be found here:<br /><a href="https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', fontWeight: 700 }}>Event Management on DeloitteNet</a></>}
+                </span>
               </div>
             )}
           </div>
         )}
         {!organizerMode && (
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
-            {locale === 'de' ? 'Event-Name' : 'Event name'}
+          <div className={dimmed ? 'dex-ui-card--muted' : undefined}>
+            <label className="dex-ui-label" htmlFor="dexInquiryEventName">{isDe ? 'Wie heißt dein Event?' : 'What is your event called?'}</label>
             <input
+              id="dexInquiryEventName"
               type="text"
-              className="form-input"
+              className="dex-ui-input"
               value={eventName}
               onChange={e => setEventName(e.target.value)}
               disabled={sending}
-              placeholder={locale === 'de' ? 'z.B. Summer Party 2026' : 'e.g. Summer Party 2026'}
+              placeholder={isDe ? 'z.B. Summer Party 2026' : 'e.g. Summer Party 2026'}
             />
-          </label>
+          </div>
         )}
         {/* v29.45: Bedarfs-Checkliste. Steht VOR dem Freitext: erst ankreuzen,
             was es an Funktionen braucht, dann alles Übrige beschreiben. */}
         {!organizerMode && eventScope === 'internal' && (
-          <div style={{
-            border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: '10px 12px',
-            background: 'var(--dex-gray-50, #fafafa)',
-          }}>
-            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--dex-gray-800, #333)' }}>
+          <div>
+            <div className="dex-ui-label">
               {isDe ? 'Was brauchst du für dein Event?' : 'What do you need for your event?'}
+              <span className="dex-ui-label-optional">(optional)</span>
             </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)', margin: '2px 0 8px' }}>
+            <div className="dex-ui-help" style={{ margin: '-2px 0 10px' }}>
               {isDe
-                ? 'Mehrfachauswahl, alles optional — es hilft uns, das Gespräch vorzubereiten. Das „i" neben jedem Punkt erklärt, was DEX dafür schon mitbringt. Unsicher? Einfach frei lassen.'
-                : 'Multiple choice, all optional — it helps us prepare. The „i" next to each item explains what DEX already offers. Not sure? Just leave it empty.'}
+                ? 'Mehrfachauswahl — hilft uns, das Gespräch vorzubereiten. Das „i" zeigt, was DEX dafür schon kann. Unsicher? Einfach frei lassen.'
+                : 'Multiple choice — helps us prepare. The „i" shows what DEX already offers. Not sure? Just leave it empty.'}
             </div>
-            {/* v29.46: gruppiert statt einer langen Liste. */}
+            {/* v29.46: gruppiert statt einer langen Liste.
+                v31.2: Toggle-Zeilen im Zweispalter statt nackter Checkboxen —
+                jede Zeile hat damit Hover und Rahmen, die Auswahl ist auf einen
+                Blick zu sehen; die Gruppen-Titel als Abschnitts-Zeile. */}
             {NEED_GROUPS.map(group => (
-              <div key={group.id} style={{ marginBottom: 10 }}>
-                <div style={{
-                  fontSize: '0.72rem', fontWeight: 700, letterSpacing: 0.3,
-                  color: 'var(--dex-green-dark, #4a7c1f)', textTransform: 'uppercase',
-                  margin: '0 0 4px',
-                }}>
-                  {isDe ? group.de : group.en}
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div key={group.id} className="dex-ui-section" style={{ marginTop: 12 }}>
+                <div className="dex-ui-section-title">{isDe ? group.de : group.en}</div>
+                <div className="dex-ui-grid-2" style={{ gap: 8 }}>
                   {group.ids
                     .map(id => NEED_OPTIONS.filter(o => o.id === id)[0])
                     .filter(Boolean)
                     .map(opt => {
                       const checked = needs.indexOf(opt.id) >= 0;
                       return (
-                        <label
-                          key={opt.id}
-                          style={{
-                            display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: '0.82rem',
-                            color: 'var(--dex-gray-700)', cursor: sending ? 'default' : 'pointer',
-                            padding: '3px 4px', borderRadius: 6,
-                            background: checked ? 'rgba(134,188,37,0.10)' : 'transparent',
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleNeed(opt.id)}
-                            disabled={sending}
-                            style={{ marginTop: 2, accentColor: 'var(--dex-green, #86bc25)' }}
-                          />
-                          <span>
-                            {isDe ? opt.de : opt.en}
-                            {/* v29.46: Was DEX dafür schon mitbringt — die Liste
-                                soll nicht nur abfragen, sondern auch
-                                beantworten, was die App an dieser Stelle kann. */}
-                            <InfoTooltip text={isDe ? opt.infoDe : opt.infoEn} />
+                        <label key={opt.id} className={cx('dex-ui-toggle-row', checked && 'is-active', sending && 'is-disabled')}>
+                          <input type="checkbox" checked={checked} onChange={() => toggleNeed(opt.id)} disabled={sending} />
+                          <span className="dex-ui-toggle-row-body">
+                            <span className="dex-ui-toggle-row-title" style={{ fontWeight: 500, fontSize: '0.84rem' }}>
+                              {isDe ? opt.de : opt.en}
+                              {/* v29.46: Was DEX dafür schon mitbringt — die Liste
+                                  soll nicht nur abfragen, sondern auch
+                                  beantworten, was die App an dieser Stelle kann. */}
+                              <InfoTooltip text={isDe ? opt.infoDe : opt.infoEn} />
+                            </span>
                           </span>
                         </label>
                       );
@@ -410,44 +378,42 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
               </div>
             ))}
             {/* v29.46: Auffangbecken für alles, was die Liste nicht kennt. */}
-            <div>
-              <label
-                style={{
-                  display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: '0.82rem',
-                  color: 'var(--dex-gray-700)', cursor: sending ? 'default' : 'pointer',
-                  padding: '3px 4px', borderRadius: 6,
-                  background: needs.indexOf('other') >= 0 ? 'rgba(134,188,37,0.10)' : 'transparent',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={needs.indexOf('other') >= 0}
-                  onChange={() => toggleNeed('other')}
-                  disabled={sending}
-                  style={{ marginTop: 2, accentColor: 'var(--dex-green, #86bc25)' }}
-                />
-                <span>{isDe ? 'Sonstiges — etwas anderes' : 'Other — something else'}</span>
+            <div className="dex-ui-section" style={{ marginTop: 12 }}>
+              <label className={cx('dex-ui-toggle-row', needs.indexOf('other') >= 0 && 'is-active', sending && 'is-disabled')}>
+                <input type="checkbox" checked={needs.indexOf('other') >= 0} onChange={() => toggleNeed('other')} disabled={sending} />
+                <span className="dex-ui-toggle-row-body">
+                  <span className="dex-ui-toggle-row-title" style={{ fontWeight: 500, fontSize: '0.84rem' }}>
+                    {isDe ? 'Sonstiges — etwas anderes' : 'Other — something else'}
+                  </span>
+                </span>
               </label>
               {needs.indexOf('other') >= 0 && (
                 <input
                   type="text"
-                  className="form-input"
+                  className="dex-ui-input"
                   value={otherNeed}
                   onChange={e => setOtherNeed(e.target.value)}
                   disabled={sending}
                   placeholder={isDe ? 'Was brauchst du noch?' : 'What else do you need?'}
-                  style={{ marginTop: 4, fontSize: '0.82rem' }}
+                  style={{ marginTop: 8 }}
                 />
               )}
             </div>
           </div>
         )}
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
-          {organizerMode
-            ? (isDe ? 'Warum möchtest du Organizer werden? (optional)' : 'Why do you want to become an organizer? (optional)')
-            : (isDe ? 'Sonst noch etwas?' : 'Anything else?')}
+        {/* v31.2: Beschriftung als Frage statt „Sonst noch etwas?" — das las
+            sich optional, obwohl die Beschreibung in der Anfrage Pflicht ist
+            (canSubmit). Im Organizer-Modus bleibt sie optional und sagt es. */}
+        <div className={dimmed ? 'dex-ui-card--muted' : undefined}>
+          <label className="dex-ui-label" htmlFor="dexInquiryMessage">
+            {organizerMode
+              ? (isDe ? 'Warum möchtest du Organizer werden?' : 'Why do you want to become an organizer?')
+              : (isDe ? 'Was sollen wir über dein Event wissen?' : 'What should we know about your event?')}
+            {organizerMode && <span className="dex-ui-label-optional">(optional)</span>}
+          </label>
           <textarea
-            className="form-textarea"
+            id="dexInquiryMessage"
+            className="dex-ui-textarea"
             value={message}
             onChange={e => setMessage(e.target.value)}
             disabled={sending}
@@ -458,35 +424,54 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
                 ? 'Anzahl Teilnehmer, Termin, Besonderheiten …'
                 : 'Number of participants, date, anything special …')}
           />
-        </label>
+        </div>
         {status === 'success' && (
-          <div style={{ color: 'var(--dex-green)', fontSize: '0.85rem' }}>
-            {organizerMode
-              ? (isDe ? 'Antrag gesendet — die Admins prüfen ihn und schalten dich frei.' : 'Request sent — the admins will review and grant access.')
-              : (isDe ? 'Anfrage gesendet — wir melden uns!' : 'Request sent — we will get back to you!')}
+          <div className="dex-ui-callout dex-ui-callout--success" role="status">
+            <span className="dex-ui-callout-icon"><Check size={16} /></span>
+            <span>
+              {organizerMode
+                ? (isDe ? 'Antrag gesendet — die Admins prüfen ihn und schalten dich frei.' : 'Request sent — the admins will review and grant access.')
+                : (isDe ? 'Anfrage gesendet — wir melden uns!' : 'Request sent — we will get back to you!')}
+            </span>
           </div>
         )}
         {status === 'error' && (
-          <div style={{ color: 'var(--dex-red)', fontSize: '0.85rem' }}>
-            {locale === 'de' ? 'Senden fehlgeschlagen. Bitte später erneut versuchen.' : 'Sending failed. Please try again later.'}
+          <div className="dex-ui-callout dex-ui-callout--danger" role="alert">
+            <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+            <span>{isDe ? 'Senden fehlgeschlagen — versuch es später noch einmal.' : 'Sending failed — please try again later.'}</span>
           </div>
         )}
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
-          <button type="button" className="btn btn-secondary" onClick={onClose} disabled={sending}>
-            {locale === 'de' ? 'Abbrechen' : 'Cancel'}
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={handleSubmit}
-            disabled={sending || !canSubmit}
-          >
-            {sending
-              ? (isDe ? 'Wird gesendet...' : 'Sending...')
-              : organizerMode
-                ? (isDe ? 'Antrag senden' : 'Send request')
-                : (isDe ? 'Anfrage senden' : 'Send inquiry')}
-          </button>
+        {/* v24.24: „Dein Name" ist nicht mehr frei editierbar — stattdessen eine
+            read-only Personen-Karte des eingeloggten Users (Foto, Name, Position,
+            Standort), analog zur Teilnehmerliste. Diese Infos gehen mit in die
+            Anfrage-Mail an die Admins.
+            v31.2: Steht jetzt am Ende statt vor den Fragen — der Organizer
+            beantwortet erst, worum es geht, und sieht zuletzt, mit welchen
+            Daten die Anfrage rausgeht (wie ein Absender unter einem Brief). */}
+        <div>
+          <div className="dex-ui-muted" style={{ fontWeight: 600, marginBottom: 6 }}>
+            {isDe ? 'Du fragst an als' : 'Requesting as'}
+          </div>
+          <div className="dex-ui-card dex-ui-card--soft" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px' }}>
+            {photoUrl
+              ? <img src={photoUrl} alt="" className="dex-ui-avatar dex-ui-avatar--lg" />
+              : <span className="dex-ui-avatar dex-ui-avatar--lg" style={{ background: 'var(--dex-green, #86bc25)', color: '#fff' }}>{userInitials}</span>}
+            <span style={{ minWidth: 0 }}>
+              <span style={{ display: 'block', fontWeight: 600, color: 'var(--dex-gray-800)', fontSize: '0.92rem' }}>
+                {userFullName || (currentUser.email || '')}
+              </span>
+              {(userJobTitle || userLocation) && (
+                <span className="dex-ui-muted" style={{ display: 'block', fontSize: '0.78rem' }}>
+                  {[userJobTitle, userLocation].filter(Boolean).join(' · ')}
+                </span>
+              )}
+              {currentUser.email && (
+                <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-400)' }}>
+                  {currentUser.email}
+                </span>
+              )}
+            </span>
+          </div>
         </div>
       <LandingInfoModal
         open={showInfo}

@@ -5,6 +5,9 @@
 import * as React from 'react';
 import { MassmailAudience } from '../adminTypes';
 import Modal from '../../Modal';
+import { cx } from '../../dexUi';
+import { Users } from '../../Icons';
+import { useLocaleSafe } from '../../../context/LanguageContext';
 import { SPRegistration } from '../../../services/EventService';
 
 export interface MassmailPickModalProps {
@@ -20,6 +23,9 @@ export interface MassmailPickModalProps {
 
 export const MassmailPickModal: React.FC<MassmailPickModalProps> = (p) => {
   const { massmailAudience, massmailStatuses, registrations, setMassmailAudience, setMassmailMode, setMassmailPasteRaw, setMassmailStatuses, setShowEmailModal } = p;
+        // v31.2: Die Props kennen kein isDe (Schnittstelle bleibt) — die Sprache
+        // kommt wie in Modal.tsx aus dem Kontext.
+        const isDe = useLocaleSafe() === 'de';
         const closeAll = (): void => { setMassmailMode('closed'); setMassmailPasteRaw(''); };
         const proceed = (): void => {
           if (massmailAudience === 'custom' && massmailStatuses.size === 0) return;
@@ -34,67 +40,74 @@ export const MassmailPickModal: React.FC<MassmailPickModalProps> = (p) => {
             return next;
           });
         };
-        const Row = (props: { value: MassmailAudience; label: string; desc: string }): React.ReactElement => (
-          <label style={{
-            display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10,
-            borderRadius: 8, border: `1px solid ${massmailAudience === props.value ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-            background: massmailAudience === props.value ? 'rgba(134,188,37,0.08)' : '#fff',
-            cursor: 'pointer', marginBottom: 8,
-          }}>
-            <input
-              type="radio"
-              name="massmail-target"
-              checked={massmailAudience === props.value}
-              onChange={() => setMassmailAudience(props.value)}
-              style={{ marginTop: 3 }}
-            />
-            <div>
-              <div style={{ fontWeight: 600, fontSize: '0.92rem' }}>{props.label}</div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>{props.desc}</div>
-            </div>
-          </label>
-        );
+        // v31.2: Zähler je Gruppe stehen direkt an der Auswahl — „an wie viele
+        // geht das?" ist die Frage, die der Organizer hier beantwortet, nicht
+        // erst im Editor. Reine Anzeige; die Empfängerlogik bleibt im Aufrufer.
+        const countOf = (stati: string[]): number => registrations.filter(r => stati.indexOf(r.Status) >= 0).length;
+        const nActive = countOf(['Angemeldet', 'QR versendet', 'Eingecheckt']);
+        const nWait = countOf(['Warteliste']);
+        const customEmpty = massmailAudience === 'custom' && massmailStatuses.size === 0;
+        const Row = (props: { value: MassmailAudience; label: string; desc: string; count?: number }): React.ReactElement => {
+          const on = massmailAudience === props.value;
+          return (
+            <label className={cx('dex-ui-toggle-row', on && 'is-active')}>
+              <input type="radio" name="massmail-target" checked={on} onChange={() => setMassmailAudience(props.value)} />
+              <span className="dex-ui-toggle-row-body">
+                <span className="dex-ui-toggle-row-title">
+                  {props.label}
+                  {props.count !== undefined && <span className={cx('dex-ui-pill', on ? 'dex-ui-pill--green' : 'dex-ui-pill--gray')}>{props.count} {isDe ? 'Pers.' : 'people'}</span>}
+                </span>
+                <span className="dex-ui-toggle-row-desc">{props.desc}</span>
+              </span>
+            </label>
+          );
+        };
+        // v31.2: Reihenfolge nach Häufigkeit und Mechanik — erst die drei
+        // Status-Gruppen, dann die eigene Status-Auswahl (Verfeinerung derselben
+        // Frage), zuletzt der manuelle Abgleich, weil er als einziger einen
+        // zweiten Schritt hat. Vorher stand er zwischen den Status-Gruppen.
         return (
-          <Modal open={true} onClose={closeAll} maxWidth={560} padding={24} ariaLabel="Empfänger wählen">
-            <h3 style={{ margin: '0 0 14px', fontSize: '1.1rem' }}>An wen soll die Mail gehen?</h3>
-            <Row value="active" label="Teilnehmer (alle aktiven)" desc="Status: Angemeldet, QR versendet, Eingecheckt — Default für die ueblichen Info-Mails." />
-            <Row value="activePlusWait" label="Teilnehmer + Warteliste" desc="Alle aktiven UND Wartelistler — z.B. wenn sich noch Plätze frei machen und du auch die Warteliste vorwarnen willst." />
-            <Row value="waitOnly" label="Nur Warteliste" desc={'Nur Wartelistler — z.B. Info „Es wird wahrscheinlich keinen Platz mehr geben".'} />
-            <Row value="nachruecker" label="Nachrücker (Manueller Abgleich)" desc="Du fügst im nächsten Schritt eine Liste von E-Mails ein (Verteiler, Vorname Nachname Email, beliebig formatiert) — die App extrahiert die Adressen und schickt die Mail an alle aktiven Teilnehmer, die NICHT in deiner Liste stehen." />
-            {/* v22.9: Eigene Status-Auswahl — einzelne Status getrennt anhaken. */}
-            <div style={{
-              borderRadius: 8, border: `1px solid ${massmailAudience === 'custom' ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-              background: massmailAudience === 'custom' ? 'rgba(134,188,37,0.08)' : '#fff',
-              marginBottom: 8, padding: 10,
-            }}>
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                <input type="radio" name="massmail-target" checked={massmailAudience === 'custom'} onChange={() => setMassmailAudience('custom')} style={{ marginTop: 3 }} />
+          <Modal open={true} onClose={closeAll} maxWidth={560}
+            ariaLabel={isDe ? 'Empfänger wählen' : 'Choose recipients'}
+            title={isDe ? 'An wen soll die Mail gehen?' : 'Who should get the mail?'}
+            subtitle={isDe ? 'Wähle die Empfängergruppe — den Text schreibst du danach im Mail-Editor.' : 'Pick the recipient group — you write the text in the mail editor afterwards.'}
+            icon={<Users size={20} />}
+            footer={<>
+              <button type="button" className="btn btn-secondary" onClick={closeAll}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
+              <button type="button" className="btn btn-primary" onClick={proceed} disabled={customEmpty}>
+                {massmailAudience === 'nachruecker' ? (isDe ? 'Weiter: Liste einfügen' : 'Next: paste list') : (isDe ? 'Weiter zum Mail-Editor' : 'Continue to mail editor')}
+              </button>
+            </>}>
+            <div className="dex-ui-section">
+              <div className="dex-ui-section-title">{isDe ? 'Nach Status' : 'By status'}</div>
+              <div className="dex-ui-stack">
+                <Row value="active" count={nActive} label={isDe ? 'Alle aktiven Teilnehmer' : 'All active participants'} desc={isDe ? 'Status Angemeldet, QR versendet oder Eingecheckt — der Normalfall für Info-Mails.' : 'Status registered, QR sent or checked in — the usual choice for info mails.'} />
+                <Row value="activePlusWait" count={nActive + nWait} label={isDe ? 'Aktive Teilnehmer + Warteliste' : 'Active participants + waitlist'} desc={isDe ? 'Beide zusammen — z.B. wenn Plätze frei werden und du die Warteliste vorwarnen willst.' : 'Both together — e.g. when seats free up and you want to give the waitlist a heads-up.'} />
+                <Row value="waitOnly" count={nWait} label={isDe ? 'Nur Warteliste' : 'Waitlist only'} desc={isDe ? 'Nur die Wartenden — z.B. „Es wird wahrscheinlich keinen Platz mehr geben“.' : 'Only those waiting — e.g. "There will probably be no more seats".'} />
+                {/* v22.9: Eigene Status-Auswahl — einzelne Status getrennt anhaken. */}
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.92rem' }}>Eigene Auswahl (nach Status)</div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>Häkchen setzen, welche Status die Mail bekommen sollen — z.B. nur „QR versendet“.</div>
-                </div>
-              </label>
-              {massmailAudience === 'custom' && (
-                <div style={{ marginTop: 10, paddingLeft: 28, display: 'flex', flexDirection: 'column', gap: 7 }}>
-                  {STATUS_OPTIONS.map(st => {
-                    const count = registrations.filter(r => r.Status === st).length;
-                    return (
-                      <label key={st} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={massmailStatuses.has(st)} onChange={() => toggleStatus(st)} />
-                        <span style={{ fontWeight: 500 }}>{st}</span>
-                        <span style={{ color: 'var(--dex-gray-500)' }}>({count})</span>
-                      </label>
-                    );
-                  })}
-                  {massmailStatuses.size === 0 && (
-                    <span style={{ fontSize: '0.78rem', color: 'var(--dex-orange-dark, #b35a00)' }}>Bitte mindestens einen Status anhaken.</span>
+                  <Row value="custom" count={massmailAudience === 'custom' ? countOf(Array.from(massmailStatuses)) : undefined} label={isDe ? 'Eigene Auswahl nach Status' : 'Custom selection by status'} desc={isDe ? 'Du wählst unten, welche Status die Mail bekommen — z.B. nur „QR versendet“.' : 'You pick below which statuses get the mail — e.g. only "QR sent".'} />
+                  {massmailAudience === 'custom' && (
+                    <div className="dex-ui-inline" style={{ padding: '10px 14px 2px 44px' }}>
+                      {STATUS_OPTIONS.map(st => {
+                        const count = registrations.filter(r => r.Status === st).length;
+                        return (
+                          <button key={st} type="button" className={cx('dex-ui-chip', massmailStatuses.has(st) && 'is-active')} aria-pressed={massmailStatuses.has(st)} onClick={() => toggleStatus(st)}>
+                            {st} <span style={{ opacity: 0.75 }}>({count})</span>
+                          </button>
+                        );
+                      })}
+                      {customEmpty && (
+                        <span className="dex-ui-help" style={{ width: '100%', margin: 0, color: 'var(--dex-orange-dark, #b35a00)' }}>{isDe ? 'Wähle mindestens einen Status — sonst bekommt niemand die Mail.' : 'Pick at least one status — otherwise nobody gets the mail.'}</span>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 14 }}>
-              <button type="button" className="btn btn-secondary" onClick={closeAll} style={{ fontSize: '0.85rem' }}>Abbrechen</button>
-              <button type="button" className="btn btn-primary" onClick={proceed} disabled={massmailAudience === 'custom' && massmailStatuses.size === 0} style={{ fontSize: '0.85rem' }}>Weiter</button>
+            <div className="dex-ui-section">
+              <div className="dex-ui-section-title">{isDe ? 'Abgleich mit deiner Liste' : 'Compare with your list'}</div>
+              <Row value="nachruecker" label={isDe ? 'Nachrücker — nur wer deine letzte Mail noch nicht hat' : 'Late joiners — only those who missed your last mail'} desc={isDe ? 'Im nächsten Schritt fügst du deine bisherige Empfänger-Liste ein (Verteiler, „Vorname Nachname <mail>“, beliebig formatiert). Die App erkennt die Adressen und schreibt alle aktiven Teilnehmer an, die dort NICHT stehen.' : 'In the next step you paste your existing recipient list (distribution list, "First Last <mail>", any format). The app picks out the addresses and mails every active participant who is NOT on it.'} />
             </div>
           </Modal>
         );

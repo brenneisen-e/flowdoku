@@ -3,7 +3,9 @@
  * Anzeige-Bedingung bleibt beim Aufrufer.
  */
 import * as React from 'react';
-import { Copy } from '../../Icons';
+import Modal from '../../Modal';
+import { cx } from '../../dexUi';
+import { AlertCircle, Check, Copy } from '../../Icons';
 import { SPRegistration } from '../../../services/EventService';
 
 export interface DeclineCheckModalProps {
@@ -15,88 +17,101 @@ export interface DeclineCheckModalProps {
   showAlert: (message: React.ReactNode, opts?: import("../../../context/DialogContext").AlertOptions) => void;
 }
 
+// v31.2: Status als Pill in derselben Lesart wie die Teilnehmerliste — grün hält
+// einen Platz, blau hat den QR schon, orange wartet. Der rohe Text stand vorher
+// ohne Gewicht in der Tabelle und ging neben ID und E-Mail unter.
+const statusPill = (st: string | undefined): string => {
+  if (st === 'Angemeldet' || st === 'Eingecheckt') return 'dex-ui-pill--green';
+  if (st === 'QR versendet') return 'dex-ui-pill--blue';
+  if (st === 'Warteliste') return 'dex-ui-pill--orange';
+  return 'dex-ui-pill--gray';
+};
+
 export const DeclineCheckModal: React.FC<DeclineCheckModalProps> = (p) => {
   const { declineCopied, declineResult, isDe, setDeclineCopied, setShowDeclineModal, showAlert } = p;
+  const close = (): void => setShowDeclineModal(false);
+  const rows = declineResult.declinedAndRegistered;
+  const copyEmails = (): void => {
+    const emails = rows.map(d => d.email).join('; ');
+    navigator.clipboard.writeText(emails).then(() => {
+      setDeclineCopied(true);
+      setTimeout(() => setDeclineCopied(false), 2000);
+    }).catch(() => showAlert(<span style={{ userSelect: 'all', wordBreak: 'break-all', fontFamily: 'monospace', fontSize: '0.8rem' }}>{emails}</span>, { title: isDe ? 'E-Mail-Adressen manuell kopieren' : 'Copy email addresses manually' }));
+  };
+  // v31.2: Vorher ein eigener Overlay-Klon (fester Rahmen, ohne Escape, nur
+  // deutsch); jetzt das gemeinsame Modal. Kopieren ist die einzige Handlung im
+  // Dialog und steht deshalb als Primär-Knopf im Fuß statt als Nebenknopf über
+  // der Tabelle.
   return (
-        <div
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2000,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-          }}
-          onClick={() => setShowDeclineModal(false)}
-        >
-          <div
-            className="card"
-            style={{ background: '#fff', maxWidth: 720, width: '100%', maxHeight: '80vh', overflow: 'auto', padding: 24 }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex-between mb-16">
-              <h3 style={{ margin: 0 }}>Outlook-Absagen vs. Anmeldungen</h3>
-              <button className="btn btn-secondary" style={{ padding: '4px 10px' }} onClick={() => setShowDeclineModal(false)}>
-                Schließen
-              </button>
-            </div>
-            {declineResult.error ? (
-              <p style={{ color: 'var(--dex-red)', whiteSpace: 'pre-line' }}>{declineResult.error}</p>
-            ) : declineResult.declinedAndRegistered.length === 0 ? (
-              <p style={{ color: 'var(--dex-gray-600)' }}>
-                Keine Diskrepanzen gefunden. {declineResult.declinedTotal > 0
-                  ? `Es gibt ${declineResult.declinedTotal} Outlook-Absage(n), aber keiner davon ist in der Teilnehmerliste noch aktiv.`
-                  : 'Niemand hat den Outlook-Termin abgelehnt.'}
-              </p>
-            ) : (
-              <>
-                <p style={{ color: 'var(--dex-gray-700)' }}>
-                  <strong>{declineResult.declinedAndRegistered.length}</strong> Teilnehmer haben den Outlook-Termin abgelehnt,
-                  stehen aber in der Teilnehmerliste noch als aktiv:
-                </p>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                  <button
-                    className="btn btn-secondary"
-                    style={{ fontSize: '0.8rem' }}
-                    onClick={() => {
-                      const emails = declineResult.declinedAndRegistered.map(d => d.email).join('; ');
-                      navigator.clipboard.writeText(emails).then(() => {
-                        setDeclineCopied(true);
-                        setTimeout(() => setDeclineCopied(false), 2000);
-                      }).catch(() => showAlert(<span style={{ userSelect: 'all', wordBreak: 'break-all', fontFamily: 'monospace', fontSize: '0.8rem' }}>{emails}</span>, { title: isDe ? 'E-Mail-Adressen manuell kopieren' : 'Copy email addresses manually' }));
-                    }}
-                  >
-                    <Copy size={14} /> {declineCopied ? 'Kopiert!' : 'E-Mails kopieren'}
-                  </button>
-                </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--dex-gray-50)' }}>
-                      <th style={{ textAlign: 'left', padding: '8px', borderBottom: '1px solid var(--dex-gray-200)' }}>ID</th>
-                      <th style={{ textAlign: 'left', padding: '8px', borderBottom: '1px solid var(--dex-gray-200)' }}>Name</th>
-                      <th style={{ textAlign: 'left', padding: '8px', borderBottom: '1px solid var(--dex-gray-200)' }}>E-Mail</th>
-                      <th style={{ textAlign: 'left', padding: '8px', borderBottom: '1px solid var(--dex-gray-200)' }}>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {declineResult.declinedAndRegistered.map(d => {
-                      const displayName = (d.reg.Vorname && d.reg.Nachname)
-                        ? `${d.reg.Vorname} ${d.reg.Nachname}`
-                        : (d.reg.ParticipantName || d.name);
-                      return (
-                        <tr key={d.email}>
-                          <td style={{ padding: '8px', borderBottom: '1px solid var(--dex-gray-100)' }}>{d.reg.TeilnehmerID ?? '-'}</td>
-                          <td style={{ padding: '8px', borderBottom: '1px solid var(--dex-gray-100)' }}>{displayName}</td>
-                          <td style={{ padding: '8px', borderBottom: '1px solid var(--dex-gray-100)' }}>{d.email}</td>
-                          <td style={{ padding: '8px', borderBottom: '1px solid var(--dex-gray-100)' }}>{d.reg.Status}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 12 }}>
-                  Insgesamt {declineResult.declinedTotal} Outlook-Absage(n) erfasst.
-                </p>
-              </>
-            )}
-          </div>
+    <Modal open={true} onClose={close} maxWidth={720}
+      ariaLabel={isDe ? 'Outlook-Absagen prüfen' : 'Check Outlook declines'}
+      title={isDe ? 'Outlook-Absagen prüfen' : 'Check Outlook declines'}
+      subtitle={isDe ? 'Wer hat den Termin in Outlook abgelehnt, steht aber in der Teilnehmerliste noch als aktiv?' : 'Who declined the Outlook invitation but is still active on the participant list?'}
+      icon={<AlertCircle size={20} />}
+      footer={<>
+        <button type="button" className="btn btn-secondary" onClick={close}>{isDe ? 'Schließen' : 'Close'}</button>
+        {!declineResult.error && rows.length > 0 && (
+          <button type="button" className="btn btn-primary" onClick={copyEmails}>
+            {declineCopied ? <Check size={14} /> : <Copy size={14} />}
+            {declineCopied ? (isDe ? 'Kopiert!' : 'Copied!') : (isDe ? 'E-Mail-Adressen kopieren' : 'Copy email addresses')}
+          </button>
+        )}
+      </>}>
+      {declineResult.error ? (
+        <div className="dex-ui-callout dex-ui-callout--danger" style={{ whiteSpace: 'pre-line' }}>
+          <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+          <span>{declineResult.error}</span>
         </div>
+      ) : rows.length === 0 ? (
+        <div className="dex-ui-callout dex-ui-callout--success">
+          <span className="dex-ui-callout-icon"><Check size={16} /></span>
+          <span>
+            <strong>{isDe ? 'Keine Diskrepanzen gefunden.' : 'No discrepancies found.'}</strong>{' '}
+            {declineResult.declinedTotal > 0
+              ? (isDe ? `${declineResult.declinedTotal} Outlook-Absage(n) erfasst — keine davon steht in der Teilnehmerliste noch als aktiv.` : `${declineResult.declinedTotal} Outlook decline(s) recorded — none of them is still active on the participant list.`)
+              : (isDe ? 'Niemand hat den Outlook-Termin abgelehnt.' : 'Nobody declined the Outlook invitation.')}
+          </span>
+        </div>
+      ) : (
+        <>
+          <div className="dex-ui-grid-2">
+            <div className="dex-ui-kpi dex-ui-kpi--orange">
+              <div className="dex-ui-kpi-value">{rows.length}</div>
+              <div className="dex-ui-kpi-label">{isDe ? 'abgelehnt, aber noch aktiv' : 'declined, but still active'}</div>
+            </div>
+            <div className="dex-ui-kpi">
+              <div className="dex-ui-kpi-value">{declineResult.declinedTotal}</div>
+              <div className="dex-ui-kpi-label">{isDe ? 'Outlook-Absagen insgesamt erfasst' : 'Outlook declines recorded in total'}</div>
+            </div>
+          </div>
+          <p className="dex-ui-muted" style={{ margin: 0 }}>
+            {isDe ? 'Diese Personen haben den Outlook-Termin abgelehnt, halten aber noch ihren Platz. Kopiere die Adressen, um bei ihnen nachzufragen.' : 'These people declined the Outlook invitation but still hold their seat. Copy the addresses to follow up with them.'}
+          </p>
+          <div className="dex-ui-table-wrap">
+            <table className="dex-ui-table">
+              <thead>
+                <tr><th>ID</th><th>Name</th><th>E-Mail</th><th>Status</th></tr>
+              </thead>
+              <tbody>
+                {rows.map(d => {
+                  const displayName = (d.reg.Vorname && d.reg.Nachname)
+                    ? `${d.reg.Vorname} ${d.reg.Nachname}`
+                    : (d.reg.ParticipantName || d.name);
+                  return (
+                    <tr key={d.email}>
+                      <td>{d.reg.TeilnehmerID ?? '-'}</td>
+                      <td style={{ fontWeight: 600 }}>{displayName}</td>
+                      <td style={{ color: 'var(--dex-gray-600)' }}>{d.email}</td>
+                      <td><span className={cx('dex-ui-pill', statusPill(d.reg.Status))}>{d.reg.Status}</span></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </Modal>
   );
 };
 

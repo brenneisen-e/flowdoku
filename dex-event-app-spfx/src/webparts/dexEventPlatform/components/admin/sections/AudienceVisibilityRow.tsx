@@ -1,11 +1,13 @@
 /* AudienceVisibilityRow — 1:1 aus AdminPage.tsx ausgelagert (Zeilen 10282-10437 des
- * Stands vor dem Schnitt). Der Inhalt ist zeichengleich uebernommen; die
- * Anzeige-Bedingung bleibt beim Aufrufer.
+ * Stands vor dem Schnitt). Die Rechnung ist unverändert; seit v31.3 ist der
+ * Kopf die Frage „Wer sieht das Event?" mit Pillen für Standorte und
+ * Einträge. Die Anzeige-Bedingung bleibt beim Aufrufer.
  */
 import * as React from 'react';
-import { Users } from '../../Icons';
+import { ChevronDown, Users } from '../../Icons';
 import { DeloitteEvent } from '../../../types';
 import { AudiencePerson } from '../../admin/adminTypes';
+import { cx } from '../../dexUi';
 
 export interface AudienceVisibilityRowProps {
   isAdmin: boolean;
@@ -50,33 +52,59 @@ export const AudienceVisibilityRow: React.FC<AudienceVisibilityRowProps> = (p) =
               : `Visible to ${locs.length > 0 ? `everyone at ${locs.join(', ')}` : 'selected people'} — DEX cannot tell how many that is`);
         const canManageVis = isAdmin || isOrganizerFor(selectedEvent);
         return (
-          <div className="card" style={{ padding: '12px 16px', marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={() => setVisibilityOpen(v => !v)}
-                style={{
-                  background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit',
-                  display: 'inline-flex', alignItems: 'center', gap: 8, color: 'var(--dex-gray-800, #333)',
-                }}
-                aria-expanded={visibilityOpen}
-              >
-                <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', display: 'inline-flex' }}><Users size={16} /></span>
-                <strong style={{ fontSize: '0.9rem' }}>{isDe ? 'Sichtbarkeit' : 'Visibility'}</strong>
-                <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>— {summary}</span>
-                <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{visibilityOpen ? '▾' : '▸'}</span>
-              </button>
-            </div>
+          <div className="dex-ui-card" style={{ marginBottom: 12 }}>
+            {/* v31.3: Die Ueberschrift ist die Frage, die der Organizer hier
+                stellt. Der ganze Kopf ist der Aufklapper — Hover nur, weil ein
+                Klick darauf wirklich etwas tut. */}
+            <button
+              type="button"
+              className={cx('dex-ui-disclosure', visibilityOpen && 'is-open')}
+              onClick={() => setVisibilityOpen(v => !v)}
+              aria-expanded={visibilityOpen}
+            >
+              <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+              <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', display: 'inline-flex' }}><Users size={16} /></span>
+              {isDe ? 'Wer sieht das Event?' : 'Who can see this event?'}
+              {/* v31.3 (Nachzug): „Details"/„weniger" stand im Zähler-Slot, der
+                  `margin-left: auto` trägt — das Wort hing allein am rechten
+                  Rand (genau die Form, die Leitfaden 2a′ vermeidet). Als
+                  Kleintext direkt hinter der Frage gehört es zum Aufklapper;
+                  der Chevron rechts sagt ohnehin, in welche Richtung es geht. */}
+              <span className="dex-ui-muted" style={{ fontSize: '0.76rem' }}>
+                {visibilityOpen ? (isDe ? 'weniger' : 'less') : (isDe ? 'Details' : 'details')}
+              </span>
+            </button>
+            <div className="dex-ui-muted" style={{ marginTop: 2 }}>{summary}</div>
+            {/* Standorte und Eintraege auf einen Blick. Reine Anzeige, deshalb
+                Pillen und keine Chips — hier gibt es nichts umzuschalten. */}
+            {(locs.length > 0 || audEntries.length > 0 || excludedCount > 0) && (
+              <div className="dex-ui-inline" style={{ marginTop: 8 }}>
+                {/* Index als Key: derselbe Standort kann in den Daten zweimal stehen. */}
+                {locs.map((l, i) => <span key={`loc${i}`} className="dex-ui-pill dex-ui-pill--blue">{l}</span>)}
+                {audEntries.length > 0 && (
+                  <span className="dex-ui-pill dex-ui-pill--gray">
+                    {audEntries.length} {isDe
+                      ? (audEntries.length === 1 ? 'Verteiler oder Person' : 'Verteiler & Personen')
+                      : (audEntries.length === 1 ? 'list or person' : 'lists & people')}
+                  </span>
+                )}
+                {excludedCount > 0 && (
+                  <span className="dex-ui-pill dex-ui-pill--orange">
+                    {excludedCount} {isDe ? 'ausgeschlossen' : 'excluded'}
+                  </span>
+                )}
+              </div>
+            )}
             {/* v29.36: Der Knopf stand rechts außen am Kartenrand — weit weg von
                 der Zahl, auf die er sich bezieht, und ohne sichtbare Erklärung
                 (sie steckte im title-Tooltip). Jetzt links unter der Zeile, mit
                 dem Satz daneben, der sagt, was passiert. */}
             {canManageVis && !orgPastLock && mailable.length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
+              <div className="dex-ui-inline" style={{ marginTop: 10 }}>
                 <button
                   type="button"
-                  className="btn btn-secondary"
-                  style={{ fontSize: '0.8rem', padding: '6px 12px', flexShrink: 0 }}
+                  className="btn btn-secondary dex-ui-btn-sm"
+                  style={{ flexShrink: 0 }}
                   disabled={pendingCheckBusy}
                   onClick={() => { void openPendingReminder(); }}
                 >
@@ -84,15 +112,15 @@ export const AudienceVisibilityRow: React.FC<AudienceVisibilityRowProps> = (p) =
                     ? (isDe ? 'Wird geprüft…' : 'Checking…')
                     : (isDe ? 'Wer hat noch nicht geantwortet?' : 'Who has not responded yet?')}
                 </button>
-                <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', flex: '1 1 260px', minWidth: 0 }}>
+                <span className="dex-ui-muted" style={{ flex: '1 1 260px', minWidth: 0 }}>
                   {isDe
-                    ? 'Zeigt dir zuerst eine Liste der Personen, die das Event sehen können, sich aber weder angemeldet noch abgemeldet und auch nicht abgesagt haben. Erinnern kannst du sie im Schritt danach.'
-                    : 'First shows you a list of the people who can see this event but have neither registered nor cancelled nor declined. You can remind them in the next step.'}
+                    ? 'Listet zuerst alle, die das Event sehen, sich aber weder angemeldet noch abgemeldet noch abgesagt haben — erinnern kannst du sie im Schritt danach.'
+                    : 'First lists everyone who can see this event but has neither registered nor cancelled nor declined — you can remind them in the next step.'}
                 </span>
               </div>
             )}
             {visibilityOpen && (
-              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--dex-gray-200)', fontSize: '0.82rem', color: 'var(--dex-gray-700)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div className="dex-ui-disclosure-body" style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--dex-gray-200)', fontSize: '0.82rem', color: 'var(--dex-gray-700)', display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div>
                   <strong>{isDe ? 'Standortfilter: ' : 'Location filter: '}</strong>
                   {locs.length > 0 ? locs.join(', ') : (isDe ? 'keiner' : 'none')}
@@ -109,11 +137,9 @@ export const AudienceVisibilityRow: React.FC<AudienceVisibilityRowProps> = (p) =
                   {audEntries.length > 12 && (
                     <button
                       type="button"
+                      className="dex-ui-textbtn"
                       onClick={() => setVisibilityAllAddresses(v => !v)}
-                      style={{
-                        background: 'none', border: 'none', padding: '0 0 0 6px', cursor: 'pointer',
-                        font: 'inherit', color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline',
-                      }}
+                      style={{ marginLeft: 4 }}
                     >
                       {visibilityAllAddresses
                         ? (isDe ? 'weniger anzeigen' : 'show less')
@@ -155,8 +181,7 @@ export const AudienceVisibilityRow: React.FC<AudienceVisibilityRowProps> = (p) =
                     </span>
                     <button
                       type="button"
-                      className="btn btn-secondary"
-                      style={{ fontSize: '0.76rem', padding: '3px 10px' }}
+                      className="btn btn-secondary dex-ui-btn-sm"
                       disabled={visibilityBusy}
                       onClick={() => {
                         void (async () => {

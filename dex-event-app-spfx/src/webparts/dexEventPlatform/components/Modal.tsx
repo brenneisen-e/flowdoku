@@ -32,6 +32,10 @@ import { inputLocaleTag } from '../utils/inputLocale';
 // wieder (Schrift, Inputs, Variablen, …) — der moderne Look ist zurück, und das
 // Portal/Zoom bleibt erhalten.
 import styles from './DexEventPlatform.module.scss';
+// v31.2: Gemeinsame UI-Klassen (Karten, Chips, Kopf/Fuß …) — dieselbe Quelle
+// wie im Wizard, siehe dexUi.ts.
+import { ensureDexUiStyles } from './dexUi';
+import { X } from './Icons';
 
 // v24.64: Deterministisches Modal-Button-Styling.
 // Hintergrund (recherchiert): SPFx-CSS-Module sind auf den Web-Part-Container
@@ -45,6 +49,7 @@ import styles from './DexEventPlatform.module.scss';
 const MODAL_STYLE_ID = 'dex-modal-global-styles';
 function ensureModalStyles(): void {
   if (typeof document === 'undefined') return;
+  ensureDexUiStyles();
   if (document.getElementById(MODAL_STYLE_ID)) return;
   const el = document.createElement('style');
   el.id = MODAL_STYLE_ID;
@@ -100,6 +105,27 @@ interface ModalProps {
   padding?: string | number;
   /** Aria-Label für Screen-Reader; Pflicht für barrierefreie Modals. */
   ariaLabel?: string;
+  /**
+   * v31.2: Einheitlicher Dialog-Kopf — Titel, optional Untertitel und Symbol,
+   * rechts der Schließen-Knopf. Vorher baute jeder Dialog seinen eigenen
+   * `<h3>` mit eigenen Abständen; die Köpfe sahen in 40 Dialogen 40-mal
+   * anders aus. Ohne `title` rendert der Kopf nicht (alte Aufrufer laufen
+   * unverändert).
+   */
+  title?: React.ReactNode;
+  subtitle?: React.ReactNode;
+  icon?: React.ReactNode;
+  /** v31.2: Fußzeile mit den Aktionen (rechtsbündig, Trennlinie oben). */
+  footer?: React.ReactNode;
+  /** v31.2: Schließen-Knopf im Kopf unterdrücken (z.B. bei Pflicht-Entscheidung). */
+  hideClose?: boolean;
+  /**
+   * v31.3: Stapel-Ebene, Default 9999. Nur setzen, wenn ein Dialog AUS einem
+   * anderen heraus geöffnet wird (Wizard-Vorschau aus dem Ticket-Dialog):
+   * Bei gleicher Ebene entscheidet die Einhäng-Reihenfolge der Portale — das
+   * geht heute gut, ist aber Zufall und nicht Absicht.
+   */
+  zIndex?: number;
   children: React.ReactNode;
 }
 
@@ -111,6 +137,12 @@ export default function Modal({
   backdropClose = true,
   padding,
   ariaLabel,
+  title,
+  subtitle,
+  icon,
+  footer,
+  hideClose,
+  zIndex = 9999,
   children,
 }: ModalProps): React.ReactElement | null {
   // v24.64: Globale Modal-Button-Styles einmalig in document.head sicherstellen.
@@ -135,7 +167,8 @@ export default function Modal({
   // Komponenten-Baum, nicht dem DOM); das Attribut muss aber trotzdem hier
   // gesetzt werden, weil das Overlay im DOM an document.body hängt und das
   // `lang` der App-Wurzel deshalb nicht erbt.
-  const modalLang = inputLocaleTag(useLocaleSafe() === 'de');
+  const localeSafe = useLocaleSafe();
+  const modalLang = inputLocaleTag(localeSafe === 'de');
 
   React.useEffect(() => {
     if (!open) return undefined;
@@ -169,9 +202,13 @@ export default function Modal({
       // die 12-Stunden-Uhr (siehe utils/inputLocale).
       lang={modalLang}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+        // v31.2: dunkles Blau statt reinem Schwarz und ein Hauch Unschärfe —
+        // die Seite dahinter bleibt als Kontext erkennbar, der Dialog hebt
+        // sich trotzdem klar ab.
+        position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)',
+        backdropFilter: 'blur(2px)', WebkitBackdropFilter: 'blur(2px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 9999, padding: 16,
+        zIndex, padding: 16,
         // v24.63: Theme-Variablen direkt am Overlay setzen — so erben alle
         // Modal-Inhalte (Buttons, Eingaben, Texte) die --dex-*-Farben auch dann,
         // wenn das Modal per Portal außerhalb des Web-Part-Containers liegt.
@@ -194,18 +231,44 @@ export default function Modal({
       } as React.CSSProperties}
     >
       <div
+        className="dex-ui-modal-card"
         onClick={e => e.stopPropagation()}
         style={{
-          background: '#fff', borderRadius: 16,
-          padding: padding ?? '24px 28px',
+          background: '#fff', borderRadius: 18,
+          padding: padding ?? '22px 26px',
           maxWidth, width: '100%',
-          boxShadow: '0 12px 48px rgba(0,0,0,0.18)',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.22), 0 0 0 1px rgba(0,0,0,0.04)',
           maxHeight: 'calc(100vh - 32px)',
           overflowY: 'auto',
           display: 'flex', flexDirection: 'column', gap: 14,
+          boxSizing: 'border-box',
         }}
       >
+        {title !== undefined && title !== null && (
+          <div className="dex-ui-modal-head">
+            {icon && <span className="dex-ui-modal-head-icon" aria-hidden="true">{icon}</span>}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h3 className="dex-ui-modal-title">{title}</h3>
+              {/* div statt p: Aufrufer geben auch Blöcke (JSX mit <p>) herein. */}
+              {subtitle && <div className="dex-ui-modal-subtitle">{subtitle}</div>}
+            </div>
+            {!hideClose && (
+              <button
+                type="button"
+                className="dex-ui-iconbtn"
+                aria-label={localeSafe === 'de' ? 'Schließen' : 'Close'}
+                title={localeSafe === 'de' ? 'Schließen' : 'Close'}
+                disabled={!dismissable}
+                onClick={onClose}
+                style={{ marginTop: -4, marginRight: -6 }}
+              >
+                <X size={18} />
+              </button>
+            )}
+          </div>
+        )}
         {children}
+        {footer && <div className="dex-ui-modal-foot">{footer}</div>}
       </div>
     </div>
   );

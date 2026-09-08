@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v31.1.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v31.2.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -625,8 +625,35 @@ Wizard-Save löscht den Bestand. Die Verteilung (`shirtAllocate`) ist die
 EINE Rechnung für Aktion „Benötigte T-Shirts" und Check-in-Seite; wer eine
 zweite Stelle baut, die Größen zuteilt, ruft dieselbe Funktion.
 
-**Inline-Styles können kein `:hover`.** Interaktive Elemente brauchen einen
-Hover-State (`hoverIdx`, `evTabHover`), sonst lesen sie sich als Beschriftung.
+**Inline-Styles können kein `:hover` — deshalb gibt es seit v31.2 EINEN
+Klassensatz: `components/dexUi.ts` (`dex-ui-*`) und den verbindlichen
+`docs/ui-leitfaden.md`.** `ensureDexUiStyles()` injiziert das Stylesheet einmal
+in `document.head` (Modal und WizardFormShell rufen es); Karten, Auswahl-
+Kacheln, Chips, Schalter, Zeilen, Aufklapper, Hinweiskästen, Modal-Kopf/-Fuß
+haben dort ihren Hover. `Modal` hat seit v31.2 `title/subtitle/icon/footer`.
+Wer eine Oberfläche baut oder anfasst: erst den Leitfaden (Abschnitte 2a–2d:
+Reihenfolge Pflicht→Optional→Fein, Frageform je Fragetyp, Formulierung als
+Frage/Aussage, was nicht verändert werden darf), dann die Klassen — keine
+neue Karte mit eigenem Inline-Hover-State. Neue Klassen: in `dexUi.ts` UND im
+Leitfaden eintragen. 57 Dateien wurden in v31.2 danach parallel umgebaut; der
+Leitfaden ist das, was sie zusammenhält.
+
+**No-Show hat seit v31.2 zwei Ebenen — Event-Status und Punkt-Marke.**
+`Status = 'No-Show'` gilt fürs ganze Event; ein No-Show an EINEM
+Programmpunkt ist eine Marke `{ at, by, noShow: true }` in `AgendaCheckIns`
+(`markAgendaNoShow`). `parseAgendaCheckIns` liefert NUR Anwesenheiten (die
+No-Show-Marken sind für Auswertung, Bescheinigung und Zähler unsichtbar);
+wer die Spalte liest, um sie zurückzuschreiben, nimmt `parseAgendaMarks` —
+sonst löscht ein Check-in die No-Shows derselben Zeile (das war der erste
+Entwurf). Beides ist über „Letzte Check-ins" rücknehmbar (`kind: 'noshow'`).
+
+**Gleichzeitiges Bearbeiten ist sichtbar, nicht gesperrt (v31.2).**
+`DEX_EditPresence` (Haupt-Site, kein Flow): Herzschlag alle 20 s im
+Edit-Modus, frisch = jünger als 75 s, eigene Zeile beim Verlassen gelöscht
+(`useEditPresence`, `EditPresenceBadge`). Bewusst kein Lock — ein Lock, den
+ein geschlossener Tab hält, wäre die schlimmere Falle; der Kasten sagt „wer
+zuletzt speichert, überschreibt". Ein Lesefehler lässt den letzten Stand
+stehen, statt „niemand da" zu behaupten.
 
 **Der Scope-Umschalter gehört genau einmal auf die Seite.** Seit v28.78 rendert
 `renderGlobalScopeBar` die Reiter global über dem Formular; die alten
@@ -646,7 +673,19 @@ prüfen, welche der Bedingungen den Fall wirklich erzeugt hat
 Und: leere Auswahl heißt nicht „nichts zu tun" — wer alle gebuchten Sub-Events
 abwählt, meldet sie ab (`sessionsChanged` in `RegistrationPage`).
 
-## Der Wizard, Stand v28.89
+## Der Wizard, Stand v31.2
+
+**Seit v31.2 sind alle Schritte nach `docs/ui-leitfaden.md` gebaut:** weißer
+Schritt-Kopf mit grüner Kante und Zeile „Schritt N von 9" (`dex-step-eyebrow`
+im `h2.dex-step-head-title`), Abschnitte als `dex-ui-section` in der
+Reihenfolge Pflicht → Optional → Aufklapper „Weitere Einstellungen",
+Beschriftungen als Fragen, Ja/Nein als `dex-ui-switch`/`dex-ui-toggle-row`,
+Alternativen als `dex-ui-choice`-Kacheln. Schritt 5 heißt „Fragen im
+Anmeldeformular", Schritt 4 stellt Plätze und Fristen vor die Sichtbarkeit
+(`vis_capacity`/`vis_fristen` standardmäßig offen in `useWizardOptionState`).
+Wer einen Schritt anfasst: Leitfaden zuerst, dann die Klassen aus `dexUi.ts`.
+**Ansehen ohne SharePoint:** `dex-event-app-spfx/tools/wizard-harness`
+(`node build.js && node shot.js edit` → ein PNG je Schritt; README dort).
 
 Neun Schritte. Über dem Formular steht die **Scope-Karte**
 (`renderGlobalScopeBar`): Klammer/Haupt-Event und die Sub-Events als Reiter, ein
@@ -836,6 +875,12 @@ zusätzlich: in Schritt 1 zwischen Klammer und mehreren Sub-Events umschalten
 (Titel/Zeiten/Beschreibung/Bild müssen dem Reiter folgen), ein Sub-Event über
 die Liste anlegen und entfernen, und die Reiter-Leiste mit mehr als sechs
 Sub-Events auf Pfeile, Zählung und Auto-Scroll ansehen.
+
+**Eigene Bildschirmfotos gibt es seit v31.2 aus dem Harness** —
+`tools/wizard-harness` rendert den Wizard mit Beispiel-Event in Chromium
+(zehn PNGs in einer Minute). Vor jedem Release, das einen Schritt anfasst,
+einmal laufen lassen und die Bilder ansehen; der `:global`-Block des SCSS
+wird dort flach kompiliert, Dienst-Aufrufe sind leer.
 
 **Bildschirmfotos zeigen den installierten Stand, nicht den Repo-Stand.** Ein
 Screenshot mit zehn Wizard-Schritten kam aus einem Build vor v28.87; wer daraus

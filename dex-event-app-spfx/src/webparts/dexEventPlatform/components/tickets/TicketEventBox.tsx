@@ -6,18 +6,28 @@
  * Organizer hier im Kontext beantwortet. Der Kopf trägt einen Badge mit der
  * Anzahl noch offener Fragen. Über den Deep-Link aus der Benachrichtigungs-Mail
  * (?action=admin&event=<id>&ticket=<id>) klappt das passende Ticket direkt auf.
+ *
+ * v31.3: Nach docs/ui-leitfaden.md (5a Punkt 7) umgebaut — Kopf als
+ * `dex-ui-card-head` mit Status-Pille und Aufklapper-Chevron. Der Titel nennt
+ * jetzt den Inhalt („Fragen zu diesem Event"), eine Zeile darunter die Folge:
+ * vorher hieß der Kopf „Offene Fragen (User)", obwohl die Box auch die längst
+ * beantworteten zeigt.
  */
 import * as React from 'react';
-import { Icon } from '@fluentui/react/lib/Icon';
 import { useTickets } from '../../context/TicketContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { deepLinkParams } from '../../utils/deepLink';
+import { cx, ensureDexUiStyles } from '../dexUi';
+import { ChevronDown, MessageSquare } from '../Icons';
 import TicketCard from './TicketCard';
 
 export default function TicketEventBox(props: { eventId: string }): React.ReactElement | null {
   const { ticketsForEvent, openCountForEvent } = useTickets();
   const { locale } = useLanguage();
   const isDe = locale === 'de';
+  // Idempotent — die Box steht ohne Modal/WizardFormShell in der Event-Seite,
+  // ohne diesen Aufruf greifen die dex-ui-Klassen hier nicht.
+  ensureDexUiStyles();
 
   const list = ticketsForEvent(props.eventId);
   const openCount = openCountForEvent(props.eventId);
@@ -44,27 +54,49 @@ export default function TicketEventBox(props: { eventId: string }): React.ReactE
   });
 
   return (
-    <div style={{ background: '#fff', border: '1px solid var(--dex-gray-200,#e8e8e8)', borderRadius: 12, marginBottom: 18, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+    <div className="dex-ui-card" style={{ padding: 0, marginBottom: 18 }}>
+      {/* v31.3: Die ganze Kopfzeile ist der Aufklapper (Hover über dex-ui-row) —
+          vorher war der Knopf zwar auch die ganze Zeile, sah aber wie eine
+          Überschrift aus, weil ein Inline-Style kein :hover kann. */}
       <button
         type="button"
         onClick={() => setCollapsed((v) => !v)}
-        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, background: 'transparent', border: 'none', cursor: 'pointer', padding: '14px 18px', fontFamily: 'inherit', textAlign: 'left' }}
+        aria-expanded={!collapsed}
+        className="dex-ui-rowbtn dex-ui-row"
+        // Der Hover-Grund der Zeile soll in den Ecken der Karte bleiben:
+        // zugeklappt rundum, aufgeklappt nur oben.
+        style={{ padding: '14px 18px', borderRadius: collapsed ? 13 : '13px 13px 0 0' }}
       >
-        <Icon iconName="Chat" style={{ fontSize: 18, color: 'var(--dex-green,#86bc25)' }} />
-        <span style={{ fontSize: '1.02rem', fontWeight: 700, color: 'var(--dex-gray-800,#333)' }}>
-          {isDe ? 'Offene Fragen (User)' : 'Open questions (users)'}
-        </span>
-        {openCount > 0 && (
-          <span style={{ background: '#ed8b00', color: '#fff', borderRadius: 11, minWidth: 22, height: 22, padding: '0 7px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>
-            {openCount}
+        <span className="dex-ui-card-head" style={{ width: '100%' }}>
+          <span className="dex-ui-card-head-title">
+            <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', display: 'inline-flex' }}><MessageSquare size={18} /></span>
+            {isDe ? 'Fragen zu diesem Event' : 'Questions about this event'}
           </span>
-        )}
-        <span style={{ marginLeft: 'auto', color: 'var(--dex-gray-400,#a0a0a0)' }}>
-          <Icon iconName={collapsed ? 'ChevronDown' : 'ChevronUp'} style={{ fontSize: 13 }} />
+          <span className={cx('dex-ui-pill', openCount > 0 ? 'dex-ui-pill--orange' : 'dex-ui-pill--green')}>
+            {openCount > 0
+              ? (isDe ? `${openCount} offen` : `${openCount} open`)
+              : (isDe ? 'alle beantwortet' : 'all answered')}
+          </span>
+          <span className="dex-ui-card-head-meta">
+            {isDe
+              ? (list.length === 1 ? '1 Frage insgesamt' : `${list.length} Fragen insgesamt`)
+              : (list.length === 1 ? '1 question in total' : `${list.length} questions in total`)}
+          </span>
+          <span className="dex-ui-card-head-actions">
+            <span className={cx('dex-ui-disclosure-chevron', !collapsed && 'is-open')}>
+              <ChevronDown size={16} />
+            </span>
+          </span>
         </span>
       </button>
       {!collapsed && (
-        <div style={{ padding: '0 18px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="dex-ui-stack" style={{ padding: '0 18px 16px' }}>
+          {/* Eine Zeile Folge: wer fragt, und wohin die Antwort geht. */}
+          <div className="dex-ui-muted">
+            {isDe
+              ? 'Nutzer haben dich als Organizer gefragt — deine Antwort geht ihnen per Mail zu.'
+              : 'Users asked you as the organizer — your answer is emailed to them.'}
+          </div>
           {sorted.map((t) => <TicketCard key={t.id} ticket={t} defaultExpanded={deepLinkTicketId === t.id} />)}
         </div>
       )}

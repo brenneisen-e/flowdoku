@@ -18,7 +18,8 @@ import { useRoles } from '../context/RoleContext';
 import { useCurrentUser } from '../context/UserContext';
 import { EventService } from '../services/EventService';
 import { checkInExtras, parseCustomData, CheckInExtra, shirtAllocate, parseShirtStock, ShirtAllocationResult } from '../utils/checkInExtras';
-import { parseAgendaCheckIns, formatMarkTime, suggestCurrentAgendaItem } from '../utils/agendaCheckIns';
+import { parseAgendaCheckIns, parseAgendaMarks, parseAgendaNoShows, formatMarkTime, suggestCurrentAgendaItem } from '../utils/agendaCheckIns';
+import Modal from './Modal';
 import { agendaGroups, groupLabel, groupDateLabel } from '../utils/agendaGroups';
 import { useLanguage } from '../context/LanguageContext';
 import { useIsMobile } from '../utils/useIsMobile';
@@ -126,12 +127,17 @@ export default function CheckInPage(): React.ReactElement {
   // v31.1: „Letzte Check-ins" dieser Sitzung — mit Rückgängig. Nur was HIER
   // eingecheckt wurde (Scan, ID, Liste); der vorherige Status wird gemerkt,
   // damit der Revert nichts erfindet.
+  // v31.2: `kind` — auch ein No-Show landet hier und ist rücknehmbar (Nutzer
+  // 07.09.2026: „No-Show soll auch rückgängig machbar sein").
   type RecentCheckIn = {
     key: string; at: string; name: string; regId: number; eventId: string; subsiteUrl: string;
-    prevStatus: string; agendaItemId?: string; agendaLabel?: string;
+    prevStatus: string; agendaItemId?: string; agendaLabel?: string; kind?: 'checkin' | 'noshow';
   };
   const [recentCheckIns, setRecentCheckIns] = React.useState<RecentCheckIn[]>([]);
   const [undoBusyKey, setUndoBusyKey] = React.useState<string>('');
+  // v31.2: Rückfrage im Programmpunkt-Modus — No-Show nur am gewählten Punkt
+  // oder für das ganze Event? Beides sind andere Daten (Marke vs. Status).
+  const [noShowAsk, setNoShowAsk] = React.useState<{ reg: import('../services/EventService').SPRegistration; name: string } | null>(null);
   // v31.1: Live-Scanner und Self-Check-in sind Kacheln zum Aufklappen —
   // Standard zu (Nutzer 07.09.2026). Läuft der Scanner, ist die Kachel offen.
   const [scannerOpen, setScannerOpen] = React.useState(false);
@@ -322,7 +328,9 @@ export default function CheckInPage(): React.ReactElement {
       // v30.91: Im Programmpunkt-Modus zählt die Kachel die Anwesenden am
       // gewählten Punkt — der Event-Status sagt dort nichts.
       if (agendaMode ? presentAt(r, agendaPointId) : r.Status === 'Eingecheckt') checkedIn++;
-      if (r.Status === 'No-Show') noShow++;
+      // v31.2: Im Programmpunkt-Modus zählt die Kachel die No-Shows AM PUNKT
+      // (Marke), sonst den Event-Status.
+      if (agendaMode && agendaPointId ? !!parseAgendaNoShows(r.AgendaCheckIns)[agendaPointId] : r.Status === 'No-Show') noShow++;
     }
     return { registered, checkedIn, noShow };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -501,23 +509,50 @@ export default function CheckInPage(): React.ReactElement {
 
   // v23.28: Teilnehmer als „No-Show" markieren (nicht erschienen). Direkt aus
   // der Suchliste; nach Bestätigung wird der lokale Cache aktualisiert.
-  const markNoShowFromSearch = async (reg: import('../services/EventService').SPRegistration): Promise<void> => {
+  // v31.2: Der No-Show landet in „Letzte Check-ins" und ist dort rücknehmbar.
+  const rememberNoShow = (reg: import('../services/EventService').SPRegistration, name: string, ev: { id: string; subsiteUrl?: string }, agendaItemId?: string, agendaLabel?: string): void => {
+    const entry: RecentCheckIn = {
+      key: `${reg.Id}:${agendaItemId || 'status'}:noshow:${Date.now()}`,
+      at: new Date().toISOString(), name, regId: reg.Id, eventId: ev.id || '', subsiteUrl: ev.subsiteUrl || '',
+      prevStatus: reg.Status, agendaItemId, agendaLabel, kind: 'noshow',
+    };
+    setRecentCheckIns(prev => [entry, ...prev].slice(0, 30));
+  };
+  // v31.2: No-Show NUR am gewählten Programmpunkt — Marke mit noShow, der
+  // Event-Status bleibt (die Person kann beim nächsten Punkt wieder da sein).
+  const applyPointNoShow = async (reg: import('../services/EventService').SPRegistration, name: string): Promise<void> => {
+    const ev = events.find(e => e.id === nameSearchEventId);
+    if (!ev || !ev.subsiteUrl || !eventService || !agendaPoint) return;
+    const pointId = agendaPoint.id;
+    const r = await eventService.markAgendaNoShow(ev.subsiteUrl, reg.Id, pointId);
+    if (!r.ok) {
+      setResultMessage(isDe
+        ? `${name} — No-Show konnte nicht gespeichert werden${r.status ? ` (HTTP ${r.status})` : ''}. ${r.status === 400 ? 'Fehlt die Spalte AgendaCheckIns? Organizer: „Spalten fixen" ausführen.' : 'Bitte erneut versuchen.'}`
+        : `${name} — no-show could not be saved${r.status ? ` (HTTP ${r.status})` : ''}.`);
+      setResultType('error');
+      return;
+    }
+    const at = r.at || new Date().toISOString();
+    setSearchRegsCache(prev => {
+      const list = prev[nameSearchEventId] || [];
+      return { ...prev, [nameSearchEventId]: list.map(x => x.Id === reg.Id
+        ? { ...x, AgendaCheckIns: JSON.stringify({ ...parseAgendaMarks(x.AgendaCheckIns), [pointId]: { at, by: '', noShow: true } }) }
+        : x) };
+    });
+    rememberNoShow(reg, name, ev, pointId, agendaPoint.title);
+    setResultMessage(isDe ? `${name} — No-Show bei ${agendaPoint.title}.` : `${name} — no-show at ${agendaPoint.title}.`);
+    setResultType('info');
+  };
+  const applyEventNoShow = async (reg: import('../services/EventService').SPRegistration, name: string): Promise<void> => {
     const ev = events.find(e => e.id === nameSearchEventId);
     if (!ev || !ev.subsiteUrl || !eventService) return;
-    const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || reg.ParticipantEmail || '-');
-    const ok = await confirmDialog(
-      isDe
-        ? `„${name}" als nicht erschienen (No-Show) markieren?`
-        : `Mark „${name}" as a no-show?`,
-      { confirmLabel: isDe ? 'Als No-Show markieren' : 'Mark as no-show' }
-    );
-    if (!ok) return;
     const success = await eventService.markNoShowParticipant(ev.subsiteUrl, reg.Id);
     if (success) {
       setSearchRegsCache(prev => {
         const list = prev[nameSearchEventId] || [];
         return { ...prev, [nameSearchEventId]: list.map(r => r.Id === reg.Id ? { ...r, Status: 'No-Show' } : r) };
       });
+      rememberNoShow(reg, name, ev);
       setResultMessage(isDe ? `${name} — als No-Show markiert.` : `${name} — marked as no-show.`);
       setResultType('info');
     } else {
@@ -528,6 +563,21 @@ export default function CheckInPage(): React.ReactElement {
         : `${name} — no-show is not available for this event (only for newly created events).`);
       setResultType('error');
     }
+  };
+  const markNoShowFromSearch = async (reg: import('../services/EventService').SPRegistration): Promise<void> => {
+    const ev = events.find(e => e.id === nameSearchEventId);
+    if (!ev || !ev.subsiteUrl || !eventService) return;
+    const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || reg.ParticipantEmail || '-');
+    // v31.2: Mit gewähltem Programmpunkt erst fragen — Punkt oder Event?
+    if (agendaMode && agendaPoint) { setNoShowAsk({ reg, name }); return; }
+    const ok = await confirmDialog(
+      isDe
+        ? `„${name}" als nicht erschienen (No-Show) markieren?`
+        : `Mark „${name}" as a no-show?`,
+      { confirmLabel: isDe ? 'Als No-Show markieren' : 'Mark as no-show' }
+    );
+    if (!ok) return;
+    await applyEventNoShow(reg, name);
   };
 
 
@@ -921,7 +971,7 @@ export default function CheckInPage(): React.ReactElement {
             const list = prev[evId];
             if (!list) return prev;
             return { ...prev, [evId]: list.map(x => x.Id === regId
-              ? { ...x, AgendaCheckIns: JSON.stringify({ ...parseAgendaCheckIns(x.AgendaCheckIns), [pointId]: { at, by: '' } }) }
+              ? { ...x, AgendaCheckIns: JSON.stringify({ ...parseAgendaMarks(x.AgendaCheckIns), [pointId]: { at, by: '' } }) }
               : x) };
           });
         }
@@ -979,7 +1029,9 @@ export default function CheckInPage(): React.ReactElement {
     setUndoBusyKey(e.key);
     try {
       let ok = false;
+      const isNoShow = e.kind === 'noshow';
       if (e.agendaItemId) {
+        // v31.2: entfernt die Marke am Punkt — Anwesenheit ODER No-Show.
         ok = (await eventService.removeAgendaCheckIn(e.subsiteUrl, e.regId, e.agendaItemId)).ok;
         if (ok && e.eventId) {
           setSearchRegsCache(prev => {
@@ -987,7 +1039,7 @@ export default function CheckInPage(): React.ReactElement {
             if (!list) return prev;
             return { ...prev, [e.eventId]: list.map(x => {
               if (x.Id !== e.regId) return x;
-              const m = parseAgendaCheckIns(x.AgendaCheckIns);
+              const m = parseAgendaMarks(x.AgendaCheckIns);
               delete m[e.agendaItemId as string];
               return { ...x, AgendaCheckIns: Object.keys(m).length ? JSON.stringify(m) : '' };
             }) };
@@ -996,7 +1048,7 @@ export default function CheckInPage(): React.ReactElement {
       } else {
         ok = await eventService.revertCheckIn(e.subsiteUrl, e.regId, e.prevStatus);
         if (ok && e.eventId) {
-          const back = e.prevStatus === 'QR versendet' ? 'QR versendet' : 'Angemeldet';
+          const back = (e.prevStatus === 'QR versendet' || (isNoShow && e.prevStatus === 'Eingecheckt')) ? e.prevStatus : 'Angemeldet';
           setSearchRegsCache(prev => {
             const list = prev[e.eventId];
             if (!list) return prev;
@@ -1010,10 +1062,10 @@ export default function CheckInPage(): React.ReactElement {
         return;
       }
       setRecentCheckIns(prev => prev.filter(x => x.key !== e.key));
-      setCheckedInCount(prev => Math.max(0, prev - 1));
+      if (!isNoShow) setCheckedInCount(prev => Math.max(0, prev - 1));
       setResultMessage(isDe
-        ? `${e.name} — Check-in zurückgenommen${e.agendaLabel ? ` (${e.agendaLabel})` : ''}.`
-        : `${e.name} — check-in reverted${e.agendaLabel ? ` (${e.agendaLabel})` : ''}.`);
+        ? `${e.name} — ${isNoShow ? 'No-Show' : 'Check-in'} zurückgenommen${e.agendaLabel ? ` (${e.agendaLabel})` : ''}.`
+        : `${e.name} — ${isNoShow ? 'no-show' : 'check-in'} reverted${e.agendaLabel ? ` (${e.agendaLabel})` : ''}.`);
       setResultType('info');
     } finally { setUndoBusyKey(''); }
   };
@@ -1272,6 +1324,15 @@ export default function CheckInPage(): React.ReactElement {
       <span style={{ fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dex-green-dark, #4a7c1f)' }}>{label}</span>
     </div>
   );
+  // v31.2: Trenner OHNE Nummer für die Werkzeuge unter dem Ablauf. Nutzer
+  // 07.09.2026: „das sollte nicht Schritt 4 und 5 sein, sondern einfach
+  // optisch getrennt sein — sonst denkt man, das wäre chronologisch."
+  const sideLabel = (label: string): React.ReactElement => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '22px 0 10px' }}>
+      <span style={{ fontSize: '0.74rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dex-gray-500)' }}>{label}</span>
+      <span style={{ flex: 1, height: 1, background: 'var(--dex-gray-200)' }} />
+    </div>
+  );
   const cardToggle = (title: string, open: boolean, onToggle: () => void, hint: string): React.ReactElement => (
     <button type="button" onClick={onToggle} aria-expanded={open} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', color: 'inherit', font: 'inherit' }}>
       <h3 style={{ margin: 0 }}>{title}</h3>
@@ -1485,9 +1546,11 @@ export default function CheckInPage(): React.ReactElement {
         </div>
       </div>
 
-      {/* v31.1 — Abschnitt 4: Live-Scanner, eingeklappt bis gebraucht. */}
+      {/* v31.1 — Live-Scanner, eingeklappt bis gebraucht. v31.2: ohne Nummer —
+          Scanner und Self-Check-in sind Werkzeuge neben dem Ablauf, keine
+          Schritte danach. */}
       <div style={{ order: 4 }}>
-      {sectionLabel(4, isDe ? 'Live-Scanner' : 'Live scanner')}
+      {sideLabel(isDe ? 'Weitere Wege zum Einchecken' : 'Other ways to check in')}
       {/* Live-Scanner — Kamerabild + Steuerung */}
       <div className="card" style={{ padding: 24, marginBottom: 16 }}>
         {!isScanning ? (
@@ -1626,9 +1689,9 @@ export default function CheckInPage(): React.ReactElement {
 
       </div>
 
-      {/* v31.1 — Abschnitt 5: Self-Check-in, eingeklappt bis gebraucht. */}
+      {/* v31.1 — Self-Check-in, eingeklappt bis gebraucht (v31.2: ohne
+          Nummer, direkt unter dem Live-Scanner). */}
       <div style={{ order: 5 }}>
-      {sectionLabel(5, 'Self-Check-in')}
       {/* v20.1: Self-Check-in — prominent direkt unter dem Live-Scanner.
           Teilnehmer scannen den Event-QR mit der NATIVEN Handy-Kamera (kein
           Kamera-Zugriff in der App nötig) und checken sich selbst ein. */}
@@ -1843,7 +1906,10 @@ export default function CheckInPage(): React.ReactElement {
                     const alreadyIn = agendaMode ? presentAt(reg, agendaPointId) : status === 'Eingecheckt';
                     const cancelled = status === 'Abgemeldet';
                     const waitlist = status === 'Warteliste';
-                    const noShow = status === 'No-Show';
+                    // v31.2: Im Programmpunkt-Modus zählt der No-Show AM PUNKT
+                    // (Marke) — der Event-Status bleibt sichtbar, wenn er es ist.
+                    const noShowAtPoint = agendaMode && !!agendaPointId && !!parseAgendaNoShows(reg.AgendaCheckIns)[agendaPointId];
+                    const noShow = status === 'No-Show' || noShowAtPoint;
                     const statusBg = alreadyIn ? 'rgba(134,188,37,0.15)'
                       : cancelled ? 'rgba(204,0,0,0.10)'
                       : noShow ? 'rgba(96,96,96,0.14)'
@@ -1941,7 +2007,7 @@ export default function CheckInPage(): React.ReactElement {
                         <span style={{
                           fontSize: '0.7rem', padding: '3px 8px', borderRadius: 999,
                           background: statusBg, color: statusFg, fontWeight: 600, whiteSpace: 'nowrap',
-                        }}>{status}</span>
+                        }}>{noShowAtPoint && status !== 'No-Show' ? (isDe ? 'No-Show hier' : 'No-show here') : status}</span>
                         {/* v23.28: Check-in UND No-Show nebeneinander. */}
                         <div style={{ display: 'flex', gap: 6, flexShrink: 0, flex: isMobile ? '1 1 100%' : undefined }}>
                           <button
@@ -1957,9 +2023,11 @@ export default function CheckInPage(): React.ReactElement {
                             type="button"
                             className="btn btn-secondary"
                             style={{ fontSize: '0.78rem', padding: '6px 12px', whiteSpace: 'nowrap', color: 'var(--dex-gray-700, #444)' }}
-                            disabled={cancelled || noShow || isProcessing}
+                            disabled={cancelled || noShow || alreadyIn || isProcessing}
                             onClick={() => { void markNoShowFromSearch(reg); }}
-                            title={isDe ? 'Teilnehmer als nicht erschienen markieren' : 'Mark attendee as a no-show'}
+                            title={isDe
+                              ? (agendaMode ? 'Nicht erschienen — für diesen Punkt oder das ganze Event' : 'Teilnehmer als nicht erschienen markieren')
+                              : (agendaMode ? 'No-show — for this point or the whole event' : 'Mark attendee as a no-show')}
                           >
                             {noShow ? (isDe ? 'No-Show' : 'No-show') : 'No-Show'}
                           </button>
@@ -1994,8 +2062,16 @@ export default function CheckInPage(): React.ReactElement {
                     {e.name}
                     {e.agendaLabel && <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)' }}> · {e.agendaLabel}</span>}
                   </span>
+                  {/* v31.2: No-Shows stehen mit in der Liste — als graue Pille erkennbar. */}
+                  {e.kind === 'noshow' && (
+                    <span className="dex-ui-pill dex-ui-pill--gray">No-Show</span>
+                  )}
                   <button type="button" className="btn btn-secondary" disabled={!!undoBusyKey} onClick={() => { void undoCheckIn(e); }} style={{ fontSize: '0.76rem', padding: '4px 10px', whiteSpace: 'nowrap' }}
-                    title={isDe ? (e.agendaItemId ? 'Anwesenheit an diesem Punkt entfernen' : `Status zurück auf „${e.prevStatus === 'QR versendet' ? 'QR versendet' : 'Angemeldet'}“`) : 'Revert this check-in'}>
+                    title={isDe
+                      ? (e.agendaItemId
+                        ? (e.kind === 'noshow' ? 'No-Show an diesem Punkt entfernen' : 'Anwesenheit an diesem Punkt entfernen')
+                        : `Status zurück auf „${(e.prevStatus === 'QR versendet' || (e.kind === 'noshow' && e.prevStatus === 'Eingecheckt')) ? e.prevStatus : 'Angemeldet'}“`)
+                      : (e.kind === 'noshow' ? 'Revert this no-show' : 'Revert this check-in')}>
                     {undoBusyKey === e.key ? '…' : (isDe ? 'Rückgängig' : 'Undo')}
                   </button>
                 </div>
@@ -2009,6 +2085,52 @@ export default function CheckInPage(): React.ReactElement {
       {/* v7.14: Die alte "Manuell QR-Code als String tippen"-Card ist raus.
           Die Live-Teilnehmerliste oben deckt das Manuelle Einchecken
           benutzerfreundlicher ab. */}
+
+      {/* v31.2: Rückfrage im Programmpunkt-Modus — Nutzer 07.09.2026: „man soll
+          gefragt werden, ob das für das ganze Event No-Show ist oder nur für
+          den Programmpunkt". Zwei Kacheln, jede sagt, was sie tut. */}
+      <Modal
+        open={!!noShowAsk}
+        onClose={() => setNoShowAsk(null)}
+        maxWidth={520}
+        title={isDe ? `${noShowAsk ? noShowAsk.name : ''} — nicht erschienen` : `${noShowAsk ? noShowAsk.name : ''} — no-show`}
+        subtitle={isDe ? 'Wofür gilt der No-Show?' : 'What does the no-show apply to?'}
+        footer={<button type="button" className="btn btn-secondary" onClick={() => setNoShowAsk(null)}>{isDe ? 'Abbrechen' : 'Cancel'}</button>}
+      >
+        <div className="dex-ui-stack">
+          <button
+            type="button"
+            className="dex-ui-choice"
+            onClick={() => { const a = noShowAsk; setNoShowAsk(null); if (a) void applyPointNoShow(a.reg, a.name); }}
+          >
+            <span className="dex-ui-choice-body">
+              <span className="dex-ui-choice-title">{isDe ? `Nur für „${agendaPoint ? agendaPoint.title : ''}“` : `Only for “${agendaPoint ? agendaPoint.title : ''}”`}</span>
+              <span className="dex-ui-choice-desc">
+                {isDe
+                  ? `Die Person fehlt bei diesem ${agendaTermSingular}. Ihr Event-Status bleibt, beim nächsten ${agendaTermSingular} kann sie wieder erfasst werden.`
+                  : `The person is missing at this ${agendaTermSingular.toLowerCase()}. The event status stays; they can be recorded at the next one.`}
+              </span>
+            </span>
+          </button>
+          <button
+            type="button"
+            className="dex-ui-choice"
+            onClick={() => { const a = noShowAsk; setNoShowAsk(null); if (a) void applyEventNoShow(a.reg, a.name); }}
+          >
+            <span className="dex-ui-choice-body">
+              <span className="dex-ui-choice-title">{isDe ? 'Für das ganze Event' : 'For the whole event'}</span>
+              <span className="dex-ui-choice-desc">
+                {isDe
+                  ? 'Der Event-Status wird auf „No-Show“ gesetzt — die Person gilt für das gesamte Event als nicht erschienen.'
+                  : 'The event status is set to “No-Show” — the person counts as absent for the entire event.'}
+              </span>
+            </span>
+          </button>
+          <p className="dex-ui-muted" style={{ margin: 0 }}>
+            {isDe ? 'Beides lässt sich unter „Letzte Check-ins“ zurücknehmen.' : 'Both can be reverted under “Recent check-ins”.'}
+          </p>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -13,6 +13,9 @@
  * sichtbar — sonst zeigt das Feld leer, obwohl etwas gespeichert ist. */
 import * as React from 'react';
 import { EventSpecificField } from '../../../types';
+// v31.2: `dex-ui-select` (Hover, Fokus-Ring) statt `form-select` (48 px,
+// Wizard-Maß) — in den Bearbeiten-Dialogen ein Fremdkörper ohne Hover.
+import { ensureDexUiStyles } from '../../dexUi';
 
 export interface FieldSelectInputProps {
   field: EventSpecificField;
@@ -36,12 +39,19 @@ export function categorizedSelectEntries(field: EventSpecificField): { groups: A
 }
 
 export const FieldSelectInput: React.FC<FieldSelectInputProps> = ({ field, value, onChange, isDe }) => {
+  // v31.2: Klassen auch außerhalb eines Modals sicherstellen (Modal tut es selbst).
+  React.useEffect(() => { ensureDexUiStyles(); }, []);
   const { groups, loose } = categorizedSelectEntries(field);
   const known = groups.some(g => g.entries.some(e => e.value === value)) || loose.some(e => e.value === value);
+  // v31.2: Altwert ohne passende Option (s. Kopf) bekommt einen orangen Rand —
+  // sonst sieht das Feld aus wie jede Auswahl und niemand merkt den Altbestand.
+  const stale = !!value && !known;
   return (
-    <select className="form-select" value={value} onChange={e => onChange(e.target.value)} style={{ width: '100%' }}>
+    <select className="dex-ui-select" value={value} onChange={e => onChange(e.target.value)}
+      title={stale ? (isDe ? 'Gespeicherter Wert — steht nicht mehr in der Liste' : 'Stored value — no longer in the list') : undefined}
+      style={stale ? { borderColor: 'var(--dex-orange, #ed8b00)' } : undefined}>
       <option value="">{isDe ? '— bitte wählen —' : '— please choose —'}</option>
-      {value && !known && (
+      {stale && (
         <option value={value}>{value} {isDe ? '(gespeicherter Wert — nicht mehr in der Liste)' : '(stored value — no longer in the list)'}</option>
       )}
       {groups.map(g => (

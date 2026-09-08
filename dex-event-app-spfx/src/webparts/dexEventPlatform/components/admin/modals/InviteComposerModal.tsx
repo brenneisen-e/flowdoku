@@ -8,8 +8,11 @@ import { replacePlaceholders, wrapTemplate } from '../../../services/EmailTempla
 import { formatOrganizerList } from '../../../context/eventTextHelpers';
 import RecipientPicker from '../../admin/RecipientPicker';
 import MailHeaderImageChooser from '../../admin/MailHeaderImageChooser';
-import { Check, Send } from '../../Icons';
+import { AlertCircle, Check, ChevronRight, Plus, Send, X } from '../../Icons';
 import { HtmlEditorModal } from '../../HtmlEditorModal';
+// v31.2: Gemeinsame UI-Klassen — das Stylesheet hängt HtmlEditorModal beim
+// Öffnen selbst ein (`ensureDexUiStyles`), hier braucht es nur `cx`.
+import { cx } from '../../dexUi';
 import { DeloitteEvent } from '../../../types';
 import { EventService, SPRegistration } from '../../../services/EventService';
 import { MailHeaderImage } from '../../../utils/mailHeaderImage';
@@ -65,6 +68,13 @@ export interface InviteComposerModalProps {
 
 export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
   const { applyInviteHero, confirmDialog, currentUser, eventServiceRef, getGroupMembers, inviteAddInput, inviteAudienceOpen, inviteBody, inviteCc, inviteCustomEmails, invitedLc, inviteDraftSaved, inviteEventPhotoB64, inviteHeaderImage, inviteHeaderOpts, inviteHeading, inviteSending, inviteSubheading, inviteSubject, inviteTarget, isDe, refreshEvents, registrations, resetInviteDraft, saveInviteDraft, searchUser, searchUsers, selectedEvent, setComposerCrop, setInviteAddInput, setInviteAudienceOpen, setInviteBody, setInviteCc, setInviteCustomEmails, setInviteHeaderImage, setInviteHeading, setInviteSending, setInviteSubheading, setInviteSubject, setInviteTarget, setShowInviteModal, showAlert, showInviteModal, siteUrl, updateEvent } = p;
+        // v31.2: Der einzige Hook steht vor allem anderen; die Komponente hat
+        // keine frühen Returns, die Reihenfolge ist damit fest. Das CC ist
+        // Feineinstellung — der Aufklapper startet zu, der Zähler im Knopf
+        // zeigt trotzdem, wie viele eine Kopie bekommen. Ausnahme: Steht beim
+        // Öffnen schon ein Zusatz-CC, startet er offen — eine getroffene Wahl
+        // darf nicht versteckt beginnen.
+        const [ccOpen, setCcOpen] = React.useState(inviteCc.length > 0);
         const audienceEmails = (selectedEvent.audienceFilter || [])
           .map(s => (s || '').trim())
           .filter(Boolean);
@@ -157,12 +167,12 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
               ? 'An angepasste Auswahl'
               : inviteTarget === 'uninvited' ? 'An noch nicht Eingeladene'
               : inviteTarget === 'pending' ? 'An noch nicht Angemeldete'
-              : 'An Mailverteiler'} (${nRecipients === 0 ? 'leer' : nRecipients + ' Empfänger'})`
+              : 'An alle im Mailverteiler'} (${nRecipients === 0 ? 'leer' : nRecipients + ' Empfänger'})`
             : `${inviteCustomEmails
               ? 'To adjusted selection'
               : inviteTarget === 'uninvited' ? 'To not-yet-invited'
               : inviteTarget === 'pending' ? 'To not-yet-registered'
-              : 'To mail distribution'} (${nRecipients === 0 ? 'empty' : nRecipients + ' recipients'})`);
+              : 'To everyone on the mail distribution'} (${nRecipients === 0 ? 'empty' : nRecipients + ' recipients'})`);
         // v30.67: s. MassmailComposerModal — „Nachname, Vorname"-Mus vermeiden.
         const orgNames = formatOrganizerList(selectedEvent.organizers || [], selectedEvent.emailLanguage || 'EN') || (selectedEvent.organizers || []).join(', ');
         const appUrl = `${siteUrl}/SitePages/DEX.aspx?env=WebView`;
@@ -312,113 +322,159 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
             showAlert(isDe ? 'Fehler beim Eintragen der E-Mail.' : 'Error queueing the email.');
           }
         };
+        // v31.2: Der „Hinzufügen"-Pfad steht einmal hier statt inline im
+        // Knopf — der Block ist mit Rückfrage und Verteiler-Speichern zu lang
+        // für ein onClick und wäre beim Umbau sonst zweimal zu prüfen.
+        const addRecipient = (): void => {
+          (async () => {
+            const addr = inviteAddInput.trim();
+            if (!addr) return;
+            if (addr.indexOf('@') <= 0) {
+              showAlert(isDe ? 'Bitte eine gültige E-Mail-Adresse eingeben.' : 'Please enter a valid email address.', { variant: 'error' });
+              return;
+            }
+            const lc = addr.toLowerCase();
+            if (effectiveEmails.some(x => x.toLowerCase() === lc)) {
+              showAlert(isDe ? 'Diese Adresse steht bereits in der Liste.' : 'That address is already in the list.', { variant: 'info' });
+              setInviteAddInput('');
+              return;
+            }
+            setInviteCustomEmails(effectiveEmails.concat([addr]));
+            setInviteAddInput('');
+            // Noch nicht im Event-Verteiler? Dann anbieten, sie
+            // dauerhaft aufzunehmen — sonst fällt sie beim
+            // nächsten Versand wieder raus.
+            if (!audienceEmails.some(x => x.toLowerCase() === lc)) {
+              const ok = await confirmDialog(
+                isDe
+                  ? `„${addr}" ist noch nicht im Mailverteiler des Events.\n\nSoll die Adresse dauerhaft in den Verteiler aufgenommen werden? Dann sieht die Person das Event auch in ihrer Übersicht und ist bei künftigen Mails automatisch dabei.\n\nNein = die Adresse bekommt nur diese eine Mail.`
+                  : `„${addr}" is not in the event mail distribution yet.\n\nAdd it permanently? The person will then also see the event in their overview and be included in future mails.\n\nNo = the address only receives this one mail.`,
+                { confirmLabel: isDe ? 'In den Verteiler aufnehmen' : 'Add to distribution' },
+              );
+              if (ok) {
+                const next = audienceEmails.concat([addr]);
+                const saved = await updateEvent(selectedEvent.id, { 'Audience': next.join(',') });
+                if (saved) {
+                  await refreshEvents();
+                  showAlert(isDe ? 'Adresse in den Mailverteiler des Events aufgenommen.' : 'Address added to the event mail distribution.', { variant: 'success' });
+                } else {
+                  showAlert(isDe ? 'Der Verteiler konnte nicht gespeichert werden — die Adresse bekommt nur diese Mail.' : 'Could not save the distribution list — the address only receives this mail.', { variant: 'error' });
+                }
+              }
+            }
+          })().catch(() => { /* */ });
+        };
+        // v31.2: Die Empfänger-Frage als Auswahl-Kacheln (eine von vier, jede
+        // mit einer Zeile Folge) statt vier Radio-Zeilen mit Fließtext. Die
+        // Kachel bindet dieselben Setter wie vorher das Radio: nur „An mich"
+        // lässt eine Handanpassung der Liste stehen, die drei Verteiler-Modi
+        // setzen sie zurück (v28.37). Ein Klick auf die schon aktive Kachel
+        // ist ein No-op: Ein gesetztes Radio feuerte kein onChange, ein Button
+        // feuert onClick immer — ohne den Guard verwarf ein Doppelklick die
+        // Handanpassung der Empfängerliste.
+        type InviteTargetKey = InviteComposerModalProps['inviteTarget'];
+        const renderTargetTile = (opt: { key: InviteTargetKey; title: string; count?: string | number; desc: string; disabled?: boolean }): React.ReactElement => {
+          const active = inviteTarget === opt.key;
+          return (
+            <button
+              key={opt.key}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              disabled={opt.disabled}
+              className={cx('dex-ui-choice', active && 'is-active', opt.disabled && 'is-disabled')}
+              onClick={() => {
+                if (active) return;
+                setInviteTarget(opt.key);
+                if (opt.key !== 'organizer') setInviteCustomEmails(null);
+              }}
+            >
+              <div className="dex-ui-choice-body">
+                <div className="dex-ui-choice-title" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  {opt.title}
+                  {opt.count !== undefined && (
+                    <span className={cx('dex-ui-pill', active ? 'dex-ui-pill--green' : 'dex-ui-pill--gray')}>{opt.count}</span>
+                  )}
+                </div>
+                <div className="dex-ui-choice-desc" style={{ wordBreak: 'break-word' }}>{opt.desc}</div>
+              </div>
+              <span className="dex-ui-choice-check" aria-hidden="true">{active && <Check size={12} />}</span>
+            </button>
+          );
+        };
+        const noAudience = audienceEmails.length === 0;
         const headerExtra = (
-          <div style={{
-            padding: 12,
-            background: 'var(--dex-gray-50, #fafafa)',
-            border: '1px solid var(--dex-gray-200)',
-            borderRadius: 'var(--dex-radius)',
-            marginBottom: 4,
-          }}>
-            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 8 }}>
-              {isDe ? 'Empfänger' : 'Recipient'}
-            </div>
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, cursor: 'pointer', fontSize: '0.82rem' }}>
-              <input
-                type="radio"
-                name="inviteTarget"
-                checked={inviteTarget === 'organizer'}
-                onChange={() => setInviteTarget('organizer')}
-                style={{ marginTop: 3 }}
-              />
-              <span>
-                <strong>{isDe ? 'An mich — zum Weiterleiten' : 'To me — for forwarding'}</strong>
-                <br />
-                <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.78rem' }}>
-                  {myEmail}
-                </span>
-              </span>
-            </label>
-            {/* v28.37: Zwei Nachfass-Modi. Beide arbeiten auf dem Verteiler und
-                ziehen davon ab, wer schon „durch" ist — einmal gemessen an den
-                bereits verschickten Einladungen, einmal an der Teilnehmerliste. */}
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, cursor: (audienceEmails.length === 0 || !invitedKnown) ? 'not-allowed' : 'pointer', fontSize: '0.82rem', opacity: (audienceEmails.length === 0 || !invitedKnown) ? 0.55 : 1 }}>
-              <input
-                type="radio"
-                name="inviteTarget"
-                checked={inviteTarget === 'uninvited'}
-                onChange={() => { setInviteTarget('uninvited'); setInviteCustomEmails(null); }}
-                disabled={audienceEmails.length === 0 || !invitedKnown}
-                style={{ marginTop: 3 }}
-              />
-              <span style={{ flex: 1 }}>
-                <strong>{isDe ? `Nur an noch nicht Eingeladene (${invitedKnown ? uninvitedEmails.length : '–'})` : `Only to not-yet-invited (${invitedKnown ? uninvitedEmails.length : '–'})`}</strong>
-                <br />
-                <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.78rem' }}>
-                  {invitedLc === undefined
+          <div>
+            {/* ---- 1. An wen? ------------------------------------------ */}
+            <div className="dex-ui-section">
+              <div className="dex-ui-section-title">{isDe ? 'An wen geht die Mail?' : 'Who receives the email?'}</div>
+              <div className="dex-ui-grid-2" role="radiogroup" aria-label={isDe ? 'Empfänger' : 'Recipients'}>
+                {/* v31.2: „Nur an mich" ist die Vorgabe (inviteTarget-Default
+                    'organizer') und steht deshalb oben links — die Blickführung
+                    beginnt dort, und der Senden-Knopf „An mich (…)" überrascht
+                    nicht mehr. */}
+                {renderTargetTile({
+                  key: 'organizer',
+                  title: isDe ? 'Nur an mich' : 'Only to me',
+                  desc: isDe
+                    ? `${myEmail} — zum Prüfen oder zum Weiterleiten aus Outlook an deinen Verteiler.`
+                    : `${myEmail} — to check it, or to forward it from Outlook to your distribution list.`,
+                })}
+                {renderTargetTile({
+                  key: 'audience',
+                  title: isDe ? 'An alle im Mailverteiler' : 'Everyone on the mail distribution',
+                  count: audienceEmails.length,
+                  disabled: noAudience,
+                  desc: noAudience
+                    ? (isDe
+                      ? 'Kein Mailverteiler auf dem Event hinterlegt — ergänze ihn im Event-Edit, Schritt 3 (Sichtbarkeit).'
+                      : 'No mail distribution configured — add recipients in event edit, step 3 (Visibility).')
+                    : (isDe
+                      ? 'Der komplette Verteiler des Events. Die Adressen stehen unten und lassen sich vor dem Senden anpassen.'
+                      : 'The full event distribution list. The addresses are listed below and can be adjusted before sending.'),
+                })}
+                {/* v28.37: Zwei Nachfass-Modi. Beide arbeiten auf dem Verteiler und
+                    ziehen davon ab, wer schon „durch" ist — einmal gemessen an den
+                    bereits verschickten Einladungen, einmal an der Teilnehmerliste. */}
+                {renderTargetTile({
+                  key: 'uninvited',
+                  title: isDe ? 'Nur an noch nicht Eingeladene' : 'Only those not yet invited',
+                  count: invitedKnown ? uninvitedEmails.length : '–',
+                  disabled: noAudience || !invitedKnown,
+                  desc: invitedLc === undefined
                     ? (isDe ? 'Frühere Einladungen werden geladen …' : 'Loading earlier invitations …')
                     : invitedLc === null
                     ? (isDe
-                      ? 'Abgleich nicht möglich — die bereits verschickten Einladungen konnten nicht gelesen werden. Bitte schließe den Dialog und öffne ihn erneut.'
-                      : 'Comparison not possible — the invitations already sent could not be read. Please close and reopen the dialog.')
+                      ? 'Abgleich nicht möglich — die bereits verschickten Einladungen konnten nicht gelesen werden. Schließe den Dialog und öffne ihn erneut.'
+                      : 'Comparison not possible — the invitations already sent could not be read. Close and reopen the dialog.')
                     : (isDe
-                      ? `Abgleich gegen bereits verschickte Einladungsmails — ${alreadyInvitedCount} Adresse(n) fallen raus. Hinweis: Versendete Mails werden nach rund einem Monat archiviert; ältere Einladungsrunden sind darin nicht mehr enthalten.`
-                      : `Compared against invitations already sent — ${alreadyInvitedCount} address(es) excluded. Note: sent mails are archived after about a month, so older rounds are no longer included.`)}
-                </span>
-              </span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, cursor: audienceEmails.length === 0 ? 'not-allowed' : 'pointer', fontSize: '0.82rem', opacity: audienceEmails.length === 0 ? 0.55 : 1 }}>
-              <input
-                type="radio"
-                name="inviteTarget"
-                checked={inviteTarget === 'pending'}
-                onChange={() => { setInviteTarget('pending'); setInviteCustomEmails(null); }}
-                disabled={audienceEmails.length === 0}
-                style={{ marginTop: 3 }}
-              />
-              <span style={{ flex: 1 }}>
-                <strong>{isDe ? `Nur an noch nicht Angemeldete (${pendingEmails.length})` : `Only to not-yet-registered (${pendingEmails.length})`}</strong>
-                <br />
-                <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.78rem' }}>
+                      ? `Wer schon eine Einladungsmail bekommen hat, fällt raus — ${alreadyInvitedCount} Adresse(n).`
+                      : `Whoever already received an invitation is excluded — ${alreadyInvitedCount} address(es).`),
+                })}
+                {renderTargetTile({
+                  key: 'pending',
+                  title: isDe ? 'Nur an noch nicht Angemeldete' : 'Only those not yet registered',
+                  count: pendingEmails.length,
+                  disabled: noAudience,
+                  desc: isDe
+                    ? `Wer sich schon an- oder abgemeldet hat, fällt raus — ${alreadyDecidedCount} Adresse(n) laut Teilnehmerliste.`
+                    : `Whoever already registered or cancelled is excluded — ${alreadyDecidedCount} address(es) per participant list.`,
+                })}
+              </div>
+              {/* v31.2: Die Grenze des Abgleichs gehört zum Zähler der Kachel,
+                  nicht erst zur Wahl — sie steht, sobald die Kachel wählbar ist. */}
+              {!noAudience && invitedKnown && (
+                <div className="dex-ui-help">
                   {isDe
-                    ? `Abgleich gegen die Teilnehmerliste — ${alreadyDecidedCount} Adresse(n) haben sich bereits an- oder abgemeldet und fallen raus.`
-                    : `Compared against the participant list — ${alreadyDecidedCount} address(es) have already registered or cancelled and are excluded.`}
-                </span>
-              </span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: audienceEmails.length === 0 ? 'not-allowed' : 'pointer', fontSize: '0.82rem', opacity: audienceEmails.length === 0 ? 0.55 : 1 }}>
-              <input
-                type="radio"
-                name="inviteTarget"
-                checked={inviteTarget === 'audience'}
-                onChange={() => { setInviteTarget('audience'); setInviteCustomEmails(null); }}
-                disabled={audienceEmails.length === 0}
-                style={{ marginTop: 3 }}
-              />
-              <span style={{ flex: 1 }}>
-                <strong>
-                  {isDe
-                    ? `An Mailverteiler des Events (${audienceEmails.length})`
-                    : `To event mail distribution (${audienceEmails.length})`}
-                </strong>
-                <br />
-                <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.78rem', wordBreak: 'break-word' }}>
-                  {audienceEmails.length === 0
-                    ? (isDe
-                      ? 'Kein Mailverteiler auf dem Event hinterlegt — in Schritt 3 (Sichtbarkeit) im Event-Edit ergänzen.'
-                      : 'No mail distribution configured — add recipients in step 3 (Visibility) of event edit.')
-                    : (isDe ? 'Die Adressen stehen unten und lassen sich vor dem Senden anpassen.' : 'The addresses are listed below and can be adjusted before sending.')}
-                </span>
-                {blockedInAudience.length > 0 && (
-                  <div style={{
-                    marginTop: 6, padding: '6px 8px',
-                    background: '#fef3f2', border: '1px solid #c9302c',
-                    borderRadius: 6, color: '#7a1f1c',
-                    fontSize: '0.75rem', lineHeight: 1.4,
-                  }}>
-                    <strong>
-                      {isDe ? '⚠ Blockierte Empfänger im Mailverteiler:' : '⚠ Blocked recipients in the distribution list:'}
-                    </strong>
+                    ? '„Nur an noch nicht Eingeladene" zählt nur die letzten rund vier Wochen: Versendete Mails werden nach etwa einem Monat archiviert, ältere Einladungsrunden sind im Abgleich nicht mehr enthalten.'
+                    : '"Only those not yet invited" covers only the last four weeks or so: sent mails are archived after about a month, so older invitation rounds are no longer part of the comparison.'}
+                </div>
+              )}
+              {blockedInAudience.length > 0 && (
+                <div className="dex-ui-callout dex-ui-callout--danger" role="alert" style={{ marginTop: 10 }}>
+                  <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                  <div style={{ minWidth: 0 }}>
+                    <strong>{isDe ? 'Blockierte Empfänger im Mailverteiler' : 'Blocked recipients in the distribution list'}</strong>
                     <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
                       {blockedInAudience.map(b => (
                         <li key={b.email}><code>{b.email}</code> — {b.reason}</li>
@@ -426,155 +482,146 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                     </ul>
                     <div style={{ marginTop: 4 }}>
                       {isDe
-                        ? 'Pauschale Standort- oder All-Verteiler sind für Einladungs-Mails nicht zulässig. Bitte aus dem Mailverteiler entfernen (Event-Edit, Schritt 3) — sonst wird das Senden blockiert.'
-                        : 'Entire location or all-distribution lists are not allowed for invitation emails. Please remove from the distribution list (event edit, step 3) — otherwise sending is blocked.'}
+                        ? 'Pauschale Standort- oder All-Verteiler sind für Einladungs-Mails nicht zulässig. Entferne sie aus dem Mailverteiler (Event-Edit, Schritt 3) — sonst bleibt das Senden blockiert.'
+                        : 'Entire location or all-distribution lists are not allowed for invitation emails. Remove them from the distribution list (event edit, step 3) — otherwise sending stays blocked.'}
                     </div>
                   </div>
-                )}
-              </span>
-            </label>
-            {/* v28.37: Empfaengerliste — eingeklappt (sie kann mehrere hundert
-                Adressen haben und schob den Dialog vorher auseinander) und vor
-                dem Senden anpassbar: einzelne rausnehmen oder ergaenzen. Eine
-                ergaenzte Adresse kann auf Wunsch direkt in den Event-Verteiler
-                übernommen werden, damit sie beim nächsten Mal automatisch
-                dabei ist. */}
-            {inviteTarget !== 'organizer' && audienceEmails.length > 0 && (
-              <div style={{ marginTop: 10, border: '1px solid var(--dex-gray-200)', borderRadius: 8, overflow: 'hidden' }}>
+                </div>
+              )}
+              {/* v28.37: Empfaengerliste — eingeklappt (sie kann mehrere hundert
+                  Adressen haben und schob den Dialog vorher auseinander) und vor
+                  dem Senden anpassbar: einzelne rausnehmen oder ergaenzen. Eine
+                  ergaenzte Adresse kann auf Wunsch direkt in den Event-Verteiler
+                  übernommen werden, damit sie beim nächsten Mal automatisch
+                  dabei ist. */}
+              {inviteTarget !== 'organizer' && audienceEmails.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className={cx('dex-ui-disclosure', inviteAudienceOpen && 'is-open')}
+                    aria-expanded={inviteAudienceOpen}
+                    onClick={() => setInviteAudienceOpen(o => !o)}
+                  >
+                    <span className="dex-ui-disclosure-chevron"><ChevronRight size={16} /></span>
+                    {isDe ? 'Empfänger anzeigen und anpassen' : 'Show and adjust recipients'}
+                    {inviteCustomEmails && (
+                      <span className="dex-ui-pill dex-ui-pill--green">{isDe ? 'angepasst' : 'adjusted'}</span>
+                    )}
+                    <span className="dex-ui-disclosure-count">{effectiveEmails.length}</span>
+                  </button>
+                  {inviteAudienceOpen && (
+                    <div className="dex-ui-disclosure-body">
+                      {effectiveEmails.length === 0 && (
+                        <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginBottom: 8 }}>
+                          <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                          <span>{isDe ? 'Keine Empfänger übrig — es würde niemand angeschrieben.' : 'No recipients left — nobody would be contacted.'}</span>
+                        </div>
+                      )}
+                      <div className="dex-ui-inline" style={{ gap: 6, maxHeight: 190, overflowY: 'auto' }}>
+                        {effectiveEmails.map(em => (
+                          <span key={em} className="dex-ui-pill dex-ui-pill--gray" style={{ paddingRight: 3 }}>
+                            {em}
+                            <button
+                              type="button"
+                              className="dex-ui-iconbtn dex-ui-iconbtn--danger"
+                              style={{ width: 20, height: 20 }}
+                              title={isDe ? 'Aus dieser Mail entfernen' : 'Remove from this mail'}
+                              aria-label={isDe ? `${em} aus dieser Mail entfernen` : `Remove ${em} from this mail`}
+                              onClick={() => setInviteCustomEmails(effectiveEmails.filter(x => x !== em))}
+                            ><X size={11} /></button>
+                          </span>
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                        <input
+                          type="text"
+                          className="dex-ui-input dex-ui-input--sm"
+                          value={inviteAddInput}
+                          onChange={e => setInviteAddInput(e.target.value)}
+                          placeholder={isDe ? 'Adresse ergänzen, z. B. vorname.nachname@deloitte.de' : 'Add an address, e.g. first.last@deloitte.de'}
+                          aria-label={isDe ? 'Adresse ergänzen' : 'Add address'}
+                          style={{ flex: 1, minWidth: 0 }}
+                        />
+                        <button type="button" className="btn btn-secondary dex-ui-btn-sm" onClick={addRecipient}>
+                          <Plus size={14} />
+                          {isDe ? 'Hinzufügen' : 'Add'}
+                        </button>
+                      </div>
+                      <div className="dex-ui-help">
+                        {isDe ? 'Die ergänzte Adresse bekommt diese Mail — auf Wunsch nimmst du sie dauerhaft in den Verteiler auf.' : 'The added address receives this mail — you can also add it to the distribution list permanently.'}
+                      </div>
+                      {inviteCustomEmails && (
+                        <button
+                          type="button"
+                          className="dex-ui-textbtn dex-ui-textbtn--muted"
+                          style={{ marginTop: 6, marginLeft: -8 }}
+                          onClick={() => setInviteCustomEmails(null)}
+                        >
+                          {isDe ? 'Anpassungen verwerfen und Auswahl oben verwenden' : 'Discard changes and use the selection above'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* ---- Kopie (CC) — eine Empfänger-Frage, deshalb hier und nicht
+                   zwischen Optik und Inhalt; selten geändert, deshalb zu. ------ */}
+              {/* v31.2: Automatisches Organizer-CC und das Zusatz-CC (v30.51)
+                  standen als zwei Blöcke untereinander — jetzt EIN Aufklapper;
+                  der Zähler im Knopf nennt, wie viele eine Kopie bekommen. */}
+              <div style={{ marginTop: 4 }}>
                 <button
                   type="button"
-                  onClick={() => setInviteAudienceOpen(o => !o)}
-                  style={{ width: '100%', textAlign: 'left', background: 'var(--dex-gray-50, #f7f7f5)', border: 'none', cursor: 'pointer', padding: '8px 10px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-gray-700)', display: 'flex', alignItems: 'center', gap: 8 }}
+                  className={cx('dex-ui-disclosure', ccOpen && 'is-open')}
+                  aria-expanded={ccOpen}
+                  onClick={() => setCcOpen(o => !o)}
                 >
-                  <span style={{ transform: inviteAudienceOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>▶</span>
-                  {isDe ? `Empfänger anzeigen und anpassen (${effectiveEmails.length})` : `Show and adjust recipients (${effectiveEmails.length})`}
-                  {inviteCustomEmails && (
-                    <span style={{ marginLeft: 'auto', fontSize: '0.7rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                      {isDe ? 'angepasst' : 'adjusted'}
-                    </span>
-                  )}
+                  <span className="dex-ui-disclosure-chevron"><ChevronRight size={16} /></span>
+                  {isDe ? 'Wer bekommt eine Kopie (CC)?' : 'Who gets a copy (CC)?'}
+                  <span className="dex-ui-disclosure-count">
+                    {ccEmails.length > 0
+                      ? (isDe ? `${ccEmails.length} Person(en)` : `${ccEmails.length} person(s)`)
+                      : (isDe ? 'niemand' : 'nobody')}
+                  </span>
                 </button>
-                {inviteAudienceOpen && (
-                  <div style={{ padding: 10 }}>
-                    {effectiveEmails.length === 0 && (
-                      <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginBottom: 8 }}>
-                        {isDe ? 'Keine Empfänger übrig — es würde niemand angeschrieben.' : 'No recipients left — nobody would be contacted.'}
+                {ccOpen && (
+                  <div className="dex-ui-disclosure-body dex-ui-stack">
+                    {ccEmails.length > 0 && (
+                      <div className="dex-ui-callout dex-ui-callout--neutral">
+                        <div style={{ minWidth: 0 }}>
+                          <strong>CC: </strong>
+                          <span style={{ wordBreak: 'break-word' }}>{ccEmails.join(', ')}</span>
+                          <div className="dex-ui-help" style={{ marginTop: 3 }}>
+                            {isDe
+                              ? 'Alle Organizer dieses Events werden automatisch in CC gesetzt.'
+                              : 'All organizers of this event are automatically added in CC.'}
+                          </div>
+                        </div>
                       </div>
                     )}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 190, overflowY: 'auto' }}>
-                      {effectiveEmails.map(em => (
-                        <span key={em} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 6px 3px 9px', borderRadius: 999, background: 'var(--dex-gray-100, #f0f0ee)', fontSize: '0.74rem' }}>
-                          {em}
-                          <button
-                            type="button"
-                            title={isDe ? 'Aus dieser Mail entfernen' : 'Remove from this mail'}
-                            onClick={() => setInviteCustomEmails(effectiveEmails.filter(x => x !== em))}
-                            style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)', fontSize: '0.85rem', lineHeight: 1, padding: 0 }}
-                          >×</button>
-                        </span>
-                      ))}
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
-                      <input
-                        type="text"
-                        value={inviteAddInput}
-                        onChange={e => setInviteAddInput(e.target.value)}
-                        placeholder={isDe ? 'Adresse ergänzen …' : 'Add address …'}
-                        style={{ flex: 1, minWidth: 0, height: 30, fontSize: '0.78rem', padding: '0 8px', border: '1px solid var(--dex-gray-300)', borderRadius: 6 }}
-                      />
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        style={{ fontSize: '0.76rem', padding: '5px 12px' }}
-                        onClick={() => {
-                          (async () => {
-                            const addr = inviteAddInput.trim();
-                            if (!addr) return;
-                            if (addr.indexOf('@') <= 0) {
-                              showAlert(isDe ? 'Bitte eine gültige E-Mail-Adresse eingeben.' : 'Please enter a valid email address.', { variant: 'error' });
-                              return;
-                            }
-                            const lc = addr.toLowerCase();
-                            if (effectiveEmails.some(x => x.toLowerCase() === lc)) {
-                              showAlert(isDe ? 'Diese Adresse steht bereits in der Liste.' : 'That address is already in the list.', { variant: 'info' });
-                              setInviteAddInput('');
-                              return;
-                            }
-                            setInviteCustomEmails(effectiveEmails.concat([addr]));
-                            setInviteAddInput('');
-                            // Noch nicht im Event-Verteiler? Dann anbieten, sie
-                            // dauerhaft aufzunehmen — sonst fällt sie beim
-                            // nächsten Versand wieder raus.
-                            if (!audienceEmails.some(x => x.toLowerCase() === lc)) {
-                              const ok = await confirmDialog(
-                                isDe
-                                  ? `„${addr}" ist noch nicht im Mailverteiler des Events.\n\nSoll die Adresse dauerhaft in den Verteiler aufgenommen werden? Dann sieht die Person das Event auch in ihrer Übersicht und ist bei künftigen Mails automatisch dabei.\n\nNein = die Adresse bekommt nur diese eine Mail.`
-                                  : `„${addr}" is not in the event mail distribution yet.\n\nAdd it permanently? The person will then also see the event in their overview and be included in future mails.\n\nNo = the address only receives this one mail.`,
-                                { confirmLabel: isDe ? 'In den Verteiler aufnehmen' : 'Add to distribution' },
-                              );
-                              if (ok) {
-                                const next = audienceEmails.concat([addr]);
-                                const saved = await updateEvent(selectedEvent.id, { 'Audience': next.join(',') });
-                                if (saved) {
-                                  await refreshEvents();
-                                  showAlert(isDe ? 'Adresse in den Mailverteiler des Events aufgenommen.' : 'Address added to the event mail distribution.', { variant: 'success' });
-                                } else {
-                                  showAlert(isDe ? 'Der Verteiler konnte nicht gespeichert werden — die Adresse bekommt nur diese Mail.' : 'Could not save the distribution list — the address only receives this mail.', { variant: 'error' });
-                                }
-                              }
-                            }
-                          })().catch(() => { /* */ });
-                        }}
-                      >
-                        {isDe ? 'Hinzufügen' : 'Add'}
-                      </button>
-                    </div>
-                    {inviteCustomEmails && (
-                      <button
-                        type="button"
-                        onClick={() => setInviteCustomEmails(null)}
-                        style={{ marginTop: 8, border: 'none', background: 'none', cursor: 'pointer', padding: 0, fontSize: '0.74rem', color: 'var(--dex-gray-600)', textDecoration: 'underline' }}
-                      >
-                        {isDe ? 'Anpassungen verwerfen und Auswahl oben verwenden' : 'Discard changes and use the selection above'}
-                      </button>
-                    )}
+                    {/* v30.51: Zusätzliches CC per Personensuche — dieselbe Bedienung
+                        wie bei der Massenmail und im F&A Center. */}
+                    <RecipientPicker
+                      label={isDe ? 'Zusätzlich auf CC' : 'Additional CC'}
+                      hint={isDe
+                        ? 'Personen über die Suche, Funktionspostfächer im Feld darunter. Die Organizer stehen ohnehin auf CC.'
+                        : 'People via search, shared mailboxes in the field below. The organizers are on CC anyway.'}
+                      emptyText={isDe ? 'Kein zusätzliches CC — es gehen nur die Organizer mit.' : 'No additional CC — only the organizers.'}
+                      value={inviteCc}
+                      onChange={setInviteCc}
+                      searchUsers={searchUsers}
+                      searchUserByEmail={searchUser}
+                      disabled={inviteSending}
+                    />
                   </div>
                 )}
               </div>
-            )}
-            {ccEmails.length > 0 && (
-              <div style={{
-                marginTop: 10, paddingTop: 8,
-                borderTop: '1px dashed var(--dex-gray-200)',
-                fontSize: '0.78rem', color: 'var(--dex-gray-600)',
-              }}>
-                <strong style={{ color: 'var(--dex-gray-700)' }}>{isDe ? 'CC' : 'CC'}: </strong>
-                <span style={{ wordBreak: 'break-word' }}>{ccEmails.join(', ')}</span>
-                <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 3 }}>
-                  {isDe
-                    ? 'Alle Organizer dieses Events werden automatisch in CC gesetzt.'
-                    : 'All organizers of this event are automatically added in CC.'}
-                </div>
-              </div>
-            )}
-            {/* v30.51: Zusätzliches CC per Personensuche — dieselbe Bedienung
-                wie bei der Massenmail und im F&A Center. */}
-            <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px dashed var(--dex-gray-200)' }}>
-              <RecipientPicker
-                label={isDe ? 'Zusätzlich auf CC' : 'Additional CC'}
-                hint={isDe
-                  ? 'Personen über die Suche, Funktionspostfächer im Feld darunter. Die Organizer stehen ohnehin auf CC.'
-                  : 'People via search, shared mailboxes in the field below. The organizers are on CC anyway.'}
-                emptyText={isDe ? 'Kein zusätzliches CC — es gehen nur die Organizer mit.' : 'No additional CC — only the organizers.'}
-                value={inviteCc}
-                onChange={setInviteCc}
-                searchUsers={searchUsers}
-                searchUserByEmail={searchUser}
-                disabled={inviteSending}
-              />
             </div>
+
+            {/* ---- 2. Wie sieht die Mail aus? --------------------------- */}
             {/* v30.52: dieselbe Auswahl wie in Massen- und QR-Mail. */}
-            <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px dashed var(--dex-gray-200)' }}>
+            <div className="dex-ui-section">
+              <div className="dex-ui-section-title">{isDe ? 'Wie sieht die Mail aus?' : 'What does the email look like?'}</div>
               <MailHeaderImageChooser
                 value={inviteHeaderImage}
                 onChange={setInviteHeaderImage}
@@ -583,38 +630,35 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                 onCrop={() => setComposerCrop('invite')}
                 isDe={isDe}
               />
+              <div className="dex-ui-help" style={{ marginTop: 0 }}>
+                {isDe
+                  ? 'Die Vorschau rechts zeigt Kopfbild, Überschrift und Text so, wie die Mail ankommt.'
+                  : 'The preview on the right shows header image, heading and text as the email will arrive.'}
+              </div>
             </div>
+
+            {/* ---- 3. Was steht drin? — Betreff, Überschrift und Text folgen
+                 direkt unter diesem Block (HtmlEditorModal rendert sie). ------ */}
             {/* v22.5/v22.6: Entwurf speichern (Button) + Auto-Speichern-Hinweis
                 + Zurücksetzen. */}
-            <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px dashed var(--dex-gray-200)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={saveInviteDraft}
-                  style={{ fontSize: '0.78rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                >
+            <div className="dex-ui-section" style={{ marginBottom: 4 }}>
+              <div className="dex-ui-section-title">{isDe ? 'Was steht in der Mail?' : 'What does the email say?'}</div>
+              <div className="dex-ui-inline">
+                <span className="dex-ui-help" style={{ marginTop: 0, flex: 1, minWidth: 200 }}>
+                  {isDe
+                    ? 'Betreff, Überschrift und Text stehen direkt darunter. Dein Text wird automatisch gespeichert und beim nächsten Öffnen wiederhergestellt.'
+                    : 'Subject, heading and text follow right below. Your text is saved automatically and restored next time you open it.'}
+                </span>
+                <button type="button" className="dex-ui-textbtn" onClick={saveInviteDraft}>
                   <Check size={14} />
                   {isDe ? 'Entwurf speichern' : 'Save draft'}
                 </button>
                 {inviteDraftSaved && (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700, fontSize: '0.78rem' }}>
-                    <Check size={14} /> {isDe ? 'Gespeichert' : 'Saved'}
-                  </span>
+                  <span className="dex-ui-pill dex-ui-pill--green"><Check size={12} /> {isDe ? 'Gespeichert' : 'Saved'}</span>
                 )}
-                <span style={{ flex: 1 }} />
-                <button
-                  type="button"
-                  onClick={resetInviteDraft}
-                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, fontSize: '0.74rem', textDecoration: 'underline' }}
-                >
+                <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" onClick={resetInviteDraft}>
                   {isDe ? 'Auf Standardtext zurücksetzen' : 'Reset to default text'}
                 </button>
-              </div>
-              <div style={{ marginTop: 6, fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
-                {isDe
-                  ? 'Dein Text wird zusätzlich automatisch gespeichert und beim nächsten Öffnen wiederhergestellt.'
-                  : 'Your text is also saved automatically and restored next time you open it.'}
               </div>
             </div>
           </div>

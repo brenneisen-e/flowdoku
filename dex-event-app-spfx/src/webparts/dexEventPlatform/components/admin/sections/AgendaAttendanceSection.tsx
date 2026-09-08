@@ -17,7 +17,7 @@
 import * as React from 'react';
 import { DeloitteEvent, AgendaItem } from '../../../types';
 import { EventService, SPRegistration } from '../../../services/EventService';
-import { parseAgendaCheckIns, formatMarkTime } from '../../../utils/agendaCheckIns';
+import { parseAgendaCheckIns, parseAgendaNoShows, formatMarkTime } from '../../../utils/agendaCheckIns';
 import { agendaGroups, sortAgenda, groupLabel, groupDateLabel } from '../../../utils/agendaGroups';
 import { downloadAttendanceCertificate, downloadAttendanceCertificates } from '../../../utils/attendanceCertificatePdf';
 import { PersonContactHover } from '../../PersonContactHover';
@@ -62,6 +62,13 @@ export const AgendaAttendanceSection: React.FC<AgendaAttendanceSectionProps> = (
   const marksOf = React.useMemo(() => {
     const m = new Map<number, ReturnType<typeof parseAgendaCheckIns>>();
     active.forEach(r => m.set(r.Id, parseAgendaCheckIns(r.AgendaCheckIns)));
+    return m;
+  }, [active]);
+  // v31.2: No-Show-Marken je Punkt (Check-in-Seite) — nur Anzeige, zählen nie
+  // als Anwesenheit.
+  const noShowsOf = React.useMemo(() => {
+    const m = new Map<number, ReturnType<typeof parseAgendaNoShows>>();
+    active.forEach(r => m.set(r.Id, parseAgendaNoShows(r.AgendaCheckIns)));
     return m;
   }, [active]);
   const countFor = (itemId: string): number => active.reduce((n, r) => n + ((marksOf.get(r.Id) || {})[itemId] ? 1 : 0), 0);
@@ -330,15 +337,17 @@ export const AgendaAttendanceSection: React.FC<AgendaAttendanceSectionProps> = (
                             </td>
                             {items.map(it => {
                               const mk = m[it.id];
+                              // v31.2: No-Show am Punkt (graues ✗) — Klick trägt trotzdem „anwesend" ein.
+                              const ns = !mk ? (noShowsOf.get(r.Id) || {})[it.id] : undefined;
                               const key = `${r.Id}:${it.id}`;
                               return (
                                 <td key={it.id} style={{ padding: 4, textAlign: 'center' }}>
-                                  <button type="button" disabled={!canEdit || !!busyKey} onClick={() => { void toggle(r, it); }} title={mk ? `${isDe ? 'anwesend' : 'present'} ${formatMarkTime(mk.at)}${mk.by ? ` · ${mk.by}` : ''}` : (canEdit ? (isDe ? 'Als anwesend eintragen' : 'Record as present') : '')} style={{
+                                  <button type="button" disabled={!canEdit || !!busyKey} onClick={() => { void toggle(r, it); }} title={mk ? `${isDe ? 'anwesend' : 'present'} ${formatMarkTime(mk.at)}${mk.by ? ` · ${mk.by}` : ''}` : ns ? `No-Show ${formatMarkTime(ns.at)}${ns.by ? ` · ${ns.by}` : ''}` : (canEdit ? (isDe ? 'Als anwesend eintragen' : 'Record as present') : '')} style={{
                                     width: 56, padding: '4px 0', borderRadius: 6, cursor: canEdit ? 'pointer' : 'default', fontSize: '0.72rem', fontWeight: 700,
-                                    border: `1px solid ${mk ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-                                    background: busyKey === key ? 'var(--dex-gray-100)' : mk ? 'rgba(134,188,37,0.15)' : '#fff',
-                                    color: mk ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-300)',
-                                  }}>{mk ? `✓ ${formatMarkTime(mk.at)}` : '·'}</button>
+                                    border: `1px solid ${mk ? 'var(--dex-green, #86bc25)' : ns ? 'var(--dex-gray-400, #a0a0a0)' : 'var(--dex-gray-200)'}`,
+                                    background: busyKey === key ? 'var(--dex-gray-100)' : mk ? 'rgba(134,188,37,0.15)' : ns ? 'rgba(96,96,96,0.10)' : '#fff',
+                                    color: mk ? 'var(--dex-green-dark, #4a7c1f)' : ns ? 'var(--dex-gray-600)' : 'var(--dex-gray-300)',
+                                  }}>{mk ? `✓ ${formatMarkTime(mk.at)}` : ns ? '✗' : '·'}</button>
                                 </td>
                               );
                             })}

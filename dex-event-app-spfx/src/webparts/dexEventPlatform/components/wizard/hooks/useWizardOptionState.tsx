@@ -13,6 +13,7 @@ import { CustomFieldInput } from '../../wizard/customFieldInput';
 import { renderShowIfConfigImpl } from '../../wizard/logic/wizardRenderHelpers';
 import { applyEventTemplateImpl, applyTemplateImpl, resetDemoVariantBaseStateImpl } from '../../wizard/logic/wizardTemplates';
 import { AgendaItem } from '../../../types';
+import { ChevronDown } from '../../Icons';
 
 export interface UseWizardOptionStateCtx {
   b2runStartblocks: string[];
@@ -179,15 +180,21 @@ export function useWizardOptionState(ctx: UseWizardOptionStateCtx) {
   // wird ein-/ausgeblendet, die Überschrift ist der Klappschalter.
   // Bei ausgelöster Validierung (triedNext) klappt automatisch ALLES auf, damit
   // keine Fehlermeldung in einem eingeklappten Block versteckt bleibt.
-  const [expandedVisBlocks, setExpandedVisBlocks] = React.useState<Set<string>>(() => new Set());
+  // v31.2: Plätze und Fristen sind die Hauptfragen von Schritt 4 und stehen
+  // offen; nur die Sichtbarkeits-Blöcke (Standortfilter, Verteiler, Assistenz)
+  // bleiben eingeklappt, bis man sie braucht.
+  const [expandedVisBlocks, setExpandedVisBlocks] = React.useState<Set<string>>(() => new Set(['vis_capacity', 'vis_fristen']));
   const isVisOpen = (k: string): boolean => triedNext || expandedVisBlocks.has(k);
   const toggleVis = (k: string): void => setExpandedVisBlocks(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  // v31.2: derselbe Aufklapper wie überall (dex-ui-disclosure: Hover, Chevron
+  // dreht geöffnet um 180°) statt des ▶-Textzeichens mit Inline-Drehung.
   const visHeader = (key: string, badge: React.ReactNode, title: React.ReactNode): React.ReactElement => (
     <button type="button" onClick={() => toggleVis(key)} aria-expanded={isVisOpen(key)}
-      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', padding: 0, marginBottom: isVisOpen(key) ? 8 : 0, cursor: 'pointer', textAlign: 'left' }}>
+      className={`dex-ui-disclosure${isVisOpen(key) ? ' is-open' : ''}`}
+      style={{ width: '100%', margin: 0, marginBottom: isVisOpen(key) ? 8 : 0, padding: '6px 4px' }}>
       {badge}
       <span className="form-label" style={{ margin: 0, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}>{title}</span>
-      <span style={{ marginLeft: 'auto', color: 'var(--dex-gray-400)', fontSize: '0.85rem', transform: isVisOpen(key) ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>▶</span>
+      <span className="dex-ui-disclosure-chevron" style={{ marginLeft: 'auto' }}><ChevronDown size={16} /></span>
     </button>
   );
   // v22.62/v22.63: Beim „Weiter"/Speichern fragt ein Modal, ob die geänderte

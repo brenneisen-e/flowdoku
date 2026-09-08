@@ -4,6 +4,8 @@
  */
 import * as React from 'react';
 import Modal from '../../Modal';
+import { Check, Download } from '../../Icons';
+import { cx } from '../../dexUi';
 import { shortSubEventTitle } from '../../../utils/subEventTitle';
 import { DeloitteEvent } from '../../../types';
 import { SPRegistration } from '../../../services/EventService';
@@ -48,95 +50,99 @@ export const ExcelTargetModal: React.FC<ExcelTargetModalProps> = (p) => {
             return next;
           });
         };
+        // v31.2: Eine Kachel je Alternative (Leitfaden 2b) statt Radio-Zeile —
+        // Titel plus eine Zeile, was die Wahl für die Datei bedeutet. Der Hover
+        // kommt aus der Klasse; vorher hatte keine der Zeilen einen.
+        const Choice = (props: { active: boolean; onPick: () => void; label: string; desc: string }): React.ReactElement => (
+          <button type="button" role="radio" aria-checked={props.active} className={cx('dex-ui-choice', props.active && 'is-active')} onClick={props.onPick}>
+            <span className="dex-ui-choice-body">
+              <span className="dex-ui-choice-title">{props.label}</span>
+              <span className="dex-ui-choice-desc" style={{ display: 'block' }}>{props.desc}</span>
+            </span>
+            <span className="dex-ui-choice-check" aria-hidden="true">{props.active && <Check size={12} />}</span>
+          </button>
+        );
         const Row = (props: { value: 'active' | 'activePlusWait' | 'waitOnly' | 'withCancelled'; label: string; desc: string }): React.ReactElement => (
-          <label style={{
-            display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10,
-            borderRadius: 8, border: `1px solid ${excelAudience === props.value ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-            background: excelAudience === props.value ? 'rgba(134,188,37,0.08)' : '#fff',
-            cursor: 'pointer', marginBottom: 8,
-          }}>
-            <input type="radio" name="excel-target" checked={excelAudience === props.value} onChange={() => setExcelAudience(props.value)} style={{ marginTop: 3 }} />
-            <div>
-              <div style={{ fontWeight: 600, fontSize: '0.92rem' }}>{props.label}</div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>{props.desc}</div>
-            </div>
-          </label>
+          <Choice active={excelAudience === props.value} onPick={() => setExcelAudience(props.value)} label={props.label} desc={props.desc} />
         );
         return (
-          <Modal open={true} onClose={closeAll} maxWidth={520} padding={24} ariaLabel="Excel-Export Zielgruppe">
-            <h3 style={{ margin: '0 0 14px', fontSize: '1.1rem' }}>Excel-Export</h3>
+          <Modal open={true} onClose={closeAll} maxWidth={560} ariaLabel="Excel-Export Zielgruppe"
+            title={isDe ? 'Excel-Export' : 'Excel export'}
+            subtitle={isDe ? 'Wähle, wer und was in die Datei kommt — der Download startet sofort.' : 'Choose who and what goes into the file — the download starts right away.'}
+            icon={<Download size={20} />}
+            footer={<>
+              <button type="button" className="btn btn-secondary" onClick={closeAll}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
+              <button type="button" className="btn btn-primary" onClick={proceed}><Download size={16} />{isDe ? 'Excel herunterladen' : 'Download Excel'}</button>
+            </>}>
             {/* v27.9: Format-Auswahl (Deloitte/B2Run) direkt im Modal — vorher
                 im Anker-Dropdown, das vom „Aktion auswählen"-Menü abgeschnitten
-                wurde. */}
+                wurde. v31.2: Steht zuerst, weil das Format entscheidet, ob der
+                Klammer-Block unten überhaupt erscheint. */}
             {excelTargetModal.chooseMode && (
-              <div style={{ marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--dex-gray-200)' }}>
-                <div style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: 8 }}>{isDe ? 'Welches Format?' : 'Which format?'}</div>
-                {([
-                  { m: 'b2run' as const, label: 'B2Run View', desc: isDe ? 'Genau das Veranstalter-Format: EIN Arbeitsblatt, 16 Spalten (Nr., Anrede, Name, E-Mail, Startblock, …) — direkt bei b2run.com importierbar.' : 'Exact organizer format: ONE worksheet, 16 columns — importable at b2run.com.' },
-                  { m: 'deloitte' as const, label: isDe ? 'Deloitte Felder' : 'Deloitte fields', desc: isDe ? 'Alle internen Spalten + alle Custom-Fields des Events (für intern).' : 'All internal columns + all event custom fields (internal use).' },
-                ]).map(opt => (
-                  <label key={opt.m} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10, borderRadius: 8, border: `1px solid ${excelTargetModal.mode === opt.m ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`, background: excelTargetModal.mode === opt.m ? 'rgba(134,188,37,0.08)' : '#fff', cursor: 'pointer', marginBottom: 8 }}>
-                    <input type="radio" name="excel-mode" checked={excelTargetModal.mode === opt.m} onChange={() => setExcelTargetModal({ mode: opt.m, chooseMode: true })} style={{ marginTop: 3 }} />
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: '0.92rem' }}>{opt.label}</div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>{opt.desc}</div>
-                    </div>
-                  </label>
-                ))}
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">{isDe ? 'Welches Format brauchst du?' : 'Which format do you need?'}</div>
+                <div className="dex-ui-grid-2" role="radiogroup">
+                  {([
+                    { m: 'b2run' as const, label: 'B2Run View', desc: isDe ? 'Das Veranstalter-Format: ein Arbeitsblatt, 16 Spalten (Nr., Anrede, Name, E-Mail, Startblock …) — direkt bei b2run.com importierbar.' : 'The organizer format: one worksheet, 16 columns (no., salutation, name, e-mail, start block …) — importable at b2run.com.' },
+                    { m: 'deloitte' as const, label: isDe ? 'Deloitte-Felder' : 'Deloitte fields', desc: isDe ? 'Alle internen Spalten plus alle eigenen Felder des Events — für den internen Gebrauch.' : 'All internal columns plus all custom fields of the event — for internal use.' },
+                  ]).map(opt => (
+                    <Choice key={opt.m} active={excelTargetModal.mode === opt.m} onPick={() => setExcelTargetModal({ mode: opt.m, chooseMode: true })} label={opt.label} desc={opt.desc} />
+                  ))}
+                </div>
               </div>
             )}
-            <div style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: 8 }}>{isDe ? 'Wen sollen wir exportieren?' : 'Who should we export?'}</div>
-            <Row value="active" label="Teilnehmer (alle aktiven)" desc="Status: Angemeldet, QR versendet, Eingecheckt — Default für den Check-In / die Vor-Ort-Liste." />
-            <Row value="activePlusWait" label="Teilnehmer + Warteliste" desc="Alle aktiven + Wartelistler in einem Sheet, sortiert nach TeilnehmerID." />
-            <Row value="waitOnly" label="Nur Warteliste" desc="Nur die Wartelistler — z.B. für Briefing." />
-            <Row value="withCancelled" label="Alles inkl. Abmeldungen" desc="Alle Einträge inklusive abgemeldeter Personen — der Status steht pro Zeile in der Status-Spalte." />
+            <div className="dex-ui-section">
+              <div className="dex-ui-section-title">{isDe ? 'Wer kommt in die Datei?' : 'Who goes into the file?'}</div>
+              <div className="dex-ui-grid-2" role="radiogroup">
+                <Row value="active" label={isDe ? 'Nur aktive Teilnehmer' : 'Active attendees only'} desc={isDe ? 'Angemeldet, QR versendet, Eingecheckt — die Vorgabe für Check-in und Vor-Ort-Liste.' : 'Registered, QR sent, checked in — the default for check-in and the on-site list.'} />
+                <Row value="activePlusWait" label={isDe ? 'Teilnehmer + Warteliste' : 'Attendees + waitlist'} desc={isDe ? 'Aktive und Wartende in einem Blatt, sortiert nach Teilnehmer-ID.' : 'Active and waitlisted in one sheet, sorted by participant ID.'} />
+                <Row value="waitOnly" label={isDe ? 'Nur Warteliste' : 'Waitlist only'} desc={isDe ? 'Nur die Wartenden — z. B. für ein Briefing.' : 'Only the waitlisted — e.g. for a briefing.'} />
+                <Row value="withCancelled" label={isDe ? 'Alles inkl. Abmeldungen' : 'Everything incl. cancellations'} desc={isDe ? 'Alle Einträge, auch abgemeldete Personen — der Status steht je Zeile in der Status-Spalte.' : 'All entries including cancelled people — the status is in each row’s status column.'} />
+              </div>
+            </div>
             {/* v20.4: Klammer-Modus — wählen, was in die Datei kommt. */}
             {consolidatedExportPossible && (
-              <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
-                <div style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: 8 }}>
-                  {isDe ? 'Was soll in die Datei?' : 'What goes into the file?'}
-                </div>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 10px', borderRadius: 8, border: `1px solid ${excelIncludeMatrix ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`, background: excelIncludeMatrix ? 'rgba(134,188,37,0.08)' : '#fff', cursor: 'pointer', marginBottom: 8 }}>
-                  <input type="checkbox" checked={excelIncludeMatrix} onChange={e => setExcelIncludeMatrix(e.target.checked)} style={{ marginTop: 3 }} />
-                  <span>
-                    <span style={{ display: 'block', fontWeight: 600, fontSize: '0.9rem' }}>{isDe ? 'Konsolidierte Matrix' : 'Consolidated matrix'}</span>
-                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
-                      {isDe ? 'Eine Zeile pro Person — mit den übergreifenden Feldern und pro Sub-Event dem Status + den Sub-Event-Antworten (wie die Tabelle in der Klammer-Ansicht).' : 'One row per person — with the cross-cutting fields and per sub-event the status + the sub-event answers (like the table in the consolidated view).'}
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">{isDe ? 'Was kommt in die Datei?' : 'What goes into the file?'}</div>
+                <label className={cx('dex-ui-toggle-row', excelIncludeMatrix && 'is-active')}>
+                  <input type="checkbox" checked={excelIncludeMatrix} onChange={e => setExcelIncludeMatrix(e.target.checked)} />
+                  <span className="dex-ui-toggle-row-body">
+                    <span className="dex-ui-toggle-row-title">{isDe ? 'Konsolidierte Matrix' : 'Consolidated matrix'}</span>
+                    <span className="dex-ui-toggle-row-desc" style={{ display: 'block' }}>
+                      {isDe ? 'Eine Zeile pro Person: die übergreifenden Felder plus je Sub-Event Status und Antworten — wie die Tabelle in der Klammer-Ansicht.' : 'One row per person: the cross-cutting fields plus status and answers per sub-event — like the table in the consolidated view.'}
                     </span>
                   </span>
                 </label>
-                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)', margin: '6px 0 6px' }}>
-                  {isDe ? 'Zusätzlich einzelne Sub-Event-Blätter:' : 'Additionally individual sub-event sheets:'}
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto' }}>
-                  {consolidatedChildren.map(child => {
-                    const checked = excelSubIds.has(child.id);
-                    const short = shortSubEventTitle(child.title, selectedEvent.title) || child.title || '?';
-                    return (
-                      <label key={child.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', borderRadius: 8, border: `1px solid ${checked ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`, background: checked ? 'rgba(134,188,37,0.08)' : '#fff', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={checked} onChange={() => toggleSubId(child.id)} />
-                        <span style={{ fontSize: '0.88rem' }}>{short}</span>
-                        <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
-                          {(subEventRegsByEventId[child.id] || []).length} {isDe ? 'Einträge' : 'entries'}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-                <div style={{ display: 'flex', gap: 12, marginTop: 6 }}>
-                  <button type="button" onClick={() => setExcelSubIds(new Set(consolidatedChildren.map(c => c.id)))} style={{ background: 'none', border: 'none', color: 'var(--dex-green-dark)', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', padding: 0 }}>
-                    {isDe ? 'Alle auswählen' : 'Select all'}
-                  </button>
-                  <button type="button" onClick={() => setExcelSubIds(new Set())} style={{ background: 'none', border: 'none', color: 'var(--dex-gray-500)', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', padding: 0 }}>
-                    {isDe ? 'Keine' : 'None'}
-                  </button>
+                <div className="dex-ui-field" style={{ marginTop: 12 }}>
+                  <div className="dex-ui-label">
+                    {isDe ? 'Dazu ein eigenes Blatt je Sub-Event' : 'Plus a separate sheet per sub-event'}
+                    <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>
+                    <span className="dex-ui-inline" style={{ marginLeft: 'auto', gap: 2 }}>
+                      <button type="button" className="dex-ui-textbtn" onClick={() => setExcelSubIds(new Set(consolidatedChildren.map(c => c.id)))}>{isDe ? 'Alle' : 'All'}</button>
+                      <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" onClick={() => setExcelSubIds(new Set())}>{isDe ? 'Keine' : 'None'}</button>
+                    </span>
+                  </div>
+                  {/* v31.2: Chips statt Checkbox-Zeilen — „mehrere aus vielen" (Leitfaden 2b);
+                      die Zahl im Chip ist die Anzahl der Einträge des Termins. */}
+                  <div className="dex-ui-inline" style={{ maxHeight: 180, overflowY: 'auto' }}>
+                    {consolidatedChildren.map(child => {
+                      const checked = excelSubIds.has(child.id);
+                      const short = shortSubEventTitle(child.title, selectedEvent.title) || child.title || '?';
+                      const n = (subEventRegsByEventId[child.id] || []).length;
+                      return (
+                        <button key={child.id} type="button" aria-pressed={checked} className={cx('dex-ui-chip', checked && 'is-active')} onClick={() => toggleSubId(child.id)} title={`${n} ${isDe ? 'Einträge' : 'entries'}`}>
+                          {checked && <Check size={12} />}{short}
+                          <span style={{ opacity: 0.75, fontWeight: 500 }}>· {n}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="dex-ui-help">
+                    {isDe ? 'Ohne Haken bei Matrix oder Sub-Event bekommst du die einfache Teilnehmerliste ohne Sub-Event-Blätter.' : 'With neither the matrix nor a sub-event ticked you get the plain attendee list without sub-event sheets.'}
+                  </div>
                 </div>
               </div>
             )}
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 14 }}>
-              <button type="button" className="btn btn-secondary" onClick={closeAll} style={{ fontSize: '0.85rem' }}>Abbrechen</button>
-              <button type="button" className="btn btn-primary" onClick={proceed} style={{ fontSize: '0.85rem' }}>Excel herunterladen</button>
-            </div>
           </Modal>
         );
 };

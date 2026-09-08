@@ -1,12 +1,19 @@
-/* ActiveEventHintsBox — 1:1 aus AdminPage.tsx ausgelagert (Zeilen 9886-10275 des
- * Stands vor dem Schnitt). Der Inhalt ist zeichengleich uebernommen; die
- * Anzeige-Bedingung bleibt beim Aufrufer.
+/* ActiveEventHintsBox — die Hinweise zu einem aktiven Event.
+ * Ausgelagert aus AdminPage.tsx (Zeilen 9886-10275 des Stands vor dem Schnitt);
+ * die Anzeige-Bedingung bleibt beim Aufrufer.
+ *
+ * v31.3: Nach docs/ui-leitfaden.md 5a (Punkt 2) umgebaut — jeder Hinweis ist ein
+ * `dex-ui-callout` in der Farbe seiner Dringlichkeit, sortiert nach Dringlichkeit
+ * (Funktionsverlust > Zugang > Kosmetik) statt nach Entstehungsreihenfolge im
+ * Code. Sein Knopf steht IN der Kopfzeile und nicht erst im aufgeklappten Text;
+ * beide Darstellungen (Zeile/Kachel) teilen sich denselben Aufbau.
  */
 import * as React from 'react';
 import { looksEnglishText, stripHtmlToText } from '../../../utils/eventStatus';
 import { shortSubEventTitle } from '../../../utils/subEventTitle';
 import { isEventOver } from '../../../utils/eventFormat';
-import { ChevronDown, ChevronUp, Info, QrCode } from '../../Icons';
+import { AlertCircle, ChevronDown, Info, QrCode } from '../../Icons';
+import { cx, ensureDexUiStyles } from '../../dexUi';
 import { DeloitteEvent } from '../../../types';
 
 export interface ActiveEventHintsBoxProps {
@@ -37,12 +44,19 @@ export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
   const { childEventsOf, expandedHintIds, hintLangBusy, hintsDismissTick, isDe, parentEventForSelected, refreshEvents, selectedEvent, setExpandedHintIds, setHintLangBusy, setHintsDismissTick, setQrSendModalOpen, setSelectedEvent, showAlert, updateEvent } = p;
   const variant = p.variant || 'card';
   const qrPendingCount = p.qrPendingCount === undefined ? null : p.qrPendingCount;
+          // Idempotent — Modal und WizardFormShell rufen es ebenfalls; hier
+          // nötig, weil die Hinweise ohne offenes Modal auf der Seite stehen.
+          ensureDexUiStyles();
           void hintsDismissTick; // erzwingt Re-Render nach „Ausblenden"
           const dismissKey = (id: string): string => `dex_hint_dismiss_${selectedEvent.id}_${id}`;
           const isDismissed = (id: string): boolean => {
             try { return window.localStorage.getItem(dismissKey(id)) === '1'; } catch { return false; }
           };
-          const hints: Array<{ id: string; title: string; body: React.ReactNode; action?: React.ReactNode }> = [];
+          // v31.3: `level` ist die Dringlichkeit und bestimmt Farbe UND Platz in
+          // der Liste: 'danger' = etwas funktioniert nicht (kein Outlook-Termin,
+          // nicht buchbar), 'warn' = jemand kommt nicht rein oder es wird zeitlich
+          // eng, 'info' = Qualität und Kosmetik.
+          const hints: Array<{ id: string; title: string; body: React.ReactNode; action?: React.ReactNode; level: 'danger' | 'warn' | 'info' }> = [];
           // 1) Englischer Inhalt, aber Anmeldesprache nicht fest auf Englisch.
           const fieldsText = (selectedEvent.eventSpecificFields || [])
             .map(f => [f.label, f.helpText, (f.options || []).join(' ')].filter(Boolean).join(' '))
@@ -51,6 +65,7 @@ export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
           if ((selectedEvent.registrationLanguage || '') !== 'en' && looksEnglishText(contentText)) {
             hints.push({
               id: 'lang-en',
+              level: 'info',
               title: isDe ? 'Anmeldesprache auf Englisch festlegen?' : 'Fix registration language to English?',
               body: isDe
                 ? 'Beschreibung und Felder dieses Events sind offenbar auf Englisch — die Anmeldeseite folgt aber der App-Sprache des Teilnehmers. Bei deutscher App-Einstellung mischt das Formular dann Deutsch (Buttons, Hinweise, Datenschutz) und Englisch (Inhalte). Empfehlung: die Anmeldesprache fest auf Englisch stellen. (Auch im Wizard änderbar: Schritt 5 „Felder" → „Sprache des Anmeldeformulars".)'
@@ -58,9 +73,8 @@ export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
               action: (
                 <button
                   type="button"
-                  className="btn btn-primary"
+                  className="btn btn-secondary dex-ui-btn-sm"
                   disabled={hintLangBusy}
-                  style={{ fontSize: '0.78rem', padding: '6px 12px' }}
                   onClick={() => {
                     (async () => {
                       setHintLangBusy(true);
@@ -87,6 +101,7 @@ export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
           if (stripHtmlToText(selectedEvent.description || '').length < 20) {
             hints.push({
               id: 'no-desc',
+              level: 'info',
               title: isDe ? 'Beschreibung ergänzen' : 'Add a description',
               body: isDe
                 ? 'Das Event hat (fast) keine Beschreibung — Teilnehmer sehen auf der Anmeldeseite dann kaum, worum es geht. Über „Event bearbeiten" → Schritt 1 (Grundlagen) ergänzen.'
@@ -99,6 +114,7 @@ export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
           if (!selectedEvent.imageUrl && !(parentEventForSelected && parentEventForSelected.imageUrl)) {
             hints.push({
               id: 'no-image',
+              level: 'info',
               title: isDe ? 'Event-Bild hochladen' : 'Upload an event image',
               body: isDe
                 ? 'Ohne Bild wirkt die Event-Karte in der Übersicht und der Mail-Kopf deutlich weniger einladend. Über „Event bearbeiten" → Schritt 1 (Grundlagen) hochladen.'
@@ -125,6 +141,7 @@ export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
               if (redundant) {
                 hints.push({
                   id: 'contact-redundant',
+                  level: 'info',
                   title: isDe ? 'Ansprechpartner-Text kürzen' : 'Shorten the contact text',
                   body: isDe
                     ? 'Beim Ansprechpartner steht offenbar der Event-Titel, das Datum oder der Ort — die werden bereits separat auf der Anmeldeseite angezeigt. Das Feld ist nur für die Erreichbarkeit gedacht. Über „Event bearbeiten" → Schritt 1 (Grundlagen) kürzen.'
@@ -179,6 +196,9 @@ export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
             if (mainTiny || smallSubs.length > 0 || riskySubs.length > 0) {
               hints.push({
                 id: 'visibility-check',
+                // v31.3: Wer nicht in der Zielgruppe steht, kann sich nicht
+                // anmelden — das ist Zugang, nicht Kosmetik.
+                level: 'warn',
                 title: isDe ? 'Sichtbarkeit — bitte prüfen' : 'Visibility — please check',
                 body: isDe ? (
                   <>
@@ -267,6 +287,7 @@ export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
               );
               hints.push({
                 id: 'fieldtype-suggestion',
+                level: 'info',
                 title: isDe ? 'Tipps zu deinen Feldern' : 'Tips for your fields',
                 body: (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -310,6 +331,9 @@ export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
               }
               hints.push({
                 id: 'no-enddate',
+                // v31.3: Ohne Ende entsteht kein Outlook-Termin — die Teilnehmer
+                // haben den Termin nie im Kalender. Höchste Dringlichkeit.
+                level: 'danger',
                 title: isDe
                   ? 'End-Datum fehlt — Outlook-Termin kann nicht erstellt werden'
                   : 'End date missing — Outlook invite cannot be created',
@@ -329,6 +353,9 @@ export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
               const draftNames = draftKids.map(c => shortSubEventTitle(c.title, selectedEvent.title)).join(', ');
               hints.push({
                 id: 'draft-subevent-live-parent',
+                // v31.3: Das Event ist live, der Termin aber nicht buchbar —
+                // jede Anmeldung, die jetzt kommt, geht daran vorbei.
+                level: 'danger',
                 title: isDe ? 'Sub-Event noch im Entwurf — nicht buchbar' : 'Sub-event still a draft — not bookable',
                 body: isDe
                   ? <>Das Event ist live, aber diese Sub-Events stehen noch auf <strong>Entwurf</strong>: <strong>{draftNames}</strong>. Entwurf-Sub-Events sind für reguläre Teilnehmer <strong>nicht sichtbar und nicht buchbar</strong>. Wenn sie buchbar sein sollen, schalte sie über den Status-Badge oben (Entwurf ⇄ Aktiv) auf den jeweiligen Sub-Event-Tab live.</>
@@ -350,122 +377,86 @@ export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
             // über die Daten.
             const qrStillOpen = qrPendingCount === null || qrPendingCount > 0;
             if (daysUntilStart <= 5 && !isEventOver(selectedEvent) && qrStillOpen) {
-              hints.unshift({
+              // v31.3: `push` statt `unshift` — den Platz in der Liste bestimmt
+              // jetzt die Dringlichkeit (siehe `ordered` weiter unten), nicht
+              // mehr die Einfügestelle. Der Hinweis steht damit weiterhin über
+              // allen Qualitäts-Tipps, aber unter „kein Outlook-Termin" und
+              // „Termin nicht buchbar" — die kosten Anmeldungen, dieser nicht.
+              hints.push({
                 id: 'qr-send-window',
+                level: 'warn',
                 title: isDe ? 'QR-Codes versenden möglich' : 'QR codes can be sent now',
                 body: isDe ? (
                   <>
                     Das Event startet in den nächsten Tagen. Du kannst jetzt — wenn du möchtest — die persönlichen <strong>Check-in-QR-Codes</strong> an alle angemeldeten Teilnehmer verschicken. Jede Person bekommt ihren Code per E-Mail; wer sich danach noch anmeldet, erhält ihn automatisch. Am Veranstaltungstag scannst du die Codes am Eingang (oder die Teilnehmer checken sich per Self-Check-in selbst ein).
-                    <div style={{ marginTop: 8 }}>
-                      <button type="button" className="btn btn-primary" style={{ fontSize: '0.8rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => setQrSendModalOpen(true)}>
-                        <QrCode size={14} /> QR-Codes versenden
-                      </button>
-                    </div>
                   </>
                 ) : (
                   <>
                     The event starts within the next few days. You can now — if you like — send the personal <strong>check-in QR codes</strong> to all registered attendees. Each person gets their code by email; anyone registering afterwards receives it automatically. On the event day you scan the codes at the entrance (or attendees self-check-in).
-                    <div style={{ marginTop: 8 }}>
-                      <button type="button" className="btn btn-primary" style={{ fontSize: '0.8rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => setQrSendModalOpen(true)}>
-                        <QrCode size={14} /> Send QR codes
-                      </button>
-                    </div>
                   </>
+                ),
+                // v31.3: Der Knopf lag im aufgeklappten Text — jetzt steht er in
+                // der Hinweis-Zeile und ist ohne Aufklappen erreichbar.
+                action: (
+                  <button type="button" className="btn btn-primary dex-ui-btn-sm" onClick={() => setQrSendModalOpen(true)}>
+                    <QrCode size={14} /> {isDe ? 'QR-Codes versenden' : 'Send QR codes'}
+                  </button>
                 ),
               });
             }
           }
           const visible = hints.filter(h => !isDismissed(h.id));
           if (visible.length === 0) return null;
-          // v30.87: Als ZEILE unter „Aktionen" in der Event-Details-Karte
-          // (Nutzer-Ansage 07.09.2026: „als Zeile packen und nicht mehr als
-          // eigene Kachel"). Gleiche Hinweise, gleiches Auf-/Zuklappen und
-          // Ausblenden — nur ohne eigenen Kachelrahmen und Vorspann.
-          if (variant === 'row') {
-            return (
-              <div style={{ background: 'rgba(237,139,0,0.06)', border: '1px solid rgba(237,139,0,0.45)', borderRadius: 10, padding: '8px 12px', textAlign: 'left' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {visible.map(h => {
-                    const open = expandedHintIds.has(h.id);
-                    return (
-                      <div key={h.id}>
+          // v31.3: Sortierung nach Dringlichkeit (Leitfaden 5a: Datenverlust >
+          // Rechte > Kosmetik). Der Index als zweites Kriterium hält die
+          // Reihenfolge innerhalb einer Stufe stabil — `Array.sort` ist zwar in
+          // heutigen Engines stabil, verlassen will ich mich darauf nicht.
+          const rank = (lv: 'danger' | 'warn' | 'info'): number => (lv === 'danger' ? 0 : lv === 'warn' ? 1 : 2);
+          const ordered = visible
+            .map((h, i) => ({ h, i }))
+            .sort((a, b) => rank(a.h.level) - rank(b.h.level) || a.i - b.i)
+            .map(x => x.h);
+          const dangerCount = ordered.filter(h => h.level === 'danger').length;
+          // v31.3: EIN Aufbau für beide Darstellungen — vorher standen dieselben
+          // 45 Zeilen zweimal in der Datei und liefen bei jeder Änderung
+          // auseinander. Farbe und Symbol kommen aus der Dringlichkeit; der
+          // Knopf des Hinweises steht in der Kopfzeile direkt neben dem Titel
+          // (Leitfaden 2a′: Aktionen links beim Inhalt, nicht rechts außen).
+          const list = (
+            <div className="dex-ui-stack">
+              {ordered.map(h => {
+                const open = expandedHintIds.has(h.id);
+                const tone = h.level === 'danger' ? 'dex-ui-callout--danger' : h.level === 'warn' ? 'dex-ui-callout--warn' : 'dex-ui-callout--info';
+                return (
+                  <div key={h.id} className={cx('dex-ui-callout', tone)} style={{ textAlign: 'left' }}>
+                    <span className="dex-ui-callout-icon">{h.level === 'info' ? <Info size={16} /> : <AlertCircle size={16} />}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="dex-ui-inline">
+                        {/* v24.50: Überschrift = Klappschalter (Default eingeklappt). */}
                         <button
                           type="button"
+                          aria-expanded={open}
                           onClick={() => setExpandedHintIds(prev => { const n = new Set(prev); if (n.has(h.id)) n.delete(h.id); else n.add(h.id); return n; })}
-                          style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '2px 0', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+                          className={cx('dex-ui-disclosure', open && 'is-open')}
+                          style={{ width: 'auto', flex: '0 1 auto', margin: 0, padding: '2px 6px 2px 0', color: 'inherit', fontWeight: 700, fontSize: '0.85rem' }}
                         >
-                          <span style={{ color: 'var(--dex-orange, #ed8b00)', display: 'inline-flex', flexShrink: 0 }}><Info size={14} /></span>
-                          <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--dex-gray-800)', flex: 1 }}>{h.title}</span>
-                          <span style={{ color: 'var(--dex-orange, #ed8b00)', display: 'inline-flex', flexShrink: 0 }}>
-                            {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                          </span>
+                          <span className="dex-ui-disclosure-chevron"><ChevronDown size={14} /></span>
+                          {h.title}
                         </button>
-                        {open && (
-                          <div style={{ marginTop: 4, paddingLeft: 22 }}>
-                            <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>{h.body}</div>
-                            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                              {h.action}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  try { window.localStorage.setItem(dismissKey(h.id), '1'); } catch { /* */ }
-                                  setHintsDismissTick(t => t + 1);
-                                }}
-                                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--dex-gray-500)', fontSize: '0.74rem', textDecoration: 'underline' }}
-                              >
-                                {isDe ? 'Hinweis ausblenden' : 'Dismiss hint'}
-                              </button>
-                            </div>
-                          </div>
-                        )}
+                        {h.action}
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          }
-          return (
-            // v26.77: Hinweise-Box jetzt in VOLLER BREITE direkt über der
-            // Teilnehmerliste (vorher schmale rechte Spalte) — so fällt sie
-            // deutlicher auf. Text durchgängig linksbündig.
-            <div style={{ marginBottom: 24 }}>
-              <div className="card" style={{ padding: 20, background: 'rgba(237,139,0,0.06)', border: '1px solid var(--dex-orange, #ed8b00)', textAlign: 'left' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ color: 'var(--dex-orange, #ed8b00)', display: 'inline-flex' }}><Info size={18} /></span>
-                  <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--dex-orange-dark, #b35a00)' }}>{isDe ? 'Hinweise zu diesem Event' : 'Hints for this event'}</h3>
-                </div>
-                <p style={{ margin: '0 0 14px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-                  {isDe ? 'Der App sind ein paar Dinge aufgefallen, die du dir kurz anschauen solltest (zum Aufklappen auf die Überschrift tippen):' : 'The app noticed a few things worth a quick look (tap a heading to expand):'}
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {visible.map(h => {
-                    const open = expandedHintIds.has(h.id);
-                    return (
-                    <div key={h.id} style={{ borderTop: '1px solid rgba(237,139,0,0.2)', paddingTop: 10 }}>
-                      {/* v24.50: Überschrift = Klappschalter (Default eingeklappt). */}
-                      <button
-                        type="button"
-                        onClick={() => setExpandedHintIds(prev => { const n = new Set(prev); if (n.has(h.id)) n.delete(h.id); else n.add(h.id); return n; })}
-                        style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
-                      >
-                        <span style={{ color: 'var(--dex-orange, #ed8b00)', display: 'inline-flex', flexShrink: 0 }}>
-                          {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                        </span>
-                        <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--dex-gray-800)' }}>{h.title}</span>
-                      </button>
                       {open && (
-                        <div style={{ marginTop: 6, paddingLeft: 22 }}>
-                          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>{h.body}</div>
-                          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                            {h.action}
+                        <div className="dex-ui-disclosure-body" style={{ lineHeight: 1.5 }}>
+                          {h.body}
+                          <div style={{ marginTop: 8 }}>
                             <button
                               type="button"
+                              className="dex-ui-textbtn dex-ui-textbtn--muted"
                               onClick={() => {
                                 try { window.localStorage.setItem(dismissKey(h.id), '1'); } catch { /* */ }
                                 setHintsDismissTick(t => t + 1);
                               }}
-                              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--dex-gray-500)', fontSize: '0.74rem', textDecoration: 'underline' }}
+                              style={{ fontSize: '0.74rem', padding: '2px 6px', marginLeft: -6 }}
                             >
                               {isDe ? 'Hinweis ausblenden' : 'Dismiss hint'}
                             </button>
@@ -473,9 +464,40 @@ export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
                         </div>
                       )}
                     </div>
-                    );
-                  })}
+                  </div>
+                );
+              })}
+            </div>
+          );
+          // v30.87: Als ZEILE unter „Aktionen" in der Event-Details-Karte
+          // (Nutzer-Ansage 07.09.2026: „als Zeile packen und nicht mehr als
+          // eigene Kachel"). Gleiche Hinweise, gleiches Auf-/Zuklappen und
+          // Ausblenden — nur ohne eigenen Kachelrahmen und Vorspann.
+          // v31.3: Auch der orange Sammelrahmen ist weg — jeder Hinweis trägt
+          // seine eigene Farbe, ein Rahmen um alle hätte sie überstimmt.
+          if (variant === 'row') {
+            return <div style={{ textAlign: 'left' }}>{list}</div>;
+          }
+          return (
+            // v26.77: Hinweise-Box jetzt in VOLLER BREITE direkt über der
+            // Teilnehmerliste (vorher schmale rechte Spalte) — so fällt sie
+            // deutlicher auf. Text durchgängig linksbündig.
+            <div style={{ marginBottom: 24 }}>
+              <div className="dex-ui-card" style={{ textAlign: 'left' }}>
+                <div className="dex-ui-card-head" style={{ marginBottom: 4 }}>
+                  <h3 className="dex-ui-card-head-title">
+                    <span style={{ color: 'var(--dex-orange, #ed8b00)', display: 'inline-flex' }}><Info size={18} /></span>
+                    {isDe ? 'Hinweise zu diesem Event' : 'Hints for this event'}
+                  </h3>
+                  <span className="dex-ui-card-head-meta">
+                    {isDe ? `${ordered.length} offen` : `${ordered.length} open`}
+                    {dangerCount > 0 && (isDe ? ` · ${dangerCount} dringend` : ` · ${dangerCount} urgent`)}
+                  </span>
                 </div>
+                <p style={{ margin: '0 0 12px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                  {isDe ? 'Der App ist etwas aufgefallen — das Dringendste steht oben. Tippe auf eine Überschrift für die Details.' : 'The app noticed a few things — the most urgent comes first. Tap a heading for the details.'}
+                </p>
+                {list}
               </div>
             </div>
           );

@@ -40,6 +40,7 @@ import * as registrationStatus from './events/registrationStatus';
 import * as eventsListSchema from './events/eventsListSchema';
 import * as participantsRegistry from './events/participantsRegistry';
 import * as teamJoinRequests from './events/teamJoinRequests';
+import * as editPresence from './events/editPresence';
 import * as seats from './events/seats';
 import * as overbooking from './events/overbooking';
 import * as waitlist from './events/waitlist';
@@ -1324,6 +1325,21 @@ export class EventService {
     return teamJoinRequests.ensureTeamJoinRequestsList(this);
   }
 
+  // ==================== DEX_EditPresence (v31.2) ====================
+  /** v31.2: Wer bearbeitet gerade welches Event — Herzschlag-Liste für den Wizard. */
+  public async ensureEditPresenceList(): Promise<void> {
+    return editPresence.ensureEditPresenceList(this);
+  }
+  public async heartbeatEditPresence(eventId: string, email: string, name: string, knownItemId: number | null): Promise<number | null> {
+    return editPresence.heartbeatEditPresence(this, eventId, email, name, knownItemId);
+  }
+  public async readEditPresence(eventId: string, excludeEmail: string): Promise<editPresence.EditPresenceEntry[] | null> {
+    return editPresence.readEditPresence(this, eventId, excludeEmail);
+  }
+  public async clearEditPresence(itemId: number): Promise<void> {
+    return editPresence.clearEditPresence(this, itemId);
+  }
+
   // ==================== Zugriffs-Queues (AccessFix / AssistantAccess) ====================
   // v30.66 (Modularisierung Stufe 2): Implementierung in
   // services/events/accessQueues.ts — hier nur Delegations-Stubs.
@@ -1817,6 +1833,11 @@ export class EventService {
 
   public async removeAgendaCheckIn(subsiteUrl: string, itemId: number, agendaItemId: string): Promise<{ ok: boolean; status: number }> {
     return registrationStatus.removeAgendaCheckIn(this, subsiteUrl, itemId, agendaItemId);
+  }
+
+  /** v31.2: No-Show nur an einem Programmpunkt (Marke mit noShow, Status bleibt). */
+  public async markAgendaNoShow(subsiteUrl: string, itemId: number, agendaItemId: string): Promise<{ ok: boolean; status: number; at?: string }> {
+    return registrationStatus.markAgendaNoShow(this, subsiteUrl, itemId, agendaItemId);
   }
 
   public async markNoShowParticipant(

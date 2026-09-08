@@ -3,8 +3,11 @@ import { shortSubEventTitle } from '../../../utils/subEventTitle';
 import { StickyTabStrip } from '../../wizard/StickyTabStrip';
 import { InfoTooltip } from '../../InfoTooltip';
 import { SubEventDraft } from '../../wizard/wizardTypes';
-import { Send, Trash2 } from '../../Icons';
+import { AlertCircle, Check, Info, Plus, RefreshCw, Send, Trash2, Users, X } from '../../Icons';
 import { CustomFieldInput } from '../../wizard/customFieldInput';
+// v31.2: gemeinsame UI-Klassen (Callouts, Chips, Textknöpfe) — Hover kommt aus
+// dem Stylesheet, nicht mehr aus Inline-Styles ohne Hover.
+import { cx } from '../../dexUi';
 
 /* renderHeaderSizeControl — aus EventCreationPage.tsx ausgelagert (Zeilen 1318-1369 des
  * urspruenglichen Stands). Der Funktionskoerper ist zeichengleich uebernommen;
@@ -25,49 +28,72 @@ export function renderHeaderSizeControlImpl(ctx: RenderHeaderSizeControlCtx, pre
     const isDefaultPreset = headerImageLayout.width === 180 && headerImageLayout.paddingV === 30 && headerImageLayout.paddingH === 30;
     const numInput = (val: number, min: number, max: number, def: number, set: (n: number) => void): React.ReactElement => (
       <input type="number" min={min} max={max} step={min === 80 ? 10 : 2} value={val}
+        className="dex-ui-input dex-ui-input--sm"
         onChange={e => set(Math.max(min, Math.min(max, parseInt(e.target.value, 10) || def)))}
-        style={{ width: 78, height: 28, fontSize: '0.82rem', borderRadius: 4, border: '1px solid var(--dex-gray-300)', padding: '0 8px' }} />
+        // v31.2: fontSize inline, weil `.dexApp input` (0.95rem) die Klasse überstimmt.
+        style={{ width: 84, fontSize: '0.84rem' }} />
     );
-    const lbl: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.7rem', color: 'var(--dex-gray-600)' };
+    const lbl: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.74rem', fontWeight: 600, color: 'var(--dex-gray-600)' };
+    // v31.2: Reihenfolge „Voreinstellung → Feinwerte → Vorschau". Die zwei
+    // Voreinstellungen sind das, was fast jeder wählt; sie stehen deshalb
+    // zuerst und als Chips (mit Hover), die drei Zahlenfelder folgen als
+    // Feinjustierung. Grenzen stehen im Hilfetext statt nur im min/max.
     return (
-      <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200)', borderRadius: 8 }}>
-        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)', letterSpacing: 0.3, marginBottom: 8 }}>
-          {isDe ? 'BILDGRÖSSE IM KOPF — gilt für Mail & Outlook-Termin' : 'HEADER IMAGE SIZE — applies to mail & Outlook invite'}
+      <div className="dex-ui-card dex-ui-card--soft" style={{ marginTop: 12, padding: '12px 14px' }}>
+        <div className="dex-ui-section-title" style={{ marginBottom: 4 }}>
+          {isDe ? 'Bildgröße im Kopf' : 'Header image size'}
+        </div>
+        <div className="dex-ui-help" style={{ marginTop: 0, marginBottom: 10 }}>
+          {isDe ? 'Gilt für Mail und Outlook-Termin.' : 'Applies to the mail and the Outlook invite.'}
         </div>
         <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
-            <label style={lbl}>{isDe ? 'Breite (px)' : 'Width (px)'}{numInput(headerImageLayout.width, 80, 600, 180, n => setHeaderImageLayout(p => ({ ...p, width: n })))}</label>
-            <label style={lbl}>{isDe ? 'Abstand seitl.' : 'Padding sides'}{numInput(headerImageLayout.paddingH, 0, 80, 0, n => setHeaderImageLayout(p => ({ ...p, paddingH: n })))}</label>
-            <label style={lbl}>{isDe ? 'Abstand ob./unt.' : 'Padding top/bot.'}{numInput(headerImageLayout.paddingV, 0, 80, 0, n => setHeaderImageLayout(p => ({ ...p, paddingV: n })))}</label>
+          <div className="dex-ui-stack" style={{ flex: 1, minWidth: 240 }}>
             {/* v28.31: Beide Voreinstellungen zeigen jetzt an, WELCHE gerade
                 aktiv ist. Vorher war „Volle Breite" immer gruen und „Standard"
                 immer grau — auch wenn tatsaechlich 180/30/30 (= Standard) stand. */}
-            <button type="button" onClick={() => setHeaderImageLayout({ width: 600, paddingV: 0, paddingH: 0 })}
-              title={isDe ? 'Bild füllt den Kopf über die volle Breite' : 'Image fills the header full width'}
-              style={{ height: 28, padding: '0 12px', fontSize: '0.72rem', fontWeight: isFullWidthPreset ? 700 : 600, cursor: 'pointer', background: isFullWidthPreset ? 'var(--dex-green, #86bc25)' : 'transparent', color: isFullWidthPreset ? '#fff' : 'var(--dex-gray-600)', border: isFullWidthPreset ? 'none' : '1px solid var(--dex-gray-300)', borderRadius: 6 }}>
-              {isFullWidthPreset ? '✓ ' : ''}{isDe ? 'Volle Breite' : 'Full width'}
-            </button>
-            <button type="button" onClick={() => setHeaderImageLayout({ width: 180, paddingV: 30, paddingH: 30 })}
-              style={{ height: 28, padding: '0 12px', fontSize: '0.72rem', fontWeight: isDefaultPreset ? 700 : 600, cursor: 'pointer', background: isDefaultPreset ? 'var(--dex-green, #86bc25)' : 'transparent', color: isDefaultPreset ? '#fff' : 'var(--dex-gray-600)', border: isDefaultPreset ? 'none' : '1px solid var(--dex-gray-300)', borderRadius: 6 }}>
-              {isDefaultPreset ? '✓ ' : ''}{isDe ? 'Standard' : 'Default'}
-            </button>
+            <div className="dex-ui-inline">
+              <button type="button" className={cx('dex-ui-chip', isFullWidthPreset && 'is-active')}
+                onClick={() => setHeaderImageLayout({ width: 600, paddingV: 0, paddingH: 0 })}
+                title={isDe ? 'Bild füllt den Kopf über die volle Breite' : 'Image fills the header full width'}>
+                {isFullWidthPreset && <Check size={12} />}{isDe ? 'Volle Breite' : 'Full width'}
+              </button>
+              <button type="button" className={cx('dex-ui-chip', isDefaultPreset && 'is-active')}
+                onClick={() => setHeaderImageLayout({ width: 180, paddingV: 30, paddingH: 30 })}
+                title={isDe ? '180 px breit, 30 px Abstand rundum' : '180 px wide, 30 px padding all around'}>
+                {isDefaultPreset && <Check size={12} />}{isDe ? 'Standard' : 'Default'}
+              </button>
+              <span className="dex-ui-muted">{isDe ? 'oder selbst einstellen:' : 'or set your own:'}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+              <label style={lbl}>{isDe ? 'Breite (px)' : 'Width (px)'}{numInput(headerImageLayout.width, 80, 600, 180, n => setHeaderImageLayout(p => ({ ...p, width: n })))}</label>
+              <label style={lbl}>{isDe ? 'Abstand seitlich' : 'Padding sides'}{numInput(headerImageLayout.paddingH, 0, 80, 0, n => setHeaderImageLayout(p => ({ ...p, paddingH: n })))}</label>
+              <label style={lbl}>{isDe ? 'Abstand oben/unten' : 'Padding top/bottom'}{numInput(headerImageLayout.paddingV, 0, 80, 0, n => setHeaderImageLayout(p => ({ ...p, paddingV: n })))}</label>
+            </div>
+            <div className="dex-ui-help" style={{ marginTop: 0 }}>
+              {isDe ? 'Breite 80–600 px, Abstände 0–80 px.' : 'Width 80–600 px, padding 0–80 px.'}
+            </div>
           </div>
           {previewSrc && (
-            <div style={{ width: PREV_W, flexShrink: 0, border: '1px solid var(--dex-gray-200)', borderRadius: 4, overflow: 'hidden', background: '#fff' }}>
+            <div style={{ width: PREV_W, flexShrink: 0, border: '1px solid var(--dex-gray-200)', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
               <div style={{ textAlign: 'center', padding: `${Math.round(headerImageLayout.paddingV * sc)}px ${Math.round(headerImageLayout.paddingH * sc)}px` }}>
                 <img src={previewSrc} alt="" style={{ display: 'inline-block', width: '100%', maxWidth: Math.max(20, Math.round(headerImageLayout.width * sc)), height: 'auto' }} />
               </div>
               <div style={{ borderTop: '2px solid var(--dex-green, #86bc25)' }} />
-              <div style={{ fontSize: '0.6rem', color: 'var(--dex-gray-400)', textAlign: 'center', padding: '2px 0' }}>{isDe ? 'So groß im Mail-Kopf (verkleinert)' : 'Size in the mail header (scaled)'}</div>
+              <div className="dex-ui-muted" style={{ fontSize: '0.68rem', textAlign: 'center', padding: '3px 0' }}>{isDe ? 'So groß erscheint das Bild im Mail-Kopf (verkleinert).' : 'This is how large the image appears in the mail header (scaled).'}</div>
             </div>
           )}
         </div>
         {/* v28.29: sagt, WOHER das gezeigte Bild kommt (eigenes / vom Hauptevent
             geerbt / Standardlogo). Vorher zeigte die Vorschau kommentarlos das
             Event-Foto, obwohl gespeichert etwas anderes wurde. */}
+        {/* v31.2 (Nachzug): Als kompakter neutraler Hinweiskasten statt loser
+            Hilfezeile — der Satz erklärt die Herkunft des Bilds, er gehört
+            nicht zu einem Feld. Neutral, weil es keine Warnung ist: geerbt
+            oder Standardlogo ist ein gültiger Zustand. */}
         {note && (
-          <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--dex-gray-600)', lineHeight: 1.45 }}>
-            {note}
+          <div className="dex-ui-callout dex-ui-callout--neutral dex-ui-callout--sm" style={{ marginTop: 10 }}>
+            <span className="dex-ui-callout-icon"><Info size={14} /></span>
+            <div>{note}</div>
           </div>
         )}
       </div>
@@ -115,30 +141,45 @@ export function renderOutlookUpdateButtonImpl(ctx: RenderOutlookUpdateButtonCtx)
     // v28.69: nachanlegbar sind nur Sub-Events — das Hauptevent nicht, seine
     // Item-Id steht in ParentEventId aller Kinder (s. createMissingOutlookAppointments).
     const missingSubIds = missingTargets.filter(m => m.id && m.id !== (editEvent?.id || ''));
+    // v31.2: Reihenfolge „Was macht das? → Knöpfe → Ergebnis". Der Erklärtext
+    // schrumpft auf die zwei Sätze, die man vor dem Klick braucht (gespeicherter
+    // Stand, erst speichern); der Rest (eigene Termine je Sub-Event, kein
+    // Fehler-Kasten) steht im Tooltip. Kein Satz gestrichen.
+    const missingNames = missingTargets.map(m => m.title || '?').join(', ');
     return (
-      <div style={{ marginTop: 14, padding: 12, borderRadius: 8, background: 'var(--dex-gray-50, #f8f9fa)', border: '1px solid var(--dex-gray-200)' }}>
-        <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-gray-800)', marginBottom: 6 }}>
-          {isDe ? 'Outlook-Termin manuell nachschicken (optional)' : 'Re-send the Outlook appointment manually (optional)'}
+      <div className="dex-ui-card dex-ui-card--soft" style={{ marginTop: 14 }}>
+        <div className="dex-ui-label" style={{ marginBottom: 2 }}>
+          <RefreshCw size={16} />
+          {isDe ? 'Outlook-Termin neu verschicken' : 'Re-send the Outlook appointment'}
+          <span className="dex-ui-label-optional">(optional)</span>
+          <InfoTooltip
+            text={isDe
+              ? <><strong>Wichtig:</strong> {childTermPlural || 'Sub-Events'} haben eigene Termine; der erste Knopf betrifft nur &bdquo;{tabTitle}&ldquo;{showAll ? ' — für alle auf einmal den zweiten Knopf nutzen' : ''}. Der Kasten bleibt dauerhaft stehen, er ist keine Fehlermeldung.</>
+              : <><strong>Important:</strong> sub-events have their own appointments; the first button only affects &bdquo;{tabTitle}&ldquo;{showAll ? ' — use the second button for all at once' : ''}. This box is always here, it is not an error message.</>}
+          />
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="dex-ui-help" style={{ marginTop: 0, marginBottom: 10 }}>
+          {isDe
+            ? <>Nur nötig, wenn der Kalendereintrag der Teilnehmer noch veraltet ist: Der Termin geht mit dem zuletzt <strong>gespeicherten</strong> Stand neu raus — erst speichern, dann klicken.</>
+            : <>Only needed if the attendees&rsquo; calendar entry is still outdated: the appointment is re-sent with the last <strong>saved</strong> state — save first, then click.</>}
+        </div>
+        <div className="dex-ui-inline">
           <button
             type="button"
-            className="btn btn-secondary"
+            className="btn btn-secondary dex-ui-btn-sm"
             disabled={outlookUpdateBusy}
             onClick={() => { void triggerOutlookUpdateNow(); }}
-            style={{ fontSize: '0.82rem', padding: '7px 14px' }}
           >
             {outlookUpdateBusy
               ? (isDe ? 'Wird aktualisiert…' : 'Updating…')
-              : (isDe ? `Termin von „${tabTitle}" aktualisieren` : `Update appointment of „${tabTitle}"`)}
+              : (isDe ? `Termin von „${tabTitle}“ aktualisieren` : `Update appointment of „${tabTitle}“`)}
           </button>
           {showAll && (
             <button
               type="button"
-              className="btn btn-secondary"
+              className="btn btn-secondary dex-ui-btn-sm"
               disabled={outlookUpdateBusy}
               onClick={() => { void triggerOutlookUpdateAll(); }}
-              style={{ fontSize: '0.82rem', padding: '7px 14px' }}
             >
               {isDe
                 ? `Alle ${allTargets.length} Termine aktualisieren`
@@ -147,43 +188,41 @@ export function renderOutlookUpdateButtonImpl(ctx: RenderOutlookUpdateButtonCtx)
           )}
         </div>
         {missingTargets.length > 0 && (
-          <div style={{
-            marginTop: 8, padding: '8px 10px', borderRadius: 6, fontSize: '0.76rem', lineHeight: 1.5,
-            background: '#fff8e6', border: '1px solid #e0b34d', color: '#7a5a12',
-          }}>
-            {isDe
-              ? <>Für <strong>{missingTargets.length} von {totalTargets}</strong> Terminen dieses Events gibt es noch <strong>keinen</strong> Kalendereintrag — deshalb steht oben nur „{allTargets.length}“: {missingTargets.map(m => m.title || '?').join(', ')}. Häufigste Ursache: das {childTermSingular || 'Sub-Event'} wurde ohne Start-/Endzeit gespeichert, dann kann kein Termin erzeugt werden. {missingSubIds.length > 0 ? <>Der Knopf unten legt die fehlenden Termine jetzt an — Sub-Events ohne eigene Zeiten übernehmen dabei die Zeiten des Hauptevents. Anmeldungen und Teilnehmerlisten bleiben unverändert.</> : <>Für das Hauptevent selbst lässt sich das hier nicht nachholen — bitte beim Support melden.</>}</>
-              : <>There is <strong>no</strong> calendar entry yet for <strong>{missingTargets.length} of {totalTargets}</strong> appointments of this event — that is why it says „{allTargets.length}“ above: {missingTargets.map(m => m.title || '?').join(', ')}. Most common cause: the sub-event was saved without a start/end time, so no appointment can be created. {missingSubIds.length > 0 ? <>The button below creates the missing appointments now — sub-events without their own times inherit the main event&apos;s times. Registrations and attendee lists stay untouched.</> : <>This cannot be repaired here for the main event itself — please contact support.</>}</>}
-            {missingSubIds.length > 0 && (
-              <div style={{ marginTop: 8 }}>
+          <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginTop: 10 }}>
+            <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <strong>
+                {isDe
+                  ? `${missingTargets.length} von ${totalTargets} Terminen haben noch keinen Kalendereintrag`
+                  : `${missingTargets.length} of ${totalTargets} appointments have no calendar entry yet`}
+              </strong>
+              <div style={{ marginTop: 4 }}>
+                {isDe
+                  ? <>Deshalb steht oben nur &bdquo;{allTargets.length}&ldquo;: {missingNames}. Häufigste Ursache: das {childTermSingular || 'Sub-Event'} wurde ohne Start-/Endzeit gespeichert, dann kann kein Termin erzeugt werden. {missingSubIds.length > 0 ? <>Der Knopf legt die fehlenden Termine jetzt an — Sub-Events ohne eigene Zeiten übernehmen die Zeiten des Hauptevents. Anmeldungen und Teilnehmerlisten bleiben unverändert.</> : <>Für das Hauptevent selbst lässt sich das hier nicht nachholen — bitte beim Support melden.</>}</>
+                  : <>That is why it says &bdquo;{allTargets.length}&ldquo; above: {missingNames}. Most common cause: the sub-event was saved without a start/end time, so no appointment can be created. {missingSubIds.length > 0 ? <>The button creates the missing appointments now — sub-events without their own times inherit the main event&apos;s times. Registrations and attendee lists stay untouched.</> : <>This cannot be repaired here for the main event itself — please contact support.</>}</>}
+              </div>
+              {missingSubIds.length > 0 && (
                 <button
                   type="button"
-                  className="btn btn-primary"
+                  className="btn btn-primary dex-ui-btn-sm"
                   disabled={outlookUpdateBusy}
                   onClick={() => { void createMissingOutlookAppointments(); }}
-                  style={{ fontSize: '0.82rem', padding: '7px 14px' }}
+                  style={{ marginTop: 8 }}
                 >
                   {outlookUpdateBusy
                     ? (isDe ? 'Wird angelegt…' : 'Creating…')
                     : (isDe ? `${missingSubIds.length} fehlende Termine jetzt anlegen` : `Create ${missingSubIds.length} missing appointments now`)}
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
         {outlookUpdateDone && (
-          <div style={{
-            marginTop: 8, padding: '6px 10px', borderRadius: 6, fontSize: '0.76rem', fontWeight: 600,
-            background: '#f1f7e8', border: '1px solid var(--dex-green, #86bc25)', color: 'var(--dex-green-dark, #4a7c1f)',
-          }}>
-            ✓ {outlookUpdateDone}
+          <div className="dex-ui-callout dex-ui-callout--success" style={{ marginTop: 10, fontWeight: 600 }}>
+            <span className="dex-ui-callout-icon"><Check size={16} /></span>
+            <div>{outlookUpdateDone}</div>
           </div>
         )}
-        <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-600)', marginTop: 8, lineHeight: 1.5 }}>
-          {isDe
-            ? <>Nur nötig, wenn der Kalendereintrag der Teilnehmer noch veraltet ist — der Termin wird dann mit dem zuletzt <strong>gespeicherten</strong> Stand neu verschickt. Erst speichern, dann klicken. <strong>Wichtig:</strong> {childTermPlural || 'Sub-Events'} haben eigene Termine; dieser Knopf betrifft nur „{tabTitle}“{showAll ? ' — für alle auf einmal den zweiten Knopf nutzen' : ''}. Der Kasten bleibt dauerhaft stehen, er ist keine Fehlermeldung.</>
-            : <>Only needed if the attendees’ calendar entry is still outdated — the appointment is re-sent with the last <strong>saved</strong> state. Save first, then click. <strong>Important:</strong> sub-events have their own appointments; this button only affects „{tabTitle}“{showAll ? ' — use the second button for all at once' : ''}. This box is always here, it is not an error message.</>}
-        </div>
       </div>
     );
 }
@@ -214,12 +253,21 @@ export function renderShowIfConfigImpl(ctx: RenderShowIfConfigCtx, field: Custom
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         onUpdate({ showIf: undefined as any });
                       };
+                      // v31.2: Ohne Bedingung nur eine Textknopf-Zeile (kein Kasten um
+                      // einen einzelnen Link); mit Bedingung ein gestrichelter Kasten,
+                      // der sich wie ein Satz liest: „Nur anzeigen, wenn [Frage] ist [Wert]".
+                      // Werte als dex-ui-chip statt Eigenbau-Pillen — dieselbe Optik wie
+                      // überall, und endlich ein Hover.
+                      const srcSelectStyle: React.CSSProperties = { width: 'auto', minWidth: 180, maxWidth: 320, padding: '6px 32px 6px 10px', fontSize: '0.84rem' };
                       return (
-                        <div style={{ marginLeft: 32, marginTop: 10, padding: '10px 12px', background: 'rgba(21,101,192,0.04)', border: '1px dashed var(--dex-gray-300)', borderRadius: 8 }}>
+                        <div style={!field.showIf
+                          ? { marginLeft: 32, marginTop: 6 }
+                          : { marginLeft: 32, marginTop: 10, padding: '10px 14px', background: 'var(--dex-gray-50, #fafafa)', border: '1px dashed var(--dex-gray-300)', borderRadius: 12 }}>
                           {!field.showIf ? (
                             <span style={{ display: 'inline-flex', alignItems: 'center' }}>
                               <button
                                 type="button"
+                                className="dex-ui-textbtn"
                                 onClick={() => {
                                   if (candidateSources.length === 0) {
                                     showAlert(isDe
@@ -235,13 +283,8 @@ export function renderShowIfConfigImpl(ctx: RenderShowIfConfigCtx, field: Custom
                                     },
                                   });
                                 }}
-                                style={{
-                                  background: 'none', border: 'none', padding: 0,
-                                  color: 'var(--dex-green-dark, #4a7c1f)',
-                                  fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
-                                }}
                               >
-                                + {isDe ? 'Sichtbarkeitsbedingung hinzufügen' : 'Add visibility condition'}
+                                <Plus size={14} /> {isDe ? 'Nur unter einer Bedingung anzeigen' : 'Show only under a condition'}
                               </button>
                               <InfoTooltip
                                 text={isDe
@@ -250,18 +293,18 @@ export function renderShowIfConfigImpl(ctx: RenderShowIfConfigCtx, field: Custom
                               />
                             </span>
                           ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
-                                {isDe ? 'Diese Frage nur anzeigen wenn:' : 'Only show this question when:'}
+                            <div className="dex-ui-stack" style={{ gap: 8 }}>
+                              <div className="dex-ui-label" style={{ marginBottom: 0, fontSize: '0.82rem' }}>
+                                {isDe ? 'Diese Frage erscheint nur, wenn' : 'This question only appears when'}
                                 <InfoTooltip
                                   text={isDe
                                     ? 'Dieses Feld wird nur angezeigt, wenn die Antwort auf die Quell-Frage einem der gewählten Werte entspricht. Bei Mehrfachauswahl-Quellen reicht ein Treffer. Pflichtfeld-Validierung wird übersprungen, solange das Feld verborgen ist.'
                                     : 'This field is shown only when the answer to the source question matches one of the chosen values. With multi-select sources a single match is enough. Required-field validation is skipped as long as the field stays hidden.'}
                                 />
                               </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              <div className="dex-ui-inline">
                                 <select
-                                  className="form-select"
+                                  className="dex-ui-select"
                                   value={field.showIf.fieldId}
                                   onChange={e => {
                                     const newSrc = allFields.find(o => o.id === e.target.value);
@@ -273,7 +316,7 @@ export function renderShowIfConfigImpl(ctx: RenderShowIfConfigCtx, field: Custom
                                       },
                                     });
                                   }}
-                                  style={{ fontSize: '0.82rem', padding: '4px 8px', minWidth: 180, maxWidth: 320 }}
+                                  style={srcSelectStyle}
                                 >
                                   {candidateSources.map(o => (
                                     <option key={o.id} value={o.id}>
@@ -289,38 +332,29 @@ export function renderShowIfConfigImpl(ctx: RenderShowIfConfigCtx, field: Custom
                                     </option>
                                   )}
                                 </select>
-                                <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
-                                  {isDe ? '=' : '='}
+                                {/* v31.2: „ist" statt „=" — die Zeile liest sich als Satz:
+                                    „Zimmerart ist Doppelzimmer". */}
+                                <span className="dex-ui-muted" style={{ fontWeight: 600 }}>
+                                  {isDe ? 'ist' : 'is'}
                                 </span>
                                 {sourceField && sourceField.type === 'checkbox' ? (
                                   <select
-                                    className="form-select"
+                                    className="dex-ui-select"
                                     value={field.showIf.values[0] || 'true'}
                                     onChange={e => onUpdate({
                                       showIf: { fieldId: field.showIf!.fieldId, values: [e.target.value] },
                                     })}
-                                    style={{ fontSize: '0.82rem', padding: '4px 8px', minWidth: 130 }}
+                                    style={{ ...srcSelectStyle, minWidth: 130 }}
                                   >
                                     <option value="true">{isDe ? 'angehakt' : 'checked'}</option>
                                     <option value="false">{isDe ? 'nicht angehakt' : 'unchecked'}</option>
                                   </select>
                                 ) : sourceField ? (
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                  <div className="dex-ui-inline" style={{ gap: 4 }}>
                                     {(sourceField.options || []).filter(Boolean).map(opt => {
                                       const checked = field.showIf!.values.indexOf(opt) >= 0;
                                       return (
-                                        <label
-                                          key={opt}
-                                          style={{
-                                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                                            padding: '4px 10px', borderRadius: 999,
-                                            fontSize: '0.78rem', cursor: 'pointer',
-                                            border: `1px solid ${checked ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-                                            background: checked ? 'rgba(134,188,37,0.10)' : '#fff',
-                                            color: checked ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)',
-                                            fontWeight: 600,
-                                          }}
-                                        >
+                                        <label key={opt} className={cx('dex-ui-chip', checked && 'is-active')}>
                                           <input
                                             type="checkbox"
                                             checked={checked}
@@ -334,7 +368,7 @@ export function renderShowIfConfigImpl(ctx: RenderShowIfConfigCtx, field: Custom
                                             }}
                                             style={{ display: 'none' }}
                                           />
-                                          {checked ? '✓' : '○'} {opt}
+                                          {checked && <Check size={12} />}{opt}
                                         </label>
                                       );
                                     })}
@@ -342,15 +376,12 @@ export function renderShowIfConfigImpl(ctx: RenderShowIfConfigCtx, field: Custom
                                 ) : null}
                                 <button
                                   type="button"
+                                  className="dex-ui-textbtn dex-ui-textbtn--danger"
                                   onClick={removeShowIf}
                                   title={isDe ? 'Bedingung entfernen' : 'Remove condition'}
-                                  style={{
-                                    background: 'none', border: 'none', cursor: 'pointer',
-                                    color: 'var(--dex-red, #c00)', fontSize: '0.8rem',
-                                    padding: '4px 6px', marginLeft: 'auto',
-                                  }}
+                                  style={{ marginLeft: 'auto' }}
                                 >
-                                  ✕ {isDe ? 'entfernen' : 'remove'}
+                                  <X size={14} /> {isDe ? 'Bedingung entfernen' : 'Remove condition'}
                                 </button>
                               </div>
                             </div>
@@ -419,26 +450,26 @@ export function renderGlobalScopeBarImpl(ctx: RenderGlobalScopeBarCtx): React.Re
           )
         ) : (
           <>
-            <div style={{
-              fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.03em',
-              textTransform: 'uppercase', color: 'var(--dex-gray-500)', marginBottom: 6,
-            }}>
-              {isDe ? 'Welches (Sub-)Event bearbeitest du gerade?' : 'Which (sub-)event are you editing?'}
+            {/* v31.2: Die Frage über dem Kasten passt zur Antwort darunter.
+                Vorher fragte die Zeile „Welches (Sub-)Event bearbeitest du?",
+                und der Kasten antwortete „hier gibt es keine Auswahl" — zwei
+                Aussagen, die sich widersprechen. */}
+            <div className="dex-ui-section-title" style={{ marginBottom: 6 }}>
+              {isDe ? 'Für welches (Sub-)Event gilt dieser Schritt?' : 'Which (sub-)event does this step apply to?'}
             </div>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-              padding: '9px 14px', borderRadius: 10,
-              background: '#fff', border: '1px dashed var(--dex-gray-300)',
-              fontSize: '0.84rem', color: 'var(--dex-gray-700)',
-            }}>
-              <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                {isDe ? 'Dieser Schritt gilt für das gesamte Event' : 'This step applies to the entire event'}
-              </strong>
-              <span style={{ color: 'var(--dex-gray-600)' }}>
+            <div className="dex-ui-callout dex-ui-callout--neutral">
+              <span className="dex-ui-callout-icon"><Info size={16} /></span>
+              <div>
+                {/* v31.2 (Nachzug): Der Kasten antwortet als ganzer Satz auf die
+                    Frage darüber — „Dieser Schritt gilt für das gesamte Event",
+                    nicht das Stichwort „Für das gesamte Event". */}
+                <strong style={{ color: 'var(--dex-gray-800)' }}>
+                  {isDe ? 'Dieser Schritt gilt für das gesamte Event' : 'This step applies to the entire event'}
+                </strong>
                 {isDe
-                  ? `— ${subEventsOnlyMode ? 'Klammer' : 'Haupt-Event'} und alle ${named.length} ${named.length === 1 ? (childTermSingular || 'Sub-Event') : (childTermPlural || 'Sub-Events')} gemeinsam. Eine Auswahl gibt es hier nicht.`
-                  : `— ${subEventsOnlyMode ? 'bracket' : 'main event'} and all ${named.length} sub-events together. There is nothing to pick here.`}
-              </span>
+                  ? ` — ${subEventsOnlyMode ? 'Klammer' : 'Haupt-Event'} und alle ${named.length} ${named.length === 1 ? (childTermSingular || 'Sub-Event') : (childTermPlural || 'Sub-Events')} gemeinsam. Eine Auswahl gibt es hier nicht.`
+                  : ` — ${subEventsOnlyMode ? 'bracket' : 'main event'} and all ${named.length} sub-events together. There is nothing to pick here.`}
+              </div>
             </div>
           </>
         )}
@@ -486,21 +517,20 @@ export function renderVisibilitySummaryBoxImpl(ctx: RenderVisibilitySummaryBoxCt
         : '';
       text = (isDe ? 'Das Event sehen nur ' : 'Only ') + parts.join(joiner) + (isDe ? '.' : ' can see this event.');
     }
+    // v31.2: Info-Callout statt grüner Fläche — der Kasten fasst zusammen, er
+    // bestätigt nichts. Grün bleibt der aktiven Auswahl darüber vorbehalten.
     return (
-      <div style={{
-        marginTop: 10, padding: '8px 12px', borderRadius: 8,
-        background: 'rgba(134,188,37,0.07)', border: '1px solid var(--dex-green, #86bc25)',
-        fontSize: '0.78rem', color: 'var(--dex-gray-700)', lineHeight: 1.5,
-      }}>
-        <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>
-          {isDe ? 'Aktuell eingestellt: ' : 'Currently configured: '}
-        </strong>
-        {text}
-        {excludedCount > 0 && (
-          <> {isDe
-            ? `${excludedCount} Person${excludedCount === 1 ? ' ist' : 'en sind'} ausgeschlossen.`
-            : `${excludedCount} ${excludedCount === 1 ? 'person is' : 'people are'} excluded.`}</>
-        )}
+      <div className="dex-ui-callout dex-ui-callout--info" style={{ marginTop: 10 }}>
+        <span className="dex-ui-callout-icon"><Users size={16} /></span>
+        <div>
+          <strong>{isDe ? 'So ist es eingestellt: ' : 'Current setting: '}</strong>
+          {text}
+          {excludedCount > 0 && (
+            <> {isDe
+              ? `${excludedCount} Person${excludedCount === 1 ? ' ist' : 'en sind'} ausgeschlossen.`
+              : `${excludedCount} ${excludedCount === 1 ? 'person is' : 'people are'} excluded.`}</>
+          )}
+        </div>
       </div>
     );
 }
@@ -529,32 +559,35 @@ export function renderKlammerVisibilityMismatchImpl(ctx: RenderKlammerVisibility
     const parentOpen = parentLocs.length === 0 && parentAuds.length === 0;
     const childLocSets = subEvents.map(s => split(s.locationFilter || ''));
 
+    // v31.2: Beide Fälle als Warn-Callout (Titel als Aussage, eine Zeile Folge,
+    // der Fix-Knopf direkt darunter). Der Knopf ist `btn-outline`, nicht
+    // `btn-primary` — der einzige Primär-Knopf des Schritts bleibt „Weiter".
+    const warnBox = (titleTxt: string, body: React.ReactNode, btnLabel: string, onFix: () => void): React.ReactElement => (
+      <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginTop: 10 }}>
+        <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <strong>{titleTxt}</strong>
+          <div style={{ marginTop: 4 }}>{body}</div>
+          <button type="button" className="btn btn-outline dex-ui-btn-sm" style={{ marginTop: 8 }} onClick={onFix}>
+            {btnLabel}
+          </button>
+        </div>
+      </div>
+    );
+
     // (a) Klammer offen, aber JEDES Sub-Event schränkt ein.
     if (parentOpen && childLocSets.every(l => l.length > 0)) {
       const union = Array.from(new Set(childLocSets.reduce((a, b) => a.concat(b), [])));
-      return (
-        <div style={{
-          marginTop: 10, padding: '10px 12px', borderRadius: 8,
-          background: '#fff8e6', border: '1px solid #e0b34d', color: '#7a5a12',
-          fontSize: '0.78rem', lineHeight: 1.55,
-        }}>
-          <strong>{isDe ? 'Die Klammer lässt mehr zu als ihre Sub-Events' : 'The bracket is broader than its sub-events'}</strong>
-          <div style={{ marginTop: 4 }}>
-            {isDe
-              ? <>Hier ist <strong>kein Standort</strong> gesetzt, das Event ist also für alle sichtbar — aber <strong>alle {subEvents.length} Sub-Events</strong> sind auf {union.length === 1 ? <>den Standort <strong>{union[0]}</strong></> : <>die Standorte <strong>{union.join(', ')}</strong></>} beschränkt. Wer nicht dazugehört, sieht das Event in der Übersicht, findet darin aber <strong>nichts, wofür er sich anmelden kann</strong>.</>
-              : <>No location is set here, so the event is visible to everyone — but <strong>all {subEvents.length} sub-events</strong> are restricted to {union.join(', ')}. People outside see the event but find nothing they can register for.</>}
-          </div>
-          <button
-            type="button"
-            className="btn btn-primary"
-            style={{ fontSize: '0.78rem', padding: '5px 12px', marginTop: 8 }}
-            onClick={() => setLocationFilter(union.join(', '))}
-          >
-            {isDe
-              ? `Klammer ebenfalls auf ${union.join(', ')} setzen`
-              : `Restrict the bracket to ${union.join(', ')} as well`}
-          </button>
-        </div>
+      const unionTxt = union.length === 1
+        ? <>{isDe ? 'den Standort' : 'the location'} <strong>{union[0]}</strong></>
+        : <>{isDe ? 'die Standorte' : 'the locations'} <strong>{union.join(', ')}</strong></>;
+      return warnBox(
+        isDe ? 'Die Klammer lässt mehr zu als ihre Sub-Events' : 'The bracket is broader than its sub-events',
+        isDe
+          ? <>Hier ist <strong>kein Standort</strong> gesetzt, das Event sehen also alle — aber <strong>alle {subEvents.length} Sub-Events</strong> sind auf {unionTxt} beschränkt. Wer nicht dazugehört, sieht das Event, findet darin aber <strong>nichts zum Anmelden</strong>.</>
+          : <>No location is set here, so everyone sees the event — but <strong>all {subEvents.length} sub-events</strong> are restricted to {unionTxt}. People outside see the event but find <strong>nothing to register for</strong>.</>,
+        isDe ? `Klammer ebenfalls auf ${union.join(', ')} setzen` : `Restrict the bracket to ${union.join(', ')} as well`,
+        () => setLocationFilter(union.join(', ')),
       );
     }
 
@@ -567,29 +600,16 @@ export function renderKlammerVisibilityMismatchImpl(ctx: RenderKlammerVisibility
         .filter(x => x.extra.length > 0);
       if (offenders.length > 0) {
         const extras = Array.from(new Set(offenders.reduce<string[]>((a, b) => a.concat(b.extra), [])));
-        return (
-          <div style={{
-            marginTop: 10, padding: '10px 12px', borderRadius: 8,
-            background: '#fff8e6', border: '1px solid #e0b34d', color: '#7a5a12',
-            fontSize: '0.78rem', lineHeight: 1.55,
-          }}>
-            <strong>{isDe ? 'Einstellungen in Sub-Events, die nicht greifen können' : 'Sub-event settings that cannot take effect'}</strong>
-            <div style={{ marginTop: 4 }}>
-              {isDe
-                ? <>{offenders.length === 1 ? 'Ein Sub-Event lässt' : `${offenders.length} Sub-Events lassen`} {extras.length === 1 ? <>den Standort <strong>{extras[0]}</strong></> : <>die Standorte <strong>{extras.join(', ')}</strong></>} zu — die Klammer aber nicht. Der Zugang läuft immer über die Klammer, deshalb bleiben diese Personen <strong>trotzdem draußen</strong>. Entweder hier ergänzen oder im Sub-Event entfernen.</>
-                : <>{offenders.length} sub-event(s) allow {extras.join(', ')}, but the bracket does not. Access always goes through the bracket, so those people stay out anyway.</>}
-            </div>
-            <button
-              type="button"
-              className="btn btn-primary"
-              style={{ fontSize: '0.78rem', padding: '5px 12px', marginTop: 8 }}
-              onClick={() => setLocationFilter(Array.from(new Set(parentLocs.concat(extras))).join(', '))}
-            >
-              {isDe
-                ? `${extras.join(', ')} hier ergänzen`
-                : `Add ${extras.join(', ')} here`}
-            </button>
-          </div>
+        const extrasTxt = extras.length === 1
+          ? <>{isDe ? 'den Standort' : 'the location'} <strong>{extras[0]}</strong></>
+          : <>{isDe ? 'die Standorte' : 'the locations'} <strong>{extras.join(', ')}</strong></>;
+        return warnBox(
+          isDe ? 'Ein Sub-Event lässt Standorte zu, die die Klammer sperrt' : 'A sub-event allows locations the bracket blocks',
+          isDe
+            ? <>{offenders.length === 1 ? 'Ein Sub-Event lässt' : `${offenders.length} Sub-Events lassen`} {extrasTxt} zu — die Klammer nicht. Der Zugang läuft immer über die Klammer, diese Personen bleiben also <strong>trotzdem draußen</strong>. Entweder hier ergänzen oder im Sub-Event entfernen.</>
+            : <>{offenders.length === 1 ? 'One sub-event allows' : `${offenders.length} sub-events allow`} {extrasTxt} — the bracket does not. Access always goes through the bracket, so those people <strong>stay out anyway</strong>. Either add them here or remove them in the sub-event.</>,
+          isDe ? `${extras.join(', ')} hier ergänzen` : `Add ${extras.join(', ')} here`,
+          () => setLocationFilter(Array.from(new Set(parentLocs.concat(extras))).join(', ')),
         );
       }
     }
@@ -679,8 +699,13 @@ export function renderPreviewSectionImpl(ctx: RenderPreviewSectionCtx, sectionId
           </div>
         );
       case 'actions':
+        // v31.2: Die Vorschau zeigt die Knopfzeile so, wie die Anmeldeseite sie
+        // wirklich rendert (`registration-actions`: zentriert, gap 16, mobil
+        // gestapelt). Vorher hingen die beiden Knöpfe rechts außen — ein Layout,
+        // das es auf der echten Seite nicht gibt und das die Vorschau falsch
+        // vorwegnahm.
         return (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 16 }}>
+          <div className="registration-actions">
             <button className="btn btn-danger" disabled style={{ opacity: 0.5 }}><Trash2 size={16} /> Delete</button>
             <button className="btn btn-primary" disabled style={{ opacity: 0.5 }}><Send size={16} /> Register</button>
           </div>
@@ -740,33 +765,32 @@ export function renderPerEventTabStripImpl(ctx: RenderPerEventTabStripCtx, activ
     const activeLabel = (tabs[activeIdx] || tabs[0]).label;
     const mainWord = subEventsOnlyMode ? (isDe ? 'Klammer' : 'bracket') : (isDe ? 'Haupt-Event' : 'main event');
     const otherSubs = activeIsMain ? subCount : subCount - 1;
+    // v31.2: Zwei Sätze statt vier — erst „was du bearbeitest", dann „wo der
+    // Rest ist". Der Klammer-Satz („niemand meldet sich zur Klammer an") bleibt,
+    // weil er die häufigste Rückfrage vorwegnimmt. Kein Inhalt gestrichen.
     const scopeText = ((): React.ReactNode => {
       if (activeIsMain) {
         if (isDe) {
           return (
-            <>Du bearbeitest gerade {subEventsOnlyMode ? <>die <strong>Klammer</strong></> : <>das <strong>Haupt-Event</strong></>} „{activeLabel}“.{' '}
-              {subEventsOnlyMode
-                ? <>Zur Klammer meldet sich niemand direkt an — Teilnehmer wählen eines der Sub-Events. </>
-                : null}
-              Die Einstellungen auf dieser Seite gelten <strong>ausschließlich für {subEventsOnlyMode ? 'die Klammer' : 'das Haupt-Event'}</strong>. {otherSubs === 1 ? 'Das andere Sub-Event stellst du' : `Die ${otherSubs} Sub-Events stellst du`} oben über {otherSubs === 1 ? 'seinen Reiter' : 'ihre Reiter'} <strong>separat</strong> ein.</>
+            <>Du bearbeitest {subEventsOnlyMode ? <>die <strong>Klammer</strong></> : <>das <strong>Haupt-Event</strong></>} &bdquo;{activeLabel}&ldquo;{subEventsOnlyMode ? <> — zur Klammer meldet sich niemand direkt an, Teilnehmer wählen eines der Sub-Events</> : null}.{' '}
+              Alles auf dieser Seite gilt <strong>nur dafür</strong>; {otherSubs === 1 ? 'das andere Sub-Event' : `die ${otherSubs} Sub-Events`} stellst du oben über {otherSubs === 1 ? 'seinen Reiter' : 'ihre Reiter'} <strong>separat</strong> ein.</>
           );
         }
         return (
-          <>You are editing the <strong>{subEventsOnlyMode ? 'bracket' : 'main event'}</strong> „{activeLabel}“.{' '}
-            {subEventsOnlyMode ? <>Nobody registers for the bracket itself — attendees pick one of the sub-events. </> : null}
-            These settings apply <strong>only to it</strong>. The {otherSubs === 1 ? 'other sub-event' : `${otherSubs} sub-events`} are configured <strong>separately</strong> via {otherSubs === 1 ? 'its tab' : 'their tabs'} above.</>
+          <>You are editing the <strong>{subEventsOnlyMode ? 'bracket' : 'main event'}</strong> &bdquo;{activeLabel}&ldquo;{subEventsOnlyMode ? <> — nobody registers for the bracket itself, attendees pick one of the sub-events</> : null}.{' '}
+            Everything on this page applies <strong>only to it</strong>; the {otherSubs === 1 ? 'other sub-event is' : `${otherSubs} sub-events are`} configured <strong>separately</strong> via {otherSubs === 1 ? 'its tab' : 'their tabs'} above.</>
         );
       }
       if (isDe) {
         return (
-          <>Du bearbeitest gerade das <strong>Sub-Event</strong> „{activeLabel}“. Die Einstellungen auf dieser Seite gelten <strong>ausschließlich für dieses Sub-Event</strong>
+          <>Du bearbeitest das <strong>Sub-Event</strong> &bdquo;{activeLabel}&ldquo;. Alles auf dieser Seite gilt <strong>nur dafür</strong>
             {otherSubs > 0
               ? <> — {mainWord === 'Klammer' ? 'die Klammer' : 'das Haupt-Event'} und {otherSubs === 1 ? 'das weitere Sub-Event' : `die ${otherSubs} weiteren Sub-Events`} stellst du oben über die Reiter separat ein.</>
               : <> — {mainWord === 'Klammer' ? 'die Klammer' : 'das Haupt-Event'} stellst du oben über den Reiter separat ein.</>}</>
         );
       }
       return (
-        <>You are editing the <strong>sub-event</strong> „{activeLabel}“. These settings apply <strong>only to it</strong>
+        <>You are editing the <strong>sub-event</strong> &bdquo;{activeLabel}&ldquo;. Everything on this page applies <strong>only to it</strong>
           {otherSubs > 0
             ? <> — the {subEventsOnlyMode ? 'bracket' : 'main event'} and the {otherSubs === 1 ? 'other sub-event' : `${otherSubs} other sub-events`} are configured separately via the tabs above.</>
             : <> — the {subEventsOnlyMode ? 'bracket' : 'main event'} is configured separately via its tab above.</>}</>
@@ -776,10 +800,7 @@ export function renderPerEventTabStripImpl(ctx: RenderPerEventTabStripCtx, activ
     // Modul-Komponente StickyTabStrip (Hooks pro Instanz).
     return (
       <>
-        <div style={{
-          fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.03em',
-          textTransform: 'uppercase', color: 'var(--dex-gray-500)', marginBottom: 6,
-        }}>
+        <div className="dex-ui-section-title" style={{ marginBottom: 6 }}>
           {isDe ? 'Welches (Sub-)Event bearbeitest du gerade?' : 'Which (sub-)event are you editing?'}
         </div>
         <StickyTabStrip
@@ -838,14 +859,11 @@ export function renderPerEventTabStripImpl(ctx: RenderPerEventTabStripCtx, activ
             />
           }
         />
-        <div style={{
-          margin: '-6px 0 16px', padding: '10px 12px', borderRadius: 8,
-          background: 'var(--dex-gray-50, #f8f9fa)',
-          border: '1px solid var(--dex-gray-200)',
-          borderLeft: '4px solid var(--dex-green, #86bc25)',
-          fontSize: '0.82rem', lineHeight: 1.55, color: 'var(--dex-gray-700)',
-        }}>
-          {scopeText}
+        {/* v31.2: neutraler Hinweiskasten statt grüner Kante — Grün bleibt dem
+            aktiven Reiter darüber vorbehalten, der Text ist Orientierung. */}
+        <div className="dex-ui-callout dex-ui-callout--neutral" style={{ margin: '-6px 0 16px' }}>
+          <span className="dex-ui-callout-icon"><Info size={16} /></span>
+          <div>{scopeText}</div>
         </div>
       </>
     );

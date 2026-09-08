@@ -3,6 +3,9 @@ import * as React from 'react';
 import Modal from './Modal';
 import { SPRegistration } from '../services/EventService';
 import { DexHotel } from '../types';
+// v31.3: Klassen statt Inline-Styles — nur so gibt es Hover (docs/ui-leitfaden.md).
+import { cx } from './dexUi';
+import { AlertCircle, FileText } from './Icons';
 
 /**
  * HotelImportModal (v28.49)
@@ -16,6 +19,10 @@ import { DexHotel } from '../types';
  * Datumsformate und unbekannte Hotelnamen fallen sonst erst hinterher auf.
  * Deshalb zeigt die Vorschau je Zeile, was passieren wird, und was nicht
  * zugeordnet werden konnte.
+ *
+ * v31.3: Der Ablauf ist jetzt auch sichtbar dreistufig — „Liste einlesen",
+ * „Spalten prüfen", „Vorschau"; Übernehmen ist der einzige Primär-Knopf und
+ * sitzt in der Modal-Fußzeile. Erkennung und Zuordnung sind unverändert.
  *
  * Erkannt wird:
  *  - **Spalten** über die Kopfzeile (deutsche und englische Schreibweisen)
@@ -88,6 +95,13 @@ const nights = (from: string, to: string): number => {
   const b = Date.parse(`${to}T00:00:00Z`);
   if (isNaN(a) || isNaN(b) || b <= a) return 0;
   return Math.round((b - a) / 86400000);
+};
+
+/** v31.3: Initialen für die Personen-Zelle — Import-Zeilen haben kein Foto. */
+const initialsOf = (v: string): string => {
+  const parts = (v || '').split(/[\s@._-]+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  return (parts[0][0] + (parts.length > 1 ? parts[1][0] : '')).toUpperCase();
 };
 
 /** Kopfzeilen-Muster je Zielspalte, deutsch + englisch. */
@@ -262,10 +276,6 @@ export const HotelImportModal: React.FC<IHotelImportModalProps> = (props: IHotel
   }, [okRows, hotelByNorm]);
   const noDates = okRows.filter(r => !r.from || !r.to).length;
 
-  const inp: React.CSSProperties = {
-    height: 30, fontSize: '0.8rem', padding: '0 8px',
-    border: '1px solid var(--dex-gray-300)', borderRadius: 6,
-  };
   const colOptions = React.useMemo(() => {
     const n = grid.length > 0 ? Math.max(...grid.map(r => r.length)) : 0;
     return Array.from({ length: n }, (_, i) => i);
@@ -275,153 +285,34 @@ export const HotelImportModal: React.FC<IHotelImportModalProps> = (props: IHotel
     return head ? `${i + 1}: ${head}` : `${isDe ? 'Spalte' : 'Column'} ${i + 1}`;
   };
 
+  // v31.3: Die Frage statt des Feldnamens — der Organizer beantwortet hier,
+  // welche Spalte seiner Liste wohin gehört. `req` markiert die beiden Spalten,
+  // ohne die keine Zeile übernommen wird (die Prüfung bleibt in `rows`).
+  const colFields: Array<{ k: 'email' | 'hotel' | 'from' | 'to'; l: string; req: boolean }> = [
+    { k: 'email', l: isDe ? 'Wo steht die E-Mail?' : 'Where is the email?', req: true },
+    { k: 'hotel', l: isDe ? 'Wo steht das Hotel?' : 'Where is the hotel?', req: true },
+    { k: 'from', l: isDe ? 'Wo steht die Anreise?' : 'Where is the arrival?', req: false },
+    { k: 'to', l: isDe ? 'Wo steht die Abreise?' : 'Where is the departure?', req: false },
+  ];
+
   return (
-    <Modal open={open} onClose={onClose} dismissable={!busy} ariaLabel={isDe ? 'Hotelliste importieren' : 'Import hotel list'}>
-      <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--dex-gray-800)' }}>
-        {isDe ? 'Hotelliste importieren' : 'Import hotel list'}
-      </h2>
-      <p style={{ margin: '4px 0 0', fontSize: '0.84rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-        {isDe
-          ? 'Lade deine bestehende Liste hoch (Excel oder CSV) oder kopiere sie direkt aus Excel hier hinein. Die App erkennt die Spalten, ordnet die Personen über die E-Mail-Adresse zu und legt fehlende Hotels an. Nichts wird geschrieben, bevor du die Vorschau bestätigst.'
-          : 'Upload your existing list (Excel or CSV) or paste it straight from Excel. The app detects the columns, matches people by email address and creates missing hotels. Nothing is written before you confirm the preview.'}
-      </p>
-
-      {/* ---- Quelle ---- */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginTop: 14 }}>
-        <label style={{
-          display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 14px',
-          border: '2px dashed var(--dex-gray-300)', borderRadius: 8, cursor: busy ? 'wait' : 'pointer',
-          fontSize: '0.84rem', color: 'var(--dex-gray-700)',
-        }}>
-          {isDe ? '+ Datei wählen (.xlsx / .csv)' : '+ Choose file (.xlsx / .csv)'}
-          <input type="file" accept=".xlsx,.xlsm,.xls,.csv,.txt" style={{ display: 'none' }} disabled={busy}
-            onChange={e => { const f = e.target.files && e.target.files[0]; if (f) void onFile(f); e.target.value = ''; }} />
-        </label>
-        {fileName && <span style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>{fileName}</span>}
-      </div>
-
-      <textarea
-        value={raw}
-        disabled={busy}
-        onChange={e => { setRaw(e.target.value); setFileName(''); parseText(e.target.value); }}
-        placeholder={isDe
-          ? '… oder hier aus Excel einfügen (mit Kopfzeile, z.B.: E-Mail | Hotel | Anreise | Abreise)'
-          : '… or paste from Excel here (with a header row, e.g.: Email | Hotel | Arrival | Departure)'}
-        rows={4}
-        style={{ width: '100%', marginTop: 10, fontSize: '0.8rem', padding: 8, border: '1px solid var(--dex-gray-300)', borderRadius: 6, fontFamily: 'monospace' }}
-      />
-
-      {parseError && (
-        <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 6, background: '#fef3f2', border: '1px solid var(--dex-red, #c00)', color: '#7a1f1c', fontSize: '0.8rem' }}>
-          {parseError}
-        </div>
-      )}
-
-      {/* ---- Spalten-Zuordnung ---- */}
-      {grid.length > 0 && (
-        <div style={{ marginTop: 14, padding: 12, borderRadius: 8, background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200)' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 700, marginBottom: 8, color: 'var(--dex-gray-700)' }}>
-            {isDe ? 'Erkannte Spalten — bei Bedarf korrigieren' : 'Detected columns — correct if needed'}
-          </div>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', marginBottom: 8, cursor: 'pointer' }}>
-            <input type="checkbox" checked={hasHeader} onChange={e => setHasHeader(e.target.checked)} />
-            {isDe ? 'Erste Zeile ist eine Kopfzeile' : 'First row is a header'}
-          </label>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            {([
-              { k: 'email' as const, l: isDe ? 'E-Mail *' : 'Email *' },
-              { k: 'hotel' as const, l: 'Hotel *' },
-              { k: 'from' as const, l: isDe ? 'Anreise' : 'Arrival' },
-              { k: 'to' as const, l: isDe ? 'Abreise' : 'Departure' },
-            ]).map(c => (
-              <label key={c.k} style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.74rem', color: 'var(--dex-gray-600)' }}>
-                {c.l}
-                <select style={inp} value={map[c.k]} disabled={busy}
-                  onChange={e => setMap(m => ({ ...m, [c.k]: parseInt(e.target.value, 10) }))}>
-                  <option value={-1}>{isDe ? '— nicht vorhanden —' : '— not present —'}</option>
-                  {colOptions.map(i => <option key={i} value={i}>{colLabel(i)}</option>)}
-                </select>
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ---- Vorschau ---- */}
-      {grid.length > 0 && (
-        <div style={{ marginTop: 14 }}>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
-            <span style={{ padding: '6px 12px', borderRadius: 8, background: 'rgba(134,188,37,0.12)', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.8rem', fontWeight: 700 }}>
-              {okRows.length} {isDe ? 'werden übernommen' : 'will be applied'}
-            </span>
-            {badRows.length > 0 && (
-              <span style={{ padding: '6px 12px', borderRadius: 8, background: '#fff6e5', color: '#b35a00', fontSize: '0.8rem', fontWeight: 700 }}>
-                {badRows.length} {isDe ? 'übersprungen' : 'skipped'}
-              </span>
-            )}
-            {newHotels.length > 0 && (
-              <span style={{ padding: '6px 12px', borderRadius: 8, background: 'var(--dex-gray-100)', fontSize: '0.8rem' }}>
-                {isDe ? 'neu angelegt: ' : 'newly created: '}<strong>{newHotels.join(', ')}</strong>
-              </span>
-            )}
-            {noDates > 0 && (
-              <span style={{ padding: '6px 12px', borderRadius: 8, background: 'var(--dex-gray-100)', fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
-                {isDe ? `${noDates} ohne Zeitraum — Hotel wird gesetzt, Datum bleibt leer` : `${noDates} without dates — hotel set, dates left empty`}
-              </span>
-            )}
-          </div>
-
-          <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 8 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
-              <thead>
-                <tr style={{ textAlign: 'left', color: 'var(--dex-gray-600)', background: 'var(--dex-gray-50, #f7f7f5)' }}>
-                  <th style={{ padding: '5px 8px' }}>{isDe ? 'Person' : 'Person'}</th>
-                  <th style={{ padding: '5px 8px' }}>Hotel</th>
-                  <th style={{ padding: '5px 8px' }}>{isDe ? 'Zeitraum' : 'Stay'}</th>
-                  <th style={{ padding: '5px 8px' }}>{isDe ? 'Status' : 'Status'}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.slice(0, 300).map((r, i) => (
-                  <tr key={i} style={{ borderTop: '1px solid var(--dex-gray-100)', background: r.problem ? '#fffaf2' : undefined }}>
-                    <td style={{ padding: '5px 8px' }}>
-                      {r.reg ? (r.reg.ParticipantName || r.reg.ParticipantEmail) : (r.email || '—')}
-                    </td>
-                    <td style={{ padding: '5px 8px' }}>{r.hotel || '—'}</td>
-                    <td style={{ padding: '5px 8px', whiteSpace: 'nowrap' }}>
-                      {r.from && r.to ? `${r.from} – ${r.to} · ${nights(r.from, r.to)} ${isDe ? 'N.' : 'n.'}` : '—'}
-                    </td>
-                    <td style={{ padding: '5px 8px', color: r.problem ? '#b35a00' : 'var(--dex-green-dark, #4a7c1f)' }}>
-                      {r.problem || (isDe ? 'wird übernommen' : 'will be applied')}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {rows.length > 300 && (
-            <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 6 }}>
-              {isDe ? `Vorschau zeigt die ersten 300 von ${rows.length} Zeilen — übernommen werden alle.` : `Preview shows the first 300 of ${rows.length} rows — all of them are applied.`}
-            </div>
-          )}
-        </div>
-      )}
-
-      {progress && (
-        <div style={{ marginTop: 12 }}>
-          <div style={{ height: 8, background: 'var(--dex-gray-100)', borderRadius: 999, overflow: 'hidden' }}>
-            <div style={{
-              height: '100%', transition: 'width 0.2s', background: 'var(--dex-green, #86bc25)',
-              width: `${progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0}%`,
-            }} />
-          </div>
-          <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-600)', marginTop: 4 }}>
-            {progress.done}/{progress.total} {isDe ? 'übernommen …' : 'applied …'}
-          </div>
-        </div>
-      )}
-
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+    <Modal
+      open={open} onClose={onClose} dismissable={!busy} maxWidth={720}
+      ariaLabel={isDe ? 'Hotelliste importieren' : 'Import hotel list'}
+      title={isDe ? 'Hotelliste importieren' : 'Import hotel list'}
+      subtitle={isDe
+        ? 'Wir lesen deine Liste, ordnen die Personen über die E-Mail-Adresse zu und zeigen dir Zeile für Zeile, was passiert. Geschrieben wird nichts, bevor du unten bestätigst.'
+        : 'We read your list, match people by email address and show you row by row what will happen. Nothing is written before you confirm below.'}
+      icon={<FileText size={20} />}
+      // v31.3: Übernehmen ist der einzige Primär-Knopf und steht in der
+      // Modal-Fußzeile — vorher stand die Knopfzeile frei im Inhalt und der
+      // Grund für einen gesperrten Knopf stand nirgends.
+      footer={<>
+        {grid.length > 0 && okRows.length === 0 && (
+          <span className="dex-ui-modal-foot-left dex-ui-muted">
+            {isDe ? 'Noch ist keine Zeile übernehmbar — prüfe die Spalten oben.' : 'No row can be applied yet — check the columns above.'}
+          </span>
+        )}
         <button type="button" className="btn btn-secondary" onClick={onClose} disabled={busy}>
           {isDe ? 'Abbrechen' : 'Cancel'}
         </button>
@@ -433,9 +324,181 @@ export const HotelImportModal: React.FC<IHotelImportModalProps> = (props: IHotel
         >
           {busy
             ? (isDe ? 'Wird übernommen…' : 'Applying…')
-            : (isDe ? `${okRows.length} Zuordnung(en) übernehmen` : `Apply ${okRows.length} assignment(s)`)}
+            : (isDe
+              ? `${okRows.length} ${okRows.length === 1 ? 'Zuordnung' : 'Zuordnungen'} übernehmen`
+              : `Apply ${okRows.length} assignment${okRows.length === 1 ? '' : 's'}`)}
         </button>
+      </>}
+    >
+      {/* ---- Schritt 1: Quelle ---- */}
+      <div className="dex-ui-section">
+        <div className="dex-ui-section-title">{isDe ? 'Schritt 1 — Liste einlesen' : 'Step 1 — Load the list'}</div>
+        <label className="dex-ui-dropzone" style={busy ? { cursor: 'wait' } : undefined}>
+          <span className="dex-ui-choice-icon" aria-hidden="true"><FileText size={18} /></span>
+          <span style={{ fontWeight: 700 }}>{isDe ? 'Datei wählen — Excel oder CSV' : 'Choose a file — Excel or CSV'}</span>
+          <span className="dex-ui-muted">
+            {fileName || (isDe ? '.xlsx, .xls, .csv oder .txt — die Spalten erkennt die App selbst.' : '.xlsx, .xls, .csv or .txt — the app detects the columns itself.')}
+          </span>
+          <input type="file" accept=".xlsx,.xlsm,.xls,.csv,.txt" style={{ display: 'none' }} disabled={busy}
+            onChange={e => { const f = e.target.files && e.target.files[0]; if (f) void onFile(f); e.target.value = ''; }} />
+        </label>
+
+        <div className="dex-ui-field" style={{ marginTop: 14 }}>
+          <label className="dex-ui-label" htmlFor="dexHotelImportPaste">
+            {isDe ? 'Oder direkt aus Excel einfügen' : 'Or paste straight from Excel'}
+          </label>
+          <textarea
+            id="dexHotelImportPaste"
+            className="dex-ui-textarea"
+            value={raw}
+            disabled={busy}
+            onChange={e => { setRaw(e.target.value); setFileName(''); parseText(e.target.value); }}
+            placeholder={isDe ? 'E-Mail | Hotel | Anreise | Abreise' : 'Email | Hotel | Arrival | Departure'}
+            rows={4}
+            style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}
+          />
+          <div className="dex-ui-help">
+            {isDe ? 'Zeilen in Excel markieren, kopieren, hier einfügen — am besten mit Kopfzeile.' : 'Select the rows in Excel, copy them and paste them here — ideally with a header row.'}
+          </div>
+        </div>
       </div>
+
+      {parseError && (
+        <div className="dex-ui-callout dex-ui-callout--danger">
+          <span className="dex-ui-callout-icon" aria-hidden="true"><AlertCircle size={16} /></span>
+          <div>{parseError}</div>
+        </div>
+      )}
+
+      {/* ---- Schritt 2: Spalten-Zuordnung ---- */}
+      {grid.length > 0 && (
+        <div className="dex-ui-section">
+          <div className="dex-ui-section-title">{isDe ? 'Schritt 2 — Spalten prüfen' : 'Step 2 — Check the columns'}</div>
+          <div className="dex-ui-section-desc">
+            {isDe ? 'Das haben wir automatisch erkannt. Stimmt eine Spalte nicht, stell sie hier um.' : 'This is what we detected automatically. If a column is wrong, change it here.'}
+          </div>
+          <label className={cx('dex-ui-toggle-row', hasHeader && 'is-active')}>
+            <input type="checkbox" checked={hasHeader} onChange={e => setHasHeader(e.target.checked)} />
+            <span className="dex-ui-toggle-row-body">
+              <span className="dex-ui-toggle-row-title">{isDe ? 'Die erste Zeile ist eine Kopfzeile' : 'The first row is a header'}</span>
+              <span className="dex-ui-toggle-row-desc">
+                {isDe ? 'Dann wird sie nicht übernommen, und ihre Texte stehen unten in der Spaltenauswahl.' : 'Then it is not imported, and its texts appear in the column pickers below.'}
+              </span>
+            </span>
+          </label>
+          <div className="dex-ui-grid-2" style={{ marginTop: 12 }}>
+            {colFields.map(c => (
+              <div className="dex-ui-field" key={c.k}>
+                <label className="dex-ui-label" htmlFor={`dexHotelImportCol-${c.k}`}>
+                  {c.l}
+                  {c.req
+                    ? <span className="dex-ui-label-required">*</span>
+                    : <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>}
+                </label>
+                <select id={`dexHotelImportCol-${c.k}`} className="dex-ui-select dex-ui-select--sm"
+                  value={map[c.k]} disabled={busy}
+                  onChange={e => setMap(m => ({ ...m, [c.k]: parseInt(e.target.value, 10) }))}>
+                  <option value={-1}>{isDe ? '— nicht vorhanden —' : '— not present —'}</option>
+                  {colOptions.map(i => <option key={i} value={i}>{colLabel(i)}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ---- Schritt 3: Vorschau ---- */}
+      {grid.length > 0 && (
+        <div className="dex-ui-section">
+          <div className="dex-ui-section-title">{isDe ? 'Schritt 3 — Vorschau' : 'Step 3 — Preview'}</div>
+          <div className="dex-ui-inline" style={{ marginBottom: 10 }}>
+            <span className="dex-ui-pill dex-ui-pill--green">{okRows.length} {isDe ? 'werden übernommen' : 'will be applied'}</span>
+            {badRows.length > 0 && (
+              <span className="dex-ui-pill dex-ui-pill--orange">{badRows.length} {isDe ? 'übersprungen' : 'skipped'}</span>
+            )}
+            {newHotels.length > 0 && (
+              <span className="dex-ui-pill dex-ui-pill--gray">{isDe ? 'Hotels neu angelegt: ' : 'hotels newly created: '}<strong>{newHotels.join(', ')}</strong></span>
+            )}
+          </div>
+
+          {/* v31.3: Was Aufmerksamkeit braucht, steht als Warnung über der
+              Tabelle — als graue Pille neben den Zählern ging es unter. */}
+          {(badRows.length > 0 || noDates > 0) && (
+            <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginBottom: 10 }}>
+              <span className="dex-ui-callout-icon" aria-hidden="true"><AlertCircle size={16} /></span>
+              <div>
+                {badRows.length > 0 && (
+                  <div>{isDe ? `${badRows.length} Zeilen werden übersprungen — den Grund nennt die Spalte Status.` : `${badRows.length} rows are skipped — the status column names the reason.`}</div>
+                )}
+                {noDates > 0 && (
+                  <div>{isDe ? `${noDates} ohne Zeitraum — Hotel wird gesetzt, Datum bleibt leer.` : `${noDates} without dates — hotel set, dates left empty.`}</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="dex-ui-table-wrap dex-ui-table-wrap--sticky" style={{ maxHeight: 300 }}>
+            <table className="dex-ui-table dex-ui-table--compact">
+              <thead>
+                <tr>
+                  <th>{isDe ? 'Person' : 'Person'}</th>
+                  <th>Hotel</th>
+                  <th>{isDe ? 'Zeitraum' : 'Stay'}</th>
+                  <th>{isDe ? 'Status' : 'Status'}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.slice(0, 300).map((r, i) => {
+                  // Ohne Treffer in der Teilnehmerliste bleibt die E-Mail der
+                  // Name — die Zeile sagt so trotzdem, um wen es geht.
+                  const who = r.reg ? (r.reg.ParticipantName || r.reg.ParticipantEmail) : (r.email || '—');
+                  return (
+                    <tr key={i} className={cx(r.problem && 'is-muted')}>
+                      <td>
+                        <span className="dex-ui-person">
+                          <span className="dex-ui-avatar" aria-hidden="true">{initialsOf(who)}</span>
+                          <span style={{ minWidth: 0 }}>
+                            <span className="dex-ui-person-name" style={{ display: 'block' }}>{who}</span>
+                            {r.reg && r.reg.ParticipantName && r.email
+                              && <span className="dex-ui-person-sub" style={{ display: 'block' }}>{r.email}</span>}
+                          </span>
+                        </span>
+                      </td>
+                      <td>{r.hotel || '—'}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        {r.from && r.to ? `${r.from} – ${r.to} · ${nights(r.from, r.to)} ${isDe ? 'N.' : 'n.'}` : '—'}
+                      </td>
+                      <td>
+                        <span className={cx('dex-ui-pill', r.problem ? 'dex-ui-pill--orange' : 'dex-ui-pill--green')}>
+                          {r.problem || (isDe ? 'wird übernommen' : 'will be applied')}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="dex-ui-table-foot">
+            <span>{isDe ? `${rows.length} Zeilen erkannt` : `${rows.length} rows detected`}</span>
+            {rows.length > 300 && (
+              <span>{isDe ? 'Vorschau zeigt die ersten 300 — übernommen werden alle.' : 'Preview shows the first 300 — all of them are applied.'}</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {progress && (
+        <div>
+          <div className="dex-ui-progress">
+            <div className="dex-ui-progress-bar"
+              style={{ width: `${progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0}%` }} />
+          </div>
+          <div className="dex-ui-help">
+            {progress.done}/{progress.total} {isDe ? 'übernommen …' : 'applied …'}
+          </div>
+        </div>
+      )}
     </Modal>
   );
 };

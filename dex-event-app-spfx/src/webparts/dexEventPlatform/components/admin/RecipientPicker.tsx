@@ -23,10 +23,20 @@
  * E-Mail-Eintrag mit voller Adresse. Das Konzept verlangt genau diese zwei
  * Darstellungen — und es ist keine Raterei, sondern eine Auskunft des
  * Verzeichnisses.
+ *
+ * v31.3: Optik auf den Klassensatz aus `dexUi.ts` umgestellt (Organizer-Center-
+ * Runde). Aus den frei schwebenden Chips ist eine Liste aus `dex-ui-row`-Zeilen
+ * geworden — in der schmalen Spalte des F&A Centers brach ein Chip mit Foto,
+ * Name und Job Title ohnehin um, und als Zeile steht der Name jeder Person
+ * untereinander an derselben Stelle. Der Hover liegt jetzt dort, wo ein Klick
+ * etwas tut: auf dem Entfernen-Knopf (`dex-ui-iconbtn--danger`), nicht mehr in
+ * einem `onMouseEnter`-State.
  */
 import * as React from 'react';
 import { UserFieldPicker } from '../UserFieldPicker';
-import { X, Plus } from '../Icons';
+import { X, Plus, AlertCircle } from '../Icons';
+import { ensureDexUiStyles } from '../dexUi';
+import { useLocaleSafe } from '../../context/LanguageContext';
 
 type Profile = { displayName: string; location: string; jobTitle: string };
 
@@ -42,14 +52,16 @@ export interface RecipientPickerProps {
   disabled?: boolean;
 }
 
-const chipBase: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 8,
-  border: '1px solid var(--dex-gray-200, #e5e7eb)', borderRadius: 999,
-  padding: '4px 6px 4px 4px', background: '#fff', maxWidth: '100%',
-};
-
 export default function RecipientPicker(props: RecipientPickerProps): React.ReactElement {
   const { value, onChange, searchUsers, searchUserByEmail } = props;
+  // v31.3: Die vier eigenen Texte der Komponente waren als einzige im
+  // Verteiler nur deutsch (label/hint/emptyText kommen zweisprachig von den
+  // Aufrufern herein). Die Sprache kommt aus dem Context; ohne Provider
+  // faellt sie auf Deutsch zurueck — die Props bleiben unveraendert.
+  const isDe = useLocaleSafe() === 'de';
+  // v31.3: Der Verteiler steht auch außerhalb eines Modals (F&A Center) —
+  // dort injiziert das gemeinsame Stylesheet sonst niemand.
+  ensureDexUiStyles();
   // Aufgelöste Profile je Adresse. `null` = geprüft und KEINE Person
   // (Gruppenadresse); fehlender Schlüssel = noch nicht geprüft.
   const [profiles, setProfiles] = React.useState<Record<string, Profile | null>>({});
@@ -58,7 +70,6 @@ export default function RecipientPicker(props: RecipientPickerProps): React.Reac
   // v30.51.1: Meldung für BEIDE Wege (Personensuche und Gruppenadresse) —
   // die Personensuche kann dieselbe Ablehnung erzeugen wie das Textfeld.
   const [addError, setAddError] = React.useState('');
-  const [removeHover, setRemoveHover] = React.useState<string | null>(null);
 
   // Profile nacheinander auflösen, nicht parallel: Ein Verteiler hat eine
   // Handvoll Einträge, und die Suche läuft gegen dieselbe Schnittstelle, die
@@ -82,11 +93,11 @@ export default function RecipientPicker(props: RecipientPickerProps): React.Reac
   const addAddress = (raw: string): boolean => {
     const addr = (raw || '').trim().toLowerCase();
     if (!addr || addr.indexOf('@') < 0 || addr.indexOf('.') < 0) {
-      setAddError('Bitte eine vollständige E-Mail-Adresse eingeben.');
+      setAddError(isDe ? 'Bitte eine vollständige E-Mail-Adresse eingeben.' : 'Please enter a complete email address.');
       return false;
     }
     if (value.some(v => v.toLowerCase() === addr)) {
-      setAddError('Diese Adresse steht bereits im Verteiler.');
+      setAddError(isDe ? 'Diese Adresse steht bereits im Verteiler.' : 'This address is already in the list.');
       return false;
     }
     setAddError('');
@@ -100,77 +111,90 @@ export default function RecipientPicker(props: RecipientPickerProps): React.Reac
 
   return (
     <div>
-      <label className="form-label" style={{ fontSize: '0.8rem' }}>{props.label}</label>
+      {/* 1. Wofür ist der Verteiler — und wie viele stehen drin? Die Zahl stand
+          bisher nirgends; wer prüft, ob eine Person schon eingetragen ist,
+          musste die Chips zählen. */}
+      <div className="dex-ui-label" style={{ marginBottom: props.hint ? 4 : 8 }}>
+        <span>{props.label}</span>
+        {value.length > 0 && <span className="dex-ui-pill dex-ui-pill--gray">{value.length}</span>}
+      </div>
       {props.hint && (
-        <p style={{ margin: '0 0 8px', fontSize: '0.75rem', color: 'var(--dex-gray-500)', lineHeight: 1.45 }}>{props.hint}</p>
+        <p className="dex-ui-help" style={{ margin: '0 0 10px' }}>{props.hint}</p>
       )}
 
-      {/* Aktuelle Empfänger */}
+      {/* 2. Aktuelle Empfänger. Leer ist kein Nebensatz, sondern eine Folge:
+          an einen leeren Verteiler geht nichts raus — deshalb ein Warnkasten
+          statt einer orangen Textzeile. */}
       {value.length === 0 ? (
-        <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: 'var(--dex-orange-dark, #b35a00)' }}>
-          {props.emptyText || 'Noch keine Empfänger — an diesen Verteiler kann nichts versendet werden.'}
-        </p>
+        <div className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm" style={{ marginBottom: 12 }}>
+          <span className="dex-ui-callout-icon"><AlertCircle size={14} /></span>
+          <span>{props.emptyText || (isDe ? 'Noch keine Empfänger — an diesen Verteiler kann nichts versendet werden.' : 'No recipients yet — nothing can be sent to this list.')}</span>
+        </div>
       ) : (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+        <div className="dex-ui-card dex-ui-card--list" style={{ marginBottom: 12 }}>
           {value.map(addr => {
             const prof = profiles[addr];
             const isPerson = !!prof;
             return (
-              <span key={addr} style={chipBase}>
+              // Die Zeile selbst ist keine Aktion — ihr Hover hebt nur den
+              // Entfernen-Knopf hervor (dex-ui-row-actions), der einzige
+              // Klick, den es hier gibt.
+              <div key={addr} className="dex-ui-row">
                 {isPerson ? (
                   <img
                     src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(addr)}&size=S`}
                     alt=""
-                    style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+                    className="dex-ui-avatar"
                   />
                 ) : (
                   // Gruppenadresse/Funktionspostfach: bewusst KEIN Personen-
                   // Kreis, sonst behauptet die Anzeige einen Menschen, den es
                   // nicht gibt.
-                  <span style={{
-                    width: 28, height: 28, borderRadius: 6, flexShrink: 0,
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    background: 'var(--dex-gray-100, #f0f0f0)', color: 'var(--dex-gray-600)',
-                    fontSize: '0.7rem', fontWeight: 700,
-                  }}>@</span>
+                  <span className="dex-ui-avatar" aria-hidden="true" style={{ borderRadius: 8 }}>@</span>
                 )}
-                <span style={{ minWidth: 0, lineHeight: 1.25 }}>
-                  <span style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-gray-800)' }}>
-                    {isPerson ? prof!.displayName : addr}
-                  </span>
-                  <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>
+                {/* v31.3: Die volle Adresse steht im Titel der Zeile — bei einer
+                    Person verdrängen Job Title und Standort sie sonst ganz. */}
+                <div className="dex-ui-row-main" title={addr}>
+                  <div className="dex-ui-row-title">{isPerson ? prof!.displayName : addr}</div>
+                  <div className="dex-ui-row-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {isPerson
                       ? [prof!.jobTitle, prof!.location].filter(Boolean).join(' · ') || addr
-                      : 'Gruppenadresse'}
-                  </span>
+                      : (isDe ? 'Gruppenadresse' : 'Group address')}
+                  </div>
+                </div>
+                <span className="dex-ui-row-actions">
+                  <button
+                    type="button"
+                    className="dex-ui-iconbtn dex-ui-iconbtn--danger"
+                    disabled={props.disabled}
+                    onClick={() => removeAddress(addr)}
+                    title={`${addr} aus dem Verteiler entfernen`}
+                    aria-label={`${addr} entfernen`}
+                  >
+                    <X size={14} />
+                  </button>
                 </span>
-                <button
-                  type="button"
-                  disabled={props.disabled}
-                  onClick={() => removeAddress(addr)}
-                  onMouseEnter={() => setRemoveHover(addr)}
-                  onMouseLeave={() => setRemoveHover(prev => (prev === addr ? null : prev))}
-                  title={`${addr} aus dem Verteiler entfernen`}
-                  aria-label={`${addr} entfernen`}
-                  style={{
-                    border: 'none', background: removeHover === addr ? 'rgba(218,41,28,0.12)' : 'transparent',
-                    color: removeHover === addr ? 'var(--dex-red, #da291c)' : 'var(--dex-gray-500)',
-                    borderRadius: '50%', width: 22, height: 22, flexShrink: 0,
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: props.disabled ? 'default' : 'pointer',
-                    transition: 'background 120ms ease, color 120ms ease',
-                  }}
-                >
-                  <X size={13} />
-                </button>
-              </span>
+              </div>
             );
           })}
         </div>
       )}
 
+      {/* 3. Hinzufügen — beide Wege unter einer Überschrift, damit die Trennung
+          zwischen „steht drin“ und „kommt dazu“ sichtbar ist. */}
+      <div className="dex-ui-section-title">{isDe ? 'Empfänger hinzufügen' : 'Add recipients'}</div>
+      {/* Die Meldung steht ÜBER beiden Feldern: sie kann aus der Personensuche
+          genauso kommen wie aus dem Adressfeld (v30.51.1), und unter dem
+          Adressfeld hätte sie der Suchende nicht gesehen. */}
+      {addError && (
+        <div className="dex-ui-callout dex-ui-callout--danger dex-ui-callout--sm" role="alert" style={{ marginBottom: 8 }}>
+          <span className="dex-ui-callout-icon"><AlertCircle size={14} /></span>
+          <span>{addError}</span>
+        </div>
+      )}
+
       {/* Person hinzufügen */}
-      <div style={{ marginBottom: 8 }}>
+      <div>
         <UserFieldPicker
           value={pickerValue}
           onChange={v => {
@@ -197,14 +221,16 @@ export default function RecipientPicker(props: RecipientPickerProps): React.Reac
         />
       </div>
 
-      {/* Gruppenadresse hinzufügen */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+      {/* Gruppenadresse hinzufügen — Feld und Knopf in EINER Zeile: der Knopf
+          gehört zur Eingabe, nicht an den rechten Rand. */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
         <input
-          className="form-input"
-          style={{ flex: '1 1 220px', minWidth: 0, fontSize: '0.82rem' }}
+          className="dex-ui-input"
+          style={{ flex: '1 1 200px', minWidth: 0 }}
           value={groupInput}
           disabled={props.disabled}
-          placeholder="Gruppenadresse / Funktionspostfach…"
+          aria-label="Gruppenadresse oder Funktionspostfach"
+          placeholder="Gruppenadresse, z.B. fa-abrechnung@deloitte.de"
           onChange={e => { setGroupInput(e.target.value); if (addError) setAddError(''); }}
           onKeyDown={e => {
             if (e.key === 'Enter') { e.preventDefault(); if (addAddress(groupInput)) setGroupInput(''); }
@@ -212,17 +238,14 @@ export default function RecipientPicker(props: RecipientPickerProps): React.Reac
         />
         <button
           type="button"
-          className="btn btn-secondary"
-          style={{ fontSize: '0.8rem', padding: '6px 14px', whiteSpace: 'nowrap' }}
+          className="btn btn-secondary dex-ui-btn-sm"
+          style={{ whiteSpace: 'nowrap' }}
           disabled={props.disabled || !groupInput.trim()}
           onClick={() => { if (addAddress(groupInput)) setGroupInput(''); }}
         >
           <Plus size={13} /> Hinzufügen
         </button>
       </div>
-      {addError && (
-        <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: 'var(--dex-red, #da291c)' }}>{addError}</p>
-      )}
     </div>
   );
 }

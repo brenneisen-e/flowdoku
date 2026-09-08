@@ -8,8 +8,11 @@ import WizardHint from '../../WizardHint';
 import { StepBadge } from '../../wizard/StepBadge';
 import { InfoTooltip } from '../../InfoTooltip';
 import DatePicker from 'react-datepicker';
-import { Plus, X } from '../../Icons';
+import { Check, Pencil, Plus, X } from '../../Icons';
 import { Icon } from '@fluentui/react/lib/Icon';
+// v31.2: gemeinsame UI-Klassen (Toggle-Zeilen, Kacheln, Aufklapper) — Hover
+// kommt aus dem Stylesheet, nicht aus Inline-Styles.
+import { cx } from '../../dexUi';
 import ImageCropModal from '../../ImageCropModal';
 import { compressImage } from '../../../utils/imageCompress';
 import { ImgView, SubEventDraft } from '../../wizard/wizardTypes';
@@ -104,33 +107,49 @@ export interface BasicsStepProps {
 }
 export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
   const { visible } = p;
-  const { activeFrom, activeScopeIdx, applyDraftPayload, applyEventTemplate, childEventsOf, childTermSingular, currentUser, dayKeyOfDate, description, DRAFT_KEY, draftSavedAt, editEvent, emailLogoPreview, errorBorderStyle, events, fieldHasError, fileToBase64, imageBanner, imageDisplay, imageDisplayOpen, imageEditOpen, imageFile, imageOrigFile, imagePreview, imageUploadError, isDe, isEditMode, isFictive, location, logoCropTarget, noDescription, outlookLogoPreview, patchScopeSub, pendingDraft, previewBeforeActive, renderStepIntro, scAllDay, scDescription, scEnd, scImagePreview, scopeSub, scShowAsFree, scStart, scTitle, setActiveFrom, setDescription, setEmailLogoFromPhoto, setEmailLogoPreview, setEventImageUrl, setHtmlEditorMode, setHtmlEditorOpen, setImageBanner, setImageDisplay, setImageDisplayOpen, setImageEditOpen, setImageFile, setImageOrigAspect, setImageOrigFile, setImagePreview, setImageUploadError, setIsFictive, setLogoCropTarget, setNoDescription, setOutlookLogoFromPhoto, setOutlookLogoPreview, setPendingDraft, setPreviewBeforeActive, setScAllDay, setScEnd, setScShowAsFree, setScStart, setScTitle, setShowDemoVariantModal, setShowTemplatePicker, setSubEvents, setSubImageCropIdx, showTemplatePicker, shrinkLogoB64, startDate, subEvents, subEventsOnlyMode, t, templateLoadingId, title, wizardImgAspect, zebraS3Bg } = p;
+  const { activeFrom, activeScopeIdx, applyDraftPayload, applyEventTemplate, childEventsOf, childTermSingular, currentUser, dayKeyOfDate, description, DRAFT_KEY, draftSavedAt, editEvent, emailLogoPreview, errorBorderStyle, events, fieldHasError, fileToBase64, imageBanner, imageDisplay, imageDisplayOpen, imageEditOpen, imageFile, imageOrigFile, imagePreview, imageUploadError, isDe, isEditMode, isFictive, location, logoCropTarget, noDescription, outlookLogoPreview, patchScopeSub, pendingDraft, previewBeforeActive, renderStepIntro, scAllDay, scDescription, scEnd, scImagePreview, scopeSub, scShowAsFree, scStart, scTitle, setActiveFrom, setDescription, setEmailLogoFromPhoto, setEmailLogoPreview, setEventImageUrl, setHtmlEditorMode, setHtmlEditorOpen, setImageBanner, setImageDisplay, setImageDisplayOpen, setImageEditOpen, setImageFile, setImageOrigAspect, setImageOrigFile, setImagePreview, setImageUploadError, setIsFictive, setLogoCropTarget, setNoDescription, setOutlookLogoFromPhoto, setOutlookLogoPreview, setPendingDraft, setPreviewBeforeActive, setScAllDay, setScEnd, setScShowAsFree, setScStart, setScTitle, setShowDemoVariantModal, setShowTemplatePicker, setSubEvents, setSubImageCropIdx, showTemplatePicker, shrinkLogoB64, startDate, subEvents, subEventsOnlyMode, t, templateLoadingId, title, wizardImgAspect } = p;
+  // v31.2 (Leitfaden 2a′): Eine Kachel mit Hauptaktion ist selbst klickbar —
+  // Enter/Leertaste lösen dieselbe Aktion aus wie der Klick. Nebenknöpfe in
+  // der Kachel stoppen die Weitergabe (Klick UND Taste), damit „Verwerfen"
+  // nicht zugleich „Fortsetzen" ist.
+  const rowKeyHandler = (fn: () => void) => (e: React.KeyboardEvent<HTMLElement>): void => {
+    if (e.target !== e.currentTarget) return;
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); }
+  };
+  const stopBubble = (e: React.SyntheticEvent): void => { e.stopPropagation(); };
+  // Ein Handler für Knopf UND Kachel — sonst zeigen beide irgendwann
+  // verschiedene Dinge.
+  const openDescriptionEditor = (): void => { setHtmlEditorMode('description'); setHtmlEditorOpen(true); };
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
               {/* v23.6: Demo-Button sitzt jetzt IM grünen Schritt-1-Header
                   (oben rechts), nicht mehr in einer eigenen Zeile darüber. */}
-              <h2 className="dex-step-head-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <span>{isDe ? 'Schritt 1 — Grundlagen' : 'Step 1 — Basics'}</span>
+              {/* v31.2: Kopf nach Leitfaden (Eyebrow + Titel). Der Demo-Chip
+                  steht nach 2a′ direkt HINTER dem Titel statt allein am rechten
+                  Rand — ein Knopf in einer sonst leeren Zeilenhälfte war der
+                  Fehler aus den ersten Screenshots. */}
+              <h2 className="dex-step-head-title" style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <span className="dex-step-eyebrow">{isDe ? 'Schritt 1 von 9' : 'Step 1 of 9'}</span>
+                  <span>{isDe ? 'Grundlagen' : 'Basics'}</span>
+                </span>
                 {!isEditMode && (
                   <button
                     type="button"
+                    className="dex-ui-chip"
                     data-tour="wizard-demo"
                     onClick={() => setShowDemoVariantModal(true)}
                     title={isDe ? 'Demo-Vorlage auswählen' : 'Choose demo template'}
-                    style={{
-                      flexShrink: 0, background: '#fff', color: 'var(--dex-green-dark, #4a7c1f)',
-                      border: 'none', borderRadius: 999, padding: '4px 14px',
-                      fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
-                    }}
+                    style={{ flexShrink: 0, marginBottom: 4 }}
                   >
-                    {isDe ? 'Demo' : 'Demo'}
+                    {isDe ? 'Demo-Vorlage' : 'Demo template'}
                   </button>
                 )}
               </h2>
               <p className="dex-step-head-lead">
                 {isDe
-                  ? 'Hier definierst du das Fundament des Events: Titel, Datum, Beschreibung und Bild.'
-                  : 'Here you define the foundation of the event: title, date, description and image.'}
+                  ? <>Titel, Zeitraum, Beschreibung und Bild — das, was Teilnehmer zuerst sehen. Ganz unten legst du fest, <strong>wann das Event sichtbar wird</strong>.</>
+                  : <>Title, dates, description and image — what attendees see first. At the bottom you decide <strong>when the event becomes visible</strong>.</>}
               </p>
 
               {/* v28.89: Alles zwischen hier und dem Titel-Feld gilt für das
@@ -140,16 +159,14 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   „unter" einem einzelnen Termin beantworten), deshalb blenden
                   wir es dort aus und sagen, wo es steht. */}
               {activeScopeIdx > 0 && (
-                <WizardHint
-                  isDe={isDe}
-                  variant="description"
-                  title={isDe ? 'Du bearbeitest die Grundlagen eines Sub-Events' : 'You are editing a sub-event’s basics'}
-                  style={{ marginBottom: 12 }}
-                >
-                  {isDe
-                    ? <>Titel, Zeiten, Beschreibung und Bild unten gehören zu diesem <strong>{childTermSingular || 'Sub-Event'}</strong>. Die Angaben zum gesamten Event — ob es Sub-Events gibt, wie sie heißen, wie angemeldet wird sowie Entwurf und Aktivierung — stehen auf dem Reiter <strong>{subEventsOnlyMode ? 'Klammer' : 'Haupt-Event'}</strong> oben.</>
-                    : <>Title, times, description and image below belong to this <strong>{childTermSingular || 'sub-event'}</strong>. The settings for the event as a whole — whether it has sub-events, how they are named, how people register, plus draft and activation — live on the <strong>{subEventsOnlyMode ? 'bracket' : 'main event'}</strong> tab above.</>}
-                </WizardHint>
+                <div className="dex-ui-callout dex-ui-callout--info" style={{ marginBottom: 16 }}>
+                  <span className="dex-ui-callout-icon" aria-hidden="true"><Icon iconName="Info" style={{ fontSize: 14 }} /></span>
+                  <span>
+                    {isDe
+                      ? <>Du bearbeitest die Grundlagen eines <strong>{childTermSingular || 'Sub-Events'}</strong>: Titel, Zeiten, Beschreibung und Bild unten gehören zu ihm. Alles, was das gesamte Event betrifft — ob es Sub-Events gibt, wie sie heißen, wie angemeldet wird sowie Entwurf und Aktivierung — steht auf dem Reiter <strong>{subEventsOnlyMode ? 'Klammer' : 'Haupt-Event'}</strong> oben.</>
+                      : <>You are editing the basics of a <strong>{childTermSingular || 'sub-event'}</strong>: title, times, description and image below belong to it. Everything about the event as a whole — whether it has sub-events, how they are named, how people register, plus draft and activation — lives on the <strong>{subEventsOnlyMode ? 'bracket' : 'main event'}</strong> tab above.</>}
+                  </span>
+                </div>
               )}
               {activeScopeIdx === 0 && (<>
 
@@ -176,12 +193,12 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                 const fan = tmpl.filter(e => e.imageUrl).slice(0, 5);
                 const fanItems = fan.length > 0 ? fan : tmpl.slice(0, 5);
                 return (
-                  <div style={{ margin: '0 0 22px', border: '2px solid var(--dex-green, #86bc25)', borderRadius: 16, background: 'linear-gradient(135deg, rgba(134,188,37,0.10), rgba(0,118,168,0.06))', overflow: 'hidden' }}>
+                  <div className={cx('dex-ui-card', !showTemplatePicker && 'dex-ui-card--hover')} style={{ margin: '0 0 16px', padding: 0, overflow: 'hidden' }}>
                     {!showTemplatePicker ? (
                       <button
                         type="button"
                         onClick={() => setShowTemplatePicker(true)}
-                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 20, padding: '18px 22px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 20, padding: '16px 20px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}
                       >
                         {/* Fächer aus Event-Bildern */}
                         <div style={{ position: 'relative', width: 132, height: 92, flexShrink: 0 }}>
@@ -202,23 +219,26 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                           })}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--dex-green-dark, #4a7c1f)', marginBottom: 4 }}>
+                          <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--dex-gray-800)', marginBottom: 2 }}>
                             {isDe ? 'Eigenes Event als Vorlage nutzen?' : 'Use one of your events as a template?'}
                           </div>
-                          <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                          <div className="dex-ui-muted" style={{ lineHeight: 1.5 }}>
                             {isDe
-                              ? <>Übernimm Einstellungen und Bild aus einem deiner <strong>{tmpl.length}</strong> bisherigen Events — Datum und Anmeldungen legst du danach neu fest. <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700 }}>Klicken zum Auswählen ▸</span></>
-                              : <>Reuse settings and image from one of your <strong>{tmpl.length}</strong> past events. <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700 }}>Click to choose ▸</span></>}
+                              ? <>Übernimm Einstellungen und Bild aus einem deiner <strong>{tmpl.length}</strong> bisherigen Events — Datum und Anmeldungen legst du danach neu fest.</>
+                              : <>Reuse settings and image from one of your <strong>{tmpl.length}</strong> past events — date and registrations start fresh.</>}
                           </div>
+                          {/* v31.2 (2a′): Aktion linksbündig unter dem Text, nicht
+                              rechts außen — die ganze Kachel ist ohnehin der Knopf. */}
+                          <span className="dex-ui-textbtn" style={{ display: 'inline-flex', marginTop: 6 }}>{isDe ? 'Auswählen ▸' : 'Choose ▸'}</span>
                         </div>
                       </button>
                     ) : (
                       <div style={{ padding: '16px 20px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
-                          <span style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                            {isDe ? 'Vorlage wählen' : 'Choose a template'}
+                          <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--dex-gray-800)' }}>
+                            {isDe ? 'Welches Event soll als Vorlage dienen?' : 'Which event should serve as the template?'}
                           </span>
-                          <button type="button" onClick={() => setShowTemplatePicker(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-gray-500)', fontSize: '0.82rem', fontWeight: 600 }}>
+                          <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" onClick={() => setShowTemplatePicker(false)}>
                             {isDe ? 'Abbrechen' : 'Cancel'}
                           </button>
                         </div>
@@ -227,12 +247,12 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                             <button
                               key={e.id}
                               type="button"
+                              className="dex-ui-card dex-ui-card--hover"
                               disabled={!!templateLoadingId}
                               onClick={() => { void applyEventTemplate(e); }}
                               style={{
                                 flex: '0 0 auto', width: 150, textAlign: 'left', cursor: templateLoadingId ? 'wait' : 'pointer',
-                                background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 12, padding: 0, overflow: 'hidden',
-                                boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                                borderRadius: 12, padding: 0, overflow: 'hidden', fontFamily: 'inherit',
                               }}
                             >
                               <div style={{ width: '100%', height: 90, background: e.imageUrl ? `url(${e.imageUrl}) center/cover no-repeat` : 'linear-gradient(135deg, var(--dex-green, #86bc25), var(--dex-blue, #0076a8))' }} />
@@ -264,46 +284,55 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                 const dTitle = (typeof pendingDraft.data.title === 'string' && (pendingDraft.data.title as string).trim())
                   ? (pendingDraft.data.title as string).trim()
                   : (isDe ? '(ohne Titel)' : '(untitled)');
+                const continueDraft = (): void => {
+                  try { applyDraftPayload(pendingDraft.data); } catch (err) { console.warn('[DEX] Entwurf-Wiederherstellung fehlgeschlagen:', err); }
+                  setPendingDraft(null);
+                };
+                // v31.2 (2a′): Die ganze Kachel öffnet den Entwurf (Hover,
+                // Tastatur); die Knöpfe stehen linksbündig unter dem Text.
+                // „Verwerfen" stoppt die Weitergabe, sonst würde es zugleich
+                // fortsetzen.
                 return (
-                  <div style={{ margin: '0 0 22px', border: '2px solid var(--dex-orange, #ed8b00)', borderRadius: 16, background: 'linear-gradient(135deg, rgba(237,139,0,0.08), rgba(0,118,168,0.05))', padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
-                    <div style={{ flexShrink: 0, width: 64, height: 80, borderRadius: 10, border: '3px solid #fff', boxShadow: '0 4px 10px rgba(0,0,0,0.18)', background: 'linear-gradient(135deg, var(--dex-orange, #ed8b00), var(--dex-blue, #0076a8))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <svg width={30} height={30} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-                      </svg>
-                    </div>
+                  <div
+                    className="dex-ui-card dex-ui-card--hover dex-ui-fade-in"
+                    role="button"
+                    tabIndex={0}
+                    onClick={continueDraft}
+                    onKeyDown={rowKeyHandler(continueDraft)}
+                    style={{ margin: '0 0 16px', borderColor: 'var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.05)', display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap', cursor: 'pointer' }}
+                  >
+                    <span className="dex-ui-choice-icon" style={{ background: 'rgba(237,139,0,0.14)', color: 'var(--dex-orange-dark, #b35a00)' }} aria-hidden="true"><Pencil size={18} /></span>
                     <div style={{ flex: 1, minWidth: 220 }}>
-                      <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#b86700', marginBottom: 4 }}>
-                        {isDe ? 'Aktueller Entwurf' : 'Current draft'}
+                      <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--dex-orange-dark, #b35a00)', marginBottom: 2 }}>
+                        {isDe ? 'Du hast einen unfertigen Entwurf' : 'You have an unfinished draft'}
                       </div>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                      <div className="dex-ui-muted" style={{ lineHeight: 1.5 }}>
                         {isDe
                           ? <><strong>&bdquo;{dTitle}&ldquo;</strong> — zwischengespeichert am {when}. Hochgeladene Bilder sind im Entwurf nicht enthalten und müssten neu gewählt werden.</>
                           : <><strong>&bdquo;{dTitle}&ldquo;</strong> — auto-saved on {when}. Uploaded images are not part of the draft and would need to be re-selected.</>}
                       </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 10, flexShrink: 0, flexWrap: 'wrap' }}>
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        style={{ fontSize: '0.85rem', padding: '8px 18px' }}
-                        onClick={() => {
-                          try { applyDraftPayload(pendingDraft.data); } catch (err) { console.warn('[DEX] Entwurf-Wiederherstellung fehlgeschlagen:', err); }
-                          setPendingDraft(null);
-                        }}
-                      >
-                        {isDe ? 'Entwurf fortsetzen' : 'Continue draft'}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        style={{ fontSize: '0.85rem', padding: '8px 18px' }}
-                        onClick={() => {
-                          try { localStorage.removeItem(DRAFT_KEY); } catch { /* */ }
-                          setPendingDraft(null);
-                        }}
-                      >
-                        {isDe ? 'Entwurf löschen' : 'Delete draft'}
-                      </button>
+                      <div className="dex-ui-inline" style={{ marginTop: 10, gap: 12 }}>
+                        <button
+                          type="button"
+                          className="btn btn-primary dex-ui-btn-sm"
+                          onClick={e => { e.stopPropagation(); continueDraft(); }}
+                          onKeyDown={stopBubble}
+                        >
+                          {isDe ? 'Entwurf fortsetzen' : 'Continue draft'}
+                        </button>
+                        <button
+                          type="button"
+                          className="dex-ui-textbtn dex-ui-textbtn--danger"
+                          onClick={e => {
+                            e.stopPropagation();
+                            try { localStorage.removeItem(DRAFT_KEY); } catch { /* */ }
+                            setPendingDraft(null);
+                          }}
+                          onKeyDown={stopBubble}
+                        >
+                          {isDe ? 'Entwurf verwerfen' : 'Discard draft'}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -346,117 +375,43 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
 
               {renderStepIntro(
                 [
-                  '1. Als Entwurf speichern — Event nur für Admins, Organizer und Test-Team sichtbar; optional Aktiv-Ab-Datum für automatisches Go-Live',
-                  '2. Event-Titel',
-                  '3. Datum (Start &amp; Ende) — füllt die Anmelde- und Storno-Deadlines automatisch vor',
-                  '4. Beschreibung (optional, HTML-Editor)',
-                  '5. Event-Bild hochladen — oben auf der Detailseite und in den Mails verwendet',
+                  '5. Als Entwurf speichern (Abschnitt „Veröffentlichung" ganz unten) — Event nur für Admins, Organizer und Test-Team sichtbar; optional Aktiv-Ab-Datum für automatisches Go-Live',
+                  '1. Event-Titel',
+                  '2. Datum (Start &amp; Ende) — füllt die Anmelde- und Storno-Deadlines automatisch vor',
+                  '3. Beschreibung (optional, HTML-Editor)',
+                  '4. Event-Bild hochladen — oben auf der Detailseite und in den Mails verwendet',
                   '6. Organizer auswählen — bekommen alle Organizer-Mails',
                   '7. Test-Team — sieht das Event schon im Entwurfsmodus',
                   '8. Check-In Team — darf nur das QR-/Check-In-Tool nutzen',
                 ],
                 [
-                  '1. Save as draft — visible only to admins, organizers, and the test team; optional active-from date for automatic go-live',
-                  '2. Event title',
-                  '3. Date (start &amp; end) — pre-fills the registration and cancellation deadlines',
-                  '4. Description (optional, HTML editor)',
-                  '5. Upload an event image — shown at the top of the detail page and in emails',
+                  '5. Save as draft (section “Publishing” at the bottom) — visible only to admins, organizers, and the test team; optional active-from date for automatic go-live',
+                  '1. Event title',
+                  '2. Date (start &amp; end) — pre-fills the registration and cancellation deadlines',
+                  '3. Description (optional, HTML editor)',
+                  '4. Upload an event image — shown at the top of the detail page and in emails',
                   '6. Pick organizers — they receive all organizer emails',
                   '7. Test team — can see the event already in draft mode',
                   '8. Check-in team — may only use the QR / check-in tool',
                 ]
               )}
 
-              {/* v9.21: Entwurf-Flag als erster Schritt — vor Title.
-                  Default ist on, der Organizer kann die Test-Strecke
-                  in Ruhe aufbauen, das Test-Team durchspielen lassen,
-                  und ohne Aengste sein Event entwickeln.
-                  v22.27: volle Breite wie die übrigen Hinweis-Boxen
-                  (vorher maxWidth 720). */}
-              <div className="form-group" style={{ marginTop: 0, marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: 14, background: isFictive ? 'rgba(237,139,0,0.06)' : 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: `1px solid ${isFictive ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-200)'}` }}>
-                  <StepBadge n={1} />
-                  <input
-                    type="checkbox"
-                    checked={isFictive}
-                    onChange={e => setIsFictive(e.target.checked)}
-                    style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 3 }}
-                  />
-                  <span style={{ fontSize: '0.9rem' }}>
-                    <strong>{t('create.fictive')}</strong>
-                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)', lineHeight: 1.5, marginTop: 4 }}>
-                      {t('create.fictive.hint')}
-                    </span>
-                  </span>
-                </label>
-                {/* v9.21: ActiveFrom direkt unter dem Entwurfs-Toggle — wenn
-                    der Organizer ein Live-Datum setzt, geht das Event ab dann
-                    auch wenn das Entwurf-Häkchen noch on ist. Optional. */}
-                <div style={{ marginTop: 12, paddingLeft: 4 }}>
-                  <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--dex-gray-700)', marginBottom: 4, fontWeight: 500 }}>
-                    Aktiv ab (optional)
-                    <InfoTooltip text={isDe ? (
-                      <>
-                        <strong>Was du hier einstellst:</strong> einen Zeitpunkt, ab dem das Event automatisch live geht — auch wenn der <strong>Entwurf-Haken</strong> noch gesetzt ist.<br /><br />
-                        <strong>Anzeige in der App:</strong> bis zu diesem Zeitpunkt sehen <strong>nur Admins, Organizer und Test-Team</strong> das Event. Ab dem gesetzten Datum prüft die App bei jedem Aufruf, ob die Zeit schon erreicht ist; falls ja, wird das Event in der allgemeinen Eventliste eingeblendet.<br /><br />
-                        <strong>Auswirkung für Teilnehmer:</strong> bis zum Aktiv-ab-Zeitpunkt taucht das Event nicht in der Liste auf, kann nicht aufgerufen werden und bekommt keine Mails. Ab dem Stichtag ist es ganz normal anmeldbar.<br /><br />
-                        <strong>Leer lassen</strong> = kein Auto-Go-Live. Du musst dann manuell den Entwurf-Haken entfernen oder im Admin Center auf <strong>Event aktivieren</strong> klicken.
-                      </>
-                    ) : (
-                      <>
-                        <strong>What you set here:</strong> a date/time at which the event automatically goes live — even if the <strong>draft toggle</strong> is still on.<br /><br />
-                        <strong>Shown in the app:</strong> until that point, only <strong>admins, organizers and the test team</strong> see the event. Once the timestamp is reached, the app reveals the event in the general event list.<br /><br />
-                        <strong>Effect for attendees:</strong> until the active-from date the event is not listed, not openable, and produces no mails. After the timestamp it behaves like any other published event.<br /><br />
-                        <strong>Leave empty</strong> = no auto-go-live. Publish manually by clearing the draft toggle or by clicking <strong>Activate event</strong> in the admin center.
-                      </>
-                    )} />
-                  </label>
-                  <DatePicker
-                    selected={activeFrom ? new Date(activeFrom) : null}
-                    onChange={(date: Date | null) => setActiveFrom(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
-                    showTimeSelect
-                    timeFormat="HH:mm"
-                    timeIntervals={15}
-                    timeCaption="Uhrzeit"
-                    dateFormat="dd.MM.yyyy, HH:mm"
-                    locale="de"
-                    placeholderText="Datum und Uhrzeit wählen"
-                    className="form-input"
-                    wrapperClassName="dex-datepicker-wrapper"
-                    calendarClassName="dex-datepicker-calendar"
-                    popperPlacement="bottom-start"
-                    isClearable
-                    autoComplete="off"
-                  />
-                  {/* v23.14: Vorschau-Wahl — nur sinnvoll bei gesetztem „Aktiv ab". */}
-                  {activeFrom && (
-                    <div style={{ marginTop: 12, padding: '12px 14px', background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--dex-gray-800)', marginBottom: 6 }}>
-                        {isDe ? 'Vor dem Aktivierungszeitpunkt …' : 'Before the activation time …'}
-                      </div>
-                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.84rem', marginBottom: 6 }}>
-                        <input type="radio" name="previewBeforeActive" checked={!previewBeforeActive} onChange={() => setPreviewBeforeActive(false)} style={{ marginTop: 3 }} />
-                        <span>{isDe
-                          ? <>… <strong>komplett unsichtbar</strong> für Teilnehmer (Standard). Nur Admins/Organizer/Test-Team sehen es vorher.</>
-                          : <>… <strong>completely hidden</strong> from attendees (default). Only admins/organizers/test team see it beforehand.</>}</span>
-                      </label>
-                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.84rem' }}>
-                        <input type="radio" name="previewBeforeActive" checked={previewBeforeActive} onChange={() => setPreviewBeforeActive(true)} style={{ marginTop: 3 }} />
-                        <span>{isDe
-                          ? <>… schon als <strong>Vorschau sichtbar</strong> in der Event-Liste — mit dem Hinweis „Anmeldung ab …“. Die Anmeldeseite lässt sich aber erst ab dem Aktivierungszeitpunkt öffnen.</>
-                          : <>… already shown as a <strong>preview</strong> in the event list — with the note „Registration opens …“. The registration page can only be opened from the activation time onwards.</>}</span>
-                      </label>
-                    </div>
-                  )}
-                </div>
-              </div>
-
+              {/* v31.2: Der Entwurfs-/Aktivierungs-Block (Badge 5) steht jetzt
+                  als Abschnitt „Veröffentlichung" am Ende des Schritts. */}
               </>)}{/* v28.89: Ende der event-weiten Angaben */}
 
-              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={2} />
-                  {!scopeSub && <span className="required">*</span>} {t('create.eventtitle')}
+              {/* v31.2: Jeder Abschnitt trägt eine Versal-Überschrift — vorher
+                  hatten nur „Teilnahme" und „Veröffentlichung" eine, die vier
+                  vorderen nicht. Auf einem Sub-Event-Reiter heißt der erste
+                  Abschnitt wie der Termin selbst, nicht „Event". */}
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">{scopeSub ? (childTermSingular || 'Sub-Event') : 'Event'}</div>
+                <label className="dex-ui-label">
+                  <StepBadge n={1} />
+                  {!scopeSub && <span className="required">*</span>}
+                  {scopeSub
+                    ? (isDe ? `Wie heißt dieses ${childTermSingular || 'Sub-Event'}?` : `What is this ${childTermSingular || 'sub-event'} called?`)
+                    : (isDe ? 'Wie heißt das Event?' : 'What is the event called?')}
                   <InfoTooltip text={isDe ? (
                     <>
                       <strong>Was du hier einstellst:</strong> den offiziellen Namen des Events, z.B. <em>Sommerfest 2026</em> oder <em>JPMorgan Lauf 2026</em>.<br /><br />
@@ -481,18 +436,29 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   className="form-input"
                   value={scTitle}
                   onChange={e => setScTitle(e.target.value)}
-                  placeholder={scopeSub ? t('create.subevents.title.placeholder') : 'z.B. Sommerfest 2026'}
+                  placeholder={scopeSub ? t('create.subevents.title.placeholder') : (isDe ? 'z.B. Sommerfest 2026' : 'e.g. Summer Party 2026')}
                   style={scopeSub ? undefined : errorBorderStyle('title')}
                 />
                 {!scopeSub && fieldHasError('title') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
+                {!scopeSub && (
+                  <div className="dex-ui-help">
+                    {isDe
+                      ? 'Steht auf der Kachel, in Meine Events und wird Betreff aller automatischen Mails und Titel des Outlook-Termins.'
+                      : 'Shown on the tile, in My Events, and used as the subject of every automatic mail and the Outlook invite title.'}
+                  </div>
+                )}
               </div>
 
               {/* v9.24: Event-Datum direkt nach Title — auto-fillt die Deadlines.
                   Vorher in Step 1, jetzt in Step 0 weil das fundamentale Info ist. */}
-              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={3} />
-                  Datum (Start &amp; Ende)
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">{isDe ? 'Zeitraum' : 'Dates'}</div>
+                <div className="dex-ui-label">
+                  <StepBadge n={2} />
+                  {scopeSub
+                    ? (isDe ? `Wann findet dieses ${childTermSingular || 'Sub-Event'} statt?` : `When does this ${childTermSingular || 'sub-event'} take place?`)
+                    : (isDe ? 'Wann findet das Event statt?' : 'When does the event take place?')}
+                  {!scopeSub && <span className="required">*</span>}
                   <InfoTooltip text={isDe ? (
                     <>
                       <strong>Was du hier einstellst:</strong> Start- und Endzeit des Events (Datum + Uhrzeit, jeweils Berliner Zeit).<br /><br />
@@ -508,11 +474,16 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                       <strong>Effect for attendees:</strong> they see the date in the list, in every confirmation email and as an Outlook entry.
                     </>
                   )} />
-                </label>
-              <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">
-                    {!scopeSub && <span className="required">*</span>} {t('create.startdate')}
+                </div>
+                <p className="dex-ui-help" style={{ margin: '-2px 0 10px' }}>
+                  {isDe
+                    ? 'Berliner Zeit. Landet 1:1 im Outlook-Termin der Teilnehmer; Anmelde- und Abmeldefrist werden daraus vorgeschlagen.'
+                    : 'Berlin time. Goes 1:1 into the attendees’ Outlook invite; registration and cancellation deadlines are suggested from it.'}
+                </p>
+              <div className="dex-ui-grid-2">
+                <div className="dex-ui-field">
+                  <label className="dex-ui-label">
+                    {!scopeSub && <span className="required">*</span>} {isDe ? 'Beginn' : 'Start'}
                     <InfoTooltip text={isDe ? (
                       <>
                         <strong>Startzeitpunkt</strong> — Datum + Uhrzeit, ab wann das Event läuft. Wandert 1:1 in den <strong>Outlook-Termin</strong> jedes Teilnehmers (blockt den Kalender-Slot) und in <strong>jede Bestätigungs-Mail</strong>. Bestimmt außerdem die Standard-Vorschläge für <strong>Anmelde-Deadline</strong> (7 Tage vor Start) und <strong>Letzte Abmeldemöglichkeit</strong> (3 Tage vor Start).
@@ -531,11 +502,11 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                     showTimeSelect={!scAllDay}
                     timeFormat="HH:mm"
                     timeIntervals={15}
-                    timeCaption="Uhrzeit"
+                    timeCaption={isDe ? 'Uhrzeit' : 'Time'}
                     dateFormat={scAllDay ? 'dd.MM.yyyy' : 'dd.MM.yyyy, HH:mm'}
                     locale="de"
                     // v28.66: Beim Sub-Event heißt leer „Zeit des Hauptevents".
-                    placeholderText={scopeSub ? t('create.subevents.time.placeholder') : 'Datum und Uhrzeit wählen'}
+                    placeholderText={scopeSub ? t('create.subevents.time.placeholder') : (isDe ? 'Datum und Uhrzeit wählen' : 'Choose date and time')}
                     className="form-input"
                     wrapperClassName="dex-datepicker-wrapper"
                     calendarClassName="dex-datepicker-calendar"
@@ -546,9 +517,9 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   />
                   {!scopeSub && fieldHasError('startDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
                 </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">
-                    {!scopeSub && <span className="required">*</span>} {t('create.enddate')}
+                <div className="dex-ui-field">
+                  <label className="dex-ui-label">
+                    {!scopeSub && <span className="required">*</span>} {isDe ? 'Ende' : 'End'}
                     <InfoTooltip text={isDe ? (
                       <>
                         <strong>Endzeitpunkt</strong> — Datum + Uhrzeit, wann das Event vorbei ist. Wandert 1:1 in den <strong>Outlook-Termin</strong> der Teilnehmer (sonst läuft der Termin endlos). Wichtig auch für interne Logik: nach diesem Zeitpunkt zählt das Event als <strong>vorbei</strong> — Anmeldungen werden gesperrt, das Event rutscht in der Liste nach unten und manche automatische Benachrichtigungen (z.B. Late-Cancel-Hinweise) reagieren darauf.
@@ -567,10 +538,10 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                     showTimeSelect={!scAllDay}
                     timeFormat="HH:mm"
                     timeIntervals={15}
-                    timeCaption="Uhrzeit"
+                    timeCaption={isDe ? 'Uhrzeit' : 'Time'}
                     dateFormat={scAllDay ? 'dd.MM.yyyy' : 'dd.MM.yyyy, HH:mm'}
                     locale="de"
-                    placeholderText={scopeSub ? t('create.subevents.time.placeholder') : 'Datum und Uhrzeit wählen'}
+                    placeholderText={scopeSub ? t('create.subevents.time.placeholder') : (isDe ? 'Datum und Uhrzeit wählen' : 'Choose date and time')}
                     className="form-input"
                     wrapperClassName="dex-datepicker-wrapper"
                     calendarClassName="dex-datepicker-calendar"
@@ -596,19 +567,17 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   — in Outlook ist das ein normaler Termin über den ganzen Tag,
                   der die Verfügbarkeit auf „gebucht" setzt, statt oben im
                   Kalenderkopf als Ganztags-Eintrag zu stehen. */}
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginTop: 10 }}>
-                <input
-                  type="checkbox"
-                  checked={scAllDay}
-                  onChange={e => setScAllDay(e.target.checked)}
-                  style={{ width: 18, height: 18, marginTop: 1, flexShrink: 0, cursor: 'pointer' }}
-                />
-                <span style={{ fontSize: '0.9rem' }}>
-                  <strong>{isDe ? 'Ganztägiger Termin' : 'All-day event'}</strong>
-                  <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400 }}>
+              {/* v31.2: Die beiden Outlook-Fragen als Toggle-Zeilen nebeneinander
+                  — jede mit der Folge in einer Zeile. */}
+              <div className="dex-ui-grid-2" style={{ marginTop: 12 }}>
+              <label className={cx('dex-ui-toggle-row', scAllDay && 'is-active')}>
+                <input type="checkbox" checked={scAllDay} onChange={e => setScAllDay(e.target.checked)} />
+                <span className="dex-ui-toggle-row-body">
+                  <span className="dex-ui-toggle-row-title">{isDe ? 'Ganztägiger Termin' : 'All-day event'}</span>
+                  <span className="dex-ui-toggle-row-desc">
                     {isDe
-                      ? 'Der Outlook-Termin erscheint dann oben im Kalenderkopf statt als Block über den Tag — und lässt die Verfügbarkeit der Teilnehmer frei. Ohne Haken bucht ein Termin von 00:00 bis 23:59 den kompletten Tag als belegt.'
-                      : 'The Outlook entry then appears in the calendar header instead of as a block across the day — and leaves attendees shown as free. Without it, a 00:00–23:59 entry books the whole day as busy.'}
+                      ? 'Steht in Outlook oben im Kalenderkopf statt als Block über den Tag und lässt die Verfügbarkeit frei. Ohne Haken bucht ein Termin von 00:00 bis 23:59 den ganzen Tag als belegt.'
+                      : 'Appears in the Outlook calendar header instead of as a block across the day and leaves attendees shown as free. Without it, a 00:00–23:59 entry books the whole day as busy.'}
                   </span>
                 </span>
               </label>
@@ -617,23 +586,35 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   der umgekehrte Wert `showAsFree` — siehe Kommentar an
                   DeloitteEvent.showAsFree. Die Umkehrung passiert genau hier,
                   an einer Stelle, und nirgends sonst. */}
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginTop: 10 }}>
-                <input
-                  type="checkbox"
-                  checked={!scShowAsFree}
-                  onChange={e => setScShowAsFree(!e.target.checked)}
-                  style={{ width: 18, height: 18, marginTop: 1, flexShrink: 0, cursor: 'pointer' }}
-                />
-                <span style={{ fontSize: '0.9rem' }}>
-                  <strong>{isDe ? 'Termin blockiert den Kalender' : 'Entry blocks the calendar'}</strong>
-                  <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400 }}>
+              {/* v31.2: Sichtbar bleibt eine Zeile Folge; der Satz zur
+                  Arbeitstag-Belegung bei „ganztägig" liegt im Tooltip am Titel
+                  — sonst lief die Zeile auf drei bis vier Zeilen. */}
+              <label className={cx('dex-ui-toggle-row', !scShowAsFree && 'is-active')}>
+                <input type="checkbox" checked={!scShowAsFree} onChange={e => setScShowAsFree(!e.target.checked)} />
+                <span className="dex-ui-toggle-row-body">
+                  <span className="dex-ui-toggle-row-title">
+                    {isDe ? 'Termin blockiert den Kalender' : 'Entry blocks the calendar'}
+                    <InfoTooltip text={isDe ? (
+                      <>
+                        <strong>Mit Haken</strong> steht der Termin bei den Teilnehmern auf <strong>Beschäftigt</strong>, <strong>ohne Haken</strong> auf <strong>Frei</strong> — er blockiert dann nichts.<br /><br />
+                        <strong>Bei einem ganztägigen Termin</strong> gilt mit Haken der <strong>komplette Arbeitstag</strong> als belegt; für ein Angebot, zu dem man nur zeitweise dazukommt, nimmst du den Haken besser raus.
+                      </>
+                    ) : (
+                      <>
+                        <strong>Ticked</strong>, the entry shows as <strong>busy</strong> for attendees; <strong>unticked</strong> it shows as <strong>free</strong> and blocks nothing.<br /><br />
+                        <strong>For an all-day entry</strong> ticking marks the <strong>entire working day</strong> as taken; for something people only drop into, better untick it.
+                      </>
+                    )} />
+                  </span>
+                  <span className="dex-ui-toggle-row-desc">
                     {isDe
-                      ? <>Der Termin steht bei den Teilnehmern auf <strong>Beschäftigt</strong> — Kollegen sehen sie als nicht verfügbar. {scAllDay ? <>Bei einem ganztägigen Termin gilt damit der <strong>komplette Arbeitstag</strong> als belegt; für ein Angebot, zu dem man nur zeitweise dazukommt, nimmst du den Haken besser raus.</> : <>Ohne Haken erscheint der Termin als <strong>Frei</strong> und blockiert nichts.</>}</>
-                      : <>The entry shows as <strong>busy</strong> for attendees — colleagues see them as unavailable. {scAllDay ? <>For an all-day entry that marks the <strong>entire working day</strong> as taken; for something people only drop into, better untick it.</> : <>Without it the entry shows as <strong>free</strong> and blocks nothing.</>}</>}
+                      ? <>Steht bei den Teilnehmern auf <strong>Beschäftigt</strong>; ohne Haken als <strong>Frei</strong>.</>
+                      : <>Shows as <strong>busy</strong> for attendees; unticked it shows as <strong>free</strong>.</>}
                   </span>
                 </span>
               </label>
-              <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: 8, marginBottom: 0 }}>
+              </div>
+              <p className="dex-ui-help" style={{ marginTop: 8 }}>
                 {scAllDay
                   ? (isDe
                     ? 'Ganztägig: Es zählt nur das Datum — die Uhrzeit spielt für den Outlook-Termin keine Rolle mehr.'
@@ -642,18 +623,22 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                     ? (isDe
                       ? 'Leer lassen heißt: Dieses Sub-Event übernimmt die Zeiten des Hauptevents. Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.'
                       : 'Leaving these empty means the sub-event inherits the main event’s times. The time is used for the attendees’ Outlook entry.')
-                    : 'Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.'}
+                    : (isDe
+                      ? 'Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.'
+                      : 'The time is used for the attendees’ Outlook calendar entry.')}
               </p>
               </div>
 
-              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+              <div className="dex-ui-section">
                 {/* v28.7: kein <label> mehr, sondern <div> — rechts sitzt jetzt
-                    die „Keine Beschreibung"-Checkbox mit eigenem <label>;
+                    der „Beschreibung anzeigen"-Schalter mit eigenem <label>;
                     verschachtelte Labels würden Klicks auf die Überschrift
-                    fälschlich auf die Checkbox umleiten. */}
-                <div className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <StepBadge n={4} />
-                  {t('create.description')}
+                    fälschlich auf den Schalter umleiten. */}
+                <div className="dex-ui-section-title">{isDe ? 'Beschreibung' : 'Description'}</div>
+                <div className="dex-ui-label" style={{ flexWrap: 'wrap' }}>
+                  <StepBadge n={3} />
+                  {isDe ? 'Was sollen Teilnehmer vorab wissen?' : 'What should attendees know beforehand?'}
+                  <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>
                   <InfoTooltip text={isDe ? (
                     <>
                       <strong>Was du hier einstellst:</strong> die <strong>Hauptbeschreibung</strong> des Events — was findet statt, an wen richtet es sich, was sollten Teilnehmer wissen.<br /><br />
@@ -675,19 +660,23 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   {/* v28.89: „Keine Beschreibung" ist eine Entscheidung fürs
                       Hauptevent (sie steckt als Flag in EmailTemplateOverrides).
                       Ein Sub-Event lässt seine Beschreibung schlicht leer. */}
+                  {/* v31.2: Schalter mit positiver Aussage („anzeigen") statt
+                      Häkchen „Keine Beschreibung nutzen" — gespeichert wird
+                      weiter `noDescription`, die Umkehr passiert nur hier.
+                      2a′: direkt hinter der Beschriftung, nicht rechts außen. */}
                   {!scopeSub && (
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto', fontSize: '0.78rem', fontWeight: 400, color: 'var(--dex-gray-600)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    <label className="dex-ui-switch" style={{ display: 'inline-flex', marginLeft: 12 }}>
                       <input
                         type="checkbox"
-                        checked={noDescription}
+                        checked={!noDescription}
                         onChange={e => {
-                          const on = e.target.checked;
+                          const on = !e.target.checked;
                           setNoDescription(on);
                           if (on) setDescription('');
                         }}
-                        style={{ accentColor: 'var(--dex-green)' }}
                       />
-                      {isDe ? 'Keine Beschreibung nutzen' : 'Don’t use a description'}
+                      <span className="dex-ui-switch-track" />
+                      <span className="dex-ui-switch-label" style={{ fontWeight: 500, fontSize: '0.8rem' }}>{isDe ? 'Beschreibung anzeigen' : 'Show a description'}</span>
                     </label>
                   )}
                 </div>
@@ -698,24 +687,34 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                     v26.77) lebt jetzt IM Editor-Dialog (headerExtra +
                     bodyTemplates) — der Wizard-Schritt bleibt schlank. */}
                 {(!scopeSub && noDescription) ? (
-                  <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', margin: 0 }}>
-                    {isDe ? 'Auf der Anmelde-Seite wird keine Beschreibung angezeigt.' : 'No description will be shown on the registration page.'}
-                  </p>
+                  <div className="dex-ui-card dex-ui-card--soft dex-ui-card--muted dex-ui-muted">
+                    {isDe ? 'Auf der Anmelde-Seite wird keine Beschreibung angezeigt. Schalter oben einschalten, um eine zu schreiben.' : 'No description will be shown on the registration page. Turn the switch above on to write one.'}
+                  </div>
                 ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => { setHtmlEditorMode('description'); setHtmlEditorOpen(true); }}
-                    style={{ fontSize: '0.85rem' }}
-                  >
-                    {isDe ? 'Bearbeiten & Vorschau' : 'Edit & Preview'}
-                  </button>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', flex: 1, minWidth: 200 }}>
+                // v31.2 (2a′): Auszug und Knopf stehen zusammen links (kein
+                // flex:1, das den Knopf an den Rand schiebt); die Kachel selbst
+                // öffnet den Editor — Hover, Zeiger, Enter/Leertaste.
+                <div
+                  className="dex-ui-card dex-ui-card--soft dex-ui-card--hover"
+                  role="button"
+                  tabIndex={0}
+                  onClick={openDescriptionEditor}
+                  onKeyDown={rowKeyHandler(openDescriptionEditor)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: 'pointer' }}
+                >
+                  <span className="dex-ui-muted" style={{ minWidth: 200, lineHeight: 1.5 }}>
                     {scDescription
                       ? `${scDescription.replace(/<[^>]+>/g, '').substring(0, 120)}${scDescription.length > 120 ? '…' : ''}`
-                      : (isDe ? 'Keine Beschreibung gesetzt — klicke „Bearbeiten" zum Hinzufügen.' : 'No description set — click „Edit" to add one.')}
+                      : (isDe ? 'Noch keine Beschreibung — sie steht oben auf der Anmeldeseite und in Meine Events. HTML-Formatierung ist möglich.' : 'No description yet — it appears at the top of the registration page and in My Events. HTML formatting is possible.')}
                   </span>
+                  <button
+                    type="button"
+                    className="btn btn-secondary dex-ui-btn-sm"
+                    onClick={e => { e.stopPropagation(); openDescriptionEditor(); }}
+                    onKeyDown={stopBubble}
+                  >
+                    {scDescription ? (isDe ? 'Bearbeiten & Vorschau' : 'Edit & preview') : (isDe ? 'Beschreibung schreiben' : 'Write a description')}
+                  </button>
                 </div>
                 )}
                 {/* v18.73: Hinweis, wenn Name/Datum/Ort des Events redundant in
@@ -768,10 +767,14 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                 })()}
               </div>
 
-              <div className="form-group">
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={5} />
-                  {t('create.eventimage')}
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">{isDe ? 'Bild' : 'Image'}</div>
+                <div className="dex-ui-label">
+                  <StepBadge n={4} />
+                  {scopeSub
+                    ? (isDe ? `Welches Bild zeigt dieses ${childTermSingular || 'Sub-Event'}?` : `Which image shows this ${childTermSingular || 'sub-event'}?`)
+                    : (isDe ? 'Welches Bild zeigt das Event?' : 'Which image represents the event?')}
+                  <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>
                   <InfoTooltip text={isDe ? (
                     <>
                       <strong>Was du hier einstellst:</strong> ein <strong>Hauptbild fürs Event</strong> (Foto vom Veranstaltungsort, Eventlogo, Stimmungsbild). Wird zentral als Item-Attachment am Event gespeichert.<br /><br />
@@ -789,9 +792,17 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                       <strong>Not the same as the mail logo:</strong> emails and the Outlook invite use the logo from the <strong>Communication</strong> step, not this image. If you leave this empty, the registration page falls back to the mail logo (since v29.13) instead of showing the generic DEX circle.
                     </>
                   )} />
-                </label>
+                </div>
+                <p className="dex-ui-help" style={{ margin: '-2px 0 10px' }}>
+                  {scopeSub
+                    ? (isDe ? 'Vorschaubild neben diesem Termin auf der Anmeldeseite.' : 'Thumbnail next to this date on the registration page.')
+                    : (isDe ? 'Kachel in der Event-Liste und Kopf der Anmeldeseite. Mails und Outlook-Termin haben ihr eigenes Logo (Schritt Kommunikation).' : 'Tile in the event list and top of the registration page. Emails and the Outlook invite use their own logo (Communication step).')}
+                </p>
+                {/* v31.2: Aktionen als Knopfreihe UNTER dem Bild statt als
+                    Overlays ohne Hover — drei halbtransparente Flächen auf
+                    einem Foto lasen sich als Bildteil, nicht als Knöpfe. */}
                 {scImagePreview && (
-                  <div style={{ position: 'relative', marginBottom: 8, display: 'block', width: 'fit-content', maxWidth: '100%' }}>
+                  <div className="dex-ui-card dex-ui-card--soft" style={{ padding: 12, marginBottom: 10 }}>
                     <img
                       src={scImagePreview}
                       alt="Vorschau"
@@ -807,26 +818,11 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                         background: 'var(--dex-gray-100)',
                       }}
                     />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        // v28.89: Auf einem Sub-Event-Reiter betrifft das
-                        // Entfernen dessen Bild — imageRemoved ist das Signal
-                        // für den Save, das gespeicherte Attachment zu löschen.
-                        if (scopeSub) { patchScopeSub({ imagePreview: '', imageFile: null, imageRemoved: true }); return; }
-                        setImageFile(null); setImagePreview(''); setEventImageUrl(''); setImageOrigFile(null); setImageOrigAspect(null);
-                      }}
-                      style={{
-                        position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.6)',
-                        color: '#fff', border: 'none', borderRadius: '50%', width: 28, height: 28,
-                        cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}
-                    >
-                      <X size={14} />
-                    </button>
+                    <div className="dex-ui-inline" style={{ marginTop: 10 }}>
                     {/* v23.15: Bild editieren (zuschneiden / auf Kreis). */}
                     <button
                       type="button"
+                      className="btn btn-secondary dex-ui-btn-sm"
                       onClick={() => {
                         // v28.89: Sub-Event-Bilder haben ihr eigenes
                         // Zuschnitt-Modal (subImageCropIdx) — Ziel ist der
@@ -864,14 +860,8 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                         }
                         setImageEditOpen(true);
                       }}
-                      style={{
-                        position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,0.6)',
-                        color: '#fff', border: 'none', borderRadius: 999, padding: '4px 12px',
-                        cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
-                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                      }}
                     >
-                      <Icon iconName="Crop" style={{ fontSize: 13 }} /> {isDe ? 'Bild editieren' : 'Edit image'}
+                      <Icon iconName="Crop" style={{ fontSize: 13 }} /> {isDe ? 'Zuschneiden' : 'Crop'}
                     </button>
                     {/* v30.98: Bild herunterladen (Nutzer-Ansage 07.09.2026: „ich
                         möchte auch die Möglichkeit haben, das Bild zu speichern").
@@ -879,6 +869,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                         Browser speichert statt das Bild nur zu öffnen. */}
                     <button
                       type="button"
+                      className="btn btn-secondary dex-ui-btn-sm"
                       onClick={() => {
                         void (async () => {
                           try {
@@ -895,15 +886,24 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                         })();
                       }}
                       title={isDe ? 'Bild als Datei speichern' : 'Save image as file'}
-                      style={{
-                        position: 'absolute', bottom: 8, left: 8, background: 'rgba(0,0,0,0.6)',
-                        color: '#fff', border: 'none', borderRadius: 999, padding: '4px 12px',
-                        cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
-                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                      }}
                     >
                       <Icon iconName="Download" style={{ fontSize: 13 }} /> {isDe ? 'Speichern' : 'Save'}
                     </button>
+                    <button
+                      type="button"
+                      className="dex-ui-textbtn dex-ui-textbtn--danger"
+                      style={{ marginLeft: 'auto' }}
+                      onClick={() => {
+                        // v28.89: Auf einem Sub-Event-Reiter betrifft das
+                        // Entfernen dessen Bild — imageRemoved ist das Signal
+                        // für den Save, das gespeicherte Attachment zu löschen.
+                        if (scopeSub) { patchScopeSub({ imagePreview: '', imageFile: null, imageRemoved: true }); return; }
+                        setImageFile(null); setImagePreview(''); setEventImageUrl(''); setImageOrigFile(null); setImageOrigAspect(null);
+                      }}
+                    >
+                      <X size={14} /> {isDe ? 'Bild entfernen' : 'Remove image'}
+                    </button>
+                    </div>
                   </div>
                 )}
                 {/* v23.15: Bild-Zuschnitt-Modal — liefert das Ergebnis als
@@ -969,21 +969,22 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   {/* v23.19/v23.25: Optional & einklappbar — Bild pro Ansicht
                       anders zoomen/skalieren. Default zu; wer einfach nur ein
                       Foto hochlädt, muss hier nichts tun. */}
-                  <div style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 8, overflow: 'hidden' }}>
+                  <div>
                     <button
                       type="button"
+                      className={cx('dex-ui-disclosure', imageDisplayOpen && 'is-open')}
                       onClick={() => setImageDisplayOpen(o => !o)}
-                      style={{ width: '100%', textAlign: 'left', background: 'var(--dex-gray-50, #f7f7f5)', border: 'none', cursor: 'pointer', padding: '10px 12px', fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)', display: 'flex', alignItems: 'center', gap: 8 }}
                     >
-                      <Icon iconName={imageDisplayOpen ? 'ChevronDown' : 'ChevronRight'} style={{ fontSize: 12 }} />
-                      {isDe ? 'Darstellung pro Ansicht (optional)' : 'Per-view display (optional)'}
+                      <span className="dex-ui-disclosure-chevron"><Icon iconName="ChevronRight" style={{ fontSize: 12 }} /></span>
+                      {isDe ? 'Darstellung pro Ansicht anpassen' : 'Adjust display per view'}
+                      <span className="dex-ui-disclosure-count">{isDe ? 'optional' : 'optional'}</span>
                     </button>
                     {imageDisplayOpen && (
-                      <div style={{ padding: '12px 14px' }}>
-                        <p style={{ margin: '0 0 12px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                      <div className="dex-ui-disclosure-body">
+                        <p className="dex-ui-help" style={{ margin: '0 0 12px' }}>
                           {isDe
-                            ? 'Optional: Du kannst das Bild pro Ansicht unterschiedlich zoomen und vertikal verschieben, damit es überall gut sitzt. Standard (nichts einstellen) = das Bild füllt den Bereich zentriert.'
-                            : 'Optional: zoom and vertically position the image differently per view so it sits well everywhere. Default (leave untouched) = the image fills the area centered.'}
+                            ? 'Zoom und Größe je Ansicht getrennt einstellen, damit das Bild überall gut sitzt. Nichts einstellen = das Bild füllt den Bereich zentriert.'
+                            : 'Set zoom and size per view so the image sits well everywhere. Leave untouched = the image fills the area centered.'}
                         </p>
                         {([
                           { key: 'card' as const, label: isDe ? 'Event-Liste / Karte' : 'Event list / card', w: 240, h: 135 },
@@ -1015,7 +1016,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                                   <input type="range" min={140} max={500} step={5} value={heroH} onChange={e => setV({ ...v, height: parseInt(e.target.value, 10) })} style={{ width: '100%' }} />
                                   <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Zoom' : 'Zoom'}</label>
                                   <input type="range" min={0.3} max={3} step={0.01} value={v.zoom} onChange={e => setV({ ...v, zoom: parseFloat(e.target.value) })} style={{ width: '100%' }} />
-                                  <button type="button" className="btn btn-secondary" style={{ fontSize: '0.74rem', padding: '3px 10px', marginTop: 4 }} onClick={() => setImageDisplay(prev => { const n = { ...prev }; delete n[view.key]; return n; })}>
+                                  <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" style={{ marginTop: 4 }} onClick={() => setImageDisplay(prev => { const n = { ...prev }; delete n[view.key]; return n; })}>
                                     {isDe ? 'Zurücksetzen' : 'Reset'}
                                   </button>
                                 </div>
@@ -1038,7 +1039,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                                 <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 6 }}>{view.label}</div>
                                 <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Größe (kleiner = mehr weißer Rand)' : 'Size (smaller = more white margin)'}</label>
                                 <input type="range" min={0.3} max={1.5} step={0.01} value={v.zoom} onChange={e => setV({ ...v, zoom: parseFloat(e.target.value) })} style={{ width: '100%' }} />
-                                <button type="button" className="btn btn-secondary" style={{ fontSize: '0.74rem', padding: '3px 10px', marginTop: 4 }} onClick={() => setImageDisplay(prev => { const n = { ...prev }; delete n[view.key]; return n; })}>
+                                <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" style={{ marginTop: 4 }} onClick={() => setImageDisplay(prev => { const n = { ...prev }; delete n[view.key]; return n; })}>
                                   {isDe ? 'Zurücksetzen' : 'Reset'}
                                 </button>
                               </div>
@@ -1049,15 +1050,15 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                     )}
                   </div>
                 </ImageCropModal>
-                <label style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 8,
-                  padding: '8px 16px', borderRadius: 'var(--dex-radius)',
-                  border: '2px dashed var(--dex-gray-300)', cursor: 'pointer',
-                  fontSize: '0.85rem', color: 'var(--dex-gray-600)',
-                  transition: 'border-color 0.2s, background 0.2s',
-                }}>
+                {/* v31.2: Upload als gestrichelte Auswahl-Kachel (Klasse
+                    dex-ui-choice liefert den Hover, den ein Inline-Style nicht
+                    kann). Ohne Bild groß und einladend, mit Bild eine schmale
+                    Zeile „Anderes Bild wählen". */}
+                <label className="dex-ui-choice" style={{ borderStyle: 'dashed', alignItems: 'center', justifyContent: scImagePreview ? 'flex-start' : 'center', padding: scImagePreview ? '10px 14px' : '22px 16px', fontSize: '0.86rem', color: 'var(--dex-gray-600)', fontWeight: 600 }}>
                   <Plus size={16} />
-                  {(scopeSub ? scopeSub.imageFile : imageFile)?.name || (isDe ? 'Bild auswählen' : 'Choose image')}
+                  {(scopeSub ? scopeSub.imageFile : imageFile)?.name || (scImagePreview
+                    ? (isDe ? 'Anderes Bild wählen' : 'Choose a different image')
+                    : (isDe ? 'Bild auswählen — Querformat, mind. 1200 px breit' : 'Choose an image — landscape, at least 1200 px wide'))}
                   <input
                     type="file"
                     accept="image/*"
@@ -1110,7 +1111,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                     der Auswahl auf der Anmeldeseite (v27.11); Mails und
                     Outlook-Termin haben davon unabhängig ihr eigenes Kopfbild. */}
                 {scopeSub && (
-                  <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: 6, marginBottom: 0 }}>
+                  <p className="dex-ui-help">
                     {isDe
                       ? 'Erscheint als Vorschaubild neben diesem Sub-Event in der Auswahl auf der Anmeldeseite. Ohne eigenes Bild bleibt die Zeile dort schlicht ohne Vorschau.'
                       : 'Shown as a thumbnail next to this sub-event in the selection on the registration page. Without its own image the row simply has no preview.'}
@@ -1119,87 +1120,176 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                 {imageUploadError && (
                   <p style={{ color: 'var(--dex-red, #c00)', fontSize: '0.8rem', marginTop: 4 }}>{imageUploadError}</p>
                 )}
-                {/* v28.90: Pflichtanmeldung — eine Einstellung DIESES
-                    Sub-Events, deshalb hier bei seinen Grundlagen und nicht
-                    (neunmal wiederholt) in der Liste auf der Klammer-Ebene.
-                    v28.77: Der Haken wurde als „dieses Sub-Event ist buchbar"
-                    missverstanden und darum bei ALLEN gesetzt — das Ergebnis
-                    ist das Gegenteil einer Auswahl. Diesen Zustand benennen,
-                    sobald er eintritt, mit einem Klick zum Zurücknehmen. */}
-                {scopeSub && (
-                  <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--dex-gray-100)' }}>
-                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px', borderRadius: 8, border: `1px solid ${scopeSub.mandatory ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`, background: scopeSub.mandatory ? 'rgba(134,188,37,0.06)' : '#fff', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={!!scopeSub.mandatory}
-                        onChange={e => patchScopeSub({ mandatory: e.target.checked })}
-                        style={{ width: 18, height: 18, marginTop: 1, flexShrink: 0, cursor: 'pointer' }}
-                      />
-                      <span style={{ fontSize: '0.85rem' }}>
-                        <strong>{isDe ? `Pflichtanmeldung für dieses ${childTermSingular || 'Sub-Event'}` : `Mandatory registration for this ${childTermSingular || 'sub-event'}`}</strong>
-                        <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400 }}>
-                          {isDe
-                            ? <>Wenn aktiv, muss jeder Teilnehmer diesen Termin mitbuchen — eine Anmeldung ohne ihn ist dann nicht möglich. <strong>Nur setzen, wenn er für wirklich alle verpflichtend ist</strong> (z.B. eine Auftaktveranstaltung). Für &bdquo;darf gebucht werden&ldquo; ist der Haken nicht nötig.</>
-                            : <>If active, every attendee must include this date — registering without it is then not possible. <strong>Only set this if it is truly compulsory for everyone</strong> (e.g. a kick-off). For &bdquo;may be booked&ldquo; the checkbox is not needed.</>}
-                        </span>
-                      </span>
-                    </label>
-                    {(() => {
-                      const named = subEvents.filter(s => (s.title || '').trim());
-                      const mandatoryCount = named.filter(s => s.mandatory).length;
-                      if (named.length < 2 || mandatoryCount !== named.length || !scopeSub.mandatory) return null;
-                      return (
-                        <div style={{
-                          margin: '10px 0 0', padding: '9px 11px', borderRadius: 8,
-                          background: '#fff8e6', border: '1px solid #e0b34d', color: '#7a5a12',
-                          fontSize: '0.78rem', lineHeight: 1.55,
-                        }}>
-                          <strong>{isDe ? `Alle ${named.length} Sub-Events sind als Pflicht markiert` : `All ${named.length} sub-events are marked mandatory`}</strong>
-                          <div style={{ marginTop: 3 }}>
-                            {isDe
-                              ? <>Damit gibt es faktisch <strong>keine Auswahl mehr</strong> — wer teilnehmen möchte, muss <strong>alle {named.length}</strong> mitbuchen; wer auch nur einen Termin nicht kann, kann sich gar nicht anmelden.{subEventsOnlyMode ? <> Bei diesem Klammerevent läuft die Anmeldung ohnehin ausschließlich über die Sub-Events — der Haken ist dafür <strong>nicht nötig</strong>.</> : null} Gemeint war vermutlich, dass die Sub-Events buchbar sind — dafür lässt du den Haken einfach weg.</>
-                              : <>That leaves <strong>no choice at all</strong> — attendees must book <strong>all {named.length}</strong>; anyone unavailable for a single date cannot register.{subEventsOnlyMode ? <> For this bracket event registration runs via the sub-events anyway — the checkbox is <strong>not needed</strong> for that.</> : null}</>}
-                          </div>
-                          <button
-                            type="button"
-                            className="btn btn-primary"
-                            style={{ fontSize: '0.78rem', padding: '5px 12px', marginTop: 8 }}
-                            onClick={() => setSubEvents(prev => prev.map(s => ({ ...s, mandatory: false })))}
-                          >
-                            {isDe ? 'Pflicht bei allen entfernen' : 'Remove mandatory from all'}
-                          </button>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
                 {/* v28.5: Layout-Wahl fürs Event-Bild auf der Anmeldeseite —
                     Banner in voller Breite ÜBER den Infos (gut für breite
                     Querformat-Fotos) vs. kompakt links neben den Infos.
                     v28.10: nur noch bei Querformat-Bildern (Ratio >= 1.2)
                     anbieten — für Kreis-/Quadrat-/Hochkant-Bilder ergibt
-                    das Banner-Layout keinen Sinn. */}
+                    das Banner-Layout keinen Sinn.
+                    v31.2: direkt unter dem Bild, zu dem sie gehört — als
+                    Toggle-Zeile mit der Folge in einer Zeile. */}
                 {!scopeSub && (imagePreview || imageFile) && wizardImgAspect != null && wizardImgAspect >= 1.2 && (
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 12, padding: '10px 12px', borderRadius: 8, border: `1px solid ${imageBanner ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`, background: imageBanner ? 'rgba(134,188,37,0.06)' : '#fff', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={imageBanner}
-                      onChange={e => setImageBanner(e.target.checked)}
-                      style={{ width: 18, height: 18, marginTop: 1, flexShrink: 0, cursor: 'pointer' }}
-                    />
-                    <span style={{ fontSize: '0.82rem' }}>
-                      <strong>{isDe ? 'Bild als Banner über den Event-Infos anzeigen' : 'Show image as a banner above the event info'}</strong>
-                      <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400 }}>
+                  <label className={cx('dex-ui-toggle-row', imageBanner && 'is-active')} style={{ marginTop: 12 }}>
+                    <input type="checkbox" checked={imageBanner} onChange={e => setImageBanner(e.target.checked)} />
+                    <span className="dex-ui-toggle-row-body">
+                      <span className="dex-ui-toggle-row-title">{isDe ? 'Bild als Banner in voller Breite über den Event-Infos zeigen' : 'Show the image as a full-width banner above the event info'}</span>
+                      <span className="dex-ui-toggle-row-desc">
                         {isDe
-                          ? 'Empfohlen für breite Querformat-Fotos: Das Bild liegt auf der Anmeldeseite in voller Kartenbreite oben, Titel/Datum/Ort folgen darunter. Aus = Bild sitzt kompakt links neben den Infos (Standard).'
-                          : 'Recommended for wide landscape photos: the image spans the full card width at the top of the registration page, with title/date/location below. Off = compact image to the left of the info (default).'}
+                          ? 'Empfohlen für breite Querformat-Fotos: Bild oben über die ganze Karte, Titel/Datum/Ort darunter. Aus = Bild sitzt kompakt links neben den Infos (Standard).'
+                          : 'Recommended for wide landscape photos: image across the full card at the top, title/date/location below. Off = compact image to the left of the info (default).'}
                       </span>
                     </span>
                   </label>
                 )}
               </div>
 
+              {/* v28.90: Pflichtanmeldung — eine Einstellung DIESES
+                  Sub-Events, deshalb hier bei seinen Grundlagen und nicht
+                  (neunmal wiederholt) in der Liste auf der Klammer-Ebene.
+                  v28.77: Der Haken wurde als „dieses Sub-Event ist buchbar"
+                  missverstanden und darum bei ALLEN gesetzt — das Ergebnis
+                  ist das Gegenteil einer Auswahl. Diesen Zustand benennen,
+                  sobald er eintritt, mit einem Klick zum Zurücknehmen.
+                  v31.2: eigener Abschnitt statt Anhang ans Bild — die Frage
+                  hat mit dem Bild nichts zu tun. */}
+              {scopeSub && (
+                <div className="dex-ui-section">
+                  <div className="dex-ui-section-title">{isDe ? 'Teilnahme' : 'Participation'}</div>
+                  <label className={cx('dex-ui-toggle-row', !!scopeSub.mandatory && 'is-active')}>
+                    <input type="checkbox" checked={!!scopeSub.mandatory} onChange={e => patchScopeSub({ mandatory: e.target.checked })} />
+                    <span className="dex-ui-toggle-row-body">
+                      <span className="dex-ui-toggle-row-title">{isDe ? `Jeder Teilnehmer muss dieses ${childTermSingular || 'Sub-Event'} mitbuchen (Pflicht)` : `Every attendee must book this ${childTermSingular || 'sub-event'} (mandatory)`}</span>
+                      <span className="dex-ui-toggle-row-desc">
+                        {isDe
+                          ? <>Eine Anmeldung ohne diesen Termin ist dann nicht möglich. <strong>Nur setzen, wenn er für wirklich alle verpflichtend ist</strong> (z.B. eine Auftaktveranstaltung). Für &bdquo;darf gebucht werden&ldquo; ist der Haken nicht nötig.</>
+                          : <>Registering without this date is then not possible. <strong>Only set this if it is truly compulsory for everyone</strong> (e.g. a kick-off). For &bdquo;may be booked&ldquo; the checkbox is not needed.</>}
+                      </span>
+                    </span>
+                  </label>
+                  {(() => {
+                    const named = subEvents.filter(s => (s.title || '').trim());
+                    const mandatoryCount = named.filter(s => s.mandatory).length;
+                    if (named.length < 2 || mandatoryCount !== named.length || !scopeSub.mandatory) return null;
+                    return (
+                      <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginTop: 10, display: 'block' }}>
+                        <strong>{isDe ? `Alle ${named.length} Sub-Events sind als Pflicht markiert` : `All ${named.length} sub-events are marked mandatory`}</strong>
+                        <div style={{ marginTop: 3 }}>
+                          {isDe
+                            ? <>Damit gibt es faktisch <strong>keine Auswahl mehr</strong> — wer teilnehmen möchte, muss <strong>alle {named.length}</strong> mitbuchen; wer auch nur einen Termin nicht kann, kann sich gar nicht anmelden.{subEventsOnlyMode ? <> Bei diesem Klammerevent läuft die Anmeldung ohnehin ausschließlich über die Sub-Events — der Haken ist dafür <strong>nicht nötig</strong>.</> : null} Gemeint war vermutlich, dass die Sub-Events buchbar sind — dafür lässt du den Haken einfach weg.</>
+                            : <>That leaves <strong>no choice at all</strong> — attendees must book <strong>all {named.length}</strong>; anyone unavailable for a single date cannot register.{subEventsOnlyMode ? <> For this bracket event registration runs via the sub-events anyway — the checkbox is <strong>not needed</strong> for that.</> : null}</>}
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-secondary dex-ui-btn-sm"
+                          style={{ marginTop: 8 }}
+                          onClick={() => setSubEvents(prev => prev.map(s => ({ ...s, mandatory: false })))}
+                        >
+                          {isDe ? 'Pflicht bei allen entfernen' : 'Remove mandatory from all'}
+                        </button>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
 
+              {/* v9.21: Entwurf-Flag — Default an, damit der Organizer die
+                  Test-Strecke in Ruhe aufbauen und das Test-Team durchspielen
+                  lassen kann. v22.27: volle Breite.
+                  v31.2: vom Anfang ans Ende des Schritts gewandert — erst
+                  beschreibt man das Event, dann entscheidet man, wann es
+                  jemand sieht. Bleibt event-weit (nur auf der Klammer-Ebene);
+                  Badge 5 — die Nummern folgen der Reihenfolge (07.09.2026). */}
+              {activeScopeIdx === 0 && (
+                <div className="dex-ui-section">
+                  <div className="dex-ui-section-title">{isDe ? 'Veröffentlichung' : 'Publishing'}</div>
+                  <label className={cx('dex-ui-toggle-row', isFictive && 'is-active')} style={isFictive ? { borderColor: 'var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.06)' } : undefined}>
+                    <input type="checkbox" checked={isFictive} onChange={e => setIsFictive(e.target.checked)} />
+                    <span className="dex-ui-toggle-row-body">
+                      <span className="dex-ui-toggle-row-title">
+                        <StepBadge n={5} />
+                        {isDe ? 'Noch nicht veröffentlichen — als Entwurf speichern' : 'Don’t publish yet — save as draft'}
+                        <InfoTooltip text={t('create.fictive.hint')} />
+                      </span>
+                      {/* v31.2: Nur der erste Satz bleibt sichtbar — wie man live
+                          geht, steht im Tooltip und unter „Ab wann … live gehen?". */}
+                      <span className="dex-ui-toggle-row-desc">
+                        {isDe
+                          ? <>Standard. Nur Admins, Organizer und das Test-Team sehen das Event und können sich anmelden — niemand meldet sich versehentlich an.</>
+                          : <>Default. Only admins, organizers and the test team see the event and can register — nobody signs up by accident.</>}
+                      </span>
+                    </span>
+                  </label>
+                  {/* v9.21: ActiveFrom direkt unter dem Entwurfs-Toggle — wenn
+                      der Organizer ein Live-Datum setzt, geht das Event ab dann
+                      auch wenn das Entwurf-Häkchen noch on ist. Optional. */}
+                  <div className="dex-ui-field" style={{ marginTop: 14 }}>
+                    <label className="dex-ui-label">
+                      {isDe ? 'Ab wann soll das Event automatisch live gehen?' : 'When should the event go live automatically?'}
+                      <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>
+                      <InfoTooltip text={isDe ? (
+                        <>
+                          <strong>Was du hier einstellst:</strong> einen Zeitpunkt, ab dem das Event automatisch live geht — auch wenn der <strong>Entwurf-Haken</strong> noch gesetzt ist.<br /><br />
+                          <strong>Anzeige in der App:</strong> bis zu diesem Zeitpunkt sehen <strong>nur Admins, Organizer und Test-Team</strong> das Event. Ab dem gesetzten Datum prüft die App bei jedem Aufruf, ob die Zeit schon erreicht ist; falls ja, wird das Event in der allgemeinen Eventliste eingeblendet.<br /><br />
+                          <strong>Auswirkung für Teilnehmer:</strong> bis zum Aktiv-ab-Zeitpunkt taucht das Event nicht in der Liste auf, kann nicht aufgerufen werden und bekommt keine Mails. Ab dem Stichtag ist es ganz normal anmeldbar.<br /><br />
+                          <strong>Leer lassen</strong> = kein Auto-Go-Live. Du musst dann manuell den Entwurf-Haken entfernen oder im Admin Center auf <strong>Event aktivieren</strong> klicken.
+                        </>
+                      ) : (
+                        <>
+                          <strong>What you set here:</strong> a date/time at which the event automatically goes live — even if the <strong>draft toggle</strong> is still on.<br /><br />
+                          <strong>Shown in the app:</strong> until that point, only <strong>admins, organizers and the test team</strong> see the event. Once the timestamp is reached, the app reveals the event in the general event list.<br /><br />
+                          <strong>Effect for attendees:</strong> until the active-from date the event is not listed, not openable, and produces no mails. After the timestamp it behaves like any other published event.<br /><br />
+                          <strong>Leave empty</strong> = no auto-go-live. Publish manually by clearing the draft toggle or by clicking <strong>Activate event</strong> in the admin center.
+                        </>
+                      )} />
+                    </label>
+                    <DatePicker
+                      selected={activeFrom ? new Date(activeFrom) : null}
+                      onChange={(date: Date | null) => setActiveFrom(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
+                      showTimeSelect
+                      timeFormat="HH:mm"
+                      timeIntervals={15}
+                      timeCaption={isDe ? 'Uhrzeit' : 'Time'}
+                      dateFormat="dd.MM.yyyy, HH:mm"
+                      locale="de"
+                      placeholderText={isDe ? 'Datum und Uhrzeit wählen' : 'Choose date and time'}
+                      className="form-input"
+                      wrapperClassName="dex-datepicker-wrapper"
+                      calendarClassName="dex-datepicker-calendar"
+                      popperPlacement="bottom-start"
+                      isClearable
+                      autoComplete="off"
+                    />
+                    <div className="dex-ui-help">
+                      {isDe
+                        ? 'Bis dahin sehen nur Admins, Organizer und Test-Team das Event. Leer = kein automatisches Go-Live, du aktivierst von Hand.'
+                        : 'Until then only admins, organizers and the test team see the event. Empty = no automatic go-live; you activate it manually.'}
+                    </div>
+                  </div>
+                  {/* v23.14: Vorschau-Wahl — nur sinnvoll bei gesetztem „Aktiv ab".
+                      v31.2: zwei Kacheln statt zweier Radios — jede nennt die Folge. */}
+                  {activeFrom && (
+                    <div className="dex-ui-field">
+                      <div className="dex-ui-label">{isDe ? 'Bis zum Aktivierungszeitpunkt ist das Event …' : 'Until the activation time the event is …'}</div>
+                      <div className="dex-ui-grid-2" role="radiogroup">
+                        <button type="button" role="radio" aria-checked={!previewBeforeActive} className={cx('dex-ui-choice', !previewBeforeActive && 'is-active')} onClick={() => setPreviewBeforeActive(false)}>
+                          <span className="dex-ui-choice-body">
+                            <span className="dex-ui-choice-title">{isDe ? '… komplett unsichtbar' : '… completely hidden'} <span className="dex-ui-label-optional">{isDe ? '(Standard)' : '(default)'}</span></span>
+                            <span className="dex-ui-choice-desc">{isDe ? 'Nur Admins, Organizer und Test-Team sehen es vorher.' : 'Only admins, organizers and the test team see it beforehand.'}</span>
+                          </span>
+                          <span className="dex-ui-choice-check">{!previewBeforeActive && <Check size={12} />}</span>
+                        </button>
+                        <button type="button" role="radio" aria-checked={previewBeforeActive} className={cx('dex-ui-choice', previewBeforeActive && 'is-active')} onClick={() => setPreviewBeforeActive(true)}>
+                          <span className="dex-ui-choice-body">
+                            <span className="dex-ui-choice-title">{isDe ? '… schon als Vorschau sichtbar' : '… already shown as a preview'}</span>
+                            <span className="dex-ui-choice-desc">{isDe ? 'Steht mit dem Hinweis „Anmeldung ab …“ in der Event-Liste; die Anmeldeseite öffnet sich erst ab dem Aktivierungszeitpunkt.' : 'Listed with the note „Registration opens …“; the registration page only opens from the activation time onwards.'}</span>
+                          </span>
+                          <span className="dex-ui-choice-check">{previewBeforeActive && <Check size={12} />}</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               </div>
   );
 };

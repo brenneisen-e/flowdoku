@@ -6,7 +6,11 @@ import * as React from 'react';
 import { EventService, SPRegistration } from '../../../services/EventService';
 import { PersonContactHover } from '../../PersonContactHover';
 import { formatDate, translateStatus } from '../../../utils/eventStatus';
-import { FileText, Pencil } from '../../Icons';
+import { Check, ChevronDown, ChevronUp, Columns, FileText, Pencil, Trash2, X } from '../../Icons';
+// v31.3: Gemeinsamer Klassensatz (docs/ui-leitfaden.md, Abschnitt 5b) — die
+// Tabelle hatte bis dahin jeden Hover als Inline-Style-Notlösung
+// (onMouseEnter-State für den Aufklapp-Knopf, Farbwechsel per DOM-Zugriff).
+import { cx, ensureDexUiStyles } from '../../dexUi';
 import { isEventOver } from '../../../utils/eventFormat';
 import { selfCancelLocked } from '../../../utils/cancelPolicy';
 import { externalInvitationEmail } from '../../../services/EmailTemplates';
@@ -63,7 +67,35 @@ export interface ParticipantTableProps {
 }
 
 export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
-  const { activeRegs, allEvents, attachmentsByReg, availableColumns, colToggleHover, columnOrder, computeRoommatePairs, confirmDialog, duplicateEmails, eventServiceRef, getRoommateInfo, handleSort, hasRoommateColumn, hiddenColumns, hideColumn, highlightMatch, inactiveAccounts, isDe, isSplitCapacity, moveColumn, openEditModal, orgPastLock, parentEventForSelected, parentRegsByEmail, performStandardCancel, personalColsCollapsed, query, registrations, reloadRegistrations, selectedEvent, setAttachmentsModalReg, setColToggleHover, setDupCancelReg, setParticipantDetail, setPersonalColsCollapsed, setShowColumnPicker, setSplitParticipantsView, showAlert, showColumn, showColumnPicker, showMatches, sortIcon, splitParticipantsView, stripLocPrefix } = p;
+  // v31.3: `colToggleHover`/`setColToggleHover` bleiben in der Schnittstelle,
+  // werden aber nicht mehr gelesen — der Aufklapp-Knopf hat seinen Hover jetzt
+  // über `dex-ui-chip` (Leitfaden 1.3: kein onMouseEnter-State für reine Optik).
+  const { activeRegs, allEvents, attachmentsByReg, availableColumns, columnOrder, computeRoommatePairs, confirmDialog, duplicateEmails, eventServiceRef, getRoommateInfo, handleSort, hasRoommateColumn, hiddenColumns, hideColumn, highlightMatch, inactiveAccounts, isDe, isSplitCapacity, moveColumn, openEditModal, orgPastLock, parentEventForSelected, parentRegsByEmail, performStandardCancel, personalColsCollapsed, query, registrations, reloadRegistrations, selectedEvent, setAttachmentsModalReg, setDupCancelReg, setParticipantDetail, setPersonalColsCollapsed, setShowColumnPicker, setSplitParticipantsView, showAlert, showColumn, showColumnPicker, showMatches, sortIcon, splitParticipantsView, stripLocPrefix } = p;
+  // Idempotent — Modal und WizardFormShell rufen es ebenfalls; hier nötig, weil
+  // die Tabelle auch ohne offenes Modal gerendert wird.
+  ensureDexUiStyles();
+  // v31.3: Für die Fußzeile „N von M": M ist die ungefilterte Zahl aktiver
+  // Anmeldungen (dieselben Stati wie `activeRegs` in AdminPage, dort aber
+  // schon durch die Suche gefiltert). Nur Anzeige — kein Filter-State.
+  const activeTotal = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length;
+  // v31.3: Sortier-Pfeil als eigene Klasse — `sortIcon` liefert weiterhin den
+  // String (Sortier-State bleibt beim Aufrufer), hier wird er nur gerahmt.
+  const sortMark = (col: string): React.ReactNode => {
+    const s = sortIcon(col).trim();
+    return s ? <span className="dex-ui-table-sort" aria-hidden="true">{s}</span> : null;
+  };
+  const isSorted = (col: string): boolean => sortIcon(col).trim().length > 0;
+  // v31.3: Status-Pille nach Leitfaden 5b — grün angemeldet, blau eingecheckt,
+  // orange Warteliste, grau abgemeldet, rot No-Show.
+  const statusPillClass = (status: string | undefined): string => {
+    switch (status) {
+      case 'Eingecheckt': return 'dex-ui-pill dex-ui-pill--blue';
+      case 'Angemeldet': case 'QR versendet': return 'dex-ui-pill dex-ui-pill--green';
+      case 'Warteliste': return 'dex-ui-pill dex-ui-pill--orange';
+      case 'No-Show': return 'dex-ui-pill dex-ui-pill--red';
+      default: return 'dex-ui-pill dex-ui-pill--gray';
+    }
+  };
   return (
           /* v17.13: overflowX: 'auto' entfernt — der scrollbare Wrapper
              hat die sticky-thead-Berechnung gebrochen (sticky relative zum
@@ -106,21 +138,19 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
               const hideButton = (id: string): React.ReactNode => {
                 const col = availableColumns.find(c => c.id === id);
                 if (!col || col.alwaysVisible) return null;
+                // v31.3: Symbol-Knopf mit rotem Hover über die Klasse statt
+                // per DOM-Farbwechsel; kleiner als der Standard, weil er im
+                // Kopf neben dem Sortier-Klickziel steht.
                 return (
                   <button
                     type="button"
+                    className="dex-ui-iconbtn dex-ui-iconbtn--danger"
                     onClick={(e) => { e.stopPropagation(); hideColumn(id); }}
                     aria-label={isDe ? `Spalte ${col.label} ausblenden` : `Hide column ${col.label}`}
                     title={isDe ? 'Spalte ausblenden' : 'Hide column'}
-                    style={{
-                      marginLeft: 6, padding: 0, width: 16, height: 16, lineHeight: '14px',
-                      border: 'none', background: 'transparent', cursor: 'pointer',
-                      color: 'var(--dex-gray-400)', fontSize: '0.8rem', borderRadius: 3,
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--dex-red, #c00)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--dex-gray-400)'; }}
+                    style={{ width: 18, height: 18, marginLeft: 4, verticalAlign: 'middle' }}
                   >
-                    ✕
+                    <X size={11} />
                   </button>
                 );
               };
@@ -135,25 +165,21 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                 // brach kurze Wörter wie „Vorname" → „Vorna\nme"). Jetzt
                 // overflowWrap:'break-word' — Umbruch nur an Wort-Grenzen
                 // oder wenn ein einzelnes Wort breiter als die Spalte ist.
+                // v31.3: Sticky, Grund, Rand und Innenabstand kommen aus
+                // `dex-ui-table--compact` in `dex-ui-table-wrap--sticky`
+                // (renderTable, v24.96: eigener Scroll-Container). Hier bleibt
+                // nur, was die Klasse nicht weiß: Umbruch und Breite.
                 const baseStyle: React.CSSProperties = {
-                  textAlign: 'left', padding: 8,
                   whiteSpace: 'normal',
                   overflowWrap: 'break-word',
                   hyphens: 'auto',
                   maxWidth: 180,
                   verticalAlign: 'top',
                   lineHeight: 1.3,
-                  // v24.96: Echtes Sticky über einen EIGENEN Scroll-Container um
-                  // die Tabelle (renderTable wrappt die Tabelle in ein div mit
-                  // maxHeight + overflow:auto). `top: 0` klebt dann zuverlässig am
-                  // oberen Rand DIESES Containers — anders als CSS-sticky relativ
-                  // zum Fenster, das im SharePoint-Canvas verrutscht.
-                  position: 'sticky',
-                  top: 0,
-                  background: '#fff',
-                  zIndex: 5,
-                  borderBottom: '2px solid var(--dex-gray-200)',
                 };
+                // v31.3: Sortierbare Kopfzelle — Zeiger und Hover über
+                // `is-sortable`, die sortierte Spalte grün über `is-sorted`.
+                const sortableClass = (col: string): string => cx('is-sortable', isSorted(col) && 'is-sorted');
                 // v23.33: eingeklappte „Teilnehmer"-Spalte (Foto + zweizeilig).
                 if (id === 'person') {
                   // v30.60: Dieselbe beschriftete Pille wie in der
@@ -164,26 +190,18 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                   // Genau der Befund, der die Matrix schon umgebaut hat; zwei
                   // Tabellen mit zwei Bedienungen für dieselbe Sache sind
                   // zudem die Sucherei, die eine Vereinheitlichung erspart.
+                  // v31.3: Die Pille ist ein `dex-ui-chip` — Hover aus der Klasse.
                   return (
-                    <th key="person" style={{ ...baseStyle, whiteSpace: 'nowrap', userSelect: 'none', cursor: 'pointer' }} onClick={() => handleSort('nachname')}>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
+                    <th key="person" className={sortableClass('nachname')} style={{ ...baseStyle, whiteSpace: 'nowrap' }} onClick={() => handleSort('nachname')}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
                         <button
                           type="button"
-                          onClick={(e) => { e.stopPropagation(); setPersonalColsCollapsed(false); setColToggleHover(false); }}
-                          onMouseEnter={() => setColToggleHover(true)}
-                          onMouseLeave={() => setColToggleHover(false)}
+                          className="dex-ui-chip"
+                          onClick={(e) => { e.stopPropagation(); setPersonalColsCollapsed(false); }}
                           title={isDe ? 'Vorname, Nachname, E-Mail, Job Title, Standort und Unternehmen als eigene Spalten anzeigen' : 'Show first/last name, email, job title, location and company as separate columns'}
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                            padding: '2px 10px', borderRadius: 999,
-                            border: '1px solid var(--dex-green, #86bc25)',
-                            background: colToggleHover ? 'var(--dex-green, #86bc25)' : '#fff',
-                            color: colToggleHover ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
-                            fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', lineHeight: 1.4,
-                            transition: 'background 120ms ease, color 120ms ease',
-                          }}
+                          style={{ padding: '2px 10px', fontSize: '0.7rem', textTransform: 'none', letterSpacing: 0 }}
                         >» {isDe ? 'Aufklappen' : 'Expand'}</button>
-                        <span>{isDe ? 'Teilnehmer' : 'Participant'}{sortIcon('nachname')}</span>
+                        <span>{isDe ? 'Teilnehmer' : 'Participant'}{sortMark('nachname')}</span>
                       </div>
                     </th>
                   );
@@ -193,44 +211,36 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                   return (
                     <th
                       key={id}
-                      style={{ ...baseStyle, cursor: 'pointer', userSelect: 'none' }}
+                      className={cx(sortableClass(sortable), id === 'id' && 'is-num')}
+                      style={baseStyle}
                       onClick={() => handleSort(sortable)}
                     >
                       {/* v30.60: „Vorname" trägt den Zuklapp-Knopf als Pille in
                           einer eigenen Zeile — Gegenstück zum Aufklappen oben. */}
                       {id === 'vorname' ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
                           <button
                             type="button"
-                            onClick={(e) => { e.stopPropagation(); setPersonalColsCollapsed(true); setColToggleHover(false); }}
-                            onMouseEnter={() => setColToggleHover(true)}
-                            onMouseLeave={() => setColToggleHover(false)}
+                            className="dex-ui-chip"
+                            onClick={(e) => { e.stopPropagation(); setPersonalColsCollapsed(true); }}
                             title={isDe ? 'Personen-Spalten einklappen (nur Foto + Name)' : 'Collapse personal columns (photo + name only)'}
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 4,
-                              padding: '2px 10px', borderRadius: 999,
-                              border: '1px solid var(--dex-green, #86bc25)',
-                              background: colToggleHover ? 'var(--dex-green, #86bc25)' : '#fff',
-                              color: colToggleHover ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
-                              fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', lineHeight: 1.4,
-                              transition: 'background 120ms ease, color 120ms ease',
-                            }}
+                            style={{ padding: '2px 10px', fontSize: '0.7rem', textTransform: 'none', letterSpacing: 0 }}
                           >« {isDe ? 'Zuklappen' : 'Collapse'}</button>
-                          <span>{isDe ? 'Vorname' : 'First name'}{sortIcon(sortable)}{hideButton(id)}</span>
+                          <span>{isDe ? 'Vorname' : 'First name'}{sortMark(sortable)}{hideButton(id)}</span>
                         </div>
                       ) : (
                         <>
-                          {id === 'id' ? '#' : id === 'anrede' ? (isDe ? 'Anrede' : 'Salutation') : id === 'nachname' ? (isDe ? 'Nachname' : 'Last name') : id === 'email' ? 'Email' : id === 'status' ? 'Status' : (isDe ? 'Registriert am' : 'Registered on')}
-                          {sortIcon(sortable)}
+                          {id === 'id' ? '#' : id === 'anrede' ? (isDe ? 'Anrede' : 'Salutation') : id === 'nachname' ? (isDe ? 'Nachname' : 'Last name') : id === 'email' ? (isDe ? 'E-Mail' : 'Email') : id === 'status' ? 'Status' : (isDe ? 'Registriert am' : 'Registered on')}
+                          {sortMark(sortable)}
                           {hideButton(id)}
                         </>
                       )}
                     </th>
                   );
                 }
-                if (id === 'jobTitle') return <th key={id} style={{ ...baseStyle, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('jobTitle')}>Job Title{sortIcon('jobTitle')}{hideButton(id)}</th>;
-                if (id === 'location') return <th key={id} style={{ ...baseStyle, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('location')}>{isDe ? 'Standort' : 'Location'}{sortIcon('location')}{hideButton(id)}</th>;
-                if (id === 'company') return <th key={id} style={{ ...baseStyle }}>{isDe ? 'Unternehmen' : 'Company'}{hideButton(id)}</th>;
+                if (id === 'jobTitle') return <th key={id} className={sortableClass('jobTitle')} style={baseStyle} onClick={() => handleSort('jobTitle')}>Job Title{sortMark('jobTitle')}{hideButton(id)}</th>;
+                if (id === 'location') return <th key={id} className={sortableClass('location')} style={baseStyle} onClick={() => handleSort('location')}>{isDe ? 'Standort' : 'Location'}{sortMark('location')}{hideButton(id)}</th>;
+                if (id === 'company') return <th key={id} style={baseStyle}>{isDe ? 'Unternehmen' : 'Company'}{hideButton(id)}</th>;
                 if (id === 'starterType') {
                   return (
                     <th key={id} style={baseStyle} title={isDe ? "Starter-Typ: Durchstarter oder Funstarter. Wird bei der Anmeldung gewählt und steuert die Split-Kapazität + Warteliste. Der eigentliche Startblock steht in der Custom-Field-Spalte 'Start block'." : "Starter type: Durchstarter or Funstarter. Chosen at registration and controls the split capacity + waitlist. The actual start block is in the custom field column 'Start block'."}>
@@ -240,7 +250,7 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                 }
                 if (id === 'startnummer') {
                   return (
-                    <th key={id} style={baseStyle} title={isDe ? 'Die offizielle Startnummer des Veranstalters, eingelesen über „Startnummern importieren".' : 'The official bib number from the organiser, imported via "Import bib numbers".'}>
+                    <th key={id} className="is-num" style={baseStyle} title={isDe ? 'Die offizielle Startnummer des Veranstalters, eingelesen über „Startnummern importieren".' : 'The official bib number from the organiser, imported via "Import bib numbers".'}>
                       {isDe ? 'Startnummer' : 'Bib number'}{hideButton(id)}
                     </th>
                   );
@@ -293,7 +303,9 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                   );
                 }
                 if (id === 'action') {
-                  return <th key={id} style={{ textAlign: 'left', padding: 8 }}>Aktion</th>;
+                  // v31.3: Aktionen rechtsbündig in der letzten Spalte (Leitfaden
+                  // 5b) und endlich zweisprachig — „Aktion" stand fest deutsch.
+                  return <th key={id} className="is-num">{isDe ? 'Aktionen' : 'Actions'}</th>;
                 }
                 // v14.11: pastel A = event-level (parent) fields, pastel B = sub-event-specific fields.
                 // Pastel-Hintergrund nur im Sub-Event-Detail-View (parentEventForSelected gesetzt),
@@ -307,8 +319,8 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                   if (!field) return null;
                   const label = field.label || '';
                   return (
-                    <th key={id} onClick={() => handleSort(id)} style={{ ...baseStyle, fontSize: '0.78rem', cursor: 'pointer', userSelect: 'none', ...pastelAHeader }} title={`${label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
-                      {label}{sortIcon(id)}
+                    <th key={id} className={sortableClass(id)} onClick={() => handleSort(id)} style={{ ...baseStyle, textTransform: 'none', letterSpacing: 0, ...pastelAHeader }} title={`${label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
+                      {label}{sortMark(id)}
                       {hideButton(id)}
                     </th>
                   );
@@ -319,8 +331,8 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                   if (!field) return null;
                   const label = field.label || '';
                   return (
-                    <th key={id} onClick={() => handleSort(id)} style={{ ...baseStyle, fontSize: '0.78rem', cursor: 'pointer', userSelect: 'none', ...pastelBHeader }} title={inSubEventDetail ? `${label} — ${isDe ? 'Sub-Event-Feld' : 'sub-event field'}` : label}>
-                      {label}{sortIcon(id)}
+                    <th key={id} className={sortableClass(id)} onClick={() => handleSort(id)} style={{ ...baseStyle, textTransform: 'none', letterSpacing: 0, ...pastelBHeader }} title={inSubEventDetail ? `${label} — ${isDe ? 'Sub-Event-Feld' : 'sub-event field'}` : label}>
+                      {label}{sortMark(id)}
                       {hideButton(id)}
                     </th>
                   );
@@ -336,7 +348,7 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                   const idCell = query
                     ? `#${i + 1}${reg.TeilnehmerID ? ` (#${reg.TeilnehmerID})` : ''}`
                     : (reg.TeilnehmerID || (i + 1));
-                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-400)' }}>{idCell}</td>;
+                  return <td key={id} className="is-num" style={{ color: 'var(--dex-gray-500)' }}>{idCell}</td>;
                 }
                 // v23.33: eingeklappte „Teilnehmer"-Zelle — Foto + zweizeilig
                 // (Name fett, darunter „Position • Standort" ohne Länder-Präfix).
@@ -354,31 +366,40 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                   const sub = [jt, loc, comp].filter(Boolean).join(' • ');
                   const email = reg.ParticipantEmail || '';
                   return (
-                    <td key="person" style={{ padding: 8 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                    <td key="person">
+                      {/* v31.3: Personen-Zelle nach Leitfaden 5b. Der Name ist ein
+                          echter Knopf mit Hover (öffnet das Detail) — vorher ein
+                          div mit cursor:pointer, dem man das Klicken nicht ansah.
+                          Die Zeile selbst bleibt bewusst NICHT klickbar: Wer eine
+                          E-Mail zum Kopieren markiert, würde sonst das Detail öffnen. */}
+                      <div className="dex-ui-person">
                         {/* v24.56: Foto-Hover zeigt Kontaktkarte (E-Mail + Teams),
                             wie bei den Organizern auf der Anmeldeseite. */}
                         <PersonContactHover email={email} name={fullName} size={30} subline={sub} isDe={isDe} />
-                        <div
-                          style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.25, cursor: 'pointer' }}
-                          title={isDe ? 'Detailinfos anzeigen' : 'Show details'}
-                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                          onClick={() => setParticipantDetail({ name: fullName, email, jobTitle: jt, location: String((reg as any).Location || ''), company: comp, department: String((reg as any).Department || ''), phone: String((reg as any).Phone || ''), status: reg.Status || '', tid: reg.TeilnehmerID || null })}
-                        >
-                          <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{highlightMatch(fullName)}</span>
-                          {sub && <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>{highlightMatch(sub)}</span>}
+                        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.25, alignItems: 'flex-start' }}>
+                          <button
+                            type="button"
+                            className="dex-ui-textbtn dex-ui-textbtn--muted dex-ui-person-name"
+                            style={{ padding: '1px 6px', margin: '0 -6px', fontSize: 'inherit' }}
+                            title={isDe ? 'Details anzeigen' : 'Show details'}
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            onClick={() => setParticipantDetail({ name: fullName, email, jobTitle: jt, location: String((reg as any).Location || ''), company: comp, department: String((reg as any).Department || ''), phone: String((reg as any).Phone || ''), status: reg.Status || '', tid: reg.TeilnehmerID || null })}
+                          >
+                            {highlightMatch(fullName)}
+                          </button>
+                          {sub && <span className="dex-ui-person-sub">{highlightMatch(sub)}</span>}
                         </div>
                       </div>
                     </td>
                   );
                 }
                 if (id === 'anrede') {
-                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{reg.Anrede || '-'}</td>;
+                  return <td key={id} style={{ color: 'var(--dex-gray-500)' }}>{reg.Anrede || '-'}</td>;
                 }
                 if (id === 'vorname') {
                   // Fallback für Alt-Daten: erstes Wort aus ParticipantName.
                   const v = reg.Vorname || ((reg.ParticipantName || '').split(' ')[0] || '');
-                  return <td key={id} style={{ padding: 8, fontWeight: 500 }}>{v ? highlightMatch(v) : '-'}</td>;
+                  return <td key={id} style={{ fontWeight: 500 }}>{v ? highlightMatch(v) : '-'}</td>;
                 }
                 if (id === 'nachname') {
                   // Fallback für Alt-Daten: alles ausser dem ersten Wort als Nachname.
@@ -387,29 +408,29 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                     const parts = reg.ParticipantName.trim().split(/\s+/);
                     if (parts.length > 1) n = parts.slice(1).join(' ');
                   }
-                  return <td key={id} style={{ padding: 8, fontWeight: 500 }}>{n ? highlightMatch(n) : '-'}</td>;
+                  return <td key={id} style={{ fontWeight: 500 }}>{n ? highlightMatch(n) : '-'}</td>;
                 }
                 if (id === 'email') {
-                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{highlightMatch(reg.ParticipantEmail)}</td>;
+                  return <td key={id} style={{ color: 'var(--dex-gray-600)' }}>{highlightMatch(reg.ParticipantEmail)}</td>;
                 }
                 if (id === 'jobTitle') {
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const jt = String((reg as any).JobTitle || '');
-                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{jt ? highlightMatch(jt) : '-'}</td>;
+                  return <td key={id} style={{ color: 'var(--dex-gray-600)' }}>{jt ? highlightMatch(jt) : '-'}</td>;
                 }
                 if (id === 'location') {
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const lc = String((reg as any).Location || '');
-                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{lc ? highlightMatch(lc) : '-'}</td>;
+                  return <td key={id} style={{ color: 'var(--dex-gray-600)' }}>{lc ? highlightMatch(lc) : '-'}</td>;
                 }
                 if (id === 'company') {
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const cmp = String((reg as any).Company || '');
-                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{cmp ? highlightMatch(cmp) : '-'}</td>;
+                  return <td key={id} style={{ color: 'var(--dex-gray-600)' }}>{cmp ? highlightMatch(cmp) : '-'}</td>;
                 }
                 if (id === 'starterType') {
                   return (
-                    <td key={id} style={{ padding: 8, fontSize: '0.8rem' }}>
+                    <td key={id}>
                       {(() => {
                         // Tatsächlicher Startblock (StarterType) + Wunsch (PreferredStarterType).
                         // Wenn beide identisch: nur einen anzeigen. Wenn unterschiedlich (z.B. per
@@ -418,7 +439,7 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                         const pref = reg.PreferredStarterType || '';
                         if (!actual && !pref) return <span style={{ color: 'var(--dex-gray-400)' }}>—</span>;
                         if (actual && pref && actual !== pref) {
-                          return <span>{actual} <span style={{ color: 'var(--dex-gray-500)' }}>(Wunsch: {pref})</span></span>;
+                          return <span>{actual} <span style={{ color: 'var(--dex-gray-500)' }}>({isDe ? 'Wunsch' : 'preferred'}: {pref})</span></span>;
                         }
                         if (actual) return <span>{actual}</span>;
                         // v19.12: StarterType ist leer. Bei AKTIVEN (angemeldeten/
@@ -429,7 +450,7 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                         // bleibt den Warteliste-Personen vorbehalten (dort ist die
                         // Gruppe wirklich noch nicht zugewiesen).
                         const isWaitlist = reg.Status === 'Warteliste';
-                        return <span>{isWaitlist ? `Wunsch: ${pref}` : pref}</span>;
+                        return <span>{isWaitlist ? `${isDe ? 'Wunsch' : 'preferred'}: ${pref}` : pref}</span>;
                       })()}
                     </td>
                   );
@@ -440,16 +461,17 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                   // Status, solange die Person noch aktiv (nicht abgemeldet) ist.
                   if (reg.ConsentReview === 'Pending' && reg.Status !== 'Abgemeldet') {
                     return (
-                      <td key={id} style={{ padding: 8 }}>
-                        <span className="badge" style={{ background: '#fff3e0', color: '#b35a00' }}>
-                          {isDe ? 'Angemeldet (Datenschutzrückmeldung offen)' : 'Registered (privacy confirmation pending)'}
+                      <td key={id}>
+                        <span className="dex-ui-pill dex-ui-pill--orange" title={isDe ? 'Angemeldet — die Datenschutz-Rückmeldung der externen Person steht noch aus' : 'Registered — the external person’s privacy confirmation is still pending'}>
+                          {isDe ? 'Angemeldet · Rückmeldung offen' : 'Registered · response pending'}
                         </span>
                       </td>
                     );
                   }
+                  // v31.3: Farbige Pille je Status (Leitfaden 5b) statt grün/grau.
                   return (
-                    <td key={id} style={{ padding: 8 }}>
-                      <span className={`badge ${reg.Status === 'Eingecheckt' ? 'badge-green' : 'badge-gray'}`}>
+                    <td key={id}>
+                      <span className={statusPillClass(reg.Status)}>
                         {translateStatus(reg.Status, isDe)}
                       </span>
                     </td>
@@ -461,13 +483,13 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                   // Liste), haben kein RegistrationDate — dann den SP-Erstell-
                   // Zeitstempel (Created) als Fallback zeigen statt Leere.
                   const regDate = (reg.RegistrationDate || '').trim() ? reg.RegistrationDate : (reg.Created || '');
-                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{regDate ? formatDate(regDate) : '—'}</td>;
+                  return <td key={id} style={{ color: 'var(--dex-gray-500)' }}>{regDate ? formatDate(regDate) : '—'}</td>;
                 }
                 if (id === 'startnummer') {
                   // v30.48: Startnummer aus dem Veranstalter-Rücklauf.
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const bib = String((reg as any).Startnummer || '').trim();
-                  return <td key={id} style={{ padding: 8, fontFamily: 'monospace', fontWeight: bib ? 700 : 400, color: bib ? 'var(--dex-gray-800)' : 'var(--dex-gray-300)' }}>{bib || '—'}</td>;
+                  return <td key={id} className="is-num" style={{ fontFamily: 'monospace', fontWeight: bib ? 700 : 400, color: bib ? 'var(--dex-gray-800)' : 'var(--dex-gray-300)' }}>{bib || '—'}</td>;
                 }
                 if (id === 'promotedDate') {
                   // v17.15: „Nachgerückt am" — gesetzt beim Promote
@@ -475,7 +497,7 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                   // sich direkt in den Aktiv-Bereich angemeldet haben.
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const v = (reg as any).PromotedDate as string | undefined;
-                  return <td key={id} style={{ padding: 8, color: v ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-gray-300)', fontSize: '0.8rem' }}>{v ? formatDate(v) : '—'}</td>;
+                  return <td key={id} style={{ color: v ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-gray-300)' }}>{v ? formatDate(v) : '—'}</td>;
                 }
                 if (id === 'replaced') {
                   // v17.15: „Ersetzt" — die Person, deren Cancel diesen
@@ -484,10 +506,10 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                   // Namen — sonst fallback auf die rohe E-Mail.
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const email = ((reg as any).ReplacedParticipantEmail as string | undefined) || '';
-                  if (!email) return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-300)' }}>—</td>;
+                  if (!email) return <td key={id} style={{ color: 'var(--dex-gray-300)' }}>—</td>;
                   const other = registrations.find(r => (r.ParticipantEmail || '').toLowerCase() === email.toLowerCase());
                   const label = other ? ((other.Vorname || '') + ' ' + (other.Nachname || '')).trim() || other.ParticipantName || email : email;
-                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-700)', fontSize: '0.8rem' }} title={email}>{label}</td>;
+                  return <td key={id} style={{ color: 'var(--dex-gray-700)' }} title={email}>{label}</td>;
                 }
                 if (id === 'replacedBy') {
                   // v17.15: „Ersetzt durch" — die Person die nach Cancel
@@ -495,18 +517,18 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                   // von „Ersetzt".
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const email = ((reg as any).ReplacedByParticipantEmail as string | undefined) || '';
-                  if (!email) return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-300)' }}>—</td>;
+                  if (!email) return <td key={id} style={{ color: 'var(--dex-gray-300)' }}>—</td>;
                   const other = registrations.find(r => (r.ParticipantEmail || '').toLowerCase() === email.toLowerCase());
                   const label = other ? ((other.Vorname || '') + ' ' + (other.Nachname || '')).trim() || other.ParticipantName || email : email;
-                  return <td key={id} style={{ padding: 8, color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.8rem' }} title={email}>{label}</td>;
+                  return <td key={id} style={{ color: 'var(--dex-green-dark, #4a7c1f)' }} title={email}>{label}</td>;
                 }
                 if (id === 'joinOrder') {
                   // v17.9 (deprecated): joinOrder-Spalte seit v17.10 entfernt.
-                  return <td key={id} style={{ padding: 8 }}>—</td>;
+                  return <td key={id}>—</td>;
                 }
                 if (id === 'registeredBy') {
                   return (
-                    <td key={id} style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>
+                    <td key={id} style={{ color: 'var(--dex-gray-600)' }}>
                       {(() => {
                         const actorEmail = (reg.RegisteredByEmail || '').toLowerCase();
                         const participantEmail = (reg.ParticipantEmail || '').toLowerCase();
@@ -518,7 +540,7 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                           const authorName = (reg.Author?.Title || '').trim();
                           if (!authorEmail && !authorName) return <span style={{ color: 'var(--dex-gray-400)' }}>-</span>;
                           if (authorEmail && authorEmail === participantEmail) {
-                            return <span style={{ color: 'var(--dex-green-dark)' }}>Selbst</span>;
+                            return <span style={{ color: 'var(--dex-green-dark)' }}>{isDe ? 'Selbst' : 'Self'}</span>;
                           }
                           return (
                             <span
@@ -530,7 +552,7 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                           );
                         }
                         if (actorEmail === participantEmail) {
-                          return <span style={{ color: 'var(--dex-green-dark)' }}>Selbst</span>;
+                          return <span style={{ color: 'var(--dex-green-dark)' }}>{isDe ? 'Selbst' : 'Self'}</span>;
                         }
                         return (
                           <span title={reg.RegisteredByEmail || ''} style={{ color: 'var(--dex-orange)' }}>
@@ -546,19 +568,19 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                   // keinem Team ist, „—" anzeigen.
                   const tName = (reg.TeamName || '').trim();
                   const inTeam = !!reg.TeamId;
-                  if (!inTeam) return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-400)' }}>—</td>;
+                  if (!inTeam) return <td key={id} style={{ color: 'var(--dex-gray-400)' }}>—</td>;
                   return (
-                    <td key={id} style={{ padding: 8, color: 'var(--dex-gray-700)', fontSize: '0.82rem' }}>
-                      {tName ? `„${tName}"` : <span style={{ color: 'var(--dex-gray-500)' }}>ohne Namen</span>}
+                    <td key={id} style={{ color: 'var(--dex-gray-700)' }}>
+                      {tName ? `„${tName}"` : <span style={{ color: 'var(--dex-gray-500)' }}>{isDe ? 'ohne Namen' : 'unnamed'}</span>}
                       {reg.TeamLead && (
-                        <span style={{ marginLeft: 6, padding: '1px 7px', background: 'var(--dex-green, #86bc25)', color: '#fff', borderRadius: 8, fontSize: '0.66rem', fontWeight: 700 }}>Lead</span>
+                        <span className="dex-ui-pill dex-ui-pill--green" style={{ marginLeft: 6, padding: '1px 7px', fontSize: '0.66rem' }} title={isDe ? 'Team-Lead' : 'Team lead'}>Lead</span>
                       )}
                     </td>
                   );
                 }
                 if (id === 'roommate') {
                   return (
-                    <td key={id} style={{ padding: 8, fontSize: '0.8rem' }}>
+                    <td key={id}>
                       {(() => {
                         const info = getRoommateInfo(reg);
                         if (!info) return <span style={{ color: 'var(--dex-gray-300)' }}>-</span>;
@@ -574,8 +596,8 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                             <span>{info.partnerName}</span>
                             {info.mutual && (
                               <span
-                                className="badge"
-                                style={{ marginLeft: 2, background: 'var(--dex-green)', color: '#fff', padding: '1px 6px', borderRadius: 4, fontSize: '0.7rem' }}
+                                className="dex-ui-pill dex-ui-pill--green"
+                                style={{ marginLeft: 2, padding: '1px 7px', fontSize: '0.68rem' }}
                                 title={isDe ? 'Beide haben sich gegenseitig als Zimmerpartner ausgewählt' : 'Both selected each other as roommates'}
                               >
                                 Match
@@ -642,7 +664,7 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                     }
                   }
                   return (
-                    <td key={id} style={{ padding: 8, color: 'var(--dex-gray-700)', fontSize: '0.8rem', whiteSpace: 'nowrap', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', ...pastelACell }} title={String(val || '')}>
+                    <td key={id} style={{ color: 'var(--dex-gray-700)', whiteSpace: 'nowrap', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', ...pastelACell }} title={String(val || '')}>
                       {display}
                     </td>
                   );
@@ -662,7 +684,7 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                       .replace(/^dxf-[a-zA-Z0-9]+--\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_/, '')
                       .replace(/^dxf-[a-zA-Z0-9]+--/, '');
                     return (
-                      <td key={id} style={{ padding: 8, fontSize: '0.8rem', whiteSpace: 'nowrap', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', ...pastelBCell }}>
+                      <td key={id} style={{ whiteSpace: 'nowrap', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', ...pastelBCell }}>
                         {docs.length === 0 ? (
                           <span style={{ color: 'var(--dex-gray-400)' }}>–</span>
                         ) : (
@@ -707,7 +729,7 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                     }
                   }
                   return (
-                    <td key={id} style={{ padding: 8, color: 'var(--dex-gray-700)', fontSize: '0.8rem', whiteSpace: 'nowrap', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', ...pastelBCell }} title={String(val || '')}>
+                    <td key={id} style={{ color: 'var(--dex-gray-700)', whiteSpace: 'nowrap', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', ...pastelBCell }} title={String(val || '')}>
                       {display}
                     </td>
                   );
@@ -750,48 +772,64 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                     }
                     await reloadRegistrations();
                   };
+                  // v31.3: Aktionen nach Leitfaden 5b — Symbol-Knöpfe für
+                  // Bearbeiten, Dateien und Abmelden (rot), die Anwesenheits-
+                  // Knöpfe bleiben beschriftet: „Einchecken", „Auschecken",
+                  // „No-Show" und „Zurücksetzen" sind Zustandswörter, die kein
+                  // Symbol eindeutig trägt. Kein `btn-primary` mehr je Zeile
+                  // (Leitfaden 1.5: ein Primär-Knopf je Ansicht); Einchecken
+                  // trägt stattdessen das Häkchen.
+                  const smBtn = 'btn btn-secondary dex-ui-btn-sm';
+                  const checkInLabel = <><Check size={12} /> {isDe ? 'Einchecken' : 'Check in'}</>;
+                  const hasFileColumn = selectedEvent?.allowAttendeeUpload || (selectedEvent?.eventSpecificFields || []).some(f => f.type === 'document');
                   return (
-                    <td key={id} style={{ padding: 8, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    <td key={id} className="is-actions">
+                      <div style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center' }}>
                       {/* „Bearbeiten" nur, solange das Event noch nicht vorbei ist. */}
                       {!eventOver && (
                         <button
-                          className="btn btn-secondary"
-                          style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                          type="button"
+                          className="dex-ui-iconbtn"
+                          aria-label={isDe ? 'Bearbeiten' : 'Edit'}
                           title={isDe ? 'Teilnehmer-Daten bearbeiten' : 'Edit attendee data'}
                           onClick={() => openEditModal(reg)}
                         >
-                          <Pencil size={12} /> {isDe ? 'Bearbeiten' : 'Edit'}
+                          <Pencil size={15} />
                         </button>
                       )}
                       {/* v11.0: Anhang-Button — wenn das Event den Teilnehmer-
                           Upload erlaubt ODER ein Dokument-Custom-Feld hat (v19.0).
                           Zeigt Counter wenn mind. eine Datei hochgeladen wurde. */}
-                      {(selectedEvent?.allowAttendeeUpload || (selectedEvent?.eventSpecificFields || []).some(f => f.type === 'document')) && (
+                      {hasFileColumn && (
                         <button
-                          className="btn btn-secondary"
-                          style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                          title={isDe ? 'Hochgeladene Dateien anzeigen' : 'Show uploaded files'}
+                          type="button"
+                          className="dex-ui-iconbtn"
+                          style={att.length > 0 ? { width: 'auto', padding: '0 8px', borderRadius: 16, gap: 3, fontSize: '0.74rem', fontWeight: 700 } : undefined}
+                          aria-label={isDe ? 'Dateien' : 'Files'}
+                          title={att.length > 0
+                            ? (isDe ? `${att.length} hochgeladene Datei(en) anzeigen` : `Show ${att.length} uploaded file(s)`)
+                            : (isDe ? 'Hochgeladene Dateien anzeigen — noch keine Datei' : 'Show uploaded files — none yet')}
                           onClick={() => setAttachmentsModalReg(reg)}
                         >
-                          <FileText size={12} />
-                          {att.length > 0 ? `${isDe ? 'Datei' : 'File'} (${att.length})` : (isDe ? 'Datei' : 'File')}
+                          <FileText size={15} />
+                          {att.length > 0 ? att.length : null}
                         </button>
                       )}
                       {eventOver ? (
                         <>
                           {/* Nach dem Event: Anwesenheit explizit pflegen. */}
                           <button
-                            className="btn btn-primary"
-                            style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                            type="button"
+                            className={smBtn}
                             disabled={reg.Status === 'Eingecheckt'}
                             title={isDe ? 'Als anwesend markieren' : 'Mark as attended'}
                             onClick={doCheckIn}
                           >
-                            {isDe ? 'Einchecken' : 'Check in'}
+                            {checkInLabel}
                           </button>
                           <button
-                            className="btn btn-secondary"
-                            style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                            type="button"
+                            className={smBtn}
                             disabled={reg.Status !== 'Eingecheckt'}
                             title={isDe ? 'Als nicht erschienen markieren' : 'Mark as no-show'}
                             onClick={doCheckOut}
@@ -806,17 +844,17 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                               bisher, daneben der echte No-Show-Status (v23.28,
                               wie auf der Check-in-Seite). */}
                           {reg.Status === 'Eingecheckt' ? (
-                            <button className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '4px 10px' }} onClick={doCheckOut}>
+                            <button type="button" className={smBtn} title={isDe ? 'Check-in zurücknehmen' : 'Undo check-in'} onClick={doCheckOut}>
                               {isDe ? 'Auschecken' : 'Check out'}
                             </button>
                           ) : (
-                            <button className="btn btn-primary" style={{ fontSize: '0.75rem', padding: '4px 10px' }} onClick={doCheckIn}>
-                              {isDe ? 'Einchecken' : 'Check in'}
+                            <button type="button" className={smBtn} title={isDe ? 'Als anwesend markieren' : 'Mark as attended'} onClick={doCheckIn}>
+                              {checkInLabel}
                             </button>
                           )}
                           <button
-                            className="btn btn-secondary"
-                            style={{ fontSize: '0.75rem', padding: '4px 10px', color: 'var(--dex-gray-700, #444)' }}
+                            type="button"
+                            className={smBtn}
                             disabled={reg.Status === 'No-Show' || reg.Status === 'Abgemeldet'}
                             title={isDe
                               ? 'Als nicht erschienen markieren. Die Selbst-Abmeldung ist für Teilnehmer aktuell deaktiviert — wer absagt, wird hier abgemeldet oder als No-Show markiert.'
@@ -827,8 +865,8 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                           </button>
                           {reg.Status === 'No-Show' && (
                             <button
-                              className="btn btn-secondary"
-                              style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                              type="button"
+                              className={smBtn}
                               title={isDe ? 'No-Show zurücknehmen (Status zurück auf „Angemeldet")' : 'Undo no-show (status back to “registered”)'}
                               onClick={doCheckOut}
                             >
@@ -838,12 +876,12 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                         </>
                       ) : (
                         reg.Status === 'Eingecheckt' ? (
-                          <button className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '4px 10px' }} onClick={doCheckOut}>
+                          <button type="button" className={smBtn} title={isDe ? 'Check-in zurücknehmen' : 'Undo check-in'} onClick={doCheckOut}>
                             {isDe ? 'Auschecken' : 'Check out'}
                           </button>
                         ) : (
-                          <button className="btn btn-primary" style={{ fontSize: '0.75rem', padding: '4px 10px' }} onClick={doCheckIn}>
-                            {isDe ? 'Einchecken' : 'Check in'}
+                          <button type="button" className={smBtn} title={isDe ? 'Als anwesend markieren' : 'Mark as attended'} onClick={doCheckIn}>
+                            {checkInLabel}
                           </button>
                         )
                       )}
@@ -851,8 +889,12 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                           deshalb auch für Organizer eigener Events freigegeben. */}
                       {(eventOver || !orgPastLock) && (
                       <button
-                        className="btn btn-secondary"
-                        style={{ fontSize: '0.75rem', padding: '4px 10px', color: 'var(--dex-red, #c00)' }}
+                        type="button"
+                        className="dex-ui-iconbtn dex-ui-iconbtn--danger"
+                        aria-label={eventOver ? (isDe ? 'Abmelden (ohne E-Mail)' : 'Cancel (no email)') : (isDe ? 'Abmelden' : 'Cancel registration')}
+                        title={eventOver
+                          ? (isDe ? 'Abmelden — ohne E-Mail, das Event ist vorbei' : 'Cancel registration — no email, the event is over')
+                          : (isDe ? 'Abmelden — mit Rückfrage' : 'Cancel registration — asks first')}
                         onClick={async () => {
                           if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
                           // v23.2: Doppel-Anmeldung? Statt direkt abzumelden das
@@ -871,7 +913,7 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                           await performStandardCancel(reg);
                         }}
                       >
-                        {eventOver ? (isDe ? 'Abmelden (Ohne E-Mail)' : 'Cancel (no email)') : (isDe ? 'Abmelden' : 'Cancel')}
+                        <Trash2 size={15} />
                       </button>
                       )}
                       {/* v26.47: Externe Anmeldung mit offener Datenschutz-
@@ -884,8 +926,9 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                         return (
                           <>
                             <button
-                              className="btn btn-secondary"
-                              style={{ fontSize: '0.75rem', padding: '4px 10px', color: '#b35a00' }}
+                              type="button"
+                              className={smBtn}
+                              style={{ color: '#b35a00' }}
                               title={isDe
                                 ? 'Einladungs-Mail als .eml-Entwurf herunterladen — in Outlook öffnen und selbst an die externe Person senden.'
                                 : 'Download the invitation email as an .eml draft — open it in Outlook and send it to the external person yourself.'}
@@ -911,8 +954,9 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                               {isDe ? 'Einladung (.eml)' : 'Invitation (.eml)'}
                             </button>
                             <button
-                              className="btn btn-secondary"
-                              style={{ fontSize: '0.75rem', padding: '4px 10px', color: '#b35a00' }}
+                              type="button"
+                              className={smBtn}
+                              style={{ color: '#b35a00' }}
                               title={isDe
                                 ? 'Bestätigen, dass die externe Person auf die Datenschutz-Einladung geantwortet hat.'
                                 : 'Confirm that the external person has responded to the privacy invitation.'}
@@ -942,6 +986,7 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                           </>
                         );
                       })()}
+                      </div>
                     </td>
                   );
                 }
@@ -954,26 +999,40 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                       zeigt alle verfügbaren Spalten inkl. Checkbox zum Ein-/
                       Ausblenden und Pfeilen zum Umsortieren. Die Config wird
                       pro Event in localStorage persistiert (s. useEffect oben). */}
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 8, gap: 8, position: 'relative' }}>
+                  {/* v31.3: EINE Werkzeugleiste über der Tabelle (Leitfaden 5a.6):
+                      links die Ansicht-Wahl bei geteilten Gruppen (gehört zum
+                      Inhalt), rechts die Spaltenwahl (Leitfaden: „Spaltenwahl und
+                      Export rechts"). Vorher zwei getrennte, rechtsbündige Zeilen. */}
+                  <div className="dex-ui-toolbar" style={{ position: 'relative' }}>
+                    {isSplitCapacity && (
+                      <SplitMergeToggle view={splitParticipantsView} setView={setSplitParticipantsView} isDe={isDe} />
+                    )}
+                    <span className="dex-ui-toolbar-spacer" />
                     <button
-                      className="btn btn-secondary"
-                      style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                      type="button"
+                      className={cx('dex-ui-chip', showColumnPicker && 'is-active')}
+                      aria-expanded={showColumnPicker}
+                      title={isDe ? 'Spalten ein- oder ausblenden und umsortieren' : 'Show, hide and reorder columns'}
                       onClick={() => setShowColumnPicker(!showColumnPicker)}
                     >
-                      {isDe ? 'Spalten anpassen' : 'Customize columns'}
+                      <Columns size={14} /> {isDe ? 'Spalten anpassen' : 'Customize columns'}
                     </button>
                     {showColumnPicker && (
                       <div
+                        className="dex-ui-card dex-ui-card--list dex-ui-fade-in"
                         style={{
-                          position: 'absolute', right: 0, top: '100%', marginTop: 4,
-                          background: '#fff', border: '1px solid var(--dex-gray-200)',
-                          borderRadius: 8, padding: 12,
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                          width: 280, zIndex: 100, maxHeight: 400, overflowY: 'auto',
+                          position: 'absolute', right: 0, top: '100%', marginTop: 6,
+                          boxShadow: '0 6px 20px rgba(0,0,0,0.10)',
+                          width: 300, zIndex: 100, maxHeight: 400, overflowY: 'auto',
                         }}
                       >
-                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 8 }}>
-                          {isDe ? 'Spalten verwalten' : 'Manage columns'}
+                        <div style={{ padding: '6px 8px 8px' }}>
+                          <div style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--dex-gray-800)' }}>
+                            {isDe ? 'Welche Spalten zeigt die Tabelle?' : 'Which columns does the table show?'}
+                          </div>
+                          <div className="dex-ui-help" style={{ marginTop: 2 }}>
+                            {isDe ? 'Haken = sichtbar. Die Pfeile ändern die Reihenfolge; die Auswahl bleibt je Event gespeichert.' : 'Tick = visible. The arrows change the order; the selection is saved per event.'}
+                          </div>
                         </div>
                         {columnOrder.map((id, idx) => {
                           const col = availableColumns.find(c => c.id === id);
@@ -985,64 +1044,59 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                           // und "action" selbst darf nicht verschoben werden.
                           const nextId = columnOrder[idx + 1];
                           const canMoveDown = isVisible && idx < columnOrder.length - 1 && id !== 'action' && nextId !== 'action';
+                          const cbId = `pt-col-${id}`;
                           return (
                             <div
                               key={id}
-                              style={{
-                                display: 'flex', alignItems: 'center', gap: 6,
-                                padding: '4px 2px', fontSize: '0.82rem',
-                                opacity: isVisible ? 1 : 0.55,
-                              }}
+                              className={cx('dex-ui-row', !isVisible && 'is-done')}
+                              style={{ padding: '4px 8px', gap: 8 }}
                             >
                               <input
                                 type="checkbox"
+                                id={cbId}
                                 checked={isVisible}
                                 disabled={!!col.alwaysVisible}
                                 onChange={() => {
                                   if (col.alwaysVisible) return;
                                   if (isHidden) showColumn(id); else hideColumn(id);
                                 }}
-                                style={{ cursor: col.alwaysVisible ? 'not-allowed' : 'pointer' }}
-                                title={col.alwaysVisible ? 'Pflicht-Spalte — kann nicht ausgeblendet werden' : (isHidden ? 'Einblenden' : 'Ausblenden')}
+                                style={{ cursor: col.alwaysVisible ? 'not-allowed' : 'pointer', margin: 0 }}
+                                title={col.alwaysVisible
+                                  ? (isDe ? 'Pflicht-Spalte — kann nicht ausgeblendet werden' : 'Required column — cannot be hidden')
+                                  : (isHidden ? (isDe ? 'Einblenden' : 'Show') : (isDe ? 'Ausblenden' : 'Hide'))}
                               />
-                              <span style={{ flex: 1, color: 'var(--dex-gray-700)' }}>{col.label}</span>
-                              <button
-                                type="button"
-                                onClick={() => moveColumn(id, -1)}
-                                disabled={!canMoveUp}
-                                aria-label={isDe ? 'Spalte nach oben' : 'Move column up'}
-                                title={isDe ? 'Nach oben' : 'Up'}
-                                style={{
-                                  border: 'none', background: 'transparent',
-                                  cursor: canMoveUp ? 'pointer' : 'not-allowed',
-                                  color: canMoveUp ? 'var(--dex-gray-600)' : 'var(--dex-gray-300)',
-                                  fontSize: '0.9rem', padding: '0 4px',
-                                }}
-                              >
-                                ↑
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => moveColumn(id, 1)}
-                                disabled={!canMoveDown}
-                                aria-label={isDe ? 'Spalte nach unten' : 'Move column down'}
-                                title={isDe ? 'Nach unten' : 'Down'}
-                                style={{
-                                  border: 'none', background: 'transparent',
-                                  cursor: canMoveDown ? 'pointer' : 'not-allowed',
-                                  color: canMoveDown ? 'var(--dex-gray-600)' : 'var(--dex-gray-300)',
-                                  fontSize: '0.9rem', padding: '0 4px',
-                                }}
-                              >
-                                ↓
-                              </button>
+                              <label htmlFor={cbId} className="dex-ui-row-main" style={{ fontSize: '0.82rem', color: 'var(--dex-gray-700)', cursor: col.alwaysVisible ? 'default' : 'pointer' }}>{col.label}</label>
+                              <span className="dex-ui-row-actions">
+                                <button
+                                  type="button"
+                                  className="dex-ui-iconbtn"
+                                  style={{ width: 26, height: 26 }}
+                                  onClick={() => moveColumn(id, -1)}
+                                  disabled={!canMoveUp}
+                                  aria-label={isDe ? 'Spalte nach oben' : 'Move column up'}
+                                  title={isDe ? 'Nach oben' : 'Up'}
+                                >
+                                  <ChevronUp size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="dex-ui-iconbtn"
+                                  style={{ width: 26, height: 26 }}
+                                  onClick={() => moveColumn(id, 1)}
+                                  disabled={!canMoveDown}
+                                  aria-label={isDe ? 'Spalte nach unten' : 'Move column down'}
+                                  title={isDe ? 'Nach unten' : 'Down'}
+                                >
+                                  <ChevronDown size={14} />
+                                </button>
+                              </span>
                             </div>
                           );
                         })}
-                        <div style={{ marginTop: 8, textAlign: 'right' }}>
+                        <div style={{ padding: '8px 8px 4px', display: 'flex', justifyContent: 'flex-end' }}>
                           <button
-                            className="btn btn-secondary"
-                            style={{ fontSize: '0.72rem', padding: '3px 8px' }}
+                            type="button"
+                            className="btn btn-secondary dex-ui-btn-sm"
                             onClick={() => setShowColumnPicker(false)}
                           >
                             {isDe ? 'Schließen' : 'Close'}
@@ -1056,7 +1110,9 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                       Default 'split' — getrennte Tabellen pro Gruppe,
                       kleinere zuerst. */}
                   {(() => {
-                    const renderTable = (rows: SPRegistration[], indexOffset: number): React.ReactElement => {
+                    // v31.3: `footLabel` — die Gruppen-Tabellen der Split-Ansicht
+                    // zählen „in dieser Gruppe", die Gesamttabelle „N von M".
+                    const renderTable = (rows: SPRegistration[], indexOffset: number, footLabel?: string): React.ReactElement => {
                       // v26.44: eine normale Teilnehmer-Zeile — herausgezogen, damit
                       // die „Matches anzeigen"-Gruppierung dieselbe Zeilen-JSX
                       // wiederverwenden kann (keine Duplizierung der Zellen-Logik).
@@ -1079,20 +1135,29 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                               : isOverbook
                                 ? (isDe ? 'Über Kapazität angemeldet — siehe Box „Überbuchung – zu prüfen" oben' : 'Registered over capacity — see the „Overbooking – to review" box above')
                                 : undefined;
+                            // v31.3: Die Markierung liegt auf den ZELLEN, nicht auf
+                            // der Zeile: `dex-ui-table` färbt beim Überfahren die
+                            // td-Hintergründe, und die würden eine Zeilenfarbe
+                            // verdecken — eine Dublette sähe unter der Maus wie
+                            // eine normale Zeile aus. Zellen mit eigenem Grund
+                            // (Pastell der Custom-Felder) behalten ihn.
+                            const mark = isDuplicate
+                              ? { bg: 'rgba(200,0,0,0.10)', bar: 'var(--dex-red, #c00)' }
+                              : highlight
+                              ? { bg: 'rgba(237,139,0,0.13)', bar: 'var(--dex-orange, #ed8b00)' }
+                              : null;
+                            const cells = effectiveColumnIds.map(id => renderCell(id, reg, i));
+                            const markedCells = mark
+                              ? cells.map((c, ci) => {
+                                if (!React.isValidElement(c)) return c;
+                                const el = c as React.ReactElement<{ style?: React.CSSProperties }>;
+                                const own = el.props.style || {};
+                                return React.cloneElement(el, { style: { ...own, background: own.background || mark.bg, ...(ci === 0 ? { boxShadow: `inset 3px 0 0 ${mark.bar}` } : {}) } });
+                              })
+                              : cells;
                             return (
-                              <tr
-                                key={reg.Id}
-                                title={rowTitle}
-                                style={{
-                                  borderBottom: '1px solid var(--dex-gray-100)',
-                                  ...(isDuplicate
-                                    ? { background: 'rgba(200,0,0,0.10)', boxShadow: 'inset 3px 0 0 var(--dex-red, #c00)' }
-                                    : highlight
-                                    ? { background: 'rgba(237,139,0,0.13)', boxShadow: 'inset 3px 0 0 var(--dex-orange, #ed8b00)' }
-                                    : {}),
-                                }}
-                              >
-                                {effectiveColumnIds.map(id => renderCell(id, reg, i))}
+                              <tr key={reg.Id} title={rowTitle}>
+                                {markedCells}
                               </tr>
                             );
                       };
@@ -1133,15 +1198,26 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                         return out;
                       })();
                       let matchRowIdx = 0;
+                      // v31.3: Fußzeile „N von M" statt Zähler im Kopf (Leitfaden 5b).
+                      const shown = rows.length;
+                      const footText = footLabel
+                        || (query
+                          ? (isDe ? `${shown} von ${activeTotal} Teilnehmern · Suche „${query}“` : `${shown} of ${activeTotal} participants · search “${query}”`)
+                          : (isDe ? `${shown} von ${activeTotal} Teilnehmern` : `${shown} of ${activeTotal} participants`));
                       return (
                         // v24.96: eigener Scroll-Container um die Tabelle → der
                         // thead (position:sticky top:0) klebt zuverlässig an dessen
                         // oberem Rand (CSS-sticky relativ zu DIESEM Container, nicht
                         // zum Fenster — Letzteres ist im SP-Canvas unzuverlässig).
-                        <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                        // v31.3: `dex-ui-table-wrap--sticky` ist genau dieser Container
+                        // (max-height 70vh, overflow auto, th sticky); der äußere
+                        // `dex-ui-table-wrap` gibt Rand und Radius, die Fußzeile
+                        // bleibt außerhalb des Scrollbereichs sichtbar.
+                        <div className="dex-ui-table-wrap">
+                        <div className="dex-ui-table-wrap--sticky">
+                        <table className="dex-ui-table dex-ui-table--compact">
                           <thead>
-                            <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
+                            <tr>
                               {effectiveColumnIds.map(id => renderHeader(id))}
                             </tr>
                           </thead>
@@ -1153,10 +1229,9 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                                     <td
                                       colSpan={effectiveColumnIds.length}
                                       style={{
-                                        padding: '6px 8px', fontWeight: 700, fontSize: '0.78rem',
+                                        fontWeight: 700, fontSize: '0.76rem', textTransform: 'uppercase', letterSpacing: '0.04em',
                                         background: dr.muted ? 'var(--dex-gray-100, #f3f4f6)' : 'rgba(134,188,37,0.10)',
                                         color: dr.muted ? 'var(--dex-gray-600)' : 'var(--dex-green-dark, #4a7c1f)',
-                                        borderBottom: '1px solid var(--dex-gray-100)',
                                       }}
                                     >
                                       {dr.header}
@@ -1168,20 +1243,20 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                           </tbody>
                         </table>
                         </div>
+                        <div className="dex-ui-table-foot">
+                          <span>{footText}</span>
+                          {personalColsCollapsed && (
+                            <span>{isDe ? 'Name anklicken öffnet die Details' : 'Click a name to open the details'}</span>
+                          )}
+                        </div>
+                        </div>
                       );
                     };
 
+                    // v31.3: Der Ansicht-Umschalter sitzt seit dem Umbau in der
+                    // Werkzeugleiste oben — hier nur noch die Tabelle(n).
                     if (!isSplitCapacity || splitParticipantsView === 'merged') {
-                      return (
-                        <>
-                          {isSplitCapacity && (
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-                              <SplitMergeToggle view={splitParticipantsView} setView={setSplitParticipantsView} isDe={isDe} />
-                            </div>
-                          )}
-                          {renderTable(activeRegs, 0)}
-                        </>
-                      );
+                      return renderTable(activeRegs, 0);
                     }
 
                     // Split-View: nach Gruppe trennen (StarterType ||
@@ -1196,40 +1271,37 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                       { label: lblB, key: 'B', rows: groupB, cap: selectedEvent?.funstarterCapacity || 0 },
                     ].sort((x, y) => x.rows.length - y.rows.length);
                     let runningIdx = 0;
+                    // v31.3: Gruppen-Kopf als `dex-ui-card-head` (Titel + Zähler),
+                    // leere Gruppe als `dex-ui-empty` statt kursivem Satz.
+                    const groupFoot = (n: number): string => isDe ? `${n} in dieser Gruppe` : `${n} in this group`;
                     return (
                       <>
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-                          <SplitMergeToggle view={splitParticipantsView} setView={setSplitParticipantsView} isDe={isDe} />
-                        </div>
                         {groups.map(g => {
                           const offset = runningIdx;
                           runningIdx += g.rows.length;
                           return (
                             <div key={g.key} style={{ marginBottom: 20 }}>
-                              <h4 style={{
-                                margin: '0 0 8px', color: 'var(--dex-green-dark, #4a7c1f)',
-                                fontSize: '0.95rem', fontWeight: 700, display: 'flex',
-                                alignItems: 'baseline', gap: 8,
-                              }}>
-                                <span>{g.label}</span>
-                                <span style={{ color: 'var(--dex-gray-500)', fontWeight: 500, fontSize: '0.85rem' }}>
-                                  ({g.rows.length}{g.cap > 0 ? ` / ${g.cap}` : ''})
+                              <div className="dex-ui-card-head" style={{ marginBottom: 8 }}>
+                                <h4 className="dex-ui-card-head-title" style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.95rem' }}>{g.label}</h4>
+                                <span className="dex-ui-card-head-meta">
+                                  {g.rows.length}{g.cap > 0 ? ` / ${g.cap} ${isDe ? 'Plätze' : 'seats'}` : ''}
                                 </span>
-                              </h4>
+                              </div>
                               {g.rows.length === 0 ? (
-                                <p style={{ margin: '0 0 12px', fontSize: '0.82rem', color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>
+                                <div className="dex-ui-empty" style={{ padding: '16px 12px' }}>
                                   {isDe ? 'Keine Teilnehmer in dieser Gruppe.' : 'No participants in this group.'}
-                                </p>
-                              ) : renderTable(g.rows, offset)}
+                                </div>
+                              ) : renderTable(g.rows, offset, groupFoot(g.rows.length))}
                             </div>
                           );
                         })}
                         {groupNone.length > 0 && (
                           <div style={{ marginBottom: 20 }}>
-                            <h4 style={{ margin: '0 0 8px', color: 'var(--dex-gray-500)', fontSize: '0.95rem', fontWeight: 700 }}>
-                              {isDe ? 'Ohne Gruppe' : 'No group'} <span style={{ color: 'var(--dex-gray-400)', fontWeight: 500, fontSize: '0.85rem' }}>({groupNone.length})</span>
-                            </h4>
-                            {renderTable(groupNone, runningIdx)}
+                            <div className="dex-ui-card-head" style={{ marginBottom: 8 }}>
+                              <h4 className="dex-ui-card-head-title" style={{ color: 'var(--dex-gray-500)', fontSize: '0.95rem' }}>{isDe ? 'Ohne Gruppe' : 'No group'}</h4>
+                              <span className="dex-ui-card-head-meta">{groupNone.length}</span>
+                            </div>
+                            {renderTable(groupNone, runningIdx, groupFoot(groupNone.length))}
                           </div>
                         )}
                       </>

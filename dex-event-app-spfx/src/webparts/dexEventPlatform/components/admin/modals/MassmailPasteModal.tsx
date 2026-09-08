@@ -4,6 +4,9 @@
  */
 import * as React from 'react';
 import Modal from '../../Modal';
+import { cx } from '../../dexUi';
+import { Check, ChevronDown, Mail } from '../../Icons';
+import { useLocaleSafe } from '../../../context/LanguageContext';
 import { SPRegistration } from '../../../services/EventService';
 
 export interface MassmailPasteModalProps {
@@ -17,6 +20,10 @@ export interface MassmailPasteModalProps {
 
 export const MassmailPasteModal: React.FC<MassmailPasteModalProps> = (p) => {
   const { massmailPasteRaw, registrations, setMassmailMode, setMassmailPasteRaw, setShowEmailModal, showAlert } = p;
+        // v31.2: Die Props kennen kein isDe (Schnittstelle bleibt) — die Sprache
+        // kommt wie in Modal.tsx aus dem Kontext.
+        const isDe = useLocaleSafe() === 'de';
+        const [showMissing, setShowMissing] = React.useState(false);
         const closeAll = (): void => { setMassmailMode('closed'); setMassmailPasteRaw(''); };
         const back = (): void => { setMassmailMode('pick'); };
         // E-Mail-Adressen aus dem Rohtext extrahieren — robust gegen Vorname
@@ -37,65 +44,73 @@ export const MassmailPasteModal: React.FC<MassmailPasteModalProps> = (p) => {
         const pastedSet = new Set(pasted);
         const missing = active.filter(r => !pastedSet.has((r.ParticipantEmail || '').toLowerCase()));
         const continueAction = (): void => {
-          if (missing.length === 0) { showAlert('Alle aktiven Teilnehmer stehen bereits in deiner Liste — niemand zum Anschreiben uebrig.'); return; }
+          if (missing.length === 0) { showAlert(isDe ? 'Alle aktiven Teilnehmer stehen bereits in deiner Liste — niemand zum Anschreiben übrig.' : 'All active participants are already on your list — nobody left to write to.'); return; }
           setShowEmailModal(true);
           setMassmailMode('editor');
         };
+        // v31.2: Frage statt Feldname im Kopf, drei Kennzahlen statt drei Fließtext-
+        // Zeilen, die Empfängerliste hinter einem Aufklapper; der Primär-Knopf nennt
+        // die Zahl. backdropClose aus: Ein Klick neben die Karte warf den
+        // eingefügten Verteiler weg (Modal.tsx, v30.51).
         return (
-          <Modal open={true} onClose={closeAll} maxWidth={680} padding={24} ariaLabel="Nachrücker — Liste einfügen">
-            <h3 style={{ margin: '0 0 8px', fontSize: '1.1rem' }}>Nachrücker — bestehende Empfänger-Liste einfügen</h3>
-            <p style={{ margin: '0 0 14px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-              Hau alles rein, was du hast — Verteiler-Export, Outlook-To-Liste, Vorname Nachname &lt;mail@deloitte.de&gt;-Format, kommagetrennt, semikolongetrennt, Zeilenumbruch — die App pickt die E-Mail-Adressen automatisch raus.
-            </p>
-            <textarea
-              value={massmailPasteRaw}
-              onChange={e => setMassmailPasteRaw(e.target.value)}
-              placeholder={'Max Mustermann <mmustermann@deloitte.de>; anna.schmidt@deloitte.de; ...'}
-              style={{ width: '100%', minHeight: 160, fontFamily: 'monospace', fontSize: '0.82rem', padding: 8, border: '1px solid var(--dex-gray-300)', borderRadius: 6, resize: 'vertical' }}
-            />
-            <div style={{ marginTop: 10, padding: 10, borderRadius: 6, background: 'var(--dex-gray-50, #fafafa)', fontSize: '0.85rem', color: 'var(--dex-gray-700)' }}>
-              <strong>{pasted.length}</strong> Adressen aus dem Text extrahiert.<br />
-              <strong>{active.length}</strong> aktive Teilnehmer im Event.<br />
-              <strong style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>{missing.length}</strong> Teilnehmer NICHT in deiner Liste — die werden angeschrieben.
+          <Modal open={true} onClose={closeAll} maxWidth={680} backdropClose={false}
+            ariaLabel={isDe ? 'Nachrücker — Liste einfügen' : 'Late joiners — paste list'}
+            title={isDe ? 'Wer hat die Mail schon bekommen?' : 'Who already received the mail?'}
+            subtitle={isDe ? 'Schritt 2 von 2 — füge deine bisherige Empfänger-Liste ein. Angeschrieben wird, wer im Event aktiv ist, aber dort nicht steht.' : 'Step 2 of 2 — paste your existing recipient list. The mail goes to everyone active in the event who is not on it.'}
+            icon={<Mail size={20} />}
+            footer={<>
+              <span className="dex-ui-modal-foot-left"><button type="button" className="btn btn-secondary" onClick={back}>{isDe ? 'Zurück' : 'Back'}</button></span>
+              <button type="button" className="btn btn-secondary" onClick={closeAll}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
+              <button type="button" className="btn btn-primary" disabled={missing.length === 0} onClick={continueAction}>{isDe ? `Weiter zum Mail-Editor (${missing.length})` : `Continue to mail editor (${missing.length})`}</button>
+            </>}>
+            <div className="dex-ui-field">
+              <label className="dex-ui-label" htmlFor="massmail-paste-raw">{isDe ? 'Deine bisherige Empfänger-Liste' : 'Your existing recipient list'}</label>
+              <textarea id="massmail-paste-raw" className="dex-ui-textarea" value={massmailPasteRaw} onChange={e => setMassmailPasteRaw(e.target.value)}
+                placeholder={'Max Mustermann <mmustermann@deloitte.de>; anna.schmidt@deloitte.de; ...'}
+                style={{ minHeight: 160, fontFamily: 'monospace', fontSize: '0.82rem' }} />
+              <div className="dex-ui-help">
+                {isDe ? 'Hau alles rein, was du hast: Verteiler-Export, Outlook-To-Zeile, „Vorname Nachname <mail@deloitte.de>“, komma-, semikolon- oder zeilengetrennt — die App pickt die E-Mail-Adressen automatisch heraus.' : 'Paste whatever you have: distribution list export, Outlook To line, "First Last <mail@deloitte.de>", separated by comma, semicolon or line break — the app picks out the email addresses automatically.'}
+              </div>
             </div>
-            {missing.length > 0 && (
-              <details style={{ marginTop: 8, padding: 0, borderRadius: 6, background: 'rgba(237,139,0,0.06)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.82rem' }}>
-                <summary style={{ padding: '8px 12px', cursor: 'pointer', fontWeight: 600, color: 'var(--dex-orange-dark, #b35a00)' }}>
-                  Empfänger anzeigen ({missing.length})
-                </summary>
-                <div style={{ maxHeight: 320, overflowY: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '1px solid var(--dex-orange, #ed8b00)', background: 'rgba(255,255,255,0.6)' }}>
-                        <th style={{ textAlign: 'left', padding: 6 }}>Vorname</th>
-                        <th style={{ textAlign: 'left', padding: 6 }}>Nachname</th>
-                        <th style={{ textAlign: 'left', padding: 6 }}>Position</th>
-                        <th style={{ textAlign: 'left', padding: 6 }}>Email</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {missing.map(r => {
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        const anyR = r as any;
-                        return (
-                          <tr key={r.Id} style={{ borderBottom: '1px solid rgba(237,139,0,0.15)' }}>
-                            <td style={{ padding: 6 }}>{r.Vorname || '-'}</td>
-                            <td style={{ padding: 6 }}>{r.Nachname || '-'}</td>
-                            <td style={{ padding: 6, color: 'var(--dex-gray-600)' }}>{anyR.JobTitle || '-'}</td>
-                            <td style={{ padding: 6, color: 'var(--dex-gray-600)' }}>{r.ParticipantEmail}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </details>
+            <div className="dex-ui-grid-3">
+              {([
+                [pasted.length, isDe ? 'Adressen erkannt' : 'addresses found', ''],
+                [active.length, isDe ? 'aktive Teilnehmer' : 'active participants', ''],
+                [missing.length, isDe ? 'nicht in deiner Liste — werden angeschrieben' : 'not on your list — will be mailed', 'dex-ui-kpi--orange'],
+              ] as [number, string, string][]).map(([v, label, mod]) => (
+                <div key={label} className={cx('dex-ui-kpi', mod)}><div className="dex-ui-kpi-value">{v}</div><div className="dex-ui-kpi-label">{label}</div></div>
+              ))}
+            </div>
+            {missing.length > 0 ? (
+              <div>
+                <button type="button" className={cx('dex-ui-disclosure', showMissing && 'is-open')} aria-expanded={showMissing} onClick={() => setShowMissing(v => !v)}>
+                  <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                  {isDe ? 'Empfänger anzeigen' : 'Show recipients'}
+                  <span className="dex-ui-disclosure-count">{missing.length}</span>
+                </button>
+                {showMissing && (
+                  <div className="dex-ui-disclosure-body">
+                    <div className="dex-ui-table-wrap" style={{ maxHeight: 320, overflowY: 'auto' }}>
+                      <table className="dex-ui-table">
+                        <thead><tr><th>{isDe ? 'Vorname' : 'First name'}</th><th>{isDe ? 'Nachname' : 'Last name'}</th><th>{isDe ? 'Position' : 'Job title'}</th><th>{isDe ? 'E-Mail' : 'Email'}</th></tr></thead>
+                        <tbody>
+                          {missing.map(r => (
+                            <tr key={r.Id}>
+                              <td>{r.Vorname || '-'}</td><td>{r.Nachname || '-'}</td>
+                              <td style={{ color: 'var(--dex-gray-600)' }}>{(r as SPRegistration & { JobTitle?: string }).JobTitle || '-'}</td>
+                              <td style={{ color: 'var(--dex-gray-600)' }}>{r.ParticipantEmail}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="dex-ui-callout dex-ui-callout--success"><span className="dex-ui-callout-icon"><Check size={16} /></span>
+                <span>{isDe ? 'Alle aktiven Teilnehmer stehen schon in deiner Liste — es bleibt niemand zum Anschreiben.' : 'All active participants are already on your list — nobody left to write to.'}</span></div>
             )}
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 14 }}>
-              <button type="button" className="btn btn-secondary" onClick={back} style={{ fontSize: '0.85rem' }}>Zurück</button>
-              <button type="button" className="btn btn-secondary" onClick={closeAll} style={{ fontSize: '0.85rem' }}>Abbrechen</button>
-              <button type="button" className="btn btn-primary" disabled={missing.length === 0} onClick={continueAction} style={{ fontSize: '0.85rem' }}>Weiter zum Mail-Editor</button>
-            </div>
           </Modal>
         );
 };

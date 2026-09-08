@@ -31,8 +31,11 @@ import { DeloitteEvent, AgendaItem } from '../../types';
 import { EventService, SPRegistration, CustomField } from '../../services/EventService';
 import { shortSubEventTitle } from '../../utils/subEventTitle';
 import { subEventGroupKey, stripGroupPrefix } from '../../utils/subEventGroups';
-import { suggestClusterName } from '../../utils/agendaGroups';
+import { suggestClusterName, agendaGroups, groupLabel, groupDateLabel } from '../../utils/agendaGroups';
 import { useCurrentUser } from '../../context/UserContext';
+// v31.2: Gemeinsame Klassen (Kennzahlen, Zeilen, Schalter-Zeilen, Aufklapper) statt Inline-Styles — Hover inklusive.
+import { cx } from '../dexUi';
+import { Copy, Check, Calendar, AlertCircle, ChevronDown } from '../Icons';
 
 const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
 
@@ -87,6 +90,8 @@ export default function CopyToAgendaModal(props: {
   const [closeOld, setCloseOld] = React.useState<boolean>(false);
   const [progress, setProgress] = React.useState<{ done: number; total: number; label: string }>({ done: 0, total: 0, label: '' });
   const [report, setReport] = React.useState<{ newId: string; registered: number; failed: Array<{ name: string; reason: string }>; checkIns: number; checkInFailed: number; oldClosed: boolean } | null>(null);
+  // v31.2: „Was nicht mitkopiert wird" ist Erklärtext für den seltenen Fall — zu, bis jemand ihn braucht.
+  const [showSkipped, setShowSkipped] = React.useState<boolean>(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -310,103 +315,159 @@ export default function CopyToAgendaModal(props: {
   };
 
   const termP = isDe ? 'Programmpunkte' : 'agenda items';
-  return (
-    <Modal open onClose={phase === 'running' ? () => { /* läuft */ } : onClose} maxWidth={760} ariaLabel={isDe ? 'Als neues Event mit Programmpunkten kopieren' : 'Copy as new event with agenda items'}>
-      <h3 style={{ margin: '0 0 4px' }}>{isDe ? 'Als neues Event mit Programmpunkten kopieren' : 'Copy as a new event with agenda items'}</h3>
-      <p style={{ margin: '0 0 14px', color: 'var(--dex-gray-500)', fontSize: '0.85rem' }}>
-        {isDe
-          ? `„${event.title}" bleibt vollständig erhalten — Sub-Events, Listen, Mails, Check-ins. Es entsteht ein NEUES Event, dessen ${termP} die bisherigen Sub-Events sind; die Anmeldungen werden still kopiert (keine Mail, kein Outlook-Termin).`
-          : `“${event.title}” stays completely intact — sub-events, lists, mails, check-ins. A NEW event is created whose ${termP} are the former sub-events; registrations are copied silently (no mail, no Outlook invite).`}
-      </p>
+  const running = phase === 'running';
+  // v31.2: Organizer des neuen Events ist seit v30.94 nur die kopierende Person — der Dialog soll das SAGEN (gleiche Auflösung wie in run()).
+  const meName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || (currentUser.email || '').trim() || (event.organizers || [])[0] || '';
+  const groups = analysis ? agendaGroups(analysis.items) : [];
+  const checkedInAt = (childId: string): number => analysis ? analysis.persons.filter(p => p.checkedIn.indexOf(childId) >= 0).length : 0;
+  const pct = progress.total ? Math.round(100 * progress.done / progress.total) : 0;
+  const closeBtn = (cls: string): React.ReactElement => <button type="button" className={`btn ${cls}`} onClick={onClose}>{isDe ? 'Schließen' : 'Close'}</button>;
 
-      {phase === 'analyzing' && <p style={{ color: 'var(--dex-gray-500)' }}>{isDe ? 'Teilnehmerlisten werden gelesen…' : 'Reading attendee lists…'}</p>}
+  // v31.2: Genau ein Primärknopf je Phase — der Fuß gehört dem Modal, nicht dem Inhalt.
+  const footer = phase === 'done' ? closeBtn('btn-primary')
+    : phase === 'blocked' ? closeBtn('btn-secondary')
+    : (phase === 'ready' || running) && analysis ? <>
+        <button type="button" className="btn btn-secondary" onClick={onClose} disabled={running}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
+        <button type="button" className="btn btn-primary" onClick={() => { void run(); }} disabled={running || analysis.items.length === 0}>
+          {running ? (isDe ? 'Läuft…' : 'Running…') : (isDe ? 'Neues Event anlegen und kopieren' : 'Create new event and copy')}
+        </button>
+      </>
+    : undefined;
+
+  return (
+    <Modal open onClose={running ? () => { /* läuft */ } : onClose} dismissable={!running} maxWidth={760}
+      ariaLabel={isDe ? 'Als neues Event mit Programmpunkten kopieren' : 'Copy as new event with agenda items'}
+      title={isDe ? 'Als neues Event mit Programmpunkten kopieren' : 'Copy as a new event with agenda items'}
+      subtitle={isDe
+        ? `„${event.title}" bleibt vollständig erhalten — Sub-Events, Listen, Mails, Check-ins. Es entsteht ein NEUES Event, dessen ${termP} die bisherigen Sub-Events sind.`
+        : `“${event.title}” stays completely intact — sub-events, lists, mails, check-ins. A NEW event is created whose ${termP} are the former sub-events.`}
+      icon={<Copy size={20} />} footer={footer}>
+
+      {phase === 'analyzing' && (
+        <div className="dex-ui-empty"><div className="dex-ui-empty-title">{isDe ? 'Teilnehmerlisten werden gelesen…' : 'Reading attendee lists…'}</div>
+          {isDe ? 'Klammer zuerst, dann jeder Termin — eine nicht lesbare Liste zählt nicht als leer.' : 'Parent first, then each session — an unreadable list does not count as empty.'}</div>
+      )}
 
       {phase === 'blocked' && analysis && (
-        <div style={{ padding: '12px 14px', borderRadius: 8, background: 'rgba(218,41,28,0.08)', fontSize: '0.85rem', lineHeight: 1.6 }}>
-          <strong>{isDe ? 'Nicht gestartet.' : 'Not started.'}</strong>{' '}
-          {isDe ? 'Diese Teilnehmerlisten konnten nicht gelesen werden — eine nicht lesbare Liste zählt nicht als leer:' : 'These attendee lists could not be read — an unreadable list does not count as empty:'}{' '}
-          <strong>{analysis.unreadable.join(', ')}</strong>. {isDe ? 'Bitte Rechte prüfen („Organizer-Berechtigungen reparieren") und erneut versuchen.' : 'Please check permissions and try again.'}
+        <div className="dex-ui-callout dex-ui-callout--danger">
+          <span className="dex-ui-callout-icon"><AlertCircle size={18} /></span>
+          <div><strong>{isDe ? 'Nicht gestartet.' : 'Not started.'}</strong>{' '}
+            {isDe ? 'Diese Teilnehmerlisten konnten nicht gelesen werden — eine nicht lesbare Liste zählt nicht als leer:' : 'These attendee lists could not be read — an unreadable list does not count as empty:'}{' '}
+            <strong>{analysis.unreadable.join(', ')}</strong>. {isDe ? 'Bitte Rechte prüfen („Organizer-Berechtigungen reparieren") und erneut versuchen.' : 'Please check permissions and try again.'}</div>
         </div>
       )}
 
-      {(phase === 'ready' || phase === 'running') && analysis && (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, marginBottom: 14 }}>
-            {[
-              { n: analysis.items.length, l: isDe ? `Sub-Events → ${termP}` : `Sub-events → ${termP}` },
-              { n: analysis.persons.length, l: isDe ? 'Personen (angemeldet)' : 'People (registered)' },
-              { n: analysis.checkInCount, l: isDe ? 'Check-ins → Anwesenheiten' : 'Check-ins → attendances' },
-              { n: analysis.waitlisted.length, l: isDe ? 'Warteliste (nicht kopiert)' : 'Waitlist (not copied)' },
-            ].map((k, i) => (
-              <div key={i} style={{ padding: '10px 12px', borderRadius: 10, background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)', textAlign: 'center' }}>
-                <div style={{ fontSize: '1.3rem', fontWeight: 700 }}>{k.n}</div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-600)' }}>{k.l}</div>
+      {(phase === 'ready' || running) && analysis && (
+        <div className="dex-ui-modal-body">
+          {/* 1) Was übernommen wird — Kennzahlen, Warteliste, Vorschau je Cluster */}
+          <div className="dex-ui-section">
+            <div className="dex-ui-section-title">{isDe ? 'Was übernommen wird' : 'What is carried over'}</div>
+            <div className="dex-ui-grid-auto" style={{ gap: 8 }}>
+              {[
+                { n: analysis.items.length, l: isDe ? `Sub-Events → ${termP}` : `Sub-events → ${termP}`, g: true },
+                { n: analysis.persons.length, l: isDe ? 'Personen (angemeldet)' : 'People (registered)', g: true },
+                { n: analysis.checkInCount, l: isDe ? 'Check-ins → Anwesenheiten' : 'Check-ins → attendances', g: true },
+                { n: analysis.waitlisted.length, l: isDe ? 'Warteliste (nicht kopiert)' : 'Waitlist (not copied)', g: false },
+              ].map((k, i) => (
+                <div key={i} className={cx('dex-ui-kpi', k.n > 0 && (k.g ? 'dex-ui-kpi--green' : 'dex-ui-kpi--orange'))}>
+                  <div className="dex-ui-kpi-value">{k.n}</div><div className="dex-ui-kpi-label">{k.l}</div>
+                </div>
+              ))}
+            </div>
+            <div className="dex-ui-help" style={{ marginTop: 8 }}>{isDe ? 'Die Anmeldungen werden still kopiert — keine Mail, kein Outlook-Termin. Formularantworten wandern in die neue Anmeldung.' : 'Registrations are copied silently — no mail, no Outlook invite. Form answers move to the new registration.'}</div>
+            {analysis.waitlisted.length > 0 && (
+              <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginTop: 10 }}><span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                <div>{isDe ? 'Auf einer Warteliste stehen und werden NICHT kopiert (sie hatten keinen Platz): ' : 'On a waitlist and NOT copied (they had no seat): '}<strong>{analysis.waitlisted.join(', ')}</strong></div>
               </div>
-            ))}
+            )}
+            {/* v31.2: Vorschau der Punkte je Cluster — dieselbe Gruppierung wie im Editor (agendaGroups). */}
+            <div style={{ marginTop: 12, maxHeight: 240, overflowY: 'auto', border: '1px solid var(--dex-gray-200, #e8e8e8)', borderRadius: 12 }}>
+              {groups.length === 0 && <div className="dex-ui-muted" style={{ padding: 12 }}>{isDe ? 'Keine Sub-Events — es gibt nichts zu überführen.' : 'No sub-events — nothing to convert.'}</div>}
+              {groups.map((g, gi) => (
+                <div key={g.key}>
+                  <div className="dex-ui-section-title" style={{ margin: 0, padding: '8px 12px 4px', background: 'var(--dex-gray-50, #fafafa)' }}><span>{groupLabel(g, gi, isDe)}</span>
+                    <span style={{ fontWeight: 500, letterSpacing: 0, textTransform: 'none' }}>{groupDateLabel(g, isDe)}</span></div>
+                  {g.items.map(it => { const ci = checkedInAt((it as Analysis['items'][number]).childId); return (
+                    <div key={it.id} className="dex-ui-row dex-ui-row--bordered">
+                      <span className="dex-ui-choice-icon" style={{ width: 30, height: 30 }}><Calendar size={16} strokeWidth={2} /></span>
+                      <div className="dex-ui-row-main">
+                        <div className="dex-ui-row-title">{it.title}</div>
+                        <div className="dex-ui-row-sub">{[it.time && `${it.time}${it.endTime ? `–${it.endTime}` : ''}`, it.location].filter(Boolean).join(' · ')}</div>
+                      </div>
+                      {ci > 0 && <span className="dex-ui-pill dex-ui-pill--green">{ci} {isDe ? 'eingecheckt' : 'checked in'}</span>}
+                    </div>
+                  ); })}
+                </div>
+              ))}
+            </div>
           </div>
-          {analysis.waitlisted.length > 0 && (
-            <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 8, background: 'rgba(237,139,0,0.09)', fontSize: '0.8rem', lineHeight: 1.5 }}>
-              {isDe ? 'Auf einer Warteliste stehen und werden NICHT kopiert (sie hatten keinen Platz): ' : 'On a waitlist and NOT copied (they had no seat): '}<strong>{analysis.waitlisted.join(', ')}</strong>
+
+          {/* 2) Das neue Event — Titel (Pflicht), dann die zwei Schalter */}
+          <div className="dex-ui-section">
+            <div className="dex-ui-section-title">{isDe ? 'Das neue Event' : 'The new event'}</div>
+            <div className="dex-ui-field">
+              <label className="dex-ui-label" htmlFor="dex-copy-agenda-title">{isDe ? 'Wie soll das neue Event heißen?' : 'What should the new event be called?'}</label>
+              <input id="dex-copy-agenda-title" type="text" className="dex-ui-input" value={newTitle} onChange={e => setNewTitle(e.target.value)} disabled={running} />
+              <div className="dex-ui-help">{isDe ? <>Organizer des neuen Events bist nur du{meName ? <> (<strong>{meName}</strong>)</> : null} — das alte Team trägst du im Wizard des neuen Events nach.</>
+                : <>You{meName ? <> (<strong>{meName}</strong>)</> : null} are the only organizer of the new event — add the old team in the new event&rsquo;s wizard.</>}</div>
+            </div>
+            <div className="dex-ui-stack">
+              <label className={cx('dex-ui-toggle-row', asTest && 'is-active', running && 'is-disabled')}>
+                <input type="checkbox" checked={asTest} onChange={e => setAsTest(e.target.checked)} disabled={running} />
+                <span className="dex-ui-toggle-row-body"><span className="dex-ui-toggle-row-title">{isDe ? 'Als Test-Event anlegen' : 'Create as test event'}<span className="dex-ui-pill dex-ui-pill--green">{isDe ? 'empfohlen' : 'recommended'}</span></span>
+                  <span className="dex-ui-toggle-row-desc">{isDe ? 'Nur Admins und Organizer sehen es, bis du es live schaltest — Zeit, Programmpunkte und Anmeldungen zu prüfen.' : 'Only admins and organizers see it until you publish — time to check items and registrations.'}</span></span>
+              </label>
+              <label className={cx('dex-ui-toggle-row', closeOld && 'is-active', running && 'is-disabled')}>
+                <input type="checkbox" checked={closeOld} onChange={e => setCloseOld(e.target.checked)} disabled={running} />
+                <span className="dex-ui-toggle-row-body"><span className="dex-ui-toggle-row-title">{isDe ? 'Anmeldung am alten Event schließen' : 'Close registration on the old event'}</span>
+                  <span className="dex-ui-toggle-row-desc">{isDe ? 'Setzt die Anmeldefrist des alten Events und seiner Sub-Events auf jetzt. Nichts wird gelöscht, keine Outlook-Termine werden ausgeladen.' : 'Sets the registration deadline of the old event and its sub-events to now. Nothing is deleted, no Outlook invites are cancelled.'}</span></span>
+              </label>
+            </div>
+          </div>
+
+          {/* 3) Selten gebraucht: was NICHT mitkommt — zu, bis jemand fragt */}
+          <div>
+            <button type="button" className={cx('dex-ui-disclosure', showSkipped && 'is-open')} onClick={() => setShowSkipped(v => !v)} aria-expanded={showSkipped}><span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+              {isDe ? 'Was nicht mitkopiert wird' : 'What is not copied'}<span className="dex-ui-disclosure-count">3</span></button>
+            {showSkipped && <div className="dex-ui-disclosure-body dex-ui-muted dex-ui-fade-in">{isDe
+              ? 'Nicht mitkopiert: das Event-Bild und Dokumente (bitte im neuen Event neu hochladen), eigene Kommunikationstexte der Sub-Events (das neue Event hat eine Kommunikation).'
+              : 'Not copied: event image and documents (please re-upload), per-sub-event communication texts (the new event has one communication).'}</div>}
+          </div>
+
+          {running && (
+            <div className="dex-ui-card dex-ui-card--soft" aria-live="polite">
+              <div className="dex-ui-inline" style={{ justifyContent: 'space-between', marginBottom: 8 }}><span className="dex-ui-label" style={{ margin: 0 }}>{isDe ? 'Kopiert…' : 'Copying…'}</span>
+                <span className="dex-ui-pill dex-ui-pill--green">{progress.done}/{progress.total} · {pct} %</span></div>
+              <div style={{ height: 8, borderRadius: 999, background: 'var(--dex-gray-200, #e8e8e8)', overflow: 'hidden' }}><div style={{ height: 8, width: `${pct}%`, background: 'var(--dex-green, #86bc25)', transition: 'width 0.2s' }} /></div>
+              <div className="dex-ui-help">{progress.label}</div>
             </div>
           )}
-          <div style={{ display: 'grid', gap: 10, marginBottom: 14 }}>
-            <label style={{ fontSize: '0.85rem' }}>
-              <span style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>{isDe ? 'Titel des neuen Events' : 'Title of the new event'}</span>
-              <input type="text" className="form-input" value={newTitle} onChange={e => setNewTitle(e.target.value)} disabled={phase === 'running'} style={{ width: '100%', padding: '8px 12px' }} />
-            </label>
-            <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: '0.85rem', cursor: 'pointer' }}>
-              <input type="checkbox" checked={asTest} onChange={e => setAsTest(e.target.checked)} disabled={phase === 'running'} style={{ marginTop: 3 }} />
-              <span><strong>{isDe ? 'Als Test-Event anlegen (empfohlen)' : 'Create as test event (recommended)'}</strong><br /><span style={{ color: 'var(--dex-gray-500)' }}>{isDe ? 'Nur Admins und Organizer sehen es, bis du es live schaltest — Zeit, Programmpunkte und Anmeldungen zu prüfen.' : 'Only admins and organizers see it until you publish — time to check items and registrations.'}</span></span>
-            </label>
-            <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: '0.85rem', cursor: 'pointer' }}>
-              <input type="checkbox" checked={closeOld} onChange={e => setCloseOld(e.target.checked)} disabled={phase === 'running'} style={{ marginTop: 3 }} />
-              <span><strong>{isDe ? 'Anmeldung am alten Event schließen' : 'Close registration on the old event'}</strong><br /><span style={{ color: 'var(--dex-gray-500)' }}>{isDe ? 'Setzt die Anmeldefrist des alten Events und seiner Sub-Events auf jetzt. Nichts wird gelöscht, keine Outlook-Termine werden ausgeladen.' : 'Sets the registration deadline of the old event and its sub-events to now. Nothing is deleted, no Outlook invites are cancelled.'}</span></span>
-            </label>
-          </div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginBottom: 12, lineHeight: 1.5 }}>
-            {isDe
-              ? 'Nicht mitkopiert: das Event-Bild und Dokumente (bitte im neuen Event neu hochladen), eigene Kommunikationstexte der Sub-Events (das neue Event hat eine Kommunikation). Formularantworten wandern in die neue Anmeldung.'
-              : 'Not copied: event image and documents (please re-upload), per-sub-event communication texts (the new event has one communication). Form answers move to the new registration.'}
-          </div>
-          {phase === 'running' && (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ height: 8, borderRadius: 999, background: 'var(--dex-gray-100)', overflow: 'hidden' }}>
-                <div style={{ height: 8, width: `${progress.total ? Math.round(100 * progress.done / progress.total) : 0}%`, background: 'var(--dex-green, #86bc25)', transition: 'width 0.2s' }} />
-              </div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 4 }}>{progress.done}/{progress.total} · {progress.label}</div>
-            </div>
-          )}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={phase === 'running'}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
-            <button type="button" className="btn btn-primary" onClick={() => { void run(); }} disabled={phase === 'running' || analysis.items.length === 0}>
-              {phase === 'running' ? (isDe ? 'Läuft…' : 'Running…') : (isDe ? 'Neues Event anlegen und kopieren' : 'Create new event and copy')}
-            </button>
-          </div>
-        </>
+        </div>
       )}
 
       {phase === 'done' && report && analysis && (
-        <>
-          <div style={{ padding: '12px 14px', borderRadius: 8, background: 'rgba(134,188,37,0.10)', fontSize: '0.85rem', lineHeight: 1.6, marginBottom: 12 }}>
-            <strong>{isDe ? 'Fertig.' : 'Done.'}</strong>{' '}
-            {isDe
-              ? `Neues Event „${newTitle}" mit ${analysis.items.length} ${termP} angelegt${asTest ? ' (Test-Event)' : ''}. ${report.registered} von ${analysis.persons.length} Anmeldungen kopiert, ${report.checkIns} Anwesenheiten übernommen${report.checkInFailed ? ` (${report.checkInFailed} nicht übertragbar)` : ''}.${report.oldClosed ? ' Anmeldung am alten Event geschlossen.' : ''}`
-              : `New event “${newTitle}” with ${analysis.items.length} ${termP} created${asTest ? ' (test event)' : ''}. ${report.registered} of ${analysis.persons.length} registrations copied, ${report.checkIns} attendances carried over${report.checkInFailed ? ` (${report.checkInFailed} not transferable)` : ''}.${report.oldClosed ? ' Registration on the old event closed.' : ''}`}
+        <div className="dex-ui-modal-body">
+          <div className="dex-ui-callout dex-ui-callout--success">
+            <span className="dex-ui-callout-icon"><Check size={18} /></span>
+            <div><strong>{isDe ? 'Fertig.' : 'Done.'}</strong>{' '}
+              {isDe
+                ? `Neues Event „${newTitle}" mit ${analysis.items.length} ${termP} angelegt${asTest ? ' (Test-Event)' : ''}. ${report.registered} von ${analysis.persons.length} Anmeldungen kopiert, ${report.checkIns} Anwesenheiten übernommen${report.checkInFailed ? ` (${report.checkInFailed} nicht übertragbar)` : ''}.${report.oldClosed ? ' Anmeldung am alten Event geschlossen.' : ''}`
+                : `New event “${newTitle}” with ${analysis.items.length} ${termP} created${asTest ? ' (test event)' : ''}. ${report.registered} of ${analysis.persons.length} registrations copied, ${report.checkIns} attendances carried over${report.checkInFailed ? ` (${report.checkInFailed} not transferable)` : ''}.${report.oldClosed ? ' Registration on the old event closed.' : ''}`}</div>
           </div>
           {report.failed.length > 0 && (
-            <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(218,41,28,0.08)', fontSize: '0.8rem', lineHeight: 1.5, marginBottom: 12, maxHeight: 200, overflow: 'auto' }}>
-              <strong>{isDe ? `${report.failed.length} Anmeldung(en) nicht kopiert:` : `${report.failed.length} registration(s) not copied:`}</strong>
-              <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{report.failed.map((f, i) => <li key={i}>{f.name} — {f.reason}</li>)}</ul>
-              <div style={{ marginTop: 6 }}>{isDe ? 'Diese Personen kannst du im neuen Event über „Teilnehmer hinzufügen" nachtragen.' : 'You can add these people in the new event via “Add participants”.'}</div>
+            <div className="dex-ui-callout dex-ui-callout--danger" style={{ maxHeight: 200, overflow: 'auto' }}>
+              <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+              <div><strong>{isDe ? `${report.failed.length} Anmeldung(en) nicht kopiert:` : `${report.failed.length} registration(s) not copied:`}</strong>
+                <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{report.failed.map((f, i) => <li key={i}>{f.name} — {f.reason}</li>)}</ul>
+                <div style={{ marginTop: 6 }}>{isDe ? 'Diese Personen kannst du im neuen Event über „Teilnehmer hinzufügen" nachtragen.' : 'You can add these people in the new event via “Add participants”.'}</div></div>
             </div>
           )}
-          <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
-            {isDe ? 'Nächste Schritte: Das neue Event im Organizer Center öffnen, Programmpunkte und Anwesenheit prüfen, Bild hochladen, dann live schalten.' : 'Next: open the new event in the Organizer Center, check items and attendance, upload the image, then publish.'}
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button type="button" className="btn btn-primary" onClick={onClose}>{isDe ? 'Schließen' : 'Close'}</button>
-          </div>
-        </>
+          {/* v31.2: Die nächsten Schritte als nummerierte Zeilen — lesbar als Liste, nicht als Fließtext. */}
+          <div className="dex-ui-stack">{(isDe
+            ? ['Das neue Event im Organizer Center öffnen', 'Programmpunkte und Anwesenheit prüfen', 'Bild hochladen, dann live schalten']
+            : ['Open the new event in the Organizer Center', 'Check items and attendance', 'Upload the image, then publish']
+          ).map((t, i) => <div key={i} className="dex-ui-step is-pending"><span className="dex-ui-step-num">{i + 1}</span><div className="dex-ui-step-body"><div className="dex-ui-step-title">{t}</div></div></div>)}</div>
+        </div>
       )}
     </Modal>
   );

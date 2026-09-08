@@ -2,6 +2,16 @@
  * Stands vor dem Schnitt). Zeichengleich uebernommen, nur `function` -> `export function`.
  */
 import * as React from 'react';
+import { ChevronUp, ChevronDown } from '../Icons';
+import { ensureDexUiStyles } from '../dexUi';
+
+/** v31.3: Maße und Schatten der schwebenden Knöpfe. Alles, was einen Hover
+ *  braucht (Rand, Grund, Schriftfarbe), steckt in `dex-ui-chip` — inline
+ *  gesetzt wäre es für den Hover verloren. */
+const floatBtn: React.CSSProperties = {
+  padding: '8px 14px', fontSize: '0.82rem',
+  boxShadow: '0 4px 14px rgba(0,0,0,0.16)',
+};
 
 /**
  * v17.8: Floating Jump-Buttons rechts unten. Erscheinen sobald der User
@@ -18,8 +28,19 @@ import * as React from 'react';
  * jetzt IMMER sichtbar (kein scrollY-Gating), und der Click sucht den
  * tatsächlich scrollenden Vorfahren des Targets statt window.scrollTo.
  */
+/**
+ * v31.3: Nur Optik. Aus den vollflächigen Pillen (grün/orange) sind helle
+ * Sprung-Knöpfe mit Schatten geworden — ein Sprung ist eine Hilfe, keine
+ * Hauptaktion, und Grün gehört im Leitfaden dem Primär-Knopf. Der Hover kommt
+ * aus `dex-ui-chip` (Inline-Styles können keinen), die Richtung aus einem
+ * Chevron; dessen Farbe hält die alte Zuordnung (orange = Warteliste).
+ * Ziel-Anker, Scroll-Logik und Sichtbarkeit sind unverändert.
+ */
 export default function JumpButtons(props: { hasWaitlist: boolean }): React.ReactElement {
   const { hasWaitlist } = props;
+  // Das gemeinsame Stylesheet steht nicht zwingend schon im Dokument — die
+  // Knöpfe hängen an der Admin-Seite, nicht an einem Modal.
+  ensureDexUiStyles();
   /** Sucht den ersten scroll-baren Vorfahren — typischerweise der
    *  SP-Page-Body. Fallback auf document.scrollingElement / window. */
   const findScrollParent = (el: HTMLElement | null): HTMLElement | Window => {
@@ -75,30 +96,24 @@ export default function JumpButtons(props: { hasWaitlist: boolean }): React.Reac
       {hasWaitlist && (
         <button
           type="button"
+          className="dex-ui-chip"
           onClick={scrollToWaitlist}
-          style={{
-            background: 'var(--dex-orange, #ed8b00)', color: '#fff',
-            border: 'none', padding: '10px 16px', borderRadius: 999,
-            cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-          }}
+          title="Springt zur Warteliste weiter unten auf der Seite"
+          style={floatBtn}
         >
-          ↓ Zur Warteliste
+          <span style={{ display: 'inline-flex', color: 'var(--dex-orange, #ed8b00)' }}><ChevronDown size={14} /></span>
+          Zur Warteliste
         </button>
       )}
       <button
         type="button"
+        className="dex-ui-chip"
         onClick={scrollToTop}
-        style={{
-          background: 'var(--dex-green, #86bc25)', color: '#fff',
-          border: 'none', padding: '10px 16px', borderRadius: 999,
-          cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-        }}
+        title="Springt an den Anfang der Seite"
+        style={floatBtn}
       >
-        ↑ Nach oben
+        <span style={{ display: 'inline-flex', color: 'var(--dex-green-dark, #6b9a1e)' }}><ChevronUp size={14} /></span>
+        Nach oben
       </button>
     </div>
   );

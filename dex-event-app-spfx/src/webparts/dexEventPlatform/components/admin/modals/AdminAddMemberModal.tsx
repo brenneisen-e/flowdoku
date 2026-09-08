@@ -7,6 +7,11 @@ import { SPRegistration } from '../../../services/EventService';
 import Modal from '../../Modal';
 import InternationalSearchToggle from '../../InternationalSearchToggle';
 import { DeloitteEvent } from '../../../types';
+// v31.2: Gemeinsame Klassen statt Inline-Styles — das Modal hängt im Portal an
+// document.body, dort greift nur dieses Stylesheet; und Inline-Styles können
+// kein :hover (Leitfaden 1.3).
+import { cx } from '../../dexUi';
+import { AlertCircle, Check, Search, Users, X } from '../../Icons';
 
 export interface AdminAddMemberModalProps {
   addTeamMember: (eventId: string, teamId: string, teamName: string, member: { email: string; displayName: string; }, customData?: Record<string, string>, opts?: { suppressMemberMail?: boolean; suppressOthersMail?: boolean; ccEmail?: string; }) => Promise<{ ok: boolean; status?: "Angemeldet" | "Warteliste"; reason?: string; }>;
@@ -57,6 +62,9 @@ export interface AdminAddMemberModalProps {
 
 export const AdminAddMemberModal: React.FC<AdminAddMemberModalProps> = (p) => {
   const { addTeamMember, adminAddCcOrganizer, adminAddLeadRegId, adminAddMemberBusy, adminAddMemberConsent, adminAddMemberDialog, adminAddMemberError, adminAddMemberIncludeIntl, adminAddMemberPick, adminAddMemberQuery, adminAddMemberQueryTimer, adminAddMemberResults, adminAddMemberSearching, adminAddNewPersonMail, adminAddNotifyOthers, adminAddNotifyScope, adminAddSendMail, adminAddTeamlessPicks, assignTeamlessToTeam, currentUser, isDe, notifyExistingTeamMembers, registrations, reloadRegistrations, searchUsers, selectedEvent, setAdminAddCcOrganizer, setAdminAddLeadRegId, setAdminAddMemberBusy, setAdminAddMemberConsent, setAdminAddMemberDialog, setAdminAddMemberError, setAdminAddMemberIncludeIntl, setAdminAddMemberPick, setAdminAddMemberQuery, setAdminAddMemberResults, setAdminAddMemberSearching, setAdminAddNewPersonMail, setAdminAddNotifyOthers, setAdminAddNotifyScope, setAdminAddSendMail, setAdminAddTeamlessPicks, setTeamsToast } = p;
+        // v31.2: Der Dialog war rein deutsch; beide Sprachen laufen jetzt über
+        // denselben Schalter wie der Rest des Organizer Centers.
+        const t = (de: string, en: string): string => (isDe ? de : en);
         // v17.2: Quick-Pick aus bereits registrierten Personen ohne Team —
         // damit der Organizer nicht via Graph-Suche jeden neu picken muss,
         // wenn die Person ohnehin schon angemeldet ist.
@@ -133,11 +141,12 @@ export const AdminAddMemberModal: React.FC<AdminAddMemberModalProps> = (p) => {
               });
               if (!res.ok) {
                 if (res.reason && res.reason.startsWith('already-registered')) {
-                  setAdminAddMemberError('Person bereits beim Event angemeldet — Picker aus „Bereits angemeldet"-Liste benutzen.');
+                  // v31.2: Der Text nennt die Liste so, wie sie oben im Dialog heißt.
+                  setAdminAddMemberError(t('Diese Person ist schon beim Event angemeldet — wähle sie oben unter „Bereits angemeldet, noch ohne Team“ aus.', 'This person is already registered for the event — pick them above under “Already registered, no team yet”.'));
                 } else if (res.reason === 'team-full') {
-                  setAdminAddMemberError('Das Team ist bereits voll.');
+                  setAdminAddMemberError(t('Das Team ist bereits voll.', 'The team is already full.'));
                 } else {
-                  setAdminAddMemberError('Hinzufügen fehlgeschlagen.');
+                  setAdminAddMemberError(t('Hinzufügen fehlgeschlagen.', 'Adding failed.'));
                 }
                 setAdminAddMemberBusy(false);
                 return;
@@ -162,10 +171,12 @@ export const AdminAddMemberModal: React.FC<AdminAddMemberModalProps> = (p) => {
                 catch (err) { console.warn('[DEX] notifyExistingTeamMembers failed:', err); }
               }
             }
-            const teamLabel = tName ? `„${tName}"` : 'das Team';
-            const toastMsg = adminAddSendMail
-              ? `${assignedCount} ${assignedCount === 1 ? 'Person' : 'Personen'} ${teamLabel} zugeordnet — Info-Mail wird versendet.`
-              : `${assignedCount} ${assignedCount === 1 ? 'Person' : 'Personen'} ${teamLabel} zugeordnet (ohne Mail-Versand).`;
+            // v31.2: „dem Team zugeordnet" statt „das Team zugeordnet", und beide Sprachen.
+            const teamLabel = tName ? `„${tName}“` : t('dem Team', 'the team');
+            const who = `${assignedCount} ${assignedCount === 1 ? t('Person', 'person') : t('Personen', 'people')}`;
+            const toastMsg = isDe
+              ? `${who} ${teamLabel} zugeordnet${adminAddSendMail ? ' — Info-Mail wird versendet.' : ' (ohne Mail-Versand).'}`
+              : `${who} assigned to ${teamLabel}${adminAddSendMail ? ' — info mail is being sent.' : ' (no mail sent).'}`;
             setTeamsToast(toastMsg);
             // TODO v17.5: Wenn adminAddSendMail=true UND assignTeamlessToTeam-
             // Pfad genutzt wurde, hier explizit eine „Du bist jetzt im Team
@@ -176,129 +187,127 @@ export const AdminAddMemberModal: React.FC<AdminAddMemberModalProps> = (p) => {
             await reloadRegistrations();
             closeDlg();
           } catch {
-            setAdminAddMemberError('Hinzufügen fehlgeschlagen.');
+            setAdminAddMemberError(t('Hinzufügen fehlgeschlagen.', 'Adding failed.'));
             setAdminAddMemberBusy(false);
           }
         };
+        // v17.1: Bei „Neues Team anlegen" + askTeamName=true ist
+        // der Team-Name Pflicht (analog Self-Registration-Flow).
+        const needName = !!adminAddMemberDialog.isNewTeam && !!selectedEvent.askTeamName;
+        const nameOk = !needName || (adminAddMemberDialog.teamName.trim().length > 0);
+        // v22.40-Bugfix: Vorher verlangte `disabled` zwingend einen
+        // Graph-Pick + Consent — dadurch war der Button bei reiner
+        // Zuordnung bereits-angemeldeter Personen NIE klickbar. Jetzt:
+        // mindestens eine Auswahl (teamlos ODER Graph), Consent nur bei
+        // echtem Graph-Neu-Pick, nicht über Kapazität, Name ok.
+        // v31.2: aus der IIFE im Fuß nach oben gezogen — der Fuß ist jetzt eine
+        // Modal-Prop, und der Hinweis am Knopf nennt weiter den ersten Grund.
+        const consentOk = !consentRequired || adminAddMemberConsent;
+        const disabled = totalPicks === 0 || !consentOk || adminAddMemberBusy || !nameOk || overCap;
+        const submitTitle = !nameOk ? t('Bitte einen Team-Namen eingeben.', 'Please enter a team name.')
+          : overCap ? t(`Zu viele ausgewählt — nur noch ${freeSlots} Platz/Plätze frei.`, `Too many selected — only ${freeSlots} seat(s) left.`)
+          : totalPicks === 0 ? t('Bitte mindestens eine Person auswählen.', 'Please pick at least one person.')
+          : (!consentOk ? t('Bitte die Zustimmung bestätigen.', 'Please confirm consent.') : '');
+        // v22.40: Belegung berücksichtigt die aktuelle Auswahl live
+        // (bisherige Belegung + ausgewählte Personen).
+        const teamSize = selectedEvent.teamSize || 0;
+        const occupancy = teamSize > 0
+          ? `${t('Belegung', 'Seats')} ${(teamSize - freeSlots) + totalPicks}/${teamSize}${totalPicks > 0 ? t(' inkl. Auswahl', ' incl. selection') : ''}${overCap ? t(' — zu viele ausgewählt', ' — too many selected') : ''}`
+          : t('Belegung wird nach dem Hinzufügen aktualisiert', 'Seat count updates after adding');
+        const photoOf = (email: string): string => `/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(email)}&size=S`;
+        const hidePhoto = (e: React.SyntheticEvent<HTMLImageElement>): void => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; };
         return (
           <Modal
             open={true}
             onClose={closeDlg}
             dismissable={!adminAddMemberBusy}
-            maxWidth={540}
+            maxWidth={560}
             ariaLabel="Person zum Team hinzufügen"
+            icon={<Users size={20} />}
+            title={adminAddMemberDialog.isNewTeam
+              ? t('Neues Team anlegen', 'Create a new team')
+              : adminAddMemberDialog.teamName
+                ? t(`Mitglieder für „${adminAddMemberDialog.teamName}“`, `Members for “${adminAddMemberDialog.teamName}”`)
+                : t('Mitglieder zum Team hinzufügen', 'Add members to the team')}
+            subtitle={t(
+              'Bereits Angemeldete ordnest du nur zu. Wer noch nicht angemeldet ist, wird von dir stellvertretend angemeldet.',
+              'People who are already registered are only assigned. Anyone not yet registered is registered by you on their behalf.')}
+            footer={<>
+              <button type="button" className="btn btn-secondary" onClick={closeDlg} disabled={adminAddMemberBusy}>
+                {t('Abbrechen', 'Cancel')}
+              </button>
+              <button type="button" className="btn btn-primary" onClick={() => { submit().catch(() => { /* */ }); }} disabled={disabled} title={submitTitle}>
+                {adminAddMemberBusy
+                  ? t('Wird gespeichert…', 'Saving…')
+                  : (adminAddMemberDialog.isNewTeam
+                    ? `${t('Team anlegen', 'Create team')}${totalPicks > 0 ? ` (${totalPicks})` : ''}`
+                    : `${t('Hinzufügen', 'Add')}${totalPicks > 0 ? ` (${totalPicks})` : ''}`)}
+              </button>
+            </>}
           >
-              <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
-                {adminAddMemberDialog.isNewTeam
-                  ? 'Neues Team anlegen — Mitglieder zuordnen'
-                  : adminAddMemberDialog.teamName
-                    ? `Mitglieder zum Team „${adminAddMemberDialog.teamName}" hinzufügen`
-                    : 'Mitglieder zum Team hinzufügen'}
-              </h3>
-              <div style={{ fontSize: '0.85rem', color: overCap ? 'var(--dex-red, #c00)' : 'var(--dex-gray-600)' }}>
-                {/* v22.40: Belegung berücksichtigt die aktuelle Auswahl live
-                    (bisherige Belegung + ausgewählte Personen). */}
-                {(selectedEvent.teamSize || 0) > 0
-                  ? `Team-Belegung: ${((selectedEvent.teamSize || 0) - freeSlots) + totalPicks}/${selectedEvent.teamSize}${totalPicks > 0 ? ' (inkl. Auswahl)' : ''}${overCap ? ' — zu viele ausgewählt!' : ''}`
-                  : 'Belegung wird nach dem Hinzufügen aktualisiert.'}
-              </div>
+            <div className="dex-ui-modal-body">
               {/* v17.1: Team-Name-Eingabe nur im „Neues Team anlegen"-Flow.
                   Optional — wenn leer, bekommt das Team beim Insert keinen
                   Namen, der Lead kann ihn aber später nicht mehr setzen,
-                  daher direkt hier abfragen. */}
+                  daher direkt hier abfragen. v31.2: Pflicht zuerst — deshalb
+                  ganz oben, als Frage statt als Feldname. */}
               {adminAddMemberDialog.isNewTeam && (
-                <div style={{ marginTop: 4 }}>
-                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 4 }}>
-                    Team-Name {selectedEvent.askTeamName ? <span style={{ color: 'var(--dex-red, #c00)' }}>*</span> : <span style={{ color: 'var(--dex-gray-400)', fontWeight: 400 }}>(optional)</span>}
+                <div className="dex-ui-field">
+                  <label className="dex-ui-label" htmlFor="dex-addmember-teamname">
+                    {t('Wie soll das Team heißen?', 'What should the team be called?')}
+                    {selectedEvent.askTeamName
+                      ? <span style={{ color: 'var(--dex-red, #c00)' }}>*</span>
+                      : <span className="dex-ui-label-optional">{t('(optional)', '(optional)')}</span>}
                   </label>
                   <input
+                    id="dex-addmember-teamname"
                     type="text"
-                    className="form-input"
-                    placeholder="z.B. „Borntowin"
+                    className="dex-ui-input"
+                    placeholder={t('z.B. „Borntowin“', 'e.g. “Borntowin”')}
                     value={adminAddMemberDialog.teamName}
                     onChange={e => setAdminAddMemberDialog(d => d ? { ...d, teamName: e.target.value } : d)}
-                    style={{ width: '100%' }}
                   />
+                  <div className="dex-ui-help">
+                    {t('Der Lead kann den Namen später nicht mehr selbst nachtragen — deshalb gleich hier.', 'The lead cannot add the name later — so set it right here.')}
+                  </div>
                 </div>
               )}
-              {/* v17.4: Consent-Box nur, wenn eine wirklich NEUE Person
-                  via Graph hinzugefügt wird. Bei reiner Team-Zuordnung
-                  schon-angemeldeter Personen brauchen wir keine zusätzliche
-                  Zustimmung — die haben sie bei der eigenen Anmeldung
-                  bereits gegeben. */}
-              {consentRequired ? (
-                <div style={{
-                  padding: '14px 16px',
-                  background: 'rgba(237,139,0,0.10)',
-                  border: '2px solid var(--dex-orange, #ed8b00)',
-                  borderRadius: 8,
-                  color: '#7a4a00',
-                  fontSize: '0.88rem',
-                  lineHeight: 1.5,
-                }}>
-                  <div style={{ fontWeight: 700, marginBottom: 6 }}>
-                    Vorab die Zustimmung des Mitglieds einholen
-                  </div>
-                  <div>
-                    {'Mit dem Hinzufügen meldest du diese Person an. Sie erhält automatisch '}
-                    {'eine Anmeldebestätigung per Mail, einen Outlook-Termin und sieht das '}
-                    {'Event in „Meine Events". Bitte stelle sicher, dass die Person ihrer '}
-                    {'Anmeldung '}<strong>vorher zugestimmt</strong>{' hat.'}
-                  </div>
-                </div>
-              ) : (onlyTeamlessPicks && (
-                <div style={{
-                  padding: '10px 14px',
-                  background: 'rgba(33,150,243,0.06)',
-                  border: '1px solid var(--dex-info, #2196f3)',
-                  borderRadius: 8,
-                  color: 'var(--dex-gray-700)',
-                  fontSize: '0.82rem',
-                  lineHeight: 1.5,
-                }}>
-                  Du ordnest bereits-angemeldete Teilnehmer einem Team zu — keine neue Anmeldung, keine Bestätigungsmail an die Personen (es sei denn du hakst &bdquo;Info-Mail an die zugeordneten&hellip;&ldquo; unten an).
-                </div>
-              ))}
               <div>
-                {/* v22.45: Drei klare Abschnitte — 1. Bestehende Teilnehmer
-                    (bereits angemeldet, nur zuordnen), 2. Neue Teilnehmer (per
-                    Suche stellvertretend anmelden), 3. Kommunikation ans Team. */}
-                {teamlessActiveLocal.length > 0 && (
-                  <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--dex-green-dark, #4a7c1f)', marginBottom: 4 }}>
-                    1 · Bestehende Teilnehmer
-                  </div>
-                )}
+                <div className="dex-ui-section-title">
+                  {t('Wer kommt ins Team?', 'Who joins the team?')}
+                  <span className={cx('dex-ui-pill', overCap ? 'dex-ui-pill--red' : atCap ? 'dex-ui-pill--orange' : teamSize > 0 ? 'dex-ui-pill--green' : 'dex-ui-pill--gray')} style={{ textTransform: 'none', letterSpacing: 0 }}>
+                    {occupancy}
+                  </span>
+                </div>
                 {/* v17.4: Multi-Select aus bereits registrierten Personen
-                    ohne Team. Checkbox-Liste; bei Mehrfach-Auswahl
-                    erscheint zusätzlich die Lead-Radio-Auswahl. */}
+                    ohne Team. Checkbox-Liste; bei Auswahl erscheint zusätzlich
+                    der Lead-Chip (v31.2: Chip statt Radio, gleiche Bindung). */}
                 {teamlessActiveLocal.length > 0 && (
-                  <div style={{ marginBottom: 12, padding: 10, border: '1px dashed var(--dex-orange, #ed8b00)', borderRadius: 6, background: 'rgba(237,139,0,0.04)' }}>
-                    <div style={{ fontSize: '0.78rem', color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600, marginBottom: 6 }}>
-                      Bereits angemeldet ohne Team ({teamlessActiveLocal.length}) — mehrere auswählbar:
+                  <div className="dex-ui-card dex-ui-card--soft" style={{ padding: '12px 14px', marginBottom: 12 }}>
+                    <div className="dex-ui-label" style={{ marginBottom: 2 }}>
+                      {t('Bereits angemeldet, noch ohne Team', 'Already registered, no team yet')}
+                      <span className="dex-ui-pill dex-ui-pill--gray">{teamlessActiveLocal.length}</span>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 280, overflowY: 'auto' }}>
+                    <div className="dex-ui-help" style={{ margin: '0 0 8px' }}>
+                      {t('Mehrere auswählbar — sie werden nur zugeordnet, nicht neu angemeldet.', 'Pick several — they are only assigned, not registered again.')}
+                    </div>
+                    <div className="dex-ui-stack" style={{ gap: 6, maxHeight: 280, overflowY: 'auto' }}>
                       {teamlessActiveLocal.map(p => {
                         const nm = `${p.Vorname || ''} ${p.Nachname || ''}`.trim() || p.ParticipantName || p.ParticipantEmail;
                         const isPicked = adminAddTeamlessPicks.has(p.Id);
                         const isLead = adminAddLeadRegId === p.Id;
+                        // v22.40: Über-Kapazitäts-Sperre — nicht mehr als
+                        // freie Plätze auswählbar; bereits Gewählte bleiben
+                        // abwählbar.
+                        const locked = !isPicked && atCap;
+                        const cbId = `dex-addmember-teamless-${p.Id}`;
                         return (
-                          <div
-                            key={p.Id}
-                            style={{
-                              display: 'flex', alignItems: 'center', gap: 8,
-                              padding: '6px 10px',
-                              border: `1px solid ${isPicked ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-200)'}`,
-                              borderRadius: 6,
-                              background: isPicked ? 'rgba(237,139,0,0.08)' : '#fff',
-                            }}
-                          >
+                          <div key={p.Id} className={cx('dex-ui-toggle-row', isPicked && 'is-active', locked && 'is-disabled')} style={{ alignItems: 'center', padding: '8px 12px' }}>
                             <input
+                              id={cbId}
                               type="checkbox"
                               checked={isPicked}
-                              // v22.40: Über-Kapazitäts-Sperre — nicht mehr als
-                              // freie Plätze auswählbar; bereits Gewählte bleiben
-                              // abwählbar.
-                              disabled={!isPicked && atCap}
+                              disabled={locked}
                               onChange={e => {
                                 setAdminAddTeamlessPicks(prev => {
                                   const next = new Set(prev);
@@ -309,28 +318,19 @@ export const AdminAddMemberModal: React.FC<AdminAddMemberModalProps> = (p) => {
                                 // Wenn Lead deselektiert wurde: Lead zurücksetzen.
                                 if (!e.target.checked && adminAddLeadRegId === p.Id) setAdminAddLeadRegId(null);
                               }}
-                              style={{ flexShrink: 0, cursor: (!isPicked && atCap) ? 'not-allowed' : 'pointer' }}
+                              style={{ marginTop: 0 }}
                             />
-                            <img
-                              src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(p.ParticipantEmail)}&size=S`}
-                              alt={nm}
-                              onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-                              style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
-                            />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: '0.82rem', fontWeight: 500 }}>{nm}</div>
-                              <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{p.ParticipantEmail}</div>
-                            </div>
+                            <label htmlFor={cbId} className="dex-ui-toggle-row-body" style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: locked ? 'not-allowed' : 'pointer' }}>
+                              <img className="dex-ui-avatar" src={photoOf(p.ParticipantEmail)} alt={nm} onError={hidePhoto} />
+                              <span className="dex-ui-row-main">
+                                <span className="dex-ui-row-title" style={{ display: 'block' }}>{nm}</span>
+                                <span className="dex-ui-row-sub" style={{ display: 'block' }}>{p.ParticipantEmail}</span>
+                              </span>
+                            </label>
                             {isPicked && (
-                              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', color: 'var(--dex-gray-700)', cursor: 'pointer' }}>
-                                <input
-                                  type="radio"
-                                  name="lead-pick"
-                                  checked={isLead}
-                                  onChange={() => setAdminAddLeadRegId(p.Id)}
-                                  style={{ margin: 0 }}
-                                />
-                                Lead
+                              <label className={cx('dex-ui-chip', isLead && 'is-active')} title={t('Diese Person wird Team-Lead', 'This person becomes team lead')}>
+                                <input type="radio" name="lead-pick" className="dex-ui-sr-only" checked={isLead} onChange={() => setAdminAddLeadRegId(p.Id)} />
+                                {isLead && <Check size={12} />}Lead
                               </label>
                             )}
                           </div>
@@ -338,286 +338,201 @@ export const AdminAddMemberModal: React.FC<AdminAddMemberModalProps> = (p) => {
                       })}
                     </div>
                     {adminAddTeamlessPicks.size > 0 && (
-                      <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: 'var(--dex-gray-700)', flexWrap: 'wrap' }}>
-                        <strong>{adminAddTeamlessPicks.size}</strong> ausgewählt
-                        {!adminAddLeadRegId && adminAddTeamlessPicks.size > 0 && (
-                          <span style={{ color: 'var(--dex-gray-500)' }}>
-                            — bitte einen Lead markieren (oder leer = kein Lead).
-                          </span>
-                        )}
+                      <div className="dex-ui-help" style={{ marginTop: 8 }}>
+                        <strong>{adminAddTeamlessPicks.size}</strong> {t('ausgewählt', 'selected')}
+                        {!adminAddLeadRegId && ` — ${t('markiere eine Person als Lead (oder lass es leer = kein Lead).', 'mark one person as lead (or leave it empty = no lead).')}`}
                         {atCap && (
                           <span style={{ color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600 }}>
-                            — Team voll ({freeSlots} {freeSlots === 1 ? 'Platz' : 'Plätze'}).
+                            {' — '}{t(`Team voll (${freeSlots} ${freeSlots === 1 ? 'Platz' : 'Plätze'}).`, `Team full (${freeSlots} ${freeSlots === 1 ? 'seat' : 'seats'}).`)}
+                          </span>
+                        )}
+                        {/* v17.4: Nur Zuordnung — die Personen haben bei der eigenen
+                            Anmeldung schon zugestimmt, also keine Consent-Box. */}
+                        {onlyTeamlessPicks && (
+                          <span style={{ display: 'block', marginTop: 4 }}>
+                            {t('Keine neue Anmeldung, keine Bestätigungsmail — außer du schaltest unten die Info-Mail ein.', 'No new registration, no confirmation mail — unless you switch on the info mail below.')}
                           </span>
                         )}
                       </div>
                     )}
-                    <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
-                      Oder weiter unten via Suche eine zusätzliche neue Person hinzufügen.
-                    </div>
                   </div>
                 )}
-                {/* v22.45: 2 · Neue Teilnehmer — Person, die noch NICHT beim
-                    Event angemeldet ist, per Suche stellvertretend hinzufügen.
-                    (Kommunikation/Info-Mail folgt als Abschnitt 3 weiter unten.) */}
-                <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--dex-green-dark, #4a7c1f)', marginTop: teamlessActiveLocal.length > 0 ? 14 : 0, marginBottom: 2 }}>
-                  {teamlessActiveLocal.length > 0 ? '2 · Neue Teilnehmer' : 'Neue Teilnehmer'}
-                </div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginBottom: 6 }}>
-                  Jemand, der noch nicht beim Event angemeldet ist — per Suche hinzufügen (wird stellvertretend angemeldet).
-                </div>
-                {adminAddMemberPick ? (
-                  <div style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 10,
-                    padding: '6px 10px 6px 6px',
-                    border: '1px solid var(--dex-gray-200)',
-                    borderRadius: 'var(--dex-radius)',
-                    background: 'var(--dex-gray-50, #f7f7f7)',
-                    maxWidth: '100%',
-                  }}>
-                    <img
-                      src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(adminAddMemberPick.email)}&size=S`}
-                      alt={adminAddMemberPick.displayName}
-                      onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-                      style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
-                    />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{adminAddMemberPick.displayName}</div>
-                      <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.75rem' }}>{adminAddMemberPick.email}</div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => { setAdminAddMemberPick(null); setAdminAddMemberQuery(''); setAdminAddMemberResults([]); }}
-                      title={isDe ? 'Auswahl entfernen' : 'Remove selection'}
-                      style={{
-                        background: 'var(--dex-gray-200)', border: 'none', color: 'var(--dex-gray-700)',
-                        width: 22, height: 22, borderRadius: '50%', cursor: 'pointer',
-                        fontSize: '0.9rem', lineHeight: 1,
-                      }}
-                    >×</button>
+                {/* v22.45: Neue Teilnehmer — Person, die noch NICHT beim Event
+                    angemeldet ist, per Suche stellvertretend hinzufügen. */}
+                <div className="dex-ui-field">
+                  <div className="dex-ui-label" style={{ marginBottom: 2 }}>
+                    {teamlessActiveLocal.length > 0 ? t('Oder eine neue Person hinzufügen', 'Or add a new person') : t('Neue Person hinzufügen', 'Add a new person')}
                   </div>
-                ) : (
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      className="form-input"
-                      value={adminAddMemberQuery}
-                      // v22.40: Suche sperren, wenn das Team durch die Auswahl
-                      // bereits voll ist (keine zusätzliche neue Person mehr).
-                      disabled={atCap}
-                      placeholder={atCap ? 'Team voll — keine weitere Person' : 'Name oder E-Mail eingeben…'}
-                      onChange={e => {
-                        const val = e.target.value;
-                        setAdminAddMemberQuery(val);
-                        if (adminAddMemberQueryTimer.current) clearTimeout(adminAddMemberQueryTimer.current);
-                        if (val.length >= 2) {
-                          adminAddMemberQueryTimer.current = setTimeout(async () => {
-                            setAdminAddMemberSearching(true);
-                            try {
-                              const res = await searchUsers(val, adminAddMemberIncludeIntl);
-                              setAdminAddMemberResults(res.map(r => ({ email: r.email, displayName: r.displayName })));
-                            } catch { setAdminAddMemberResults([]); }
-                            setAdminAddMemberSearching(false);
-                          }, 300);
-                        } else {
-                          setAdminAddMemberResults([]);
-                        }
-                      }}
-                    />
-                    <InternationalSearchToggle
-                      query={adminAddMemberQuery}
-                      checked={adminAddMemberIncludeIntl}
-                      onChange={setAdminAddMemberIncludeIntl}
-                      isDe={isDe}
-                    />
-                    {(adminAddMemberResults.length > 0 || adminAddMemberSearching) && (
-                      <div style={{
-                        position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
-                        background: '#fff', border: '1px solid var(--dex-gray-200)',
-                        borderRadius: 6, marginTop: 4, maxHeight: 220, overflowY: 'auto',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
-                      }}>
-                        {adminAddMemberSearching && (
-                          <div style={{ padding: 10, fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
-                            Suche…
-                          </div>
-                        )}
-                        {adminAddMemberResults.map(r => (
-                          <button
-                            key={r.email}
-                            type="button"
-                            onClick={() => { setAdminAddMemberPick(r); setAdminAddMemberResults([]); setAdminAddMemberQuery(''); }}
-                            style={{
-                              display: 'flex', alignItems: 'center', gap: 8,
-                              width: '100%', padding: '6px 10px', border: 'none',
-                              background: '#fff', cursor: 'pointer', textAlign: 'left',
-                            }}
-                          >
-                            <img
-                              src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(r.email)}&size=S`}
-                              alt={r.displayName}
-                              onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-                              style={{ width: 28, height: 28, borderRadius: '50%' }}
-                            />
-                            <div>
-                              <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{r.displayName}</div>
-                              <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>{r.email}</div>
-                            </div>
-                          </button>
-                        ))}
+                  <div className="dex-ui-help" style={{ margin: '0 0 8px' }}>
+                    {t('Jemand, der noch nicht beim Event angemeldet ist — du meldest die Person stellvertretend an.', 'Someone not yet registered for the event — you register them on their behalf.')}
+                  </div>
+                  {adminAddMemberPick ? (
+                    <div className="dex-ui-card dex-ui-card--accent" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px' }}>
+                      <img className="dex-ui-avatar dex-ui-avatar--lg" src={photoOf(adminAddMemberPick.email)} alt={adminAddMemberPick.displayName} onError={hidePhoto} />
+                      <div className="dex-ui-row-main">
+                        <div className="dex-ui-row-title">{adminAddMemberPick.displayName}</div>
+                        <div className="dex-ui-row-sub">{adminAddMemberPick.email}</div>
                       </div>
-                    )}
-                  </div>
-                )}
-                {/* v22.45/v22.49: 3 · Kommunikation an das Team. */}
-                {(adminAddTeamlessPicks.size > 0 || hasGraphPick) && (
-                  <>
-                    <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--dex-green-dark, #4a7c1f)', marginTop: 14, marginBottom: 4 }}>
-                      3 · Kommunikation an das Team
+                      <span className="dex-ui-pill dex-ui-pill--green">{t('wird neu angemeldet', 'new registration')}</span>
+                      <button
+                        type="button"
+                        className="dex-ui-iconbtn dex-ui-iconbtn--danger"
+                        onClick={() => { setAdminAddMemberPick(null); setAdminAddMemberQuery(''); setAdminAddMemberResults([]); }}
+                        title={t('Auswahl entfernen', 'Remove selection')}
+                        aria-label={t('Auswahl entfernen', 'Remove selection')}
+                      ><X size={16} /></button>
                     </div>
+                  ) : (
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: 12, top: 12, color: 'var(--dex-gray-400)', display: 'inline-flex', pointerEvents: 'none' }}><Search size={16} /></span>
+                      <input
+                        className="dex-ui-input"
+                        style={{ paddingLeft: 36 }}
+                        value={adminAddMemberQuery}
+                        // v22.40: Suche sperren, wenn das Team durch die Auswahl
+                        // bereits voll ist (keine zusätzliche neue Person mehr).
+                        disabled={atCap}
+                        placeholder={atCap ? t('Team voll — keine weitere Person', 'Team full — no further person') : t('Name oder E-Mail eingeben…', 'Type a name or e-mail…')}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setAdminAddMemberQuery(val);
+                          if (adminAddMemberQueryTimer.current) clearTimeout(adminAddMemberQueryTimer.current);
+                          if (val.length >= 2) {
+                            adminAddMemberQueryTimer.current = setTimeout(async () => {
+                              setAdminAddMemberSearching(true);
+                              try {
+                                const res = await searchUsers(val, adminAddMemberIncludeIntl);
+                                setAdminAddMemberResults(res.map(r => ({ email: r.email, displayName: r.displayName })));
+                              } catch { setAdminAddMemberResults([]); }
+                              setAdminAddMemberSearching(false);
+                            }, 300);
+                          } else {
+                            setAdminAddMemberResults([]);
+                          }
+                        }}
+                      />
+                      <InternationalSearchToggle
+                        query={adminAddMemberQuery}
+                        checked={adminAddMemberIncludeIntl}
+                        onChange={setAdminAddMemberIncludeIntl}
+                        isDe={isDe}
+                      />
+                      {(adminAddMemberResults.length > 0 || adminAddMemberSearching) && (
+                        <div className="dex-ui-card" style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10, marginTop: 4, padding: 4, maxHeight: 220, overflowY: 'auto', boxShadow: '0 6px 20px rgba(0,0,0,0.12)' }}>
+                          {adminAddMemberSearching && (
+                            <div className="dex-ui-muted" style={{ padding: 10 }}>{t('Suche…', 'Searching…')}</div>
+                          )}
+                          {/* v31.2: `dex-ui-textbtn` setzt den Button-Rahmen zurück, `dex-ui-row`
+                              (später im Stylesheet) liefert Layout und Hover — kein Inline-
+                              Background, der den Hover überdecken würde. */}
+                          {adminAddMemberResults.map(r => (
+                            <button
+                              key={r.email}
+                              type="button"
+                              className="dex-ui-row dex-ui-textbtn"
+                              onClick={() => { setAdminAddMemberPick(r); setAdminAddMemberResults([]); setAdminAddMemberQuery(''); }}
+                              style={{ width: '100%', textAlign: 'left' }}
+                            >
+                              <img className="dex-ui-avatar" src={photoOf(r.email)} alt={r.displayName} onError={hidePhoto} />
+                              <span className="dex-ui-row-main">
+                                <span className="dex-ui-row-title" style={{ display: 'block' }}>{r.displayName}</span>
+                                <span className="dex-ui-row-sub" style={{ display: 'block' }}>{r.email}</span>
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {/* v17.4: Consent nur, wenn eine wirklich NEUE Person via Graph
+                      hinzugefügt wird. v31.2: Hinweis und Bestätigung stehen jetzt
+                      direkt unter der gewählten Person — vorher lag der Kasten oben
+                      und die Checkbox ganz unten. */}
+                  {consentRequired && (
+                    <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginTop: 10, flexDirection: 'column', gap: 8 }}>
+                      <div>
+                        <strong>{t('Vorab die Zustimmung einholen.', 'Get their consent first.')}</strong>{' '}
+                        {t('Mit dem Hinzufügen meldest du diese Person an: Sie bekommt eine Anmeldebestätigung per Mail, einen Outlook-Termin und sieht das Event unter „Meine Events“.', 'Adding registers this person: they get a confirmation mail, an Outlook appointment and see the event under “My events”.')}
+                      </div>
+                      <label className={cx('dex-ui-toggle-row', adminAddMemberConsent && 'is-active')} style={{ padding: '8px 12px' }}>
+                        <input type="checkbox" checked={adminAddMemberConsent} onChange={e => setAdminAddMemberConsent(e.target.checked)} />
+                        <span className="dex-ui-toggle-row-body">
+                          <span className="dex-ui-toggle-row-title">
+                            <span style={{ color: 'var(--dex-red)' }}>*</span>
+                            {t('Ich bestätige: Die Person hat ihrer Anmeldung zugestimmt.', 'I confirm: this person agreed to being registered.')}
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </div>
+              {/* v22.45/v22.49: Kommunikation an das Team — erst sichtbar, wenn
+                  jemand ausgewählt ist. */}
+              {(adminAddTeamlessPicks.size > 0 || hasGraphPick) && (
+                <div>
+                  <div className="dex-ui-section-title">{t('Wer bekommt eine Mail?', 'Who gets a mail?')}</div>
+                  <div className="dex-ui-stack" style={{ gap: 8 }}>
                     {/* a) Neue Person (Graph-Pick): Anmeldebestätigung + Outlook
                         optional (Default an — echte Neu-Anmeldung). */}
                     {hasGraphPick && (
-                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, fontSize: '0.82rem', cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          checked={adminAddNewPersonMail}
-                          onChange={e => setAdminAddNewPersonMail(e.target.checked)}
-                          style={{ marginTop: 2 }}
-                        />
-                        <span>
-                          Anmeldebestätigung &amp; Kalendereinladung an die neue Person senden
-                          <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-                            Default an — die Person wird ja neu angemeldet. Abwählen = still hinzufügen.
-                          </span>
+                      <label className={cx('dex-ui-toggle-row', adminAddNewPersonMail && 'is-active')}>
+                        <input type="checkbox" checked={adminAddNewPersonMail} onChange={e => setAdminAddNewPersonMail(e.target.checked)} />
+                        <span className="dex-ui-toggle-row-body">
+                          <span className="dex-ui-toggle-row-title">{t('Anmeldebestätigung und Kalendereinladung an die neue Person', 'Confirmation and calendar invite to the new person')}</span>
+                          <span className="dex-ui-toggle-row-desc">{t('Vorgabe an, weil die Person neu angemeldet wird. Ausgeschaltet heißt: still hinzufügen, ohne Mail.', 'On by default because the person is newly registered. Off means: add silently, no mail.')}</span>
                         </span>
                       </label>
                     )}
                     {/* b) Info-Mail an die zugeordneten (bereits angemeldeten) Personen. */}
                     {adminAddTeamlessPicks.size > 0 && (
-                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, fontSize: '0.82rem', cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          checked={adminAddSendMail}
-                          onChange={e => setAdminAddSendMail(e.target.checked)}
-                          style={{ marginTop: 2 }}
-                        />
-                        <span>
-                          Info-Mail an die zugeordneten Team-Mitglieder versenden
-                          <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-                            Default aus — die Person ist ja bereits beim Event angemeldet.
-                          </span>
+                      <label className={cx('dex-ui-toggle-row', adminAddSendMail && 'is-active')}>
+                        <input type="checkbox" checked={adminAddSendMail} onChange={e => setAdminAddSendMail(e.target.checked)} />
+                        <span className="dex-ui-toggle-row-body">
+                          <span className="dex-ui-toggle-row-title">{t('Info-Mail an die zugeordneten Personen', 'Info mail to the assigned people')}</span>
+                          <span className="dex-ui-toggle-row-desc">{t('Vorgabe aus, weil diese Personen schon beim Event angemeldet sind.', 'Off by default because these people are already registered for the event.')}</span>
                         </span>
                       </label>
                     )}
                     {(adminAddSendMail || (hasGraphPick && adminAddNewPersonMail)) && (
-                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, marginLeft: 24, fontSize: '0.82rem', cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          checked={adminAddCcOrganizer}
-                          onChange={e => setAdminAddCcOrganizer(e.target.checked)}
-                          style={{ marginTop: 2 }}
-                        />
-                        <span>
-                          Bestätigungsmail als Kopie (CC) an mich
-                          <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-                            {currentUser.email} bekommt diese Mail(s) in Kopie.
-                          </span>
+                      <label className={cx('dex-ui-toggle-row', adminAddCcOrganizer && 'is-active')} style={{ marginLeft: 24 }}>
+                        <input type="checkbox" checked={adminAddCcOrganizer} onChange={e => setAdminAddCcOrganizer(e.target.checked)} />
+                        <span className="dex-ui-toggle-row-body">
+                          <span className="dex-ui-toggle-row-title">{t('Kopie (CC) an mich', 'Copy (CC) to me')}</span>
+                          <span className="dex-ui-toggle-row-desc">{currentUser.email} {t('bekommt diese Mail(s) in Kopie.', 'receives a copy of these mails.')}</span>
                         </span>
                       </label>
                     )}
-                    {/* c) Übrige Team-Mitglieder informieren — Reichweite alle / nur Lead. */}
-                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 4, fontSize: '0.82rem', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={adminAddNotifyOthers}
-                        onChange={e => setAdminAddNotifyOthers(e.target.checked)}
-                        style={{ marginTop: 2 }}
-                      />
-                      <span>
-                        Auch die übrigen Team-Mitglieder informieren
-                        <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-                          Schickt den bisherigen Mitgliedern eine „neues Mitglied“-Info.
-                        </span>
+                    {/* c) Übrige Team-Mitglieder informieren — Reichweite alle / nur Lead
+                        (v31.2: Chips statt Radio-Paar, gleiche Bindung). */}
+                    <label className={cx('dex-ui-toggle-row', adminAddNotifyOthers && 'is-active')}>
+                      <input type="checkbox" checked={adminAddNotifyOthers} onChange={e => setAdminAddNotifyOthers(e.target.checked)} />
+                      <span className="dex-ui-toggle-row-body">
+                        <span className="dex-ui-toggle-row-title">{t('Die übrigen Team-Mitglieder informieren', 'Tell the other team members')}</span>
+                        <span className="dex-ui-toggle-row-desc">{t('Die bisherigen Mitglieder bekommen eine kurze „Neues Mitglied“-Info.', 'Existing members get a short “new member” notice.')}</span>
                       </span>
                     </label>
                     {adminAddNotifyOthers && (
-                      <div style={{ display: 'flex', gap: 16, marginLeft: 24, marginBottom: 8, fontSize: '0.82rem' }}>
-                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                          <input type="radio" name="notifyScope" checked={adminAddNotifyScope === 'all'} onChange={() => setAdminAddNotifyScope('all')} style={{ margin: 0 }} />
-                          Alle Mitglieder
-                        </label>
-                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                          <input type="radio" name="notifyScope" checked={adminAddNotifyScope === 'lead'} onChange={() => setAdminAddNotifyScope('lead')} style={{ margin: 0 }} />
-                          Nur den Team-Lead
-                        </label>
+                      <div className="dex-ui-inline" style={{ marginLeft: 24 }}>
+                        <span className="dex-ui-muted">{t('Wen genau?', 'Whom exactly?')}</span>
+                        <button type="button" className={cx('dex-ui-chip', adminAddNotifyScope === 'all' && 'is-active')} aria-pressed={adminAddNotifyScope === 'all'} onClick={() => setAdminAddNotifyScope('all')}>
+                          {t('Alle Mitglieder', 'All members')}
+                        </button>
+                        <button type="button" className={cx('dex-ui-chip', adminAddNotifyScope === 'lead' && 'is-active')} aria-pressed={adminAddNotifyScope === 'lead'} onClick={() => setAdminAddNotifyScope('lead')}>
+                          {t('Nur den Team-Lead', 'Only the team lead')}
+                        </button>
                       </div>
                     )}
-                  </>
-                )}
-              </div>
-              {/* v17.4: Consent-Checkbox nur bei wirklich neuer Person via Graph. */}
-              {consentRequired && (
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>
-                  <input
-                    type="checkbox"
-                    checked={adminAddMemberConsent}
-                    onChange={e => setAdminAddMemberConsent(e.target.checked)}
-                    style={{ marginTop: 3 }}
-                  />
-                  <span>
-                    <span style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>
-                    Ich bestätige, dass die Person ihrer Anmeldung zugestimmt hat.
-                  </span>
-                </label>
-              )}
-              {adminAddMemberError && (
-                <div style={{ padding: 10, borderRadius: 6, background: 'rgba(220,38,38,0.10)', color: '#b91c1c', fontSize: '0.85rem' }}>
-                  {adminAddMemberError}
+                  </div>
                 </div>
               )}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={closeDlg}
-                  disabled={adminAddMemberBusy}
-                >
-                  Abbrechen
-                </button>
-                {(() => {
-                  // v17.1: Bei „Neues Team anlegen" + askTeamName=true ist
-                  // der Team-Name Pflicht (analog Self-Registration-Flow).
-                  const needName = !!adminAddMemberDialog.isNewTeam && !!selectedEvent.askTeamName;
-                  const nameOk = !needName || (adminAddMemberDialog.teamName.trim().length > 0);
-                  // v22.40-Bugfix: Vorher verlangte `disabled` zwingend einen
-                  // Graph-Pick + Consent — dadurch war der Button bei reiner
-                  // Zuordnung bereits-angemeldeter Personen NIE klickbar. Jetzt:
-                  // mindestens eine Auswahl (teamlos ODER Graph), Consent nur bei
-                  // echtem Graph-Neu-Pick, nicht über Kapazität, Name ok.
-                  const consentOk = !consentRequired || adminAddMemberConsent;
-                  const disabled = totalPicks === 0 || !consentOk || adminAddMemberBusy || !nameOk || overCap;
-                  const title = !nameOk ? 'Bitte einen Team-Namen eingeben.'
-                    : overCap ? `Zu viele ausgewählt — nur noch ${freeSlots} Platz/Plätze frei.`
-                    : totalPicks === 0 ? 'Bitte mindestens eine Person auswählen.'
-                    : (!consentOk ? 'Bitte die Zustimmung bestätigen.' : '');
-                  return (
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      onClick={() => { submit().catch(() => { /* */ }); }}
-                      disabled={disabled}
-                      title={title}
-                    >
-                      {adminAddMemberBusy
-                        ? 'Wird gespeichert…'
-                        : (adminAddMemberDialog.isNewTeam
-                          ? `Team anlegen${totalPicks > 0 ? ` (${totalPicks})` : ''}`
-                          : `Hinzufügen${totalPicks > 0 ? ` (${totalPicks})` : ''}`)}
-                    </button>
-                  );
-                })()}
-              </div>
+              {adminAddMemberError && (
+                <div className="dex-ui-callout dex-ui-callout--danger" role="alert">
+                  <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                  <span>{adminAddMemberError}</span>
+                </div>
+              )}
+            </div>
           </Modal>
         );
 };
-
