@@ -24,6 +24,8 @@ import {
 } from '../utils/checkInExtras';
 import { parseAgendaCheckIns, parseAgendaMarks, parseAgendaNoShows, formatMarkTime, suggestCurrentAgendaItem } from '../utils/agendaCheckIns';
 import Modal from './Modal';
+// v31.4: Klassensatz aus docs/ui-leitfaden.md (Kästen, Pillen, Werkzeugleiste).
+import { ensureDexUiStyles } from './dexUi';
 import { agendaGroups, groupLabel, groupDateLabel } from '../utils/agendaGroups';
 import { useLanguage } from '../context/LanguageContext';
 import { useIsMobile } from '../utils/useIsMobile';
@@ -144,6 +146,10 @@ export default function CheckInPage(): React.ReactElement {
   const { t, locale } = useLanguage();
   const isDe = locale === 'de';
   const isMobile = useIsMobile();
+  // v31.4: Die Seite nutzt `dex-ui-*` (Kästen, Pillen, Werkzeugleiste) auch
+  // außerhalb der Modals — das Stylesheet darf also nicht davon abhängen,
+  // dass gerade eins offen war. Der Aufruf ist idempotent (wie AdminPage).
+  ensureDexUiStyles();
   // v6.22 / v13.11: aktueller User-E-Mail über UserContext — der respektiert
   // die Demo-Impersonation (sonst greift hier immer die echte SPFx-Identität
   // des Admins, und Demo-Modus „Check-In-Team" käme nie an die Check-In-
@@ -215,11 +221,12 @@ export default function CheckInPage(): React.ReactElement {
   // v30.35: Direkteingabe der Teilnehmer-ID (s. Block unter dem Scan-Knopf).
   const [idInput, setIdInput] = React.useState('');
   const [idError, setIdError] = React.useState('');
-  // v31.4: Kein Fehler, aber eine Herkunftsangabe — „gefunden über die
-  // laufende Nummer, nicht über eine versendete QR-Mail". Bewusst getrennt von
-  // `idError`, weil ein oranger Satz an dieser Stelle wie ein Fehlschlag
-  // aussieht und der Check-in ja geklappt hat.
-  const [idNote, setIdNote] = React.useState('');
+  // v31.4 (Review): Die Herkunftsangabe („gefunden über die laufende Nummer")
+  // war ein eigener grauer Satz unter dem Eingabefeld — gesetzt NACH dem
+  // Schreibvorgang, nie zurückgesetzt, und damit stand er noch da, als längst
+  // die nächste Person vor dem Tisch war. Sie steht jetzt im Warnkasten der
+  // Bestätigungskarte (`QrIdConflict.viaRunning`): vor dem Einchecken, und sie
+  // verschwindet mit der Karte.
   const [checkedInCount, setCheckedInCount] = React.useState(0);
   const confirmCardRef = React.useRef<HTMLDivElement>(null);
   type PendingCheckInInfo = {
@@ -238,17 +245,35 @@ export default function CheckInPage(): React.ReactElement {
     qrConflict?: QrIdConflict;
   };
   /**
-   * v31.4: Die getippte Zahl steht in der QR-Mail von Person A, ist heute aber
-   * die laufende Nummer von Person B.
+   * v31.4: Warum eine getippte Zahl NICHT direkt eingecheckt wird.
    *
-   * Eingecheckt wird A: Die Mail ist die Zusage, die die Person in der Hand
-   * hält. Aber die Zweideutigkeit wird NICHT verschluckt — der Tisch bekommt
-   * beide Namen zu sehen und einen Knopf für die andere Person. Das ist auch
-   * der Grund, warum dieser eine Fall die Bestätigungskarte zeigt, statt wie
-   * seit v31.1 direkt einzuchecken: Die v31.1-Begründung war „die Person ist
-   * hier schon eindeutig gewählt" — genau das gilt hier nicht.
+   * Die v31.1-Begründung für den Direkt-Check-in war „die Person ist hier
+   * schon eindeutig gewählt". Genau das gilt für eine Zahl in mehreren Fällen
+   * nicht — und dann entscheidet der Helfer vor dem Schreibvorgang, nicht die
+   * Zahl danach. Die Gründe können zusammen auftreten, deshalb Flags statt
+   * eines einzelnen Falls:
+   *
+   * `qrName`        — die Zahl stand in der QR-Mail dieser Person. Sie ist
+   *                   vorbelegt, weil die Mail die Zusage ist, die die Person
+   *                   in der Hand hält.
+   * `altName`/`alt` — eine ANDERE aktive Zeile trägt heute dieselbe laufende
+   *                   Nummer; für sie gibt es den Umschaltknopf.
+   * `cancelledName` — eine abgemeldete Zeile trägt die Zahl. Einchecken lässt
+   *                   sie sich nicht (sie löst die Nummer seit v31.4 auch
+   *                   nicht mehr auf), aber sie erklärt, warum die Zahl auf
+   *                   jemand anderen zeigt, als die Person erwartet.
+   * `viaRunning`    — gefunden über die laufende Nummer, obwohl dieses Event
+   *                   QR-Nummern hinterlegt hat. Der Treffer ist damit eine
+   *                   Ebene schwächer als eine gedruckte Mail-Nummer.
    */
-  type QrIdConflict = { typed: number; qrName: string; altName: string; alt: SPRegistration };
+  type QrIdConflict = {
+    typed: number;
+    qrName?: string;
+    altName?: string;
+    alt?: SPRegistration;
+    cancelledName?: string;
+    viaRunning?: boolean;
+  };
   const [pendingCheckIn, setPendingCheckIn] = React.useState<PendingCheckInInfo | null>(null);
   // v31.4: Trikot-Ausgabe — Größenwahl der Bestätigungskarte, Größenwahl des
   // Zeilen-Dialogs und ein gemeinsames Busy-Flag. Zwei getrennte Werte, weil
@@ -404,6 +429,13 @@ export default function CheckInPage(): React.ReactElement {
    * einem Fehler auf die ganze Abfrage, und auf einer Bestandsliste ohne die
    * Spalte wäre damit der Scan tot. Der Cache liest über `$select=*` und hat
    * den Wert, sobald die Liste geladen ist.
+   *
+   * v31.4 (Review): Ohne geladene Liste gibt es deshalb GAR KEINE Ausgabe-UI.
+   * Vorher zeigte die Karte nach einem Scan auf ein Event, dessen Liste nicht
+   * im Cache liegt (Klammer gescannt, Termin unten gewählt), „Welches Trikot
+   * gibst du aus?" mit leerem Feld — obwohl das Shirt morgens schon ausgegeben
+   * und in `ShirtIssued` festgehalten war. Ein zweites Trikot aus dem Karton
+   * ist teurer als ein fehlender Knopf; unbekannt sperrt, statt freizugeben.
    */
   const shirtDeskInfoFor = React.useCallback((
     reg: { Id?: number; ParticipantEmail?: string; ShirtIssued?: string } | null | undefined,
@@ -411,6 +443,7 @@ export default function CheckInPage(): React.ReactElement {
   ): ShirtDeskInfo | null => {
     if (!reg || !eventId) return null;
     const rs = searchRegsCacheRef.current[eventId];
+    if (!rs) return null;
     if (!shirtFieldOf(shirtFieldsFor(eventId), rs)) return null;
     const alloc = shirtAllocFor(eventId);
     const em = (reg.ParticipantEmail || '').toLowerCase().trim();
@@ -444,6 +477,57 @@ export default function CheckInPage(): React.ReactElement {
     return isDe ? `QR-Nr. ${pad3(q)} · laufend ${pad3(t2)}` : `QR no. ${pad3(q)} · current ${pad3(t2)}`;
   }, [isDe]);
 
+  /**
+   * v31.4 (Review): Dieselbe Angabe für eine Zeile, die NICHT aus der
+   * Teilnehmerliste kommt.
+   *
+   * Der Scan-Weg liest über `getRegistrationByEmail`, und dessen fester
+   * `$select` nennt weder `TeilnehmerID` noch `QrSentId` — auf der
+   * Bestätigungskarte nach einem Scan lieferte `qrNoteOf` deshalb IMMER den
+   * leeren String, obwohl der Kommentar dort das Gegenteil versprach. Die
+   * Spalten in den `$select` aufzunehmen wäre der falsche Ort: Eine unbekannte
+   * Spalte beantwortet SharePoint mit einem Fehler auf die GANZE Abfrage, und
+   * damit wäre der Scan auf jeder Bestandsliste tot. Also derselbe Umweg wie
+   * bei `ShirtIssued` — nachschlagen in der zwischengespeicherten Liste. Ist
+   * sie nicht geladen, bleibt der Satz leer; geraten wird nichts.
+   */
+  const qrNoteFromCache = React.useCallback((
+    reg: { Id?: number; ParticipantEmail?: string } | null | undefined,
+    eventId: string,
+  ): string => {
+    if (!reg || !eventId) return '';
+    const rs = searchRegsCacheRef.current[eventId];
+    if (!rs) return '';
+    const em = (reg.ParticipantEmail || '').toLowerCase().trim();
+    const row = rs.filter(x => (reg.Id !== undefined && x.Id === reg.Id) || (!!em && (x.ParticipantEmail || '').toLowerCase().trim() === em))[0];
+    return row ? qrNoteOf(row) : '';
+  }, [qrNoteOf]);
+
+  /**
+   * v31.4 (Review): In der Trefferliste steht bei einer Zahlen-Suche an JEDER
+   * Zeile, welche Nummer sie trägt — nicht nur an denen, deren Nummern
+   * auseinanderlaufen.
+   *
+   * Seit die Suche auch über `QrSentId` filtert, können auf eine getippte Zahl
+   * zwei Zeilen erscheinen: die eine, weil die Zahl in ihrer QR-Mail stand,
+   * die andere, weil sie heute diese laufende Nummer trägt. Trug eine davon
+   * gar keine Angabe (nie eine QR-Mail bekommen), sah der Helfer zwei Namen
+   * ohne jeden Anhaltspunkt und klickte auf den, bei dem nichts von der
+   * getippten Zahl abwich — die falsche Person. Ohne Zahlen-Suche bleibt es
+   * bei der alten Regel: nur die Abweichung, sonst stünde an jeder Zeile eine
+   * Angabe, die nichts unterscheidet.
+   */
+  const qrRowNote = React.useCallback((reg: SPRegistration, numericSearch: boolean): string => {
+    if (!numericSearch) return qrNoteOf(reg);
+    const q = qrSentIdOf(reg);
+    const t2 = runningIdOf(reg);
+    const parts: string[] = [];
+    if (q !== null) parts.push(isDe ? `QR-Nr. ${pad3(q)}` : `QR no. ${pad3(q)}`);
+    if (t2 !== null) parts.push(isDe ? `laufend ${pad3(t2)}` : `current ${pad3(t2)}`);
+    if (parts.length === 0) return isDe ? 'keine Nummer hinterlegt' : 'no number on file';
+    return parts.join(' · ');
+  }, [isDe, qrNoteOf]);
+
   // v7.12: Name-Suche für manuelles Einchecken — wenn der QR-Scanner in der
   // SP-App nicht funktioniert (Camera-API gesperrt) oder der Teilnehmer den
   // QR-Code nicht zur Hand hat, kann der Helfer nach Namen / E-Mail suchen
@@ -453,6 +537,79 @@ export default function CheckInPage(): React.ReactElement {
   const [nameSearchEventId, setNameSearchEventId] = React.useState<string>(selectedEventId || '');
   const [searchRegsCache, setSearchRegsCache] = React.useState<Record<string, import('../services/EventService').SPRegistration[]>>({});
   searchRegsCacheRef.current = searchRegsCache; // v30.88 (s. shirtAllocFor)
+
+  /**
+   * v31.4: Was dieses Gerät gerade selbst geschrieben hat.
+   *
+   * Am Lauftag lädt die Liste alle 45 Sekunden nach (s. unten). SharePoint
+   * antwortet auf ein GET direkt nach einem MERGE aber gelegentlich noch mit
+   * dem alten Wert — ohne Schutz macht der Hintergrund-Lauf aus einer gerade
+   * eingecheckten Person wieder eine offene. Das ist am Tisch der schlimmste
+   * Fall: Der Helfer sieht „Angemeldet", checkt ein zweites Mal ein, und der
+   * Kollege am anderen Tablet sucht die Person weiter.
+   *
+   * Deshalb wird jeder lokale Schreibvorgang gemerkt und nach jedem Laden für
+   * 120 Sekunden wieder über die frische Zeile gelegt. Der Schlüssel enthält
+   * die Event-Id: Item-Ids sind nur JE LISTE eindeutig, und ein Klammer-Event
+   * hat so viele Listen wie Termine.
+   *
+   * `agenda` wird bewusst je Punkt gemerkt, nicht als fertiger JSON-String:
+   * Setzt ein zweites Gerät in derselben Zeile einen ANDEREN Punkt, darf unser
+   * Merker ihn nicht wieder wegräumen (dieselbe Lesen-Ändern-Schreiben-Falle
+   * wie in `parseAgendaMarks`, v31.2).
+   */
+  type RegPatch = {
+    status?: string;
+    shirtIssued?: string;
+    agenda?: Record<string, { at: string; by: string; noShow?: boolean } | null>;
+  };
+  const recentWritesRef = React.useRef<Record<string, { at: number; patch: RegPatch }>>({});
+  const RECENT_WRITE_MS = 120000;
+  const applyRegPatch = (row: SPRegistration, patch: RegPatch): SPRegistration => {
+    let out = row;
+    if (patch.status !== undefined) out = { ...out, Status: patch.status };
+    if (patch.shirtIssued !== undefined) out = { ...out, ShirtIssued: patch.shirtIssued };
+    if (patch.agenda) {
+      const marks = parseAgendaMarks(out.AgendaCheckIns);
+      const a = patch.agenda;
+      Object.keys(a).forEach(pid => {
+        const mark = a[pid];
+        if (mark) marks[pid] = mark; else delete marks[pid];
+      });
+      out = { ...out, AgendaCheckIns: Object.keys(marks).length ? JSON.stringify(marks) : '' };
+    }
+    return out;
+  };
+  /** v31.4: Der EINE Weg, eine Zeile lokal zu ändern — Anzeige und Merker
+   *  bleiben so zwangsläufig beieinander. Wer nur den State patcht, verliert
+   *  seine Änderung beim nächsten Hintergrund-Lauf. */
+  const patchCachedReg = (eventId: string, regId: number, patch: RegPatch): void => {
+    if (!eventId || !regId) return;
+    const key = `${eventId}|${regId}`;
+    const known = recentWritesRef.current[key];
+    const merged: RegPatch = known ? { ...known.patch, ...patch } : { ...patch };
+    if (known && known.patch.agenda) merged.agenda = { ...known.patch.agenda, ...patch.agenda };
+    recentWritesRef.current[key] = { at: Date.now(), patch: merged };
+    setSearchRegsCache(prev => {
+      const list = prev[eventId];
+      if (!list) return prev;
+      return { ...prev, [eventId]: list.map(x => x.Id === regId ? applyRegPatch(x, patch) : x) };
+    });
+  };
+  /** v31.4: Frisch Geschriebenes über eine frisch geladene Liste legen. */
+  const withRecentWrites = (eventId: string, rows: SPRegistration[]): SPRegistration[] => {
+    const store = recentWritesRef.current;
+    const now = Date.now();
+    Object.keys(store).forEach(k => { if (now - store[k].at > RECENT_WRITE_MS) delete store[k]; });
+    let touched = false;
+    const out = rows.map(r => {
+      const hit = store[`${eventId}|${r.Id}`];
+      if (!hit) return r;
+      touched = true;
+      return applyRegPatch(r, hit.patch);
+    });
+    return touched ? out : rows;
+  };
 
   // v30.91: Programmpunkte (Konzept docs/konzept-programmpunkte.md, Stufe 2).
   // Bei einem Event mit `agendaCheckIn` wird nicht das Event, sondern EIN
@@ -495,17 +652,59 @@ export default function CheckInPage(): React.ReactElement {
   }, [agendaMode, searchRegsCache, nameSearchEventId]);
   const [isLoadingSearchRegs, setIsLoadingSearchRegs] = React.useState(false);
   const [searchLoadError, setSearchLoadError] = React.useState('');
+  // v31.4: Stand der Liste je Event (Zeitpunkt des letzten ERFOLGREICHEN
+  // Ladens) plus die beiden Zustände des Nachladens. Bewusst getrennt von
+  // `isLoadingSearchRegs`/`searchLoadError`: Die beiden gehören zur
+  // Erstladung, bei der es noch keine Liste gibt — sie blenden die Liste aus.
+  // Beim Nachladen darf genau das nicht passieren, die alte Liste ist das
+  // Beste, was der Tisch hat (CLAUDE.md: ein Lesefehler ist keine Null).
+  const [regsLoadedAt, setRegsLoadedAt] = React.useState<Record<string, number>>({});
+  const [refreshBusy, setRefreshBusy] = React.useState(false);
+  const [refreshError, setRefreshError] = React.useState('');
+  const loadInFlightRef = React.useRef(false);
+  // v31.4: Damit „Stand: 08:42" altern KANN. Scheitert der Hintergrund-Lauf,
+  // ändert sich sonst gar nichts am State — die Uhrzeit bliebe grau und
+  // harmlos, obwohl sie längst nicht mehr stimmt.
+  const [nowTick, setNowTick] = React.useState<number>(Date.now());
   // v20.1: Busy-Flag für die Self-Check-in-Aktionen (Live-QR / PDF).
   const [selfCheckInBusy, setSelfCheckInBusy] = React.useState(false);
   React.useEffect(() => {
     if (selectedEventId && !nameSearchEventId) setNameSearchEventId(selectedEventId);
   }, [selectedEventId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadRegsForSearch = React.useCallback(async (eventId: string): Promise<void> => {
+  /**
+   * v31.4: Nachladen ist der Normalfall, nicht die Ausnahme.
+   *
+   * Befund 08.09.2026: „Der Aktualisieren-Button klappt nicht so gut. Wenn
+   * jemand anderes jemanden eingecheckt hat, sieht man das erst, wenn man
+   * wieder zurückgeht und wieder öffnet." Der Grund stand in der ersten Zeile
+   * dieser Funktion: Bei gefülltem Cache kehrte sie sofort zurück — der Knopf
+   * tat also NICHTS, und nur das Unmounten der Seite leerte den State.
+   *
+   * `force` überspringt die Cache-Prüfung, `silent` unterdrückt Spinner und
+   * Fehlermeldung (für den Lauf alle 45 Sekunden). Scheitert ein Lauf, bleibt
+   * die alte Liste stehen und der Stand-Zeitstempel wird NICHT erneuert — die
+   * gealterte Uhrzeit ist die einzige ehrliche Aussage, wenn im Hintergrund
+   * etwas klemmt.
+   */
+  const loadRegsForSearch = React.useCallback(async (
+    eventId: string,
+    opts?: { force?: boolean; silent?: boolean },
+  ): Promise<void> => {
     if (!eventId) return;
-    if (searchRegsCache[eventId]) return; // bereits geladen
-    setIsLoadingSearchRegs(true);
-    setSearchLoadError('');
+    const force = !!(opts && opts.force);
+    const silent = !!(opts && opts.silent);
+    const hadList = !!searchRegsCacheRef.current[eventId];
+    if (!force && hadList) return; // bereits geladen
+    // Der Hintergrund-Lauf drängelt nicht: Läuft schon eine Abfrage, ist sein
+    // Ergebnis in Sekunden ohnehin da. Ein Klick des Helfers läuft dagegen
+    // immer — sonst ist der Knopf wieder der aus dem Befund.
+    if (silent && loadInFlightRef.current) return;
+    loadInFlightRef.current = true;
+    if (!silent) {
+      if (hadList) { setRefreshBusy(true); setRefreshError(''); }
+      else { setIsLoadingSearchRegs(true); setSearchLoadError(''); }
+    }
     try {
       // v30.67: `getAllRegistrations` wirft bei HTTP-Fehlern NICHT, sondern
       // liefert die bis dahin gelesenen Zeilen — bei 403/429 also `[]`. Das
@@ -519,21 +718,41 @@ export default function CheckInPage(): React.ReactElement {
       const regs = await getAllRegistrations(eventId, (status) => { readable = false; httpStatus = status; });
       if (!readable) {
         // v30.67 (Review): zweisprachig wie der Nachbarpfad checkInByParticipantId.
-        setSearchLoadError(httpStatus === 403
+        const msg = httpStatus === 403
           ? (isDe
             ? 'Keine Leseberechtigung auf der Teilnehmerliste dieses Termins — bitte Organizer/Admin um Freigabe bitten.'
             : 'No read permission on this date\'s attendee list — please ask an organizer/admin for access.')
           : (isDe
             ? `Teilnehmerliste konnte nicht gelesen werden (${httpStatus ? 'HTTP ' + httpStatus : 'keine Teilnehmerliste gefunden'}) — bitte erneut versuchen.`
-            : `The attendee list could not be read (${httpStatus ? 'HTTP ' + httpStatus : 'no attendee list found'}) — please try again.`));
+            : `The attendee list could not be read (${httpStatus ? 'HTTP ' + httpStatus : 'no attendee list found'}) — please try again.`);
+        if (!silent) { if (hadList) setRefreshError(msg); else setSearchLoadError(msg); }
       } else {
-        setSearchRegsCache(prev => ({ ...prev, [eventId]: regs }));
+        // v31.4: Frisch Geschriebenes gewinnt gegen eine Antwort, die es noch
+        // nicht kennt — und der Trikot-Cache ist über die Array-Identität
+        // geschlüsselt, die alten Einträge sind ab hier tote Last. Die
+        // Verschmelzung läuft VOR `setSearchRegsCache`: Sie räumt abgelaufene
+        // Merker weg, und ein Updater darf keine Nebenwirkung haben.
+        const merged = withRecentWrites(eventId, regs);
+        setSearchRegsCache(prev => ({ ...prev, [eventId]: merged }));
+        setRegsLoadedAt(prev => ({ ...prev, [eventId]: Date.now() }));
+        shirtAllocCacheRef.current.clear();
+        if (!silent) setRefreshError('');
       }
     } catch {
-      setSearchLoadError('Teilnehmerliste konnte nicht geladen werden.');
+      const msg = isDe ? 'Teilnehmerliste konnte nicht geladen werden.' : 'The attendee list could not be loaded.';
+      if (!silent) { if (hadList) setRefreshError(msg); else setSearchLoadError(msg); }
     }
-    setIsLoadingSearchRegs(false);
-  }, [getAllRegistrations, searchRegsCache]);
+    if (!silent) { setIsLoadingSearchRegs(false); setRefreshBusy(false); }
+    loadInFlightRef.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getAllRegistrations, isDe]);
+  // v31.4: Der Timer unten darf nicht an der Identität dieser Funktion hängen
+  // — `getAllRegistrations` kommt aus dem EventContext und wird bei jedem
+  // Render dort neu gebaut. Ein Effekt mit dieser Abhängigkeit würde sein
+  // Intervall häufiger neu aufsetzen, als es feuert: Der Hintergrund-Lauf
+  // käme dann nie zustande.
+  const loadRegsRef = React.useRef(loadRegsForSearch);
+  loadRegsRef.current = loadRegsForSearch;
 
   // v7.14: Sobald nameSearchEventId gesetzt ist, Teilnehmerliste vorab laden,
   // damit die Live-Liste ohne Vorab-Tippen sichtbar ist.
@@ -547,6 +766,83 @@ export default function CheckInPage(): React.ReactElement {
       setSearchLoadError('');
     }
   }, [nameSearchEventId, searchRegsCache, loadRegsForSearch]);
+
+  /**
+   * v31.4: Alle 45 Sekunden nachladen, solange der Tisch hinschaut.
+   *
+   * Zwei Tablets an einem Eingang sind der Normalfall; wer auf Tablet 2 steht,
+   * muss sehen, dass Tablet 1 gerade eingecheckt hat. `visibilityState` ist
+   * die Bedingung, nicht der Komfort: Ein Tablet in der Tasche würde sonst
+   * stundenlang gegen dieselbe Liste laufen, und Drosselung trifft am
+   * Lauftag alle.
+   */
+  React.useEffect(() => {
+    if (!nameSearchEventId) return undefined;
+    const tick = (): void => {
+      setNowTick(Date.now());
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      void loadRegsRef.current(nameSearchEventId, { force: true, silent: true });
+    };
+    const iv = window.setInterval(tick, 45000);
+    // Zurück aus dem Sperrbildschirm heißt: Der Helfer will den Stand von
+    // JETZT, nicht den von vor 44 Sekunden.
+    const onVisible = (): void => { if (document.visibilityState === 'visible') tick(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(iv);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [nameSearchEventId]);
+
+  /**
+   * v31.4: „Letzte Check-ins" überleben das Verlassen der Seite.
+   *
+   * Befund 08.09.2026: „Wenn man bei Check-in ist, dann zurück, dann sieht man
+   * nicht mehr seine letzten Check-ins." Die Liste war reiner Komponenten-
+   * State; jede Navigation unmountete die Seite — und mit der Liste war auch
+   * das Rückgängigmachen weg, obwohl jeder Eintrag alles trägt, was der Revert
+   * braucht (`regId`, `subsiteUrl`, `prevStatus`, `agendaItemId`, `kind`).
+   *
+   * Gespeichert wird je Event und nur für eine Schicht: Ein Lauftag ist keine
+   * Woche, und ein Eintrag von gestern lädt nur dazu ein, den falschen
+   * Check-in zurückzunehmen. Jeder Zugriff in try/catch — im privaten Fenster
+   * wirft schon das Lesen.
+   */
+  const RECENT_MAX = 30;
+  const RECENT_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+  const recentKey = (eventId: string): string => `dex_recent_checkins_v1_${eventId}`;
+  const readRecent = (eventId: string): RecentCheckIn[] => {
+    try {
+      const raw = window.localStorage.getItem(recentKey(eventId));
+      if (!raw) return [];
+      const arr = JSON.parse(raw) as RecentCheckIn[];
+      if (!Array.isArray(arr)) return [];
+      const now = Date.now();
+      return arr
+        .filter(e => !!e && typeof e.key === 'string' && typeof e.at === 'string' && !!e.regId
+          && (now - Date.parse(e.at)) < RECENT_MAX_AGE_MS)
+        .slice(0, RECENT_MAX);
+    } catch { return []; }
+  };
+  // Spiegel des States, damit `setRecent` ohne Updater-Funktion auskommt —
+  // sonst müsste der localStorage-Schreibvorgang IN den Updater, und der darf
+  // in React keine Nebenwirkung haben.
+  const recentRef = React.useRef<RecentCheckIn[]>([]);
+  recentRef.current = recentCheckIns;
+  const setRecent = (next: RecentCheckIn[]): void => {
+    const list = next.slice(0, RECENT_MAX);
+    recentRef.current = list;
+    setRecentCheckIns(list);
+    if (!nameSearchEventId) return;
+    try { window.localStorage.setItem(recentKey(nameSearchEventId), JSON.stringify(list)); } catch { /* voll oder gesperrt */ }
+  };
+  React.useEffect(() => {
+    setRecentCheckIns(nameSearchEventId ? readRecent(nameSearchEventId) : []);
+    // v31.4: Der Nachlade-Fehler gehört zu dem Event, bei dem er entstand —
+    // dieselbe Regel wie für `searchLoadError` seit v30.67.
+    setRefreshError('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nameSearchEventId]);
 
   // v7.16: Quick-Filter "Nur offene" — wenn aktiv, werden Eingecheckte,
   // Wartelistler und Abgemeldete aus der Liste ausgeblendet, sodass der
@@ -634,6 +930,10 @@ export default function CheckInPage(): React.ReactElement {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nameSearchQuery, nameSearchEventId, searchRegsCache, onlyOpen, agendaMode, agendaPointId]);
+  // v31.4 (Review): Wird nach einer ZAHL gesucht, zeigt jede Trefferzeile,
+  // welche Nummer sie trägt — sonst stehen zwei Namen da und nur einer nennt
+  // eine Zahl (s. qrRowNote).
+  const numericSearch = /^\d+$/.test(nameSearchQuery.trim());
 
   /**
    * v30.35: Check-in über die eingetippte Teilnehmer-ID.
@@ -656,12 +956,19 @@ export default function CheckInPage(): React.ReactElement {
    * der Tisch tippte sie und checkte B ein. Die Mail ist die Zusage, die die
    * Person in der Hand hält; sie gewinnt. Der Scan-Weg ist davon nie betroffen
    * (im Code steht die E-Mail-Adresse, keine Nummer).
+   *
+   * v31.4 (Review): Die Rangfolge ist damit
+   *   1. aktive Zeile mit dieser `QrSentId` — direkt einchecken,
+   *   2. …plus eine zweite aktive Zeile mit dieser laufenden Nummer → Karte,
+   *   3. nur eine aktive laufende Nummer → Karte, sobald das Event QR-Nummern
+   *      führt oder eine abgemeldete Zeile dieselbe Zahl trägt,
+   *   4. sonst wie bisher direkt einchecken.
+   * Abgemeldete Zeilen lösen die Zahl NIE auf (s. Kommentar unten).
    */
   const checkInByParticipantId = async (): Promise<void> => {
     const raw = idInput.trim();
     if (!raw) return;
     setIdError('');
-    setIdNote('');
     if (!nameSearchEventId) {
       setIdError(isDe ? 'Bitte zuerst oben das Event auswählen.' : 'Please pick the event above first.');
       return;
@@ -682,28 +989,54 @@ export default function CheckInPage(): React.ReactElement {
     }
     // v30.83: numerisch — „005" aus der QR-Mail ist ID 5.
     const rawNum = parseInt(raw, 10);
-    // v31.4: zwei Auflösungen derselben Zahl (s. Kopfkommentar).
-    const qrHits = regs.filter(r => qrSentIdOf(r) === rawNum);
-    const tidHits = regs.filter(r => runningIdOf(r) === rawNum);
+    /**
+     * v31.4 (Review): Eine ABGEMELDETE Zeile löst die Zahl nie auf.
+     *
+     * `cancelRegistration` setzt `TeilnehmerID` auf null, lässt `QrSentId`
+     * aber stehen (richtig so — die Mail existiert weiter). Eine abgemeldete
+     * Zeile kann deshalb nie in `tidHits` landen, wohl aber in `qrHits`, und
+     * `qrHits.length === 1` gewann vor jeder Statusprüfung. Ergebnis am Tisch:
+     * `startManualCheckInFromSearch` brach mit „A — Anmeldung storniert" ab,
+     * BEVOR die Konfliktkarte gebaut wurde — die aktive Person B, die heute
+     * genau diese laufende Nummer trägt, war nicht mehr erreichbar, und der
+     * Alternativ-Knopf existierte ausgerechnet in dem Fall nicht, für den er
+     * gedacht war. Vor v31.4 fand derselbe Tastendruck B über `tidHits`.
+     *
+     * Also: Nur einbuchbare Zeilen lösen auf. Die abgemeldete verschwindet
+     * dabei nicht, sie wird BENANNT — sie erklärt, warum die vorgelesene Zahl
+     * heute auf jemand anderen zeigt.
+     */
+    const isCancelled = (r: SPRegistration): boolean => r.Status === 'Abgemeldet';
+    const qrAll = regs.filter(r => qrSentIdOf(r) === rawNum);
+    const tidAll = regs.filter(r => runningIdOf(r) === rawNum);
+    const qrHits = qrAll.filter(r => !isCancelled(r));
+    const tidHits = tidAll.filter(r => !isCancelled(r));
+    const cancelledHit = qrAll.filter(isCancelled)[0] || tidAll.filter(isCancelled)[0];
+    const cancelledName = cancelledHit ? regDisplayName(cancelledHit) : undefined;
     // Hat dieses Event überhaupt hinterlegt, welche Nummern verschickt wurden?
     // Ohne diese Unterscheidung klingt jede Meldung gleich — dabei ist „nichts
     // hinterlegt" ein ganz anderer Zustand als „diese Nummer stand in keiner
-    // Mail", und nur der erste hat eine Abhilfe.
-    const eventHasQrIds = regs.some(r => qrSentIdOf(r) !== null);
+    // Mail", und nur der erste hat eine Abhilfe. Abgemeldete Zeilen zählen
+    // hier nicht mit: Für die Leute, die heute vor dem Tisch stehen, ist dann
+    // eben nichts hinterlegt.
+    const eventHasQrIds = regs.some(r => !isCancelled(r) && qrSentIdOf(r) !== null);
 
     if (qrHits.length > 1) {
       setIdError(isDe
-        ? `Zwei versendete QR-Mails tragen die Nummer ${raw} — das ist ein Datenfehler, keine Verwechslung am Tisch. Bitte unten über den Namen einchecken und das den DEX-Admins melden.`
-        : `Two sent QR emails carry number ${raw} — that is a data error, not a mix-up at the desk. Please check in by name below and report this to the DEX admins.`);
+        ? `Zwei aktive Anmeldungen tragen die Nummer ${raw} aus einer versendeten QR-Mail — das ist ein Datenfehler, keine Verwechslung am Tisch. Bitte unten über den Namen einchecken und das den DEX-Admins melden.`
+        : `Two active registrations carry number ${raw} from a sent QR email — that is a data error, not a mix-up at the desk. Please check in by name below and report this to the DEX admins.`);
       return;
     }
     if (qrHits.length === 1) {
       const person = qrHits[0];
-      // Trägt eine ANDERE Zeile heute dieselbe laufende Nummer, ist die
+      // Trägt eine ANDERE aktive Zeile heute dieselbe laufende Nummer, ist die
       // Eingabe zweideutig — dann zeigt die Karte beide Namen (s. QrIdConflict).
       const other = tidHits.filter(r => r.Id !== person.Id)[0];
       setIdInput('');
-      setNameSearchQuery('');
+      // v31.4 (Review): Der Live-Filter bleibt stehen, solange die Karte eine
+      // Entscheidung verlangt — sonst stehen beide Kandidaten zur Auswahl,
+      // aber keiner mehr in der Liste darunter.
+      if (!other) setNameSearchQuery('');
       startManualCheckInFromSearch(person, other
         ? { typed: rawNum, qrName: regDisplayName(person), altName: regDisplayName(other), alt: other }
         : undefined);
@@ -713,8 +1046,8 @@ export default function CheckInPage(): React.ReactElement {
       // Sollte nicht vorkommen (ID ist je Event fortlaufend), wäre aber ein
       // Datenfehler, den man am Einlass nicht stillschweigend raten darf.
       setIdError(isDe
-        ? `Mehrere Anmeldungen mit der ID ${raw} gefunden — bitte unten über den Namen einchecken und das den DEX-Admins melden.`
-        : `Several registrations share ID ${raw} — please check in by name below and report this to the DEX admins.`);
+        ? `Mehrere aktive Anmeldungen mit der ID ${raw} gefunden — bitte unten über den Namen einchecken und das den DEX-Admins melden.`
+        : `Several active registrations share ID ${raw} — please check in by name below and report this to the DEX admins.`);
       return;
     }
     if (tidHits.length === 0) {
@@ -724,26 +1057,55 @@ export default function CheckInPage(): React.ReactElement {
       const backfillHint = eventHasQrIds ? '' : (isDe
         ? ' Für dieses Event ist noch nicht hinterlegt, welche Nummern in den QR-Mails standen — ein Organizer kann das im Organizer Center über „QR-Nummern nachtragen" nachziehen.'
         : ' For this event it is not yet on file which numbers were printed in the QR emails — an organizer can add them in the organizer center via “Backfill QR numbers”.');
+      // v31.4 (Review): Trägt eine abgemeldete Zeile die Zahl, ist das die
+      // Erklärung — und sie gehört in die Meldung, sonst sucht der Tisch einen
+      // Tippfehler, den es nicht gibt.
+      const cancelHint = cancelledName ? (isDe
+        ? ` Die Nummer ${raw} gehört zur stornierten Anmeldung von ${cancelledName} — abgemeldete Zeilen lassen sich nicht einchecken.`
+        : ` Number ${raw} belongs to the cancelled registration of ${cancelledName} — cancelled rows cannot be checked in.`) : '';
       setIdError((isDe
-        ? `Keine Anmeldung mit der Teilnehmer-ID ${raw} bei diesem Event. Bitte die Nummer aus der QR-Mail prüfen — oder unten nach dem Namen suchen.`
-        : `No registration with attendee ID ${raw} for this event. Please check the number in the QR email — or search by name below.`) + backfillHint);
+        ? `Keine aktive Anmeldung mit der Teilnehmer-ID ${raw} bei diesem Event. Bitte die Nummer aus der QR-Mail prüfen — oder unten nach dem Namen suchen.`
+        : `No active registration with attendee ID ${raw} for this event. Please check the number in the QR email — or search by name below.`) + cancelHint + backfillHint);
       return;
     }
-    // Genau eine laufende Nummer und keine QR-Mail dazu — wie bisher.
-    if (eventHasQrIds) {
-      // Andere Zeilen dieses Events tragen sehr wohl eine QR-Nummer. Dann ist
-      // dieser Treffer eine Ebene schwächer, und das gehört gesagt.
-      setIdNote(isDe
-        ? `Zu dieser Nummer gibt es keine versendete QR-Mail — gefunden über die laufende Nummer.`
-        : `No sent QR email carries this number — found via the current running number.`);
-    }
+    // Genau eine aktive laufende Nummer, und keine versendete QR-Mail dazu.
+    const viaRunning = tidHits[0];
     setIdInput('');
+    if (eventHasQrIds || cancelledName) {
+      /**
+       * v31.4 (Review): Hier wird NICHT mehr direkt eingecheckt.
+       *
+       * Das Event hat nachweislich hinterlegt, welche Nummern gedruckt wurden
+       * — und die getippte Zahl steht in keiner dieser Mails. Die
+       * wahrscheinlichste Ursache ist dann kein Tippfehler, sondern eine
+       * Person, deren `QrSentId` nicht erfasst werden konnte (Mail nicht
+       * parsbar, Versand vor v30.35, Status außerhalb der Nachtrag-Stati).
+       * Ihre gedruckte Nummer wird auf die HEUTIGE laufende Nummer einer
+       * anderen Person aufgelöst — genau der Fehler, den v31.4 abschafft.
+       * Der Hinweis stand vorher unter dem Eingabefeld, und zwar NACH dem
+       * Schreibvorgang; er kam damit zu spät, um noch etwas zu ändern.
+       */
+      startManualCheckInFromSearch(viaRunning, { typed: rawNum, viaRunning: eventHasQrIds, cancelledName });
+      return;
+    }
     setNameSearchQuery(''); // v30.87: Live-Filter der Liste zurücksetzen
-    startManualCheckInFromSearch(tidHits[0]);
+    startManualCheckInFromSearch(viaRunning);
   };
 
-  const startManualCheckInFromSearch = (reg: SPRegistration, qrConflict?: QrIdConflict): void => {
-    const ev = events.find(e => e.id === nameSearchEventId);
+  /**
+   * @param forEventId v31.4 (Review): Das Event, zu dem `reg` gehört — nicht
+   * das, das gerade unten im Auswahlfeld steht.
+   *
+   * `reg.Id` ist eine Listen-Item-Id, und die ist nur JE TEILNEHMERLISTE
+   * eindeutig. Der Alternativ-Knopf der Konfliktkarte reicht eine Zeile
+   * durch, die beim Öffnen der Karte gelesen wurde; wechselt der Helfer
+   * zwischendurch das Event, zeigte dieselbe Id auf der anderen Subsite auf
+   * eine völlig andere Person — und `checkInParticipant` schrieb genau
+   * dorthin. Die Karte wird beim Event-Wechsel inzwischen geleert; dieses
+   * Argument ist der Riegel für den Rest.
+   */
+  const startManualCheckInFromSearch = (reg: SPRegistration, qrConflict?: QrIdConflict, forEventId?: string): void => {
+    const ev = events.find(e => e.id === (forEventId || nameSearchEventId));
     if (!ev || !ev.subsiteUrl) return;
     if (reg.Status === 'Abgemeldet') {
       setResultMessage(`${reg.ParticipantName || reg.ParticipantEmail} — ${t('checkin.cancelled')}`);
@@ -751,9 +1113,21 @@ export default function CheckInPage(): React.ReactElement {
       return;
     }
     const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || reg.ParticipantEmail);
+    // v31.4 (Review): Der Programmpunkt wird UNTEN gewählt und gehört damit zu
+    // `nameSearchEventId`. Gilt der Aufruf einem anderen Event, passt weder
+    // der gewählte Punkt noch seine Abwesenheit — dann lieber nichts
+    // schreiben und es sagen.
+    const evAgendaMode = agendaMode && ev.id === nameSearchEventId;
+    if (!evAgendaMode && ev.agendaCheckIn && (ev.agenda || []).length > 0) {
+      setResultMessage(isDe
+        ? `„${ev.title}" hat Programmpunkte — bitte unten dieses Event und den Punkt wählen, an dem eingecheckt wird.`
+        : `“${ev.title}” has agenda items — please pick this event and the item below first.`);
+      setResultType('error');
+      return;
+    }
     // v30.91: Programmpunkt-Modus — ohne gewählten Punkt kein Check-in;
     // schon erfasst → Hinweis mit Uhrzeit, kein zweiter Schreibvorgang.
-    if (agendaMode) {
+    if (evAgendaMode) {
       if (!agendaPoint) {
         setResultMessage(isDe ? `Bitte oben den ${agendaTermSingular} wählen, an dem eingecheckt wird.` : `Please pick the ${agendaTermSingular.toLowerCase()} above first.`);
         setResultType('error');
@@ -786,8 +1160,8 @@ export default function CheckInPage(): React.ReactElement {
       event: { id: ev.id, subsiteUrl: ev.subsiteUrl, title: ev.title },
       regId: reg.Id,
       status: reg.Status,
-      agendaItemId: agendaMode && agendaPoint ? agendaPoint.id : undefined,
-      agendaLabel: agendaMode && agendaPoint ? agendaPoint.title : undefined,
+      agendaItemId: evAgendaMode && agendaPoint ? agendaPoint.id : undefined,
+      agendaLabel: evAgendaMode && agendaPoint ? agendaPoint.title : undefined,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       department: (reg as any).Department || '',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -801,7 +1175,6 @@ export default function CheckInPage(): React.ReactElement {
     };
     setResultMessage('');
     setResultType('');
-    setNameSearchQuery('');
     if (qrConflict) {
       const shirt = shirtDeskInfoFor(reg, ev.id);
       setCardShirtSize(shirt ? shirt.preset : '');
@@ -809,6 +1182,9 @@ export default function CheckInPage(): React.ReactElement {
       setTimeout(() => { confirmCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 100);
       return;
     }
+    // v31.4 (Review): Der Live-Filter wird erst hier zurückgesetzt — bei einer
+    // offenen Karte bleiben die Kandidaten in der Liste darunter stehen.
+    setNameSearchQuery('');
     setIsProcessing(true);
     void performCheckIn(info).finally(() => setIsProcessing(false));
   };
@@ -822,7 +1198,7 @@ export default function CheckInPage(): React.ReactElement {
       at: new Date().toISOString(), name, regId: reg.Id, eventId: ev.id || '', subsiteUrl: ev.subsiteUrl || '',
       prevStatus: reg.Status, agendaItemId, agendaLabel, kind: 'noshow',
     };
-    setRecentCheckIns(prev => [entry, ...prev].slice(0, 30));
+    setRecent([entry, ...recentRef.current]);
   };
   // v31.2: No-Show NUR am gewählten Programmpunkt — Marke mit noShow, der
   // Event-Status bleibt (die Person kann beim nächsten Punkt wieder da sein).
@@ -839,12 +1215,7 @@ export default function CheckInPage(): React.ReactElement {
       return;
     }
     const at = r.at || new Date().toISOString();
-    setSearchRegsCache(prev => {
-      const list = prev[nameSearchEventId] || [];
-      return { ...prev, [nameSearchEventId]: list.map(x => x.Id === reg.Id
-        ? { ...x, AgendaCheckIns: JSON.stringify({ ...parseAgendaMarks(x.AgendaCheckIns), [pointId]: { at, by: '', noShow: true } }) }
-        : x) };
-    });
+    patchCachedReg(nameSearchEventId, reg.Id, { agenda: { [pointId]: { at, by: '', noShow: true } } });
     rememberNoShow(reg, name, ev, pointId, agendaPoint.title);
     setResultMessage(isDe ? `${name} — No-Show bei ${agendaPoint.title}.` : `${name} — no-show at ${agendaPoint.title}.`);
     setResultType('info');
@@ -854,10 +1225,7 @@ export default function CheckInPage(): React.ReactElement {
     if (!ev || !ev.subsiteUrl || !eventService) return;
     const success = await eventService.markNoShowParticipant(ev.subsiteUrl, reg.Id);
     if (success) {
-      setSearchRegsCache(prev => {
-        const list = prev[nameSearchEventId] || [];
-        return { ...prev, [nameSearchEventId]: list.map(r => r.Id === reg.Id ? { ...r, Status: 'No-Show' } : r) };
-      });
+      patchCachedReg(nameSearchEventId, reg.Id, { status: 'No-Show' });
       rememberNoShow(reg, name, ev);
       setResultMessage(isDe ? `${name} — als No-Show markiert.` : `${name} — marked as no-show.`);
       setResultType('info');
@@ -927,20 +1295,14 @@ export default function CheckInPage(): React.ReactElement {
         return null;
       }
       const issue: ShirtIssue = { size: clean, at: r.at || new Date().toISOString(), by: currentEmailLc };
-      if (target.eventId) {
-        setSearchRegsCache(prev => {
-          const list = prev[target.eventId];
-          if (!list) return prev;
-          return { ...prev, [target.eventId]: list.map(x => x.Id === target.regId ? { ...x, ShirtIssued: JSON.stringify(issue) } : x) };
-        });
-      }
+      patchCachedReg(target.eventId, target.regId, { shirtIssued: JSON.stringify(issue) });
       const entry: RecentCheckIn = {
         key: `${target.regId}:shirt:${Date.now()}`,
         at: issue.at, name: target.name, regId: target.regId,
         eventId: target.eventId, subsiteUrl: target.subsiteUrl,
         prevStatus: target.prevStatus, kind: 'shirt', shirtSize: clean,
       };
-      setRecentCheckIns(prev => [entry, ...prev].slice(0, 30));
+      setRecent([entry, ...recentRef.current]);
       setResultMessage(isDe
         ? `${target.name} — Trikot ${clean} ausgegeben.`
         : `${target.name} — shirt ${clean} handed out.`);
@@ -962,14 +1324,8 @@ export default function CheckInPage(): React.ReactElement {
         setResultType('error');
         return false;
       }
-      if (target.eventId) {
-        setSearchRegsCache(prev => {
-          const list = prev[target.eventId];
-          if (!list) return prev;
-          return { ...prev, [target.eventId]: list.map(x => x.Id === target.regId ? { ...x, ShirtIssued: '' } : x) };
-        });
-      }
-      setRecentCheckIns(prev => prev.filter(x => !(x.kind === 'shirt' && x.regId === target.regId && x.subsiteUrl === target.subsiteUrl)));
+      patchCachedReg(target.eventId, target.regId, { shirtIssued: '' });
+      setRecent(recentRef.current.filter(x => !(x.kind === 'shirt' && x.regId === target.regId && x.subsiteUrl === target.subsiteUrl)));
       setResultMessage(isDe
         ? `${target.name} — Trikot-Ausgabe zurückgenommen, die Größe zählt wieder zum Bestand.`
         : `${target.name} — shirt handout reverted, the size counts towards the stock again.`);
@@ -1327,7 +1683,9 @@ export default function CheckInPage(): React.ReactElement {
       shirt,
       // v31.4: Auch nach einem Scan — der Helfer schaut nachher auf dieselbe
       // Mail und soll die beiden Zahlen dort wiederfinden.
-      qrNote: qrNoteOf(reg),
+      // v31.4 (Review): über den Cache, nicht über `reg` — die gescannte Zeile
+      // trägt weder `QrSentId` noch `TeilnehmerID` (fester `$select`).
+      qrNote: qrNoteFromCache(reg, event.id),
     });
     setResultMessage('');
     setResultType('');
@@ -1345,12 +1703,12 @@ export default function CheckInPage(): React.ReactElement {
   const performCheckIn = async (pendingCheckIn: PendingCheckInInfo): Promise<void> => {
     if (!eventService) return;
     const remember = (): void => {
-      setRecentCheckIns(prev => [{
+      setRecent([{
         key: `${pendingCheckIn.regId}:${pendingCheckIn.agendaItemId || 'status'}:${Date.now()}`,
         at: new Date().toISOString(), name: pendingCheckIn.name, regId: pendingCheckIn.regId,
         eventId: pendingCheckIn.event.id || '', subsiteUrl: pendingCheckIn.event.subsiteUrl,
         prevStatus: pendingCheckIn.status, agendaItemId: pendingCheckIn.agendaItemId, agendaLabel: pendingCheckIn.agendaLabel,
-      }, ...prev].slice(0, 30));
+      }, ...recentRef.current]);
     };
     try {
       // v30.67: `checkInParticipant` wirft nie — es liefert `response.ok` bzw.
@@ -1373,18 +1731,8 @@ export default function CheckInPage(): React.ReactElement {
           processingRef.current = false;
           return;
         }
-        const evId = pendingCheckIn.event.id;
-        const regId = pendingCheckIn.regId;
         const at = r.already || new Date().toISOString();
-        if (evId) {
-          setSearchRegsCache(prev => {
-            const list = prev[evId];
-            if (!list) return prev;
-            return { ...prev, [evId]: list.map(x => x.Id === regId
-              ? { ...x, AgendaCheckIns: JSON.stringify({ ...parseAgendaMarks(x.AgendaCheckIns), [pointId]: { at, by: '' } }) }
-              : x) };
-          });
-        }
+        patchCachedReg(pendingCheckIn.event.id || '', pendingCheckIn.regId, { agenda: { [pointId]: { at, by: '' } } });
         if (!r.already) { setCheckedInCount(prev => prev + 1); remember(); }
         setResultMessage(r.already
           ? `${pendingCheckIn.name} — ${isDe ? 'bereits erfasst' : 'already recorded'} (${label}, ${formatMarkTime(r.already)})`
@@ -1411,15 +1759,7 @@ export default function CheckInPage(): React.ReactElement {
       // gepatcht. Ohne den Patch blieb die Person „Angemeldet", die KPI-
       // Kachel stand, und unter „Nur offene" stand sie weiter bei den Offenen;
       // ein zweiter Helfer checkte sie erneut ein.
-      const evId = pendingCheckIn.event.id;
-      const regId = pendingCheckIn.regId;
-      if (evId) {
-        setSearchRegsCache(prev => {
-          const list = prev[evId];
-          if (!list) return prev;
-          return { ...prev, [evId]: list.map(r => r.Id === regId ? { ...r, Status: 'Eingecheckt' } : r) };
-        });
-      }
+      patchCachedReg(pendingCheckIn.event.id || '', pendingCheckIn.regId, { status: 'Eingecheckt' });
       setResultMessage(`${pendingCheckIn.name} — ${t('checkin.success')}`);
       setResultType('success');
     } catch {
@@ -1450,27 +1790,14 @@ export default function CheckInPage(): React.ReactElement {
       if (e.agendaItemId) {
         // v31.2: entfernt die Marke am Punkt — Anwesenheit ODER No-Show.
         ok = (await eventService.removeAgendaCheckIn(e.subsiteUrl, e.regId, e.agendaItemId)).ok;
-        if (ok && e.eventId) {
-          setSearchRegsCache(prev => {
-            const list = prev[e.eventId];
-            if (!list) return prev;
-            return { ...prev, [e.eventId]: list.map(x => {
-              if (x.Id !== e.regId) return x;
-              const m = parseAgendaMarks(x.AgendaCheckIns);
-              delete m[e.agendaItemId as string];
-              return { ...x, AgendaCheckIns: Object.keys(m).length ? JSON.stringify(m) : '' };
-            }) };
-          });
-        }
+        // v31.4: `null` heißt „diese Marke ist weg" — auch gegenüber einer
+        // frisch geladenen Liste, die sie noch führt.
+        if (ok) patchCachedReg(e.eventId, e.regId, { agenda: { [e.agendaItemId]: null } });
       } else {
         ok = await eventService.revertCheckIn(e.subsiteUrl, e.regId, e.prevStatus);
-        if (ok && e.eventId) {
+        if (ok) {
           const back = (e.prevStatus === 'QR versendet' || (isNoShow && e.prevStatus === 'Eingecheckt')) ? e.prevStatus : 'Angemeldet';
-          setSearchRegsCache(prev => {
-            const list = prev[e.eventId];
-            if (!list) return prev;
-            return { ...prev, [e.eventId]: list.map(x => x.Id === e.regId ? { ...x, Status: back } : x) };
-          });
+          patchCachedReg(e.eventId, e.regId, { status: back });
         }
       }
       if (!ok) {
@@ -1478,7 +1805,7 @@ export default function CheckInPage(): React.ReactElement {
         setResultType('error');
         return;
       }
-      setRecentCheckIns(prev => prev.filter(x => x.key !== e.key));
+      setRecent(recentRef.current.filter(x => x.key !== e.key));
       if (!isNoShow) setCheckedInCount(prev => Math.max(0, prev - 1));
       setResultMessage(isDe
         ? `${e.name} — ${isNoShow ? 'No-Show' : 'Check-in'} zurückgenommen${e.agendaLabel ? ` (${e.agendaLabel})` : ''}.`
@@ -1939,48 +2266,84 @@ export default function CheckInPage(): React.ReactElement {
               )}
             </div>
           </div>
-          {/* v31.4: Die getippte Zahl gehört zwei Personen — beide werden
-              benannt, bevor jemand eingecheckt wird. Warnton wie der
-              v31.3-Trikot-Satz, weil hier genau wie dort eine ENTSCHEIDUNG
-              ansteht und nicht nur eine Angabe nachzuschlagen ist. */}
-          {pendingCheckIn.qrConflict && (
-            <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginBottom: 14 }}>
-              <span className="dex-ui-callout-icon" aria-hidden="true"><AlertCircle size={16} /></span>
-              <div>
-                {isDe ? (<>
-                  Nummer <strong>{pad3(pendingCheckIn.qrConflict.typed)}</strong> stand in der QR-Mail von{' '}
-                  <strong>{pendingCheckIn.qrConflict.qrName}</strong>. Die laufende Nummer{' '}
-                  {pad3(pendingCheckIn.qrConflict.typed)} trägt inzwischen{' '}
-                  <strong>{pendingCheckIn.qrConflict.altName}</strong> (nach Abmeldungen neu vergeben).
-                  Eingecheckt wird <strong>{pendingCheckIn.qrConflict.qrName}</strong> — so steht es in ihrer Mail.
-                </>) : (<>
-                  Number <strong>{pad3(pendingCheckIn.qrConflict.typed)}</strong> was printed in the QR email of{' '}
-                  <strong>{pendingCheckIn.qrConflict.qrName}</strong>. The current running number{' '}
-                  {pad3(pendingCheckIn.qrConflict.typed)} now belongs to{' '}
-                  <strong>{pendingCheckIn.qrConflict.altName}</strong> (reassigned after cancellations).
-                  We are checking in <strong>{pendingCheckIn.qrConflict.qrName}</strong> — that is what their email says.
-                </>)}
-                <div style={{ marginTop: 8 }}>
-                  <button
-                    type="button"
-                    className="btn btn-secondary dex-ui-btn-sm"
-                    disabled={isProcessing}
-                    onClick={() => {
-                      const alt = pendingCheckIn.qrConflict ? pendingCheckIn.qrConflict.alt : null;
-                      setPendingCheckIn(null);
-                      // Ohne `qrConflict` — die Wahl ist jetzt ausdrücklich
-                      // getroffen, eine zweite Rückfrage wäre nur ein Klick mehr.
-                      if (alt) startManualCheckInFromSearch(alt);
-                    }}
-                  >
-                    {isDe
-                      ? `Stattdessen ${pendingCheckIn.qrConflict.altName} einchecken`
-                      : `Check in ${pendingCheckIn.qrConflict.altName} instead`}
-                  </button>
+          {/* v31.4: Warum diese Zahl eine Entscheidung verlangt — VOR dem
+              Schreibvorgang. Warnton wie der v31.3-Trikot-Satz, weil hier
+              genau wie dort eine ENTSCHEIDUNG ansteht und nicht nur eine
+              Angabe nachzuschlagen ist.
+              v31.4 (Review): Die Karte deckt jetzt drei Gründe ab (zwei
+              Personen, keine QR-Mail zur Zahl, abgemeldete Zeile mit dieser
+              Zahl) — sie können zusammen auftreten, deshalb Satz für Satz. */}
+          {pendingCheckIn.qrConflict && (() => {
+            const c = pendingCheckIn.qrConflict;
+            const nr = pad3(c.typed);
+            const cardEventId = pendingCheckIn.event.id;
+            return (
+              <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginBottom: 14 }}>
+                <span className="dex-ui-callout-icon" aria-hidden="true"><AlertCircle size={16} /></span>
+                <div>
+                  {c.qrName && c.altName && (isDe ? (<>
+                    Nummer <strong>{nr}</strong> stand in der QR-Mail von{' '}
+                    <strong>{c.qrName}</strong>. Die laufende Nummer {nr} trägt inzwischen{' '}
+                    <strong>{c.altName}</strong> (nach Abmeldungen neu vergeben).
+                    Eingecheckt wird <strong>{c.qrName}</strong> — so steht es in ihrer Mail.
+                  </>) : (<>
+                    Number <strong>{nr}</strong> was printed in the QR email of{' '}
+                    <strong>{c.qrName}</strong>. The current running number {nr} now belongs to{' '}
+                    <strong>{c.altName}</strong> (reassigned after cancellations).
+                    We are checking in <strong>{c.qrName}</strong> — that is what their email says.
+                  </>))}
+                  {c.viaRunning && !c.qrName && (isDe ? (<>
+                    Zu der Nummer <strong>{nr}</strong> gibt es keine versendete QR-Mail — gefunden wurde{' '}
+                    <strong>{pendingCheckIn.name}</strong> über die laufende Nummer, und die vergibt jede
+                    Abmeldung neu. Bei diesem Event ist für andere Personen sehr wohl hinterlegt, was in
+                    ihrer Mail stand; dieser Treffer ist also der schwächere. Bitte kurz den Namen mit der
+                    Person abgleichen, bevor du eincheckst.
+                  </>) : (<>
+                    No sent QR email carries number <strong>{nr}</strong> — <strong>{pendingCheckIn.name}</strong>{' '}
+                    was found via the running number, which is reassigned on every cancellation. For other
+                    people at this event the printed number is on file, so this match is the weaker one.
+                    Please check the name with the person before you check them in.
+                  </>))}
+                  {c.cancelledName && (isDe ? (<>
+                    {(c.qrName && c.altName) || c.viaRunning ? ' ' : ''}
+                    Die Nummer <strong>{nr}</strong> gehört außerdem zur stornierten Anmeldung von{' '}
+                    <strong>{c.cancelledName}</strong> — abgemeldete Zeilen behalten ihre gedruckte Nummer,
+                    einchecken lassen sie sich nicht.
+                  </>) : (<>
+                    {(c.qrName && c.altName) || c.viaRunning ? ' ' : ''}
+                    Number <strong>{nr}</strong> also belongs to the cancelled registration of{' '}
+                    <strong>{c.cancelledName}</strong> — cancelled rows keep their printed number but
+                    cannot be checked in.
+                  </>))}
+                  {c.alt && c.altName && (
+                    <div style={{ marginTop: 8 }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary dex-ui-btn-sm"
+                        disabled={isProcessing}
+                        onClick={() => {
+                          // v31.4 (Review): Die Karte bleibt stehen, bis der
+                          // Alternativ-Pfad wirklich eingecheckt hat —
+                          // `startManualCheckInFromSearch` kann abbrechen
+                          // (kein Programmpunkt gewählt, bereits erfasst), und
+                          // dann wären sonst beide Namen weg und die getippte
+                          // Zahl auch. `performCheckIn` schließt sie selbst.
+                          // Das Event kommt aus der Karte, nicht aus dem
+                          // Auswahlfeld unten: `alt.Id` gilt nur auf DIESER
+                          // Teilnehmerliste.
+                          if (c.alt) startManualCheckInFromSearch(c.alt, undefined, cardEventId);
+                        }}
+                      >
+                        {isDe
+                          ? `Stattdessen ${c.altName} einchecken`
+                          : `Check in ${c.altName} instead`}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
           <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', margin: '0 0 16px' }}>
             {isDe ? 'Event: ' : 'Event: '}<strong>{pendingCheckIn.event.title}</strong>
             {pendingCheckIn.agendaLabel && (
@@ -1991,6 +2354,11 @@ export default function CheckInPage(): React.ReactElement {
             <button
               className="btn btn-primary"
               onClick={confirmCheckIn}
+              // v31.4 (Review): Solange der Alternativ-Knopf schreibt, bleibt
+              // die Karte stehen (sie darf erst weg, wenn feststeht, dass es
+              // geklappt hat) — dann darf dieser Knopf aber nicht die ANDERE
+              // Person danebenschreiben.
+              disabled={isProcessing}
               style={{ flex: 1, fontSize: '1rem', padding: '12px 0', background: 'var(--dex-green)' }}
             >
               {pendingCheckIn.agendaItemId ? (isDe ? 'Anwesenheit erfassen' : 'Record attendance') : (isDe ? 'Einchecken' : 'Check in')}
@@ -2030,7 +2398,19 @@ export default function CheckInPage(): React.ReactElement {
             <select
               className="form-input"
               value={nameSearchEventId}
-              onChange={e => { setNameSearchEventId(e.target.value); setNameSearchQuery(''); }}
+              onChange={e => {
+                setNameSearchEventId(e.target.value);
+                setNameSearchQuery('');
+                // v31.4 (Review): Eine offene Bestätigungskarte gehört zu dem
+                // Event, unter dem sie entstanden ist. Blieb sie beim Wechsel
+                // stehen, zeigte ihr Alternativ-Knopf auf eine Item-Id, die es
+                // auf der neuen Teilnehmerliste zwar gibt — nur mit einer
+                // anderen Person dahinter.
+                setPendingCheckIn(null);
+                setCardShirtSize('');
+                setIdInput('');
+                setIdError('');
+              }}
               style={{ marginBottom: agendaMode ? 12 : 0, padding: '8px 12px', fontSize: '0.9rem', width: '100%' }}
             >
               <option value="">— Event auswählen —</option>
@@ -2294,7 +2674,7 @@ export default function CheckInPage(): React.ReactElement {
           <input
             id="dex-checkin-id"
             value={idInput}
-            onChange={e => { const v = e.target.value.replace(/\D/g, ''); setIdInput(v); setIdError(''); setIdNote(''); setNameSearchQuery(v); }}
+            onChange={e => { const v = e.target.value.replace(/\D/g, ''); setIdInput(v); setIdError(''); setNameSearchQuery(v); }}
             inputMode="numeric"
             pattern="[0-9]*"
             placeholder="17"
@@ -2312,12 +2692,6 @@ export default function CheckInPage(): React.ReactElement {
         </form>
         {idError && (
           <p style={{ color: 'var(--dex-orange)', fontSize: '0.85rem', margin: '4px 0 10px', textAlign: 'center' }}>{idError}</p>
-        )}
-        {/* v31.4: Kein Fehler — die Nummer wurde nur über die laufende ID
-            aufgelöst, obwohl das Event QR-Nummern hinterlegt hat. Gedämpft,
-            weil der Check-in geklappt hat. */}
-        {idNote && !idError && (
-          <p className="dex-ui-muted" style={{ fontSize: '0.78rem', margin: '4px 0 10px', textAlign: 'center' }}>{idNote}</p>
         )}
         <div style={{ borderTop: '1px solid var(--dex-gray-200)', margin: '12px 0 14px' }} />
         {/* v7.16: KPI-Bereich — angemeldet vs. eingecheckt, plus Quick-Filter
@@ -2416,7 +2790,7 @@ export default function CheckInPage(): React.ReactElement {
                 type="button"
                 className="btn btn-secondary"
                 style={{ marginLeft: 8, fontSize: '0.74rem', padding: '2px 8px' }}
-                onClick={() => { void loadRegsForSearch(nameSearchEventId); }}
+                onClick={() => { void loadRegsForSearch(nameSearchEventId, { force: true }); }}
               >
                 {isDe ? 'Erneut laden' : 'Reload'}
               </button>
@@ -2428,6 +2802,43 @@ export default function CheckInPage(): React.ReactElement {
             Daten, die nie gelesen wurden. */}
         {nameSearchEventId && !isLoadingSearchRegs && !searchLoadError && (
           <div style={{ marginTop: 12 }}>
+            {/* v31.4: Der Stand der Liste — und ein Knopf, der wirklich lädt.
+                Am Lauftag stehen zwei Tablets am selben Eingang; ohne diese
+                Zeile weiß niemand, ob er den Check-in des Kollegen schon sieht.
+                Älter als drei Minuten wird gedämpft rot: Dann klemmt der Lauf
+                im Hintergrund, und das ist die einzige ehrliche Aussage, die
+                die Seite dazu machen kann. */}
+            {!!regsLoadedAt[nameSearchEventId] && (() => {
+              const at = regsLoadedAt[nameSearchEventId];
+              const stale = (nowTick - at) > 180000;
+              return (
+                <div className="dex-ui-toolbar" style={{ marginBottom: 8 }}>
+                  <span style={{ fontSize: '0.74rem', color: stale ? 'var(--dex-red, #c00)' : 'var(--dex-gray-500)' }}>
+                    {isDe ? 'Stand: ' : 'As of: '}{formatMarkTime(new Date(at).toISOString())}
+                    <span className="dex-ui-muted" style={{ fontSize: '0.72rem' }}>
+                      {isDe ? ' · lädt automatisch alle 45 Sekunden nach' : ' · reloads automatically every 45 seconds'}
+                    </span>
+                  </span>
+                  <span className="dex-ui-toolbar-spacer" />
+                  <button
+                    type="button"
+                    className="dex-ui-textbtn"
+                    disabled={refreshBusy}
+                    onClick={() => { void loadRegsForSearch(nameSearchEventId, { force: true }); }}
+                  >
+                    {refreshBusy ? (isDe ? 'Wird geladen…' : 'Loading…') : (isDe ? 'Aktualisieren' : 'Refresh')}
+                  </button>
+                </div>
+              );
+            })()}
+            {/* v31.4: Ein gescheitertes Nachladen blendet die Liste NICHT aus —
+                die alte Liste ist das Beste, was der Tisch hat. Gesagt wird es
+                trotzdem, sonst hält er einen alten Stand für den aktuellen. */}
+            {refreshError && (
+              <p style={{ fontSize: '0.74rem', color: 'var(--dex-red, #c00)', margin: '0 0 8px' }}>
+                {isDe ? 'Nachladen fehlgeschlagen: ' : 'Reload failed: '}{refreshError}
+              </p>
+            )}
             {searchHits.length === 0 ? (
               <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)', fontStyle: 'italic', margin: 0 }}>
                 {nameSearchQuery.trim().length > 0
@@ -2529,10 +2940,11 @@ export default function CheckInPage(): React.ReactElement {
                               heutigen laufenden Nummer auseinander, stehen
                               beide da — sonst sucht der Helfer die Zahl vom
                               Handy in einer Liste, die eine andere zeigt.
-                              Sind sie gleich, steht hier bewusst nichts. */}
-                          {qrNoteOf(reg) && (
+                              Sind sie gleich, steht hier bewusst nichts —
+                              außer bei einer Zahlen-Suche, s. qrRowNote. */}
+                          {qrRowNote(reg, numericSearch) && (
                             <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', fontFamily: "'Courier New',Courier,monospace", whiteSpace: 'nowrap' }}>
-                              {qrNoteOf(reg)}
+                              {qrRowNote(reg, numericSearch)}
                             </div>
                           )}
                           {/* v30.53: Startnummer + Trikotgröße schon in der
@@ -2662,15 +3074,21 @@ export default function CheckInPage(): React.ReactElement {
       </div>
       </div>
 
-      {/* v31.1 — Abschnitt 3: Letzte Check-ins dieser Sitzung, mit Rückgängig
-          (Nutzer 07.09.2026). Nur was hier eingecheckt wurde — der Revert setzt
-          den gemerkten vorherigen Status bzw. entfernt die Punkt-Anwesenheit. */}
+      {/* v31.1 — Abschnitt 3: Letzte Check-ins, mit Rückgängig (Nutzer
+          07.09.2026). Nur was auf diesem Gerät eingecheckt wurde — der Revert
+          setzt den gemerkten vorherigen Status bzw. entfernt die Punkt-
+          Anwesenheit.
+          v31.4: Die Liste überlebt jetzt das Verlassen der Seite (localStorage
+          je Event, 12 Stunden) — deshalb heißt sie nicht mehr „diese Sitzung",
+          das wäre nach dem Zurückgehen falsch. */}
       <div style={{ order: 3 }}>
         {sectionLabel(3, isDe ? 'Letzte Check-ins' : 'Recent check-ins')}
         <div className="card" style={{ padding: recentCheckIns.length ? '14px 20px' : '14px 20px', marginBottom: 16 }}>
           {recentCheckIns.length === 0 ? (
             <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>
-              {isDe ? 'Noch kein Check-in in dieser Sitzung. Jeder Check-in erscheint hier und lässt sich zurücknehmen.' : 'No check-in in this session yet. Every check-in appears here and can be reverted.'}
+              {isDe
+                ? 'Noch kein Check-in in den letzten 12 Stunden. Jeder Check-in erscheint hier und lässt sich zurücknehmen — auch nachdem du die Seite zwischendurch verlassen hast.'
+                : 'No check-in in the past 12 hours. Every check-in appears here and can be reverted — also after you have left the page in between.'}
             </p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 260, overflowY: 'auto' }}>
@@ -2703,6 +3121,13 @@ export default function CheckInPage(): React.ReactElement {
                 </div>
               ))}
             </div>
+          )}
+          {recentCheckIns.length > 0 && (
+            <p className="dex-ui-muted" style={{ fontSize: '0.72rem', margin: '8px 0 0' }}>
+              {isDe
+                ? 'Die letzten 12 Stunden auf diesem Gerät, für dieses Event.'
+                : 'The past 12 hours on this device, for this event.'}
+            </p>
           )}
         </div>
       </div>
