@@ -1,11 +1,14 @@
 /* KpiTiles — 1:1 aus AdminPage.tsx ausgelagert (Zeilen 9403-9512 des
- * Stands vor dem Schnitt). Der Inhalt ist zeichengleich uebernommen; die
- * Anzeige-Bedingung bleibt beim Aufrufer.
+ * Stands vor dem Schnitt). Der Rechenweg ist unverändert; die Darstellung
+ * steht seit v31.3 auf den Kennzahl-Klassen aus dexUi.ts (ui-leitfaden 5a).
+ * Die Anzeige-Bedingung bleibt beim Aufrufer.
  */
 import * as React from 'react';
 import { SPRegistration } from '../../../services/EventService';
 import { DeloitteEvent } from '../../../types';
 import { countConsolidatedActive } from '../logic/parentRegs';
+import { cx } from '../../dexUi';
+import { AlertCircle } from '../../Icons';
 
 export interface KpiTilesProps {
   isConsolidatedMode: boolean;
@@ -28,10 +31,6 @@ export const KpiTiles: React.FC<KpiTilesProps> = (p) => {
         // `> 0` sollte nur „Unbegrenzt" ausschließen, schloss aber jedes
         // Split-Event mit aus — 25 Wartende, keine Kachel.
         const hasWaitlistKPI = !!(selectedEvent?.waitlistEnabled && ((selectedEvent?.maxParticipants || 0) > 0 || isSplitCapacity));
-        // Fraktionen pro Spalte — Angemeldet bekommt 2fr wenn Split aktiv ist.
-        const angeFr = isSplitCapacity ? '2fr' : '1fr';
-        const tail = `1fr 1fr${hasWaitlistKPI ? ' 1fr' : ''} 1fr`; // QR / Eingecheckt / [Warteliste] / Abgemeldet
-        const gridCols = `${angeFr} ${tail}`;
         // v15.14: Im subEventsOnlyMode (Hauptevent ohne eigene Anmeldungen)
         // beziehen sich die Stat-Cards auf die konsolidierten Teilnehmer
         // über alle Sub-Events. Die Hauptevent-Liste selbst hat hier nur
@@ -52,7 +51,7 @@ export const KpiTiles: React.FC<KpiTilesProps> = (p) => {
         const consolidatedCancelledByEmail = new Set<string>();
         const consolidatedAnyByEmail = new Set<string>();
         for (const r of consolidatedRegs) {
-          // v23.3: emaillose Zeile zaehlt als eigener Kopf (Zeilen-Id-Fallback),
+          // v23.3: emaillose Zeile zählt als eigener Kopf (Zeilen-Id-Fallback),
           // statt aus den KPIs zu verschwinden — sonst KPI < Tabelle.
           const key = (r.ParticipantEmail || '').toLowerCase().trim() || `__noemail#${r.Id}`;
           consolidatedAnyByEmail.add(key);
@@ -74,11 +73,12 @@ export const KpiTiles: React.FC<KpiTilesProps> = (p) => {
         // Zeilen mit und ist dann ebenfalls unbekannt. War eine Termin-Liste
         // nicht lesbar, sind die Summen nur Untergrenzen: „≥ N".
         const unknownAll = regsUnknown && !isConsolidatedMode;
-        const dash = <span title={isDe ? 'Liste nicht lesbar' : 'List not readable'}>—</span>;
+        // v31.3: Der Strich sagt im Titel, was er heißt — sonst liest er sich wie 0.
+        const dash = <span title={isDe ? 'Liste nicht lesbar — die Zahl ist unbekannt, nicht 0' : 'List not readable — the number is unknown, not 0'}>—</span>;
         const show = (n: number, unknown: boolean): React.ReactNode => unknown
           ? dash
           : (isConsolidatedMode && subListsIncomplete
-            ? <span title={isDe ? 'Mindestens — eine Termin-Liste war nicht lesbar' : 'At least — one date list was not readable'}>≥ {n}</span>
+            ? <span title={isDe ? 'Mindestens so viele — eine Termin-Liste war nicht lesbar' : 'At least this many — one date list was not readable'}>≥ {n}</span>
             : n);
         // v19.12: nach EFFEKTIVER Gruppe zählen (StarterType ODER, falls leer,
         // PreferredStarterType). Sonst fehlen angemeldete Nachrücker, deren
@@ -93,61 +93,87 @@ export const KpiTiles: React.FC<KpiTilesProps> = (p) => {
         const labelA = (selectedEvent?.splitLabelA && selectedEvent.splitLabelA.trim()) || 'Durchstarter';
         const labelB = (selectedEvent?.splitLabelB && selectedEvent.splitLabelB.trim()) || 'Funstarter';
         const reversed = !!selectedEvent?.splitDisplayOrderReversed;
-        const grpA = (
-          <div key="grpA" style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-            <span style={{ color: 'var(--dex-green-dark, #6b9a1e)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={labelA}>● {labelA}</span>
-            <strong style={{ whiteSpace: 'nowrap' }}>{unknownAll ? dash : durchActive}<span style={{ color: 'var(--dex-gray-400)' }}>/{durchCap}</span></strong>
+        // v31.3: Der Balken färbt sich nur, wo es etwas heißt (ab 90 % eng, darüber überbucht).
+        const barMod = (n: number, cap: number): string => (n > cap ? 'dex-ui-progress-bar--red' : n / cap >= 0.9 ? 'dex-ui-progress-bar--orange' : '');
+        const barW = (n: number, cap: number): string => `${Math.min(100, Math.max(0, Math.round((n / cap) * 100)))}%`;
+        // Eine Gruppen-Zeile statt zweier fast gleicher Blöcke: Punkt, Name, Belegung, Auslastung.
+        const grpRow = (key: string, label: string, n: number, cap: number, dot: string): React.ReactElement => (
+          <div key={key}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className={cx('dex-ui-dot', dot)} />
+              <span style={{ flex: 1, minWidth: 0, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={label}>{label}</span>
+              <strong style={{ whiteSpace: 'nowrap' }}>{unknownAll ? dash : n}<span style={{ color: 'var(--dex-gray-400)' }}>/{cap}</span></strong>
+            </div>
+            {!unknownAll && cap > 0 && (
+              <div className="dex-ui-progress" style={{ marginTop: 5 }}>
+                <div className={cx('dex-ui-progress-bar', barMod(n, cap))} style={{ width: barW(n, cap) }} />
+              </div>
+            )}
           </div>
         );
-        const grpB = (
-          <div key="grpB" style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-            <span style={{ color: 'var(--dex-orange, #ff8c00)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={labelB}>● {labelB}</span>
-            <strong style={{ whiteSpace: 'nowrap' }}>{unknownAll ? dash : funActive}<span style={{ color: 'var(--dex-gray-400)' }}>/{funCap}</span></strong>
+        const grpA = grpRow('grpA', labelA, durchActive, durchCap, 'dex-ui-dot--green');
+        const grpB = grpRow('grpB', labelB, funActive, funCap, 'dex-ui-dot--orange');
+        // v31.3: Auslastung nur mit Kapazität und lesbarer Liste — im Klammer-Modus
+        // ist `maxParticipants` ein Alt-Wert, bei geteilten Gruppen zählt je Gruppe.
+        const capTotal = selectedEvent?.maxParticipants || 0;
+        const showCap = !isConsolidatedMode && !isSplitCapacity && !unknownAll && capTotal > 0;
+        const over = totalActive - capTotal;
+        const capText = over > 0
+          ? (isDe ? `${over} über der Kapazität von ${capTotal}` : `${over} over the capacity of ${capTotal}`)
+          : (isDe ? `${capTotal - totalActive} von ${capTotal} Plätzen frei` : `${capTotal - totalActive} of ${capTotal} seats free`);
+        // v31.3: „—"/„≥" bekommen ihren Satz unter die Kacheln (Leitfaden 5a).
+        const unknownHint = unknownAll
+          ? (isDe ? 'Die Teilnehmerliste war nicht lesbar — diese Zahlen sind unbekannt, nicht 0.' : 'The participant list could not be read — these numbers are unknown, not 0.')
+          : (isConsolidatedMode && subListsIncomplete
+            ? (isDe ? 'Mindestens eine Termin-Liste war nicht lesbar — die Zahlen sind Untergrenzen.' : 'At least one date list could not be read — these numbers are lower bounds.')
+            : '');
+        // Vier gleich gebaute Kacheln; Farbe nur mit Bedeutung (Leitfaden 5b:
+        // orange Warteliste, blau eingecheckt, grau abgemeldet). Kein Hover —
+        // sie filtern nichts, sie zeigen nur.
+        const tile = (mod: string, value: React.ReactNode, label: string): React.ReactElement => (
+          <div className={cx('dex-ui-kpi', mod)}>
+            <div className="dex-ui-kpi-value">{value}</div>
+            <div className="dex-ui-kpi-label">{label}</div>
           </div>
         );
         return (
-          <div className="admin-counters" style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 12, marginBottom: 24 }}>
-            <div className="card" style={{ padding: 16, textAlign: 'center' }}>
-              <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#1565c0' }}>{show(totalActive, unknownAll)}</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.registered')}</div>
-              {isSplitCapacity && (
-                <div style={{
-                  marginTop: 10, paddingTop: 10,
-                  borderTop: '1px solid var(--dex-gray-200)',
-                  fontSize: '0.82rem', textAlign: 'left',
-                  display: 'flex', flexDirection: 'column', gap: 4,
-                }}>
-                  {reversed ? <>{grpB}{grpA}</> : <>{grpA}{grpB}</>}
-                </div>
-              )}
+          <div style={{ marginBottom: 24 }}>
+            {/* v31.3: Spaltenbreiten von Hand (`2fr 1fr …`) entfallen — `dex-ui-kpi-row`
+                verteilt selbst. `admin-counters` bleibt: die Mobil-Spalten haengen im SCSS daran. */}
+            <div className="admin-counters dex-ui-kpi-row">
+              {/* Angemeldet fuehrt — Auslastung direkt darunter. Kein `span 2`
+                  fuer die Gruppen: auf einspaltigem Mobil zieht das eine zweite
+                  Spalte auf; die Gruppen-Zeilen kuerzen mit Ellipse. */}
+              <div className="dex-ui-kpi dex-ui-kpi--green">
+                <div className="dex-ui-kpi-value">{show(totalActive, unknownAll)}</div>
+                <div className="dex-ui-kpi-label">{t('status.registered')}</div>
+                {showCap && (<>
+                  <div className="dex-ui-progress" style={{ marginTop: 8 }}>
+                    <div className={cx('dex-ui-progress-bar', barMod(totalActive, capTotal))} style={{ width: barW(totalActive, capTotal) }} />
+                  </div>
+                  <div className="dex-ui-kpi-sub">{capText}</div>
+                </>)}
+                {isSplitCapacity && (
+                  <div style={{
+                    marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--dex-gray-200)',
+                    fontSize: '0.82rem', display: 'flex', flexDirection: 'column', gap: 8,
+                  }}>
+                    {reversed ? <>{grpB}{grpA}</> : <>{grpA}{grpB}</>}
+                  </div>
+                )}
+              </div>
+              {/* v23.30: Warteliste direkt rechts neben „Angemeldet". */}
+              {hasWaitlistKPI && tile('dex-ui-kpi--orange', show(isConsolidatedMode ? consolidatedWaitlistByEmail.size : registrations.filter(r => r.Status === 'Warteliste').length, unknownAll), t('status.waitlist'))}
+              {tile('', show(isConsolidatedMode ? consolidatedQRByEmail.size : registrations.filter(r => r.Status === 'QR versendet').length, unknownAll), t('status.qrsent'))}
+              {tile('dex-ui-kpi--blue', show(isConsolidatedMode ? consolidatedCheckedByEmail.size : registrations.filter(r => r.Status === 'Eingecheckt').length, unknownAll), t('status.checkedin'))}
+              {tile('dex-ui-kpi--gray', show(isConsolidatedMode ? consolidatedCancelledByEmail.size : registrations.filter(r => r.Status === 'Abgemeldet').length, regsUnknown), t('status.cancelled'))}
             </div>
-            {/* v23.30: Warteliste direkt rechts neben „Angemeldet". */}
-            {hasWaitlistKPI && (
-              <div className="card" style={{ padding: 16, textAlign: 'center' }}>
-                <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-orange)' }}>
-                  {show(isConsolidatedMode ? consolidatedWaitlistByEmail.size : registrations.filter(r => r.Status === 'Warteliste').length, unknownAll)}
-                </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.waitlist')}</div>
+            {unknownHint && (
+              <div className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm" style={{ marginTop: 10 }}>
+                <span className="dex-ui-callout-icon"><AlertCircle size={14} /></span>
+                <span>{unknownHint}</span>
               </div>
             )}
-            <div className="card" style={{ padding: 16, textAlign: 'center' }}>
-              <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#6a1b9a' }}>
-                {show(isConsolidatedMode ? consolidatedQRByEmail.size : registrations.filter(r => r.Status === 'QR versendet').length, unknownAll)}
-              </div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.qrsent')}</div>
-            </div>
-            <div className="card" style={{ padding: 16, textAlign: 'center' }}>
-              <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-green)' }}>
-                {show(isConsolidatedMode ? consolidatedCheckedByEmail.size : registrations.filter(r => r.Status === 'Eingecheckt').length, unknownAll)}
-              </div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.checkedin')}</div>
-            </div>
-            <div className="card" style={{ padding: 16, textAlign: 'center' }}>
-              <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-gray-400)' }}>
-                {show(isConsolidatedMode ? consolidatedCancelledByEmail.size : registrations.filter(r => r.Status === 'Abgemeldet').length, regsUnknown)}
-              </div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.cancelled')}</div>
-            </div>
           </div>
         );
 };
