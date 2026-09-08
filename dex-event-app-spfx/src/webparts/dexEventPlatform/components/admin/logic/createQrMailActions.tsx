@@ -333,11 +333,27 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
     setIsSendingQR(true); setQrSendResult(null); setQrSentCount(0);
     let sent = 0; let extCount = 0;
     // v31.4: Wie oft konnte die gedruckte Nummer NICHT festgehalten werden?
-    // Auf einer Bestandsliste ohne die Spalte `QrSentId` laeuft der Versand
-    // bewusst weiter (kein Abbruch) — aber schweigend waere es die naechste
+    // Auf einer Bestandsliste ohne die Spalte `QrSentId` läuft der Versand
+    // bewusst weiter (kein Abbruch) — aber schweigend wäre es die nächste
     // Falle: Am Check-in greift dann die abgetippte Mail-Nummer nicht, und
-    // niemand wuesste warum.
+    // niemand wüsste warum.
+    //
+    // v31.4 (Review): drei getrennte Zähler statt eines. `idMissing` zählt nur
+    // noch die Zeilen, bei denen die Spalte fehlt (dafür gibt es die Abhilfe
+    // „Spalten fixen"); `noIdCount` sind die Zeilen ohne laufende Nummer — für
+    // sie druckt die Mail auch keine, es fehlt also nichts. `writeFailed` ist
+    // der Fall, der bis hierher gar nicht gemeldet wurde: Statuswechsel UND
+    // Nummer sind gescheitert (403/429/Netz). Die Person steht danach weiter
+    // auf „Angemeldet" und ohne Nummer — genau der Zustand, den v31.4
+    // abschaffen soll, und die Schlussmeldung sagte trotzdem „verschickt".
     let idMissing = 0;
+    let noIdCount = 0;
+    let writeFailed = 0;
+    const failedNames: string[] = [];
+    // Steht einmal fest, dass die Liste die Spalte nicht hat, kostet jede
+    // weitere Person sonst ZWEI MERGEs — in genau der Phase, in der die
+    // Drosselung der Normalfall ist.
+    let colMissing = false;
     for (const reg of eligible) {
       const qrData = `DEX|${selectedEvent.eventNumber}|${reg.ParticipantEmail}`;
       const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
@@ -368,8 +384,15 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
         // Reorder gelaufen sein, und dann stünde in der Spalte eine Zahl,
         // die in keiner Mail steht. Ohne die Spalte (Bestandsliste) setzt
         // der Aufruf still nur den Status — der Versand läuft weiter.
-        const st = await eventServiceRef.setQRSentStatus(selectedEvent.subsiteUrl, reg.Id, reg.TeilnehmerID);
-        if (st.ok && !st.idWritten) idMissing++;
+        const st = await eventServiceRef.setQRSentStatus(selectedEvent.subsiteUrl, reg.Id, reg.TeilnehmerID, colMissing);
+        if (!st.ok) {
+          writeFailed++;
+          if (failedNames.length < 12) failedNames.push(name || reg.ParticipantEmail || String(reg.Id));
+          console.warn(`[DEX] QR-Massenversand: Versand-Vermerk für ${reg.ParticipantEmail} nicht geschrieben (${st.reason}).`);
+        } else if (!st.idWritten) {
+          if (st.reason === 'no-id') noIdCount++;
+          else { idMissing++; colMissing = true; }
+        }
       }
       sent++; setQrSentCount(sent);
     }
@@ -381,14 +404,31 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
     setIsSendingQR(false);
     const idHint = idMissing > 0
       ? (isDe
-        ? ` Die gedruckten Nummern konnten nicht festgehalten werden (Spalte QrSentId fehlt auf der Teilnehmerliste) — bitte einmal „Spalten fixen" ausführen, sonst greift am Check-in die abgetippte Nummer aus der Mail nicht.`
-        : ` The printed numbers could not be stored (column QrSentId is missing on the attendee list) — please run “Fix columns” once, otherwise the typed number from the email will not resolve at check-in.`)
+        ? ` Bei ${idMissing} Person(en) konnte die gedruckte Nummer nicht festgehalten werden (Spalte QrSentId fehlt auf der Teilnehmerliste) — bitte einmal „Spalten fixen" ausführen und danach „QR-Nummern nachtragen", sonst greift am Check-in die abgetippte Nummer aus der Mail nicht.`
+        : ` For ${idMissing} person(s) the printed number could not be stored (column QrSentId is missing on the attendee list) — please run “Fix columns” once and then “Backfill QR numbers”, otherwise the typed number from the email will not resolve at check-in.`)
+      : '';
+    // v31.4 (Review): Zeilen ohne laufende Nummer sind kein Fehler — die Mail
+    // druckt dann auch keine. Sie brauchen aber eine eigene Zeile, sonst
+    // sucht der Organizer die Ursache bei „Spalten fixen".
+    const noIdHint = noIdCount > 0
+      ? (isDe
+        ? ` ${noIdCount} Person(en) haben keine laufende Nummer — in ihrer Mail steht deshalb auch keine; sie werden am Tisch über den Namen gesucht.`
+        : ` ${noIdCount} person(s) have no running number — their email shows none either; look them up by name at the desk.`)
+      : '';
+    // v31.4 (Review): Der stille Totalausfall. `setQRSentStatus` liefert bei
+    // 403/404/429 `ok:false` und schreibt WEDER Status NOCH Nummer — bis
+    // hierher lief `sent++` trotzdem weiter und die Meldung sagte nur
+    // „N QR-Codes verschickt". Die Mail ist raus, der Vermerk fehlt.
+    const failHint = writeFailed > 0
+      ? (isDe
+        ? ` Achtung: Bei ${writeFailed} Person(en) konnte der Versand-Vermerk nicht geschrieben werden (Drosselung oder fehlende Rechte) — sie stehen weiterhin auf „Angemeldet" und ohne gedruckte Nummer. Bitte den QR-Versand für sie wiederholen.${failedNames.length > 0 ? ` Betroffen u. a.: ${failedNames.join(', ')}${writeFailed > failedNames.length ? ' …' : ''}.` : ''}`
+        : ` Warning: for ${writeFailed} person(s) the send marker could not be written (throttling or missing permissions) — they remain on “Registered” and without a stored number. Please repeat the QR send for them.${failedNames.length > 0 ? ` Affected among others: ${failedNames.join(', ')}${writeFailed > failedNames.length ? ' …' : ''}.` : ''}`)
       : '';
     setQrSendResult((extCount > 0
       ? (isDe
         ? `${sent} QR-Codes verschickt (davon ${extCount} an dich/Organizer umgeleitet — externe Adressen).`
         : `${sent} QR codes sent (${extCount} of them redirected to you/the organizer — external addresses).`)
-      : (isDe ? `${sent} QR-Codes verschickt.` : `${sent} QR codes sent.`)) + idHint);
+      : (isDe ? `${sent} QR-Codes verschickt.` : `${sent} QR codes sent.`)) + failHint + idHint + noIdHint);
   };
 
   const saveSelfCheckInWindow = async (): Promise<void> => {

@@ -2543,10 +2543,10 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     cancelRegistration, cancelTeamMember, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, declineEvent,
   } = makeCancellationActions({ eventService, events, subsiteMap, currentUserEmail, currentUserName, currentUserFirstName, calDayParentOf, getMyRegistration, loadEvents });
 
-  async function getMyRegistration(eventId: string): Promise<SPRegistration | null> {
+  async function getMyRegistration(eventId: string, onHttpError?: (status: number) => void): Promise<SPRegistration | null> {
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return null;
-    return eventService.getMyRegistration(subsiteUrl, currentUserEmail);
+    return eventService.getMyRegistration(subsiteUrl, currentUserEmail, onHttpError);
   }
 
   async function checkRegistrationByEmail(eventId: string, email: string): Promise<SPRegistration | null> {

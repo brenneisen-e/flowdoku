@@ -268,11 +268,27 @@ export function shirtSizeLabel(key: string): string {
   if (!k) return '';
   const p = splitShirtKey(k);
   if (!p.size) return k.toUpperCase();
-  // Trenner am Ende des Vorsatzes wegnehmen: „herren-l" soll „Herren L"
-  // heißen, nicht „Herren- L".
-  const pre = p.prefix.replace(/[\s\-–—/_.]+$/, '');
+  if (!p.prefix) return p.size.toUpperCase();
+  /**
+   * v31.4 (Review): Der Trenner am Ende des Vorsatzes wird NICHT mehr
+   * weggeworfen, sondern behalten — „herren-l" heißt „Herren-L", nicht
+   * „Herren L".
+   *
+   * Grund ist der Rückweg: Seit v31.4 wandert ein Anzeigename wieder in einen
+   * Zählschlüssel (die Auswahl am Tisch und im Bearbeiten-Dialog besteht aus
+   * `alloc.rows[].size`, der gewählte Name landet in `ShirtIssued` und wird
+   * hier mit `shirtSizeKey` zurückgerechnet). `shirtSizeKey` streicht nur
+   * Leerzeichen; aus „Herren L" würde also „herrenl" statt „herren-l", und die
+   * Ausgabe liefe auf einen zweiten, gleich aussehenden Schlüssel — der Karton
+   * leert sich, die App zeigt ihn voll. Dieselbe Roundtrip-Falle wie bei
+   * `{{Organizer}}` (v30.74): Wer einen Wert „backt", schreibt den Umkehrweg
+   * gegen dieselbe Funktion. Für Vorsätze ohne Trenner („herrengröße") bleibt
+   * es beim Leerzeichen — dort schließt `shirtSizeKey` den Kreis von selbst.
+   */
+  const pre = p.prefix.replace(/\s+$/, '');
   if (!pre) return p.size.toUpperCase();
-  return pre.charAt(0).toUpperCase() + pre.substring(1) + ' ' + p.size.toUpperCase();
+  const hasSep = /[-–—/_.]$/.test(pre);
+  return pre.charAt(0).toUpperCase() + pre.substring(1) + (hasSep ? '' : ' ') + p.size.toUpperCase();
 }
 
 /** Sortierung: erst nach Vorsatz (ohne Vorsatz zuerst), dann nach Größe. */
@@ -406,6 +422,16 @@ export interface ShirtAllocationRow {
    *  die Person eingecheckt ist, ohne dass jemand die Ausgabe festgehalten
    *  hat. Wer „ausgegeben" anzeigt, nennt diese Zahl dazu. */
   issuedAssumed: number;
+  /**
+   * v31.4 (Review): Wie viele Stück MEHR ausgegeben wurden, als im Bestand
+   * stehen. `spare` klemmt bei 0 (eine negative Kartonzahl ist keine
+   * Aussage), und der Ausgabe-Vorlauf bricht die betroffenen Personen vor
+   * `missing` ab — ohne diese Zahl verschwände die Über-Ausgabe restlos:
+   * „fehlt 5" am Morgen kippt am Lauftag auf „reicht", genau in dem Moment,
+   * in dem der Mangel real wird. Wer „reicht es?" beantwortet, muss `over`
+   * wie `missing` behandeln.
+   */
+  over: number;
 }
 
 export interface ShirtAllocationResult {
@@ -536,6 +562,16 @@ export function shirtAllocate(
     const em = (r.ParticipantEmail || '').toLowerCase().trim();
     // Dieselbe Person kann auf zwei Zeilen stehen (Klammer + Termin) — sie hat
     // trotzdem EIN Shirt bekommen und darf den Bestand nicht zweimal belasten.
+    //
+    // v31.4 (Review): Die Grenze gehört dazu, statt Eindeutigkeit zu
+    // behaupten. Die E-Mail ist der einzige Schlüssel, den es gibt, aber sie
+    // ist NICHT eindeutig (CLAUDE.md: SMTP-Adresse vs. UPN/Alias) — steht
+    // dieselbe Person unter zwei Schreibweisen, greift dieser Wächter nicht
+    // und sie wird zweimal vom Bestand abgezogen. Dasselbe bei einer Zeile
+    // ohne Adresse: `em` ist '', der Wächter ist wirkungslos, und
+    // `pickShirtAnswerRows` lässt solche Zeilen bewusst einzeln stehen. Beides
+    // ist hier nicht heilbar (die zweite Adresse ist real) — wer eine Zahl aus
+    // dieser Rechnung meldet, muss die Doppelung kennen.
     if (em && issuedSeen[em]) continue;
     if (em) { issuedSeen[em] = true; issuedByEmail[em] = iss; }
     issuedOf.set(r, iss);
@@ -658,6 +694,10 @@ export function shirtAllocate(
       // v31.4: Nie negativ. Mehr ausgegeben als eingetragen heißt „nichts mehr
       // da" — eine Zahl unter null wäre keine Aussage über den Karton.
       spare: result.hasStock ? Math.max(0, remaining[k] || 0) : 0,
+      // v31.4 (Review): der Gegenwert zu `spare` — was unter null steht, ist
+      // die Über-Ausgabe. Nur mit Bestand aussagekräftig; ohne eingetragenen
+      // Bestand ist „mehr als da" keine Aussage.
+      over: result.hasStock ? Math.max(0, -(remaining[k] || 0)) : 0,
       issued: issuedCount[k] || 0,
       issuedAssumed: issuedAssumedCount[k] || 0,
     }));

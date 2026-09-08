@@ -282,6 +282,21 @@ export default function ShirtSizeModal(props: {
           ? [label, String(r.count), a ? String(a.stock) : '—', a ? String(a.missing) : '—', a ? String(a.spare) : '—', r.names.join(', '), a ? String(a.issued) : '—', a ? String(a.issuedAssumed) : '—']
           : [label, String(r.count), r.names.join(', '), a ? String(a.issued) : '—', a ? String(a.issuedAssumed) : '—']);
       }
+      // v31.4 (Review): Größen, die NUR ausgegeben wurden, haben keine
+      // Tally-Zeile (der Tally kennt nur aktive Wünsche). Ohne diese Ergänzung
+      // summiert sich die Spalte „Ausgegeben" nicht auf die Summenzeile
+      // „davon bereits ausgegeben" — und wer den Karton nachzählt, sucht die
+      // fehlende Zeile.
+      if (alloc) {
+        const tallyKeys: Record<string, true> = {};
+        result.rows.forEach(r => { if (r.size && !r.optOut) tallyKeys[shirtSizeKey(r.size)] = true; });
+        alloc.rows.forEach(a2 => {
+          if (tallyKeys[a2.key] || a2.issued <= 0) return;
+          rows.push(hasStock
+            ? [a2.size, '0', String(a2.stock), String(a2.missing), String(a2.spare), '', String(a2.issued), String(a2.issuedAssumed)]
+            : [a2.size, '0', '', String(a2.issued), String(a2.issuedAssumed)]);
+        });
+      }
       rows.push([]);
       rows.push(['Summe', String(result.total), '']);
       // v31.3: Was davon wirklich bestellt wird — Abwahl und fehlende Angaben
@@ -293,12 +308,17 @@ export default function ShirtSizeModal(props: {
       // sein müsste. Die Bestellliste wird weitergereicht; die Abendzahl gehört
       // deshalb in die Datei, nicht nur in den Dialog.
       if (totalIssued > 0) {
-        rows.push(['davon bereits ausgegeben', String(totalIssued), '']);
+        // v31.4 (Review): Dieselbe Beschriftung wie im Dialog. Ist ein Termin
+        // nicht lesbar, ist „ausgegeben" eine Untergrenze und „im Karton" eine
+        // OBERGRENZE (die fehlenden Ausgaben lassen ihn rechnerisch wachsen) —
+        // in einer Datei, die weitergereicht wird, ist eine harte Zahl dafür
+        // die schlechteste Wahl.
+        rows.push([partial ? 'davon bereits ausgegeben (mind.)' : 'davon bereits ausgegeben', String(totalIssued), '']);
         // v31.4 (Nachtrag): Eine Annahme, die in einer Excel als harte Zahl
         // steht, ist die schlechteste Sorte Zahl — deshalb steht sie hier
         // getrennt und mit ihrem Grund.
         if (totalIssuedAssumed > 0) rows.push([`davon angenommen (eingecheckt, ohne Ausgabe-Eintrag)`, String(totalIssuedAssumed), '']);
-        if (hasStock) rows.push(['rechnerisch noch im Karton', String(totalInBox), '']);
+        if (hasStock) rows.push([partial ? 'rechnerisch noch im Karton (höchstens)' : 'rechnerisch noch im Karton', String(totalInBox), '']);
       }
       if (skipped.length > 0) {
         // v31.3: Der Hinweis gehört IN die Datei — eine Bestellliste wird
@@ -360,6 +380,14 @@ export default function ShirtSizeModal(props: {
     // B2Run-Event standen so in der Bestellung.
     (result ? result.rows : []).forEach(r => { if (r.size && !r.optOut) seen[shirtSizeKey(r.size)] = r.size; });
     Object.keys(stockInput).forEach(k => { if (!seen[k] && isShirtSizeKey(k)) seen[k] = shirtSizeLabel(k); });
+    // v31.4 (Review): `shirtAllocate` legt seit v31.4 ausdrücklich auch für
+    // Größen eine Zeile an, die NUR ausgegeben wurden (Reserve aus einem
+    // anderen Karton, oder die einzige Wünscherin ist inzwischen No-Show).
+    // Der Filter `!!seen[k]` unten warf sie wieder weg: Die Kachel zählte die
+    // Ausgabe, die Tabelle kannte die Größe nicht — und ohne Zeile gibt es
+    // auch kein Bestandsfeld, über das man sie je in die Rechnung holen
+    // könnte. Der Vertrag wurde geändert, der Aufrufer war nicht nachgezogen.
+    (alloc ? alloc.rows : []).forEach(r => { if (!seen[r.key] && r.issued > 0 && r.size) seen[r.key] = r.size; });
     // v31.2: Die Schlüssel aus `seen` hinten anhängen — eine über „Größe
     // ergänzen" neu angelegte Größe steht mit leerem Wert noch nicht in
     // `stockFromInput`, also auch nicht in `alloc.rows`, und fiel bis dahin
@@ -480,11 +508,18 @@ export default function ShirtSizeModal(props: {
                 : a
                   ? (a.missing > 0
                     ? <span className="dex-ui-pill dex-ui-pill--red">{isDe ? `fehlt ${a.missing}` : `${a.missing} short`}</span>
-                    // v31.3: Mit einem gesperrten Termin ist „reicht" eine Zusage,
-                    // die die Daten nicht decken — dann heißt es „reicht bisher".
-                    : partial
-                      ? <span className="dex-ui-pill dex-ui-pill--gray">{isDe ? 'reicht bisher' : 'enough so far'}{a.spare > 0 ? ` (+${a.spare})` : ''}</span>
-                      : <span className="dex-ui-pill dex-ui-pill--green"><Check size={12} /> {isDe ? 'reicht' : 'enough'}{a.spare > 0 ? ` (+${a.spare})` : ''}</span>)
+                    // v31.4 (Review): Über-Ausgabe ist derselbe Mangel, nur
+                    // später bemerkt. Der Annahme-Vorlauf zieht auch dann ein
+                    // Stück ab, wenn der Bestand längst leer ist; ohne diesen
+                    // Zweig kippte „fehlt 5" am Lauftag auf „reicht" — genau
+                    // in dem Moment, in dem die fünf Trikots real fehlen.
+                    : a.over > 0
+                      ? <span className="dex-ui-pill dex-ui-pill--red">{isDe ? `${a.over} mehr ausgegeben als da` : `${a.over} more handed out than in stock`}</span>
+                      // v31.3: Mit einem gesperrten Termin ist „reicht" eine Zusage,
+                      // die die Daten nicht decken — dann heißt es „reicht bisher".
+                      : partial
+                        ? <span className="dex-ui-pill dex-ui-pill--gray">{isDe ? 'reicht bisher' : 'enough so far'}{a.spare > 0 ? ` (+${a.spare})` : ''}</span>
+                        : <span className="dex-ui-pill dex-ui-pill--green"><Check size={12} /> {isDe ? 'reicht' : 'enough'}{a.spare > 0 ? ` (+${a.spare})` : ''}</span>)
                   : <span className="dex-ui-muted">—</span>}
           </td>
           <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -655,11 +690,18 @@ export default function ShirtSizeModal(props: {
                 <div className="dex-ui-kpi-label">{isDe ? 'ohne Größenangabe' : 'without a size'}</div></div>}
             {/* v31.4: Die Abend-Frage: Wie viele sind raus, was liegt noch da? */}
             {totalIssued > 0 && (
-              <div className="dex-ui-kpi dex-ui-kpi--blue"><div className="dex-ui-kpi-value">{totalIssued}</div>
+              <div className="dex-ui-kpi dex-ui-kpi--blue"><div className="dex-ui-kpi-value">{atLeast(totalIssued)}</div>
                 <div className="dex-ui-kpi-label">{isDe ? 'Trikots ausgegeben' : 'shirts handed out'}</div>
                 {/* v31.4 (Nachtrag): Die Kachel zählt die Annahmen mit — und sagt es. */}
                 {totalIssuedAssumed > 0 && <div className="dex-ui-kpi-sub">{isDe ? `davon ${totalIssuedAssumed} angenommen` : `${totalIssuedAssumed} of them assumed`}</div>}
-                {hasStock && <div className="dex-ui-kpi-sub">{isDe ? `noch ${totalInBox} im Karton` : `${totalInBox} left in the box`}</div>}</div>
+                {/* v31.4 (Review): „noch X im Karton" ist bei einem gesperrten
+                    Termin keine Untergrenze, sondern eine OBERGRENZE — die dort
+                    fehlenden Ausgaben lassen den rechnerischen Inhalt STEIGEN.
+                    Deshalb hier „höchstens", nicht „mind." (CLAUDE.md: ein
+                    Lesefehler ist keine Null). */}
+                {hasStock && <div className="dex-ui-kpi-sub">{partial
+                  ? (isDe ? `höchstens ${totalInBox} im Karton` : `at most ${totalInBox} left in the box`)
+                  : (isDe ? `noch ${totalInBox} im Karton` : `${totalInBox} left in the box`)}</div>}</div>
             )}
           </div>
 
@@ -705,19 +747,28 @@ export default function ShirtSizeModal(props: {
                 <span className="dex-ui-callout-icon"><Shirt size={16} /></span>
                 <span>
                   {isDe
-                    ? <><strong>{totalIssued} {totalIssued === 1 ? 'Trikot ist' : 'Trikots sind'} ausgegeben</strong>{hasStock ? <> — nach deinem Bestand liegen noch <strong>{totalInBox}</strong> im Karton.</> : <>. Trag oben einen Bestand ein, dann rechnet die App dir aus, was noch da ist.</>}{' '}
-                      Ausgegebene Trikots bleiben abgezogen, auch wenn die Person später abgemeldet oder als No-Show markiert wird — sie hat es ja mitgenommen.
+                    ? <><strong>{atLeast(totalIssued)} {totalIssued === 1 ? 'Trikot ist' : 'Trikots sind'} ausgegeben</strong>{hasStock ? <> — nach deinem Bestand liegen {partial ? 'höchstens' : 'noch'} <strong>{totalInBox}</strong> im Karton{partial ? <> (für {skipped.length === 1 ? 'einen Termin' : 'einige Termine'} fehlen die Ausgaben — die echte Zahl ist kleiner)</> : null}.</> : <>. Trag oben einen Bestand ein, dann rechnet die App dir aus, was noch da ist.</>}{' '}
+                      {/* v31.4 (Review): Der Satz gilt nur für die FESTGEHALTENEN
+                          Ausgaben. Der angenommene Teil hängt am Status
+                          'Eingecheckt' und fällt bei Abmeldung/No-Show wieder in
+                          den Bestand zurück — genau das Gegenteil dessen, was
+                          hier stand. (Auf `CheckedInDate` umzustellen geht
+                          nicht: `markNoShowParticipant` schreibt dieselbe
+                          Spalte, ein No-Show sähe dann aus wie ein Check-in.) */}
+                      {totalIssued > totalIssuedAssumed && <>Festgehaltene Ausgaben bleiben abgezogen, auch wenn die Person später abgemeldet oder als No-Show markiert wird — sie hat es ja mitgenommen.{' '}</>}
                       {/* v31.4 (Nachtrag): Die Annahme muss dastehen, sonst hält der Organizer eine Schätzung für ein Protokoll. */}
                       {totalIssuedAssumed > 0 && <> <strong>{totalIssuedAssumed} davon {totalIssuedAssumed === 1 ? 'ist angenommen' : 'sind angenommen'}:</strong>{' '}
                         Wer eingecheckt ist, aber keinen Ausgabe-Eintrag hat, zählt mit seiner Wunschgröße als abgeholt — den Ausgabe-Knopf am
-                        Check-in-Tisch gibt es erst seit v31.4. Sobald jemand dort eine Größe festhält, gilt diese. Ändern kannst du das je Person
-                        in der Teilnehmerliste über &bdquo;Bearbeiten&ldquo;.</>}</>
-                    : <><strong>{totalIssued} {totalIssued === 1 ? 'shirt has' : 'shirts have'} been handed out</strong>{hasStock ? <> — going by your stock, <strong>{totalInBox}</strong> are still in the box.</> : <>. Enter a stock above and the app works out what is left.</>}{' '}
-                      Handed-out shirts stay deducted even if the person is cancelled or marked as a no-show later — they took it with them.
+                        Check-in-Tisch gibt es erst seit v31.4. Sobald jemand dort eine Größe festhält, gilt diese. Auf eine ANDERE Größe ändern
+                        kannst du das je Person in der Teilnehmerliste über &bdquo;Bearbeiten&ldquo;. Angenommene Ausgaben verschwinden allerdings wieder, sobald die Person
+                        abgemeldet oder als No-Show markiert wird — halt sie am Tisch fest, wenn die Zahl den Abend überstehen soll.</>}</>
+                    : <><strong>{atLeast(totalIssued)} {totalIssued === 1 ? 'shirt has' : 'shirts have'} been handed out</strong>{hasStock ? <> — going by your stock, {partial ? 'at most' : ''} <strong>{totalInBox}</strong> are still in the box{partial ? <> (handouts are missing for {skipped.length === 1 ? 'one date' : 'some dates'} — the real number is lower)</> : null}.</> : <>. Enter a stock above and the app works out what is left.</>}{' '}
+                      {totalIssued > totalIssuedAssumed && <>Recorded handouts stay deducted even if the person is cancelled or marked as a no-show later — they took it with them.{' '}</>}
                       {totalIssuedAssumed > 0 && <> <strong>{totalIssuedAssumed} of {totalIssuedAssumed === 1 ? 'them is assumed' : 'them are assumed'}:</strong>{' '}
                         anyone who is checked in but has no handout entry counts as served with their wished size — the handout button at the
                         check-in desk only exists since v31.4. As soon as someone records a size there, that one counts. You can change it per
-                        person in the attendee list via &ldquo;Edit&rdquo;.</>}</>}
+                        person in the attendee list via &ldquo;Edit&rdquo;. Assumed handouts do disappear again once the person is cancelled or
+                        marked as a no-show — record them at the desk if the number should survive the evening.</>}</>}
                 </span>
               </div>
             )}

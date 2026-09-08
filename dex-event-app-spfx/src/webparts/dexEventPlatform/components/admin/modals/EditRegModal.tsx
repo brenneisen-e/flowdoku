@@ -48,11 +48,20 @@ export interface EditRegModalProps {
   registrations: SPRegistration[];
   saveEdit: () => Promise<void>;
   selectedEvent: DeloitteEvent;
+  /**
+   * v31.4 (Review): Das Eltern-Event, wenn ein Termin gewählt ist. Die
+   * Größenfrage kann auf der Klammer stehen und wird von den Terminen nicht
+   * geerbt — dann fand `shirtFieldOf` hier nichts und der ganze Abschnitt
+   * „Trikot-Ausgabe" fiel ersatzlos weg, obwohl das Check-in-Team am Termin
+   * eine Größe festgehalten hat. Der Tisch (`CheckInPage.shirtFieldsFor`) und
+   * die Bestellliste (`ShirtSizeModal`) lösen längst über BEIDE Ebenen auf.
+   */
+  parentEvent?: DeloitteEvent | null;
   setEditForm: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 }
 
 export const EditRegModal: React.FC<EditRegModalProps> = (p) => {
-  const { closeEditModal, editError, editForm, editingReg, isDe, isSavingEdit, registrations, saveEdit, selectedEvent, setEditForm } = p;
+  const { closeEditModal, editError, editForm, editingReg, isDe, isSavingEdit, registrations, saveEdit, selectedEvent, parentEvent, setEditForm } = p;
   // v31.2: Der Aufrufer mountet den Dialog je Öffnen neu — der Aufklapper
   // startet deshalb verlässlich geschlossen.
   const [profileOpen, setProfileOpen] = React.useState(false);
@@ -101,15 +110,31 @@ export const EditRegModal: React.FC<EditRegModalProps> = (p) => {
    * `assumedWish` ist die Annahme aus dem Check-in (s. `shirtAllocate`): Sie
    * wird bewusst NICHT als Wert vorgetragen — sonst schriebe ein Klick auf
    * „Speichern" eine Vermutung in die Spalte und machte sie zur Tatsache.
+   *
+   * v31.4 (Review): Gesucht wird über Termin UND Klammer (das Größenfeld darf
+   * auf beiden Ebenen stehen), und der Abschnitt bleibt sichtbar, sobald die
+   * Zeile einen `ShirtIssued`-Wert trägt — auch ohne gefundenes Feld. Sonst
+   * gäbe es für eine am Tisch festgehaltene, falsche Größe keinen einzigen
+   * Weg zurück.
    */
   const shirt = React.useMemo(() => {
-    const flds = selectedEvent.eventSpecificFields || [];
+    const flds = (selectedEvent.eventSpecificFields || [])
+      .concat((parentEvent && parentEvent.eventSpecificFields) || []);
     const field = shirtFieldOf(flds, registrations);
-    if (!field) return null;
+    const savedIssue = parseShirtIssue(editingReg && editingReg.ShirtIssued);
+    if (!field) {
+      // Kein Größenfeld, aber ein festgehaltener Wert: nur der Wert selbst als
+      // Auswahl — mehr weiß die App an dieser Stelle ehrlicherweise nicht.
+      if (!savedIssue || !savedIssue.size) return null;
+      return { sizes: [savedIssue.size], assumedWish: '', noField: true };
+    }
     // Der Bestand hängt am Hauptevent; bei einem Termin ohne eigenen Bestand
     // bleibt die Liste trotzdem vollständig — `shirtAllocate` nimmt auch die
-    // gewünschten und die bereits ausgegebenen Größen auf.
-    const alloc = shirtAllocate(flds, registrations, parseShirtStock(selectedEvent.emailTemplateOverrides));
+    // gewünschten und die bereits ausgegebenen Größen auf. v31.4 (Review):
+    // Deshalb zuerst die Klammer fragen, dann das gewählte Event.
+    const alloc = shirtAllocate(flds, registrations, parseShirtStock(
+      (parentEvent && parentEvent.emailTemplateOverrides) || selectedEvent.emailTemplateOverrides
+    ));
     const em = ((editingReg && editingReg.ParticipantEmail) || '').toLowerCase().trim();
     const a = em ? alloc.byEmail[em] : undefined;
     return {
@@ -117,8 +142,9 @@ export const EditRegModal: React.FC<EditRegModalProps> = (p) => {
       // können dieselbe Anzeige-Schreibweise tragen.
       sizes: alloc.rows.map(r => r.size).filter((s, i, arr) => !!s && arr.indexOf(s) === i),
       assumedWish: (a && a.issued && a.issuedAssumed) ? a.issued : '',
+      noField: false,
     };
-  }, [selectedEvent, registrations, editingReg]);
+  }, [selectedEvent, parentEvent, registrations, editingReg]);
   // „andere Größe" bleibt offen, sobald der Nutzer sie gewählt hat; von selbst
   // geht sie auf, wenn der gespeicherte Wert in keiner Kachel steckt.
   const [shirtOther, setShirtOther] = React.useState(false);
@@ -407,6 +433,27 @@ export const EditRegModal: React.FC<EditRegModalProps> = (p) => {
                 ? 'Gespeichert wird mit „Speichern" unten — zusammen mit den übrigen Änderungen. Fehlt auf dieser Teilnehmerliste die Spalte, sagt die Meldung es dir.'
                 : 'Saved with “Save” below, together with the other changes. If the column is missing on this attendee list, the message will say so.'}
             </p>
+            {/* v31.4 (Review): „Nichts ausgegeben" lässt sich speichern, aber
+                nicht durchhalten: `shirtAllocate` zählt jede eingecheckte
+                Person OHNE Spalteneintrag wieder mit ihrer Wunschgröße als
+                abgeholt. Eine gelöschte Ausgabe fällt damit sofort in die
+                Annahme zurück — und der Hinweiskasten darunter erscheint
+                gerade dann NICHT, weil `assumedWish` bei einem erfassten Wert
+                leer ist. Der Satz gehört also genau hierhin. */}
+            {shirtSaved && !shirtIssued && (
+              <div className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm" style={{ marginTop: 8 }}>
+                <span className="dex-ui-callout-icon"><AlertCircle size={14} /></span>
+                <span>
+                  {isDe
+                    ? <>Der bisherige Eintrag <strong>{shirtSaved.size}</strong> wird beim Speichern gelöscht. Ist die Person eingecheckt,
+                      zählt sie danach wieder mit ihrer Wunschgröße als abgeholt (Annahme) — in der Bestellliste ändert sich die Zahl
+                      dann nicht. Wer wirklich keins bekommen hat, muss dafür ausgecheckt oder als No-Show markiert werden.</>
+                    : <>The existing entry <strong>{shirtSaved.size}</strong> is deleted when you save. If the person is checked in, they
+                      count as collected with their wished size again (assumption) — the number in the order list will not change.
+                      For someone who really got none, check them out or mark them as a no-show.</>}
+                </span>
+              </div>
+            )}
             {/* Die Annahme aus der Bestellliste benennen, statt sie als Wert
                 vorzutragen: Ein vorbelegtes Feld, das nur eine Vermutung ist,
                 wird beim nächsten Speichern zur Tatsache. */}

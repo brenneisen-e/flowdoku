@@ -1879,14 +1879,18 @@ export class EventService {
   }
 
   /** v31.4: `qrSentId` ist die Nummer, die in DIESER Mail gedruckt wurde.
-   *  `idWritten: false` heißt: Status gesetzt, Spalte `QrSentId` fehlt auf
-   *  der Liste (Bestands-Event → einmal „Spalten fixen"). */
+   *  `idWritten: false` heißt: Status gesetzt, Nummer nicht — `reason` sagt
+   *  warum (`'no-id'` = es gab keine Nummer zu schreiben, `'column-missing'`
+   *  = Bestands-Event, einmal „Spalten fixen", `'other'` = Fehlschlag).
+   *  `skipIdColumn` spart den zweiten MERGE, wenn die Liste die Spalte
+   *  nachweislich nicht hat. */
   public async setQRSentStatus(
     subsiteUrl: string,
     itemId: number,
-    qrSentId?: number
-  ): Promise<{ ok: boolean; idWritten: boolean }> {
-    return registrationStatus.setQRSentStatus(this, subsiteUrl, itemId, qrSentId);
+    qrSentId?: number,
+    skipIdColumn?: boolean
+  ): Promise<{ ok: boolean; idWritten: boolean; reason: 'ok' | 'no-id' | 'column-missing' | 'other' }> {
+    return registrationStatus.setQRSentStatus(this, subsiteUrl, itemId, qrSentId, skipIdColumn);
   }
 
   /** v31.4: Gedruckte QR-Nummer nachtragen, ohne den Status zu berühren

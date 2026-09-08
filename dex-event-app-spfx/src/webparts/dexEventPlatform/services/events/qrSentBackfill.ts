@@ -35,6 +35,13 @@ export interface QrMailHit {
   redirected: boolean;
   /** Die Nummer, die in dieser Mail gedruckt stand. */
   qrId: number;
+  /**
+   * v31.4 (Review): Versand-Status der Zeile ('Pending' | 'Sent' | 'Failed',
+   * leer bei Alt-Zeilen). Eine Mail mit 'Failed' wurde NIE zugestellt — sie
+   * hat also auch nie eine Nummer gedruckt und darf eine tatsächlich
+   * verschickte nicht über „die höchste Id gewinnt" verdrängen.
+   */
+  status: string;
 }
 
 export interface QrMailScan {
@@ -102,7 +109,7 @@ export async function scanQrMailsForEvent(svc: EventService, eventId: string): P
   const safeId = (eventId || '').replace(/'/g, "''");
   if (!safeId) return out;
   let url: string | null = `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items`
-    + `?$select=Id,Recipient,Body&$filter=EventId eq '${safeId}' and EmailType eq 'QRCode'`
+    + `?$select=Id,Recipient,Body,Status&$filter=EventId eq '${safeId}' and EmailType eq 'QRCode'`
     + `&$orderby=Id asc&$top=20`;
   while (url) {
     let resp;
@@ -128,6 +135,7 @@ export async function scanQrMailsForEvent(svc: EventService, eventId: string): P
         recipient,
         redirected: !!intended,
         qrId,
+        status: String(it.Status || ''),
       });
     }
     url = data['odata.nextLink'] || (data.d && data.d.__next) || null;

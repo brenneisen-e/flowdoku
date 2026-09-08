@@ -235,7 +235,7 @@ export function useEditModalHandlers(ctx: UseEditModalHandlersCtx): UseEditModal
         if (st === 400) {
           return isDe
             ? 'Das ausgegebene Trikot konnte nicht gespeichert werden: Auf dieser Teilnehmerliste fehlt die Spalte ShirtIssued. Führe einmal „Spalten fixen" für das Event aus, dann noch einmal speichern. Die übrigen Änderungen sind gespeichert.'
-            : 'The handed-out shirt could not be saved: this attendee list is missing the ShirtIssued column. Run „Fix columns" for the event once, then save again. The other changes were saved.';
+            : 'The handed-out shirt could not be saved: this attendee list is missing the ShirtIssued column. Run “Fix columns” for the event once, then save again. The other changes were saved.';
         }
         // Status 0 heißt: gar keine Antwort (Netz, Abbruch) — „HTTP 0" wäre
         // eine Zahl, die nichts erklärt.
@@ -271,7 +271,7 @@ export function useEditModalHandlers(ctx: UseEditModalHandlersCtx): UseEditModal
         // fixen'-Run). Hilfreicher Hinweis auf den Repair-Button.
         setEditError(isDe
           ? 'Speichern fehlgeschlagen — vermutlich fehlt eine SP-Spalte in der Teilnehmerliste. Klicke einmal „Spalten fixen" im Toolbox-Bereich des Events, dann erneut versuchen.'
-          : 'Save failed — likely a missing SP column on the participant list. Click „Fix columns" in the event toolbox once, then retry.');
+          : 'Save failed — likely a missing SP column on the participant list. Click “Fix columns” in the event toolbox once, then retry.');
         return;
       }
       // v9.0: Audit-Log mit Diff der geänderten Felder

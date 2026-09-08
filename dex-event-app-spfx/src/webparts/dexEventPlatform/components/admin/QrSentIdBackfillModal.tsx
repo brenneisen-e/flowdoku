@@ -34,7 +34,17 @@ import { AlertCircle, QrCode } from '../Icons';
 /** Nur diese Zeilen bekommen eine QR-Mail — Abgemeldete und Wartelistler nicht. */
 const BACKFILL_STATI = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'No-Show'];
 
-type Verdict = 'diff' | 'same' | 'organizer' | 'none';
+/**
+ * v31.4 (Review): `'dup'` ist neu. Fiele dieselbe Nummer auf zwei Zeilen
+ * derselben Teilnehmerliste, wäre der ID-Check-in für beide GESPERRT — die
+ * Seite wertet zwei Treffer als Datenfehler und verweigert die Eingabe. Vor
+ * dem Nachtrag trugen die Zeilen verschiedene laufende Nummern und lösten
+ * sauber auf; ein Nachtrag, der eine neue Sperre baut, ist schlimmer als
+ * keiner. Zwei Wege dahin: dieselbe Person mit zwei aktiven Zeilen (der
+ * Dubletten-Fall aus v30.73) oder zwei Personen, die aus zwei Mails dieselbe
+ * Zahl erben (z. B. eine Testmail mit echter Nummer).
+ */
+type Verdict = 'diff' | 'same' | 'organizer' | 'dup' | 'none';
 
 interface BackfillRow {
   key: string;
@@ -75,6 +85,15 @@ export default function QrSentIdBackfillModal(props: {
   const [progress, setProgress] = React.useState({ done: 0, total: 0 });
   const [resultMsg, setResultMsg] = React.useState('');
   const [resultIsError, setResultIsError] = React.useState(false);
+  /**
+   * v31.4 (Review): Der Lese-Effect hatte sein `cancelled`-Flag, der
+   * Schreiblauf nicht — er lief nach dem Aushängen weiter und setzte State
+   * auf eine abgemeldete Komponente. Ein Ref statt einer lokalen Variablen,
+   * weil `runWrite` kein Effect ist und beide Pfade dieselbe Antwort
+   * brauchen: „gibt es diesen Dialog noch?"
+   */
+  const aliveRef = React.useRef(true);
+  React.useEffect(() => () => { aliveRef.current = false; }, []);
 
   const targets = React.useMemo(
     () => [event].concat(childEvents).filter(e => !!e && !!e.subsiteUrl),
@@ -142,13 +161,23 @@ export default function QrSentIdBackfillModal(props: {
         }
         // 5) Je Person gewinnt die Mail mit der HÖCHSTEN Id — ein zweiter
         //    Versand ersetzt den ersten.
+        //    v31.4 (Review): ABER eine Zeile mit Status 'Failed' hat nie eine
+        //    Mail zugestellt und damit nie eine Nummer gedruckt. Sie darf eine
+        //    tatsächlich verschickte nicht verdrängen; nur wenn es zu dieser
+        //    Adresse gar keine zugestellte Zeile gibt, zählt sie ersatzweise.
+        const failedFirst = (h: QrMailHit): number => (h.status === 'Failed' ? 1 : 0);
         const byEmail: Record<string, QrMailHit> = {};
         for (const h of usable) {
           const k = h.email;
           if (!k) continue;
-          if (!byEmail[k] || h.mailId > byEmail[k].mailId) byEmail[k] = h;
+          const cur = byEmail[k];
+          if (!cur) { byEmail[k] = h; continue; }
+          const rank = failedFirst(cur) - failedFirst(h);
+          if (rank > 0 || (rank === 0 && h.mailId > cur.mailId)) byEmail[k] = h;
         }
-        // 6) Zeilen bilden.
+        // 6) Zeilen bilden — erst je Event sammeln, damit Schritt 7 die
+        //    Eindeutigkeit auf DIESER Teilnehmerliste prüfen kann.
+        const evRows: BackfillRow[] = [];
         for (const r of regs) {
           if (BACKFILL_STATI.indexOf(r.Status || '') < 0) continue;
           const email = (r.ParticipantEmail || '').toLowerCase().trim();
@@ -163,7 +192,7 @@ export default function QrSentIdBackfillModal(props: {
             if (orgSet[email] && !hit.redirected) verdict = 'organizer';
             else verdict = (cur !== null && hit.qrId === cur) ? 'same' : 'diff';
           }
-          collected.push({
+          evRows.push({
             key: `${ev.id}:${r.Id}`,
             eventTitle: ev.title,
             subsiteUrl: ev.subsiteUrl as string,
@@ -173,14 +202,27 @@ export default function QrSentIdBackfillModal(props: {
             current: cur,
             qrId: hit ? hit.qrId : null,
             verdict,
-            include: !!hit,
+            // v31.4 (Review): 'organizer' heißt „unentscheidbar" — und
+            // unbekannt SPERRT, statt freizugeben (CLAUDE.md). Vorausgewählt
+            // hätte der Knopf per Vorgabe eine Testmail-Nummer geschrieben,
+            // und `QrSentId` schlägt am Check-in die laufende Nummer.
+            include: !!hit && verdict !== 'organizer',
           });
         }
+        // 7) v31.4 (Review): Eindeutigkeit je Teilnehmerliste. Zwei Zeilen mit
+        //    derselben `QrSentId` sperren den ID-Check-in für beide — solche
+        //    Zeilen werden benannt und NICHT geschrieben.
+        const perNumber: Record<string, number> = {};
+        evRows.forEach(r => { if (r.qrId !== null) { const k = String(r.qrId); perNumber[k] = (perNumber[k] || 0) + 1; } });
+        evRows.forEach(r => {
+          if (r.qrId !== null && perNumber[String(r.qrId)] > 1) { r.verdict = 'dup'; r.include = false; }
+        });
+        evRows.forEach(r => collected.push(r));
       }
       if (cancelled) return;
       // Reihenfolge: erst was abweicht (dort passiert etwas), dann die zu
       // prüfenden, dann die ohne Fund, zuletzt die unveränderten.
-      const rank = (v: Verdict): number => (v === 'diff' ? 0 : v === 'organizer' ? 1 : v === 'none' ? 2 : 3);
+      const rank = (v: Verdict): number => (v === 'diff' ? 0 : v === 'dup' ? 1 : v === 'organizer' ? 2 : v === 'none' ? 3 : 4);
       collected.sort((a, b) => (rank(a.verdict) - rank(b.verdict)) || a.name.localeCompare(b.name));
       setRows(collected);
       setTestSkipped(skipped);
@@ -203,21 +245,39 @@ export default function QrSentIdBackfillModal(props: {
   const diffCount = rows.filter(r => r.verdict === 'diff').length;
   const sameCount = rows.filter(r => r.verdict === 'same').length;
   const orgCount = rows.filter(r => r.verdict === 'organizer').length;
+  const dupRows = rows.filter(r => r.verdict === 'dup');
   const missing = rows.filter(r => r.verdict === 'none');
   const writable = rows.filter(r => r.qrId !== null && r.include);
+
+  const sleep = (ms: number): Promise<void> => new Promise(resolve => window.setTimeout(resolve, ms));
 
   const runWrite = async (): Promise<void> => {
     setPhase('writing');
     setProgress({ done: 0, total: writable.length });
     let ok = 0;
-    let errors = 0;
+    const failed: BackfillRow[] = [];
     for (let i = 0; i < writable.length; i++) {
+      if (!aliveRef.current) return;
       const row = writable[i];
-      const r = await service.setQrSentId(row.subsiteUrl, row.regId, row.qrId as number);
+      // v31.4 (Review): Derselbe geprüfte Weg wie `queueIDReorderChecked` —
+      // ein MERGE je Person am Stück ist genau die Last, bei der SharePoint
+      // ab der Hälfte drosselt. Ein einzelner Versuch mit `errors++` hätte
+      // die Hälfte der Liste still auf die laufende Nummer zurückfallen
+      // lassen, während `eventHasQrIds` am Tisch schon true ist.
+      const delays = [1500, 4000, 8000];
+      let r = await service.setQrSentId(row.subsiteUrl, row.regId, row.qrId as number);
+      for (let a = 0; a < delays.length && !r.ok; a++) {
+        // 400 (Spalte fehlt), 403 (keine Rechte) heilen nicht durch Warten.
+        if (r.status === 400 || r.status === 403 || r.status === 401) break;
+        await sleep(delays[a]);
+        if (!aliveRef.current) return;
+        r = await service.setQrSentId(row.subsiteUrl, row.regId, row.qrId as number);
+      }
       if (!r.ok) {
         if (r.status === 400) {
           // Genau eine Abhilfe — und der Lauf bricht ab, statt 87-mal
           // denselben Fehler zu erzeugen.
+          if (!aliveRef.current) return;
           setResultIsError(true);
           setResultMsg(isDe
             ? `Abgebrochen bei „${row.eventTitle}": Auf dieser Teilnehmerliste fehlt die Spalte QrSentId. Bitte einmal „Spalten fixen" für dieses Event ausführen und danach erneut nachtragen. Bis dahin geschrieben: ${ok}.`
@@ -226,14 +286,39 @@ export default function QrSentIdBackfillModal(props: {
           if (onDone) onDone();
           return;
         }
-        errors++;
+        failed.push(row);
       } else ok++;
+      if (!aliveRef.current) return;
       setProgress({ done: i + 1, total: writable.length });
     }
-    setResultIsError(errors > 0);
-    setResultMsg(isDe
-      ? `${ok} Nummer(n) nachgetragen${errors > 0 ? `, ${errors} fehlgeschlagen` : ''}${missing.length > 0 ? ` · ${missing.length} Person(en) ohne Fund — für sie bleibt der Check-in bei der laufenden Nummer` : ''}.`
-      : `${ok} number(s) backfilled${errors > 0 ? `, ${errors} failed` : ''}${missing.length > 0 ? ` · ${missing.length} person(s) without a match — check-in stays on the running number for them` : ''}.`);
+    if (!aliveRef.current) return;
+    // v31.4 (Review): Zahlen allein reichen nicht — „35 fehlgeschlagen" sagt
+    // dem Organizer nicht, WEN es trifft, und genau diese Personen fallen am
+    // Tisch still auf die laufende Nummer zurück. Der Nachtrag darf beliebig
+    // oft laufen (er schreibt nur `QrSentId`), das gehört dazu.
+    const nameList = (list: BackfillRow[]): string => {
+      const names = list.slice(0, 15).map(r => r.name);
+      return names.join(', ') + (list.length > names.length ? ' …' : '');
+    };
+    setResultIsError(failed.length > 0);
+    setResultMsg([
+      isDe ? `${ok} Nummer(n) nachgetragen.` : `${ok} number(s) backfilled.`,
+      failed.length > 0
+        ? (isDe
+          ? `${failed.length} fehlgeschlagen (Drosselung oder fehlende Rechte): ${nameList(failed)}. Für sie greift am Check-in weiter die laufende Nummer — du kannst den Nachtrag gefahrlos noch einmal starten, er schreibt nur die Nummer.`
+          : `${failed.length} failed (throttling or missing permissions): ${nameList(failed)}. Check-in stays on the running number for them — you can safely run the backfill again, it only writes the number.`)
+        : '',
+      missing.length > 0
+        ? (isDe
+          ? `${missing.length} Person(en) ohne Fund: ${nameList(missing)}. Für sie bleibt der Check-in bei der laufenden Nummer.`
+          : `${missing.length} person(s) without a match: ${nameList(missing)}. Check-in stays on the running number for them.`)
+        : '',
+      dupRows.length > 0
+        ? (isDe
+          ? `${dupRows.length} Zeile(n) wurden ausgelassen, weil dieselbe Nummer auf mehr als eine Zeile fällt: ${nameList(dupRows)}.`
+          : `${dupRows.length} row(s) were skipped because the same number falls on more than one row: ${nameList(dupRows)}.`)
+        : '',
+    ].filter(Boolean).join(' '));
     setPhase('done');
     if (onDone) onDone();
   };
@@ -242,9 +327,15 @@ export default function QrSentIdBackfillModal(props: {
     if (v === 'diff') return <span className="dex-ui-pill dex-ui-pill--orange">{isDe ? 'weicht ab' : 'differs'}</span>;
     if (v === 'same') return <span className="dex-ui-pill dex-ui-pill--green">{isDe ? 'gleich' : 'same'}</span>;
     if (v === 'organizer') return <span className="dex-ui-pill dex-ui-pill--blue">{isDe ? 'Organizer — prüfen' : 'organizer — check'}</span>;
+    if (v === 'dup') return <span className="dex-ui-pill dex-ui-pill--red">{isDe ? 'doppelte Nummer — nicht schreiben' : 'duplicate number — not written'}</span>;
     return <span className="dex-ui-pill dex-ui-pill--gray">{isDe ? 'kein Fund' : 'no match'}</span>;
   };
 
+  // v31.4 (Review): Während des Schreibens gibt es KEINEN Schließen-Knopf.
+  // `dismissable={phase !== 'writing'}` sperrt Backdrop und Escape genau
+  // dafür; ein eigener Knopf daneben hätte diese Absicht umgangen — und der
+  // 400-Abbruch weiter oben ist die einzige Stelle, an der die Abhilfe
+  // („Spalten fixen") steht. Wer vorher schließt, sieht sie nie.
   const footer = phase === 'preview'
     ? (<>
         <button type="button" className="btn btn-secondary" onClick={onClose}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
@@ -252,7 +343,9 @@ export default function QrSentIdBackfillModal(props: {
           {isDe ? `${writable.length} Nummer(n) schreiben` : `Write ${writable.length} number(s)`}
         </button>
       </>)
-    : (<button type="button" className="btn btn-secondary" onClick={onClose}>{isDe ? 'Schließen' : 'Close'}</button>);
+    : phase === 'writing'
+      ? (<button type="button" className="btn btn-secondary" disabled>{isDe ? 'Bitte warten…' : 'Please wait…'}</button>)
+      : (<button type="button" className="btn btn-secondary" onClick={onClose}>{isDe ? 'Schließen' : 'Close'}</button>);
 
   return (
     <Modal
@@ -289,31 +382,57 @@ export default function QrSentIdBackfillModal(props: {
               <span className="dex-ui-pill dex-ui-pill--orange">{isDe ? `${diffCount} weichen ab` : `${diffCount} differ`}</span>
               <span className="dex-ui-pill dex-ui-pill--green">{isDe ? `${sameCount} gleich` : `${sameCount} same`}</span>
               {orgCount > 0 && <span className="dex-ui-pill dex-ui-pill--blue">{isDe ? `${orgCount} Organizer — prüfen` : `${orgCount} organizer — check`}</span>}
+              {dupRows.length > 0 && <span className="dex-ui-pill dex-ui-pill--red">{isDe ? `${dupRows.length} doppelte Nummer` : `${dupRows.length} duplicate number`}</span>}
               {missing.length > 0 && <span className="dex-ui-pill dex-ui-pill--gray">{isDe ? `${missing.length} ohne Fund` : `${missing.length} without a match`}</span>}
               {testSkipped > 0 && <span className="dex-ui-pill dex-ui-pill--gray">{isDe ? `${testSkipped} Test-Mails übersprungen` : `${testSkipped} test emails skipped`}</span>}
             </div>
           </div>
 
-          {found.length === 0 && (
-            /* Kein Fund heißt hier NICHT „es gab keine Mails". DEX_Emails ist
-               zeilenweise gesichert — wer die Zeilen nicht angelegt hat, sieht
-               sie schlicht nicht, ohne dass ein Fehler entsteht. Beide Ursachen
-               gehören deshalb in denselben Satz. */
+          {/* v31.4 (Review): Der Doppel-Ursachen-Satz hing an „gar kein Fund".
+              Im gemischten Fall stand jede „kein Fund"-Zeile als Aussage über
+              die Daten da, obwohl es genauso eine Rechte-Frage sein kann: Die
+              Auto-QR-Mails der Nachzügler legt die TEILNEHMERIN an, nicht der
+              Organizer — wer nicht „Manage Lists" hat, sieht sie nicht. Der
+              Satz gehört deshalb an JEDE fundlose Zeile. */}
+          {missing.length > 0 && (
+            <div className="dex-ui-callout dex-ui-callout--warn">
+              <span className="dex-ui-callout-icon" aria-hidden="true"><AlertCircle size={16} /></span>
+              <div>
+                {found.length === 0
+                  ? (isDe
+                    ? `In der Mail-Warteschlange wurde keine QR-Mail zu diesem Event gefunden (${scannedMails} Zeile(n) gelesen). Zwei mögliche Ursachen: Es wurden noch keine QR-Mails verschickt — oder du hast keine Leserechte auf DEX_Emails. Die Liste zeigt jeder Person nur die Zeilen, die sie selbst angelegt hat; wenn der Massenversand von einem anderen Organizer lief, sieht ihn nur diese Person oder ein Site-Owner.`
+                    : `No QR email for this event was found in the mail queue (${scannedMails} row(s) read). Two possible causes: no QR emails have been sent yet — or you lack read access to DEX_Emails. The list shows each person only the rows they created themselves; if the mass send was run by another organizer, only that person or a site owner can see it.`)
+                  : (isDe
+                    ? `Bei ${missing.length} Person(en) wurde keine QR-Mail gefunden — das heißt nicht zwingend, dass sie keine bekommen haben. DEX_Emails zeigt jeder Person nur die Zeilen, die sie selbst angelegt hat: Die automatischen QR-Mails der Nachzügler entstehen im Browser der Teilnehmerin, ein anderer Massenversand im Browser der Organizerin, die ihn gestartet hat. Wenn die Zahl unerwartet hoch ist, lass den Nachtrag von einem Site-Owner oder von der Person laufen, die den Versand gemacht hat — statt diesen Personen neue QR-Codes mit neuen Nummern zu schicken.`
+                    : `For ${missing.length} person(s) no QR email was found — that does not necessarily mean they never received one. DEX_Emails shows each person only the rows they created themselves: the automatic QR emails of late registrants are queued in the attendee's browser, another mass send in the browser of the organizer who ran it. If the number looks unexpectedly high, have a site owner — or the person who ran the send — run the backfill instead of sending these people new QR codes with new numbers.`)}
+              </div>
+            </div>
+          )}
+
+          {dupRows.length > 0 && (
             <div className="dex-ui-callout dex-ui-callout--warn">
               <span className="dex-ui-callout-icon" aria-hidden="true"><AlertCircle size={16} /></span>
               <div>
                 {isDe
-                  ? `In der Mail-Warteschlange wurde keine QR-Mail zu diesem Event gefunden (${scannedMails} Zeile(n) gelesen). Zwei mögliche Ursachen: Es wurden noch keine QR-Mails verschickt — oder du hast keine Leserechte auf DEX_Emails. Die Liste zeigt jeder Person nur die Zeilen, die sie selbst angelegt hat; wenn der Massenversand von einem anderen Organizer lief, sieht ihn nur diese Person oder ein Site-Owner.`
-                  : `No QR email for this event was found in the mail queue (${scannedMails} row(s) read). Two possible causes: no QR emails have been sent yet — or you lack read access to DEX_Emails. The list shows each person only the rows they created themselves; if the mass send was run by another organizer, only that person or a site owner can see it.`}
+                  ? `${dupRows.length} Zeile(n) werden NICHT geschrieben: Dieselbe Nummer fiele dort auf mehr als eine Zeile derselben Teilnehmerliste — am Check-in wäre die Eingabe dieser Zahl danach für alle Betroffenen gesperrt. Ursache ist meist eine doppelte Anmeldezeile derselben Person; die lässt sich in der Teilnehmerliste bereinigen, danach kann der Nachtrag erneut laufen.`
+                  : `${dupRows.length} row(s) will NOT be written: the same number would land on more than one row of the same attendee list — typing that number at check-in would then be blocked for everyone involved. The usual cause is a duplicate registration row for the same person; clean that up in the attendee list, then run the backfill again.`}
               </div>
             </div>
           )}
 
           {unparsedMails > 0 && (
             <p className="dex-ui-muted" style={{ margin: 0, fontSize: '0.76rem' }}>
+              {/* v31.4 (Review): `parseQrIdFromBody` liefert auch dann `null`,
+                  wenn die Mail gar keinen ID-Block hatte (keine laufende
+                  Nummer beim Versand) oder wenn das Markup nicht mehr zum
+                  Parser passt. Eine einzige Ursache zu behaupten heißt: Der
+                  Organizer hört am Vorabend auf zu suchen. */}
               {isDe
-                ? `${unparsedMails} QR-Mail(s) enthielten keine gedruckte Nummer — die stammen aus der Zeit vor v30.35, als die ID noch nicht neben dem Code stand.`
-                : `${unparsedMails} QR email(s) contained no printed number — those predate v30.35, when the ID was not yet shown next to the code.`}
+                ? `${unparsedMails} QR-Mail(s) enthielten keine gedruckte Nummer. Mögliche Ursachen: Mails aus der Zeit vor v30.35 (die ID stand noch nicht neben dem Code), Mails an Personen ohne laufende Nummer — oder das Markup passt nicht mehr zum Parser.`
+                : `${unparsedMails} QR email(s) contained no printed number. Possible causes: emails predating v30.35 (the ID was not yet shown next to the code), emails to people without a running number — or the markup no longer matches the parser.`}
+              {unparsedMails === scannedMails && scannedMails > 0 && (isDe
+                ? ' Weil ALLE gelesenen Mails betroffen sind, ist der Parser der wahrscheinlichste Grund — bitte den DEX-Admins melden, bevor du neue Nummern verschickst.'
+                : ' Because ALL scanned emails are affected, the parser is the most likely reason — please report this to the DEX admins before sending out new numbers.')}
             </p>
           )}
 
@@ -347,7 +466,11 @@ export default function QrSentIdBackfillModal(props: {
                         {verdictPill(r.verdict)}
                         {/* Nur die unsicheren Zeilen sind abwählbar — alles
                             andere wird geschrieben, damit `QrSentId` danach ein
-                            vollständiger Datensatz ist und nicht halb gefüllt. */}
+                            vollständiger Datensatz ist und nicht halb gefüllt.
+                            v31.4 (Review): Der Haken ist NICHT vorbelegt —
+                            hier lässt sich Testmail von echter Mail nicht
+                            trennen, und eine Testmail-Nummer schlägt am
+                            Check-in die laufende Nummer. */}
                         {r.verdict === 'organizer' && (
                           <label className="dex-ui-inline" style={{ marginTop: 4, fontSize: '0.74rem' }}>
                             <input
@@ -369,11 +492,14 @@ export default function QrSentIdBackfillModal(props: {
             </div>
           )}
 
-          {missing.length > 0 && (
+          {(missing.length > 0 || orgCount > 0) && (
             <p className="dex-ui-muted" style={{ margin: 0, fontSize: '0.78rem' }}>
-              {isDe
-                ? `Für die ${missing.length} Person(en) ohne Fund bleibt der Check-in bei der laufenden Nummer — sie stehen oben namentlich in der Tabelle.`
-                : `For the ${missing.length} person(s) without a match, check-in stays on the running number — they are listed by name in the table above.`}
+              {missing.length > 0 && (isDe
+                ? `Für die ${missing.length} Person(en) ohne Fund bleibt der Check-in bei der laufenden Nummer — sie stehen oben namentlich in der Tabelle. `
+                : `For the ${missing.length} person(s) without a match, check-in stays on the running number — they are listed by name in the table above. `)}
+              {orgCount > 0 && (isDe
+                ? 'Nicht angehakte Zeilen bleiben ebenfalls bei der laufenden Nummer — es wird nichts geschrieben.'
+                : 'Rows that are not ticked also stay on the running number — nothing is written for them.')}
             </p>
           )}
         </>

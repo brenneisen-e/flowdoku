@@ -182,11 +182,25 @@ export async function cancelRegistration(
     const auditName = cancelledByName || svc.context.pageContext.user.displayName || '';
     const auditEmail = (cancelledByEmail || svc.context.pageContext.user.email || '').toLowerCase();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const corePayload: Record<string, any> = {
+    const minimalPayload: Record<string, any> = {
       'Status': 'Abgemeldet',
       'CancellationDate': new Date().toISOString(),
       'TeilnehmerID': null,
     };
+    // v31.4 (Review): `QrSentId` MUSS mit der laufenden Nummer weichen.
+    // Die freigewordene Zahl wandert über `reorderParticipantIDs` an die
+    // nächste Person, und der nächste QR-Versand bedruckt deren Mail mit
+    // exakt dieser Zahl. Bliebe die alte Zusage auf der abgemeldeten Zeile
+    // stehen, träfe die getippte Nummer am Tisch zwei Zeilen — der Check-in
+    // wertet das als Datenfehler und sperrt die Zahl (oder er landet auf der
+    // stornierten Zeile und weist die aktive Person mit fremdem Namen ab).
+    // Das ist keine Ausnahme, sondern die Regelfolge JEDER Abmeldung nach
+    // einem Versand. Bewusst in Kauf genommen: Die Spur „welche Nummer stand
+    // einmal in ihrer Mail" ist danach weg — sie hilft nur einer Person, die
+    // sich abgemeldet hat und trotzdem am Einlass steht, und kostet dafür
+    // allen anderen den Nummern-Check-in.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const corePayload: Record<string, any> = { ...minimalPayload, 'QrSentId': null };
     // Audit-Felder optional dazu - aeltere Subsites haben die Spalten evtl. noch
     // nicht (kommt erst mit Commit a10a608). Ein 400 von SP würde dann die
     // ganze Abmeldung blocken. Strategie: erst mit Audit-Feldern versuchen,
@@ -201,6 +215,13 @@ export async function cancelRegistration(
       // Fallback ohne Audit-Felder (Subsite-Liste hat die Spalten noch nicht)
       console.warn('[DEX] cancelRegistration with audit failed (' + response.status + '), retrying without audit fields');
       response = await svc._merge(url, corePayload);
+    }
+    if (!response.ok) {
+      // v31.4: Letzte Stufe OHNE `QrSentId` — die Spalte gibt es erst seit
+      // v31.4, auf einer Bestandsliste ohne „Spalten fixen" quittiert
+      // SharePoint sie mit 400. Eine Abmeldung darf daran nie scheitern.
+      console.warn('[DEX] cancelRegistration failed (' + response.status + '), retrying without QrSentId');
+      response = await svc._merge(url, minimalPayload);
     }
     // v7.31: Counter mit aktuellem Max syncen, damit er nicht "davonrast"
     // wenn der höchste ID-Inhaber sich abmeldet. Best-effort, blockiert
@@ -582,32 +603,50 @@ export async function revertCheckIn(
  * geschickt — sonst würde der QR-Massenversand auf jedem Event scheitern,
  * das nie „Spalten fixen" gelaufen ist, und ein Fix, der den Normalbetrieb
  * kaputtmacht, ist schlimmer als der Fehler, den er behebt.
+ *
+ * v31.4 (Review): `idWritten: false` hieß drei verschiedene Dinge, und der
+ * Aufrufer meldete immer nur „Spalte fehlt". Deshalb sagt `reason` jetzt,
+ * WELCHER Fall vorlag:
+ *  - `'no-id'`      — der Aufrufer hat gar keine Nummer übergeben. Das ist ein
+ *                     dokumentierter Normalzustand (`registration.ts` lässt
+ *                     `TeilnehmerID` leer, wenn der Counter beim Anlegen nicht
+ *                     erreichbar war); die Mail druckt dann auch keine Nummer,
+ *                     es fehlt also nichts.
+ *  - `'column-missing'` — der MERGE mit der Spalte kam mit 400/500 zurück.
+ *  - `'other'`      — der Statuswechsel selbst ging schief (403/429/Netz).
+ * `skipIdColumn` erspart dem Massenversand den zweiten MERGE je Person,
+ * sobald einmal feststeht, dass die Liste die Spalte nicht hat.
  */
 export async function setQRSentStatus(
   svc: EventService,
   subsiteUrl: string,
   itemId: number,
-  qrSentId?: number
-): Promise<{ ok: boolean; idWritten: boolean }> {
+  qrSentId?: number,
+  skipIdColumn?: boolean
+): Promise<{ ok: boolean; idWritten: boolean; reason: 'ok' | 'no-id' | 'column-missing' | 'other' }> {
   const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`;
   const id = Number(qrSentId);
-  const withId = qrSentId !== undefined && qrSentId !== null && isFinite(id) && id > 0;
+  const withId = !skipIdColumn && qrSentId !== undefined && qrSentId !== null && isFinite(id) && id > 0;
+  const noId = qrSentId === undefined || qrSentId === null || !isFinite(id) || id <= 0;
   try {
     if (withId) {
       const withIdResp = await svc._merge(url, { 'Status': 'QR versendet', 'QrSentId': id });
-      if (withIdResp.ok) return { ok: true, idWritten: true };
+      if (withIdResp.ok) return { ok: true, idWritten: true, reason: 'ok' };
       // „Spalte fehlt" ist ein 400 — SharePoint verpackt Schema-Fehler aber
       // nicht immer sauber (dieselbe Beobachtung wie beim Rechte-Entzug in
       // v30.67: 404 ODER 500), deshalb gilt der 500 hier mit. Bei 403/429
       // wird NICHT nachgefasst: Der zweite Versuch scheiterte genauso, und
       // eine zusätzliche Anfrage mitten in der Versandwelle verschärft nur
       // die Drosselung.
-      if (withIdResp.status !== 400 && withIdResp.status !== 500) return { ok: false, idWritten: false };
+      if (withIdResp.status !== 400 && withIdResp.status !== 500) return { ok: false, idWritten: false, reason: 'other' };
+      const fallback = await svc._merge(url, { 'Status': 'QR versendet' });
+      return { ok: fallback.ok, idWritten: false, reason: fallback.ok ? 'column-missing' : 'other' };
     }
     const response = await svc._merge(url, { 'Status': 'QR versendet' });
-    return { ok: response.ok, idWritten: false };
+    if (!response.ok) return { ok: false, idWritten: false, reason: 'other' };
+    return { ok: true, idWritten: false, reason: noId ? 'no-id' : 'column-missing' };
   } catch {
-    return { ok: false, idWritten: false };
+    return { ok: false, idWritten: false, reason: 'other' };
   }
 }
 
