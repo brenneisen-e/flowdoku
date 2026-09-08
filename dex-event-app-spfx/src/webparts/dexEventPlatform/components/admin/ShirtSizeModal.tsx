@@ -46,6 +46,14 @@
  * von jeder Zeile führt ein Sprung in die Teilnehmerliste, wo „Bearbeiten"
  * sitzt (Nutzer-Wunsch: „Gib mir die Möglichkeit, zu den Teilnehmern zu
  * springen mit diesem Wert").
+ *
+ * v31.4 (Nachtrag): Der Ausgabe-Knopf am Tisch ist jünger als der Lauftag —
+ * wer vorher eingecheckt wurde, hat sein Trikot trotzdem bekommen. Diese
+ * Personen zählen deshalb mit ihrer Wunschgröße als abgeholt (Ansage des
+ * Organizers, der am Tisch stand). Es bleibt eine ANNAHME: Sie wird nie in
+ * die Spalte geschrieben, und jede Zahl, die sie enthält, nennt sie
+ * daneben — Kachel, Spalte, Namensliste und Excel. Ändern lässt sie sich je
+ * Person über „Bearbeiten" in der Teilnehmerliste.
  */
 import * as React from 'react';
 import Modal from '../Modal';
@@ -100,6 +108,11 @@ export default function ShirtSizeModal(props: {
   const [conflicts, setConflicts] = React.useState<ShirtAnswerConflict[]>([]);
   // v31.4: Herkunft je E-Mail — welche Zeile hat gewonnen, welche gibt es noch.
   const [origins, setOrigins] = React.useState<Record<string, ShirtOrigin>>({});
+  // v31.4 (Nachtrag): Wer ist IRGENDWO eingecheckt? Unten bleibt je Person nur
+  // eine Zeile stehen (`pickShirtAnswerRows`) — und das ist bei einem
+  // Klammer-Event meist die Zeile MIT der Antwort, nicht die mit dem Check-in.
+  // Ohne diese Sammlung wäre die Ausgabe-Annahme dort blind.
+  const [checkedInEmails, setCheckedInEmails] = React.useState<Record<string, true>>({});
   const [openSize, setOpenSize] = React.useState<string | null>(null);
   const [xlsxBusy, setXlsxBusy] = React.useState(false);
   // v30.88: Bestand — Eingabe als Text je Größe (leer = kein Bestand für die
@@ -167,9 +180,14 @@ export default function ShirtSizeModal(props: {
           return (v === undefined || v === null) ? '' : String(v).trim();
         };
         const issuedByEmail: Record<string, string> = {};
+        // v31.4 (Nachtrag): Der Check-in steht auf derselben Zeile wie die
+        // Ausgabe — und damit ebenfalls meist NICHT auf der Zeile, die die
+        // Größenfrage gewinnt. Deshalb hier über ALLE Zeilen gesammelt.
+        const checkedIn: Record<string, true> = {};
         all.forEach(r => {
           const em = (r.ParticipantEmail || '').toLowerCase().trim();
           if (em && r.ShirtIssued && !issuedByEmail[em]) issuedByEmail[em] = r.ShirtIssued;
+          if (em && r.Status === 'Eingecheckt') checkedIn[em] = true;
         });
         const org: Record<string, ShirtOrigin> = {};
         const rows = picked.rows.map(r => {
@@ -185,6 +203,7 @@ export default function ShirtSizeModal(props: {
         });
         setFields(flds);
         setRegs(rows);
+        setCheckedInEmails(checkedIn);
         setOrigins(org);
         setConflicts(picked.conflicts);
         setResult(shirtTally(flds, rows));
@@ -217,8 +236,8 @@ export default function ShirtSizeModal(props: {
   // Die Verteilung rechnet LIVE mit den Eingaben — der Organizer sieht sofort,
   // was eine Zahl mehr oder weniger bedeutet; gespeichert wird bewusst extra.
   const alloc: ShirtAllocationResult | null = React.useMemo(
-    () => (result && result.fieldLabel) ? shirtAllocate(fields, regs, stockFromInput) : null,
-    [result, fields, regs, stockFromInput],
+    () => (result && result.fieldLabel) ? shirtAllocate(fields, regs, stockFromInput, checkedInEmails) : null,
+    [result, fields, regs, stockFromInput, checkedInEmails],
   );
 
   const saveStock = async (): Promise<void> => {
@@ -247,9 +266,12 @@ export default function ShirtSizeModal(props: {
       const hasStock = !!(alloc && alloc.hasStock);
       // v31.4: „Ausgegeben" ans ENDE — die bestehende Spaltenfolge bleibt, wer
       // die Datei jedes Jahr gleich liest, findet sich weiter zurecht.
+      // v31.4 (Nachtrag): „davon angenommen" als eigene Spalte hinter
+      // „Ausgegeben" — in einer weitergereichten Datei muss stehen, welcher
+      // Teil der Zahl aus der Spalte kommt und welcher aus dem Check-in-Status.
       const rows: string[][] = [hasStock
-        ? ['Größe', 'Benötigt', 'Bestand', 'Fehlt', 'Reserve', 'Personen', 'Ausgegeben']
-        : ['Größe', 'Anzahl', 'Personen', 'Ausgegeben']];
+        ? ['Größe', 'Benötigt', 'Bestand', 'Fehlt', 'Reserve', 'Personen', 'Ausgegeben', 'davon angenommen']
+        : ['Größe', 'Anzahl', 'Personen', 'Ausgegeben', 'davon angenommen']];
       for (const r of result.rows) {
         // v31.3: Eine Abwahl-Antwort ist keine Größe — sie steht mit ihrem
         // Wortlaut in der Datei, bekommt aber keine Bestands-Spalten, damit
@@ -257,8 +279,8 @@ export default function ShirtSizeModal(props: {
         const a = (alloc && r.size && !r.optOut) ? alloc.rows.find(x => x.key === shirtSizeKey(r.size)) : undefined;
         const label = r.size ? (r.optOut ? `${r.size} (kein Shirt nötig)` : r.size) : 'ohne Angabe';
         rows.push(hasStock
-          ? [label, String(r.count), a ? String(a.stock) : '—', a ? String(a.missing) : '—', a ? String(a.spare) : '—', r.names.join(', '), a ? String(a.issued) : '—']
-          : [label, String(r.count), r.names.join(', '), a ? String(a.issued) : '—']);
+          ? [label, String(r.count), a ? String(a.stock) : '—', a ? String(a.missing) : '—', a ? String(a.spare) : '—', r.names.join(', '), a ? String(a.issued) : '—', a ? String(a.issuedAssumed) : '—']
+          : [label, String(r.count), r.names.join(', '), a ? String(a.issued) : '—', a ? String(a.issuedAssumed) : '—']);
       }
       rows.push([]);
       rows.push(['Summe', String(result.total), '']);
@@ -272,6 +294,10 @@ export default function ShirtSizeModal(props: {
       // deshalb in die Datei, nicht nur in den Dialog.
       if (totalIssued > 0) {
         rows.push(['davon bereits ausgegeben', String(totalIssued), '']);
+        // v31.4 (Nachtrag): Eine Annahme, die in einer Excel als harte Zahl
+        // steht, ist die schlechteste Sorte Zahl — deshalb steht sie hier
+        // getrennt und mit ihrem Grund.
+        if (totalIssuedAssumed > 0) rows.push([`davon angenommen (eingecheckt, ohne Ausgabe-Eintrag)`, String(totalIssuedAssumed), '']);
         if (hasStock) rows.push(['rechnerisch noch im Karton', String(totalInBox), '']);
       }
       if (skipped.length > 0) {
@@ -286,8 +312,8 @@ export default function ShirtSizeModal(props: {
       const ws = XLSX.utils.aoa_to_sheet(rows);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (ws as any)['!cols'] = hasStock
-        ? [{ wch: 16 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 90 }, { wch: 12 }]
-        : [{ wch: 16 }, { wch: 10 }, { wch: 90 }, { wch: 12 }];
+        ? [{ wch: 16 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 90 }, { wch: 12 }, { wch: 18 }]
+        : [{ wch: 16 }, { wch: 10 }, { wch: 90 }, { wch: 12 }, { wch: 18 }];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Trikots');
       if (hasStock && alloc) {
@@ -373,6 +399,11 @@ export default function ShirtSizeModal(props: {
   // und beantwortet eine andere Frage (reicht es für die Wünsche?).
   const totalIssued = alloc ? alloc.rows.reduce((s, r) => s + r.issued, 0) : 0;
   const totalInBox = alloc ? alloc.rows.reduce((s, r) => s + Math.max(0, r.stock - r.issued), 0) : 0;
+  // v31.4 (Nachtrag): Davon ist ein Teil ANGENOMMEN — eingecheckte Personen
+  // ohne Ausgabe-Eintrag. Die Zahl steht überall neben `totalIssued`, nie
+  // allein: „5 ausgegeben" und „5 ausgegeben, davon 3 angenommen" sind zwei
+  // verschiedene Auskünfte, und nur die zweite ist wahr.
+  const totalIssuedAssumed = alloc ? alloc.rows.reduce((s, r) => s + r.issuedAssumed, 0) : 0;
   // v31.3: Solange ein Termin nicht lesbar ist, ist JEDE dieser Zahlen eine
   // Untergrenze — dann wird sie auch so beschriftet (CLAUDE.md: ein
   // Lesefehler ist keine Null).
@@ -425,10 +456,17 @@ export default function ShirtSizeModal(props: {
                 Ausgaben. Beides steht nebeneinander, damit niemand die eine
                 für die andere hält. */}
             {kind !== 'size' || !row ? <span className="dex-ui-muted">—</span> : row.issued > 0 ? (
-              <span style={{ whiteSpace: 'nowrap' }}>
+              <span>
                 <strong>{row.issued}</strong>
+                {/* v31.4 (Nachtrag): Angenommene Ausgaben zählen mit, heißen aber
+                    so. Ohne den Zusatz läse der Organizer eine Schätzung als
+                    Protokoll — und suchte abends nach Trikots, die nie jemand
+                    festgehalten hat. */}
+                {row.issuedAssumed > 0 && (
+                  <span className="dex-ui-muted"> {isDe ? `(davon ${row.issuedAssumed} angenommen)` : `(${row.issuedAssumed} assumed)`}</span>
+                )}
                 {row.stock > 0 && (
-                  <span className="dex-ui-muted"> · {isDe ? `noch ${Math.max(0, row.stock - row.issued)} im Karton` : `${Math.max(0, row.stock - row.issued)} left in the box`}</span>
+                  <span className="dex-ui-muted" style={{ whiteSpace: 'nowrap' }}> · {isDe ? `noch ${Math.max(0, row.stock - row.issued)} im Karton` : `${Math.max(0, row.stock - row.issued)} left in the box`}</span>
                 )}
               </span>
             ) : <span className="dex-ui-muted">0</span>}
@@ -482,6 +520,12 @@ export default function ShirtSizeModal(props: {
               <div className="dex-ui-stack" style={{ gap: 8 }}>
                 {people.map((p, i) => {
                   const o = p.email ? origins[p.email] : undefined;
+                  // v31.4 (Nachtrag): Festgehalten oder angenommen? `origins`
+                  // kennt nur die Spalte; die Annahme steht in der Verteilung.
+                  // Beides muss verschieden aussehen, sonst ist „abgeholt"
+                  // eine Behauptung, die niemand nachprüfen kann.
+                  const av = (p.email && alloc) ? alloc.byEmail[p.email] : undefined;
+                  const assumed = !!(av && av.issued && av.issuedAssumed);
                   return (
                     <div key={p.email || `${i}`}>
                       <span style={{ fontWeight: 600, color: 'var(--dex-gray-800)' }}>{p.name}</span>
@@ -492,11 +536,15 @@ export default function ShirtSizeModal(props: {
                           {isDe ? 'zu dieser Person' : 'go to this person'}
                         </button>
                       )}
-                      {o && (
+                      {(o || assumed) && (
                         <div className="dex-ui-muted" style={{ fontSize: '0.74rem', lineHeight: 1.5 }}>
-                          {o.source && <>{isDe ? 'aus: ' : 'from: '}{o.source}</>}
-                          {o.issued && <>{o.source ? ' · ' : ''}{isDe ? `Trikot ${o.issued} ausgegeben` : `shirt ${o.issued} handed out`}</>}
-                          {o.others.map((x, k) => (
+                          {o && o.source && <>{isDe ? 'aus: ' : 'from: '}{o.source}</>}
+                          {o && o.issued
+                            ? <>{o.source ? ' · ' : ''}{isDe ? `Trikot ${o.issued} ausgegeben` : `shirt ${o.issued} handed out`}</>
+                            : assumed
+                              ? <span style={{ fontStyle: 'italic' }}>{(o && o.source) ? ' · ' : ''}{isDe ? `abgeholt (angenommen — eingecheckt, ${av && av.issued ? av.issued : ''} gewünscht)` : `collected (assumed — checked in, wished ${av && av.issued ? av.issued : ''})`}</span>
+                              : null}
+                          {(o ? o.others : []).map((x, k) => (
                             <div key={k}>
                               {isDe ? 'weitere Zeile: ' : 'other row: '}{x.source || (isDe ? 'unbekannt' : 'unknown')} · {x.value || (isDe ? 'ohne Angabe' : 'no answer')}
                             </div>
@@ -609,6 +657,8 @@ export default function ShirtSizeModal(props: {
             {totalIssued > 0 && (
               <div className="dex-ui-kpi dex-ui-kpi--blue"><div className="dex-ui-kpi-value">{totalIssued}</div>
                 <div className="dex-ui-kpi-label">{isDe ? 'Trikots ausgegeben' : 'shirts handed out'}</div>
+                {/* v31.4 (Nachtrag): Die Kachel zählt die Annahmen mit — und sagt es. */}
+                {totalIssuedAssumed > 0 && <div className="dex-ui-kpi-sub">{isDe ? `davon ${totalIssuedAssumed} angenommen` : `${totalIssuedAssumed} of them assumed`}</div>}
                 {hasStock && <div className="dex-ui-kpi-sub">{isDe ? `noch ${totalInBox} im Karton` : `${totalInBox} left in the box`}</div>}</div>
             )}
           </div>
@@ -656,9 +706,18 @@ export default function ShirtSizeModal(props: {
                 <span>
                   {isDe
                     ? <><strong>{totalIssued} {totalIssued === 1 ? 'Trikot ist' : 'Trikots sind'} ausgegeben</strong>{hasStock ? <> — nach deinem Bestand liegen noch <strong>{totalInBox}</strong> im Karton.</> : <>. Trag oben einen Bestand ein, dann rechnet die App dir aus, was noch da ist.</>}{' '}
-                      Ausgegebene Trikots bleiben abgezogen, auch wenn die Person später abgemeldet oder als No-Show markiert wird — sie hat es ja mitgenommen.</>
+                      Ausgegebene Trikots bleiben abgezogen, auch wenn die Person später abgemeldet oder als No-Show markiert wird — sie hat es ja mitgenommen.
+                      {/* v31.4 (Nachtrag): Die Annahme muss dastehen, sonst hält der Organizer eine Schätzung für ein Protokoll. */}
+                      {totalIssuedAssumed > 0 && <> <strong>{totalIssuedAssumed} davon {totalIssuedAssumed === 1 ? 'ist angenommen' : 'sind angenommen'}:</strong>{' '}
+                        Wer eingecheckt ist, aber keinen Ausgabe-Eintrag hat, zählt mit seiner Wunschgröße als abgeholt — den Ausgabe-Knopf am
+                        Check-in-Tisch gibt es erst seit v31.4. Sobald jemand dort eine Größe festhält, gilt diese. Ändern kannst du das je Person
+                        in der Teilnehmerliste über &bdquo;Bearbeiten&ldquo;.</>}</>
                     : <><strong>{totalIssued} {totalIssued === 1 ? 'shirt has' : 'shirts have'} been handed out</strong>{hasStock ? <> — going by your stock, <strong>{totalInBox}</strong> are still in the box.</> : <>. Enter a stock above and the app works out what is left.</>}{' '}
-                      Handed-out shirts stay deducted even if the person is cancelled or marked as a no-show later — they took it with them.</>}
+                      Handed-out shirts stay deducted even if the person is cancelled or marked as a no-show later — they took it with them.
+                      {totalIssuedAssumed > 0 && <> <strong>{totalIssuedAssumed} of {totalIssuedAssumed === 1 ? 'them is assumed' : 'them are assumed'}:</strong>{' '}
+                        anyone who is checked in but has no handout entry counts as served with their wished size — the handout button at the
+                        check-in desk only exists since v31.4. As soon as someone records a size there, that one counts. You can change it per
+                        person in the attendee list via &ldquo;Edit&rdquo;.</>}</>}
                 </span>
               </div>
             )}

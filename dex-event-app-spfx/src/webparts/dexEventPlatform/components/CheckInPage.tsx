@@ -16,7 +16,7 @@ import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
 import { useDialog } from '../context/DialogContext';
 import { useRoles } from '../context/RoleContext';
 import { useCurrentUser } from '../context/UserContext';
-import { EventService } from '../services/EventService';
+import { EventService, SPRegistration } from '../services/EventService';
 import {
   checkInExtras, parseCustomData, CheckInExtra, shirtAllocate, parseShirtStock, ShirtAllocationResult,
   // v31.4: Trikot-Ausgabe am Tisch — was rausgegeben wurde, steht in der Zeile.
@@ -28,12 +28,41 @@ import { agendaGroups, groupLabel, groupDateLabel } from '../utils/agendaGroups'
 import { useLanguage } from '../context/LanguageContext';
 import { useIsMobile } from '../utils/useIsMobile';
 import OrganizerList from './OrganizerList';
-import { ChevronDown, ChevronUp } from './Icons';
+import { AlertCircle, ChevronDown, ChevronUp } from './Icons';
 // v20.0 (Audit): qr-scanner nur noch als Typ statisch importieren — die
 // eigentliche Bibliothek wird erst beim Kamera-Start dynamisch nachgeladen.
 import type QrScanner from 'qr-scanner';
 import { shortSubEventTitle } from '../utils/subEventTitle';
 
+
+/**
+ * v31.4: Zwei Nummern, die dieselbe Zahl sein KÖNNEN — und es nach der ersten
+ * Abmeldung nicht mehr sind.
+ *
+ * `TeilnehmerID` ist der laufende Rang; `reorderParticipantIDs` und der Flow
+ * `DEX_IDReorder_TeilnehmerIDs` vergeben ihn bei jeder Abmeldung neu.
+ * `QrSentId` ist die Zahl, die in der versendeten QR-Mail GEDRUCKT steht —
+ * die, die der Teilnehmer am Einlass vorliest, wenn der Kamera-Scan scheitert
+ * (auf Android in der SharePoint-App der Normalfall, s. CLAUDE.md
+ * „Kamera-Scan"). Sie ändert sich nie. Der QR-Code selbst enthält
+ * `DEX|<EventNr>|<E-Mail>` und ist von alldem nicht betroffen; wer hier etwas
+ * ändert, hat mit dem Scan-Weg nichts zu tun.
+ */
+function numOrNull(v: unknown): number | null {
+  if (v === undefined || v === null || v === '') return null;
+  const n = Number(v);
+  return (isFinite(n) && n > 0) ? n : null;
+}
+/** Die Nummer aus der versendeten QR-Mail (fest) — `null`, wenn nicht hinterlegt. */
+function qrSentIdOf(r: SPRegistration): number | null { return numOrNull(r.QrSentId); }
+/** Der laufende Rang von heute (wandert bei jeder Abmeldung). */
+function runningIdOf(r: SPRegistration): number | null { return numOrNull(r.TeilnehmerID); }
+/** Dreistellig wie in der Mail („012"). padStart gibt es im ES5-Target nicht. */
+function pad3(n: number): string { let s = String(n); while (s.length < 3) s = `0${s}`; return s; }
+/** Anzeigename einer Zeile — überall gleich, damit Karte und Liste dasselbe sagen. */
+function regDisplayName(r: SPRegistration): string {
+  return (r.Vorname && r.Nachname) ? `${r.Vorname} ${r.Nachname}` : (r.ParticipantName || r.ParticipantEmail || '-');
+}
 
 /** v31.4: Was der Ausgabetisch über EINE Person wissen muss. `issued` ist die
  *  Tatsache (schlägt alles andere), `preset` die Vorbelegung der Größenwahl:
@@ -186,6 +215,11 @@ export default function CheckInPage(): React.ReactElement {
   // v30.35: Direkteingabe der Teilnehmer-ID (s. Block unter dem Scan-Knopf).
   const [idInput, setIdInput] = React.useState('');
   const [idError, setIdError] = React.useState('');
+  // v31.4: Kein Fehler, aber eine Herkunftsangabe — „gefunden über die
+  // laufende Nummer, nicht über eine versendete QR-Mail". Bewusst getrennt von
+  // `idError`, weil ein oranger Satz an dieser Stelle wie ein Fehlschlag
+  // aussieht und der Check-in ja geklappt hat.
+  const [idNote, setIdNote] = React.useState('');
   const [checkedInCount, setCheckedInCount] = React.useState(0);
   const confirmCardRef = React.useRef<HTMLDivElement>(null);
   type PendingCheckInInfo = {
@@ -198,7 +232,23 @@ export default function CheckInPage(): React.ReactElement {
     agendaLabel?: string;
     /** v31.4: Alles, was die Trikot-Ausgabe an dieser Person braucht. */
     shirt?: ShirtDeskInfo | null;
+    /** v31.4: „QR-Nr. 012 · laufend 009" — nur wenn beide Nummern auseinanderlaufen. */
+    qrNote?: string;
+    /** v31.4: Die getippte Nummer war zweideutig — s. QrIdConflict. */
+    qrConflict?: QrIdConflict;
   };
+  /**
+   * v31.4: Die getippte Zahl steht in der QR-Mail von Person A, ist heute aber
+   * die laufende Nummer von Person B.
+   *
+   * Eingecheckt wird A: Die Mail ist die Zusage, die die Person in der Hand
+   * hält. Aber die Zweideutigkeit wird NICHT verschluckt — der Tisch bekommt
+   * beide Namen zu sehen und einen Knopf für die andere Person. Das ist auch
+   * der Grund, warum dieser eine Fall die Bestätigungskarte zeigt, statt wie
+   * seit v31.1 direkt einzuchecken: Die v31.1-Begründung war „die Person ist
+   * hier schon eindeutig gewählt" — genau das gilt hier nicht.
+   */
+  type QrIdConflict = { typed: number; qrName: string; altName: string; alt: SPRegistration };
   const [pendingCheckIn, setPendingCheckIn] = React.useState<PendingCheckInInfo | null>(null);
   // v31.4: Trikot-Ausgabe — Größenwahl der Bestätigungskarte, Größenwahl des
   // Zeilen-Dialogs und ein gemeinsames Busy-Flag. Zwei getrennte Werte, weil
@@ -377,6 +427,23 @@ export default function CheckInPage(): React.ReactElement {
     };
   }, [shirtAllocFor, shirtFieldsFor]);
 
+  /**
+   * v31.4: „QR-Nr. 012 · laufend 009" — leer, solange beide Nummern gleich sind.
+   *
+   * Der Helfer vergleicht mit dem Handy in der Hand; eine Zahl ohne Herkunft
+   * hilft ihm nicht. Stimmen die beiden überein (der Normalfall vor der ersten
+   * Abmeldung), wird bewusst NICHTS gezeigt — sonst steht an jeder Zeile eine
+   * Angabe, die nichts unterscheidet, und die eine Zeile, die es tut, geht
+   * darin unter.
+   */
+  const qrNoteOf = React.useCallback((reg: SPRegistration | null | undefined): string => {
+    if (!reg) return '';
+    const q = qrSentIdOf(reg);
+    const t2 = runningIdOf(reg);
+    if (q === null || t2 === null || q === t2) return '';
+    return isDe ? `QR-Nr. ${pad3(q)} · laufend ${pad3(t2)}` : `QR no. ${pad3(q)} · current ${pad3(t2)}`;
+  }, [isDe]);
+
   // v7.12: Name-Suche für manuelles Einchecken — wenn der QR-Scanner in der
   // SP-App nicht funktioniert (Camera-API gesperrt) oder der Teilnehmer den
   // QR-Code nicht zur Hand hat, kann der Helfer nach Namen / E-Mail suchen
@@ -529,11 +596,16 @@ export default function CheckInPage(): React.ReactElement {
     // v30.83: numerisch vergleichen — „005" (so steht die Nummer mit
     // führenden Nullen in der QR-Mail) ist dieselbe ID wie 5. Der String-
     // Vergleich lieferte „Kein Treffer" (Befund 07.09.2026).
+    // v31.4: Die Nummer aus der QR-Mail (`QrSentId`) zählt genauso wie die
+    // laufende. Sonst findet die Liste unten die Person NICHT, die oben über
+    // die Mail-Nummer gesucht wird — und der Helfer glaubt, sie sei gar nicht
+    // angemeldet. Beide Treffer sind gewollt: Die Zahl kann zu zwei Zeilen
+    // gehören, und dann sollen beide dastehen.
     const numericQ = /^\d+$/.test(q) ? parseInt(q, 10) : NaN;
     const matchesQuery = q.length === 0
       ? regs
       : regs.filter(r => {
-          if (isFinite(numericQ) && r.TeilnehmerID !== undefined && r.TeilnehmerID !== null && Number(r.TeilnehmerID) === numericQ) return true;
+          if (isFinite(numericQ) && (runningIdOf(r) === numericQ || qrSentIdOf(r) === numericQ)) return true;
           const full = `${r.Vorname || ''} ${r.Nachname || ''} ${r.ParticipantName || ''} ${r.ParticipantEmail || ''}`.toLowerCase();
           return full.indexOf(q) >= 0;
         });
@@ -574,11 +646,22 @@ export default function CheckInPage(): React.ReactElement {
    * Die Liste ist zu diesem Zeitpunkt geladen (`loadRegsForSearch` läuft beim
    * Auswählen des Events). Ist sie es nicht, sagt die Meldung genau das,
    * statt „ID nicht gefunden" zu behaupten.
+   *
+   * v31.4: Die getippte Zahl wird ZUERST über die versendete QR-Mail
+   * aufgelöst (`QrSentId`), erst danach über die laufende `TeilnehmerID`.
+   *
+   * Grund (Befund 08.09.2026, laufendes Event): Jede Abmeldung nummeriert die
+   * ganze Liste neu, die gedruckte Mail nicht. Nach der ersten Abmeldung
+   * zeigte die Mail von Person A auf die Zahl, die inzwischen Person B trägt —
+   * der Tisch tippte sie und checkte B ein. Die Mail ist die Zusage, die die
+   * Person in der Hand hält; sie gewinnt. Der Scan-Weg ist davon nie betroffen
+   * (im Code steht die E-Mail-Adresse, keine Nummer).
    */
   const checkInByParticipantId = async (): Promise<void> => {
     const raw = idInput.trim();
     if (!raw) return;
     setIdError('');
+    setIdNote('');
     if (!nameSearchEventId) {
       setIdError(isDe ? 'Bitte zuerst oben das Event auswählen.' : 'Please pick the event above first.');
       return;
@@ -599,14 +682,34 @@ export default function CheckInPage(): React.ReactElement {
     }
     // v30.83: numerisch — „005" aus der QR-Mail ist ID 5.
     const rawNum = parseInt(raw, 10);
-    const hit = regs.filter(r => r.TeilnehmerID !== undefined && r.TeilnehmerID !== null && Number(r.TeilnehmerID) === rawNum);
-    if (hit.length === 0) {
+    // v31.4: zwei Auflösungen derselben Zahl (s. Kopfkommentar).
+    const qrHits = regs.filter(r => qrSentIdOf(r) === rawNum);
+    const tidHits = regs.filter(r => runningIdOf(r) === rawNum);
+    // Hat dieses Event überhaupt hinterlegt, welche Nummern verschickt wurden?
+    // Ohne diese Unterscheidung klingt jede Meldung gleich — dabei ist „nichts
+    // hinterlegt" ein ganz anderer Zustand als „diese Nummer stand in keiner
+    // Mail", und nur der erste hat eine Abhilfe.
+    const eventHasQrIds = regs.some(r => qrSentIdOf(r) !== null);
+
+    if (qrHits.length > 1) {
       setIdError(isDe
-        ? `Keine Anmeldung mit der Teilnehmer-ID ${raw} bei diesem Event. Bitte die Nummer aus der QR-Mail prüfen — oder unten nach dem Namen suchen.`
-        : `No registration with attendee ID ${raw} for this event. Please check the number in the QR email — or search by name below.`);
+        ? `Zwei versendete QR-Mails tragen die Nummer ${raw} — das ist ein Datenfehler, keine Verwechslung am Tisch. Bitte unten über den Namen einchecken und das den DEX-Admins melden.`
+        : `Two sent QR emails carry number ${raw} — that is a data error, not a mix-up at the desk. Please check in by name below and report this to the DEX admins.`);
       return;
     }
-    if (hit.length > 1) {
+    if (qrHits.length === 1) {
+      const person = qrHits[0];
+      // Trägt eine ANDERE Zeile heute dieselbe laufende Nummer, ist die
+      // Eingabe zweideutig — dann zeigt die Karte beide Namen (s. QrIdConflict).
+      const other = tidHits.filter(r => r.Id !== person.Id)[0];
+      setIdInput('');
+      setNameSearchQuery('');
+      startManualCheckInFromSearch(person, other
+        ? { typed: rawNum, qrName: regDisplayName(person), altName: regDisplayName(other), alt: other }
+        : undefined);
+      return;
+    }
+    if (tidHits.length > 1) {
       // Sollte nicht vorkommen (ID ist je Event fortlaufend), wäre aber ein
       // Datenfehler, den man am Einlass nicht stillschweigend raten darf.
       setIdError(isDe
@@ -614,12 +717,32 @@ export default function CheckInPage(): React.ReactElement {
         : `Several registrations share ID ${raw} — please check in by name below and report this to the DEX admins.`);
       return;
     }
+    if (tidHits.length === 0) {
+      // v31.4: Ohne EINE hinterlegte QR-Nummer im ganzen Event ist die
+      // wahrscheinlichste Ursache nicht die Eingabe, sondern der fehlende
+      // Datensatz — und dafür gibt es genau eine Abhilfe.
+      const backfillHint = eventHasQrIds ? '' : (isDe
+        ? ' Für dieses Event ist noch nicht hinterlegt, welche Nummern in den QR-Mails standen — ein Organizer kann das im Organizer Center über „QR-Nummern nachtragen" nachziehen.'
+        : ' For this event it is not yet on file which numbers were printed in the QR emails — an organizer can add them in the organizer center via “Backfill QR numbers”.');
+      setIdError((isDe
+        ? `Keine Anmeldung mit der Teilnehmer-ID ${raw} bei diesem Event. Bitte die Nummer aus der QR-Mail prüfen — oder unten nach dem Namen suchen.`
+        : `No registration with attendee ID ${raw} for this event. Please check the number in the QR email — or search by name below.`) + backfillHint);
+      return;
+    }
+    // Genau eine laufende Nummer und keine QR-Mail dazu — wie bisher.
+    if (eventHasQrIds) {
+      // Andere Zeilen dieses Events tragen sehr wohl eine QR-Nummer. Dann ist
+      // dieser Treffer eine Ebene schwächer, und das gehört gesagt.
+      setIdNote(isDe
+        ? `Zu dieser Nummer gibt es keine versendete QR-Mail — gefunden über die laufende Nummer.`
+        : `No sent QR email carries this number — found via the current running number.`);
+    }
     setIdInput('');
     setNameSearchQuery(''); // v30.87: Live-Filter der Liste zurücksetzen
-    startManualCheckInFromSearch(hit[0]);
+    startManualCheckInFromSearch(tidHits[0]);
   };
 
-  const startManualCheckInFromSearch = (reg: import('../services/EventService').SPRegistration): void => {
+  const startManualCheckInFromSearch = (reg: SPRegistration, qrConflict?: QrIdConflict): void => {
     const ev = events.find(e => e.id === nameSearchEventId);
     if (!ev || !ev.subsiteUrl) return;
     if (reg.Status === 'Abgemeldet') {
@@ -654,6 +777,9 @@ export default function CheckInPage(): React.ReactElement {
     } catch { /* */ }
     // v31.1: Liste und Teilnehmer-ID checken DIREKT ein — die Person ist hier
     // schon eindeutig gewählt, eine zweite Bestätigung war nur ein Klick mehr.
+    // v31.4: EINE Ausnahme — die getippte Zahl war zweideutig (`qrConflict`).
+    // Dann greift die v31.1-Begründung nicht: Es sind zwei Personen im Spiel,
+    // und wer eincheckt, soll vorher beide Namen gesehen haben.
     const info: PendingCheckInInfo = {
       name,
       email: reg.ParticipantEmail || '',
@@ -670,10 +796,19 @@ export default function CheckInPage(): React.ReactElement {
       location: (reg as any).Location || '',
       photoUrl,
       extras: extrasFor(reg, ev.id),
+      qrNote: qrNoteOf(reg),
+      qrConflict,
     };
     setResultMessage('');
     setResultType('');
     setNameSearchQuery('');
+    if (qrConflict) {
+      const shirt = shirtDeskInfoFor(reg, ev.id);
+      setCardShirtSize(shirt ? shirt.preset : '');
+      setPendingCheckIn({ ...info, shirt });
+      setTimeout(() => { confirmCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 100);
+      return;
+    }
     setIsProcessing(true);
     void performCheckIn(info).finally(() => setIsProcessing(false));
   };
@@ -1190,6 +1325,9 @@ export default function CheckInPage(): React.ReactElement {
       // egal ob gescannt oder gesucht wurde.
       extras: extrasFor(reg, event.id),
       shirt,
+      // v31.4: Auch nach einem Scan — der Helfer schaut nachher auf dieselbe
+      // Mail und soll die beiden Zahlen dort wiederfinden.
+      qrNote: qrNoteOf(reg),
     });
     setResultMessage('');
     setResultType('');
@@ -1686,6 +1824,13 @@ export default function CheckInPage(): React.ReactElement {
             <div style={{ flex: 1 }}>
               <h3 style={{ margin: '0 0 4px', fontSize: '1.2rem' }}>{pendingCheckIn.name}</h3>
               <p style={{ margin: '0 0 2px', color: 'var(--dex-gray-500)', fontSize: '0.85rem' }}>{pendingCheckIn.email}</p>
+              {/* v31.4: Beide Nummern, sobald sie auseinanderlaufen — links
+                  die, die in der Mail steht, rechts die von heute. */}
+              {pendingCheckIn.qrNote && (
+                <p style={{ margin: '0 0 2px', color: 'var(--dex-gray-500)', fontSize: '0.78rem', fontFamily: "'Courier New',Courier,monospace" }}>
+                  {pendingCheckIn.qrNote}
+                </p>
+              )}
               {pendingCheckIn.jobTitle && (
                 <p style={{ margin: '0 0 2px', fontSize: '0.85rem' }}>{pendingCheckIn.jobTitle}</p>
               )}
@@ -1794,6 +1939,48 @@ export default function CheckInPage(): React.ReactElement {
               )}
             </div>
           </div>
+          {/* v31.4: Die getippte Zahl gehört zwei Personen — beide werden
+              benannt, bevor jemand eingecheckt wird. Warnton wie der
+              v31.3-Trikot-Satz, weil hier genau wie dort eine ENTSCHEIDUNG
+              ansteht und nicht nur eine Angabe nachzuschlagen ist. */}
+          {pendingCheckIn.qrConflict && (
+            <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginBottom: 14 }}>
+              <span className="dex-ui-callout-icon" aria-hidden="true"><AlertCircle size={16} /></span>
+              <div>
+                {isDe ? (<>
+                  Nummer <strong>{pad3(pendingCheckIn.qrConflict.typed)}</strong> stand in der QR-Mail von{' '}
+                  <strong>{pendingCheckIn.qrConflict.qrName}</strong>. Die laufende Nummer{' '}
+                  {pad3(pendingCheckIn.qrConflict.typed)} trägt inzwischen{' '}
+                  <strong>{pendingCheckIn.qrConflict.altName}</strong> (nach Abmeldungen neu vergeben).
+                  Eingecheckt wird <strong>{pendingCheckIn.qrConflict.qrName}</strong> — so steht es in ihrer Mail.
+                </>) : (<>
+                  Number <strong>{pad3(pendingCheckIn.qrConflict.typed)}</strong> was printed in the QR email of{' '}
+                  <strong>{pendingCheckIn.qrConflict.qrName}</strong>. The current running number{' '}
+                  {pad3(pendingCheckIn.qrConflict.typed)} now belongs to{' '}
+                  <strong>{pendingCheckIn.qrConflict.altName}</strong> (reassigned after cancellations).
+                  We are checking in <strong>{pendingCheckIn.qrConflict.qrName}</strong> — that is what their email says.
+                </>)}
+                <div style={{ marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary dex-ui-btn-sm"
+                    disabled={isProcessing}
+                    onClick={() => {
+                      const alt = pendingCheckIn.qrConflict ? pendingCheckIn.qrConflict.alt : null;
+                      setPendingCheckIn(null);
+                      // Ohne `qrConflict` — die Wahl ist jetzt ausdrücklich
+                      // getroffen, eine zweite Rückfrage wäre nur ein Klick mehr.
+                      if (alt) startManualCheckInFromSearch(alt);
+                    }}
+                  >
+                    {isDe
+                      ? `Stattdessen ${pendingCheckIn.qrConflict.altName} einchecken`
+                      : `Check in ${pendingCheckIn.qrConflict.altName} instead`}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', margin: '0 0 16px' }}>
             {isDe ? 'Event: ' : 'Event: '}<strong>{pendingCheckIn.event.title}</strong>
             {pendingCheckIn.agendaLabel && (
@@ -2107,7 +2294,7 @@ export default function CheckInPage(): React.ReactElement {
           <input
             id="dex-checkin-id"
             value={idInput}
-            onChange={e => { const v = e.target.value.replace(/\D/g, ''); setIdInput(v); setIdError(''); setNameSearchQuery(v); }}
+            onChange={e => { const v = e.target.value.replace(/\D/g, ''); setIdInput(v); setIdError(''); setIdNote(''); setNameSearchQuery(v); }}
             inputMode="numeric"
             pattern="[0-9]*"
             placeholder="17"
@@ -2125,6 +2312,12 @@ export default function CheckInPage(): React.ReactElement {
         </form>
         {idError && (
           <p style={{ color: 'var(--dex-orange)', fontSize: '0.85rem', margin: '4px 0 10px', textAlign: 'center' }}>{idError}</p>
+        )}
+        {/* v31.4: Kein Fehler — die Nummer wurde nur über die laufende ID
+            aufgelöst, obwohl das Event QR-Nummern hinterlegt hat. Gedämpft,
+            weil der Check-in geklappt hat. */}
+        {idNote && !idError && (
+          <p className="dex-ui-muted" style={{ fontSize: '0.78rem', margin: '4px 0 10px', textAlign: 'center' }}>{idNote}</p>
         )}
         <div style={{ borderTop: '1px solid var(--dex-gray-200)', margin: '12px 0 14px' }} />
         {/* v7.16: KPI-Bereich — angemeldet vs. eingecheckt, plus Quick-Filter
@@ -2332,6 +2525,16 @@ export default function CheckInPage(): React.ReactElement {
                           <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {reg.ParticipantEmail}
                           </div>
+                          {/* v31.4: Läuft die Nummer aus der QR-Mail von der
+                              heutigen laufenden Nummer auseinander, stehen
+                              beide da — sonst sucht der Helfer die Zahl vom
+                              Handy in einer Liste, die eine andere zeigt.
+                              Sind sie gleich, steht hier bewusst nichts. */}
+                          {qrNoteOf(reg) && (
+                            <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', fontFamily: "'Courier New',Courier,monospace", whiteSpace: 'nowrap' }}>
+                              {qrNoteOf(reg)}
+                            </div>
+                          )}
                           {/* v30.53: Startnummer + Trikotgröße schon in der
                               Trefferliste — beim B2Run wird beides am selben
                               Tisch gebraucht wie der Check-in selbst. */}

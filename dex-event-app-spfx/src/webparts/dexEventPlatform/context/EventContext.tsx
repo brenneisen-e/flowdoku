@@ -1437,7 +1437,11 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
               // sofort zeigt, dass der QR-Code raus ist (analog zum
               // manuellen Massen-QR-Versand).
               if (event.subsiteUrl && myReg && myReg.Id) {
-                await eventService.setQRSentStatus(event.subsiteUrl, myReg.Id);
+                // v31.4: Dieselbe Nummer, die oben in `qrCodeEmail` gedruckt
+                // wurde, wird als `QrSentId` festgehalten — sonst zeigt die
+                // Mail dieser Person nach der nächsten Abmeldung auf jemand
+                // anderen (`TeilnehmerID` wird neu vergeben, die Mail nicht).
+                await eventService.setQRSentStatus(event.subsiteUrl, myReg.Id, myReg.TeilnehmerID);
               }
             } catch (err) { console.warn('[DEX] auto-send QR failed:', err); }
           })().catch(err => console.warn('[DEX] auto-send QR outer failed:', err));

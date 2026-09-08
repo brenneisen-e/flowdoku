@@ -152,6 +152,13 @@ export async function createRegistrationList(
     // `{ size, at, by }` (s. utils/checkInExtras.parseShirtIssue). Ohne diese
     // Spalte ist die Trikot-Verteilung nur ein Plan, der sich stündlich ändert.
     { title: 'ShirtIssued', type: 3 },
+    // v31.4: Die Teilnehmer-ID, die in der zuletzt versendeten QR-Mail dieser
+    // Person GEDRUCKT wurde. Sie wird nach dem Versand nie wieder geändert —
+    // das ist der ganze Zweck: `TeilnehmerID` wird bei jeder Abmeldung neu
+    // vergeben (reorderParticipantIDs, DEX_IDReorder-Flow), die Zahl in der
+    // Mail des Teilnehmers bleibt aber stehen. Ohne diese Spalte checkt der
+    // Tisch beim Abtippen der Mail-Nummer die falsche Person ein.
+    { title: 'QrSentId', type: 9 },
     // v17.15: Nachrück-Audit (siehe SPRegistration-Interface):
     // - PromotedDate: gesetzt beim Promote auf die nachrückende Person.
     // - ReplacedParticipantEmail: E-Mail der Person, deren Cancel den

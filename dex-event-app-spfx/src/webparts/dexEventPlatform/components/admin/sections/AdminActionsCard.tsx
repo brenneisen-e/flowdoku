@@ -104,6 +104,8 @@ export interface AdminActionsCardProps {
   setRepairPermsResult: React.Dispatch<React.SetStateAction<string>>;
   setResetCounterResult: React.Dispatch<React.SetStateAction<string>>;
   setShirtSizeOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  /** v31.4: Dialog „QR-Nummern nachtragen“ (gedruckte Nummern aus DEX_Emails). */
+  setQrBackfillOpen: React.Dispatch<React.SetStateAction<boolean>>;
   /** v30.93: Kopie in ein neues Event mit Programmpunkten (Programmpunkte, Stufe 4). */
   setCopyToAgendaOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setShowDeclineModal: React.Dispatch<React.SetStateAction<boolean>>;
@@ -121,7 +123,7 @@ export interface AdminActionsCardProps {
 }
 
 export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
-  const { adminEvents, allEvents, childEventsOf, confirmDialog, copiedDeepLink, copiedEmails, detectOverbookResult, eventServiceRef, fixColumnsResult, fixFieldsResult, isAdmin, isCheckingDeclines, isDe, isDetectingOverbook, isFixingColumns, isFixingFields, isOrganizerFor, isPromoting, isRefreshingProfiles, isReorderingIDs, isRepairingAccess, isRepairingNames, isRepairingOrganizers, isRepairingPerms, isResettingCounter, isSendingQR, isSplitCapacity, isSyncingRegistry, navigate, openChangeLogForEvent, openCommsModal, openInviteModal, openMassmailPicker, promoteResult, qrSentCount, refreshEvents, refreshProfilesResult, registrations, reloadRegistrations, reorderResult, repairAccessResult, repairNamesResult, repairOrganizersResult, repairPermsResult, resetCounterResult, runIdReorder, runManualPromote, searchUsers, selectedEvent, setAccessFixModal, setB2runTodoOpen, setBibImportOpen, setBillingPanelOpen, setCheckInHubOpen, setCheckInHubStep, setCopiedDeepLink, setCopiedEmails, setDeclineCopied, setDeclineResult, setDetectOverbookResult, setExcelAudience, setExcelTargetModal, setFixColumnsResult, setFixFieldsResult, setIsCheckingDeclines, setIsDetectingOverbook, setIsFixingColumns, setIsFixingFields, setIsRefreshingProfiles, setIsRepairingAccess, setIsRepairingNames, setIsRepairingOrganizers, setIsRepairingPerms, setIsResettingCounter, setIsSyncingRegistry, setNameFixModal, setRefreshProfilesResult, setRepairAccessResult, setRepairNamesResult, setRepairOrganizersResult, setRepairPermsResult, setResetCounterResult, setShirtSizeOpen, setShowDeclineModal, setShowExportMenu, setSubRegReloadTick, setSyncRegistryResult, shirtFieldExists, showAlert, showExportMenu, siteUrl, spServiceRef, syncRegistryResult, t, updateEvent } = p;
+  const { adminEvents, allEvents, childEventsOf, confirmDialog, copiedDeepLink, copiedEmails, detectOverbookResult, eventServiceRef, fixColumnsResult, fixFieldsResult, isAdmin, isCheckingDeclines, isDe, isDetectingOverbook, isFixingColumns, isFixingFields, isOrganizerFor, isPromoting, isRefreshingProfiles, isReorderingIDs, isRepairingAccess, isRepairingNames, isRepairingOrganizers, isRepairingPerms, isResettingCounter, isSendingQR, isSplitCapacity, isSyncingRegistry, navigate, openChangeLogForEvent, openCommsModal, openInviteModal, openMassmailPicker, promoteResult, qrSentCount, refreshEvents, refreshProfilesResult, registrations, reloadRegistrations, reorderResult, repairAccessResult, repairNamesResult, repairOrganizersResult, repairPermsResult, resetCounterResult, runIdReorder, runManualPromote, searchUsers, selectedEvent, setAccessFixModal, setB2runTodoOpen, setBibImportOpen, setBillingPanelOpen, setCheckInHubOpen, setCheckInHubStep, setCopiedDeepLink, setCopiedEmails, setDeclineCopied, setDeclineResult, setDetectOverbookResult, setExcelAudience, setExcelTargetModal, setFixColumnsResult, setFixFieldsResult, setIsCheckingDeclines, setIsDetectingOverbook, setIsFixingColumns, setIsFixingFields, setIsRefreshingProfiles, setIsRepairingAccess, setIsRepairingNames, setIsRepairingOrganizers, setIsRepairingPerms, setIsResettingCounter, setIsSyncingRegistry, setNameFixModal, setRefreshProfilesResult, setRepairAccessResult, setRepairNamesResult, setRepairOrganizersResult, setRepairPermsResult, setResetCounterResult, setQrBackfillOpen, setShirtSizeOpen, setShowDeclineModal, setShowExportMenu, setSubRegReloadTick, setSyncRegistryResult, shirtFieldExists, showAlert, showExportMenu, siteUrl, spServiceRef, syncRegistryResult, t, updateEvent } = p;
   const { setCopyToAgendaOpen } = p;
   // v31.3: Gesperrte Aktionen bleiben sichtbar — mit dem Grund in der
   // Folgezeile (Leitfaden 5a, Punkt 5). Fast alle Sperren haben dieselbe
@@ -710,6 +712,27 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                   }
                   setIsRepairingPerms(false);
                 }}
+              />
+            )}
+
+            {/* v31.4: QR-Nummern nachtragen. Die Spalte `QrSentId` (welche
+                Nummer stand in der versendeten QR-Mail?) gibt es erst seit
+                v31.4 — für jedes Event, dessen QR-Mails vorher rausgingen,
+                ist sie leer. Genau dort tut der Fehler weh: Jede Abmeldung
+                nummeriert die Liste neu, die gedruckte Mail nicht, und der
+                Tisch checkt beim Abtippen der Mail-Nummer die falsche Person
+                ein. Die Nummern stehen noch in der Mail-Warteschlange. */}
+            {(isAdmin || isOrganizerFor(selectedEvent)) && (
+              <ActionTile
+                icon={<QrCode size={18} />}
+                category="maintenance"
+                title={isDe ? 'QR-Nummern nachtragen' : 'Backfill QR numbers'}
+                desc={whenList(isDe
+                  ? 'Liest aus den bereits verschickten QR-Mails zurück, welche Nummer bei welcher Person gedruckt stand, und trägt sie in der Teilnehmerliste nach — für dieses Event und alle Termine. Danach greift am Check-in die Nummer aus der Mail, auch wenn Abmeldungen die laufende Nummer längst verschoben haben. Zeigt vorher eine Vorschau; geschrieben wird erst nach deiner Bestätigung.'
+                  : 'Recovers from the QR emails already sent which number was printed for which person and writes it back to the attendee list — for this event and every date. After that, check-in resolves the number from the email even when cancellations have shifted the running number. Shows a preview first; nothing is written before you confirm.')}
+                badge="organizer"
+                disabled={!selectedEvent?.subsiteUrl}
+                onClick={() => setQrBackfillOpen(true)}
               />
             )}
 

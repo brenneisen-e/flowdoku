@@ -565,19 +565,76 @@ export async function revertCheckIn(
   }
 }
 
+/**
+ * v31.4: Der vierte Parameter ist die Nummer, die in DIESER Mail GEDRUCKT
+ * wurde — nicht die, die beim nächsten Lesen in der Zeile steht.
+ *
+ * Warum das eine eigene Spalte braucht: `TeilnehmerID` wird bei jeder
+ * Abmeldung neu vergeben (`reorderParticipantIDs`, Flow
+ * `DEX_IDReorder_TeilnehmerIDs`). Die Zahl unter dem QR-Code in der Mail des
+ * Teilnehmers ändert sich dabei natürlich nicht. Ohne `QrSentId` checkt der
+ * Tisch beim Abtippen der Mail-Nummer nach der ersten Abmeldung die falsche
+ * Person ein (Befund 08.09.2026, laufendes Event).
+ *
+ * Der Rückgabewert unterscheidet „Status gesetzt" von „ID auch gesetzt":
+ * Auf einer Bestandsliste OHNE die Spalte antwortet SharePoint auf den MERGE
+ * mit HTTP 400. Dann wird SOFORT ein zweiter MERGE nur mit dem Status
+ * geschickt — sonst würde der QR-Massenversand auf jedem Event scheitern,
+ * das nie „Spalten fixen" gelaufen ist, und ein Fix, der den Normalbetrieb
+ * kaputtmacht, ist schlimmer als der Fehler, den er behebt.
+ */
 export async function setQRSentStatus(
   svc: EventService,
   subsiteUrl: string,
-  itemId: number
-): Promise<boolean> {
+  itemId: number,
+  qrSentId?: number
+): Promise<{ ok: boolean; idWritten: boolean }> {
+  const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`;
+  const id = Number(qrSentId);
+  const withId = qrSentId !== undefined && qrSentId !== null && isFinite(id) && id > 0;
   try {
-    const response = await svc._merge(
-      `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
-      { 'Status': 'QR versendet' }
-    );
-    return response.ok;
+    if (withId) {
+      const withIdResp = await svc._merge(url, { 'Status': 'QR versendet', 'QrSentId': id });
+      if (withIdResp.ok) return { ok: true, idWritten: true };
+      // „Spalte fehlt" ist ein 400 — SharePoint verpackt Schema-Fehler aber
+      // nicht immer sauber (dieselbe Beobachtung wie beim Rechte-Entzug in
+      // v30.67: 404 ODER 500), deshalb gilt der 500 hier mit. Bei 403/429
+      // wird NICHT nachgefasst: Der zweite Versuch scheiterte genauso, und
+      // eine zusätzliche Anfrage mitten in der Versandwelle verschärft nur
+      // die Drosselung.
+      if (withIdResp.status !== 400 && withIdResp.status !== 500) return { ok: false, idWritten: false };
+    }
+    const response = await svc._merge(url, { 'Status': 'QR versendet' });
+    return { ok: response.ok, idWritten: false };
   } catch {
-    return false;
+    return { ok: false, idWritten: false };
+  }
+}
+
+/**
+ * v31.4: `QrSentId` nachträglich setzen — für die Aktion „QR-Nummern
+ * nachtragen", die die gedruckten Nummern aus der Mail-Warteschlange
+ * `DEX_Emails` zurückholt. Getrennt von `setQRSentStatus`, weil der Status
+ * dabei NICHT angefasst werden darf: Wer inzwischen eingecheckt oder
+ * abgemeldet ist, bleibt es. Der Status im Rückgabewert unterscheidet
+ * „Spalte fehlt" (400 → einmal „Spalten fixen") von „ging schief".
+ */
+export async function setQrSentId(
+  svc: EventService,
+  subsiteUrl: string,
+  itemId: number,
+  qrSentId: number
+): Promise<{ ok: boolean; status: number }> {
+  const id = Number(qrSentId);
+  if (!isFinite(id) || id <= 0) return { ok: false, status: 0 };
+  try {
+    const resp = await svc._merge(
+      `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+      { 'QrSentId': id }
+    );
+    return { ok: resp.ok, status: resp.status };
+  } catch {
+    return { ok: false, status: 0 };
   }
 }
 

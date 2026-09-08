@@ -332,6 +332,12 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
     if (!(await confirmDialog(isDe ? `QR-Code an ${eligible.length} Teilnehmer ohne Code senden?` : `Send the QR code to ${eligible.length} participants without a code?`, { confirmLabel: isDe ? 'Senden' : 'Send' }))) return;
     setIsSendingQR(true); setQrSendResult(null); setQrSentCount(0);
     let sent = 0; let extCount = 0;
+    // v31.4: Wie oft konnte die gedruckte Nummer NICHT festgehalten werden?
+    // Auf einer Bestandsliste ohne die Spalte `QrSentId` laeuft der Versand
+    // bewusst weiter (kein Abbruch) — aber schweigend waere es die naechste
+    // Falle: Am Check-in greift dann die abgetippte Mail-Nummer nicht, und
+    // niemand wuesste warum.
+    let idMissing = 0;
     for (const reg of eligible) {
       const qrData = `DEX|${selectedEvent.eventNumber}|${reg.ParticipantEmail}`;
       const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
@@ -356,7 +362,14 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
         await eventServiceRef.queueEmail(emailData.subject, reg.ParticipantEmail, name, emailData.body, 'QRCode', selectedEvent.title, selectedEvent.id);
       }
       if (selectedEvent.subsiteUrl) {
-        await eventServiceRef.setQRSentStatus(selectedEvent.subsiteUrl, reg.Id);
+        // v31.4: Die Nummer, die eine Zeile weiter oben an `qrCodeEmail`
+        // ging — also die, die in DIESER Mail gedruckt steht. Bewusst nicht
+        // frisch gelesen: Zwischen Mailaufbau und Statuswechsel kann ein
+        // Reorder gelaufen sein, und dann stünde in der Spalte eine Zahl,
+        // die in keiner Mail steht. Ohne die Spalte (Bestandsliste) setzt
+        // der Aufruf still nur den Status — der Versand läuft weiter.
+        const st = await eventServiceRef.setQRSentStatus(selectedEvent.subsiteUrl, reg.Id, reg.TeilnehmerID);
+        if (st.ok && !st.idWritten) idMissing++;
       }
       sent++; setQrSentCount(sent);
     }
@@ -366,11 +379,16 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
     // ist die 429 auf dem Reload der Normalfall, die Liste wurde dann `[]`.
     await reloadRegistrations();
     setIsSendingQR(false);
-    setQrSendResult(extCount > 0
+    const idHint = idMissing > 0
+      ? (isDe
+        ? ` Die gedruckten Nummern konnten nicht festgehalten werden (Spalte QrSentId fehlt auf der Teilnehmerliste) — bitte einmal „Spalten fixen" ausführen, sonst greift am Check-in die abgetippte Nummer aus der Mail nicht.`
+        : ` The printed numbers could not be stored (column QrSentId is missing on the attendee list) — please run “Fix columns” once, otherwise the typed number from the email will not resolve at check-in.`)
+      : '';
+    setQrSendResult((extCount > 0
       ? (isDe
         ? `${sent} QR-Codes verschickt (davon ${extCount} an dich/Organizer umgeleitet — externe Adressen).`
         : `${sent} QR codes sent (${extCount} of them redirected to you/the organizer — external addresses).`)
-      : (isDe ? `${sent} QR-Codes verschickt.` : `${sent} QR codes sent.`));
+      : (isDe ? `${sent} QR-Codes verschickt.` : `${sent} QR codes sent.`)) + idHint);
   };
 
   const saveSelfCheckInWindow = async (): Promise<void> => {

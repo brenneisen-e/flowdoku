@@ -953,6 +953,17 @@ export function qrEmailDefaults(lang: string = 'EN'): { subject: string; heading
  * Aufbau als `<table>` mit zwei Zellen, nicht als Flexbox — Outlook rendert
  * mit Word und kann kein Flex. `valign="middle"` hält die Textspalte auf
  * Höhe des Codes.
+ *
+ * v31.4 — WICHTIG beim Ändern der ID-Zeile: Genau dieses Markup liest
+ * `services/events/qrSentBackfill.parseQrIdFromBody` aus den Bodies der
+ * Warteschlange `DEX_Emails` zurück, um für Bestands-Events nachzutragen,
+ * welche Nummer in welcher Mail stand („QR-Nummern nachtragen"). Der Parser
+ * sucht `ID:` und die nächste Ziffernfolge vor einem `</strong>`. Wer die
+ * Zeile umbaut, zieht ihn im selben Commit nach — sonst findet die Aktion
+ * still nichts mehr und behauptet „keine Mails gefunden".
+ * Das BILD im QR-Code ist davon nicht betroffen: dort steht
+ * `DEX|<EventNr>|<E-Mail>`, der Scan-Weg trifft also immer die richtige
+ * Person. Betroffen ist nur die abgetippte Nummer.
  */
 export function buildQrBlockHtml(qrImageHtml: string, fullDisplayName: string, teilnehmerId?: number, lang: string = 'DE', note?: string): string {
   // v30.60: Der Block war fest deutsch — „Name:", „ID:" und der Hinweis unter

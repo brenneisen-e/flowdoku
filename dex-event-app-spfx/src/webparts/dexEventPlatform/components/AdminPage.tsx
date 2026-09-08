@@ -30,6 +30,8 @@ import B2RunBibImportModal from './admin/B2RunBibImportModal';
 import B2RunTodoModal from './admin/B2RunTodoModal';
 import ShirtSizeModal from './admin/ShirtSizeModal';
 import CopyToAgendaModal from './admin/CopyToAgendaModal';
+// v31.4: Gedruckte QR-Nummern aus DEX_Emails in die Teilnehmerliste zurueck.
+import QrSentIdBackfillModal from './admin/QrSentIdBackfillModal';
 import { SHIRT_PATTERN } from '../utils/checkInExtras';
 import { isEventOver } from '../utils/eventFormat';
 import AddParticipantsModal from './admin/AddParticipantsModal';
@@ -1041,6 +1043,9 @@ export default function AdminPage(): React.ReactElement {
   const [shirtSizeOpen, setShirtSizeOpen] = React.useState(false);
   // v30.93: Programmpunkte, Stufe 4 — Kopie in ein neues Event.
   const [copyToAgendaOpen, setCopyToAgendaOpen] = React.useState(false);
+  // v31.4: „QR-Nummern nachtragen“ — die in den verschickten QR-Mails
+  // gedruckten Nummern zurueckholen (s. QrSentIdBackfillModal).
+  const [qrBackfillOpen, setQrBackfillOpen] = React.useState(false);
   // v30.60: Aufgeklappte Reiter-Gruppe („Day 1" …). null = die zuletzt
   // sinnvolle Gruppe wird beim Rendern bestimmt (die des gewählten Termins).
   const [openTabGroup, setOpenTabGroup] = React.useState<string | null>(null);
@@ -2028,8 +2033,11 @@ export default function AdminPage(): React.ReactElement {
     setQrEditSampleBlock, setQrEditSubheading, setQrEditSubject, setQrHeaderImage,
   };
   const editRegModalProps = {
-    closeEditModal, editError, editForm, isDe, isSavingEdit,
-    saveEdit, selectedEvent, setEditForm,
+    // v31.4: `editingReg` und `registrations` für das Feld „Ausgegebenes
+    // Trikot" — der Dialog liest daraus den festgehaltenen Eintrag, die
+    // Größen des Events und die Check-in-Annahme.
+    closeEditModal, editError, editForm, editingReg, isDe, isSavingEdit,
+    registrations, saveEdit, selectedEvent, setEditForm,
   };
   const participantDetailModalProps = {
     isDe, participantDetail, setParticipantDetail,
@@ -2226,7 +2234,7 @@ export default function AdminPage(): React.ReactElement {
     setRepairAccessResult, setRepairNamesResult, setRepairOrganizersResult, setRepairPermsResult, setResetCounterResult,
     setShirtSizeOpen, setShowDeclineModal, setShowExportMenu, setSubRegReloadTick, setSyncRegistryResult, shirtFieldExists,
     showAlert, showExportMenu, siteUrl, spServiceRef, syncRegistryResult, t,
-    updateEvent, setCopyToAgendaOpen,
+    updateEvent, setCopyToAgendaOpen, setQrBackfillOpen,
   };
   const kpiTilesProps = {
     isConsolidatedMode, isDe, isSplitCapacity, registrations, regsUnknown, selectedEvent, subEventRegsByEventId, subListsIncomplete, t,
@@ -2838,6 +2846,23 @@ export default function AdminPage(): React.ReactElement {
           // Such-/Scroll-Weg der Seite; der Dialog schließt dabei, sonst liegt
           // er über der Liste, zu der er gesprungen ist.
           onJumpToParticipant={(q) => { setShirtSizeOpen(false); jumpToParticipant(q); }}
+        />
+      )}
+
+      {/* v31.4: QR-Nummern nachtragen — liest die gedruckten Nummern aus den
+          bereits verschickten QR-Mails zurueck. Laeuft ueber die Klammer UND
+          alle Termine, weil `EventId` in DEX_Emails die Id des jeweiligen
+          Events ist (CLAUDE.md: „Der Klammer-Pfad ist nie der ganze Pfad"). */}
+      {qrBackfillOpen && selectedEvent && eventServiceRef && (
+        <QrSentIdBackfillModal
+          event={selectedEvent}
+          childEvents={childEventsOf(selectedEvent.id)}
+          service={eventServiceRef}
+          isDe={isDe}
+          onClose={() => setQrBackfillOpen(false)}
+          // Nach dem Schreiben die Teilnehmerliste ueber den EINEN
+          // Nachlade-Pfad der Seite auffrischen (CLAUDE.md, v30.67).
+          onDone={() => { void reloadRegistrations(); }}
         />
       )}
 

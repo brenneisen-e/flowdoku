@@ -45,6 +45,8 @@ import * as seats from './events/seats';
 import * as overbooking from './events/overbooking';
 import * as waitlist from './events/waitlist';
 import * as regListRepair from './events/regListRepair';
+// v31.4: Gedruckte QR-Nummern aus der Mail-Warteschlange zurückholen.
+import * as qrSentBackfill from './events/qrSentBackfill';
 import * as quiz from './events/quiz';
 import * as teilnehmerIdCounter from './events/teilnehmerIdCounter';
 import * as eventAssets from './events/eventAssets';
@@ -333,6 +335,13 @@ export interface SPRegistration {
    *  `{ size, at, by }` (s. utils/checkInExtras.parseShirtIssue). Leer =
    *  noch keins ausgegeben. Kommt über `$select=*` automatisch mit. */
   ShirtIssued?: string;
+  /** v31.4: Die Teilnehmer-ID, die in der zuletzt versendeten QR-Mail dieser
+   *  Person GEDRUCKT wurde — der Wert, den der Teilnehmer am Einlass vorliest.
+   *  Wird beim Versand einmal gesetzt und danach nie wieder verändert;
+   *  `TeilnehmerID` dagegen vergibt jede Abmeldung neu. Leer = für diese Zeile
+   *  ist nicht hinterlegt, was in der Mail stand (Bestandsdaten → Aktion
+   *  „QR-Nummern nachtragen"). Kommt über `$select=*` automatisch mit. */
+  QrSentId?: number;
   RegisteredByName?: string;   // Audit: Name des Users der die Anmeldung durchführte
   RegisteredByEmail?: string;  // Audit: E-Mail des Users der die Anmeldung durchführte
   /** v27.12: SP-Item-Metadaten als Fallback für „Registriert am/von", wenn die
@@ -1869,11 +1878,31 @@ export class EventService {
     return registrationStatus.checkOutParticipant(this, subsiteUrl, itemId);
   }
 
+  /** v31.4: `qrSentId` ist die Nummer, die in DIESER Mail gedruckt wurde.
+   *  `idWritten: false` heißt: Status gesetzt, Spalte `QrSentId` fehlt auf
+   *  der Liste (Bestands-Event → einmal „Spalten fixen"). */
   public async setQRSentStatus(
     subsiteUrl: string,
-    itemId: number
-  ): Promise<boolean> {
-    return registrationStatus.setQRSentStatus(this, subsiteUrl, itemId);
+    itemId: number,
+    qrSentId?: number
+  ): Promise<{ ok: boolean; idWritten: boolean }> {
+    return registrationStatus.setQRSentStatus(this, subsiteUrl, itemId, qrSentId);
+  }
+
+  /** v31.4: Gedruckte QR-Nummer nachtragen, ohne den Status zu berühren
+   *  (Aktion „QR-Nummern nachtragen"). */
+  public async setQrSentId(
+    subsiteUrl: string,
+    itemId: number,
+    qrSentId: number
+  ): Promise<{ ok: boolean; status: number }> {
+    return registrationStatus.setQrSentId(this, subsiteUrl, itemId, qrSentId);
+  }
+
+  /** v31.4: QR-Mails EINES Events aus `DEX_Emails` lesen und die gedruckten
+   *  Nummern parsen. `ok: false` heißt ABGEBROCHEN — nicht „nichts gefunden". */
+  public async scanQrMailsForEvent(eventId: string): Promise<qrSentBackfill.QrMailScan> {
+    return qrSentBackfill.scanQrMailsForEvent(this, eventId);
   }
 
   /** v31.1: Check-in rückgängig — Status zurück auf „QR versendet"/„Angemeldet". */

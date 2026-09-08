@@ -333,6 +333,18 @@ export interface ShirtIssue {
   by: string;
 }
 
+/**
+ * v31.4 (Nachtrag): Schlüssel der ausgegebenen Größe im Bearbeiten-Formular
+ * des Organizer Centers (`editForm`).
+ *
+ * Das Formular ist sonst „SP-Spaltenname → Wert"; die Ausgabe ist aber KEIN
+ * Feld des Zeilen-Patches, sondern ein eigener Schreibvorgang
+ * (`setShirtIssued`). Der doppelte Unterstrich hält den Schlüssel deshalb
+ * garantiert aus der Custom-Field-Schleife heraus — und die Konstante hält
+ * Dialog und Save-Pfad auf demselben Namen.
+ */
+export const SHIRT_ISSUED_FORM_KEY = '__shirtIssued';
+
 /** Defensiv wie `parseShirtStock`: kaputtes JSON oder keine Größe → null. */
 export function parseShirtIssue(raw: string | undefined | null): ShirtIssue | null {
   const s = (raw || '').trim();
@@ -366,6 +378,14 @@ export interface ShirtAllocation {
    * schlägt den Plan.
    */
   issued?: string;
+  /**
+   * v31.4 (Nachtrag): Diese Ausgabe steht NICHT in der Spalte — sie ist
+   * angenommen, weil die Person eingecheckt ist (s. `shirtAllocate`). Der
+   * Wert in `issued` ist dann die Wunschgröße, nicht ein festgehaltener
+   * Eintrag. Wer die Zahl anzeigt, muss den Unterschied benennen: Eine
+   * Annahme ist eine Aussage über den Lauftag, keine über die Daten.
+   */
+  issuedAssumed?: boolean;
 }
 
 export interface ShirtAllocationRow {
@@ -382,6 +402,10 @@ export interface ShirtAllocationRow {
   /** v31.4: Wie viele Stück dieser Größe sind schon ausgegeben? Sie sind aus
    *  dem Karton — „Bestand" ist damit nicht mehr dasselbe wie „verfügbar". */
   issued: number;
+  /** v31.4 (Nachtrag): Teilmenge von `issued` — davon sind angenommen, weil
+   *  die Person eingecheckt ist, ohne dass jemand die Ausgabe festgehalten
+   *  hat. Wer „ausgegeben" anzeigt, nennt diese Zahl dazu. */
+  issuedAssumed: number;
 }
 
 export interface ShirtAllocationResult {
@@ -422,11 +446,27 @@ export interface ShirtAllocationResult {
  *    keinen Vorschlag (s. `splitShirtSize`).
  *  - v31.4: Was schon AUSGEGEBEN ist (`ShirtIssued`), wird zuerst abgezogen
  *    und schlägt jeden Vorschlag (s. den Block unten).
+ *  - v31.4 (Nachtrag): Wer `Eingecheckt` ist und keinen Eintrag hat, gilt mit
+ *    seiner Wunschgröße als versorgt — als ANNAHME (`issuedAssumed`), nie in
+ *    der Spalte (s. den zweiten Vorlauf unten).
  */
 export function shirtAllocate(
   fields: FieldDef[] | undefined | null,
   regs: Array<{ Status?: string; CustomData?: string; ParticipantName?: string; ParticipantEmail?: string; TeilnehmerID?: number | string | null; Id?: number; ShirtIssued?: string }> | undefined | null,
   stock: ShirtStock,
+  /**
+   * v31.4 (Nachtrag): E-Mails (kleingeschrieben), die IRGENDWO eingecheckt
+   * sind — für Aufrufer, die je Person nur EINE Zeile übergeben.
+   *
+   * Bei einem Klammer-Event steht die Größenfrage oft auf der Klammer-Zeile,
+   * eingecheckt wird aber auf der Termin-Zeile (dieselbe Trennung, die
+   * `ShirtSizeModal` schon für `ShirtIssued` überbrücken musste). Wer die
+   * Zeilen vorher zusammenführt, hat den Check-in-Status der verworfenen
+   * Zeile nicht mehr — und die Annahme unten liefe für das halbe Event ins
+   * Leere. Aufrufer mit vollständiger Zeilenliste (Check-in-Seite) lassen den
+   * Parameter weg.
+   */
+  checkedInEmails?: Record<string, true> | null,
 ): ShirtAllocationResult {
   const result: ShirtAllocationResult = { hasStock: Object.keys(stock || {}).length > 0, byEmail: {}, rows: [], noneLeft: [], optOut: 0 };
   // v31.3: Die Zeilen mitgeben — bei mehreren treffenden Feldern entscheiden
@@ -485,7 +525,11 @@ export function shirtAllocate(
    */
   const issuedByEmail: Record<string, ShirtIssue> = {};
   const issuedCount: Record<string, number> = {};
+  const issuedAssumedCount: Record<string, number> = {};
   const issuedSeen: Record<string, true> = {};
+  /** Zeilen bzw. E-Mails, deren „Ausgabe" nur angenommen ist (s. unten). */
+  const assumedOf = new Map<object, true>();
+  const assumedEmail: Record<string, true> = {};
   for (const r of (regs || [])) {
     const iss = parseShirtIssue(r.ShirtIssued);
     if (!iss) continue;
@@ -500,6 +544,49 @@ export function shirtAllocate(
     issuedCount[ik] = (issuedCount[ik] || 0) + 1;
     remaining[ik] = (remaining[ik] || 0) - 1;
   }
+  /**
+   * v31.4 (Nachtrag): Wer eingecheckt ist, hat sein Trikot bekommen — auch
+   * ohne Eintrag in der Spalte.
+   *
+   * Der Ausgabe-Knopf am Check-in-Tisch gibt es erst seit v31.4; die Leute,
+   * die vorher durch den Tisch gegangen sind, tragen ihr Shirt trotzdem. Ohne
+   * diese Annahme rechnet die App einen Karton voll, der real halb leer ist —
+   * Ansage des Organizers, der am Tisch stand (08.09.2026, B2Run Köln).
+   *
+   * Drei Grenzen, die die Annahme ehrlich halten:
+   *  1. **Ein echter Eintrag schlägt sie immer.** Der zweite Durchlauf läuft
+   *     NACH dem ersten und überspringt jede E-Mail, die dort schon gezählt
+   *     wurde — die Annahme füllt nur Lücken.
+   *  2. **Sie wird nie geschrieben.** Sie lebt in dieser Rechnung, nicht in
+   *     der Spalte; sobald jemand am Tisch eine Größe festhält, gilt die.
+   *  3. **`No-Show` zählt nicht.** Die Person war nicht da, also hat sie auch
+   *     nichts mitgenommen. Nur `Eingecheckt` heißt „stand am Tisch" — auf
+   *     dieser Zeile oder (bei zusammengeführten Zeilen) auf einer anderen
+   *     Zeile derselben Person (`checkedInEmails`).
+   *
+   * Ohne echte Wunschgröße gibt es nichts anzunehmen: Wer „ich habe schon
+   * eins" angekreuzt oder gar nichts geantwortet hat, hat auch keins bekommen.
+   */
+  for (const r of (regs || [])) {
+    if (parseShirtIssue(r.ShirtIssued)) continue;
+    const em = (r.ParticipantEmail || '').toLowerCase().trim();
+    if ((r.Status || '') !== 'Eingecheckt' && !(em && checkedInEmails && checkedInEmails[em])) continue;
+    if (em && issuedSeen[em]) continue;
+    const raw = parseCustomData(r.CustomData)[field.id];
+    const wish = (raw === undefined || raw === null) ? '' : String(raw).trim();
+    if (!wish || !splitShirtSize(wish).isSize) continue;
+    // `at`/`by` bleiben leer — das ist der Unterschied zu einer festgehaltenen
+    // Ausgabe und macht sie auch im Datenobjekt erkennbar.
+    const iss: ShirtIssue = { size: wish, at: '', by: '' };
+    if (em) { issuedSeen[em] = true; issuedByEmail[em] = iss; assumedEmail[em] = true; }
+    issuedOf.set(r, iss);
+    assumedOf.set(r, true);
+    const ik = shirtSizeKey(wish);
+    if (!display[ik]) display[ik] = wish;
+    issuedCount[ik] = (issuedCount[ik] || 0) + 1;
+    issuedAssumedCount[ik] = (issuedAssumedCount[ik] || 0) + 1;
+    remaining[ik] = (remaining[ik] || 0) - 1;
+  }
   for (const r of active) {
     const cd = parseCustomData(r.CustomData);
     const raw = cd[field.id];
@@ -512,7 +599,12 @@ export function shirtAllocate(
       // Wunsch-Abgleich, kein `short`, kein Gegenvorschlag. Der Wunsch wird
       // trotzdem gezählt: `need` ist die Wunsch-Spalte (was bestellt wurde),
       // nicht die Ausgabe-Spalte.
-      if (email) result.byEmail[email] = { wish, proposal: null, short: false, issued: issued.size };
+      // v31.4 (Nachtrag): `issuedAssumed` sagt, ob das eine festgehaltene
+      // Ausgabe war oder die Annahme aus dem Check-in. Aufgelöst wird sie auf
+      // demselben Weg wie `issued` — erst über die E-Mail, sonst über die
+      // Zeile; sonst behauptete die Anzeige „festgehalten", wo nichts steht.
+      const assumed = (email && issuedByEmail[email]) ? !!assumedEmail[email] : !!assumedOf.get(r);
+      if (email) result.byEmail[email] = { wish, proposal: null, short: false, issued: issued.size, issuedAssumed: assumed || undefined };
       const wp = wish ? splitShirtSize(wish) : null;
       if (wp && wp.isSize) {
         const wk = shirtSizeKey(wish);
@@ -567,6 +659,7 @@ export function shirtAllocate(
       // da" — eine Zahl unter null wäre keine Aussage über den Karton.
       spare: result.hasStock ? Math.max(0, remaining[k] || 0) : 0,
       issued: issuedCount[k] || 0,
+      issuedAssumed: issuedAssumedCount[k] || 0,
     }));
   return result;
 }

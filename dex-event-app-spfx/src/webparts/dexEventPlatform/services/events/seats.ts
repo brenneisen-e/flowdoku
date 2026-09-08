@@ -145,6 +145,15 @@ export async function setWaitlistPosition(
   }
 }
 
+/**
+ * v31.4: Diese Renummerierung fasst AUSSCHLIESSLICH `TeilnehmerID` an — die
+ * Spalte `QrSentId` (die Nummer, die in der versendeten QR-Mail gedruckt
+ * steht) bleibt unberührt, und das muss so bleiben. Genau darauf beruht der
+ * Check-in über die abgetippte Mail-Nummer: `TeilnehmerID` ist der laufende
+ * Rang und wandert bei jeder Abmeldung, `QrSentId` ist die Zusage aus der
+ * Mail und steht fest. Wer hier ein zweites Feld mitschreibt, macht aus der
+ * einen verlässlichen Zahl wieder eine wandernde.
+ */
 export async function reorderParticipantIDs(
   svc: EventService,
   subsiteUrl: string,
