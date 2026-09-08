@@ -1,11 +1,18 @@
 /* OverbookReviewBox — 1:1 aus AdminPage.tsx ausgelagert (Zeilen 10810-11029 des
- * Stands vor dem Schnitt). Der Inhalt ist zeichengleich uebernommen; die
+ * Stands vor dem Schnitt). Der Inhalt ist zeichengleich übernommen; die
  * Anzeige-Bedingung bleibt beim Aufrufer.
+ *
+ * v31.3 (docs/ui-leitfaden.md 5a Punkt 2, 5b): der Kasten ist ein
+ * `dex-ui-callout--danger` (die Sache kostet jemandem den Platz), die Zahlen
+ * stehen als Pillen, und der Sammel-Knopf steht unter seiner Erklärung statt
+ * per `margin-left:auto` rechts außen (2a′). Die Rechenlogik ist unverändert.
  */
 import * as React from 'react';
 import { SPRegistration } from '../../../services/EventService';
 import { InfoTooltip } from '../../InfoTooltip';
 import { formatDate } from '../../../utils/eventStatus';
+import { AlertCircle } from '../../Icons';
+import { ensureDexUiStyles } from '../../dexUi';
 import { DeloitteEvent } from '../../../types';
 
 export interface OverbookReviewBoxProps {
@@ -21,6 +28,9 @@ export interface OverbookReviewBoxProps {
 
 export const OverbookReviewBox: React.FC<OverbookReviewBoxProps> = (p) => {
   const { isDe, isSplitCapacity, registrations, selectedEvent, setObKeepVariant, setObRemoveCalendar, setObWithMail, setOverbookModal } = p;
+          // v31.3: Idempotent — der Kasten steht ohne Modal/WizardFormShell auf
+          // der Seite, sonst fehlten die dex-ui-Klassen (inkl. aller :hover).
+          ensureDexUiStyles();
           // v11.36: Überbuchungs-Review-Box. Zeigt alle per „Überbuchung
           // prüfen" markierten Personen (OverbookReview='Pending') mit
           // Fairness-Kontext + Aktions-Buttons. Erst durch eine Aktion
@@ -83,26 +93,36 @@ export const OverbookReviewBox: React.FC<OverbookReviewBoxProps> = (p) => {
             if (h < 48) return `${h} ${isDe ? 'Std' : 'h'}`;
             return `${Math.round(h / 24)} ${isDe ? 'Tage' : 'days'}`;
           };
+          // v31.3: Zweitzeile in Zellen — einmal definiert statt viermal inline.
+          const subLine: React.CSSProperties = { fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 };
           return (
-            <div style={{ marginBottom: 20, padding: 16, borderRadius: 12, border: '1px solid var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.07)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-                <strong style={{ color: 'var(--dex-orange-dark, #b35a00)', fontSize: '0.95rem' }}>
-                  {isDe ? `Überbuchung – zu prüfen (${flagged.length})` : `Overbooking – to review (${flagged.length})`}
-                </strong>
-                <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
-                  {isDe
-                    ? 'Über Kapazität angemeldet. Pro Person entscheiden — danach werden IDs automatisch neu vergeben.'
-                    : 'Registered over capacity. Decide per person — afterwards the IDs are reassigned automatically.'}
-                </span>
-                <div style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <button
-                    className="btn btn-secondary"
-                    style={{ fontSize: '0.78rem', padding: '5px 12px', color: 'var(--dex-red, #c00)' }}
-                    onClick={() => { setOverbookModal({ mode: 'confirm', targets: flagged }); setObWithMail(true); setObRemoveCalendar(true); }}
-                  >
-                    {isDe ? `Alle bestätigen (${flagged.length})` : `Confirm all (${flagged.length})`}
-                  </button>
-                  <InfoTooltip placement="left" text={isDe
+            <div className="dex-ui-callout dex-ui-callout--danger" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 12, marginBottom: 20 }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <span className="dex-ui-callout-icon" aria-hidden="true"><AlertCircle size={16} /></span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    {isDe ? 'Überbuchung: mehr Anmeldungen als Plätze' : 'Overbooking: more registrations than seats'}
+                    <span className="dex-ui-pill dex-ui-pill--red">
+                      {isDe ? `${flagged.length} zu prüfen` : `${flagged.length} to review`}
+                    </span>
+                  </div>
+                  <div style={{ marginTop: 2 }}>
+                    {isDe
+                      ? 'Diese Personen haben einen Platz über der Kapazität bekommen. Entscheide je Person — danach vergibt die App die TeilnehmerIDs automatisch neu.'
+                      : 'These people got a seat beyond capacity. Decide per person — afterwards the app reassigns the participant IDs automatically.'}
+                  </div>
+                  {/* v31.3: Der Sammel-Knopf steht unter seiner Erklärung, nicht
+                      rechts außen (Leitfaden 2a′) — und sagt jetzt, was er tut. */}
+                  <div className="dex-ui-inline" style={{ marginTop: 8 }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary dex-ui-btn-sm"
+                      style={{ color: 'var(--dex-red, #c00)' }}
+                      onClick={() => { setOverbookModal({ mode: 'confirm', targets: flagged }); setObWithMail(true); setObRemoveCalendar(true); }}
+                    >
+                      {isDe ? `Alle auf die Warteliste (${flagged.length})` : `All to waitlist (${flagged.length})`}
+                    </button>
+                    <InfoTooltip placement="left" text={isDe
                     ? (
                     <>
                       <strong>Sammel-Aktion:</strong> setzt <strong>alle</strong> markierten Personen auf die <strong>Warteliste</strong> (gruppentreu).<br /><br />
@@ -118,21 +138,27 @@ export const OverbookReviewBox: React.FC<OverbookReviewBoxProps> = (p) => {
                       If individual people should be treated <strong>differently</strong> (e.g. &bdquo;keep seat&ldquo;), use the <strong>per-row buttons</strong> instead.
                     </>
                     )
-                  } />
+                    } />
+                  </div>
                 </div>
               </div>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+              {/* v31.3: Weiße Tabelle im roten Kasten (Leitfaden 5b). Die Spalte
+                  „Gruppe" erscheint nur bei geteilter Kapazität — ohne Gruppen
+                  stand dort in JEDER Zeile nur „—". thead und tbody hängen an
+                  derselben Bedingung, sonst verschiebt sich die Zeile um eine
+                  Spalte (CLAUDE.md v29.2). */}
+              <div className="dex-ui-table-wrap" style={{ background: '#fff' }}>
+                <table className="dex-ui-table dex-ui-table--compact">
                   <thead>
-                    <tr style={{ borderBottom: '1px solid rgba(237,139,0,0.4)', textAlign: 'left', color: 'var(--dex-gray-600)' }}>
-                      <th style={{ padding: '4px 8px' }}>{isDe ? 'Aktuell' : 'Current'}</th>
-                      <th style={{ padding: '4px 8px' }}>Name</th>
-                      <th style={{ padding: '4px 8px' }}>{isDe ? 'Gruppe' : 'Group'}</th>
-                      <th style={{ padding: '4px 8px' }}>{isDe ? 'Angemeldet' : 'Registered'}</th>
-                      <th style={{ padding: '4px 8px' }}>{isDe ? 'Über Kapazität' : 'Over capacity'}</th>
-                      <th style={{ padding: '4px 8px' }}>{isDe ? 'Abstand zum letzten fairen Platz' : 'Gap to last fair seat'}</th>
-                      <th style={{ padding: '4px 8px' }}>{isDe ? 'Fairer Platz' : 'Fair seat'}</th>
-                      <th style={{ padding: '4px 8px', textAlign: 'right' }}>{isDe ? 'Aktion' : 'Action'}</th>
+                    <tr>
+                      <th>{isDe ? 'Teilnehmer-ID' : 'Participant ID'}</th>
+                      <th>Person</th>
+                      {isSplitCapacity && <th>{isDe ? 'Gruppe' : 'Group'}</th>}
+                      <th>{isDe ? 'Angemeldet am' : 'Registered'}</th>
+                      <th>{isDe ? 'Über Kapazität' : 'Over capacity'}</th>
+                      <th>{isDe ? 'Abstand zum fairen Platz' : 'Gap to fair seat'}</th>
+                      <th>{isDe ? 'Fairer Platz' : 'Fair seat'}</th>
+                      <th style={{ textAlign: 'right' }}>{isDe ? 'Aktion' : 'Action'}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -151,39 +177,53 @@ export const OverbookReviewBox: React.FC<OverbookReviewBoxProps> = (p) => {
                       const wl = fairWaitByGroup[k] || [];
                       const wlRank = wl.findIndex(x => x.Id === reg.Id) + 1; // 1-basiert; 0 = nicht gefunden
                       const fairId = totalFairActive + (wlRank > 0 ? wlRank : (overBy || 0));
+                      // v31.3: Initialen statt Foto — ein Foto-Abruf wäre hier
+                      // neuer Netzverkehr, den es vorher nicht gab.
+                      const initials = ((reg.Vorname || '').charAt(0) + (reg.Nachname || '').charAt(0)).toUpperCase()
+                        || (nm || reg.ParticipantEmail || '?').charAt(0).toUpperCase();
                       return (
-                        <tr key={reg.Id} style={{ borderBottom: '1px solid rgba(237,139,0,0.25)' }}>
-                          <td style={{ padding: '6px 8px', fontWeight: 600 }}>#{reg.TeilnehmerID ?? '—'}</td>
-                          <td style={{ padding: '6px 8px' }}>
-                            {nm}
-                            <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>{reg.ParticipantEmail}</div>
+                        <tr key={reg.Id}>
+                          <td><span className="dex-ui-pill dex-ui-pill--gray">#{reg.TeilnehmerID ?? '—'}</span></td>
+                          <td>
+                            <div className="dex-ui-person">
+                              <span className="dex-ui-avatar" aria-hidden="true">{initials}</span>
+                              <div style={{ minWidth: 0 }}>
+                                <div className="dex-ui-person-name">{nm}</div>
+                                <div className="dex-ui-person-sub">{reg.ParticipantEmail}</div>
+                              </div>
+                            </div>
                           </td>
-                          <td style={{ padding: '6px 8px', color: 'var(--dex-gray-700)' }}>{grpLabel}</td>
-                          <td style={{ padding: '6px 8px', color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>
-                          <td style={{ padding: '6px 8px', color: 'var(--dex-gray-700)' }}>
+                          {isSplitCapacity && (
+                            <td>{groupOf(reg) ? <span className="dex-ui-pill dex-ui-pill--gray">{grpLabel}</span> : '—'}</td>
+                          )}
+                          <td style={{ color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>
+                          <td>
                             {position !== null && cap > 0
-                              ? (isDe
-                                ? <>Platz <strong>{position}</strong> bei Kap. {cap} <span style={{ color: 'var(--dex-red, #c00)' }}>(+{overBy})</span></>
-                                : <>Seat <strong>{position}</strong> at cap. {cap} <span style={{ color: 'var(--dex-red, #c00)' }}>(+{overBy})</span></>)
+                              ? <>
+                                <span className="dex-ui-pill dex-ui-pill--red">+{overBy}</span>
+                                <div style={subLine}>{isDe ? `Platz ${position} bei Kapazität ${cap}` : `Seat ${position} at capacity ${cap}`}</div>
+                              </>
                               : '—'}
                           </td>
-                          <td style={{ padding: '6px 8px', color: 'var(--dex-gray-700)' }}>
+                          <td>
                             {cutoff
-                              ? <><strong>+{fmtGap(gapMs)}</strong><div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'nach' : 'after'} {cutoffNm} ({formatDate(cutoff.RegistrationDate)})</div></>
+                              ? <><strong>+{fmtGap(gapMs)}</strong><div style={subLine}>{isDe ? 'nach' : 'after'} {cutoffNm} ({formatDate(cutoff.RegistrationDate)})</div></>
                               : '—'}
                           </td>
-                          <td style={{ padding: '6px 8px', color: 'var(--dex-gray-700)' }}>
+                          <td>
                             {wlRank > 0
-                              ? (isDe
-                                ? <>Warteliste-Platz <strong>{wlRank}</strong>{isSplitCapacity ? ` (${grpLabel})` : ''}<div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>= TeilnehmerID ~#{fairId} bei sauberer Liste</div></>
-                                : <>Waitlist position <strong>{wlRank}</strong>{isSplitCapacity ? ` (${grpLabel})` : ''}<div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>= participant ID ~#{fairId} with a clean list</div></>)
+                              ? <>
+                                <span className="dex-ui-pill dex-ui-pill--orange">{isDe ? `Warteliste-Platz ${wlRank}` : `Waitlist position ${wlRank}`}{isSplitCapacity ? ` · ${grpLabel}` : ''}</span>
+                                <div style={subLine}>{isDe ? `= TeilnehmerID ~#${fairId} bei sauberer Liste` : `= participant ID ~#${fairId} with a clean list`}</div>
+                              </>
                               : '—'}
                           </td>
-                          <td style={{ padding: '6px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <td className="is-actions">
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginRight: 10 }}>
                               <button
-                                className="btn btn-secondary"
-                                style={{ fontSize: '0.75rem', padding: '4px 10px', color: 'var(--dex-red, #c00)' }}
+                                type="button"
+                                className="btn btn-secondary dex-ui-btn-sm"
+                                style={{ color: 'var(--dex-red, #c00)' }}
                                 onClick={() => { setOverbookModal({ mode: 'confirm', targets: [reg] }); setObWithMail(true); setObRemoveCalendar(true); }}
                               >
                                 {isDe ? 'Auf Warteliste' : 'To waitlist'}
@@ -206,8 +246,8 @@ export const OverbookReviewBox: React.FC<OverbookReviewBoxProps> = (p) => {
                             </span>
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                               <button
-                                className="btn btn-secondary"
-                                style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                                type="button"
+                                className="btn btn-secondary dex-ui-btn-sm"
                                 onClick={() => { setOverbookModal({ mode: 'keep', targets: [reg] }); setObKeepVariant('firstWaitlist'); }}
                               >
                                 {isDe ? 'Platz behalten' : 'Keep seat'}

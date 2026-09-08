@@ -1,12 +1,15 @@
 /* TeamsSection — 1:1 aus AdminPage.tsx ausgelagert (Zeilen 11031-11568 des
- * Stands vor dem Schnitt). Der Inhalt ist zeichengleich uebernommen; die
+ * Stands vor dem Schnitt). Der Inhalt ist zeichengleich übernommen; die
  * Anzeige-Bedingung bleibt beim Aufrufer.
  */
 import * as React from 'react';
 import { EventService, SPRegistration } from '../../../services/EventService';
-import { ChevronDown, ChevronUp, Pencil, Plus, RefreshCw, Users } from '../../Icons';
+import { ChevronDown, ChevronUp, Pencil, Plus, RefreshCw, Trash2, Users } from '../../Icons';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { DeloitteEvent } from '../../../types';
+// v31.3: Gemeinsame Klassen des Organizer Centers (Karten, Zeilen, Pillen,
+// Aufklapper) — siehe docs/ui-leitfaden.md.
+import { cx, ensureDexUiStyles } from '../../dexUi';
 
 export interface TeamsSectionProps {
   confirmDialog: (message: React.ReactNode, opts?: import("../../../context/DialogContext").ConfirmOptions) => Promise<boolean>;
@@ -57,6 +60,9 @@ export interface TeamsSectionProps {
 
 export const TeamsSection: React.FC<TeamsSectionProps> = (p) => {
   const { confirmDialog, currentUser, dragOverTid, dragRegId, eventServiceRef, getActiveTeams, isAdmin, isDe, isLoadingRegs, isMobile, isOrganizerFor, leadTransferBusy, leadTransferOpenFor, moveRegToTeam, onTeamDrop, openTeamMailDialog, registrations, reloadRegistrations, selectedEvent, setAdminAddCcOrganizer, setAdminAddLeadRegId, setAdminAddMemberConsent, setAdminAddMemberDialog, setAdminAddMemberError, setAdminAddMemberPick, setAdminAddMemberQuery, setAdminAddMemberResults, setAdminAddNewPersonMail, setAdminAddNotifyOthers, setAdminAddNotifyScope, setAdminAddSendMail, setAdminAddTeamlessPicks, setDragOverTid, setDragRegId, setLeadTransferBusy, setLeadTransferOpenFor, setTeamEditOpenFor, setTeamsCollapsed, setTeamsToast, showAlert, teamEditOpenFor, teamsCollapsed, transferTeamLead } = p;
+          // v31.3: Idempotent — die Sektion rendert auch ohne offenes Modal,
+          // und ohne das Stylesheet hätten die dex-ui-Klassen keine Wirkung.
+          ensureDexUiStyles();
           // v11.84: Teams-Section — Admin-Center-Team-Management.
           // Sichtbar nur für Events mit aktivierter Team-Anmeldung. Listet
           // alle Teams (gruppiert per TeamId, abgemeldete Mitglieder
@@ -101,6 +107,13 @@ export const TeamsSection: React.FC<TeamsSectionProps> = (p) => {
           const teamSizeCfg = selectedEvent.teamSize || 0;
           const count = teamEntries.length;
           const canManage = isAdmin || isOrganizerFor(selectedEvent);
+          // v31.3: Die Bezeichnung des Events (z.B. „Gruppe" statt „Team") stand
+          // an fünfzehn Stellen als `selectedEvent?.teamTermSingular || 'Team'`
+          // im Text — einmal ausgerechnet ist sie auch einmal zu ändern.
+          const termOne = selectedEvent?.teamTermSingular || 'Team';
+          const termMany = selectedEvent?.teamTermPlural || 'Teams';
+          const termOneEn = selectedEvent?.teamTermSingular || 'team';
+          const termManyEn = selectedEvent?.teamTermPlural || 'teams';
 
           // v26.x (Mobile): HTML5-Drag&Drop feuert auf Touch-Geräten nicht.
           // Deshalb auf dem Handy pro Person ein simples Auswahlmenü zum
@@ -108,26 +121,23 @@ export const TeamsSection: React.FC<TeamsSectionProps> = (p) => {
           // unangetastet. Nutzt denselben Pfad (moveRegToTeam) wie der Drop.
           const teamSelectOptions = teamEntries.map(te => ({
             tid: te.tid,
-            label: te.members.find(mm => !!mm.TeamName)?.TeamName || `${selectedEvent.teamTermSingular || 'Team'} ${te.tid}`,
+            label: te.members.find(mm => !!mm.TeamName)?.TeamName || `${termOne} ${te.tid}`,
           }));
           const MobileTeamSelect = (reg: SPRegistration): React.ReactElement => {
             const curTid = reg.TeamId || '';
             return (
               <select
                 value={curTid}
-                aria-label={isDe ? 'Team ändern' : 'Change team'}
+                aria-label={isDe ? `${termOne} wechseln` : `Change ${termOneEn}`}
                 onChange={e => {
                   const target = e.target.value;
                   const opt = teamSelectOptions.find(o => o.tid === target);
                   moveRegToTeam(reg, target, opt?.label).catch(() => { /* */ });
                 }}
-                style={{
-                  marginTop: 6, width: '100%', fontSize: '0.82rem',
-                  padding: '6px 8px', borderRadius: 8,
-                  border: '1px solid var(--dex-gray-300)', background: '#fff',
-                }}
+                className="dex-ui-select dex-ui-select--sm"
+                style={{ marginTop: 6 }}
               >
-                <option value="">{isDe ? `Ohne ${selectedEvent.teamTermSingular || 'Team'}` : `No ${selectedEvent.teamTermSingular || 'team'}`}</option>
+                <option value="">{isDe ? `Ohne ${termOne}` : `No ${termOneEn}`}</option>
                 {teamSelectOptions.map(o => (
                   <option key={o.tid} value={o.tid}>{o.label}</option>
                 ))}
@@ -135,63 +145,98 @@ export const TeamsSection: React.FC<TeamsSectionProps> = (p) => {
             );
           };
 
+          // v31.3: Status als Pille nach Leitfaden 5b — dieselben Farben wie in
+          // der Teilnehmertabelle (blau eingecheckt, orange Warteliste), damit
+          // dieselbe Person in beiden Ansichten gleich aussieht.
           const statusBadge = (st: string): React.ReactElement | null => {
             if (!st || st === 'Angemeldet') return null;
-            const colorMap: Record<string, string> = {
-              'Warteliste': '#b35a00',
-              'QR versendet': '#3a7dbf',
-              'Eingecheckt': '#4a7c1f',
-            };
-            const color = colorMap[st] || 'var(--dex-gray-500)';
+            const tone = st === 'Warteliste' ? 'dex-ui-pill--orange'
+              : st === 'Eingecheckt' ? 'dex-ui-pill--blue'
+              : st === 'QR versendet' ? 'dex-ui-pill--green'
+              : 'dex-ui-pill--gray';
+            return <span className={cx('dex-ui-pill', tone)}>{st}</span>;
+          };
+
+          // v31.3: Personen-Zelle (Foto, Name + Status, Mail, Practice) — bis
+          // v31.2 stand dieselbe Optik zweimal inline im Code, einmal je Liste;
+          // die Teams-Liste hatte eine Lupe beim Foto, die Teamlosen nicht.
+          // `zoom` hält diesen Unterschied, ohne die Darstellung zu doppeln.
+          const personCell = (m: SPRegistration, name: string, zoom: boolean): React.ReactElement => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const dept = (m as any).Department || '';
+            const img = (
+              <img
+                src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(m.ParticipantEmail)}&size=L`}
+                alt={name}
+                onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                className="dex-ui-avatar"
+                // v31.3: `zoom-in` statt `pointer` — das Foto vergrößert sich beim
+                // Überfahren, ein Klick tut aber nichts (Leitfaden 1.3).
+                style={zoom ? { transition: 'transform 0.18s ease', transformOrigin: 'left center', cursor: 'zoom-in' } : undefined}
+                onMouseEnter={zoom ? (e => { (e.currentTarget as HTMLImageElement).style.transform = 'scale(2.4)'; (e.currentTarget as HTMLImageElement).style.zIndex = '10'; (e.currentTarget as HTMLImageElement).style.position = 'relative'; (e.currentTarget as HTMLImageElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.25)'; }) : undefined}
+                onMouseLeave={zoom ? (e => { (e.currentTarget as HTMLImageElement).style.transform = 'scale(1)'; (e.currentTarget as HTMLImageElement).style.zIndex = ''; (e.currentTarget as HTMLImageElement).style.position = ''; (e.currentTarget as HTMLImageElement).style.boxShadow = ''; }) : undefined}
+              />
+            );
             return (
-              <span style={{
-                display: 'inline-block', padding: '1px 8px', borderRadius: 10,
-                background: `${color}15`, color, fontSize: '0.7rem', fontWeight: 600, marginLeft: 6,
-              }}>{st}</span>
+              <>
+                {zoom ? <div style={{ position: 'relative', width: 32, height: 32, flexShrink: 0 }}>{img}</div> : img}
+                <div className="dex-ui-row-main">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                    {/* minWidth:0 — ohne das schrumpft ein langer Name nicht und
+                        läuft aus der Karte heraus, statt mit Ellipse zu enden. */}
+                    <span className="dex-ui-person-name" style={{ minWidth: 0 }}>{name}</span>
+                    {statusBadge(m.Status)}
+                  </div>
+                  <div className="dex-ui-person-sub">{m.ParticipantEmail}</div>
+                  {/* v16.1: Business Area / Department aus der SP-Registrierung
+                      mit anzeigen, damit der Organizer auf einen Blick sieht,
+                      aus welcher Practice die Mitglieder kommen. */}
+                  {dept && <div className="dex-ui-person-sub" style={{ fontSize: '0.72rem' }}>{dept}</div>}
+                  {/* Innerhalb eines Teams ist `teamSelectOptions` nie leer — die
+                      Prüfung stammt aus der Teamlosen-Liste und schadet hier nicht. */}
+                  {isMobile && canManage && teamSelectOptions.length > 0 && MobileTeamSelect(m)}
+                </div>
+              </>
             );
           };
 
           return (
-            <div style={{ marginBottom: 20, padding: 16, borderRadius: 12, border: '1px solid var(--dex-gray-200)', background: '#fff' }}>
+            <div className={cx('dex-ui-card', 'dex-ui-card--list')} style={{ marginBottom: 20 }}>
+              {/* v31.3: Die Kopfzeile IST der Aufklapper — deshalb Hover und
+                  Zeiger (Leitfaden 1.3). Zähler als Pille daneben; wer noch ohne
+                  Zuordnung ist, steht auch im eingeklappten Zustand da, denn
+                  genau das ist die Arbeit, die hier wartet. */}
               <div
                 role="button"
                 tabIndex={0}
                 onClick={() => setTeamsCollapsed(v => !v)}
                 onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setTeamsCollapsed(v => !v); } }}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}
+                className="dex-ui-row"
+                style={{ cursor: 'pointer', userSelect: 'none' }}
               >
-                <Users size={20} />
-                <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1rem' }}>
-                  {(selectedEvent?.teamTermPlural || 'Teams')} ({count})
-                </strong>
-                <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <span className="dex-ui-card-head-title"><Users size={18} /> {termMany}</span>
+                <span className="dex-ui-pill dex-ui-pill--gray">{count}</span>
+                {teamlessActive.length > 0 && (
+                  <span className="dex-ui-pill dex-ui-pill--orange">
+                    {isDe ? `${teamlessActive.length} ohne ${termOne}` : `${teamlessActive.length} without ${termOneEn}`}
+                  </span>
+                )}
+                <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', color: 'var(--dex-gray-600)' }}>
                   {teamsCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
                 </span>
               </div>
               {!teamsCollapsed && (
-                <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {/* v23.0: Drag&Drop-Hinweis. */}
-                  {canManage && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', color: 'var(--dex-gray-600)', background: 'rgba(134,188,37,0.08)', border: '1px solid var(--dex-green, #86bc25)', borderRadius: 8, padding: '7px 12px' }}>
-                      <Icon iconName="DragObject" style={{ fontSize: 15, color: 'var(--dex-green-dark, #4a7c1f)' }} />
-                      {isDe
-                        ? `Tipp: Personen per Drag & Drop zwischen ${(selectedEvent?.teamTermPlural || 'Teams')} und „ohne ${(selectedEvent?.teamTermSingular || 'Team')}" verschieben.`
-                        : `Tip: drag & drop people between ${(selectedEvent?.teamTermPlural || 'teams')} and “no ${(selectedEvent?.teamTermSingular || 'team')}”.`}
-                    </div>
-                  )}
-                  {teamEntries.length === 0 && (
-                    <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.88rem', fontStyle: 'italic' }}>
-                      Keine Team-Anmeldungen bisher.
-                    </div>
-                  )}
+                <div style={{ padding: '4px 6px 6px', display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {/* v16.2: „Neues Team anlegen"-Button + Teamless-Sektion.
-                      v23.0: zusätzlich „Mail an <Teams>"-Button (Per-Team-Info-Mail). */}
+                      v23.0: zusätzlich „Mail an <Teams>"-Button (Per-Team-Info-Mail).
+                      v31.3: Beide Knöpfe stehen jetzt ZUERST und links unter dem
+                      Titel (Leitfaden 2a′) — vorher lagen sie hinter Hinweis und
+                      Teamlosen-Kasten, also hinter dem, was sie erzeugen. */}
                   {canManage && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                    <div className="dex-ui-inline">
                       <button
                         type="button"
-                        className="btn btn-secondary"
-                        style={{ fontSize: '0.85rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                        className="btn btn-secondary dex-ui-btn-sm"
                         onClick={() => {
                           // Neue lokale TeamID generieren und Add-Member-Dialog
                           // direkt damit öffnen. Sobald die erste Person hinzu-
@@ -214,93 +259,60 @@ export const TeamsSection: React.FC<TeamsSectionProps> = (p) => {
                           setAdminAddNewPersonMail(true);
                         }}
                       >
-                        <Plus size={14} /> {isDe ? `Neue ${selectedEvent?.teamTermSingular || 'Team'} anlegen` : `Create new ${selectedEvent?.teamTermSingular || 'team'}`}
+                        {/* v31.3: „Team anlegen" statt „Neue Team anlegen" — der
+                            Artikel passte nur zu weiblichen Bezeichnungen. */}
+                        <Plus size={14} /> {isDe ? `${termOne} anlegen` : `Create new ${termOneEn}`}
                       </button>
                       {getActiveTeams().length > 0 && (
                         <button
                           type="button"
-                          className="btn btn-secondary"
-                          style={{ fontSize: '0.85rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                          className="btn btn-secondary dex-ui-btn-sm"
                           onClick={openTeamMailDialog}
                           title={isDe ? 'Jedem Mitglied eine eigene Mail mit team-spezifischer Info senden (z.B. Teams-Einwahllink).' : 'Send each member an individual mail with team-specific info (e.g. a Teams join link).'}
                         >
-                          <Icon iconName="Mail" style={{ fontSize: 14 }} /> {isDe ? `Mail an ${selectedEvent?.teamTermPlural || 'Teams'}` : `Mail to ${selectedEvent?.teamTermPlural || 'teams'}`}
+                          <Icon iconName="Mail" style={{ fontSize: 14 }} /> {isDe ? `Mail an ${termMany}` : `Mail to ${termManyEn}`}
                         </button>
                       )}
                     </div>
                   )}
-                  {/* v23.5: „ohne Team"-Box ist jetzt IMMER ein Drop-Ziel (für
-                      canManage), auch wenn gerade niemand teamlos ist — sonst
-                      konnte man eine Person per Drag&Drop nicht aus ihrem Team
-                      nehmen (die Box war nur bei vorhandenen teamlosen Personen
-                      da). Leerer Zustand zeigt einen Hinweis als Drop-Fläche. */}
-                  {(canManage || teamlessActive.length > 0) && (
-                    <div
-                      onDragOver={canManage ? (e => { e.preventDefault(); setDragOverTid(''); }) : undefined}
-                      onDragLeave={canManage ? (() => setDragOverTid(prev => (prev === '' ? null : prev))) : undefined}
-                      onDrop={canManage ? (() => onTeamDrop('', undefined)) : undefined}
-                      style={{ padding: 14, border: dragOverTid === '' ? '2px dashed var(--dex-green, #86bc25)' : '1px dashed var(--dex-orange, #ed8b00)', borderRadius: 10, background: dragOverTid === '' ? 'rgba(134,188,37,0.10)' : 'rgba(237,139,0,0.04)' }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-                        <strong style={{ fontSize: '0.95rem', color: 'var(--dex-orange-dark, #b35a00)' }}>
-                          {isDe ? `Teilnehmer ohne ${selectedEvent?.teamTermSingular || 'Team'}` : `Attendees without ${selectedEvent?.teamTermSingular || 'team'}`} ({teamlessActive.length})
-                        </strong>
-                        <span style={{ color: 'var(--dex-gray-600)', fontSize: '0.82rem' }}>
-                          — Einzel-Anmeldungen ohne Team-Zuordnung
-                        </span>
-                      </div>
-                      {teamlessActive.length === 0 && (
-                        <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-500)', fontStyle: 'italic', padding: '6px 2px' }}>
-                          {isDe
-                            ? `Aktuell ist niemand ohne ${selectedEvent?.teamTermSingular || 'Team'}. Zieh eine Person aus einem ${selectedEvent?.teamTermSingular || 'Team'} hierher, um die Zuordnung zu lösen.`
-                            : `Nobody is currently without a ${selectedEvent?.teamTermSingular || 'team'}. Drag a person from a ${selectedEvent?.teamTermSingular || 'team'} here to remove their assignment.`}
-                        </div>
-                      )}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {teamlessActive.map(m => {
-                          const name = `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantName || m.ParticipantEmail;
-                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                          const dept = (m as any).Department || '';
-                          return (
-                            <div
-                              key={m.Id}
-                              draggable={canManage}
-                              onDragStart={canManage ? (() => setDragRegId(m.Id)) : undefined}
-                              onDragEnd={canManage ? (() => { setDragRegId(null); setDragOverTid(null); }) : undefined}
-                              title={canManage ? (isDe ? 'Ziehen, um zuzuordnen' : 'Drag to assign') : undefined}
-                              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 6px', borderRadius: 6, cursor: canManage ? 'grab' : 'default', opacity: dragRegId === m.Id ? 0.4 : 1, background: dragRegId === m.Id ? 'var(--dex-gray-100)' : 'transparent' }}
-                            >
-                              <img
-                                src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(m.ParticipantEmail)}&size=L`}
-                                alt={name}
-                                onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-                                style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
-                              />
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: '0.88rem', fontWeight: 500 }}>{name}{statusBadge(m.Status)}</div>
-                                <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)' }}>{m.ParticipantEmail}</div>
-                                {dept && <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', marginTop: 1 }}>{dept}</div>}
-                                {isMobile && canManage && teamSelectOptions.length > 0 && MobileTeamSelect(m)}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                  {/* v23.0: Drag&Drop-Hinweis. v31.3: als ruhiger Hinweiskasten —
+                      grün ist der Farbe der Auswahl vorbehalten (Leitfaden 1.1). */}
+                  {canManage && (
+                    <div className="dex-ui-callout dex-ui-callout--neutral dex-ui-callout--sm">
+                      <span className="dex-ui-callout-icon"><Icon iconName="DragObject" style={{ fontSize: 14 }} /></span>
+                      <span>
+                        {isDe
+                          ? `Tipp: Personen per Drag & Drop zwischen ${termMany} und „ohne ${termOne}“ verschieben.`
+                          : `Tip: drag & drop people between ${termManyEn} and “no ${termOneEn}”.`}
+                      </span>
                     </div>
                   )}
                   {/* v19.0: Teams in einem responsiven 3-Spalten-Raster +
-                      durchnummeriert — spart vertikalen Platz im Organizer-Center. */}
+                      durchnummeriert — spart vertikalen Platz im Organizer-Center.
+                      v31.3: Die Teams stehen jetzt VOR den Teilnehmern ohne
+                      Zuordnung — die Sektion heißt so, und der Kasten darunter ist
+                      der Rest, nicht der Anfang. Ohne Teams ein leerer Zustand
+                      statt einer leeren Fläche (Leitfaden 1.6). */}
+                  {teamEntries.length === 0 ? (
+                    <div className="dex-ui-empty">
+                      <div className="dex-ui-empty-icon"><Users size={20} /></div>
+                      <div className="dex-ui-empty-title">{isDe ? `Noch keine ${termMany}` : `No ${termManyEn} yet`}</div>
+                      {isDe
+                        ? `Oben über „${termOne} anlegen“ startest du — wer sich einzeln angemeldet hat, steht darunter.`
+                        : `Start with “Create new ${termOneEn}” above — people who registered individually are listed below.`}
+                    </div>
+                  ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12, alignItems: 'stretch' }}>
                   {teamEntries.map(({ tid, members, lead }, teamIdx) => {
                     const teamName = members.find(m => !!m.TeamName)?.TeamName || '';
                     const total = members.length;
                     const free = teamSizeCfg > 0 ? Math.max(0, teamSizeCfg - total) : 0;
                     const canAdd = canManage && (teamSizeCfg === 0 || total < teamSizeCfg);
-                    const leadEmail = lead?.ParticipantEmail || '';
                     const otherMembers = members.filter(m => m.Id !== lead?.Id);
-                    // v19.19: Teams mit freien Plätzen farblich (orange) hervorheben,
-                    // damit der Organizer auf einen Blick sieht, welche Teams noch
-                    // nicht voll belegt sind.
+                    // v19.19: Teams mit freien Plätzen bleiben erkennbar — seit
+                    // v31.3 über Zähler-Pille und Auslastungsbalken statt über eine
+                    // komplett orange Karte: Farbe nur dort, wo sie etwas bedeutet
+                    // (Leitfaden 1.1), sonst leuchtet die halbe Sektion.
                     const hasFreeSlots = free > 0;
                     const isDropTarget = dragOverTid === tid;
                     return (
@@ -309,34 +321,159 @@ export const TeamsSection: React.FC<TeamsSectionProps> = (p) => {
                         onDragOver={canManage ? (e => { e.preventDefault(); setDragOverTid(tid); }) : undefined}
                         onDragLeave={canManage ? (() => setDragOverTid(prev => (prev === tid ? null : prev))) : undefined}
                         onDrop={canManage ? (() => onTeamDrop(tid, teamName || undefined)) : undefined}
+                        className={cx('dex-ui-card', 'dex-ui-card--list')}
                         style={{
-                          padding: 14,
-                          border: isDropTarget ? '2px solid var(--dex-green, #86bc25)' : (hasFreeSlots ? '1px solid var(--dex-orange, #ed8b00)' : '1px solid var(--dex-gray-200)'),
-                          borderRadius: 10,
-                          background: isDropTarget ? 'rgba(134,188,37,0.12)' : (hasFreeSlots ? 'rgba(237,139,0,0.06)' : 'var(--dex-gray-50, #f7f7f7)'),
-                          // v19.19: Flex-Spalte, damit der Aktions-Block (u.a.
-                          // „Lead-Rolle übergeben") per marginTop:auto immer am
-                          // unteren Kartenrand sitzt → alle Karten gleich hoch.
                           display: 'flex',
                           flexDirection: 'column',
+                          // v31.3: Beim Ziehen zeigt die Zielkarte grüne Kante und
+                          // grünen Grund — vorher unterschied sie sich nur um einen
+                          // Pixel Rahmenstärke von den anderen.
+                          ...(isDropTarget ? { borderColor: 'var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.10)' } : null),
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-                          <strong style={{ fontSize: '0.95rem', color: 'var(--dex-gray-800)' }}>
-                            <span style={{ color: 'var(--dex-gray-400)', marginRight: 4 }}>{teamIdx + 1}.</span>{teamName ? `Team „${teamName}"` : 'Team (ohne Namen)'}
-                          </strong>
-                          <span style={{ color: hasFreeSlots ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-gray-600)', fontSize: '0.85rem', fontWeight: hasFreeSlots ? 600 : 400 }}>
-                            {teamSizeCfg > 0 ? `${total}/${teamSizeCfg} belegt` : `${total} Mitglieder`}
+                        <div className="dex-ui-card-head" style={{ padding: '6px 8px 4px' }}>
+                          <h4 className="dex-ui-card-head-title">
+                            <span style={{ color: 'var(--dex-gray-400)' }}>{teamIdx + 1}.</span>
+                            {teamName ? `${termOne} „${teamName}“` : (isDe ? `${termOne} (ohne Namen)` : `${termOneEn} (unnamed)`)}
+                          </h4>
+                          <span className={cx('dex-ui-pill', hasFreeSlots ? 'dex-ui-pill--orange' : 'dex-ui-pill--gray')}>
+                            {teamSizeCfg > 0 ? `${total}/${teamSizeCfg}` : (isDe ? `${total} Mitglieder` : `${total} members`)}
                           </span>
                           {hasFreeSlots && (
-                            <span style={{
-                              display: 'inline-block', padding: '1px 8px', borderRadius: 10,
-                              background: 'var(--dex-orange, #ed8b00)', color: '#fff',
-                              fontSize: '0.7rem', fontWeight: 700,
-                            }}>{free} frei</span>
+                            <span className="dex-ui-card-head-meta">
+                              {isDe ? `${free} ${free === 1 ? 'Platz' : 'Plätze'} frei` : `${free} ${free === 1 ? 'slot' : 'slots'} free`}
+                            </span>
                           )}
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {/* v31.3: Auslastung als Balken — „3/4" liest man, ein
+                            halbvoller Balken sieht man. */}
+                        {teamSizeCfg > 0 && (
+                          <div className="dex-ui-progress" style={{ margin: '0 8px 6px' }} aria-hidden="true">
+                            <div
+                              className={cx('dex-ui-progress-bar', total > teamSizeCfg && 'dex-ui-progress-bar--red')}
+                              style={{ width: `${Math.min(100, Math.round((total / teamSizeCfg) * 100))}%` }}
+                            />
+                          </div>
+                        )}
+                        {/* v31.3: Die Aktionen des Teams stehen jetzt links unter
+                            seinem Namen statt unten am Kartenrand (Leitfaden 2a′) —
+                            wer den Namen liest, sieht sofort, was er damit tun kann.
+                            `position: relative` trägt das Lead-Menü. */}
+                        {canManage && (
+                          <div className="dex-ui-inline" style={{ padding: '0 8px 8px', position: 'relative' }}>
+                            {canAdd && (
+                              <button
+                                type="button"
+                                className="btn btn-secondary dex-ui-btn-sm"
+                                onClick={() => {
+                                  setAdminAddMemberDialog({ teamId: tid, teamName, freeSlots: free });
+                                  setAdminAddMemberPick(null);
+                                  setAdminAddMemberQuery('');
+                                  setAdminAddMemberResults([]);
+                                  setAdminAddMemberConsent(false);
+                                  setAdminAddMemberError('');
+                                  setAdminAddTeamlessPicks(new Set());
+                                  setAdminAddLeadRegId(null);
+                                  setAdminAddSendMail(false);
+                                  setAdminAddCcOrganizer(false);
+                                  setAdminAddNotifyOthers(false);
+                                  setAdminAddNotifyScope('all');
+                                  setAdminAddNewPersonMail(true);
+                                }}
+                              >
+                                {/* v31.3: Die freien Plätze stehen jetzt oben in der
+                                    Kopfzeile — zweimal dieselbe Zahl braucht niemand. */}
+                                <Plus size={14} /> {isDe ? 'Person hinzufügen' : 'Add person'}
+                              </button>
+                            )}
+                            {/* v22.45: „Anpassen" schaltet den Bearbeiten-Modus
+                                des Teams ein/aus — erst dann erscheinen die
+                                „Entfernen"-Knöpfe pro Mitglied. v31.3: als Chip mit
+                                is-active, damit der eingeschaltete Zustand sichtbar
+                                bleibt, ohne einen zweiten Primär-Knopf zu setzen. */}
+                            <button
+                              type="button"
+                              className={cx('dex-ui-chip', teamEditOpenFor === tid && 'is-active')}
+                              onClick={() => setTeamEditOpenFor(teamEditOpenFor === tid ? null : tid)}
+                            >
+                              <Pencil size={13} /> {teamEditOpenFor === tid ? (isDe ? 'Fertig' : 'Done') : (isDe ? 'Anpassen' : 'Edit')}
+                            </button>
+                            {otherMembers.length > 0 && (
+                              <>
+                                <button
+                                  type="button"
+                                  className={cx('dex-ui-chip', leadTransferOpenFor === tid && 'is-active')}
+                                  onClick={() => setLeadTransferOpenFor(leadTransferOpenFor === tid ? null : tid)}
+                                >
+                                  <RefreshCw size={13} /> {isDe ? 'Lead übergeben' : 'Transfer lead'}
+                                </button>
+                                {leadTransferOpenFor === tid && (
+                                  <div style={{
+                                    position: 'absolute', top: '100%', left: 0, marginTop: 6,
+                                    background: '#fff', border: '1px solid var(--dex-gray-200)',
+                                    borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+                                    zIndex: 20, minWidth: 280, maxWidth: 360, padding: 6,
+                                  }}>
+                                    <div className="dex-ui-muted" style={{ padding: '4px 8px 6px' }}>
+                                      {isDe ? 'Wer übernimmt die Lead-Rolle?' : 'Who takes over as lead?'}
+                                    </div>
+                                    {otherMembers.map(m => {
+                                      const nm = `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantName || m.ParticipantEmail;
+                                      return (
+                                        <button
+                                          key={m.Id}
+                                          type="button"
+                                          disabled={leadTransferBusy}
+                                          onClick={async () => {
+                                            if (leadTransferBusy) return;
+                                            setLeadTransferBusy(true);
+                                            try {
+                                              const res = await transferTeamLead(selectedEvent.id, tid, m.ParticipantEmail);
+                                              if (res.ok) {
+                                                setTeamsToast(isDe ? `Lead-Rolle wurde an ${nm} übergeben.` : `Lead role handed over to ${nm}.`);
+                                                await reloadRegistrations();
+                                                window.setTimeout(() => setTeamsToast(''), 4500);
+                                              } else {
+                                                setTeamsToast(isDe
+                                                  ? `Lead-Übergabe fehlgeschlagen: ${res.reason || 'Unbekannter Fehler'}.`
+                                                  : `Lead handover failed: ${res.reason || 'unknown error'}.`);
+                                                window.setTimeout(() => setTeamsToast(''), 4500);
+                                              }
+                                            } finally {
+                                              setLeadTransferBusy(false);
+                                              setLeadTransferOpenFor(null);
+                                            }
+                                          }}
+                                          className={cx('dex-ui-row', 'dex-ui-rowbtn')}
+                                          style={{ padding: '6px 8px' }}
+                                        >
+                                          <img
+                                            src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(m.ParticipantEmail)}&size=S`}
+                                            alt={nm}
+                                            onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                                            className="dex-ui-avatar"
+                                            style={{ width: 24, height: 24 }}
+                                          />
+                                          <div className="dex-ui-row-main">
+                                            <div className="dex-ui-row-title">{nm}</div>
+                                            <div className="dex-ui-row-sub">{m.ParticipantEmail}</div>
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
+                                    <button
+                                      type="button"
+                                      onClick={() => setLeadTransferOpenFor(null)}
+                                      className="dex-ui-textbtn dex-ui-textbtn--muted"
+                                      style={{ width: '100%', justifyContent: 'center', marginTop: 2, borderTop: '1px solid var(--dex-gray-100)', borderRadius: 0 }}
+                                    >{isDe ? 'Abbrechen' : 'Cancel'}</button>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                           {members.map(m => {
                             const name = `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantName || m.ParticipantEmail;
                             const isLead = !!m.TeamLead;
@@ -346,68 +483,33 @@ export const TeamsSection: React.FC<TeamsSectionProps> = (p) => {
                                 draggable={canManage}
                                 onDragStart={canManage ? (() => setDragRegId(m.Id)) : undefined}
                                 onDragEnd={canManage ? (() => { setDragRegId(null); setDragOverTid(null); }) : undefined}
-                                title={canManage ? (isDe ? 'Ziehen, um in ein anderes Team / „ohne Team" zu verschieben' : 'Drag to move to another team / “no team”') : undefined}
+                                title={canManage ? (isDe ? `Ziehen, um in ein anderes ${termOne} / „ohne ${termOne}“ zu verschieben` : `Drag to move to another ${termOneEn} / “no ${termOneEn}”`) : undefined}
+                                className="dex-ui-row"
                                 style={{
-                                  display: 'flex', alignItems: 'center', gap: 10,
-                                  padding: '4px 6px', borderRadius: 6,
+                                  padding: '6px 8px',
                                   cursor: canManage ? 'grab' : 'default',
                                   opacity: dragRegId === m.Id ? 0.4 : 1,
-                                  background: dragRegId === m.Id ? 'var(--dex-gray-100)' : 'transparent',
+                                  background: dragRegId === m.Id ? 'var(--dex-gray-100)' : undefined,
                                 }}
                               >
-                                <div style={{ position: 'relative', width: 32, height: 32, flexShrink: 0 }}>
-                                  <img
-                                    src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(m.ParticipantEmail)}&size=L`}
-                                    alt={name}
-                                    onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-                                    style={{
-                                      width: 32, height: 32, borderRadius: '50%', objectFit: 'cover',
-                                      background: 'var(--dex-gray-100)',
-                                      transition: 'transform 0.18s ease',
-                                      transformOrigin: 'left center',
-                                      cursor: 'pointer',
-                                    }}
-                                    onMouseEnter={e => { (e.currentTarget as HTMLImageElement).style.transform = 'scale(2.4)'; (e.currentTarget as HTMLImageElement).style.zIndex = '10'; (e.currentTarget as HTMLImageElement).style.position = 'relative'; (e.currentTarget as HTMLImageElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.25)'; }}
-                                    onMouseLeave={e => { (e.currentTarget as HTMLImageElement).style.transform = 'scale(1)'; (e.currentTarget as HTMLImageElement).style.zIndex = ''; (e.currentTarget as HTMLImageElement).style.position = ''; (e.currentTarget as HTMLImageElement).style.boxShadow = ''; }}
-                                  />
-                                </div>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: '0.88rem', fontWeight: 500 }}>
-                                    {name}
-                                    {statusBadge(m.Status)}
-                                  </div>
-                                  <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)' }}>{m.ParticipantEmail}</div>
-                                  {/* v16.1: Business Area / Department aus
-                                      der SP-Registrierung mit anzeigen,
-                                      damit der Organizer auf einen Blick
-                                      sieht, aus welcher Practice die
-                                      Mitglieder kommen. */}
-                                  {(() => {
-                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                    const dept = (m as any).Department || '';
-                                    if (!dept) return null;
-                                    return (
-                                      <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', marginTop: 1 }}>{dept}</div>
-                                    );
-                                  })()}
-                                  {isMobile && canManage && MobileTeamSelect(m)}
-                                </div>
-                                {isLead && (
-                                  <span style={{
-                                    display: 'inline-block', padding: '2px 10px', borderRadius: 12,
-                                    background: 'var(--dex-green, #86bc25)', color: '#fff',
-                                    fontSize: '0.72rem', fontWeight: 700,
-                                  }}>Lead</span>
-                                )}
+                                {/* v31.3: Griff — die ganze Zeile ist weiterhin
+                                    ziehbar, aber ohne sichtbaren Griff sah man ihr
+                                    das nicht an. */}
+                                {canManage && <span className="dex-ui-drag-handle" aria-hidden="true">≡</span>}
+                                {personCell(m, name, true)}
+                                {isLead && <span className="dex-ui-pill dex-ui-pill--green">Lead</span>}
                                 {/* v22.41/v22.45: „Aus Team entfernen" — löst NUR
                                     die Team-Zuordnung (TeamId/Lead/Name leeren),
                                     die Anmeldung inkl. Status (z.B. Warteliste)
                                     bleibt bestehen. Erscheint erst im „Anpassen"-
                                     Modus des Teams (nicht dauerhaft an jedem Namen). */}
                                 {canManage && teamEditOpenFor === tid && eventServiceRef && selectedEvent.subsiteUrl && (
+                                  <span className="dex-ui-row-actions">
                                   <button
                                     type="button"
-                                    title="Aus dem Team entfernen (Anmeldung bleibt bestehen)"
+                                    className="dex-ui-iconbtn dex-ui-iconbtn--danger"
+                                    title={isDe ? `Aus dem ${termOne} entfernen (Anmeldung bleibt bestehen)` : `Remove from ${termOneEn} (registration stays)`}
+                                    aria-label={isDe ? `${name} aus dem ${termOne} entfernen` : `Remove ${name} from ${termOneEn}`}
                                     onClick={async () => {
                                       const sub = selectedEvent.subsiteUrl;
                                       if (!sub) return;
@@ -437,156 +539,93 @@ export const TeamsSection: React.FC<TeamsSectionProps> = (p) => {
                                           eventTitle: selectedEvent.title,
                                           details: { teamId: tid, removedBy: currentUser.email, keptStatus: m.Status },
                                         }).catch(() => { /* */ });
-                                        setTeamsToast(`${name} wurde aus dem Team entfernt — Anmeldung bleibt bestehen.`);
+                                        setTeamsToast(isDe
+                                          ? `${name} wurde aus dem ${termOne} entfernt — Anmeldung bleibt bestehen.`
+                                          : `${name} was removed from the ${termOneEn} — the registration stays.`);
                                         window.setTimeout(() => setTeamsToast(''), 4500);
                                         await reloadRegistrations();
                                       } catch (err) {
                                         console.warn('[DEX] removeFromTeam failed:', err);
-                                        showAlert('Entfernen aus dem Team fehlgeschlagen.', { variant: 'error' });
+                                        showAlert(isDe ? `Entfernen aus dem ${termOne} fehlgeschlagen.` : `Removing from the ${termOneEn} failed.`, { variant: 'error' });
                                       }
                                     }}
-                                    style={{
-                                      background: 'none', border: 'none', cursor: 'pointer',
-                                      color: 'var(--dex-red, #c00)', fontSize: '0.72rem',
-                                      textDecoration: 'underline', padding: '2px 4px', flexShrink: 0,
-                                    }}
                                   >
-                                    Entfernen
+                                    <Trash2 size={15} />
                                   </button>
+                                  </span>
                                 )}
                               </div>
                             );
                           })}
                         </div>
-                        {canManage && (
-                          <div style={{ marginTop: 'auto', paddingTop: 12, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8, position: 'relative' }}>
-                            {canAdd && (
-                              <button
-                                type="button"
-                                className="btn btn-secondary"
-                                style={{ fontSize: '0.8rem', padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                                onClick={() => {
-                                  setAdminAddMemberDialog({ teamId: tid, teamName, freeSlots: free });
-                                  setAdminAddMemberPick(null);
-                                  setAdminAddMemberQuery('');
-                                  setAdminAddMemberResults([]);
-                                  setAdminAddMemberConsent(false);
-                                  setAdminAddMemberError('');
-                                  setAdminAddTeamlessPicks(new Set());
-                                  setAdminAddLeadRegId(null);
-                                  setAdminAddSendMail(false);
-                                  setAdminAddCcOrganizer(false);
-                                  setAdminAddNotifyOthers(false);
-                                  setAdminAddNotifyScope('all');
-                                  setAdminAddNewPersonMail(true);
-                                }}
-                              >
-                                <Plus size={14} /> Person hinzufügen
-                                {teamSizeCfg > 0 && ` (${free} Slot${free === 1 ? '' : 's'} frei)`}
-                              </button>
-                            )}
-                            {/* v22.45: „Anpassen" schaltet den Bearbeiten-Modus
-                                des Teams ein/aus — erst dann erscheinen die
-                                „Entfernen"-Buttons pro Mitglied. */}
-                            {canManage && (
-                              <button
-                                type="button"
-                                className={teamEditOpenFor === tid ? 'btn btn-primary' : 'btn btn-secondary'}
-                                style={{ fontSize: '0.8rem', padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                                onClick={() => setTeamEditOpenFor(teamEditOpenFor === tid ? null : tid)}
-                              >
-                                <Pencil size={14} /> {teamEditOpenFor === tid ? 'Fertig' : 'Anpassen'}
-                              </button>
-                            )}
-                            {otherMembers.length > 0 && (
-                              <>
-                                <button
-                                  type="button"
-                                  className="btn btn-secondary"
-                                  style={{ fontSize: '0.8rem', padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                                  onClick={() => setLeadTransferOpenFor(leadTransferOpenFor === tid ? null : tid)}
-                                >
-                                  <RefreshCw size={14} /> Lead-Rolle übergeben
-                                </button>
-                                {leadTransferOpenFor === tid && (
-                                  <div style={{
-                                    position: 'absolute', top: '100%', left: 0, marginTop: 6,
-                                    background: '#fff', border: '1px solid var(--dex-gray-300)',
-                                    borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
-                                    zIndex: 20, minWidth: 280, maxWidth: 360, padding: 6,
-                                  }}>
-                                    <div style={{ padding: '6px 10px', fontSize: '0.78rem', color: 'var(--dex-gray-600)', borderBottom: '1px solid var(--dex-gray-100)' }}>
-                                      Neue Lead-Rolle übertragen an:
-                                    </div>
-                                    {otherMembers.map(m => {
-                                      const nm = `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantName || m.ParticipantEmail;
-                                      return (
-                                        <button
-                                          key={m.Id}
-                                          type="button"
-                                          disabled={leadTransferBusy}
-                                          onClick={async () => {
-                                            if (leadTransferBusy) return;
-                                            setLeadTransferBusy(true);
-                                            try {
-                                              const res = await transferTeamLead(selectedEvent.id, tid, m.ParticipantEmail);
-                                              if (res.ok) {
-                                                setTeamsToast(`Lead-Rolle wurde an ${nm} übergeben.`);
-                                                await reloadRegistrations();
-                                                window.setTimeout(() => setTeamsToast(''), 4500);
-                                              } else {
-                                                setTeamsToast(`Lead-Übergabe fehlgeschlagen: ${res.reason || 'Unbekannter Fehler'}.`);
-                                                window.setTimeout(() => setTeamsToast(''), 4500);
-                                              }
-                                            } finally {
-                                              setLeadTransferBusy(false);
-                                              setLeadTransferOpenFor(null);
-                                            }
-                                          }}
-                                          style={{
-                                            display: 'flex', alignItems: 'center', gap: 8,
-                                            width: '100%', padding: '8px 10px', border: 'none',
-                                            background: 'transparent', cursor: 'pointer',
-                                            textAlign: 'left', borderRadius: 6,
-                                          }}
-                                          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--dex-gray-100)'; }}
-                                          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-                                        >
-                                          <img
-                                            src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(m.ParticipantEmail)}&size=S`}
-                                            alt={nm}
-                                            onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-                                            style={{ width: 24, height: 24, borderRadius: '50%' }}
-                                          />
-                                          <div style={{ minWidth: 0 }}>
-                                            <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>{nm}</div>
-                                            <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>{m.ParticipantEmail}</div>
-                                          </div>
-                                        </button>
-                                      );
-                                    })}
-                                    <button
-                                      type="button"
-                                      onClick={() => setLeadTransferOpenFor(null)}
-                                      style={{
-                                        width: '100%', padding: '6px 10px',
-                                        border: 'none', borderTop: '1px solid var(--dex-gray-100)',
-                                        background: 'transparent', cursor: 'pointer',
-                                        fontSize: '0.78rem', color: 'var(--dex-gray-500)',
-                                      }}
-                                    >Abbrechen</button>
-                                  </div>
-                                )}
-                              </>
-                            )}
-                            {/* leadEmail nur als Referenz für den Lead-Lookup behalten — nicht für's TS-Linting wegwerfen. */}
-                            <span style={{ display: 'none' }}>{leadEmail}</span>
-                          </div>
-                        )}
                       </div>
                     );
                   })}
                   </div>
+                  )}
+                  {/* v23.5: „ohne Team"-Box ist IMMER ein Drop-Ziel (für
+                      canManage), auch wenn gerade niemand teamlos ist — sonst
+                      konnte man eine Person per Drag&Drop nicht aus ihrem Team
+                      nehmen (die Box war nur bei vorhandenen teamlosen Personen
+                      da). Leerer Zustand zeigt einen Hinweis als Drop-Fläche.
+                      v31.3: gestrichelte Karte statt orangem Kasten — die Zahl
+                      derer ohne Zuordnung steht als Pille im Kopf und oben in
+                      der Sektionszeile. */}
+                  {(canManage || teamlessActive.length > 0) && (
+                    <div
+                      onDragOver={canManage ? (e => { e.preventDefault(); setDragOverTid(''); }) : undefined}
+                      onDragLeave={canManage ? (() => setDragOverTid(prev => (prev === '' ? null : prev))) : undefined}
+                      onDrop={canManage ? (() => onTeamDrop('', undefined)) : undefined}
+                      className={cx('dex-ui-card', 'dex-ui-card--list')}
+                      style={{
+                        borderStyle: 'dashed',
+                        ...(dragOverTid === '' ? { borderColor: 'var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.10)' } : null),
+                      }}
+                    >
+                      <div className="dex-ui-card-head" style={{ padding: '6px 8px 4px' }}>
+                        <h4 className="dex-ui-card-head-title">
+                          {isDe ? `Teilnehmer ohne ${termOne}` : `Attendees without ${termOneEn}`}
+                        </h4>
+                        <span className={cx('dex-ui-pill', teamlessActive.length > 0 ? 'dex-ui-pill--orange' : 'dex-ui-pill--gray')}>
+                          {teamlessActive.length}
+                        </span>
+                        <span className="dex-ui-card-head-meta">
+                          {isDe ? 'Einzel-Anmeldungen ohne Zuordnung' : 'Individual registrations without an assignment'}
+                        </span>
+                      </div>
+                      {teamlessActive.length === 0 && (
+                        <div className="dex-ui-muted" style={{ padding: '2px 8px 8px' }}>
+                          {isDe
+                            ? `Aktuell ist niemand ohne ${termOne}. Zieh eine Person aus einem ${termOne} hierher, um die Zuordnung zu lösen.`
+                            : `Nobody is currently without a ${termOneEn}. Drag a person from a ${termOneEn} here to remove their assignment.`}
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {teamlessActive.map(m => {
+                          const name = `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantName || m.ParticipantEmail;
+                          return (
+                            <div
+                              key={m.Id}
+                              draggable={canManage}
+                              onDragStart={canManage ? (() => setDragRegId(m.Id)) : undefined}
+                              onDragEnd={canManage ? (() => { setDragRegId(null); setDragOverTid(null); }) : undefined}
+                              title={canManage ? (isDe ? 'Ziehen, um zuzuordnen' : 'Drag to assign') : undefined}
+                              className="dex-ui-row"
+                              style={{
+                                padding: '6px 8px',
+                                cursor: canManage ? 'grab' : 'default',
+                                opacity: dragRegId === m.Id ? 0.4 : 1,
+                                background: dragRegId === m.Id ? 'var(--dex-gray-100)' : undefined,
+                              }}
+                            >
+                              {canManage && <span className="dex-ui-drag-handle" aria-hidden="true">≡</span>}
+                              {personCell(m, name, false)}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

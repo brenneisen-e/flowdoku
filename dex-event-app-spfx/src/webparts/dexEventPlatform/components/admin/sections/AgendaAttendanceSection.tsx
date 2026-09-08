@@ -21,6 +21,8 @@ import { parseAgendaCheckIns, parseAgendaNoShows, formatMarkTime } from '../../.
 import { agendaGroups, sortAgenda, groupLabel, groupDateLabel } from '../../../utils/agendaGroups';
 import { downloadAttendanceCertificate, downloadAttendanceCertificates } from '../../../utils/attendanceCertificatePdf';
 import { PersonContactHover } from '../../PersonContactHover';
+import { AlertCircle, Check, ChevronDown, Download } from '../../Icons';
+import { cx, ensureDexUiStyles } from '../../dexUi';
 
 export interface AgendaAttendanceSectionProps {
   event: DeloitteEvent;
@@ -174,59 +176,78 @@ export const AgendaAttendanceSection: React.FC<AgendaAttendanceSectionProps> = (
 
   if (items.length === 0) return null;
   const totalMarks = active.reduce((n, r) => n + Object.keys(marksOf.get(r.Id) || {}).filter(k => items.some(it => it.id === k)).length, 0);
+  // v31.3: Die gemeinsamen Klassen sicherstellen — diese Karte kann sichtbar
+  // sein, ohne dass vorher ein Modal das Stylesheet injiziert hat.
+  ensureDexUiStyles();
 
   return (
-    <div className="card" style={{ padding: 20, marginBottom: 24 }}>
-      <button type="button" onClick={() => setOpen(v => !v)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}>
-        <h3 style={{ margin: 0, fontSize: '1rem' }}>{isDe ? 'Anwesenheit je ' : 'Attendance per '}{termS}</h3>
+    <div className="dex-ui-card" style={{ padding: 12, marginBottom: 24 }}>
+      {/* v31.3: Die ganze Kopfzeile ist der Aufklapper (Hover über `dex-ui-row`,
+          Chevron rechts) — vorher ein Knopf ohne Hover mit „▸" am Rand. */}
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        aria-expanded={open}
+        className="dex-ui-rowbtn dex-ui-row dex-ui-card-head"
+      >
+        <span className="dex-ui-card-head-title">
+          <Check size={16} />{isDe ? 'Anwesenheit je ' : 'Attendance per '}{termS}
+        </span>
         {/* v31.0: keine Zusammenfassung mehr im Kopf (Nutzer: „den Text brauch
-            ich nicht") — nur der Zustand „nicht lesbar" bleibt, der ist Information. */}
+            ich nicht") — v31.3 nur noch der reine Zähler, wie bei jeder
+            eingeklappten Auswertung, und der Zustand „nicht lesbar". */}
+        <span className="dex-ui-card-head-meta">{items.length} {items.length === 1 ? termS : termP}</span>
         {regsUnknown && (
-          <span style={{ fontSize: '0.8rem', color: 'var(--dex-red, #da291c)' }}>
-            {isDe ? '— Teilnehmerliste nicht lesbar' : '— attendee list not readable'}
+          <span className="dex-ui-pill dex-ui-pill--red">
+            {isDe ? 'Teilnehmerliste nicht lesbar' : 'attendee list not readable'}
           </span>
         )}
-        <span style={{ marginLeft: 'auto', color: 'var(--dex-gray-400)' }}>{open ? '▾' : '▸'}</span>
+        <span className={cx('dex-ui-disclosure-chevron', open && 'is-open')} style={{ marginLeft: 'auto' }}>
+          <ChevronDown size={18} />
+        </span>
       </button>
       {open && (
-        <div style={{ marginTop: 14 }}>
+        <div style={{ padding: '4px 6px 6px' }}>
           {regsUnknown ? (
-            <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(218,41,28,0.08)', fontSize: '0.82rem' }}>
-              {isDe ? 'Die Teilnehmerliste konnte nicht gelesen werden — es gibt hier keine Zahlen, keine Nullen.' : 'The attendee list could not be read — no numbers here, and no zeros.'}
+            <div className="dex-ui-callout dex-ui-callout--danger">
+              <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+              <span>{isDe ? 'Die Teilnehmerliste konnte nicht gelesen werden — es gibt hier keine Zahlen, keine Nullen.' : 'The attendee list could not be read — no numbers here, and no zeros.'}</span>
             </div>
           ) : (
             <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-                <div role="radiogroup" style={{ display: 'inline-flex', gap: 3, padding: 3, border: '1px solid var(--dex-gray-300)', borderRadius: 999, background: '#fff' }}>
+              {/* v31.3: Werkzeugleiste — Sicht-Umschalter und die beiden
+                  Download-Knöpfe stehen zusammen LINKS beim Inhalt, den sie
+                  ausgeben (Leitfaden 2a′); vorher schob ein Spacer sie an den
+                  rechten Rand einer sonst leeren Zeile. */}
+              <div className="dex-ui-toolbar">
+                <div className="dex-ui-tabs" role="radiogroup" aria-label={isDe ? 'Sicht' : 'View'}>
                   {([{ k: 'point' as const, de: `Nach ${termS}`, en: `By ${termS.toLowerCase()}` }, { k: 'person' as const, de: 'Nach Person', en: 'By person' }]).map(o => (
-                    <button key={o.k} type="button" role="radio" aria-checked={view === o.k} onClick={() => setView(o.k)} style={{
-                      border: 0, borderRadius: 999, padding: '6px 14px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600,
-                      background: view === o.k ? 'var(--dex-green-dark, #4a7c1f)' : 'transparent', color: view === o.k ? '#fff' : 'var(--dex-gray-700)',
-                    }}>{isDe ? o.de : o.en}</button>
+                    <button key={o.k} type="button" role="radio" aria-checked={view === o.k} onClick={() => setView(o.k)}
+                      className={cx('dex-ui-tab', view === o.k && 'is-active')}>{isDe ? o.de : o.en}</button>
                   ))}
                 </div>
-                <span style={{ flex: 1 }} />
                 {/* v30.96: Bescheinigungen für alle mit mindestens einer Erfassung — eine PDF, eine Seite je Person. */}
-                <button type="button" className="btn btn-secondary" disabled={pdfBusy || totalMarks === 0} onClick={() => { void downloadCertificates(); }} style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+                <button type="button" className="btn btn-secondary dex-ui-btn-sm" disabled={pdfBusy || totalMarks === 0} onClick={() => { void downloadCertificates(); }}
                   title={isDe ? 'Teilnahmebescheinigungen als PDF (eine Seite je Person mit erfasster Anwesenheit)' : 'Certificates of attendance as PDF (one page per person with recorded attendance)'}>
                   {pdfBusy ? (isDe ? 'Wird erzeugt…' : 'Creating…') : (isDe ? 'Bescheinigungen (PDF)' : 'Certificates (PDF)')}
                 </button>
-                <button type="button" className="btn btn-secondary" disabled={xlsxBusy} onClick={() => { void downloadXlsx(); }} style={{ fontSize: '0.8rem', padding: '6px 14px' }}>
+                <button type="button" className="btn btn-secondary dex-ui-btn-sm" disabled={xlsxBusy} onClick={() => { void downloadXlsx(); }}>
                   {xlsxBusy ? (isDe ? 'Wird erzeugt…' : 'Creating…') : (isDe ? 'Als Excel laden' : 'Download Excel')}
                 </button>
               </div>
               {canEdit && (
-                <p style={{ margin: '0 0 10px', fontSize: '0.76rem', color: 'var(--dex-gray-500)' }}>
+                <p className="dex-ui-help" style={{ margin: '0 0 10px' }}>
                   {isDe ? 'Klick auf eine Zelle bzw. einen Namen trägt die Anwesenheit nach oder nimmt sie zurück — mit Rückfrage und Eintrag im Event-Log.' : 'Click a cell or a name to record or remove attendance — with confirmation and an event-log entry.'}
                 </p>
               )}
 
               {view === 'point' && totalMarks === 0 && (
-                <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', padding: '8px 12px', borderRadius: 8, background: 'var(--dex-gray-50, #fafafa)', border: '1px dashed var(--dex-gray-300)' }}>
+                <div className="dex-ui-empty" style={{ marginBottom: 10 }}>
+                  <div className="dex-ui-empty-title">{isDe ? 'Noch keine Anwesenheit erfasst' : 'No attendance recorded yet'}</div>
                   {isDe
-                    ? `Noch keine Anwesenheit erfasst. Sobald am ersten ${termS} eingecheckt wird (Check-in-Seite oder Klick hier), erscheinen Anzahl und Anteil.`
-                    : `No attendance recorded yet. Once someone checks in at the first ${termS.toLowerCase()} (check-in page or a click here), counts and shares appear.`}
-                </p>
+                    ? `Sobald am ersten ${termS} eingecheckt wird (Check-in-Seite oder Klick hier), erscheinen Anzahl und Anteil.`
+                    : `Once someone checks in at the first ${termS.toLowerCase()} (check-in page or a click here), counts and shares appear.`}
+                </div>
               )}
               {/* v30.94: kompakt und nach Cluster gegliedert. Vorher stand jeder
                   der 27 Punkte als eigene Vollbreite-Zeile mit leerem Balken —
@@ -242,13 +263,13 @@ export const AgendaAttendanceSection: React.FC<AgendaAttendanceSectionProps> = (
                     const gMarks = g.items.reduce((n, it) => n + countFor(it.id), 0);
                     const gMax = g.items.length * active.length;
                     return (
-                  <div key={g.key} style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 10, overflow: 'hidden' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', background: 'var(--dex-gray-50, #fafafa)', borderBottom: '1px solid var(--dex-gray-200)', fontSize: '0.8rem' }}>
+                  <div key={g.key} className="dex-ui-card" style={{ padding: 0, overflow: 'hidden' }}>
+                    <div className="dex-ui-card-head" style={{ padding: '7px 12px', background: 'var(--dex-gray-50, #fafafa)', borderBottom: '1px solid var(--dex-gray-200)', fontSize: '0.8rem' }}>
                       <span style={{ fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)' }}>{groupLabel(g, gi, isDe)}</span>
-                      <span style={{ color: 'var(--dex-gray-500)' }}>{groupDateLabel(g, isDe)}</span>
-                      <span style={{ color: 'var(--dex-gray-400)' }}>· {g.items.length} {g.items.length === 1 ? termS : termP}</span>
-                      <span style={{ flex: 1 }} />
-                      <span style={{ color: 'var(--dex-gray-600)', fontVariantNumeric: 'tabular-nums' }} title={isDe ? 'Anwesenheiten in diesem Cluster / mögliche' : 'attendances in this cluster / possible'}>
+                      <span className="dex-ui-card-head-meta">{groupDateLabel(g, isDe)}</span>
+                      <span className="dex-ui-card-head-meta">· {g.items.length} {g.items.length === 1 ? termS : termP}</span>
+                      {/* Anzeige, kein Knopf — deshalb Pille statt Chip. */}
+                      <span className="dex-ui-pill dex-ui-pill--gray" style={{ marginLeft: 'auto', fontVariantNumeric: 'tabular-nums' }} title={isDe ? 'Anwesenheiten in diesem Cluster / mögliche' : 'attendances in this cluster / possible'}>
                         <strong>{gMarks}</strong> / {gMax}{gMax ? ` · ${Math.round(100 * gMarks / gMax)} %` : ''}
                       </span>
                     </div>
@@ -258,14 +279,18 @@ export const AgendaAttendanceSection: React.FC<AgendaAttendanceSectionProps> = (
                     const isOpen = openPoint === it.id;
                     return (
                       <div key={it.id} style={{ borderTop: '1px solid var(--dex-gray-100)' }}>
-                        <button type="button" onClick={() => setOpenPoint(isOpen ? null : it.id)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', border: 'none', cursor: 'pointer', textAlign: 'left', background: isOpen ? 'var(--dex-gray-100)' : '#fff' }}>
+                        {/* Die Zeile öffnet die Namensliste — Hover und Zeiger
+                            kommen aus `dex-ui-row`, offen bleibt sie grün markiert. */}
+                        <button type="button" onClick={() => setOpenPoint(isOpen ? null : it.id)} aria-expanded={isOpen}
+                          className={cx('dex-ui-rowbtn', 'dex-ui-row', isOpen && 'is-active')}
+                          style={{ gap: 10, padding: '6px 12px', borderRadius: 0 }}>
                           <span style={{ width: 92, flexShrink: 0, fontSize: '0.78rem', color: 'var(--dex-gray-500)', fontVariantNumeric: 'tabular-nums' }}>{it.time}{it.endTime ? `–${it.endTime}` : ''}</span>
-                          <span style={{ fontWeight: 600, fontSize: '0.86rem', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.title || (isDe ? '(ohne Titel)' : '(untitled)')}{it.location ? <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)' }}> · {it.location}</span> : null}</span>
+                          <span className="dex-ui-row-title" style={{ flex: 1, minWidth: 0 }}>{it.title || (isDe ? '(ohne Titel)' : '(untitled)')}{it.location ? <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)' }}> · {it.location}</span> : null}</span>
                           <strong style={{ width: 64, flexShrink: 0, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: c ? 'var(--dex-gray-800)' : 'var(--dex-gray-400)' }}>{c}<span style={{ fontWeight: 400, color: 'var(--dex-gray-400)' }}> / {active.length}</span></strong>
-                          <span style={{ width: 110, flexShrink: 0, height: 6, borderRadius: 999, background: 'var(--dex-gray-100)' }}>
-                            <span style={{ display: 'block', height: 6, width: `${pct}%`, borderRadius: 999, background: 'var(--dex-green, #86bc25)' }} />
+                          <span className="dex-ui-progress" style={{ width: 110, flexShrink: 0 }}>
+                            <span className="dex-ui-progress-bar" style={{ display: 'block', width: `${pct}%` }} />
                           </span>
-                          <span style={{ width: 12, color: 'var(--dex-gray-400)', fontSize: '0.8rem' }}>{isOpen ? '▾' : '▸'}</span>
+                          <span className={cx('dex-ui-disclosure-chevron', isOpen && 'is-open')}><ChevronDown size={14} /></span>
                         </button>
                         {isOpen && (
                           <div style={{ padding: '8px 14px 12px', borderTop: '1px solid var(--dex-gray-100)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12, fontSize: '0.82rem' }}>
@@ -273,15 +298,20 @@ export const AgendaAttendanceSection: React.FC<AgendaAttendanceSectionProps> = (
                               const list = active.filter(r => !!(marksOf.get(r.Id) || {})[it.id] === present);
                               return (
                                 <div key={String(present)}>
-                                  <div style={{ fontWeight: 700, marginBottom: 4, color: present ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)' }}>
-                                    {present ? (isDe ? `Anwesend (${list.length})` : `Present (${list.length})`) : (isDe ? `Nicht erfasst (${list.length})` : `Not recorded (${list.length})`)}
+                                  <div className="dex-ui-inline" style={{ marginBottom: 6 }}>
+                                    <span style={{ fontWeight: 700, color: present ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)' }}>
+                                      {present ? (isDe ? 'Anwesend' : 'Present') : (isDe ? 'Nicht erfasst' : 'Not recorded')}
+                                    </span>
+                                    <span className={cx('dex-ui-pill', present ? 'dex-ui-pill--green' : 'dex-ui-pill--gray')}>{list.length}</span>
                                   </div>
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 260, overflow: 'auto' }}>
                                     {list.map(r => {
                                       const m = (marksOf.get(r.Id) || {})[it.id];
                                       return (
-                                        <button key={r.Id} type="button" disabled={!canEdit || !!busyKey} onClick={() => { void toggle(r, it); }} title={canEdit ? (present ? (isDe ? 'Anwesenheit entfernen' : 'Remove attendance') : (isDe ? 'Als anwesend eintragen' : 'Record as present')) : undefined} style={{
-                                          display: 'flex', alignItems: 'center', gap: 8, padding: '3px 6px', border: 'none', background: 'transparent', cursor: canEdit ? 'pointer' : 'default', textAlign: 'left', borderRadius: 6, color: 'inherit', fontSize: 'inherit',
+                                        // Hover nur, wenn der Klick auch etwas tut (Leitfaden 1.3).
+                                        <button key={r.Id} type="button" disabled={!canEdit || !!busyKey} onClick={() => { void toggle(r, it); }} title={canEdit ? (present ? (isDe ? 'Anwesenheit entfernen' : 'Remove attendance') : (isDe ? 'Als anwesend eintragen' : 'Record as present')) : undefined}
+                                          className={cx('dex-ui-rowbtn', canEdit && 'dex-ui-row')} style={{
+                                          display: 'flex', alignItems: 'center', gap: 8, padding: '3px 6px', cursor: canEdit ? 'pointer' : 'default', borderRadius: 8, fontSize: 'inherit',
                                         }}>
                                           <PersonContactHover email={r.ParticipantEmail || ''} name={nameOf(r)} size={22} isDe={isDe} />
                                           <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nameOf(r)}</span>
@@ -306,20 +336,23 @@ export const AgendaAttendanceSection: React.FC<AgendaAttendanceSectionProps> = (
               )}
 
               {view === 'person' && (
-                <div style={{ maxHeight: '70vh', overflow: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 8 }}>
-                  <table style={{ borderCollapse: 'collapse', fontSize: '0.8rem', minWidth: '100%' }}>
+                /* v31.3: dieselbe Tabellen-Optik wie die Teilnehmerliste
+                   (`dex-ui-table--compact`, Kopf bleibt beim Scrollen stehen);
+                   Name, ID und Foto sind EINE Personen-Zelle (Leitfaden 5b). */
+                <div className="dex-ui-table-wrap dex-ui-table-wrap--sticky" style={{ maxHeight: '70vh' }}>
+                  <table className="dex-ui-table dex-ui-table--compact" style={{ minWidth: '100%' }}>
                     <thead>
                       <tr>
-                        <th style={{ position: 'sticky', top: 0, left: 0, zIndex: 6, background: '#fff', textAlign: 'left', padding: 8, borderBottom: '2px solid var(--dex-gray-200)', minWidth: 220 }}>{isDe ? 'Teilnehmer' : 'Attendee'}</th>
+                        <th style={{ position: 'sticky', left: 0, zIndex: 6, background: 'var(--dex-gray-50, #fafafa)', minWidth: 220 }}>{isDe ? 'Teilnehmer' : 'Attendee'}</th>
                         {items.map((it, i) => (
-                          <th key={it.id} title={`${it.date || ''} ${it.time || ''} ${it.title || ''}`} style={{ position: 'sticky', top: 0, zIndex: 5, background: '#fff', padding: '6px 8px', borderBottom: '2px solid var(--dex-gray-200)', textAlign: 'center', minWidth: 64, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                          <th key={it.id} title={`${it.date || ''} ${it.time || ''} ${it.title || ''}`} style={{ zIndex: 5, textAlign: 'center', minWidth: 64, textTransform: 'none', letterSpacing: 0 }}>
                             <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>{i + 1}</div>
                             <div style={{ fontSize: '0.72rem', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.title || '—'}</div>
                             <div style={{ fontSize: '0.68rem', color: 'var(--dex-gray-400)' }}>{countFor(it.id)}</div>
                           </th>
                         ))}
-                        <th style={{ position: 'sticky', top: 0, zIndex: 5, background: '#fff', padding: 8, borderBottom: '2px solid var(--dex-gray-200)', textAlign: 'right' }}>Σ</th>
-                        <th style={{ position: 'sticky', top: 0, zIndex: 5, background: '#fff', padding: 8, borderBottom: '2px solid var(--dex-gray-200)', textAlign: 'center', fontSize: '0.72rem', fontWeight: 600 }}>{isDe ? 'Bescheinigung' : 'Certificate'}</th>
+                        <th className="is-num" style={{ zIndex: 5 }} title={isDe ? 'Anwesenheiten dieser Person' : 'attendances of this person'}>Σ</th>
+                        <th style={{ zIndex: 5, textAlign: 'right' }}>{isDe ? 'Bescheinigung' : 'Certificate'}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -327,13 +360,15 @@ export const AgendaAttendanceSection: React.FC<AgendaAttendanceSectionProps> = (
                         const m = marksOf.get(r.Id) || {};
                         const sum = items.filter(it => !!m[it.id]).length;
                         return (
-                          <tr key={r.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                            <td style={{ position: 'sticky', left: 0, background: '#fff', padding: 6, zIndex: 1 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                          <tr key={r.Id}>
+                            <td style={{ position: 'sticky', left: 0, background: '#fff', zIndex: 1 }}>
+                              <span className="dex-ui-person">
                                 <PersonContactHover email={r.ParticipantEmail || ''} name={nameOf(r)} size={26} isDe={isDe} />
-                                <span style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{nameOf(r)}</span>
-                                {r.TeilnehmerID ? <span style={{ color: 'var(--dex-gray-400)', fontSize: '0.72rem' }}>#{r.TeilnehmerID}</span> : null}
-                              </div>
+                                <span style={{ minWidth: 0 }}>
+                                  <span className="dex-ui-person-name" style={{ display: 'block' }}>{nameOf(r)}</span>
+                                  {r.TeilnehmerID ? <span className="dex-ui-person-sub" style={{ display: 'block' }}>#{r.TeilnehmerID}</span> : null}
+                                </span>
+                              </span>
                             </td>
                             {items.map(it => {
                               const mk = m[it.id];
@@ -341,9 +376,9 @@ export const AgendaAttendanceSection: React.FC<AgendaAttendanceSectionProps> = (
                               const ns = !mk ? (noShowsOf.get(r.Id) || {})[it.id] : undefined;
                               const key = `${r.Id}:${it.id}`;
                               return (
-                                <td key={it.id} style={{ padding: 4, textAlign: 'center' }}>
+                                <td key={it.id} style={{ textAlign: 'center' }}>
                                   <button type="button" disabled={!canEdit || !!busyKey} onClick={() => { void toggle(r, it); }} title={mk ? `${isDe ? 'anwesend' : 'present'} ${formatMarkTime(mk.at)}${mk.by ? ` · ${mk.by}` : ''}` : ns ? `No-Show ${formatMarkTime(ns.at)}${ns.by ? ` · ${ns.by}` : ''}` : (canEdit ? (isDe ? 'Als anwesend eintragen' : 'Record as present') : '')} style={{
-                                    width: 56, padding: '4px 0', borderRadius: 6, cursor: canEdit ? 'pointer' : 'default', fontSize: '0.72rem', fontWeight: 700,
+                                    width: 56, padding: '4px 0', borderRadius: 999, cursor: canEdit ? 'pointer' : 'default', fontSize: '0.72rem', fontWeight: 700, fontFamily: 'inherit',
                                     border: `1px solid ${mk ? 'var(--dex-green, #86bc25)' : ns ? 'var(--dex-gray-400, #a0a0a0)' : 'var(--dex-gray-200)'}`,
                                     background: busyKey === key ? 'var(--dex-gray-100)' : mk ? 'rgba(134,188,37,0.15)' : ns ? 'rgba(96,96,96,0.10)' : '#fff',
                                     color: mk ? 'var(--dex-green-dark, #4a7c1f)' : ns ? 'var(--dex-gray-600)' : 'var(--dex-gray-300)',
@@ -351,18 +386,24 @@ export const AgendaAttendanceSection: React.FC<AgendaAttendanceSectionProps> = (
                                 </td>
                               );
                             })}
-                            <td style={{ padding: 6, textAlign: 'right', fontWeight: 700, color: sum === items.length ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)' }}>{sum}/{items.length}</td>
-                            <td style={{ padding: 4, textAlign: 'center' }}>
+                            <td className="is-num" style={{ fontWeight: 700, color: sum === items.length ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)' }}>{sum}/{items.length}</td>
+                            <td className="is-actions">
                               {sum > 0 && (
-                                <button type="button" disabled={pdfBusy} onClick={() => { void downloadCertificate(r); }} title={isDe ? 'Teilnahmebescheinigung (PDF)' : 'Certificate of attendance (PDF)'}
-                                  style={{ border: '1px solid var(--dex-gray-200)', background: '#fff', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontSize: '0.72rem', color: 'var(--dex-gray-700)' }}>PDF</button>
+                                <button type="button" className="dex-ui-textbtn" disabled={pdfBusy} onClick={() => { void downloadCertificate(r); }} title={isDe ? 'Teilnahmebescheinigung (PDF)' : 'Certificate of attendance (PDF)'}>
+                                  <Download size={14} />PDF
+                                </button>
                               )}
                             </td>
                           </tr>
                         );
                       })}
                       {active.length === 0 && (
-                        <tr><td colSpan={items.length + 3} style={{ padding: 12, color: 'var(--dex-gray-400)' }}>{isDe ? 'Keine aktiven Anmeldungen.' : 'No active registrations.'}</td></tr>
+                        <tr><td colSpan={items.length + 3}>
+                          <div className="dex-ui-empty">
+                            <div className="dex-ui-empty-title">{isDe ? 'Keine aktiven Anmeldungen.' : 'No active registrations.'}</div>
+                            {isDe ? 'Sobald sich jemand anmeldet, steht die Person hier mit einer Spalte je ' : 'As soon as someone registers they appear here, with one column per '}{termS}.
+                          </div>
+                        </td></tr>
                       )}
                     </tbody>
                   </table>
