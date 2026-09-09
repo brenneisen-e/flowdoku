@@ -15,8 +15,8 @@ import { DeloitteEvent } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 // v11.99: RefreshCw nicht mehr benötigt (Page-Level-Refresh-Button entfernt).
 import { Icon } from '@fluentui/react/lib/Icon';
-import { AlertCircle } from './Icons';
-import { ensureDexUiStyles } from './dexUi';
+import { AlertCircle, Calendar, Pin } from './Icons';
+import { cx, ensureDexUiStyles } from './dexUi';
 import EventCard from './EventCard';
 import { CachedBg } from './CachedImage';
 import { prewarmImages } from '../utils/imageCache';
@@ -372,19 +372,18 @@ export default function EventListPage(): React.ReactElement {
       {/* v11.99: Page-Level-Refresh-Button entfernt — Header oben rechts
           hat bereits einen Aktualisieren-Button, doppelt verwirrt. */}
       <style>{`@keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-      {/* Titel + Hinweis: Events sind für den User personalisiert */}
-      <div className="card" style={{
-        padding: '16px 20px',
-        marginBottom: 16,
-        background: 'linear-gradient(135deg, rgba(134,188,37,0.08) 0%, rgba(134,188,37,0.02) 100%)',
-        border: '1px solid var(--dex-green, #86bc25)',
-      }}>
-        <h2 style={{ margin: 0, marginBottom: 6, fontSize: '1.1rem', fontWeight: 700 }}>
-          {t('eventlist.title')}
-        </h2>
-        <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-          {t('eventlist.hint')}
-        </p>
+      {/* Titel + Hinweis: Events sind für den User personalisiert.
+          v31.9: Der grüne Kasten ist ein Seitenkopf geworden — Grün trägt in
+          dieser App eine Bedeutung (aktiv, Erfolg, Primär-Knopf) und ist nie
+          Flächenfarbe für einen Kasten (Leitfaden 1.1). Die Überschrift ist
+          jetzt das Erste, was ins Auge fällt, nicht der Rahmen darum. */}
+      <div className="dex-ui-page-head">
+        <div style={{ minWidth: 0 }}>
+          <h2 className="dex-ui-page-head-title">{t('eventlist.title')}</h2>
+          <p style={{ margin: '6px 0 0', fontSize: '0.86rem', color: 'var(--dex-gray-600)', lineHeight: 1.5, maxWidth: 780 }}>
+            {t('eventlist.hint')}
+          </p>
+        </div>
       </div>
       {/* v31.6: „Kein Zugriff" sah bis hierher aus wie „keine Events" — beides
           war eine leere Liste. Wer aus einer Member Firm nur ein persönliches
@@ -394,111 +393,104 @@ export default function EventListPage(): React.ReactElement {
           suchte am Event statt an ihren Rechten. Deshalb sagt der Kasten, was
           fehlt und wen sie fragen muss. */}
       {(eventsReadStatus === 'forbidden' || eventsReadStatus === 'error') && (
-        <div className="dex-ui-callout dex-ui-callout--warn" style={{ flexDirection: 'column', marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-            <span className="dex-ui-callout-icon"><AlertCircle size={18} /></span>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700 }}>
-                {eventsReadStatus === 'forbidden'
-                  ? (isDe ? 'Dir fehlt noch der Zugriff auf die Event-Liste' : 'You do not have access to the event list yet')
-                  : (isDe ? 'Die Event-Liste ließ sich gerade nicht laden' : 'The event list could not be loaded right now')}
-              </div>
-              <div style={{ marginTop: 3 }}>
-                {eventsReadStatus === 'forbidden'
-                  ? (isDe
-                    ? 'Diese Seite kannst du öffnen, die Liste mit den Events darfst du aber noch nicht lesen. Das ist eine Frage der Berechtigung und liegt nicht an dir: Ein Organizer oder ein Admin muss dich in die Besucher-Gruppe dieser Site aufnehmen — ein einzelnes Leserecht aus einer Zugriffsanfrage reicht dafür nicht. Danach siehst du die Events sofort.'
-                    : 'You can open this page, but you are not allowed to read the event list yet. That is a permissions question and not your fault: an organizer or an admin needs to add you to the visitors group of this site — an individual read permission from an access request is not enough. After that you will see the events straight away.')
-                  : (isDe
-                    ? 'Das war ein Netz- oder Serverfehler, keine fehlende Berechtigung. Versuch es gleich noch einmal. Bleibt es dabei, sag einem Organizer oder Admin Bescheid.'
-                    : 'That was a network or server error, not a missing permission. Please try again in a moment. If it keeps happening, tell an organizer or admin.')}
-              </div>
-              <div style={{ marginTop: 8 }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary dex-ui-btn-sm"
-                  disabled={retrying}
-                  onClick={() => {
-                    setRetrying(true);
-                    refreshEvents()
-                      .catch(err => console.warn('[DEX] Erneutes Laden der Events fehlgeschlagen:', err))
-                      .then(() => setRetrying(false));
-                  }}
-                >
-                  {retrying
-                    ? (isDe ? 'Wird geladen …' : 'Loading …')
-                    : (isDe ? 'Erneut versuchen' : 'Try again')}
-                </button>
-              </div>
+        <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginBottom: 16 }}>
+          <span className="dex-ui-callout-icon"><AlertCircle size={18} /></span>
+          {/* v31.9: `dex-ui-callout-body` statt der handgebauten Verschachtelung
+              aus Spalte + Zeile — Text und Knopf standen dadurch doppelt
+              eingerückt. Wortlaut und Bedingungen bleiben unverändert. */}
+          <div className="dex-ui-callout-body">
+            <div style={{ fontWeight: 700 }}>
+              {eventsReadStatus === 'forbidden'
+                ? (isDe ? 'Dir fehlt noch der Zugriff auf die Event-Liste' : 'You do not have access to the event list yet')
+                : (isDe ? 'Die Event-Liste ließ sich gerade nicht laden' : 'The event list could not be loaded right now')}
+            </div>
+            <div style={{ marginTop: 3 }}>
+              {eventsReadStatus === 'forbidden'
+                ? (isDe
+                  ? 'Diese Seite kannst du öffnen, die Liste mit den Events darfst du aber noch nicht lesen. Das ist eine Frage der Berechtigung und liegt nicht an dir: Ein Organizer oder ein Admin muss dich in die Besucher-Gruppe dieser Site aufnehmen — ein einzelnes Leserecht aus einer Zugriffsanfrage reicht dafür nicht. Danach siehst du die Events sofort.'
+                  : 'You can open this page, but you are not allowed to read the event list yet. That is a permissions question and not your fault: an organizer or an admin needs to add you to the visitors group of this site — an individual read permission from an access request is not enough. After that you will see the events straight away.')
+                : (isDe
+                  ? 'Das war ein Netz- oder Serverfehler, keine fehlende Berechtigung. Versuch es gleich noch einmal. Bleibt es dabei, sag einem Organizer oder Admin Bescheid.'
+                  : 'That was a network or server error, not a missing permission. Please try again in a moment. If it keeps happening, tell an organizer or admin.')}
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="btn btn-secondary dex-ui-btn-sm"
+                disabled={retrying}
+                onClick={() => {
+                  setRetrying(true);
+                  refreshEvents()
+                    .catch(err => console.warn('[DEX] Erneutes Laden der Events fehlgeschlagen:', err))
+                    .then(() => setRetrying(false));
+                }}
+              >
+                {retrying
+                  ? (isDe ? 'Wird geladen …' : 'Loading …')
+                  : (isDe ? 'Erneut versuchen' : 'Try again')}
+              </button>
             </div>
           </div>
         </div>
       )}
-      <div className="flex-between mb-16" style={{ alignItems: 'flex-end' }}>
-        {/* View-Mode Switcher: Cards / List — mit „Ansicht"-Label darüber,
-            damit klar ist, was die beiden Buttons umschalten (v19.6). */}
-        <div>
-          <div style={{
-            fontSize: '0.8rem', fontWeight: 700, color: 'var(--dex-gray-600)',
-            textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6,
-          }}>
-            {t('eventlist.view') || 'Ansicht'}
-          </div>
-          <div style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--dex-gray-300)' }}>
-            <button
-              onClick={() => switchView('cards')}
-              style={{
-                padding: '9px 18px', fontSize: '0.98rem', cursor: 'pointer', border: 'none',
-                background: viewMode === 'cards' ? 'var(--dex-green)' : 'transparent',
-                color: viewMode === 'cards' ? '#fff' : 'var(--dex-gray-600)',
-                fontWeight: viewMode === 'cards' ? 700 : 500,
-                display: 'inline-flex', alignItems: 'center', gap: 8,
-              }}
-            >
-              <Icon iconName="GridViewMedium" style={{ fontSize: 18 }} /> Cards
-            </button>
-            <button
-              onClick={() => switchView('list')}
-              style={{
-                padding: '9px 18px', fontSize: '0.98rem', cursor: 'pointer', border: 'none',
-                background: viewMode === 'list' ? 'var(--dex-green)' : 'transparent',
-                color: viewMode === 'list' ? '#fff' : 'var(--dex-gray-600)',
-                fontWeight: viewMode === 'list' ? 700 : 500,
-                display: 'inline-flex', alignItems: 'center', gap: 8,
-              }}
-            >
-              <Icon iconName="GroupedList" style={{ fontSize: 18 }} /> List
-            </button>
-          </div>
-        </div>
+      {/* v31.9: Filter und Ansichtsumschalter stehen in EINER Werkzeugleiste
+          (`dex-ui-toolbar`) — vorher trennte `flex-between` sie an die beiden
+          Ränder, obwohl beide dasselbe tun: sie bestimmen, was und wie die
+          Liste darunter zeigt. Der Umschalter ist ein Segment-Reiter
+          (Leitfaden 2b: eine von wenigen kurzen Alternativen), kein Paar
+          vollflächig grüner Knöpfe — Grün bedeutet hier Auswahl, nicht Fläche. */}
+      <div className="dex-ui-toolbar">
         {/* v15.19: „Nur aktive Events"-Toggle nur für Admin/Organizer.
             Reine User sehen ohnehin nur Events ihres Standorts und brauchen
             den Switch nicht — sie sollen vergangene Events nicht
             ausversehen einblenden können. */}
         {(isAdmin || canCreateEvents) && (
-          <div className="toggle-wrapper">
-            <label className="toggle">
-              <input
-                type="checkbox"
-                checked={onlyActive}
-                onChange={(e) => setOnlyActive(e.target.checked)}
-              />
-              <span className="toggle-slider" />
-            </label>
-            <span>{t('eventlist.onlyactive')}</span>
-          </div>
+          <label className="dex-ui-switch">
+            <input
+              type="checkbox"
+              checked={onlyActive}
+              onChange={(e) => setOnlyActive(e.target.checked)}
+            />
+            <span className="dex-ui-switch-track" />
+            <span className="dex-ui-switch-label">{t('eventlist.onlyactive')}</span>
+          </label>
         )}
+        <span className="dex-ui-toolbar-spacer" />
+        <span className="dex-ui-muted">{t('eventlist.view') || 'Ansicht'}</span>
+        <div className="dex-ui-tabs">
+          <button
+            type="button"
+            className={cx('dex-ui-tab', viewMode === 'cards' && 'is-active')}
+            aria-pressed={viewMode === 'cards'}
+            onClick={() => switchView('cards')}
+          >
+            <Icon iconName="GridViewMedium" style={{ fontSize: 14, marginRight: 6 }} />
+            {/* v31.9: „Cards"/„List" waren hart englisch. Das Handbuch spricht
+                seit jeher von Karten- und Listen-Ansicht — beides heißt jetzt
+                gleich. */}
+            {isDe ? 'Karten' : 'Cards'}
+          </button>
+          <button
+            type="button"
+            className={cx('dex-ui-tab', viewMode === 'list' && 'is-active')}
+            aria-pressed={viewMode === 'list'}
+            onClick={() => switchView('list')}
+          >
+            <Icon iconName="GroupedList" style={{ fontSize: 14, marginRight: 6 }} />
+            {isDe ? 'Liste' : 'List'}
+          </button>
+        </div>
       </div>
       {/* v15.21: Zwei klar getrennte Sektionen — eigene Events (Organizer)
           zuerst, danach alle weiteren Events sortiert nach Datum. */}
       {(() => {
         const ownEvents = filteredEvents.filter(e => isOwnOrganizer(e));
         const otherEvents = filteredEvents.filter(e => !isOwnOrganizer(e));
+        // v31.9: dieselbe Abschnitts-Überschrift wie überall sonst in der App
+        // (`dex-ui-section-title`, mit der Linie nach rechts) statt einer
+        // eigenen Schriftgröße nur auf dieser Seite.
         const sectionTitle = (text: string): React.ReactElement => (
-          <h3 style={{
-            margin: '24px 0 12px', fontSize: '1rem',
-            color: 'var(--dex-gray-800)', fontWeight: 700,
-            textTransform: 'uppercase', letterSpacing: 0.6,
-          }}>{text}</h3>
+          <h3 className="dex-ui-section-title" style={{ margin: '24px 0 12px' }}>{text}</h3>
         );
         const formatDate = (iso: string): string => {
           if (!iso) return '';
@@ -582,10 +574,17 @@ export default function EventListPage(): React.ReactElement {
             {/* v31.6: Nur wenn die Liste WIRKLICH gelesen wurde, heißt leer auch
                 leer. Sonst steht oben der Kasten, der den Grund nennt — die
                 beiden Fälle dürfen sich nicht wieder vermischen. */}
+            {/* v31.9: aus dem grauen Absatz ist ein echter Leerzustand geworden
+                — mit einem zweiten Satz, der sagt, woran es liegt und was
+                passiert („sobald du eingeladen bist, steht es hier"). Ein
+                leerer Bildschirm ohne Erklärung liest sich sonst wie ein
+                Fehler. */}
             {filteredEvents.length === 0 && eventsReadStatus !== 'forbidden' && eventsReadStatus !== 'error' && (
-              <p className="text-center mt-24" style={{ color: 'var(--dex-gray-400)' }}>
-                {t('events.empty')}
-              </p>
+              <div className="dex-ui-empty" style={{ marginTop: 24 }}>
+                <div className="dex-ui-empty-icon"><Calendar size={22} strokeWidth={1.6} /></div>
+                <div className="dex-ui-empty-title">{t('events.empty')}</div>
+                <div className="dex-ui-empty-desc">{t('events.empty.hint')}</div>
+              </div>
             )}
           </>
         );
@@ -650,28 +649,67 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
                   }}
                 />
                 <div style={{ minWidth: 0 }}>
+                  {/* v31.9: Die beiden Marken sind reine Anzeige — also
+                      `dex-ui-pill` statt zweier vollflächig eingefärbter
+                      Eigenbauten (Leitfaden: Anzeige ist eine Pille,
+                      Schaltbares ein Chip). */}
                   <h3 style={{ marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     {event.title}
                     {isOwn && (
-                      <span style={{
-                        padding: '2px 8px', borderRadius: 999, fontSize: '0.65rem', fontWeight: 700,
-                        background: 'var(--dex-green, #86bc25)', color: '#fff', letterSpacing: 0.5,
-                      }}>Organizer</span>
+                      <span className="dex-ui-pill dex-ui-pill--green dex-ui-pill--sm">Organizer</span>
                     )}
                     {event.isFictive && (
-                      <span style={{
-                        padding: '2px 8px', borderRadius: 999, fontSize: '0.65rem', fontWeight: 700,
-                        background: 'var(--dex-orange, #ed8b00)', color: '#fff', letterSpacing: 0.5,
-                      }}>{t('events.draft')}</span>
+                      <span className="dex-ui-pill dex-ui-pill--orange dex-ui-pill--sm">{t('events.draft')}</span>
                     )}
                   </h3>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', margin: 0 }}>
-                    {formatDate(event.startDate)} - {formatDate(event.endDate)}
-                    {event.location ? ` · ${event.location}` : ''}
-                  </p>
-                  <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)', margin: '2px 0 0' }}>
-                    {t('events.organizers')} {event.organizers.map(o => { const p = o.split(',').map(s => s.trim()); return p.length === 2 ? `${p[1]} ${p[0]}` : o; }).join(', ')}
-                  </p>
+                  {/* v31.9: Wann und Wo als `dex-ui-meta` mit Symbolen — dieselbe
+                      Zeile wie auf den anderen Teilnehmer-Seiten. Und: ein
+                      Eintages-Event bekommt EINE Zeitangabe. Vorher stand bei
+                      leerem Enddatum „09.10.2026 09:00 - " mit offenem Ende da. */}
+                  {(() => {
+                    const from = formatDate(event.startDate);
+                    const to = formatDate(event.endDate);
+                    const when = (to && to !== from) ? `${from} – ${to}` : from;
+                    return (
+                      <div className="dex-ui-meta">
+                        {when && (
+                          <span className="dex-ui-meta-item">
+                            <Calendar size={14} strokeWidth={1.8} />{when}
+                          </span>
+                        )}
+                        {event.location && (
+                          <span className="dex-ui-meta-item">
+                            <Pin size={14} strokeWidth={1.8} />{event.location}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  {/* v31.9: Dieselbe Datenschutz-Bedingung wie auf der Kachel
+                      (`EventCard.tsx`). Vorher stand die Zeile hier
+                      BEDINGUNGSLOS — wer auf „Liste" umschaltete, sah genau die
+                      Namen, die der Wizard verbergen sollte. Der Leitfaden sagt
+                      es in 6e: Datenschutz-Schalter wandern mit ihrem Block,
+                      und was an einer Stelle an einer Bedingung hängt, darf an
+                      der anderen nicht frei stehen. `hideOrganizer` ohne
+                      Einzelauswahl blendet alle aus; mit Einzelauswahl bleiben
+                      nur die nicht ausdrücklich versteckten Personen. */}
+                  {(() => {
+                    if (event.hideOrganizer && !event.hideOrganizerIndividualOnly) return null;
+                    const hiddenLc = (event.hideOrganizer && event.hideOrganizerIndividualOnly)
+                      ? (event.hiddenOrganizerEmails || []).map(e => (e || '').toLowerCase())
+                      : [];
+                    const shown = event.organizers.filter((_o, i) => {
+                      const mail = ((event.organizerEmails || [])[i] || '').toLowerCase();
+                      return !mail || hiddenLc.indexOf(mail) === -1;
+                    });
+                    if (shown.length === 0) return null;
+                    return (
+                      <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: '3px 0 0' }}>
+                        {t('events.organizers')} {shown.map(o => { const p = o.split(',').map(s => s.trim()); return p.length === 2 ? `${p[1]} ${p[0]}` : o; }).join(', ')}
+                      </p>
+                    );
+                  })()}
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', width: isMobile ? '100%' : undefined }}>
@@ -681,18 +719,18 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
                     Kapazität liegt je Sub-Event und steht auf der
                     Anmeldeseite. Gleiche Regel wie auf der Kachel. */}
                 {!event.subEventsOnlyMode && (
-                  <span style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
+                  <span className="dex-ui-pill dex-ui-pill--gray">
                     {event.currentParticipants}/{event.maxParticipants || '∞'} {t('events.participants')}
                   </span>
                 )}
                 {isReg && (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 700, background: 'rgba(134,188,37,0.22)', color: 'var(--dex-green-dark)' }}>
-                    <Icon iconName="CompletedSolid" style={{ fontSize: 13 }} /> {t('status.registered')}
+                  <span className="dex-ui-pill dex-ui-pill--green">
+                    <Icon iconName="CompletedSolid" style={{ fontSize: 12 }} /> {t('status.registered')}
                   </span>
                 )}
                 {isWait && (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 700, background: 'rgba(237,139,0,0.22)', color: 'var(--dex-orange, #ed8b00)' }}>
-                    <Icon iconName="Clock" style={{ fontSize: 13 }} /> {t('status.waitlist')}
+                  <span className="dex-ui-pill dex-ui-pill--orange">
+                    <Icon iconName="Clock" style={{ fontSize: 12 }} /> {t('status.waitlist')}
                   </span>
                 )}
                 {/* v19.15: Aktionen auch in der Listen-Ansicht — vorher nur in den
@@ -704,8 +742,9 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
                 {(isReg || isWait) ? (
                   <>
                     <button
-                      className="btn btn-primary"
-                      style={{ fontSize: '0.78rem', padding: '6px 14px', width: isMobile ? '100%' : undefined }}
+                      type="button"
+                      className="btn btn-primary dex-ui-btn-sm"
+                      style={{ width: isMobile ? '100%' : undefined }}
                       onClick={(e) => { e.stopPropagation(); navigate('my-events'); }}
                     >
                       {t('myevents.title')}
@@ -713,8 +752,9 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
                     {/* v24.90: auch per-Event-Organizer (isOwn) — nicht nur global. */}
                     {(canCreateEvents || isOwn) && (
                       <button
-                        className="btn btn-secondary"
-                        style={{ fontSize: '0.78rem', padding: '6px 14px', width: isMobile ? '100%' : undefined }}
+                        type="button"
+                        className="btn btn-secondary dex-ui-btn-sm"
+                        style={{ width: isMobile ? '100%' : undefined }}
                         onClick={(e) => { e.stopPropagation(); navigate('registration', event.id, 'register-other'); }}
                       >
                         {t('reg.registerother')}
@@ -723,8 +763,9 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
                   </>
                 ) : (
                   <button
-                    className="btn btn-primary"
-                    style={{ fontSize: '0.78rem', padding: '6px 14px', width: isMobile ? '100%' : undefined }}
+                    type="button"
+                    className="btn btn-primary dex-ui-btn-sm"
+                    style={{ width: isMobile ? '100%' : undefined }}
                     onClick={(e) => { e.stopPropagation(); navigate('registration', event.id); }}
                   >
                     {t('reg.registerstart')}

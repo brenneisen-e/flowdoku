@@ -410,6 +410,16 @@ export const DEX_UI_CSS = `
    ueberall derselbe: Dort gibt es einen Mauszeiger, hier oft nur einen
    Finger. Was nur im Hover sichtbar wird, existiert auf dem Handy nicht
    (Leitfaden 6b). */
+/* v31.9: dex-ui-rowbtn und dex-ui-row komponierten NICHT — von zwei
+   Agenten unabhaengig gemeldet, also kein Zufall. Der Reset steht weiter unten
+   im Stylesheet und setzt padding: 0; border: none; bei gleicher
+   Spezifitaet gewinnt er, und die Zeile verlor Innenabstand und Trennlinie.
+   Jeder Aufrufer holte sich beides inline zurueck. Repariert wird das mit
+   zwei spezifischeren Regeln statt durch Aendern des Resets — so bleibt ein
+   alleinstehender dex-ui-rowbtn (Karte klickbar machen) unveraendert. */
+.dex-ui-row.dex-ui-rowbtn { padding: 10px 12px; }
+.dex-ui-row--bordered.dex-ui-rowbtn { border-bottom: 1px solid ${G100}; border-radius: 0; }
+.dex-ui-row--bordered.dex-ui-rowbtn:last-child { border-bottom: none; }
 .dex-ui-pill--wrap { white-space: normal; max-width: 100%; }
 .dex-ui-pill--sm { font-size: 0.72rem; padding: 3px 8px; }
 .dex-ui-avatar--xs { width: 22px; height: 22px; font-size: 0.66rem; }

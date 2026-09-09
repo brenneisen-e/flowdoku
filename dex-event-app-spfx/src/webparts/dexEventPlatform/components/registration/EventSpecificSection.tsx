@@ -1,7 +1,12 @@
 /* EventSpecificSection — aus RegistrationPage.tsx ausgelagert (v30.66).
  * Station 3: Starter-Typ-Auswahl bei geteilter Kapazitaet, die Sub-Event-Auswahl
  * (Liste und Kalender) und die eventspezifischen Felder. Inhalt zeichengleich
- * uebernommen; die Anzeige-Bedingung ist beim Aufrufer geblieben. */
+ * uebernommen; die Anzeige-Bedingung ist beim Aufrufer geblieben.
+ * v31.9: Optik auf die gemeinsamen dex-ui-Klassen umgestellt (Gruppen-Kacheln,
+ * Haken-Zeilen, Hinweiskästen, Aufklapper) und die bisher nur im `title`
+ * versteckte Aussage „Belegung nicht ermittelbar" sichtbar gemacht — auf dem
+ * Handy gibt es keinen Hover (Leitfaden 6b/6c). Auswahl-Logik,
+ * Kapazitätsrechnung, `showIf`-Filter und Feld-Reihenfolge sind unverändert. */
 import * as React from 'react';
 import { CollapsibleSection, formatDateRange, subEventDescHtml } from './regHelpers';
 import { subEventRegDeadline } from '../../utils/eventFormat';
@@ -10,6 +15,10 @@ import { Icon } from '@fluentui/react/lib/Icon';
 import { Locale } from '../../context/LanguageContext';
 import { DeloitteEvent, EventSpecificField } from '../../types';
 import { groupSubEventTabs, stripGroupPrefix } from '../../utils/subEventGroups';
+// v31.9: Inline-Styles können kein :hover — die Gruppen-Kacheln und die
+// Termin-Haken lasen sich deshalb wie Beschriftungen statt wie Bedienelemente.
+import { cx } from '../dexUi';
+import { AlertCircle, Check, ChevronDown } from '../Icons';
 
 /** Station 3 — Starter-Typ, Sub-Event-Auswahl und eventspezifische Felder. */
 export interface EventSpecificSectionProps {
@@ -97,9 +106,13 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                 anzeigten. Sub-Events erben jetzt einfach
                 preferredStarterType — keine Pro-Sub-Event-Radios mehr. */}
             {isSplitGroup && (
-              <div style={{ marginBottom: 20, border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 16 }}>
+              <div className="dex-ui-card" style={{ marginBottom: 20 }}>
+                {/* v31.9: Der Fallback ist jetzt die Frage, die hier gestellt
+                    wird (Leitfaden 2c). Ein vom Organizer gesetzter
+                    splitSectionTitle gewinnt weiterhin — er ist eine bewusste
+                    Eingabe und wird nicht überschrieben. */}
                 <label className="form-label" style={{ fontWeight: 700, marginBottom: 6 }}>
-                  <span className="required">*</span> {(event.splitSectionTitle && event.splitSectionTitle.trim()) ? event.splitSectionTitle : (locale === 'de' ? 'Gruppen-Auswahl' : 'Group selection')}
+                  <span className="required">*</span> {(event.splitSectionTitle && event.splitSectionTitle.trim()) ? event.splitSectionTitle : (locale === 'de' ? 'Für welche Gruppe meldest du dich an?' : 'Which group are you registering for?')}
                 </label>
                 {/* v26.83: Organizer-eigener Hinweistext (splitHelpText) hat
                     Vorrang; sonst der Standardsatz. whiteSpace pre-wrap, damit
@@ -124,42 +137,50 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                   const fActive = starterCounts?.fun ?? 0;
                   const totalFree = Math.max(0, durchCap - dActive) + Math.max(0, funCap - fActive);
                   const totalWait = (starterCounts?.durchWait ?? 0) + (starterCounts?.funWait ?? 0);
+                  // v31.9: Reine Anzeige — also Pillen, keine Chips und kein
+                  // Hover (Grundsatz 3). Aussagen und Reihenfolge unverändert.
                   return (
-                    <div style={{
-                      display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
-                      marginBottom: 12, padding: '8px 12px', borderRadius: 8,
-                      background: 'var(--dex-gray-50, #f7f7f7)', border: '1px solid var(--dex-gray-200)',
-                      fontSize: '0.8rem',
-                    }}>
-                      <span style={{ color: 'var(--dex-gray-700)', fontWeight: 700 }}>
+                    <div className="dex-ui-inline" style={{ marginBottom: 12 }}>
+                      <span className="dex-ui-pill dex-ui-pill--gray">
                         {locale === 'de' ? 'Gesamtkapazität:' : 'Total capacity:'} {totalCap} {locale === 'de' ? 'Plätze' : 'seats'}
                       </span>
                       {/* v26.72: „X frei" in der Gesamt-Zeile entfernt — die
                           Verfügbarkeit steht bereits pro Gruppe in den Karten.
                           Nur bei komplett ausgebucht bleibt ein Hinweis. */}
                       {totalFree <= 0 && (
-                        <>
-                          <span style={{ color: 'var(--dex-gray-300)' }}>·</span>
-                          <span style={{ color: 'var(--dex-red, #c00)', fontWeight: 700 }}>
-                            {locale === 'de' ? 'ausgebucht' : 'fully booked'}
-                          </span>
-                        </>
+                        <span className="dex-ui-pill dex-ui-pill--red">
+                          {locale === 'de' ? 'ausgebucht' : 'fully booked'}
+                        </span>
                       )}
                       {totalWait > 0 && (
-                        <>
-                          <span style={{ color: 'var(--dex-gray-300)' }}>·</span>
-                          <span style={{ color: 'var(--dex-gray-600)' }}>
-                            {totalWait} {locale === 'de'
-                              ? (totalWait === 1 ? 'Person auf der Warteliste' : 'Personen auf der Warteliste')
-                              : (totalWait === 1 ? 'person on the waitlist' : 'people on the waitlist')}
-                            {event.splitSharedWaitlist ? (locale === 'de' ? ' (gemeinsam)' : ' (shared)') : ''}
-                          </span>
-                        </>
+                        <span className="dex-ui-pill dex-ui-pill--gray dex-ui-pill--wrap">
+                          {totalWait} {locale === 'de'
+                            ? (totalWait === 1 ? 'Person auf der Warteliste' : 'Personen auf der Warteliste')
+                            : (totalWait === 1 ? 'person on the waitlist' : 'people on the waitlist')}
+                          {event.splitSharedWaitlist ? (locale === 'de' ? ' (gemeinsam)' : ' (shared)') : ''}
+                        </span>
                       )}
                     </div>
                   );
                 })()}
-                <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                {/* v31.9: „Belegung nicht ermittelbar" ist ein eigener Zustand
+                    und wird benannt (Leitfaden 6c). Bisher stand dafür nur ein
+                    „—" in den Kacheln — ein Strich erklärt nichts, und eine 0
+                    hätte eine volle Gruppe als frei verkauft. */}
+                {!starterCounts && (
+                  <div className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm" role="status" style={{ marginBottom: 12 }}>
+                    <span className="dex-ui-callout-icon"><AlertCircle size={14} /></span>
+                    <span className="dex-ui-callout-body">
+                      {locale === 'de'
+                        ? 'Wie viele Plätze noch frei sind, können wir gerade nicht ermitteln. Du kannst dich trotzdem anmelden — geprüft wird beim Absenden.'
+                        : 'We cannot determine how many seats are still free right now. You can register anyway — the check happens when you submit.'}
+                    </span>
+                  </div>
+                )}
+                {/* v31.9: dex-ui-grid-2 bricht auf dem Handy selbst auf eine
+                    Spalte um; form-grid-2col bleibt für die bestehende
+                    !important-Regel im SCSS-Modul stehen. */}
+                <div className="form-grid-2col dex-ui-grid-2" style={{ gap: 10 }}>
                   {(() => {
                     // v26.72: Beschreibung pro Gruppe frei konfigurierbar
                     // (splitDescA/B aus dem Wizard); Fallback auf den B2Run-
@@ -174,41 +195,39 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                     const free = opt.cap - opt.count;
                     const isFull = free <= 0;
                     const isActive = preferredStarterType === opt.id;
-                    // v26.72: gewählte Box grün, nicht-gewählte grau (vorher A grün / B orange).
-                    const accent = isActive ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500, #6b7280)';
+                    // v26.72: gewählte Kachel grün, nicht-gewählte grau (vorher A grün
+                    // / B orange). v31.9: Das macht jetzt `dex-ui-choice.is-active` —
+                    // samt Hover, Fokusring und Häkchen-Kreis, den Inline-Styles nicht
+                    // hinbekommen. Genau EINE Gruppe ist wählbar, deshalb der runde
+                    // Kreis und nicht `--multi`.
                     return (
                       <button
                         key={opt.id}
                         type="button"
                         onClick={() => setPreferredStarterType(opt.id)}
-                        style={{
-                          padding: 14, textAlign: 'left',
-                          borderRadius: 'var(--dex-radius, 12px)',
-                          border: isActive ? `2px solid ${accent}` : '2px solid var(--dex-gray-200)',
-                          // v26.88: Standard-Grün (wie die Geschlecht-/Feld-Füllung,
-                          // greenFilledStyle) statt Off-Brand #f0fdf4.
-                          background: isActive ? 'rgba(134,188,37,0.06)' : '#fff',
-                          cursor: 'pointer', transition: 'all 0.15s',
-                          position: 'relative',
-                        }}
+                        className={cx('dex-ui-choice', isActive && 'is-active')}
+                        aria-pressed={isActive}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                          <strong style={{ color: accent, fontSize: '0.95rem' }}>{opt.label}</strong>
-                          {isActive && <span style={{ color: accent, fontSize: '0.8rem' }}>✓</span>}
-                        </div>
-                        {opt.desc && <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)', marginBottom: 6, whiteSpace: 'pre-wrap' }}>{opt.desc}</div>}
-                        <div style={{ fontSize: '0.78rem' }}>
-                          {isFull ? (
-                            <span style={{ color: 'var(--dex-red, #c00)', fontWeight: 600 }}>{t('reg.starter.full')}</span>
-                          ) : (
-                            // v19.19: nie negativ — bei Überbuchung greift der
-                            // isFull-Zweig oben (zeigt „Voll"), die echte
-                            // Überbuchungszahl bleibt dem Organizer/Admin vorbehalten.
-                            // v30.67: Ohne ermittelte Belegung (starterCounts null) keinen
-                            // erfundenen Wert — „50 / 50 frei" war die Zahl, die eine volle
-                            // Gruppe als frei verkaufte (Teilnehmerliste zeilenweise gesichert).
-                            <span style={{ color: accent }}>{starterCounts ? `${Math.max(0, free)} / ${opt.cap} ${t('reg.starter.free')}` : `— / ${opt.cap} ${t('reg.starter.free')}`}</span>
-                          )}
+                        <span className="dex-ui-choice-body">
+                          <span className="dex-ui-choice-title">{opt.label}</span>
+                          {opt.desc && <span className="dex-ui-choice-desc" style={{ whiteSpace: 'pre-wrap' }}>{opt.desc}</span>}
+                          <span className="dex-ui-choice-desc">
+                            {isFull ? (
+                              <strong style={{ color: 'var(--dex-red, #c00)' }}>{t('reg.starter.full')}</strong>
+                            ) : starterCounts ? (
+                              // v19.19: nie negativ — bei Überbuchung greift der
+                              // isFull-Zweig oben (zeigt „Voll"), die echte
+                              // Überbuchungszahl bleibt dem Organizer/Admin vorbehalten.
+                              <>{Math.max(0, free)} / {opt.cap} {t('reg.starter.free')}</>
+                            ) : (
+                              // v30.67: Ohne ermittelte Belegung keinen erfundenen Wert —
+                              // „50 / 50 frei" war die Zahl, die eine volle Gruppe als frei
+                              // verkaufte (Teilnehmerliste zeilenweise gesichert).
+                              // v31.9: Statt „—" die Aussage selbst; der Grund steht im
+                              // Hinweis über den Kacheln.
+                              <>{opt.cap} {locale === 'de' ? 'Plätze insgesamt · frei: unbekannt' : 'seats in total · free: unknown'}</>
+                            )}
+                          </span>
                           {/* v19.19: Warteliste pro Gruppe — nur bei GETRENNTEN
                               Wartelisten. Bei gemeinsamer Warteliste steht die
                               Zahl gesammelt in der Kapazitäts-Zusammenfassung.
@@ -217,37 +236,53 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                               wartet, meldet sich eher an, als wenn die Zeile
                               fehlt und offen bleibt, wie lang die Schlange ist. */}
                           {!event.splitSharedWaitlist && (opt.wait > 0 || isFull) && (
-                            <span style={{ display: 'block', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-                              {opt.wait} {locale === 'de'
-                                ? (opt.wait === 1 ? 'Person auf der Warteliste' : 'Personen auf der Warteliste')
-                                : (opt.wait === 1 ? 'person on the waitlist' : 'people on the waitlist')}
+                            <span className="dex-ui-choice-desc">
+                              {/* v31.9: Ohne gelesene Belegung ist auch die Warteliste
+                                  unbekannt — „0 Personen auf der Warteliste" wäre hier
+                                  eine Zahl aus einem Lesefehler (6c). */}
+                              {starterCounts
+                                ? `${opt.wait} ${locale === 'de'
+                                  ? (opt.wait === 1 ? 'Person auf der Warteliste' : 'Personen auf der Warteliste')
+                                  : (opt.wait === 1 ? 'person on the waitlist' : 'people on the waitlist')}`
+                                : (locale === 'de' ? 'Warteliste: nicht ermittelbar' : 'Waitlist: unknown')}
                             </span>
                           )}
-                        </div>
+                        </span>
+                        <span className="dex-ui-choice-check">{isActive && <Check size={12} />}</span>
                       </button>
                     );
                   })}
                 </div>
 
+                {/* v31.9: Der Haken ist eine Ja/Nein-Frage mit Folge — also
+                    dex-ui-toggle-row statt nackter Checkbox im orangenen Kasten.
+                    Der orange Rahmen sagte „Achtung"; hier ist nichts falsch,
+                    solange nichts fehlt — der Fehlerfall bekommt den Kasten. */}
                 {event.durchstarterRequiresProof && preferredStarterType === 'Durchstarter' && (
-                  <div style={{ marginTop: 12, padding: '10px 12px', background: 'rgba(237,139,0,0.06)', border: '1px solid var(--dex-orange)', borderRadius: 8 }}>
-                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.85rem' }}>
+                  <div style={{ marginTop: 12 }}>
+                    <label className={cx('dex-ui-toggle-row', eventSpecific['b2run_leistungsnachweis'] === 'true' && 'is-active')}>
                       <input
                         type="checkbox"
                         checked={eventSpecific['b2run_leistungsnachweis'] === 'true'}
                         onChange={e => setEventSpecific({ ...eventSpecific, b2run_leistungsnachweis: e.target.checked ? 'true' : 'false' })}
-                        style={{ marginTop: 3 }}
                       />
-                      <span>
-                        <strong>{t('reg.starter.proof') || 'Leistungsnachweis vorhanden'} <span className="required">*</span></strong>
-                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
+                      <span className="dex-ui-toggle-row-body">
+                        {/* Titel und Stern in EINEM Kind — die Zeile ist ein
+                            Flex-Container, zwei Kinder bekämen sonst 6 px Lücke. */}
+                        <span className="dex-ui-toggle-row-title">
+                          <span>{t('reg.starter.proof') || 'Leistungsnachweis vorhanden'} <span className="required">*</span></span>
+                        </span>
+                        <span className="dex-ui-toggle-row-desc">
                           {t('reg.starter.proof.hint') || 'Ich bestätige, dass ein entsprechender Leistungsnachweis (z.B. Wettkampfergebnis, Trainingsnachweis) vorliegt.'}
                         </span>
                       </span>
                     </label>
                     {showErrors && eventSpecific['b2run_leistungsnachweis'] !== 'true' && (
-                      <div style={{ marginTop: 6, fontSize: '0.75rem', color: 'var(--dex-red)' }}>
-                        {t('reg.starter.proof.required') || 'Bitte Leistungsnachweis bestätigen.'}
+                      <div className="dex-ui-callout dex-ui-callout--danger dex-ui-callout--sm" role="alert" style={{ marginTop: 6 }}>
+                        <span className="dex-ui-callout-icon"><AlertCircle size={14} /></span>
+                        <span className="dex-ui-callout-body">
+                          {t('reg.starter.proof.required') || 'Bitte Leistungsnachweis bestätigen.'}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -284,18 +319,16 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                   const labelA = (event.splitLabelA && event.splitLabelA.trim()) || 'Durchstarter';
                   const labelB = (event.splitLabelB && event.splitLabelB.trim()) || 'Funstarter';
                   const grpLabel = preferredStarterType === 'Durchstarter' ? labelA : labelB;
+                  // v31.9: Eigener Abschnitt statt orangenem Warn-Kasten — die
+                  // Fragen sind die Folge der Gruppen-Wahl, keine Warnung. Die
+                  // Überschrift nennt die Gruppe, damit der Bezug bleibt.
+                  // Englisch bekommt endlich englische Anführungszeichen.
                   return (
-                    <div style={{
-                      marginTop: 12, padding: '12px 14px',
-                      background: 'rgba(237,139,0,0.06)',
-                      border: '1px solid var(--dex-orange)',
-                      borderRadius: 8,
-                      display: 'flex', flexDirection: 'column', gap: 12,
-                    }}>
-                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--dex-orange, #ed8b00)' }}>
+                    <div className="dex-ui-card dex-ui-card--soft" style={{ marginTop: 12 }}>
+                      <div className="dex-ui-section-title">
                         {locale === 'de'
-                          ? `Zusätzliche Angaben für „${grpLabel}"`
-                          : `Additional details for „${grpLabel}"`}
+                          ? `Zusätzliche Angaben für „${grpLabel}“`
+                          : `Additional details for “${grpLabel}”`}
                       </div>
                       {groupSpec.map(f => renderRegField(f))}
                     </div>
@@ -313,14 +346,13 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                 ist ein enger gefasstes Sub-Event Absicht des Organizers und
                 geht die Person nichts an. */}
             {childEvents.length === 0 && hiddenChildCount > 0 && event.subEventsOnlyMode && (
-              <div style={{
-                marginTop: 12, padding: '10px 14px', borderRadius: 8,
-                background: 'rgba(237,139,0,0.10)', border: '1px solid var(--dex-orange, #ed8b00)',
-                fontSize: '0.82rem', color: 'var(--dex-orange-dark, #b35a00)', lineHeight: 1.5,
-              }}>
-                {locale === 'de'
-                  ? 'Die Anmeldung läuft hier ausschließlich über die einzelnen Programmpunkte. Für dich ist aktuell keiner davon freigegeben — wenn du teilnehmen möchtest, wende dich bitte an die Organizer.'
-                  : 'Registration here runs exclusively via the individual programme items. None of them is currently released for you — if you would like to attend, please contact the organizers.'}
+              <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginTop: 12 }} role="status">
+                <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                <span className="dex-ui-callout-body">
+                  {locale === 'de'
+                    ? 'Die Anmeldung läuft hier ausschließlich über die einzelnen Programmpunkte. Für dich ist aktuell keiner davon freigegeben — wenn du teilnehmen möchtest, wende dich bitte an die Organizer.'
+                    : 'Registration here runs exclusively via the individual programme items. None of them is currently released for you — if you would like to attend, please contact the organizers.'}
+                </span>
               </div>
             )}
 
@@ -336,7 +368,7 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                 ohnehin immer mit angemeldet). Sub-Events erben
                 preferredStarterType vom Group-Selection-Block oben. */}
             {childEvents.length > 0 && (
-              <div style={{ marginBottom: 20, border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 16 }}>
+              <div className="dex-ui-card" style={{ marginBottom: 20 }}>
                 {/* v15.11: im subEventsOnlyMode ist die Hauptevent-Anmeldung
                     deaktiviert — Überschrift + Hinweis entsprechend
                     anpassen, sonst lesen sich „Haupt-Event und … können
@@ -380,39 +412,43 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                     v18.37: im Stellvertreter-Modus ebenfalls ausblenden — die
                     Person wird dort immer für das Haupt-Event angemeldet, ein
                     steuerbarer Haken wäre irreführend. */}
+                {/* v31.9: Haken-Zeile statt roher Checkbox — mit Hover, größerer
+                    Trefferfläche und dem Grund als Text IN der Zeile (6b: auf dem
+                    Handy gibt es kein Überfahren). Die Bedingungen für „grün",
+                    „gesperrt" und „bereits angemeldet" sind unverändert; der
+                    Zeiger bleibt bei gesperrter Zeile bewusst `default`. */}
                 {!event.subEventsOnlyMode && !registerForOther && (
-                <label style={{
-                  display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10,
-                  borderRadius: 8,
-                  border: `1px solid ${registerForParent && !parentAlreadyRegistered && !parentRegBlocked ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-                  background: registerForParent && !parentAlreadyRegistered && !parentRegBlocked ? 'rgba(134,188,37,0.06)' : '#fff',
-                  cursor: (parentAlreadyRegistered || parentRegBlocked) ? 'default' : 'pointer',
-                  opacity: parentRegBlocked ? 0.6 : 1,
-                }}>
+                <label
+                  className={cx(
+                    'dex-ui-toggle-row',
+                    registerForParent && !parentAlreadyRegistered && !parentRegBlocked && 'is-active',
+                    parentRegBlocked && 'is-disabled',
+                  )}
+                  style={{ cursor: (parentAlreadyRegistered || parentRegBlocked) ? 'default' : 'pointer' }}
+                >
                   <input
                     type="checkbox"
                     checked={parentAlreadyRegistered ? true : (parentRegBlocked ? false : registerForParent)}
                     disabled={parentAlreadyRegistered || parentRegBlocked}
                     onChange={e => setRegisterForParent(e.target.checked)}
-                    style={{ marginTop: 2 }}
                   />
-                  <div style={{ flex: 1 }}>
+                  <span className="dex-ui-toggle-row-body">
                     {(() => { const lbl = resolveMainEventLabel(tEvent('reg.selection.mainevent') || 'Haupt-Event'); return (
-                      <div style={{ fontWeight: 700 }}>{lbl ? `${lbl}: ` : ''}{event.title}</div>
+                      <span className="dex-ui-toggle-row-title"><span>{lbl ? `${lbl}: ` : ''}{event.title}</span></span>
                     ); })()}
                     {parentAlreadyRegistered && (
-                      <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                      <span className="dex-ui-toggle-row-desc">
                         {tEvent('reg.selection.alreadyregistered') || 'Du bist bereits für das Haupt-Event angemeldet.'}
-                      </div>
+                      </span>
                     )}
                     {parentRegBlocked && !parentAlreadyRegistered && (
-                      <div style={{ fontSize: '0.75rem', color: parentFullNoWaitlist ? 'var(--dex-red, #c00)' : 'var(--dex-orange, #ed8b00)', marginTop: 2 }}>
+                      <span className="dex-ui-toggle-row-desc" style={{ color: parentFullNoWaitlist ? 'var(--dex-red, #c00)' : 'var(--dex-orange-dark, #b35a00)' }}>
                         {parentFullNoWaitlist
                           ? (locale === 'de' ? 'Alle Plätze sind belegt — die Warteliste ist für dieses Event deaktiviert.' : 'All seats are taken — the waitlist is disabled for this event.')
                           : (tEvent('reg.subevents.deadlinepassed') || 'Anmeldefrist abgelaufen — nur noch die offenen Sub-Events sind wählbar.')}
-                      </div>
+                      </span>
                     )}
-                  </div>
+                  </span>
                 </label>
                 )}
                 {/* v29.28: Die Fragen zum Haupt-Event stehen DIREKT unter
@@ -449,6 +485,15 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                     .map(ce => ({ ce, key: dayOf(ce.startDate) }))
                     .filter(e => !!e.key);
                   if (entries.length === 0) return null;
+                  // v31.9: Ein Tag mit Kapazität, aber ohne gelesene Belegung zeigt
+                  // in der Kachel „—". Was dieser Strich bedeutet, stand bisher nur
+                  // im `title` — auf dem Handy also nirgends (6b/6c). Rechnet nichts
+                  // aus, was die Kacheln nicht ohnehin schon rechnen.
+                  const anyUnknownCap = entries.some(e => {
+                    const m = sessionMeta[e.ce.id];
+                    const capped = typeof e.ce.maxParticipants === 'number' && e.ce.maxParticipants > 0;
+                    return capped && (!m || m.count === null);
+                  });
                   const byDay: Record<string, DayEntry> = {};
                   entries.forEach(e => { byDay[e.key] = e; });
                   // Monate, in denen Termine liegen — jeder als eigenes Raster.
@@ -669,7 +714,17 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                           </div>
                         );
                       })}
-                      <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                      {anyUnknownCap && (
+                        <div className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm" role="status" style={{ marginBottom: 8 }}>
+                          <span className="dex-ui-callout-icon"><AlertCircle size={14} /></span>
+                          <span className="dex-ui-callout-body">
+                            {locale === 'de'
+                              ? 'Bei den Tagen mit „—“ können wir gerade nicht ermitteln, wie viele Plätze frei sind. Wählen kannst du sie trotzdem — geprüft wird beim Absenden.'
+                              : 'For the days showing “—” we cannot determine how many seats are free right now. You can still pick them — the check happens when you submit.'}
+                          </span>
+                        </div>
+                      )}
+                      <div className="dex-ui-muted">
                         {selectedSessions.size === 0
                           ? (locale === 'de' ? 'Noch kein Termin gewählt.' : 'No date picked yet.')
                           : (locale === 'de'
@@ -683,7 +738,9 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                 {/* Sessions */}
                 {!event.subEventCalendar && (
                 <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', fontWeight: 600 }}>{childTermPlural || tEvent('reg.selection.sessions') || 'Sessions'}</div>
+                  {/* v31.9: Abschnitts-Überschrift statt grauer Zeile. Die
+                      Bezeichnung kommt weiterhin aus childTermPlural. */}
+                  <div className="dex-ui-section-title" style={{ margin: 0 }}>{childTermPlural || tEvent('reg.selection.sessions') || 'Sessions'}</div>
                   {(() => {
                   const renderSessionCard = (ce: DeloitteEvent, shownTitle: string): React.ReactElement => {
                     const meta = sessionMeta[ce.id] || { count: null, wasRegistered: false };
@@ -709,14 +766,21 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                     const seOpenLocked = seNotYetOpen && !isOrganizer && !isAdmin;
                     const disabled = (isSessionFull && !isSel) || (deadlineLocked && !isSel) || (seOpenLocked && !isSel);
 
+                    // v31.9: Die Karte trägt links eine grüne Kante, wenn der Termin
+                    // gewählt ist — sie bleibt auch auf dem Handy sichtbar, wo es
+                    // keinen Hover gibt. Der Haken selbst ist eine dex-ui-toggle-row
+                    // (größere Trefferfläche, Hover, Fokus); Beschreibung, Zeiten und
+                    // Hinweise stehen bewusst AUSSERHALB des <label>, damit ein Klick
+                    // auf einen Link in der Beschreibung nicht abwählt.
                     return (
-                      <div key={ce.id} style={{
-                        padding: 10, borderRadius: 8,
-                        border: `1px solid ${isSel ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-                        background: isSel ? 'rgba(134,188,37,0.06)' : '#fff',
+                      <div key={ce.id} className={cx('dex-ui-card', isSel && 'dex-ui-card--accent')} style={{
+                        padding: 0, overflow: 'hidden',
                         opacity: seNotYetOpen && !isSel ? 0.75 : 1,
                       }}>
-                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: disabled ? 'not-allowed' : 'pointer' }}>
+                        <label
+                          className={cx('dex-ui-toggle-row', isSel && 'is-active', disabled && 'is-disabled')}
+                          style={{ border: 'none', cursor: disabled ? 'not-allowed' : 'pointer' }}
+                        >
                           <input
                             type="checkbox"
                             checked={isSel}
@@ -741,21 +805,22 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                                 });
                               }
                             }}
-                            style={{ marginTop: 2 }}
                           />
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span className="dex-ui-toggle-row-body">
+                            <span className="dex-ui-toggle-row-title">
                               {shownTitle}
                               {ce.mandatoryRegistration && (
-                                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#fff', background: 'var(--dex-orange, #ed8b00)', borderRadius: 999, padding: '2px 8px' }}>
+                                <span className="dex-ui-pill dex-ui-pill--orange dex-ui-pill--sm">
                                   {locale === 'de' ? 'Pflicht' : 'Required'}
                                 </span>
                               )}
-                            </div>
-                          </div>
+                            </span>
+                          </span>
                         </label>
-                        {/* v29.28: Karteninhalt linksbündig (s. Listen-Pfad). */}
-                        <div style={{ marginTop: 4 }}>
+                        {/* v29.28: Karteninhalt linksbündig (s. Listen-Pfad).
+                            v31.9: auf Zeigegeräten unter dem Haken eingerückt,
+                            damit Titel und Text eine Spalte bilden. */}
+                        <div style={{ padding: isMobile ? '0 14px 12px' : '0 14px 12px 46px' }}>
                             {ce.description && (
                               // v11.97: gleiche Schriftgröße wie der Titel
                               // (Standard-Body). Vorher 0.78rem klein.
@@ -764,10 +829,12 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                               <div style={{ color: 'var(--dex-gray-600)', marginTop: 2, wordBreak: 'break-word' }} dangerouslySetInnerHTML={{ __html: subEventDescHtml(ce.description) }} />
                             )}
                             {/* v11.94: gleiches Icon-Layout wie oben (anderer
-                                Render-Pfad für Team-Modus). */}
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 4, color: 'var(--dex-gray-600)' }}>
+                                Render-Pfad für Team-Modus).
+                                v31.9: als dex-ui-meta — dieselbe Wann-·-Wo-Zeile
+                                wie auf Kachel und Termin-Karte. */}
+                            <div className="dex-ui-meta" style={{ marginTop: 4 }}>
                               {ce.startDate && (
-                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                <span className="dex-ui-meta-item">
                                   {/* v11.97: Icon-Größe an Standard-Body angepasst. */}
                                   <Icon iconName="Calendar" style={{ fontSize: 15, color: 'var(--dex-green-dark, #4a7c1f)' }} />
                                   {/* v30.79: von–bis statt nur Start (Nutzer 07.09.2026:
@@ -776,23 +843,26 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                                 </span>
                               )}
                               {ce.location && (
-                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                <span className="dex-ui-meta-item">
                                   <Icon iconName="POI" style={{ fontSize: 15, color: '#0a3766' }} />
                                   {ce.location}
                                 </span>
                               )}
                             </div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                            <div className="dex-ui-muted" style={{ marginTop: 4 }}>
                               {hasCap && (() => {
                                 // v30.62: Ohne belastbare Belegung nur die Kapazität
                                 // nennen. „0/80 belegt — 80 frei" wäre eine Zahl, die
                                 // aus einem Leseverbot entsteht, nicht aus den Daten.
+                                // v31.9: Und den Zustand benennen, statt ihn nur
+                                // wegzulassen — „80 Plätze" allein liest sich wie
+                                // „80 frei" (6c).
                                 if (meta.count === null) {
-                                  return <> · {ce.maxParticipants} {locale === 'de' ? 'Plätze' : 'seats'}</>;
+                                  return <>{ce.maxParticipants} {locale === 'de' ? 'Plätze · Belegung nicht ermittelbar' : 'seats · occupancy unknown'}</>;
                                 }
                                 const sessionFree = Math.max(0, (ce.maxParticipants || 0) - (meta.count || 0));
                                 return (
-                                  <> · <span style={{ color: isSessionFull ? 'var(--dex-red)' : 'inherit', fontWeight: 600 }}>
+                                  <><span style={{ color: isSessionFull ? 'var(--dex-red)' : 'inherit', fontWeight: 600 }}>
                                     {/* v19.19: belegt-Zahl bei der Kapazität deckeln (s.o.) —
                                         Überbuchung nie auf der Anmeldeseite anzeigen. */}
                                     {Math.min(meta.count, ce.maxParticipants || 0)}/{ce.maxParticipants} {tEvent('reg.subevents.taken')}
@@ -804,26 +874,35 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                                 );
                               })()}
                             </div>
+                            {/* v31.9: Die drei Gründe, warum ein Termin gerade nicht
+                                geht, sind Hinweiskästen mit der Farbe ihrer Bedeutung
+                                — vorher waren es drei farbige Textzeilen, die auf dem
+                                Handy zwischen Beschreibung und Zahlen untergingen. */}
                             {deadlinePassed && !isSel && (
-                              <div style={{ fontSize: '0.72rem', color: 'var(--dex-orange)', marginTop: 2 }}>
-                                {tEvent('reg.subevents.deadlinepassed')}
+                              <div className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm" style={{ marginTop: 6 }}>
+                                <span className="dex-ui-callout-icon"><AlertCircle size={14} /></span>
+                                <span className="dex-ui-callout-body">{tEvent('reg.subevents.deadlinepassed')}</span>
                               </div>
                             )}
                             {/* v29.77: „Anmeldung ab" auch hier ausweisen. */}
                             {seNotYetOpen && !isSel && (
-                              <div style={{ fontSize: '0.72rem', color: 'var(--dex-orange)', marginTop: 2 }}>
-                                {seOpenLocked
-                                  ? (locale === 'de'
-                                    ? `Anmeldung ab ${seOpenFrom!.toLocaleDateString('de-DE')} möglich.`
-                                    : `Registration opens on ${seOpenFrom!.toLocaleDateString('en-GB')}.`)
-                                  : (locale === 'de'
-                                    ? `Anmeldung öffnet regulär am ${seOpenFrom!.toLocaleDateString('de-DE')} — als Organizer/Admin trotzdem wählbar.`
-                                    : `Registration opens on ${seOpenFrom!.toLocaleDateString('en-GB')} — still selectable as organizer/admin.`)}
+                              <div className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm" style={{ marginTop: 6 }}>
+                                <span className="dex-ui-callout-icon"><AlertCircle size={14} /></span>
+                                <span className="dex-ui-callout-body">
+                                  {seOpenLocked
+                                    ? (locale === 'de'
+                                      ? `Anmeldung ab ${seOpenFrom!.toLocaleDateString('de-DE')} möglich.`
+                                      : `Registration opens on ${seOpenFrom!.toLocaleDateString('en-GB')}.`)
+                                    : (locale === 'de'
+                                      ? `Anmeldung öffnet regulär am ${seOpenFrom!.toLocaleDateString('de-DE')} — als Organizer/Admin trotzdem wählbar.`
+                                      : `Registration opens on ${seOpenFrom!.toLocaleDateString('en-GB')} — still selectable as organizer/admin.`)}
+                                </span>
                               </div>
                             )}
                             {isSessionFull && !isSel && (
-                              <div style={{ fontSize: '0.72rem', color: 'var(--dex-red)', marginTop: 2 }}>
-                                {tEvent('reg.subevents.sessionfull')}
+                              <div className="dex-ui-callout dex-ui-callout--danger dex-ui-callout--sm" style={{ marginTop: 6 }}>
+                                <span className="dex-ui-callout-icon"><AlertCircle size={14} /></span>
+                                <span className="dex-ui-callout-body">{tEvent('reg.subevents.sessionfull')}</span>
                               </div>
                             )}
                             {/* v11.10: Hardcoded Sub-Event-Gruppen-Radios entfernt.
@@ -834,8 +913,16 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                                 (z.B. „Vormittag/Nachmittag"), nicht zur
                                 Session. */}
                         </div>
-                        {/* v29.27: Fragen inline in der Karte (s. Listen-Pfad). */}
-                        {isSel && renderSubEventInlineFields(ce)}
+                        {/* v29.27: Fragen inline in der Karte (s. Listen-Pfad).
+                            v31.9: Die Karte hat keinen eigenen Innenabstand mehr
+                            (der Haken bringt seinen mit) — der Fragen-Block bekommt
+                            ihn deshalb hier, und nur, wenn es Fragen gibt. */}
+                        {isSel && (() => {
+                          const inlineFields = renderSubEventInlineFields(ce);
+                          return inlineFields
+                            ? <div style={{ padding: isMobile ? '0 14px 12px' : '0 14px 12px 46px' }}>{inlineFields}</div>
+                            : null;
+                        })()}
                       </div>
                     );
                   };
@@ -854,27 +941,26 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                     const label = g.label === 'Weitere' ? (locale === 'de' ? 'Weitere' : 'Other') : g.label;
                     return (
                       <div key={g.label} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {/* v31.9: Aufklapper als dex-ui-disclosure — ein ▸/▾ im
+                            Text ist kein Bedienhinweis (6c). Der Chevron dreht die
+                            Klasse selbst, offen zeigt er nach oben. */}
                         <button
                           type="button"
                           aria-expanded={!collapsed}
                           onClick={() => setCollapsedGroups(prev => { const next = new Set(prev); if (next.has(g.label)) next.delete(g.label); else next.add(g.label); return next; })}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
-                            padding: '8px 12px', borderRadius: 8, cursor: 'pointer',
-                            border: `1px solid ${picked > 0 ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-                            background: picked > 0 ? 'rgba(134,188,37,0.10)' : 'var(--dex-gray-50, #f7f7f7)',
-                            color: 'var(--dex-gray-800)', font: 'inherit',
-                          }}
+                          className={cx('dex-ui-disclosure', !collapsed && 'is-open')}
                         >
-                          <span style={{ fontSize: '0.75rem', width: 12, color: 'var(--dex-gray-500)' }}>{collapsed ? '▸' : '▾'}</span>
+                          <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
                           <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>{label}</span>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>
+                          <span className="dex-ui-muted">
                             {members.length} {locale === 'de' ? 'Termine' : 'dates'}
                             {mandatory > 0 && <> · {mandatory} {locale === 'de' ? 'Pflicht' : 'required'}</>}
                           </span>
                           {picked > 0 && (
-                            <span style={{ marginLeft: 'auto', fontSize: '0.72rem', fontWeight: 700, color: '#fff', background: 'var(--dex-green, #86bc25)', borderRadius: 999, padding: '2px 8px' }}>
-                              {picked} {locale === 'de' ? 'gewählt' : 'picked'}
+                            <span className="dex-ui-disclosure-count">
+                              <span className="dex-ui-pill dex-ui-pill--green dex-ui-pill--sm">
+                                {picked} {locale === 'de' ? 'gewählt' : 'picked'}
+                              </span>
                             </span>
                           )}
                         </button>
@@ -891,16 +977,15 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                 )}
 
                 {isSessionsOnlyMode && selectedSessions.size > 0 && !event.subEventsOnlyMode && (
-                  <div style={{
-                    marginTop: 12, padding: '8px 10px', borderRadius: 6,
-                    background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange)',
-                    color: 'var(--dex-orange)', fontSize: '0.78rem',
-                  }}>
-                    {childTermPlural
-                      ? (locale === 'de'
-                          ? `Du meldest dich ausschließlich für ${childTermPlural} an — NICHT für das Haupt-Event.`
-                          : `You are registering exclusively for ${childTermPlural} — NOT for the main event.`)
-                      : (tEvent('reg.selection.sessionsonlyhint') || 'Du meldest dich ausschließlich für Sessions an — NICHT für das Haupt-Event.')}
+                  <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginTop: 12 }} role="status">
+                    <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                    <span className="dex-ui-callout-body">
+                      {childTermPlural
+                        ? (locale === 'de'
+                            ? `Du meldest dich ausschließlich für ${childTermPlural} an — NICHT für das Haupt-Event.`
+                            : `You are registering exclusively for ${childTermPlural} — NOT for the main event.`)
+                        : (tEvent('reg.selection.sessionsonlyhint') || 'Du meldest dich ausschließlich für Sessions an — NICHT für das Haupt-Event.')}
+                    </span>
                   </div>
                 )}
               </div>

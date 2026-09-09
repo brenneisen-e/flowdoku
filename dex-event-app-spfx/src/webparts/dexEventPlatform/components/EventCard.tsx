@@ -3,6 +3,15 @@
  *
  * Zeigt Gradient-Hintergrund, Event-Infos und freie Plätze.
  * Die Gradient-Farben rotieren basierend auf dem Index.
+ *
+ * v31.9: Die Kachel beantwortet vier Fragen, und der Körper (`__body`) steht
+ * seither in genau dieser Rangfolge: Bild/Titel/Ort (im Bild-Overlay) →
+ * Zeitraum → Zustand (frei · voll · Warteliste · offene Termine) →
+ * Ansprechpartner → Knopf. Die Geometrie (`.event-card__*`) liegt im
+ * geteilten SCSS-Modul und wird zentral gepflegt — hier wird deshalb
+ * ausschließlich INNERHALB von `__body` umsortiert; alles Weitere kommt über
+ * die `dex-ui-`-Klassen (docs/ui-leitfaden.md). `ensureDexUiStyles()` ruft
+ * die Seite (`EventListPage`), nicht diese Unterkomponente.
  */
 
 import * as React from 'react';
@@ -13,8 +22,9 @@ import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { DeloitteEvent } from '../types';
 import { useCachedImageWithFallback } from '../utils/imageCache';
-import { isRegistrationFullyClosed } from '../utils/eventFormat';
+import { isRegistrationFullyClosed, isRegistrationOpen } from '../utils/eventFormat';
 import OrganizerList from './OrganizerList';
+import { AlertCircle, Calendar, Check } from './Icons';
 // v24.91: Portal-Popover (Organizer-Kontakt im „Registration closed"-Overlay)
 // wird an document.body gerendert — daher mit `styles.dexApp` wrappen, damit
 // die gescopten CSS-Variablen greifen (analog Modal-Fix v24.65).
@@ -113,10 +123,30 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
   const freePlaces = isUnlimited ? Infinity : effectiveMax - event.currentParticipants - (event.waitlistCount || 0);
   const isFull = !isUnlimited && freePlaces <= 0;
   const alreadySignedUp = isRegistered || isWaitlisted;
+  const childEvents = childEventsOf(event.id);
   // v22.54: Die Anmeldung bleibt offen, solange das Hauptevent ODER mindestens
   // ein Sub-Event noch offen ist — eine abgelaufene Klammer-/Hauptevent-Frist
   // sperrt nicht mehr das ganze Event, wenn die Sub-Events noch laufen.
-  const isDeadlinePassed = isRegistrationFullyClosed(event, childEventsOf(event.id));
+  const isDeadlinePassed = isRegistrationFullyClosed(event, childEvents);
+  // v31.9: Bei `subEventsOnlyMode` schweigt die Kachel seit v29.13 zu Plätzen
+  // und Frist — zu Recht, beides gilt dort nur je Termin. Nur stand an der
+  // Stelle danach GAR NICHTS: Die Kachel sagte kein Wort darüber, dass die
+  // Entscheidung eine Ebene tiefer liegt. An ihre Stelle treten deshalb die
+  // Zahl der noch offenen Termine und ein Satz dazu.
+  // Gefiltert wie die Anmeldeseite: soft-deaktivierte Sub-Events zählen nie,
+  // Entwürfe (isFictive) nur für Organizer. Der Zielgruppen-Filter der
+  // Anmeldeseite (`isEventVisibleForUser`) fehlt hier bewusst — er bräuchte
+  // Nutzerdaten, die die Kachel nicht hat. Deshalb sagt der Text „offen" und
+  // nicht „für dich buchbar".
+  const openChildCount = event.subEventsDisabled
+    ? 0
+    : childEvents.filter(ce => (!ce.isFictive || canCreateEvents || isOwnOrganizer) && isRegistrationOpen(ce)).length;
+  // v31.9: Bezeichnung immer aus den Term-Konstanten (Leitfaden 6d) — im
+  // `subEventsOnlyMode` heißen die Kinder für Teilnehmer nicht „Sub-Events",
+  // sondern schlicht „Events" (v29.13); ein eigener Begriff des Organizers
+  // („Office-Tage", „Sessions") gewinnt davor.
+  const childTermSingular = event.childEventTermSingular || (isDe ? 'Event' : 'event');
+  const childTermPlural = event.childEventTermPlural || (isDe ? 'Events' : 'events');
   // Nur normale User bekommen den Deadline-Overlay. Organizer/Admins dürfen
   // trotzdem reinklicken, um ggf. manuell zu registrieren.
   // v24.90: isOwnOrganizer ergänzt — per-Event-Co-Organizer (im Wizard zum
@@ -144,6 +174,10 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
   const hiddenOrgEmails = (event.hideOrganizer && event.hideOrganizerIndividualOnly) ? (event.hiddenOrganizerEmails || []) : [];
   const allOrgsHidden = !!event.hideOrganizer && !event.hideOrganizerIndividualOnly;
   const hasOrgContacts = !allOrgsHidden && orgNames.length > 0;
+  // v31.9: Für die Kontaktzeile im Karten-Körper reicht `hasOrgContacts` nicht:
+  // Sind ALLE Organizer einzeln ausgeblendet, liefert `OrganizerList` null —
+  // übrig bliebe die Überschrift „Fragen?" ohne eine einzige Person.
+  const hasVisibleOrgs = hasOrgContacts && orgNames.length > hiddenOrgEmails.length;
   const orgTriggerRef = React.useRef<HTMLSpanElement>(null);
   const [orgOpen, setOrgOpen] = React.useState(false);
   const [orgCoords, setOrgCoords] = React.useState<{ x: number; y: number } | null>(null);
@@ -152,6 +186,35 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
   const openOrg = (): void => { cancelOrgClose(); const r = orgTriggerRef.current?.getBoundingClientRect(); if (r) setOrgCoords({ x: r.left + r.width / 2, y: r.bottom + 6 }); setOrgOpen(true); };
   const scheduleOrgClose = (): void => { cancelOrgClose(); orgCloseTimer.current = setTimeout(() => setOrgOpen(false), 220); };
   React.useEffect(() => () => cancelOrgClose(), []);
+
+  // v31.9: Der dunkle Karten-Overlay stand dreimal wortgleich als Inline-Style
+  // in dieser Datei (Frist, Vorschau, angemeldet). Eine `dex-ui-`-Klasse dafür
+  // gibt es nicht — bis sie im Leitfaden steht, ist EIN Objekt in dieser Datei
+  // die kleinere Doppelung.
+  const overlayStyle: React.CSSProperties = {
+    position: 'absolute', inset: 0, zIndex: 10, borderRadius: 'var(--dex-radius)',
+    background: 'linear-gradient(180deg, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.62) 100%)',
+    display: 'flex', flexDirection: 'column', gap: 4,
+    alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center',
+  };
+  const overlayTitleStyle: React.CSSProperties = { color: '#fff', fontWeight: 700, fontSize: '1rem', display: 'inline-flex', alignItems: 'center', gap: 7 };
+  const overlaySubtitleStyle: React.CSSProperties = { color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem' };
+
+  // v31.9: Ein Eintages-Event bekommt EINE Zeile, kein Fragment. Vorher stand
+  // hier stur „<Start> bis" + Zeilenumbruch + „<Ende>" — bei leerem `endDate`
+  // (Altbestand; der Rückfall auf `startDate` greift erst seit v22 beim
+  // Speichern) endete die Kachel mitten im Satz, gefolgt von einer Leerzeile.
+  // Liegen Start und Ende am selben Tag, steht das Datum einmal und dahinter
+  // die Zeitspanne — „01.02.2026 09:00 – 17:00" statt zweier voller Zeilen.
+  const startTxt = formatDate(event.startDate);
+  const endTxt = formatDate(event.endDate);
+  const dateText = !startTxt
+    ? endTxt
+    : (!endTxt || endTxt === startTxt)
+      ? startTxt
+      : (startTxt.slice(0, 10) === endTxt.slice(0, 10)
+        ? `${startTxt} – ${endTxt.slice(11)}`
+        : `${startTxt} ${t('events.until')} ${endTxt}`);
 
   return (
     <div className="event-card" style={{ position: 'relative', cursor: blockClick ? 'not-allowed' : 'pointer', ...(event.isDemoShowcase ? { outline: '2px dashed var(--dex-blue, #0076a8)', outlineOffset: 2 } : {}) }} onClick={() => (!alreadySignedUp && !blockClick) ? navigate('registration', event.id) : undefined}>
@@ -210,15 +273,12 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
         </div>
       )}
       {showDeadlineOverlay && (
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 10, borderRadius: 'var(--dex-radius)',
-          background: 'rgba(0,0,0,0.65)', display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center',
-        }}>
-          <div style={{ color: '#fff', fontWeight: 700, fontSize: '1rem', marginBottom: 4 }}>
+        <div style={overlayStyle}>
+          <div style={overlayTitleStyle}>
+            <AlertCircle size={18} />
             {t('events.deadlinepassed')}
           </div>
-          <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.85rem', marginBottom: 4, maxWidth: 320, lineHeight: 1.4 }}>
+          <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.85rem', maxWidth: 320, lineHeight: 1.4 }}>
             {!hasOrgContacts ? t('events.deadlinepassed.hint') : (
               // v31.8: Der Satz steht als drei Schlüssel da (pre/word/post),
               // damit das anklickbare Wort ein eigener Text ist. Vorher wurde
@@ -238,7 +298,7 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
               </>
             )}
           </div>
-          <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', marginTop: 4 }}>
+          <div style={overlaySubtitleStyle}>
             {event.title}
           </div>
         </div>
@@ -263,35 +323,31 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
       {/* v23.14: Vorschau-Overlay für reguläre User — sichtbar, aber Anmeldung
           erst ab dem Aktivierungszeitpunkt (Anmeldeseite nicht öffenbar). */}
       {showPreviewOverlay && (
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 10, borderRadius: 'var(--dex-radius)',
-          background: 'rgba(0,0,0,0.65)', display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center',
-        }}>
-          <div style={{ color: '#fff', fontWeight: 700, fontSize: '1rem', marginBottom: 4 }}>
+        <div style={overlayStyle}>
+          <div style={overlayTitleStyle}>
+            <Calendar size={18} strokeWidth={2} />
             {t('events.previewsoon')}
           </div>
-          <div style={{ color: 'rgba(255,255,255,0.9)', fontSize: '0.9rem', marginBottom: 4 }}>
+          <div style={{ color: 'rgba(255,255,255,0.9)', fontSize: '0.9rem' }}>
             {t('events.regfrom')} {formatDate(event.activeFrom || '')}
           </div>
-          <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', marginTop: 4 }}>
+          <div style={overlaySubtitleStyle}>
             {event.title}
           </div>
         </div>
       )}
       {alreadySignedUp && (
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 10, borderRadius: 'var(--dex-radius)',
-          background: 'rgba(0,0,0,0.65)', display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center',
-        }}>
-          <div style={{ color: '#fff', fontWeight: 700, fontSize: '1rem', marginBottom: 4 }}>
+        <div style={overlayStyle}>
+          <div style={overlayTitleStyle}>
+            {/* v31.9: Haken bzw. Uhr-Hinweis vor dem Wort — auf dem Handy ist
+                die Kachel oft das Einzige, was jemand von seinem Status sieht. */}
+            {(isWaitlisted && !isRegistered) ? <AlertCircle size={18} /> : <Check size={18} />}
             {/* v30.2: „Angemeldet" gewinnt. Bei einer Termin-Reihe ist man oft
                 für viele Tage angemeldet und nur bei EINEM auf der Warteliste —
                 die Kachel behauptete dann pauschal „Warteliste". */}
             {(isWaitlisted && !isRegistered) ? t('status.waitlist') : t('status.registered')}
           </div>
-          <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem', marginBottom: 16 }}>
+          <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem', marginBottom: 12 }}>
             {event.title}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
@@ -372,40 +428,79 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
         </div>
       </div>
       <div className="event-card__body" style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-        {/* Datum links + Freie-Plätze-Badge rechts in einer Zeile */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
-          <div className="event-card__dates" style={{ flex: 1, minWidth: 0 }}>
-            {formatDate(event.startDate)} {t('events.until')}
-            <br />
-            {formatDate(event.endDate)}
+        {/* v31.9: 1. Wann. Eigene Zeile statt „Datum links, Badge rechts" —
+            der Zeitraum ist die Frage, die nach Titel und Ort kommt, und ein
+            Badge daneben drängt ihn auf schmalen Kacheln in den Umbruch.
+            `dex-ui-meta` liefert Symbol, Abstand und Umbruch (v31.8). */}
+        {dateText && (
+          <div className="event-card__dates dex-ui-meta">
+            <span className="dex-ui-meta-item">
+              <Calendar size={14} strokeWidth={2} />
+              {dateText}
+            </span>
           </div>
+        )}
+        {/* v31.9: 2. Kann ich noch buchen? Alles zum Zustand in EINER Zeile —
+            freie Plätze bzw. offene Termine, daneben die Frist. Die Zeile
+            entfällt ganz, wenn sie nichts zu sagen hat — eine leere Flex-Zeile
+            zieht sonst den 8-px-Abstand des `__body` ins Leere. */}
+        {(!subOnly || openChildCount > 0) && (
+        <div className="dex-ui-inline">
           {!subOnly && (
-            <span style={{
-              padding: '3px 10px', borderRadius: 12, fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0,
-              background: isFull ? 'rgba(218,41,28,0.12)' : 'rgba(134,188,37,0.12)',
-              color: isFull ? 'var(--dex-red)' : 'var(--dex-green-dark)',
-            }}>
+            <span className={isFull ? 'dex-ui-pill dex-ui-pill--red' : 'dex-ui-pill dex-ui-pill--green'}>
               {isFull ? t('status.waitlist') : (isUnlimited ? t('reg.unlimited') : `${freePlaces} ${t('reg.free')}`)}
             </span>
           )}
+          {/* v31.9: Im `subEventsOnlyMode` entfallen Plätze und Frist (v29.13).
+              Die Zahl der noch offenen Termine tritt an ihre Stelle — aber nur,
+              wenn sie größer als 0 ist: Eine 0 wäre hier keine Aussage über das
+              Event, sondern über eine womöglich gar nicht gelesene Liste
+              (CLAUDE.md: ein Lesefehler ist keine Null). */}
+          {subOnly && openChildCount > 0 && (
+            <span className="dex-ui-pill dex-ui-pill--blue">
+              {isDe
+                ? `noch ${openChildCount} ${openChildCount === 1 ? childTermSingular : childTermPlural} offen`
+                : `${openChildCount} ${openChildCount === 1 ? childTermSingular : childTermPlural} still open`}
+            </span>
+          )}
+          {!subOnly && event.registrationDeadline && formatDateOnly(event.registrationDeadline) && (
+            <span className="event-card__deadline">
+              {t('events.regopen')} {formatDateOnly(event.registrationDeadline)}
+            </span>
+          )}
         </div>
-        {!subOnly && event.registrationDeadline && formatDateOnly(event.registrationDeadline) && (
-          <div className="event-card__deadline">
-            {t('events.regopen')} {formatDateOnly(event.registrationDeadline)}
+        )}
+        {/* v31.9: … und der Satz dazu. Ohne ihn schwieg die Kachel genau dort,
+            wo die Entscheidung liegt: eine Ebene tiefer, je Termin.
+            Bezeichnung über die Term-Konstanten, nie fest verdrahtet. */}
+        {subOnly && (
+          <div className="dex-ui-muted">
+            {isDe
+              ? `Du meldest dich je ${childTermSingular} einzeln an.`
+              : `You register for each ${childTermSingular} separately.`}
           </div>
         )}
+        {/* Der rote Kasten ist KEINE Dublette zum Overlay: Er rendert bei
+            abgelaufener Frist für ALLE — auch für Organizer und bereits
+            Angemeldete, die den Overlay nie sehen. */}
         {isDeadlinePassed && (
-          <div style={{
-            marginTop: 6,
-            padding: '6px 10px',
-            background: 'rgba(218,41,28,0.10)',
-            color: 'var(--dex-red)',
-            borderRadius: 6,
-            fontSize: '0.78rem',
-            fontWeight: 600,
-            lineHeight: 1.35,
-          }}>
-            {t('events.deadlinepassed')}
+          <div className="dex-ui-callout dex-ui-callout--danger dex-ui-callout--sm">
+            <span className="dex-ui-callout-icon"><AlertCircle size={14} /></span>
+            <span className="dex-ui-callout-body" style={{ fontWeight: 600 }}>{t('events.deadlinepassed')}</span>
+          </div>
+        )}
+        {/* v31.9: 3. Wen frage ich? Bis hierher waren die Organizer NUR im
+            Frist-Overlay erreichbar — also erst, wenn die Anmeldung zu ist,
+            und über ein Hover-Portal, das es auf dem Handy nicht gibt
+            (Leitfaden 6b). Die Datenschutz-Schalter wandern mit: `allOrgsHidden`
+            (hideOrganizer ohne Einzelauswahl) blendet die Zeile ganz aus,
+            `hiddenOrgEmails` nimmt einzeln versteckte Personen heraus. Die
+            Chips stoppen die Klick-Weitergabe selbst — die Karte navigiert
+            also nicht, wenn jemand einen Organizer antippt. */}
+        {hasVisibleOrgs && (
+          <div className="dex-ui-inline">
+            <span className="dex-ui-muted">{isDe ? 'Fragen?' : 'Questions?'}</span>
+            <OrganizerList names={orgNames} emails={event.organizerEmails} hiddenEmails={hiddenOrgEmails} size="sm" compact forceIsDe={isDe} />
           </div>
         )}
         <div style={{ marginTop: 'auto', paddingTop: 12 }}>

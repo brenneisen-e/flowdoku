@@ -1,12 +1,21 @@
 /* PersonalDataSection — aus RegistrationPage.tsx ausgelagert (v30.66).
  * Station 2: die persoenlichen Daten aus M365, der Umschalter „fuer andere
  * anmelden" (oeffnet den Proxy-Wizard) und der Team-Modus-Schalter.
- * Inhalt zeichengleich uebernommen. */
+ * Inhalt zeichengleich uebernommen.
+ *
+ * v31.9: Nach dem UI-Leitfaden (2a, 2a', 2b) umgebaut. Die Reihenfolge ist
+ * jetzt: eigene Daten (Pflicht) → Team-Schalter (optional) → Aufklapper
+ * „fuer jemand anderen anmelden" (Organizer-Funktion, selten gebraucht).
+ * Vorher standen Stellvertreter-Umschalter und Massenimport GANZ OBEN im
+ * Kartenkopf und per `marginLeft:'auto'` rechts angedockt — also die
+ * seltenste Funktion an der auffaelligsten Stelle. */
 import * as React from 'react';
 import { CollapsibleSection } from './regHelpers';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { DeloitteEvent, Salutation } from '../../types';
 import { Locale } from '../../context/LanguageContext';
+import { cx } from '../dexUi';
+import { ChevronDown } from '../Icons';
 
 /** Station 2 — Deine Daten: Profil aus M365, Stellvertreter-Einstieg, Team-Schalter. */
 export interface PersonalDataSectionProps {
@@ -59,80 +68,24 @@ export interface PersonalDataSectionProps {
 }
 export const PersonalDataSection: React.FC<PersonalDataSectionProps> = (p) => {
   const { canCreateEvents, canRegisterForOther, ccSelfDecidedRef, ccSelfRef, currentUser, email, errorBorder, event, externalEmailConfirmedRef, externalPerson, firstName, isAssistant, isMobile, isTeamCapable, isTeamMode, locale, parentAlreadyRegistered, pickedUserProfile, profileCardExpanded, proxyStep, registerForOther, salutation, setEmail, setExternalPerson, setFirstName, setIsTeamMode, setMassImportOpen, setMassImportResult, setMassImportRows, setMassImportStep, setOtherConsentConfirmed, setPendingJoinTeam, setPickedUserProfile, setProfileCardExpanded, setProxyStep, setRegisterForOther, setSalutation, setSurname, setThirdPartyCheck, setUserResults, setUserSearch, showErrors, surname, t, teamSize, thirdPartyCheck } = p;
+  // v31.9: Der Aufklapper mit den Stellvertreter-Funktionen startet offen,
+  // wenn der Fremd-Modus bereits laeuft — sonst laege der einzige Weg
+  // zurueck zur Selbst-Anmeldung hinter einem zugeklappten Kasten.
+  const [proxyToolsOpen, setProxyToolsOpen] = React.useState<boolean>(registerForOther);
   return (
         <div className="registration-form">
           {/* v11.97: Section-Header + Register-for-other-Toggle in einer
               Zeile (grünes Section-Header-Pill links, Toggle als Link
               rechts daneben). Vorher saß der Toggle unter dem Header
               im Body — wenig auffällig. „* = Required field"-Legende
-              ist hier weg und sitzt jetzt am Event-Specific-Header. */}
+              ist hier weg und sitzt jetzt am Event-Specific-Header.
+              v31.9: Der Toggle ist aus dem Kopf heraus ans ENDE der
+              Sektion gewandert (Leitfaden 2a/2a'); der Kopf trägt jetzt
+              wieder nur den Titel. */}
           <CollapsibleSection
             isMobile={isMobile}
             icon="ContactInfo"
             title={t('reg.personalinfo')}
-            headerExtra={(canRegisterForOther || (registerForOther && canCreateEvents)) ? (
-            <>
-            {canRegisterForOther && (
-              <button
-                type="button"
-                onClick={() => {
-                  setRegisterForOther(!registerForOther);
-                  setThirdPartyCheck(null);
-                  setPickedUserProfile(null);
-                  setOtherConsentConfirmed(false);
-                  setExternalPerson(false); // v18.74: Extern-Modus beim Wechsel zurücksetzen
-                  // v19.6: CC-Frage-Entscheidung beim Moduswechsel zurücksetzen.
-                  ccSelfDecidedRef.current = false;
-                  ccSelfRef.current = false;
-                  if (!registerForOther) {
-                    setFirstName(''); setSurname(''); setEmail(''); setUserSearch(''); setUserResults([]);
-                    // v26.76: geführten Wizard öffnen (Person suchen → Zustimmung).
-                    setProxyStep(1);
-                  } else {
-                    setFirstName(currentUser.firstName); setSurname(currentUser.surname); setEmail(currentUser.email); setUserSearch(''); setUserResults([]);
-                    setProxyStep(0);
-                  }
-                }}
-                style={{
-                  // v26.82: Als „angedockte" Tab-Optik neben dem grünen
-                  // „Persönliche Informationen"-Header. Standard (für andere
-                  // anmelden) = GRAU (inaktiver Tab, klarer Farbunterschied);
-                  // aktiv (im Fremd-Modus, „zurück zur Selbst-Anmeldung") = grün.
-                  // v26.89: Der Tab dockt jetzt SPIEGELBILDLICH zum grünen
-                  // „Persönliche Informationen"-Header in die obere RECHTE Ecke
-                  // — bündig an Ober- und Rechtskante (alignSelf: stretch +
-                  // oben abgerundete Ecken wie der grüne Tab, unten eckig).
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  marginLeft: 'auto', // an die rechte Ecke schieben
-                  alignSelf: 'stretch', boxSizing: 'border-box',
-                  padding: '7px 18px', borderRadius: 'var(--dex-radius) var(--dex-radius) 0 0',
-                  fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
-                  transition: 'background 0.15s ease, color 0.15s ease',
-                  ...(registerForOther
-                    ? { background: 'var(--dex-green, #86bc25)', border: '1.5px solid var(--dex-green, #86bc25)', color: '#fff' }
-                    : { background: 'var(--dex-gray-100, #eef0f2)', border: '1.5px solid var(--dex-gray-300, #cfd4d9)', color: 'var(--dex-gray-600, #5a6470)' }),
-                }}
-              >
-                <Icon iconName={registerForOther ? 'Contact' : 'AddFriend'} style={{ fontSize: 14 }} />
-                {registerForOther ? t('reg.registerself') : t('reg.registerother')}
-              </button>
-            )}
-            {/* v18.13: Massenimport — nur Organizer/Admin im „Für andere"-Modus. */}
-            {registerForOther && canCreateEvents && (
-              <button
-                type="button"
-                onClick={() => { setMassImportResult(null); setMassImportRows([]); setMassImportStep('input'); setMassImportOpen(true); }}
-                style={{
-                  background: 'none', border: 'none', padding: '4px 12px',
-                  color: 'var(--dex-blue, #0076a8)', fontSize: '0.85rem',
-                  textDecoration: 'underline', cursor: 'pointer', fontWeight: 600,
-                }}
-              >
-                {locale === 'de' ? 'Massenimport' : 'Bulk import'}
-              </button>
-            )}
-            </>
-            ) : undefined}
           >
           <div style={{ padding: '24px 20px' }}>
             {canRegisterForOther && (
@@ -378,29 +331,114 @@ export const PersonalDataSection: React.FC<PersonalDataSectionProps> = (p) => {
                 in Schritt 4 die Team-Anmeldung aktiviert hat UND der User sich
                 NICHT für eine andere Person registriert (Team-für-Andere wird
                 nicht unterstützt — der Stellvertreter-Pfad ist auf eine
-                Einzel-Person ausgelegt). */}
+                Einzel-Person ausgelegt).
+                v31.9: aus der rohen Checkbox wird ein `dex-ui-switch` — ein
+                Ein/Aus für einen ganzen Bereich (Leitfaden 2b). Der
+                Beschriftungstext bleibt wortgleich: das Handbuch zitiert ihn
+                (`manual/sections/teamRegistration.tsx`), und er ist als
+                Aussage in der Ich-Form bereits das, was 2c verlangt. */}
             {isTeamCapable && !registerForOther && !parentAlreadyRegistered && (
-              <div className="form-group" style={{ marginTop: 16, marginBottom: 0 }}>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">{locale === 'de' ? 'Team-Anmeldung' : 'Team registration'}</div>
+                <label className="dex-ui-switch">
                   <input
                     type="checkbox"
                     checked={isTeamMode}
                     onChange={e => { setIsTeamMode(e.target.checked); if (e.target.checked) setPendingJoinTeam(null); }}
-                    style={{ marginTop: 3 }}
                   />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, color: 'var(--dex-gray-800)' }}>
-                      {locale === 'de'
-                        ? `Ich melde mich + mein Team an (Team-Anmeldung)`
-                        : 'Register me + my team (team registration)'}
-                    </div>
-                    <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4, lineHeight: 1.4 }}>
-                      {locale === 'de'
-                        ? `Belegt bis zu ${teamSize} Plätze auf einmal. Jedes Mitglied bekommt automatisch Bestätigungsmail, Outlook-Termin und sieht das Event in „Meine Events".`
-                        : `Books up to ${teamSize} seats at once. Each member automatically receives a confirmation email, an Outlook invite, and sees the event in „My Events".`}
-                    </div>
-                  </div>
+                  <span className="dex-ui-switch-track" />
+                  <span className="dex-ui-switch-label">
+                    {locale === 'de'
+                      ? `Ich melde mich + mein Team an (Team-Anmeldung)`
+                      : 'Register me + my team (team registration)'}
+                  </span>
                 </label>
+                <div className="dex-ui-help">
+                  {locale === 'de'
+                    ? `Belegt bis zu ${teamSize} Plätze auf einmal. Jedes Mitglied bekommt automatisch Bestätigungsmail, Outlook-Termin und sieht das Event in „Meine Events".`
+                    : `Books up to ${teamSize} seats at once. Each member automatically receives a confirmation email, an Outlook invite, and sees the event in “My Events”.`}
+                </div>
+              </div>
+            )}
+
+            {/* v31.9: Stellvertreter-Umschalter und Massenimport. Beides sind
+                Organizer-Funktionen, die die grosse Mehrheit der Anmeldenden
+                nie braucht — nach 2a gehoeren sie hinter das Pflichtteil, nach
+                2a' linksbuendig zum Inhalt statt an den rechten Rand. Die
+                Sichtbarkeitsbedingungen sind unveraendert mitgewandert:
+                aussen `canRegisterForOther || (registerForOther &&
+                canCreateEvents)` wie vorher am `headerExtra`, innen je Knopf
+                dieselbe Bedingung wie zuvor. */}
+            {(canRegisterForOther || (registerForOther && canCreateEvents)) && (
+              <div className="dex-ui-section">
+                <button
+                  type="button"
+                  className={cx('dex-ui-disclosure', proxyToolsOpen && 'is-open')}
+                  aria-expanded={proxyToolsOpen}
+                  onClick={() => setProxyToolsOpen(o => !o)}
+                >
+                  <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                  {locale === 'de' ? 'Meldest du jemand anderen an?' : 'Registering someone else?'}
+                  {registerForOther && (
+                    <span className="dex-ui-disclosure-count">{locale === 'de' ? 'aktiv' : 'on'}</span>
+                  )}
+                </button>
+                {proxyToolsOpen && (
+                  <div className="dex-ui-disclosure-body">
+                    <div className="dex-ui-help" style={{ marginTop: 0, marginBottom: 10 }}>
+                      {locale === 'de'
+                        ? 'Du kannst eine andere Person stellvertretend anmelden. Ihre Zustimmung holst du vorher ein — im nächsten Fenster wirst du danach gefragt.'
+                        : 'You can register another person on their behalf. Get their consent first — the next window asks you to confirm it.'}
+                    </div>
+                    <div className="dex-ui-inline">
+                      {canRegisterForOther && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary dex-ui-btn-sm"
+                          onClick={() => {
+                            setRegisterForOther(!registerForOther);
+                            setThirdPartyCheck(null);
+                            setPickedUserProfile(null);
+                            setOtherConsentConfirmed(false);
+                            setExternalPerson(false); // v18.74: Extern-Modus beim Wechsel zurücksetzen
+                            // v19.6: CC-Frage-Entscheidung beim Moduswechsel zurücksetzen.
+                            ccSelfDecidedRef.current = false;
+                            ccSelfRef.current = false;
+                            if (!registerForOther) {
+                              setFirstName(''); setSurname(''); setEmail(''); setUserSearch(''); setUserResults([]);
+                              // v26.76: geführten Wizard öffnen (Person suchen → Zustimmung).
+                              setProxyStep(1);
+                            } else {
+                              setFirstName(currentUser.firstName); setSurname(currentUser.surname); setEmail(currentUser.email); setUserSearch(''); setUserResults([]);
+                              setProxyStep(0);
+                            }
+                          }}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                        >
+                          <Icon iconName={registerForOther ? 'Contact' : 'AddFriend'} style={{ fontSize: 14 }} />
+                          {registerForOther ? t('reg.registerself') : t('reg.registerother')}
+                        </button>
+                      )}
+                      {/* v18.13: Massenimport — nur Organizer/Admin im „Für andere"-Modus. */}
+                      {registerForOther && canCreateEvents && (
+                        <button
+                          type="button"
+                          className="dex-ui-textbtn"
+                          onClick={() => { setMassImportResult(null); setMassImportRows([]); setMassImportStep('input'); setMassImportOpen(true); }}
+                        >
+                          {locale === 'de' ? 'Massenimport' : 'Bulk import'}
+                        </button>
+                      )}
+                    </div>
+                    {registerForOther && canCreateEvents && (
+                      <div className="dex-ui-help">
+                        {locale === 'de'
+                          ? 'Mit dem Massenimport trägst du mehrere Personen auf einmal ein, statt sie einzeln zu suchen.'
+                          : 'Bulk import adds several people at once instead of searching for them one by one.'}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>

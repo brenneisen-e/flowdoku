@@ -7,7 +7,7 @@ import { DEX_ORB_PNG } from '../../data/brandLogos';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { formatAllDayPeriod } from '../../utils/eventFormat';
 import { formatDateRange } from './regHelpers';
-import { Mail } from '../Icons';
+import { Calendar, Mail, Pin, Users } from '../Icons';
 import OrganizerList from '../OrganizerList';
 import { formatOrganizerList } from '../../context/EventContext';
 import { Locale } from '../../context/LanguageContext';
@@ -260,24 +260,17 @@ export const EventCard: React.FC<EventCardProps> = (p) => {
             )}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 4px 4px 0' }}>
               <h4 style={{ fontSize: '1rem', margin: 0 }}>{event.title}</h4>
-              {/* v11.91: Datum + Ort als prominente Badges mit Icon.
-                  v11.93: Datum einzeilig (nowrap) — Box wächst auf
-                  natürliche Breite. Der Ort-Kasten streckt sich auf
-                  dieselbe Breite, damit beide Boxen visuell aligniert
-                  sind. inline-flex + alignItems:stretch sorgt für gleiche
-                  Breite ohne festen Wert. */}
-              {/* v11.94: alignSelf:stretch + maxWidth:100% damit die Box
-                  nicht über den Card-Rand rausragt; gleichzeitig wächst
-                  sie auf die natürliche Breite des längeren Inhalts und
-                  beide Boxen sind gleich breit. */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 6, maxWidth: '100%' }}>
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '8px 12px', borderRadius: 8,
-                  background: 'rgba(134,188,37,0.10)', color: 'var(--dex-green-dark, #4a7c1f)',
-                  fontSize: '0.88rem', fontWeight: 600,
-                }}>
-                  <Icon iconName="Calendar" style={{ fontSize: 16, flexShrink: 0 }} />
+              {/* v31.9: Wann und Wo stehen als EINE Metazeile (dex-ui-meta,
+                  Leitfaden 4 „Teilnehmer-Seiten") statt in zwei farbigen
+                  Kästen. Die Kästen aus v11.91/v11.93 lasen sich wie
+                  Hinweiskästen — Farbe bedeutet in dieser App etwas (grün
+                  aktiv, blau Info), und Datum und Ort bedeuten nichts davon.
+                  Die Metazeile bricht auf dem Handy um, statt zwei gleich
+                  breite Blöcke zu erzwingen. Symbole aus Icons.tsx statt
+                  Fluent: die Icon-Schrift fehlt in der Harness-Vorschau. */}
+              <div className="dex-ui-meta">
+                <span className="dex-ui-meta-item">
+                  <Calendar size={15} strokeWidth={1.8} />
                   <span>
                     {/* v11.94: kompaktes Range-Format („–" statt „until"),
                         bei gleichem Tag nur einmal Datum + „HH:MM - HH:MM". */}
@@ -286,7 +279,7 @@ export const EventCard: React.FC<EventCardProps> = (p) => {
                       ? formatAllDayPeriod(event.startDate, event.endDate, locale === 'de')
                       : formatDateRange(event.startDate, event.endDate)}
                   </span>
-                </div>
+                </span>
                 {(event.location || (event.locationAddress && (event.locationAddress.street || event.locationAddress.city))) && (() => {
                   const addr = event.locationAddress;
                   const hasAddr = !!(addr && (addr.street || addr.city));
@@ -299,13 +292,8 @@ export const EventCard: React.FC<EventCardProps> = (p) => {
                   // ausrichten; bei einer Zeile (inkl. „Name, Stadt") zentrieren.
                   const multiLine = hasAddr && !nameCityInline;
                   return (
-                  <div style={{
-                    display: 'flex', alignItems: multiLine ? 'flex-start' : 'center', gap: 8,
-                    padding: '8px 12px', borderRadius: 8,
-                    background: 'rgba(0,86,166,0.08)', color: '#0a3766',
-                    fontSize: '0.88rem',
-                  }}>
-                    <Icon iconName="POI" style={{ fontSize: 16, marginTop: multiLine ? 2 : 0, flexShrink: 0 }} />
+                  <span className="dex-ui-meta-item" style={multiLine ? { alignItems: 'flex-start' } : undefined}>
+                    <Pin size={15} strokeWidth={1.8} />
                     <span>
                       {nameCityInline ? (
                         <>
@@ -330,7 +318,7 @@ export const EventCard: React.FC<EventCardProps> = (p) => {
                         </>
                       )}
                     </span>
-                  </div>
+                  </span>
                   );
                 })()}
               </div>
@@ -340,26 +328,30 @@ export const EventCard: React.FC<EventCardProps> = (p) => {
                   außerhalb des App-User-Pools. Reines Anzeige-Feld; Mailto-Link
                   wenn Email gesetzt. Wird nur gerendert wenn mindestens Name
                   oder Email gepflegt sind. */}
+              {/* v31.9: Abschnitt statt handgebautem Label + Kasten
+                  (dex-ui-section + dex-ui-card--soft). Die Mailadresse steht
+                  weiterhin als sichtbarer Link in der Karte — Leitfaden 6b:
+                  auf dem Handy gibt es kein Überfahren, ein Kontakt darf nie
+                  nur im Hover erreichbar sein. */}
               {(event.contactName || event.contactEmail || event.contactInfo) && (
-                <div style={{ marginTop: 12 }}>
+                <div className="dex-ui-section">
                   {/* v28.4: Überschrift AUSSERHALB der Box — gleiche Optik und
                       Position wie das ORGANIZER-Label darunter. */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, fontWeight: 600, fontSize: '0.85rem' }}>
-                    <span style={{ display: 'inline-flex', flexShrink: 0 }}><Mail size={15} /></span>
+                  <div className="dex-ui-section-title">
+                    <Mail size={14} />
                     <span>{locale === 'de' ? 'Ansprechpartner' : 'Contact'}</span>
                   </div>
-                  <div style={{ padding: '10px 12px', background: 'var(--dex-gray-50, #f7f7f7)', borderRadius: 8, border: '1px solid var(--dex-gray-200)' }}>
-                  {/* v28.5: Schriftgrößen wie in den Datums-/Ort-Boxen (0.88rem). */}
+                  <div className="dex-ui-card dex-ui-card--soft dex-ui-card--sm">
                   {event.contactName && (
-                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--dex-gray-800)' }}>{event.contactName}</div>
+                    <div className="dex-ui-row-title dex-ui-row-title--wrap">{event.contactName}</div>
                   )}
                   {event.contactEmail && (
-                    <div style={{ fontSize: '0.88rem', marginTop: 2 }}>
-                      <a href={`mailto:${event.contactEmail}`} style={{ color: 'var(--dex-green, #86bc25)', textDecoration: 'none' }}>{event.contactEmail}</a>
+                    <div style={{ marginTop: 2 }}>
+                      <a className="dex-ui-row-link" href={`mailto:${event.contactEmail}`}>{event.contactEmail}</a>
                     </div>
                   )}
                   {event.contactInfo && (
-                    <div style={{ fontSize: '0.88rem', color: 'var(--dex-gray-700)', marginTop: 4, whiteSpace: 'pre-wrap', lineHeight: 1.4 }}>{event.contactInfo}</div>
+                    <div className="dex-ui-help" style={{ whiteSpace: 'pre-wrap' }}>{event.contactInfo}</div>
                   )}
                   </div>
                 </div>
@@ -380,8 +372,14 @@ export const EventCard: React.FC<EventCardProps> = (p) => {
                 // für Rückfragen ist dann ausdrücklich der Ansprechpartner zuständig.
                 const hasExplicitContact = !!(event.contactName || event.contactEmail || event.contactInfo);
                 return (
-                  <div style={{ marginTop: 6 }}>
-                    <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, fontWeight: 600 }}>Organizer</div>
+                  // v31.9: Derselbe Abschnitts-Kopf wie beim Ansprechpartner —
+                  // zwei Blöcke, die dieselbe Frage beantworten („wen frage
+                  // ich?"), sahen vorher unterschiedlich aus.
+                  <div className="dex-ui-section">
+                    <div className="dex-ui-section-title">
+                      <Users size={14} />
+                      <span>Organizer</span>
+                    </div>
                     <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={(event.hideOrganizer && event.hideOrganizerIndividualOnly) ? event.hiddenOrganizerEmails : []} forceIsDe={locale === 'de'} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} nameFontSize="1.05rem" hideContactPrompt={hasExplicitContact} fullWidth contactEmail={event.contactOrganizerEmail || undefined} />
                   </div>
                 );

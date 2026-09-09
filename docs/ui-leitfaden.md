@@ -554,8 +554,20 @@ Sortiert nach Dringlichkeit, nicht nach Alter des Codes:
    stehen sie an vierter Stelle — unter Orb (:1099), tageszeitabhängiger
    Begrüßung (:1103) und zwei Zeilen Willkommenstext (:1106). Am Eventmorgen
    liegt der QR-Code damit unter drei Deko-Blöcken.
-2. **Begrüßung, Orb, Willkommenstext.** Deko steht nie zwischen zwei
-   Handlungen. Sie bleiben — nur nicht vor der Handlung.
+2. **Begrüßung, Orb, Willkommenstext.** Sie bleiben — nur nicht vor der
+   Handlung, die heute ansteht.
+
+   **Nachtrag v31.9, weil diese Stelle sich selbst widersprach:** Hier stand
+   zusätzlich der Satz „Deko steht nie zwischen zwei Handlungen". Zusammen mit
+   der Nummerierung ist das nicht erfüllbar — wer 1–3 in dieser Reihenfolge
+   baut, hat Orb und Begrüßung genau zwischen Check-in und „Start". Der
+   Umbau-Agent hat den Widerspruch belegt statt ihn auszulegen; das war
+   richtig. Aufgelöst wird er zugunsten der Nummerierung: Die Begrüßung ist auf
+   DIESER Seite keine Deko zwischen zwei Handlungen, sondern die Identität der
+   Seite — sie zu überspringen macht die App gesichtslos. Der Grundsatz gilt
+   weiter **innerhalb** eines Abschnitts. Wer „Start" trotzdem direkt unter den
+   Check-in-Kasten ziehen will, ändert den Charakter der Startseite: eigene
+   Entscheidung, kein Auslegungsspielraum für einen Umbau.
 3. **„Start"** (:1227) ist die Handlung der Seite und damit der einzige
    Primär-Knopf (Grundsatz 1.5). Heute ist er `btn-outline`, während der
    Werbekasten „DEX für dein Event nutzen" direkt darunter (:1232-1317,
@@ -585,10 +597,10 @@ selben Commit im anderen nachgezogen.** Wer sie zusammenlegt, muss die
 
 Zugriffs-/Fehlerkasten mit Grund und „Erneut versuchen" (:396-435) → Suche,
 Filter, Ansichtsumschalter → „Deine Events" → „Weitere Events" →
-Leerzustand. Der Leerzustand ist bereits richtig gebaut (:583-589: nur wenn
+Leerzustand. Der Leerzustand ist bereits richtig gebaut (nur wenn
 `eventsReadStatus !== 'forbidden' && !== 'error'`) — er bekommt `dex-ui-empty`
-und einen Satz, was zu tun ist; heute ist er ein grauer Absatz und **hart
-deutsch** („Keine Events für dich gefunden.", :587).
+und einen Satz, was zu tun ist. (Der Text lief bis v31.8 hart deutsch; seither
+über `events.empty` / `events.empty.hint`.)
 
 #### Event-Kachel (`components/EventCard.tsx`)
 
@@ -955,13 +967,21 @@ Weiter:
   daraus die UI-Sprache, sodass der Upload-Kasten englisch sein kann, während
   die Seite deutsch ist; `MyEventSubEvents.tsx:40-46` erklärt im Kommentar,
   warum das falsch ist).
-- **Kein Text ohne Gegenstück.** Hart deutsch: „Registrierungen konnten nicht
-  geladen werden." (`MyEventsPage.tsx:634`, dazu ohne einen Hinweis, was zu tun
-  ist), „Keine Events für dich gefunden." (`EventListPage.tsx:587`) sowie
-  „Entwurf" (:665), „Teilnehmer" (:685), „Organizer:" (:673), „Angemeldet"
-  (:690), „Warteliste" (:695) in der Zeilenansicht. Hart englisch: „So far used
-  for…" im Boot-Loader (`DexEventPlatform.tsx:863-870`, dazu `locale="en"` fest
+- **Kein Text ohne Gegenstück.** Der Bestand, den dieser Abschnitt bei seiner
+  Entstehung aufzählte — der Ladefehler in „Meine Events", der Leerzustand der
+  Event-Liste und „Entwurf" / „Teilnehmer" / „Organizer:" / „Angemeldet" /
+  „Warteliste" in der Zeilenansicht — ist mit v31.8/v31.9 abgearbeitet und läuft
+  über `t()` (`myevents.loaderror`, `events.empty`, `events.draft`,
+  `events.participants`, `events.organizers`, `status.registered`,
+  `status.waitlist`). **Diese Liste ist damit erledigt und wird nicht als
+  offener Befund weitergereicht.** Offen bleibt hart englisch: „So far used
+  for…" im Boot-Loader (`DexEventPlatform.tsx`, dazu `locale="en"` fest
   verdrahtet).
+- **Typografische Anführungszeichen gehören als ZEICHEN in einen JS-String,
+  als ENTITY nur in JSX-Text.** In `StartPage` standen `&bdquo;`/`&ldquo;`
+  innerhalb eines Strings — React maskiert das, und die Person las die Entity
+  im Klartext. Die ESLint-Regel `react/no-unescaped-entities` greift nur im
+  JSX-Text und fängt den umgekehrten Fall nicht.
 - **Wer `LanguageContext.tsx` anfasst, ist EINER.** Fast jede Textregel oben
   endet in derselben Datei mit zwei Sprachblöcken — bei parallelen Agenten ist
   das die Datei, in der sie sich gegenseitig überschreiben. Also: Änderungen an

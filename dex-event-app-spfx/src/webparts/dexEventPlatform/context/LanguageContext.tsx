@@ -92,8 +92,13 @@ export const translations: Record<Locale, Record<string, string>> = {
 
     // Registration Page
     'reg.selectedevent': 'Ausgewähltes Event',
-    'reg.personalinfo': 'Persönliche Informationen',
-    'reg.eventinfo': 'Event-spezifische Informationen',
+    // v31.9: Beides waren Feldnamen, nicht Beschriftungen (Leitfaden 2c/6d).
+    // „Persönliche Informationen" stand zudem unter dem Stationskopf „Deine
+    // Daten" und sagte dasselbe zweimal; „Event-spezifische Informationen"
+    // war irreführend, weil dort bei einem Klammer-Event auch die
+    // Termin-AUSWAHL steht — nicht nur Angaben.
+    'reg.personalinfo': 'Deine Kontaktdaten',
+    'reg.eventinfo': 'Deine Auswahl und Angaben',
     'reg.starter.title': 'Gruppen-Auswahl',
     'reg.starter.hint': 'Wähle eine der zwei Gruppen aus. Ist die Wunsch-Gruppe voll, kannst du automatisch in die andere wechseln oder auf der Warteliste warten.',
     'reg.starter.durch': 'Durchstarter',
@@ -564,8 +569,8 @@ export const translations: Record<Locale, Record<string, string>> = {
 
     // Registration Page
     'reg.selectedevent': 'Selected Event',
-    'reg.personalinfo': 'Personal Information',
-    'reg.eventinfo': 'Event specific Information',
+    'reg.personalinfo': 'Your contact details',
+    'reg.eventinfo': 'Your selection and answers',
     'reg.starter.title': 'Group selection',
     'reg.starter.hint': 'Pick one of the two groups. If your preferred group is full, you can either switch to the other or join the waitlist.',
     'reg.starter.durch': 'Sprinter',

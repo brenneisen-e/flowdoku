@@ -18,9 +18,9 @@ import { useRoles } from '../context/RoleContext';
 import { useDialog } from '../context/DialogContext';
 import Modal from './Modal';
 import { useIsMobile } from '../utils/useIsMobile';
-import { GraduationCap } from './Icons';
+import { AlertCircle, ChevronDown, GraduationCap } from './Icons';
 import { INACTIVE_SUMMARY_CACHE_KEY } from '../utils/accountCheckCache';
-import { ensureDexUiStyles } from './dexUi';
+import { cx, ensureDexUiStyles } from './dexUi';
 
 export default function LandingPage(): React.ReactElement {
   // v31.4 (Review): Der Hinweiskasten „Code nicht ladbar" unten nutzt
@@ -41,8 +41,13 @@ export default function LandingPage(): React.ReactElement {
   // v13.3: Inquiry-Modal lebt jetzt komplett in der wiederverwendbaren
   // InquiryModal-Komponente — eigene States hier entfallen.
   const [showInquiry, setShowInquiry] = React.useState(false);
-  // v26: Hover-Zustand für die „DEX für dein Event nutzen"-CTA (dunkelgrüne Kontur).
-  const [ctaHover, setCtaHover] = React.useState(false);
+  // v31.9: Der Hover-State der „DEX für dein Event nutzen"-Box (v26) ist weg —
+  // den Hover macht jetzt `dex-ui-card--hover`. Ein State, der nur die Optik
+  // umschaltet, rendert die ganze Seite bei jeder Mausbewegung neu.
+  // v31.9: Aufklapper der Verwaltungs-Hinweise. Sie sind Organizer-Arbeit und
+  // standen als bis zu sechs gestapelte Kästen mit vier destruktiven Knöpfen
+  // über der Seite; zugeklappt nennt der Kopf die Zahl, offen steht alles da.
+  const [adminHintsOpen, setAdminHintsOpen] = React.useState(false);
 
   // ==================== v22: Archivierung (Admin) ====================
   const { isAdmin, canCreateEvents } = useRoles();
@@ -685,280 +690,29 @@ export default function LandingPage(): React.ReactElement {
       }}>
         v{APP_VERSION}
       </span>
-
-      {/* v22 / v22.45: Hinweis-Boxen oben rechts auf der Landing Page —
-          gestapelt in einem gemeinsamen Container (Archivierung für Admin,
-          Inaktive-Konten-Warnung für Organizer/Admin). */}
-      {((isAdmin && archInfo && archInfo.total > 0) || (isAdmin && delArchCount > 0) || inactiveSummary.length > 0 || staleDrafts.length > 0 || (isAdmin && (pdWarn > 0 || pdDue > 0))) && (
-      <div style={{
-        ...(isMobile
-          ? { position: 'static', width: '100%', margin: '0 auto 16px' }
-          : { position: 'absolute', top: 34, right: 16, width: 300 }),
-        maxWidth: 'calc(100vw - 32px)', zIndex: 6,
-        display: 'flex', flexDirection: 'column', gap: 12,
-      }}>
-      {/* v22.45: Teilnehmer ohne aktives Deloitte-Konto. */}
-      {inactiveSummary.length > 0 && (() => {
-        const totalPeople = inactiveSummary.reduce((acc, it) => acc + it.people.length, 0);
-        return (
-          <div style={{
-            width: '100%', boxSizing: 'border-box',
-            background: '#fff3e0', border: '1px solid var(--dex-orange, #ed8b00)',
-            borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
-            padding: '14px 16px', textAlign: 'left',
-          }}>
-            <div style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--dex-orange-dark, #b35a00)', marginBottom: 6 }}>
-              {isDe ? 'Inaktive Deloitte-Konten' : 'Inactive Deloitte accounts'}
-            </div>
-            <p style={{ margin: '0 0 8px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-              {isDe
-                ? <><strong>{totalPeople}</strong> {totalPeople === 1 ? 'Person hat' : 'Personen haben'} womöglich Deloitte verlassen — Mails/Outlook kommen ggf. nicht an. Bitte im Event prüfen und ggf. abmelden.</>
-                : <><strong>{totalPeople}</strong> {totalPeople === 1 ? 'person has' : 'people have'} possibly left Deloitte — emails/Outlook may not arrive. Please review and deregister in the event.</>}
-            </p>
-            <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {inactiveSummary.map(it => (
-                <li key={it.eventId}>
-                  <button
-                    type="button"
-                    onClick={() => navigate('admin', it.eventId)}
-                    title={isDe ? 'Event im Organizer Center öffnen' : 'Open event in the Organizer Center'}
-                    style={{
-                      display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer',
-                      background: 'rgba(237,139,0,0.08)', border: '1px solid rgba(237,139,0,0.4)',
-                      borderRadius: 8, padding: '6px 10px', fontFamily: 'inherit',
-                    }}
-                  >
-                    <span style={{ display: 'block', fontWeight: 700, fontSize: '0.78rem', color: 'var(--dex-gray-800)' }}>
-                      {it.title} <span style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>({it.people.length})</span>
-                    </span>
-                    <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
-                      {it.people.map(p => p.name).join(', ')}
-                    </span>
-                  </button>
-                  {/* v24.51: Organizer per Mail benachrichtigen (Dedup: nur 1x je
-                      Event+Person, egal welcher Admin klickt). */}
-                  {notifyResult[it.eventId] ? (
-                    <div style={{ fontSize: '0.7rem', color: 'var(--dex-green-dark, #4a7c1f)', marginTop: 4, paddingLeft: 2 }}>
-                      {notifyResult[it.eventId]}
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={notifyBusyId === it.eventId}
-                      onClick={async () => {
-                        setNotifyBusyId(it.eventId);
-                        try {
-                          const res = await notifyOrganizerOfInactive(it.eventId, it.people);
-                          if (res.noOrganizer) {
-                            // Kein Organizer → Mail nicht möglich, Box-Eintrag bleibt (mit Hinweis).
-                            setNotifyResult(prev => ({ ...prev, [it.eventId]: isDe ? 'Kein Organizer hinterlegt — keine Mail möglich.' : 'No organizer on file — no mail possible.' }));
-                          } else {
-                            // v24.59: Erfolgreich versendet ODER bereits benachrichtigt →
-                            // Event sofort aus der Landing-Box entfernen (und den Marker
-                            // greift beim nächsten Aufruf dauerhaft über den Filter).
-                            setInactiveSummary(prev => prev.filter(x => x.eventId !== it.eventId));
-                          }
-                        } catch {
-                          setNotifyResult(prev => ({ ...prev, [it.eventId]: isDe ? 'Fehler beim Versenden.' : 'Sending failed.' }));
-                        } finally { setNotifyBusyId(null); }
-                      }}
-                      style={{
-                        marginTop: 5, fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer',
-                        background: 'var(--dex-orange, #ed8b00)', color: '#fff', border: 'none',
-                        borderRadius: 6, padding: '4px 9px', fontFamily: 'inherit', width: '100%',
-                      }}
-                    >
-                      {notifyBusyId === it.eventId ? '…' : (isDe ? 'Organizer benachrichtigen' : 'Notify organizer')}
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        );
-      })()}
-      {/* v24.1: Entwurf-Aufräumen — abgelaufene Entwürfe des Organizers. */}
-      {staleDrafts.length > 0 && (
-        <div style={{
-          width: '100%', boxSizing: 'border-box',
-          background: '#fff', border: '1px solid rgba(237,139,0,0.5)',
-          borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
-          padding: '14px 16px', textAlign: 'left',
-        }}>
-          <div style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--dex-gray-800)', marginBottom: 6 }}>
-            {isDe ? 'Entwürfe aufräumen' : 'Clean up drafts'}
-          </div>
-          <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-            {isDe
-              ? <><strong>{staleDrafts.length}</strong> {staleDrafts.length === 1 ? 'Entwurf ist' : 'Entwürfe sind'} abgelaufen (Datum vorbei) und {staleDrafts.length === 1 ? 'wurde' : 'wurden'} nie aktiviert. Du kannst {staleDrafts.length === 1 ? 'ihn' : 'sie'} hier löschen.</>
-              : <><strong>{staleDrafts.length}</strong> draft(s) expired and were never activated. You can delete them here.</>}
-          </p>
-          <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {staleDrafts.map(ev => (
-              <li key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-800)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {ev.title || (isDe ? 'Ohne Titel' : 'Untitled')}
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  style={{ fontSize: '0.74rem', padding: '4px 10px', color: 'var(--dex-red, #c00)', flexShrink: 0 }}
-                  disabled={draftDeleteBusyId === ev.id}
-                  onClick={() => { deleteStaleDraft(ev).catch(() => { /* */ }); }}
-                >
-                  {draftDeleteBusyId === ev.id ? (isDe ? 'Löscht…' : 'Deleting…') : (isDe ? 'Löschen' : 'Delete')}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {/* v22: Archivierungs-Info (nur Admin, nur wenn Zeilen anstehen). */}
-      {isAdmin && archInfo && archInfo.total > 0 && (
-        <div style={{
-          width: '100%', boxSizing: 'border-box',
-          background: '#fff', border: '1px solid rgba(134,188,37,0.5)',
-          borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
-          padding: '14px 16px', textAlign: 'left',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>
-              {isDe ? 'Archivierung' : 'Archiving'}
-            </span>
-            <span style={{
-              fontSize: '0.66rem', padding: '1px 7px', borderRadius: 999, fontWeight: 700,
-              background: 'rgba(237,139,0,0.12)', color: 'var(--dex-orange, #ed8b00)',
-            }}>{isDe ? 'Nur Admin' : 'Admin only'}</span>
-          </div>
-          <p style={{ margin: '0 0 8px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-            {isDe
-              ? <><strong>{archInfo.total}</strong> Zeilen aus abgelaufenen Events stehen zur Archivierung an.</>
-              : <><strong>{archInfo.total}</strong> rows from expired events are ready for archiving.</>}
-          </p>
-          <ul style={{ margin: '0 0 10px', paddingLeft: 16, fontSize: '0.72rem', color: 'var(--dex-gray-500)', lineHeight: 1.5 }}>
-            {Object.keys(archInfo.perList).filter(k => archInfo.perList[k] > 0).map(k => (
-              <li key={k}>{k}: {archInfo.perList[k]}</li>
-            ))}
-          </ul>
-          <button
-            className="btn btn-primary"
-            style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }}
-            onClick={() => { startArchive().catch(() => { /* */ }); }}
-          >
-            {isDe ? 'Jetzt archivieren' : 'Archive now'}
-          </button>
-        </div>
-      )}
-      {/* v23.40: Löschkonzept — alte Archiv-Einträge (älter als 1 Monat). */}
-      {isAdmin && delArchCount > 0 && (
-        <div style={{
-          width: '100%', boxSizing: 'border-box',
-          background: '#fff', border: '1px solid rgba(218,41,28,0.4)',
-          borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
-          padding: '14px 16px', textAlign: 'left',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>
-              {isDe ? 'Archiv aufräumen' : 'Clean up archive'}
-            </span>
-            <span style={{
-              fontSize: '0.66rem', padding: '1px 7px', borderRadius: 999, fontWeight: 700,
-              background: 'rgba(237,139,0,0.12)', color: 'var(--dex-orange, #ed8b00)',
-            }}>{isDe ? 'Nur Admin' : 'Admin only'}</span>
-          </div>
-          <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-            {isDe
-              ? <><strong>{delArchCount}</strong> Archiv-Einträge sind älter als 1 Monat und können endgültig gelöscht werden.</>
-              : <><strong>{delArchCount}</strong> archive entries are older than 1 month and can be permanently deleted.</>}
-          </p>
-          <button
-            className="btn btn-secondary"
-            style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%', color: 'var(--dex-red, #c00)' }}
-            disabled={delArchBusy}
-            onClick={() => { startDeleteOldArchive().catch(() => { /* */ }); }}
-          >
-            {delArchBusy ? (isDe ? 'Wird gelöscht…' : 'Deleting…') : (isDe ? 'Alte Einträge löschen' : 'Delete old entries')}
-          </button>
-        </div>
-      )}
-      {/* v26.32: Löschkonzept — Vorwarnung (Teilnehmerliste wird in ~1 Woche gelöscht). */}
-      {isAdmin && pdWarn > 0 && (
-        <div style={{
-          width: '100%', boxSizing: 'border-box',
-          background: '#fff', border: '1px solid rgba(237,139,0,0.5)',
-          borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
-          padding: '14px 16px', textAlign: 'left',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>
-              {isDe ? 'Teilnehmerlisten laufen ab' : 'Attendee lists expiring'}
-            </span>
-            <span style={{
-              fontSize: '0.66rem', padding: '1px 7px', borderRadius: 999, fontWeight: 700,
-              background: 'rgba(237,139,0,0.12)', color: 'var(--dex-orange, #ed8b00)',
-            }}>{isDe ? 'Nur Admin' : 'Admin only'}</span>
-          </div>
-          <p style={{ margin: '0 0 6px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-            {isDe
-              ? <>Bei {pdWarn === 1 ? 'diesem Event' : <>diesen <strong>{pdWarn}</strong> Events</>} wird die Teilnehmerliste in etwa einer Woche gelöscht (3 Monate nach dem Event). Die Organizer wurden automatisch informiert, die Liste noch herunterzuladen. Event &amp; Kennzahlen bleiben im Statistik-Archiv erhalten:</>
-              : <>For {pdWarn === 1 ? 'this event' : <>these <strong>{pdWarn}</strong> events</>} the attendee list will be deleted in about a week (3 months after the event). The organizers were notified automatically to download it. Event &amp; KPIs are kept in the statistics archive:</>}
-          </p>
-          <ul style={{ margin: 0, paddingLeft: 16, fontSize: '0.76rem', color: 'var(--dex-gray-600)', lineHeight: 1.6 }}>
-            {pdWarnEvents.map(ev => (
-              <li key={ev.id}>
-                <strong>{ev.title}</strong>
-                {(ev.endDate || ev.startDate)
-                  ? ` — ${isDe ? 'Event vom' : 'event on'} ${new Date(ev.endDate || ev.startDate || '').toLocaleDateString(isDe ? 'de-DE' : 'en-GB')}`
-                  : ''}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {/* v26.32: Löschkonzept — fällige Teilnehmerlisten löschen (Event bleibt, KPIs ins Archiv). */}
-      {isAdmin && pdDue > 0 && (
-        <div style={{
-          width: '100%', boxSizing: 'border-box',
-          background: '#fff', border: '1px solid rgba(218,41,28,0.4)',
-          borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
-          padding: '14px 16px', textAlign: 'left',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>
-              {isDe ? 'Teilnehmerlisten löschen' : 'Delete attendee lists'}
-            </span>
-            <span style={{
-              fontSize: '0.66rem', padding: '1px 7px', borderRadius: 999, fontWeight: 700,
-              background: 'rgba(237,139,0,0.12)', color: 'var(--dex-orange, #ed8b00)',
-            }}>{isDe ? 'Nur Admin' : 'Admin only'}</span>
-          </div>
-          <p style={{ margin: '0 0 6px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-            {isDe
-              ? <>Bei {pdDue === 1 ? 'diesem Event ist' : <>diesen <strong>{pdDue}</strong> Events ist</>} die Aufbewahrungsfrist (3 Monate) abgelaufen. Beim Löschen werden die wichtigsten Kennzahlen ins Statistik-Archiv übernommen und dann die Teilnehmerliste entfernt — das Event bleibt erhalten:</>
-              : <>{pdDue === 1 ? 'This event has' : <>These <strong>{pdDue}</strong> events have</>} passed the 3-month retention. Deleting archives the key KPIs to the statistics archive and then removes the attendee list — the event itself is kept:</>}
-          </p>
-          <ul style={{ margin: '0 0 10px', paddingLeft: 16, fontSize: '0.76rem', color: 'var(--dex-gray-600)', lineHeight: 1.6 }}>
-            {pdDueEvents.map(ev => (
-              <li key={ev.id}>
-                <strong>{ev.title}</strong>
-                {(ev.endDate || ev.startDate)
-                  ? ` — ${isDe ? 'Event vom' : 'event on'} ${new Date(ev.endDate || ev.startDate || '').toLocaleDateString(isDe ? 'de-DE' : 'en-GB')}`
-                  : ''}
-              </li>
-            ))}
-          </ul>
-          <button
-            className="btn btn-secondary"
-            style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%', color: 'var(--dex-red, #c00)' }}
-            disabled={pdBusy}
-            onClick={() => { startParticipantDeletion().catch(() => { /* */ }); }}
-          >
-            {pdBusy ? (isDe ? 'Wird gelöscht…' : 'Deleting…') : (isDe ? 'Teilnehmerlisten löschen' : 'Delete attendee lists')}
-          </button>
-        </div>
-      )}
+      {/* v31.9: Die Sprachwahl sitzt jetzt am Seitenrand statt absolut in der
+          Karte. Sie ist — wie die Versionsmarke gegenüber — ein Randelement
+          ohne Platz in der Lesereihenfolge; in der Karte lag sie über der
+          ersten Zeile und hätte den nach oben gezogenen Check-in-Kasten
+          verdeckt. */}
+      <div style={{ position: 'absolute', top: 12, left: 16, display: 'flex', gap: 4, zIndex: 7 }}>
+        <button
+          type="button"
+          className={cx('dex-ui-chip', locale === 'de' && 'is-active')}
+          onClick={() => setLocale('de')}
+          title="Deutsch"
+        >
+          DE
+        </button>
+        <button
+          type="button"
+          className={cx('dex-ui-chip', locale === 'en' && 'is-active')}
+          onClick={() => setLocale('en')}
+          title="English"
+        >
+          EN
+        </button>
       </div>
-      )}
 
       {/* v22: Fortschritts-/Ergebnis-Modal der Archivierung. */}
       {/* v26.40: Modal-Hinweis nach automatischer Abmeldung von Ex-Deloitte-Personen. */}
@@ -1058,57 +812,13 @@ export default function LandingPage(): React.ReactElement {
 
       <div className="landing__hero">
         <div className="landing__card" style={{ position: 'relative' }}>
-          {/* Sprachauswahl - oben links in der weissen Card */}
-          <div style={{
-            position: 'absolute', top: 16, left: 16,
-            display: 'flex', gap: 4,
-          }}>
-            <button
-              onClick={() => setLocale('de')}
-              style={{
-                background: locale === 'de' ? 'var(--dex-green)' : 'var(--dex-gray-100)',
-                border: 'none',
-                borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: '0.8rem',
-                color: locale === 'de' ? '#fff' : 'var(--dex-gray-500)',
-                fontWeight: locale === 'de' ? 700 : 500,
-                transition: 'all 0.2s',
-              }}
-              title="Deutsch"
-            >
-              DE
-            </button>
-            <button
-              onClick={() => setLocale('en')}
-              style={{
-                background: locale === 'en' ? 'var(--dex-green)' : 'var(--dex-gray-100)',
-                border: 'none',
-                borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: '0.8rem',
-                color: locale === 'en' ? '#fff' : 'var(--dex-gray-500)',
-                fontWeight: locale === 'en' ? 700 : 500,
-                transition: 'all 0.2s',
-              }}
-              title="English"
-            >
-              EN
-            </button>
-          </div>
-          {/* v28.33: animiertes DEX-Logo (Canvas) statt des rotierenden
-              Farbring-Platzhalters. Zeichnet die Höhenlinien-Kugel des
-              DEX-Logos live, pausiert automatisch bei „Bewegung reduzieren",
-              ausserhalb des Viewports und im inaktiven Tab. */}
-          <div className="landing__orb">
-            <DexLogo title="DEX" motion="oscillate" style={{ width: '100%' }} />
-          </div>
-          <div className="landing__text">
-            <h1>
-              {greeting}{firstName ? <>, <strong>{firstName}</strong></> : ''}.
-            </h1>
-            <p>
-              {isDe
-                ? <>Willkommen bei <strong>DEX</strong>. Unsere neue App für die Organisation von <span style={{ whiteSpace: 'nowrap' }}>Deloitte Events</span>. Von der Anmeldung, bis zum Check-in. Alles an einer Stelle.</>
-                : <>Welcome to <strong>DEX</strong>. Our new app for organising <span style={{ whiteSpace: 'nowrap' }}>Deloitte events</span>. From registration to check-in. Everything in one place.</>}
-            </p>
-          </div>
+          {/* v31.9: Was heute zu tun ist, steht ganz oben. Bis v31.8 lagen der
+              Check-in-Kasten mit QR und Einlassnummer und „Du bist angemeldet"
+              an vierter Stelle — unter Orb, Begrüßung und Willkommenstext. Am
+              Eventmorgen lag der QR-Code damit unter drei Deko-Blöcken; wer ihn
+              auf dem Handy sucht, scrollt an der Begrüßung vorbei. Orb,
+              Begrüßung und Text folgen darunter: Deko steht nie vor einer
+              Handlung und nie zwischen zwei Handlungen. */}
           {/* v22.1: Check-in-Hinweisbox(en) — ab 2 Tage vor dem Event, sobald
               der eigene QR-Code versendet wurde. Klick auf den kleinen QR
               öffnet ihn groß im Modal (zum Vorzeigen am Eingang).
@@ -1140,12 +850,13 @@ export default function LandingPage(): React.ReactElement {
                     key={box.eventId}
                     type="button"
                     onClick={() => { openBigQr(box).catch(() => { /* */ }); }}
+                    // v31.9: Weiße Karte mit grüner Kante statt grüner Fläche
+                    // (Grundsatz 1.1); der Hover steckt jetzt in der Klasse und
+                    // nicht mehr in einem Inline-Style, der keinen kennt.
+                    className="dex-ui-card dex-ui-card--accent dex-ui-card--hover"
                     style={{
                       display: 'flex', alignItems: 'center', gap: 14, width: '100%',
-                      textAlign: 'left', padding: '12px 14px',
-                      background: 'rgba(134,188,37,0.08)',
-                      border: '1.5px solid var(--dex-green, #86bc25)', borderRadius: 12,
-                      cursor: 'pointer',
+                      textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
                     }}
                     title={isDe ? 'QR-Code groß anzeigen' : 'Show QR code enlarged'}
                   >
@@ -1201,7 +912,11 @@ export default function LandingPage(): React.ReactElement {
                       key={box.eventId}
                       type="button"
                       onClick={() => navigate('my-events')}
-                      style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left', padding: '12px 14px', background: '#fff', border: '1.5px solid var(--dex-gray-200)', borderRadius: 12, cursor: 'pointer' }}
+                      // v31.9: dieselbe Kartenklasse wie der Check-in-Kasten —
+                      // der Hover sagt „hier kannst du klicken", der Inline-
+                      // Style konnte das nicht.
+                      className="dex-ui-card dex-ui-card--hover"
+                      style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}
                       title={isDe ? 'Zu „Meine Events"' : 'Go to My Events'}
                     >
                       <div style={{ width: 66, height: 66, flexShrink: 0, borderRadius: 8, background: box.imageUrl ? `url(${box.imageUrl}) center/cover no-repeat` : 'linear-gradient(135deg, var(--dex-green, #86bc25), var(--dex-blue, #0076a8))', border: '1px solid var(--dex-gray-200)' }} />
@@ -1215,7 +930,9 @@ export default function LandingPage(): React.ReactElement {
                           {dateLabel}{box.location ? ` · ${box.location}` : ''}
                         </span>
                       </span>
-                      <span style={{ flexShrink: 0, fontSize: '0.78rem', fontWeight: 800, padding: '4px 10px', borderRadius: 999, background: 'rgba(134,188,37,0.12)', color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                      {/* v31.9: Anzeige, kein Schalter — also dex-ui-pill
+                          (Grundsatz 3) statt handgebauter Pille. */}
+                      <span className="dex-ui-pill dex-ui-pill--green" style={{ flexShrink: 0 }}>
                         {countdown}
                       </span>
                     </button>
@@ -1224,7 +941,28 @@ export default function LandingPage(): React.ReactElement {
               </div>
             );
           })()}
-          <button className="btn btn-lg btn-block btn-outline" data-tour="landing-start" onClick={() => navigate('start')} style={{ maxWidth: 360 }}>
+          {/* v28.33: animiertes DEX-Logo (Canvas) statt des rotierenden
+              Farbring-Platzhalters. Zeichnet die Höhenlinien-Kugel des
+              DEX-Logos live, pausiert automatisch bei „Bewegung reduzieren",
+              ausserhalb des Viewports und im inaktiven Tab. */}
+          <div className="landing__orb">
+            <DexLogo title="DEX" motion="oscillate" style={{ width: '100%' }} />
+          </div>
+          <div className="landing__text">
+            <h1>
+              {greeting}{firstName ? <>, <strong>{firstName}</strong></> : ''}.
+            </h1>
+            <p>
+              {isDe
+                ? <>Willkommen bei <strong>DEX</strong>. Unsere neue App für die Organisation von <span style={{ whiteSpace: 'nowrap' }}>Deloitte Events</span>. Von der Anmeldung, bis zum Check-in. Alles an einer Stelle.</>
+                : <>Welcome to <strong>DEX</strong>. Our new app for organising <span style={{ whiteSpace: 'nowrap' }}>Deloitte events</span>. From registration to check-in. Everything in one place.</>}
+            </p>
+          </div>
+          {/* v31.9: „Start" ist die Handlung dieser Seite und damit der einzige
+              Primär-Knopf (Grundsatz 1.5). Bis v31.8 war er `btn-outline`,
+              während der Werbekasten darunter vollflächig grün war — die
+              Rangfolge stand auf dem Kopf. */}
+          <button className="btn btn-lg btn-block btn-primary" data-tour="landing-start" onClick={() => navigate('start')} style={{ maxWidth: 360 }}>
             {t('landing.start')}
           </button>
           {/* v26.37: „DEX für dein Event nutzen"-Box auf dem Handy ausblenden —
@@ -1242,20 +980,19 @@ export default function LandingPage(): React.ReactElement {
                 Icons + die Tutorial-Bubble (das Tutorial liegt jetzt mittig im
                 Header). „Über die App" steht jetzt als Textlink unter den
                 Entwickler-Namen. */}
+            {/* v31.9: Aus der vollflächig grünen Kachel wird eine weiße Karte
+                mit Hover. Grün ist in dieser App die Farbe der Handlung — hier
+                lag sie auf der Werbung und nicht auf „Start" darüber
+                (Grundsatz 1.1 und 1.5). Der Hover steckt jetzt in
+                `dex-ui-card--hover`; der `ctaHover`-State war reine Optik und
+                entfällt (Grundsatz 3). */}
             <button
               type="button"
               onClick={() => setShowInquiry(true)}
-              onMouseEnter={() => setCtaHover(true)}
-              onMouseLeave={() => setCtaHover(false)}
-              className="landing__bubble"
+              className="landing__bubble dex-ui-card dex-ui-card--hover"
               style={{
                 display: 'flex', alignItems: 'center', gap: 12,
-                background: 'var(--dex-green)', color: '#fff',
-                padding: '12px 18px', borderRadius: 14,
-                boxShadow: ctaHover ? '0 4px 14px rgba(0,0,0,0.16)' : '0 2px 8px rgba(0,0,0,0.10)',
-                border: ctaHover ? '2px solid var(--dex-green-dark, #4a7c1f)' : '2px solid transparent',
-                cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s ease',
-                transform: ctaHover ? 'translateY(-1px)' : 'none',
+                cursor: 'pointer', textAlign: 'left',
                 fontFamily: 'inherit', width: '100%', maxWidth: 360,
               }}
               title={locale === 'de' ? 'DEX App für dein Event anfragen' : 'Request the DEX App for your event'}
@@ -1269,10 +1006,10 @@ export default function LandingPage(): React.ReactElement {
                 <span style={{ width: 16, height: 16, borderRadius: '50%', background: '#fff' }} />
               </span>
               <span style={{ minWidth: 0 }}>
-                <span style={{ display: 'block', fontWeight: 800, fontSize: '0.98rem', lineHeight: 1.25 }}>
+                <span style={{ display: 'block', fontWeight: 800, fontSize: '0.98rem', lineHeight: 1.25, color: 'var(--dex-gray-800)' }}>
                   {locale === 'de' ? 'DEX für dein Event nutzen' : 'Use DEX for your event'}
                 </span>
-                <span style={{ display: 'block', fontSize: '0.82rem', opacity: 0.95, lineHeight: 1.3, marginTop: 2 }}>
+                <span style={{ display: 'block', fontSize: '0.82rem', lineHeight: 1.3, marginTop: 2, color: 'var(--dex-gray-600)' }}>
                   {locale === 'de' ? 'Werde Organizer und nutze alle Funktionen.' : 'Become an organizer and use all features.'}
                 </span>
                 {/* v28.15: Einführungs-Hinweis als weiße Pille IN der Box
@@ -1298,13 +1035,11 @@ export default function LandingPage(): React.ReactElement {
                       onClick={e => { e.stopPropagation(); goRegister(); }}
                       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); goRegister(); } }}
                       title={intro.title}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8,
-                        background: '#fff', color: 'var(--dex-green-dark, #4a7c1f)',
-                        borderRadius: 999, padding: '4px 12px',
-                        fontSize: '0.78rem', fontWeight: 700, lineHeight: 1.3,
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.14)', cursor: 'pointer',
-                      }}
+                      // v31.9: Die Pille war weiß auf grüner Fläche — auf der
+                      // weißen Karte wäre sie unsichtbar. Sie ist schaltbar
+                      // (führt zur Anmeldung), also ein Chip, keine Pille.
+                      className="dex-ui-chip"
+                      style={{ marginTop: 8 }}
                     >
                       <GraduationCap size={13} strokeWidth={2.5} />
                       {isDe ? `Für virtuelles Training anmelden · ${dateLabel}` : `Register for the virtual training · ${dateLabel}`}
@@ -1334,6 +1069,311 @@ export default function LandingPage(): React.ReactElement {
           </div>
         </div>
       </div>
+
+      {/* v22 / v22.45: Hinweis-Boxen oben rechts auf der Landing Page —
+          gestapelt in einem gemeinsamen Container (Archivierung für Admin,
+          Inaktive-Konten-Warnung für Organizer/Admin).
+          v31.9: Zwei Änderungen. (1) Der Block steht jetzt NACH der Karte im
+          DOM. Am Desktop ändert das nichts (er hängt absolut oben rechts an
+          `.landing`), auf dem Handy ist er statisch und schob bis zu sechs
+          Kästen vor die eigene Anmeldung — Organizer-Arbeit vor dem QR-Code
+          am Eventmorgen. (2) Aus sechs gestapelten Karten mit vier
+          destruktiven Knöpfen wird EIN Warnkasten mit Aufklapper; zugeklappt
+          nennt er, was ansteht, offen steht alles Bisherige da. */}
+      {((isAdmin && archInfo && archInfo.total > 0) || (isAdmin && delArchCount > 0) || inactiveSummary.length > 0 || staleDrafts.length > 0 || (isAdmin && (pdWarn > 0 || pdDue > 0))) && (() => {
+        // Kurzfassung für den zugeklappten Zustand: Was steckt drin? Ohne sie
+        // wäre der Aufklapper eine Tür ohne Schild.
+        const hints: string[] = [];
+        const inactivePeople = inactiveSummary.reduce((acc, it) => acc + it.people.length, 0);
+        if (inactivePeople > 0) hints.push(isDe
+          ? `${inactivePeople} ${inactivePeople === 1 ? 'inaktives Konto' : 'inaktive Konten'}`
+          : `${inactivePeople} inactive account${inactivePeople === 1 ? '' : 's'}`);
+        if (staleDrafts.length > 0) hints.push(isDe
+          ? `${staleDrafts.length} ${staleDrafts.length === 1 ? 'abgelaufener Entwurf' : 'abgelaufene Entwürfe'}`
+          : `${staleDrafts.length} expired draft${staleDrafts.length === 1 ? '' : 's'}`);
+        if (isAdmin && archInfo && archInfo.total > 0) hints.push(isDe
+          ? `${archInfo.total} Zeilen zum Archivieren`
+          : `${archInfo.total} rows to archive`);
+        if (isAdmin && delArchCount > 0) hints.push(isDe
+          ? `${delArchCount} alte Archiv-Einträge`
+          : `${delArchCount} old archive entries`);
+        if (isAdmin && pdWarn > 0) hints.push(isDe
+          ? `${pdWarn} Teilnehmerlisten laufen ab`
+          : `${pdWarn} attendee lists expiring`);
+        if (isAdmin && pdDue > 0) hints.push(isDe
+          ? `${pdDue} Teilnehmerlisten zum Löschen`
+          : `${pdDue} attendee lists to delete`);
+        return (
+      <div style={{
+        ...(isMobile
+          ? { position: 'static', width: '100%', margin: '16px auto 0' }
+          : { position: 'absolute', top: 34, right: 16, width: 300 }),
+        maxWidth: 'calc(100vw - 32px)', zIndex: 6,
+      }}>
+      <div className="dex-ui-callout dex-ui-callout--warn" style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}>
+        <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+        <div className="dex-ui-callout-body">
+          <button
+            type="button"
+            className={cx('dex-ui-disclosure', adminHintsOpen && 'is-open')}
+            onClick={() => setAdminHintsOpen(o => !o)}
+            style={{ color: 'inherit' }}
+          >
+            <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+            {isDe ? 'Aufgaben aus der Verwaltung' : 'Administration tasks'}
+            <span className="dex-ui-disclosure-count">{hints.length}</span>
+          </button>
+          {!adminHintsOpen && (
+            <div style={{ marginTop: 2 }}>{hints.join(' · ')}</div>
+          )}
+          {adminHintsOpen && (
+          <div className="dex-ui-disclosure-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* v22.45: Teilnehmer ohne aktives Deloitte-Konto. */}
+      {inactiveSummary.length > 0 && (() => {
+        const totalPeople = inactiveSummary.reduce((acc, it) => acc + it.people.length, 0);
+        // v31.9: Karte im Warnkasten (dex-ui-card--sm) statt eigener
+        // Kasten-Optik — Rahmen und Schatten trägt der Kasten drumherum.
+        return (
+          <div className="dex-ui-card dex-ui-card--sm" style={{ width: '100%', textAlign: 'left' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--dex-gray-800)', marginBottom: 6 }}>
+              {isDe ? 'Inaktive Deloitte-Konten' : 'Inactive Deloitte accounts'}
+            </div>
+            <p style={{ margin: '0 0 8px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+              {isDe
+                ? <><strong>{totalPeople}</strong> {totalPeople === 1 ? 'Person hat' : 'Personen haben'} womöglich Deloitte verlassen — Mails/Outlook kommen ggf. nicht an. Bitte im Event prüfen und ggf. abmelden.</>
+                : <><strong>{totalPeople}</strong> {totalPeople === 1 ? 'person has' : 'people have'} possibly left Deloitte — emails/Outlook may not arrive. Please review and deregister in the event.</>}
+            </p>
+            <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {inactiveSummary.map(it => (
+                <li key={it.eventId}>
+                  {/* v31.9: klickbare Zeile mit Hover statt Inline-Kasten —
+                      der Klick öffnet das Event, das sagt jetzt auch die
+                      Optik (Grundsatz 3). */}
+                  <button
+                    type="button"
+                    onClick={() => navigate('admin', it.eventId)}
+                    title={isDe ? 'Event im Organizer Center öffnen' : 'Open event in the Organizer Center'}
+                    className="dex-ui-rowbtn dex-ui-row dex-ui-row--framed"
+                    style={{ padding: '6px 10px' }}
+                  >
+                    <span className="dex-ui-row-main">
+                      <span className="dex-ui-row-title dex-ui-row-title--wrap" style={{ fontSize: '0.78rem' }}>
+                        {it.title} <span style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>({it.people.length})</span>
+                      </span>
+                      <span className="dex-ui-row-sub" style={{ fontSize: '0.72rem' }}>
+                        {it.people.map(p => p.name).join(', ')}
+                      </span>
+                    </span>
+                  </button>
+                  {/* v24.51: Organizer per Mail benachrichtigen (Dedup: nur 1x je
+                      Event+Person, egal welcher Admin klickt). */}
+                  {notifyResult[it.eventId] ? (
+                    <div className="dex-ui-callout dex-ui-callout--sm dex-ui-callout--neutral" style={{ marginTop: 4 }}>
+                      {notifyResult[it.eventId]}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={notifyBusyId === it.eventId}
+                      onClick={async () => {
+                        setNotifyBusyId(it.eventId);
+                        try {
+                          const res = await notifyOrganizerOfInactive(it.eventId, it.people);
+                          if (res.noOrganizer) {
+                            // Kein Organizer → Mail nicht möglich, Box-Eintrag bleibt (mit Hinweis).
+                            setNotifyResult(prev => ({ ...prev, [it.eventId]: isDe ? 'Kein Organizer hinterlegt — keine Mail möglich.' : 'No organizer on file — no mail possible.' }));
+                          } else {
+                            // v24.59: Erfolgreich versendet ODER bereits benachrichtigt →
+                            // Event sofort aus der Landing-Box entfernen (und den Marker
+                            // greift beim nächsten Aufruf dauerhaft über den Filter).
+                            setInactiveSummary(prev => prev.filter(x => x.eventId !== it.eventId));
+                          }
+                        } catch {
+                          setNotifyResult(prev => ({ ...prev, [it.eventId]: isDe ? 'Fehler beim Versenden.' : 'Sending failed.' }));
+                        } finally { setNotifyBusyId(null); }
+                      }}
+                      // v31.9: normaler Nebenknopf statt oranger Fläche — der
+                      // Primär-Knopf dieser Seite ist „Start" (Grundsatz 1.5).
+                      className="btn btn-secondary dex-ui-btn-sm"
+                      style={{ marginTop: 5, width: '100%' }}
+                    >
+                      {/* v31.9: „…" sagt nicht, was gerade passiert (6d). */}
+                      {notifyBusyId === it.eventId
+                        ? (isDe ? 'Wird gesendet…' : 'Sending…')
+                        : (isDe ? 'Organizer benachrichtigen' : 'Notify organizer')}
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })()}
+      {/* v24.1: Entwurf-Aufräumen — abgelaufene Entwürfe des Organizers. */}
+      {staleDrafts.length > 0 && (
+        <div className="dex-ui-card dex-ui-card--sm" style={{ width: '100%', textAlign: 'left' }}>
+          <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--dex-gray-800)', marginBottom: 6 }}>
+            {isDe ? 'Entwürfe aufräumen' : 'Clean up drafts'}
+          </div>
+          <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+            {isDe
+              ? <><strong>{staleDrafts.length}</strong> {staleDrafts.length === 1 ? 'Entwurf ist' : 'Entwürfe sind'} abgelaufen (Datum vorbei) und {staleDrafts.length === 1 ? 'wurde' : 'wurden'} nie aktiviert. Du kannst {staleDrafts.length === 1 ? 'ihn' : 'sie'} hier löschen.</>
+              : <><strong>{staleDrafts.length}</strong> draft(s) expired and were never activated. You can delete them here.</>}
+          </p>
+          {/* v31.9: Zeile ohne Hover — sie ist Anzeige, nur der Knopf rechts
+              handelt (Löschen ist die Ausnahme, die rechts außen stehen darf,
+              2a′). */}
+          <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {staleDrafts.map(ev => (
+              <li key={ev.id} className="dex-ui-row dex-ui-row--static dex-ui-row--framed" style={{ padding: '6px 8px 6px 10px', gap: 8 }}>
+                <span className="dex-ui-row-main dex-ui-row-title" style={{ fontSize: '0.78rem' }}>
+                  {ev.title || (isDe ? 'Ohne Titel' : 'Untitled')}
+                </span>
+                {/* v31.9: `btn-danger` statt roter Schrift auf `btn-secondary`
+                    — in dieser App ist der Gefahren-Knopf bewusst grau, die
+                    Warnung trägt die Rückfrage (confirmDialog, danger). */}
+                <button
+                  type="button"
+                  className="btn btn-danger dex-ui-btn-sm"
+                  style={{ flexShrink: 0 }}
+                  disabled={draftDeleteBusyId === ev.id}
+                  onClick={() => { deleteStaleDraft(ev).catch(() => { /* */ }); }}
+                >
+                  {draftDeleteBusyId === ev.id ? (isDe ? 'Löscht…' : 'Deleting…') : (isDe ? 'Löschen' : 'Delete')}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {/* v22: Archivierungs-Info (nur Admin, nur wenn Zeilen anstehen). */}
+      {isAdmin && archInfo && archInfo.total > 0 && (
+        <div className="dex-ui-card dex-ui-card--sm" style={{ width: '100%', textAlign: 'left' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>
+              {isDe ? 'Archivierung' : 'Archiving'}
+            </span>
+            <span className="dex-ui-pill dex-ui-pill--orange dex-ui-pill--sm">{isDe ? 'Nur Admin' : 'Admin only'}</span>
+          </div>
+          <p style={{ margin: '0 0 8px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+            {isDe
+              ? <><strong>{archInfo.total}</strong> Zeilen aus abgelaufenen Events stehen zur Archivierung an.</>
+              : <><strong>{archInfo.total}</strong> rows from expired events are ready for archiving.</>}
+          </p>
+          <ul style={{ margin: '0 0 10px', paddingLeft: 16, fontSize: '0.72rem', color: 'var(--dex-gray-500)', lineHeight: 1.5 }}>
+            {Object.keys(archInfo.perList).filter(k => archInfo.perList[k] > 0).map(k => (
+              <li key={k}>{k}: {archInfo.perList[k]}</li>
+            ))}
+          </ul>
+          {/* v31.9: kein zweiter Primär-Knopf auf der Seite — „Start" ist der
+              eine (Grundsatz 1.5). */}
+          <button
+            type="button"
+            className="btn btn-secondary dex-ui-btn-sm"
+            style={{ width: '100%' }}
+            onClick={() => { startArchive().catch(() => { /* */ }); }}
+          >
+            {isDe ? 'Jetzt archivieren' : 'Archive now'}
+          </button>
+        </div>
+      )}
+      {/* v23.40: Löschkonzept — alte Archiv-Einträge (älter als 1 Monat). */}
+      {isAdmin && delArchCount > 0 && (
+        <div className="dex-ui-card dex-ui-card--sm" style={{ width: '100%', textAlign: 'left' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>
+              {isDe ? 'Archiv aufräumen' : 'Clean up archive'}
+            </span>
+            <span className="dex-ui-pill dex-ui-pill--orange dex-ui-pill--sm">{isDe ? 'Nur Admin' : 'Admin only'}</span>
+          </div>
+          <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+            {isDe
+              ? <><strong>{delArchCount}</strong> Archiv-Einträge sind älter als 1 Monat und können endgültig gelöscht werden.</>
+              : <><strong>{delArchCount}</strong> archive entries are older than 1 month and can be permanently deleted.</>}
+          </p>
+          {/* v31.9: `btn-danger` statt roter Schrift auf `btn-secondary` — der
+              Gefahren-Knopf ist in dieser App bewusst grau, gewarnt wird im
+              Rückfrage-Dialog. */}
+          <button
+            type="button"
+            className="btn btn-danger dex-ui-btn-sm"
+            style={{ width: '100%' }}
+            disabled={delArchBusy}
+            onClick={() => { startDeleteOldArchive().catch(() => { /* */ }); }}
+          >
+            {delArchBusy ? (isDe ? 'Wird gelöscht…' : 'Deleting…') : (isDe ? 'Alte Einträge löschen' : 'Delete old entries')}
+          </button>
+        </div>
+      )}
+      {/* v26.32: Löschkonzept — Vorwarnung (Teilnehmerliste wird in ~1 Woche gelöscht). */}
+      {isAdmin && pdWarn > 0 && (
+        <div className="dex-ui-card dex-ui-card--sm" style={{ width: '100%', textAlign: 'left' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>
+              {isDe ? 'Teilnehmerlisten laufen ab' : 'Attendee lists expiring'}
+            </span>
+            <span className="dex-ui-pill dex-ui-pill--orange dex-ui-pill--sm">{isDe ? 'Nur Admin' : 'Admin only'}</span>
+          </div>
+          <p style={{ margin: '0 0 6px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+            {isDe
+              ? <>Bei {pdWarn === 1 ? 'diesem Event' : <>diesen <strong>{pdWarn}</strong> Events</>} wird die Teilnehmerliste in etwa einer Woche gelöscht (3 Monate nach dem Event). Die Organizer wurden automatisch informiert, die Liste noch herunterzuladen. Event &amp; Kennzahlen bleiben im Statistik-Archiv erhalten:</>
+              : <>For {pdWarn === 1 ? 'this event' : <>these <strong>{pdWarn}</strong> events</>} the attendee list will be deleted in about a week (3 months after the event). The organizers were notified automatically to download it. Event &amp; KPIs are kept in the statistics archive:</>}
+          </p>
+          <ul style={{ margin: 0, paddingLeft: 16, fontSize: '0.76rem', color: 'var(--dex-gray-600)', lineHeight: 1.6 }}>
+            {pdWarnEvents.map(ev => (
+              <li key={ev.id}>
+                <strong>{ev.title}</strong>
+                {(ev.endDate || ev.startDate)
+                  ? ` — ${isDe ? 'Event vom' : 'event on'} ${new Date(ev.endDate || ev.startDate || '').toLocaleDateString(isDe ? 'de-DE' : 'en-GB')}`
+                  : ''}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {/* v26.32: Löschkonzept — fällige Teilnehmerlisten löschen (Event bleibt, KPIs ins Archiv). */}
+      {isAdmin && pdDue > 0 && (
+        <div className="dex-ui-card dex-ui-card--sm" style={{ width: '100%', textAlign: 'left' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>
+              {isDe ? 'Teilnehmerlisten löschen' : 'Delete attendee lists'}
+            </span>
+            <span className="dex-ui-pill dex-ui-pill--orange dex-ui-pill--sm">{isDe ? 'Nur Admin' : 'Admin only'}</span>
+          </div>
+          <p style={{ margin: '0 0 6px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+            {isDe
+              ? <>Bei {pdDue === 1 ? 'diesem Event ist' : <>diesen <strong>{pdDue}</strong> Events ist</>} die Aufbewahrungsfrist (3 Monate) abgelaufen. Beim Löschen werden die wichtigsten Kennzahlen ins Statistik-Archiv übernommen und dann die Teilnehmerliste entfernt — das Event bleibt erhalten:</>
+              : <>{pdDue === 1 ? 'This event has' : <>These <strong>{pdDue}</strong> events have</>} passed the 3-month retention. Deleting archives the key KPIs to the statistics archive and then removes the attendee list — the event itself is kept:</>}
+          </p>
+          <ul style={{ margin: '0 0 10px', paddingLeft: 16, fontSize: '0.76rem', color: 'var(--dex-gray-600)', lineHeight: 1.6 }}>
+            {pdDueEvents.map(ev => (
+              <li key={ev.id}>
+                <strong>{ev.title}</strong>
+                {(ev.endDate || ev.startDate)
+                  ? ` — ${isDe ? 'Event vom' : 'event on'} ${new Date(ev.endDate || ev.startDate || '').toLocaleDateString(isDe ? 'de-DE' : 'en-GB')}`
+                  : ''}
+              </li>
+            ))}
+          </ul>
+          {/* v31.9: siehe oben — `btn-danger`, kein roter Text auf grauem Knopf. */}
+          <button
+            type="button"
+            className="btn btn-danger dex-ui-btn-sm"
+            style={{ width: '100%' }}
+            disabled={pdBusy}
+            onClick={() => { startParticipantDeletion().catch(() => { /* */ }); }}
+          >
+            {pdBusy ? (isDe ? 'Wird gelöscht…' : 'Deleting…') : (isDe ? 'Teilnehmerlisten löschen' : 'Delete attendee lists')}
+          </button>
+        </div>
+      )}
+          </div>
+          )}
+        </div>
+      </div>
+      </div>
+        );
+      })()}
       {/* v22.1: Groß-Ansicht des persönlichen Check-in-QR (Klick auf die
           Hinweisbox) — gleicher Aufbau wie „Mein QR-Code" in Meine Events. */}
       {qrBigModal && (

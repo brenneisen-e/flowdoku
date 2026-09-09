@@ -253,12 +253,25 @@
     }
 
     /* Section headers */
+    // v31.9: Vollflächig grün war der lauteste Block der Anmeldeseite —
+    // Grundsatz 1.1 des UI-Leitfadens verbietet Grün als Flächenfarbe für
+    // Kästen, und nachdem die Runde alles andere aufgehellt hat, blieben
+    // ausgerechnet die zwei Sektionsköpfe als grüne Balken stehen. Jetzt:
+    // heller Grund, dunkle Schrift, grüne Kante als Zugehörigkeit. Verwendet
+    // von `registration/regHelpers.tsx` und der Wizard-Vorschau
+    // (`wizard/logic/wizardRenderHelpers.tsx`) — beide sollen gleich aussehen.
+    // Linksbündig, weil der Aufklapp-Pfeil rechts sitzt und der Inhalt
+    // darunter ebenfalls links beginnt.
     .section-header {
-      background: var(--dex-green); color: var(--dex-white); padding: 10px 20px;
+      background: var(--dex-gray-50, #fafafa); color: var(--dex-gray-800, #333); padding: 10px 20px;
       border-radius: var(--dex-radius) var(--dex-radius) 0 0;
-      font-weight: 600; font-size: 0.95rem; text-align: center;
+      border-bottom: 2px solid var(--dex-green, #86bc25);
+      font-weight: 700; font-size: 0.95rem; text-align: left;
     }
-    .section-header--red { background: var(--dex-red); }
+    .section-header--red {
+      background: var(--dex-red-light, #fce8e6); color: #9b2018;
+      border-bottom-color: var(--dex-red, #da291c);
+    }
 
     /* Form styles */
     .form-group { margin-bottom: 20px; }
