@@ -305,12 +305,14 @@ export default function MyEventsPage(): React.ReactElement {
   };
   // Teilnehmer-Nachrichten-Ansicht: pro Event die Broadcast-Mails (Einladung,
   // Ankündigungen) aus dem dauerhaften Kommunikations-Log lesen.
-  const [commsModal, setCommsModal] = React.useState<{ eventId: string; eventTitle: string } | null>(null);
+  // v31.9.4: `mailImage` mitnehmen — die Vorschau soll aussehen wie die Mail
+  // in Outlook, und dort steht das Mail-Logo DIESES Events im Kopf.
+  const [commsModal, setCommsModal] = React.useState<{ eventId: string; eventTitle: string; mailImage?: string } | null>(null);
   const [commsRows, setCommsRows] = React.useState<EventCommRow[]>([]);
   const [commsLoading, setCommsLoading] = React.useState(false);
   const [commsOpenId, setCommsOpenId] = React.useState<number | null>(null);
   const openComms = (ev: DeloitteEvent): void => {
-    setCommsModal({ eventId: ev.id, eventTitle: ev.title || '' });
+    setCommsModal({ eventId: ev.id, eventTitle: ev.title || '', mailImage: ev.mailImageBase64 || '' });
     setCommsRows([]);
     setCommsOpenId(null);
     setCommsLoading(true);

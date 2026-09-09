@@ -119,7 +119,7 @@ export const CommsLogModal: React.FC<CommsLogModalProps> = (p) => {
                         <div className="dex-ui-fade-in" style={{ borderTop: '1px solid var(--dex-gray-200)', background: 'var(--dex-gray-50, #fafafa)', padding: 10 }}>
                           <iframe
                             title={isDe ? 'Mail-Vorschau' : 'Email preview'}
-                            srcDoc={resolveMailPreviewHtml(row.bodyHtml, getCachedOrbBase64())}
+                            srcDoc={resolveMailPreviewHtml(row.bodyHtml, selectedEvent.mailImageBase64, getCachedOrbBase64())}
                             sandbox=""
                             style={{ width: '100%', height: 420, border: 'none', borderRadius: 8, background: '#fff' }}
                           />

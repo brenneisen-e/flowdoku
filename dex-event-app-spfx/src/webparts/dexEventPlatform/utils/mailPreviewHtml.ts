@@ -11,6 +11,15 @@
  * Organizer Center — bekommt ein kaputtes Bild und daneben den `alt`-Text.
  * Genau so gemeldet am 09.09.2026.
  *
+ * ZIEL IST DIE OUTLOOK-ANSICHT. Die App soll dasselbe zeigen wie das Postfach,
+ * also dasselbe Bild EINSETZEN — nicht die Zeile wegräumen. Deshalb bildet
+ * `resolveMailPreviewHtml` die Reihenfolge des Flows nach:
+ *   1. das Mail-Logo des Events (`EmailImageBase64` → `event.mailImageBase64`),
+ *   2. sonst der DEX-Standard-Orb aus dem Session-Cache
+ *      (`getCachedOrbBase64()`, gefüllt von `loadLogosAsBase64`).
+ * Erst wenn BEIDES fehlt, fliegt das `<img>` raus — dann gäbe es auch in
+ * Outlook nichts zu sehen, und ein rotes Kreuz wäre die schlechtere Lüge.
+ *
  * Diese Datei ist die EINE Stelle, die einen gespeicherten Mail-Body
  * anzeigefertig macht. Wer eine dritte Vorschau baut, ruft sie ebenfalls —
  * sonst zeigt die nächste Ansicht wieder ein rotes Kreuz.
@@ -22,26 +31,27 @@ const FLOW_PLACEHOLDER = /\{\{[A-Z_]+\}\}/;
 /**
  * Macht einen gespeicherten Mail-Body anzeigefertig.
  *
- * @param body      Roher HTML-Body aus DEX_Emails / dem Kommunikations-Log.
- * @param orbBase64 Bild für `{{ORB_URL}}` (Event-Mail-Logo oder der
- *                  zwischengespeicherte DEX-Orb). Leer lassen ist erlaubt —
- *                  dann fliegt das Bild raus, statt kaputt dazustehen.
+ * @param body       Roher HTML-Body aus DEX_Emails / dem Kommunikations-Log.
+ * @param eventImage Mail-Logo DIESES Events (`event.mailImageBase64`). Das ist
+ *                   das Bild, das der Flow einsetzt — hat Vorrang.
+ * @param orbFallback Der DEX-Standard-Orb (`getCachedOrbBase64()`), wie ihn
+ *                   der Flow nimmt, wenn das Event kein eigenes Logo hat.
  */
-export function resolveMailPreviewHtml(body: string, orbBase64?: string): string {
+export function resolveMailPreviewHtml(body: string, eventImage?: string, orbFallback?: string): string {
   if (!body) return '';
   let html = body;
 
-  // 1) Bekannte Bild-Platzhalter auflösen, soweit wir einen Wert haben.
-  if (orbBase64) {
-    html = html.replace(/\{\{ORB_URL\}\}/g, orbBase64);
-    html = html.replace(/\{\{LOGO_URL\}\}/g, orbBase64);
+  // 1) Dieselbe Reihenfolge wie im Flow: Event-Logo vor Standard-Orb.
+  const img = (eventImage && eventImage.trim()) || (orbFallback && orbFallback.trim()) || '';
+  if (img) {
+    html = html.replace(/\{\{ORB_URL\}\}/g, img);
+    html = html.replace(/\{\{LOGO_URL\}\}/g, img);
   }
 
-  // 2) Was danach noch als Platzhalter im `src` steht, kann der Browser nicht
-  //    laden. Ein leeres `src` wäre nicht besser (Chrome zeigt dann dasselbe
-  //    kaputte Symbol) — deshalb fliegt das ganze <img> raus. Der Text der
-  //    Mail bleibt vollständig, es fehlt nur die Dekoration, die es in der
-  //    gespeicherten Fassung ohnehin nie gab.
+  // 2) Nur wenn WEDER Event-Logo NOCH Orb da waren, steht hier noch ein
+  //    Platzhalter. Ein leeres `src` wäre nicht besser (Chrome zeigt dann
+  //    dasselbe kaputte Symbol) — deshalb fliegt das ganze <img> raus. Das ist
+  //    der Notausgang, nicht der Normalfall.
   html = html.replace(/<img\b[^>]*>/gi, (tag) => {
     const src = /\ssrc\s*=\s*["']([^"']*)["']/i.exec(tag);
     if (!src) return tag;

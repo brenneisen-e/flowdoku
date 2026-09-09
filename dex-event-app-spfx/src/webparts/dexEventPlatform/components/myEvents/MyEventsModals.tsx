@@ -575,7 +575,7 @@ export function MyQrModal(props: MyQrModalProps): React.ReactElement {
 
 export interface EventCommsModalProps {
   commsLoading: boolean;
-  commsModal: { eventId: string; eventTitle: string; };
+  commsModal: { eventId: string; eventTitle: string; mailImage?: string };
   commsOpenId: number;
   commsRows: EventCommRow[];
   isDe: boolean;
@@ -649,7 +649,7 @@ export function EventCommsModal(props: EventCommsModalProps): React.ReactElement
                             640er-Modal waagerecht abgeschnitten. */}
                         <iframe
                           title={row.subject || 'message'}
-                          srcDoc={resolveMailPreviewHtml(row.bodyHtml || '', getCachedOrbBase64())}
+                          srcDoc={resolveMailPreviewHtml(row.bodyHtml || '', commsModal.mailImage, getCachedOrbBase64())}
                           sandbox=""
                           style={{ width: '100%', height: 520, border: 'none', display: 'block' }}
                         />
