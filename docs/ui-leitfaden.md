@@ -549,25 +549,33 @@ Anmeldeseite). Jede Fundstelle wird mit Pfad genannt.
 
 Sortiert nach Dringlichkeit, nicht nach Alter des Codes:
 
-1. **Was heute zu tun ist:** Check-in-Kasten mit QR und Einlassnummer
-   (:1138-1183) und „Du bist angemeldet" mit Countdown (:1186-1223). Heute
-   stehen sie an vierter Stelle — unter Orb (:1099), tageszeitabhängiger
-   Begrüßung (:1103) und zwei Zeilen Willkommenstext (:1106). Am Eventmorgen
-   liegt der QR-Code damit unter drei Deko-Blöcken.
-2. **Begrüßung, Orb, Willkommenstext.** Sie bleiben — nur nicht vor der
-   Handlung, die heute ansteht.
+1. **Orb, Begrüßung, Willkommenstext.** Sie stehen ganz oben und bleiben dort.
 
-   **Nachtrag v31.9, weil diese Stelle sich selbst widersprach:** Hier stand
-   zusätzlich der Satz „Deko steht nie zwischen zwei Handlungen". Zusammen mit
-   der Nummerierung ist das nicht erfüllbar — wer 1–3 in dieser Reihenfolge
-   baut, hat Orb und Begrüßung genau zwischen Check-in und „Start". Der
-   Umbau-Agent hat den Widerspruch belegt statt ihn auszulegen; das war
-   richtig. Aufgelöst wird er zugunsten der Nummerierung: Die Begrüßung ist auf
-   DIESER Seite keine Deko zwischen zwei Handlungen, sondern die Identität der
-   Seite — sie zu überspringen macht die App gesichtslos. Der Grundsatz gilt
-   weiter **innerhalb** eines Abschnitts. Wer „Start" trotzdem direkt unter den
-   Check-in-Kasten ziehen will, ändert den Charakter der Startseite: eigene
-   Entscheidung, kein Auslegungsspielraum für einen Umbau.
+   **Entschieden am 09.09.2026, nachdem v31.9 es anders gebaut hatte.** Die
+   Sollfolge hier lautete ursprünglich „1. Check-in → 2. Begrüßung/Orb →
+   3. Start", begründet damit, dass der QR-Code am Eventmorgen nicht unter drei
+   Deko-Blöcken liegen soll. Sachlich stimmt das — und trotzdem war es falsch:
+   Die Antwort des Nutzers auf den gebauten Stand war **„zurück wie vorher"**.
+   Der Orb ist auf DIESER Seite keine Dekoration, sondern das Gesicht der App.
+
+   Zwei Warnungen gab es vorher, beide berechtigt und beide von mir zu spät
+   ernst genommen: Die Prüfung des Abschnitt-Entwurfs führte den Punkt
+   ausdrücklich als **offene Entscheidung** („das ändert das Gesicht der App,
+   das der Nutzer selbst gebaut hat"), und der Umbau-Agent hat beim Bauen den
+   inneren Widerspruch belegt — die Nummerierung stellte Orb und Begrüßung
+   genau zwischen zwei Handlungen, was der Satz daneben verbot.
+
+   **Regel daraus: Eine Reihenfolge, die das Gesicht einer Seite ändert, ist
+   eine Entscheidung des Nutzers und kein Auslegungsspielraum für einen
+   Umbau — auch dann nicht, wenn sie sich aus den Grundsätzen herleiten
+   lässt.** Der Grundsatz „Deko steht nie zwischen zwei Handlungen" gilt
+   weiter, aber **innerhalb** eines Abschnitts.
+2. **Was heute zu tun ist:** Check-in-Kasten mit QR und Einlassnummer und
+   „Du bist angemeldet" mit Countdown — direkt unter der Begrüßung. Bis v31.8
+   lagen sie ganz unten, hinter dem Werbekasten; wer den QR-Code am
+   Eventmorgen suchte, scrollte an der Werbung vorbei. Das war der eigentliche
+   Fehler, und er ist behoben: Sie stehen jetzt VOR „Start" und vor dem
+   Werbekasten.
 3. **„Start"** (:1227) ist die Handlung der Seite und damit der einzige
    Primär-Knopf (Grundsatz 1.5). Heute ist er `btn-outline`, während der
    Werbekasten „DEX für dein Event nutzen" direkt darunter (:1232-1317,

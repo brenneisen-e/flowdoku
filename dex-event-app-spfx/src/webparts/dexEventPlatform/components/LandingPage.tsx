@@ -812,13 +812,36 @@ export default function LandingPage(): React.ReactElement {
 
       <div className="landing__hero">
         <div className="landing__card" style={{ position: 'relative' }}>
-          {/* v31.9: Was heute zu tun ist, steht ganz oben. Bis v31.8 lagen der
-              Check-in-Kasten mit QR und Einlassnummer und „Du bist angemeldet"
-              an vierter Stelle — unter Orb, Begrüßung und Willkommenstext. Am
-              Eventmorgen lag der QR-Code damit unter drei Deko-Blöcken; wer ihn
-              auf dem Handy sucht, scrollt an der Begrüßung vorbei. Orb,
-              Begrüßung und Text folgen darunter: Deko steht nie vor einer
-              Handlung und nie zwischen zwei Handlungen. */}
+          {/* v31.9.1: Orb und Begrüßung stehen wieder ganz oben.
+              v31.9 hatte den Check-in-Kasten und &bdquo;Du bist angemeldet&ldquo;
+              davor gezogen, damit der QR-Code am Eventmorgen ohne Scrollen da
+              ist. Der Preis war das Gesicht der App — Nutzer-Entscheidung
+              09.09.2026: &bdquo;zurück wie vorher&ldquo;. Die Kästen folgen
+              direkt unter der Begrüßung und stehen damit weiterhin VOR dem
+              Start-Knopf; das war der eigentliche Gewinn und bleibt. */}
+          {/* v28.33: animiertes DEX-Logo (Canvas) statt des rotierenden
+              Farbring-Platzhalters. Zeichnet die Höhenlinien-Kugel des
+              DEX-Logos live, pausiert automatisch bei „Bewegung reduzieren",
+              ausserhalb des Viewports und im inaktiven Tab. */}
+          <div className="landing__orb">
+            <DexLogo title="DEX" motion="oscillate" style={{ width: '100%' }} />
+          </div>
+          <div className="landing__text">
+            <h1>
+              {greeting}{firstName ? <>, <strong>{firstName}</strong></> : ''}.
+            </h1>
+            <p>
+              {isDe
+                ? <>Willkommen bei <strong>DEX</strong>. Unsere neue App für die Organisation von <span style={{ whiteSpace: 'nowrap' }}>Deloitte Events</span>. Von der Anmeldung, bis zum Check-in. Alles an einer Stelle.</>
+                : <>Welcome to <strong>DEX</strong>. Our new app for organising <span style={{ whiteSpace: 'nowrap' }}>Deloitte events</span>. From registration to check-in. Everything in one place.</>}
+            </p>
+          </div>
+          {/* v31.9: Was heute zu tun ist, steht vor dem Start-Knopf. Bis v31.8
+              lagen der Check-in-Kasten mit QR und Einlassnummer und
+              &bdquo;Du bist angemeldet&ldquo; ganz unten, hinter dem
+              Werbekasten — am Eventmorgen musste man daran vorbeiscrollen.
+              (v31.9 hatte sie zusätzlich vor Orb und Begrüßung gezogen; das ist
+              seit v31.9.1 wieder zurückgenommen, siehe Kommentar oben.) */}
           {/* v22.1: Check-in-Hinweisbox(en) — ab 2 Tage vor dem Event, sobald
               der eigene QR-Code versendet wurde. Klick auf den kleinen QR
               öffnet ihn groß im Modal (zum Vorzeigen am Eingang).
@@ -941,23 +964,6 @@ export default function LandingPage(): React.ReactElement {
               </div>
             );
           })()}
-          {/* v28.33: animiertes DEX-Logo (Canvas) statt des rotierenden
-              Farbring-Platzhalters. Zeichnet die Höhenlinien-Kugel des
-              DEX-Logos live, pausiert automatisch bei „Bewegung reduzieren",
-              ausserhalb des Viewports und im inaktiven Tab. */}
-          <div className="landing__orb">
-            <DexLogo title="DEX" motion="oscillate" style={{ width: '100%' }} />
-          </div>
-          <div className="landing__text">
-            <h1>
-              {greeting}{firstName ? <>, <strong>{firstName}</strong></> : ''}.
-            </h1>
-            <p>
-              {isDe
-                ? <>Willkommen bei <strong>DEX</strong>. Unsere neue App für die Organisation von <span style={{ whiteSpace: 'nowrap' }}>Deloitte Events</span>. Von der Anmeldung, bis zum Check-in. Alles an einer Stelle.</>
-                : <>Welcome to <strong>DEX</strong>. Our new app for organising <span style={{ whiteSpace: 'nowrap' }}>Deloitte events</span>. From registration to check-in. Everything in one place.</>}
-            </p>
-          </div>
           {/* v31.9: „Start" ist die Handlung dieser Seite und damit der einzige
               Primär-Knopf (Grundsatz 1.5). Bis v31.8 war er `btn-outline`,
               während der Werbekasten darunter vollflächig grün war — die
