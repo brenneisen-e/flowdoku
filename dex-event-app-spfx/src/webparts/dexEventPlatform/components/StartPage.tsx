@@ -6,7 +6,8 @@ import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useLanguage } from '../context/LanguageContext';
-import { Calendar, Pin, Settings, QrCode, Star, Users, MessageSquare, FileText } from './Icons';
+import { Calendar, Pin, Settings, QrCode, Star, Users, MessageSquare, FileText, ChevronRight } from './Icons';
+import { cx, ensureDexUiStyles } from './dexUi';
 import InquiryModal from './InquiryModal';
 import { useTickets } from '../context/TicketContext';
 import { useIsMobile } from '../utils/useIsMobile';
@@ -15,7 +16,7 @@ export default function StartPage(): React.ReactElement {
   const isMobile = useIsMobile();
   const { navigate } = useNavigation();
   const { canCreateEvents, isAdmin, isPowerUser, isFA, rolesReadStatus } = useRoles();
-  const { events, isEventsLoading, getMyProxyRegistrations } = useEvents();
+  const { events, isEventsLoading, eventsReadStatus, getMyProxyRegistrations } = useEvents();
   const { powerUserQueue } = useTickets();
   const { currentUser } = useCurrentUser();
   const { t, locale } = useLanguage();
@@ -31,6 +32,10 @@ export default function StartPage(): React.ReactElement {
   // AdminPage gewährt ihnen ohnehin Zugriff auf "ihre" Events (siehe
   // isOrganizerFor dort), aber ohne Kachel im Startmenü gab es bisher
   // keinen Einstieg.
+  // v31.8: `events` ist bei einem 403 auf DEX_Events LEER — die beiden
+  // Ableitungen unten sagen dann „kein Organizer, kein Check-in-Team", obwohl
+  // sie in Wahrheit nichts wissen. Der Hinweiskasten unter der Kachel haengt
+  // deshalb seit v31.8 auch an `eventsReadStatus`, nicht nur an den Rollen.
   const currentEmailLc = (currentUser.email || '').toLowerCase();
   const isOrganizerOfAnyEvent = !!currentEmailLc && (events || []).some(e => {
     const inOrg = (e.organizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
@@ -90,200 +95,182 @@ export default function StartPage(): React.ReactElement {
   }, [isAdmin, isEventsLoading, events, currentEmailLc, getMyProxyRegistrations]);
   const showAssistTile = isAdmin || hasProxyRegs;
 
-  // v26: Kacheln als Elemente — werden danach in beschriftete Cluster gruppiert
-  // und als quadratische Kacheln in einem zweispaltigen Raster gerendert
-  // (data-tour-Anker bleiben für das geführte Tutorial erhalten).
-  const tileRegister = (
-    <div className="card card-clickable start-card" data-tour="tile-register" onClick={() => navigate('register')}>
-      <div className="start-card__icon"><Calendar size={64} strokeWidth={1} /></div>
-      <h2>{t('start.register')}</h2>
-      <p>{t('start.register.desc')}</p>
-    </div>
-  );
-  const tileMyEvents = (
-    <div className="card card-clickable start-card" data-tour="tile-myevents" onClick={() => navigate('my-events')}>
-      <div className="start-card__icon"><Pin size={64} strokeWidth={1} /></div>
-      <h2>{t('start.myevents')}</h2>
-      <p>{t('start.myevents.desc')}</p>
-    </div>
-  );
-  const tileOrganizer = isOrganizer ? (
-    <div className="card card-clickable start-card start-card--admin" data-tour="tile-admin" onClick={() => navigate('admin')}>
-      <div className="start-card__icon"><Settings size={64} strokeWidth={1} /></div>
-      <h2>{t('start.admin')}</h2>
-      <p>{t('start.admin.desc')}</p>
-    </div>
-  ) : (
-    <div className="card start-card start-card--admin" style={{ position: 'relative', cursor: 'default', opacity: 0.55 }}>
-      <div className="start-card__icon"><Settings size={64} strokeWidth={1} /></div>
-      <h2>{t('start.admin')}</h2>
-      <p>{t('start.admin.desc')}</p>
-      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center', justifyContent: 'center', padding: 10 }}>
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); setShowInquiry(true); }}
-          style={{
-            background: 'var(--dex-green, #86bc25)', color: '#fff', border: 'none', borderRadius: 14,
-            padding: '8px 12px', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
-            fontSize: '0.74rem', lineHeight: 1.25, textAlign: 'center',
-          }}
-        >
-          {isDe ? 'Organizer werden?' : 'Want to become an organizer?'}
-        </button>
-        {/* v30.81: 403 auf DEX_Roles heißt „Rollenliste nicht lesbar" — wer
-            dort als Organizer steht, hat dann keine Rolle, sondern ein
-            fehlendes Leserecht. Vorher sah die Person nur „Organizer werden?"
-            und niemand wusste, warum die Kachel grau ist. */}
-        {rolesReadStatus === 'forbidden' && (
-          <div style={{ fontSize: '0.7rem', lineHeight: 1.3, textAlign: 'center', color: 'var(--dex-orange-dark, #b35a00)', background: 'rgba(255,255,255,0.92)', borderRadius: 8, padding: '6px 8px', maxWidth: 240 }}>
-            {isDe
-              ? 'Rollen konnten nicht geladen werden (kein Leserecht auf der Rollenliste). Bist du bereits Organizer? Dann bitte einen Admin, in der Rollenverwaltung „Rechte prüfen" auszuführen.'
-              : 'Roles could not be loaded (no read access to the roles list). Already an organizer? Ask an admin to run "Check rights" in role management.'}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-  const tileCheckIn = (
-    <div className="card card-clickable start-card start-card--checkin" data-tour="tile-checkin" onClick={() => navigate('check-in')}>
-      <div className="start-card__icon"><QrCode size={64} strokeWidth={1} /></div>
-      <h2>{isDe ? 'Check-In' : 'Check-in'}</h2>
-      <p>{isDe ? 'Teilnehmer einchecken' : 'Check in attendees'}</p>
-    </div>
-  );
-  const tileTickets = (
-    <div className="card card-clickable start-card" onClick={() => navigate('tickets')} style={{ position: 'relative' }}>
-      <div className="start-card__icon"><MessageSquare size={64} strokeWidth={1} /></div>
-      <h2>Tickets</h2>
-      <p>{isDe ? 'Fragen beantworten' : 'Answer questions'}</p>
-      {openTicketCount > 0 && (
-        <span style={{
-          position: 'absolute', top: 10, right: 10, background: '#ed8b00', color: '#fff',
-          borderRadius: 12, minWidth: 22, height: 22, padding: '0 6px',
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700,
-        }}>{openTicketCount}</span>
-      )}
-    </div>
-  );
-  const tileAssist = (
-    <div className="card card-clickable start-card" onClick={() => navigate('assistant')}>
-      <div className="start-card__icon"><Users size={64} /></div>
-      <h2>{isDe ? 'Assistenz' : 'Assistant'}</h2>
-      <p>{isDe ? 'Anmeldungen für andere' : 'Registrations for others'}</p>
-    </div>
-  );
-  const tileAdminHub = (
-    <div className="card card-clickable start-card" onClick={() => navigate('admin-hub')}>
-      <div className="start-card__icon"><Star size={64} strokeWidth={1} /></div>
-      <h2>Admin</h2>
-      <p>{isDe ? 'Verwaltung & Prozesse' : 'Administration & processes'}</p>
-    </div>
-  );
-  const tileFA = (
-    <div className="card card-clickable start-card" onClick={() => navigate('fa-center')}>
-      <div className="start-card__icon"><FileText size={64} /></div>
-      <h2>F&amp;A Center</h2>
-      <p>{isDe ? 'Abrechnungsrelevante Events' : 'Billing-relevant events'}</p>
-    </div>
-  );
+  // v31.9: Die Zeilen-Ansicht unten nutzt `dex-ui-`-Klassen; die Seite hängt
+  // weder an Modal noch an WizardFormShell, die das Stylesheet sonst einziehen.
+  // Idempotent, kein Hook.
+  ensureDexUiStyles();
 
-  const clusters: Array<{ key: string; title: string; tiles: React.ReactNode[] }> = [
-    { key: 'teilnahme', title: isDe ? 'Teilnahme' : 'Participation', tiles: [tileRegister, tileMyEvents] },
-    { key: 'organisation', title: isDe ? 'Organisation' : 'Organization', tiles: [tileOrganizer, ...(showCheckInTile ? [tileCheckIn] : [])] },
-    { key: 'support', title: isDe ? 'Support' : 'Support', tiles: showTicketsTile ? [tileTickets] : [] },
-    { key: 'verwaltung', title: isDe ? 'Verwaltung' : 'Administration', tiles: [...(showAssistTile ? [tileAssist] : []), ...(showAdminHubTile ? [tileAdminHub] : []), ...(showFATile ? [tileFA] : [])] },
-  ].filter(c => c.tiles.length > 0);
-
-  // v26.37: Auf dem Handy verschwenden die quadratischen Kacheln viel
-  // vertikalen Platz. Stattdessen rendern wir dieselben Menüpunkte (gleiche
-  // Icons/Labels/Handler) als kompakte, volle-Breite-Zeilen mit Chevron.
-  type RowItem = {
+  // v31.9: EIN Menü statt zwei.
+  //
+  // Bis v31.8 stand dasselbe Menü zweimal im Code — einmal als Kacheln
+  // (Desktop), einmal als Zeilen (Handy) — und die beiden liefen bereits
+  // auseinander: andere Untertitel bei der Organizer-Kachel, andere
+  // `strokeWidth`, kein einziges `data-tour` im Mobil-Zweig (die Tour zeigte
+  // dort also ins Leere) und der Hinweis „Rollen nicht lesbar" fehlte auf dem
+  // Handy ganz. Zwei Quellen für dieselbe Aussage laufen immer auseinander,
+  // nicht vielleicht. Deshalb: die Menüpunkte sind Daten, die beiden Zweige
+  // sind nur noch zwei Darstellungen davon.
+  type MenuItem = {
     key: string;
-    icon: React.ReactNode;
-    label: string;
-    subtitle: string;
-    badge?: number;
+    /** Tour-Anker — bleibt an demselben Menüpunkt wie bisher (tutorialTours.ts). */
+    tour?: string;
+    /** Symbol in beiden Größen: Kachel 64/1, Zeile 24/1.6. */
+    icon: (size: number, strokeWidth: number) => React.ReactNode;
+    title: string;
+    desc: string;
     onClick?: () => void;
-    inquiry?: boolean; // Organizer-Zeile ohne Rechte → Inquiry-Modal statt Navigation
+    /** Organizer-Menüpunkt ohne Rechte: öffnet das Anfrage-Modal statt zu navigieren. */
+    inquiry?: boolean;
+    /** Beschriftung der Anfrage-Handlung (Kachel: Knopf, Zeile: Textzeile). */
+    cta?: string;
+    badge?: number;
+    /** Zusatzklasse der Kachel (Farbakzent aus dem SCSS-Modul). */
+    cardClass?: string;
+    /** Sichtbarer Grund, warum der Punkt gesperrt ist — auf BEIDEN Wegen. */
+    note?: React.ReactNode;
   };
-  const rowClusters: Array<{ key: string; title: string; items: RowItem[] }> = [
-    {
-      key: 'teilnahme', title: isDe ? 'Teilnahme' : 'Participation',
-      items: [
-        { key: 'register', icon: <Calendar size={24} strokeWidth={1.6} />, label: t('start.register'), subtitle: t('start.register.desc'), onClick: () => navigate('register') },
-        { key: 'my-events', icon: <Pin size={24} strokeWidth={1.6} />, label: t('start.myevents'), subtitle: t('start.myevents.desc'), onClick: () => navigate('my-events') },
-      ],
-    },
-    {
-      key: 'organisation', title: isDe ? 'Organisation' : 'Organization',
-      items: [
-        isOrganizer
-          ? { key: 'admin', icon: <Settings size={24} strokeWidth={1.6} />, label: t('start.admin'), subtitle: t('start.admin.desc'), onClick: () => navigate('admin') }
-          : { key: 'admin', icon: <Settings size={24} strokeWidth={1.6} />, label: t('start.admin'), subtitle: isDe ? 'Organizer werden?' : 'Want to become an organizer?', inquiry: true },
-        ...(showCheckInTile ? [{ key: 'check-in', icon: <QrCode size={24} strokeWidth={1.6} />, label: isDe ? 'Check-In' : 'Check-in', subtitle: isDe ? 'Teilnehmer einchecken' : 'Check in attendees', onClick: () => navigate('check-in') }] : []),
-      ],
-    },
-    {
-      key: 'support', title: isDe ? 'Support' : 'Support',
-      items: showTicketsTile ? [{ key: 'tickets', icon: <MessageSquare size={24} strokeWidth={1.6} />, label: 'Tickets', subtitle: isDe ? 'Fragen beantworten' : 'Answer questions', badge: openTicketCount > 0 ? openTicketCount : undefined, onClick: () => navigate('tickets') }] : [],
-    },
-    {
-      key: 'verwaltung', title: isDe ? 'Verwaltung' : 'Administration',
-      items: [
-        ...(showAssistTile ? [{ key: 'assistant', icon: <Users size={24} strokeWidth={1.6} />, label: isDe ? 'Assistenz' : 'Assistant', subtitle: isDe ? 'Anmeldungen für andere' : 'Registrations for others', onClick: () => navigate('assistant') }] : []),
-        ...(showAdminHubTile ? [{ key: 'admin-hub', icon: <Star size={24} strokeWidth={1.6} />, label: 'Admin', subtitle: isDe ? 'Verwaltung & Prozesse' : 'Administration & processes', onClick: () => navigate('admin-hub') }] : []),
-        ...(showFATile ? [{ key: 'fa-center', icon: <FileText size={24} />, label: 'F&A Center', subtitle: isDe ? 'Abrechnungsrelevante Events' : 'Billing-relevant events', onClick: () => navigate('fa-center') }] : []),
-      ],
-    },
+
+  // v30.81: 403 auf DEX_Roles heißt „Rollenliste nicht lesbar" — wer dort als
+  // Organizer steht, hat dann keine Rolle, sondern ein fehlendes Leserecht.
+  // Vorher sah die Person nur „Organizer werden?" und niemand wusste, warum die
+  // Kachel grau ist.
+  // v31.9: Der Hinweis stand nur auf der Kachel — auf dem Handy fehlte genau
+  // der Satz, der den grauen Punkt erklärt. Jetzt hängt er am Menüpunkt und
+  // wird auf beiden Wegen gerendert. Außerdem standen die typografischen
+  // Anführungszeichen als `&bdquo;`/`&ldquo;` in einem JS-String: React
+  // maskiert das, die Person las die Entity im Klartext.
+  const rightsHint = (rolesReadStatus === 'forbidden' || eventsReadStatus === 'forbidden') ? (
+    isDe
+      ? 'Deine Rollen oder die Event-Liste konnten nicht geladen werden (fehlendes Leserecht). Bist du bereits Organizer? Dann bitte einen Admin, in der Rollenverwaltung „Rechte prüfen“ auszuführen.'
+      : 'Your roles or the event list could not be loaded (missing read access). Already an organizer? Ask an admin to run “Check rights” in role management.'
+  ) : null;
+
+  const itemRegister: MenuItem = {
+    key: 'register', tour: 'tile-register',
+    icon: (s, w) => <Calendar size={s} strokeWidth={w} />,
+    title: t('start.register'), desc: t('start.register.desc'),
+    onClick: () => navigate('register'),
+  };
+  const itemMyEvents: MenuItem = {
+    key: 'my-events', tour: 'tile-myevents',
+    icon: (s, w) => <Pin size={s} strokeWidth={w} />,
+    title: t('start.myevents'), desc: t('start.myevents.desc'),
+    onClick: () => navigate('my-events'),
+  };
+  const itemOrganizer: MenuItem = isOrganizer ? {
+    key: 'admin', tour: 'tile-admin', cardClass: 'start-card--admin',
+    icon: (s, w) => <Settings size={s} strokeWidth={w} />,
+    title: t('start.admin'), desc: t('start.admin.desc'),
+    onClick: () => navigate('admin'),
+  } : {
+    key: 'admin', cardClass: 'start-card--admin',
+    icon: (s, w) => <Settings size={s} strokeWidth={w} />,
+    title: t('start.admin'), desc: t('start.admin.desc'),
+    inquiry: true,
+    cta: isDe ? 'Organizer werden?' : 'Want to become an organizer?',
+    note: rightsHint,
+  };
+  const itemCheckIn: MenuItem = {
+    key: 'check-in', tour: 'tile-checkin', cardClass: 'start-card--checkin',
+    icon: (s, w) => <QrCode size={s} strokeWidth={w} />,
+    title: isDe ? 'Check-In' : 'Check-in',
+    desc: isDe ? 'Teilnehmer einchecken' : 'Check in attendees',
+    onClick: () => navigate('check-in'),
+  };
+  const itemTickets: MenuItem = {
+    key: 'tickets',
+    icon: (s, w) => <MessageSquare size={s} strokeWidth={w} />,
+    title: 'Tickets', desc: isDe ? 'Fragen beantworten' : 'Answer questions',
+    badge: openTicketCount > 0 ? openTicketCount : undefined,
+    onClick: () => navigate('tickets'),
+  };
+  const itemAssist: MenuItem = {
+    key: 'assistant',
+    icon: (s, w) => <Users size={s} strokeWidth={w} />,
+    title: isDe ? 'Assistenz' : 'Assistant',
+    desc: isDe ? 'Anmeldungen für andere' : 'Registrations for others',
+    onClick: () => navigate('assistant'),
+  };
+  const itemAdminHub: MenuItem = {
+    key: 'admin-hub',
+    icon: (s, w) => <Star size={s} strokeWidth={w} />,
+    title: 'Admin', desc: isDe ? 'Verwaltung & Prozesse' : 'Administration & processes',
+    onClick: () => navigate('admin-hub'),
+  };
+  const itemFA: MenuItem = {
+    key: 'fa-center',
+    icon: (s, w) => <FileText size={s} strokeWidth={w} />,
+    title: 'F&A Center',
+    desc: isDe ? 'Abrechnungsrelevante Events' : 'Billing-relevant events',
+    onClick: () => navigate('fa-center'),
+  };
+
+  const clusters: Array<{ key: string; title: string; items: MenuItem[] }> = [
+    { key: 'teilnahme', title: isDe ? 'Teilnahme' : 'Participation', items: [itemRegister, itemMyEvents] },
+    { key: 'organisation', title: isDe ? 'Organisation' : 'Organization', items: [itemOrganizer, ...(showCheckInTile ? [itemCheckIn] : [])] },
+    { key: 'support', title: isDe ? 'Support' : 'Support', items: showTicketsTile ? [itemTickets] : [] },
+    { key: 'verwaltung', title: isDe ? 'Verwaltung' : 'Administration', items: [...(showAssistTile ? [itemAssist] : []), ...(showAdminHubTile ? [itemAdminHub] : []), ...(showFATile ? [itemFA] : [])] },
   ].filter(c => c.items.length > 0);
 
   if (isMobile) {
     return (
       <div className="page-container">
         <div className="dex-start-rows" style={{ maxWidth: 520, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {rowClusters.map(c => (
+          {clusters.map(c => (
             <div key={c.key}>
-              <div style={{
-                fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px',
-                color: 'var(--dex-gray-500)', margin: '0 4px 8px',
-              }}>{c.title}</div>
-              <div style={{
-                background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 14,
-                overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-              }}>
+              <div className="dex-ui-section-title" style={{ margin: '0 4px 8px' }}>{c.title}</div>
+              {/* v31.9: Karte mit Zeilen aus dem gemeinsamen Klassensatz
+                  (`dex-ui-card--list` + `dex-ui-row`) statt handgebauter
+                  Inline-Styles — dieselbe Zeile wie in „Meine Events". */}
+              <div className="dex-ui-card dex-ui-card--list">
                 {c.items.map((it, i) => (
                   <button
                     key={it.key}
                     type="button"
-                    onClick={it.inquiry ? () => setShowInquiry(true) : it.onClick}
+                    data-tour={it.tour}
+                    className={cx('dex-ui-rowbtn', 'dex-ui-row')}
+                    // Innenabstand und Trennlinie stehen bewusst hier: Der
+                    // Knopf-Reset `dex-ui-rowbtn` steht im Stylesheet HINTER
+                    // `dex-ui-row` und setzt `padding: 0; border: none` — die
+                    // Klassen allein ergäben eine randlose, gequetschte Zeile.
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 14, width: '100%',
-                      minHeight: 58, padding: '10px 14px', textAlign: 'left', cursor: 'pointer',
-                      background: 'transparent', border: 'none', fontFamily: 'inherit',
-                      borderTop: i === 0 ? 'none' : '1px solid var(--dex-gray-100)',
+                      minHeight: 58, padding: '10px 12px',
+                      borderTop: i === 0 ? undefined : '1px solid var(--dex-gray-100)',
                     }}
+                    onClick={it.inquiry ? () => setShowInquiry(true) : it.onClick}
                   >
                     <span style={{
                       flex: '0 0 auto', width: 42, height: 42, borderRadius: '50%',
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                       background: 'rgba(134,188,37,0.12)', color: 'var(--dex-green-dark, #4a7c1f)',
-                    }}>{it.icon}</span>
-                    <span style={{ flex: '1 1 auto', minWidth: 0 }}>
-                      <span style={{ display: 'block', fontWeight: 700, fontSize: '0.98rem', color: 'var(--dex-gray-800)', lineHeight: 1.25 }}>
-                        {it.label}
+                    }}>{it.icon(24, 1.6)}</span>
+                    <span className="dex-ui-row-main">
+                      {/* v31.9: Titel und Untertitel brechen um, statt zu
+                          kürzen — was hier abgeschnitten wird, steht auf dem
+                          Handy nirgendwo sonst (Leitfaden 6b). */}
+                      <span className="dex-ui-row-title dex-ui-row-title--wrap" style={{ display: 'block', fontSize: '0.98rem' }}>
+                        {it.title}
                       </span>
-                      <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-500)', lineHeight: 1.3, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {it.subtitle}
+                      <span className="dex-ui-row-sub" style={{ display: 'block', fontSize: '0.8rem' }}>
+                        {it.desc}
                       </span>
+                      {it.cta && (
+                        <span className="dex-ui-row-link" style={{ display: 'block', marginTop: 4, fontWeight: 600, fontSize: '0.8rem' }}>
+                          {it.cta}
+                        </span>
+                      )}
+                      {it.note && (
+                        <span className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm" style={{ display: 'flex', marginTop: 6 }}>
+                          {it.note}
+                        </span>
+                      )}
                     </span>
                     {typeof it.badge === 'number' && (
-                      <span style={{
-                        flex: '0 0 auto', background: '#ed8b00', color: '#fff', borderRadius: 12,
-                        minWidth: 22, height: 22, padding: '0 6px', display: 'inline-flex',
-                        alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700,
-                      }}>{it.badge}</span>
+                      <span className="dex-ui-pill dex-ui-pill--orange" style={{ flex: '0 0 auto' }}>{it.badge}</span>
                     )}
-                    <span style={{ flex: '0 0 auto', color: 'var(--dex-gray-300)', fontSize: '1.5rem', lineHeight: 1, marginLeft: 2 }} aria-hidden="true">›</span>
+                    <span style={{ flex: '0 0 auto', color: 'var(--dex-gray-400)', display: 'inline-flex', marginLeft: 2 }} aria-hidden="true">
+                      <ChevronRight size={18} />
+                    </span>
                   </button>
                 ))}
               </div>
@@ -371,7 +358,48 @@ export default function StartPage(): React.ReactElement {
           <div key={c.key} className="dex-cluster">
             <div className="dex-cluster-title">{c.title}</div>
             <div className="dex-cluster-tiles">
-              {c.tiles.map((tile, i) => <React.Fragment key={i}>{tile}</React.Fragment>)}
+              {c.items.map(it => (
+                <div
+                  key={it.key}
+                  className={cx('card', !it.inquiry && 'card-clickable', 'start-card', it.cardClass)}
+                  data-tour={it.tour}
+                  style={it.inquiry
+                    ? { position: 'relative', cursor: 'default', opacity: 0.55 }
+                    : (typeof it.badge === 'number' ? { position: 'relative' } : undefined)}
+                  onClick={it.inquiry ? undefined : it.onClick}
+                >
+                  <div className="start-card__icon">{it.icon(64, 1)}</div>
+                  <h2>{it.title}</h2>
+                  <p>{it.desc}</p>
+                  {typeof it.badge === 'number' && (
+                    <span style={{
+                      position: 'absolute', top: 10, right: 10, background: '#ed8b00', color: '#fff',
+                      borderRadius: 12, minWidth: 22, height: 22, padding: '0 6px',
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700,
+                    }}>{it.badge}</span>
+                  )}
+                  {it.inquiry && (
+                    <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center', justifyContent: 'center', padding: 10 }}>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setShowInquiry(true); }}
+                        style={{
+                          background: 'var(--dex-green, #86bc25)', color: '#fff', border: 'none', borderRadius: 14,
+                          padding: '8px 12px', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
+                          fontSize: '0.74rem', lineHeight: 1.25, textAlign: 'center',
+                        }}
+                      >
+                        {it.cta}
+                      </button>
+                      {it.note && (
+                        <div style={{ fontSize: '0.7rem', lineHeight: 1.3, textAlign: 'center', color: 'var(--dex-orange-dark, #b35a00)', background: 'rgba(255,255,255,0.92)', borderRadius: 8, padding: '6px 8px', maxWidth: 240 }}>
+                          {it.note}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         ))}

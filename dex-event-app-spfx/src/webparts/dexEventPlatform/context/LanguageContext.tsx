@@ -77,11 +77,28 @@ export const translations: Record<Locale, Record<string, string>> = {
     'events.previewsoon': 'Vorschau — Anmeldung bald möglich',
     'events.regfrom': 'Anmeldung ab',
     'events.deadlinepassed.hint': 'Bitte wende dich an den Organizer, wenn du dich noch anmelden möchtest.',
+    // v31.8: Derselbe Satz in drei Teilen. Die Kachel hat den Satz bisher mit
+    // /(organizer)/i zerlegt, um das Wort anklickbar zu machen — eine
+    // Umformulierung ohne dieses Wort hätte die Kontaktkarte lautlos entfernt.
+    // Jetzt steht der anklickbare Teil als eigener Schlüssel da.
+    'events.deadlinepassed.hint.pre': 'Bitte wende dich an den ',
+    'events.deadlinepassed.hint.word': 'Organizer',
+    'events.deadlinepassed.hint.post': ', wenn du dich noch anmelden möchtest.',
+    'events.empty': 'Für dich ist gerade kein Event ausgeschrieben.',
+    'events.empty.hint': 'Sobald du für ein Event eingeladen bist, steht es hier.',
+    'events.draft': 'Entwurf',
+    'events.organizers': 'Organizer:',
+    'events.participants': 'Teilnehmer',
 
     // Registration Page
     'reg.selectedevent': 'Ausgewähltes Event',
-    'reg.personalinfo': 'Persönliche Informationen',
-    'reg.eventinfo': 'Event-spezifische Informationen',
+    // v31.9: Beides waren Feldnamen, nicht Beschriftungen (Leitfaden 2c/6d).
+    // „Persönliche Informationen" stand zudem unter dem Stationskopf „Deine
+    // Daten" und sagte dasselbe zweimal; „Event-spezifische Informationen"
+    // war irreführend, weil dort bei einem Klammer-Event auch die
+    // Termin-AUSWAHL steht — nicht nur Angaben.
+    'reg.personalinfo': 'Deine Kontaktdaten',
+    'reg.eventinfo': 'Deine Auswahl und Angaben',
     'reg.starter.title': 'Gruppen-Auswahl',
     'reg.starter.hint': 'Wähle eine der zwei Gruppen aus. Ist die Wunsch-Gruppe voll, kannst du automatisch in die andere wechseln oder auf der Warteliste warten.',
     'reg.starter.durch': 'Durchstarter',
@@ -154,8 +171,14 @@ export const translations: Record<Locale, Record<string, string>> = {
 
     // My Events
     'myevents.title': 'Meine Events',
-    'myevents.loading': 'Lade deine Registrierungen...',
-    'myevents.empty': 'Du bist noch für kein Event registriert.',
+    'myevents.loading': 'Deine Anmeldungen werden geladen …',
+    'myevents.empty': 'Du bist noch für kein Event angemeldet.',
+    'myevents.loaderror': 'Deine Anmeldungen konnten nicht geladen werden.',
+    // v31.8: Der Satz sagt, was der Kasten BEDEUTET — nicht, was man klicken
+    // soll. Der Weg ist der Knopf daneben; „Lade die Seite neu" war ein
+    // zweiter, schlechterer Bedienweg direkt darüber.
+    'myevents.loaderror.hint': 'Der Stand unten kann unvollständig sein — eine Anmeldung kann fehlen, obwohl es sie gibt.',
+    'myevents.retry': 'Erneut versuchen',
     'myevents.browse': 'Events durchsuchen',
     'myevents.cancel': 'Abmelden',
     'myevents.confirming': 'Wird abgemeldet...',
@@ -535,11 +558,19 @@ export const translations: Record<Locale, Record<string, string>> = {
     'events.previewsoon': 'Preview — registration opens soon',
     'events.regfrom': 'Registration opens',
     'events.deadlinepassed.hint': 'Please contact the organizer if you still want to register.',
+    'events.deadlinepassed.hint.pre': 'Please contact the ',
+    'events.deadlinepassed.hint.word': 'organizer',
+    'events.deadlinepassed.hint.post': ' if you still want to register.',
+    'events.empty': 'There is currently no event open to you.',
+    'events.empty.hint': 'As soon as you are invited to an event, it will show up here.',
+    'events.draft': 'Draft',
+    'events.organizers': 'Organizer:',
+    'events.participants': 'participants',
 
     // Registration Page
     'reg.selectedevent': 'Selected Event',
-    'reg.personalinfo': 'Personal Information',
-    'reg.eventinfo': 'Event specific Information',
+    'reg.personalinfo': 'Your contact details',
+    'reg.eventinfo': 'Your selection and answers',
     'reg.starter.title': 'Group selection',
     'reg.starter.hint': 'Pick one of the two groups. If your preferred group is full, you can either switch to the other or join the waitlist.',
     'reg.starter.durch': 'Sprinter',
@@ -607,8 +638,11 @@ export const translations: Record<Locale, Record<string, string>> = {
 
     // My Events
     'myevents.title': 'My Events',
-    'myevents.loading': 'Loading your registrations...',
+    'myevents.loading': 'Loading your registrations …',
     'myevents.empty': 'You are not registered for any event yet.',
+    'myevents.loaderror': 'Your registrations could not be loaded.',
+    'myevents.loaderror.hint': 'What you see below may be incomplete — a registration can be missing even though it exists.',
+    'myevents.retry': 'Try again',
     'myevents.browse': 'Browse events',
     'myevents.cancel': 'Cancel registration',
     'myevents.confirming': 'Cancelling...',

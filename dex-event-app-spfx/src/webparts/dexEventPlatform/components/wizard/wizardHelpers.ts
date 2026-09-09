@@ -163,6 +163,26 @@ function organizerRunRegex(candidates: string[]): RegExp {
 }
 const ORGANIZER_PH = '{{Organizer}}';
 
+/**
+ * v31.7: Ein Absatz zerlegt in Tags und Text — ersetzt wird NUR im Text.
+ *
+ * Organizer-Namen stehen im Text, nie in einem Attribut. Das war bisher egal;
+ * seit v31.7 kann im Termin-Text ein Inline-Bild stehen, und dessen Base64
+ * (A–Z, a–z, 0–9, +, /) enthält früher oder später jede kurze Buchstabenfolge —
+ * also auch einen einteiligen Organizer-Namen wie „Schmidt". Ein Treffer DORT
+ * hätte `{{Organizer}}` mitten ins Bild geschrieben: das Bild kaputt, und der
+ * nächste Save hätte die ganze Namensliste hineingebacken. Das ist genau die
+ * Aufblähung aus v30.74, nur unsichtbar. Mehrteilige Namen („Anna Berg",
+ * „Berg, Anna") schützt das Leerzeichen ohnehin — einteilige nicht.
+ */
+const TAG_SPLIT = /(<[^>]*>)/;
+const isTag = (seg: string): boolean => seg.charAt(0) === '<';
+const replaceInTextOnly = (par: string, run: RegExp, to: string): string =>
+  par.split(TAG_SPLIT).map(seg => (isTag(seg) ? seg : seg.replace(run, to))).join('');
+/** Nur die Textteile eines Absatzes, durch \n getrennt — damit ein „Lauf" nie
+ *  über eine Tag-Grenze hinweg zusammenwächst (wie beim Ersetzen oben). */
+const textOnly = (par: string): string => par.split(TAG_SPLIT).filter(seg => !isTag(seg)).join('\n');
+
 export function reinsertOrganizerPlaceholder(body: string, organizers: string[]): string {
   if (!body || !organizers || organizers.length === 0) return body;
   if (body.indexOf(ORGANIZER_PH) >= 0) return body; // schon Platzhalter
@@ -170,7 +190,7 @@ export function reinsertOrganizerPlaceholder(body: string, organizers: string[])
   if (candidates.length === 0) return body;
   const run = organizerRunRegex(candidates);
   return body.split('</p>').map(par => {
-    const replaced = par.replace(run, ORGANIZER_PH);
+    const replaced = replaceInTextOnly(par, run, ORGANIZER_PH);
     const first = replaced.indexOf(ORGANIZER_PH);
     const last = replaced.lastIndexOf(ORGANIZER_PH);
     if (first < 0 || first === last) return replaced;
@@ -194,7 +214,10 @@ export function outlookBodyOrganizerBloated(body: string, organizers: string[]):
   // „leider Outlook nicht geändert").
   const single = new RegExp(`(?:${candidates.map(escapeRegExp).join('|')})`, 'g');
   return body.split('</p>').some(par => {
-    const runs = par.match(run) || [];
+    // v31.7: Dieselbe Sicht wie beim Ersetzen — sonst meldete ein Base64-Bild
+    // im Termin-Text „aufgebläht" und der Wizard böte bei jedem Speichern ein
+    // Outlook-Update an, das nichts ändert.
+    const runs = textOnly(par).match(run) || [];
     if (runs.length >= 2) return true;
     return runs.some(r => {
       const names = r.match(single) || [];

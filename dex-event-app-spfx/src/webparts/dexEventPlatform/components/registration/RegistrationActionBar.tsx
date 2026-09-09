@@ -4,8 +4,10 @@
 import * as React from 'react';
 import { DeloitteEvent } from '../../types';
 import { Icon } from '@fluentui/react/lib/Icon';
-import { Send, X } from '../Icons';
+import { AlertCircle, Info, Send, X } from '../Icons';
 import { Locale } from '../../context/LanguageContext';
+import { useDialog } from '../../context/DialogContext';
+import { cx } from '../dexUi';
 
 /** Platz-Badge und die Aktions-Buttons unter dem Formular (v24.57). */
 export interface RegistrationActionBarProps {
@@ -39,6 +41,85 @@ export interface RegistrationActionBarProps {
 }
 export const RegistrationActionBar: React.FC<RegistrationActionBarProps> = (p) => {
   const { childEvents, childOneDe, childTermPlural, childTermSingular, email, event, handleDecline, handleSubmit, isDeclining, isSubmitting, isTeamMode, liveStats, locale, nothingToSubmit, otherConsentConfirmed, parentAlreadyRegistered, pendingJoinTeam, registerForOther, resolveMainEventLabel, selectedSessions, sessionsChanged, t, teamMembersParsed, teamValidation, thirdPartyCheck, willRegisterParent } = p;
+  // v31.9: Die Absage ist eine Entscheidung mit Folgen — sie gilt fuer das
+  // ganze Event. Bisher stand das nur im `title` des Knopfs, also auf dem
+  // Handy nirgends. Jetzt fragt ein Dialog nach (Leitfaden 2b/6b).
+  const { confirmDialog } = useDialog();
+
+  // v31.9: Warum der Anmelde-Knopf gesperrt ist, stand bisher NUR im
+  // `title` — und der Knopf selbst nannte den Grund in zwei von sechs
+  // Faellen, indem er seine Beschriftung durch die Fehlermeldung ersetzte.
+  // Beides ist auf dem Handy wertlos bzw. verwirrend. Die Bedingungen sind
+  // unveraendert; sie wandern nur aus der IIFE nach oben, damit der Grund
+  // AUCH unter der Knopfzeile als Text stehen kann.
+
+  // v15.11: im subEventsOnlyMode (Hauptevent nicht anmeldbar) muss
+  // mindestens ein Sub-Event ausgewählt sein, sonst Button ausgrauen
+  // + Hinweis statt „Registrieren (Haupt-Event)" zeigen.
+  const isSubOnly = !!(event && event.subEventsOnlyMode) && !registerForOther;
+  // v30.67: … außer die leere Auswahl ist die Änderung — wer alle
+  // gebuchten Termine abwählt, will sich abmelden. Vorher war die
+  // letzte Anmeldung über diese Seite nicht kündbar: Button grau,
+  // „Bitte mindestens ein Event auswählen".
+  const nothingPicked = isSubOnly && selectedSessions.size === 0 && !sessionsChanged;
+  // v15.16: Consent-Pflicht bei „Für andere registrieren".
+  const needsOtherConsent = registerForOther && !!email.trim() && !otherConsentConfirmed;
+  // v19.8: Bei stellvertretender Anmeldung den Button sperren, wenn die
+  // ausgewählte Person bereits angemeldet ist — vorher konnte man
+  // trotz Hinweis auf „Registrieren" klicken (und es kam danach noch
+  // die CC-Frage). Jetzt klare Blockade direkt am Button.
+  const targetAlreadyRegistered = registerForOther && !!(thirdPartyCheck && thirdPartyCheck.alreadyRegistered);
+  // v18: Demo-Event — Register-Button ist bewusst NICHT auswählbar
+  // (keine echte Anmeldung; reine Showcase-Ansicht).
+  const isDemo = !!(event && event.isDemoShowcase);
+  // v28.88: Bereits angemeldet und nichts (mehr) auszuwählen → der
+  // Klick konnte ohnehin nichts bewirken und endete in einer
+  // Fehlermeldung. (nothingToSubmit deckt auch Abwahl-Änderungen ab —
+  // wer Sub-Events abmeldet, kommt weiterhin durch.)
+  const alreadyDone = parentAlreadyRegistered && nothingToSubmit;
+  const isDisabled = isDemo || isSubmitting || (isTeamMode && !teamValidation.ok) || nothingPicked || needsOtherConsent || targetAlreadyRegistered || alreadyDone;
+  const lockReason = isDemo
+    ? (locale === 'de' ? 'Demo-Event — eine echte Anmeldung ist nicht möglich.' : 'Demo event — real registration is not possible.')
+    : (alreadyDone
+    ? (locale === 'de' ? 'Du bist für dieses Event bereits angemeldet. Abmelden kannst du dich über „Meine Events“.' : 'You are already registered for this event. You can cancel via “My events”.')
+    : (targetAlreadyRegistered
+    ? (locale === 'de' ? 'Diese Person ist bereits für das Event angemeldet.' : 'This person is already registered for this event.')
+    : (isTeamMode && !teamValidation.ok
+    ? (teamValidation.reason || '')
+    : (nothingPicked
+        ? (locale === 'de'
+            ? `Bitte mindestens ${childOneDe} auswählen.`
+            : `Please pick at least one ${childTermSingular || 'sub-event'}.`)
+        : (needsOtherConsent
+            ? (locale === 'de'
+                ? 'Bitte bestätige die Zustimmung der Person.'
+                : 'Please confirm the person\'s consent.')
+            : '')))));
+  // Ein Grund, den die Person selbst ausräumen kann, ist eine Aufforderung
+  // (orange); ein Zustand, an dem sie hier nichts ändert, ist eine Info.
+  const lockIsActionable = !!lockReason && !isDemo && !alreadyDone && !targetAlreadyRegistered;
+
+  // v31.9: Rückfrage vor der Absage. Der Text nennt die Folge — und bei
+  // einem Klammer-Event die Termine über `childTermPlural`, weil die Absage
+  // auch für die bereits gebuchten gilt (s. handleDecline, v29.32).
+  const askAndDecline = async (): Promise<void> => {
+    const question = locale === 'de'
+      ? (childEvents.length > 0
+        ? `Du meldest damit zurück, dass du nicht teilnimmst. Das gilt für das gesamte Event inklusive aller ${childTermPlural || 'Sub-Events'} — auch für die, die du bereits gebucht hast.`
+        : 'Du meldest damit zurück, dass du nicht teilnimmst. Eine Anmeldung entsteht dabei nicht; eine bestehende wird zurückgenommen.')
+      : (childEvents.length > 0
+        ? 'This tells the organizers that you will not attend. It applies to the whole event including all sub-events — also those you already booked.'
+        : 'This tells the organizers that you will not attend. No registration is created; an existing one is withdrawn.');
+    const ok = await confirmDialog(question, {
+      danger: true,
+      title: locale === 'de' ? 'Wirklich absagen?' : 'Really decline?',
+      confirmLabel: locale === 'de' ? 'Ja, ich nehme nicht teil' : 'Yes, I will not attend',
+      cancelLabel: locale === 'de' ? 'Zurück' : 'Back',
+    });
+    if (!ok) return;
+    await handleDecline();
+  };
+
   return (
       <div style={{ maxWidth: 1100, margin: '24px auto 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
         {/* v24.57: Badge mit Icon — freie Plätze ODER (wenn voll + Warteliste
@@ -94,56 +175,11 @@ export const RegistrationActionBar: React.FC<RegistrationActionBarProps> = (p) =
           );
         })()}
         <div className="registration-actions" style={{ alignItems: 'center' }}>
-        {(() => {
-          // v15.11: im subEventsOnlyMode (Hauptevent nicht anmeldbar) muss
-          // mindestens ein Sub-Event ausgewählt sein, sonst Button ausgrauen
-          // + Hinweis statt „Registrieren (Haupt-Event)" zeigen.
-          const isSubOnly = !!(event && event.subEventsOnlyMode) && !registerForOther;
-          // v30.67: … außer die leere Auswahl ist die Änderung — wer alle
-          // gebuchten Termine abwählt, will sich abmelden. Vorher war die
-          // letzte Anmeldung über diese Seite nicht kündbar: Button grau,
-          // „Bitte mindestens ein Event auswählen".
-          const nothingPicked = isSubOnly && selectedSessions.size === 0 && !sessionsChanged;
-          // v15.16: Consent-Pflicht bei „Für andere registrieren".
-          const needsOtherConsent = registerForOther && !!email.trim() && !otherConsentConfirmed;
-          // v19.8: Bei stellvertretender Anmeldung den Button sperren, wenn die
-          // ausgewählte Person bereits angemeldet ist — vorher konnte man
-          // trotz Hinweis auf „Registrieren" klicken (und es kam danach noch
-          // die CC-Frage). Jetzt klare Blockade direkt am Button.
-          const targetAlreadyRegistered = registerForOther && !!(thirdPartyCheck && thirdPartyCheck.alreadyRegistered);
-          // v18: Demo-Event — Register-Button ist bewusst NICHT auswählbar
-          // (keine echte Anmeldung; reine Showcase-Ansicht).
-          const isDemo = !!(event && event.isDemoShowcase);
-          // v28.88: Bereits angemeldet und nichts (mehr) auszuwählen → der
-          // Klick konnte ohnehin nichts bewirken und endete in einer
-          // Fehlermeldung. Jetzt sagt der Button selbst, dass die Anmeldung
-          // schon steht. (nothingToSubmit deckt auch Abwahl-Änderungen ab —
-          // wer Sub-Events abmeldet, kommt weiterhin durch.)
-          const alreadyDone = parentAlreadyRegistered && nothingToSubmit;
-          const isDisabled = isDemo || isSubmitting || (isTeamMode && !teamValidation.ok) || nothingPicked || needsOtherConsent || targetAlreadyRegistered || alreadyDone;
-          const titleAttr = isDemo
-            ? (locale === 'de' ? 'Demo-Event — eine echte Anmeldung ist nicht möglich.' : 'Demo event — real registration is not possible.')
-            : (alreadyDone
-            ? (locale === 'de' ? 'Du bist für dieses Event bereits angemeldet. Abmelden kannst du dich über „Meine Events".' : 'You are already registered for this event. You can cancel via „My events".')
-            : (targetAlreadyRegistered
-            ? (locale === 'de' ? 'Diese Person ist bereits für das Event angemeldet.' : 'This person is already registered for this event.')
-            : (isTeamMode && !teamValidation.ok
-            ? (teamValidation.reason || '')
-            : (nothingPicked
-                ? (locale === 'de'
-                    ? `Bitte mindestens ${childOneDe} auswählen.`
-                    : `Please pick at least one ${childTermSingular || 'sub-event'}.`)
-                : (needsOtherConsent
-                    ? (locale === 'de'
-                        ? 'Bitte bestätige die Zustimmung der Person.'
-                        : 'Please confirm the person\'s consent.')
-                    : '')))));
-          return (
             <button
-              className="btn btn-primary"
+              className={cx('btn', 'btn-primary', isDisabled && 'dex-ui-btn--locked')}
               onClick={handleSubmit}
               disabled={isDisabled}
-              title={titleAttr}
+              title={lockReason}
             >
               {/* v24.94: Label in EINEN Span wickeln. Sonst werden „Register" und
                   das „(Warteliste)"-Suffix-Span zu separaten Flex-Items des
@@ -151,10 +187,11 @@ export const RegistrationActionBar: React.FC<RegistrationActionBarProps> = (p) =
                   das Leerzeichen ergaben einen doppelten Abstand. */}
               <Send size={16} /> <span>{(() => {
                 if (isSubmitting) return t('reg.submitting');
-                // v28.88: Bestehende Anmeldung, nichts zu ändern — der Button
-                // sagt das jetzt selbst, statt „Registrieren" anzubieten und
-                // beim Klick zu meckern.
-                if (alreadyDone) return locale === 'de' ? 'Bereits angemeldet' : 'Already registered';
+                // v31.9: Der Fall „bereits angemeldet" ersetzte hier bis v31.8
+                // die Beschriftung („Bereits angemeldet", v28.88). Ein Knopf,
+                // dessen Beschriftung die Meldung IST, verliert seine Aussage,
+                // was er tut — der Grund steht jetzt als Text unter der
+                // Knopfzeile (lockReason), die Beschriftung bleibt.
                 // v24.62: Wenn das Hauptevent voll ist und eine Warteliste hat,
                 // landet die Anmeldung auf der Warteliste — im Button steht das als
                 // kurzer, NICHT fetter Zusatz „(Warteliste)" (die aktuelle Anzahl
@@ -180,11 +217,9 @@ export const RegistrationActionBar: React.FC<RegistrationActionBarProps> = (p) =
                     ? `Team anmelden (${n} ${n === 1 ? 'Person' : 'Personen'})`
                     : `Register team (${n} ${n === 1 ? 'person' : 'people'})`;
                 }
-                if (nothingPicked) {
-                  return locale === 'de'
-                    ? `Bitte mindestens ${childOneDe} auswählen`
-                    : `Please pick at least one ${childTermSingular || 'sub-event'}`;
-                }
+                // v31.9: Auch hier stand bis v31.8 die Aufforderung „Bitte
+                // mindestens … auswählen" ALS Beschriftung. Sie steht jetzt
+                // unter der Knopfzeile; der Knopf sagt weiterhin, was er tut.
                 if (registerForOther) return <>{t('reg.register')}{waitlistSuffixNode}</>;
                 // v7.3: Kein Selection-Block → einfacher "Registrieren"-Text ohne
                 // Parantheses-Info. Erst wenn Sub-Events existieren, zeigen wir
@@ -200,16 +235,14 @@ export const RegistrationActionBar: React.FC<RegistrationActionBarProps> = (p) =
                 return <>{t('reg.register')} ({parts.join(' + ')}){willRegisterParent ? waitlistSuffixNode : null}</>;
               })()}</span>
             </button>
-          );
-        })()}
         {/* v18.11: „Ich nehme nicht teil" — proaktive Absage. Nur bei
             Selbst-Anmeldung (nicht „für andere", nicht Team-Modus, kein
             Demo-Event). Braucht keine Pflichtfelder. */}
         {!registerForOther && !isTeamMode && !pendingJoinTeam && !(event && event.isDemoShowcase) && (
           <button
             type="button"
-            className="btn btn-secondary"
-            onClick={handleDecline}
+            className={cx('btn', 'btn-secondary', (isDeclining || isSubmitting) && 'dex-ui-btn--locked')}
+            onClick={askAndDecline}
             disabled={isDeclining || isSubmitting}
             title={locale === 'de'
               ? (childEvents.length > 0
@@ -226,6 +259,22 @@ export const RegistrationActionBar: React.FC<RegistrationActionBarProps> = (p) =
           </button>
         )}
         </div>
+        {/* v31.9: Der Grund, warum der Anmelde-Knopf gesperrt ist — als
+            Text unter der Knopfzeile, nicht nur im `title`. Auf dem Handy
+            gibt es kein Überfahren, und ohne diesen Satz sah ein grauer
+            Knopf nach einem Fehler der App aus (Leitfaden 6b). */}
+        {isDisabled && !!lockReason && (
+          <div
+            className={cx('dex-ui-callout', lockIsActionable ? 'dex-ui-callout--warn' : 'dex-ui-callout--info')}
+            role="status"
+            style={{ maxWidth: 620 }}
+          >
+            <span className="dex-ui-callout-icon">
+              {lockIsActionable ? <AlertCircle size={16} /> : <Info size={16} />}
+            </span>
+            <span className="dex-ui-callout-body">{lockReason}</span>
+          </div>
+        )}
       </div>
   );
 };

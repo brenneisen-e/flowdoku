@@ -5,6 +5,12 @@
  */
 import * as React from 'react';
 import { Icon } from '@fluentui/react/lib/Icon';
+// v31.8: Optik über die gemeinsamen dex-ui-Klassen. Die Dokumentzeile war ein
+// `<div onClick>` mit Text-Pfeil: kein Tastaturfokus, kein Hover-Versprechen,
+// und der Pfeil war ein Zeichen statt eines Symbols. `ensureDexUiStyles()`
+// ruft die Seiten-Komponente (`MyEventsPage`), Unterkomponenten nie.
+import { cx } from '../dexUi';
+import { AlertCircle, ChevronDown } from '../Icons';
 
 // v20.0 (Audit): PdfViewer zieht react-pdf (+pdfjs) ins Bundle — lazy laden,
 // der Viewer wird nur beim Öffnen eines Dokuments gebraucht.
@@ -22,7 +28,7 @@ function getDocIconName(name: string): string {
   }
 }
 
-export default function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url: string; size?: number}>; t: (key: string) => string }): React.ReactElement {
+export default function DocumentsViewer({ documents, t, isDe }: { documents: Array<{name: string; url: string; size?: number}>; t: (key: string) => string; isDe: boolean }): React.ReactElement {
   const [expandedDoc, setExpandedDoc] = React.useState<string | null>(null);
   const [blobUrl, setBlobUrl] = React.useState<string>('');
   const [pdfBlob, setPdfBlob] = React.useState<Blob | null>(null);
@@ -116,47 +122,89 @@ export default function DocumentsViewer({ documents, t }: { documents: Array<{na
   }, [blobUrl]);
 
   return (
-    <div style={{ marginTop: 12 }}>
-      <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 6 }}>
-        {t('myevents.documents')}
-      </div>
+    <div className="dex-ui-section">
+      <div className="dex-ui-section-title">{t('myevents.documents')}</div>
       {documents.map((doc, i) => {
         const isExpanded = expandedDoc === doc.url;
 
         return (
           <div key={i} style={{ marginBottom: 6 }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-              background: isExpanded ? 'var(--dex-green-light, #f0fdf4)' : 'var(--dex-gray-100)',
-              borderRadius: isExpanded ? '8px 8px 0 0' : 8,
-              cursor: 'pointer', fontSize: '0.85rem', color: 'var(--dex-gray-700)',
-              transition: 'background 0.15s',
-            }} onClick={() => toggleDoc(doc)}>
-              <span style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--dex-green-dark, #6b9a1e)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Icon iconName={getDocIconName(doc.name)} style={{ fontSize: 16, color: '#fff' }} />
-              </span>
-              <span style={{ flex: 1, fontWeight: isExpanded ? 600 : 400 }}>{doc.name}</span>
-              {doc.size ? <span style={{ color: 'var(--dex-gray-400)', fontSize: '0.75rem' }}>{(doc.size / 1024).toFixed(0)} KB</span> : null}
+            {/* v31.8: Die Zeile ist jetzt ein echter <button> (Tastaturfokus,
+                aria-expanded); der Download-Link steht als eigene Aktion
+                daneben, statt im Klickfeld zu liegen — ein <a> im <button>
+                wäre ungültiges Markup. */}
+            {/* v31.8: `dex-ui-row` hat im Ruhezustand weder Grund noch Rahmen —
+                die Zeile war nur beim Überfahren als Zeile zu erkennen, also auf
+                dem Handy gar nicht (Leitfaden 6b). `--framed` gibt ihr den
+                dauerhaften Rahmen und lässt Hover und `is-active` durch, weil es
+                kein `background` setzt. Lokal bleibt nur der Radius: aufgeklappt
+                schließt die Zeile bündig mit dem Panel darunter ab. */}
+            <div
+              className={cx('dex-ui-row', 'dex-ui-row--framed', isExpanded && 'is-active')}
+              style={isExpanded ? { borderRadius: '10px 10px 0 0' } : undefined}
+            >
+              <button
+                type="button"
+                className="dex-ui-rowbtn"
+                onClick={() => toggleDoc(doc)}
+                aria-expanded={isExpanded}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}
+              >
+                <span className="dex-ui-avatar" style={{ background: 'var(--dex-green-dark, #6b9a1e)' }}>
+                  <Icon iconName={getDocIconName(doc.name)} style={{ fontSize: 16, color: '#fff' }} />
+                </span>
+                <span className="dex-ui-row-main">
+                  {/* v31.8: `dex-ui-row-title` kürzt mit Ellipse. Bei Namen wie
+                      &bdquo;Agenda_DTP_Basics_Training_Oktober_2026_final_v3.pdf&ldquo;
+                      stand danach nirgends mehr, welches Dokument man öffnet —
+                      der volle Name lebte nur im `title`, und was nur beim
+                      Überfahren erscheint, gibt es auf dem Handy nicht
+                      (Leitfaden 6b). `--wrap` lässt ihn umbrechen. */}
+                  <span
+                    className="dex-ui-row-title dex-ui-row-title--wrap"
+                    style={{ display: 'block', fontWeight: isExpanded ? 700 : 600 }}
+                  >{doc.name}</span>
+                  {doc.size ? <span className="dex-ui-row-sub" style={{ display: 'block' }}>{(doc.size / 1024).toFixed(0)} KB</span> : null}
+                </span>
+                <span className={cx('dex-ui-disclosure-chevron', isExpanded && 'is-open')}>
+                  <ChevronDown size={16} />
+                </span>
+              </button>
+              {/* Die Abblendung von `dex-ui-row-actions` auf 0.7 hebt das
+                  Stylesheet seit v31.8 unter `@media (hover: none)` auf — ohne
+                  Hover bliebe der Download-Knopf sonst dauerhaft blass. */}
               {doc.url && doc.url.startsWith('http') && (
-                <a href={doc.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: 'var(--dex-green-dark)', fontSize: '0.72rem', textDecoration: 'none' }}>
-                  <Icon iconName="Download" style={{ fontSize: 14 }} />
-                </a>
+                <span className="dex-ui-row-actions">
+                  <a
+                    href={doc.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="dex-ui-iconbtn"
+                    title={isDe ? 'Herunterladen' : 'Download'}
+                    aria-label={isDe ? `${doc.name} herunterladen` : `Download ${doc.name}`}
+                    onClick={e => e.stopPropagation()}
+                    style={{ color: 'var(--dex-green-dark)', textDecoration: 'none' }}
+                  >
+                    <Icon iconName="Download" style={{ fontSize: 14 }} />
+                  </a>
+                </span>
               )}
-              <span style={{ fontSize: '0.7rem', color: 'var(--dex-gray-400)' }}>{isExpanded ? '▲' : '▼'}</span>
             </div>
             {isExpanded && (
               <div style={{
                 border: '1px solid var(--dex-gray-200)', borderTop: 'none',
-                borderRadius: '0 0 8px 8px', overflow: 'hidden', background: '#fff',
+                borderRadius: '0 0 10px 10px', overflow: 'hidden', background: '#fff',
               }}>
                 {loading ? (
-                  <div style={{ padding: 40, textAlign: 'center', color: 'var(--dex-gray-400)' }}>
-                    {t('myevents.agenda') === 'Programm' ? 'Vorschau wird geladen...' : 'Loading preview...'}
+                  <div className="dex-ui-muted" style={{ padding: 40, textAlign: 'center' }}>
+                    {isDe ? 'Vorschau wird geladen …' : 'Loading preview …'}
                   </div>
                 ) : pdfBlob ? (
                   /* PDF via react-pdf (Canvas) - funktioniert Desktop + Mobile, eigenes Scrolling.
-                     v20.0: lazy Chunk — Suspense zeigt kurz den Lade-Hinweis. */
-                  <React.Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--dex-gray-400)' }}>…</div>}>
+                     v20.0: lazy Chunk — Suspense zeigt kurz den Lade-Hinweis.
+                     v31.8: derselbe Satz wie oben statt eines nackten „…" —
+                     drei Punkte allein sagen niemandem, was gerade passiert. */
+                  <React.Suspense fallback={<div className="dex-ui-muted" style={{ padding: 40, textAlign: 'center' }}>{isDe ? 'Vorschau wird geladen …' : 'Loading preview …'}</div>}>
                     <PdfViewer blob={pdfBlob} height={600} />
                   </React.Suspense>
                 ) : blobUrl ? (
@@ -170,9 +218,20 @@ export default function DocumentsViewer({ documents, t }: { documents: Array<{na
                     title={doc.name}
                   />
                 ) : (
-                  <div style={{ padding: 24, textAlign: 'center' }}>
-                    <a href={doc.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--dex-green-dark)' }}>
-                      {t('myevents.agenda') === 'Programm' ? 'Im Browser öffnen' : 'Open in browser'}
+                  /* v31.8: Dieser Zweig heißt „Datei nicht geladen" (kein
+                     SPFx-Kontext, HTTP-Fehler, leere Antwort). Vorher stand
+                     dort nur ein Link — der Grund war nirgends zu lesen. */
+                  <div style={{ padding: 16 }}>
+                    <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginBottom: 12 }}>
+                      <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                      <span>
+                        {isDe
+                          ? 'Die Vorschau konnte nicht geladen werden. Du kannst das Dokument direkt im Browser öffnen.'
+                          : 'The preview could not be loaded. You can open the document in your browser instead.'}
+                      </span>
+                    </div>
+                    <a href={doc.url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary dex-ui-btn-sm" style={{ textDecoration: 'none' }}>
+                      {isDe ? 'Im Browser öffnen' : 'Open in browser'}
                     </a>
                   </div>
                 )}

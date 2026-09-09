@@ -1,11 +1,15 @@
 /* myEventsHelpers — aus MyEventsPage.tsx ausgelagert (Zeilen 46-154 des
  * urspruenglichen Stands, v30.65). Reine Modul-Ebene: Formatierer, Status-
- * Beschriftungen, der Antwort-Chip und der Eintrags-Typ der Seite. Der Code
- * ist zeichengleich uebernommen, ergaenzt sind nur die `export`-Schluesselwoerter.
+ * Beschriftungen, der Antwort-Chip und der Eintrags-Typ der Seite.
+ *
+ * v31.8: `FieldAnswerTag` nutzt jetzt die gemeinsamen `dex-ui-`-Klassen
+ * (Leitfaden Abschnitt 6). Das Stylesheet injiziert die Seiten-Komponente
+ * (`MyEventsPage`) ueber `ensureDexUiStyles()`; dieses Modul ruft es nie.
  */
 import * as React from 'react';
 import { DeloitteEvent } from '../../types';
 import { SPRegistration } from '../../services/EventService';
+import { cx } from '../dexUi';
 
 // v19.34: People-Picker-Antworten (Feldtyp `user`/`roommate`) im „Meine
 // Events"-Antwort-Tag mit Profilfoto statt als Rohtext „Name <email>"
@@ -16,35 +20,35 @@ const parsePersonAnswer = (v: string): { name: string; email: string } | null =>
   return { name: m[1].trim(), email: m[2].trim() };
 };
 
+// v31.8: Der Antwort-Tag ist reine ANZEIGE (der echte Bearbeiten-Weg steht in
+// der Aktionszeile der Karte) — also `dex-ui-pill`, nicht der handgebaute
+// Kasten mit Radius 4. `--wrap`, weil eine Freitext-Antwort umbrechen darf,
+// statt die Zeile aus der Karte zu schieben.
+const answerPillClass = (small?: boolean): string =>
+  cx('dex-ui-pill', 'dex-ui-pill--green', 'dex-ui-pill--wrap', small && 'dex-ui-pill--sm');
+
 export function FieldAnswerTag(props: { label: string; value: string; type?: string; small?: boolean }): React.ReactElement {
   const { label, value, type, small } = props;
   const person = (type === 'user' || type === 'roommate') ? parsePersonAnswer(value) : null;
-  const baseStyle: React.CSSProperties = {
-    fontSize: small ? '0.72rem' : '0.78rem',
-    padding: small ? '3px 8px' : '4px 10px',
-    borderRadius: 4,
-    background: 'rgba(134,188,37,0.14)',
-    color: 'var(--dex-green-dark, #4a7c1f)',
-    border: '1px solid rgba(134,188,37,0.30)',
-  };
   if (person) {
     return (
-      <span style={{ ...baseStyle, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <span className={answerPillClass(small)} style={{ gap: 6 }}>
         {label}:
+        {/* v31.8: Der 260-%-Zoom beim Überfahren ist ersatzlos weg — er
+            versprach eine Aktion, die es nie gab (Leitfaden 6c: kein Hover
+            ohne Klick). Das Foto bleibt 22 px, damit die Pille flach bleibt. */}
         <img
+          className="dex-ui-avatar dex-ui-avatar--xs"
           src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(person.email)}&size=L`}
           alt={person.name}
           onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-          style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', transition: 'transform 0.15s', transformOrigin: 'center' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLImageElement).style.transform = 'scale(2.6)'; (e.currentTarget as HTMLImageElement).style.zIndex = '20'; (e.currentTarget as HTMLImageElement).style.position = 'relative'; (e.currentTarget as HTMLImageElement).style.boxShadow = '0 6px 18px rgba(0,0,0,0.18)'; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLImageElement).style.transform = 'scale(1)'; (e.currentTarget as HTMLImageElement).style.boxShadow = 'none'; }}
         />
         <strong>{person.name}</strong>
       </span>
     );
   }
   return (
-    <span style={baseStyle}>
+    <span className={answerPillClass(small)}>
       {label}: <strong>{value}</strong>
     </span>
   );
@@ -123,6 +127,9 @@ export function getStatusBadgeClass(status: string): string {
     case 'Warteliste': return 'badge-orange';
     case 'Abgemeldet': return 'badge-red';
     case 'Eingecheckt': return 'badge-green';
+    // v31.8: No-Show fiel bis hierher auf grau durch — ausgerechnet der
+    // Zustand, den man erklärt bekommen muss.
+    case 'No-Show': return 'badge-red';
     default: return 'badge-gray';
   }
 }
@@ -133,6 +140,13 @@ export function getStatusLabel(status: string, t: (key: string) => string): stri
     case 'Warteliste': return t('status.waitlist');
     case 'Abgemeldet': return t('status.cancelled');
     case 'Eingecheckt': return t('status.checkedin');
+    // v31.8: Die beiden Schlüssel gab es längst in beiden Sprachen, nur die
+    // Fälle fehlten — im englischen UI stand deshalb deutsch „QR versendet".
+    case 'QR versendet': return t('status.qrsent');
+    case 'No-Show': return t('status.noshow');
+    // Absichtlich der Rohwert: `Status` ist eine SharePoint-Choice, die
+    // erweitert werden kann. Ein unbekannter Zustand muss sichtbar bleiben,
+    // nicht zu „" oder „Unbekannt" werden.
     default: return status;
   }
 }

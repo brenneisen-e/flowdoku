@@ -16,7 +16,7 @@
  * nicht mit dem App-CSS kollidiert.
  */
 import * as React from 'react';
-import { X, Mail, Calendar, FileText, Info, ChevronDown, RefreshCw, Link2 } from './Icons';
+import { X, Mail, Calendar, FileText, Info, ChevronDown, RefreshCw, Link2, ImageIcon } from './Icons';
 import { wrapTemplate, replacePlaceholders, replacePlaceholdersPlain, getCachedOrbBase64, getCachedLogoBase64 } from '../services/EmailTemplates';
 // v20.4: modernes Confirm-Modal statt window.confirm.
 import { useDialog } from '../context/DialogContext';
@@ -30,6 +30,13 @@ import { useLocaleSafe } from '../context/LanguageContext';
 // deshalb stellt er das Stylesheet beim Öffnen selbst sicher.
 import { ensureDexUiStyles, cx } from './dexUi';
 import LinkDialog from './LinkDialog';
+// v31.7: Bild im Fließtext — Kompression, Grenzen und das <img> stehen an EINER
+// Stelle (utils/inlineMailImage); dort steht auch, warum die Grenzen so hoch
+// und nicht höher sind (DEX_Emails.Body ist eine Note-Spalte).
+import {
+  buildInlineImage, imageFileFromClipboard, inlineImageHtml, countInlineImages, charsToKb,
+  INLINE_IMG_MAX_KB, MAIL_BODY_MAX_KB, MAIL_BODY_WARN_KB, InlineImageOutcome,
+} from '../utils/inlineMailImage';
 
 // v9.40: 'plain' = nur HTML rendern, kein Mail-/Outlook-Wrapper. Wird für die
 // Event-Beschreibung im Wizard genutzt — die landet 1:1 auf der Anmelde-Seite.
@@ -274,6 +281,17 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
   // reine Anzeige für `is-active` auf den Toolbar-Knöpfen, wie in Word. Wird
   // bei jeder Auswahl-Änderung im Editor und nach jedem Toolbar-Klick gelesen.
   const [activeFmt, setActiveFmt] = React.useState<{ bold: boolean; italic: boolean; underline: boolean }>({ bold: false, italic: false, underline: false });
+  // v31.7: Bild einfügen. Der versteckte Datei-Wähler wird vom Toolbar-Knopf
+  // ausgelöst; `imgBusy` sperrt ihn, solange komprimiert wird (eine Sekunde
+  // reicht für einen Doppelklick, und zwei Läufe auf dieselbe Auswahl fügen
+  // zwei Bilder ein). `imgNote` ist die Rückmeldung UNTER dem Editor — sie
+  // nennt die erreichte Größe, weil man einem Bild sonst nicht ansieht, ob es
+  // 8 oder 38 KB in den Mailtext geschrieben hat.
+  // ACHTUNG: Alle Hooks stehen vor `if (!open) return null` — dahinter reißt
+  // ein Hook die Reihenfolge (React #300, s. CLAUDE.md/RegistrationPage v30.3).
+  const imgInputRef = React.useRef<HTMLInputElement>(null);
+  const [imgBusy, setImgBusy] = React.useState(false);
+  const [imgNote, setImgNote] = React.useState<{ tone: 'ok' | 'warn'; text: string } | null>(null);
   // v30.51: Offener Link-Dialog samt eingefrorenem Ausgangszustand.
   const [linkState, setLinkState] = React.useState<null | {
     href: string;
@@ -491,11 +509,83 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     fireChange();
   };
 
+  /**
+   * v31.7: Ein Bild an die Cursor-Position — aus dem Knopf ODER aus der
+   * Zwischenablage, in beiden Fällen derselbe Weg.
+   *
+   * Anhänge sind gesperrt (der Deloitte-Mailflow beantwortet Power-Automate-
+   * Mails mit Anhang mit einem NDR, v26.71), also ist Base64 im HTML nicht die
+   * Notlösung, sondern der Weg, den QR-Code, Deloitte-Logo und Kopfbild schon
+   * gehen. Neu ist nur, dass ihn der Organizer selbst nutzen kann.
+   *
+   * Zwei Grenzen, beide aus `utils/inlineMailImage`: die des einzelnen Bildes
+   * (was auch nach der letzten Kompressions-Stufe zu groß ist, wird ABGELEHNT
+   * statt stillschweigend verschluckt) und die des ganzen Textes — der landet
+   * in einer SharePoint-Note-Spalte, und ist die voll, nimmt die Warteschlange
+   * die Mail gar nicht erst an. Deshalb wird vor dem Einfügen gerechnet, nicht
+   * danach entschuldigt.
+   */
+  const insertInlineImage = async (file: File | null): Promise<void> => {
+    if (!file || imgBusy) return;
+    setImgNote(null);
+    setImgBusy(true);
+    const res: InlineImageOutcome = await buildInlineImage(file)
+      .catch((): InlineImageOutcome => ({ ok: false, reason: 'unreadable', dataUrl: '', width: 0, height: 0, chars: 0 }));
+    setImgBusy(false);
+    if (!res.ok) {
+      setImgNote({
+        tone: 'warn',
+        text: res.reason === 'too-big'
+          ? t(
+            `Das Bild ist auch nach dem Verkleinern noch ${charsToKb(res.chars)} KB groß — mehr als ${INLINE_IMG_MAX_KB} KB passen nicht in einen Mailtext. Schneide es zu oder speichere es vorher kleiner ab, dann klappt es.`,
+            `Even after shrinking, the image is still ${charsToKb(res.chars)} KB — more than ${INLINE_IMG_MAX_KB} KB does not fit into an email. Crop it or save it smaller first, then it works.`)
+          : t(
+            'Das Bild konnte nicht gelesen werden. Nimm eine JPG- oder PNG-Datei — SVG und Dateien ohne feste Größe gehen nicht.',
+            'The image could not be read. Use a JPG or PNG file — SVG and files without a fixed size do not work.'),
+      });
+      return;
+    }
+    const html = inlineImageHtml(res.dataUrl, res.width);
+    const before = editorRef.current?.innerHTML.length || 0;
+    if (before + html.length > MAIL_BODY_MAX_KB * 1024) {
+      setImgNote({
+        tone: 'warn',
+        text: t(
+          `Der Text ist schon ${charsToKb(before)} KB groß, mit diesem Bild wären es ${charsToKb(before + html.length)} KB — höchstens ${MAIL_BODY_MAX_KB} KB nimmt die Mail-Warteschlange an. Lösch ein Bild heraus oder verlink es stattdessen.`,
+          `The text is already ${charsToKb(before)} KB, with this image it would be ${charsToKb(before + html.length)} KB — the mail queue accepts at most ${MAIL_BODY_MAX_KB} KB. Remove an image or link to it instead.`),
+      });
+      return;
+    }
+    restoreSelection();
+    try { document.execCommand('insertHTML', false, html); } catch { /* ignore */ }
+    fireChange();
+    const after = editorRef.current?.innerHTML.length || (before + html.length);
+    setImgNote({
+      tone: after > MAIL_BODY_WARN_KB * 1024 ? 'warn' : 'ok',
+      text: t(
+        `Bild eingefügt: ${res.width} × ${res.height} px, ${charsToKb(res.chars)} KB. Der Text ist jetzt ${charsToKb(after)} von höchstens ${MAIL_BODY_MAX_KB} KB.`,
+        `Image inserted: ${res.width} × ${res.height} px, ${charsToKb(res.chars)} KB. The text is now ${charsToKb(after)} of at most ${MAIL_BODY_MAX_KB} KB.`),
+    });
+  };
+
   // v18.39: Einfügen IMMER als reiner Text (mit Zeilenumbrüchen als <br>).
   // Verhindert, dass kopierte Inhalte Block-Markup (<div>/<p> mit Außen-
   // abständen) mitbringen, das den Zeilenabstand „plötzlich größer" macht
   // und sich danach nicht mehr korrigieren lässt.
   const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>): void => {
+    // v31.7: Enthält die Zwischenablage ein BILD und keinen Text, wird es wie
+    // über den Knopf verarbeitet — ein Screenshot mit Strg+V ist die natürliche
+    // Geste, und bisher verschwand er stillschweigend. Die Datei muss SYNCHRON
+    // geholt werden: nach dem ersten `await` ist `clipboardData` leer. Kommt
+    // Text mit (Word legt daneben ein Bild des Bereichs ab), bleibt unten alles
+    // beim v18.39-Verhalten — die Begründung dafür gilt unverändert.
+    const pastedImage = imageFileFromClipboard(e.clipboardData);
+    if (pastedImage) {
+      e.preventDefault();
+      saveSelection();
+      void insertInlineImage(pastedImage);
+      return;
+    }
     e.preventDefault();
     const text = e.clipboardData?.getData('text/plain') || '';
     if (!text) return;
@@ -752,6 +842,11 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
   const imgW = imageWidth ?? 180; const imgH = imagePaddingH ?? 30; const imgV = imagePaddingV ?? 30;
   const fullWidthOn = imgW === 600 && imgH === 0 && imgV === 0;
   const standardOn = imgW === 180 && imgH === 30 && imgV === 30;
+  // v31.7: Wie voll ist der Text? Gemessen wird `value` — genau die Zeichenkette,
+  // die gespeichert und in die Mail-Warteschlange geschrieben wird; die
+  // Editor-Anzeige ist dafür kein Maß.
+  const bodyChars = (value || '').length;
+  const inlineImgCount = countInlineImages(value || '');
   // Ersetzt den Editor-Inhalt direkt (innerHTML), weil der contentEditable nur
   // beim Öffnen aus `value` synct — mit Rückfrage, wenn schon Text drinsteht.
   const replaceBody = (html: string, question: string): void => {
@@ -1149,8 +1244,33 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                       oder ohne Auswahl klicken für einen neuen Link. Bestehenden
                       Link: Cursor hineinsetzen → URL ändern. */}
                   {tb(t('Link oder E-Mail-Adresse einfügen / bearbeiten', 'Insert / edit a link or email address'), openLinkDialog, <Link2 size={15} />)}
+                  {/* v31.7: Bild an die Cursor-Position. Anhänge gehen nicht
+                      (der Deloitte-Mailflow schickt Mails mit Anhang als NDR
+                      zurück) — das Bild reist deshalb als Base64 IM HTML mit,
+                      genau wie QR-Code und Kopfbild. */}
+                  {tb(
+                    imgBusy
+                      ? t('Bild wird verkleinert …', 'Shrinking the image …')
+                      : t('Bild einfügen — es reist in der Mail mit, ohne Anhang', 'Insert an image — it travels inside the email, no attachment'),
+                    () => { if (imgBusy) return; saveSelection(); imgInputRef.current?.click(); },
+                    <ImageIcon size={15} />,
+                  )}
                   {tb(t('Formatierung entfernen', 'Clear formatting'), () => exec('removeFormat'), '⌫')}
                 </div>
+                {/* Der Datei-Wähler hängt am Knopf oben; `value` wird nach jeder
+                    Wahl geleert, sonst löst dieselbe Datei beim zweiten Mal kein
+                    `change` aus. */}
+                <input
+                  ref={imgInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const f = (e.target.files && e.target.files[0]) || null;
+                    e.target.value = '';
+                    void insertInlineImage(f);
+                  }}
+                />
                 <div
                   ref={editorRef}
                   contentEditable
@@ -1188,6 +1308,31 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                     background: '#fff',
                   }}
                 />
+                {/* v31.7: Was gerade passiert ist — und wie voll der Text ist.
+                    Ein eingefügtes Bild sieht man, seine Größe nicht; und die
+                    Grenze taucht sonst erst beim Senden auf, wenn SharePoint
+                    die Zeile ablehnt. Die Dauerzeile erscheint nur, wenn
+                    wirklich ein Bild im Text steckt — ein reiner Textbrief hat
+                    mit dem Budget nichts zu tun. */}
+                {imgBusy && (
+                  <div className="dex-ui-help" role="status">{t('Bild wird verkleinert …', 'Shrinking the image …')}</div>
+                )}
+                {imgNote && (
+                  <div
+                    className={cx('dex-ui-callout', 'dex-ui-callout--sm', imgNote.tone === 'ok' ? 'dex-ui-callout--success' : 'dex-ui-callout--warn')}
+                    style={{ marginTop: 8 }}
+                    role="status"
+                  >
+                    <span>{imgNote.text}</span>
+                  </div>
+                )}
+                {inlineImgCount > 0 && (
+                  <div className="dex-ui-help" style={{ marginTop: 6 }}>
+                    {isDe
+                      ? `${inlineImgCount === 1 ? 'Ein Bild' : `${inlineImgCount} Bilder`} im Text · insgesamt ${charsToKb(bodyChars)} von höchstens ${MAIL_BODY_MAX_KB} KB.${bodyChars > MAIL_BODY_WARN_KB * 1024 ? ' Viel Platz ist nicht mehr — ein weiteres Bild passt vermutlich nicht.' : ''}`
+                      : `${inlineImgCount === 1 ? 'One image' : `${inlineImgCount} images`} in the text · ${charsToKb(bodyChars)} of at most ${MAIL_BODY_MAX_KB} KB in total.${bodyChars > MAIL_BODY_WARN_KB * 1024 ? ' Not much room left — another image probably will not fit.' : ''}`}
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -1,7 +1,8 @@
-# UI-Leitfaden — Wizard, Organizer Center, Modale (Stand v31.3)
+# UI-Leitfaden — Wizard, Organizer Center, Modale, Teilnehmer-Seiten (Stand v31.7)
 
 Dieser Leitfaden ist die **verbindliche Arbeitsgrundlage** für jede Änderung an
-der Oberfläche des Event-Wizards, des Organizer Centers und aller Modale. Er
+der Oberfläche des Event-Wizards, des Organizer Centers, aller Modale und der
+teilnehmersichtbaren Seiten. Er
 entstand mit v31.2, als rund 60 Dateien parallel modernisiert wurden
 (Nutzer-Auftrag 07.09.2026: „jeden einzelnen Schritt im Event-Wizard moderner,
 intuitiver und aufgeräumter darstellen, gute Mouseover-Effekte, alle Modale
@@ -10,7 +11,8 @@ laufen 60 Dateien wieder auseinander.
 
 Die Klassen liegen in `src/webparts/dexEventPlatform/components/dexUi.ts`
 (`ensureDexUiStyles()` injiziert sie einmal ins Dokument; `WizardFormShell`
-und `Modal` rufen das bereits). **Neue Klassen: dort ergänzen UND hier
+und `Modal` rufen das bereits — auf den Teilnehmer-Seiten ruft es die
+Seiten-Komponente selbst, siehe 6). **Neue Klassen: dort ergänzen UND hier
 eintragen.**
 
 ---
@@ -282,6 +284,44 @@ verliert innerhalb eines `dex-ui-grid-*` seinen unteren Abstand (das Raster
 hat den `gap`). Der Untertitel des Modals ist ein `<div>` — auch Blöcke sind
 erlaubt.
 
+### Teilnehmer-Seiten (seit v31.8)
+
+Nachzug aus der Umbau-Runde über die teilnehmersichtbaren Seiten. Jede dieser
+Klassen ersetzt einen Inline-Style, den **mindestens zwei Agenten unabhängig
+voneinander gebaut haben** — das war das Signal, dass sie fehlte. Der rote
+Faden ist immer derselbe Unterschied zum Organizer Center: dort gibt es einen
+Mauszeiger, hier oft nur einen Finger.
+
+| Klasse | Wofür |
+|---|---|
+| `dex-ui-pill--wrap` / `--sm` | Pille mit umbrechendem Text (Freitext-Antworten) · kompakte Pille |
+| `dex-ui-avatar--xs` | 22-px-Foto, damit eine Pille flach bleibt |
+| `dex-ui-row--filled` | Zeile mit dauerhaftem Grund — `dex-ui-row` ist ohne Hover transparent und auf dem Handy als Zeile unsichtbar (6b) |
+| `dex-ui-row--framed` | Dasselbe über den Rahmen. **Vorzuziehen, sobald die Zeile einen Hover- oder `is-active`-Zustand hat** — ein gesetzter Grund übertönt beide, ein Rahmen nicht |
+| `dex-ui-row--static` | Zeile ohne Hover: Anzeige, kein Klick (zusammen mit `dex-ui-row`) |
+| `dex-ui-row-title--wrap` | Zeilentitel, der umbricht statt zu kürzen — ein gekürzter Dateiname steht sonst nur im `title` |
+| `dex-ui-row-link` | Anklickbarer Text in einer Zeile (unterstreicht bei Hover), leiser als `dex-ui-textbtn` |
+| `dex-ui-meta` / `dex-ui-meta-item` | Die Zeile „Symbol + Wann · Symbol + Wo" — gab es viermal handgebaut |
+| `dex-ui-choice--multi` | Auswahl-Kachel für MEHRFACHauswahl (eckiges Kästchen statt Kreis) |
+| `dex-ui-choice-label` | Leichte Beschriftung in einer Auswahl-Kachel (`-title` ist immer fett) |
+| `dex-ui-card--sm` | Kleine Karte innerhalb eines `dex-ui-callout` |
+| `dex-ui-callout-body` | Der Textblock neben dem Callout-Symbol (`min-width:0; flex:1`) |
+| `dex-ui-empty-desc` / `dex-ui-empty-action` | Erklärsatz und Knopfzeile unter `dex-ui-empty-title` |
+| `dex-ui-progress--indeterminate` | Ladebalken ohne bekannten Fortschritt (stand zweimal handgebaut im Code) |
+| `dex-ui-btn--locked` | Gesperrter Knopf, der beim Überfahren NICHT nachfärbt |
+| `dex-ui-card--dim` | Vergangen/abgemeldet: gedämpft, aber ohne Aufhellung im Hover |
+
+Zwei Regeln dazu, die nicht in der Tabelle stehen können:
+
+- **`dex-ui-row-actions` ist auf Zeigegeräten gedämpft (0.7) und wird erst bei
+  Hover voll sichtbar.** Auf `@media (hover: none)` steht es seit v31.8
+  dauerhaft auf 1 — sonst ist ein Download-Knopf auf dem Handy dauerhaft
+  blass. Wer eine ähnliche Hover-Abblendung baut, braucht dieselbe Ausnahme.
+- **`dex-ui-btn--locked` ist bewusst opt-in und keine globale
+  `.btn:disabled`-Regel.** Eine globale Regel träfe jede Fläche der App,
+  auch die Check-in-Seite. Die Farbwerte darin wiederholen die Ausgangswerte
+  aus dem SCSS-Modul, weil `.btn-*:hover` dort nur `background` setzt.
+
 ### Modale
 
 `Modal` (components/Modal.tsx) hat seit v31.2 `title`, `subtitle`, `icon`,
@@ -450,7 +490,712 @@ beschreibt:
 
 ---
 
-## 6. Symbole
+## 6. Teilnehmer-Seiten
+
+Startseite (`LandingPage`), Einstieg (`StartPage`), Event-Liste und Kachel
+(`EventListPage`, `components/EventCard.tsx`), Anmeldeseite
+(`RegistrationPage` + `components/registration/**`) und Meine Events
+(`MyEventsPage` + `components/myEvents/**`).
+
+Das Organizer Center ist ein Arbeitsplatz: dieselben Leute, freiwillig, immer
+wieder — und wer etwas nicht versteht, fragt. Die Anmeldeseite sieht **jeder,
+einmal, meist auf dem Handy, meist zwischen zwei Terminen** und danach nie
+wieder. Was hier unklar ist, erzeugt keine Rückfrage, sondern eine
+Nicht-Anmeldung, von der niemand erfährt. Die Grundsätze aus Abschnitt 1 und
+die Regeln aus 2a–2d gelten unverändert; dazu kommen 6a–6f.
+
+**Geltungsbereich.** Nur die oben genannten Dateien. Ebenfalls
+teilnehmersichtbar, aber **nicht** von Abschnitt 6 erfasst und deshalb nicht
+„mitmodernisiert": `SelfCheckInPage`/`SelfCheckInDisplayPage` (v30.95, Optik
+aus v31.1), `ProfilePage`, Header/Navigation, `InquiryModal`, `TicketsPage`
+und das Handbuch (`components/manual/**`).
+
+**Stand.** Diese Dateien haben v31.2 und v31.3 nicht mitgemacht: `dex-ui-`
+kommt in `RegistrationPage.tsx`, `registration/EventCard.tsx`,
+`PersonalDataSection.tsx`, `EventSpecificSection.tsx`, `TeamSection.tsx`,
+`RegistrationActionBar.tsx`, `RegistrationBanners.tsx`, `MyEventsPage.tsx`,
+`MyEventCard.tsx`, `MyEventSubEvents.tsx`, `components/EventCard.tsx` und
+`StartPage.tsx` **0×** vor. Umgestellt sind nur die Modale
+(`ProxyWizardModal`, `MassImportModal`, `SmallModals`, `SubmitConfirmModal`,
+`SubEventFieldsModal`, `MyEventsModals`) sowie zwei Einzelkästen
+(`EventListPage.tsx:396-435` v31.6, `LandingPage.tsx:1131-1137` v31.4). **Die
+Modale sind die Vorlage, die Formular- und Kartenflächen sind die Arbeit.**
+
+**Pflicht vor der ersten `dex-ui-`-Klasse: `ensureDexUiStyles()`.** Das
+Stylesheet wird nicht aus dem SCSS geladen, sondern von `dexUi.ts` einmal ins
+`document.head` injiziert. Gerufen wird es heute u.a. von `Modal.tsx:52`,
+`WizardFormShell`, `AdminPage.tsx:237`, `EventListPage.tsx:368` und
+`LandingPage.tsx:28` — **nicht** von `RegistrationPage`, `MyEventsPage`,
+`StartPage` und keiner Datei in `registration/` oder `myEvents/`. Wer dort
+`dex-ui-callout` setzt, ohne den Aufruf zu ergänzen, liefert unformatiertes
+Markup aus, das im Test wie ein Layoutfehler aussieht. Also: **die vier
+Seiten-Komponenten rufen `ensureDexUiStyles()` genau einmal, Unterkomponenten
+nie** — wie `EventListPage.tsx:366-369` NACH dem frühen Return, mit dem
+Kommentar „idempotent, kein Hook".
+
+**Zeilennummern altern, Symbolnamen nicht.** Die Angaben unten stammen aus dem
+Stand vor der Runde; nach dem ersten Schnitt stimmen sie nicht mehr. Vor jedem
+Eingriff selbst nachzählen (dieselbe Regel wie im Modularisierungs-Rezept in
+CLAUDE.md). Und: **es gibt zwei `EventCard.tsx`** —
+`components/EventCard.tsx` (425 Zeilen, die Kachel der Event-Liste) und
+`components/registration/EventCard.tsx` (474 Zeilen, Station 1 der
+Anmeldeseite). Jede Fundstelle wird mit Pfad genannt.
+
+---
+
+### 6a. Reihenfolge — je Seite eine Sollfolge
+
+#### Landing Page (`components/LandingPage.tsx`)
+
+Sortiert nach Dringlichkeit, nicht nach Alter des Codes:
+
+1. **Orb, Begrüßung, Willkommenstext.** Sie stehen ganz oben und bleiben dort.
+
+   **Entschieden am 09.09.2026, nachdem v31.9 es anders gebaut hatte.** Die
+   Sollfolge hier lautete ursprünglich „1. Check-in → 2. Begrüßung/Orb →
+   3. Start", begründet damit, dass der QR-Code am Eventmorgen nicht unter drei
+   Deko-Blöcken liegen soll. Sachlich stimmt das — und trotzdem war es falsch:
+   Die Antwort des Nutzers auf den gebauten Stand war **„zurück wie vorher"**.
+   Der Orb ist auf DIESER Seite keine Dekoration, sondern das Gesicht der App.
+
+   Zwei Warnungen gab es vorher, beide berechtigt und beide von mir zu spät
+   ernst genommen: Die Prüfung des Abschnitt-Entwurfs führte den Punkt
+   ausdrücklich als **offene Entscheidung** („das ändert das Gesicht der App,
+   das der Nutzer selbst gebaut hat"), und der Umbau-Agent hat beim Bauen den
+   inneren Widerspruch belegt — die Nummerierung stellte Orb und Begrüßung
+   genau zwischen zwei Handlungen, was der Satz daneben verbot.
+
+   **Regel daraus: Eine Reihenfolge, die das Gesicht einer Seite ändert, ist
+   eine Entscheidung des Nutzers und kein Auslegungsspielraum für einen
+   Umbau — auch dann nicht, wenn sie sich aus den Grundsätzen herleiten
+   lässt.** Der Grundsatz „Deko steht nie zwischen zwei Handlungen" gilt
+   weiter, aber **innerhalb** eines Abschnitts.
+2. **Was heute zu tun ist:** Check-in-Kasten mit QR und Einlassnummer und
+   „Du bist angemeldet" mit Countdown — direkt unter der Begrüßung. Bis v31.8
+   lagen sie ganz unten, hinter dem Werbekasten; wer den QR-Code am
+   Eventmorgen suchte, scrollte an der Werbung vorbei. Das war der eigentliche
+   Fehler, und er ist behoben: Sie stehen jetzt VOR „Start" und vor dem
+   Werbekasten.
+3. **„Start"** (:1227) ist die Handlung der Seite und damit der einzige
+   Primär-Knopf (Grundsatz 1.5). Heute ist er `btn-outline`, während der
+   Werbekasten „DEX für dein Event nutzen" direkt darunter (:1232-1317,
+   Desktop-Zweig) vollflächig grün gefüllt ist — das kehrt die Rangfolge um
+   und verstößt gegen Grundsatz 1.1 („Grün nie als Flächenfarbe für Kästen").
+   Werbung wird eine `dex-ui-card--hover`, der Start-Knopf bekommt das Gewicht.
+4. **Verwaltungs-Hinweise** (inaktive Konten, Entwürfe, Archivierung, Archiv
+   aufräumen, ablaufende und zu löschende Teilnehmerlisten, :692-961): bis zu
+   sechs gestapelte Kästen mit vier destruktiven Knöpfen. Sie sind
+   Organizer-Arbeit und gehören gebündelt in EINEN `dex-ui-callout--warn` mit
+   `dex-ui-disclosure` — und auf dem Handy (`position:'static'`, :695) nie vor
+   die eigene Anmeldung.
+
+Die Versionsmarke (:682-687) ist absolut positioniert und hat keine Stelle in
+der Lesereihenfolge — sie bleibt, wo sie ist.
+
+#### Einstieg (`components/StartPage.tsx`)
+
+Der Kachel-Zweig (`clusters`, :190-195) und der Mobil-Zweig (`rowClusters`,
+:209-238) definieren dasselbe Menü zweimal und laufen bereits auseinander
+(andere Untertitel, andere `strokeWidth`, **kein einziges `data-tour` im
+Mobil-Zweig**). Solange beide bestehen: **jede Änderung an einem Zweig wird im
+selben Commit im anderen nachgezogen.** Wer sie zusammenlegt, muss die
+`data-tour`-Attribute mitnehmen (6e).
+
+#### Event-Liste (`components/EventListPage.tsx`)
+
+Zugriffs-/Fehlerkasten mit Grund und „Erneut versuchen" (:396-435) → Suche,
+Filter, Ansichtsumschalter → „Deine Events" → „Weitere Events" →
+Leerzustand. Der Leerzustand ist bereits richtig gebaut (nur wenn
+`eventsReadStatus !== 'forbidden' && !== 'error'`) — er bekommt `dex-ui-empty`
+und einen Satz, was zu tun ist. (Der Text lief bis v31.8 hart deutsch; seither
+über `events.empty` / `events.empty.hint`.)
+
+#### Event-Kachel (`components/EventCard.tsx`)
+
+Sie beantwortet vier Fragen: *Was? Wann/wo? Kann ich noch buchen? Wen frage
+ich?* Rangfolge: Bild/Titel/Ort → Zeitraum → Zustand (angemeldet · N frei ·
+voll · Warteliste) → Ansprechpartner → Knopf.
+
+- **Die Geometrie liegt im geteilten SCSS.** `.event-card__image` (feste
+  `height: 320px`), `__overlay`, `__title`, `__meta`, `__body`, `__dates`,
+  `__deadline` stehen im `:global`-Block von `DexEventPlatform.module.scss`
+  (:517-540) — nach 2d zentral gepflegt. Umsortieren heißt deshalb: **innerhalb
+  von `__body` verschieben**; alles, was SCSS bräuchte, wird als Wunsch
+  gemeldet, nicht lokal gebaut.
+- **Der Ansprechpartner darf auf die Kachel — aber nur unter seinen
+  Bedingungen.** Heute sind die Organizer nur IM Frist-Overlay als
+  Hover-Portal erreichbar (:246-260), also erst, wenn die Anmeldung zu ist, und
+  auf dem Handy gar nicht. Wer sie nach oben holt, nimmt `hiddenOrgEmails` und
+  `allOrgsHidden` (:144-146, aus `hideOrganizer` + `hideOrganizerIndividualOnly`)
+  **mit** — eine unbedingte Zeile „Organizer: …" macht genau die Namen sichtbar,
+  die der Wizard verbergen sollte. Und: die Kontaktkarte hängt am Regex
+  `/(organizer)/i` über `t('events.deadlinepassed.hint')` (:226); wer sie aus
+  diesem Satz löst, ersetzt den Anker im selben Commit durch eine eigene Prop
+  (6e).
+- **„Frist abgelaufen" steht bewusst zweimal.** Der rote Kasten im Body (:394-408)
+  rendert bei `isDeadlinePassed` für ALLE — auch für Organizer und bereits
+  Angemeldete; der Overlay (:212) nur für reguläre User
+  (`showDeadlineOverlay`, :127). Der Kasten ist keine Dublette und bleibt.
+- **Eine Kachel darf nicht dort schweigen, wo die Entscheidung liegt.** Bei
+  `subEventsOnlyMode` entfallen Plätze (:380) und Frist (:390) zu Recht
+  (v29.13) — an ihre Stelle treten die Zahl der buchbaren Termine und der Satz,
+  dass die Anmeldung je Termin läuft. Bezeichnung über `childTermPlural` (6d).
+- **Datum:** `formatDate(startDate) … formatDate(endDate)` (:374-379) lässt bei
+  leerem `endDate` „… 09:00 bis" plus Leerzeile stehen. Ein Eintages-Event
+  bekommt eine Zeile, kein Fragment.
+
+#### Anmeldeseite (`components/RegistrationPage.tsx`)
+
+Die drei nummerierten Stationen (Dein Event → Deine Daten → Anmeldung
+abschließen, :2567-2616) erzählen die Geschichte aus 2a richtig und bleiben
+unverändert (6e). Die Arbeit liegt **innerhalb** der Stationen:
+
+1. **Station 1** ist reine Anzeige (Bild, Titel, Datum, Ort, Ansprechpartner,
+   Beschreibung, Programm). Nichts hinzufügen, was Eingabe ist.
+2. **Station 2:** zuerst die eigenen Daten, dann der Team-Schalter. Der
+   Stellvertreter-Umschalter und „Massenimport"
+   (`registration/PersonalDataSection.tsx:75-133`) sind Organizer-Funktionen,
+   stehen heute aber GANZ OBEN im Kartenkopf und per `marginLeft:'auto'` (:106)
+   rechts angedockt — beides falsch nach 2a und 2a′. Sie gehören linksbündig in
+   einen `dex-ui-disclosure` am Ende der Sektion.
+3. **Station 3:** Gruppen-Auswahl → Auswahl von Haupt-Event und Terminen →
+   Fragen. Die **zwei Render-Orte** des Hauptfeld-Blocks
+   (`EventSpecificSection.tsx:425-427` und :913) bleiben — sie sind Absicht
+   (v29.28).
+4. **Fehlerkasten, Aktionsleiste, Datenschutz-Fußnote** zuletzt. Der
+   Fehlerkasten (:2632-2636) bekommt `role="alert"` und scrollt ins Bild; auf
+   dem Handy ist ein Kasten unter dem Formular sonst unsichtbar.
+
+**Die Reihenfolge der eventspezifischen Felder wird NICHT nach `required`
+sortiert.** Sie ist Organizer-Absicht (Drag-Sortierung und „Nach oben"/„Nach
+unten" in `wizard/steps/FieldsStep.tsx`), und der `showIf`-Filter (:1533-1539)
+blendet Felder abhängig von der Antwort eines **anderen** Feldes ein — eine
+Umsortierung stellt das Folgefeld über seine Auslöserfrage. Verbessert wird die
+Darstellung (Raster, Abstände, Pflicht-Markierung), nicht die Sortierung.
+
+**Die zwei Team-Wege sind sachlich eine Frage** — „eigenes Team anmelden"
+(`PersonalDataSection.tsx:382-405`) und „offenem Team beitreten"
+(`RegistrationPage.tsx:2600`) schließen sich gegenseitig aus
+(`togglePendingJoinTeam`). Zusammenlegen heißt aber: zwei Dateien plus eine
+neue gemeinsame Sichtbarkeitsbedingung (die heutigen sind nicht deckungsgleich)
+— das verletzt 2d („nur die eigene Datei", „kein Verhalten anfassen") und
+gehört in ein eigenes Ticket. In dieser Runde: beide Wege bekommen dieselbe
+Form und stehen direkt untereinander, mit einem Satz, dass man sich für einen
+entscheidet.
+
+#### Meine Events (`MyEventsPage.tsx`, `myEvents/MyEventCard.tsx`)
+
+Seite: Ladezustand → Ladefehler → seitenweite Kästen → „Aktive Events" →
+„Vergangene Events" → Aufklapper „Abgemeldete Events".
+
+- **Seitenweite Kästen hängen nie an der Zahl der eigenen Anmeldungen.**
+  „Offene Anforderungen an mich" (:1150-1183) und „Von deiner Assistenz
+  verwaltet" (:1184-1222) liegen innerhalb von `activeEntries.length > 0`
+  (:1126): Wer selbst nirgends angemeldet ist, aber für jemanden etwas
+  erledigen soll, sieht statt seiner Aufgabe den Leerzustand.
+- **„Vergangene Events" sagt heute nur, was NICHT mehr geht** („eine Abmeldung
+  ist hier nicht mehr möglich", :1238-1242). Wonach man nach einem Event sucht
+  — Teilnahmebescheinigung, Dokumente — steht nicht dort, obwohl die
+  Bescheinigung genau dort existiert (`MyEventCard.tsx:759-780`).
+- **Die Sortierung bleibt vorerst.** `getEvents` liefert `$orderby=StartDate
+  desc` (`services/events/eventsCrud.ts:91`), die Seite reicht das ungefiltert
+  durch (:903-908) — das morgige Event steht unten, die „sessionsOnly"-Karten
+  aus der zweiten Schleife (:530-575) ohne Datumsbezug ganz hinten. Das ist
+  eine **Verhaltensänderung** (2d) und hängt zusätzlich am Tour-Selektor
+  `.my-event-card` (6e): eigener Commit, eigenes Review, nicht in dieser Runde.
+
+Karte (`myEvents/MyEventCard.tsx`, 1.286 Zeilen) — Sollfolge, heutiger Ist
+daneben:
+
+1. **Kopfzone:** Bild, Titel, Status-Pille, **Wann · Wo · Teams-Knopf · „Mein
+   QR-Code"**, „Angemeldet am …" als Metazeile. Heute stehen Ort und Datum erst
+   nach der Team-Box (:311-547, mit Fotozeilen mehrere hundert Pixel), nach
+   Unterkunft (:243-281) und zwei Hinweiskästen (:228-238, :286-305); der
+   QR-Knopf ist der vierte Chip einer Chip-Zeile weit unten (:740-754). Die
+   Kopfzone muss den Fall „noch kein QR" aushalten — der Knopf hängt an
+   `Status ∈ {QR versendet, Eingecheckt}` (v28.7) und bleibt daran.
+2. **Bei einem Klammer-Event: die Terminliste** (:1066). In `subEventsOnlyMode`
+   IST sie die Anmeldung; heute rendert sie nach Programm (:866),
+   Transferzeiten (:951), Dokumenten (:987) und Quiz (:992).
+3. **Hinweise, die eine Einschränkung erklären** („für dich angelegt",
+   „nur für Termine angemeldet") als `dex-ui-callout`, höchstens zwei sichtbare
+   Zeilen. Der `hiddenRow`-Hinweis (:228-238) ist heute ein Fünfzeiler mit vier
+   Fettungen.
+4. **Team, Unterkunft, Ansprechpartner** — sie ergänzen die Anmeldung, sie sind
+   nicht die Anmeldung. „Organizer" (:597-611) und „Ansprechpartner"
+   (:617-639) beantworten dieselbe Frage in zwei Optiken: ein Block. Beide
+   Blöcke behalten ihre Bedingungen (`hideOrganizer`,
+   `hotelVisibleToAttendees`, siehe 6e).
+5. **Inhalt:** Beschreibung, Programm, Transferzeiten, Dokumente, Uploads,
+   Quiz. Die Gewichtung der Aufklapper ist heute umgekehrt: Beschreibung zu
+   (:648-667), Team-Liste und Agenda immer offen.
+6. **Aktionszeile zuletzt, links beim Inhalt.** „Abmelden" (:1237-1268) steht
+   heute per `justify-content: space-between` rechts neben „Angemeldet am …"
+   (:1107-1112) — genau das Muster, das 2a′ verbietet.
+
+**Der Umbau dieser Karte ist eine eigene Aufgabe, nicht ein Auftrag neben zehn
+anderen.** Es gilt die CLAUDE.md-Regel für große JSX-Blöcke: den **ganzen**
+Block als Einheit bewegen, vorher eine Kopie ins Scratchpad, nach jedem Schnitt
+`tsc`.
+
+---
+
+### 6b. Handy — was nur beim Überfahren erscheint, existiert nicht
+
+Das ist die Regel, die diese Seiten von den Organizer-Seiten unterscheidet, und
+sie wird lautlos verletzt. Heutige Fälle:
+
+- Die Kalender-Tage melden an und ab; das Wort „abmelden" erscheint nur im
+  Hover (`myEvents/MyEventSubEvents.tsx:617`), dazu ein `title` (:547-575). Auf
+  dem Handy steht dort ein „✓", und ein Fingertipp meldet ab.
+- Der Grund einer gesperrten Anmeldung steht nur im `title` des Knopfs
+  (`registration/RegistrationActionBar.tsx:124-140`); der Knopf selbst nennt
+  ihn in zwei von sechs Fällen.
+- Die Folge von „Ich nehme nicht teil" steht nur im `title` (:214-220) — sie
+  sagt für das GANZE Event inklusive aller Termine ab
+  (`RegistrationPage.tsx:1614-1619`).
+- „Belegung nicht ermittelbar" steht nur im `title`
+  (`MyEventSubEvents.tsx:769`, `registration/EventSpecificSection.tsx:586-589`).
+
+**Ein `title`-Attribut ist eine Zugabe, nie der einzige Träger einer
+Information.** Was den Zustand oder die Folge erklärt, steht als Text in der
+Zeile darunter oder in einem `dex-ui-callout`.
+
+Weiter:
+
+- **Bedienelemente nach der 2b-Tabelle.** Die Anmeldeseite besteht aus rohen
+  Checkboxen mit Inline-Styles (also ohne Hover): Team-Anmeldung
+  (`PersonalDataSection.tsx:385`) → `dex-ui-switch`; Haupt-Event-Haken
+  (`EventSpecificSection.tsx:392`), Termin-Haken (:720), Leistungsnachweis
+  (:235), Team-Zustimmung (`TeamSection.tsx:153`) und Checkbox-Custom-Fields
+  (`RegistrationPage.tsx:2324`) → `dex-ui-toggle-row`; die Gruppen-Kacheln
+  (`EventSpecificSection.tsx:180-227`) → `dex-ui-choice` in `dex-ui-grid-2`.
+  Mehrfachauswahl als `dex-ui-chip`-Reihe — `SubEventFieldsModal.tsx:141-163`
+  zeigt für genau diese Feldtypen schon, wie es aussieht.
+- **Eine gesperrte Aktion bleibt ein sichtbarer `:disabled`-Knopf mit
+  unveränderter Beschriftung**, der Grund steht in der Zeile darunter. Kein
+  Knopf, dessen Beschriftung die Fehlermeldung ist („Abmeldung gesperrt",
+  `MyEventSubEvents.tsx:820`), und kein `<span>` in Knopf-Optik an der Stelle
+  des Knopfs (`MyEventCard.tsx:1190-1234`, drei Stück mit Rahmen, Radius und
+  Knopf-Innenabstand direkt in der Knopfzeile). Deren Texte nennen jeweils den
+  echten Grund und bleiben inhaltlich wortgleich — nur die Form ändert sich.
+- **Entscheidungen mit Folgen brauchen die Rückfrage aus 2b.** „Ich nehme nicht
+  teil" (`RegistrationActionBar.tsx:209-227`) ist heute ein `btn-secondary`
+  ohne jede Rückfrage. Also `confirmDialog` mit `danger: true`, dessen Text die
+  Folge mit `childTermPlural` benennt. Hinweis: `.btn-danger` ist in dieser App
+  bewusst **grau** (`DexEventPlatform.module.scss:324-325`, im Modal-Overlay
+  mit `!important`, v24.63) — die Warnung trägt der Dialogtext, nicht die
+  Farbe. Kein lokal gebauter roter Knopf und kein roter Text auf
+  `btn-secondary`.
+- **Keine nativen Datums-/Zeitfelder** (Grundsatz 8) — mit Formatauflage:
+  `RegistrationPage.tsx:2425-2435` rendert `<input type="date">` bzw.
+  `datetime-local` für Custom-Felder. Der Wert ist die **Antwort**, die als
+  String in `CustomData` landet und im Organizer Center, im Excel-Export und in
+  der Bearbeiten-Ansicht wieder gelesen wird. Ein Ersatz zeigt deutsch
+  (`dd.MM.yyyy`) und **speichert weiterhin zeichengleich** (`YYYY-MM-DD` bzw.
+  `YYYY-MM-DDTHH:mm`) — sonst sind Alt- und Neu-Antworten unvergleichbar
+  (dieselbe Roundtrip-Falle wie `{{Organizer}}`, v30.74). Vorbild für die
+  Anzeige: `StayRangePicker` (:2416).
+- **Die frühen Return-Seiten sind vollwertige Seiten** — für viele Menschen die
+  einzige Seite der App, die sie je sehen. Vorlage sind
+  `RegistrationPage.tsx:1280-1303` (Bildband, Symbol, Titel, Grund, Knopf
+  zurück) und der Erfolgsschirm :1908-2061. Nachzuziehen: **„Event nicht
+  gefunden"** (:1242-1249) — bloßer Text ohne Karte, ohne Symbol und ohne einen
+  Satz, warum (gelöscht? kein Zugriff? alter Link?); die **Absage-Seite**
+  (:1736-1754) — Karte ohne Bild und Symbol; die **Team-Beitritts-Seite**
+  (:1777-1791) — gestaltet, aber ohne jeden Knopf, also eine Sackgasse.
+- **Jede dieser Seiten rendert den Zustand, mit dem sie erreicht wurde.**
+  `handleDecline` (:1587-1634) setzt bei Teilfehlschlag `setDeclined(true)`
+  **und** `setError("… bei N Terminen hat es nicht geklappt")` — die
+  `declined`-Seite (:1735-1754) gibt `error` nirgends aus. Die Person liest
+  „Absage erfasst", obwohl Termine offen blieben. Dasselbe für
+  `submittedAsWaitlist`, `submittedSessionsRef`, `submittedWaitlistRef`.
+- **Der Mobil-Zweig ist eine eigene Ansicht.** `StartPage.tsx:209-238`,
+  der `isMobile`-Zweig der Zeilenansicht in `EventListPage` und
+  `registration/regHelpers.tsx:154-214` (Sektionen klappen NUR auf dem Handy
+  ein) werden im selben Commit nachgezogen wie der Desktop-Zweig — sonst
+  driften sie weiter auseinander.
+
+---
+
+### 6c. Zustände — leer, unbekannt, Warteliste, vorbei
+
+- **Statusnamen kommen nie roh aus SharePoint.** `getStatusLabel`
+  (`myEvents/myEventsHelpers.tsx:130-138`) hat keinen Fall für „QR versendet"
+  und „No-Show" und gibt über `default: return status` den rohen Wert aus — im
+  englischen UI steht dann deutsch „QR versendet". Die Schlüssel existieren
+  längst in beiden Sprachen (`LanguageContext.tsx:207-212` / :660-665:
+  `status.registered`, `.qrsent`, `.waitlist`, `.checkedin`, `.noshow`,
+  `.cancelled`): **Das ist ein Ein-Datei-Fix ohne neue Übersetzungsschlüssel.**
+  Ebenso `getStatusBadgeClass` (:119-127) — heute bekommt „QR versendet"
+  dieselbe grüne Klasse wie „Angemeldet" und No-Show fällt auf grau durch,
+  ausgerechnet der Zustand mit dem größten Erklärbedarf.
+  **Der `default`-Zweig bleibt** und gibt weiterhin den Rohwert zurück: `Status`
+  ist eine SharePoint-Choice, die erweitert werden kann — ein unbekannter Wert
+  muss sichtbar bleiben, nicht zu „" oder „Unbekannt" werden.
+- **Warteliste ist kein Zustand der Farbe allein.** Heute ist nur das Badge
+  orange (`MyEventCard.tsx:217-221`), die Fußzeile sagt weiter „Angemeldet am
+  …", alle Aktionen sind dieselben. Text und Fußzeile benennen es. Die Position
+  bleibt an `maxParticipants > 0` gebunden (:218) — bei geteilten Kapazitäten
+  ist der Wert 0 (CLAUDE.md), dort wäre die Rechnung Unsinn; lieber keine
+  Position als eine falsche.
+- **Ein Lesefehler ist keine Null — auf diesen Seiten lädt er zur
+  Doppelanmeldung ein.** `getMyEventNumbers`/`getEventNumbersForEmail`
+  (`context/actions/participantFiles.ts:35-64`) fangen jeden Fehler und liefern
+  leere Arrays; `getRegistrationCount`
+  (`services/events/registrationStatus.ts:715-739`) bricht bei `!response.ok`
+  mit `break` ab und liefert `{registered:0, waitlist:0}`. Beide werfen nicht —
+  ein 403 auf `DEX_Participants` liest sich deshalb als „du bist nirgends
+  angemeldet" (Kachel ohne Overlay, Knopf „Registrierung starten"), ein
+  gedrosseltes Lesen als „140 frei" bei vollem Event
+  (`components/EventCard.tsx:113`, :386). **Die Reparatur der Verträge liegt in
+  geteilten Dateien mit vielen Aufrufern (inklusive des Handbuch-Stubs) und
+  gehört in ein eigenes Ticket.** Für die Oberfläche gilt bis dahin: **kein
+  neuer Schluss auf ein leeres Ergebnis** — keine neue Meldung, keine neue
+  Sperre, keine neue Zahl, die aus `[]` oder `0` „niemand" bzw. „frei" macht.
+- **Rollen und Rechte nie aus einer leeren Datenliste schließen.** `StartPage`
+  prüft `rolesReadStatus === 'forbidden'` (:137-143, v30.81), leitet aber
+  `isOrganizerOfAnyEvent` (:35-39) und `isCheckInTeamOfActive` (:45-50) aus
+  `events` ab: Bei einem 403 auf DEX_Events ist `events` leer, die
+  Organizer-Kachel wird ausgegraut und bewirbt ausgerechnet dem Organizer
+  gegenüber „Organizer werden?", die Check-in-Kachel verschwindet.
+  `eventsReadStatus` gehört genauso geprüft wie `rolesReadStatus`.
+- **Leer wird nur behauptet, wenn der Lesevorgang nachweislich geglückt ist.**
+  Vorbilder im eigenen Bestand: `EventListPage.tsx:583-589` und der
+  Grund-Kasten :396-435 mit „Erneut versuchen"; `LandingPage.tsx:303-320`
+  (behält bei Lesefehler den gecachten Stand) und der Check-in-Kasten mit
+  `checkInBoxError` (:414, :1131-1137). Leere Listen bekommen `dex-ui-empty`
+  mit einem Satz, was zu tun ist; Ladefehler `dex-ui-callout--danger` mit
+  Wiederholen-Knopf — heute ist der Ladefehler in „Meine Events" eine rote
+  Textzeile ohne Symbol, ohne Knopf und ohne englische Fassung (:634,
+  :1113-1117).
+- **„Unbekannt" ist ein eigener Zustand und wird benannt.** `count === null`
+  heißt weder „voll" noch „N frei" — `MyEventSubEvents.tsx:501-505/721-724`
+  rechnet das richtig, zeigt es aber nur als „—" plus `title` (:769); ebenso
+  `EventSpecificSection.tsx:210/663/790-791`. Daneben gehört ein sichtbarer
+  Satz bzw. ein `dex-ui-callout--warn`. Und **nie 0**.
+- **Jeder Zustand außer dem Normalfall wird an drei Stellen sichtbar: Pille,
+  Karten-Ton, Aktionszeile.** Vergangenes und Abgemeldetes ist
+  `dex-ui-card--muted`, **behält aber Datum, Ort und Bild** — sonst ist „wann
+  war das noch mal?" nicht mehr zu beantworten. Heute sehen vergangene Karten
+  aus wie aktive (nur Sektionsüberschrift und ein grauer Satz unterscheiden
+  sie), während die abgemeldete Zeile alles außer Titel und Abmeldedatum
+  verliert (`myEvents/CancelledEventsCollapsible.tsx:60-79`) und „Zur
+  Anmeldung" in die Liste statt zum Event führt (`MyEventsPage.tsx:1263-1264`).
+- **Der Zustand „angemeldet" wird markiert, nicht verdeckt — aber der Overlay
+  ist mehr als Optik.** `components/EventCard.tsx:280-321` enthält ZWEI Knöpfe
+  („Meine Events" und, für `canCreateEvents || isOwnOrganizer`, „Für andere
+  Person registrieren" — die Quelle des navIntent `register-other`, :313), und
+  die Kachel-Wurzel navigiert bei `alreadySignedUp` bewusst nirgendwohin
+  (:157). Wer auf grüne Kante plus Pille umstellt (wie
+  `EventListPage.tsx:630-636`, :688-697), muss beide Knöpfe und das Klickziel
+  `my-events` (`EventListPage.tsx:613-615`) im selben Zug übernehmen — sonst
+  bleibt eine Karte, die auf Klick nichts tut. Sperren (Frist, „Anmeldung ab")
+  dürfen weiter verdecken; sie blockieren den Klick auch optisch.
+- **Kachel und Zeile sagen dasselbe.** Beide lesen dieselbe Liste, weichen aber
+  ab: freie Plätze abzüglich Warteliste und mit Split-Kapazität
+  (`components/EventCard.tsx:95-113`) gegen `event.maxParticipants || '∞'`
+  (`EventListPage.tsx:685` — bei geteilten Gruppen ist der Wert 0, die Liste
+  behauptet „unbegrenzt"); Frist und „Anmeldung ab" sperren die Kachel und
+  fehlen in der Liste ganz; das Klickziel ist einmal die Anmeldeseite, einmal
+  `my-events`. Begründet sind nur Bildgröße und Zeilendichte. Wer eine Angabe
+  ändert, zieht die andere Ansicht im selben Commit nach; das Ziel ist eine
+  gemeinsame Quelle (`eventCardFacts(event)`) — das ist eine Code-Änderung und
+  gehört in ein eigenes Ticket, nicht in eine Optik-Runde.
+- **Hinweiskästen nur als `dex-ui-callout`, Farbe gleich Bedeutung**, höchstens
+  zwei sichtbare Zeilen (orange = Warnung, blau = Info, grün = Erfolg/aktiv,
+  rot = Gefahr). Heute stehen an derselben Stelle vier handgebaute Kästen
+  (`MyEventCard.tsx:228`, :257, :296, :338) plus zwei auf Seitenebene
+  (`MyEventsPage.tsx:1151`, :1185), und Grün heißt einmal Hotel, einmal Team,
+  einmal Assistenz.
+- **Anzeige ist `dex-ui-pill`, Schaltbares ist `dex-ui-chip`** (Grundsatz 3).
+  Die Antwort-Tags (`myEventsHelpers.tsx:22-29`, heute ein handgebautes Tag mit
+  `borderRadius: 4` und ohne Klasse) und der Chip „Gruppe: Durchstarter"
+  (`MyEventCard.tsx:586-592`) sind reine Anzeige — der echte Umschalter „Gruppe
+  wechseln" steht 550 Zeilen tiefer (:1155-1176). Umgekehrt kein Hover ohne
+  Klick: der 240-%-Foto-Zoom auf Team-Mitgliedern (:398-412, ebenso
+  `MyEventsModals.tsx:282-296`) und der 260-%-Zoom im Personen-Antwort-Tag
+  (`myEventsHelpers.tsx:39-40`) versprechen eine Aktion, die es nicht gibt.
+- **Aufklapper sind `dex-ui-disclosure` mit `ChevronDown`, klickbare Zeilen
+  `<button>` bzw. `dex-ui-row` mit Hover, Zeiger und Tastaturfokus.** Ein ▶ oder
+  ▲▼ im Text ist kein Bedienhinweis, ein `<div onClick>` ist keine Zeile:
+  `CancelledEventsCollapsible.tsx:26-43` (ganze Sektion),
+  `MyEventCard.tsx:652-667` (Beschreibung), `myEvents/DocumentsViewer.tsx:128-146`
+  (Dokumentzeile öffnet die Vorschau, der Pfeil ist ein `<span>`),
+  `MyEventSubEvents.tsx:838-858` (Gruppenköpfe), `myEvents/QuizPlayer.tsx:340-359`
+  (Antwortknöpfe ohne Hover).
+
+---
+
+### 6d. Formulierung und Sprache
+
+- **Guard-Meldungen nennen den tatsächlichen Grund — und das ist hier bereits
+  erreicht.** `registration/submitFlow.ts:192-244` fächert „nichts
+  abzuschicken" in fünf benannte Fälle auf, `regFailMessage` (:771-811) nennt
+  `not-allowed`, `deadline`, `dup-check-failed`, `insert-failed`,
+  `already-registered` und `full` einzeln; der alte Sammelsatz
+  (`LanguageContext.tsx:402`) steht bewusst nur noch als letzter Zweig (:242).
+  **Nichts davon zu einer Meldung zusammenfassen** — das haben v28.88, v29.9,
+  v29.13 und v30.67 nacheinander repariert. Offen ist genau eine Meldung: „Bitte
+  alle Pflichtfelder ausfüllen." (`LanguageContext.tsx:130`, gerufen
+  `submitFlow.ts:290` und :395) nennt kein Feld, obwohl dieselbe Datei es für
+  Custom-Felder namentlich tut (:379, :438).
+- **Erst was du tun kannst, dann die Mechanik.** „Ein Event kannst du jederzeit
+  nachträglich an- oder abmelden" (`MyEventSubEvents.tsx:410-416`) verspricht
+  „jederzeit", wo Fristen gelten, und erklärt Mail und Outlook, bevor es sagt,
+  was möglich ist; die Einschränkung kommt als Anhängsel und nur, wenn gerade
+  etwas gesperrt IST (:400-409).
+- **Ganze Sätze statt Kurzcodes.** „Abmeldefrist war am 12.10." statt „war bis
+  12.10." (`MyEventSubEvents.tsx:622`), „Selbst-Abmeldung gesperrt" statt „fix"
+  (:617).
+- **Etiketten werden Fragen (2c) — aber nur die App-Texte.** „Persönliche
+  Informationen" und „Event-spezifische Informationen"
+  (`LanguageContext.tsx:83-84`) sind Feldnamen; der zweite ist zusätzlich
+  irreführend, weil dort die Termin-AUSWAHL steht. „Aktive Events"
+  (`MyEventsPage.tsx:1226`) meint `upcomingEntries`, also kommende — ein
+  Wartelisten-Eintrag steht dort unter „aktiv". „Registrierungen"/„registriert"
+  (`LanguageContext.tsx:157-158`) heißen in dieser App Anmeldungen. **Nicht
+  angefasst werden Organizer-Daten**, die als Überschrift dienen:
+  `event.splitSectionTitle` (`EventSpecificSection.tsx:102`), `splitHelpText`
+  (:107-110) und `childTermPlural` (:344-350) gewinnen vor dem App-Text — nur
+  der Fallback-Zweig wird umformuliert.
+- **Bezeichnungen kommen aus den Term-Konstanten**, inklusive Artikel:
+  `childTermSingular`/`childTermPlural`/`childOneDe`
+  (`RegistrationPage.tsx:468-497`, `MyEventSubEvents.tsx:392-394`,
+  `MyEventCard.tsx:200/287`) und `agendaTermSingular`/`agendaTermPlural`
+  (:775/881). Fest verdrahtet sind heute „Sub-Event"
+  (`MyEventSubEvents.tsx:227/234/920/923/1035`, Badge-Rückfall
+  `MyEventCard.tsx:203`, `LanguageContext.tsx:406-407`), „Session ohne Titel"
+  als Fallback-Titel (`MyEventSubEvents.tsx:826`) und „Event-Section"
+  (`MyEventsModals.tsx:412-414`) — ein Begriff, den es sonst nirgends in der App
+  gibt.
+- **Sprachquelle ist ausschließlich `isDe`/`t()` aus dem `LanguageContext`** —
+  nie `event.emailLanguage` (das ist die Mailsprache; heute lesen
+  `MyEventUpload.tsx:23`, `MyEventDocField.tsx:22` und `MyEventCard.tsx:623`
+  daraus die UI-Sprache, sodass der Upload-Kasten englisch sein kann, während
+  die Seite deutsch ist; `MyEventSubEvents.tsx:40-46` erklärt im Kommentar,
+  warum das falsch ist).
+- **Kein Text ohne Gegenstück.** Der Bestand, den dieser Abschnitt bei seiner
+  Entstehung aufzählte — der Ladefehler in „Meine Events", der Leerzustand der
+  Event-Liste und „Entwurf" / „Teilnehmer" / „Organizer:" / „Angemeldet" /
+  „Warteliste" in der Zeilenansicht — ist mit v31.8/v31.9 abgearbeitet und läuft
+  über `t()` (`myevents.loaderror`, `events.empty`, `events.draft`,
+  `events.participants`, `events.organizers`, `status.registered`,
+  `status.waitlist`). **Diese Liste ist damit erledigt und wird nicht als
+  offener Befund weitergereicht.** Offen bleibt hart englisch: „So far used
+  for…" im Boot-Loader (`DexEventPlatform.tsx`, dazu `locale="en"` fest
+  verdrahtet).
+- **Typografische Anführungszeichen gehören als ZEICHEN in einen JS-String,
+  als ENTITY nur in JSX-Text.** In `StartPage` standen `&bdquo;`/`&ldquo;`
+  innerhalb eines Strings — React maskiert das, und die Person las die Entity
+  im Klartext. Die ESLint-Regel `react/no-unescaped-entities` greift nur im
+  JSX-Text und fängt den umgekehrten Fall nicht.
+- **Wer `LanguageContext.tsx` anfasst, ist EINER.** Fast jede Textregel oben
+  endet in derselben Datei mit zwei Sprachblöcken — bei parallelen Agenten ist
+  das die Datei, in der sie sich gegenseitig überschreiben. Also: Änderungen an
+  `t()`-Schlüsseln sammelt ein Vorab-Commit oder ein einzelner Agent; die
+  Seiten-Agenten ändern nur den JSX-Text ihrer eigenen Datei.
+- **Typografie:** `&bdquo;…&ldquo;` statt gerader Anführungszeichen (heute u.a.
+  `MyEventCard.tsx:347-348/1160/1169-1170`, `MyEventsPage.tsx:1166`,
+  `MyEventUpload.tsx:66`, `MyEventDocField.tsx:47`), echte Ellipse statt „...",
+  und kein Ladezustand, der einen Knopf zu „…" macht
+  (`MyEventCard.tsx:1264`, `LanguageContext.tsx:157/161/166`).
+
+---
+
+### 6e. Was auf den Teilnehmer-Seiten NICHT verändert werden darf
+
+Zusätzlich zu 2d. Diese Seiten hängen an mehr Außenwelt als jede andere Fläche
+der App: Tour, Deep-Links aus Mails, Handbuch, geparste Texte,
+Datenschutz-Schalter.
+
+- **Kein Hook hinter einem frühen Return — und die Returns kippen zur
+  Laufzeit.** `RegistrationPage.tsx`: letzter Hook `searchUsersInAudience`
+  (heute :1214-1218), erster Return `if (!event)` (:1220), dann :1278
+  `notYetActive`, :1306 `isFullyClosed`, :1735 `declined`, :1759
+  `submitted && submittedJoinKind`, :1794 `submitted`; Haupt-Return :2542.
+  Zwischen dem ersten Return und dem Dateiende steht heute kein einziges
+  `React.use*` — auch nicht versteckt: `createSubmitFlow` (:1562) und die
+  Props-Bündel (:2447-2541) dürfen **niemals** zu `useMemo`/`useCallback`
+  werden. Der Warnkommentar :1158-1165 bleibt stehen. Dasselbe Verbot:
+  `StartPage.tsx:240` (`if (isMobile)` — kippt bei Resize UND über
+  `window.__dexForceMobile` der Handbuch-Vorschau), `MyEventsPage.tsx:910`
+  und :951, `EventListPage.tsx:346`, `regHelpers.tsx:167` vor :171,
+  `MyEventUpload.tsx:39`, `QuizPlayer.tsx:189`, `RegisterPreviewModal.tsx:262`.
+  `ensureDexUiStyles()` ist **kein** Hook und darf nach dem Return stehen.
+- **Die Deklarationskette zwischen den Returns ist Abhängigkeit, kein Zufall:**
+  `errorBorder` → `parentAlreadyRegistered` → `parentRegBlocked` →
+  `sessionsChanged` → `nothingToSubmit` → `renderMainFieldsSection` →
+  `createSubmitFlow` → `handleDecline` → `renderRegField` → Props-Bündel.
+- **Die drei `beforeunload`-Wächter bleiben** mit State-Flag und Cleanup:
+  `RegistrationPage.tsx:318` (`isSubmitting`), `MyEventsPage.tsx:329`
+  (`cancelProgress`), `MyEventSubEvents.tsx:70`. Ohne sie bricht ein Tabwechsel
+  eine halbe An-/Abmeldung ab und hinterlässt Termine ohne Klammer. Ebenso der
+  Live-Counter-Effect `RegistrationPage.tsx:520-542` — sein Rückgabewert ist das
+  `subscribeEventRealtime`-Unsubscribe plus das Entfernen des `focus`-Listeners.
+- **Tour-Anker — drei davon sind Struktur, kein `data-tour`.**
+  `data-tour="landing-start"` (`LandingPage.tsx:1227`) und
+  `tile-register`/`tile-myevents`/`tile-admin`/`tile-checkin`
+  (`StartPage.tsx:97/104/111/148`) bleiben am selben Element. Dazu zeigen
+  `components/tutorial/tutorialTours.ts:74/82/98` auf `.event-grid`,
+  `.event-grid > *:first-child` und `.my-event-card`: Die Kartenansicht muss
+  `.event-grid` heißen (`EventListPage.tsx:535`), ihr erstes Kind muss die
+  `EventCard`-Wurzel bleiben (kein Wrapper-`div` dazwischen), und die AKTIVEN
+  Karten (`MyEventCard.tsx:157`) müssen im DOM VOR den abgemeldeten stehen
+  (`CancelledEventsCollapsible.tsx:63`) — sonst hebt die Tour eine abgemeldete
+  Anmeldung hervor. Ein Selektor ins Leere wirft nicht, er zeigt nichts
+  (`TutorialGuide.tsx:190/203`).
+- **`id={\`dex-myevent-${event.id}\`}` (`MyEventCard.tsx:157`) ist ein
+  Deep-Link-Ziel, keine Dekoration.** `MyEventsPage.tsx:897-898` scrollt darauf,
+  angestoßen von `?action=cancel&event=<Nr>` aus der Outlook-Absage-Mail
+  (`DexEventPlatform.tsx:435-446`); die abgemeldete Karte trägt bewusst keine
+  id. `.main-content` bleibt der Scroll-Container (`RegistrationPage.tsx:57`,
+  definiert `DexEventPlatform.tsx:1065`).
+- **Die globalen Layout-Klassen bleiben** (`:global`-Block des SCSS-Moduls,
+  zentral gepflegt): `.page-container`, `.event-card` samt
+  `__image/__overlay/__title/__meta/__body/__dates/__deadline/__register-btn`,
+  `.event-grid`, `.my-event-card` samt
+  `__thumb/__header/__details/__specific/__actions`, `.start-card` samt
+  `__icon/--admin/--checkin`, `.landing` samt
+  `__hero/__card/__orb/__text/__actions`, `.section-header`, `.badge` +
+  `-green/-orange/-red/-gray`, `.my-events-list`, `.dex-cancel-btn`. Neue Optik
+  über zusätzliche `dex-ui-`-Klassen, nie durch Umbenennen; fehlt eine Klasse,
+  wird sie im Bericht gewünscht (offen: ein dunkler Karten-Overlay, dreimal
+  wortgleich in `components/EventCard.tsx:213/264/281`).
+- **Die drei nummerierten Stationen der Anmeldeseite bleiben, wo und wie sie
+  sind.** `.reg-step-num` ist absolut auf `left:-44px` positioniert und
+  funktioniert NUR als Kind von `.registration-layout`
+  (`RegistrationPage.tsx:2567-2616`, SCSS :548-591); ein Stationskopf, der aus
+  dem Container wandert, hat seine Nummer außerhalb des Bildschirms. Nummern
+  und Reihenfolge bleiben — wie `StepBadge` im Wizard.
+- **Zwei Zeichenketten werden geparst, nicht gelesen.** (1)
+  `t('events.deadlinepassed.hint')` (`LanguageContext.tsx:79/537`) MUSS das Wort
+  „organizer" enthalten — `components/EventCard.tsx:226` zerlegt ihn mit
+  `/(organizer)/i`, um die Organizer-Kontaktkarte anzuhängen; ohne Treffer
+  verschwindet sie lautlos. (2) `t('myevents.agenda')` MUSS auf Deutsch exakt
+  „Programm" bleiben — `QuizPlayer.tsx:62`, `DocumentsViewer.tsx:154/175` und
+  `MyEventCard.tsx:881/933` benutzen `=== 'Programm'` als Sprach-Detektor.
+  Beides ist ein Konstruktionsfehler; **neue Stellen dieser Art entstehen
+  nicht**, und wer eine der beiden Zeichenketten anfasst, ersetzt den Mechanismus
+  im SELBEN Commit an allen Stellen (Sprache über `isDe`, Kontakt über eine
+  eigene Prop) — sonst ändert er Verhalten, nicht Wortlaut.
+- **Gespeicherte Formate sind kein Anzeigetext:** die Regex
+  `^(.+?)\s*<([^>]+@[^>]+)>\s*$` für People-Picker-Antworten
+  (`myEventsHelpers.tsx:14`, `RegistrationPage.tsx:667/1373`,
+  `submitFlow.ts:742/1313`), die Platzhalter `{{EventTitle}}`, `{{Organizer}}`,
+  `{{Name}}`, `{{AppUrl}}`, `{{ContactEmail}}` in der Event-Beschreibung
+  (`registration/EventCard.tsx:427-442`) und die Antwort-Strings der
+  Custom-Felder (6b, Datum).
+- **SharePoint-Werte werden nie „korrigiert":** die Status-Literale
+  `'Angemeldet'`, `'Warteliste'`, `'Abgemeldet'`, `'Eingecheckt'`,
+  `'QR versendet'` (mit Leerzeichen), `'No-Show'`, der EmailType `'Info'`
+  (`MyEventsPage.tsx:828`; die Choice-Liste steht in
+  `services/events/emailQueue.ts:94` mit `Nachruecken` OHNE Umlaut) und die
+  Spaltennamen aus `SPRegistration` (`TeilnehmerID`, `CustomData`,
+  `AgendaCheckIns`, `Hotel*`, `CancellationDate`). Die vier ue/oe-Werte aus
+  CLAUDE.md kommen auf diesen Seiten **nicht** vor — was hier mit Umlaut steht,
+  ist Fließtext und darf umformuliert werden.
+- **Datenschutz-Schalter wandern mit ihrem Block.** `hideOrganizer` +
+  `hideOrganizerIndividualOnly` (`components/EventCard.tsx:144-146`,
+  `MyEventCard.tsx:597-607`, `RegistrationPage.tsx:2035/2047`),
+  `hotelVisibleToAttendees` (`MyEventCard.tsx:243`), `teamOpenSlotsVisible`
+  (`RegistrationPage.tsx:720/2600`) und die Zeilen-Sicherheit der
+  Teilnehmerlisten entscheiden, WER WESSEN Daten sieht. Kein Umbau blendet
+  Personen-, Hotel- oder Teamdaten an einer Stelle ein, an der sie heute an
+  einer Bedingung hängen.
+- **Anzeige-Bedingungen und Rechenwege sind Aussagen, keine Formatierung:**
+  `!subOnly` vor Plätze-Badge (`components/EventCard.tsx:380`) und Frist (:390)
+  sowie `if (event.subEventsOnlyMode) return null` (`MyEventCard.tsx:199/286`);
+  `freePlaces = effectiveMax - currentParticipants - waitlistCount` (:113 — die
+  Wartelisten-Subtraktion IST die Aussage „frei", v24.72); „Angemeldet gewinnt"
+  (:290, v30.2); die Rechte-Kette
+  `!canCreateEvents && !isOwnOrganizer && !alreadySignedUp` (:127/134/135);
+  die Wartelisten-Position nur bei `maxParticipants > 0`
+  (`MyEventCard.tsx:218`); der QR-Knopf erst ab Status „QR versendet"/
+  „Eingecheckt" (:740, v28.7); die Bescheinigung nur bei `agendaCheckIn` plus
+  mindestens einer Marke (:759-762); `isFullyClosed` rechnet über ALLE
+  buchbaren Sub-Events statt über die sichtbarkeitsgefilterte Liste
+  (`RegistrationPage.tsx:1296-1299`, v30.20); die Organizer-Ausnahme in
+  `notYetActive`/`isFullyClosed` (:1278/:1306); `sessionsChanged` (leere
+  Auswahl IST die Änderung, :1398-1402); `kidsFirst`
+  (`MyEventsPage.tsx:774-788`, v30.68: erst die Termine abmelden, die Klammer
+  nur, wenn keiner fehlschlug).
+- **Das Handbuch rendert diese Seiten LIVE.**
+  `components/manual/sections/{findEvent,myEvents,subEvents,intro,checkIn,registerForOther}.tsx`
+  mounten `EventListPage`, `RegistrationPage`, `MyEventsPage` und `LandingPage`
+  gegen die **handgepflegten** Stubs in
+  `components/manual/previews/PreviewProviders.tsx:148-216`. Ruft eine dieser
+  Seiten künftig eine dort fehlende Context-Funktion in einem Mount-Effect,
+  stirbt der ganze React-Baum mit „… is not a function" — **nur im Handbuch,
+  nicht in der App**, im normalen Test also unsichtbar (so geschehen in v28.11,
+  Kommentar :199-203). Zweiter Host: `RegisterPreviewModal.tsx:379`. Und
+  `window.__dexForceMobile` (`utils/useIsMobile.ts:17`) heißt: die Vorschau
+  rendert die Mobil-Zweige mit. Das Handbuch **zitiert außerdem Beschriftungen
+  wörtlich** („Aktuelle Events", „Deine Events", „Registrierung starten",
+  „Zusätzliche Sessions", Badge „Nur Sessions" —
+  `manual/sections/findEvent.tsx:33`, `myEvents.tsx:95-100`): wer sie ändert,
+  zieht `manual/sections/*` nach.
+- **Exportierte Symbole und Storage-Schlüssel bleiben.** Exporte:
+  `isEventVisibleForUser` (`EventListPage.tsx:132` → `RegistrationPage`,
+  `MyEventCard`, `MyEventSubEvents`) und `KpiRow` (`LandingPage.tsx:1387` →
+  `DexEventPlatform.tsx:38`). Schlüssel (Umbenennen = stiller Cache-Verlust,
+  jeder Zugriff in try/catch): `dex:myevents:cache`, `dex-eventlist-view`,
+  `dex_assist_<email>`, `dex_landing_regboxes_v1:<email>`,
+  `dex_demo_impersonation` und `INACTIVE_SUMMARY_CACHE_KEY`
+  (`LandingPage.tsx:343` — **geteilt** mit dem Organizer Center).
+
+---
+
+### 6f. Prüfen — die sieben Zustandsfälle
+
+`tsc` und ESLint fangen hier fast nichts. Seit v31.8 rendert der Harness aber
+auch diese Seiten — **einmal laufen lassen und die Bilder ansehen** ist keine
+Kür:
+
+```bash
+cd dex-event-app-spfx/tools/wizard-harness
+npm i --no-audit --no-fund      # einmalig, VON HIER AUS — sonst landen esbuild
+                                # und playwright im Produkt-Paket
+node build.js
+node shot.js pages              # out/shots/page-*.png, je Seite Desktop UND Handy
+```
+
+Einzelne Seite ohne den ganzen Lauf:
+`out/index.html?page=register&mobile=1` (`landing`, `start`, `list`, `register`,
+`myevents`; dazu `&view=list` und `&event=<id>`). `?mobile=1` setzt
+`window.__dexForceMobile` **und** den 390-px-Viewport — nur zusammen greifen die
+Media-Queries; wer nur das Flag setzt, fotografiert ein 980-px-Layout in klein.
+
+Was der Harness NICHT zeigt und worüber er deshalb nichts beweist: Bilder sind
+Platzhalter (Bildzuschnitt und Orb-Größen kann man dort nicht beurteilen), die
+Fluent-Icon-Schrift fehlt (`<Icon>` rendert leere Kästchen — die eigenen
+SVG-Icons aus `Icons.tsx` stimmen), Profilfotos fehlen, es gibt kein Speichern
+und keine Personensuche. **Ein leeres Kästchen im Bild ist kein Fehler, ein
+falsch sortierter Block schon.** Zweite Vorschau bleiben die Handbuch-Seiten
+mit ihren handgepflegten Stubs (siehe 6e) — der Stub-Provider ist Pflichtprüfung.
+
+Die Zustände unten erzeugt der Harness nicht alle; sie werden am Diff
+durchgegangen. Zusätzlich zu Abschnitt 8:
+
+- [ ] Kachel als normaler User **nach Fristablauf** (Overlay + roter Kasten,
+      Organizer-Kontakt erreichbar, Klick blockiert).
+- [ ] Kachel eines **`subEventsOnlyMode`**-Events (keine Plätze, keine Frist —
+      dafür Terminzahl und der Satz zur Anmeldung je Termin).
+- [ ] Karte mit **Warteliste** und mit **geteilten Kapazitäten**
+      (`maxParticipants === 0`: keine erfundene Position, Text und Fußzeile
+      sagen „Warteliste").
+- [ ] **`hiddenRow`**-Karte (fremd angelegt: sichtbar, nicht abmeldbar, Grund
+      als Text, kein Knopf-Imitat).
+- [ ] Anmeldeseite ohne freigegebene Termine (**`hiddenChildCount > 0`**) und
+      als **Organizer nach Frist** (Banner statt Sperre).
+- [ ] Liste und Kachel bei **`eventsReadStatus === 'forbidden'`** (Grund-Kasten
+      statt „keine Events", Kacheln nicht als „0 angemeldet"/„frei").
+- [ ] **Meine Events ohne eigene Anmeldung, aber mit Assistenz-Aufgabe** (die
+      seitenweiten Kästen rendern, nicht der Leerzustand).
+
+---
+
+## 7. Symbole
 
 `components/Icons.tsx` (Inline-SVG, Props `size`, `strokeWidth`):
 `ChevronLeft ChevronUp ChevronDown Settings GraduationCap BarChart3 CaptainHat
@@ -462,7 +1207,7 @@ Keine neuen Icon-Bibliotheken.
 
 ---
 
-## 7. Prüfen vor dem Abschluss
+## 8. Prüfen vor dem Abschluss
 
 ```bash
 cd dex-event-app-spfx

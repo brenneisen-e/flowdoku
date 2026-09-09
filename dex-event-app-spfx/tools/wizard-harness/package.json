@@ -1,0 +1,9 @@
+{
+  "name": "dex-wizard-harness",
+  "private": true,
+  "description": "Werkzeug-Paket des Render-Harness. Steht hier, damit npm die beiden Pakete NICHT in dex-event-app-spfx/package.json einträgt — npm sucht sonst die nächste package.json weiter oben und landet im Produkt-Paket, aus dem SPFx das .sppkg baut.",
+  "dependencies": {
+    "esbuild": "^0.21.5",
+    "playwright": "^1.55.0"
+  }
+}

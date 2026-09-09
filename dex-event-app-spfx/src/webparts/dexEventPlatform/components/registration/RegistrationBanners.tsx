@@ -6,6 +6,8 @@
 import * as React from 'react';
 import { Locale } from '../../context/LanguageContext';
 import { DeloitteEvent } from '../../types';
+import { AlertCircle, Info } from '../Icons';
+import { cx } from '../dexUi';
 
 /** Hinweis, dass das Event fuer den eigenen Standort nicht ausgeschrieben ist. */
 export interface LocationBannerProps {
@@ -16,11 +18,13 @@ export interface LocationBannerProps {
 export const LocationBanner: React.FC<LocationBannerProps> = (p) => {
   const { currentUser, event, t } = p;
   return (
-        <div style={{
-          padding: '10px 16px', marginBottom: 16, borderRadius: 'var(--dex-radius-md)',
-          background: 'rgba(237,139,0,0.1)', border: '1px solid var(--dex-orange)',
-          color: 'var(--dex-orange)', fontSize: '0.85rem',
-        }}>
+        // v31.9: aus dem handgebauten Kasten ein `dex-ui-callout--warn`. Der
+        // alte Kasten schrieb den GANZEN Text in Orange auf hellorangen Grund
+        // — auf einem Handy im Freien kaum zu lesen; die Klasse trennt
+        // Rahmenfarbe (Bedeutung) von Textfarbe (Lesbarkeit).
+        <div className={cx('dex-ui-callout', 'dex-ui-callout--warn')} style={{ marginBottom: 16 }}>
+          <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+          <span className="dex-ui-callout-body">
           {t('reg.locationnotice')}
           {event && event.locationAudience.length > 0 && <> {t('reg.locationfilter')}: <strong>{event.locationAudience.join(', ')}</strong>.</>}
           {/* v9.17: bei Einzel-E-Mail-Whitelists in audienceFilter würden bei
@@ -44,6 +48,7 @@ export const LocationBanner: React.FC<LocationBannerProps> = (p) => {
           })()}
           {event && event.filterMode === 'AND' && <> ({t('reg.andmode')})</>}
           {' '}{t('reg.yourlocation')}: {currentUser.location || t('reg.unknown')}.
+          </span>
         </div>
   );
 };
@@ -58,11 +63,11 @@ export interface DeadlineBannerProps {
 export const DeadlineBanner: React.FC<DeadlineBannerProps> = (p) => {
   const { event, isFullyClosed, locale, t } = p;
   return (
-        <div style={{
-          padding: '10px 16px', marginBottom: 16, borderRadius: 'var(--dex-radius-md)',
-          background: 'rgba(237,139,0,0.1)', border: '1px solid var(--dex-orange)',
-          color: 'var(--dex-orange)', fontSize: '0.85rem',
-        }}>
+        // v31.9: wie beim Standort-Hinweis — `dex-ui-callout--warn` statt
+        // orangem Text auf orangem Grund.
+        <div className={cx('dex-ui-callout', 'dex-ui-callout--warn')} style={{ marginBottom: 16 }}>
+          <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+          <span className="dex-ui-callout-body">
           {/* v22.55: Nur wenn ALLES zu ist ("kein User käme mehr rein") den
               harten Hinweis zeigen. Sind Sub-Events noch offen, kann sich ein
               normaler User weiterhin für diese anmelden — dann ein zutreffender
@@ -81,6 +86,7 @@ export const DeadlineBanner: React.FC<DeadlineBannerProps> = (p) => {
               <>Note: The main event’s registration deadline has passed{event.registrationDeadline ? <> (was <strong>{new Date(event.registrationDeadline).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong>)</> : ''} — but the still-open sub-events remain bookable, also for regular users.</>
             )
           )}
+          </span>
         </div>
   );
 };
@@ -167,19 +173,19 @@ export interface DemoBannerProps {
 export const DemoBanner: React.FC<DemoBannerProps> = (p) => {
   const { locale } = p;
   return (
-        <div style={{
-          padding: '10px 16px', marginBottom: 16, borderRadius: 'var(--dex-radius, 12px)',
-          background: 'rgba(0,118,168,0.08)', border: '1px solid var(--dex-blue, #0076a8)',
-          color: 'var(--dex-gray-800)', fontSize: '0.85rem', lineHeight: 1.55,
-          display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
-        }}>
+        // v31.9: `dex-ui-callout--info` statt eines vierten handgebauten
+        // Kastens. Die gefüllte DEMO-Marke bleibt bewusst erhalten — sie ist
+        // das Signal, dass hier nichts gespeichert wird, und eine helle
+        // `dex-ui-pill` würde es abschwächen.
+        <div className={cx('dex-ui-callout', 'dex-ui-callout--info')} style={{ marginBottom: 16, alignItems: 'center' }}>
+          <span className="dex-ui-callout-icon" style={{ marginTop: 0 }}><Info size={16} /></span>
           <span style={{
             padding: '2px 8px', borderRadius: 999, background: 'var(--dex-blue, #0076a8)',
-            color: '#fff', fontSize: '0.66rem', fontWeight: 700, letterSpacing: 1,
+            color: '#fff', fontSize: '0.66rem', fontWeight: 700, letterSpacing: 1, flexShrink: 0,
           }}>DEMO</span>
           {locale === 'de'
-            ? <span>Dies ist ein <strong>Demo-Event</strong> — es wird genau so angezeigt wie ein echtes Event. Du kannst die Anmeldemaske ansehen, aber <strong>keine echte Anmeldung</strong> absenden.</span>
-            : <span>This is a <strong>demo event</strong> — shown exactly like a real one. You can explore the registration form, but <strong>cannot submit a real registration</strong>.</span>}
+            ? <span className="dex-ui-callout-body">Dies ist ein <strong>Demo-Event</strong> — es wird genau so angezeigt wie ein echtes Event. Du kannst die Anmeldemaske ansehen, aber <strong>keine echte Anmeldung</strong> absenden.</span>
+            : <span className="dex-ui-callout-body">This is a <strong>demo event</strong> — shown exactly like a real one. You can explore the registration form, but <strong>cannot submit a real registration</strong>.</span>}
         </div>
   );
 };

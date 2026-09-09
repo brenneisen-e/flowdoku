@@ -13,6 +13,8 @@
 import * as React from 'react';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { isExternalEmail } from '../../utils/deloitteDomain';
+import { ChevronDown } from '../Icons';
+import { cx } from '../dexUi';
 
 export function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -166,23 +168,37 @@ export function CollapsibleSection(props: {
   const { isMobile, icon, title, headerExtra, defaultOpen, collapsible, children } = props;
   const [open, setOpen] = React.useState<boolean>(defaultOpen ?? !isMobile);
 
+  // v31.9: Symbol und Titel standen zweimal wortgleich im Markup — einmal je
+  // Zweig. Der Handy-Zweig ist eine eigene Ansicht und driftet genau so ab
+  // (Leitfaden 6b). Ein gemeinsames Fragment hält beide Zweige zusammen; das
+  // gerenderte DOM ist unverändert.
+  const headLabel = (
+    <>
+      <Icon iconName={icon} style={{ fontSize: 16 }} />
+      {title}
+    </>
+  );
+  // v31.9: Die Kopfzeile hielt ihre Zusatz-Aktionen mit `space-between` am
+  // rechten Rand — genau das Muster, das der Leitfaden (2a′) verbietet: ein
+  // Knopf, der zum Inhalt gehört, steht links beim Inhalt. Beide Zweige
+  // nutzen dieselbe Zeile, damit sie nicht wieder auseinanderlaufen.
+  const headRowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' };
+
   // Desktop ODER explizit nicht-einklappbar: unverändertes Markup (Header + Body
   // immer sichtbar, kein Chevron).
   if (!isMobile || collapsible === false) {
     return (
       <>
         {headerExtra ? (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div style={headRowStyle}>
             <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <Icon iconName={icon} style={{ fontSize: 16 }} />
-              {title}
+              {headLabel}
             </div>
             {headerExtra}
           </div>
         ) : (
           <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <Icon iconName={icon} style={{ fontSize: 16 }} />
-            {title}
+            {headLabel}
           </div>
         )}
         {children}
@@ -193,7 +209,7 @@ export function CollapsibleSection(props: {
   // Handy: antippbarer Header + einklappbarer Body.
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+      <div style={headRowStyle}>
         <div
           className="section-header"
           role="button"
@@ -203,9 +219,19 @@ export function CollapsibleSection(props: {
           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o); } }}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', flex: headerExtra ? '0 1 auto' : '1 1 auto', userSelect: 'none' }}
         >
-          <span aria-hidden="true" style={{ fontSize: 12, width: 12, display: 'inline-block' }}>{open ? '▾' : '▸'}</span>
-          <Icon iconName={icon} style={{ fontSize: 16 }} />
-          {title}
+          {/* v31.9: Aus „▸/▾" wird der Aufklapper-Chevron der App. Ein
+              Text-Dreieck ist kein Bedienhinweis (Leitfaden 6c) und war auf
+              dem Handy der einzige Hinweis darauf, dass sich hier etwas
+              öffnet. `color: inherit`, weil die Kopfzeile weiß auf Grün ist —
+              die Klasse färbt sonst grau. */}
+          <span
+            className={cx('dex-ui-disclosure-chevron', open && 'is-open')}
+            aria-hidden="true"
+            style={{ color: 'inherit' }}
+          >
+            <ChevronDown size={16} />
+          </span>
+          {headLabel}
         </div>
         {headerExtra}
       </div>

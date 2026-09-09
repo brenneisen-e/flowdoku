@@ -21,6 +21,11 @@ import { useLanguage, translations as appTranslations, Locale } from '../context
 import { useDialog } from '../context/DialogContext';
 import { Salutation, EventSpecificField, DeloitteEvent } from '../types';
 import { Icon } from '@fluentui/react/lib/Icon';
+// v31.9: Der gemeinsame Klassensatz (docs/ui-leitfaden.md). Diese Seite hängt
+// weder an `Modal` noch an `WizardFormShell`, die das Stylesheet sonst ziehen —
+// `ensureDexUiStyles()` steht deshalb weiter unten einmal in der Seite selbst.
+import { ensureDexUiStyles, cx } from './dexUi';
+import { AlertCircle, Check, Search, Send } from './Icons';
 import { InfoTooltip } from './InfoTooltip';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 import OrganizerList from './OrganizerList';
@@ -47,6 +52,58 @@ import { PersonalDataSection } from './registration/PersonalDataSection';
 import { EventCard } from './registration/EventCard';
 import { DeadlineBanner, DemoBanner, LocationBanner, SubmitOverlay } from './registration/RegistrationBanners';
 import { createSubmitFlow } from './registration/submitFlow';
+import type { ReactDatePickerProps } from 'react-datepicker';
+
+/**
+ * v31.9: Datums-Custom-Felder ohne natives `<input type="date">`.
+ *
+ * Chrome und Edge zeigen die nativen Felder in der BROWSER-Sprache: Wer die App
+ * auf Deutsch bedient, tippt seinen Anreisetag trotzdem in „10/12/2026" ein
+ * (UI-Leitfaden Grundsatz 8, dieselbe Beobachtung wie im Agenda-Editor v30.94).
+ *
+ * Der Picker wird NACHGELADEN, nicht importiert: `RegistrationPage` steckt im
+ * Boot-Bundle (`DexEventPlatform.tsx` importiert sie statisch), ein fester
+ * Import zöge `react-datepicker` + `date-fns` + CSS dorthin zurück — genau das,
+ * was v29.51 mit `StayRangePickerLazy` herausgeholt hat. Das Mitladen von
+ * `./StayRangePicker` ist kein Umweg, sondern die Quelle für zwei
+ * Seiteneffekte, die das nackte Paket nicht mitbringt: `registerLocale('de')`
+ * und das Kalender-CSS. Beide Module liegen ohnehin im selben Chunk, sobald
+ * eines von beiden gebraucht wird.
+ */
+const LazyDatePicker = React.lazy(async (): Promise<{ default: React.ComponentType<ReactDatePickerProps> }> => {
+  const [dp] = await Promise.all([
+    import('react-datepicker'),
+    import('./StayRangePicker'),
+  ]);
+  return { default: dp.default as React.ComponentType<ReactDatePickerProps> };
+});
+
+const pad2 = (n: number): string => String(n).padStart(2, '0');
+
+/**
+ * v31.9: Der gespeicherte String bleibt ZEICHENGLEICH zum bisherigen nativen
+ * Feld — `YYYY-MM-DD` bzw. `YYYY-MM-DDTHH:mm`, beides in lokaler Zeit. Der Wert
+ * ist die Antwort der Person: Er landet in `CustomData` und wird im Organizer
+ * Center, im Excel-Export und in der Bearbeiten-Ansicht wieder gelesen. Ein
+ * verschobenes Format machte Alt- und Neu-Antworten unvergleichbar (dieselbe
+ * Roundtrip-Falle wie `{{Organizer}}`, v30.74). Deshalb wird hier NUR die
+ * Anzeige deutsch, nie der Speicherwert.
+ */
+const parseCustomDateValue = (raw: string): Date | null => {
+  const m = (raw || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
+  if (!m) return null;
+  const d = new Date(
+    parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10),
+    m[4] ? parseInt(m[4], 10) : 0, m[5] ? parseInt(m[5], 10) : 0, 0, 0,
+  );
+  return isNaN(d.getTime()) ? null : d;
+};
+
+const formatCustomDateValue = (d: Date | null, withTime: boolean): string => {
+  if (!d || isNaN(d.getTime())) return '';
+  const day = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  return withTime ? `${day}T${pad2(d.getHours())}:${pad2(d.getMinutes())}` : day;
+};
 
 export default function RegistrationPage(): React.ReactElement {
   // v11.98: Beim Mount nach oben scrollen. Sonst behält der scrollende
@@ -374,6 +431,18 @@ export default function RegistrationPage(): React.ReactElement {
     return () => window.clearInterval(id);
   }, [isSubmitting, submitProgress]);
   const [error, setError] = React.useState('');
+  // v31.9: Der Fehlerkasten steht UNTER dem Formular. Auf dem Handy ist das
+  // mehrere Bildschirme tief: Die Person tippt „Anmelden", nichts sichtbares
+  // passiert, und der Grund liegt außerhalb des Bildes. Deshalb rollt die Seite
+  // zu ihm, sobald ein neuer Fehler entsteht (`role="alert"` sagt es zusätzlich
+  // den Screenreadern). Der Hook steht hier oben bei den anderen — hinter den
+  // frühen Returns wäre er React #300 (v30.3/v30.4).
+  const errorBoxRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    if (!error || !errorBoxRef.current) return;
+    try { errorBoxRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    catch { errorBoxRef.current.scrollIntoView(); }
+  }, [error]);
   const [showErrors, setShowErrors] = React.useState(false);
   // v11.91: showDescription wurde entfernt — Beschreibung ist immer offen.
   const [thirdPartyCheck, setThirdPartyCheck] = React.useState<{ alreadyRegistered: boolean; notInAudience: boolean; registeredName?: string; registeredDate?: string } | null>(null);
@@ -483,17 +552,28 @@ export default function RegistrationPage(): React.ReactElement {
     // („Bitte wähle mindestens … aus") — maskulin heisst das
     // „einen", nicht „ein". Genau daran ist
     // „mindestens ein Office-Tag" aufgefallen.
+    // v31.9: Ohne gepflegtes Geschlecht endet jede Artikel-Form falsch. Die
+    // Heuristik unten raet nie 'm' (v29.60 hat sie bewusst so gelassen, damit
+    // sich an Bestandsevents nichts still verschiebt) — bei „Tag" stand
+    // deshalb „Bitte waehle mindestens ein Tag aus". Zweiter Anlauf in
+    // MyEventSubEvents war „fuer jedes Tag", also derselbe Fehler in Gruen.
+    // Wo der Plural nicht passt (hier braucht der Satz den Singular), traegt
+    // die ZAHL den Job des Artikels: „mindestens 1 Tag" stimmt fuer jedes
+    // Geschlecht und ist in einem Formularhinweis die uebliche Form.
+    // Gepflegtes Geschlecht schlaegt das weiterhin — dann liest es sich
+    // natuerlicher.
     const g = event && event.childEventTermGender;
     if (g === 'm') return `einen ${term}`;
     if (g === 'f') return `eine ${term}`;
     if (g === 'n') return `ein ${term}`;
-    // Ohne Angabe wie bisher raten. Die Liste bleibt unveraendert, damit sich
-    // an bestehenden Events nichts still verschiebt; maskuline Begriffe
-    // liefern hier weiterhin „ein" — dafuer gibt es jetzt die Auswahl
-    // im Assistenten.
-    return /(session|veranstaltung|einheit|runde|reihe|tour|führung|schicht|woche|gruppe|stunde)$/i.test(term)
-      ? `eine ${term}`
-      : `ein ${term}`;
+    // Ohne Angabe raten — aber nur dort, wo die Heuristik zuverlaessig ist.
+    // Die Suffix-Liste erkennt FEMININE Begriffe gut („eine Session" liest
+    // sich besser als „1 Session"). Fuer alles andere kann sie zwischen
+    // maskulin und neutrum nicht unterscheiden, und dort traegt die Zahl.
+    if (/(session|veranstaltung|einheit|runde|reihe|tour|führung|schicht|woche|gruppe|stunde)$/i.test(term)) {
+      return `eine ${term}`;
+    }
+    return `1 ${term}`;
   }, [childTermSingular, event]);
   // v24.58: Anzeige-Präfix des Haupt-Events in der Sub-Event-Auswahl.
   // 'none' → kein Präfix (null), 'custom' → freier Text, sonst der mitgegebene
@@ -692,7 +772,10 @@ export default function RegistrationPage(): React.ReactElement {
     for (const m of filled) {
       if (!m) continue;
       if (seen.has(m.email)) {
-        return { ok: false, reason: locale === 'de' ? `„${m.displayName}" ist doppelt im Team.` : `„${m.displayName}" appears twice in the team.` };
+        // v31.9: Der Grund steht seit dem Umbau der Aktionsleiste als sichtbarer
+        // Text unter dem Knopf, nicht mehr nur im `title` — vorher hat niemand
+        // gelesen, dass im englischen Satz ein deutsches Anführungszeichen stand.
+        return { ok: false, reason: locale === 'de' ? `\u201e${m.displayName}\u201c ist doppelt im Team.` : `\u201c${m.displayName}\u201d appears twice in the team.` };
       }
       seen.add(m.email);
     }
@@ -1239,15 +1322,53 @@ export default function RegistrationPage(): React.ReactElement {
         </div>
       );
     }
+    // v31.9: „Event nicht gefunden" war eine Überschrift und ein Knopf. Für die
+    // Person, die aus einer Mail hierher kommt, ist das die EINZIGE Seite der
+    // App, die sie je sieht — und sie sagte ihr nicht, was passiert ist. Jetzt
+    // im selben Aufbau wie der „Anmeldung noch nicht geöffnet"-Schirm darunter
+    // (Bildband, Symbol, Titel, Grund, Weg zurück) und mit den drei Gründen,
+    // die es tatsächlich gibt: gelöscht, kein Zugriff, alter Link.
     return (
-      <div className="page-container text-center">
-        <h2>{t('reg.eventnotfound')}</h2>
-        <button className="btn btn-primary mt-24" onClick={() => navigate('register')}>
-          {t('reg.backtoevents')}
-        </button>
+      <div className="page-container">
+        <div className="card" style={{ position: 'relative', overflow: 'hidden', maxWidth: 640, margin: '0 auto' }}>
+          <div style={{
+            height: 160,
+            background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+            borderRadius: '16px 16px 0 0',
+          }} />
+          <div style={{ padding: 32, textAlign: 'center' }}>
+            <div style={{ color: 'var(--dex-orange, #ed8b00)', marginBottom: 12 }}><Search size={44} /></div>
+            <h2 style={{ marginTop: 0, marginBottom: 8 }}>{t('reg.eventnotfound')}</h2>
+            <p style={{ color: 'var(--dex-gray-600)', marginBottom: 16, lineHeight: 1.55 }}>
+              {locale === 'de'
+                ? 'Dieses Event ist für dich nicht (mehr) erreichbar. Das hat meist einen von drei Gründen:'
+                : 'This event is not (or no longer) available to you. That usually has one of three reasons:'}
+            </p>
+            <ul style={{ textAlign: 'left', maxWidth: 460, margin: '0 auto', color: 'var(--dex-gray-600)', lineHeight: 1.6, fontSize: '0.9rem' }}>
+              <li>{locale === 'de' ? 'Das Event wurde gelöscht oder archiviert.' : 'The event was deleted or archived.'}</li>
+              <li>{locale === 'de' ? 'Es ist nicht für dich freigegeben — dann taucht es auch in der Event-Liste nicht auf.' : 'It is not shared with you — then it does not appear in the event list either.'}</li>
+              <li>{locale === 'de' ? 'Der Link ist alt und zeigt auf ein Event, das es so nicht mehr gibt.' : 'The link is old and points to an event that no longer exists in this form.'}</li>
+            </ul>
+            <p style={{ color: 'var(--dex-gray-500)', fontSize: '0.85rem', marginTop: 16 }}>
+              {locale === 'de'
+                ? 'Bist du sicher, dass du eingeladen bist? Dann frag kurz bei den Organizern nach.'
+                : 'Sure you were invited? Then check back with the organizers.'}
+            </p>
+            <button className="btn btn-primary mt-24" onClick={() => navigate('register')}>
+              {t('reg.backtoevents')}
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
+
+  // v31.9: Die `dex-ui-`-Klassen dieser Seite kommen aus einem Stylesheet, das
+  // `dexUi.ts` einmal in den <head> hängt — hier gerufen, weil weder `Modal`
+  // noch `WizardFormShell` an dieser Seite beteiligt sind. Idempotent, KEIN
+  // Hook: der Aufruf darf deshalb hinter den frühen Returns stehen
+  // (Vorbild `EventListPage.tsx`).
+  ensureDexUiStyles();
 
   // Registrierungs-Deadline prüfen.
   // v22.54: „Anmeldung geschlossen" greift nur, wenn das Hauptevent UND alle
@@ -1455,22 +1576,27 @@ export default function RegistrationPage(): React.ReactElement {
                   {fHelp(f) && <InfoTooltip text={fHelp(f)} />}
                 </label>
                 {f.type === 'select' && f.multi ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  // v31.9: Mehrfachauswahl als Chip-Reihe — dieselbe Form, die
+                  // `SubEventFieldsModal` für genau diese Felder schon zeigt
+                  // (UI-Leitfaden 2b). Der gespeicherte Wert bleibt „A | B".
+                  <div className="dex-ui-inline" role="group" aria-label={fLabel(f)}>
                     {(f.options || []).map((opt, optIdx) => {
                       const current = val.split(' | ').map(s => s.trim()).filter(Boolean);
                       const checked = current.indexOf(opt) >= 0;
                       return (
-                        <label key={opt} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.84rem', cursor: 'pointer' }}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={e => {
-                              const next = e.target.checked ? [...current, opt] : current.filter(x => x !== opt);
-                              setValue(f.id, next.join(' | '));
-                            }}
-                          />
+                        <button
+                          key={opt}
+                          type="button"
+                          className={cx('dex-ui-chip', checked && 'is-active')}
+                          aria-pressed={checked}
+                          onClick={() => {
+                            const next = !checked ? [...current, opt] : current.filter(x => x !== opt);
+                            setValue(f.id, next.join(' | '));
+                          }}
+                        >
+                          {checked && <Check size={12} />}
                           {fOpt(f, opt, optIdx)}
-                        </label>
+                        </button>
                       );
                     })}
                   </div>
@@ -1480,9 +1606,19 @@ export default function RegistrationPage(): React.ReactElement {
                     {(f.options || []).map((opt, optIdx) => <option key={opt} value={opt}>{fOpt(f, opt, optIdx)}</option>)}
                   </select>
                 ) : f.type === 'checkbox' ? (
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.84rem' }}>
+                  // v31.9: Ja/Nein als Schalter-Zeile statt als nackter Haken —
+                  // eine Checkbox mit Inline-Styles hat keinen Hover, und der
+                  // Zustand stand bisher nur im Haken selbst.
+                  <label className={cx('dex-ui-toggle-row', val === 'true' && 'is-active')}>
                     <input type="checkbox" checked={val === 'true'} onChange={e => setValue(f.id, e.target.checked ? 'true' : 'false')} />
-                    {locale === 'de' ? 'Ja' : 'Yes'}
+                    <span className="dex-ui-toggle-row-body">
+                      <span className="dex-ui-toggle-row-title">{locale === 'de' ? 'Ja' : 'Yes'}</span>
+                      <span className="dex-ui-toggle-row-desc">
+                        {val === 'true'
+                          ? (locale === 'de' ? 'Bestätigt' : 'Confirmed')
+                          : (locale === 'de' ? 'Noch nicht bestätigt' : 'Not confirmed yet')}
+                      </span>
+                    </span>
                   </label>
                 ) : f.type === 'number' ? (
                   <input type="number" className="form-input" value={val} onChange={e => setValue(f.id, e.target.value)} style={{ width: '100%', fontSize: '0.88rem' }} />
@@ -1733,21 +1869,46 @@ export default function RegistrationPage(): React.ReactElement {
   };
 
   if (declined) {
+    // v31.9: Zwei Dinge fehlten hier. (1) Die Seite war eine nackte Karte ohne
+    // Bild und Symbol, während jeder andere End-Schirm dieser Seite beides hat.
+    // (2) Sie behauptete eine vollständige Absage, auch wenn `handleDecline` bei
+    // einzelnen Terminen gescheitert war: Der Teilfehlschlag setzt `declined`
+    // UND `error` — und `error` wurde nirgends ausgegeben. Wer den Kasten unten
+    // liest, weiß jetzt, dass Termine offen geblieben sind.
+    const declinePartial = !!error;
     return (
-      <div className="page-container text-center">
-        <div className="card" style={{ padding: '48px 32px', maxWidth: 640, margin: '0 auto' }}>
-          <h2 style={{ marginTop: 0 }}>
-            {locale === 'de' ? 'Absage erfasst' : 'Decline recorded'}
-          </h2>
-          <p className="mt-8" style={{ color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
-            {locale === 'de'
-              ? <>Danke für die Rückmeldung — wir haben vermerkt, dass du <strong>nicht</strong> an &bdquo;{event?.title}&ldquo; teilnimmst. Falls sich das ändert, kannst du dich jederzeit über diese Seite anmelden.</>
-              : <>Thanks for letting us know — we noted that you will <strong>not</strong> attend &bdquo;{event?.title}&ldquo;. If that changes, you can register any time via this page.</>}
-          </p>
-          <div style={{ marginTop: 28 }}>
-            <button className="btn btn-primary" onClick={() => navigate('register')}>
-              {t('reg.backtoevents') || (locale === 'de' ? 'Zurück zu Events' : 'Back to events')}
-            </button>
+      <div className="page-container">
+        <div className="card" style={{ position: 'relative', overflow: 'hidden', maxWidth: 640, margin: '0 auto' }}>
+          <div style={{
+            height: 160,
+            background: heroImgUrl
+              ? `url(${cachedImage}) center/cover no-repeat`
+              : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+            borderRadius: '16px 16px 0 0',
+          }} />
+          <div style={{ padding: 32, textAlign: 'center' }}>
+            <div style={{ color: declinePartial ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green-dark, #4a7c1f)', marginBottom: 12 }}>
+              {declinePartial ? <AlertCircle size={44} /> : <Check size={44} />}
+            </div>
+            <h2 style={{ marginTop: 0 }}>
+              {locale === 'de' ? 'Absage erfasst' : 'Decline recorded'}
+            </h2>
+            <p className="mt-8" style={{ color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+              {locale === 'de'
+                ? <>Danke für die Rückmeldung — wir haben vermerkt, dass du <strong>nicht</strong> an &bdquo;{event?.title}&ldquo; teilnimmst. Falls sich das ändert, kannst du dich jederzeit über diese Seite anmelden.</>
+                : <>Thanks for letting us know — we noted that you will <strong>not</strong> attend &bdquo;{event?.title}&ldquo;. If that changes, you can register any time via this page.</>}
+            </p>
+            {error && (
+              <div className="dex-ui-callout dex-ui-callout--warn" role="alert" style={{ textAlign: 'left', marginTop: 16 }}>
+                <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                <span className="dex-ui-callout-body">{error}</span>
+              </div>
+            )}
+            <div style={{ marginTop: 28 }}>
+              <button className="btn btn-primary" onClick={() => navigate('register')}>
+                {t('reg.backtoevents') || (locale === 'de' ? 'Zurück zu Events' : 'Back to events')}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1774,6 +1935,10 @@ export default function RegistrationPage(): React.ReactElement {
           : (locale === 'de'
               ? `Du bist dem Team beigetreten und für „${event.title}" angemeldet. Du bekommst eine Bestätigungs-E-Mail und einen Outlook-Termin. Details findest du unter „Meine Events".`
               : `You joined the team and are registered for „${event.title}". You will receive a confirmation email and an Outlook invite. See „My Events" for details.`));
+    // v31.9: Diese Seite war gestaltet, hatte aber keinen einzigen Knopf — eine
+    // Sackgasse mitten im Ablauf. Sie bekommt jetzt (wie der Erfolgsschirm) ein
+    // Symbol für das Ergebnis und beide Wege weiter; ein gesetzter `error` wird
+    // ausgegeben, statt hinter der Erfolgsmeldung zu verschwinden.
     return (
       <div className="page-container text-center">
         <div className="card" style={{ padding: '48px 32px', maxWidth: 720, margin: '0 auto' }}>
@@ -1784,8 +1949,38 @@ export default function RegistrationPage(): React.ReactElement {
               background: `url(${cachedImage}) center/cover no-repeat`,
             }} />
           )}
+          <div style={{ color: (isReq || submittedAsWaitlist) ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green-dark, #4a7c1f)', marginBottom: 12 }}>
+            {isReq ? <Send size={40} /> : (submittedAsWaitlist ? <AlertCircle size={44} /> : <Check size={44} />)}
+          </div>
           <h2 style={{ marginTop: 0 }}>{headline}</h2>
           <p style={{ fontSize: '0.95rem', color: 'var(--dex-gray-700)', lineHeight: 1.6, maxWidth: 560, margin: '0 auto' }}>{body}</p>
+          {error && (
+            <div className="dex-ui-callout dex-ui-callout--warn" role="alert" style={{ textAlign: 'left', maxWidth: 560, margin: '16px auto 0' }}>
+              <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+              <span className="dex-ui-callout-body">{error}</span>
+            </div>
+          )}
+          <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
+            {isReq ? (
+              <>
+                <button className="btn btn-primary" onClick={() => navigate('register')}>
+                  {t('reg.backtoevents') || (locale === 'de' ? 'Zurück zu Events' : 'Back to events')}
+                </button>
+                <button className="btn btn-secondary" onClick={() => navigate('my-events')}>
+                  {t('myevents.title')}
+                </button>
+              </>
+            ) : (
+              <>
+                <button className="btn btn-primary" onClick={() => navigate('my-events')}>
+                  {t('myevents.title')}
+                </button>
+                <button className="btn btn-secondary" onClick={() => navigate('register')}>
+                  {t('reg.registeranother')}
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -2029,6 +2224,17 @@ export default function RegistrationPage(): React.ReactElement {
             );
           })() : (
             <p className="mt-8" style={{ color: 'var(--dex-gray-600)' }}>{successBody}</p>
+          )}
+          {/* v31.9: Der Erfolgsschirm erscheint schon, wenn EIN Schreibvorgang
+              geklappt hat (`anySuccess` in submitFlow) — das Haupt-Event kann
+              dabei abgelehnt worden sein, und `setError` hat den Grund dann
+              bereits gesetzt. Ohne diesen Kasten las die Person „angemeldet"
+              und erfuhr vom Rest nichts. */}
+          {error && (
+            <div className="dex-ui-callout dex-ui-callout--warn" role="alert" style={{ textAlign: 'left', maxWidth: 560, margin: '16px auto 0' }}>
+              <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+              <span className="dex-ui-callout-body">{error}</span>
+            </div>
           )}
           {(() => {
             // v24.15: „Organizer ausblenden" ohne Einzel-Modus = ALLE aus.
@@ -2292,12 +2498,13 @@ export default function RegistrationPage(): React.ReactElement {
         forcedIsDe={locale === 'de'}
       />
     ) : field.type === 'checkbox' ? (
-      // v11.91: Checkbox bekommt jetzt eine ordentliche Karten-Box mit
-      // gleichem Look wie die Dropdown-Inputs — vorher war die Mini-
-      // Checkbox neben den Dropdowns visuell „verloren". Der Label-Text
-      // sitzt oben (analog zu den anderen Feldern, damit die Zeilen
-      // horizontal aligned sind), drinnen ein deutlich vergrößerter
-      // Checkbox + kurzer „Ja, bestätigen"-Hinweis.
+      // v11.91/v11.93: Die Checkbox bekam eine Karten-Box in der Höhe der
+      // Dropdowns — vorher war sie daneben visuell „verloren". Der Label-Text
+      // sitzt oben (wie bei den anderen Feldern, damit die Zeilen im
+      // 2-Spalten-Raster auf gleicher Höhe stehen).
+      // v31.9: Die Box war handgebaut und deshalb ohne Hover; jetzt die
+      // gemeinsame `dex-ui-toggle-row` (UI-Leitfaden 2b) — dieselbe Form, die
+      // `SubEventFieldsModal` für genau diesen Feldtyp schon nutzt.
       <>
         <label className="form-label">
           {field.required && <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>}
@@ -2306,34 +2513,36 @@ export default function RegistrationPage(): React.ReactElement {
         </label>
         {inlineHelpSlot}
         <label
-          style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            cursor: 'pointer',
-            // v11.93: exakt gleiche Höhe wie .form-select — 12px 16px Padding,
-            // 1.5px Border, 12px Radius. Vorher 44px minHeight = optisch
-            // höher als die Dropdowns daneben.
-            padding: '12px 16px',
-            border: showErrors && field.required && vals[field.id] !== 'true'
-              ? '1.5px solid var(--dex-red)'
-              : '1.5px solid var(--dex-gray-200)',
-            borderRadius: 12,
-            background: vals[field.id] === 'true' ? 'rgba(134,188,37,0.10)' : 'var(--dex-white, #fff)',
-            transition: 'background 0.12s',
-          }}
+          className={cx('dex-ui-toggle-row', vals[field.id] === 'true' && 'is-active')}
+          // Der rote Rand für eine fehlende Pflichtangabe: `dex-ui-` hat dafür
+          // bisher nur `--error`-Modifier für Eingabefelder, nicht für die
+          // Schalter-Zeile (im Bericht gewünscht). Inline gesetzt gewinnt er
+          // auch gegen den Hover der Klasse — genau das soll er.
+          style={showErrors && field.required && vals[field.id] !== 'true'
+            ? { borderColor: 'var(--dex-red)' }
+            : undefined}
         >
           <input
             type="checkbox"
             checked={vals[field.id] === 'true'}
             onChange={e => setVals({ ...vals, [field.id]: e.target.checked ? 'true' : 'false' })}
-            style={{ width: 16, height: 16, accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer', flexShrink: 0 }}
           />
-          <span style={{ fontSize: '0.95rem', color: 'var(--dex-gray-800)' }}>
-            {/* v11.94: Organizer kann den Text neben der Checkbox im Wizard
-                pro Feld setzen (field.confirmLabel). Default: „Ja, bestätigen".
-                v17.20: pickFieldConfirmLabel zieht im EN-Modus den
-                confirmLabelEn-Wert; fällt sonst auf den DE-Wert. */}
-            {(displayConfirmLabel && displayConfirmLabel.trim())
-              || (eventLocale === 'de' ? 'Ja, bestätigen' : 'Yes, confirm')}
+          <span className="dex-ui-toggle-row-body">
+            <span className="dex-ui-toggle-row-title">
+              {/* v11.94: Organizer kann den Text neben der Checkbox im Wizard
+                  pro Feld setzen (field.confirmLabel). Default: „Ja, bestätigen".
+                  v17.20: pickFieldConfirmLabel zieht im EN-Modus den
+                  confirmLabelEn-Wert; fällt sonst auf den DE-Wert. */}
+              {(displayConfirmLabel && displayConfirmLabel.trim())
+                || (eventLocale === 'de' ? 'Ja, bestätigen' : 'Yes, confirm')}
+            </span>
+            {/* Der Zustand als Text — ein Haken allein ist auf dem Handy die
+                einzige Auskunft, und die steht sonst nur in der Farbe. */}
+            <span className="dex-ui-toggle-row-desc">
+              {vals[field.id] === 'true'
+                ? (eventLocale === 'de' ? 'Bestätigt' : 'Confirmed')
+                : (eventLocale === 'de' ? 'Noch nicht bestätigt' : 'Not confirmed yet')}
+            </span>
           </span>
         </label>
         {field.externalLinks && field.externalLinks.length > 0 && (
@@ -2423,16 +2632,36 @@ export default function RegistrationPage(): React.ReactElement {
         required={field.required}
       />
     ) : field.type === 'date' ? (
-      // v24.25: Datums-Feld — Kalender-Auswahl. Mit withTime zusätzlich Uhrzeit
-      // (datetime-local). Der Wert wird als String gespeichert (wie alle
-      // Custom-Field-Antworten).
-      <input
-        className="form-input"
-        type={field.withTime ? 'datetime-local' : 'date'}
-        value={vals[field.id] || ''}
-        onChange={e => setVals({ ...vals, [field.id]: e.target.value })}
-        style={inputStyleGreen}
-      />
+      // v24.25: Datums-Feld — Kalender-Auswahl. Mit withTime zusätzlich Uhrzeit.
+      // Der Wert wird als String gespeichert (wie alle Custom-Field-Antworten).
+      // v31.9: Kein natives `<input type="date">` mehr — das zeigt in Chrome/Edge
+      // das Datum in der BROWSER-Sprache (10/12/2026), unabhängig von der
+      // Anmeldesprache dieser Seite. Angezeigt wird jetzt `dd.MM.yyyy`,
+      // GESPEICHERT unverändert `YYYY-MM-DD` bzw. `YYYY-MM-DDTHH:mm` — siehe
+      // formatCustomDateValue oben.
+      <React.Suspense fallback={<div className="form-input" aria-hidden="true" style={{ minHeight: 48 }} />}>
+        <LazyDatePicker
+          selected={parseCustomDateValue(vals[field.id] || '')}
+          onChange={(d: Date | null) => setVals({ ...vals, [field.id]: formatCustomDateValue(d, !!field.withTime) })}
+          showTimeSelect={!!field.withTime}
+          timeFormat="HH:mm"
+          timeIntervals={15}
+          timeCaption={locale === 'de' ? 'Uhrzeit' : 'Time'}
+          dateFormat={field.withTime ? 'dd.MM.yyyy HH:mm' : 'dd.MM.yyyy'}
+          locale={locale === 'de' ? 'de' : undefined}
+          placeholderText={locale === 'de'
+            ? (field.withTime ? 'TT.MM.JJJJ HH:MM' : 'TT.MM.JJJJ')
+            : (field.withTime ? 'dd/mm/yyyy hh:mm' : 'dd/mm/yyyy')}
+          className={cx('form-input', isErrEmpty && 'dex-ui-input--error')}
+          wrapperClassName="dex-datepicker-wrapper"
+          calendarClassName="dex-datepicker-calendar"
+          popperPlacement="bottom-start"
+          autoComplete="off"
+          isClearable
+          ariaRequired={field.required ? 'true' : undefined}
+          ariaInvalid={isErrEmpty ? 'true' : undefined}
+        />
+      </React.Suspense>
     ) : (
       <input className="form-input" value={vals[field.id] || ''} onChange={e => setVals({ ...vals, [field.id]: e.target.value })} placeholder={displayLabel} style={inputStyleGreen} />
     )}
@@ -2628,10 +2857,15 @@ export default function RegistrationPage(): React.ReactElement {
           eine Fußnote und gehört ans Seitenende — die Aktions-Buttons
           gehören thematisch zur Anmelde-Maske. */}
 
-      {/* Fehlermeldung */}
+      {/* Fehlermeldung
+          v31.9: `role="alert"` liest sie vor, sobald sie erscheint, und der
+          Effekt oben rollt sie ins Bild — auf dem Handy steht dieser Kasten
+          sonst mehrere Bildschirme unter dem Knopf, den die Person gerade
+          gedrückt hat, und die Anmeldung sieht einfach nur „tot" aus. */}
       {error && (
-        <div className="mt-16" style={{ padding: '12px 16px', background: 'rgba(239,68,68,0.1)', border: '1px solid var(--dex-red)', borderRadius: 'var(--dex-radius-md)', color: 'var(--dex-red)', fontSize: '0.9rem' }}>
-          {error}
+        <div ref={errorBoxRef} role="alert" className="mt-16" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 16px', background: 'rgba(239,68,68,0.1)', border: '1px solid var(--dex-red)', borderRadius: 'var(--dex-radius-md)', color: 'var(--dex-red)', fontSize: '0.9rem' }}>
+          <span style={{ flexShrink: 0, display: 'inline-flex', marginTop: 1 }}><AlertCircle size={16} /></span>
+          <span style={{ minWidth: 0, flex: '1 1 auto' }}>{error}</span>
         </div>
       )}
 

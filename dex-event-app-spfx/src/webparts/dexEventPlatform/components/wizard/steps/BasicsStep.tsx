@@ -1058,7 +1058,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   <Plus size={16} />
                   {(scopeSub ? scopeSub.imageFile : imageFile)?.name || (scImagePreview
                     ? (isDe ? 'Anderes Bild wählen' : 'Choose a different image')
-                    : (isDe ? 'Bild auswählen — Querformat, mind. 1200 px breit' : 'Choose an image — landscape, at least 1200 px wide'))}
+                    : (isDe ? 'Bild auswählen — bestmöglich Querformat, mind. 1200 px breit' : 'Choose an image — landscape if possible, at least 1200 px wide'))}
                   <input
                     type="file"
                     accept="image/*"
