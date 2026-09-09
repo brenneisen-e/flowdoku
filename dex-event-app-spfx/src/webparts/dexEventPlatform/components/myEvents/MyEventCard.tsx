@@ -457,6 +457,55 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                           >
                             <Pencil size={14} /> {displayData.length > 0 ? t('myevents.edit') : (isDe ? 'Angaben ergänzen' : 'Add details')}
                           </button>
+                          {/* v31.9.3: „Gruppe wechseln" stand bis hierher unten
+                              in der Aktionszeile neben „Abmelden" — zwei sehr
+                              verschiedene Dinge nebeneinander, und das
+                              harmlosere sah aus wie das gefaehrliche.
+                              Nutzer-Ansage 09.09.2026: „kein eigener Button,
+                              sondern einfach unter Angaben bearbeiten". Es IST
+                              eine Angabe zur eigenen Anmeldung und gehoert
+                              damit zu den Angaben. Bedingungen, Dialogtext und
+                              Handler sind unveraendert mitgewandert. */}
+                        {/* v10.27: Gruppe wechseln bei Split-Capacity-Events.
+                            Sichtbar nur wenn beide Kapazitäten > 0 sind und der
+                            User aktiv angemeldet (nicht abgemeldet) ist. Ein
+                            Klick öffnet einen Bestätigungs-Dialog mit klarem
+                            Hinweis, dass der Wechsel evtl. auf die Warteliste
+                            der Ziel-Gruppe führt, falls diese voll ist. */}
+                        {(() => {
+                          const dCap = event.durchstarterCapacity || 0;
+                          const fCap = event.funstarterCapacity || 0;
+                          if (dCap <= 0 || fCap <= 0) return null;
+                          const labelA = (event.splitLabelA && event.splitLabelA.trim()) || 'Durchstarter';
+                          const labelB = (event.splitLabelB && event.splitLabelB.trim()) || 'Funstarter';
+                          const currentType = registration.StarterType || registration.PreferredStarterType || '';
+                          const currentLabel = currentType === 'Durchstarter' ? labelA : currentType === 'Funstarter' ? labelB : '?';
+                          const targetType: 'Durchstarter' | 'Funstarter' = currentType === 'Durchstarter' ? 'Funstarter' : 'Durchstarter';
+                          const targetLabel = targetType === 'Durchstarter' ? labelA : labelB;
+                          return (
+                            <button
+                              className="btn btn-secondary dex-ui-btn-sm"
+                              title={t('myevents.switchgroup.title') || `Aktuell in: ${currentLabel}`}
+                              onClick={async () => {
+                                const msg = `${t('myevents.switchgroup.confirm') || 'Gruppe wechseln zu'} „${targetLabel}“?\n\n` +
+                                  ((t('myevents.switchgroup.hint') || 'Falls die Ziel-Gruppe bereits voll ist, kommst du auf deren Warteliste und rückst nach, sobald ein Platz frei wird.'));
+                                if (!(await confirmDialog(msg, { confirmLabel: isDe ? 'Wechseln' : 'Switch' }))) return;
+                                const r = await switchSplitGroup(event.id, targetType);
+                                if (!r.ok) {
+                                  showAlert(t('myevents.switchgroup.failed') || 'Gruppen-Wechsel fehlgeschlagen.', { variant: 'error' });
+                                  return;
+                                }
+                                const okMsg = r.full
+                                  ? `${t('myevents.switchgroup.waitlist') || 'Wechsel registriert — du stehst auf der Warteliste der Gruppe'} „${targetLabel}“.`
+                                  : `${t('myevents.switchgroup.success') || 'Wechsel erfolgreich — du bist jetzt in Gruppe'} „${targetLabel}“.`;
+                                showAlert(okMsg, { variant: 'success' });
+                                await loadMyRegistrations();
+                              }}
+                            >
+                              {(t('myevents.switchgroup.btn') || 'Gruppe wechseln')} → {targetLabel}
+                            </button>
+                          );
+                        })()}
                         </div>
                       )}
                     </div>
@@ -1171,46 +1220,6 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                             {t('general.cancel')}
                           </button>
                         )}
-                        {/* v10.27: Gruppe wechseln bei Split-Capacity-Events.
-                            Sichtbar nur wenn beide Kapazitäten > 0 sind und der
-                            User aktiv angemeldet (nicht abgemeldet) ist. Ein
-                            Klick öffnet einen Bestätigungs-Dialog mit klarem
-                            Hinweis, dass der Wechsel evtl. auf die Warteliste
-                            der Ziel-Gruppe führt, falls diese voll ist. */}
-                        {(() => {
-                          const dCap = event.durchstarterCapacity || 0;
-                          const fCap = event.funstarterCapacity || 0;
-                          if (dCap <= 0 || fCap <= 0) return null;
-                          const labelA = (event.splitLabelA && event.splitLabelA.trim()) || 'Durchstarter';
-                          const labelB = (event.splitLabelB && event.splitLabelB.trim()) || 'Funstarter';
-                          const currentType = registration.StarterType || registration.PreferredStarterType || '';
-                          const currentLabel = currentType === 'Durchstarter' ? labelA : currentType === 'Funstarter' ? labelB : '?';
-                          const targetType: 'Durchstarter' | 'Funstarter' = currentType === 'Durchstarter' ? 'Funstarter' : 'Durchstarter';
-                          const targetLabel = targetType === 'Durchstarter' ? labelA : labelB;
-                          return (
-                            <button
-                              className="btn btn-secondary dex-ui-btn-sm"
-                              title={t('myevents.switchgroup.title') || `Aktuell in: ${currentLabel}`}
-                              onClick={async () => {
-                                const msg = `${t('myevents.switchgroup.confirm') || 'Gruppe wechseln zu'} „${targetLabel}“?\n\n` +
-                                  ((t('myevents.switchgroup.hint') || 'Falls die Ziel-Gruppe bereits voll ist, kommst du auf deren Warteliste und rückst nach, sobald ein Platz frei wird.'));
-                                if (!(await confirmDialog(msg, { confirmLabel: isDe ? 'Wechseln' : 'Switch' }))) return;
-                                const r = await switchSplitGroup(event.id, targetType);
-                                if (!r.ok) {
-                                  showAlert(t('myevents.switchgroup.failed') || 'Gruppen-Wechsel fehlgeschlagen.', { variant: 'error' });
-                                  return;
-                                }
-                                const okMsg = r.full
-                                  ? `${t('myevents.switchgroup.waitlist') || 'Wechsel registriert — du stehst auf der Warteliste der Gruppe'} „${targetLabel}“.`
-                                  : `${t('myevents.switchgroup.success') || 'Wechsel erfolgreich — du bist jetzt in Gruppe'} „${targetLabel}“.`;
-                                showAlert(okMsg, { variant: 'success' });
-                                await loadMyRegistrations();
-                              }}
-                            >
-                              {(t('myevents.switchgroup.btn') || 'Gruppe wechseln')} → {targetLabel}
-                            </button>
-                          );
-                        })()}
                         {/* Abmelden-Button: prominent ausgelegt damit er auf der Karte
                             sofort gefunden wird (User-Feedback v9.8). 2-Klick-Confirm
                             bleibt — der erste Klick färbt rot und blendet den

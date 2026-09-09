@@ -13,7 +13,10 @@ import { buildHashDeepLink } from '../utils/deepLink';
 
 const GREEN = '#86bc25';
 const SITE_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform';
-const APP_URL = `${SITE_URL}/SitePages/DEX.aspx?env=WebView`;
+// v31.9.3: exportiert, weil der EventContext daraus den Deep-Link zu den
+// Nachrichten baut (`&action=comms&event=<Nr>`). Zweitkopie der URL waere
+// die naechste Stelle, die beim Umzug der Seite vergessen wird.
+export const APP_URL = `${SITE_URL}/SitePages/DEX.aspx?env=WebView`;
 
 /**
  * v29.42: Die Fußzeile „Made with DEX App" IMMER auf die kanonische App-Adresse

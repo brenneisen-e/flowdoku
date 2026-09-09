@@ -40,7 +40,10 @@ function storeNav(page: Page, eventId: string | null): void {
 }
 
 // Optionale Absicht beim Navigieren (z.B. Registration-Seite direkt im "Für andere"-Modus öffnen)
-export type NavIntent = 'register-other' | 'auto-cancel' | undefined;
+// v31.9.3: 'open-comms' kommt aus dem Deep-Link `?action=comms&event=<Nr>`
+// im Hinweis „Bereits versendete Infos zu diesem Event" und oeffnet in
+// „Meine Events" direkt die Nachrichten dieses Events.
+export type NavIntent = 'register-other' | 'auto-cancel' | 'open-comms' | undefined;
 
 interface NavigationContextType {
   currentPage: Page;

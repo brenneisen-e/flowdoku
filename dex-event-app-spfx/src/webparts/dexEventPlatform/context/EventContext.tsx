@@ -20,7 +20,7 @@ import { buildProgramHtml } from '../utils/programPlaceholder';
 import { buildHashDeepLink } from '../utils/deepLink';
 import { isEventOver } from '../utils/eventFormat';
 import { isExternalEmail } from '../utils/deloitteDomain';
-import { registrationEmail, externalInviteInstructionEmail, externalInvitationEmail, waitlistEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
+import { registrationEmail, externalInviteInstructionEmail, externalInvitationEmail, waitlistEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent, APP_URL } from '../services/EmailTemplates';
 import { buildUnsentEmlDraft } from '../utils/emlDraft';
 import { readPendingShadowParents, removePendingShadowParent, addPendingShadowParent } from '../utils/shadowHeal';
 import { readPendingReorders } from '../utils/reorderHeal';
@@ -1310,10 +1310,18 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
           try { priorComms = await eventService.hasEventComms(eventId, ['Einladung']); } catch { priorComms = false; }
           if (priorComms) {
             const isDeComm = (lang || 'EN').toUpperCase() === 'DE';
+            // v31.9.3: Deep-Link direkt auf die Nachrichten dieses Events.
+            // Der Hinweis nannte bisher nur den Weg („in der DEX App unter
+            // Meine Events beim Event") — wer die Mail auf dem Handy liest,
+            // muss danach suchen. Ohne Event-Nummer bleibt es beim Text;
+            // ein Link ins Leere waere schlechter als keiner.
+            const commsLink = event && event.eventNumber
+              ? `${APP_URL}&action=comms&event=${event.eventNumber}`
+              : '';
             const commsBox = `<div style="margin:0 0 16px;padding:12px 16px;background:#eef4fb;border:1px solid #0076a8;border-radius:8px;font-size:13px;line-height:1.55;color:#0b4a6f;">`
               + (isDeComm
-                ? `<strong>Bereits versendete Infos zu diesem Event.</strong><br>Zu diesem Event wurde vorab schon per Mail kommuniziert (z.&nbsp;B. eine Einladung oder Ankündigung). Du findest diese bisherige Kommunikation jederzeit in der DEX App unter <strong>&bdquo;Meine Events&ldquo;</strong> beim Event — so bist du auf dem gleichen Stand.`
-                : `<strong>Earlier updates for this event.</strong><br>Some information about this event was already sent out by email (e.g. an invitation or announcement). You can read this previous communication any time in the DEX App under <strong>&bdquo;My Events&ldquo;</strong> on the event — so you're fully up to date.`)
+                ? `<strong>Bereits versendete Infos zu diesem Event.</strong><br>Zu diesem Event wurde vorab schon per Mail kommuniziert (z.&nbsp;B. eine Einladung oder Ankündigung). Du findest diese bisherige Kommunikation jederzeit in der DEX App unter <strong>&bdquo;Meine Events&ldquo;</strong> beim Event — so bist du auf dem gleichen Stand.${commsLink ? `<br><a href="${commsLink}" style="color:#0076a8;font-weight:600;">Nachrichten zu diesem Event ansehen</a>` : ''}`
+                : `<strong>Earlier updates for this event.</strong><br>Some information about this event was already sent out by email (e.g. an invitation or announcement). You can read this previous communication any time in the DEX App under <strong>&bdquo;My Events&ldquo;</strong> on the event — so you're fully up to date.${commsLink ? `<br><a href="${commsLink}" style="color:#0076a8;font-weight:600;">Open this event&rsquo;s messages</a>` : ''}`)
               + `</div>`;
             // v26.69: Hinweis ans Ende verschoben (vorher oben über der Anrede) —
             // als eigene Tabellen-Row direkt UNTER „Made with DEX App" und damit
