@@ -907,6 +907,26 @@ export default function MyEventsPage(): React.ReactElement {
     performCancel(selectedEventId).catch(err => console.warn('[DEX] auto-cancel failed:', err));
   }, [navIntent, selectedEventId, isLoading]);
 
+  // v31.9.3: Deep-Link aus dem Hinweis „Bereits versendete Infos zu diesem
+  // Event" (?action=comms&event=<Nr>). Der Hinweis nannte bisher nur den Weg
+  // — wer die Mail auf dem Handy liest, sucht danach. Jetzt öffnet der Klick
+  // die Nachrichten dieses Events direkt.
+  // Eigener Merker, damit ein späterer Auto-Cancel-Deep-Link im selben
+  // Seitenaufruf nicht daran scheitert.
+  const didAutoComms = React.useRef(false);
+  React.useEffect(() => {
+    if (didAutoComms.current) return;
+    if (navIntent !== 'open-comms' || !selectedEventId) return;
+    if (isLoading) return;
+    const ev = topLevelEvents.find(e => e.id === selectedEventId);
+    if (!ev) return;
+    didAutoComms.current = true;
+    clearIntent();
+    const el = document.getElementById(`dex-myevent-${selectedEventId}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    openComms(ev);
+  }, [navIntent, selectedEventId, isLoading, topLevelEvents]);
+
   const activeEntries = myEvents.filter(e => e.registration.Status !== 'Abgemeldet');
   const cancelledEntries = myEvents.filter(e => e.registration.Status === 'Abgemeldet');
   // v22.22: Cluster „Kommende Events“ / „Vergangene Events“ — gleiche Karte,

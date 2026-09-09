@@ -446,6 +446,17 @@ function AppContent(): React.ReactElement {
             navigate('my-events');
           }
         }
+      } else if (action === 'comms' && eventParam) {
+        // v31.9.3: Deep-Link aus dem Hinweis „Bereits versendete Infos zu
+        // diesem Event". Vorher stand dort nur, WO man nachlesen kann —
+        // „in der DEX App unter Meine Events beim Event". Wer die Mail auf
+        // dem Handy liest, muss danach suchen. Jetzt landet der Klick direkt
+        // auf den Nachrichten dieses Events.
+        didHandleDeepLink.current = true;
+        const commsNumber = parseInt(eventParam, 10);
+        const commsEvt = isNaN(commsNumber) ? undefined : events.find(e => e.eventNumber === commsNumber);
+        if (commsEvt) navigate('my-events', commsEvt.id, 'open-comms');
+        else navigate('my-events');
       } else if (action === 'assistreq') {
         // v24.42: Deep-Link aus der Anforderungs-Mail. Die verwaltende Person
         // (Owner) landet in „Meine Events" — dort sieht sie die offene

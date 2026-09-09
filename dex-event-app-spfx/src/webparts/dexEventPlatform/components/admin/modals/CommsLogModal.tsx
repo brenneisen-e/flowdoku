@@ -9,6 +9,8 @@ import { ChevronDown, Mail, Trash2 } from '../../Icons';
 import { formatDate } from '../../../utils/eventStatus';
 import { DeloitteEvent } from '../../../types';
 import { EventCommRow } from '../../../services/EventService';
+import { resolveMailPreviewHtml } from '../../../utils/mailPreviewHtml';
+import { getCachedOrbBase64 } from '../../../services/EmailTemplates';
 
 export interface CommsLogModalProps {
   commsDeletingId: number;
@@ -33,7 +35,7 @@ export const CommsLogModal: React.FC<CommsLogModalProps> = (p) => {
         <Modal
           open={showCommsModal}
           onClose={() => setShowCommsModal(false)}
-          maxWidth={760}
+          maxWidth={900}
           ariaLabel={isDe ? 'Gesendete Rundmails' : 'Sent broadcast emails'}
           title={isDe ? 'Gesendete Rundmails' : 'Sent broadcast emails'}
           subtitle={<>{selectedEvent.title}{countLabel}</>}
@@ -117,7 +119,7 @@ export const CommsLogModal: React.FC<CommsLogModalProps> = (p) => {
                         <div className="dex-ui-fade-in" style={{ borderTop: '1px solid var(--dex-gray-200)', background: 'var(--dex-gray-50, #fafafa)', padding: 10 }}>
                           <iframe
                             title={isDe ? 'Mail-Vorschau' : 'Email preview'}
-                            srcDoc={row.bodyHtml}
+                            srcDoc={resolveMailPreviewHtml(row.bodyHtml, getCachedOrbBase64())}
                             sandbox=""
                             style={{ width: '100%', height: 420, border: 'none', borderRadius: 8, background: '#fff' }}
                           />

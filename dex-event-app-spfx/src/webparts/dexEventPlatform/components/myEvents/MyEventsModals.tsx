@@ -14,6 +14,8 @@ import { groupSubEventTabs, stripGroupPrefix } from '../../utils/subEventGroups'
 // v31.2: Gemeinsame UI-Klassen (Zeilen, Pills, Kacheln, Hinweiskästen) und die
 // Inline-SVG-Symbole — Kopf/Fuß der Dialoge kommen aus den Modal-Props.
 import { cx } from '../dexUi';
+import { resolveMailPreviewHtml } from '../../utils/mailPreviewHtml';
+import { getCachedOrbBase64 } from '../../services/EmailTemplates';
 import { AlertCircle, ChevronDown, Info, Mail, QrCode, Trash2, Users, X } from '../Icons';
 
 
@@ -590,7 +592,7 @@ export function EventCommsModal(props: EventCommsModalProps): React.ReactElement
         <Modal
           open={true}
           onClose={() => setCommsModal(null)}
-          maxWidth={640}
+          maxWidth={860}
           ariaLabel={isDe ? 'Nachrichten zum Event' : 'Event messages'}
           title={isDe ? 'Nachrichten zum Event' : 'Event messages'}
           subtitle={commsModal.eventTitle}
@@ -638,11 +640,18 @@ export function EventCommsModal(props: EventCommsModalProps): React.ReactElement
                     </button>
                     {isOpen && (
                       <div style={{ borderTop: '1px solid var(--dex-gray-200)', background: '#fff' }}>
+                        {/* v31.9.3: `resolveMailPreviewHtml` loest das Kopfbild
+                            auf. Der gespeicherte Body traegt `{{ORB_URL}}` als
+                            Platzhalter — den ersetzt sonst erst der Flow beim
+                            Versand, und in der App stand ein kaputtes Bild mit
+                            dem alt-Text daneben. Hoehe grosszuegig, Breite
+                            860: die Mail ist eine 600-px-Tabelle und wurde im
+                            640er-Modal waagerecht abgeschnitten. */}
                         <iframe
                           title={row.subject || 'message'}
-                          srcDoc={row.bodyHtml || ''}
+                          srcDoc={resolveMailPreviewHtml(row.bodyHtml || '', getCachedOrbBase64())}
                           sandbox=""
-                          style={{ width: '100%', height: 360, border: 'none', display: 'block' }}
+                          style={{ width: '100%', height: 520, border: 'none', display: 'block' }}
                         />
                       </div>
                     )}
