@@ -12,7 +12,7 @@ import DexLogo from './DexLogo';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import styles from './DexEventPlatform.module.scss';
 import { NavigationProvider, useNavigation, Page } from '../context/NavigationContext';
-import { LanguageProvider, useLanguage } from '../context/LanguageContext';
+import { LanguageProvider, useLanguage, useLocaleSafe } from '../context/LanguageContext';
 import { inputLocaleTag } from '../utils/inputLocale';
 // v20.4: Moderne Confirm-/Alert-Modals statt nativer Browser-Dialoge.
 import { DialogProvider } from '../context/DialogContext';
@@ -195,8 +195,68 @@ function UserPreviewBanner(): React.ReactElement | null {
   );
 }
 
+/**
+ * v31.9.5: Platzhalter für die lazy geladenen Seiten-Chunks.
+ *
+ * Vorher stand hier wörtlich „…" mit Buchstabenabstand 4. Bei schneller
+ * Leitung sieht das niemand — bei langsamer steht man vor drei Punkten und
+ * weiß nicht, ob die App lädt oder hängt. Gemeldet am 09.09.2026 für den Klick
+ * auf „Organizer" (der Chunk ist mit Abstand der größte).
+ *
+ * Der Name der Seite kommt aus `currentPage` — die Navigation hat ihn bereits
+ * gesetzt, bevor der Chunk da ist. Ein unbekannter Wert fällt auf „Seite wird
+ * geladen" zurück, statt einen Schlüssel anzuzeigen.
+ */
+function LazyPageFallback(props: { page: string; isDe: boolean }): React.ReactElement {
+  const { page, isDe } = props;
+  const label = ((): string => {
+    switch (page) {
+      case 'admin': return isDe ? 'Organizer Center' : 'Organizer center';
+      case 'admin-hub': return isDe ? 'Admin' : 'Admin';
+      case 'create-event': case 'edit-event': return isDe ? 'Event-Assistent' : 'Event wizard';
+      case 'check-in': return 'Check-in';
+      case 'participants': return isDe ? 'Teilnehmer' : 'Participants';
+      case 'manual': return isDe ? 'Handbuch' : 'Manual';
+      case 'assistant': return isDe ? 'Assistenz' : 'Assistant';
+      case 'tickets': return 'Tickets';
+      case 'fa-center': return 'F&A Center';
+      case 'settings': return isDe ? 'Einstellungen' : 'Settings';
+      case 'roles': return isDe ? 'Rollenverwaltung' : 'Role management';
+      case 'email-templates': return isDe ? 'E-Mail-Vorlagen' : 'Email templates';
+      case 'architecture': return isDe ? 'Systemarchitektur' : 'Architecture';
+      default: return isDe ? 'Seite' : 'Page';
+    }
+  })();
+  return (
+    <div className="page-container text-center" style={{ padding: 64 }}>
+      {/* Derselbe Ring wie auf der Anmeldeseite — ein Element, das sich dreht,
+          sagt „es passiert etwas"; drei Punkte sagen das nicht. */}
+      <svg width={44} height={44} viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', margin: '0 auto 14px' }} aria-hidden="true">
+        <circle cx={24} cy={24} r={20} fill="none" stroke="rgba(134,188,37,0.20)" strokeWidth={4} />
+        <path d="M 24 4 A 20 20 0 0 1 44 24" fill="none" stroke="#86bc25" strokeWidth={4} strokeLinecap="round">
+          <animateTransform attributeName="transform" type="rotate" from="0 24 24" to="360 24 24" dur="1s" repeatCount="indefinite" />
+        </path>
+      </svg>
+      <div style={{ fontWeight: 700, color: 'var(--dex-gray-800, #333)', fontSize: '0.98rem' }}>
+        {isDe ? `${label} wird geladen …` : `Loading ${label} …`}
+      </div>
+      <div style={{ color: 'var(--dex-gray-500, #808080)', fontSize: '0.84rem', marginTop: 4 }}>
+        {isDe
+          ? 'Der Bereich wird beim ersten Aufruf einmalig nachgeladen.'
+          : 'This area is downloaded once, the first time you open it.'}
+      </div>
+    </div>
+  );
+}
+
 function AppContent(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
+  // v31.9.5: Sprache fuer den Suspense-Platzhalter und die Zeile ueber den
+  // KPI-Boxen. `useLocaleSafe` wirft nicht, wenn der Provider (noch) fehlt —
+  // der Boot-Loader rendert frueh. Steht ganz oben, weil weiter unten fruehe
+  // Returns folgen (react-hooks/rules-of-hooks).
+  const appLocale = useLocaleSafe();
+  const appIsDe = appLocale === 'de';
   const { isAdmin, isRolesLoading, canCreateEvents } = useRoles();
   const { markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, maybeSendBillingAutoMails, reconcileCounters, isEventsLoading, events, getKpiCache, recomputeEventKpiOnly } = useEvents();
 
@@ -837,11 +897,17 @@ function AppContent(): React.ReactElement {
                   display: 'flex', justifyContent: 'space-between', gap: 8,
                   fontVariantNumeric: 'tabular-nums',
                 }}>
-                  {/* Der Loader läuft VOR der Sprachwahl des Nutzers — deshalb
-                      die Browsersprache statt des App-Locales. */}
+                  {/* v31.9.5: Bis hierher nahm der Loader die BROWSER-Sprache,
+                      mit der Begründung, er laufe vor der Sprachwahl. Das
+                      stimmt nicht mehr (und vielleicht nie): `AppContent`
+                      rendert INNERHALB des `LanguageProvider`, die gespeicherte
+                      Wahl steht also bereits. Folge des alten Stands: Bei
+                      englischem Browser und deutscher App-Sprache stand die
+                      Zeile über den Kacheln deutsch und die Phasenzeile direkt
+                      darunter englisch. Jetzt EINE Quelle für beide. */}
                   <span>
                     {(() => {
-                      const de = typeof navigator !== 'undefined' && (navigator.language || '').toLowerCase().indexOf('de') === 0;
+                      const de = appIsDe;
                       // v29.41: Die Abschnitte des Ladepfads beim Namen nennen —
                       // „Events werden geladen" stand vorher über allem, was
                       // nach der Rechteprüfung kam (inklusive der langen
@@ -852,12 +918,16 @@ function AppContent(): React.ReactElement {
                       // ein technisches Rätsel.
                       switch (bootPhase) {
                         case 'roles': return de ? 'Deine Events werden gesucht…' : 'Looking up your events…';
-                        case 'schema': return de ? 'Einen Moment noch…' : 'Just a moment…';
-                        case 'logos': return de ? 'Fast fertig…' : 'Almost there…';
+                        // v31.9.5: „Einen Moment noch" und „Fast fertig" haben
+                        // nichts erklärt — sie sagten nur, dass gewartet wird,
+                        // und „fast fertig" war bei 40 % zusätzlich unehrlich.
+                        // Jetzt nennt jede Zeile den Schritt, der gerade läuft.
+                        case 'schema': return de ? 'Deine Berechtigungen werden geprüft…' : 'Checking your permissions…';
+                        case 'logos': return de ? 'Bilder und Vorlagen werden geladen…' : 'Loading images and templates…';
                         case 'events': return de ? 'Events werden geladen…' : 'Loading events…';
                         case 'mapping': return de ? 'Events werden vorbereitet…' : 'Preparing events…';
                         case 'counts': return de ? 'Freie Plätze werden geprüft…' : 'Checking available seats…';
-                        case 'documents': return de ? 'Fast fertig…' : 'Almost there…';
+                        case 'documents': return de ? 'Unterlagen werden geladen…' : 'Loading documents…';
                         default: return de ? 'Fertig' : 'Done';
                       }
                     })()}
@@ -875,7 +945,7 @@ function AppContent(): React.ReactElement {
                   textAlign: 'center', marginBottom: 12, fontStyle: 'italic',
                   fontWeight: 500,
                 }}>
-                  So far used for…
+                  {appIsDe ? 'Bisher genutzt für…' : 'So far used for…'}
                 </div>
                 <KpiRow
                   locale="en"
@@ -1075,8 +1145,13 @@ function AppContent(): React.ReactElement {
       )}
       <main className="main-content" style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}>
         {/* v20.0: Suspense-Grenze für die lazy geladenen Sekundär-Seiten-Chunks.
-            Sprachneutraler Fallback — der Chunk-Load dauert typisch < 0,5 s. */}
-        <React.Suspense fallback={<div style={{ padding: 64, textAlign: 'center', color: 'var(--dex-gray-400, #999)', fontSize: '1.2rem', letterSpacing: 4 }}>…</div>}>
+            v31.9.5: Der Platzhalter war wörtlich „…" mit Buchstabenabstand 4.
+            Bei schneller Leitung sieht das niemand — bei langsamer steht man
+            vor drei Punkten und weiß nicht, ob die App lädt oder hängt.
+            Gemeldet am 09.09.2026 für den Klick auf „Organizer". Jetzt: der
+            Name der Seite, die gerade geladen wird, plus derselbe Ringspinner
+            wie auf der Anmeldeseite. */}
+        <React.Suspense fallback={<LazyPageFallback page={currentPage} isDe={appIsDe} />}>
           {renderPage()}
         </React.Suspense>
       </main>
