@@ -302,9 +302,33 @@ export function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | 
     return la.localeCompare(lb, lang);
   });
   // v22.5: Aktiver Suchbegriff (klein geschrieben) + Treffer-Filter.
+  //
+  // v31.10: Die Suche verglich rohe Teilstrings — und fand deshalb bei
+  // „email" NICHTS (gemeldet 10.09.2026 mit Bildschirmfoto). Die Titel heissen
+  // auf Deutsch „E-Mail versenden", „E-Mails kopieren", „Organizer-Mails
+  // reparieren"; `'e-mail versenden'.indexOf('email')` ist -1. Ausgerechnet
+  // das naheliegendste Wort war das einzige, das nicht ging.
+  //
+  // Deshalb wird beidseitig auf eine Vergleichsform reduziert: Umlaute
+  // gefaltet, dann ALLES ausser Buchstaben und Ziffern entfernt. Aus „E-Mail
+  // versenden" wird „emailversenden", aus „email" wird „email" — Treffer.
+  // Bindestriche duerfen dabei NICHT zu Leerzeichen werden, sonst stuende dort
+  // „e mail" und das Problem waere dasselbe.
+  //
+  // Zusaetzlich zaehlt jedes Wort der Eingabe einzeln: „versenden mail" findet
+  // „E-Mail versenden", obwohl die Reihenfolge nicht stimmt. Ohne das waere
+  // die Zusammenschreibung ein neuer Fallstrick statt einer Loesung.
+  const searchNorm = (s: string): string => (s || '')
+    .toLowerCase()
+    .replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]/g, '');
   const q = query.trim().toLowerCase();
-  const matchesQuery = (a: RegisteredAction): boolean =>
-    !q || a.title.toLowerCase().indexOf(q) >= 0 || (!!a.desc && a.desc.toLowerCase().indexOf(q) >= 0);
+  const qTokens = query.trim().split(/\s+/).map(searchNorm).filter(Boolean);
+  const matchesQuery = (a: RegisteredAction): boolean => {
+    if (!q) return true;
+    const hay = searchNorm(a.title) + ' ' + searchNorm(a.desc || '');
+    return qTokens.every(t => hay.indexOf(t) >= 0);
+  };
   const visibleActions = ctx.actions.filter(matchesQuery);
   const toggleKey = (k: string): void => {
     setExpanded(prev => {

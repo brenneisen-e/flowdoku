@@ -15,6 +15,9 @@ import { EventService, SPRegistration } from '../../../services/EventService';
 import { MailHeaderImage } from '../../../utils/mailHeaderImage';
 import { MassmailAudience } from '../adminTypes';
 import { buildInlineImage, charsToKb } from '../../../utils/inlineMailImage';
+// v31.10: Dieselbe Rechnung wie die Anmeldeseite — wer dort ausgeblendet ist,
+// steht auch nicht im CC. Die Regel liegt in EINER Datei, nicht hier.
+import { visibleOrganizerEmails } from '../../../utils/organizerVisibility';
 
 export interface MassmailComposerModalProps {
   applyMassmailHero: (wrappedHtml: string) => string;
@@ -154,13 +157,21 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
          * Adresse einmal aus, auch wenn sie in To und Cc steht — dieselbe
          * Zusicherung, auf der schon das nicht gefilterte manuelle CC beruht.
          *
+         * v31.10: Nur die Organizer, die dem Teilnehmer auch ANGEZEIGT werden
+         * (Nutzer-Ansage 10.09.2026). Wer im Assistenten ausgeblendet ist,
+         * gehört nicht ins CC einer Mail an ebendiese Teilnehmer — sonst
+         * verrät der Mailkopf genau den Namen, den die Anmeldeseite
+         * absichtlich verschweigt. Sind alle ausgeblendet, bleibt das
+         * automatische CC leer; ein von Hand eingetragenes CC ist davon
+         * unberührt, das ist eine bewusste Einzelentscheidung.
+         *
          * `seen` bleibt: Eine Adresse, die zweimal unter den Organizern steht
          * oder zusätzlich von Hand ins CC getippt wurde, erscheint einmal.
          */
         const massmailCcPreview = ((): string[] => {
           const seen = new Set<string>();
           const out: string[] = [];
-          for (const raw of (selectedEvent.organizerEmails || [])) {
+          for (const raw of visibleOrganizerEmails(selectedEvent)) {
             const e = (raw || '').trim();
             const lc = e.toLowerCase();
             if (!e || seen.has(lc)) continue;
