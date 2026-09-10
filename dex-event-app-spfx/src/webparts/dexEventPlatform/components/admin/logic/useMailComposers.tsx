@@ -30,6 +30,8 @@ export interface UseMailComposersCtx {
   inviteTarget: "organizer" | "audience" | "pending" | "uninvited";
   isDe: boolean;
   massmailEventPhotoB64: string;
+  /** v31.9.7: Für diese Mail hochgeladenes Kopfbild (leer = keines). */
+  massmailCustomHeaderB64: string;
   massmailHeaderImage: MailHeaderImage;
   massmailHydratingRef: React.MutableRefObject<boolean>;
   massmailMode: "closed" | "pick" | "paste" | "editor";
@@ -94,7 +96,7 @@ export function useMailComposers(ctx: UseMailComposersCtx): UseMailComposersResu
   const {
     currentUser, emailBody, emailHeading, emailSubject, eventServiceRef, getGroupMembers,
     inviteBody, inviteEventPhotoB64, inviteHeaderImage, inviteHeading, inviteHydratingRef,
-    inviteSubheading, inviteSubject, inviteTarget, isDe, massmailEventPhotoB64,
+    inviteSubheading, inviteSubject, inviteTarget, isDe, massmailCustomHeaderB64, massmailEventPhotoB64,
     massmailHeaderImage, massmailHydratingRef, massmailMode, massmailSubheading, pendingCheckBusy,
     registrations, selectedEvent, setEmailBody, setEmailHeading, setEmailSubject,
     setInviteAddInput, setInviteAudienceOpen, setInviteBody, setInviteCustomEmails,
@@ -502,13 +504,13 @@ export function useMailComposers(ctx: UseMailComposersCtx): UseMailComposersResu
   // konfigurierte Mail-Logo des Events) einsetzt.
   // v30.52: EINE Umsetzung für beide (und die QR-Mail) — s. utils/mailHeaderImage.
   const applyMassmailHero = (wrappedHtml: string): string =>
-    applyHeroImage(wrappedHtml, massmailHeaderImage, massmailEventPhotoB64);
+    applyHeroImage(wrappedHtml, massmailHeaderImage, massmailEventPhotoB64, massmailCustomHeaderB64);
   const applyInviteHero = (wrappedHtml: string): string =>
     applyHeroImage(wrappedHtml, inviteHeaderImage, inviteEventPhotoB64);
   // v29.37: Steht im Kopf ein eigenes Bild? Entweder das eingebackene Event-Foto
   // oder — wenn {{ORB_URL}} stehen bleibt — das Mail-Logo des Events, das der
   // Flow einsetzt. Nur dann darf die volle Breite gelten (sonst Orb-Deckel).
-  const massmailHasOwnImage = hasOwnHeaderImage(massmailHeaderImage, massmailEventPhotoB64, selectedEvent && selectedEvent.mailImageBase64);
+  const massmailHasOwnImage = hasOwnHeaderImage(massmailHeaderImage, massmailEventPhotoB64, selectedEvent && selectedEvent.mailImageBase64, massmailCustomHeaderB64);
   const inviteHasOwnImage = hasOwnHeaderImage(inviteHeaderImage, inviteEventPhotoB64, selectedEvent && selectedEvent.mailImageBase64);
   const massmailHeaderOpts = mailHeaderOpts(massmailHeaderImage, massmailHasOwnImage);
   const inviteHeaderOpts = mailHeaderOpts(inviteHeaderImage, inviteHasOwnImage);

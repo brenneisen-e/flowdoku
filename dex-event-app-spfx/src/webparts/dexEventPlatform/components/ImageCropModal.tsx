@@ -10,9 +10,18 @@ import { AlertCircle, Check, Info } from './Icons';
  *   (Anmeldeseite, Karte, Mail) verwendet wird — so kann der Organizer Zoom,
  *   Position und Form direkt beurteilen.
  * - Zoom (Slider) + Verschieben (Maus-Drag).
- * - Form: Rechteck/Quadrat ODER Kreis. Beim Kreis zusätzlich ein „Rand"-Regler:
- *   0 = Kreis füllt den Rahmen (Ecken transparent), höher = Kreis kleiner und
- *   zentriert mit WEISSEM Rand außen herum (sieht „von weiter weg" sauber aus).
+ * - Form: Nicht beschneiden, Rechteck/Quadrat ODER Kreis. Beim Kreis zusätzlich
+ *   ein „Rand"-Regler: 0 = Kreis füllt den Rahmen (Ecken transparent), höher =
+ *   Kreis kleiner und zentriert mit WEISSEM Rand außen herum.
+ *
+ * v31.9.7: „Nicht beschneiden" ist die Vorauswahl (Nutzer-Ansage 10.09.2026:
+ *   „eventfoto braucht auch die auswahl nicht beschneiden.. und das ist
+ *   default.. bei der anmeldeseite ist es ja eh automatisch ein kreis").
+ *   Der Grund: Die Anmeldeseite und die Event-Karte zeigen das Foto ohnehin in
+ *   ihrer eigenen Form; ein zusätzlicher Zuschnitt im Dialog schnitt nur ein
+ *   zweites Mal ab. In diesem Modus behält das Bild sein eigenes
+ *   Seitenverhältnis, Zoom und Verschieben entfallen — es gibt nichts zu
+ *   wählen, wenn nichts weggeschnitten wird.
  * - „Übernehmen" liefert das Ergebnis als PNG-Data-URL + File zurück (PNG, damit
  *   transparente Kreis-Ecken erhalten bleiben).
  *
@@ -50,6 +59,9 @@ interface Props {
 const FRAME = 320; // Anzeige-Breite der Vorschau (px)
 const OUT = 700;   // Ausgabe-Breite (px)
 
+/** v31.9.7: `none` = das Bild bleibt, wie es ist (Vorauswahl). */
+type Shape = 'none' | 'circle' | 'rect';
+
 // v31.2: Symbole nur für diesen Dialog — Icons.tsx wird zentral gepflegt und
 // hat (noch) kein Zuschneide-Symbol; ein lokales SVG hält die Datei
 // unabhängig, statt im Portal auf die Fluent-Schrift zu warten.
@@ -58,9 +70,12 @@ const CropIcon = ({ size = 20 }: { size?: number }): React.ReactElement => (
     <path d="M6 2v14a2 2 0 0 0 2 2h14" /><path d="M18 22V8a2 2 0 0 0-2-2H2" />
   </svg>
 );
-const ShapeIcon = ({ circle }: { circle: boolean }): React.ReactElement => (
+const ShapeIcon = ({ kind }: { kind: Shape }): React.ReactElement => (
   <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-    {circle ? <circle cx="12" cy="12" r="9" /> : <rect x="3" y="3" width="18" height="18" rx="3" />}
+    {kind === 'circle' && <circle cx="12" cy="12" r="9" />}
+    {kind === 'rect' && <rect x="3" y="3" width="18" height="18" rx="3" />}
+    {/* „Nicht beschneiden": ein Foto-Rahmen mit Inhalt — das ganze Bild bleibt. */}
+    {kind === 'none' && <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 16l5-5 4 4 3-3 8 8" /><circle cx="8" cy="10" r="1.4" /></>}
   </svg>
 );
 
@@ -73,7 +88,7 @@ const ASPECT_PRESETS: Array<{ a: number; de: string; en: string }> = [
 ];
 
 export default function ImageCropModal({ open, src, isDe, onClose, onApply, children, allowAspect, defaultAspect, recommendCircle }: Props): React.ReactElement | null {
-  const [shape, setShape] = React.useState<'rect' | 'circle'>('circle');
+  const [shape, setShape] = React.useState<Shape>('none');
   const [aspect, setAspect] = React.useState<number>(allowAspect ? (defaultAspect || 16 / 9) : 1);
   const [zoom, setZoom] = React.useState(1);
   const [padding, setPadding] = React.useState(0); // 0..0.35 — weißer Rand um den Kreis
@@ -91,6 +106,12 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
 
   // v27.5: im allowAspect-Modus ist die Form immer ein Rechteck (kein Kreis).
   const isCircle = !allowAspect && shape === 'circle' && aspect === 1;
+  // v31.9.7: „Nicht beschneiden" — das Bild behält sein eigenes Seitenverhältnis
+  // und wird vollständig übernommen. Solange die Maße noch nicht bekannt sind
+  // (`nat === null`), bleibt es beim quadratischen Rahmen; sobald das Bild
+  // geladen ist, richtet sich der Rahmen nach ihm.
+  const noCrop = !allowAspect && shape === 'none';
+  const effAspect = (noCrop && nat ? nat.w / nat.h : aspect) || 1;
 
   // Bild laden, State zurücksetzen beim Öffnen.
   React.useEffect(() => {
@@ -99,6 +120,10 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
     setZoom(1);
     setPadding(0);
     setOffset({ x: 0, y: 0 });
+    // v31.9.7: Auch die Form zurück auf die Vorauswahl. Ohne das trüge das
+    // nächste Bild den Zuschnitt des vorigen — der Dialog gehört zum Bild,
+    // nicht zur Sitzung.
+    setShape('none');
     setAspect(allowAspect ? (defaultAspect || 16 / 9) : 1);
     setNat(null);
     imgRef.current = null;
@@ -115,7 +140,7 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
     if (!canvas || !nat || !imgRef.current) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const a = aspect || 1;
+    const a = effAspect;
     const sizeH = Math.round(sizeW / a);
     const frameW = FRAME;
     const frameH = FRAME / a;
@@ -130,12 +155,18 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
       ctx.fillRect(0, 0, sizeW, sizeH);
     }
     // Bild-Geometrie in FRAME-Einheiten berechnen, dann auf `sizeW` skalieren.
+    // v31.9.7: Ohne Zuschnitt sind Zoom und Versatz neutral — sonst könnte man
+    // über den Regler doch wieder etwas wegschneiden, obwohl die Kachel das
+    // Gegenteil verspricht.
+    const z = noCrop ? 1 : zoom;
+    const offX = noCrop ? 0 : offset.x;
+    const offY = noCrop ? 0 : offset.y;
     const baseScaleF = Math.max(frameW / nat.w, frameH / nat.h);
-    const effF = baseScaleF * zoom;
+    const effF = baseScaleF * z;
     const dwF = nat.w * effF;
     const dhF = nat.h * effF;
-    const imgLeftF = (frameW - dwF) / 2 + offset.x;
-    const imgTopF = (frameH - dhF) / 2 + offset.y;
+    const imgLeftF = (frameW - dwF) / 2 + offX;
+    const imgTopF = (frameH - dhF) / 2 + offY;
     const k = sizeW / frameW; // gleicher Faktor für x und y (frameH/sizeH == frameW/sizeW)
     ctx.save();
     if (isCircle) {
@@ -147,7 +178,7 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
     }
     ctx.drawImage(imgRef.current, imgLeftF * k, imgTopF * k, dwF * k, dhF * k);
     ctx.restore();
-  }, [nat, isCircle, padding, zoom, offset, aspect]);
+  }, [nat, isCircle, noCrop, padding, zoom, offset, effAspect]);
 
   // Live-Vorschau neu zeichnen, wenn sich etwas ändert.
   React.useEffect(() => {
@@ -206,19 +237,23 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
       {help && <span className="dex-ui-help" style={{ display: 'block' }}>{help}</span>}
     </label>
   );
-  const shapeChoice = (kind: 'circle' | 'rect'): React.ReactElement => {
+  const shapeChoice = (kind: Shape): React.ReactElement => {
     const on = shape === kind;
-    const circle = kind === 'circle';
-    const desc = circle
-      ? (recommendCircle
-        ? (isDe ? 'Sitzt rund oben mittig in der Event-Karte.' : 'Sits round at the top centre of the event card.')
-        : (isDe ? 'Runder Ausschnitt, Ecken bleiben transparent.' : 'Round crop, corners stay transparent.'))
-      : (isDe ? 'Rechteckiger Ausschnitt.' : 'Rectangular crop.');
+    const title = kind === 'none'
+      ? (isDe ? 'Nicht beschneiden' : 'Do not crop')
+      : kind === 'circle' ? (isDe ? 'Kreis' : 'Circle') : (isDe ? 'Quadrat' : 'Square');
+    const desc = kind === 'none'
+      ? (isDe ? 'Das Foto bleibt, wie es ist — die Anmeldeseite rundet es ohnehin selbst.' : 'The photo stays as it is — the registration page rounds it off by itself.')
+      : kind === 'circle'
+        ? (recommendCircle
+          ? (isDe ? 'Sitzt rund oben mittig in der Event-Karte.' : 'Sits round at the top centre of the event card.')
+          : (isDe ? 'Runder Ausschnitt, Ecken bleiben transparent.' : 'Round crop, corners stay transparent.'))
+        : (isDe ? 'Rechteckiger Ausschnitt.' : 'Rectangular crop.');
     return (
       <button type="button" className={cx('dex-ui-choice', on && 'is-active')} style={{ padding: '10px 12px', alignItems: 'center' }} aria-pressed={on} onClick={() => setShape(kind)}>
-        <span className="dex-ui-choice-icon" style={{ width: 30, height: 30 }}><ShapeIcon circle={circle} /></span>
+        <span className="dex-ui-choice-icon" style={{ width: 30, height: 30 }}><ShapeIcon kind={kind} /></span>
         <span className="dex-ui-choice-body" style={{ display: 'block' }}>
-          <span className="dex-ui-choice-title" style={{ display: 'block' }}>{circle ? (isDe ? 'Kreis' : 'Circle') : (isDe ? 'Quadrat' : 'Square')}</span>
+          <span className="dex-ui-choice-title" style={{ display: 'block' }}>{title}</span>
           <span className="dex-ui-choice-desc" style={{ display: 'block' }}>{desc}</span>
         </span>
         <span className="dex-ui-choice-check">{on && <Check size={12} />}</span>
@@ -250,24 +285,30 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
           v31.2: Zoom steht direkt unter der Vorschau — Verschieben und Zoomen
           sind EINE Frage („welcher Ausschnitt?"), die Form eine andere. */}
       <div className="dex-ui-section" style={{ margin: 0 }}>
-        <div className="dex-ui-section-title">{isDe ? 'Ausschnitt' : 'Crop area'}</div>
+        <div className="dex-ui-section-title">{noCrop ? (isDe ? 'Vorschau' : 'Preview') : (isDe ? 'Ausschnitt' : 'Crop area')}</div>
         <div style={{ display: 'flex', justifyContent: 'center' }}>
           <canvas
-            ref={canvasRef} width={FRAME} height={Math.round(FRAME / (aspect || 1))}
-            onMouseDown={onPointerDown} onMouseMove={onPointerMove} onMouseUp={endDrag} onMouseLeave={endDrag}
-            title={isDe ? 'Ziehen, um das Bild zu verschieben' : 'Drag to move the image'}
+            ref={canvasRef} width={FRAME} height={Math.round(FRAME / effAspect)}
+            onMouseDown={noCrop ? undefined : onPointerDown} onMouseMove={noCrop ? undefined : onPointerMove}
+            onMouseUp={noCrop ? undefined : endDrag} onMouseLeave={noCrop ? undefined : endDrag}
+            title={noCrop ? undefined : (isDe ? 'Ziehen, um das Bild zu verschieben' : 'Drag to move the image')}
             style={{
-              width: '100%', maxWidth: FRAME, aspectRatio: String(aspect || 1), height: 'auto', cursor: 'grab', userSelect: 'none',
+              width: '100%', maxWidth: FRAME, aspectRatio: String(effAspect), height: 'auto',
+              cursor: noCrop ? 'default' : 'grab', userSelect: 'none',
               borderRadius: 12, boxShadow: 'inset 0 0 0 1px var(--dex-gray-200)', background: '#f3f3f1', touchAction: 'none',
             }}
           />
         </div>
         <p className="dex-ui-help" style={{ textAlign: 'center', margin: '8px 0 0' }}>
-          {allowAspect
-            ? (isDe ? 'Ziehe das Bild in Position, z.B. um oben oder unten etwas wegzuschneiden.' : 'Drag the image into place, e.g. to crop off the top or bottom.')
-            : (isDe ? 'Ziehe das Bild mit der Maus in Position — die Vorschau zeigt genau das Ergebnis.' : 'Drag the image into place — the preview shows exactly what you get.')}
+          {noCrop
+            ? (isDe ? 'Das ganze Foto wird übernommen — nichts wird weggeschnitten.' : 'The whole photo is used — nothing is cropped off.')
+            : allowAspect
+              ? (isDe ? 'Ziehe das Bild in Position, z.B. um oben oder unten etwas wegzuschneiden.' : 'Drag the image into place, e.g. to crop off the top or bottom.')
+              : (isDe ? 'Ziehe das Bild mit der Maus in Position — die Vorschau zeigt genau das Ergebnis.' : 'Drag the image into place — the preview shows exactly what you get.')}
         </p>
-        {slider('Zoom', `${zoom.toFixed(1).replace('.', isDe ? ',' : '.')}×`,
+        {/* v31.9.7: Ohne Zuschnitt gibt es keinen Zoom — ein Regler, der nur
+            wieder etwas abschneiden kann, widerspricht der Kachel darüber. */}
+        {!noCrop && slider('Zoom', `${zoom.toFixed(1).replace('.', isDe ? ',' : '.')}×`,
           <input type="range" min={1} max={4} step={0.01} value={zoom} onChange={e => setZoom(parseFloat(e.target.value))} />)}
       </div>
 
@@ -279,7 +320,7 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
           v31.2: Der Kreis-Rand steht direkt unter der Form-Wahl, weil er nur
           zum Kreis gehört — vorher stand der Zoom dazwischen. */}
       <div className="dex-ui-section" style={{ margin: 0 }}>
-        <div className="dex-ui-section-title">{allowAspect ? (isDe ? 'Seitenverhältnis' : 'Aspect ratio') : (isDe ? 'Form' : 'Shape')}</div>
+        <div className="dex-ui-section-title">{allowAspect ? (isDe ? 'Seitenverhältnis' : 'Aspect ratio') : (isDe ? 'Zuschnitt' : 'Crop')}</div>
         {allowAspect ? (
           <div className="dex-ui-tabs" role="group" aria-label={isDe ? 'Seitenverhältnis' : 'Aspect ratio'}>
             {ASPECT_PRESETS.map(p => (
@@ -289,7 +330,9 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
             ))}
           </div>
         ) : (
-          <div className="dex-ui-grid-2" style={{ gap: 10 }}>{shapeChoice('circle')}{shapeChoice('rect')}</div>
+          // v31.9.7: Drei Kacheln untereinander statt nebeneinander — bei 560 px
+          // Dialogbreite bliebe je Kachel keine Zeile für die Erklärung übrig.
+          <div style={{ display: 'grid', gap: 10 }}>{shapeChoice('none')}{shapeChoice('circle')}{shapeChoice('rect')}</div>
         )}
         {isCircle && slider(
           isDe ? 'Weißer Rand um den Kreis' : 'White margin around the circle', `${Math.round(padding * 100)} %`,
@@ -300,7 +343,10 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
       {/* v31.2: Der Hinweis auf das Original in Mail und Termin stand vorher im
           Einleitungssatz — als eigener Kasten liest man ihn erst, wenn man ihn
           braucht, und die Einleitung bleibt eine Zeile. */}
-      {!allowAspect && (
+      {/* v31.9.7: Nur noch bei einem echten Zuschnitt. Wer „Nicht beschneiden"
+          gewählt hat, bekäme sonst den Hinweis, dass anderswo das Original
+          benutzt wird — das ist dann überall dasselbe Bild. */}
+      {!allowAspect && !noCrop && (
         <div className="dex-ui-callout dex-ui-callout--neutral">
           <span className="dex-ui-callout-icon"><Info size={16} /></span>
           <span>
