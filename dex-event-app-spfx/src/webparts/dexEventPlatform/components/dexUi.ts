@@ -159,6 +159,29 @@ export const DEX_UI_CSS = `
 .dex-ui-toggle-row.is-active { border-color: rgba(134,188,37,0.7); background: rgba(134,188,37,0.07); }
 .dex-ui-toggle-row.is-disabled { opacity: 0.55; cursor: not-allowed; background: #fff; border-color: ${G200}; }
 .dex-ui-toggle-row > input[type='checkbox'], .dex-ui-toggle-row > input[type='radio'] { margin-top: 3px; cursor: pointer; flex-shrink: 0; accent-color: #86bc25; }
+/* v31.9.8: Eine Checkbox muss eckig sein und einen Haken tragen. Das globale
+   SCSS der App macht aus JEDER Checkbox einen Kreis mit Punkt
+   (DexEventPlatform.module.scss, .dexApp input[type=checkbox], border-radius
+   50%) — also genau das Bild, das jeder Mensch als „nur eins davon" liest.
+   Im Zuschnitt-Dialog stehen zwei UNABHAENGIGE Haken untereinander; rund
+   gerendert behaupten sie das Gegenteil.
+   Das :not([hidden]) ist kein Filter, sondern Gewicht: Die SCSS-Regel und
+   diese hier haben dieselbe Spezifitaet, und welches Stylesheet zuletzt im
+   head steht, ist nicht garantiert (dexUi wird zur Laufzeit injiziert). Die
+   Pseudoklasse hebt diese Regel um eine Stufe und macht die Reihenfolge
+   damit egal. Radios bleiben bewusst rund. */
+.dex-ui-toggle-row > input[type='checkbox']:not([hidden]) {
+  appearance: none; -webkit-appearance: none; box-sizing: border-box;
+  width: 18px; height: 18px; border: 2px solid ${G300}; border-radius: 5px;
+  background: #fff; position: relative; transition: border-color ${EASE}, background ${EASE};
+}
+.dex-ui-toggle-row > input[type='checkbox']:not([hidden]):hover { border-color: ${G}; }
+.dex-ui-toggle-row > input[type='checkbox']:not([hidden]):checked { border-color: ${G}; background: ${G}; }
+.dex-ui-toggle-row > input[type='checkbox']:not([hidden]):checked::after {
+  content: ''; position: absolute; left: 4px; top: 0; width: 4px; height: 9px;
+  border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+.dex-ui-toggle-row > input[type='checkbox']:not([hidden]):disabled { opacity: 0.55; cursor: not-allowed; }
 .dex-ui-toggle-row-body { flex: 1; min-width: 0; }
 .dex-ui-toggle-row-title { font-weight: 600; font-size: 0.88rem; color: ${G800}; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .dex-ui-toggle-row-desc { font-size: 0.78rem; color: ${G500}; margin-top: 4px; line-height: 1.5; }

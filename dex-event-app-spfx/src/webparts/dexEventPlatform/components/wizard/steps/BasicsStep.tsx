@@ -30,6 +30,7 @@ export interface BasicsStepProps {
   DRAFT_KEY: string;
   draftSavedAt: number;
   editEvent: import("../../../types/index").DeloitteEvent;
+  emailLogoFromPhoto: boolean;
   emailLogoPreview: string;
   errorBorderStyle: (fieldName: string) => React.CSSProperties;
   events: import("../../../types/index").DeloitteEvent[];
@@ -49,6 +50,7 @@ export interface BasicsStepProps {
   location: string;
   logoCropTarget: "outlook" | "email";
   noDescription: boolean;
+  outlookLogoFromPhoto: boolean;
   outlookLogoPreview: string;
   patchScopeSub: (patch: Partial<SubEventDraft>) => void;
   pendingDraft: { savedAt: number; data: Record<string, unknown>; };
@@ -107,11 +109,31 @@ export interface BasicsStepProps {
 }
 export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
   const { visible } = p;
-  const { activeFrom, activeScopeIdx, applyDraftPayload, applyEventTemplate, childEventsOf, childTermSingular, currentUser, dayKeyOfDate, description, DRAFT_KEY, draftSavedAt, editEvent, emailLogoPreview, errorBorderStyle, events, fieldHasError, fileToBase64, imageBanner, imageDisplay, imageDisplayOpen, imageEditOpen, imageFile, imageOrigFile, imagePreview, imageUploadError, isDe, isEditMode, isFictive, location, logoCropTarget, noDescription, outlookLogoPreview, patchScopeSub, pendingDraft, previewBeforeActive, renderStepIntro, scAllDay, scDescription, scEnd, scImagePreview, scopeSub, scShowAsFree, scStart, scTitle, setActiveFrom, setDescription, setEmailLogoFromPhoto, setEmailLogoPreview, setEventImageUrl, setHtmlEditorMode, setHtmlEditorOpen, setImageBanner, setImageDisplay, setImageDisplayOpen, setImageEditOpen, setImageFile, setImageOrigAspect, setImageOrigFile, setImagePreview, setImageUploadError, setIsFictive, setLogoCropTarget, setNoDescription, setOutlookLogoFromPhoto, setOutlookLogoPreview, setPendingDraft, setPreviewBeforeActive, setScAllDay, setScEnd, setScShowAsFree, setScStart, setScTitle, setShowDemoVariantModal, setShowTemplatePicker, setSubEvents, setSubImageCropIdx, showTemplatePicker, shrinkLogoB64, startDate, subEvents, subEventsOnlyMode, t, templateLoadingId, title, wizardImgAspect } = p;
+  const { activeFrom, activeScopeIdx, applyDraftPayload, applyEventTemplate, childEventsOf, childTermSingular, currentUser, dayKeyOfDate, description, DRAFT_KEY, draftSavedAt, editEvent, emailLogoFromPhoto, emailLogoPreview, errorBorderStyle, events, fieldHasError, fileToBase64, imageBanner, imageDisplay, imageDisplayOpen, imageEditOpen, imageFile, imageOrigFile, imagePreview, imageUploadError, isDe, isEditMode, isFictive, location, logoCropTarget, noDescription, outlookLogoFromPhoto, outlookLogoPreview, patchScopeSub, pendingDraft, previewBeforeActive, renderStepIntro, scAllDay, scDescription, scEnd, scImagePreview, scopeSub, scShowAsFree, scStart, scTitle, setActiveFrom, setDescription, setEmailLogoFromPhoto, setEmailLogoPreview, setEventImageUrl, setHtmlEditorMode, setHtmlEditorOpen, setImageBanner, setImageDisplay, setImageDisplayOpen, setImageEditOpen, setImageFile, setImageOrigAspect, setImageOrigFile, setImagePreview, setImageUploadError, setIsFictive, setLogoCropTarget, setNoDescription, setOutlookLogoFromPhoto, setOutlookLogoPreview, setPendingDraft, setPreviewBeforeActive, setScAllDay, setScEnd, setScShowAsFree, setScStart, setScTitle, setShowDemoVariantModal, setShowTemplatePicker, setSubEvents, setSubImageCropIdx, showTemplatePicker, shrinkLogoB64, startDate, subEvents, subEventsOnlyMode, t, templateLoadingId, title, wizardImgAspect } = p;
   // v31.2 (Leitfaden 2a′): Eine Kachel mit Hauptaktion ist selbst klickbar —
   // Enter/Leertaste lösen dieselbe Aktion aus wie der Klick. Nebenknöpfe in
   // der Kachel stoppen die Weitergabe (Klick UND Taste), damit „Verwerfen"
   // nicht zugleich „Fortsetzen" ist.
+  // v31.9.8: Beim Hochladen wird gefragt, wo das Foto sonst noch hin soll —
+  // E-Mails und Outlook-Termin getrennt (Nutzer-Ansage 10.09.2026: „beim foto
+  // hochladen event foto auch immer fragen ob das foto auch für die email
+  // kommunikation genutzt werden soll" / „email und outlook termin als eigene
+  // checkboxen"). Bis v31.9.7 entschied das die App still: Das Foto wanderte
+  // in beide Köpfe, ABER nur wenn dort noch nichts stand — eine Regel, die
+  // niemand sehen konnte und die je nach Vorgeschichte anders ausging.
+  //
+  // Die Vorbelegung folgt derselben Rücksicht wie die alte Regel: Wo ein
+  // eigenes Kopfbild liegt, das NICHT aus dem Foto stammt, ist der Haken
+  // vorne aus — ein bewusst gesetztes Bild wird nicht ungefragt ersetzt.
+  const [photoForEmail, setPhotoForEmail] = React.useState(true);
+  const [photoForOutlook, setPhotoForOutlook] = React.useState(true);
+  React.useEffect(() => {
+    if (!imageEditOpen) return;
+    setPhotoForEmail(!emailLogoPreview || emailLogoFromPhoto);
+    setPhotoForOutlook(!outlookLogoPreview || outlookLogoFromPhoto);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageEditOpen]);
+
   const rowKeyHandler = (fn: () => void) => (e: React.KeyboardEvent<HTMLElement>): void => {
     if (e.target !== e.currentTarget) return;
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); }
@@ -934,7 +956,6 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   open={imageEditOpen}
                   src={imagePreview}
                   isDe={isDe}
-                  recommendCircle
                   onClose={() => setImageEditOpen(false)}
                   onApply={async (dataUrl, file) => {
                     setImagePreview(dataUrl);
@@ -946,9 +967,19 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                     // automatisch das UNBESCHNITTENE Original (v26.95 fragte
                     // stattdessen nach und nahm dann den Kreis, der im
                     // rechteckigen Kopf sichtbar angeschnitten ankam).
-                    // Ein bereits bewusst gesetztes eigenes Kopfbild wird nicht
-                    // überschrieben; wer den Kreis doch im Kopf haben will,
-                    // nimmt „Bild auswählen".
+                    // v31.9.8: Ob das passiert, entscheiden jetzt die beiden
+                    // Haken im Dialog — nicht mehr die unsichtbare Regel „nur
+                    // wenn der Kopf noch leer ist".
+                    //
+                    // Ein abgewählter Haken nimmt ein Kopfbild zurück, das aus
+                    // dem Foto stammt (`*LogoFromPhoto`) — ein Haken, der
+                    // nichts abwählt, wäre keiner. Ein selbst hochgeladenes
+                    // Kopfbild bleibt dagegen unangetastet: Das hat der
+                    // Organizer woanders gesetzt, und der Foto-Haken darf es
+                    // weder ersetzen noch löschen, solange er aus ist.
+                    const dropEmail = (): void => { if (emailLogoFromPhoto) { setEmailLogoPreview(''); setEmailLogoFromPhoto(false); } };
+                    const dropOutlook = (): void => { if (outlookLogoFromPhoto) { setOutlookLogoPreview(''); setOutlookLogoFromPhoto(false); } };
+                    if (!photoForEmail && !photoForOutlook) { dropEmail(); dropOutlook(); return; }
                     try {
                       let srcFile: File | null = imageOrigFile;
                       if (!srcFile && editEvent && editEvent.imageOrigUrl) {
@@ -960,12 +991,47 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                       }
                       const b64 = await fileToBase64(await compressImage(srcFile || file, 600, 0.85, true));
                       if (b64) {
-                        if (!emailLogoPreview) { setEmailLogoPreview(b64); setEmailLogoFromPhoto(true); }
-                        if (!outlookLogoPreview) { setOutlookLogoPreview(b64); setOutlookLogoFromPhoto(true); }
+                        if (photoForEmail) { setEmailLogoPreview(b64); setEmailLogoFromPhoto(true); } else dropEmail();
+                        if (photoForOutlook) { setOutlookLogoPreview(b64); setOutlookLogoFromPhoto(true); } else dropOutlook();
                       }
                     } catch { /* Kopfbild ist optional — Fehler nie durchreichen */ }
                   }}
                 >
+                  {/* v31.9.8: Die Frage steht SICHTBAR im Dialog, nicht im
+                      Aufklapper darunter — „immer fragen" heißt nicht „findet,
+                      wer sucht". Zwei getrennte Haken, weil es zwei getrennte
+                      Köpfe sind: Mails und Outlook-Termin können
+                      verschiedene Bilder tragen. */}
+                  <div className="dex-ui-section" style={{ margin: 0 }}>
+                    <div className="dex-ui-section-title">{isDe ? 'Wo soll das Foto noch erscheinen?' : 'Where else should the photo appear?'}</div>
+                    {([
+                      {
+                        on: photoForEmail, set: setPhotoForEmail,
+                        title: isDe ? 'E-Mails' : 'Emails',
+                        desc: isDe ? 'Als Kopfbild in den Mails zu diesem Event.' : 'As the header image in this event’s emails.',
+                        replaces: !!emailLogoPreview && !emailLogoFromPhoto,
+                      },
+                      {
+                        on: photoForOutlook, set: setPhotoForOutlook,
+                        title: isDe ? 'Outlook-Termin' : 'Outlook invite',
+                        desc: isDe ? 'Als Kopfbild im Kalendereintrag.' : 'As the header image in the calendar entry.',
+                        replaces: !!outlookLogoPreview && !outlookLogoFromPhoto,
+                      },
+                    ]).map(row => (
+                      <label key={row.title} className={cx('dex-ui-toggle-row', row.on && 'is-active')} style={{ marginBottom: 8 }}>
+                        <input type="checkbox" checked={row.on} onChange={e => row.set(e.target.checked)} />
+                        <span className="dex-ui-toggle-row-body">
+                          <span className="dex-ui-toggle-row-title">{row.title}</span>
+                          <span className="dex-ui-toggle-row-desc">
+                            {row.desc}
+                            {/* Nur wenn dort schon ein selbst gewähltes Bild
+                                liegt — sonst wäre die Warnung Rauschen. */}
+                            {row.on && row.replaces && (isDe ? ' Ersetzt dein eigenes Kopfbild.' : ' Replaces your own header image.')}
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
                   {/* v23.19/v23.25: Optional & einklappbar — Bild pro Ansicht
                       anders zoomen/skalieren. Default zu; wer einfach nur ein
                       Foto hochlädt, muss hier nichts tun. */}
