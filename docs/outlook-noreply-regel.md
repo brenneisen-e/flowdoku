@@ -70,7 +70,7 @@ nie für `no_reply.events`.
 - [ ] **Subject** eintragen:
 
 ```
-Dieses Postfach wird nicht gelesen - so erreichst du uns
+This mailbox is not monitored - how to reach us
 ```
 
 - [ ] Als Text den Block aus dem Abschnitt „Der Antworttext" unten einfügen
@@ -153,30 +153,33 @@ Unzustellbar:
 
 ## Der Antworttext
 
-Kopierfertig. Duzen, wie überall in DEX.
+**Englisch** — Nutzer-Entscheidung 10.09.2026. Das ist die eine Stelle, an der
+die DEX-Regel „alles deutsch und duzen" nicht gilt: Diese Mail geht an jeden,
+der dem Postfach schreibt, und der Empfängerkreis der DEX-Mails ist nicht
+durchgehend deutschsprachig. Wer den Text später anfasst, lässt ihn englisch.
 
 ```
-Hallo,
+Hello,
 
-danke für deine Nachricht — und Entschuldigung für die unpersönliche Antwort.
+thanks for your message - and sorry for the impersonal reply.
 
-Dieses Postfach verschickt nur die Mails der DEX Event Experience Platform.
-Es wird nicht gelesen, und deine Nachricht wird auch nicht weitergeleitet.
+This mailbox only sends the emails of the DEX Event Experience Platform.
+Nobody reads it, and your message is not forwarded to anyone.
 
-So kommst du weiter:
+Here is what to do instead:
 
-1. Anmelden, abmelden, Angaben oder Termine ändern kannst du selbst in DEX:
+1. You can register, cancel, or change your details and dates yourself in DEX:
    https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView
 
-2. Du hast eine Frage zu einem bestimmten Event? Öffne das Event in DEX —
-   auf der Event-Seite stehen die Organizer mit Namen. Schreib ihnen direkt,
-   sie können dir am schnellsten helfen.
+2. Do you have a question about a specific event? Open that event in DEX -
+   the organisers are listed by name on the event page. Write to them
+   directly, they can help you fastest.
 
-3. Du weißt nicht mehr, um welches Event es ging? Unter "Meine Events" in DEX
-   findest du alles, wofür du angemeldet bist — mit den passenden Organizern.
+3. Not sure which event this was about? "My Events" in DEX lists everything
+   you are registered for, each with the organisers who run it.
 
-Viele Grüße
-Dein DEX-Team
+Best regards
+Your DEX team
 ```
 
 ---
