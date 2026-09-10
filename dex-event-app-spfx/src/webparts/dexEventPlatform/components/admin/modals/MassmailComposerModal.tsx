@@ -14,6 +14,7 @@ import { DeloitteEvent } from '../../../types';
 import { EventService, SPRegistration } from '../../../services/EventService';
 import { MailHeaderImage } from '../../../utils/mailHeaderImage';
 import { MassmailAudience } from '../adminTypes';
+import { buildInlineImage, charsToKb } from '../../../utils/inlineMailImage';
 
 export interface MassmailComposerModalProps {
   applyMassmailHero: (wrappedHtml: string) => string;
@@ -53,6 +54,9 @@ export interface MassmailComposerModalProps {
   setEmailSubject: React.Dispatch<React.SetStateAction<string>>;
   setMassmailCc: React.Dispatch<React.SetStateAction<string[]>>;
   setMassmailHeaderImage: React.Dispatch<React.SetStateAction<MailHeaderImage>>;
+  /** v31.9.7: Kopfbild nur fuer diese Mail. */
+  massmailCustomHeaderB64: string;
+  setMassmailCustomHeaderB64: React.Dispatch<React.SetStateAction<string>>;
   setMassmailMode: React.Dispatch<React.SetStateAction<"closed" | "pick" | "paste" | "editor">>;
   setMassmailPasteRaw: React.Dispatch<React.SetStateAction<string>>;
   setMassmailSubheading: React.Dispatch<React.SetStateAction<string>>;
@@ -62,11 +66,37 @@ export interface MassmailComposerModalProps {
 }
 
 export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) => {
-  const { applyMassmailHero, confirmDialog, emailBody, emailHeading, emailSending, emailSubject, eventServiceRef, isDe, massmailAudience, massmailCc, massmailDraftSaved, massmailEventPhotoB64, massmailHeaderImage, massmailHeaderOpts, massmailPasteRaw, massmailStatuses, massmailSubheading, massmailTesting, massmailTestMsg, registrations, resetMassmailDraft, saveMassmailDraft, searchUser, searchUsers, selectedEvent, sendMassmailTestToOrganizers, setComposerCrop, setEmailBody, setEmailHeading, setEmailSending, setEmailSubject, setMassmailCc, setMassmailHeaderImage, setMassmailMode, setMassmailPasteRaw, setMassmailSubheading, setShowEmailModal, showAlert, showEmailModal } = p;
+  const { applyMassmailHero, confirmDialog, emailBody, emailHeading, emailSending, emailSubject, eventServiceRef, isDe, massmailAudience, massmailCc, massmailCustomHeaderB64, setMassmailCustomHeaderB64, massmailDraftSaved, massmailEventPhotoB64, massmailHeaderImage, massmailHeaderOpts, massmailPasteRaw, massmailStatuses, massmailSubheading, massmailTesting, massmailTestMsg, registrations, resetMassmailDraft, saveMassmailDraft, searchUser, searchUsers, selectedEvent, sendMassmailTestToOrganizers, setComposerCrop, setEmailBody, setEmailHeading, setEmailSending, setEmailSubject, setMassmailCc, setMassmailHeaderImage, setMassmailMode, setMassmailPasteRaw, setMassmailSubheading, setShowEmailModal, showAlert, showEmailModal } = p;
         // v31.2: Das zusätzliche CC ist selten nötig und steht deshalb in
         // einem Aufklapper — offen nur, wenn schon jemand eingetragen ist,
         // damit ein gesetzter Verteiler nie unsichtbar mitfährt.
         const [ccOpen, setCcOpen] = React.useState<boolean>(massmailCc.length > 0);
+        // v31.9.7: Eigenes Kopfbild. Dieselbe Kompressions-Leiter wie die
+        // Inline-Bilder aus v31.7 — nur mit 600 px, weil der Mail-KOPF die
+        // volle Tabellenbreite hat (die Inhaltszelle ist schmaler).
+        const [headerBusy, setHeaderBusy] = React.useState(false);
+        const [headerNote, setHeaderNote] = React.useState('');
+        const pickCustomHeader = async (file: File): Promise<void> => {
+          setHeaderBusy(true); setHeaderNote('');
+          try {
+            const out = await buildInlineImage(file, 600);
+            if (!out.ok) {
+              // Der Grund wird BENANNT — „hat nicht geklappt" laesst den
+              // Organizer raten, ob es am Bild oder an der App lag.
+              setHeaderNote(out.reason === 'too-big'
+                ? (isDe ? `Auch verkleinert noch ${Math.round(charsToKb(out.chars))} KB — bitte ein einfacheres Bild nehmen (weniger Details, kein Screenshot).` : `Still ${Math.round(charsToKb(out.chars))} KB after compression — please use a simpler image.`)
+                : (isDe ? 'Diese Datei konnte nicht gelesen werden.' : 'This file could not be read.'));
+              return;
+            }
+            setMassmailCustomHeaderB64(out.dataUrl);
+            // Eigenes Bild heisst volle Breite ohne Rand — der Orb-Deckel
+            // von 180 px gilt nur fuer das Standard-Logo.
+            setMassmailHeaderImage(prev => ({ ...prev, hero: 'custom', width: 600, paddingV: 0, paddingH: 0 }));
+            setHeaderNote(isDe ? `Übernommen — ${out.width}×${out.height} px, ${Math.round(charsToKb(out.chars))} KB.` : `Applied — ${out.width}×${out.height} px, ${Math.round(charsToKb(out.chars))} KB.`);
+          } finally {
+            setHeaderBusy(false);
+          }
+        };
         // v17.10: Empfänger-Filter abhängig vom gewählten massmailAudience.
         const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
         const recipients = (() => {
@@ -300,6 +330,17 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
                     value={massmailHeaderImage} onChange={setMassmailHeaderImage}
                     eventPhotoB64={massmailEventPhotoB64} disabled={emailSending}
                     onCrop={() => setComposerCrop('massmail')} isDe={isDe}
+                    customB64={massmailCustomHeaderB64}
+                    onPickCustom={(f) => { pickCustomHeader(f).catch(() => setHeaderBusy(false)); }}
+                    onRemoveCustom={() => {
+                      setMassmailCustomHeaderB64('');
+                      setHeaderNote('');
+                      // Zurueck auf das Standard-Logo — „custom" ohne Bild
+                      // waere eine Auswahl, die still den Platzhalter zeigt.
+                      setMassmailHeaderImage(prev => ({ ...prev, hero: 'logo' }));
+                    }}
+                    customBusy={headerBusy}
+                    customNote={headerNote}
                   />
                   <div className="dex-ui-help">
                     {isDe ? 'Breite und Abstand des Bildes stellst du weiter unten neben der Vorschau ein.' : 'Width and spacing of the image are set further down, next to the preview.'}

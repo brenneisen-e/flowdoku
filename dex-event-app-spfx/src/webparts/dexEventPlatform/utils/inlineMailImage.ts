@@ -134,14 +134,22 @@ const LADDER: Array<{ w: number; q: number }> = [
  * So sieht der Nutzer im Fehlerfall die tatsächlich erreichte Größe und nicht
  * die des Originals.
  */
-export async function buildInlineImage(file: File): Promise<InlineImageOutcome> {
+// v31.9.7: `maxWidth` optional — der Mail-KOPF darf 600 px breit sein (die
+// Inhaltszelle der Mail ist schmaler, der Kopf nicht). Ohne Angabe bleibt
+// es bei den 540 px fuer Bilder IM Text.
+export async function buildInlineImage(file: File, maxWidth?: number): Promise<InlineImageOutcome> {
   const fail = (reason: 'unreadable' | 'too-big', chars: number): InlineImageOutcome =>
     ({ ok: false, reason, dataUrl: '', width: 0, height: 0, chars });
   const target = INLINE_IMG_TARGET_KB * KB;
+  // Nur die drei VOLLBREITEN Stufen bekommen den Wunschwert; die drei
+  // Reduktions-Stufen (460/380/300) bleiben, was sie sind — sie sind der
+  // Notausgang fuer zu grosse Bilder, und den darf ein 600er-Wunsch nicht
+  // aufblasen. Ein KLEINERER Wunsch deckelt auch sie.
+  const w0 = Math.max(1, Math.round(maxWidth || INLINE_IMG_MAX_WIDTH));
   let best = '';
   for (const step of LADDER) {
     try {
-      const out = await fileToDataUrl(await compressImage(file, step.w, step.q, true));
+      const out = await fileToDataUrl(await compressImage(file, step.w === INLINE_IMG_MAX_WIDTH ? w0 : Math.min(step.w, w0), step.q, true));
       if (!out || out.indexOf('data:image/') !== 0) continue;
       if (!best || out.length < best.length) best = out;
       if (out.length <= target) break;

@@ -32,8 +32,14 @@
 
 export interface MailHeaderImage {
   /** `logo` = Standard (DEX-Orb bzw. das Mail-Logo des Events, vom Flow
-   *  eingesetzt), `event` = das Event-Foto fest eingebacken. */
-  hero: 'logo' | 'event';
+   *  eingesetzt), `event` = das Event-Foto fest eingebacken, `custom` = ein
+   *  für DIESE Mail hochgeladenes Bild (v31.9.7).
+   *
+   *  Das Bild selbst steht NICHT in diesem Objekt: Der Typ wird als JSON in
+   *  SharePoint gespeichert (QR-Mail-Overrides), ein Base64-Bild würde die
+   *  Spalte aufblähen. Es wird — genau wie das Event-Foto — als eigener
+   *  Parameter durchgereicht. */
+  hero: 'logo' | 'event' | 'custom';
   width: number;
   paddingV: number;
   paddingH: number;
@@ -69,9 +75,12 @@ export function mailHeaderOpts(
 export function hasOwnHeaderImage(
   img: MailHeaderImage,
   eventPhotoB64: string,
-  eventMailLogo: string | undefined | null
+  eventMailLogo: string | undefined | null,
+  customB64?: string
 ): boolean {
-  return (img.hero === 'event' && !!eventPhotoB64) || !!eventMailLogo;
+  return (img.hero === 'event' && !!eventPhotoB64)
+    || (img.hero === 'custom' && !!customB64)
+    || !!eventMailLogo;
 }
 
 /**
@@ -86,8 +95,15 @@ export function hasOwnHeaderImage(
 export function applyHeroImage(
   wrappedHtml: string,
   img: MailHeaderImage,
-  eventPhotoB64: string
+  eventPhotoB64: string,
+  customB64?: string
 ): string {
+  // v31.9.7: `custom` = ein für diese eine Mail hochgeladenes Bild. Wie beim
+  // Event-Foto wird es fest eingebacken; ohne Bild bleibt der Platzhalter
+  // stehen und der Flow setzt wie gehabt das Standard-Bild ein.
+  if (img.hero === 'custom' && customB64) {
+    return wrappedHtml.replace(/\{\{ORB_URL\}\}/g, customB64);
+  }
   return (img.hero === 'event' && eventPhotoB64)
     ? wrappedHtml.replace(/\{\{ORB_URL\}\}/g, eventPhotoB64)
     : wrappedHtml;
@@ -108,6 +124,10 @@ export function normalizeMailHeaderImage(raw: unknown): MailHeaderImage {
     return Math.min(n, max);
   };
   return {
+    // v31.9.7: `custom` kommt bewusst NICHT aus dem gespeicherten JSON
+    // zurueck. Das Bild dazu lebt nur im Composer dieser einen Mail und
+    // wird nirgends persistiert — ein gespeichertes `custom` waere also
+    // eine Auswahl ohne Bild und wuerde still auf den Platzhalter fallen.
     hero: o.hero === 'event' ? 'event' : 'logo',
     width: num(o.width, MAIL_HEADER_IMAGE_DEFAULT.width, 600),
     paddingV: num(o.paddingV, MAIL_HEADER_IMAGE_DEFAULT.paddingV, 80),

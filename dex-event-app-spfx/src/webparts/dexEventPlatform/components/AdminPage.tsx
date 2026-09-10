@@ -985,6 +985,11 @@ export default function AdminPage(): React.ReactElement {
   // States, und die QR-Mail hatte gar keine.
   const [massmailHeaderImage, setMassmailHeaderImage] = React.useState<MailHeaderImage>(MAIL_HEADER_IMAGE_DEFAULT);
   const [massmailEventPhotoB64, setMassmailEventPhotoB64] = React.useState<string>('');
+  // v31.9.7: Ein für DIESE Mail hochgeladenes Kopfbild. Bewusst ein eigener
+  // State neben dem Event-Foto und NICHT in `massmailHeaderImage`: Dieser
+  // Typ wird als JSON in SharePoint gespeichert, ein Base64-Bild darin würde
+  // die Overrides-Spalte aufblähen. Lebt nur, solange der Composer offen ist.
+  const [massmailCustomHeaderB64, setMassmailCustomHeaderB64] = React.useState<string>('');
   // v26.88: dieselbe „Bild im Mail-Kopf"-Wahl für die EINLADUNGSMAIL.
   const [inviteHeaderImage, setInviteHeaderImage] = React.useState<MailHeaderImage>(MAIL_HEADER_IMAGE_DEFAULT);
   // v26.98: Event-Foto im Mail-Composer zuschneiden (invite/massmail).
@@ -1430,7 +1435,7 @@ export default function AdminPage(): React.ReactElement {
   } = useMailComposers({
     currentUser, emailBody, emailHeading, emailSubject, eventServiceRef, getGroupMembers,
     inviteBody, inviteEventPhotoB64, inviteHeaderImage, inviteHeading, inviteHydratingRef,
-    inviteSubheading, inviteSubject, inviteTarget, isDe, massmailEventPhotoB64,
+    inviteSubheading, inviteSubject, inviteTarget, isDe, massmailCustomHeaderB64, massmailEventPhotoB64,
     massmailHeaderImage, massmailHydratingRef, massmailMode, massmailSubheading, pendingCheckBusy,
     registrations, selectedEvent, setEmailBody, setEmailHeading, setEmailSubject,
     setInviteAddInput, setInviteAudienceOpen, setInviteBody, setInviteCustomEmails,
@@ -2149,7 +2154,7 @@ export default function AdminPage(): React.ReactElement {
   };
   const massmailComposerModalProps = {
     applyMassmailHero, confirmDialog, emailBody, emailHeading, emailSending, emailSubject,
-    eventServiceRef, isDe, massmailAudience, massmailCc, massmailDraftSaved, massmailEventPhotoB64,
+    eventServiceRef, isDe, massmailAudience, massmailCc, massmailCustomHeaderB64, setMassmailCustomHeaderB64, massmailDraftSaved, massmailEventPhotoB64,
     massmailHeaderImage, massmailHeaderOpts, massmailPasteRaw, massmailStatuses, massmailSubheading, massmailTesting,
     massmailTestMsg, registrations, resetMassmailDraft, saveMassmailDraft, searchUser, searchUsers,
     selectedEvent, sendMassmailTestToOrganizers, setComposerCrop, setEmailBody, setEmailHeading, setEmailSending,

@@ -881,7 +881,11 @@ export interface QrEmailOverride {
    * Base64-Bild darin bringt die Spalte an ihr Größenlimit. Das Foto wird
    * beim Versand aus dem Event-Bild aufgelöst (Cache, s. utils/imageCache).
    */
-  headerImage?: { hero?: 'logo' | 'event'; width?: number; paddingV?: number; paddingH?: number };
+  // v31.9.7: `custom` mitgenommen, sonst passt der gemeinsame
+  // `MailHeaderImage` nicht mehr hierher. Fuer die GESPEICHERTE QR-Mail ist
+  // `custom` allerdings ohne Wirkung — das Bild dazu lebt nur im Composer
+  // einer einzelnen Rundmail und wird nirgends persistiert.
+  headerImage?: { hero?: 'logo' | 'event' | 'custom'; width?: number; paddingV?: number; paddingH?: number };
   /**
    * v30.60: Sprache des festen Blocks NEBEN dem QR-Code („Name", „ID" und der
    * Hinweis „Falls der Scan nicht klappt…").
