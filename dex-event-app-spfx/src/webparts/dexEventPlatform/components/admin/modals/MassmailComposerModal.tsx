@@ -138,31 +138,32 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
          * v30.51.1: Das tatsächliche CC — EINMAL berechnet, für Anzeige UND
          * Versand.
          *
-         * Zwei Regeln, die nicht dieselbe sind:
-         *  - Das AUTOMATISCHE Organizer-CC (v17.10) wird gegen die Empfänger
-         *    entdoppelt. Es soll niemanden doppelt eintragen, den ohnehin
-         *    jemand anschreibt.
-         *  - Ein SELBST eingetragenes CC wird nicht gefiltert. Der gemeldete
-         *    Fall: zwei Personen eingetragen, angekommen ist eine — die andere
-         *    war selbst Teilnehmer und stand damit schon im An-Feld, also warf
-         *    der Filter sie still hinaus. Wer jemanden ausdrücklich auf CC
-         *    setzt, hat sich dabei etwas gedacht. Doppelt zugestellt wird
-         *    nichts: Exchange liefert eine Adresse einmal aus, auch wenn sie
-         *    in To und Cc steht.
-         *
          * Dass die Liste hier oben steht und nicht erst im Versand, ist der
          * eigentliche Punkt: Vorher stand im Dialog eine ZUSAGE („Organizer
          * kommen automatisch auf CC"), während der Versand etwas anderes tat.
          * Jetzt zeigt der Dialog genau die Liste, die verschickt wird.
+         *
+         * v31.9.9: Der Organizer steht IMMER im CC — auch dann, wenn er als
+         * Teilnehmer schon im An-Feld steht (Nutzer-Entscheidung 10.09.2026).
+         * Bis v31.9.8 wurde er in genau diesem Fall herausgefiltert, mit der
+         * Begründung „niemanden doppelt eintragen". Der Normalfall ist aber,
+         * dass ein Organizer bei seinem eigenen Event angemeldet ist — das CC
+         * war deshalb fast immer leer, und im Postfach steht der Organizer
+         * anonym zwischen 150 Teilnehmern statt sichtbar als Absender-Seite.
+         * Zugestellt wird dadurch nichts doppelt: Exchange liefert eine
+         * Adresse einmal aus, auch wenn sie in To und Cc steht — dieselbe
+         * Zusicherung, auf der schon das nicht gefilterte manuelle CC beruht.
+         *
+         * `seen` bleibt: Eine Adresse, die zweimal unter den Organizern steht
+         * oder zusätzlich von Hand ins CC getippt wurde, erscheint einmal.
          */
         const massmailCcPreview = ((): string[] => {
-          const recipientSet = new Set(recipients.map(r => (r.ParticipantEmail || '').toLowerCase()));
           const seen = new Set<string>();
           const out: string[] = [];
           for (const raw of (selectedEvent.organizerEmails || [])) {
             const e = (raw || '').trim();
             const lc = e.toLowerCase();
-            if (!e || recipientSet.has(lc) || seen.has(lc)) continue;
+            if (!e || seen.has(lc)) continue;
             seen.add(lc);
             out.push(e);
           }
@@ -289,15 +290,17 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
                     <span className="dex-ui-pill dex-ui-pill--gray">{audienceLabel}</span>
                     <span className={cx('dex-ui-pill', ccCount > 0 ? 'dex-ui-pill--blue' : 'dex-ui-pill--gray')}>{ccCount > 0 ? `${ccCount} CC` : ccNobody}</span>
                   </div>
-                  {/* v30.51.1: Was WIRKLICH ins CC geht, statt einer Zusage. „Organizer
-                      kommen automatisch auf CC" stimmt genau dann nicht, wenn sie selbst
-                      teilnehmen (Normalfall): Dann stehen sie schon im An-Feld. */}
+                  {/* v30.51.1: Was WIRKLICH ins CC geht, statt einer Zusage.
+                      v31.9.9: Seit die Organizer immer auf CC stehen, ist die Liste
+                      genau die Zusage — leer ist sie nur noch, wenn am Event keine
+                      Organizer-Adresse hinterlegt ist. Genau das sagt der Text dann
+                      auch, statt einen Grund zu nennen, der nicht mehr gilt. */}
                   <div className="dex-ui-help" style={{ wordBreak: 'break-word' }}>
                     {recipients.length === 0
                       ? (isDe ? 'In dieser Gruppe ist niemand. Schließe den Dialog und wähle im Schritt davor eine andere Gruppe.' : 'This group is empty. Close the dialog and pick another group in the step before.')
                       : (isDe
-                        ? <>Die Gruppe hast du im Schritt davor gewählt. <strong>CC:</strong> {ccCount === 0 ? 'niemand — alle Organizer stehen bereits im An-Feld.' : massmailCcPreview.join(', ')}</>
-                        : <>You picked the group in the step before. <strong>CC:</strong> {ccCount === 0 ? 'nobody — all organizers are already in the To field.' : massmailCcPreview.join(', ')}</>)}
+                        ? <>Die Gruppe hast du im Schritt davor gewählt. <strong>CC:</strong> {ccCount === 0 ? 'niemand — an diesem Event ist keine Organizer-Adresse hinterlegt.' : massmailCcPreview.join(', ')}</>
+                        : <>You picked the group in the step before. <strong>CC:</strong> {ccCount === 0 ? 'nobody — this event has no organizer address on file.' : massmailCcPreview.join(', ')}</>)}
                   </div>
                   {/* v30.51: Zusätzliches CC direkt unter der Empfänger-Zeile — CC ist
                       eine Aussage über den Verteiler, nicht über die Gestaltung. */}
