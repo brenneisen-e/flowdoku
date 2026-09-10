@@ -1,0 +1,6 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/spfx-serve.schema.json",
+  "port": 4322,
+  "https": true,
+  "initialPage": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-AIUseCasePlatform/_layouts/workbench.aspx"
+}

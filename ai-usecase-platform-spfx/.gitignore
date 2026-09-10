@@ -1,0 +1,13 @@
+node_modules/
+lib/
+dist/
+temp/
+sharepoint/
+release/
+*.sppkg
+.heft/
+
+# Auto-generated SCSS type definitions
+*.module.scss.ts
+.minifycache/
+.tscache/

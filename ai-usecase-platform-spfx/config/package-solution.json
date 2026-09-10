@@ -1,0 +1,50 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "ai-usecase-platform",
+    "id": "4c3ed6df-1cb6-452e-bc13-644fc2fff324",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "Eike Brenneisen",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "Undefined-1.20.0"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "AI Use Case Platform - Agentic Banking Demo Hub"
+      },
+      "longDescription": {
+        "default": "Zentrale, Deloitte-intern zugaengliche Plattform fuer Agent-Demos im Banking-Sektor. Use Cases werden ueber Kacheln aufgerufen; je Demo stehen Kurzbeschreibung, Aufruf und die Ressourcen (Source Code, Deployment, Guide, Wiki, Video) bereit."
+      },
+      "screenshotPaths": [],
+      "videoUrl": "",
+      "categories": []
+    },
+    "webApiPermissionRequests": [
+      {
+        "resource": "Microsoft Graph",
+        "scope": "User.Read"
+      },
+      {
+        "resource": "Microsoft Graph",
+        "scope": "User.Read.All"
+      }
+    ],
+    "features": [
+      {
+        "title": "AI Use Case Platform Feature",
+        "description": "Adds the AI Use Case Platform webpart",
+        "id": "e9fafea5-56ef-4bbc-82b9-2ced50d38b5f",
+        "version": "1.0.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/ai-usecase-platform.sppkg"
+  }
+}
