@@ -147,7 +147,11 @@ export default function MailHeaderImageChooser(props: MailHeaderImageChooserProp
               <Trash2 size={14} />{isDe ? 'Entfernen' : 'Remove'}
             </button>
           )}
-          <span className="dex-ui-muted">
+          {/* v31.10: `flex: 1 1 200px` — der Satz stand ohne Basis neben den
+              Knöpfen und wurde auf dem Handy zu einer 130 px breiten Textsäule.
+              Mit der Basis rutscht er als Ganzes in die nächste Zeile, sobald es
+              eng wird, und bleibt auf dem Desktop daneben stehen. */}
+          <span className="dex-ui-muted" style={{ flex: '1 1 200px' }}>
             {customBusy
               ? (isDe ? 'Bild wird verkleinert …' : 'Compressing image …')
               : (customNote || (isDe ? 'Wird fest in die Mail eingebacken — der Empfänger muss nichts nachladen.' : 'Baked into the email — the recipient does not have to load anything.'))}
@@ -161,7 +165,7 @@ export default function MailHeaderImageChooser(props: MailHeaderImageChooserProp
           <button type="button" className="dex-ui-textbtn" disabled={disabled} onClick={props.onCrop}>
             <Pencil size={14} />{isDe ? 'Foto zuschneiden' : 'Crop photo'}
           </button>
-          <span className="dex-ui-muted">{isDe ? 'Ausschnitt wählen, bevor die Mail rausgeht.' : 'Pick the crop before the email goes out.'}</span>
+          <span className="dex-ui-muted" style={{ flex: '1 1 200px' }}>{isDe ? 'Ausschnitt wählen, bevor die Mail rausgeht.' : 'Pick the crop before the email goes out.'}</span>
         </div>
       )}
     </div>

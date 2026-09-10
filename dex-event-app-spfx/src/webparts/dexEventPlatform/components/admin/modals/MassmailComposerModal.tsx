@@ -15,6 +15,9 @@ import { EventService, SPRegistration } from '../../../services/EventService';
 import { MailHeaderImage } from '../../../utils/mailHeaderImage';
 import { MassmailAudience } from '../adminTypes';
 import { buildInlineImage, charsToKb } from '../../../utils/inlineMailImage';
+// v31.10: Dieselbe Rechnung wie die Anmeldeseite — wer dort ausgeblendet ist,
+// steht auch nicht im CC. Die Regel liegt in EINER Datei, nicht hier.
+import { visibleOrganizerEmails } from '../../../utils/organizerVisibility';
 
 export interface MassmailComposerModalProps {
   applyMassmailHero: (wrappedHtml: string) => string;
@@ -154,13 +157,21 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
          * Adresse einmal aus, auch wenn sie in To und Cc steht — dieselbe
          * Zusicherung, auf der schon das nicht gefilterte manuelle CC beruht.
          *
+         * v31.10: Nur die Organizer, die dem Teilnehmer auch ANGEZEIGT werden
+         * (Nutzer-Ansage 10.09.2026). Wer im Assistenten ausgeblendet ist,
+         * gehört nicht ins CC einer Mail an ebendiese Teilnehmer — sonst
+         * verrät der Mailkopf genau den Namen, den die Anmeldeseite
+         * absichtlich verschweigt. Sind alle ausgeblendet, bleibt das
+         * automatische CC leer; ein von Hand eingetragenes CC ist davon
+         * unberührt, das ist eine bewusste Einzelentscheidung.
+         *
          * `seen` bleibt: Eine Adresse, die zweimal unter den Organizern steht
          * oder zusätzlich von Hand ins CC getippt wurde, erscheint einmal.
          */
         const massmailCcPreview = ((): string[] => {
           const seen = new Set<string>();
           const out: string[] = [];
-          for (const raw of (selectedEvent.organizerEmails || [])) {
+          for (const raw of visibleOrganizerEmails(selectedEvent)) {
             const e = (raw || '').trim();
             const lc = e.toLowerCase();
             if (!e || seen.has(lc)) continue;
@@ -287,7 +298,12 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
                   <div className="dex-ui-section-title">{isDe ? 'An wen geht die Mail?' : 'Who receives the email?'}</div>
                   <div className="dex-ui-inline">
                     <span className={cx('dex-ui-pill', recipients.length > 0 ? 'dex-ui-pill--green' : 'dex-ui-pill--red')}><Users size={13} /> {recipients.length} {isDe ? 'Empfänger' : 'recipients'}</span>
-                    <span className="dex-ui-pill dex-ui-pill--gray">{audienceLabel}</span>
+                    {/* v31.10: `--wrap`, weil `audienceLabel` bei „Eigene Auswahl"
+                        die angehakten Status aneinanderreiht („Angemeldet, QR
+                        versendet, Eingecheckt, …"). Eine Pille bricht sonst nie um
+                        und schob den Dialog auf dem Handy 90 px nach rechts aus
+                        dem Bild — im Harness bei 390 px gemessen. */}
+                    <span className="dex-ui-pill dex-ui-pill--gray dex-ui-pill--wrap">{audienceLabel}</span>
                     <span className={cx('dex-ui-pill', ccCount > 0 ? 'dex-ui-pill--blue' : 'dex-ui-pill--gray')}>{ccCount > 0 ? `${ccCount} CC` : ccNobody}</span>
                   </div>
                   {/* v30.51.1: Was WIRKLICH ins CC geht, statt einer Zusage.
@@ -346,16 +362,25 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
                     customNote={headerNote}
                   />
                   <div className="dex-ui-help">
-                    {isDe ? 'Breite und Abstand des Bildes stellst du weiter unten neben der Vorschau ein.' : 'Width and spacing of the image are set further down, next to the preview.'}
+                    {/* v31.10: ohne „neben der Vorschau" — auf dem Handy stehen die
+                        Felder weiter unten in derselben Spalte, nicht daneben. */}
+                    {isDe ? 'Breite und Abstand des Bildes stellst du weiter unten ein.' : 'Width and spacing of the image are set further down.'}
                   </div>
                 </div>
 
                 <div>
                   <div className="dex-ui-section-title">{isDe ? 'Bevor du sendest' : 'Before you send'}</div>
+                  {/* v31.10: `flexWrap` plus eine Mindestbreite für den Textblock —
+                      `dex-ui-step` ist eine Zeile ohne Umbruch, und `dex-ui-step-body`
+                      trägt `min-width: 0`. Auf dem Handy schrumpfte der Text deshalb
+                      neben dem Knopf auf ein Wort je Zeile („Dein / Text / wird /
+                      ohnehin …"), und die Pille „Gespeichert" lag darüber. Mit der
+                      Mindestbreite rutscht der KNOPF in die zweite Zeile, wo er als
+                      Ganzes hingehört; auf dem Desktop ändert sich nichts. */}
                   <div className="dex-ui-stack">
-                    <div className={cx('dex-ui-step', massmailDraftSaved && 'is-done')}>
+                    <div className={cx('dex-ui-step', massmailDraftSaved && 'is-done')} style={{ flexWrap: 'wrap' }}>
                       <span className="dex-ui-step-num">{massmailDraftSaved ? <Check size={14} /> : 1}</span>
-                      <div className="dex-ui-step-body">
+                      <div className="dex-ui-step-body" style={{ minWidth: 170 }}>
                         <div className="dex-ui-step-title">{isDe ? 'Zwischenstand sichern' : 'Save your progress'}</div>
                         <div className="dex-ui-step-hint">{isDe ? 'Dein Text wird ohnehin automatisch gespeichert und beim nächsten Öffnen wiederhergestellt.' : 'Your text is saved automatically anyway and restored next time you open it.'}</div>
                       </div>
@@ -366,9 +391,9 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
                         </button>
                       </div>
                     </div>
-                    <div className={cx('dex-ui-step', massmailTesting && 'is-pending')}>
+                    <div className={cx('dex-ui-step', massmailTesting && 'is-pending')} style={{ flexWrap: 'wrap' }}>
                       <span className="dex-ui-step-num">2</span>
-                      <div className="dex-ui-step-body">
+                      <div className="dex-ui-step-body" style={{ minWidth: 170 }}>
                         <div className="dex-ui-step-title">{isDe ? 'Erst an die Organizer testen' : 'Test with the organizers first'}</div>
                         <div className="dex-ui-step-hint">{isDe ? 'Schickt die Mail so, wie sie jetzt ist, mit [TEST] im Betreff — nur an die Organizer des Events.' : 'Sends the email as it is now, with [TEST] in the subject — to the event organizers only.'}</div>
                         {massmailTestMsg && (
@@ -382,12 +407,27 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
                       </div>
                     </div>
                   </div>
-                  <div className="dex-ui-inline" style={{ justifyContent: 'space-between', marginTop: 8 }}>
-                    <span className="dex-ui-muted" style={{ fontSize: '0.76rem' }}>{isDe ? 'Der Versand selbst ist der grüne Knopf unten rechts.' : 'Sending itself is the green button at the bottom right.'}</span>
-                    <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" onClick={resetMassmailDraft} disabled={emailSending}
-                      title={isDe ? 'Setzt Betreff, Überschrift, Text und zusätzliches CC auf die Vorlage zurück.' : 'Resets subject, heading, text and additional CC to the template.'}>
-                      {isDe ? 'Auf Vorlage zurücksetzen' : 'Reset to template'}
-                    </button>
+                  {/* v31.10: Was „Auf Vorlage zurücksetzen" wegwirft, stand nur im
+                      `title` — auf dem Handy gibt es kein Überfahren, der Hinweis war
+                      dort also unerreichbar (Leitfaden 6b). Er steht jetzt als Text
+                      unter dem Knopf; der `title` bleibt als Zugabe. Und der Verweis
+                      auf den Sende-Knopf nennt die Fußzeile statt „unten rechts" —
+                      auf dem Handy sitzt der Knopf unten über die volle Breite. */}
+                  <div style={{ marginTop: 8 }}>
+                    <div className="dex-ui-muted" style={{ fontSize: '0.76rem' }}>{isDe ? 'Der Versand selbst ist der grüne Knopf in der Fußzeile dieses Dialogs.' : 'Sending itself is the green button in the footer of this dialog.'}</div>
+                    <div style={{ marginTop: 4 }}>
+                      <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" style={{ marginLeft: -8 }} onClick={resetMassmailDraft} disabled={emailSending}
+                        title={isDe ? 'Setzt Betreff, Überschrift, Text und zusätzliches CC auf die Vorlage zurück.' : 'Resets subject, heading, text and additional CC to the template.'}>
+                        {isDe ? 'Auf Vorlage zurücksetzen' : 'Reset to template'}
+                      </button>
+                      {/* Die Folge steht UNTER dem Knopf, nicht daneben: nebeneinander
+                          bricht sie auf dem Handy ohnehin um, und dann steht der
+                          Knopf als erste Zeile über einem Fließtext und liest sich
+                          als Überschrift. */}
+                      <div className="dex-ui-help" style={{ marginTop: 2 }}>
+                        {isDe ? 'Setzt Betreff, Überschrift, Text und zusätzliches CC auf die Vorlage zurück.' : 'Resets subject, heading, text and additional CC to the template.'}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

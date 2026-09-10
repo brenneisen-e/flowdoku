@@ -170,18 +170,31 @@ export const DEX_UI_CSS = `
    head steht, ist nicht garantiert (dexUi wird zur Laufzeit injiziert). Die
    Pseudoklasse hebt diese Regel um eine Stufe und macht die Reihenfolge
    damit egal. Radios bleiben bewusst rund. */
-.dex-ui-toggle-row > input[type='checkbox']:not([hidden]) {
+/* v31.11: Dieselbe eckige Checkbox auch ausserhalb einer Schalter-Zeile.
+   Die Spaltenwahl der Teilnehmerliste ist eine Mehrfachauswahl mit nackten
+   Checkboxen — dort griff die Regel unten nicht, und die Haken sahen wieder
+   aus wie Radio-Knoepfe. Statt die v31.9.8-Regel zu kopieren, traegt der
+   Selektor jetzt beide Faelle; input.dex-ui-checkbox ist die Klasse fuer
+   jede Checkbox ausserhalb einer dex-ui-toggle-row.
+   (Keine Backticks in diesem Kommentar — er steht IM Template-Literal und
+   jeder Backtick beendet den String. Dritter Vorfall nach v31.8 und v31.9.) */
+.dex-ui-toggle-row > input[type='checkbox']:not([hidden]),
+input.dex-ui-checkbox:not([hidden]) {
   appearance: none; -webkit-appearance: none; box-sizing: border-box;
   width: 18px; height: 18px; border: 2px solid ${G300}; border-radius: 5px;
   background: #fff; position: relative; transition: border-color ${EASE}, background ${EASE};
 }
-.dex-ui-toggle-row > input[type='checkbox']:not([hidden]):hover { border-color: ${G}; }
-.dex-ui-toggle-row > input[type='checkbox']:not([hidden]):checked { border-color: ${G}; background: ${G}; }
-.dex-ui-toggle-row > input[type='checkbox']:not([hidden]):checked::after {
+.dex-ui-toggle-row > input[type='checkbox']:not([hidden]):hover,
+input.dex-ui-checkbox:not([hidden]):hover { border-color: ${G}; }
+.dex-ui-toggle-row > input[type='checkbox']:not([hidden]):checked,
+input.dex-ui-checkbox:not([hidden]):checked { border-color: ${G}; background: ${G}; }
+.dex-ui-toggle-row > input[type='checkbox']:not([hidden]):checked::after,
+input.dex-ui-checkbox:not([hidden]):checked::after {
   content: ''; position: absolute; left: 4px; top: 0; width: 4px; height: 9px;
   border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
 }
-.dex-ui-toggle-row > input[type='checkbox']:not([hidden]):disabled { opacity: 0.55; cursor: not-allowed; }
+.dex-ui-toggle-row > input[type='checkbox']:not([hidden]):disabled,
+input.dex-ui-checkbox:not([hidden]):disabled { opacity: 0.55; cursor: not-allowed; }
 .dex-ui-toggle-row-body { flex: 1; min-width: 0; }
 .dex-ui-toggle-row-title { font-weight: 600; font-size: 0.88rem; color: ${G800}; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .dex-ui-toggle-row-desc { font-size: 0.78rem; color: ${G500}; margin-top: 4px; line-height: 1.5; }
@@ -386,8 +399,22 @@ export const DEX_UI_CSS = `
 .dex-ui-table td.is-actions { text-align: right; white-space: nowrap; }
 .dex-ui-table td.is-actions .dex-ui-iconbtn { opacity: 0.55; transition: opacity ${EASE}; }
 .dex-ui-table tbody tr:hover td.is-actions .dex-ui-iconbtn { opacity: 1; }
+/* v31.11: Ohne Zeiger gibt es kein Ueberfahren — die Zeilen-Aktionen blieben
+   auf dem Handy fuer immer bei 55 % und sahen aus wie gesperrt. Fuer
+   .dex-ui-row-actions gibt es diese Ausnahme seit v31.8; hier fehlte sie. */
+@media (hover: none) {
+  .dex-ui-table td.is-actions .dex-ui-iconbtn { opacity: 1; }
+}
 .dex-ui-table-wrap--sticky { max-height: 70vh; overflow: auto; }
 .dex-ui-table-wrap--sticky th { position: sticky; top: 0; z-index: 1; }
+/* v31.11: Auf dem Handy rollte die Seite UND die Tabelle in sich — der
+   klassische „ich haenge in der Tabelle fest"-Fall. Der klebende Kopf ist
+   dort ohnehin kaum etwas wert (die Tabelle rollt vor allem seitwaerts),
+   also faellt die Hoehenbegrenzung weg und es rollt nur noch die Seite.
+   Waagerecht rollt sie unveraendert weiter. */
+@media (max-width: 768px) {
+  .dex-ui-table-wrap--sticky { max-height: none; }
+}
 .dex-ui-table-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; font-size: 0.78rem; color: ${G500}; border-top: 1px solid ${G200}; }
 .dex-ui-person { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
 .dex-ui-person-name { font-weight: 600; color: ${G800}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

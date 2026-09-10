@@ -1023,7 +1023,12 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                         style={{
                           position: 'absolute', right: 0, top: '100%', marginTop: 6,
                           boxShadow: '0 6px 20px rgba(0,0,0,0.10)',
-                          width: 300, zIndex: 100, maxHeight: 400, overflowY: 'auto',
+                          // v31.10: 300 px sind auf einem 360-px-Schirm mehr, als
+                          // neben den Rändern übrig bleibt — die Liste ragte dann
+                          // links aus dem Bild. `maxWidth` deckelt sie auf die
+                          // Fensterbreite; auf dem Rechner bleibt es bei 300.
+                          width: 300, maxWidth: 'calc(100vw - 32px)',
+                          zIndex: 100, maxHeight: 400, overflowY: 'auto',
                         }}
                       >
                         <div style={{ padding: '6px 8px 8px' }}>
@@ -1053,6 +1058,11 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                             >
                               <input
                                 type="checkbox"
+                                // v31.11: Ohne diese Klasse rendert das globale
+                                // SCSS der App die Checkbox rund mit Punkt — das
+                                // Bild fuer „nur eins davon", waehrend hier
+                                // mehrere Spalten gleichzeitig sichtbar sind.
+                                className="dex-ui-checkbox"
                                 id={cbId}
                                 checked={isVisible}
                                 disabled={!!col.alwaysVisible}
@@ -1067,10 +1077,14 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                               />
                               <label htmlFor={cbId} className="dex-ui-row-main" style={{ fontSize: '0.82rem', color: 'var(--dex-gray-700)', cursor: col.alwaysVisible ? 'default' : 'pointer' }}>{col.label}</label>
                               <span className="dex-ui-row-actions">
+                                {/* v31.10: 26 px waren mit der Maus knapp und mit
+                                    dem Finger zu wenig — die Pfeile liegen 4 px
+                                    nebeneinander. Jetzt das Standardmaß der
+                                    Klasse (32 px), die Zeile wächst dadurch nur
+                                    um wenige Pixel. */}
                                 <button
                                   type="button"
                                   className="dex-ui-iconbtn"
-                                  style={{ width: 26, height: 26 }}
                                   onClick={() => moveColumn(id, -1)}
                                   disabled={!canMoveUp}
                                   aria-label={isDe ? 'Spalte nach oben' : 'Move column up'}
@@ -1081,7 +1095,6 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                                 <button
                                   type="button"
                                   className="dex-ui-iconbtn"
-                                  style={{ width: 26, height: 26 }}
                                   onClick={() => moveColumn(id, 1)}
                                   disabled={!canMoveDown}
                                   aria-label={isDe ? 'Spalte nach unten' : 'Move column down'}
