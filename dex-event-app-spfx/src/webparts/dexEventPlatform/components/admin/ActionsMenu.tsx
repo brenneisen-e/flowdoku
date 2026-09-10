@@ -10,6 +10,8 @@
 import * as React from 'react';
 import { Search, X, ChevronDown, ExternalLink } from '../Icons';
 import { cx } from '../dexUi';
+import Modal from '../Modal';
+import { useIsMobile } from '../../utils/useIsMobile';
 import { ActionCategoryKey, ACTION_CATEGORY_ORDER, ACTION_CATEGORY_LABELS } from '../../data/actionCategories';
 
 // v31.3: Beschreibungen sind bis zu fünf Zeilen lang (z.B. „Zugriff
@@ -17,6 +19,12 @@ import { ActionCategoryKey, ACTION_CATEGORY_ORDER, ACTION_CATEGORY_LABELS } from
 // title-Attribut des Knopfs, und die Suche filtert weiter über den ganzen
 // Text; es geht also keine Aussage verloren, die Liste wird nur lesbar.
 const DESC_CLAMP: React.CSSProperties = { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' };
+// v31.10: Auf dem Handy trägt das title-Attribut nichts — es gibt kein
+// Überfahren (Leitfaden 6b). Zwei Zeilen wären dort also nicht „gekürzt",
+// sondern weg. Deshalb vier statt zwei. Ganz ohne Grenze wären einzelne
+// Beschreibungen fünfzehn Zeilen lang und die Liste wieder unbedienbar;
+// welche Aktion es ist und warum sie ggf. gesperrt ist, steht in vier Zeilen.
+const DESC_CLAMP_MOBILE: React.CSSProperties = { display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden' };
 
 export interface ActionTileProps {
   icon: React.ReactNode;
@@ -253,10 +261,19 @@ export function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | 
   // v22.5: Freitext-Suche über alle Aktionen (Titel + Beschreibung). Solange
   // etwas eingetippt ist, werden alle Kategorien automatisch aufgeklappt.
   const [query, setQuery] = React.useState('');
+  // v31.10: Dieselbe Grenze wie im SCSS (768 px) — und das ist kein Zufall:
+  // Ab dort bekommt `.card` `overflow-x: auto` und wird damit zum
+  // Scroll-Container, der ein absolut positioniertes Menü abschneidet
+  // (s. Kommentar am Panel unten).
+  const isMobile = useIsMobile();
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   const focusSeededRef = React.useRef(false);
   React.useEffect(() => {
-    if (!open) return undefined;
+    // v31.10: Auf dem Handy ist das Menü ein Dialog per Portal — er hängt an
+    // `document.body` und liegt damit AUSSERHALB von `rootRef`. Dieser Wächter
+    // würde jeden Tipp im Dialog als „daneben" lesen und ihn sofort schließen;
+    // dort übernimmt der Backdrop des Modals.
+    if (!open || isMobile) return undefined;
     const onDocClick = (e: MouseEvent): void => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
         setOpen(false);
@@ -264,7 +281,7 @@ export function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | 
     };
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
-  }, [open]);
+  }, [open, isMobile]);
   // v22.5: Suchfeld leeren, sobald das Dropdown geschlossen wird.
   React.useEffect(() => { if (!open) setQuery(''); }, [open]);
   // v22.50: Auto-Open + Vorfilter, wenn die Header-Suche eine Aktion angesteuert
@@ -354,6 +371,18 @@ export function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | 
   // weil es der Normalfall ist und Grün nur bedeuten soll, was aktiv ist.
   const renderActionRow = (a: RegisteredAction): React.ReactElement => {
     const adminOnly = a.badge === 'admin';
+    // v31.10: Die Rolle-Pille steht am Schreibtisch rechts in der Zeile. Auf
+    // dem Handy nahm sie 77 der 296 Pixel weg — ein Viertel der Zeile für eine
+    // Angabe, die bei zwei von drei Aktionen „Organizer" lautet, während der
+    // Titel daneben auf drei Zeilen umbrach. Sie wandert deshalb unter die
+    // Beschreibung: dieselbe Aussage, aber der Titel bekommt die volle Breite.
+    const badge = (
+      <span className={cx('dex-ui-pill', !isMobile && 'dex-ui-action-badge', adminOnly ? 'dex-ui-pill--orange' : 'dex-ui-pill--gray')}
+        style={isMobile ? { marginTop: 6 } : undefined}
+      >
+        {adminOnly ? (props.isDe ? 'Nur Admin' : 'Admin only') : 'Organizer'}
+      </span>
+    );
     return (
       <button
         key={a.key}
@@ -376,23 +405,26 @@ export function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | 
               </span>
             )}
           </span>
-          {a.desc && <span className="dex-ui-action-desc" style={DESC_CLAMP}>{a.desc}</span>}
+          {a.desc && <span className="dex-ui-action-desc" style={isMobile ? DESC_CLAMP_MOBILE : DESC_CLAMP}>{a.desc}</span>}
+          {isMobile && badge}
         </span>
-        <span className={cx('dex-ui-pill', 'dex-ui-action-badge', adminOnly ? 'dex-ui-pill--orange' : 'dex-ui-pill--gray')}>
-          {adminOnly ? (props.isDe ? 'Nur Admin' : 'Admin only') : 'Organizer'}
-        </span>
+        {!isMobile && badge}
       </button>
     );
   };
   // v31.3: Gruppen- und Untergruppen-Köpfe sind Aufklapper-Knöpfe (Chevron
   // dreht über die Klasse, `aria-expanded` sagt dem Screenreader den Zustand).
+  // v31.10: Eine Unterkategorie ohne Beschreibung war 29 px hoch — mit dem
+  // Finger nicht sicher zu treffen (Tippziele ab 40 px). Auf dem Handy deshalb
+  // mehr Luft; am Schreibtisch bleibt es kompakt.
+  const headPad = (sub_: boolean): string => (isMobile ? (sub_ ? '11px 8px' : '12px 8px') : (sub_ ? '6px 6px' : '8px 6px'));
   const renderGroupHead = (label: React.ReactNode, desc: string | undefined, count: number, isOpen: boolean, onToggle: () => void, sub: boolean): React.ReactElement => (
     <button
       type="button"
       className={cx('dex-ui-disclosure', isOpen && 'is-open')}
       aria-expanded={isOpen}
       onClick={onToggle}
-      style={{ margin: 0, padding: sub ? '6px 6px' : '8px 6px', alignItems: 'flex-start' }}
+      style={{ margin: 0, padding: headPad(sub), alignItems: 'flex-start' }}
     >
       <span className="dex-ui-disclosure-chevron" style={{ marginTop: sub ? 1 : 2 }}><ChevronDown size={16} /></span>
       <span style={{ flex: 1, minWidth: 0 }}>
@@ -405,6 +437,97 @@ export function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | 
       <span className="dex-ui-pill dex-ui-pill--gray" style={{ flexShrink: 0 }}>{count}</span>
     </button>
   );
+  // v31.10: Suchfeld und Liste sind in beiden Darstellungen dasselbe — am
+  // Schreibtisch im Aufklapper unter dem Knopf, auf dem Handy im Dialog.
+  // Deshalb einmal gebaut und zweimal eingehängt.
+  const searchBar = (
+    /* v22.5: Suchfeld — filtert alle Aktionen quer über die Kategorien.
+       v31.10: Im Dialog klebt es am oberen Rand des Scroll-Bereichs. Der
+       negative `top`/`margin` gleicht das Innenmaß des Modals aus — ohne das
+       schiene der Inhalt beim Scrollen oberhalb des Feldes durch. */
+    <div style={isMobile
+      ? { position: 'sticky', top: -16, zIndex: 2, background: '#fff', margin: '0 -16px', padding: '16px 16px 10px', borderBottom: '1px solid var(--dex-gray-100, #f5f5f5)' }
+      : { position: 'sticky', top: 0, zIndex: 2, background: '#fff', padding: 10, borderBottom: '1px solid var(--dex-gray-100, #f5f5f5)' }}
+    >
+      <div className="dex-ui-searchbar" style={{ maxWidth: 'none' }}>
+        <span className="dex-ui-searchbar-icon"><Search size={15} /></span>
+        <input
+          type="text"
+          className="dex-ui-input dex-ui-input--sm"
+          // v31.10: Auf dem Handy KEIN autoFocus — die Bildschirmtastatur ginge
+          // sofort auf und verdeckte die halbe Liste, bevor man gesehen hat,
+          // welche Gruppen es überhaupt gibt. Wer suchen will, tippt ins Feld.
+          autoFocus={!isMobile}
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder={props.isDe ? 'Aktion suchen…' : 'Search action…'}
+          aria-label={props.isDe ? 'Aktion suchen' : 'Search action'}
+          style={isMobile ? { paddingRight: 44, paddingTop: 10, paddingBottom: 10 } : { paddingRight: 34 }}
+        />
+        {query && (
+          <button
+            type="button"
+            className="dex-ui-iconbtn"
+            onClick={() => setQuery('')}
+            aria-label={props.isDe ? 'Suche leeren' : 'Clear search'}
+            // v31.10: 26 px waren mit dem Finger kaum zu treffen — auf dem
+            // Handy 36 px, am Schreibtisch unverändert.
+            style={isMobile
+              ? { position: 'absolute', right: 3, top: '50%', transform: 'translateY(-50%)', width: 36, height: 36 }
+              : { position: 'absolute', right: 3, top: '50%', transform: 'translateY(-50%)', width: 26, height: 26 }}
+          >
+            <X size={14} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+  const actionList = (
+    <div style={{ padding: isMobile ? '8px 0 0' : '6px 10px 10px' }}>
+      {q && visibleActions.length === 0 && (
+        <div className="dex-ui-empty" style={{ padding: '18px 14px' }}>
+          {props.isDe ? 'Keine Aktion gefunden.' : 'No action found.'}
+        </div>
+      )}
+      {sortedCats.map(catKey => {
+        const inCat = visibleActions.filter(a => a.category === catKey);
+        if (inCat.length === 0) return null;
+        const catLabel = props.isDe ? ACTION_CATEGORY_LABELS[catKey].de : ACTION_CATEGORY_LABELS[catKey].en;
+        const catDesc = props.isDe ? ACTION_CATEGORY_LABELS[catKey].descDe : ACTION_CATEGORY_LABELS[catKey].descEn;
+        // v22.5: bei aktiver Suche alle Treffer-Kategorien automatisch öffnen.
+        const catOpen = q ? true : expanded.has(catKey);
+        const direct = inCat.filter(a => !a.subCategory).slice().sort((a, b) => a.title.localeCompare(b.title, lang));
+        const subNames = Array.from(new Set(inCat.filter(a => !!a.subCategory).map(a => a.subCategory as string))).sort((a, b) => a.localeCompare(b, lang));
+        return (
+          <div key={catKey} className="dex-ui-action-group" style={{ marginTop: 4 }}>
+            {renderGroupHead(catLabel, catDesc, inCat.length, catOpen, () => toggleKey(catKey), false)}
+            {catOpen && direct.length > 0 && (
+              <div className="dex-ui-action-grid" style={{ padding: '4px 0 6px' }}>
+                {direct.map(a => renderActionRow(a))}
+              </div>
+            )}
+            {catOpen && subNames.map(sub => {
+              const subKey = `${catKey}::${sub}`;
+              const subOpen = q ? true : expanded.has(subKey);
+              const subActions = inCat.filter(a => a.subCategory === sub).slice().sort((a, b) => a.title.localeCompare(b.title, lang));
+              return (
+                /* v31.10: Die Einrückung der Unterkategorie kostet auf
+                   360 px spürbar Zeilenbreite — dort 10 statt 22 px. */
+                <div key={subKey} style={{ paddingLeft: isMobile ? 10 : 22 }}>
+                  {renderGroupHead(sub, undefined, subActions.length, subOpen, () => toggleKey(subKey), true)}
+                  {subOpen && (
+                    <div className="dex-ui-action-grid" style={{ padding: '4px 0 6px' }}>
+                      {subActions.map(a => renderActionRow(a))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
   return (
     <div ref={rootRef} style={{ position: 'relative', marginTop: 12 }}>
       {/* v19.27: grün umrandet, damit die Aktionen-Auswahl deutlich auffällt.
@@ -415,12 +538,44 @@ export function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | 
         aria-haspopup="true"
         aria-expanded={open}
         onClick={() => setOpen(o => !o)}
-        style={{ justifyContent: 'space-between', textAlign: 'left', cursor: 'pointer' }}
+        // v31.10: 40 px sind für einen Daumen die Untergrenze — der Knopf, der
+        // zu allen 30 Aktionen führt, bekommt auf dem Handy 44.
+        style={{ justifyContent: 'space-between', textAlign: 'left', cursor: 'pointer', minHeight: isMobile ? 44 : undefined }}
       >
         <span>{props.isDe ? `Aktion auswählen (${ctx.actions.length})` : `Pick an action (${ctx.actions.length})`}</span>
         <span className={cx('dex-ui-disclosure-chevron', open && 'is-open')} style={{ color: 'inherit' }} aria-hidden="true"><ChevronDown size={16} /></span>
       </button>
-      {open && (
+      {/* v31.10: Auf dem Handy ist der Aufklapper ein Dialog.
+          Gemessen (Chromium, 400 × 780, echtes Menü mit 32 Aktionen): Das
+          absolut positionierte Panel ist 480 px hoch bei 3.387 px Inhalt — und
+          es wird von der umgebenden `.card` ABGESCHNITTEN, weil das SCSS ihr
+          unterhalb von 768 px `overflow-x: auto` gibt und sie damit zum
+          Scroll-Container macht. Sichtbar blieb: das Suchfeld und ein
+          Zentimeter Liste, darunter Seitenende. Das Klebe-Suchfeld half auch
+          nicht, weil es nur innerhalb des Panels klebt — sobald man die SEITE
+          scrollt, wandert es mit hinaus.
+          Der Dialog hängt per Portal an `document.body`: kein Vorfahr kann ihn
+          mehr abschneiden, er nutzt die volle Höhe des Bildschirms, und es gibt
+          nur noch EINEN Scroll-Bereich statt dreier ineinander. Am Schreibtisch
+          bleibt alles, wie es war. */}
+      {open && isMobile && (
+        <Modal
+          open
+          onClose={() => setOpen(false)}
+          maxWidth={560}
+          padding={16}
+          ariaLabel={props.isDe ? 'Aktionen' : 'Actions'}
+          icon={<Search size={20} />}
+          title={props.isDe ? 'Aktion auswählen' : 'Pick an action'}
+          subtitle={props.isDe
+            ? `${ctx.actions.length} Aktionen — tippe auf eine Gruppe oder such nach einem Wort.`
+            : `${ctx.actions.length} actions — tap a group or search for a word.`}
+        >
+          {searchBar}
+          {actionList}
+        </Modal>
+      )}
+      {open && !isMobile && (
         <div
           className="dex-ui-card dex-ui-fade-in"
           role="region"
@@ -431,75 +586,8 @@ export function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | 
             boxShadow: '0 12px 32px rgba(0,0,0,0.12)',
           }}
         >
-          {/* v22.5: Suchfeld — filtert alle Aktionen quer über die Kategorien. */}
-          <div style={{ position: 'sticky', top: 0, zIndex: 2, background: '#fff', padding: 10, borderBottom: '1px solid var(--dex-gray-100, #f5f5f5)' }}>
-            <div className="dex-ui-searchbar" style={{ maxWidth: 'none' }}>
-              <span className="dex-ui-searchbar-icon"><Search size={15} /></span>
-              <input
-                type="text"
-                className="dex-ui-input dex-ui-input--sm"
-                autoFocus
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                placeholder={props.isDe ? 'Aktion suchen…' : 'Search action…'}
-                aria-label={props.isDe ? 'Aktion suchen' : 'Search action'}
-                style={{ paddingRight: 34 }}
-              />
-              {query && (
-                <button
-                  type="button"
-                  className="dex-ui-iconbtn"
-                  onClick={() => setQuery('')}
-                  aria-label={props.isDe ? 'Suche leeren' : 'Clear search'}
-                  style={{ position: 'absolute', right: 3, top: '50%', transform: 'translateY(-50%)', width: 26, height: 26 }}
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-          </div>
-          <div style={{ padding: '6px 10px 10px' }}>
-            {q && visibleActions.length === 0 && (
-              <div className="dex-ui-empty" style={{ padding: '18px 14px' }}>
-                {props.isDe ? 'Keine Aktion gefunden.' : 'No action found.'}
-              </div>
-            )}
-            {sortedCats.map(catKey => {
-              const inCat = visibleActions.filter(a => a.category === catKey);
-              if (inCat.length === 0) return null;
-              const catLabel = props.isDe ? ACTION_CATEGORY_LABELS[catKey].de : ACTION_CATEGORY_LABELS[catKey].en;
-              const catDesc = props.isDe ? ACTION_CATEGORY_LABELS[catKey].descDe : ACTION_CATEGORY_LABELS[catKey].descEn;
-              // v22.5: bei aktiver Suche alle Treffer-Kategorien automatisch öffnen.
-              const catOpen = q ? true : expanded.has(catKey);
-              const direct = inCat.filter(a => !a.subCategory).slice().sort((a, b) => a.title.localeCompare(b.title, lang));
-              const subNames = Array.from(new Set(inCat.filter(a => !!a.subCategory).map(a => a.subCategory as string))).sort((a, b) => a.localeCompare(b, lang));
-              return (
-                <div key={catKey} className="dex-ui-action-group" style={{ marginTop: 4 }}>
-                  {renderGroupHead(catLabel, catDesc, inCat.length, catOpen, () => toggleKey(catKey), false)}
-                  {catOpen && direct.length > 0 && (
-                    <div className="dex-ui-action-grid" style={{ padding: '4px 0 6px' }}>
-                      {direct.map(a => renderActionRow(a))}
-                    </div>
-                  )}
-                  {catOpen && subNames.map(sub => {
-                    const subKey = `${catKey}::${sub}`;
-                    const subOpen = q ? true : expanded.has(subKey);
-                    const subActions = inCat.filter(a => a.subCategory === sub).slice().sort((a, b) => a.title.localeCompare(b.title, lang));
-                    return (
-                      <div key={subKey} style={{ paddingLeft: 22 }}>
-                        {renderGroupHead(sub, undefined, subActions.length, subOpen, () => toggleKey(subKey), true)}
-                        {subOpen && (
-                          <div className="dex-ui-action-grid" style={{ padding: '4px 0 6px' }}>
-                            {subActions.map(a => renderActionRow(a))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
+          {searchBar}
+          {actionList}
         </div>
       )}
     </div>

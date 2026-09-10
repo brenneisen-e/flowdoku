@@ -8,7 +8,7 @@ import { replacePlaceholders, wrapTemplate } from '../../../services/EmailTempla
 import { formatOrganizerList } from '../../../context/eventTextHelpers';
 import RecipientPicker from '../../admin/RecipientPicker';
 import MailHeaderImageChooser from '../../admin/MailHeaderImageChooser';
-import { AlertCircle, Check, ChevronRight, Plus, Send, X } from '../../Icons';
+import { AlertCircle, Check, ChevronDown, Plus, Send, X } from '../../Icons';
 import { HtmlEditorModal } from '../../HtmlEditorModal';
 // v31.2: Gemeinsame UI-Klassen — das Stylesheet hängt HtmlEditorModal beim
 // Öffnen selbst ein (`ensureDexUiStyles`), hier braucht es nur `cx`.
@@ -475,7 +475,10 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                   <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
                   <div style={{ minWidth: 0 }}>
                     <strong>{isDe ? 'Blockierte Empfänger im Mailverteiler' : 'Blocked recipients in the distribution list'}</strong>
-                    <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+                    {/* v31.10: `wordBreak` — eine gesperrte Verteiler-Adresse ist oft
+                        länger als eine Handy-Zeile, und `<code>` bricht von sich aus
+                        nicht um. */}
+                    <ul style={{ margin: '4px 0 0 16px', padding: 0, wordBreak: 'break-word' }}>
                       {blockedInAudience.map(b => (
                         <li key={b.email}><code>{b.email}</code> — {b.reason}</li>
                       ))}
@@ -502,7 +505,10 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                     aria-expanded={inviteAudienceOpen}
                     onClick={() => setInviteAudienceOpen(o => !o)}
                   >
-                    <span className="dex-ui-disclosure-chevron"><ChevronRight size={16} /></span>
+                    {/* v31.10: ChevronDown wie überall sonst. `.is-open` dreht den
+                        Pfeil um 180° — aus dem ChevronRight wurde geöffnet ein Pfeil
+                        nach LINKS, also die eine Richtung, die nichts bedeutet. */}
+                    <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
                     {isDe ? 'Empfänger anzeigen und anpassen' : 'Show and adjust recipients'}
                     {inviteCustomEmails && (
                       <span className="dex-ui-pill dex-ui-pill--green">{isDe ? 'angepasst' : 'adjusted'}</span>
@@ -517,22 +523,31 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                           <span>{isDe ? 'Keine Empfänger übrig — es würde niemand angeschrieben.' : 'No recipients left — nobody would be contacted.'}</span>
                         </div>
                       )}
+                      {/* v31.10: Zwei Handy-Korrekturen an derselben Zeile.
+                          `--wrap`: eine Pille bricht sonst nie um, und
+                          „bernd.aussergewoehnlichlangername@deloitte.de" ragte bei
+                          390 px über den Rand hinaus. Und das „×" war mit 20 px ein
+                          Tippziel, das man mit dem Finger nicht trifft — 28 px sind
+                          das Maximum, das die Zeilenhöhe einer Pille noch trägt. */}
                       <div className="dex-ui-inline" style={{ gap: 6, maxHeight: 190, overflowY: 'auto' }}>
                         {effectiveEmails.map(em => (
-                          <span key={em} className="dex-ui-pill dex-ui-pill--gray" style={{ paddingRight: 3 }}>
+                          <span key={em} className="dex-ui-pill dex-ui-pill--gray dex-ui-pill--wrap" style={{ paddingRight: 3 }}>
                             {em}
                             <button
                               type="button"
                               className="dex-ui-iconbtn dex-ui-iconbtn--danger"
-                              style={{ width: 20, height: 20 }}
+                              style={{ width: 28, height: 28 }}
                               title={isDe ? 'Aus dieser Mail entfernen' : 'Remove from this mail'}
                               aria-label={isDe ? `${em} aus dieser Mail entfernen` : `Remove ${em} from this mail`}
                               onClick={() => setInviteCustomEmails(effectiveEmails.filter(x => x !== em))}
-                            ><X size={11} /></button>
+                            ><X size={12} /></button>
                           </span>
                         ))}
                       </div>
-                      <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                      {/* v31.10: Umbruch statt Quetschen — ohne ihn schrumpfte das
+                          Eingabefeld neben „Hinzufügen" auf dem Handy so weit, dass
+                          vom Platzhalter nichts mehr lesbar war. */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
                         <input
                           type="text"
                           className="dex-ui-input dex-ui-input--sm"
@@ -540,7 +555,7 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                           onChange={e => setInviteAddInput(e.target.value)}
                           placeholder={isDe ? 'Adresse ergänzen, z. B. vorname.nachname@deloitte.de' : 'Add an address, e.g. first.last@deloitte.de'}
                           aria-label={isDe ? 'Adresse ergänzen' : 'Add address'}
-                          style={{ flex: 1, minWidth: 0 }}
+                          style={{ flex: '1 1 200px', minWidth: 160 }}
                         />
                         <button type="button" className="btn btn-secondary dex-ui-btn-sm" onClick={addRecipient}>
                           <Plus size={14} />
@@ -576,7 +591,7 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                   aria-expanded={ccOpen}
                   onClick={() => setCcOpen(o => !o)}
                 >
-                  <span className="dex-ui-disclosure-chevron"><ChevronRight size={16} /></span>
+                  <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
                   {isDe ? 'Wer bekommt eine Kopie (CC)?' : 'Who gets a copy (CC)?'}
                   <span className="dex-ui-disclosure-count">
                     {ccEmails.length > 0
@@ -632,8 +647,10 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
               />
               <div className="dex-ui-help" style={{ marginTop: 0 }}>
                 {isDe
-                  ? 'Die Vorschau rechts zeigt Kopfbild, Überschrift und Text so, wie die Mail ankommt.'
-                  : 'The preview on the right shows header image, heading and text as the email will arrive.'}
+                  /* v31.10: ohne „rechts" — auf dem Handy steht die Vorschau nicht
+                     daneben, sondern hinter dem Reiter „Vorschau". */
+                  ? 'Die Vorschau zeigt Kopfbild, Überschrift und Text so, wie die Mail ankommt.'
+                  : 'The preview shows header image, heading and text as the email will arrive.'}
               </div>
             </div>
 

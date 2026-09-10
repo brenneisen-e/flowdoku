@@ -80,6 +80,27 @@ function ensureModalStyles(): void {
 .dex-modal-overlay .btn-outline { background: transparent !important; border: 2px solid #86bc25 !important; color: #6b9a1e !important; }
 .dex-modal-overlay .btn-outline:hover { background: #86bc25 !important; color: #ffffff !important; }
 .dex-modal-overlay .btn:disabled { opacity: 0.55 !important; cursor: not-allowed !important; }
+
+/* v31.10: Handy (bis 520 px). Auf einem 390-px-Schirm kostet der Rahmen mehr
+   als der Inhalt: 16 px Außenabstand plus 26 px Karteninnenabstand lassen von
+   390 nur 306 px für Text — jede zweite Zeile bricht zusätzlich um. Weniger
+   Rand heißt hier also weniger Gedränge, nicht weniger Ruhe.
+   Die Fußzeile verteilt ihre Knöpfe über die Breite, statt sie rechts
+   untereinander auszufransen: bei drei Knöpfen lag der Primärknopf sonst
+   unterhalb des Bildschirmrands und war nur über einen Rollvorgang
+   erreichbar. Ein Knopf allein in seiner Zeile wächst auf die volle Breite.
+   Die Regeln stehen hier statt in dexUi.ts, weil sie nur den Modal-Rahmen
+   betreffen und das Overlay seine Maße per Inline-Style setzt — dagegen
+   kommt eine Klasse nur mit !important an. */
+@media (max-width: 520px) {
+  .dex-modal-overlay { padding: 10px 8px !important; }
+  .dex-modal-overlay .dex-modal-card-pad { padding: 16px 14px !important; }
+  .dex-modal-overlay .dex-ui-modal-head { gap: 10px; }
+  .dex-modal-overlay .dex-ui-modal-head-icon { width: 32px; height: 32px; border-radius: 10px; }
+  /* Tippziel des Schließen-Knopfs: 32 px sind mit dem Finger zu wenig. */
+  .dex-modal-overlay .dex-ui-modal-head > .dex-ui-iconbtn { width: 40px; height: 40px; }
+  .dex-modal-overlay .dex-ui-modal-foot > .btn { flex: 1 1 45%; padding: 10px 12px !important; }
+}
 `;
   document.head.appendChild(el);
 }
@@ -181,6 +202,19 @@ export default function Modal({
 
   if (!open) return null;
 
+  // v31.10: Die Styles auch beim Rendern sicherstellen, nicht nur im Effect.
+  // Der Effect läuft NACH dem ersten Anstrich — bis dahin fehlten dem ersten
+  // Dialog einer Sitzung Kopf-, Fuß- und (seit dieser Version) die
+  // Handy-Regeln, der Dialog sprang also einmal sichtbar um. Der Aufruf ist
+  // idempotent (ein getElementById) und kein Hook — dasselbe Muster wie in
+  // ParticipantTable und EventListPage.
+  ensureModalStyles();
+
+  // v31.10: Ohne eigenen `padding`-Wert trägt die Karte ihre Abstände über
+  // diese Klasse — nur so kann die Handy-Regel oben sie verkleinern, ohne
+  // Dialogen dazwischenzufunken, die ihren Innenabstand bewusst selbst setzen.
+  const hasOwnPadding = padding !== undefined && padding !== null;
+
   const overlay = (
     <div
       role="dialog"
@@ -231,15 +265,25 @@ export default function Modal({
       } as React.CSSProperties}
     >
       <div
-        className="dex-ui-modal-card"
+        className={`dex-ui-modal-card${hasOwnPadding ? '' : ' dex-modal-card-pad'}`}
         onClick={e => e.stopPropagation()}
         style={{
           background: '#fff', borderRadius: 18,
           padding: padding ?? '22px 26px',
           maxWidth, width: '100%',
           boxShadow: '0 24px 64px rgba(0,0,0,0.22), 0 0 0 1px rgba(0,0,0,0.04)',
-          maxHeight: 'calc(100vh - 32px)',
+          // v31.10: 100 % des Overlays statt `calc(100vh - 32px)`. Das Overlay
+          // liegt fix auf dem ganzen Fenster; sein Innenraum ist genau die
+          // Höhe, die der Karte zusteht. Der feste Abzug von 32 px musste den
+          // Außenabstand erraten — auf dem Handy sind es seit dieser Version
+          // 10 px, und die Karte hätte sonst Höhe verschenkt.
+          maxHeight: '100%',
           overflowY: 'auto',
+          // v31.10: Rollt der Dialog innen zu Ende, rollt sonst die Seite
+          // dahinter weiter (Scroll-Chaining) — auf dem Handy fühlt sich das
+          // an, als sei der Dialog weggerutscht. Es rollt entweder der Dialog
+          // oder die Seite, nie beides.
+          overscrollBehavior: 'contain',
           display: 'flex', flexDirection: 'column', gap: 14,
           boxSizing: 'border-box',
         }}

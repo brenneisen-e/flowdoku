@@ -165,6 +165,9 @@ const clampInt = (v: string, max: number, fallback: number): number => {
 // `value` = aktuell aktive Farbe (für Highlight + Picker-Startwert).
 const ColorControl: React.FC<{ value: string; onChange: (_hex: string) => void }> = ({ value, onChange }) => {
   const [hexDraft, setHexDraft] = React.useState(value);
+  // v31.10: Der native Farbwähler ist dasselbe Tippziel wie ein Farbpunkt und
+  // wächst deshalb mit ihm mit.
+  const isMobile = useIsMobile();
   React.useEffect(() => { setHexDraft(value); }, [value]);
   const commitHex = (h: string): void => {
     let v = (h || '').trim();
@@ -184,7 +187,7 @@ const ColorControl: React.FC<{ value: string; onChange: (_hex: string) => void }
         value={isHex6(value) ? value : '#000000'}
         onChange={e => onChange(e.target.value.toLowerCase())}
         title="Freie Farbe wählen / Pick any color"
-        style={colorPickerStyle}
+        style={isMobile ? { ...colorPickerStyle, width: 40, height: 40 } : colorPickerStyle}
       />
       <input
         className="dex-ui-input dex-ui-input--sm"
@@ -202,23 +205,30 @@ const ColorControl: React.FC<{ value: string; onChange: (_hex: string) => void }
 
 // v31.2: Ein Farbpunkt in der Palette — 26 px rund, Hover über `dex-ui-iconbtn`.
 // `onMouseDown` verhindert, dass der Klick die Editor-Auswahl kollabiert.
-const ColorDot: React.FC<{ color: string; active: boolean; onPick: (_hex: string) => void }> = ({ color, active, onPick }) => (
-  <button
-    type="button"
-    className="dex-ui-iconbtn"
-    title={color}
-    onMouseDown={e => e.preventDefault()}
-    onClick={() => onPick(color)}
-    style={{ width: 26, height: 26 }}
-  >
-    <span style={{
-      display: 'block', width: 16, height: 16, borderRadius: '50%', background: color,
-      boxShadow: active
-        ? '0 0 0 2px #fff, 0 0 0 3.5px var(--dex-gray-700, #444)'
-        : 'inset 0 0 0 1px rgba(0,0,0,0.12)',
-    }} />
-  </button>
-);
+// v31.10: Auf dem Handy 40 px, weil ein 26-px-Ziel mit dem Finger zur Lotterie
+// wird — acht Farben nebeneinander heißt sonst: dreimal danebengetippt und
+// dreimal die falsche Farbe im Text.
+const ColorDot: React.FC<{ color: string; active: boolean; onPick: (_hex: string) => void }> = ({ color, active, onPick }) => {
+  const isMobile = useIsMobile();
+  const box = isMobile ? 40 : 26;
+  return (
+    <button
+      type="button"
+      className="dex-ui-iconbtn"
+      title={color}
+      onMouseDown={e => e.preventDefault()}
+      onClick={() => onPick(color)}
+      style={{ width: box, height: box }}
+    >
+      <span style={{
+        display: 'block', width: isMobile ? 20 : 16, height: isMobile ? 20 : 16, borderRadius: '50%', background: color,
+        boxShadow: active
+          ? '0 0 0 2px #fff, 0 0 0 3.5px var(--dex-gray-700, #444)'
+          : 'inset 0 0 0 1px rgba(0,0,0,0.12)',
+      }} />
+    </button>
+  );
+};
 const colorPickerStyle: React.CSSProperties = { width: 26, height: 26, padding: 0, border: '1px solid var(--dex-gray-200, #e8e8e8)', borderRadius: 8, cursor: 'pointer', background: '#fff', marginLeft: 4 };
 const hexInputStyle: React.CSSProperties = { width: 84, fontFamily: 'monospace', marginLeft: 4 };
 
@@ -295,6 +305,14 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
   const imgInputRef = React.useRef<HTMLInputElement>(null);
   const [imgBusy, setImgBusy] = React.useState(false);
   const [imgNote, setImgNote] = React.useState<{ tone: 'ok' | 'warn'; text: string } | null>(null);
+  // v31.10: Auf dem Handy stehen Bearbeiten und Vorschau NICHT nebeneinander,
+  // sondern hintereinander — gestapelt blieben dem Schreibfeld rund 80 px,
+  // sobald die Tastatur offen war (gemessen bei 400 × 420). Der Umschalter
+  // gibt einer Ansicht die volle Höhe. Die Editor-Spalte bleibt dabei immer im
+  // Baum (nur `display: none`): Ihr Inhalt wird ausschließlich beim Öffnen aus
+  // `value` geladen, ein Aus- und Wiedereinhängen käme also leer zurück und
+  // der nächste `onInput` würde den Text überschreiben.
+  const [mobileView, setMobileView] = React.useState<'actions' | 'edit' | 'preview'>(leftPanel ? 'actions' : 'edit');
   // v30.51: Offener Link-Dialog samt eingefrorenem Ausgangszustand.
   const [linkState, setLinkState] = React.useState<null | {
     href: string;
@@ -309,6 +327,10 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     // v31.2: idempotent — und nötig, falls weder Wizard noch `Modal` das
     // Stylesheet schon eingehängt haben (Editor aus einer Vorschau geöffnet).
     if (open) ensureDexUiStyles();
+    // v31.10: Jedes Öffnen beginnt auf der Ansicht, die auch die gestapelte
+    // Reihenfolge zuerst zeigte — sonst landet man nach einem Blick in die
+    // Vorschau beim nächsten Mal wieder dort statt im Text.
+    if (open) setMobileView(leftPanel ? 'actions' : 'edit');
     if (open && editorRef.current) {
       const cur = editorRef.current.innerHTML;
       if (cur !== (value || '')) {
@@ -766,9 +788,12 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
 
   // v31.2: Kleine Render-Helfer für die Dreiteilung Aktionen | Bearbeiten |
   // Vorschau. Kein State, nur Optik — die Handler oben bleiben unverändert.
+  // v31.10: `flexWrap`, damit die Zeile auf 360 px umbricht statt rechts
+  // abgeschnitten zu werden; ein leeres `label` lässt die Überschrift weg —
+  // auf dem Handy sagt der Umschalter darüber bereits, welche Ansicht offen ist.
   const colHead = (label: string, right?: React.ReactNode): React.ReactElement => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 18px', minHeight: 40, boxSizing: 'border-box', borderBottom: '1px solid var(--dex-gray-200, #e8e8e8)', background: '#fff', flexShrink: 0 }}>
-      <span style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dex-gray-500, #808080)', whiteSpace: 'nowrap' }}>{label}</span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: isMobile ? '8px 14px' : '9px 18px', minHeight: 40, boxSizing: 'border-box', borderBottom: '1px solid var(--dex-gray-200, #e8e8e8)', background: '#fff', flexShrink: 0 }}>
+      {!!label && <span style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dex-gray-500, #808080)', whiteSpace: 'nowrap' }}>{label}</span>}
       {right}
     </div>
   );
@@ -793,7 +818,9 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
   );
   const smallLabel: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.76rem', color: 'var(--dex-gray-600, #666)', fontWeight: 600 };
   const numLabel: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.76rem', color: 'var(--dex-gray-600, #666)', fontWeight: 600 };
-  const smallSelect: React.CSSProperties = { width: 'auto', paddingRight: 28 };
+  // v31.10: `flexShrink: 0`, damit die Auswahlfelder in der rollenden
+  // Handy-Toolbar nicht auf Pfeilbreite zusammenfallen; 40 px Höhe als Tippziel.
+  const smallSelect: React.CSSProperties = { width: 'auto', paddingRight: 28, flexShrink: 0, ...(isMobile ? { minHeight: 40 } : {}) };
   const envKey: React.CSSProperties = { color: 'var(--dex-gray-500, #808080)', fontWeight: 600, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', alignSelf: 'center' };
   // Größe / fett / kursiv / Farbe einer Überschrift in EINER Zeile — einmal
   // für die Überschrift, einmal für die Unter-Überschrift. Die Bold-Semantik
@@ -826,7 +853,14 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
   // v31.2: `active` setzt `is-active` (gedrückt), wenn die Auswahl die
   // Auszeichnung schon trägt; nur Schriftmaße bleiben inline, weil die Knöpfe
   // Buchstaben statt Symbole zeigen.
-  const tb = (label: string, onClick: () => void, children: React.ReactNode, active?: boolean): React.ReactElement => (
+  // v31.10: Auf dem Handy rollt die Leiste waagerecht (s. unten), und dann
+  // entscheidet die Reihenfolge darüber, was man ohne Rollen erreicht: erst
+  // die täglichen Knöpfe (Fett/Kursiv/Unterstrichen, Listen, Link, Bild,
+  // Formatierung entfernen), dann die breiten Auswahlfelder, zuletzt die
+  // Farbreihe. Umgestellt wird nur per CSS-`order` — die Knöpfe bleiben im
+  // Code an ihrem Platz, und am Desktop ändert sich nichts.
+  const tbOrder = (n: number): React.CSSProperties => (isMobile ? { order: n } : {});
+  const tb = (label: string, onClick: () => void, children: React.ReactNode, active?: boolean, order?: number): React.ReactElement => (
     <button
       type="button"
       className={cx('dex-ui-iconbtn', active && 'is-active')}
@@ -835,20 +869,39 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
       aria-pressed={active === undefined ? undefined : active}
       onMouseDown={e => e.preventDefault()}
       onClick={onClick}
-      style={{ fontWeight: 700, fontSize: '0.85rem' }}
+      // v31.10: 40 px auf dem Handy — `dex-ui-iconbtn` ist 32 px, und mit dem
+      // Finger ist das unter jeder Tippziel-Grenze.
+      style={{ fontWeight: 700, fontSize: '0.85rem', ...(isMobile ? { width: 40, height: 40 } : {}), ...tbOrder(order || 0) }}
     >{children}</button>
   );
   // v31.2: Trenner zwischen den Toolbar-Gruppen — `dex-ui-divider` hochkant
   // (die Klasse ist für die waagerechte Linie gebaut, daher Maße inline).
-  const tbDivider = <span className="dex-ui-divider" aria-hidden="true" style={{ width: 1, height: 20, margin: '0 4px', flexShrink: 0 }} />;
+  const tbDivider = (order: number): React.ReactElement => (
+    <span className="dex-ui-divider" aria-hidden="true" style={{ width: 1, height: 20, margin: '0 4px', flexShrink: 0, ...tbOrder(order) }} />
+  );
 
   const modeIcon = previewMode === 'outlook' ? <Calendar size={20} /> : previewMode === 'plain' ? <FileText size={20} /> : <Mail size={20} />;
   const modeLabel = previewMode === 'outlook' ? t('Outlook-Termin', 'Outlook appointment') : previewMode === 'plain' ? t('Anmeldeseite', 'Registration page') : t('Deloitte-Mail', 'Deloitte email');
-  const subtitle = previewMode === 'outlook'
-    ? t('Links bearbeiten — rechts siehst du sofort, wie der Termin im Kalender aussieht.', 'Edit on the left — the right side shows instantly how the appointment looks in the calendar.')
-    : previewMode === 'plain'
-      ? t('Links bearbeiten — rechts siehst du sofort, wie der Text auf der Anmeldeseite aussieht.', 'Edit on the left — the right side shows instantly how the text looks on the registration page.')
-      : t('Links bearbeiten — rechts siehst du sofort, wie die Mail bei den Teilnehmenden ankommt.', 'Edit on the left — the right side shows instantly how the email lands with attendees.');
+  // v31.10: Auf dem Handy liegt nichts „links" und nichts „rechts" — dort
+  // schaltet der Reiter um. Ein Satz, der eine Anordnung beschreibt, die es
+  // gerade nicht gibt, schickt genau die Leute suchen, die ohnehin wenig Platz
+  // haben.
+  const subtitle = isMobile
+    ? (previewMode === 'outlook'
+      ? t('Schreib deinen Text — unter „Vorschau" siehst du, wie der Termin im Kalender aussieht.', 'Write your text — under “Preview” you see how the appointment looks in the calendar.')
+      : previewMode === 'plain'
+        ? t('Schreib deinen Text — unter „Vorschau" siehst du, wie er auf der Anmeldeseite aussieht.', 'Write your text — under “Preview” you see how it looks on the registration page.')
+        : t('Schreib deinen Text — unter „Vorschau" siehst du, wie die Mail ankommt.', 'Write your text — under “Preview” you see how the email lands.'))
+    : previewMode === 'outlook'
+      ? t('Links bearbeiten — rechts siehst du sofort, wie der Termin im Kalender aussieht.', 'Edit on the left — the right side shows instantly how the appointment looks in the calendar.')
+      : previewMode === 'plain'
+        ? t('Links bearbeiten — rechts siehst du sofort, wie der Text auf der Anmeldeseite aussieht.', 'Edit on the left — the right side shows instantly how the text looks on the registration page.')
+        : t('Links bearbeiten — rechts siehst du sofort, wie die Mail bei den Teilnehmenden ankommt.', 'Edit on the left — the right side shows instantly how the email lands with attendees.');
+  // v31.10: Welche der drei Spalten gerade sichtbar ist. Am Desktop alle,
+  // auf dem Handy genau eine (siehe `mobileView`).
+  const showActions = !isMobile || mobileView === 'actions';
+  const showEdit = !isMobile || mobileView === 'edit';
+  const showPreview = !isMobile || mobileView === 'preview';
   const textSectionTitle = previewMode === 'outlook' ? t('Text des Termins', 'Appointment text') : previewMode === 'plain' ? t('Beschreibung', 'Description') : t('Text der Mail', 'Email text');
   const headingFmt = !!(onEmailHeadingFontSizeChange || onEmailHeadingColorChange || onEmailHeadingBoldChange);
   const subFmt = !!(onEmailSubheadingFontSizeChange || onEmailSubheadingColorChange || onEmailSubheadingBoldChange);
@@ -899,7 +952,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
       >
         {/* v31.2: Kopf wie in `Modal` — Symbol für die Art des Textes, Titel,
             ein Satz, was links und rechts passiert, Schließen-Knopf. */}
-        <div style={{ padding: '16px 20px 0', flexShrink: 0 }}>
+        <div style={{ padding: isMobile ? '12px 14px 0' : '16px 20px 0', flexShrink: 0 }}>
           <div className="dex-ui-modal-head">
             <span className="dex-ui-modal-head-icon" aria-hidden="true">{modeIcon}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -910,6 +963,35 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
               <X size={18} />
             </button>
           </div>
+          {/* v31.10: Der Umschalter des Handys. Die Reiter tragen bewusst KEIN
+              `preventDefault` auf `mouseDown`: Der Editor soll den Fokus
+              abgeben und dabei über sein `onBlur` den Stand sichern, bevor die
+              Vorschau ihn rendert. Die Auswahl selbst lebt in
+              `savedSelectionRef` weiter (selectionchange am Dokument). */}
+          {isMobile && (
+            <div className="dex-ui-tabs" role="tablist" aria-label={t('Ansicht', 'View')} style={{ display: 'flex', width: '100%', marginTop: 10 }}>
+              {leftPanel && (
+                <button
+                  type="button" role="tab" aria-selected={mobileView === 'actions'}
+                  className={cx('dex-ui-tab', mobileView === 'actions' && 'is-active')}
+                  onClick={() => setMobileView('actions')}
+                  style={{ flex: 1, minHeight: 38 }}
+                >{t('Aktionen', 'Actions')}</button>
+              )}
+              <button
+                type="button" role="tab" aria-selected={mobileView === 'edit'}
+                className={cx('dex-ui-tab', mobileView === 'edit' && 'is-active')}
+                onClick={() => setMobileView('edit')}
+                style={{ flex: 1, minHeight: 38 }}
+              >{t('Bearbeiten', 'Edit')}</button>
+              <button
+                type="button" role="tab" aria-selected={mobileView === 'preview'}
+                className={cx('dex-ui-tab', mobileView === 'preview' && 'is-active')}
+                onClick={() => setMobileView('preview')}
+                style={{ flex: 1, minHeight: 38 }}
+              >{t('Vorschau', 'Preview')}</button>
+            </div>
+          )}
         </div>
 
         <div style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', minHeight: 0, overflow: 'hidden' }}>
@@ -917,28 +999,35 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
           {leftPanel && (
             <div style={{
               width: isMobile ? '100%' : 280, minWidth: isMobile ? 0 : 280,
-              display: 'flex', flexDirection: 'column', minHeight: 0,
+              flex: isMobile ? 1 : undefined,
+              display: showActions ? 'flex' : 'none', flexDirection: 'column', minHeight: 0,
               borderRight: isMobile ? 'none' : '1px solid var(--dex-gray-200, #e8e8e8)',
-              borderBottom: isMobile ? '1px solid var(--dex-gray-200, #e8e8e8)' : 'none',
               background: 'var(--dex-gray-50, #fafafa)',
             }}>
-              {colHead(t('Aktionen', 'Actions'))}
-              <div style={{ flex: 1, overflow: 'auto', padding: '14px 16px' }}>{leftPanel}</div>
+              {!isMobile && colHead(t('Aktionen', 'Actions'))}
+              <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '14px 14px 18px' : '14px 16px' }}>{leftPanel}</div>
             </div>
           )}
 
           {/* === BEARBEITEN === */}
           <div style={{
-            flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0,
+            flex: 1, display: showEdit ? 'flex' : 'none', flexDirection: 'column', minHeight: 0,
             width: isMobile ? '100%' : undefined,
             borderRight: isMobile ? 'none' : '1px solid var(--dex-gray-200, #e8e8e8)',
-            borderBottom: isMobile ? '1px solid var(--dex-gray-200, #e8e8e8)' : 'none',
           }}>
-            {colHead(t('Bearbeiten', 'Edit'))}
-            <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px 20px' }}>
+            {!isMobile && colHead(t('Bearbeiten', 'Edit'))}
+            {/* v31.10: Auf dem Handy stehen die Blöcke in einer Flex-Spalte, damit
+                der Schreibblock über `order` nach oben rutschen kann. Am Desktop
+                sieht man alles auf einmal, dort bleibt die gewachsene Reihenfolge
+                (Kopf → Kopfbild → Text); auf dem Handy hieße sie: erst einen
+                ganzen Bildschirm scrollen, dann tippen. Ein reiner CSS-Umzug —
+                die Blöcke selbst bleiben, wo sie im Code stehen. */}
+            <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '12px 14px 18px' : '16px 20px 20px', ...(isMobile ? { display: 'flex', flexDirection: 'column' } : {}) }}>
               {/* Der Aufrufer bringt seinen Block (Versand, Empfänger, Kopfbild-
-                  Wahl) fertig gerahmt mit — deshalb hier keine zweite Karte. */}
-              {headerExtra && <div className="dex-ui-section">{headerExtra}</div>}
+                  Wahl) fertig gerahmt mit — deshalb hier keine zweite Karte.
+                  Er bleibt auch auf dem Handy zuerst: Wer die Empfänger noch
+                  wählt, entscheidet damit, was der Text überhaupt sein muss. */}
+              {headerExtra && <div className="dex-ui-section" style={isMobile ? { order: -2, flexShrink: 0 } : undefined}>{headerExtra}</div>}
 
               {previewMode === 'email' && (
                 <div className="dex-ui-section">
@@ -1118,7 +1207,13 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
               {/* v28.89: Der eigentliche Text ist das, weswegen der Dialog
                   geöffnet wird — v31.2 in allen drei Modi ein eigener
                   Abschnitt, „Standardtext laden" rechts in der Titelzeile. */}
-              <div className="dex-ui-section">
+              {/* v31.10: Innerhalb des Schreibblocks rutschen auf dem Handy die
+                  Chip-Reihen (Platzhalter, Vorlagen) UNTER den Editor — sie
+                  standen sonst mit ihren zwei Zeilen Erklärung zwischen
+                  Überschrift und Schreibfeld, und bei offener Tastatur war das
+                  Feld damit vom Bildschirm geschoben. Eingefügt wird ohnehin an
+                  der Cursor-Position, die Reihenfolge ist also frei. */}
+              <div className="dex-ui-section" style={isMobile ? { order: -1, flexShrink: 0, display: 'flex', flexDirection: 'column' } : undefined}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                   <div className="dex-ui-section-title" style={{ flex: 1, marginBottom: 0 }}>{textSectionTitle}</div>
                   {defaultBodyHtml && (
@@ -1134,7 +1229,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                   )}
                 </div>
                 {insertableVars.length > 0 && (
-                  <div className="dex-ui-field">
+                  <div className="dex-ui-field" style={isMobile ? { order: 1, marginTop: 14 } : undefined}>
                     <div className="dex-ui-help" style={{ marginTop: 0, marginBottom: 6 }}>
                       {t('Platzhalter einfügen — landet an der Cursor-Position und wird beim Versand durch den echten Wert ersetzt:', 'Insert a placeholder — it lands at the cursor and is replaced by the real value when sending:')}
                     </div>
@@ -1156,7 +1251,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                 )}
                 {/* v28.7: Vorlagen-Chips (z.B. Beschreibungs-Vorschläge). */}
                 {bodyTemplates && bodyTemplates.length > 0 && (
-                  <div className="dex-ui-field">
+                  <div className="dex-ui-field" style={isMobile ? { order: 1 } : undefined}>
                     {bodyTemplatesLabel && <div className="dex-ui-help" style={{ marginTop: 0, marginBottom: 6 }}>{bodyTemplatesLabel}</div>}
                     <div className="dex-ui-inline" style={{ gap: 6 }}>
                       {bodyTemplates.map(tpl => (
@@ -1174,16 +1269,23 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                     </div>
                   </div>
                 )}
-                {/* Toolbar — in Gruppen: Schrift | Größe/Abstand | Farbe | Listen | Link/Löschen */}
+                {/* Toolbar — in Gruppen: Schrift | Größe/Abstand | Farbe | Listen | Link/Löschen
+                    v31.10: Auf dem Handy EINE waagerecht rollende Zeile statt
+                    Umbruch. Umgebrochen belegten dieselben Knöpfe auf 400 px
+                    fünf Zeilen — rund 200 px, die dem Schreibfeld fehlten.
+                    Gerollt wird mit dem Finger, und `order` (s. `tbOrder`)
+                    stellt die Gruppen so um, dass die Knopf-Gruppen ohne Rollen
+                    dastehen und die breiten Auswahlfelder hinten liegen. */}
                 <div style={{
-                  display: 'flex', flexWrap: 'wrap', gap: 2, padding: '6px 8px', alignItems: 'center',
+                  display: 'flex', flexWrap: isMobile ? 'nowrap' : 'wrap', gap: 2, padding: '6px 8px', alignItems: 'center',
+                  ...(isMobile ? { overflowX: 'auto' as const, WebkitOverflowScrolling: 'touch' as const } : {}),
                   border: '1px solid var(--dex-gray-200, #e8e8e8)', borderBottom: 'none',
                   borderRadius: '10px 10px 0 0', background: 'var(--dex-gray-50, #fafafa)',
                 }}>
                   {tb(t('Fett', 'Bold'), () => exec('bold'), <strong>B</strong>, activeFmt.bold)}
                   {tb(t('Kursiv', 'Italic'), () => exec('italic'), <em>I</em>, activeFmt.italic)}
                   {tb(t('Unterstrichen', 'Underline'), () => exec('underline'), <span style={{ textDecoration: 'underline' }}>U</span>, activeFmt.underline)}
-                  {tbDivider}
+                  {tbDivider(2)}
                   {/* v18.20: kontrolliertes Größen-Dropdown — zeigt (wie in Word)
                       die Größe des aktuell markierten Texts und setzt sie beim
                       Ändern. Live-Vorschau aktualisiert sich über fireChange(). */}
@@ -1193,7 +1295,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                     value={currentFontPx != null ? String(currentFontPx) : ''}
                     onMouseDown={() => saveSelection()}
                     onChange={e => { if (e.target.value) setFontSize(parseInt(e.target.value, 10)); }}
-                    style={smallSelect}
+                    style={{ ...smallSelect, ...tbOrder(2) }}
                   >
                     <option value="" disabled>{t('Größe', 'Size')}</option>
                     {/* Aktuelle Größe sicher im Menü vorhalten, auch wenn sie nicht
@@ -1211,7 +1313,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                     title={t('Zeilenabstand', 'Line spacing')}
                     onChange={e => { if (e.target.value) { setLineHeight(e.target.value); e.target.value = ''; } }}
                     defaultValue=""
-                    style={smallSelect}
+                    style={{ ...smallSelect, ...tbOrder(2) }}
                   >
                     <option value="" disabled>{t('Zeilenabstand', 'Line spacing')}</option>
                     <option value="1.0">{t('Eng (1.0)', 'Tight (1.0)')}</option>
@@ -1220,7 +1322,12 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                     <option value="1.5">{t('Locker (1.5)', 'Relaxed (1.5)')}</option>
                     <option value="2.0">{t('Weit (2.0)', 'Wide (2.0)')}</option>
                   </select>
-                  {tbDivider}
+                  {tbDivider(3)}
+                  {/* v31.10: Farbpunkte, Farbwähler und Hex-Feld in EINER Hülle —
+                      damit die Gruppe auf dem Handy als Ganzes ans Ende der
+                      rollenden Leiste wandern kann (order). Am Desktop ist die
+                      Hülle nur ein zusätzliches inline-flex ohne eigene Optik. */}
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, flexShrink: 0, ...tbOrder(3) }}>
                   {COLORS.map(c => <ColorDot key={c} color={c} active={false} onPick={setColor} />)}
                   {/* v18.22: freie Body-Textfarbe — nativer Picker + Hex-Eingabe.
                       Auswahl wird vor dem Fokuswechsel gesichert (onMouseDown). */}
@@ -1230,7 +1337,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                     title={t('Freie Textfarbe wählen', 'Pick any text color')}
                     onMouseDown={() => saveSelection()}
                     onChange={e => { setBodyHexDraft(e.target.value.toLowerCase()); setColor(e.target.value.toLowerCase()); }}
-                    style={colorPickerStyle}
+                    style={isMobile ? { ...colorPickerStyle, width: 40, height: 40, flexShrink: 0 } : colorPickerStyle}
                   />
                   <input
                     className="dex-ui-input dex-ui-input--sm"
@@ -1248,16 +1355,17 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                     placeholder="#RRGGBB"
                     maxLength={7}
                     title={t('Hex-Code eingeben + Enter — färbt die Auswahl', 'Type a hex code + Enter — colors the selection')}
-                    style={hexInputStyle}
+                    style={isMobile ? { ...hexInputStyle, minHeight: 40, flexShrink: 0 } : hexInputStyle}
                   />
-                  {tbDivider}
-                  {tb(t('Aufzählung', 'Bullet list'), () => exec('insertUnorderedList'), '•')}
-                  {tb(t('Nummerierte Liste', 'Numbered list'), () => exec('insertOrderedList'), '1.')}
-                  {tbDivider}
+                  </span>
+                  {tbDivider(1)}
+                  {tb(t('Aufzählung', 'Bullet list'), () => exec('insertUnorderedList'), '•', undefined, 1)}
+                  {tb(t('Nummerierte Liste', 'Numbered list'), () => exec('insertOrderedList'), '1.', undefined, 1)}
+                  {tbDivider(1)}
                   {/* v18.39: Link einfügen/bearbeiten — Text markieren + klicken,
                       oder ohne Auswahl klicken für einen neuen Link. Bestehenden
                       Link: Cursor hineinsetzen → URL ändern. */}
-                  {tb(t('Link oder E-Mail-Adresse einfügen / bearbeiten', 'Insert / edit a link or email address'), openLinkDialog, <Link2 size={15} />)}
+                  {tb(t('Link oder E-Mail-Adresse einfügen / bearbeiten', 'Insert / edit a link or email address'), openLinkDialog, <Link2 size={15} />, undefined, 1)}
                   {/* v31.7: Bild an die Cursor-Position. Anhänge gehen nicht
                       (der Deloitte-Mailflow schickt Mails mit Anhang als NDR
                       zurück) — das Bild reist deshalb als Base64 IM HTML mit,
@@ -1268,8 +1376,10 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                       : t('Bild einfügen — es reist in der Mail mit, ohne Anhang', 'Insert an image — it travels inside the email, no attachment'),
                     () => { if (imgBusy) return; saveSelection(); imgInputRef.current?.click(); },
                     <ImageIcon size={15} />,
+                    undefined,
+                    1,
                   )}
-                  {tb(t('Formatierung entfernen', 'Clear formatting'), () => exec('removeFormat'), '⌫')}
+                  {tb(t('Formatierung entfernen', 'Clear formatting'), () => exec('removeFormat'), '⌫', undefined, 1)}
                 </div>
                 {/* Der Datei-Wähler hängt am Knopf oben; `value` wird nach jeder
                     Wahl geleert, sonst löst dieselbe Datei beim zweiten Mal kein
@@ -1305,7 +1415,10 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                     }
                   }}
                   style={{
-                    minHeight: 280, padding: '12px 14px',
+                    // v31.10: Auf dem Handy 200 px statt 280 — mit offener
+                    // Tastatur bleibt vom Dialog wenig übrig, und ein
+                    // Schreibfeld, das man erst scrollen muss, ist keines.
+                    minHeight: isMobile ? 200 : 280, padding: '12px 14px',
                     border: '1px solid var(--dex-gray-200, #e8e8e8)',
                     borderRadius: '0 0 10px 10px',
                     // v18.19: WYSIWYG — bei Mail/Outlook-Bodies exakt die echte
@@ -1351,9 +1464,15 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
             </div>
           </div>
 
-          {/* === VORSCHAU === */}
+          {/* === VORSCHAU ===
+              v31.10: Auf dem Handy wird sie nur gebaut, wenn ihr Reiter offen
+              ist. Anders als die Editor-Spalte darf sie das: Der iframe hält
+              keinen Zustand, sein Inhalt entsteht bei jedem Rendern neu aus
+              `value` — und genau deshalb kostet ein verstecktes Neubauen bei
+              jedem Tastendruck auf dem Handy unnötig Rechenzeit. */}
+          {showPreview && (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', width: isMobile ? '100%' : undefined, background: 'var(--dex-gray-100, #f5f5f5)', minHeight: 0 }}>
-            {colHead(t('Vorschau', 'Preview'), (
+            {colHead(isMobile ? '' : t('Vorschau', 'Preview'), (
               <>
                 <span className="dex-ui-pill dex-ui-pill--gray">{modeLabel}</span>
                 <span className="dex-ui-muted" style={{ fontSize: '0.74rem' }}>{t('Platzhalter mit Beispielwerten', 'Placeholders filled with sample values')}</span>
@@ -1382,9 +1501,12 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
               title={t('Vorschau', 'Preview')}
               srcDoc={renderPreviewHtml()}
               sandbox=""
-              style={{ flex: 1, border: 'none', width: '100%', minHeight: 360, background: '#f5f5f5' }}
+              // v31.10: Auf dem Handy niedrigere Untergrenze — 360 px sprengen
+              // den Dialog, sobald der Bildschirm kurz ist.
+              style={{ flex: 1, border: 'none', width: '100%', minHeight: isMobile ? 220 : 360, background: '#f5f5f5' }}
             />
           </div>
+          )}
         </div>
 
         {/* v31.2: Fuß wie in `Modal` — genau ein Primärknopf (die Aktion des

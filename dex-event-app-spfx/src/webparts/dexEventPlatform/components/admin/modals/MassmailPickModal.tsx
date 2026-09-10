@@ -102,8 +102,13 @@ export const MassmailPickModal: React.FC<MassmailPickModalProps> = (p) => {
                 {/* v22.9: Eigene Status-Auswahl — einzelne Status getrennt anhaken. */}
                 <div>
                   <Row value="custom" count={massmailAudience === 'custom' ? countOf(Array.from(massmailStatuses)) : undefined} label={isDe ? 'Eigene Auswahl nach Status' : 'Custom selection by status'} desc={isDe ? 'Du wählst unten, welche Status die Mail bekommen — z.B. nur „QR versendet“.' : 'You pick below which statuses get the mail — e.g. only "QR sent".'} />
+                  {/* v31.10: Der Einzug richtet die Chips unter dem Titel der Zeile
+                      darüber aus — auf dem Handy kostete er ein Sechstel der Breite
+                      und drängte jeden Chip in eine eigene Reihe. `clamp` statt einer
+                      Media-Query, weil ein Inline-Style keine haben kann: schmal
+                      5vw, ab Tablet wieder die vollen 44 px. */}
                   {massmailAudience === 'custom' && (
-                    <div className="dex-ui-inline" style={{ padding: '10px 14px 2px 44px' }}>
+                    <div className="dex-ui-inline" style={{ padding: '10px 0 2px', paddingLeft: 'clamp(14px, 5vw, 44px)' }}>
                       {STATUS_OPTIONS.map(st => {
                         const count = registrations.filter(r => r.Status === st).length;
                         return (

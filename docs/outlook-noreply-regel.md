@@ -11,9 +11,14 @@ Kalender und andere Automaten dorthin schicken, bleibt still.
 
 Nicht antworten auf:
 - Terminzusagen (**Accepted**), Absagen (**Declined**), Vorbehalte (**Tentative**)
+- Termin-Einladungen, -Änderungen und -Absagen
 - Abwesenheitsnotizen (**Automatic reply** / **Automatische Antwort**)
-- Termin-Weiterleitungen (**Meeting Forward Notification**), Absagen von
-  Terminen, Unzustellbarkeitsberichte
+- Unzustellbarkeitsberichte
+
+Eine Lücke bleibt bewusst offen: Für die **Meeting Forward Notification** gibt
+es kein Formular in der Auswahl (geprüft am 10.09.2026 an der echten Liste).
+Sie bekommt einmalig eine Antwort. Über den Betreff wäre sie erfassbar — das
+kostet aber mehr, als es bringt, siehe Schritt 5.
 
 ---
 
@@ -25,7 +30,6 @@ Nicht antworten auf:
 | 2 | Aktion | **have server reply using a specific message** (serverseitig, antwortet je Absender nur EINMAL) |
 | 3 | Ausnahme A | **except if it uses the _form name_ form** → die Kalender-Formulare |
 | 4 | Ausnahme B | **except if it is an automatic reply** |
-| 5 | Ausnahme C | **except if the subject contains specific words** → Sicherheitsnetz für den Rest |
 
 ---
 
@@ -95,9 +99,7 @@ This mailbox is not monitored - how to reach us
       - **Tentative Meeting Response**
       - **Meeting Cancellation**
       - **Meeting Request**
-      - **Meeting Update**
-      - **Meeting Forward Notification** *(falls vorhanden — sonst fängt
-        Ausnahme C sie ab)*
+      - **Report** *(Unzustellbarkeits-Meldungen)*
 - [ ] **Close**
 
 > Warum über das Formular und nicht über den Betreff: Der Betreff ist
@@ -113,33 +115,30 @@ This mailbox is not monitored - how to reach us
 
 - [ ] **except if it is an automatic reply** ankreuzen
 
-### 5 — Ausnahme C: Sicherheitsnetz über den Betreff
+### 5 — Ausnahme C: gestrichen
 
-- [ ] **except if the subject contains specific words** ankreuzen
-- [ ] Auf **specific words** klicken und diese Begriffe **einzeln** eintragen
-      (nach jedem **Add**):
+Hier stand eine Liste mit Betreff-Wörtern (`Accepted:`, `Abgelehnt:`, …) als
+zweites Netz. **Sie ist raus** — Nutzer-Einwand vom 10.09.2026, und er war
+richtig:
 
-```
-Accepted:
-Declined:
-Tentative:
-Canceled:
-Zugesagt:
-Abgelehnt:
-Mit Vorbehalt:
-Abgesagt:
-Automatic reply:
-Automatische Antwort:
-Meeting Forward Notification
-Undeliverable:
-Unzustellbar:
-```
+> „Aber wenn ich specific words mache, dann werden doch Mails rausgefiltert,
+> wo jemand auf so eine Mail antwortet."
 
-- [ ] **OK** → **Next**
+Outlook vergleicht bei `specific words` stumpf als Teilstring, **ohne Anker**.
+Antwortet jemand auf eine Terminzusage, heißt sein Betreff
+`AW: Accepted: DTP Basics Training` — und `Accepted:` steckt da drin. Die Regel
+hätte geschwiegen, obwohl ein Mensch eine echte Frage gestellt hat. Also genau
+der Fall, für den die Regel überhaupt existiert.
 
-> Diese Liste ist bewusst das ZWEITE Netz, nicht das erste: Sie hängt an
-> Übersetzungen und geht kaputt, sobald jemand einen anderen Client benutzt.
-> Ausnahme A ist die belastbare.
+Merksatz: Eine Ausnahme, die manchmal die Falschen trifft, ist schlimmer als
+eine fehlende Ausnahme, die gelegentlich einmal zu viel antwortet. Der erste
+Fehler ist unsichtbar, der zweite kostet eine überflüssige Mail.
+
+Was C abgedeckt hätte, tragen jetzt A und B: Terminantworten über das Formular
+(sprachunabhängig), Unzustellbarkeiten über das Formular **Report**,
+Abwesenheitsnotizen über `which is an automatic reply`. Übrig bleibt die
+**Meeting Forward Notification** — dafür gibt es kein Formular, sie bekommt
+einmalig eine Antwort.
 
 ### 6 — Fertigstellen
 
