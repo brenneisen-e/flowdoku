@@ -1,0 +1,28 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "ccefdda8-5b53-49e0-8a80-94863aa7f239",
+  "alias": "AiUseCasePlatformWebPart",
+  "componentType": "WebPart",
+
+  "version": "1.0.0.0",
+  "manifestVersion": 2,
+
+  "requiresCustomScript": false,
+  "supportedHosts": [
+    "SharePointWebPart",
+    "TeamsPersonalApp",
+    "TeamsTab",
+    "SharePointFullPage"
+  ],
+
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": { "default": "Deloitte" },
+      "title": { "default": "AI Use Case Platform" },
+      "description": { "default": "Agentic Banking Demo Hub - Agent-Demos ueber Kacheln aufrufen" },
+      "officeFabricIconFontName": "Robot",
+      "properties": {}
+    }
+  ]
+}

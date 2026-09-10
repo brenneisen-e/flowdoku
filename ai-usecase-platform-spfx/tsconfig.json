@@ -1,0 +1,45 @@
+{
+  "compilerOptions": {
+    "target": "es5",
+    "forceConsistentCasingInFileNames": true,
+    "module": "esnext",
+    "moduleResolution": "node",
+    "jsx": "react",
+    // v30.40: aus. Nichts konsumiert die .d.ts — api-extractor laeuft in
+    // diesem Projekt gar nicht (keine Config), webpack liest nur lib/**/*.js,
+    // und das Paket hat keinen Consumer. Spart rund 6 s je Build.
+    "declaration": false,
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "outDir": "lib",
+    "rootDir": "src",
+    "typeRoots": [
+      "./node_modules/@types",
+      "./node_modules/@microsoft"
+    ],
+    "types": [
+      "webpack-env"
+    ],
+    "lib": [
+      "es5",
+      "dom",
+      "es2015.collection",
+      "es2015.promise",
+      "es2015.core",
+      "es2015.iterable"
+    ],
+    "strict": false, // TODO: Enable strict mode incrementally (breaks ~30+ files currently)
+    "noImplicitAny": false, // TODO: Enable after fixing implicit any usage
+    "esModuleInterop": false,
+    "allowSyntheticDefaultImports": false
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "lib"
+  ]
+}

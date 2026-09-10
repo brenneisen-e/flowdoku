@@ -1,0 +1,16 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/config.2.0.schema.json",
+  "version": "2.0",
+  "bundles": {
+    "ai-usecase-platform-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/aiUseCasePlatform/AiUseCasePlatformWebPart.js",
+          "manifest": "./src/webparts/aiUseCasePlatform/AiUseCasePlatformWebPart.manifest.json"
+        }
+      ]
+    }
+  },
+  "externals": {},
+  "localizedResources": {}
+}
