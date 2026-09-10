@@ -2745,10 +2745,10 @@ export default function EventCreationPage(): React.ReactElement {
   const basicsStepProps = {
     activeFrom, activeScopeIdx, applyDraftPayload, applyEventTemplate, childEventsOf, childTermSingular,
     currentUser, dayKeyOfDate, description, DRAFT_KEY, draftSavedAt,
-    editEvent, emailLogoPreview, errorBorderStyle, events, fieldHasError, fileToBase64,
+    editEvent, emailLogoFromPhoto, emailLogoPreview, errorBorderStyle, events, fieldHasError, fileToBase64,
     imageBanner, imageDisplay, imageDisplayOpen, imageEditOpen, imageFile, imageOrigFile,
     imagePreview, imageUploadError, isDe, isEditMode, isFictive, location,
-    logoCropTarget, noDescription, outlookLogoPreview, patchScopeSub, pendingDraft, previewBeforeActive,
+    logoCropTarget, noDescription, outlookLogoFromPhoto, outlookLogoPreview, patchScopeSub, pendingDraft, previewBeforeActive,
     renderStepIntro, scAllDay, scDescription, scEnd, scImagePreview, scopeSub,
     scShowAsFree, scStart, scTitle, setActiveFrom, setDescription, setEmailLogoFromPhoto,
     setEmailLogoPreview, setEventImageUrl, setHtmlEditorMode, setHtmlEditorOpen, setImageBanner, setImageDisplay,

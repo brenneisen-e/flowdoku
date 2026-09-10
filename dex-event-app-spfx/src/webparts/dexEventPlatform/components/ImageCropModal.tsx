@@ -22,6 +22,14 @@ import { AlertCircle, Check, Info } from './Icons';
  *   zweites Mal ab. In diesem Modus behält das Bild sein eigenes
  *   Seitenverhältnis, Zoom und Verschieben entfallen — es gibt nichts zu
  *   wählen, wenn nichts weggeschnitten wird.
+ *
+ * v31.9.8: Die Erklärzeilen der drei Kacheln sind auf je drei Wörter gekürzt
+ *   (Nutzer-Ansage 10.09.2026: „nich son felappsig formulieren. zudem wissen
+ *   die leute nicht dass es abgerundet wird"). Der zweite Halbsatz ist der
+ *   wichtigere: Meine Begründung „die Anmeldeseite rundet es ohnehin selbst"
+ *   erklärte die Vorauswahl mit einer Tatsache, die der Organizer nirgends
+ *   sehen kann. Eine Begründung, die neues Wissen voraussetzt, macht eine
+ *   Wahl nicht leichter, sondern nur länger — dann lieber gar keine.
  * - „Übernehmen" liefert das Ergebnis als PNG-Data-URL + File zurück (PNG, damit
  *   transparente Kreis-Ecken erhalten bleiben).
  *
@@ -50,10 +58,6 @@ interface Props {
   /** v27.5: Start-Seitenverhältnis (Breite/Höhe) im allowAspect-Modus.
       Default 16/9 (breites Banner). Ignoriert, wenn allowAspect nicht gesetzt. */
   defaultAspect?: number;
-  /** v28.10: „Empfohlen"-Kennzeichnung am Kreis-Zuschnitt + Hinweiszeile —
-      fürs Event-Bild, das auf der Anmeldeseite als Kreis oben mittig in die
-      Karte eingebaut wird. */
-  recommendCircle?: boolean;
 }
 
 const FRAME = 320; // Anzeige-Breite der Vorschau (px)
@@ -87,7 +91,7 @@ const ASPECT_PRESETS: Array<{ a: number; de: string; en: string }> = [
   { a: 5 / 2, de: 'Banner', en: 'Banner' },
 ];
 
-export default function ImageCropModal({ open, src, isDe, onClose, onApply, children, allowAspect, defaultAspect, recommendCircle }: Props): React.ReactElement | null {
+export default function ImageCropModal({ open, src, isDe, onClose, onApply, children, allowAspect, defaultAspect }: Props): React.ReactElement | null {
   const [shape, setShape] = React.useState<Shape>('none');
   const [aspect, setAspect] = React.useState<number>(allowAspect ? (defaultAspect || 16 / 9) : 1);
   const [zoom, setZoom] = React.useState(1);
@@ -242,13 +246,14 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
     const title = kind === 'none'
       ? (isDe ? 'Nicht beschneiden' : 'Do not crop')
       : kind === 'circle' ? (isDe ? 'Kreis' : 'Circle') : (isDe ? 'Quadrat' : 'Square');
+    // v31.9.8: Drei kurze Zeilen statt Erklärungen. Die alte Begründung
+    // („die Anmeldeseite rundet es ohnehin selbst") setzte Wissen voraus, das
+    // niemand hat — sie hat die Wahl nicht leichter gemacht, sondern länger.
     const desc = kind === 'none'
-      ? (isDe ? 'Das Foto bleibt, wie es ist — die Anmeldeseite rundet es ohnehin selbst.' : 'The photo stays as it is — the registration page rounds it off by itself.')
+      ? (isDe ? 'Das ganze Foto.' : 'The whole photo.')
       : kind === 'circle'
-        ? (recommendCircle
-          ? (isDe ? 'Sitzt rund oben mittig in der Event-Karte.' : 'Sits round at the top centre of the event card.')
-          : (isDe ? 'Runder Ausschnitt, Ecken bleiben transparent.' : 'Round crop, corners stay transparent.'))
-        : (isDe ? 'Rechteckiger Ausschnitt.' : 'Rectangular crop.');
+        ? (isDe ? 'Runder Ausschnitt.' : 'Round crop.')
+        : (isDe ? 'Quadratischer Ausschnitt.' : 'Square crop.');
     return (
       <button type="button" className={cx('dex-ui-choice', on && 'is-active')} style={{ padding: '10px 12px', alignItems: 'center' }} aria-pressed={on} onClick={() => setShape(kind)}>
         <span className="dex-ui-choice-icon" style={{ width: 30, height: 30 }}><ShapeIcon kind={kind} /></span>
@@ -301,7 +306,7 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
         </div>
         <p className="dex-ui-help" style={{ textAlign: 'center', margin: '8px 0 0' }}>
           {noCrop
-            ? (isDe ? 'Das ganze Foto wird übernommen — nichts wird weggeschnitten.' : 'The whole photo is used — nothing is cropped off.')
+            ? (isDe ? 'So wird das Foto übernommen.' : 'This is how the photo is used.')
             : allowAspect
               ? (isDe ? 'Ziehe das Bild in Position, z.B. um oben oder unten etwas wegzuschneiden.' : 'Drag the image into place, e.g. to crop off the top or bottom.')
               : (isDe ? 'Ziehe das Bild mit der Maus in Position — die Vorschau zeigt genau das Ergebnis.' : 'Drag the image into place — the preview shows exactly what you get.')}
@@ -314,11 +319,11 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
 
       {/* v27.5: Seitenverhältnis-Wahl (nur Kopfbild-Modus) ODER Form-Wahl.
           v30.98: „Empfohlen"-Badge und Tipp entfallen (Nutzer-Ansage 07.09.2026:
-          „nimm das Empfohlen hier raus") — Kreis bleibt die Vorauswahl, ohne
-          Wertung. `recommendCircle` bleibt als Prop und steuert nur noch die
-          Erklärzeile der Kreis-Kachel (Event-Karte vs. allgemeiner Kreis).
+          „nimm das Empfohlen hier raus") — ohne Wertung.
           v31.2: Der Kreis-Rand steht direkt unter der Form-Wahl, weil er nur
-          zum Kreis gehört — vorher stand der Zoom dazwischen. */}
+          zum Kreis gehört — vorher stand der Zoom dazwischen.
+          v31.9.8: `recommendCircle` ist ersatzlos weg. Die Prop steuerte nur
+          noch eine Erklärzeile, und Erklärzeilen gibt es hier keine mehr. */}
       <div className="dex-ui-section" style={{ margin: 0 }}>
         <div className="dex-ui-section-title">{allowAspect ? (isDe ? 'Seitenverhältnis' : 'Aspect ratio') : (isDe ? 'Zuschnitt' : 'Crop')}</div>
         {allowAspect ? (

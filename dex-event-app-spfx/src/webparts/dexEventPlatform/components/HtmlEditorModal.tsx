@@ -37,6 +37,9 @@ import {
   buildInlineImage, imageFileFromClipboard, inlineImageHtml, countInlineImages, charsToKb,
   INLINE_IMG_MAX_KB, MAIL_BODY_MAX_KB, MAIL_BODY_WARN_KB, InlineImageOutcome,
 } from '../utils/inlineMailImage';
+// v31.9.8: Positivliste fürs Einfügen aus Outlook/Word — warum sie so eng ist
+// und was bewusst wegfällt, steht in der Datei.
+import { sanitizePastedHtml } from '../utils/pasteHtmlSanitize';
 
 // v9.40: 'plain' = nur HTML rendern, kein Mail-/Outlook-Wrapper. Wird für die
 // Event-Beschreibung im Wizard genutzt — die landet 1:1 auf der Anmelde-Seite.
@@ -572,6 +575,16 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
   // Verhindert, dass kopierte Inhalte Block-Markup (<div>/<p> mit Außen-
   // abständen) mitbringen, das den Zeilenabstand „plötzlich größer" macht
   // und sich danach nicht mehr korrigieren lässt.
+  //
+  // v31.9.8: Der Preis dafür war zu hoch. Wer eine fertige Outlook-Mail
+  // einfügt, verlor JEDEN Link, alles Fette und alle Aufzählungen; die
+  // Listenpunkte kamen als „•"-Zeichen im Fließtext an (gemeldet 10.09.2026
+  // an einer Rundmail an 150 Empfänger). Statt der Rücknahme filtert jetzt
+  // `sanitizePastedHtml` über eine Positivliste: Link, fett, kursiv,
+  // unterstrichen, Aufzählung, Umbruch bleiben — jedes `style`, jede Klasse
+  // und jede Breitenangabe fliegt raus. Der Zeilenabstand ist damit weiterhin
+  // unantastbar, die Begründung von v18.39 also erfüllt. Bleibt nichts
+  // Sichtbares übrig, greift unverändert der Klartext-Weg.
   const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>): void => {
     // v31.7: Enthält die Zwischenablage ein BILD und keinen Text, wird es wie
     // über den Knopf verarbeitet — ein Screenshot mit Strg+V ist die natürliche
@@ -588,8 +601,9 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     }
     e.preventDefault();
     const text = e.clipboardData?.getData('text/plain') || '';
-    if (!text) return;
-    const html = text.split(/\r\n|\r|\n/).map(line => escHtml(line)).join('<br>');
+    const rich = sanitizePastedHtml(e.clipboardData?.getData('text/html') || '');
+    const html = rich || (text ? text.split(/\r\n|\r|\n/).map(line => escHtml(line)).join('<br>') : '');
+    if (!html) return;
     try { document.execCommand('insertHTML', false, html); } catch {
       try { document.execCommand('insertText', false, text); } catch { /* ignore */ }
     }
