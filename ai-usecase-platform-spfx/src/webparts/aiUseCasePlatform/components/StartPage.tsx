@@ -21,7 +21,7 @@ export default function StartPage(): React.ReactElement {
   // injiziert jede der zwanzig Kacheln dieselbe Pruefung (DEX-Konvention).
   ensureDexUiStyles();
 
-  const { useCases, ladeStatus, letzterStatus, reload, bereiche } = useUseCases();
+  const { useCases, ladeStatus, letzterStatus, letzterFehler, fehlendeSpalten, reload, bereiche } = useUseCases();
   const { t, isDe } = useLanguage();
   const { navigate } = useNavigation();
   const { isKurator } = useRoles();
@@ -143,9 +143,31 @@ export default function StartPage(): React.ReactElement {
             {letzterStatus === 403
               ? t('Dir fehlt das Leserecht auf der Liste — bitte melde dich bei einem Admin der Plattform.',
                 'You do not have read access to the list — please contact a platform admin.')
-              : t('Das ist ein Lade-Fehler, keine leere Plattform. Versuch es gleich noch einmal.',
-                'This is a loading error, not an empty platform. Please try again shortly.')}
+              : letzterStatus === 404
+                ? t('Die Liste gibt es (noch) nicht. Lade die Seite neu — die App legt sie beim Start selbst an.',
+                  'The list does not exist (yet). Reload the page — the app creates it on start.')
+                : letzterStatus === 400
+                  ? t('SharePoint hat die Abfrage abgelehnt. Meist fehlt eine Spalte, die beim Anlegen der Liste nicht entstanden ist.',
+                    'SharePoint rejected the query. Usually a column is missing that was not created with the list.')
+                  : t('Das ist ein Lade-Fehler, keine leere Plattform. Versuch es gleich noch einmal.',
+                    'This is a loading error, not an empty platform. Please try again shortly.')}
             {letzterStatus > 0 && <span className="dex-ui-muted"> (HTTP {letzterStatus})</span>}
+            {/* Der Klartext von SharePoint. Ohne ihn raet beim naechsten Mal
+                wieder jemand — mit ihm steht die Ursache im Bild. */}
+            {letzterFehler && (
+              <>
+                <br />
+                <span className="dex-ui-muted" style={{ fontSize: '0.78rem' }}>{letzterFehler}</span>
+              </>
+            )}
+            {fehlendeSpalten.length > 0 && (
+              <>
+                <br />
+                <span className="dex-ui-muted" style={{ fontSize: '0.78rem' }}>
+                  {t('Nicht angelegte Spalten: ', 'Columns not created: ')}{fehlendeSpalten.join(', ')}
+                </span>
+              </>
+            )}
             <br />
             <button type="button" className="dex-ui-textbtn" style={{ marginTop: 8 }} onClick={() => { void reload(); }}>
               {t('Erneut versuchen', 'Try again')}

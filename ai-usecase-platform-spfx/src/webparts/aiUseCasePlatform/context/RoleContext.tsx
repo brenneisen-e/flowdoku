@@ -86,7 +86,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   }, []);
 
   async function init(): Promise<void> {
-    const { isNewlyCreated } = await service.ensureRolesList();
+    await service.ensureRolesList();
     const rows = await service.getRoles();
 
     if (rows === null) {
@@ -103,10 +103,24 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
 
     setRolesReadStatus('ok');
 
-    if (isNewlyCreated && rows.length === 0) {
-      // Echte Erstinstallation: Die Liste wurde eben angelegt und ist
-      // erwartungsgemaess leer. Nur hier darf jemand automatisch Admin
-      // werden, sonst koennte niemand je Rollen vergeben.
+    if (rows.length === 0) {
+      // Erstinstallation: Die Rollenliste ist LEER und WAR LESBAR.
+      //
+      // In DEX haengt dieser Zweig zusaetzlich an `isNewlyCreated`, und das
+      // aus gutem Grund: Dort lieferte `getRoles` bei einem 403 ein leeres
+      // Array, „leer" hiess also auch „darf nicht lesen", und jeder Aufrufer
+      // wurde Admin (v6.34).
+      //
+      // Hier kann das nicht passieren: `getRoles` liefert bei JEDEM Fehler
+      // `null`, und dieser Zweig ist erst hinter der `rows === null`-Pruefung
+      // erreichbar. „Leer" heisst hier also wirklich leer.
+      //
+      // Warum das nicht mehr nur an `isNewlyCreated` haengt: Beim ersten
+      // Live-Versuch am 10.09.2026 wurde die Liste angelegt, das Anlegen der
+      // Spalten scheiterte still, und der Aufrufer blieb „User" — ohne
+      // Zugang zur Rollenverwaltung, mit der er sich haette helfen koennen.
+      // Eine leere Rollenliste ohne Admin ist eine Sackgasse.
+      console.warn('[AIUC] Rollenliste ist leer — die angemeldete Person wird Admin (Erstinstallation).');
       await service.addRole(myEmail, myName, 'Admin', 'System (Erstinstallation)');
       await service.grantFullControlOnRolesList(myEmail);
       setCurrentUserRole('Admin');
