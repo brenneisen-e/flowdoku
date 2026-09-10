@@ -32,7 +32,11 @@ export const MassmailPickModal: React.FC<MassmailPickModalProps> = (p) => {
           if (massmailAudience === 'nachruecker') setMassmailMode('paste');
           else { setShowEmailModal(true); setMassmailMode('editor'); }
         };
-        const STATUS_OPTIONS = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
+        // v31.9.6: Abgemeldet und No-Show gehören dazu. Sie fehlten nicht aus
+        // einem Grund, sondern weil nie jemand danach gefragt hat — und der
+        // Organizer braucht sie: „Termin verschoben, kommst du doch?" geht
+        // genau an die, die abgesagt haben.
+        const STATUS_OPTIONS = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste', 'Abgemeldet', 'No-Show'];
         const toggleStatus = (st: string): void => {
           setMassmailStatuses(prev => {
             const next = new Set(prev);
@@ -46,6 +50,10 @@ export const MassmailPickModal: React.FC<MassmailPickModalProps> = (p) => {
         const countOf = (stati: string[]): number => registrations.filter(r => stati.indexOf(r.Status) >= 0).length;
         const nActive = countOf(['Angemeldet', 'QR versendet', 'Eingecheckt']);
         const nWait = countOf(['Warteliste']);
+        // Alle Zeilen der Liste — nicht `countOf` mit einer Status-Aufzählung,
+        // sonst fehlt jeder Status, den jemand später in SharePoint ergänzt.
+        const nEveryone = registrations.length;
+        const nInactive = nEveryone - nActive - nWait;
         const customEmpty = massmailAudience === 'custom' && massmailStatuses.size === 0;
         const Row = (props: { value: MassmailAudience; label: string; desc: string; count?: number }): React.ReactElement => {
           const on = massmailAudience === props.value;
@@ -84,6 +92,13 @@ export const MassmailPickModal: React.FC<MassmailPickModalProps> = (p) => {
                 <Row value="active" count={nActive} label={isDe ? 'Alle aktiven Teilnehmer' : 'All active participants'} desc={isDe ? 'Status Angemeldet, QR versendet oder Eingecheckt — der Normalfall für Info-Mails.' : 'Status registered, QR sent or checked in — the usual choice for info mails.'} />
                 <Row value="activePlusWait" count={nActive + nWait} label={isDe ? 'Aktive Teilnehmer + Warteliste' : 'Active participants + waitlist'} desc={isDe ? 'Beide zusammen — z.B. wenn Plätze frei werden und du die Warteliste vorwarnen willst.' : 'Both together — e.g. when seats free up and you want to give the waitlist a heads-up.'} />
                 <Row value="waitOnly" count={nWait} label={isDe ? 'Nur Warteliste' : 'Waitlist only'} desc={isDe ? 'Nur die Wartenden — z.B. „Es wird wahrscheinlich keinen Platz mehr geben“.' : 'Only those waiting — e.g. "There will probably be no more seats".'} />
+                {/* v31.9.6: „An alle" inklusive Abgemeldete und No-Shows.
+                    Bewusst als EIGENE Zeile mit eigener Zahl und nicht still in
+                    „alle aktiven" hineingerechnet: Wer abgesagt hat, bekommt
+                    normalerweise nichts mehr — das muss man ausdrücklich
+                    wählen, nicht versehentlich treffen. Die Zeile nennt
+                    deshalb, wie viele davon nicht mehr dabei sind. */}
+                <Row value="everyone" count={nEveryone} label={isDe ? 'Alle — auch Abgemeldete' : 'Everyone — including cancellations'} desc={isDe ? `Jede Person in der Teilnehmerliste, auch Abgemeldete und No-Shows (${nInactive} davon nicht mehr dabei) — z.B. „Termin verschoben, kommst du doch?“.` : `Everyone in the participant list, including cancellations and no-shows (${nInactive} of them no longer attending) — e.g. "Date moved, joining after all?".`} />
                 {/* v22.9: Eigene Status-Auswahl — einzelne Status getrennt anhaken. */}
                 <div>
                   <Row value="custom" count={massmailAudience === 'custom' ? countOf(Array.from(massmailStatuses)) : undefined} label={isDe ? 'Eigene Auswahl nach Status' : 'Custom selection by status'} desc={isDe ? 'Du wählst unten, welche Status die Mail bekommen — z.B. nur „QR versendet“.' : 'You pick below which statuses get the mail — e.g. only "QR sent".'} />

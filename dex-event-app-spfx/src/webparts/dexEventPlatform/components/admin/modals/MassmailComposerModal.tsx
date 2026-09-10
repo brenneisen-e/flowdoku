@@ -13,6 +13,7 @@ import { cx } from '../../dexUi';
 import { DeloitteEvent } from '../../../types';
 import { EventService, SPRegistration } from '../../../services/EventService';
 import { MailHeaderImage } from '../../../utils/mailHeaderImage';
+import { MassmailAudience } from '../adminTypes';
 
 export interface MassmailComposerModalProps {
   applyMassmailHero: (wrappedHtml: string) => string;
@@ -23,7 +24,11 @@ export interface MassmailComposerModalProps {
   emailSubject: string;
   eventServiceRef: EventService;
   isDe: boolean;
-  massmailAudience: "active" | "activePlusWait" | "waitOnly" | "nachruecker" | "custom";
+  // v31.9.6: Der gemeinsame Typ statt einer zweiten Aufzaehlung. Die Kopie
+  // hier hat den neuen Wert `everyone` nicht mitbekommen — `tsc` hat es
+  // gemeldet, sonst haette der Composer eine Auswahl bekommen, die er
+  // nicht kennt.
+  massmailAudience: MassmailAudience;
   massmailCc: string[];
   massmailDraftSaved: boolean;
   massmailEventPhotoB64: string;
@@ -73,6 +78,14 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
           }
           if (massmailAudience === 'activePlusWait') {
             return registrations.filter(r => ACTIVE.indexOf(r.Status) >= 0 || r.Status === 'Warteliste');
+          }
+          if (massmailAudience === 'everyone') {
+            // v31.9.6: Wirklich JEDE Zeile — keine Status-Aufzählung, sonst
+            // fehlt jeder Status, den jemand später in SharePoint ergänzt.
+            // Ohne diesen Zweig wäre die Auswahl still auf „nur aktive"
+            // zurückgefallen (der Rückfall unten) und hätte damit etwas
+            // anderes verschickt, als der Organizer angeklickt hat.
+            return registrations;
           }
           if (massmailAudience === 'nachruecker') {
             // Aktive minus die in der eingefügten Liste enthaltenen E-Mails.
@@ -193,6 +206,7 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
           ? Array.from(massmailStatuses).join(', ')
           : massmailAudience === 'waitOnly' ? (isDe ? 'Nur Warteliste' : 'Waitlist only')
           : massmailAudience === 'activePlusWait' ? (isDe ? 'Teilnehmer + Warteliste' : 'Attendees + waitlist')
+          : massmailAudience === 'everyone' ? (isDe ? 'Alle — auch Abgemeldete' : 'Everyone — incl. cancellations')
           : massmailAudience === 'nachruecker' ? (isDe ? 'Nachrücker (manueller Abgleich)' : 'Replacements (manual match)')
           : (isDe ? 'Alle aktiven Teilnehmer' : 'All active attendees');
         // v30.51.1: Die Vorschau nennt die WIRKLICHE CC-Zahl (s. massmailCcPreview).

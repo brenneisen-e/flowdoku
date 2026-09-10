@@ -36,7 +36,11 @@ export interface DeniedSubEventList { title: string; status: number }
 /** v30.66: Zielgruppe der Massenmail. Stand als lokaler Typ IM Komponenten-
  *  koerper und war damit von aussen nicht referenzierbar — das ausgelagerte
  *  Zielgruppen-Modal braucht ihn aber. */
-export type MassmailAudience = 'active' | 'activePlusWait' | 'waitOnly' | 'nachruecker' | 'custom';
+// v31.9.6: 'everyone' = alle Zeilen der Teilnehmerliste, auch Abgemeldete
+// und No-Shows. Nutzer-Frage 09.09.2026: „warum nicht auch an die
+// Abgemeldeten als Auswahl? also an alle?" — es gab keinen Grund, nur eine
+// Lücke: Der Versandpfad filtert ohnehin rein nach Status.
+export type MassmailAudience = 'active' | 'activePlusWait' | 'waitOnly' | 'everyone' | 'nachruecker' | 'custom';
 
 /** v30.66: Admin-Toast für Abmelde-/Nachrück-Feedback (seit v6.8):
  *   - 'cancelling': während die Abmeldung + Nachrück-Suche läuft (orange, Spinner)
