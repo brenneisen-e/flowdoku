@@ -11,7 +11,7 @@ import { DeloitteEvent } from '../../../types';
 // v31.13: Der F&A-Aufbau existiert seit v30.50 — die dritte Export-Ansicht
 // baut KEINE zweite Variante davon, sie ruft dieselbe Funktion wie der
 // Versand an F&A und der Download im Abrechnungs-Dialog.
-import { buildFASheetAoa, faRowsFromRegistrations, parseBillingOf } from '../../../utils/faBilling';
+import { buildFAInfoSheetAoa, buildFASheetAoa, faHeaderDefaults, faRowsFromRegistrations, parseBillingOf } from '../../../utils/faBilling';
 
 /** v31.13: `fa` = die Liste im Aufbau, den F&A seit Jahren einliest. */
 export type ExcelExportMode = 'deloitte' | 'b2run' | 'fa';
@@ -36,7 +36,8 @@ export interface CreateExportActionsCtx {
 
 export interface CreateExportActionsResult {
   exportConsolidatedExcel: (audience: ExcelExportAudience, includeMatrix: boolean, subIds: string[]) => void;
-  exportCsv: (mode: ExcelExportMode, audience?: ExcelExportAudience) => void;
+  /** `faHeader` = die neun Kopf-Werte aus dem Dialog (nur im F&A-Modus). */
+  exportCsv: (mode: ExcelExportMode, audience?: ExcelExportAudience, faHeader?: Record<string, string>) => void;
 }
 
 export function createExportActions(ctx: CreateExportActionsCtx): CreateExportActionsResult {
@@ -60,7 +61,13 @@ export function createExportActions(ctx: CreateExportActionsCtx): CreateExportAc
    * Policies), wodurch der Download stillschweigend nicht startet. Mit
    * anchor.click() laeuft das in jeder Browser-Umgebung zuverlaessig.
    */
-  const writeWorkbook = (aoa: (string | number)[][], sheetName: string, fileName: string): void => {
+  const writeWorkbook = (
+    aoa: (string | number)[][],
+    sheetName: string,
+    fileName: string,
+    /** Optionales zweites Blatt (F&A: die Auswahlwerte der Spalte A). */
+    zweitesBlatt?: { name: string; aoa: (string | number)[][] },
+  ): void => {
     import('xlsx').then(XLSX => {
       const ws = XLSX.utils.aoa_to_sheet(aoa);
       const spalten = Math.max(0, ...aoa.map(z => z.length));
@@ -72,6 +79,12 @@ export function createExportActions(ctx: CreateExportActionsCtx): CreateExportAc
       (ws as any)['!cols'] = colWidths;
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, sheetName);
+      if (zweitesBlatt) {
+        const ws2 = XLSX.utils.aoa_to_sheet(zweitesBlatt.aoa);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (ws2 as any)['!cols'] = [{ wch: 28 }, { wch: 80 }];
+        XLSX.utils.book_append_sheet(wb, ws2, zweitesBlatt.name);
+      }
       const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
       const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const url = URL.createObjectURL(blob);
@@ -93,7 +106,7 @@ export function createExportActions(ctx: CreateExportActionsCtx): CreateExportAc
     });
   };
 
-  const exportCsv = (mode: ExcelExportMode, audience: ExcelExportAudience = 'active'): void => {
+  const exportCsv = (mode: ExcelExportMode, audience: ExcelExportAudience = 'active', faHeader?: Record<string, string>): void => {
     if (!selectedEvent) return;
     const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
     const audienceFilter = (r: SPRegistration): boolean => {
@@ -139,11 +152,14 @@ export function createExportActions(ctx: CreateExportActionsCtx): CreateExportAc
        */
       const faRows = faRowsFromRegistrations(activeRegsForExport);
       if (faRows.length === 0) { showAlert(isDe ? 'Für diese Auswahl gibt es niemanden.' : 'Nobody matches this selection.'); return; }
-      const aoaFa = buildFASheetAoa(selectedEvent, parseBillingOf(selectedEvent), faRows);
+      const kopf = faHeader || faHeaderDefaults(selectedEvent, parseBillingOf(selectedEvent));
+      const aoaFa = buildFASheetAoa(selectedEvent, parseBillingOf(selectedEvent), faRows, kopf);
       writeWorkbook(
         aoaFa,
-        'F&A',
+        // Der Blattname der Vorlage — F&A erkennt die Datei daran wieder.
+        'Teilnehmende_Empfängerliste',
         `FA_Teilnehmerliste_${(selectedEvent.title || 'event').replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        { name: 'Wichtige Info', aoa: buildFAInfoSheetAoa(kopf) },
       );
       return;
     }
