@@ -92,6 +92,10 @@ export class SharePointService {
   public lastRolesReadStatus = 0;
   /** HTTP-Status des letzten Use-Case-Lesens. */
   public lastUseCasesReadStatus = 0;
+  /** Klartext der letzten fehlgeschlagenen Antwort — fuer die Meldung in der App. */
+  public lastReadError = '';
+  /** Spalten, die beim Sicherstellen der Liste NICHT entstanden sind. */
+  public fehlendeSpalten: string[] = [];
 
   /**
    * Ersatz fuer `context.spHttpClient` — gleiche Signatur.
@@ -169,45 +173,106 @@ export class SharePointService {
     }
   }
 
+  /** Die Antwort von SharePoint lesbar machen — der Text sagt, was fehlt. */
+  private async fehlertext(r: SPHttpClientResponse): Promise<string> {
+    try {
+      const t = await r.clone().text();
+      // SharePoint packt die Ursache tief ein; der Klartext steht in `value`.
+      const m = /"value"\s*:\s*"([^"]{5,400})"/.exec(t);
+      return m ? m[1] : t.slice(0, 300);
+    } catch {
+      return `HTTP ${r.status}`;
+    }
+  }
+
   /**
    * Eine Spalte anlegen — aber nur, wenn sie fehlt.
    *
-   * Das Pruefen vorweg ist kein Feinschliff: Ohne es laeuft bei JEDEM Start
-   * ein Anlage-Versuch gegen eine existierende Spalte, SharePoint antwortet
-   * mit 500, und der Browser protokolliert das rot, bevor unser `catch` es
-   * sieht (DEX v30.65).
+   * Zwei Dinge, die beim ersten Live-Versuch am 10.09.2026 wehgetan haben:
+   *
+   * 1. **Der Feldtyp braucht seinen EIGENEN `__metadata`-Typ.** Ein generisches
+   *    `SP.Field` mit `FieldTypeKind` legt eine Textspalte an oder scheitert,
+   *    je nach Feldart — mehrzeilige Felder und Auswahlfelder brauchen
+   *    `SP.FieldMultiLineText` bzw. `SP.FieldChoice`. Scheitert das, existiert
+   *    die Spalte nicht, und der spaetere `$select` darauf antwortet mit
+   *    HTTP 400 „field does not exist" — genau der Fehler auf dem Screenshot.
+   *
+   * 2. **Die Standardansicht heisst nicht ueberall „All Items".** In einem
+   *    deutschsprachigen Tenant ist sie „Alle Elemente". Der Aufruf lief ins
+   *    Leere; das ist harmlos (die Spalte existiert trotzdem), aber er darf
+   *    nicht wie ein Fehler des Anlegens aussehen. Deshalb ueber
+   *    `DefaultView` statt ueber den Namen.
+   *
+   * Rueckgabe: true = die Spalte ist danach da (angelegt oder war schon da).
    */
   private async ensureField(
     listName: string,
     internalName: string,
-    fieldTypeKind: number,
-    extra?: Record<string, unknown>,
-  ): Promise<void> {
+    payload: Record<string, unknown>,
+  ): Promise<boolean> {
     try {
       const probe = await this._sp.get(
         `${this.list(listName)}/fields/getbytitle('${encodeURIComponent(internalName)}')`,
         SPHttpClient.configurations.v1,
       );
-      if (probe.ok) return;
+      if (probe.ok) return true;
     } catch { /* nicht lesbar -> Anlegen versuchen */ }
 
     try {
-      await this._post(`${this.list(listName)}/fields`, {
-        '__metadata': { 'type': 'SP.Field' },
+      const r = await this._post(`${this.list(listName)}/fields`, {
         'Title': internalName,
-        'FieldTypeKind': fieldTypeKind,
         'Required': false,
-        ...(extra || {}),
+        ...payload,
       });
+      if (!r.ok) {
+        console.warn(`[AIUC] Spalte ${internalName} auf ${listName}: ${await this.fehlertext(r)}`);
+        return false;
+      }
       // In die Standardansicht aufnehmen, sonst ist die Spalte in SharePoint
-      // selbst unsichtbar und niemand kann Daten von Hand nachsehen.
+      // selbst unsichtbar. Ueber DefaultView, nicht ueber den Namen.
       await this._post(
-        `${this.list(listName)}/views/getbytitle('All Items')/viewfields/addviewfield('${encodeURIComponent(internalName)}')`,
+        `${this.list(listName)}/DefaultView/viewfields/addviewfield('${encodeURIComponent(internalName)}')`,
         {},
       ).catch(() => undefined);
+      return true;
     } catch (e) {
       console.warn(`[AIUC] Spalte ${internalName} auf ${listName} konnte nicht angelegt werden:`, e);
+      return false;
     }
+  }
+
+  /** Textspalte (einzeilig). */
+  private feldText(liste: string, name: string): Promise<boolean> {
+    return this.ensureField(liste, name, {
+      '__metadata': { 'type': 'SP.FieldText' }, 'FieldTypeKind': FIELD.text, 'MaxLength': 255,
+    });
+  }
+
+  /** Mehrzeiliges Textfeld. `richText` nur dort, wo wirklich HTML hineinsoll. */
+  private feldNote(liste: string, name: string, richText = false): Promise<boolean> {
+    return this.ensureField(liste, name, {
+      '__metadata': { 'type': 'SP.FieldMultiLineText' }, 'FieldTypeKind': FIELD.note,
+      'NumberOfLines': 6, 'RichText': richText, 'AllowHyperlink': false, 'AppendOnly': false,
+    });
+  }
+
+  private feldZahl(liste: string, name: string): Promise<boolean> {
+    return this.ensureField(liste, name, {
+      '__metadata': { 'type': 'SP.FieldNumber' }, 'FieldTypeKind': FIELD.number,
+    });
+  }
+
+  private feldAuswahl(liste: string, name: string, werte: string[]): Promise<boolean> {
+    return this.ensureField(liste, name, {
+      '__metadata': { 'type': 'SP.FieldChoice' }, 'FieldTypeKind': FIELD.choice,
+      'Choices': { 'results': werte }, 'EditFormat': 0,
+    });
+  }
+
+  private feldDatum(liste: string, name: string): Promise<boolean> {
+    return this.ensureField(liste, name, {
+      '__metadata': { 'type': 'SP.FieldDateTime' }, 'FieldTypeKind': FIELD.dateTime,
+    });
   }
 
   private async createList(listName: string, description: string): Promise<void> {
@@ -240,13 +305,10 @@ export class SharePointService {
     }
 
     await this.createList(name, 'Rollenverwaltung der AI Use Case Platform');
-    await this.ensureField(name, 'UserName', FIELD.text);
-    await this.ensureField(name, 'Role', FIELD.choice, {
-      '__metadata': { 'type': 'SP.FieldChoice' },
-      'Choices': { 'results': ['Admin', 'Kurator', 'User'] },
-    });
-    await this.ensureField(name, 'AssignedBy', FIELD.text);
-    await this.ensureField(name, 'AssignedDate', FIELD.dateTime);
+    await this.feldText(name, 'UserName');
+    await this.feldAuswahl(name, 'Role', ['Admin', 'Kurator', 'User']);
+    await this.feldText(name, 'AssignedBy');
+    await this.feldDatum(name, 'AssignedDate');
     await this.ensureRolesListPermissions(name);
     return { isNewlyCreated: true };
   }
@@ -311,13 +373,21 @@ export class SharePointService {
   public async getRoles(): Promise<Array<{ Id: number; Title: string; UserName: string; Role: string; AssignedBy: string; AssignedDate: string }> | null> {
     this.lastRolesReadStatus = 0;
     try {
+      // Auch hier ohne `$select` — aus demselben Grund wie bei den Use Cases.
+      // Fehlt eine der Spalten, antwortet SharePoint mit HTTP 400, `getRoles`
+      // liefert `null`, und die Person ist „User", obwohl sie Admin sein
+      // sollte. Das war der Zustand auf dem Screenshot vom 10.09.2026.
       const r = await this._sp.get(
-        `${this.list(LIST.roles)}/items?$select=Id,Title,UserName,Role,AssignedBy,AssignedDate&$top=500`,
+        `${this.list(LIST.roles)}/items?$top=500`,
         SPHttpClient.configurations.v1,
         { headers: { 'Accept': 'application/json;odata=nometadata' } },
       );
       this.lastRolesReadStatus = r.status;
-      if (!r.ok) return null;
+      if (!r.ok) {
+        this.lastReadError = await this.fehlertext(r);
+        console.warn(`[AIUC] Rollen lesen: HTTP ${r.status} — ${this.lastReadError}`);
+        return null;
+      }
       const d = await r.json();
       return (d.value || []) as Array<{ Id: number; Title: string; UserName: string; Role: string; AssignedBy: string; AssignedDate: string }>;
     } catch {
@@ -517,30 +587,36 @@ export class SharePointService {
     // Auch auf einer bestehenden Liste: fehlende Spalten nachziehen. Das ist
     // der Weg, auf dem ein spaeteres Feld auf Bestandsdaten kommt, ohne dass
     // jemand SharePoint von Hand anfassen muss.
-    await this.ensureField(name, 'Kurzbeschreibung', FIELD.note);
-    await this.ensureField(name, 'Beschreibung', FIELD.note, { 'RichText': true });
-    await this.ensureField(name, 'Bereich', FIELD.text);
-    await this.ensureField(name, 'UcStatus', FIELD.choice, {
-      '__metadata': { 'type': 'SP.FieldChoice' },
-      'Choices': { 'results': ['Geplant', 'InArbeit', 'Live', 'Archiviert'] },
-    });
+    //
+    // Das Ergebnis wird MITGEZAEHLT. Bis v1.0.1 lief das als best-effort mit
+    // einem console.warn — und wenn die Spalten nicht entstanden, antwortete
+    // der spaetere `$select` mit HTTP 400 „field does not exist". Der Fehler
+    // stand dann in der Oberflaeche als „Die Use Cases konnten nicht geladen
+    // werden", und niemand konnte sehen, dass die LISTE das Problem war.
+    const fehlend: string[] = [];
+    const merke = async (name: string, p: Promise<boolean>): Promise<void> => {
+      if (!(await p)) fehlend.push(name);
+    };
+
+    await merke('Kurzbeschreibung', this.feldNote(name, 'Kurzbeschreibung'));
+    await merke('Beschreibung', this.feldNote(name, 'Beschreibung', true));
+    await merke('Bereich', this.feldText(name, 'Bereich'));
+    await merke('UcStatus', this.feldAuswahl(name, 'UcStatus', ['Geplant', 'InArbeit', 'Live', 'Archiviert']));
     for (const dim of ['SalesRelevanz', 'Machbarkeit', 'DemoTauglichkeit']) {
-      await this.ensureField(name, dim, FIELD.choice, {
-        '__metadata': { 'type': 'SP.FieldChoice' },
-        'Choices': { 'results': ['Hoch', 'Mittel', 'Niedrig'] },
-      });
+      await merke(dim, this.feldAuswahl(name, dim, ['Hoch', 'Mittel', 'Niedrig']));
     }
-    await this.ensureField(name, 'AufrufArt', FIELD.choice, {
-      '__metadata': { 'type': 'SP.FieldChoice' },
-      'Choices': { 'results': ['fenster', 'eingebettet'] },
-    });
+    await merke('AufrufArt', this.feldAuswahl(name, 'AufrufArt', ['fenster', 'eingebettet']));
     for (const link of ['LinkSourceCode', 'LinkDeployment', 'LinkGuide', 'LinkWiki', 'LinkVideo', 'BildUrl']) {
-      await this.ensureField(name, link, FIELD.note);
+      await merke(link, this.feldNote(name, link));
     }
-    await this.ensureField(name, 'Reihenfolge', FIELD.number);
-    await this.ensureField(name, 'BetreuerEmails', FIELD.note);
-    await this.ensureField(name, 'BetreuerNamen', FIELD.note);
-    await this.ensureField(name, 'Schlagworte', FIELD.note);
+    await merke('Reihenfolge', this.feldZahl(name, 'Reihenfolge'));
+    for (const f of ['BetreuerEmails', 'BetreuerNamen', 'Schlagworte']) {
+      await merke(f, this.feldNote(name, f));
+    }
+    this.fehlendeSpalten = fehlend;
+    if (fehlend.length > 0) {
+      console.warn(`[AIUC] Diese Spalten fehlen auf ${name}: ${fehlend.join(', ')}`);
+    }
 
     return { isNewlyCreated: !existed };
   }
@@ -550,10 +626,10 @@ export class SharePointService {
     if (!(await this.listExists(name))) {
       await this.createList(name, 'Aenderungsprotokoll der AI Use Case Platform');
     }
-    await this.ensureField(name, 'UseCaseId', FIELD.number);
-    await this.ensureField(name, 'Aktion', FIELD.text);
-    await this.ensureField(name, 'Detail', FIELD.note);
-    await this.ensureField(name, 'Wer', FIELD.text);
+    await this.feldZahl(name, 'UseCaseId');
+    await this.feldText(name, 'Aktion');
+    await this.feldNote(name, 'Detail');
+    await this.feldText(name, 'Wer');
   }
 
   private mapUseCase(row: SpUseCaseRow): UseCase {
@@ -588,6 +664,9 @@ export class SharePointService {
       betreuerNamen: liste(row.BetreuerNamen),
       schlagworte: liste(row.Schlagworte),
       geaendertAm: row.Modified || '',
+      // Ohne `$expand` gibt es den Namen nicht mehr. Das ist der Preis
+      // dafuer, dass das Lesen nicht an einer fehlenden Spalte scheitert —
+      // und ein fehlender Name ist harmloser als eine leere Plattform.
       geaendertVon: row.Editor?.Title || '',
     };
   }
@@ -597,23 +676,37 @@ export class SharePointService {
    *
    * `null` heisst nicht lesbar. Eine leere Kachelwand und ein Rechte-Fehler
    * sehen sonst gleich aus — und die Kachelwand ist die ganze App.
+   *
+   * **Kein `$select`, kein `$expand`, kein `$orderby`.** Bis v1.0.1 stand hier
+   * eine Liste von zwanzig Spaltennamen. Fehlt EINE davon — weil das Anlegen
+   * still gescheitert ist —, antwortet SharePoint mit HTTP 400 „field does not
+   * exist", und die ganze Seite ist leer. Genau so gemeldet am 10.09.2026.
+   * Die Abfrage nennt jetzt keine Spalte mehr: Was da ist, wird gelesen; was
+   * fehlt, faellt in `mapUseCase` auf seinen Vorgabewert. Sortiert wird im
+   * Browser — bei ein paar Dutzend Demos kostet das nichts und kann nicht
+   * scheitern, weil `Reihenfolge` mal fehlt.
    */
   public async getUseCases(): Promise<UseCase[] | null> {
     this.lastUseCasesReadStatus = 0;
+    this.lastReadError = '';
     try {
-      const select = 'Id,Title,Kurzbeschreibung,Beschreibung,Bereich,UcStatus,SalesRelevanz,Machbarkeit,'
-        + 'DemoTauglichkeit,AufrufArt,LinkSourceCode,LinkDeployment,LinkGuide,LinkWiki,LinkVideo,'
-        + 'BildUrl,Reihenfolge,BetreuerEmails,BetreuerNamen,Schlagworte,Modified,Editor/Title';
       const r = await this._sp.get(
-        `${this.list(LIST.useCases)}/items?$select=${select}&$expand=Editor&$orderby=Reihenfolge asc,Title asc&$top=500`,
+        `${this.list(LIST.useCases)}/items?$top=500`,
         SPHttpClient.configurations.v1,
         { headers: { 'Accept': 'application/json;odata=nometadata' } },
       );
       this.lastUseCasesReadStatus = r.status;
-      if (!r.ok) return null;
+      if (!r.ok) {
+        this.lastReadError = await this.fehlertext(r);
+        console.warn(`[AIUC] Use Cases lesen: HTTP ${r.status} — ${this.lastReadError}`);
+        return null;
+      }
       const d = await r.json();
-      return ((d.value || []) as SpUseCaseRow[]).map(row => this.mapUseCase(row));
-    } catch {
+      const rows = ((d.value || []) as SpUseCaseRow[]).map(row => this.mapUseCase(row));
+      rows.sort((a, b) => (a.reihenfolge - b.reihenfolge) || a.titel.localeCompare(b.titel, 'de'));
+      return rows;
+    } catch (e) {
+      this.lastReadError = String(e);
       return null;
     }
   }
