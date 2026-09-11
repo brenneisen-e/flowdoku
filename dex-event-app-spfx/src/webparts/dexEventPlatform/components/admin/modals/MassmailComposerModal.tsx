@@ -18,6 +18,7 @@ import { buildInlineImage, charsToKb } from '../../../utils/inlineMailImage';
 // v31.10: Dieselbe Rechnung wie die Anmeldeseite — wer dort ausgeblendet ist,
 // steht auch nicht im CC. Die Regel liegt in EINER Datei, nicht hier.
 import { visibleOrganizerEmails } from '../../../utils/organizerVisibility';
+import { PollComposerSection } from '../PollComposerSection';
 
 export interface MassmailComposerModalProps {
   applyMassmailHero: (wrappedHtml: string) => string;
@@ -367,6 +368,18 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
                     {isDe ? 'Breite und Abstand des Bildes stellst du weiter unten ein.' : 'Width and spacing of the image are set further down.'}
                   </div>
                 </div>
+
+                {/* v31.12: Die Umfrage sitzt hier — nach dem Kopf, vor der
+                    Absende-Prüfung. Nutzer-Ansage 11.09.2026: erreichbar über
+                    „E-Mail versenden", nicht als eigener Weg daneben. */}
+                <PollComposerSection
+                  selectedEvent={selectedEvent}
+                  eventServiceRef={eventServiceRef}
+                  isDe={isDe}
+                  disabled={emailSending}
+                  emailBody={emailBody}
+                  setEmailBody={setEmailBody}
+                />
 
                 <div>
                   <div className="dex-ui-section-title">{isDe ? 'Bevor du sendest' : 'Before you send'}</div>
