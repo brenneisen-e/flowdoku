@@ -49,6 +49,7 @@ import * as regListRepair from './events/regListRepair';
 import * as qrSentBackfill from './events/qrSentBackfill';
 import * as quiz from './events/quiz';
 import * as poll from './events/poll';
+import * as waitlistShadow from './events/waitlistShadow';
 import * as teilnehmerIdCounter from './events/teilnehmerIdCounter';
 import * as eventAssets from './events/eventAssets';
 import * as branding from './events/branding';
@@ -1748,6 +1749,19 @@ export class EventService {
     isComplete: boolean
   ): Promise<boolean> {
     return quiz.saveQuizProgress(this, subsiteUrl, itemId, score, answers, isComplete);
+  }
+
+  // ==================== Wartelisten-Schattenevent ====================
+  // v31.16: Implementierung in services/events/waitlistShadow.ts.
+  // Das Ausladen haengt in `queueOutlookEvent` — hier steht nur das Anlegen
+  // und das Aufraeumen beim Loeschen des echten Events.
+
+  public async ensureWaitlistShadow(ev: import('../types').DeloitteEvent): Promise<{ id: string; title: string } | null> {
+    return waitlistShadow.ensureWaitlistShadow(this, ev);
+  }
+
+  public async removeWaitlistShadow(eventId: string, eventTitle: string): Promise<boolean> {
+    return waitlistShadow.removeWaitlistShadow(this, eventId, eventTitle);
   }
 
   // ==================== Umfrage nach dem Event ====================

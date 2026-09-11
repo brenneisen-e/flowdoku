@@ -54,6 +54,7 @@ import { makeMailActions } from './actions/mails';
 
 import { EventContextType, CreateEventInput, SelfCheckInParams, SelfCheckInStatus, SelfCheckInResult, EventStatsRow, FixColumnsDetail } from './eventContextTypes';
 import { CounterStats } from '../services/events/seats';
+import { isWaitlistShadow, waitlistBlockerEnabled } from '../services/events/waitlistShadow';
 // v30.66: Die Typen liegen jetzt in `eventContextTypes.ts`; hier nur noch
 // re-exportiert, damit bestehende Importe aus `EventContext` weiter tragen.
 export { EventContextType, CreateEventInput, SelfCheckInParams, SelfCheckInStatus, SelfCheckInResult, EventStatsRow, FixColumnsDetail };
@@ -324,7 +325,16 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         return null;
       }
     }));
-    const mapped = safeMapped.filter((x): x is DeloitteEvent => x !== null);
+    // v31.16: Wartelisten-Schattenevents sind KEINE Events. Sie stehen in
+    // DEX_Events, damit `DEX_CreateOutlookEvent` ihnen einen Kalendertermin
+    // gibt — in der App haben sie nichts zu suchen. Der Filter sitzt hier und
+    // nicht in den Ansichten: Das ist der Flaschenhals, durch den jede Liste,
+    // jede Kachel, das Organizer Center und alle Kennzahlen gehen. Ein Filter
+    // weiter unten waere einer von zwanzig, und der einundzwanzigste waere
+    // der, an dem das Schattenevent doch auftaucht.
+    const mapped = safeMapped
+      .filter((x): x is DeloitteEvent => x !== null)
+      .filter(x => !isWaitlistShadow(x));
     const dMap = Math.round(performance.now() - tMap);
     // eslint-disable-next-line no-console
     dlog('perf', `[DEX][perf][loadEvents] mapSPEventToDeloitteEvent x ${spEvents.length} = ${dMap} ms`);
@@ -1539,11 +1549,27 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       // v15.25: Schatten-Parent-Registrierung im subEventsOnlyMode bekommt
       // keinen Outlook-Termin (s.o. — der User „nimmt teil" an Sub-Events,
       // nicht am Parent).
-      if (status !== 'Warteliste' && !event.disableOutlook && !skipOutlookForExternal && !suppressParentOutlook && !opts?.suppressOutlook
-        && !(childSuppressedByParent && parentBundled.outlook)) {
+      const outlookMoeglich = !event.disableOutlook && !skipOutlookForExternal && !suppressParentOutlook && !opts?.suppressOutlook
+        && !(childSuppressedByParent && parentBundled.outlook);
+      if (status !== 'Warteliste' && outlookMoeglich) {
         eventService.queueOutlookEvent(
           emailToUse, eventId, event.title, 'Einladen'
         ).catch(err => console.warn('[DEX] queueOutlookEvent failed:', err));
+      }
+      // v31.15: Wartende bekommen einen Platzhalter „mit Vorbehalt", wenn der
+      // Organizer das fuer dieses Event eingeschaltet hat. Bewusst an
+      // DENSELBEN Bedingungen wie die echte Einladung: Wo kein Outlook-Termin
+      // entsteht (externe Adresse, Outlook abgeschaltet, Schattenzeile der
+      // Klammer), gibt es auch nichts freizuhalten.
+      if (status === 'Warteliste' && outlookMoeglich && waitlistBlockerEnabled(event.emailTemplateOverrides)) {
+        // Das Schattenevent wird ERST hier angelegt — also wenn wirklich
+        // jemand wartet. Danach ist die Einladung dorthin eine ganz normale
+        // `Einladen`-Zeile; der bestehende Flow braucht davon nichts zu wissen.
+        (async () => {
+          const schatten = await eventService.ensureWaitlistShadow(event);
+          if (!schatten) return;
+          await eventService.queueOutlookEvent(emailToUse, schatten.id, schatten.title, 'Einladen');
+        })().catch(err => console.warn('[DEX] Wartelisten-Platzhalter:', err));
       }
       // v11.53: KPI-Counter sofort hochzählen, damit der nächste Boot-
       // Loader die neue Zahl ohne Verzögerung zeigt. Nur für 'Angemeldet'-

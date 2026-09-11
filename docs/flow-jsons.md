@@ -7192,3 +7192,149 @@ ohnehin keinen App-Zugriff.
 
 **TODO nach Einrichtung:** Flow-JSON aus dem Code-View kopieren und hier als
 Abschnitt „Finaler Flow-JSON DEX_AccessFix_Autor" einpflegen.
+
+
+---
+
+## v31.16 — Wartelisten-Platzhalter über ein Schattenevent
+
+**Entwurf des Nutzers, 11.09.2026**, nachdem zwei eigene Vorschläge verworfen
+wurden: „kann man nicht einfach ein zusätzliches Schattenevent erzeugen …
+beim Schattenevent gibt es immer nur das Outlook-Ding, sonst nichts. Sieht der
+Organizer auch nicht. Und wenn jemand nachrückt, dann wird das Schattenevent
+für ihn abgesagt und er kriegt ja automatisch aus dem richtigen Event den
+Outlook-Eintrag."
+
+**Das trägt — und es braucht KEINEN neuen Flow.** Der Grund liegt in zwei
+Eigenschaften, die DEX schon hat:
+
+1. `DEX_CreateOutlookEvent` triggert auf JEDE neue Zeile in `DEX_Events` und
+   liest davon genau vierzehn Spalten. Eine Zeile mit diesen Feldern bekommt
+   von selbst einen Kalendertermin, und der Flow schreibt die `CalendarLink`
+   zurück.
+2. `DEX_Outlook_Einladungen` lädt über `Einladen`/`Ausladen` Leute in einen
+   Termin hinein und wieder heraus — egal, zu welchem Event die Zeile gehört.
+
+Die App legt also beim ersten Wartenden eine zusätzliche, **unsichtbare**
+Zeile in `DEX_Events` an (Titel `Warteliste: <Event>`, Piggyback
+`_waitlistShadowFor`), lädt Wartende dort ganz normal ein — und filtert die
+Zeile in `loadEvents` aus jeder Ansicht heraus.
+
+### Die eine Lücke, und wo sie geschlossen wird
+
+**Nachgerückt wird vom Flow, nicht von der App.**
+`DEX_IDReorder_TeilnehmerIDs` schreibt die `Einladen`-Zeile selbst in
+`DEX_Outlook` — an drei Stellen (`Queue_Outlook_Durchstarter`,
+`Queue_Outlook_Funstarter`, `Queue_Outlook`). Die App erfährt davon nichts;
+ihr Aufräum-Haken in `queueOutlookEvent` läuft nie. Ein nachgerückter Mensch
+behielte den Platzhalter (vom Nutzer am 11.09.2026 gefunden).
+
+**IDReorder ist trotzdem die falsche Stelle:** drei Zweige, plus eine Suche
+nach dem Schattenevent in jedem — und es erfasst die Fälle NICHT, in denen die
+App nachrückt („Freie Plätze mit Warteliste füllen", Klammer-Aktionen).
+
+Die richtige Stelle ist **`DEX_Outlook_Einladungen`, hinter der Verzweigung**:
+Jede Einladung und jede Abmeldung — von der App wie vom Nachrück-Flow — läuft
+durch diesen einen Flow.
+
+### Übersichtstabelle
+
+| # | NEU/GEÄNDERT | Name der Action | Art der Action | Stelle |
+|---|---|---|---|---|
+| 1 | NEU | `Schatten_suchen` | Get items (SharePoint) | In `DEX_Outlook_Einladungen`, direkt nach `Has_OutlookEventId`, VOR `Find_Lock` |
+| 2 | NEU | `Schatten_vorhanden` | Condition (Control) | Direkt nach `Schatten_suchen` |
+| 3 | NEU | `Aus_Schatten_ausladen` | Create item (SharePoint) | **True**-Zweig von `Schatten_vorhanden` |
+
+#### Zeile 1 — `Schatten_suchen` (Get items) · NEU
+
+- [ ] Power Automate öffnen, Flow **DEX_Outlook_Einladungen**, **Edit**.
+- [ ] Auf das **+** zwischen **Has OutlookEventId** und **Find Lock** klicken,
+      **Add an action** → **Get items** (SharePoint).
+- [ ] Über **…** → **Rename**: `Schatten_suchen`
+- [ ] **Site Address**:
+
+```
+https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform
+```
+
+- [ ] **List Name**: `DEX_Events`
+- [ ] **Advanced parameters** aufklappen, **Filter Query** über den
+      **Expression**-Tab (fx) — nicht als Text:
+
+```
+concat('Title eq ''Warteliste: ',replace(string(first(outputs('Get_Event_Details')?['body/value'])?['Title']),'''',''''''),'''')
+```
+
+- [ ] **Top Count**: `1`
+- [ ] Über **…** → **Settings** unter **Configure run after** bei
+      `Has_OutlookEventId` **is successful**, **has failed**, **is skipped**
+      und **has timed out** anhaken — genauso wie bei `Find_Lock`. Sonst
+      bleibt der Lock liegen, wenn diese Action übersprungen wird.
+
+#### Zeile 2 — `Schatten_vorhanden` (Condition) · NEU
+
+- [ ] Direkt danach **Add an action** → **Condition** (Kategorie **Control**).
+- [ ] **Rename**: `Schatten_vorhanden`
+- [ ] Linkes Feld über den **Expression**-Tab (fx):
+
+```
+and(greater(length(outputs('Schatten_suchen')?['body/value']),0),or(equals(triggerBody()?['ActionType']?['Value'],'Einladen'),equals(triggerBody()?['ActionType']?['Value'],'Ausladen')))
+```
+
+- [ ] Operator **is equal to**, rechtes Feld: `true` (als Text).
+- [ ] Der **False**-Zweig bleibt leer.
+
+#### Zeile 3 — `Aus_Schatten_ausladen` (Create item) · NEU
+
+- [ ] Im **True**-Zweig: **Add an action** → **Create item** (SharePoint).
+- [ ] **Rename**: `Aus_Schatten_ausladen`
+- [ ] **Site Address**: dieselbe. **List Name**: `DEX_Outlook`
+- [ ] **Title** über den **Expression**-Tab (fx):
+
+```
+concat('Ausladen: ',string(first(outputs('Schatten_suchen')?['body/value'])?['Title']))
+```
+
+- [ ] **Attendee** über den **Expression**-Tab (fx):
+
+```
+triggerBody()?['Attendee']
+```
+
+- [ ] **EventId** über den **Expression**-Tab (fx):
+
+```
+string(first(outputs('Schatten_suchen')?['body/value'])?['ID'])
+```
+
+- [ ] **ActionType Value**: `Ausladen`
+- [ ] **Status Value**: `Pending`
+- [ ] **Save**.
+
+> **Warum das nicht in einer Schleife landet:** Die neue Zeile ist ein
+> `Ausladen` auf das SCHATTENEVENT. Beim nächsten Durchlauf sucht
+> `Schatten_suchen` nach `Warteliste: Warteliste: <Event>` — das gibt es
+> nicht, die Bedingung ist falsch, und der Zweig läuft nicht.
+
+### Test
+
+- [ ] Test-Event mit **Kapazität 1** und eingeschalteter **Warteliste**,
+      Outlook-Termin aktiv.
+- [ ] Im Organizer Center die Aktion **„Wartelisten-Platzhalter: aus"**
+      anklicken und bestätigen.
+- [ ] Zwei Personen anmelden. Die zweite landet auf der Warteliste.
+- [ ] In `DEX_Events` entsteht eine Zeile **„Warteliste: &lt;Event&gt;"** — sie
+      taucht in der App **nirgends** auf.
+- [ ] Im Kalender der zweiten Person: ein Termin **„Warteliste: &lt;Event&gt;"**,
+      schraffiert (mit Vorbehalt), mit dem Hinweistext, dass es keine Zusage ist.
+- [ ] Die erste Person abmelden. Die zweite rückt nach: Sie bekommt die
+      **richtige** Einladung, und der Wartelisten-Termin **verschwindet**.
+
+**Wenn etwas nicht stimmt:**
+
+| Beobachtung | Ursache |
+|---|---|
+| Kein Wartelisten-Termin | Der Schalter im Organizer Center steht auf „aus", oder das Event hat `disableOutlook`. In `DEX_Events` nachsehen, ob die `Warteliste:`-Zeile entstanden ist. |
+| Zeile da, aber kein Kalendereintrag | `DEX_CreateOutlookEvent` prüfen (Run history) — die Zeile braucht `StartDate`, `EndDate` und `OrganizerEmail`. |
+| Nachgerückte Person behält den Platzhalter | Die drei Actions oben fehlen, oder `Schatten_suchen` findet nichts: Der Titel muss **exakt** `Warteliste: <Event-Titel>` lauten. Ein umbenanntes Event bricht die Verbindung — dann die Schatten-Zeile in SharePoint von Hand nachbenennen. |
+| Das Schattenevent taucht in der App auf | Die installierte Version ist älter als v31.16 (der Filter sitzt in `loadEvents`). |

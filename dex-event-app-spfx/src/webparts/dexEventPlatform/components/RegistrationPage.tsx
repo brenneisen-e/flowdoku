@@ -52,6 +52,7 @@ import { PersonalDataSection } from './registration/PersonalDataSection';
 import { EventCard } from './registration/EventCard';
 import { DeadlineBanner, DemoBanner, LocationBanner, SubmitOverlay } from './registration/RegistrationBanners';
 import { createSubmitFlow } from './registration/submitFlow';
+import { waitlistBlockerEnabled } from '../services/events/waitlistShadow';
 import type { ReactDatePickerProps } from 'react-datepicker';
 
 /**
@@ -1998,8 +1999,16 @@ export default function RegistrationPage(): React.ReactElement {
     // von dort und sagt über die Termine nichts.
     const allSessionsWaitlisted = sessionsOnlyHint && submittedAsWaitlist && waitlistedCount > 0;
     // Der Kalender-Satz nur, wo es überhaupt Outlook-Termine gibt.
+    // v31.15: Ist der Wartelisten-Platzhalter eingeschaltet, stimmt der alte
+    // Satz nicht mehr — dann steht der Termin sehr wohl schon im Kalender,
+    // nur eben mit Vorbehalt. Ein Hinweis, der das Gegenteil behauptet,
+    // lässt die Person den Eintrag für einen Fehler halten.
     const waitlistOutlookHint = childEvents.some(ce => !ce.disableOutlook)
-      ? (locale === 'de' ? ' Einen Outlook-Termin gibt es dafür erst mit dem Platz.' : ' An Outlook invitation follows once you have a spot.')
+      ? (waitlistBlockerEnabled(event.emailTemplateOverrides)
+        ? (locale === 'de'
+          ? ' Im Kalender steht dafür ein Platzhalter „mit Vorbehalt", der dir den Termin freihält — die richtige Einladung kommt mit dem Platz.'
+          : ' Your calendar shows a tentative placeholder holding the slot — the real invitation follows once you have a spot.')
+        : (locale === 'de' ? ' Einen Outlook-Termin gibt es dafür erst mit dem Platz.' : ' An Outlook invitation follows once you have a spot.'))
       : '';
     // Zusatz für die Fälle, in denen die Erfolgsseite nur einen Fließtext hat
     // (also ohne die aufgeschlüsselte Terminliste des subEventsOnlyMode).

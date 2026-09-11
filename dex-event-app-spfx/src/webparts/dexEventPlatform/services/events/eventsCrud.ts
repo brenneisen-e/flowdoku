@@ -978,6 +978,15 @@ export async function deleteEvent(svc: EventService, eventId: number): Promise<b
         await svc.queueOutlookDeleteEvent(String(eventId), event.Title || '', event.CalendarLink);
       } catch { /* Queue-Fehler ignorieren */ }
     }
+    // v31.16: Das Wartelisten-Schattenevent mit abräumen — ebenfalls VOR
+    // allem anderen. Ein Schattenevent, dessen echtes Event weg ist, ist ein
+    // Termin in fremden Kalendern, den niemand mehr absagen kann; und seine
+    // Zeile in DEX_Events wäre für immer da, unsichtbar (der Filter in
+    // `loadEvents` blendet sie aus) und ohne Bezug. Fehler hier ignorieren —
+    // der Event-Delete soll trotzdem durchlaufen.
+    try {
+      await svc.removeWaitlistShadow(String(eventId), event.Title || '');
+    } catch { /* best-effort */ }
     // 1. Subsite RECYCEN (v9.0: nicht mehr per DELETE, sonst landet die
     //    Subsite permanent weg ohne Recycle-Bin-Eintrag. recycle() legt
     //    die Subsite mitsamt Teilnehmerliste 93 Tage in den Site
