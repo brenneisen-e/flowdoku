@@ -38,7 +38,7 @@ import QrSentIdBackfillModal from './admin/QrSentIdBackfillModal';
 import { SHIRT_PATTERN } from '../utils/checkInExtras';
 import { isEventOver } from '../utils/eventFormat';
 import AddParticipantsModal from './admin/AddParticipantsModal';
-import { accountCheckCacheKey } from '../utils/accountCheckCache';
+import { accountCheckCacheKey, readAccountChecks, writeAccountChecks } from '../utils/accountCheckCache';
 // v20.1: Self-Check-in jederzeit aktivierbar (Token-Erzeugung beim Klick).
 // v20.2: + statische Check-in-URL für die QR-Kachel im Event-Detail.
 // v20.3: + Default-Zeitfenster (2 Std. vor Start bis Event-Ende) zur Vorbelegung.
@@ -582,32 +582,36 @@ export default function AdminPage(): React.ReactElement {
   // (klein→groß-Flackern). null = keine Reservierung aktiv.
   const detailCardRef = React.useRef<HTMLDivElement>(null);
   const [reservedDetailHeight, setReservedDetailHeight] = React.useState<number | undefined>(undefined);
-  // v23.6: Breiten-Reservierung gegen das „Springen" der Detail-Karte beim
-  // Wechsel zwischen Klammer und Sub-Events (manche Tabs sind breiter, z.B.
-  // konsolidierte Matrix vs. schmales Sub-Event). Die Karte wächst auf die
-  // größte Inhaltsbreite INNERHALB derselben Event-Gruppe (Hauptevent + seine
-  // Sub-Events) und schrumpft danach nicht mehr — das breiteste Event gibt die
-  // Breite vor. Reset bei Wechsel auf eine andere Event-Gruppe.
-  const [reservedDetailWidth, setReservedDetailWidth] = React.useState<number | undefined>(undefined);
-  const widthGroupRef = React.useRef<string>('');
-  // v23.6: Misst nach jedem relevanten Render die tatsächliche Inhaltsbreite
-  // (scrollWidth inkl. überlaufender Tabelle) und hält das Maximum pro
-  // Event-Gruppe (Hauptevent-ID = parentEventId || id) fest. Wird als minWidth
-  // an die Karte gelegt → schmale Tabs bleiben so breit wie der breiteste,
-  // und während des Nachladens schrumpft nichts (kein „erst klein, dann breit").
-  React.useLayoutEffect(() => {
-    if (!selectedEvent || !detailCardRef.current) return;
-    const groupId = selectedEvent.parentEventId || selectedEvent.id;
-    const w = detailCardRef.current.scrollWidth;
-    if (widthGroupRef.current !== groupId) {
-      // Neue Event-Gruppe → frisch mit der natürlichen Breite starten.
-      widthGroupRef.current = groupId;
-      setReservedDetailWidth(w || undefined);
-    } else {
-      setReservedDetailWidth(prev => (prev && prev >= w ? prev : w));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEvent?.id, isLoadingRegs, registrations]);
+  /*
+   * v31.22: Die Breiten-Messung ist ERSATZLOS entfallen (Nutzer-Ansage
+   * 11.09.2026: „zudem springt das Fenster immer, wenn man zwischen Events
+   * umschaltet — die Breite des Fensters sollte sich nicht verändern, auch
+   * nicht beim Wechsel oder Laden, sondern nur die angezeigten Daten").
+   *
+   * Hier stand seit v23.6 eine Reservierung: Ein `useLayoutEffect` maß nach
+   * jedem Render die `scrollWidth` der Karte und legte sie als `minWidth`
+   * zurück auf dieselbe Karte — bei jedem Wechsel, bei jedem Ladeschritt, bei
+   * jeder Änderung an `registrations`. Eine Breite, die sich aus dem eigenen
+   * Inhalt speist, IST das Springen: Erst misst sie den leeren Zwischenstand,
+   * dann den vollen, und dazwischen bewegt sich die Seite zweimal.
+   *
+   * Gebraucht wird sie nicht mehr. v23.6 sollte verhindern, dass eine breite
+   * Tabelle die Karte aufbläht und ein schmaler Termin sie wieder
+   * zusammenfallen lässt — seit v28.53/v30.38 rollen aber BEIDE Tabellen in
+   * ihrem eigenen Container (`dex-ui-table-wrap` + `--sticky`), die Karte
+   * wird also gar nicht mehr breiter als die Zeile, in der sie steht. Der
+   * Kommentar in `ParticipantTable` (v17.13, „Tabelle lässt die Karte
+   * horizontal überlaufen") beschreibt einen Stand, den es seit v31.3 nicht
+   * mehr gibt.
+   *
+   * `minWidth: 0` statt gar nichts ist der Punkt, an dem es hängt: Ein
+   * Flex-Kind hat `min-width: auto` und lässt sich von seinem Inhalt breiter
+   * schieben als seine Zeile. Genau daran wuchs die Seite.
+   *
+   * Die HÖHEN-Reservierung bleibt — sie verhindert, dass die Karte während
+   * des Nachladens auf die „Lade …"-Zeile zusammenklappt, und das hat der
+   * Nutzer nicht beanstandet.
+   */
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   // v9.0: Danger-Zone-Modal — User muss den Event-Titel exakt (lowercase)
   // eintippen bevor der Lösch-Button aktiv wird. Schutz gegen versehentliche
@@ -1250,6 +1254,32 @@ export default function AdminPage(): React.ReactElement {
     // v26.42: _v2 — alte Caches enthielten Fehlalarme für umbenannte Konten (Heirat).
     // v29.31: Schlüssel zentral (utils/accountCheckCache) — die Startseiten-Box
     // und die Invalidierung nach einer Abmeldung müssen denselben treffen.
+    /*
+     * v31.22 — die zweite Ursache des langsamen Reiterwechsels (Nutzer-Befund
+     * 11.09.2026: „dauert extrem lange mit Laden nach Klick auf ein anderes
+     * Sub-Event … weiter optimieren").
+     *
+     * Der Cache lag je EVENT. Bei einem Klammer-Event sind es aber weitgehend
+     * DIESELBEN Personen in allen Terminen (65 / 417 / 427, mit riesiger
+     * Schnittmenge). Jeder Reiterwechsel war deshalb ein Cache-Miss und
+     * prüfte alles erneut: 417 Adressen in Siebener-Batches = 60
+     * Graph-Abfragen NACHEINANDER, dazu bis zu 60 weitere im Alias-Durchgang.
+     *
+     * Jetzt liegt das Ergebnis je ADRESSE (`readAccountChecks`). Gefragt wird
+     * nur noch nach dem, was wirklich unbekannt ist — beim zweiten Reiter
+     * sind das eine Handvoll Leute statt vierhundert.
+     *
+     * Der Event-Cache bleibt als zweite Stufe bestehen: Er beantwortet die
+     * Frage „wer aus DIESEM Event ist betroffen" und wird nach einer
+     * Abmeldung verworfen, während das Adress-Ergebnis dann weiter gilt.
+     */
+    const bekannt = readAccountChecks();
+    const offen = emails.filter(e => bekannt[e] === undefined);
+    if (offen.length === 0) {
+      setInactiveAccounts(emails.filter(e => bekannt[e] && bekannt[e].a === false));
+      return undefined;
+    }
+
     const cacheKey = accountCheckCacheKey(selectedEvent.id);
     try {
       const raw = window.localStorage.getItem(cacheKey);
@@ -1269,15 +1299,32 @@ export default function AdminPage(): React.ReactElement {
       }
     } catch { /* localStorage evtl. blockiert */ }
     let cancelled = false;
-    (async () => {
-      try {
-        const res = await eventServiceRef.checkAccountsActive(emails);
-        if (cancelled || !res.ok) return;
-        setInactiveAccounts(res.inactive);
-        try { window.localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), inactive: res.inactive, checked: emails })); } catch { /* */ }
-      } catch { /* best-effort */ }
-    })();
-    return () => { cancelled = true; };
+    /*
+     * v31.22: Erst rendern, dann prüfen. Die Prüfung ist ein Hinweis am Rand
+     * („hat womöglich das Unternehmen verlassen"), nicht der Inhalt der
+     * Seite — sie darf dem Aufbau der Tabelle nicht die Leitung wegnehmen.
+     * Eine Sekunde Vorlauf reicht dafür und ist auch dann noch weit vor dem
+     * Moment, in dem jemand den Hinweis liest.
+     */
+    const starter = window.setTimeout(() => {
+      (async () => {
+        try {
+          // Nur die UNBEKANNTEN Adressen — der Rest steht schon im Cache.
+          const res = await eventServiceRef.checkAccountsActive(offen);
+          if (cancelled || !res.ok) return;
+          const inaktivSet: Record<string, true> = {};
+          res.inactive.forEach(e => { inaktivSet[e] = true; });
+          // Nur die wirklich geprüften Adressen wegschreiben: `checkAccountsActive`
+          // meldet aus fehlgeschlagenen Batches NICHTS — die als „aktiv" zu
+          // cachen hiesse, einen Lesefehler 24 Stunden lang festzuhalten.
+          writeAccountChecks(res.checked.filter(e => !inaktivSet[e]), res.inactive);
+          const alle = readAccountChecks();
+          setInactiveAccounts(emails.filter(e => alle[e] && alle[e].a === false));
+          try { window.localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), inactive: res.inactive, checked: emails })); } catch { /* */ }
+        } catch { /* best-effort */ }
+      })().catch(() => { /* */ });
+    }, 1000);
+    return () => { cancelled = true; window.clearTimeout(starter); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEvent?.id, registrations.length, eventServiceRef]);
 
@@ -2342,7 +2389,7 @@ export default function AdminPage(): React.ReactElement {
     activeRegs, childEventsOf, confirmDialog, detailCardRef, events,
     evTabHover, handleSelectEvent, isAdmin, isConsolidatedMode, isDe, isImpersonating,
     isLoadingRegs, isMobile, isOrganizerFor, navigate, openTabGroup, registrations, regsUnknown,
-    reservedDetailHeight, reservedDetailWidth, selectedEvent, setCheckInHubOpen, setCheckInHubStep, setEvTabHover,
+    reservedDetailHeight, selectedEvent, setCheckInHubOpen, setCheckInHubStep, setEvTabHover,
     setOpenTabGroup, subEventRegsByEventId, subListsIncomplete, t, toggleDraftStatus, waitlistRegs,
   };
   const nextStepsBoxProps = {

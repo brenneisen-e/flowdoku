@@ -357,25 +357,49 @@ export async function getDeclinedAttendees(
  *   als inaktiv gemeldet werden — fehlgeschlagene Batches erzeugen keinen
  *   Fehlalarm. `ok=false`, wenn gar nichts geprüft werden konnte.
  */
+/**
+ * v31.22: Mehrere Batches gleichzeitig, aber gedeckelt.
+ *
+ * Die Batches liefen strikt nacheinander (`for` mit `await`). Bei 417
+ * Adressen sind das 60 Graph-Abfragen hintereinander, im Alias-Durchgang
+ * noch einmal bis zu 60 — im Organizer Center der spürbarste Teil des
+ * Reiterwechsels (Nutzer-Befund 11.09.2026).
+ *
+ * Sechs gleichzeitig ist kein Wunschwert: Browser öffnen je Host rund sechs
+ * Verbindungen; mehr würde nur in der Warteschlange des Browsers stehen und
+ * gleichzeitig Graph zum Drosseln reizen. Aus 60 Runden werden damit zehn.
+ */
+async function mitGrenze<T>(aufgaben: Array<() => Promise<T>>, grenze: number): Promise<void> {
+  let next = 0;
+  const laeufer = new Array(Math.min(grenze, aufgaben.length)).fill(0).map(async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= aufgaben.length) return;
+      await aufgaben[i]();
+    }
+  });
+  await Promise.all(laeufer);
+}
+
 export async function checkAccountsActive(
   svc: EventService,
   emails: string[]
-): Promise<{ ok: boolean; inactive: string[] }> {
+): Promise<{ ok: boolean; inactive: string[]; checked: string[] }> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ctx = svc.context as any;
-  if (!ctx.msGraphClientFactory) return { ok: false, inactive: [] };
+  if (!ctx.msGraphClientFactory) return { ok: false, inactive: [], checked: [] };
   const candidates = Array.from(new Set(
     emails
       .map(e => (e || '').trim().toLowerCase())
       .filter(e => /@(.*\.)?deloitte\.(de|com)$/i.test(e))
   ));
-  if (candidates.length === 0) return { ok: true, inactive: [] };
+  if (candidates.length === 0) return { ok: true, inactive: [], checked: [] };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let client: any;
   try {
     client = await ctx.msGraphClientFactory.getClient('3');
   } catch {
-    return { ok: false, inactive: [] };
+    return { ok: false, inactive: [], checked: [] };
   }
   const activeSet = new Set<string>();
   const checkedSet = new Set<string>();
@@ -384,8 +408,10 @@ export async function checkAccountsActive(
   // erzeugen wir 2 Klauseln (mail + userPrincipalName) → Batch 8 = 16 Klauseln
   // → JEDER Batch scheiterte mit HTTP 400. Batch 7 = 14 Klauseln.
   const BATCH = 7;
+  const aufgaben1: Array<() => Promise<void>> = [];
   for (let i = 0; i < candidates.length; i += BATCH) {
     const batch = candidates.slice(i, i + BATCH);
+    aufgaben1.push(async () => {
     const clauses = batch
       .map(e => `mail eq '${esc(e)}' or userPrincipalName eq '${esc(e)}'`)
       .join(' or ');
@@ -407,8 +433,10 @@ export async function checkAccountsActive(
     } catch (err) {
       console.warn('[DEX] checkAccountsActive batch failed:', err);
     }
+    });
   }
-  if (checkedSet.size === 0) return { ok: false, inactive: [] };
+  await mitGrenze(aufgaben1, 6);
+  if (checkedSet.size === 0) return { ok: false, inactive: [], checked: [] };
   // v26.42: ZWEITER Durchgang für nicht gefundene Adressen — KONTO-UMBENENNUNG
   // erkennen (z.B. Heirat: UPN + primäre Mail wechseln auf den neuen Nachnamen,
   // die ALTE Adresse bleibt als smtp:-Alias am selben, weiterhin AKTIVEN Konto).
@@ -420,8 +448,10 @@ export async function checkAccountsActive(
   const missing = candidates.filter(e => checkedSet.has(e) && !activeSet.has(e));
   // 2 Klauseln je Adresse (smtp:/SMTP: — der Präfix-Vergleich ist case-sensitiv,
   // Sekundär-Aliasse tragen 'smtp:', der Primär-Eintrag 'SMTP:') → 7×2 = 14 ≤ 15.
+  const aufgaben2: Array<() => Promise<void>> = [];
   for (let i = 0; i < missing.length; i += BATCH) {
     const batch = missing.slice(i, i + BATCH);
+    aufgaben2.push(async () => {
     const clauses = batch
       .map(e => `proxyAddresses/any(p: p eq 'smtp:${esc(e)}') or proxyAddresses/any(p: p eq 'SMTP:${esc(e)}')`)
       .join(' or ');
@@ -451,9 +481,14 @@ export async function checkAccountsActive(
       // keine Rettung möglich, Verhalten wie vor v26.42.
       console.warn('[DEX] checkAccountsActive proxy-alias pass failed:', err);
     }
+    });
   }
+  await mitGrenze(aufgaben2, 6);
   const inactive = candidates.filter(e => checkedSet.has(e) && !activeSet.has(e));
-  return { ok: true, inactive };
+  // v31.22: `checked` ist neu — der Aufrufer darf nur GEPRUEFTE Adressen
+  // cachen. Aus einem fehlgeschlagenen Batch „aktiv" zu schliessen hiesse,
+  // einen Lesefehler 24 Stunden festzuhalten.
+  return { ok: true, inactive, checked: candidates.filter(e => checkedSet.has(e)) };
 }
 
 /**

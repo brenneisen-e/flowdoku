@@ -43,7 +43,6 @@ export interface EventDetailCardProps {
   /** v30.67 (Review): Teilnehmerliste nicht lesbar (`regLoadError`) — keine Live-Zahl aus `registrations`. */
   regsUnknown: boolean;
   reservedDetailHeight: number;
-  reservedDetailWidth: number;
   selectedEvent: DeloitteEvent;
   setCheckInHubOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setCheckInHubStep: React.Dispatch<React.SetStateAction<"choose" | "checkin">>;
@@ -63,7 +62,7 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
   // v31.3: `evTabHover`/`setEvTabHover`/`isMobile` bleiben in der Schnittstelle
   // (AdminPage reicht sie weiter), werden hier aber nicht mehr gelesen — der
   // Hover kommt aus den Klassen, die Label/Wert-Zeilen sind Pillen geworden.
-  const { activeRegs, childEventsOf, confirmDialog, detailCardRef, events, handleSelectEvent, isAdmin, isConsolidatedMode, isDe, isImpersonating, isLoadingRegs, isOrganizerFor, navigate, openTabGroup, registrations, regsUnknown, reservedDetailHeight, reservedDetailWidth, selectedEvent, setCheckInHubOpen, setCheckInHubStep, setOpenTabGroup, subEventRegsByEventId, subListsIncomplete, t, toggleDraftStatus, waitlistRegs } = p;
+  const { activeRegs, childEventsOf, confirmDialog, detailCardRef, events, handleSelectEvent, isAdmin, isConsolidatedMode, isDe, isImpersonating, isLoadingRegs, isOrganizerFor, navigate, openTabGroup, registrations, regsUnknown, reservedDetailHeight, selectedEvent, setCheckInHubOpen, setCheckInHubStep, setOpenTabGroup, subEventRegsByEventId, subListsIncomplete, t, toggleDraftStatus, waitlistRegs } = p;
   // v31.3: Ableitungen für den Seitenkopf — reine Berechnungen, keine Hooks.
   const isDraft = !!selectedEvent.isFictive;
   const isFinalState = !isDraft && (selectedEvent.status === 'Completed' || selectedEvent.status === 'Cancelled');
@@ -105,7 +104,10 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
     color: filled ? '#fff' : 'var(--dex-gray-700, #444)',
   });
   return (
-        <div ref={detailCardRef} className="card" style={{ padding: 24, minHeight: reservedDetailHeight, flex: '1 1 420px', minWidth: reservedDetailWidth || 0 }}>
+        <div ref={detailCardRef} className="card" // v31.22: `minWidth: 0` — ein Flex-Kind hat sonst `min-width: auto`
+          // und laesst sich von seinem Inhalt breiter schieben als seine Zeile.
+          // Genau daran wuchs die Seite beim Wechsel (s. AdminPage).
+          style={{ padding: 24, minHeight: reservedDetailHeight, flex: '1 1 420px', minWidth: 0 }}>
           {/* Header: Event-Titel + Status + Schnellaktionen (v13.11).
               v31.3: als Seitenkopf nach Leitfaden 5a — Titel, Status-Pille,
               Meta-Zeile (Zeitraum · Ort · Sub-Events · Frist), rechts nur
