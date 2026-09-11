@@ -7192,3 +7192,262 @@ ohnehin keinen App-Zugriff.
 
 **TODO nach Einrichtung:** Flow-JSON aus dem Code-View kopieren und hier als
 Abschnitt „Finaler Flow-JSON DEX_AccessFix_Autor" einpflegen.
+
+---
+
+## v31.15 — Wartelisten-Platzhalter im Kalender („mit Vorbehalt")
+
+**Was die App seit v31.15 tut:** Landet jemand auf der Warteliste eines Events,
+bei dem der Organizer den Platzhalter eingeschaltet hat, schreibt DEX eine Zeile
+in `DEX_Outlook` mit `ActionType = BlockerSetzen`. Rückt die Person nach oder
+meldet sie sich ab, kommt eine Zeile mit `ActionType = BlockerLoeschen` samt
+`CalendarLink`.
+
+**Warum ein eigener Termin und nicht der echte:** Die wartende Person in den
+echten Outlook-Termin zu schreiben wäre aus zwei Richtungen falsch — der
+Organizer sähe Wartende in der Teilnehmerliste (sie sind keine Teilnehmer), und
+die Person bekäme eine Einladung, die „du bist dabei" bedeutet.
+
+**Warum ein ZWEITER Flow statt eines Umbaus:** Im bestehenden
+`DEX_Outlook_Einladungen` endet jeder unbekannte `ActionType` im
+**Ausladen-Zweig** (`Check_ActionType` prüft auf `Einladen`, alles andere fällt
+in FALSE). Eine Blocker-Zeile würde dort also versuchen, die Person aus dem
+echten Termin zu entfernen. Den Zweig umzubauen hieße, die Verzweigung
+anzufassen, an der echte Einladungen hängen — ein Fehlklick dort lädt echte
+Teilnehmer aus. Deshalb: am Bestand genau EINE neue Action ganz oben
+(Blocker-Zeilen sofort beenden), und die eigentliche Arbeit in einem neuen,
+eigenen Flow. Der kann nichts kaputtmachen, was heute läuft.
+
+### Übersichtstabelle
+
+| # | NEU/GEÄNDERT | Name der Action | Art der Action | Stelle |
+|---|---|---|---|---|
+| 1 | NEU | `Ist_Blocker_Auftrag` | Condition (Control) | In `DEX_Outlook_Einladungen`, **direkt nach dem Trigger**, VOR `Initialize variable` |
+| 2 | NEU | `Blocker_nicht_hier` | Terminate (Control) | Im **True**-Zweig von `Ist_Blocker_Auftrag` |
+| 3 | NEU | *(ganzer Flow)* `DEX_Outlook_Blocker` | Automated cloud flow | Neuer Flow |
+| 4 | NEU | `Nur_Blocker` | Condition (Control) | Erste Action in `DEX_Outlook_Blocker` |
+| 5 | NEU | `Get_Event_Details_Blocker` | Get items (SharePoint) | True-Zweig von `Nur_Blocker` |
+| 6 | NEU | `Ist_Setzen` | Condition (Control) | Direkt nach `Get_Event_Details_Blocker` |
+| 7 | NEU | `Blocker_anlegen` | Send an HTTP request (Office 365 Outlook) | **True**-Zweig von `Ist_Setzen` |
+| 8 | NEU | `Blocker_Link_merken` | Update item (SharePoint) | Direkt nach `Blocker_anlegen` |
+| 9 | NEU | `Blocker_suchen` | Send an HTTP request (Office 365 Outlook) | **False**-Zweig von `Ist_Setzen` |
+| 10 | NEU | `Blocker_entfernen` | Send an HTTP request (Office 365 Outlook) | Direkt nach `Blocker_suchen` |
+| 11 | NEU | `Blocker_erledigt` | Update item (SharePoint) | Direkt nach `Blocker_entfernen` |
+
+---
+
+### Teil A — die eine Änderung am bestehenden Flow
+
+#### Zeile 1 — `Ist_Blocker_Auftrag` (Condition) · NEU
+
+- [ ] Power Automate öffnen, Flow **DEX_Outlook_Einladungen**, **Edit**.
+- [ ] Auf das **+** zwischen dem Trigger **When an item is created** und
+      **Initialize variable** klicken, **Add an action**.
+- [ ] Nach **Condition** suchen (Kategorie **Control**), auswählen.
+- [ ] Über **…** → **Rename** die Action `Ist_Blocker_Auftrag` nennen.
+- [ ] Im linken Feld der Bedingung auf den **Expression**-Tab (fx) wechseln —
+      **nicht als Text eintippen** — und einfügen:
+
+```
+or(equals(triggerBody()?['ActionType']?['Value'],'BlockerSetzen'),equals(triggerBody()?['ActionType']?['Value'],'BlockerLoeschen'))
+```
+
+- [ ] Operator auf **is equal to** stellen.
+- [ ] Rechtes Feld: `true` eintippen (als Text, ohne Anführungszeichen).
+
+#### Zeile 2 — `Blocker_nicht_hier` (Terminate) · NEU
+
+- [ ] Im **True**-Zweig von `Ist_Blocker_Auftrag` auf **Add an action**.
+- [ ] Nach **Terminate** suchen (Kategorie **Control**), auswählen.
+- [ ] Über **…** → **Rename** die Action `Blocker_nicht_hier` nennen.
+- [ ] **Status** auf **Succeeded** stellen.
+      (Nicht `Failed` — das wäre kein Fehler, sondern eine Zeile, die ein
+      anderer Flow abarbeitet. `Failed` würde die Run history rot färben und
+      echte Störungen darin unsichtbar machen.)
+- [ ] Der **False**-Zweig bleibt **leer**. Alles Bestehende läuft unverändert
+      darunter weiter.
+- [ ] **Save**.
+
+---
+
+### Teil B — der neue Flow `DEX_Outlook_Blocker`
+
+#### Zeile 3 — den Flow anlegen · NEU
+
+- [ ] In Power Automate: **Create** → **Automated cloud flow**.
+- [ ] Name: `DEX_Outlook_Blocker`
+- [ ] Trigger suchen: **When an item is created** (SharePoint), **Create**.
+- [ ] **Site Address**:
+
+```
+https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform
+```
+
+- [ ] **List Name**: `DEX_Outlook`
+- [ ] Oben rechts über **…** → **Settings** die **Concurrency Control**
+      einschalten und auf **20** stellen. (Kein Lock nötig: Jeder Platzhalter
+      ist ein eigener Termin einer einzelnen Person — anders als beim echten
+      Event-Termin schreiben hier nie zwei Läufe auf dasselbe Objekt.)
+
+#### Zeile 4 — `Nur_Blocker` (Condition) · NEU
+
+- [ ] **Add an action** → **Condition** (Kategorie **Control**).
+- [ ] **Rename** zu `Nur_Blocker`.
+- [ ] Linkes Feld über den **Expression**-Tab (fx):
+
+```
+or(equals(triggerBody()?['ActionType']?['Value'],'BlockerSetzen'),equals(triggerBody()?['ActionType']?['Value'],'BlockerLoeschen'))
+```
+
+- [ ] Operator **is equal to**, rechtes Feld `true`.
+- [ ] Der **False**-Zweig bleibt leer — alle anderen Zeilen der Queue gehören
+      dem bestehenden Flow.
+
+#### Zeile 5 — `Get_Event_Details_Blocker` (Get items) · NEU
+
+- [ ] Im **True**-Zweig: **Add an action** → **Get items** (SharePoint).
+- [ ] **Rename** zu `Get_Event_Details_Blocker`.
+- [ ] **Site Address**: dieselbe wie oben. **List Name**: `DEX_Events`.
+- [ ] **Advanced parameters** aufklappen, **Filter Query** setzen — über den
+      **Expression**-Tab (fx):
+
+```
+concat('ID eq ',triggerBody()?['EventId'])
+```
+
+- [ ] **Top Count**: `1`
+
+#### Zeile 6 — `Ist_Setzen` (Condition) · NEU
+
+- [ ] Direkt danach **Add an action** → **Condition** (**Control**).
+- [ ] **Rename** zu `Ist_Setzen`.
+- [ ] Linkes Feld über **Expression** (fx):
+
+```
+triggerBody()?['ActionType']?['Value']
+```
+
+- [ ] Operator **is equal to**, rechtes Feld: `BlockerSetzen` (als Text).
+
+#### Zeile 7 — `Blocker_anlegen` (Send an HTTP request) · NEU
+
+- [ ] Im **True**-Zweig von `Ist_Setzen`: **Add an action** → Connector
+      **Office 365 Outlook** → **Send an HTTP request**.
+- [ ] **Rename** zu `Blocker_anlegen`.
+- [ ] **Method**: `POST`
+- [ ] **Uri**:
+
+```
+/v1.0/me/events
+```
+
+- [ ] **Headers**: Key `Content-Type`, Value `application/json`
+- [ ] **Body** — komplett über den **Expression**-Tab (fx) einfügen:
+
+```
+@{json(concat('{"subject":"Warteliste: ',replace(string(first(outputs('Get_Event_Details_Blocker')?['body/value'])?['Title']),'"','\"'),'","showAs":"tentative","responseRequested":false,"isReminderOn":false,"body":{"contentType":"HTML","content":"Du stehst auf der Warteliste. Dieser Eintrag haelt dir den Termin frei und ist KEINE Zusage - sobald ein Platz frei wird, bekommst du die richtige Einladung und dieser Platzhalter verschwindet."},"start":{"dateTime":"',string(first(outputs('Get_Event_Details_Blocker')?['body/value'])?['StartDate']),'","timeZone":"UTC"},"end":{"dateTime":"',string(first(outputs('Get_Event_Details_Blocker')?['body/value'])?['EndDate']),'","timeZone":"UTC"},"attendees":[{"emailAddress":{"address":"',triggerBody()?['Attendee'],'"},"type":"required"}]}'))}
+```
+
+> **`showAs: tentative` ist die Entscheidung vom 11.09.2026** und keine
+> Kosmetik: „free" würde von jedem Terminplaner überbucht, „busy" wäre eine
+> Zusage, die es nicht gibt.
+
+#### Zeile 8 — `Blocker_Link_merken` (Update item) · NEU
+
+- [ ] Direkt danach **Add an action** → **Update item** (SharePoint).
+- [ ] **Rename** zu `Blocker_Link_merken`.
+- [ ] **Site Address**: dieselbe. **List Name**: `DEX_Outlook`.
+- [ ] **Id**: über **Expression** (fx):
+
+```
+triggerBody()?['ID']
+```
+
+- [ ] **Title**: über **Expression** (fx):
+
+```
+triggerBody()?['Title']
+```
+
+- [ ] **CalendarLink**: über **Expression** (fx) — das ist der Schritt, ohne
+      den der Platzhalter später nicht mehr gefunden und nie gelöscht wird:
+
+```
+body('Blocker_anlegen')?['iCalUId']
+```
+
+- [ ] **Status Value**: `Sent`
+
+#### Zeile 9 — `Blocker_suchen` (Send an HTTP request) · NEU
+
+- [ ] Im **False**-Zweig von `Ist_Setzen`: **Add an action** → **Office 365
+      Outlook** → **Send an HTTP request**.
+- [ ] **Rename** zu `Blocker_suchen`.
+- [ ] **Method**: `GET`
+- [ ] **Uri** — über den **Expression**-Tab (fx):
+
+```
+@{concat('/v1.0/me/events?$filter=iCalUId eq ''',triggerBody()?['CalendarLink'],'''&$select=id&$top=1')}
+```
+
+#### Zeile 10 — `Blocker_entfernen` (Send an HTTP request) · NEU
+
+- [ ] Direkt danach **Add an action** → **Office 365 Outlook** → **Send an HTTP
+      request**.
+- [ ] **Rename** zu `Blocker_entfernen`.
+- [ ] **Method**: `DELETE`
+- [ ] **Uri** — über den **Expression**-Tab (fx):
+
+```
+@{concat('/v1.0/me/events/',string(first(body('Blocker_suchen')?['value'])?['id']))}
+```
+
+- [ ] Über **…** → **Settings** die **Retry Policy** auf **None** stellen und
+      unter **Configure run after** bei `Blocker_suchen` zusätzlich **has
+      failed** und **is skipped** anhaken.
+      Grund: Ist der Platzhalter schon weg (die Person hat ihn selbst
+      gelöscht), liefert die Suche nichts — das ist kein Fehler, sondern das
+      gewünschte Ergebnis. Ohne diese Einstellung staut sich die Queue an
+      Läufen, die zwölf Minuten lang etwas wiederholen, das bereits erledigt
+      ist (dieselbe Falle wie am 01.09.2026 beim `$filter` auf eine fehlende
+      Spalte).
+
+#### Zeile 11 — `Blocker_erledigt` (Update item) · NEU
+
+- [ ] Direkt danach **Add an action** → **Update item** (SharePoint).
+- [ ] **Rename** zu `Blocker_erledigt`.
+- [ ] **Site Address**: dieselbe. **List Name**: `DEX_Outlook`.
+- [ ] **Id** über **Expression** (fx): `triggerBody()?['ID']`
+- [ ] **Title** über **Expression** (fx): `triggerBody()?['Title']`
+- [ ] **Status Value**: `Sent`
+- [ ] Unter **Configure run after** bei `Blocker_entfernen` **is successful**
+      UND **has failed** UND **is skipped** anhaken — die Queue-Zeile ist so
+      oder so abgearbeitet.
+- [ ] **Save**.
+
+---
+
+### Test
+
+- [ ] Im Organizer Center ein Test-Event mit **Kapazität 1** und
+      eingeschalteter **Warteliste** wählen, Outlook-Termin aktiv.
+- [ ] Aktion **„Wartelisten-Platzhalter: aus"** anklicken und die Rückfrage
+      bestätigen — die Kachel muss danach **„Wartelisten-Platzhalter: an"**
+      heißen.
+- [ ] Zwei Personen anmelden. Die zweite landet auf der Warteliste.
+- [ ] Im Kalender der **zweiten** Person: Ein Eintrag **„Warteliste: &lt;Event&gt;"**
+      erscheint, im Outlook-Kalender **schraffiert** (mit Vorbehalt).
+- [ ] In `DEX_Outlook` steht die Zeile `BlockerSetzen: …` auf **Sent** und hat
+      einen Wert in **CalendarLink**.
+- [ ] Die erste Person abmelden. Die zweite rückt nach: Sie bekommt die
+      **richtige** Einladung, und der Platzhalter **verschwindet**.
+
+**Wenn etwas nicht stimmt:**
+
+| Beobachtung | Ursache |
+|---|---|
+| Zeile bleibt auf `Pending` | Der neue Flow läuft nicht — Trigger oder `Nur_Blocker`-Bedingung prüfen (Run history, nicht die Queue-Spalte: die sagt über den Flow nichts). |
+| Platzhalter erscheint, verschwindet aber nie | `CalendarLink` in der `BlockerSetzen`-Zeile ist leer → Zeile 8 fehlt oder der fx-Ausdruck steht dort als Text. |
+| Wartende Person wird aus dem echten Termin entfernt | Teil A fehlt — die Blocker-Zeile läuft noch durch `DEX_Outlook_Einladungen` in den Ausladen-Zweig. |
+| Termin steht als „gebucht" im Kalender | `showAs` im Body von Zeile 7 ist nicht `tentative`. |
+| Platzhalter hat falsche Uhrzeit | `StartDate`/`EndDate` stehen in `DEX_Events` als UTC — die `timeZone` im Body muss `UTC` bleiben, Outlook rechnet selbst um. |

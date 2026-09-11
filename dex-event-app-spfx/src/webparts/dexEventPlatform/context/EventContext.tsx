@@ -54,6 +54,7 @@ import { makeMailActions } from './actions/mails';
 
 import { EventContextType, CreateEventInput, SelfCheckInParams, SelfCheckInStatus, SelfCheckInResult, EventStatsRow, FixColumnsDetail } from './eventContextTypes';
 import { CounterStats } from '../services/events/seats';
+import { waitlistBlockerEnabled } from '../services/events/waitlistBlocker';
 // v30.66: Die Typen liegen jetzt in `eventContextTypes.ts`; hier nur noch
 // re-exportiert, damit bestehende Importe aus `EventContext` weiter tragen.
 export { EventContextType, CreateEventInput, SelfCheckInParams, SelfCheckInStatus, SelfCheckInResult, EventStatsRow, FixColumnsDetail };
@@ -1539,11 +1540,22 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       // v15.25: Schatten-Parent-Registrierung im subEventsOnlyMode bekommt
       // keinen Outlook-Termin (s.o. — der User „nimmt teil" an Sub-Events,
       // nicht am Parent).
-      if (status !== 'Warteliste' && !event.disableOutlook && !skipOutlookForExternal && !suppressParentOutlook && !opts?.suppressOutlook
-        && !(childSuppressedByParent && parentBundled.outlook)) {
+      const outlookMoeglich = !event.disableOutlook && !skipOutlookForExternal && !suppressParentOutlook && !opts?.suppressOutlook
+        && !(childSuppressedByParent && parentBundled.outlook);
+      if (status !== 'Warteliste' && outlookMoeglich) {
         eventService.queueOutlookEvent(
           emailToUse, eventId, event.title, 'Einladen'
         ).catch(err => console.warn('[DEX] queueOutlookEvent failed:', err));
+      }
+      // v31.15: Wartende bekommen einen Platzhalter „mit Vorbehalt", wenn der
+      // Organizer das fuer dieses Event eingeschaltet hat. Bewusst an
+      // DENSELBEN Bedingungen wie die echte Einladung: Wo kein Outlook-Termin
+      // entsteht (externe Adresse, Outlook abgeschaltet, Schattenzeile der
+      // Klammer), gibt es auch nichts freizuhalten.
+      if (status === 'Warteliste' && outlookMoeglich && waitlistBlockerEnabled(event.emailTemplateOverrides)) {
+        eventService.queueWaitlistBlocker(
+          emailToUse, eventId, event.title
+        ).catch(err => console.warn('[DEX] queueWaitlistBlocker failed:', err));
       }
       // v11.53: KPI-Counter sofort hochzählen, damit der nächste Boot-
       // Loader die neue Zahl ohne Verzögerung zeigt. Nur für 'Angemeldet'-

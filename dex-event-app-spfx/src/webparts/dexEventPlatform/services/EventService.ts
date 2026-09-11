@@ -49,6 +49,7 @@ import * as regListRepair from './events/regListRepair';
 import * as qrSentBackfill from './events/qrSentBackfill';
 import * as quiz from './events/quiz';
 import * as poll from './events/poll';
+import * as waitlistBlocker from './events/waitlistBlocker';
 import * as teilnehmerIdCounter from './events/teilnehmerIdCounter';
 import * as eventAssets from './events/eventAssets';
 import * as branding from './events/branding';
@@ -1748,6 +1749,18 @@ export class EventService {
     isComplete: boolean
   ): Promise<boolean> {
     return quiz.saveQuizProgress(this, subsiteUrl, itemId, score, answers, isComplete);
+  }
+
+  // ==================== Wartelisten-Blocker ====================
+  // v31.15: Implementierung in services/events/waitlistBlocker.ts.
+  // Das Abraeumen haengt in `queueOutlookEvent` — hier steht nur das Setzen.
+
+  public async queueWaitlistBlocker(attendee: string, eventId: string, eventTitle: string): Promise<boolean> {
+    return waitlistBlocker.queueWaitlistBlocker(this, attendee, eventId, eventTitle);
+  }
+
+  public async clearWaitlistBlocker(attendee: string, eventId: string, eventTitle: string): Promise<boolean> {
+    return waitlistBlocker.clearWaitlistBlocker(this, attendee, eventId, eventTitle);
   }
 
   // ==================== Umfrage nach dem Event ====================

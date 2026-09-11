@@ -10,6 +10,7 @@ import { SPHttpClient, SPHttpClientResponse } from '@microsoft/sp-http';
 import { buildOutlookLocation } from '../../utils/eventFormat';
 import type { EventService, SPRegistration, DeclineCheckResult } from '../EventService';
 import { REG_LIST_NAME } from '../EventService';
+import { clearWaitlistBlocker } from './waitlistBlocker';
 
 
 /**
@@ -48,7 +49,13 @@ export async function ensureOutlookList(svc: EventService): Promise<void> {
     //  - DeleteEvent: kompletten Kalender-Termin löschen (wird beim Löschen eines Events
     //    aus der App abgesetzt, inkl. CalendarLink damit der Flow nicht auf DEX_Events
     //    angewiesen ist - das Event-Item wird direkt danach aus DEX_Events gelöscht).
-    { title: 'ActionType', type: 6, choices: ['Einladen', 'Ausladen', 'UpdateEvent', 'DeleteEvent'], metaType: 'SP.FieldChoice' },
+    //  - BlockerSetzen / BlockerLoeschen (v31.15): der Wartelisten-Platzhalter.
+    //    EIGENER Termin für genau eine Person, „mit Vorbehalt" im Kalender —
+    //    NICHT der echte Termin (dort wäre die wartende Person ein Teilnehmer,
+    //    der sie nicht ist). Die Werte stehen hier nur für NEUE Listen in der
+    //    Auswahl; bestehende Listen nehmen sie trotzdem an — dieselbe Freiheit,
+    //    auf der schon die vielen `EmailType`-Werte in DEX_Emails beruhen.
+    { title: 'ActionType', type: 6, choices: ['Einladen', 'Ausladen', 'UpdateEvent', 'DeleteEvent', 'BlockerSetzen', 'BlockerLoeschen'], metaType: 'SP.FieldChoice' },
     { title: 'Status', type: 6, choices: ['Pending', 'Sent', 'Failed'], metaType: 'SP.FieldChoice' },
     { title: 'SentDate', type: 4 },
     // CalendarLink (iCalUId) - nur für DeleteEvent nötig, damit der Flow das Outlook-
@@ -164,6 +171,23 @@ export async function queueOutlookEvent(
   actionType: 'Einladen' | 'Ausladen' | 'UpdateEvent'
 ): Promise<boolean> {
   try {
+    /*
+     * v31.15: Der Wartelisten-Platzhalter wird hier abgeräumt — an der EINEN
+     * Stelle, durch die jedes Nachrücken (`Einladen`) und jede Abmeldung
+     * (`Ausladen`) ohnehin läuft. Fünf neue Aufrufstellen an fünf Nachrück-
+     * Pfaden wären genau die Konstruktion, bei der die sechste vergessen
+     * wird (die Lehre aus `queueIDReorderChecked`, v30.80) — und ein Blocker,
+     * der bleibt, ist schlimmer als keiner.
+     *
+     * Vor dem Schreiben, nicht danach: Sonst steht bei einem Nachrücken
+     * kurzzeitig beides im Kalender, und wenn der zweite Schreibvorgang die
+     * Drosselung trifft, dauerhaft. Best-effort: Scheitert es, wird die
+     * Einladung TROTZDEM geschrieben — ein Platzhalter zu viel ist
+     * ärgerlich, eine fehlende Einladung ist ein verlorener Platz.
+     */
+    if (actionType === 'Einladen' || actionType === 'Ausladen') {
+      try { await clearWaitlistBlocker(svc, attendee, eventId, eventTitle); } catch { /* best-effort */ }
+    }
     // v18.34: OutlookLocation für Bestands-Events nachziehen (einmal pro Event/Session).
     await backfillOutlookLocation(svc, eventId);
     const response = await svc._post(
