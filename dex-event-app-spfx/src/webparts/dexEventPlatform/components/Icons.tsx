@@ -157,6 +157,23 @@ export const Users = ({ size = 18 }: IconProps): React.ReactElement => (
   </svg>
 );
 
+/**
+ * v31.21: Person mit Minus — „von der Liste nehmen".
+ *
+ * Gebaut, weil das Abmelden in der Teilnehmerliste einen **Mülleimer** trug
+ * (Nutzer-Frage 11.09.2026: „warum ist der Mülleimer das Symbol für
+ * Abmelden?"). Zu Recht: Der Mülleimer heißt in jeder Oberfläche
+ * „unwiderruflich löschen". Eine Abmeldung löscht aber nichts — die Zeile
+ * bleibt mit Status `Abgemeldet` stehen, taucht unter „Abgemeldete" wieder
+ * auf und ist reaktivierbar. Wer den Mülleimer sieht, zögert bei der
+ * richtigen Aktion und erschrickt bei der falschen.
+ */
+export const UserMinus = ({ size = 16 }: IconProps): React.ReactElement => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><line x1="16" x2="22" y1="11" y2="11" />
+  </svg>
+);
+
 export const Download = ({ size = 16 }: IconProps): React.ReactElement => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" />

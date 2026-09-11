@@ -1849,6 +1849,13 @@ export class EventService {
     return registrationAttachments.listRegistrationAttachments(this, subsiteUrl, itemId);
   }
 
+  /** v31.21: Anhänge der GANZEN Liste in einer Abfrage. `null` = nicht lesbar. */
+  public async listAllRegistrationAttachments(
+    subsiteUrl: string,
+  ): Promise<Record<number, Array<{ fileName: string; serverRelativeUrl: string }>> | null> {
+    return registrationAttachments.listAllRegistrationAttachments(this, subsiteUrl);
+  }
+
   public async addRegistrationAttachment(
     subsiteUrl: string,
     itemId: number,
