@@ -24,7 +24,7 @@ import { ensureDexUiStyles, cx } from './dexUi';
 import { useLanguage } from '../context/LanguageContext';
 import { useNavigation } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
-import { resolveMyDisplayName } from '../utils/displayName';
+import { firstNameOf, resolveMyDisplayName } from '../utils/displayName';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { useUseCases } from '../context/UseCaseContext';
 import { APP_NAME, APP_SUBTITLE_DE, APP_SUBTITLE_EN } from '../constants';
@@ -47,7 +47,7 @@ export default function LandingPage(): React.ReactElement {
     const ctx = (window as any).__aiucSpfxContext as WebPartContext | undefined;
     if (!ctx) return undefined;
     resolveMyDisplayName(ctx)
-      .then(n => { if (!weg) setVorname((n || '').trim().split(' ')[0] || ''); })
+      .then(n => { if (!weg) setVorname(firstNameOf(n)); })
       .catch(() => { /* ohne Namen gruesst die Seite eben ohne Namen */ });
     return () => { weg = true; };
   }, []);
