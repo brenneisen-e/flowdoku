@@ -6,7 +6,7 @@ import * as React from 'react';
 import { EventService, SPRegistration } from '../../../services/EventService';
 import { PersonContactHover } from '../../PersonContactHover';
 import { formatDate, translateStatus } from '../../../utils/eventStatus';
-import { Check, ChevronDown, ChevronUp, Columns, FileText, Pencil, Trash2, X } from '../../Icons';
+import { Check, ChevronDown, ChevronUp, Columns, FileText, Pencil, UserMinus, X } from '../../Icons';
 // v31.3: Gemeinsamer Klassensatz (docs/ui-leitfaden.md, Abschnitt 5b) — die
 // Tabelle hatte bis dahin jeden Hover als Inline-Style-Notlösung
 // (onMouseEnter-State für den Aufklapp-Knopf, Farbwechsel per DOM-Zugriff).
@@ -890,7 +890,27 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                       {(eventOver || !orgPastLock) && (
                       <button
                         type="button"
-                        className="dex-ui-iconbtn dex-ui-iconbtn--danger"
+                        /* v31.21: Beschrifteter Knopf statt nacktem Icon
+                           (Nutzer-Fragen 11.09.2026: „warum ist der Mülleimer
+                           das Symbol für Abmelden?" und „warum gibt es keinen
+                           Abmelden-Button?").
+                           Beide Fragen haben dieselbe Ursache: Neben „No-Show",
+                           „Einchecken" und „Auschecken" — drei beschrifteten
+                           Knöpfen — stand die vierte, folgenreichste Aktion als
+                           stummes Symbol. Ein Icon ohne Wort liest sich in
+                           dieser Reihe nicht als Knopf, sondern als Zierrat;
+                           und ausgerechnet der Mülleimer sagt „löschen",
+                           während die Abmeldung nichts löscht (die Zeile bleibt
+                           als `Abgemeldet` stehen und ist reaktivierbar). */
+                        className={smBtn}
+                        /* Dieselbe Kachelform wie die Nachbarn, aber in Rot:
+                           `btn-danger` wäre ein dunkler Vollton und damit der
+                           lauteste Knopf der Zeile — 426-mal untereinander.
+                           Die Abmeldung ist folgenreich, aber nicht der
+                           Hauptweg. Keine neue Klasse in `dexUi.ts`, weil es
+                           genau eine Stelle ist und keinen eigenen
+                           Hover-Zustand braucht (den liefert `btn-secondary`). */
+                        style={{ color: 'var(--dex-red, #da291c)' }}
                         aria-label={eventOver ? (isDe ? 'Abmelden (ohne E-Mail)' : 'Cancel (no email)') : (isDe ? 'Abmelden' : 'Cancel registration')}
                         title={eventOver
                           ? (isDe ? 'Abmelden — ohne E-Mail, das Event ist vorbei' : 'Cancel registration — no email, the event is over')
@@ -913,7 +933,7 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                           await performStandardCancel(reg);
                         }}
                       >
-                        <Trash2 size={15} />
+                        <UserMinus size={14} /> {isDe ? 'Abmelden' : 'Cancel'}
                       </button>
                       )}
                       {/* v26.47: Externe Anmeldung mit offener Datenschutz-

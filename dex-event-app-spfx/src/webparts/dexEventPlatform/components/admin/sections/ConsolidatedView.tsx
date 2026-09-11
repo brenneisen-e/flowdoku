@@ -868,17 +868,6 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
               {/* v26.84: „Registriert von" auch im Klammer-View — selbst /
                   Assistenz / stellvertretend. */}
               <th style={{ whiteSpace: 'nowrap', verticalAlign: 'bottom' }}>{isDe ? 'Registriert von' : 'Registered by'}</th>
-              {parentCustomFields.map(f => (
-                <th key={`pf-${f.id}`} className={sortCls(`pf:${f.id}`)} onClick={() => handleSortConsolidated(`pf:${f.id}`)} style={{ textTransform: 'none', fontSize: '0.74rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 150, verticalAlign: 'top', lineHeight: 1.25, ...PASTEL_A_HEADER }} title={`${f.label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
-                  {f.label}{sortArrow(`pf:${f.id}`)}
-                </th>
-              ))}
-              {/* v23.32: People-Picker-Felder des Hauptevents (Foto + Name). */}
-              {parentUserFields.map(f => (
-                <th key={`puf-${f.id}`} style={{ textTransform: 'none', fontSize: '0.74rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 170, verticalAlign: 'top', lineHeight: 1.25, ...PASTEL_A_HEADER }} title={`${f.label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
-                  {f.label}
-                </th>
-              ))}
               {childCustomFieldsByChild.map(({ child, fields }) => {
                 // v31.3: Der Spaltenkopf sagt selbst, wenn die Liste dieses Termins
                 // nicht gelesen werden konnte — sonst liest man die „?"-Zellen
@@ -908,6 +897,17 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                 </React.Fragment>
                 );
               })}
+              {parentCustomFields.map(f => (
+                <th key={`pf-${f.id}`} className={sortCls(`pf:${f.id}`)} onClick={() => handleSortConsolidated(`pf:${f.id}`)} style={{ textTransform: 'none', fontSize: '0.74rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 150, verticalAlign: 'top', lineHeight: 1.25, ...PASTEL_A_HEADER }} title={`${f.label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
+                  {f.label}{sortArrow(`pf:${f.id}`)}
+                </th>
+              ))}
+              {/* v23.32: People-Picker-Felder des Hauptevents (Foto + Name). */}
+              {parentUserFields.map(f => (
+                <th key={`puf-${f.id}`} style={{ textTransform: 'none', fontSize: '0.74rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 170, verticalAlign: 'top', lineHeight: 1.25, ...PASTEL_A_HEADER }} title={`${f.label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
+                  {f.label}
+                </th>
+              ))}
               {/* v31.3: Die Spalte hieß „Details", enthält aber das Aktionsmenü —
                   der Kopf nennt jetzt, was in der Zelle steckt. */}
               <th style={{ verticalAlign: 'bottom' }}>{isDe ? 'Aktionen' : 'Actions'}</th>
@@ -922,7 +922,7 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                 Kopf- und Zeilen-Reihenfolge nebeneinanderlegen!). */}
             <tr>
               <th
-                colSpan={1 + (searchActive ? 1 : 0) + (personalColsCollapsed ? 1 : 6) + 1 + parentCustomFields.length + parentUserFields.length}
+                colSpan={1 + (searchActive ? 1 : 0) + (personalColsCollapsed ? 1 : 6) + 1}
                 style={{ textAlign: 'right', padding: '4px 8px', textTransform: 'none', fontSize: '0.72rem', whiteSpace: 'nowrap' }}
               >
                 {isDe ? '∑ angemeldet:' : '∑ registered:'}
@@ -962,6 +962,10 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                   </React.Fragment>
                 );
               })}
+              {/* v31.21: Die Hauptevent-Spalten stehen seit v31.21 RECHTS der Termin-Spalten — */}
+              {/* die Summenzeile braucht dafuer einen Nachlauf, sonst rutscht „Aktionen“ um genau */}
+              {/* diese Anzahl nach links (v28.53-Falle: Kopf und Zeile im Gleichschritt). */}
+              {(parentCustomFields.length + parentUserFields.length) > 0 && <th colSpan={parentCustomFields.length + parentUserFields.length} style={{ padding: 0 }} />}
               <th style={{ padding: 0 }} />
             </tr>
             {/* v30.17: „Anmeldung ab"-Zeile — nur bei aktiver Freischalt-Regel.
@@ -970,7 +974,7 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
             {hasOpenRule && (
               <tr>
                 <th
-                  colSpan={1 + (searchActive ? 1 : 0) + (personalColsCollapsed ? 1 : 6) + 1 + parentCustomFields.length + parentUserFields.length}
+                  colSpan={1 + (searchActive ? 1 : 0) + (personalColsCollapsed ? 1 : 6) + 1}
                   style={{ textAlign: 'right', padding: '2px 8px', textTransform: 'none', fontSize: '0.72rem', whiteSpace: 'nowrap' }}
                 >
                   {isDe ? 'Anmeldung ab:' : 'Opens:'}
@@ -996,6 +1000,10 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                     </React.Fragment>
                   );
                 })}
+                {/* v31.21: Die Hauptevent-Spalten stehen seit v31.21 RECHTS der Termin-Spalten — */}
+                {/* die Summenzeile braucht dafuer einen Nachlauf, sonst rutscht „Aktionen“ um genau */}
+                {/* diese Anzahl nach links (v28.53-Falle: Kopf und Zeile im Gleichschritt). */}
+                {(parentCustomFields.length + parentUserFields.length) > 0 && <th colSpan={parentCustomFields.length + parentUserFields.length} style={{ padding: 0 }} />}
                 <th style={{ padding: 0 }} />
               </tr>
             )}
@@ -1107,6 +1115,52 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                         </td>
                       );
                     })()}
+                    {childCustomFieldsByChild.map(({ child, fields }) => {
+                      const r = row.perChild[child.id];
+                      const isReg = !!r && ACTIVE.indexOf(r.Status) >= 0;
+                      // v31.3: Keine Zeile UND keine lesbare Liste heißt „unbekannt",
+                      // nicht „nicht angemeldet" — ein Lesefehler ist keine Null
+                      // (CLAUDE.md v30.67). Vorher stand hier in beiden Fällen „—".
+                      const unknown = !r && isDeniedChild(child);
+                      return (
+                        <React.Fragment key={`scv-${child.id}`}>
+                          <td style={{ textAlign: 'center', borderLeft: '1px solid var(--dex-gray-200)', ...dimColStyle(child.id) }}
+                              title={r
+                                ? `${translateStatus(r.Status, isDe)} — TID ${r.TeilnehmerID || '?'}`
+                                : unknown
+                                  ? (isDe ? 'Unbekannt — die Teilnehmerliste dieses Termins konnte nicht gelesen werden' : 'Unknown — the participant list of this date could not be read')
+                                  : (isDe ? 'Nicht angemeldet' : 'Not registered')}>
+                            {isReg ? (
+                              r.Status === 'Warteliste'
+                                ? <span className="dex-ui-pill dex-ui-pill--orange" style={{ padding: '1px 8px' }} title={translateStatus(r.Status, isDe)}>W</span>
+                                : <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', display: 'inline-flex' }}><Check size={15} /></span>
+                            ) : unknown ? (
+                              <span style={{ color: 'var(--dex-orange, #ed8b00)', fontWeight: 700 }}>?</span>
+                            ) : (
+                              <span style={{ color: 'var(--dex-gray-300)' }}>—</span>
+                            )}
+                          </td>
+                          {fields.map(f => {
+                            let val = '';
+                            if (r) {
+                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                              const spName = (f as any).spInternalName || '';
+                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                              let v: any = spName ? (r as any)[spName] : undefined;
+                              if ((v === undefined || v === null || v === '') && r.CustomData) {
+                                try { v = JSON.parse(r.CustomData)[f.id]; } catch { /* */ }
+                              }
+                              if (v !== undefined && v !== null && v !== '') val = String(v);
+                            }
+                            return (
+                              <td key={`scv-${child.id}-${f.id}`} style={{ color: 'var(--dex-gray-700)', whiteSpace: 'nowrap', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', ...PASTEL_B_CELL, ...dimColStyle(child.id) }} title={val}>
+                                {val ? highlightMatch(val) : (r ? '-' : '')}
+                              </td>
+                            );
+                          })}
+                        </React.Fragment>
+                      );
+                    })}
                     {parentCustomFields.map(f => {
                       let val = '';
                       // v15.3.1: Parent-Level-Custom-Fields zuerst aus der
@@ -1189,52 +1243,6 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                             </div>
                           )}
                         </td>
-                      );
-                    })}
-                    {childCustomFieldsByChild.map(({ child, fields }) => {
-                      const r = row.perChild[child.id];
-                      const isReg = !!r && ACTIVE.indexOf(r.Status) >= 0;
-                      // v31.3: Keine Zeile UND keine lesbare Liste heißt „unbekannt",
-                      // nicht „nicht angemeldet" — ein Lesefehler ist keine Null
-                      // (CLAUDE.md v30.67). Vorher stand hier in beiden Fällen „—".
-                      const unknown = !r && isDeniedChild(child);
-                      return (
-                        <React.Fragment key={`scv-${child.id}`}>
-                          <td style={{ textAlign: 'center', borderLeft: '1px solid var(--dex-gray-200)', ...dimColStyle(child.id) }}
-                              title={r
-                                ? `${translateStatus(r.Status, isDe)} — TID ${r.TeilnehmerID || '?'}`
-                                : unknown
-                                  ? (isDe ? 'Unbekannt — die Teilnehmerliste dieses Termins konnte nicht gelesen werden' : 'Unknown — the participant list of this date could not be read')
-                                  : (isDe ? 'Nicht angemeldet' : 'Not registered')}>
-                            {isReg ? (
-                              r.Status === 'Warteliste'
-                                ? <span className="dex-ui-pill dex-ui-pill--orange" style={{ padding: '1px 8px' }} title={translateStatus(r.Status, isDe)}>W</span>
-                                : <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', display: 'inline-flex' }}><Check size={15} /></span>
-                            ) : unknown ? (
-                              <span style={{ color: 'var(--dex-orange, #ed8b00)', fontWeight: 700 }}>?</span>
-                            ) : (
-                              <span style={{ color: 'var(--dex-gray-300)' }}>—</span>
-                            )}
-                          </td>
-                          {fields.map(f => {
-                            let val = '';
-                            if (r) {
-                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                              const spName = (f as any).spInternalName || '';
-                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                              let v: any = spName ? (r as any)[spName] : undefined;
-                              if ((v === undefined || v === null || v === '') && r.CustomData) {
-                                try { v = JSON.parse(r.CustomData)[f.id]; } catch { /* */ }
-                              }
-                              if (v !== undefined && v !== null && v !== '') val = String(v);
-                            }
-                            return (
-                              <td key={`scv-${child.id}-${f.id}`} style={{ color: 'var(--dex-gray-700)', whiteSpace: 'nowrap', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', ...PASTEL_B_CELL, ...dimColStyle(child.id) }} title={val}>
-                                {val ? highlightMatch(val) : (r ? '-' : '')}
-                              </td>
-                            );
-                          })}
-                        </React.Fragment>
                       );
                     })}
                     <td>

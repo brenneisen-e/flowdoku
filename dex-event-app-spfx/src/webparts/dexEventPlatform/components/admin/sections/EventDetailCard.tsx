@@ -11,7 +11,6 @@ import { Calendar, Pencil, Pin, QrCode, Users } from '../../Icons';
 import { cx } from '../../dexUi';
 import { getCachedOrbBase64 } from '../../../services/EmailTemplates';
 import { DEX_ORB_PNG } from '../../../data/brandLogos';
-import { shortSubEventTitle } from '../../../utils/subEventTitle';
 import { groupSubEventTabs, stripGroupPrefix } from '../../../utils/subEventGroups';
 import { InfoTooltip } from '../../InfoTooltip';
 import OrganizerList from '../../OrganizerList';
@@ -21,6 +20,7 @@ import { ActionsDropdown } from '../../admin/ActionsMenu';
 import { DeloitteEvent } from '../../../types';
 import { SPRegistration } from '../../../services/EventService';
 import { countConsolidatedActive } from '../logic/parentRegs';
+import { buildEventTabs } from '../logic/eventTabs';
 
 export interface EventDetailCardProps {
   activeRegs: SPRegistration[];
@@ -371,74 +371,16 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
                     Teilnehmerzahl (currentParticipants aus EventContext) als
                     kleiner Badge angezeigt. */}
                 {selectedEvent && (() => {
-                  const isChild = !!selectedEvent.parentEventId;
-                  const siblings = isChild
-                    ? childEventsOf(selectedEvent.parentEventId || '')
-                    : childEventsOf(selectedEvent.id);
-                  if (!isChild && siblings.length === 0) return null;
-                  const parent = isChild ? events.find(e => e.id === selectedEvent.parentEventId) : selectedEvent;
-                  // v22.75: Der aktuell GEWÄHLTE Tab zeigt die LIVE-Zahl aus den
-                  // gerade geladenen Registrierungen (registrations) — die
-                  // Tab-Badges stammen sonst aus dem zwischengespeicherten
-                  // Event-Zustand (letzter Listen-Load) und hinken neuen
-                  // Anmeldungen hinterher (Badge 112 vs. Tabelle 126).
-                  const liveSelectedActive = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length;
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const tabs: Array<{ id: string; label: string; count: number; isParent: boolean; ev: any }> = [];
-                  if (parent) {
-                    // v22.64: Im Klammer-Modus zeigt der HAUPT-Badge die ECHTE
-                    // Zahl eindeutiger aktiver Personen über alle Sub-Events
-                    // (live), nicht den gespeicherten Counter `currentParticipants`
-                    // der Klammer — der zählt nicht buchbare Klammern unzuverlässig
-                    // und kann verrutschen.
-                    let parentCount = parent.currentParticipants || 0;
-                    const pKids = childEventsOf(parent.id);
-                    const haveSubData = parent.subEventsOnlyMode && pKids.length > 0 && pKids.every(c => subEventRegsByEventId[c.id] !== undefined);
-                    if (haveSubData) {
-                      const activeSet = new Set<string>();
-                      for (const c of pKids) {
-                        for (const r of (subEventRegsByEventId[c.id] || [])) {
-                          if (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt') {
-                            // v23.3: emaillose Zeile = trotzdem ein Kopf → per
-                            // Zeilen-Id mitzaehlen statt verschlucken (sonst zeigt
-                            // die Klammer weniger als die Sub-Event-Tabelle).
-                            const k = (r.ParticipantEmail || '').toLowerCase().trim() || `__noemail#${c.id}#${r.Id}`;
-                            activeSet.add(k);
-                          }
-                        }
-                      }
-                      parentCount = activeSet.size;
-                    } else if (parent.id === selectedEvent.id && !isLoadingRegs && !regsUnknown) {
-                      // Normales Hauptevent ist selbst gewählt → Live-Zahl.
-                      // v30.42: Während des Ladens gehört `registrations` noch
-                      // dem vorher gewählten Termin — dieselbe Falle wie bei den
-                      // Sub-Reitern unten. Dann lieber der eigene Zähler.
-                      // v30.67 (Review): dasselbe, wenn die Liste nicht lesbar
-                      // war — `registrations` ist dann `[]`, die Live-Zahl wäre
-                      // eine „0", die keine ist. Der eigene Zähler stimmt eher.
-                      parentCount = liveSelectedActive;
-                    }
-                    tabs.push({ id: parent.id, label: parent.title || (isDe ? 'Hauptevent' : 'Main event'), count: parentCount, isParent: true, ev: parent });
-                  }
-                  for (const c of siblings) {
-                    // v23.2: Nicht-gewählte Sub-Tabs zeigen — sofern die Liste
-                    // bereits geladen ist — die LIVE-Zeilenzahl aus
-                    // subEventRegsByEventId statt des veralteten Counters
-                    // `currentParticipants`. Sonst „springt" der Badge je nach
-                    // gewähltem Tab (gewählt = live, sonst = Cache), siehe der
-                    // 188-vs-190-Effekt. Gewählter Tab bleibt die Live-Zahl der
-                    // aktuell geladenen Tabelle.
-                    // v30.42: …aber NUR, solange nicht gerade geladen wird.
-                    // Beim Reiterwechsel gehört `registrations` noch dem ALTEN
-                    // Termin; der neue Reiter zeigte deshalb kurz dessen Zahl
-                    // (Nutzer-Befund: erst 55, dann 51). Während des Ladens
-                    // steht die eigene Zahl des Termins da — die stimmt sofort.
-                    const subRegs = subEventRegsByEventId[c.id];
-                    const subLiveCount = subRegs
-                      ? subRegs.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length
-                      : (c.currentParticipants || 0);
-                    tabs.push({ id: c.id, label: shortSubEventTitle(c.title, parent?.title) || (isDe ? 'ohne Titel' : 'untitled'), count: (c.id === selectedEvent.id && !isLoadingRegs && !regsUnknown) ? liveSelectedActive : subLiveCount, isParent: false, ev: c });
-                  }
+                  // v31.21: Die Reiter rechnet `logic/eventTabs` — dieselbe
+                  // Quelle, aus der sie jetzt auch ueber der Teilnehmerliste
+                  // stehen. Zwei Rechnungen fuer dieselbe Zahl waeren die
+                  // Falle, an der die Badges schon dreimal auseinandergelaufen
+                  // sind (v23.2, v30.42, v30.67 — Begruendungen dort).
+                  const tabs = buildEventTabs({
+                    childEventsOf, events, isDe, isLoadingRegs, registrations,
+                    regsUnknown, selectedEvent, subEventRegsByEventId,
+                  });
+                  if (tabs.length === 0) return null;
                   // v22.70: Einzelnen Tab-Button rendern (für flaches Layout
                   // UND die Sub-Event-Reihe im Klammer-Layout wiederverwendet).
                   // v28.74 → v31.3: Der Hover-Effekt kommt jetzt aus der Klasse

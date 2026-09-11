@@ -25,6 +25,7 @@ import { AlertCircle, Check, Plus, Search, Users } from './Icons';
 // ohne den Aufruf gäbe es die `dex-ui-*`-Klassen erst, wenn zufällig ein
 // Dialog offen war.
 import { cx, ensureDexUiStyles } from './dexUi';
+import { buildEventTabs } from './admin/logic/eventTabs';
 import { InfoTooltip } from './InfoTooltip';
 import B2RunBibImportModal from './admin/B2RunBibImportModal';
 import B2RunTodoModal from './admin/B2RunTodoModal';
@@ -430,17 +431,40 @@ export default function AdminPage(): React.ReactElement {
       return;
     }
     const subsiteUrl = selectedEvent.subsiteUrl;
-    const ids = registrations.map(r => r.Id).filter(Boolean);
     let cancelled = false;
     (async () => {
-      const map: Record<number, Array<{ fileName: string; serverRelativeUrl: string }>> = {};
-      for (const id of ids) {
-        try {
-          const list = await eventServiceRef!.listRegistrationAttachments(subsiteUrl, id);
-          if (list.length > 0) map[id] = list;
-        } catch { /* */ }
-      }
-      if (!cancelled) setAttachmentsByReg(map);
+      /*
+       * v31.21 — die Ursache des Einfrierens beim Öffnen eines großen Termins
+       * (Nutzer-Befund 11.09.2026: „wenn ich hier in eins der Sub-Events
+       * springe, dann hängt sich die App fast komplett auf").
+       *
+       * Hier stand eine `for`-Schleife über ALLE Anmeldezeilen mit einem
+       * `await listRegistrationAttachments` je Zeile — bei 426 Anmeldungen
+       * also **426 HTTP-Abfragen nacheinander**. SharePoint drosselt nach
+       * einigen Dutzend mit 429, jeder Retry wartet, und die Seite steht
+       * minutenlang.
+       *
+       * Zwei Fehler steckten darin, nicht einer:
+       *
+       *  1. Ein Request je Zeile, wo `$expand=AttachmentFiles` das Ganze in
+       *     EINER Abfrage liefert (`listAllRegistrationAttachments`), noch
+       *     dazu gefiltert auf `Attachments eq 1` — also auf die Minderheit
+       *     der Zeilen, die überhaupt eine Datei trägt.
+       *  2. `cancelled` wurde erst NACH der Schleife geprüft. Ein Wechsel auf
+       *     den nächsten Termin stoppte die laufenden Abfragen nicht, sondern
+       *     legte 426 neue obendrauf. Wer drei Sub-Events durchklickt, hat
+       *     drei Wellen gleichzeitig in der Leitung — genau das Bild, das der
+       *     Nutzer beschrieben hat. Eine einzelne Abfrage kann das gar nicht
+       *     mehr, und geprüft wird trotzdem.
+       *
+       * Und: `null` heißt „nicht lesbar", nicht „keine Anhänge". Der alte
+       * Code schluckte jeden Fehler je Zeile — eine Liste ganz ohne
+       * Büroklammern hätte behauptet, es gäbe keine Dateien.
+       */
+      const map = await eventServiceRef!.listAllRegistrationAttachments(subsiteUrl);
+      if (cancelled) return;
+      if (map) setAttachmentsByReg(map);
+      else console.warn('[DEX] Anhänge der Teilnehmerliste nicht lesbar — die Anhang-Zähler bleiben auf dem letzten Stand.');
     })().catch(() => { /* */ });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2658,6 +2682,62 @@ export default function AdminPage(): React.ReactElement {
           >
             <Plus size={14} /> {isDe ? 'Teilnehmer hinzufügen' : 'Add attendees'}
           </button>
+          {/* v31.21: Die Reiter über Haupt-Event und Termine ein zweites Mal —
+              hier, wo die Teilnehmerliste beginnt (Nutzer-Ansage 11.09.2026:
+              „auf der Teilnehmerliste neben Teilnehmer hinzufügen auch nochmal
+              die Bookmarks angezeigt und klickbar").
+
+              Der Grund ist die Länge: Bei 435 Personen liegt die Reiter-Leiste
+              oben eine halbe Seite weit weg, und wer zwischen zwei Terminen
+              vergleicht, scrollt für jeden Wechsel hin und zurück.
+
+              Das ist ausdrücklich KEIN zweiter Bedienweg für dieselbe Auswahl
+              — es ist DERSELBE, an der zweiten Stelle, an der man ihn braucht
+              (anders als die zwei Reiter-Reihen im Wizard, v28.88, die
+              nebeneinander standen). Und die Zahlen rechnet `buildEventTabs`
+              für beide Stellen; zwei Rechnungen wären die Falle, an der die
+              Badges schon dreimal auseinandergelaufen sind. */}
+          {(() => {
+            const tabs = buildEventTabs({
+              childEventsOf, events: allEvents, isDe, isLoadingRegs, registrations,
+              regsUnknown, selectedEvent, subEventRegsByEventId,
+            });
+            if (tabs.length === 0) return null;
+            return (
+              <div
+                role="tablist"
+                aria-label={isDe ? 'Event wechseln' : 'Switch event'}
+                className="dex-ui-inline"
+                style={{ gap: 4, flexWrap: 'wrap' }}
+              >
+                {tabs.map(tb => {
+                  const active = tb.id === selectedEvent?.id;
+                  return (
+                    <button
+                      key={`ptab-${tb.id}`}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      className={cx('dex-ui-chip', active && 'is-active')}
+                      onClick={() => { void handleSelectEvent(tb.ev); }}
+                      // Schmaler als oben: Hier steht die Leiste neben
+                      // Suchfeld und Knöpfen, nicht allein in einer Zeile.
+                      style={{ maxWidth: 200, fontSize: '0.76rem', padding: '5px 10px' }}
+                      title={tb.label}
+                    >
+                      {tb.isParent && (
+                        <span style={{ fontSize: '0.64rem', textTransform: 'uppercase', letterSpacing: 0.4, opacity: 0.75 }}>
+                          {isDe ? 'Haupt' : 'Main'}
+                        </span>
+                      )}
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tb.label}</span>
+                      <span className={cx('dex-ui-pill', active ? 'dex-ui-pill--green' : 'dex-ui-pill--gray')} style={{ padding: '0 6px', fontSize: '0.7rem' }}>{tb.count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
           {/* v26.44: „Matches anzeigen" — nur bei Events mit Roommate-Spalte.
               Gruppiert die Tabelle in gegenseitige Paare (Match 1, 2, …) +
               Rest-Cluster; wirkt auf die aktuell gefilterte Trefferliste.
