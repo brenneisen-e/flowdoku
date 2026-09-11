@@ -478,6 +478,13 @@ export default function AdminPage(): React.ReactElement {
     return () => window.removeEventListener('dex-refresh-page', onRefresh);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEvent]);
+  /**
+   * v31.27: Zuletzt geladene Anmeldezeilen JE EVENT — Klammer wie Termin.
+   * Ref statt State: Der Puffer soll kein Rendern ausloesen, nur den
+   * naechsten Klick bedienen. Geleert beim Wechsel in eine andere
+   * Event-Gruppe, damit er nicht ueber Stunden mitwaechst.
+   */
+  const regsCacheRef = React.useRef<Record<string, SPRegistration[]>>({});
   /** v31.24: Die Event-Gruppe, zu der der geladene Termin-Bestand gehoert. */
   const subRegGroupRef = React.useRef<string>('');
   /* v31.26: Welchen Stand der Bestand hat — und was drinsteht. Als Ref, nicht
@@ -516,6 +523,7 @@ export default function AdminPage(): React.ReactElement {
     const gruppeJetzt = selectedEvent ? (selectedEvent.parentEventId || selectedEvent.id) : '';
     if (subRegGroupRef.current !== gruppeJetzt) {
       subRegGroupRef.current = gruppeJetzt;
+      regsCacheRef.current = {};
       subEventRegsByEventIdRef.current = {};
       subRegLoadedTickRef.current = -1;
       setSubEventRegsByEventId({});
@@ -608,27 +616,55 @@ export default function AdminPage(): React.ReactElement {
   // Sub-Event-Registrierung diese Antworten nicht enthält.
   const [parentRegsByEmail, setParentRegsByEmail] = React.useState<Record<string, SPRegistration>>({});
   React.useEffect(() => {
-    if (!selectedEvent || !selectedEvent.parentEventId) {
+    /*
+     * v31.27 — der letzte grosse Nachlader, belegt durch den Nutzer-Log vom
+     * 11.09.2026. Dort stand nach JEDEM Reiterklick, auch nach einem mit
+     * „Liste stand sofort (aus dem Speicher)":
+     *
+     *   [DEX (Uhr)] Teilnehmerliste lesen — 577,9 ms · 465 Zeilen · 1263 KB · p-d-meeting
+     *
+     * Vier- bis fuenfmal im selben Log, immer dieselbe Klammer-Liste. Die
+     * Ursache stand in der Abhaengigkeitsliste: `selectedEvent?.id`. Die
+     * aendert sich bei jedem Klick auf einen Termin — die KLAMMER aber
+     * nicht. Es wurde also 1,2 MB neu geholt, um denselben Stand noch einmal
+     * zu haben.
+     *
+     * Jetzt haengt der Effekt an der Klammer, nicht am gewaehlten Termin.
+     * Und er liest zuerst den gemeinsamen Puffer: Wer die Klammer schon
+     * offen hatte, hat ihre Zeilen ohnehin im Speicher.
+     */
+    const parentId = selectedEvent?.parentEventId;
+    if (!selectedEvent || !parentId) {
       setParentRegsByEmail({});
-      return;
+      return undefined;
+    }
+    const bauen = (regs: SPRegistration[]): Record<string, SPRegistration> => {
+      const map: Record<string, SPRegistration> = {};
+      for (const r of regs) {
+        const key = (r.ParticipantEmail || '').toLowerCase().trim();
+        if (key) map[key] = r;
+      }
+      return map;
+    };
+    const gepuffert = regsCacheRef.current[parentId];
+    if (Array.isArray(gepuffert) && gepuffert.length > 0) {
+      setParentRegsByEmail(bauen(gepuffert));
+      return undefined;
     }
     let cancelled = false;
     (async () => {
       try {
-        const parentRegs = await getAllRegistrations(selectedEvent.parentEventId!);
-        const map: Record<string, SPRegistration> = {};
-        for (const r of parentRegs) {
-          const key = (r.ParticipantEmail || '').toLowerCase().trim();
-          if (key) map[key] = r;
-        }
-        if (!cancelled) setParentRegsByEmail(map);
+        const parentRegs = await getAllRegistrations(parentId);
+        if (cancelled) return;
+        regsCacheRef.current[parentId] = parentRegs;
+        setParentRegsByEmail(bauen(parentRegs));
       } catch {
         if (!cancelled) setParentRegsByEmail({});
       }
     })().catch(() => { /* */ });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEvent?.id, selectedEvent?.parentEventId]);
+  }, [selectedEvent?.parentEventId, subRegReloadTick]);
   const [isLoadingRegs, setIsLoadingRegs] = React.useState(false);
   const [regLoadError, setRegLoadError] = React.useState('');
   // v30.67 (Review): „Liste nicht lesbar" als Flag für die Zähler. Die
@@ -1547,8 +1583,34 @@ export default function AdminPage(): React.ReactElement {
     });
     return arr;
   }, [hideDrafts, eventSortMode, isDe, showArchivedEvents, archivedEventIds]);
-  const currentEvents = sortAndFilterEvents(currentEventsRaw);
-  const pastEvents = sortAndFilterEvents(pastEventsRaw);
+  /*
+   * v31.27: Suchzeile ueber der Eventuebersicht (Nutzer-Ansage 11.09.2026:
+   * „und hier fehlt mir eine Suchzeile").
+   *
+   * Bei 28 Events ist Scrollen noch zumutbar, bei achtzig nicht mehr — und
+   * die globale Suche im Kopf springt direkt in ein Event, statt die Liste
+   * einzugrenzen. Das sind zwei verschiedene Fragen: „bring mich zu DIESEM
+   * Event" und „zeig mir alle, die dazu passen".
+   *
+   * Gesucht wird ueber Titel, Ort und Organizer-Namen — die drei Angaben,
+   * die auf der Karte stehen. Wer etwas sieht, soll danach suchen koennen;
+   * eine Suche ueber unsichtbare Felder liefert Treffer, die man sich nicht
+   * erklaeren kann.
+   */
+  const [eventQuery, setEventQuery] = React.useState('');
+  const eventQueryLc = eventQuery.trim().toLowerCase();
+  const passtZurSuche = React.useCallback((e: DeloitteEvent): boolean => {
+    if (!eventQueryLc) return true;
+    const heu = [
+      e.title || '',
+      e.location || '',
+      String(e.eventNumber || ''),
+      ...(e.organizers || []),
+    ].join(' ').toLowerCase();
+    return heu.indexOf(eventQueryLc) >= 0;
+  }, [eventQueryLc]);
+  const currentEvents = sortAndFilterEvents(currentEventsRaw).filter(passtZurSuche);
+  const pastEvents = sortAndFilterEvents(pastEventsRaw).filter(passtZurSuche);
 
   // v30.66: useColumnConfig — Rumpf in logic/useColumnConfig.ts.
   const {
@@ -1567,7 +1629,7 @@ export default function AdminPage(): React.ReactElement {
   } = useEventSelection({
     adminEvents, childEventsOf, confirmDialog, detailCardRef, eventServiceRef, getAllRegistrations,
     isDe, navigate, refreshEvents, registrations, reloadRegistrations, selectedEvent, selectedEventId,
-    setIsLoadingRegs, setRegLoadError, setRegistrations,
+    regsCacheRef, setIsLoadingRegs, setRegLoadError, setRegistrations,
     setReservedDetailHeight, setSelectedEvent, showAlert, subEventRegsByEventId, updateEvent,
   });
 
@@ -1659,10 +1721,10 @@ export default function AdminPage(): React.ReactElement {
   if (!selectedEvent) {
     const eventOverviewScreenProps = {
       adminEvents, archiveBusyId, archivedCount, archivedEventIds, changeLogModal, currentEvents,
-      dangerZoneModal, deletingId, draftCount, eventSortMode, handleArchiveEvent, handleSelectEvent,
+      dangerZoneModal, deletingId, draftCount, eventQuery, eventSortMode, handleArchiveEvent, handleSelectEvent,
       handleUnarchiveEvent, hideDrafts, isAdmin, isDe, isDeleting, isEventsLoading,
       isPastEvent, locale, navigate, pastEvents, setConfirmDeleteEvent, setConfirmDeleteText,
-      setEventSortMode, setHideDrafts, setShowArchivedEvents, setShowPastEvents, showArchivedEvents, showPastEvents,
+      setEventQuery, setEventSortMode, setHideDrafts, setShowArchivedEvents, setShowPastEvents, showArchivedEvents, showPastEvents,
       t,
     };
     // Event-Auswahl
@@ -2986,7 +3048,22 @@ export default function AdminPage(): React.ReactElement {
                 : regLoadError}
             </div>
           </div>
-        ) : isLoadingRegs ? (
+        ) : (isLoadingRegs && registrations.length === 0) ? (
+          /*
+           * v31.27: „Lade Teilnehmer …" NUR, wenn wirklich nichts dasteht.
+           *
+           * Der Nutzer hat den Sprung beschrieben (11.09.2026: „wenn ich das
+           * Sub-Event wechsele auf Klammer-Event, dann springt er und zeigt
+           * kurz was anderes an") und mit drei Bildern belegt: Tabelle →
+           * diese eine Textzeile, in der der ganze Kasten zusammenfällt →
+           * Matrix. Der mittlere Schritt ist der Sprung, und er war
+           * unnötig: In dem Moment liegen die Zeilen längst im Speicher.
+           *
+           * Die Bedingung ist deshalb nicht „lädt", sondern „lädt UND ich
+           * habe nichts zu zeigen". Eine Auffrischung im Hintergrund lässt
+           * die Tabelle stehen — wer nichts vermisst, soll auch nichts
+           * blinken sehen.
+           */
           <p className="dex-ui-muted" style={{ fontStyle: 'italic' }}>{isDe ? 'Lade Teilnehmer...' : 'Loading participants...'}</p>
         ) : isConsolidatedMode ? (
           // v14.11: konsolidierter Matrix-View für Events im

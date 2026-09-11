@@ -175,6 +175,122 @@ export const PersonalDataSection: React.FC<PersonalDataSectionProps> = (p) => {
               </div>
             )}
 
+            {/* v31.9: Stellvertreter-Umschalter und Massenimport. Beides sind
+                Organizer-Funktionen, die die grosse Mehrheit der Anmeldenden
+                nie braucht — nach 2a gehoeren sie hinter das Pflichtteil, nach
+                2a' linksbuendig zum Inhalt statt an den rechten Rand. Die
+                Sichtbarkeitsbedingungen sind unveraendert mitgewandert:
+                aussen `canRegisterForOther || (registerForOther &&
+                canCreateEvents)` wie vorher am `headerExtra`, innen je Knopf
+                dieselbe Bedingung wie zuvor. */}
+            {(canRegisterForOther || (registerForOther && canCreateEvents)) && (
+              /*
+               * v31.27 (Nutzer-Ansage 11.09.2026: „kannst du das ‚meldest du
+               * jemanden anderen an' besser sichtbar machen? Vielleicht dezent
+               * grüne Box und oberhalb von Eike Brenneisen und unterhalb von
+               * ‚Deine Daten'. Zudem sollte dahinter stehen (Nur für Organizer
+               * / Assistenten.)").
+               *
+               * Der Aufklapper stand bis hierher GANZ UNTEN in der Station,
+               * hinter der Profilkarte und dem Team-Schalter — dort sucht ihn
+               * niemand, der stellvertretend anmelden will: Die Entscheidung
+               * „für wen melde ich an" kommt VOR den Daten der Person, nicht
+               * danach. Jetzt steht er zwischen der Überschrift und der Karte,
+               * also genau an der Stelle, an der die Frage aufkommt.
+               *
+               * Der grüne Anstrich ist bewusst dezent (8 % Deckkraft, 3-px-
+               * Kante): Er soll auffallen, ohne sich vor die Pflichtangaben zu
+               * drängen — es bleibt eine Ausnahme-Funktion, kein Hauptweg
+               * (Leitfaden 2a: Pflicht vor Optional). Die Klammer dahinter sagt,
+               * für wen er überhaupt gedacht ist; sichtbar ist er ohnehin nur
+               * für Berechtigte, aber wer ihn sieht, soll nicht rätseln, ob er
+               * gemeint ist.
+               */
+              <div
+                className="dex-ui-section"
+                style={{
+                  background: 'rgba(134,188,37,0.08)',
+                  borderLeft: '3px solid var(--dex-green, #86bc25)',
+                  borderRadius: 8,
+                  padding: '10px 14px',
+                  marginTop: 0,
+                  marginBottom: 16,
+                }}
+              >
+                <button
+                  type="button"
+                  className={cx('dex-ui-disclosure', proxyToolsOpen && 'is-open')}
+                  aria-expanded={proxyToolsOpen}
+                  onClick={() => setProxyToolsOpen(o => !o)}
+                >
+                  <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                  {locale === 'de' ? 'Meldest du jemand anderen an?' : 'Registering someone else?'}
+                  <span className="dex-ui-muted" style={{ fontWeight: 400, fontSize: '0.78rem' }}>
+                    {locale === 'de' ? '(Nur für Organizer / Assistenten.)' : '(Organizers / assistants only.)'}
+                  </span>
+                  {registerForOther && (
+                    <span className="dex-ui-disclosure-count">{locale === 'de' ? 'aktiv' : 'on'}</span>
+                  )}
+                </button>
+                {proxyToolsOpen && (
+                  <div className="dex-ui-disclosure-body">
+                    <div className="dex-ui-help" style={{ marginTop: 0, marginBottom: 10 }}>
+                      {locale === 'de'
+                        ? 'Du kannst eine andere Person stellvertretend anmelden. Ihre Zustimmung holst du vorher ein — im nächsten Fenster wirst du danach gefragt.'
+                        : 'You can register another person on their behalf. Get their consent first — the next window asks you to confirm it.'}
+                    </div>
+                    <div className="dex-ui-inline">
+                      {canRegisterForOther && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary dex-ui-btn-sm"
+                          onClick={() => {
+                            setRegisterForOther(!registerForOther);
+                            setThirdPartyCheck(null);
+                            setPickedUserProfile(null);
+                            setOtherConsentConfirmed(false);
+                            setExternalPerson(false); // v18.74: Extern-Modus beim Wechsel zurücksetzen
+                            // v19.6: CC-Frage-Entscheidung beim Moduswechsel zurücksetzen.
+                            ccSelfDecidedRef.current = false;
+                            ccSelfRef.current = false;
+                            if (!registerForOther) {
+                              setFirstName(''); setSurname(''); setEmail(''); setUserSearch(''); setUserResults([]);
+                              // v26.76: geführten Wizard öffnen (Person suchen → Zustimmung).
+                              setProxyStep(1);
+                            } else {
+                              setFirstName(currentUser.firstName); setSurname(currentUser.surname); setEmail(currentUser.email); setUserSearch(''); setUserResults([]);
+                              setProxyStep(0);
+                            }
+                          }}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                        >
+                          <Icon iconName={registerForOther ? 'Contact' : 'AddFriend'} style={{ fontSize: 14 }} />
+                          {registerForOther ? t('reg.registerself') : t('reg.registerother')}
+                        </button>
+                      )}
+                      {/* v18.13: Massenimport — nur Organizer/Admin im „Für andere"-Modus. */}
+                      {registerForOther && canCreateEvents && (
+                        <button
+                          type="button"
+                          className="dex-ui-textbtn"
+                          onClick={() => { setMassImportResult(null); setMassImportRows([]); setMassImportStep('input'); setMassImportOpen(true); }}
+                        >
+                          {locale === 'de' ? 'Massenimport' : 'Bulk import'}
+                        </button>
+                      )}
+                    </div>
+                    {registerForOther && canCreateEvents && (
+                      <div className="dex-ui-help">
+                        {locale === 'de'
+                          ? 'Mit dem Massenimport trägst du mehrere Personen auf einmal ein, statt sie einzeln zu suchen.'
+                          : 'Bulk import adds several people at once instead of searching for them one by one.'}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* v27.13 (Feedback E. Brenneisen): Statt der grauen Feldliste eine
                 Profil-KARTE mit großem Foto, Name, Position und Standort. Ein
                 Plus-Toggle klappt die vollständige Liste der automatisch aus
@@ -361,86 +477,6 @@ export const PersonalDataSection: React.FC<PersonalDataSectionProps> = (p) => {
               </div>
             )}
 
-            {/* v31.9: Stellvertreter-Umschalter und Massenimport. Beides sind
-                Organizer-Funktionen, die die grosse Mehrheit der Anmeldenden
-                nie braucht — nach 2a gehoeren sie hinter das Pflichtteil, nach
-                2a' linksbuendig zum Inhalt statt an den rechten Rand. Die
-                Sichtbarkeitsbedingungen sind unveraendert mitgewandert:
-                aussen `canRegisterForOther || (registerForOther &&
-                canCreateEvents)` wie vorher am `headerExtra`, innen je Knopf
-                dieselbe Bedingung wie zuvor. */}
-            {(canRegisterForOther || (registerForOther && canCreateEvents)) && (
-              <div className="dex-ui-section">
-                <button
-                  type="button"
-                  className={cx('dex-ui-disclosure', proxyToolsOpen && 'is-open')}
-                  aria-expanded={proxyToolsOpen}
-                  onClick={() => setProxyToolsOpen(o => !o)}
-                >
-                  <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
-                  {locale === 'de' ? 'Meldest du jemand anderen an?' : 'Registering someone else?'}
-                  {registerForOther && (
-                    <span className="dex-ui-disclosure-count">{locale === 'de' ? 'aktiv' : 'on'}</span>
-                  )}
-                </button>
-                {proxyToolsOpen && (
-                  <div className="dex-ui-disclosure-body">
-                    <div className="dex-ui-help" style={{ marginTop: 0, marginBottom: 10 }}>
-                      {locale === 'de'
-                        ? 'Du kannst eine andere Person stellvertretend anmelden. Ihre Zustimmung holst du vorher ein — im nächsten Fenster wirst du danach gefragt.'
-                        : 'You can register another person on their behalf. Get their consent first — the next window asks you to confirm it.'}
-                    </div>
-                    <div className="dex-ui-inline">
-                      {canRegisterForOther && (
-                        <button
-                          type="button"
-                          className="btn btn-secondary dex-ui-btn-sm"
-                          onClick={() => {
-                            setRegisterForOther(!registerForOther);
-                            setThirdPartyCheck(null);
-                            setPickedUserProfile(null);
-                            setOtherConsentConfirmed(false);
-                            setExternalPerson(false); // v18.74: Extern-Modus beim Wechsel zurücksetzen
-                            // v19.6: CC-Frage-Entscheidung beim Moduswechsel zurücksetzen.
-                            ccSelfDecidedRef.current = false;
-                            ccSelfRef.current = false;
-                            if (!registerForOther) {
-                              setFirstName(''); setSurname(''); setEmail(''); setUserSearch(''); setUserResults([]);
-                              // v26.76: geführten Wizard öffnen (Person suchen → Zustimmung).
-                              setProxyStep(1);
-                            } else {
-                              setFirstName(currentUser.firstName); setSurname(currentUser.surname); setEmail(currentUser.email); setUserSearch(''); setUserResults([]);
-                              setProxyStep(0);
-                            }
-                          }}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                        >
-                          <Icon iconName={registerForOther ? 'Contact' : 'AddFriend'} style={{ fontSize: 14 }} />
-                          {registerForOther ? t('reg.registerself') : t('reg.registerother')}
-                        </button>
-                      )}
-                      {/* v18.13: Massenimport — nur Organizer/Admin im „Für andere"-Modus. */}
-                      {registerForOther && canCreateEvents && (
-                        <button
-                          type="button"
-                          className="dex-ui-textbtn"
-                          onClick={() => { setMassImportResult(null); setMassImportRows([]); setMassImportStep('input'); setMassImportOpen(true); }}
-                        >
-                          {locale === 'de' ? 'Massenimport' : 'Bulk import'}
-                        </button>
-                      )}
-                    </div>
-                    {registerForOther && canCreateEvents && (
-                      <div className="dex-ui-help">
-                        {locale === 'de'
-                          ? 'Mit dem Massenimport trägst du mehrere Personen auf einmal ein, statt sie einzeln zu suchen.'
-                          : 'Bulk import adds several people at once instead of searching for them one by one.'}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
           </CollapsibleSection>
         </div>
