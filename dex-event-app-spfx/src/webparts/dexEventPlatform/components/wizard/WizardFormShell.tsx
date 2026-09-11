@@ -108,6 +108,30 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
   // v31.2: Die gemeinsamen UI-Klassen einmal ins Dokument — die Schritte
   // (dex-ui-card, dex-ui-chip, dex-ui-toggle-row …) verlassen sich darauf.
   React.useEffect(() => { ensureDexUiStyles(); }, []);
+
+  /**
+   * v31.20: Der erste Schritt, in dem noch ein Pflichtfeld fehlt — oder -1,
+   * wenn das Event vollständig ist.
+   *
+   * Bewusst über ALLE Schritte, nicht nur die schon besuchten: Die Frage des
+   * Knopfes ist „darf das Event jetzt entstehen", und darauf antwortet nur
+   * eine vollständige Prüfung. Der Sprung-Klick im Schritt-Balken prüft
+   * dagegen nur die ÜBERSPRUNGENEN Schritte (`currentStep` bis `idx`), weil
+   * er eine andere Frage stellt — „darf ich hierhin springen".
+   *
+   * Nicht memoisiert, aus demselben Grund wie `getStepErrorsFor` selbst: Die
+   * Prüfungen sind reine Vergleiche auf Feldern, die sich bei jedem
+   * Tastendruck ändern. Ein `useMemo` bräuchte die Abhängigkeitsliste aller
+   * dreizehn Felder aus `GetStepErrorsForCtx` — und die erste vergessene
+   * wäre ein Knopf, der eine veraltete Auskunft gibt.
+   */
+  const ersterLueckenSchritt = (): number => {
+    for (let st = 0; st < steps.length; st++) {
+      if (getStepErrorsFor(st).length > 0) return st;
+    }
+    return -1;
+  };
+  const alleSchritteVollstaendig = ersterLueckenSchritt() < 0;
   return (
     <>
       <div>
@@ -631,6 +655,44 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                     style={{ opacity: !title ? 0.5 : 1 }}
                   >
                     <Send size={16} /> {isDe ? 'Speichern & zurück zum Event' : 'Save & return to event'}
+                  </button>
+                )}
+
+                {/* v31.20: Dasselbe beim ANLEGEN (Nutzer-Ansage 11.09.2026:
+                    „wenn man schon alle Pflichtfelder gefüllt hat soll man
+                    auch aus anderen Wizard-Schritten auf Event erstellen
+                    klicken können und nicht auf Weiter klicken müssen bis man
+                    ganz am Ende ist").
+
+                    Bis hierher gab es diesen Weg nur im Bearbeiten-Modus. Wer
+                    ein Event neu anlegte, musste sich durch alle neun Schritte
+                    klicken — auch wenn ab Schritt 3 alles optional ist und er
+                    nichts mehr ändern wollte. Die Schritte 3 bis 9 (Ort,
+                    Felder, Kommunikation, Team, Dokumente, Fun-Zone) haben
+                    gar keine Pflichtfelder; „Weiter, Weiter, Weiter" war also
+                    reine Wegstrecke.
+
+                    Der Knopf ist NICHT abgeblendet, wenn noch etwas fehlt —
+                    er springt dann auf den ersten Schritt mit Lücke und
+                    markiert sie rot (`setTriedNext`). Das ist dieselbe
+                    Mechanik, die `proceedNext` schon hat, und sie sagt
+                    mehr als ein grauer Knopf: WO es fehlt, nicht nur DASS.
+                    Ein abgeblendeter Knopf mit Tooltip wäre auf dem Handy
+                    gar keine Auskunft. */}
+                {!isEditMode && currentStep < steps.length - 1 && (
+                  <button
+                    className="btn btn-outline"
+                    onClick={() => {
+                      const fehlt = ersterLueckenSchritt();
+                      if (fehlt >= 0) { setTriedNext(true); setCurrentStep(fehlt); return; }
+                      setTriedNext(false);
+                      attemptSubmitGuarded();
+                    }}
+                    title={alleSchritteVollstaendig
+                      ? (isDe ? 'Alle Pflichtfelder sind gefüllt — das Event kann jetzt angelegt werden.' : 'All mandatory fields are filled — the event can be created now.')
+                      : (isDe ? `Es fehlt noch etwas in Schritt ${ersterLueckenSchritt() + 1}. Der Klick bringt dich dorthin.` : `Something is still missing in step ${ersterLueckenSchritt() + 1}. This takes you there.`)}
+                  >
+                    <Send size={16} /> {t('create.submit')}
                   </button>
                 )}
 
