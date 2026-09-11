@@ -49,7 +49,7 @@ import * as regListRepair from './events/regListRepair';
 import * as qrSentBackfill from './events/qrSentBackfill';
 import * as quiz from './events/quiz';
 import * as poll from './events/poll';
-import * as waitlistBlocker from './events/waitlistBlocker';
+import * as waitlistShadow from './events/waitlistShadow';
 import * as teilnehmerIdCounter from './events/teilnehmerIdCounter';
 import * as eventAssets from './events/eventAssets';
 import * as branding from './events/branding';
@@ -1751,16 +1751,17 @@ export class EventService {
     return quiz.saveQuizProgress(this, subsiteUrl, itemId, score, answers, isComplete);
   }
 
-  // ==================== Wartelisten-Blocker ====================
-  // v31.15: Implementierung in services/events/waitlistBlocker.ts.
-  // Das Abraeumen haengt in `queueOutlookEvent` — hier steht nur das Setzen.
+  // ==================== Wartelisten-Schattenevent ====================
+  // v31.16: Implementierung in services/events/waitlistShadow.ts.
+  // Das Ausladen haengt in `queueOutlookEvent` — hier steht nur das Anlegen
+  // und das Aufraeumen beim Loeschen des echten Events.
 
-  public async queueWaitlistBlocker(attendee: string, eventId: string, eventTitle: string): Promise<boolean> {
-    return waitlistBlocker.queueWaitlistBlocker(this, attendee, eventId, eventTitle);
+  public async ensureWaitlistShadow(ev: import('../types').DeloitteEvent): Promise<{ id: string; title: string } | null> {
+    return waitlistShadow.ensureWaitlistShadow(this, ev);
   }
 
-  public async clearWaitlistBlocker(attendee: string, eventId: string, eventTitle: string): Promise<boolean> {
-    return waitlistBlocker.clearWaitlistBlocker(this, attendee, eventId, eventTitle);
+  public async removeWaitlistShadow(eventId: string, eventTitle: string): Promise<boolean> {
+    return waitlistShadow.removeWaitlistShadow(this, eventId, eventTitle);
   }
 
   // ==================== Umfrage nach dem Event ====================

@@ -10,7 +10,7 @@ import { SPHttpClient, SPHttpClientResponse } from '@microsoft/sp-http';
 import { buildOutlookLocation } from '../../utils/eventFormat';
 import type { EventService, SPRegistration, DeclineCheckResult } from '../EventService';
 import { REG_LIST_NAME } from '../EventService';
-import { clearWaitlistBlocker } from './waitlistBlocker';
+import { leaveWaitlistShadow } from './waitlistShadow';
 
 
 /**
@@ -172,12 +172,12 @@ export async function queueOutlookEvent(
 ): Promise<boolean> {
   try {
     /*
-     * v31.15: Der Wartelisten-Platzhalter wird hier abgeräumt — an der EINEN
+     * v31.16: Das Wartelisten-Schattenevent wird hier abgeräumt — an der EINEN
      * Stelle, durch die jedes Nachrücken (`Einladen`) und jede Abmeldung
      * (`Ausladen`) ohnehin läuft. Fünf neue Aufrufstellen an fünf Nachrück-
      * Pfaden wären genau die Konstruktion, bei der die sechste vergessen
-     * wird (die Lehre aus `queueIDReorderChecked`, v30.80) — und ein Blocker,
-     * der bleibt, ist schlimmer als keiner.
+     * wird (die Lehre aus `queueIDReorderChecked`, v30.80) — und ein
+     * Platzhalter, der bleibt, ist schlimmer als keiner.
      *
      * Vor dem Schreiben, nicht danach: Sonst steht bei einem Nachrücken
      * kurzzeitig beides im Kalender, und wenn der zweite Schreibvorgang die
@@ -186,7 +186,7 @@ export async function queueOutlookEvent(
      * ärgerlich, eine fehlende Einladung ist ein verlorener Platz.
      */
     if (actionType === 'Einladen' || actionType === 'Ausladen') {
-      try { await clearWaitlistBlocker(svc, attendee, eventId, eventTitle); } catch { /* best-effort */ }
+      try { await leaveWaitlistShadow(svc, attendee, eventId, eventTitle); } catch { /* best-effort */ }
     }
     // v18.34: OutlookLocation für Bestands-Events nachziehen (einmal pro Event/Session).
     await backfillOutlookLocation(svc, eventId);

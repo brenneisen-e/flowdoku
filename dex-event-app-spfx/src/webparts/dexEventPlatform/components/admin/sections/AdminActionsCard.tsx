@@ -13,7 +13,7 @@ import * as React from 'react';
 import { ActionTile, ActionsCollapsibleCard } from '../../admin/ActionsMenu';
 import { AlertCircle, Calendar, Check, Columns, Copy, Download, ExternalLink, FileText, Hash, Link2, Mail, Pencil, QrCode, RefreshCw, Send, Shirt, Users, Wrench } from '../../Icons';
 import { parseBillingOf } from '../../../utils/faBilling';
-import { WAITLIST_BLOCKER_KEY, waitlistBlockerEnabled } from '../../../services/events/waitlistBlocker';
+import { WAITLIST_BLOCKER_KEY, waitlistBlockerEnabled } from '../../../services/events/waitlistShadow';
 import { buildHashDeepLink } from '../../../utils/deepLink';
 import { isB2RunKoelnTitle } from '../../../data/b2runKoeln';
 import { EventService, REG_LIST_NAME, SPRegistration } from '../../../services/EventService';

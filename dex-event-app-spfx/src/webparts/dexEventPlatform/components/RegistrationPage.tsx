@@ -52,7 +52,7 @@ import { PersonalDataSection } from './registration/PersonalDataSection';
 import { EventCard } from './registration/EventCard';
 import { DeadlineBanner, DemoBanner, LocationBanner, SubmitOverlay } from './registration/RegistrationBanners';
 import { createSubmitFlow } from './registration/submitFlow';
-import { waitlistBlockerEnabled } from '../services/events/waitlistBlocker';
+import { waitlistBlockerEnabled } from '../services/events/waitlistShadow';
 import type { ReactDatePickerProps } from 'react-datepicker';
 
 /**
