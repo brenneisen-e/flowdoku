@@ -63,7 +63,7 @@ import { useDialog } from '../context/DialogContext';
 import { shortSubEventTitle } from '../utils/subEventTitle';
 import { ActionsRegistryProvider } from './admin/ActionsMenu';
 import BillingActionPanel from './admin/BillingActionPanel';
-import { parseBillingOf } from '../utils/faBilling';
+import { parseBillingOf, faRowsFromRegistrations, renderOrganizerFAListMailBody } from '../utils/faBilling';
 import { MailHeaderImage, MAIL_HEADER_IMAGE_DEFAULT } from '../utils/mailHeaderImage';
 
 
@@ -141,7 +141,7 @@ import { createKlammerActions } from './admin/logic/createKlammerActions';
 import { useWaitlistActions } from './admin/logic/useWaitlistActions';
 import { useTeamActions } from './admin/logic/useTeamActions';
 import { useColumnConfig } from './admin/logic/useColumnConfig';
-import { createExportActions } from './admin/logic/createExportActions';
+import { createExportActions, ExcelExportAudience, ExcelExportMode } from './admin/logic/createExportActions';
 import { useEventSelection } from './admin/logic/useEventSelection';
 import { useMailComposers } from './admin/logic/useMailComposers';
 import { createQrMailActions } from './admin/logic/createQrMailActions';
@@ -1072,7 +1072,7 @@ export default function AdminPage(): React.ReactElement {
   // v27.9: chooseMode = die Format-Auswahl (Deloitte/B2Run) wird IM Modal
   // getroffen statt im Anker-Dropdown (der im „Aktion auswählen"-Menü mit
   // overflow:auto abgeschnitten wurde → Auswahl war unsichtbar).
-  const [excelTargetModal, setExcelTargetModal] = React.useState<null | { mode: 'deloitte' | 'b2run'; chooseMode?: boolean }>(null);
+  const [excelTargetModal, setExcelTargetModal] = React.useState<null | { mode: ExcelExportMode; chooseMode?: boolean }>(null);
   // v30.48: Rücklauf des Veranstalters mit den echten Startnummern einlesen.
   const [bibImportOpen, setBibImportOpen] = React.useState(false);
   // v30.54: Offene Ummeldungen beim Veranstalter — live aus der Liste.
@@ -1089,7 +1089,7 @@ export default function AdminPage(): React.ReactElement {
   // v30.60: Aufgeklappte Reiter-Gruppe („Day 1" …). null = die zuletzt
   // sinnvolle Gruppe wird beim Rendern bestimmt (die des gewählten Termins).
   const [openTabGroup, setOpenTabGroup] = React.useState<string | null>(null);
-  const [excelAudience, setExcelAudience] = React.useState<'active' | 'activePlusWait' | 'waitOnly' | 'withCancelled'>('active');
+  const [excelAudience, setExcelAudience] = React.useState<ExcelExportAudience>('active');
   // v20.4: Excel-Export im Klammer-Modus — konsolidierte Matrix (eine Zeile
   // pro Person, Spalten pro Sub-Event) und/oder einzelne Sub-Event-Blätter
   // sind im Export-Modal wählbar.
@@ -2148,10 +2148,39 @@ export default function AdminPage(): React.ReactElement {
     massmailPasteRaw, registrations, setMassmailMode, setMassmailPasteRaw,
     setShowEmailModal, showAlert,
   };
+  /**
+   * v31.13: Die F&A-Liste zusaetzlich als Mail — mit dem Dank fuers
+   * Organisieren. Bewusst OHNE Stempel in `_billing`: Das hier ist eine
+   * Arbeitskopie fuer den Organizer, keine Uebermittlung an F&A. Wuerde sie
+   * `listSentAt` setzen, zeigte das F&A Center „Teilnehmerliste versendet",
+   * ohne dass F&A je etwas bekommen hat.
+   */
+  // Bewusst KEIN useCallback: Diese Stelle liegt hinter einem fruehen Return
+  // der Komponente — ein Hook hier reisst die Hook-Reihenfolge (React #300,
+  // ESLint `rules-of-hooks` seit v30.41). Die Funktion geht als Prop an ein
+  // nicht memoisiertes Modal; eine neue Identitaet je Render kostet nichts.
+  const sendFaListMail = async (empfaenger: string, nurEingecheckt: boolean): Promise<boolean> => {
+    if (!eventServiceRef || !selectedEvent) return false;
+    const ACTIVE_FA = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
+    const quelle = registrations.filter(r => (nurEingecheckt ? r.Status === 'Eingecheckt' : ACTIVE_FA.indexOf(r.Status) >= 0));
+    const rows = faRowsFromRegistrations(quelle);
+    if (rows.length === 0) return false;
+    const body = renderOrganizerFAListMailBody(
+      selectedEvent, rows, `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email || '',
+      nurEingecheckt, parseBillingOf(selectedEvent),
+    );
+    return eventServiceRef.queueEmail(
+      `[DEX] Teilnehmerliste für F&A: ${selectedEvent.title}`,
+      empfaenger, 'F&A-Liste', body,
+      'FA_LIST_ORGANIZER', selectedEvent.title, selectedEvent.id,
+    );
+  };
+
   const excelTargetModalProps = {
     consolidatedChildren, excelAudience, excelIncludeMatrix, excelSubIds, excelTargetModal, exportConsolidatedExcel,
     exportCsv, isConsolidatedMode, isDe, selectedEvent, setExcelAudience, setExcelIncludeMatrix,
     setExcelSubIds, setExcelTargetModal, subEventRegsByEventId,
+    sendFaListMail, myEmail: currentUser.email || '',
   };
   const massmailComposerModalProps = {
     applyMassmailHero, confirmDialog, emailBody, emailHeading, emailSending, emailSubject,

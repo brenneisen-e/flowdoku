@@ -7,16 +7,33 @@
  * Umfrage-Werkzeug geht: Jede Antwort ist ein LINK, der wie ein Kästchen
  * aussieht. Ein Klick öffnet DEX, die Antwort ist sofort gespeichert.
  *
- * Zwei Dinge, die an dieser Stelle leicht kaputtgehen:
+ * ## Wie die Kästchen gebaut sind — und warum v31.13 sie neu gebaut hat
  *
- * 1. **Outlook rendert mit der Word-Engine.** Rahmen an `<span>`, `flex` und
- *    `display:block` auf `<a>` sind dort unzuverlässig. Jede Option ist
- *    deshalb eine eigene EINZELLIGE TABELLE mit Rahmen an der `<td>` — das
- *    trägt in Outlook, Gmail und auf dem Handy gleich.
- * 2. **Das Kästchen-Zeichen `&#9744;` ist ein Schriftzeichen.** Fehlt es in
- *    der Schrift, zeigt Outlook ein leeres Rechteck — also wieder ein
- *    Kästchen. Der Rahmen der Zelle trägt die Bedeutung ohnehin; das Zeichen
- *    ist die Zugabe, nicht die Aussage.
+ * Der erste Entwurf (v31.12) sah in der echten Mail aus wie eine Liste von
+ * Zitatblöcken: 1 px grauer Rahmen, 4 px grüner Balken links, ein
+ * Schriftzeichen als Kästchen. Gemeldet 11.09.2026 mit Bildschirmfoto. Nach
+ * den Empfehlungen für Mail-Schaltflächen (Litmus, Chamaileon, ActiveCampaign
+ * — „bulletproof buttons") sind drei Dinge daran falsch:
+ *
+ * 1. **Outlook rendert mit der Word-Engine.** `display:block` auf einem `<a>`
+ *    wird dort ignoriert — anklickbar war deshalb nur der TEXT, nicht die
+ *    Fläche. Jede Antwort ist jetzt eine Tabellenzelle: Rahmen, Hintergrund
+ *    und `padding` an der `<td>` trägt die Word-Engine zuverlässig, und im
+ *    Inneren liegen ZWEI Links auf dieselbe Adresse (Kästchen und Text),
+ *    sodass in jedem Client beides klickt.
+ * 2. **Das Kästchen war ein Schriftzeichen (`&#9744;`).** Ob es erscheint,
+ *    entscheidet die Schrift des Empfängers, und seine Größe passt zu keiner
+ *    Zeilenhöhe. Jetzt ist es eine 18 px große Zelle mit 2 px Rahmen — also
+ *    gezeichnet statt gesetzt, und überall gleich.
+ * 3. **Eine Antwortmöglichkeit muss wie eine Schaltfläche aussehen.** Die
+ *    Empfehlung für Umfragen in Mails ist überall dieselbe: große
+ *    Tippflächen, klarer Kontrast, einspaltig. Deshalb 2 px grüner Rahmen,
+ *    weiße Fläche, 16 px halbfette Schrift, 14/18 px Innenabstand (Höhe rund
+ *    50 px, im empfohlenen Bereich 42–72 px) und 10 px Abstand dazwischen.
+ *
+ * Bewusst OHNE VML-`roundrect`: Das bräuchte man für runde Ecken in Outlook.
+ * Dort bleiben die Ecken eckig — der einzige sichtbare Unterschied, und er
+ * ist den doppelten Markup-Pfad nicht wert.
  */
 
 import { buildHashDeepLink } from './deepLink';
@@ -63,16 +80,30 @@ export function pollPageLink(appUrl: string, eventNumber: number): string {
 export function buildPollMailBody(o: PollMailOptions): string {
   const { appUrl, eventNumber, frage, optionen, mehrfach, anonym, isDe } = o;
 
-  const kaestchen = optionen.map((opt, i) => `
-<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="width:100%;margin:0 0 8px 0;">
+  const kaestchen = optionen.map((opt, i) => {
+    const url = pollOptionLink(appUrl, eventNumber, i);
+    return `
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;border-collapse:collapse;margin:0 0 10px 0;">
 <tr>
-<td style="border:1px solid #d5d5d5;border-left:4px solid ${GREEN};background-color:#ffffff;padding:0;">
-  <a href="${pollOptionLink(appUrl, eventNumber, i)}" style="display:block;padding:12px 16px;color:#333333;text-decoration:none;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:15px;font-weight:600;">
-    <span style="color:${GREEN};font-size:19px;line-height:19px;">&#9744;</span>&nbsp;&nbsp;${h(opt)}
-  </a>
+<td bgcolor="#ffffff" style="border:2px solid ${GREEN};border-radius:8px;padding:14px 18px;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;border-collapse:collapse;">
+  <tr>
+    <td width="22" valign="middle" style="width:22px;">
+      <a href="${url}" style="text-decoration:none;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td width="18" height="18" bgcolor="#ffffff" style="width:18px;height:18px;border:2px solid ${GREEN};border-radius:3px;font-size:0;line-height:0;">&nbsp;</td>
+        </tr></table>
+      </a>
+    </td>
+    <td valign="middle" style="padding-left:12px;">
+      <a href="${url}" style="color:#2b2b2b;text-decoration:none;font-family:Aptos,'Open Sans',Arial,Helvetica,sans-serif;font-size:16px;line-height:22px;font-weight:600;">${h(opt)}</a>
+    </td>
+  </tr>
+  </table>
 </td>
 </tr>
-</table>`).join('');
+</table>`;
+  }).join('');
 
   const hinweisMehrfach = mehrfach
     ? (isDe
@@ -90,25 +121,29 @@ export function buildPollMailBody(o: PollMailOptions): string {
       ? 'Deine Antwort ist für die Organisierenden dieses Events mit deinem Namen sichtbar.'
       : 'Your answer is visible to the organisers of this event together with your name.');
 
-  return `
-<p style="font-size:16px;line-height:1.5;">${h(frage)}</p>
+  const FONT = `Aptos,'Open Sans',Arial,Helvetica,sans-serif`;
 
-<p style="font-size:14px;color:#666666;margin:0 0 14px 0;">
+  return `
+<p style="font-family:${FONT};font-size:19px;line-height:26px;font-weight:700;color:#2b2b2b;margin:0 0 6px 0;">${h(frage)}</p>
+
+<p style="font-family:${FONT};font-size:15px;line-height:22px;color:#5a5a5a;margin:0 0 18px 0;">
   ${isDe
-    ? 'Ein Klick genügt — deine Antwort ist sofort gespeichert.'
-    : 'One click is enough — your answer is saved right away.'}
+    ? 'Tipp auf eine Antwort — das war es schon. Sie ist damit gespeichert, du musst nichts absenden.'
+    : 'Tap one answer — that is it. It is saved right away, there is nothing to submit.'}
 </p>
 
 ${kaestchen}
 
-<p style="font-size:13px;color:#666666;line-height:1.5;margin:14px 0 0 0;">
-  ${hinweisMehrfach}<br>
+<p style="font-family:${FONT};font-size:14px;line-height:21px;color:#6b6b6b;margin:18px 0 0 0;">
+  ${hinweisMehrfach}
+</p>
+<p style="font-family:${FONT};font-size:13px;line-height:20px;color:#8a8a8a;margin:8px 0 0 0;">
   ${hinweisAnonym}
 </p>
 
-<p style="font-size:13px;margin:16px 0 0 0;">
-  <a href="${pollPageLink(appUrl, eventNumber)}" style="color:${GREEN};font-weight:600;">
-    ${isDe ? 'Umfrage öffnen und etwas dazuschreiben' : 'Open the poll and add a comment'}
+<p style="font-family:${FONT};font-size:14px;line-height:21px;margin:18px 0 0 0;">
+  <a href="${pollPageLink(appUrl, eventNumber)}" style="color:${GREEN};font-weight:600;text-decoration:underline;">
+    ${isDe ? 'Lieber selbst etwas schreiben? Umfrage öffnen' : 'Rather write something yourself? Open the poll'}
   </a>
 </p>`;
 }

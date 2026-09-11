@@ -8,6 +8,20 @@ import { B2RUN_KOELN_ALTERSKLASSE, B2RUN_KOELN_HEADERS, isB2RunKoelnTitle, mapAn
 import { SPRegistration } from '../../../services/EventService';
 import { shortSubEventTitle } from '../../../utils/subEventTitle';
 import { DeloitteEvent } from '../../../types';
+// v31.13: Der F&A-Aufbau existiert seit v30.50 — die dritte Export-Ansicht
+// baut KEINE zweite Variante davon, sie ruft dieselbe Funktion wie der
+// Versand an F&A und der Download im Abrechnungs-Dialog.
+import { buildFASheetAoa, faRowsFromRegistrations, parseBillingOf } from '../../../utils/faBilling';
+
+/** v31.13: `fa` = die Liste im Aufbau, den F&A seit Jahren einliest. */
+export type ExcelExportMode = 'deloitte' | 'b2run' | 'fa';
+/**
+ * v31.13: `checkedIn` kam mit der F&A-Ansicht dazu (Nutzer-Ansage
+ * 11.09.2026: „ob dort nur die Leute drauf kommen sollen die eingecheckt
+ * wurden oder alle die nicht abgemeldet sind"). Für einen Bewirtungsbeleg
+ * ist das kein Detail: Wer nicht da war, gehört nicht darauf.
+ */
+export type ExcelExportAudience = 'active' | 'activePlusWait' | 'waitOnly' | 'withCancelled' | 'checkedIn';
 
 export interface CreateExportActionsCtx {
   computeRoommatePairs: (rows: SPRegistration[]) => Array<[SPRegistration, SPRegistration]>;
@@ -21,8 +35,8 @@ export interface CreateExportActionsCtx {
 }
 
 export interface CreateExportActionsResult {
-  exportConsolidatedExcel: (audience: 'active' | 'activePlusWait' | 'waitOnly' | 'withCancelled', includeMatrix: boolean, subIds: string[]) => void;
-  exportCsv: (mode: 'deloitte' | 'b2run', audience?: 'active' | 'activePlusWait' | 'waitOnly' | 'withCancelled') => void;
+  exportConsolidatedExcel: (audience: ExcelExportAudience, includeMatrix: boolean, subIds: string[]) => void;
+  exportCsv: (mode: ExcelExportMode, audience?: ExcelExportAudience) => void;
 }
 
 export function createExportActions(ctx: CreateExportActionsCtx): CreateExportActionsResult {
@@ -35,7 +49,51 @@ export function createExportActions(ctx: CreateExportActionsCtx): CreateExportAc
    * - 'deloitte': alle internen Felder (Anrede, Name, Email, Department, Location, JobTitle, Phone, Status, ...)
    * - 'b2run': Format exakt wie die offizielle B2Run-Köln-Meldedatei (16 Spalten laut B2RUN_KOELN_HEADERS: Nr., Anrede, Vorname, Nachname, E-Mail, Startblock, Zustimmung AGB & Datenschutzhinweise, Anonym, Gruppe, Straße/PLZ/Stadt (privat), Mobilnummer, Verwendung Infoservice, Altersklasse, Nordic Walker)
    */
-  const exportCsv = (mode: 'deloitte' | 'b2run', audience: 'active' | 'activePlusWait' | 'waitOnly' | 'withCancelled' = 'active'): void => {
+  /**
+   * v31.13: Der Schreibweg einer Arbeitsmappe — einmal, statt in jedem Zweig.
+   *
+   * v20.0 (Audit): xlsx erst beim Export-Klick als Chunk nachladen — die
+   * Bibliothek ist mit Abstand die schwerste Dependency und wird nur hier
+   * gebraucht.
+   * v8.4: Manueller Blob-Download statt XLSX.writeFile. Im SPFx-Iframe-
+   * Context ist saveAs/createObjectURL haeufig blockiert (CORS / Sandbox-
+   * Policies), wodurch der Download stillschweigend nicht startet. Mit
+   * anchor.click() laeuft das in jeder Browser-Umgebung zuverlaessig.
+   */
+  const writeWorkbook = (aoa: (string | number)[][], sheetName: string, fileName: string): void => {
+    import('xlsx').then(XLSX => {
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      const spalten = Math.max(0, ...aoa.map(z => z.length));
+      const colWidths = Array.from({ length: spalten }, (_unused, ci) => {
+        const maxLen = Math.max(10, ...aoa.map(z => String(z[ci] === undefined || z[ci] === null ? '' : z[ci]).length));
+        return { wch: Math.min(40, maxLen + 2) };
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (ws as any)['!cols'] = colWidths;
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 0);
+    }).catch(err => {
+      console.warn('[DEX] Excel-Export fehlgeschlagen:', err);
+      showAlert(isDe
+        ? 'Excel-Export fehlgeschlagen. Bitte Browser-Console prüfen.'
+        : 'Excel export failed. Please check the browser console.');
+    });
+  };
+
+  const exportCsv = (mode: ExcelExportMode, audience: ExcelExportAudience = 'active'): void => {
     if (!selectedEvent) return;
     const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
     const audienceFilter = (r: SPRegistration): boolean => {
@@ -43,6 +101,8 @@ export function createExportActions(ctx: CreateExportActionsCtx): CreateExportAc
       if (audience === 'activePlusWait') return ACTIVE.indexOf(r.Status) >= 0 || r.Status === 'Warteliste';
       // v20.4: alles inkl. Abgemeldete (Status-Spalte ist im Export enthalten).
       if (audience === 'withCancelled') return true;
+      // v31.13: Für die F&A-Liste — nur, wer wirklich da war.
+      if (audience === 'checkedIn') return r.Status === 'Eingecheckt';
       return ACTIVE.indexOf(r.Status) >= 0;
     };
     // v17.12: nach TeilnehmerID asc sortieren (vorher random / Status-Reihenfolge).
@@ -61,6 +121,32 @@ export function createExportActions(ctx: CreateExportActionsCtx): CreateExportAc
 
     let headers: string[] = [];
     let rows: (string | number)[][] = [];
+
+    if (mode === 'fa') {
+      /*
+       * v31.13 — die dritte Ansicht: die Liste, wie F&A sie einliest.
+       *
+       * Hier wird NICHTS neu aufgebaut. `buildFASheetAoa` gibt es seit
+       * v30.50; dieselbe Funktion füllt den Versand an F&A und den Download
+       * im Abrechnungs-Dialog. Eine zweite Abbildung daneben wäre genau die
+       * Konstruktion, aus der zwei Dateien mit unterschiedlichen Zahlen
+       * entstehen — die Lehre, die v30.50 gezogen hat.
+       *
+       * Die Kopfzeilen 1–11 tragen die Abrechnungsangaben des Events, soweit
+       * sie gepflegt sind. Sind sie es nicht, bleiben die Zellen leer statt
+       * „—": F&A verarbeitet die Datei weiter, und ein Gedankenstrich ist
+       * dort ein Wert, kein fehlender.
+       */
+      const faRows = faRowsFromRegistrations(activeRegsForExport);
+      if (faRows.length === 0) { showAlert(isDe ? 'Für diese Auswahl gibt es niemanden.' : 'Nobody matches this selection.'); return; }
+      const aoaFa = buildFASheetAoa(selectedEvent, parseBillingOf(selectedEvent), faRows);
+      writeWorkbook(
+        aoaFa,
+        'F&A',
+        `FA_Teilnehmerliste_${(selectedEvent.title || 'event').replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      );
+      return;
+    }
 
     if (mode === 'b2run') {
       // v26.48: Struktur exakt wie die OFFIZIELLE B2Run-Köln-Meldedatei
@@ -179,42 +265,8 @@ export function createExportActions(ctx: CreateExportActionsCtx): CreateExportAc
       ? `Deloitte_Teilnehmer_-innen_b2run-koeln${b2runYear ? '-' + b2runYear : ''}.xlsx`
       : `${filePrefix}_${safeName}_${new Date().toISOString().slice(0, 10)}.xlsx`;
 
-    // v20.0 (Audit): xlsx erst beim Export-Klick als Chunk nachladen — die
-    // Bibliothek ist mit Abstand die schwerste Dependency und wird nur hier
-    // gebraucht. Der .then/.catch-Pfad ersetzt das frühere try/catch.
-    // v8.4: Manueller Blob-Download statt XLSX.writeFile. Im SPFx-Iframe-
-    // Context ist saveAs/createObjectURL häufig blockiert (CORS / Sandbox-
-    // Policies), wodurch der Download stillschweigend nicht startet. Mit
-    // anchor.click() läuft das in jeder Browser-Umgebung zuverlässig.
-    import('xlsx').then(XLSX => {
-      const ws = XLSX.utils.aoa_to_sheet(aoa);
-      const colWidths = headers.map((h, ci) => {
-        const maxLen = Math.max(h.length, ...rows.map(r => String(r[ci] || '').length));
-        return { wch: Math.min(40, Math.max(10, maxLen + 2)) };
-      });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (ws as any)['!cols'] = colWidths;
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, sheetName);
-      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }, 0);
-    }).catch(err => {
-      console.warn('[DEX] Excel-Export fehlgeschlagen:', err);
-      showAlert(isDe
-        ? 'Excel-Export fehlgeschlagen. Bitte Browser-Console prüfen.'
-        : 'Excel export failed. Please check the browser console.');
-    });
+    // v31.13: derselbe Schreibweg wie die F&A-Ansicht (s. `writeWorkbook`).
+    writeWorkbook(aoa, sheetName, fileName);
   };
 
   // v20.4: Excel-Export der konsolidierten Klammer-Ansicht. Baut EINE Datei
@@ -224,7 +276,7 @@ export function createExportActions(ctx: CreateExportActionsCtx): CreateExportAc
   // Datenquellen sind die bereits geladenen States (registrations = Klammer-
   // Zeilen, subEventRegsByEventId = Sub-Event-Listen) — kein Extra-Roundtrip.
   const exportConsolidatedExcel = (
-    audience: 'active' | 'activePlusWait' | 'waitOnly' | 'withCancelled',
+    audience: ExcelExportAudience,
     includeMatrix: boolean,
     subIds: string[]
   ): void => {
@@ -234,6 +286,8 @@ export function createExportActions(ctx: CreateExportActionsCtx): CreateExportAc
       if (audience === 'waitOnly') return r.Status === 'Warteliste';
       if (audience === 'activePlusWait') return ACTIVE.indexOf(r.Status) >= 0 || r.Status === 'Warteliste';
       if (audience === 'withCancelled') return true;
+      // v31.13: Für die F&A-Liste — nur, wer wirklich da war.
+      if (audience === 'checkedIn') return r.Status === 'Eingecheckt';
       return ACTIVE.indexOf(r.Status) >= 0;
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
