@@ -1562,14 +1562,14 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       // entsteht (externe Adresse, Outlook abgeschaltet, Schattenzeile der
       // Klammer), gibt es auch nichts freizuhalten.
       if (status === 'Warteliste' && outlookMoeglich && waitlistBlockerEnabled(event.emailTemplateOverrides)) {
-        // Das Schattenevent wird ERST hier angelegt — also wenn wirklich
-        // jemand wartet. Danach ist die Einladung dorthin eine ganz normale
-        // `Einladen`-Zeile; der bestehende Flow braucht davon nichts zu wissen.
-        (async () => {
-          const schatten = await eventService.ensureWaitlistShadow(event);
-          if (!schatten) return;
-          await eventService.queueOutlookEvent(emailToUse, schatten.id, schatten.title, 'Einladen');
-        })().catch(err => console.warn('[DEX] Wartelisten-Platzhalter:', err));
+        // v31.18: Hier wird NUR gelesen und eingeladen — angelegt hat das
+        // Schattenevent der Organizer beim Speichern des Events. Zwei Gruende,
+        // beide hart: Normale Nutzer haben auf `DEX_Events` nur Leserecht
+        // (v26.63), ein Anlegen waere hier ein 403. Und der Kalendertermin
+        // braucht nach dem Anlegen bis zu fuenf Minuten — eine Einladung
+        // davor findet keine `CalendarLink` und scheitert endgueltig.
+        eventService.inviteToWaitlistShadow(emailToUse, eventId, event.title)
+          .catch(err => console.warn('[DEX] Wartelisten-Platzhalter:', err));
       }
       // v11.53: KPI-Counter sofort hochzählen, damit der nächste Boot-
       // Loader die neue Zahl ohne Verzögerung zeigt. Nur für 'Angemeldet'-

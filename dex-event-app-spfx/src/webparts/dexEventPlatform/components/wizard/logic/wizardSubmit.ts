@@ -199,6 +199,44 @@ export interface WizardSubmitCtx {
 
 export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
   const { activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, agenda, allDay, allowAttendeeUpload, askSalutation, askTeamName, assistantsCanSee, attendeeUploadHint, attendeeUploadLabel, audience, berlinLocalToUtcIso, bilingualFields, billingPiggyback, bundledComm, commShared, childEventsOf, childGender, childTermPlural, childTermSingular, computeFormSnapshot, confirmDialog, confirmDialogEnabled, confirmDialogMode, confirmDialogText, contactEmail, contactInfo, contactName, contactOrganizerEmail, coOrganizerEmails, coOrganizerNames, createdEventIdRef, createEvent, currentUser, customFields, deadlineToEndOfDayIso, description, documents, DRAFT_KEY, durchstarterCapacity, durchstarterRequiresProof, durchstarterStartblock, editEvent, effTeamsLink, endDate, eventImageUrl, eventType, excludedUsers, filterMode, funstarterCapacity, funstarterStartblock, getGroupMembers, getLastEventUpdateError, headerImageLayoutConfig, headerLayoutFor, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly, imageBanner, imageDisplay, imageFile, imageOrigAspect, imageOrigFile, initialDocumentNames, initialFormSnapshotRef, initialOrgGetsSubInvitesRef, initialSubEventDbIds, isB2runTemplate, isDe, isEditMode, isFictive, klammerDeadline, lastDeregisterDate, lastDraftJsonRef, location, locationFilter, mainCommDisabledAck, mainEventLabel, mainEventLabelMode, maxParticipants, noCancelAfterDeadline, noDescription, notifyAdminsExternalAudienceAccess, notifyNewCoOrganizers, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, onlineMeetingMode, organizer, organizerDisplayLarge, organizerEmails, orgGetsSubInvites, outlookEndOverride, outlookLocationOverride, outlookStartOverride, outlookTeamsLink, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs, pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, pendingSuccessDispatchRef, persistSubEventsForParent, previewBeforeActive, qrScannerEmails, qrScannerNames, quiz, quizClusterSize, refreshEventDocuments, refreshEvents, registrationDeadline, registrationLanguage, regRuleEnabled, requestCoOrganizerApprovals, requireSubEventSelection, resolveTopLevelCommState, sanitizeOrganizerPairs, selectedEventId, setDraftSavedAt, setError, setImageUploadError, setIsSubmitting, setNavigationGuard, setPendingDraft, setPendingSuccessDispatch, setProgress, setProgressLabel, setRemovedSavedSubs, setShowSummaryModal, showAlert, showAsFree, shrinkLogoB64, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitLabelA, splitLabelB, splitSectionTitle, splitSharedWaitlist, startDate, subDeadlineRulePiggyback, subEventCalendar, subEventOpenRulePiggyback, agendaCheckInPiggyback, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn, subEventsRef, teamJoinRequiresApproval, teamMembersCannotCreate, teamOpenSlotsVisible, teamPartialAllowed, teamRegistrationEnabled, teamSize, teamTermPlural, teamTermSingular, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, updateEvent, userCancelAllowed, useSplitCapacities, visAllSubsPiggyback, waitlistBlocker, waitlistEnabled, wizardImgAspect } = ctx;
+
+      /*
+       * v31.18: Das Wartelisten-Schattenevent wird HIER angelegt, nicht beim
+       * Anmelden.
+       *
+       * Der Grund ist eine Berechtigung, keine Architektur: Normale Nutzer
+       * haben auf `DEX_Events` nur LESERECHT (so dokumentiert seit v26.63 in
+       * `persistCurrentParticipants`). Ein `ensureWaitlistShadow` aus dem
+       * Anmeldepfad liefe in ihrer Sitzung und waere ein 403 — ausgerechnet
+       * fuer die Leute, fuer die der Platzhalter gedacht ist. Der Organizer
+       * hat das Recht, also legt er ihn an; der wartende Mensch braucht
+       * danach nur noch LESEN auf DEX_Events und SCHREIBEN auf DEX_Outlook,
+       * und beides hat er ohnehin (jede Anmeldung schreibt heute schon eine
+       * Outlook-Queue-Zeile).
+       *
+       * Der Termin entsteht damit schon vor dem ersten Wartenden — leer, im
+       * Dienstpostfach, ohne eingeladene Person. Das ist der Preis dafuer,
+       * dass es zur Anmeldezeit keine Rechte braucht.
+       */
+      const schattenSicherstellen = async (eventId: string, eventTitle: string): Promise<void> => {
+        if (!waitlistBlocker || !waitlistEnabled || unlimitedParticipants) return;
+        if (resolveTopLevelCommState().disableOutlook) return;
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ctxSp = (window as any).__dexSpfxContext;
+          if (!ctxSp) return;
+          const svc = new EventService(ctxSp);
+          await svc.ensureWaitlistShadow({
+            id: String(eventId), title: eventTitle,
+            startDate, endDate: endDate || startDate,
+            location, allDay: !!allDay,
+            organizerEmails, emailTemplateOverrides: '',
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } as any);
+        } catch (err) {
+          console.warn('[DEX] Wartelisten-Schattenevent:', err);
+        }
+      };
     // v9.14: Beschreibung ist jetzt optional. Nur Title bleibt Pflicht.
     if (!title) return;
 
@@ -789,6 +827,7 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
       // v29.77: Debug-Log („updates.CustomFields about to POST") entfernt.
       const success = await updateEvent(selectedEventId, updates);
       if (success) {
+        await schattenSicherstellen(selectedEventId, title);
         // v26.57: NEU zur Zielgruppe hinzugekommene Personen außerhalb von
         // @deloitte.de → Approve-Mail an die Admins (SharePoint ist im Default
         // nur für Deloitte DE ALL freigeschaltet; internationale Kolleg:innen
@@ -1840,6 +1879,7 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
         }
         try { await persistSubEventsForParent(String(eventId)); }
         catch (err) { console.warn('[DEX] Sub-Events beim Create persistieren fehlgeschlagen:', err); }
+        await schattenSicherstellen(String(eventId), title);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         try { delete (window as any).__dexSubEventProgress; } catch { /* */ }
         setProgress(92);

@@ -54,7 +54,7 @@ import { DeloitteEvent } from '../../types';
 
 /** Piggyback in `EmailTemplateOverrides` der SCHATTEN-Zeile: die Id des echten Events. */
 export const WAITLIST_SHADOW_KEY = '_waitlistShadowFor';
-/** Piggyback auf dem ECHTEN Event: Platzhalter eingeschaltet? Vorgabe: nein. */
+/** Piggyback auf dem ECHTEN Event: Platzhalter AUSgeschaltet? Vorgabe: an (v31.17). */
 export const WAITLIST_BLOCKER_KEY = '_waitlistBlocker';
 
 /**
@@ -203,12 +203,12 @@ export async function findWaitlistShadow(
   svc: EventService,
   eventId: string,
   eventTitle: string,
-): Promise<{ id: string; title: string } | null> {
+): Promise<{ id: string; title: string; calendarLink: string } | null> {
   const titel = shadowTitleFor(eventTitle);
   try {
     const r = await svc._sp.get(
       `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items`
-      + `?$filter=Title eq '${esc(titel)}'&$select=Id,EmailTemplateOverrides&$top=5`,
+      + `?$filter=Title eq '${esc(titel)}'&$select=Id,CalendarLink,EmailTemplateOverrides&$top=5`,
       SPHttpClient.configurations.v1,
       { headers: { 'Accept': 'application/json;odata=nometadata' } },
     );
@@ -218,13 +218,45 @@ export async function findWaitlistShadow(
     for (const row of ((d.value || []) as any[])) {
       try {
         const o = JSON.parse(row.EmailTemplateOverrides || '{}');
-        if (String(o[WAITLIST_SHADOW_KEY]) === String(eventId)) return { id: String(row.Id), title: titel };
+        if (String(o[WAITLIST_SHADOW_KEY]) === String(eventId)) {
+          return { id: String(row.Id), title: titel, calendarLink: row.CalendarLink || '' };
+        }
       } catch { /* naechste */ }
     }
     return null;
   } catch {
     return null;
   }
+}
+
+/**
+ * Eine wartende Person in den Platzhalter einladen.
+ *
+ * v31.18 — der Fehler aus dem ersten Test (11.09.2026: „hat nicht geklappt,
+ * dass ich als Warteliste einen Termin bekommen habe, obwohl Termin angelegt
+ * wurde"): Solange die Schatten-Zeile noch KEINE `CalendarLink` trägt, hat
+ * `DEX_CreateOutlookEvent` den Kalendertermin noch nicht angelegt. Eine
+ * `Einladen`-Zeile findet dann nichts, `DEX_Outlook_Einladungen` setzt sie auf
+ * `Failed` — endgültig, es gibt keinen zweiten Versuch.
+ *
+ * Deshalb wird hier gar nicht erst eingeladen. Keine Zeile ist besser als eine
+ * Zeile, die garantiert scheitert und die Run history rot färbt. Seit der
+ * Platzhalter beim ANLEGEN des Events entsteht (nicht mehr beim Anmelden),
+ * ist die Kennung ohnehin längst da, wenn sich jemand anmeldet.
+ */
+export async function inviteToWaitlistShadow(
+  svc: EventService,
+  attendee: string,
+  eventId: string,
+  eventTitle: string,
+): Promise<boolean> {
+  const schatten = await findWaitlistShadow(svc, eventId, eventTitle);
+  if (!schatten) return false;
+  if (!schatten.calendarLink) {
+    console.warn('[DEX] Wartelisten-Platzhalter: Kalendertermin noch nicht angelegt — keine Einladung geschrieben.');
+    return false;
+  }
+  return svc.queueOutlookEvent(attendee, schatten.id, schatten.title, 'Einladen');
 }
 
 /**
