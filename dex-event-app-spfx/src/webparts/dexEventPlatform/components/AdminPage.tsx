@@ -146,6 +146,7 @@ import { useTeamActions } from './admin/logic/useTeamActions';
 import { useColumnConfig } from './admin/logic/useColumnConfig';
 import { createExportActions, ExcelExportAudience, ExcelExportMode } from './admin/logic/createExportActions';
 import { useEventSelection } from './admin/logic/useEventSelection';
+import { useScrollAnchor } from '../utils/useScrollAnchor';
 import { useMailComposers } from './admin/logic/useMailComposers';
 import { createQrMailActions } from './admin/logic/createQrMailActions';
 
@@ -1633,6 +1634,13 @@ export default function AdminPage(): React.ReactElement {
     setReservedDetailHeight, setSelectedEvent, showAlert, subEventRegsByEventId, updateEvent,
   });
 
+  // v31.29: Der „leichte Bildschirmsprung" beim Terminwechsel — die Kästen
+  // ÜBER der Liste sind je Termin verschieden hoch, der Scroll-Versatz bleibt
+  // gleich, also rutscht der angeklickte Reiter weg. Der Anker merkt sich
+  // dessen Abstand zum oberen Rand und rechnet die Differenz nach dem Zeichnen
+  // wieder heraus (utils/useScrollAnchor.ts).
+  const tnReiterAnker = useScrollAnchor<HTMLDivElement>(String(selectedEvent?.id || 0));
+
   // v30.66: useMailComposers — Rumpf in logic/useMailComposers.tsx.
   const {
     applyInviteHero, applyMassmailHero, inviteHeaderOpts, massmailHeaderOpts, openInviteModal,
@@ -2886,6 +2894,7 @@ export default function AdminPage(): React.ReactElement {
             if (tabs.length === 0) return null;
             return (
               <div
+                ref={tnReiterAnker.ref}
                 role="tablist"
                 aria-label={isDe ? 'Event wechseln' : 'Switch event'}
                 className="dex-ui-inline"
@@ -2900,7 +2909,9 @@ export default function AdminPage(): React.ReactElement {
                       role="tab"
                       aria-selected={active}
                       className={cx('dex-ui-chip', active && 'is-active')}
-                      onClick={() => { void handleSelectEvent(tb.ev); }}
+                      // v31.29: Anker VOR der Zustandsänderung merken — danach
+                      // steht die alte Höhe nicht mehr zur Verfügung.
+                      onClick={() => { tnReiterAnker.merken(); void handleSelectEvent(tb.ev); }}
                       // Schmaler als oben: Hier steht die Leiste neben
                       // Suchfeld und Knöpfen, nicht allein in einer Zeile.
                       style={{ maxWidth: 200, fontSize: '0.76rem', padding: '5px 10px' }}

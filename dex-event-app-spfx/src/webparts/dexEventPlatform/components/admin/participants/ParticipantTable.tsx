@@ -16,6 +16,9 @@ import { selfCancelLocked } from '../../../utils/cancelPolicy';
 import { externalInvitationEmail } from '../../../services/EmailTemplates';
 import { buildUnsentEmlDraft, downloadEml } from '../../../utils/emlDraft';
 import { SplitMergeToggle } from '../../admin/ActionsMenu';
+// v31.29: Erst ein Ausschnitt, dann der Rest — warum nicht virtualisiert wird,
+// steht in der Datei.
+import { useProgressiveRows } from '../../../utils/useProgressiveRows';
 import { DeloitteEvent } from '../../../types';
 
 export interface ParticipantTableProps {
@@ -78,6 +81,12 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
   // Anmeldungen (dieselben Stati wie `activeRegs` in AdminPage, dort aber
   // schon durch die Suche gefiltert). Nur Anzeige — kein Filter-State.
   const activeTotal = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length;
+  // v31.29: Wie viele Zeilen dieser Durchlauf zeichnen darf. Der Schlüssel
+  // nennt bewusst NUR Termin und Suche — beim Umsortieren oder beim Nachladen
+  // im Hintergrund bleibt die Tabelle vollständig stehen, sonst blinkt sie bei
+  // jeder Aktualisierung auf 40 Zeilen zurück. Bei geteilten Kapazitäten
+  // zählt das Budget über ALLE Gruppentabellen (dafür gibt es `indexOffset`).
+  const zeilenBudget = useProgressiveRows(activeRegs.length, `${selectedEvent?.id || 0}|${query || ''}`);
   // v31.3: Sortier-Pfeil als eigene Klasse — `sortIcon` liefert weiterhin den
   // String (Sortier-State bleibt beim Aufrufer), hier wird er nur gerahmt.
   const sortMark = (col: string): React.ReactNode => {
@@ -1145,7 +1154,15 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                   {(() => {
                     // v31.3: `footLabel` — die Gruppen-Tabellen der Split-Ansicht
                     // zählen „in dieser Gruppe", die Gesamttabelle „N von M".
-                    const renderTable = (rows: SPRegistration[], indexOffset: number, footLabel?: string): React.ReactElement => {
+                    const renderTable = (alleZeilen: SPRegistration[], indexOffset: number, footLabel?: string): React.ReactElement => {
+                      // v31.29: Der erste Durchlauf zeichnet nur den Anfang, der
+                      // nächste Frame den Rest (`useProgressiveRows`). `rows` ist
+                      // deshalb ab hier der SICHTBARE Teil; die Fußzeile zählt
+                      // weiter über `alleZeilen`, sonst stünde dort für einen
+                      // Frame „40 von 439".
+                      const rows = zeilenBudget >= indexOffset + alleZeilen.length
+                        ? alleZeilen
+                        : alleZeilen.slice(0, Math.max(0, zeilenBudget - indexOffset));
                       // v26.44: eine normale Teilnehmer-Zeile — herausgezogen, damit
                       // die „Matches anzeigen"-Gruppierung dieselbe Zeilen-JSX
                       // wiederverwenden kann (keine Duplizierung der Zellen-Logik).
@@ -1232,7 +1249,7 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                       })();
                       let matchRowIdx = 0;
                       // v31.3: Fußzeile „N von M" statt Zähler im Kopf (Leitfaden 5b).
-                      const shown = rows.length;
+                      const shown = alleZeilen.length;
                       const footText = footLabel
                         || (query
                           ? (isDe ? `${shown} von ${activeTotal} Teilnehmern · Suche „${query}“` : `${shown} of ${activeTotal} participants · search “${query}”`)
