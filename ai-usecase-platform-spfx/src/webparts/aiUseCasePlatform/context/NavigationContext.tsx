@@ -12,7 +12,9 @@
 
 import * as React from 'react';
 
-export type Page = 'start' | 'detail' | 'verwaltung' | 'rollen';
+// v1.1: `landing` ist die erste Seite — der Startbildschirm mit dem Orb.
+// `start` ist die Kachelwand dahinter.
+export type Page = 'landing' | 'start' | 'detail' | 'verwaltung' | 'rollen';
 
 interface NavEntry { page: Page; useCaseId?: number }
 
@@ -27,7 +29,7 @@ interface NavigationContextType {
 const NavigationContext = React.createContext<NavigationContextType | undefined>(undefined);
 
 export function NavigationProvider(props: { children: React.ReactNode }): React.ReactElement {
-  const [entry, setEntry] = React.useState<NavEntry>({ page: 'start' });
+  const [entry, setEntry] = React.useState<NavEntry>({ page: 'landing' });
   const [stack, setStack] = React.useState<NavEntry[]>([]);
 
   const navigate = React.useCallback((page: Page, useCaseId?: number): void => {

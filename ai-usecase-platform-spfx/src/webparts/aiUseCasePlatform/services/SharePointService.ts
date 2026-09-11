@@ -56,6 +56,13 @@ const FIELD = {
   url: 11,
 };
 
+/**
+ * Der Merker im Protokoll, der sagt: Die Start-Use-Cases wurden schon einmal
+ * angelegt. Ohne ihn kaeme der Bestand zurueck, sobald jemand alle Eintraege
+ * absichtlich geloescht hat.
+ */
+const SEED_MARKER = 'erstbefuellung';
+
 /** Was beim Lesen herauskam — `ok` heisst: die Daten sind belastbar. */
 export type LeseStatus = 'ok' | 'forbidden' | 'notfound' | 'error';
 
@@ -120,6 +127,61 @@ export class SharePointService {
   // ===================================================================
   // Grundlagen
   // ===================================================================
+
+  /**
+   * Der Entitaetstyp einer Liste fuer `__metadata` — gelesen, nicht geraten.
+   *
+   * v1.1 (Fehlerbehebung): Hier stand `SP.Data.${name}ListItem`, also
+   * `SP.Data.AIUC_UseCasesListItem`. Den Typ gibt es nicht: SharePoint
+   * kodiert den Unterstrich im Listennamen als `_x005f_`. Da `_post` mit
+   * `odata=verbose` sendet, prueft SharePoint den Typ — JEDES Anlegen einer
+   * Zeile endete mit HTTP 400. Sichtbar war davon nichts: `createUseCase`
+   * gibt bei `!r.ok` einfach `null` zurueck, die Erstbefuellung lief also
+   * durch und legte fuenfmal nichts an. Dieselbe Zeile stand auch in
+   * `addRole`, `updateRole` und `log` — Rollen liessen sich nicht vergeben,
+   * das Protokoll blieb leer.
+   *
+   * Die Kodierung nachzubauen waere die zweite Stelle, an der geraten wird.
+   * SharePoint nennt den Typ selbst: `ListItemEntityTypeFullName`. Er wird
+   * einmal je Liste gelesen und gemerkt; scheitert das Lesen, greift die
+   * Kodier-Regel als Notnagel — besser als gar kein Typ.
+   */
+  private _entityTypes: Record<string, string> = {};
+
+  public async entityType(listName: string): Promise<string> {
+    const merker = this._entityTypes[listName];
+    if (merker) return merker;
+    const notnagel = `SP.Data.${listName.replace(/_/g, '_x005f_')}ListItem`;
+    try {
+      const r = await this._sp.get(
+        `${this.list(listName)}?$select=ListItemEntityTypeFullName`,
+        SPHttpClient.configurations.v1,
+        { headers: { 'Accept': 'application/json;odata=nometadata' } },
+      );
+      if (r.ok) {
+        const d = await r.json();
+        const typ = d.ListItemEntityTypeFullName || d.d?.ListItemEntityTypeFullName;
+        if (typeof typ === 'string' && typ) {
+          this._entityTypes[listName] = typ;
+          return typ;
+        }
+      }
+    } catch { /* Notnagel */ }
+    this._entityTypes[listName] = notnagel;
+    return notnagel;
+  }
+
+  /** Eine Zeile anlegen — mit dem Typ, den die Liste selbst nennt. */
+  private async _postItem(listName: string, body: Record<string, unknown>): Promise<SPHttpClientResponse> {
+    const typ = await this.entityType(listName);
+    return this._post(`${this.list(listName)}/items`, { ...body, '__metadata': { 'type': typ } });
+  }
+
+  /** Eine Zeile aendern — mit dem Typ, den die Liste selbst nennt. */
+  private async _mergeItem(listName: string, id: number, body: Record<string, unknown>): Promise<SPHttpClientResponse> {
+    const typ = await this.entityType(listName);
+    return this._merge(`${this.list(listName)}/items(${id})`, { ...body, '__metadata': { 'type': typ } });
+  }
 
   private async _post(url: string, body: object): Promise<SPHttpClientResponse> {
     const options: ISPHttpClientOptions = {
@@ -397,8 +459,7 @@ export class SharePointService {
 
   public async addRole(userEmail: string, userName: string, role: UserRole, assignedBy: string): Promise<boolean> {
     try {
-      const r = await this._post(`${this.list(LIST.roles)}/items`, {
-        '__metadata': { 'type': `SP.Data.${LIST.roles}ListItem` },
+      const r = await this._postItem(LIST.roles, {
         'Title': userEmail,
         'UserName': userName,
         'Role': role,
@@ -414,10 +475,7 @@ export class SharePointService {
 
   public async updateRole(itemId: number, role: UserRole): Promise<boolean> {
     try {
-      const r = await this._merge(`${this.list(LIST.roles)}/items(${itemId})`, {
-        '__metadata': { 'type': `SP.Data.${LIST.roles}ListItem` },
-        'Role': role,
-      });
+      const r = await this._mergeItem(LIST.roles, itemId, { 'Role': role });
       return r.ok;
     } catch (e) {
       console.error('[AIUC] updateRole:', e);
@@ -712,9 +770,9 @@ export class SharePointService {
   }
 
   private toRow(uc: Partial<UseCase>): Record<string, unknown> {
-    const body: Record<string, unknown> = {
-      '__metadata': { 'type': `SP.Data.${LIST.useCases}ListItem` },
-    };
+    // Kein `__metadata` mehr: Den Typ setzen `_postItem`/`_mergeItem`, und
+    // zwar den, den die Liste selbst nennt (s. `entityType`).
+    const body: Record<string, unknown> = {};
     if (uc.titel !== undefined) body.Title = uc.titel;
     if (uc.kurzbeschreibung !== undefined) body.Kurzbeschreibung = uc.kurzbeschreibung;
     if (uc.beschreibung !== undefined) body.Beschreibung = uc.beschreibung;
@@ -743,8 +801,14 @@ export class SharePointService {
 
   public async createUseCase(uc: Partial<UseCase>): Promise<number | null> {
     try {
-      const r = await this._post(`${this.list(LIST.useCases)}/items`, this.toRow(uc));
-      if (!r.ok) return null;
+      const r = await this._postItem(LIST.useCases, this.toRow(uc));
+      if (!r.ok) {
+        // Der Grund gehoert in die Konsole. Vorher stand hier nur `null`, und
+        // die Erstbefuellung legte stumm fuenfmal nichts an.
+        this.lastReadError = await this.fehlertext(r);
+        console.error(`[AIUC] createUseCase: HTTP ${r.status} — ${this.lastReadError}`);
+        return null;
+      }
       const d = await r.json();
       const id = d.d?.Id ?? d.Id;
       return typeof id === 'number' ? id : null;
@@ -756,7 +820,11 @@ export class SharePointService {
 
   public async updateUseCase(id: number, uc: Partial<UseCase>): Promise<boolean> {
     try {
-      const r = await this._merge(`${this.list(LIST.useCases)}/items(${id})`, this.toRow(uc));
+      const r = await this._mergeItem(LIST.useCases, id, this.toRow(uc));
+      if (!r.ok) {
+        this.lastReadError = await this.fehlertext(r);
+        console.error(`[AIUC] updateUseCase: HTTP ${r.status} — ${this.lastReadError}`);
+      }
       return r.ok;
     } catch (e) {
       console.error('[AIUC] updateUseCase:', e);
@@ -774,11 +842,52 @@ export class SharePointService {
     }
   }
 
+  /**
+   * Darf die Plattform mit den Start-Use-Cases befuellt werden?
+   *
+   * Drei Bedingungen, und ALLE drei muessen belegt sein — nicht bloss nicht
+   * widerlegt: Die Use-Case-Liste ist lesbar UND leer, und im Protokoll steht
+   * kein Merker einer frueheren Befuellung. Ist eine der beiden Listen nicht
+   * lesbar, ist die Antwort `false`: „Ich weiss es nicht" darf hier nicht wie
+   * „ist leer" wirken, sonst liegen fuenf Kacheln neben einem Bestand, den
+   * gerade nur niemand sehen konnte (die Lehre aus DEX v30.37).
+   */
+  public async darfErstbefuellen(): Promise<boolean> {
+    const rows = await this.getUseCases();
+    if (rows === null) {
+      console.warn('[AIUC] Erstbefüllung übersprungen — die Use-Case-Liste war nicht lesbar.');
+      return false;
+    }
+    if (rows.length > 0) return false;
+    try {
+      const r = await this._sp.get(
+        `${this.list(LIST.log)}/items?$filter=Aktion eq '${SEED_MARKER}'&$select=Id&$top=1`,
+        SPHttpClient.configurations.v1,
+        { headers: { 'Accept': 'application/json;odata=nometadata' } },
+      );
+      // 404 = Protokollliste gibt es (noch) nicht. Dann kann es auch keine
+      // frühere Befüllung gegeben haben.
+      if (r.status === 404) return true;
+      if (!r.ok) {
+        console.warn(`[AIUC] Erstbefüllung übersprungen — Protokoll nicht lesbar (HTTP ${r.status}).`);
+        return false;
+      }
+      const d = await r.json();
+      return (d.value || []).length === 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Den Merker setzen, damit die Erstbefuellung genau einmal passiert. */
+  public async merkeErstbefuellung(anzahl: number): Promise<void> {
+    await this.log(0, SEED_MARKER, `${anzahl} Start-Use-Cases angelegt`);
+  }
+
   /** Protokollzeile schreiben. Best-effort — ein fehlendes Protokoll darf keine Aktion verhindern. */
   public async log(useCaseId: number, aktion: string, detail: string): Promise<void> {
     try {
-      await this._post(`${this.list(LIST.log)}/items`, {
-        '__metadata': { 'type': `SP.Data.${LIST.log}ListItem` },
+      await this._postItem(LIST.log, {
         'Title': aktion,
         'UseCaseId': useCaseId,
         'Aktion': aktion,

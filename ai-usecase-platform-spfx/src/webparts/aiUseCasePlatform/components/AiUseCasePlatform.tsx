@@ -17,6 +17,7 @@ import { WebPartContext } from '@microsoft/sp-webpart-base';
 import styles from './AiUseCasePlatform.module.scss';
 import { ensureDexUiStyles, cx } from './dexUi';
 import StartPage from './StartPage';
+import LandingPage from './LandingPage';
 import { Settings, Users } from './Icons';
 import { LanguageProvider, useLanguage } from '../context/LanguageContext';
 import { DialogProvider } from '../context/DialogContext';
@@ -65,8 +66,8 @@ function AppContent(): React.ReactElement {
           <button
             type="button"
             className="header-logo dex-ui-btn-reset"
-            onClick={() => navigate('start')}
-            aria-label={t('Zur Übersicht', 'Back to overview')}
+            onClick={() => navigate('landing')}
+            aria-label={t('Zum Startbildschirm', 'Back to the start screen')}
             style={{ cursor: 'pointer' }}
           >
             <strong>AI Use Case</strong> <span>Platform</span>
@@ -120,6 +121,7 @@ function AppContent(): React.ReactElement {
             )}
 
             <React.Suspense fallback={<LazyFallback name={seitenName} />}>
+              {currentPage === 'landing' && <LandingPage />}
               {currentPage === 'start' && <StartPage />}
               {currentPage === 'detail' && <UseCaseDetailPage useCaseId={currentUseCaseId} />}
               {currentPage === 'verwaltung' && <ManagePage editId={currentUseCaseId} />}
@@ -148,6 +150,12 @@ function AppContent(): React.ReactElement {
 }
 
 export default function AiUseCasePlatform(props: IAiUseCasePlatformProps): React.ReactElement {
+  // v1.1: Der SPFx-Context als Fenster-Merker — dasselbe Muster wie
+  // `__dexSpfxContext` in DEX. Komponenten, die tief im Baum sitzen und den
+  // Context nur einmal brauchen (die Begruessung der Landing Page), holen ihn
+  // sich hier, statt ihn durch fuenf Ebenen durchzureichen.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__aiucSpfxContext = props.context;
   return (
     <LanguageProvider>
       <DialogProvider>

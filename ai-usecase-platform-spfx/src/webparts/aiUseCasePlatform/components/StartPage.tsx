@@ -21,7 +21,7 @@ export default function StartPage(): React.ReactElement {
   // injiziert jede der zwanzig Kacheln dieselbe Pruefung (DEX-Konvention).
   ensureDexUiStyles();
 
-  const { useCases, ladeStatus, letzterStatus, letzterFehler, fehlendeSpalten, reload, bereiche } = useUseCases();
+  const { useCases, ladeStatus, letzterStatus, letzterFehler, fehlendeSpalten, reload, bereiche, seedStartUseCases } = useUseCases();
   const { t, isDe } = useLanguage();
   const { navigate } = useNavigation();
   const { isKurator } = useRoles();
@@ -29,6 +29,25 @@ export default function StartPage(): React.ReactElement {
   const [suche, setSuche] = React.useState('');
   const [bereich, setBereich] = React.useState<string>('');
   const [nurLive, setNurLive] = React.useState(false);
+  const [seedBusy, setSeedBusy] = React.useState(false);
+  const [seedMeldung, setSeedMeldung] = React.useState('');
+
+  // v1.1: Die Start-Use-Cases von Hand anlegen. Meldet den GRUND, wenn nichts
+  // entsteht — „hat nicht geklappt" lässt den Nutzer raten, ob es an den
+  // Rechten oder an der App lag.
+  const seedJetzt = async (): Promise<void> => {
+    setSeedBusy(true);
+    setSeedMeldung('');
+    try {
+      const n = await seedStartUseCases();
+      if (n === 0) {
+        setSeedMeldung(t(`Es konnte kein Use Case angelegt werden. SharePoint sagt: ${letzterFehler || 'kein Grund übermittelt'}`,
+          `No use case could be created. SharePoint says: ${letzterFehler || 'no reason given'}`));
+      }
+    } finally {
+      setSeedBusy(false);
+    }
+  };
 
   /**
    * Suchvergleich ohne Bindestriche und Umlaute.
@@ -196,9 +215,29 @@ export default function StartPage(): React.ReactElement {
             </button>
           )}
           {useCases.length === 0 && isKurator && (
-            <button type="button" className="dex-ui-empty-action" onClick={() => navigate('verwaltung')}>
-              {t('Ersten Use Case anlegen', 'Create the first use case')}
-            </button>
+            <div className="dex-ui-inline dex-ui-empty-action" style={{ justifyContent: 'center', flexWrap: 'wrap', gap: 10 }}>
+              {/* v1.1: Das Netz unter der automatischen Erstbefüllung. Die
+                  läuft nur, wenn auch das Protokoll lesbar ist; genau dann
+                  stand die Plattform vorher leer da, ohne Weg sie zu füllen. */}
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={seedBusy}
+                onClick={() => { void seedJetzt(); }}
+              >
+                {seedBusy
+                  ? t('Wird angelegt …', 'Creating …')
+                  : t('Die fünf Use Cases aus dem Konzept anlegen', 'Add the five use cases from the concept')}
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => navigate('verwaltung')}>
+                {t('Eigenen Use Case anlegen', 'Create my own use case')}
+              </button>
+            </div>
+          )}
+          {seedMeldung && (
+            <div className="dex-ui-callout dex-ui-callout--warn" role="status" style={{ marginTop: 12, textAlign: 'left' }}>
+              <span className="dex-ui-callout-body">{seedMeldung}</span>
+            </div>
           )}
         </div>
       )}
