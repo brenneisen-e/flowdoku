@@ -480,6 +480,11 @@ export default function AdminPage(): React.ReactElement {
   }, [selectedEvent]);
   /** v31.24: Die Event-Gruppe, zu der der geladene Termin-Bestand gehoert. */
   const subRegGroupRef = React.useRef<string>('');
+  /* v31.26: Welchen Stand der Bestand hat — und was drinsteht. Als Ref, nicht
+   * als Abhaengigkeit: Der Effekt soll auf einen REITERWECHSEL reagieren, nicht
+   * auf sein eigenes Ergebnis (das waere eine Schleife). */
+  const subRegLoadedTickRef = React.useRef<number>(-1);
+  const subEventRegsByEventIdRef = React.useRef<Record<string, SPRegistration[]>>({});
   // v14.11: subEventsOnlyMode — alle Sub-Event-Anmeldungen einsammeln, um
   // den konsolidierten Matrix-View pro Person zu rendern. Nur aktiv, wenn
   // das selektierte Event tatsächlich Hauptevent ohne eigene Anmeldungen
@@ -511,15 +516,41 @@ export default function AdminPage(): React.ReactElement {
     const gruppeJetzt = selectedEvent ? (selectedEvent.parentEventId || selectedEvent.id) : '';
     if (subRegGroupRef.current !== gruppeJetzt) {
       subRegGroupRef.current = gruppeJetzt;
+      subEventRegsByEventIdRef.current = {};
+      subRegLoadedTickRef.current = -1;
       setSubEventRegsByEventId({});
       setDeniedSubEventLists([]);
     }
     if (!selectedEvent || !selectedEvent.subEventsOnlyMode) return;
     const children = childEventsOf(selectedEvent.id);
     if (children.length === 0) {
+      subEventRegsByEventIdRef.current = {};
       setSubEventRegsByEventId({});
       return;
     }
+    /*
+     * v31.26 — belegt durch die Messung aus v31.25 (Nutzer-Log 11.09.2026).
+     *
+     * Der Log zeigte bei JEDER Rueckkehr zur Klammer denselben Block:
+     *   ladies-lounge  147 KB · p-d-meeting 1263 KB · dinner 833 KB · meeting 846 KB
+     * Rund 3 MB, viermal hintereinander gemessen — und einmal brauchte die
+     * Klammer-Liste 1353 ms statt 320 ms, also der Beginn der Drosselung.
+     *
+     * v31.24 hatte das Leeren des Bestands abgestellt, aber nicht das
+     * NACHLADEN: Der Effekt haengt an `selectedEvent?.id`, und die aendert
+     * sich bei jedem Reiterklick. Zurueck auf die Klammer hiess deshalb
+     * weiterhin: alle Termine neu holen, obwohl sie im State standen.
+     *
+     * Jetzt wird nur geholt, was fehlt. `subRegReloadTick` bleibt der Weg,
+     * einen frischen Stand zu erzwingen — „Aktualisieren" und jeder
+     * Schreibvorgang zaehlen ihn hoch. Das ist die Trennung, auf die es
+     * ankommt: automatisch nie doppelt, auf Wunsch jederzeit neu.
+     */
+    if (subRegReloadTick === subRegLoadedTickRef.current
+        && children.every(c => subEventRegsByEventIdRef.current[c.id] !== undefined)) {
+      return;
+    }
+    subRegLoadedTickRef.current = subRegReloadTick;
     let cancelled = false;
     setIsLoadingSubEventRegs(true);
     const tAlle = performance.now();
@@ -558,6 +589,9 @@ export default function AdminPage(): React.ReactElement {
         hinweis: `${children.length} Termine, parallel 4`,
       });
       if (!cancelled) {
+        // Die Ref traegt denselben Stand wie der State — der Effekt oben liest
+        // sie, weil er nicht auf sein eigenes Ergebnis reagieren darf.
+        subEventRegsByEventIdRef.current = map;
         setSubEventRegsByEventId(map);
         setDeniedSubEventLists(denied);
         setIsLoadingSubEventRegs(false);
