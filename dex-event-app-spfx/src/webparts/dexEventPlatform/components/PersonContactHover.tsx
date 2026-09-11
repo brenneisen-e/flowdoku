@@ -132,10 +132,42 @@ export function PersonContactHover(props: PersonContactHoverProps): React.ReactE
     >
       {!failed && email && visible ? (
         <img
-          src={photoUrl(email, 'L')}
+          /*
+           * v31.26 — zwei Bremsen auf einmal (Nutzer-Vermutung 11.09.2026:
+           * „ich glaube es hat auch was mit den ganzen Fotos zu tun … kann man
+           * das ggf. auch noch optimieren?" — sie stimmte).
+           *
+           * (1) GRÖSSE. Hier stand fest `'L'`. Der Avatar in der
+           *     Teilnehmerliste ist 34 px groß und lud das GROSSE Bild
+           *     (SharePoint liefert dafür rund 200 px Kantenlänge). Das ist
+           *     ein Vielfaches der Bytes für Pixel, die niemand sieht. Die
+           *     Größe richtet sich jetzt nach der tatsächlichen Darstellung;
+           *     `M` ab 40 px, damit Retina-Displays nicht unscharf werden
+           *     (dort ist ein 34-px-Kreis physisch 68 px).
+           *
+           * (2) PRIORITÄT. Die Fotos gehen an DENSELBEN Host wie die
+           *     Teilnehmerlisten, und ein Browser öffnet je Host nur rund
+           *     sechs Verbindungen. Ohne Angabe stehen vierhundert Fotos
+           *     gleichrangig VOR der nächsten Listen-Abfrage in der
+           *     Warteschlange — gemessen: eine Liste, die sonst 320 ms
+           *     braucht, kam einmal erst nach 1353 ms. `fetchpriority="low"`
+           *     stellt sie hinten an; ein Gesicht darf warten, eine
+           *     Teilnehmerliste nicht.
+           *
+           * Kleingeschrieben, weil React 17 das camelCase-`fetchPriority`
+           * noch nicht kennt und es als unbekanntes Attribut verwerfen würde.
+           * Unbekannte KLEINGESCHRIEBENE Attribute reicht React unverändert
+           * ans DOM durch — genau das wollen wir hier.
+           */
+          src={photoUrl(email, size <= 36 ? 'S' : (size <= 64 ? 'M' : 'L'))}
           alt={name}
           loading="lazy"
           decoding="async"
+          // Der React-17-Typ kennt `fetchpriority` nicht; das Attribut selbst
+          // reicht React unverändert ans DOM durch. Der Spread ist die einzige
+          // Stelle, an der TypeScript nicht im Weg steht — ohne `any`-Cast auf
+          // das ganze Element.
+          {...({ fetchpriority: 'low' } as Record<string, string>)}
           onError={() => setFailed(true)}
           style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0, cursor: 'default' }}
         />

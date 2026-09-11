@@ -633,6 +633,13 @@ export class EventService {
     return outlookQueue.checkAccountsActive(this, emails);
   }
 
+  /** v31.26: Vorname/Nachname/Position zu Adressen — fuer den Nachfass-Kasten. */
+  public async getPeopleByEmails(
+    emails: string[],
+  ): Promise<Record<string, { displayName: string; firstName: string; lastName: string; jobTitle: string; location: string }>> {
+    return outlookQueue.getPeopleByEmails(this, emails);
+  }
+
   public async getMyCompanyViaGraph(): Promise<string> {
     return outlookQueue.getMyCompanyViaGraph(this);
   }

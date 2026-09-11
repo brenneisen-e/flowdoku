@@ -492,6 +492,75 @@ export async function checkAccountsActive(
 }
 
 /**
+ * v31.26: Vorname, Nachname und Position zu E-Mail-Adressen — via Graph.
+ *
+ * Der Anlass (Nutzer-Ansage 11.09.2026): Im Kasten „Noch keine Rückmeldung"
+ * stand zweimal dieselbe Adresse untereinander statt „Vorname Nachname" und
+ * darunter die Adresse. Grund: Namen kommen dort aus der Verteiler-Abfrage,
+ * und wenn die Sichtbarkeit über `audienceResolvedEmails` aufgelöst wurde
+ * (blanke Adressliste), gibt es schlicht keine. Sortieren nach Nachname ging
+ * damit auch nicht — nach was denn.
+ *
+ * Dieselbe Bauweise wie `checkAccountsActive`: Siebener-Batches, weil Graph
+ * höchstens 15 OR-Klauseln im `$filter` erlaubt und je Adresse zwei nötig
+ * sind (mail + userPrincipalName). Gedeckelt parallel statt nacheinander.
+ *
+ * Best-effort: Was nicht gefunden wird, fehlt einfach — der Aufrufer fällt
+ * dann auf die Adresse zurück. Ein Name ist eine Annehmlichkeit; ihn nicht zu
+ * kennen darf die Liste nicht aufhalten.
+ */
+export async function getPeopleByEmails(
+  svc: EventService,
+  emails: string[],
+): Promise<Record<string, { displayName: string; firstName: string; lastName: string; jobTitle: string; location: string }>> {
+  const out: Record<string, { displayName: string; firstName: string; lastName: string; jobTitle: string; location: string }> = {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ctx = svc.context as any;
+  if (!ctx.msGraphClientFactory) return out;
+  const candidates = Array.from(new Set(emails.map(e => (e || '').trim().toLowerCase()).filter(e => e.indexOf('@') > 0)));
+  if (candidates.length === 0) return out;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let client: any;
+  try { client = await ctx.msGraphClientFactory.getClient('3'); } catch { return out; }
+  const esc = (s: string): string => s.replace(/'/g, "''");
+  const BATCH = 7;
+  const aufgaben: Array<() => Promise<void>> = [];
+  for (let i = 0; i < candidates.length; i += BATCH) {
+    const batch = candidates.slice(i, i + BATCH);
+    aufgaben.push(async () => {
+      const clauses = batch.map(e => `mail eq '${esc(e)}' or userPrincipalName eq '${esc(e)}'`).join(' or ');
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const resp: any = await client.api('/users')
+          .filter(`(${clauses})`)
+          .select('mail,userPrincipalName,displayName,givenName,surname,jobTitle,officeLocation')
+          .top(999)
+          .get();
+        const found = (resp?.value || []) as Array<{ mail?: string; userPrincipalName?: string; displayName?: string; givenName?: string; surname?: string; jobTitle?: string; officeLocation?: string }>;
+        for (const u of found) {
+          const eintrag = {
+            displayName: (u.displayName || '').trim(),
+            firstName: (u.givenName || '').trim(),
+            lastName: (u.surname || '').trim(),
+            jobTitle: (u.jobTitle || '').trim(),
+            location: (u.officeLocation || '').trim(),
+          };
+          // Unter BEIDEN Adressen ablegen: Die Verteiler liefern mal die
+          // SMTP-Adresse, mal den UPN — dieselbe Person unter zwei
+          // Schreibweisen ist in DEX der Normalfall, nicht die Ausnahme.
+          if (u.mail) out[u.mail.toLowerCase()] = eintrag;
+          if (u.userPrincipalName) out[u.userPrincipalName.toLowerCase()] = eintrag;
+        }
+      } catch (err) {
+        console.warn('[DEX] getPeopleByEmails batch failed:', err);
+      }
+    });
+  }
+  await mitGrenze(aufgaben, 6);
+  return out;
+}
+
+/**
  * v24.33: Unternehmenszugehörigkeit („Company name" / Graph `companyName`)
  * des eingeloggten Users via Microsoft Graph. Die SP-UserProfile-Property
  * „Company" ist im Tenant nicht zuverlässig gefüllt — Graph `/me` schon.
