@@ -20,7 +20,7 @@
 import * as React from 'react';
 import DexLogo from './DexLogo';
 import { ChevronRight, Settings, Users } from './Icons';
-import { ensureDexUiStyles, cx } from './dexUi';
+import { ensureDexUiStyles } from './dexUi';
 import { useLanguage } from '../context/LanguageContext';
 import { useNavigation } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
@@ -92,34 +92,38 @@ export default function LandingPage(): React.ReactElement {
               : t(`${gesamt} Use Cases · davon ${live} sofort aufrufbar`, `${gesamt} use cases · ${live} callable right away`))}
           </div>
         </div>
-      </div>
 
-      {/* Einstiegskarten wie auf der DEX-Startseite: der eine Weg für alle,
-          die Pflege-Wege nur für die, die sie benutzen dürfen. */}
-      <div className={cx('start-grid', (isKurator || isAdmin) && 'start-grid--with-admin')} style={{ paddingBottom: 32 }}>
-        <button type="button" className="card start-card" onClick={() => navigate('start')}>
-          <span className="start-card__icon"><ChevronRight size={40} /></span>
-          <h2>{t('Use Cases', 'Use cases')}</h2>
-          <p>{t('Die Kachelübersicht aller Demos — suchen, filtern, öffnen.',
-            'The tile overview of all demos — search, filter, open.')}</p>
-        </button>
-
-        {isKurator && (
-          <button type="button" className="card start-card" onClick={() => navigate('verwaltung')}>
-            <span className="start-card__icon"><Settings size={40} /></span>
-            <h2>{t('Use Cases pflegen', 'Manage use cases')}</h2>
-            <p>{t('Neue Demos anlegen, Beschreibungen und Links pflegen, Reihenfolge ändern.',
-              'Add demos, maintain descriptions and links, change the order.')}</p>
-          </button>
-        )}
-
-        {isAdmin && (
-          <button type="button" className="card start-card" onClick={() => navigate('rollen')}>
-            <span className="start-card__icon"><Users size={40} /></span>
-            <h2>{t('Rollen', 'Roles')}</h2>
-            <p>{t('Wer darf pflegen, wer darf verwalten — und die Rechte dazu prüfen.',
-              'Who may curate, who may administrate — and check the permissions.')}</p>
-          </button>
+        {/* v1.2: Die Pflege-Wege als kleine Blasen UNTER der Karte, nicht als
+            zweites Kachelraster darunter.
+            Vorher stand hier ein `.start-grid` mit drei grossen Karten — das
+            war der Befund des Nutzers („warum sind die Kacheln unterhalb der
+            Landing Page"). Zwei Gruende, warum das falsch war: Die Landing
+            Page ist in DEX EIN Bildschirm mit EINEM Primaerknopf; alles
+            Weitere macht sie scrollbar und den Knopf beliebig. Und „Use
+            Cases" waere ein zweiter Weg zu genau dem Ziel, auf das der
+            Primaerknopf schon zeigt — dieselbe Falle wie zwei Reiter-Reihen
+            fuer dieselbe Auswahl.
+            Pflege und Rollen sind ausserdem im Header, dort wo sie auf jeder
+            Seite stehen. Hier sind sie nur die Abkuerzung fuer den, der genau
+            deswegen gekommen ist — und auf dem Handy blendet das SCSS sie aus
+            (Z. 750), weil der Header dort schon alles traegt. */}
+        {(isKurator || isAdmin) && (
+          <div className="landing__actions" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
+            {isKurator && (
+              <button type="button" className="landing__bubble dex-ui-card dex-ui-card--hover" onClick={() => navigate('verwaltung')}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', cursor: 'pointer', textAlign: 'left' }}>
+                <Settings size={18} />
+                <span>{t('Use Cases pflegen', 'Manage use cases')}</span>
+              </button>
+            )}
+            {isAdmin && (
+              <button type="button" className="landing__bubble dex-ui-card dex-ui-card--hover" onClick={() => navigate('rollen')}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', cursor: 'pointer', textAlign: 'left' }}>
+                <Users size={18} />
+                <span>{t('Rollen verwalten', 'Manage roles')}</span>
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>
