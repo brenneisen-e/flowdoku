@@ -48,6 +48,7 @@ import * as regListRepair from './events/regListRepair';
 // v31.4: Gedruckte QR-Nummern aus der Mail-Warteschlange zurückholen.
 import * as qrSentBackfill from './events/qrSentBackfill';
 import * as quiz from './events/quiz';
+import * as poll from './events/poll';
 import * as teilnehmerIdCounter from './events/teilnehmerIdCounter';
 import * as eventAssets from './events/eventAssets';
 import * as branding from './events/branding';
@@ -1747,6 +1748,52 @@ export class EventService {
     isComplete: boolean
   ): Promise<boolean> {
     return quiz.saveQuizProgress(this, subsiteUrl, itemId, score, answers, isComplete);
+  }
+
+  // ==================== Umfrage nach dem Event ====================
+  // v31.12: Implementierung in services/events/poll.ts — hier nur
+  // Delegations-Stubs. Die Antwortseite (Teilnehmer) ruft nur `getPoll`,
+  // `getMyPollAnswer` und `savePollAnswer`; alles andere ist Organizer-Sache.
+
+  public async ensurePollLists(): Promise<void> {
+    return poll.ensurePollLists(this);
+  }
+
+  public async getPoll(eventNumber: number): Promise<{ ok: boolean; poll: poll.PollConfig | null }> {
+    return poll.getPoll(this, eventNumber);
+  }
+
+  public async savePoll(config: poll.PollConfig): Promise<boolean> {
+    return poll.savePoll(this, config);
+  }
+
+  public async getMyPollAnswer(
+    eventNumber: number,
+    email: string
+  ): Promise<{ ok: boolean; answer: poll.PollAnswerRow | null }> {
+    return poll.getMyPollAnswer(this, eventNumber, email);
+  }
+
+  public async savePollAnswer(
+    eventNumber: number,
+    email: string,
+    existingId: number,
+    optionen: string[],
+    freitext: string
+  ): Promise<boolean> {
+    return poll.savePollAnswer(this, eventNumber, email, existingId, optionen, freitext);
+  }
+
+  public async deletePollAnswer(eventNumber: number, email: string): Promise<boolean> {
+    return poll.deletePollAnswer(this, eventNumber, email);
+  }
+
+  public async getPollStats(eventNumber: number, anonym: boolean): Promise<poll.PollStats> {
+    return poll.getPollStats(this, eventNumber, anonym);
+  }
+
+  public async getPollNonResponders(eventNumber: number, eingeladen: string[]): Promise<string[] | null> {
+    return poll.getPollNonResponders(this, eventNumber, eingeladen);
   }
 
   // ==================== Nachrücken von der Warteliste ====================

@@ -270,8 +270,8 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
               category="mails"
               title={isDe ? 'E-Mail versenden' : 'Send email'}
               desc={isDe
-                ? 'Öffnet den Editor mit der Deloitte-Mail-Vorlage. Die Mail geht an alle aktiven Teilnehmer — nicht an Warteliste oder Abgemeldete.'
-                : 'Opens the editor with the Deloitte mail template. The mail goes to all active participants — not to the waitlist or cancelled people.'}
+                ? 'Öffnet den Editor mit der Deloitte-Mail-Vorlage. Die Mail geht an alle aktiven Teilnehmer — nicht an Warteliste oder Abgemeldete. Hier legst du auch eine Umfrage oder Abstimmung an: Antworten zum Anklicken direkt in der Mail.'
+                : 'Opens the editor with the Deloitte mail template. The mail goes to all active participants — not to the waitlist or cancelled people. This is also where you add a poll or survey: answers to click right inside the email.'}
               badge="organizer"
               onClick={openMassmailPicker}
             />

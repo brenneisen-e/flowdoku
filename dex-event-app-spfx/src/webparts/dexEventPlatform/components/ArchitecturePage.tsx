@@ -68,6 +68,9 @@ export default function ArchitecturePage(): React.ReactElement {
     { name: 'DEX_EditPresence', de: 'Wer bearbeitet gerade welches Event im Wizard (Herzschlag alle 20 s, Anzeige mit Foto). Kein Flow.', en: 'Who is editing which event in the wizard right now (heartbeat every 20 s, shown with photo). No flow.', link: true },
     { name: 'DEX_OrganizerRequests', de: 'Anträge „Organizer werden" zur Admin-Freigabe.', en: '“Become organizer” requests for admin approval.', link: true },
     { name: 'DEX_Tickets', de: 'Fragen & Antworten (Support-Tickets) zu Events und zur App.', en: 'Questions & answers (support tickets) for events and the app.', link: true },
+    // v31.12: Umfrage nach dem Event — kein Flow, die App liest und schreibt selbst.
+    { name: 'DEX_Polls', de: 'Frage und Antwortmöglichkeiten der Umfrage je Event (angelegt in „E-Mail versenden"). Kein Flow.', en: 'Question and answer options of the per-event poll (created in “Send email”). No flow.', link: true },
+    { name: 'DEX_PollAnswers', de: 'Die Antworten der Umfrage. Zeilenweise gesichert (2/2) — wer antwortet, sieht nur die eigene Zeile. Kein Flow.', en: 'The poll answers. Item-level security (2/2) — people only see their own row. No flow.', link: true },
   ];
   const logLists: Item[] = [
     { name: 'DEX_TeilnehmerCounter', de: 'Atomarer Zähler für eindeutige Teilnehmer-IDs + Sitzplatz-Reservierung.', en: 'Atomic counter for unique attendee IDs + seat reservation.', link: true },

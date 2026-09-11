@@ -32,6 +32,7 @@ import RegistrationPage from './RegistrationPage';
 import MyEventsPage from './MyEventsPage';
 import ProfilePage from './ProfilePage';
 import SelfCheckInPage from './SelfCheckInPage';
+import PollAnswerPage from './PollAnswerPage';
 import OrganizerRequestsBanner from './OrganizerRequestsBanner';
 import GrantAccessHandler from './GrantAccessHandler';
 import InviteDownloadHandler from './InviteDownloadHandler';
@@ -432,6 +433,29 @@ function AppContent(): React.ReactElement {
       return deepLinkParams().get('action') === 'selfcheckin';
     } catch { return false; }
   });
+  // v31.12: Umfrage-Deep-Link (#action=umfrage&e=<Nr>[&a=<Index>]) aus der
+  // Umfrage-Mail. Rendert wie der Self-Check-in direkt die eigene Seite —
+  // die Person kommt aus Outlook und soll nicht erst auf der Startseite
+  // landen und suchen. `leavePoll` räumt die Parameter weg, sonst
+  // kurzschließt renderPage weiter auf die Umfrage (der v20.2-Bug).
+  const [isPollDeepLink, setIsPollDeepLink] = React.useState<boolean>(() => {
+    try { return deepLinkParams().get('action') === 'umfrage'; } catch { return false; }
+  });
+  const leavePoll = React.useCallback((page: 'start' | 'my-events'): void => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      ['action', 'e', 'a'].forEach(k => sp.delete(k));
+      const qs = sp.toString();
+      // Der Hash MUSS mit weg: Der Umfrage-Link trägt seine Parameter dort
+      // (Teams-/SharePoint-fest, utils/deepLink). Nur den Query zu räumen
+      // liesse `#action=umfrage` stehen — und die Seite käme sofort zurück.
+      window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
+    } catch { /* URL-Cleanup best-effort */ }
+    setIsPollDeepLink(false);
+    navigate(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const leaveSelfCheckIn = React.useCallback((page: 'start' | 'my-events'): void => {
     try {
       const sp = new URLSearchParams(window.location.search);
@@ -811,7 +835,7 @@ function AppContent(): React.ReactElement {
     // geladen haben (DEX_Roles + DEX_Events). Vorher einen Vollbild-Spinner
     // zeigen, damit der User nicht kurz die LandingPage ohne Bubble sieht,
     // bevor die Bubble nachrutscht.
-    if (currentPage === 'landing' && !isCancelDeepLink && !isSelfCheckInDeepLink && (isEventsLoading || isRolesLoading)) {
+    if (currentPage === 'landing' && !isCancelDeepLink && !isSelfCheckInDeepLink && !isPollDeepLink && (isEventsLoading || isRolesLoading)) {
       // Denselben Orb-Look wie auf der Landing-Page, damit der Übergang
       // Boot-Loader → LandingPage flüssig wirkt. Keyframes injizieren wir
       // hier selbst, falls LandingPage noch nicht gemountet war.
@@ -989,6 +1013,12 @@ function AppContent(): React.ReactElement {
     if (isSelfCheckInDeepLink) {
       return <SelfCheckInPage onLeave={leaveSelfCheckIn} />;
     }
+    // v31.12: Umfrage-Antwortseite — genauso kurzgeschlossen wie der
+    // Self-Check-in, damit der Klick aus der Mail dort ankommt, wo er
+    // hingehört.
+    if (isPollDeepLink) {
+      return <PollAnswerPage onLeave={leavePoll} />;
+    }
     switch (currentPage) {
       case 'landing':
         return <LandingPage />;
@@ -1088,7 +1118,7 @@ function AppContent(): React.ReactElement {
   // v6.29: Während der Boot-Loader läuft, Header verstecken. Sonst würde
   // schon die "Jetzt einchecken"-Bubble / QR-Icon blinken bevor der eigentliche
   // Welcome-Screen sichtbar ist.
-  const isBootLoading = currentPage === 'landing' && !isCancelDeepLink && !isSelfCheckInDeepLink && (isEventsLoading || isRolesLoading);
+  const isBootLoading = currentPage === 'landing' && !isCancelDeepLink && !isSelfCheckInDeepLink && !isPollDeepLink && (isEventsLoading || isRolesLoading);
   // v9.26: Page-ID jetzt im Header-Avatar-Popup statt unten links.
   return (
     <div className="app-layout" ref={layoutRef}>

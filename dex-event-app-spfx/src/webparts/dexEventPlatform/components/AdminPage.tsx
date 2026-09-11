@@ -127,6 +127,7 @@ import { AdminActionsCard } from './admin/sections/AdminActionsCard';
 import { KpiTiles } from './admin/sections/KpiTiles';
 import { HotelPlanningSection } from './admin/sections/HotelPlanningSection';
 import { QuizStatsSection } from './admin/sections/QuizStatsSection';
+import { PollStatsSection } from './admin/sections/PollStatsSection';
 import { AgendaAttendanceSection } from './admin/sections/AgendaAttendanceSection';
 import { ActiveEventHintsBox } from './admin/sections/ActiveEventHintsBox';
 import { AudienceVisibilityRow } from './admin/sections/AudienceVisibilityRow';
@@ -2894,6 +2895,13 @@ export default function AdminPage(): React.ReactElement {
 
       {/* ===== QUIZ-STATISTIK (collapsible) ===== */}
       {selectedEvent && selectedEvent.quiz && selectedEvent.quiz.length > 0 && <QuizStatsSection {...quizStatsSectionProps} />}
+
+      {/* v31.12: Auswertung der Event-Umfrage. Die Karte prueft selbst, ob es
+          eine gibt, und rendert sonst nichts — angelegt wird die Umfrage in
+          der Aktion „E-Mail versenden". */}
+      {selectedEvent && eventServiceRef && (
+        <PollStatsSection selectedEvent={selectedEvent} eventServiceRef={eventServiceRef} isDe={isDe} />
+      )}
 
       {/* v30.92: Anwesenheit je Programmpunkt — Matrix und „nach Punkt", Excel,
           manuelles Nachtragen mit Audit. Nur bei Events mit Programmpunkten. */}
