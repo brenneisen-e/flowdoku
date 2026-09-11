@@ -564,10 +564,10 @@ export default function EventCreationPage(): React.ReactElement {
     setOutlookLocationOverride, setOutlookLogoFromPhoto, setOutlookStartOverride, setOutlookSubheading, setOutlookSubject, setPendingSuccessDispatch,
     setRegistrationDeadline, setRemovedSavedSubs, setRequireSubEventSelection, setShowAsFree, setShowDemoVariantModal, setShowSummaryModal,
     setShowTemplatePicker, setStartDate, setSubEventCalendar, setSubEventSingleChoice, setSubEventsOnlyMode, setSubImageCropIdx,
-    setTeamsLink, setTemplateLoadingId, setTerminListOpen, setUnlimitedParticipants, setUserCancelAllowed, setWaitlistEnabled,
+    setTeamsLink, setTemplateLoadingId, setTerminListOpen, setUnlimitedParticipants, setUserCancelAllowed, setWaitlistBlocker, setWaitlistEnabled,
     showAsFree, showDemoVariantModal, showSummaryModal, showTemplatePicker, startDate, storedEventType,
     subEventCalendar, subEventSingleChoice, subEventsOnlyMode, subImageCropIdx, teamsLink, templateLoadingId,
-    terminListOpen, unlimitedParticipants, userCancelAllowed, waitlistEnabled, wizardImgAspect,
+    terminListOpen, unlimitedParticipants, userCancelAllowed, waitlistBlocker, waitlistEnabled, wizardImgAspect,
   } = useWizardEventFieldState({ editEvent, ensureEventDocuments, isoToLocal, locale });
   const {
     agenda, applyEventPhotoToLogo, assistantsCanSee, documents, dragFieldId, dragOverFieldId,
@@ -1404,7 +1404,7 @@ export default function EventCreationPage(): React.ReactElement {
       subEventCalendar, subEventOpenRulePiggyback, agendaCheckInPiggyback, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn, subEventsRef,
       teamJoinRequiresApproval, teamMembersCannotCreate, teamOpenSlotsVisible, teamPartialAllowed, teamRegistrationEnabled, teamSize,
       teamTermPlural, teamTermSingular, testTeamEmails, testTeamNames, title, transferTimes,
-      unlimitedParticipants, updateEvent, userCancelAllowed, useSplitCapacities, visAllSubsPiggyback, waitlistEnabled,
+      unlimitedParticipants, updateEvent, userCancelAllowed, useSplitCapacities, visAllSubsPiggyback, waitlistBlocker, waitlistEnabled,
       wizardImgAspect,
     });
   };
@@ -2829,6 +2829,9 @@ export default function EventCreationPage(): React.ReactElement {
     updateSubEventCustomField, useSplitCapacities,
   };
   const communicationStepProps = {
+    // v31.17: Wartelesten-Platzhalter — der Schalter sitzt bei den
+    // Outlook-Einstellungen, nicht im Organizer Center und nicht in Schritt 4.
+    waitlistBlocker, setWaitlistBlocker,
     agenda, // v30.95: {{Programm}} in der Vorschau-Karte
     activeCommTabIdx, applyCommToAllSubEvents, applyCommTopicToAllSubEvents, applyEventPhotoToLogo, autoDeregisterOnDecline, bundledComm, commShared, childTermPlural,
     flushActiveCommTabToState, resolveTopLevelCommState,

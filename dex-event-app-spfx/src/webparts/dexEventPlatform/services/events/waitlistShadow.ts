@@ -57,13 +57,23 @@ export const WAITLIST_SHADOW_KEY = '_waitlistShadowFor';
 /** Piggyback auf dem ECHTEN Event: Platzhalter eingeschaltet? Vorgabe: nein. */
 export const WAITLIST_BLOCKER_KEY = '_waitlistBlocker';
 
-/** Ist der Platzhalter für dieses Event eingeschaltet? */
+/**
+ * Ist der Platzhalter für dieses Event eingeschaltet?
+ *
+ * v31.17: **Vorgabe ist AN** (Nutzer-Entscheidung 11.09.2026). Deshalb steht
+ * der Schlüssel nur im Blob, wenn jemand ihn AUSgeschaltet hat — nicht, wenn
+ * er an ist. Andersherum wäre der Unterschied zwischen „nie entschieden" und
+ * „bewusst an" nicht mehr lesbar, und Bestandsevents (die den Schlüssel gar
+ * nicht haben) blieben für immer aus, während der Assistent „an" anzeigt.
+ * Genau diese zwei Wahrheiten wollen wir nicht.
+ */
 export function waitlistBlockerEnabled(overridesJson: string | undefined | null): boolean {
   try {
     const o = JSON.parse(overridesJson || '{}') || {};
-    return o[WAITLIST_BLOCKER_KEY] === true;
+    return o[WAITLIST_BLOCKER_KEY] !== false;
   } catch {
-    return false;
+    // Kein lesbarer Blob heisst „nie etwas eingestellt" — also die Vorgabe.
+    return true;
   }
 }
 

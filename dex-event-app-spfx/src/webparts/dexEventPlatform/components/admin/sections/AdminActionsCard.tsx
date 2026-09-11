@@ -11,9 +11,8 @@
  */
 import * as React from 'react';
 import { ActionTile, ActionsCollapsibleCard } from '../../admin/ActionsMenu';
-import { AlertCircle, Calendar, Check, Columns, Copy, Download, ExternalLink, FileText, Hash, Link2, Mail, Pencil, QrCode, RefreshCw, Send, Shirt, Users, Wrench } from '../../Icons';
+import { AlertCircle, Check, Columns, Copy, Download, ExternalLink, FileText, Hash, Link2, Mail, Pencil, QrCode, RefreshCw, Send, Shirt, Users, Wrench } from '../../Icons';
 import { parseBillingOf } from '../../../utils/faBilling';
-import { WAITLIST_BLOCKER_KEY, waitlistBlockerEnabled } from '../../../services/events/waitlistShadow';
 import { buildHashDeepLink } from '../../../utils/deepLink';
 import { isB2RunKoelnTitle } from '../../../data/b2runKoeln';
 import { EventService, REG_LIST_NAME, SPRegistration } from '../../../services/EventService';
@@ -126,40 +125,8 @@ export interface AdminActionsCardProps {
 }
 
 export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
-  // v31.15: Wartelisten-Platzhalter ein-/ausschalten. Der Wert ist ein
-  // Piggyback in EmailTemplateOverrides — `patchEventOverridesValue` liest den
-  // aktuellen Stand und schreibt NUR diesen Schluessel zurueck, damit der
-  // Schalter nicht die Mail-Vorlagen des Events ueberbuegelt.
-  const [blockerBusy, setBlockerBusy] = React.useState(false);
-
   const { adminEvents, allEvents, childEventsOf, confirmDialog, copiedDeepLink, copiedEmails, detectOverbookResult, eventServiceRef, fixColumnsResult, fixFieldsResult, isAdmin, isCheckingDeclines, isDe, isDetectingOverbook, isFixingColumns, isFixingFields, isOrganizerFor, isPromoting, isRefreshingProfiles, isReorderingIDs, isRepairingAccess, isRepairingNames, isRepairingOrganizers, isRepairingPerms, isResettingCounter, isSendingQR, isSplitCapacity, isSyncingRegistry, navigate, openChangeLogForEvent, openCommsModal, openInviteModal, openMassmailPicker, promoteResult, qrSentCount, refreshEvents, refreshProfilesResult, registrations, reloadRegistrations, reorderResult, repairAccessResult, repairNamesResult, repairOrganizersResult, repairPermsResult, resetCounterResult, runIdReorder, runManualPromote, searchUsers, selectedEvent, setAccessFixModal, setB2runTodoOpen, setBibImportOpen, setBillingPanelOpen, setCheckInHubOpen, setCheckInHubStep, setCopiedDeepLink, setCopiedEmails, setDeclineCopied, setDeclineResult, setDetectOverbookResult, setExcelAudience, setExcelTargetModal, setFixColumnsResult, setFixFieldsResult, setIsCheckingDeclines, setIsDetectingOverbook, setIsFixingColumns, setIsFixingFields, setIsRefreshingProfiles, setIsRepairingAccess, setIsRepairingNames, setIsRepairingOrganizers, setIsRepairingPerms, setIsResettingCounter, setIsSyncingRegistry, setNameFixModal, setRefreshProfilesResult, setRepairAccessResult, setRepairNamesResult, setRepairOrganizersResult, setRepairPermsResult, setResetCounterResult, setQrBackfillOpen, setShirtSizeOpen, setShowDeclineModal, setShowExportMenu, setSubRegReloadTick, setSyncRegistryResult, shirtFieldExists, showAlert, showExportMenu, siteUrl, spServiceRef, syncRegistryResult, t, updateEvent } = p;
 
-  const waitlistBlockerOn = waitlistBlockerEnabled(selectedEvent.emailTemplateOverrides);
-  const toggleWaitlistBlocker = async (): Promise<void> => {
-    const an = !waitlistBlockerOn;
-    const ok = await confirmDialog(
-      an
-        ? (isDe
-          ? 'Wartelisten-Platzhalter einschalten? Wer ab jetzt auf der Warteliste landet, bekommt einen eigenen Kalendereintrag „mit Vorbehalt". Wichtig: Das wirkt nur, wenn der Flow DEX_Outlook_Einladungen die Auftragsarten BlockerSetzen und BlockerLoeschen kennt — sonst entstehen Aufträge, die niemand abarbeitet. Bereits Wartende bekommen rückwirkend keinen Platzhalter.'
-          : 'Turn on the waitlist placeholder? Anyone landing on the waitlist from now on gets their own calendar entry marked “tentative”. Important: this only works once the DEX_Outlook_Einladungen flow knows the BlockerSetzen and BlockerLoeschen action types — otherwise jobs pile up unprocessed. People already waiting get no placeholder retroactively.')
-        : (isDe
-          ? 'Wartelisten-Platzhalter ausschalten? Neue Wartende bekommen keinen Kalendereintrag mehr. Bereits gesetzte Platzhalter bleiben stehen, bis die Person nachrückt oder sich abmeldet — sie werden NICHT rückwirkend entfernt.'
-          : 'Turn off the waitlist placeholder? New waitlisted people no longer get a calendar entry. Placeholders already set remain until the person moves up or cancels — they are NOT removed retroactively.'),
-      { confirmLabel: an ? (isDe ? 'Einschalten' : 'Turn on') : (isDe ? 'Ausschalten' : 'Turn off') },
-    );
-    if (!ok) return;
-    setBlockerBusy(true);
-    try {
-      const gespeichert = await eventServiceRef.patchEventOverridesValue(Number(selectedEvent.id), WAITLIST_BLOCKER_KEY, an);
-      if (!gespeichert) {
-        showAlert(isDe ? 'Die Einstellung konnte nicht gespeichert werden. Bitte versuch es noch einmal.' : 'The setting could not be saved. Please try again.');
-        return;
-      }
-      await refreshEvents();
-    } finally {
-      setBlockerBusy(false);
-    }
-  };
   const { setCopyToAgendaOpen, setAssignBibsOpen } = p;
   // v31.3: Gesperrte Aktionen bleiben sichtbar — mit dem Grund in der
   // Folgezeile (Leitfaden 5a, Punkt 5). Fast alle Sperren haben dieselbe
@@ -195,30 +162,6 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
               badge="organizer"
               onClick={() => navigate('edit-event', selectedEvent.id)}
             />
-
-            {/* v31.15: Wartelisten-Platzhalter im Kalender. Sitzt hier und
-                nicht im Assistenten, weil er eine Entscheidung ueber den
-                LAUFENDEN Betrieb ist — und weil er eine Voraussetzung hat,
-                die der Assistent nicht pruefen kann: Der Flow
-                DEX_Outlook_Einladungen muss die beiden neuen Auftragsarten
-                kennen. Deshalb nennt die Rueckfrage sie ausdruecklich; ohne
-                die Flow-Aenderung entstehen Auftraege, die niemand
-                abarbeitet. Vorgabe ist AUS. */}
-            {!!selectedEvent.waitlistEnabled && !selectedEvent.disableOutlook && (
-              <ActionTile
-                icon={<Calendar size={18} />}
-                category="event"
-                title={waitlistBlockerOn
-                  ? (isDe ? 'Wartelisten-Platzhalter: an' : 'Waitlist placeholder: on')
-                  : (isDe ? 'Wartelisten-Platzhalter: aus' : 'Waitlist placeholder: off')}
-                desc={isDe
-                  ? 'Wer auf der Warteliste landet, bekommt einen eigenen Kalendereintrag „mit Vorbehalt", der den Termin freihält — kein Platz im echten Outlook-Termin, keine Zusage. Rückt die Person nach oder meldet sie sich ab, verschwindet der Platzhalter wieder. Setzt voraus, dass der Flow DEX_Outlook_Einladungen die Auftragsarten BlockerSetzen und BlockerLoeschen kennt.'
-                  : 'Anyone landing on the waitlist gets their own calendar entry marked “tentative” that holds the slot — no seat in the real Outlook invite, no commitment. It disappears when the person moves up or cancels. Requires the DEX_Outlook_Einladungen flow to know the BlockerSetzen and BlockerLoeschen action types.'}
-                badge="organizer"
-                busy={blockerBusy}
-                onClick={() => { void toggleWaitlistBlocker(); }}
-              />
-            )}
 
             {/* v11.89/v20.3: Der Event-Live/Entwurf-Toggle ist aus dem
                 Aktionen-Menü ausgezogen — der Status-Badge neben dem

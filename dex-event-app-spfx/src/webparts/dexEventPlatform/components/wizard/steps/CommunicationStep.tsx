@@ -101,6 +101,9 @@ export interface CommunicationStepProps {
   unlimitedParticipants: boolean;
   useSplitCapacities: boolean;
   waitlistEnabled: boolean;
+  /** v31.17: Wartelisten-Platzhalter im Kalender (Vorgabe: an). */
+  waitlistBlocker: boolean;
+  setWaitlistBlocker: React.Dispatch<React.SetStateAction<boolean>>;
   /** v30.90: für die Vorschau-Karte (Stufe B) und „Testmail an mich" (Stufe C). */
   headerLayoutFor: (logoB64: string) => { imageWidth: number; imagePaddingV: number; imagePaddingH: number };
   location: string;
@@ -111,7 +114,7 @@ export interface CommunicationStepProps {
 }
 export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
   const { visible } = p;
-  const { activeCommTabIdx, applyCommTopicToAllSubEvents, commShared, setCommShared, flushActiveCommTabToState, resolveTopLevelCommState, applyEventPhotoToLogo, autoDeregisterOnDecline, bundledComm, childTermPlural, confirmDialog, disableCancellationEmail, disableEmails, disableOutlook, disableRegistrationEmail, effectiveHeaderImage, emailLanguage, emailLogoFromPhoto, emailLogoPreview, emailTemplateOverrides, emailTemplates, imageFile, imagePreview, inactiveHandling, isDe, mainCommDisabledAck, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, offerLogoToSubEvents, organizer, outlookBody, outlookLogoFromPhoto, outlookLogoPreview, renderHeaderSizeControl, renderOutlookUpdateButton, renderStepIntro, setAutoDeregisterOnDecline, setBundledComm, setDisableCancellationEmail, setDisableEmails, setDisableOutlook, setDisableRegistrationEmail, setEmailLanguage, setEmailLogoFromPhoto, setEmailLogoPreview, setEmailTemplateOverrides, setHtmlEditorMode, setHtmlEditorOpen, setHtmlEditorTemplateType, setInactiveHandling, setLogoCropTarget, setMainCommDisabledAck, setNotifyOrgCancelMode, setNotifyOrgRegisterFromDate, setNotifyOrgRegisterMode, setOutlookLogoFromPhoto, setOutlookLogoPreview, subEvents, subEventsOnlyMode, t, title, unlimitedParticipants, waitlistEnabled } = p;
+  const { activeCommTabIdx, applyCommTopicToAllSubEvents, commShared, setCommShared, flushActiveCommTabToState, resolveTopLevelCommState, applyEventPhotoToLogo, autoDeregisterOnDecline, bundledComm, childTermPlural, confirmDialog, disableCancellationEmail, disableEmails, disableOutlook, disableRegistrationEmail, effectiveHeaderImage, emailLanguage, emailLogoFromPhoto, emailLogoPreview, emailTemplateOverrides, emailTemplates, imageFile, imagePreview, inactiveHandling, isDe, mainCommDisabledAck, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, offerLogoToSubEvents, organizer, outlookBody, outlookLogoFromPhoto, outlookLogoPreview, renderHeaderSizeControl, renderOutlookUpdateButton, renderStepIntro, setAutoDeregisterOnDecline, setBundledComm, setDisableCancellationEmail, setDisableEmails, setDisableOutlook, setDisableRegistrationEmail, setEmailLanguage, setEmailLogoFromPhoto, setEmailLogoPreview, setEmailTemplateOverrides, setHtmlEditorMode, setHtmlEditorOpen, setHtmlEditorTemplateType, setInactiveHandling, setLogoCropTarget, setMainCommDisabledAck, setNotifyOrgCancelMode, setNotifyOrgRegisterFromDate, setNotifyOrgRegisterMode, setOutlookLogoFromPhoto, setOutlookLogoPreview, subEvents, subEventsOnlyMode, t, title, unlimitedParticipants, waitlistBlocker, setWaitlistBlocker, waitlistEnabled } = p;
 
   // v30.89: Ebene 3 („Texte und Bilder anpassen“) — zu, bis jemand sie braucht;
   // die Chip-Zeile öffnet den passenden Reiter. Abmelde-Regel der Organizer-Kopie
@@ -519,6 +522,46 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                       );
                     })}
                   </div>
+                  {/* v31.17: Der Wartelisten-Platzhalter steht HIER — bei den
+                      Outlook-Einstellungen, wo er hingehört (Nutzer-Ansage
+                      11.09.2026: „die Einstellung übernimmt man dann im Reiter
+                      Kommunikation, dort wo es sinnvoll ist"). Nur sichtbar,
+                      wenn es eine Warteliste gibt UND ein Outlook-Termin
+                      entsteht: Ohne beides gäbe es nichts freizuhalten. */}
+                  {waitlistEnabled && !unlimitedParticipants && !disableOutlook && (
+                    <label className={cx('dex-ui-toggle-row', waitlistBlocker && 'is-active')} style={{ marginTop: 12 }}>
+                      <input type="checkbox" checked={waitlistBlocker} onChange={e => setWaitlistBlocker(e.target.checked)} />
+                      <span className="dex-ui-toggle-row-body">
+                        <span className="dex-ui-toggle-row-title">
+                          {isDe ? 'Wartenden den Termin im Kalender freihalten' : 'Hold the date in waiting people’s calendars'}
+                          <InfoTooltip text={isDe ? (
+                            <>
+                              <strong>Was passiert:</strong> Sobald der erste Mensch auf der Warteliste landet, legt DEX ein zusätzliches, <strong>unsichtbares Wartelisten-Event</strong> an und lädt Wartende dorthin ein. Im Kalender steht der Termin <strong>mit Vorbehalt</strong> und hält den Slot frei; im Text steht ausdrücklich, dass es keine Zusage ist.<br /><br />
+                              <strong>Was du davon siehst:</strong> nichts. Das Wartelisten-Event taucht weder in den Kacheln noch im Organizer Center noch in den Zahlen auf, und du wirst selbst nicht eingeladen.<br /><br />
+                              <strong>Wenn jemand nachrückt:</strong> Der Platzhalter wird abgesagt, die richtige Einladung kommt. Bei einer Abmeldung verschwindet er ebenfalls; löschst du das Event, wird er mit abgesagt.<br /><br />
+                              <strong>Voraussetzung:</strong> Im Flow <strong>DEX_Outlook_Einladungen</strong> müssen drei Actions ergänzt sein (Anleitung in der Doku). Fehlen sie, behält eine nachgerückte Person ihren Platzhalter.
+                            </>
+                          ) : (
+                            <>
+                              <strong>What happens:</strong> as soon as the first person lands on the waitlist, DEX creates an additional <strong>invisible waitlist event</strong> and invites waiting people to it. It shows as <strong>tentative</strong> in their calendar and holds the slot; the text says explicitly that it is not a confirmation.<br /><br />
+                              <strong>What you see:</strong> nothing. It appears in no tile, no organizer view and no figure, and you are not invited yourself.<br /><br />
+                              <strong>On promotion:</strong> the placeholder is cancelled and the real invitation arrives. It also disappears on cancellation, and is cancelled when you delete the event.<br /><br />
+                              <strong>Prerequisite:</strong> three actions must be added to the <strong>DEX_Outlook_Einladungen</strong> flow (see the docs).
+                            </>
+                          )} />
+                        </span>
+                        <span className="dex-ui-toggle-row-desc">
+                          {waitlistBlocker
+                            ? (isDe
+                              ? 'An (Vorgabe): Wartende bekommen einen eigenen Kalendereintrag „mit Vorbehalt", der den Termin freihält. Er verschwindet beim Nachrücken und beim Abmelden. Du selbst bekommst ihn nicht.'
+                              : 'On (default): waiting people get their own tentative calendar entry holding the date. It disappears on promotion and on cancellation. You do not get it yourself.')
+                            : (isDe
+                              ? 'Aus: Wartende bekommen erst mit dem Platz einen Kalendereintrag.'
+                              : 'Off: waiting people only get a calendar entry once they have a seat.')}
+                        </span>
+                      </span>
+                    </label>
+                  )}
                   {(disableEmails || disableOutlook) && (
                     <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginTop: 10 }}>
                       <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
