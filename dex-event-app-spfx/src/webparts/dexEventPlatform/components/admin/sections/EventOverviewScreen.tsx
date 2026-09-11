@@ -10,7 +10,7 @@
  * Vergangenes hinter einem Aufklapper.
  */
 import * as React from 'react';
-import { AlertCircle, Calendar, ChevronDown, Pin, Plus, Trash2 } from '../../Icons';
+import { AlertCircle, Calendar, ChevronDown, Pin, Plus, Search, Trash2, X } from '../../Icons';
 import { cx, ensureDexUiStyles } from '../../dexUi';
 import { DeloitteEvent } from '../../../types';
 import { formatDate } from '../../../utils/eventStatus';
@@ -26,6 +26,9 @@ export interface EventOverviewScreenProps {
   dangerZoneModal: React.ReactElement | null;
   deletingId: string;
   draftCount: number;
+  /** v31.27: Suchtext der Eventuebersicht — grenzt die Liste ein, statt zu springen. */
+  eventQuery: string;
+  setEventQuery: React.Dispatch<React.SetStateAction<string>>;
   eventSortMode: "alpha" | "date";
   handleArchiveEvent: (event: DeloitteEvent) => Promise<void>;
   handleSelectEvent: (event: DeloitteEvent) => Promise<void>;
@@ -51,7 +54,7 @@ export interface EventOverviewScreenProps {
 }
 
 export const EventOverviewScreen: React.FC<EventOverviewScreenProps> = (p) => {
-  const { adminEvents, archiveBusyId, archivedCount, archivedEventIds, changeLogModal, currentEvents, dangerZoneModal, deletingId, draftCount, eventSortMode, handleArchiveEvent, handleSelectEvent, handleUnarchiveEvent, hideDrafts, isAdmin, isDe, isDeleting, isEventsLoading, isPastEvent, locale, navigate, pastEvents, setConfirmDeleteEvent, setConfirmDeleteText, setEventSortMode, setHideDrafts, setShowArchivedEvents, setShowPastEvents, showArchivedEvents, showPastEvents, t } = p;
+  const { adminEvents, archiveBusyId, archivedCount, archivedEventIds, changeLogModal, currentEvents, dangerZoneModal, deletingId, draftCount, eventQuery, setEventQuery, eventSortMode, handleArchiveEvent, handleSelectEvent, handleUnarchiveEvent, hideDrafts, isAdmin, isDe, isDeleting, isEventsLoading, isPastEvent, locale, navigate, pastEvents, setConfirmDeleteEvent, setConfirmDeleteText, setEventSortMode, setHideDrafts, setShowArchivedEvents, setShowPastEvents, showArchivedEvents, showPastEvents, t } = p;
   // v31.3: Idempotent — die Übersicht steht ohne Modal und ohne WizardFormShell
   // auf der Seite; ohne diesen Aufruf fehlten ihr die dex-ui-Klassen.
   ensureDexUiStyles();
@@ -299,6 +302,32 @@ export const EventOverviewScreen: React.FC<EventOverviewScreenProps> = (p) => {
                 })()}
                 {/* v18.2/v31.3: Sortierung und Filter als Werkzeugleiste statt
                     Dropdown mit zwei Einträgen und Checkboxen (Leitfaden 2b). */}
+                {/* v31.27: Suchzeile ueber Sortierung und Filter — sie grenzt
+                    die Liste ein, waehrend die globale Suche im Kopf direkt in
+                    ein Event springt. Zwei verschiedene Fragen, deshalb zwei
+                    Felder (Leitfaden 2b: Filter vor der Liste, nicht dahinter,
+                    wo er unauffindbar waere). */}
+                <div className="dex-ui-searchbar" style={{ marginBottom: 10, maxWidth: 420 }}>
+                  <span className="dex-ui-searchbar-icon" aria-hidden="true"><Search size={15} /></span>
+                  <input
+                    type="text"
+                    className="dex-ui-input"
+                    value={eventQuery}
+                    onChange={e => setEventQuery(e.target.value)}
+                    placeholder={isDe ? 'Event, Ort, Nummer oder Organizer suchen' : 'Search event, location, number or organizer'}
+                    aria-label={isDe ? 'Events durchsuchen' : 'Search events'}
+                    style={{ paddingRight: 34 }}
+                  />
+                  {eventQuery && (
+                    <button
+                      type="button"
+                      className="dex-ui-iconbtn"
+                      onClick={() => setEventQuery('')}
+                      aria-label={isDe ? 'Suche leeren' : 'Clear search'}
+                      style={{ position: 'absolute', right: 3, top: '50%', transform: 'translateY(-50%)', width: 32, height: 32 }}
+                    ><X size={14} /></button>
+                  )}
+                </div>
                 <div className="dex-ui-toolbar">
                   <span className="dex-ui-muted" style={{ fontWeight: 600 }}>{isDe ? 'Sortierung' : 'Sort'}</span>
                   <button

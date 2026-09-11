@@ -38,6 +38,17 @@ export interface UseEventSelectionCtx {
   setSelectedEvent: React.Dispatch<React.SetStateAction<DeloitteEvent>>;
   /** v31.24: Was die Klammer-Ansicht schon geladen hat — Quelle fuer den Sofort-Stand. */
   subEventRegsByEventId: Record<string, SPRegistration[]>;
+  /**
+   * v31.27: Zuletzt geladene Zeilen JE EVENT — auch fuer die Klammer selbst.
+   *
+   * `subEventRegsByEventId` kennt nur die KINDER einer Klammer. Die Klammer
+   * ist kein Kind ihrer selbst, also gab es fuer sie nie einen Sofort-Stand:
+   * Zurueck auf die Klammer hiess Tabelle weg, „Lade Teilnehmer …", Tabelle
+   * wieder da — genau der Sprung, den der Nutzer am 11.09.2026 gemeldet hat.
+   * Als Ref, nicht als State: Der Puffer soll KEIN Rendern ausloesen, er soll
+   * nur den naechsten Klick bedienen.
+   */
+  regsCacheRef: React.MutableRefObject<Record<string, SPRegistration[]>>;
   showAlert: (message: React.ReactNode, opts?: import("../../../context/DialogContext").AlertOptions) => void;
   updateEvent: (eventId: string, updates: Record<string, unknown>, opts?: { skipReload?: boolean; }) => Promise<boolean>;
 }
@@ -65,7 +76,7 @@ export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionR
     adminEvents, childEventsOf, confirmDialog, detailCardRef, eventServiceRef, getAllRegistrations,
     isDe, navigate, refreshEvents, registrations, reloadRegistrations, selectedEvent, selectedEventId,
     setIsLoadingRegs, setRegLoadError, setRegistrations,
-    setReservedDetailHeight, setSelectedEvent, showAlert, subEventRegsByEventId, updateEvent,
+    regsCacheRef, setReservedDetailHeight, setSelectedEvent, showAlert, subEventRegsByEventId, updateEvent,
   } = ctx;
   const handleSelectEvent = async (event: DeloitteEvent): Promise<void> => {
     // v31.25: Die Gesamtdauer des Klicks — die Zahl, die der Nutzer spuert.
@@ -105,7 +116,10 @@ export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionR
      * hieße, eine veraltete Liste als aktuelle auszugeben — dieselbe
      * Verwechslung, gegen die `reloadRegistrations` seit v30.67 kämpft.
      */
-    const vorabBestand = subEventRegsByEventId[event.id];
+    // v31.27: Erst die Klammer-Ansicht fragen (dort steht der frischeste
+    // Stand der Kinder), dann den allgemeinen Puffer — der traegt die
+    // Klammer selbst und jeden schon einmal geoeffneten Termin.
+    const vorabBestand = subEventRegsByEventId[event.id] || regsCacheRef.current[event.id];
     const habenWirSchon = Array.isArray(vorabBestand) && vorabBestand.length > 0;
     if (habenWirSchon) {
       setRegistrations(vorabBestand);
@@ -149,6 +163,9 @@ export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionR
             : 'The participant list could not be read right now (throttling or network) — please click „Refresh“.'));
       } else {
         setRegistrations(regs);
+        // v31.27: In den Puffer — der naechste Klick auf dieses Event zeigt
+        // die Liste dann sofort und laedt nur noch im Hintergrund nach.
+        regsCacheRef.current[event.id] = regs;
       }
     } catch {
       if (!habenWirSchon) setRegistrations([]);

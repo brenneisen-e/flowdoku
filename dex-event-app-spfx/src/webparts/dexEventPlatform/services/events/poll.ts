@@ -65,6 +65,45 @@ export const POLL_LIST = {
 const itemType = (listName: string): string =>
   `SP.Data.${listName.replace(/_/g, '_x005f_')}ListItem`;
 
+/**
+ * v31.27: Den Typ NACHFRAGEN statt ihn zu raten.
+ *
+ * Der Nutzer-Befund vom 11.09.2026 („Die Umfrage konnte nicht gespeichert
+ * werden — es wurde nichts in die Mail eingefügt") hat hier seine Ursache.
+ * `itemType` leitet den Entitätstyp aus dem Listen-TITEL ab. SharePoint
+ * bildet ihn aber aus dem internen Namen zum Zeitpunkt der Anlage — und der
+ * weicht ab, sobald beim Anlegen etwas dazwischenkommt: Eine Liste, die
+ * schon existierte und später umbenannt wurde, behält ihren alten internen
+ * Namen, und `DEX_Polls` heißt dann intern womöglich `DEX_Polls1` oder
+ * `Liste`. Der geratene Typ ist dann falsch, und weil `_post` mit
+ * `odata=verbose` sendet, ist ein falscher Typ ein harter HTTP 400.
+ *
+ * `ListItemEntityTypeFullName` ist die Auskunft der Liste über sich selbst.
+ * Sie wird je Liste einmal geholt und gemerkt — der geratene Wert bleibt
+ * der Rückfall, wenn die Abfrage nicht durchgeht (dann ist er immer noch
+ * besser als gar keiner).
+ *
+ * Dasselbe Muster steckt in der AI Use Case Platform (`entityType`), wo es
+ * aus demselben Grund entstanden ist: HTTP 400 beim ersten Schreibversuch.
+ */
+const typCache: Record<string, string> = {};
+async function echterItemType(svc: EventService, listName: string): Promise<string> {
+  if (typCache[listName]) return typCache[listName];
+  try {
+    const r = await svc._sp.get(
+      `${svc.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=ListItemEntityTypeFullName`,
+      SPHttpClient.configurations.v1,
+      { headers: { 'Accept': 'application/json;odata=nometadata' } },
+    );
+    if (r.ok) {
+      const d = await r.json();
+      const t = d.ListItemEntityTypeFullName || d.d?.ListItemEntityTypeFullName;
+      if (t) { typCache[listName] = t; return t; }
+    }
+  } catch { /* Rückfall unten */ }
+  return itemType(listName);
+}
+
 /** Vorschlag für einen Firmenlauf — der Fall aus der Nutzer-Frage. */
 export const POLL_VORLAGEN_DE: Array<{ titel: string; frage: string; optionen: string[] }> = [
   {
@@ -374,7 +413,7 @@ export async function getPoll(
 
 export async function savePoll(svc: EventService, poll: PollConfig): Promise<boolean> {
   const body = {
-    '__metadata': { 'type': itemType(POLL_LIST.config) },
+    '__metadata': { 'type': await echterItemType(svc, POLL_LIST.config) },
     'Title': `Event ${poll.eventNumber}`,
     'EventNumber': poll.eventNumber,
     'EventId': poll.eventId,
@@ -389,7 +428,18 @@ export async function savePoll(svc: EventService, poll: PollConfig): Promise<boo
     const r = poll.id > 0
       ? await svc._merge(`${basis}(${poll.id})`, body)
       : await svc._post(basis, body);
-    return r.ok || r.status === 406;
+    if (r.ok || r.status === 406) return true;
+    /*
+     * v31.27: Den Grund NENNEN. Bisher kam nur `false` zurueck, und die
+     * Oberflaeche sagte „bitte versuch es noch einmal" — ein Rat, der bei
+     * einem 403 oder 400 nie hilft, weil ein zweiter Versuch dasselbe
+     * ergibt. Der Text der Antwort steht jetzt in der Konsole; er nennt bei
+     * SharePoint fast immer die Spalte oder das Recht, an dem es scheitert.
+     */
+    let grund = '';
+    try { grund = (await r.text()).substring(0, 400); } catch { /* */ }
+    console.error(`[DEX] savePoll: HTTP ${r.status} — ${grund}`);
+    return false;
   } catch (e) {
     console.error('[DEX] savePoll:', e);
     return false;
@@ -457,7 +507,7 @@ export async function savePollAnswer(
 ): Promise<boolean> {
   const lc = (email || '').trim().toLowerCase();
   const body = {
-    '__metadata': { 'type': itemType(POLL_LIST.answers) },
+    '__metadata': { 'type': await echterItemType(svc, POLL_LIST.answers) },
     'Title': `Event ${eventNumber}`,
     'EventNumber': eventNumber,
     'ParticipantEmail': lc,

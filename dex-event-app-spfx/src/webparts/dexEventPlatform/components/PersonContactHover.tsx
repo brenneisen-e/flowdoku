@@ -16,6 +16,43 @@ import { useRoles } from '../context/RoleContext';
 // (OrganizerList.tsx), damit dieselbe Person nicht mehrfach abgefragt wird.
 const profileCache = new Map<string, { jobTitle: string; location: string }>();
 
+/*
+ * v31.27 — Foto-Gedaechtnis fuer die Sitzung.
+ *
+ * Nutzer-Frage 11.09.2026: „kann das Foto der Teilnehmer und der Assistenzen
+ * nicht besser wirklich in die TN-Liste im SP rein? Dann wird es nicht immer
+ * wie neu geladen. … Oder ist der Live-Abruf ueber die SST genauso gut und
+ * schlau?"
+ *
+ * Der Live-Abruf ist besser, und zwar aus vier Gruenden:
+ *
+ *  1. **SharePoint Online cached Profilbilder ohnehin 24 Stunden** im Browser.
+ *     Ein zweiter Aufruf holt sie nicht neu, er holt sie aus der Platte.
+ *  2. **Ein Foto in der Liste waere eine Kopie personenbezogener Daten** — in
+ *     JEDER Teilnehmerliste, also dutzendfach ueber alle Subsites, jede mit
+ *     eigener Aufbewahrung. DEX loescht Teilnehmerlisten nach drei Monaten;
+ *     Gesichter zusaetzlich zu verteilen ist kein Performance-Thema, sondern
+ *     ein Datenschutz-Thema.
+ *  3. **Es waere ein Standbild.** Wer sein Profilbild wechselt, haette in DEX
+ *     fuer immer das alte — und niemand wuesste, warum.
+ *  4. **Es waere langsamer, nicht schneller.** 400 Zeilen mal rund 4 KB
+ *     base64 sind 1,6 MB, die bei JEDEM Lesen der Teilnehmerliste mitkaemen —
+ *     genau die Datenmenge, die v31.24/v31.26 herausgenommen haben. Und zwar
+ *     auch fuer Zeilen, zu denen niemand scrollt.
+ *
+ * Was wirklich zu oft passiert, ist etwas anderes, und das steht hier: Hat
+ * eine Person KEIN Foto, antwortet SharePoint mit einem Platzhalter bzw.
+ * Fehler — und bisher fragte jede Zeile, jedes Popover und jeder
+ * Reiterwechsel erneut, weil `failed` nur im Zustand der einzelnen Komponente
+ * lag. Bei vierhundert Zeilen ohne Bild sind das vierhundert Anfragen, die
+ * garantiert nichts liefern.
+ *
+ * Beide Mengen leben nur fuer die Sitzung. Ein dauerhafter Merker waere die
+ * Standbild-Falle aus Grund 3 in klein.
+ */
+const photoFailed = new Set<string>();
+const photoOk = new Set<string>();
+
 function getInitials(name: string): string {
   const parts = (name || '').includes(',')
     ? name.split(',').reverse().map(s => s.trim())
@@ -44,7 +81,7 @@ export interface PersonContactHoverProps {
 export function PersonContactHover(props: PersonContactHoverProps): React.ReactElement {
   const { email, name, size = 30, subline, isDe = true } = props;
   const { searchUser } = useRoles();
-  const [failed, setFailed] = React.useState(false);
+  const [failed, setFailed] = React.useState<boolean>(() => photoFailed.has((props.email || '').toLowerCase()));
   const [coords, setCoords] = React.useState<{ x: number; y: number; above: boolean } | null>(null);
   const [open, setOpen] = React.useState(false);
   // v26.8: Wird keine subline übergeben, laden wir Position + Standort beim
@@ -65,7 +102,10 @@ export function PersonContactHover(props: PersonContactHoverProps): React.ReactE
   // Zeilen. Bis zum Laden steht der Initialen-Kreis (gleiche Größe, also
   // kein Springen des Layouts). Vorlauf von 300 px, damit beim Scrollen
   // nichts nachzieht.
-  const [visible, setVisible] = React.useState(false);
+  // v31.27: Ist das Foto in dieser Sitzung schon einmal geladen worden, liegt
+  // es im Browser-Cache — dann gleich zeigen statt erst auf den Scroll zu
+  // warten. Das nimmt der Liste das Nachblitzen beim Reiterwechsel.
+  const [visible, setVisible] = React.useState<boolean>(() => photoOk.has((props.email || '').toLowerCase()));
   React.useEffect(() => {
     if (visible || !email) return undefined;
     const el = wrapperRef.current;
@@ -168,7 +208,8 @@ export function PersonContactHover(props: PersonContactHoverProps): React.ReactE
           // Stelle, an der TypeScript nicht im Weg steht — ohne `any`-Cast auf
           // das ganze Element.
           {...({ fetchpriority: 'low' } as Record<string, string>)}
-          onError={() => setFailed(true)}
+          onError={() => { photoFailed.add((email || '').toLowerCase()); setFailed(true); }}
+          onLoad={() => { photoOk.add((email || '').toLowerCase()); }}
           style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0, cursor: 'default' }}
         />
       ) : (

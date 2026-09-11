@@ -97,6 +97,14 @@ export interface MyEventCardProps {
 
 export default function MyEventCard(props: MyEventCardProps): React.ReactElement | null {
   const { cancellingId, cancelRegistration, childEventsOf, confirmDialog, deleteFieldDocument, deleteMyEventAttachment, descExpanded, editData, editingId, enqueueJoinReqFetch, enqueueTeamFetch, getAllRegistrations, getMyRegistration, handleCancel, handleDecideJoinRequest, isCancelling, isDe, isSaving, joinReqBusyId, joinRequestsCache, listFieldDocuments, listMyEventAttachments, loadMyRegistrations, locale, openComms, openManageTeamDialog, openMyQr, registerForEvent, searchUser, searchUsers, setAddMemberConsent, setAddMemberDialog, setAddMemberError, setAddMemberPick, setAddMemberQuery, setAddMemberResults, setCancellingId, setDescExpanded, setEditData, setEditingId, setIsSaving, setMyEvents, showAlert, switchSplitGroup, t, teamMembersCache, updateMyRegistration, uploadFieldDocument, uploadMyEventAttachment } = props;
+  /*
+   * v31.27: Welche vergangenen Events der Nutzer AUFgeklappt hat.
+   * Nur „offen" wird gemerkt; „zu" ist die Vorgabe fuer alles Vergangene und
+   * braucht deshalb keinen Eintrag. Absichtlich nur fuer diese Sitzung: Eine
+   * dauerhafte Merkung waere ein zweiter Zustand neben dem Datum, und beim
+   * naechsten Besuch waere das Event ohnehin ein anderes.
+   */
+  const [zuKlappStand, setZuKlappStand] = React.useState<Record<string, boolean>>({});
   const { event, registration, sessionsOnly, subEventTitles, hiddenRow } = props.entry;
             // Custom Data parsen und IDs zu Labels mappen
             let customData: Record<string, string> = {};
@@ -196,6 +204,17 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
             const cancelLabel = event.subEventCalendar
               ? (isDe ? 'Alle Termine abmelden' : 'Cancel all dates')
               : t('myevents.cancel');
+            /*
+             * v31.27: Vergangene Events starten ZUGEKLAPPT.
+             *
+             * `zuKlappStand` ist eine Map „Event-Id -> offen?" in der Seite;
+             * steht dort nichts, entscheidet das Datum. Bewusst keine
+             * Vorbelegung des States beim Laden: Die Liste kann sich
+             * nachladen, und ein einmal gesetzter Anfangswert waere dann
+             * falsch fuer alles, was danach kommt.
+             */
+            const istVorbei = isEventOver(event);
+            const zugeklappt = istVorbei && zuKlappStand[event.id] !== true;
 
             return (
               <div key={event.id} id={`dex-myevent-${event.id}`} className="card my-event-card">
@@ -319,8 +338,13 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                     </div>
 
                     {/* QR-Code und „Angemeldet am …" — die beiden Angaben, die
-                        am Einlass gebraucht werden. */}
-                    {!sessionsOnly && !hiddenRow && (
+                        am Einlass gebraucht werden.
+                        v31.27: Bei einem zugeklappten (vergangenen) Event
+                        entfallen sie. Der Nutzer hat ausdruecklich verlangt,
+                        im eingeklappten Zustand KEINE Angaben zur eigenen
+                        Anmeldung mehr zu zeigen — und am Einlass gebraucht
+                        wird hier ohnehin nichts mehr. */}
+                    {!zugeklappt && !sessionsOnly && !hiddenRow && (
                       <div className="dex-ui-inline" style={{ marginTop: 10 }}>
                         {/* v20.7: Persönlicher Check-in-QR — gleicher Code wie
                             in der QR-Mail. v28.7: erst sichtbar, NACHDEM die
@@ -352,6 +376,19 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                   </div>
                 </div>
 
+                {/* v31.27: Vergangene Events sind zugeklappt (Nutzer-Ansage
+                    11.09.2026: „vergangene Events sollten eingeklappt sein und keine
+                    Infos zu deiner eigenen Anmeldung bei eingeklappt mehr zeigen").
+
+                    Wer „Meine Events" öffnet, sucht das Nächste — nicht den Lauf von
+                    vor drei Monaten. Sechs ausgeklappte Alt-Karten schieben das,
+                    worum es geht, unter den Bildschirmrand.
+
+                    Alles ab hier steht als EINE Einheit unter der Bedingung; die
+                    Abschnitte selbst sind unverändert. Das ist Absicht — den Innenteil
+                    eines Blocks dieser Größe zwischen Textmarken zu schneiden hat in
+                    dieser Datei schon einmal die Tag-Balance zerrissen (CLAUDE.md). */}
+                {!zugeklappt && (<>
                 {/* ============================================================
                     2. TERMINE — bei einem Klammer-Event ist die Terminliste die
                     eigentliche Anmeldung und stand vorher hinter Programm,
@@ -1324,6 +1361,28 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                     </>
                   )}
                 </div>
+                )}
+                </>)}
+
+                {/* v31.27: Der Weg zurueck in die Karte. Bewusst eine ganze
+                    Zeile statt eines Pfeils in der Ecke: Ein zugeklapptes
+                    Event ist nur noch Titel, Ort und Datum — die Flaeche ist
+                    da, und ein 16-px-Ziel am Rand trifft auf dem Handy
+                    niemand. Beschriftet mit dem, was danach kommt (Leitfaden
+                    6b), nicht mit „mehr". */}
+                {istVorbei && (
+                  <button
+                    type="button"
+                    className={cx('dex-ui-disclosure', !zugeklappt && 'is-open')}
+                    aria-expanded={!zugeklappt}
+                    onClick={() => setZuKlappStand(m => ({ ...m, [event.id]: zugeklappt }))}
+                    style={{ marginTop: zugeklappt ? 10 : 4 }}
+                  >
+                    <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                    {zugeklappt
+                      ? (isDe ? 'Deine Anmeldung, Unterlagen und Bescheinigung anzeigen' : 'Show your registration, documents and certificate')
+                      : (isDe ? 'Zuklappen' : 'Collapse')}
+                  </button>
                 )}
               </div>
             );
