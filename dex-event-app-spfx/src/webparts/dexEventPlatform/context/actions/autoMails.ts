@@ -88,9 +88,36 @@ export function makeAutoMailActions(deps: AutoMailDeps) {
         const linkLine = appUrl
           ? `<p style="margin:0 0 12px;">Ihr findet die Teilnehmerübersicht jederzeit im <a href="${appUrl}" style="color:#86bc25;font-weight:600;">Organizer Center der DEX App</a> — dort könnt ihr sie auch als Excel exportieren.</p>`
           : `<p style="margin:0 0 12px;">Ihr findet die Teilnehmerübersicht jederzeit im Organizer Center der DEX App — dort könnt ihr sie auch als Excel exportieren.</p>`;
+        /*
+         * v31.23: Der Feedback-Knopf (Nutzer-Anforderung 11.09.2026).
+         *
+         * Als TABELLENZELLE mit Rand, Hintergrund und Padding — nicht als
+         * gestyltes `<a>`. Outlook rendert mit der Word-Engine und ignoriert
+         * `display:block` auf einem Link; ein solcher Knopf ist dort nur auf
+         * dem Text selbst klickbar, nicht auf der Fläche. Dieselbe Bauweise
+         * wie die Antwort-Kästchen der Umfrage-Mail (v31.12,
+         * `utils/pollEmail`), dort schon nachgemessen.
+         *
+         * Die Parameter stehen im HASH, nicht im Query: SharePoint und Teams
+         * schreiben Query-Parameter beim Öffnen um, den Hash nicht
+         * (`utils/deepLink`).
+         */
+        const feedbackUrl = appUrl
+          ? `${appUrl}?env=WebView#action=feedback&e=${encodeURIComponent(String(ev.id))}`
+          : '';
+        const feedbackBlock = feedbackUrl ? `
+          <p style="margin:0 0 10px;">Und eine Bitte: <strong>Wie lief es für euch mit DEX?</strong> Zwei Minuten, überwiegend zum Anklicken — das hilft uns sehr bei dem, was wir als Nächstes bauen.</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 18px;">
+            <tr>
+              <td bgcolor="#86bc25" style="border-radius:8px;padding:14px 22px;">
+                <a href="${feedbackUrl}" style="color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;display:inline-block;">Feedback geben &rarr;</a>
+              </td>
+            </tr>
+          </table>` : '';
         const inner = `
           <p style="margin:0 0 12px;">Hallo zusammen,</p>
           <p style="margin:0 0 12px;">wir hoffen, euer Event <strong>&bdquo;${ev.title}&ldquo;</strong> ist gut verlaufen und alle hatten eine schöne Zeit!</p>
+          ${feedbackBlock}
           <p style="margin:0 0 12px;">Ein kurzer Hinweis zur Aufbewahrung: Die <strong>Teilnehmerübersicht bleibt noch 3 Monate gespeichert</strong> (Datenschutz-/Aufbewahrungsvorgabe). Danach wird sie gelöscht — das Event und die wichtigsten Kennzahlen bleiben im Statistik-Archiv erhalten. Ihr werdet rund eine Woche vorher noch einmal erinnert.</p>
           ${linkLine}
           <p style="margin:0 0 12px;">Vielen Dank, dass ihr das Event organisiert habt!</p>`;

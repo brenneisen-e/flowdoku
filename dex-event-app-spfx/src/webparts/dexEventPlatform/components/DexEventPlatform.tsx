@@ -33,6 +33,7 @@ import MyEventsPage from './MyEventsPage';
 import ProfilePage from './ProfilePage';
 import SelfCheckInPage from './SelfCheckInPage';
 import PollAnswerPage from './PollAnswerPage';
+import FeedbackPage from './FeedbackPage';
 import OrganizerRequestsBanner from './OrganizerRequestsBanner';
 import GrantAccessHandler from './GrantAccessHandler';
 import InviteDownloadHandler from './InviteDownloadHandler';
@@ -456,6 +457,32 @@ function AppContent(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /*
+   * v31.23: Feedback-Deep-Link (#action=feedback&e=<Event-Id>) aus der
+   * Nachbereitungs-Mail an die Organizer. Gleiche Mechanik wie die Umfrage:
+   * direkt die Seite rendern, statt die Person auf der Startseite absetzen
+   * zu lassen — sie kommt aus Outlook und hat ein Ziel.
+   *
+   * `leaveFeedback` raeumt die Parameter weg. Der Hash MUSS mit weg (der
+   * Link traegt seine Parameter dort, utils/deepLink): Nur den Query zu
+   * leeren liesse `#action=feedback` stehen, und renderPage kurzschliesst
+   * sofort wieder auf die Seite — das ist der v20.2-Bug.
+   */
+  const [isFeedbackDeepLink, setIsFeedbackDeepLink] = React.useState<boolean>(() => {
+    try { return deepLinkParams().get('action') === 'feedback'; } catch { return false; }
+  });
+  const leaveFeedback = React.useCallback((page: 'start' | 'my-events'): void => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      ['action', 'e'].forEach(k => sp.delete(k));
+      const qs = sp.toString();
+      window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
+    } catch { /* URL-Cleanup best-effort */ }
+    setIsFeedbackDeepLink(false);
+    navigate(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const leaveSelfCheckIn = React.useCallback((page: 'start' | 'my-events'): void => {
     try {
       const sp = new URLSearchParams(window.location.search);
@@ -835,7 +862,7 @@ function AppContent(): React.ReactElement {
     // geladen haben (DEX_Roles + DEX_Events). Vorher einen Vollbild-Spinner
     // zeigen, damit der User nicht kurz die LandingPage ohne Bubble sieht,
     // bevor die Bubble nachrutscht.
-    if (currentPage === 'landing' && !isCancelDeepLink && !isSelfCheckInDeepLink && !isPollDeepLink && (isEventsLoading || isRolesLoading)) {
+    if (currentPage === 'landing' && !isCancelDeepLink && !isSelfCheckInDeepLink && !isPollDeepLink && !isFeedbackDeepLink && (isEventsLoading || isRolesLoading)) {
       // Denselben Orb-Look wie auf der Landing-Page, damit der Übergang
       // Boot-Loader → LandingPage flüssig wirkt. Keyframes injizieren wir
       // hier selbst, falls LandingPage noch nicht gemountet war.
@@ -1016,6 +1043,9 @@ function AppContent(): React.ReactElement {
     // v31.12: Umfrage-Antwortseite — genauso kurzgeschlossen wie der
     // Self-Check-in, damit der Klick aus der Mail dort ankommt, wo er
     // hingehört.
+    if (isFeedbackDeepLink) {
+      return <FeedbackPage onLeave={leaveFeedback} />;
+    }
     if (isPollDeepLink) {
       return <PollAnswerPage onLeave={leavePoll} />;
     }
@@ -1118,7 +1148,7 @@ function AppContent(): React.ReactElement {
   // v6.29: Während der Boot-Loader läuft, Header verstecken. Sonst würde
   // schon die "Jetzt einchecken"-Bubble / QR-Icon blinken bevor der eigentliche
   // Welcome-Screen sichtbar ist.
-  const isBootLoading = currentPage === 'landing' && !isCancelDeepLink && !isSelfCheckInDeepLink && !isPollDeepLink && (isEventsLoading || isRolesLoading);
+  const isBootLoading = currentPage === 'landing' && !isCancelDeepLink && !isSelfCheckInDeepLink && !isPollDeepLink && !isFeedbackDeepLink && (isEventsLoading || isRolesLoading);
   // v9.26: Page-ID jetzt im Header-Avatar-Popup statt unten links.
   return (
     <div className="app-layout" ref={layoutRef}>
