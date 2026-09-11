@@ -10,6 +10,8 @@ import { shortSubEventTitle } from '../../../utils/subEventTitle';
 import { DeloitteEvent } from '../../../types';
 import { SPRegistration } from '../../../services/EventService';
 import { ExcelExportAudience, ExcelExportMode } from '../logic/createExportActions';
+import { FA_SEND_TO, FA_TEMPLATE_FIELDS, faHeaderDefaults, parseBillingOf } from '../../../utils/faBilling';
+import { BILLING_FIELDS } from '../../../data/billingFields';
 
 export interface ExcelTargetModalProps {
   consolidatedChildren: DeloitteEvent[];
@@ -18,11 +20,12 @@ export interface ExcelTargetModalProps {
   excelSubIds: Set<string>;
   excelTargetModal: { mode: ExcelExportMode; chooseMode?: boolean; };
   exportConsolidatedExcel: (audience: ExcelExportAudience, includeMatrix: boolean, subIds: string[]) => void;
-  exportCsv: (mode: ExcelExportMode, audience?: ExcelExportAudience) => void;
+  exportCsv: (mode: ExcelExportMode, audience?: ExcelExportAudience, faHeader?: Record<string, string>) => void;
   /** v31.13: Die F&A-Liste zusätzlich als Mail — `null`, wenn der Weg fehlt. */
   sendFaListMail: ((empfaenger: string, nurEingecheckt: boolean) => Promise<boolean>) | null;
-  /** Vorbelegung des Empfängerfelds: die eigene Adresse. */
+  /** Vorbelegung des Empfängerfelds und der Kontaktperson: die eigene Adresse. */
   myEmail: string;
+  myName: string;
   isConsolidatedMode: boolean;
   isDe: boolean;
   selectedEvent: DeloitteEvent;
@@ -34,7 +37,7 @@ export interface ExcelTargetModalProps {
 }
 
 export const ExcelTargetModal: React.FC<ExcelTargetModalProps> = (p) => {
-  const { consolidatedChildren, excelAudience, excelIncludeMatrix, excelSubIds, excelTargetModal, exportConsolidatedExcel, exportCsv, isConsolidatedMode, isDe, myEmail, selectedEvent, sendFaListMail, setExcelAudience, setExcelIncludeMatrix, setExcelSubIds, setExcelTargetModal, subEventRegsByEventId } = p;
+  const { consolidatedChildren, excelAudience, excelIncludeMatrix, excelSubIds, excelTargetModal, exportConsolidatedExcel, exportCsv, isConsolidatedMode, isDe, myEmail, myName, selectedEvent, sendFaListMail, setExcelAudience, setExcelIncludeMatrix, setExcelSubIds, setExcelTargetModal, subEventRegsByEventId } = p;
         const closeAll = (): void => setExcelTargetModal(null);
         const istFa = excelTargetModal.mode === 'fa';
         // v31.13: Die F&A-Liste zusaetzlich per Mail. Eigener Zustand im
@@ -45,6 +48,21 @@ export const ExcelTargetModal: React.FC<ExcelTargetModalProps> = (p) => {
         const [mailAdresse, setMailAdresse] = React.useState(myEmail || '');
         const [mailLaeuft, setMailLaeuft] = React.useState(false);
         const [mailMeldung, setMailMeldung] = React.useState('');
+        /*
+         * v31.14 — die neun Kopfzeilen der F&A-Vorlage im Dialog
+         * (Nutzer-Ansage 11.09.2026: „der Header soll auch abgefragt werden
+         * bei F&A-Export und sinnvoll mit Vorschlägen vorbefüllt sein").
+         *
+         * Vorbelegung: was in der Abrechnung des Events gepflegt ist, gewinnt
+         * — das hat jemand bewusst eingetragen. Ist es leer, nimmt DEX, was
+         * es über das Event ohnehin weiß (Datum, Ort, Titel). Genau die drei
+         * standen bisher leer in der Datei, obwohl sie im selben Event stehen.
+         */
+        const [faKopf, setFaKopf] = React.useState<Record<string, string>>(
+          () => faHeaderDefaults(selectedEvent, parseBillingOf(selectedEvent), { name: myName, email: myEmail }),
+        );
+        const setzeKopf = (id: string, wert: string): void => setFaKopf(prev => ({ ...prev, [id]: wert }));
+        const kopfLeer = FA_TEMPLATE_FIELDS.filter(f => !(faKopf[f.id] || '').trim()).length;
         // v20.4: Im Klammer-Modus entscheidet das Modal, WAS exportiert wird —
         // konsolidierte Matrix und/oder einzelne Sub-Event-Blätter.
         const consolidatedExportPossible = isConsolidatedMode && excelTargetModal.mode === 'deloitte' && consolidatedChildren.length > 0;
@@ -68,7 +86,7 @@ export const ExcelTargetModal: React.FC<ExcelTargetModalProps> = (p) => {
                 return;
               }
               setExcelTargetModal(null);
-              exportCsv(mode, excelAudience);
+              exportCsv(mode, excelAudience, faKopf);
             }, () => {
               setMailLaeuft(false);
               setMailMeldung(isDe ? 'Die Mail konnte nicht versendet werden.' : 'The email could not be sent.');
@@ -79,7 +97,7 @@ export const ExcelTargetModal: React.FC<ExcelTargetModalProps> = (p) => {
           if (consolidatedExportPossible && (excelIncludeMatrix || excelSubIds.size > 0)) {
             exportConsolidatedExcel(excelAudience, excelIncludeMatrix, Array.from(excelSubIds));
           } else {
-            exportCsv(mode, excelAudience);
+            exportCsv(mode, excelAudience, istFa ? faKopf : undefined);
           }
         };
         const toggleSubId = (id: string): void => {
@@ -205,6 +223,62 @@ export const ExcelTargetModal: React.FC<ExcelTargetModalProps> = (p) => {
                 <Row value="withCancelled" label={isDe ? 'Alles inkl. Abmeldungen' : 'Everything incl. cancellations'} desc={isDe ? 'Alle Einträge, auch abgemeldete Personen — der Status steht je Zeile in der Status-Spalte.' : 'All entries including cancelled people — the status is in each row’s status column.'} />
               </div>
             </div>
+            )}
+
+            {/* v31.14: Die Kopfzeilen der Vorlage. Ohne sie ist die Datei für
+                F&A unbrauchbar — sie stand bisher mit elf leeren Zeilen oben
+                da, obwohl DEX Datum, Ort und Titel kennt. */}
+            {istFa && (
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">{isDe ? 'Was steht im Kopf der Datei?' : 'What goes in the file header?'}</div>
+                <div className="dex-ui-help" style={{ marginTop: -4, marginBottom: 10 }}>
+                  {isDe
+                    ? <>Diese neun Zeilen erwartet die Vorlage von Finance &amp; Accounting über der Teilnehmerliste. Vorbelegt ist, was DEX über das Event weiß — bitte prüfen und ergänzen. Die fertige Datei geht an <strong>{FA_SEND_TO}</strong>.</>
+                    : <>These nine rows are what the Finance &amp; Accounting template expects above the attendee list. Prefilled with what DEX knows about the event — please check and complete. The finished file goes to <strong>{FA_SEND_TO}</strong>.</>}
+                </div>
+                <div className="dex-ui-stack" style={{ gap: 10 }}>
+                  {FA_TEMPLATE_FIELDS.map(f => {
+                    // Die Beschriftung der VORLAGE steht in der Datei; im Dialog
+                    // steht die kurze aus BILLING_FIELDS — „Documenten Nr ( sh
+                    // Swift Launchpad):" ist ein Dateikopf, kein Feldname.
+                    const kurz = BILLING_FIELDS.filter(x => x.id === f.id)[0];
+                    const def = kurz ? kurz.label : f.label;
+                    const wert = faKopf[f.id] || '';
+                    return (
+                      <div key={f.id} className="dex-ui-field">
+                        <label className="dex-ui-label" htmlFor={`fa-kopf-${f.id}`}>{def}</label>
+                        {kurz && kurz.type === 'select' && kurz.options ? (
+                          <select id={`fa-kopf-${f.id}`} className="dex-ui-select" value={wert} onChange={e => setzeKopf(f.id, e.target.value)}>
+                            <option value="">{isDe ? '— bitte wählen —' : '— please choose —'}</option>
+                            {kurz.options.map(o => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                        ) : (
+                          <input
+                            id={`fa-kopf-${f.id}`}
+                            className="dex-ui-input"
+                            value={wert}
+                            onChange={e => setzeKopf(f.id, e.target.value)}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {kopfLeer > 0 && (
+                  <div className="dex-ui-callout dex-ui-callout--warn" role="status" style={{ marginTop: 10 }}>
+                    <span className="dex-ui-callout-body">
+                      {isDe
+                        ? `${kopfLeer} ${kopfLeer === 1 ? 'Zeile ist' : 'Zeilen sind'} noch leer. Die Datei entsteht trotzdem — leere Zellen bleiben leer, damit F&A sieht, was fehlt, statt einen erfundenen Wert zu lesen.`
+                        : `${kopfLeer} ${kopfLeer === 1 ? 'row is' : 'rows are'} still empty. The file is still created — empty cells stay empty so F&A sees what is missing instead of reading an invented value.`}
+                    </span>
+                  </div>
+                )}
+                <div className="dex-ui-help" style={{ marginTop: 8 }}>
+                  {isDe
+                    ? 'Spalte „Participent Type" füllt DEX anhand der Adresse vor: @deloitte.de = Employee, alles andere = Customer. Die vollständige Auswahl (Intercompany, Interfirm, Official) steht mit ihrer Bedeutung auf dem zweiten Blatt der Datei — ein echtes Excel-Dropdown kann die verwendete Bibliothek nicht schreiben.'
+                    : 'DEX prefills the “Participent Type” column from the address: @deloitte.de = Employee, anything else = Customer. The full list (Intercompany, Interfirm, Official) with its meaning is on the second sheet of the file — the library in use cannot write a real Excel dropdown.'}
+                </div>
+              </div>
             )}
 
             {/* v31.13: Die Liste zusätzlich per Mail — mit dem Dank fürs

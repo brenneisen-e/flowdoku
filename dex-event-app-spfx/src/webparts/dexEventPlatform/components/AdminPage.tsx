@@ -2181,6 +2181,7 @@ export default function AdminPage(): React.ReactElement {
     exportCsv, isConsolidatedMode, isDe, selectedEvent, setExcelAudience, setExcelIncludeMatrix,
     setExcelSubIds, setExcelTargetModal, subEventRegsByEventId,
     sendFaListMail, myEmail: currentUser.email || '',
+    myName: `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim(),
   };
   const massmailComposerModalProps = {
     applyMassmailHero, confirmDialog, emailBody, emailHeading, emailSending, emailSubject,

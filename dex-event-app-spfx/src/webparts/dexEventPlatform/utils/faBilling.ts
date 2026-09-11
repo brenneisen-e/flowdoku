@@ -429,6 +429,25 @@ const COUNTRY_BY_CODE: Record<string, string> = {
   GB: 'Vereinigtes Königreich', UK: 'Vereinigtes Königreich',
   US: 'USA', PL: 'Polen', ES: 'Spanien', IT: 'Italien',
 };
+/**
+ * v31.14: Der Zwei-Buchstaben-Code, den die F&A-Vorlage in der Spalte
+ * `Country` erwartet („DE", „NL"). Bis v31.13 stand dort „Deutschland" —
+ * der Abgleich mit der Originalvorlage (11.09.2026) hat es gezeigt.
+ *
+ * Nimmt entweder den Standort (`DE - Koeln`) oder einen bereits aufgelösten
+ * Landesnamen entgegen; Snapshots aus früheren Versendungen tragen den Namen.
+ */
+export function countryCodeOfLocation(value: string | undefined | null): string {
+  const v = (value || '').trim();
+  if (!v) return 'DE';
+  const m = v.match(/^([A-Za-z]{2})(\s*[-–]\s*|$)/);
+  if (m && COUNTRY_BY_CODE[m[1].toUpperCase()]) return m[1].toUpperCase();
+  for (const code of Object.keys(COUNTRY_BY_CODE)) {
+    if (COUNTRY_BY_CODE[code].toLowerCase() === v.toLowerCase()) return code;
+  }
+  return 'DE';
+}
+
 export function countryOfLocation(location: string | undefined | null): string {
   const loc = (location || '').trim();
   const m = loc.match(/^([A-Za-z]{2})\s*[-–]\s*/);
@@ -497,49 +516,160 @@ export function faRowsFromRegistrations(regs: FASourceRegistration[] | null | un
  * Center nachtragen (`FAListRow.personalNr`) — nachgetragene Werte landen in
  * der Datei, nicht nachgetragene bleiben leer wie zuvor.
  */
-const FA_SHEET_LABELS: Array<{ id: string; label: string }> = [
-  { id: 'contact', label: 'Kontaktperson (für etwaige Rückfragen):' },
+/**
+ * v31.14 — die Kopfzeilen EXAKT wie die Vorlage „Attendee_List_Upload_Template".
+ *
+ * Der Nutzer hat die Originaldatei am 11.09.2026 hochgeladen; der Abgleich mit
+ * unserer Ausgabe zeigte vier Abweichungen, und jede davon ist eine, die beim
+ * Empfänger auffällt:
+ *
+ *  1. Die Vorlage hat **neun** Kopfzeilen, unsere elf. `Mice Project Nr` und
+ *     `Ariba Bestellnummer` gibt es dort nicht — sie standen bei uns MITTEN
+ *     im Block und haben alles darunter um zwei Zeilen verschoben. Die
+ *     Teilnehmer-Kopfzeile liegt in der Vorlage auf **Zeile 13**, bei uns lag
+ *     sie auf 14. Beide Angaben bleiben erhalten, aber auf dem Infoblatt.
+ *  2. Zeile 9 heißt „…kurze Info **zur** Bewirtung…", nicht „zum Anlass der
+ *     Bewirtung" (letzteres war die Formulierung aus `BILLING_FIELDS`).
+ *  3. Zeile 11 der Vorlage trägt den Satz, an WEN die Liste geht
+ *     (attendancelist@deloitte.de). Ohne ihn ist die Datei für den, der sie
+ *     bekommt, eine Datei ohne Adresse.
+ *  4. `Country` ist in der Vorlage ein **Zwei-Buchstaben-Code** („DE", „NL"),
+ *     bei uns stand „Deutschland".
+ */
+export const FA_TEMPLATE_FIELDS: Array<{ id: string; label: string }> = [
+  { id: 'contact', label: 'Kontaktperson (für etwaige Rückfragen): ' },
   { id: 'docNo', label: 'Documenten Nr ( sh Swift Launchpad):' },
   { id: 'vendor', label: 'Lieferantenname:' },
-  { id: 'mice', label: 'Mice Project Nr' },
-  { id: 'ariba', label: 'Ariba Bestellnummer' },
   { id: 'company', label: 'Gesellschaft, die die Rechnung erhalten hat:' },
   { id: 'category', label: 'Arbeitsessen/Belohnungsessen/Sonstiges oder Geschenk' },
   { id: 'date', label: 'Veranstaltungs-bzw. Bewirtungsdatum:' },
   { id: 'place', label: 'Ort der Bewirtung/Veranstaltung:' },
   { id: 'wbs', label: 'WBS Code / Kostenstelle:' },
-  { id: 'name', label: 'Name der Veranstaltung bzw. kurze Info zum Anlass der  Bewirtung oder zum Geschenk:' },
+  { id: 'name', label: 'Name der Veranstaltung bzw. kurze Info zur Bewirtung oder zum Geschenk:' },
 ];
+
+/** Die Adresse aus der Vorlage — Zeile 11 des Blattes. */
+export const FA_SEND_TO = 'Attendancelist@deloitte.de';
+export const FA_SEND_TO_LINE = `Versand der Liste bitte per e-mail an: ${FA_SEND_TO}`;
+
+/**
+ * Die fünf Werte der Spalte „Participent Type" samt ihrer Bedeutung — wörtlich
+ * aus dem Blatt „Wichtige Info" der Vorlage.
+ */
+export const FA_PARTICIPANT_TYPES: Array<{ wert: string; bedeutung: string }> = [
+  { wert: 'Employee', bedeutung: 'Arbeitnehmer der Gesellschaft die die Rechnung empfangen hat' },
+  { wert: 'Customer', bedeutung: 'Geschäftspartner' },
+  { wert: 'Intercompany', bedeutung: 'Arbeitnehmer anderer Deloitte Gesellschaften in Deutschland' },
+  { wert: 'Interfirm', bedeutung: 'Arbeitnehmer von Deloitte Gesellschaften aus dem Ausland (z. B. USA, NL, GB, Italien)' },
+  { wert: 'Official', bedeutung: 'Amtsträger' },
+];
+
+/**
+ * v31.14: Spalte A wird GEFÜLLT — sie blieb bis v31.13 leer (gemeldet
+ * 11.09.2026: „die erste Spalte wurde nicht sauber gefüllt").
+ *
+ * v30.67 hatte sie bewusst leer gelassen mit der Begründung, ein erfundener
+ * Wert wäre für F&A ein Wert. Die Begründung war richtig, die Folge falsch:
+ * Eine Pflichtspalte leer zu lassen heißt, dass jemand sie für 85 Zeilen von
+ * Hand nachträgt — und dabei rät er genauso, nur ohne die Information, die
+ * DEX hat. Entschieden wird jetzt an der Adresse, nicht geraten:
+ *
+ *  - `…@deloitte.de` → `Employee` (Arbeitnehmer). Der Normalfall bei einem
+ *    internen Event auf einer Deloitte-Site.
+ *  - jede andere Domain → `Customer` (Geschäftspartner) — genau das Wort,
+ *    das die Vorlage für „extern" vorsieht.
+ *
+ * `Intercompany`, `Interfirm` und `Official` kann DEX NICHT unterscheiden:
+ * Dafür müsste es die rechnungsempfangende Gesellschaft mit der Gesellschaft
+ * der Person vergleichen, und die Profilwerte („Deloitte", „Deloitte
+ * Consulting") passen auf keine Rechnungsgesellschaft („Deloitte GmbH").
+ * Deshalb steht die vollständige Auswahl mit ihrer Bedeutung auf dem zweiten
+ * Blatt der Datei — überschreiben ist ein Tippen, Raten wäre eine Recherche.
+ */
+export function participantTypeOf(email: string | undefined | null): string {
+  const e = (email || '').trim().toLowerCase();
+  if (!e) return '';
+  return /@deloitte\.[a-z.]+$/.test(e) ? 'Employee' : 'Customer';
+}
 
 export const FA_SHEET_PARTICIPANT_HEADERS = [
   'Participent Type', 'Email', 'First Name', 'Last Name',
   'Country', 'Company Name', 'Personalnummer', 'kostenstelle des Mitarbeiters',
 ];
 
+/**
+ * Die neun Kopf-Werte, sinnvoll vorbelegt.
+ *
+ * v31.14 (Nutzer-Ansage 11.09.2026: „der Header soll auch abgefragt werden
+ * bei F&A-Export und sinnvoll mit Vorschlägen vorbefüllt sein im Modal").
+ * Was in `_billing` gepflegt ist, gewinnt — das hat jemand bewusst
+ * eingetragen. Ist es leer, nimmt DEX, was es über das Event ohnehin weiß:
+ * Datum, Ort und Titel standen bisher leer in der Datei, obwohl sie zwei
+ * Felder weiter im selben Event stehen.
+ */
+export function faHeaderDefaults(
+  ev: DeloitteEvent,
+  b: BillingData | null | undefined,
+  me?: { name?: string; email?: string },
+): Record<string, string> {
+  const f = (b && b.fields) || {};
+  const wert = (id: string): string => (f[id] || '').trim();
+
+  // Die Kontaktperson steht als `Name <email>` im Datensatz. In der Datei für
+  // F&A gehört der Name nach vorn und die Adresse in Klammern dahinter — eine
+  // rohe spitze Klammer liest dort niemand.
+  let contact = wert('contact');
+  if (contact) {
+    const p = parsePersonValue(contact);
+    contact = p.name && p.email ? `${p.name} (${p.email})` : (p.name || p.email);
+  } else if (me && (me.name || me.email)) {
+    contact = me.name && me.email ? `${me.name} (${me.email})` : (me.name || me.email || '');
+  }
+
+  const datum = wert('date') || (ev.startDate
+    ? new Date(ev.startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : '');
+
+  return {
+    contact,
+    docNo: wert('docNo'),
+    vendor: wert('vendor'),
+    company: wert('company'),
+    category: wert('category'),
+    date: datum,
+    place: wert('place') || (ev.location || '').trim(),
+    wbs: wert('wbs'),
+    name: wert('name') || (ev.title || '').trim(),
+    // Nicht im Vorlagen-Blatt, aber von DEX erfasst — landet auf dem Infoblatt.
+    mice: wert('mice'),
+    ariba: wert('ariba'),
+  };
+}
+
+/**
+ * Das Teilnehmer-Blatt im Aufbau der Vorlage.
+ *
+ * `header` überschreibt die Vorbelegung — so trägt die Datei genau das, was
+ * im Dialog stand. Ohne `header` greift `faHeaderDefaults`.
+ */
 export function buildFASheetAoa(
   ev: DeloitteEvent,
   b: BillingData | null | undefined,
-  rows: FAListRow[]
+  rows: FAListRow[],
+  header?: Record<string, string>,
 ): string[][] {
-  const f = (b && b.fields) || {};
+  const werte = header || faHeaderDefaults(ev, b);
   const aoa: string[][] = [];
-  for (const def of FA_SHEET_LABELS) {
-    let val = (f[def.id] || '').trim();
-    // Die Kontaktperson steht als `Name <email>` im Datensatz. In der Datei
-    // für F&A gehört der Name nach vorn und die Adresse dahinter — eine
-    // rohe spitze Klammer liest dort niemand.
-    if (def.id === 'contact' && val) {
-      const p = parsePersonValue(val);
-      val = p.name && p.email ? `${p.name} (${p.email})` : (p.name || p.email);
-    }
+  for (const def of FA_TEMPLATE_FIELDS) {
     // Fällt ein Feld leer aus, bleibt die Zelle leer statt „—": Die Datei
     // wird von F&A weiterverarbeitet, und ein Gedankenstrich ist dort ein
     // Wert, kein fehlender Wert.
-    aoa.push([def.label, val]);
+    aoa.push([def.label, (werte[def.id] || '').trim()]);
   }
-  aoa.push([]);
-  aoa.push([]);
-  aoa.push(FA_SHEET_PARTICIPANT_HEADERS.slice());
+  aoa.push([]);                     // Zeile 10 — leer, wie in der Vorlage
+  aoa.push([FA_SEND_TO_LINE]);      // Zeile 11
+  aoa.push([]);                     // Zeile 12
+  aoa.push(FA_SHEET_PARTICIPANT_HEADERS.slice()); // Zeile 13
   for (const r of rows) {
     // v30.67 (Review): Snapshots vor v30.50 tragen nur `name`, kein
     // firstName/lastName. Seit Spalte A leer bleibt, stand für diese Zeilen
@@ -551,17 +681,11 @@ export function buildFASheetAoa(
     const firstName = hasSplitName ? (r.firstName || '') : nameParts.slice(0, -1).join(' ');
     const lastName = hasSplitName ? (r.lastName || '') : (nameParts.slice(-1)[0] || '');
     aoa.push([
-      // v30.67: Spalte A heißt in der F&A-Vorlage „Participent Type" — ein
-      // Teilnehmertyp, kein Name. Bis v30.66 stand hier der Anzeigename, bei
-      // 300 Personen also 300 verschiedene „Typen"; der Name steht ohnehin
-      // zerlegt in First/Last Name. DEX kennt keinen Typ in F&As Vokabular,
-      // deshalb bleibt die Zelle leer — dieselbe Regel wie für Personalnummer
-      // und Kostenstelle unten: ein erfundener Wert wäre für F&A ein Wert.
-      '',
+      participantTypeOf(r.email),
       r.email || '',
       firstName,
       lastName,
-      r.country || '',
+      countryCodeOfLocation(r.country),
       r.company || '',
       // v30.60: Nicht mehr grundsätzlich leer. Trägt F&A die Nummer im Center
       // nach, steht sie hier — sonst bleibt die Zelle leer wie bisher und
@@ -570,9 +694,36 @@ export function buildFASheetAoa(
       r.costCenter || '',
     ]);
   }
-  // `ev` fließt nur in den Dateinamen ein (s. downloadFAParticipantXlsx);
-  // der Blattinhalt ist vollständig durch die elf Felder bestimmt.
   void ev;
+  return aoa;
+}
+
+/**
+ * Das zweite Blatt: die Auswahlwerte der Spalte A und die Angaben, die die
+ * Vorlage nicht kennt (MICE, Ariba).
+ *
+ * **Warum kein echtes Excel-Dropdown:** Die Datenprüfung („Data Validation")
+ * ist in der eingesetzten Bibliothek (SheetJS Community Edition) nicht
+ * schreibbar. Ein Dropdown lässt sich mit ihr schlicht nicht erzeugen; was
+ * geht, ist die Liste beizulegen, damit niemand raten muss, was in Spalte A
+ * erlaubt ist. Das steht hier, damit es beim nächsten Mal niemand erneut
+ * ausprobiert.
+ */
+export function buildFAInfoSheetAoa(werte: Record<string, string>): string[][] {
+  const aoa: string[][] = [
+    [FA_SEND_TO_LINE],
+    [],
+    ['Spalte „Participent Type" — erlaubte Werte'],
+    ['Wert', 'Bedeutung'],
+  ];
+  for (const t of FA_PARTICIPANT_TYPES) aoa.push([t.wert, t.bedeutung]);
+  aoa.push([]);
+  aoa.push(['DEX füllt die Spalte anhand der E-Mail-Adresse vor: @deloitte.de = Employee, alles andere = Customer.']);
+  aoa.push(['Intercompany, Interfirm und Official kann DEX nicht unterscheiden — bitte dort von Hand überschreiben.']);
+  aoa.push([]);
+  aoa.push(['Weitere Angaben aus DEX (nicht Teil der Vorlage)']);
+  aoa.push(['Mice Project Nr', (werte.mice || '').trim()]);
+  aoa.push(['Ariba Bestellnummer', (werte.ariba || '').trim()]);
   return aoa;
 }
 
@@ -601,7 +752,14 @@ export async function downloadFAParticipantXlsx(
     { wch: 16 }, { wch: 26 }, { wch: 16 }, { wch: 26 },
   ];
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Teilnehmer');
+  XLSX.utils.book_append_sheet(wb, ws, 'Teilnehmende_Empfängerliste');
+  // v31.14: Das zweite Blatt gehoert zur Datei, nicht zu einem der beiden
+  // Wege — sonst haette der Download aus dem F&A Center die Auswahlwerte der
+  // Spalte A und der Export aus dem Organizer Center nicht (oder umgekehrt).
+  const wsInfo = XLSX.utils.aoa_to_sheet(buildFAInfoSheetAoa(faHeaderDefaults(ev, b)));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (wsInfo as any)['!cols'] = [{ wch: 28 }, { wch: 80 }];
+  XLSX.utils.book_append_sheet(wb, wsInfo, 'Wichtige Info');
   const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);
