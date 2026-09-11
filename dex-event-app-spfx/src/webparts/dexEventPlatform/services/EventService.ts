@@ -1760,6 +1760,10 @@ export class EventService {
     return waitlistShadow.ensureWaitlistShadow(this, ev);
   }
 
+  public async inviteToWaitlistShadow(attendee: string, eventId: string, eventTitle: string): Promise<boolean> {
+    return waitlistShadow.inviteToWaitlistShadow(this, attendee, eventId, eventTitle);
+  }
+
   public async removeWaitlistShadow(eventId: string, eventTitle: string): Promise<boolean> {
     return waitlistShadow.removeWaitlistShadow(this, eventId, eventTitle);
   }
