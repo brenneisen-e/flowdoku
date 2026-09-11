@@ -24,6 +24,7 @@ import { RoleProvider, useRoles } from '../context/RoleContext';
 import { TutorialProvider } from './tutorial/TutorialGuide';
 import { TicketProvider } from '../context/TicketContext';
 import { deepLinkParams } from '../utils/deepLink';
+import { installPerfConsole } from '../utils/perfLog';
 import Header from './Header';
 import LandingPage from './LandingPage';
 import StartPage from './StartPage';
@@ -468,6 +469,13 @@ function AppContent(): React.ReactElement {
    * leeren liesse `#action=feedback` stehen, und renderPage kurzschliesst
    * sofort wieder auf die Seite — das ist der v20.2-Bug.
    */
+  /*
+   * v31.25: `dexPerf()` in der Konsole verfuegbar machen. Einmal beim Mount,
+   * nicht in einem Effekt mit Abhaengigkeiten — die Funktion ist zustandslos
+   * und soll ab dem ersten Render da sein, auch wenn die Seite danach haengt.
+   */
+  React.useEffect(() => { installPerfConsole(); }, []);
+
   const [isFeedbackDeepLink, setIsFeedbackDeepLink] = React.useState<boolean>(() => {
     try { return deepLinkParams().get('action') === 'feedback'; } catch { return false; }
   });

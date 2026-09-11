@@ -40,6 +40,7 @@ import { isEventOver } from '../utils/eventFormat';
 import AddParticipantsModal from './admin/AddParticipantsModal';
 import { accountCheckCacheKey, readAccountChecks, writeAccountChecks } from '../utils/accountCheckCache';
 import { parallelLimit } from '../utils/parallelLimit';
+import { perfLog } from '../utils/perfLog';
 // v20.1: Self-Check-in jederzeit aktivierbar (Token-Erzeugung beim Klick).
 // v20.2: + statische Check-in-URL für die QR-Kachel im Event-Detail.
 // v20.3: + Default-Zeitfenster (2 Std. vor Start bis Event-Ende) zur Vorbelegung.
@@ -521,6 +522,7 @@ export default function AdminPage(): React.ReactElement {
     }
     let cancelled = false;
     setIsLoadingSubEventRegs(true);
+    const tAlle = performance.now();
     (async () => {
       const map: Record<string, SPRegistration[]> = {};
       // v30.37: Termine, deren Teilnehmerliste NICHT gelesen werden konnte.
@@ -548,6 +550,13 @@ export default function AdminPage(): React.ReactElement {
           denied.push({ title: ch.title || ch.id, status: -1 });
         }
       }), 4);
+      // v31.25: Die Klammer-Summe — wie lange ALLE Termin-Listen zusammen
+      // gebraucht haben. Die Einzelabfragen loggt getAllRegistrations; hier
+      // steht, was die Parallelitaet gebracht hat.
+      perfLog('Alle Termin-Listen der Klammer', performance.now() - tAlle, {
+        zeilen: Object.keys(map).reduce((n, k) => n + (map[k] || []).length, 0),
+        hinweis: `${children.length} Termine, parallel 4`,
+      });
       if (!cancelled) {
         setSubEventRegsByEventId(map);
         setDeniedSubEventLists(denied);

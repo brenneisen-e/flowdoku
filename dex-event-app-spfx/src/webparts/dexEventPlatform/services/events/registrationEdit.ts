@@ -12,6 +12,7 @@
  */
 
 import { SPHttpClient } from '@microsoft/sp-http';
+import { perfLog } from '../../utils/perfLog';
 // EventService als WERT-Import: nur für den deferred Zugriff auf die statische
 // stripNoteWrapper — der Zyklus ist unkritisch, weil der Zugriff erst zur
 // Laufzeit in Funktionskörpern passiert (wie REG_LIST_NAME).
@@ -745,16 +746,41 @@ export async function getAllRegistrations(svc: EventService, subsiteUrl: string,
        * Messung ist Sache des Tenants: Wie viel es bringt, hängt an der Zahl
        * der Spalten der jeweiligen Teilnehmerliste.
        */
+      const t0 = performance.now();
       const response = await svc._sp.get(url, SPHttpClient.configurations.v1, {
         headers: { 'Accept': 'application/json;odata=nometadata' },
       });
-      if (!response.ok) { if (onHttpError) onHttpError(response.status); break; }
-      const data = await response.json();
+      if (!response.ok) {
+        perfLog('Teilnehmerliste lesen (fehlgeschlagen)', performance.now() - t0, { hinweis: `HTTP ${response.status}` });
+        if (onHttpError) onHttpError(response.status);
+        break;
+      }
+      /*
+       * v31.25: Erst als Text, dann parsen — nur so ist die GRÖSSE messbar.
+       * Sie ist die Zahl, die bei „krassen Ladezeiten" fehlt: Erst sie sagt,
+       * ob die Zeit am Netz hängt (viele KB) oder am Server (wenige KB, aber
+       * lange Antwortzeit). `response.json()` verschluckt den Rohtext.
+       *
+       * Kosten: `JSON.parse` über denselben String, den `.json()` intern auch
+       * parst — messbar gleich teuer. Der Umweg kostet also nichts, liefert
+       * aber die Angabe, ohne die die letzten drei Releases geraten haben.
+       */
+      const roh = await response.text();
+      const data = JSON.parse(roh);
+      const ms = performance.now() - t0;
       // Beide OData-Formate abdecken: nometadata (data.value) UND verbose
       // (data.d.results). Vorher nur data.value — bei verbose-Response
       // wären null Items dazugekommen.
       const page = data.value || data.d?.results || [];
       allItems.push(...page);
+      perfLog('Teilnehmerliste lesen', ms, {
+        zeilen: page.length,
+        kb: Math.round(roh.length / 1024),
+        // Der Listenname allein sagt nichts — die Subsite schon, denn jedes
+        // Event hat seine eigene. Nur der letzte Pfadteil, sonst ist die
+        // Zeile unlesbar lang.
+        hinweis: (subsiteUrl.split('/').pop() || '').substring(0, 40),
+      });
       url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
     } catch {
       if (onHttpError) onHttpError(0);

@@ -9,6 +9,7 @@ import { DeloitteEvent } from '../../../types';
 import { EventService, SPRegistration } from '../../../services/EventService';
 import { buildStaticCheckInUrl, defaultCheckInWindow, generateSelfCheckInToken } from '../../../utils/selfCheckIn';
 import { localizeStatus } from '../../../utils/eventStatus';
+import { perfLog } from '../../../utils/perfLog';
 
 export interface UseEventSelectionCtx {
   adminEvents: DeloitteEvent[];
@@ -67,6 +68,10 @@ export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionR
     setReservedDetailHeight, setSelectedEvent, showAlert, subEventRegsByEventId, updateEvent,
   } = ctx;
   const handleSelectEvent = async (event: DeloitteEvent): Promise<void> => {
+    // v31.25: Die Gesamtdauer des Klicks — die Zahl, die der Nutzer spuert.
+    // Die Einzelteile (Abfrage, Groesse) loggt getAllRegistrations selbst;
+    // erst beides zusammen sagt, ob die Zeit im Netz oder daneben liegt.
+    const tKlick = performance.now();
     // v18.24: aktuelle Card-Höhe einfrieren, BEVOR der State wechselt (DOM
     // zeigt noch den alten Stand) — verhindert das Zusammenklappen während
     // die Teilnehmer des neuen Events geladen werden.
@@ -150,6 +155,9 @@ export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionR
       setRegLoadError('Teilnehmerliste konnte nicht geladen werden.');
     }
     setIsLoadingRegs(false);
+    perfLog('Termin oeffnen (gesamt)', performance.now() - tKlick, {
+      hinweis: habenWirSchon ? 'Liste stand sofort (aus dem Speicher)' : 'frisch geladen',
+    });
     // Reservierung freigeben — der neue Inhalt steht jetzt, die Card nimmt
     // im selben Render die echte neue Höhe an (kein Zwischen-Kollaps).
     setReservedDetailHeight(undefined);
