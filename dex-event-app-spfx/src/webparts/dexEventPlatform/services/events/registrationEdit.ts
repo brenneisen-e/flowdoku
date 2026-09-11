@@ -723,7 +723,31 @@ export async function getAllRegistrations(svc: EventService, subsiteUrl: string,
 
   while (url) {
     try {
-      const response = await svc._sp.get(url, SPHttpClient.configurations.v1);
+      /*
+       * v31.24: `Accept: odata=nometadata` — der bei Weitem größte Hebel auf
+       * die Ladezeit der Teilnehmerliste (Nutzer-Befund 11.09.2026: „immer
+       * noch sehr krasse Ladezeiten").
+       *
+       * Diese Abfrage lief als EINZIGE Lese-Abfrage der App ohne den Header.
+       * Ohne ihn antwortet SharePoint mit Metadaten je Zeile UND je Feld:
+       * `__metadata` mit Typ, Id, ETag und EditLink, dazu `__deferred`-Blöcke
+       * mit vollen URLs für jedes nicht angeforderte Navigations-Feld. Bei
+       * einer Liste mit vielen Spalten ist das ein Vielfaches der Nutzdaten —
+       * und bei 417 Zeilen fällt genau das ins Gewicht.
+       *
+       * Sicher, weil nichts davon gelesen wird: Ein `grep` über alle
+       * `__metadata`-Vorkommen zeigt sie ausschließlich in SCHREIB-Payloads
+       * (POST-Bodies mit `type`), nie an einer gelesenen Anmeldezeile. Kein
+       * `If-Match`, kein ETag-Vergleich. Und die Auswertung unten bevorzugt
+       * ohnehin `data.value` — das Format, das nometadata liefert;
+       * `data.d.results` bleibt als Fallback stehen.
+       *
+       * Messung ist Sache des Tenants: Wie viel es bringt, hängt an der Zahl
+       * der Spalten der jeweiligen Teilnehmerliste.
+       */
+      const response = await svc._sp.get(url, SPHttpClient.configurations.v1, {
+        headers: { 'Accept': 'application/json;odata=nometadata' },
+      });
       if (!response.ok) { if (onHttpError) onHttpError(response.status); break; }
       const data = await response.json();
       // Beide OData-Formate abdecken: nometadata (data.value) UND verbose

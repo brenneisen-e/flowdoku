@@ -5,7 +5,6 @@
  */
 import * as React from 'react';
 import { ACCESS_DENIED_MSG } from '../../admin/adminConstants';
-import { DeniedSubEventList } from '../../admin/adminTypes';
 import { DeloitteEvent } from '../../../types';
 import { EventService, SPRegistration } from '../../../services/EventService';
 import { buildStaticCheckInUrl, defaultCheckInWindow, generateSelfCheckInToken } from '../../../utils/selfCheckIn';
@@ -26,12 +25,18 @@ export interface UseEventSelectionCtx {
   reloadRegistrations: () => Promise<SPRegistration[] | null>;
   selectedEvent: DeloitteEvent;
   selectedEventId: string;
-  setDeniedSubEventLists: React.Dispatch<React.SetStateAction<DeniedSubEventList[]>>;
+  /* v31.24: `setDeniedSubEventLists` ist hier entfallen. Der Wechsel auf
+   * einen Termin leerte die Liste der nicht lesbaren Termin-Listen — nur um
+   * sie beim Weg zurueck zur Klammer neu aufzubauen. Sie gehoert zum
+   * Klammer-Ladevorgang und wird dort geleert, beim Wechsel in eine andere
+   * Event-Gruppe (AdminPage). */
   setIsLoadingRegs: React.Dispatch<React.SetStateAction<boolean>>;
   setRegLoadError: React.Dispatch<React.SetStateAction<string>>;
   setRegistrations: React.Dispatch<React.SetStateAction<SPRegistration[]>>;
   setReservedDetailHeight: React.Dispatch<React.SetStateAction<number>>;
   setSelectedEvent: React.Dispatch<React.SetStateAction<DeloitteEvent>>;
+  /** v31.24: Was die Klammer-Ansicht schon geladen hat — Quelle fuer den Sofort-Stand. */
+  subEventRegsByEventId: Record<string, SPRegistration[]>;
   showAlert: (message: React.ReactNode, opts?: import("../../../context/DialogContext").AlertOptions) => void;
   updateEvent: (eventId: string, updates: Record<string, unknown>, opts?: { skipReload?: boolean; }) => Promise<boolean>;
 }
@@ -58,8 +63,8 @@ export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionR
   const {
     adminEvents, childEventsOf, confirmDialog, detailCardRef, eventServiceRef, getAllRegistrations,
     isDe, navigate, refreshEvents, registrations, reloadRegistrations, selectedEvent, selectedEventId,
-    setDeniedSubEventLists, setIsLoadingRegs, setRegLoadError, setRegistrations,
-    setReservedDetailHeight, setSelectedEvent, showAlert, updateEvent,
+    setIsLoadingRegs, setRegLoadError, setRegistrations,
+    setReservedDetailHeight, setSelectedEvent, showAlert, subEventRegsByEventId, updateEvent,
   } = ctx;
   const handleSelectEvent = async (event: DeloitteEvent): Promise<void> => {
     // v18.24: aktuelle Card-Höhe einfrieren, BEVOR der State wechselt (DOM
@@ -75,9 +80,35 @@ export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionR
     if (selectedEventId !== event.id) {
       navigate('admin', event.id);
     }
-    setIsLoadingRegs(true);
+    /*
+     * v31.24 — der Grund, warum der Wechsel sich lang anfühlte UND sprang
+     * (Nutzer-Befund 11.09.2026: „immer noch sehr krasse Ladezeiten … und es
+     * springt beim Laden").
+     *
+     * Die Klammer-Ansicht hat die Zeilen JEDES Termins bereits geholt — sie
+     * stehen in `subEventRegsByEventId`, daraus rechnet die konsolidierte
+     * Matrix. Trotzdem begann der Klick auf einen Termin bei null: Tabelle
+     * leer, Spinner an, warten, Tabelle wieder voll. Das ist zweimal Springen
+     * und einmal Warten für Daten, die schon da waren.
+     *
+     * Jetzt werden sie sofort gezeigt und im Hintergrund aufgefrischt. Kein
+     * Spinner, kein Leerstand, keine Höhenänderung — die Liste steht beim
+     * Loslassen der Maus.
+     *
+     * Bewusst trotzdem NACHLADEN: Der Bestand kann Minuten alt sein (die
+     * Klammer lädt ihn einmal beim Öffnen). Ihn ungeprüft stehenzulassen
+     * hieße, eine veraltete Liste als aktuelle auszugeben — dieselbe
+     * Verwechslung, gegen die `reloadRegistrations` seit v30.67 kämpft.
+     */
+    const vorabBestand = subEventRegsByEventId[event.id];
+    const habenWirSchon = Array.isArray(vorabBestand) && vorabBestand.length > 0;
+    if (habenWirSchon) {
+      setRegistrations(vorabBestand);
+      setIsLoadingRegs(false);
+    } else {
+      setIsLoadingRegs(true);
+    }
     setRegLoadError('');
-    setDeniedSubEventLists([]);
     try {
       // v30.37: Auch hier zählt der HTTP-Status. Ein 403 kam bisher als leere
       // Liste an und wurde als „Noch keine Teilnehmer registriert." gerendert —
@@ -97,7 +128,15 @@ export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionR
       let failedStatus = -1;
       const regs = await getAllRegistrations(event.id, st => { failedStatus = st; });
       if (failedStatus >= 0) {
-        setRegistrations([]);
+        // v31.24: Hatten wir schon einen Stand, BLEIBT er stehen. Ihn wegen
+        // einer Drosselung zu leeren hieße, eine Liste, die richtig dasteht,
+        // gegen ein „—" zu tauschen — der Organizer verliert Daten, die er
+        // gerade noch gesehen hat. Der Hinweis sagt, dass sie nicht frisch
+        // sind; das ist die ehrlichere Auskunft. (Dasselbe Verhalten wie
+        // `reloadRegistrations` seit v30.67: bei Fehler bleibt die alte
+        // Liste.) Ohne Vorab-Stand bleibt es beim Leeren — sonst stünde dort
+        // die Liste des VORHER gewählten Termins.
+        if (!habenWirSchon) setRegistrations([]);
         setRegLoadError(failedStatus === 401 || failedStatus === 403
           ? ACCESS_DENIED_MSG
           : (isDe
@@ -107,7 +146,7 @@ export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionR
         setRegistrations(regs);
       }
     } catch {
-      setRegistrations([]);
+      if (!habenWirSchon) setRegistrations([]);
       setRegLoadError('Teilnehmerliste konnte nicht geladen werden.');
     }
     setIsLoadingRegs(false);

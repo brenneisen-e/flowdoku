@@ -39,6 +39,7 @@ import { SHIRT_PATTERN } from '../utils/checkInExtras';
 import { isEventOver } from '../utils/eventFormat';
 import AddParticipantsModal from './admin/AddParticipantsModal';
 import { accountCheckCacheKey, readAccountChecks, writeAccountChecks } from '../utils/accountCheckCache';
+import { parallelLimit } from '../utils/parallelLimit';
 // v20.1: Self-Check-in jederzeit aktivierbar (Token-Erzeugung beim Klick).
 // v20.2: + statische Check-in-URL für die QR-Kachel im Event-Detail.
 // v20.3: + Default-Zeitfenster (2 Std. vor Start bis Event-Ende) zur Vorbelegung.
@@ -476,15 +477,43 @@ export default function AdminPage(): React.ReactElement {
     return () => window.removeEventListener('dex-refresh-page', onRefresh);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEvent]);
+  /** v31.24: Die Event-Gruppe, zu der der geladene Termin-Bestand gehoert. */
+  const subRegGroupRef = React.useRef<string>('');
   // v14.11: subEventsOnlyMode — alle Sub-Event-Anmeldungen einsammeln, um
   // den konsolidierten Matrix-View pro Person zu rendern. Nur aktiv, wenn
   // das selektierte Event tatsächlich Hauptevent ohne eigene Anmeldungen
   // (subEventsOnlyMode) ist und es Sub-Events gibt.
   React.useEffect(() => {
-    if (!selectedEvent || !selectedEvent.subEventsOnlyMode) {
+    /*
+     * v31.24 — zwei Aenderungen am Ladeverhalten (Nutzer-Befund 11.09.2026:
+     * „immer noch sehr krasse Ladezeiten … und es springt beim Laden").
+     *
+     * (1) NICHT MEHR LEEREN beim Wechsel auf einen Termin. Hier stand
+     *     `setSubEventRegsByEventId({})`, sobald das gewaehlte Event keine
+     *     Klammer ist — also bei JEDEM Klick auf einen Reiter. Damit war
+     *     alles weg, was die Klammer-Ansicht gerade geholt hatte, und der
+     *     Weg zurueck lud alle drei Termin-Listen erneut (909 Zeilen).
+     *     Behalten kostet Speicher, den wir ohnehin schon hatten; die Zahlen
+     *     der Reiter-Badges leben davon ebenfalls.
+     *
+     *     Geleert wird jetzt nur beim Wechsel in eine ANDERE Event-Gruppe —
+     *     sonst zeigte der Bestand des vorherigen Events seine Zahlen im
+     *     neuen weiter.
+     *
+     * (2) Die Termine laden PARALLEL (gedeckelt auf vier). Vorher lief eine
+     *     `for`-Schleife mit `await` je Termin: drei Abfragen a 65/417/427
+     *     Zeilen nacheinander, bei einer Office-Tage-Reihe neunzehn. Der
+     *     Deckel ist wichtig, nicht die Parallelitaet — `Promise.all` ueber
+     *     neunzehn Listen holt sich eine Drosselung ab und dauert laenger
+     *     als nacheinander (siehe utils/parallelLimit).
+     */
+    const gruppeJetzt = selectedEvent ? (selectedEvent.parentEventId || selectedEvent.id) : '';
+    if (subRegGroupRef.current !== gruppeJetzt) {
+      subRegGroupRef.current = gruppeJetzt;
       setSubEventRegsByEventId({});
-      return;
+      setDeniedSubEventLists([]);
     }
+    if (!selectedEvent || !selectedEvent.subEventsOnlyMode) return;
     const children = childEventsOf(selectedEvent.id);
     if (children.length === 0) {
       setSubEventRegsByEventId({});
@@ -501,7 +530,7 @@ export default function AdminPage(): React.ReactElement {
       // „Teilnehmer (0)"). Der Rückruf existiert seit v29.3, nur genutzt hat
       // ihn hier niemand.
       const denied: DeniedSubEventList[] = [];
-      for (const ch of children) {
+      await parallelLimit(children.map(ch => async () => {
         try {
           // v30.67: JEDER Rückruf heißt „nicht gelesen" — nicht nur vier
           // Codes. Der Rückruf feuert per Definition bei jedem nicht-ok-Status;
@@ -518,7 +547,7 @@ export default function AdminPage(): React.ReactElement {
           // v30.67 (Review): -1 = Ausnahme statt HTTP-Status → „unbekannt".
           denied.push({ title: ch.title || ch.id, status: -1 });
         }
-      }
+      }), 4);
       if (!cancelled) {
         setSubEventRegsByEventId(map);
         setDeniedSubEventLists(denied);
@@ -1495,8 +1524,8 @@ export default function AdminPage(): React.ReactElement {
   } = useEventSelection({
     adminEvents, childEventsOf, confirmDialog, detailCardRef, eventServiceRef, getAllRegistrations,
     isDe, navigate, refreshEvents, registrations, reloadRegistrations, selectedEvent, selectedEventId,
-    setDeniedSubEventLists, setIsLoadingRegs, setRegLoadError, setRegistrations,
-    setReservedDetailHeight, setSelectedEvent, showAlert, updateEvent,
+    setIsLoadingRegs, setRegLoadError, setRegistrations,
+    setReservedDetailHeight, setSelectedEvent, showAlert, subEventRegsByEventId, updateEvent,
   });
 
   // v30.66: useMailComposers — Rumpf in logic/useMailComposers.tsx.
