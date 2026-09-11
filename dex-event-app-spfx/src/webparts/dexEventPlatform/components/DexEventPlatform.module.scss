@@ -10,6 +10,24 @@
  */
 
 .dexApp {
+  /* v31.30: Die Breite der App darf nicht von ihrem Inhalt abhaengen.
+     Nutzer-Befund 11.09.2026: „warum wird die Breite veraendert, wenn man
+     Dinge aufklappt? Das will ich nicht" — dieselbe Beobachtung beim Wechsel
+     zwischen zwei Terminen. Die Seite liegt in SharePoints Canvas-Raster, und
+     ein Rasterfeld ist standardmaessig mindestens so breit wie der schmalste
+     moegliche Inhalt (`min-width: auto`). Aendert sich dieser Wert — ein
+     aufgeklappter Kasten, eine andere Spaltenzahl —, wird das ganze Feld
+     breiter und alles darin rutscht seitlich.
+     `contain: inline-size` sagt dem Browser: die Breite dieses Elements wird
+     OHNE Ruecksicht auf seinen Inhalt bestimmt. Damit traegt DEX nichts mehr
+     zur Mindestbreite bei. Nur die Breite — die Hoehe waechst weiter mit dem
+     Inhalt. Kein Zuschnitt, kein neuer Stapelkontext: sticky Tabellenkoepfe
+     und die absolut gesetzten Auswahllisten bleiben unberuehrt (das waere bei
+     `contain: layout` oder `container-type` anders). Browser ohne Unterstuetzung
+     ignorieren die Zeile — dann bleibt es wie bisher. */
+  contain: inline-size;
+  max-width: 100%;
+
   // v11.97: Custom-Cursor wieder entfernt — der gerenderte SVG-Cursor
   // wirkte für den User wie „System-Pfeil + grüner Punkt daneben"
   // (zwei separate Elemente statt eines stimmigen Deloitte-Cursors).
@@ -231,7 +249,10 @@
 
     /* Main content */
     .main-content { flex: 1; background: var(--dex-gray-100); overflow-y: auto; }
-    .page-container { max-width: 100%; margin: 0 auto; padding: 32px 24px; }
+    /* v31.30: `min-width: 0` gehoert zu `contain: inline-size` oben — ohne sie
+       koennte dieser Kasten selbst wieder auf seinen breitesten Inhalt wachsen
+       und den Gewinn zunichtemachen. */
+    .page-container { max-width: 100%; min-width: 0; margin: 0 auto; padding: 32px 24px; }
 
     /* Cards */
     .card {

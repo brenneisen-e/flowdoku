@@ -25,6 +25,7 @@ import { TutorialProvider } from './tutorial/TutorialGuide';
 import { TicketProvider } from '../context/TicketContext';
 import { deepLinkParams } from '../utils/deepLink';
 import { installPerfConsole } from '../utils/perfLog';
+import { installWidthConsole } from '../utils/widthWatch';
 import Header from './Header';
 import LandingPage from './LandingPage';
 import StartPage from './StartPage';
@@ -475,6 +476,10 @@ function AppContent(): React.ReactElement {
    * und soll ab dem ersten Render da sein, auch wenn die Seite danach haengt.
    */
   React.useEffect(() => { installPerfConsole(); }, []);
+  // v31.30: Der Breiten-Waechter meldet von selbst, wenn die Seite breiter wird
+  // als das Fenster — und nennt das ausloesende Element. Ohne ihn bleibt die
+  // Frage „warum wird die Breite veraendert" eine Vermutung.
+  React.useEffect(() => { installWidthConsole(); }, []);
 
   const [isFeedbackDeepLink, setIsFeedbackDeepLink] = React.useState<boolean>(() => {
     try { return deepLinkParams().get('action') === 'feedback'; } catch { return false; }
