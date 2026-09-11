@@ -629,7 +629,7 @@ export class EventService {
     return outlookQueue.getDeclinedAttendees(this, eventId);
   }
 
-  public async checkAccountsActive(emails: string[]): Promise<{ ok: boolean; inactive: string[] }> {
+  public async checkAccountsActive(emails: string[]): Promise<{ ok: boolean; inactive: string[]; checked: string[] }> {
     return outlookQueue.checkAccountsActive(this, emails);
   }
 
