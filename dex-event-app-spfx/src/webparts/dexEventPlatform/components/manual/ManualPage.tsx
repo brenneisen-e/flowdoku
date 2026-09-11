@@ -37,7 +37,8 @@ export default function ManualPage(): React.ReactElement {
   const { currentUserRole } = useRoles();
   const { events } = useEvents();
   const { currentUser } = useCurrentUser();
-  const { locale, setLocale } = useLanguage();
+  // v31.13: kein `setLocale` mehr — die Sprachwahl sitzt nur noch im Header.
+  const { locale } = useLanguage();
   const isDe = locale === 'de';
   // v20.4: App-Modal statt window.prompt als Copy-Fallback.
   const { showAlert } = useDialog();
@@ -176,26 +177,10 @@ export default function ManualPage(): React.ReactElement {
           <h2 style={{ fontSize: '1.2rem', fontWeight: 700, margin: 0 }}>
             {isDe ? 'Handbuch' : 'Handbook'}
           </h2>
-          <div style={{ display: 'inline-flex', border: '1px solid var(--dex-gray-300)', borderRadius: 999, overflow: 'hidden', fontSize: '0.72rem' }}>
-            <button
-              onClick={() => setLocale('de')}
-              style={{
-                padding: '3px 10px', border: 'none',
-                background: isDe ? 'var(--dex-green)' : '#fff',
-                color: isDe ? '#fff' : 'var(--dex-gray-600)',
-                fontWeight: isDe ? 600 : 400, cursor: 'pointer',
-              }}
-            >DE</button>
-            <button
-              onClick={() => setLocale('en')}
-              style={{
-                padding: '3px 10px', border: 'none',
-                background: !isDe ? 'var(--dex-green)' : '#fff',
-                color: !isDe ? '#fff' : 'var(--dex-gray-600)',
-                fontWeight: !isDe ? 600 : 400, cursor: 'pointer',
-              }}
-            >EN</button>
-          </div>
+          {/* v31.13: Auch hier stand ein zweiter DE/EN-Umschalter neben der
+              Überschrift, während der Header denselben trägt. Entfernt aus
+              demselben Grund wie der auf der Landing Page — und weil der im
+              Header `forcedRegLang` kennt, dieser aber nicht. */}
         </div>
         <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginBottom: 4 }}>
           {isDe

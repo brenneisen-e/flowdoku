@@ -27,7 +27,8 @@ export default function LandingPage(): React.ReactElement {
   // `dex-ui-callout` — das Stylesheet hängt sonst an einem geöffneten Modal.
   ensureDexUiStyles();
   const { navigate } = useNavigation();
-  const { locale, setLocale, t } = useLanguage();
+  // v31.13: kein `setLocale` mehr — die Sprachwahl sitzt nur noch im Header.
+  const { locale, t } = useLanguage();
   const isDe = locale === 'de';
   const isMobile = useIsMobile();
   // v18.25: Vorname für die persönliche Begrüßung.
@@ -690,29 +691,20 @@ export default function LandingPage(): React.ReactElement {
       }}>
         v{APP_VERSION}
       </span>
-      {/* v31.9: Die Sprachwahl sitzt jetzt am Seitenrand statt absolut in der
-          Karte. Sie ist — wie die Versionsmarke gegenüber — ein Randelement
-          ohne Platz in der Lesereihenfolge; in der Karte lag sie über der
-          ersten Zeile und hätte den nach oben gezogenen Check-in-Kasten
-          verdeckt. */}
-      <div style={{ position: 'absolute', top: 12, left: 16, display: 'flex', gap: 4, zIndex: 7 }}>
-        <button
-          type="button"
-          className={cx('dex-ui-chip', locale === 'de' && 'is-active')}
-          onClick={() => setLocale('de')}
-          title="Deutsch"
-        >
-          DE
-        </button>
-        <button
-          type="button"
-          className={cx('dex-ui-chip', locale === 'en' && 'is-active')}
-          onClick={() => setLocale('en')}
-          title="English"
-        >
-          EN
-        </button>
-      </div>
+      {/* v31.13: Die eigene DE/EN-Wahl der Landing Page ist ENTFERNT (gemeldet
+          11.09.2026: „warum hab ich links auch Language Picker, wenn ich schon
+          im Header einen habe?"). Sie stand seit v31.9 unten links, der Header
+          trägt denselben Umschalter seit v24.11 — zwei identische Bedienungen
+          für dieselbe Auswahl, dieselbe Falle wie die zwei Reiter-Reihen im
+          Kommunikations-Schritt (v28.88).
+
+          Weg ist bewusst DIESE und nicht die im Header: Der Header-Umschalter
+          kennt `forcedRegLang` und sagt, warum die Wahl gesperrt ist, wenn der
+          Organizer die Sprache eines Anmeldeformulars festgelegt hat. Der hier
+          rief `setLocale` roh — er hätte diese Regel umgangen.
+
+          Die Versionsmarke gegenüber bleibt: Sie ist Anzeige, keine
+          zweite Bedienung. */}
 
       {/* v22: Fortschritts-/Ergebnis-Modal der Archivierung. */}
       {/* v26.40: Modal-Hinweis nach automatischer Abmeldung von Ex-Deloitte-Personen. */}

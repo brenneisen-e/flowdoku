@@ -321,6 +321,65 @@ ${rows}
 </div>`;
 }
 
+/**
+ * v31.13 — die F&A-Liste als Mail, ausgelöst vom Organizer.
+ *
+ * Nutzer-Ansage 11.09.2026: Die dritte Export-Ansicht soll allen Organizern
+ * offenstehen und „auch in die Mail gepackt werden, mit Danke, dass du das
+ * Event mit DEX organisiert hast."
+ *
+ * Zwei Unterschiede zu `renderBillingListMailBody` (dem offiziellen Versand
+ * an die F&A-Verteiler), und beide sind Absicht:
+ *
+ *  - **Die Liste steht IM Text, nicht als Anhang.** `queueEmail` kann seit
+ *    v26.62 einen Anhang mitgeben, aber der DEX_SEND_MAIL-Flow hängt ihn
+ *    nicht an — er würde stillschweigend fehlen (v26.71: der Tenant blockt
+ *    Anhänge aus Power Automate ohnehin). Eine Tabelle, die ankommt, ist
+ *    mehr wert als ein Anhang, der es nicht tut.
+ *  - **Kein Stempel, kein Snapshot, kein `_billing`-Eintrag.** Das hier ist
+ *    eine Arbeitskopie für den Organizer, keine Übermittlung an F&A. Würde
+ *    sie `listSentAt` setzen, zeigte das F&A Center „Teilnehmerliste
+ *    versendet", ohne dass F&A je etwas bekommen hat.
+ */
+export function renderOrganizerFAListMailBody(
+  ev: DeloitteEvent,
+  participants: FAListRow[],
+  byName: string,
+  nurEingecheckt: boolean,
+  b?: BillingData | null
+): string {
+  const rows = participants.map((p, i) =>
+    `<tr><td style="${TD_STYLE}">${i + 1}</td><td style="${TD_STYLE}">${esc(p.name)}</td><td style="${TD_STYLE}">${esc(p.email)}</td><td style="${TD_STYLE}">${esc(p.status)}</td></tr>`
+  ).join('');
+  // Welche Auswahl in der Liste steckt, gehört über die Tabelle. „37 Personen"
+  // ohne diesen Satz ist für einen Bewirtungsbeleg keine belastbare Angabe.
+  const auswahl = nurEingecheckt
+    ? 'Enthalten sind <strong>nur eingecheckte Personen</strong> — also die, deren Anwesenheit erfasst wurde.'
+    : 'Enthalten sind <strong>alle angemeldeten Personen</strong>, die sich nicht abgemeldet haben (Angemeldet, QR versendet, Eingecheckt). Wartende und Abgemeldete stehen nicht darauf.';
+  const billingBlock = b
+    ? `<table style="${TABLE_STYLE}">
+<tr><th style="${TH_STYLE}" colspan="2">Abrechnungsrelevante Informationen</th></tr>
+${BILLING_FIELDS.map(f =>
+      `<tr><td style="${TD_STYLE}">${esc(f.label)}</td><td style="${TD_STYLE}">${esc((b.fields || {})[f.id] || '—')}</td></tr>`
+    ).join('')}
+</table>`
+    : '';
+  return `${MAIL_WRAP_START}
+<p>Hallo,</p>
+<p><strong>danke, dass du dein Event mit DEX organisiert hast.</strong> Hier ist die Teilnehmerliste zu
+<strong>${esc(ev.title)}</strong> (Event-ID ${esc(String(ev.eventNumber || ev.id))}, ${fmtDateTime(ev.startDate)}) im Aufbau, den F&amp;A einliest —
+<strong>${participants.length}</strong> ${participants.length === 1 ? 'Person' : 'Personen'}.</p>
+<p style="color:#555;">${auswahl}</p>
+${billingBlock}
+<table style="${TABLE_STYLE}">
+<tr><th style="${TH_STYLE}" colspan="4">Teilnehmer</th></tr>
+<tr><th style="${TH_STYLE}">#</th><th style="${TH_STYLE}">Name</th><th style="${TH_STYLE}">E-Mail</th><th style="${TH_STYLE}">Status</th></tr>
+${rows}
+</table>
+<p style="color:#666;font-size:12px;">Dieselbe Liste bekommst du im Organizer Center über &bdquo;Excel-Export&ldquo; als Datei &mdash; dort ist sie die dritte Ansicht &bdquo;F&amp;A-Liste&ldquo;. Ausgelöst von ${esc(byName)} über die DEX Event Experience Platform.</p>
+</div>`;
+}
+
 /** Historie kompakt halten: Mail-Bodys sind die größten Brocken — nur die
  *  letzten 15 Einträge behalten ihren Body, ältere nur die Metadaten. Das
  *  Feld EmailTemplateOverrides trägt sonst irgendwann das 2-MB-Limit. */
