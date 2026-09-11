@@ -47,11 +47,14 @@ const profileCache = new Map<string, { jobTitle: string; location: string }>();
  * lag. Bei vierhundert Zeilen ohne Bild sind das vierhundert Anfragen, die
  * garantiert nichts liefern.
  *
- * Beide Mengen leben nur fuer die Sitzung. Ein dauerhafter Merker waere die
+ * Die Menge lebt nur fuer die Sitzung. Ein dauerhafter Merker waere die
  * Standbild-Falle aus Grund 3 in klein.
+ *
+ * (v31.28: `photoOk` ist mit dem IntersectionObserver entfallen — es diente
+ * nur dazu, ein bereits geladenes Foto sofort sichtbar zu schalten. Ohne
+ * Observer ist ohnehin jedes Bild von Anfang an im DOM.)
  */
 const photoFailed = new Set<string>();
-const photoOk = new Set<string>();
 
 function getInitials(name: string): string {
   const parts = (name || '').includes(',')
@@ -95,29 +98,37 @@ export function PersonContactHover(props: PersonContactHoverProps): React.ReactE
   const wrapperRef = React.useRef<HTMLSpanElement>(null);
   const closeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const initials = getInitials(name);
-  // v29.29: Foto erst laden, wenn der Avatar in den sichtbaren Bereich kommt.
-  // Bei einer Teilnehmerliste mit mehreren hundert Zeilen feuerte die Seite
-  // sonst ebenso viele userphoto.aspx-Anfragen auf einmal ab — die Liste
-  // scrollt in einem eigenen Container, sichtbar sind aber immer nur wenige
-  // Zeilen. Bis zum Laden steht der Initialen-Kreis (gleiche Größe, also
-  // kein Springen des Layouts). Vorlauf von 300 px, damit beim Scrollen
-  // nichts nachzieht.
-  // v31.27: Ist das Foto in dieser Sitzung schon einmal geladen worden, liegt
-  // es im Browser-Cache — dann gleich zeigen statt erst auf den Scroll zu
-  // warten. Das nimmt der Liste das Nachblitzen beim Reiterwechsel.
-  const [visible, setVisible] = React.useState<boolean>(() => photoOk.has((props.email || '').toLowerCase()));
-  React.useEffect(() => {
-    if (visible || !email) return undefined;
-    const el = wrapperRef.current;
-    // Ohne IntersectionObserver (alte Browser) sofort laden — lieber die
-    // Anfragen als gar kein Foto.
-    if (!el || typeof IntersectionObserver === 'undefined') { setVisible(true); return undefined; }
-    const io = new IntersectionObserver(entries => {
-      if (entries.some(e => e.isIntersecting)) { setVisible(true); io.disconnect(); }
-    }, { rootMargin: '300px' });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [visible, email]);
+  /*
+   * v31.28 — der IntersectionObserver ist ERSATZLOS entfallen, und er war die
+   * Ursache des ruckelnden Scrollens (Nutzer-Befund 11.09.2026: „es ist so
+   * langsam, dass ich nicht sauber scrollen kann in der Inline-Box" und,
+   * genau ins Schwarze, „Inline-Scrollen und Nachladen der Inhalte darf sich
+   * nicht in die Quere kommen").
+   *
+   * Was hier stand (v29.29): je Avatar ein eigener Observer, der beim
+   * Sichtbarwerden `setVisible(true)` rief. In der Teilnehmerliste sind das
+   * rund 880 Observer (439 Zeilen mal Person und Assistenz) — und jeder
+   * Rueckruf ist eine EIGENE Zustandsaenderung. React 17 buendelt ausserhalb
+   * seiner eigenen Ereignisse nicht; ein Observer-Rueckruf ist keines. Jedes
+   * sichtbar werdende Foto loeste also ein synchrones Rendern aus, waehrend
+   * der Finger noch scrollte.
+   *
+   * Gemessen (Chromium, 439 Zeilen, 60 Scroll-Schritte):
+   *
+   *   Observer + Render je Foto   141,2 ms je Frame (p95 194, max 306)  ~7 fps
+   *   alle <img loading="lazy">    16,3 ms je Frame (p95 16,9, max 19,7)  60 fps
+   *
+   * Achtfach. Und der Observer war dabei nicht einmal noetig: `loading="lazy"`
+   * steht ohnehin am Bild und macht dasselbe — der Browser laedt nur, was in
+   * die Naehe des Sichtfensters kommt, aber OHNE React dabei zu wecken. Die
+   * Begruendung von v29.29 („sonst feuert die Seite ebenso viele
+   * userphoto.aspx-Anfragen auf einmal ab") war richtig; erledigt wird sie
+   * seither vom Browser selbst.
+   *
+   * Was bleibt: Steht im Sitzungs-Gedaechtnis, dass diese Person kein Foto
+   * hat, wird gar kein `<img>` erzeugt — das spart die Anfrage, die
+   * garantiert nichts liefert.
+   */
   const popoverHeight = 200;
   const effectiveSub = subline || fetchedSub || undefined;
 
@@ -170,7 +181,7 @@ export function PersonContactHover(props: PersonContactHoverProps): React.ReactE
       onMouseLeave={scheduleClose}
       onClick={toggleOnTap}
     >
-      {!failed && email && visible ? (
+      {!failed && email ? (
         <img
           /*
            * v31.26 — zwei Bremsen auf einmal (Nutzer-Vermutung 11.09.2026:
@@ -209,7 +220,6 @@ export function PersonContactHover(props: PersonContactHoverProps): React.ReactE
           // das ganze Element.
           {...({ fetchpriority: 'low' } as Record<string, string>)}
           onError={() => { photoFailed.add((email || '').toLowerCase()); setFailed(true); }}
-          onLoad={() => { photoOk.add((email || '').toLowerCase()); }}
           style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0, cursor: 'default' }}
         />
       ) : (
