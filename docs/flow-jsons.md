@@ -7268,8 +7268,18 @@ concat('Title eq ''Warteliste: ',replace(string(first(outputs('Get_Event_Details
 - [ ] **Top Count**: `1`
 - [ ] Über **…** → **Settings** unter **Configure run after** bei
       `Has_OutlookEventId` **is successful**, **has failed**, **is skipped**
-      und **has timed out** anhaken — genauso wie bei `Find_Lock`. Sonst
-      bleibt der Lock liegen, wenn diese Action übersprungen wird.
+      und **has timed out** anhaken — genauso wie bei `Find_Lock`.
+- [ ] **DANACH `Find_Lock` NACHSEHEN — das ist der Schritt, an dem es hängen
+      bleibt.** Der Designer hängt `Find_Lock` beim Einfügen automatisch an
+      die neue letzte Action. Stand dort vorher `Has_OutlookEventId` mit allen
+      vier Zuständen, steht jetzt womöglich `Schatten_vorhanden` mit nur
+      **is successful**. Dann gilt: Scheitert `Schatten_suchen` (DEX_Events
+      nicht lesbar, Drosselung), wird die Bedingung übersprungen, `Find_Lock`
+      ebenfalls — und **der Lock des Events wird nie freigegeben**. Bis zum
+      Timeout (PT3H) läuft für dieses Event keine einzige weitere
+      Outlook-Aktion. Bei `Find_Lock` müssen deshalb **alle vier** Zustände
+      angehakt sein: **is successful**, **has failed**, **is skipped**,
+      **has timed out**.
 
 #### Zeile 2 — `Schatten_vorhanden` (Condition) · NEU
 

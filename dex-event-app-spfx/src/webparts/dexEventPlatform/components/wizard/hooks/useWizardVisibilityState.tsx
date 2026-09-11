@@ -126,6 +126,8 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
           // `hotelCarryConfig` (wizardSubmit) — strippen allein löschte sie
           // beim nächsten Save.
           _b2runTodo, _b2runTodoDone,
+          // v31.17: Wartelisten-Platzhalter — eigener State (s. waitlistBlocker).
+          _waitlistBlocker,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -144,7 +146,7 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
         void _hotels; void _hotelStays; void _hotelVisible; void _hotelRules;
         void _commBundledMail; void _commBundledOutlook; void _commBundledQr;
         void _commShared; void _agendaCheckIn; void _agendaTerm; void _shirtStock;
-        void _b2runTodo; void _b2runTodoDone;
+        void _b2runTodo; void _b2runTodoDone; void _waitlistBlocker;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
     })() : {}

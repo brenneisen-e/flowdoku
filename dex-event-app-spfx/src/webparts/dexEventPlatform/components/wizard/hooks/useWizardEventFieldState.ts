@@ -15,6 +15,7 @@ import { CustomFieldInput } from '../../wizard/customFieldInput';
 import { reinsertOrganizerPlaceholder } from '../../wizard/wizardHelpers';
 import { reinsertProgramPlaceholder } from '../../../utils/programPlaceholder';
 import { parseOutlookHeadings, stripOutlookWrapper } from '../../../services/EmailTemplates';
+import { waitlistBlockerEnabled } from '../../../services/events/waitlistShadow';
 
 export interface UseWizardEventFieldStateCtx {
   editEvent: import("../../../types/index").DeloitteEvent;
@@ -169,6 +170,13 @@ export function useWizardEventFieldState(ctx: UseWizardEventFieldStateCtx) {
   // Unbegrenzt-Toggle-onChange).
   const [waitlistEnabled, setWaitlistEnabled] = React.useState(
     editEvent && typeof editEvent.waitlistEnabled !== 'undefined' ? editEvent.waitlistEnabled : false
+  );
+  // v31.17: Wartelisten-Platzhalter im Kalender (Piggyback `_waitlistBlocker`).
+  // Steht direkt neben `waitlistEnabled`, weil er dort gesucht wird — bis
+  // v31.16 lag der Schalter im Organizer Center, und genau danach hat der
+  // Nutzer im Assistenten gesucht (11.09.2026).
+  const [waitlistBlocker, setWaitlistBlocker] = React.useState(
+    waitlistBlockerEnabled(editEvent?.emailTemplateOverrides)
   );
   const [eventImageUrl, setEventImageUrl] = React.useState(editEvent ? (editEvent.imageUrl || '') : '');
   const [imageFile, setImageFile] = React.useState<File | null>(null);
@@ -517,9 +525,9 @@ export function useWizardEventFieldState(ctx: UseWizardEventFieldStateCtx) {
     setOutlookLocationOverride, setOutlookLogoFromPhoto, setOutlookStartOverride, setOutlookSubheading, setOutlookSubject, setPendingSuccessDispatch,
     setRegistrationDeadline, setRemovedSavedSubs, setRequireSubEventSelection, setShowAsFree, setShowDemoVariantModal, setShowSummaryModal,
     setShowTemplatePicker, setStartDate, setSubEventCalendar, setSubEventSingleChoice, setSubEventsOnlyMode, setSubImageCropIdx,
-    setTeamsLink, setTemplateLoadingId, setTerminListOpen, setUnlimitedParticipants, setUserCancelAllowed, setWaitlistEnabled,
+    setTeamsLink, setTemplateLoadingId, setTerminListOpen, setUnlimitedParticipants, setUserCancelAllowed, setWaitlistBlocker, setWaitlistEnabled,
     showAsFree, showDemoVariantModal, showSummaryModal, showTemplatePicker, startDate, storedEventType,
     subEventCalendar, subEventSingleChoice, subEventsOnlyMode, subImageCropIdx, teamsLink, templateLoadingId,
-    terminListOpen, unlimitedParticipants, userCancelAllowed, waitlistEnabled, wizardImgAspect,
+    terminListOpen, unlimitedParticipants, userCancelAllowed, waitlistBlocker, waitlistEnabled, wizardImgAspect,
   };
 }
