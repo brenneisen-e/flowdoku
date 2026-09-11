@@ -478,8 +478,21 @@ export default function LandingPage(): React.ReactElement {
           // ein aktiv Angemeldeter, der seinen Code sucht, findet ihn sonst
           // nirgends. Warteliste, Abmeldung und No-Show bleiben draußen —
           // dort wäre der Code eine falsche Zusage.
+          // v31.19 (Nutzer-Ansage 11.09.2026: „das nur anzeigen wenn QR-Codes
+          // auch versendet wurden"): v31.4 hatte den Kasten auf 'Angemeldet'
+          // ausgeweitet, damit der Code nach einem Auschecken nicht
+          // verschwindet — das zeigte ihn aber auch allen, die noch gar keine
+          // QR-Mail bekommen haben. Der Kasten heißt „Check-in", und ein
+          // Check-in, den es noch nicht gibt, ist eine falsche Ansage.
+          //
+          // Maßgeblich ist deshalb, ob die QR-Mail RAUS ist. Zwei Belege dafür:
+          // der Status ('QR versendet'/'Eingecheckt') und `QrSentId` — die
+          // Nummer, die in der versendeten Mail steht. `QrSentId` überlebt das
+          // Auschecken im Organizer Center (das nur den Status zurücksetzt),
+          // genau der Fall, den v31.4 retten wollte.
           const st = reg ? reg.Status : '';
-          if (!reg || (st !== 'QR versendet' && st !== 'Angemeldet' && st !== 'Eingecheckt')) continue;
+          const qrRaus = !!reg && (st === 'QR versendet' || st === 'Eingecheckt' || Number(reg.QrSentId) > 0);
+          if (!qrRaus) continue;
           const qrData = `DEX|${ev.eventNumber}|${reg.ParticipantEmail || myEmail}`;
           const qrSmall = await QRCode.toDataURL(qrData, { width: 132, margin: 1 });
           const name = `${reg.Vorname || ''} ${reg.Nachname || ''}`.trim() || (reg.ParticipantEmail || myEmail);

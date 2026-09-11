@@ -51,6 +51,7 @@
 import { SPHttpClient } from '@microsoft/sp-http';
 import type { EventService } from '../EventService';
 import { DeloitteEvent } from '../../types';
+import { APP_URL } from '../EmailTemplates';
 
 /** Piggyback in `EmailTemplateOverrides` der SCHATTEN-Zeile: die Id des echten Events. */
 export const WAITLIST_SHADOW_KEY = '_waitlistShadowFor';
@@ -97,14 +98,59 @@ export function shadowTitleFor(eventTitle: string): string {
   return `Warteliste: ${eventTitle}`;
 }
 
-function shadowBody(eventTitle: string): string {
-  return '<p>Du stehst bei <strong>' + eventTitle.replace(/</g, '&lt;')
-    + '</strong> auf der Warteliste.</p>'
-    + '<p>Dieser Eintrag h&auml;lt dir den Termin frei und ist <strong>keine Zusage</strong>. '
-    + 'Sobald ein Platz frei wird, bekommst du die richtige Einladung — dieser Platzhalter '
-    + 'wird dann automatisch abgesagt.</p>'
-    + '<p>Wenn du nicht mehr warten m&ouml;chtest, melde dich in der DEX App von der '
-    + 'Warteliste ab. Der Platzhalter verschwindet dann ebenfalls.</p>';
+/**
+ * Der Termintext des Platzhalters.
+ *
+ * v31.19, drei Nachträge aus dem ersten Live-Test (11.09.2026):
+ *
+ *  1. **Der DEX-Link gehört hinein.** Der Termin ist die einzige Spur, die die
+ *     wartende Person von DEX hat — der Satz „melde dich in der DEX App ab"
+ *     ohne Link ist eine Aufgabe, keine Hilfe.
+ *  2. **Sprache je Event, Vorgabe Englisch.** `registrationLanguage` ist das
+ *     Feld, an dem schon die Anmeldeseite hängt; ist es leer, gilt Englisch —
+ *     ein englischer Text ist für deutschsprachige Lesende verständlich,
+ *     andersherum nicht.
+ *  3. **Der Platz auf der Warteliste steht in der App.** Ohne diesen Hinweis
+ *     ist der Termin eine Sackgasse: Er sagt „du wartest", aber nicht, worauf
+ *     man schauen könnte.
+ */
+function shadowBody(ev: DeloitteEvent): string {
+  const t = (ev.title || '').replace(/</g, '&lt;');
+  const link = '<a href="' + APP_URL + '">' + APP_URL + '</a>';
+  if (ev.registrationLanguage === 'de') {
+    return '<p>Du stehst bei <strong>' + t + '</strong> auf der Warteliste.</p>'
+      + '<p>Dieser Eintrag h&auml;lt dir den Termin frei und ist <strong>keine Zusage</strong>. '
+      + 'Sobald ein Platz frei wird, bekommst du die richtige Einladung — dieser Platzhalter '
+      + 'wird dann automatisch abgesagt.</p>'
+      + '<p>Deinen Platz auf der Warteliste siehst du jederzeit in der DEX App unter '
+      + '&bdquo;Meine Events&ldquo;. Dort meldest du dich auch von der Warteliste ab, wenn du '
+      + 'nicht mehr warten m&ouml;chtest — der Platzhalter verschwindet dann ebenfalls.</p>'
+      + '<p>' + link + '</p>';
+  }
+  return '<p>You are on the waiting list for <strong>' + t + '</strong>.</p>'
+    + '<p>This entry keeps the slot free in your calendar and is <strong>not a confirmation</strong>. '
+    + 'As soon as a place opens up you will receive the real invitation — this placeholder '
+    + 'is then cancelled automatically.</p>'
+    + '<p>You can check your position on the waiting list at any time in the DEX app under '
+    + '&ldquo;My events&rdquo;. That is also where you leave the waiting list if you no longer '
+    + 'want to wait — the placeholder disappears with it.</p>'
+    + '<p>' + link + '</p>';
+}
+
+/**
+ * Der Betreff, den die wartende Person im Kalender liest — sprachabhängig.
+ *
+ * **Bewusst getrennt von `shadowTitleFor`.** Der Listen-`Title` ist der
+ * Schlüssel, über den App UND Flow (`Schatten_suchen` filtert auf
+ * `concat('Warteliste: ', …)`) die Schatten-Zeile wiederfinden. Würde er die
+ * Sprache tragen, bräche jede Sprachumstellung die Verbindung zum Termin —
+ * und der Flow müsste mitgeändert werden. Der Kalender liest `OutlookSubject`;
+ * dort kostet die Übersetzung nichts.
+ */
+function shadowSubjectFor(ev: DeloitteEvent): string {
+  return ev.registrationLanguage === 'de'
+    ? `Warteliste: ${ev.title}`
+    : `Waiting list: ${ev.title}`;
 }
 
 /**
@@ -141,6 +187,20 @@ export async function ensureWaitlistShadow(
           try {
             const o = JSON.parse(row.EmailTemplateOverrides || '{}');
             if (String(o[WAITLIST_SHADOW_KEY]) === String(ev.id)) {
+              // v31.19: Betreff und Text der BESTEHENDEN Zeile nachziehen —
+              // sie wurde beim ersten Speichern des Events angelegt und trägt
+              // sonst für immer den Stand von damals (falsche Sprache, kein
+              // DEX-Link). Bewusst ohne `UpdateEvent`-Auftrag: Der
+              // Kalendertermin bleibt, wie er ist; erst ein neu angelegter
+              // Termin liest den neuen Text. Eine „Aktualisiert"-Mail an alle
+              // Wartenden nur wegen eines Textnachtrags wäre teurer als der
+              // Nachtrag wert ist.
+              try {
+                await svc._merge(
+                  `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${row.Id})`,
+                  { 'OutlookSubject': shadowSubjectFor(ev), 'OutlookBody': shadowBody(ev) },
+                );
+              } catch { /* best-effort */ }
               return { id: String(row.Id), title: titel };
             }
           } catch { /* naechste Zeile */ }
@@ -162,8 +222,10 @@ export async function ensureWaitlistShadow(
       'Title': titel,
       'StartDate': ev.startDate,
       'EndDate': ende,
-      'OutlookSubject': titel,
-      'OutlookBody': shadowBody(ev.title),
+      // Title = Schlüssel (immer deutsch), OutlookSubject = was im Kalender
+      // steht (Sprache des Events). Siehe shadowSubjectFor.
+      'OutlookSubject': shadowSubjectFor(ev),
+      'OutlookBody': shadowBody(ev),
       'OutlookLocation': ev.location || '',
       'OrganizerEmail': (ev.organizerEmails || []).join('; '),
       // Der Organizer bekommt den Platzhalter NICHT — er ist die einzige

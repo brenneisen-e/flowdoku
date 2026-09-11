@@ -87,12 +87,44 @@ Die Belegung kommt aus dem gemockten Platzzähler (`getLiveCounterStats`), nicht
 aus der Teilnehmerliste — genau wie live. Ohne ihn zeigten die Termin-Zeilen
 „1/20", weil die zeilenweise gesicherte Liste nur die eigene Zeile hergibt.
 
+## Die App-Hülle ansehen (Header + `.app-layout`)
+
+`entry.tsx`/`shot.js` lassen den Rahmen bewusst weg (siehe unten). Wer die
+**Hülle** selbst kartieren oder umbauen will, nimmt den zweiten Einstieg:
+
+```bash
+node shell-build.js     # → out/shell/{bundle.js,app.css,index.html}
+node shell-shot.js      # → out/shots/shell-*-{1280,400}.png (+ -dom.json)
+```
+
+Gerendert wird derselbe Rahmen, den `DexEventPlatform.tsx` aufspannt:
+`.dexApp > .app-layout > <Header/> + <main class="main-content"> > Seite`,
+inklusive der JS-gesetzten Höhe auf `.app-layout` und der
+`html, body { overflow: hidden; height: 100vh }`-Injektion. Deshalb wird hier
+**nicht** `fullPage` geschossen — ein fullPage-Bild zeigte eine Seite, die es
+in SharePoint nicht gibt.
+
+| Parameter | Wirkung |
+| --- | --- |
+| `?view=landing` / `?view=start` | Seite unter dem Header (Vorgabe `landing`) |
+| `?role=admin` / `?role=user` | echte Rolle; `user` zeigt die „Neu hier?"-Pille mittig im Header |
+| `&mobile=1` | Handy-Zweige (`window.__dexForceMobile`) |
+
+Neben jedem PNG liegt eine `*-dom.json`: die gemessene Schachtelung mit Kasten
+und den tragenden CSS-Werten (`display`, `flex`, `overflow-y`, `padding`,
+`grid-template-columns`, `scrollHeight` vs. `clientHeight`). Das Bild zeigt,
+wie es aussieht — die JSON sagt, woran es liegt.
+
+Die Hülle baut `shell-build.js` nach `out/shell/`, der Wizard-Harness nach
+`out/`. Sie überschreiben sich nicht.
+
 ## Was der Harness NICHT zeigt
 
-- **Kein Header, kein App-Rahmen.** Gerendert wird nur die Seite in
-  `.dexApp > .main-content`. Header, Banner und Boot-Loader fehlen; das
-  `.app-layout` mit `overflow: hidden` fehlt absichtlich, sonst schnitte es
-  die Bilder ab.
+- **Kein Header, kein App-Rahmen** — im Wizard-/Seiten-Harness (`build.js` +
+  `shot.js`). Gerendert wird dort nur die Seite in `.dexApp > .main-content`.
+  Header, Banner und Boot-Loader fehlen; das `.app-layout` mit
+  `overflow: hidden` fehlt absichtlich, sonst schnitte es die Bilder ab. Wer
+  den Rahmen braucht, nimmt `shell-build.js`/`shell-shot.js` (oben).
 - **Keine echten Bilder.** Event-Bilder sind erzeugte SVG-Platzhalter, das
   Mail-Logo fehlt ganz. Wer Bildzuschnitt oder Orb-Größen beurteilen will,
   braucht die echte App.

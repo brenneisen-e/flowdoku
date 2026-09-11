@@ -85,3 +85,23 @@ export const safeDisplayName = (raw: string, email: string): string => {
   if (v && !looksLikeClaimName(v)) return v;
   return emailFromClaim(v) || (email || '').trim() || '';
 };
+
+/**
+ * v1.2: Der VORNAME aus einem Anzeigenamen — dieselbe Regel wie in DEX
+ * (`UserContext`, v23.x).
+ *
+ * Der Fall, der v1.1 kaputt gemacht hat (gemeldet 11.09.2026 als „Hallo,
+ * Brenneisen,."): Das Verzeichnis liefert den Namen oft als
+ * **„Nachname, Vorname"**. Ein `split(' ')[0]` nimmt daraus den NACHNAMEN —
+ * samt Komma. Deshalb wird zuerst am Komma getrennt und erst dann am
+ * Leerzeichen.
+ */
+export function firstNameOf(raw: string | undefined | null): string {
+  const v = (raw || '').trim();
+  if (!v) return '';
+  if (v.indexOf(',') > -1) {
+    const parts = v.split(',');
+    return (parts.length > 1 ? parts[1] : '').trim();
+  }
+  return (v.split(' ')[0] || '').trim();
+}
