@@ -44,7 +44,7 @@ export interface OutlookChangesCtx {
 }
 
 export function detectOutlookRelevantChangesImpl(ctx: OutlookChangesCtx): { items: OutlookConfirmItem[] } {
-  const { activeCommTabIdx, addrCity, addrHouseNo, addrStreet, addrZip, allDay, berlinLocalToUtcIso, childEventsOf, editEvent, endDate, headerImageLayout, initialHeaderImageLayoutRef, initialOutlookSnapshot, location, onlineMeetingChanged, organizer, outlookBody, outlookEndOverride, outlookLocationOverride, outlookStartOverride, resolveTopLevelCommState, showAsFree, startDate, subEventCalendar, subEventsRef, title } = ctx;
+  const { activeCommTabIdx, addrCity, addrHouseNo, addrStreet, addrZip, allDay, berlinLocalToUtcIso, childEventsOf, editEvent, endDate, headerImageLayout, initialHeaderImageLayoutRef, initialOutlookSnapshot, location, onlineMeetingChanged, organizer, outlookBody, outlookEndOverride, outlookLocationOverride, outlookStartOverride, resolveTopLevelCommState, showAsFree, startDate, subEventCalendar, subEventsOnlyMode, subEventsRef, title } = ctx;
     const items: OutlookConfirmItem[] = [];
     if (!editEvent) return { items };
     const snap = initialOutlookSnapshot.current;
@@ -148,8 +148,23 @@ export function detectOutlookRelevantChangesImpl(ctx: OutlookChangesCtx): { item
     // Termin vorhanden" (dann gibt es nichts zu aktualisieren) und „Termin
     // vorhanden, aber keine neuen Einladungen mehr" (dann schon). Die erste
     // Hälfte deckt `topHasOutlook` ab, und die war schon immer Bedingung —
-    // die Schalter-Prüfung war also nur für den zweiten Fall wirksam, und
-    // genau der soll gefragt werden.
+    // die Schalter-Prüfung war also nur für den zweiten Fall wirksam.
+    //
+    // v31.39: `subEventsOnlyMode` sperrt den Eintrag jetzt wieder ganz —
+    // Nutzer-Entscheidung 14.09.2026: „bitte zeig das Klammer-Event nicht mehr
+    // an, ich will, dass das nicht erst zu Verwirrung führt … auch bei
+    // Änderungen soll es hier nicht mehr angezeigt werden."
+    //
+    // Das ist dieselbe Sperre wie v18.51, die v30.77 aufgehoben hatte. Der
+    // Grund von damals bleibt gültig (der Klammer-Termin EXISTIERT, und ein
+    // aufgeblähter Body stand genau darin) — er wiegt nur nicht mehr auf, dass
+    // jeder Organizer beim Speichern eine Zeile erklärt bekommt, die ihn nicht
+    // betrifft. **Verloren geht dadurch nichts:** Der Klammer-Termin lässt sich
+    // weiterhin über „Outlook-Termin jetzt aktualisieren" im Schritt
+    // Kommunikation (Reiter Haupt-Event) und über „Alle Termine aktualisieren"
+    // anstoßen — nur eben bewusst statt beiläufig. Und der gelbe Hinweis in
+    // Schritt 1 hängt dadurch nicht: Er schließt `subEventsOnlyMode` seit
+    // v18.51 ohnehin aus (`BasicsStep`).
     // v18.51: Im „Nur für Sub-Events"-Modus (subEventsOnlyMode) ist das
     // Hauptevent von der Teilnehmer-Anmeldung ausgenommen — niemand meldet sich
     // direkt fürs Hauptevent an. Ein Outlook-Update-Hinweis fürs Hauptevent ist
@@ -163,7 +178,7 @@ export function detectOutlookRelevantChangesImpl(ctx: OutlookChangesCtx): { item
     // aktualisiert; existiert keiner, sperrt `topHasOutlook` ohnehin.
     // v31.37: Auch oben zählt der vorhandene Termin mehr als der Schalter —
     // `topHasOutlook` war schon Bedingung, `!topDisableOutlook` fällt weg.
-    if (topChangedFields.length > 0 && topHasOutlook) {
+    if (topChangedFields.length > 0 && topHasOutlook && !subEventsOnlyMode) {
       items.push({
         kind: 'top',
         eventId: editEvent.id,
@@ -285,7 +300,8 @@ export function detectOutlookRelevantChangesImpl(ctx: OutlookChangesCtx): { item
     // Update-Modal als „Frühere Änderung nicht synchronisiert" auf, obwohl
     // dort Outlook deaktiviert ist (Event mit Outlook nur auf Sub-Event-Ebene).
     // Gleiche Falle wie v18.45 im Changed-Fields-Pfad oben.
-    if (editEvent.outlookDirty
+    // v31.39: auch hier — im Klammer-Modus kein Eintrag, siehe oben.
+    if (editEvent.outlookDirty && !subEventsOnlyMode
         && (editEvent.outlookEventId || editEvent.calendarLink)
         && !hasItemForEvent(editEvent.id)) {
       items.push({
