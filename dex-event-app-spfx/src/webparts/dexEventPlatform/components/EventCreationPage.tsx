@@ -1285,6 +1285,47 @@ export default function EventCreationPage(): React.ReactElement {
     });
   };
 
+  /*
+   * v31.40: Ein NEUES Event im Modus „nur Termine" bekommt auf der Klammer
+   * standardmäßig KEINEN eigenen Outlook-Termin.
+   *
+   * Nutzer-Wunsch 14.09.2026: „gibt es zudem eine Möglichkeit, dass das
+   * Klammer-Event per Default bei zukünftigen Events kein eigenes
+   * Outlook-Event bekommt?" Ja — genau hier: Der Flow legt für JEDE neue
+   * DEX_Events-Zeile einen Kalendereintrag an, es sei denn, Outlook ist für
+   * sie abgeschaltet. Der Hebel ist also der Outlook-Schalter der Klammer.
+   *
+   * Drei Einschränkungen, und jede hat ihren Grund:
+   *
+   *  - **Nur beim Anlegen** (`!isEditMode`). Ein bestehendes Event hat seinen
+   *    Klammer-Termin bereits; ihn beim nächsten Öffnen des Assistenten still
+   *    abzuschalten würde den Organizern den Termin aus dem Kalender nehmen,
+   *    ohne dass jemand danach gefragt hat.
+   *  - **Nur beim EINSCHALTEN des Modus**, nicht bei jedem Render. Wer den
+   *    Schalter danach bewusst wieder anmacht, behält ihn — der Effekt feuert
+   *    erst wieder, wenn der Modus erneut umgelegt wird.
+   *  - **Geschrieben wird der TOP-LEVEL-Wert, nicht der des offenen Reiters.**
+   *    `setDisableOutlook` setzt den Wert des gerade sichtbaren
+   *    Kommunikations-Reiters. Stünde der Organizer auf einem Sub-Event-Reiter,
+   *    würde der Automatismus ausgerechnet den Termin abschalten, den die
+   *    Teilnehmer bekommen sollen. Auf Reiter 0 IST der State der Top-Level-Wert
+   *    (s. `resolveTopLevelCommStateImpl`), sonst liegt er im Snapshot.
+   *
+   * Sichtbar bleibt es: Im Schritt Kommunikation steht auf dem Haupt-Event-
+   * Reiter dann „Nur Mail" statt „Mail + Outlook-Termin" — der Organizer sieht
+   * die Vorgabe und kann sie mit einem Klick zurücknehmen.
+   */
+  const subOnlyOutlookRef = React.useRef<boolean | null>(null);
+  React.useEffect(() => {
+    const vorher = subOnlyOutlookRef.current;
+    subOnlyOutlookRef.current = subEventsOnlyMode;
+    if (isEditMode) return;
+    // `null` = erster Lauf: Das ist kein Umschalten, sondern der Startwert.
+    if (vorher === null || vorher === subEventsOnlyMode || !subEventsOnlyMode) return;
+    if (activeCommTabIdx === 0) setDisableOutlook(true);
+    else if (topLevelCommSnapshot.current) topLevelCommSnapshot.current.disableOutlook = true;
+  }, [subEventsOnlyMode, isEditMode, activeCommTabIdx, setDisableOutlook]);
+
   /**
    * v28.29: Nach „Event-Foto übernehmen" auf dem HAUPTEVENT-Tab fragen, ob das
    * Bild auch für alle {childTermPlural} gelten soll. Sub-Events haben eigene
