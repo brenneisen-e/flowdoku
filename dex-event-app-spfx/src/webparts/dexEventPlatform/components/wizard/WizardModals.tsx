@@ -1681,13 +1681,31 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                               : (isDe ? `Hauptevent: ${it.title}` : `Main event: ${it.title}`))
                             : (isDe ? `Sub-Event: ${it.title}` : `Sub-event: ${it.title}`)}
                           {it.noOutlookYet && <span className="dex-ui-pill dex-ui-pill--orange">{isDe ? 'noch kein Outlook-Termin' : 'no Outlook invite yet'}</span>}
+                          {/* v31.35: Die wichtigste Angabe dieser Zeile gehört
+                              neben den Titel, nicht in den Fließtext darunter:
+                              WER hat diesen Termin? Nutzer-Ansage 14.09.2026
+                              („wenn es ein Klammer-Event ist, dann sollte beim
+                              Update auch stehen, dass dieser Termin nur für die
+                              Organizer ist"). Belegt im Code: Teilnehmer
+                              bekommen auf der Klammer seit v15.25 ausdrücklich
+                              keine Outlook-Einladung (`suppressParentOutlook`);
+                              eingeladen werden dort nur die Organizer
+                              (`wizardSubmit`, Ziele = Klammer + alle Termine). */}
+                          {it.kind === 'top' && subEventsOnlyMode && !it.noOutlookYet && (
+                            <span className="dex-ui-pill dex-ui-pill--blue">{isDe ? 'nur Organizer' : 'organizers only'}</span>
+                          )}
                           {isFromPersistedDirty && <span className="dex-ui-pill dex-ui-pill--orange">{isDe ? 'nicht synchronisiert' : 'not synced'}</span>}
                         </span>
                         {isFromPersistedDirty ? (
                           <span className="dex-ui-toggle-row-desc" style={{ display: 'block' }}>
+                            {/* v31.35: „die Teilnehmer informieren" stimmt beim
+                                Klammer-Termin nicht — dort sind die Organizer
+                                eingeladen. Wer im Satz die falsche Gruppe nennt,
+                                lässt den Organizer eine Wirkung erwarten, die
+                                nicht eintritt. */}
                             {isDe
-                              ? <><strong>Frühere Änderung nicht synchronisiert</strong> — beim letzten Speichern dieses Events wurden Outlook-relevante Felder geändert, der Outlook-Sync wurde aber damals übersprungen. Haken setzen, um die Teilnehmer jetzt nachträglich per Outlook-Update zu informieren.</>
-                              : <><strong>Earlier change not yet synced</strong> — Outlook-relevant fields were changed in a previous save of this event, but the Outlook sync was skipped at the time. Tick the box to send the catch-up Outlook update to attendees now.</>}
+                              ? <><strong>Frühere Änderung nicht synchronisiert</strong> — beim letzten Speichern dieses Events wurden Outlook-relevante Felder geändert, der Outlook-Sync wurde aber damals übersprungen. Haken setzen, um {it.kind === 'top' && subEventsOnlyMode ? 'die Eingeladenen dieses Termins' : 'die Teilnehmer'} jetzt nachträglich per Outlook-Update zu informieren.</>
+                              : <><strong>Earlier change not yet synced</strong> — Outlook-relevant fields were changed in a previous save of this event, but the Outlook sync was skipped at the time. Tick the box to send the catch-up Outlook update to {it.kind === 'top' && subEventsOnlyMode ? 'this invite&rsquo;s recipients' : 'attendees'} now.</>}
                           </span>
                         ) : (
                           <span className="dex-ui-toggle-row-desc" style={{ display: 'block' }}>
@@ -1735,8 +1753,8 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                         {it.kind === 'top' && subEventsOnlyMode && !it.noOutlookYet && (
                           <span className="dex-ui-callout dex-ui-callout--neutral" style={{ marginTop: 8, fontSize: '0.76rem', padding: '8px 10px' }}>
                             {isDe
-                              ? <>Bei diesem Event melden sich Teilnehmer <strong>nur zu den einzelnen Terminen</strong> an — die Klammer selbst ist nicht buchbar. Das Update geht an alle, die <strong>diesen</strong> Termin im Kalender haben; das sind in der Regel die Organizer und wer direkt auf der Klammer eingeladen wurde, nicht die Teilnehmer. Die Termine der Teilnehmer stehen einzeln in dieser Liste.</>
-                              : <>For this event, attendees register <strong>for the individual dates only</strong> — the bracket itself is not bookable. The update goes to everyone who has <strong>this</strong> invite in their calendar; usually the organizers and anyone invited on the bracket directly, not the attendees. The attendees&rsquo; invites are listed separately here.</>}
+                              ? <><strong>Dieser Termin ist nur für die Organizer.</strong> Teilnehmer melden sich bei diesem Event nur zu den einzelnen Terminen an — auf die Klammer lädt DEX sie bewusst nicht ein, sondern nur euch als Organizer. Ein Update geht deshalb an die Organizer, nicht an die Teilnehmer; deren Termine stehen einzeln in dieser Liste. (Wer den Termin in Outlook von Hand weitergeleitet oder hinzugefügt bekommen hat, bekommt es ebenfalls.)</>
+                              : <><strong>This invite is for the organizers only.</strong> For this event, attendees register for the individual dates only — DEX deliberately does not invite them to the bracket, only you as organizers. An update therefore goes to the organizers, not the attendees; their invites are listed separately here. (Anyone manually forwarded or added in Outlook gets it too.)</>}
                           </span>
                         )}
                         {it.noOutlookYet && (
