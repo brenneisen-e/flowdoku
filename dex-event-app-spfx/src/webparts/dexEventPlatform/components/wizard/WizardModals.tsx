@@ -95,6 +95,8 @@ export interface WizardModalsProps {
   organizerEmails: string[];
   outlookBody: string;
   outlookConfirmChecks: Record<string, boolean>;
+  /** v31.34: Eintraege, die als „braucht kein Update" weggeraeumt werden. */
+  outlookConfirmDismissed: Record<string, boolean>;
   outlookConfirmItems: OutlookConfirmItem[];
   outlookConfirmOpen: boolean;
   outlookEndOverride: string;
@@ -137,6 +139,7 @@ export interface WizardModalsProps {
   setOrganizerEmails: React.Dispatch<React.SetStateAction<string[]>>;
   setOutlookBody: React.Dispatch<React.SetStateAction<string>>;
   setOutlookConfirmChecks: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  setOutlookConfirmDismissed: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   setOutlookEndOverride: React.Dispatch<React.SetStateAction<string>>;
   setOutlookHeading: React.Dispatch<React.SetStateAction<string>>;
   setOutlookLocationOverride: React.Dispatch<React.SetStateAction<string>>;
@@ -213,7 +216,7 @@ export interface WizardModalsProps {
 }
 
 export const WizardModals: React.FC<WizardModalsProps> = (p) => {
-  const { activeCommTabIdx, activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, addSelectedSuggestedFields, agenda, applySubTransfer, askSalutation, attemptSubmit, audience, berlinLocalToUtcIso, bilingualFields, buildDraftPayload, bulkOrganizerOpen, bulkQrScannerOpen, bulkTestTeamOpen, cancelOutlookSave, childTermPlural, childTermSingular, closeVisCopy, confirmOutlookSave, contactEmail, customFields, DEMO_VARIANTS, description, disableEmails, disableOutlook, documents, DRAFT_KEY, dragOverSectionId, dragSectionId, durchstarterCapacity, emailLanguage, emailLogoPreview, emailTemplateOverrides, emailTemplates, endDate, eventImageUrl, excludedUsers, filterMode, funstarterCapacity, headerImageLayout, htmlEditorMode, htmlEditorOpen, htmlEditorTemplateType, imagePreview, isDe, isEditMode, isFictive, isMobile, isoToLocal, lastDeregisterDate, location, locationFilter, maxParticipants, newSectionError, newSectionModalOpen, newSectionName, organizer, organizerEmails, outlookBody, outlookConfirmChecks, outlookConfirmItems, outlookConfirmOpen, outlookEndOverride, outlookHeading, outlookLocationOverride, outlookLogoPreview, outlookStartOverride, outlookSubheading, outlookSubject, pendingSections, pendingSuccessDispatch, pendingSuccessDispatchRef, previewSections, qrScannerEmails, qrScannerNames, quiz, registrationDeadline, registrationLanguage, renderPreviewSection, requireSubEventSelection, resolveTopLevelCommState, scDescription, scopeSub, searchUsers, setBulkOrganizerOpen, setBulkQrScannerOpen, setBulkTestTeamOpen, setDragOverSectionId, setDragSectionId, setEmailTemplateOverrides, setHeaderImageLayout, setHtmlEditorOpen, setNewSectionError, setNewSectionModalOpen, setNewSectionName, setOrganizer, setOrganizerEmails, setOutlookBody, setOutlookConfirmChecks, setOutlookEndOverride, setOutlookHeading, setOutlookLocationOverride, setOutlookStartOverride, setOutlookSubheading, setOutlookSubject, setPendingSections, setPendingSuccessDispatch, setPreviewSections, setQrScannerEmails, setQrScannerNames, setScDescription, setShowB2runSuggested, setShowConfigCheck, setShowDemoVariantModal, setShowPreview, setShowRegisterPreview, setShowSuggestedModal, setShowSummaryModal, setSubEvents, setSubTransfer, setSuggestedSelection, setTestTeamEmails, setTestTeamNames, setUnsavedConfirmOpen, showB2runSuggested, showConfigCheck, showDemoVariantModal, showPreview, showRegisterPreview, showSuggestedModal, showSummaryModal, splitLabelA, splitLabelB, splitSharedWaitlist, startDate, SUB_TRANSFER_GROUPS, subEvents, subEventsOnlyMode, subGroupDiffCount, subTransfer, SUGGESTED_FIELDS_CATALOG, suggestedSelection, t, teamRegistrationEnabled, teamSize, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, unsavedConfirmOpen, useSplitCapacities, visCopyModalOpen, waitlistEnabled, allowAttendeeUpload, askTeamName, attendeeUploadHint, attendeeUploadLabel, contactInfo, contactName, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, quizClusterSize, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitSectionTitle, teamJoinRequiresApproval, teamOpenSlotsVisible, teamPartialAllowed } = p;
+  const { activeCommTabIdx, activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, addSelectedSuggestedFields, agenda, applySubTransfer, askSalutation, attemptSubmit, audience, berlinLocalToUtcIso, bilingualFields, buildDraftPayload, bulkOrganizerOpen, bulkQrScannerOpen, bulkTestTeamOpen, cancelOutlookSave, childTermPlural, childTermSingular, closeVisCopy, confirmOutlookSave, contactEmail, customFields, DEMO_VARIANTS, description, disableEmails, disableOutlook, documents, DRAFT_KEY, dragOverSectionId, dragSectionId, durchstarterCapacity, emailLanguage, emailLogoPreview, emailTemplateOverrides, emailTemplates, endDate, eventImageUrl, excludedUsers, filterMode, funstarterCapacity, headerImageLayout, htmlEditorMode, htmlEditorOpen, htmlEditorTemplateType, imagePreview, isDe, isEditMode, isFictive, isMobile, isoToLocal, lastDeregisterDate, location, locationFilter, maxParticipants, newSectionError, newSectionModalOpen, newSectionName, organizer, organizerEmails, outlookBody, outlookConfirmChecks, outlookConfirmDismissed, outlookConfirmItems, outlookConfirmOpen, outlookEndOverride, outlookHeading, outlookLocationOverride, outlookLogoPreview, outlookStartOverride, outlookSubheading, outlookSubject, pendingSections, pendingSuccessDispatch, pendingSuccessDispatchRef, previewSections, qrScannerEmails, qrScannerNames, quiz, registrationDeadline, registrationLanguage, renderPreviewSection, requireSubEventSelection, resolveTopLevelCommState, scDescription, scopeSub, searchUsers, setBulkOrganizerOpen, setBulkQrScannerOpen, setBulkTestTeamOpen, setDragOverSectionId, setDragSectionId, setEmailTemplateOverrides, setHeaderImageLayout, setHtmlEditorOpen, setNewSectionError, setNewSectionModalOpen, setNewSectionName, setOrganizer, setOrganizerEmails, setOutlookBody, setOutlookConfirmChecks, setOutlookConfirmDismissed, setOutlookEndOverride, setOutlookHeading, setOutlookLocationOverride, setOutlookStartOverride, setOutlookSubheading, setOutlookSubject, setPendingSections, setPendingSuccessDispatch, setPreviewSections, setQrScannerEmails, setQrScannerNames, setScDescription, setShowB2runSuggested, setShowConfigCheck, setShowDemoVariantModal, setShowPreview, setShowRegisterPreview, setShowSuggestedModal, setShowSummaryModal, setSubEvents, setSubTransfer, setSuggestedSelection, setTestTeamEmails, setTestTeamNames, setUnsavedConfirmOpen, showB2runSuggested, showConfigCheck, showDemoVariantModal, showPreview, showRegisterPreview, showSuggestedModal, showSummaryModal, splitLabelA, splitLabelB, splitSharedWaitlist, startDate, SUB_TRANSFER_GROUPS, subEvents, subEventsOnlyMode, subGroupDiffCount, subTransfer, SUGGESTED_FIELDS_CATALOG, suggestedSelection, t, teamRegistrationEnabled, teamSize, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, unsavedConfirmOpen, useSplitCapacities, visCopyModalOpen, waitlistEnabled, allowAttendeeUpload, askTeamName, attendeeUploadHint, attendeeUploadLabel, contactInfo, contactName, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, quizClusterSize, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitSectionTitle, teamJoinRequiresApproval, teamOpenSlotsVisible, teamPartialAllowed } = p;
   // v31.2: Eine Prüf-und-Anlege-Logik für Enter-Taste UND Knopf im Dialog
   // „Neuer Bereich" — vorher stand derselbe Block zweimal. Kein Hook, nur
   // eine Funktion über den destrukturierten Props.
@@ -1640,6 +1643,13 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                   // wurde damals nicht synchronisiert). Klartext-Hinweis
                   // statt leerer „Geändert:"-Zeile.
                   const isFromPersistedDirty = !it.noOutlookYet && it.changedFields.length === 0;
+                  // v31.34: Der dritte Ausgang. Nutzer-Einwand 14.09.2026: „aber
+                  // der Outlook-Termin zum Klammer-Event muss ja gar nicht
+                  // geändert werden … da wird ja keiner hinzugefügt." Genau so
+                  // ist es — und bis hierher gab es dafür keinen richtigen Knopf:
+                  // offen lassen fragt beim nächsten Speichern wieder, anhaken
+                  // verschickt ein Update, das niemand braucht.
+                  const dismissed = !!outlookConfirmDismissed[it.eventId];
                   // v11.69: noOutlookYet-Items bekommen wieder eine Checkbox.
                   // Default UNCHECKED. Beim Anhaken wird das Sub-Event in der
                   // Eventverwaltung komplett neu angelegt (DEX_Events-Item
@@ -1647,10 +1657,11 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                   // Outlook-Termin entsteht. Die bestehende Teilnehmerliste
                   // mit allen Anmeldungen bleibt unangetastet.
                   return (
-                    <label key={it.eventId} className={cx('dex-ui-toggle-row', checked && 'is-active')}>
+                    <label key={it.eventId} className={cx('dex-ui-toggle-row', checked && 'is-active')} style={dismissed ? { opacity: 0.62 } : undefined}>
                       <input
                         type="checkbox"
                         checked={checked}
+                        disabled={dismissed}
                         onChange={e => {
                           const next = e.target.checked;
                           setOutlookConfirmChecks(prev => ({ ...prev, [it.eventId]: next }));
@@ -1693,6 +1704,34 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                             „Outlook-Update ausstehend"-Merker für immer stehen
                             und der Hinweis in Schritt 1 liesse sich nie auflösen.
                             Also zeigen und sagen, was er ist. */}
+                        {/* v31.34: Sichtbar nur bei Einträgen aus einem früheren
+                            Speichern. Bei einer Änderung, die GERADE gemacht
+                            wurde, wäre „braucht kein Update" eine Falle: Dann
+                            stünde im Termin dauerhaft etwas anderes als in DEX,
+                            ohne dass es irgendwo auffällt. */}
+                        {isFromPersistedDirty && (
+                          <span className="dex-ui-inline" style={{ marginTop: 6, gap: 8, alignItems: 'center' }}>
+                            <button
+                              type="button"
+                              className="dex-ui-textbtn dex-ui-textbtn--muted"
+                              onClick={e => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setOutlookConfirmDismissed(prev => ({ ...prev, [it.eventId]: !prev[it.eventId] }));
+                                if (!dismissed) setOutlookConfirmChecks(prev => ({ ...prev, [it.eventId]: false }));
+                              }}
+                            >
+                              {dismissed
+                                ? (isDe ? 'Doch wieder offen lassen' : 'Keep it pending after all')
+                                : (isDe ? 'Braucht kein Update — Haken wegräumen' : 'No update needed — clear the flag')}
+                            </button>
+                            {dismissed && (
+                              <span className="dex-ui-pill dex-ui-pill--gray">
+                                {isDe ? 'wird als erledigt abgehakt, es geht nichts raus' : 'marked as done, nothing is sent'}
+                              </span>
+                            )}
+                          </span>
+                        )}
                         {it.kind === 'top' && subEventsOnlyMode && !it.noOutlookYet && (
                           <span className="dex-ui-callout dex-ui-callout--neutral" style={{ marginTop: 8, fontSize: '0.76rem', padding: '8px 10px' }}>
                             {isDe
