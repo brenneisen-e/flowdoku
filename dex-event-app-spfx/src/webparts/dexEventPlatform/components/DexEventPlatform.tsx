@@ -66,6 +66,9 @@ const AssistantPage = React.lazy(() => import('./AssistantPage'));
 const TicketsPage = React.lazy(() => import('./TicketsPage'));
 const ArchitecturePage = React.lazy(() => import('./ArchitecturePage'));
 const StatsArchivePage = React.lazy(() => import('./StatsArchivePage'));
+// v31.32: Feedback-Übersicht für Admins — wie das Statistik-Archiv nachgeladen,
+// die Seite wird selten geöffnet und soll das Start-Bundle nicht tragen.
+const FeedbackOverviewPage = React.lazy(() => import('./FeedbackOverviewPage'));
 const IntroOnePagerPage = React.lazy(() => import('./IntroOnePagerPage'));
 // v30.5: F&A Center — Rolle „F&A" + Admins.
 const FACenterPage = React.lazy(() => import('./FACenterPage'));
@@ -149,6 +152,7 @@ const PREVIEW_ORGANIZER_ONLY: Partial<Record<Page, string>> = {
   'email-templates': 'Diese Seite sehen reguläre User nicht.',
   'role-matrix': 'Diese Seite sehen reguläre User nicht.',
   'stats-archive': 'Diese Seite sehen reguläre User nicht.',
+  'feedback-overview': 'Diese Seite sehen reguläre User nicht.',
   'flowcharts': 'Diese Seite sehen reguläre User nicht.',
   'intro-onepager': 'Diese Seite sehen reguläre User nicht.',
   'architecture': 'Diese Seite sehen reguläre User nicht.',
@@ -1149,6 +1153,8 @@ function AppContent(): React.ReactElement {
         return <ArchitecturePage />;
       case 'stats-archive':
         return <StatsArchivePage />;
+      case 'feedback-overview':
+        return <FeedbackOverviewPage />;
       case 'intro-onepager':
         return <IntroOnePagerPage />;
       case 'fa-center':

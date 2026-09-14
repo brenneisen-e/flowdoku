@@ -135,6 +135,32 @@ function buildHeadingsHtml(headingColor: string, heading: string, subheading: st
  */
 export function wrapTemplateForStorage(headingColor: string, heading: string, subheading: string, bodyHtml: string, headingFontSize?: string, opts?: WrapHeadingOpts): string {
   const hSize = (headingFontSize && headingFontSize.trim()) || '26px';
+  /*
+   * v31.32: Kopfbild so breit wie der Text, nicht 180 px.
+   *
+   * Nutzer-Frage 14.09.2026 zur Mail „Termin wurde weitergeleitet": „warum ist
+   * bei dieser Mail das Bild nicht volle Breite?" — und der Hinweis, dass der
+   * Flow ja auf Vorlagen zurückgreift, die sich über die App anpassen lassen.
+   * Beides richtig: Der Rahmen samt `<img width="…">` steckt in `BodyHtml` der
+   * Vorlage; der Flow ersetzt nur `{{ORB_URL}}` durch Event-Bild ODER
+   * Default-Bild (flow-jsons.md, DEX_SEND_MAIL → `Compose_Image`).
+   *
+   * Warum 540/30/20 und nicht 600/0/0 wie bei den App-Mails: Die App
+   * entscheidet je Event (`eventHeaderImageOpts` — eigenes Mail-Logo → Vollbild,
+   * sonst Orb-Schutz mit 180 px). Eine GESPEICHERTE Vorlage kann das nicht: Sie
+   * weiß beim Speichern nicht, welches Event sie später trägt, und derselbe
+   * Wert gilt für das Event-Banner wie für das Default-Bild. 600/0/0 würde den
+   * Deloitte-Orb randlos über die ganze Mailbreite ziehen. 540 px füllt die
+   * Textspalte — ein Banner wirkt wie in den App-Mails, der Orb bleibt eine
+   * Kugel mit Luft daneben.
+   *
+   * Wer es je Event genau haben will, braucht eine Fallunterscheidung im Flow
+   * (eine zusätzliche Ersetzung für die Breite). Das ist eine Flow-Änderung und
+   * gehört in ein Klick-Briefing, nicht in diese Zeile.
+   */
+  const heroOpts: WrapHeadingOpts = (opts && typeof opts.imageWidth === 'number' && opts.imageWidth > 0)
+    ? opts
+    : { ...(opts || {}), imageWidth: 540, imagePaddingV: 30, imagePaddingH: 20 };
   return `<!DOCTYPE html>
 <html lang="de">
 <head>
@@ -156,7 +182,7 @@ export function wrapTemplateForStorage(headingColor: string, heading: string, su
   Deutschland | DEX App
 </td>
 </tr>
-${buildHeroRow(opts)}
+${buildHeroRow(heroOpts)}
 <tr>
 <td style="background-color:${GREEN};height:4px;font-size:0;line-height:0;">&nbsp;</td>
 </tr>

@@ -14,7 +14,7 @@ import { useEvents, FixColumnsDetail } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useDialog } from '../context/DialogContext';
 import { useIsMobile } from '../utils/useIsMobile';
-import { Settings, Users, Mail, Book, FileText, Trash2, Columns, BarChart3, Wrench, GraduationCap, Search, ChevronDown } from './Icons';
+import { Settings, Users, Mail, Book, FileText, Trash2, Columns, BarChart3, Wrench, GraduationCap, Search, ChevronDown, MessageSquare } from './Icons';
 // v31.3: Gemeinsame Klassen des Organizer Centers (Kacheln, Aktions-Gruppen,
 // Tabellen). Inline-Styles können kein `:hover` — bis v31.2 hing der Hover der
 // Hub-Kacheln deshalb an onMouseEnter/Leave, und die Wartungs-Karten hatten
@@ -800,6 +800,10 @@ export default function AdminHubPage(): React.ReactElement {
     { icon: <Columns size={20} />, title: isDe ? 'Rollenmatrix' : 'Role matrix', desc: isDe ? 'Übersicht: wer welche Rechte hat (User, Organizer, Admin).' : 'Overview: who has which permissions (user, organizer, admin).', onClick: () => navigate('role-matrix') },
     { icon: <Mail size={20} />, title: isDe ? 'Mail-Vorlagen' : 'Mail templates', desc: isDe ? 'Globale Standard-Mails (Anmeldung, Warteliste, Abmeldung …) bearbeiten — mit Live-Vorschau.' : 'Edit the global default emails (registration, waitlist, cancellation …) — with live preview.', onClick: () => navigate('email-templates') },
     { icon: <BarChart3 size={20} />, title: isDe ? 'Statistik-Archiv' : 'Statistics archive', desc: isDe ? 'Kennzahlen gelöschter Teilnehmerlisten — welches Event, wann, von wem, wie viele (ohne Personendaten).' : 'KPIs of deleted participant lists — which event, when, by whom, how many (no personal data).', onClick: () => navigate('stats-archive') },
+    // v31.32: Feedback der Organizer — Nutzer-Frage 14.09.2026 „wo kann ich
+    // als Admin das Feedback aufrufen?". Neben dem Statistik-Archiv, weil
+    // beide dasselbe beantworten: was ist aus den Events geworden.
+    { icon: <MessageSquare size={20} />, title: isDe ? 'Feedback' : 'Feedback', desc: isDe ? 'Rückmeldungen der Organizer zu DEX — angehakte Antworten, Freitexte, Auszählung und CSV.' : 'Organizer feedback on DEX — ticked answers, free text, counts and CSV.', onClick: () => navigate('feedback-overview') },
     { icon: <Book size={20} />, title: isDe ? 'Handbuch' : 'Manual', desc: isDe ? 'Ausführliche Anleitung zu allen Funktionen.' : 'Detailed guide for all features.', onClick: () => navigate('manual') },
     // v29.24: Onepager für die Einführungsveranstaltung — Zyklus, Einsatzbereich (Venn), Rollen, Kernfunktionen.
     { icon: <GraduationCap size={20} />, title: isDe ? 'Einführungs-Onepager' : 'Introduction one-pager', desc: isDe ? 'DEX auf einen Blick: Event-Zyklus, Einsatzbereich, Rollen, Kernfunktionen.' : 'DEX at a glance: event cycle, scope, roles, core functions.', onClick: () => navigate('intro-onepager') },

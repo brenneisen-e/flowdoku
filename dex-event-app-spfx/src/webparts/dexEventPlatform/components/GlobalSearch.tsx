@@ -43,6 +43,7 @@ const PAGE_CATALOG: PageEntry[] = [
   { page: 'flowcharts', de: 'Prozess-Übersicht', en: 'Process overview', kw: ['prozess', 'flowchart', 'ablauf', 'diagramm', 'process'], gate: 'manage' },
   { page: 'participants', de: 'Teilnehmer-Übersicht', en: 'Participants overview', kw: ['teilnehmer-übersicht', 'participants', 'register', 'cross-event'], gate: 'admin' },
   { page: 'role-matrix', de: 'Rollenmatrix', en: 'Role matrix', kw: ['rollen', 'matrix', 'rollenmatrix', 'rechte', 'berechtigungen', 'permissions'], gate: 'admin' },
+  { page: 'feedback-overview', de: 'Feedback der Organizer', en: 'Organizer feedback', kw: ['feedback', 'rückmeldung', 'rueckmeldung', 'umfrage', 'zufriedenheit', 'response', 'survey'], gate: 'admin' },
   { page: 'stats-archive', de: 'Statistik-Archiv', en: 'Statistics archive', kw: ['statistik', 'archiv', 'statistics', 'archive', 'kpi', 'kennzahlen', 'gelöscht', 'stats'], gate: 'admin' },
   { page: 'intro-onepager', de: 'Einführungs-Onepager', en: 'Introduction one-pager', kw: ['einführung', 'onepager', 'one-pager', 'einführungsveranstaltung', 'überblick', 'intro', 'introduction', 'schulung', 'venn'], gate: 'admin' },
   { page: 'settings', de: 'Einstellungen', en: 'Settings', kw: ['einstellungen', 'settings', 'rollen verwalten', 'templates', 'logos', 'reseed'], gate: 'admin' },
@@ -160,6 +161,12 @@ export default function GlobalSearch(): React.ReactElement | null {
   // statt auf feste 420px zu bestehen und sie zu verdrängen.
   const isMobile = useIsMobile();
   const searchFlex = isMobile ? '1 1 120px' : '1 1 420px';
+  // v31.32: Untergrenze auf dem Rechner. Seit die Kopfzeile ihre Beschriftungen
+  // nicht mehr umbrechen laesst (Laptop-Stufe), nehmen sie ihre volle Breite —
+  // und weil die Suche das einzige schrumpfbare Element ist, schluckte sie die
+  // gesamte Differenz und stand auf einem 1280er Schirm als 60-px-Schlitz da.
+  // 180 px ist die Breite, ab der das Eingabefeld noch als solches lesbar ist.
+  const searchMin = isMobile ? 0 : 180;
 
   const emailLc = (currentUser?.email || '').toLowerCase();
   const adminLike = originalIsAdmin || isAdmin;
@@ -422,7 +429,7 @@ export default function GlobalSearch(): React.ReactElement | null {
   // Eingeklappt: nur das Such-Icon.
   if (!expanded) {
     return (
-      <div ref={rootRef} style={{ flex: searchFlex, maxWidth: 460, minWidth: 0, margin: isMobile ? '0 8px' : '0 16px', display: 'flex' }}>
+      <div ref={rootRef} style={{ flex: searchFlex, maxWidth: 460, minWidth: searchMin, margin: isMobile ? '0 8px' : '0 16px', display: 'flex' }}>
         <button
           type="button"
           onClick={() => { setExpanded(true); setOpen(true); }}
@@ -448,7 +455,7 @@ export default function GlobalSearch(): React.ReactElement | null {
   const noResults = showPanel && flat.length === 0 && !partLoading;
 
   return (
-    <div ref={rootRef} style={{ position: 'relative', flex: searchFlex, maxWidth: 460, minWidth: 0, margin: isMobile ? '0 8px' : '0 16px' }}>
+    <div ref={rootRef} style={{ position: 'relative', flex: searchFlex, maxWidth: 460, minWidth: searchMin, margin: isMobile ? '0 8px' : '0 16px' }}>
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
         <span style={{ position: 'absolute', left: 12, display: 'inline-flex', color: 'var(--dex-gray-400)', pointerEvents: 'none' }}>
           <Search size={16} />

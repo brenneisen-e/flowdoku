@@ -701,6 +701,47 @@
     .settings-info__row:last-child { border-bottom: none; }
     .settings-info__label { font-weight: 600; color: var(--dex-gray-600); }
 
+    /* ========== Responsive — Laptop (v31.32) ==========
+       Nutzer-Befund 14.09.2026: „DEX ist auf einem Laptop vs. externem
+       Bildschirm in manchen Screens ganz schön groß — kann man das so machen,
+       dass es auch auf einem Laptop ein bisschen luftiger wird, damit nicht
+       alles so gequetscht ist?"
+
+       Der Grund ist nicht die Bildschirmgröße, sondern die Skalierung: Windows
+       stellt Laptop-Displays meist auf 125–150 %, dadurch bleiben rund 1280
+       statt 1920 CSS-Pixel übrig. Die Sprungmarken sprangen bisher von „Desktop"
+       direkt auf 1024 (Tablet) — ein Laptop bekam also die volle Desktop-Größe
+       auf zwei Dritteln der Fläche. Im Harness nachgestellt (1280 px): die
+       Kopfzeile bricht dreimal um („Event / Experience / Platform", „Über / die /
+       App"), und von den Kacheln passen nur zwei Reihen auf den Schirm.
+
+       Luftiger heißt hier deshalb: Elemente KLEINER, Abstände bleiben. Nicht
+       umgekehrt — mehr Abstand bei gleicher Elementgröße würde noch weniger
+       zeigen. */
+    @media (max-width: 1440px) {
+      /* Kopfzeile: nichts darf mehr umbrechen. Ein dreizeiliges „Über die App"
+         ist keine Platznot, sondern ein fehlendes `nowrap` — die Zeile hat
+         genug Breite, sobald die Wörter zusammenbleiben dürfen. */
+      .header { padding: 0 14px; }
+      .header-left { gap: 10px; }
+      .header-right { gap: 10px; }
+      .header-right > * { white-space: nowrap; }
+      /* Gemessen bei 1280 px: Die Kopfzeile braucht 1388 px, also 108 zu viel.
+         Der Untertitel „Event Experience Platform" ist mit 161 px das breiteste
+         rein schmückende Element — er steht neben dem Zurück-Knopf und wiederholt,
+         was die SharePoint-Seite ohnehin im Titel führt. Ihn wegzulassen ist
+         billiger als jedes Bedienelement zu verkleinern. */
+      .header-title { display: none; }
+
+      .page-container { padding: 24px 18px; }
+
+      /* Einstiegs-Kacheln: Der Kreis trägt die Kachel, also schrumpft er zuerst.
+         320 px Mindesthöhe waren auf 1280 px fast ein Drittel des Schirms. */
+      .start-grid { gap: 18px; }
+      .start-card { padding: 32px 20px; min-height: 220px; gap: 8px; }
+      .start-card__icon { width: 76px; height: 76px; margin-bottom: 6px; }
+    }
+
     /* ========== Responsive - Tablet ========== */
     @media (max-width: 1024px) {
       .creation-layout { grid-template-columns: 1fr; }
