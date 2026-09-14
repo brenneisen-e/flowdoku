@@ -11,7 +11,8 @@ import { eventHeaderImageOpts } from '../../utils/mailHeaderImage';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../../types';
 import { EventService } from '../../services/EventService';
-import { wrapTemplate } from '../../services/EmailTemplates';
+import { buildMailButton, wrapTemplate } from '../../services/EmailTemplates';
+import { feedbackSchonDa } from '../../utils/dexFeedback';
 
 export interface ArchiveDeps {
   eventService: EventService;
@@ -233,11 +234,29 @@ export function makeArchiveActions(deps: ArchiveDeps) {
         const linkLine = appUrl
           ? `<p style="margin:0 0 12px;">Ihr könnt die Teilnehmerübersicht jetzt noch im <a href="${appUrl}" style="color:#86bc25;font-weight:600;">Organizer Center der DEX App</a> ansehen und als Excel exportieren.</p>`
           : `<p style="margin:0 0 12px;">Ihr könnt die Teilnehmerübersicht jetzt noch im Organizer Center der DEX App ansehen und als Excel exportieren.</p>`;
+        /*
+         * v31.31: Auch diese Mail fragt nach Feedback (Nutzer-Ansage
+         * 14.09.2026). Sie ist der zweite — und letzte — Anlass, an dem das
+         * Event noch einmal auf den Tisch kommt; wer die Mail direkt nach dem
+         * Event weggeklickt hat, ist hier drei Monate klüger.
+         *
+         * ABER nur, wenn für dieses Event noch niemand geantwortet hat. Zum
+         * zweiten Mal nach etwas zu fragen, das schon beantwortet ist, liest
+         * sich wie „ist nicht angekommen" — und genau das war es nicht.
+         * Antworten liegen als Piggyback `_feedback` am Event (utils/dexFeedback).
+         */
+        const feedbackUrl = appUrl && !feedbackSchonDa(ev.emailTemplateOverrides)
+          ? `${appUrl}?env=WebView#action=feedback&e=${encodeURIComponent(String(ev.id))}`
+          : '';
+        const feedbackBlock = feedbackUrl ? `
+          <p style="margin:0 0 10px;">Und wenn ihr zwei Minuten habt: <strong>Wie lief es für euch mit DEX?</strong> Überwiegend zum Anklicken — das hilft uns bei dem, was wir als Nächstes bauen.</p>
+          ${buildMailButton(feedbackUrl, 'Feedback geben &rarr;')}` : '';
         const inner = `
           <p style="margin:0 0 12px;">Hallo zusammen,</p>
           <p style="margin:0 0 12px;">für euer Event <strong>&bdquo;${ev.title}&ldquo;</strong> läuft die Aufbewahrungsfrist der Teilnehmerliste ab: <strong>in etwa einer Woche wird die Teilnehmerliste gelöscht</strong> (3 Monate nach dem Event, Datenschutz-/Aufbewahrungsvorgabe).</p>
           <p style="margin:0 0 12px;">Bitte <strong>ladet euch die Liste jetzt herunter</strong>, falls ihr sie noch braucht. Das Event und die wichtigsten Kennzahlen bleiben danach im Statistik-Archiv erhalten.</p>
           ${linkLine}
+          ${feedbackBlock}
           <p style="margin:0 0 12px;">Vielen Dank!</p>`;
         const body = wrapTemplate('#86bc25', 'Teilnehmerliste wird bald gelöscht', ev.title, inner, undefined, eventHeaderImageOpts(ev.emailTemplateOverrides, ev.mailImageBase64));
         try {

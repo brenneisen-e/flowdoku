@@ -38,7 +38,7 @@ import { EventService, SPRegistration } from '../../../services/EventService';
 import { applyEventTemplateOverride, formatOrganizerList } from '../../../context/EventContext';
 import { buildEmailFromTemplate, promotionEmail } from '../../../services/EmailTemplates';
 import { buildProgramHtml } from '../../../utils/programPlaceholder';
-import { withParentTitleSubject } from '../../../utils/mailSubject';
+import { withParentTitleSubject, withPromotionSubject } from '../../../utils/mailSubject';
 import { shortSubEventTitle } from '../../../utils/subEventTitle';
 import { buildPromotionPlan, promotionPlanLines, isSplitCapacityOf, PromotionPlan } from '../../../utils/promotionPlan';
 import { DeloitteEvent } from '../../../types';
@@ -117,7 +117,11 @@ export async function notifyPromotedFor(
         emailData = promotionEmail(promotedFirstName, ev.title);
       }
       await svc.queueEmail(
-        withParentTitleSubject(emailData.subject, ev.parentEventId ? allEvents.find(e => e.id === ev.parentEventId) : undefined),
+        // v31.31: siehe useCancelPipeline — der Zusatz kommt nach allen Vorlagen.
+        withPromotionSubject(
+          withParentTitleSubject(emailData.subject, ev.parentEventId ? allEvents.find(e => e.id === ev.parentEventId) : undefined),
+          lang !== 'EN',
+        ),
         promoted.email, promoted.name || '', emailData.body,
         'Nachruecken', ev.title, ev.id
       );

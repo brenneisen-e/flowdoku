@@ -179,7 +179,7 @@ export default function CopyToAgendaModal(props: {
       setProgress({ done, total, label: isDe ? 'Neues Event wird angelegt…' : 'Creating the new event…' });
       let ov: Record<string, unknown> = {};
       try { ov = JSON.parse(event.emailTemplateOverrides || '{}') || {}; } catch { ov = {}; }
-      for (const k of ['_subEventsOnlyMode', '_subEventsDisabled', '_requireSubEventSelection', '_subEventCalendar', '_subEventSingleChoice', '_klammerDeadline', '_subEventOpenRule', '_subDeadlineRule', '_visAllSubs', '_commBundledMail', '_commBundledOutlook', '_commBundledQr', '_commShared', '_childEventTerm', '_mainEventLabel', '_hotels', '_hotelStays', '_hotelVisible', '_hotelRules', '_billing', '_shirtStock']) delete ov[k];
+      for (const k of ['_subEventsOnlyMode', '_subEventsDisabled', '_requireSubEventSelection', '_subEventCalendar', '_subEventSingleChoice', '_klammerDeadline', '_subEventOpenRule', '_subDeadlineRule', '_visAllSubs', '_commBundledMail', '_commBundledOutlook', '_commBundledQr', '_commShared', '_childEventTerm', '_mainEventLabel', '_hotels', '_hotelStays', '_hotelVisible', '_hotelRules', '_billing', '_shirtStock', '_feedback']) delete ov[k];
       ov._agendaCheckIn = true;
       if (event.childEventTermSingular || event.childEventTermPlural) ov._agendaTerm = { singular: event.childEventTermSingular || '', plural: event.childEventTermPlural || '' };
       const addr = event.locationAddress;

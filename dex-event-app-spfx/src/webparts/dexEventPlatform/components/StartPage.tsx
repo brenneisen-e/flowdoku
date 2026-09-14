@@ -342,6 +342,26 @@ export default function StartPage(): React.ReactElement {
         .dex-cluster .start-card__icon svg { width: 54px !important; height: 54px !important; }
         .dex-cluster .start-card h2 { font-size: 1.32rem !important; }
         .dex-cluster .start-card p { font-size: 0.98rem !important; white-space: normal !important; }
+        /* v31.32: Laptop-Stufe. Die 380 px aus v26.8 sind auf einem 1920er
+           Schirm richtig und auf einem Laptop zu viel: Windows skaliert
+           Laptop-Displays meist auf 125–150 %, es bleiben rund 1280 CSS-Pixel,
+           und dann füllen zwei Kacheln à 380×380 fast die halbe Höhe — der
+           Nutzer sieht „gequetscht", obwohl es an der GRÖSSE liegt, nicht am
+           Abstand. Bei 300 px passen drei nebeneinander, die Spalte wird
+           genutzt statt rechts leer zu bleiben.
+
+           Diese Stufe steht VOR den 820/480-Stufen: Bei gleicher Spezifität
+           gewinnt die letzte passende Regel, und auf dem Handy soll weiterhin
+           die 480er greifen. */
+        @media (max-width: 1440px) {
+          .dex-cluster-tiles { gap: 16px; }
+          .dex-cluster .start-card { width: 300px !important; padding: 24px 18px !important; gap: 8px !important; }
+          .dex-cluster .start-card__icon { width: 84px !important; height: 84px !important; margin-bottom: 2px !important; }
+          .dex-cluster .start-card__icon svg { width: 44px !important; height: 44px !important; }
+          .dex-cluster .start-card h2 { font-size: 1.14rem !important; }
+          .dex-cluster .start-card p { font-size: 0.9rem !important; }
+          .dex-cluster-title { margin-bottom: 10px; padding-bottom: 6px; }
+        }
         @media (max-width: 820px) {
           .dex-cluster-grid { max-width: 420px; }
         }

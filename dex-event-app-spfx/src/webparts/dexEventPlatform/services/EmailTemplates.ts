@@ -135,6 +135,32 @@ function buildHeadingsHtml(headingColor: string, heading: string, subheading: st
  */
 export function wrapTemplateForStorage(headingColor: string, heading: string, subheading: string, bodyHtml: string, headingFontSize?: string, opts?: WrapHeadingOpts): string {
   const hSize = (headingFontSize && headingFontSize.trim()) || '26px';
+  /*
+   * v31.32: Kopfbild so breit wie der Text, nicht 180 px.
+   *
+   * Nutzer-Frage 14.09.2026 zur Mail „Termin wurde weitergeleitet": „warum ist
+   * bei dieser Mail das Bild nicht volle Breite?" — und der Hinweis, dass der
+   * Flow ja auf Vorlagen zurückgreift, die sich über die App anpassen lassen.
+   * Beides richtig: Der Rahmen samt `<img width="…">` steckt in `BodyHtml` der
+   * Vorlage; der Flow ersetzt nur `{{ORB_URL}}` durch Event-Bild ODER
+   * Default-Bild (flow-jsons.md, DEX_SEND_MAIL → `Compose_Image`).
+   *
+   * Warum 540/30/20 und nicht 600/0/0 wie bei den App-Mails: Die App
+   * entscheidet je Event (`eventHeaderImageOpts` — eigenes Mail-Logo → Vollbild,
+   * sonst Orb-Schutz mit 180 px). Eine GESPEICHERTE Vorlage kann das nicht: Sie
+   * weiß beim Speichern nicht, welches Event sie später trägt, und derselbe
+   * Wert gilt für das Event-Banner wie für das Default-Bild. 600/0/0 würde den
+   * Deloitte-Orb randlos über die ganze Mailbreite ziehen. 540 px füllt die
+   * Textspalte — ein Banner wirkt wie in den App-Mails, der Orb bleibt eine
+   * Kugel mit Luft daneben.
+   *
+   * Wer es je Event genau haben will, braucht eine Fallunterscheidung im Flow
+   * (eine zusätzliche Ersetzung für die Breite). Das ist eine Flow-Änderung und
+   * gehört in ein Klick-Briefing, nicht in diese Zeile.
+   */
+  const heroOpts: WrapHeadingOpts = (opts && typeof opts.imageWidth === 'number' && opts.imageWidth > 0)
+    ? opts
+    : { ...(opts || {}), imageWidth: 540, imagePaddingV: 30, imagePaddingH: 20 };
   return `<!DOCTYPE html>
 <html lang="de">
 <head>
@@ -156,7 +182,7 @@ export function wrapTemplateForStorage(headingColor: string, heading: string, su
   Deutschland | DEX App
 </td>
 </tr>
-${buildHeroRow(opts)}
+${buildHeroRow(heroOpts)}
 <tr>
 <td style="background-color:${GREEN};height:4px;font-size:0;line-height:0;">&nbsp;</td>
 </tr>
@@ -189,6 +215,36 @@ ${buildHeadingsHtml(headingColor, heading, subheading, hSize, opts)}
 </table>
 </body>
 </html>`;
+}
+
+/**
+ * Ein Knopf in einer Mail — an EINER Stelle gebaut (v31.31).
+ *
+ * Der Feedback-Knopf der Nachbereitungs-Mail stand vorher einmalig in
+ * `autoMails.ts` und wurde beim Nutzer zu hoch und nicht mittig gerendert
+ * (Bild 14.09.2026). Ursache war die geerbte `line-height:1.6` der Body-Zelle:
+ * Sie gilt auch fuer die Zeilenbox des Knopf-Textes, dazu kam der Unterlaengen-
+ * Abstand des `display:inline-block`. Aus 20 px Text plus 28 px Innenabstand
+ * wurden so ueber 60 px Hoehe, und der Text sass oben statt in der Mitte.
+ *
+ * Deshalb hier: Innenabstand auf der ZELLE (die Word-Engine von Outlook kennt
+ * `display:inline-block` nicht, ein gestyltes `<a>` waere dort nur auf dem Text
+ * klickbar), `line-height` auf Zelle UND Link ausdruecklich gesetzt, dazu
+ * `mso-line-height-rule:exactly`, damit Outlook sie nicht aufrundet. Der
+ * Abstand nach oben und unten sind eigene Zeilen: `margin` auf einer `<table>`
+ * ignoriert Outlook, und genau das liess den Folgeabsatz am Knopf kleben.
+ */
+export function buildMailButton(href: string, label: string, farbe: string = GREEN): string {
+  if (!href) return '';
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+<tr><td height="6" style="height:6px;font-size:0;line-height:0;">&nbsp;</td></tr>
+<tr>
+<td align="center" bgcolor="${farbe}" style="border-radius:8px;padding:13px 26px;line-height:20px;mso-line-height-rule:exactly;">
+  <a href="${href}" style="font-family:Aptos,Arial,Helvetica,sans-serif;font-size:15px;line-height:20px;mso-line-height-rule:exactly;font-weight:700;color:#ffffff;text-decoration:none;">${label}</a>
+</td>
+</tr>
+<tr><td height="22" style="height:22px;font-size:0;line-height:0;">&nbsp;</td></tr>
+</table>`;
 }
 
 export function wrapTemplate(headingColor: string, heading: string, subheading: string, bodyHtml: string, headingFontSize?: string, opts?: WrapHeadingOpts): string {

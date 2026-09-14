@@ -218,6 +218,8 @@ export interface ConfirmOutlookSaveCtx {
   editEvent: import("../../../types/index").DeloitteEvent;
   handleSubmit: () => Promise<void>;
   outlookConfirmChecks: Record<string, boolean>;
+  /** v31.34: Eintraege, die der Organizer als „braucht kein Update" abgehakt hat. */
+  outlookConfirmDismissed: Record<string, boolean>;
   outlookConfirmItems: OutlookConfirmItem[];
   pendingOutlookDirtyWriteRef: React.MutableRefObject<boolean>;
   pendingOutlookDirtyWriteRefs: React.MutableRefObject<Record<string, boolean>>;
@@ -229,7 +231,7 @@ export interface ConfirmOutlookSaveCtx {
 }
 
 export function confirmOutlookSaveImpl(ctx: ConfirmOutlookSaveCtx): void {
-  const { editEvent, handleSubmit, outlookConfirmChecks, outlookConfirmItems, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs, pendingOutlookRecreateForSubEventsRef, pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, setOutlookConfirmOpen, setTriggerOutlookUpdate } = ctx;
+  const { editEvent, handleSubmit, outlookConfirmChecks, outlookConfirmDismissed, outlookConfirmItems, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs, pendingOutlookRecreateForSubEventsRef, pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, setOutlookConfirmOpen, setTriggerOutlookUpdate } = ctx;
     setOutlookConfirmOpen(false);
     const topId = editEvent ? editEvent.id : '';
     const topItem = outlookConfirmItems.find(it => it.kind === 'top');
@@ -254,16 +256,21 @@ export function confirmOutlookSaveImpl(ctx: ConfirmOutlookSaveCtx): void {
     // dirty markiert. Bei angehakt erfolgt ein Recreate (neues Item hat von
     // Haus aus OutlookDirty=false), bei nicht angehakt existiert immer noch
     // kein Outlook-Termin der "aus-Sync" sein könnte → Marker wäre falsch.
+    // v31.34: „Braucht kein Update" raeumt den Merker weg, ohne zu senden.
+    // Das ist der dritte Ausgang neben anhaken (senden) und offen lassen
+    // (spaeter erneut fragen) — noetig fuer Termine, an denen sich fuer die
+    // Eingeladenen nichts aendert, etwa die Klammer eines Events, bei dem man
+    // sich nur zu den einzelnen Terminen anmeldet.
     const dirtyMap: Record<string, boolean> = {};
     for (const it of outlookConfirmItems) {
       if (it.noOutlookYet) continue;
-      dirtyMap[it.eventId] = !outlookConfirmChecks[it.eventId];
+      dirtyMap[it.eventId] = !outlookConfirmChecks[it.eventId] && !outlookConfirmDismissed[it.eventId];
     }
     pendingOutlookDirtyWriteRefs.current = dirtyMap;
     // Top-Level kompatibel halten: wenn das Top-Event im Modal war, wird
     // OutlookDirty entsprechend gesetzt; sonst null = nicht anfassen.
     if (topItem) {
-      pendingOutlookDirtyWriteRef.current = !topChecked;
+      pendingOutlookDirtyWriteRef.current = !topChecked && !outlookConfirmDismissed[topItem.eventId];
     } else {
       pendingOutlookDirtyWriteRef.current = null;
     }

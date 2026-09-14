@@ -12,7 +12,7 @@ import { buildEmailFromTemplate, cancellationEmail, promotionEmail } from '../..
 import { buildProgramHtml } from '../../../utils/programPlaceholder';
 import { invalidateInactiveAccountCache } from '../../../utils/accountCheckCache';
 import { isEventOver } from '../../../utils/eventFormat';
-import { withParentTitleSubject } from '../../../utils/mailSubject';
+import { withParentTitleSubject, withPromotionSubject } from '../../../utils/mailSubject';
 import { AdminToastState } from '../../admin/adminTypes';
 
 export interface UseCancelPipelineCtx {
@@ -144,7 +144,13 @@ export function useCancelPipeline(ctx: UseCancelPipelineCtx): UseCancelPipelineR
               if (spTpl) { emailData = buildEmailFromTemplate(spTpl, promoteVars); }
               else { emailData = promotionEmail(promotedFirstName, selectedEvent.title); }
               await eventServiceRef.queueEmail(
-                withParentTitleSubject(emailData.subject, selectedEvent.parentEventId ? allEvents.find(e => e.id === selectedEvent.parentEventId) : undefined),
+                // v31.31: Der Betreff sagt, dass es eine Nachrueck-Mail ist — auch
+                // wenn die Vorlage je Event zur Kopie der normalen Bestaetigung
+                // ueberschrieben wurde (utils/mailSubject).
+                withPromotionSubject(
+                  withParentTitleSubject(emailData.subject, selectedEvent.parentEventId ? allEvents.find(e => e.id === selectedEvent.parentEventId) : undefined),
+                  lang !== 'EN',
+                ),
                 promoted.email, promoted.name || '', emailData.body,
                 'Nachruecken', selectedEvent.title, selectedEvent.id
               );

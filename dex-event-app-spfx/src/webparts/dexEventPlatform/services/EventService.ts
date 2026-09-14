@@ -2078,6 +2078,11 @@ export class EventService {
     return eventAssets.patchEventOverridesValue(this, eventId, key, value);
   }
 
+  /** v31.31: Rohes Overrides-JSON frisch vom Server — `null` heisst „nicht lesbar". */
+  public async getEventOverridesRaw(eventId: number): Promise<string | null> {
+    return eventAssets.getEventOverridesRaw(this, eventId);
+  }
+
   public async patchEventOverridesValueEx(
     eventId: number, key: string, value: unknown,
   ): Promise<{ ok: boolean; status: number; detail: string }> {

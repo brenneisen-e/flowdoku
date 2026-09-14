@@ -25,6 +25,7 @@ import { TutorialProvider } from './tutorial/TutorialGuide';
 import { TicketProvider } from '../context/TicketContext';
 import { deepLinkParams } from '../utils/deepLink';
 import { installPerfConsole } from '../utils/perfLog';
+import { installWidthConsole } from '../utils/widthWatch';
 import Header from './Header';
 import LandingPage from './LandingPage';
 import StartPage from './StartPage';
@@ -65,6 +66,9 @@ const AssistantPage = React.lazy(() => import('./AssistantPage'));
 const TicketsPage = React.lazy(() => import('./TicketsPage'));
 const ArchitecturePage = React.lazy(() => import('./ArchitecturePage'));
 const StatsArchivePage = React.lazy(() => import('./StatsArchivePage'));
+// v31.32: Feedback-Übersicht für Admins — wie das Statistik-Archiv nachgeladen,
+// die Seite wird selten geöffnet und soll das Start-Bundle nicht tragen.
+const FeedbackOverviewPage = React.lazy(() => import('./FeedbackOverviewPage'));
 const IntroOnePagerPage = React.lazy(() => import('./IntroOnePagerPage'));
 // v30.5: F&A Center — Rolle „F&A" + Admins.
 const FACenterPage = React.lazy(() => import('./FACenterPage'));
@@ -148,6 +152,7 @@ const PREVIEW_ORGANIZER_ONLY: Partial<Record<Page, string>> = {
   'email-templates': 'Diese Seite sehen reguläre User nicht.',
   'role-matrix': 'Diese Seite sehen reguläre User nicht.',
   'stats-archive': 'Diese Seite sehen reguläre User nicht.',
+  'feedback-overview': 'Diese Seite sehen reguläre User nicht.',
   'flowcharts': 'Diese Seite sehen reguläre User nicht.',
   'intro-onepager': 'Diese Seite sehen reguläre User nicht.',
   'architecture': 'Diese Seite sehen reguläre User nicht.',
@@ -475,6 +480,10 @@ function AppContent(): React.ReactElement {
    * und soll ab dem ersten Render da sein, auch wenn die Seite danach haengt.
    */
   React.useEffect(() => { installPerfConsole(); }, []);
+  // v31.30: Der Breiten-Waechter meldet von selbst, wenn die Seite breiter wird
+  // als das Fenster — und nennt das ausloesende Element. Ohne ihn bleibt die
+  // Frage „warum wird die Breite veraendert" eine Vermutung.
+  React.useEffect(() => { installWidthConsole(); }, []);
 
   const [isFeedbackDeepLink, setIsFeedbackDeepLink] = React.useState<boolean>(() => {
     try { return deepLinkParams().get('action') === 'feedback'; } catch { return false; }
@@ -1144,6 +1153,8 @@ function AppContent(): React.ReactElement {
         return <ArchitecturePage />;
       case 'stats-archive':
         return <StatsArchivePage />;
+      case 'feedback-overview':
+        return <FeedbackOverviewPage />;
       case 'intro-onepager':
         return <IntroOnePagerPage />;
       case 'fa-center':

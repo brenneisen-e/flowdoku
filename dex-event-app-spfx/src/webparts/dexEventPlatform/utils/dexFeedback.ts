@@ -28,12 +28,26 @@
  * ersten Lesefehler stünde die Seite ohne Fragen da. Der Katalog ändert sich
  * ein-, zweimal im Jahr; das ist ein Release wert, keine Liste.
  *
- * ## Was hier NICHT passiert
+ * ## Was seit v31.31 doch gespeichert wird — und warum genau so
  *
- * Es wird **nichts gespeichert**. Die Anforderung ist eine Mail, und eine
- * zweite Wahrheit in einer Liste, die niemand ausliest, wäre Ballast. Wenn
- * das DEX-Team später auswerten will, ist das der nächste Schritt — dann
- * aber bewusst, mit Aufbewahrungsfrist und einer Ansicht, die sie zeigt.
+ * Nutzer-Ansage 14.09.2026: „falls man schon geantwortet hat, dann soll das
+ * System die Daten wieder laden." Ohne einen gespeicherten Stand beginnt die
+ * Seite bei jedem Aufruf leer, und wer sie ein zweites Mal öffnet (die
+ * Aufbewahrungs-Mail fragt jetzt ebenfalls), fängt von vorn an — oder schickt
+ * dem Team versehentlich eine leere zweite Rückmeldung.
+ *
+ * Gespeichert wird **kein zweiter Ort der Wahrheit**, sondern nur der letzte
+ * Stand der Eingaben, als Piggyback `_feedback` im JSON von
+ * `EmailTemplateOverrides` des Events — dieselbe Bauweise wie `_shirtStock`
+ * (v30.88) und `_hotels`. Keine neue Liste, keine neue Berechtigung, kein
+ * Provisionierungs-Schritt, der auf einem frischen Tenant fehlschlagen kann.
+ * Die AUSWERTUNG bleibt die Mail: Wer den Verlauf will, liest das Postfach.
+ *
+ * Piggyback heißt aber auch: Der Schlüssel muss an drei weiteren Stellen
+ * bekannt sein, sonst löscht ihn der nächste Wizard-Save (CLAUDE.md) —
+ * gestrippt in `useWizardVisibilityState`, mitgetragen in `wizardSubmit`
+ * (`hotelCarryConfig`) und beim Kopieren eines Events entfernt
+ * (`CopyToAgendaModal`). Alle drei sind in v31.31 nachgezogen.
  */
 
 /** Das Postfach des DEX-Teams. Steht hier EINMAL. */
@@ -158,4 +172,68 @@ export function feedbackMailSubject(eventTitle: string): string {
 export function feedbackHatInhalt(e: FeedbackEingabe): boolean {
   return e.gut.length > 0 || e.besser.length > 0
     || !!e.freitextGut.trim() || !!e.freitextBesser.trim();
+}
+
+/* ---------------------------------------------------------------------------
+ * Gespeicherter Stand (v31.31) — Piggyback `_feedback` in EmailTemplateOverrides
+ * ------------------------------------------------------------------------- */
+
+/** Der Schlüssel im Overrides-JSON. Steht hier EINMAL. */
+export const FEEDBACK_KEY = '_feedback';
+
+export interface FeedbackStand extends FeedbackEingabe {
+  /** Wann zuletzt abgeschickt (ISO). */
+  at: string;
+  /** Anzeigename der Person — nur für den Hinweis auf der Seite. */
+  name?: string;
+}
+
+/** Alle Stände eines Events, geschlüsselt über die Mailadresse in Kleinbuchstaben. */
+export type FeedbackMap = Record<string, FeedbackStand>;
+
+/**
+ * Die gespeicherten Stände aus dem Overrides-JSON lesen.
+ *
+ * Ein kaputtes JSON ist kein Grund, die Seite zu verweigern — dann gilt
+ * „noch nichts gesagt", und die Person füllt neu aus.
+ */
+export function readFeedbackMap(overridesJson: string | undefined): FeedbackMap {
+  try {
+    const o = JSON.parse(overridesJson || '{}') as Record<string, unknown>;
+    const m = o && o[FEEDBACK_KEY];
+    if (!m || typeof m !== 'object') return {};
+    return m as FeedbackMap;
+  } catch { return {}; }
+}
+
+/** Der Stand EINER Person — `null`, wenn sie noch nichts gesagt hat. */
+export function readFeedbackOf(overridesJson: string | undefined, email: string): FeedbackStand | null {
+  const lc = (email || '').trim().toLowerCase();
+  if (!lc) return null;
+  const st = readFeedbackMap(overridesJson)[lc];
+  return st && Array.isArray(st.gut) ? st : null;
+}
+
+/**
+ * Den Stand einer Person einsetzen und die GANZE Map zurückgeben — die ist
+ * das, was `patchEventOverridesValue` schreibt.
+ *
+ * Bewusst aus dem frisch gelesenen JSON heraus: Ein zweiter Organizer kann in
+ * der Zwischenzeit geantwortet haben, und seine Zeile darf dabei nicht
+ * verloren gehen.
+ */
+export function mergeFeedback(
+  overridesJson: string | undefined,
+  email: string,
+  stand: FeedbackStand,
+): FeedbackMap {
+  const lc = (email || '').trim().toLowerCase();
+  const map = readFeedbackMap(overridesJson);
+  if (lc) map[lc] = stand;
+  return map;
+}
+
+/** Hat für dieses Event überhaupt schon jemand geantwortet? */
+export function feedbackSchonDa(overridesJson: string | undefined): boolean {
+  return Object.keys(readFeedbackMap(overridesJson)).length > 0;
 }
