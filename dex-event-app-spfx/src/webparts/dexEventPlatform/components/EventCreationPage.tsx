@@ -920,6 +920,8 @@ export default function EventCreationPage(): React.ReactElement {
   // Outlook-Update, das niemand braucht. Der dritte Ausgang setzt den Merker
   // zurueck, OHNE etwas zu verschicken.
   const [outlookConfirmDismissed, setOutlookConfirmDismissed] = React.useState<Record<string, boolean>>({});
+  // v31.37: Zweiter Haken je Termin — „fehlende Teilnehmer mit einladen".
+  const [outlookConfirmInvite, setOutlookConfirmInvite] = React.useState<Record<string, boolean>>({});
   // v11.63: Top-Level-Outlook-Update-Entscheidung. true = nach erfolgreichem
   // updateEvent ein DEX_Outlook 'UpdateEvent' in die Queue schreiben.
   const pendingOutlookUpdateForTopRef = React.useRef<boolean>(false);
@@ -939,6 +941,9 @@ export default function EventCreationPage(): React.ReactElement {
   // Nur Eventd-IDs, die im Modal waren, werden hier gesetzt — alle anderen
   // bleiben unberührt (kein OutlookDirty-Patch).
   const pendingOutlookDirtyWriteRefs = React.useRef<Record<string, boolean>>({});
+  // v31.37: Termine, fuer die beim Speichern zusaetzlich die fehlenden
+  // Teilnehmer eingeladen werden sollen (zweiter Haken im Outlook-Dialog).
+  const pendingOutlookInviteForEventsRef = React.useRef<string[]>([]);
   // v11.57 (kompatibel): Schreibwert für OutlookDirty für das Top-Level-
   // Event im nächsten updateEvent-Call. null = nicht setzen, false/true =
   // setzen. Wird aus pendingOutlookDirtyWriteRefs[topId] abgeleitet.
@@ -1400,7 +1405,7 @@ export default function EventCreationPage(): React.ReactElement {
       location, locationFilter, mainCommDisabledAck, mainEventLabel, mainEventLabelMode, maxParticipants,
       noCancelAfterDeadline, noDescription, notifyAdminsExternalAudienceAccess, notifyNewCoOrganizers, notifyOrgCancelMode, notifyOrgRegisterFromDate,
       notifyOrgRegisterMode, onlineMeetingMode, organizer, organizerDisplayLarge, organizerEmails, orgGetsSubInvites,
-      outlookEndOverride, outlookLocationOverride, outlookStartOverride, outlookTeamsLink, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs,
+      outlookEndOverride, outlookLocationOverride, outlookStartOverride, outlookTeamsLink, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs, pendingOutlookInviteForEventsRef,
       pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, pendingSuccessDispatchRef, persistSubEventsForParent, previewBeforeActive, qrScannerEmails,
       qrScannerNames, quiz, quizClusterSize, refreshEventDocuments, refreshEvents, registrationDeadline, registrationLanguage,
       regRuleEnabled, requestCoOrganizerApprovals, requireSubEventSelection, resolveTopLevelCommState, sanitizeOrganizerPairs, selectedEventId,
@@ -1528,7 +1533,7 @@ export default function EventCreationPage(): React.ReactElement {
   // OutlookDirty=true. Events ausserhalb des Detect-Items bleiben unberührt.
   const confirmOutlookSave = (): void => {
     return confirmOutlookSaveImpl({
-      editEvent, handleSubmit, outlookConfirmChecks, outlookConfirmDismissed, outlookConfirmItems, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs,
+      editEvent, handleSubmit, outlookConfirmChecks, outlookConfirmDismissed, outlookConfirmInvite, outlookConfirmItems, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs, pendingOutlookInviteForEventsRef,
       pendingOutlookRecreateForSubEventsRef, pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, setOutlookConfirmOpen, setTriggerOutlookUpdate,
     });
   };
@@ -2875,7 +2880,7 @@ export default function EventCreationPage(): React.ReactElement {
     htmlEditorOpen, htmlEditorTemplateType, imagePreview, isDe, isEditMode,
     isFictive, isMobile, isoToLocal, lastDeregisterDate, location, locationFilter,
     maxParticipants, newSectionError, newSectionModalOpen, newSectionName, organizer, organizerEmails,
-    outlookBody, outlookConfirmChecks, outlookConfirmDismissed, setOutlookConfirmDismissed, outlookConfirmItems, outlookConfirmOpen, outlookEndOverride, outlookHeading,
+    outlookBody, outlookConfirmChecks, outlookConfirmDismissed, setOutlookConfirmDismissed, outlookConfirmInvite, setOutlookConfirmInvite, outlookConfirmItems, outlookConfirmOpen, outlookEndOverride, outlookHeading,
     outlookLocationOverride, outlookLogoPreview, outlookStartOverride, outlookSubheading, outlookSubject, pendingSections,
     pendingSuccessDispatch, pendingSuccessDispatchRef, previewSections, qrScannerEmails, qrScannerNames, quiz,
     registrationDeadline, registrationLanguage, renderPreviewSection, requireSubEventSelection, resolveTopLevelCommState, scDescription, scopeSub,

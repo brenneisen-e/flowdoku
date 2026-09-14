@@ -146,7 +146,7 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
       const erg = await runOutlookInviteBackfill({
         svc: eventServiceRef,
         event: selectedEvent,
-        reloadRegistrations,
+        leseAnmeldungen: reloadRegistrations,
         onProgress: (done, total) => setOutlookBackfillResult(isDe
           ? `Einladungen werden eingereiht … ${done} von ${total}`
           : `Queueing invites … ${done} of ${total}`),

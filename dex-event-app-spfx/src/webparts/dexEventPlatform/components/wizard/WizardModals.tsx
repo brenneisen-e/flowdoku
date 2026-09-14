@@ -97,6 +97,8 @@ export interface WizardModalsProps {
   outlookConfirmChecks: Record<string, boolean>;
   /** v31.34: Eintraege, die als „braucht kein Update" weggeraeumt werden. */
   outlookConfirmDismissed: Record<string, boolean>;
+  /** v31.37: Termine, fuer die die fehlenden Teilnehmer mit eingeladen werden. */
+  outlookConfirmInvite: Record<string, boolean>;
   outlookConfirmItems: OutlookConfirmItem[];
   outlookConfirmOpen: boolean;
   outlookEndOverride: string;
@@ -140,6 +142,7 @@ export interface WizardModalsProps {
   setOutlookBody: React.Dispatch<React.SetStateAction<string>>;
   setOutlookConfirmChecks: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   setOutlookConfirmDismissed: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  setOutlookConfirmInvite: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   setOutlookEndOverride: React.Dispatch<React.SetStateAction<string>>;
   setOutlookHeading: React.Dispatch<React.SetStateAction<string>>;
   setOutlookLocationOverride: React.Dispatch<React.SetStateAction<string>>;
@@ -216,7 +219,7 @@ export interface WizardModalsProps {
 }
 
 export const WizardModals: React.FC<WizardModalsProps> = (p) => {
-  const { activeCommTabIdx, activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, addSelectedSuggestedFields, agenda, applySubTransfer, askSalutation, attemptSubmit, audience, berlinLocalToUtcIso, bilingualFields, buildDraftPayload, bulkOrganizerOpen, bulkQrScannerOpen, bulkTestTeamOpen, cancelOutlookSave, childTermPlural, childTermSingular, closeVisCopy, confirmOutlookSave, contactEmail, customFields, DEMO_VARIANTS, description, disableEmails, disableOutlook, documents, DRAFT_KEY, dragOverSectionId, dragSectionId, durchstarterCapacity, emailLanguage, emailLogoPreview, emailTemplateOverrides, emailTemplates, endDate, eventImageUrl, excludedUsers, filterMode, funstarterCapacity, headerImageLayout, htmlEditorMode, htmlEditorOpen, htmlEditorTemplateType, imagePreview, isDe, isEditMode, isFictive, isMobile, isoToLocal, lastDeregisterDate, location, locationFilter, maxParticipants, newSectionError, newSectionModalOpen, newSectionName, organizer, organizerEmails, outlookBody, outlookConfirmChecks, outlookConfirmDismissed, outlookConfirmItems, outlookConfirmOpen, outlookEndOverride, outlookHeading, outlookLocationOverride, outlookLogoPreview, outlookStartOverride, outlookSubheading, outlookSubject, pendingSections, pendingSuccessDispatch, pendingSuccessDispatchRef, previewSections, qrScannerEmails, qrScannerNames, quiz, registrationDeadline, registrationLanguage, renderPreviewSection, requireSubEventSelection, resolveTopLevelCommState, scDescription, scopeSub, searchUsers, setBulkOrganizerOpen, setBulkQrScannerOpen, setBulkTestTeamOpen, setDragOverSectionId, setDragSectionId, setEmailTemplateOverrides, setHeaderImageLayout, setHtmlEditorOpen, setNewSectionError, setNewSectionModalOpen, setNewSectionName, setOrganizer, setOrganizerEmails, setOutlookBody, setOutlookConfirmChecks, setOutlookConfirmDismissed, setOutlookEndOverride, setOutlookHeading, setOutlookLocationOverride, setOutlookStartOverride, setOutlookSubheading, setOutlookSubject, setPendingSections, setPendingSuccessDispatch, setPreviewSections, setQrScannerEmails, setQrScannerNames, setScDescription, setShowB2runSuggested, setShowConfigCheck, setShowDemoVariantModal, setShowPreview, setShowRegisterPreview, setShowSuggestedModal, setShowSummaryModal, setSubEvents, setSubTransfer, setSuggestedSelection, setTestTeamEmails, setTestTeamNames, setUnsavedConfirmOpen, showB2runSuggested, showConfigCheck, showDemoVariantModal, showPreview, showRegisterPreview, showSuggestedModal, showSummaryModal, splitLabelA, splitLabelB, splitSharedWaitlist, startDate, SUB_TRANSFER_GROUPS, subEvents, subEventsOnlyMode, subGroupDiffCount, subTransfer, SUGGESTED_FIELDS_CATALOG, suggestedSelection, t, teamRegistrationEnabled, teamSize, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, unsavedConfirmOpen, useSplitCapacities, visCopyModalOpen, waitlistEnabled, allowAttendeeUpload, askTeamName, attendeeUploadHint, attendeeUploadLabel, contactInfo, contactName, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, quizClusterSize, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitSectionTitle, teamJoinRequiresApproval, teamOpenSlotsVisible, teamPartialAllowed } = p;
+  const { activeCommTabIdx, activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, addSelectedSuggestedFields, agenda, applySubTransfer, askSalutation, attemptSubmit, audience, berlinLocalToUtcIso, bilingualFields, buildDraftPayload, bulkOrganizerOpen, bulkQrScannerOpen, bulkTestTeamOpen, cancelOutlookSave, childTermPlural, childTermSingular, closeVisCopy, confirmOutlookSave, contactEmail, customFields, DEMO_VARIANTS, description, disableEmails, disableOutlook, documents, DRAFT_KEY, dragOverSectionId, dragSectionId, durchstarterCapacity, emailLanguage, emailLogoPreview, emailTemplateOverrides, emailTemplates, endDate, eventImageUrl, excludedUsers, filterMode, funstarterCapacity, headerImageLayout, htmlEditorMode, htmlEditorOpen, htmlEditorTemplateType, imagePreview, isDe, isEditMode, isFictive, isMobile, isoToLocal, lastDeregisterDate, location, locationFilter, maxParticipants, newSectionError, newSectionModalOpen, newSectionName, organizer, organizerEmails, outlookBody, outlookConfirmChecks, outlookConfirmDismissed, outlookConfirmInvite, outlookConfirmItems, outlookConfirmOpen, outlookEndOverride, outlookHeading, outlookLocationOverride, outlookLogoPreview, outlookStartOverride, outlookSubheading, outlookSubject, pendingSections, pendingSuccessDispatch, pendingSuccessDispatchRef, previewSections, qrScannerEmails, qrScannerNames, quiz, registrationDeadline, registrationLanguage, renderPreviewSection, requireSubEventSelection, resolveTopLevelCommState, scDescription, scopeSub, searchUsers, setBulkOrganizerOpen, setBulkQrScannerOpen, setBulkTestTeamOpen, setDragOverSectionId, setDragSectionId, setEmailTemplateOverrides, setHeaderImageLayout, setHtmlEditorOpen, setNewSectionError, setNewSectionModalOpen, setNewSectionName, setOrganizer, setOrganizerEmails, setOutlookBody, setOutlookConfirmChecks, setOutlookConfirmDismissed, setOutlookConfirmInvite, setOutlookEndOverride, setOutlookHeading, setOutlookLocationOverride, setOutlookStartOverride, setOutlookSubheading, setOutlookSubject, setPendingSections, setPendingSuccessDispatch, setPreviewSections, setQrScannerEmails, setQrScannerNames, setScDescription, setShowB2runSuggested, setShowConfigCheck, setShowDemoVariantModal, setShowPreview, setShowRegisterPreview, setShowSuggestedModal, setShowSummaryModal, setSubEvents, setSubTransfer, setSuggestedSelection, setTestTeamEmails, setTestTeamNames, setUnsavedConfirmOpen, showB2runSuggested, showConfigCheck, showDemoVariantModal, showPreview, showRegisterPreview, showSuggestedModal, showSummaryModal, splitLabelA, splitLabelB, splitSharedWaitlist, startDate, SUB_TRANSFER_GROUPS, subEvents, subEventsOnlyMode, subGroupDiffCount, subTransfer, SUGGESTED_FIELDS_CATALOG, suggestedSelection, t, teamRegistrationEnabled, teamSize, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, unsavedConfirmOpen, useSplitCapacities, visCopyModalOpen, waitlistEnabled, allowAttendeeUpload, askTeamName, attendeeUploadHint, attendeeUploadLabel, contactInfo, contactName, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, quizClusterSize, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitSectionTitle, teamJoinRequiresApproval, teamOpenSlotsVisible, teamPartialAllowed } = p;
   // v31.2: Eine Prüf-und-Anlege-Logik für Enter-Taste UND Knopf im Dialog
   // „Neuer Bereich" — vorher stand derselbe Block zweimal. Kein Hook, nur
   // eine Funktion über den destrukturierten Props.
@@ -1587,6 +1590,10 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
         // „speichern und N Termine aktualisieren" — statt eines nackten
         // „Speichern", bei dem unklar bleibt, ob jetzt Mails rausgehen.
         const checkedCount = outlookConfirmItems.filter(it => !!outlookConfirmChecks[it.eventId]).length;
+        // v31.37: Der Knopf muss auch den zweiten Haken nennen. Wer nur
+        // „fehlende Teilnehmer einladen" setzt, laese sonst „Nur speichern" —
+        // und es gingen Einladungen raus.
+        const inviteCount = outlookConfirmItems.filter(it => !it.noOutlookYet && !!outlookConfirmInvite[it.eventId]).length;
         const fieldLabelMap: Record<'title'|'startDate'|'endDate'|'outlookBody'|'location'|'subject'|'layout'|'organizer'|'logo', { de: string; en: string }> = {
           title: { de: 'Titel', en: 'Title' },
           startDate: { de: 'Startzeit', en: 'Start time' },
@@ -1627,8 +1634,18 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                 {isDe ? 'Abbrechen' : 'Cancel'}
               </button>
               <button type="button" className="btn btn-primary" onClick={() => confirmOutlookSave()}>
-                {checkedCount > 0
-                  ? (isDe ? `Speichern & ${checkedCount} Termin${checkedCount === 1 ? '' : 'e'} aktualisieren` : `Save & update ${checkedCount} invite${checkedCount === 1 ? '' : 's'}`)
+                {checkedCount > 0 || inviteCount > 0
+                  ? (isDe
+                    ? [
+                      'Speichern',
+                      checkedCount > 0 ? `${checkedCount} Termin${checkedCount === 1 ? '' : 'e'} aktualisieren` : '',
+                      inviteCount > 0 ? `Fehlende einladen (${inviteCount})` : '',
+                    ].filter(Boolean).join(' & ')
+                    : [
+                      'Save',
+                      checkedCount > 0 ? `update ${checkedCount} invite${checkedCount === 1 ? '' : 's'}` : '',
+                      inviteCount > 0 ? `invite missing (${inviteCount})` : '',
+                    ].filter(Boolean).join(' & '))
                   : (isDe ? 'Nur speichern' : 'Save only')}
               </button>
             </>}
@@ -1722,6 +1739,41 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                             „Outlook-Update ausstehend"-Merker für immer stehen
                             und der Hinweis in Schritt 1 liesse sich nie auflösen.
                             Also zeigen und sagen, was er ist. */}
+                        {/* v31.37: Der zweite Haken. Ein Outlook-Update erreicht
+                            nur, wer auf dem Termin STEHT — wer sich angemeldet
+                            hat, während der Outlook-Versand aus war, steht dort
+                            nie und merkt von der Änderung nichts. Nutzer-Ansage
+                            14.09.2026: „und auch die Checkbox, dass Personen, die
+                            den Termin noch nicht haben und auf der TN-Liste
+                            stehen, ihn auch bekommen sollen."
+                            Nur bei vorhandenem Termin: Bei `noOutlookYet`
+                            entsteht er erst durch den Recreate. */}
+                        {!it.noOutlookYet && (
+                          <span
+                            className={cx('dex-ui-toggle-row', !!outlookConfirmInvite[it.eventId] && 'is-active')}
+                            style={{ marginTop: 8, padding: '8px 10px' }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={!!outlookConfirmInvite[it.eventId]}
+                              onClick={e => e.stopPropagation()}
+                              onChange={e => {
+                                const next = e.target.checked;
+                                setOutlookConfirmInvite(prev => ({ ...prev, [it.eventId]: next }));
+                              }}
+                            />
+                            <span className="dex-ui-toggle-row-body">
+                              <span className="dex-ui-toggle-row-title" style={{ fontSize: '0.82rem' }}>
+                                {isDe ? 'Fehlende Teilnehmer zusätzlich einladen' : 'Also invite missing attendees'}
+                              </span>
+                              <span className="dex-ui-toggle-row-desc" style={{ display: 'block', fontSize: '0.76rem' }}>
+                                {isDe
+                                  ? 'Alle aktiven Personen auf der Teilnehmerliste, die diesen Termin noch nicht im Kalender haben, bekommen ihn nachträglich — z.B. weil sie sich angemeldet haben, während der Outlook-Versand aus war. Wer ihn schon hat, merkt nichts davon.'
+                                  : 'Everyone active on the participant list who does not have this invite yet gets it retroactively — e.g. because they registered while the Outlook dispatch was off. Anyone who already has it notices nothing.'}
+                              </span>
+                            </span>
+                          </span>
+                        )}
                         {/* v31.34: Sichtbar nur bei Einträgen aus einem früheren
                             Speichern. Bei einer Änderung, die GERADE gemacht
                             wurde, wäre „braucht kein Update" eine Falle: Dann

@@ -80,9 +80,18 @@ export interface BackfillErgebnis {
 export interface BackfillCtx {
   svc: EventService;
   event: DeloitteEvent;
-  /** Der geprüfte Nachlade-Pfad der Seite — `null` heisst „nicht lesbar". */
-  reloadRegistrations: () => Promise<SPRegistration[] | null>;
-  /** Rückfrage mit den echten Zahlen; erst danach wird geschrieben. */
+  /**
+   * Liest die Anmeldungen — `null` heisst „nicht lesbar" (im Organizer Center
+   * der geprüfte Nachlade-Pfad `reloadRegistrations`, im Assistenten ein
+   * `getAllRegistrations` mit `onHttpError`). Der Unterschied darf hier nicht
+   * landen; entscheidend ist nur, dass ein Lesefehler als `null` ankommt und
+   * nicht als leere Liste.
+   */
+  leseAnmeldungen: () => Promise<SPRegistration[] | null>;
+  /**
+   * Rückfrage mit den echten Zahlen; erst danach wird geschrieben. Wo schon
+   * gefragt wurde (Haken im Speichern-Dialog), gibt sie einfach `true` zurück.
+   */
   frage: (_anzahl: number, _extern: number) => Promise<boolean>;
   onProgress?: (_done: number, _total: number) => void;
 }
@@ -97,13 +106,18 @@ export interface BackfillCtx {
  * kein zweiter Eintrag.
  */
 export async function runOutlookInviteBackfill(ctx: BackfillCtx): Promise<BackfillErgebnis> {
-  const { svc, event, reloadRegistrations, frage, onProgress } = ctx;
+  const { svc, event, leseAnmeldungen, frage, onProgress } = ctx;
   const leer: BackfillErgebnis = { status: 'fertig', eingeladen: 0, extern: 0, fehler: 0 };
 
-  if (event.disableOutlook) return { ...leer, status: 'outlook-aus' };
-  if (!event.outlookEventId && !event.calendarLink) return { ...leer, status: 'kein-termin' };
+  // v31.37: Reihenfolge umgedreht. Der Schalter „keine Kommunikation" regelt,
+  // ob NEUE Anmeldungen einen Termin bekommen — über den bestehenden Termin und
+  // die Leute, die schon darauf stehen (oder darauf gehören), sagt er nichts.
+  // Existiert der Termin, darf nachgeladen werden; existiert er nicht, ist der
+  // Schalter ohnehin der Grund und wird als solcher gemeldet.
+  const hatTermin = !!event.outlookEventId || !!event.calendarLink;
+  if (!hatTermin) return { ...leer, status: event.disableOutlook ? 'outlook-aus' : 'kein-termin' };
 
-  const regs = await reloadRegistrations();
+  const regs = await leseAnmeldungen();
   if (regs === null) return { ...leer, status: 'nicht-lesbar' };
 
   const gesehen = new Set<string>();
