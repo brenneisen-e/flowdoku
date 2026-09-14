@@ -1604,10 +1604,21 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
             hideClose
             ariaLabel="Outlook-Update bestätigen"
             icon={<Calendar size={20} strokeWidth={2} />}
-            title={<span id="outlook-confirm-title">{isDe ? 'Outlook-Termin der Teilnehmer aktualisieren?' : 'Update Outlook invite for attendees?'}</span>}
-            subtitle={isDe
-              ? 'Du hast Felder geändert, die im Outlook-Termin der Teilnehmer stehen. Hake an, welche Termine jetzt neu rausgehen — alles andere wird gespeichert, Outlook bleibt dort unangetastet. Nachholen geht jederzeit.'
-              : 'You changed fields that appear in the attendees’ Outlook invites. Tick the invites to resend now — everything else is saved, Outlook is left alone there. You can resend later at any time.'}
+            // v31.33: Im Modus „nur Termine" steht in der Liste auch der
+            // Klammer-Termin, den KEIN Teilnehmer hat. Titel und Vorspann dürfen
+            // dann nicht „der Teilnehmer" behaupten — sonst sucht der Organizer
+            // einen Teilnehmer-Termin, den es dort nicht gibt. Ohne diesen Modus
+            // bleibt der bisherige, konkretere Text.
+            title={<span id="outlook-confirm-title">{subEventsOnlyMode
+              ? (isDe ? 'Outlook-Termine aktualisieren?' : 'Update Outlook invites?')
+              : (isDe ? 'Outlook-Termin der Teilnehmer aktualisieren?' : 'Update Outlook invite for attendees?')}</span>}
+            subtitle={subEventsOnlyMode
+              ? (isDe
+                ? 'Du hast Felder geändert, die in Outlook-Terminen zu diesem Event stehen. Hake an, welche jetzt neu rausgehen — alles andere wird gespeichert, Outlook bleibt dort unangetastet. Nachholen geht jederzeit.'
+                : 'You changed fields that appear in Outlook invites for this event. Tick the ones to resend now — everything else is saved, Outlook is left alone there. You can resend later at any time.')
+              : (isDe
+                ? 'Du hast Felder geändert, die im Outlook-Termin der Teilnehmer stehen. Hake an, welche Termine jetzt neu rausgehen — alles andere wird gespeichert, Outlook bleibt dort unangetastet. Nachholen geht jederzeit.'
+                : 'You changed fields that appear in the attendees’ Outlook invites. Tick the invites to resend now — everything else is saved, Outlook is left alone there. You can resend later at any time.')}
             footer={<>
               <button type="button" className="btn btn-secondary" onClick={cancelOutlookSave}>
                 {isDe ? 'Abbrechen' : 'Cancel'}
@@ -1648,7 +1659,15 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                       <span className="dex-ui-toggle-row-body">
                         <span className="dex-ui-toggle-row-title" style={{ wordBreak: 'break-word' }}>
                           {it.kind === 'top' && !it.noOutlookYet
-                            ? (isDe ? `Hauptevent: ${it.title}` : `Main event: ${it.title}`)
+                            ? (subEventsOnlyMode
+                              // v31.33: Im Modus „nur Termine" heisst die oberste
+                              // Ebene nicht „Hauptevent" — sie ist die Klammer,
+                              // für die sich niemand anmeldet. Rückfrage aus dem
+                              // Team (14.09.2026): „hier steht Aktualisierung des
+                              // Hauptevents, dabei gibt es nur Kalendereinträge
+                              // für Sub-Events."
+                              ? (isDe ? `Klammer-Termin: ${it.title}` : `Bracket invite: ${it.title}`)
+                              : (isDe ? `Hauptevent: ${it.title}` : `Main event: ${it.title}`))
                             : (isDe ? `Sub-Event: ${it.title}` : `Sub-event: ${it.title}`)}
                           {it.noOutlookYet && <span className="dex-ui-pill dex-ui-pill--orange">{isDe ? 'noch kein Outlook-Termin' : 'no Outlook invite yet'}</span>}
                           {isFromPersistedDirty && <span className="dex-ui-pill dex-ui-pill--orange">{isDe ? 'nicht synchronisiert' : 'not synced'}</span>}
@@ -1662,6 +1681,23 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                         ) : (
                           <span className="dex-ui-toggle-row-desc" style={{ display: 'block' }}>
                             {isDe ? 'Geändert: ' : 'Changed: '}{changedLabels}
+                          </span>
+                        )}
+                        {/* v31.33: Wer hält diesen Termin überhaupt? Im Modus
+                            „nur Termine" ist das die eigentliche Frage — und die
+                            Antwort ist NICHT „die Teilnehmer". Der Klammer-Termin
+                            existiert (Organizer-Einladung, Termin über den ganzen
+                            Zeitraum; v30.77 hat die alte Sperre aus v18.51
+                            deshalb aufgehoben), aber angemeldet ist dort niemand.
+                            Ihn wegzulassen wäre falsch: Dann bliebe der
+                            „Outlook-Update ausstehend"-Merker für immer stehen
+                            und der Hinweis in Schritt 1 liesse sich nie auflösen.
+                            Also zeigen und sagen, was er ist. */}
+                        {it.kind === 'top' && subEventsOnlyMode && !it.noOutlookYet && (
+                          <span className="dex-ui-callout dex-ui-callout--neutral" style={{ marginTop: 8, fontSize: '0.76rem', padding: '8px 10px' }}>
+                            {isDe
+                              ? <>Bei diesem Event melden sich Teilnehmer <strong>nur zu den einzelnen Terminen</strong> an — die Klammer selbst ist nicht buchbar. Das Update geht an alle, die <strong>diesen</strong> Termin im Kalender haben; das sind in der Regel die Organizer und wer direkt auf der Klammer eingeladen wurde, nicht die Teilnehmer. Die Termine der Teilnehmer stehen einzeln in dieser Liste.</>
+                              : <>For this event, attendees register <strong>for the individual dates only</strong> — the bracket itself is not bookable. The update goes to everyone who has <strong>this</strong> invite in their calendar; usually the organizers and anyone invited on the bracket directly, not the attendees. The attendees&rsquo; invites are listed separately here.</>}
                           </span>
                         )}
                         {it.noOutlookYet && (
