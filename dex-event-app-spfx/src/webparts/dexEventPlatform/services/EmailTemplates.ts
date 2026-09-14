@@ -82,6 +82,52 @@ export interface WrapHeadingOpts {
 }
 
 /**
+ * v31.41 — Dunkler Modus in Outlook.
+ *
+ * Nutzer-Frage 14.09.2026 mit Bild: „was müssen wir machen, damit die Mails
+ * auch auf dunklem Screen richtig aussehen?" Im Bild ist die schwarze
+ * Kopfleiste hellgrau geworden (das weisse Deloitte-Logo steht darauf fast
+ * unlesbar), und der Orb sitzt in einem weissen Kasten.
+ *
+ * ## Was hier tatsächlich hilft — und was nicht
+ *
+ * Outlook fragt eine Mail nicht, ob sie einen dunklen Modus hat: Es rechnet
+ * die Farben selbst um. Die drei Wege, die 2026 wirken, sind:
+ *
+ *  1. **`color-scheme` / `supported-color-schemes`.** Sagt Apple Mail, iOS und
+ *     einigen anderen: Diese Mail bringt ihre Farben selbst mit, bitte nicht
+ *     umrechnen. Outlook ignoriert es — es kostet aber nichts.
+ *  2. **`[data-ogsc]` / `[data-ogsb]`.** Outlook.com und das neue Outlook
+ *     hängen genau diese Attribute an jedes Element, dessen Farbe bzw.
+ *     Hintergrund sie umgerechnet haben. Darüber lassen sich die eigenen
+ *     Farben zurückholen — das ist der einzige Hebel, den Microsoft dort
+ *     anbietet, und der Grund, warum die Kopfleiste wieder schwarz wird.
+ *  3. **`prefers-color-scheme: dark`.** Greift in Apple Mail und Thunderbird.
+ *
+ * Nicht behauptet wird: dass die Mail damit überall gleich aussieht. Outlook
+ * für Windows rechnet teilweise um und lässt sich nicht abschalten; „neues
+ * Outlook" und Outlook Web wenden ihre Logik unabhängig von diesen Regeln an.
+ * Was bleibt, ist die Gestaltung selbst robust zu machen — daran ändert kein
+ * Meta-Tag etwas.
+ */
+const DARK_MODE_HEAD = `<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<style type="text/css">
+  :root { color-scheme: light dark; supported-color-schemes: light dark; }
+  /* Outlook.com / neues Outlook: eigene Farben zurueckholen, wo umgerechnet wurde. */
+  [data-ogsb] .dex-mail-head, [data-ogsc] .dex-mail-head { background-color: #000000 !important; }
+  [data-ogsc] .dex-mail-head img { filter: none !important; }
+  [data-ogsb] .dex-mail-body, [data-ogsc] .dex-mail-body { background-color: #ffffff !important; }
+  [data-ogsb] .dex-mail-hero, [data-ogsc] .dex-mail-hero { background-color: #ffffff !important; }
+  [data-ogsc] .dex-mail-body, [data-ogsc] .dex-mail-body td, [data-ogsc] .dex-mail-body p { color: #333333 !important; }
+  @media (prefers-color-scheme: dark) {
+    .dex-mail-head { background-color: #000000 !important; }
+    .dex-mail-body, .dex-mail-hero { background-color: #ffffff !important; }
+    .dex-mail-body, .dex-mail-body td, .dex-mail-body p { color: #333333 !important; }
+  }
+</style>`;
+
+/**
  * v18.73: Baut die Hero-Zeile (Event-Bild = {{ORB_URL}}) inkl. einstellbarer
  * Breite + Innenabstand. Gemeinsamer Helper für wrapTemplate() und
  * wrapTemplateForStorage(), damit beide Layouts identisch bleiben.
@@ -101,7 +147,7 @@ function buildHeroRow(opts?: WrapHeadingOpts): string {
   const padV = (typeof opts?.imagePaddingV === 'number' && opts.imagePaddingV >= 0) ? Math.round(opts.imagePaddingV) : 30;
   const padH = (typeof opts?.imagePaddingH === 'number' && opts.imagePaddingH >= 0) ? Math.round(opts.imagePaddingH) : 30;
   return `<tr>
-<td style="background-color:#ffffff;text-align:center;padding:${padV}px ${padH}px ${padV}px ${padH}px;">
+<td class="dex-mail-hero" bgcolor="#ffffff" style="background-color:#ffffff;text-align:center;padding:${padV}px ${padH}px ${padV}px ${padH}px;">
   <img src="{{ORB_URL}}" alt="DEX Event Experience Platform" width="${w}" style="display:inline-block;width:${w}px;max-width:100%;height:auto;" />
 </td>
 </tr>`;
@@ -166,14 +212,15 @@ export function wrapTemplateForStorage(headingColor: string, heading: string, su
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+${DARK_MODE_HEAD}
 <title>${heading}</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f5f5f5;font-family:Aptos,'Open Sans',Arial,Helvetica,sans-serif;color:#333333;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f5f5;">
 <tr><td align="center" style="padding:20px 10px 20px 10px;">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;max-width:600px;width:100%;">
+<table role="presentation" class="dex-mail-body" bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;max-width:600px;width:100%;">
 <tr>
-<td style="background-color:#000000;padding:20px 30px 20px 30px;border-bottom:2px solid ${GREEN};">
+<td class="dex-mail-head" bgcolor="#000000" style="background-color:#000000;padding:20px 30px 20px 30px;border-bottom:2px solid ${GREEN};">
   <img src="{{LOGO_URL}}" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
 </td>
 </tr>
@@ -256,6 +303,7 @@ export function wrapTemplate(headingColor: string, heading: string, subheading: 
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+${DARK_MODE_HEAD}
 <title>${heading}</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f5f5f5;font-family:Aptos,'Open Sans',Arial,Helvetica,sans-serif;color:#333333;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
@@ -263,11 +311,11 @@ export function wrapTemplate(headingColor: string, heading: string, subheading: 
 <tr><td align="center" style="padding:20px 10px 20px 10px;">
 
 <!-- Main Container -->
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;max-width:600px;width:100%;">
+<table role="presentation" class="dex-mail-body" bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;max-width:600px;width:100%;">
 
 <!-- ===== HEADER: Deloitte Logo ===== -->
 <tr>
-<td style="background-color:#000000;padding:20px 30px 20px 30px;border-bottom:2px solid ${GREEN};">
+<td class="dex-mail-head" bgcolor="#000000" style="background-color:#000000;padding:20px 30px 20px 30px;border-bottom:2px solid ${GREEN};">
   <img src="${cachedLogoBase64 || '{{LOGO_URL}}'}" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
 </td>
 </tr>
