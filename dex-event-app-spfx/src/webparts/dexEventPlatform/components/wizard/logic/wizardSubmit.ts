@@ -646,7 +646,7 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
           // sind eine Verpflichtung gegenüber dem Veranstalter (v30.54) und
           // entstehen im Organizer Center; ein Wizard-Save darf sie nicht
           // stillschweigend wegräumen, nur weil er sie nicht kennt.
-          for (const k of ['_hotels', '_hotelStays', '_hotelVisible', '_hotelRules', '_shirtStock', '_b2runTodo', '_b2runTodoDone']) {
+          for (const k of ['_hotels', '_hotelStays', '_hotelVisible', '_hotelRules', '_shirtStock', '_b2runTodo', '_b2runTodoDone', '_feedback']) {
             if (raw && raw[k] !== undefined) out[k] = raw[k];
           }
           return out;

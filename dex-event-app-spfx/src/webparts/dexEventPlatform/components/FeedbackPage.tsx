@@ -31,8 +31,8 @@ import { useEvents } from '../context/EventContext';
 import { EventService } from '../services/EventService';
 import { wrapTemplate } from '../services/EmailTemplates';
 import {
-  DEX_FEEDBACK_TO, FEEDBACK_BESSER, FEEDBACK_GUT, FeedbackOption,
-  buildFeedbackMailInner, feedbackHatInhalt, feedbackMailSubject,
+  DEX_FEEDBACK_TO, FEEDBACK_BESSER, FEEDBACK_GUT, FEEDBACK_KEY, FeedbackOption, FeedbackStand,
+  buildFeedbackMailInner, feedbackHatInhalt, feedbackMailSubject, mergeFeedback, readFeedbackOf,
 } from '../utils/dexFeedback';
 
 const FeedbackPage: React.FC<{ onLeave?: (_page: 'start' | 'my-events') => void }> = ({ onLeave }) => {
@@ -64,6 +64,34 @@ const FeedbackPage: React.FC<{ onLeave?: (_page: 'start' | 'my-events') => void 
     const ctx = (window as any).__dexSpfxContext;
     return ctx ? new EventService(ctx) : null;
   }, []);
+
+  /*
+   * v31.31: Vorhandene Antworten wieder laden (Nutzer-Ansage 14.09.2026:
+   * „falls man schon geantwortet hat, dann soll das System die Daten wieder
+   * laden"). Seit die Aufbewahrungs-Mail ebenfalls nach Feedback fragt, kommt
+   * dieselbe Person mit hoher Wahrscheinlichkeit ein zweites Mal hierher — und
+   * eine leere Seite heisst dann entweder „alles noch einmal tippen" oder eine
+   * zweite, dünnere Rückmeldung, die die erste im Postfach entwertet.
+   *
+   * Der Wächter ist ein Ref-Schlüssel, kein Abhängigkeits-Array: `ev` ist bei
+   * jedem Nachladen der Events ein neues Objekt, und ohne den Schlüssel würde
+   * die Vorbefüllung die gerade getippten Änderungen wieder überschreiben.
+   */
+  const vorbefuelltRef = React.useRef('');
+  const [zuletzt, setZuletzt] = React.useState<FeedbackStand | null>(null);
+  React.useEffect(() => {
+    if (!ev) return;
+    const schluessel = `${ev.id}|${(currentUser.email || '').toLowerCase()}`;
+    if (vorbefuelltRef.current === schluessel) return;
+    vorbefuelltRef.current = schluessel;
+    const st = readFeedbackOf(ev.emailTemplateOverrides, currentUser.email || '');
+    if (!st) return;
+    setZuletzt(st);
+    setGut(Array.isArray(st.gut) ? st.gut : []);
+    setBesser(Array.isArray(st.besser) ? st.besser : []);
+    setFreitextGut(st.freitextGut || '');
+    setFreitextBesser(st.freitextBesser || '');
+  }, [ev, currentUser.email]);
 
   const toggle = (setter: React.Dispatch<React.SetStateAction<string[]>>, id: string): void => {
     setter(prev => (prev.indexOf(id) >= 0 ? prev.filter(x => x !== id) : prev.concat(id)));
@@ -101,6 +129,29 @@ const FeedbackPage: React.FC<{ onLeave?: (_page: 'start' | 'my-events') => void 
         setSendet(false);
         return;
       }
+      /*
+       * v31.31: Erst jetzt sichern — die Mail ist raus, das ist die Zusage.
+       * Ein Fehlschlag beim Sichern macht daraus KEINEN Fehler: Das Feedback
+       * ist beim Team, nur die Wiedervorlage fehlt dann.
+       *
+       * Gelesen wird der Stand frisch vom Server, nicht aus dem Context: Hat
+       * in der Zwischenzeit ein zweiter Organizer geantwortet, darf seine
+       * Zeile nicht verloren gehen. Ist er nicht lesbar (`null`), wird NICHT
+       * geschrieben — sonst macht ein Lesefehler aus zwei Rückmeldungen eine.
+       */
+      try {
+        const roh = await svc.getEventOverridesRaw(Number(ev.id));
+        if (roh !== null) {
+          const stand: FeedbackStand = {
+            ...eingabe,
+            at: new Date().toISOString(),
+            name: `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || undefined,
+          };
+          await svc.patchEventOverridesValue(
+            Number(ev.id), FEEDBACK_KEY, mergeFeedback(roh, currentUser.email || '', stand),
+          );
+        }
+      } catch { /* Wiedervorlage ist Komfort, nicht die Zusage */ }
       setFertig(true);
     } catch {
       setFehler(t(
@@ -213,6 +264,26 @@ const FeedbackPage: React.FC<{ onLeave?: (_page: 'start' | 'my-events') => void 
           {t('Geht an das DEX-Team (', 'Goes to the DEX team (')}{DEX_FEEDBACK_TO}
           {t('), mit dir in Kopie.', '), with a copy to you.')}
         </p>
+
+        {/* v31.31: Wer schon geantwortet hat, sieht seinen letzten Stand —
+            und erfährt hier, warum die Haken schon gesetzt sind. Ohne diesen
+            Satz wirkt eine vorbefüllte Seite wie ein Fehler. */}
+        {zuletzt && (
+          <div className="dex-ui-callout" role="status" style={{ marginBottom: 4 }}>
+            <Check size={16} />
+            <span>
+              {t('Du hast dazu schon einmal geantwortet', 'You have already answered this')}
+              {(() => {
+                const d = new Date(zuletzt.at);
+                return isNaN(d.getTime())
+                  ? '. '
+                  : ` (${d.toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}). `;
+              })()}
+              {t('Deine Angaben stehen unten — du kannst sie ändern und noch einmal absenden.',
+                'Your answers are below — you can change them and send again.')}
+            </span>
+          </div>
+        )}
 
         <div className="dex-ui-section">
           <div className="dex-ui-section-title">{t('Was lief gut?', 'What went well?')}</div>

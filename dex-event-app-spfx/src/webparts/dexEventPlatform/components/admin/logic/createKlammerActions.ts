@@ -13,7 +13,7 @@ import { buildEmailFromTemplate, promotionEmail } from '../../../services/EmailT
 import { buildProgramHtml } from '../../../utils/programPlaceholder';
 import { invalidateInactiveAccountCache } from '../../../utils/accountCheckCache';
 import { isEventOver } from '../../../utils/eventFormat';
-import { withParentTitleSubject } from '../../../utils/mailSubject';
+import { withParentTitleSubject, withPromotionSubject } from '../../../utils/mailSubject';
 
 export interface CreateKlammerActionsCtx {
   assignAssistRow: ConsolidatedRow;
@@ -646,7 +646,11 @@ export function createKlammerActions(ctx: CreateKlammerActionsCtx): CreateKlamme
                 if (spTpl) emailData = buildEmailFromTemplate(spTpl, promoteVars);
                 else emailData = promotionEmail(promotedFirstName, child.title);
                 await eventServiceRef.queueEmail(
-                  withParentTitleSubject(emailData.subject, selectedEvent && selectedEvent.subEventCalendar ? selectedEvent : undefined),
+                  // v31.31: siehe useCancelPipeline.
+                  withPromotionSubject(
+                    withParentTitleSubject(emailData.subject, selectedEvent && selectedEvent.subEventCalendar ? selectedEvent : undefined),
+                    lang !== 'EN',
+                  ),
                   promoted.email, promoted.name || '', emailData.body,
                   'Nachruecken', child.title, child.id
                 );

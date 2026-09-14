@@ -128,6 +128,11 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
           _b2runTodo, _b2runTodoDone,
           // v31.17: Wartelisten-Platzhalter — eigener State (s. waitlistBlocker).
           _waitlistBlocker,
+          // v31.31: Organizer-Feedback je Person. Entsteht auf der
+          // Feedback-Seite, nicht im Assistenten — also strippen UND in
+          // `hotelCarryConfig` mittragen, sonst loescht der naechste Save die
+          // Wiedervorlage (dieselbe Mechanik wie _shirtStock).
+          _feedback,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -146,7 +151,7 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
         void _hotels; void _hotelStays; void _hotelVisible; void _hotelRules;
         void _commBundledMail; void _commBundledOutlook; void _commBundledQr;
         void _commShared; void _agendaCheckIn; void _agendaTerm; void _shirtStock;
-        void _b2runTodo; void _b2runTodoDone; void _waitlistBlocker;
+        void _b2runTodo; void _b2runTodoDone; void _waitlistBlocker; void _feedback;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
     })() : {}

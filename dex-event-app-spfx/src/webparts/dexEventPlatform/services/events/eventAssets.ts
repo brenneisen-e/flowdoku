@@ -144,6 +144,33 @@ export async function uploadEventOrigImageAsAttachment(svc: EventService, eventI
   return '';
 }
 
+/**
+ * v31.31: Das rohe `EmailTemplateOverrides`-JSON eines Events FRISCH lesen.
+ *
+ * Nötig, wo ein Piggyback-Wert eine Sammlung mehrerer Personen ist (das
+ * Feedback je Organizer): `patchEventOverridesValue` setzt genau EINEN
+ * Schlüssel, also muss der Aufrufer die Sammlung vorher zusammenführen — und
+ * zwar mit dem Stand vom SERVER. Der Stand aus dem `EventContext` ist beim
+ * Absenden schon Minuten alt; hätte inzwischen ein zweiter Organizer
+ * geantwortet, würde seine Zeile stillschweigend überschrieben.
+ *
+ * Ein Lesefehler liefert `null` — ausdrücklich nicht `''`. „Nicht lesbar" und
+ * „leer" sind zwei verschiedene Aussagen, und der Aufrufer muss die erste
+ * anders behandeln (CLAUDE.md: ein Lesefehler ist keine Null).
+ */
+export async function getEventOverridesRaw(svc: EventService, eventId: number): Promise<string | null> {
+  try {
+    const resp = await svc._sp.get(
+      `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})?$select=EmailTemplateOverrides`,
+      SPHttpClient.configurations.v1,
+      { headers: { 'Accept': 'application/json;odata=nometadata' } },
+    );
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return String(data.EmailTemplateOverrides || data.d?.EmailTemplateOverrides || '');
+  } catch { return null; }
+}
+
 /** v28.11: EINEN Schlüssel im EmailTemplateOverrides-JSON eines Events
  *  patchen (read-modify-write). Leerer Wert entfernt den Schlüssel.
  *  Nötig für Werte, die erst NACH dem Item-Save bekannt sind (z.B. die

@@ -11,7 +11,7 @@ import { eventHeaderImageOpts } from '../../utils/mailHeaderImage';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../../types';
 import { EventService } from '../../services/EventService';
-import { wrapTemplate } from '../../services/EmailTemplates';
+import { buildMailButton, wrapTemplate } from '../../services/EmailTemplates';
 import { isEventOver } from '../../utils/eventFormat';
 import { RELEASE_NOTES, splitReleaseNote } from '../../data/releaseNotes';
 
@@ -105,15 +105,12 @@ export function makeAutoMailActions(deps: AutoMailDeps) {
         const feedbackUrl = appUrl
           ? `${appUrl}?env=WebView#action=feedback&e=${encodeURIComponent(String(ev.id))}`
           : '';
+        // v31.31: Der Knopf kommt aus `buildMailButton` — eine Quelle für
+        // beide Mails. Vorher stand er hier einmalig und rendert zu hoch und
+        // nicht mittig (Nutzer-Bild 14.09.2026); der Grund steht dort.
         const feedbackBlock = feedbackUrl ? `
           <p style="margin:0 0 10px;">Und eine Bitte: <strong>Wie lief es für euch mit DEX?</strong> Zwei Minuten, überwiegend zum Anklicken — das hilft uns sehr bei dem, was wir als Nächstes bauen.</p>
-          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 18px;">
-            <tr>
-              <td bgcolor="#86bc25" style="border-radius:8px;padding:14px 22px;">
-                <a href="${feedbackUrl}" style="color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;display:inline-block;">Feedback geben &rarr;</a>
-              </td>
-            </tr>
-          </table>` : '';
+          ${buildMailButton(feedbackUrl, 'Feedback geben &rarr;')}` : '';
         const inner = `
           <p style="margin:0 0 12px;">Hallo zusammen,</p>
           <p style="margin:0 0 12px;">wir hoffen, euer Event <strong>&bdquo;${ev.title}&ldquo;</strong> ist gut verlaufen und alle hatten eine schöne Zeit!</p>

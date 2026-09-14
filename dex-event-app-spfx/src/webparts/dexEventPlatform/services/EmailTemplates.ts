@@ -191,6 +191,36 @@ ${buildHeadingsHtml(headingColor, heading, subheading, hSize, opts)}
 </html>`;
 }
 
+/**
+ * Ein Knopf in einer Mail — an EINER Stelle gebaut (v31.31).
+ *
+ * Der Feedback-Knopf der Nachbereitungs-Mail stand vorher einmalig in
+ * `autoMails.ts` und wurde beim Nutzer zu hoch und nicht mittig gerendert
+ * (Bild 14.09.2026). Ursache war die geerbte `line-height:1.6` der Body-Zelle:
+ * Sie gilt auch fuer die Zeilenbox des Knopf-Textes, dazu kam der Unterlaengen-
+ * Abstand des `display:inline-block`. Aus 20 px Text plus 28 px Innenabstand
+ * wurden so ueber 60 px Hoehe, und der Text sass oben statt in der Mitte.
+ *
+ * Deshalb hier: Innenabstand auf der ZELLE (die Word-Engine von Outlook kennt
+ * `display:inline-block` nicht, ein gestyltes `<a>` waere dort nur auf dem Text
+ * klickbar), `line-height` auf Zelle UND Link ausdruecklich gesetzt, dazu
+ * `mso-line-height-rule:exactly`, damit Outlook sie nicht aufrundet. Der
+ * Abstand nach oben und unten sind eigene Zeilen: `margin` auf einer `<table>`
+ * ignoriert Outlook, und genau das liess den Folgeabsatz am Knopf kleben.
+ */
+export function buildMailButton(href: string, label: string, farbe: string = GREEN): string {
+  if (!href) return '';
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+<tr><td height="6" style="height:6px;font-size:0;line-height:0;">&nbsp;</td></tr>
+<tr>
+<td align="center" bgcolor="${farbe}" style="border-radius:8px;padding:13px 26px;line-height:20px;mso-line-height-rule:exactly;">
+  <a href="${href}" style="font-family:Aptos,Arial,Helvetica,sans-serif;font-size:15px;line-height:20px;mso-line-height-rule:exactly;font-weight:700;color:#ffffff;text-decoration:none;">${label}</a>
+</td>
+</tr>
+<tr><td height="22" style="height:22px;font-size:0;line-height:0;">&nbsp;</td></tr>
+</table>`;
+}
+
 export function wrapTemplate(headingColor: string, heading: string, subheading: string, bodyHtml: string, headingFontSize?: string, opts?: WrapHeadingOpts): string {
   // v18.19: optionale Überschrift-Größe (z.B. '32px'); Default 26px.
   // v18.22: opts = optionale Fett/Kursiv/Farb-/Größen-Formatierung der Headings.
