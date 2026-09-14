@@ -12,6 +12,8 @@ import { formatOrganizerList } from '../../../context/EventContext';
 import { buildOutlookBody, eventCreatedEmail, getCachedOrbBase64, replacePlaceholders } from '../../../services/EmailTemplates';
 import { BundledComm, bundledCommConfig, commSharedConfig } from '../../../utils/bundledComm';
 import { EventService } from '../../../services/EventService';
+// v31.37: „Fehlende Teilnehmer mit einladen" aus dem Speichern-Dialog.
+import { runOutlookInviteBackfill } from '../../admin/logic/outlookInviteBackfill';
 import { compressImage } from '../../../utils/imageCompress';
 import { AgendaItem, DeloitteEvent, EventType } from '../../../types';
 import { CustomFieldInput } from '../../wizard/customFieldInput';
@@ -123,6 +125,8 @@ export interface WizardSubmitCtx {
   outlookTeamsLink: () => string;
   pendingOutlookDirtyWriteRef: React.MutableRefObject<boolean>;
   pendingOutlookDirtyWriteRefs: React.MutableRefObject<Record<string, boolean>>;
+  /** v31.37: Termine, fuer die fehlende Teilnehmer nachtraeglich eingeladen werden. */
+  pendingOutlookInviteForEventsRef: React.MutableRefObject<string[]>;
   pendingOutlookUpdateForSubEventsRef: React.MutableRefObject<string[]>;
   pendingOutlookUpdateForTopRef: React.MutableRefObject<boolean>;
   pendingSuccessDispatchRef: React.MutableRefObject<{ title: string; eventId: string; type: 'create' | 'update'; }>;
@@ -198,7 +202,7 @@ export interface WizardSubmitCtx {
 }
 
 export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
-  const { activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, agenda, allDay, allowAttendeeUpload, askSalutation, askTeamName, assistantsCanSee, attendeeUploadHint, attendeeUploadLabel, audience, berlinLocalToUtcIso, bilingualFields, billingPiggyback, bundledComm, commShared, childEventsOf, childGender, childTermPlural, childTermSingular, computeFormSnapshot, confirmDialog, confirmDialogEnabled, confirmDialogMode, confirmDialogText, contactEmail, contactInfo, contactName, contactOrganizerEmail, coOrganizerEmails, coOrganizerNames, createdEventIdRef, createEvent, currentUser, customFields, deadlineToEndOfDayIso, description, documents, DRAFT_KEY, durchstarterCapacity, durchstarterRequiresProof, durchstarterStartblock, editEvent, effTeamsLink, endDate, eventImageUrl, eventType, excludedUsers, filterMode, funstarterCapacity, funstarterStartblock, getGroupMembers, getLastEventUpdateError, headerImageLayoutConfig, headerLayoutFor, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly, imageBanner, imageDisplay, imageFile, imageOrigAspect, imageOrigFile, initialDocumentNames, initialFormSnapshotRef, initialOrgGetsSubInvitesRef, initialSubEventDbIds, isB2runTemplate, isDe, isEditMode, isFictive, klammerDeadline, lastDeregisterDate, lastDraftJsonRef, location, locationFilter, mainCommDisabledAck, mainEventLabel, mainEventLabelMode, maxParticipants, noCancelAfterDeadline, noDescription, notifyAdminsExternalAudienceAccess, notifyNewCoOrganizers, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, onlineMeetingMode, organizer, organizerDisplayLarge, organizerEmails, orgGetsSubInvites, outlookEndOverride, outlookLocationOverride, outlookStartOverride, outlookTeamsLink, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs, pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, pendingSuccessDispatchRef, persistSubEventsForParent, previewBeforeActive, qrScannerEmails, qrScannerNames, quiz, quizClusterSize, refreshEventDocuments, refreshEvents, registrationDeadline, registrationLanguage, regRuleEnabled, requestCoOrganizerApprovals, requireSubEventSelection, resolveTopLevelCommState, sanitizeOrganizerPairs, selectedEventId, setDraftSavedAt, setError, setImageUploadError, setIsSubmitting, setNavigationGuard, setPendingDraft, setPendingSuccessDispatch, setProgress, setProgressLabel, setRemovedSavedSubs, setShowSummaryModal, showAlert, showAsFree, shrinkLogoB64, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitLabelA, splitLabelB, splitSectionTitle, splitSharedWaitlist, startDate, subDeadlineRulePiggyback, subEventCalendar, subEventOpenRulePiggyback, agendaCheckInPiggyback, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn, subEventsRef, teamJoinRequiresApproval, teamMembersCannotCreate, teamOpenSlotsVisible, teamPartialAllowed, teamRegistrationEnabled, teamSize, teamTermPlural, teamTermSingular, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, updateEvent, userCancelAllowed, useSplitCapacities, visAllSubsPiggyback, waitlistBlocker, waitlistEnabled, wizardImgAspect } = ctx;
+  const { activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, agenda, allDay, allowAttendeeUpload, askSalutation, askTeamName, assistantsCanSee, attendeeUploadHint, attendeeUploadLabel, audience, berlinLocalToUtcIso, bilingualFields, billingPiggyback, bundledComm, commShared, childEventsOf, childGender, childTermPlural, childTermSingular, computeFormSnapshot, confirmDialog, confirmDialogEnabled, confirmDialogMode, confirmDialogText, contactEmail, contactInfo, contactName, contactOrganizerEmail, coOrganizerEmails, coOrganizerNames, createdEventIdRef, createEvent, currentUser, customFields, deadlineToEndOfDayIso, description, documents, DRAFT_KEY, durchstarterCapacity, durchstarterRequiresProof, durchstarterStartblock, editEvent, effTeamsLink, endDate, eventImageUrl, eventType, excludedUsers, filterMode, funstarterCapacity, funstarterStartblock, getGroupMembers, getLastEventUpdateError, headerImageLayoutConfig, headerLayoutFor, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly, imageBanner, imageDisplay, imageFile, imageOrigAspect, imageOrigFile, initialDocumentNames, initialFormSnapshotRef, initialOrgGetsSubInvitesRef, initialSubEventDbIds, isB2runTemplate, isDe, isEditMode, isFictive, klammerDeadline, lastDeregisterDate, lastDraftJsonRef, location, locationFilter, mainCommDisabledAck, mainEventLabel, mainEventLabelMode, maxParticipants, noCancelAfterDeadline, noDescription, notifyAdminsExternalAudienceAccess, notifyNewCoOrganizers, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, onlineMeetingMode, organizer, organizerDisplayLarge, organizerEmails, orgGetsSubInvites, outlookEndOverride, outlookLocationOverride, outlookStartOverride, outlookTeamsLink, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs, pendingOutlookInviteForEventsRef, pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, pendingSuccessDispatchRef, persistSubEventsForParent, previewBeforeActive, qrScannerEmails, qrScannerNames, quiz, quizClusterSize, refreshEventDocuments, refreshEvents, registrationDeadline, registrationLanguage, regRuleEnabled, requestCoOrganizerApprovals, requireSubEventSelection, resolveTopLevelCommState, sanitizeOrganizerPairs, selectedEventId, setDraftSavedAt, setError, setImageUploadError, setIsSubmitting, setNavigationGuard, setPendingDraft, setPendingSuccessDispatch, setProgress, setProgressLabel, setRemovedSavedSubs, setShowSummaryModal, showAlert, showAsFree, shrinkLogoB64, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitLabelA, splitLabelB, splitSectionTitle, splitSharedWaitlist, startDate, subDeadlineRulePiggyback, subEventCalendar, subEventOpenRulePiggyback, agendaCheckInPiggyback, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn, subEventsRef, teamJoinRequiresApproval, teamMembersCannotCreate, teamOpenSlotsVisible, teamPartialAllowed, teamRegistrationEnabled, teamSize, teamTermPlural, teamTermSingular, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, updateEvent, userCancelAllowed, useSplitCapacities, visAllSubsPiggyback, waitlistBlocker, waitlistEnabled, wizardImgAspect } = ctx;
 
       /*
        * v31.18: Das Wartelisten-Schattenevent wird HIER angelegt, nicht beim
@@ -1298,6 +1302,56 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
               }
             }
           } catch { /* Sub-Outlook-Updates optional */ }
+        }
+        /*
+         * v31.37: „Fehlende Teilnehmer mit einladen" aus dem Speichern-Dialog.
+         *
+         * Ein Outlook-Update erreicht nur, wer auf dem Termin STEHT. Wer sich
+         * angemeldet hat, waehrend der Outlook-Versand aus war, steht dort nie
+         * — fuer den aendert ein Update nichts, weil er nichts hat. Genau das
+         * war die Nutzer-Ansage vom 14.09.2026: die geaenderten Zeiten sollen
+         * bei den Bestehenden ankommen UND die Fehlenden sollen den Termin
+         * bekommen.
+         *
+         * Es laeuft NACH den Updates: Erst steht der Termin auf dem neuen
+         * Stand, dann wird eingeladen — sonst bekaeme der Nachzuegler eine
+         * Einladung mit dem alten Inhalt und gleich darauf die Aenderung.
+         */
+        if (pendingOutlookInviteForEventsRef.current.length > 0) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const inviteCtx = (window as any).__dexSpfxContext;
+            if (inviteCtx) {
+              const inviteSvc = new EventService(inviteCtx);
+              const ids = pendingOutlookInviteForEventsRef.current.slice();
+              for (let i = 0; i < ids.length; i++) {
+                const id = ids[i];
+                const ev = id === String(selectedEventId)
+                  ? editEvent
+                  : childEventsOf(editEvent?.id || '').find(c => c.id === id);
+                if (!ev || !ev.subsiteUrl) continue;
+                tickOutlook(isDe
+                  ? `Fehlende Teilnehmer werden eingeladen… (${i + 1}/${ids.length}: ${ev.title || 'Termin'})`
+                  : `Inviting missing attendees… (${i + 1}/${ids.length}: ${ev.title || 'date'})`);
+                // `onHttpError` ist hier Pflicht: Ohne ihn waere eine nicht
+                // lesbare Liste ein leeres Array und damit „niemand fehlt".
+                let leseFehler = 0;
+                const erg = await runOutlookInviteBackfill({
+                  svc: inviteSvc,
+                  event: ev,
+                  leseAnmeldungen: async () => {
+                    const rows = await inviteSvc.getAllRegistrations(ev.subsiteUrl || '', st => { leseFehler = st; });
+                    return leseFehler > 0 ? null : rows;
+                  },
+                  frage: async () => true, // im Dialog bereits angehakt
+                });
+                if (erg.status !== 'fertig') {
+                  console.warn('[DEX][v31.37] Nachtraegliche Einladungen uebersprungen:', ev.title, erg.status);
+                }
+              }
+            }
+          } catch (err) { console.warn('[DEX][v31.37] Nachtraegliche Einladungen fehlgeschlagen:', err); }
+          pendingOutlookInviteForEventsRef.current = [];
         }
         // v29.56: Hat der Organizer die Einladungs-Entscheidung umgestellt,
         // reicht das neue Flag NICHT — es steuert nur `requiredAttendees` beim

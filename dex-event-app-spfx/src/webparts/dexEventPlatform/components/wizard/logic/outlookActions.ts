@@ -220,9 +220,12 @@ export interface ConfirmOutlookSaveCtx {
   outlookConfirmChecks: Record<string, boolean>;
   /** v31.34: Eintraege, die der Organizer als „braucht kein Update" abgehakt hat. */
   outlookConfirmDismissed: Record<string, boolean>;
+  /** v31.37: Termine, fuer die die fehlenden Teilnehmer mit eingeladen werden. */
+  outlookConfirmInvite: Record<string, boolean>;
   outlookConfirmItems: OutlookConfirmItem[];
   pendingOutlookDirtyWriteRef: React.MutableRefObject<boolean>;
   pendingOutlookDirtyWriteRefs: React.MutableRefObject<Record<string, boolean>>;
+  pendingOutlookInviteForEventsRef: React.MutableRefObject<string[]>;
   pendingOutlookRecreateForSubEventsRef: React.MutableRefObject<string[]>;
   pendingOutlookUpdateForSubEventsRef: React.MutableRefObject<string[]>;
   pendingOutlookUpdateForTopRef: React.MutableRefObject<boolean>;
@@ -231,7 +234,7 @@ export interface ConfirmOutlookSaveCtx {
 }
 
 export function confirmOutlookSaveImpl(ctx: ConfirmOutlookSaveCtx): void {
-  const { editEvent, handleSubmit, outlookConfirmChecks, outlookConfirmDismissed, outlookConfirmItems, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs, pendingOutlookRecreateForSubEventsRef, pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, setOutlookConfirmOpen, setTriggerOutlookUpdate } = ctx;
+  const { editEvent, handleSubmit, outlookConfirmChecks, outlookConfirmDismissed, outlookConfirmInvite, outlookConfirmItems, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs, pendingOutlookInviteForEventsRef, pendingOutlookRecreateForSubEventsRef, pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, setOutlookConfirmOpen, setTriggerOutlookUpdate } = ctx;
     setOutlookConfirmOpen(false);
     const topId = editEvent ? editEvent.id : '';
     const topItem = outlookConfirmItems.find(it => it.kind === 'top');
@@ -251,6 +254,14 @@ export function confirmOutlookSaveImpl(ctx: ConfirmOutlookSaveCtx): void {
     pendingOutlookUpdateForTopRef.current = topChecked;
     pendingOutlookUpdateForSubEventsRef.current = normalUpdateSubIds;
     pendingOutlookRecreateForSubEventsRef.current = recreateSubIds;
+    // v31.37: Termine, fuer die zusaetzlich die fehlenden Teilnehmer
+    // eingeladen werden. Nur dort sinnvoll, wo ein Termin existiert — bei
+    // `noOutlookYet` entsteht er erst durch den Recreate, und die Anmeldungen
+    // der bestehenden Liste stehen danach ohnehin nicht darauf; deshalb ist
+    // der Haken dort im Dialog gar nicht erst zu sehen.
+    pendingOutlookInviteForEventsRef.current = outlookConfirmItems
+      .filter(it => !it.noOutlookYet && !!outlookConfirmInvite[it.eventId])
+      .map(it => it.eventId);
     // Pro Event-ID den OutlookDirty-Schreibwert vormerken.
     // v11.69: noOutlookYet-Items werden — egal ob angehakt oder nicht — NICHT
     // dirty markiert. Bei angehakt erfolgt ein Recreate (neues Item hat von

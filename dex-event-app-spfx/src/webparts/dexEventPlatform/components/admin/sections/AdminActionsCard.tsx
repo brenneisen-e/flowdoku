@@ -18,6 +18,8 @@ import { isB2RunKoelnTitle } from '../../../data/b2runKoeln';
 import { EventService, REG_LIST_NAME, SPRegistration } from '../../../services/EventService';
 import { DeloitteEvent } from '../../../types';
 import { SharePointService } from '../../../services/SharePointService';
+// v31.36: Outlook-Einladungen nachziehen — Regeln und Begruendung dort.
+import { runOutlookInviteBackfill } from '../logic/outlookInviteBackfill';
 
 export interface AdminActionsCardProps {
   adminEvents: DeloitteEvent[];
@@ -128,6 +130,102 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
   const { adminEvents, allEvents, childEventsOf, confirmDialog, copiedDeepLink, copiedEmails, detectOverbookResult, eventServiceRef, fixColumnsResult, fixFieldsResult, isAdmin, isCheckingDeclines, isDe, isDetectingOverbook, isFixingColumns, isFixingFields, isOrganizerFor, isPromoting, isRefreshingProfiles, isReorderingIDs, isRepairingAccess, isRepairingNames, isRepairingOrganizers, isRepairingPerms, isResettingCounter, isSendingQR, isSplitCapacity, isSyncingRegistry, navigate, openChangeLogForEvent, openCommsModal, openInviteModal, openMassmailPicker, promoteResult, qrSentCount, refreshEvents, refreshProfilesResult, registrations, reloadRegistrations, reorderResult, repairAccessResult, repairNamesResult, repairOrganizersResult, repairPermsResult, resetCounterResult, runIdReorder, runManualPromote, searchUsers, selectedEvent, setAccessFixModal, setB2runTodoOpen, setBibImportOpen, setBillingPanelOpen, setCheckInHubOpen, setCheckInHubStep, setCopiedDeepLink, setCopiedEmails, setDeclineCopied, setDeclineResult, setDetectOverbookResult, setExcelAudience, setExcelTargetModal, setFixColumnsResult, setFixFieldsResult, setIsCheckingDeclines, setIsDetectingOverbook, setIsFixingColumns, setIsFixingFields, setIsRefreshingProfiles, setIsRepairingAccess, setIsRepairingNames, setIsRepairingOrganizers, setIsRepairingPerms, setIsResettingCounter, setIsSyncingRegistry, setNameFixModal, setRefreshProfilesResult, setRepairAccessResult, setRepairNamesResult, setRepairOrganizersResult, setRepairPermsResult, setResetCounterResult, setQrBackfillOpen, setShirtSizeOpen, setShowDeclineModal, setShowExportMenu, setSubRegReloadTick, setSyncRegistryResult, shirtFieldExists, showAlert, showExportMenu, siteUrl, spServiceRef, syncRegistryResult, t, updateEvent } = p;
 
   const { setCopyToAgendaOpen, setAssignBibsOpen } = p;
+
+  /*
+   * v31.36: „Outlook-Einladungen nachziehen". Zustand lokal — er gehört zu
+   * genau dieser Kachel, und die AdminPage trägt schon zwei Dutzend
+   * Ergebnis-Strings anderer Aktionen.
+   */
+  const [outlookBackfillBusy, setOutlookBackfillBusy] = React.useState(false);
+  const [outlookBackfillResult, setOutlookBackfillResult] = React.useState('');
+  const runOutlookBackfill = async (): Promise<void> => {
+    if (outlookBackfillBusy || !selectedEvent) return;
+    setOutlookBackfillBusy(true);
+    setOutlookBackfillResult(isDe ? 'Teilnehmerliste wird gelesen …' : 'Reading the participant list …');
+    try {
+      const erg = await runOutlookInviteBackfill({
+        svc: eventServiceRef,
+        event: selectedEvent,
+        leseAnmeldungen: reloadRegistrations,
+        onProgress: (done, total) => setOutlookBackfillResult(isDe
+          ? `Einladungen werden eingereiht … ${done} von ${total}`
+          : `Queueing invites … ${done} of ${total}`),
+        frage: async (anzahl, extern) => confirmDialog(
+          isDe
+            ? <>
+              <p style={{ margin: '0 0 10px' }}>
+                <strong>{anzahl}</strong> {anzahl === 1 ? 'Person bekommt' : 'Personen bekommen'} eine Outlook-Einladung
+                zum Termin <strong>&bdquo;{selectedEvent.title}&ldquo;</strong>.
+              </p>
+              <p style={{ margin: '0 0 10px' }}>
+                Wer den Termin schon im Kalender hat, sieht ihn unverändert — es entsteht kein zweiter Eintrag.
+              </p>
+              {extern > 0 && (
+                <p style={{ margin: 0 }}>
+                  {extern} {extern === 1 ? 'externe Adresse wird' : 'externe Adressen werden'} übersprungen:
+                  Outlook lädt aus DEX heraus nur Deloitte-Adressen ein.
+                </p>
+              )}
+            </>
+            : <>
+              <p style={{ margin: '0 0 10px' }}>
+                <strong>{anzahl}</strong> {anzahl === 1 ? 'person gets' : 'people get'} an Outlook invite
+                for <strong>&ldquo;{selectedEvent.title}&rdquo;</strong>.
+              </p>
+              <p style={{ margin: '0 0 10px' }}>
+                Anyone who already has the appointment sees no change — no second entry is created.
+              </p>
+              {extern > 0 && (
+                <p style={{ margin: 0 }}>
+                  {extern} external {extern === 1 ? 'address is' : 'addresses are'} skipped:
+                  from DEX, Outlook only invites Deloitte addresses.
+                </p>
+              )}
+            </>,
+          { confirmLabel: isDe ? `${anzahl} einladen` : `Invite ${anzahl}` },
+        ),
+      });
+      // Jeder Ausgang bekommt seinen eigenen Satz — „hat nicht geklappt" ohne
+      // Grund schickt den Organizer auf die falsche Suche (CLAUDE.md:
+      // Guard-Meldungen müssen den tatsächlichen Grund nennen).
+      const texte: Record<string, string> = {
+        'outlook-aus': isDe
+          ? 'Für diesen Termin ist der Outlook-Versand abgeschaltet. Stell ihn im Assistenten (Schritt Kommunikation) auf „Mail + Outlook-Termin" oder „Nur Outlook-Termin" und speichere — danach geht das hier.'
+          : 'Outlook dispatch is switched off for this date. Set it to „Mail + Outlook" or „Outlook only" in the wizard (communication step) and save — then this works.',
+        'kein-termin': isDe
+          ? 'Für diesen Termin gibt es noch gar keinen Outlook-Kalendereintrag — es gibt also nichts, wozu man einladen könnte. Er entsteht beim Speichern im Assistenten; beim Speichern fragt DEX danach.'
+          : 'There is no Outlook calendar entry for this date yet — so there is nothing to invite anyone to. It is created when you save in the wizard, which asks you about it.',
+        'nicht-lesbar': isDe
+          ? 'Die Teilnehmerliste war gerade nicht lesbar — es wurde NICHTS verschickt. Bitte gleich noch einmal versuchen.'
+          : 'The participant list could not be read — NOTHING was sent. Please try again in a moment.',
+        'niemand': isDe
+          ? 'Keine aktive Anmeldung mit Deloitte-Adresse — es gibt niemanden einzuladen.'
+          : 'No active registration with a Deloitte address — there is nobody to invite.',
+        'abgebrochen': isDe ? 'Abgebrochen — es wurde nichts verschickt.' : 'Cancelled — nothing was sent.',
+      };
+      if (erg.status !== 'fertig') {
+        setOutlookBackfillResult(texte[erg.status] || '');
+        return;
+      }
+      const teile: string[] = [];
+      teile.push(isDe
+        ? `${erg.eingeladen} ${erg.eingeladen === 1 ? 'Einladung steht' : 'Einladungen stehen'} in der Warteschlange — die Kalender füllen sich in den nächsten Minuten.`
+        : `${erg.eingeladen} ${erg.eingeladen === 1 ? 'invite is' : 'invites are'} queued — the calendars fill up over the next few minutes.`);
+      if (erg.extern > 0) teile.push(isDe
+        ? `${erg.extern} externe ${erg.extern === 1 ? 'Adresse' : 'Adressen'} übersprungen (Outlook lädt von hier aus nur Deloitte-Adressen ein).`
+        : `${erg.extern} external ${erg.extern === 1 ? 'address' : 'addresses'} skipped (from here Outlook only invites Deloitte addresses).`);
+      if (erg.fehler > 0) teile.push(isDe
+        ? `${erg.fehler} konnten nicht eingereiht werden — bitte die Aktion gleich noch einmal ausführen, sie wiederholt nur die Fehlenden nicht, aber doppelte Einladungen schaden nicht.`
+        : `${erg.fehler} could not be queued — please run the action again; it does not retry only the missing ones, but duplicate invites are harmless.`);
+      setOutlookBackfillResult(teile.join(' '));
+    } catch {
+      setOutlookBackfillResult(isDe
+        ? 'Das hat gerade nicht funktioniert. Bitte in einem Moment noch einmal versuchen.'
+        : 'That did not work just now. Please try again in a moment.');
+    } finally {
+      setOutlookBackfillBusy(false);
+    }
+  };
   // v31.3: Gesperrte Aktionen bleiben sichtbar — mit dem Grund in der
   // Folgezeile (Leitfaden 5a, Punkt 5). Fast alle Sperren haben dieselbe
   // Ursache: Das Event hat (noch) keine Teilnehmerliste. Der Grund steht VOR
@@ -290,6 +388,31 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                 : 'Shows all broadcast emails for this event (invitation, mass mail) with time and sender. Clicking a row opens the full mail body.'}
               badge="organizer"
               onClick={openCommsModal}
+            />
+
+            {/* v31.36: Outlook-Einladungen nachziehen. Schliesst die Luecke, die
+                der Nutzer am 14.09.2026 gefunden hat: Die Einladung entsteht bei
+                der ANMELDUNG, nicht beim Anlegen des Termins. Wer sich
+                angemeldet hat, waehrend die Kommunikation aus war, steht nie auf
+                dem Kalendereintrag — und es gab keinen Pfad, der das nachholt.
+                Warum eine eigene Aktion und nicht automatisch beim Umschalten:
+                Es verschickt echte Kalendereinladungen; das an einen Schalter im
+                Assistenten zu haengen hiesse, dass ein Klick unangekuendigt
+                hunderte Outlook-Mails ausloest. Die Regeln stehen in
+                `logic/outlookInviteBackfill.ts`. */}
+            <ActionTile
+              icon={<Send size={18} />}
+              category="mails"
+              title={isDe ? 'Outlook-Einladungen nachziehen' : 'Send missing Outlook invites'}
+              desc={isDe
+                ? 'Lädt alle aktiven Teilnehmer dieses Termins nachträglich zum bestehenden Outlook-Termin ein — für alle, die sich angemeldet haben, während der Outlook-Versand aus war. Du siehst die Anzahl vor dem Absenden; externe Adressen kann Outlook nicht einladen und werden benannt. Mehrfach klicken schadet nicht: Wer schon drauf steht, sieht den Termin unverändert.'
+                : 'Retroactively invites all active attendees of this date to the existing Outlook appointment — for everyone who registered while the Outlook dispatch was off. You see the count before sending; external addresses cannot be invited by Outlook and are named. Clicking twice is harmless: anyone already on it sees no change.'}
+              badge="organizer"
+              disabled={outlookBackfillBusy || !hasList}
+              busy={outlookBackfillBusy}
+              result={outlookBackfillResult}
+              resultIsError={outlookBackfillResult.indexOf('NICHTS') >= 0 || outlookBackfillResult.indexOf('NOTHING') >= 0}
+              onClick={() => { void runOutlookBackfill(); }}
             />
 
             {/* 3. E-Mail-Adressen kopieren */}

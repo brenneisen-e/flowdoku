@@ -142,12 +142,14 @@ export function detectOutlookRelevantChangesImpl(ctx: OutlookChangesCtx): { item
     // CalendarLink auf Erfolg, OutlookEventId bleibt leer. Wer beides
     // leer hat, hatte nie einen Outlook-Termin.
     const topHasOutlook = !!editEvent.outlookEventId || !!editEvent.calendarLink;
-    // v18.45 BUG-FIX: für das Hauptevent IMMER dessen Top-Level-DisableOutlook
-    // prüfen — nicht das rohe `disableOutlook` (das hält beim Speichern auf einem
-    // Sub-Event-Tab den Sub-Wert). Sonst wurde das Hauptevent fälschlich im
-    // Update-Modal gelistet, obwohl dort Outlook deaktiviert ist (z.B. Event mit
-    // Outlook nur auf Sub-Event-Ebene).
-    const topDisableOutlook = resolveTopLevelCommState().disableOutlook;
+    // v18.45/v18.50 hatten hier `topDisableOutlook` geprüft, damit das
+    // Hauptevent nicht gelistet wird, wenn Outlook dort abgeschaltet ist.
+    // v31.37 hat die Prüfung entfernt: Sie unterschied nicht zwischen „kein
+    // Termin vorhanden" (dann gibt es nichts zu aktualisieren) und „Termin
+    // vorhanden, aber keine neuen Einladungen mehr" (dann schon). Die erste
+    // Hälfte deckt `topHasOutlook` ab, und die war schon immer Bedingung —
+    // die Schalter-Prüfung war also nur für den zweiten Fall wirksam, und
+    // genau der soll gefragt werden.
     // v18.51: Im „Nur für Sub-Events"-Modus (subEventsOnlyMode) ist das
     // Hauptevent von der Teilnehmer-Anmeldung ausgenommen — niemand meldet sich
     // direkt fürs Hauptevent an. Ein Outlook-Update-Hinweis fürs Hauptevent ist
@@ -159,7 +161,9 @@ export function detectOutlookRelevantChangesImpl(ctx: OutlookChangesCtx): { item
     // (DTP Basics, 07.09.2026) stand genau in so einem Termin und bekam
     // deshalb nie ein Update angeboten. Existiert ein Termin, wird er
     // aktualisiert; existiert keiner, sperrt `topHasOutlook` ohnehin.
-    if (topChangedFields.length > 0 && !topDisableOutlook && topHasOutlook) {
+    // v31.37: Auch oben zählt der vorhandene Termin mehr als der Schalter —
+    // `topHasOutlook` war schon Bedingung, `!topDisableOutlook` fällt weg.
+    if (topChangedFields.length > 0 && topHasOutlook) {
       items.push({
         kind: 'top',
         eventId: editEvent.id,
@@ -241,7 +245,19 @@ export function detectOutlookRelevantChangesImpl(ctx: OutlookChangesCtx): { item
           titleMatch: (s.title || '') === initTitle,
         }));
       }
-      if (subChangedFields.length > 0 && !s.disableOutlook) {
+      // v31.37: Nicht mehr „Outlook aus = Frage unterdrücken", sondern
+      // „Outlook aus UND kein Termin vorhanden". Nutzer-Ansage 14.09.2026:
+      // „wenn man auf keine Kommunikation stellt und den Outlook-Termin für
+      // ein Sub-Event ändert und abspeichert, dann soll man trotzdem gefragt
+      // werden, ob man für die bestehenden Teilnehmer den Termin ändern soll."
+      //
+      // Der Punkt ist der Unterschied zwischen ZUKUNFT und BESTAND: Der
+      // Schalter regelt, ob NEUE Anmeldungen einen Termin bekommen. Über die
+      // Leute, die den Termin längst im Kalender haben, sagt er nichts — und
+      // für die ist eine geänderte Uhrzeit genau dann relevant, wenn niemand
+      // mehr neu eingeladen wird. Ohne Termin (`hasOutlookEvId` false) bleibt
+      // es unterdrückt: Da gäbe es nichts zu aktualisieren.
+      if (subChangedFields.length > 0 && (!s.disableOutlook || hasOutlookEvId)) {
         items.push({
           kind: 'sub',
           eventId: s.dbId,
@@ -269,7 +285,7 @@ export function detectOutlookRelevantChangesImpl(ctx: OutlookChangesCtx): { item
     // Update-Modal als „Frühere Änderung nicht synchronisiert" auf, obwohl
     // dort Outlook deaktiviert ist (Event mit Outlook nur auf Sub-Event-Ebene).
     // Gleiche Falle wie v18.45 im Changed-Fields-Pfad oben.
-    if (editEvent.outlookDirty && !topDisableOutlook
+    if (editEvent.outlookDirty
         && (editEvent.outlookEventId || editEvent.calendarLink)
         && !hasItemForEvent(editEvent.id)) {
       items.push({
@@ -282,7 +298,8 @@ export function detectOutlookRelevantChangesImpl(ctx: OutlookChangesCtx): { item
     // Sub-Events
     for (const s of subEventsRef.current) {
       if (!s.dbId) continue;
-      if (s.disableOutlook) continue;
+      // v31.37: dieselbe Regel wie oben — ein vorhandener Termin zählt mehr
+      // als der Schalter für künftige Anmeldungen.
       const hasOutlookEvId = !!s.initialOutlookEventId || !!s.initialCalendarLink;
       if (!hasOutlookEvId) continue;
       const childEvt = childEventsOf(editEvent.id).find(c => c.id === s.dbId);
