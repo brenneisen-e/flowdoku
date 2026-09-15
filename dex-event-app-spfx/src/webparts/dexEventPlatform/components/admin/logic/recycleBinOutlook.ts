@@ -303,6 +303,69 @@ export async function sucheKalender(svc: EventService, kind: DeloitteEvent): Pro
   }
 }
 
+/*
+ * v31.52: „Outlook-Verknüpfung anzeigen / ändern" — der direkte Blick auf
+ * die Spalte, ohne Papierkorb und ohne Kalender-Suche: Was steht in
+ * SharePoint als CalendarLink, und ein Feld, um ihn zu überschreiben.
+ * Nutzer-Ansage 15.09.2026: „eine Action, dass ich mir den aktuellen Link
+ * des Outlook-Events (gemäß SP) anzeigen lassen und mit einem Modal
+ * überschreiben kann."
+ */
+export interface OutlookVerknuepfung {
+  id: string;
+  title: string;
+  calendarLink: string;
+  outlookEventId: string;
+  disableOutlook: boolean;
+  modified: string;
+}
+
+/** Liest die Zeile frisch — nicht den Client-State, der kann Minuten alt sein. */
+export async function leseOutlookVerknuepfung(svc: EventService, id: string): Promise<OutlookVerknuepfung | null> {
+  const row = await svc.getEvent(Number(id));
+  if (!row) return null;
+  return {
+    id,
+    title: row.Title || '',
+    calendarLink: (row.CalendarLink || '').trim(),
+    outlookEventId: (row.OutlookEventId || '').trim(),
+    disableOutlook: !!row.DisableOutlook,
+    modified: row.Modified || '',
+  };
+}
+
+export type LinkPruefung =
+  | { status: 'gefunden'; subject: string; start: string; attendees: number; created: string }
+  | { status: 'nicht-gefunden' | 'kein-graph' | 'kein-zugriff' | 'fehler'; message?: string };
+
+/** Gibt es im Kalender der Shared Mailbox einen Termin mit dieser iCalUId? */
+export async function pruefeCalendarLink(svc: EventService, uid: string): Promise<LinkPruefung> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ctx = svc.context as any;
+  if (!ctx.msGraphClientFactory) return { status: 'kein-graph' };
+  try {
+    const client = await ctx.msGraphClientFactory.getClient('3');
+    const resp = await client.api(`/users/${NO_REPLY_MAILBOX}/events`)
+      .filter(`iCalUId eq '${uid.replace(/'/g, "''")}'`)
+      .select('id,subject,iCalUId,start,createdDateTime,attendees').top(1).get();
+    const ev = (resp?.value || [])[0];
+    if (!ev) return { status: 'nicht-gefunden' };
+    const startRaw = String(ev?.start?.dateTime || '');
+    return {
+      status: 'gefunden',
+      subject: String(ev.subject || ''),
+      start: startRaw ? (startRaw.replace(/\.\d+$/, '') + (/[zZ]$/.test(startRaw) ? '' : 'Z')) : '',
+      attendees: Array.isArray(ev.attendees) ? ev.attendees.length : 0,
+      created: String(ev.createdDateTime || ''),
+    };
+  } catch (err) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const status = (err as any)?.statusCode || (err as any)?.status;
+    if (status === 401 || status === 403) return { status: 'kein-zugriff' };
+    return { status: 'fehler', message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export interface VerknuepfErgebnis {
   status: 'fertig' | 'schon-verknuepft' | 'zeile-nicht-lesbar' | 'schreiben-fehlgeschlagen';
   /** Was mit dem bisher verknüpften Termin passiert ist (s. RueckholErgebnis.neuerTermin). */
@@ -314,7 +377,7 @@ export interface VerknuepfErgebnis {
  * Zeile. Erst der umkehrbare Schritt (MERGE), dann — auf Wunsch — die Absage
  * des bisher verknüpften Termins über die Queue.
  */
-export async function verknuepfeTermin(svc: EventService, event: DeloitteEvent, kind: DeloitteEvent, termin: KalenderTermin, bisherigenAbsagen: boolean): Promise<VerknuepfErgebnis> {
+export async function verknuepfeTermin(svc: EventService, event: DeloitteEvent, kind: DeloitteEvent, termin: Pick<KalenderTermin, 'iCalUId'> & Partial<KalenderTermin>, bisherigenAbsagen: boolean): Promise<VerknuepfErgebnis> {
   const zeile = await svc.getEvent(Number(kind.id));
   if (!zeile) return { status: 'zeile-nicht-lesbar', bisheriger: 'keiner' };
   const bisher = (zeile.CalendarLink || '').trim();
