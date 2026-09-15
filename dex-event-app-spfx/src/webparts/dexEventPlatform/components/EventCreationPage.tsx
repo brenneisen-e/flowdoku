@@ -87,7 +87,7 @@ registerLocale('de', de);
 
 
 export default function EventCreationPage(): React.ReactElement {
-  const { goBack, selectedEventId, currentPage, setNavigationGuard, navigate } = useNavigation();
+  const { goBack, selectedEventId, currentPage, setNavigationGuard, navigate, navIntent, clearIntent } = useNavigation();
   const { events, childEventsOf, ensureEventDocuments, refreshEventDocuments, createEvent, updateEvent, getLastEventUpdateError, deleteEvent, deleteEventItemOnly, refreshEvents, requestCoOrganizerApprovals, notifyNewCoOrganizers, notifyAdminsExternalAudienceAccess } = useEvents();
   const { currentUser } = useCurrentUser();
   // searchGroups + searchUsersByLocation werden seit v19.x ausschließlich im
@@ -2005,6 +2005,16 @@ export default function EventCreationPage(): React.ReactElement {
       const hasSubstance = !!data && ((typeof data.title === 'string' && data.title.trim().length > 0) || (Array.isArray(data.subEvents) && data.subEvents.length > 0));
       if (!data || !hasSubstance || !(age >= 0) || age > 14 * 86400000) {
         localStorage.removeItem(DRAFT_KEY);
+        return;
+      }
+      // v31.60: Über „Entwurf weiter bearbeiten" (Eventübersicht) geöffnet —
+      // der Entwurf wird sofort angewendet, keine Kachel mit Rückfrage mehr;
+      // die Entscheidung ist dort schon gefallen.
+      if (navIntent === 'resume-draft') {
+        applyDraftPayload(data);
+        lastDraftJsonRef.current = JSON.stringify(data);
+        setDraftSavedAt(parsed.savedAt || 0);
+        clearIntent();
         return;
       }
       setPendingDraft({ savedAt: parsed.savedAt || 0, data });
