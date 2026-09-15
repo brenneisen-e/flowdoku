@@ -105,7 +105,9 @@ export function fallbackFor(page: Page, eventId: string | null): { page: Page; e
 // v31.9.3: 'open-comms' kommt aus dem Deep-Link `?action=comms&event=<Nr>`
 // im Hinweis „Bereits versendete Infos zu diesem Event" und oeffnet in
 // „Meine Events" direkt die Nachrichten dieses Events.
-export type NavIntent = 'register-other' | 'auto-cancel' | 'open-comms' | undefined;
+// v31.60: 'resume-draft' öffnet die Event-Erstellung und wendet den
+// gespeicherten Entwurf sofort an (Knopf „Entwurf weiter bearbeiten").
+export type NavIntent = 'register-other' | 'auto-cancel' | 'open-comms' | 'resume-draft' | undefined;
 
 export interface NavigateOptions {
   /** v31.59: Seite ersetzen statt anhängen — für Rechte-Umleitungen und die

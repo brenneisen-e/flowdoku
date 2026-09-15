@@ -10,11 +10,14 @@
  * Vergangenes hinter einem Aufklapper.
  */
 import * as React from 'react';
-import { AlertCircle, Calendar, ChevronDown, Pin, Plus, Search, Trash2, X } from '../../Icons';
+import { AlertCircle, Calendar, ChevronDown, Pencil, Pin, Plus, Search, Trash2, X } from '../../Icons';
 import { cx, ensureDexUiStyles } from '../../dexUi';
 import { DeloitteEvent } from '../../../types';
 import { formatDate } from '../../../utils/eventStatus';
 import OrganizerList from '../../OrganizerList';
+import Modal from '../../Modal';
+// v31.60: Entwurf der Event-Erstellung — Knopf + Dialog neben „Neues Event".
+import { EventDraftInfo, clearEventDraft, readEventDraft } from '../../../utils/eventDraft';
 
 export interface EventOverviewScreenProps {
   adminEvents: DeloitteEvent[];
@@ -58,8 +61,86 @@ export const EventOverviewScreen: React.FC<EventOverviewScreenProps> = (p) => {
   // v31.3: Idempotent — die Übersicht steht ohne Modal und ohne WizardFormShell
   // auf der Seite; ohne diesen Aufruf fehlten ihr die dex-ui-Klassen.
   ensureDexUiStyles();
+  // v31.60: Liegt ein Entwurf? Beim Mount gelesen und bei jeder Rückkehr in
+  // den Tab (der Entwurf entsteht im Assistenten, also in einer anderen
+  // Ansicht) — nicht bei jedem Render, localStorage ist synchron.
+  const [draft, setDraft] = React.useState<EventDraftInfo | null>(() => readEventDraft());
+  const [draftOpen, setDraftOpen] = React.useState(false);
+  React.useEffect(() => {
+    const refresh = (): void => setDraft(readEventDraft());
+    refresh();
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, []);
+  const fmtSaved = (ts: number): string => {
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleString(locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
   return (
       <div className="page-container" role="main" style={{ maxWidth: 1200, marginLeft: 'auto', marginRight: 'auto' }}>
+        {/* v31.60: Entwurf-Dialog — eine Karte je Entwurf (heute genau einer;
+            die Liste ist die Form, die mehrere tragen kann). Klick öffnet den
+            Assistenten mit angewendetem Entwurf (`resume-draft`). */}
+        {draftOpen && (
+          <Modal
+            open={true}
+            onClose={() => setDraftOpen(false)}
+            maxWidth={520}
+            ariaLabel={isDe ? 'Entwurf weiter bearbeiten' : 'Continue draft'}
+            title={isDe ? 'Entwurf weiter bearbeiten' : 'Continue draft'}
+            subtitle={isDe
+              ? 'Dein zwischengespeicherter Stand aus der Event-Erstellung. Klick ihn an, um genau dort weiterzumachen.'
+              : 'Your saved state from event creation. Click it to continue right where you left off.'}
+            icon={<Pencil size={20} />}
+            footer={(
+              <button type="button" className="btn btn-secondary" onClick={() => setDraftOpen(false)}>
+                {isDe ? 'Schließen' : 'Close'}
+              </button>
+            )}
+          >
+            {!draft ? (
+              <div className="dex-ui-empty">{isDe ? 'Kein Entwurf mehr vorhanden.' : 'No draft left.'}</div>
+            ) : (
+              <div className="dex-ui-stack">
+                <button
+                  type="button"
+                  className="dex-ui-choice is-active"
+                  // display:block — die Kachel-Klasse ist eine Zeile (Symbol +
+                  // Text); hier stehen Titel und Angaben untereinander.
+                  style={{ textAlign: 'left', width: '100%', cursor: 'pointer', display: 'block' }}
+                  onClick={() => { setDraftOpen(false); navigate('create-event', undefined, 'resume-draft'); }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <strong style={{ fontSize: '0.95rem' }}>{draft.title || (isDe ? 'Ohne Titel' : 'Untitled')}</strong>
+                    <span className="dex-ui-pill dex-ui-pill--orange dex-ui-pill--sm">{isDe ? 'Entwurf' : 'Draft'}</span>
+                    <span className="dex-ui-pill dex-ui-pill--gray dex-ui-pill--sm">{isDe ? `Schritt ${draft.step + 1}` : `Step ${draft.step + 1}`}</span>
+                  </div>
+                  <div className="dex-ui-muted" style={{ marginTop: 4, fontSize: '0.82rem' }}>
+                    {isDe ? 'Zwischengespeichert' : 'Saved'} {fmtSaved(draft.savedAt)}
+                    {draft.startDate ? ` · ${isDe ? 'Beginn' : 'Start'} ${formatDate(draft.startDate)}` : ''}
+                    {draft.location ? ` · ${draft.location}` : ''}
+                    {draft.subEventCount > 0 ? ` · ${draft.subEventCount} ${isDe ? 'Sub-Events' : 'sub-events'}` : ''}
+                  </div>
+                </button>
+                <div className="dex-ui-muted" style={{ fontSize: '0.8rem' }}>
+                  {isDe
+                    ? 'Hochgeladene Bilder sind im Entwurf nicht enthalten. Entwürfe verfallen nach 14 Tagen.'
+                    : 'Uploaded images are not part of the draft. Drafts expire after 14 days.'}
+                </div>
+                <div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary dex-ui-btn-sm"
+                    onClick={() => { clearEventDraft(); setDraft(null); }}
+                  >
+                    <Trash2 size={14} /> {isDe ? 'Entwurf löschen' : 'Delete draft'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </Modal>
+        )}
         <style>{`@keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
         <div className="dex-ui-page-head">
           <div style={{ minWidth: 0 }}>
@@ -76,6 +157,12 @@ export const EventOverviewScreen: React.FC<EventOverviewScreenProps> = (p) => {
               Audit-Log und SharePoint-Liste sind Admin-Funktionen und leben jetzt
               zentral in der Admin-Kachel (admin-hub). */}
           <div className="dex-ui-page-head-actions">
+            {/* v31.60: Nur wenn ein Entwurf liegt — sonst wäre es ein Knopf ins Leere. */}
+            {draft && (
+              <button className="btn btn-secondary" onClick={() => setDraftOpen(true)} style={{ fontSize: '0.85rem' }}>
+                <Pencil size={16} /> {isDe ? 'Entwurf weiter bearbeiten' : 'Continue draft'}
+              </button>
+            )}
             <button className="btn btn-primary" onClick={() => navigate('create-event')} style={{ fontSize: '0.85rem' }}>
               <Plus size={16} /> {t('admin.newevent')}
             </button>

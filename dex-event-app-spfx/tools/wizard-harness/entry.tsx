@@ -22,6 +22,9 @@ import StartPage from '../../src/webparts/dexEventPlatform/components/StartPage'
 import EventListPage from '../../src/webparts/dexEventPlatform/components/EventListPage';
 import RegistrationPage from '../../src/webparts/dexEventPlatform/components/RegistrationPage';
 import MyEventsPage from '../../src/webparts/dexEventPlatform/components/MyEventsPage';
+// v31.60: Eventübersicht des Organizer Centers (reine Props-Komponente) —
+// für den Knopf „Entwurf weiter bearbeiten" und seinen Dialog.
+import { EventOverviewScreen } from '../../src/webparts/dexEventPlatform/components/admin/sections/EventOverviewScreen';
 import * as sample from './sampleData';
 
 const params = new URLSearchParams(window.location.search);
@@ -195,7 +198,7 @@ const roleCtx: any = proxy({
 const PAGE_OF: Record<string, string> = {
   wizard: mode === 'edit' ? 'edit-event' : 'create-event',
   landing: 'landing', start: 'start', list: 'register',
-  register: 'registration', myevents: 'my-events',
+  register: 'registration', myevents: 'my-events', overview: 'admin',
 };
 const SELECTED_OF: Record<string, string | null> = {
   wizard: mode === 'edit' ? '1' : null,
@@ -237,6 +240,24 @@ const PageComponent: React.FC = () => {
     case 'list': return <EventListPage />;
     case 'register': return <RegistrationPage />;
     case 'myevents': return <MyEventsPage />;
+    case 'overview': {
+      const tops = sample.topLevelEvents;
+      const noop = async (): Promise<void> => undefined;
+      const tOv = (k: string): string => ({ 'admin.newevent': 'Neues Event erstellen', 'admin.noevents': 'Noch keine Events', 'create.submit': 'Event anlegen' } as Record<string, string>)[k] || k;
+      return (
+        <EventOverviewScreen
+          adminEvents={tops} currentEvents={tops.filter(e => e.status === 'Active')} pastEvents={tops.filter(e => e.status !== 'Active')}
+          archiveBusyId="" archivedCount={0} archivedEventIds={new Set()} changeLogModal={null} dangerZoneModal={null}
+          deletingId="" draftCount={0} eventQuery="" setEventQuery={() => undefined} eventSortMode="date"
+          handleArchiveEvent={noop} handleSelectEvent={noop} handleUnarchiveEvent={noop}
+          hideDrafts={false} isAdmin={true} isDe={true} isDeleting={false} isEventsLoading={false}
+          isPastEvent={(e: any) => e.status !== 'Active'} locale="de" navigate={() => undefined}
+          setConfirmDeleteEvent={() => undefined} setConfirmDeleteText={() => undefined} setEventSortMode={() => undefined}
+          setHideDrafts={() => undefined} setShowArchivedEvents={() => undefined} setShowPastEvents={() => undefined}
+          showArchivedEvents={false} showPastEvents={false} t={tOv}
+        />
+      );
+    }
     default: return <EventCreationPage />;
   }
 };
