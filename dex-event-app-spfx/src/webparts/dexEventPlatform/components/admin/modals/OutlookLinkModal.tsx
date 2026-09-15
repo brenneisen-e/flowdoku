@@ -59,8 +59,15 @@ export const OutlookLinkModal: React.FC<OutlookLinkModalProps> = (p) => {
   React.useEffect(() => { if (zeileId) { void laden(zeileId); } }, [zeileId, laden]);
 
   const aktuell = stand && typeof stand === 'object' ? stand : null;
-  const neuTrim = neu.trim();
-  const kannUebernehmen = !!aktuell && siehtAusWieUid(neuTrim) && neuTrim !== aktuell.calendarLink && !busy;
+  // v31.53: Leerzeichen und Zeilenumbrüche fallen weg — die UID-Zeile einer
+  // .ics ist nach 75 Zeichen umgebrochen (Folgezeile mit führendem Blank),
+  // und genau so wird sie eingefügt. Der Nutzer sieht, dass bereinigt wurde.
+  const neuTrim = neu.replace(/\s+/g, '');
+  const bereinigt = neuTrim !== neu.trim() && neuTrim.length > 0;
+  const formatOk = siehtAusWieUid(neuTrim);
+  const hexartig = /^[0-9A-Fa-f]+$/.test(neuTrim);
+  const gleichWieHinterlegt = !!aktuell && neuTrim.length > 0 && neuTrim === aktuell.calendarLink;
+  const kannUebernehmen = !!aktuell && formatOk && !gleichWieHinterlegt && !busy;
 
   const kopieren = (): void => {
     if (!aktuell || !aktuell.calendarLink) return;
@@ -229,8 +236,24 @@ export const OutlookLinkModal: React.FC<OutlookLinkModalProps> = (p) => {
             placeholder={isDe ? 'iCalUId des Termins einfügen — z. B. aus „Outlook-Termin wiederfinden", der Run history von DEX_Outlook_Einladungen oder der UID-Zeile einer .ics-Datei' : 'Paste the appointment’s iCalUId — e.g. from “Recover the Outlook appointment”, the run history of DEX_Outlook_Einladungen or the UID line of an .ics file'}
             style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--dex-gray-300, #ccc)', fontFamily: 'monospace', fontSize: '0.8rem' }}
           />
-          {neuTrim && !siehtAusWieUid(neuTrim) && (
-            <div className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm"><span>{isDe ? 'Das sieht nicht nach einer iCalUId aus (zu kurz oder mit Leerzeichen).' : 'This does not look like an iCalUId (too short or contains spaces).'}</span></div>
+          {neuTrim.length > 0 && (
+            <div className="dex-ui-inline" style={{ gap: 6, flexWrap: 'wrap', fontSize: '0.8rem' }}>
+              <span className={`dex-ui-pill ${formatOk ? 'dex-ui-pill--green' : 'dex-ui-pill--red'}`}>
+                {formatOk
+                  ? (isDe ? `Format ok · ${neuTrim.length} Zeichen${hexartig ? ' · hexadezimal (Outlook)' : ''}` : `Format ok · ${neuTrim.length} chars${hexartig ? ' · hexadecimal (Outlook)' : ''}`)
+                  : (isDe ? `Format falsch · nur ${neuTrim.length} Zeichen` : `Bad format · only ${neuTrim.length} chars`)}
+              </span>
+              {aktuell && (
+                <span className={`dex-ui-pill ${gleichWieHinterlegt ? 'dex-ui-pill--gray' : aktuell.calendarLink ? 'dex-ui-pill--blue' : 'dex-ui-pill--green'}`}>
+                  {gleichWieHinterlegt
+                    ? (isDe ? 'identisch mit dem hinterlegten Wert' : 'identical to the stored value')
+                    : aktuell.calendarLink
+                      ? (isDe ? 'anderer Wert als hinterlegt' : 'differs from the stored value')
+                      : (isDe ? 'bisher nichts hinterlegt' : 'nothing stored so far')}
+                </span>
+              )}
+              {bereinigt && <span className="dex-ui-pill dex-ui-pill--orange">{isDe ? 'Leerzeichen/Umbrüche entfernt' : 'whitespace/line breaks removed'}</span>}
+            </div>
           )}
           <div className="dex-ui-inline" style={{ gap: 8, flexWrap: 'wrap' }}>
             <button type="button" className="btn btn-secondary" disabled={!siehtAusWieUid(neuTrim) || pruefBusy || busy} onClick={() => { void pruefen(); }}>
