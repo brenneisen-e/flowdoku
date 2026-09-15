@@ -15,6 +15,9 @@ import { shortSubEventTitle } from '../../../utils/subEventTitle';
 import { DeloitteEvent } from '../../../types';
 
 export interface NextStepsBoxProps {
+  /** v31.46: Die Hinweise zum Event — sie stehen jetzt HIER statt in der
+   *  Detail-Karte links (Nutzer-Ansage 15.09.2026: „also alles an einer Stelle"). */
+  hintsSlot?: React.ReactNode;
   childEventsOf: (parentEventId: string) => DeloitteEvent[];
   isDe: boolean;
   openInviteModal: () => void;
@@ -186,9 +189,14 @@ export const NextStepsBox: React.FC<NextStepsBoxProps> = (p) => {
                         : 'Use “Edit event” to complete fields, image and texts.',
                       // v31.3: Ein Schritt, dem nichts mehr fehlt, ist erledigt —
                       // das ist dieselbe Prüfung wie der Fehlt-noch-Kasten.
-                      done: missingBits.length === 0,
+                      // v31.46: „Erledigt" heisst hier nicht mehr nur „nichts
+                      // fehlt" — solange es Tipps zu den Feldern gibt, ist am
+                      // Event noch etwas zu tun.
+                      done: missingBits.length === 0 && !p.hintsSlot,
                       doneLabel: isDe ? 'Angaben vollständig' : 'All details filled in',
-                      extra: missingBits.length > 0 ? (
+                      extra: (missingBits.length > 0 || p.hintsSlot) ? (
+                        <div className="dex-ui-stack" style={{ gap: 8 }}>
+                        {missingBits.length > 0 && (
                         <div className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm">
                           <span className="dex-ui-callout-icon"><AlertCircle size={14} /></span>
                           <div style={{ minWidth: 0 }}>
@@ -206,6 +214,16 @@ export const NextStepsBox: React.FC<NextStepsBoxProps> = (p) => {
                               </div>
                             )}
                           </div>
+                        </div>
+                        )}
+                        {/* v31.46: Die Hinweise zum Event stehen jetzt HIER —
+                            Nutzer-Ansage 15.09.2026: „nicht unter den Next
+                            Steps, sondern in das Feld ‚Event finalisieren'."
+                            Vorher standen sie links in der Detail-Karte, also
+                            Hinweise zum selben Event an zwei Stellen — und
+                            „Beschreibung ergänzen" sogar doppelt (hier als
+                            „Fehlt noch", dort als eigener Kasten). */}
+                        {p.hintsSlot}
                         </div>
                       ) : undefined,
                     },

@@ -19,6 +19,8 @@ import { DeloitteEvent } from '../../../types';
 
 export interface ActiveEventHintsBoxProps {
   childEventsOf: (parentEventId: string) => DeloitteEvent[];
+  /** v31.46: Beschreibung/Bild nicht melden — das tut „Nächste Schritte" daneben. */
+  ohneGrundangaben?: boolean;
   expandedHintIds: Set<string>;
   hintLangBusy: boolean;
   hintsDismissTick: number;
@@ -42,7 +44,7 @@ export interface ActiveEventHintsBoxProps {
 }
 
 export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
-  const { childEventsOf, expandedHintIds, hintLangBusy, hintsDismissTick, isDe, parentEventForSelected, refreshEvents, selectedEvent, setExpandedHintIds, setHintLangBusy, setHintsDismissTick, setQrSendModalOpen, setSelectedEvent, showAlert, updateEvent } = p;
+  const { childEventsOf, ohneGrundangaben, expandedHintIds, hintLangBusy, hintsDismissTick, isDe, parentEventForSelected, refreshEvents, selectedEvent, setExpandedHintIds, setHintLangBusy, setHintsDismissTick, setQrSendModalOpen, setSelectedEvent, showAlert, updateEvent } = p;
   const variant = p.variant || 'card';
   const qrPendingCount = p.qrPendingCount === undefined ? null : p.qrPendingCount;
           // Idempotent — Modal und WizardFormShell rufen es ebenfalls; hier
@@ -98,8 +100,16 @@ export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
               ),
             });
           }
-          // 2) Beschreibung fehlt oder ist sehr kurz.
-          if (stripHtmlToText(selectedEvent.description || '').length < 20) {
+          /*
+           * 2) Beschreibung fehlt oder ist sehr kurz.
+           *
+           * v31.46: `ohneGrundangaben` schaltet diesen und den Bild-Hinweis ab.
+           * Gesetzt wird es, wenn daneben die Box „Nächste Schritte" steht —
+           * deren Schritt 1 zählt Beschreibung, Ort und Event-Bild bereits als
+           * „Fehlt noch: …" auf. Zweimal dieselbe Aussage in einem Kasten ist
+           * genau das, was der Nutzer mit „alles an einer Stelle" gemeint hat.
+           */
+          if (!ohneGrundangaben && stripHtmlToText(selectedEvent.description || '').length < 20) {
             hints.push({
               id: 'no-desc',
               level: 'info',
@@ -112,7 +122,7 @@ export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
           // 3) Event-Bild fehlt. v23.6: Bei einem Sub-Event NICHT meckern, wenn
           // die Klammer/das Hauptevent bereits ein Bild hat — Sub-Events nutzen
           // den Bild-/Hero-Kontext des Parents, ein eigenes Bild ist optional.
-          if (!selectedEvent.imageUrl && !(parentEventForSelected && parentEventForSelected.imageUrl)) {
+          if (!ohneGrundangaben && !selectedEvent.imageUrl && !(parentEventForSelected && parentEventForSelected.imageUrl)) {
             hints.push({
               id: 'no-image',
               level: 'info',
