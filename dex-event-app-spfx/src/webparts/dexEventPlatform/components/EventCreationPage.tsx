@@ -931,6 +931,9 @@ export default function EventCreationPage(): React.ReactElement {
   const pendingOutlookUpdateForTopRef = React.useRef<boolean>(false);
   // Sub-Event-IDs, für die ein DEX_Outlook 'UpdateEvent' angefordert wurde.
   const pendingOutlookUpdateForSubEventsRef = React.useRef<string[]>([]);
+  // v31.57: Uhrzeiten vor „ganztägig" je Scope — genutzt in setScAllDay /
+  // setAllSubsAllDay weiter unten (Erklärung dort).
+  const allDayTimesRef = React.useRef<Record<string, { start: string; end: string }>>({});
   // v11.69: Sub-Event-IDs, für die ein *Recreate* des DEX_Events-Items
   // angefordert wurde (Outlook-Termin nachträglich anlegen ohne Teilnehmer-
   // Verlust). Werden in `persistSubEventsForParent` aufgegriffen: das alte
@@ -2620,7 +2623,8 @@ export default function EventCreationPage(): React.ReactElement {
   // Scope-Index des Termins; gemerkt wird nur die Uhrzeit, das Datum bleibt
   // das aktuelle (es kann sich unter „ganztägig" geändert haben). Nur für
   // diese Sitzung — nach dem Speichern steht in DEX_Events 00:00/23:59.
-  const allDayTimesRef = React.useRef<Record<string, { start: string; end: string }>>({});
+  // (Der Ref selbst steht oben bei den anderen Refs — Hooks vor jedem
+  // frühen Return, rules-of-hooks.)
   const timeOf = (d: Date | null): string => d ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '';
   const withTime = (d: Date, hm: string): Date => {
     const [h, m] = hm.split(':').map(Number);
