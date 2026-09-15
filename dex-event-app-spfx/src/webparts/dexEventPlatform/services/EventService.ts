@@ -621,6 +621,10 @@ export class EventService {
     return outlookQueue.queueOutlookEvent(this, attendee, eventId, eventTitle, actionType);
   }
 
+  /** v31.51: EINE `Einladen`-Zeile für viele Adressen — s. outlookQueue.queueOutlookInviteBatch. */
+  public async queueOutlookInviteBatch(eventId: string, eventTitle: string, emails: string[]): Promise<boolean> {
+    return outlookQueue.queueOutlookInviteBatch(this, eventId, eventTitle, emails);
+  }
   public async queueOutlookDeleteEvent(eventId: string, eventTitle: string, calendarLink: string): Promise<boolean> {
     return outlookQueue.queueOutlookDeleteEvent(this, eventId, eventTitle, calendarLink);
   }
@@ -730,6 +734,13 @@ export class EventService {
     return emailTemplatesList.getFAConfig(this);
   }
 
+  /** v31.51: Flow-Fähigkeiten (tenant-weit) — s. emailTemplatesList.getFlowConfig. */
+  public async getFlowConfig(): Promise<emailTemplatesList.FlowConfig> {
+    return emailTemplatesList.getFlowConfig(this);
+  }
+  public async saveFlowConfig(cfg: emailTemplatesList.FlowConfig): Promise<boolean> {
+    return emailTemplatesList.saveFlowConfig(this, cfg);
+  }
   public async saveFAConfig(cfg: { infoRecipients: string[]; listRecipients: string[]; log: Array<{ ts: string; by: string; action: string; old?: string; neu?: string }> }): Promise<boolean> {
     return emailTemplatesList.saveFAConfig(this, cfg);
   }

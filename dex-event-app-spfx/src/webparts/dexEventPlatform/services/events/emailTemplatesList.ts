@@ -705,6 +705,76 @@ export async function saveFAConfig(svc: EventService, cfg: { infoRecipients: str
 }
 
 /**
+ * v31.51: Was die Flows im Tenant können — eigene Zeile `_FlowConfig` in
+ * DEX_EmailTemplates, JSON im BodyHtml (gleiche Ablage wie `_FAConfig`).
+ *
+ * Warum überhaupt ein Schalter: Die App kann nicht sehen, welchen Stand ein
+ * Flow hat. Schreibt sie Queue-Zeilen in einem Format, das der Flow noch
+ * nicht kennt, scheitern die Läufe still (Status Failed in DEX_Outlook, kein
+ * Hinweis in der App). Deshalb bleibt jede neue Queue-Fähigkeit AUS, bis ein
+ * Admin nach dem Flow-Update den Schalter setzt — und der Schalter gilt
+ * tenant-weit, nicht je Browser.
+ */
+export interface FlowConfig {
+  /** DEX_Outlook_Einladungen kann `Attendees` (mehrere Adressen je Zeile) — Flow-Update v31.51. */
+  outlookBatchInvites: boolean;
+  setBy?: string;
+  setAt?: string;
+}
+
+export async function getFlowConfig(svc: EventService): Promise<FlowConfig> {
+  const empty: FlowConfig = { outlookBatchInvites: false };
+  try {
+    const resp = await svc._sp.get(
+      `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_FlowConfig'&$top=1&$select=Id,BodyHtml`,
+      SPHttpClient.configurations.v1,
+    );
+    if (!resp.ok) return empty;
+    const data = await resp.json();
+    const items = data.value || data.d?.results || [];
+    if (items.length === 0) return empty;
+    const parsed = JSON.parse(items[0].BodyHtml || '{}');
+    return { outlookBatchInvites: parsed.outlookBatchInvites === true, setBy: parsed.setBy, setAt: parsed.setAt };
+  } catch { return empty; }
+}
+
+export async function saveFlowConfig(svc: EventService, cfg: FlowConfig): Promise<boolean> {
+  try {
+    const listName = 'DEX_EmailTemplates';
+    const body = JSON.stringify(cfg);
+    const resp = await svc._sp.get(
+      `${svc.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$filter=TemplateType eq '_FlowConfig'&$top=1&$select=Id`,
+      SPHttpClient.configurations.v1,
+    );
+    if (!resp.ok) return false;
+    const data = await resp.json();
+    const items = data.value || data.d?.results || [];
+    if (items.length > 0) {
+      const r = await svc._merge(`${svc.siteUrl}/_api/web/lists/getbytitle('${listName}')/items(${items[0].Id})`, { 'BodyHtml': body });
+      return r.ok;
+    }
+    let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
+    try {
+      const typeResp = await svc._sp.get(
+        `${svc.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=ListItemEntityTypeFullName`,
+        SPHttpClient.configurations.v1,
+      );
+      if (typeResp.ok) {
+        const typeData = await typeResp.json();
+        listItemType = typeData.ListItemEntityTypeFullName || typeData.d?.ListItemEntityTypeFullName || listItemType;
+      }
+    } catch { /* Fallback bleibt */ }
+    const create = await svc._post(`${svc.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
+      '__metadata': { 'type': listItemType },
+      'Title': '_FlowConfig',
+      'TemplateType': '_FlowConfig',
+      'BodyHtml': body,
+    });
+    return create.ok;
+  } catch { return false; }
+}
+
+/**
  * v11.53: KPI-Counter um delta hochzählen (Anmeldung +1, Cancel -1,
  * createEvent +1, deleteEvent -N). ETag-CAS-Retry, race-safe bei 10k+
  * parallelen Usern. Liefert den neuen Wert oder null bei Fehler.
