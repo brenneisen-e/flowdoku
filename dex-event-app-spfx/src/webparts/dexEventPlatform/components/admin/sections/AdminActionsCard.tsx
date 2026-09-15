@@ -496,10 +496,10 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
               <ActionTile
                 icon={<Trash2 size={18} />}
                 category="maintenance"
-                title={isDe ? 'Gelöschte Termine im Papierkorb suchen' : 'Find deleted dates in the recycle bin'}
+                title={isDe ? 'Outlook-Termin wiederfinden' : 'Recover the Outlook appointment'}
                 desc={isDe
-                  ? 'Sucht im Papierkorb der Site nach gelöschten DEX_Events-Zeilen, deren Titel zu einem Sub-Event dieses Events passt, und holt sie auf Klick zurück — samt dem Outlook-Termin, auf dem die Teilnehmer stehen. Die neu angelegte Zeile wird dabei entfernt und ihr überzähliger Termin abgesagt; die Teilnehmerliste bleibt unverändert. Für den Fall, dass beim Speichern ein zweiter Outlook-Termin entstanden ist (bis v31.47).'
-                  : 'Searches the site recycle bin for deleted DEX_Events rows whose title matches a sub-event of this event and restores them on click — including the Outlook appointment the participants are on. The recreated row is removed and its surplus appointment cancelled; the participant list is untouched. For the case that saving produced a second Outlook appointment (up to v31.47).'}
+                  ? 'Für den Fall, dass beim Speichern ein zweiter Outlook-Termin entstanden ist (bis v31.47): Sucht die gelöschte Zeile im Papierkorb der Site und holt sie samt Termin zurück — oder liest die Termine aus dem Kalender von no_reply.events und verknüpft den richtigen (den mit den Teilnehmern) per Klick mit dem Sub-Event. Ob der überzählige Termin abgesagt wird, entscheidest du per Haken; die Teilnehmerliste bleibt unverändert.'
+                  : 'For the case that saving produced a second Outlook appointment (up to v31.47): finds the deleted row in the site recycle bin and restores it with its appointment — or reads the appointments from the no_reply.events calendar and links the right one (the one with the participants) to the sub-event on click. Whether the surplus appointment is cancelled is your choice; the participant list is untouched.'}
                 badge="admin"
                 disabled={!selectedEvent}
                 onClick={() => { void runBinSuche(); }}
@@ -1925,11 +1925,15 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
         {binOpen && selectedEvent && (
           <RecycleBinOutlookModal
             isDe={isDe}
-            eventTitle={selectedEvent.title || ''}
+            svc={eventServiceRef}
+            event={selectedEvent}
+            kinder={childEventsOf(selectedEvent.id)}
             suche={binSuche}
             busyId={binBusyId}
             ergebnisse={binErgebnisse}
             onZurueckholen={(t, absagen) => { void runBinZurueckholen(t, absagen); }}
+            confirmDialog={confirmDialog}
+            refreshEvents={refreshEvents}
             onClose={() => setBinOpen(false)}
           />
         )}

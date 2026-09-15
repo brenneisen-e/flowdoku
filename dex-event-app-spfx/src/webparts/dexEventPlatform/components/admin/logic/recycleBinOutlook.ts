@@ -215,3 +215,136 @@ export async function holeZeileZurueck(svc: EventService, event: DeloitteEvent, 
   }).catch(() => { /* Log ist best-effort */ });
   return erg(weg ? 'fertig' : 'neue-zeile-bleibt', { calendarLink: link, neuerTermin });
 }
+
+/*
+ * v31.50: Zweiter Weg — wenn die alte Zeile NICHT im Papierkorb liegt (der
+ * alte Pfad löschte per REST-DELETE, das landet nicht im Papierkorb). Dann
+ * existiert nur noch der Termin selbst, im Kalender der Shared Mailbox. Die
+ * App darf ihn lesen: `Calendars.Read.Shared` ist seit v5.x genehmigt
+ * (getDeclinedAttendees liest denselben Kalender). Also: Termine rund um den
+ * Start des Sub-Events aus dem Kalender holen, die iCalUIds zeigen, und den
+ * gewählten Termin in die aktuelle Zeile schreiben — der Weg, den der Nutzer
+ * am 15.09.2026 „manuell austauschen" nannte, nur ohne Abtippen.
+ */
+export const NO_REPLY_MAILBOX = 'no_reply.events@deloitte.de';
+
+export interface KalenderTermin {
+  graphId: string;
+  iCalUId: string;
+  subject: string;
+  /** ISO-UTC des Starts. */
+  start: string;
+  created: string;
+  attendees: number;
+  /** iCalUId ist der CalendarLink der aktuellen Zeile. */
+  verknuepft: boolean;
+  /** Betreff passt zu Titel oder Outlook-Betreff des Sub-Events. */
+  passt: boolean;
+}
+
+export type KalenderSuche =
+  | { status: 'ok'; termine: KalenderTermin[]; fenster: string }
+  | { status: 'kein-graph' | 'kein-zugriff' | 'fehler'; message?: string };
+
+export async function sucheKalender(svc: EventService, kind: DeloitteEvent): Promise<KalenderSuche> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ctx = svc.context as any;
+  if (!ctx.msGraphClientFactory) return { status: 'kein-graph' };
+  const anker = kind.outlookStart || kind.startDate || '';
+  const d = anker ? new Date(anker) : null;
+  const linkAktuell = (kind.calendarLink || '').trim();
+  const titel = norm(kind.title);
+  const betreff = norm(kind.outlookSubject);
+  const select = 'id,subject,iCalUId,start,createdDateTime,attendees';
+  try {
+    const client = await ctx.msGraphClientFactory.getClient('3');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let rows: any[] = [];
+    let fenster = '';
+    if (d && !isNaN(d.getTime())) {
+      // ±3 Tage um den Start: calendarView löst auch Serien auf und braucht
+      // keinen Betreff — der kann sich seit dem Anlegen geändert haben.
+      const von = new Date(d.getTime() - 3 * 864e5).toISOString();
+      const bis = new Date(d.getTime() + 3 * 864e5).toISOString();
+      fenster = `${von.slice(0, 10)} – ${bis.slice(0, 10)}`;
+      const resp = await client.api(`/users/${NO_REPLY_MAILBOX}/calendarView`)
+        .query({ startDateTime: von, endDateTime: bis })
+        .select(select).top(100).get();
+      rows = resp?.value || [];
+    } else {
+      const s = (kind.outlookSubject || kind.title || '').slice(0, 40).replace(/'/g, "''");
+      const resp = await client.api(`/users/${NO_REPLY_MAILBOX}/events`)
+        .filter(`startswith(subject,'${s}')`)
+        .select(select).top(100).get();
+      rows = resp?.value || [];
+    }
+    const termine: KalenderTermin[] = rows.map(r => {
+      const subj = norm(r?.subject);
+      const uid = String(r?.iCalUId || '');
+      const startRaw = String(r?.start?.dateTime || '');
+      return {
+        graphId: String(r?.id || ''),
+        iCalUId: uid,
+        subject: String(r?.subject || ''),
+        start: startRaw ? (startRaw.replace(/\.\d+$/, '') + (/[zZ]$/.test(startRaw) ? '' : 'Z')) : '',
+        created: String(r?.createdDateTime || ''),
+        attendees: Array.isArray(r?.attendees) ? r.attendees.length : 0,
+        verknuepft: !!uid && uid === linkAktuell,
+        passt: !!subj && ((!!titel && (subj === titel || subj.indexOf(titel) >= 0)) || (!!betreff && (subj === betreff || subj.indexOf(betreff) >= 0))),
+      };
+    }).filter(t => !!t.iCalUId);
+    termine.sort((a, b) => (Number(b.passt) - Number(a.passt)) || (b.attendees - a.attendees));
+    return { status: 'ok', termine, fenster };
+  } catch (err) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const status = (err as any)?.statusCode || (err as any)?.status;
+    if (status === 401 || status === 403) return { status: 'kein-zugriff' };
+    return { status: 'fehler', message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export interface VerknuepfErgebnis {
+  status: 'fertig' | 'schon-verknuepft' | 'zeile-nicht-lesbar' | 'schreiben-fehlgeschlagen';
+  /** Was mit dem bisher verknüpften Termin passiert ist (s. RueckholErgebnis.neuerTermin). */
+  bisheriger: 'eingereiht' | 'behalten' | 'keiner' | 'fehlgeschlagen';
+}
+
+/**
+ * Schreibt die iCalUId des gewählten Termins als CalendarLink in die aktuelle
+ * Zeile. Erst der umkehrbare Schritt (MERGE), dann — auf Wunsch — die Absage
+ * des bisher verknüpften Termins über die Queue.
+ */
+export async function verknuepfeTermin(svc: EventService, event: DeloitteEvent, kind: DeloitteEvent, termin: KalenderTermin, bisherigenAbsagen: boolean): Promise<VerknuepfErgebnis> {
+  const zeile = await svc.getEvent(Number(kind.id));
+  if (!zeile) return { status: 'zeile-nicht-lesbar', bisheriger: 'keiner' };
+  const bisher = (zeile.CalendarLink || '').trim();
+  if (bisher === termin.iCalUId) return { status: 'schon-verknuepft', bisheriger: 'keiner' };
+  try {
+    // OutlookEventId mit leeren: Steht dort 'FAILED', hielte die App den
+    // Termin weiter für gescheitert.
+    const r = await svc._merge(`${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${Number(kind.id)})`, { CalendarLink: termin.iCalUId, OutlookEventId: '' });
+    if (!r.ok) return { status: 'schreiben-fehlgeschlagen', bisheriger: 'keiner' };
+  } catch {
+    return { status: 'schreiben-fehlgeschlagen', bisheriger: 'keiner' };
+  }
+  let bisheriger: VerknuepfErgebnis['bisheriger'] = 'keiner';
+  if (bisher) {
+    if (bisherigenAbsagen) {
+      let ok = false;
+      try { ok = await svc.queueOutlookDeleteEvent(String(kind.id), zeile.Title || '', bisher); } catch { ok = false; }
+      bisheriger = ok ? 'eingereiht' : 'fehlgeschlagen';
+    } else {
+      bisheriger = 'behalten';
+    }
+  }
+  svc.writeChangeLog({
+    action: 'EventCalendarLinkRelinked',
+    targetType: 'Event',
+    targetId: String(kind.id),
+    targetName: zeile.Title || '',
+    eventId: String(event.id),
+    eventTitle: event.title || '',
+    details: { calendarLink: termin.iCalUId, previousCalendarLink: bisher, subject: termin.subject, attendees: termin.attendees, previousAppointment: bisheriger },
+  }).catch(() => { /* Log ist best-effort */ });
+  return { status: 'fertig', bisheriger };
+}
