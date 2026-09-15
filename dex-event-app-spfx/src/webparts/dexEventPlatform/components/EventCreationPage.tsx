@@ -2613,21 +2613,52 @@ export default function EventCreationPage(): React.ReactElement {
   // Tage ist die Einzel-Einstellung zwar richtig, aber nicht zumutbar — man
   // müsste jeden Reiter anfassen. Die beiden Schalter setzen den Wert auf
   // ALLE Sub-Events; die Einzel-Haken bleiben und können danach abweichen.
+  // v31.57: Die Uhrzeit VOR „ganztägig" merken und beim Abwählen zurückholen
+  // (Nutzer-Ansage 15.09.2026: „wenn ich ganztägig abwähle, sollte die
+  // Uhrzeit von vorher wieder stehen"). Einschalten klemmt auf 00:00/23:59;
+  // ohne Merker war 09:00–17:00 danach weg. Schlüssel: 'top' bzw. der
+  // Scope-Index des Termins; gemerkt wird nur die Uhrzeit, das Datum bleibt
+  // das aktuelle (es kann sich unter „ganztägig" geändert haben). Nur für
+  // diese Sitzung — nach dem Speichern steht in DEX_Events 00:00/23:59.
+  const allDayTimesRef = React.useRef<Record<string, { start: string; end: string }>>({});
+  const timeOf = (d: Date | null): string => d ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '';
+  const withTime = (d: Date, hm: string): Date => {
+    const [h, m] = hm.split(':').map(Number);
+    const c = new Date(d); c.setHours(h || 0, m || 0, 0, 0); return c;
+  };
+  const merkeZeiten = (key: string, st: Date | null, en: Date | null): void => {
+    if (!st) return;
+    const s = timeOf(st); const e = timeOf(en || st);
+    // Schon Tagesgrenzen (z. B. gespeicherter Ganztags-Termin) → nichts zu merken.
+    if (s === '00:00' && (e === '23:59' || e === '00:00')) return;
+    allDayTimesRef.current[key] = { start: s, end: e };
+  };
+  const holeZeiten = (key: string, st: Date | null, en: Date | null): { s: Date; e: Date } | null => {
+    const saved = allDayTimesRef.current[key];
+    if (!saved || !st) return null;
+    delete allDayTimesRef.current[key];
+    return { s: withTime(st, saved.start), e: withTime(en || st, saved.end) };
+  };
   const setAllSubsAllDay = (v: boolean): void => {
-    setSubEvents(prev => prev.map(se => {
+    setSubEvents(prev => prev.map((se, i) => {
       if (!!se.allDay === v) return se;
       const next: SubEventDraft = { ...se, allDay: v };
+      const st = subIsoToDate(se.startDate);
+      const en = subIsoToDate(se.endDate) || st;
+      const key = `sub:${i + 1}`;
       if (v) {
         // Gleiche Klemmung wie beim Einzel-Haken: ohne Tagesgrenzen stünde in
         // DEX_Events später eine Spanne, die keinen ganzen Tag abdeckt.
-        const st = subIsoToDate(se.startDate);
-        const en = subIsoToDate(se.endDate) || st;
         if (st) {
+          merkeZeiten(key, st, en);
           const s0 = new Date(st); s0.setHours(0, 0, 0, 0);
           const e0 = new Date(en || st); e0.setHours(23, 59, 0, 0);
           next.startDate = subDateToIso(s0);
           next.endDate = subDateToIso(e0);
         }
+      } else {
+        const back = holeZeiten(key, st, en);
+        if (back) { next.startDate = subDateToIso(back.s); next.endDate = subDateToIso(back.e); }
       }
       return next;
     }));
@@ -2644,30 +2675,39 @@ export default function EventCreationPage(): React.ReactElement {
     // Beim Einschalten die Zeiten auf die Tagesgrenzen legen. Der Flow rechnet
     // daraus die Ganztags-Grenzen; leer lassen wäre falsch, weil ein Sub-Event
     // ohne Zeiten seit v28.66 die Zeiten des Hauptevents erbt.
-    const dayOf = (d: Date | null): Date | null => d;
+    // v31.57: Beim Ausschalten die gemerkte Uhrzeit zurück (s. allDayTimesRef).
     if (scopeSub) {
       const st = subIsoToDate(scopeSub.startDate);
       const en = subIsoToDate(scopeSub.endDate) || st;
       const patch: Partial<SubEventDraft> = { allDay: v };
+      const key = `sub:${activeScopeIdx}`;
       if (v && st) {
+        merkeZeiten(key, st, en);
         const s0 = new Date(st); s0.setHours(0, 0, 0, 0);
-        const e0 = new Date((dayOf(en) || st)); e0.setHours(23, 59, 0, 0);
+        const e0 = new Date(en || st); e0.setHours(23, 59, 0, 0);
         patch.startDate = subDateToIso(s0);
         patch.endDate = subDateToIso(e0);
+      } else if (!v) {
+        const back = holeZeiten(key, st, en);
+        if (back) { patch.startDate = subDateToIso(back.s); patch.endDate = subDateToIso(back.e); }
       }
       patchScopeSub(patch);
       return;
     }
     setAllDay(v);
+    const st = localStrToDate(startDate);
+    const en = localStrToDate(endDate) || st;
     if (v) {
-      const st = localStrToDate(startDate);
-      const en = localStrToDate(endDate) || st;
       if (st) {
+        merkeZeiten('top', st, en);
         const s0 = new Date(st); s0.setHours(0, 0, 0, 0);
-        const e0 = new Date((en || st)); e0.setHours(23, 59, 0, 0);
+        const e0 = new Date(en || st); e0.setHours(23, 59, 0, 0);
         setStartDate(dateToLocalStr(s0));
         setEndDate(dateToLocalStr(e0));
       }
+    } else {
+      const back = holeZeiten('top', st, en);
+      if (back) { setStartDate(dateToLocalStr(back.s)); setEndDate(dateToLocalStr(back.e)); }
     }
   };
   const scDescription = scopeSub ? (scopeSub.description || '') : description;
