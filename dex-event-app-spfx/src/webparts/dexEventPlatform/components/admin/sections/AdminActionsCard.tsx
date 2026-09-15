@@ -11,7 +11,7 @@
  */
 import * as React from 'react';
 import { ActionTile, ActionsCollapsibleCard } from '../../admin/ActionsMenu';
-import { AlertCircle, Check, Columns, Copy, Download, ExternalLink, FileText, Hash, Link2, Mail, Pencil, QrCode, RefreshCw, Send, Shirt, Users, Wrench } from '../../Icons';
+import { AlertCircle, Check, Columns, Copy, Download, ExternalLink, FileText, Hash, Link2, Mail, Pencil, QrCode, RefreshCw, Send, Shirt, Trash2, Users, Wrench } from '../../Icons';
 import { parseBillingOf } from '../../../utils/faBilling';
 import { buildHashDeepLink } from '../../../utils/deepLink';
 import { isB2RunKoelnTitle } from '../../../data/b2runKoeln';
@@ -20,6 +20,9 @@ import { DeloitteEvent } from '../../../types';
 import { SharePointService } from '../../../services/SharePointService';
 // v31.36: Outlook-Einladungen nachziehen — Regeln und Begruendung dort.
 import { runOutlookInviteBackfill } from '../logic/outlookInviteBackfill';
+// v31.49: Gelöschte Termine im Papierkorb suchen — Regeln und Reihenfolge dort.
+import { suchePapierkorb, holeZeileZurueck, PapierkorbSuche, PapierkorbTreffer, RueckholErgebnis } from '../logic/recycleBinOutlook';
+import { RecycleBinOutlookModal } from '../modals/RecycleBinOutlookModal';
 
 export interface AdminActionsCardProps {
   adminEvents: DeloitteEvent[];
@@ -138,6 +141,71 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
    */
   const [outlookBackfillBusy, setOutlookBackfillBusy] = React.useState(false);
   const [outlookBackfillResult, setOutlookBackfillResult] = React.useState('');
+
+  /*
+   * v31.49: „Gelöschte Termine im Papierkorb suchen". Anlass 15.09.2026: Der
+   * Recreate-Pfad hatte eine Sub-Event-Zeile samt CalendarLink gelöscht; der
+   * Termin mit 64 Eingeladenen hing an nichts mehr. Die Aktion sucht die
+   * gelöschte Zeile im Papierkorb und holt sie zurück (s. logic/recycleBinOutlook).
+   */
+  const [binOpen, setBinOpen] = React.useState(false);
+  const [binSuche, setBinSuche] = React.useState<PapierkorbSuche | null>(null);
+  const [binBusyId, setBinBusyId] = React.useState('');
+  const [binErgebnisse, setBinErgebnisse] = React.useState<Record<string, RueckholErgebnis>>({});
+  const runBinSuche = async (): Promise<void> => {
+    if (!selectedEvent || !eventServiceRef) return;
+    setBinOpen(true);
+    setBinSuche(null);
+    setBinErgebnisse({});
+    const s = await suchePapierkorb(eventServiceRef, selectedEvent, childEventsOf(selectedEvent.id));
+    setBinSuche(s);
+  };
+  const runBinZurueckholen = async (t: PapierkorbTreffer, absagen: boolean): Promise<void> => {
+    if (!selectedEvent || !eventServiceRef || binBusyId || !t.ziel) return;
+    const ok = await confirmDialog(
+      isDe
+        ? <>
+          <p style={{ margin: '0 0 10px' }}>
+            Die gelöschte Zeile <strong>{t.oldItemId}</strong> (&bdquo;{t.title}&ldquo;) wird wiederhergestellt und ersetzt die aktuelle Zeile <strong>{t.ziel.id}</strong>.
+          </p>
+          <p style={{ margin: '0 0 10px' }}>
+            Der Outlook-Termin der alten Zeile — mit allen, die darauf eingeladen sind — hängt danach wieder am Sub-Event.
+            {' '}{absagen
+              ? 'Der überzählige Termin der neuen Zeile wird abgesagt (nur wer darauf steht, bekommt die Absage).'
+              : 'Der überzählige Termin der neuen Zeile bleibt stehen — er hängt danach an keiner DEX-Zeile mehr.'}
+            {' '}Die Teilnehmerliste bleibt unverändert.
+          </p>
+          <p style={{ margin: 0 }}>
+            Änderungen, die beim Neuanlegen an der aktuellen Zeile gespeichert wurden, gehen verloren. Vor dem Ersetzen prüft DEX, dass beide Zeilen zu diesem Event und zur selben Teilnehmerliste gehören — sonst wird nichts verändert.
+          </p>
+        </>
+        : <>
+          <p style={{ margin: '0 0 10px' }}>
+            Deleted row <strong>{t.oldItemId}</strong> (&ldquo;{t.title}&rdquo;) will be restored and replace current row <strong>{t.ziel.id}</strong>.
+          </p>
+          <p style={{ margin: '0 0 10px' }}>
+            The old row&rsquo;s Outlook appointment — with everyone invited to it — is attached to the sub-event again.
+            {' '}{absagen
+              ? 'The surplus appointment of the new row is cancelled (only its attendees get the cancellation).'
+              : 'The surplus appointment of the new row stays — it is no longer linked to any DEX row afterwards.'}
+            {' '}The participant list is untouched.
+          </p>
+          <p style={{ margin: 0 }}>
+            Changes saved to the current row when it was recreated are lost. Before replacing, DEX checks that both rows belong to this event and the same participant list — otherwise nothing changes.
+          </p>
+        </>,
+      { confirmLabel: isDe ? 'Zurückholen' : 'Restore', title: isDe ? 'Alte Zeile zurückholen' : 'Restore old row' },
+    );
+    if (!ok) return;
+    setBinBusyId(t.binId);
+    try {
+      const e = await holeZeileZurueck(eventServiceRef, selectedEvent, t, absagen);
+      setBinErgebnisse(prev => ({ ...prev, [t.binId]: e }));
+      if (e.status === 'fertig') { try { await refreshEvents(); } catch { /* Anzeige zieht beim nächsten Laden nach */ } }
+    } finally {
+      setBinBusyId('');
+    }
+  };
   const runOutlookBackfill = async (): Promise<void> => {
     if (outlookBackfillBusy || !selectedEvent) return;
     setOutlookBackfillBusy(true);
@@ -244,6 +312,7 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
     : 'Not available right now: this event has no participant list yet. ';
   const whenList = (desc: string): string => (hasList ? desc : noListReason + desc);
   return (
+      <>
         <ActionsCollapsibleCard isDe={isDe}>
           {/* v31.3: Die Kacheln registrieren sich im ActionsRegistryProvider und
               werden im ActionsDropdown (EventDetailCard) nach `category`
@@ -420,6 +489,22 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
               resultIsError={outlookBackfillResult.indexOf('NICHTS') >= 0 || outlookBackfillResult.indexOf('NOTHING') >= 0}
               onClick={() => { void runOutlookBackfill(); }}
             />
+
+            {/* v31.49: Gelöschte Termine im Papierkorb suchen. Nur Admin — es
+                stellt Zeilen wieder her und löscht andere. */}
+            {isAdmin && (
+              <ActionTile
+                icon={<Trash2 size={18} />}
+                category="maintenance"
+                title={isDe ? 'Gelöschte Termine im Papierkorb suchen' : 'Find deleted dates in the recycle bin'}
+                desc={isDe
+                  ? 'Sucht im Papierkorb der Site nach gelöschten DEX_Events-Zeilen, deren Titel zu einem Sub-Event dieses Events passt, und holt sie auf Klick zurück — samt dem Outlook-Termin, auf dem die Teilnehmer stehen. Die neu angelegte Zeile wird dabei entfernt und ihr überzähliger Termin abgesagt; die Teilnehmerliste bleibt unverändert. Für den Fall, dass beim Speichern ein zweiter Outlook-Termin entstanden ist (bis v31.47).'
+                  : 'Searches the site recycle bin for deleted DEX_Events rows whose title matches a sub-event of this event and restores them on click — including the Outlook appointment the participants are on. The recreated row is removed and its surplus appointment cancelled; the participant list is untouched. For the case that saving produced a second Outlook appointment (up to v31.47).'}
+                badge="admin"
+                disabled={!selectedEvent}
+                onClick={() => { void runBinSuche(); }}
+              />
+            )}
 
             {/* 3. E-Mail-Adressen kopieren */}
             <ActionTile
@@ -1835,6 +1920,20 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
             )}
           </div>
         </ActionsCollapsibleCard>
+        {/* v31.49: Dialog zur Papierkorb-Suche — außerhalb der Registry,
+            sonst würde er als Kachel gezählt. */}
+        {binOpen && selectedEvent && (
+          <RecycleBinOutlookModal
+            isDe={isDe}
+            eventTitle={selectedEvent.title || ''}
+            suche={binSuche}
+            busyId={binBusyId}
+            ergebnisse={binErgebnisse}
+            onZurueckholen={(t, absagen) => { void runBinZurueckholen(t, absagen); }}
+            onClose={() => setBinOpen(false)}
+          />
+        )}
+      </>
   );
 };
 
