@@ -190,12 +190,16 @@ input.dex-ui-checkbox:not([hidden]):hover { border-color: ${G}; }
 input.dex-ui-checkbox:not([hidden]):checked { border-color: ${G}; background: ${G}; }
 .dex-ui-toggle-row > input[type='checkbox']:not([hidden]):checked::after,
 input.dex-ui-checkbox:not([hidden]):checked::after {
-  content: ''; position: absolute; left: 5px; top: 2px; width: 4px; height: 9px;
-  border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
-  /* v31.55: Der Haken sass oben links (left 4 / top 0) — die Mitte der 4x9-Box
-     lag bei (6, 4.5), die Mitte des 14px-Innenraums ist (7, 7). Mit 8-fach
-     vergroessertem Harness-Bild nachgemessen: bei top 1px stand der Haken
-     noch einen Pixel zu hoch, bei top 2px sitzt er mittig. */
+  /* v31.56: Kein gezeichneter Winkel mehr (zwei Raender, 45 Grad gedreht —
+     der sah bei 18 px immer schief aus, egal wo er sass), sondern das
+     Zeichen U+2713 aus der Schrift, mittig ueber Flex. Nutzer-Ansage
+     15.09.2026: "der Haken ist einfach nicht schoen — kannst du den bitte
+     nehmen" (mit dem Zeichen). Die Schrift bringt den Haken in der Form,
+     die man von ueberall kennt. */
+  content: '✓'; position: absolute; left: 0; top: 0; right: 0; bottom: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 12px; line-height: 1; font-weight: 700;
+  font-family: 'Segoe UI Symbol', 'Segoe UI', 'Apple Symbols', 'Noto Sans Symbols', sans-serif;
 }
 .dex-ui-toggle-row > input[type='checkbox']:not([hidden]):disabled,
 input.dex-ui-checkbox:not([hidden]):disabled { opacity: 0.55; cursor: not-allowed; }
