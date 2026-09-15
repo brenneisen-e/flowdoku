@@ -2357,6 +2357,23 @@ export default function RegistrationPage(): React.ReactElement {
     // v18.18: 'inline' = Erklär-Text unter dem Label (nicht fett), sonst
     // weiterhin "i"-Hover-Box neben dem Label.
     const isInlineHelp = field.helpTextStyle === 'inline';
+    // v31.55: Die Reservierung richtet sich nach der LÄNGSTEN Beschreibung des
+    // Paares in dieser Zeile, nicht fest nach zwei Zeilen. Bis v31.54 stand
+    // hier `minHeight: 2.9em` — bei einer dreizeiligen Beschreibung links und
+    // einer zweizeiligen rechts saß die linke Eingabe eine Zeile tiefer
+    // (Nutzer-Frage 15.09.2026 „warum ist das verschoben"). Die Zeilenzahl
+    // wird aus der Textlänge geschätzt (rund 52 Zeichen je Zeile bei halber
+    // Formularbreite und 0.78rem); zu niedrig geschätzt heißt „wie vorher",
+    // zu hoch heißt ein paar Pixel Luft — beides besser als der Versatz.
+    const descLinesOf = (ff?: EventSpecificField): number => {
+      if (!ff || ff.helpTextStyle !== 'inline') return 0;
+      const plain = (pickFieldHelp(ff) || '').replace(/<[^>]+>/g, '').trim();
+      return plain ? Math.min(5, Math.max(2, Math.ceil(plain.length / 52))) : 0;
+    };
+    const rowPartner = (typeof rowIndex === 'number' && rowList)
+      ? rowList[rowIndex % 2 === 0 ? rowIndex + 1 : rowIndex - 1]
+      : undefined;
+    const helpMinHeight = `${(Math.max(descLinesOf(field), descLinesOf(rowPartner)) || 2) * 1.45}em`;
     const inlineHelpEl = (displayHelp && isInlineHelp)
       // v18.77: Inline-Hilfe reserviert mind. 2 Zeilen Höhe (minHeight). Dadurch
       // stehen die Eingaben benachbarter Felder auf gleicher Höhe, wenn sich die
@@ -2366,7 +2383,7 @@ export default function RegistrationPage(): React.ReactElement {
       // großen Lücken führte.
       // v26.91: Beschreibung darf **fett** + Links enthalten (renderFieldDescHtml
       // escaped alles andere — der Organizer-Text ist sicherer Origin).
-      ? <div style={{ fontSize: '0.78rem', fontWeight: 400, color: 'var(--dex-gray-500)', lineHeight: 1.45, marginTop: 2, marginBottom: 6, minHeight: '2.9em' }} dangerouslySetInnerHTML={{ __html: renderFieldDescHtml(displayHelp) }} />
+      ? <div style={{ fontSize: '0.78rem', fontWeight: 400, color: 'var(--dex-gray-500)', lineHeight: 1.45, marginTop: 2, marginBottom: 6, minHeight: helpMinHeight }} dangerouslySetInnerHTML={{ __html: renderFieldDescHtml(displayHelp) }} />
       : null;
     // v26.16: Felder OHNE Inline-Beschreibung bekommen einen leeren Platzhalter
     // gleicher Höhe, SOBALD irgendein Feld im Formular eine Inline-Beschreibung

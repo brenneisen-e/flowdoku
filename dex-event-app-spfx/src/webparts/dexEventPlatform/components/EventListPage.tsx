@@ -391,7 +391,9 @@ export default function EventListPage(): React.ReactElement {
       <div className="dex-ui-page-head">
         <div style={{ minWidth: 0 }}>
           <h2 className="dex-ui-page-head-title">{t('eventlist.title')}</h2>
-          <p style={{ margin: '6px 0 0', fontSize: '0.86rem', color: 'var(--dex-gray-600)', lineHeight: 1.5, maxWidth: 780 }}>
+          {/* v31.55: ohne maxWidth — der Satz soll auf breiten Bildschirmen in
+              einer Zeile stehen (Nutzer-Frage 15.09.2026 zum Umbruch). */}
+          <p style={{ margin: '6px 0 0', fontSize: '0.86rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
             {t('eventlist.hint')}
           </p>
         </div>
