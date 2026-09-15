@@ -14,6 +14,7 @@ import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
 import { useDialog } from '../context/DialogContext';
 import { EventService } from '../services/EventService';
+import { readEventDraft } from '../utils/eventDraft'; // v31.61
 // v26.48: zentrale B2Run-Köln-Vorlage (Titel-Erkennung + 7 Meldefelder mit
 // deterministischen IDs für den offiziellen Excel-Export).
 import { getCachedOrbBase64 } from '../services/EmailTemplates';
@@ -115,7 +116,11 @@ export default function EventCreationPage(): React.ReactElement {
   // Nutzungsbedingungen: Beim Erstellen eines neuen Events muss der Organizer
   // zuerst eine Bestätigungs-Maske mit den Nutzungs- und Datenschutz-
   // bedingungen akzeptieren. Nicht relevant beim Bearbeiten bestehender Events.
-  const [tcAccepted, setTcAccepted] = React.useState(false);
+  // v31.61: Beim Fortsetzen eines Entwurfs (Knopf in der Eventübersicht) die
+  // gespeicherte Bestätigung schon beim ersten Render übernehmen — sonst
+  // blitzt der Bedingungen-Dialog auf, bis der Lade-Effekt den Entwurf
+  // anwendet. Die Bestätigung gilt je Entwurf, nicht je Sitzung.
+  const [tcAccepted, setTcAccepted] = React.useState<boolean>(() => navIntent === 'resume-draft' && !!(readEventDraft()?.tcAccepted));
   const [tcCheckbox, setTcCheckbox] = React.useState(false);
   // v28.41: Zweite, bewusst getrennte Bestätigung — der Organizer muss aktiv
   // erklären, dass es ein internes Event ist bzw. die Deloitte-Teilnahme an
@@ -1975,6 +1980,7 @@ export default function EventCreationPage(): React.ReactElement {
     visAllSubs,
     billingRelevant, billingSendMode, billingFields,
     currentStep,
+    tcAccepted, // v31.61: Bestätigung der Nutzungsbedingungen gehört zum Entwurf
   });
   const applyDraftPayload = (d: Record<string, unknown>): void => {
     return applyDraftPayloadImpl({
@@ -1988,6 +1994,7 @@ export default function EventCreationPage(): React.ReactElement {
       setRegistrationDeadline, setRegRuleAmount, setRegRuleEnabled, setRegRuleUnit, setRequireSubEventSelection, setStartDate,
       setSubEventCalendar, setSubEvents, setSubEventSingleChoice, setSubEventsOnlyMode, setSubEventsOptIn, setTeamRegistrationEnabled,
       setTeamSize, setTeamsLink, setTitle, setUserCancelAllowed, setVisAllSubs, setWaitlistEnabled,
+      setTcAccepted, // v31.61
     }, d);
   };
   // Beim Betreten der Neu-Anlage EINMAL den letzten Entwurf laden. v30.4:

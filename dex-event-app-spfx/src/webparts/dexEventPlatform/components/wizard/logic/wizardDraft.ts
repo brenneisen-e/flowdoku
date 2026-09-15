@@ -74,10 +74,12 @@ export interface ApplyDraftPayloadCtx {
   setUserCancelAllowed: React.Dispatch<React.SetStateAction<boolean>>;
   setVisAllSubs: React.Dispatch<React.SetStateAction<boolean>>;
   setWaitlistEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  /** v31.61: Die Nutzungsbedingungen wurden für DIESEN Entwurf schon bestätigt. */
+  setTcAccepted: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 export function applyDraftPayloadImpl(ctx: ApplyDraftPayloadCtx, d: Record<string, unknown>): void {
-  const { canBilling, setActiveFrom, setAddrCity, setAddrHouseNo, setAddrStreet, setAddrZip, setAgenda, setAgendaCheckIn, setAgendaTermPlural, setAgendaTermSingular, setAskSalutation, setAskTeamName, setAudience, setBillingFields, setBillingRelevant, setBillingSendMode, setCancelRuleAfter, setCancelRuleAmount, setCancelRuleEnabled, setCancelRuleUnit, setContactEmail, setContactInfo, setContactName, setCurrentStep, setCustomFields, setDescription, setDisableEmails, setDisableOutlook, setEmailTemplateOverrides, setEndDate, setExcludedUsers, setFilterMode, setKlammerDeadline, setLastDeregisterDate, setLocation, setLocationFilter, setMaxParticipants, setNoCancelAfterDeadline, setOnlineMeetingMode, setOpenRuleDays, setOpenRuleEnabled, setOpenRuleFixedDate, setOpenRuleMode, setOrganizer, setOrganizerEmails, setRegistrationDeadline, setRegRuleAmount, setRegRuleEnabled, setRegRuleUnit, setRequireSubEventSelection, setStartDate, setSubEventCalendar, setSubEvents, setSubEventSingleChoice, setSubEventsOnlyMode, setSubEventsOptIn, setTeamRegistrationEnabled, setTeamSize, setTeamsLink, setTitle, setUserCancelAllowed, setVisAllSubs, setWaitlistEnabled } = ctx;
+  const { canBilling, setActiveFrom, setAddrCity, setAddrHouseNo, setAddrStreet, setAddrZip, setAgenda, setAgendaCheckIn, setAgendaTermPlural, setAgendaTermSingular, setAskSalutation, setAskTeamName, setAudience, setBillingFields, setBillingRelevant, setBillingSendMode, setCancelRuleAfter, setCancelRuleAmount, setCancelRuleEnabled, setCancelRuleUnit, setContactEmail, setContactInfo, setContactName, setCurrentStep, setCustomFields, setDescription, setDisableEmails, setDisableOutlook, setEmailTemplateOverrides, setEndDate, setExcludedUsers, setFilterMode, setKlammerDeadline, setLastDeregisterDate, setLocation, setLocationFilter, setMaxParticipants, setNoCancelAfterDeadline, setOnlineMeetingMode, setOpenRuleDays, setOpenRuleEnabled, setOpenRuleFixedDate, setOpenRuleMode, setOrganizer, setOrganizerEmails, setRegistrationDeadline, setRegRuleAmount, setRegRuleEnabled, setRegRuleUnit, setRequireSubEventSelection, setStartDate, setSubEventCalendar, setSubEvents, setSubEventSingleChoice, setSubEventsOnlyMode, setSubEventsOptIn, setTeamRegistrationEnabled, setTeamSize, setTeamsLink, setTitle, setUserCancelAllowed, setVisAllSubs, setWaitlistEnabled, setTcAccepted } = ctx;
     const str = (v: unknown): string => (typeof v === 'string' ? v : '');
     const bool = (v: unknown, dflt: boolean): boolean => (typeof v === 'boolean' ? v : dflt);
     const num = (v: unknown, dflt: number): number => (typeof v === 'number' && isFinite(v) ? v : dflt);
@@ -131,6 +133,9 @@ export function applyDraftPayloadImpl(ctx: ApplyDraftPayloadCtx, d: Record<strin
     setCancelRuleUnit(d.cancelRuleUnit === 'hours' ? 'hours' : 'days');
     setCancelRuleAfter(bool(d.cancelRuleAfter, false));
     setVisAllSubs(bool(d.visAllSubs, false));
+    // v31.61: Wer die Nutzungsbedingungen für diesen Entwurf schon bestätigt
+    // hat, wird beim Fortsetzen nicht ein zweites Mal gefragt.
+    if (bool(d.tcAccepted, false)) setTcAccepted(true);
     if (typeof d.billingRelevant === 'boolean') setBillingRelevant(d.billingRelevant);
     setBillingSendMode(d.billingSendMode === 'auto' ? 'auto' : 'manual');
     if (d.billingFields && typeof d.billingFields === 'object') setBillingFields(d.billingFields as Record<string, string>);

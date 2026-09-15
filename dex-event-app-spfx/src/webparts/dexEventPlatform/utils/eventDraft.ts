@@ -21,6 +21,8 @@ export interface EventDraftInfo {
   subEventCount: number;
   location: string;
   startDate: string;
+  /** v31.61: Nutzungsbedingungen für diesen Entwurf schon bestätigt. */
+  tcAccepted: boolean;
 }
 
 /** Liest den Entwurf; null = keiner, ohne Substanz oder älter als 14 Tage. */
@@ -42,6 +44,7 @@ export function readEventDraft(): EventDraftInfo | null {
       subEventCount: subs,
       location: typeof data.location === 'string' ? data.location : '',
       startDate: typeof data.startDate === 'string' ? data.startDate : '',
+      tcAccepted: data.tcAccepted === true,
     };
   } catch {
     return null;
