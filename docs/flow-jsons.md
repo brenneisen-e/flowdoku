@@ -4718,6 +4718,12 @@ Update würde dann mit leerer Adresse am PATCH scheitern (Status Failed,
 sichtbar in der Queue) — statt still nur die erste Person einzuladen und
 „Sent" zu melden.
 
+**Stand 15.09.2026:** Der umgebaute Zweig wurde als Flow-JSON zurückgemeldet und
+entspricht dieser Anleitung 1:1 (Kette `Einladen_Adressen` → `Einladen_Neu` →
+`Einladen_Objekte` → `Einladen_Alle` → `Update_Event_Einladen`, `Add_Attendee`
+entfernt, Else-Zweig unverändert). Live-Test (Einzel- und Sammel-Pfad) stand
+zu diesem Zeitpunkt noch aus.
+
 **Vorher prüfen (CLAUDE.md Regel 6):** Die Anker stammen aus dem Stand v18.48
 (02.06.2026). Vor dem Umbau einen Screenshot des Zweigs `Check_ActionType
 (Einladen oder Ausladen)` → **If yes** machen: Dort müssen genau zwei Actions
