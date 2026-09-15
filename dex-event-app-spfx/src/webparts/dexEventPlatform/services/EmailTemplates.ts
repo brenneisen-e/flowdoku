@@ -862,9 +862,45 @@ export function eventCreatedEmail(
  * Deloitte-displayName ist "Nachname, Vorname" — für die Anrede nur den
  * Vornamen verwenden (analog qrCodeEmail / registrationEmail).
  */
-export function organizerOnboardingEmail(recipientName: string, role: 'Organizer' | 'Admin' = 'Organizer'): { subject: string; body: string } {
+export function organizerOnboardingEmail(recipientName: string, role: 'Organizer' | 'Admin' | 'F&A' = 'Organizer'): { subject: string; body: string } {
   const manualUrl = buildHashDeepLink(APP_URL, { action: 'manual' });
-  const roleLabelDe = role === 'Admin' ? 'Admin' : 'Organizer';
+  const roleLabelDe = role === 'Admin' ? 'Admin' : (role === 'F&A' ? 'F&A' : 'Organizer');
+  /*
+   * v31.42: F&A bekommt denselben Organizer-Teil und zusätzlich einen eigenen
+   * Abschnitt.
+   *
+   * Nutzer-Frage 15.09.2026: „wenn man einen F&A-Admin onboardet, dann kriegen
+   * die auch eine Onboarding-Mail wie Organizer, nur noch zusätzlich mit den
+   * F&A-Informationen, oder?" — Die Annahme war richtig gedacht, aber die Rolle
+   * war an DREI Stellen ausgenommen: beim automatischen Versand nach der
+   * Rollenvergabe, beim Briefumschlag zum Nachsenden und in dieser Funktion.
+   * F&A bekam also gar keine Mail.
+   *
+   * Warum ein Abschnitt und keine zweite Mail: F&A ist laut Rollenmodell
+   * (`types/index.ts`) Organizer PLUS Abrechnung — `isOrganizer` und
+   * `canCreateEvents` sind true. Eine eigene Mail müsste den Organizer-Teil
+   * duplizieren, und ab dem ersten Nachziehen liefen beide auseinander.
+   *
+   * Der Ton folgt der Nutzer-Vorgabe: Es ist ein PILOT. Deshalb steht dort
+   * ausdrücklich, dass sie es als Erste sehen, dass sie alles ausprobieren
+   * sollen und dass wir es anpassen, wie sie es brauchen — nicht „so ist es
+   * jetzt".
+   */
+  const faTeil = role !== 'F&A' ? '' : `
+      <p style="margin-top:24px;padding:12px 14px;background:#fdf6ec;border-left:3px solid #ed8b00;">
+      <strong>Du bist im Pilotbetrieb für Finance &amp; Accounting dabei.</strong>
+      Das heisst: Du siehst als eine der Ersten zwei Dinge, die es für andere
+      noch nicht gibt.</p>
+      <ul>
+        <li><strong>Abrechnungsrelevanz beim Anlegen eines Events:</strong> Im
+        Event-Assistenten gibt es für dich <strong>Schritt 10</strong> &mdash; dort
+        wird abgefragt, ob und wie ein Event abrechnungsrelevant ist.</li>
+        <li><strong>Zugriff auf das F&amp;A Center:</strong> Dort laufen die
+        abrechnungsrelevanten Angaben aller Events zusammen.</li>
+      </ul>
+      <p><strong>Probier bitte alles in Ruhe aus</strong> &mdash; genau dafür ist der
+      Pilot da. Wenn dir etwas fehlt, unklar ist oder anders sein sollte: Komm
+      gern auf uns zu. Wir passen es so an, wie ihr es braucht.</p>`;
   // Anrede: Vorname extrahieren. "Nachname, Vorname" -> Teil nach Komma,
   // sonst erstes Wort. Fallback: kompletter Name.
   const firstName = (() => {
@@ -904,6 +940,8 @@ export function organizerOnboardingEmail(recipientName: string, role: 'Organizer
         <li>Mach einen Test: <strong>Melde dich selbst</strong> (oder eine Testperson) ganz normal über die <strong>Anmeldeseite</strong> des Events an &mdash; in DEX registrieren sich die Teilnehmer immer selbst, es gibt keine automatische Einladung. Prüfe danach im <strong>Organizer Center</strong>, ob die Anmeldung sauber durchläuft und die Bestätigungsmail rauskommt.</li>
         <li>Schau dir das <strong>Handbuch</strong> an, wenn du Custom-Felder, Wartelisten, Outlook-Termine oder den Massenmail-Versand ausprobieren möchtest &mdash; dort sind alle Funktionen mit Praxisbeispielen erklärt.</li>
       </ul>
+
+      ${faTeil}
 
       <p style="margin-top:24px;"><strong>Du hast Fragen?</strong> Nutze dafür bitte das Ticketsystem direkt in der App: Oben rechts in der Kopfzeile findest du den grünen Button <strong>&bdquo;Hast du Fragen?&ldquo;</strong>. Ein Klick öffnet ein Fenster, in dem du deine Frage(n) stellst &mdash; auf Wunsch mit einem Screenshot deines Bildschirms. Schon beim Tippen schlägt dir die App passende Handbuch-Artikel vor. Deine Frage geht an das DEX-Team, das sich darum kümmert und dir in der App antwortet.</p>
 

@@ -419,7 +419,7 @@ export interface EventContextType {
    * Cc geht automatisch an die DEX-Verantwortlichen, der Body wird ins
    * Deloitte-Layout gewrappt (siehe organizerOnboardingEmail in EmailTemplates).
    */
-  sendOrganizerOnboarding: (recipientEmail: string, recipientName: string, role: 'Organizer' | 'Admin') => Promise<boolean>;
+  sendOrganizerOnboarding: (recipientEmail: string, recipientName: string, role: 'Organizer' | 'Admin' | 'F&A') => Promise<boolean>;
   // v9.21: Globaler TestTeam-State entfernt — Test-Team ist ab jetzt
   // per-Event (auf event.testTeamEmails). Die globalen Methoden bleiben
   // im EventService dormant für Backward-Compat.
