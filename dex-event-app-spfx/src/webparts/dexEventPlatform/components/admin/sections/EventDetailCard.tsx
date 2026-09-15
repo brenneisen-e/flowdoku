@@ -310,7 +310,14 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
                           display: 'block',
                           width: '100%',
                           height: 'auto',
-                          maxHeight: 240,
+                          // v31.44: Ohne die Check-in-Kachel darunter steht die
+                          // linke Spalte halb leer, während rechts die Zeilen
+                          // weiterlaufen. Nutzer-Wunsch 15.09.2026: „wenn kein
+                          // QR-Code da ist, kann der linke Block die fehlende
+                          // Fläche ausfüllen, damit das Foto auch voll da ist."
+                          // Also mehr Höhe, sobald der Platz frei ist — weiter
+                          // `contain`, damit nichts beschnitten wird.
+                          maxHeight: showSciTile ? 240 : 360,
                           objectFit: 'contain',
                         }}
                       />

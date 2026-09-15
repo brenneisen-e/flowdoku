@@ -64,7 +64,36 @@ export const NextStepsBox: React.FC<NextStepsBoxProps> = (p) => {
                   const children = childEventsOf(selectedEvent.id);
                   const hasChildren = children.length > 0;
                   const parentVisText = visText(locs, auds);
-                  const visSummary = (isDe ? 'Sichtbar für ' : 'Visible to ') + parentVisText + '.';
+                  /*
+                   * v31.44: „Sichtbar für X" sagte nicht, ob das JETZT gilt.
+                   *
+                   * Nutzer-Ansage 15.09.2026: „hier könnte eher stehen ‚aktuell
+                   * sichtbar für xx' — kann geändert werden unter xx" und
+                   * „bzw. aktuell im Entwurf nur sichtbar für Organizer und
+                   * Test-Team, Sichtbarkeit generell Deloitte DE".
+                   *
+                   * Genau das ist der Unterschied, den der Satz verschluckt hat:
+                   * Solange das Event ein Entwurf ist, gilt die eingestellte
+                   * Sichtbarkeit NOCH NICHT. Entwürfe sind aus allen
+                   * Teilnehmer-Ansichten gefiltert (`!ce.isFictive` in
+                   * `RegistrationPage`, `LandingPage`); sichtbar sind sie nur im
+                   * Organizer Center, und das zeigt sie Admins, Organizern und
+                   * dem Check-in-Team (`adminEvents` in `AdminPage`). Das
+                   * Test-Team ist dabei ausdrücklich NICHT — es zählt zum
+                   * Event-Team, bekommt über den Entwurf aber keinen Zugang.
+                   * Deshalb steht hier „du und das Organizer-Team" und nicht die
+                   * Aufzählung aus der Ansage.
+                   */
+                  const istEntwurf = !!selectedEvent.isFictive;
+                  const visSummary = istEntwurf
+                    ? (isDe
+                      ? `Noch nicht sichtbar: Solange das Event ein Entwurf ist, sehen es nur du und das Organizer-Team. Nach dem Live-Schalten gilt die eingestellte Sichtbarkeit — ${parentVisText}.`
+                      : `Not visible yet: while the event is a draft, only you and the organizer team can see it. Once published the configured visibility applies — ${parentVisText}.`)
+                    : (isDe ? `Aktuell sichtbar für ${parentVisText}.` : `Currently visible to ${parentVisText}.`);
+                  // Wo man es ändert — die Frage kommt direkt nach der Aussage.
+                  const visAendern = isDe
+                    ? 'Ändern unter „Event bearbeiten" → Schritt „Kapazität & Sichtbarkeit".'
+                    : 'Change it under “Edit event” → step “Capacity & visibility”.';
                   // Pro Sub-Section die Sichtbarkeit; wenn alle gleich → nur einmal.
                   // v22.22: Eine Sub-Section OHNE eigene Filter ist zur Laufzeit
                   // NICHT für „alle Mitarbeiter" sichtbar — der Zugang läuft immer
@@ -240,6 +269,8 @@ export const NextStepsBox: React.FC<NextStepsBoxProps> = (p) => {
                                   </div>
                                 </>
                               )}
+                              {/* v31.44: Wo man es ändert — die Frage kommt direkt nach der Aussage. */}
+                              <div style={{ marginTop: 6, fontSize: '0.76rem', color: 'var(--dex-gray-600)' }}>{visAendern}</div>
                             </div>
                           </div>
                           {/* v28.75: Die Liste ZEIGTE die Abweichung bisher nur —
