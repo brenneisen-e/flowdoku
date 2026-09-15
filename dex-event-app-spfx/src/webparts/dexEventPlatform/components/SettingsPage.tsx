@@ -307,7 +307,9 @@ export default function SettingsPage(): React.ReactElement {
       // der neue Organizer ohne Links, Handbuch und Einsatzbereich-Hinweis.
       // Die User-Rolle bleibt aussen vor: Die Mail erklärt Organizer-/Admin-
       // Funktionen, die Standard-User gar nicht haben.
-      if ((assignedRole === 'Organizer' || assignedRole === 'Admin') && missing.length === 0) {
+      // v31.42: F&A dazu. Die Rolle ist Organizer PLUS Abrechnung — sie bekam
+      // bisher gar keine Mail und erfuhr damit auch nichts vom Pilotbetrieb.
+      if ((assignedRole === 'Organizer' || assignedRole === 'Admin' || assignedRole === 'F&A') && missing.length === 0) {
         void sendOrganizerOnboarding(assignedEmail, assignedName, assignedRole)
           .then(sent => setStatusMsg(sent
             ? 'Rolle zugewiesen — Onboarding-Mail wurde verschickt.'
@@ -335,7 +337,7 @@ export default function SettingsPage(): React.ReactElement {
 
   const [onboardingResendId, setOnboardingResendId] = React.useState<number | null>(null);
   const resendOnboarding = async (
-    itemId: number, email: string, name: string, role: 'Organizer' | 'Admin',
+    itemId: number, email: string, name: string, role: 'Organizer' | 'Admin' | 'F&A',
   ): Promise<void> => {
     const ok = await confirmDialog(isDe
       ? `Onboarding-Mail an ${name || email} senden?\n\nSie enthält die wichtigsten Links, eine Anleitung für das erste Test-Event und den Hinweis, dass DEX für interne Deloitte Events gedacht ist.`
@@ -616,9 +618,9 @@ export default function SettingsPage(): React.ReactElement {
             {/* v28.44: Onboarding-Mail nachträglich verschicken — für alle,
                 die vor dieser Version Organizer wurden (und damals keine
                 bekommen haben) oder die sie nicht mehr finden. */}
-            {(r.role === 'Organizer' || r.role === 'Admin') && (
+            {(r.role === 'Organizer' || r.role === 'Admin' || r.role === 'F&A') && (
               <button
-                onClick={() => { void resendOnboarding(r.id, r.userEmail, r.userName, r.role as 'Organizer' | 'Admin'); }}
+                onClick={() => { void resendOnboarding(r.id, r.userEmail, r.userName, r.role as 'Organizer' | 'Admin' | 'F&A'); }}
                 disabled={onboardingResendId === r.id}
                 style={{ border: 'none', background: 'none', cursor: onboardingResendId === r.id ? 'wait' : 'pointer', color: 'var(--dex-green-dark, #4a7c1f)', padding: 4, opacity: onboardingResendId === r.id ? 0.4 : 1 }}
                 title={isDe ? 'Onboarding-Mail (erneut) senden' : 'Send onboarding mail (again)'}

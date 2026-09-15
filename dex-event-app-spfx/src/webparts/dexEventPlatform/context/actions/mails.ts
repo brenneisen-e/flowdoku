@@ -217,7 +217,8 @@ export function makeMailActions(deps: MailDeps) {
   async function sendOrganizerOnboarding(
     recipientEmail: string,
     recipientName: string,
-    role: 'Organizer' | 'Admin'
+    // v31.42: F&A bekommt dieselbe Mail plus den Pilot-Abschnitt.
+    role: 'Organizer' | 'Admin' | 'F&A'
   ): Promise<boolean> {
     if (!recipientEmail || !recipientName) return false;
     const cc = DEX_TEAM_RECIPIENTS;  // v29.43: siehe utils/supportContact

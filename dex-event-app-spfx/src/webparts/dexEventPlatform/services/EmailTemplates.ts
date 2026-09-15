@@ -82,6 +82,52 @@ export interface WrapHeadingOpts {
 }
 
 /**
+ * v31.41 — Dunkler Modus in Outlook.
+ *
+ * Nutzer-Frage 14.09.2026 mit Bild: „was müssen wir machen, damit die Mails
+ * auch auf dunklem Screen richtig aussehen?" Im Bild ist die schwarze
+ * Kopfleiste hellgrau geworden (das weisse Deloitte-Logo steht darauf fast
+ * unlesbar), und der Orb sitzt in einem weissen Kasten.
+ *
+ * ## Was hier tatsächlich hilft — und was nicht
+ *
+ * Outlook fragt eine Mail nicht, ob sie einen dunklen Modus hat: Es rechnet
+ * die Farben selbst um. Die drei Wege, die 2026 wirken, sind:
+ *
+ *  1. **`color-scheme` / `supported-color-schemes`.** Sagt Apple Mail, iOS und
+ *     einigen anderen: Diese Mail bringt ihre Farben selbst mit, bitte nicht
+ *     umrechnen. Outlook ignoriert es — es kostet aber nichts.
+ *  2. **`[data-ogsc]` / `[data-ogsb]`.** Outlook.com und das neue Outlook
+ *     hängen genau diese Attribute an jedes Element, dessen Farbe bzw.
+ *     Hintergrund sie umgerechnet haben. Darüber lassen sich die eigenen
+ *     Farben zurückholen — das ist der einzige Hebel, den Microsoft dort
+ *     anbietet, und der Grund, warum die Kopfleiste wieder schwarz wird.
+ *  3. **`prefers-color-scheme: dark`.** Greift in Apple Mail und Thunderbird.
+ *
+ * Nicht behauptet wird: dass die Mail damit überall gleich aussieht. Outlook
+ * für Windows rechnet teilweise um und lässt sich nicht abschalten; „neues
+ * Outlook" und Outlook Web wenden ihre Logik unabhängig von diesen Regeln an.
+ * Was bleibt, ist die Gestaltung selbst robust zu machen — daran ändert kein
+ * Meta-Tag etwas.
+ */
+const DARK_MODE_HEAD = `<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<style type="text/css">
+  :root { color-scheme: light dark; supported-color-schemes: light dark; }
+  /* Outlook.com / neues Outlook: eigene Farben zurueckholen, wo umgerechnet wurde. */
+  [data-ogsb] .dex-mail-head, [data-ogsc] .dex-mail-head { background-color: #000000 !important; }
+  [data-ogsc] .dex-mail-head img { filter: none !important; }
+  [data-ogsb] .dex-mail-body, [data-ogsc] .dex-mail-body { background-color: #ffffff !important; }
+  [data-ogsb] .dex-mail-hero, [data-ogsc] .dex-mail-hero { background-color: #ffffff !important; }
+  [data-ogsc] .dex-mail-body, [data-ogsc] .dex-mail-body td, [data-ogsc] .dex-mail-body p { color: #333333 !important; }
+  @media (prefers-color-scheme: dark) {
+    .dex-mail-head { background-color: #000000 !important; }
+    .dex-mail-body, .dex-mail-hero { background-color: #ffffff !important; }
+    .dex-mail-body, .dex-mail-body td, .dex-mail-body p { color: #333333 !important; }
+  }
+</style>`;
+
+/**
  * v18.73: Baut die Hero-Zeile (Event-Bild = {{ORB_URL}}) inkl. einstellbarer
  * Breite + Innenabstand. Gemeinsamer Helper für wrapTemplate() und
  * wrapTemplateForStorage(), damit beide Layouts identisch bleiben.
@@ -101,7 +147,7 @@ function buildHeroRow(opts?: WrapHeadingOpts): string {
   const padV = (typeof opts?.imagePaddingV === 'number' && opts.imagePaddingV >= 0) ? Math.round(opts.imagePaddingV) : 30;
   const padH = (typeof opts?.imagePaddingH === 'number' && opts.imagePaddingH >= 0) ? Math.round(opts.imagePaddingH) : 30;
   return `<tr>
-<td style="background-color:#ffffff;text-align:center;padding:${padV}px ${padH}px ${padV}px ${padH}px;">
+<td class="dex-mail-hero" bgcolor="#ffffff" style="background-color:#ffffff;text-align:center;padding:${padV}px ${padH}px ${padV}px ${padH}px;">
   <img src="{{ORB_URL}}" alt="DEX Event Experience Platform" width="${w}" style="display:inline-block;width:${w}px;max-width:100%;height:auto;" />
 </td>
 </tr>`;
@@ -166,14 +212,15 @@ export function wrapTemplateForStorage(headingColor: string, heading: string, su
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+${DARK_MODE_HEAD}
 <title>${heading}</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f5f5f5;font-family:Aptos,'Open Sans',Arial,Helvetica,sans-serif;color:#333333;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f5f5;">
 <tr><td align="center" style="padding:20px 10px 20px 10px;">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;max-width:600px;width:100%;">
+<table role="presentation" class="dex-mail-body" bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;max-width:600px;width:100%;">
 <tr>
-<td style="background-color:#000000;padding:20px 30px 20px 30px;border-bottom:2px solid ${GREEN};">
+<td class="dex-mail-head" bgcolor="#000000" style="background-color:#000000;padding:20px 30px 20px 30px;border-bottom:2px solid ${GREEN};">
   <img src="{{LOGO_URL}}" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
 </td>
 </tr>
@@ -256,6 +303,7 @@ export function wrapTemplate(headingColor: string, heading: string, subheading: 
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+${DARK_MODE_HEAD}
 <title>${heading}</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f5f5f5;font-family:Aptos,'Open Sans',Arial,Helvetica,sans-serif;color:#333333;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
@@ -263,11 +311,11 @@ export function wrapTemplate(headingColor: string, heading: string, subheading: 
 <tr><td align="center" style="padding:20px 10px 20px 10px;">
 
 <!-- Main Container -->
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;max-width:600px;width:100%;">
+<table role="presentation" class="dex-mail-body" bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;max-width:600px;width:100%;">
 
 <!-- ===== HEADER: Deloitte Logo ===== -->
 <tr>
-<td style="background-color:#000000;padding:20px 30px 20px 30px;border-bottom:2px solid ${GREEN};">
+<td class="dex-mail-head" bgcolor="#000000" style="background-color:#000000;padding:20px 30px 20px 30px;border-bottom:2px solid ${GREEN};">
   <img src="${cachedLogoBase64 || '{{LOGO_URL}}'}" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
 </td>
 </tr>
@@ -814,9 +862,45 @@ export function eventCreatedEmail(
  * Deloitte-displayName ist "Nachname, Vorname" — für die Anrede nur den
  * Vornamen verwenden (analog qrCodeEmail / registrationEmail).
  */
-export function organizerOnboardingEmail(recipientName: string, role: 'Organizer' | 'Admin' = 'Organizer'): { subject: string; body: string } {
+export function organizerOnboardingEmail(recipientName: string, role: 'Organizer' | 'Admin' | 'F&A' = 'Organizer'): { subject: string; body: string } {
   const manualUrl = buildHashDeepLink(APP_URL, { action: 'manual' });
-  const roleLabelDe = role === 'Admin' ? 'Admin' : 'Organizer';
+  const roleLabelDe = role === 'Admin' ? 'Admin' : (role === 'F&A' ? 'F&A' : 'Organizer');
+  /*
+   * v31.42: F&A bekommt denselben Organizer-Teil und zusätzlich einen eigenen
+   * Abschnitt.
+   *
+   * Nutzer-Frage 15.09.2026: „wenn man einen F&A-Admin onboardet, dann kriegen
+   * die auch eine Onboarding-Mail wie Organizer, nur noch zusätzlich mit den
+   * F&A-Informationen, oder?" — Die Annahme war richtig gedacht, aber die Rolle
+   * war an DREI Stellen ausgenommen: beim automatischen Versand nach der
+   * Rollenvergabe, beim Briefumschlag zum Nachsenden und in dieser Funktion.
+   * F&A bekam also gar keine Mail.
+   *
+   * Warum ein Abschnitt und keine zweite Mail: F&A ist laut Rollenmodell
+   * (`types/index.ts`) Organizer PLUS Abrechnung — `isOrganizer` und
+   * `canCreateEvents` sind true. Eine eigene Mail müsste den Organizer-Teil
+   * duplizieren, und ab dem ersten Nachziehen liefen beide auseinander.
+   *
+   * Der Ton folgt der Nutzer-Vorgabe: Es ist ein PILOT. Deshalb steht dort
+   * ausdrücklich, dass sie es als Erste sehen, dass sie alles ausprobieren
+   * sollen und dass wir es anpassen, wie sie es brauchen — nicht „so ist es
+   * jetzt".
+   */
+  const faTeil = role !== 'F&A' ? '' : `
+      <p style="margin-top:24px;padding:12px 14px;background:#fdf6ec;border-left:3px solid #ed8b00;">
+      <strong>Du bist im Pilotbetrieb für Finance &amp; Accounting dabei.</strong>
+      Das heisst: Du siehst als eine der Ersten zwei Dinge, die es für andere
+      noch nicht gibt.</p>
+      <ul>
+        <li><strong>Abrechnungsrelevanz beim Anlegen eines Events:</strong> Im
+        Event-Assistenten gibt es für dich <strong>Schritt 10</strong> &mdash; dort
+        wird abgefragt, ob und wie ein Event abrechnungsrelevant ist.</li>
+        <li><strong>Zugriff auf das F&amp;A Center:</strong> Dort laufen die
+        abrechnungsrelevanten Angaben aller Events zusammen.</li>
+      </ul>
+      <p><strong>Probier bitte alles in Ruhe aus</strong> &mdash; genau dafür ist der
+      Pilot da. Wenn dir etwas fehlt, unklar ist oder anders sein sollte: Komm
+      gern auf uns zu. Wir passen es so an, wie ihr es braucht.</p>`;
   // Anrede: Vorname extrahieren. "Nachname, Vorname" -> Teil nach Komma,
   // sonst erstes Wort. Fallback: kompletter Name.
   const firstName = (() => {
@@ -856,6 +940,8 @@ export function organizerOnboardingEmail(recipientName: string, role: 'Organizer
         <li>Mach einen Test: <strong>Melde dich selbst</strong> (oder eine Testperson) ganz normal über die <strong>Anmeldeseite</strong> des Events an &mdash; in DEX registrieren sich die Teilnehmer immer selbst, es gibt keine automatische Einladung. Prüfe danach im <strong>Organizer Center</strong>, ob die Anmeldung sauber durchläuft und die Bestätigungsmail rauskommt.</li>
         <li>Schau dir das <strong>Handbuch</strong> an, wenn du Custom-Felder, Wartelisten, Outlook-Termine oder den Massenmail-Versand ausprobieren möchtest &mdash; dort sind alle Funktionen mit Praxisbeispielen erklärt.</li>
       </ul>
+
+      ${faTeil}
 
       <p style="margin-top:24px;"><strong>Du hast Fragen?</strong> Nutze dafür bitte das Ticketsystem direkt in der App: Oben rechts in der Kopfzeile findest du den grünen Button <strong>&bdquo;Hast du Fragen?&ldquo;</strong>. Ein Klick öffnet ein Fenster, in dem du deine Frage(n) stellst &mdash; auf Wunsch mit einem Screenshot deines Bildschirms. Schon beim Tippen schlägt dir die App passende Handbuch-Artikel vor. Deine Frage geht an das DEX-Team, das sich darum kümmert und dir in der App antwortet.</p>
 

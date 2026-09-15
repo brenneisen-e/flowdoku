@@ -233,6 +233,12 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
   // Leser zuerst wissen will, warum er nicht klicken kann — nicht, was er
   // bekäme, wenn er könnte.
   const hasList = !!selectedEvent?.subsiteUrl;
+  // v31.43: Entwurf = noch nicht live. Es kann sich niemand anmelden, also
+  // gibt es niemanden, dem man QR-Codes schicken oder den man einchecken
+  // koennte.
+  const istEntwurf = !!selectedEvent?.isFictive;
+  const entwurfGrund = 'Gerade nicht möglich: Das Event ist noch ein Entwurf — schalte es oben auf „Aktiv", dann können sich Teilnehmer anmelden. ';
+  const entwurfGrundEn = 'Not available right now: this event is still a draft — set it to „Active" above so people can register. ';
   const noListReason = isDe
     ? 'Gerade nicht möglich: Dieses Event hat noch keine Teilnehmerliste. '
     : 'Not available right now: this event has no participant list yet. ';
@@ -452,10 +458,15 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
               category="checkin"
               title={isSendingQR ? (isDe ? `QR-Codes werden versendet... (${qrSentCount})` : `Sending QR codes... (${qrSentCount})`) : (isDe ? 'QR-Codes und Check-In' : 'QR codes and check-in')}
               desc={isDe
-                ? 'Alles rund um den Event-Tag an einer Stelle: persönliche QR-Codes an die Teilnehmer verschicken — oder das Check-in vorbereiten und starten (Team scannt, oder Teilnehmer checken sich selbst ein).'
-                : 'Everything about event day in one place: send personal QR codes to attendees — or prepare and start check-in (your team scans, or attendees check themselves in).'}
+                ? `${istEntwurf ? entwurfGrund : ''}Alles rund um den Event-Tag an einer Stelle: persönliche QR-Codes an die Teilnehmer verschicken — oder das Check-in vorbereiten und starten (Team scannt, oder Teilnehmer checken sich selbst ein).`
+                : `${istEntwurf ? entwurfGrundEn : ''}Everything about event day in one place: send personal QR codes to attendees — or prepare and start check-in (your team scans, or attendees check themselves in).`}
               badge="organizer"
               busy={isSendingQR}
+              // v31.43: Im Entwurf gesperrt — aber sichtbar, mit dem Grund davor
+              // (Leitfaden 5a). Ein Entwurf ist nicht live, es kann sich niemand
+              // anmelden; QR-Codes gaebe es an niemanden zu verschicken und
+              // einchecken koennte sich auch niemand.
+              disabled={isSendingQR || istEntwurf}
               onClick={() => { setCheckInHubStep('choose'); setCheckInHubOpen(true); }}
             />
 
