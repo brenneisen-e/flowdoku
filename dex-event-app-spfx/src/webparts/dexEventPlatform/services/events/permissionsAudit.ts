@@ -427,15 +427,23 @@ export async function findOrphanSubsites(
   return result;
 }
 
-/** Löscht eine (verwaiste) Subsite endgültig — inkl. aller Listen darin.
+/** Räumt eine (verwaiste) Subsite ab — inkl. aller Listen darin.
  *  Nur für Admins (Owner-Rechte nötig). SharePoint verlangt, dass das Web
- *  keine eigenen Unter-Webs mehr hat. */
+ *  keine eigenen Unter-Webs mehr hat.
+ *  v31.62: `/_api/web/recycle` statt DELETE — die Subsite liegt danach 93
+ *  Tage im Papierkorb der Site Collection (dasselbe Muster wie deleteEvent
+ *  seit v9.0). Vorher war eine „verwaiste" Subsite samt Teilnehmerliste
+ *  endgültig weg — und „verwaist" ist ein Befund, kein Beweis. */
 export async function deleteSubsiteWeb(svc: EventService, webUrl: string): Promise<boolean> {
   try {
+    await svc.writeChangeLog({
+      action: 'SubsiteRecycled', targetType: 'Subsite', targetId: webUrl, targetName: webUrl,
+      details: { quelle: webUrl, grund: 'Verwaiste Subsite abgeräumt (Rechte-Audit)', wiederherstellung: 'Site Collection → Recycle bin (93 Tage)' },
+    }).catch(() => { /* best-effort */ });
     const digest = await svc._webDigest(webUrl);
     const resp = await svc._sp.post(
-      `${webUrl}/_api/web`, SPHttpClient.configurations.v1,
-      { headers: { 'Accept': 'application/json;odata=verbose', 'Content-Type': 'application/json;odata=verbose', 'odata-version': '', 'IF-MATCH': '*', 'X-HTTP-Method': 'DELETE', ...(digest ? { 'X-RequestDigest': digest } : {}) } }
+      `${webUrl}/_api/web/recycle`, SPHttpClient.configurations.v1,
+      { headers: { 'Accept': 'application/json;odata=verbose', 'Content-Type': 'application/json;odata=verbose', 'odata-version': '', ...(digest ? { 'X-RequestDigest': digest } : {}) } }
     );
     return resp.ok || resp.status === 200 || resp.status === 204;
   } catch { return false; }

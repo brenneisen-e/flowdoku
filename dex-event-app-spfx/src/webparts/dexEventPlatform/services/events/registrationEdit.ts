@@ -19,6 +19,7 @@ import { perfLog } from '../../utils/perfLog';
 import { EventService } from '../EventService';
 import type { SPRegistration } from '../EventService';
 import { REG_LIST_NAME } from '../EventService';
+import { leseZeile, recycleZeile, schnappschussVorLoeschen } from './deleteSafety'; // v31.62
 
 /**
  * Bestehende abgemeldete Registrierung reaktivieren.
@@ -791,15 +792,26 @@ export async function getAllRegistrations(svc: EventService, subsiteUrl: string,
 }
 
 /**
- * v19.28: Eine Teilnehmer-Registrierung endgültig aus der Subsite-Liste
- * löschen (hartes DELETE, kein Recycle-Bin). Use-Case: abgemeldete
- * Test-Anmeldungen aus der Abmeldungen-Liste entfernen, damit die Übersicht
- * sauber bleibt. Die Berechtigung (Admin/Organizer) wird in der UI geprüft.
+ * v19.28: Eine Teilnehmer-Registrierung aus der Subsite-Liste entfernen.
+ * Use-Case: abgemeldete Test-Anmeldungen aus der Abmeldungen-Liste
+ * entfernen, damit die Übersicht sauber bleibt. Die Berechtigung
+ * (Admin/Organizer) wird in der UI geprüft.
+ * v31.62: kein hartes DELETE mehr — Papierkorb der Subsite (93 Tage) plus
+ * Schnappschuss der Zeile (inkl. CustomData = Antworten) im
+ * Änderungsprotokoll. Gilt damit für alle Aufrufer: Duplikat-Bereinigung,
+ * Schatten-Zeilen, Abmeldungen-Liste.
  */
 export async function deleteRegistration(svc: EventService, subsiteUrl: string, itemId: number): Promise<boolean> {
   try {
-    const resp = await svc._delete(`${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`);
-    return resp.ok;
+    const itemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`;
+    const row = await leseZeile(svc, itemUrl);
+    const mail = row && typeof row.ParticipantEmail === 'string' ? row.ParticipantEmail : '';
+    await schnappschussVorLoeschen(svc, {
+      action: 'RegistrationRecycled', targetType: 'Participant', targetId: mail || String(itemId),
+      targetName: row && typeof row.ParticipantName === 'string' ? row.ParticipantName : '',
+      quelle: `${subsiteUrl} · ${REG_LIST_NAME} · Item ${itemId}`, row, grund: 'deleteRegistration',
+    });
+    return await recycleZeile(svc, itemUrl);
   } catch (err) {
     console.warn('[DEX] deleteRegistration failed:', err);
     return false;
