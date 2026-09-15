@@ -23,5 +23,44 @@ function labelLooksLikeProfile(label: string): boolean {
   // v26.91: Telefon/Mobil/Handy bewusst NICHT mehr — eine (private) Mobilnummer
   // z.B. für den B2Run-Infoservice steht i.d.R. NICHT im Deloitte-Profil und ist
   // eine legitime Abfrage; der „schon automatisch erfasst"-Hinweis passte da nicht.
-  return /(vorname|nachname|first ?name|last ?name|e-?mail|abteilung|department|standort|location|\boffice\b|\bbüro\b|firma|company|unternehmen|arbeitgeber|gesellschaft|\bgmbh\b|legal ?entity|\bentity\b|rechtsträger|member ?firm|adresse|address|job ?title)/i.test(label || '');
+  // v31.45: Sechs Begriffe dazu (Nutzer-Befund 15.09.2026: Ein Event fragte
+  // „Level", „Office" und „Bereich" ab, obwohl Position und Geschäftsbereich in
+  // der Profilkarte darüber stehen). Erkannt wurden davon nur „Office".
+  // Neu: Geschäftsbereich, Business Unit, Service Line, Level, Grade, Position.
+  //
+  // Bewusst NICHT „Bereich" allein: „In welchem Bereich möchtest du mitmachen?"
+  // ist eine legitime Frage, und ein Fehlalarm macht den Hinweis unglaubwürdig —
+  // dieselbe Lehre wie v26.83 (Telefon) und v26.91 (Mobilnummer).
+  return /(vorname|nachname|first ?name|last ?name|e-?mail|abteilung|department|geschäftsbereich|geschaeftsbereich|business ?unit|service ?line|standort|location|\boffice\b|\bbüro\b|firma|company|unternehmen|arbeitgeber|gesellschaft|\bgmbh\b|legal ?entity|\bentity\b|rechtsträger|member ?firm|adresse|address|job ?title|\blevel\b|\bgrade\b|\bposition\b)/i.test(label || '');
+}
+
+/**
+ * v31.45: Ein Auswahlfeld, das in Wahrheit ein Übernachtungs-Zeitraum ist.
+ *
+ * Nutzer-Befund 15.09.2026 mit Bild: Ein Event fragte „Hotelzimmer benötigt?"
+ * als Dropdown mit den Optionen „Ja - beide Nächte", „Ja - nur den 19.01.",
+ * „Ja - nur den 20.01.", „Nein". Dafür gibt es seit langem die Feldart
+ * `daterange` („Übernachtungs-Zeitraum", Kalender + Nächte).
+ *
+ * Das ist nicht nur umständlicher, es KOSTET Funktion: Die Hotelplanung im
+ * Organizer Center (Zimmerverteilung, `autoDistribute`, `formStayOf`) liest die
+ * Nächte aus dem Zeitraum-Feld. Bei „Ja - nur den 19.01." als Auswahltext steht
+ * dort nichts Auswertbares — die Person faellt aus der Verteilung.
+ *
+ * Erkannt wird bewusst nur die KOMBINATION aus Hotel-Label UND datumsartigen
+ * Optionen. „Hotelzimmer benötigt? Ja/Nein" ohne Daten ist eine saubere
+ * Ja/Nein-Frage und soll keinen Hinweis bekommen.
+ */
+export function selectLooksLikeStayRange(label: string, options: string[] | undefined): boolean {
+  const l = (label || '').trim();
+  if (!l) return false;
+  if (!/(hotel|zimmer|übernacht|uebernacht|\broom\b|accommodation|nächte|naechte|\bnights?\b)/i.test(l)) return false;
+  const opts = (options || []).filter(Boolean);
+  if (opts.length < 2) return false;
+  // Datumsartig = ein Tag.Monat, ein ISO-Datum oder ein Monatsname.
+  const datumsartig = (o: string): boolean =>
+    /\b\d{1,2}\.\s?\d{1,2}\.?(\s?\d{2,4})?\b/.test(o)
+    || /\b\d{4}-\d{2}-\d{2}\b/.test(o)
+    || /(januar|februar|märz|maerz|april|juni|juli|august|september|oktober|november|dezember|january|february|march|may|june|july|august|october|december)/i.test(o);
+  return opts.filter(datumsartig).length >= 2;
 }

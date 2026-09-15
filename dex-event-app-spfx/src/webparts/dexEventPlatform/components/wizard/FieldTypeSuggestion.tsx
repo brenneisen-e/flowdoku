@@ -4,7 +4,7 @@
  */
 import * as React from 'react';
 import { CustomFieldInput } from './customFieldInput';
-import { labelLooksLikeDate, labelLooksLikeName, labelLooksLikeProfile } from '../../utils/fieldHeuristics';
+import { labelLooksLikeDate, labelLooksLikeName, labelLooksLikeProfile, selectLooksLikeStayRange } from '../../utils/fieldHeuristics';
 
 /** v24.25/v24.28: Kleiner Hinweis im Feld-Editor. Drei Fälle, in dieser
  *  Priorität: (1) `profile` — das Feld wird ohnehin schon automatisch erfasst
@@ -20,15 +20,23 @@ export function FieldTypeSuggestion(props: {
   const { field, isDe, allowPerson, disabled, onApply } = props;
   const label = (field.label || '').trim();
   if (!label) return null;
-  let kind: 'profile' | 'date' | 'person' | null = null;
-  if (labelLooksLikeProfile(label)) kind = 'profile';
+  let kind: 'profile' | 'date' | 'person' | 'stay' | null = null;
+  // v31.45: Zuerst der Übernachtungs-Zeitraum — er ist der einzige Fall, in dem
+  // eine falsche Feldart FUNKTION kostet (die Hotelplanung liest die Nächte aus
+  // `daterange`; Auswahltexte wie „Ja - nur den 19.01." kann sie nicht lesen).
+  if (field.type === 'select' && selectLooksLikeStayRange(label, field.options)) kind = 'stay';
+  else if (labelLooksLikeProfile(label)) kind = 'profile';
   else if (labelLooksLikeDate(label) && field.type !== 'date' && field.type !== 'daterange') kind = 'date';
   // v29.21 (Audit): 'daterange' matcht die Heuristik (Anreise/Abreise/Check-in)
   // naturgemaess — der Tipp hätte das Feld auf 'date' zurueckgestuft und
   // damit rangeStart/rangeEnd/maxNights beim Save verworfen.
   else if (allowPerson && labelLooksLikeName(label) && field.type !== 'user' && field.type !== 'roommate') kind = 'person';
   if (!kind) return null;
-  const body = kind === 'profile'
+  const body = kind === 'stay'
+    ? (isDe
+        ? <>Hier stehen <strong>Datumsangaben in den Auswahl-Optionen</strong>. Mit der Feldart <strong>&bdquo;Übernachtungs-Zeitraum&ldquo;</strong> wählen Teilnehmer An- und Abreise im Kalender — und nur damit kann die <strong>Hotelplanung</strong> im Organizer Center die Nächte lesen und Zimmer verteilen.</>
+        : <>The options contain <strong>dates</strong>. With the <strong>&bdquo;Stay period&ldquo;</strong> field type attendees pick arrival and departure in a calendar — and only then can the <strong>hotel planning</strong> in the organizer center read the nights and assign rooms.</>)
+    : kind === 'profile'
     ? (isDe
         ? <>Das wird vermutlich <strong>schon automatisch erfasst</strong> — Angaben wie Standort, Abteilung oder Unternehmenszugehörigkeit (z.B. Deloitte GmbH / Consulting GmbH) kommen aus dem Profil. Du musst sie meist nicht extra abfragen.</>
         : <>This is probably <strong>already collected automatically</strong> — details like location, department or company affiliation come from the profile. You usually don’t need to ask for them.</>)
@@ -39,8 +47,10 @@ export function FieldTypeSuggestion(props: {
     : (isDe
         ? <>Das klingt nach einer <strong>Person</strong>. Mit der Feldart <strong>„Person“</strong> suchen Teilnehmer die Person direkt (mit Foto &amp; Standort), statt den Namen abzutippen.</>
         : <>This looks like a <strong>person</strong>. With the <strong>„Person“</strong> field type attendees search the person directly (with photo &amp; location) instead of typing the name.</>);
-  const applyType: CustomFieldInput['type'] | null = kind === 'date' ? 'date' : kind === 'person' ? 'user' : null;
-  const applyLabel = kind === 'date'
+  const applyType: CustomFieldInput['type'] | null = kind === 'stay' ? 'daterange' : kind === 'date' ? 'date' : kind === 'person' ? 'user' : null;
+  const applyLabel = kind === 'stay'
+    ? (isDe ? 'Auf „Übernachtungs-Zeitraum" umstellen' : 'Switch to „Stay period"')
+    : kind === 'date'
     ? (isDe ? 'Auf „Datum" umstellen' : 'Switch to „Date"')
     : (isDe ? 'Auf „Person" umstellen' : 'Switch to „Person"');
   return (
