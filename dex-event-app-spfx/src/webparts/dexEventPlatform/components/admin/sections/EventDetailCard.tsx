@@ -275,7 +275,15 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
               // „QR-Codes und Check-In", und den braucht man VORHER: QR-Codes
               // verschickt man in der Woche davor, nicht am Tag davor. Ein
               // Einstieg, den man erst findet, wenn es zu spät ist, ist keiner.
-              const showSciTile = canManageSci && notLongPast;
+              // v31.43: Nicht im Entwurf. Nutzer-Befund 15.09.2026: „QR-Codes
+              // versenden sollte da noch nicht stehen, wenn das Event noch im
+              // Entwurf ist." Stimmt — ein Entwurf ist nicht live, es kann sich
+              // niemand anmelden, die Teilnehmerzahl steht auf 0. Beides, was
+              // hinter der Kachel liegt, braucht Teilnehmer: QR-Codes gehen an
+              // Angemeldete, und einchecken kann sich nur, wer angemeldet ist.
+              // Ein Einstieg, der nichts tun kann, ist kein Einstieg, sondern
+              // eine Frage („warum passiert nichts?").
+              const showSciTile = canManageSci && notLongPast && !isDraft;
               // v28.90: Ohne Event-Foto blieb die rechte Spalte leer und die
               // Detail-Zeilen liefen über die volle Breite — die Ansicht sah je
               // Event unterschiedlich aus, je nachdem ob jemand ein Bild
