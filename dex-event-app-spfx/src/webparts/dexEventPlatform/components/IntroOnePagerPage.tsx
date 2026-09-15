@@ -35,7 +35,7 @@ export default function IntroOnePagerPage(): React.ReactElement {
   const adminLike = isAdmin || originalIsAdmin;
 
   React.useEffect(() => {
-    if (!adminLike) navigate('start');
+    if (!adminLike) navigate('start', undefined, undefined, { replace: true }); // v31.59: kein Rücksprungziel
   }, [adminLike, navigate]);
   if (!adminLike) return <div className="page-container" />;
 

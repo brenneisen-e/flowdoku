@@ -2180,7 +2180,8 @@ export default function CheckInPage(): React.ReactElement {
         <p style={{ color: 'var(--dex-gray-400)', padding: 48 }}>
           {t('checkin.noaccess') || 'Du hast keinen Zugriff auf den Check-In. Wende dich an einen Admin, wenn du als Organizer oder QR-Scanner eingetragen werden solltest.'}
         </p>
-        <button className="btn btn-secondary" onClick={() => navigate('landing')}>{t('reg.backtoevents') || 'Zurück'}</button>
+        {/* v31.59: zur Startseite statt zur Landing, mit sagendem Label. */}
+        <button className="btn btn-secondary" onClick={() => navigate('start', undefined, undefined, { replace: true })}>{isDe ? 'Zur Startseite' : 'To the start page'}</button>
       </div>
     );
   }

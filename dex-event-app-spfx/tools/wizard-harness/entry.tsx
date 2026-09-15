@@ -213,7 +213,7 @@ const navCtx: any = proxy({
   currentPage: PAGE_OF[page] || 'landing',
   selectedEventId,
   navIntent: undefined,
-  navigate: () => undefined, goBack: () => undefined, clearIntent: () => undefined, setNavigationGuard: () => undefined,
+  navigate: () => undefined, goBack: () => undefined, canGoBack: false, clearIntent: () => undefined, setNavigationGuard: () => undefined,
   history: [],
 }, () => () => undefined);
 

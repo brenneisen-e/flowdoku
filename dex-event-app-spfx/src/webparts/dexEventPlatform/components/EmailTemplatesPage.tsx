@@ -65,7 +65,7 @@ export default function EmailTemplatesPage(): React.ReactElement {
   const [savingId, setSavingId] = React.useState<number | null>(null);
 
   React.useEffect(() => {
-    if (!adminLike) { navigate('start'); return; }
+    if (!adminLike) { navigate('start', undefined, undefined, { replace: true }); return; } // v31.59: kein Rücksprungziel
     let cancelled = false;
     setLoading(true);
     getAllEmailTemplates().then(all => {

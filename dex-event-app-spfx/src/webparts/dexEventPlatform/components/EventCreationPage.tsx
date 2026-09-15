@@ -103,8 +103,10 @@ export default function EventCreationPage(): React.ReactElement {
   // Seite öffnen und das Save würde erst beim SP-Write scheitern. Mit
   // Guard zurück zur Start-Seite, falls keine Organizer-Rechte.
   React.useEffect(() => {
-    if (!canCreateEvents) goBack();
-  }, [canCreateEvents, goBack]);
+    // v31.59: hart zur Startseite (ersetzend) — `goBack()` war bei leerem
+    // Stack (Deep-Link) ein stiller No-Op, die Seite blieb einfach stehen.
+    if (!canCreateEvents) navigate('start', undefined, undefined, { replace: true });
+  }, [canCreateEvents, navigate]);
   // v19.x: Audience-Such-/Chip-/Member-Modal-State ist nach <AudiencePicker>
   // gewandert (Hauptevent + jedes Sub-Event halten dort ihren eigenen State).
   // Hier bleibt nur die persistierte Audience selbst (siehe `audience` weiter
