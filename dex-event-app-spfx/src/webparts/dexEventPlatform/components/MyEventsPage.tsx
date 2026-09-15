@@ -798,7 +798,15 @@ export default function MyEventsPage(): React.ReactElement {
     }
     // v31.8: Nur Typografie — das schließende Zeichen war ein gerades ".
     setCancelProgress({ pct: pct(), label: isDe ? `„${(entry && entry.event.title) || ''}“ wird abgemeldet…` : `Cancelling “${(entry && entry.event.title) || ''}”…` });
-    const success = await cancelRegistration(eventId);
+    // v31.54: Die Klammer ist im Klammer-Modus eine Schattenzeile — kein
+    // Platz, keine Mail, kein Outlook (CLAUDE.md). Bis v31.53 lief sie hier
+    // OHNE `suppressNotifications`, und die Person bekam nach den Termin-
+    // Abmeldungen eine dritte Mail „Abmeldung bestätigt: <Klammer>" (mit
+    // Organizern in Kopie), obwohl die Termine auf „Nur Outlook" standen.
+    // Nur wenn Termine abgemeldet wurden — ohne Termine ist es eine alte
+    // Direkt-Anmeldung an der Klammer (v17.22), die ihre Mail behält.
+    const klammerSchatten = kidsFirst && childIdsToCancel.length > 0;
+    const success = await cancelRegistration(eventId, klammerSchatten ? { suppressNotifications: true } : undefined);
     stepsDone += 1;
     if (success) {
       // Late cancellation: alle Organizer zusammen benachrichtigen (EINE Mail an

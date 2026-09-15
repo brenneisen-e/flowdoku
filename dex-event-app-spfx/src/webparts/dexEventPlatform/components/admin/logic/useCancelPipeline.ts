@@ -88,7 +88,13 @@ export function useCancelPipeline(ctx: UseCancelPipelineCtx): UseCancelPipelineR
     // meldete die Sammel-Box auf der Startseite die eben abgemeldete Person
     // bis zum nächsten Tag weiter als offenen Fall.
     invalidateInactiveAccountCache([selectedEvent.id, selectedEvent.parentEventId || '']);
-    if (reg.ParticipantEmail && !eventWasOver) {
+    // v31.54: Auf der Klammer eines Klammer-Events ist die Zeile ein Schatten
+    // (kein Platz, keine Mail, kein Outlook — CLAUDE.md). Die Abmelde-Mail
+    // und das Ausladen gehören zu den Terminen; hier hieße die Mail sonst
+    // „Abmeldung bestätigt: <Klammer>", obwohl niemand auf der Klammer
+    // eingeladen ist.
+    const klammerSchatten = !!selectedEvent.subEventsOnlyMode;
+    if (reg.ParticipantEmail && !eventWasOver && !klammerSchatten) {
       if (!selectedEvent.disableEmails && !selectedEvent.disableCancellationEmail) {
         const emailData = await buildCancellationMail(selectedEvent, reg, name);
         eventServiceRef.queueEmail(

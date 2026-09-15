@@ -679,6 +679,17 @@
 
     /* ========== My Events ========== */
     .my-events-list { display: flex; flex-direction: column; gap: 16px; }
+    // v31.54: Zeitstrahl in der Listen-Ansicht — linke Spalte mit Monat und
+    // Punkt je Event, durchgehende Linie über die Zeilen (bottom: -16px
+    // überbrückt den row-gap). Auf dem Handy rendert die Liste ohne .dex-tl.
+    .my-events-list.dex-tl { display: grid; grid-template-columns: 92px minmax(0, 1fr); column-gap: 14px; row-gap: 16px; }
+    .dex-tl-rail { position: relative; padding-right: 18px; text-align: right; }
+    .dex-tl-rail::before { content: ''; position: absolute; right: 6px; top: 0; bottom: -16px; width: 2px; background: var(--dex-gray-200); }
+    .dex-tl-rail:nth-last-child(2)::before { bottom: auto; height: 32px; }
+    .dex-tl-month { display: block; padding-top: 18px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dex-gray-600); white-space: nowrap; }
+    .dex-tl-dot { position: absolute; right: 1px; top: 26px; width: 12px; height: 12px; border-radius: 50%; background: var(--dex-gray-300); border: 2px solid #fff; box-shadow: 0 0 0 1px var(--dex-gray-300); }
+    .dex-tl-dot.is-reg { background: var(--dex-green); box-shadow: 0 0 0 1px var(--dex-green); }
+    .dex-tl-dot.is-wait { background: var(--dex-orange, #ed8b00); box-shadow: 0 0 0 1px var(--dex-orange, #ed8b00); }
     .my-event-card { padding: 24px; }
     .my-event-card__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
     .my-event-card__header h3 { font-size: 1.1rem; }
