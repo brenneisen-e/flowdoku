@@ -211,12 +211,18 @@ export default function EventListPage(): React.ReactElement {
   // an — bei Drosselung/Netz ist das die ganze Lösung.
   const [retrying, setRetrying] = React.useState(false);
   // View-Mode (Cards | List) - persistiert in localStorage
-  const [viewMode, setViewMode] = React.useState<'cards' | 'list'>(() => {
-    try { return (localStorage.getItem('dex-eventlist-view') as 'cards' | 'list') || 'cards'; }
-    catch { return 'cards'; }
+  // v31.54: Ohne eigene Wahl entscheidet die Menge (Nutzer-Ansage 15.09.2026:
+  // „wenn einem mehr als 5 Events angezeigt werden, dann soll der Default
+  // ‚Liste' sein"). Gespeichert wird nur eine BEWUSSTE Wahl — `viewMode`
+  // selbst wird unten aus Wahl und Anzahl abgeleitet.
+  const [viewPref, setViewPref] = React.useState<'cards' | 'list' | null>(() => {
+    try {
+      const v = localStorage.getItem('dex-eventlist-view');
+      return v === 'cards' || v === 'list' ? v : null;
+    } catch { return null; }
   });
   const switchView = (m: 'cards' | 'list'): void => {
-    setViewMode(m);
+    setViewPref(m);
     try { localStorage.setItem('dex-eventlist-view', m); } catch { /* */ }
   };
   // v9.18: Debug-Button entfernt — wurde im Live-Betrieb nicht gebraucht.
@@ -342,6 +348,11 @@ export default function EventListPage(): React.ReactElement {
     // ab in der Zukunft ohne Vorschau) live in dem Moment, in dem sie öffnen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events, onlyActive, isAdmin, currentEmailLc, currentUser.email, currentUser.location, groupEmails, isOwnOrganizer, nowTick]);
+  // v31.54: Ansicht = bewusste Wahl, sonst ab sechs Events die Liste. Fünf
+  // Karten überblickt man, ab sechs scrollt man — und in der Liste steht das
+  // Datum in einer Spalte untereinander.
+  const LISTEN_AB = 6;
+  const viewMode: 'cards' | 'list' = viewPref || (filteredEvents.length >= LISTEN_AB ? 'list' : 'cards');
 
   if (isEventsLoading) {
     return (
@@ -455,8 +466,9 @@ export default function EventListPage(): React.ReactElement {
             <span className="dex-ui-switch-label">{t('eventlist.onlyactive')}</span>
           </label>
         )}
-        <span className="dex-ui-toolbar-spacer" />
-        <span className="dex-ui-muted">{t('eventlist.view') || 'Ansicht'}</span>
+        {/* v31.54: kein Spacer mehr — der Umschalter steht LINKS neben dem
+            Filter (Nutzer-Ansage 15.09.2026), beide gehören zur Liste darunter. */}
+        <span className="dex-ui-muted" style={{ marginLeft: (isAdmin || canCreateEvents) ? 12 : 0 }}>{t('eventlist.view') || 'Ansicht'}</span>
         <div className="dex-ui-tabs">
           <button
             type="button"
@@ -603,11 +615,22 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
   currentUserEmailLc: string;
 }): React.ReactElement {
   const { navigate } = useNavigation();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const { canCreateEvents, previewAsUser } = useRoles();
   const isMobile = useIsMobile();
+  // v31.54: Zeitstrahl links (Nutzer-Ansage 15.09.2026: „bei Liste hätte ich
+  // gerne links vertikal einen Zeitstrahl mit den Monaten"). Die Liste ist
+  // nach Startdatum sortiert; der Monat steht nur dort, wo er wechselt, der
+  // Punkt trägt die Farbe des Anmeldestatus. Auf dem Handy entfällt die
+  // Schiene (die Spalte wäre breiter als der Gewinn).
+  const monatVon = (iso: string): string => {
+    const d = iso ? new Date(iso) : null;
+    if (!d || isNaN(d.getTime())) return '';
+    return d.toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', { month: 'short', year: 'numeric' });
+  };
+  let letzterMonat = '';
   return (
-    <div className="my-events-list">
+    <div className={isMobile ? 'my-events-list' : 'my-events-list dex-tl'}>
       {events.map(event => {
         const isReg = myNumbers.registered.includes(event.eventNumber);
         const isWait = myNumbers.waitlisted.includes(event.eventNumber);
@@ -616,9 +639,18 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
         // v30.4: in der User-Vorschau kein Organizer-Badge/-Bypass.
         const isOwn = !previewAsUser && ((event.organizerEmails || []).some(em => (em || '').toLowerCase() === currentUserEmailLc)
           || (event.coOrganizerEmails || []).some(em => (em || '').toLowerCase() === currentUserEmailLc));
+        const monat = monatVon(event.startDate);
+        const monatNeu = monat !== letzterMonat;
+        letzterMonat = monat;
         return (
+          <React.Fragment key={event.id}>
+          {!isMobile && (
+            <div className="dex-tl-rail" aria-hidden="true">
+              {monatNeu && <span className="dex-tl-month">{monat}</span>}
+              <span className={`dex-tl-dot${isReg ? ' is-reg' : isWait ? ' is-wait' : ''}`} />
+            </div>
+          )}
           <div
-            key={event.id}
             className="card card-clickable"
             style={{
               padding: '20px 24px', cursor: 'pointer',
@@ -774,6 +806,7 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
               </div>
             </div>
           </div>
+          </React.Fragment>
         );
       })}
     </div>
