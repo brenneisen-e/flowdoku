@@ -70,7 +70,7 @@ export default function SettingsPage(): React.ReactElement {
   // damit der Admin-im-Demo-Modus seine eigene Einstellungen weiterhin
   // testen kann.
   React.useEffect(() => {
-    if (!originalIsAdmin) navigate('start');
+    if (!originalIsAdmin) navigate('start', undefined, undefined, { replace: true }); // v31.59: kein Rücksprungziel
   }, [originalIsAdmin, navigate]);
 
   /**

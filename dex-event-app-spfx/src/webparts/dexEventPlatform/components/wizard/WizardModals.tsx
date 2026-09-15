@@ -7,7 +7,7 @@
  * Details darunter, Aktionen im Fuß. Handler, Bedingungen und State-Bindungen
  * sind unverändert; nur Darstellung, Reihenfolge und Wortwahl. */
 import * as React from 'react';
-import { AlertCircle, Calendar, Check, ChevronDown, Copy, Download, FileText, Info, Plus, Send, Star, Users, X } from '../Icons';
+import { AlertCircle, Calendar, Check, ChevronDown, Copy, Download, FileText, Info, Pencil, Plus, RefreshCw, Save, Send, Star, Trash2, Users, X } from '../Icons';
 // v31.2: Gemeinsame UI-Klassen (Zeilen, Chips, Hinweiskästen) — siehe dexUi.ts
 // und docs/ui-leitfaden.md.
 import { cx } from '../dexUi';
@@ -220,6 +220,14 @@ export interface WizardModalsProps {
 
 export const WizardModals: React.FC<WizardModalsProps> = (p) => {
   const { activeCommTabIdx, activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, addSelectedSuggestedFields, agenda, applySubTransfer, askSalutation, attemptSubmit, audience, berlinLocalToUtcIso, bilingualFields, buildDraftPayload, bulkOrganizerOpen, bulkQrScannerOpen, bulkTestTeamOpen, cancelOutlookSave, childTermPlural, childTermSingular, closeVisCopy, confirmOutlookSave, contactEmail, customFields, DEMO_VARIANTS, description, disableEmails, disableOutlook, documents, DRAFT_KEY, dragOverSectionId, dragSectionId, durchstarterCapacity, emailLanguage, emailLogoPreview, emailTemplateOverrides, emailTemplates, endDate, eventImageUrl, excludedUsers, filterMode, funstarterCapacity, headerImageLayout, htmlEditorMode, htmlEditorOpen, htmlEditorTemplateType, imagePreview, isDe, isEditMode, isFictive, isMobile, isoToLocal, lastDeregisterDate, location, locationFilter, maxParticipants, newSectionError, newSectionModalOpen, newSectionName, organizer, organizerEmails, outlookBody, outlookConfirmChecks, outlookConfirmDismissed, outlookConfirmInvite, outlookConfirmItems, outlookConfirmOpen, outlookEndOverride, outlookHeading, outlookLocationOverride, outlookLogoPreview, outlookStartOverride, outlookSubheading, outlookSubject, pendingSections, pendingSuccessDispatch, pendingSuccessDispatchRef, previewSections, qrScannerEmails, qrScannerNames, quiz, registrationDeadline, registrationLanguage, renderPreviewSection, requireSubEventSelection, resolveTopLevelCommState, scDescription, scopeSub, searchUsers, setBulkOrganizerOpen, setBulkQrScannerOpen, setBulkTestTeamOpen, setDragOverSectionId, setDragSectionId, setEmailTemplateOverrides, setHeaderImageLayout, setHtmlEditorOpen, setNewSectionError, setNewSectionModalOpen, setNewSectionName, setOrganizer, setOrganizerEmails, setOutlookBody, setOutlookConfirmChecks, setOutlookConfirmDismissed, setOutlookConfirmInvite, setOutlookEndOverride, setOutlookHeading, setOutlookLocationOverride, setOutlookStartOverride, setOutlookSubheading, setOutlookSubject, setPendingSections, setPendingSuccessDispatch, setPreviewSections, setQrScannerEmails, setQrScannerNames, setScDescription, setShowB2runSuggested, setShowConfigCheck, setShowDemoVariantModal, setShowPreview, setShowRegisterPreview, setShowSuggestedModal, setShowSummaryModal, setSubEvents, setSubTransfer, setSuggestedSelection, setTestTeamEmails, setTestTeamNames, setUnsavedConfirmOpen, showB2runSuggested, showConfigCheck, showDemoVariantModal, showPreview, showRegisterPreview, showSuggestedModal, showSummaryModal, splitLabelA, splitLabelB, splitSharedWaitlist, startDate, SUB_TRANSFER_GROUPS, subEvents, subEventsOnlyMode, subGroupDiffCount, subTransfer, SUGGESTED_FIELDS_CATALOG, suggestedSelection, t, teamRegistrationEnabled, teamSize, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, unsavedConfirmOpen, useSplitCapacities, visCopyModalOpen, waitlistEnabled, allowAttendeeUpload, askTeamName, attendeeUploadHint, attendeeUploadLabel, contactInfo, contactName, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, quizClusterSize, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitSectionTitle, teamJoinRequiresApproval, teamOpenSlotsVisible, teamPartialAllowed } = p;
+  // v31.58: Kurzer Speicher-Moment auf „Entwurf speichern" (Nutzer-Ansage
+  // 15.09.2026: „wenn ich auf Entwurf speichern klicke, kurze Speicher-
+  // Animation"). Der Entwurf ist in localStorage sofort da; die Animation
+  // ist die Rückmeldung, dass geklickt wurde — ohne sie schloss sich der
+  // Dialog so schnell, dass man nicht sicher war, ob der Klick zählte.
+  const [draftSaveAnim, setDraftSaveAnim] = React.useState<'idle' | 'saving' | 'done'>('idle');
+  const draftSaveTimer = React.useRef<number[]>([]);
+  React.useEffect(() => () => { draftSaveTimer.current.forEach(id => window.clearTimeout(id)); }, []);
   // v31.2: Eine Prüf-und-Anlege-Logik für Enter-Taste UND Knopf im Dialog
   // „Neuer Bereich" — vorher stand derselbe Block zweimal. Kein Hook, nur
   // eine Funktion über den destrukturierten Props.
@@ -1825,35 +1833,41 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
           subtitle={isDe
             ? (isEditMode ? 'Du hast Änderungen am Event vorgenommen, die noch nicht gespeichert sind.' : 'Dein Event ist noch nicht angelegt.')
             : (isEditMode ? 'You have made changes to this event that are not saved yet.' : 'Your event is not created yet.')}
-          // v31.2: Drei Wege im Fuß statt gestapelt — Verwerfen steht links
-          // mit Abstand, damit es nie direkt neben „Fortsetzen" liegt.
-          footer={<>
-            <div className="dex-ui-modal-foot-left">
-              <button
-                type="button"
-                className="btn btn-danger"
-                onClick={() => {
-                  if (!isEditMode) {
-                    // Verwerfen heisst verwerfen — auch den Entwurfs-
-                    // Zwischenspeicher, sonst bietet ihn der naechste
-                    // Besuch wieder an.
-                    try { localStorage.removeItem(DRAFT_KEY); } catch { /* */ }
-                  }
-                  unsavedConfirmOpen.resolve(true);
-                  setUnsavedConfirmOpen(null);
-                }}
-              >
-                {isDe
-                  ? (isEditMode ? 'Änderungen verwerfen' : 'Event verwerfen')
-                  : (isEditMode ? 'Discard changes' : 'Discard event')}
-              </button>
-            </div>
+          // v31.2: Drei Wege im Fuß statt gestapelt.
+          // v31.58: Drei gleich breite Knöpfe nebeneinander (Nutzer-Ansage
+          // 15.09.2026), je mit eigenem Symbol: Papierkorb = verwerfen,
+          // Stift = weiter bearbeiten, Diskette = speichern. Reihenfolge
+          // bleibt: Verwerfen links, Speichern rechts — der gefährliche Weg
+          // liegt nie neben dem gewollten. Auf dem Handy untereinander.
+          footer={<div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 10, width: '100%' }}>
+            <button
+              type="button"
+              className="btn btn-danger"
+              disabled={draftSaveAnim !== 'idle'}
+              style={{ width: '100%', justifyContent: 'center' }}
+              onClick={() => {
+                if (!isEditMode) {
+                  // Verwerfen heisst verwerfen — auch den Entwurfs-
+                  // Zwischenspeicher, sonst bietet ihn der naechste
+                  // Besuch wieder an.
+                  try { localStorage.removeItem(DRAFT_KEY); } catch { /* */ }
+                }
+                unsavedConfirmOpen.resolve(true);
+                setUnsavedConfirmOpen(null);
+              }}
+            >
+              <Trash2 size={14} /> {isDe
+                ? (isEditMode ? 'Änderungen verwerfen' : 'Event verwerfen')
+                : (isEditMode ? 'Discard changes' : 'Discard event')}
+            </button>
             <button
               type="button"
               className="btn btn-secondary"
+              disabled={draftSaveAnim !== 'idle'}
+              style={{ width: '100%', justifyContent: 'center' }}
               onClick={() => { unsavedConfirmOpen.resolve(false); setUnsavedConfirmOpen(null); }}
             >
-              {isDe
+              <Pencil size={14} /> {isDe
                 ? (isEditMode ? 'Weiter bearbeiten' : 'Weiter erstellen')
                 : (isEditMode ? 'Continue editing' : 'Continue creating')}
             </button>
@@ -1865,30 +1879,44 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
               <button
                 type="button"
                 className="btn btn-primary"
+                style={{ width: '100%', justifyContent: 'center' }}
                 onClick={() => {
                   unsavedConfirmOpen.resolve(false);
                   setUnsavedConfirmOpen(null);
                   window.setTimeout(() => { attemptSubmit(); }, 0);
                 }}
               >
-                <Send size={14} /> {isDe ? 'Änderungen speichern' : 'Save changes'}
+                <Save size={14} /> {isDe ? 'Änderungen speichern' : 'Save changes'}
               </button>
             ) : (
               <button
                 type="button"
-                className="btn btn-primary"
+                className={`btn btn-primary${draftSaveAnim === 'done' ? ' dex-ui-saved-pulse' : ''}`}
+                disabled={draftSaveAnim !== 'idle'}
+                style={{ width: '100%', justifyContent: 'center' }}
                 onClick={() => {
+                  if (draftSaveAnim !== 'idle') return;
                   // Sofort schreiben — der 1,5-s-Debounce des Autosaves hat
                   // die letzten Eingaben sonst evtl. noch nicht gesichert.
                   try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ savedAt: Date.now(), data: buildDraftPayload() })); } catch { /* best-effort */ }
-                  unsavedConfirmOpen.resolve(true);
-                  setUnsavedConfirmOpen(null);
+                  // Speicher-Moment: 0,45 s drehen, 0,6 s „Gespeichert", dann raus.
+                  setDraftSaveAnim('saving');
+                  draftSaveTimer.current.push(window.setTimeout(() => setDraftSaveAnim('done'), 450));
+                  draftSaveTimer.current.push(window.setTimeout(() => {
+                    setDraftSaveAnim('idle');
+                    unsavedConfirmOpen.resolve(true);
+                    setUnsavedConfirmOpen(null);
+                  }, 1050));
                 }}
               >
-                <Send size={14} /> {isDe ? 'Entwurf speichern' : 'Save draft'}
+                {draftSaveAnim === 'saving'
+                  ? <><span className="dex-ui-spin"><RefreshCw size={14} /></span> {isDe ? 'Wird gespeichert …' : 'Saving …'}</>
+                  : draftSaveAnim === 'done'
+                    ? <><Check size={14} /> {isDe ? 'Gespeichert' : 'Saved'}</>
+                    : <><Save size={14} /> {isDe ? 'Entwurf speichern' : 'Save draft'}</>}
               </button>
             )}
-          </>}
+          </div>}
         >
           <div className="dex-ui-callout dex-ui-callout--neutral">
             <span className="dex-ui-callout-icon"><Info size={16} /></span>

@@ -32,7 +32,7 @@ export default function ArchitecturePage(): React.ReactElement {
   const listUrl = (name: string): string => `${siteUrl}/Lists/${name}`;
 
   React.useEffect(() => {
-    if (!adminLike) navigate('start');
+    if (!adminLike) navigate('start', undefined, undefined, { replace: true }); // v31.59: kein Rücksprungziel
   }, [adminLike, navigate]);
   // v30.40: `pdfBusy` stand bis hierher UNTER dem frühen Return. `adminLike`
   // kippt zur Laufzeit — die Rollen kommen asynchron —, also sprang die

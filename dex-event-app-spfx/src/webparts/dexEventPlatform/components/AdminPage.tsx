@@ -1717,8 +1717,10 @@ export default function AdminPage(): React.ReactElement {
                 + {t('admin.newevent')}
               </button>
             )}
-            <button className="btn btn-secondary" onClick={() => navigate('landing')}>
-              {t('reg.backtoevents') || 'Zurück'}
+            {/* v31.59: zur Startseite statt zur Landing — und ein Label, das
+                sagt, wohin (vorher „Zurück zu Events"). */}
+            <button className="btn btn-secondary" onClick={() => navigate('start', undefined, undefined, { replace: true })}>
+              {isDe ? 'Zur Startseite' : 'To the start page'}
             </button>
           </div>
         </div>

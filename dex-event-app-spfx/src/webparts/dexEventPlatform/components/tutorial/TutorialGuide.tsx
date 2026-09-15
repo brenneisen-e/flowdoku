@@ -173,7 +173,9 @@ function TutorialOverlay(props: { tour: TutorialTour; onClose: () => void }): Re
     setRect(null);
     targetRef.current = null;
     if (currentPage !== step.page) {
-      navigate(step.page);
+      // v31.59: ersetzend — die Tour soll keine Kette von Rücksprungzielen
+      // hinterlassen, sonst führt „Zurück" nach der Tour durch alle Tour-Seiten.
+      navigate(step.page, undefined, undefined, { replace: true });
       // Fallback: Wenn die Navigation blockiert wird (z.B. Unsaved-Changes-
       // Guard einer Seite), nach kurzer Zeit trotzdem die Karte zentriert
       // zeigen — sonst bliebe nur der dunkle Backdrop ohne Ausweg.

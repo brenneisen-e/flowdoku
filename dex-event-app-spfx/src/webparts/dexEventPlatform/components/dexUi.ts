@@ -47,6 +47,12 @@ export const DEX_UI_CSS = `
 @keyframes dexUiFadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes dexUiModalIn { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: none; } }
 @keyframes dexUiPulse { 0% { box-shadow: 0 0 0 0 rgba(134,188,37,0.55); } 70% { box-shadow: 0 0 0 10px rgba(134,188,37,0); } 100% { box-shadow: 0 0 0 0 rgba(134,188,37,0); } }
+/* v31.58: Kurzer Speicher-Moment auf einem Knopf — drehendes Symbol, dann
+   ein Puls beim Fertig. Kein Layout-Sprung: Der Knopf behaelt seine Breite. */
+@keyframes dexUiSpin { to { transform: rotate(360deg); } }
+.dex-ui-spin { display: inline-flex; animation: dexUiSpin 0.8s linear infinite; }
+.dex-ui-saved-pulse { animation: dexUiPulse 0.7s ease-out 1; }
+@media (prefers-reduced-motion: reduce) { .dex-ui-spin, .dex-ui-saved-pulse { animation: none; } }
 .dex-ui-fade-in { animation: dexUiFadeIn 0.25s ease-out both; }
 .dex-ui-modal-card { animation: dexUiModalIn 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .dex-ui-pulse { animation: dexUiPulse 1.8s ease-out infinite; }

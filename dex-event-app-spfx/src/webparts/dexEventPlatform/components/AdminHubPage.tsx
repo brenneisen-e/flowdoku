@@ -154,7 +154,7 @@ export default function AdminHubPage(): React.ReactElement {
   };
 
   React.useEffect(() => {
-    if (!adminLike) { navigate('start'); return; }
+    if (!adminLike) { navigate('start', undefined, undefined, { replace: true }); return; } // v31.59: kein Rücksprungziel
     // v31.3 (Nachzug): Erst zählen, wenn die Event-Liste da ist. `getArchivableCount`
     // antwortet bei leerer Liste mit 0 (archiveAndPurge.ts: `allIds.size === 0`) —
     // das ist die Aussage „noch nichts gelesen", nicht „nichts zu archivieren".

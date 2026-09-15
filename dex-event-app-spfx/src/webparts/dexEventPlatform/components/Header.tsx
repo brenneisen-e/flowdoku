@@ -30,7 +30,7 @@ export default function Header(): React.ReactElement {
   // ein Abbruch mittendrin hinterlaesst ein halb angelegtes Event.
   const [saveBusy, setSaveBusy] = React.useState<boolean>(isSaveInProgress());
   React.useEffect(() => subscribeSaveInProgress(setSaveBusy), []);
-  const { currentPage, navigate, selectedEventId } = useNavigation();
+  const { currentPage, navigate, goBack, selectedEventId } = useNavigation();
   const { currentUser, photoUrl } = useCurrentUser();
   const { currentUserRole, originalIsAdmin, previewAsUser, setPreviewAsUser } = useRoles();
   // v30.43: Hover für den Ansicht-Wechselschalter. Inline-Styles können kein
@@ -59,7 +59,6 @@ export default function Header(): React.ReactElement {
     setTutorialCtaHidden(true);
   };
   const isLanding = currentPage === 'landing';
-  const isStart = currentPage === 'start';
 
   // v18.35: Hinweis-Chip, wenn die Anmeldeseite in einer festen Sprache
   // angezeigt wird (Organizer hat sie pro Event vorgegeben). Der Text steht
@@ -286,7 +285,9 @@ export default function Header(): React.ReactElement {
                 Icon-Box allein war als Zurück-Navigation nicht klar genug. */}
             <button
               className="back-btn"
-              onClick={() => { if (!saveBusy) navigate(isStart ? 'landing' : 'start'); }}
+              // v31.59: Zurück heißt zurück — über den Stack, nicht hart auf die
+              // Startseite. Ohne Rückweg (Deep-Link, F5) greift `fallbackFor`.
+              onClick={() => { if (!saveBusy) goBack(); }}
               disabled={saveBusy}
               aria-label={locale === 'de' ? 'Zurück' : 'Back'}
               title={saveBusy

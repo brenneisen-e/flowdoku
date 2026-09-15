@@ -121,6 +121,13 @@ export const Trash2 = ({ size = 16 }: IconProps): React.ReactElement => (
   </svg>
 );
 
+// v31.58: Diskette — „Entwurf speichern" im Ungespeichert-Dialog.
+export const Save = ({ size = 16 }: IconProps): React.ReactElement => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" />
+  </svg>
+);
+
 export const Send = ({ size = 16 }: IconProps): React.ReactElement => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" />

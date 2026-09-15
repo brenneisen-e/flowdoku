@@ -543,9 +543,10 @@ function AppContent(): React.ReactElement {
       // v17.4: Beim Update kehrt der User in das Organizer-Menü des Events
       // zurück (AdminPage mit dem soeben gespeicherten Event vorselektiert)
       // statt in die Event-Liste — weiterarbeiten ohne Such-Klick.
-      // Beim Create bleibt der bisherige Pfad: Event-Liste, damit der neue
-      // Event direkt in der Übersicht auftaucht.
-      if (detail.type === 'update' && detail.eventId) {
+      // v31.59: Auch beim Create ins Organizer Center des neuen Events — die
+      // Teilnehmer-Übersicht war für die anlegende Person der falsche Ort
+      // (Audit der Zurück-Pfade, 15.09.2026). Ohne Id bleibt die Übersicht.
+      if (detail.eventId) {
         navigate('admin', detail.eventId);
       } else {
         navigate('register');

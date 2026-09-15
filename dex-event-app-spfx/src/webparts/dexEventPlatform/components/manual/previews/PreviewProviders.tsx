@@ -167,7 +167,7 @@ export function PreviewContextStack(props: {
     currentPage: props.page || 'landing',
     selectedEventId: props.selectedEventId || null,
     navIntent: undefined,
-    navigate: noop, goBack: noop, clearIntent: noop,
+    navigate: noop, goBack: noop, canGoBack: false, clearIntent: noop,
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const user: any = { currentUser: demoUser, isLoading: false, photoUrl: '' };

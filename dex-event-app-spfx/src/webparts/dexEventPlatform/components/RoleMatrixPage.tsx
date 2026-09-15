@@ -506,7 +506,7 @@ async function downloadRoleMatrixPdf(): Promise<void> {
 }
 
 export default function RoleMatrixPage(): React.ReactElement {
-  const { navigate } = useNavigation();
+  const { navigate, goBack } = useNavigation();
   const [pdfBusy, setPdfBusy] = React.useState(false);
   // v13.0: Admin-Guard hinzugefügt — laut ENTWICKLUNG.md-Rollenmatrix ist
   // "Rollen-Matrix einsehen" Admin-only. Vorher fehlte der Schutz —
@@ -515,7 +515,7 @@ export default function RoleMatrixPage(): React.ReactElement {
   // Matrix weiterhin testen kann.
   const { originalIsAdmin } = useRoles();
   React.useEffect(() => {
-    if (!originalIsAdmin) navigate('start');
+    if (!originalIsAdmin) navigate('start', undefined, undefined, { replace: true }); // v31.59: kein Rücksprungziel
   }, [originalIsAdmin, navigate]);
   if (!originalIsAdmin) {
     return (
@@ -674,8 +674,10 @@ export default function RoleMatrixPage(): React.ReactElement {
       </div>
 
       <div style={{ marginTop: 16, textAlign: 'center' }}>
-        <button className="btn btn-secondary" onClick={() => navigate('settings')}>
-          Zurück zu Settings
+        {/* v31.59: zurück, woher man kam (Admin-Hub oder Rollenverwaltung) —
+            vorher hart „Zurück zu Settings", auch aus dem Hub. */}
+        <button className="btn btn-secondary" onClick={() => goBack()}>
+          Zurück
         </button>
       </div>
     </div>
