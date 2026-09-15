@@ -2596,7 +2596,14 @@ export default function AdminPage(): React.ReactElement {
   };
   // v30.87: Die Hinweise wandern als Zeile in die Event-Details-Karte (unter
   // „Aktionen"); die eigene Kachel unter den KPI-Kacheln entfällt.
-  const hintsSlot: React.ReactNode = ((isAdmin || isOrganizerFor(selectedEvent)) && !selectedEvent.isFictive && !selectedEvent.isDemoShowcase)
+  // v31.45: Auch im ENTWURF. Nutzer-Frage 15.09.2026: „warum steht bei diesem
+  // Event nicht als Hinweis, dass Name und Position bereits abgefragt werden?"
+  // Antwort war: weil die Box an `!isFictive` hing. Das ist genau falsch herum —
+  // im Entwurf kostet eine Formular-Änderung nichts, an einem Event mit 400
+  // Anmeldungen kostet sie die schon gegebenen Antworten. Die beiden Hinweise,
+  // die im Entwurf nicht passen, sind dort einzeln gesperrt
+  // (`draft-subevent-live-parent` seit jeher, `qr-send-window` seit v31.45).
+  const hintsSlot: React.ReactNode = ((isAdmin || isOrganizerFor(selectedEvent)) && !selectedEvent.isDemoShowcase)
     ? <ActiveEventHintsBox {...activeEventHintsBoxProps} variant="row" />
     : null;
   const audienceVisibilityRowProps = {

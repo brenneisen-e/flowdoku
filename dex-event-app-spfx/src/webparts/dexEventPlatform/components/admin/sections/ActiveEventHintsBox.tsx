@@ -11,6 +11,7 @@
 import * as React from 'react';
 import { looksEnglishText, stripHtmlToText } from '../../../utils/eventStatus';
 import { shortSubEventTitle } from '../../../utils/subEventTitle';
+import { labelLooksLikeDate, labelLooksLikeName, labelLooksLikeProfile, selectLooksLikeStayRange } from '../../../utils/fieldHeuristics';
 import { isEventOver } from '../../../utils/eventFormat';
 import { AlertCircle, ChevronDown, Info, QrCode } from '../../Icons';
 import { cx, ensureDexUiStyles } from '../../dexUi';
@@ -237,27 +238,34 @@ export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
           // (z.B. Abteilung, Standort, Firma) und deshalb überflüssig sein kann.
           // Zugang zum Ändern läuft über „Event bearbeiten" → Schritt „Felder".
           {
-            const looksDate = (s: string): boolean => /(datum|date|check[\s-]?in|check[\s-]?out|anreise|abreise|geburtstag|birthday|deadline|frist|termin|ankunft|abfahrt|arrival|departure)/i.test(s || '');
-            const looksName = (s: string): boolean => /(\bname\b|vorname|nachname|ansprechpartner|counselor|kolleg|mitarbeiter|\bmentor\b|\bpate\b|\bbuddy\b|begleitung|\bgast\b)/i.test(s || '');
-            // Felder, die i.d.R. schon automatisch aus dem Deloitte-Profil
-            // kommen (Anrede/Vorname/Nachname/E-Mail/Abteilung/Standort/Position/
-            // „name" allein bewusst NICHT — das ist zu mehrdeutig (z.B. „Name of
-            // counselor"). v26.83: Telefon/Mobil/Handy UND Adresse RAUS — die
-            // werden NICHT automatisch aus dem Profil erfasst (Fehlalarm: der
-            // Hinweis empfahl fälschlich, eine Mobilnummer-Abfrage wegzulassen).
-            const looksProfile = (s: string): boolean => /(vorname|nachname|first ?name|last ?name|e-?mail|abteilung|department|standort|location|\boffice\b|\bbüro\b|firma|company|unternehmen|arbeitgeber|gesellschaft|\bgmbh\b|legal ?entity|\bentity\b|rechtsträger|member ?firm|job ?title)/i.test(s || '');
+            /*
+             * v31.45: Die drei Regexe standen hier als KOPIE von
+             * `utils/fieldHeuristics` — und liefen bereits auseinander (die
+             * Kopie hier kannte `adresse|address` nicht mehr, die Quelle schon).
+             * Zwei Wahrheiten für dieselbe Frage sind genau die Konstruktion,
+             * die in diesem Projekt schon mehrfach auseinandergelaufen ist.
+             * Jetzt eine Quelle; die Erweiterung um Geschäftsbereich, Level &Co.
+             * wirkt damit hier UND im Feld-Editor des Assistenten.
+             */
+            const looksDate = labelLooksLikeDate;
+            const looksName = labelLooksLikeName;
+            const looksProfile = labelLooksLikeProfile;
             // Eindeutige Feld-Namen sammeln (gleiches Label in Haupt- + mehreren
             // Sub-Events nur EINMAL nennen). Profil-Felder haben Vorrang (sie
             // sollen ganz entfallen, nicht nur die Feldart wechseln).
             const profileSet = new Map<string, string>();
             const dateSet = new Map<string, string>();
             const nameSet = new Map<string, string>();
-            const scan = (fields: { type?: string; label?: string }[] | undefined): void => {
+            // v31.45: Auswahlfelder, hinter denen in Wahrheit ein
+            // Übernachtungs-Zeitraum steckt (s. `selectLooksLikeStayRange`).
+            const staySet = new Map<string, string>();
+            const scan = (fields: { type?: string; label?: string; options?: string[] }[] | undefined): void => {
               for (const f of (fields || [])) {
                 const lbl = (f.label || '').trim();
                 if (!lbl) continue;
                 const key = lbl.toLowerCase();
-                if (looksProfile(lbl)) { if (!profileSet.has(key)) profileSet.set(key, lbl); }
+                if (f.type === 'select' && selectLooksLikeStayRange(lbl, f.options)) { if (!staySet.has(key)) staySet.set(key, lbl); }
+                else if (looksProfile(lbl)) { if (!profileSet.has(key)) profileSet.set(key, lbl); }
                 else if ((f.type === 'text' || f.type === 'number') && looksDate(lbl)) { if (!dateSet.has(key)) dateSet.set(key, lbl); }
                 else if (f.type === 'text' && looksName(lbl)) { if (!nameSet.has(key)) nameSet.set(key, lbl); }
               }
@@ -267,7 +275,8 @@ export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
             const dateLike = Array.from(dateSet.values());
             const nameLike = Array.from(nameSet.values());
             const profileLike = Array.from(profileSet.values());
-            if (dateLike.length > 0 || nameLike.length > 0 || profileLike.length > 0) {
+            const stayLike = Array.from(staySet.values());
+            if (dateLike.length > 0 || nameLike.length > 0 || profileLike.length > 0 || stayLike.length > 0) {
               // v24.56: Feldnamen als Badges/Chips darstellen, damit klar ist,
               // welche Felder gemeint sind. Format pro Tipp: „Du hast …" +
               // Empfehlung + Erklärung.
@@ -291,6 +300,11 @@ export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
                 title: isDe ? 'Tipps zu deinen Feldern' : 'Tips for your fields',
                 body: (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {stayLike.length > 0 && tip(
+                      isDe ? <>{stayLike.length === 1 ? 'Das Auswahlfeld' : 'Die Auswahlfelder'} {badges(stayLike)} {stayLike.length === 1 ? 'fragt' : 'fragen'} Übernachtungen über <strong>Auswahl-Optionen mit Datumsangaben</strong> ab.</> : <>{stayLike.length === 1 ? 'The choice field' : 'The choice fields'} {badges(stayLike)} {stayLike.length === 1 ? 'asks' : 'ask'} about hotel nights via <strong>options containing dates</strong>.</>,
+                      isDe ? 'Nutze besser den Feldtyp „Übernachtungs-Zeitraum".' : 'Better use the „Stay period" field type.',
+                      isDe ? 'Nur damit kann die Hotelplanung im Organizer Center die Nächte lesen und Zimmer verteilen — bei Auswahltexten wie „Ja - nur den 19.01." fällt die Person aus der automatischen Verteilung. Teilnehmer wählen An- und Abreise im Kalender, die Zahl der Nächte lässt sich begrenzen.' : 'Only then can the hotel planning in the organizer center read the nights and assign rooms — with option texts like „Yes - 19 Jan only" the person drops out of the automatic distribution. Attendees pick arrival and departure in a calendar, and you can cap the number of nights.'
+                    )}
                     {dateLike.length > 0 && tip(
                       isDe ? <>Du hast {dateLike.length === 1 ? 'das Feld' : 'die Felder'} {badges(dateLike)} als <strong>Freitext</strong> eingestellt.</> : <>You set {dateLike.length === 1 ? 'the field' : 'the fields'} {badges(dateLike)} as <strong>free text</strong>.</>,
                       isDe ? 'Nutze besser den Feldtyp „Datum".' : 'Better use the „Date" field type.',
@@ -376,7 +390,10 @@ export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
             // Nicht lesbar (null) → wie bisher zeigen, das ist keine Aussage
             // über die Daten.
             const qrStillOpen = qrPendingCount === null || qrPendingCount > 0;
-            if (daysUntilStart <= 5 && !isEventOver(selectedEvent) && qrStillOpen) {
+            // v31.45: Nicht im Entwurf — dort kann sich niemand anmelden, es
+            // gibt also niemanden, dem man QR-Codes schicken könnte (dieselbe
+            // Regel wie bei der Kachel, v31.43).
+            if (daysUntilStart <= 5 && !isEventOver(selectedEvent) && qrStillOpen && !selectedEvent.isFictive) {
               // v31.3: `push` statt `unshift` — den Platz in der Liste bestimmt
               // jetzt die Dringlichkeit (siehe `ordered` weiter unten), nicht
               // mehr die Einfügestelle. Der Hinweis steht damit weiterhin über
