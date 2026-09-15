@@ -190,8 +190,12 @@ input.dex-ui-checkbox:not([hidden]):hover { border-color: ${G}; }
 input.dex-ui-checkbox:not([hidden]):checked { border-color: ${G}; background: ${G}; }
 .dex-ui-toggle-row > input[type='checkbox']:not([hidden]):checked::after,
 input.dex-ui-checkbox:not([hidden]):checked::after {
-  content: ''; position: absolute; left: 4px; top: 0; width: 4px; height: 9px;
+  content: ''; position: absolute; left: 5px; top: 2px; width: 4px; height: 9px;
   border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
+  /* v31.55: Der Haken sass oben links (left 4 / top 0) — die Mitte der 4x9-Box
+     lag bei (6, 4.5), die Mitte des 14px-Innenraums ist (7, 7). Mit 8-fach
+     vergroessertem Harness-Bild nachgemessen: bei top 1px stand der Haken
+     noch einen Pixel zu hoch, bei top 2px sitzt er mittig. */
 }
 .dex-ui-toggle-row > input[type='checkbox']:not([hidden]):disabled,
 input.dex-ui-checkbox:not([hidden]):disabled { opacity: 0.55; cursor: not-allowed; }
