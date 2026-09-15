@@ -106,7 +106,9 @@ export const EventOverviewScreen: React.FC<EventOverviewScreenProps> = (p) => {
                 <button
                   type="button"
                   className="dex-ui-choice is-active"
-                  style={{ textAlign: 'left', width: '100%', cursor: 'pointer' }}
+                  // display:block — die Kachel-Klasse ist eine Zeile (Symbol +
+                  // Text); hier stehen Titel und Angaben untereinander.
+                  style={{ textAlign: 'left', width: '100%', cursor: 'pointer', display: 'block' }}
                   onClick={() => { setDraftOpen(false); navigate('create-event', undefined, 'resume-draft'); }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
