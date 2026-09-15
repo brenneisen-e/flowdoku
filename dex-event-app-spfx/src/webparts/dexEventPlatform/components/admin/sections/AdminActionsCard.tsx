@@ -23,6 +23,8 @@ import { runOutlookInviteBackfill } from '../logic/outlookInviteBackfill';
 // v31.49: Gelöschte Termine im Papierkorb suchen — Regeln und Reihenfolge dort.
 import { suchePapierkorb, holeZeileZurueck, PapierkorbSuche, PapierkorbTreffer, RueckholErgebnis } from '../logic/recycleBinOutlook';
 import { RecycleBinOutlookModal } from '../modals/RecycleBinOutlookModal';
+// v31.52: Outlook-Verknüpfung anzeigen / ändern.
+import { OutlookLinkModal } from '../modals/OutlookLinkModal';
 
 export interface AdminActionsCardProps {
   adminEvents: DeloitteEvent[];
@@ -149,6 +151,8 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
    * gelöschte Zeile im Papierkorb und holt sie zurück (s. logic/recycleBinOutlook).
    */
   const [binOpen, setBinOpen] = React.useState(false);
+  // v31.52: Outlook-Verknüpfung anzeigen / ändern — Dialog-Zustand.
+  const [linkOpen, setLinkOpen] = React.useState(false);
   const [binSuche, setBinSuche] = React.useState<PapierkorbSuche | null>(null);
   const [binBusyId, setBinBusyId] = React.useState('');
   const [binErgebnisse, setBinErgebnisse] = React.useState<Record<string, RueckholErgebnis>>({});
@@ -536,6 +540,22 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                 badge="admin"
                 disabled={!selectedEvent}
                 onClick={() => { void runBinSuche(); }}
+              />
+            )}
+
+            {/* v31.52: Outlook-Verknüpfung anzeigen / ändern — der direkte
+                Blick auf CalendarLink, mit Prüfung über Graph und Überschreiben. */}
+            {isAdmin && (
+              <ActionTile
+                icon={<Link2 size={18} />}
+                category="maintenance"
+                title={isDe ? 'Outlook-Verknüpfung anzeigen / ändern' : 'Show / change Outlook link'}
+                desc={isDe
+                  ? 'Zeigt für das Hauptevent oder ein Sub-Event, welcher Outlook-Termin in SharePoint verknüpft ist (Spalte CalendarLink, die iCalUId) — frisch gelesen, mit Kopieren. Ein neuer Wert lässt sich vorher im Kalender von no_reply.events prüfen (Betreff, Beginn, Eingeladene) und dann überschreiben; ob der bisher verknüpfte Termin abgesagt wird, entscheidest du per Haken. Die iCalUId findest du in „Outlook-Termin wiederfinden", in der Run history von DEX_Outlook_Einladungen oder in der UID-Zeile einer gespeicherten .ics-Datei.'
+                  : 'Shows which Outlook appointment is linked in SharePoint for the main event or a sub-event (column CalendarLink, the iCalUId) — read fresh, with copy. A new value can be checked in the no_reply.events calendar first (subject, start, attendees) and then overwritten; whether the previously linked appointment is cancelled is your choice. Find the iCalUId in “Recover the Outlook appointment”, in the run history of DEX_Outlook_Einladungen or in the UID line of a saved .ics file.'}
+                badge="admin"
+                disabled={!selectedEvent}
+                onClick={() => setLinkOpen(true)}
               />
             )}
 
@@ -1968,6 +1988,17 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
             confirmDialog={confirmDialog}
             refreshEvents={refreshEvents}
             onClose={() => setBinOpen(false)}
+          />
+        )}
+        {linkOpen && selectedEvent && (
+          <OutlookLinkModal
+            isDe={isDe}
+            svc={eventServiceRef}
+            event={selectedEvent}
+            zeilen={[selectedEvent, ...childEventsOf(selectedEvent.id)]}
+            confirmDialog={confirmDialog}
+            refreshEvents={refreshEvents}
+            onClose={() => setLinkOpen(false)}
           />
         )}
       </>
