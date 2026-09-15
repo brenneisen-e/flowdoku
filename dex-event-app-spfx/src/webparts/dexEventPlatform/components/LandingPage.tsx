@@ -21,6 +21,7 @@ import { useIsMobile } from '../utils/useIsMobile';
 import { AlertCircle, ChevronDown, GraduationCap } from './Icons';
 import { INACTIVE_SUMMARY_CACHE_KEY } from '../utils/accountCheckCache';
 import { cx, ensureDexUiStyles } from './dexUi';
+import { AUTO_MAINTENANCE_DONE_EVENT } from './AdminAutoMaintenance';
 
 export default function LandingPage(): React.ReactElement {
   // v31.4 (Review): Der Hinweiskasten „Code nicht ladbar" unten nutzt
@@ -111,7 +112,18 @@ export default function LandingPage(): React.ReactElement {
       .then(list => { if (!cancelled) setPdDueEvents(list); })
       .catch(() => { /* best-effort */ });
     maybeSendParticipantDeletionWarnings().catch(() => { /* best-effort */ });
-    return () => { cancelled = true; };
+    // v31.63: Der automatische Lauf (AdminAutoMaintenance) ändert genau die
+    // Zahlen, die diese Kästen zeigen — nach seinem Ende neu zählen, sonst
+    // steht hier „120 Zeilen zum Archivieren", obwohl sie eben weg sind.
+    const onAutoDone = (): void => {
+      if (cancelled) return;
+      getArchivableCount().then(r => { if (!cancelled) setArchInfo(r); }).catch(() => { /* */ });
+      getDeletableArchiveCount().then(n => { if (!cancelled) setDelArchCount(n); }).catch(() => { /* */ });
+      getParticipantDeletionWarnings().then(list => { if (!cancelled) setPdWarnEvents(list); }).catch(() => { /* */ });
+      getParticipantDeletionDue().then(list => { if (!cancelled) setPdDueEvents(list); }).catch(() => { /* */ });
+    };
+    window.addEventListener(AUTO_MAINTENANCE_DONE_EVENT, onAutoDone);
+    return () => { cancelled = true; window.removeEventListener(AUTO_MAINTENANCE_DONE_EVENT, onAutoDone); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, isEventsLoading]);
 

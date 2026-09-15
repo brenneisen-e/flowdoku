@@ -12,6 +12,7 @@ import { CustomField, SPRegistration, SPParticipant, ReseedSummary, AssistantLin
 import { BundledItem } from '../utils/bundledComm';
 import { FAConfig } from '../utils/faBilling';
 import { CounterStats } from '../services/events/seats';
+import { AutoMaintenanceProgress, AutoMaintenanceResult } from './actions/archiveAndPurge';
 
 /** v18.33: Eingabe für den Self-Check-in-Deep-Link. Entweder `token` (statischer
  *  QR) ODER `eventNumber` + `code` + `windowIndex` (rotierender Live-QR). */
@@ -334,6 +335,10 @@ export interface EventContextType {
   getParticipantDeletionDue: () => Promise<DeloitteEvent[]>;
   runParticipantDeletion: (onProgress?: (done: number, total: number, label: string) => void) => Promise<{ deleted: number; failed: number }>;
   maybeSendParticipantDeletionWarnings: () => Promise<void>;
+  /** v31.63: Automatischer Lauf ohne Rückfrage — Archivieren, Archiv
+   *  aufräumen, fällige Teilnehmerlisten löschen. Gerufen vom Admin-Boot
+   *  (`AdminAutoMaintenance`), Fortschritt fürs Abzeichen oben rechts. */
+  runAutoMaintenance: (onProgress?: (p: AutoMaintenanceProgress) => void) => Promise<AutoMaintenanceResult>;
   /** v26.33: Liest das Statistik-Archiv (DEX_EventStats) — KPIs gelöschter
    *  Teilnehmerlisten für die Admin-Center-Kachel „Statistik-Archiv". */
   getEventStats: () => Promise<EventStatsRow[]>;
