@@ -2603,8 +2603,15 @@ export default function AdminPage(): React.ReactElement {
   // Anmeldungen kostet sie die schon gegebenen Antworten. Die beiden Hinweise,
   // die im Entwurf nicht passen, sind dort einzeln gesperrt
   // (`draft-subevent-live-parent` seit jeher, `qr-send-window` seit v31.45).
+  // v31.46: Wo die Hinweise stehen — Nutzer-Ansage 15.09.2026: „die Tipps
+  // sollten besser rechts bei ‚Beschreibung ergänzen' stehen … also alles an
+  // einer Stelle." Solange die Box „Nächste Schritte" da ist (Entwurf), wandern
+  // sie dorthin; ohne sie (aktives Event) bleiben sie in der Detail-Karte.
+  // `ohneGrundangaben` verhindert dabei die Dopplung: Schritt 1 der Box zählt
+  // Beschreibung, Ort und Bild schon als „Fehlt noch: …" auf.
+  const zeigtNextSteps = (isAdmin || isOrganizerFor(selectedEvent)) && !!selectedEvent.isFictive && !selectedEvent.isDemoShowcase;
   const hintsSlot: React.ReactNode = ((isAdmin || isOrganizerFor(selectedEvent)) && !selectedEvent.isDemoShowcase)
-    ? <ActiveEventHintsBox {...activeEventHintsBoxProps} variant="row" />
+    ? <ActiveEventHintsBox {...activeEventHintsBoxProps} variant="row" ohneGrundangaben={zeigtNextSteps} />
     : null;
   const audienceVisibilityRowProps = {
     isAdmin, isDe, isOrganizerFor, openPendingReminder, orgPastLock, pendingCheckBusy,
@@ -2650,7 +2657,7 @@ export default function AdminPage(): React.ReactElement {
             (Desktop; stapelt auf Mobile via flex-wrap). Die Box erscheint nur
             für Entwürfe und nur für Admin/Organizer. */}
         <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 20 }}>
-        <EventDetailCard {...eventDetailCardProps} hintsSlot={hintsSlot} />
+        <EventDetailCard {...eventDetailCardProps} hintsSlot={zeigtNextSteps ? undefined : hintsSlot} />
         {/* v22.5: „Nächste Schritte"-Box rechts neben der Detail-Card — nur für
             Entwürfe (Admin/Organizer). Erklärt, was nach dem Anlegen noch zu tun
             ist: finalisieren, Test-An-/Abmeldung, live schalten (+ wer es sieht),
@@ -2659,7 +2666,7 @@ export default function AdminPage(): React.ReactElement {
             Detail-Card (flex 1 1 420px + gemessene minWidth) die Box in die
             nächste Zeile, wo sie mit 460px als schmale Saeule links stand und
             rechts daneben alles leer blieb. Mit grow füllt sie die Zeile. */}
-        {(isAdmin || isOrganizerFor(selectedEvent)) && !!selectedEvent.isFictive && !selectedEvent.isDemoShowcase && <NextStepsBox {...nextStepsBoxProps} />}
+        {zeigtNextSteps && <NextStepsBox {...nextStepsBoxProps} hintsSlot={hintsSlot} />}
         </div>
 
       {/* 2. Hinweise, die Handeln verlangen (Leitfaden 5a) — in der Reihenfolge
