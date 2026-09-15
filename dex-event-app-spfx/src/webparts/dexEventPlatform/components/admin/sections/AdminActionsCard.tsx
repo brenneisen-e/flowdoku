@@ -211,48 +211,81 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
     setOutlookBackfillBusy(true);
     setOutlookBackfillResult(isDe ? 'Teilnehmerliste wird gelesen …' : 'Reading the participant list …');
     try {
-      const erg = await runOutlookInviteBackfill({
+      // v31.51: Sammel-Einladung (eine Queue-Zeile je 100 Adressen, ein
+      // Flow-Lauf) — nur, wenn der Flow sie kann. Der Schalter liegt
+      // tenant-weit in `_FlowConfig`; Admins sehen ihn als Haken im Dialog
+      // und setzen ihn damit nach dem Flow-Update für alle. Organizer
+      // bekommen den gespeicherten Stand ohne Haken.
+      let flowCfg = { outlookBatchInvites: false } as import('../../../services/events/emailTemplatesList').FlowConfig;
+      try { flowCfg = await eventServiceRef.getFlowConfig(); } catch { /* Schalter bleibt aus */ }
+      const backfillCtx: Parameters<typeof runOutlookInviteBackfill>[0] = {
         svc: eventServiceRef,
         event: selectedEvent,
         leseAnmeldungen: reloadRegistrations,
+        batch: flowCfg.outlookBatchInvites,
         onProgress: (done, total) => setOutlookBackfillResult(isDe
           ? `Einladungen werden eingereiht … ${done} von ${total}`
           : `Queueing invites … ${done} of ${total}`),
-        frage: async (anzahl, extern) => confirmDialog(
-          isDe
-            ? <>
-              <p style={{ margin: '0 0 10px' }}>
-                <strong>{anzahl}</strong> {anzahl === 1 ? 'Person bekommt' : 'Personen bekommen'} eine Outlook-Einladung
-                zum Termin <strong>&bdquo;{selectedEvent.title}&ldquo;</strong>.
-              </p>
-              <p style={{ margin: '0 0 10px' }}>
-                Wer den Termin schon im Kalender hat, sieht ihn unverändert — es entsteht kein zweiter Eintrag.
-              </p>
-              {extern > 0 && (
-                <p style={{ margin: 0 }}>
-                  {extern} {extern === 1 ? 'externe Adresse wird' : 'externe Adressen werden'} übersprungen:
-                  Outlook lädt aus DEX heraus nur Deloitte-Adressen ein.
+        frage: async (anzahl, extern) => {
+          const ok = await confirmDialog(
+            isDe
+              ? <>
+                <p style={{ margin: '0 0 10px' }}>
+                  <strong>{anzahl}</strong> {anzahl === 1 ? 'Person bekommt' : 'Personen bekommen'} eine Outlook-Einladung
+                  zum Termin <strong>&bdquo;{selectedEvent.title}&ldquo;</strong>.
                 </p>
-              )}
-            </>
-            : <>
-              <p style={{ margin: '0 0 10px' }}>
-                <strong>{anzahl}</strong> {anzahl === 1 ? 'person gets' : 'people get'} an Outlook invite
-                for <strong>&ldquo;{selectedEvent.title}&rdquo;</strong>.
-              </p>
-              <p style={{ margin: '0 0 10px' }}>
-                Anyone who already has the appointment sees no change — no second entry is created.
-              </p>
-              {extern > 0 && (
-                <p style={{ margin: 0 }}>
-                  {extern} external {extern === 1 ? 'address is' : 'addresses are'} skipped:
-                  from DEX, Outlook only invites Deloitte addresses.
+                <p style={{ margin: '0 0 10px' }}>
+                  Wer den Termin schon im Kalender hat, sieht ihn unverändert — es entsteht kein zweiter Eintrag.
                 </p>
-              )}
-            </>,
-          { confirmLabel: isDe ? `${anzahl} einladen` : `Invite ${anzahl}` },
-        ),
-      });
+                {extern > 0 && (
+                  <p style={{ margin: '0 0 10px' }}>
+                    {extern} {extern === 1 ? 'externe Adresse wird' : 'externe Adressen werden'} übersprungen:
+                    Outlook lädt aus DEX heraus nur Deloitte-Adressen ein.
+                  </p>
+                )}
+                {isAdmin && (
+                  <label className="dex-ui-toggle-row" style={{ marginTop: 4 }}>
+                    <input type="checkbox" defaultChecked={flowCfg.outlookBatchInvites} onChange={ev => { backfillCtx.batch = ev.target.checked; }} />
+                    <span style={{ fontSize: '0.84rem' }}>
+                      <strong>Sammel-Einladung</strong> — eine Queue-Zeile je 100 Personen, ein Flow-Lauf statt {anzahl}. Nur einschalten, wenn der Flow <code>DEX_Outlook_Einladungen</code> das Update vom 15.09.2026 hat (Spalte &bdquo;Attendees&ldquo;); sonst bleiben die Zeilen mit &bdquo;Failed&ldquo; liegen. Der Haken gilt danach für alle Organizer.
+                    </span>
+                  </label>
+                )}
+              </>
+              : <>
+                <p style={{ margin: '0 0 10px' }}>
+                  <strong>{anzahl}</strong> {anzahl === 1 ? 'person gets' : 'people get'} an Outlook invite
+                  for <strong>&ldquo;{selectedEvent.title}&rdquo;</strong>.
+                </p>
+                <p style={{ margin: '0 0 10px' }}>
+                  Anyone who already has the appointment sees no change — no second entry is created.
+                </p>
+                {extern > 0 && (
+                  <p style={{ margin: '0 0 10px' }}>
+                    {extern} external {extern === 1 ? 'address is' : 'addresses are'} skipped:
+                    from DEX, Outlook only invites Deloitte addresses.
+                  </p>
+                )}
+                {isAdmin && (
+                  <label className="dex-ui-toggle-row" style={{ marginTop: 4 }}>
+                    <input type="checkbox" defaultChecked={flowCfg.outlookBatchInvites} onChange={ev => { backfillCtx.batch = ev.target.checked; }} />
+                    <span style={{ fontSize: '0.84rem' }}>
+                      <strong>Batch invite</strong> — one queue row per 100 people, one flow run instead of {anzahl}. Only enable if the flow <code>DEX_Outlook_Einladungen</code> has the update of 15 Sep 2026 (column “Attendees”); otherwise the rows stay “Failed”. The setting then applies to all organizers.
+                    </span>
+                  </label>
+                )}
+              </>,
+            { confirmLabel: isDe ? `${anzahl} einladen` : `Invite ${anzahl}` },
+          );
+          if (ok && isAdmin && !!backfillCtx.batch !== flowCfg.outlookBatchInvites) {
+            try {
+              await eventServiceRef.saveFlowConfig({ outlookBatchInvites: !!backfillCtx.batch, setBy: String(eventServiceRef.context?.pageContext?.user?.email || ''), setAt: new Date().toISOString() });
+            } catch { /* Schalter gilt dann nur für diesen Lauf */ }
+          }
+          return ok;
+        },
+      };
+      const erg = await runOutlookInviteBackfill(backfillCtx);
       // Jeder Ausgang bekommt seinen eigenen Satz — „hat nicht geklappt" ohne
       // Grund schickt den Organizer auf die falsche Suche (CLAUDE.md:
       // Guard-Meldungen müssen den tatsächlichen Grund nennen).
@@ -496,10 +529,10 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
               <ActionTile
                 icon={<Trash2 size={18} />}
                 category="maintenance"
-                title={isDe ? 'Gelöschte Termine im Papierkorb suchen' : 'Find deleted dates in the recycle bin'}
+                title={isDe ? 'Outlook-Termin wiederfinden' : 'Recover the Outlook appointment'}
                 desc={isDe
-                  ? 'Sucht im Papierkorb der Site nach gelöschten DEX_Events-Zeilen, deren Titel zu einem Sub-Event dieses Events passt, und holt sie auf Klick zurück — samt dem Outlook-Termin, auf dem die Teilnehmer stehen. Die neu angelegte Zeile wird dabei entfernt und ihr überzähliger Termin abgesagt; die Teilnehmerliste bleibt unverändert. Für den Fall, dass beim Speichern ein zweiter Outlook-Termin entstanden ist (bis v31.47).'
-                  : 'Searches the site recycle bin for deleted DEX_Events rows whose title matches a sub-event of this event and restores them on click — including the Outlook appointment the participants are on. The recreated row is removed and its surplus appointment cancelled; the participant list is untouched. For the case that saving produced a second Outlook appointment (up to v31.47).'}
+                  ? 'Für den Fall, dass beim Speichern ein zweiter Outlook-Termin entstanden ist (bis v31.47): Sucht die gelöschte Zeile im Papierkorb der Site und holt sie samt Termin zurück — oder liest die Termine aus dem Kalender von no_reply.events und verknüpft den richtigen (den mit den Teilnehmern) per Klick mit dem Sub-Event. Ob der überzählige Termin abgesagt wird, entscheidest du per Haken; die Teilnehmerliste bleibt unverändert.'
+                  : 'For the case that saving produced a second Outlook appointment (up to v31.47): finds the deleted row in the site recycle bin and restores it with its appointment — or reads the appointments from the no_reply.events calendar and links the right one (the one with the participants) to the sub-event on click. Whether the surplus appointment is cancelled is your choice; the participant list is untouched.'}
                 badge="admin"
                 disabled={!selectedEvent}
                 onClick={() => { void runBinSuche(); }}
@@ -1925,11 +1958,15 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
         {binOpen && selectedEvent && (
           <RecycleBinOutlookModal
             isDe={isDe}
-            eventTitle={selectedEvent.title || ''}
+            svc={eventServiceRef}
+            event={selectedEvent}
+            kinder={childEventsOf(selectedEvent.id)}
             suche={binSuche}
             busyId={binBusyId}
             ergebnisse={binErgebnisse}
             onZurueckholen={(t, absagen) => { void runBinZurueckholen(t, absagen); }}
+            confirmDialog={confirmDialog}
+            refreshEvents={refreshEvents}
             onClose={() => setBinOpen(false)}
           />
         )}

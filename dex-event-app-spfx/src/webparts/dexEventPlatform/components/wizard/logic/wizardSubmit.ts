@@ -1323,6 +1323,9 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
             const inviteCtx = (window as any).__dexSpfxContext;
             if (inviteCtx) {
               const inviteSvc = new EventService(inviteCtx);
+              // v31.51: Sammel-Einladung nur, wenn der Flow sie kann (tenant-weiter Schalter).
+              let inviteBatch = false;
+              try { inviteBatch = (await inviteSvc.getFlowConfig()).outlookBatchInvites; } catch { inviteBatch = false; }
               const ids = pendingOutlookInviteForEventsRef.current.slice();
               for (let i = 0; i < ids.length; i++) {
                 const id = ids[i];
@@ -1344,6 +1347,7 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
                     return leseFehler > 0 ? null : rows;
                   },
                   frage: async () => true, // im Dialog bereits angehakt
+                  batch: inviteBatch,
                 });
                 if (erg.status !== 'fertig') {
                   console.warn('[DEX][v31.37] Nachtraegliche Einladungen uebersprungen:', ev.title, erg.status);

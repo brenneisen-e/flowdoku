@@ -94,7 +94,24 @@ export interface BackfillCtx {
    */
   frage: (_anzahl: number, _extern: number) => Promise<boolean>;
   onProgress?: (_done: number, _total: number) => void;
+  /**
+   * v31.51: Sammel-Einladung — EINE Queue-Zeile je 100 Adressen statt einer
+   * je Person, der Flow lädt alle in einem Lauf ein. Nur setzen, wenn
+   * `FlowConfig.outlookBatchInvites` gesetzt ist (Flow-Update vom
+   * 15.09.2026); ein älterer Flow lässt die Sammel-Zeile mit Status Failed
+   * liegen. Der Aufrufer liest den Schalter, nicht diese Funktion — sie
+   * bekommt bewusst keine Möglichkeit, ihn zu raten.
+   */
+  batch?: boolean;
 }
+
+/**
+ * Adressen je Sammel-Zeile. Weit unter dem, was Graph je PATCH und Exchange
+ * je Termin verträgt, und klein genug, dass ein einzelner roter Lauf nicht
+ * 400 Personen betrifft. Mehrere Zeilen laufen wegen des Pro-Event-Locks
+ * ohnehin nacheinander.
+ */
+export const BATCH_GROESSE = 100;
 
 /**
  * Schreibt für jede aktive, interne Anmeldung dieses Termins eine
@@ -138,6 +155,23 @@ export async function runOutlookInviteBackfill(ctx: BackfillCtx): Promise<Backfi
 
   let fehler = 0;
   let fertig = 0;
+  // v31.51: Sammel-Zeilen — je 100 Adressen eine Queue-Zeile, nacheinander
+  // geschrieben (es sind bei 400 Personen vier Schreibvorgänge, keine
+  // Parallelität nötig). Schlägt eine Zeile fehl, zählen ihre Adressen als
+  // Fehler — nicht die Zeile: Die Meldung an den Organizer spricht von
+  // Personen, nicht von Queue-Zeilen. `ctx.batch` wird ERST HIER gelesen —
+  // der Rückfrage-Dialog darf den Wert noch setzen (Haken für Admins).
+  if (ctx.batch) {
+    for (let i = 0; i < intern.length; i += BATCH_GROESSE) {
+      const teil = intern.slice(i, i + BATCH_GROESSE);
+      let ok = false;
+      try { ok = await svc.queueOutlookInviteBatch(event.id, event.title, teil); } catch { ok = false; }
+      if (!ok) fehler += teil.length;
+      fertig += teil.length;
+      if (onProgress) onProgress(fertig, intern.length);
+    }
+    return { status: 'fertig', eingeladen: intern.length - fehler, extern, fehler };
+  }
   // Drei gleichzeitig: genug, um bei 400 Personen nicht minutenlang zu laufen,
   // wenig genug, um die Drosselung nicht selbst auszulösen (dieselbe Grenze
   // wie in `outlookQueue`).

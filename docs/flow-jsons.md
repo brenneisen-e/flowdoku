@@ -4694,6 +4694,175 @@ SET_FAILED (Outlook-Termin Erstellung fehlgeschlagen):
 **Zweck:** Outlook-Termin verwalten: Teilnehmer einladen/ausladen, Event-Daten aktualisieren, Termin löschen (via Graph API).
 **Letztes Update:** 2026-06-02 (v18.48, im Tenant verifiziert): **Option-B-Pro-Event-Lock** ergänzt — Trigger-Concurrency von 1 auf 100 erhöht (Parallelität über verschiedene Events), abgesichert durch einen Lock pro EventId via Liste `DEX_OutlookLocks` (Spalte `EventId` mit „Eindeutige Werte erzwingen"). Davor: 2026-04-22 (v6.4): Sub-Event-Sonderlogik komplett entfernt. Sub-Events sind seit v6.4 eigene DEX_Events-Items mit gesetztem `ParentEventId` — sie laufen durch denselben Einladen/Ausladen/Update/Delete-Pfad wie Top-Level-Events, **keine** Override-Felder, **kein** separater Branch.
 
+### UI-Anleitung 2026-09-15 (v31.51) — Sammel-Einladung: alle Adressen in EINEM Lauf
+
+**Anlass.** Nutzer-Frage 15.09.2026: „kann man die Aktion ‚Outlook-Einladungen
+nachziehen' so umbauen, dass alle Personen in einem Flow-Durchlauf hinzugefügt
+werden und nicht einzeln?" Bisher schreibt die App je Person eine
+`Einladen`-Zeile; bei 300 Personen sind das 300 Läufe, die wegen des
+Pro-Event-Locks nacheinander laufen (je ~10 s plus Trigger-Takt) — und jeder
+Lauf schickt Graph die komplette Attendee-Liste noch einmal.
+
+**Was sich ändert.** Die App schreibt (nach diesem Update UND nur, wenn ein
+Admin den Schalter „Sammel-Einladung" gesetzt hat — `_FlowConfig`-Zeile in
+`DEX_EmailTemplates`) EINE `Einladen`-Zeile je 100 Adressen: Spalte
+**`Attendees`** (Multiple lines, von der App angelegt) mit Semikolon-Liste,
+`Attendee` leer. Der Flow liest `Attendees`, fällt ohne Wert auf `Attendee`
+zurück (eine Zeile je Person läuft also weiter wie bisher), filtert, wer
+schon auf dem Termin steht, und macht EINEN PATCH. Nebeneffekt, der schon
+lange fehlte: Der Einzel-Pfad hängte bisher jede Adresse blind an — wer
+zweimal eingeladen wurde, stand zweimal im Attendee-Array. Jetzt nicht mehr.
+
+**Warum `Attendee` bei einer Sammel-Zeile leer bleibt:** Ein Flow OHNE dieses
+Update würde dann mit leerer Adresse am PATCH scheitern (Status Failed,
+sichtbar in der Queue) — statt still nur die erste Person einzuladen und
+„Sent" zu melden.
+
+**Stand 15.09.2026:** Der umgebaute Zweig wurde als Flow-JSON zurückgemeldet und
+entspricht dieser Anleitung 1:1 (Kette `Einladen_Adressen` → `Einladen_Neu` →
+`Einladen_Objekte` → `Einladen_Alle` → `Update_Event_Einladen`, `Add_Attendee`
+entfernt, Else-Zweig unverändert). Live-Test (Einzel- und Sammel-Pfad) stand
+zu diesem Zeitpunkt noch aus.
+
+**Vorher prüfen (CLAUDE.md Regel 6):** Die Anker stammen aus dem Stand v18.48
+(02.06.2026). Vor dem Umbau einen Screenshot des Zweigs `Check_ActionType
+(Einladen oder Ausladen)` → **If yes** machen: Dort müssen genau zwei Actions
+stehen, `Add_Attendee` (Append to array variable) und `Update_Event_Einladen`
+(Send an HTTP request). Steht dort etwas anderes, zuerst melden.
+
+#### Klick-Anleitung als Tabelle
+
+| # | NEU/GEÄNDERT | Name der Action | Art der Action | Stelle |
+|---|---|---|---|---|
+| 1 | NEU | `Einladen_Adressen` | Compose (Data Operation) | in `Check_ActionType (Einladen oder Ausladen)` → **If yes**, direkt nach `Add_Attendee` |
+| 2 | NEU | `Einladen_Neu` | Filter array (Data Operation) | direkt nach `Einladen_Adressen` |
+| 3 | NEU | `Einladen_Objekte` | Select (Data Operation) | direkt nach `Einladen_Neu` |
+| 4 | NEU | `Einladen_Alle` | Compose (Data Operation) | direkt nach `Einladen_Objekte` |
+| 5 | GEÄNDERT | `Update_Event_Einladen` | Send an HTTP request (Office 365 Outlook) | bleibt, wo sie ist — nur **Body** und **Run after** |
+| 6 | ENTFERNT | `Add_Attendee` | Append to array variable | in demselben If-yes-Zweig — erst löschen, wenn Zeile 5 fertig ist |
+
+#### Zeile 1 — `Einladen_Adressen` (Compose) · NEU
+
+Macht aus der Semikolon-Liste ein Array. Ohne `Attendees` (alte Einzel-Zeile)
+nimmt sie `Attendee` — ein Array mit einem Eintrag.
+
+- [ ] Flow öffnen → **Edit** → Condition `Check_ActionType (Einladen oder Ausladen)` aufklappen → im Zweig **If yes** auf das **+** unter `Add_Attendee` → **Add an action**.
+- [ ] Suchen: `Compose` → **Compose** (Kategorie **Data Operation**) wählen.
+- [ ] Oben über **⋯** → **Rename** → Name:
+
+```
+Einladen_Adressen
+```
+
+- [ ] In das Feld **Inputs** klicken → **Expression**-Tab (fx) → einfügen → **Update**. Nie als Text:
+
+```
+split(if(empty(triggerBody()?['Attendees']), coalesce(triggerBody()?['Attendee'], ''), triggerBody()?['Attendees']), ';')
+```
+
+#### Zeile 2 — `Einladen_Neu` (Filter array) · NEU
+
+Behält nur Adressen, die ein `@` enthalten UND noch nicht im bestehenden
+Attendee-Array stehen (Vergleich kleingeschrieben über den JSON-Text der
+Variablen — deshalb `"address":"…"` als Suchmuster).
+
+- [ ] **+** unter `Einladen_Adressen` → **Add an action** → suchen `Filter array` → **Filter array** (**Data Operation**).
+- [ ] **Rename** → Name:
+
+```
+Einladen_Neu
+```
+
+- [ ] Feld **From** → **Expression**-Tab (fx) → einfügen → **Update**:
+
+```
+outputs('Einladen_Adressen')
+```
+
+- [ ] Rechts über der Bedingung auf **Edit in advanced mode** klicken → das Feld leeren → einfügen (als Text — der Advanced mode erwartet den Ausdruck MIT führendem `@`):
+
+```
+@and(greater(indexOf(trim(item()), '@'), 0), not(contains(toLower(string(variables('var_Attendees'))), concat('"address":"', toLower(trim(item())), '"'))))
+```
+
+#### Zeile 3 — `Einladen_Objekte` (Select) · NEU
+
+Baut aus jeder neuen Adresse das Attendee-Objekt, das Graph erwartet —
+dieselbe Struktur, die `Add_Attendee` bisher je Person erzeugt hat.
+
+- [ ] **+** unter `Einladen_Neu` → **Add an action** → suchen `Select` → **Select** (**Data Operation**).
+- [ ] **Rename** → Name:
+
+```
+Einladen_Objekte
+```
+
+- [ ] Feld **From** → **Expression**-Tab (fx) → einfügen → **Update**:
+
+```
+body('Einladen_Neu')
+```
+
+- [ ] Rechts neben **Map** auf das Symbol **Switch Map to text mode** (T-Symbol) klicken — das Feld wird einzeilig.
+- [ ] In das Feld **Map** klicken → **Expression**-Tab (fx) → einfügen → **Update**:
+
+```
+json(concat('{"type":"required","status":{"response":"none","time":"0001-01-01T00:00:00Z"},"emailAddress":{"name":"', trim(item()), '","address":"', trim(item()), '"}}'))
+```
+
+#### Zeile 4 — `Einladen_Alle` (Compose) · NEU
+
+Bestehende plus neue Attendees in einem Array.
+
+- [ ] **+** unter `Einladen_Objekte` → **Add an action** → **Compose** (**Data Operation**).
+- [ ] **Rename** → Name:
+
+```
+Einladen_Alle
+```
+
+- [ ] Feld **Inputs** → **Expression**-Tab (fx) → einfügen → **Update**:
+
+```
+union(variables('var_Attendees'), body('Einladen_Objekte'))
+```
+
+#### Zeile 5 — `Update_Event_Einladen` (Send an HTTP request) · GEÄNDERT
+
+Nur zwei Dinge: der **Body** liest jetzt `Einladen_Alle` statt der Variablen,
+und die Action läuft nach `Einladen_Alle`.
+
+- [ ] Action `Update_Event_Einladen` anklicken → im Feld **Body** die vorhandene Kachel (Ausdruck-Token) mit **Backspace** entfernen — das Feld muss leer sein.
+- [ ] In das leere Feld klicken → **Expression**-Tab (fx) → einfügen → **Update**:
+
+```
+json(concat('{"attendees":', string(outputs('Einladen_Alle')), '}'))
+```
+
+- [ ] **Uri**, **Method** (`PATCH`) und **Content-Type** bleiben unverändert.
+- [ ] **Settings** (⋯ → Settings) → **Run after** → Haken bei `Add_Attendee` entfernen, stattdessen **`Einladen_Alle`** → **is successful** → **Done**.
+
+#### Zeile 6 — `Add_Attendee` (Append to array variable) · ENTFERNT
+
+Erst jetzt — wenn `Update_Event_Einladen` nicht mehr an ihr hängt.
+
+- [ ] Action `Add_Attendee` → **⋯** → **Delete** → bestätigen.
+- [ ] Kontrolle: Im Zweig **If yes** stehen jetzt in dieser Reihenfolge `Einladen_Adressen` → `Einladen_Neu` → `Einladen_Objekte` → `Einladen_Alle` → `Update_Event_Einladen`. Der Zweig **If no** (`Filter_Attendees`, `Update_Event_Ausladen`) ist unberührt.
+- [ ] **Save**. Meldet der Designer einen Fehler, ist es fast immer ein Ausdruck, der als Text statt über den fx-Tab eingefügt wurde — Feld leeren, noch einmal über **Expression**.
+
+#### Test
+
+- [ ] **Einzel-Pfad (muss weiter gehen):** Eine Testperson über die App zu einem Termin anmelden → **Run history** → der neue Lauf ist grün; in `Einladen_Neu` steht unter **Outputs** genau eine Adresse; der Termin im Kalender hat die Person.
+- [ ] **Sammel-Pfad:** In DEX als Admin → Organizer Center → Sub-Event → Aktion **„Outlook-Einladungen nachziehen"** → im Dialog Haken **„Sammel-Einladung"** setzen → bestätigen. In `DEX_Outlook` entsteht EINE Zeile je 100 Personen (Title `Einladen: … (N Adressen)`, `Attendee` leer, `Attendees` gefüllt). **Run history**: ein Lauf je Zeile, grün; `Einladen_Neu` zeigt nur die, die noch nicht auf dem Termin standen; `Update_Event_Einladen` antwortet mit 200.
+- [ ] Der Haken speichert den Schalter tenant-weit (`_FlowConfig`) — ab dann nehmen alle Organizer den Sammel-Pfad. Er lässt sich im selben Dialog wieder abwählen.
+
+| Fehlerbild | Ursache |
+|---|---|
+| `Einladen_Neu` rot: „The template language function 'string' … not valid" | `var_Attendees` ist kein Array — `Set_variable_1` hat nicht gelaufen (Termin nicht gefunden). Dann ist der Lauf ohnehin schon vorher rot. |
+| `Update_Event_Einladen` 400 `ErrorInvalidRecipients` | Eine Adresse in `Attendees` ist leer oder kein Postfach (externe Adresse). Die App filtert extern vorher — prüfen, ob die Zeile von Hand angelegt wurde. |
+| Sammel-Zeile bleibt `Failed`, `Add_Attendee` in der Run history sichtbar | Der Flow hat das Update noch nicht — in der App den Haken „Sammel-Einladung" wieder abwählen, bis der Umbau gespeichert ist. |
+| Lauf grün, aber `Einladen_Neu` leer | Alle standen schon auf dem Termin. Korrekt — es wird nichts doppelt eingeladen. |
+
 ### Flow-Struktur (v18.48 — mit Pro-Event-Lock)
 
 ```

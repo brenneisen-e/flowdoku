@@ -208,6 +208,82 @@ export async function queueOutlookEvent(
 }
 
 /**
+ * v31.51: Spalte `Attendees` (Multiple lines, plain) auf DEX_Outlook — trägt
+ * bei einer Sammel-Einladung alle Adressen, mit Semikolon getrennt. `Attendee`
+ * ist Single line (255 Zeichen), da passen keine acht Adressen hinein.
+ * Einmal je Sitzung geprüft; die Liste selbst existiert längst, deshalb
+ * greift `ensureOutlookList` hier nicht.
+ */
+let attendeesFieldEnsured = false;
+async function ensureOutlookAttendeesField(svc: EventService): Promise<boolean> {
+  if (attendeesFieldEnsured) return true;
+  try {
+    const resp = await svc._sp.get(
+      `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Outlook')/fields?$filter=InternalName eq 'Attendees'&$select=Id`,
+      SPHttpClient.configurations.v1,
+    );
+    if (!resp.ok) return false;
+    const data = await resp.json();
+    const items = data.value || data.d?.results || [];
+    if (items.length === 0) {
+      const create = await svc._post(`${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Outlook')/fields`, {
+        '__metadata': { 'type': 'SP.Field' },
+        'Title': 'Attendees',
+        'FieldTypeKind': 3,
+        'Required': false,
+      });
+      if (!create.ok) return false;
+    }
+    attendeesFieldEnsured = true;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * v31.51: EINE `Einladen`-Zeile für viele Adressen (Nutzer-Frage 15.09.2026:
+ * „kann man die Aktion so umbauen, dass alle Personen in einem Flow-Durchlauf
+ * hinzugefügt werden und nicht einzeln?"). Der Flow liest seit dem Update
+ * vom 15.09.2026 `Attendees` (Semikolon-Liste) und fällt ohne diese Spalte
+ * auf `Attendee` zurück — eine Zeile je Person läuft also weiter wie bisher.
+ *
+ * `Attendee` bleibt bewusst LEER: Ein Flow OHNE das Update würde dann mit
+ * einer leeren Adresse am PATCH scheitern (Status Failed, sichtbar in der
+ * Queue) — statt still nur die erste Person einzuladen und „Sent" zu melden.
+ * Der Aufrufer darf diesen Pfad deshalb nur nehmen, wenn `FlowConfig.
+ * outlookBatchInvites` gesetzt ist.
+ */
+export async function queueOutlookInviteBatch(
+  svc: EventService,
+  eventId: string,
+  eventTitle: string,
+  emails: string[]
+): Promise<boolean> {
+  const liste = emails.map(e => (e || '').trim()).filter(e => e.indexOf('@') > 0);
+  if (liste.length === 0) return true;
+  if (!(await ensureOutlookAttendeesField(svc))) return false;
+  try {
+    await backfillOutlookLocation(svc, eventId);
+    const response = await svc._post(
+      `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Outlook')/items`,
+      {
+        '__metadata': { 'type': 'SP.Data.DEX_x005f_OutlookListItem' },
+        'Title': `Einladen: ${eventTitle} (${liste.length} Adressen)`,
+        'Attendee': '',
+        'Attendees': liste.join(';'),
+        'EventId': eventId,
+        'ActionType': 'Einladen',
+        'Status': 'Pending',
+      }
+    );
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * DeleteEvent in die DEX_Outlook-Queue eintragen. Wird vom deleteEvent-Flow
  * aufgerufen, BEVOR das DEX_Events-Item gelöscht wird. Der DEX_Outlook_Einladungen-
  * Flow findet den Outlook-Termin über CalendarLink (iCalUId) und löscht ihn.
