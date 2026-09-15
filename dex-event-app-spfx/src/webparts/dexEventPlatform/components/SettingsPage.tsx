@@ -547,7 +547,7 @@ export default function SettingsPage(): React.ReactElement {
     const itAdminPill = catPill('IT-Admin', '#ede7f6', '#5e35b1');
     const organizerPill = catPill('Organizer', 'rgba(0,118,168,0.10)', 'var(--dex-blue, #0076a8)');
     const userPill = catPill('User', '#f5f5f5', '#666');
-    // v30.5: F&A — Zugriff aufs F&A Center, sonst normale Teilnehmer-Rechte.
+    // v30.5/v30.60: F&A — alles wie Organizer, plus Zugriff aufs F&A Center.
     const faPill = catPill('F&A', 'rgba(237,139,0,0.12)', '#b86700');
     const coOrgPill = catPill('Co-Organizer', 'rgba(237,139,0,0.15)', 'var(--dex-orange-dark, #b35a00)');
     // Editierbare Zeile (DEX_Roles: Admins / Organizer / User)
@@ -997,7 +997,16 @@ export default function SettingsPage(): React.ReactElement {
                     <option value="Admin">Admin</option>
                     <option value="IT-Admin">IT-Admin (volle Rechte, keine Mails)</option>
                     {/* v30.5: F&A — Teilnehmer-Rechte + F&A Center, keine Organizer-/Admin-Rechte. */}
-                    <option value="F&A">F&A (nur F&A Center)</option>
+                    {/* v31.47: Die Beschriftung stammte aus v30.5, als F&A eine
+                        reine Lese-Rolle war („Teilnehmer-Rechte plus das
+                        Center"). Der Zuschnitt ist seit v30.60 ein anderer —
+                        F&A kann alles, was ein Organizer kann, UND hat das F&A
+                        Center. Der Code macht das längst so (`isOrganizer` und
+                        `canCreateEvents` sind true, `grantOrganizerPermissions`
+                        läuft, seit v31.42 auch die Onboarding-Mail); nur diese
+                        Zeile behauptete weiter „nur F&A Center" — und wer eine
+                        Rolle vergibt, liest genau sie. */}
+                    <option value="F&A">F&A (Organizer + F&A Center)</option>
                   </select>
                 </div>
 

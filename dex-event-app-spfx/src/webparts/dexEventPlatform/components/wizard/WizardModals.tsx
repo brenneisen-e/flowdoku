@@ -1777,8 +1777,8 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                         {it.noOutlookYet && (
                           <span className="dex-ui-callout dex-ui-callout--warn" style={{ marginTop: 8, fontSize: '0.76rem', padding: '8px 10px' }}>
                             {isDe
-                              ? <>Für dieses Sub-Event gibt es noch keinen Outlook-Termin. Mit dem Haken wird es in der Eventverwaltung neu angelegt, damit der Termin entsteht. <strong>Die Teilnehmerliste mit allen Anmeldungen bleibt erhalten</strong> — nur die DEX_Events-Zeile bekommt eine neue ID.</>
-                              : <>This sub-event has no Outlook event yet. Ticking re-creates it in the event admin so the invite can be generated. <strong>The participant list with all registrations stays intact</strong> — only the DEX_Events row gets a new ID.</>}
+                              ? <>Für dieses Sub-Event gibt es noch keinen Outlook-Termin. Mit dem Haken wird es in der Eventverwaltung neu angelegt, damit der Termin entsteht. <strong>Die Teilnehmerliste mit allen Anmeldungen bleibt erhalten</strong> — nur die DEX_Events-Zeile bekommt eine neue ID. Vor dem Anlegen prüft DEX noch einmal in SharePoint: Ist inzwischen doch ein Termin verknüpft, wird der aktualisiert — es entsteht kein zweiter.</>
+                              : <>This sub-event has no Outlook event yet. Ticking re-creates it in the event admin so the invite can be generated. <strong>The participant list with all registrations stays intact</strong> — only the DEX_Events row gets a new ID. Right before creating, DEX re-checks SharePoint: if an appointment is linked by then, that one is updated — no second appointment is created.</>}
                           </span>
                         )}
                       </span>

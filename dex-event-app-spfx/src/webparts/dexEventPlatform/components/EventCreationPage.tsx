@@ -842,13 +842,17 @@ export default function EventCreationPage(): React.ReactElement {
   // auf NEUE DEX_Events-Items (GetOnNewItems-Trigger), deshalb muss das
   // betroffene Sub-Event in diesem Fall gelöscht und neu angelegt werden,
   // damit überhaupt ein Outlook-Termin entsteht.
-  const [initialSubEventOutlookMeta] = React.useState<Record<string, { disableOutlook: boolean; outlookEventId: string; subsiteUrl: string; registrationListName: string }>>(() => {
+  // v31.48: `calendarLink` gehört dazu — der Flow schreibt bei Erfolg NUR
+  // diese Spalte zurück (OutlookEventId bleibt leer bzw. wird nur bei
+  // Fehler 'FAILED'). Wer den Termin am OutlookEventId erkennt, erkennt ihn nie.
+  const [initialSubEventOutlookMeta] = React.useState<Record<string, { disableOutlook: boolean; outlookEventId: string; calendarLink: string; subsiteUrl: string; registrationListName: string }>>(() => {
     if (!editEvent) return {};
-    const acc: Record<string, { disableOutlook: boolean; outlookEventId: string; subsiteUrl: string; registrationListName: string }> = {};
+    const acc: Record<string, { disableOutlook: boolean; outlookEventId: string; calendarLink: string; subsiteUrl: string; registrationListName: string }> = {};
     for (const k of childEventsOf(editEvent.id)) {
       acc[k.id] = {
         disableOutlook: !!k.disableOutlook,
         outlookEventId: k.outlookEventId || '',
+        calendarLink: k.calendarLink || '',
         subsiteUrl: k.subsiteUrl || '',
         // v11.69: Subsite-Events nutzen immer die Standard-Teilnehmerliste
         // "Teilnehmer" (siehe REG_LIST_NAME in EventService). Wird beim
@@ -1210,6 +1214,7 @@ export default function EventCreationPage(): React.ReactElement {
       deleteEventItemOnly, editEvent, forceOutlookRecreateRef, headerImageLayoutConfig,
       headerLayoutFor, initialSubEventDbIds, initialSubEventOutlookMeta, initialSubPersistRef, isDe, isFictive,
       onlineMeetingMode, organizer, orgGetsSubInvites, outlookTeamsLink, parentTimesIso, pendingOutlookRecreateForSubEventsRef,
+      pendingOutlookUpdateForSubEventsRef, // v31.48: Termin existiert doch → Update statt Recreate
       persistSubEventImage, refreshEvents, resolveTopLevelCommState, sanitizeOrganizerPairs, showAlert, shrinkLogoB64,
       subEventCalendar, subEventsRef, subPersistKey, subPhotoAsLogo, subTopGateInitialRef, subTopGateKey,
       title, updateEvent,

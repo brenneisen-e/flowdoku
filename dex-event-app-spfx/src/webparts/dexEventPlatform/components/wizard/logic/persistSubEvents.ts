@@ -15,6 +15,7 @@ import { SubEventDraft } from '../../wizard/wizardTypes';
 import { EmailOverrideEntry } from '../../wizard/emailOverrideEntry';
 import { outlookDefaultBodyTemplate, outlookOrganizerFallback } from '../../../utils/outlookDefaultBody';
 import { buildProgramHtml, applyProgramPlaceholder } from '../../../utils/programPlaceholder';
+import { EventService } from '../../../services/EventService';
 
 export interface PersistSubEventsCtx {
   // v30.67: Adresse des Hauptevents — Fallback für {{Address}} im Outlook-
@@ -35,7 +36,7 @@ export interface PersistSubEventsCtx {
   headerImageLayoutConfig: { _headerImageLayout: { width: number; paddingV: number; paddingH: number; }; } | { _headerImageLayout?: undefined; };
   headerLayoutFor: (logoB64: string) => {    imageWidth: number;    imagePaddingV: number;    imagePaddingH: number;};
   initialSubEventDbIds: string[];
-  initialSubEventOutlookMeta: Record<string, { disableOutlook: boolean; outlookEventId: string; subsiteUrl: string; registrationListName: string; }>;
+  initialSubEventOutlookMeta: Record<string, { disableOutlook: boolean; outlookEventId: string; calendarLink: string; subsiteUrl: string; registrationListName: string; }>;
   initialSubPersistRef: React.MutableRefObject<Record<string, string>>;
   isDe: boolean;
   isFictive: boolean;
@@ -45,6 +46,10 @@ export interface PersistSubEventsCtx {
   outlookTeamsLink: () => string;
   parentTimesIso: () => {    start: string;    end: string;};
   pendingOutlookRecreateForSubEventsRef: React.MutableRefObject<string[]>;
+  /** v31.48: Stellt sich vor dem Recreate heraus, dass die Zeile doch einen
+   *  Termin hat, wandert die Id hierher — wizardSubmit stellt dann ein
+   *  UpdateEvent in die Queue, statt dass ein zweiter Termin entsteht. */
+  pendingOutlookUpdateForSubEventsRef: React.MutableRefObject<string[]>;
   persistSubEventImage: (subDbId: string | number | null | undefined, draft: { imageFile?: File | null; imageRemoved?: boolean; }) => Promise<void>;
   /** v30.67 (Review): einmaliger Reload nach einem Recreate (s. Funktionsende). */
   refreshEvents: () => Promise<void>;
@@ -65,7 +70,7 @@ export interface PersistSubEventsCtx {
 }
 
 export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, parentEventId: string, onStep: (done: number, total: number, title: string) => void): Promise<void> {
-  const { addrCity, addrHouseNo, addrStreet, addrZip, bilingualFields, commShared, childEventsOf, confirmDialog, contactEmail, createEvent, deleteEvent, deleteEventItemOnly, editEvent, forceOutlookRecreateRef, headerImageLayoutConfig, headerLayoutFor, initialSubEventDbIds, initialSubEventOutlookMeta, initialSubPersistRef, isDe, isFictive, onlineMeetingMode, organizer, orgGetsSubInvites, outlookTeamsLink, parentTimesIso, pendingOutlookRecreateForSubEventsRef, persistSubEventImage, refreshEvents, resolveTopLevelCommState, sanitizeOrganizerPairs, showAlert, shrinkLogoB64, subEventCalendar, subEventsRef, subPersistKey, subPhotoAsLogo, subTopGateInitialRef, subTopGateKey, title, updateEvent } = ctx;
+  const { addrCity, addrHouseNo, addrStreet, addrZip, bilingualFields, commShared, childEventsOf, confirmDialog, contactEmail, createEvent, deleteEvent, deleteEventItemOnly, editEvent, forceOutlookRecreateRef, headerImageLayoutConfig, headerLayoutFor, initialSubEventDbIds, initialSubEventOutlookMeta, initialSubPersistRef, isDe, isFictive, onlineMeetingMode, organizer, orgGetsSubInvites, outlookTeamsLink, parentTimesIso, pendingOutlookRecreateForSubEventsRef, pendingOutlookUpdateForSubEventsRef, persistSubEventImage, refreshEvents, resolveTopLevelCommState, sanitizeOrganizerPairs, showAlert, shrinkLogoB64, subEventCalendar, subEventsRef, subPersistKey, subPhotoAsLogo, subTopGateInitialRef, subTopGateKey, title, updateEvent } = ctx;
     const keptDbIds = new Set<string>();
     // v30.67: Ids, deren DEX_Events-Zeile in DIESEM Lauf per Recreate ersetzt
     // (oder auf dem Legacy-Pfad bewusst gelöscht) wurde. Sie sind weder
@@ -113,7 +118,52 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
     // bekommt den Hinweis, den doppelten Eintrag NICHT selbst zu löschen
     // (deleteEvent würde die geteilte Subsite mitnehmen).
     // Rückgabe true = ersetzt (Aufrufer macht `continue`), false = Update-Pfad.
-    const recreateWithReuse = async (draft: SubEventDraft, reusePayload: unknown, logTag: string): Promise<boolean> => {
+    //
+    // v31.48: Vor dem Anlegen die Zeile FRISCH aus SharePoint lesen. Der Wizard
+    // entscheidet „noch kein Termin" über einen Schnappschuss beim Öffnen
+    // (`initialCalendarLink`) — der ist an zwei Stellen unzuverlässig: Der
+    // Flow schreibt den CalendarLink erst Sekunden bis Minuten nach dem
+    // Anlegen zurück, und der Legacy-Zweig unten las bis v31.47 nur
+    // `outlookEventId`, das der Flow bei Erfolg NIE füllt. Ergebnis am
+    // 15.09.2026: Ein Termin mit 64 Eingeladenen bekam beim Speichern einen
+    // ZWEITEN Termin (nur mit den Organizern), die alte Zeile wurde gelöscht,
+    // der alte Termin hing an nichts mehr. Regel jetzt: Hat die Zeile in
+    // SharePoint einen CalendarLink, wird NICHT neu angelegt — der Termin
+    // existiert, er wird aktualisiert (`queueUpdateIfExists`) oder bleibt,
+    // wie er ist. Ist die Zeile nicht lesbar, wird ebenfalls nicht angelegt:
+    // unbekannt sperrt (CLAUDE.md), ein zweiter Termin ist nicht rückgängig
+    // zu machen, ein verschobener Recreate schon.
+    const freshOutlookLinkOf = async (dbId: string): Promise<'vorhanden' | 'keiner' | 'unbekannt'> => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const spCtx = (window as any).__dexSpfxContext;
+        if (!spCtx) return 'unbekannt';
+        const row = await new EventService(spCtx).getEvent(Number(dbId));
+        if (!row) return 'unbekannt';
+        return (row.CalendarLink || '').trim() ? 'vorhanden' : 'keiner';
+      } catch {
+        return 'unbekannt';
+      }
+    };
+    const recreateWithReuse = async (draft: SubEventDraft, reusePayload: unknown, logTag: string, queueUpdateIfExists: boolean): Promise<boolean> => {
+      const fresh = await freshOutlookLinkOf(draft.dbId);
+      if (fresh !== 'keiner') {
+        if (fresh === 'vorhanden') {
+          console.warn(`[DEX][${logTag}] Recreate übersprungen — die Zeile hat in SharePoint bereits einen CalendarLink (Termin existiert):`, draft.dbId);
+          if (queueUpdateIfExists && pendingOutlookUpdateForSubEventsRef.current.indexOf(draft.dbId) < 0) {
+            pendingOutlookUpdateForSubEventsRef.current = [...pendingOutlookUpdateForSubEventsRef.current, draft.dbId];
+          }
+          showAlert(isDe
+            ? `Für „${draft.title || 'Sub-Event'}" gibt es bereits einen Outlook-Termin — er war beim Öffnen nur noch nicht verknüpft. Es wird kein zweiter Termin angelegt${queueUpdateIfExists ? '; stattdessen wird der bestehende Termin aktualisiert' : ''}.`
+            : `"${draft.title || 'sub-event'}" already has an Outlook appointment — it just was not linked yet when you opened the event. No second appointment is created${queueUpdateIfExists ? '; the existing one is updated instead' : ''}.`, { variant: 'info' });
+        } else {
+          console.warn(`[DEX][${logTag}] Recreate übersprungen — Zeile nicht lesbar, ob ein Termin existiert ist unbekannt:`, draft.dbId);
+          showAlert(isDe
+            ? `Für „${draft.title || 'Sub-Event'}" konnte nicht geprüft werden, ob schon ein Outlook-Termin existiert (SharePoint hat nicht geantwortet). Der Termin wurde deshalb NICHT neu angelegt — die übrigen Änderungen sind gespeichert, bitte versuche es später erneut.`
+            : `Could not check whether "${draft.title || 'sub-event'}" already has an Outlook appointment (SharePoint did not respond). The appointment was therefore NOT recreated — all other changes are saved, please try again later.`, { variant: 'error' });
+        }
+        return false;
+      }
       let recreatedId: number | null = null;
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -417,7 +467,9 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
             };
             // NICHT zu keptDbIds hinzufügen, wenn ersetzt — das alte Item
             // wurde gelöscht und die neue Zeile hat eine andere ID.
-            if (await recreateWithReuse(draft, reusePayload, 'v11.69')) continue;
+            // v31.48: Der Organizer hat den Termin ausdrücklich angehakt —
+            // existiert er doch schon, wird er aktualisiert statt verdoppelt.
+            if (await recreateWithReuse(draft, reusePayload, 'v11.69', true)) continue;
           } else {
             console.warn('[DEX][v11.69] Recreate angefordert aber keine subsiteUrl/registrationListName vorhanden — Sub-Event:', draft.dbId, 'meta:', initialMeta);
             // Fall durch zum normalen Update-Pfad — wenigstens die Felder
@@ -435,7 +487,14 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
         // den Flow nie anstoßen → kein Outlook-Termin.
         const wasOutlookDisabled = !!initialMeta?.disableOutlook;
         const nowOutlookEnabled = !dc.disableOutlook;
-        const hadOutlookEventId = !!(initialMeta?.outlookEventId);
+        // v31.48: „hatte schon einen Termin" heißt CalendarLink — das ist die
+        // einzige Spalte, die der Flow bei Erfolg füllt. `outlookEventId`
+        // trägt nur 'FAILED' (Anlegen gescheitert) und zählt deshalb nicht.
+        // Bis v31.47 stand hier nur `outlookEventId`: Jeder Wechsel von
+        // „Outlook aus" auf „Outlook an" legte damit einen zweiten Termin an,
+        // obwohl der erste mit allen Eingeladenen längst im Kalender stand.
+        const hadOutlookEventId = !!(initialMeta?.calendarLink)
+          || (!!initialMeta?.outlookEventId && initialMeta.outlookEventId !== 'FAILED');
         // v28.69: „Fehlende Termine jetzt anlegen" erzwingt denselben Pfad —
         // ein reines Update triggert den GetOnNewItems-Flow nie.
         const forcedRecreate = forceOutlookRecreateRef.current.has(draft.dbId) && nowOutlookEnabled;
@@ -470,7 +529,10 @@ export async function persistSubEventsForParentImpl(ctx: PersistSubEventsCtx, pa
               existingRegistrationListName: regListNameForReuse,
               onProgress: subOnProgress,
             };
-            if (await recreateWithReuse(draft, reusePayload, 'v11.69/Legacy')) continue;
+            // v31.48: kein Update-Auftrag aus diesem Zweig — ob die
+            // Eingeladenen ein „Aktualisierter Termin" bekommen sollen, hat
+            // der Dialog vorher gefragt (seit v31.37 auch bei Outlook aus).
+            if (await recreateWithReuse(draft, reusePayload, 'v11.69/Legacy', false)) continue;
           } else {
             // Edge-Case: kein subsiteUrl auf dem alten Item bekannt (sehr
             // alte Events). In dem Fall fallen wir auf den destruktiven
