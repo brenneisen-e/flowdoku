@@ -26,7 +26,8 @@ interface RoleContextType {
    *  Rollenliste nicht lesen. Steht sie darin, ist ihre Rolle wirkungslos. */
   rolesReadStatus: 'loading' | 'ok' | 'forbidden' | 'error';
   /** v30.81: Leserechte aller Rollen-Zeilen prüfen und fehlende nachsetzen (Admin). */
-  auditRolesAccess: (onProgress?: (done: number, total: number) => void) => Promise<{ checked: number; missing: Array<{ email: string; name: string; role: string; scopes: string[] }>; fixed: string[]; failed: string[]; readFailed: boolean }>;
+  /** v31.67: `aliases` = Rechte vorhanden, aber unter anderer E-Mail-Schreibweise als in DEX_Roles. */
+  auditRolesAccess: (onProgress?: (done: number, total: number) => void) => Promise<{ checked: number; missing: Array<{ email: string; name: string; role: string; scopes: string[] }>; fixed: string[]; failed: string[]; readFailed: boolean; aliases: Array<{ name: string; email: string; spEmail: string }> }>;
   isAdmin: boolean;
   /** v12.7: Echte Rolle aus DEX_Roles, unabhängig von Demo-Impersonation.
    *  Wird genutzt um in der Header-UI das „Demo: als User testen"-Menü
