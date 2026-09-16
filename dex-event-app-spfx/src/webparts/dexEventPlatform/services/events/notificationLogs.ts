@@ -12,6 +12,7 @@
 
 import { SPHttpClient } from '@microsoft/sp-http';
 import type { EventService, EventCommRow } from '../EventService';
+import { recycleZeile } from './deleteSafety'; // v31.62
 
 /**
  * v24.51: Liste `DEX_InactiveNotices` — Dedup-Marker für die „Organizer über
@@ -214,9 +215,8 @@ export async function getEventComms(svc: EventService, eventId: string | number)
 export async function deleteEventComm(svc: EventService, id: number): Promise<boolean> {
   try {
     if (!(await svc.listExists('DEX_EventComms'))) return false;
-    const url = `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_EventComms')/items(${Number(id)})`;
-    const resp = await svc._delete(url);
-    return resp.ok;
+    // v31.62: Papierkorb statt DELETE — der Eintrag trägt den Mail-Body.
+    return await recycleZeile(svc, `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_EventComms')/items(${Number(id)})`);
   } catch (err) { console.warn('[DEX] deleteEventComm failed:', err); return false; }
 }
 

@@ -20,6 +20,7 @@ import { SubmitOverlay } from '../registration/RegistrationBanners';
 // v31.2: gemeinsame UI-Klassen (Karten, Chips, Schalter, Aufklapper …) —
 // dieselbe Quelle wie in den Modalen, siehe dexUi.ts und docs/ui-leitfaden.md.
 import { ensureDexUiStyles } from '../dexUi';
+import { scrollWizardTop, stickyTopEdge } from '../../utils/wizardScroll';
 
 export interface WizardFormShellProps {
   actionRowRef: React.MutableRefObject<HTMLDivElement>;
@@ -132,9 +133,74 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
     return -1;
   };
   const alleSchritteVollstaendig = ersterLueckenSchritt() < 0;
+
+  /**
+   * v31.64: Schritt-Leiste und Scope-Karte bleiben beim Scrollen oben stehen.
+   *
+   * Nutzer-Ansage 16.09.2026 (Screenshot der Schritt-Leiste): „das soll sticky
+   * sein — also auch die Auswahl des Haupt-Events / Sub-Events als Bookmark."
+   * Derselbe JS-Pin wie beim Header (Header.tsx v22.28): CSS-`sticky` wird im
+   * SP-Canvas durch Overflow-Vorfahren ausgehebelt. Ein Platzhalter hält die
+   * ungepinnte Höhe, der Block wechselt auf `position: fixed` direkt unter
+   * den Header, sobald der Platzhalter darunter wegscrollt.
+   *
+   * Gepinnt wird der Block KOMPAKT (Klassen `.is-pinned …` im Style unten):
+   * kleinere Kreise, kein i-Symbol, enge Abstände — die volle Leiste mit den
+   * Hinweis-Symbolen ist rund 130 px hoch, dazu die Reiter; das wäre auf
+   * einem Laptop ein Drittel des Bildschirms. Der Platzhalter behält die
+   * volle Höhe, damit der Inhalt beim Umschalten nicht springt.
+   *
+   * Beide Teile wandern ZUSAMMEN — das war die Lehre aus v28.82, als nur die
+   * Reiter fixiert wurden und als eigener Kasten aus der Karte rissen. Auf
+   * dem Handy (< 768 px) wird nicht gepinnt: Dort ist der Block höher als
+   * der halbe Bildschirm.
+   */
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+  const stickyPhRef = React.useRef<HTMLDivElement | null>(null);
+  const [stickyPin, setStickyPin] = React.useState<null | { top: number; left: number; width: number; height: number }>(null);
+  React.useEffect(() => {
+    const update = (): void => {
+      const ph = stickyPhRef.current;
+      if (!ph || ph.offsetParent === null || window.innerWidth < 768) { setStickyPin(null); return; }
+      const topEdge = stickyTopEdge();
+      const r = ph.getBoundingClientRect();
+      if (r.top < topEdge) {
+        setStickyPin(prev => {
+          const next = { top: topEdge, left: r.left, width: r.width, height: prev ? prev.height : ph.offsetHeight };
+          if (prev && prev.top === next.top && prev.left === next.left && prev.width === next.width) return prev;
+          return next;
+        });
+      } else {
+        setStickyPin(null);
+      }
+    };
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+
+  /**
+   * v31.64: Jeder Schrittwechsel beginnt oben. Nutzer-Ansage 16.09.2026:
+   * „wenn ich in einem Schritt unten gescrollt habe und dann auf Weiter
+   * klicke, dann soll er im nächsten Schritt wieder oben anfangen." Gilt
+   * für Weiter, Zurück und den Klick in der Schritt-Leiste gleichermaßen —
+   * deshalb am Schritt-Index, nicht an den Knöpfen. Der erste Render ist
+   * ausgenommen: Wer aus dem Organizer Center auf Schritt 5 springt, soll
+   * dort landen, wo die Seite ohnehin beginnt.
+   */
+  const stepScrollFirstRef = React.useRef(true);
+  React.useEffect(() => {
+    if (stepScrollFirstRef.current) { stepScrollFirstRef.current = false; return; }
+    scrollWizardTop(rootRef.current);
+  }, [currentStep]);
+
   return (
     <>
-      <div>
+      <div id="dex-wizard-root" ref={rootRef}>
         {/* ===== Step Progress Bar =====
             v14.8: drei Layout-Fixes für das 9-Schritt-Layout:
             (1) Linie endet exakt auf der Mittelachse des ersten/letzten
@@ -147,7 +213,23 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                 Sichtbarkeit") umbricht.
             Die Linie sitzt bei top=17, height=5 (Mitte bei 19.5 px) —
             das deckt sich exakt mit der Mitte der 40-px-Kreise. */}
-        <div style={{ marginBottom: 32 }}>
+        {/* v31.64: Platzhalter + pinnbarer Block (Schritt-Leiste UND Scope-
+            Karte), s. stickyPin oben. */}
+        <div ref={stickyPhRef} style={stickyPin ? { height: stickyPin.height } : undefined}>
+        <div
+          className={stickyPin ? 'dex-wizard-sticky is-pinned' : 'dex-wizard-sticky'}
+          style={stickyPin ? {
+            position: 'fixed', top: stickyPin.top, left: stickyPin.left, width: stickyPin.width,
+            zIndex: 800, background: '#fff', boxSizing: 'border-box',
+            padding: '10px 16px 0', borderRadius: '0 0 14px 14px',
+            boxShadow: '0 8px 20px rgba(0,0,0,0.10)',
+            borderBottom: '1px solid var(--dex-gray-200, #e1e1e1)',
+            // Sicherung gegen sehr viele Sub-Event-Reiter: der Block darf
+            // nie den ganzen Bildschirm einnehmen — dann scrollt er innen.
+            maxHeight: `calc(100vh - ${stickyPin.top}px - 32px)`, overflowY: 'auto',
+          } : undefined}
+        >
+        <div className="dex-wizard-steps" style={{ marginBottom: 32 }}>
           {/* v22.22: Hover-Effekt auf den Schritt-Punkten — hebt den Schritt
               leicht an und färbt Kreis-Rand + Label grün, damit die
               Klickbarkeit sofort erkennbar ist. */}
@@ -156,6 +238,18 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
             .dex-wizard-step:hover { transform: translateY(-2px); }
             .dex-wizard-step:hover .dex-step-circle { border-color: var(--dex-green, #86bc25) !important; box-shadow: 0 4px 12px rgba(134,188,37,0.35) !important; }
             .dex-wizard-step:hover .dex-step-label { color: var(--dex-green-dark, #4a7c1f) !important; }
+            /* v31.64: Gepinnter Kopf (s. stickyPin) — kompakt: 28-px-Kreise,
+               Linie auf deren Mitte (top 12 + height 4 → Mitte 14), kein
+               i-Symbol, enge Abstände. Inline-Styles der Elemente werden
+               hier bewusst mit !important überschrieben. */
+            .dex-wizard-sticky.is-pinned .dex-wizard-steps { margin-bottom: 6px !important; }
+            .dex-wizard-sticky.is-pinned .dex-wizard-step { gap: 4px !important; }
+            .dex-wizard-sticky.is-pinned .dex-wizard-step:hover { transform: none; }
+            .dex-wizard-sticky.is-pinned .dex-step-circle { width: 28px !important; height: 28px !important; font-size: 0.8rem !important; border-width: 2px !important; }
+            .dex-wizard-sticky.is-pinned .dex-step-line { top: 12px !important; height: 4px !important; }
+            .dex-wizard-sticky.is-pinned .dex-step-label { font-size: 0.68rem !important; line-height: 1.2; }
+            .dex-wizard-sticky.is-pinned .dex-step-hint { display: none !important; }
+            .dex-wizard-sticky.is-pinned #dex-scope-bar { margin-top: 0 !important; padding: 2px 0 10px !important; }
             /* v22.30: Schritt-Kopf bündig als Kopf der weißen Karte (negative
                Margins überbrücken das Karten-Padding).
                v31.2: Vom gefüllten grünen Balken zum ruhigen Kopf — weiße
@@ -232,8 +326,8 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
             return (
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', position: 'relative' }}>
             {/* Verbindungslinie */}
-            <div style={{ position: 'absolute', top: 17, left: `${sidePct}%`, right: `${sidePct}%`, height: 5, background: 'var(--dex-gray-200)', borderRadius: 3, zIndex: 0 }} />
-            <div style={{ position: 'absolute', top: 17, left: `${sidePct}%`, height: 5, background: 'var(--dex-green)', borderRadius: 3, zIndex: 1, width: `${(currentStep / Math.max(1, steps.length - 1)) * spanPct}%`, transition: 'width 0.4s ease' }} />
+            <div className="dex-step-line" style={{ position: 'absolute', top: 17, left: `${sidePct}%`, right: `${sidePct}%`, height: 5, background: 'var(--dex-gray-200)', borderRadius: 3, zIndex: 0 }} />
+            <div className="dex-step-line" style={{ position: 'absolute', top: 17, left: `${sidePct}%`, height: 5, background: 'var(--dex-green)', borderRadius: 3, zIndex: 1, width: `${(currentStep / Math.max(1, steps.length - 1)) * spanPct}%`, transition: 'width 0.4s ease' }} />
             {steps.map((step, idx) => (
               <div
                 key={idx}
@@ -293,6 +387,7 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                     v9.37: Styling identisch zur InfoTooltip-Komponente (serif, 20x20,
                     1.5px-Border) — sonst wirkt das wizard-i im Vergleich klobig. */}
                 <span
+                  className="dex-step-hint"
                   role="button"
                   tabIndex={0}
                   aria-label={isDe ? 'Hinweise zu diesem Schritt' : 'Hints for this step'}
@@ -371,6 +466,8 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
         {/* v28.78: Scope-Karte zwischen Schritt-Leiste und Formular — eine
             Ebene für „für wen gilt das hier?", die durch alle Schritte trägt. */}
         {renderGlobalScopeBar()}
+        </div>
+        </div>
 
         {/* v30.1: Autosave-Anzeige der Neu-Anlage — Speicher-Symbol plus
             Zeitstempel der letzten Zwischenspeicherung, auf jedem Schritt

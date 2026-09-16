@@ -455,6 +455,9 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                     Hauptevent — ein Sub-Event ohne Titel blockiert den Schritt
                     nicht (getStepErrors prüft weiterhin den Top-Level-Titel). */}
                 <input
+                  // v31.64: Sprungziel für „Bearbeiten" an der Sub-Event-Karte
+                  // (goToScopeBar in EventCreationPage fokussiert das Feld).
+                  id="dex-scope-title"
                   className="form-input"
                   value={scTitle}
                   onChange={e => setScTitle(e.target.value)}

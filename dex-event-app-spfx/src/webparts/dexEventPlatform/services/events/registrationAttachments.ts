@@ -9,6 +9,7 @@
 import { SPHttpClient } from '@microsoft/sp-http';
 import type { EventService } from '../EventService';
 import { REG_LIST_NAME } from '../EventService';
+import { recycleAnhang } from './deleteSafety'; // v31.62
 
 /**
  * v31.21: Die Anhänge ALLER Zeilen einer Teilnehmerliste in EINER Abfrage.
@@ -145,11 +146,10 @@ export async function deleteRegistrationAttachment(
   fileName: string,
 ): Promise<boolean> {
   try {
+    // v31.62: Papierkorb der Subsite statt DELETE — die hochgeladene Datei
+    // (z. B. ein Nachweis) ist 93 Tage zurückholbar.
     const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})/AttachmentFiles/getByFileName('${encodeURIComponent(fileName)}')`;
-    const resp = await svc._sp.post(url, SPHttpClient.configurations.v1, {
-      headers: { 'IF-MATCH': '*', 'X-HTTP-Method': 'DELETE', 'Accept': 'application/json;odata=nometadata' },
-    });
-    return resp.ok;
+    return await recycleAnhang(svc, url);
   } catch (err) {
     console.warn('[DEX] deleteRegistrationAttachment failed:', err);
     return false;

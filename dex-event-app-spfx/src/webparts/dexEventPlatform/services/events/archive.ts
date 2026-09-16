@@ -12,6 +12,7 @@
 
 import { SPHttpClient } from '@microsoft/sp-http';
 import type { EventService } from '../EventService';
+import { recycleZeile } from './deleteSafety'; // v31.62
 
 // ==================== v21: Archivierung ====================
 // Globale Queue-/Log-Listen, deren Zeilen abgelaufener Events ins
@@ -312,10 +313,9 @@ export async function deleteOldArchiveRows(svc: EventService,
       if (shouldCancel && shouldCancel()) { result.cancelled = true; break; }
       const id = Number(targets[i]['Id'] || 0);
       if (id > 0) {
-        try {
-          const del = await svc._delete(`${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Archive')/items(${id})`);
-          if (del.ok) result.deleted++; else result.failed++;
-        } catch { result.failed++; }
+        // v31.62: Papierkorb statt DELETE — die Archivzeile ist die LETZTE
+        // Kopie ihres Inhalts; 93 Tage Aufschub kosten nichts.
+        if (await recycleZeile(svc, `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Archive')/items(${id})`)) result.deleted++; else result.failed++;
       }
       if (onProgress) onProgress(i + 1, targets.length);
     }

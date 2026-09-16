@@ -270,5 +270,126 @@ export function makeArchiveActions(deps: ArchiveDeps) {
     } catch (e) { console.warn('[DEX] participant deletion warning mail failed:', e); }
   }
 
-  return { getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionDue, getParticipantDeletionWarnings, runParticipantDeletion, maybeSendParticipantDeletionWarnings };
+  // ====================================================================
+  // v31.63: Automatischer Lauf — Archivieren, Archiv aufräumen, fällige
+  // Teilnehmerlisten löschen — OHNE Rückfrage, im Hintergrund.
+  //
+  // Nutzer-Ansage 15.09.2026: „Automatismus mit Archivierung und Löschen
+  // beim Aufruf durch Admin (aktuell muss ich das manuell bestätigen) …
+  // ich will, dass es einfach im Hintergrund läuft und gemacht wird."
+  //
+  // Warum das jetzt vertretbar ist und vorher nicht: Bis v31.61 löschten
+  // die drei Schritte hart (REST-DELETE). Seit v31.62 gehen Archivzeilen und
+  // Teilnehmer-Subsites in den Papierkorb, und die Teilnehmerlöschung ist
+  // ohnehin doppelt abgesichert (Vorwarn-Mail an die Organizer, danach eine
+  // Woche Frist — `getParticipantDeletionDue`). Die drei Rückfragen im
+  // Landing-Kasten und im Admin-Hub bleiben als Handweg bestehen; der
+  // Automat ruft dieselben Funktionen, nur ohne Dialog.
+  //
+  // Reihenfolge = die der Handbedienung: erst Arbeitslisten ins Archiv,
+  // dann alte Archivzeilen weg, dann fällige Teilnehmerlisten. Jeder Schritt
+  // ist für sich best-effort; ein Fehler im ersten sperrt den zweiten nicht.
+  // Der Fortschritt zählt in „Einheiten" (eine Zeile = eine Einheit, eine
+  // Teilnehmerliste = eine Einheit), damit oben rechts EINE Prozentzahl
+  // steht und nicht drei.
+  // ====================================================================
+  async function runAutoMaintenance(
+    onProgress?: (p: AutoMaintenanceProgress) => void
+  ): Promise<AutoMaintenanceResult> {
+    const out: AutoMaintenanceResult = {
+      archived: 0, archiveFailed: 0, deleted: 0, deleteFailed: 0,
+      participantsDeleted: 0, participantsFailed: 0, nothingToDo: false, error: '',
+    };
+    if (!eventService) { out.nothingToDo = true; return out; }
+    const report = (phase: AutoMaintenanceProgress['phase'], doneUnits: number, totalUnits: number, label: string): void => {
+      if (!onProgress) return;
+      const pct = totalUnits > 0 ? Math.max(0, Math.min(100, Math.round((doneUnits / totalUnits) * 100))) : 0;
+      onProgress({ phase, done: doneUnits, total: totalUnits, pct, label });
+    };
+    try {
+      report('zaehlen', 0, 0, '');
+      const [arch, delCount, due] = await Promise.all([
+        getArchivableCount().catch(() => ({ total: 0, perList: {} as Record<string, number> })),
+        getDeletableArchiveCount().catch(() => 0),
+        getParticipantDeletionDue().catch(() => [] as DeloitteEvent[]),
+      ]);
+      const totalUnits = arch.total + delCount + due.length;
+      if (totalUnits === 0) { out.nothingToDo = true; report('fertig', 0, 0, ''); return out; }
+
+      // Schritt 1: Arbeitslisten → DEX_Archive. `runArchiveExpired` meldet
+      // je Liste (done/total) — die Summe über die Listen ist der Fortschritt.
+      let base = 0;
+      if (arch.total > 0) {
+        const doneByList: number[] = [];
+        const r1 = await runArchiveExpired((listIdx, _listTotal, listName, done) => {
+          doneByList[listIdx] = done;
+          const sum = doneByList.reduce((a, b) => a + (b || 0), 0);
+          report('archiv', Math.min(sum, arch.total), totalUnits, listName);
+        });
+        out.archived = r1.archived; out.archiveFailed = r1.failed;
+      }
+      base = arch.total;
+      report('archiv', base, totalUnits, '');
+
+      // Schritt 2: Archivzeilen älter als 1 Monat → Papierkorb (v31.62).
+      if (delCount > 0) {
+        const r2 = await runDeleteOldArchive((done) => report('archivloeschen', base + Math.min(done, delCount), totalUnits, ''));
+        out.deleted = r2.deleted; out.deleteFailed = r2.failed;
+      }
+      base += delCount;
+      report('archivloeschen', base, totalUnits, '');
+
+      // Schritt 3: fällige Teilnehmerlisten (KPIs ins Statistik-Archiv, dann
+      // Subsite in den Papierkorb). `runParticipantDeletion` liest die
+      // Fälligen selbst noch einmal — die Vorwarn-Frist wird also nicht aus
+      // unserer Zählung von eben übernommen, sondern frisch geprüft.
+      if (due.length > 0) {
+        const r3 = await runParticipantDeletion((done, _total, label) => report('teilnehmer', base + Math.min(done, due.length), totalUnits, label));
+        out.participantsDeleted = r3.deleted; out.participantsFailed = r3.failed;
+      }
+      report('fertig', totalUnits, totalUnits, '');
+    } catch (e) {
+      out.error = e instanceof Error ? e.message : String(e);
+      console.warn('[DEX] Automatische Archivierung/Löschung fehlgeschlagen:', e);
+    }
+    // Protokoll: Was der Automat getan hat, steht im Änderungsprotokoll —
+    // ohne Dialog gibt es sonst keinen Beleg, dass und wann gelaufen ist.
+    try {
+      await eventService.writeChangeLog({
+        action: 'AutoMaintenanceRun',
+        targetType: 'Other',
+        targetName: 'Archivierung & Löschen (automatisch)',
+        details: {
+          archiviert: out.archived, archivFehler: out.archiveFailed,
+          archivGeloescht: out.deleted, archivLoeschFehler: out.deleteFailed,
+          teilnehmerlistenGeloescht: out.participantsDeleted, teilnehmerlistenFehler: out.participantsFailed,
+          fehler: out.error || undefined,
+        },
+      });
+    } catch { /* Protokoll ist best-effort */ }
+    return out;
+  }
+
+  return { getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionDue, getParticipantDeletionWarnings, runParticipantDeletion, maybeSendParticipantDeletionWarnings, runAutoMaintenance };
+}
+
+/** v31.63: Fortschritt des automatischen Laufs (Abzeichen oben rechts). */
+export interface AutoMaintenanceProgress {
+  phase: 'zaehlen' | 'archiv' | 'archivloeschen' | 'teilnehmer' | 'fertig';
+  /** Erledigte bzw. gesamte Einheiten (Zeilen + Teilnehmerlisten). */
+  done: number;
+  total: number;
+  pct: number;
+  /** Aktuelle Liste bzw. aktueller Event-Titel — nur zur Anzeige. */
+  label: string;
+}
+
+/** v31.63: Ergebnis des automatischen Laufs. */
+export interface AutoMaintenanceResult {
+  archived: number; archiveFailed: number;
+  deleted: number; deleteFailed: number;
+  participantsDeleted: number; participantsFailed: number;
+  /** true = nichts stand an; es wurde nichts verändert und nichts protokolliert. */
+  nothingToDo: boolean;
+  error: string;
 }

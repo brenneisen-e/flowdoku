@@ -30,7 +30,7 @@ import * as React from 'react';
  * Der nächste scrollbare Vorfahr. In SharePoint ist das NICHT das Fenster,
  * sondern ein Canvas-Container — deshalb wird gesucht statt angenommen.
  */
-function scrollEltern(el: HTMLElement | null): HTMLElement | null {
+export function scrollEltern(el: HTMLElement | null): HTMLElement | null {
   let p: HTMLElement | null = el ? el.parentElement : null;
   while (p) {
     try {

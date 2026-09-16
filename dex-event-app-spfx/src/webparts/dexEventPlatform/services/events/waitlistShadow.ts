@@ -52,6 +52,7 @@ import { SPHttpClient } from '@microsoft/sp-http';
 import type { EventService } from '../EventService';
 import { DeloitteEvent } from '../../types';
 import { APP_URL } from '../EmailTemplates';
+import { leseZeile, recycleZeile, schnappschussVorLoeschen } from './deleteSafety'; // v31.62
 
 /** Piggyback in `EmailTemplateOverrides` der SCHATTEN-Zeile: die Id des echten Events. */
 export const WAITLIST_SHADOW_KEY = '_waitlistShadowFor';
@@ -370,16 +371,16 @@ export async function removeWaitlistShadow(
   const schatten = await findWaitlistShadow(svc, eventId, eventTitle);
   if (!schatten) return true; // nichts da = nichts zu tun
   try {
-    const r = await svc._sp.get(
-      `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${schatten.id})?$select=CalendarLink`,
-      SPHttpClient.configurations.v1,
-      { headers: { 'Accept': 'application/json;odata=nometadata' } },
-    );
-    let link = '';
-    if (r.ok) { const d = await r.json(); link = d.CalendarLink || ''; }
+    // v31.62: ganze Zeile lesen (Schnappschuss), Papierkorb statt DELETE.
+    const itemUrl = `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${schatten.id})`;
+    const row = await leseZeile(svc, itemUrl);
+    const link = row && typeof row.CalendarLink === 'string' ? row.CalendarLink : '';
+    await schnappschussVorLoeschen(svc, {
+      action: 'WaitlistShadowRecycled', targetType: 'Event', targetId: String(schatten.id), targetName: schatten.title,
+      eventId, eventTitle, quelle: 'DEX_Events', row, grund: 'Wartelisten-Schattenevent abgeräumt (Event gelöscht)',
+    });
     if (link) await svc.queueOutlookDeleteEvent(schatten.id, schatten.title, link);
-    const del = await svc._delete(`${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${schatten.id})`);
-    return del.ok || del.status === 204;
+    return await recycleZeile(svc, itemUrl);
   } catch (e) {
     console.warn('[DEX] removeWaitlistShadow:', e);
     return false;

@@ -336,6 +336,21 @@ Person auf, nicht je Subsite) plus die Aktion „Organizer-Berechtigungen
 reparieren" für Bestandsdaten. Wer irgendwo eine Berechtigung setzt: Der
 Klammer-Pfad ist nie der ganze Pfad.
 
+**Löschen heißt recyceln — nie `_delete` auf etwas, das jemand zurückhaben
+könnte (v31.62).** Am 15.09.2026 entfernte der Recreate-Pfad eine
+DEX_Events-Zeile per REST-DELETE; das landet NICHT im Papierkorb, und mit
+der Zeile war der einzige Verweis (`CalendarLink`) auf einen Termin mit 64
+Eingeladenen weg — die Reparatur-Aktion suchte im Papierkorb und fand nichts.
+Das Audit danach: nur `deleteEvent` und `deleteParticipantData` recycelten,
+rund zwanzig Stellen löschten hart (Teilnehmerzeilen samt Antworten,
+Subsites, Anhänge, Rollen). Seither gilt `services/events/deleteSafety.ts`:
+`recycleZeile` / `recycleAnhang` statt `_delete`, und vor jeder Event- oder
+Teilnehmerzeile `schnappschussVorLoeschen` (Zeile als JSON im ChangeLog,
+Riesenfelder gekappt). `_delete` bleibt nur für Flüchtiges (Präsenz, Locks),
+Rollbacks und Zeilen, deren Entfernen der Zweck ist (Organizer-Archiv). Wer
+eine neue Löschstelle baut: erst fragen, ob jemand das in 90 Tagen
+zurückhaben will — die Antwort ist fast immer ja.
+
 **Löschungen zuerst im Register, dann unwiderruflich.** `deleteParticipantData`
 recycelte bis v29.2 erst die Subsite und räumte danach `DEX_Participants` auf —
 mit nicht-striktem Lesen, einem `Promise.all` über alle Personen und

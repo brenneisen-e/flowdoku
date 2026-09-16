@@ -14,6 +14,7 @@ import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
 import { useDialog } from '../context/DialogContext';
 import { EventService } from '../services/EventService';
+import { readEventDraft } from '../utils/eventDraft'; // v31.61
 // v26.48: zentrale B2Run-Köln-Vorlage (Titel-Erkennung + 7 Meldefelder mit
 // deterministischen IDs für den offiziellen Excel-Export).
 import { getCachedOrbBase64 } from '../services/EmailTemplates';
@@ -46,6 +47,7 @@ import { persistSubEventsForParentImpl } from './wizard/logic/persistSubEvents';
 import { WizardTermsModal } from './wizard/WizardTermsModal';
 import { WizardModals } from './wizard/WizardModals';
 import { SUB_TRANSFER_GROUPS } from '../data/wizardHints';
+import { scrollWizardTop } from '../utils/wizardScroll';
 import { renderGlobalScopeBarImpl, renderKlammerVisibilityMismatchImpl, renderOutlookUpdateButtonImpl, renderPerEventTabStripImpl, renderPreviewSectionImpl, renderVisibilitySummaryBoxImpl } from './wizard/logic/wizardRenderHelpers';
 import { applySubTransferImpl, getStepErrorsForImpl, toggleDaySubEventImpl } from './wizard/logic/wizardMisc';
 import { applyCommTopicToAllSubEventsImpl, applyCommToAllSubEventsImpl, flushActiveCommTabToStateImpl, resolveTopLevelCommStateImpl, switchCommTabImpl } from './wizard/logic/commTabs';
@@ -115,7 +117,11 @@ export default function EventCreationPage(): React.ReactElement {
   // Nutzungsbedingungen: Beim Erstellen eines neuen Events muss der Organizer
   // zuerst eine Bestätigungs-Maske mit den Nutzungs- und Datenschutz-
   // bedingungen akzeptieren. Nicht relevant beim Bearbeiten bestehender Events.
-  const [tcAccepted, setTcAccepted] = React.useState(false);
+  // v31.61: Beim Fortsetzen eines Entwurfs (Knopf in der Eventübersicht) die
+  // gespeicherte Bestätigung schon beim ersten Render übernehmen — sonst
+  // blitzt der Bedingungen-Dialog auf, bis der Lade-Effekt den Entwurf
+  // anwendet. Die Bestätigung gilt je Entwurf, nicht je Sitzung.
+  const [tcAccepted, setTcAccepted] = React.useState<boolean>(() => navIntent === 'resume-draft' && !!(readEventDraft()?.tcAccepted));
   const [tcCheckbox, setTcCheckbox] = React.useState(false);
   // v28.41: Zweite, bewusst getrennte Bestätigung — der Organizer muss aktiv
   // erklären, dass es ein internes Event ist bzw. die Deloitte-Teilnahme an
@@ -1975,6 +1981,7 @@ export default function EventCreationPage(): React.ReactElement {
     visAllSubs,
     billingRelevant, billingSendMode, billingFields,
     currentStep,
+    tcAccepted, // v31.61: Bestätigung der Nutzungsbedingungen gehört zum Entwurf
   });
   const applyDraftPayload = (d: Record<string, unknown>): void => {
     return applyDraftPayloadImpl({
@@ -1988,6 +1995,7 @@ export default function EventCreationPage(): React.ReactElement {
       setRegistrationDeadline, setRegRuleAmount, setRegRuleEnabled, setRegRuleUnit, setRequireSubEventSelection, setStartDate,
       setSubEventCalendar, setSubEvents, setSubEventSingleChoice, setSubEventsOnlyMode, setSubEventsOptIn, setTeamRegistrationEnabled,
       setTeamSize, setTeamsLink, setTitle, setUserCancelAllowed, setVisAllSubs, setWaitlistEnabled,
+      setTcAccepted, // v31.61
     }, d);
   };
   // Beim Betreten der Neu-Anlage EINMAL den letzten Entwurf laden. v30.4:
@@ -2436,15 +2444,30 @@ export default function EventCreationPage(): React.ReactElement {
    * scrollt dorthin und hebt die Leiste kurz hervor, damit klar ist, WO die
    * Bearbeitung stattfindet. Gleiches Muster wie goToSubEventsMode (v28.73).
    */
+  /**
+   * v31.64: Nutzer-Ansage 16.09.2026: „wenn ich ein Sub-Event anlege und auf
+   * Bearbeiten klicke, dann soll es bei Grundlagen nach oben scrollen zum
+   * Namen des Events." Der Aufrufer hat den Reiter schon gewechselt
+   * (setScope); hier fehlt nur noch der Weg nach oben. Statt die Scope-Karte
+   * in die Mitte zu holen (scrollIntoView, seit v28.96) scrollt der Wizard
+   * jetzt an seinen Anfang — Schritt-Leiste und Reiter stehen dann oben,
+   * darunter als erstes Feld der Titel, der den Fokus bekommt (ohne eigenes
+   * Scrollen, sonst zieht der Browser das Feld an den oberen Rand und unter
+   * den gepinnten Kopf). Die Hervorhebung der Karte bleibt: Sie zeigt, WO
+   * der Wechsel stattgefunden hat.
+   */
   const goToScopeBar = (): void => {
     window.setTimeout(() => {
+      scrollWizardTop(document.getElementById('dex-wizard-root'));
       const el = document.getElementById('dex-scope-bar');
-      if (!el) return;
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      el.style.transition = 'box-shadow 0.3s';
-      el.style.boxShadow = '0 0 0 3px rgba(134,188,37,0.55)';
-      el.style.borderRadius = '12px';
-      window.setTimeout(() => { el.style.boxShadow = 'none'; }, 2200);
+      if (el) {
+        el.style.transition = 'box-shadow 0.3s';
+        el.style.boxShadow = '0 0 0 3px rgba(134,188,37,0.55)';
+        el.style.borderRadius = '12px';
+        window.setTimeout(() => { el.style.boxShadow = 'none'; }, 2200);
+      }
+      const input = document.getElementById('dex-scope-title') as HTMLInputElement | null;
+      if (input) { try { input.focus({ preventScroll: true }); } catch { input.focus(); } }
     }, 60);
   };
 

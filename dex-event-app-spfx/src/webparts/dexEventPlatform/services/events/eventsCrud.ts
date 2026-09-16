@@ -16,6 +16,7 @@ import { dlog } from '../../utils/debugLog';
 import { withThrottleRetry } from '../../utils/spThrottle';
 import type { EventService, CustomField, SPEvent } from '../EventService';
 import { REG_LIST_NAME } from '../EventService';
+import { kompakteZeile } from './deleteSafety'; // v31.62
 
 // v30.66: war `private static readonly` an der Klasse — die Spaltenliste wird
 // nur von den Lese-Methoden dieses Themas gebraucht.
@@ -1037,14 +1038,15 @@ export async function deleteEvent(svc: EventService, eventId: number): Promise<b
         const serverRelUrl = svc.context.pageContext.web.serverRelativeUrl;
         const safeName = (event.Title || '').replace(/[#%&*:<>?/\\|"']/g, '').replace(/\s+/g, '_').substring(0, 50);
         const folderName = safeName ? `Event_${event.EventNumber}_${safeName}` : `Event_${event.EventNumber}`;
-        await svc._delete(`${svc.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${serverRelUrl}/SiteAssets/DEX_EventDocs/${folderName}')`);
-      } catch {
-        // Fallback: alten Ordnernamen ohne Titel probieren
-        try {
-          const serverRelUrl = svc.context.pageContext.web.serverRelativeUrl;
-          await svc._delete(`${svc.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${serverRelUrl}/SiteAssets/DEX_EventDocs/Event_${event.EventNumber}')`);
-        } catch { /* Ordner nicht gefunden */ }
-      }
+        // v31.62: Ordner in den Papierkorb statt DELETE — die Dokumente des
+        // Events sind 93 Tage zurückholbar. `_post` wirft nicht bei 404; ein
+        // fehlender Ordner ist kein Fehler.
+        const r1 = await svc._post(`${svc.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${serverRelUrl}/SiteAssets/DEX_EventDocs/${folderName}')/recycle`, {});
+        if (!r1.ok) {
+          // Fallback: alten Ordnernamen ohne Titel probieren
+          await svc._post(`${svc.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${serverRelUrl}/SiteAssets/DEX_EventDocs/Event_${event.EventNumber}')/recycle`, {});
+        }
+      } catch { /* Ordner nicht gefunden */ }
     }
 
     // 5. Event-Eintrag aus DEX_Events RECYCEN (v9.0: per recycle() statt
@@ -1069,6 +1071,9 @@ export async function deleteEvent(svc: EventService, eventId: number): Promise<b
           subsiteUrl: event.SubsiteUrl || '',
           eventNumber: event.EventNumber,
           recycledTo: 'SharePoint Recycle Bin (93 Tage)',
+          // v31.62: die Zeile selbst — nach 93 Tagen ist der Papierkorb leer,
+          // der Schnappschuss nicht (CalendarLink, ParentEventId, Fristen …).
+          snapshot: kompakteZeile(event as unknown as Record<string, unknown>),
         },
       });
     } catch { /* */ }

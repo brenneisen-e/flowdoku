@@ -39,6 +39,8 @@ import FeedbackPage from './FeedbackPage';
 import OrganizerRequestsBanner from './OrganizerRequestsBanner';
 import GrantAccessHandler from './GrantAccessHandler';
 import InviteDownloadHandler from './InviteDownloadHandler';
+// v31.63: Archivieren & Löschen ohne Rückfrage beim Admin-Start, Abzeichen oben rechts.
+import AdminAutoMaintenance from './AdminAutoMaintenance';
 import { KpiRow } from './LandingPage';
 import { dlog } from '../utils/debugLog';
 
@@ -1187,6 +1189,10 @@ function AppContent(): React.ReactElement {
       {/* v26.73: downloadinvite-Deep-Link aus der externen Instruktions-Mail —
           lädt den an der Teilnehmer-Zeile abgelegten .eml-Entwurf per Button. */}
       {!isBootLoading && <InviteDownloadHandler />}
+      {/* v31.63: bewusst NICHT hinter isBootLoading — die Komponente wartet
+          selbst auf Events/Rollen und trägt ihren Start-Timer; ein späterer
+          Mount würde ihn nur verschieben. Rendert ohne Lauf nichts. */}
+      <AdminAutoMaintenance />
 
       {successBanner && (
         <div

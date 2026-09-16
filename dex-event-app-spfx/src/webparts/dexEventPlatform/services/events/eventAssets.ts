@@ -13,6 +13,7 @@
 
 import { SPHttpClient, ISPHttpClientOptions } from '@microsoft/sp-http';
 import type { EventService } from '../EventService';
+import { recycleAnhang } from './deleteSafety'; // v31.62
 
 // v28.11: Präfix des UNBESCHNITTENEN Original-Bilds (bewusst KEIN
 // '__eventimage__'-Präfix-Match, sonst würde der normale Bild-Upload es
@@ -44,11 +45,8 @@ export async function uploadEventImageAsAttachment(svc: EventService, eventId: n
         for (const f of files) {
           const fn: string = f.FileName || '';
           if (fn.indexOf(IMAGE_PREFIX) === 0) {
-            try {
-              await svc._delete(
-                `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/getByFileName('${encodeURIComponent(fn)}')`
-              );
-            } catch { /* ignore */ }
+            // v31.62: Papierkorb statt DELETE — das alte Bild ist 93 Tage zurückholbar.
+            await recycleAnhang(svc, `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/getByFileName('${encodeURIComponent(fn)}')`);
           }
         }
       }
@@ -100,11 +98,8 @@ export async function deleteEventOrigImageAttachment(svc: EventService, eventId:
     for (const f of files) {
       const fn: string = f.FileName || '';
       if (fn.indexOf(ORIG_IMAGE_PREFIX) === 0) {
-        try {
-          await svc._delete(
-            `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/getByFileName('${encodeURIComponent(fn)}')`
-          );
-        } catch { /* ignore */ }
+        // v31.62: Papierkorb statt DELETE.
+        await recycleAnhang(svc, `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/getByFileName('${encodeURIComponent(fn)}')`);
       }
     }
   } catch { /* ignore */ }
@@ -349,10 +344,12 @@ export async function uploadEventDocument(svc: EventService, eventId: number, fi
  */
 export async function deleteEventDocument(svc: EventService, eventId: number, fileName: string): Promise<boolean> {
   try {
-    const resp = await svc._delete(
-      `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/getByFileName('${encodeURIComponent(fileName)}')`
-    );
-    return resp.ok || resp.status === 200 || resp.status === 204;
+    // v31.62: Papierkorb statt DELETE — ein entferntes Dokument ist 93 Tage zurückholbar.
+    svc.writeChangeLog({
+      action: 'EventDocumentRecycled', targetType: 'Event', targetId: String(eventId), targetName: fileName,
+      eventId: String(eventId), details: { quelle: `DEX_Events · Item ${eventId} · Anhang ${fileName}`, wiederherstellung: 'Site contents → Recycle bin (93 Tage)' },
+    }).catch(() => { /* best-effort */ });
+    return await recycleAnhang(svc, `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/getByFileName('${encodeURIComponent(fileName)}')`);
   } catch (err) {
     console.warn('[DEX] deleteEventDocument error:', err);
     return false;

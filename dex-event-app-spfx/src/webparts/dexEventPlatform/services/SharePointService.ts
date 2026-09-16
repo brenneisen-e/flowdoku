@@ -1071,10 +1071,10 @@ export class SharePointService {
    */
   public async deleteRole(itemId: number): Promise<boolean> {
     try {
+      // v31.62: Papierkorb statt DELETE — eine versehentlich entfernte
+      // Rolle ist 93 Tage zurückholbar (vorher hart weg).
       const headers: HeadersInit = {
         'Accept': 'application/json;odata=verbose',
-        'IF-MATCH': '*',
-        'X-HTTP-Method': 'DELETE',
       };
 
       const options: ISPHttpClientOptions = {
@@ -1082,7 +1082,7 @@ export class SharePointService {
       };
 
       const response = await this._sp.post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items(${itemId})`,
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items(${itemId})/recycle`,
         SPHttpClient.configurations.v1,
         options
       );

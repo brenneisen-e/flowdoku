@@ -16,6 +16,7 @@ import { SPHttpClient } from '@microsoft/sp-http';
 // stripNoteWrapper — der Zyklus ist unkritisch, weil der Zugriff erst zur
 // Laufzeit in Funktionskörpern passiert (wie REG_LIST_NAME).
 import { EventService } from '../EventService';
+import { leseZeile, recycleZeile, schnappschussVorLoeschen } from './deleteSafety'; // v31.62
 
 // v30.66: waren `private static readonly` an der Klasse; beide Namen werden
 // nur von diesem Thema gebraucht und sind deshalb mitgewandert.
@@ -349,10 +350,19 @@ export async function deleteEventItemOnly(svc: EventService, eventId: string | n
   try {
     const idNum = typeof eventId === 'string' ? parseInt(eventId, 10) : eventId;
     if (!idNum || Number.isNaN(idNum)) return false;
-    const response = await svc._delete(
-      `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${idNum})`
-    );
-    return response.ok;
+    // v31.62: Papierkorb statt DELETE, davor ein Schnappschuss ins
+    // Änderungsprotokoll. Der REST-DELETE bis v31.61 war endgültig — am
+    // 15.09.2026 mit dem einzigen Verweis auf einen Termin mit 64
+    // Eingeladenen (s. deleteSafety.ts).
+    const itemUrl = `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${idNum})`;
+    const row = await leseZeile(svc, itemUrl);
+    await schnappschussVorLoeschen(svc, {
+      action: 'EventItemRecycled', targetType: 'Event', targetId: String(idNum),
+      targetName: row && typeof row.Title === 'string' ? row.Title : '',
+      eventId: String(idNum), eventTitle: row && typeof row.Title === 'string' ? row.Title : '',
+      quelle: 'DEX_Events', row, grund: 'deleteEventItemOnly (Recreate/Austausch der Zeile, Subsite bleibt)',
+    });
+    return await recycleZeile(svc, itemUrl);
   } catch {
     return false;
   }

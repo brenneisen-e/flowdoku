@@ -21,6 +21,7 @@ import { useIsMobile } from '../utils/useIsMobile';
 import { AlertCircle, ChevronDown, GraduationCap } from './Icons';
 import { INACTIVE_SUMMARY_CACHE_KEY } from '../utils/accountCheckCache';
 import { cx, ensureDexUiStyles } from './dexUi';
+import { AUTO_MAINTENANCE_DONE_EVENT, AUTO_MAINTENANCE_STATE_EVENT, AutoMaintenanceState, autoMaintenanceZustand } from './AdminAutoMaintenance';
 
 export default function LandingPage(): React.ReactElement {
   // v31.4 (Review): Der Hinweiskasten „Code nicht ladbar" unten nutzt
@@ -90,6 +91,42 @@ export default function LandingPage(): React.ReactElement {
   // Lauf pro Zeile geprüft (bereits verschobene Zeilen bleiben archiviert).
   const archCancelRef = React.useRef(false);
   const [archCancelRequested, setArchCancelRequested] = React.useState(false);
+  // v31.65: Zustand des Automaten (AdminAutoMaintenance). Solange er geplant
+  // ist oder läuft, zeigen die drei Kästen unten KEINEN Knopf, sondern den
+  // Zustand — Nutzer-Frage 16.09.2026: „warum muss ich hier immer noch
+  // manuell klicken?" Antwort: Der Kasten wusste nichts vom Automaten.
+  const [autoState, setAutoState] = React.useState<AutoMaintenanceState | null>(() => autoMaintenanceZustand());
+  React.useEffect(() => {
+    const onState = (e: Event): void => { setAutoState((e as CustomEvent<AutoMaintenanceState>).detail || null); };
+    window.addEventListener(AUTO_MAINTENANCE_STATE_EVENT, onState);
+    return () => window.removeEventListener(AUTO_MAINTENANCE_STATE_EVENT, onState);
+  }, []);
+  const autoAktiv = !!autoState && (autoState.kind === 'scheduled' || autoState.kind === 'running');
+  /** Statuszeile an der Stelle des Knopfs, solange der Automat übernimmt. */
+  const autoStatusZeile = (): React.ReactElement | null => {
+    if (!autoState) return null;
+    let text = '';
+    if (autoState.kind === 'scheduled') text = isDe ? 'Wird automatisch erledigt — startet in wenigen Sekunden.' : 'Handled automatically — starts in a few seconds.';
+    else if (autoState.kind === 'running') {
+      const p = autoState.p;
+      text = p.total > 0
+        ? (isDe ? `Läuft gerade automatisch · ${p.pct} % (${p.done}/${p.total})` : `Running automatically · ${p.pct}% (${p.done}/${p.total})`)
+        : (isDe ? 'Läuft gerade automatisch — prüft, was ansteht …' : 'Running automatically — checking what is due …');
+    } else if (autoState.kind === 'busy-elsewhere') text = isDe ? 'Läuft gerade in einem anderen Tab.' : 'Running in another tab right now.';
+    else if (autoState.kind === 'throttled') {
+      const t = new Date(autoState.lastTs).toLocaleTimeString(isDe ? 'de-DE' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
+      text = isDe
+        ? `Der automatische Lauf war heute um ${t} Uhr — was seither dazukam oder liegen blieb, kannst du hier anstoßen.`
+        : `The automatic run was today at ${t} — anything added or left since then can be started here.`;
+    }
+    if (!text) return null;
+    return (
+      <div className={cx('dex-ui-callout', autoAktiv ? 'dex-ui-callout--info' : 'dex-ui-callout--neutral')} style={{ fontSize: '0.76rem', padding: '8px 10px', marginTop: 2 }}>
+        {autoAktiv && <span className="dex-ui-spin" aria-hidden="true" style={{ width: 12, height: 12, border: '2px solid rgba(134,188,37,0.3)', borderTopColor: 'var(--dex-green, #86bc25)', borderRadius: '50%', flexShrink: 0 }} />}
+        <span>{text}</span>
+      </div>
+    );
+  };
   // Beim App-Start (sobald Events geladen) als Admin die archivreifen
   // Zeilen zählen — nur dann erscheint die Box mit dem Button.
   React.useEffect(() => {
@@ -111,7 +148,18 @@ export default function LandingPage(): React.ReactElement {
       .then(list => { if (!cancelled) setPdDueEvents(list); })
       .catch(() => { /* best-effort */ });
     maybeSendParticipantDeletionWarnings().catch(() => { /* best-effort */ });
-    return () => { cancelled = true; };
+    // v31.63: Der automatische Lauf (AdminAutoMaintenance) ändert genau die
+    // Zahlen, die diese Kästen zeigen — nach seinem Ende neu zählen, sonst
+    // steht hier „120 Zeilen zum Archivieren", obwohl sie eben weg sind.
+    const onAutoDone = (): void => {
+      if (cancelled) return;
+      getArchivableCount().then(r => { if (!cancelled) setArchInfo(r); }).catch(() => { /* */ });
+      getDeletableArchiveCount().then(n => { if (!cancelled) setDelArchCount(n); }).catch(() => { /* */ });
+      getParticipantDeletionWarnings().then(list => { if (!cancelled) setPdWarnEvents(list); }).catch(() => { /* */ });
+      getParticipantDeletionDue().then(list => { if (!cancelled) setPdDueEvents(list); }).catch(() => { /* */ });
+    };
+    window.addEventListener(AUTO_MAINTENANCE_DONE_EVENT, onAutoDone);
+    return () => { cancelled = true; window.removeEventListener(AUTO_MAINTENANCE_DONE_EVENT, onAutoDone); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, isEventsLoading]);
 
@@ -1277,15 +1325,19 @@ export default function LandingPage(): React.ReactElement {
             ))}
           </ul>
           {/* v31.9: kein zweiter Primär-Knopf auf der Seite — „Start" ist der
-              eine (Grundsatz 1.5). */}
+              eine (Grundsatz 1.5).
+              v31.65: Knopf nur, wenn der Automat NICHT gerade übernimmt. */}
+          {autoStatusZeile()}
+          {!autoAktiv && (
           <button
             type="button"
             className="btn btn-secondary dex-ui-btn-sm"
-            style={{ width: '100%' }}
+            style={{ width: '100%', marginTop: autoState ? 8 : 0 }}
             onClick={() => { startArchive().catch(() => { /* */ }); }}
           >
             {isDe ? 'Jetzt archivieren' : 'Archive now'}
           </button>
+          )}
         </div>
       )}
       {/* v23.40: Löschkonzept — alte Archiv-Einträge (älter als 1 Monat). */}
@@ -1305,15 +1357,18 @@ export default function LandingPage(): React.ReactElement {
           {/* v31.9: `btn-danger` statt roter Schrift auf `btn-secondary` — der
               Gefahren-Knopf ist in dieser App bewusst grau, gewarnt wird im
               Rückfrage-Dialog. */}
+          {autoStatusZeile()}
+          {!autoAktiv && (
           <button
             type="button"
             className="btn btn-danger dex-ui-btn-sm"
-            style={{ width: '100%' }}
+            style={{ width: '100%', marginTop: autoState ? 8 : 0 }}
             disabled={delArchBusy}
             onClick={() => { startDeleteOldArchive().catch(() => { /* */ }); }}
           >
             {delArchBusy ? (isDe ? 'Wird gelöscht…' : 'Deleting…') : (isDe ? 'Alte Einträge löschen' : 'Delete old entries')}
           </button>
+          )}
         </div>
       )}
       {/* v26.32: Löschkonzept — Vorwarnung (Teilnehmerliste wird in ~1 Woche gelöscht). */}
@@ -1367,15 +1422,18 @@ export default function LandingPage(): React.ReactElement {
             ))}
           </ul>
           {/* v31.9: siehe oben — `btn-danger`, kein roter Text auf grauem Knopf. */}
+          {autoStatusZeile()}
+          {!autoAktiv && (
           <button
             type="button"
             className="btn btn-danger dex-ui-btn-sm"
-            style={{ width: '100%' }}
+            style={{ width: '100%', marginTop: autoState ? 8 : 0 }}
             disabled={pdBusy}
             onClick={() => { startParticipantDeletion().catch(() => { /* */ }); }}
           >
             {pdBusy ? (isDe ? 'Wird gelöscht…' : 'Deleting…') : (isDe ? 'Teilnehmerlisten löschen' : 'Delete attendee lists')}
           </button>
+          )}
         </div>
       )}
           </div>
