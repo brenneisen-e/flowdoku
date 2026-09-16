@@ -10,7 +10,11 @@
  */
 
 import * as React from 'react';
+import * as ReactDOM from 'react-dom';
 import { Icon } from '@fluentui/react/lib/Icon';
+// v31.66: Die Hover-Karte wird per Portal an document.body gerendert und
+// braucht die App-Wurzelklasse für die CSS-Variablen (wie EventCard v24.91).
+import styles from './DexEventPlatform.module.scss';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 // v31.10: Namens-/Adress-Paarung und die Ausblenden-Regel liegen in einer
@@ -200,6 +204,9 @@ function OrganizerChip({ name, email, sizeClass, isOpen, onOpen, onScheduleClose
   const { locale } = useLanguage();
   const isDe = forceIsDe !== undefined ? forceIsDe : locale === 'de';
   const wrapperRef = React.useRef<HTMLSpanElement>(null);
+  // v31.66: Die Karte liegt im Portal — für den „Klick außerhalb"-Test
+  // zählt sie trotzdem als innen.
+  const popRef = React.useRef<HTMLSpanElement>(null);
   const avatarSize = sizeClass === 'sm' ? 24 : 32;
   const enlargedSize = 120;
   const popoverHeight = 180; // ungefähre Popover-Höhe für Flip-Entscheidung
@@ -239,7 +246,9 @@ function OrganizerChip({ name, email, sizeClass, isOpen, onOpen, onScheduleClose
   React.useEffect(() => {
     if (!isOpen) return;
     const onDocClick = (ev: MouseEvent): void => {
-      if (wrapperRef.current && !wrapperRef.current.contains(ev.target as Node)) onScheduleClose();
+      const t = ev.target as Node;
+      const innen = (wrapperRef.current && wrapperRef.current.contains(t)) || (popRef.current && popRef.current.contains(t));
+      if (!innen) onScheduleClose();
     };
     document.addEventListener('click', onDocClick, true);
     return () => document.removeEventListener('click', onDocClick, true);
@@ -292,12 +301,24 @@ function OrganizerChip({ name, email, sizeClass, isOpen, onOpen, onScheduleClose
       )}
       <span style={{ whiteSpace: 'nowrap', fontSize: nameFontSize }}>{name}</span>
 
-      {/* Hover-Vergrößerung: fixed positioning damit Container-Overflow nichts abschneidet */}
-      {isOpen && email && !failed && coords && (
+      {/* Hover-Vergrößerung: fixed positioning damit Container-Overflow nichts abschneidet.
+          v31.66: …und per Portal an document.body. Nutzer-Befund 16.09.2026
+          (Eventübersicht, Hover über „Timo"): Die Karte erschien unten rechts
+          auf der Seite statt am Chip. Ursache: Die Zeilen-Karte hebt sich beim
+          Überfahren an (`.dex-ui-card--hover:hover { transform }`), und ein
+          Element mit `transform` wird zum Bezugsrahmen für `position: fixed`
+          — die Fenster-Koordinaten wurden ab da relativ zur Zeile gerechnet.
+          Im Portal gibt es keinen solchen Vorfahren mehr. Die App-Wurzelklasse
+          liefert die CSS-Variablen, die Schrift steht explizit (wie InfoTooltip). */}
+      {isOpen && email && !failed && coords && typeof document !== 'undefined' && ReactDOM.createPortal(
         <span
+          ref={popRef}
+          className={styles.dexApp}
           onMouseEnter={onCancelClose}
           onMouseLeave={onScheduleClose}
+          onClick={e => e.stopPropagation()}
           style={{
+            fontFamily: 'Aptos, "Open Sans", "Segoe UI", Arial, Helvetica, sans-serif',
             position: 'fixed',
             top: coords.above ? undefined : coords.y,
             bottom: coords.above ? window.innerHeight - coords.y : undefined,
@@ -339,7 +360,8 @@ function OrganizerChip({ name, email, sizeClass, isOpen, onOpen, onScheduleClose
               {[profile.jobTitle, profile.location].filter(Boolean).join(' · ')}
             </span>
           )}
-        </span>
+        </span>,
+        document.body
       )}
     </span>
   );

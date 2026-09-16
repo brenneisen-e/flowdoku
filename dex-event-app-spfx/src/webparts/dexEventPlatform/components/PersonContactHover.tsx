@@ -8,7 +8,12 @@
  * E-Mail-Adresse und Teams-Chat-Link + (falls vorhanden) Position/Standort/Firma.
  */
 import * as React from 'react';
+import * as ReactDOM from 'react-dom';
 import { Icon } from '@fluentui/react/lib/Icon';
+// v31.66: Kontaktkarte per Portal an document.body (s. OrganizerList v31.66 —
+// ein Vorfahr mit `transform`, etwa eine Karte mit Hover-Anhebung, würde
+// `position: fixed` sonst auf sich beziehen). Wurzelklasse für CSS-Variablen.
+import styles from './DexEventPlatform.module.scss';
 import { useRoles } from '../context/RoleContext';
 
 // v26.8: Modul-globaler Cache für lazy nachgeladene Profil-Infos (Position +
@@ -96,6 +101,8 @@ export function PersonContactHover(props: PersonContactHoverProps): React.ReactE
       : ''
   );
   const wrapperRef = React.useRef<HTMLSpanElement>(null);
+  // v31.66: Karte im Portal — zählt beim „Klick außerhalb" als innen.
+  const popRef = React.useRef<HTMLSpanElement>(null);
   const closeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const initials = getInitials(name);
   /*
@@ -169,7 +176,9 @@ export function PersonContactHover(props: PersonContactHoverProps): React.ReactE
   React.useEffect(() => {
     if (!open) return;
     const onDocClick = (ev: MouseEvent): void => {
-      if (wrapperRef.current && !wrapperRef.current.contains(ev.target as Node)) setOpen(false);
+      const t = ev.target as Node;
+      const innen = (wrapperRef.current && wrapperRef.current.contains(t)) || (popRef.current && popRef.current.contains(t));
+      if (!innen) setOpen(false);
     };
     document.addEventListener('click', onDocClick, true);
     return () => document.removeEventListener('click', onDocClick, true);
@@ -226,11 +235,15 @@ export function PersonContactHover(props: PersonContactHoverProps): React.ReactE
         <span style={{ width: size, height: size, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #86bc25, #0076a8)', color: '#fff', fontSize: size * 0.4, fontWeight: 700, flexShrink: 0 }}>{initials}</span>
       )}
 
-      {open && email && coords && (
+      {open && email && coords && typeof document !== 'undefined' && ReactDOM.createPortal(
         <span
+          ref={popRef}
+          className={styles.dexApp}
           onMouseEnter={cancelClose}
           onMouseLeave={scheduleClose}
+          onClick={e => e.stopPropagation()}
           style={{
+            fontFamily: 'Aptos, "Open Sans", "Segoe UI", Arial, Helvetica, sans-serif',
             position: 'fixed',
             top: coords.above ? undefined : coords.y,
             bottom: coords.above ? window.innerHeight - coords.y : undefined,
@@ -262,7 +275,8 @@ export function PersonContactHover(props: PersonContactHoverProps): React.ReactE
           >
             <Icon iconName="TeamsLogo" style={{ fontSize: 13 }} /> {isDe ? 'Teams-Chat' : 'Teams chat'}
           </a>
-        </span>
+        </span>,
+        document.body
       )}
     </span>
   );
