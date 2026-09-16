@@ -113,11 +113,32 @@ export default function LandingPage(): React.ReactElement {
         ? (isDe ? `Läuft gerade automatisch · ${p.pct} % (${p.done}/${p.total})` : `Running automatically · ${p.pct}% (${p.done}/${p.total})`)
         : (isDe ? 'Läuft gerade automatisch — prüft, was ansteht …' : 'Running automatically — checking what is due …');
     } else if (autoState.kind === 'busy-elsewhere') text = isDe ? 'Läuft gerade in einem anderen Tab.' : 'Running in another tab right now.';
-    else if (autoState.kind === 'throttled') {
-      const t = new Date(autoState.lastTs).toLocaleTimeString(isDe ? 'de-DE' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
-      text = isDe
-        ? `Der automatische Lauf war heute um ${t} Uhr — was seither dazukam oder liegen blieb, kannst du hier anstoßen.`
-        : `The automatic run was today at ${t} — anything added or left since then can be started here.`;
+    else if (autoState.kind === 'throttled' || autoState.kind === 'done') {
+      // v31.68: Nach dem Lauf sagt der Kasten, WAS der Automat getan hat und
+      // warum hier trotzdem noch Zeilen stehen. Nutzer-Befund 16.09.2026
+      // („immer noch Jetzt archivieren…"): Der Lauf war durch, 16 Zeilen
+      // blieben liegen — der Kasten zeigte nur den Knopf, ohne ein Wort dazu.
+      const r = autoState.kind === 'done' ? autoState.r : autoState.last;
+      const ts = autoState.kind === 'done' ? (autoState.r.finishedAt || Date.now()) : autoState.lastTs;
+      const t = new Date(ts).toLocaleTimeString(isDe ? 'de-DE' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
+      const teile: string[] = [];
+      if (r) {
+        if (r.archived > 0) teile.push(isDe ? `${r.archived} archiviert` : `${r.archived} archived`);
+        if (r.deleted > 0) teile.push(isDe ? `${r.deleted} Archivzeilen entfernt` : `${r.deleted} archive rows removed`);
+        if (r.participantsDeleted > 0) teile.push(isDe ? `${r.participantsDeleted} Teilnehmerliste(n) gelöscht` : `${r.participantsDeleted} attendee list(s) deleted`);
+        const fehl = r.archiveFailed + r.deleteFailed + r.participantsFailed;
+        if (fehl > 0) teile.push(isDe ? `${fehl} nicht verschiebbar` : `${fehl} could not be moved`);
+        if (r.error) teile.push(r.error);
+      }
+      const bilanz = teile.length ? ` — ${teile.join(' · ')}` : (r && r.nothingToDo ? (isDe ? ' — damals stand nichts an' : ' — nothing was due then') : '');
+      const rest = r && (r.archiveFailed > 0 || r.deleteFailed > 0 || r.participantsFailed > 0)
+        ? (isDe
+          ? ` Was hier noch steht, ließ sich nicht verschieben; der Grund je Zeile steht im Änderungsprotokoll (Aktion AutoMaintenanceRun)${r.archiveErrors && r.archiveErrors.length ? `: ${r.archiveErrors.slice(0, 3).join(' · ')}` : ''}.`
+          : ` What is still listed here could not be moved; the reason per row is in the change log (action AutoMaintenanceRun)${r.archiveErrors && r.archiveErrors.length ? `: ${r.archiveErrors.slice(0, 3).join(' · ')}` : ''}.`)
+        : (isDe
+          ? ' Was hier noch steht, ist seither neu dazugekommen und wird beim nächsten automatischen Lauf erledigt — oder jetzt per Knopf.'
+          : ' What is still listed here has been added since and will be handled by the next automatic run — or now via the button.');
+      text = (isDe ? `Automatischer Lauf heute um ${t} Uhr${bilanz}.` : `Automatic run today at ${t}${bilanz}.`) + rest;
     }
     if (!text) return null;
     return (

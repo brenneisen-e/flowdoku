@@ -2517,7 +2517,7 @@ export class EventService {
     onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void,
     shouldCancel?: () => boolean,
     allEventIds: Set<string> = new Set(), allSubsiteUrls: Set<string> = new Set()
-  ): Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }> {
+  ): Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number>; errors: string[] }> {
     return archive.archiveExpiredRows(this, expiredEventIds, expiredSubsiteUrls, eventTitleById, onProgress, shouldCancel, allEventIds, allSubsiteUrls);
   }
 

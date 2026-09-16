@@ -48,7 +48,19 @@ export const AUTO_MAINTENANCE_DONE_EVENT = 'dex-auto-maintenance-done';
 /** v31.65: Zustandswechsel des Automaten — `detail` ist ein AutoMaintenanceState. */
 export const AUTO_MAINTENANCE_STATE_EVENT = 'dex-auto-maintenance-state';
 const THROTTLE_KEY = 'dex_auto_maintenance_v1';
+const LAST_KEY = 'dex_auto_maintenance_last_v1';
 const LOCK_KEY = 'dex_auto_maintenance_lock_v1';
+
+/** v31.68: Bilanz des letzten abgeschlossenen Laufs (je Browser). */
+function letzteBilanz(): AutoMaintenanceResult | undefined {
+  try {
+    const raw = window.localStorage.getItem(LAST_KEY);
+    return raw ? (JSON.parse(raw) as AutoMaintenanceResult) : undefined;
+  } catch { return undefined; }
+}
+function bilanzMerken(r: AutoMaintenanceResult): void {
+  try { window.localStorage.setItem(LAST_KEY, JSON.stringify(r)); } catch { /* */ }
+}
 const THROTTLE_MS = 6 * 60 * 60 * 1000;
 const LOCK_STALE_MS = 45 * 1000;
 const LOCK_BEAT_MS = 10 * 1000;
@@ -60,8 +72,10 @@ export type AutoMaintenanceState =
   | { kind: 'scheduled' }
   | { kind: 'running'; p: AutoMaintenanceProgress }
   | { kind: 'done'; r: AutoMaintenanceResult }
-  /** In den letzten 6 h ist ein Lauf abgeschlossen worden — heute nicht mehr. */
-  | { kind: 'throttled'; lastTs: number }
+  /** In den letzten 6 h ist ein Lauf abgeschlossen worden — heute nicht mehr.
+   *  v31.68: `last` = Bilanz dieses Laufs (aus localStorage), damit der
+   *  Landing-Kasten sagen kann, WAS er getan hat und was liegen blieb. */
+  | { kind: 'throttled'; lastTs: number; last?: AutoMaintenanceResult }
   /** Ein anderer Tab derselben Person läuft gerade. */
   | { kind: 'busy-elsewhere' };
 
@@ -103,7 +117,7 @@ export default function AdminAutoMaintenance(): React.ReactElement | null {
     startedRef.current = true;
     let lastTs = 0;
     try { lastTs = parseInt(window.localStorage.getItem(THROTTLE_KEY) || '0', 10) || 0; } catch { /* */ }
-    if (lastTs && Date.now() - lastTs < THROTTLE_MS) { setze({ kind: 'throttled', lastTs }); return; }
+    if (lastTs && Date.now() - lastTs < THROTTLE_MS) { setze({ kind: 'throttled', lastTs, last: letzteBilanz() }); return; }
     if (lockFrisch()) { setze({ kind: 'busy-elsewhere' }); return; }
     setze({ kind: 'scheduled' });
     // Kein clearTimeout-Cleanup (s. EventContext shadowHeal, v30.67): ein
@@ -122,7 +136,9 @@ export default function AdminAutoMaintenance(): React.ReactElement | null {
           // Sperre erst JETZT — ein abgebrochener Lauf (Tab zu) bekommt keine.
           // Auch bei „nichts zu tun": drei Listen-Scans je Start reichen.
           try { window.localStorage.setItem(THROTTLE_KEY, String(Date.now())); } catch { /* */ }
-          if (r.nothingToDo) { setze({ kind: 'throttled', lastTs: Date.now() }); return; }
+          if (!r.finishedAt) r.finishedAt = Date.now();
+          bilanzMerken(r);
+          if (r.nothingToDo) { setze({ kind: 'throttled', lastTs: Date.now(), last: r }); return; }
           setze({ kind: 'done', r });
           try { window.dispatchEvent(new CustomEvent(AUTO_MAINTENANCE_DONE_EVENT)); } catch { /* */ }
           window.setTimeout(() => setState(prev => (prev && prev.kind === 'done' ? null : prev)), RESULT_VISIBLE_MS);
@@ -130,7 +146,7 @@ export default function AdminAutoMaintenance(): React.ReactElement | null {
         .catch(err => {
           ende();
           console.warn('[DEX] auto maintenance failed:', err);
-          setze({ kind: 'done', r: { archived: 0, archiveFailed: 0, deleted: 0, deleteFailed: 0, participantsDeleted: 0, participantsFailed: 0, nothingToDo: false, error: err instanceof Error ? err.message : String(err) } });
+          setze({ kind: 'done', r: { archived: 0, archiveFailed: 0, deleted: 0, deleteFailed: 0, participantsDeleted: 0, participantsFailed: 0, nothingToDo: false, error: err instanceof Error ? err.message : String(err), archiveErrors: [], finishedAt: Date.now() } });
           window.setTimeout(() => setState(prev => (prev && prev.kind === 'done' ? null : prev)), RESULT_VISIBLE_MS);
         });
     }, START_DELAY_MS);
