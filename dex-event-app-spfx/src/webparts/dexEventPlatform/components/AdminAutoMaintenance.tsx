@@ -11,16 +11,27 @@
  * Was hier passiert:
  *  - Sobald Events und Rollen geladen sind und die Person Admin ist, startet
  *    mit 15 s Verzögerung `runAutoMaintenance` (nach den anderen Boot-Jobs
- *    in DexEventPlatform: 4/6/8/11 s). Gedrosselt 1× je 6 h je Browser —
- *    zwei Admin-Tabs derselben Person laufen sonst gleichzeitig über
- *    dieselben Zeilen, und jede Zeile ist Insert→Delete (Dubletten im
- *    Archiv, 404 beim zweiten Delete).
+ *    in DexEventPlatform: 4/6/8/11 s).
  *  - Während des Laufs steht oben rechts ein Ring mit Prozentzahl, darunter
  *    die Phase („Archivieren … DEX_Emails"). Nach dem Lauf bleibt kurz die
  *    Bilanz stehen; stand nichts an, verschwindet das Abzeichen wortlos —
  *    ein „nichts zu tun"-Kasten wäre bei jedem Start Lärm.
  *  - Nach dem Lauf feuert `dex-auto-maintenance-done`; die Landing Page
  *    zählt ihre Kästen dann neu, sonst zeigt sie die Zahlen von VOR dem Lauf.
+ *
+ * v31.65: Zwei Korrekturen nach der Nutzer-Frage vom 16.09.2026 („warum
+ * muss ich hier immer noch manuell klicken?" — der Landing-Kasten zeigte
+ * bei 3708 archivreifen Zeilen weiter den Knopf):
+ *  - Der Kasten wusste nichts vom Automaten. Jetzt veröffentlicht diese
+ *    Komponente ihren Zustand (`AUTO_MAINTENANCE_STATE_EVENT`,
+ *    `autoMaintenanceZustand()`), und die Landing Page zeigt statt des
+ *    Knopfs „startet in wenigen Sekunden" bzw. „läuft gerade · 42 %".
+ *  - Die 6-Stunden-Sperre stand VOR dem Lauf im localStorage. Ein Lauf über
+ *    3708 Zeilen dauert Minuten; wer den Tab vorher schloss, hatte die
+ *    Sperre, aber keinen Lauf — sechs Stunden lang. Jetzt: Sperre erst nach
+ *    einem ABGESCHLOSSENEN Lauf; gegen einen zweiten Tab derselben Person
+ *    gibt es stattdessen ein Lauf-Schloss mit Herzschlag (alle 10 s, nach
+ *    45 s ohne Herzschlag verfallen), das mit dem Tab stirbt.
  *
  * Die Komponente rendert für Nicht-Admins nichts und hängt unbedingt im
  * Baum (nicht hinter `isBootLoading`), damit ihr Timer den Boot überlebt.
@@ -34,60 +45,101 @@ import { AutoMaintenanceProgress, AutoMaintenanceResult } from '../context/actio
 import { ensureDexUiStyles } from './dexUi';
 
 export const AUTO_MAINTENANCE_DONE_EVENT = 'dex-auto-maintenance-done';
+/** v31.65: Zustandswechsel des Automaten — `detail` ist ein AutoMaintenanceState. */
+export const AUTO_MAINTENANCE_STATE_EVENT = 'dex-auto-maintenance-state';
 const THROTTLE_KEY = 'dex_auto_maintenance_v1';
+const LOCK_KEY = 'dex_auto_maintenance_lock_v1';
 const THROTTLE_MS = 6 * 60 * 60 * 1000;
+const LOCK_STALE_MS = 45 * 1000;
+const LOCK_BEAT_MS = 10 * 1000;
 const START_DELAY_MS = 15000;
 const RESULT_VISIBLE_MS = 9000;
 
-type Badge =
+/** v31.65: Was der Automat gerade tut — für Abzeichen UND Landing-Kästen. */
+export type AutoMaintenanceState =
+  | { kind: 'scheduled' }
   | { kind: 'running'; p: AutoMaintenanceProgress }
-  | { kind: 'done'; r: AutoMaintenanceResult };
+  | { kind: 'done'; r: AutoMaintenanceResult }
+  /** In den letzten 6 h ist ein Lauf abgeschlossen worden — heute nicht mehr. */
+  | { kind: 'throttled'; lastTs: number }
+  /** Ein anderer Tab derselben Person läuft gerade. */
+  | { kind: 'busy-elsewhere' };
+
+let letzterZustand: AutoMaintenanceState | null = null;
+/** Letzter veröffentlichter Zustand — für Komponenten, die später mounten. */
+export function autoMaintenanceZustand(): AutoMaintenanceState | null { return letzterZustand; }
+function veroeffentliche(s: AutoMaintenanceState): void {
+  letzterZustand = s;
+  try { window.dispatchEvent(new CustomEvent(AUTO_MAINTENANCE_STATE_EVENT, { detail: s })); } catch { /* */ }
+}
+
+function lockFrisch(): boolean {
+  try {
+    const t = parseInt(window.localStorage.getItem(LOCK_KEY) || '0', 10);
+    return !!t && Date.now() - t < LOCK_STALE_MS;
+  } catch { return false; }
+}
+function lockSetzen(): void { try { window.localStorage.setItem(LOCK_KEY, String(Date.now())); } catch { /* */ } }
+function lockLoesen(): void { try { window.localStorage.removeItem(LOCK_KEY); } catch { /* */ } }
 
 export default function AdminAutoMaintenance(): React.ReactElement | null {
   const { isAdmin, isRolesLoading } = useRoles();
   const { isEventsLoading, events, runAutoMaintenance } = useEvents();
   const isDe = useLocaleSafe() === 'de';
-  const [badge, setBadge] = React.useState<Badge | null>(null);
+  const [state, setState] = React.useState<AutoMaintenanceState | null>(null);
   const startedRef = React.useRef(false);
   // Das Einblenden nutzt `dexUiFadeIn` aus dem dexUi-Stylesheet.
   ensureDexUiStyles();
+
+  const setze = (s: AutoMaintenanceState | null): void => {
+    setState(s);
+    if (s) veroeffentliche(s);
+  };
 
   React.useEffect(() => {
     if (startedRef.current) return;
     if (!isAdmin || isRolesLoading || isEventsLoading) return;
     if (!events || events.length === 0) return;
-    let due = true;
-    try {
-      const last = parseInt(window.localStorage.getItem(THROTTLE_KEY) || '0', 10);
-      if (last && Date.now() - last < THROTTLE_MS) due = false;
-    } catch { /* */ }
-    if (!due) { startedRef.current = true; return; }
     startedRef.current = true;
-    // Stempel VOR dem Lauf — ein zweiter Tab derselben Person soll nicht
-    // parallel starten. Läuft der erste schief, versucht es der nächste
-    // Start nach 6 h wieder; die Handwege bleiben jederzeit offen.
-    try { window.localStorage.setItem(THROTTLE_KEY, String(Date.now())); } catch { /* */ }
+    let lastTs = 0;
+    try { lastTs = parseInt(window.localStorage.getItem(THROTTLE_KEY) || '0', 10) || 0; } catch { /* */ }
+    if (lastTs && Date.now() - lastTs < THROTTLE_MS) { setze({ kind: 'throttled', lastTs }); return; }
+    if (lockFrisch()) { setze({ kind: 'busy-elsewhere' }); return; }
+    setze({ kind: 'scheduled' });
     // Kein clearTimeout-Cleanup (s. EventContext shadowHeal, v30.67): ein
     // Re-Render durch `events` würde den Timer sonst abräumen, bevor er feuert.
     window.setTimeout(() => {
-      setBadge({ kind: 'running', p: { phase: 'zaehlen', done: 0, total: 0, pct: 0, label: '' } });
-      runAutoMaintenance(p => setBadge({ kind: 'running', p }))
+      // Zweite Prüfung kurz vor dem Start — in den 15 s kann ein anderer
+      // Tab begonnen haben.
+      if (lockFrisch()) { setze({ kind: 'busy-elsewhere' }); return; }
+      lockSetzen();
+      const beat = window.setInterval(lockSetzen, LOCK_BEAT_MS);
+      const ende = (): void => { window.clearInterval(beat); lockLoesen(); };
+      setze({ kind: 'running', p: { phase: 'zaehlen', done: 0, total: 0, pct: 0, label: '' } });
+      runAutoMaintenance(p => setze({ kind: 'running', p }))
         .then(r => {
-          if (r.nothingToDo) { setBadge(null); return; }
-          setBadge({ kind: 'done', r });
+          ende();
+          // Sperre erst JETZT — ein abgebrochener Lauf (Tab zu) bekommt keine.
+          // Auch bei „nichts zu tun": drei Listen-Scans je Start reichen.
+          try { window.localStorage.setItem(THROTTLE_KEY, String(Date.now())); } catch { /* */ }
+          if (r.nothingToDo) { setze({ kind: 'throttled', lastTs: Date.now() }); return; }
+          setze({ kind: 'done', r });
           try { window.dispatchEvent(new CustomEvent(AUTO_MAINTENANCE_DONE_EVENT)); } catch { /* */ }
-          window.setTimeout(() => setBadge(prev => (prev && prev.kind === 'done' ? null : prev)), RESULT_VISIBLE_MS);
+          window.setTimeout(() => setState(prev => (prev && prev.kind === 'done' ? null : prev)), RESULT_VISIBLE_MS);
         })
         .catch(err => {
+          ende();
           console.warn('[DEX] auto maintenance failed:', err);
-          setBadge({ kind: 'done', r: { archived: 0, archiveFailed: 0, deleted: 0, deleteFailed: 0, participantsDeleted: 0, participantsFailed: 0, nothingToDo: false, error: err instanceof Error ? err.message : String(err) } });
-          window.setTimeout(() => setBadge(prev => (prev && prev.kind === 'done' ? null : prev)), RESULT_VISIBLE_MS);
+          setze({ kind: 'done', r: { archived: 0, archiveFailed: 0, deleted: 0, deleteFailed: 0, participantsDeleted: 0, participantsFailed: 0, nothingToDo: false, error: err instanceof Error ? err.message : String(err) } });
+          window.setTimeout(() => setState(prev => (prev && prev.kind === 'done' ? null : prev)), RESULT_VISIBLE_MS);
         });
     }, START_DELAY_MS);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, isRolesLoading, isEventsLoading, events]);
 
-  if (!badge) return null;
+  // Das Abzeichen zeigt nur Lauf und Bilanz; „geplant", „gedrosselt" und
+  // „anderer Tab" sagen die Landing-Kästen an der Stelle, wo der Knopf war.
+  if (!state || state.kind === 'scheduled' || state.kind === 'throttled' || state.kind === 'busy-elsewhere') return null;
 
   const phaseText = (p: AutoMaintenanceProgress): string => {
     switch (p.phase) {
@@ -110,8 +162,8 @@ export default function AdminAutoMaintenance(): React.ReactElement | null {
     animation: 'dexUiFadeIn 0.25s ease-out both',
   };
 
-  if (badge.kind === 'running') {
-    const p = badge.p;
+  if (state.kind === 'running') {
+    const p = state.p;
     const indeterminate = p.phase === 'zaehlen' || p.total === 0;
     return (
       <div role="status" aria-live="polite" style={shell} title={isDe ? 'Archivierung & Löschen laufen im Hintergrund' : 'Archiving & deletion running in the background'}>
@@ -128,7 +180,7 @@ export default function AdminAutoMaintenance(): React.ReactElement | null {
     );
   }
 
-  const r = badge.r;
+  const r = state.r;
   const hadError = !!r.error || r.archiveFailed > 0 || r.deleteFailed > 0 || r.participantsFailed > 0;
   const parts: string[] = [];
   if (r.archived > 0) parts.push(isDe ? `${r.archived} archiviert` : `${r.archived} archived`);
@@ -155,7 +207,7 @@ export default function AdminAutoMaintenance(): React.ReactElement | null {
       </div>
       <button
         type="button"
-        onClick={() => setBadge(null)}
+        onClick={() => setState(null)}
         aria-label={isDe ? 'Schließen' : 'Close'}
         style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--dex-gray-400, #999)', fontSize: 18, lineHeight: 1, padding: '0 0 0 4px', flexShrink: 0 }}
       >×</button>
