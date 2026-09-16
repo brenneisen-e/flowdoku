@@ -1164,7 +1164,10 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                     // Nutzer-Ansage 07.09.2026: Zeile überfahren → hebt sich, Zeile
                     // anklicken → Bearbeiten). Derselbe Handler wie der Knopf;
                     // Enter/Leertaste nur, wenn der Fokus auf der Karte liegt.
-                    const openCard = (): void => setScope(idx + 1);
+                    // v31.64: …und nach oben zum Titelfeld (goToScopeBar) —
+                    // die Karte liegt am Ende von Schritt 1, die Felder, die
+                    // der Klick „öffnet", stehen ganz oben.
+                    const openCard = (): void => { setScope(idx + 1); goToScopeBar(); };
                     return (
                       <div
                         key={se.id}
