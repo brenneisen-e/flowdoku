@@ -5,6 +5,12 @@
 export interface CustomFieldInput {
   id: string;
   label: string;
+  /** v31.69: InternalName der Spalte auf der Teilnehmerliste — wird beim
+   *  Laden mitgenommen und beim Serialisieren MITGESCHRIEBEN. Bis dahin
+   *  fiel die Zuordnung bei jedem Speichern eines Sub-Events weg
+   *  (Mapper und Serializer kannten das Feld nicht), der nächste Save
+   *  meldete „Spalte konnte NICHT angelegt werden", obwohl sie da war. */
+  spInternalName?: string;
   // v19.0: document = Datei-Upload; v24.25: date = Kalender-Auswahl;
   // v28.63: daterange = Übernachtungs-Zeitraum (Anreise + Abreise, Nächte berechnet)
   type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'document' | 'date' | 'daterange';

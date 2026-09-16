@@ -510,6 +510,10 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
         ...(f.rangeStart ? { rangeStart: f.rangeStart } : {}),
         ...(f.rangeEnd ? { rangeEnd: f.rangeEnd } : {}),
         ...(typeof f.maxNights === 'number' && f.maxNights > 0 ? { maxNights: f.maxNights } : {}),
+        // v31.69: Spaltenzuordnung mitnehmen — sonst schreibt der nächste Save
+        // des Sub-Events die CustomFields ohne sie zurück (s. serializeCustomFields).
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...((f as any).spInternalName ? { spInternalName: String((f as any).spInternalName) } : {}),
       })),
       // v15.3: pro-Sub-Event Felder aus dem Event-Datenmodell laden. Alle
       // Sub-Events haben jetzt eigene Adresse, Agenda, Transferzeiten,
