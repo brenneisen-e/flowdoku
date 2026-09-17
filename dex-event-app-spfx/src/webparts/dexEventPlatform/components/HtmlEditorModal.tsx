@@ -130,6 +130,13 @@ export interface HtmlEditorModalProps {
     disabled?: boolean;
     icon?: React.ReactNode;
   };
+  /** v31.70: Optionaler Rückweg links im Fuß („Zurück zur Empfängerwahl") —
+   *  Nutzer-Ansage 17.09.2026. Der Aufrufer entscheidet, wohin. */
+  backAction?: {
+    label: string;
+    onClick: () => void;
+    disabled?: boolean;
+  };
   /** v11.40: Optionaler React-Knoten oberhalb von Subject/Überschrift im
    *  Editor — z.B. für eine Ziel-Auswahl im Einladungsmail-Modal. */
   headerExtra?: React.ReactNode;
@@ -270,6 +277,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     leftPanel,
     logoBase64 = '', imageBase64 = '',
     extraAction,
+    backAction,
     headerExtra,
     bodyTemplates, bodyTemplatesLabel,
     previewToLine, previewSubjectLine,
@@ -1514,6 +1522,11 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
             zu senden gibt. Der Hinweis „Vorschau zeigt jede Änderung sofort"
             stand hier doppelt — der Untertitel im Kopf sagt dasselbe. */}
         <div className="dex-ui-modal-foot" style={{ padding: '12px 20px 14px', marginTop: 0, flexShrink: 0 }}>
+          {backAction && (
+            <span className="dex-ui-modal-foot-left">
+              <button type="button" className="btn btn-secondary" onClick={backAction.onClick} disabled={backAction.disabled}>‹ {backAction.label}</button>
+            </span>
+          )}
           <button type="button" className="btn btn-secondary" onClick={onClose}>{extraAction ? t('Abbrechen', 'Cancel') : t('Fertig', 'Done')}</button>
           {extraAction && (
             <button

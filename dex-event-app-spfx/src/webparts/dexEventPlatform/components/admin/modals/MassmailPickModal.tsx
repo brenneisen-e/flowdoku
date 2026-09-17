@@ -29,7 +29,8 @@ export const MassmailPickModal: React.FC<MassmailPickModalProps> = (p) => {
         const closeAll = (): void => { setMassmailMode('closed'); setMassmailPasteRaw(''); };
         const proceed = (): void => {
           if (massmailAudience === 'custom' && massmailStatuses.size === 0) return;
-          if (massmailAudience === 'nachruecker') setMassmailMode('paste');
+          // v31.70: Beide Abgleich-Wege brauchen den Verteiler im zweiten Schritt.
+          if (massmailAudience === 'nachruecker' || massmailAudience === 'reminder') setMassmailMode('paste');
           else { setShowEmailModal(true); setMassmailMode('editor'); }
         };
         // v31.9.6: Abgemeldet und No-Show gehören dazu. Sie fehlten nicht aus
@@ -83,7 +84,7 @@ export const MassmailPickModal: React.FC<MassmailPickModalProps> = (p) => {
             footer={<>
               <button type="button" className="btn btn-secondary" onClick={closeAll}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
               <button type="button" className="btn btn-primary" onClick={proceed} disabled={customEmpty}>
-                {massmailAudience === 'nachruecker' ? (isDe ? 'Weiter: Liste einfügen' : 'Next: paste list') : (isDe ? 'Weiter zum Mail-Editor' : 'Continue to mail editor')}
+                {(massmailAudience === 'nachruecker' || massmailAudience === 'reminder') ? (isDe ? 'Weiter: Verteiler einfügen' : 'Next: paste list') : (isDe ? 'Weiter zum Mail-Editor' : 'Continue to mail editor')}
               </button>
             </>}>
             <div className="dex-ui-section">
@@ -127,7 +128,14 @@ export const MassmailPickModal: React.FC<MassmailPickModalProps> = (p) => {
             </div>
             <div className="dex-ui-section">
               <div className="dex-ui-section-title">{isDe ? 'Abgleich mit deiner Liste' : 'Compare with your list'}</div>
-              <Row value="nachruecker" label={isDe ? 'Nachrücker — nur wer deine letzte Mail noch nicht hat' : 'Late joiners — only those who missed your last mail'} desc={isDe ? 'Im nächsten Schritt fügst du deine bisherige Empfänger-Liste ein (Verteiler, „Vorname Nachname <mail>“, beliebig formatiert). Die App erkennt die Adressen und schreibt alle aktiven Teilnehmer an, die dort NICHT stehen.' : 'In the next step you paste your existing recipient list (distribution list, "First Last <mail>", any format). The app picks out the addresses and mails every active participant who is NOT on it.'} />
+              <div className="dex-ui-stack">
+                <Row value="nachruecker" label={isDe ? 'Nachrücker — nur wer deine letzte Mail noch nicht hat' : 'Late joiners — only those who missed your last mail'} desc={isDe ? 'Im nächsten Schritt fügst du deine bisherige Empfänger-Liste ein (Verteiler, „Vorname Nachname <mail>“, beliebig formatiert). Die App erkennt die Adressen und schreibt alle aktiven Teilnehmer an, die dort NICHT stehen.' : 'In the next step you paste your existing recipient list (distribution list, "First Last <mail>", any format). The app picks out the addresses and mails every active participant who is NOT on it.'} />
+                {/* v31.70: Die Umkehrung — Nutzer-Ansage 17.09.2026: „Reminder an
+                    alle, die noch nicht zurückgemeldet haben, des Verteilers".
+                    Angeschrieben werden Personen aus dem VERTEILER, nicht aus der
+                    Teilnehmerliste; ihre Namen kommen aus dem Verteiler. */}
+                <Row value="reminder" label={isDe ? 'Erinnerung — wer aus deinem Verteiler noch nicht angemeldet ist' : 'Reminder — who on your list has not registered yet'} desc={isDe ? 'Im nächsten Schritt fügst du deinen Einladungs-Verteiler ein. Angeschrieben wird, wer dort steht, aber im Event NICHT aktiv angemeldet ist — also noch nicht reagiert hat, abgesagt hat oder auf der Warteliste steht.' : 'In the next step you paste your invitation list. The mail goes to everyone on it who is NOT actively registered for the event — no reaction yet, cancelled, or on the waitlist.'} />
+              </div>
             </div>
           </Modal>
         );

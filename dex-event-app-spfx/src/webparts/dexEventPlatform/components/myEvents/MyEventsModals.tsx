@@ -17,6 +17,8 @@ import { cx } from '../dexUi';
 import { resolveMailPreviewHtml } from '../../utils/mailPreviewHtml';
 import { getCachedOrbBase64 } from '../../services/EmailTemplates';
 import { AlertCircle, ChevronDown, Info, Mail, QrCode, Trash2, Users, X } from '../Icons';
+// v31.71: Organizer-Karte im leeren E-Mail-Dialog.
+import OrganizerList from '../OrganizerList';
 
 
 export interface AddMemberModalProps {
@@ -575,7 +577,7 @@ export function MyQrModal(props: MyQrModalProps): React.ReactElement {
 
 export interface EventCommsModalProps {
   commsLoading: boolean;
-  commsModal: { eventId: string; eventTitle: string; mailImage?: string };
+  commsModal: { eventId: string; eventTitle: string; mailImage?: string; organizerNames?: string[]; organizerEmails?: string[]; hiddenOrganizerEmails?: string[] };
   commsOpenId: number;
   commsRows: EventCommRow[];
   isDe: boolean;
@@ -593,8 +595,8 @@ export function EventCommsModal(props: EventCommsModalProps): React.ReactElement
           open={true}
           onClose={() => setCommsModal(null)}
           maxWidth={860}
-          ariaLabel={isDe ? 'Nachrichten zum Event' : 'Event messages'}
-          title={isDe ? 'Nachrichten zum Event' : 'Event messages'}
+          ariaLabel={isDe ? 'Bisherige E-Mails vom Organizer' : 'Previous emails from the organizers'}
+          title={isDe ? 'Bisherige E-Mails vom Organizer' : 'Previous emails from the organizers'}
           subtitle={commsModal.eventTitle}
           icon={<Mail size={20} />}
           footer={
@@ -608,10 +610,30 @@ export function EventCommsModal(props: EventCommsModalProps): React.ReactElement
               {isDe ? 'Wird geladen…' : 'Loading…'}
             </p>
           ) : commsRows.length === 0 ? (
-            <div className="dex-ui-empty">
-              <span className="dex-ui-empty-icon"><Mail size={20} /></span>
-              <div className="dex-ui-empty-title">{isDe ? 'Noch keine Nachrichten' : 'No messages yet'}</div>
-              {isDe ? 'Zu diesem Event gibt es noch keine Nachrichten.' : 'There are no messages for this event yet.'}
+            // v31.71: Der leere Zustand sagt, WAS er bedeutet (über DEX lief
+            // bisher nichts — die Einladung kam vielleicht auf einem anderen
+            // Weg) und nennt den Weg für Rückfragen: die Organizer mit Bild.
+            <div className="dex-ui-stack" style={{ gap: 14 }}>
+              <div className="dex-ui-empty">
+                <span className="dex-ui-empty-icon"><Mail size={20} /></span>
+                <div className="dex-ui-empty-title">{isDe ? 'Bisher keine E-Mails über DEX' : 'No emails via DEX so far'}</div>
+                {isDe
+                  ? 'Zu diesem Event wurde über DEX bisher keine E-Mail an dich verschickt — die Einladung oder Infos kamen vielleicht auf einem anderen Weg.'
+                  : 'No email has been sent to you via DEX for this event yet — the invitation or details may have come another way.'}
+              </div>
+              {(commsModal.organizerEmails || []).length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                  <div className="dex-ui-section-title" style={{ marginBottom: 0 }}>{isDe ? 'Bei Fragen wende dich gerne an' : 'If you have questions, feel free to contact'}</div>
+                  <OrganizerList
+                    names={commsModal.organizerNames || []}
+                    emails={commsModal.organizerEmails || []}
+                    hiddenEmails={commsModal.hiddenOrganizerEmails || []}
+                    display="card"
+                    size="sm"
+                    hideContactPrompt
+                  />
+                </div>
+              )}
             </div>
           ) : (
             <div className="dex-ui-stack" style={{ gap: 8, maxHeight: '60vh', overflowY: 'auto' }}>

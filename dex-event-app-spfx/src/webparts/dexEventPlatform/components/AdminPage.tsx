@@ -2360,7 +2360,9 @@ export default function AdminPage(): React.ReactElement {
     setMassmailMode, setMassmailPasteRaw, setMassmailStatuses, setShowEmailModal,
   };
   const massmailPasteModalProps = {
-    massmailPasteRaw, registrations, setMassmailMode, setMassmailPasteRaw,
+    // v31.70: `massmailAudience` — derselbe Dialog dient jetzt „Nachrücker"
+    // UND „Erinnerung" (Umkehrung der Menge).
+    massmailAudience, massmailPasteRaw, registrations, setMassmailMode, setMassmailPasteRaw,
     setShowEmailModal, showAlert,
   };
   /**
