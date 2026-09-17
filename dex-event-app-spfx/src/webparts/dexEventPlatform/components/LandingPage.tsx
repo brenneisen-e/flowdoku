@@ -136,8 +136,10 @@ export default function LandingPage(): React.ReactElement {
           ? ` Was hier noch steht, ließ sich nicht verschieben; der Grund je Zeile steht im Änderungsprotokoll (Aktion AutoMaintenanceRun)${r.archiveErrors && r.archiveErrors.length ? `: ${r.archiveErrors.slice(0, 3).join(' · ')}` : ''}.`
           : ` What is still listed here could not be moved; the reason per row is in the change log (action AutoMaintenanceRun)${r.archiveErrors && r.archiveErrors.length ? `: ${r.archiveErrors.slice(0, 3).join(' · ')}` : ''}.`)
         : (isDe
-          ? ' Was hier noch steht, ist seither neu dazugekommen und wird beim nächsten automatischen Lauf erledigt — oder jetzt per Knopf.'
-          : ' What is still listed here has been added since and will be handled by the next automatic run — or now via the button.');
+          // v31.73: Der Automat prüft bei jedem Start, ob seither etwas neu
+          // fällig wurde, und erledigt es dann — nicht erst nach sechs Stunden.
+          ? ' Was hier noch steht, ist seither neu dazugekommen; der Automat erledigt es beim nächsten Start der App — oder jetzt per Knopf.'
+          : ' What is still listed here has been added since; the automat handles it at the next app start — or now via the button.');
       text = (isDe ? `Automatischer Lauf heute um ${t} Uhr${bilanz}.` : `Automatic run today at ${t}${bilanz}.`) + rest;
     }
     if (!text) return null;

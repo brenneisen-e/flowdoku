@@ -12,6 +12,7 @@ import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useNavigation } from '../context/NavigationContext';
 import { DeloitteEvent } from '../types';
+import { monatKurz } from '../utils/monatKurz';
 import { useLanguage } from '../context/LanguageContext';
 // v11.99: RefreshCw nicht mehr benötigt (Page-Level-Refresh-Button entfernt).
 import { Icon } from '@fluentui/react/lib/Icon';
@@ -537,18 +538,32 @@ export default function EventListPage(): React.ReactElement {
         };
         const renderSection = (list: DeloitteEvent[]): React.ReactElement => {
           if (viewMode === 'cards') {
+            // v31.73: Monats-Trenner auch in der Karten-Ansicht (Nutzer-Ansage
+            // 17.09.2026: „bei Karten auch irgendwie sinnvoll die Monatsanzeige
+            // integrieren wie bei Liste"). Eine Schiene links passt nicht in ein
+            // dreispaltiges Raster; stattdessen steht der Monat als Zeile über
+            // der ersten Karte, die in ihn fällt — über die volle Rasterbreite.
+            // Die Liste ist bereits chronologisch sortiert (s. filteredEvents).
+            let letzterMonat = '';
             return (
               <div className="event-grid">
-                {list.map((event, i) => (
-                  <EventCard
-                    key={event.id}
-                    event={event}
-                    index={i}
-                    isRegistered={isRegisteredFor(event)}
-                    isWaitlisted={isWaitlistedFor(event)}
-                    isOwnOrganizer={isOwnOrganizer(event)}
-                  />
-                ))}
+                {list.map((event, i) => {
+                  const monat = monatKurz(event.startDate, locale);
+                  const monatNeu = !!monat && monat !== letzterMonat;
+                  if (monat) letzterMonat = monat;
+                  return (
+                    <React.Fragment key={event.id}>
+                      {monatNeu && <div className="event-grid-month" aria-hidden="true">{monat}</div>}
+                      <EventCard
+                        event={event}
+                        index={i}
+                        isRegistered={isRegisteredFor(event)}
+                        isWaitlisted={isWaitlistedFor(event)}
+                        isOwnOrganizer={isOwnOrganizer(event)}
+                      />
+                    </React.Fragment>
+                  );
+                })}
               </div>
             );
           }
@@ -625,11 +640,9 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
   // nach Startdatum sortiert; der Monat steht nur dort, wo er wechselt, der
   // Punkt trägt die Farbe des Anmeldestatus. Auf dem Handy entfällt die
   // Schiene (die Spalte wäre breiter als der Gewinn).
-  const monatVon = (iso: string): string => {
-    const d = iso ? new Date(iso) : null;
-    if (!d || isNaN(d.getTime())) return '';
-    return d.toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', { month: 'short', year: 'numeric' });
-  };
+  // v31.73: `monatKurz` (Modul-Ebene) — dieselbe Beschriftung für Liste,
+  // Karten und die Organizer-Übersicht.
+  const monatVon = (iso: string): string => monatKurz(iso, locale);
   let letzterMonat = '';
   return (
     <div className={isMobile ? 'my-events-list' : 'my-events-list dex-tl'}>

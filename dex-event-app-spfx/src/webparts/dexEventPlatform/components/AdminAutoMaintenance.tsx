@@ -33,6 +33,12 @@
  *    gibt es stattdessen ein Lauf-Schloss mit Herzschlag (alle 10 s, nach
  *    45 s ohne Herzschlag verfallen), das mit dem Tab stirbt.
  *
+ * v31.73: Die Sperre gilt nur noch für das, was beim letzten Lauf liegen
+ * blieb. Bei jedem Start wird gezählt; liegt in einer Kategorie mehr an als
+ * damals fehlschlug, läuft der Automat trotz Sperre (Nutzer-Befund
+ * 17.09.2026: eine erst nach dem Morgenlauf fällig gewordene Teilnehmerliste
+ * stand bis zum Abend mit Knopf im Kasten).
+ *
  * Die Komponente rendert für Nicht-Admins nichts und hängt unbedingt im
  * Baum (nicht hinter `isBootLoading`), damit ihr Timer den Boot überlebt.
  */
@@ -117,9 +123,23 @@ export default function AdminAutoMaintenance(): React.ReactElement | null {
     startedRef.current = true;
     let lastTs = 0;
     try { lastTs = parseInt(window.localStorage.getItem(THROTTLE_KEY) || '0', 10) || 0; } catch { /* */ }
-    if (lastTs && Date.now() - lastTs < THROTTLE_MS) { setze({ kind: 'throttled', lastTs, last: letzteBilanz() }); return; }
+    // v31.73: Die 6-Stunden-Sperre sperrt nicht mehr den Lauf, sondern nur
+    // das Wiederanfassen dessen, was beim letzten Lauf liegen blieb. Was
+    // seither NEU fällig wurde (eine Teilnehmerliste, deren Vorwarn-Woche
+    // gerade abgelaufen ist), wird beim nächsten Start erledigt — vorher
+    // stand es sechs Stunden mit Knopf im Landing-Kasten (Nutzer-Befund
+    // 17.09.2026, Frühlingsfest Mannheim). `runAutoMaintenance` zählt und
+    // entscheidet selbst (`nurNeuesSeit`); ohne Neues bleibt der Zustand
+    // „gedrosselt" mit der ALTEN Bilanz stehen, damit der Kasten weiter
+    // sagt, was liegen blieb und warum.
+    const gedrosselt = !!lastTs && Date.now() - lastTs < THROTTLE_MS;
+    // Ohne gemerkte Bilanz (Sperre aus einer Version vor v31.68) gilt: nichts
+    // blieb liegen — dann ist alles, was ansteht, neu.
+    const alteBilanz: AutoMaintenanceResult | undefined = gedrosselt
+      ? (letzteBilanz() || { archived: 0, archiveFailed: 0, deleted: 0, deleteFailed: 0, participantsDeleted: 0, participantsFailed: 0, nothingToDo: true, error: '', archiveErrors: [], finishedAt: lastTs })
+      : undefined;
     if (lockFrisch()) { setze({ kind: 'busy-elsewhere' }); return; }
-    setze({ kind: 'scheduled' });
+    setze(gedrosselt ? { kind: 'throttled', lastTs, last: alteBilanz } : { kind: 'scheduled' });
     // Kein clearTimeout-Cleanup (s. EventContext shadowHeal, v30.67): ein
     // Re-Render durch `events` würde den Timer sonst abräumen, bevor er feuert.
     window.setTimeout(() => {
@@ -129,10 +149,23 @@ export default function AdminAutoMaintenance(): React.ReactElement | null {
       lockSetzen();
       const beat = window.setInterval(lockSetzen, LOCK_BEAT_MS);
       const ende = (): void => { window.clearInterval(beat); lockLoesen(); };
-      setze({ kind: 'running', p: { phase: 'zaehlen', done: 0, total: 0, pct: 0, label: '' } });
-      runAutoMaintenance(p => setze({ kind: 'running', p }))
+      // Innerhalb der Sperre zählt der Automat nur — das Abzeichen bleibt
+      // aus, der Kasten sagt weiter „gedrosselt". Erst wenn wirklich gelaufen
+      // wird, erscheint der Ring.
+      if (!gedrosselt) setze({ kind: 'running', p: { phase: 'zaehlen', done: 0, total: 0, pct: 0, label: '' } });
+      runAutoMaintenance(
+        p => { if (!gedrosselt || p.phase !== 'zaehlen') setze({ kind: 'running', p }); },
+        alteBilanz ? { nurNeuesSeit: alteBilanz } : undefined,
+      )
         .then(r => {
           ende();
+          if (r.nothingToDo && gedrosselt) {
+            // Nichts Neues seit dem letzten Lauf: Sperre und Bilanz von damals
+            // bleiben — sonst hieße es „damals stand nichts an" und die
+            // Fehlgründe der liegen gebliebenen Zeilen wären weg.
+            setze({ kind: 'throttled', lastTs, last: alteBilanz });
+            return;
+          }
           // Sperre erst JETZT — ein abgebrochener Lauf (Tab zu) bekommt keine.
           // Auch bei „nichts zu tun": drei Listen-Scans je Start reichen.
           try { window.localStorage.setItem(THROTTLE_KEY, String(Date.now())); } catch { /* */ }

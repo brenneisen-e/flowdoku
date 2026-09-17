@@ -18,6 +18,9 @@ import OrganizerList from '../../OrganizerList';
 import Modal from '../../Modal';
 // v31.60: Entwurf der Event-Erstellung — Knopf + Dialog neben „Neues Event".
 import { EventDraftInfo, clearEventDraft, readEventDraft } from '../../../utils/eventDraft';
+// v31.73: Zeitstrahl mit Monaten links (wie „Aktuelle Events", Liste).
+import { useIsMobile } from '../../../utils/useIsMobile';
+import { monatKurz } from '../../../utils/monatKurz';
 
 export interface EventOverviewScreenProps {
   adminEvents: DeloitteEvent[];
@@ -66,6 +69,12 @@ export const EventOverviewScreen: React.FC<EventOverviewScreenProps> = (p) => {
   // Ansicht) — nicht bei jedem Render, localStorage ist synchron.
   const [draft, setDraft] = React.useState<EventDraftInfo | null>(() => readEventDraft());
   const [draftOpen, setDraftOpen] = React.useState(false);
+  // v31.73: Zeitstrahl nur bei Sortierung nach Datum und nicht auf dem Handy
+  // (Nutzer-Ansage 17.09.2026: „Organizer-Eventansicht bitte auch mit der
+  // Monatsansicht wie bei Aktuelle Events"). Alphabetisch sortiert wäre die
+  // Schiene eine Lüge — die Monate sprängen hin und her.
+  const isMobile = useIsMobile();
+  const zeitstrahl = eventSortMode === 'date' && !isMobile;
   React.useEffect(() => {
     const refresh = (): void => setDraft(readEventDraft());
     refresh();
@@ -470,8 +479,30 @@ export const EventOverviewScreen: React.FC<EventOverviewScreenProps> = (p) => {
                      Leere. Die Inline-Werte nehmen der Klasse ihre Optik (Polster
                      32, Radius 16); `data-tour` liegt für einen zentralen Umstieg
                      des Selektors bereit. */
-                  <div className="card dex-ui-stack" data-tour="admin-event-list" style={{ gap: 12, padding: 0, background: 'transparent', border: 'none', borderRadius: 0, boxShadow: 'none', overflow: 'visible' }}>
-                    {currentEvents.map(ev => renderEventCard(ev))}
+                  <div className={zeitstrahl ? 'card dex-tl' : 'card dex-ui-stack'} data-tour="admin-event-list" style={{ gap: zeitstrahl ? undefined : 12, padding: 0, background: 'transparent', border: 'none', borderRadius: 0, boxShadow: 'none', overflow: 'visible' }}>
+                    {(() => {
+                      // v31.73: Schiene links — Monat nur dort, wo er wechselt;
+                      // der Punkt trägt den Status der Karte (grün aktiv, orange
+                      // Entwurf, blau abgeschlossen). Ohne Zeitstrahl bleibt der
+                      // Stapel wie bisher.
+                      let letzterMonat = '';
+                      return currentEvents.map(ev => {
+                        if (!zeitstrahl) return renderEventCard(ev);
+                        const monat = monatKurz(ev.startDate, locale);
+                        const monatNeu = !!monat && monat !== letzterMonat;
+                        if (monat) letzterMonat = monat;
+                        const past = isPastEvent(ev);
+                        return (
+                          <React.Fragment key={ev.id}>
+                            <div className="dex-tl-rail" aria-hidden="true">
+                              {monatNeu && <span className="dex-tl-month">{monat}</span>}
+                              <span className={cx('dex-tl-dot', past ? 'is-past' : ev.isFictive ? 'is-wait' : 'is-reg')} />
+                            </div>
+                            {renderEventCard(ev)}
+                          </React.Fragment>
+                        );
+                      });
+                    })()}
                   </div>
                 )}
                 {/* v31.3: Aufklapper statt gestricheltem Kasten — und in beiden
