@@ -404,9 +404,11 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                             className="btn btn-outline dex-ui-btn-sm"
                             style={btn}
                             onClick={() => openComms(event)}
-                            title={isDe ? 'Nachrichten zu diesem Event ansehen' : 'View messages for this event'}
+                            title={isDe ? 'Die bisherigen E-Mails der Organizer zu diesem Event ansehen' : 'View the organizers’ previous emails for this event'}
                           >
-                            <Mail size={14} /> {isDe ? 'Nachrichten' : 'Messages'}
+                            {/* v31.71: „Bisherige E-Mails" statt „Nachrichten" —
+                                Nutzer-Ansage 17.09.2026; sagt, was dahinter liegt. */}
+                            <Mail size={14} /> {isDe ? 'Bisherige E-Mails' : 'Previous emails'}
                           </button>
                           {cancelZone && (
                             <button

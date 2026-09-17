@@ -307,12 +307,24 @@ export default function MyEventsPage(): React.ReactElement {
   // Ankündigungen) aus dem dauerhaften Kommunikations-Log lesen.
   // v31.9.4: `mailImage` mitnehmen — die Vorschau soll aussehen wie die Mail
   // in Outlook, und dort steht das Mail-Logo DIESES Events im Kopf.
-  const [commsModal, setCommsModal] = React.useState<{ eventId: string; eventTitle: string; mailImage?: string } | null>(null);
+  // v31.71: Organizer mitgeben — der leere Dialog nennt sie mit Bild als
+  // Ansprechpartner („Bei Fragen wende dich gerne an …", Nutzer-Ansage
+  // 17.09.2026). Dieselbe Namens-/Ausblende-Regel wie die Karte selbst.
+  const [commsModal, setCommsModal] = React.useState<{ eventId: string; eventTitle: string; mailImage?: string; organizerNames?: string[]; organizerEmails?: string[]; hiddenOrganizerEmails?: string[] } | null>(null);
   const [commsRows, setCommsRows] = React.useState<EventCommRow[]>([]);
   const [commsLoading, setCommsLoading] = React.useState(false);
   const [commsOpenId, setCommsOpenId] = React.useState<number | null>(null);
   const openComms = (ev: DeloitteEvent): void => {
-    setCommsModal({ eventId: ev.id, eventTitle: ev.title || '', mailImage: ev.mailImageBase64 || '' });
+    const organizerNames = (ev.organizers || []).reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map(o => {
+      const trimmed = o.trim();
+      const parts = trimmed.split(',').map(s => s.trim());
+      return parts.length === 2 ? `${parts[1]} ${parts[0]}` : trimmed;
+    }).filter(Boolean);
+    setCommsModal({
+      eventId: ev.id, eventTitle: ev.title || '', mailImage: ev.mailImageBase64 || '',
+      organizerNames, organizerEmails: ev.organizerEmails || [],
+      hiddenOrganizerEmails: (ev.hideOrganizer && ev.hideOrganizerIndividualOnly) ? (ev.hiddenOrganizerEmails || []) : [],
+    });
     setCommsRows([]);
     setCommsOpenId(null);
     setCommsLoading(true);
