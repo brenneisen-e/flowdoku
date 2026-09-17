@@ -225,7 +225,9 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                     und zwei Hinweiskästen; der QR-Knopf war der vierte Chip
                     weit unten. Beides ist das, was man am Eventmorgen sucht.
                    ============================================================ */}
-                <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                {/* v31.70: `flexWrap` — die Knopfspalte rechts (s.u.) rutscht auf
+                    dem Handy unter Bild und Titel statt sie zu quetschen. */}
+                <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                   {event.imageUrl && (
                     <div
                       className="my-event-card__thumb"
@@ -374,6 +376,60 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                       </div>
                     )}
                   </div>
+                  {/* v31.70: Die beiden Aktionen der Karte OBEN RECHTS, nebeneinander
+                      und gleich breit (Nutzer-Ansage 17.09.2026: „Nachrichten und
+                      Abmelden sollen als Button in den Header nach rechts oben,
+                      nebeneinander, gleiche Breite"). Vorher standen sie ganz
+                      unten in Zone 7 — auf einer langen Karte also unter
+                      Beschreibung, Programm und Dokumenten. Die Hinweise zum
+                      Abmelden (Frist, Sperre, Kalender-Tage) bleiben in Zone 7;
+                      hier trägt der gesperrte Knopf den Grund als Tooltip. */}
+                  {!zugeklappt && (() => {
+                    const cancelZone = !sessionsOnly && !hiddenRow;
+                    const armed = cancellingId === event.id;
+                    const gesperrt = cancelZone && (isEventOver(event) || selfCancelLocked(event));
+                    const sperrGrund = !gesperrt ? '' : isEventOver(event)
+                      ? (isDe ? 'Dieses Event liegt in der Vergangenheit — eine Abmeldung ist nicht mehr möglich.' : 'This event is in the past — cancelling is no longer possible.')
+                      : (selfCancelLockReason(event) === 'always'
+                        ? (isDe ? 'Bei diesem Event ist die Selbst-Abmeldung deaktiviert — bitte an die Organizer wenden.' : 'Self-cancellation is disabled for this event — please contact the organizers.')
+                        : (isDe ? 'Die Abmeldefrist ist abgelaufen — bitte an die Organizer wenden.' : 'The cancellation deadline has passed — please contact the organizers.'));
+                    const btn: React.CSSProperties = { width: '100%', justifyContent: 'center' };
+                    return (
+                      <div style={{ marginLeft: 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'stretch', width: 'min(100%, 320px)' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: cancelZone ? '1fr 1fr' : '1fr', gap: 8 }}>
+                          {/* Nachrichten zum Event: Broadcast-Mails (Einladung,
+                              Ankündigungen) aus dem Kommunikations-Log lesen. */}
+                          <button
+                            type="button"
+                            className="btn btn-outline dex-ui-btn-sm"
+                            style={btn}
+                            onClick={() => openComms(event)}
+                            title={isDe ? 'Nachrichten zu diesem Event ansehen' : 'View messages for this event'}
+                          >
+                            <Mail size={14} /> {isDe ? 'Nachrichten' : 'Messages'}
+                          </button>
+                          {cancelZone && (
+                            <button
+                              type="button"
+                              className={cx('btn dex-ui-btn-sm', armed ? 'btn-danger' : 'btn-outline')}
+                              style={{ ...btn, ...(gesperrt ? { opacity: 0.55 } : {}), ...(!armed && !gesperrt ? { color: 'var(--dex-red)', borderColor: 'var(--dex-red)' } : {}) }}
+                              disabled={gesperrt || isCancelling}
+                              title={sperrGrund || (armed ? undefined : (isDe ? 'Zwei Klicks: erst rot, dann bestätigen.' : 'Two clicks: arm, then confirm.'))}
+                              onClick={() => handleCancel(event.id)}
+                            >
+                              <X size={14} />
+                              {armed
+                                ? (isCancelling ? (isDe ? 'Wird abgemeldet…' : 'Cancelling…') : t('myevents.confirmcancel'))
+                                : cancelLabel}
+                            </button>
+                          )}
+                        </div>
+                        {armed && !isCancelling && (
+                          <button type="button" className="btn btn-secondary dex-ui-btn-sm" style={btn} onClick={() => setCancellingId(null)}>{t('myevents.keepreg')}</button>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* v31.27: Vergangene Events sind zugeklappt (Nutzer-Ansage
@@ -389,25 +445,14 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                     eines Blocks dieser Größe zwischen Textmarken zu schneiden hat in
                     dieser Datei schon einmal die Tag-Balance zerrissen (CLAUDE.md). */}
                 {!zugeklappt && (<>
-                {/* ============================================================
-                    2. TERMINE — bei einem Klammer-Event ist die Terminliste die
-                    eigentliche Anmeldung und stand vorher hinter Programm,
-                    Transfer, Dokumenten und Quiz.
-                    Seit v6.4: Sub-Events sind eigene DEX_Events-Items, werden über
-                    childEventsOf(parentId) aus dem Context gezogen.
-                   ============================================================ */}
-                {childEventsOf(event.id).length > 0 && (
-                  <MyEventSubEvents
-                    parentEvent={event}
-                    childEvents={childEventsOf(event.id)}
-                    registerForEvent={registerForEvent}
-                    cancelRegistration={cancelRegistration}
-                    getMyRegistration={getMyRegistration}
-                    getAllRegistrations={getAllRegistrations}
-                    updateMyRegistration={updateMyRegistration}
-                    onMutated={loadMyRegistrations}
-                  />
-                )}
+                {/* v31.70: Die Terminliste (bisher Zone 2, direkt unter dem Kopf)
+                    steht jetzt HINTER „Deine Angaben" — Nutzer-Ansage 17.09.2026:
+                    „Deine Angaben müssen unter das Hauptevent, wenn es Angaben
+                    zum Hauptevent sind." Die Antworten gehören zur Zeile des
+                    Hauptevents, also direkt unter dessen Kopf; die Termine
+                    folgen als eigener Block, mit ihren eigenen Antworten in
+                    ihren Karten. Der Block selbst ist unverändert (s. unten,
+                    vor Zone 5). */}
 
                 {/* ============================================================
                     3. HINWEISE — was für diese Anmeldung besonders gilt.
@@ -619,6 +664,28 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                       <button className="btn btn-secondary" style={{ fontSize: '0.82rem' }} onClick={() => setEditingId(null)}>{t('general.cancel')}</button>
                     </div>
                   </div>
+                )}
+
+                {/* ============================================================
+                    2. TERMINE — bei einem Klammer-Event ist die Terminliste die
+                    eigentliche Anmeldung und stand vorher hinter Programm,
+                    Transfer, Dokumenten und Quiz.
+                    Seit v6.4: Sub-Events sind eigene DEX_Events-Items, werden über
+                    childEventsOf(parentId) aus dem Context gezogen.
+                    v31.70: von direkt unter dem Kopf HINTER „Deine Angaben"
+                    verschoben (Begründung oben) — Block 1:1.
+                   ============================================================ */}
+                {childEventsOf(event.id).length > 0 && (
+                  <MyEventSubEvents
+                    parentEvent={event}
+                    childEvents={childEventsOf(event.id)}
+                    registerForEvent={registerForEvent}
+                    cancelRegistration={cancelRegistration}
+                    getMyRegistration={getMyRegistration}
+                    getAllRegistrations={getAllRegistrations}
+                    updateMyRegistration={updateMyRegistration}
+                    onMutated={loadMyRegistrations}
+                  />
                 )}
 
                 {/* ============================================================
@@ -913,13 +980,16 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                     RegistrationPage (HTML erlaubt, sonst \n→<br>).
                     v17.23: standardmäßig eingeklappt, per Button aufklappbar. */}
                 {event.description && notEditing && (() => {
-                  const isOpen = !!descExpanded[event.id];
+                  // v31.70: standardmäßig OFFEN (Nutzer-Ansage 17.09.2026:
+                  // „Beschreibung immer default ausklappen") — `false` in der
+                  // Map heißt zugeklappt, fehlend heißt offen.
+                  const isOpen = descExpanded[event.id] !== false;
                   return (
                     <div className="dex-ui-section">
                       <button
                         type="button"
                         className={cx('dex-ui-disclosure', isOpen && 'is-open')}
-                        onClick={() => setDescExpanded(prev => ({ ...prev, [event.id]: !prev[event.id] }))}
+                        onClick={() => setDescExpanded(prev => ({ ...prev, [event.id]: !isOpen }))}
                         aria-expanded={isOpen}
                       >
                         <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
@@ -1219,16 +1289,8 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                           </div>
                         );
                       })()}
-                      {/* Nachrichten zum Event: Broadcast-Mails (Einladung,
-                          Ankündigungen) aus dem Kommunikations-Log lesen. */}
-                      <button
-                        type="button"
-                        className="btn btn-outline dex-ui-btn-sm"
-                        onClick={() => openComms(event)}
-                        title={isDe ? 'Nachrichten zu diesem Event ansehen' : 'View messages for this event'}
-                      >
-                        <Mail size={14} /> {isDe ? 'Nachrichten zum Event' : 'Event messages'}
-                      </button>
+                      {/* v31.70: „Nachrichten zum Event" steht jetzt oben rechts
+                          in der Kopfzone neben „Abmelden". */}
                     </div>
                   )}
 
@@ -1280,9 +1342,6 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                               Organizer. */}
                           {isEventOver(event) ? (
                             <>
-                              <button type="button" className="btn btn-secondary dex-ui-btn-sm" disabled style={{ opacity: 0.55 }}>
-                                <X size={14} /> {cancelLabel}
-                              </button>
                               <span className="dex-ui-callout dex-ui-callout--neutral dex-ui-callout--sm">
                                 {isDe
                                   ? 'Dieses Event liegt in der Vergangenheit — eine Abmeldung ist nicht mehr möglich.'
@@ -1296,9 +1355,6 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                                der Weg (performCancel blockt zusätzlich, auch für
                                den Auto-Cancel-Deep-Link aus der Mail). */
                             <>
-                              <button type="button" className="btn btn-secondary dex-ui-btn-sm" disabled style={{ opacity: 0.55 }}>
-                                <X size={14} /> {cancelLabel}
-                              </button>
                               <span className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm">
                                 {selfCancelLockReason(event) === 'always'
                                   ? (isDe
@@ -1311,42 +1367,10 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                             </>
                           ) : (
                             <>
-                              <div className="dex-ui-inline">
-                                <button
-                                  className={`btn dex-cancel-btn${cancellingId === event.id ? ' dex-cancel-btn--armed' : ''}`}
-                                  onClick={() => handleCancel(event.id)}
-                                  disabled={isCancelling}
-                                  style={{
-                                    fontSize: '0.95rem',
-                                    fontWeight: 600,
-                                    padding: '10px 20px',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: 8,
-                                    background: cancellingId === event.id ? 'var(--dex-red)' : '#fff',
-                                    color: cancellingId === event.id ? '#fff' : 'var(--dex-red)',
-                                    border: `2px solid var(--dex-red)`,
-                                    borderRadius: 8,
-                                    boxShadow: cancellingId === event.id ? '0 2px 8px rgba(218,41,28,0.3)' : 'none',
-                                    cursor: isCancelling ? 'not-allowed' : 'pointer',
-                                  }}
-                                >
-                                  <X size={16} />
-                                  {/* v30.20: Bei Kalender-Events sagt der Knopf, WAS er
-                                      abmeldet — er kappt die GANZE Buchung (alle Tage).
-                                      Nutzer-Befund: „man versteht den großen Abmelde-
-                                      Button nicht" — er wirkte wie der Weg, EINEN Tag
-                                      abzumelden. Einzelne Tage laufen über den Kalender
-                                      (Klick auf grünen Tag + Bestätigung; er steht
-                                      seit v31.8 OBEN, direkt unter der Kopfzone). */}
-                                  {cancellingId === event.id
-                                    ? (isCancelling ? (isDe ? 'Wird abgemeldet…' : 'Cancelling…') : t('myevents.confirmcancel'))
-                                    : cancelLabel}
-                                </button>
-                                {cancellingId === event.id && !isCancelling && (
-                                  <button className="btn btn-secondary dex-ui-btn-sm" onClick={() => setCancellingId(null)}>{t('myevents.keepreg')}</button>
-                                )}
-                              </div>
+                              {/* v31.70: Der Abmelde-Knopf selbst steht jetzt OBEN
+                                  RECHTS in der Kopfzone (Nutzer-Ansage 17.09.2026),
+                                  zusammen mit „Nachrichten zum Event". Hier bleiben
+                                  nur die Hinweise, die zum Abmelden gehören. */}
                               {event.subEventCalendar && cancellingId !== event.id && (
                                 <span className="dex-ui-muted">
                                   {isDe

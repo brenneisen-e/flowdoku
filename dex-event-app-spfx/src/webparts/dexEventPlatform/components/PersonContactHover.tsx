@@ -244,6 +244,10 @@ export function PersonContactHover(props: PersonContactHoverProps): React.ReactE
           onClick={e => e.stopPropagation()}
           style={{
             fontFamily: 'Aptos, "Open Sans", "Segoe UI", Arial, Helvetica, sans-serif',
+            // v31.70: s. OrganizerList — `.dexApp` trägt `contain: inline-size`,
+            // das nimmt der Karte im Portal jede Breite.
+            contain: 'none',
+            width: 'max-content',
             position: 'fixed',
             top: coords.above ? undefined : coords.y,
             bottom: coords.above ? window.innerHeight - coords.y : undefined,

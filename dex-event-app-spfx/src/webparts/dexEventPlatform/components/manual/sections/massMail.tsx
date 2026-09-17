@@ -51,8 +51,8 @@ export function massMailSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Zuerst fragt dich ein kleiner Dialog „An wen soll die Mail gehen?". Du hast fünf Möglichkeiten:'
-                  : 'First a small dialog asks „Who should receive the email?". You have five options:'}
+                  ? 'Zuerst fragt dich ein kleiner Dialog „An wen soll die Mail gehen?". Du hast sieben Möglichkeiten — und kommst aus dem Editor über „Zurück zur Empfängerwahl" jederzeit hierher zurück:'
+                  : 'First a small dialog asks „Who should receive the email?". You have seven options — and can return here from the editor via „Back to recipients":'}
                 <ul style={{ margin: '10px 0 0', paddingLeft: 20, lineHeight: 1.6 }}>
                   <li>{isDe
                     ? <><strong>Teilnehmer (alle aktiven)</strong> — der Normalfall: alle, die angemeldet, mit QR-Code versorgt oder schon eingecheckt sind (also NICHT Warteliste und NICHT Abgemeldete).</>
@@ -64,8 +64,14 @@ export function massMailSection(locale: 'de' | 'en'): ManualSection {
                     ? <><strong>Nur Warteliste</strong> — ausschließlich die Wartelistler.</>
                     : <><strong>Waitlist only</strong> — only the waitlisted people.</>}</li>
                   <li>{isDe
+                    ? <><strong>Alle — auch Abgemeldete</strong> — jede Person in der Teilnehmerliste, auch Abgemeldete und No-Shows.</>
+                    : <><strong>Everyone — including cancellations</strong> — every person in the participant list, including cancellations and no-shows.</>}</li>
+                  <li>{isDe
                     ? <><strong>Nachrücker (manueller Abgleich)</strong> — du fügst im nächsten Schritt eine Liste von E-Mail-Adressen ein; die Mail geht dann an alle aktiven Teilnehmer, die NICHT in deiner Liste stehen.</>
                     : <><strong>No-shows / top-ups (manual match)</strong> — you paste a list of email addresses in the next step; the mail then goes to all active attendees who are NOT on your list.</>}</li>
+                  <li>{isDe
+                    ? <><strong>Erinnerung (Verteiler ohne Anmeldung)</strong> — die Umkehrung: Du fügst deinen Einladungs-Verteiler ein; die Mail geht an alle, die dort stehen, aber im Event NICHT aktiv angemeldet sind. Die Namen nimmt DEX aus dem Verteiler.</>
+                    : <><strong>Reminder (list without registration)</strong> — the inverse: paste your invitation list; the mail goes to everyone on it who is NOT actively registered. Names are taken from the list.</>}</li>
                   <li>{isDe
                     ? <><strong>Eigene Auswahl (nach Status)</strong> — du hakst genau die Status an, die die Mail bekommen sollen (z.B. nur „QR versendet“).</>
                     : <><strong>Custom selection (by status)</strong> — tick exactly the statuses that should receive the mail (e.g. only „QR sent“).</>}</li>
@@ -83,8 +89,8 @@ export function massMailSection(locale: 'de' | 'en'): ManualSection {
                   : 'Then the editor opens with subject, heading, sub-heading and the actual content. The content uses a rich-text editor (bold, italic, links, bullet lists). Because the mass mail goes out as ONE message to the whole recipient group (not personalised per person), only event-wide placeholders are replaced: '}
                 <code>{'{{EventTitle}}'}</code> {isDe ? 'und' : 'and'} <code>{'{{Organizer}}'}</code>.{' '}
                 {isDe
-                  ? 'Persönliche Anreden wie {{Vorname}} funktionieren hier NICHT (sie blieben als Text stehen) — dafür sind die System-Mails (Anmeldung, Warteliste, …) gedacht.'
-                  : 'Personal salutations like {{Vorname}} do NOT work here (they would remain as literal text) — the system mails (registration, waitlist, …) are meant for that.'}{' '}
+                  ? 'Persönliche Anreden wie {{Vorname}} funktionieren hier NICHT (sie blieben als Text stehen) — dafür sind die System-Mails (Anmeldung, Warteliste, …) gedacht. Mit dem Schalter „Empfänger verdeckt (BCC)" geht die Mail als EINE Nachricht an die erste Organizer-Adresse, alle Empfänger stehen im BCC und sehen einander nicht.'
+                  : 'Personal salutations like {{Vorname}} do NOT work here (they would remain as literal text) — the system mails (registration, waitlist, …) are meant for that. With the switch „Hide recipients (BCC)" the mail goes as ONE message to the first organizer address, all recipients sit in BCC and cannot see each other.'}{' '}
                 {isDe
                   ? 'Dein Entwurf wird pro Event automatisch gespeichert — du kannst den Dialog also schließen und später weiterschreiben, ohne den Text zu verlieren.'
                   : 'Your draft is saved automatically per event — so you can close the dialog and continue later without losing the text.'}

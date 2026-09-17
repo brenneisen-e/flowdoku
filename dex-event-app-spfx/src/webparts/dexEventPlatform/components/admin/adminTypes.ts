@@ -40,7 +40,9 @@ export interface DeniedSubEventList { title: string; status: number }
 // und No-Shows. Nutzer-Frage 09.09.2026: „warum nicht auch an die
 // Abgemeldeten als Auswahl? also an alle?" — es gab keinen Grund, nur eine
 // Lücke: Der Versandpfad filtert ohnehin rein nach Status.
-export type MassmailAudience = 'active' | 'activePlusWait' | 'waitOnly' | 'everyone' | 'nachruecker' | 'custom';
+/** v31.70: `reminder` = Personen aus einem eingefügten Verteiler, die im Event
+ *  NICHT aktiv angemeldet sind (Umkehrung von `nachruecker`). */
+export type MassmailAudience = 'active' | 'activePlusWait' | 'waitOnly' | 'everyone' | 'nachruecker' | 'reminder' | 'custom';
 
 /** v30.66: Admin-Toast für Abmelde-/Nachrück-Feedback (seit v6.8):
  *   - 'cancelling': während die Abmeldung + Nachrück-Suche läuft (orange, Spinner)

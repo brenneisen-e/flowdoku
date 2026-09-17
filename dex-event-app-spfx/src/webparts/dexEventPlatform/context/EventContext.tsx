@@ -481,7 +481,21 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         if (!evt.subsiteUrl) return evt;
         // v29.47: Vergangene Events brauchen keine frische Zahl — sie ändert
         // sich nicht mehr, und die gespeicherte steht bereits im Objekt.
-        if (isEventOver(evt)) return evt;
+        // v31.70: …außer, es steht KEINE drin. Nutzer-Befund 17.09.2026: In
+        // „Vergangene Events" stand bei B2Run Köln (eine Woche her, 100
+        // Plätze) „0/100 Teilnehmer". Die gespeicherte Zahl (DEX_Events.
+        // CurrentParticipants, v26.63) ist 0, wenn der Best-effort-MERGE zu
+        // Lebzeiten des Events nie geklappt hat oder das Event vor v26.63
+        // lief. Eine 0 ist hier also keine Aussage, sondern eine Lücke —
+        // einmal nachzählen und persistieren; danach greift wieder der
+        // v29.47-Kurzschluss. Begrenzt auf ein Jahr zurück: Ältere Listen
+        // sind nach dem 3-Monats-Löschkonzept ohnehin weg, dort wäre die 0
+        // richtig und jede Abfrage ein 404.
+        if (isEventOver(evt)) {
+          const endTs = new Date(evt.endDate || evt.startDate || '').getTime();
+          const einJahr = 365 * 24 * 60 * 60 * 1000;
+          if ((evt.currentParticipants || 0) > 0 || !Number.isFinite(endTs) || Date.now() - endTs > einJahr) return evt;
+        }
         try {
           const counts = await eventService.getRegistrationCount(evt.subsiteUrl);
           // v26.63: Frische Zahl best-effort nach DEX_Events.CurrentParticipants

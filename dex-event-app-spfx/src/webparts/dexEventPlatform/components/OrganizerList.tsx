@@ -319,6 +319,13 @@ function OrganizerChip({ name, email, sizeClass, isOpen, onOpen, onScheduleClose
           onClick={e => e.stopPropagation()}
           style={{
             fontFamily: 'Aptos, "Open Sans", "Segoe UI", Arial, Helvetica, sans-serif',
+            // v31.70: `.dexApp` bringt seit v31.30 `contain: inline-size` mit —
+            // an der App-Wurzel richtig, an einer frei positionierten Karte
+            // fatal: Ohne Breite aus dem Inhalt schrumpfte sie auf null, und
+            // der Text lief Buchstabe für Buchstabe untereinander (Screenshot
+            // 17.09.2026). Hier also ausdrücklich aus, Breite aus dem Inhalt.
+            contain: 'none',
+            width: 'max-content', minWidth: 200,
             position: 'fixed',
             top: coords.above ? undefined : coords.y,
             bottom: coords.above ? window.innerHeight - coords.y : undefined,

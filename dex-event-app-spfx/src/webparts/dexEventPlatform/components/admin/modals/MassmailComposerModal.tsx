@@ -19,6 +19,8 @@ import { buildInlineImage, charsToKb } from '../../../utils/inlineMailImage';
 // steht auch nicht im CC. Die Regel liegt in EINER Datei, nicht hier.
 import { visibleOrganizerEmails } from '../../../utils/organizerVisibility';
 import { PollComposerSection } from '../PollComposerSection';
+// v31.70: Erinnerungs-Empfänger aus dem Verteiler — dieselbe Rechnung wie im Paste-Dialog.
+import { reminderRecipientsAus } from './MassmailPasteModal';
 
 export interface MassmailComposerModalProps {
   applyMassmailHero: (wrappedHtml: string) => string;
@@ -103,7 +105,14 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
         };
         // v17.10: Empfänger-Filter abhängig vom gewählten massmailAudience.
         const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
-        const recipients = (() => {
+        // v31.70: „Empfänger verdeckt (BCC)" — EINE Mail an die Organizer-Adresse,
+        // alle Empfänger im BCC (Nutzer-Ansage 17.09.2026: „einstellen, dass
+        // eine Mail nur in BCC an alle geschickt wird"). Nicht im Entwurf
+        // gespeichert — eine Versandart, keine Textentscheidung.
+        const [bccMode, setBccMode] = React.useState(false);
+        // v31.70: Empfänger können auch von AUSSERHALB der Teilnehmerliste kommen
+        // (Erinnerung an einen Verteiler) — deshalb nur das, was der Versand braucht.
+        const recipients: Array<{ ParticipantEmail: string; Vorname?: string; Nachname?: string }> = (() => {
           if (massmailAudience === 'custom') {
             return registrations.filter(r => massmailStatuses.has(r.Status));
           }
@@ -126,6 +135,10 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
             const matches = (massmailPasteRaw || '').match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
             const pastedSet = new Set(matches.map(m => m.toLowerCase()));
             return registrations.filter(r => ACTIVE.indexOf(r.Status) >= 0 && !pastedSet.has((r.ParticipantEmail || '').toLowerCase()));
+          }
+          if (massmailAudience === 'reminder') {
+            // v31.70: Verteiler minus aktiv Angemeldete — die Umkehrung.
+            return reminderRecipientsAus(massmailPasteRaw || '', registrations);
           }
           return registrations.filter(r => ACTIVE.indexOf(r.Status) >= 0);
         })();
@@ -201,8 +214,8 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
           if (recipients.length === 0) { showAlert(isDe ? 'In der gewählten Gruppe ist niemand — es gibt keine Empfänger.' : 'The selected group is empty — there are no recipients.'); return; }
           if (!(await confirmDialog(
             isDe
-              ? `An ${recipients.length} Empfänger senden? Die Mail geht so raus, wie du sie jetzt in der Vorschau siehst.`
-              : `Send to ${recipients.length} recipients? The email goes out exactly as you see it in the preview now.`,
+              ? `An ${recipients.length} Empfänger senden${bccMode ? ' — alle verdeckt im BCC' : ''}? Die Mail geht so raus, wie du sie jetzt in der Vorschau siehst.`
+              : `Send to ${recipients.length} recipients${bccMode ? ' — all hidden in BCC' : ''}? The email goes out exactly as you see it in the preview now.`,
             { confirmLabel: isDe ? 'Senden' : 'Send' },
           ))) return;
           setEmailSending(true);
@@ -219,11 +232,27 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
           const ccList = massmailCcPreview;
           const ccString = ccList.length > 0 ? ccList.join(';') : undefined;
           try {
+            if (bccMode) {
+              // v31.70: BCC-Versand. Der Flow („Send an email from a shared
+              // mailbox") braucht ein An-Feld — das ist die erste CC-Adresse
+              // (ein Organizer); die übrigen bleiben im CC, alle Empfänger
+              // gehen ins BCC. Ohne Organizer-Adresse trägt das Postfach
+              // selbst das An-Feld.
+              const toAddr = ccList[0] || 'no_reply.events@deloitte.de';
+              const restCc = ccList.slice(1);
+              await eventServiceRef.queueEmail(
+                resolvedSubject, toAddr, 'Alle Teilnehmer (BCC)', fullBody,
+                'Massenmail', selectedEvent.title, selectedEvent.id,
+                restCc.length > 0 ? restCc.join(';') : undefined,
+                allEmails,
+              );
+            } else {
             await eventServiceRef.queueEmail(
               resolvedSubject, allEmails, 'Alle Teilnehmer', fullBody,
               'Massenmail', selectedEvent.title, selectedEvent.id,
               ccString,
             );
+            }
             try { await eventServiceRef.logEventComm({ eventId: selectedEvent.id, eventTitle: selectedEvent.title, subject: resolvedSubject, bodyHtml: fullBody, emailType: 'Massenmail' }); } catch { /* */ }
             setEmailSending(false);
             // v30.51: Die Meldung nennt das ZUSÄTZLICHE CC getrennt — sonst
@@ -233,8 +262,8 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
               ? (isDe ? ` Auf CC: ${ccList.join(', ')}.` : ` On CC: ${ccList.join(', ')}.`)
               : (isDe ? ' Niemand auf CC — alle Organizer stehen schon im An-Feld.' : ' Nobody on CC — all organizers are already in the To field.');
             showAlert(isDe
-              ? `Die Mail an ${recipients.length} Empfänger steht in der Warteschlange und geht in Kürze raus.${ccInfo}`
-              : `The email to ${recipients.length} recipients is queued and goes out shortly.${ccInfo}`);
+              ? `Die Mail an ${recipients.length} Empfänger${bccMode ? ' (alle im BCC)' : ''} steht in der Warteschlange und geht in Kürze raus.${ccInfo}`
+              : `The email to ${recipients.length} recipients${bccMode ? ' (all in BCC)' : ''} is queued and goes out shortly.${ccInfo}`);
             setShowEmailModal(false);
             setMassmailMode('closed');
             setMassmailPasteRaw('');
@@ -251,11 +280,19 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
           : massmailAudience === 'activePlusWait' ? (isDe ? 'Teilnehmer + Warteliste' : 'Attendees + waitlist')
           : massmailAudience === 'everyone' ? (isDe ? 'Alle — auch Abgemeldete' : 'Everyone — incl. cancellations')
           : massmailAudience === 'nachruecker' ? (isDe ? 'Nachrücker (manueller Abgleich)' : 'Replacements (manual match)')
+          : massmailAudience === 'reminder' ? (isDe ? 'Erinnerung (Verteiler ohne Anmeldung)' : 'Reminder (list without registration)')
           : (isDe ? 'Alle aktiven Teilnehmer' : 'All active attendees');
         // v30.51.1: Die Vorschau nennt die WIRKLICHE CC-Zahl (s. massmailCcPreview).
         const ccCount = massmailCcPreview.length;
         const ccNobody = isDe ? 'niemand in CC' : 'nobody in CC';
-        const previewToLine = `${recipients.length} ${isDe ? 'Empfänger' : 'recipients'} — ${audienceLabel} · ${ccCount > 0 ? `${ccCount} in CC` : ccNobody}`;
+        const previewToLine = `${recipients.length} ${isDe ? 'Empfänger' : 'recipients'}${bccMode ? (isDe ? ' (verdeckt im BCC)' : ' (hidden in BCC)') : ''} — ${audienceLabel} · ${ccCount > 0 ? `${ccCount} in CC` : ccNobody}`;
+        // v31.70: Zurück zur Empfängerwahl (Nutzer-Ansage 17.09.2026). Text und
+        // Einstellungen bleiben — sie liegen im Aufrufer-State, nicht im Dialog.
+        const zurueck = (): void => {
+          if (emailSending) return;
+          setShowEmailModal(false);
+          setMassmailMode(massmailAudience === 'nachruecker' || massmailAudience === 'reminder' ? 'paste' : 'pick');
+        };
         const previewSubjectLine = replacePlaceholders(emailSubject, previewVars);
         // v31.2: Ob die Testmail-Rückmeldung ein Erfolg war — dieselbe Prüfung
         // wie bisher, nur einmal benannt statt zweimal im JSX gerechnet.
@@ -314,11 +351,23 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
                       auch, statt einen Grund zu nennen, der nicht mehr gilt. */}
                   <div className="dex-ui-help" style={{ wordBreak: 'break-word' }}>
                     {recipients.length === 0
-                      ? (isDe ? 'In dieser Gruppe ist niemand. Schließe den Dialog und wähle im Schritt davor eine andere Gruppe.' : 'This group is empty. Close the dialog and pick another group in the step before.')
+                      ? (isDe ? 'In dieser Gruppe ist niemand. Geh über „Zurück zur Empfängerwahl“ einen Schritt zurück und wähle eine andere Gruppe.' : 'This group is empty. Use “Back to recipients” and pick another group.')
                       : (isDe
-                        ? <>Die Gruppe hast du im Schritt davor gewählt. <strong>CC:</strong> {ccCount === 0 ? 'niemand — an diesem Event ist keine Organizer-Adresse hinterlegt.' : massmailCcPreview.join(', ')}</>
-                        : <>You picked the group in the step before. <strong>CC:</strong> {ccCount === 0 ? 'nobody — this event has no organizer address on file.' : massmailCcPreview.join(', ')}</>)}
+                        ? <>Die Gruppe hast du im Schritt davor gewählt — über &bdquo;Zurück zur Empfängerwahl&ldquo; in der Fußzeile änderst du sie. <strong>CC:</strong> {ccCount === 0 ? 'niemand — an diesem Event ist keine Organizer-Adresse hinterlegt.' : massmailCcPreview.join(', ')}</>
+                        : <>You picked the group in the step before — change it via &ldquo;Back to recipients&rdquo; in the footer. <strong>CC:</strong> {ccCount === 0 ? 'nobody — this event has no organizer address on file.' : massmailCcPreview.join(', ')}</>)}
                   </div>
+                  {/* v31.70: Versandart — verdeckt (BCC) oder offen (An). */}
+                  <label className={cx('dex-ui-toggle-row', bccMode && 'is-active')} style={{ marginTop: 8 }}>
+                    <input type="checkbox" checked={bccMode} onChange={e => setBccMode(e.target.checked)} disabled={emailSending} />
+                    <span className="dex-ui-toggle-row-body">
+                      <span className="dex-ui-toggle-row-title">{isDe ? 'Empfänger verdeckt (BCC)' : 'Hide recipients (BCC)'}</span>
+                      <span className="dex-ui-toggle-row-desc">
+                        {isDe
+                          ? `Eine Mail an alle, aber niemand sieht die anderen Empfänger. Im An-Feld steht ${ccCount > 0 ? massmailCcPreview[0] : 'das Event-Postfach'}, alle Empfänger gehen ins BCC. Aus: alle stehen sichtbar im An-Feld.`
+                          : `One mail to everyone, but nobody sees the other recipients. The To field holds ${ccCount > 0 ? massmailCcPreview[0] : 'the event mailbox'}, all recipients go to BCC. Off: everyone is visible in the To field.`}
+                      </span>
+                    </span>
+                  </label>
                   {/* v30.51: Zusätzliches CC direkt unter der Empfänger-Zeile — CC ist
                       eine Aussage über den Verteiler, nicht über die Gestaltung. */}
                   <button type="button" className={cx('dex-ui-disclosure', ccOpen && 'is-open')} onClick={() => setCcOpen(o => !o)} aria-expanded={ccOpen} style={{ marginTop: 6 }}>
@@ -445,6 +494,11 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
                 </div>
               </div>
             )}
+            backAction={{
+              label: isDe ? 'Zurück zur Empfängerwahl' : 'Back to recipients',
+              onClick: zurueck,
+              disabled: emailSending,
+            }}
             extraAction={{
               label: emailSending ? (isDe ? 'Wird eingetragen…' : 'Queuing…') : (isDe ? `An ${recipients.length} Empfänger senden` : `Send to ${recipients.length} recipients`),
               onClick: sendAction,

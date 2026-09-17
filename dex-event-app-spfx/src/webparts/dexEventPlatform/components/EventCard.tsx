@@ -311,7 +311,10 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
           onMouseEnter={openOrg}
           onMouseLeave={scheduleOrgClose}
           onClick={(e) => e.stopPropagation()}
-          style={{ position: 'fixed', top: orgCoords.y, left: (() => { const hw = Math.min(180, window.innerWidth * 0.45); return Math.min(Math.max(orgCoords.x, hw), window.innerWidth - hw); })(), transform: 'translateX(-50%)', zIndex: 11000, background: '#fff', borderRadius: 12, padding: 14, boxShadow: '0 10px 30px rgba(0,0,0,0.28)', border: '1px solid var(--dex-gray-200, #e1e1e1)', maxWidth: 'min(360px, 90vw)' }}
+          // v31.70: `contain: 'none'` — `.dexApp` bringt seit v31.30 `contain:
+          // inline-size` mit, das einer frei positionierten Karte die Breite
+          // nimmt (s. OrganizerList v31.70).
+          style={{ contain: 'none', width: 'max-content', position: 'fixed', top: orgCoords.y, left: (() => { const hw = Math.min(180, window.innerWidth * 0.45); return Math.min(Math.max(orgCoords.x, hw), window.innerWidth - hw); })(), transform: 'translateX(-50%)', zIndex: 11000, background: '#fff', borderRadius: 12, padding: 14, boxShadow: '0 10px 30px rgba(0,0,0,0.28)', border: '1px solid var(--dex-gray-200, #e1e1e1)', maxWidth: 'min(360px, 90vw)' }}
         >
           <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600, #666)', marginBottom: 8, textAlign: 'center' }}>
             {isDe ? 'Bei Fragen wende dich gerne an:' : 'For questions, feel free to reach out to:'}
