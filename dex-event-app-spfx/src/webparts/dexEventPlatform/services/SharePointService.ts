@@ -380,8 +380,10 @@ export class SharePointService {
   public async auditRolesListAccess(
     rows: Array<{ email: string; name: string; role: string }>,
     onProgress?: (done: number, total: number) => void,
-  ): Promise<{ checked: number; missing: Array<{ email: string; name: string; role: string; scopes: string[] }>; fixed: string[]; failed: string[]; readFailed: boolean }> {
-    const out = { checked: 0, missing: [] as Array<{ email: string; name: string; role: string; scopes: string[] }>, fixed: [] as string[], failed: [] as string[], readFailed: false };
+  ): Promise<{ checked: number; missing: Array<{ email: string; name: string; role: string; scopes: string[] }>; fixed: string[]; failed: string[]; readFailed: boolean; aliases: Array<{ name: string; email: string; spEmail: string }> }> {
+    // v31.67: `aliases` = Personen, die ihre Rechte HABEN, aber unter einer
+    // anderen E-Mail-Schreibweise als in DEX_Roles (s. Schritt 2).
+    const out = { checked: 0, missing: [] as Array<{ email: string; name: string; role: string; scopes: string[] }>, fixed: [] as string[], failed: [] as string[], readFailed: false, aliases: [] as Array<{ name: string; email: string; spEmail: string }> };
     const FULL = 1073741829;
     const READ = 1073741826;
     const READ_OK = new Set([READ, 1073741827, 1073741830, FULL]); // Read, Contribute, Edit, Full Control
@@ -400,8 +402,13 @@ export class SharePointService {
       { key: 'web', label: 'Site (Vollzugriff für Subsites)', base: `${this.siteUrl}/_api/web`, need: () => FULL, ok: h => h.has(FULL) },
     ];
     // 1) Direkte Zuweisungen je Scope lesen: E-Mail/Login → Menge der RoleDefinition-Ids.
-    const readAssignments = async (base: string): Promise<Map<string, Set<number>> | null> => {
+    //    v31.67: zusätzlich je PrincipalId (byId) und die SharePoint-E-Mail je
+    //    PrincipalId (emailById) — s. Schritt 2, warum.
+    type Zuweisungen = { byKey: Map<string, Set<number>>; byId: Map<number, Set<number>> };
+    const emailById = new Map<number, string>();
+    const readAssignments = async (base: string): Promise<Zuweisungen | null> => {
       const byPrincipal = new Map<string, Set<number>>();
+      const byId = new Map<number, Set<number>>();
       try {
         let url: string | null = `${base}/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Email,Member/LoginName,Member/PrincipalType,RoleDefinitionBindings/Id&$top=5000`;
         let guard = 0;
@@ -426,16 +433,23 @@ export class SharePointService {
               ids.forEach(i => prev.add(i));
               byPrincipal.set(k, prev);
             }
+            const pid = Number(ra.PrincipalId || 0);
+            if (pid > 0) {
+              const prev = byId.get(pid) || new Set<number>();
+              ids.forEach(i => prev.add(i));
+              byId.set(pid, prev);
+              if (keys[0] && !emailById.has(pid)) emailById.set(pid, keys[0]);
+            }
           }
           url = d['odata.nextLink'] || d['@odata.nextLink'] || (d.d && d.d.__next) || null;
         }
-        return byPrincipal;
+        return { byKey: byPrincipal, byId };
       } catch (e) {
         console.warn('[DEX] auditRolesListAccess: Zuweisungen nicht lesbar', base, e);
         return null;
       }
     };
-    const assignments: Record<string, Map<string, Set<number>>> = {};
+    const assignments: Record<string, Zuweisungen> = {};
     for (const s of scopes) {
       const m = await readAssignments(s.base);
       if (!m) { out.readFailed = true; return out; }
@@ -443,18 +457,44 @@ export class SharePointService {
     }
     // 2) Je Rollen-Zeile und Scope prüfen, fehlendes nachsetzen. Die User-Id
     //    nur EINMAL je Person auflösen (ensureuser ist der teure Teil).
+    //
+    //    v31.67: ZWEISTUFIG — erst über die E-Mail, dann über die PrincipalId.
+    //    Nutzer-Befund 16.09.2026: „egal wie oft ich Rechte prüfen klicke,
+    //    kommt immer diese Meldung" — bei jedem Lauf „1 mit Lücke, 1
+    //    nachgesetzt: Fuhr, Inga". Ursache: Die Zuweisungen wurden NUR über
+    //    die E-Mail aus DEX_Roles gesucht. Steht dort eine andere Schreibweise
+    //    als die, die SharePoint am Konto führt (Alias, alte Domäne, anderer
+    //    UPN), findet die Suche nichts; `ensureuser` löst die Person dann aber
+    //    korrekt auf, das Recht wird auf denselben Principal gesetzt, der es
+    //    längst hat, das Nachlesen bestätigt es → „nachgesetzt". Beim nächsten
+    //    Lauf dasselbe. Jetzt: Findet die E-Mail nichts, wird die Person
+    //    aufgelöst und über ihre PrincipalId geprüft — hat sie die Rechte,
+    //    wird NICHT nachgesetzt, sondern die Adress-Abweichung gemeldet
+    //    (`aliases`), damit der Admin die Zeile in DEX_Roles korrigieren kann.
     const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
     const relevant = rows.filter(r => !!(r.email || '').trim() && r.role !== 'User');
+    const vereint = (a: Set<number> | undefined, b: Set<number> | undefined): Set<number> => {
+      const s = new Set<number>(); if (a) a.forEach(x => s.add(x)); if (b) b.forEach(x => s.add(x)); return s;
+    };
     for (let i = 0; i < relevant.length; i++) {
       const r = relevant[i];
       const em = r.email.toLowerCase().trim();
       const isAdminRole = r.role === 'Admin' || r.role === 'IT-Admin';
-      const missingScopes = scopes.filter(s => !s.ok(assignments[s.key].get(em) || new Set<number>(), isAdminRole));
+      let missingScopes = scopes.filter(s => !s.ok(assignments[s.key].byKey.get(em) || new Set<number>(), isAdminRole));
       out.checked += 1;
       if (missingScopes.length > 0) {
-        out.missing.push({ ...r, scopes: missingScopes.map(s => s.label) });
         let allOk = true;
         const userId = await this.getUserIdByEmail(r.email);
+        if (userId) {
+          const vorher = missingScopes.length;
+          missingScopes = scopes.filter(s => !s.ok(vereint(assignments[s.key].byKey.get(em), assignments[s.key].byId.get(userId)), isAdminRole));
+          if (missingScopes.length < vorher) {
+            const spEmail = emailById.get(userId) || '';
+            if (spEmail && spEmail !== em) out.aliases.push({ name: r.name, email: r.email, spEmail });
+          }
+          if (missingScopes.length === 0) { if (onProgress) onProgress(i + 1, relevant.length); continue; }
+        }
+        out.missing.push({ ...r, scopes: missingScopes.map(s => s.label) });
         if (!userId) {
           allOk = false;
         } else {

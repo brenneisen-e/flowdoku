@@ -315,7 +315,7 @@ export interface EventContextType {
   getArchivableCount: () => Promise<{ total: number; perList: Record<string, number> }>;
   /** v21: Archivierung — verschiebt archivreife Zeilen ins DEX_Archive.
    *  v22.2: shouldCancel = Abbruch-Check aus dem Fortschrittsmodal. */
-  runArchiveExpired: (onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void, shouldCancel?: () => boolean) => Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }>;
+  runArchiveExpired: (onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void, shouldCancel?: () => boolean) => Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number>; errors: string[] }>;
   /** v24.33: Globales „Spalten fixen" über ALLE Events inkl. Sub-Events + Company-Backfill bestehender Teilnehmer. */
   /** v30.58: `details` sagt PRO EVENT, was gefehlt hat und was danach noch fehlt. */
   fixAllEventColumns: (onProgress?: (done: number, total: number, label: string) => void) => Promise<{ lists: number; columnsAdded: number; backfilled: number; errors: number; anyChange: boolean; details: FixColumnsDetail[] }>;

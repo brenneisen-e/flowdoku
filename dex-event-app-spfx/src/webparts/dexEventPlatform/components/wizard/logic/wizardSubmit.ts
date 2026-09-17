@@ -1081,6 +1081,15 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
             // gelöscht und die Teilnehmer-Daten weggeworfen. Korrekter Check:
             // entweder altes B2Run-Template ODER Split-Capacity aktiv.
             const splitActive = useSplitCapacities && ((parseInt(durchstarterCapacity, 10) || 0) > 0 || (parseInt(funstarterCapacity, 10) || 0) > 0);
+            // v31.69: Die Zuordnung, die DIESER Save wirklich nach DEX_Events
+            // geschrieben hat, je Event-Id — Grundlage der Nach-Diagnose unten.
+            // Bis dahin prüfte die Diagnose gegen `editEvent`/`childEventsOf`
+            // aus dem Render von VOR dem Speichern: Für jedes Feld, dessen
+            // Spalte gerade erst angelegt wurde, stand dort noch kein
+            // spInternalName → „(noch nicht zugeordnet)" → die Meldung
+            // „Spalte konnte NICHT angelegt werden", obwohl sie angelegt war
+            // (dieselbe Falle wie v30.67 in maintenance.ts, hier im Wizard).
+            const freshFieldMaps: Record<string, Array<{ id: string; label: string; spInternalName: string }>> = {};
             const fixResult = await svc.fixRegistrationListColumns(editEvent.subsiteUrl, {
               isB2Run: isB2runTemplate || splitActive,
               hasQuiz: quiz.length > 0,
@@ -1109,6 +1118,7 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
                 spInternalName: fixResult.customFieldMap![f.id] || spById[f.id] || '',
               }));
               await updateEvent(selectedEventId, { 'CustomFields': JSON.stringify(merged) });
+              freshFieldMaps[String(editEvent.id)] = merged.map(f => ({ id: f.id, label: f.label, spInternalName: f.spInternalName || '' }));
             }
             // v30.60: DIESELBE Behandlung für die Sub-Events.
             //
@@ -1131,16 +1141,43 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
             let fixedSubs = 0;
             const fixOne = async (sub: DeloitteEvent): Promise<void> => {
               try {
+                // v31.69: Quelle sind die FELDER DES ENTWURFS — dieselben, die
+                // persistSubEventsForParent eben in die Zeile geschrieben hat.
+                // `sub.eventSpecificFields` ist der Stand von VOR dem Speichern:
+                // Ein gerade ergänztes Feld fehlt dort, bekäme keine Spalte,
+                // und ein Rückschreiben daraus hätte das neue Feld aus der
+                // Zeile getilgt. Ohne Entwurf (sollte nicht vorkommen) der alte Weg.
+                const subDraft = subEventsRef.current.find(s => s.dbId === String(sub.id));
+                const draftSerialized = subDraft ? serializeCustomFields(subDraft.customFields || [], bilingualFields) : null;
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const subCf = ((sub as any).eventSpecificFields || []).map((f: any) => ({
+                const rowFields: any[] = draftSerialized || ((sub as any).eventSpecificFields || []);
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const subCf = rowFields.map((f: any) => ({
                   id: f.id, label: f.label, type: f.type, required: f.required, options: f.options,
                   visible: true, spInternalName: f.spInternalName || '',
                 }));
-                await svc.fixRegistrationListColumns(sub.subsiteUrl!, {
+                const r = await svc.fixRegistrationListColumns(sub.subsiteUrl!, {
                   isB2Run: !!(sub.durchstarterCapacity || sub.funstarterCapacity),
                   hasQuiz: !!(sub.quiz && sub.quiz.length > 0),
                   customFields: subCf,
                 });
+                // v31.69: Zuordnung ZURÜCKSCHREIBEN. Bis v31.68 bekam das
+                // Sub-Event zwar seine Spalten, die Zuordnung (spInternalName)
+                // landete aber nie in seiner DEX_Events-Zeile — beim Hauptevent
+                // passiert das seit v19.20 (`merged` oben), hier fehlte es.
+                // Folge: Anmeldungen schrieben die Antwort nur ins CustomData-
+                // JSON, die Spalte blieb leer, und jeder weitere Save meldete
+                // dieselben Felder als „Spalte konnte NICHT angelegt werden".
+                if (r.customFieldMap && Object.keys(r.customFieldMap).length > 0) {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const upd = rowFields.map((f: any) => ({ ...f, spInternalName: r.customFieldMap![f.id] || f.spInternalName || '' }));
+                  let ok = false;
+                  try { ok = await updateEvent(String(sub.id), { 'CustomFields': JSON.stringify(upd) }, { skipReload: true }); } catch { ok = false; }
+                  if (ok) {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    freshFieldMaps[String(sub.id)] = upd.map((f: any) => ({ id: f.id, label: f.label, spInternalName: f.spInternalName || '' }));
+                  }
+                }
               } catch (e) { console.warn('[DEX] Spalten-Abgleich für Sub-Event fehlgeschlagen:', sub.id, e); }
               fixedSubs++;
               setProgressLabel(isDe
@@ -1169,8 +1206,10 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
             // v30.76: dieselbe begrenzte Parallelität wie beim Abgleich oben.
             await runLimited([editEvent, ...childEventsOf(editEvent.id)].filter(tg => !!tg.subsiteUrl), 4, async (target) => {
               try {
+                // v31.69: Maßgeblich ist, was DIESER Save geschrieben hat; nur
+                // ohne Rückschreiben gilt der Stand von vorher.
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const flds = ((target as any).eventSpecificFields || []).map((f: any) => ({ id: f.id, label: f.label, spInternalName: f.spInternalName || '' }));
+                const flds = freshFieldMaps[String(target.id)] || ((target as any).eventSpecificFields || []).map((f: any) => ({ id: f.id, label: f.label, spInternalName: f.spInternalName || '' }));
                 const d = await svc.diagnoseRegistrationList(target.subsiteUrl!, flds);
                 if (d.missingColumns.length > 0) {
                   stillBroken.push(`${target.title}: ${d.missingColumns.map(m => m.label).join(', ')}`);

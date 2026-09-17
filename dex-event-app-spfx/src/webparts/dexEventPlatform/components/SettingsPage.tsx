@@ -196,6 +196,16 @@ export default function SettingsPage(): React.ReactElement {
           ? `${r.checked} Rollen-Einträge geprüft, bei ${r.missing.length} fehlte mindestens ein Recht — ohne Leserecht fehlt die Kachel, ohne Site-Vollzugriff scheitert das Anlegen eines Events („Subsite konnte nicht erstellt werden").${fixed}${failed} Betroffene müssen die App einmal neu laden.`
           : `${r.checked} role entries checked, ${r.missing.length} lacked at least one right — without read access the tile is missing, without site full control creating an event fails.${fixed}${failed} Affected people need to reload the app once.`;
       }
+      // v31.67: Adress-Abweichungen getrennt melden — die Rechte sind da, nur
+      // die E-Mail in DEX_Roles ist eine andere Schreibweise als am Konto.
+      // Vorher wurden diese Personen bei JEDEM Lauf als „Lücke" gemeldet und
+      // „nachgesetzt" (Nutzer-Befund 16.09.2026).
+      if (!r.readFailed && r.aliases && r.aliases.length > 0) {
+        const list = r.aliases.map(a => `${a.name || a.email} (DEX_Roles: ${a.email} · SharePoint: ${a.spEmail})`).join('; ');
+        msg += isDe
+          ? ` Hinweis: ${r.aliases.length} ${r.aliases.length === 1 ? 'Eintrag hat' : 'Einträge haben'} alle Rechte, aber unter einer anderen E-Mail-Schreibweise als in DEX_Roles — ${list}. Am besten die Zeile in der Rollenverwaltung auf die SharePoint-Adresse ändern, dann verschwindet der Hinweis.`
+          : ` Note: ${r.aliases.length} ${r.aliases.length === 1 ? 'entry has' : 'entries have'} all rights, but under a different e-mail spelling than in DEX_Roles — ${list}. Change the row in the role management to the SharePoint address to clear this note.`;
+      }
       setAccessAudit({ running: false, done: 0, total: 0, result: msg });
     } catch (e) {
       console.warn('[DEX] auditRolesAccess failed:', e);

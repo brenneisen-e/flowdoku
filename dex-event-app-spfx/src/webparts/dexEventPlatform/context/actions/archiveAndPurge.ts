@@ -67,8 +67,8 @@ export function makeArchiveActions(deps: ArchiveDeps) {
   async function runArchiveExpired(
     onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void,
     shouldCancel?: () => boolean
-  ): Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }> {
-    if (!eventService) return { archived: 0, failed: 0, cancelled: false, perList: {} };
+  ): Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number>; errors: string[] }> {
+    if (!eventService) return { archived: 0, failed: 0, cancelled: false, perList: {}, errors: [] };
     const { ids, subs, titles, allIds, allSubs } = getExpiredEventSets();
     return eventService.archiveExpiredRows(ids, subs, titles, onProgress, shouldCancel, allIds, allSubs);
   }
@@ -299,6 +299,7 @@ export function makeArchiveActions(deps: ArchiveDeps) {
     const out: AutoMaintenanceResult = {
       archived: 0, archiveFailed: 0, deleted: 0, deleteFailed: 0,
       participantsDeleted: 0, participantsFailed: 0, nothingToDo: false, error: '',
+      archiveErrors: [], finishedAt: 0,
     };
     if (!eventService) { out.nothingToDo = true; return out; }
     const report = (phase: AutoMaintenanceProgress['phase'], doneUnits: number, totalUnits: number, label: string): void => {
@@ -326,7 +327,8 @@ export function makeArchiveActions(deps: ArchiveDeps) {
           const sum = doneByList.reduce((a, b) => a + (b || 0), 0);
           report('archiv', Math.min(sum, arch.total), totalUnits, listName);
         });
-        out.archived = r1.archived; out.archiveFailed = r1.failed;
+        out.archived = r1.archived; out.archiveFailed = r1.failed; out.archiveErrors = r1.errors;
+        if (r1.failed > 0) console.warn(`[DEX] Automatische Archivierung: ${r1.failed} Zeile(n) nicht verschoben —`, r1.errors);
       }
       base = arch.total;
       report('archiv', base, totalUnits, '');
@@ -352,8 +354,10 @@ export function makeArchiveActions(deps: ArchiveDeps) {
       out.error = e instanceof Error ? e.message : String(e);
       console.warn('[DEX] Automatische Archivierung/Löschung fehlgeschlagen:', e);
     }
+    out.finishedAt = Date.now();
     // Protokoll: Was der Automat getan hat, steht im Änderungsprotokoll —
     // ohne Dialog gibt es sonst keinen Beleg, dass und wann gelaufen ist.
+    // v31.68: samt der ersten Fehlgründe je Zeile (`archivFehlerDetails`).
     try {
       await eventService.writeChangeLog({
         action: 'AutoMaintenanceRun',
@@ -361,6 +365,7 @@ export function makeArchiveActions(deps: ArchiveDeps) {
         targetName: 'Archivierung & Löschen (automatisch)',
         details: {
           archiviert: out.archived, archivFehler: out.archiveFailed,
+          archivFehlerDetails: out.archiveErrors.length ? out.archiveErrors : undefined,
           archivGeloescht: out.deleted, archivLoeschFehler: out.deleteFailed,
           teilnehmerlistenGeloescht: out.participantsDeleted, teilnehmerlistenFehler: out.participantsFailed,
           fehler: out.error || undefined,
@@ -392,4 +397,8 @@ export interface AutoMaintenanceResult {
   /** true = nichts stand an; es wurde nichts verändert und nichts protokolliert. */
   nothingToDo: boolean;
   error: string;
+  /** v31.68: die ersten Fehlgründe der Archivierung je Zeile (max. 12). */
+  archiveErrors: string[];
+  /** v31.68: Zeitstempel des Abschlusses (0 = nicht gelaufen). */
+  finishedAt: number;
 }

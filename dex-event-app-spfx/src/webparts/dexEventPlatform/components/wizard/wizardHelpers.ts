@@ -111,6 +111,13 @@ export function serializeCustomFields(
         ...(f.type === 'roommate' && f.notifyRoommate === false ? { notifyRoommate: false } : {}),
         // v29.40: Verteiler-Begrenzung des Personen-Feldes mitschreiben.
         ...((f.type === 'user' || f.type === 'roommate') && f.audienceOnly ? { audienceOnly: true } : {}),
+        // v31.69: Die Spaltenzuordnung NICHT mehr verlieren. Dieser Serializer
+        // schreibt die CustomFields der Sub-Events (persistSubEvents) — ohne
+        // spInternalName stand die Zuordnung nach jedem Speichern leer, die
+        // Anmeldung schrieb die Antwort nur noch ins CustomData-JSON, und der
+        // Spalten-Abgleich meldete bei jedem Save dieselben Felder als
+        // „Spalte konnte NICHT angelegt werden" (Befund 16.09.2026).
+        ...(f.spInternalName ? { spInternalName: f.spInternalName } : {}),
       } as CustomField;
     });
 }

@@ -209,8 +209,14 @@ export async function archiveExpiredRows(svc: EventService,
   shouldCancel?: () => boolean,
   // v23.39: alle aktuellen Event-IDs / Subsites (für die Verwaist-Erkennung).
   allEventIds: Set<string> = new Set(), allSubsiteUrls: Set<string> = new Set()
-): Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }> {
-  const result = { archived: 0, failed: 0, cancelled: false, perList: {} as Record<string, number> };
+): Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number>; errors: string[] }> {
+  // v31.68: `errors` = die ersten Fehlgründe je Zeile („DEX_Emails#123: Insert
+  // HTTP 400 …"). Bis dahin zählte `failed` nur — der Landing-Kasten zeigte
+  // nach dem automatischen Lauf „16 Zeilen zur Archivierung", und niemand
+  // konnte sagen, WARUM sie liegen blieben (Nutzer-Befund 16.09.2026).
+  const result = { archived: 0, failed: 0, cancelled: false, perList: {} as Record<string, number>, errors: [] as string[] };
+  const MAX_ERRORS = 12;
+  const merkeFehler = (text: string): void => { if (result.errors.length < MAX_ERRORS) result.errors.push(text); };
   const sources = ARCHIVE_SOURCES;
   // v23.47: Payload soll den Inhalt vollständig festhalten (vorher bei 4000
   // Zeichen gekappt — ein kompletter HTML-Mailtext ist länger und wurde so
@@ -256,14 +262,18 @@ export async function archiveExpiredRows(svc: EventService,
           if (ins.ok && origId > 0) {
             // Nur löschen, wenn der Archiv-Insert geklappt hat (kein Datenverlust).
             const del = await svc._delete(`${svc.siteUrl}/_api/web/lists/getbytitle('${src.list}')/items(${origId})`);
-            if (del.ok) { listArchived++; result.archived++; } else { result.failed++; }
+            if (del.ok) { listArchived++; result.archived++; }
+            else { result.failed++; merkeFehler(`${src.list}#${origId}: Löschen aus der Quelle HTTP ${del.status}`); }
           } else {
             result.failed++;
+            let detail = '';
+            try { detail = (await ins.text()).replace(/\s+/g, ' ').slice(0, 160); } catch { /* */ }
+            merkeFehler(`${src.list}#${origId}: Insert ins Archiv HTTP ${ins.status}${detail ? ` — ${detail}` : ''}`);
           }
-        } catch { result.failed++; }
+        } catch (e) { result.failed++; merkeFehler(`${src.list}#${origId}: ${e instanceof Error ? e.message : String(e)}`); }
         if (onProgress) onProgress(si, sources.length, src.list, i + 1, matching.length);
       }
-    } catch { /* Liste nicht vorhanden — überspringen */ }
+    } catch (e) { merkeFehler(`${src.list}: Liste nicht lesbar — ${e instanceof Error ? e.message : String(e)}`); }
     result.perList[src.list] = listArchived;
     if (result.cancelled) break;
   }
