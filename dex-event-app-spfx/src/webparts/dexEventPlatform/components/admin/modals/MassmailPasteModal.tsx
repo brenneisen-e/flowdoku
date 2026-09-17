@@ -16,6 +16,7 @@ import { useLocaleSafe } from '../../../context/LanguageContext';
 import { SPRegistration } from '../../../services/EventService';
 import { MassmailAudience } from '../adminTypes';
 import { parsePastedRecipients, splitName } from '../../../utils/pastedRecipients';
+import { DeloitteEvent } from '../../../types';
 
 export interface MassmailPasteModalProps {
   /** v31.70: 'nachruecker' | 'reminder' — alles andere verhält sich wie nachruecker. */
@@ -26,6 +27,29 @@ export interface MassmailPasteModalProps {
   setMassmailPasteRaw: React.Dispatch<React.SetStateAction<string>>;
   setShowEmailModal: React.Dispatch<React.SetStateAction<boolean>>;
   showAlert: (message: React.ReactNode, opts?: import("../../../context/DialogContext").AlertOptions) => void;
+  /** v31.72: Das Event — für den Eingeladenen-Verteiler (`audienceResolvedEmails`). */
+  selectedEvent?: DeloitteEvent | null;
+}
+
+/**
+ * v31.72: Die Eingeladenen, die DEX selbst kennt. Nutzer-Frage 17.09.2026:
+ * „Warum muss ich beim Reminder einen Verteiler dazupacken?" — muss man
+ * nicht, wenn das Event auf einen Verteiler begrenzt ist: Beim Speichern
+ * wird die Sichtbarkeit in einzelne Adressen aufgelöst und am Event
+ * eingefroren (`AudienceResolvedEmails`, v16.4). Genau diese Liste hat
+ * auch die Einladungs-Mail benutzt. Ist das Event für alle (oder nach
+ * Standort) sichtbar, gibt es keine endliche Liste — dann bleibt das
+ * Einfügen der einzige Weg.
+ */
+export function eventVerteiler(ev: DeloitteEvent | null | undefined): string[] {
+  if (!ev) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const e of (ev.audienceResolvedEmails || [])) {
+    const lc = (e || '').trim().toLowerCase();
+    if (lc && lc.indexOf('@') > 0 && !seen.has(lc)) { seen.add(lc); out.push(lc); }
+  }
+  return out;
 }
 
 const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
@@ -44,12 +68,22 @@ export function reminderRecipientsAus(raw: string, registrations: SPRegistration
 }
 
 export const MassmailPasteModal: React.FC<MassmailPasteModalProps> = (p) => {
-  const { massmailAudience, massmailPasteRaw, registrations, setMassmailMode, setMassmailPasteRaw, setShowEmailModal, showAlert } = p;
+  const { massmailAudience, massmailPasteRaw, registrations, setMassmailMode, setMassmailPasteRaw, setShowEmailModal, showAlert, selectedEvent } = p;
         // v31.2: Die Props kennen kein isDe (Schnittstelle bleibt) — die Sprache
         // kommt wie in Modal.tsx aus dem Kontext.
         const isDe = useLocaleSafe() === 'de';
         const reminder = massmailAudience === 'reminder';
         const [showMissing, setShowMissing] = React.useState(false);
+        // v31.72: Eingeladenen-Verteiler des Events — bei der Erinnerung
+        // vorbefüllt, sobald der Dialog leer aufgeht. Der Organizer sieht die
+        // Liste im Feld und kann sie ergänzen oder ersetzen.
+        const verteiler = React.useMemo(() => (reminder ? eventVerteiler(selectedEvent) : []), [reminder, selectedEvent]);
+        const verteilerText = verteiler.join('; ');
+        const uebernehmen = (): void => { setMassmailPasteRaw(verteilerText); };
+        React.useEffect(() => {
+          if (reminder && verteiler.length > 0 && !(massmailPasteRaw || '').trim()) setMassmailPasteRaw(verteilerText);
+          // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, []);
         const closeAll = (): void => { setMassmailMode('closed'); setMassmailPasteRaw(''); };
         const back = (): void => { setMassmailMode('pick'); };
         // E-Mail-Adressen aus dem Rohtext extrahieren — robust gegen Vorname
@@ -103,6 +137,32 @@ export const MassmailPasteModal: React.FC<MassmailPasteModalProps> = (p) => {
               <button type="button" className="btn btn-secondary" onClick={closeAll}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
               <button type="button" className="btn btn-primary" disabled={count === 0} onClick={continueAction}>{isDe ? `Weiter zum Mail-Editor (${count})` : `Continue to mail editor (${count})`}</button>
             </>}>
+            {/* v31.72: Woher die Liste kommt — DEX kennt sie, wenn das Event
+                auf einen Verteiler begrenzt ist; sonst muss sie eingefügt werden. */}
+            {reminder && (verteiler.length > 0 ? (
+              <div className="dex-ui-callout dex-ui-callout--info">
+                <span className="dex-ui-callout-icon"><Check size={16} /></span>
+                <span style={{ flex: 1 }}>
+                  {isDe
+                    ? <>Dieses Event ist auf einen Verteiler begrenzt — DEX kennt die <strong>{verteiler.length} Eingeladenen</strong> (Stand: letztes Speichern des Events) und hat sie unten eingetragen. Du kannst die Liste ergänzen oder ersetzen.</>
+                    : <>This event is limited to a distribution list — DEX knows the <strong>{verteiler.length} invitees</strong> (as of the last save of the event) and has filled them in below. You can add to or replace the list.</>}
+                </span>
+                {(massmailPasteRaw || '').trim() !== verteilerText && (
+                  <button type="button" className="btn btn-secondary dex-ui-btn-sm" onClick={uebernehmen} style={{ flexShrink: 0 }}>
+                    {isDe ? `Verteiler des Events übernehmen (${verteiler.length})` : `Use the event list (${verteiler.length})`}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="dex-ui-callout dex-ui-callout--neutral">
+                <span className="dex-ui-callout-icon"><Mail size={16} /></span>
+                <span>
+                  {isDe
+                    ? 'Dieses Event ist für alle sichtbar (oder nach Standort gefiltert) — dafür gibt es in DEX keine Liste der Eingeladenen. Füge deinen Verteiler unten ein.'
+                    : 'This event is visible to everyone (or filtered by location) — DEX has no list of invitees for that. Paste your list below.'}
+                </span>
+              </div>
+            ))}
             <div className="dex-ui-field">
               <label className="dex-ui-label" htmlFor="massmail-paste-raw">{reminder ? (isDe ? 'Dein Einladungs-Verteiler' : 'Your invitation list') : (isDe ? 'Deine bisherige Empfänger-Liste' : 'Your existing recipient list')}</label>
               <textarea id="massmail-paste-raw" className="dex-ui-textarea" value={massmailPasteRaw} onChange={e => setMassmailPasteRaw(e.target.value)}

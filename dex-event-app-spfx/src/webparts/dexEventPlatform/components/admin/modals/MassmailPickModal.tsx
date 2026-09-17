@@ -3,7 +3,7 @@
  * Anzeige-Bedingung bleibt beim Aufrufer.
  */
 import * as React from 'react';
-import { MassmailAudience } from '../adminTypes';
+import { MassmailAudience, AudiencePerson } from '../adminTypes';
 import Modal from '../../Modal';
 import { cx } from '../../dexUi';
 import { Users } from '../../Icons';
@@ -19,18 +19,25 @@ export interface MassmailPickModalProps {
   setMassmailPasteRaw: React.Dispatch<React.SetStateAction<string>>;
   setMassmailStatuses: React.Dispatch<React.SetStateAction<Set<string>>>;
   setShowEmailModal: React.Dispatch<React.SetStateAction<boolean>>;
+  /** v31.72: Wer das Event sieht, aber noch nicht geantwortet hat (s. AdminPage).
+   *  undefined = wird gerechnet, null = keine Liste (Standort-Sichtbarkeit). */
+  massmailOffene?: AudiencePerson[] | null;
 }
 
 export const MassmailPickModal: React.FC<MassmailPickModalProps> = (p) => {
-  const { massmailAudience, massmailStatuses, registrations, setMassmailAudience, setMassmailMode, setMassmailPasteRaw, setMassmailStatuses, setShowEmailModal } = p;
+  const { massmailAudience, massmailStatuses, registrations, setMassmailAudience, setMassmailMode, setMassmailPasteRaw, setMassmailStatuses, setShowEmailModal, massmailOffene } = p;
         // v31.2: Die Props kennen kein isDe (Schnittstelle bleibt) — die Sprache
         // kommt wie in Modal.tsx aus dem Kontext.
         const isDe = useLocaleSafe() === 'de';
         const closeAll = (): void => { setMassmailMode('closed'); setMassmailPasteRaw(''); };
+        // v31.72: Die Erinnerung geht DIREKT in den Editor, wenn DEX die
+        // Offenen kennt; nur ohne Liste (Standort-Sichtbarkeit) bleibt der
+        // Einfüge-Schritt als Ausweg.
+        const reminderDirekt = massmailAudience === 'reminder' && Array.isArray(massmailOffene) && massmailOffene.length > 0;
         const proceed = (): void => {
           if (massmailAudience === 'custom' && massmailStatuses.size === 0) return;
-          // v31.70: Beide Abgleich-Wege brauchen den Verteiler im zweiten Schritt.
-          if (massmailAudience === 'nachruecker' || massmailAudience === 'reminder') setMassmailMode('paste');
+          if (massmailAudience === 'reminder' && massmailOffene === undefined) return; // rechnet noch
+          if (massmailAudience === 'nachruecker' || (massmailAudience === 'reminder' && !reminderDirekt)) setMassmailMode('paste');
           else { setShowEmailModal(true); setMassmailMode('editor'); }
         };
         // v31.9.6: Abgemeldet und No-Show gehören dazu. Sie fehlten nicht aus
@@ -83,8 +90,8 @@ export const MassmailPickModal: React.FC<MassmailPickModalProps> = (p) => {
             icon={<Users size={20} />}
             footer={<>
               <button type="button" className="btn btn-secondary" onClick={closeAll}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
-              <button type="button" className="btn btn-primary" onClick={proceed} disabled={customEmpty}>
-                {(massmailAudience === 'nachruecker' || massmailAudience === 'reminder') ? (isDe ? 'Weiter: Verteiler einfügen' : 'Next: paste list') : (isDe ? 'Weiter zum Mail-Editor' : 'Continue to mail editor')}
+              <button type="button" className="btn btn-primary" onClick={proceed} disabled={customEmpty || (massmailAudience === 'reminder' && (massmailOffene === undefined || (Array.isArray(massmailOffene) && massmailOffene.length === 0)))}>
+                {(massmailAudience === 'nachruecker' || (massmailAudience === 'reminder' && !reminderDirekt)) ? (isDe ? 'Weiter: Verteiler einfügen' : 'Next: paste list') : (isDe ? 'Weiter zum Mail-Editor' : 'Continue to mail editor')}
               </button>
             </>}>
             <div className="dex-ui-section">
@@ -100,6 +107,24 @@ export const MassmailPickModal: React.FC<MassmailPickModalProps> = (p) => {
                     wählen, nicht versehentlich treffen. Die Zeile nennt
                     deshalb, wie viele davon nicht mehr dabei sind. */}
                 <Row value="everyone" count={nEveryone} label={isDe ? 'Alle — auch Abgemeldete' : 'Everyone — including cancellations'} desc={isDe ? `Jede Person in der Teilnehmerliste, auch Abgemeldete und No-Shows (${nInactive} davon nicht mehr dabei) — z.B. „Termin verschoben, kommst du doch?“.` : `Everyone in the participant list, including cancellations and no-shows (${nInactive} of them no longer attending) — e.g. "Date moved, joining after all?".`} />
+                {/* v31.72: Die Erinnerung steht HIER bei den Status-Gruppen (Nutzer-
+                    Ansage 17.09.2026: „Reminder muss nach oben zu dem Status") und
+                    rechnet wie „Wer hat noch nicht geantwortet?": alle, die das
+                    Event sehen, aber weder angemeldet noch abgemeldet noch abgesagt
+                    haben; das Organizer-Team zählt nicht. Ohne Verteiler am Event
+                    (Sichtbarkeit nur nach Standort) bleibt der Einfüge-Schritt. */}
+                <Row
+                  value="reminder"
+                  count={Array.isArray(massmailOffene) ? massmailOffene.length : undefined}
+                  label={isDe ? 'Erinnerung — sieht das Event, hat aber noch nicht geantwortet' : 'Reminder — can see the event but has not responded yet'}
+                  desc={massmailOffene === undefined
+                    ? (isDe ? 'DEX prüft gerade, wer das Event sieht …' : 'DEX is checking who can see the event …')
+                    : massmailOffene === null
+                      ? (isDe ? 'Für dieses Event kennt DEX keine Eingeladenen — die Sichtbarkeit läuft nur über den Standort. Im nächsten Schritt fügst du deinen Einladungs-Verteiler ein; angeschrieben wird, wer dort steht, aber nicht aktiv angemeldet ist.' : 'DEX knows no invitees for this event — visibility runs via location only. In the next step you paste your invitation list; the mail goes to everyone on it who is not actively registered.')
+                      : massmailOffene.length === 0
+                        ? (isDe ? 'Alle, die das Event sehen, haben schon geantwortet — angemeldet, abgemeldet oder abgesagt. Niemand zu erinnern.' : 'Everyone who can see the event has already responded — registered, cancelled or declined. Nobody to remind.')
+                        : (isDe ? 'Alle, die das Event sehen, sich aber weder angemeldet noch abgemeldet noch abgesagt haben — dieselbe Liste wie „Wer hat noch nicht geantwortet?“ in der Sichtbarkeits-Karte. Das Organizer-Team zählt nicht mit.' : 'Everyone who can see the event but has neither registered nor cancelled nor declined — the same list as “Who has not responded yet?” in the visibility card. The organizer team does not count.')}
+                />
                 {/* v22.9: Eigene Status-Auswahl — einzelne Status getrennt anhaken. */}
                 <div>
                   <Row value="custom" count={massmailAudience === 'custom' ? countOf(Array.from(massmailStatuses)) : undefined} label={isDe ? 'Eigene Auswahl nach Status' : 'Custom selection by status'} desc={isDe ? 'Du wählst unten, welche Status die Mail bekommen — z.B. nur „QR versendet“.' : 'You pick below which statuses get the mail — e.g. only "QR sent".'} />
@@ -128,14 +153,7 @@ export const MassmailPickModal: React.FC<MassmailPickModalProps> = (p) => {
             </div>
             <div className="dex-ui-section">
               <div className="dex-ui-section-title">{isDe ? 'Abgleich mit deiner Liste' : 'Compare with your list'}</div>
-              <div className="dex-ui-stack">
-                <Row value="nachruecker" label={isDe ? 'Nachrücker — nur wer deine letzte Mail noch nicht hat' : 'Late joiners — only those who missed your last mail'} desc={isDe ? 'Im nächsten Schritt fügst du deine bisherige Empfänger-Liste ein (Verteiler, „Vorname Nachname <mail>“, beliebig formatiert). Die App erkennt die Adressen und schreibt alle aktiven Teilnehmer an, die dort NICHT stehen.' : 'In the next step you paste your existing recipient list (distribution list, "First Last <mail>", any format). The app picks out the addresses and mails every active participant who is NOT on it.'} />
-                {/* v31.70: Die Umkehrung — Nutzer-Ansage 17.09.2026: „Reminder an
-                    alle, die noch nicht zurückgemeldet haben, des Verteilers".
-                    Angeschrieben werden Personen aus dem VERTEILER, nicht aus der
-                    Teilnehmerliste; ihre Namen kommen aus dem Verteiler. */}
-                <Row value="reminder" label={isDe ? 'Erinnerung — wer aus deinem Verteiler noch nicht angemeldet ist' : 'Reminder — who on your list has not registered yet'} desc={isDe ? 'Im nächsten Schritt fügst du deinen Einladungs-Verteiler ein. Angeschrieben wird, wer dort steht, aber im Event NICHT aktiv angemeldet ist — also noch nicht reagiert hat, abgesagt hat oder auf der Warteliste steht.' : 'In the next step you paste your invitation list. The mail goes to everyone on it who is NOT actively registered for the event — no reaction yet, cancelled, or on the waitlist.'} />
-              </div>
+              <Row value="nachruecker" label={isDe ? 'Nachrücker — nur wer deine letzte Mail noch nicht hat' : 'Late joiners — only those who missed your last mail'} desc={isDe ? 'Im nächsten Schritt fügst du deine bisherige Empfänger-Liste ein (Verteiler, „Vorname Nachname <mail>“, beliebig formatiert). Die App erkennt die Adressen und schreibt alle aktiven Teilnehmer an, die dort NICHT stehen.' : 'In the next step you paste your existing recipient list (distribution list, "First Last <mail>", any format). The app picks out the addresses and mails every active participant who is NOT on it.'} />
             </div>
           </Modal>
         );

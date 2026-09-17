@@ -84,6 +84,10 @@ export interface UseMailComposersResult {
   openInviteModal: () => void;
   openMassmailPicker: () => void;
   openPendingReminder: () => Promise<void>;
+  /** v31.72: Dieselbe Rechnung wie „Wer hat noch nicht geantwortet?" — für
+   *  die Massenmail-Gruppe „Erinnerung". null = kein Event. `audience` leer
+   *  heißt: Sichtbarkeit nur über Standort, keine Liste. */
+  berechneOffene: () => Promise<{ audience: AudiencePerson[]; pending: AudiencePerson[] } | null>;
   resetInviteDraft: () => void;
   resetMassmailDraft: () => void;
   resolveAudienceEmails: (ev: DeloitteEvent) => Promise<AudiencePerson[]>;
@@ -292,12 +296,41 @@ export function useMailComposers(ctx: UseMailComposersCtx): UseMailComposersResu
    * Empfängerliste editierbar, Mailtext editierbar). Bewusst KEIN zweiter
    * Versand-Dialog daneben — der bestehende kann das alles bereits.
    */
+  /**
+   * v31.72: Die Rechnung hinter „Wer hat noch nicht geantwortet?" als eigene
+   * Funktion — die Massenmail-Gruppe „Erinnerung" (v31.70) braucht dieselbe
+   * Menge. Nutzer-Befund 17.09.2026: „es gibt doch schon das hier" — zwei
+   * Rechnungen für dieselbe Frage wären der Zustand, den CLAUDE.md verbietet.
+   */
+  const berechneOffene = async (): Promise<{ audience: AudiencePerson[]; pending: AudiencePerson[] } | null> => {
+    if (!selectedEvent) return null;
+    const audience = (visibilityResolved && visibilityResolved.length > 0) ? visibilityResolved : await resolveAudienceEmails(selectedEvent);
+    if (!visibilityResolved || visibilityResolved.length === 0) setVisibilityResolved(audience);
+    // Wer hat schon geantwortet? Alle Zeilen des Events + (bei einer Klammer)
+    // der Sub-Events, unabhängig vom Status.
+    const decided = new Set<string>();
+    registrations.forEach(r => { const e = (r.ParticipantEmail || '').toLowerCase().trim(); if (e) decided.add(e); });
+    Object.keys(subEventRegsByEventId || {}).forEach(k => {
+      (subEventRegsByEventId[k] || []).forEach(r => {
+        const e = (r.ParticipantEmail || '').toLowerCase().trim(); if (e) decided.add(e);
+      });
+    });
+    // Organizer-Team zählt nicht als offener Fall — es organisiert das Event.
+    const team = new Set<string>([
+      ...(selectedEvent.organizerEmails || []),
+      ...(selectedEvent.coOrganizerEmails || []),
+    ].map(e => (e || '').toLowerCase().trim()).filter(Boolean));
+    const pending = audience.filter(p => !decided.has(p.email) && !team.has(p.email));
+    return { audience, pending };
+  };
+
   const openPendingReminder = async (): Promise<void> => {
     if (!selectedEvent || pendingCheckBusy) return;
     setPendingCheckBusy(true);
     try {
-      const audience = visibilityResolved || await resolveAudienceEmails(selectedEvent);
-      if (!visibilityResolved) setVisibilityResolved(audience);
+      const r = await berechneOffene();
+      const audience = r ? r.audience : [];
+      const pending = r ? r.pending : [];
       if (audience.length === 0) {
         showAlert(isDe
           ? 'Für dieses Event kennt DEX keine Namen. Das ist so, wenn die Sichtbarkeit nur über den Standort läuft — dahinter steht keine Liste einzelner Personen. Trage in Schritt 3 des Event-Edits zusätzlich einen Mailverteiler oder einzelne Personen ein, dann kann DEX nachfassen.'
@@ -305,21 +338,6 @@ export function useMailComposers(ctx: UseMailComposersCtx): UseMailComposersResu
           { variant: 'info' });
         return;
       }
-      // Wer hat schon geantwortet? Alle Zeilen des Events + (bei einer Klammer)
-      // der Sub-Events, unabhängig vom Status.
-      const decided = new Set<string>();
-      registrations.forEach(r => { const e = (r.ParticipantEmail || '').toLowerCase().trim(); if (e) decided.add(e); });
-      Object.keys(subEventRegsByEventId || {}).forEach(k => {
-        (subEventRegsByEventId[k] || []).forEach(r => {
-          const e = (r.ParticipantEmail || '').toLowerCase().trim(); if (e) decided.add(e);
-        });
-      });
-      // Organizer-Team zählt nicht als offener Fall — es organisiert das Event.
-      const team = new Set<string>([
-        ...(selectedEvent.organizerEmails || []),
-        ...(selectedEvent.coOrganizerEmails || []),
-      ].map(e => (e || '').toLowerCase().trim()).filter(Boolean));
-      const pending = audience.filter(p => !decided.has(p.email) && !team.has(p.email));
       if (pending.length === 0) {
         showAlert(isDe
           ? `Alle ${audience.length} Personen, die das Event sehen können, haben bereits geantwortet — angemeldet, abgemeldet oder abgesagt. Es gibt niemanden zum Erinnern.`
@@ -546,7 +564,7 @@ export function useMailComposers(ctx: UseMailComposersCtx): UseMailComposersResu
   };
   return {
     applyInviteHero, applyMassmailHero, inviteHeaderOpts, massmailHeaderOpts, openInviteModal,
-    openMassmailPicker, openPendingReminder, resetInviteDraft, resetMassmailDraft,
+    openMassmailPicker, openPendingReminder, berechneOffene, resetInviteDraft, resetMassmailDraft,
     resolveAudienceEmails, saveInviteDraft, saveMassmailDraft, sendMassmailTestToOrganizers,
   };
 }

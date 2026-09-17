@@ -13,7 +13,7 @@ import { cx } from '../../dexUi';
 import { DeloitteEvent } from '../../../types';
 import { EventService, SPRegistration } from '../../../services/EventService';
 import { MailHeaderImage } from '../../../utils/mailHeaderImage';
-import { MassmailAudience } from '../adminTypes';
+import { MassmailAudience, AudiencePerson } from '../adminTypes';
 import { buildInlineImage, charsToKb } from '../../../utils/inlineMailImage';
 // v31.10: Dieselbe Rechnung wie die Anmeldeseite — wer dort ausgeblendet ist,
 // steht auch nicht im CC. Die Regel liegt in EINER Datei, nicht hier.
@@ -69,10 +69,13 @@ export interface MassmailComposerModalProps {
   setShowEmailModal: React.Dispatch<React.SetStateAction<boolean>>;
   showAlert: (message: React.ReactNode, opts?: import("../../../context/DialogContext").AlertOptions) => void;
   showEmailModal: boolean;
+  /** v31.72: Wer das Event sieht, aber noch nicht geantwortet hat — die
+   *  Empfänger der Gruppe „Erinnerung", wenn DEX sie kennt (s. AdminPage). */
+  massmailOffene?: AudiencePerson[] | null;
 }
 
 export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) => {
-  const { applyMassmailHero, confirmDialog, emailBody, emailHeading, emailSending, emailSubject, eventServiceRef, isDe, massmailAudience, massmailCc, massmailCustomHeaderB64, setMassmailCustomHeaderB64, massmailDraftSaved, massmailEventPhotoB64, massmailHeaderImage, massmailHeaderOpts, massmailPasteRaw, massmailStatuses, massmailSubheading, massmailTesting, massmailTestMsg, registrations, resetMassmailDraft, saveMassmailDraft, searchUser, searchUsers, selectedEvent, sendMassmailTestToOrganizers, setComposerCrop, setEmailBody, setEmailHeading, setEmailSending, setEmailSubject, setMassmailCc, setMassmailHeaderImage, setMassmailMode, setMassmailPasteRaw, setMassmailSubheading, setShowEmailModal, showAlert, showEmailModal } = p;
+  const { applyMassmailHero, confirmDialog, emailBody, emailHeading, emailSending, emailSubject, eventServiceRef, isDe, massmailAudience, massmailCc, massmailCustomHeaderB64, setMassmailCustomHeaderB64, massmailDraftSaved, massmailEventPhotoB64, massmailHeaderImage, massmailHeaderOpts, massmailPasteRaw, massmailStatuses, massmailSubheading, massmailTesting, massmailTestMsg, registrations, resetMassmailDraft, saveMassmailDraft, searchUser, searchUsers, selectedEvent, sendMassmailTestToOrganizers, setComposerCrop, setEmailBody, setEmailHeading, setEmailSending, setEmailSubject, setMassmailCc, setMassmailHeaderImage, setMassmailMode, setMassmailPasteRaw, setMassmailSubheading, setShowEmailModal, showAlert, showEmailModal, massmailOffene } = p;
         // v31.2: Das zusätzliche CC ist selten nötig und steht deshalb in
         // einem Aufklapper — offen nur, wenn schon jemand eingetragen ist,
         // damit ein gesetzter Verteiler nie unsichtbar mitfährt.
@@ -137,7 +140,19 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
             return registrations.filter(r => ACTIVE.indexOf(r.Status) >= 0 && !pastedSet.has((r.ParticipantEmail || '').toLowerCase()));
           }
           if (massmailAudience === 'reminder') {
-            // v31.70: Verteiler minus aktiv Angemeldete — die Umkehrung.
+            // v31.72: Kennt DEX die Offenen (Sichtbarkeits-Verteiler minus alle,
+            // die geantwortet haben), sind SIE die Empfänger — dieselbe Liste
+            // wie „Wer hat noch nicht geantwortet?". Sonst (Standort-
+            // Sichtbarkeit) der v31.70-Weg: eingefügter Verteiler minus aktive.
+            if (Array.isArray(massmailOffene) && massmailOffene.length > 0) {
+              return massmailOffene.map(x => {
+                const dn = (x.displayName || '').trim();
+                const komma = dn.indexOf(',');
+                const nachname = komma > 0 ? dn.slice(0, komma).trim() : dn.split(' ').slice(-1)[0] || '';
+                const vorname = komma > 0 ? dn.slice(komma + 1).trim() : dn.split(' ').slice(0, -1).join(' ');
+                return { ParticipantEmail: x.email, Vorname: vorname, Nachname: nachname };
+              });
+            }
             return reminderRecipientsAus(massmailPasteRaw || '', registrations);
           }
           return registrations.filter(r => ACTIVE.indexOf(r.Status) >= 0);
@@ -280,7 +295,7 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
           : massmailAudience === 'activePlusWait' ? (isDe ? 'Teilnehmer + Warteliste' : 'Attendees + waitlist')
           : massmailAudience === 'everyone' ? (isDe ? 'Alle — auch Abgemeldete' : 'Everyone — incl. cancellations')
           : massmailAudience === 'nachruecker' ? (isDe ? 'Nachrücker (manueller Abgleich)' : 'Replacements (manual match)')
-          : massmailAudience === 'reminder' ? (isDe ? 'Erinnerung (Verteiler ohne Anmeldung)' : 'Reminder (list without registration)')
+          : massmailAudience === 'reminder' ? (isDe ? 'Erinnerung (noch nicht geantwortet)' : 'Reminder (not responded yet)')
           : (isDe ? 'Alle aktiven Teilnehmer' : 'All active attendees');
         // v30.51.1: Die Vorschau nennt die WIRKLICHE CC-Zahl (s. massmailCcPreview).
         const ccCount = massmailCcPreview.length;
@@ -291,7 +306,10 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
         const zurueck = (): void => {
           if (emailSending) return;
           setShowEmailModal(false);
-          setMassmailMode(massmailAudience === 'nachruecker' || massmailAudience === 'reminder' ? 'paste' : 'pick');
+          // v31.72: Die Erinnerung kam direkt aus der Auswahl, wenn DEX die
+          // Offenen kennt — dann führt „Zurück" auch dorthin.
+          const ausPaste = massmailAudience === 'nachruecker' || (massmailAudience === 'reminder' && !(Array.isArray(massmailOffene) && massmailOffene.length > 0));
+          setMassmailMode(ausPaste ? 'paste' : 'pick');
         };
         const previewSubjectLine = replacePlaceholders(emailSubject, previewVars);
         // v31.2: Ob die Testmail-Rückmeldung ein Erfolg war — dieselbe Prüfung
