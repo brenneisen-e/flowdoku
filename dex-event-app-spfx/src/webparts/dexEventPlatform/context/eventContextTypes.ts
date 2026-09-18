@@ -338,7 +338,9 @@ export interface EventContextType {
   /** v31.63: Automatischer Lauf ohne Rückfrage — Archivieren, Archiv
    *  aufräumen, fällige Teilnehmerlisten löschen. Gerufen vom Admin-Boot
    *  (`AdminAutoMaintenance`), Fortschritt fürs Abzeichen oben rechts. */
-  runAutoMaintenance: (onProgress?: (p: AutoMaintenanceProgress) => void) => Promise<AutoMaintenanceResult>;
+  /** v31.73: `opts.nurNeuesSeit` = Bilanz des letzten Laufs; dann läuft er nur,
+   *  wenn in einer Kategorie mehr ansteht, als damals liegen blieb. */
+  runAutoMaintenance: (onProgress?: (p: AutoMaintenanceProgress) => void, opts?: { nurNeuesSeit?: AutoMaintenanceResult }) => Promise<AutoMaintenanceResult>;
   /** v26.33: Liest das Statistik-Archiv (DEX_EventStats) — KPIs gelöschter
    *  Teilnehmerlisten für die Admin-Center-Kachel „Statistik-Archiv". */
   getEventStats: () => Promise<EventStatsRow[]>;

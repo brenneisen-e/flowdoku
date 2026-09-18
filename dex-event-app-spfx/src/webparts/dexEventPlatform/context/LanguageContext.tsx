@@ -32,7 +32,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'landing.devby': 'Entwickelt von Eike Brenneisen und Nils Felten.',
     'landing.start': 'Start',
     'landing.about': 'Die Event Experience Platform ist eine Lösung zur Verwaltung von Teilnehmern bei Deloitte-Events. Entwickelt von Eike Brenneisen und Nils Felten. Aktuell in der Pilotphase.',
-    'eventlist.title': 'Deine Events',
+    'eventlist.title': 'Aktuelle Events',
     'eventlist.hint': 'Hier siehst du die Events, die für dich zur Registrierung verfügbar sind. Manche Events sind möglicherweise nur für bestimmte Standorte oder Unternehmensbereiche sichtbar.',
     'eventlist.onlyactive': 'Nur aktive Events',
     'eventlist.view': 'Ansicht',
@@ -514,7 +514,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'landing.devby': 'Built by Eike Brenneisen and Nils Felten.',
     'landing.start': 'Start',
     'landing.about': 'The Event Experience Platform is a solution for managing participants at Deloitte events. Developed by Eike Brenneisen and Nils Felten. Currently in pilot phase.',
-    'eventlist.title': 'Your events',
+    'eventlist.title': 'Current events',
     'eventlist.hint': 'Here are the events available for your registration. Some events might only be visible for certain locations or business areas.',
     'eventlist.onlyactive': 'Only active events',
     // v30.67: Der Schlüssel fehlte nur im en-Block — t() liefert bei

@@ -682,7 +682,16 @@
     // v31.54: Zeitstrahl in der Listen-Ansicht — linke Spalte mit Monat und
     // Punkt je Event, durchgehende Linie über die Zeilen (bottom: -16px
     // überbrückt den row-gap). Auf dem Handy rendert die Liste ohne .dex-tl.
-    .my-events-list.dex-tl { display: grid; grid-template-columns: 92px minmax(0, 1fr); column-gap: 14px; row-gap: 16px; }
+    /* v31.73: `.dex-tl` ist nicht mehr an `.my-events-list` gebunden — die
+       Organizer-Eventübersicht nutzt denselben Zeitstrahl (Nutzer-Ansage
+       17.09.2026). Der Container ist ein Grid: Schiene | Karte. */
+    .dex-tl { display: grid; grid-template-columns: 92px minmax(0, 1fr); column-gap: 14px; row-gap: 16px; }
+    .dex-tl-dot.is-past { background: var(--dex-blue, #0076a8); box-shadow: 0 0 0 1px var(--dex-blue, #0076a8); }
+    /* v31.73: Monats-Trenner in der Karten-Ansicht — eine Zeile über der
+       Kartengruppe des Monats, über die volle Breite des Rasters. */
+    .event-grid-month { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; margin: 8px 0 -10px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dex-gray-600); }
+    .event-grid-month::after { content: ''; flex: 1; height: 1px; background: var(--dex-gray-200); }
+    .event-grid-month:first-child { margin-top: 0; }
     .dex-tl-rail { position: relative; padding-right: 18px; text-align: right; }
     .dex-tl-rail::before { content: ''; position: absolute; right: 6px; top: 0; bottom: -16px; width: 2px; background: var(--dex-gray-200); }
     .dex-tl-rail:nth-last-child(2)::before { bottom: auto; height: 32px; }

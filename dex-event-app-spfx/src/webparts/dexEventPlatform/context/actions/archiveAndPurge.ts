@@ -294,7 +294,8 @@ export function makeArchiveActions(deps: ArchiveDeps) {
   // steht und nicht drei.
   // ====================================================================
   async function runAutoMaintenance(
-    onProgress?: (p: AutoMaintenanceProgress) => void
+    onProgress?: (p: AutoMaintenanceProgress) => void,
+    opts?: { nurNeuesSeit?: AutoMaintenanceResult }
   ): Promise<AutoMaintenanceResult> {
     const out: AutoMaintenanceResult = {
       archived: 0, archiveFailed: 0, deleted: 0, deleteFailed: 0,
@@ -316,6 +317,20 @@ export function makeArchiveActions(deps: ArchiveDeps) {
       ]);
       const totalUnits = arch.total + delCount + due.length;
       if (totalUnits === 0) { out.nothingToDo = true; report('fertig', 0, 0, ''); return out; }
+      // v31.73: Innerhalb der 6-Stunden-Sperre läuft der Automat nur, wenn
+      // seit dem letzten Lauf etwas NEU fällig geworden ist. Nutzer-Befund
+      // 17.09.2026 („auch TN-Liste löschen Automatismus"): Der Lauf um 9 Uhr
+      // hatte 36 archiviert und 310 Archivzeilen entfernt; die Teilnehmerliste
+      // des Frühlingsfests wurde erst danach fällig (Vorwarnung + 1 Woche) und
+      // blieb bis zum nächsten Lauf mit Knopf im Kasten stehen. Maßstab je
+      // Kategorie ist die Fehlzahl des letzten Laufs: Liegen nicht mehr Zeilen
+      // an, als damals liegen blieben, sind es dieselben — und die wieder und
+      // wieder anzufassen bringt nichts. Liegt in EINER Kategorie mehr an,
+      // läuft der ganze Lauf (die Hängenbleiber kosten dann je einen Versuch).
+      const alt = opts && opts.nurNeuesSeit;
+      if (alt && arch.total <= alt.archiveFailed && delCount <= alt.deleteFailed && due.length <= alt.participantsFailed) {
+        out.nothingToDo = true; report('fertig', 0, 0, ''); return out;
+      }
 
       // Schritt 1: Arbeitslisten → DEX_Archive. `runArchiveExpired` meldet
       // je Liste (done/total) — die Summe über die Listen ist der Fortschritt.

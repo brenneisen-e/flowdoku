@@ -1093,6 +1093,11 @@ export default function AdminPage(): React.ReactElement {
   // verbleibenden Teilnehmer (= angemeldete Personen, die NICHT in der
   // eingefügten Liste stehen).
   const [massmailPasteRaw, setMassmailPasteRaw] = React.useState<string>('');
+  // v31.72: Für die Gruppe „Erinnerung" — wer das Event sieht, aber noch nicht
+  // geantwortet hat (dieselbe Rechnung wie „Wer hat noch nicht geantwortet?").
+  // undefined = wird gerade gerechnet, null = keine Liste (Sichtbarkeit nur
+  // nach Standort) → dann bleibt der Einfüge-Schritt, [] = alle haben geantwortet.
+  const [massmailOffene, setMassmailOffene] = React.useState<AudiencePerson[] | null | undefined>(undefined);
   const [emailSubject, setEmailSubject] = React.useState('');
   const [emailHeading, setEmailHeading] = React.useState('');
   const [emailBody, setEmailBody] = React.useState('');
@@ -1644,7 +1649,7 @@ export default function AdminPage(): React.ReactElement {
   // v30.66: useMailComposers — Rumpf in logic/useMailComposers.tsx.
   const {
     applyInviteHero, applyMassmailHero, inviteHeaderOpts, massmailHeaderOpts, openInviteModal,
-    openMassmailPicker, openPendingReminder, resetInviteDraft, resetMassmailDraft,
+    openMassmailPicker, openPendingReminder, berechneOffene, resetInviteDraft, resetMassmailDraft,
     resolveAudienceEmails, saveInviteDraft, saveMassmailDraft, sendMassmailTestToOrganizers,
   } = useMailComposers({
     currentUser, emailBody, emailHeading, emailSubject, eventServiceRef, getGroupMembers,
@@ -1661,6 +1666,20 @@ export default function AdminPage(): React.ReactElement {
     setVisibilityResolved, showAlert, showEmailModal, showInviteModal, siteUrl,
     subEventRegsByEventId, visibilityResolved,
   });
+  // v31.72: Beim Öffnen der Empfängerwahl die Offenen rechnen — der Zähler
+  // steht dann an der Zeile „Erinnerung", und der Editor bekommt die Liste.
+  // Steht HIER, direkt hinter dem Hook, der `berechneOffene` liefert — und
+  // damit VOR den frühen Returns weiter unten (rules-of-hooks).
+  React.useEffect(() => {
+    if (massmailMode !== 'pick' || !selectedEvent) return;
+    let weg = false;
+    setMassmailOffene(undefined);
+    berechneOffene()
+      .then(r => { if (!weg) setMassmailOffene(r && r.audience.length > 0 ? r.pending : null); })
+      .catch(() => { if (!weg) setMassmailOffene(null); });
+    return () => { weg = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [massmailMode, selectedEvent?.id]);
 
 
   // v30.66: createQrMailActions — Rumpf in logic/createQrMailActions.tsx.
@@ -2358,12 +2377,16 @@ export default function AdminPage(): React.ReactElement {
   const massmailPickModalProps = {
     massmailAudience, massmailStatuses, registrations, setMassmailAudience,
     setMassmailMode, setMassmailPasteRaw, setMassmailStatuses, setShowEmailModal,
+    massmailOffene,
   };
   const massmailPasteModalProps = {
     // v31.70: `massmailAudience` — derselbe Dialog dient jetzt „Nachrücker"
     // UND „Erinnerung" (Umkehrung der Menge).
     massmailAudience, massmailPasteRaw, registrations, setMassmailMode, setMassmailPasteRaw,
     setShowEmailModal, showAlert,
+    // v31.72: Der Verteiler des Events (Sichtbarkeits-Cache) füllt die
+    // Erinnerung vor — der Organizer soll ihn nicht einfügen müssen.
+    selectedEvent,
   };
   /**
    * v31.13: Die F&A-Liste zusaetzlich als Mail — mit dem Dank fuers
@@ -2408,6 +2431,7 @@ export default function AdminPage(): React.ReactElement {
     selectedEvent, sendMassmailTestToOrganizers, setComposerCrop, setEmailBody, setEmailHeading, setEmailSending,
     setEmailSubject, setMassmailCc, setMassmailHeaderImage, setMassmailMode, setMassmailPasteRaw, setMassmailSubheading,
     setShowEmailModal, showAlert, showEmailModal,
+    massmailOffene,
   };
   const inviteComposerModalProps = {
     applyInviteHero, confirmDialog, currentUser, eventServiceRef, getGroupMembers, inviteAddInput,
