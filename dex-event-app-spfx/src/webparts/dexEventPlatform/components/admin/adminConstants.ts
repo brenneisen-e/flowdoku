@@ -4,6 +4,7 @@
  * nicht und lassen sich deshalb als Ganzes verschieben; der Rueckweg waere
  * ein Modul-Zyklus, deshalb liegen sie hier und nicht in der Seite.
  */
+import { eventLogoAus, formRegelKopf } from '../../utils/mailHeaderImage';
 
 // v14.11 / v19.30: Aggregierte Zeile im konsolidierten View (Hauptevent mit
 // Sub-Events), eine pro Person. Auf Modul-Ebene definiert, damit auch
@@ -45,15 +46,18 @@ export const ACCESS_DENIED_MSG = '__DEX_ACCESS_DENIED__';
 export function eventHeaderImageLayout(overridesJson: string | undefined): { width: number; paddingV: number; paddingH: number } {
   const fullWidth = { width: 600, paddingV: 0, paddingH: 0 };
   if (!overridesJson) return fullWidth;
+  // v31.78: rundes Mail-Logo → 300 px statt automatischer Vollbreite (Rund-
+  // und Einladungsmail starten mit diesem Layout; s. formRegelKopf).
+  const logo = eventLogoAus(overridesJson);
   try {
     const il = (JSON.parse(overridesJson) || {})._headerImageLayout;
-    if (!il || typeof il !== 'object') return fullWidth;
-    return {
+    if (!il || typeof il !== 'object') return formRegelKopf(fullWidth, logo);
+    return formRegelKopf({
       width: typeof il.width === 'number' && il.width > 0 ? il.width : 180,
       paddingV: typeof il.paddingV === 'number' && il.paddingV >= 0 ? il.paddingV : 30,
       paddingH: typeof il.paddingH === 'number' && il.paddingH >= 0 ? il.paddingH : 30,
-    };
-  } catch { return fullWidth; }
+    }, logo);
+  } catch { return formRegelKopf(fullWidth, logo); }
 }
 
 // v30.52: `headerOptsFor` ist als `mailHeaderOpts` nach utils/mailHeaderImage

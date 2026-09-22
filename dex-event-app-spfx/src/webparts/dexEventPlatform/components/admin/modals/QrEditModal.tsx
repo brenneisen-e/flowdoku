@@ -422,9 +422,7 @@ export const QrEditModal: React.FC<QrEditModalProps> = (p) => {
             imageWidth={qrHeaderImage.width}
             imagePaddingV={qrHeaderImage.paddingV}
             imagePaddingH={qrHeaderImage.paddingH}
-            onImageWidthChange={(w) => setQrHeaderImage(p => ({ ...p, width: w }))}
-            onImagePaddingVChange={(v) => setQrHeaderImage(p => ({ ...p, paddingV: v }))}
-            onImagePaddingHChange={(h) => setQrHeaderImage(p => ({ ...p, paddingH: h }))}
+            // v31.79: Größe steht in der 4. Kachel der Bildwahl (MailHeaderImageChooser).
             headerExtra={headerExtra}
             extraAction={{
               label: qrEditSaving

@@ -36,6 +36,8 @@ export interface CommunicationStepProps {
   flushActiveCommTabToState: () => void;
   resolveTopLevelCommState: () => { emailLanguage: string; emailLogoBase64: string; outlookLogoBase64: string; outlookBody: string; outlookHeading: string; outlookSubheading: string; outlookSubject: string; disableEmails: boolean; disableRegistrationEmail: boolean; disableCancellationEmail: boolean; autoDeregisterOnDecline: boolean; inactiveHandling?: 'notify' | 'autoderegister'; disableOutlook: boolean; emailTemplateOverrides: Record<string, EmailOverrideEntry> };
   applyEventPhotoToLogo: (setter: (b64: string) => void) => Promise<string>;
+  /** v31.78: Nach einem Logo-Upload die Kopf-Maße nach der Form setzen (rund → 300 px). */
+  kopfMasseNachLogo: (b64: string) => void;
   autoDeregisterOnDecline: boolean;
   /** v30.95: Programmpunkte des Hauptevents — für {{Programm}} in der Vorschau-Karte. */
   agenda: AgendaItem[];
@@ -114,7 +116,7 @@ export interface CommunicationStepProps {
 }
 export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
   const { visible } = p;
-  const { activeCommTabIdx, applyCommTopicToAllSubEvents, commShared, setCommShared, flushActiveCommTabToState, resolveTopLevelCommState, applyEventPhotoToLogo, autoDeregisterOnDecline, bundledComm, childTermPlural, confirmDialog, disableCancellationEmail, disableEmails, disableOutlook, disableRegistrationEmail, effectiveHeaderImage, emailLanguage, emailLogoFromPhoto, emailLogoPreview, emailTemplateOverrides, emailTemplates, imageFile, imagePreview, inactiveHandling, isDe, mainCommDisabledAck, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, offerLogoToSubEvents, organizer, outlookBody, outlookLogoFromPhoto, outlookLogoPreview, renderHeaderSizeControl, renderOutlookUpdateButton, renderStepIntro, setAutoDeregisterOnDecline, setBundledComm, setDisableCancellationEmail, setDisableEmails, setDisableOutlook, setDisableRegistrationEmail, setEmailLanguage, setEmailLogoFromPhoto, setEmailLogoPreview, setEmailTemplateOverrides, setHtmlEditorMode, setHtmlEditorOpen, setHtmlEditorTemplateType, setInactiveHandling, setLogoCropTarget, setMainCommDisabledAck, setNotifyOrgCancelMode, setNotifyOrgRegisterFromDate, setNotifyOrgRegisterMode, setOutlookLogoFromPhoto, setOutlookLogoPreview, subEvents, subEventsOnlyMode, t, title, unlimitedParticipants, waitlistBlocker, setWaitlistBlocker, waitlistEnabled } = p;
+  const { activeCommTabIdx, applyCommTopicToAllSubEvents, commShared, setCommShared, flushActiveCommTabToState, resolveTopLevelCommState, applyEventPhotoToLogo, kopfMasseNachLogo, autoDeregisterOnDecline, bundledComm, childTermPlural, confirmDialog, disableCancellationEmail, disableEmails, disableOutlook, disableRegistrationEmail, effectiveHeaderImage, emailLanguage, emailLogoFromPhoto, emailLogoPreview, emailTemplateOverrides, emailTemplates, imageFile, imagePreview, inactiveHandling, isDe, mainCommDisabledAck, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, offerLogoToSubEvents, organizer, outlookBody, outlookLogoFromPhoto, outlookLogoPreview, renderHeaderSizeControl, renderOutlookUpdateButton, renderStepIntro, setAutoDeregisterOnDecline, setBundledComm, setDisableCancellationEmail, setDisableEmails, setDisableOutlook, setDisableRegistrationEmail, setEmailLanguage, setEmailLogoFromPhoto, setEmailLogoPreview, setEmailTemplateOverrides, setHtmlEditorMode, setHtmlEditorOpen, setHtmlEditorTemplateType, setInactiveHandling, setLogoCropTarget, setMainCommDisabledAck, setNotifyOrgCancelMode, setNotifyOrgRegisterFromDate, setNotifyOrgRegisterMode, setOutlookLogoFromPhoto, setOutlookLogoPreview, subEvents, subEventsOnlyMode, t, title, unlimitedParticipants, waitlistBlocker, setWaitlistBlocker, waitlistEnabled } = p;
 
   // v30.89: Ebene 3 („Texte und Bilder anpassen“) — zu, bis jemand sie braucht;
   // die Chip-Zeile öffnet den passenden Reiter. Abmelde-Regel der Organizer-Kopie
@@ -847,7 +849,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                               if (!ok) { e.target.value = ''; return; }
                               const compressed = await compressImage(file, 600, 0.9);
                               const reader = new FileReader();
-                              reader.onload = (ev) => { setEmailLogoPreview(ev.target?.result as string || ''); setEmailLogoFromPhoto(false); };
+                              reader.onload = (ev) => { const b = ev.target?.result as string || ''; setEmailLogoPreview(b); setEmailLogoFromPhoto(false); kopfMasseNachLogo(b); };
                               reader.readAsDataURL(compressed);
                             }} />
                           </label>
@@ -907,7 +909,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                               if (!ok) { e.target.value = ''; return; }
                               const compressed = await compressImage(file, 600, 0.9);
                               const reader = new FileReader();
-                              reader.onload = (ev) => { setOutlookLogoPreview(ev.target?.result as string || ''); setOutlookLogoFromPhoto(false); };
+                              reader.onload = (ev) => { const b = ev.target?.result as string || ''; setOutlookLogoPreview(b); setOutlookLogoFromPhoto(false); kopfMasseNachLogo(b); };
                               reader.readAsDataURL(compressed);
                             }} />
                           </label>

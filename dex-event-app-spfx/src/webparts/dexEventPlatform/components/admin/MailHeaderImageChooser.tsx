@@ -12,7 +12,7 @@
  * die sie sofort zeigt. Beide Stellen arbeiten auf demselben Objekt.
  */
 import * as React from 'react';
-import { MailHeaderImage, bildMasse, kopfMasseFuerBild } from '../../utils/mailHeaderImage';
+import { KOPF_RUND, KOPF_VOLLE_BREITE, MailHeaderImage, bildMasse, istVolleBreite, kopfMasseFuerBild } from '../../utils/mailHeaderImage';
 import { Calendar, Check, ImageIcon, Mail, Pencil, Trash2 } from '../Icons';
 import { cx } from '../dexUi';
 
@@ -90,6 +90,13 @@ export default function MailHeaderImageChooser(props: MailHeaderImageChooserProp
         {isDe ? 'Welches Bild steht oben in der Mail?' : 'Which image sits at the top of the email?'}
       </div>
       <div className="dex-ui-grid-2" style={{ gap: 10 }}>
+        {/* v31.79: Die Größe steht als VIERTE Kachel direkt bei der Bildwahl
+            (Nutzer-Ansage 22.09.2026: „kann man die Schnellauswahl der Breite
+            nicht einfach hier als 4. Kachel machen … das hier hochziehen …
+            Volle Breite und Standard (300 px)"). Vorher lag sie als Aufklapper
+            „Kopfbild" weiter unten im Editor — Bild wählen oben, Größe unten,
+            dazwischen der ganze Mailkopf. Die Rechnung dahinter ist dieselbe
+            wie in der Formregel: Banner → 600/0/0, sonst 300/24/24. */}
         {opts.map(opt => {
           const active = value.hero === opt.key;
           return (
@@ -130,6 +137,52 @@ export default function MailHeaderImageChooser(props: MailHeaderImageChooserProp
             </button>
           );
         })}
+        {(() => {
+          const vollOn = istVolleBreite(value);
+          const standardOn = value.width === KOPF_RUND.width && value.paddingV === KOPF_RUND.paddingV && value.paddingH === KOPF_RUND.paddingH;
+          const setze = (w: number, pv: number, ph: number): void => onChange({ ...value, width: w, paddingV: pv, paddingH: ph });
+          const clamp = (raw: string, max: number, fallback: number): number => {
+            const n = parseInt(raw, 10);
+            return isNaN(n) ? fallback : Math.max(0, Math.min(max, n));
+          };
+          const lbl: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.72rem', fontWeight: 600, color: 'var(--dex-gray-600)' };
+          const inp: React.CSSProperties = { width: 72, fontSize: '0.82rem' };
+          return (
+            <div className="dex-ui-card dex-ui-card--soft" style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+                <span className="dex-ui-choice-title">{isDe ? 'Wie groß im Kopf?' : 'How large in the header?'}</span>
+                <span className="dex-ui-muted" style={{ whiteSpace: 'nowrap' }}>{vollOn ? (isDe ? 'Volle Breite' : 'Full width') : `${value.width} px`}</span>
+              </div>
+              <div className="dex-ui-inline">
+                <button
+                  type="button"
+                  className={cx('dex-ui-chip', vollOn && 'is-active')}
+                  disabled={disabled}
+                  onClick={() => setze(KOPF_VOLLE_BREITE.width, KOPF_VOLLE_BREITE.paddingV, KOPF_VOLLE_BREITE.paddingH)}
+                  title={isDe ? 'Bild füllt den Kopf über die volle Breite (Höhe passt sich an) — für breite Bilder' : 'Image fills the header edge to edge (height adjusts) — for wide images'}
+                >{vollOn && <Check size={12} />}{isDe ? 'Volle Breite' : 'Full width'}</button>
+                <button
+                  type="button"
+                  className={cx('dex-ui-chip', standardOn && 'is-active')}
+                  disabled={disabled}
+                  onClick={() => setze(KOPF_RUND.width, KOPF_RUND.paddingV, KOPF_RUND.paddingH)}
+                  title={isDe ? '300 px breit, mittig, mit Rand — für runde und quadratische Bilder' : '300 px wide, centered, with spacing — for round and square images'}
+                >{standardOn && <Check size={12} />}{isDe ? 'Standard (300 px)' : 'Default (300 px)'}</button>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+                <label style={lbl}>{isDe ? 'Breite' : 'Width'}
+                  <input className="dex-ui-input dex-ui-input--sm" type="number" min={80} max={600} step={10} value={value.width} disabled={disabled} onChange={e => onChange({ ...value, width: Math.max(80, clamp(e.target.value, 600, value.width)) })} style={inp} />
+                </label>
+                <label style={lbl}>{isDe ? 'Seitlich' : 'Sides'}
+                  <input className="dex-ui-input dex-ui-input--sm" type="number" min={0} max={80} step={2} value={value.paddingH} disabled={disabled} onChange={e => onChange({ ...value, paddingH: clamp(e.target.value, 80, value.paddingH) })} style={inp} />
+                </label>
+                <label style={lbl}>{isDe ? 'Oben/unten' : 'Top/bottom'}
+                  <input className="dex-ui-input dex-ui-input--sm" type="number" min={0} max={80} step={2} value={value.paddingV} disabled={disabled} onChange={e => onChange({ ...value, paddingV: clamp(e.target.value, 80, value.paddingV) })} style={inp} />
+                </label>
+              </div>
+            </div>
+          );
+        })()}
       </div>
       {/* v31.9.7: Das Dateifeld liegt außerhalb der Kacheln — ein `<input>` in
           einem `<button>` wäre kein gültiges HTML. Die Kachel löst es aus. */}

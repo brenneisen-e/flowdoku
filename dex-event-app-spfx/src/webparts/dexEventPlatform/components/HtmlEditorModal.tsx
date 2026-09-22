@@ -916,7 +916,8 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
   // Nur Anzeige: Welche der beiden Ein-Klick-Vorgaben gerade gilt.
   const imgW = imageWidth ?? 180; const imgH = imagePaddingH ?? 30; const imgV = imagePaddingV ?? 30;
   const fullWidthOn = imgW === 600 && imgH === 0 && imgV === 0;
-  const standardOn = imgW === 180 && imgH === 30 && imgV === 30;
+  // v31.79: Standard = 300/24/24 (s. Chips unten).
+  const standardOn = imgW === 300 && imgH === 24 && imgV === 24;
   // v31.7: Wie voll ist der Text? Gemessen wird `value` — genau die Zeichenkette,
   // die gespeichert und in die Mail-Warteschlange geschrieben wird; die
   // Editor-Anzeige ist dafür kein Maß.
@@ -1167,7 +1168,10 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                         </div>
                       )}
                       {/* v26.93: Ein-Klick „Volle Breite" (600/0/0) und zurück auf
-                          Standard (180/30/30) — als Chips, die zeigen, was gilt. */}
+                          Standard — als Chips, die zeigen, was gilt.
+                          v31.79: Standard = 300/24/24 (rund/quadratisch), nicht mehr
+                          180/30/30; die Composer zeigen dieselben zwei Chips in der
+                          4. Kachel der Bildwahl, dieser Block bleibt für den Wizard. */}
                       <div className="dex-ui-inline">
                         <button
                           type="button"
@@ -1182,10 +1186,10 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                           type="button"
                           className={cx('dex-ui-chip', standardOn && 'is-active')}
                           onMouseDown={e => e.preventDefault()}
-                          onClick={() => { onImageWidthChange(180); if (onImagePaddingHChange) onImagePaddingHChange(30); if (onImagePaddingVChange) onImagePaddingVChange(30); }}
-                          title={t('Auf die Standard-Werte zurücksetzen (Breite 180, Abstand 30)', 'Back to the defaults (width 180, spacing 30)')}
+                          onClick={() => { onImageWidthChange(300); if (onImagePaddingHChange) onImagePaddingHChange(24); if (onImagePaddingVChange) onImagePaddingVChange(24); }}
+                          title={t('300 px breit, mittig, mit Rand — für runde und quadratische Bilder', '300 px wide, centered, with spacing — for round and square images')}
                         >
-                          {t('Standard (180 px, zentriert)', 'Default (180 px, centered)')}
+                          {t('Standard (300 px)', 'Default (300 px)')}
                         </button>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap' }}>

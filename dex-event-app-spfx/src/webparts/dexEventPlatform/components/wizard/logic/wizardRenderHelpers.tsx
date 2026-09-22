@@ -25,7 +25,9 @@ export function renderHeaderSizeControlImpl(ctx: RenderHeaderSizeControlCtx, pre
   const { headerImageLayout, isDe, setHeaderImageLayout } = ctx;
     const PREV_W = 260; const sc = PREV_W / 600;
     const isFullWidthPreset = headerImageLayout.width === 600 && headerImageLayout.paddingV === 0 && headerImageLayout.paddingH === 0;
-    const isDefaultPreset = headerImageLayout.width === 180 && headerImageLayout.paddingV === 30 && headerImageLayout.paddingH === 30;
+    // v31.79: Standard = 300/24/24 (rund/quadratisch) — dieselben zwei Chips wie
+    // in der Bildwahl der Composer; 180/30/30 war der Orb-Wert von früher.
+    const isDefaultPreset = headerImageLayout.width === 300 && headerImageLayout.paddingV === 24 && headerImageLayout.paddingH === 24;
     const numInput = (val: number, min: number, max: number, def: number, set: (n: number) => void): React.ReactElement => (
       <input type="number" min={min} max={max} step={min === 80 ? 10 : 2} value={val}
         className="dex-ui-input dex-ui-input--sm"
@@ -58,9 +60,9 @@ export function renderHeaderSizeControlImpl(ctx: RenderHeaderSizeControlCtx, pre
                 {isFullWidthPreset && <Check size={12} />}{isDe ? 'Volle Breite' : 'Full width'}
               </button>
               <button type="button" className={cx('dex-ui-chip', isDefaultPreset && 'is-active')}
-                onClick={() => setHeaderImageLayout({ width: 180, paddingV: 30, paddingH: 30 })}
-                title={isDe ? '180 px breit, 30 px Abstand rundum' : '180 px wide, 30 px padding all around'}>
-                {isDefaultPreset && <Check size={12} />}{isDe ? 'Standard' : 'Default'}
+                onClick={() => setHeaderImageLayout({ width: 300, paddingV: 24, paddingH: 24 })}
+                title={isDe ? '300 px breit, mittig, mit Rand — für runde und quadratische Bilder' : '300 px wide, centered, with spacing — for round and square images'}>
+                {isDefaultPreset && <Check size={12} />}{isDe ? 'Standard (300 px)' : 'Default (300 px)'}
               </button>
               <span className="dex-ui-muted">{isDe ? 'oder selbst einstellen:' : 'or set your own:'}</span>
             </div>

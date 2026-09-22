@@ -19,7 +19,7 @@ export interface UseEventSelectionCtx {
   eventServiceRef: EventService;
   getAllRegistrations: (eventId: string, onHttpError?: (_status: number) => void) => Promise<SPRegistration[]>;
   isDe: boolean;
-  navigate: (page: import("../../../context/NavigationContext").Page, eventId?: string, intent?: import("../../../context/NavigationContext").NavIntent) => void;
+  navigate: (page: import("../../../context/NavigationContext").Page, eventId?: string, intent?: import("../../../context/NavigationContext").NavIntent, opts?: import("../../../context/NavigationContext").NavigateOptions) => void;
   refreshEvents: () => Promise<void>;
   registrations: SPRegistration[];
   /** v30.67 (Review): gemeinsamer Nachlade-Pfad der Seite — `null` = nicht lesbar. */
@@ -94,7 +94,23 @@ export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionR
     // Events kennt. Skip falls bereits synchron — sonst doppelter History-
     // Eintrag beim Auto-Select via Deep-Link.
     if (selectedEventId !== event.id) {
-      navigate('admin', event.id);
+      /*
+       * v31.77: Der Wechsel zwischen den Reitern EINER Event-Familie (Klammer
+       * ↔ Termin, Termin ↔ Termin) ersetzt den obersten Stack-Eintrag, statt
+       * einen neuen zu stapeln. Nutzer-Befund 22.09.2026: „Event öffnen, auf
+       * ein Sub-Event klicken, oben links Zurück — er geht nicht zurück,
+       * sondern erst mit nochmaligem Klick." Der erste Klick sprang auf die
+       * Klammer (dieselbe Seite, anderer Reiter — sieht aus wie nichts), der
+       * zweite verließ das Event. „Zurück" heißt seit v31.59 „über den Stack";
+       * dann darf ein Reiterklick keinen Stack-Eintrag kosten.
+       */
+      const cur = selectedEvent;
+      const selbeFamilie = !!cur && cur.id !== event.id && (
+        cur.id === event.parentEventId
+        || event.id === cur.parentEventId
+        || (!!cur.parentEventId && cur.parentEventId === event.parentEventId)
+      );
+      navigate('admin', event.id, undefined, selbeFamilie ? { replace: true } : undefined);
     }
     /*
      * v31.24 — der Grund, warum der Wechsel sich lang anfühlte UND sprang
@@ -183,16 +199,27 @@ export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionR
   // v6.31: wenn navigation.selectedEventId gesetzt ist beim Mount (z.B. vom
   // Handbuch-Preview oder einem Deep-Link), direkt in die Detail-Ansicht
   // springen statt auf die Event-Auswahl-Liste.
-  const didAutoSelectRef = React.useRef(false);
+  //
+  // v31.77: Der Navigations-Stack führt — in BEIDE Richtungen. Bis hierher
+  // sprang der Effekt nur einmal (Deep-Link) und nur, wenn noch nichts
+  // gewählt war. „Zurück" (seit v31.59 über den Stack) setzte
+  // `selectedEventId` auf null oder auf das vorige Event, aber die Seite
+  // hielt an ihrem eigenen `selectedEvent` fest: Der erste Klick änderte
+  // sichtbar nichts, erst der zweite (Stack leer → Fallback) verließ das
+  // Organizer Center. Nutzer-Befund 22.09.2026: „auch wenn ich bei einem
+  // Hauptevent scrolle und dann Zurück, muss ich nochmal Zurück klicken."
+  // Jetzt: null → Übersicht; anderes Event → dieses Event (ohne neuen
+  // Stack-Eintrag, weil die Ids dann übereinstimmen).
   React.useEffect(() => {
-    if (didAutoSelectRef.current) return;
-    if (!selectedEventId || selectedEvent) return;
-    const match = adminEvents.find(e => e.id === selectedEventId);
-    if (match) {
-      didAutoSelectRef.current = true;
-      handleSelectEvent(match).catch(() => { /* Fehler wird intern gesetzt */ });
+    if (!selectedEventId) {
+      if (selectedEvent) { setSelectedEvent(null); setReservedDetailHeight(undefined); }
+      return;
     }
-  }, [selectedEventId, adminEvents, selectedEvent]);
+    if (selectedEvent && selectedEvent.id === selectedEventId) return;
+    const match = adminEvents.find(e => e.id === selectedEventId);
+    if (match) handleSelectEvent(match).catch(() => { /* Fehler wird intern gesetzt */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEventId, adminEvents]);
 
   // v22.40: Auto-Heilung stale Überbuchungs-Marker. Hat sich seit dem
   // „Überbuchung prüfen"-Lauf jemand abgemeldet, passt eine vorher als

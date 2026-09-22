@@ -64,9 +64,87 @@ export const MAIL_HEADER_IMAGE_DEFAULT: MailHeaderImage = {
  * messbare Maße (0/0) gilt der sichere Fall: 300 px. Breite und Abstand
  * bleiben im Editor danach frei einstellbar; das hier ist der Startwert.
  */
+export const KOPF_VOLLE_BREITE = { width: 600, paddingV: 0, paddingH: 0 };
+export const KOPF_RUND = { width: 300, paddingV: 24, paddingH: 24 };
+type KopfMasse = { width: number; paddingV: number; paddingH: number };
+
 export function kopfMasseFuerBild(width: number, height: number): Pick<MailHeaderImage, 'width' | 'paddingV' | 'paddingH'> {
   const banner = width > 0 && height > 0 && width / height > 1.3;
-  return banner ? { width: 600, paddingV: 0, paddingH: 0 } : { width: 300, paddingV: 24, paddingH: 24 };
+  return banner ? { ...KOPF_VOLLE_BREITE } : { ...KOPF_RUND };
+}
+
+/** Trägt ein Layout genau die automatische Vollbreiten-Vorgabe (600/0/0)? */
+export function istVolleBreite(l: KopfMasse): boolean {
+  return l.width === 600 && l.paddingV === 0 && l.paddingH === 0;
+}
+
+/**
+ * v31.78: Maße einer Data-URL SYNCHRON aus dem Dateikopf (PNG, JPEG, GIF) —
+ * ohne `Image()`, damit die Regel auch dort greift, wo Mails ohne Oberfläche
+ * gebaut werden (Bestätigung, Warteliste, Organizer-Mails, Outlook-Body).
+ * `null`, wenn das Format nicht lesbar ist (WebP, SVG, kein Base64).
+ */
+export function bildMasseSync(dataUrl: string): { width: number; height: number } | null {
+  try {
+    if (!dataUrl || dataUrl.indexOf('data:image/') !== 0) return null;
+    const comma = dataUrl.indexOf(',');
+    if (comma < 0 || dataUrl.slice(0, comma).indexOf(';base64') < 0) return null;
+    // 128 KB Base64 reichen: Der Bildkopf steht vorn; Canvas-Ausgaben tragen
+    // weder EXIF noch ICC-Profil, der JPEG-SOF-Marker kommt früh.
+    let b64 = dataUrl.slice(comma + 1, comma + 1 + 131072);
+    b64 = b64.slice(0, b64.length - (b64.length % 4));
+    const bin = atob(b64);
+    const n = bin.length;
+    const at = (i: number): number => bin.charCodeAt(i) & 0xff;
+    if (n > 24 && at(0) === 0x89 && at(1) === 0x50 && at(2) === 0x4e && at(3) === 0x47) {
+      return { width: ((at(16) << 24) | (at(17) << 16) | (at(18) << 8) | at(19)) >>> 0, height: ((at(20) << 24) | (at(21) << 16) | (at(22) << 8) | at(23)) >>> 0 };
+    }
+    if (n > 10 && bin.slice(0, 3) === 'GIF') {
+      return { width: at(6) | (at(7) << 8), height: at(8) | (at(9) << 8) };
+    }
+    if (n > 4 && at(0) === 0xff && at(1) === 0xd8) {
+      let i = 2;
+      while (i + 9 < n) {
+        if (at(i) !== 0xff) { i++; continue; }
+        const m = at(i + 1);
+        if (m === 0xff) { i++; continue; }
+        if (m === 0xd8 || m === 0x01 || (m >= 0xd0 && m <= 0xd7)) { i += 2; continue; }
+        const len = (at(i + 2) << 8) | at(i + 3);
+        const sof = m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc;
+        if (sof) return { height: (at(i + 5) << 8) | at(i + 6), width: (at(i + 7) << 8) | at(i + 8) };
+        i += 2 + Math.max(2, len);
+      }
+    }
+    return null;
+  } catch { return null; }
+}
+
+/**
+ * v31.78: DIE Formregel für das Mail-LOGO eines Events — Nutzer-Ansage
+ * 22.09.2026: „bei E-Mail-Versand auch darauf achten: wenn das Bild ca. rund
+ * ist (also nicht komplett quer), dann wäre 300 px besser als Standardgröße."
+ *
+ * Gilt nur für die AUTOMATISCHE Vollbreiten-Vorgabe 600/0/0 (v29.29-Default
+ * neuer Events, v30.87-Regel „eigenes Logo → volle Breite"). Ist das Logo
+ * nicht deutlich breiter als hoch (Breite ≤ 1,3 × Höhe), wird daraus 300 px
+ * mit Rand. Jede andere, selbst gesetzte Breite bleibt unangetastet — wer
+ * 400 px eingestellt hat, hat das gewollt. Ohne lesbare Maße bleibt es beim
+ * Layout, wie es ist.
+ */
+export function formRegelKopf<T extends KopfMasse>(layout: T, logoB64?: string | null): T {
+  if (!logoB64 || !istVolleBreite(layout)) return layout;
+  const m = bildMasseSync(logoB64);
+  if (!m || !m.width || !m.height) return layout;
+  if (m.width / m.height > 1.3) return layout;
+  return { ...layout, ...KOPF_RUND };
+}
+
+/** Das Mail-Logo (`_eventLogo`) aus dem Overrides-Blob — '' ohne. */
+export function eventLogoAus(overridesJson: string | undefined | null): string {
+  try {
+    const o = JSON.parse(overridesJson || '{}') || {};
+    return typeof o._eventLogo === 'string' ? o._eventLogo : '';
+  } catch { return ''; }
 }
 
 /** Maße einer Data-URL messen — 0/0, wenn das Bild nicht dekodierbar ist. */
@@ -214,7 +292,8 @@ export function eventHeaderImageOpts(
       paddingH: (typeof il.paddingH === 'number' && il.paddingH >= 0) ? il.paddingH : 30,
     }
     : (own ? { hero: 'logo', width: 600, paddingV: 0, paddingH: 0 } : { ...MAIL_HEADER_IMAGE_DEFAULT });
-  return mailHeaderOpts(base, own);
+  // v31.78: rundes Logo → 300 px statt der automatischen vollen Breite.
+  return mailHeaderOpts(own ? formRegelKopf(base, mailLogoB64 || logo) : base, own);
 }
 
 /** v31.0: Hat das Event ein eigenes Mail-Logo (`_eventLogo` im Blob oder
@@ -239,23 +318,27 @@ export function hasOwnMailLogo(overridesJson: string | undefined | null, mailLog
  * klein?").
  */
 export function resolveMailHeaderImage(raw: unknown, overridesJson: string | undefined | null, mailLogoB64?: string | null, allowCustom?: boolean): MailHeaderImage {
+  // v31.78: Steht das Logo im Kopf, gilt die Formregel (rund → 300 px) für
+  // die automatische Vollbreite — an jedem der drei Ausgänge unten.
+  const mitFormregel = (r: MailHeaderImage): MailHeaderImage =>
+    r.hero === 'logo' ? formRegelKopf(r, mailLogoB64 || eventLogoAus(overridesJson)) : r;
   const o = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : null;
   const storedWidth = o ? (typeof o.width === 'number' ? o.width : parseInt(String(o.width ?? ''), 10)) : NaN;
-  if (o && isFinite(storedWidth) && storedWidth > 0) return normalizeMailHeaderImage(o, allowCustom);
+  if (o && isFinite(storedWidth) && storedWidth > 0) return mitFormregel(normalizeMailHeaderImage(o, allowCustom));
   let il: { width?: unknown; paddingV?: unknown; paddingH?: unknown } = {};
   try {
     const ov = JSON.parse(overridesJson || '{}') || {};
     il = (ov._headerImageLayout && typeof ov._headerImageLayout === 'object') ? ov._headerImageLayout : {};
   } catch { /* Defaults */ }
   if (typeof il.width === 'number' && il.width > 0) {
-    return {
+    return mitFormregel({
       hero: 'logo',
       width: il.width,
       paddingV: (typeof il.paddingV === 'number' && il.paddingV >= 0) ? il.paddingV : 30,
       paddingH: (typeof il.paddingH === 'number' && il.paddingH >= 0) ? il.paddingH : 30,
-    };
+    });
   }
-  return hasOwnMailLogo(overridesJson, mailLogoB64) ? { hero: 'logo', width: 600, paddingV: 0, paddingH: 0 } : { ...MAIL_HEADER_IMAGE_DEFAULT };
+  return hasOwnMailLogo(overridesJson, mailLogoB64) ? mitFormregel({ hero: 'logo', width: 600, paddingV: 0, paddingH: 0 }) : { ...MAIL_HEADER_IMAGE_DEFAULT };
 }
 
 export function isDefaultMailHeaderImage(img: MailHeaderImage): boolean {
