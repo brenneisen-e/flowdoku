@@ -16,6 +16,8 @@ import { InfoTooltip } from '../../InfoTooltip';
 import { DeloitteEvent } from '../../../types';
 import { SPRegistration } from '../../../services/EventService';
 import { QrEmailOverride } from '../../../services/EmailTemplates';
+import { DeniedSubEventList } from '../../admin/adminTypes';
+import { bundledCommOf } from '../../../utils/bundledComm';
 
 export interface QrSendModalProps {
   childEventsOf: (parentEventId: string) => DeloitteEvent[];
@@ -38,14 +40,28 @@ export interface QrSendModalProps {
   setQrHelpOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setQrSendModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setQrSubMailsOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  /** v31.75: Ziel des Versands setzen — '' = das geöffnete Event, sonst ein Termin. */
+  setQrSendTargetId: React.Dispatch<React.SetStateAction<string>>;
+  qrSendTarget: DeloitteEvent | null;
+  qrSendTargetRegs: SPRegistration[] | null;
+  subEventRegsByEventId: Record<string, SPRegistration[]>;
+  deniedSubEventLists: DeniedSubEventList[];
 }
 
 export const QrSendModal: React.FC<QrSendModalProps> = (p) => {
-  const { childEventsOf, currentUser, getQrMailOverride, isDe, isSendingQR, openQrMailEditor, qrFullSendAction, qrHelpOpen, qrPreviewAction, qrPreviewLoading, qrSendModalOpen, qrSendResult, qrSentCount, qrSubMailsOpen, qrTestSendAction, registrations, selectedEvent, setQrHelpOpen, setQrSendModalOpen, setQrSubMailsOpen } = p;
+  const { childEventsOf, currentUser, getQrMailOverride, isDe, isSendingQR, openQrMailEditor, qrFullSendAction, qrHelpOpen, qrPreviewAction, qrPreviewLoading, qrSendModalOpen, qrSendResult, qrSentCount, qrSubMailsOpen, qrTestSendAction, registrations, selectedEvent, setQrHelpOpen, setQrSendModalOpen, setQrSubMailsOpen, setQrSendTargetId, qrSendTarget, qrSendTargetRegs, subEventRegsByEventId, deniedSubEventLists } = p;
+  // v31.75: Alles unten rechnet mit der Liste des ZIELS. `null` = nicht
+  // lesbar → der Versand-Knopf bleibt aus, der Dialog sagt warum.
+  const regs: SPRegistration[] | null = qrSendTarget ? qrSendTargetRegs : registrations;
+  const zielEv: DeloitteEvent = qrSendTarget || selectedEvent;
+  const kids = selectedEvent ? childEventsOf(selectedEvent.id) : [];
+  const listUnreadable = (ev: DeloitteEvent): boolean => deniedSubEventLists.some(d => d.title === (ev.title || ev.id));
+  const ohneCode = (list: SPRegistration[] | null): number => (list || []).filter(r => r.Status === 'Angemeldet').length;
+  const schliessen = (): void => { setQrSendModalOpen(false); setQrSendTargetId(''); };
   return (
         <Modal
           open={qrSendModalOpen}
-          onClose={() => setQrSendModalOpen(false)}
+          onClose={schliessen}
           dismissable={!isSendingQR}
           maxWidth={640}
           ariaLabel="QR-Codes versenden"
@@ -55,11 +71,57 @@ export const QrSendModal: React.FC<QrSendModalProps> = (p) => {
             : 'Every registered person receives their personal code by email — with name and attendee ID beside it.'}
           icon={<QrCode size={20} />}
           footer={
-            <button type="button" className="btn btn-secondary" onClick={() => setQrSendModalOpen(false)} disabled={isSendingQR}>
+            <button type="button" className="btn btn-secondary" onClick={schliessen} disabled={isSendingQR}>
               {isDe ? 'Schließen' : 'Close'}
             </button>
           }
         >
+            {/* v31.75: Für welches Event geht der Code raus? Nutzer-Ansage
+                22.09.2026: „im Modal entscheiden, für welches Event der QR-Code
+                versendet wird — Sub-Event oder Klammer-Event". Vorher galt
+                stillschweigend das geöffnete Event; für einen Termin musste
+                man ihn erst im Organizer Center öffnen. Der Code trägt die
+                Nummer des gewählten Events — am Check-in wählt das Team dann
+                genau dieses Event. */}
+            {kids.length > 0 && (
+              <div className="dex-ui-field">
+                <div className="dex-ui-label">{isDe ? 'Für welches Event geht der Code raus?' : 'Which event is the code for?'}</div>
+                <div className="dex-ui-inline">
+                  {[selectedEvent, ...kids].map(ev => {
+                    const isParent = ev.id === selectedEvent.id;
+                    const on = isParent ? !qrSendTarget : (!!qrSendTarget && qrSendTarget.id === ev.id);
+                    const unreadable = !isParent && listUnreadable(ev);
+                    const n = isParent ? ohneCode(registrations) : (unreadable ? null : ohneCode(subEventRegsByEventId[ev.id] || null));
+                    return (
+                      <button
+                        key={ev.id}
+                        type="button"
+                        className={cx('dex-ui-chip', on && 'is-active')}
+                        aria-pressed={on}
+                        disabled={isSendingQR}
+                        title={unreadable ? (isDe ? 'Teilnehmerliste nicht lesbar' : 'Attendee list not readable') : ev.title}
+                        onClick={() => setQrSendTargetId(isParent ? '' : ev.id)}
+                      >
+                        {isParent ? (isDe ? 'Hauptevent' : 'Main event') : (ev.title || (isDe ? 'Ohne Titel' : 'Untitled'))}
+                        <span className={cx('dex-ui-pill', 'dex-ui-pill--sm', unreadable ? 'dex-ui-pill--orange' : (n && n > 0 ? 'dex-ui-pill--green' : 'dex-ui-pill--gray'))} style={{ marginLeft: 6 }}>
+                          {unreadable ? (isDe ? 'nicht lesbar' : 'unreadable') : `${n} ${isDe ? 'ohne Code' : 'without code'}`}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="dex-ui-help">
+                  {isDe
+                    ? <>Der Code trägt die Nummer des gewählten Events — am Check-in wählt das Team dann dieses Event. Ziel jetzt: <strong>{zielEv.title}</strong>.</>
+                    : <>The code carries the number of the chosen event — at check-in the team picks that event. Target now: <strong>{zielEv.title}</strong>.</>}
+                  {!qrSendTarget && !!selectedEvent.subEventsOnlyMode && !bundledCommOf(selectedEvent).qr && (
+                    <> {isDe
+                      ? 'Neue Anmeldungen bekommen danach automatisch den Code ihres Termins, nicht des Hauptevents — soll auch der automatische Versand über das Hauptevent laufen, stell im Assistenten (Kommunikation) „Einen QR-Code fürs Gesamt-Event" ein.'
+                      : 'New registrations will automatically receive the code of their session, not of the main event — to route the automatic send via the main event as well, enable “One QR code for the whole event” in the wizard (Communication).'}</>
+                  )}
+                </div>
+              </div>
+            )}
             {/* v30.36: Entschlackt. Vorher standen hier fuenf konkurrierende
                 Aktionen, zwei Erklaerkaesten, eine Warnung und eine zweite
                 Spalte mit dem Self-Check-in — beim Oeffnen musste man erst
@@ -76,9 +138,19 @@ export const QrSendModal: React.FC<QrSendModalProps> = (p) => {
 
             {/* Stand der Liste: Wer hat schon einen Code, wer noch nicht? */}
             {(() => {
-              const without = registrations.filter(r => r.Status === 'Angemeldet').length;
-              const withQr = registrations.filter(r => r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length;
-              const externalCount = registrations.filter(r => r.Status === 'Angemeldet').filter(r => isExternalEmail(r.ParticipantEmail)).length;
+              if (regs === null) {
+                return (
+                  <div className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm" role="status">
+                    <span className="dex-ui-callout-icon"><AlertCircle size={14} /></span>
+                    <span>{isDe
+                      ? <>Die Teilnehmerliste von <strong>{zielEv.title}</strong> ist nicht lesbar — ob jemand ohne Code ist, lässt sich nicht sagen. Kein Versand, bis sie lesbar ist (Berechtigung oder Drosselung).</>
+                      : <>The attendee list of <strong>{zielEv.title}</strong> is not readable — whether anyone lacks a code cannot be told. No sending until it can be read (permission or throttling).</>}</span>
+                  </div>
+                );
+              }
+              const without = regs.filter(r => r.Status === 'Angemeldet').length;
+              const withQr = regs.filter(r => r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length;
+              const externalCount = regs.filter(r => r.Status === 'Angemeldet').filter(r => isExternalEmail(r.ParticipantEmail)).length;
               return (
                 <div className="dex-ui-inline">
                   <span className={cx('dex-ui-pill', without > 0 ? 'dex-ui-pill--orange' : 'dex-ui-pill--green')}><strong>{without}</strong> {isDe ? 'noch ohne Code' : 'still without a code'}</span>
@@ -110,15 +182,16 @@ export const QrSendModal: React.FC<QrSendModalProps> = (p) => {
                     <div className="dex-ui-step-action">{btn}</div>
                   </div>
                 );
-                const pending = registrations.filter(r => r.Status === 'Angemeldet').length;
-                const textCustomized = !!getQrMailOverride(selectedEvent);
+                // v31.75: Zähler und Text-Vermerk gehören zum ZIEL.
+                const pending = (regs || []).filter(r => r.Status === 'Angemeldet').length;
+                const textCustomized = !!getQrMailOverride(zielEv);
                 // v31.2: Wer selbst nicht angemeldet ist, wundert sich beim
                 // Test-Scan — der Hinweis steht deshalb IM Test-Schritt (als
                 // zweite Zeile des Hints), nicht mehr am Ende des Dialogs und
                 // auch nicht als eigener Block zwischen 2 und 3, der die Kette
                 // unterbräche.
                 const orgEmail = (currentUser.email || '').toLowerCase();
-                const isOrgRegistered = !!orgEmail && registrations.some(r => (r.ParticipantEmail || '').toLowerCase() === orgEmail && (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt'));
+                const isOrgRegistered = !!orgEmail && (regs || []).some(r => (r.ParticipantEmail || '').toLowerCase() === orgEmail && (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt'));
                 return (
                   <>
                     {stepRow(1,
@@ -158,16 +231,18 @@ export const QrSendModal: React.FC<QrSendModalProps> = (p) => {
                       <button
                         className="btn btn-primary dex-ui-btn-sm"
                         onClick={() => { qrFullSendAction().catch(() => { /* */ }); }}
-                        disabled={isSendingQR || pending === 0}
+                        disabled={isSendingQR || pending === 0 || regs === null}
                         style={{ minWidth: 110, fontWeight: 700 }}
                       >
                         {isSendingQR
                           ? `${isDe ? 'Versende' : 'Sending'}… (${qrSentCount})`
-                          : pending === 0
-                            ? (isDe ? 'Erledigt' : 'Done')
-                            : (isDe ? `An ${pending} senden` : `Send to ${pending}`)}
+                          : regs === null
+                            ? (isDe ? 'Nicht lesbar' : 'Unreadable')
+                            : pending === 0
+                              ? (isDe ? 'Erledigt' : 'Done')
+                              : (isDe ? `An ${pending} senden` : `Send to ${pending}`)}
                       </button>,
-                      pending === 0 && !isSendingQR ? 'done' : undefined)}
+                      pending === 0 && regs !== null && !isSendingQR ? 'done' : undefined)}
                   </>
                 );
               })()}
@@ -188,7 +263,6 @@ export const QrSendModal: React.FC<QrSendModalProps> = (p) => {
                 Nackter div: dex-ui-section ohne Titel wäre nur ein Abstand. */}
             <div>
               {(() => {
-                const kids = selectedEvent ? childEventsOf(selectedEvent.id) : [];
                 if (kids.length === 0) return null;
                 const term = (selectedEvent && selectedEvent.childEventTermPlural) || (isDe ? 'Sub-Events' : 'sub-events');
                 const customized = kids.filter(ce => !!getQrMailOverride(ce)).length;

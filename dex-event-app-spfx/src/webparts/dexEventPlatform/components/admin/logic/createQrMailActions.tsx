@@ -32,6 +32,13 @@ export interface CreateQrMailActionsCtx {
   /** v31.74: Eigenes Kopfbild (Data-URL) — gespeichert im QR-Override. */
   qrCustomHeaderB64: string;
   setQrCustomHeaderB64: React.Dispatch<React.SetStateAction<string>>;
+  /** v31.75: Ziel des Versands aus dem Dialog — ein Termin der geöffneten
+   *  Klammer, sonst `null` (= das geöffnete Event). `qrSendTargetRegs` ist
+   *  dessen Liste; `null` = nicht lesbar/nicht geladen → kein Versand. */
+  qrSendTarget: DeloitteEvent | null;
+  qrSendTargetRegs: SPRegistration[] | null;
+  /** Termin-Listen der Klammer neu laden (nach einem Versand an einen Termin). */
+  reloadSubEventRegs: () => void;
   refreshEvents: () => Promise<void>;
   registrations: SPRegistration[];
   sciBusy: boolean;
@@ -82,6 +89,7 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
     confirmDialog, currentUser, eventServiceRef, isDe, qrBlockLang,
     qrBlockNote, qrEditBody, qrEditHeading, qrEditSaving, qrEditSubheading, qrEditSubject,
     qrEditTarget, qrHeaderImage, qrCustomHeaderB64, setQrCustomHeaderB64, refreshEvents, registrations, reloadRegistrations, sciBusy, sciFrom, sciTo,
+    qrSendTarget, qrSendTargetRegs, reloadSubEventRegs,
     selectedEvent, setIsSendingQR, setQrBlockLang, setQrBlockNote, setQrEditBody, setQrEditHeading,
     setQrEditOpen, setQrEditSampleBlock, setQrEditSampleImg, setQrEditSaving, setQrEditSubheading,
     setQrEditSubject, setQrEditTarget, setQrEventPhotoB64, setQrHeaderImage, setQrPreviewHtml,
@@ -89,6 +97,11 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
     setQrSendResult, setQrSentCount, setSciBusy, setSciSaveMsg, setSelectedEvent,
     showAlert, updateEvent,
   } = ctx;
+  // v31.75: Vorschau, Test, Editor und Versand laufen gegen das im Dialog
+  // gewählte Ziel — vorher immer gegen das geöffnete Event, und für einen
+  // Termin musste man ihn erst im Organizer Center öffnen.
+  const sendEv: DeloitteEvent = qrSendTarget || selectedEvent;
+  const sendRegs: SPRegistration[] | null = qrSendTarget ? qrSendTargetRegs : registrations;
   // v22.6: QR-Versand-Aktionen als benannte Funktionen (vorher inline im Modal) —
   // macht das neue kompakte Querformat-Layout lesbar. Verhalten unverändert.
   // v22.18: pro-Event angepasster QR-Mail-Text — Override-Key 'QRCode' im
@@ -109,9 +122,10 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
   // der Sub-Events einzeln gestalten (je Sub-Event ein eigener Override auf
   // dessen Zeile; Versand und Auto-Versand des Sub-Events lesen genau den).
   const openQrMailEditor = async (target?: DeloitteEvent): Promise<void> => {
-    const tgt = target || selectedEvent;
+    // v31.75: ohne ausdrückliches Ziel gilt das Ziel des Versand-Dialogs.
+    const tgt = target || sendEv;
     if (!tgt) return;
-    setQrEditTarget(target || null);
+    setQrEditTarget(selectedEvent && tgt.id !== selectedEvent.id ? tgt : null);
     const ov = getQrMailOverride(tgt);
     const def = qrEmailDefaults(tgt.emailLanguage || 'EN');
     setQrEditSubject((ov && ov.subject) || def.subject);
@@ -277,19 +291,19 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
   };
 
   const qrPreviewAction = async (): Promise<void> => {
-    if (!selectedEvent) return;
+    if (!sendEv) return;
     setQrPreviewLoading(true);
     try {
       const orgEmail = currentUser.email;
       const orgFullName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || orgEmail;
       const orgFirstName = currentUser.firstName || orgFullName.split(/\s+/)[0] || orgFullName;
-      const qrData = `DEX|${selectedEvent.eventNumber}|${orgEmail}`;
+      const qrData = `DEX|${sendEv.eventNumber}|${orgEmail}`;
       const qrImageHtml = await buildQrImageHtml(qrData);
-      const qrOv = getQrMailOverride(selectedEvent);
-      const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName, qrOv, ownQrId(), await qrHeroPhotoFor(selectedEvent, qrOv), selectedEvent);
+      const qrOv = getQrMailOverride(sendEv);
+      const emailData = qrCodeEmail(orgFirstName, sendEv.title, qrImageHtml, sendEv.emailLanguage || 'EN', orgFullName, qrOv, ownQrId(), await qrHeroPhotoFor(sendEv, qrOv), sendEv);
       let eventOrb = '';
       try {
-        const ov = JSON.parse(selectedEvent.emailTemplateOverrides || '{}');
+        const ov = JSON.parse(sendEv.emailTemplateOverrides || '{}');
         if (ov && typeof ov._eventLogo === 'string') eventOrb = ov._eventLogo;
       } catch { /* */ }
       const previewBody = emailData.body.replace(/\{\{ORB_URL\}\}/g, eventOrb || getCachedOrbBase64() || '');
@@ -303,7 +317,7 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
   // v29.26: optionales target — Test aus dem Editor eines Sub-Events nutzt
   // dessen Titel/Sprache/Event-Nummer statt der des geöffneten Events.
   const qrTestSendAction = async (liveOverride?: QrEmailOverride, target?: DeloitteEvent): Promise<void> => {
-    const ev = target || selectedEvent;
+    const ev = target || sendEv;
     if (!eventServiceRef || !ev) return;
     setIsSendingQR(true); setQrSendResult(null); setQrSentCount(0);
     try {
@@ -340,8 +354,16 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
     setIsSendingQR(false);
   };
   const qrFullSendAction = async (): Promise<void> => {
-    if (!eventServiceRef || !selectedEvent) return;
-    const eligible = registrations.filter(r => r.Status === 'Angemeldet');
+    if (!eventServiceRef || !sendEv) return;
+    // v31.75: Ohne lesbare Liste des Ziels kein Versand — `[]` hieße sonst
+    // „niemand ohne Code", und das ist eine Aussage über gar nichts.
+    if (sendRegs === null) {
+      setQrSendResult(isDe
+        ? `Fehler: Die Teilnehmerliste von „${sendEv.title}" ist nicht lesbar — kein Versand.`
+        : `Error: the attendee list of “${sendEv.title}” is not readable — nothing sent.`);
+      return;
+    }
+    const eligible = sendRegs.filter(r => r.Status === 'Angemeldet');
     if (eligible.length === 0) {
       setQrSendResult(isDe ? 'Alle Teilnehmer haben bereits einen QR-Code — nichts zu senden.' : 'All participants already have a QR code — nothing to send.');
       return;
@@ -372,36 +394,36 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
     // Drosselung der Normalfall ist.
     let colMissing = false;
     for (const reg of eligible) {
-      const qrData = `DEX|${selectedEvent.eventNumber}|${reg.ParticipantEmail}`;
+      const qrData = `DEX|${sendEv.eventNumber}|${reg.ParticipantEmail}`;
       const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
       const firstName = reg.Vorname || (reg.ParticipantName || '').trim().split(/\s+/)[0] || name;
       const qrImageHtml = await buildQrImageHtml(qrData);
-      const sendOv = getQrMailOverride(selectedEvent);
-      const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', name, sendOv, reg.TeilnehmerID, await qrHeroPhotoFor(selectedEvent, sendOv), selectedEvent);
+      const sendOv = getQrMailOverride(sendEv);
+      const emailData = qrCodeEmail(firstName, sendEv.title, qrImageHtml, sendEv.emailLanguage || 'EN', name, sendOv, reg.TeilnehmerID, await qrHeroPhotoFor(sendEv, sendOv), sendEv);
       // v27.11: Member-Firm-Adressen zählen als intern → QR-Mail direkt.
       const isExternal = isExternalEmail(reg.ParticipantEmail);
       if (isExternal) {
-        const orgEmails = (selectedEvent.organizerEmails || []).filter(Boolean);
+        const orgEmails = (sendEv.organizerEmails || []).filter(Boolean);
         const orgRecipient = orgEmails.length > 0 ? orgEmails.join(';') : currentUser.email;
-        const orgSubject = `[Externer Teilnehmer] QR-Code für ${name} — ${selectedEvent.title}`;
+        const orgSubject = `[Externer Teilnehmer] QR-Code für ${name} — ${sendEv.title}`;
         const qrExternalHint = `<div style="margin:0 0 16px;padding:12px 16px;background:#fff3e0;border:1px solid #ed8b00;border-radius:8px;font-size:13px;line-height:1.55;color:#7a4a00;">`
           + `<strong>QR-Code für externen Teilnehmer.</strong><br>`
           + `Eigentlich für <strong>${reg.ParticipantEmail}</strong> (${name}). Da externe Adressen keinen Mail-Versand bekommen, landet der QR-Code bei dir — drucke ihn aus oder leite die Mail intern an den Empfänger weiter (Datenschutzrichtlinien Deloitte Deutschland beachten).`
           + `</div>`;
         const qrBody = injectIntoEmailContent(emailData.body, qrExternalHint);
-        await eventServiceRef.queueEmail(orgSubject, orgRecipient, 'Organizer', qrBody, 'QRCode', selectedEvent.title, selectedEvent.id);
+        await eventServiceRef.queueEmail(orgSubject, orgRecipient, 'Organizer', qrBody, 'QRCode', sendEv.title, sendEv.id);
         extCount++;
       } else {
-        await eventServiceRef.queueEmail(emailData.subject, reg.ParticipantEmail, name, emailData.body, 'QRCode', selectedEvent.title, selectedEvent.id);
+        await eventServiceRef.queueEmail(emailData.subject, reg.ParticipantEmail, name, emailData.body, 'QRCode', sendEv.title, sendEv.id);
       }
-      if (selectedEvent.subsiteUrl) {
+      if (sendEv.subsiteUrl) {
         // v31.4: Die Nummer, die eine Zeile weiter oben an `qrCodeEmail`
         // ging — also die, die in DIESER Mail gedruckt steht. Bewusst nicht
         // frisch gelesen: Zwischen Mailaufbau und Statuswechsel kann ein
         // Reorder gelaufen sein, und dann stünde in der Spalte eine Zahl,
         // die in keiner Mail steht. Ohne die Spalte (Bestandsliste) setzt
         // der Aufruf still nur den Status — der Versand läuft weiter.
-        const st = await eventServiceRef.setQRSentStatus(selectedEvent.subsiteUrl, reg.Id, reg.TeilnehmerID, colMissing);
+        const st = await eventServiceRef.setQRSentStatus(sendEv.subsiteUrl, reg.Id, reg.TeilnehmerID, colMissing);
         if (!st.ok) {
           writeFailed++;
           if (failedNames.length < 12) failedNames.push(name || reg.ParticipantEmail || String(reg.Id));
@@ -414,10 +436,11 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
       sent++; setQrSentCount(sent);
     }
     // v21: Erster Massen-Versand startet die QR-Phase (AutoSendQRCode=true).
-    try { await eventServiceRef.updateEvent(parseInt(selectedEvent.id, 10), { AutoSendQRCode: true }); } catch { /* */ }
+    try { await eventServiceRef.updateEvent(parseInt(sendEv.id, 10), { AutoSendQRCode: true }); } catch { /* */ }
     // v30.67 (Review): gemeinsamer Nachlade-Pfad — nach einem Massen-Versand
     // ist die 429 auf dem Reload der Normalfall, die Liste wurde dann `[]`.
-    await reloadRegistrations();
+    // v31.75: Bei einem Termin als Ziel die Termin-Listen der Klammer.
+    if (qrSendTarget) reloadSubEventRegs(); else await reloadRegistrations();
     setIsSendingQR(false);
     const idHint = idMissing > 0
       ? (isDe

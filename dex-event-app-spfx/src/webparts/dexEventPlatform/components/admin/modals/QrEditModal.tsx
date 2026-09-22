@@ -53,10 +53,14 @@ export interface QrEditModalProps {
   /** v31.74: Eigenes Kopfbild (Data-URL), wird mit dem Override gespeichert. */
   qrCustomHeaderB64: string;
   setQrCustomHeaderB64: React.Dispatch<React.SetStateAction<string>>;
+  /** v31.75: Ziel des Versand-Dialogs (Termin der Klammer) samt Liste —
+   *  dann zeigt auch der Editor eines Termins Zähler und Versand. */
+  qrSendTarget: DeloitteEvent | null;
+  qrSendTargetRegs: SPRegistration[] | null;
 }
 
 export const QrEditModal: React.FC<QrEditModalProps> = (p) => {
-  const { closeQrMailEditor, currentUser, getQrMailOverride, isDe, isSendingQR, qrBlockLang, qrBlockNote, qrEditBody, qrEditHeading, qrEditOpen, qrEditSampleBlock, qrEditSampleImg, qrEditSaving, qrEditSubheading, qrEditSubject, qrEditTarget, qrEventPhotoB64, qrFullSendAction, qrHeaderImage, qrSendResult, qrSentCount, qrTestSendAction, registrations, saveQrMailOverride, selectedEvent, setComposerCrop, setQrBlockLang, setQrBlockNote, setQrEditBody, setQrEditHeading, setQrEditSampleBlock, setQrEditSubheading, setQrEditSubject, setQrHeaderImage, qrCustomHeaderB64, setQrCustomHeaderB64 } = p;
+  const { closeQrMailEditor, currentUser, getQrMailOverride, isDe, isSendingQR, qrBlockLang, qrBlockNote, qrEditBody, qrEditHeading, qrEditOpen, qrEditSampleBlock, qrEditSampleImg, qrEditSaving, qrEditSubheading, qrEditSubject, qrEditTarget, qrEventPhotoB64, qrFullSendAction, qrHeaderImage, qrSendResult, qrSentCount, qrTestSendAction, registrations, saveQrMailOverride, selectedEvent, setComposerCrop, setQrBlockLang, setQrBlockNote, setQrEditBody, setQrEditHeading, setQrEditSampleBlock, setQrEditSubheading, setQrEditSubject, setQrHeaderImage, qrCustomHeaderB64, setQrCustomHeaderB64, qrSendTarget, qrSendTargetRegs } = p;
         // v31.2: Aufklapper „Block neben dem QR-Code anpassen" — standardmäßig
         // zu, weil Sprache und Hinweis selten geändert werden. Die Hooks stehen
         // alle hier oben; die Komponente hat keinen frühen Return.
@@ -88,6 +92,13 @@ export const QrEditModal: React.FC<QrEditModalProps> = (p) => {
         // ersetzt (dessen Teilnehmerliste ist hier nicht geladen).
         const qrTgt = qrEditTarget || selectedEvent;
         const isSubTarget = qrTgt.id !== selectedEvent.id;
+        // v31.75: Die Liste, die zum Editor-Ziel gehört — die des geöffneten
+        // Events, oder die des im Versand-Dialog gewählten Termins. `null` =
+        // hier nicht bekannt (Termin nur zum Text-Anpassen geöffnet, oder
+        // Liste nicht lesbar) → kein Zähler, kein Versand, nur der Hinweis.
+        const regsHere: SPRegistration[] | null = !isSubTarget
+          ? registrations
+          : (qrSendTarget && qrTgt.id === qrSendTarget.id ? qrSendTargetRegs : null);
         const myName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email;
         const previewVars: Record<string, string> = {
           EventTitle: qrTgt.title,
@@ -138,8 +149,8 @@ export const QrEditModal: React.FC<QrEditModalProps> = (p) => {
           // verglichen wird nur, was in der Mail landen würde (bei „Standard-
           // Logo" zählt ein noch im Fenster liegendes Bild nicht).
           || (qrHeaderImage.hero === 'custom' ? qrCustomHeaderB64 : '') !== (savedHeaderImage.hero === 'custom' ? savedCustom : '');
-        const noCodeCount = registrations.filter(r => r.Status === 'Angemeldet').length;
-        const withCodeCount = registrations.filter(r => r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length;
+        const noCodeCount = (regsHere || []).filter(r => r.Status === 'Angemeldet').length;
+        const withCodeCount = (regsHere || []).filter(r => r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length;
         // v31.2: Die Spalte links ist auf das Nötige reduziert: Zähler,
         // Testmail (sekundär), Versand (der einzige Primär-Knopf) und Zurück
         // als Textknopf. Der Satz zur Live-Vorschau steht im Tooltip neben der
@@ -159,16 +170,24 @@ export const QrEditModal: React.FC<QrEditModalProps> = (p) => {
                 Massen-Versand zum FALSCHEN Event (hier ist die Liste des
                 geöffneten Events geladen) — stattdessen sagt ein Hinweis,
                 wo der Versand mit diesem Text stattfindet. */}
-            {isSubTarget && (
+            {/* v31.75: Ein Termin, der im Versand-Dialog als Ziel gewählt ist,
+                bekommt hier Zähler und Versand wie das geöffnete Event — der
+                Hinweis bleibt nur für Termine, deren Liste hier nicht vorliegt. */}
+            {isSubTarget && regsHere === null && (
               <div className="dex-ui-callout dex-ui-callout--info dex-ui-callout--sm">
                 <span>
                   {isDe
-                    ? <>Du gestaltest die QR-Mail des Sub-Events <strong>{qrTgt.title}</strong>. Der gespeicherte Text gilt für dessen manuellen Versand (Sub-Event im Organizer Center öffnen → &bdquo;QR-Codes versenden&ldquo;) und den automatischen Versand bei neuen Anmeldungen.</>
-                    : <>You are customizing the QR email of the sub-event <strong>{qrTgt.title}</strong>. The saved text applies to its manual sending (open the sub-event in the Organizer Center → “Send QR codes”) and the automatic send for new registrations.</>}
+                    ? <>Du gestaltest die QR-Mail des Sub-Events <strong>{qrTgt.title}</strong>. Der gespeicherte Text gilt für dessen Versand (im Versand-Dialog diesen Termin als Ziel wählen) und den automatischen Versand bei neuen Anmeldungen.</>
+                    : <>You are customizing the QR email of the sub-event <strong>{qrTgt.title}</strong>. The saved text applies to its sending (pick this session as the target in the send dialog) and the automatic send for new registrations.</>}
                 </span>
               </div>
             )}
-            {!isSubTarget && (
+            {isSubTarget && regsHere !== null && (
+              <div className="dex-ui-callout dex-ui-callout--neutral dex-ui-callout--sm">
+                <span>{isDe ? <>Ziel: <strong>{qrTgt.title}</strong></> : <>Target: <strong>{qrTgt.title}</strong></>}</span>
+              </div>
+            )}
+            {regsHere !== null && (
               <div className="dex-ui-inline">
                 <span className="dex-ui-pill dex-ui-pill--green"><strong>{noCodeCount}</strong> {isDe ? 'ohne Code' : 'without code'}</span>
                 <span className="dex-ui-pill dex-ui-pill--gray"><strong>{withCodeCount}</strong> {isDe ? 'mit Code' : 'with code'}</span>
@@ -186,7 +205,7 @@ export const QrEditModal: React.FC<QrEditModalProps> = (p) => {
               </button>
               <div className="dex-ui-help">{isDe ? 'Nutzt deinen aktuellen Text — auch ungespeichert.' : 'Uses your current text — even if unsaved.'}</div>
             </div>
-            {!isSubTarget && (
+            {regsHere !== null && (
               <button
                 type="button"
                 className="btn btn-primary"
