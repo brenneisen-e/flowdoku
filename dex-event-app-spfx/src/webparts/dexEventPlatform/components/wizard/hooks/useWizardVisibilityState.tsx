@@ -10,6 +10,7 @@ import { EmailOverrideEntry } from '../../wizard/emailOverrideEntry';
 import { readOutlookLogo, reinsertOrganizerPlaceholder } from '../../wizard/wizardHelpers';
 import { reinsertProgramPlaceholder } from '../../../utils/programPlaceholder';
 import { compressImage } from '../../../utils/imageCompress';
+import { formRegelKopf } from '../../../utils/mailHeaderImage';
 import { applyEventPhotoToLogoImpl } from '../../wizard/logic/wizardMisc';
 import { renderHeaderSizeControlImpl } from '../../wizard/logic/wizardRenderHelpers';
 import { AgendaItem } from '../../../types';
@@ -186,13 +187,25 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
     try {
       const o = JSON.parse(editEvent.emailTemplateOverrides);
       const il = o._headerImageLayout || {};
-      return {
+      // v31.78: rundes Logo mit automatischer Vollbreite → 300 px (formRegelKopf),
+      // damit die Größensteuerung dasselbe zeigt, was die Mails rendern.
+      return formRegelKopf({
         width: typeof il.width === 'number' && il.width > 0 ? il.width : 180,
         paddingV: typeof il.paddingV === 'number' && il.paddingV >= 0 ? il.paddingV : 30,
         paddingH: typeof il.paddingH === 'number' && il.paddingH >= 0 ? il.paddingH : 30,
-      };
+      }, typeof o._eventLogo === 'string' ? o._eventLogo : '');
     } catch { return legacyDef; }
   });
+  /**
+   * v31.78: Nach einem Logo-Upload (oder „Event-Foto übernehmen") die Maße
+   * nach der Form setzen — nur, wenn noch die automatische Vollbreite steht.
+   * Nutzer-Ansage 22.09.2026: „wenn das Bild ca. rund ist, dann 300 px statt
+   * Standardgröße." Selbst gesetzte Breiten bleiben.
+   */
+  const kopfMasseNachLogo = (b64: string): void => {
+    if (!b64) return;
+    setHeaderImageLayout(prev => formRegelKopf(prev, b64));
+  };
   // v19.20: Snapshot des initialen Header-Bild-Layouts (Breite/Innenabstand)
   // beim Edit-Mount. Eine reine Layout-Änderung verändert NICHT den rohen
   // Outlook-Body-Text (das Layout wird erst beim Wrappen via buildOutlookBody
@@ -267,10 +280,13 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
    */
   const headerLayoutFor = (logoB64: string): { imageWidth: number; imagePaddingV: number; imagePaddingH: number } => {
     const hasOwn = !!(logoB64 && logoB64.trim());
+    // v31.78: dasselbe Logo, dieselbe Formregel — auch für den Termin, der
+    // das Logo der Klammer erbt, und für Outlook-Body und „Event angelegt".
+    const l = hasOwn ? formRegelKopf(headerImageLayout, logoB64) : headerImageLayout;
     return {
-      imageWidth: hasOwn ? headerImageLayout.width : Math.min(headerImageLayout.width, 180),
-      imagePaddingV: hasOwn ? headerImageLayout.paddingV : Math.max(headerImageLayout.paddingV, 20),
-      imagePaddingH: hasOwn ? headerImageLayout.paddingH : Math.max(headerImageLayout.paddingH, 20),
+      imageWidth: hasOwn ? l.width : Math.min(l.width, 180),
+      imagePaddingV: hasOwn ? l.paddingV : Math.max(l.paddingV, 20),
+      imagePaddingH: hasOwn ? l.paddingH : Math.max(l.paddingH, 20),
     };
   };
   // v26.95: Das Event-Foto als Mail-/Outlook-Kopfbild übernehmen. Quelle ist der
@@ -308,10 +324,13 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
     return best;
   };
   const applyEventPhotoToLogo = async (setter: (b64: string) => void): Promise<string> => {
-    return await applyEventPhotoToLogoImpl({
+    const b64 = await applyEventPhotoToLogoImpl({
       editEvent, fileToBase64, imageFile, imageOrigFile, imagePreview, isDe,
       showAlert, shrinkLogoB64,
     }, setter);
+    // v31.78: ein übernommenes rundes Event-Foto bekommt 300 px statt Vollbreite.
+    kopfMasseNachLogo(b64);
+    return b64;
   };
   // v27.2: Größensteuerung fürs Kopfbild als wiederverwendbarer Block (Schritt 23
   // UND 24) — inkl. verkleinerter Live-Vorschau, die zeigt, wie groß das Bild im
@@ -572,7 +591,7 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
     agenda, applyEventPhotoToLogo, assistantsCanSee, documents, dragFieldId, dragOverFieldId,
     effTeamsLink, emailLogoPreview, emailTemplateOverrides, emailTemplates, fieldExpandOverride, fileToBase64,
     headerImageLayout, headerImageLayoutConfig, headerLayoutFor, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly,
-    initialDocumentNames, initialHeaderImageLayoutRef, isFictive, newSectionError, newSectionModalOpen, newSectionName,
+    initialDocumentNames, initialHeaderImageLayoutRef, isFictive, kopfMasseNachLogo, newSectionError, newSectionModalOpen, newSectionName,
     onlineMeetingChanged, organizerDisplayLarge, outlookLogoPreview, outlookTeamsLink, quiz, quizClusterSize,
     renderHeaderSizeControl, reorderMode, setAgenda, setAssistantsCanSee, setDocuments, setDragFieldId,
     setDragOverFieldId, setEmailLogoPreview, setEmailTemplateOverrides, setEmailTemplates, setFieldExpandOverride, setHeaderImageLayout,

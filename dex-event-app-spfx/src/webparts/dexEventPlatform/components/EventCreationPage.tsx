@@ -581,7 +581,7 @@ export default function EventCreationPage(): React.ReactElement {
     agenda, applyEventPhotoToLogo, assistantsCanSee, documents, dragFieldId, dragOverFieldId,
     effTeamsLink, emailLogoPreview, emailTemplateOverrides, emailTemplates, fieldExpandOverride, fileToBase64,
     headerImageLayout, headerImageLayoutConfig, headerLayoutFor, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly,
-    initialDocumentNames, initialHeaderImageLayoutRef, isFictive, newSectionError, newSectionModalOpen, newSectionName,
+    initialDocumentNames, initialHeaderImageLayoutRef, isFictive, kopfMasseNachLogo, newSectionError, newSectionModalOpen, newSectionName,
     onlineMeetingChanged, organizerDisplayLarge, outlookLogoPreview, outlookTeamsLink, quiz, quizClusterSize,
     renderHeaderSizeControl, reorderMode, setAgenda, setAssistantsCanSee, setDocuments, setDragFieldId,
     setDragOverFieldId, setEmailLogoPreview, setEmailTemplateOverrides, setEmailTemplates, setFieldExpandOverride, setHeaderImageLayout,
@@ -2970,7 +2970,7 @@ export default function EventCreationPage(): React.ReactElement {
     // Outlook-Einstellungen, nicht im Organizer Center und nicht in Schritt 4.
     waitlistBlocker, setWaitlistBlocker,
     agenda, // v30.95: {{Programm}} in der Vorschau-Karte
-    activeCommTabIdx, applyCommToAllSubEvents, applyCommTopicToAllSubEvents, applyEventPhotoToLogo, autoDeregisterOnDecline, bundledComm, commShared, childTermPlural,
+    activeCommTabIdx, applyCommToAllSubEvents, applyCommTopicToAllSubEvents, applyEventPhotoToLogo, kopfMasseNachLogo, autoDeregisterOnDecline, bundledComm, commShared, childTermPlural,
     flushActiveCommTabToState, resolveTopLevelCommState,
     commToggleRow, confirmDialog, disableCancellationEmail, disableEmails, disableOutlook,
     disableRegistrationEmail, durchstarterCapacity, effectiveHeaderImage, emailLanguage, emailLogoFromPhoto, emailLogoPreview,
