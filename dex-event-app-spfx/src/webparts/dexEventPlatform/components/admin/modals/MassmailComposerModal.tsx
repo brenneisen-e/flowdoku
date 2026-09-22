@@ -14,7 +14,7 @@ import { DeloitteEvent } from '../../../types';
 import { EventService, SPRegistration } from '../../../services/EventService';
 import { MailHeaderImage } from '../../../utils/mailHeaderImage';
 import { MassmailAudience, AudiencePerson } from '../adminTypes';
-import { buildInlineImage, charsToKb } from '../../../utils/inlineMailImage';
+import { ladeKopfbild } from '../../../utils/inlineMailImage';
 // v31.10: Dieselbe Rechnung wie die Anmeldeseite — wer dort ausgeblendet ist,
 // steht auch nicht im CC. Die Regel liegt in EINER Datei, nicht hier.
 import { visibleOrganizerEmails } from '../../../utils/organizerVisibility';
@@ -85,23 +85,18 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
         // volle Tabellenbreite hat (die Inhaltszelle ist schmaler).
         const [headerBusy, setHeaderBusy] = React.useState(false);
         const [headerNote, setHeaderNote] = React.useState('');
+        // v31.74: Leiter und Meldungen liegen in `ladeKopfbild` — die QR-Mail
+        // nutzt dieselbe Kachel.
         const pickCustomHeader = async (file: File): Promise<void> => {
           setHeaderBusy(true); setHeaderNote('');
           try {
-            const out = await buildInlineImage(file, 600);
-            if (!out.ok) {
-              // Der Grund wird BENANNT — „hat nicht geklappt" laesst den
-              // Organizer raten, ob es am Bild oder an der App lag.
-              setHeaderNote(out.reason === 'too-big'
-                ? (isDe ? `Auch verkleinert noch ${Math.round(charsToKb(out.chars))} KB — bitte ein einfacheres Bild nehmen (weniger Details, kein Screenshot).` : `Still ${Math.round(charsToKb(out.chars))} KB after compression — please use a simpler image.`)
-                : (isDe ? 'Diese Datei konnte nicht gelesen werden.' : 'This file could not be read.'));
-              return;
-            }
+            const out = await ladeKopfbild(file, isDe);
+            setHeaderNote(out.note);
+            if (!out.dataUrl) return;
             setMassmailCustomHeaderB64(out.dataUrl);
             // Eigenes Bild heisst volle Breite ohne Rand — der Orb-Deckel
             // von 180 px gilt nur fuer das Standard-Logo.
             setMassmailHeaderImage(prev => ({ ...prev, hero: 'custom', width: 600, paddingV: 0, paddingH: 0 }));
-            setHeaderNote(isDe ? `Übernommen — ${out.width}×${out.height} px, ${Math.round(charsToKb(out.chars))} KB.` : `Applied — ${out.width}×${out.height} px, ${Math.round(charsToKb(out.chars))} KB.`);
           } finally {
             setHeaderBusy(false);
           }

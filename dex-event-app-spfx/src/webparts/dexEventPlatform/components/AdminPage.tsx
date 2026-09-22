@@ -875,6 +875,9 @@ export default function AdminPage(): React.ReactElement {
   // der Block-Sprache; '-' = gar kein Hinweis (s. buildQrBlockHtml).
   const [qrBlockNote, setQrBlockNote] = React.useState('');
   const [qrEventPhotoB64, setQrEventPhotoB64] = React.useState('');
+  // v31.74: Eigenes Kopfbild der QR-Mail — anders als bei der Rundmail wird es
+  // MIT dem Override gespeichert (die QR-Mail geht auch automatisch raus).
+  const [qrCustomHeaderB64, setQrCustomHeaderB64] = React.useState('');
   const [searchQuery, setSearchQuery] = React.useState('');
   // v29.26: „Teilnehmer hinzufügen"-Dialog (Organizer-Ausnahme-Weg).
   const [addParticipantsOpen, setAddParticipantsOpen] = React.useState(false);
@@ -1689,7 +1692,7 @@ export default function AdminPage(): React.ReactElement {
   } = createQrMailActions({
     confirmDialog, currentUser, eventServiceRef, isDe, qrBlockLang,
     qrBlockNote, qrEditBody, qrEditHeading, qrEditSaving, qrEditSubheading, qrEditSubject,
-    qrEditTarget, qrHeaderImage, refreshEvents, registrations, reloadRegistrations, sciBusy, sciFrom, sciTo,
+    qrEditTarget, qrHeaderImage, qrCustomHeaderB64, setQrCustomHeaderB64, refreshEvents, registrations, reloadRegistrations, sciBusy, sciFrom, sciTo,
     selectedEvent, setIsSendingQR, setQrBlockLang, setQrBlockNote, setQrEditBody, setQrEditHeading,
     setQrEditOpen, setQrEditSampleBlock, setQrEditSampleImg, setQrEditSaving, setQrEditSubheading,
     setQrEditSubject, setQrEditTarget, setQrEventPhotoB64, setQrHeaderImage, setQrPreviewHtml,
@@ -2340,6 +2343,7 @@ export default function AdminPage(): React.ReactElement {
     qrHeaderImage, qrSendResult, qrSentCount, qrTestSendAction, registrations, saveQrMailOverride,
     selectedEvent, setComposerCrop, setQrBlockLang, setQrBlockNote, setQrEditBody, setQrEditHeading,
     setQrEditSampleBlock, setQrEditSubheading, setQrEditSubject, setQrHeaderImage,
+    qrCustomHeaderB64, setQrCustomHeaderB64,
   };
   const editRegModalProps = {
     // v31.4: `editingReg` und `registrations` für das Feld „Ausgegebenes

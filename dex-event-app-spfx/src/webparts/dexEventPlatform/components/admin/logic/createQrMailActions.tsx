@@ -29,6 +29,9 @@ export interface CreateQrMailActionsCtx {
   qrEditSubject: string;
   qrEditTarget: DeloitteEvent;
   qrHeaderImage: MailHeaderImage;
+  /** v31.74: Eigenes Kopfbild (Data-URL) — gespeichert im QR-Override. */
+  qrCustomHeaderB64: string;
+  setQrCustomHeaderB64: React.Dispatch<React.SetStateAction<string>>;
   refreshEvents: () => Promise<void>;
   registrations: SPRegistration[];
   sciBusy: boolean;
@@ -78,7 +81,7 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
   const {
     confirmDialog, currentUser, eventServiceRef, isDe, qrBlockLang,
     qrBlockNote, qrEditBody, qrEditHeading, qrEditSaving, qrEditSubheading, qrEditSubject,
-    qrEditTarget, qrHeaderImage, refreshEvents, registrations, reloadRegistrations, sciBusy, sciFrom, sciTo,
+    qrEditTarget, qrHeaderImage, qrCustomHeaderB64, setQrCustomHeaderB64, refreshEvents, registrations, reloadRegistrations, sciBusy, sciFrom, sciTo,
     selectedEvent, setIsSendingQR, setQrBlockLang, setQrBlockNote, setQrEditBody, setQrEditHeading,
     setQrEditOpen, setQrEditSampleBlock, setQrEditSampleImg, setQrEditSaving, setQrEditSubheading,
     setQrEditSubject, setQrEditTarget, setQrEventPhotoB64, setQrHeaderImage, setQrPreviewHtml,
@@ -119,7 +122,11 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
     // nachziehen (leer = „Event-Foto" bleibt deaktiviert).
     // v31.0: ohne gespeicherte Kopf-Maße gilt die v30.87-Regel (eigenes
     // Mail-Logo → volle Breite), nicht mehr der alte 180-px-Default.
-    setQrHeaderImage(resolveMailHeaderImage(ov && ov.headerImage, tgt.emailTemplateOverrides, tgt.mailImageBase64));
+    // v31.74: Das eigene Kopfbild kommt aus dem Override mit; ohne Bild darf
+    // `custom` nicht gewählt sein (sonst zeigte die Mail still den Platzhalter).
+    const savedCustom = (ov && typeof ov.headerCustomB64 === 'string' && ov.headerCustomB64.indexOf('data:image/') === 0) ? ov.headerCustomB64 : '';
+    setQrCustomHeaderB64(savedCustom);
+    setQrHeaderImage(resolveMailHeaderImage(ov && ov.headerImage, tgt.emailTemplateOverrides, tgt.mailImageBase64, !!savedCustom));
     setQrBlockLang((ov && ov.blockLang) || '');
     setQrBlockNote((ov && ov.blockNote) || '');
     setQrEventPhotoB64('');
@@ -162,6 +169,12 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
     setQrEditSaving(true);
     try {
       const def = qrEmailDefaults(tgt.emailLanguage || 'EN');
+      // v31.74: `custom` ohne Bild wird nicht gespeichert — dann gilt das
+      // Standard-Logo; das Bild wird nur mitgeschrieben, wenn es gewählt ist
+      // (ein abgewähltes Bild als toten Ballast im 2-MB-Feld zu lassen wäre
+      // genau die Aufblähung, vor der der Override-Kommentar warnt).
+      const customChosen = qrHeaderImage.hero === 'custom' && !!qrCustomHeaderB64;
+      const headerToSave: MailHeaderImage = customChosen || qrHeaderImage.hero !== 'custom' ? { ...qrHeaderImage } : { ...qrHeaderImage, hero: 'logo' };
       // v30.52: Das Kopf-Bild zählt mit. Ohne diese Bedingung würde eine
       // geänderte Bildbreite bei sonst unveränderten Texten den Override
       // LÖSCHEN — die Einstellung wäre nach dem Speichern weg.
@@ -174,7 +187,7 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
         // Speichern wieder weg (dieselbe Falle wie beim Kopf-Bild, v30.52).
         && !qrBlockLang
         && !qrBlockNote.trim()
-        && isDefaultMailHeaderImage(qrHeaderImage);
+        && isDefaultMailHeaderImage(headerToSave);
       let all: Record<string, unknown> = {};
       try { all = JSON.parse(tgt.emailTemplateOverrides || '{}') || {}; } catch { all = {}; }
       if (isDefault) {
@@ -182,8 +195,10 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
       } else {
         all['QRCode'] = {
           subject: qrEditSubject, heading: qrEditHeading, subheading: qrEditSubheading, bodyHtml: qrEditBody,
-          // Nur Auswahl + Zahlen — NIE das Foto selbst (s. QrEmailOverride).
-          headerImage: { ...qrHeaderImage },
+          // Nur Auswahl + Zahlen — das Event-Foto NIE (s. QrEmailOverride);
+          // v31.74: das eigene, bereits verkleinerte Bild schon.
+          headerImage: headerToSave,
+          ...(customChosen ? { headerCustomB64: qrCustomHeaderB64 } : {}),
           ...(qrBlockLang ? { blockLang: qrBlockLang } : {}),
           ...(qrBlockNote.trim() ? { blockNote: qrBlockNote.trim() } : {}),
         };
@@ -250,6 +265,8 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
     return mine && mine.TeilnehmerID ? mine.TeilnehmerID : SAMPLE_QR_ID;
   };
 
+  // v31.74: Nur das Event-Foto wird hier aufgelöst — ein eigenes Bild liest
+  // `qrCodeEmail` direkt aus dem Override (`headerCustomB64`).
   const qrHeroPhotoFor = async (ev: DeloitteEvent, override?: QrEmailOverride): Promise<string> => {
     const hdr = normalizeMailHeaderImage(override && override.headerImage);
     if (hdr.hero !== 'event' || !ev.imageUrl) return '';

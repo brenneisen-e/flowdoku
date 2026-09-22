@@ -1024,10 +1024,22 @@ export interface QrEmailOverride {
    * beim Versand aus dem Event-Bild aufgelöst (Cache, s. utils/imageCache).
    */
   // v31.9.7: `custom` mitgenommen, sonst passt der gemeinsame
-  // `MailHeaderImage` nicht mehr hierher. Fuer die GESPEICHERTE QR-Mail ist
-  // `custom` allerdings ohne Wirkung — das Bild dazu lebt nur im Composer
-  // einer einzelnen Rundmail und wird nirgends persistiert.
+  // `MailHeaderImage` nicht mehr hierher.
+  // v31.74: `custom` wirkt jetzt auch hier — das Bild steht in
+  // `headerCustomB64` (s. unten).
   headerImage?: { hero?: 'logo' | 'event' | 'custom'; width?: number; paddingV?: number; paddingH?: number };
+  /**
+   * v31.74: Ein für DIESE QR-Mail hochgeladenes Kopfbild (Data-URL).
+   *
+   * Nutzer-Befund (Teams, 22.09.2026): „Beim Versand der QR-Codes gibt's
+   * keine Möglichkeit, das Bild individuell zu verändern." Die Kachel
+   * „Eigenes Bild" fehlte in der QR-Mail, weil es keinen Speicherort gab —
+   * die Rundmail hält ihr Bild nur im Composer, die QR-Mail geht aber auch
+   * automatisch raus. Deshalb liegt es hier im Override: über `ladeKopfbild`
+   * auf höchstens 40 KB Zeichen verkleinert, damit es neben dem Mail-Logo im
+   * selben 2-MB-Feld Platz hat. Gilt nur, wenn `headerImage.hero === 'custom'`.
+   */
+  headerCustomB64?: string;
   /**
    * v30.60: Sprache des festen Blocks NEBEN dem QR-Code („Name", „ID" und der
    * Hinweis „Falls der Scan nicht klappt…").
@@ -1210,12 +1222,17 @@ export function qrCodeEmail(
   }
   // v30.52: Kopf-Bild aus dem Override anwenden — Maße über wrapTemplate,
   // das Foto (falls gewählt UND vom Aufrufer aufgelöst) statt {{ORB_URL}}.
-  const hdr = resolveMailHeaderImage(override && override.headerImage, ev && ev.emailTemplateOverrides, ev && ev.mailImageBase64);
+  // v31.74: `custom` zählt nur, wenn das Bild dazu wirklich im Override liegt.
+  const customB64 = (override && typeof override.headerCustomB64 === 'string' && override.headerCustomB64.indexOf('data:image/') === 0) ? override.headerCustomB64 : '';
+  const hdr = resolveMailHeaderImage(override && override.headerImage, ev && ev.emailTemplateOverrides, ev && ev.mailImageBase64, !!customB64);
+  // Das Bild, das statt {{ORB_URL}} eingebacken wird: das aufgelöste
+  // Event-Foto ODER das hochgeladene eigene Bild — je nach Wahl.
+  const heroB64 = hdr.hero === 'custom' ? customB64 : (hdr.hero === 'event' ? (eventPhotoB64 || '') : '');
   // Der Orb-Schutz gilt auch hier: Ohne eigenes Bild wäre „Volle Breite" ein
   // bildschirmfüllender, unten abgeschnittener Orb (s. utils/mailHeaderImage).
   // v31.0: Ein eigenes Mail-Logo (hero 'logo', vom Flow für {{ORB_URL}}
   // eingesetzt) ist ebenfalls ein eigenes Bild.
-  const ownImage = (hdr.hero === 'event' && !!eventPhotoB64)
+  const ownImage = !!heroB64
     || (hdr.hero === 'logo' && hasOwnMailLogo(ev && ev.emailTemplateOverrides, ev && ev.mailImageBase64));
   const wrapped = wrapTemplate(
     GREEN,
@@ -1231,7 +1248,7 @@ export function qrCodeEmail(
   );
   return {
     subject: replacePlaceholdersPlain(subjectTpl, vars),
-    body: (hdr.hero === 'event' && eventPhotoB64) ? wrapped.replace(/\{\{ORB_URL\}\}/g, eventPhotoB64) : wrapped,
+    body: heroB64 ? wrapped.replace(/\{\{ORB_URL\}\}/g, heroB64) : wrapped,
   };
 }
 
