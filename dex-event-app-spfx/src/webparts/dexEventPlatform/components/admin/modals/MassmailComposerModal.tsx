@@ -336,9 +336,8 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
             imageWidth={massmailHeaderImage.width}
             imagePaddingV={massmailHeaderImage.paddingV}
             imagePaddingH={massmailHeaderImage.paddingH}
-            onImageWidthChange={(w) => setMassmailHeaderImage(p => ({ ...p, width: w }))}
-            onImagePaddingVChange={(v) => setMassmailHeaderImage(p => ({ ...p, paddingV: v }))}
-            onImagePaddingHChange={(h) => setMassmailHeaderImage(p => ({ ...p, paddingH: h }))}
+            // v31.79: Größe steht in der 4. Kachel der Bildwahl (MailHeaderImageChooser) —
+            // ohne die Rückrufe rendert der Editor den Aufklapper „Kopfbild" nicht mehr.
             headerExtra={(
               // v31.2: Drei Fragen in der Reihenfolge, in der ein Organizer sie
               // beantwortet: An wen? → Wie sieht der Kopf aus? → Was prüfe ich vor
@@ -424,11 +423,6 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
                     customBusy={headerBusy}
                     customNote={headerNote}
                   />
-                  <div className="dex-ui-help">
-                    {/* v31.10: ohne „neben der Vorschau" — auf dem Handy stehen die
-                        Felder weiter unten in derselben Spalte, nicht daneben. */}
-                    {isDe ? 'Breite und Abstand des Bildes stellst du weiter unten ein.' : 'Width and spacing of the image are set further down.'}
-                  </div>
                 </div>
 
                 {/* v31.12: Die Umfrage sitzt hier — nach dem Kopf, vor der

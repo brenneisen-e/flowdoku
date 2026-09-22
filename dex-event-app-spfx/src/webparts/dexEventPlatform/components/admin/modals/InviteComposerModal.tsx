@@ -727,9 +727,7 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
             imageWidth={inviteHeaderImage.width}
             imagePaddingV={inviteHeaderImage.paddingV}
             imagePaddingH={inviteHeaderImage.paddingH}
-            onImageWidthChange={(w) => setInviteHeaderImage(p => ({ ...p, width: w }))}
-            onImagePaddingVChange={(v) => setInviteHeaderImage(p => ({ ...p, paddingV: v }))}
-            onImagePaddingHChange={(h) => setInviteHeaderImage(p => ({ ...p, paddingH: h }))}
+            // v31.79: Größe steht in der 4. Kachel der Bildwahl (MailHeaderImageChooser).
             headerExtra={headerExtra}
             extraAction={{
               label: inviteSending
