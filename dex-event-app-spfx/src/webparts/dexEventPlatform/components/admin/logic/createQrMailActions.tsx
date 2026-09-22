@@ -9,7 +9,7 @@ import { QrEmailOverride, buildQrBlockHtml, getCachedOrbBase64, injectIntoEmailC
 import { SAMPLE_QR_ID } from '../../admin/adminConstants';
 import { buildParticipantQrDataUrl } from '../../../utils/qrWithMark';
 import { getCachedImage } from '../../../utils/imageCache';
-import { MailHeaderImage, isDefaultMailHeaderImage, normalizeMailHeaderImage, resolveMailHeaderImage } from '../../../utils/mailHeaderImage';
+import { MailHeaderImage, bildMasse, fotoMitLogoMassen, isDefaultMailHeaderImage, kopfMasseFuerBild, normalizeMailHeaderImage, resolveMailHeaderImage } from '../../../utils/mailHeaderImage';
 import { isExternalEmail } from '../../../utils/deloitteDomain';
 import { EventService, SPRegistration } from '../../../services/EventService';
 
@@ -140,13 +140,28 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
     // `custom` nicht gewählt sein (sonst zeigte die Mail still den Platzhalter).
     const savedCustom = (ov && typeof ov.headerCustomB64 === 'string' && ov.headerCustomB64.indexOf('data:image/') === 0) ? ov.headerCustomB64 : '';
     setQrCustomHeaderB64(savedCustom);
-    setQrHeaderImage(resolveMailHeaderImage(ov && ov.headerImage, tgt.emailTemplateOverrides, tgt.mailImageBase64, !!savedCustom));
+    const hdr = resolveMailHeaderImage(ov && ov.headerImage, tgt.emailTemplateOverrides, tgt.mailImageBase64, !!savedCustom);
+    setQrHeaderImage(hdr);
+    // v31.76: Ein Foto, das noch mit der Logo-Vorgabe 600/0/0 gespeichert
+    // ist, hat die Maße nur geerbt (vor v31.76 maß niemand die Form) — hier
+    // nachmessen: rund/quadratisch → 300 px, sonst bleibt es die volle Breite.
+    // Nutzer-Befund 22.09.2026: „in meinem Fall hat er rund nicht erkannt
+    // und es stand auf 600" — genau dieser Stand.
+    const formNachmessen = (src: string): void => {
+      if (!src) return;
+      void bildMasse(src).then(m => setQrHeaderImage(prev => (fotoMitLogoMassen(prev) ? { ...prev, ...kopfMasseFuerBild(m.width, m.height) } : prev)));
+    };
+    if (hdr.hero === 'custom' && fotoMitLogoMassen(hdr)) formNachmessen(savedCustom);
     setQrBlockLang((ov && ov.blockLang) || '');
     setQrBlockNote((ov && ov.blockNote) || '');
     setQrEventPhotoB64('');
     if (tgt.imageUrl) {
       getCachedImage(tgt.imageUrl)
-        .then(b64 => { if (b64 && b64.indexOf('data:') === 0) setQrEventPhotoB64(b64); })
+        .then(b64 => {
+          if (!(b64 && b64.indexOf('data:') === 0)) return;
+          setQrEventPhotoB64(b64);
+          if (hdr.hero === 'event' && fotoMitLogoMassen(hdr)) formNachmessen(b64);
+        })
         .catch(() => { /* Foto nicht ladbar → Option bleibt deaktiviert */ });
     }
     // Beispiel-QR (eigene Daten) für die Vorschau — gleicher Aufbau wie im Versand.

@@ -12,7 +12,7 @@ import { Check, ChevronDown, Send, Users } from '../../Icons';
 import { cx } from '../../dexUi';
 import { DeloitteEvent } from '../../../types';
 import { EventService, SPRegistration } from '../../../services/EventService';
-import { MailHeaderImage } from '../../../utils/mailHeaderImage';
+import { MailHeaderImage, kopfMasseFuerBild } from '../../../utils/mailHeaderImage';
 import { MassmailAudience, AudiencePerson } from '../adminTypes';
 import { ladeKopfbild } from '../../../utils/inlineMailImage';
 // v31.10: Dieselbe Rechnung wie die Anmeldeseite — wer dort ausgeblendet ist,
@@ -94,9 +94,9 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
             setHeaderNote(out.note);
             if (!out.dataUrl) return;
             setMassmailCustomHeaderB64(out.dataUrl);
-            // Eigenes Bild heisst volle Breite ohne Rand — der Orb-Deckel
-            // von 180 px gilt nur fuer das Standard-Logo.
-            setMassmailHeaderImage(prev => ({ ...prev, hero: 'custom', width: 600, paddingV: 0, paddingH: 0 }));
+            // v31.76: Maße nach der Bildform — rund/quadratisch 300 px, sonst
+            // volle Breite (kopfMasseFuerBild). Vorher immer 600/0/0.
+            setMassmailHeaderImage(prev => ({ ...prev, hero: 'custom', ...kopfMasseFuerBild(out.width, out.height) }));
           } finally {
             setHeaderBusy(false);
           }

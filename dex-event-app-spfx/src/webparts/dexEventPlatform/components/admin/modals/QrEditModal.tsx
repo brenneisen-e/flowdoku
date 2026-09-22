@@ -4,7 +4,7 @@
  */
 import * as React from 'react';
 import { QrEmailOverride, buildQrBlockHtml, qrEmailDefaults } from '../../../services/EmailTemplates';
-import { MailHeaderImage, resolveMailHeaderImage } from '../../../utils/mailHeaderImage';
+import { MailHeaderImage, kopfMasseFuerBild, resolveMailHeaderImage } from '../../../utils/mailHeaderImage';
 import { ladeKopfbild } from '../../../utils/inlineMailImage';
 import MailHeaderImageChooser from '../../admin/MailHeaderImageChooser';
 import { SAMPLE_QR_ID } from '../../admin/adminConstants';
@@ -77,9 +77,9 @@ export const QrEditModal: React.FC<QrEditModalProps> = (p) => {
             setHeaderNote(out.note);
             if (!out.dataUrl) return;
             setQrCustomHeaderB64(out.dataUrl);
-            // Eigenes Bild heißt volle Breite ohne Rand — der Orb-Deckel von
-            // 180 px gilt nur für das Standard-Logo (wie in der Rundmail).
-            setQrHeaderImage(prev => ({ ...prev, hero: 'custom', width: 600, paddingV: 0, paddingH: 0 }));
+            // v31.76: Maße nach der Bildform — rund/quadratisch 300 px, sonst
+            // volle Breite (kopfMasseFuerBild).
+            setQrHeaderImage(prev => ({ ...prev, hero: 'custom', ...kopfMasseFuerBild(out.width, out.height) }));
           } finally { setHeaderBusy(false); }
         };
         // v31.2: Anzahl der Feineinstellungen, die vom Standard abweichen
