@@ -179,19 +179,45 @@ export async function buildInlineImage(file: File, maxWidth?: number): Promise<I
  * „hat nicht geklappt" ließe den Organizer raten, ob es am Bild oder an der
  * App lag.
  */
-export async function ladeKopfbild(file: File, isDe: boolean): Promise<{ dataUrl: string; note: string }> {
-  const out = await buildInlineImage(file, 600);
-  if (!out.ok) {
+/** v31.76: Ziel- und Obergrenze für das KOPFBILD (Zeichen der Data-URL). Nicht
+ *  die 28/40 KB der Inline-Bilder: Das Kopfbild ist EIN Bild je Mail, und der
+ *  Kopf ist der Ort, an dem das Foto etwas hermachen soll. */
+export const HEADER_IMG_TARGET_KB = 150;
+export const HEADER_IMG_MAX_KB = 220;
+
+// v31.76: liefert die Maße mit — der Aufrufer leitet daraus die Kopf-Maße ab
+// (`kopfMasseFuerBild`): rund/quadratisch 300 px, sonst volle Breite.
+//
+// Qualität: dieselbe wie das Mail-Logo im Wizard (600 px, JPEG 0,85 auf
+// weißem Grund, `compressImage`). Bis v31.75 lief das Kopfbild über die
+// Inline-Leiter mit 28-KB-Ziel und landete bei 380 px / Qualität 0,6 —
+// Nutzer-Befund 22.09.2026: „warum ist das Bild nun so schlechte Qualität …
+// ist doch bei Event Creation auch nicht so schlecht." Erst wenn 0,85 über
+// dem Ziel liegt, geht die Qualität in zwei Stufen runter; die Breite bleibt.
+export async function ladeKopfbild(file: File, isDe: boolean): Promise<{ dataUrl: string; note: string; width: number; height: number }> {
+  const unreadable = { dataUrl: '', width: 0, height: 0, note: isDe ? 'Diese Datei konnte nicht gelesen werden.' : 'This file could not be read.' };
+  let best = '';
+  for (const q of [0.85, 0.72, 0.6]) {
+    try {
+      const out = await fileToDataUrl(await compressImage(file, 600, q, true));
+      if (!out || out.indexOf('data:image/') !== 0) continue;
+      if (!best || out.length < best.length) best = out;
+      if (out.length <= HEADER_IMG_TARGET_KB * KB) break;
+    } catch { continue; }
+  }
+  if (!best) return unreadable;
+  const dim = await measure(best);
+  if (!dim.width || !dim.height) return unreadable;
+  const kb = Math.round(charsToKb(best.length));
+  if (best.length > HEADER_IMG_MAX_KB * KB) {
     return {
-      dataUrl: '',
-      note: out.reason === 'too-big'
-        ? (isDe ? `Auch verkleinert noch ${Math.round(charsToKb(out.chars))} KB — bitte ein einfacheres Bild nehmen (weniger Details, kein Screenshot).` : `Still ${Math.round(charsToKb(out.chars))} KB after compression — please use a simpler image.`)
-        : (isDe ? 'Diese Datei konnte nicht gelesen werden.' : 'This file could not be read.'),
+      dataUrl: '', width: 0, height: 0,
+      note: isDe ? `Auch verkleinert noch ${kb} KB — bitte ein einfacheres Bild nehmen (weniger Details, kein Screenshot).` : `Still ${kb} KB after compression — please use a simpler image.`,
     };
   }
   return {
-    dataUrl: out.dataUrl,
-    note: isDe ? `Übernommen — ${out.width}×${out.height} px, ${Math.round(charsToKb(out.chars))} KB.` : `Applied — ${out.width}×${out.height} px, ${Math.round(charsToKb(out.chars))} KB.`,
+    dataUrl: best, width: dim.width, height: dim.height,
+    note: isDe ? `Übernommen — ${dim.width}×${dim.height} px, ${kb} KB.` : `Applied — ${dim.width}×${dim.height} px, ${kb} KB.`,
   };
 }
 

@@ -932,7 +932,11 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                 Kopf- und Zeilen-Reihenfolge nebeneinanderlegen!). */}
             <tr>
               <th
-                colSpan={1 + (searchActive ? 1 : 0) + (personalColsCollapsed ? 1 : 6) + 1}
+                // v31.76: +2 = „Registriert von" UND „Registriert am" — mit +1
+                // rutschte die Summe eine Spalte nach links (Nutzer-Befund
+                // 22.09.2026: „die 59 ist verschoben"). Kopf, Zeilen UND
+                // Summenzeilen nebeneinanderlegen (CLAUDE.md).
+                colSpan={1 + (searchActive ? 1 : 0) + (personalColsCollapsed ? 1 : 6) + 2}
                 style={{ textAlign: 'right', padding: '4px 8px', textTransform: 'none', fontSize: '0.72rem', whiteSpace: 'nowrap' }}
               >
                 {isDe ? '∑ angemeldet:' : '∑ registered:'}
@@ -984,7 +988,11 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
             {hasOpenRule && (
               <tr>
                 <th
-                  colSpan={1 + (searchActive ? 1 : 0) + (personalColsCollapsed ? 1 : 6) + 1}
+                  // v31.76: +2 = „Registriert von" UND „Registriert am" — mit +1
+                // rutschte die Summe eine Spalte nach links (Nutzer-Befund
+                // 22.09.2026: „die 59 ist verschoben"). Kopf, Zeilen UND
+                // Summenzeilen nebeneinanderlegen (CLAUDE.md).
+                colSpan={1 + (searchActive ? 1 : 0) + (personalColsCollapsed ? 1 : 6) + 2}
                   style={{ textAlign: 'right', padding: '2px 8px', textTransform: 'none', fontSize: '0.72rem', whiteSpace: 'nowrap' }}
                 >
                   {isDe ? 'Anmeldung ab:' : 'Opens:'}

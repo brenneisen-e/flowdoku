@@ -49,7 +49,7 @@ export interface QrSendModalProps {
 }
 
 export const QrSendModal: React.FC<QrSendModalProps> = (p) => {
-  const { childEventsOf, currentUser, getQrMailOverride, isDe, isSendingQR, openQrMailEditor, qrFullSendAction, qrHelpOpen, qrPreviewAction, qrPreviewLoading, qrSendModalOpen, qrSendResult, qrSentCount, qrSubMailsOpen, qrTestSendAction, registrations, selectedEvent, setQrHelpOpen, setQrSendModalOpen, setQrSubMailsOpen, setQrSendTargetId, qrSendTarget, qrSendTargetRegs, subEventRegsByEventId, deniedSubEventLists } = p;
+  const { childEventsOf, currentUser, getQrMailOverride, isDe, isSendingQR, openQrMailEditor, qrFullSendAction, qrHelpOpen, qrSendModalOpen, qrSendResult, qrSentCount, qrSubMailsOpen, qrTestSendAction, registrations, selectedEvent, setQrHelpOpen, setQrSendModalOpen, setQrSubMailsOpen, setQrSendTargetId, qrSendTarget, qrSendTargetRegs, subEventRegsByEventId, deniedSubEventLists } = p;
   // v31.75: Alles unten rechnet mit der Liste des ZIELS. `null` = nicht
   // lesbar → der Versand-Knopf bleibt aus, der Dialog sagt warum.
   const regs: SPRegistration[] | null = qrSendTarget ? qrSendTargetRegs : registrations;
@@ -110,16 +110,21 @@ export const QrSendModal: React.FC<QrSendModalProps> = (p) => {
                     );
                   })}
                 </div>
+                {/* v31.76: zwei kurze Sätze statt eines Absatzes („das versteht
+                    man nicht", 22.09.2026). Der Bündelungs-Hinweis nur, wenn er
+                    zutrifft — als eigener Kasten, nicht als Nebensatz. */}
                 <div className="dex-ui-help">
                   {isDe
-                    ? <>Der Code trägt die Nummer des gewählten Events — am Check-in wählt das Team dann dieses Event. Ziel jetzt: <strong>{zielEv.title}</strong>.</>
-                    : <>The code carries the number of the chosen event — at check-in the team picks that event. Target now: <strong>{zielEv.title}</strong>.</>}
-                  {!qrSendTarget && !!selectedEvent.subEventsOnlyMode && !bundledCommOf(selectedEvent).qr && (
-                    <> {isDe
-                      ? 'Neue Anmeldungen bekommen danach automatisch den Code ihres Termins, nicht des Hauptevents — soll auch der automatische Versand über das Hauptevent laufen, stell im Assistenten (Kommunikation) „Einen QR-Code fürs Gesamt-Event" ein.'
-                      : 'New registrations will automatically receive the code of their session, not of the main event — to route the automatic send via the main event as well, enable “One QR code for the whole event” in the wizard (Communication).'}</>
-                  )}
+                    ? <>Der Code gilt für <strong>{zielEv.title}</strong>. Am Check-in wählt das Team dasselbe Event.</>
+                    : <>The code is for <strong>{zielEv.title}</strong>. At check-in the team picks the same event.</>}
                 </div>
+                {!qrSendTarget && !!selectedEvent.subEventsOnlyMode && !bundledCommOf(selectedEvent).qr && (
+                  <div className="dex-ui-callout dex-ui-callout--neutral dex-ui-callout--sm" style={{ marginTop: 6 }}>
+                    <span>{isDe
+                      ? <>Wer sich <strong>später</strong> anmeldet, bekommt automatisch den Code seines Termins. Soll auch dann der Code des Hauptevents rausgehen: im Assistenten unter &bdquo;Kommunikation&ldquo; den Schalter &bdquo;Einen QR-Code fürs Gesamt-Event&ldquo; einschalten.</>
+                      : <>Anyone registering <strong>later</strong> automatically gets the code of their session. To send the main-event code in that case too: in the wizard under “Communication”, enable “One QR code for the whole event”.</>}</span>
+                  </div>
+                )}
               </div>
             )}
             {/* v30.36: Entschlackt. Vorher standen hier fuenf konkurrierende
@@ -194,18 +199,21 @@ export const QrSendModal: React.FC<QrSendModalProps> = (p) => {
                 const isOrgRegistered = !!orgEmail && (regs || []).some(r => (r.ParticipantEmail || '').toLowerCase() === orgEmail && (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt'));
                 return (
                   <>
+                    {/* v31.76: EIN Schritt „E-Mail anpassen" statt „Vorschau
+                        ansehen" + Textlink „Mail-Text anpassen" (Nutzer-Frage
+                        22.09.2026: „warum steht da nicht E-Mail anpassen statt
+                        Ansehen?"). Der Editor zeigt die Mail rechts live —
+                        Text, Kopfbild und Vorschau sind dort eine Sache; ein
+                        zweiter Weg nur zum Ansehen war eine Bedienung doppelt. */}
                     {stepRow(1,
-                      isDe ? 'Vorschau ansehen' : 'Preview the email',
                       <>
-                        {isDe ? 'So sieht die Mail aus, die rausgeht.' : 'How the email will look.'}{' '}
-                        <button type="button" className="dex-ui-textbtn" disabled={isSendingQR} onClick={() => { openQrMailEditor().catch(() => { /* */ }); }} style={{ padding: '1px 6px', fontSize: '0.76rem' }}>
-                          <Pencil size={12} />
-                          {isDe ? 'Mail-Text anpassen' : 'Customize email text'}
-                          {textCustomized && <span className="dex-ui-pill dex-ui-pill--green">{isDe ? 'angepasst' : 'customized'}</span>}
-                        </button>
+                        {isDe ? 'E-Mail anpassen' : 'Customize the email'}
+                        {textCustomized && <span className="dex-ui-pill dex-ui-pill--green" style={{ marginLeft: 8 }}>{isDe ? 'angepasst' : 'customized'}</span>}
                       </>,
-                      <button className="btn btn-outline dex-ui-btn-sm" disabled={isSendingQR || qrPreviewLoading} onClick={() => { qrPreviewAction().catch(() => { /* */ }); }} style={{ minWidth: 110 }}>
-                        {qrPreviewLoading ? (isDe ? 'Lädt…' : 'Loading…') : (isDe ? 'Ansehen' : 'View')}
+                      isDe ? 'Text und Kopfbild — rechts siehst du sofort, wie die Mail ankommt.' : 'Text and header image — the preview on the right shows the result immediately.',
+                      <button className="btn btn-outline dex-ui-btn-sm" disabled={isSendingQR} onClick={() => { openQrMailEditor().catch(() => { /* */ }); }} style={{ minWidth: 110 }}>
+                        <Pencil size={14} />
+                        {isDe ? 'Anpassen' : 'Customize'}
                       </button>)}
                     {stepRow(2,
                       isDe ? 'Testmail an dich schicken' : 'Send a test to yourself',
@@ -270,7 +278,7 @@ export const QrSendModal: React.FC<QrSendModalProps> = (p) => {
                   <>
                     <button type="button" className={cx('dex-ui-disclosure', qrSubMailsOpen && 'is-open')} aria-expanded={qrSubMailsOpen} onClick={() => setQrSubMailsOpen(v => !v)}>
                       <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
-                      {isDe ? `Mail-Texte der ${term} einzeln anpassen` : `Customize the ${term} emails individually`}
+                      {isDe ? `E-Mails der ${term} einzeln anpassen` : `Customize the ${term} emails individually`}
                       {/* Dieselbe grüne Pill wie an den Terminen darunter — ein Zeichen für dasselbe. */}
                       {customized > 0 && <span className="dex-ui-pill dex-ui-pill--green" style={{ marginLeft: 'auto' }}>{isDe ? `${customized} angepasst` : `${customized} customized`}</span>}
                     </button>
@@ -280,7 +288,7 @@ export const QrSendModal: React.FC<QrSendModalProps> = (p) => {
                             fallen NICHT auf das Haupt-Event zurück, sondern auf den Standardtext. */}
                         <div className="dex-ui-muted" style={{ marginBottom: 6 }}>
                           {isDe
-                            ? 'Ohne eigenen Text geht der Standardtext der QR-Mail raus — nicht der Text des Haupt-Events.'
+                            ? 'Ohne eigene Anpassung geht die Standard-QR-Mail raus — nicht Text und Bild des Haupt-Events.'
                             : 'Without its own text, the standard QR email text is sent — not the main event’s text.'}
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>

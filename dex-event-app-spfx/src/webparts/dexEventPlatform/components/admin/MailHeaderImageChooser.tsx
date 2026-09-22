@@ -12,7 +12,7 @@
  * die sie sofort zeigt. Beide Stellen arbeiten auf demselben Objekt.
  */
 import * as React from 'react';
-import { MailHeaderImage } from '../../utils/mailHeaderImage';
+import { MailHeaderImage, bildMasse, kopfMasseFuerBild } from '../../utils/mailHeaderImage';
 import { Calendar, Check, ImageIcon, Mail, Pencil, Trash2 } from '../Icons';
 import { cx } from '../dexUi';
 
@@ -105,6 +105,17 @@ export default function MailHeaderImageChooser(props: MailHeaderImageChooserProp
                 // eine Kachel auszuwählen, die nichts zeigt, wäre ein
                 // Zwischenschritt ohne Zweck.
                 if (opt.key === 'custom' && !customB64) { fileRef.current?.click(); return; }
+                // v31.76: Beim Wechsel auf ein FOTO richten sich die Maße nach
+                // seiner Form: rund/quadratisch → 300 px, sonst volle Breite
+                // (kopfMasseFuerBild). Vorher blieben die Maße des Mail-Logos
+                // (600/0/0) stehen, und der runde Event-Kreis füllte die ganze
+                // Mail. Das Standard-Logo behält seine Maße.
+                if (opt.key === 'event' || opt.key === 'custom') {
+                  const src = opt.key === 'event' ? eventPhotoB64 : customB64;
+                  const hero = opt.key;
+                  void bildMasse(src).then(m => onChange({ ...value, hero, ...kopfMasseFuerBild(m.width, m.height) }));
+                  return;
+                }
                 onChange({ ...value, hero: opt.key });
               }}
               title={!opt.enabled ? noPhoto : undefined}

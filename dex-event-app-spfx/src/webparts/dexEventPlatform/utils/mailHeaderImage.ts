@@ -50,6 +50,45 @@ export const MAIL_HEADER_IMAGE_DEFAULT: MailHeaderImage = {
 };
 
 /**
+ * v31.76: Kopf-Maße für ein FOTO (Event-Foto oder hochgeladenes Bild) nach
+ * seiner Form — Nutzer-Regel 22.09.2026: „wenn es rund ist, dann 300 px,
+ * sonst volle Breite."
+ *
+ * Anlass: In der QR-Mail stand der runde Event-Kreis bildschirmfüllend im
+ * Kopf. Die Regel „volle Breite ohne Rand" (600/0/0) stammt aus v29.29/
+ * v30.87 und meint das Mail-LOGO, ein Banner; beim Wechsel auf „Event-Foto"
+ * wurden dieselben Maße übernommen, gemessen hat die Form niemand.
+ *
+ * Rund, quadratisch, hochkant (Breite höchstens 1,3 × Höhe) → 300 px, mit
+ * Rand, mittig. Alles deutlich Breitere ist ein Banner → 600/0/0. Ohne
+ * messbare Maße (0/0) gilt der sichere Fall: 300 px. Breite und Abstand
+ * bleiben im Editor danach frei einstellbar; das hier ist der Startwert.
+ */
+export function kopfMasseFuerBild(width: number, height: number): Pick<MailHeaderImage, 'width' | 'paddingV' | 'paddingH'> {
+  const banner = width > 0 && height > 0 && width / height > 1.3;
+  return banner ? { width: 600, paddingV: 0, paddingH: 0 } : { width: 300, paddingV: 24, paddingH: 24 };
+}
+
+/** Maße einer Data-URL messen — 0/0, wenn das Bild nicht dekodierbar ist. */
+export function bildMasse(dataUrl: string): Promise<{ width: number; height: number }> {
+  return new Promise(resolve => {
+    try {
+      const i = new Image();
+      i.onload = () => resolve({ width: i.naturalWidth || 0, height: i.naturalHeight || 0 });
+      i.onerror = () => resolve({ width: 0, height: 0 });
+      i.src = dataUrl;
+    } catch { resolve({ width: 0, height: 0 }); }
+  });
+}
+
+/** v31.76: Trägt ein FOTO noch die Logo-Vorgabe 600/0/0? Dann hat es die
+ *  Maße nur geerbt (vor v31.76 gab es keine Formprüfung) — beim Öffnen des
+ *  Editors wird die Form nachgemessen. */
+export function fotoMitLogoMassen(img: MailHeaderImage): boolean {
+  return (img.hero === 'event' || img.hero === 'custom') && img.width === 600 && img.paddingV === 0 && img.paddingH === 0;
+}
+
+/**
  * Orb-Schutz (aus `headerOptsFor`, v29.37; im Wizard `headerLayoutFor`, v28.29).
  *
  * Ohne eigenes Bild setzt der Flow das Standard-DEX-Logo in den Kopf — 600 px
