@@ -263,6 +263,9 @@ export default function CheckInPage(): React.ReactElement {
     qrNote?: string;
     /** v31.4: Die getippte Nummer war zweideutig — s. QrIdConflict. */
     qrConflict?: QrIdConflict;
+    /** v31.74: Der Code gehörte zu diesem Termin, eingecheckt wird auf der
+     *  unten gewählten Klammer (s. processCode). */
+    viaTermin?: string;
   };
   /**
    * v31.4: Warum eine getippte Zahl NICHT direkt eingecheckt wird.
@@ -1865,7 +1868,41 @@ export default function CheckInPage(): React.ReactElement {
       return;
     }
 
-    const reg = await eventService.getRegistrationByEmail(event.subsiteUrl, email);
+    /*
+     * v31.74: Check-in auf der Klammer, ohne Termin-Unterscheidung.
+     *
+     * Nutzer-Frage (Annette Stoffel, Teams 22.09.2026): „ich möchte nur für
+     * das Hauptevent einchecken lassen, ohne Section-Unterscheidung. Geht
+     * das?" Der QR-Code trägt IMMER die Nummer des Termins, auf dem die
+     * Person angemeldet ist (die QR-Mail geht je Termin raus) — ein Scan
+     * checkte deshalb immer auf dem Termin ein, egal, was unten gewählt war.
+     * Über Namen und Liste ging der Klammer-Check-in schon: Die Klammer hat
+     * eine eigene Teilnehmerliste mit einer Schattenzeile je Person
+     * (v30.68 schreibt sie zuerst).
+     *
+     * Jetzt: Steht unten die KLAMMER des gescannten Termins, wird die Person
+     * auf deren Zeile eingecheckt — die Sections sind dann egal. Fehlt die
+     * Schattenzeile (Anmeldung vor v30.68, Nachzug noch offen), bleibt es
+     * beim Termin, und die Karte sagt das. Steht unten der Termin selbst
+     * oder nichts, ändert sich nichts.
+     */
+    let viaTermin = '';
+    let klammerReg: SPRegistration | null = null;
+    const scannedEv = events.find(e => e.id === event.id);
+    const chosenEv = nameSearchEventId ? events.find(e => e.id === nameSearchEventId) : undefined;
+    if (scannedEv && chosenEv && chosenEv.subsiteUrl && scannedEv.parentEventId === chosenEv.id) {
+      try {
+        klammerReg = await eventService.getRegistrationByEmail(chosenEv.subsiteUrl, email);
+      } catch { klammerReg = null; }
+      if (klammerReg && klammerReg.Status !== 'Abgemeldet') {
+        viaTermin = scannedEv.title;
+        event = { id: chosenEv.id, title: chosenEv.title, subsiteUrl: chosenEv.subsiteUrl, eventNumber: chosenEv.eventNumber };
+      } else {
+        klammerReg = null;
+      }
+    }
+
+    const reg = klammerReg || await eventService.getRegistrationByEmail(event.subsiteUrl, email);
     if (!reg) {
       setResultMessage(`${email} — nicht registriert.`);
       setResultType('error');
@@ -1949,6 +1986,7 @@ export default function CheckInPage(): React.ReactElement {
       // v31.4 (Review): über den Cache, nicht über `reg` — die gescannte Zeile
       // trägt weder `QrSentId` noch `TeilnehmerID` (fester `$select`).
       qrNote: qrNoteFromCache(reg, event.id),
+      viaTermin: viaTermin || undefined,
     });
     setResultMessage('');
     setResultType('');
@@ -2711,6 +2749,11 @@ export default function CheckInPage(): React.ReactElement {
           })()}
           <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', margin: '0 0 16px' }}>
             {isDe ? 'Event: ' : 'Event: '}<strong>{pendingCheckIn.event.title}</strong>
+            {pendingCheckIn.viaTermin && (
+              <><br />{isDe
+                ? <>Code aus dem Termin <strong>{pendingCheckIn.viaTermin}</strong> — eingecheckt wird auf dem Hauptevent.</>
+                : <>Code from the session <strong>{pendingCheckIn.viaTermin}</strong> — checking in on the main event.</>}</>
+            )}
             {pendingCheckIn.agendaLabel && (
               <><br />{agendaTermSingular}: <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>{pendingCheckIn.agendaLabel}</strong></>
             )}

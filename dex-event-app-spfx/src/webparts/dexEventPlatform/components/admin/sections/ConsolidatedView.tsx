@@ -203,7 +203,8 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
     // Standort) — eingeklappt nur 2 (#, „Teilnehmer").
     const personalColCount = personalColsCollapsed ? 2 : 6;
     // v26.84: +1 zusätzliche Spalte „Registriert von" (Akteur) neben „Details".
-    const totalColSpan = personalColCount + parentCustomFields.length + parentUserFields.length + childCustomFieldsByChild.reduce((sum, x) => sum + 1 + x.fields.length, 0) + 2;
+    // v31.75: +1 „Registriert am".
+    const totalColSpan = personalColCount + parentCustomFields.length + parentUserFields.length + childCustomFieldsByChild.reduce((sum, x) => sum + 1 + x.fields.length, 0) + 3;
     // v19.30: Aktionen (Hauptevent-Felder bearbeiten / abmelden) nur für
     // berechtigte Rollen (Admin oder Organizer dieses Events).
     const canManage = isAdmin || isOrganizerFor(selectedEvent);
@@ -868,6 +869,15 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
               {/* v26.84: „Registriert von" auch im Klammer-View — selbst /
                   Assistenz / stellvertretend. */}
               <th style={{ whiteSpace: 'nowrap', verticalAlign: 'bottom' }}>{isDe ? 'Registriert von' : 'Registered by'}</th>
+              {/* v31.75: „Registriert am" daneben — die früheste Anmeldung der
+                  Person über alle Termine (Nutzer-Ansage 22.09.2026: „Registriert
+                  am soll auch im Klammer-Event als Spalte auftauchen zum
+                  Sortieren neben Registriert von"). Bis dahin war der Zeitpunkt
+                  nur die stille Vorgabe der #-Sortierung. */}
+              <th className={sortCls('registeredAt')} style={{ whiteSpace: 'nowrap', verticalAlign: 'bottom' }} onClick={() => handleSortConsolidated('registeredAt')}
+                title={isDe ? 'Früheste Anmeldung der Person über alle Termine' : 'Earliest registration of the person across all sessions'}>
+                {isDe ? 'Registriert am' : 'Registered on'}{sortArrow('registeredAt')}
+              </th>
               {childCustomFieldsByChild.map(({ child, fields }) => {
                 // v31.3: Der Spaltenkopf sagt selbst, wenn die Liste dieses Termins
                 // nicht gelesen werden konnte — sonst liest man die „?"-Zellen
@@ -1115,6 +1125,11 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                         </td>
                       );
                     })()}
+                    {/* v31.75: „Registriert am" — derselbe Wert, nach dem „#"
+                        sortiert (früheste RegistrationDate der Person). */}
+                    <td style={{ whiteSpace: 'nowrap', color: 'var(--dex-gray-500)' }}>
+                      {isFinite(row.earliestRegistrationTs) ? formatDate(new Date(row.earliestRegistrationTs).toISOString()) : '—'}
+                    </td>
                     {childCustomFieldsByChild.map(({ child, fields }) => {
                       const r = row.perChild[child.id];
                       const isReg = !!r && ACTIVE.indexOf(r.Status) >= 0;

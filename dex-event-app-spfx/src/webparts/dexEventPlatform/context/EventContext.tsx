@@ -1449,6 +1449,9 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
               // gewählt, wird es hier aufgelöst und fest eingebacken — sonst
               // bleibt {{ORB_URL}} stehen und der Flow setzt das Standardbild.
               // Der Abruf ist gecacht, kostet pro Sitzung also einmal.
+              // v31.74: Ein hochgeladenes eigenes Bild steckt im Override
+              // selbst (`headerCustomB64`) — `qrCodeEmail` liest es von dort;
+              // hier muss nur das Event-Foto aufgelöst werden.
               let qrHeroPhoto = '';
               if (qrOverride && qrOverride.headerImage && qrOverride.headerImage.hero === 'event' && event.imageUrl) {
                 try {

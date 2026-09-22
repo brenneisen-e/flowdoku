@@ -116,7 +116,7 @@ export function applyHeroImage(
  * kommt aus einem JSON-Feld, das auch von Flows geschrieben wird — eine
  * fehlende Zahl darf hier keine `NaN`-Breite in die Mail tragen.
  */
-export function normalizeMailHeaderImage(raw: unknown): MailHeaderImage {
+export function normalizeMailHeaderImage(raw: unknown, allowCustom?: boolean): MailHeaderImage {
   const o = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : {};
   const num = (v: unknown, def: number, max: number): number => {
     const n = typeof v === 'number' ? v : parseInt(String(v ?? ''), 10);
@@ -125,10 +125,11 @@ export function normalizeMailHeaderImage(raw: unknown): MailHeaderImage {
   };
   return {
     // v31.9.7: `custom` kommt bewusst NICHT aus dem gespeicherten JSON
-    // zurueck. Das Bild dazu lebt nur im Composer dieser einen Mail und
-    // wird nirgends persistiert — ein gespeichertes `custom` waere also
-    // eine Auswahl ohne Bild und wuerde still auf den Platzhalter fallen.
-    hero: o.hero === 'event' ? 'event' : 'logo',
+    // zurueck, solange kein Bild dazu vorliegt — ein gespeichertes `custom`
+    // ohne Bild waere eine Auswahl, die still auf den Platzhalter faellt.
+    // v31.74: Der Aufrufer sagt mit `allowCustom`, dass er das Bild hat
+    // (QR-Mail: `headerCustomB64` im Override).
+    hero: o.hero === 'event' ? 'event' : (o.hero === 'custom' && allowCustom ? 'custom' : 'logo'),
     width: num(o.width, MAIL_HEADER_IMAGE_DEFAULT.width, 600),
     paddingV: num(o.paddingV, MAIL_HEADER_IMAGE_DEFAULT.paddingV, 80),
     paddingH: num(o.paddingH, MAIL_HEADER_IMAGE_DEFAULT.paddingH, 80),
@@ -198,10 +199,10 @@ export function hasOwnMailLogo(overridesJson: string | undefined | null, mailLog
  * (Nutzer 07.09.2026: „warum ist die Vorschau vom QR-Code schon wieder so
  * klein?").
  */
-export function resolveMailHeaderImage(raw: unknown, overridesJson: string | undefined | null, mailLogoB64?: string | null): MailHeaderImage {
+export function resolveMailHeaderImage(raw: unknown, overridesJson: string | undefined | null, mailLogoB64?: string | null, allowCustom?: boolean): MailHeaderImage {
   const o = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : null;
   const storedWidth = o ? (typeof o.width === 'number' ? o.width : parseInt(String(o.width ?? ''), 10)) : NaN;
-  if (o && isFinite(storedWidth) && storedWidth > 0) return normalizeMailHeaderImage(o);
+  if (o && isFinite(storedWidth) && storedWidth > 0) return normalizeMailHeaderImage(o, allowCustom);
   let il: { width?: unknown; paddingV?: unknown; paddingH?: unknown } = {};
   try {
     const ov = JSON.parse(overridesJson || '{}') || {};

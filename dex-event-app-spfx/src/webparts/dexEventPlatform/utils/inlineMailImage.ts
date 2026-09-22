@@ -170,6 +170,32 @@ export async function buildInlineImage(file: File, maxWidth?: number): Promise<I
 }
 
 /**
+ * v31.74: Ein Bild für den Mail-KOPF aus einer Datei — EINE Stelle für
+ * Rundmail und QR-Mail. Vorher stand die Leiter samt Meldungen nur im
+ * Rundmail-Composer; die QR-Mail hatte gar keine Kachel „Eigenes Bild"
+ * (Nutzer-Befund Teams 22.09.2026: „Beim Versand der QR-Codes gibt's keine
+ * Möglichkeit, das Bild individuell zu verändern"). 600 px, weil der Kopf die
+ * volle Tabellenbreite hat. `dataUrl` leer = abgelehnt, `note` sagt warum —
+ * „hat nicht geklappt" ließe den Organizer raten, ob es am Bild oder an der
+ * App lag.
+ */
+export async function ladeKopfbild(file: File, isDe: boolean): Promise<{ dataUrl: string; note: string }> {
+  const out = await buildInlineImage(file, 600);
+  if (!out.ok) {
+    return {
+      dataUrl: '',
+      note: out.reason === 'too-big'
+        ? (isDe ? `Auch verkleinert noch ${Math.round(charsToKb(out.chars))} KB — bitte ein einfacheres Bild nehmen (weniger Details, kein Screenshot).` : `Still ${Math.round(charsToKb(out.chars))} KB after compression — please use a simpler image.`)
+        : (isDe ? 'Diese Datei konnte nicht gelesen werden.' : 'This file could not be read.'),
+    };
+  }
+  return {
+    dataUrl: out.dataUrl,
+    note: isDe ? `Übernommen — ${out.width}×${out.height} px, ${Math.round(charsToKb(out.chars))} KB.` : `Applied — ${out.width}×${out.height} px, ${Math.round(charsToKb(out.chars))} KB.`,
+  };
+}
+
+/**
  * Das `<img>`, das in den Text kommt.
  *
  * Feste `width` PLUS `max-width:100%` — genau in dieser Reihenfolge und nicht

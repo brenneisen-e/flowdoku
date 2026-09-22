@@ -875,6 +875,18 @@ export default function AdminPage(): React.ReactElement {
   // der Block-Sprache; '-' = gar kein Hinweis (s. buildQrBlockHtml).
   const [qrBlockNote, setQrBlockNote] = React.useState('');
   const [qrEventPhotoB64, setQrEventPhotoB64] = React.useState('');
+  // v31.74: Eigenes Kopfbild der QR-Mail — anders als bei der Rundmail wird es
+  // MIT dem Override gespeichert (die QR-Mail geht auch automatisch raus).
+  const [qrCustomHeaderB64, setQrCustomHeaderB64] = React.useState('');
+  // v31.75: Ziel des QR-Versands aus dem Dialog einer Klammer — '' = das
+  // geöffnete Event selbst, sonst die Id eines Termins (Nutzer-Ansage
+  // 22.09.2026: „im Modal entscheiden, für welches Event der QR-Code
+  // versendet wird — Sub-Event oder Klammer-Event"). Die Termin-Listen
+  // liegen schon in subEventRegsByEventId; nichts wird doppelt geladen.
+  const [qrSendTargetId, setQrSendTargetId] = React.useState('');
+  // Ein anderes Event, ein anderes Ziel — sonst zeigte der Dialog der
+  // nächsten Klammer auf einen Termin, den es dort nicht gibt.
+  React.useEffect(() => { setQrSendTargetId(''); }, [selectedEvent?.id]);
   const [searchQuery, setSearchQuery] = React.useState('');
   // v29.26: „Teilnehmer hinzufügen"-Dialog (Organizer-Ausnahme-Weg).
   const [addParticipantsOpen, setAddParticipantsOpen] = React.useState(false);
@@ -1682,6 +1694,15 @@ export default function AdminPage(): React.ReactElement {
   }, [massmailMode, selectedEvent?.id]);
 
 
+  // v31.75: Ziel-Event und dessen Liste für den QR-Versand. `null` als Liste
+  // heißt „nicht lesbar" (Termin in deniedSubEventLists) oder noch nicht
+  // geladen — dann sperrt der Dialog den Versand, statt an [] zu senden.
+  const qrSendTarget: DeloitteEvent | null = (qrSendTargetId && selectedEvent && qrSendTargetId !== selectedEvent.id)
+    ? (childEventsOf(selectedEvent.id).find(c => c.id === qrSendTargetId) || null)
+    : null;
+  const qrSendTargetRegs: SPRegistration[] | null = qrSendTarget
+    ? (deniedSubEventLists.some(d => d.title === (qrSendTarget.title || qrSendTarget.id)) ? null : (subEventRegsByEventId[qrSendTarget.id] || null))
+    : null;
   // v30.66: createQrMailActions — Rumpf in logic/createQrMailActions.tsx.
   const {
     closeQrMailEditor, getQrMailOverride, openQrMailEditor, qrFullSendAction, qrPreviewAction,
@@ -1689,7 +1710,8 @@ export default function AdminPage(): React.ReactElement {
   } = createQrMailActions({
     confirmDialog, currentUser, eventServiceRef, isDe, qrBlockLang,
     qrBlockNote, qrEditBody, qrEditHeading, qrEditSaving, qrEditSubheading, qrEditSubject,
-    qrEditTarget, qrHeaderImage, refreshEvents, registrations, reloadRegistrations, sciBusy, sciFrom, sciTo,
+    qrEditTarget, qrHeaderImage, qrCustomHeaderB64, setQrCustomHeaderB64, refreshEvents, registrations, reloadRegistrations, sciBusy, sciFrom, sciTo,
+    qrSendTarget, qrSendTargetRegs, reloadSubEventRegs: () => setSubRegReloadTick(t => t + 1),
     selectedEvent, setIsSendingQR, setQrBlockLang, setQrBlockNote, setQrEditBody, setQrEditHeading,
     setQrEditOpen, setQrEditSampleBlock, setQrEditSampleImg, setQrEditSaving, setQrEditSubheading,
     setQrEditSubject, setQrEditTarget, setQrEventPhotoB64, setQrHeaderImage, setQrPreviewHtml,
@@ -2110,6 +2132,8 @@ export default function AdminPage(): React.ReactElement {
       // (RegistrationDate min), nicht mehr nach TeilnehmerID — die TID ist
       // pro Sub-Event und bei konsolidierten Personen mehrdeutig.
       if (cs === 'id') return (a.earliestRegistrationTs - b.earliestRegistrationTs) * dir;
+      // v31.75: Spalte „Registriert am" — derselbe Schlüssel, ausdrücklich benannt.
+      if (cs === 'registeredAt') return (a.earliestRegistrationTs - b.earliestRegistrationTs) * dir;
       if (cs === 'vorname') return a.vorname.localeCompare(b.vorname, 'de') * dir;
       if (cs === 'nachname') return a.nachname.localeCompare(b.nachname, 'de') * dir;
       if (cs === 'email') return a.email.localeCompare(b.email) * dir;
@@ -2332,6 +2356,7 @@ export default function AdminPage(): React.ReactElement {
     qrFullSendAction, qrHelpOpen, qrPreviewAction, qrPreviewLoading, qrSendModalOpen, qrSendResult,
     qrSentCount, qrSubMailsOpen, qrTestSendAction, registrations, selectedEvent, setQrHelpOpen,
     setQrSendModalOpen, setQrSubMailsOpen,
+    setQrSendTargetId, qrSendTarget, qrSendTargetRegs, subEventRegsByEventId, deniedSubEventLists,
   };
   const qrEditModalProps = {
     closeQrMailEditor, currentUser, getQrMailOverride, isDe, isSendingQR, qrBlockLang,
@@ -2340,6 +2365,7 @@ export default function AdminPage(): React.ReactElement {
     qrHeaderImage, qrSendResult, qrSentCount, qrTestSendAction, registrations, saveQrMailOverride,
     selectedEvent, setComposerCrop, setQrBlockLang, setQrBlockNote, setQrEditBody, setQrEditHeading,
     setQrEditSampleBlock, setQrEditSubheading, setQrEditSubject, setQrHeaderImage,
+    qrCustomHeaderB64, setQrCustomHeaderB64, qrSendTarget, qrSendTargetRegs,
   };
   const editRegModalProps = {
     // v31.4: `editingReg` und `registrations` für das Feld „Ausgegebenes
