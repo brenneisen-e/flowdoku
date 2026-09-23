@@ -314,6 +314,12 @@ brauchte Organizer-Rechte. Seit v30.87: `ensureScannerListPermissions`
 (Edit 1073741830 auf der Liste, nicht auf dem Web; Fallback Full Control;
 Entzug beim Streichen mit Nachlesen; Organizer nie entzogen), gerufen im
 Edit-/Create-Pfad des Wizards und in „Organizer-Berechtigungen reparieren".
+Die Sammel-Prüfung über ALLE Events (`repairAllOrganizerPermissions`) steht
+seit v31.85 in der **Rollenverwaltung** („Rechte auf den Teilnehmerlisten
+(alle Events)" → „Alle Events prüfen"), nicht mehr im Admin Hub; die
+Einzel-Aktion im Organizer Center nimmt seit v31.85 auch das Check-in-Team
+mit (bis v31.84 nur Organizer — obwohl der 403-Hinweis am Check-in auf sie
+verwies).
 Wer eine neue Rolle mit Listenzugriff baut: Contribute reicht bei
 Item-Level-Security NIE für fremde Zeilen.
 
