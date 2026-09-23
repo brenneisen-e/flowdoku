@@ -317,6 +317,19 @@ Edit-/Create-Pfad des Wizards und in „Organizer-Berechtigungen reparieren".
 Wer eine neue Rolle mit Listenzugriff baut: Contribute reicht bei
 Item-Level-Security NIE für fremde Zeilen.
 
+**Personen für Subsite-Rechte über `ensureuser` auflösen, nie nur über
+`siteusers/getbyemail` (v31.84).** Wer die Site-Collection nie besucht hat,
+steht nicht in der User Information List; die Suche antwortet 404, die
+Zuweisung landet stumm in `unresolved`. Genau so blieb ein Check-in-Team-
+Mitglied ohne Rechte, bis der Organizer nach ihrem ersten App-Start ein
+zweites Mal speicherte (Befund Melina Kessel 23.09.2026 — „als Co-Organizerin
+ging es", weil das zweite Speichern die Person fand). `resolveSiteUserId` in
+`subsiteProvisioning.ts` ist der EINE Weg. Zweite Lehre aus demselben Tag:
+Rechte auf Termine gehören HINTER `persistSubEventsForParent` mit frischem
+`getEvents()` (`scannerRechteAufBaum`) — `childEventsOf` aus dem Client-
+State kennt die Termine dieses Speicherns noch nicht, und „bekommt der
+nächste Speichervorgang" heißt: nie.
+
 **Mail-Kopfbild: `eventHeaderImageOpts` an JEDER wrapTemplate-Stelle mit
 Event (v30.87).** `wrapTemplate` ohne Bildmaße heißt 180 px — der alte
 Default. Rund zwanzig App-Mails (Team, Zimmerpartner, Hotel, Abrechnung,

@@ -22,6 +22,51 @@ import { EmailOverrideEntry } from '../../wizard/emailOverrideEntry';
 import { outlookDefaultBodyTemplate, outlookOrganizerFallback } from '../../../utils/outlookDefaultBody';
 import { buildProgramHtml, applyProgramPlaceholder } from '../../../utils/programPlaceholder';
 
+/**
+ * v31.84: Check-in-Team auf ALLEN Teilnehmerlisten des Event-Baums berechtigen —
+ * nach dem Speichern der Termine, mit frisch gelesenen Zeilen.
+ *
+ * Bis v31.83 lief die Zuweisung im Edit-Pfad VOR `persistSubEventsForParent`
+ * über `childEventsOf` aus dem Client-State, im Create-Pfad nur über die
+ * Klammer-Subsite („die Termine bekommt der nächste Speichervorgang"). Ein
+ * Termin, der im selben Speichern entstand, hatte danach kein Check-in-Team —
+ * die Person sah die Kachel (ihre Adresse steht in `_qrScanners`), aber die
+ * Liste des Termins antwortete 403 bzw. nur mit eigenen Zeilen. Jetzt: nach
+ * dem Persistieren `getEvents()` lesen, Klammer plus alle Zeilen mit
+ * `ParentEventId === rootId` nehmen. Das Ergebnis wird zurückgegeben, damit
+ * der Aufrufer nicht auflösbare Personen MELDET statt sie zu verschlucken.
+ */
+async function scannerRechteAufBaum(
+  svc: EventService,
+  rootId: string,
+  scannerEmails: string[],
+  revokeEmails: string[],
+  keepEmails: string[],
+): Promise<{ sites: string[]; unresolved: string[]; failed: number }> {
+  const rows = await svc.getEvents();
+  const sites = rows
+    .filter(r => String(r.Id) === rootId || String(r.ParentEventId || '') === rootId)
+    .map(r => (r.SubsiteUrl || '').trim())
+    .filter(Boolean);
+  const uniq = Array.from(new Set(sites));
+  if (uniq.length === 0) return { sites: [], unresolved: [], failed: 0 };
+  const r = await svc.ensureScannerListPermissions(uniq, scannerEmails, revokeEmails, keepEmails);
+  return { sites: uniq, unresolved: r.unresolved, failed: r.failed.length };
+}
+
+/** v31.84: Ein Satz für den Organizer, wenn die Zuweisung nicht vollständig war. */
+function scannerRechteHinweis(isDe: boolean, unresolved: string[], failed: number): string {
+  const wer = unresolved.length > 0 ? unresolved.join(', ') : '';
+  if (isDe) {
+    const a = wer ? `Für ${wer} konnte kein SharePoint-Konto gefunden werden. ` : '';
+    const b = failed > 0 ? `${failed} Zuweisung(en) hat SharePoint abgelehnt. ` : '';
+    return `Check-in-Team: ${a}${b}Diese Personen sehen am Check-in keine Teilnehmerliste und können keinen Code einchecken. Bitte später „Organizer-Berechtigungen reparieren" im Organizer Center ausführen oder die Personen einmal die App öffnen lassen und erneut speichern.`;
+  }
+  const a = wer ? `No SharePoint account was found for ${wer}. ` : '';
+  const b = failed > 0 ? `SharePoint rejected ${failed} assignment(s). ` : '';
+  return `Check-in team: ${a}${b}These people will not see the attendee list at check-in and cannot check in a code. Please run "Repair organizer permissions" in the Organizer Center later, or have them open the app once and save again.`;
+}
+
 export interface WizardSubmitCtx {
   activeFrom: string;
   addrCity: string;
@@ -957,12 +1002,9 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
               await svcPerm.ensureOrganizerPermissionsMulti(permSites, allOrgEmailsForPerm);
             }
             // v30.87: Check-in-Team auf den Teilnehmerlisten (Edit, nicht Web).
-            // Wer gestrichen wurde, verliert die Zuweisung — Organizer nie.
-            const prevScanners = (editEvent.qrScannerEmails || []);
-            const orgKeep = organizerEmails.concat(coOrganizerEmails);
-            if (qrScannerEmails.length > 0 || prevScanners.length > 0) {
-              await svcPerm.ensureScannerListPermissions(permSites, qrScannerEmails, prevScanners, orgKeep);
-            }
+            // v31.84: Der Lauf steht jetzt HINTER persistSubEventsForParent
+            // (s. scannerRechteAufBaum) — hier entstünden die Zuweisungen für
+            // Termine, die dieses Speichern erst anlegt, nie.
           }
         } catch (err) { console.warn('[DEX] Permission-Sync für Organizer fehlgeschlagen:', err); }
 
@@ -1019,6 +1061,25 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
         // Termine wurden (nach Rückfrage) gelöscht; stehen gebliebene Marker
         // würden beim nächsten Öffnen Geister anzeigen.
         setRemovedSavedSubs([]);
+
+        // v31.84: Check-in-Team auf Klammer UND allen Terminen — jetzt, wo die
+        // Termine dieses Speicherns existieren. Wer gestrichen wurde, verliert
+        // die Zuweisung; Organizer nie. Nicht auflösbare Personen werden
+        // gemeldet (bis v31.83 stumm, s. Befund Melina Kessel 23.09.2026).
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ctxScan = (window as any).__dexSpfxContext;
+          const prevScanners = (editEvent?.qrScannerEmails || []);
+          if (ctxScan && editEvent?.subsiteUrl && (qrScannerEmails.length > 0 || prevScanners.length > 0)) {
+            const r = await scannerRechteAufBaum(
+              new EventService(ctxScan), String(selectedEventId),
+              qrScannerEmails, prevScanners, organizerEmails.concat(coOrganizerEmails));
+            const offen = r.unresolved.filter(u => qrScannerEmails.some(e => (e || '').toLowerCase() === u));
+            if (offen.length > 0 || r.failed > 0) {
+              showAlert(scannerRechteHinweis(isDe, offen, r.failed), { variant: 'error' });
+            }
+          }
+        } catch (err) { console.warn('[DEX] Check-in-Team-Rechte beim Speichern fehlgeschlagen:', err); }
 
         setProgress(82);
         setProgressLabel(isDe ? 'Teilnehmerlisten-Spalten werden geprüft...' : 'Verifying participant list columns...');
@@ -1999,11 +2060,22 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
             const created = allEvents.find(e => String(e.Id) === String(eventId));
             const subsiteUrl = created?.SubsiteUrl || '';
             // v30.87: Check-in-Team schon beim Anlegen auf die Teilnehmerliste
-            // berechtigen (Edit auf der Liste). Sub-Event-Listen entstehen erst
-            // danach — die bekommt der nächste Speichervorgang bzw. die Aktion
-            // „Organizer-Berechtigungen reparieren".
+            // berechtigen (Edit auf der Liste). v31.84: auch auf den Terminen —
+            // persistSubEventsForParent ist oben durchgelaufen, `allEvents`
+            // kennt sie bereits; „bekommt der nächste Speichervorgang" hieß in
+            // der Praxis: kein Check-in-Team auf einem einzigen Termin.
             if (subsiteUrl && qrScannerEmails.length > 0) {
-              try { await svc.ensureScannerListPermissions([subsiteUrl], qrScannerEmails, []); }
+              try {
+                const sites = Array.from(new Set(
+                  allEvents
+                    .filter(e => String(e.Id) === String(eventId) || String(e.ParentEventId || '') === String(eventId))
+                    .map(e => (e.SubsiteUrl || '').trim())
+                    .filter(Boolean)));
+                const r = await svc.ensureScannerListPermissions(sites, qrScannerEmails, []);
+                if (r.unresolved.length > 0 || r.failed.length > 0) {
+                  showAlert(scannerRechteHinweis(isDe, r.unresolved, r.failed.length), { variant: 'error' });
+                }
+              }
               catch (err) { console.warn('[DEX] Check-in-Team-Rechte beim Anlegen fehlgeschlagen:', err); }
             }
             // Event-Created Mail an alle Organizer senden.
