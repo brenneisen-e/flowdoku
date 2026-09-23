@@ -2,6 +2,7 @@ import * as React from 'react';
 import { SubEventDraft } from '../../wizard/wizardTypes';
 import { SUB_TRANSFER_GROUPS } from '../../../data/wizardHints';
 import { compressImage } from '../../../utils/imageCompress';
+import { LOGO_MAX_BREITE } from '../../../utils/mailHeaderImage';
 
 /* applyEventPhotoToLogo — aus EventCreationPage.tsx ausgelagert (Zeilen 1271-1312 des
  * urspruenglichen Stands). Der Funktionskoerper ist zeichengleich uebernommen;
@@ -31,14 +32,16 @@ export async function applyEventPhotoToLogoImpl(ctx: ApplyEventPhotoToLogoCtx, s
       // gewollt hätte. Wenn ein unbeschnittenes Original existiert (frischer
       // Upload: imageOrigFile; gespeichertes Event: editEvent.imageOrigUrl),
       // wird jetzt DIESES übernommen.
+      // v31.80: bis LOGO_MAX_BREITE (1200 px) statt 600 — für scharfe Köpfe auf
+      // Retina-Bildschirmen; shrinkLogoB64 hält das Ergebnis unter 250 KB.
       if (imageOrigFile) {
-        b64 = await fileToBase64(await compressImage(imageOrigFile, 600, 0.85, true));
+        b64 = await shrinkLogoB64(await fileToBase64(await compressImage(imageOrigFile, LOGO_MAX_BREITE, 0.85, true)));
       } else if (editEvent && editEvent.imageOrigUrl) {
         try {
           const resp = await fetch(editEvent.imageOrigUrl, { credentials: 'include' });
           const blob = await resp.blob();
           const f = new File([blob], 'event-photo.jpg', { type: blob.type || 'image/jpeg' });
-          b64 = await fileToBase64(await compressImage(f, 600, 0.85, true));
+          b64 = await shrinkLogoB64(await fileToBase64(await compressImage(f, LOGO_MAX_BREITE, 0.85, true)));
         } catch { /* Original nicht ladbar → unten auf den Zuschnitt zurückfallen */ }
       }
       if (b64) {
@@ -46,7 +49,7 @@ export async function applyEventPhotoToLogoImpl(ctx: ApplyEventPhotoToLogoCtx, s
         return b64;
       }
       if (imageFile) {
-        b64 = await fileToBase64(await compressImage(imageFile, 600, 0.85, true));
+        b64 = await shrinkLogoB64(await fileToBase64(await compressImage(imageFile, LOGO_MAX_BREITE, 0.85, true)));
       } else if (imagePreview && imagePreview.indexOf('data:') === 0) {
         // v28.10: Frischer Zuschnitt (Data-URL) ebenfalls komprimieren —
         // vorher ging das volle Bild unkomprimiert ins Logo (2-MB-Falle).
@@ -55,7 +58,7 @@ export async function applyEventPhotoToLogoImpl(ctx: ApplyEventPhotoToLogoCtx, s
         const resp = await fetch(imagePreview, { credentials: 'include' });
         const blob = await resp.blob();
         const f = new File([blob], 'event-photo.jpg', { type: blob.type || 'image/jpeg' });
-        b64 = await fileToBase64(await compressImage(f, 600, 0.85, true));
+        b64 = await shrinkLogoB64(await fileToBase64(await compressImage(f, LOGO_MAX_BREITE, 0.85, true)));
       }
       if (b64) setter(b64);
       else showAlert(isDe ? 'Kein Event-Foto vorhanden — bitte zuerst oben ein Bild hochladen.' : 'No event photo yet — please upload an image above first.', { variant: 'error' });

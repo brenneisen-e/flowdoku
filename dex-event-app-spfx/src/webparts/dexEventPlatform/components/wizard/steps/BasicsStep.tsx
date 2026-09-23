@@ -15,6 +15,7 @@ import { Icon } from '@fluentui/react/lib/Icon';
 import { cx } from '../../dexUi';
 import ImageCropModal from '../../ImageCropModal';
 import { compressImage } from '../../../utils/imageCompress';
+import { LOGO_MAX_BREITE } from '../../../utils/mailHeaderImage';
 import { ImgView, SubEventDraft } from '../../wizard/wizardTypes';
 export interface BasicsStepProps {
   visible: boolean;
@@ -992,7 +993,8 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                           srcFile = new File([blob], 'event-photo.jpg', { type: blob.type || 'image/jpeg' });
                         } catch { /* Original nicht ladbar → Zuschnitt nehmen */ }
                       }
-                      const b64 = await fileToBase64(await compressImage(srcFile || file, 600, 0.85, true));
+                      // v31.80: 1200 px statt 600 (LOGO_MAX_BREITE) — scharf auf Retina.
+                      const b64 = await shrinkLogoB64(await fileToBase64(await compressImage(srcFile || file, LOGO_MAX_BREITE, 0.85, true)));
                       if (b64) {
                         if (photoForEmail) { setEmailLogoPreview(b64); setEmailLogoFromPhoto(true); } else dropEmail();
                         if (photoForOutlook) { setOutlookLogoPreview(b64); setOutlookLogoFromPhoto(true); } else dropOutlook();

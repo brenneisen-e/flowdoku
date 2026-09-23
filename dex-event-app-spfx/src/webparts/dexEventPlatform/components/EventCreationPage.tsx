@@ -40,6 +40,7 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { SubEventDraft, OutlookConfirmItem } from './wizard/wizardTypes';
 import { EmailOverrideEntry } from './wizard/emailOverrideEntry';
 import { compressImage } from '../utils/imageCompress';
+import { LOGO_MAX_BREITE } from '../utils/mailHeaderImage';
 import { readOutlookLogo } from './wizard/wizardHelpers';
 import { detectOutlookRelevantChangesImpl } from './wizard/logic/outlookChanges';
 import { runWizardSubmit } from './wizard/logic/wizardSubmit';
@@ -1174,7 +1175,8 @@ export default function EventCreationPage(): React.ReactElement {
   const subPhotoAsLogo = async (draft: { imageFile?: File | null; imagePreview?: string; imageRemoved?: boolean }): Promise<string> => {
     try {
       if (draft.imageRemoved) return '';
-      if (draft.imageFile) return await fileToBase64(await compressImage(draft.imageFile, 600, 0.85, true));
+      // v31.80: 1200 px statt 600 (LOGO_MAX_BREITE), Größe hält shrinkLogoB64.
+      if (draft.imageFile) return await shrinkLogoB64(await fileToBase64(await compressImage(draft.imageFile, LOGO_MAX_BREITE, 0.85, true)));
       const prev = (draft.imagePreview || '').trim();
       if (!prev) return '';
       if (prev.indexOf('data:') === 0) return await shrinkLogoB64(prev);
@@ -1183,7 +1185,7 @@ export default function EventCreationPage(): React.ReactElement {
       const resp = await fetch(prev, { credentials: 'include' });
       const blob = await resp.blob();
       const f = new File([blob], 'sub-event-photo.jpg', { type: blob.type || 'image/jpeg' });
-      const b64 = await fileToBase64(await compressImage(f, 600, 0.85, true));
+      const b64 = await shrinkLogoB64(await fileToBase64(await compressImage(f, LOGO_MAX_BREITE, 0.85, true)));
       subPhotoLogoCache.current[prev] = b64;
       return b64;
     } catch { return ''; }

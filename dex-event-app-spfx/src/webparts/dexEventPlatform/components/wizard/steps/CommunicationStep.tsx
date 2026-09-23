@@ -18,6 +18,7 @@ import DatePicker from 'react-datepicker';
 import { AlertCircle, Calendar, Check, ChevronDown, Info, Mail, Pencil, Plus, Send, X } from '../../Icons';
 import { cx } from '../../dexUi';
 import { compressImage } from '../../../utils/imageCompress';
+import { LOGO_MAX_BREITE } from '../../../utils/mailHeaderImage';
 import { COMM_TOPICS } from '../logic/commTabs';
 import { BundledComm } from '../../../utils/bundledComm';
 import { SubEventDraft } from '../../wizard/wizardTypes';
@@ -847,7 +848,10 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                               // offiziellen Deloitte Circular Motifs.
                               const ok = await confirmDialog(t('create.logoupload.warning'), { confirmLabel: isDe ? 'Trotzdem verwenden' : 'Use anyway' });
                               if (!ok) { e.target.value = ''; return; }
-                              const compressed = await compressImage(file, 600, 0.9);
+                              // v31.80: bis 1200 px statt 600 — der Kopf wird auf
+                              // Retina-Bildschirmen mit doppelter Pixeldichte gezeigt
+                              // (LOGO_MAX_BREITE); shrinkLogoB64 hält die Größe beim Save.
+                              const compressed = await compressImage(file, LOGO_MAX_BREITE, 0.9);
                               const reader = new FileReader();
                               reader.onload = (ev) => { const b = ev.target?.result as string || ''; setEmailLogoPreview(b); setEmailLogoFromPhoto(false); kopfMasseNachLogo(b); };
                               reader.readAsDataURL(compressed);
@@ -907,7 +911,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                               if (!file) return;
                               const ok = await confirmDialog(t('create.logoupload.warning'), { confirmLabel: isDe ? 'Trotzdem verwenden' : 'Use anyway' });
                               if (!ok) { e.target.value = ''; return; }
-                              const compressed = await compressImage(file, 600, 0.9);
+                              const compressed = await compressImage(file, LOGO_MAX_BREITE, 0.9);
                               const reader = new FileReader();
                               reader.onload = (ev) => { const b = ev.target?.result as string || ''; setOutlookLogoPreview(b); setOutlookLogoFromPhoto(false); kopfMasseNachLogo(b); };
                               reader.readAsDataURL(compressed);

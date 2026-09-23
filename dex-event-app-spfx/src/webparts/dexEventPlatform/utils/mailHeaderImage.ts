@@ -70,8 +70,21 @@ type KopfMasse = { width: number; paddingV: number; paddingH: number };
 
 export function kopfMasseFuerBild(width: number, height: number): Pick<MailHeaderImage, 'width' | 'paddingV' | 'paddingH'> {
   const banner = width > 0 && height > 0 && width / height > 1.3;
-  return banner ? { ...KOPF_VOLLE_BREITE } : { ...KOPF_RUND };
+  const m = banner ? { ...KOPF_VOLLE_BREITE } : { ...KOPF_RUND };
+  // v31.80: nie über die eigene Bildbreite hinaus — ein 400-px-Bild auf 600
+  // aufgezogen ist die Unschärfe, die der Nutzer am 23.09.2026 gemeldet hat.
+  if (width > 0 && width < m.width) m.width = width;
+  return m;
 }
+
+/**
+ * v31.80: Logos werden bis 1200 px breit gespeichert (vorher 600). Mail-
+ * Clients auf Bildschirmen mit doppelter Pixeldichte zeigen den 600-px-Kopf
+ * mit 1200 Gerätepixeln — ein 600-px-Bild war dort immer weich, ein Logo
+ * mit Schrift (Hofbräu-Beispiel, 23.09.2026) sichtbar matschig. Die Größe
+ * hält `shrinkLogoB64` mit einer Qualitäts-Leiter unter 250 KB.
+ */
+export const LOGO_MAX_BREITE = 1200;
 
 /** Trägt ein Layout genau die automatische Vollbreiten-Vorgabe (600/0/0)? */
 export function istVolleBreite(l: KopfMasse): boolean {
@@ -132,11 +145,17 @@ export function bildMasseSync(dataUrl: string): { width: number; height: number 
  * Layout, wie es ist.
  */
 export function formRegelKopf<T extends KopfMasse>(layout: T, logoB64?: string | null): T {
-  if (!logoB64 || !istVolleBreite(layout)) return layout;
+  if (!logoB64) return layout;
   const m = bildMasseSync(logoB64);
   if (!m || !m.width || !m.height) return layout;
-  if (m.width / m.height > 1.3) return layout;
-  return { ...layout, ...KOPF_RUND };
+  let out: T = layout;
+  if (istVolleBreite(layout) && m.width / m.height <= 1.3) out = { ...layout, ...KOPF_RUND };
+  // v31.80: Nie breiter rendern, als das Bild Pixel hat. Ein altes Logo, das
+  // der Wizard auf 360 oder 480 px verkleinert hatte, wurde vom Kopf auf 600
+  // px aufgezogen — genau die weiche Schrift aus dem Nutzer-Befund vom
+  // 23.09.2026 („das Bild im Header ist echt ganz schön schlechte Qualität").
+  if (m.width < out.width) out = { ...out, width: m.width };
+  return out;
 }
 
 /** Das Mail-Logo (`_eventLogo`) aus dem Overrides-Blob — '' ohne. */
