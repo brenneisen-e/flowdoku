@@ -59,7 +59,7 @@ export default function SettingsPage(): React.ReactElement {
     addRole, updateRole, setPowerUser, removeRole, hadRoleRightsIssue, isRolesLoading, siteUrl, searchUsers, searchUser,
     auditRolesAccess, getBasicProfiles, lastRoleRightsMissing, lastRightsAudit,
   } = useRoles();
-  const { events, sendOrganizerOnboarding } = useEvents();
+  const { events, sendOrganizerOnboarding, repairAllOrganizerPermissions } = useEvents();
   const { locale } = useLanguage();
   const isDe = locale === 'de';
   // v20.4: App-Modal statt window.confirm.
@@ -173,6 +173,40 @@ export default function SettingsPage(): React.ReactElement {
   const [isAdding, setIsAdding] = React.useState(false);
   const [showAddForm, setShowAddForm] = React.useState(false);
   const [statusMsg, setStatusMsg] = React.useState('');
+  // v31.85: Rechte auf den Teilnehmerlisten ALLER Events (Organizer,
+  // Co-Organizer, Check-in-Team) — aus dem Admin Hub hierher verschoben
+  // (Nutzer-Ansage 23.09.2026: „kann Organizer-Berechtigungen nicht besser in
+  // die Rollenverwaltung?"). Hier stehen die Rollen, hier gehört die Frage
+  // „wer darf welche Liste sehen" hin; im Hub war es eine von zwölf Kacheln.
+  const [listPerm, setListPerm] = React.useState<{ running: boolean; done: number; total: number; label: string; result: string; failed: boolean }>({ running: false, done: 0, total: 0, label: '', result: '', failed: false });
+  const runListPermissions = async (): Promise<void> => {
+    if (listPerm.running) return;
+    if (!(await confirmDialog(
+      isDe
+        ? 'Für ALLE Events prüfen, ob jeder Organizer, Co-Organizer und jedes Check-in-Team-Mitglied Zugriff auf die Teilnehmerlisten hat — auf dem Haupt-Event UND auf jedem Termin? Fehlende Rechte werden ergänzt. Es wird nichts entzogen und nichts gelöscht. Je nach Anzahl der Events kann das einige Minuten dauern.'
+        : 'Check for ALL events whether every organizer, co-organizer and check-in team member has access to the participant lists — on the main event AND on every date? Missing permissions are added. Nothing is revoked and nothing is deleted. This may take a few minutes depending on the number of events.',
+      { confirmLabel: isDe ? 'Jetzt prüfen' : 'Check now' }
+    ))) return;
+    setListPerm({ running: true, done: 0, total: 0, label: '', result: '', failed: false });
+    try {
+      const r = await repairAllOrganizerPermissions((done, total, label) => setListPerm(prev => ({ ...prev, done, total, label })));
+      // Die Zahl der Zuweisungen ist bewusst NICHT als „so viele waren kaputt"
+      // formuliert: SharePoint meldet bei addroleassignment nicht, ob das Recht
+      // neu ist. Deshalb steht dort, was getan wurde, nicht was gefehlt hat.
+      const un = r.unresolved.length
+        ? (isDe
+            ? ` ${r.unresolved.length} Adresse(n) konnten nicht zugeordnet werden: ${r.unresolved.join(', ')} — meist ehemalige Kolleg:innen.`
+            : ` ${r.unresolved.length} address(es) could not be resolved: ${r.unresolved.join(', ')} — usually former colleagues.`)
+        : '';
+      const msg = isDe
+        ? `Fertig: ${r.trees} Event(s) mit insgesamt ${r.sites} Teilnehmerliste(n) durchlaufen, ${r.grants} Zuweisung(en) gesetzt${r.errors ? `, ${r.errors} mit Fehler` : ''}.${un}`
+        : `Done: ${r.trees} event(s) with ${r.sites} participant list(s) processed, ${r.grants} assignment(s) applied${r.errors ? `, ${r.errors} with errors` : ''}.${un}`;
+      setListPerm({ running: false, done: 0, total: 0, label: '', result: msg, failed: r.errors > 0 });
+    } catch {
+      setListPerm({ running: false, done: 0, total: 0, label: '', result: isDe ? 'Berechtigungs-Prüfung fehlgeschlagen.' : 'Permission check failed.', failed: true });
+    }
+  };
+
   // v30.81: Leserechte auf DEX_Roles prüfen — Fortschritt und Ergebnis.
   const [accessAudit, setAccessAudit] = React.useState<{ running: boolean; done: number; total: number; result: string }>({ running: false, done: 0, total: 0, result: '' });
   const runAccessAudit = async (): Promise<void> => {
@@ -862,6 +896,48 @@ export default function SettingsPage(): React.ReactElement {
                 {accessAudit.running
                   ? (accessAudit.total > 0 ? `${isDe ? 'Prüft' : 'Checking'} ${accessAudit.done}/${accessAudit.total} …` : (isDe ? 'Liest Berechtigungen …' : 'Reading permissions …'))
                   : (isDe ? 'Rechte prüfen' : 'Check rights')}
+              </button>
+            </div>
+
+            {/* v31.85: Rechte auf den Teilnehmerlisten — aus dem Admin Hub
+                hierher verschoben. Ein Lauf geht über ALLE Events, Klammer
+                und jeden Termin, für Organizer, Co-Organizer und Check-in-
+                Team. Additiv: nichts wird entzogen. */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+              padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: '0.85rem',
+              background: 'var(--dex-gray-50, #f7f7f7)', border: '1px solid var(--dex-gray-200)',
+            }}>
+              <div style={{ flex: 1, minWidth: 240, color: 'var(--dex-gray-700)', lineHeight: 1.45 }}>
+                <strong>{isDe ? 'Rechte auf den Teilnehmerlisten (alle Events)' : 'Rights on the participant lists (all events)'}</strong>
+                <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
+                  {isDe
+                    ? 'Organizer und Co-Organizer brauchen Vollzugriff, das Check-in-Team Bearbeiten-Recht auf jeder Teilnehmerliste — auf dem Haupt-Event UND auf jedem Termin. Beides wird beim Speichern gesetzt, kann aber scheitern (Drosselung, Person hatte die App noch nie geöffnet, Termin im selben Speichern angelegt). Läuft einmal über alle Events und ergänzt, was fehlt; es wird nichts entzogen.'
+                    : 'Organizers and co-organizers need full control, the check-in team edit rights on every participant list — on the main event AND on every date. Both are set on save but can fail (throttling, person had never opened the app, date created in the same save). Runs once over all events and adds what is missing; nothing is revoked.'}
+                </div>
+                {listPerm.running && (
+                  <div style={{ marginTop: 4, fontSize: '0.76rem', color: 'var(--dex-gray-500)' }}>
+                    {listPerm.total > 0
+                      ? `${listPerm.done}/${listPerm.total}${listPerm.label ? ` · ${listPerm.label}` : ''}`
+                      : (isDe ? 'Events werden gelesen …' : 'Reading events …')}
+                  </div>
+                )}
+                {listPerm.result && (
+                  <div style={{ marginTop: 6, color: listPerm.failed ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600 }}>
+                    {listPerm.result}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={listPerm.running || accessAudit.running}
+                onClick={() => { void runListPermissions(); }}
+                style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}
+              >
+                {listPerm.running
+                  ? (isDe ? 'Läuft …' : 'Running …')
+                  : (isDe ? 'Alle Events prüfen' : 'Check all events')}
               </button>
             </div>
 

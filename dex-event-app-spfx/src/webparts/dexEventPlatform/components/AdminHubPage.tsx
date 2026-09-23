@@ -52,7 +52,7 @@ export default function AdminHubPage(): React.ReactElement {
   // v30.25: Tutorial-Einstieg für Admins (Header-Pille entfällt für sie).
   const { openTutorial } = useTutorial();
   const listUrl = (name: string): string => `${siteUrl}/Lists/${name}`;
-  const { events: allEvents, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns, repairAllOrganizerPermissions, restoreCustomFieldDescriptions, reseedDefaultEmailTemplates, maybeSendWeeklyReport, recomputeEventKpiOnly, getAllRegistrations } = useEvents();
+  const { events: allEvents, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns, restoreCustomFieldDescriptions, reseedDefaultEmailTemplates, maybeSendWeeklyReport, recomputeEventKpiOnly, getAllRegistrations } = useEvents();
   const { locale } = useLanguage();
   const { confirmDialog, showAlert } = useDialog();
   const isDe = locale === 'de';
@@ -71,7 +71,7 @@ export default function AdminHubPage(): React.ReactElement {
   // niemand gesehen hat (CLAUDE.md: ein Lesefehler ist keine Null). Rein für die
   // Anzeige; die Sperre der Knöpfe hängt weiter an der Zahl selbst.
   const [countsRead, setCountsRead] = React.useState<{ arch: boolean; del: boolean }>({ arch: false, del: false });
-  const [busy, setBusy] = React.useState<'' | 'arch' | 'del' | 'fixcols' | 'perms' | 'restoredesc' | 'reseed' | 'weekly' | 'kpi'>('');
+  const [busy, setBusy] = React.useState<'' | 'arch' | 'del' | 'fixcols' | 'restoredesc' | 'reseed' | 'weekly' | 'kpi'>('');
   // v26.63: zuletzt neu berechnete Events-Zahl (für die Erfolgs-Anzeige).
   const [kpiResult, setKpiResult] = React.useState<number | null>(null);
   // v28.26: Teilnehmer-Register bereinigen (Dubletten zusammenführen).
@@ -94,7 +94,6 @@ export default function AdminHubPage(): React.ReactElement {
   // v30.58: Befund des letzten Spalten-Laufs, je Event. `null` = noch nicht gelaufen.
   const [fixReport, setFixReport] = React.useState<FixColumnsDetail[] | null>(null);
   // v30.39: Fortschritt der Berechtigungs-Reparatur über alle Event-Bäume.
-  const [permProgress, setPermProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
   const [restoreProgress, setRestoreProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
   const [restorePreview, setRestorePreview] = React.useState<Array<{ eventId: string; eventTitle: string; fields: Array<{ label: string; props: string[] }> }> | null>(null);
   // v26.81: Berechtigungen aufräumen — Modal mit Prüf-/Korrektur-Ablauf.
@@ -360,35 +359,9 @@ export default function AdminHubPage(): React.ReactElement {
     finally { setBusy(''); setFixProgress(null); }
   };
 
-  // v30.39: Berechtigungen aller Organizer über ALLE Events nachziehen.
-  const doRepairPermissions = async (): Promise<void> => {
-    if (busy) return;
-    if (!(await confirmDialog(
-      isDe
-        ? 'Für ALLE Events prüfen, ob jeder Organizer und Co-Organizer Zugriff auf die Teilnehmerlisten hat — auf dem Haupt-Event UND auf jedem Sub-Event? Fehlende Rechte werden ergänzt. Es wird nichts entzogen und nichts gelöscht. Je nach Anzahl der Events kann das einige Minuten dauern.'
-        : 'Check for ALL events whether every organizer and co-organizer has access to the participant lists — on the main event AND on every sub-event? Missing permissions are added. Nothing is revoked and nothing is deleted. This may take a few minutes depending on the number of events.',
-      { confirmLabel: isDe ? 'Jetzt prüfen' : 'Check now' }
-    ))) return;
-    setBusy('perms');
-    setPermProgress({ done: 0, total: 0, label: '' });
-    try {
-      const r = await repairAllOrganizerPermissions((done, total, label) => setPermProgress({ done, total, label }));
-      // Die Zahl der Zuweisungen ist bewusst NICHT als „so viele waren kaputt"
-      // formuliert: SharePoint meldet bei addroleassignment nicht, ob das Recht
-      // neu ist. Deshalb steht dort, was getan wurde, nicht was gefehlt hat.
-      const un = r.unresolved.length
-        ? (isDe
-            ? ` ${r.unresolved.length} Adresse(n) konnten nicht zugeordnet werden: ${r.unresolved.join(', ')} — meist ehemalige Kolleg:innen.`
-            : ` ${r.unresolved.length} address(es) could not be resolved: ${r.unresolved.join(', ')} — usually former colleagues.`)
-        : '';
-      showAlert(isDe
-        ? `Fertig: ${r.trees} Event(s) mit insgesamt ${r.sites} Teilnehmerliste(n) durchlaufen, ${r.grants} Zuweisung(en) gesetzt${r.errors ? `, ${r.errors} mit Fehler` : ''}.${un}`
-        : `Done: ${r.trees} event(s) with ${r.sites} participant list(s) processed, ${r.grants} assignment(s) applied${r.errors ? `, ${r.errors} with errors` : ''}.${un}`,
-        { variant: r.errors ? 'error' : 'success' });
-    } catch {
-      showAlert(isDe ? 'Berechtigungs-Prüfung fehlgeschlagen.' : 'Permission check failed.', { variant: 'error' });
-    } finally { setBusy(''); setPermProgress(null); }
-  };
+  // v30.39–v31.84: „Organizer-Rechte prüfen (alle Events)" stand hier als
+  // Kachel. Seit v31.85 in der Rollenverwaltung (SettingsPage) — dort stehen
+  // die Rollen, dort gehört die Frage „wer sieht welche Liste" hin.
 
   // v26.13: Wiederherstellung versehentlich gelöschter Custom-Field-
   // Eigenschaften (Beschreibungen, Bedingungen, Mehrfachauswahl, EN-Varianten …)
@@ -1030,17 +1003,6 @@ export default function AdminHubPage(): React.ReactElement {
                 : (isDe ? 'Legt fehlende Spalten an und trägt die Unternehmenszugehörigkeit nach — ohne sie scheitert jede Anmeldung mit diesem Feld.' : 'Adds missing columns and backfills the company — without them every registration using that field fails.'),
               () => { void doFixAllColumns(); },
               { disabled: busy !== '' })}
-            {/* v30.39: Organizer-Berechtigungen über alle Events. Der Einzel-Fix im
-                Organizer Center (v30.37) hilft nur dem, der von dem Problem schon
-                weiß — und sichtbar wird es erst, wenn jemand vor einer leeren
-                Teilnehmerliste steht. Diese Aktion geht über den Bestand. */}
-            {hubAction('perms', <Users size={16} />,
-              isDe ? 'Organizer-Rechte prüfen (alle Events)' : 'Check organizer permissions (all events)',
-              busy === 'perms'
-                ? (isDe ? 'Wird geprüft…' : 'Checking…')
-                : (isDe ? 'Ergänzt fehlende Rechte auf jeder Teilnehmerliste — auch auf jedem Sub-Event. Es wird nichts entzogen.' : 'Adds missing rights on every participant list — including every sub-event. Nothing is revoked.'),
-              () => { void doRepairPermissions(); },
-              { disabled: busy !== '' })}
             {/* v28.26: Teilnehmer-Register bereinigen — Dubletten (mehrere Einträge
                 zur selben E-Mail) zusammenführen. Sie entstehen, wenn der Lookup vor
                 dem Schreiben scheitert (siehe v28.25): Ab da landen Anmeldungen mal
@@ -1095,9 +1057,6 @@ export default function AdminHubPage(): React.ReactElement {
             {busy === 'fixcols' && fixProgress && runProgress(
               fixProgress.total > 0 ? Math.round((fixProgress.done / fixProgress.total) * 100) : 0,
               `${isDe ? 'Spalten fixen' : 'Fix columns'} · ${fixProgress.done}/${fixProgress.total}${fixProgress.label ? ` · ${fixProgress.label}` : ''}`)}
-            {busy === 'perms' && permProgress && runProgress(
-              permProgress.total > 0 ? Math.round((permProgress.done / permProgress.total) * 100) : 0,
-              `${isDe ? 'Organizer-Rechte' : 'Organizer permissions'} · ${permProgress.done}/${permProgress.total}${permProgress.label ? ` · ${permProgress.label}` : ''}`)}
             {/* Lese-Phase (total = 0): Gesamtzahl ist noch unbekannt, der Balken
                 waechst mit den gelesenen Zeilen (2000 je Seite) und bleibt unter
                 90 %, damit er nie faelschlich „fertig" wirkt. */}
@@ -1214,11 +1173,6 @@ export default function AdminHubPage(): React.ReactElement {
                 isDe
                   ? 'Prüft die Teilnehmerlisten ALLER Events inkl. Sub-Events, legt fehlende Spalten an (z.B. „Unternehmen") und trägt die Unternehmenszugehörigkeit für bestehende Teilnehmer nach.'
                   : 'Checks the participant lists of ALL events incl. sub-events, adds missing columns (e.g. „Company") and backfills the company affiliation for existing attendees.')}
-              {actionDetail(
-                isDe ? 'Organizer-Rechte prüfen (alle Events)' : 'Check organizer permissions (all events)',
-                isDe
-                  ? 'Stellt sicher, dass jeder Organizer und Co-Organizer die Teilnehmerliste seiner Events lesen darf — auf dem Haupt-Event UND auf jedem Sub-Event. Bis v30.36 wurde die Berechtigung beim Speichern nur auf dem Haupt-Event gesetzt: Wer nachträglich als Organizer dazukam, sah bei einem Event mit mehreren Terminen überall 0 Teilnehmer, obwohl Anmeldungen vorlagen. Fehlende Rechte werden ergänzt, es wird nichts entzogen und nichts gelöscht.'
-                  : 'Ensures every organizer and co-organizer can read the participant list of their events — on the main event AND on every sub-event. Until v30.36 permissions were set on the main event only: anyone added as organizer later saw 0 participants everywhere on multi-date events although registrations existed. Missing permissions are added; nothing is revoked or deleted.')}
               {actionDetail(
                 isDe ? 'Teilnehmer-Register bereinigen' : 'Clean up participant registry',
                 isDe

@@ -314,8 +314,27 @@ brauchte Organizer-Rechte. Seit v30.87: `ensureScannerListPermissions`
 (Edit 1073741830 auf der Liste, nicht auf dem Web; Fallback Full Control;
 Entzug beim Streichen mit Nachlesen; Organizer nie entzogen), gerufen im
 Edit-/Create-Pfad des Wizards und in „Organizer-Berechtigungen reparieren".
+Die Sammel-Prüfung über ALLE Events (`repairAllOrganizerPermissions`) steht
+seit v31.85 in der **Rollenverwaltung** („Rechte auf den Teilnehmerlisten
+(alle Events)" → „Alle Events prüfen"), nicht mehr im Admin Hub; die
+Einzel-Aktion im Organizer Center nimmt seit v31.85 auch das Check-in-Team
+mit (bis v31.84 nur Organizer — obwohl der 403-Hinweis am Check-in auf sie
+verwies).
 Wer eine neue Rolle mit Listenzugriff baut: Contribute reicht bei
 Item-Level-Security NIE für fremde Zeilen.
+
+**Personen für Subsite-Rechte über `ensureuser` auflösen, nie nur über
+`siteusers/getbyemail` (v31.84).** Wer die Site-Collection nie besucht hat,
+steht nicht in der User Information List; die Suche antwortet 404, die
+Zuweisung landet stumm in `unresolved`. Genau so blieb ein Check-in-Team-
+Mitglied ohne Rechte, bis der Organizer nach ihrem ersten App-Start ein
+zweites Mal speicherte (Befund Melina Kessel 23.09.2026 — „als Co-Organizerin
+ging es", weil das zweite Speichern die Person fand). `resolveSiteUserId` in
+`subsiteProvisioning.ts` ist der EINE Weg. Zweite Lehre aus demselben Tag:
+Rechte auf Termine gehören HINTER `persistSubEventsForParent` mit frischem
+`getEvents()` (`scannerRechteAufBaum`) — `childEventsOf` aus dem Client-
+State kennt die Termine dieses Speicherns noch nicht, und „bekommt der
+nächste Speichervorgang" heißt: nie.
 
 **Mail-Kopfbild: `eventHeaderImageOpts` an JEDER wrapTemplate-Stelle mit
 Event (v30.87).** `wrapTemplate` ohne Bildmaße heißt 180 px — der alte

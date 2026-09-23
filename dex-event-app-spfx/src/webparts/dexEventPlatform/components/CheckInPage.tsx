@@ -181,8 +181,11 @@ export default function CheckInPage(): React.ReactElement {
     return (events || []).filter(e => {
       if (isAdmin) return true;
       const orgMatch = (e.organizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
+      // v31.84: Co-Organizer zählten hier nicht — die Startseite zeigte ihnen
+      // die Kachel (StartPage prüft coOrganizerEmails), die Seite dann kein Event.
+      const coMatch = (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
       const qrMatch = (e.qrScannerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
-      return orgMatch || qrMatch;
+      return orgMatch || coMatch || qrMatch;
     });
   }, [events, isAdmin, currentEmailLc]);
   // v15.3: Picker zeigt per Default nur aktive Events (gleicher Filter wie
@@ -842,10 +845,14 @@ export default function CheckInPage(): React.ReactElement {
       const regs = await getAllRegistrations(eventId, (status) => { readable = false; httpStatus = status; });
       if (!readable) {
         // v30.67 (Review): zweisprachig wie der Nachbarpfad checkInByParticipantId.
+        // v31.84: Beim Check-in-Team heißt 403 fast immer: die Zuweisung beim
+        // Speichern ist nicht angekommen (Person ohne Site-Besuch, Termin aus
+        // demselben Speichern). Der Satz nennt die Aktion, die es repariert —
+        // „um Freigabe bitten" ließ den Organizer raten, was zu tun ist.
         const msg = httpStatus === 403
           ? (isDe
-            ? 'Keine Leseberechtigung auf der Teilnehmerliste dieses Termins — bitte Organizer/Admin um Freigabe bitten.'
-            : 'No read permission on this date\'s attendee list — please ask an organizer/admin for access.')
+            ? 'Keine Leseberechtigung auf der Teilnehmerliste dieses Termins. Der Organizer kann das im Organizer Center mit „Organizer-Berechtigungen reparieren" beheben (Aktionen) — danach hier „Erneut laden".'
+            : 'No read permission on this date\'s attendee list. An organizer can fix this in the Organizer Center via "Repair organizer permissions" (Actions) — then use "Reload" here.')
           : (isDe
             ? `Teilnehmerliste konnte nicht gelesen werden (${httpStatus ? 'HTTP ' + httpStatus : 'keine Teilnehmerliste gefunden'}) — bitte erneut versuchen.`
             : `The attendee list could not be read (${httpStatus ? 'HTTP ' + httpStatus : 'no attendee list found'}) — please try again.`);

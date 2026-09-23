@@ -951,8 +951,8 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                 category="maintenance"
                 title={isDe ? 'Organizer-Berechtigungen reparieren' : 'Repair organizer permissions'}
                 desc={whenList(isDe
-                  ? 'Setzt für alle Organizer und Co-Organizer dieses Events das Leserecht auf der Teilnehmerliste — auf dem Haupt-Event UND auf jedem einzelnen Termin. Nötig, wenn jemand nachträglich als Organizer dazugekommen ist und überall „0 Teilnehmer" sieht, obwohl Anmeldungen vorliegen.'
-                  : 'Grants every organizer and co-organizer of this event read access to the participant list — on the main event AND on every single date. Needed when someone was added as organizer later and sees “0 participants” everywhere although registrations exist.')}
+                  ? 'Setzt für alle Organizer und Co-Organizer dieses Events das Leserecht auf der Teilnehmerliste und fürs Check-in-Team das Bearbeiten-Recht — auf dem Haupt-Event UND auf jedem einzelnen Termin. Nötig, wenn jemand nachträglich dazugekommen ist und überall „0 Teilnehmer" sieht oder am Check-in „keine Leseberechtigung" bekommt.'
+                  : 'Grants every organizer and co-organizer of this event read access to the participant list and the check-in team edit rights — on the main event AND on every single date. Needed when someone was added later and sees “0 participants” everywhere or gets “no read permission” at check-in.')}
                 badge="organizer"
                 busy={isRepairingPerms}
                 disabled={!selectedEvent?.subsiteUrl}
@@ -963,7 +963,14 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                   const emails = (selectedEvent.organizerEmails || [])
                     .concat(selectedEvent.coOrganizerEmails || [])
                     .map(e => (e || '').trim()).filter(Boolean);
-                  if (emails.length === 0) {
+                  // v31.85: Check-in-Team mitnehmen. Die Kachel setzte bis v31.84
+                  // nur Organizer — genau die Aktion, auf die der 403-Hinweis am
+                  // Check-in verweist, ließ das Team leer ausgehen. Die Quelle ist
+                  // die Klammer: der Wizard schreibt `_qrScanners` auf Klammer und
+                  // Termine gleich, ein Termin kann aber älter sein.
+                  const scanners = (selectedEvent.qrScannerEmails || [])
+                    .map(e => (e || '').trim()).filter(Boolean);
+                  if (emails.length === 0 && scanners.length === 0) {
                     setRepairPermsResult(isDe ? 'Keine Organizer-Adressen hinterlegt' : 'No organizer addresses on file');
                     return;
                   }
@@ -973,10 +980,20 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                   setIsRepairingPerms(true);
                   setRepairPermsResult(null);
                   try {
-                    const r = await eventServiceRef.ensureOrganizerPermissionsMulti(sites, emails.join(';'));
-                    const unresolved = r.unresolved.length
+                    const r = emails.length > 0
+                      ? await eventServiceRef.ensureOrganizerPermissionsMulti(sites, emails.join(';'))
+                      : { sites: sites.length, users: 0, grants: 0, unresolved: [] as string[], failed: [] as { site: string; userId: number; scope: 'web' | 'list'; status: number }[] };
+                    let scanNote = '';
+                    if (scanners.length > 0) {
+                      const rs = await eventServiceRef.ensureScannerListPermissions(sites, scanners, [], emails);
+                      r.grants += rs.granted;
+                      rs.unresolved.forEach(u => { if (r.unresolved.indexOf(u) < 0) r.unresolved.push(u); });
+                      rs.failed.forEach(f => r.failed.push({ site: f.site, userId: 0, scope: 'list', status: f.status }));
+                      scanNote = isDe ? ` · Check-in-Team: ${rs.granted} Recht(e)` : ` · check-in team: ${rs.granted} grant(s)`;
+                    }
+                    const unresolved = (r.unresolved.length
                       ? (isDe ? ` · ${r.unresolved.length} Adresse(n) nicht gefunden: ${r.unresolved.join(', ')}` : ` · ${r.unresolved.length} address(es) not found: ${r.unresolved.join(', ')}`)
-                      : '';
+                      : '') + scanNote;
                     // v30.67 (Review): `failed` auswerten. Das Ergebnis trägt seit
                     // v30.67 je fehlgeschlagene Zuweisung Subsite, Scope (web/list)
                     // und HTTP-Status — die Kachel las nur users/sites und meldete

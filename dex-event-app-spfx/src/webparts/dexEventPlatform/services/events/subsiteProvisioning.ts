@@ -350,6 +350,45 @@ export interface OrganizerPermissionsResult {
   unresolved: string[];
   failed: OrganizerPermissionFailure[];
 }
+/**
+ * v31.84: Site-User-Id einer Person — und zwar auch dann, wenn sie die Site
+ * noch NIE besucht hat.
+ *
+ * Befund (Melina Kessel, Teams 23.09.2026): Als reines Check-in-Team-Mitglied
+ * kam sie weder an die Teilnehmerliste noch an den Scan; als Co-Organizerin
+ * ging es. Der Unterschied lag nicht in der Rolle, sondern in der Reihenfolge:
+ * `siteusers/getbyemail` kennt nur Personen, die in der User Information List
+ * der Site-Collection stehen — wer die App noch nie geöffnet hat, steht dort
+ * nicht, SharePoint antwortet 404, und die Zuweisung fiel STUMM in
+ * `unresolved`. Beim zweiten Speichern (inzwischen hatte sie die App offen)
+ * löste dieselbe Suche auf, und die Rechte kamen an. `grantOrganizerPermissions`
+ * auf der Haupt-Site nimmt seit jeher `ensureuser`, das die Person anlegt;
+ * die vier Subsite-Pfade hier nahmen nur die Suche. Jetzt: `ensureuser` im
+ * Claims-Format zuerst, die Suche nur noch als Rückfall (z. B. wenn ensureuser
+ * an fehlendem „Manage Permissions" scheitert, die Person aber bekannt ist).
+ */
+export async function resolveSiteUserId(svc: EventService, email: string): Promise<number | null> {
+  const em = (email || '').trim();
+  if (!em) return null;
+  try {
+    const r = await svc._post(`${svc.siteUrl}/_api/web/ensureuser`, { 'logonName': `i:0#.f|membership|${em}` });
+    if (r.ok) {
+      const d = await r.json();
+      const id = d.d?.Id || d.Id;
+      if (id) return id;
+    }
+  } catch { /* Rückfall unten */ }
+  try {
+    const r = await svc._sp.get(
+      `${svc.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(em)}')?$select=Id`,
+      SPHttpClient.configurations.v1
+    );
+    if (!r.ok) return null;
+    const d = await r.json();
+    return (d.d?.Id || d.Id) || null;
+  } catch { return null; }
+}
+
 export async function ensureOrganizerPermissionsMulti(
   svc: EventService,
   subsiteUrls: string[],
@@ -360,19 +399,12 @@ export async function ensureOrganizerPermissionsMulti(
   const result: OrganizerPermissionsResult = { sites: sites.length, users: 0, grants: 0, unresolved: [], failed: [] };
   if (sites.length === 0 || emails.length === 0) return result;
 
-  // 1) Personen auflösen — einmal, nicht je Subsite.
+  // 1) Personen auflösen — einmal, nicht je Subsite. v31.84: über ensureuser
+  //    (s. resolveSiteUserId), damit eine Person ohne Site-Besuch nicht leer ausgeht.
   const userIds: number[] = [];
   for (const em of emails) {
-    try {
-      const userResponse = await svc._sp.get(
-        `${svc.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(em)}')?$select=Id`,
-        SPHttpClient.configurations.v1
-      );
-      if (!userResponse.ok) { result.unresolved.push(em); continue; }
-      const userData = await userResponse.json();
-      const userId = userData.d?.Id || userData.Id;
-      if (userId) userIds.push(userId); else result.unresolved.push(em);
-    } catch { result.unresolved.push(em); }
+    const userId = await resolveSiteUserId(svc, em);
+    if (userId) userIds.push(userId); else result.unresolved.push(em);
   }
   result.users = userIds.length;
 
@@ -459,21 +491,15 @@ export async function ensureScannerListPermissions(
   const result: ScannerPermissionsResult = { sites: sites.length, granted: 0, revoked: 0, unresolved: [], failed: [] };
   if (sites.length === 0 || (grantList.length === 0 && revokeList.length === 0)) return result;
 
-  const resolve = async (em: string): Promise<number | null> => {
-    try {
-      const r = await svc._sp.get(
-        `${svc.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(em)}')?$select=Id`,
-        SPHttpClient.configurations.v1
-      );
-      if (!r.ok) return null;
-      const d = await r.json();
-      return (d.d?.Id || d.Id) || null;
-    } catch { return null; }
-  };
+  // v31.84: ensureuser statt reiner Suche — eine Person, die die App noch nie
+  // geöffnet hat, war sonst „unresolved" und bekam nichts (s. resolveSiteUserId).
   const ids = new Map<string, number>();
   for (const em of grantList.concat(revokeList)) {
-    const id = await resolve(em);
+    const id = await resolveSiteUserId(svc, em);
     if (id) ids.set(em, id); else result.unresolved.push(em);
+  }
+  if (result.unresolved.length > 0) {
+    console.warn(`[DEX] ensureScannerListPermissions: ${result.unresolved.length} Person(en) nicht auflösbar: ${result.unresolved.join(', ')}`);
   }
   const listBase = (site: string): string => `${site}/_api/web/lists/getbytitle('${REG_LIST_NAME}')`;
 
@@ -551,13 +577,9 @@ export async function setSubsitePermissions(svc: EventService, subsiteUrl: strin
       const emails = organizerEmail.split(/[;,]/).map(s => s.trim()).filter(Boolean);
       for (const em of emails) {
         try {
-          const userResponse = await svc._sp.get(
-            `${svc.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(em)}')?$select=Id`,
-            SPHttpClient.configurations.v1
-          );
-          if (userResponse.ok) {
-            const userData = await userResponse.json();
-            const userId = userData.d?.Id || userData.Id;
+          // v31.84: ensureuser statt reiner Suche (s. resolveSiteUserId).
+          const userId = await resolveSiteUserId(svc, em);
+          if (userId) {
             await svc._post(
               `${subsiteUrl}/_api/web/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
               {}
@@ -855,14 +877,11 @@ async function setRegistrationListPermissions(svc: EventService, subsiteUrl: str
       const emails = organizerEmail.split(/[;,]/).map(s => s.trim()).filter(Boolean);
       for (const em of emails) {
         try {
-          const userResponse = await svc._sp.get(
-            `${svc.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(em)}')?$select=Id`,
-            SPHttpClient.configurations.v1
-          );
-          if (userResponse.ok) {
-            const userData = await userResponse.json();
+          // v31.84: ensureuser statt reiner Suche (s. resolveSiteUserId).
+          const userId = await resolveSiteUserId(svc, em);
+          if (userId) {
             await svc._post(
-              `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/roleassignments/addroleassignment(principalid=${userData.Id}, roledefid=1073741829)`,
+              `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
               {}
             );
           }
