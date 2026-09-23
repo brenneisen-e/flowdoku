@@ -10,7 +10,7 @@ import { EmailOverrideEntry } from '../../wizard/emailOverrideEntry';
 import { readOutlookLogo, reinsertOrganizerPlaceholder } from '../../wizard/wizardHelpers';
 import { reinsertProgramPlaceholder } from '../../../utils/programPlaceholder';
 import { compressImage } from '../../../utils/imageCompress';
-import { formRegelKopf } from '../../../utils/mailHeaderImage';
+import { LOGO_MAX_BREITE, formRegelKopf } from '../../../utils/mailHeaderImage';
 import { applyEventPhotoToLogoImpl } from '../../wizard/logic/wizardMisc';
 import { renderHeaderSizeControlImpl } from '../../wizard/logic/wizardRenderHelpers';
 import { AgendaItem } from '../../../types';
@@ -310,13 +310,26 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
     // für die Ausreisser.
     const TARGET = 250_000;
     if (!b64 || b64.indexOf('data:') !== 0 || b64.length <= 200_000) return b64;
+    // v31.80: QUALITÄT vor Breite. Die alte Leiter 600/480/360 bei fester
+    // Qualität 0,82 lieferte Logos mit 360 px, die der Mail-Kopf auf 600 px
+    // aufzog — weiche Schrift (Nutzer-Befund 23.09.2026). Jetzt bleibt die
+    // Breite so lange wie möglich bei LOGO_MAX_BREITE und erst die JPEG-
+    // Qualität geht runter; die Breite fällt erst, wenn das nicht reicht.
+    // Ausgang ist immer das ORIGINAL (nicht das Ergebnis der Vorstufe) —
+    // jede Stufe rechnet vom besten Ausgangsmaterial.
+    const LEITER: Array<{ w: number; q: number }> = [
+      { w: LOGO_MAX_BREITE, q: 0.82 }, { w: LOGO_MAX_BREITE, q: 0.7 }, { w: 900, q: 0.76 }, { w: 600, q: 0.8 }, { w: 600, q: 0.7 },
+    ];
     let best = b64;
-    for (const w of [600, 480, 360]) {
+    let quelle: File | null = null;
+    try {
+      const resp = await fetch(b64);
+      const blob = await resp.blob();
+      quelle = new File([blob], 'logo.jpg', { type: blob.type || 'image/jpeg' });
+    } catch { return b64; }
+    for (const s of LEITER) {
       try {
-        const resp = await fetch(best);
-        const blob = await resp.blob();
-        const f = new File([blob], 'logo.jpg', { type: blob.type || 'image/jpeg' });
-        const out = await fileToBase64(await compressImage(f, w, 0.82, true));
+        const out = await fileToBase64(await compressImage(quelle, s.w, s.q, true));
         if (out && out.length < best.length) best = out;
         if (best.length <= TARGET) break;
       } catch { break; }

@@ -8,11 +8,21 @@
  *
  * Zwei bewusste Entscheidungen:
  *
- * 1. **Fehlerkorrektur 'H' (30 %) statt Default 'M' (15 %).** Der Code wird am
- *    Einlass vom Handy-DISPLAY abfotografiert. Spiegelungen, Fingerabdrücke,
- *    Displayschutz und schräge Winkel fressen genau die Reserve, die vorher
- *    fehlte. Die Datenmenge (`DEX|<nr>|<mail>`) ist klein genug, dass 'H' das
- *    Modul-Raster kaum vergrößert.
+ * 1. **Fehlerkorrektur 'M' (15 %), Marke klein.** v30.36 hatte 'H' (30 %)
+ *    gewählt, um Spiegelungen und Fingerabdrücke auf dem Display abzufangen,
+ *    und die Marke mit 24 % Kantenlänge draufgesetzt. Nutzer-Befund
+ *    23.09.2026: „Wird irgendwie nicht gescannt. Tritt bei mehreren auf."
+ *    Gemessen mit derselben Bibliothek wie die Check-in-Seite (qr-scanner
+ *    1.4.2), 45 Kamera-Bedingungen (Code 80–150 px im Bild, Unschärfe
+ *    0,6–1,4 px, Drehung 0–10°):
+ *      H + Marke 24 % (v30.36)      22 / 45
+ *      H ohne Marke                 30 / 45
+ *      M ohne Marke                 31 / 45
+ *      M + Marke 14 %, Rand 8 %     30 / 45   ← jetzt
+ *    'H' braucht für dieselben Daten 33 statt 29 Module; jedes Modul ist
+ *    damit 12 % kleiner, und das ist bei Abstand und Unschärfe die härtere
+ *    Währung als die Korrekturreserve. Die große Marke verdeckte obendrein
+ *    rund 10 % der Fläche. Die kleine Marke kostet gemessen nichts mehr.
  *
  * 2. **Das Zeichen wird gezeichnet, nicht als Bild geladen.** Ein Canvas-Glyph
  *    plus Kreis ist bei jeder Größe scharf und braucht kein Asset, das mit
@@ -26,18 +36,18 @@ const DELOITTE_GREEN = '#86BC25';
 /**
  * Zeichnet das Deloitte-D. mittig auf ein quadratisches Canvas.
  *
- * Die Kantenlänge ist bewusst konservativ: 24 % Kantenlänge sind rund 6 % der
- * Fläche. Das liegt weit unter dem, was 'H' verkraftet — die restliche Reserve
- * gehört der realen Abnutzung und nicht dem Logo. Wer hier größer geht,
- * verbessert die Optik und verschlechtert genau das, wofür 'H' da ist.
+ * v31.81: 14 % Kantenlänge mit 8 % Rand (vorher 24 % mit 16 %). Samt Rand
+ * sind das rund 2,6 % der Fläche — unter 'M' bleiben damit gut 12 % Reserve
+ * für Spiegelung und Fingerabdruck. Wer hier größer geht, verbessert die
+ * Optik und verschlechtert genau das, wofür der Code da ist (Messung s. oben).
  */
 function drawDMark(canvas: HTMLCanvasElement): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
-  const box = Math.round(canvas.width * 0.24);
+  const box = Math.round(canvas.width * 0.14);
   const x0 = Math.round((canvas.width - box) / 2);
   const y0 = x0; // Canvas ist quadratisch
-  const pad = Math.round(box * 0.16);
+  const pad = Math.round(box * 0.08);
 
   // Weißes Feld darunter, damit das Zeichen nicht auf Modulen klebt.
   ctx.fillStyle = '#ffffff';
@@ -78,7 +88,7 @@ export async function buildParticipantQrDataUrl(qrData: string, width = 300): Pr
   try {
     const QRCode = await import('qrcode');
     const canvas = document.createElement('canvas');
-    await QRCode.toCanvas(canvas, qrData, { width, margin: 2, errorCorrectionLevel: 'H' });
+    await QRCode.toCanvas(canvas, qrData, { width, margin: 2, errorCorrectionLevel: 'M' });
     try {
       drawDMark(canvas);
     } catch { /* Logo ist Kür — der Code zählt */ }
