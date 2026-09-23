@@ -1767,7 +1767,25 @@ export default function CheckInPage(): React.ReactElement {
           preferredCamera: 'environment',
           highlightScanRegion: true,
           highlightCodeOutline: true,
-          maxScansPerSecond: 5,
+          // v31.81: 10 statt 5 Versuche je Sekunde — bei Handbewegung ist
+          // jeder zweite Frame verwackelt, mehr Versuche heißt mehr scharfe.
+          maxScansPerSecond: 10,
+          // v31.81: Die Bibliothek rechnet den Scan-Ausschnitt (2/3 der kürzeren
+          // Videokante) standardmäßig auf 400 × 400 px herunter. Ein Code, der
+          // vom Monitor über den Tisch abfotografiert wird, füllt davon ein
+          // Drittel — 130 px für 29 Module, das ist die Grenze, an der der
+          // Decoder in der Messung (s. utils/qrWithMark) zu scheitern beginnt.
+          // 640 px geben jedem Modul 1,6-mal so viele Pixel; die CPU-Kosten
+          // trägt ein Handy, das nur diese Seite offen hat.
+          calculateScanRegion: (video: HTMLVideoElement) => {
+            const size = Math.round((2 / 3) * Math.min(video.videoWidth, video.videoHeight));
+            return {
+              x: Math.round((video.videoWidth - size) / 2),
+              y: Math.round((video.videoHeight - size) / 2),
+              width: size, height: size,
+              downScaledWidth: 640, downScaledHeight: 640,
+            };
+          },
         }
       );
       scannerRef.current = scanner;
