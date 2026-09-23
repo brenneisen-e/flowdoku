@@ -33,7 +33,7 @@ import { agendaGroups, groupLabel, groupDateLabel } from '../utils/agendaGroups'
 import { useLanguage } from '../context/LanguageContext';
 import { useIsMobile } from '../utils/useIsMobile';
 import OrganizerList from './OrganizerList';
-import { AlertCircle, ChevronDown, ChevronUp } from './Icons';
+import { AlertCircle, Check, ChevronDown, ChevronUp, Info } from './Icons';
 // v20.0 (Audit): qr-scanner nur noch als Typ statisch importieren — die
 // eigentliche Bibliothek wird erst beim Kamera-Start dynamisch nachgeladen.
 import type QrScanner from 'qr-scanner';
@@ -644,6 +644,22 @@ export default function CheckInPage(): React.ReactElement {
   const [nameSearchQuery, setNameSearchQuery] = React.useState('');
   const [nameSearchEventId, setNameSearchEventId] = React.useState<string>(selectedEventId || '');
   const [searchRegsCache, setSearchRegsCache] = React.useState<Record<string, import('../services/EventService').SPRegistration[]>>({});
+  // v31.83: Der Organizer kann je Check-in-Person die Teilnehmerliste auf
+  // dieser Seite ausblenden (`noList` in `_qrScanners`). Dann bleiben QR-Scan
+  // und Teilnehmer-ID; Suche und Liste rendern nicht. Die Liste wird trotzdem
+  // geladen — ID-Check-in und KPIs brauchen sie. Admins und Organizer des
+  // Events sind nie betroffen; der Merker gilt nur für reine Scanner. Geprüft
+  // wird der gewählte Termin UND seine Klammer, weil der Wizard die Scanner
+  // auf beide schreibt und ein Alt-Termin die Ausnahme noch nicht tragen kann.
+  const listeVerborgen = React.useMemo((): boolean => {
+    if (isAdmin || !nameSearchEventId) return false;
+    const ev = (events || []).find(e => e.id === nameSearchEventId);
+    if (!ev) return false;
+    const parent = ev.parentEventId ? (events || []).find(e => e.id === ev.parentEventId) : undefined;
+    const istOrganizer = [ev, parent].some(e => !!e && (e.organizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc));
+    if (istOrganizer) return false;
+    return [ev, parent].some(e => !!e && (e.qrScannerNoList || []).indexOf(currentEmailLc) >= 0);
+  }, [events, isAdmin, nameSearchEventId, currentEmailLc]);
   searchRegsCacheRef.current = searchRegsCache; // v30.88 (s. shirtAllocFor)
 
   /**
@@ -2501,14 +2517,23 @@ export default function CheckInPage(): React.ReactElement {
       </div>
 
       {/* Ergebnis-Anzeige */}
+      {/* v31.82: Symbol und Text stehen mittig in der Box (Nutzer-Befund
+          23.09.2026: „bei Live-Scanner und dann Check-in steht das Check
+          nicht zentriert in der Box"). Vorher klebte der Satz links in einer
+          Box über die volle Breite; das Symbol sagt den Ausgang, bevor man
+          liest — am Tisch zählt der Blick aus einem Meter Abstand. */}
       {resultMessage && (
-        <div style={{
+        <div role="status" style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, textAlign: 'center',
           padding: '16px 20px', borderRadius: 12, marginBottom: 16, fontWeight: 600, fontSize: '1rem',
           background: resultType === 'success' ? '#e8f5e9' : resultType === 'error' ? '#ffebee' : '#e3f2fd',
           color: resultType === 'success' ? '#2e7d32' : resultType === 'error' ? '#c62828' : '#1565c0',
           border: resultType === 'success' ? '2px solid #86bc25' : resultType === 'error' ? '2px solid #ef5350' : '2px solid #42a5f5',
         }}>
-          {resultMessage}
+          <span aria-hidden="true" style={{ display: 'inline-flex', flexShrink: 0 }}>
+            {resultType === 'success' ? <Check size={22} /> : resultType === 'error' ? <AlertCircle size={22} /> : <Info size={22} />}
+          </span>
+          <span>{resultMessage}</span>
         </div>
       )}
 
@@ -3167,6 +3192,16 @@ export default function CheckInPage(): React.ReactElement {
             </div>
           </div>
         )}
+        {/* v31.83: Für Scanner ohne Listenrecht endet die Karte hier — mit dem
+            Grund, damit niemand einen Ladefehler vermutet. */}
+        {listeVerborgen && (
+          <p className="dex-ui-muted" style={{ margin: 0, fontSize: '0.82rem', textAlign: 'center' }}>
+            {isDe
+              ? 'Die Teilnehmerliste ist für dich ausgeblendet — Check-in über QR-Code oder Teilnehmer-ID.'
+              : 'The attendee list is hidden for you — check in via QR code or attendee ID.'}
+          </p>
+        )}
+        {!listeVerborgen && (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <input
             className="form-input"
@@ -3196,16 +3231,20 @@ export default function CheckInPage(): React.ReactElement {
             {onlyOpen ? '✓ Nur offene' : 'Nur offene'}
           </button>
         </div>
-        {!nameSearchEventId && accessibleEvents.length > 1 && (
+        )}
+        {!listeVerborgen && !nameSearchEventId && accessibleEvents.length > 1 && (
           <p style={{ marginTop: 8, fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
             Bitte zuerst ein Event wählen.
           </p>
         )}
-        {isLoadingSearchRegs && (
+        {!listeVerborgen && isLoadingSearchRegs && (
           <p style={{ marginTop: 8, fontSize: '0.78rem', color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>
             Teilnehmerliste wird geladen…
           </p>
         )}
+        {/* v31.83: Der Ladefehler bleibt auch bei verborgener Liste sichtbar —
+            ohne geladene Liste findet der ID-Check-in niemanden, und das muss
+            die Person am Tisch wissen. */}
         {searchLoadError && (
           <p style={{ marginTop: 8, fontSize: '0.78rem', color: 'var(--dex-red)' }}>
             {searchLoadError}
@@ -3226,7 +3265,7 @@ export default function CheckInPage(): React.ReactElement {
         {/* v30.67: Bei einem Ladefehler gibt es keine Liste — also auch kein
             „Keine Teilnehmer für dieses Event", das wäre eine Aussage über
             Daten, die nie gelesen wurden. */}
-        {nameSearchEventId && !isLoadingSearchRegs && !searchLoadError && (
+        {!listeVerborgen && nameSearchEventId && !isLoadingSearchRegs && !searchLoadError && (
           <div style={{ marginTop: 12 }}>
             {/* v31.4: Der Stand der Liste — und ein Knopf, der wirklich lädt.
                 Am Lauftag stehen zwei Tablets am selben Eingang; ohne diese

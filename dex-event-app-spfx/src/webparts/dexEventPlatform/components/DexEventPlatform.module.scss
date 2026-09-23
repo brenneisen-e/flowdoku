@@ -346,6 +346,11 @@
       display: inline-flex; align-items: center; gap: 8px; padding: 10px 24px;
       border: none; border-radius: var(--dex-radius); font-size: 0.95rem;
       font-weight: 600; transition: all var(--dex-transition);
+      // v31.82: Beschriftung mittig — auch wenn der Knopf gestreckt ist
+      // (flex: 1, width: 100%). Ohne justify-content klebte „Einchecken" in
+      // der Bestätigungskarte links am Rand (Nutzer-Befund 23.09.2026);
+      // ein Knopf in natürlicher Breite merkt davon nichts.
+      justify-content: center;
     }
     // v24.63: Feste Fallback-Farben in jeder var() — so rendern die Buttons
     // korrekt, selbst wenn die --dex-*-Variablen am aktuellen Ort (z.B. ein per

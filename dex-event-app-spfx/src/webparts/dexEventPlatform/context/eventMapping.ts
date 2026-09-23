@@ -494,6 +494,9 @@ export async function mapSPEventToDeloitteEvent(e: SPEvent, subsiteMap: { curren
         const qrNames: string[] = Array.isArray(qr) ? qr.map((x: any) => String(x?.name || '')) : [];
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const qrEmails: string[] = Array.isArray(qr) ? qr.map((x: any) => String(x?.email || '')) : [];
+        // v31.83: je Person „Teilnehmerliste aus" (noList am Eintrag).
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const qrNoList: string[] = Array.isArray(qr) ? qr.filter((x: any) => !!x?.noList && x?.email).map((x: any) => String(x.email).toLowerCase()) : [];
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const coNames: string[] = Array.isArray(co) ? co.map((x: any) => String(x?.name || '')) : [];
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -502,7 +505,7 @@ export async function mapSPEventToDeloitteEvent(e: SPEvent, subsiteMap: { curren
         const ttNames: string[] = Array.isArray(tt) ? tt.map((x: any) => String(x?.name || '')) : [];
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const ttEmails: string[] = Array.isArray(tt) ? tt.map((x: any) => String(x?.email || '')) : [];
-        return { ...b2Part, splitDisplayOrderReversed: splitDispRev, qrScannerNames: qrNames, qrScannerEmails: qrEmails, coOrganizerNames: coNames, coOrganizerEmails: coEmails, testTeamNames: ttNames, testTeamEmails: ttEmails };
+        return { ...b2Part, splitDisplayOrderReversed: splitDispRev, qrScannerNames: qrNames, qrScannerEmails: qrEmails, qrScannerNoList: qrNoList, coOrganizerNames: coNames, coOrganizerEmails: coEmails, testTeamNames: ttNames, testTeamEmails: ttEmails };
       } catch { return { qrScannerNames: [], qrScannerEmails: [], coOrganizerNames: [], coOrganizerEmails: [], testTeamNames: [], testTeamEmails: [] }; }
     })(),
     agenda: (() => { try { return e.Agenda ? JSON.parse(e.Agenda) : []; } catch { return []; } })(),

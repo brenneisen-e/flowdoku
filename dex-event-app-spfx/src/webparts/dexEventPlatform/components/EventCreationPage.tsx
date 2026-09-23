@@ -491,6 +491,11 @@ export default function EventCreationPage(): React.ReactElement {
   const [qrScannerEmails, setQrScannerEmails] = React.useState<string[]>(
     editEvent && editEvent.qrScannerEmails ? editEvent.qrScannerEmails.slice() : []
   );
+  // v31.83: Check-in-Personen, die die Teilnehmerliste NICHT sehen (E-Mails
+  // klein geschrieben). Vorgabe: leer = alle sehen sie.
+  const [qrScannerNoList, setQrScannerNoList] = React.useState<string[]>(
+    editEvent && editEvent.qrScannerNoList ? editEvent.qrScannerNoList.slice() : []
+  );
   const [qrScannerSearch, setQrScannerSearch] = React.useState('');
   const [qrScannerResults, setQrScannerResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
   // v9.18: Debounce-Timer für Graph-Search (statt nur Role-Filter)
@@ -1466,7 +1471,7 @@ export default function EventCreationPage(): React.ReactElement {
       notifyOrgRegisterMode, onlineMeetingMode, organizer, organizerDisplayLarge, organizerEmails, orgGetsSubInvites,
       outlookEndOverride, outlookLocationOverride, outlookStartOverride, outlookTeamsLink, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs, pendingOutlookInviteForEventsRef,
       pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, pendingSuccessDispatchRef, persistSubEventsForParent, previewBeforeActive, qrScannerEmails,
-      qrScannerNames, quiz, quizClusterSize, refreshEventDocuments, refreshEvents, registrationDeadline, registrationLanguage,
+      qrScannerNames, qrScannerNoList, quiz, quizClusterSize, refreshEventDocuments, refreshEvents, registrationDeadline, registrationLanguage,
       regRuleEnabled, requestCoOrganizerApprovals, requireSubEventSelection, resolveTopLevelCommState, sanitizeOrganizerPairs, selectedEventId,
       setDraftSavedAt, setError, setImageUploadError, setIsSubmitting, setNavigationGuard, setPendingDraft,
       setPendingSuccessDispatch, setProgress, setProgressLabel, setRemovedSavedSubs, setShowSummaryModal, showAlert,
@@ -2902,8 +2907,8 @@ export default function EventCreationPage(): React.ReactElement {
     contactEmail, contactExpanded, contactInfo, contactName, contactOrganizerEmail,
     errorBorderStyle, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly, isDe, isSearchingOrganizer,
     location, organizer, organizerDisplayLarge, organizerEmails, organizerIncludeIntl, organizerResults,
-    organizerSearch, organizerTimerRef, qrScannerEmails, qrScannerIncludeIntl, qrScannerNames, qrScannerResults,
-    qrScannerSearch, qrScannerTimerRef, searchUsers, setBulkOrganizerOpen, setBulkQrScannerOpen, setBulkTestTeamOpen,
+    organizerSearch, organizerTimerRef, qrScannerEmails, qrScannerIncludeIntl, qrScannerNames, qrScannerNoList, qrScannerResults,
+    qrScannerSearch, qrScannerTimerRef, searchUsers, setBulkOrganizerOpen, setBulkQrScannerOpen, setBulkTestTeamOpen, setQrScannerNoList,
     setContactEmail, setContactExpanded, setContactInfo, setContactName, setContactOrganizerEmail, setHideOrganizer,
     setHideOrganizerIndividualOnly, setOrganizer, setOrganizerDisplayLarge, setOrganizerEmails, setOrganizerIncludeIntl, setOrganizerResults,
     setOrganizerSearch, setQrScannerEmails, setQrScannerIncludeIntl, setQrScannerNames, setQrScannerResults, setQrScannerSearch,

@@ -46,6 +46,8 @@ export interface DetailsStepProps {
   qrScannerEmails: string[];
   qrScannerIncludeIntl: boolean;
   qrScannerNames: string[];
+  /** v31.83: E-Mails (klein) der Check-in-Personen OHNE Teilnehmerliste auf der Check-in-Seite. */
+  qrScannerNoList: string[];
   qrScannerResults: { email: string; displayName: string; location: string; }[];
   qrScannerSearch: string;
   qrScannerTimerRef: React.MutableRefObject<NodeJS.Timeout>;
@@ -69,6 +71,7 @@ export interface DetailsStepProps {
   setQrScannerEmails: React.Dispatch<React.SetStateAction<string[]>>;
   setQrScannerIncludeIntl: React.Dispatch<React.SetStateAction<boolean>>;
   setQrScannerNames: React.Dispatch<React.SetStateAction<string[]>>;
+  setQrScannerNoList: React.Dispatch<React.SetStateAction<string[]>>;
   setQrScannerResults: React.Dispatch<React.SetStateAction<{ email: string; displayName: string; location: string; }[]>>;
   setQrScannerSearch: React.Dispatch<React.SetStateAction<string>>;
   setTestTeamEmails: React.Dispatch<React.SetStateAction<string[]>>;
@@ -230,7 +233,7 @@ const PersonPicker: React.FC<PersonPickerProps> = ({ isDe, value, setValue, time
 
 export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
   const { visible } = p;
-  const { contactEmail, contactExpanded, contactInfo, contactName, contactOrganizerEmail, errorBorderStyle, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly, isDe, isSearchingOrganizer, location, organizer, organizerDisplayLarge, organizerEmails, organizerIncludeIntl, organizerResults, organizerSearch, organizerTimerRef, qrScannerEmails, qrScannerIncludeIntl, qrScannerNames, qrScannerResults, qrScannerSearch, qrScannerTimerRef, searchUsers, setBulkOrganizerOpen, setBulkQrScannerOpen, setBulkTestTeamOpen, setContactEmail, setContactExpanded, setContactInfo, setContactName, setContactOrganizerEmail, setHideOrganizer, setHideOrganizerIndividualOnly, setOrganizer, setOrganizerDisplayLarge, setOrganizerEmails, setOrganizerIncludeIntl, setOrganizerResults, setOrganizerSearch, setQrScannerEmails, setQrScannerIncludeIntl, setQrScannerNames, setQrScannerResults, setQrScannerSearch, setTestTeamEmails, setTestTeamIncludeIntl, setTestTeamNames, setTestTeamResults, setTestTeamSearch, startDate, t, testTeamEmails, testTeamIncludeIntl, testTeamNames, testTeamResults, testTeamSearch, testTeamTimerRef, title, toggleOrganizerHidden } = p;
+  const { contactEmail, contactExpanded, contactInfo, contactName, contactOrganizerEmail, errorBorderStyle, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly, isDe, isSearchingOrganizer, location, organizer, organizerDisplayLarge, organizerEmails, organizerIncludeIntl, organizerResults, organizerSearch, organizerTimerRef, qrScannerEmails, qrScannerIncludeIntl, qrScannerNames, qrScannerNoList, qrScannerResults, qrScannerSearch, qrScannerTimerRef, searchUsers, setBulkOrganizerOpen, setBulkQrScannerOpen, setBulkTestTeamOpen, setContactEmail, setContactExpanded, setContactInfo, setContactName, setContactOrganizerEmail, setHideOrganizer, setHideOrganizerIndividualOnly, setOrganizer, setOrganizerDisplayLarge, setOrganizerEmails, setOrganizerIncludeIntl, setOrganizerResults, setOrganizerSearch, setQrScannerEmails, setQrScannerIncludeIntl, setQrScannerNames, setQrScannerNoList, setQrScannerResults, setQrScannerSearch, setTestTeamEmails, setTestTeamIncludeIntl, setTestTeamNames, setTestTeamResults, setTestTeamSearch, startDate, t, testTeamEmails, testTeamIncludeIntl, testTeamNames, testTeamResults, testTeamSearch, testTeamTimerRef, title, toggleOrganizerHidden } = p;
   // v31.2: Der Aufklapper „Weitere Einstellungen" (Anzeige der Organizer) ist
   // reine Ansichts-Sache dieses Schritts und wird nicht gespeichert — deshalb
   // lokaler State und kein Prop. Standard zu (Leitfaden 1.6); der Zähler am
@@ -538,14 +541,16 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
                       <InfoTooltip text={isDe ? (
                         <>
                           <strong>Was du hier einstellst:</strong> Personen, die am Event-Tag <strong>nur das Check-In-Tool</strong> bedienen dürfen — z.B. Helfer am Empfangstresen oder am Stadioneingang. Beliebige Deloitte-User per Graph-Suche.<br /><br />
-                          <strong>Anzeige in der App:</strong> Check-In-Team-Mitglieder sehen oben im Header das <strong>QR-Scanner-Icon</strong> und können den <strong>Check-In-Modus</strong> öffnen — QR-Codes scannen, Teilnehmer manuell ein-/auschecken, Check-In-KPIs sehen. Sie haben <strong>keine weiteren Rechte</strong>: kein Edit, keine Teilnehmerliste, keine Mails.<br /><br />
+                          <strong>Anzeige in der App:</strong> Check-In-Team-Mitglieder sehen oben im Header das <strong>QR-Scanner-Icon</strong> und können den <strong>Check-In-Modus</strong> öffnen — QR-Codes scannen, Teilnehmer manuell ein-/auschecken, Check-In-KPIs sehen. Sie haben <strong>keine weiteren Rechte</strong>: kein Edit, kein Organizer Center, keine Mails.<br /><br />
+                          <strong>Teilnehmerliste auf der Check-in-Seite:</strong> standardmäßig sichtbar (Suche nach Name, Ein-/Auschecken per Klick). Über den Chip <strong>&bdquo;Teilnehmerliste&ldquo;</strong> an der Person lässt sie sich ausblenden — dann bleiben nur QR-Code-Scan und Teilnehmer-ID.<br /><br />
                           <strong>Automatismen:</strong> Check-In-Team taucht <strong>nicht in der Organizer-Liste</strong> auf der Anmelde-Seite auf und bekommt <strong>keine Organizer-Mails</strong> (BCC, Late-Cancel etc.).<br /><br />
                           <strong>Empfehlung:</strong> für jedes Event genau die Personen eintragen, die am Veranstaltungstag wirklich am Empfang stehen.
                         </>
                       ) : (
                         <>
                           <strong>What you set here:</strong> people who may operate <strong>only the check-in tool</strong> on the event day — e.g. helpers at the welcome desk or stadium entrance. Any Deloitte user via Graph search.<br /><br />
-                          <strong>Shown in the app:</strong> check-in team members see the <strong>QR scanner icon</strong> in the header and can open the <strong>check-in mode</strong> — scan QR codes, manually check attendees in/out, view check-in KPIs. They have <strong>no further rights</strong>: no edit, no attendee list, no emails.<br /><br />
+                          <strong>Shown in the app:</strong> check-in team members see the <strong>QR scanner icon</strong> in the header and can open the <strong>check-in mode</strong> — scan QR codes, manually check attendees in/out, view check-in KPIs. They have <strong>no further rights</strong>: no edit, no organizer center, no emails.<br /><br />
+                          <strong>Attendee list on the check-in page:</strong> visible by default (search by name, check in/out with one click). The <strong>&ldquo;Attendee list&rdquo;</strong> chip on a person hides it — then only QR scan and attendee ID remain.<br /><br />
                           <strong>Automation:</strong> check-in team does <strong>not appear in the organizer list</strong> on the registration page and does <strong>not receive organizer emails</strong> (BCC, late-cancel etc.).<br /><br />
                           <strong>Tip:</strong> for each event, list exactly the people who will actually staff the welcome desk.
                         </>
@@ -570,13 +575,25 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
                         setQrScannerEmails(nextEmails);
                       };
                       const remove = (idx: number): void => {
+                        const goneLc = (qrScannerEmails[idx] || '').toLowerCase();
                         setQrScannerNames(qrScannerNames.filter((_, i) => i !== idx));
                         setQrScannerEmails(qrScannerEmails.filter((_, i) => i !== idx));
+                        // v31.83: Die Sperre hängt an der E-Mail, nicht an der Position — sonst
+                        // erbt eine später neu eingetragene Person denselben Merker.
+                        if (goneLc) setQrScannerNoList(prev => prev.filter(e => e !== goneLc));
+                      };
+                      // v31.83: Je Person schaltbar, ob die Check-in-Seite die Teilnehmerliste zeigt.
+                      // Vorgabe „an"; gespeichert wird nur die Ausnahme (`noList: true` in `_qrScanners`).
+                      const toggleList = (emailLc: string): void => {
+                        if (!emailLc) return;
+                        setQrScannerNoList(prev => prev.indexOf(emailLc) >= 0 ? prev.filter(e => e !== emailLc) : [...prev, emailLc]);
                       };
                       return (
                         <div className="dex-ui-card dex-ui-card--soft" style={{ padding: '4px 6px', marginBottom: 10 }}>
                           {qrScannerNames.map((name, i) => {
                             const email = qrScannerEmails[i] || '';
+                            const emailLc = email.toLowerCase();
+                            const siehtListe = qrScannerNoList.indexOf(emailLc) < 0;
                             return (
                               <div key={`${email}-${i}`} className="dex-ui-row dex-ui-row--bordered">
                                 <PersonAvatar email={email} name={name} />
@@ -585,6 +602,18 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
                                   {email && <div className="dex-ui-row-sub">{email}</div>}
                                 </div>
                                 <div className="dex-ui-row-actions">
+                                  <button
+                                    type="button"
+                                    className={cx('dex-ui-chip', siehtListe && 'is-active')}
+                                    onClick={() => toggleList(emailLc)}
+                                    aria-pressed={siehtListe}
+                                    title={siehtListe
+                                      ? (isDe ? 'Sieht die Teilnehmerliste auf der Check-in-Seite. Klicken zum Ausblenden.' : 'Sees the attendee list on the check-in page. Click to hide it.')
+                                      : (isDe ? 'Teilnehmerliste ausgeblendet — nur QR-Code-Scan und Teilnehmer-ID. Klicken zum Einblenden.' : 'Attendee list hidden — QR scan and attendee ID only. Click to show it.')}
+                                  >
+                                    {siehtListe && <Check size={12} />}
+                                    {isDe ? 'Teilnehmerliste' : 'Attendee list'}
+                                  </button>
                                   {qrScannerNames.length > 1 && i > 0 && (
                                     <button type="button" className="dex-ui-iconbtn" onClick={() => move(i, -1)} title={isDe ? 'Nach oben' : 'Move up'} aria-label={isDe ? 'Nach oben' : 'Move up'}><ChevronUp size={16} /></button>
                                   )}
