@@ -74,6 +74,11 @@ export interface DeloitteEvent {
    *  Persistenz: EmailTemplateOverrides._qrScanners (JSON). qrScannerNames + qrScannerEmails sind index-synchron. */
   qrScannerNames: string[];
   qrScannerEmails: string[];
+  /** v31.83: E-Mails (klein geschrieben) der Check-in-Personen, die auf der
+   *  Check-in-Seite die Teilnehmerliste NICHT sehen sollen. Vorgabe: alle
+   *  sehen sie; der Organizer schaltet es je Person ab (Nutzer-Ansage
+   *  23.09.2026). Persistenz: `noList: true` am Eintrag in `_qrScanners`. */
+  qrScannerNoList?: string[];
   /** v9.18: Co-Organizer pro Event — beliebiger Deloitte-User, kein Admin/Organizer-Status nötig.
    *  Diese User haben für DIESES eine Event die gleichen Rechte wie der Hauptorganizer.
    *  Persistenz: EmailTemplateOverrides._coOrganizers (JSON, analog _qrScanners).
