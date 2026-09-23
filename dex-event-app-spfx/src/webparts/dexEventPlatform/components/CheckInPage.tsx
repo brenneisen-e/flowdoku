@@ -33,7 +33,7 @@ import { agendaGroups, groupLabel, groupDateLabel } from '../utils/agendaGroups'
 import { useLanguage } from '../context/LanguageContext';
 import { useIsMobile } from '../utils/useIsMobile';
 import OrganizerList from './OrganizerList';
-import { AlertCircle, ChevronDown, ChevronUp } from './Icons';
+import { AlertCircle, Check, ChevronDown, ChevronUp, Info } from './Icons';
 // v20.0 (Audit): qr-scanner nur noch als Typ statisch importieren — die
 // eigentliche Bibliothek wird erst beim Kamera-Start dynamisch nachgeladen.
 import type QrScanner from 'qr-scanner';
@@ -2501,14 +2501,23 @@ export default function CheckInPage(): React.ReactElement {
       </div>
 
       {/* Ergebnis-Anzeige */}
+      {/* v31.82: Symbol und Text stehen mittig in der Box (Nutzer-Befund
+          23.09.2026: „bei Live-Scanner und dann Check-in steht das Check
+          nicht zentriert in der Box"). Vorher klebte der Satz links in einer
+          Box über die volle Breite; das Symbol sagt den Ausgang, bevor man
+          liest — am Tisch zählt der Blick aus einem Meter Abstand. */}
       {resultMessage && (
-        <div style={{
+        <div role="status" style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, textAlign: 'center',
           padding: '16px 20px', borderRadius: 12, marginBottom: 16, fontWeight: 600, fontSize: '1rem',
           background: resultType === 'success' ? '#e8f5e9' : resultType === 'error' ? '#ffebee' : '#e3f2fd',
           color: resultType === 'success' ? '#2e7d32' : resultType === 'error' ? '#c62828' : '#1565c0',
           border: resultType === 'success' ? '2px solid #86bc25' : resultType === 'error' ? '2px solid #ef5350' : '2px solid #42a5f5',
         }}>
-          {resultMessage}
+          <span aria-hidden="true" style={{ display: 'inline-flex', flexShrink: 0 }}>
+            {resultType === 'success' ? <Check size={22} /> : resultType === 'error' ? <AlertCircle size={22} /> : <Info size={22} />}
+          </span>
+          <span>{resultMessage}</span>
         </div>
       )}
 
