@@ -22,6 +22,8 @@ import { Icon } from '@fluentui/react/lib/Icon';
 import InternationalSearchToggle from '../../InternationalSearchToggle';
 import OrganizerList from '../../OrganizerList';
 import { cx } from '../../dexUi';
+import { useRoles } from '../../../context/RoleContext';
+import { hasOrganizerRights } from '../../../utils/roleRank';
 export interface DetailsStepProps {
   visible: boolean;
   contactEmail: string;
@@ -232,6 +234,18 @@ const PersonPicker: React.FC<PersonPickerProps> = ({ isDe, value, setValue, time
 );
 
 export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
+  // v31.86: Wer steht schon in DEX_Roles? Organizer lesen die Liste seit
+  // v30.67 (Read auf DEX_Roles); ist sie nicht lesbar, zeigen die Zeilen
+  // keinen Chip — eine Aussage ohne Daten wäre falsch (rollenLesbar).
+  const { roles: dexRollen, rolesReadStatus, isAdmin: rolesIsAdmin, originalIsAdmin: rolesOriginalIsAdmin } = useRoles();
+  const rollenLesbar = rolesReadStatus === 'ok';
+  const adminLikeHier = rolesIsAdmin || rolesOriginalIsAdmin;
+  const berechtigtLc = React.useMemo(() => {
+    const s = new Set<string>();
+    (dexRollen || []).forEach(r => { if (hasOrganizerRights(r.role)) s.add((r.userEmail || '').trim().toLowerCase()); });
+    return s;
+  }, [dexRollen]);
+  const istBerechtigt = (email: string): boolean => berechtigtLc.has((email || '').trim().toLowerCase());
   const { visible } = p;
   const { contactEmail, contactExpanded, contactInfo, contactName, contactOrganizerEmail, errorBorderStyle, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly, isDe, isSearchingOrganizer, location, organizer, organizerDisplayLarge, organizerEmails, organizerIncludeIntl, organizerResults, organizerSearch, organizerTimerRef, qrScannerEmails, qrScannerIncludeIntl, qrScannerNames, qrScannerNoList, qrScannerResults, qrScannerSearch, qrScannerTimerRef, searchUsers, setBulkOrganizerOpen, setBulkQrScannerOpen, setBulkTestTeamOpen, setContactEmail, setContactExpanded, setContactInfo, setContactName, setContactOrganizerEmail, setHideOrganizer, setHideOrganizerIndividualOnly, setOrganizer, setOrganizerDisplayLarge, setOrganizerEmails, setOrganizerIncludeIntl, setOrganizerResults, setOrganizerSearch, setQrScannerEmails, setQrScannerIncludeIntl, setQrScannerNames, setQrScannerNoList, setQrScannerResults, setQrScannerSearch, setTestTeamEmails, setTestTeamIncludeIntl, setTestTeamNames, setTestTeamResults, setTestTeamSearch, startDate, t, testTeamEmails, testTeamIncludeIntl, testTeamNames, testTeamResults, testTeamSearch, testTeamTimerRef, title, toggleOrganizerHidden } = p;
   // v31.2: Der Aufklapper „Weitere Einstellungen" (Anzeige der Organizer) ist
@@ -367,6 +381,24 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
                               <div className="dex-ui-row-title" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', whiteSpace: 'normal' }}>
                                 <span style={{ textDecoration: orgHidden ? 'line-through' : 'none' }}>{name}</span>
                                 {i === 0 && <span className="dex-ui-pill dex-ui-pill--green">{isDe ? 'Haupt-Organizer' : 'Main organizer'}</span>}
+                                {/* v31.86: Steht die Person schon in DEX_Roles? Dann entsteht beim
+                                    Speichern kein Antrag. Sonst sagt der Chip, was passiert —
+                                    Admin: Rolle sofort; Organizer: Freigabe-Mail an die Admins. */}
+                                {!!email && rollenLesbar && !istBerechtigt(email) && (
+                                  <span
+                                    className="dex-ui-pill dex-ui-pill--orange"
+                                    title={adminLikeHier
+                                      ? (isDe ? 'Noch kein Organizer — bekommt beim Speichern die Rolle Organizer und die Onboarding-Mail.' : 'Not an organizer yet — will be given the Organizer role and the onboarding email on save.')
+                                      : (isDe ? 'Noch kein Organizer — beim Speichern geht ein Freigabe-Antrag an die Admins; bis dahin kann die Person das Event sehen, aber nicht bearbeiten.' : 'Not an organizer yet — a request goes to the admins on save; until then this person can see the event but not edit it.')}
+                                  >
+                                    {adminLikeHier ? (isDe ? 'wird Organizer' : 'becomes organizer') : (isDe ? 'Admin-Freigabe nötig' : 'admin approval needed')}
+                                  </span>
+                                )}
+                                {!!email && rollenLesbar && istBerechtigt(email) && i > 0 && (
+                                  <span className="dex-ui-pill dex-ui-pill--blue" title={isDe ? 'Hat bereits Organizer-Rechte — kein Antrag nötig.' : 'Already has organizer rights — no request needed.'}>
+                                    {isDe ? 'Organizer' : 'Organizer'}
+                                  </span>
+                                )}
                                 {isContact && (
                                   <span className="dex-ui-pill dex-ui-pill--orange"><Icon iconName="Chat" style={{ fontSize: 10 }} /> {isDe ? 'Rückfragen-Kontakt' : 'Contact for questions'}</span>
                                 )}

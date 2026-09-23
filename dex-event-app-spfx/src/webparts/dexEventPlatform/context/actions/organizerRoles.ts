@@ -74,18 +74,28 @@ export function makeOrganizerRoleActions(deps: OrganizerRoleDeps) {
   // geben die Person frei (dann wird sie Organizer und kann das Event bearbeiten
   // und speichern). requestOrganizerRole entdoppelt offene Anträge selbst, daher
   // ist ein erneuter Save unkritisch. Best-effort — blockt den Save nie.
-  async function requestCoOrganizerApprovals(orgNames: string, orgEmails: string, eventTitle: string): Promise<void> {
+  // v31.86: Rückgabe sagt, ob die Rollenliste lesbar war und wer beantragt
+  // wurde. `unreadable` heißt: KEIN Antrag wurde angelegt — wer die Rollen
+  // nicht lesen kann, weiß nicht, wer schon Organizer ist, und würde sonst
+  // für jede benannte Person eine Admin-Mail erzeugen (s. getRoleEmailsChecked).
+  async function requestCoOrganizerApprovals(orgNames: string, orgEmails: string, eventTitle: string): Promise<{ unreadable: boolean; requested: string[] }> {
+    const out = { unreadable: false, requested: [] as string[] };
     try {
       const mails = (orgEmails || '').split(';').map(s => s.trim());
       const names = (orgNames || '').split(';').map(s => s.trim());
-      if (mails.filter(Boolean).length === 0) return;
+      if (mails.filter(Boolean).length === 0) return out;
       // v30.67: F&A und IT-Admin haben Organizer-Rechte (utils/roleRank) — sie
       // bekamen trotzdem bei jedem Save einen "Organizer werden"-Antrag samt
       // Admin-Mail, weil hier nur zwei der vier Rollen gezaehlt wurden.
       const [orgs, admins, fa, itAdmins] = await Promise.all([
-        eventService.getRoleEmails('Organizer'), eventService.getRoleEmails('Admin'),
-        eventService.getRoleEmails('F&A'), eventService.getRoleEmails('IT-Admin'),
+        eventService.getRoleEmailsChecked('Organizer'), eventService.getRoleEmailsChecked('Admin'),
+        eventService.getRoleEmailsChecked('F&A'), eventService.getRoleEmailsChecked('IT-Admin'),
       ]);
+      if (!orgs || !admins || !fa || !itAdmins) {
+        console.warn('[DEX] requestCoOrganizerApprovals: DEX_Roles nicht lesbar — keine Anträge angelegt.');
+        out.unreadable = true;
+        return out;
+      }
       const elevated = new Set([...orgs, ...admins, ...fa, ...itAdmins].map(e => e.toLowerCase()));
       const me = (currentUserEmail || '').toLowerCase();
       for (let i = 0; i < mails.length; i++) {
@@ -98,12 +108,16 @@ export function makeOrganizerRoleActions(deps: OrganizerRoleDeps) {
         const requester = currentUserName || currentUserEmail || '';
         const msg = `„${requester}" hat diese Person als Co-Organizer für das Event „${eventTitle}" benannt. `
           + `Mit der Freigabe wird sie Organizer und kann das Event in DEX bearbeiten und speichern.`;
-        try { await requestOrganizerRole(mail, nm, '', msg); }
+        try {
+          const r = await requestOrganizerRole(mail, nm, '', msg);
+          if (r.ok && r.reason !== 'already-pending') out.requested.push(nm);
+        }
         catch (e) { console.warn('[DEX] requestCoOrganizerApprovals: Einzel-Antrag fehlgeschlagen:', mail, e); }
       }
     } catch (e) {
       console.warn('[DEX] requestCoOrganizerApprovals fehlgeschlagen (best-effort):', e);
     }
+    return out;
   }
 
   /**

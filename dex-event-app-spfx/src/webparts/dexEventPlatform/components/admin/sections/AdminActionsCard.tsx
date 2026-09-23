@@ -1027,6 +1027,23 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
               />
             )}
 
+            {/* v31.86: Rollenliste zum Nachsehen — wer ist schon Organizer?
+                Nutzer-Ansage 23.09.2026: Organizer sollen sehen, wer bereits
+                Organizer oder Check-in ist, bevor sie jemanden als Co-Organizer
+                benennen. Die Seite selbst ist für Organizer read-only. */}
+            {(isAdmin || isOrganizerFor(selectedEvent)) && (
+              <ActionTile
+                icon={<Users size={18} />}
+                category="maintenance"
+                title={isDe ? 'Rollen ansehen' : 'View roles'}
+                desc={isDe
+                  ? 'Wer ist schon Admin, Organizer oder F&A und braucht keine Freigabe als Co-Organizer? Wer steht bei welchem Event im Check-in- oder Test-Team? Nur zum Nachsehen.'
+                  : 'Who is already admin, organizer or F&A and needs no approval as co-organizer? Who is on which event’s check-in or test team? Read-only.'}
+                badge="organizer"
+                onClick={() => navigate('settings')}
+              />
+            )}
+
             {/* v31.4: QR-Nummern nachtragen. Die Spalte `QrSentId` (welche
                 Nummer stand in der versendeten QR-Mail?) gibt es erst seit
                 v31.4 — für jedes Event, dessen QR-Mails vorher rausgingen,

@@ -2492,6 +2492,11 @@ export class EventService {
     return organizer.getRoleEmails(this, role);
   }
 
+  /** v31.86: `null` = Rollenliste nicht lesbar (s. organizer.getRoleEmailsChecked). */
+  public async getRoleEmailsChecked(role: string): Promise<string[] | null> {
+    return organizer.getRoleEmailsChecked(this, role);
+  }
+
   public async getRoleItemsCreatedSince(role: string, fromIso: string): Promise<Array<{ email: string; created: string }>> {
     return organizer.getRoleItemsCreatedSince(this, role, fromIso);
   }

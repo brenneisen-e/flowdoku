@@ -91,11 +91,11 @@ registerLocale('de', de);
 
 export default function EventCreationPage(): React.ReactElement {
   const { goBack, selectedEventId, currentPage, setNavigationGuard, navigate, navIntent, clearIntent } = useNavigation();
-  const { events, childEventsOf, ensureEventDocuments, refreshEventDocuments, createEvent, updateEvent, getLastEventUpdateError, deleteEvent, deleteEventItemOnly, refreshEvents, requestCoOrganizerApprovals, notifyNewCoOrganizers, notifyAdminsExternalAudienceAccess } = useEvents();
+  const { events, childEventsOf, ensureEventDocuments, refreshEventDocuments, createEvent, updateEvent, getLastEventUpdateError, deleteEvent, deleteEventItemOnly, refreshEvents, requestCoOrganizerApprovals, notifyNewCoOrganizers, notifyAdminsExternalAudienceAccess, sendOrganizerOnboarding } = useEvents();
   const { currentUser } = useCurrentUser();
   // searchGroups + searchUsersByLocation werden seit v19.x ausschließlich im
   // ausgelagerten <AudiencePicker> verwendet (eigener useRoles-Hook dort).
-  const { searchUsers, getGroupMembers, canCreateEvents, isAdmin, originalIsAdmin, isFA } = useRoles();
+  const { searchUsers, getGroupMembers, canCreateEvents, isAdmin, originalIsAdmin, isFA, addRole } = useRoles();
   // v29.66: F&A-Pilot — der komplette Abrechnungs-Teil ist bewusst NUR fuer
   // Admins sichtbar (Testphase laut Fachkonzept; vor dem Rollout sind noch
   // Abstimmungsschleifen geplant). originalIsAdmin deckt den Demo-Modus ab.
@@ -1453,7 +1453,7 @@ export default function EventCreationPage(): React.ReactElement {
 
   const handleSubmitInner = async (): Promise<void> => {
     return await runWizardSubmit({
-      activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, agenda,
+      activeFrom, addRole, adminLike, addrCity, addrHouseNo, addrStreet, addrZip, agenda,
       allDay, allowAttendeeUpload, askSalutation, askTeamName, assistantsCanSee, attendeeUploadHint,
       attendeeUploadLabel, audience, berlinLocalToUtcIso, bilingualFields, billingPiggyback, bundledComm, commShared,
       childEventsOf, childGender, childTermPlural, childTermSingular, computeFormSnapshot, confirmDialog,
@@ -1472,7 +1472,7 @@ export default function EventCreationPage(): React.ReactElement {
       outlookEndOverride, outlookLocationOverride, outlookStartOverride, outlookTeamsLink, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs, pendingOutlookInviteForEventsRef,
       pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, pendingSuccessDispatchRef, persistSubEventsForParent, previewBeforeActive, qrScannerEmails,
       qrScannerNames, qrScannerNoList, quiz, quizClusterSize, refreshEventDocuments, refreshEvents, registrationDeadline, registrationLanguage,
-      regRuleEnabled, requestCoOrganizerApprovals, requireSubEventSelection, resolveTopLevelCommState, sanitizeOrganizerPairs, selectedEventId,
+      regRuleEnabled, requestCoOrganizerApprovals, requireSubEventSelection, resolveTopLevelCommState, sanitizeOrganizerPairs, selectedEventId, sendOrganizerOnboarding,
       setDraftSavedAt, setError, setImageUploadError, setIsSubmitting, setNavigationGuard, setPendingDraft,
       setPendingSuccessDispatch, setProgress, setProgressLabel, setRemovedSavedSubs, setShowSummaryModal, showAlert,
       showAsFree, shrinkLogoB64, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText,
