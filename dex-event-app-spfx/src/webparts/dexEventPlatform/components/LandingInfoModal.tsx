@@ -15,7 +15,7 @@
 
 import * as React from 'react';
 import { Icon } from '@fluentui/react/lib/Icon';
-import { Mail, Info, Check, AlertCircle, ChevronDown } from './Icons';
+import { Mail, Info, AlertCircle, ChevronDown } from './Icons';
 import Modal from './Modal';
 import { cx } from './dexUi';
 import { APP_VERSION } from '../version';
@@ -36,11 +36,11 @@ interface Feature {
   body: string;
 }
 
-/** v31.2: Ein Ablauf-Schritt — kurzer Titel plus eine Zeile, was dabei passiert. */
-interface Step { title: string; hint: string; }
+/** v31.2: Ein Ablauf-Schritt — kurzer Titel plus eine Zeile, was dabei passiert. v31.95: mit Symbol. */
+interface Step { icon: string; title: string; hint: string; }
 
-/** v31.2: Ein Einsatzbeispiel — Kategorie plus konkrete Beispiele. */
-interface UseCase { title: string; sub: string; }
+/** v31.2: Ein Einsatzbeispiel — Kategorie plus konkrete Beispiele. v31.95: mit Symbol für die Kachel. */
+interface UseCase { icon: string; title: string; sub: string; }
 
 const EVENT_MGMT_URL = 'https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx';
 
@@ -54,6 +54,14 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
   if (!open) return null;
 
   const isDE = locale === 'de';
+  // v31.95: „Hast du Fragen?" direkt aus dem Self-Service-Kasten — derselbe
+  // Dialog wie der Knopf im Kopf (QuestionButton hört auf das Fenster-Ereignis,
+  // `tab: 'ask'` öffnet gleich „Frage stellen"). Erst schließen, dann öffnen,
+  // sonst liegen zwei Dialoge übereinander.
+  const openQuestions = (): void => {
+    onClose();
+    window.setTimeout(() => { try { window.dispatchEvent(new CustomEvent('dex-open-questions', { detail: { tab: 'ask' } })); } catch { /* */ } }, 150);
+  };
 
   // v31.2: Der Punkt „Wofür DEX gedacht ist" (v28.40) steht jetzt im Hinweis-
   // kasten unter den Einsatzbeispielen — zwei Blöcke zum selben Thema waren
@@ -95,17 +103,17 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
   ];
 
   const useCases: UseCase[] = isDE ? [
-    { title: 'Leadership & Strategy Meetings', sub: 'z.B. SR&T P/MD/D Meeting mit 450 Teilnehmern' },
-    { title: 'Firmen-Events', sub: 'Sommerfeste, Weihnachtsfeiern, Abteilungs-Offsites' },
-    { title: 'Assistenz- & Team-Meetings', sub: 'mit Transfer- und Hotelbuchung' },
-    { title: 'Lauf-Events', sub: 'B2Run, JPMorgan Corporate Challenge (mit Startblöcken, Split-Capacity)' },
-    { title: 'Alles dazwischen', sub: 'von 10 Leuten am Lunch bis 500+ Personen auf einer Großveranstaltung' },
+    { icon: 'Presentation', title: 'Leadership- & Strategie-Meetings', sub: 'z. B. SR&T P/MD/D Meeting mit 450 Teilnehmenden' },
+    { icon: 'Emoji2', title: 'Firmen-Events', sub: 'Sommerfeste, Weihnachtsfeiern, Bereichs-Offsites' },
+    { icon: 'Hotel', title: 'Assistenz- & Team-Meetings', sub: 'mit Transfer- und Hotelbuchung' },
+    { icon: 'Running', title: 'Lauf-Events', sub: 'B2Run, JPMorgan Corporate Challenge — mit Startblöcken und geteilten Kapazitäten' },
+    { icon: 'CalendarAgenda', title: 'Alles dazwischen', sub: 'vom Lunch mit 10 Personen bis zur Großveranstaltung mit über 500' },
   ] : [
-    { title: 'Leadership & strategy meetings', sub: 'e.g. SR&T P/MD/D with 450+ participants' },
-    { title: 'Company events', sub: 'summer parties, Christmas celebrations, team offsites' },
-    { title: 'Assistant & team meetings', sub: 'with transfer and hotel booking' },
-    { title: 'Running events', sub: 'B2Run, JPMorgan Corporate Challenge (with start-blocks & split capacity)' },
-    { title: 'Everything in between', sub: 'from 10 people at lunch to 500+ at a flagship event' },
+    { icon: 'Presentation', title: 'Leadership & strategy meetings', sub: 'e.g. SR&T P/MD/D meeting with 450 participants' },
+    { icon: 'Emoji2', title: 'Company events', sub: 'summer parties, Christmas celebrations, team offsites' },
+    { icon: 'Hotel', title: 'Assistant & team meetings', sub: 'with transfer and hotel booking' },
+    { icon: 'Running', title: 'Running events', sub: 'B2Run, JPMorgan Corporate Challenge — with start blocks and split capacities' },
+    { icon: 'CalendarAgenda', title: 'Everything in between', sub: 'from a lunch with 10 people to a flagship event with 500+' },
   ];
 
   // v31.2: Ablauf als nummerierte Schritt-Zeilen (Titel + Folge) statt einer
@@ -117,21 +125,21 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
   // Check-in-Team, Teilnehmer-ID und Walk-in. „Wir helfen beim ersten Mal" ist
   // raus — DEX ist Self-Service, siehe Kasten darunter.
   const steps: Step[] = isDE ? [
-    { title: 'Du legst dein Event selbst an', hint: 'Im Wizard in neun Schritten: Termin und Ort, Plätze und Fristen, Sichtbarkeit, Fragen im Anmeldeformular, Mails und Outlook-Termin. Mehrere Termine oder Programmpunkte gehören gleich dazu.' },
-    { title: 'Die App richtet im Hintergrund alles ein', hint: 'Eigene Teilnehmerliste je Event und Termin, Rechte für dein Team, Mail-Vorlagen im Deloitte-Design.' },
-    { title: 'Nur eingeladene Kolleg:innen sehen das Event', hint: 'Nach Standort, Zielgruppe, Verteilerliste oder einzeln eingeladen — bei ihnen erscheint es unter „Aktuelle Events".' },
-    { title: 'Anmelden mit einem Klick — auch für andere', hint: 'Bestätigungsmail und Outlook-Termin kommen automatisch. Assistenzen melden stellvertretend an; abmelden geht jederzeit unter „Meine Events".' },
-    { title: 'Ist das Event voll, geht es auf die Warteliste', hint: 'Wird ein Platz frei, rückt die nächste Person automatisch nach — mit Mail und Termin.' },
-    { title: 'Du steuerst alles im Organizer Center', hint: 'Teilnehmerliste, Massen-Mails, Dokumente, Hotel- und Zimmerplanung, Auswertungen — und du siehst jederzeit, wer schon angemeldet ist.' },
-    { title: 'Am Event-Tag: Check-in per QR-Code', hint: 'Die QR-Codes kommen per Mail. Dein Check-in-Team scannt oder tippt die Teilnehmer-ID, Walk-ins werden direkt vor Ort angemeldet. Live-Zähler inklusive.' },
+    { icon: 'PageEdit', title: 'Du legst dein Event an', hint: 'Der Wizard führt in neun Schritten durch Termin und Ort, Kapazität und Fristen, Sichtbarkeit, Anmeldeformular sowie E-Mail- und Outlook-Kommunikation. Mehrere Termine oder Programmpunkte lassen sich direkt mit anlegen.' },
+    { icon: 'Settings', title: 'Die App richtet die Infrastruktur ein', hint: 'Je Event und Termin eine eigene Teilnehmerliste, Berechtigungen für dein Team sowie E-Mail-Vorlagen im Deloitte-Design.' },
+    { icon: 'Group', title: 'Nur die eingeladene Zielgruppe sieht das Event', hint: 'Gesteuert über Standort, Zielgruppe, Verteilerliste oder persönliche Einladung — für diese Personen erscheint das Event unter „Aktuelle Events".' },
+    { icon: 'Touch', title: 'Anmeldung mit einem Klick — auch stellvertretend', hint: 'Bestätigung per E-Mail und Outlook-Termin erfolgen automatisch. Assistenzen melden stellvertretend an; eine Abmeldung ist jederzeit unter „Meine Events" möglich.' },
+    { icon: 'Clock', title: 'Bei voller Kapazität greift die Warteliste', hint: 'Wird ein Platz frei, rückt die nächste Person automatisch nach — inklusive E-Mail und Outlook-Termin.' },
+    { icon: 'AccountManagement', title: 'Verwaltung im Organizer Center', hint: 'Teilnehmerliste, Massen-Mails, Dokumente, Hotel- und Zimmerplanung sowie Auswertungen — mit jederzeitigem Überblick über den Anmeldestand.' },
+    { icon: 'QRCode', title: 'Am Event-Tag: Check-in per QR-Code', hint: 'Die QR-Codes werden per E-Mail versendet. Das Check-in-Team scannt sie oder erfasst die Teilnehmer-ID; Walk-ins werden direkt vor Ort registriert. Der Live-Zähler zeigt den aktuellen Stand.' },
   ] : [
-    { title: 'You create your event yourself', hint: 'In the wizard, nine steps: date and venue, seats and deadlines, visibility, registration questions, emails and Outlook invite. Multiple sessions or agenda items come along.' },
-    { title: 'The app sets everything up behind the scenes', hint: 'A dedicated participant list per event and session, permissions for your team, email templates in Deloitte design.' },
-    { title: 'Only invited colleagues see the event', hint: 'By office, audience, distribution list or individual invitation — it shows up for them under "Current events".' },
-    { title: 'Register with one click — also on behalf of others', hint: 'Confirmation email and Outlook invite arrive automatically. Assistants register on behalf; cancelling is always possible under "My events".' },
-    { title: 'If the event is full, they join the waitlist', hint: 'When a seat frees up, the next person is promoted automatically — with email and invite.' },
-    { title: 'You run everything in the Organizer Center', hint: 'Participant list, mass emails, documents, hotel and room planning, reports — and you always see who has registered.' },
-    { title: 'On event day: check-in by QR code', hint: 'QR codes arrive by email. Your check-in team scans or types the participant ID, walk-ins are registered on the spot. Live counter included.' },
+    { icon: 'PageEdit', title: 'You create your event', hint: 'The wizard guides you through nine steps: date and venue, capacity and deadlines, visibility, registration form, and email and Outlook communication. Multiple sessions or agenda items can be added right away.' },
+    { icon: 'Settings', title: 'The app sets up the infrastructure', hint: 'A dedicated participant list per event and session, permissions for your team, and email templates in Deloitte design.' },
+    { icon: 'Group', title: 'Only the invited audience sees the event', hint: 'Controlled by office, audience, distribution list or personal invitation — for these people the event appears under "Current events".' },
+    { icon: 'Touch', title: 'Registration with one click — also on behalf of others', hint: 'Confirmation by email and Outlook invite are sent automatically. Assistants can register on behalf of others; cancelling is possible at any time under "My events".' },
+    { icon: 'Clock', title: 'At full capacity, the waitlist takes over', hint: 'When a seat becomes available, the next person is promoted automatically — including email and Outlook invite.' },
+    { icon: 'AccountManagement', title: 'Management in the Organizer Center', hint: 'Participant list, mass emails, documents, hotel and room planning, and reports — with an overview of the registration status at any time.' },
+    { icon: 'QRCode', title: 'On event day: check-in by QR code', hint: 'QR codes are sent by email. The check-in team scans them or enters the participant ID; walk-ins are registered on site. The live counter shows the current status.' },
   ];
 
   const features = isDE ? featuresDE : featuresEN;
@@ -171,13 +179,16 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
         {/* Einsatzbereich */}
         <section className="dex-ui-section">
           <h4 className="dex-ui-section-title">{isDE ? 'Für diese Events ist DEX gemacht' : 'DEX is built for these events'}</h4>
-          <div className="dex-ui-card dex-ui-card--soft" style={{ padding: '4px 6px' }}>
+          {/* v31.95: Kacheln mit Symbol statt Haken-Zeilen — die Liste sah
+              aus wie die Schritte darunter (Nutzer 24.09.2026: „hier sieht
+              irgendwie alles gleich aus"). */}
+          <div className="dex-ui-grid-auto" style={{ gap: 10 }}>
             {useCases.map((u, i) => (
-              <div key={i} className="dex-ui-row dex-ui-row--bordered">
-                <span className="dex-ui-choice-check" aria-hidden="true" style={{ borderColor: 'var(--dex-green)', background: 'var(--dex-green)' }}><Check size={12} /></span>
-                <div className="dex-ui-row-main">
-                  <div className="dex-ui-row-title">{u.title}</div>
-                  <div className="dex-ui-row-sub">{u.sub}</div>
+              <div key={i} className="dex-ui-card dex-ui-card--soft" style={{ padding: 12, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <span className="dex-ui-choice-icon" aria-hidden="true"><Icon iconName={u.icon} style={{ fontSize: 16 }} /></span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.86rem', color: 'var(--dex-gray-800)', lineHeight: 1.3 }}>{u.title}</div>
+                  <div className="dex-ui-muted" style={{ fontSize: '0.76rem', lineHeight: 1.45, marginTop: 2 }}>{u.sub}</div>
                 </div>
               </div>
             ))}
@@ -195,13 +206,16 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
         {/* So funktioniert es */}
         <section className="dex-ui-section">
           <h4 className="dex-ui-section-title">{isDE ? 'So läuft ein Event mit DEX' : 'How an event runs with DEX'}</h4>
-          <div className="dex-ui-stack" style={{ gap: 8 }}>
+          {/* v31.95: Prozess-Zeitstrahl statt sieben gleicher Karten — Nummern
+              auf einer Linie, je Schritt ein Symbol. */}
+          <div className="dex-ui-process">
             {steps.map((s, i) => (
-              <div key={i} className="dex-ui-step">
-                <span className="dex-ui-step-num">{i + 1}</span>
-                <div className="dex-ui-step-body">
-                  <div className="dex-ui-step-title">{s.title}</div>
-                  <div className="dex-ui-step-hint">{s.hint}</div>
+              <div key={i} className="dex-ui-process-item">
+                <span className="dex-ui-process-num">{i + 1}</span>
+                <span className="dex-ui-process-icon" aria-hidden="true"><Icon iconName={s.icon} style={{ fontSize: 16 }} /></span>
+                <div className="dex-ui-process-body">
+                  <div className="dex-ui-process-title">{s.title}</div>
+                  <div className="dex-ui-process-hint">{s.hint}</div>
                 </div>
               </div>
             ))}
@@ -218,8 +232,8 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
             <span className="dex-ui-callout-icon"><Info size={16} /></span>
             <span>
               {isDE
-                ? <>Du legst dein Event <strong>selbst</strong> an und verwaltest es selbst — niemand richtet es für dich ein. Wenn du nicht weiterkommst: Schau im <button type="button" className="dex-ui-textlink" onClick={() => { onClose(); navigate('manual'); }}>Handbuch</button> nach, stell deine Frage über <strong>&bdquo;Hast du Fragen?&ldquo;</strong> oben im Kopf der App, oder bring sie in einen der <strong>monatlichen DEX-Calls</strong> mit.</>
-                : <>You create and run your event <strong>yourself</strong> — nobody sets it up for you. If you get stuck: check the <button type="button" className="dex-ui-textlink" onClick={() => { onClose(); navigate('manual'); }}>manual</button>, ask via <strong>“Have a question?”</strong> at the top of the app, or bring it to one of the <strong>monthly DEX calls</strong>.</>}
+                ? <>DEX ist als <strong>Self-Service-Plattform</strong> konzipiert: Du legst dein Event eigenständig an und verwaltest es über den gesamten Ablauf — der Wizard führt dich dabei Schritt für Schritt. Unterstützung findest du im <button type="button" className="dex-ui-textlink" onClick={() => { onClose(); navigate('manual'); }}>Handbuch</button>, über <button type="button" className="dex-ui-textlink" onClick={openQuestions}>&bdquo;Hast du Fragen?&ldquo;</button> in der Kopfzeile der App oder in einem der <strong>monatlichen DEX-Calls</strong>.</>
+                : <>DEX is designed as a <strong>self-service platform</strong>: you create your event independently and manage it end to end — the wizard guides you step by step. Support is available in the <button type="button" className="dex-ui-textlink" onClick={() => { onClose(); navigate('manual'); }}>manual</button>, via <button type="button" className="dex-ui-textlink" onClick={openQuestions}>“Have a question?”</button> in the app header, or in one of the <strong>monthly DEX calls</strong>.</>}
             </span>
           </div>
         </section>
@@ -268,8 +282,8 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
           <h4 className="dex-ui-section-title">{isDE ? 'Interesse?' : 'Interested?'}</h4>
           <p className="dex-ui-muted" style={{ margin: 0, fontSize: '0.86rem', lineHeight: 1.6 }}>
             {isDE
-              ? 'Dein Event oder deine Abteilung will DEX nutzen? Schreib uns — der Knopf unten öffnet eine Mail an uns. Wir schalten dich als Organizer frei; anlegen kannst du dein Event dann selbst.'
-              : 'Your event or department wants to use DEX? Drop us a line — the button below opens an email to us. We\'ll set you up as an organizer; creating the event is then in your hands.'}
+              ? 'Dein Event oder dein Bereich möchte DEX nutzen? Der Knopf unten öffnet eine E-Mail an das DEX-Team. Wir schalten dich als Organizer frei — das Event legst du anschließend eigenständig an.'
+              : 'Your event or department would like to use DEX? The button below opens an email to the DEX team. We will set you up as an organizer — you then create the event independently.'}
           </p>
           <p className="dex-ui-muted" style={{ margin: '16px 0 0', fontSize: '0.76rem', textAlign: 'center' }}>
             {isDE ? 'Entwickelt von ' : 'Built by '}

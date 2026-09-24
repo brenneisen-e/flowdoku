@@ -132,8 +132,14 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
 
   // v26.7: Deep-Link aus der Antwort-Mail (?action=ask) öffnet das Modal direkt
   // auf „Deine Fragen".
+  // v31.95: `detail.tab === 'ask'` öffnet direkt „Frage stellen" — so ruft
+  // „Über die App" den Knopf auf, ohne dass die Person ihn im Kopf sucht.
   React.useEffect(() => {
-    const onOpen = (): void => { setTab('mine'); setOpen(true); };
+    const onOpen = (e: Event): void => {
+      const wanted = ((e as CustomEvent).detail || {}).tab;
+      setTab(wanted === 'ask' ? 'ask' : 'mine');
+      setOpen(true);
+    };
     window.addEventListener('dex-open-questions', onOpen);
     return () => window.removeEventListener('dex-open-questions', onOpen);
   }, []);

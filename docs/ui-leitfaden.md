@@ -215,6 +215,7 @@ Zustände als zusätzliche Klasse: `is-active`, `is-open`, `is-disabled`,
 | ↳ Checkbox darin | Seit v31.9.8 **eckig mit weißem Haken** — das globale `.dexApp input[type=checkbox]` im SCSS macht sonst aus jeder Checkbox einen Kreis mit Punkt, also das Bild für „nur eins davon". Radios in derselben Zeile bleiben rund. Wer eine Mehrfachauswahl baut, nimmt diese Zeile und keine eigene Inline-Checkbox |
 | `dex-ui-switch` | Schalter statt Checkbox für **Haupt-Ein/Aus** eines Bereichs: `<label className="dex-ui-switch"><input type="checkbox"/><span className="dex-ui-switch-track"/><span className="dex-ui-switch-label">…</span></label>` |
 | `dex-ui-step` | Nummerierte Ablauf-Zeile: `dex-ui-step-num`, `dex-ui-step-body` (`-title`, `-hint`), `dex-ui-step-action` (der Knopf). `is-done` / `is-pending` färben die Nummer |
+| `dex-ui-process` | Prozess-Zeitstrahl zum LESEN (kein Knopf je Schritt): Nummern auf einer durchgehenden Linie, je `dex-ui-process-item` ein `dex-ui-process-num`, `dex-ui-process-icon`, `dex-ui-process-body` (`-title`, `-hint`). Wer je Schritt etwas tun soll, nimmt `dex-ui-step` |
 | `dex-ui-kpi` | Kennzahl-Kachel: `dex-ui-kpi-value`, `dex-ui-kpi-label`. Modifier `--green`, `--orange` |
 | `dex-ui-empty` | Leerer Zustand (gestrichelter Rahmen): `dex-ui-empty-icon`, `dex-ui-empty-title` |
 
