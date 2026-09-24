@@ -193,15 +193,32 @@ export default function SettingsPage(): React.ReactElement {
       // Die Zahl der Zuweisungen ist bewusst NICHT als „so viele waren kaputt"
       // formuliert: SharePoint meldet bei addroleassignment nicht, ob das Recht
       // neu ist. Deshalb steht dort, was getan wurde, nicht was gefehlt hat.
-      const un = r.unresolved.length
-        ? (isDe
-            ? ` ${r.unresolved.length} Adresse(n) konnten nicht zugeordnet werden: ${r.unresolved.join(', ')} — meist ehemalige Kolleg:innen.`
-            : ` ${r.unresolved.length} address(es) could not be resolved: ${r.unresolved.join(', ')} — usually former colleagues.`)
-        : '';
+      // v31.89: `unresolved` mischt drei Dinge (maintenance.ts): E-Mail-Adressen
+      // ohne SharePoint-Konto, Subsites mit HTTP 404 (Teilnehmerliste gelöscht
+      // oder recycelt — unkritisch, das Event ist vorbei) und echte Ablehnungen.
+      // Der Screenshot vom 24.09.2026 zeigte 13 Subsite-URLs als „Adressen
+      // konnten nicht zugeordnet werden — meist ehemalige Kolleg:innen".
+      const siteName = (s: string): string => s.replace(/\s*\(.*$/, '').replace(/\/+$/, '').split('/').pop() || s;
+      const weg = r.unresolved.filter(u => /HTTP 404\)/.test(u));
+      const abgelehnt = r.unresolved.filter(u => /\(.*HTTP \d+\)/.test(u) && !/HTTP 404\)/.test(u));
+      const adressen = r.unresolved.filter(u => !/\(.*HTTP \d+\)/.test(u));
+      const wegSites = Array.from(new Set(weg.map(siteName)));
+      const teile: string[] = [];
+      if (adressen.length) teile.push(isDe
+        ? `${adressen.length} Adresse(n) ohne SharePoint-Konto (meist ehemalige Kolleg:innen): ${adressen.join(', ')}.`
+        : `${adressen.length} address(es) without a SharePoint account (usually former colleagues): ${adressen.join(', ')}.`);
+      if (wegSites.length) teile.push(isDe
+        ? `${wegSites.length} Teilnehmerliste(n) gibt es nicht mehr (Subsite gelöscht oder recycelt — unkritisch): ${wegSites.join(', ')}.`
+        : `${wegSites.length} participant list(s) no longer exist (subsite deleted or recycled — harmless): ${wegSites.join(', ')}.`);
+      if (abgelehnt.length) teile.push(isDe
+        ? `${abgelehnt.length} Zuweisung(en) hat SharePoint abgelehnt: ${abgelehnt.join(', ')}.`
+        : `${abgelehnt.length} assignment(s) were rejected by SharePoint: ${abgelehnt.join(', ')}.`);
+      const un = teile.length ? ' ' + teile.join(' ') : '';
+      const echteFehler = abgelehnt.length;
       const msg = isDe
-        ? `Fertig: ${r.trees} Event(s) mit insgesamt ${r.sites} Teilnehmerliste(n) durchlaufen, ${r.grants} Zuweisung(en) gesetzt${r.errors ? `, ${r.errors} mit Fehler` : ''}.${un}`
-        : `Done: ${r.trees} event(s) with ${r.sites} participant list(s) processed, ${r.grants} assignment(s) applied${r.errors ? `, ${r.errors} with errors` : ''}.${un}`;
-      setListPerm({ running: false, done: 0, total: 0, label: '', result: msg, failed: r.errors > 0 });
+        ? `Fertig: ${r.trees} Event(s) mit insgesamt ${r.sites} Teilnehmerliste(n) durchlaufen, ${r.grants} Zuweisung(en) gesetzt${echteFehler ? `, ${echteFehler} abgelehnt` : ''}.${un}`
+        : `Done: ${r.trees} event(s) with ${r.sites} participant list(s) processed, ${r.grants} assignment(s) applied${echteFehler ? `, ${echteFehler} rejected` : ''}.${un}`;
+      setListPerm({ running: false, done: 0, total: 0, label: '', result: msg, failed: echteFehler > 0 });
     } catch {
       setListPerm({ running: false, done: 0, total: 0, label: '', result: isDe ? 'Berechtigungs-Prüfung fehlgeschlagen.' : 'Permission check failed.', failed: true });
     }

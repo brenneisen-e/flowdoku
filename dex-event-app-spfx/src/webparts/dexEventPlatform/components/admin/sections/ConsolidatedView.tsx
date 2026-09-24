@@ -28,6 +28,9 @@ export interface ConsolidatedViewProps {
   colToggleHover: boolean;
   confirmDialog: (message: React.ReactNode, opts?: import("../../../context/DialogContext").ConfirmOptions) => Promise<boolean>;
   consolidatedChildren: DeloitteEvent[];
+  /** v31.89: Aktive Klammer-Zeilen ohne aktiven Termin als abgemeldet markieren. */
+  cleanupKlammerOhneTermin: (rows: SPRegistration[]) => Promise<void>;
+  klammerCleanupBusy: boolean;
   consolidatedFiltered: ConsolidatedRow[];
   consolidatedRows: ConsolidatedRow[];
   consolidatedSort: string;
@@ -74,7 +77,7 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
   // (AdminPage übergibt sie unverändert weiter), werden hier aber nicht mehr
   // gelesen — der Aufklapp-Knopf holt seinen Hover jetzt aus `dex-ui-chip`
   // (Leitfaden 1.3: kein onMouseEnter-State für reine Optik).
-  const { addAllToKlammer, addingToKlammer, addToKlammer, bulkKlammerProgress, confirmDialog, consolidatedChildren, consolidatedFiltered, consolidatedRows, consolidatedSort, consolidatedSortAsc, deniedSubEventLists, expandedConsolidatedEmail, highlightMatch, inactiveAccounts, isAdmin, isConsolidatedMode, isDe, isLoadingSubEventRegs, isOrganizerFor, missingReminderKey, openDeregModal, openMainFieldsEdit, orgPastLock, performSilentDuplicateDelete, personalColsCollapsed, registrations, reminderBusyId, searchQuery, selectedEvent, sendCompleteRegistrationReminder, setAssignAssistRow, setAssignAssistValue, setConsolidatedSort, setConsolidatedSortAsc, setExpandedConsolidatedEmail, setMissingReminderKey, setParticipantDetail, setPersonalColsCollapsed, setReminderBusyId, setSelectedEvent, showAlert, stripLocPrefix, subEventRegsByEventId } = p;
+  const { addAllToKlammer, addingToKlammer, addToKlammer, bulkKlammerProgress, cleanupKlammerOhneTermin, confirmDialog, consolidatedChildren, consolidatedFiltered, consolidatedRows, consolidatedSort, consolidatedSortAsc, deniedSubEventLists, expandedConsolidatedEmail, highlightMatch, inactiveAccounts, isAdmin, isConsolidatedMode, isDe, isLoadingSubEventRegs, isOrganizerFor, klammerCleanupBusy, missingReminderKey, openDeregModal, openMainFieldsEdit, orgPastLock, performSilentDuplicateDelete, personalColsCollapsed, registrations, reminderBusyId, searchQuery, selectedEvent, sendCompleteRegistrationReminder, setAssignAssistRow, setAssignAssistValue, setConsolidatedSort, setConsolidatedSortAsc, setExpandedConsolidatedEmail, setMissingReminderKey, setParticipantDetail, setPersonalColsCollapsed, setReminderBusyId, setSelectedEvent, showAlert, stripLocPrefix, subEventRegsByEventId } = p;
   // Idempotent — Modal und WizardFormShell rufen es ebenfalls; hier nötig, weil
   // die Matrix auch ohne offenes Modal gerendert wird.
   ensureDexUiStyles();
@@ -283,6 +286,23 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
       const em = (r.ParticipantEmail || '').toLowerCase().trim();
       return !!em && !anySubEmails.has(em);
     });
+    // v31.89: Aktive Klammer-Zeilen, deren Person auf den Terminen zwar
+    // Zeilen hat, aber KEINE aktive (Angemeldet/QR versendet/Eingecheckt) —
+    // dieselbe Rechnung wie der Klammer-Reiter und die Check-in-Seite.
+    const activeSubEmails = new Set<string>();
+    for (const ch of consolidatedChildren) {
+      for (const r of (subEventRegsByEventId[ch.id] || [])) {
+        if (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt') {
+          const em = (r.ParticipantEmail || '').toLowerCase().trim();
+          if (em) activeSubEmails.add(em);
+        }
+      }
+    }
+    const ohneAktivenTermin = orphanCheckBlocked ? [] : registrations.filter(r => {
+      if (r.Status !== 'Angemeldet' && r.Status !== 'QR versendet') return false;
+      const em = (r.ParticipantEmail || '').toLowerCase().trim();
+      return !!em && anySubEmails.has(em) && !activeSubEmails.has(em);
+    });
     // v26.68: Bei aktiver Suche eine zusätzliche „ID"-Spalte mit der echten
     // TeilnehmerID aus der Klammer-/Hauptevent-Liste einblenden. Die „#"-Spalte
     // bleibt die laufende Durchzählung der aktuellen Ansicht — die ID hilft, die
@@ -313,6 +333,43 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
               {isDe
                 ? `${deniedSubEventLists.length} Termin-Liste(n) konnten nicht gelesen werden. Wer nur dort angemeldet ist, sähe hier wie ein Rest aus, und „Rest-Anmeldung entfernen“ würde eine echte Anmeldung löschen. Sobald alle Listen lesbar sind, erscheint die Prüfung wieder.`
                 : `${deniedSubEventLists.length} date list(s) could not be read. Anyone registered only there would look like a leftover here, and „Remove leftover“ would delete a real registration. The check returns as soon as all lists are readable.`}
+            </div>
+          </div>
+        )}
+        {/* v31.89: Klammer-Zeilen ohne aktiven Termin — die Person HAT Termin-
+            Zeilen, aber alle sind abgemeldet; die Klammer-Schattenzeile blieb
+            aktiv (Abmeldung über einen Weg, der die Klammer nicht zuletzt
+            setzte). Der Kasten darüber meint bewusst NUR Reste ohne jede
+            Termin-Zeile. Nutzer-Frage 24.09.2026: „gibts ne Action, um die 13
+            aufzuräumen?" — ja, hier: Sammel-Aktion, still, nur Status. */}
+        {!orphanCheckBlocked && ohneAktivenTermin.length > 0 && (
+          <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginBottom: 12 }}>
+            <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <strong style={{ fontSize: '0.9rem' }}>
+                {isDe ? `Zeilen ohne aktive Termin-Anmeldung (${ohneAktivenTermin.length})` : `Rows without an active date registration (${ohneAktivenTermin.length})`}
+              </strong>
+              <p style={{ margin: '4px 0 6px' }}>
+                {isDe
+                  ? 'Diese Personen sind auf allen Terminen abgemeldet, ihre Zeile auf dem Hauptevent steht aber noch auf „Angemeldet" bzw. „QR versendet". Sie zählen deshalb am Check-in nicht mit und sind dort ausgeblendet. Aufräumen setzt die Zeile auf „Abgemeldet" — still, ohne Mail und ohne Outlook-Absage; gelöscht wird nichts.'
+                  : 'These people are cancelled on every date, but their main-event row still says "Registered" or "QR sent". They are therefore not counted at check-in and hidden there. Cleaning up sets the row to "Cancelled" — silently, without email or Outlook cancellation; nothing is deleted.'}
+              </p>
+              <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', marginBottom: 8 }}>
+                {ohneAktivenTermin.slice(0, 20).map(r => (r.Vorname && r.Nachname) ? `${r.Vorname} ${r.Nachname}` : (r.ParticipantName || r.ParticipantEmail)).join(', ')}
+                {ohneAktivenTermin.length > 20 ? ` … (+${ohneAktivenTermin.length - 20})` : ''}
+              </div>
+              {canManage && (
+                <button
+                  type="button"
+                  className="btn btn-secondary dex-ui-btn-sm"
+                  disabled={klammerCleanupBusy}
+                  onClick={() => { void cleanupKlammerOhneTermin(ohneAktivenTermin); }}
+                >
+                  {klammerCleanupBusy
+                    ? (isDe ? 'Wird aufgeräumt…' : 'Cleaning up…')
+                    : (isDe ? `Alle ${ohneAktivenTermin.length} als abgemeldet markieren` : `Mark all ${ohneAktivenTermin.length} as cancelled`)}
+                </button>
+              )}
             </div>
           </div>
         )}
