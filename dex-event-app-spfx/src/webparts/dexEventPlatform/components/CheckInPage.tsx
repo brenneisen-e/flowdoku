@@ -18,6 +18,7 @@ import { useRoles } from '../context/RoleContext';
 import { useCurrentUser } from '../context/UserContext';
 import { EventService, SPRegistration } from '../services/EventService';
 import { DeloitteEvent } from '../types';
+import WalkInPanel from './WalkInPanel';
 import {
   checkInExtras, parseCustomData, CheckInExtra, shirtAllocate, parseShirtStock, ShirtAllocationResult,
   // v31.4: Trikot-Ausgabe am Tisch — was rausgegeben wurde, steht in der Zeile.
@@ -158,11 +159,11 @@ function ShirtSizePicker(props: {
 }
 
 export default function CheckInPage(): React.ReactElement {
-  const { events, getAllRegistrations, updateEvent } = useEvents();
+  const { events, getAllRegistrations, updateEvent, registerForEvent } = useEvents();
   // v20.4: App-Modal statt nativem Browser-Alert.
   const { showAlert, confirmDialog } = useDialog();
   const { selectedEventId, navigate } = useNavigation();
-  const { isAdmin, isOrganizer, siteUrl } = useRoles();
+  const { isAdmin, isOrganizer, siteUrl, searchUsers } = useRoles();
   const { currentUser } = useCurrentUser();
   const { t, locale } = useLanguage();
   const isDe = locale === 'de';
@@ -192,6 +193,8 @@ export default function CheckInPage(): React.ReactElement {
   // v15.3: Picker zeigt per Default nur aktive Events (gleicher Filter wie
   // EventListPage). Toggle „Nur aktive" oben rechts, der das aufweicht.
   const [onlyActiveCheckIn, setOnlyActiveCheckIn] = React.useState<boolean>(true);
+  // v31.90: Walk-in-Kachel unter „Weitere Wege zum Einchecken".
+  const [walkInOpen, setWalkInOpen] = React.useState(false);
   const visibleCheckInEvents = React.useMemo(() => {
     if (!onlyActiveCheckIn) return accessibleEvents;
     const now = Date.now();
@@ -2633,6 +2636,23 @@ export default function CheckInPage(): React.ReactElement {
     setIdInput('');
     setIdError('');
   };
+  // v31.90: Nach dem Walk-in die Liste frisch lesen und die Person direkt in
+  // die Bestätigungskarte heben — der Check-in bleibt EIN Weg (die Karte).
+  const walkInFertig = async (emailLc: string, name: string): Promise<void> => {
+    if (!nameSearchEventId) return;
+    await loadRegsForSearch(nameSearchEventId, { force: true });
+    const rows = searchRegsCacheRef.current[nameSearchEventId] || [];
+    const reg = rows.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === emailLc && r.Status !== 'Abgemeldet');
+    if (reg) {
+      startManualCheckInFromSearch(reg);
+      setNameSearchQuery(emailLc);
+    } else {
+      setResultMessage(isDe
+        ? `${name} ist angemeldet, steht aber noch nicht in der geladenen Liste — bitte „Aktualisieren" und dann über den Namen einchecken.`
+        : `${name} is registered but not yet in the loaded list — please “Refresh” and then check in by name.`);
+      setResultType('info');
+    }
+  };
   const heroEv = events.find(e => e.id === nameSearchEventId) || selectedEvent || null;
   const heroImg = ((): string => {
     if (!heroEv) return '';
@@ -3268,6 +3288,26 @@ export default function CheckInPage(): React.ReactElement {
 
       {/* v31.1 — Self-Check-in, eingeklappt bis gebraucht (v31.2: ohne
           Nummer, direkt unter dem Live-Scanner). */}
+      {/* v31.90: Walk-in — eigene Kachel (Nutzer-Ansage 24.09.2026: „hier dann
+          eigene Kachel"). Steht nach dem Self-Check-in (order 6). */}
+      <div style={{ order: 6 }}>
+      <div className="card" style={{ padding: 24, marginBottom: 16 }}>
+        {cardToggle('Walk-in', walkInOpen, () => setWalkInOpen(o => !o), isDe ? 'Person ohne Anmeldung suchen, anmelden und direkt einchecken' : 'Find a person without registration, register and check them in')}
+        {walkInOpen && (
+          <WalkInPanel
+            isDe={isDe}
+            event={heroEv}
+            termine={familie.eltern && heroEv && familie.eltern.id === heroEv.id ? familie.kinder : []}
+            gesperrt={checkInGesperrt}
+            sperrHinweis={sperrHinweis}
+            searchUsers={searchUsers}
+            registerForEvent={registerForEvent}
+            bereitsAngemeldet={(emailLc) => (nameSearchEventId ? (searchRegsCache[nameSearchEventId] || []) : []).some(r => (r.ParticipantEmail || '').toLowerCase().trim() === emailLc && r.Status !== 'Abgemeldet')}
+            onRegistered={walkInFertig}
+          />
+        )}
+      </div>
+      </div>
       <div style={{ order: 5 }}>
       {/* v20.1: Self-Check-in — prominent direkt unter dem Live-Scanner.
           Teilnehmer scannen den Event-QR mit der NATIVEN Handy-Kamera (kein

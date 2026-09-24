@@ -42,6 +42,7 @@ import * as participantsRegistry from './events/participantsRegistry';
 import * as teamJoinRequests from './events/teamJoinRequests';
 import * as editPresence from './events/editPresence';
 import * as seats from './events/seats';
+import * as personRename from './events/personRename';
 import * as overbooking from './events/overbooking';
 import * as waitlist from './events/waitlist';
 import * as regListRepair from './events/regListRepair';
@@ -1305,7 +1306,8 @@ export class EventService {
     // zurückkamen und legitime Assistenzen mit „nicht berechtigt" ablehnten.
     // Gilt NUR für Check A (Berechtigung) — NICHT für die Deadline (Assistenz
     // darf wie ein normaler User nicht nach Frist anmelden).
-    clientAssistantAllowed: boolean = false
+    clientAssistantAllowed: boolean = false,
+    walkIn: boolean = false
   // v23.9: Statt nacktem boolean ein konkreter Grund bei Misserfolg, damit die
   // UI nicht mehr pauschal „bereits registriert" anzeigt (irreführend, wenn der
   // echte Grund Berechtigung/Deadline/Insert-Fehler war).
@@ -1313,7 +1315,7 @@ export class EventService {
     // abgelehnten Insert (z.B. „The field or property 'X' does not exist") —
     // der `reason` bleibt maschinenlesbar, die Ursache geht nicht verloren.
   ): Promise<{ ok: boolean; reason?: 'not-allowed' | 'deadline' | 'insert-failed' | 'error'; detail?: string }> {
-    return registration.registerForEvent(this, subsiteUrl, firstName, surname, participantEmail, customData, status, customFieldMap, starterType, preferredStarterType, registeredByName, registeredByEmail, proxyConsent, actorIsEventOrganizer, clientAssistantAllowed);
+    return registration.registerForEvent(this, subsiteUrl, firstName, surname, participantEmail, customData, status, customFieldMap, starterType, preferredStarterType, registeredByName, registeredByEmail, proxyConsent, actorIsEventOrganizer, clientAssistantAllowed, walkIn);
   }
 
   public async registerTeamMember(
@@ -2496,6 +2498,15 @@ export class EventService {
    *  Vollständigkeits-Check gegen die security-getrimmte Item-Abfrage. */
   public async getRegistrationListItemCount(subsiteUrl: string): Promise<number> {
     return seats.getListItemCount(this, subsiteUrl, REG_LIST_NAME);
+  }
+
+  /** v31.91: Person umbenennen — alte gegen neue Adresse/Namen an allen Stellen (s. events/personRename). */
+  public async renamePerson(
+    args: personRename.PersonRenameArgs,
+    opts: { dryRun: boolean },
+    onProgress?: (label: string) => void,
+  ): Promise<personRename.PersonRenameResult> {
+    return personRename.renamePerson(this, args, opts, onProgress);
   }
 
   /** v31.86: `null` = Rollenliste nicht lesbar (s. organizer.getRoleEmailsChecked). */

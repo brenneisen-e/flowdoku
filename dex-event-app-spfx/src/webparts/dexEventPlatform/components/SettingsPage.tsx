@@ -14,6 +14,8 @@ import { useDialog } from '../context/DialogContext';
 import { UserRole } from '../types';
 import { Plus, Trash2, X, Mail } from './Icons';
 import Modal from './Modal';
+import { EventService } from '../services/EventService';
+import type { PersonRenameResult, PersonRenameBereich as PersonRenameBereichLike } from '../services/events/personRename';
 import InternationalSearchToggle from './InternationalSearchToggle';
 import { PersonContactHover } from './PersonContactHover';
 
@@ -57,7 +59,7 @@ export default function SettingsPage(): React.ReactElement {
   const {
     roles, isAdmin, originalIsAdmin, canCreateEvents, rolesReadStatus,
     addRole, updateRole, setPowerUser, removeRole, hadRoleRightsIssue, isRolesLoading, siteUrl, searchUsers, searchUser,
-    auditRolesAccess, getBasicProfiles, lastRoleRightsMissing, lastRightsAudit,
+    auditRolesAccess, getBasicProfiles, lastRoleRightsMissing, lastRightsAudit, refreshRoles,
   } = useRoles();
   const { events, sendOrganizerOnboarding, repairAllOrganizerPermissions } = useEvents();
   const { locale } = useLanguage();
@@ -224,6 +226,58 @@ export default function SettingsPage(): React.ReactElement {
     }
   };
 
+  // v31.91: Person umbenennen (Heirat, neue Adresse) — alte gegen neue
+  // Adresse/Namen an allen Stellen tauschen (services/events/personRename).
+  // Anlass: Inga Fuhr → Guenther, 24.09.2026; das Rechte-Audit meldete
+  // „gleiche Rechte, andere Schreibweise". Vorschau (Trockenlauf) vor dem
+  // Schreiben — die Zahl je Stelle sagt, was passieren wird.
+  const [aliasHints, setAliasHints] = React.useState<Array<{ name?: string; email: string; spEmail: string }>>([]);
+  const [renameForm, setRenameForm] = React.useState<{ oldEmail: string; newEmail: string; displayName: string; first: string; last: string }>({ oldEmail: '', newEmail: '', displayName: '', first: '', last: '' });
+  const [renameBusy, setRenameBusy] = React.useState<'' | 'plan' | 'run'>('');
+  const [renameLabel, setRenameLabel] = React.useState('');
+  const [renamePlan, setRenamePlan] = React.useState<PersonRenameResult | null>(null);
+  const [renameResult, setRenameResult] = React.useState<PersonRenameResult | null>(null);
+  const renameSvc = React.useMemo((): EventService | null => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ctx = (window as any).__dexSpfxContext;
+    return ctx ? new EventService(ctx) : null;
+  }, []);
+  const renameArgs = (): { oldEmail: string; newEmail: string; newDisplayName: string; newFirstName: string; newLastName: string } => ({
+    oldEmail: renameForm.oldEmail.trim(), newEmail: renameForm.newEmail.trim(),
+    newDisplayName: renameForm.displayName.trim(), newFirstName: renameForm.first.trim(), newLastName: renameForm.last.trim(),
+  });
+  const renameGueltig = (): boolean => {
+    const a = renameArgs();
+    return a.oldEmail.indexOf('@') > 0 && a.newEmail.indexOf('@') > 0 && a.oldEmail.toLowerCase() !== a.newEmail.toLowerCase();
+  };
+  const runRenamePlan = async (): Promise<void> => {
+    if (!renameSvc || renameBusy || !renameGueltig()) return;
+    setRenameBusy('plan'); setRenamePlan(null); setRenameResult(null);
+    try { setRenamePlan(await renameSvc.renamePerson(renameArgs(), { dryRun: true }, setRenameLabel)); }
+    catch { showAlert(isDe ? 'Vorschau fehlgeschlagen.' : 'Preview failed.', { variant: 'error' }); }
+    setRenameBusy(''); setRenameLabel('');
+  };
+  const runRename = async (): Promise<void> => {
+    if (!renameSvc || renameBusy || !renamePlan) return;
+    const a = renameArgs();
+    const summe = renamePlan.roles.hits + renamePlan.eventFields.hits + renamePlan.eventPiggybacks.hits + renamePlan.registry.hits + renamePlan.registrations.hits + renamePlan.registeredBy.hits;
+    const ok = await confirmDialog(
+      isDe
+        ? `${a.oldEmail} → ${a.newEmail}${a.newDisplayName ? ` (${a.newDisplayName})` : ''}: ${summe} Stelle(n) jetzt umschreiben?\n\nRollen ${renamePlan.roles.hits}, Event-Felder ${renamePlan.eventFields.hits}, Teams ${renamePlan.eventPiggybacks.hits}, Register ${renamePlan.registry.hits}, Anmeldungen ${renamePlan.registrations.hits}, Registriert-von ${renamePlan.registeredBy.hits}. Es geht keine Mail raus. SharePoint-Rechte bleiben — das Konto ist dasselbe.`
+        : `${a.oldEmail} → ${a.newEmail}${a.newDisplayName ? ` (${a.newDisplayName})` : ''}: rewrite ${summe} place(s) now?\n\nRoles ${renamePlan.roles.hits}, event fields ${renamePlan.eventFields.hits}, teams ${renamePlan.eventPiggybacks.hits}, registry ${renamePlan.registry.hits}, registrations ${renamePlan.registrations.hits}, registered-by ${renamePlan.registeredBy.hits}. No email is sent. SharePoint rights stay — it is the same account.`,
+      { danger: true, confirmLabel: isDe ? 'Umbenennen' : 'Rename' },
+    );
+    if (!ok) return;
+    setRenameBusy('run');
+    try {
+      const r = await renameSvc.renamePerson(a, { dryRun: false }, setRenameLabel);
+      setRenameResult(r);
+      setRenamePlan(null);
+      try { await refreshRoles(); } catch { /* */ }
+    } catch { showAlert(isDe ? 'Umbenennung fehlgeschlagen.' : 'Rename failed.', { variant: 'error' }); }
+    setRenameBusy(''); setRenameLabel('');
+  };
+
   // v30.81: Leserechte auf DEX_Roles prüfen — Fortschritt und Ergebnis.
   const [accessAudit, setAccessAudit] = React.useState<{ running: boolean; done: number; total: number; result: string }>({ running: false, done: 0, total: 0, result: '' });
   const runAccessAudit = async (): Promise<void> => {
@@ -251,6 +305,9 @@ export default function SettingsPage(): React.ReactElement {
       // die E-Mail in DEX_Roles ist eine andere Schreibweise als am Konto.
       // Vorher wurden diese Personen bei JEDEM Lauf als „Lücke" gemeldet und
       // „nachgesetzt" (Nutzer-Befund 16.09.2026).
+      // v31.91: Die Abweichungen merken — die Karte „Person umbenennen" unten
+      // bietet sie als Vorbelegung an.
+      setAliasHints(!r.readFailed && r.aliases ? r.aliases.map(a => ({ name: a.name, email: a.email, spEmail: a.spEmail })) : []);
       if (!r.readFailed && r.aliases && r.aliases.length > 0) {
         const list = r.aliases.map(a => `${a.name || a.email} (DEX_Roles: ${a.email} · SharePoint: ${a.spEmail})`).join('; ');
         msg += isDe
@@ -965,6 +1022,81 @@ export default function SettingsPage(): React.ReactElement {
                   ? (isDe ? 'Läuft …' : 'Running …')
                   : (isDe ? 'Alle Events prüfen' : 'Check all events')}
               </button>
+            </div>
+
+            {/* v31.91: Person umbenennen — Heirat, neue Adresse. Vorschau
+                zuerst (Trockenlauf mit Zahl je Stelle), dann Schreiben. Die
+                Alias-Treffer aus „Rechte prüfen" stehen als Vorbelegung bereit. */}
+            <div style={{
+              padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: '0.85rem',
+              background: 'var(--dex-gray-50, #f7f7f7)', border: '1px solid var(--dex-gray-200)',
+            }}>
+              <strong>{isDe ? 'Person umbenennen (neue E-Mail-Adresse, neuer Name)' : 'Rename a person (new email address, new name)'}</strong>
+              <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', margin: '2px 0 10px', lineHeight: 1.45 }}>
+                {isDe
+                  ? 'Nach Heirat oder Adresswechsel: tauscht die alte gegen die neue Adresse in DEX_Roles, in den Organizer-, Co-Organizer-, Check-in- und Test-Team-Feldern aller Events, im Teilnehmer-Register und in den Teilnehmerlisten (eigene Anmeldungen sowie „Registriert von"). Erst die Vorschau, dann das Schreiben. SharePoint-Rechte bleiben — es ist dasselbe Konto.'
+                  : 'After marriage or an address change: swaps the old for the new address in DEX_Roles, in the organizer, co-organizer, check-in and test-team fields of all events, in the participant registry and in the participant lists (own registrations and “registered by”). Preview first, then write. SharePoint rights stay — it is the same account.'}
+              </div>
+              {aliasHints.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                  {aliasHints.map(a => (
+                    <button key={a.email} type="button" className="btn btn-outline dex-ui-btn-sm"
+                      onClick={() => {
+                        const nm = (a.name || '').trim();
+                        const parts = nm.indexOf(',') >= 0 ? nm.split(',').map(s => s.trim()) : [];
+                        setRenameForm({ oldEmail: a.email, newEmail: a.spEmail, displayName: nm, first: parts[1] || '', last: parts[0] || '' });
+                        setRenamePlan(null); setRenameResult(null);
+                      }}>
+                      {isDe ? 'Übernehmen: ' : 'Use: '}{a.name || a.email} → {a.spEmail}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8, marginBottom: 10 }}>
+                <input className="form-input" placeholder={isDe ? 'Alte E-Mail' : 'Old email'} value={renameForm.oldEmail} onChange={e => { setRenameForm(f => ({ ...f, oldEmail: e.target.value })); setRenamePlan(null); }} disabled={!!renameBusy} />
+                <input className="form-input" placeholder={isDe ? 'Neue E-Mail' : 'New email'} value={renameForm.newEmail} onChange={e => { setRenameForm(f => ({ ...f, newEmail: e.target.value })); setRenamePlan(null); }} disabled={!!renameBusy} />
+                <input className="form-input" placeholder={isDe ? 'Anzeigename (Nachname, Vorname)' : 'Display name (Last, First)'} value={renameForm.displayName} onChange={e => { setRenameForm(f => ({ ...f, displayName: e.target.value })); setRenamePlan(null); }} disabled={!!renameBusy} />
+                <input className="form-input" placeholder={isDe ? 'Vorname' : 'First name'} value={renameForm.first} onChange={e => { setRenameForm(f => ({ ...f, first: e.target.value })); setRenamePlan(null); }} disabled={!!renameBusy} />
+                <input className="form-input" placeholder={isDe ? 'Nachname (neu)' : 'Last name (new)'} value={renameForm.last} onChange={e => { setRenameForm(f => ({ ...f, last: e.target.value })); setRenamePlan(null); }} disabled={!!renameBusy} />
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <button type="button" className="btn btn-secondary" disabled={!!renameBusy || !renameGueltig()} onClick={() => { void runRenamePlan(); }} style={{ fontSize: '0.82rem' }}>
+                  {renameBusy === 'plan' ? (isDe ? `Vorschau … ${renameLabel}` : `Preview … ${renameLabel}`) : (isDe ? 'Vorschau (nichts wird geschrieben)' : 'Preview (nothing is written)')}
+                </button>
+                {renamePlan && (
+                  <button type="button" className="btn btn-primary" disabled={!!renameBusy} onClick={() => { void runRename(); }} style={{ fontSize: '0.82rem' }}>
+                    {renameBusy === 'run' ? (isDe ? `Schreibt … ${renameLabel}` : `Writing … ${renameLabel}`) : (isDe ? 'Jetzt umbenennen' : 'Rename now')}
+                  </button>
+                )}
+              </div>
+              {(renamePlan || renameResult) && (() => {
+                const r = (renameResult || renamePlan) as PersonRenameResult;
+                const zeile = (label: string, b: PersonRenameBereichLike): string =>
+                  r.dryRun
+                    ? `${label}: ${b.hits}${b.unreadable ? (isDe ? ` (${b.unreadable} nicht lesbar)` : ` (${b.unreadable} unreadable)`) : ''}`
+                    : `${label}: ${b.written}/${b.hits}${b.failed ? (isDe ? `, ${b.failed} fehlgeschlagen` : `, ${b.failed} failed`) : ''}${b.unreadable ? (isDe ? `, ${b.unreadable} nicht lesbar` : `, ${b.unreadable} unreadable`) : ''}`;
+                const fehler = r.roles.failed + r.eventFields.failed + r.eventPiggybacks.failed + r.registry.failed + r.registrations.failed + r.registeredBy.failed;
+                return (
+                  <div style={{ marginTop: 10, fontSize: '0.8rem', color: (!r.dryRun && fehler > 0) ? 'var(--dex-red, #c00)' : 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                    <strong>{r.dryRun ? (isDe ? 'Vorschau — gefundene Stellen:' : 'Preview — places found:') : (isDe ? 'Umbenannt:' : 'Renamed:')}</strong>{' '}
+                    {[
+                      zeile(isDe ? 'Rollen' : 'Roles', r.roles),
+                      zeile(isDe ? 'Event-Felder' : 'Event fields', r.eventFields),
+                      zeile(isDe ? 'Teams in Events' : 'Teams in events', r.eventPiggybacks),
+                      zeile(isDe ? 'Teilnehmer-Register' : 'Participant registry', r.registry),
+                      zeile(isDe ? 'Anmeldungen' : 'Registrations', r.registrations),
+                      zeile(isDe ? 'Registriert/Abgemeldet von' : 'Registered/cancelled by', r.registeredBy),
+                    ].join(' · ')}
+                    {r.eventTitles.length > 0 && <div>{isDe ? 'Events: ' : 'Events: '}{r.eventTitles.slice(0, 12).join(', ')}{r.eventTitles.length > 12 ? ` … (+${r.eventTitles.length - 12})` : ''}</div>}
+                    {r.listSites.length > 0 && <div>{isDe ? 'Teilnehmerlisten: ' : 'Participant lists: '}{r.listSites.slice(0, 12).join(', ')}{r.listSites.length > 12 ? ` … (+${r.listSites.length - 12})` : ''}</div>}
+                    {!r.dryRun && (
+                      <div style={{ marginTop: 4 }}>
+                        {isDe ? 'Betroffene Person bitte die App einmal neu laden. Danach „Rechte prüfen" ausführen — der Hinweis zur Schreibweise sollte weg sein.' : 'Ask the person to reload the app once. Then run “Check rights” — the spelling note should be gone.'}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Neue Rolle hinzufügen — v11.72: nach OBEN verschoben, damit der

@@ -360,6 +360,27 @@ Personen mit aktivem Termin (`klammerAktivEmails`, dieselbe Rechnung wie
 Person überall abgemeldet ist, und genau das war „412 statt 399".
 `waehleEvent` ist der EINE Wechselweg (Dropdown und Reiter).
 
+**Walk-in am Check-in läuft über `registerForEvent` mit `walkIn: true`
+(v31.90).** Kein eigener Schreibpfad: Register, Platz, Klammer-Schattenzeile
+und Log kommen aus demselben Weg wie die stellvertretende Anmeldung; danach
+hebt `walkInFertig` die Person in die Bestätigungskarte — der Check-in bleibt
+EIN Weg. Das Flag erlaubt dem Check-in-Team (`_qrScanners` der
+DEX_Events-Zeile, gegen alle Session-Identitäten) Check A (für andere) UND
+Check B (nach Frist) in `services/events/registration.ts`; ohne Flag oder
+ohne Eintrag im Team ändert sich nichts. Wer eine neue Stelle baut, die am
+Event-Tag jemanden einträgt, nimmt dieses Flag und keinen Sonderpfad.
+
+**Eine Person umbenennen heißt: an ALLEN Stellen (v31.91).** Die Adresse ist
+der einzige Schlüssel; `services/events/personRename.ts` tauscht sie in
+DEX_Roles, in `Organizer`/`OrganizerEmail` (parallele `;`-Listen — der Name
+an der Position wird mit ersetzt), `ContactEmail`, `ContactOrganizerEmail`,
+in den Piggybacks `_coOrganizers`/`_qrScanners`/`_testTeam` JEDER Zeile
+(Klammer und Termine tragen eigene Kopien), im Teilnehmer-Register und in
+allen Teilnehmerlisten (eigene Zeilen plus `RegisteredBy*`/`CancelledBy*`).
+Wer ein neues Feld baut, das eine Person über die Adresse trägt, trägt es
+dort nach — sonst ist es die nächste „andere Schreibweise" im Rechte-Audit.
+Rollenverwaltung → „Person umbenennen", Vorschau vor dem Schreiben.
+
 **Mail-Kopfbild: `eventHeaderImageOpts` an JEDER wrapTemplate-Stelle mit
 Event (v30.87).** `wrapTemplate` ohne Bildmaße heißt 180 px — der alte
 Default. Rund zwanzig App-Mails (Team, Zimmerpartner, Hotel, Abrechnung,

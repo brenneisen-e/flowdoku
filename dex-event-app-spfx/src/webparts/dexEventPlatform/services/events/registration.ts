@@ -59,7 +59,13 @@ export async function registerForEvent(
   // zurückkamen und legitime Assistenzen mit „nicht berechtigt" ablehnten.
   // Gilt NUR für Check A (Berechtigung) — NICHT für die Deadline (Assistenz
   // darf wie ein normaler User nicht nach Frist anmelden).
-  clientAssistantAllowed: boolean = false
+  clientAssistantAllowed: boolean = false,
+  // v31.90: Walk-in am Check-in-Tisch. Das Check-in-Team (`_qrScanners` des
+  // Events) darf eine Person, die vor dem Tisch steht, anmelden — auch nach
+  // der Frist: Am Event-Tag ist die Frist immer vorbei, und der Organizer hat
+  // das Team dafür benannt. Gilt nur mit diesem Flag UND nur für Personen,
+  // die im Event als Check-in-Team stehen; ein normaler User bleibt draußen.
+  walkIn: boolean = false
 // v23.9: Statt nacktem boolean ein konkreter Grund bei Misserfolg, damit die
 // UI nicht mehr pauschal „bereits registriert" anzeigt (irreführend, wenn der
 // echte Grund Berechtigung/Deadline/Insert-Fehler war).
@@ -88,6 +94,7 @@ export async function registerForEvent(
     // Buchung — und die Frist des Hauptevents darf sie nicht abweisen.
     let umbrellaOnly = false;
     let eventOrganizerEmails: string[] = [];
+    const eventScannerEmails: string[] = [];
     try {
       const subsiteEsc = encodeURIComponent(subsiteUrl.replace(/'/g, "''"));
       const evResp = await svc._sp.get(
@@ -130,6 +137,16 @@ export async function registerForEvent(
                 if (e) eventOrganizerEmails.push(e);
               }
             }
+            // v31.90: Check-in-Team aus demselben Piggyback — für den Walk-in.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const qr = (ov as any)._qrScanners;
+            if (Array.isArray(qr)) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              for (const x of qr as any[]) {
+                const e = String(x?.email || '').toLowerCase().trim();
+                if (e) eventScannerEmails.push(e);
+              }
+            }
           } catch { /* kein/ungültiges Override-JSON → keine Co-Organizer */ }
         }
       }
@@ -141,8 +158,11 @@ export async function registerForEvent(
     // Datengrundlage wie die Button-Sichtbarkeit) und überspringen die
     // fragile serverseitige Ableitung. Sonst Fallback auf canRegisterForOthers
     // (deckt Admin-Rolle + Assistant-Ausnahme zuverlässig ab).
+    // v31.90: Walk-in — der Anmeldende steht im Check-in-Team dieses Events
+    // (gegen ALLE Session-Identitäten geprüft, wie die Organizer).
+    const istCheckInTeam = walkIn && eventScannerEmails.some(e => sessionIds.has(e));
     if (targetEmail && targetEmail !== sessionEmail) {
-      const allowed = actorIsEventOrganizer || clientAssistantAllowed || await svc.canRegisterForOthers(subsiteUrl, participantEmail);
+      const allowed = actorIsEventOrganizer || clientAssistantAllowed || istCheckInTeam || await svc.canRegisterForOthers(subsiteUrl, participantEmail);
       if (!allowed) {
         console.warn(`[DEX] registerForEvent DENIED: ${sessionEmail} versuchte ${targetEmail} zu registrieren — weder Organizer noch Admin noch erlaubter Assistant-Fall.`);
         return { ok: false, reason: 'not-allowed' };
@@ -193,7 +213,9 @@ export async function registerForEvent(
           }
         } catch { /* ignore */ }
 
-        if (!isEventOrganizer && !isAdmin) {
+        // v31.90: Walk-in durch das Check-in-Team — am Event-Tag ist die Frist
+        // immer vorbei; das Team ist vom Organizer genau dafür benannt.
+        if (!isEventOrganizer && !isAdmin && !istCheckInTeam) {
           console.warn(`[DEX] registerForEvent DENIED (deadline): ${sessionEmail} versuchte nach Deadline ${eventDeadline} zu registrieren — weder Event-Organizer noch Admin.`);
           return { ok: false, reason: 'deadline' };
         }
