@@ -33,6 +33,9 @@ export interface UseCancelPipelineCtx {
 export interface UseCancelPipelineResult {
   buildCancellationMail: (ev: DeloitteEvent, reg: SPRegistration, fullName: string) => Promise<{    subject: string;    body: string;}>;
   cleanupShadowDuplicates: () => Promise<void>;
+  /** v31.89: Aktive Klammer-Zeilen ohne aktiven Termin auf „Abgemeldet" setzen. */
+  cleanupKlammerOhneTermin: (rows: SPRegistration[]) => Promise<void>;
+  klammerCleanupBusy: boolean;
   isSyncingRegistry: boolean;
   performSilentDuplicateDelete: (reg: SPRegistration) => Promise<boolean>;
   performStandardCancel: (reg: SPRegistration) => Promise<void>;
@@ -319,9 +322,76 @@ export function useCancelPipeline(ctx: UseCancelPipelineCtx): UseCancelPipelineR
       { variant: failedDel > 0 ? 'error' : 'success' },
     );
   };
+  /**
+   * v31.89: Klammer-Zeilen ohne aktiven Termin aufräumen.
+   *
+   * Nutzer-Frage 24.09.2026: „gibts ne Admin-/Organizer-Action, um die 13
+   * aufzuräumen?" — die 13 waren aktive Klammer-Zeilen („QR versendet") von
+   * Personen, die auf ALLEN Terminen abgemeldet sind. Der Kasten
+   * „Unvollständige Anmeldungen" fängt sie bewusst nicht (er meint Reste ohne
+   * jede Termin-Zeile); und die normale Abmeldung setzt die Klammer nur
+   * zuletzt, wenn sie den Termin sieht — Abmeldungen über andere Wege ließen
+   * die Schattenzeile stehen. Hier: Status „Abgemeldet" (kein Löschen — die
+   * Historie bleibt), kein Mail/Outlook (Schattenzeile), Eintrag im Register
+   * raus, EIN Reorder-Auftrag für die Klammer am Ende, ein Log je Zeile.
+   */
+  const [klammerCleanupBusy, setKlammerCleanupBusy] = React.useState(false);
+  const cleanupKlammerOhneTermin = async (rows: SPRegistration[]): Promise<void> => {
+    if (!eventServiceRef || !selectedEvent?.subsiteUrl || klammerCleanupBusy || rows.length === 0) return;
+    const ok = await confirmDialog(
+      isDe
+        ? `${rows.length} Zeile(n) des Hauptevents auf „Abgemeldet" setzen?\n\nDiese Personen sind auf allen Terminen abgemeldet; die Zeile auf dem Hauptevent ist stehen geblieben. Es geht keine Mail raus und kein Outlook-Termin wird abgesagt — die Zeile wird nur als abgemeldet markiert, nichts wird gelöscht.`
+        : `Set ${rows.length} main-event row(s) to "Cancelled"?\n\nThese people are cancelled on every date; the main-event row was left behind. No email is sent and no Outlook event is cancelled — the row is only marked as cancelled, nothing is deleted.`,
+      { danger: true, confirmLabel: isDe ? 'Als abgemeldet markieren' : 'Mark as cancelled' },
+    );
+    if (!ok) return;
+    setKlammerCleanupBusy(true);
+    const actorName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim();
+    let done = 0; let failed = 0;
+    for (const r of rows) {
+      try {
+        const okC = await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, r.Id, actorName, currentUser.email);
+        if (!okC) { failed += 1; continue; }
+        done += 1;
+        if (r.ParticipantEmail && selectedEvent.eventNumber) {
+          try { await eventServiceRef.removeParticipantEvent(r.ParticipantEmail, selectedEvent.eventNumber); } catch { /* best-effort */ }
+        }
+        try {
+          await eventServiceRef.writeChangeLog({
+            action: 'RegistrationCancelled',
+            targetType: 'Participant',
+            targetId: `${r.ParticipantEmail || ''}#${r.Id}`,
+            targetName: (r.Vorname && r.Nachname) ? `${r.Vorname} ${r.Nachname}` : (r.ParticipantName || ''),
+            eventId: selectedEvent.id,
+            eventTitle: selectedEvent.title,
+            details: { note: 'Klammer-Zeile ohne aktiven Termin als abgemeldet markiert (v31.89, Aufräum-Aktion). Keine Mail, kein Outlook.' },
+          });
+        } catch { /* best-effort */ }
+      } catch (err) { failed += 1; console.warn('[DEX] cleanupKlammerOhneTermin failed for item', r.Id, err); }
+    }
+    if (done > 0) {
+      try {
+        await eventServiceRef.queueIDReorderChecked({
+          eventId: selectedEvent.id, eventNumber: selectedEvent.eventNumber || 0,
+          subsiteUrl: selectedEvent.subsiteUrl, eventTitle: selectedEvent.title,
+          cancelledName: isDe ? `${done} Klammer-Zeile(n) aufgeräumt` : `${done} main-event row(s) cleaned up`,
+        }, 'klammer-cleanup');
+      } catch { /* geprüfter Pfad meldet selbst */ }
+    }
+    try { await reloadRegistrations(); } catch { /* */ }
+    setKlammerCleanupBusy(false);
+    showAlert(
+      failed > 0
+        ? (isDe
+          ? `${done} Zeile(n) als abgemeldet markiert — ${failed} konnten NICHT gesetzt werden (fehlende Rechte oder Drosselung) und sind noch aktiv.`
+          : `${done} row(s) marked as cancelled — ${failed} could NOT be set (missing permissions or throttling) and are still active.`)
+        : (isDe ? `${done} Zeile(n) des Hauptevents als abgemeldet markiert.` : `${done} main-event row(s) marked as cancelled.`),
+      { variant: failed > 0 ? 'error' : 'success' },
+    );
+  };
   return {
-    buildCancellationMail, cleanupShadowDuplicates, isSyncingRegistry,
-    performSilentDuplicateDelete, performStandardCancel, setIsSyncingRegistry,
+    buildCancellationMail, cleanupShadowDuplicates, cleanupKlammerOhneTermin, isSyncingRegistry,
+    klammerCleanupBusy, performSilentDuplicateDelete, performStandardCancel, setIsSyncingRegistry,
     setSyncRegistryResult, shadowDupBusy, syncRegistryResult,
   };
 }

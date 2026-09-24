@@ -738,7 +738,7 @@ export default function CheckInPage(): React.ReactElement {
    *  null = keine Klammer oder nicht alle Termine lesbar (dann keine Aussage). */
   const klammerAktivEmails = React.useMemo((): Set<string> | null => {
     const el = familie.eltern;
-    if (!el || el.id !== nameSearchEventId || !el.subEventsOnlyMode || familie.kinder.length === 0) return null;
+    if (!el || !el.subEventsOnlyMode || familie.kinder.length === 0) return null;
     const s = new Set<string>();
     for (const k of familie.kinder) {
       const rows = regsVon(k.id);
@@ -751,7 +751,10 @@ export default function CheckInPage(): React.ReactElement {
       }
     }
     return s;
-  }, [familie, nameSearchEventId, regsVon]);
+  }, [familie, regsVon]);
+  /** v31.89: Zähler und Liste filtern nur, wenn die KLAMMER gewählt ist; der
+   *  Klammer-Reiter zeigt die Personenzahl unabhängig von der Auswahl. */
+  const klammerFilterEmails = (familie.eltern && familie.eltern.id === nameSearchEventId) ? klammerAktivEmails : null;
   searchRegsCacheRef.current = searchRegsCache; // v30.88 (s. shirtAllocFor)
 
   /**
@@ -1110,10 +1113,10 @@ export default function CheckInPage(): React.ReactElement {
     // v31.88: Auf der Klammer zählt „Angemeldet" Personen mit aktivem Termin —
     // dieselbe Rechnung wie der Klammer-Reiter im Organizer Center (399 statt
     // 412 Schattenzeilen, s. familie/klammerAktivEmails).
-    if (klammerAktivEmails) registered = klammerAktivEmails.size;
+    if (klammerFilterEmails) registered = klammerFilterEmails.size;
     return { registered, checkedIn, noShow };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nameSearchEventId, searchRegsCache, agendaMode, agendaPointId, klammerAktivEmails]);
+  }, [nameSearchEventId, searchRegsCache, agendaMode, agendaPointId, klammerFilterEmails]);
 
   // v7.14: Live-Filter über die ganze Liste — leerer Query zeigt alle
   // Teilnehmer. Sortiert nach Status (Aktive zuerst), dann Nachname.
@@ -1122,17 +1125,17 @@ export default function CheckInPage(): React.ReactElement {
   // Schon eingecheckte oder No-Show-Zeilen bleiben sichtbar: Da IST etwas
   // passiert, das muss rücknehmbar bleiben.
   const klammerAusgeblendet = React.useMemo((): number => {
-    if (!klammerAktivEmails || !nameSearchEventId) return 0;
+    if (!klammerFilterEmails || !nameSearchEventId) return 0;
     const regs = searchRegsCache[nameSearchEventId] || [];
     return regs.filter(r => (r.Status === 'Angemeldet' || r.Status === 'QR versendet')
-      && !klammerAktivEmails.has((r.ParticipantEmail || '').toLowerCase().trim())).length;
-  }, [klammerAktivEmails, nameSearchEventId, searchRegsCache]);
+      && !klammerFilterEmails.has((r.ParticipantEmail || '').toLowerCase().trim())).length;
+  }, [klammerFilterEmails, nameSearchEventId, searchRegsCache]);
   const searchHits = React.useMemo(() => {
     if (!nameSearchEventId) return [];
     const regsAlle = searchRegsCache[nameSearchEventId] || [];
-    const regs = klammerAktivEmails
+    const regs = klammerFilterEmails
       ? regsAlle.filter(r => !((r.Status === 'Angemeldet' || r.Status === 'QR versendet')
-          && !klammerAktivEmails.has((r.ParticipantEmail || '').toLowerCase().trim())))
+          && !klammerFilterEmails.has((r.ParticipantEmail || '').toLowerCase().trim())))
       : regsAlle;
     const q = nameSearchQuery.trim().toLowerCase();
     // v30.33: Die Teilnehmer-ID ist jetzt suchbar — und zwar EXAKT, nicht als
@@ -1188,7 +1191,7 @@ export default function CheckInPage(): React.ReactElement {
       return na.localeCompare(nb);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nameSearchQuery, nameSearchEventId, searchRegsCache, onlyOpen, agendaMode, agendaPointId, klammerAktivEmails]);
+  }, [nameSearchQuery, nameSearchEventId, searchRegsCache, onlyOpen, agendaMode, agendaPointId, klammerFilterEmails]);
   /**
    * v31.4 (Nutzer-Befund 08.09.2026): „Warum sehe ich hier nicht die Check-ins?
    * Nur weil ich sie selber nicht gemacht habe?"
@@ -3038,10 +3041,15 @@ export default function CheckInPage(): React.ReactElement {
               {familie.alle.map(fe => {
                 const aktiv = fe.id === nameSearchEventId;
                 const rows = regsVon(fe.id);
-                const anzahl = rows === null ? '?' : rows === undefined ? '…'
-                  : String(rows.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length);
-                const istZiel = qrZielIds.indexOf(fe.id) >= 0;
                 const istEltern = familie.eltern ? fe.id === familie.eltern.id : false;
+                // v31.89: Der Klammer-Reiter zählt Personen mit aktivem Termin (wie
+                // der Klammer-Reiter im Organizer Center), nicht Schattenzeilen —
+                // sonst stand dort 412 neben der Kachel „399 Angemeldet".
+                const anzahl = (istEltern && klammerAktivEmails)
+                  ? String(klammerAktivEmails.size)
+                  : rows === null ? '?' : rows === undefined ? '…'
+                    : String(rows.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length);
+                const istZiel = qrZielIds.indexOf(fe.id) >= 0;
                 const label = istEltern ? fe.title : (shortSubEventTitle(fe.title, familie.eltern ? familie.eltern.title : '') || fe.title);
                 return (
                   <button

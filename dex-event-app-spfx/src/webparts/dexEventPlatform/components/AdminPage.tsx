@@ -358,7 +358,7 @@ export default function AdminPage(): React.ReactElement {
 
   // v30.66: useCancelPipeline — Rumpf in logic/useCancelPipeline.ts.
   const {
-    buildCancellationMail, cleanupShadowDuplicates, isSyncingRegistry,
+    buildCancellationMail, cleanupKlammerOhneTermin, cleanupShadowDuplicates, isSyncingRegistry, klammerCleanupBusy,
     performSilentDuplicateDelete, performStandardCancel, setIsSyncingRegistry,
     setSyncRegistryResult, shadowDupBusy, syncRegistryResult,
   } = useCancelPipeline({
@@ -2673,10 +2673,10 @@ export default function AdminPage(): React.ReactElement {
     visibilityAllAddresses, visibilityBusy, visibilityOpen, visibilityResolved,
   };
   const consolidatedViewProps = {
-    addAllToKlammer, addingToKlammer, addToKlammer, bulkKlammerProgress, colToggleHover, confirmDialog,
+    addAllToKlammer, addingToKlammer, addToKlammer, bulkKlammerProgress, cleanupKlammerOhneTermin, colToggleHover, confirmDialog,
     consolidatedChildren, consolidatedFiltered, consolidatedRows, consolidatedSort, consolidatedSortAsc, deniedSubEventLists, expandedConsolidatedEmail,
     highlightMatch, inactiveAccounts, isAdmin, isConsolidatedMode, isDe, isLoadingSubEventRegs,
-    isOrganizerFor, missingReminderKey, openDeregModal, openMainFieldsEdit, orgPastLock, performSilentDuplicateDelete,
+    isOrganizerFor, klammerCleanupBusy, missingReminderKey, openDeregModal, openMainFieldsEdit, orgPastLock, performSilentDuplicateDelete,
     personalColsCollapsed, registrations, reminderBusyId, searchQuery, selectedEvent, sendCompleteRegistrationReminder,
     setAssignAssistRow, setAssignAssistValue, setColToggleHover, setConsolidatedSort, setConsolidatedSortAsc, setExpandedConsolidatedEmail,
     setMissingReminderKey, setParticipantDetail, setPersonalColsCollapsed, setReminderBusyId, setSelectedEvent, showAlert,
