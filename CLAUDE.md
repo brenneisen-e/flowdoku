@@ -346,6 +346,20 @@ Rechte auf Termine gehören HINTER `persistSubEventsForParent` mit frischem
 State kennt die Termine dieses Speicherns noch nicht, und „bekommt der
 nächste Speichervorgang" heißt: nie.
 
+**Der Check-in kennt seit v31.88 die Event-Familie — und checkt nur am
+QR-Ziel ein.** `CheckInPage.familie` = Klammer/Hauptevent plus Termine des
+gewählten Events; ihre Listen werden still nachgeladen (`familieRegs`, null
+= nicht lesbar). `qrZielIds` sind die Familienmitglieder mit einer nicht
+abgemeldeten Zeile mit gedruckter Nummer oder „QR versendet"; ist das
+gewählte Event keins davon, sperren `checkInByParticipantId`, `processCode`
+und `startManualCheckInFromSearch` mit demselben Satz (`sperrHinweis`), und
+der Kasten bietet den Wechsel an. Wer einen vierten Check-in-Weg baut, hängt
+ihn an dieselbe Sperre. Zweite Regel: Auf der Klammer zählt „Angemeldet"
+Personen mit aktivem Termin (`klammerAktivEmails`, dieselbe Rechnung wie
+`logic/eventTabs`) — Klammer-Schattenzeilen bleiben „QR versendet", wenn die
+Person überall abgemeldet ist, und genau das war „412 statt 399".
+`waehleEvent` ist der EINE Wechselweg (Dropdown und Reiter).
+
 **Mail-Kopfbild: `eventHeaderImageOpts` an JEDER wrapTemplate-Stelle mit
 Event (v30.87).** `wrapTemplate` ohne Bildmaße heißt 180 px — der alte
 Default. Rund zwanzig App-Mails (Team, Zimmerpartner, Hotel, Abrechnung,

@@ -17,6 +17,7 @@ import { useDialog } from '../context/DialogContext';
 import { useRoles } from '../context/RoleContext';
 import { useCurrentUser } from '../context/UserContext';
 import { EventService, SPRegistration } from '../services/EventService';
+import { DeloitteEvent } from '../types';
 import {
   checkInExtras, parseCustomData, CheckInExtra, shirtAllocate, parseShirtStock, ShirtAllocationResult,
   // v31.4: Trikot-Ausgabe am Tisch — was rausgegeben wurde, steht in der Zeile.
@@ -28,12 +29,12 @@ import { bibKey } from '../utils/b2runBibPool';
 import { parseAgendaCheckIns, parseAgendaMarks, parseAgendaNoShows, formatMarkTime, suggestCurrentAgendaItem } from '../utils/agendaCheckIns';
 import Modal from './Modal';
 // v31.4: Klassensatz aus docs/ui-leitfaden.md (Kästen, Pillen, Werkzeugleiste).
-import { ensureDexUiStyles } from './dexUi';
+import { ensureDexUiStyles, cx } from './dexUi';
 import { agendaGroups, groupLabel, groupDateLabel } from '../utils/agendaGroups';
 import { useLanguage } from '../context/LanguageContext';
 import { useIsMobile } from '../utils/useIsMobile';
 import OrganizerList from './OrganizerList';
-import { AlertCircle, Check, ChevronDown, ChevronUp, Info } from './Icons';
+import { AlertCircle, Check, ChevronDown, ChevronUp, Info, QrCode } from './Icons';
 // v20.0 (Audit): qr-scanner nur noch als Typ statisch importieren — die
 // eigentliche Bibliothek wird erst beim Kamera-Start dynamisch nachgeladen.
 import type QrScanner from 'qr-scanner';
@@ -663,6 +664,94 @@ export default function CheckInPage(): React.ReactElement {
     if (istOrganizer) return false;
     return [ev, parent].some(e => !!e && (e.qrScannerNoList || []).indexOf(currentEmailLc) >= 0);
   }, [events, isAdmin, nameSearchEventId, currentEmailLc]);
+
+  /**
+   * v31.88: Die Event-Familie des gewählten Events — Klammer/Hauptevent plus
+   * Termine. Drei Nutzer-Ansagen vom 24.09.2026 hängen daran:
+   *  1. „Im Check-in sollte man über Bookmarks auch das Event anklicken
+   *     können" → Reiter wie im Organizer Center (Abschnitt 1).
+   *  2. „Der Check-in sollte nur dafür möglich sein, wofür die QR-Codes
+   *     versendet wurden … beim Sub-Event checkt man dann nicht ein, da
+   *     steht dann ein Hinweis" → `qrZielIds`/`checkInGesperrt`.
+   *  3. „Warum 412 am Check-in, obwohl nur 399 angemeldet sind?" → Die
+   *     Klammer-Liste trägt eine Schattenzeile je Person, auch wenn die
+   *     Person auf keinem Termin mehr aktiv ist; das Organizer Center zählt
+   *     dagegen Personen mit aktivem Termin (logic/eventTabs). Die Check-in-
+   *     Seite rechnet jetzt genauso (`klammerAktivEmails`).
+   * Die Listen der übrigen Familienmitglieder werden dafür still nachgeladen
+   * (`familieRegs`, null = nicht lesbar — dann keine Aussage, s. CLAUDE.md).
+   */
+  const familie = React.useMemo((): { eltern: DeloitteEvent | null; kinder: DeloitteEvent[]; alle: DeloitteEvent[] } => {
+    const leer = { eltern: null, kinder: [] as DeloitteEvent[], alle: [] as DeloitteEvent[] };
+    if (!nameSearchEventId) return leer;
+    const ev = (events || []).find(e => e.id === nameSearchEventId);
+    if (!ev) return leer;
+    const eltern = ev.parentEventId ? ((events || []).find(e => e.id === ev.parentEventId) || null) : ev;
+    if (!eltern) return { eltern: null, kinder: [], alle: [ev] };
+    const kinder = (events || [])
+      .filter(e => e.parentEventId === eltern.id)
+      .slice()
+      .sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
+    return { eltern, kinder, alle: [eltern, ...kinder] };
+  }, [events, nameSearchEventId]);
+  const [familieRegs, setFamilieRegs] = React.useState<Record<string, SPRegistration[] | null>>({});
+  const familieLoadRef = React.useRef<Set<string>>(new Set());
+  React.useEffect(() => {
+    const offen = familie.alle
+      .map(e => e.id)
+      .filter(id => id !== nameSearchEventId && !familieLoadRef.current.has(id));
+    if (offen.length === 0) return;
+    offen.forEach(id => familieLoadRef.current.add(id));
+    void (async () => {
+      // Nacheinander — vier Listen gleichzeitig sind die Drosselung, die
+      // dann auch die Hauptliste trifft.
+      for (const id of offen) {
+        let lesbar = true;
+        const rows = await getAllRegistrations(id, () => { lesbar = false; });
+        setFamilieRegs(prev => ({ ...prev, [id]: lesbar ? rows : null }));
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [familie, nameSearchEventId]);
+  const regsVon = React.useCallback((id: string): SPRegistration[] | null | undefined => {
+    if (searchRegsCache[id]) return searchRegsCache[id];
+    return familieRegs[id];
+  }, [searchRegsCache, familieRegs]);
+  /** Events der Familie, für die QR-Codes verschickt wurden (Zeile mit
+   *  gedruckter Nummer oder Status „QR versendet", nicht abgemeldet). */
+  const qrZielIds = React.useMemo((): string[] => {
+    return familie.alle
+      .filter(e => (regsVon(e.id) || []).some(r => r.Status !== 'Abgemeldet' && (qrSentIdOf(r) !== null || r.Status === 'QR versendet')))
+      .map(e => e.id);
+  }, [familie, regsVon]);
+  const qrZielEvents = React.useMemo(() => familie.alle.filter(e => qrZielIds.indexOf(e.id) >= 0), [familie, qrZielIds]);
+  /** Gesperrt: Die Familie hat ein QR-Ziel, und das gewählte Event ist keins. */
+  const checkInGesperrt = !!nameSearchEventId && qrZielIds.length > 0 && qrZielIds.indexOf(nameSearchEventId) < 0;
+  const sperrHinweis = React.useMemo((): string => {
+    if (!checkInGesperrt) return '';
+    const ziele = qrZielEvents.map(e => e.title).join(', ');
+    return isDe
+      ? `Die QR-Codes wurden für „${ziele}" versendet — dort wird eingecheckt. Hier ist kein Check-in möglich, sonst landet er auf der falschen Liste.`
+      : `The QR codes were sent for “${ziele}” — check-in happens there. No check-in here, otherwise it lands on the wrong list.`;
+  }, [checkInGesperrt, qrZielEvents, isDe]);
+  /** Klammer gewählt und alle Termine lesbar: E-Mails mit aktivem Termin.
+   *  null = keine Klammer oder nicht alle Termine lesbar (dann keine Aussage). */
+  const klammerAktivEmails = React.useMemo((): Set<string> | null => {
+    const el = familie.eltern;
+    if (!el || el.id !== nameSearchEventId || !el.subEventsOnlyMode || familie.kinder.length === 0) return null;
+    const s = new Set<string>();
+    for (const k of familie.kinder) {
+      const rows = regsVon(k.id);
+      if (!rows) return null;
+      for (const r of rows) {
+        if (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt') {
+          const em = (r.ParticipantEmail || '').toLowerCase().trim();
+          if (em) s.add(em);
+        }
+      }
+    }
+    return s;
+  }, [familie, nameSearchEventId, regsVon]);
   searchRegsCacheRef.current = searchRegsCache; // v30.88 (s. shirtAllocFor)
 
   /**
@@ -1018,15 +1107,33 @@ export default function CheckInPage(): React.ReactElement {
       // (Marke), sonst den Event-Status.
       if (agendaMode && agendaPointId ? !!parseAgendaNoShows(r.AgendaCheckIns)[agendaPointId] : r.Status === 'No-Show') noShow++;
     }
+    // v31.88: Auf der Klammer zählt „Angemeldet" Personen mit aktivem Termin —
+    // dieselbe Rechnung wie der Klammer-Reiter im Organizer Center (399 statt
+    // 412 Schattenzeilen, s. familie/klammerAktivEmails).
+    if (klammerAktivEmails) registered = klammerAktivEmails.size;
     return { registered, checkedIn, noShow };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nameSearchEventId, searchRegsCache, agendaMode, agendaPointId]);
+  }, [nameSearchEventId, searchRegsCache, agendaMode, agendaPointId, klammerAktivEmails]);
 
   // v7.14: Live-Filter über die ganze Liste — leerer Query zeigt alle
   // Teilnehmer. Sortiert nach Status (Aktive zuerst), dann Nachname.
+  // v31.88: Klammer-Zeilen ohne aktiven Termin (Abmeldung auf allen Terminen,
+  // Klammer-Schattenzeile blieb stehen) — sie sind am Tisch nur Irrläufer.
+  // Schon eingecheckte oder No-Show-Zeilen bleiben sichtbar: Da IST etwas
+  // passiert, das muss rücknehmbar bleiben.
+  const klammerAusgeblendet = React.useMemo((): number => {
+    if (!klammerAktivEmails || !nameSearchEventId) return 0;
+    const regs = searchRegsCache[nameSearchEventId] || [];
+    return regs.filter(r => (r.Status === 'Angemeldet' || r.Status === 'QR versendet')
+      && !klammerAktivEmails.has((r.ParticipantEmail || '').toLowerCase().trim())).length;
+  }, [klammerAktivEmails, nameSearchEventId, searchRegsCache]);
   const searchHits = React.useMemo(() => {
     if (!nameSearchEventId) return [];
-    const regs = searchRegsCache[nameSearchEventId] || [];
+    const regsAlle = searchRegsCache[nameSearchEventId] || [];
+    const regs = klammerAktivEmails
+      ? regsAlle.filter(r => !((r.Status === 'Angemeldet' || r.Status === 'QR versendet')
+          && !klammerAktivEmails.has((r.ParticipantEmail || '').toLowerCase().trim())))
+      : regsAlle;
     const q = nameSearchQuery.trim().toLowerCase();
     // v30.33: Die Teilnehmer-ID ist jetzt suchbar — und zwar EXAKT, nicht als
     // Teiltreffer. Sie steht schon heute unter jedem QR-Code in der Mail; sie
@@ -1081,7 +1188,7 @@ export default function CheckInPage(): React.ReactElement {
       return na.localeCompare(nb);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nameSearchQuery, nameSearchEventId, searchRegsCache, onlyOpen, agendaMode, agendaPointId]);
+  }, [nameSearchQuery, nameSearchEventId, searchRegsCache, onlyOpen, agendaMode, agendaPointId, klammerAktivEmails]);
   /**
    * v31.4 (Nutzer-Befund 08.09.2026): „Warum sehe ich hier nicht die Check-ins?
    * Nur weil ich sie selber nicht gemacht habe?"
@@ -1160,6 +1267,9 @@ export default function CheckInPage(): React.ReactElement {
       setIdError(isDe ? 'Bitte zuerst oben das Event auswählen.' : 'Please pick the event above first.');
       return;
     }
+    // v31.88: Kein Check-in auf einem Event, für das keine QR-Codes rausgingen,
+    // solange ein anderes der Familie welche hat (s. checkInGesperrt).
+    if (checkInGesperrt) { setIdError(sperrHinweis); return; }
     const regs = searchRegsCache[nameSearchEventId];
     if (!regs) {
       // v30.67: Ohne Cache-Eintrag gibt es zwei Zustände — „lädt noch" und
@@ -1294,6 +1404,15 @@ export default function CheckInPage(): React.ReactElement {
   const startManualCheckInFromSearch = (reg: SPRegistration, qrConflict?: QrIdConflict, forEventId?: string): void => {
     const ev = events.find(e => e.id === (forEventId || nameSearchEventId));
     if (!ev || !ev.subsiteUrl) return;
+    // v31.88: Sperre für das gewählte Event (s. checkInGesperrt). Ein Aufruf
+    // für ein anderes Event (Alternativ-Knopf der Karte) prüft dessen
+    // QR-Ziel-Status selbst.
+    const zielOk = qrZielIds.length === 0 || qrZielIds.indexOf(ev.id) >= 0;
+    if (!zielOk) {
+      setResultMessage(sperrHinweis || (isDe ? 'Hier ist kein Check-in möglich — die QR-Codes wurden für ein anderes Event der Familie versendet.' : 'No check-in here — the QR codes were sent for another event of this family.'));
+      setResultType('error');
+      return;
+    }
     if (reg.Status === 'Abgemeldet') {
       setResultMessage(`${reg.ParticipantName || reg.ParticipantEmail} — ${t('checkin.cancelled')}`);
       setResultType('error');
@@ -1930,6 +2049,16 @@ export default function CheckInPage(): React.ReactElement {
       return;
     }
 
+    // v31.88: Steht unten ein Event ohne QR-Versand, während ein anderes der
+    // Familie die Codes bekam, wird nicht eingecheckt — der Scan liefe sonst
+    // auf die falsche Liste (s. checkInGesperrt).
+    if (checkInGesperrt) {
+      setResultMessage(sperrHinweis);
+      setResultType('error');
+      setIsProcessing(false);
+      return;
+    }
+
     /*
      * v31.74: Check-in auf der Klammer, ohne Termin-Unterscheidung.
      *
@@ -2487,6 +2616,20 @@ export default function CheckInPage(): React.ReactElement {
   // nummerierte Abschnitte, das Event mit rundem Bild zuerst. Die Reihenfolge
   // kommt über CSS `order`, damit die bestehenden Karten (Scanner, Self-
   // Check-in, Liste) nicht im JSX verschoben werden müssen.
+  // v31.88: EIN Weg, das Event unten zu wechseln — Dropdown und Familien-
+  // Reiter rufen dieselbe Funktion (sonst zwei Bedienwege, die auseinanderlaufen).
+  const waehleEvent = (id: string): void => {
+    setNameSearchEventId(id);
+    setNameSearchQuery('');
+    // v31.4 (Review): Eine offene Bestätigungskarte gehört zu dem Event,
+    // unter dem sie entstanden ist. Blieb sie beim Wechsel stehen, zeigte ihr
+    // Alternativ-Knopf auf eine Item-Id, die es auf der neuen Teilnehmerliste
+    // zwar gibt — nur mit einer anderen Person dahinter.
+    setPendingCheckIn(null);
+    setCardShirtSize('');
+    setIdInput('');
+    setIdError('');
+  };
   const heroEv = events.find(e => e.id === nameSearchEventId) || selectedEvent || null;
   const heroImg = ((): string => {
     if (!heroEv) return '';
@@ -2877,19 +3020,7 @@ export default function CheckInPage(): React.ReactElement {
             <select
               className="form-input"
               value={nameSearchEventId}
-              onChange={e => {
-                setNameSearchEventId(e.target.value);
-                setNameSearchQuery('');
-                // v31.4 (Review): Eine offene Bestätigungskarte gehört zu dem
-                // Event, unter dem sie entstanden ist. Blieb sie beim Wechsel
-                // stehen, zeigte ihr Alternativ-Knopf auf eine Item-Id, die es
-                // auf der neuen Teilnehmerliste zwar gibt — nur mit einer
-                // anderen Person dahinter.
-                setPendingCheckIn(null);
-                setCardShirtSize('');
-                setIdInput('');
-                setIdError('');
-              }}
+              onChange={e => waehleEvent(e.target.value)}
               style={{ marginBottom: agendaMode ? 12 : 0, padding: '8px 12px', fontSize: '0.9rem', width: '100%' }}
             >
               <option value="">— Event auswählen —</option>
@@ -2897,6 +3028,44 @@ export default function CheckInPage(): React.ReactElement {
                 <option key={ev.id} value={ev.id}>{ev.title}</option>
               ))}
             </select>
+          )}
+          {/* v31.88: Reiter der Event-Familie wie im Organizer Center — Klammer/
+              Hauptevent zuerst, dann die Termine. Ein QR-Symbol markiert, wofür
+              die Codes rausgingen; dort wird eingecheckt. Die Zahl ist die Zahl
+              aktiver Zeilen der jeweiligen Liste (nicht lesbar = „?"). */}
+          {familie.alle.length > 1 && (
+            <div role="tablist" aria-label={isDe ? 'Event der Familie wählen' : 'Pick the event of this family'} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+              {familie.alle.map(fe => {
+                const aktiv = fe.id === nameSearchEventId;
+                const rows = regsVon(fe.id);
+                const anzahl = rows === null ? '?' : rows === undefined ? '…'
+                  : String(rows.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length);
+                const istZiel = qrZielIds.indexOf(fe.id) >= 0;
+                const istEltern = familie.eltern ? fe.id === familie.eltern.id : false;
+                const label = istEltern ? fe.title : (shortSubEventTitle(fe.title, familie.eltern ? familie.eltern.title : '') || fe.title);
+                return (
+                  <button
+                    key={fe.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={aktiv}
+                    className={cx('dex-ui-chip', aktiv && 'is-active')}
+                    onClick={() => waehleEvent(fe.id)}
+                    title={istZiel
+                      ? (isDe ? 'QR-Codes wurden für dieses Event versendet — hier wird eingecheckt.' : 'QR codes were sent for this event — check-in happens here.')
+                      : (qrZielIds.length > 0
+                        ? (isDe ? 'Keine QR-Codes versendet — hier ist kein Check-in möglich.' : 'No QR codes sent — no check-in here.')
+                        : fe.title)}
+                    style={{ maxWidth: 280, fontSize: '0.82rem', padding: '6px 12px' }}
+                  >
+                    {istEltern && <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: 0.4, opacity: 0.75 }}>{isDe ? 'Haupt' : 'Main'}</span>}
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+                    {istZiel && <QrCode size={12} />}
+                    <span style={{ fontVariantNumeric: 'tabular-nums', opacity: 0.85 }}>{anzahl}</span>
+                  </button>
+                );
+              })}
+            </div>
           )}
           {/* v30.91: Programmpunkt wählen — hier wird eingecheckt. Vorschlag ist
               der Punkt, der gerade läuft (suggestCurrentAgendaItem); die Wahl
@@ -3139,6 +3308,22 @@ export default function CheckInPage(): React.ReactElement {
           Zeichen tippen" mehr — der Helfer sieht direkt alle Leute, kann den
           gesuchten Eintrag scrollen oder das Suchfeld zum Filtern nutzen. */}
       <div className="card" style={{ padding: 24, marginBottom: 16 }}>
+        {/* v31.88: Gesperrt — die QR-Codes gingen für ein anderes Event der
+            Familie raus. Der Kasten sagt es und bietet den Wechsel an; die
+            Handler darunter weisen den Check-in zusätzlich ab. */}
+        {checkInGesperrt && (
+          <div className="dex-ui-callout dex-ui-callout--warn" role="status" style={{ marginBottom: 14 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>{isDe ? 'Hier wird nicht eingecheckt' : 'No check-in here'}</div>
+            <div style={{ fontSize: '0.85rem', marginBottom: 8 }}>{sperrHinweis}</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {qrZielEvents.map(ze => (
+                <button key={ze.id} type="button" className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '6px 12px' }} onClick={() => waehleEvent(ze.id)}>
+                  {isDe ? `Zu „${ze.title}" wechseln` : `Switch to “${ze.title}”`}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {/* v30.35/v31.1: Die Teilnehmer-ID steht in der Mail groß unter dem
             QR-Code — also gehört sie hier genauso groß hin. „Einchecken" checkt
             direkt ein (kein zweiter Dialog). Die Nummer filtert die Liste
@@ -3301,6 +3486,16 @@ export default function CheckInPage(): React.ReactElement {
                 Älter als drei Minuten wird gedämpft rot: Dann klemmt der Lauf
                 im Hintergrund, und das ist die einzige ehrliche Aussage, die
                 die Seite dazu machen kann. */}
+            {/* v31.88: Klammer-Zeilen ohne aktiven Termin sind ausgeblendet —
+                die Zahl steht dran, damit „412 in der Liste, 399 im Organizer
+                Center" nicht wieder als Widerspruch gelesen wird. */}
+            {klammerAusgeblendet > 0 && (
+              <p className="dex-ui-muted" style={{ margin: '0 0 8px', fontSize: '0.76rem' }}>
+                {isDe
+                  ? `${klammerAusgeblendet} Zeile(n) des Hauptevents ohne aktive Termin-Anmeldung ausgeblendet — diese Personen sind auf allen Terminen abgemeldet.`
+                  : `${klammerAusgeblendet} main-event row(s) without an active date registration hidden — these people are cancelled on every date.`}
+              </p>
+            )}
             {!!regsLoadedAt[nameSearchEventId] && (() => {
               const at = regsLoadedAt[nameSearchEventId];
               const stale = (nowTick - at) > 180000;
