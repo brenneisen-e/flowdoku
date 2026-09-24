@@ -38,6 +38,7 @@ import PollAnswerPage from './PollAnswerPage';
 import FeedbackPage from './FeedbackPage';
 import OrganizerRequestsBanner from './OrganizerRequestsBanner';
 import GrantAccessHandler from './GrantAccessHandler';
+import GrantScannersHandler from './GrantScannersHandler';
 import InviteDownloadHandler from './InviteDownloadHandler';
 // v31.63: Archivieren & Löschen ohne Rückfrage beim Admin-Start, Abzeichen oben rechts.
 import AdminAutoMaintenance from './AdminAutoMaintenance';
@@ -1186,6 +1187,9 @@ function AppContent(): React.ReactElement {
       {/* v26.59: grantaccess-Deep-Link aus der „SharePoint-Zugriff benötigt"-Mail
           — vergibt als Admin direkt Leserechte und zeigt das Ergebnis als Modal. */}
       {!isBootLoading && <GrantAccessHandler />}
+      {/* v31.86: grantscanners-Deep-Link aus der „Check-in-Team braucht Rechte"-
+          Mail — setzt als Admin die Listen-Rechte auf Klammer und Terminen. */}
+      {!isBootLoading && <GrantScannersHandler />}
       {/* v26.73: downloadinvite-Deep-Link aus der externen Instruktions-Mail —
           lädt den an der Teilnehmer-Zeile abgelegten .eml-Entwurf per Button. */}
       {!isBootLoading && <InviteDownloadHandler />}

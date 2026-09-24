@@ -284,7 +284,8 @@ export interface EventContextType {
    *  KEIN Organizer/Admin ist, einen „Organizer werden"-Antrag (zur Admin-
    *  Freigabe) anlegen. orgNames/orgEmails sind die 1:1-gepaarten Strings aus
    *  sanitizeOrganizerPairs (Namen „; "-, Mails ";"-getrennt). Best-effort. */
-  requestCoOrganizerApprovals: (orgNames: string, orgEmails: string, eventTitle: string) => Promise<void>;
+  /** v31.86: `unreadable` = DEX_Roles nicht lesbar, KEIN Antrag angelegt; `requested` = neu beantragte Namen. */
+  requestCoOrganizerApprovals: (orgNames: string, orgEmails: string, eventTitle: string) => Promise<{ unreadable: boolean; requested: string[] }>;
   /** v26.34: Neu hinzugefügte (Co-)Organizer per Mail informieren (Zugriff auf
    *  die Teilnehmerliste) + Outlook-Kalendereinladung. Best-effort. */
   notifyNewCoOrganizers: (eventId: string, eventTitle: string, added: Array<{ name: string; email: string }>, isDe: boolean, disableOutlook?: boolean) => Promise<void>;

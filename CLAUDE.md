@@ -487,6 +487,18 @@ nächste Erfolg bzw. der App-Start nachzieht (`IDReorderQueueHealed`). Wenn
 des Events auf diese beiden Aktionen prüfen, dann die installierte Version
 (`Was ist neu?`) — vor v30.80 gab es die Zeilen nicht.
 
+**Wer die Rollen nicht lesen kann, darf keine Anträge ableiten (v31.86).**
+`getRoleEmails` liefert bei 403 auf DEX_Roles `[]`; `requestCoOrganizerApprovals`
+hielt damit JEDE benannte Person für einen Nicht-Organizer und schickte
+Freigabe-Anträge für langjährige Organizer. Seit v31.86 gibt es
+`getRoleEmailsChecked` (null = nicht lesbar) — dann wird nichts beantragt und
+der Assistent nennt „Rechte prüfen". Dieselbe Regel wie bei
+`getAllRegistrations`: ein Lesefehler ist keine leere Menge. Und: Ein Admin
+vergibt beim Benennen die Rolle direkt (`coOrganizerFreigabe`), der Antragsweg
+ist nur für Organizer ohne das Schreibrecht. Organizer sehen die Rollenliste
+read-only (Organizer Center → „Rollen ansehen"), der Wizard zeigt je Person
+einen Chip.
+
 **Eine Rolle in DEX_Roles wirkt nur mit Leserecht auf DEX_Roles.** Die
 Liste hat eigene Rechte (Owners Full Control, sonst niemand); jede
 Organizer-Zuweisung setzt Read best-effort nach. Fehlt es (Drosselung bei

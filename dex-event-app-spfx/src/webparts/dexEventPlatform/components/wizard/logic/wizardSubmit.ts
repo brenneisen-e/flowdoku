@@ -9,7 +9,9 @@ import { setSaveInProgress } from '../../../utils/saveGuard';
 import { buildOutlookLocation } from '../../../utils/eventFormat';
 import { outlookLogoPiggyback, resolveAudienceMembersToCsv, serializeCustomFields } from '../../wizard/wizardHelpers';
 import { formatOrganizerList } from '../../../context/EventContext';
-import { buildOutlookBody, eventCreatedEmail, getCachedOrbBase64, replacePlaceholders } from '../../../services/EmailTemplates';
+import { buildOutlookBody, eventCreatedEmail, getCachedOrbBase64, replacePlaceholders, wrapTemplate } from '../../../services/EmailTemplates';
+import { buildHashDeepLink } from '../../../utils/deepLink';
+import { DEX_TEAM_RECIPIENTS } from '../../../utils/supportContact';
 import { BundledComm, bundledCommConfig, commSharedConfig } from '../../../utils/bundledComm';
 import { EventService } from '../../../services/EventService';
 // v31.37: „Fehlende Teilnehmer mit einladen" aus dem Speichern-Dialog.
@@ -67,8 +69,152 @@ function scannerRechteHinweis(isDe: boolean, unresolved: string[], failed: numbe
   return `Check-in team: ${a}${b}These people will not see the attendee list at check-in and cannot check in a code. Please run "Repair organizer permissions" in the Organizer Center later, or have them open the app once and save again.`;
 }
 
+/**
+ * v31.86: Rückfall, wenn ein NICHT-Admin das Check-in-Team speichert und
+ * SharePoint die Zuweisung ablehnt oder eine Person nicht auflösbar ist:
+ * eine Mail ans DEX-Team mit Deep-Link `grantscanners&event=<Id>` — der
+ * Klick setzt die Rechte als Admin (GrantScannersHandler). Nutzer-Ansage
+ * 23.09.2026: „wenn jemand ein Check-in mit TN-Liste auswählt, muss ein Admin
+ * eine Mail bekommen zur Freigabe." Nur bei Bedarf: Ein Organizer des Events
+ * hat Full Control auf seinen Subsites und vergibt die Rechte in der Regel
+ * selbst; eine Mail für jeden Scanner wäre ein Admin-Klick ohne Anlass.
+ */
+async function scannerFreigabeMail(
+  svc: EventService,
+  eventId: string,
+  eventTitle: string,
+  requester: string,
+  unresolved: string[],
+  failed: number,
+): Promise<boolean> {
+  try {
+    const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const appBase = `${svc.siteUrl}/SitePages/DEX.aspx?env=WebView`;
+    const grantUrl = buildHashDeepLink(appBase, { action: 'grantscanners', event: eventId });
+    const gruende: string[] = [];
+    if (unresolved.length > 0) gruende.push(`<li style="margin:2px 0;">Kein SharePoint-Konto gefunden für: ${esc(unresolved.join(', '))}</li>`);
+    if (failed > 0) gruende.push(`<li style="margin:2px 0;">${failed} Zuweisung(en) hat SharePoint abgelehnt (fehlendes „Manage Permissions" auf einem Termin oder Drosselung)</li>`);
+    const inner = `
+      <p style="margin:0 0 12px;">Hallo zusammen,</p>
+      <p style="margin:0 0 12px;"><strong>${esc(requester || '—')}</strong> hat beim Event <strong>${esc(eventTitle || '—')}</strong> ein Check-in-Team gespeichert. Die Rechte auf den Teilnehmerlisten konnten dabei nicht vollständig gesetzt werden:</p>
+      <ul style="margin:0 0 12px;padding-left:20px;">${gruende.join('')}</ul>
+      <p style="margin:0 0 12px;">Ohne diese Rechte sieht das Check-in-Team am Event-Tag keine Teilnehmerliste und kann keinen Code einchecken.</p>
+      <p style="margin:20px 0;text-align:center;"><a href="${grantUrl}" style="display:inline-block;padding:12px 26px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Rechte jetzt setzen</a></p>
+      <p style="margin:0;color:#777;font-size:13px;">Der Knopf öffnet die App und vergibt als Admin die Rechte auf Hauptevent und allen Terminen. Geht nur als Admin.</p>
+    `;
+    const body = wrapTemplate('#86bc25', 'Check-in-Team braucht Rechte', esc(eventTitle || ''), inner);
+    await svc.queueEmail(`Check-in-Team braucht Rechte: ${eventTitle || eventId}`, DEX_TEAM_RECIPIENTS, 'DEX-Team', body, 'ScannerRightsRequest', eventTitle || '', eventId || '0');
+    return true;
+  } catch (e) {
+    console.warn('[DEX] scannerFreigabeMail fehlgeschlagen:', e);
+    return false;
+  }
+}
+
+/**
+ * v31.86: Co-Organizer-Freigabe — als Admin direkt, sonst als Antrag.
+ *
+ * Der Antragsweg (v26.24) existiert, weil ein normaler Organizer das
+ * Schreibrecht auf DEX_Events nicht selbst vergeben kann: Er benennt die
+ * Person, die Admins bekommen die Mail und geben frei. Speichert aber ein
+ * ADMIN, ist die Mail ein Umweg zu sich selbst (Nutzer-Ansage 23.09.2026:
+ * „wenn ein Admin einen Co-Organizer hinterlegt, dann sollen die Rechte
+ * direkt vergeben werden und keine Mail"). Dann: `addRole('Organizer')` wie
+ * in der Rollenverwaltung (DEX_Roles-Zeile, Leserecht auf DEX_Roles, Full
+ * Control auf DEX_Events und Web) plus dieselbe Onboarding-Mail. Wer schon
+ * Organizer/Admin/F&A/IT-Admin ist, wird übersprungen — kein zweiter Eintrag,
+ * keine Herabstufung (`addRole` weigert sich ohnehin), keine Mail.
+ * Rückgabe: Namen der direkt berechtigten Personen, für den Hinweis.
+ */
+interface CoOrganizerFreigabeErgebnis {
+  /** Als Admin direkt zum Organizer gemacht (Namen). */
+  direkt: string[];
+  /** Als Nicht-Admin neu beantragt (Namen) — die Admins bekommen die Mail. */
+  beantragt: string[];
+  /** DEX_Roles war nicht lesbar: weder vergeben noch beantragt. */
+  unreadable: boolean;
+}
+async function coOrganizerFreigabe(
+  c: Pick<WizardSubmitCtx, 'adminLike' | 'addRole' | 'sendOrganizerOnboarding' | 'requestCoOrganizerApprovals' | 'currentUser'>,
+  orgNames: string,
+  orgEmails: string,
+  eventTitle: string,
+): Promise<CoOrganizerFreigabeErgebnis> {
+  const out: CoOrganizerFreigabeErgebnis = { direkt: [], beantragt: [], unreadable: false };
+  if (!c.adminLike) {
+    const r = await c.requestCoOrganizerApprovals(orgNames, orgEmails, eventTitle);
+    out.beantragt = r.requested;
+    out.unreadable = r.unreadable;
+    return out;
+  }
+  const mails = (orgEmails || '').split(';').map(s => s.trim());
+  const names = (orgNames || '').split(';').map(s => s.trim());
+  if (mails.filter(Boolean).length === 0) return out;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const spCtx = (window as any).__dexSpfxContext;
+  if (!spCtx) return out;
+  const svc = new EventService(spCtx);
+  const [orgs, admins, fa, itAdmins] = await Promise.all([
+    svc.getRoleEmailsChecked('Organizer'), svc.getRoleEmailsChecked('Admin'),
+    svc.getRoleEmailsChecked('F&A'), svc.getRoleEmailsChecked('IT-Admin'),
+  ]);
+  if (!orgs || !admins || !fa || !itAdmins) { out.unreadable = true; return out; }
+  const elevated = new Set([...orgs, ...admins, ...fa, ...itAdmins].map(e => (e || '').toLowerCase()));
+  const me = (c.currentUser.email || '').toLowerCase();
+  const seen = new Set<string>();
+  for (let i = 0; i < mails.length; i++) {
+    const mail = mails[i];
+    if (!mail || mail.indexOf('@') < 0) continue;
+    const lc = mail.toLowerCase();
+    if (lc === me || elevated.has(lc) || seen.has(lc)) continue;
+    seen.add(lc);
+    const nm = names[i] || mail;
+    try {
+      const ok = await c.addRole(mail, nm, 'Organizer', '');
+      if (!ok) continue;
+      out.direkt.push(nm);
+      try { await c.sendOrganizerOnboarding(mail, nm, 'Organizer'); } catch { /* Mail best-effort */ }
+    } catch (e) { console.warn('[DEX] coOrganizerFreigabe: Direkt-Vergabe fehlgeschlagen:', mail, e); }
+  }
+  return out;
+}
+
+/** v31.86: Ein Satz zum Ergebnis der Freigabe — oder nichts, wenn nichts passiert ist. */
+function coOrganizerFreigabeHinweis(isDe: boolean, r: CoOrganizerFreigabeErgebnis): { text: string; variant: 'success' | 'info' | 'error' } | null {
+  if (r.unreadable) {
+    return {
+      variant: 'error',
+      text: isDe
+        ? 'Die Rollenliste konnte nicht gelesen werden — deshalb wurde für die benannten Co-Organizer weder eine Rolle vergeben noch ein Antrag angelegt. Bitte einen Admin bitten, in der Rollenverwaltung „Rechte prüfen" auszuführen, und danach erneut speichern.'
+        : 'The roles list could not be read — so no role was granted and no request was created for the named co-organizers. Please ask an admin to run "Check rights" in role management, then save again.',
+    };
+  }
+  if (r.direkt.length > 0) {
+    const one = r.direkt.length === 1;
+    return {
+      variant: 'success',
+      text: isDe
+        ? `${r.direkt.join(', ')} ${one ? 'hat' : 'haben'} die Rolle Organizer erhalten und ${one ? 'kann' : 'können'} das Event bearbeiten — kein Antrag nötig.`
+        : `${r.direkt.join(', ')} ${one ? 'has' : 'have'} been given the Organizer role and can edit the event — no request needed.`,
+    };
+  }
+  if (r.beantragt.length > 0) {
+    const one = r.beantragt.length === 1;
+    return {
+      variant: 'info',
+      text: isDe
+        ? `${r.beantragt.join(', ')} ${one ? 'ist' : 'sind'} noch kein Organizer. Die Admins haben einen Freigabe-Antrag bekommen; bis dahin ${one ? 'kann die Person' : 'können diese Personen'} das Event sehen, aber nicht bearbeiten.`
+        : `${r.beantragt.join(', ')} ${one ? 'is' : 'are'} not an organizer yet. The admins have received an approval request; until then ${one ? 'this person' : 'these people'} can see the event but not edit it.`,
+    };
+  }
+  return null;
+}
+
 export interface WizardSubmitCtx {
   activeFrom: string;
+  /** v31.86: Admins vergeben benannten Co-Organizern die Rolle direkt (s. coOrganizerFreigabe). */
+  addRole: (userEmail: string, userName: string, role: import("../../../types/index").UserRole, location: string) => Promise<boolean>;
+  adminLike: boolean;
   addrCity: string;
   addrHouseNo: string;
   addrStreet: string;
@@ -188,10 +334,12 @@ export interface WizardSubmitCtx {
   registrationDeadline: string;
   registrationLanguage: "" | "de" | "en";
   regRuleEnabled: boolean;
-  requestCoOrganizerApprovals: (orgNames: string, orgEmails: string, eventTitle: string) => Promise<void>;
+  requestCoOrganizerApprovals: (orgNames: string, orgEmails: string, eventTitle: string) => Promise<{ unreadable: boolean; requested: string[] }>;
   requireSubEventSelection: boolean;
   resolveTopLevelCommState: () => { emailLanguage: string; emailLogoBase64: string; outlookLogoBase64: string; outlookBody: string; outlookHeading: string; outlookSubheading: string; outlookSubject: string; disableEmails: boolean; disableRegistrationEmail: boolean; disableCancellationEmail: boolean; autoDeregisterOnDecline: boolean; inactiveHandling?: 'notify' | 'autoderegister'; disableOutlook: boolean; emailTemplateOverrides: Record<string, EmailOverrideEntry>; };
   sanitizeOrganizerPairs: () => {    orgString: string;    orgEmailString: string;    droppedCount: number;};
+  /** v31.86: Onboarding-Mail wie beim manuellen Zuweisen in der Rollenverwaltung. */
+  sendOrganizerOnboarding: (recipientEmail: string, recipientName: string, role: 'Organizer' | 'Admin' | 'F&A') => Promise<boolean>;
   selectedEventId: string;
   setDraftSavedAt: React.Dispatch<React.SetStateAction<number>>;
   setError: React.Dispatch<React.SetStateAction<string>>;
@@ -249,7 +397,7 @@ export interface WizardSubmitCtx {
 }
 
 export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
-  const { activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, agenda, allDay, allowAttendeeUpload, askSalutation, askTeamName, assistantsCanSee, attendeeUploadHint, attendeeUploadLabel, audience, berlinLocalToUtcIso, bilingualFields, billingPiggyback, bundledComm, commShared, childEventsOf, childGender, childTermPlural, childTermSingular, computeFormSnapshot, confirmDialog, confirmDialogEnabled, confirmDialogMode, confirmDialogText, contactEmail, contactInfo, contactName, contactOrganizerEmail, coOrganizerEmails, coOrganizerNames, createdEventIdRef, createEvent, currentUser, customFields, deadlineToEndOfDayIso, description, documents, DRAFT_KEY, durchstarterCapacity, durchstarterRequiresProof, durchstarterStartblock, editEvent, effTeamsLink, endDate, eventImageUrl, eventType, excludedUsers, filterMode, funstarterCapacity, funstarterStartblock, getGroupMembers, getLastEventUpdateError, headerImageLayoutConfig, headerLayoutFor, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly, imageBanner, imageDisplay, imageFile, imageOrigAspect, imageOrigFile, initialDocumentNames, initialFormSnapshotRef, initialOrgGetsSubInvitesRef, initialSubEventDbIds, isB2runTemplate, isDe, isEditMode, isFictive, klammerDeadline, lastDeregisterDate, lastDraftJsonRef, location, locationFilter, mainCommDisabledAck, mainEventLabel, mainEventLabelMode, maxParticipants, noCancelAfterDeadline, noDescription, notifyAdminsExternalAudienceAccess, notifyNewCoOrganizers, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, onlineMeetingMode, organizer, organizerDisplayLarge, organizerEmails, orgGetsSubInvites, outlookEndOverride, outlookLocationOverride, outlookStartOverride, outlookTeamsLink, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs, pendingOutlookInviteForEventsRef, pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, pendingSuccessDispatchRef, persistSubEventsForParent, previewBeforeActive, qrScannerEmails, qrScannerNoList, qrScannerNames, quiz, quizClusterSize, refreshEventDocuments, refreshEvents, registrationDeadline, registrationLanguage, regRuleEnabled, requestCoOrganizerApprovals, requireSubEventSelection, resolveTopLevelCommState, sanitizeOrganizerPairs, selectedEventId, setDraftSavedAt, setError, setImageUploadError, setIsSubmitting, setNavigationGuard, setPendingDraft, setPendingSuccessDispatch, setProgress, setProgressLabel, setRemovedSavedSubs, setShowSummaryModal, showAlert, showAsFree, shrinkLogoB64, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitLabelA, splitLabelB, splitSectionTitle, splitSharedWaitlist, startDate, subDeadlineRulePiggyback, subEventCalendar, subEventOpenRulePiggyback, agendaCheckInPiggyback, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn, subEventsRef, teamJoinRequiresApproval, teamMembersCannotCreate, teamOpenSlotsVisible, teamPartialAllowed, teamRegistrationEnabled, teamSize, teamTermPlural, teamTermSingular, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, updateEvent, userCancelAllowed, useSplitCapacities, visAllSubsPiggyback, waitlistBlocker, waitlistEnabled, wizardImgAspect } = ctx;
+  const { activeFrom, addRole, adminLike, addrCity, addrHouseNo, addrStreet, addrZip, agenda, allDay, allowAttendeeUpload, askSalutation, askTeamName, assistantsCanSee, attendeeUploadHint, attendeeUploadLabel, audience, berlinLocalToUtcIso, bilingualFields, billingPiggyback, bundledComm, commShared, childEventsOf, childGender, childTermPlural, childTermSingular, computeFormSnapshot, confirmDialog, confirmDialogEnabled, confirmDialogMode, confirmDialogText, contactEmail, contactInfo, contactName, contactOrganizerEmail, coOrganizerEmails, coOrganizerNames, createdEventIdRef, createEvent, currentUser, customFields, deadlineToEndOfDayIso, description, documents, DRAFT_KEY, durchstarterCapacity, durchstarterRequiresProof, durchstarterStartblock, editEvent, effTeamsLink, endDate, eventImageUrl, eventType, excludedUsers, filterMode, funstarterCapacity, funstarterStartblock, getGroupMembers, getLastEventUpdateError, headerImageLayoutConfig, headerLayoutFor, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly, imageBanner, imageDisplay, imageFile, imageOrigAspect, imageOrigFile, initialDocumentNames, initialFormSnapshotRef, initialOrgGetsSubInvitesRef, initialSubEventDbIds, isB2runTemplate, isDe, isEditMode, isFictive, klammerDeadline, lastDeregisterDate, lastDraftJsonRef, location, locationFilter, mainCommDisabledAck, mainEventLabel, mainEventLabelMode, maxParticipants, noCancelAfterDeadline, noDescription, notifyAdminsExternalAudienceAccess, notifyNewCoOrganizers, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, onlineMeetingMode, organizer, organizerDisplayLarge, organizerEmails, orgGetsSubInvites, outlookEndOverride, outlookLocationOverride, outlookStartOverride, outlookTeamsLink, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs, pendingOutlookInviteForEventsRef, pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, pendingSuccessDispatchRef, persistSubEventsForParent, previewBeforeActive, qrScannerEmails, qrScannerNoList, qrScannerNames, quiz, quizClusterSize, refreshEventDocuments, refreshEvents, registrationDeadline, registrationLanguage, regRuleEnabled, requestCoOrganizerApprovals, requireSubEventSelection, resolveTopLevelCommState, sanitizeOrganizerPairs, selectedEventId, sendOrganizerOnboarding, setDraftSavedAt, setError, setImageUploadError, setIsSubmitting, setNavigationGuard, setPendingDraft, setPendingSuccessDispatch, setProgress, setProgressLabel, setRemovedSavedSubs, setShowSummaryModal, showAlert, showAsFree, shrinkLogoB64, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitLabelA, splitLabelB, splitSectionTitle, splitSharedWaitlist, startDate, subDeadlineRulePiggyback, subEventCalendar, subEventOpenRulePiggyback, agendaCheckInPiggyback, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn, subEventsRef, teamJoinRequiresApproval, teamMembersCannotCreate, teamOpenSlotsVisible, teamPartialAllowed, teamRegistrationEnabled, teamSize, teamTermPlural, teamTermSingular, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, updateEvent, userCancelAllowed, useSplitCapacities, visAllSubsPiggyback, waitlistBlocker, waitlistEnabled, wizardImgAspect } = ctx;
 
       /*
        * v31.18: Das Wartelisten-Schattenevent wird HIER angelegt, nicht beim
@@ -1014,9 +1162,14 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
         // normaler Organizer nicht selbst vergeben → wir legen pro solcher Person
         // einen „Organizer werden"-Antrag an; die Admins bekommen die Mail mit
         // Deep-Link und geben frei. Best-effort, blockt den Save nicht.
+        // v31.86: Als Admin direkt vergeben statt Antrag (s. coOrganizerFreigabe).
         try {
-          await requestCoOrganizerApprovals(sanitizedOrgPairEdit.orgString, sanitizedOrgPairEdit.orgEmailString, title);
-        } catch (err) { console.warn('[DEX] Co-Organizer-Freigabe-Anträge fehlgeschlagen:', err); }
+          const frei = await coOrganizerFreigabe(
+            { adminLike, addRole, sendOrganizerOnboarding, requestCoOrganizerApprovals, currentUser },
+            sanitizedOrgPairEdit.orgString, sanitizedOrgPairEdit.orgEmailString, title);
+          const hinweis = coOrganizerFreigabeHinweis(isDe, frei);
+          if (hinweis) showAlert(hinweis.text, { variant: hinweis.variant });
+        } catch (err) { console.warn('[DEX] Co-Organizer-Freigabe fehlgeschlagen:', err); }
 
         // v26.34: Neu hinzugefügte (Co-)Organizer benachrichtigen + Outlook-
         // Kalendereinladung. „Neu" = im gespeicherten Organizer-Set, aber vorher
@@ -1076,7 +1229,14 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
               qrScannerEmails, prevScanners, organizerEmails.concat(coOrganizerEmails));
             const offen = r.unresolved.filter(u => qrScannerEmails.some(e => (e || '').toLowerCase() === u));
             if (offen.length > 0 || r.failed > 0) {
-              showAlert(scannerRechteHinweis(isDe, offen, r.failed), { variant: 'error' });
+              // v31.86: Als Nicht-Admin geht die Freigabe-Mail ans DEX-Team
+              // (Deep-Link setzt die Rechte); der Satz sagt das dazu.
+              const gemailt = !adminLike && await scannerFreigabeMail(
+                new EventService(ctxScan), String(selectedEventId), title,
+                `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email || '', offen, r.failed);
+              showAlert(scannerRechteHinweis(isDe, offen, r.failed) + (gemailt
+                ? (isDe ? ' Die Admins haben eine Mail mit einem Knopf bekommen, der die Rechte setzt.' : ' The admins have received an email with a button that grants the rights.')
+                : ''), { variant: 'error' });
             }
           }
         } catch (err) { console.warn('[DEX] Check-in-Team-Rechte beim Speichern fehlgeschlagen:', err); }
@@ -1904,9 +2064,14 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
         // v26.24: Co-Organizer-Freigabe (siehe Edit-Pfad) — für benannte
         // Organizer, die noch kein Organizer/Admin sind, einen „Organizer
         // werden"-Antrag zur Admin-Freigabe anlegen. Best-effort.
+        // v31.86: Als Admin direkt vergeben statt Antrag (s. coOrganizerFreigabe).
         try {
-          await requestCoOrganizerApprovals(sanitizedOrgPairCreate.orgString, sanitizedOrgPairCreate.orgEmailString, title);
-        } catch (err) { console.warn('[DEX] Co-Organizer-Freigabe-Anträge (Create) fehlgeschlagen:', err); }
+          const frei = await coOrganizerFreigabe(
+            { adminLike, addRole, sendOrganizerOnboarding, requestCoOrganizerApprovals, currentUser },
+            sanitizedOrgPairCreate.orgString, sanitizedOrgPairCreate.orgEmailString, title);
+          const hinweis = coOrganizerFreigabeHinweis(isDe, frei);
+          if (hinweis) showAlert(hinweis.text, { variant: hinweis.variant });
+        } catch (err) { console.warn('[DEX] Co-Organizer-Freigabe (Create) fehlgeschlagen:', err); }
 
         // v26.57: Zielgruppen-Personen außerhalb von @deloitte.de → Approve-Mail
         // an die Admins für den Site-Zugriff (SharePoint-Default: nur Deloitte
@@ -2073,7 +2238,12 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
                     .filter(Boolean)));
                 const r = await svc.ensureScannerListPermissions(sites, qrScannerEmails, []);
                 if (r.unresolved.length > 0 || r.failed.length > 0) {
-                  showAlert(scannerRechteHinweis(isDe, r.unresolved, r.failed.length), { variant: 'error' });
+                  // v31.86: Als Nicht-Admin geht die Freigabe-Mail ans DEX-Team.
+                  const gemailt = !adminLike && await scannerFreigabeMail(
+                    svc, String(eventId), title, `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email || '', r.unresolved, r.failed.length);
+                  showAlert(scannerRechteHinweis(isDe, r.unresolved, r.failed.length) + (gemailt
+                    ? (isDe ? ' Die Admins haben eine Mail mit einem Knopf bekommen, der die Rechte setzt.' : ' The admins have received an email with a button that grants the rights.')
+                    : ''), { variant: 'error' });
                 }
               }
               catch (err) { console.warn('[DEX] Check-in-Team-Rechte beim Anlegen fehlgeschlagen:', err); }

@@ -329,6 +329,34 @@ export async function getRoleRecipients(svc: EventService, role: string): Promis
   } catch { return []; }
 }
 
+/**
+ * v31.86: Wie `getRoleEmails`, aber ein Lesefehler ist `null` statt `[]`.
+ *
+ * `requestCoOrganizerApprovals` las die Rollen bis v31.85 über die `[]`-
+ * Variante: Fehlte dem speichernden Organizer das Leserecht auf DEX_Roles
+ * (403 — Drosselung bei der Vergabe, Zeile direkt in SharePoint), war die
+ * Menge der „schon berechtigten" Personen leer, und JEDER benannte
+ * Co-Organizer bekam einen „Organizer werden"-Antrag samt Admin-Mail — auch
+ * wer seit Jahren Organizer ist (Nutzer-Befund 23.09.2026: „Leute, die schon
+ * Organizer sind und dann Co-Organizer für ein weiteres Event werden,
+ * erzeugen Mails"). CLAUDE.md: Ein Lesefehler ist keine Null. Wer die Rollen
+ * nicht lesen kann, darf daraus keine Anträge ableiten.
+ */
+export async function getRoleEmailsChecked(svc: EventService, role: string): Promise<string[] | null> {
+  try {
+    const resp = await svc._sp.get(
+      `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=${roleFilter(role)}&$select=Title&$top=5000`,
+      SPHttpClient.configurations.v1
+    );
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const items = data.value || data.d?.results || [];
+    const set = new Set<string>();
+    for (const i of items) { const e = (i.Title || '').trim().toLowerCase(); if (e) set.add(e); }
+    return Array.from(set);
+  } catch { return null; }
+}
+
 export async function getRoleEmails(svc: EventService, role: string): Promise<string[]> {
   try {
     const resp = await svc._sp.get(

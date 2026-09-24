@@ -55,7 +55,7 @@ export default function SettingsPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { currentUser } = useCurrentUser();
   const {
-    roles, isAdmin, originalIsAdmin,
+    roles, isAdmin, originalIsAdmin, canCreateEvents, rolesReadStatus,
     addRole, updateRole, setPowerUser, removeRole, hadRoleRightsIssue, isRolesLoading, siteUrl, searchUsers, searchUser,
     auditRolesAccess, getBasicProfiles, lastRoleRightsMissing, lastRightsAudit,
   } = useRoles();
@@ -594,6 +594,9 @@ export default function SettingsPage(): React.ReactElement {
     // v30.5/v30.60: F&A — alles wie Organizer, plus Zugriff aufs F&A Center.
     const faPill = catPill('F&A', 'rgba(237,139,0,0.12)', '#b86700');
     const coOrgPill = catPill('Co-Organizer', 'rgba(237,139,0,0.15)', 'var(--dex-orange-dark, #b35a00)');
+    // v31.86: Organizer sehen dieselben Abschnitte, aber ohne Bedienung —
+    // kein Rollen-Select, kein Power-User-Schalter, kein Löschen/Onboarding.
+    const readOnly = !isAdmin;
     // Editierbare Zeile (DEX_Roles: Admins / Organizer / User)
     const editableRow = (r: typeof roles[number]): React.ReactElement => {
       const { first, last } = splitName(r.userName);
@@ -617,6 +620,9 @@ export default function SettingsPage(): React.ReactElement {
               Profil zur E-Mail-Adresse (live nachgeladen, Fallback DEX_Roles). */}
           <td style={{ ...tdS, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{prof.location || r.location || '—'}</td>
           <td style={tdS}>
+            {readOnly ? (
+              <span style={{ fontSize: '0.8rem', color: 'var(--dex-gray-700)' }}>{r.role}</span>
+            ) : (
             <select
               value={r.role}
               onChange={e => handleChangeRole(r.id, e.target.value as UserRole)}
@@ -629,6 +635,7 @@ export default function SettingsPage(): React.ReactElement {
               <option value="F&A">F&A</option>
               <option value="User">User</option>
             </select>
+            )}
           </td>
           <td style={tdS}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
@@ -642,7 +649,9 @@ export default function SettingsPage(): React.ReactElement {
             </div>
           </td>
           <td style={tdS}>
-            {(r.role === 'Organizer' || r.role === 'Admin') ? (
+            {readOnly ? (
+              <span style={{ fontSize: '0.78rem', color: r.isPowerUser ? '#b35a00' : 'var(--dex-gray-300)' }}>{r.isPowerUser ? '★ Power User' : '—'}</span>
+            ) : (r.role === 'Organizer' || r.role === 'Admin') ? (
               <button
                 type="button"
                 disabled={isSelf}
@@ -662,7 +671,7 @@ export default function SettingsPage(): React.ReactElement {
             {/* v28.44: Onboarding-Mail nachträglich verschicken — für alle,
                 die vor dieser Version Organizer wurden (und damals keine
                 bekommen haben) oder die sie nicht mehr finden. */}
-            {(r.role === 'Organizer' || r.role === 'Admin' || r.role === 'F&A') && (
+            {!readOnly && (r.role === 'Organizer' || r.role === 'Admin' || r.role === 'F&A') && (
               <button
                 onClick={() => { void resendOnboarding(r.id, r.userEmail, r.userName, r.role as 'Organizer' | 'Admin' | 'F&A'); }}
                 disabled={onboardingResendId === r.id}
@@ -672,7 +681,7 @@ export default function SettingsPage(): React.ReactElement {
                 {onboardingResendId === r.id ? '...' : <Mail size={16} />}
               </button>
             )}
-            {!isSelf && (
+            {!readOnly && !isSelf && (
               <button onClick={() => handleRemoveRole(r.id, r.userName)} disabled={isRemoving === r.id} style={{ border: 'none', background: 'none', cursor: isRemoving === r.id ? 'wait' : 'pointer', color: 'var(--dex-danger, #e53935)', padding: 4, opacity: isRemoving === r.id ? 0.4 : 1 }} title="Rolle entfernen">
                 {isRemoving === r.id ? '...' : <Trash2 size={16} />}
               </button>
@@ -1145,6 +1154,46 @@ export default function SettingsPage(): React.ReactElement {
             ) : renderRoleSections()}
 
             </div>
+          </div>
+        )}
+
+        {/* v31.86: Organizer sehen die Rollen — nur lesen. Nutzer-Ansage
+            23.09.2026: „die Rollenliste, also welcher User bereits Organizer
+            ist oder Check-in, für alle Organizer einsehbar — damit Leute, die
+            schon Organizer sind und Co-Organizer für ein weiteres Event
+            werden, keine Mails mehr erzeugen." Dieselben Abschnitte wie beim
+            Admin (renderRoleSections mit readOnly), ohne Zuweisen, Rechte-
+            Kästen und Dubletten-Hinweis. Ist DEX_Roles nicht lesbar, steht
+            das hier statt einer leeren Tabelle. */}
+        {!isAdmin && canCreateEvents && (
+          <div className="card">
+            <h2 style={{ margin: '0 0 12px', fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
+              {isDe ? 'Rollen — wer ist schon Organizer?' : 'Roles — who is already an organizer?'}
+            </h2>
+            <p style={{ color: 'var(--dex-gray-500, #888)', fontSize: '0.85rem', marginBottom: 12, lineHeight: 1.5 }}>
+              {isDe
+                ? 'Nur zum Nachsehen: Wer hier als Admin, Organizer oder F&A steht, kann Events bearbeiten und braucht keine Freigabe, wenn du sie als Co-Organizer benennst. Wer fehlt, bekommt beim Speichern automatisch einen Freigabe-Antrag bei den Admins. Check-in und Tester sind je Event vergeben und stehen hier nur zur Übersicht.'
+                : 'Read-only: anyone listed as Admin, Organizer or F&A can edit events and needs no approval when you name them as co-organizer. Anyone missing gets an approval request to the admins automatically on save. Check-in and testers are assigned per event and are listed here for reference only.'}
+            </p>
+            {rolesReadStatus !== 'ok' ? (
+              <div style={{ padding: '10px 14px', borderRadius: 8, fontSize: '0.85rem', background: '#fce4ec', color: '#c62828' }}>
+                {isDe
+                  ? 'Die Rollenliste konnte nicht gelesen werden. Bitte einen Admin bitten, in der Rollenverwaltung „Rechte prüfen" auszuführen.'
+                  : 'The roles list could not be read. Please ask an admin to run "Check rights" in role management.'}
+              </div>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  value={roleSearch}
+                  onChange={e => setRoleSearch(e.target.value)}
+                  placeholder={isDe ? 'Name, E-Mail, Position oder Standort …' : 'Name, email, position or location …'}
+                  className="form-input"
+                  style={{ marginBottom: 12, maxWidth: 420 }}
+                />
+                {renderRoleSections()}
+              </>
+            )}
           </div>
         )}
 
