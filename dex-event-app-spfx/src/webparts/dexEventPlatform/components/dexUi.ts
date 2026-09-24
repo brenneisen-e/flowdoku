@@ -317,6 +317,24 @@ input.dex-ui-checkbox:not([hidden]):disabled { opacity: 0.55; cursor: not-allowe
 .dex-ui-step-hint { font-size: 0.76rem; color: ${G500}; line-height: 1.45; margin-top: 2px; }
 .dex-ui-step-action { flex-shrink: 0; }
 
+/* ---- Prozess-Zeitstrahl (v31.95) -------------------------------------
+   Ein Ablauf zum LESEN, nicht zum Abarbeiten: Nummern auf einer durchgehenden
+   Linie, je Schritt ein Symbol, Titel und Folge. Die dex-ui-step-Karten
+   sind für Dialoge mit Knopf je Schritt gedacht; sieben davon untereinander
+   sahen in „Über die App" alle gleich aus (Nutzer 24.09.2026). */
+.dex-ui-process { position: relative; padding-left: 44px; display: flex; flex-direction: column; gap: 16px; }
+.dex-ui-process::before { content: ''; position: absolute; left: 13px; top: 14px; bottom: 14px; width: 2px; background: ${G200}; }
+.dex-ui-process-item { position: relative; display: flex; gap: 12px; align-items: flex-start; }
+.dex-ui-process-num {
+  position: absolute; left: -44px; top: 4px; width: 28px; height: 28px; border-radius: 50%;
+  background: ${G}; color: #fff; font-weight: 700; font-size: 0.8rem; display: inline-flex; align-items: center; justify-content: center; line-height: 1;
+  box-shadow: 0 0 0 4px #fff;
+}
+.dex-ui-process-icon { flex-shrink: 0; width: 36px; height: 36px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; background: rgba(134,188,37,0.12); color: ${GDT}; }
+.dex-ui-process-body { flex: 1; min-width: 0; padding-top: 2px; }
+.dex-ui-process-title { font-size: 0.88rem; font-weight: 600; color: ${G800}; }
+.dex-ui-process-hint { font-size: 0.78rem; color: ${G500}; line-height: 1.45; margin-top: 2px; }
+
 /* ---- Segment-Reiter -------------------------------------------------- */
 .dex-ui-tabs { display: inline-flex; padding: 3px; background: ${G100}; border-radius: 999px; gap: 2px; max-width: 100%; overflow-x: auto; }
 .dex-ui-tab { padding: 6px 14px; border-radius: 999px; border: none; background: transparent; color: ${G600}; font-weight: 600; font-size: 0.8rem; cursor: pointer; font-family: inherit; white-space: nowrap; line-height: 1.3; transition: background ${EASE}, color ${EASE}, box-shadow ${EASE}; }
