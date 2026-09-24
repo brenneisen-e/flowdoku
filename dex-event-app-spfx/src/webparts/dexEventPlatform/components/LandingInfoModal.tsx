@@ -20,6 +20,7 @@ import Modal from './Modal';
 import { cx } from './dexUi';
 import { APP_VERSION } from '../version';
 import { DEX_TEAM_EMAIL } from '../utils/supportContact';
+import { useNavigation } from '../context/NavigationContext';
 
 interface Props {
   open: boolean;
@@ -48,6 +49,8 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
   // Einstieg reichen Einsatzbereich und Ablauf; die Kacheln bleiben zu, bis
   // jemand sie sehen will — sonst zeigt der Dialog beim Öffnen drei Bildschirme.
   const [showFeatures, setShowFeatures] = React.useState(false);
+  // v31.94: „Handbuch" im Self-Service-Kasten — Hook VOR dem frühen Return.
+  const { navigate } = useNavigation();
   if (!open) return null;
 
   const isDE = locale === 'de';
@@ -62,7 +65,7 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
     { icon: 'CheckboxComposite', title: 'Warteliste mit Nachrück-Automatik', body: 'Volles Event? User landen automatisch auf der Warteliste mit Positionsanzeige. Wird ein Platz frei, rückt der Nächste automatisch nach — inkl. Mail + Outlook.' },
     { icon: 'Mail', title: 'Automatische Emails im Deloitte-Design', body: 'Anmelde-, Abmelde-, Warteliste-, Nachrück-Mails automatisch verschickt. Templates pro Event anpassbar (Logo, Farben, Texte DE/EN).' },
     { icon: 'OutlookLogoInverse', title: 'Outlook-Kalender-Integration', body: 'Jede Anmeldung erzeugt eine Outlook-Einladung aus no_reply.events@deloitte.de. Änderungen am Event aktualisieren alle Termine automatisch.' },
-    { icon: 'AccountManagement', title: 'Admin Center für Organizer', body: 'Teilnehmer suchen, sortieren, ein-/auschecken, manuell an-/abmelden. Massen-Mails mit RichText-Editor im Deloitte-Design an alle Bestätigten.' },
+    { icon: 'AccountManagement', title: 'Organizer Center', body: 'Teilnehmer suchen, sortieren, ein-/auschecken, manuell an-/abmelden. Massen-Mails mit RichText-Editor im Deloitte-Design an alle Bestätigten.' },
     { icon: 'QRCode', title: 'QR-Code Check-In', body: 'Per Klick generiert die App personalisierte QR-Codes und verschickt sie an alle Teilnehmer. Am Event scannen → Check-In + Live-Statistik.' },
     { icon: 'DietPlanNotebook', title: 'Quiz / Fun-Zone', body: 'Optional eigene Quizfragen pro Event. Teilnehmer beantworten sie in der App. Statistik pro Frage + Top-10-Liste.' },
     { icon: 'Attach', title: 'Dokumente & PDFs', body: 'Beliebig viele Dokumente pro Event (Agenda, Anfahrt, Catering-Menü, Sponsoren). Teilnehmer sehen & laden sie; PDF-Vorschau direkt im Browser.' },
@@ -80,7 +83,7 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
     { icon: 'CheckboxComposite', title: 'Waitlist with auto-promotion', body: 'Event full? Users are added to the waitlist with their position. When someone cancels, the next is promoted automatically — incl. email + Outlook invite.' },
     { icon: 'Mail', title: 'Automated emails in Deloitte design', body: 'Registration, cancellation, waitlist and promotion emails sent automatically. Per-event template overrides (logo, colors, text in EN/DE).' },
     { icon: 'OutlookLogoInverse', title: 'Outlook calendar integration', body: 'Every registration creates an Outlook invite from no_reply.events@deloitte.de. Event changes update all invites automatically.' },
-    { icon: 'AccountManagement', title: 'Admin Center for organizers', body: 'Search, sort, check-in/out participants, register/cancel manually. Mass emails with RichText editor in Deloitte design to all confirmed guests.' },
+    { icon: 'AccountManagement', title: 'Organizer Center', body: 'Search, sort, check-in/out participants, register/cancel manually. Mass emails with RichText editor in Deloitte design to all confirmed guests.' },
     { icon: 'QRCode', title: 'QR-Code check-in', body: 'One click generates personalized QR codes for all participants. Scan at the event to check them in — live statistics show who\'s already there.' },
     { icon: 'DietPlanNotebook', title: 'Quiz / Fun-Zone', body: 'Optional per-event quiz questions. Participants answer in the app. Per-question stats + Top-10 leaderboard.' },
     { icon: 'Attach', title: 'Documents & PDFs', body: 'Unlimited documents per event (agenda, directions, catering menu, sponsors). Participants view & download; PDF preview directly in-browser.' },
@@ -108,22 +111,27 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
   // v31.2: Ablauf als nummerierte Schritt-Zeilen (Titel + Folge) statt einer
   // Aufzählung mit Fettdruck mitten im Satz — man sieht auf einen Blick, wer
   // was tut und was die App daraufhin automatisch erledigt.
+  // v31.94: Auf den heutigen Stand gebracht (Nutzer 24.09.2026: „optimiere
+  // diese Formulierungen gemäß der aktuellen Logik"): Du-Form, neun Wizard-
+  // Schritte, Termine und Programmpunkte, Organizer Center statt Admin Center,
+  // Check-in-Team, Teilnehmer-ID und Walk-in. „Wir helfen beim ersten Mal" ist
+  // raus — DEX ist Self-Service, siehe Kasten darunter.
   const steps: Step[] = isDE ? [
-    { title: 'Ein Organizer legt das Event an', hint: 'Selbst im Wizard — oder wir helfen beim ersten Mal.' },
-    { title: 'Die App legt eine eigene SharePoint-Subsite an', hint: 'Mit Teilnehmerliste nur für dieses Event.' },
-    { title: 'Nur berechtigte Kollegen sehen das Event', hint: 'Je nach Standort- und Zielgruppen-Filter erscheint es in ihrer App.' },
-    { title: 'Teilnehmer melden sich mit einem Klick an', hint: 'Bestätigungsmail und Outlook-Termin kommen automatisch.' },
-    { title: 'Ist das Event voll, geht es auf die Warteliste', hint: 'Bei Absagen rückt automatisch die nächste Person nach.' },
-    { title: 'Der Organizer verwaltet alles im Admin Center', hint: 'Teilnehmer, Massen-Mails, Dokumente, Quiz.' },
-    { title: 'Am Event-Tag: QR-Code-Check-in', hint: 'Mit Live-Statistik. Fertig.' },
+    { title: 'Du legst dein Event selbst an', hint: 'Im Wizard in neun Schritten: Termin und Ort, Plätze und Fristen, Sichtbarkeit, Fragen im Anmeldeformular, Mails und Outlook-Termin. Mehrere Termine oder Programmpunkte gehören gleich dazu.' },
+    { title: 'Die App richtet im Hintergrund alles ein', hint: 'Eigene Teilnehmerliste je Event und Termin, Rechte für dein Team, Mail-Vorlagen im Deloitte-Design.' },
+    { title: 'Nur eingeladene Kolleg:innen sehen das Event', hint: 'Nach Standort, Zielgruppe, Verteilerliste oder einzeln eingeladen — bei ihnen erscheint es unter „Aktuelle Events".' },
+    { title: 'Anmelden mit einem Klick — auch für andere', hint: 'Bestätigungsmail und Outlook-Termin kommen automatisch. Assistenzen melden stellvertretend an; abmelden geht jederzeit unter „Meine Events".' },
+    { title: 'Ist das Event voll, geht es auf die Warteliste', hint: 'Wird ein Platz frei, rückt die nächste Person automatisch nach — mit Mail und Termin.' },
+    { title: 'Du steuerst alles im Organizer Center', hint: 'Teilnehmerliste, Massen-Mails, Dokumente, Hotel- und Zimmerplanung, Auswertungen — und du siehst jederzeit, wer schon angemeldet ist.' },
+    { title: 'Am Event-Tag: Check-in per QR-Code', hint: 'Die QR-Codes kommen per Mail. Dein Check-in-Team scannt oder tippt die Teilnehmer-ID, Walk-ins werden direkt vor Ort angemeldet. Live-Zähler inklusive.' },
   ] : [
-    { title: 'An organizer creates the event', hint: 'Via the wizard — or we help on the first try.' },
-    { title: 'The app creates a dedicated SharePoint subsite', hint: 'With a participant list just for this event.' },
-    { title: 'Only eligible colleagues see the event', hint: 'Based on location and audience filter it shows up in their app.' },
-    { title: 'Participants register with one click', hint: 'Confirmation email and Outlook invite arrive automatically.' },
-    { title: 'If the event is full, they join the waitlist', hint: 'When someone cancels, the next person is promoted automatically.' },
-    { title: 'The organizer manages everything in the Admin Center', hint: 'Attendees, mass emails, documents, quizzes.' },
-    { title: 'On event day: QR-code check-in', hint: 'With live statistics. Done.' },
+    { title: 'You create your event yourself', hint: 'In the wizard, nine steps: date and venue, seats and deadlines, visibility, registration questions, emails and Outlook invite. Multiple sessions or agenda items come along.' },
+    { title: 'The app sets everything up behind the scenes', hint: 'A dedicated participant list per event and session, permissions for your team, email templates in Deloitte design.' },
+    { title: 'Only invited colleagues see the event', hint: 'By office, audience, distribution list or individual invitation — it shows up for them under "Current events".' },
+    { title: 'Register with one click — also on behalf of others', hint: 'Confirmation email and Outlook invite arrive automatically. Assistants register on behalf; cancelling is always possible under "My events".' },
+    { title: 'If the event is full, they join the waitlist', hint: 'When a seat frees up, the next person is promoted automatically — with email and invite.' },
+    { title: 'You run everything in the Organizer Center', hint: 'Participant list, mass emails, documents, hotel and room planning, reports — and you always see who has registered.' },
+    { title: 'On event day: check-in by QR code', hint: 'QR codes arrive by email. Your check-in team scans or types the participant ID, walk-ins are registered on the spot. Live counter included.' },
   ];
 
   const features = isDE ? featuresDE : featuresEN;
@@ -200,6 +208,22 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
           </div>
         </section>
 
+        {/* v31.94: Self-Service — Nutzer-Ansage 24.09.2026: „bei Infos der App
+            soll auch stehen, dass DEX als Self-Service gedacht ist … Fragen
+            über die Fragen-Funktion oben oder in einem der monatlichen Calls
+            oder gerne selber im Handbuch". */}
+        <section className="dex-ui-section">
+          <h4 className="dex-ui-section-title">{isDE ? 'DEX ist Self-Service' : 'DEX is self-service'}</h4>
+          <div className="dex-ui-callout dex-ui-callout--neutral">
+            <span className="dex-ui-callout-icon"><Info size={16} /></span>
+            <span>
+              {isDE
+                ? <>Du legst dein Event <strong>selbst</strong> an und verwaltest es selbst — niemand richtet es für dich ein. Wenn du nicht weiterkommst: Schau im <button type="button" className="dex-ui-textlink" onClick={() => { onClose(); navigate('manual'); }}>Handbuch</button> nach, stell deine Frage über <strong>&bdquo;Hast du Fragen?&ldquo;</strong> oben im Kopf der App, oder bring sie in einen der <strong>monatlichen DEX-Calls</strong> mit.</>
+                : <>You create and run your event <strong>yourself</strong> — nobody sets it up for you. If you get stuck: check the <button type="button" className="dex-ui-textlink" onClick={() => { onClose(); navigate('manual'); }}>manual</button>, ask via <strong>“Have a question?”</strong> at the top of the app, or bring it to one of the <strong>monthly DEX calls</strong>.</>}
+            </span>
+          </div>
+        </section>
+
         {/* Features — Aufklapper, Standard zu */}
         <section className="dex-ui-section">
           <button
@@ -244,8 +268,8 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
           <h4 className="dex-ui-section-title">{isDE ? 'Interesse?' : 'Interested?'}</h4>
           <p className="dex-ui-muted" style={{ margin: 0, fontSize: '0.86rem', lineHeight: 1.6 }}>
             {isDE
-              ? 'Dein Event oder deine Abteilung will DEX nutzen? Schreib uns — der Knopf unten öffnet eine Mail an uns. Wir melden uns schnell und helfen beim Einrichten.'
-              : 'Your event or department wants to use DEX? Drop us a line — the button below opens an email to us. We\'ll respond quickly and help with setup.'}
+              ? 'Dein Event oder deine Abteilung will DEX nutzen? Schreib uns — der Knopf unten öffnet eine Mail an uns. Wir schalten dich als Organizer frei; anlegen kannst du dein Event dann selbst.'
+              : 'Your event or department wants to use DEX? Drop us a line — the button below opens an email to us. We\'ll set you up as an organizer; creating the event is then in your hands.'}
           </p>
           <p className="dex-ui-muted" style={{ margin: '16px 0 0', fontSize: '0.76rem', textAlign: 'center' }}>
             {isDE ? 'Entwickelt von ' : 'Built by '}

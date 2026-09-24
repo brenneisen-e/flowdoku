@@ -236,6 +236,7 @@ Zustände als zusätzliche Klasse: `is-active`, `is-open`, `is-disabled`,
 | `dex-ui-btn-sm` | Zusatzklasse für kompakte `.btn` in Zeilen und Modalen |
 | `dex-ui-iconbtn` | Runder Symbol-Knopf ohne Fläche (X, Stift, Kopieren). `--danger` färbt rot bei Hover, `--green` grün |
 | `dex-ui-textbtn` | Textknopf („Alle anzeigen", „Zurücksetzen"). `--muted` grau, `--danger` rot |
+| `dex-ui-textlink` | Link IM Fließtext (`<button>`): erbt Schrift und Farbe des Satzes, grau unterstrichen, Hover dunkler. Für ein Wort, das etwas öffnet („Self-Service-App" → „Über die App") |
 
 ### Listen und Zeilen
 

@@ -10,6 +10,10 @@ import { useLanguage } from '../context/LanguageContext';
 import { useCurrentUser } from '../context/UserContext';
 import { APP_VERSION } from '../version';
 import InquiryModal from './InquiryModal';
+// v31.94: „Self-Service-App" im Begrüßungstext öffnet „Über die App" —
+// derselbe Dialog wie im Kopf, mit Tutorial-Einstieg.
+import LandingInfoModal from './LandingInfoModal';
+import { useTutorial } from './tutorial/TutorialGuide';
 // v22: Archivierungs-Info für Admins (rechts auf der Landing Page) —
 // zählt beim App-Start die archivreifen Zeilen abgelaufener Events und
 // bietet das Verschieben ins admin-only DEX_Archive mit Fortschrittsmodal.
@@ -43,6 +47,11 @@ export default function LandingPage(): React.ReactElement {
   // v13.3: Inquiry-Modal lebt jetzt komplett in der wiederverwendbaren
   // InquiryModal-Komponente — eigene States hier entfallen.
   const [showInquiry, setShowInquiry] = React.useState(false);
+  // v31.94: „Über die App" aus dem Begrüßungstext (Nutzer 24.09.2026: „bei
+  // Self-Service App möchte ich, dass es grau unterstrichen und klickbar ist
+  // und dann kommt man zu den Infos der App").
+  const [showAbout, setShowAbout] = React.useState(false);
+  const { openTutorial } = useTutorial();
   // v31.9: Der Hover-State der „DEX für dein Event nutzen"-Box (v26) ist weg —
   // den Hover macht jetzt `dex-ui-card--hover`. Ein State, der nur die Optik
   // umschaltet, rendert die ganze Seite bei jeder Mausbewegung neu.
@@ -907,11 +916,20 @@ export default function LandingPage(): React.ReactElement {
               {greeting}{firstName ? <>, <strong>{firstName}</strong></> : ''}.
             </h1>
             <p>
-              {isDe
-                ? <>Willkommen bei <strong>DEX</strong>. Unsere neue App für die Organisation von <span style={{ whiteSpace: 'nowrap' }}>Deloitte Events</span>. Von der Anmeldung, bis zum Check-in. Alles an einer Stelle.</>
-                : <>Welcome to <strong>DEX</strong>. Our new app for organising <span style={{ whiteSpace: 'nowrap' }}>Deloitte events</span>. From registration to check-in. Everything in one place.</>}
+              {(() => {
+                const link = (
+                  <button type="button" className="dex-ui-textlink" onClick={() => setShowAbout(true)}
+                    title={isDe ? 'Was DEX ist und wie ein Event damit läuft' : 'What DEX is and how an event runs with it'}>
+                    {isDe ? 'Self-Service-App' : 'self-service app'}
+                  </button>
+                );
+                return isDe
+                  ? <>Willkommen bei <strong>DEX</strong>. Unsere neue {link} für die Organisation von <span style={{ whiteSpace: 'nowrap' }}>Deloitte Events</span>. Von der Anmeldung, bis zum Check-in. Alles an einer Stelle.</>
+                  : <>Welcome to <strong>DEX</strong>. Our new {link} for organising <span style={{ whiteSpace: 'nowrap' }}>Deloitte events</span>. From registration to check-in. Everything in one place.</>;
+              })()}
             </p>
           </div>
+          <LandingInfoModal open={showAbout} locale={isDe ? 'de' : 'en'} onClose={() => setShowAbout(false)} onStartTutorial={openTutorial} />
           {/* v31.9: Was heute zu tun ist, steht vor dem Start-Knopf. Bis v31.8
               lagen der Check-in-Kasten mit QR und Einlassnummer und
               &bdquo;Du bist angemeldet&ldquo; ganz unten, hinter dem
