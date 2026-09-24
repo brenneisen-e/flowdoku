@@ -135,6 +135,16 @@ export const DEX_UI_CSS = `
 .dex-ui-textbtn--danger:hover { background: var(--dex-red-light, #fce8e6); }
 .dex-ui-textbtn:disabled { opacity: 0.5; cursor: not-allowed; background: none; }
 .dex-ui-textbtn:focus-visible { outline: 2px solid ${G}; outline-offset: 1px; }
+/* v31.94: Link IM Fließtext — erbt Schrift und Farbe des Satzes, grau
+   unterstrichen, bei Hover dunkler. Für Wörter, die etwas öffnen, ohne wie
+   ein Knopf aus dem Satz zu springen („Self-Service-App" auf der Startseite). */
+.dex-ui-textlink {
+  background: none; border: none; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer;
+  text-decoration: underline; text-decoration-color: ${G400}; text-underline-offset: 3px; text-decoration-thickness: 1.5px;
+  transition: color ${EASE}, text-decoration-color ${EASE};
+}
+.dex-ui-textlink:hover { color: ${G800}; text-decoration-color: ${G800}; }
+.dex-ui-textlink:focus-visible { outline: 2px solid ${G}; outline-offset: 2px; border-radius: 3px; }
 /* Kompakte Variante der bestehenden .btn-Klassen — braucht !important, weil
    .dex-modal-overlay .btn seine Maße ebenfalls mit !important setzt. */
 .dex-ui-btn-sm { padding: 6px 14px !important; font-size: 0.82rem !important; border-radius: 10px !important; }
