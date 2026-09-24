@@ -2389,6 +2389,44 @@ export default function CheckInPage(): React.ReactElement {
     } finally { setUndoBusyKey(''); }
   };
 
+  /**
+   * v31.93: „Auschecken" direkt an der Trefferzeile (Nutzer 24.09.2026: „muss
+   * da nicht stehen Status Eingecheckt und Auschecken als Button" — der
+   * Knopf „✓ Eingecheckt" neben der Pille „Eingecheckt" war doppelt und tat
+   * nichts).
+   *
+   * Der vorherige Status ist für eine Zeile von einem anderen Gerät nicht
+   * gemerkt (s. `serverCheckIns`). Er wird aber nicht geraten, sondern aus der
+   * Zeile abgeleitet: Trägt sie eine gedruckte QR-Nummer (`QrSentId`), war sie
+   * „QR versendet", sonst „Angemeldet". Ist der Check-in in DIESER Sitzung
+   * passiert, gewinnt der gemerkte Eintrag — er kennt auch die mitgeschriebene
+   * Trikot-Ausgabe. Der Rest ist derselbe Weg wie „Rückgängig" in „Letzte
+   * Check-ins" (`undoCheckIn`): Status zurück, Cache nachgeführt, Zähler korrigiert.
+   */
+  const checkOutFromSearch = async (reg: SPRegistration): Promise<void> => {
+    if (!eventService || undoBusyKey || !nameSearchEventId) return;
+    const ev = events.find(e => e.id === nameSearchEventId);
+    const sub = (ev && ev.subsiteUrl) || '';
+    if (!sub) return;
+    const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || reg.ParticipantEmail || '-');
+    const known = recentRef.current.filter(x => x.regId === reg.Id && x.subsiteUrl === sub && (x.kind === 'checkin' || !x.kind)
+      && (agendaMode ? x.agendaItemId === agendaPointId : !x.agendaItemId))[0];
+    const label = agendaMode && agendaPoint ? agendaPoint.title : '';
+    const ok = await confirmDialog(
+      isDe
+        ? (agendaMode ? `Anwesenheit von „${name}" an „${label}" zurücknehmen?` : `„${name}" auschecken? Der Status geht zurück auf „${qrSentIdOf(reg) !== null ? 'QR versendet' : 'Angemeldet'}“.`)
+        : (agendaMode ? `Remove the presence of "${name}" at "${label}"?` : `Check out "${name}"? The status goes back to "${qrSentIdOf(reg) !== null ? 'QR sent' : 'Registered'}".`),
+      { confirmLabel: isDe ? (agendaMode ? 'Zurücknehmen' : 'Auschecken') : (agendaMode ? 'Remove' : 'Check out') }
+    );
+    if (!ok) return;
+    await undoCheckIn(known || {
+      key: `row-${sub}-${reg.Id}-${agendaMode ? agendaPointId : ''}`,
+      at: new Date().toISOString(), name, regId: reg.Id, eventId: nameSearchEventId, subsiteUrl: sub,
+      prevStatus: qrSentIdOf(reg) !== null ? 'QR versendet' : 'Angemeldet',
+      agendaItemId: agendaMode ? agendaPointId : undefined, agendaLabel: label || undefined, kind: 'checkin',
+    });
+  };
+
   const cancelCheckIn = (): void => {
     setPendingCheckIn(null);
     setCardShirtSize(''); // v31.4: nächste Person, nächste Größe
@@ -3672,6 +3710,26 @@ export default function CheckInPage(): React.ReactElement {
                           <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {reg.ParticipantEmail}
                           </div>
+                          {/* v31.93: Wann und durch wen eingecheckt — aus den
+                              Audit-Spalten der Zeile (Event-Status) bzw. der
+                              Marke am Punkt (Programmpunkt-Modus). Nutzer
+                              24.09.2026: „die Info da auch stehen, wann sie
+                              eingecheckt wurde und von wem (Vorname Nachname)". */}
+                          {alreadyIn && (() => {
+                            const mark = agendaMode && agendaPointId ? parseAgendaMarks(reg.AgendaCheckIns)[agendaPointId] : null;
+                            const at = mark ? String(mark.at || '') : String(reg.CheckedInDate || '');
+                            const by = String((mark ? mark.by : reg.CheckedInByName) || '').trim();
+                            if (!at && !by) return null;
+                            const d = at ? new Date(at) : null;
+                            const sameDay = !!d && !isNaN(d.getTime()) && d.toDateString() === new Date().toDateString();
+                            const when = !d || isNaN(d.getTime()) ? '' : sameDay ? formatMarkTime(at) : d.toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+                            return (
+                              <div style={{ fontSize: '0.72rem', color: 'var(--dex-green-dark, #4a7c1f)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 2 }}>
+                                {agendaMode ? (isDe ? 'Anwesend' : 'Present') : (isDe ? 'Eingecheckt' : 'Checked in')}
+                                {when ? ` ${when}` : ''}{by ? ` · ${isDe ? 'durch' : 'by'} ${by}` : ''}
+                              </div>
+                            );
+                          })()}
                           {/* v31.4: Läuft die Nummer aus der QR-Mail von der
                               heutigen laufenden Nummer auseinander, stehen
                               beide da — sonst sucht der Helfer die Zahl vom
@@ -3735,15 +3793,33 @@ export default function CheckInPage(): React.ReactElement {
                         }}>{noShowAtPoint && status !== 'No-Show' ? (isDe ? 'No-Show hier' : 'No-show here') : status}</span>
                         {/* v23.28: Check-in UND No-Show nebeneinander. */}
                         <div style={{ display: 'flex', gap: 6, flexShrink: 0, flex: isMobile ? '1 1 100%' : undefined }}>
-                          <button
-                            type="button"
-                            className="btn btn-primary"
-                            style={{ fontSize: '0.78rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
-                            disabled={alreadyIn || cancelled || isProcessing}
-                            onClick={() => startManualCheckInFromSearch(reg)}
-                          >
-                            {alreadyIn ? (agendaMode ? (isDe ? '✓ Anwesend' : '✓ Present') : '✓ Eingecheckt') : cancelled ? 'Abgemeldet' : (agendaMode ? (isDe ? 'Anwesend erfassen' : 'Record') : 'Einchecken')}
-                          </button>
+                          {/* v31.93: Wer drin ist, bekommt „Auschecken" statt eines
+                              toten „✓ Eingecheckt"-Knopfs — den Status sagt die
+                              Pille daneben schon. */}
+                          {alreadyIn ? (
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              style={{ fontSize: '0.78rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                              disabled={!!undoBusyKey || isProcessing}
+                              onClick={() => { void checkOutFromSearch(reg); }}
+                              title={isDe
+                                ? (agendaMode ? 'Anwesenheit an diesem Punkt zurücknehmen' : `Status zurück auf „${qrSentIdOf(reg) !== null ? 'QR versendet' : 'Angemeldet'}“`)
+                                : (agendaMode ? 'Remove the presence at this point' : 'Revert the check-in')}
+                            >
+                              {undoBusyKey ? '…' : agendaMode ? (isDe ? 'Zurücknehmen' : 'Remove') : (isDe ? 'Auschecken' : 'Check out')}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              style={{ fontSize: '0.78rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                              disabled={cancelled || isProcessing}
+                              onClick={() => startManualCheckInFromSearch(reg)}
+                            >
+                              {cancelled ? 'Abgemeldet' : (agendaMode ? (isDe ? 'Anwesend erfassen' : 'Record') : 'Einchecken')}
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="btn btn-secondary"

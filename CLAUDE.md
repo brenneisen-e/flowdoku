@@ -370,6 +370,20 @@ Check B (nach Frist) in `services/events/registration.ts`; ohne Flag oder
 ohne Eintrag im Team ändert sich nichts. Wer eine neue Stelle baut, die am
 Event-Tag jemanden einträgt, nimmt dieses Flag und keinen Sonderpfad.
 
+**Bei QR-Versand auf der Klammer liegen Versand und Check-in auf der
+KLAMMER-Liste — die Termin-Listen wissen davon nichts (v31.93).** Die
+konsolidierten Kacheln lasen bis v31.93 nur die Termin-Listen plus die
+abgemeldeten Klammer-Zeilen: „QR versendet" 0, „Eingecheckt" 0, obwohl
+längst eingecheckt wurde. Seither zählen Klammer-Zeilen mit „QR versendet"/
+„Eingecheckt" mit, wenn die Person auf einem Termin aktiv ist (dieselbe
+Rechnung wie `klammerAktivEmails` am Check-in und `logic/eventTabs`; ohne
+diese Bedingung kämen die Schattenzeilen ohne Termin wieder dazu). Die
+Tabelle hat dafür die Spalte „Hauptevent" (`activeParentRegOf`). Wer eine
+Auswertung über QR-Versand oder Anwesenheit baut: BEIDE Listen lesen, die
+Klammer-Zeile über dieselbe Aktiv-Bedingung filtern. Und am Check-in: Der
+vorherige Status einer fremden Zeile wird nicht geraten, sondern aus
+`QrSentId` abgeleitet (`checkOutFromSearch`).
+
 **Eine Person umbenennen heißt: an ALLEN Stellen (v31.91).** Die Adresse ist
 der einzige Schlüssel; `services/events/personRename.ts` tauscht sie in
 DEX_Roles, in `Organizer`/`OrganizerEmail` (parallele `;`-Listen — der Name
