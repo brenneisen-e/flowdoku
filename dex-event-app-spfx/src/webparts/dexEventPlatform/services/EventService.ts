@@ -42,6 +42,7 @@ import * as participantsRegistry from './events/participantsRegistry';
 import * as teamJoinRequests from './events/teamJoinRequests';
 import * as editPresence from './events/editPresence';
 import * as seats from './events/seats';
+import * as personRename from './events/personRename';
 import * as overbooking from './events/overbooking';
 import * as waitlist from './events/waitlist';
 import * as regListRepair from './events/regListRepair';
@@ -2497,6 +2498,15 @@ export class EventService {
    *  Vollständigkeits-Check gegen die security-getrimmte Item-Abfrage. */
   public async getRegistrationListItemCount(subsiteUrl: string): Promise<number> {
     return seats.getListItemCount(this, subsiteUrl, REG_LIST_NAME);
+  }
+
+  /** v31.91: Person umbenennen — alte gegen neue Adresse/Namen an allen Stellen (s. events/personRename). */
+  public async renamePerson(
+    args: personRename.PersonRenameArgs,
+    opts: { dryRun: boolean },
+    onProgress?: (label: string) => void,
+  ): Promise<personRename.PersonRenameResult> {
+    return personRename.renamePerson(this, args, opts, onProgress);
   }
 
   /** v31.86: `null` = Rollenliste nicht lesbar (s. organizer.getRoleEmailsChecked). */
