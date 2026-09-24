@@ -741,7 +741,10 @@ Reihenfolge Pflicht→Optional→Fein, Frageform je Fragetyp, Formulierung als
 Frage/Aussage, was nicht verändert werden darf), dann die Klassen — keine
 neue Karte mit eigenem Inline-Hover-State. Neue Klassen: in `dexUi.ts` UND im
 Leitfaden eintragen. 57 Dateien wurden in v31.2 danach parallel umgebaut; der
-Leitfaden ist das, was sie zusammenhält.
+Leitfaden ist das, was sie zusammenhält. **Das Stylesheet in `dexUi.ts` ist
+EIN Template-Literal** — ein Backtick in einem CSS-Kommentar dort beendet den
+String, und `tsc` meldet „',' expected" mitten in der Datei (v31.95).
+Klassennamen in Kommentaren in dieser Datei ohne Backticks schreiben.
 
 **No-Show hat seit v31.2 zwei Ebenen — Event-Status und Punkt-Marke.**
 `Status = 'No-Show'` gilt fürs ganze Event; ein No-Show an EINEM
