@@ -1305,7 +1305,8 @@ export class EventService {
     // zurückkamen und legitime Assistenzen mit „nicht berechtigt" ablehnten.
     // Gilt NUR für Check A (Berechtigung) — NICHT für die Deadline (Assistenz
     // darf wie ein normaler User nicht nach Frist anmelden).
-    clientAssistantAllowed: boolean = false
+    clientAssistantAllowed: boolean = false,
+    walkIn: boolean = false
   // v23.9: Statt nacktem boolean ein konkreter Grund bei Misserfolg, damit die
   // UI nicht mehr pauschal „bereits registriert" anzeigt (irreführend, wenn der
   // echte Grund Berechtigung/Deadline/Insert-Fehler war).
@@ -1313,7 +1314,7 @@ export class EventService {
     // abgelehnten Insert (z.B. „The field or property 'X' does not exist") —
     // der `reason` bleibt maschinenlesbar, die Ursache geht nicht verloren.
   ): Promise<{ ok: boolean; reason?: 'not-allowed' | 'deadline' | 'insert-failed' | 'error'; detail?: string }> {
-    return registration.registerForEvent(this, subsiteUrl, firstName, surname, participantEmail, customData, status, customFieldMap, starterType, preferredStarterType, registeredByName, registeredByEmail, proxyConsent, actorIsEventOrganizer, clientAssistantAllowed);
+    return registration.registerForEvent(this, subsiteUrl, firstName, surname, participantEmail, customData, status, customFieldMap, starterType, preferredStarterType, registeredByName, registeredByEmail, proxyConsent, actorIsEventOrganizer, clientAssistantAllowed, walkIn);
   }
 
   public async registerTeamMember(

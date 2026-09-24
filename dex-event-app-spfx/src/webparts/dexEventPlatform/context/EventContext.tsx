@@ -762,7 +762,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     // Kalender-Events MEHRFACH an (Tage + Schatten-Klammer) und lud damit
     // pro Klick mehrere Male den kompletten Bestand; genau dieselbe Bremse
     // wie v29.77 im Wizard. Schleifen skippen und refreshen EINMAL am Ende.
-    opts?: { skipShadowParent?: boolean; suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean; actorAllowedAsAssistant?: boolean; skipReload?: boolean; bundledItems?: BundledItem[] }
+    opts?: { skipShadowParent?: boolean; suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean; actorAllowedAsAssistant?: boolean; walkIn?: boolean; skipReload?: boolean; bundledItems?: BundledItem[] }
   ): Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste'; reason?: string }> {
     // v17.25: Demo-Showcase-Event → No-Op, kein SP-Roundtrip. Die Register-
     // Seite blockt den Submit ohnehin mit einem Demo-Hinweis; dieser Guard
@@ -1064,7 +1064,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       const r = await eventService.registerForEvent(
         subsiteUrl, firstNameToUse, lastNameToUse, emailToUse, customData, status, fieldMap,
         effectiveStarterType, preferredStarterType, actorName, actorEmail, proxyConsentStr,
-        actorIsEventOrganizer, !!opts?.actorAllowedAsAssistant
+        actorIsEventOrganizer, !!opts?.actorAllowedAsAssistant, !!opts?.walkIn
       );
       success = r.ok;
       failReason = r.reason;
