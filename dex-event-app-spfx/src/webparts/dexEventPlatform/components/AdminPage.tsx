@@ -26,6 +26,7 @@ import { AlertCircle, Check, Plus, Search, Users } from './Icons';
 // Dialog offen war.
 import { cx, ensureDexUiStyles } from './dexUi';
 import { buildEventTabs } from './admin/logic/eventTabs';
+import { activeParentRegOf } from './admin/logic/parentRegs';
 import { InfoTooltip } from './InfoTooltip';
 import B2RunBibImportModal from './admin/B2RunBibImportModal';
 import B2RunTodoModal from './admin/B2RunTodoModal';
@@ -2134,6 +2135,19 @@ export default function AdminPage(): React.ReactElement {
       if (cs === 'id') return (a.earliestRegistrationTs - b.earliestRegistrationTs) * dir;
       // v31.75: Spalte „Registriert am" — derselbe Schlüssel, ausdrücklich benannt.
       if (cs === 'registeredAt') return (a.earliestRegistrationTs - b.earliestRegistrationTs) * dir;
+      // v31.93: Spalte „Hauptevent" — Status der aktiven Klammer-Zeile.
+      // Eingecheckt vor QR versendet vor Angemeldet vor „keine Zeile", damit
+      // ein Klick die Eingecheckten nach oben holt (QR-Versand und Check-in
+      // laufen bei einem Klammer-Event auf DIESER Liste, nicht auf den Terminen).
+      if (cs === 'parentStatus') {
+        const rank = (row: ConsolidatedRow): number => {
+          // Dieselbe Zeile wie die Tabellenzelle (aktive, neueste Klammer-Zeile) —
+          // `parentRegOf` oben nimmt IRGENDEINE Zeile, auch eine abgemeldete.
+          const st = (activeParentRegOf(registrations, row.emailKey) || {}).Status || '';
+          return st === 'Eingecheckt' ? 3 : st === 'QR versendet' ? 2 : st === 'Angemeldet' ? 1 : 0;
+        };
+        return (rank(a) - rank(b)) * dir;
+      }
       if (cs === 'vorname') return a.vorname.localeCompare(b.vorname, 'de') * dir;
       if (cs === 'nachname') return a.nachname.localeCompare(b.nachname, 'de') * dir;
       if (cs === 'email') return a.email.localeCompare(b.email) * dir;

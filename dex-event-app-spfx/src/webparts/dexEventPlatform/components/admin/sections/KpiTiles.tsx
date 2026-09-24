@@ -35,13 +35,31 @@ export const KpiTiles: React.FC<KpiTilesProps> = (p) => {
         // beziehen sich die Stat-Cards auf die konsolidierten Teilnehmer
         // über alle Sub-Events. Die Hauptevent-Liste selbst hat hier nur
         // Alt-Daten und würde das echte Bild verfälschen.
+        // v31.93: QR-Versand und Check-in laufen seit v31.74/v31.75 auch AUF DER
+        // KLAMMER (Nutzer-Befund 24.09.2026: „ich hab beim Hauptevent QR-Codes
+        // versendet und die werden auch eingecheckt — aber die Kacheln zeigen
+        // 0"). Die Klammer-Zeilen mit „QR versendet"/„Eingecheckt" zählen jetzt
+        // mit — aber nur für Personen, die auf einem Termin aktiv sind, sonst
+        // zählten die Schattenzeilen der überall Abgemeldeten (v31.89) wieder.
+        const activeSubEmails = new Set<string>();
+        if (isConsolidatedMode) {
+          for (const rows of Object.values(subEventRegsByEventId)) {
+            for (const r of rows) {
+              if (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt') {
+                const em = (r.ParticipantEmail || '').toLowerCase().trim();
+                if (em) activeSubEmails.add(em);
+              }
+            }
+          }
+        }
         const consolidatedRegs: SPRegistration[] = isConsolidatedMode
           // v22.63: Klammer-eigene Abmeldungen (Absagen auf der Klammer-Subsite)
           // in die KPI „Abgemeldet" mitzählen, damit KPI und Abmeldungs-Liste
-          // übereinstimmen. Nur Abgemeldet-Zeilen, um die Aktiv-Zahlen nicht zu
-          // verfälschen.
+          // übereinstimmen. Aktiv-Zahlen bleiben Sache der Termine — außer QR
+          // und Check-in (s. oben).
           ? ([] as SPRegistration[]).concat(
-              registrations.filter(r => r.Status === 'Abgemeldet'),
+              registrations.filter(r => r.Status === 'Abgemeldet'
+                || ((r.Status === 'QR versendet' || r.Status === 'Eingecheckt') && activeSubEmails.has((r.ParticipantEmail || '').toLowerCase().trim()))),
               ...Object.values(subEventRegsByEventId),
             )
           : [];

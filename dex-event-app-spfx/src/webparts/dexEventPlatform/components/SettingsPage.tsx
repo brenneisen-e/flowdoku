@@ -234,6 +234,43 @@ export default function SettingsPage(): React.ReactElement {
   const [aliasHints, setAliasHints] = React.useState<Array<{ name?: string; email: string; spEmail: string }>>([]);
   const [renameForm, setRenameForm] = React.useState<{ oldEmail: string; newEmail: string; displayName: string; first: string; last: string }>({ oldEmail: '', newEmail: '', displayName: '', first: '', last: '' });
   const [renameBusy, setRenameBusy] = React.useState<'' | 'plan' | 'run'>('');
+  // 2. Fassung: Dialog statt Formular. „Umbenennen" an der Zeile öffnet ihn
+  // mit der alten Person; die neue kommt aus der Personensuche (Adresse UND
+  // Name aus dem Konto — nichts wird getippt).
+  const [renameTarget, setRenameTarget] = React.useState<{ email: string; name: string } | null>(null);
+  const [renameQuery, setRenameQuery] = React.useState('');
+  const [renameIntl, setRenameIntl] = React.useState(false);
+  const [renameHits, setRenameHits] = React.useState<Array<{ email: string; displayName: string; location?: string; jobTitle?: string }>>([]);
+  const [renameSearching, setRenameSearching] = React.useState(false);
+  const renameTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const renameSearch = (q: string, intl: boolean): void => {
+    if (renameTimerRef.current) clearTimeout(renameTimerRef.current);
+    const qq = q.trim();
+    if (qq.length < 2) { setRenameHits([]); return; }
+    renameTimerRef.current = setTimeout(() => {
+      setRenameSearching(true);
+      searchUsers(qq, intl).then(r => setRenameHits(r.slice(0, 8))).catch(() => setRenameHits([])).then(() => setRenameSearching(false));
+    }, 350);
+  };
+  const openRename = (person: { email: string; name: string }, vorschlag?: string): void => {
+    setRenameTarget(person);
+    setRenameForm({ oldEmail: person.email, newEmail: '', displayName: '', first: '', last: '' });
+    setRenamePlan(null); setRenameResult(null); setRenameHits([]); setRenameIntl(false);
+    setRenameQuery(vorschlag || '');
+    if (vorschlag) renameSearch(vorschlag, false);
+  };
+  const closeRename = (): void => {
+    if (renameBusy) return;
+    setRenameTarget(null); setRenameHits([]); setRenameQuery(''); setRenamePlan(null);
+  };
+  const chooseRenameHit = (h: { email: string; displayName: string }): void => {
+    const dn = (h.displayName || '').trim();
+    const parts = dn.indexOf(',') >= 0 ? dn.split(',').map(s => s.trim()) : dn.split(/\s+/);
+    const last = dn.indexOf(',') >= 0 ? (parts[0] || '') : (parts.length > 1 ? parts[parts.length - 1] : dn);
+    const first = dn.indexOf(',') >= 0 ? (parts[1] || '') : (parts.length > 1 ? parts.slice(0, -1).join(' ') : '');
+    setRenameForm(f => ({ ...f, newEmail: h.email, displayName: dn, first, last }));
+    setRenamePlan(null); setRenameResult(null);
+  };
   const [renameLabel, setRenameLabel] = React.useState('');
   const [renamePlan, setRenamePlan] = React.useState<PersonRenameResult | null>(null);
   const [renameResult, setRenameResult] = React.useState<PersonRenameResult | null>(null);
@@ -745,6 +782,18 @@ export default function SettingsPage(): React.ReactElement {
             {/* v28.44: Onboarding-Mail nachträglich verschicken — für alle,
                 die vor dieser Version Organizer wurden (und damals keine
                 bekommen haben) oder die sie nicht mehr finden. */}
+            {/* v31.91: Umbenennen — neue Adresse/Name nach Heirat, an allen Stellen. */}
+            {!readOnly && (
+              <button
+                type="button"
+                className="dex-ui-textbtn"
+                onClick={() => openRename({ email: r.userEmail, name: r.userName })}
+                title={isDe ? 'Person umbenennen (neue E-Mail-Adresse, neuer Name — an allen Stellen)' : 'Rename person (new email, new name — everywhere)'}
+                style={{ fontSize: '0.76rem', padding: '2px 6px', marginRight: 4 }}
+              >
+                {isDe ? 'Umbenennen' : 'Rename'}
+              </button>
+            )}
             {!readOnly && (r.role === 'Organizer' || r.role === 'Admin' || r.role === 'F&A') && (
               <button
                 onClick={() => { void resendOnboarding(r.id, r.userEmail, r.userName, r.role as 'Organizer' | 'Admin' | 'F&A'); }}
@@ -1024,80 +1073,21 @@ export default function SettingsPage(): React.ReactElement {
               </button>
             </div>
 
-            {/* v31.91: Person umbenennen — Heirat, neue Adresse. Vorschau
-                zuerst (Trockenlauf mit Zahl je Stelle), dann Schreiben. Die
-                Alias-Treffer aus „Rechte prüfen" stehen als Vorbelegung bereit. */}
-            <div style={{
-              padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: '0.85rem',
-              background: 'var(--dex-gray-50, #f7f7f7)', border: '1px solid var(--dex-gray-200)',
-            }}>
-              <strong>{isDe ? 'Person umbenennen (neue E-Mail-Adresse, neuer Name)' : 'Rename a person (new email address, new name)'}</strong>
-              <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', margin: '2px 0 10px', lineHeight: 1.45 }}>
-                {isDe
-                  ? 'Nach Heirat oder Adresswechsel: tauscht die alte gegen die neue Adresse in DEX_Roles, in den Organizer-, Co-Organizer-, Check-in- und Test-Team-Feldern aller Events, im Teilnehmer-Register und in den Teilnehmerlisten (eigene Anmeldungen sowie „Registriert von"). Erst die Vorschau, dann das Schreiben. SharePoint-Rechte bleiben — es ist dasselbe Konto.'
-                  : 'After marriage or an address change: swaps the old for the new address in DEX_Roles, in the organizer, co-organizer, check-in and test-team fields of all events, in the participant registry and in the participant lists (own registrations and “registered by”). Preview first, then write. SharePoint rights stay — it is the same account.'}
-              </div>
-              {aliasHints.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-                  {aliasHints.map(a => (
-                    <button key={a.email} type="button" className="btn btn-outline dex-ui-btn-sm"
-                      onClick={() => {
-                        const nm = (a.name || '').trim();
-                        const parts = nm.indexOf(',') >= 0 ? nm.split(',').map(s => s.trim()) : [];
-                        setRenameForm({ oldEmail: a.email, newEmail: a.spEmail, displayName: nm, first: parts[1] || '', last: parts[0] || '' });
-                        setRenamePlan(null); setRenameResult(null);
-                      }}>
-                      {isDe ? 'Übernehmen: ' : 'Use: '}{a.name || a.email} → {a.spEmail}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8, marginBottom: 10 }}>
-                <input className="form-input" placeholder={isDe ? 'Alte E-Mail' : 'Old email'} value={renameForm.oldEmail} onChange={e => { setRenameForm(f => ({ ...f, oldEmail: e.target.value })); setRenamePlan(null); }} disabled={!!renameBusy} />
-                <input className="form-input" placeholder={isDe ? 'Neue E-Mail' : 'New email'} value={renameForm.newEmail} onChange={e => { setRenameForm(f => ({ ...f, newEmail: e.target.value })); setRenamePlan(null); }} disabled={!!renameBusy} />
-                <input className="form-input" placeholder={isDe ? 'Anzeigename (Nachname, Vorname)' : 'Display name (Last, First)'} value={renameForm.displayName} onChange={e => { setRenameForm(f => ({ ...f, displayName: e.target.value })); setRenamePlan(null); }} disabled={!!renameBusy} />
-                <input className="form-input" placeholder={isDe ? 'Vorname' : 'First name'} value={renameForm.first} onChange={e => { setRenameForm(f => ({ ...f, first: e.target.value })); setRenamePlan(null); }} disabled={!!renameBusy} />
-                <input className="form-input" placeholder={isDe ? 'Nachname (neu)' : 'Last name (new)'} value={renameForm.last} onChange={e => { setRenameForm(f => ({ ...f, last: e.target.value })); setRenamePlan(null); }} disabled={!!renameBusy} />
-              </div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <button type="button" className="btn btn-secondary" disabled={!!renameBusy || !renameGueltig()} onClick={() => { void runRenamePlan(); }} style={{ fontSize: '0.82rem' }}>
-                  {renameBusy === 'plan' ? (isDe ? `Vorschau … ${renameLabel}` : `Preview … ${renameLabel}`) : (isDe ? 'Vorschau (nichts wird geschrieben)' : 'Preview (nothing is written)')}
-                </button>
-                {renamePlan && (
-                  <button type="button" className="btn btn-primary" disabled={!!renameBusy} onClick={() => { void runRename(); }} style={{ fontSize: '0.82rem' }}>
-                    {renameBusy === 'run' ? (isDe ? `Schreibt … ${renameLabel}` : `Writing … ${renameLabel}`) : (isDe ? 'Jetzt umbenennen' : 'Rename now')}
+            {/* v31.91 (2. Fassung, Nutzer-Ansage 24.09.2026: „einfach neben der
+                Person einen Button ‚Umbenennen‘, dann Personensuche"): Der Knopf
+                sitzt an der Zeile; hier stehen nur die Alias-Treffer aus
+                „Rechte prüfen" als Abkürzung — sie öffnen denselben Dialog. */}
+            {aliasHints.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16, alignItems: 'center', fontSize: '0.82rem' }}>
+                <span style={{ color: 'var(--dex-gray-600)' }}>{isDe ? 'Andere Schreibweise am Konto:' : 'Different spelling on the account:'}</span>
+                {aliasHints.map(a => (
+                  <button key={a.email} type="button" className="btn btn-outline dex-ui-btn-sm"
+                    onClick={() => { const row = roles.find(x => (x.userEmail || '').trim().toLowerCase() === a.email.toLowerCase()); openRename({ email: a.email, name: (row && row.userName) || a.name || a.email }, a.spEmail); }}>
+                    {isDe ? 'Umbenennen: ' : 'Rename: '}{a.name || a.email} → {a.spEmail}
                   </button>
-                )}
+                ))}
               </div>
-              {(renamePlan || renameResult) && (() => {
-                const r = (renameResult || renamePlan) as PersonRenameResult;
-                const zeile = (label: string, b: PersonRenameBereichLike): string =>
-                  r.dryRun
-                    ? `${label}: ${b.hits}${b.unreadable ? (isDe ? ` (${b.unreadable} nicht lesbar)` : ` (${b.unreadable} unreadable)`) : ''}`
-                    : `${label}: ${b.written}/${b.hits}${b.failed ? (isDe ? `, ${b.failed} fehlgeschlagen` : `, ${b.failed} failed`) : ''}${b.unreadable ? (isDe ? `, ${b.unreadable} nicht lesbar` : `, ${b.unreadable} unreadable`) : ''}`;
-                const fehler = r.roles.failed + r.eventFields.failed + r.eventPiggybacks.failed + r.registry.failed + r.registrations.failed + r.registeredBy.failed;
-                return (
-                  <div style={{ marginTop: 10, fontSize: '0.8rem', color: (!r.dryRun && fehler > 0) ? 'var(--dex-red, #c00)' : 'var(--dex-gray-700)', lineHeight: 1.5 }}>
-                    <strong>{r.dryRun ? (isDe ? 'Vorschau — gefundene Stellen:' : 'Preview — places found:') : (isDe ? 'Umbenannt:' : 'Renamed:')}</strong>{' '}
-                    {[
-                      zeile(isDe ? 'Rollen' : 'Roles', r.roles),
-                      zeile(isDe ? 'Event-Felder' : 'Event fields', r.eventFields),
-                      zeile(isDe ? 'Teams in Events' : 'Teams in events', r.eventPiggybacks),
-                      zeile(isDe ? 'Teilnehmer-Register' : 'Participant registry', r.registry),
-                      zeile(isDe ? 'Anmeldungen' : 'Registrations', r.registrations),
-                      zeile(isDe ? 'Registriert/Abgemeldet von' : 'Registered/cancelled by', r.registeredBy),
-                    ].join(' · ')}
-                    {r.eventTitles.length > 0 && <div>{isDe ? 'Events: ' : 'Events: '}{r.eventTitles.slice(0, 12).join(', ')}{r.eventTitles.length > 12 ? ` … (+${r.eventTitles.length - 12})` : ''}</div>}
-                    {r.listSites.length > 0 && <div>{isDe ? 'Teilnehmerlisten: ' : 'Participant lists: '}{r.listSites.slice(0, 12).join(', ')}{r.listSites.length > 12 ? ` … (+${r.listSites.length - 12})` : ''}</div>}
-                    {!r.dryRun && (
-                      <div style={{ marginTop: 4 }}>
-                        {isDe ? 'Betroffene Person bitte die App einmal neu laden. Danach „Rechte prüfen" ausführen — der Hinweis zur Schreibweise sollte weg sein.' : 'Ask the person to reload the app once. Then run “Check rights” — the spelling note should be gone.'}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-            </div>
+            )}
 
             {/* Neue Rolle hinzufügen — v11.72: nach OBEN verschoben, damit der
                 Admin nicht erst durch die Tabelle scrollen muss. Form ist auf
@@ -1354,6 +1344,116 @@ export default function SettingsPage(): React.ReactElement {
             v24.84: „Listen-Berechtigungen"-Übersicht entfernt. */}
 
       </div>
+
+      {/* v31.91: Dialog „Person umbenennen" — alte Person aus der Zeile, neue
+          Person aus der Suche; Vorschau (Trockenlauf), dann Schreiben. */}
+      <Modal
+        open={!!renameTarget}
+        onClose={closeRename}
+        dismissable={!renameBusy}
+        maxWidth={620}
+        ariaLabel={isDe ? 'Person umbenennen' : 'Rename person'}
+      >
+        {renameTarget && (
+          <>
+            <h3 style={{ margin: '0 0 6px', fontSize: '1.05rem' }}>{isDe ? 'Person umbenennen' : 'Rename person'}</h3>
+            <p style={{ margin: '0 0 12px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+              {isDe
+                ? <><strong>{renameTarget.name}</strong> ({renameTarget.email}) bekommt Adresse und Namen der Person, die du unten suchst — in DEX_Roles, in den Organizer- und Team-Feldern aller Events, im Teilnehmer-Register und in den Teilnehmerlisten. Still, ohne Mail. SharePoint-Rechte bleiben, es ist dasselbe Konto.</>
+                : <><strong>{renameTarget.name}</strong> ({renameTarget.email}) gets the address and name of the person you pick below — in DEX_Roles, in the organizer and team fields of all events, in the participant registry and in the participant lists. Silent, no email. SharePoint rights stay; it is the same account.</>}
+            </p>
+            {!renameForm.newEmail ? (
+              <>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input
+                    className="form-input"
+                    value={renameQuery}
+                    onChange={e => { setRenameQuery(e.target.value); renameSearch(e.target.value, renameIntl); }}
+                    placeholder={isDe ? 'Neuen Namen oder neue E-Mail suchen …' : 'Search the new name or email …'}
+                    style={{ flex: '1 1 240px' }}
+                    autoFocus
+                    autoComplete="off"
+                  />
+                  <InternationalSearchToggle checked={renameIntl} onChange={v => { setRenameIntl(v); renameSearch(renameQuery, v); }} isDe={isDe} compact />
+                </div>
+                {renameSearching && <p className="dex-ui-muted" style={{ margin: '8px 0 0', fontSize: '0.8rem' }}>{isDe ? 'Suche …' : 'Searching …'}</p>}
+                {!renameSearching && renameHits.length > 0 && (
+                  <div className="dex-ui-card dex-ui-card--soft" style={{ padding: '4px 6px', marginTop: 8 }}>
+                    {renameHits.map(h => (
+                      <button key={h.email} type="button" className="dex-ui-rowbtn dex-ui-row dex-ui-row--bordered" onClick={() => chooseRenameHit(h)} style={{ width: '100%', textAlign: 'left' }}>
+                        <div className="dex-ui-row-main">
+                          <div className="dex-ui-row-title">{h.displayName}</div>
+                          <div className="dex-ui-row-sub">{[h.email, h.jobTitle, h.location].filter(Boolean).join(' · ')}</div>
+                        </div>
+                        {h.email.toLowerCase() === renameTarget.email.toLowerCase() && <span className="dex-ui-pill dex-ui-pill--gray">{isDe ? 'gleiche Adresse' : 'same address'}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!renameSearching && renameQuery.trim().length >= 2 && renameHits.length === 0 && (
+                  <p className="dex-ui-muted" style={{ margin: '8px 0 0', fontSize: '0.8rem' }}>{isDe ? 'Niemand gefunden — anders schreiben oder „international" einschalten.' : 'Nobody found — try another spelling or enable “international”.'}</p>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="dex-ui-card dex-ui-card--soft" style={{ padding: '10px 12px', fontSize: '0.88rem', marginBottom: 10 }}>
+                  <div><span style={{ color: 'var(--dex-gray-500)' }}>{isDe ? 'Alt: ' : 'Old: '}</span>{renameTarget.name} · {renameTarget.email}</div>
+                  <div><span style={{ color: 'var(--dex-gray-500)' }}>{isDe ? 'Neu: ' : 'New: '}</span><strong>{renameForm.displayName || renameForm.newEmail}</strong> · {renameForm.newEmail}</div>
+                  {!renameGueltig() && (
+                    <div style={{ color: 'var(--dex-red, #c00)', marginTop: 4, fontSize: '0.8rem' }}>{isDe ? 'Neue und alte Adresse sind gleich — nichts zu tun.' : 'New and old address are the same — nothing to do.'}</div>
+                  )}
+                  <button type="button" className="dex-ui-textbtn" style={{ marginTop: 6, fontSize: '0.78rem' }} disabled={!!renameBusy} onClick={() => { setRenameForm(f => ({ ...f, newEmail: '', displayName: '', first: '', last: '' })); setRenamePlan(null); setRenameResult(null); }}>
+                    {isDe ? 'Andere Person wählen' : 'Pick another person'}
+                  </button>
+                </div>
+                {(renamePlan || renameResult) && (() => {
+                  const r = (renameResult || renamePlan) as PersonRenameResult;
+                  const zeile = (label: string, b: PersonRenameBereichLike): string =>
+                    r.dryRun
+                      ? `${label}: ${b.hits}${b.unreadable ? (isDe ? ` (${b.unreadable} nicht lesbar)` : ` (${b.unreadable} unreadable)`) : ''}`
+                      : `${label}: ${b.written}/${b.hits}${b.failed ? (isDe ? `, ${b.failed} fehlgeschlagen` : `, ${b.failed} failed`) : ''}${b.unreadable ? (isDe ? `, ${b.unreadable} nicht lesbar` : `, ${b.unreadable} unreadable`) : ''}`;
+                  const fehler = r.roles.failed + r.eventFields.failed + r.eventPiggybacks.failed + r.registry.failed + r.registrations.failed + r.registeredBy.failed;
+                  return (
+                    <div style={{ marginBottom: 10, fontSize: '0.8rem', color: (!r.dryRun && fehler > 0) ? 'var(--dex-red, #c00)' : 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                      <strong>{r.dryRun ? (isDe ? 'Vorschau — gefundene Stellen:' : 'Preview — places found:') : (isDe ? 'Umbenannt:' : 'Renamed:')}</strong>{' '}
+                      {[
+                        zeile(isDe ? 'Rollen' : 'Roles', r.roles),
+                        zeile(isDe ? 'Event-Felder' : 'Event fields', r.eventFields),
+                        zeile(isDe ? 'Teams in Events' : 'Teams in events', r.eventPiggybacks),
+                        zeile(isDe ? 'Teilnehmer-Register' : 'Participant registry', r.registry),
+                        zeile(isDe ? 'Anmeldungen' : 'Registrations', r.registrations),
+                        zeile(isDe ? 'Registriert/Abgemeldet von' : 'Registered/cancelled by', r.registeredBy),
+                      ].join(' · ')}
+                      {r.eventTitles.length > 0 && <div>{isDe ? 'Events: ' : 'Events: '}{r.eventTitles.slice(0, 12).join(', ')}{r.eventTitles.length > 12 ? ` … (+${r.eventTitles.length - 12})` : ''}</div>}
+                      {r.listSites.length > 0 && <div>{isDe ? 'Teilnehmerlisten: ' : 'Participant lists: '}{r.listSites.slice(0, 12).join(', ')}{r.listSites.length > 12 ? ` … (+${r.listSites.length - 12})` : ''}</div>}
+                      {!r.dryRun && (
+                        <div style={{ marginTop: 4 }}>
+                          {isDe ? 'Die Person bitte die App einmal neu laden. „Rechte prüfen" sollte den Hinweis zur Schreibweise dann nicht mehr zeigen.' : 'Ask the person to reload the app once. “Check rights” should no longer show the spelling note.'}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                  <button type="button" className="btn btn-secondary" disabled={!!renameBusy} onClick={closeRename} style={{ fontSize: '0.85rem' }}>
+                    {renameResult ? (isDe ? 'Schließen' : 'Close') : (isDe ? 'Abbrechen' : 'Cancel')}
+                  </button>
+                  {!renameResult && !renamePlan && (
+                    <button type="button" className="btn btn-secondary" disabled={!!renameBusy || !renameGueltig()} onClick={() => { void runRenamePlan(); }} style={{ fontSize: '0.85rem' }}>
+                      {renameBusy === 'plan' ? (isDe ? `Vorschau … ${renameLabel}` : `Preview … ${renameLabel}`) : (isDe ? 'Vorschau' : 'Preview')}
+                    </button>
+                  )}
+                  {!renameResult && renamePlan && (
+                    <button type="button" className="btn btn-primary" disabled={!!renameBusy} onClick={() => { void runRename(); }} style={{ fontSize: '0.85rem' }}>
+                      {renameBusy === 'run' ? (isDe ? `Schreibt … ${renameLabel}` : `Writing … ${renameLabel}`) : (isDe ? 'Jetzt umbenennen' : 'Rename now')}
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </Modal>
 
       {/* Onboarding-Mail-Prompt nach erfolgreicher Rollen-Zuweisung */}
       {/* v13.4: Onboarding-Prompt jetzt über das <Modal>-Wrapper-Component. */}

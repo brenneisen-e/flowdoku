@@ -206,8 +206,8 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
     // Standort) — eingeklappt nur 2 (#, „Teilnehmer").
     const personalColCount = personalColsCollapsed ? 2 : 6;
     // v26.84: +1 zusätzliche Spalte „Registriert von" (Akteur) neben „Details".
-    // v31.75: +1 „Registriert am".
-    const totalColSpan = personalColCount + parentCustomFields.length + parentUserFields.length + childCustomFieldsByChild.reduce((sum, x) => sum + 1 + x.fields.length, 0) + 3;
+    // v31.75: +1 „Registriert am". v31.93: +1 „Hauptevent" (Klammer-Status).
+    const totalColSpan = personalColCount + parentCustomFields.length + parentUserFields.length + childCustomFieldsByChild.reduce((sum, x) => sum + 1 + x.fields.length, 0) + 4;
     // v19.30: Aktionen (Hauptevent-Felder bearbeiten / abmelden) nur für
     // berechtigte Rollen (Admin oder Organizer dieses Events).
     const canManage = isAdmin || isOrganizerFor(selectedEvent);
@@ -935,6 +935,17 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                 title={isDe ? 'Früheste Anmeldung der Person über alle Termine' : 'Earliest registration of the person across all sessions'}>
                 {isDe ? 'Registriert am' : 'Registered on'}{sortArrow('registeredAt')}
               </th>
+              {/* v31.93: Status der Klammer-Zeile. Bei einem Klammer-Event mit
+                  QR-Versand auf dem Hauptevent laufen Versand UND Check-in auf
+                  DIESER Liste — die Termin-Spalten zeigen davon nichts (Befund
+                  24.09.2026: „in der Liste steht bei Klammer Event nicht der
+                  Status"). Sortierbar, damit ein Klick die Eingecheckten nach
+                  oben holt. */}
+              <th className={sortCls('parentStatus')} style={{ whiteSpace: 'nowrap', verticalAlign: 'bottom', textTransform: 'none' }} onClick={() => handleSortConsolidated('parentStatus')}
+                title={isDe ? 'Status der Anmeldung auf dem Hauptevent (QR-Versand, Check-in)' : 'Status of the main-event registration (QR mail, check-in)'}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700 }}>{isDe ? 'Hauptevent' : 'Main event'}</div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>Status{sortArrow('parentStatus')}</div>
+              </th>
               {childCustomFieldsByChild.map(({ child, fields }) => {
                 // v31.3: Der Spaltenkopf sagt selbst, wenn die Liste dieses Termins
                 // nicht gelesen werden konnte — sonst liest man die „?"-Zellen
@@ -993,7 +1004,8 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                 // rutschte die Summe eine Spalte nach links (Nutzer-Befund
                 // 22.09.2026: „die 59 ist verschoben"). Kopf, Zeilen UND
                 // Summenzeilen nebeneinanderlegen (CLAUDE.md).
-                colSpan={1 + (searchActive ? 1 : 0) + (personalColsCollapsed ? 1 : 6) + 2}
+                // v31.93: +3 — dazu „Hauptevent" (Klammer-Status).
+                colSpan={1 + (searchActive ? 1 : 0) + (personalColsCollapsed ? 1 : 6) + 3}
                 style={{ textAlign: 'right', padding: '4px 8px', textTransform: 'none', fontSize: '0.72rem', whiteSpace: 'nowrap' }}
               >
                 {isDe ? '∑ angemeldet:' : '∑ registered:'}
@@ -1049,7 +1061,8 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                 // rutschte die Summe eine Spalte nach links (Nutzer-Befund
                 // 22.09.2026: „die 59 ist verschoben"). Kopf, Zeilen UND
                 // Summenzeilen nebeneinanderlegen (CLAUDE.md).
-                colSpan={1 + (searchActive ? 1 : 0) + (personalColsCollapsed ? 1 : 6) + 2}
+                // v31.93: +3 — dazu „Hauptevent" (Klammer-Status).
+                colSpan={1 + (searchActive ? 1 : 0) + (personalColsCollapsed ? 1 : 6) + 3}
                   style={{ textAlign: 'right', padding: '2px 8px', textTransform: 'none', fontSize: '0.72rem', whiteSpace: 'nowrap' }}
                 >
                   {isDe ? 'Anmeldung ab:' : 'Opens:'}
@@ -1195,6 +1208,30 @@ export const ConsolidatedView: React.FC<ConsolidatedViewProps> = (p) => {
                     <td style={{ whiteSpace: 'nowrap', color: 'var(--dex-gray-500)' }}>
                       {isFinite(row.earliestRegistrationTs) ? formatDate(new Date(row.earliestRegistrationTs).toISOString()) : '—'}
                     </td>
+                    {/* v31.93: „Hauptevent" — Status der aktiven Klammer-Zeile als
+                        Pille; bei Eingecheckt darunter Zeitpunkt und Helfer aus
+                        den Audit-Spalten (CheckedInDate/CheckedInByName, v7.16).
+                        Keine Klammer-Zeile heißt „—", nicht „nicht eingecheckt". */}
+                    {(() => {
+                      const pr = activeParentRegOf(registrations, row.emailKey);
+                      if (!pr) return <td style={{ color: 'var(--dex-gray-300)', textAlign: 'center' }}>—</td>;
+                      const checked = pr.Status === 'Eingecheckt';
+                      const by = String(pr.CheckedInByName || '').trim();
+                      const at = pr.CheckedInDate ? formatDate(String(pr.CheckedInDate)) : '';
+                      return (
+                        <td style={{ whiteSpace: 'nowrap' }}
+                            title={checked
+                              ? `${isDe ? 'Eingecheckt' : 'Checked in'}${at ? ` ${at}` : ''}${by ? ` · ${isDe ? 'durch' : 'by'} ${by}` : ''}`
+                              : `${translateStatus(pr.Status, isDe)} — TID ${pr.TeilnehmerID || '?'}`}>
+                          <span className={statusPillClass(pr.Status)}>{translateStatus(pr.Status, isDe)}</span>
+                          {checked && (at || by) && (
+                            <div style={{ fontSize: '0.68rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                              {at}{at && by ? ' · ' : ''}{by}
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })()}
                     {childCustomFieldsByChild.map(({ child, fields }) => {
                       const r = row.perChild[child.id];
                       const isReg = !!r && ACTIVE.indexOf(r.Status) >= 0;
