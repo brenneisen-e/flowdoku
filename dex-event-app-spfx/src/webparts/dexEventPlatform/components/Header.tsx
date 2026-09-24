@@ -17,6 +17,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { ChevronLeft, Book, RefreshCw, Info, Users } from './Icons';
 import { Icon } from '@fluentui/react/lib/Icon';
 import ImpersonateModal from './ImpersonateModal';
+import InquiryModal from './InquiryModal';
 import LandingInfoModal from './LandingInfoModal';
 import GlobalSearch from './GlobalSearch';
 import QuestionButton from './QuestionButton';
@@ -48,6 +49,7 @@ export default function Header(): React.ReactElement {
   // v24.22: „Über die App" liegt jetzt im Header (links neben Handbuch) — das
   // Info-Modal wird hier verwaltet statt auf der Landing Page.
   const [showAbout, setShowAbout] = React.useState(false);
+  const [showInquiry, setShowInquiry] = React.useState(false);
   const [showPopup, setShowPopup] = React.useState(false);
   // v24.69: Tutorial-CTA im Header ist per X ausblendbar — Zustand bleibt in
   // localStorage erhalten (einmal weggeklickt = bleibt weg).
@@ -606,7 +608,10 @@ export default function Header(): React.ReactElement {
         </div>
       </div>
       <ImpersonateModal open={showImpersonate} onClose={() => setShowImpersonate(false)} />
-      <LandingInfoModal open={showAbout} locale={locale === 'de' ? 'de' : 'en'} onClose={() => setShowAbout(false)} onStartTutorial={openTutorial} />
+      <LandingInfoModal open={showAbout} locale={locale === 'de' ? 'de' : 'en'} onClose={() => setShowAbout(false)} onStartTutorial={openTutorial} onBecomeOrganizer={() => setShowInquiry(true)} />
+      {/* v31.96: „Organizer werden" aus „Über die App" — derselbe Antrag wie
+          die Karte auf der Startseite. */}
+      <InquiryModal open={showInquiry} onClose={() => setShowInquiry(false)} />
     </header>
     </div>
   );

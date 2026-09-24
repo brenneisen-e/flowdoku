@@ -15,12 +15,13 @@
 
 import * as React from 'react';
 import { Icon } from '@fluentui/react/lib/Icon';
-import { Mail, Info, AlertCircle, ChevronDown } from './Icons';
+import { Info, AlertCircle, ChevronDown, CaptainHat } from './Icons';
 import Modal from './Modal';
 import { cx } from './dexUi';
 import { APP_VERSION } from '../version';
 import { DEX_TEAM_EMAIL } from '../utils/supportContact';
 import { useNavigation } from '../context/NavigationContext';
+import { useRoles } from '../context/RoleContext';
 
 interface Props {
   open: boolean;
@@ -28,6 +29,10 @@ interface Props {
   onClose: () => void;
   /** v30.25: Startet die geführte Tour (Header reicht openTutorial durch). */
   onStartTutorial?: () => void;
+  /** v31.96: „Organizer werden" im Fuß — öffnet den Antrag (InquiryModal),
+   *  denselben wie die Karte „DEX für dein Event nutzen" auf der Startseite.
+   *  Ohne Rückruf (z. B. aus dem Antrag selbst heraus) gibt es keinen Knopf. */
+  onBecomeOrganizer?: () => void;
 }
 
 interface Feature {
@@ -44,14 +49,19 @@ interface UseCase { icon: string; title: string; sub: string; }
 
 const EVENT_MGMT_URL = 'https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx';
 
-export default function LandingInfoModal({ open, locale, onClose, onStartTutorial }: Props): React.ReactElement | null {
+export default function LandingInfoModal({ open, locale, onClose, onStartTutorial, onBecomeOrganizer }: Props): React.ReactElement | null {
   // v31.2: Die 15 Funktions-Kacheln sind der längste Block des Dialogs. Zum
   // Einstieg reichen Einsatzbereich und Ablauf; die Kacheln bleiben zu, bis
   // jemand sie sehen will — sonst zeigt der Dialog beim Öffnen drei Bildschirme.
   const [showFeatures, setShowFeatures] = React.useState(false);
   // v31.94: „Handbuch" im Self-Service-Kasten — Hook VOR dem frühen Return.
   const { navigate } = useNavigation();
+  // v31.96: Wer schon Organizer oder Admin ist, bekommt weder „Organizer
+  // werden" noch den Abschnitt „Interesse?" — beides wirbt für etwas, das die
+  // Person bereits hat.
+  const { canCreateEvents } = useRoles();
   if (!open) return null;
+  const zeigeOrganizerWerden = !!onBecomeOrganizer && !canCreateEvents;
 
   const isDE = locale === 'de';
   // v31.95: „Hast du Fragen?" direkt aus dem Self-Service-Kasten — derselbe
@@ -170,9 +180,13 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
           </span>
         )}
         <button type="button" className="btn btn-secondary" onClick={onClose}>{isDE ? 'Schließen' : 'Close'}</button>
-        <a className="btn btn-primary" href={`mailto:${DEX_TEAM_EMAIL}?subject=DEX Event Experience Platform – Interesse`}>
-          <Mail size={16} /> {isDE ? 'Kontakt aufnehmen' : 'Get in touch'}
-        </a>
+        {/* v31.96: „Organizer werden" statt „Kontakt aufnehmen" (Nutzer
+            24.09.2026) — der Antrag in der App statt einer losen Mail. */}
+        {zeigeOrganizerWerden && (
+          <button type="button" className="btn btn-primary" onClick={() => { onClose(); window.setTimeout(() => onBecomeOrganizer && onBecomeOrganizer(), 150); }}>
+            <CaptainHat size={16} /> {isDE ? 'Organizer werden' : 'Become an organizer'}
+          </button>
+        )}
       </>}
     >
       <div>
@@ -277,15 +291,19 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
           </p>
         </section>
 
-        {/* Interesse? — der Knopf dazu sitzt im Fuß */}
+        {/* Interesse? — der Knopf dazu sitzt im Fuß; für Organizer entfällt der Absatz */}
         <section className="dex-ui-section">
-          <h4 className="dex-ui-section-title">{isDE ? 'Interesse?' : 'Interested?'}</h4>
-          <p className="dex-ui-muted" style={{ margin: 0, fontSize: '0.86rem', lineHeight: 1.6 }}>
-            {isDE
-              ? 'Dein Event oder dein Bereich möchte DEX nutzen? Der Knopf unten öffnet eine E-Mail an das DEX-Team. Wir schalten dich als Organizer frei — das Event legst du anschließend eigenständig an.'
-              : 'Your event or department would like to use DEX? The button below opens an email to the DEX team. We will set you up as an organizer — you then create the event independently.'}
-          </p>
-          <p className="dex-ui-muted" style={{ margin: '16px 0 0', fontSize: '0.76rem', textAlign: 'center' }}>
+          {zeigeOrganizerWerden && (
+            <>
+              <h4 className="dex-ui-section-title">{isDE ? 'Interesse?' : 'Interested?'}</h4>
+              <p className="dex-ui-muted" style={{ margin: 0, fontSize: '0.86rem', lineHeight: 1.6 }}>
+                {isDE
+                  ? <>Dein Event oder dein Bereich möchte DEX nutzen? Über <strong>&bdquo;Organizer werden&ldquo;</strong> unten stellst du den Antrag; die Admins schalten dich frei — das Event legst du anschließend eigenständig an. Bei Rückfragen erreichst du das DEX-Team unter <a href={`mailto:${DEX_TEAM_EMAIL}`}>{DEX_TEAM_EMAIL}</a>.</>
+                  : <>Your event or department would like to use DEX? Use <strong>“Become an organizer”</strong> below to submit the request; the admins grant access — you then create the event independently. For questions, reach the DEX team at <a href={`mailto:${DEX_TEAM_EMAIL}`}>{DEX_TEAM_EMAIL}</a>.</>}
+              </p>
+            </>
+          )}
+          <p className="dex-ui-muted" style={{ margin: zeigeOrganizerWerden ? '16px 0 0' : 0, fontSize: '0.76rem', textAlign: 'center' }}>
             {isDE ? 'Entwickelt von ' : 'Built by '}
             <strong>Eike Brenneisen</strong> {isDE ? 'und' : 'and'} <strong>Nils Felten</strong>.
           </p>

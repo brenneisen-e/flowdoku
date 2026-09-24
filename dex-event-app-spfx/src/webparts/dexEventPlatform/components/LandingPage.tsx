@@ -929,7 +929,7 @@ export default function LandingPage(): React.ReactElement {
               })()}
             </p>
           </div>
-          <LandingInfoModal open={showAbout} locale={isDe ? 'de' : 'en'} onClose={() => setShowAbout(false)} onStartTutorial={openTutorial} />
+          <LandingInfoModal open={showAbout} locale={isDe ? 'de' : 'en'} onClose={() => setShowAbout(false)} onStartTutorial={openTutorial} onBecomeOrganizer={() => setShowInquiry(true)} />
           {/* v31.9: Was heute zu tun ist, steht vor dem Start-Knopf. Bis v31.8
               lagen der Check-in-Kasten mit QR und Einlassnummer und
               &bdquo;Du bist angemeldet&ldquo; ganz unten, hinter dem
