@@ -305,15 +305,25 @@ Teilnehmerliste: `reloadRegistrations()` in `AdminPage` (Status geprüft, bei
 Fehler bleibt die alte Liste, `regStaleHint`). Wer nach einem Schreibvorgang
 nachlädt, ruft ihn — nie `setRegistrations(await getAllRegistrations(id))`.
 
-**Das Check-in-Team braucht eigene Listen-Rechte (v30.87).** Die
-Teilnehmerliste ist zeilenweise gesichert (ReadSecurity/WriteSecurity=2);
-Visitors haben Contribute und sehen damit nur die EIGENE Zeile. Nur „Manage
-Lists" hebt das auf (Edit, Design, Full Control). `_qrScanners` bekamen bis
-v30.86 gar nichts — deshalb „sah der Scanner nicht die ganze Liste" und
-brauchte Organizer-Rechte. Seit v30.87: `ensureScannerListPermissions`
-(Edit 1073741830 auf der Liste, nicht auf dem Web; Fallback Full Control;
-Entzug beim Streichen mit Nachlesen; Organizer nie entzogen), gerufen im
-Edit-/Create-Pfad des Wizards und in „Organizer-Berechtigungen reparieren".
+**Das Check-in-Team braucht eigene Listen-Rechte (v30.87) — und zwar
+DESIGN, nicht Edit (v31.87).** Die Teilnehmerliste ist zeilenweise gesichert
+(ReadSecurity/WriteSecurity=2); Visitors haben Contribute und sehen damit nur
+die EIGENE Zeile. Aufgehoben wird das NICHT durch „Manage Lists", sondern
+durch „Override List Behaviors" (SharePoint-Hinweis in den Listeneinstellungen:
+„Users with the Cancel Checkout permission can read and edit all items") — das
+steckt in Design (1073741828) und Full Control, nicht in Edit (1073741830).
+v30.87 vergab Edit; das Check-in-Team sah damit weiter nur eigene Zeilen
+(Befund Melina Kessel 24.09.2026: „sieht nur sich selbst und ihre Partnerin",
+ohne 403 — die Liste antwortet 200 mit den eigenen Zeilen). Seit v31.87:
+`ensureScannerListPermissions` vergibt Design auf der Liste (nicht auf dem
+Web), liest die `roledefinitionbindings` nach und fällt auf Full Control
+zurück; Entzug beim Streichen mit Nachlesen; Organizer nie entzogen. Gerufen
+im Edit-/Create-Pfad des Wizards und in „Organizer-Berechtigungen
+reparieren". Und die Check-in-Seite vergleicht seit v31.87 die gelesenen
+Zeilen mit dem ungefilterten `ItemCount` der Liste — weniger heißt „Sicht
+beschnitten", Fehlermeldung statt Cache. Merksatz: Wer die Zeilen-Sicherheit
+testet, testet mit einer Person, die nicht Organizer ist — Organizer haben
+Full Control und merken davon nichts.
 Die Sammel-Prüfung über ALLE Events (`repairAllOrganizerPermissions`) steht
 seit v31.85 in der **Rollenverwaltung** („Rechte auf den Teilnehmerlisten
 (alle Events)" → „Alle Events prüfen"), nicht mehr im Admin Hub; die
@@ -335,6 +345,20 @@ Rechte auf Termine gehören HINTER `persistSubEventsForParent` mit frischem
 `getEvents()` (`scannerRechteAufBaum`) — `childEventsOf` aus dem Client-
 State kennt die Termine dieses Speicherns noch nicht, und „bekommt der
 nächste Speichervorgang" heißt: nie.
+
+**Der Check-in kennt seit v31.88 die Event-Familie — und checkt nur am
+QR-Ziel ein.** `CheckInPage.familie` = Klammer/Hauptevent plus Termine des
+gewählten Events; ihre Listen werden still nachgeladen (`familieRegs`, null
+= nicht lesbar). `qrZielIds` sind die Familienmitglieder mit einer nicht
+abgemeldeten Zeile mit gedruckter Nummer oder „QR versendet"; ist das
+gewählte Event keins davon, sperren `checkInByParticipantId`, `processCode`
+und `startManualCheckInFromSearch` mit demselben Satz (`sperrHinweis`), und
+der Kasten bietet den Wechsel an. Wer einen vierten Check-in-Weg baut, hängt
+ihn an dieselbe Sperre. Zweite Regel: Auf der Klammer zählt „Angemeldet"
+Personen mit aktivem Termin (`klammerAktivEmails`, dieselbe Rechnung wie
+`logic/eventTabs`) — Klammer-Schattenzeilen bleiben „QR versendet", wenn die
+Person überall abgemeldet ist, und genau das war „412 statt 399".
+`waehleEvent` ist der EINE Wechselweg (Dropdown und Reiter).
 
 **Mail-Kopfbild: `eventHeaderImageOpts` an JEDER wrapTemplate-Stelle mit
 Event (v30.87).** `wrapTemplate` ohne Bildmaße heißt 180 px — der alte

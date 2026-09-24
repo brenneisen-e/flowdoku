@@ -458,11 +458,12 @@ export async function ensureOrganizerPermissionsMulti(
  * „Manage Lists" hat — das steckt in Edit (1073741830), Design und Full
  * Control, nicht in Contribute.
  *
- * Deshalb: Scanner bekommen **Edit auf der Liste** (lesen alle Zeilen,
- * schreiben den Status), NICHT auf dem Web — sie sollen weder Listen anlegen
- * noch die Subsite verwalten. Fehlt die Edit-Rolle im Tenant (404/500 beim
- * Zuweisen), fällt die Vergabe auf Full Control zurück, damit der Check-in
- * nicht an einer Rollendefinition scheitert.
+ * Deshalb: Scanner bekommen ein Recht **auf der Liste**, NICHT auf dem Web —
+ * sie sollen die Subsite nicht verwalten. v30.87 wählte Edit; das war zu
+ * wenig (s. Kommentar im Grant-Zweig): Die Zeilen-Sicherheit hebt nur
+ * „Override List Behaviors" auf, und das steckt erst in **Design**
+ * (1073741828). Seit v31.87 also Design, Nachlesen der Bindung, Rückfall
+ * Full Control, damit der Check-in nicht an einer Rollendefinition scheitert.
  *
  * Und spiegelbildlich (CLAUDE.md: „Rechte werden vergeben UND entzogen"):
  * Wer aus dem Check-in-Team gestrichen wird, verliert die Zuweisung wieder —
@@ -503,18 +504,43 @@ export async function ensureScannerListPermissions(
   }
   const listBase = (site: string): string => `${site}/_api/web/lists/getbytitle('${REG_LIST_NAME}')`;
 
+  // v31.87: Nachlesen, ob die Zuweisung wirklich eine Rolle trägt, die die
+  // Zeilen-Sicherheit aufhebt (Design 1073741828 oder Full Control
+  // 1073741829). Ein 200 auf addroleassignment allein ist keine Vergabe
+  // (CLAUDE.md, v30.85) — und genau hier hing der Befund vom 24.09.2026.
+  const hatOverride = async (site: string, id: number): Promise<boolean> => {
+    try {
+      const r = await svc._sp.get(
+        `${listBase(site)}/roleassignments/getbyprincipalid(${id})/roledefinitionbindings?$select=Id`,
+        SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } });
+      if (!r.ok) return false;
+      const d = await r.json();
+      const rows: Array<{ Id?: number }> = d.value || d.d?.results || [];
+      return rows.some(x => Number(x.Id) === 1073741828 || Number(x.Id) === 1073741829);
+    } catch { return false; }
+  };
   for (const site of sites) {
     for (const em of grantList) {
       const id = ids.get(em); if (!id) continue;
       let status = 0;
       try {
-        const r = await svc._post(`${listBase(site)}/roleassignments/addroleassignment(principalid=${id}, roledefid=1073741830)`, {});
+        // v31.87: DESIGN statt Edit. Befund 24.09.2026 (Melina Kessel, Rechte
+        // laut Assistent gesetzt): Sie sah auf der Klammer-Liste nur sich
+        // selbst und die Person, die sie angemeldet hatte — also genau die
+        // eigenen Zeilen. Die Zeilen-Sicherheit (ReadSecurity=2) hebt NICHT
+        // „Manage Lists" auf, sondern „Override List Behaviors" (SharePoint-
+        // Hinweis in den Listeneinstellungen: „Users with the Cancel Checkout
+        // permission can read and edit all items"). Das steckt in Design und
+        // Full Control, nicht in Edit. v30.87 hatte Edit gewählt — deshalb
+        // brauchte das Check-in-Team weiter Organizer-Rechte. Design bleibt
+        // unter Full Control (kein „Manage Permissions"); fehlt die Rolle im
+        // Tenant, fällt die Vergabe auf Full Control zurück.
+        const r = await svc._post(`${listBase(site)}/roleassignments/addroleassignment(principalid=${id}, roledefid=1073741828)`, {});
         status = r.status;
-        if (r.ok) { result.granted++; continue; }
-        // Edit-Rolle nicht vorhanden/ablehnend → Full Control wie die Organizer.
+        if (r.ok && await hatOverride(site, id)) { result.granted++; continue; }
         const r2 = await svc._post(`${listBase(site)}/roleassignments/addroleassignment(principalid=${id}, roledefid=1073741829)`, {});
         status = r2.status;
-        if (r2.ok) { result.granted++; continue; }
+        if (r2.ok && await hatOverride(site, id)) { result.granted++; continue; }
       } catch { status = 0; }
       result.failed.push({ site, email: em, op: 'grant', status });
     }
