@@ -575,6 +575,7 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
                           <strong>Was du hier einstellst:</strong> Personen, die am Event-Tag <strong>nur das Check-In-Tool</strong> bedienen dürfen — z.B. Helfer am Empfangstresen oder am Stadioneingang. Beliebige Deloitte-User per Graph-Suche.<br /><br />
                           <strong>Anzeige in der App:</strong> Check-In-Team-Mitglieder sehen oben im Header das <strong>QR-Scanner-Icon</strong> und können den <strong>Check-In-Modus</strong> öffnen — QR-Codes scannen, Teilnehmer manuell ein-/auschecken, Check-In-KPIs sehen. Sie haben <strong>keine weiteren Rechte</strong>: kein Edit, kein Organizer Center, keine Mails.<br /><br />
                           <strong>Teilnehmerliste auf der Check-in-Seite:</strong> standardmäßig sichtbar (Suche nach Name, Ein-/Auschecken per Klick). Über den Chip <strong>&bdquo;Teilnehmerliste&ldquo;</strong> an der Person lässt sie sich ausblenden — dann bleiben nur QR-Code-Scan und Teilnehmer-ID.<br /><br />
+                          <strong>Rechte:</strong> Das Check-in-Team braucht auf jeder Teilnehmerliste das Recht &bdquo;Design&ldquo; (liest alle Zeilen trotz Zeilen-Sicherheit). Das vergibt nur ein Admin: Speicherst du als Admin, sofort beim Speichern; sonst bekommen die Admins eine Freigabe-Mail mit einem Knopf — wie bei Co-Organizern. Bis dahin sieht das Team am Check-in nur eigene Zeilen.<br /><br />
                           <strong>Automatismen:</strong> Check-In-Team taucht <strong>nicht in der Organizer-Liste</strong> auf der Anmelde-Seite auf und bekommt <strong>keine Organizer-Mails</strong> (BCC, Late-Cancel etc.).<br /><br />
                           <strong>Empfehlung:</strong> für jedes Event genau die Personen eintragen, die am Veranstaltungstag wirklich am Empfang stehen.
                         </>
@@ -646,12 +647,22 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
                                     {siehtListe && <Check size={12} />}
                                     {isDe ? 'Teilnehmerliste' : 'Attendee list'}
                                   </button>
-                                  {qrScannerNames.length > 1 && i > 0 && (
-                                    <button type="button" className="dex-ui-iconbtn" onClick={() => move(i, -1)} title={isDe ? 'Nach oben' : 'Move up'} aria-label={isDe ? 'Nach oben' : 'Move up'}><ChevronUp size={16} /></button>
-                                  )}
-                                  {qrScannerNames.length > 1 && i < qrScannerNames.length - 1 && (
-                                    <button type="button" className="dex-ui-iconbtn" onClick={() => move(i, 1)} title={isDe ? 'Nach unten' : 'Move down'} aria-label={isDe ? 'Nach unten' : 'Move down'}><ChevronDown size={16} /></button>
-                                  )}
+                                  {/* v31.87: Beide Pfeile stehen IMMER im Fluss — in der ersten und
+                                      letzten Zeile unsichtbar statt weggelassen, sonst rutscht der
+                                      Chip dort nach rechts (Nutzer-Befund 24.09.2026: „TN-Liste
+                                      immer auf einer horizontalen Höhe"). */}
+                                  <button
+                                    type="button" className="dex-ui-iconbtn" onClick={() => move(i, -1)}
+                                    title={isDe ? 'Nach oben' : 'Move up'} aria-label={isDe ? 'Nach oben' : 'Move up'}
+                                    disabled={!(qrScannerNames.length > 1 && i > 0)}
+                                    style={{ visibility: (qrScannerNames.length > 1 && i > 0) ? 'visible' : 'hidden' }}
+                                  ><ChevronUp size={16} /></button>
+                                  <button
+                                    type="button" className="dex-ui-iconbtn" onClick={() => move(i, 1)}
+                                    title={isDe ? 'Nach unten' : 'Move down'} aria-label={isDe ? 'Nach unten' : 'Move down'}
+                                    disabled={!(qrScannerNames.length > 1 && i < qrScannerNames.length - 1)}
+                                    style={{ visibility: (qrScannerNames.length > 1 && i < qrScannerNames.length - 1) ? 'visible' : 'hidden' }}
+                                  ><ChevronDown size={16} /></button>
                                   <button type="button" className="dex-ui-iconbtn dex-ui-iconbtn--danger" onClick={() => remove(i)} title={isDe ? 'Entfernen' : 'Remove'} aria-label={isDe ? 'Entfernen' : 'Remove'}><X size={16} /></button>
                                 </div>
                               </div>

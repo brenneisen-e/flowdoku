@@ -921,8 +921,8 @@ export default function SettingsPage(): React.ReactElement {
                 <strong>{isDe ? 'Rechte auf den Teilnehmerlisten (alle Events)' : 'Rights on the participant lists (all events)'}</strong>
                 <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
                   {isDe
-                    ? 'Organizer und Co-Organizer brauchen Vollzugriff, das Check-in-Team Bearbeiten-Recht auf jeder Teilnehmerliste — auf dem Haupt-Event UND auf jedem Termin. Beides wird beim Speichern gesetzt, kann aber scheitern (Drosselung, Person hatte die App noch nie geöffnet, Termin im selben Speichern angelegt). Läuft einmal über alle Events und ergänzt, was fehlt; es wird nichts entzogen.'
-                    : 'Organizers and co-organizers need full control, the check-in team edit rights on every participant list — on the main event AND on every date. Both are set on save but can fail (throttling, person had never opened the app, date created in the same save). Runs once over all events and adds what is missing; nothing is revoked.'}
+                    ? 'Organizer und Co-Organizer brauchen Vollzugriff, das Check-in-Team das Recht „Design“ (liest alle Zeilen trotz Zeilen-Sicherheit) auf jeder Teilnehmerliste — auf dem Haupt-Event UND auf jedem Termin. Beides wird beim Speichern gesetzt, kann aber scheitern (Drosselung, Person hatte die App noch nie geöffnet, Termin im selben Speichern angelegt). Läuft einmal über alle Events und ergänzt, was fehlt; es wird nichts entzogen.'
+                    : 'Organizers and co-organizers need full control, the check-in team the "Design" right (reads all rows despite item-level security) on every participant list — on the main event AND on every date. Both are set on save but can fail (throttling, person had never opened the app, date created in the same save). Runs once over all events and adds what is missing; nothing is revoked.'}
                 </div>
                 {listPerm.running && (
                   <div style={{ marginTop: 4, fontSize: '0.76rem', color: 'var(--dex-gray-500)' }}>

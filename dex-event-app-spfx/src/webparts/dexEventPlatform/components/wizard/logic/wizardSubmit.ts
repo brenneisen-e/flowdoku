@@ -84,31 +84,40 @@ async function scannerFreigabeMail(
   eventId: string,
   eventTitle: string,
   requester: string,
-  unresolved: string[],
-  failed: number,
+  personen: string[],
 ): Promise<boolean> {
   try {
     const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const appBase = `${svc.siteUrl}/SitePages/DEX.aspx?env=WebView`;
     const grantUrl = buildHashDeepLink(appBase, { action: 'grantscanners', event: eventId });
-    const gruende: string[] = [];
-    if (unresolved.length > 0) gruende.push(`<li style="margin:2px 0;">Kein SharePoint-Konto gefunden für: ${esc(unresolved.join(', '))}</li>`);
-    if (failed > 0) gruende.push(`<li style="margin:2px 0;">${failed} Zuweisung(en) hat SharePoint abgelehnt (fehlendes „Manage Permissions" auf einem Termin oder Drosselung)</li>`);
     const inner = `
       <p style="margin:0 0 12px;">Hallo zusammen,</p>
-      <p style="margin:0 0 12px;"><strong>${esc(requester || '—')}</strong> hat beim Event <strong>${esc(eventTitle || '—')}</strong> ein Check-in-Team gespeichert. Die Rechte auf den Teilnehmerlisten konnten dabei nicht vollständig gesetzt werden:</p>
-      <ul style="margin:0 0 12px;padding-left:20px;">${gruende.join('')}</ul>
-      <p style="margin:0 0 12px;">Ohne diese Rechte sieht das Check-in-Team am Event-Tag keine Teilnehmerliste und kann keinen Code einchecken.</p>
+      <p style="margin:0 0 12px;"><strong>${esc(requester || '—')}</strong> hat beim Event <strong>${esc(eventTitle || '—')}</strong> diese Person(en) ins <strong>Check-in-Team</strong> aufgenommen:</p>
+      <ul style="margin:0 0 12px;padding-left:20px;">${personen.map(p => `<li style="margin:2px 0;">${esc(p)}</li>`).join('')}</ul>
+      <p style="margin:0 0 12px;">Damit sie am Event-Tag die Teilnehmerliste sehen und Codes einchecken können, brauchen sie das Recht „Design" auf den Teilnehmerlisten von Hauptevent und allen Terminen. Das vergibt nur ein Admin — mit dem Knopf unten in einem Klick.</p>
       <p style="margin:20px 0;text-align:center;"><a href="${grantUrl}" style="display:inline-block;padding:12px 26px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Rechte jetzt setzen</a></p>
-      <p style="margin:0;color:#777;font-size:13px;">Der Knopf öffnet die App und vergibt als Admin die Rechte auf Hauptevent und allen Terminen. Geht nur als Admin.</p>
+      <p style="margin:0;color:#777;font-size:13px;">Der Knopf öffnet die App und vergibt die Rechte für das ganze aktuelle Check-in-Team des Events. Geht nur als Admin. Bis dahin sieht das Team am Check-in nur eigene Zeilen.</p>
     `;
-    const body = wrapTemplate('#86bc25', 'Check-in-Team braucht Rechte', esc(eventTitle || ''), inner);
-    await svc.queueEmail(`Check-in-Team braucht Rechte: ${eventTitle || eventId}`, DEX_TEAM_RECIPIENTS, 'DEX-Team', body, 'ScannerRightsRequest', eventTitle || '', eventId || '0');
+    const body = wrapTemplate('#86bc25', 'Check-in-Team: Freigabe nötig', esc(eventTitle || ''), inner);
+    await svc.queueEmail(`Check-in-Team freigeben: ${eventTitle || eventId}`, DEX_TEAM_RECIPIENTS, 'DEX-Team', body, 'ScannerRightsRequest', eventTitle || '', eventId || '0');
     return true;
   } catch (e) {
     console.warn('[DEX] scannerFreigabeMail fehlgeschlagen:', e);
     return false;
   }
+}
+
+/** v31.87: Was der Organizer nach dem Speichern über das Check-in-Team erfährt. */
+function scannerFreigabeAntragHinweis(isDe: boolean, personen: string[], gemailt: boolean): string {
+  const wer = personen.join(', ');
+  if (!gemailt) {
+    return isDe
+      ? `Check-in-Team: Die Freigabe-Mail an die Admins für ${wer} konnte nicht verschickt werden. Bitte einen Admin bitten, in der Rollenverwaltung „Alle Events prüfen" auszuführen — sonst sieht das Team am Check-in nur eigene Zeilen.`
+      : `Check-in team: the approval email to the admins for ${wer} could not be sent. Please ask an admin to run "Check all events" in role management — otherwise the team only sees its own rows at check-in.`;
+  }
+  return isDe
+    ? `Check-in-Team: ${wer} ${personen.length === 1 ? 'ist' : 'sind'} gespeichert. Die Rechte auf die Teilnehmerlisten vergibt ein Admin — die Admins haben dafür eine Mail mit einem Knopf bekommen. Bis zur Freigabe sieht das Team am Check-in nur eigene Zeilen.`
+    : `Check-in team: ${wer} ${personen.length === 1 ? 'is' : 'are'} saved. An admin grants the rights on the attendee lists — the admins have received an email with a button. Until then the team only sees its own rows at check-in.`;
 }
 
 /**
@@ -1224,19 +1233,34 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
           const ctxScan = (window as any).__dexSpfxContext;
           const prevScanners = (editEvent?.qrScannerEmails || []);
           if (ctxScan && editEvent?.subsiteUrl && (qrScannerEmails.length > 0 || prevScanners.length > 0)) {
-            const r = await scannerRechteAufBaum(
-              new EventService(ctxScan), String(selectedEventId),
-              qrScannerEmails, prevScanners, organizerEmails.concat(coOrganizerEmails));
-            const offen = r.unresolved.filter(u => qrScannerEmails.some(e => (e || '').toLowerCase() === u));
-            if (offen.length > 0 || r.failed > 0) {
-              // v31.86: Als Nicht-Admin geht die Freigabe-Mail ans DEX-Team
-              // (Deep-Link setzt die Rechte); der Satz sagt das dazu.
-              const gemailt = !adminLike && await scannerFreigabeMail(
-                new EventService(ctxScan), String(selectedEventId), title,
-                `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email || '', offen, r.failed);
-              showAlert(scannerRechteHinweis(isDe, offen, r.failed) + (gemailt
-                ? (isDe ? ' Die Admins haben eine Mail mit einem Knopf bekommen, der die Rechte setzt.' : ' The admins have received an email with a button that grants the rights.')
-                : ''), { variant: 'error' });
+            const svcScan = new EventService(ctxScan);
+            const keep = organizerEmails.concat(coOrganizerEmails);
+            if (adminLike) {
+              const r = await scannerRechteAufBaum(svcScan, String(selectedEventId), qrScannerEmails, prevScanners, keep);
+              const offen = r.unresolved.filter(u => qrScannerEmails.some(e => (e || '').toLowerCase() === u));
+              if (offen.length > 0 || r.failed > 0) showAlert(scannerRechteHinweis(isDe, offen, r.failed), { variant: 'error' });
+            } else {
+              // v31.87: Nutzer-Entscheidung 24.09.2026 — „genauso machen wie bei
+              // Co-Organizern: E-Mail und Deep-Link-Freigabe, außer es wird
+              // direkt vom Admin gespeichert." Ein Organizer vergibt die Listen-
+              // Rechte also nicht mehr selbst; die Admins bekommen die Mail mit
+              // dem Knopf. Entzogen wird weiterhin sofort (Streichen ist keine
+              // Vergabe). Gemailt wird nur für NEUE Personen — sonst ginge bei
+              // jedem Speichern eine Mail für ein Team, das längst berechtigt ist.
+              const prevLc = new Set(prevScanners.map(e => (e || '').toLowerCase()));
+              const neu = qrScannerEmails.filter(e => e && !prevLc.has(e.toLowerCase()));
+              const gestrichen = prevScanners.filter(e => e && !qrScannerEmails.some(x => (x || '').toLowerCase() === e.toLowerCase()));
+              if (gestrichen.length > 0) {
+                try { await scannerRechteAufBaum(svcScan, String(selectedEventId), [], gestrichen, keep); }
+                catch (e) { console.warn('[DEX] Check-in-Team-Entzug fehlgeschlagen:', e); }
+              }
+              if (neu.length > 0) {
+                const namen = neu.map(e => { const i = qrScannerEmails.indexOf(e); return (qrScannerNames[i] || e); });
+                const gemailt = await scannerFreigabeMail(
+                  svcScan, String(selectedEventId), title,
+                  `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email || '', namen);
+                showAlert(scannerFreigabeAntragHinweis(isDe, namen, gemailt), { variant: gemailt ? 'info' : 'error' });
+              }
             }
           }
         } catch (err) { console.warn('[DEX] Check-in-Team-Rechte beim Speichern fehlgeschlagen:', err); }
@@ -2236,14 +2260,17 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
                     .filter(e => String(e.Id) === String(eventId) || String(e.ParentEventId || '') === String(eventId))
                     .map(e => (e.SubsiteUrl || '').trim())
                     .filter(Boolean)));
-                const r = await svc.ensureScannerListPermissions(sites, qrScannerEmails, []);
-                if (r.unresolved.length > 0 || r.failed.length > 0) {
-                  // v31.86: Als Nicht-Admin geht die Freigabe-Mail ans DEX-Team.
-                  const gemailt = !adminLike && await scannerFreigabeMail(
-                    svc, String(eventId), title, `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email || '', r.unresolved, r.failed.length);
-                  showAlert(scannerRechteHinweis(isDe, r.unresolved, r.failed.length) + (gemailt
-                    ? (isDe ? ' Die Admins haben eine Mail mit einem Knopf bekommen, der die Rechte setzt.' : ' The admins have received an email with a button that grants the rights.')
-                    : ''), { variant: 'error' });
+                if (adminLike) {
+                  const r = await svc.ensureScannerListPermissions(sites, qrScannerEmails, []);
+                  if (r.unresolved.length > 0 || r.failed.length > 0) {
+                    showAlert(scannerRechteHinweis(isDe, r.unresolved, r.failed.length), { variant: 'error' });
+                  }
+                } else {
+                  // v31.87: Nicht-Admin → Freigabe-Mail an die Admins (s. Edit-Pfad).
+                  const namen = qrScannerEmails.map((e, i) => qrScannerNames[i] || e);
+                  const gemailt = await scannerFreigabeMail(
+                    svc, String(eventId), title, `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email || '', namen);
+                  showAlert(scannerFreigabeAntragHinweis(isDe, namen, gemailt), { variant: gemailt ? 'info' : 'error' });
                 }
               }
               catch (err) { console.warn('[DEX] Check-in-Team-Rechte beim Anlegen fehlgeschlagen:', err); }

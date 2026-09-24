@@ -2492,6 +2492,12 @@ export class EventService {
     return organizer.getRoleEmails(this, role);
   }
 
+  /** v31.87: Ungefilterte Zeilenzahl der Teilnehmerliste (-1 = nicht lesbar) —
+   *  Vollständigkeits-Check gegen die security-getrimmte Item-Abfrage. */
+  public async getRegistrationListItemCount(subsiteUrl: string): Promise<number> {
+    return seats.getListItemCount(this, subsiteUrl, REG_LIST_NAME);
+  }
+
   /** v31.86: `null` = Rollenliste nicht lesbar (s. organizer.getRoleEmailsChecked). */
   public async getRoleEmailsChecked(role: string): Promise<string[] | null> {
     return organizer.getRoleEmailsChecked(this, role);

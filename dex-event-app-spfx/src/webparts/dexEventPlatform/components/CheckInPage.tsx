@@ -851,13 +851,34 @@ export default function CheckInPage(): React.ReactElement {
         // „um Freigabe bitten" ließ den Organizer raten, was zu tun ist.
         const msg = httpStatus === 403
           ? (isDe
-            ? 'Keine Leseberechtigung auf der Teilnehmerliste dieses Termins. Der Organizer kann das im Organizer Center mit „Organizer-Berechtigungen reparieren" beheben (Aktionen) — danach hier „Erneut laden".'
-            : 'No read permission on this date\'s attendee list. An organizer can fix this in the Organizer Center via "Repair organizer permissions" (Actions) — then use "Reload" here.')
+            ? 'Keine Leseberechtigung auf der Teilnehmerliste dieses Termins. Die Rechte fürs Check-in-Team vergibt ein Admin — über die Freigabe-Mail, die beim Speichern des Check-in-Teams rausgeht, oder in der Rollenverwaltung mit „Alle Events prüfen" — danach hier „Erneut laden".'
+            : 'No read permission on this date\'s attendee list. An admin grants the check-in team rights — via the approval email sent when the check-in team is saved, or in role management via "Check all events" — then use "Reload" here.')
           : (isDe
             ? `Teilnehmerliste konnte nicht gelesen werden (${httpStatus ? 'HTTP ' + httpStatus : 'keine Teilnehmerliste gefunden'}) — bitte erneut versuchen.`
             : `The attendee list could not be read (${httpStatus ? 'HTTP ' + httpStatus : 'no attendee list found'}) — please try again.`);
         if (!silent) { if (hadList) setRefreshError(msg); else setSearchLoadError(msg); }
       } else {
+        // v31.87: Vollständigkeit prüfen. Mit Contribute (Besucher) antwortet
+        // die zeilengesicherte Liste NICHT mit 403, sondern mit 200 und nur
+        // den eigenen Zeilen — Melina Kessel sah so „sich selbst und ihre
+        // Partnerin" (24.09.2026) und die Seite meldete nichts. Der
+        // ungefilterte ItemCount der Liste ist auch mit Leserecht sichtbar;
+        // liegt er über der gelesenen Zeilenzahl, ist die Sicht beschnitten,
+        // und das ist ein Rechte-Fehler, kein Datenstand (CLAUDE.md: ein
+        // Lesefehler ist keine Null). Nichts kommt dann in den Cache.
+        const evFuerZaehl = (events || []).find(e => e.id === eventId);
+        const itemCount = (eventService && evFuerZaehl && evFuerZaehl.subsiteUrl)
+          ? await eventService.getRegistrationListItemCount(evFuerZaehl.subsiteUrl)
+          : -1;
+        if (itemCount >= 0 && regs.length < itemCount) {
+          const msg = isDe
+            ? `Du siehst nur ${regs.length} von ${itemCount} Anmeldungen — dir fehlt auf dieser Teilnehmerliste das Recht, alle Zeilen zu lesen. Das vergibt ein Admin: über die Freigabe-Mail, die beim Speichern des Check-in-Teams rausgeht, oder in der Rollenverwaltung mit „Alle Events prüfen" — danach hier „Erneut laden".`
+            : `You can see only ${regs.length} of ${itemCount} registrations — you lack the right to read all rows of this attendee list. An admin grants it: via the approval email sent when the check-in team is saved, or in role management via "Check all events" — then use "Reload" here.`;
+          if (!silent) { if (hadList) setRefreshError(msg); else setSearchLoadError(msg); }
+          if (!silent) { setIsLoadingSearchRegs(false); setRefreshBusy(false); }
+          loadInFlightRef.current = false;
+          return;
+        }
         // v31.4: Frisch Geschriebenes gewinnt gegen eine Antwort, die es noch
         // nicht kennt — und der Trikot-Cache ist über die Array-Identität
         // geschlüsselt, die alten Einträge sind ab hier tote Last. Die
@@ -876,7 +897,7 @@ export default function CheckInPage(): React.ReactElement {
     if (!silent) { setIsLoadingSearchRegs(false); setRefreshBusy(false); }
     loadInFlightRef.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getAllRegistrations, isDe]);
+  }, [getAllRegistrations, isDe, events, eventService]);
   // v31.4: Der Timer unten darf nicht an der Identität dieser Funktion hängen
   // — `getAllRegistrations` kommt aus dem EventContext und wird bei jedem
   // Render dort neu gebaut. Ein Effekt mit dieser Abhängigkeit würde sein

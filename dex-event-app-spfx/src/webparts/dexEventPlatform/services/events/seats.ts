@@ -263,7 +263,7 @@ export async function reorderParticipantIDs(
  * Element-Sicherheit („nur eigene Elemente") die Sicht des Aufrufers.
  * -1 bei Lesefehler.
  */
-async function getListItemCount(svc: EventService, subsiteUrl: string, listName: string): Promise<number> {
+export async function getListItemCount(svc: EventService, subsiteUrl: string, listName: string): Promise<number> {
   try {
     const resp = await svc._sp.get(
       `${subsiteUrl}/_api/web/lists/getbytitle('${listName}')?$select=ItemCount`,
