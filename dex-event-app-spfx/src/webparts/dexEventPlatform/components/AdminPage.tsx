@@ -3433,6 +3433,7 @@ export default function AdminPage(): React.ReactElement {
       {concurOpen && selectedEvent && (
         <ConcurAttendeeModal
           event={selectedEvent}
+          service={eventServiceRef}
           isDe={isDe}
           onClose={() => setConcurOpen(false)}
         />

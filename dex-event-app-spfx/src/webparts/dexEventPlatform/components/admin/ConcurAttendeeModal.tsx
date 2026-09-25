@@ -18,9 +18,10 @@ import * as React from 'react';
 import Modal from '../Modal';
 import { useEvents } from '../../context/EventContext';
 import { DeloitteEvent } from '../../types';
-import { SPRegistration } from '../../services/EventService';
+import { EventService, SPRegistration } from '../../services/EventService';
 import { splitName } from '../../utils/pastedRecipients';
 import { CONCUR_ATTENDEE_COLUMNS, CONCUR_MAX_ATTENDEES, fillConcurAttendeeTemplate } from '../../utils/concurAttendeeXls';
+import { mayBeTransliterated, NameParts, profileUmlautName, suggestUmlauts } from '../../utils/umlautNames';
 import { AlertCircle, Check, Download, FileText } from '../Icons';
 
 interface AttendeeRow {
@@ -28,6 +29,9 @@ interface AttendeeRow {
   type: string;
   first: string;
   last: string;
+  /** v31.97: Schreibweise mit Umlaut — aus dem Profil belegt oder nach Regeln vorgeschlagen. */
+  sug?: NameParts;
+  sugSource?: 'profil' | 'regel';
 }
 
 /** Deloitte-Adressen sind Mitarbeitende (SYSEMP); alles andere ist Gast. */
@@ -65,6 +69,8 @@ function base64ToBytes(b64: string): Uint8Array {
 
 export default function ConcurAttendeeModal(props: {
   event: DeloitteEvent;
+  /** v31.97: fürs Nachschlagen der Schreibweise im Profil; ohne Dienst nur Regel-Vorschläge. */
+  service?: EventService | null;
   isDe: boolean;
   onClose: () => void;
 }): React.ReactElement {
@@ -77,6 +83,11 @@ export default function ConcurAttendeeModal(props: {
   const [error, setError] = React.useState('');
   const [ownTemplate, setOwnTemplate] = React.useState<{ name: string; bytes: Uint8Array } | null>(null);
   const [doneParts, setDoneParts] = React.useState<number[]>([]);
+  // v31.97: Umlaute (s. utils/umlautNames). Haken je Person, Vorgabe an;
+  // eigene Korrektur in der Tabelle gewinnt immer.
+  const [lookup, setLookup] = React.useState<{ done: number; total: number } | null>(null);
+  const [useSug, setUseSug] = React.useState<Record<string, boolean>>({});
+  const [edits, setEdits] = React.useState<Record<string, NameParts>>({});
 
   React.useEffect(() => {
     let cancelled = false;
@@ -105,6 +116,41 @@ export default function ConcurAttendeeModal(props: {
       setRows(list);
       setFailed(fail);
       setLoading(false);
+
+      // v31.97: Befund erster Concur-Import (25.09.2026) — „Benoehr",
+      // „Gaessler" … abgelehnt, weil Concur „Benöhr" führt. Erst das Profil
+      // fragen (Beleg), sonst ein Regel-Vorschlag. Nur Mitarbeitende: Gäste
+      // gleicht Concur nicht über den Namen ab. Vier Anfragen parallel.
+      const todo = list.filter(r => r.type === 'SYSEMP' && mayBeTransliterated(r.first + ' ' + r.last));
+      if (todo.length === 0) return;
+      setLookup({ done: 0, total: todo.length });
+      let done = 0;
+      let next = 0;
+      const worker = async (): Promise<void> => {
+        while (next < todo.length && !cancelled) {
+          const r = todo[next++];
+          let found: NameParts | null = null;
+          if (props.service) {
+            try {
+              const p = await props.service.getUserProfileByEmail(r.email);
+              const d = splitName(p.displayName || '');
+              found = profileUmlautName(r, [{ first: p.firstName, last: p.lastName }, { first: d.vorname, last: d.nachname }]);
+            } catch { /* nicht auflösbar — Regel-Vorschlag */ }
+          }
+          if (found) { r.sug = found; r.sugSource = 'profil'; }
+          else {
+            const sf = suggestUmlauts(r.first);
+            const sl = suggestUmlauts(r.last);
+            if (sf !== r.first || sl !== r.last) { r.sug = { first: sf, last: sl }; r.sugSource = 'regel'; }
+          }
+          done++;
+          if (!cancelled) setLookup({ done, total: todo.length });
+        }
+      };
+      await Promise.all([worker(), worker(), worker(), worker()]);
+      if (cancelled) return;
+      setRows(list.slice());
+      setLookup(null);
     })().catch(err => {
       console.warn('[DEX] Concur-Liste: Lesen fehlgeschlagen', err);
       if (!cancelled) { setFailed([props.event.title]); setLoading(false); }
@@ -113,17 +159,27 @@ export default function ConcurAttendeeModal(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.event.id]);
 
+  /** Der Name, der in die Datei geht: eigene Korrektur > bestätigter Umlaut > DEX. */
+  const finalName = (r: AttendeeRow): NameParts =>
+    edits[r.email] || (r.sug && useSug[r.email] !== false ? r.sug : { first: r.first, last: r.last });
+
   // Gleicher Name unter zwei Adressen (SMTP vs. Alias, CLAUDE.md): Concur
   // erkennt keine Dubletten und bucht dann doppelt (Anleitungsblatt, Punkt 5).
   const nameDupes = React.useMemo(() => {
     const seen: Record<string, number> = {};
-    rows.forEach(r => { const k = (r.first + ' ' + r.last).toLowerCase().trim(); seen[k] = (seen[k] || 0) + 1; });
+    rows.forEach(r => { const n = finalName(r); const k = (n.first + ' ' + n.last).toLowerCase().trim(); seen[k] = (seen[k] || 0) + 1; });
     return Object.keys(seen).filter(k => k && seen[k] > 1);
-  }, [rows]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, edits, useSug]);
   const guests = rows.filter(r => r.type !== 'SYSEMP');
-  const noName = rows.filter(r => !r.first || !r.last);
+  const noName = rows.filter(r => { const n = finalName(r); return !n.first || !n.last; });
+  const sugProfil = rows.filter(r => r.sugSource === 'profil').length;
+  const sugRegel = rows.filter(r => r.sugSource === 'regel').length;
   const parts = Math.max(1, Math.ceil(rows.length / CONCUR_MAX_ATTENDEES));
-  const blocked = loading || failed.length > 0 || rows.length === 0;
+  const blocked = loading || !!lookup || failed.length > 0 || rows.length === 0;
+  const setName = (r: AttendeeRow, key: 'first' | 'last', v: string): void => {
+    setEdits(e => ({ ...e, [r.email]: { ...finalName(r), [key]: v } }));
+  };
 
   const pickTemplate = (e: React.ChangeEvent<HTMLInputElement>): void => {
     const f = e.target.files && e.target.files[0];
@@ -154,7 +210,7 @@ export default function ConcurAttendeeModal(props: {
       const slice = rows.slice(part * CONCUR_MAX_ATTENDEES, (part + 1) * CONCUR_MAX_ATTENDEES);
       // SYSEMP: Title und Company bleiben leer (Anleitungsblatt, Punkt 3 —
       // sonst NOATNMATCH). Custom5 (Client List) füllt DEX nie.
-      const data = slice.map(r => [r.type, r.first, r.last, '', '', '']);
+      const data = slice.map(r => { const n = finalName(r); return [r.type, n.first.trim(), n.last.trim(), '', '', '']; });
       // CFB ist im ESM-Build exportiert, in den Typen von xlsx 0.18 aber nicht.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const res = fillConcurAttendeeTemplate((XLSX as any).CFB, tpl, data);
@@ -250,6 +306,27 @@ export default function ConcurAttendeeModal(props: {
               </div>
             )}
 
+            {lookup && (
+              <p className="dex-ui-muted" style={{ margin: 0 }}>
+                {isDe
+                  ? `Schreibweisen mit Umlaut werden im Profil nachgeschlagen … ${lookup.done} / ${lookup.total}`
+                  : `Looking up spellings with umlauts in the profile … ${lookup.done} / ${lookup.total}`}
+              </p>
+            )}
+
+            {!lookup && (sugProfil + sugRegel) > 0 && (
+              <div className="dex-ui-callout dex-ui-callout--warn">
+                <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                <span>
+                  <strong>{isDe ? `${sugProfil + sugRegel} Namen mit Umlaut` : `${sugProfil + sugRegel} names with umlauts`}</strong>
+                  {' — '}
+                  {isDe
+                    ? `In DEX stehen sie umschrieben („Benoehr"), Concur führt sie mit Umlaut („Benöhr") und lehnt jede Abweichung ab. ${sugProfil} ${sugProfil === 1 ? 'Schreibweise ist' : 'Schreibweisen sind'} im Profil belegt, ${sugRegel} ${sugRegel === 1 ? 'ist ein Vorschlag' : 'sind Vorschläge'} — bitte in der Spalte „Umlaut" prüfen. Meldet Concur trotzdem „Cannot import", den Namen unten direkt korrigieren und die Datei neu laden.`
+                    : `DEX has them transliterated (“Benoehr”), Concur has them with umlauts (“Benöhr”) and rejects any difference. ${sugProfil} confirmed by the profile, ${sugRegel} suggested — please check the “Umlaut” column. If Concur still reports “Cannot import”, correct the name below and download again.`}
+                </span>
+              </div>
+            )}
+
             {guests.length > 0 && (
               <div className="dex-ui-callout dex-ui-callout--warn">
                 <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
@@ -292,18 +369,43 @@ export default function ConcurAttendeeModal(props: {
                       <th>Attendee Type</th>
                       <th>First Name</th>
                       <th>Last Name</th>
+                      <th>Umlaut</th>
                       <th>{isDe ? 'E-Mail (nicht in der Datei)' : 'Email (not in the file)'}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map(r => (
-                      <tr key={r.email}>
-                        <td><span className={r.type === 'SYSEMP' ? 'dex-ui-pill dex-ui-pill--sm dex-ui-pill--gray' : 'dex-ui-pill dex-ui-pill--sm dex-ui-pill--orange'}>{r.type}</span></td>
-                        <td>{r.first}</td>
-                        <td>{r.last}</td>
-                        <td className="dex-ui-muted">{r.email}</td>
-                      </tr>
-                    ))}
+                    {rows.map(r => {
+                      const n = finalName(r);
+                      return (
+                        <tr key={r.email}>
+                          <td><span className={r.type === 'SYSEMP' ? 'dex-ui-pill dex-ui-pill--sm dex-ui-pill--gray' : 'dex-ui-pill dex-ui-pill--sm dex-ui-pill--orange'}>{r.type}</span></td>
+                          {/* v31.97: direkt korrigierbar — für die Zeilen, die Concur ablehnt. */}
+                          <td><input className="dex-ui-input dex-ui-input--sm" value={n.first} aria-label="First Name" onChange={e => setName(r, 'first', e.target.value)} /></td>
+                          <td><input className="dex-ui-input dex-ui-input--sm" value={n.last} aria-label="Last Name" onChange={e => setName(r, 'last', e.target.value)} /></td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            {r.sug && !edits[r.email] && (
+                              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }} title={isDe ? `In DEX: ${r.first} ${r.last}` : `In DEX: ${r.first} ${r.last}`}>
+                                <input
+                                  type="checkbox"
+                                  className="dex-ui-checkbox"
+                                  checked={useSug[r.email] !== false}
+                                  onChange={e => { const v = e.target.checked; setUseSug(u => ({ ...u, [r.email]: v })); }}
+                                />
+                                <span className={r.sugSource === 'profil' ? 'dex-ui-pill dex-ui-pill--sm dex-ui-pill--green' : 'dex-ui-pill dex-ui-pill--sm dex-ui-pill--orange'}>
+                                  {r.sugSource === 'profil' ? (isDe ? 'aus Profil' : 'from profile') : (isDe ? 'Vorschlag' : 'suggested')}
+                                </span>
+                              </label>
+                            )}
+                            {edits[r.email] && (
+                              <button type="button" className="btn btn-secondary dex-ui-btn-sm" onClick={() => setEdits(e => { const x = { ...e }; delete x[r.email]; return x; })}>
+                                {isDe ? 'Zurücksetzen' : 'Reset'}
+                              </button>
+                            )}
+                          </td>
+                          <td className="dex-ui-muted">{r.email}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

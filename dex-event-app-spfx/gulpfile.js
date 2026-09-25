@@ -30,6 +30,16 @@ build.configureWebpack.mergeConfig({
       // Der Cache ist Kür. Fehlt er, baut das Projekt unverändert — nur langsamer.
       console.warn('[minify-cache] übersprungen: ' + e.message);
     }
+    // v31.97: Größen-Analyse. Nur mit DEX_BUNDLE_STATS=1 — schreibt
+    // temp/bundle-stats.json, ausgewertet von tools/bundle-report.js.
+    if (process.env.DEX_BUNDLE_STATS) {
+      try {
+        const { attachBundleStats } = require('./build/bundle-stats');
+        attachBundleStats(config, path.join(__dirname, 'temp', 'bundle-stats.json'));
+      } catch (e) {
+        console.warn('[bundle-stats] übersprungen: ' + e.message);
+      }
+    }
     return config;
   },
 });

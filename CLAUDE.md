@@ -65,8 +65,22 @@ GitHub-Repo"). Das Paket wird nur noch nach `dist/` kopiert; der
 Kumulativ-Absatz, die Download-Links und die versionierte Kopie unter
 `docs/downloads/` entfallen. `docs/release-notes.md` bleibt Pflicht.
 
-Erwartete Größe: ca. **2,2–2,4 MB**. Deutlich größer heißt: stale Bundles, Schritt 4
+Erwartete Größe: ca. **2,6–2,7 MB** (Stand v31.97). Deutlich größer heißt: stale Bundles, Schritt 4
 wiederholen. In `release/assets/` darf es nur **eine** `dex-event-platform-web-part_*.js` geben.
+
+**Die .sppkg-Größe ist nicht das, was Nutzer laden.** Das Paket enthält alle
+Lazy-Chunks (PDF-Viewer allein ~360 KB gezippt, xlsx ~135 KB, Concur-Vorlage
+~115 KB); geladen wird bei jedem Seitenaufruf nur das **Haupt-Bundle**
+(`dex-event-platform-web-part_*.js`, v31.97: ~2,0 MB minifiziert / ~530 KB
+gezippt). Wer optimiert, misst dieses — nicht das Paket:
+`DEX_BUNDLE_STATS=1 ./node_modules/.bin/gulp bundle --ship` und danach
+`node tools/bundle-report.js <Suchbegriff …>` (★ = Haupt-Bundle, je Begriff
+die Summe, z.B. `hotel`). Bis v31.96 lagen die Release Notes (~600 KB
+minifiziert) im Haupt-Bundle, nur weil der Wochenbericht sie statisch
+importierte. Regel: große Daten-Module (`data/*`, Base64, Texte) nur per
+`await import()` an der Verwendungsstelle — und nie zwei Konstanten in eine
+Datei, von denen eine der Boot-Pfad braucht (das schwarze Logo hing so am
+Header).
 
 **Der Build dauert seit v30.40 rund 1,1 statt 1,8 Minuten** — `.minifycache/`
 hält die Terser-Ergebnisse (rund 40 der 56 webpack-Sekunden waren reine

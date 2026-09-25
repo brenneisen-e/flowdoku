@@ -8,7 +8,7 @@ import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
 import { getCachedLogoBase64, getCachedOrbBase64 } from '../services/EmailTemplates';
-import { DELOITTE_LOGO_BLACK } from '../data/brandLogos';
+import { DELOITTE_LOGO_BLACK } from '../data/brandLogoBlack';
 
 // v24.13: Das gecachte Deloitte-Logo ist WEISS (für dunkle Mail-Header). Fürs
 // PDF (weißer Grund) färben wir genau dieses offizielle Logo per Canvas auf
