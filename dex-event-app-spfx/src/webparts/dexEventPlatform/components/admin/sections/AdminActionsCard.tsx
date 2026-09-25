@@ -914,11 +914,11 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
             )}
 
             {/* 5e. v31.96: Eingecheckte in die Concur-Vorlage — für den Beleg
-                der Veranstaltungskosten. Nutzer-Ansage 25.09.2026 für B2Run
-                Köln; dieselbe Gate-Bedingung wie die Nachbarn. Die Datei ist
-                nicht B2Run-spezifisch — soll sie für alle Events kommen, nur
-                diese Bedingung lockern. */}
-            {selectedEvent && isB2RunKoelnTitle(selectedEvent.title) && (
+                der Veranstaltungskosten. v31.98: für ALLE Events (Nutzer-
+                Ansage 25.09.2026; vorher nur B2Run Köln) — Bewirtungsbelege
+                gibt es bei jedem Event, und die Danke-Mail verlinkt die
+                Aktion für jedes Event. */}
+            {selectedEvent && (
               <ActionTile
                 icon={<FileText size={18} />}
                 category="participants"

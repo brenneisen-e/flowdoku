@@ -154,7 +154,7 @@ import { createQrMailActions } from './admin/logic/createQrMailActions';
 
 export default function AdminPage(): React.ReactElement {
   const isMobile = useIsMobile();
-  const { navigate, selectedEventId } = useNavigation();
+  const { navigate, selectedEventId, navIntent, clearIntent } = useNavigation();
   // v14.11: zusätzlich `events` (alle Events inkl. Sub-Events) als `allEvents`
   // für die Parent-Lookup-Logik im konsolidierten View + im Sub-Event-Detail.
   const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead, registerForEvent, subscribeEventRealtime, sendCompleteRegistrationReminder } = useEvents();
@@ -1737,6 +1737,40 @@ export default function AdminPage(): React.ReactElement {
   // v6.20: Access-Gate — wer weder Admin noch Organizer eines Events noch QR-Scanner
   // eines Events ist, darf die Admin-Seite gar nicht erst sehen. Zeigt eine klare
   // "Kein Zugriff"-Meldung statt einer leeren Event-Liste.
+  // v31.98: Die drei Listen-Links der Danke-Mail (`open=teilnehmer|concur|fa`).
+  // Erst wenn DIESES Event gewählt und seine Liste geladen ist: Der F&A-Dialog
+  // exportiert aus `registrations`, und ein Dialog über einer noch leeren
+  // Liste wäre ein Export von nichts. Nach 8 s geht er trotzdem auf — ein
+  // Event ohne Anmeldungen würde sonst nie fertig „geladen". Vor den frühen
+  // Returns unten (rules-of-hooks).
+  const didOpenIntent = React.useRef(false);
+  const [intentWaitedOut, setIntentWaitedOut] = React.useState(false);
+  const istListenIntent = navIntent === 'open-teilnehmer' || navIntent === 'open-concur' || navIntent === 'open-fa';
+  React.useEffect(() => {
+    if (!istListenIntent) return;
+    const t = window.setTimeout(() => setIntentWaitedOut(true), 8000);
+    return () => window.clearTimeout(t);
+  }, [istListenIntent]);
+  React.useEffect(() => {
+    if (didOpenIntent.current || !istListenIntent) return;
+    if (!selectedEvent || selectedEvent.id !== selectedEventId) return;
+    if (isLoadingRegs || (registrations.length === 0 && !intentWaitedOut)) return;
+    didOpenIntent.current = true;
+    clearIntent();
+    if (navIntent === 'open-concur') setConcurOpen(true);
+    else if (navIntent === 'open-fa') {
+      // Für einen Beleg zählt, wer da war — dieselbe Vorauswahl, die der
+      // Dialog für F&A empfiehlt.
+      setExcelAudience('checkedIn');
+      setExcelTargetModal({ mode: 'fa' });
+    } else {
+      window.setTimeout(() => {
+        try { participantListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { /* */ }
+      }, 150);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [istListenIntent, selectedEvent, selectedEventId, isLoadingRegs, registrations.length, intentWaitedOut]);
+
   if (!selectedEvent && !isAdmin && adminEvents.length === 0) {
     return (
       <div className="page-container" role="main">

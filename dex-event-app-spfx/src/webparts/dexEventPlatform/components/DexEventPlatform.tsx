@@ -11,7 +11,7 @@ import * as React from 'react';
 import DexLogo from './DexLogo';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import styles from './DexEventPlatform.module.scss';
-import { NavigationProvider, useNavigation, Page } from '../context/NavigationContext';
+import { NavigationProvider, useNavigation, Page, NavIntent } from '../context/NavigationContext';
 import { LanguageProvider, useLanguage, useLocaleSafe } from '../context/LanguageContext';
 import { inputLocaleTag } from '../utils/inputLocale';
 // v20.4: Moderne Confirm-/Alert-Modals statt nativer Browser-Dialoge.
@@ -615,7 +615,11 @@ function AppContent(): React.ReactElement {
           }
         }
         if (evt) {
-          navigate(targetPage, evt.id);
+          // v31.98: `open=` aus der Danke-Mail — welcher Dialog aufgehen soll.
+          const open = params.get('open') || '';
+          const openIntent: NavIntent = action === 'admin' && (open === 'teilnehmer' || open === 'concur' || open === 'fa')
+            ? (`open-${open}` as NavIntent) : undefined;
+          navigate(targetPage, evt.id, openIntent);
         } else {
           navigate(targetPage);
         }
