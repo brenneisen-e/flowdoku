@@ -81,6 +81,8 @@ export interface AdminActionsCardProps {
   /** v31.4: Dialog „Startnummern zuteilen" (s. B2RunAssignBibsModal). */
   setAssignBibsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setB2runTodoOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  /** v31.96: Dialog „Concur-Teilnehmerliste“ (s. ConcurAttendeeModal). */
+  setConcurOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setBibImportOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setBillingPanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setCheckInHubOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -132,7 +134,7 @@ export interface AdminActionsCardProps {
 }
 
 export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
-  const { adminEvents, allEvents, childEventsOf, confirmDialog, copiedDeepLink, copiedEmails, detectOverbookResult, eventServiceRef, fixColumnsResult, fixFieldsResult, isAdmin, isCheckingDeclines, isDe, isDetectingOverbook, isFixingColumns, isFixingFields, isOrganizerFor, isPromoting, isRefreshingProfiles, isReorderingIDs, isRepairingAccess, isRepairingNames, isRepairingOrganizers, isRepairingPerms, isResettingCounter, isSendingQR, isSplitCapacity, isSyncingRegistry, navigate, openChangeLogForEvent, openCommsModal, openInviteModal, openMassmailPicker, promoteResult, qrSentCount, refreshEvents, refreshProfilesResult, registrations, reloadRegistrations, reorderResult, repairAccessResult, repairNamesResult, repairOrganizersResult, repairPermsResult, resetCounterResult, runIdReorder, runManualPromote, searchUsers, selectedEvent, setAccessFixModal, setB2runTodoOpen, setBibImportOpen, setBillingPanelOpen, setCheckInHubOpen, setCheckInHubStep, setCopiedDeepLink, setCopiedEmails, setDeclineCopied, setDeclineResult, setDetectOverbookResult, setExcelAudience, setExcelTargetModal, setFixColumnsResult, setFixFieldsResult, setIsCheckingDeclines, setIsDetectingOverbook, setIsFixingColumns, setIsFixingFields, setIsRefreshingProfiles, setIsRepairingAccess, setIsRepairingNames, setIsRepairingOrganizers, setIsRepairingPerms, setIsResettingCounter, setIsSyncingRegistry, setNameFixModal, setRefreshProfilesResult, setRepairAccessResult, setRepairNamesResult, setRepairOrganizersResult, setRepairPermsResult, setResetCounterResult, setQrBackfillOpen, setShirtSizeOpen, setShowDeclineModal, setShowExportMenu, setSubRegReloadTick, setSyncRegistryResult, shirtFieldExists, showAlert, showExportMenu, siteUrl, spServiceRef, syncRegistryResult, t, updateEvent } = p;
+  const { adminEvents, allEvents, childEventsOf, confirmDialog, copiedDeepLink, copiedEmails, detectOverbookResult, eventServiceRef, fixColumnsResult, fixFieldsResult, isAdmin, isCheckingDeclines, isDe, isDetectingOverbook, isFixingColumns, isFixingFields, isOrganizerFor, isPromoting, isRefreshingProfiles, isReorderingIDs, isRepairingAccess, isRepairingNames, isRepairingOrganizers, isRepairingPerms, isResettingCounter, isSendingQR, isSplitCapacity, isSyncingRegistry, navigate, openChangeLogForEvent, openCommsModal, openInviteModal, openMassmailPicker, promoteResult, qrSentCount, refreshEvents, refreshProfilesResult, registrations, reloadRegistrations, reorderResult, repairAccessResult, repairNamesResult, repairOrganizersResult, repairPermsResult, resetCounterResult, runIdReorder, runManualPromote, searchUsers, selectedEvent, setAccessFixModal, setB2runTodoOpen, setBibImportOpen, setBillingPanelOpen, setConcurOpen, setCheckInHubOpen, setCheckInHubStep, setCopiedDeepLink, setCopiedEmails, setDeclineCopied, setDeclineResult, setDetectOverbookResult, setExcelAudience, setExcelTargetModal, setFixColumnsResult, setFixFieldsResult, setIsCheckingDeclines, setIsDetectingOverbook, setIsFixingColumns, setIsFixingFields, setIsRefreshingProfiles, setIsRepairingAccess, setIsRepairingNames, setIsRepairingOrganizers, setIsRepairingPerms, setIsResettingCounter, setIsSyncingRegistry, setNameFixModal, setRefreshProfilesResult, setRepairAccessResult, setRepairNamesResult, setRepairOrganizersResult, setRepairPermsResult, setResetCounterResult, setQrBackfillOpen, setShirtSizeOpen, setShowDeclineModal, setShowExportMenu, setSubRegReloadTick, setSyncRegistryResult, shirtFieldExists, showAlert, showExportMenu, siteUrl, spServiceRef, syncRegistryResult, t, updateEvent } = p;
 
   const { setCopyToAgendaOpen, setAssignBibsOpen } = p;
 
@@ -908,6 +910,24 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                   : 'Shows which bib numbers still need to be transferred, cancelled or newly registered with the organiser. Recalculated each time you open it, so later cancellations show up by themselves.'}
                 badge="organizer"
                 onClick={() => setB2runTodoOpen(true)}
+              />
+            )}
+
+            {/* 5e. v31.96: Eingecheckte in die Concur-Vorlage — für den Beleg
+                der Veranstaltungskosten. Nutzer-Ansage 25.09.2026 für B2Run
+                Köln; dieselbe Gate-Bedingung wie die Nachbarn. Die Datei ist
+                nicht B2Run-spezifisch — soll sie für alle Events kommen, nur
+                diese Bedingung lockern. */}
+            {selectedEvent && isB2RunKoelnTitle(selectedEvent.title) && (
+              <ActionTile
+                icon={<FileText size={18} />}
+                category="participants"
+                title={isDe ? 'Concur-Teilnehmerliste' : 'Concur attendee list'}
+                desc={isDe
+                  ? 'Schreibt alle eingecheckten Personen in die Concur-Vorlage „AttendeeImportTemplate.xls“ — fertig zum Hochladen über „Import“ beim Beleg. Die Vorlage bleibt unverändert (Anleitung, Typ-Liste, Formate); Deloitte-Adressen werden SYSEMP.'
+                  : 'Writes everyone checked in into the Concur template “AttendeeImportTemplate.xls” — ready to upload via “Import” on the expense. The template stays intact (instructions, type list, formats); Deloitte addresses become SYSEMP.'}
+                badge="organizer"
+                onClick={() => setConcurOpen(true)}
               />
             )}
 

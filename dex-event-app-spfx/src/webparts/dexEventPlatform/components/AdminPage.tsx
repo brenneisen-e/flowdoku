@@ -30,6 +30,7 @@ import { activeParentRegOf } from './admin/logic/parentRegs';
 import { InfoTooltip } from './InfoTooltip';
 import B2RunBibImportModal from './admin/B2RunBibImportModal';
 import B2RunTodoModal from './admin/B2RunTodoModal';
+import ConcurAttendeeModal from './admin/ConcurAttendeeModal';
 // v31.4: Freie Startnummern an Personen ohne Nummer zuteilen.
 import B2RunAssignBibsModal from './admin/B2RunAssignBibsModal';
 import ShirtSizeModal from './admin/ShirtSizeModal';
@@ -1232,6 +1233,8 @@ export default function AdminPage(): React.ReactElement {
   const [bibImportOpen, setBibImportOpen] = React.useState(false);
   // v30.54: Offene Ummeldungen beim Veranstalter — live aus der Liste.
   const [b2runTodoOpen, setB2runTodoOpen] = React.useState(false);
+  // v31.96: Concur-Teilnehmerliste (s. components/admin/ConcurAttendeeModal).
+  const [concurOpen, setConcurOpen] = React.useState(false);
   // v31.4: Freie Startnummern an Personen ohne Nummer (s. B2RunAssignBibsModal).
   const [assignBibsOpen, setAssignBibsOpen] = React.useState(false);
   // v30.60: Bestellliste der Trikots (s. components/admin/ShirtSizeModal).
@@ -2619,7 +2622,7 @@ export default function AdminPage(): React.ReactElement {
     navigate, openChangeLogForEvent, openCommsModal, openInviteModal, openMassmailPicker, promoteResult,
     qrSentCount, refreshEvents, refreshProfilesResult, registrations, reloadRegistrations, reorderResult, repairAccessResult,
     repairNamesResult, repairOrganizersResult, repairPermsResult, resetCounterResult, runIdReorder, runManualPromote,
-    searchUsers, selectedEvent, setAccessFixModal, setAssignBibsOpen, setB2runTodoOpen, setBibImportOpen, setBillingPanelOpen,
+    searchUsers, selectedEvent, setAccessFixModal, setAssignBibsOpen, setB2runTodoOpen, setBibImportOpen, setBillingPanelOpen, setConcurOpen,
     setCheckInHubOpen, setCheckInHubStep, setCopiedDeepLink, setCopiedEmails, setDeclineCopied, setDeclineResult,
     setDetectOverbookResult, setExcelAudience, setExcelTargetModal, setFixColumnsResult, setFixFieldsResult, setIsCheckingDeclines,
     setIsDetectingOverbook, setIsFixingColumns, setIsFixingFields, setIsRefreshingProfiles, setIsRepairingAccess, setIsRepairingNames,
@@ -3424,6 +3427,14 @@ export default function AdminPage(): React.ReactElement {
           event={selectedEvent}
           service={eventServiceRef}
           onClose={() => setB2runTodoOpen(false)}
+        />
+      )}
+
+      {concurOpen && selectedEvent && (
+        <ConcurAttendeeModal
+          event={selectedEvent}
+          isDe={isDe}
+          onClose={() => setConcurOpen(false)}
         />
       )}
 
