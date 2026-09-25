@@ -107,7 +107,10 @@ export function fallbackFor(page: Page, eventId: string | null): { page: Page; e
 // „Meine Events" direkt die Nachrichten dieses Events.
 // v31.60: 'resume-draft' öffnet die Event-Erstellung und wendet den
 // gespeicherten Entwurf sofort an (Knopf „Entwurf weiter bearbeiten").
-export type NavIntent = 'register-other' | 'auto-cancel' | 'open-comms' | 'resume-draft' | undefined;
+// v31.98: 'open-teilnehmer' / 'open-concur' / 'open-fa' kommen aus den drei
+// Listen-Links der Danke-Mail (`#action=admin&event=<Id>&open=…`) und öffnen
+// im Organizer Center den passenden Dialog.
+export type NavIntent = 'register-other' | 'auto-cancel' | 'open-comms' | 'resume-draft' | 'open-teilnehmer' | 'open-concur' | 'open-fa' | undefined;
 
 export interface NavigateOptions {
   /** v31.59: Seite ersetzen statt anhängen — für Rechte-Umleitungen und die

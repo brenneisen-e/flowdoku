@@ -238,7 +238,7 @@ export default function ConcurAttendeeModal(props: {
     <Modal
       open
       onClose={props.onClose}
-      maxWidth={760}
+      maxWidth={920}
       ariaLabel={isDe ? 'Concur-Teilnehmerliste' : 'Concur attendee list'}
       title={isDe ? 'Concur-Teilnehmerliste' : 'Concur attendee list'}
       subtitle={isDe
@@ -284,16 +284,48 @@ export default function ConcurAttendeeModal(props: {
               </div>
             )}
 
+            {/* v31.98: Die Typen erklärt statt nur benannt (Nutzer-Ansage
+                25.09.2026: „erklären, dass SYSEMP der Status für Deloitte
+                Employee ist — schön übersichtlich"). Zwei Karten mit Zahl,
+                Bedeutung und dem, was Concur je Typ verlangt; darunter die
+                drei Schritte in Concur. */}
             {rows.length > 0 && (
-              <div className="dex-ui-callout dex-ui-callout--info">
-                <span className="dex-ui-callout-icon"><FileText size={16} /></span>
-                <span>
-                  <strong>{rows.length} {isDe ? (rows.length === 1 ? 'Person eingecheckt' : 'Personen eingecheckt') : 'checked in'}</strong>
-                  {' — '}
+              <div className="dex-ui-section">
+                <div className="dex-ui-section-title">
+                  {isDe ? 'Wer kommt in die Datei?' : 'Who goes into the file?'}{' '}
+                  <span className="dex-ui-pill dex-ui-pill--green">{rows.length} {isDe ? 'eingecheckt' : 'checked in'}</span>
+                </div>
+                <div className="dex-ui-grid-2">
+                  <div className="dex-ui-card" style={{ padding: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <span className="dex-ui-pill dex-ui-pill--gray">SYSEMP</span>
+                      <strong>Deloitte Employee</strong>
+                      <span className="dex-ui-muted" style={{ marginLeft: 'auto' }}>{rows.length - guests.length}</span>
+                    </div>
+                    <div className="dex-ui-muted" style={{ fontSize: 13, lineHeight: 1.45 }}>
+                      {isDe
+                        ? 'Alle mit Deloitte-Adresse. Concur findet sie über Vor- und Nachname — der muss exakt stimmen, mit Umlauten. „Attendee Title“ und „Company“ bleiben leer, sonst meldet Concur NOATNMATCH.'
+                        : 'Everyone with a Deloitte address. Concur finds them by first and last name — it must match exactly, including umlauts. “Attendee Title” and “Company” stay empty, otherwise Concur reports NOATNMATCH.'}
+                    </div>
+                  </div>
+                  <div className="dex-ui-card" style={{ padding: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <span className="dex-ui-pill dex-ui-pill--orange">BUSGUEST</span>
+                      <strong>Business Guest</strong>
+                      <span className="dex-ui-muted" style={{ marginLeft: 'auto' }}>{guests.length}</span>
+                    </div>
+                    <div className="dex-ui-muted" style={{ fontSize: 13, lineHeight: 1.45 }}>
+                      {isDe
+                        ? 'Alle ohne Deloitte-Adresse. Für Gäste verlangt Concur „Attendee Title“ und „Company“ — die kennt DEX nicht, bitte in der Datei ergänzen. Andere Typen (z. B. CLIENT) stehen im Blatt „Attendee Types“.'
+                        : 'Everyone without a Deloitte address. For guests Concur requires “Attendee Title” and “Company” — DEX does not know them, please add them in the file. Other types (e.g. CLIENT) are listed on the “Attendee Types” sheet.'}
+                    </div>
+                  </div>
+                </div>
+                <div className="dex-ui-muted" style={{ fontSize: 13, marginTop: 10 }}>
                   {isDe
-                    ? `Deloitte-Adressen als SYSEMP (Titel und Firma bleiben leer, so verlangt es Concur), andere als BUSGUEST. Vorlage: ${ownTemplate ? ownTemplate.name : 'AttendeeImportTemplate.xls (Stand 07.04.2025)'}.`
-                    : `Deloitte addresses as SYSEMP (title and company stay empty, as Concur requires), others as BUSGUEST. Template: ${ownTemplate ? ownTemplate.name : 'AttendeeImportTemplate.xls (as of 2025-04-07)'}.`}
-                </span>
+                    ? <>In Concur: <strong>Beleg öffnen</strong> → <strong>Attendees</strong> → <strong>Import</strong> → Datei wählen. Vorlage: {ownTemplate ? ownTemplate.name : 'AttendeeImportTemplate.xls (Stand 07.04.2025)'}.</>
+                    : <>In Concur: <strong>open the expense</strong> → <strong>Attendees</strong> → <strong>Import</strong> → pick the file. Template: {ownTemplate ? ownTemplate.name : 'AttendeeImportTemplate.xls (as of 2025-04-07)'}.</>}
+                </div>
               </div>
             )}
 
@@ -378,10 +410,13 @@ export default function ConcurAttendeeModal(props: {
                       const n = finalName(r);
                       return (
                         <tr key={r.email}>
-                          <td><span className={r.type === 'SYSEMP' ? 'dex-ui-pill dex-ui-pill--sm dex-ui-pill--gray' : 'dex-ui-pill dex-ui-pill--sm dex-ui-pill--orange'}>{r.type}</span></td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <span className={r.type === 'SYSEMP' ? 'dex-ui-pill dex-ui-pill--sm dex-ui-pill--gray' : 'dex-ui-pill dex-ui-pill--sm dex-ui-pill--orange'}>{r.type}</span>
+                            <div className="dex-ui-muted" style={{ fontSize: 11, marginTop: 2 }}>{r.type === 'SYSEMP' ? 'Deloitte Employee' : 'Business Guest'}</div>
+                          </td>
                           {/* v31.97: direkt korrigierbar — für die Zeilen, die Concur ablehnt. */}
-                          <td><input className="dex-ui-input dex-ui-input--sm" value={n.first} aria-label="First Name" onChange={e => setName(r, 'first', e.target.value)} /></td>
-                          <td><input className="dex-ui-input dex-ui-input--sm" value={n.last} aria-label="Last Name" onChange={e => setName(r, 'last', e.target.value)} /></td>
+                          <td><input className="dex-ui-input dex-ui-input--sm" value={n.first} style={{ minWidth: 110 }} aria-label="First Name" onChange={e => setName(r, 'first', e.target.value)} /></td>
+                          <td><input className="dex-ui-input dex-ui-input--sm" value={n.last} style={{ minWidth: 130 }} aria-label="Last Name" onChange={e => setName(r, 'last', e.target.value)} /></td>
                           <td style={{ whiteSpace: 'nowrap' }}>
                             {r.sug && !edits[r.email] && (
                               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }} title={isDe ? `In DEX: ${r.first} ${r.last}` : `In DEX: ${r.first} ${r.last}`}>

@@ -13,6 +13,7 @@ import { DeloitteEvent } from '../../types';
 import { EventService } from '../../services/EventService';
 import { buildMailButton, wrapTemplate } from '../../services/EmailTemplates';
 import { isEventOver } from '../../utils/eventFormat';
+import { buildHashDeepLink } from '../../utils/deepLink';
 
 export interface AutoMailDeps {
   eventService: EventService;
@@ -84,9 +85,32 @@ export function makeAutoMailActions(deps: AutoMailDeps) {
         // Dedupe case-insensitiv (eine Adresse nicht doppelt im To).
         const seen = new Set<string>();
         const recipients = orgEmails.filter(e => { const lc = e.toLowerCase(); if (seen.has(lc)) return false; seen.add(lc); return true; });
+        /*
+         * v31.98: Die drei Listen, die nach einem Event gebraucht werden, als
+         * Deeplinks (Nutzer-Ansage 25.09.2026: „die TN-Liste findest du hier,
+         * die Concur-taugliche hier und die für F&A hier"). Jeder Link öffnet
+         * das Organizer Center mit dem Event UND dem passenden Dialog
+         * (`open=` → NavIntent, s. DexEventPlatform). Vorher stand hier ein
+         * Link auf die Startseite, von der aus man Event und Aktion suchen
+         * musste. Als Tabelle mit Zeilen, nicht als drei Knöpfe: Drei grüne
+         * Knöpfe untereinander liest niemand als Auswahl.
+         */
+        const listLink = (open: string): string => buildHashDeepLink(`${appUrl}?env=WebView`, { action: 'admin', event: ev.id, open });
+        const listRow = (href: string, titel: string, text: string, last: boolean): string => `
+            <tr>
+              <td style="padding:12px 14px;${last ? '' : 'border-bottom:1px solid #e6e6e6;'}">
+                <a href="${href}" style="color:#1a1a1a;font-weight:700;font-size:15px;text-decoration:none;">${titel}&nbsp;<span style="color:#86bc25;">&rarr;</span></a>
+                <div style="color:#666666;font-size:13px;line-height:18px;margin-top:3px;">${text}</div>
+              </td>
+            </tr>`;
         const linkLine = appUrl
-          ? `<p style="margin:0 0 12px;">Ihr findet die Teilnehmerübersicht jederzeit im <a href="${appUrl}" style="color:#86bc25;font-weight:600;">Organizer Center der DEX App</a> — dort könnt ihr sie auch als Excel exportieren.</p>`
-          : `<p style="margin:0 0 12px;">Ihr findet die Teilnehmerübersicht jederzeit im Organizer Center der DEX App — dort könnt ihr sie auch als Excel exportieren.</p>`;
+          ? `<p style="margin:0 0 8px;"><strong>Eure Teilnehmerlisten</strong> — ein Klick öffnet das Event im Organizer Center direkt an der richtigen Stelle:</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;border:1px solid #e6e6e6;border-radius:8px;margin:0 0 16px;">
+            ${listRow(listLink('teilnehmer'), 'Teilnehmerliste', 'Alle Anmeldungen mit Status, Antworten und Check-in — auch als Excel.', false)}
+            ${listRow(listLink('concur'), 'Concur-Liste', 'Alle Eingecheckten in der Concur-Vorlage (AttendeeImportTemplate.xls) — zum Hochladen beim Beleg über „Import“.', false)}
+            ${listRow(listLink('fa'), 'F&amp;A-Liste', 'Die Liste im Format von Finance &amp; Accounting, vorausgewählt: nur Eingecheckte.', true)}
+          </table>`
+          : `<p style="margin:0 0 12px;">Die Teilnehmerliste, die Concur-Liste und die F&amp;A-Liste findet ihr im Organizer Center der DEX App beim Event.</p>`;
         /*
          * v31.23: Der Feedback-Knopf (Nutzer-Anforderung 11.09.2026).
          *
@@ -112,15 +136,17 @@ export function makeAutoMailActions(deps: AutoMailDeps) {
           ${buildMailButton(feedbackUrl, 'Feedback geben &rarr;')}` : '';
         const inner = `
           <p style="margin:0 0 12px;">Hallo zusammen,</p>
-          <p style="margin:0 0 12px;">wir hoffen, euer Event <strong>&bdquo;${ev.title}&ldquo;</strong> ist gut verlaufen und alle hatten eine schöne Zeit!</p>
-          ${feedbackBlock}
-          <p style="margin:0 0 12px;">Ein kurzer Hinweis zur Aufbewahrung: Die <strong>Teilnehmerübersicht bleibt noch 3 Monate gespeichert</strong> (Datenschutz-/Aufbewahrungsvorgabe). Danach wird sie gelöscht — das Event und die wichtigsten Kennzahlen bleiben im Statistik-Archiv erhalten. Ihr werdet rund eine Woche vorher noch einmal erinnert.</p>
+          <p style="margin:0 0 12px;">danke, dass ihr DEX für <strong>&bdquo;${ev.title}&ldquo;</strong> genutzt habt — wir hoffen, das Event ist gut verlaufen und alle hatten eine schöne Zeit!</p>
           ${linkLine}
+          ${feedbackBlock}
+          <p style="margin:0 0 12px;">Ein kurzer Hinweis zur Aufbewahrung: Die <strong>Teilnehmerübersicht bleibt noch 3 Monate gespeichert</strong> (Datenschutz-/Aufbewahrungsvorgabe). Danach wird sie gelöscht — das Event und die wichtigsten Kennzahlen bleiben im Statistik-Archiv erhalten. Ihr werdet rund eine Woche vorher noch einmal erinnert. Ladet die Listen, die ihr für Abrechnung und Belege braucht, also am besten jetzt.</p>
           <p style="margin:0 0 12px;">Vielen Dank, dass ihr das Event organisiert habt!</p>`;
-        const body = wrapTemplate('#86bc25', 'Danke für euer Event!', ev.title, inner, undefined, eventHeaderImageOpts(ev.emailTemplateOverrides, ev.mailImageBase64));
+        const body = wrapTemplate('#86bc25', 'Danke, dass ihr DEX genutzt habt!', ev.title, inner, undefined, eventHeaderImageOpts(ev.emailTemplateOverrides, ev.mailImageBase64));
         try {
           await eventService.queueEmail(
-            `Dein Event „${ev.title}" — danke & Hinweis zur Aufbewahrung`,
+            // v31.98: Der Betreff sagt, was drinsteht — die Listen sind der
+            // Grund, die Mail wieder aufzumachen.
+            `Danke für „${ev.title}“ — eure Teilnehmerlisten (Concur / F&A)`,
             recipients.join('; '), recipients.join('; '), body, 'PostEventOrganizer', ev.title, ev.id,
           );
           // v26.39: persistenten Marker setzen — verhindert erneuten Versand,
