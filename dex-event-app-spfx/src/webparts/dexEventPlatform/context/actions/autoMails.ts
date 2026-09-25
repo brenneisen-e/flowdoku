@@ -13,7 +13,6 @@ import { DeloitteEvent } from '../../types';
 import { EventService } from '../../services/EventService';
 import { buildMailButton, wrapTemplate } from '../../services/EmailTemplates';
 import { isEventOver } from '../../utils/eventFormat';
-import { RELEASE_NOTES, splitReleaseNote } from '../../data/releaseNotes';
 
 export interface AutoMailDeps {
   eventService: EventService;
@@ -190,6 +189,11 @@ export function makeAutoMailActions(deps: AutoMailDeps) {
       // v23.44: Release Notes der Berichtswoche (aus dem TS-Modul, datums-gefiltert).
       const relFromTs = new Date(fromIso).getTime();
       const relToTs = new Date(toIso).getTime();
+      // v31.97: Die Release Notes sind mit rund 300 KB das größte Modul der
+      // App und wurden nur hier gebraucht — als statischer Import lagen sie
+      // im Haupt-Bundle, das jede Person bei jedem Seitenaufruf lädt. Jetzt
+      // erst beim Wochenbericht (Admins, einmal pro Woche).
+      const { RELEASE_NOTES, splitReleaseNote } = await import('../../data/releaseNotes');
       const relNotes = RELEASE_NOTES.filter(n => { const t = new Date(n.date).getTime(); return isFinite(t) && t >= relFromTs && t <= relToTs; });
       const relNotesHtml = relNotes.length > 0
         // v30.60: Auch im Wochenbericht gegliedert statt als Textblock —
