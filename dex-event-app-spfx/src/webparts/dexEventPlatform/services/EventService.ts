@@ -1161,8 +1161,8 @@ export class EventService {
   public async logosAuslagernAlle(vorschau: boolean, onProgress?: (_done: number, _total: number, _label: string) => void): Promise<{ zeilen: number; kb: number; umgestellt: number; fehler: string[]; abgebrochen: boolean; ohneSpalte: boolean }> {
     return eventsCrud.logosAuslagernAlle(this, vorschau, onProgress);
   }
-  public async updateEvent(eventId: number, updates: Record<string, unknown>, retried?: boolean): Promise<boolean> {
-    return eventsCrud.updateEvent(this, eventId, updates, retried);
+  public async updateEvent(eventId: number, updates: Record<string, unknown>, retried?: boolean, baseline?: Record<string, unknown>): Promise<boolean> {
+    return eventsCrud.updateEvent(this, eventId, updates, retried, baseline);
   }
 
   public async deleteEvent(eventId: number): Promise<boolean> {
