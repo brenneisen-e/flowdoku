@@ -7,7 +7,8 @@
  * hereingereicht — sonst ist der Koerper unveraendert.
  */
 
-import { DeloitteEvent, DexHotel, DexHotelStay, DexHotelRules } from '../types';
+import { DeloitteEvent, DexHotel, DexHotelStay, DexHotelRules, SeriesRule } from '../types';
+import { parseSeriesRule } from '../utils/seriesRule';
 import { SPEvent, CustomField } from '../services/EventService';
 import { buildDisplayImageUrl, stripSpNoteWrapper } from './eventTextHelpers';
 
@@ -175,6 +176,13 @@ export async function mapSPEventToDeloitteEvent(e: SPEvent, subsiteMap: { curren
         const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
         return !!(ov && ov._subEventCalendar);
       } catch { return false; }
+    })(),
+    // v31.99: Serien-Regel der Termine (Piggyback _seriesRule).
+    seriesRule: ((): SeriesRule | undefined => {
+      try {
+        const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+        return parseSeriesRule(ov && ov._seriesRule);
+      } catch { return undefined; }
     })(),
     // v28.5: Event-Bild als Banner über den Infos (Piggyback _imageBanner).
     imageBanner: ((): boolean => {

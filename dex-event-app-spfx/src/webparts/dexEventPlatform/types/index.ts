@@ -285,6 +285,13 @@ export interface DeloitteEvent {
    *  mit eigener Teilnehmerliste, Kapazität und Outlook-Termin.
    *  Piggyback `_subEventCalendar` in EmailTemplateOverrides. */
   subEventCalendar?: boolean;
+  /** v31.99: Serien-Regel, aus der die Termine (= Kalender-Sub-Events)
+   *  erzeugt wurden. Nur die Vorlage — jeder Termin bleibt ein normales
+   *  Sub-Event und darf einzeln geändert oder gelöscht werden. Gespeichert
+   *  wird die zuletzt ANGEWENDETE Regel, damit eine spätere Änderung (z.B.
+   *  Verlängerung) gegen sie abgeglichen werden kann. Piggyback `_seriesRule`
+   *  in EmailTemplateOverrides der Klammer. */
+  seriesRule?: SeriesRule;
   /** v29.67: Freischalt-Regel fuer Kalender-Termine — Anmeldung erst X Tage
    *  vor dem Termin (mode 'day') bzw. X Tage vor dem MONTAG der Woche des
    *  Termins (mode 'week', dann oeffnet die ganze KW gemeinsam). Vorher sind
@@ -858,4 +865,27 @@ export interface DexTicket {
   attachments: TicketAttachment[];
   /** v26.8: Rückfragen-Verlauf nach der ersten Antwort. */
   followUps: TicketFollowUp[];
+}
+
+/** v31.99: Wiederholungsregel einer Serie (siehe `utils/seriesRule`). Alle
+ *  Tage als Berliner Kalendertag `YYYY-MM-DD`, Uhrzeiten als `HH:MM`. */
+export interface SeriesRule {
+  freq: 'daily' | 'weekly' | 'monthly';
+  /** Alle N Tage / Wochen / Monate (1 = jede/n). */
+  interval: number;
+  /** Nur bei 'weekly': Wochentage, 0 = Sonntag … 6 = Samstag. */
+  weekdays?: number[];
+  /** Nur bei 'daily': Samstag und Sonntag auslassen. */
+  skipWeekends?: boolean;
+  /** Erster möglicher Termin. */
+  start: string;
+  endMode: 'until' | 'count';
+  until?: string;
+  count?: number;
+  allDay?: boolean;
+  startTime: string;
+  endTime: string;
+  /** Tage, die zur Regel gehören, aber einzeln gelöscht wurden — eine
+   *  Verlängerung legt sie nicht stillschweigend wieder an. */
+  exceptions?: string[];
 }

@@ -1586,7 +1586,9 @@ export default function AdminPage(): React.ReactElement {
   // Default-Sortierung alphabetisch nach Titel; alternativ nach Startdatum
   // aufsteigend. „Entwürfe ausblenden" filtert isFictive-Events raus.
   const [hideDrafts, setHideDrafts] = React.useState(false);
-  const [eventSortMode, setEventSortMode] = React.useState<'alpha' | 'date'>('alpha');
+  // v31.99: Vorgabe „Datum aufsteigend" (Nutzer-Ansage 28.09.2026) — das
+  // nächste Event steht oben; alphabetisch bleibt ein Klick entfernt.
+  const [eventSortMode, setEventSortMode] = React.useState<'alpha' | 'date'>('date');
   const draftCount = adminEvents.filter(e => e.isFictive).length;
   const sortAndFilterEvents = React.useCallback((list: DeloitteEvent[]): DeloitteEvent[] => {
     let arr = list.slice();

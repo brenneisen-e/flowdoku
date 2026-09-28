@@ -19,6 +19,8 @@ import { LOGO_MAX_BREITE } from '../../../utils/mailHeaderImage';
 import { ImgView, SubEventDraft } from '../../wizard/wizardTypes';
 export interface BasicsStepProps {
   visible: boolean;
+  /** v31.99: „Als Serie anlegen" (Klammer) bzw. Serien-Hinweis (Termin), unter dem Zeitraum. */
+  seriesSlot?: React.ReactNode;
   activeFrom: string;
   activeScopeIdx: number;
   applyDraftPayload: (d: Record<string, unknown>) => void;
@@ -653,6 +655,8 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                       ? 'Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.'
                       : 'The time is used for the attendees’ Outlook calendar entry.')}
               </p>
+              {/* v31.99: Serie — direkt beim Datum, wo die Frage „wann?" gestellt wird. */}
+              {p.seriesSlot}
               </div>
 
               <div className="dex-ui-section">

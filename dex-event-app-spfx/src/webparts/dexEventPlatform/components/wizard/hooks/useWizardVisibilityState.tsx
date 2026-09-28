@@ -100,6 +100,8 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
           _noDescription,
           // v28.91: Kalender-Modus der Sub-Events (s. subEventCalendarConfig).
           _subEventCalendar, _subEventSingleChoice,
+          // v31.99: Serien-Regel — eigener State (s. seriesRule).
+          _seriesRule,
           // v29.25: Abmelde-Sperren (s. userCancelAllowed / noCancelAfterDeadline).
           _noSelfCancel, _noCancelAfterDeadline,
           // v29.38: Teams-Link (s. teamsLinkConfig).
@@ -147,7 +149,7 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
         void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee; void _previewBeforeActive; void _imageDisplay;
         void _organizerDisplayLarge; void _hiddenOrganizers; void _hideOrgIndividual; void _mainEventLabel;
         void _imageOrigUrl; void _klammerDeadline; void _noDescription;
-        void _subEventCalendar; void _subEventSingleChoice;
+        void _subEventCalendar; void _subEventSingleChoice; void _seriesRule;
         void _noSelfCancel; void _noCancelAfterDeadline; void _teamsLink;
         void _hotels; void _hotelStays; void _hotelVisible; void _hotelRules;
         void _commBundledMail; void _commBundledOutlook; void _commBundledQr;

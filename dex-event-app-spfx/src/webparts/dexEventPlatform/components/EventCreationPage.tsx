@@ -47,6 +47,12 @@ import { runWizardSubmit } from './wizard/logic/wizardSubmit';
 import { persistSubEventsForParentImpl } from './wizard/logic/persistSubEvents';
 import { WizardTermsModal } from './wizard/WizardTermsModal';
 import { WizardModals } from './wizard/WizardModals';
+import { SeriesEditor } from './wizard/SeriesEditor';
+import { SeriesApplyModal, SeriesApplyState, SeriesPropagateModal, SeriesPropagateState } from './wizard/SeriesModals';
+import { applySeriesPlan, ApplySeriesChoice, changedSeriesGroups, propagateSeriesChange, seriesSnapshot, subDayKey, subTimes } from './wizard/logic/seriesActions';
+import { berlinTodayKey, planSeries } from '../utils/seriesRule';
+import { shortSubEventTitle } from '../utils/subEventTitle';
+import { SeriesRule } from '../types';
 import { SUB_TRANSFER_GROUPS } from '../data/wizardHints';
 import { scrollWizardTop } from '../utils/wizardScroll';
 import { renderGlobalScopeBarImpl, renderKlammerVisibilityMismatchImpl, renderOutlookUpdateButtonImpl, renderPerEventTabStripImpl, renderPreviewSectionImpl, renderVisibilitySummaryBoxImpl } from './wizard/logic/wizardRenderHelpers';
@@ -583,6 +589,25 @@ export default function EventCreationPage(): React.ReactElement {
     subEventCalendar, subEventSingleChoice, subEventsOnlyMode, subImageCropIdx, teamsLink, templateLoadingId,
     terminListOpen, unlimitedParticipants, userCancelAllowed, waitlistBlocker, waitlistEnabled, wizardImgAspect,
   } = useWizardEventFieldState({ editEvent, ensureEventDocuments, isoToLocal, locale });
+  // v31.99: Serien-Termine. `seriesRule` ist die zuletzt ANGEWENDETE Regel
+  // (gespeichert als _seriesRule), `seriesOn` der Schalter — er kann an sein,
+  // bevor eine Regel angewendet wurde. Die Termine selbst sind normale
+  // Kalender-Sub-Events (s. utils/seriesRule).
+  const [seriesRule, setSeriesRuleState] = React.useState<SeriesRule | null>(() => (editEvent && editEvent.seriesRule) || null);
+  const [seriesOn, setSeriesOn] = React.useState<boolean>(!!(editEvent && editEvent.seriesRule));
+  const [seriesApply, setSeriesApply] = React.useState<SeriesApplyState | null>(null);
+  const [seriesPropagate, setSeriesPropagate] = React.useState<SeriesPropagateState | null>(null);
+  // Stand des Termins beim Betreten seines Reiters — Vergleichsbasis für
+  // „auch für die anderen Termine übernehmen?".
+  const seriesSnapRef = React.useRef<{ id: string; snap: Record<string, string> } | null>(null);
+  // Nach der Rückfrage aus „Speichern" weiter speichern — über einen Effekt,
+  // damit der Speicher-Pfad den NEUEN Render sieht und nicht die Closure,
+  // aus der die Rückfrage kam.
+  const [seriesResubmit, setSeriesResubmit] = React.useState<number>(0);
+  const attemptSubmitRef = React.useRef<() => void>(() => undefined);
+  React.useEffect(() => {
+    if (seriesResubmit > 0) attemptSubmitRef.current();
+  }, [seriesResubmit]);
   const {
     agenda, applyEventPhotoToLogo, assistantsCanSee, documents, dragFieldId, dragOverFieldId,
     effTeamsLink, emailLogoPreview, emailTemplateOverrides, emailTemplates, fieldExpandOverride, fileToBase64,
@@ -1477,7 +1502,7 @@ export default function EventCreationPage(): React.ReactElement {
       setPendingSuccessDispatch, setProgress, setProgressLabel, setRemovedSavedSubs, setShowSummaryModal, showAlert,
       showAsFree, shrinkLogoB64, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText,
       splitLabelA, splitLabelB, splitSectionTitle, splitSharedWaitlist, startDate, subDeadlineRulePiggyback,
-      subEventCalendar, subEventOpenRulePiggyback, agendaCheckInPiggyback, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn, subEventsRef,
+      subEventCalendar, subEventOpenRulePiggyback, agendaCheckInPiggyback, seriesRule: seriesOn ? seriesRule : null, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn, subEventsRef,
       teamJoinRequiresApproval, teamMembersCannotCreate, teamOpenSlotsVisible, teamPartialAllowed, teamRegistrationEnabled, teamSize,
       teamTermPlural, teamTermSingular, testTeamEmails, testTeamNames, title, transferTimes,
       unlimitedParticipants, updateEvent, userCancelAllowed, useSplitCapacities, visAllSubsPiggyback, waitlistBlocker, waitlistEnabled,
@@ -1556,6 +1581,10 @@ export default function EventCreationPage(): React.ReactElement {
   // Outlook-relevanter Änderung wird das Confirm-Modal gezeigt. Sonst
   // direkt handleSubmit.
   const attemptSubmit = (): void => {
+    // v31.99: Steht der Organizer auf einem geänderten Serien-Termin, zuerst
+    // fragen, ob die Änderung für die anderen Termine gilt — danach geht das
+    // Speichern über `seriesResubmit` weiter.
+    if (askSeriesPropagation(true)) return;
     // Aktuelle Tab-Werte zurück ins jeweilige Slot schreiben, damit
     // beim handleSubmit nichts verloren geht.
     flushActiveCommTabToState();
@@ -1589,6 +1618,8 @@ export default function EventCreationPage(): React.ReactElement {
     pendingOutlookRecreateForSubEventsRef.current = [];
     handleSubmit().catch(() => { /* */ });
   };
+
+  attemptSubmitRef.current = attemptSubmit; // v31.99: s. seriesResubmit
 
   // v11.57: Confirm-Modal-Handler.
   // v11.63: Liest aus outlookConfirmChecks ab, welche Events der Organizer
@@ -1975,7 +2006,7 @@ export default function EventCreationPage(): React.ReactElement {
     customFields, agenda,
     // File-Objekte serialisieren zu {} — bewusst strippen statt Muell speichern.
     subEvents: subEvents.map(sd => ({ ...sd, imageFile: null })),
-    subEventsOptIn, subEventsOnlyMode, subEventCalendar, subEventSingleChoice,
+    subEventsOptIn, subEventsOnlyMode, subEventCalendar, seriesRule, subEventSingleChoice,
     agendaCheckIn, agendaTermSingular, agendaTermPlural, // v30.86
     requireSubEventSelection, askSalutation,
     teamRegistrationEnabled, teamSize, askTeamName,
@@ -2000,7 +2031,9 @@ export default function EventCreationPage(): React.ReactElement {
       setLastDeregisterDate, setLocation, setLocationFilter, setMaxParticipants, setNoCancelAfterDeadline, setOnlineMeetingMode,
       setOpenRuleDays, setOpenRuleEnabled, setOpenRuleFixedDate, setOpenRuleMode, setOrganizer, setOrganizerEmails,
       setRegistrationDeadline, setRegRuleAmount, setRegRuleEnabled, setRegRuleUnit, setRequireSubEventSelection, setStartDate,
-      setSubEventCalendar, setSubEvents, setSubEventSingleChoice, setSubEventsOnlyMode, setSubEventsOptIn, setTeamRegistrationEnabled,
+      setSubEventCalendar, setSubEvents, setSubEventSingleChoice,
+      setSeriesRule: (v: SeriesRule | null) => { setSeriesRuleState(v); setSeriesOn(!!v); }, // v31.99
+      setSubEventsOnlyMode, setSubEventsOptIn, setTeamRegistrationEnabled,
       setTeamSize, setTeamsLink, setTitle, setUserCancelAllowed, setVisAllSubs, setWaitlistEnabled,
       setTcAccepted, // v31.61
     }, d);
@@ -2600,6 +2633,17 @@ export default function EventCreationPage(): React.ReactElement {
   // derselben Stelle stehen.
   const SCOPE_AWARE_STEPS = [0, 2, 3, 4, 5]; // Grundlagen, Ort & Programm, Kapazität, Felder, Kommunikation
   const setScope = (idx: number): void => {
+    // v31.99: Beim Verlassen eines geänderten Serien-Termins nachfragen, ob
+    // die Änderung für die anderen Termine gelten soll. Der Wechsel selbst
+    // passiert sofort; der Dialog kommt danach.
+    // Derselbe Reiter noch einmal: Vergleichsbasis stehen lassen, sonst
+    // gingen die Änderungen bis hierhin für die Rückfrage verloren.
+    if (idx !== activeScopeIdx) {
+      askSeriesPropagation(false);
+      seriesSnapRef.current = null;
+      const entered = idx > 0 ? subEvents[idx - 1] : undefined;
+      if (entered && seriesOn && seriesRule) seriesSnapRef.current = { id: entered.id, snap: seriesSnapshot(seriesTimeHelpers, entered) };
+    }
     setActiveScopeIdx(idx);
     setActiveLocationTabIdx(idx);
     setActiveCapacityTabIdx(idx);
@@ -2851,6 +2895,221 @@ export default function EventCreationPage(): React.ReactElement {
     })().catch(() => { /* */ });
   };
 
+  /**
+   * v31.99: Serien-Termine. Die Regel erzeugt ganz normale Kalender-Termine
+   * (Sub-Events); hier stehen nur die drei Übergänge: Serie ein/aus, Regel
+   * anwenden (mit Abgleich gegen die bestehenden Termine) und „Änderung an
+   * einem Termin auch für die anderen übernehmen?". Gerechnet wird in
+   * wizard/logic/seriesActions und utils/seriesRule.
+   */
+  const seriesTimeHelpers = { isoToLocal, berlinLocalToUtcIso };
+  const seriesDayKeyOf = (s: SubEventDraft): string => subDayKey(seriesTimeHelpers, s);
+  const keyToLocalDate = (k: string): Date => {
+    const [y, m, d] = k.split('-').map(n => parseInt(n, 10));
+    return new Date(y, m - 1, d);
+  };
+  /** Letzter vorhandener Termin — Vorlage für neu angelegte. */
+  const seriesTemplateOf = (subs: SubEventDraft[]): SubEventDraft | null => {
+    const dated = subs.filter(s => !!seriesDayKeyOf(s));
+    if (dated.length === 0) return null;
+    return dated.slice().sort((a, b) => seriesDayKeyOf(a).localeCompare(seriesDayKeyOf(b)))[dated.length - 1];
+  };
+  const toggleSeries = (on: boolean): void => {
+    if (on) {
+      // Programmpunkte und Sub-Events schließen sich aus (v30.86) — eine
+      // Serie besteht aus Sub-Events.
+      if (agendaCheckIn) {
+        showAlert(isDe
+          ? 'Dieses Event nutzt Programmpunkte mit Check-in. Eine Serie besteht aus einzelnen Terminen (Sub-Events) — beides zusammen geht nicht. Schalte die Programmpunkte unten zuerst aus.'
+          : 'This event uses agenda items with check-in. A series consists of single dates (sub-events) — both together are not possible. Turn agenda items off below first.',
+        { variant: 'info' });
+        return;
+      }
+      setSeriesOn(true);
+      // Eine Serie ist eine Reihe von Terminen: Sub-Events an, Kalender an.
+      // Das Hauptevent ist dann keine eigene Anmeldeeinheit — nur beim
+      // ersten Einschalten vorbelegt, danach entscheidet der Organizer.
+      if (!subEventsOptIn && subEvents.length === 0) setSubEventsOnlyMode(true);
+      if (!subEventsOptIn) setSubEventsOptIn(true);
+      if (!subEventCalendar) setSubEventCalendar(true);
+      return;
+    }
+    if (!seriesRule) { setSeriesOn(false); return; }
+    confirmDialog(
+      isDe
+        ? 'Serie beenden? Die angelegten Termine bleiben als einzelne Termine erhalten und lassen sich weiter im Kalender bearbeiten. Nur die Wiederholungsregel entfällt.'
+        : 'End the series? The created dates stay as single dates and can still be edited in the calendar. Only the repeat rule is dropped.',
+      { confirmLabel: isDe ? 'Serie beenden' : 'End series' },
+    ).then(ok => {
+      if (!ok) return;
+      setSeriesOn(false);
+      setSeriesRuleState(null);
+      seriesSnapRef.current = null;
+    }).catch(() => { /* */ });
+  };
+  const confirmSeriesApply = (st: SeriesApplyState, choice: ApplySeriesChoice): void => {
+    const base = subEventsRef.current;
+    const { next, parked, exceptions } = applySeriesPlan(
+      seriesTimeHelpers, base, st.plan, st.rule, choice,
+      (k, s, e, ad) => makeSubEventDraft({ title: dayLabel(keyToLocalDate(k)), startDate: s, endDate: e, allDay: ad }),
+      seriesTemplateOf(base),
+    );
+    subEventsRef.current = next;
+    setSubEvents(next);
+    // Gespeicherte Termine parken wie das X an der Karte (v29.22): orange im
+    // Kalender, rückholbar, gelöscht erst nach der Rückfrage beim Speichern.
+    if (parked.length > 0) setRemovedSavedSubs(prev => [...prev, ...parked.filter(x => !prev.some(y => y.id === x.id))]);
+    setSeriesRuleState({ ...st.rule, exceptions });
+    setSeriesOn(true);
+    if (!subEventsOptIn) setSubEventsOptIn(true);
+    if (!subEventCalendar) setSubEventCalendar(true);
+    // Zeitraum des Hauptevents folgt den Terminen — sonst meldet der
+    // Kalender sofort „Termine außerhalb des Event-Zeitraums" (v29.48).
+    const keys = next.map(seriesDayKeyOf).filter(Boolean).sort();
+    if (keys.length > 0) {
+      setStartDate(`${keys[0]}T${st.rule.allDay ? '00:00' : st.rule.startTime}`);
+      setEndDate(`${keys[keys.length - 1]}T${st.rule.allDay ? '23:59' : st.rule.endTime}`);
+    }
+    setSeriesApply(null);
+    // Ein gespeichertes Vorlagen-Bild ist nur eine SharePoint-URL; hochgeladen
+    // wird aber nur eine Datei (`persistSubEventImage`). Also einmal als Datei
+    // holen — sonst zeigten die neuen Termine im Assistenten ein Bild, das nie
+    // gespeichert wird.
+    const needImg = next.filter(s => !base.some(b => b.id === s.id) && !s.imageFile && /^https?:/i.test(s.imagePreview || ''));
+    if (needImg.length > 0) {
+      const url = needImg[0].imagePreview || '';
+      const ids = new Set(needImg.map(s => s.id));
+      (async () => {
+        let file: File | null = null;
+        try {
+          const r = await fetch(url, { credentials: 'include' });
+          if (r.ok) {
+            const blob = await r.blob();
+            const name = decodeURIComponent((url.split('?')[0].split('/').pop() || 'bild.jpg'));
+            file = new File([blob], name, { type: blob.type || 'image/jpeg' });
+          }
+        } catch { /* s.u. */ }
+        const patched = subEventsRef.current.map(s => (ids.has(s.id)
+          ? (file ? { ...s, imageFile: file } : { ...s, imagePreview: '' })
+          : s));
+        subEventsRef.current = patched;
+        setSubEvents(patched);
+        if (!file) {
+          showAlert(isDe
+            ? 'Das Bild der Vorlage ließ sich nicht laden — die neuen Termine haben vorerst kein eigenes Bild. Du kannst es im Termin setzen und dann für alle übernehmen.'
+            : 'The template image could not be loaded — the new dates have no own image for now. Set it on a date and apply it to all.',
+          { variant: 'info' });
+        }
+      })().catch(() => { /* */ });
+    }
+    const added = next.length - (base.length - (choice.remove ? st.plan.remove.length : 0));
+    showAlert(isDe
+      ? `Serie übernommen: ${keys.length} ${keys.length === 1 ? 'Termin' : 'Termine'}${added > 0 ? `, davon ${added} neu` : ''}. Gespeichert wird mit „Speichern".`
+      : `Series applied: ${keys.length} ${keys.length === 1 ? 'date' : 'dates'}${added > 0 ? `, ${added} new` : ''}. Click “Save” to store it.`,
+    { variant: 'success' });
+  };
+  const requestSeriesApply = (rule: SeriesRule): void => {
+    // Reiter zurück auf die Klammer: Die Kommunikationsfelder des offenen
+    // Reiters müssen in ihren Slot, bevor sich die Reihenfolge der Termine
+    // ändert (Anlegen, Entfernen, Sortieren).
+    if (activeScopeIdx !== 0) setScope(0);
+    const base = subEventsRef.current;
+    const plan = planSeries(seriesRule, rule, base, seriesDayKeyOf, s => subTimes(seriesTimeHelpers, s), berlinTodayKey());
+    const tpl = seriesTemplateOf(base);
+    const st: SeriesApplyState = {
+      rule, plan, dayKeyOf: seriesDayKeyOf,
+      templateLabel: tpl ? (shortSubEventTitle(tpl.title, title) || seriesDayKeyOf(tpl)) : '',
+    };
+    // Erste Serie ohne vorhandene Termine: nichts abzuwägen, direkt anlegen.
+    if (!seriesRule && base.length === 0) {
+      confirmSeriesApply(st, { add: true, remove: false, retime: false, restore: false, copyTemplate: false });
+      return;
+    }
+    setSeriesApply(st);
+  };
+  /**
+   * Fragt, ob die Änderung am Termin des offenen Reiters für die anderen
+   * Termine gelten soll. `true` = Dialog ist offen, der Aufrufer wartet.
+   */
+  const askSeriesPropagation = (thenSubmit: boolean): boolean => {
+    const snap = seriesSnapRef.current;
+    // Ein offener Dialog zählt nur, solange sein Termin noch existiert.
+    if (seriesPropagate && subEvents.some(s => s.id === seriesPropagate.subId)) return false;
+    if (!snap || !seriesOn || !seriesRule) return false;
+    const cur = subEvents.find(s => s.id === snap.id);
+    if (!cur || subEvents.length < 2) return false;
+    const now = seriesSnapshot(seriesTimeHelpers, cur);
+    const groups = changedSeriesGroups(snap.snap, now, cur);
+    if (groups.length === 0) return false;
+    // Einmal gefragt = abgehandelt; erst eine weitere Änderung fragt erneut.
+    seriesSnapRef.current = { id: cur.id, snap: now };
+    const day = seriesDayKeyOf(cur);
+    setSeriesPropagate({
+      subId: cur.id,
+      terminLabel: shortSubEventTitle(cur.title, title) || day,
+      groups,
+      allCount: subEvents.length - 1,
+      followingCount: subEvents.filter(s => s.id !== cur.id && seriesDayKeyOf(s) > day).length,
+      thenSubmit,
+    });
+    return true;
+  };
+  const decideSeriesPropagate = (apply: { groups: string[]; target: 'all' | 'following' } | null): void => {
+    const st = seriesPropagate;
+    setSeriesPropagate(null);
+    if (!st) return;
+    if (apply) {
+      const { next, changed } = propagateSeriesChange(seriesTimeHelpers, subEventsRef.current, st.subId, apply.groups, apply.target);
+      subEventsRef.current = next;
+      setSubEvents(next);
+      // Der gerade offene Termin kann selbst Ziel gewesen sein — seine
+      // Vergleichsbasis nachziehen, sonst hielte der nächste Reiterwechsel
+      // die übernommenen Werte für eine eigene Änderung.
+      const open = seriesSnapRef.current;
+      if (open) {
+        const o = next.find(s => s.id === open.id);
+        seriesSnapRef.current = o ? { id: o.id, snap: seriesSnapshot(seriesTimeHelpers, o) } : null;
+      }
+      showAlert(isDe
+        ? `Für ${changed} ${changed === 1 ? 'weiteren Termin' : 'weitere Termine'} übernommen.${st.thenSubmit ? '' : ' Nicht vergessen zu speichern.'}`
+        : `Applied to ${changed} more ${changed === 1 ? 'date' : 'dates'}.${st.thenSubmit ? '' : ' Don’t forget to save.'}`,
+      { variant: 'success' });
+    }
+    if (st.thenSubmit) setSeriesResubmit(n => n + 1);
+  };
+  const seriesSlot: React.ReactNode = activeScopeIdx === 0
+    ? (
+      <SeriesEditor
+        isDe={isDe}
+        on={seriesOn}
+        onToggle={toggleSeries}
+        applied={seriesRule}
+        onApply={requestSeriesApply}
+        startDate={startDate}
+        endDate={endDate}
+        allDay={allDay}
+        terminCount={subEvents.length}
+        onShowList={() => {
+          setTerminListOpen(true);
+          window.setTimeout(() => {
+            try {
+              const el = document.querySelector('.dex-termin-calendar');
+              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } catch { /* */ }
+          }, 50);
+        }}
+      />
+    )
+    : (seriesOn && seriesRule && scopeSub)
+      ? (
+        <p className="dex-ui-help" style={{ marginTop: 10 }}>
+          {isDe
+            ? 'Termin einer Serie. Änderungen gelten erst einmal nur hier — wenn du den Reiter wechselst oder speicherst, fragt der Assistent, ob sie auch für die anderen Termine gelten sollen.'
+            : 'Date of a series. Changes apply here only at first — when you switch tabs or save, the wizard asks whether they should apply to the other dates as well.'}
+        </p>
+      )
+      : null;
+
   const renderPerEventTabStrip = (
     activeIdx: number,
     onChange: (idx: number) => void,
@@ -2902,6 +3161,7 @@ export default function EventCreationPage(): React.ReactElement {
     setScTitle, setShowDemoVariantModal, setShowTemplatePicker, setSubEvents, setSubImageCropIdx, showTemplatePicker,
     shrinkLogoB64, startDate, subEvents, subEventsOnlyMode, t, templateLoadingId,
     title, wizardImgAspect, zebraS3Bg,
+    seriesSlot, // v31.99
   };
   const detailsStepProps = {
     contactEmail, contactExpanded, contactInfo, contactName, contactOrganizerEmail,
@@ -2938,6 +3198,7 @@ export default function EventCreationPage(): React.ReactElement {
     subImageCropIdx, t, terminListOpen, title, toggleDaySubEvent,
     // v30.86: Programmpunkte mit Check-in (Alternative zu Sub-Events).
     agenda, agendaCheckIn, agendaTermPlural, agendaTermSingular, setAgendaCheckIn, setAgendaTermPlural, setAgendaTermSingular,
+    seriesActive: seriesOn && !!seriesRule, // v31.99
     goToProgramStep: () => { setCurrentStep(2); try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* */ } },
   };
   const capacityStepProps = {
@@ -3053,6 +3314,14 @@ export default function EventCreationPage(): React.ReactElement {
       <WizardFormShell {...wizardFormShellProps} />
 
       <WizardModals {...wizardModalsProps} />
+      {/* v31.99: Rückfragen der Serien-Termine. Der Übertragungs-Dialog nur,
+          solange der geänderte Termin noch existiert (entfernt = nichts zu fragen). */}
+      <SeriesApplyModal state={seriesApply} isDe={isDe} onCancel={() => setSeriesApply(null)} onConfirm={choice => { if (seriesApply) confirmSeriesApply(seriesApply, choice); }} />
+      <SeriesPropagateModal
+        state={seriesPropagate && subEvents.some(s => s.id === seriesPropagate.subId) ? seriesPropagate : null}
+        isDe={isDe}
+        onDecide={decideSeriesPropagate}
+      />
     </div>
   );
 }

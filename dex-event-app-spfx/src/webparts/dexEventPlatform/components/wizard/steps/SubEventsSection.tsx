@@ -87,6 +87,8 @@ export interface SubEventsSectionProps {
   setAgendaTermPlural: React.Dispatch<React.SetStateAction<string>>;
   setAgendaTermSingular: React.Dispatch<React.SetStateAction<string>>;
   goToProgramStep: () => void;
+  /** v31.99: Die Termine stammen aus einer Serie (Schritt 1, beim Datum). */
+  seriesActive?: boolean;
 }
 /** v31.2: Auswahl-Kachel „eine von mehreren" (Leitfaden 2b). Ein `<button>`
  *  mit `aria-pressed` statt verstecktem Radio plus 30 Zeilen Inline-Style je
@@ -750,6 +752,9 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                   <div className="dex-ui-grid-2">
                     <Choice
                       active={!subEventCalendar}
+                      // v31.99: Eine Serie besteht aus Kalender-Terminen; die
+                      // Liste würde die Regel beim Speichern verwerfen.
+                      disabled={!!p.seriesActive}
                       onPick={() => setSubEventCalendar(false)}
                       icon={<Columns size={18} />}
                       title={isDe ? 'Einzeln als Liste' : 'One by one as a list'}
@@ -767,6 +772,13 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                         : 'Click a day, done. Attendees pick their days in a calendar on the registration page instead of a long list.'}
                     />
                   </div>
+                  {subEventCalendar && p.seriesActive && (
+                    <p className="dex-ui-help">
+                      {isDe
+                        ? 'Die Termine stammen aus der Serie oben beim Datum. Einzelne Tage kannst du hier im Kalender dazu- oder abwählen; die Liste darunter öffnet einen Termin zum Bearbeiten.'
+                        : 'The dates come from the series above, next to the dates. Add or remove single days in the calendar here; the list below opens a date for editing.'}
+                    </p>
+                  )}
                   {subEventCalendar && (
                     <p className="dex-ui-help">
                       {isDe
