@@ -77,7 +77,7 @@ interface RoleContextType {
   setPowerUser: (itemId: number, isPowerUser: boolean) => Promise<boolean>;
   updateRoleLocation: (itemId: number, location: string) => Promise<boolean>;
   removeRole: (itemId: number) => Promise<boolean>;
-  refreshRoles: () => Promise<void>;
+  refreshRoles: () => Promise<boolean>;
   searchUser: (email: string) => Promise<{ displayName: string; location: string; jobTitle: string; department?: string; mobilePhone?: string; company?: string } | null>;
   searchUsers: (query: string, includeInternational?: boolean) => Promise<Array<{ email: string; displayName: string; location: string; jobTitle: string }>>;
   /** v30.61: Personalnummer, Kostenstelle, Firma und Land mehrerer Personen
@@ -201,7 +201,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     setIsRolesLoading(false);
   }
 
-  async function refreshRoles(): Promise<void> {
+  async function refreshRoles(): Promise<boolean> {
     const spRoles = await spService.getRoles();
     // v6.34: Auch hier API-Fehler nicht als leere Liste interpretieren (siehe
     // initRoles) — sonst würde ein Netzwerk-Fehler mitten in der App-Nutzung
@@ -209,7 +209,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     // anderen Code-Pfad auf Admin, was wir gerade gefixt haben).
     if (spRoles === null) {
       console.warn('[DEX] RoleContext.refresh: DEX_Roles nicht lesbar, bestehender State bleibt.');
-      return;
+      return false;
     }
     setRolesReadStatus('ok');
     const mapped: RoleAssignment[] = spRoles.map(r => ({
@@ -225,6 +225,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     // unter dem Alias, war die Person „User".
     const myRole = spRoles.find(r => isCurrentUser(props.context, r.Title));
     setCurrentUserRole(myRole ? migrateRole(myRole.Role) : 'User');
+    return true;
   }
 
   async function addRole(
@@ -338,6 +339,33 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
       return raw ? JSON.parse(raw) : null;
     } catch { return null; }
   });
+  // v32.0.11: Ein Lesefehler beim Start ist meist Drosselung (429 oder die
+  // Throttle-Seite von SharePoint statt JSON) — nicht „du bist User". Bis
+  // v32.0.10 blieb es dann für die ganze Sitzung bei „User", bis zum F5.
+  // Jetzt wird still nachgelesen (20 s, 60 s, 2 min); bis dahin bleibt die
+  // sichere Vorgabe „User". 403 ist eine echte Rechte-Frage und wird nicht
+  // wiederholt.
+  const roleRetryRef = React.useRef(0);
+  React.useEffect(() => {
+    if (rolesReadStatus !== 'error') return;
+    const delays = [20000, 60000, 120000];
+    let weg = false;
+    let t = 0;
+    const versuch = (): void => {
+      const i = roleRetryRef.current;
+      if (i >= delays.length) return;
+      t = window.setTimeout(() => {
+        if (weg) return;
+        roleRetryRef.current = i + 1;
+        refreshRoles()
+          .then(ok => { if (!weg && !ok) versuch(); })
+          .catch(() => { if (!weg) versuch(); });
+      }, delays[i]);
+    };
+    versuch();
+    return () => { weg = true; window.clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rolesReadStatus]);
   const autoAuditRanRef = React.useRef(false);
   React.useEffect(() => {
     if (autoAuditRanRef.current) return;
