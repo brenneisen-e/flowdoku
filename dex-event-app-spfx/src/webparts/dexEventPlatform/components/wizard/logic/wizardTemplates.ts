@@ -341,7 +341,7 @@ export function loadDemoSubEventImpl(ctx: LoadDemoSubEventCtx): void {
     const deadline = beforeNextSaturday(3, 23, 59);
     setTitle('Demo-Conference mit Dinner');
     setDescription('Hauptkonferenz + abendliches Dinner als getrenntes Sub-Event mit eigener Anmeldung.');
-    setLocation('Deloitte Office Hamburg');
+    setLocation('Deloitte Office Köln, Magnusstraße 11, 50672 Köln'); // v32.0: Kölner Fokus — die Admins sitzen im Kölner Office
     setStartDate(fmtDatetime(start));
     setEndDate(fmtDatetime(end));
     // v30.67: fmtDatetime — der Fristen-State ist 16-stellig (s. loadDemoStandard).
@@ -365,7 +365,8 @@ export function loadDemoSubEventImpl(ctx: LoadDemoSubEventCtx): void {
         startDate: berlinLocalToUtcIso(fmtDatetime(dinnerStart)),
         endDate: berlinLocalToUtcIso(fmtDatetime(dinnerEnd)),
         registrationDeadline: '',
-        location: 'Restaurant Fischmarkt',
+        location: 'Wolkenburg, Mauritiussteinweg 59-61, 50676 Köln',
+        locationAddress: { street: 'Mauritiussteinweg', houseNo: '59-61', zip: '50676', city: 'Köln' },
         description: 'Optionales Networking-Dinner im Anschluss an die Konferenz.',
         maxParticipants: 60,
         disableEmails: false,
@@ -418,7 +419,7 @@ export function loadDemoSubEventTeamImpl(ctx: LoadDemoSubEventTeamCtx): void {
     const deadline = beforeNextSaturday(5, 23, 59);
     setTitle('Demo-Kneipenquiz mit Team-Anmeldung');
     setDescription('Quizabend, bei dem ganze Teams über das Anmeldeformular angemeldet werden.');
-    setLocation('Heinrich Campus Düsseldorf, 6. Etage, Dachterrasse');
+    setLocation('Deloitte Office Köln, Magnusstraße 11, 50672 Köln'); // v32.0: Kölner Fokus
     setStartDate(fmtDatetime(start));
     setEndDate(fmtDatetime(end));
     setRegistrationDeadline(fmtDatetime(deadline)); // v30.67: s. loadDemoStandard
@@ -447,7 +448,7 @@ export function loadDemoSubEventTeamImpl(ctx: LoadDemoSubEventTeamCtx): void {
         startDate: berlinLocalToUtcIso(fmtDatetime(briefStart)),
         endDate: berlinLocalToUtcIso(fmtDatetime(briefEnd)),
         registrationDeadline: '',
-        location: 'Heinrich Campus Düsseldorf, 6. Etage, Dachterrasse',
+        location: 'Deloitte Office Köln, Magnusstraße 11, 50672 Köln',
         description: 'Kurzes Briefing für die Quizmaster-Helfer vor dem Event.',
         maxParticipants: 10,
         disableEmails: false,

@@ -148,8 +148,8 @@ function demoAgenda(): AgendaItem[] {
 function demoTransfers(): TransferTime[] {
   const day = ymdInDays(14);
   return [
-    { id: 'demo_tr_1', location: 'Hauptbahnhof', meetingPoint: 'Gleis 1, Treffpunkt-Schild', address: 'Bahnhofsplatz 1', date: day, departureTime: '08:00', arrivalTime: '08:45', description: 'Shuttle-Bus zum Veranstaltungsort.' },
-    { id: 'demo_tr_2', location: 'Veranstaltungsort', meetingPoint: 'Haupteingang', address: 'Eventstrasse 5', date: day, departureTime: '18:00', arrivalTime: '18:45', description: 'Rückfahrt zum Hauptbahnhof.' },
+    { id: 'demo_tr_1', location: 'Köln Hbf', meetingPoint: 'Ausgang Domplatte, Treffpunkt-Schild', address: 'Köln Hbf', date: day, departureTime: '08:00', arrivalTime: '08:45', description: 'Shuttle-Bus zum Veranstaltungsort.' },
+    { id: 'demo_tr_2', location: 'Deloitte Office Köln', meetingPoint: 'Haupteingang', address: 'Magnusstraße 11, 50672 Köln', date: day, departureTime: '18:00', arrivalTime: '18:45', description: 'Rückfahrt zum Kölner Hauptbahnhof.' },
   ];
 }
 
@@ -167,7 +167,9 @@ function demoSubEvents(parentId: string): DeloitteEvent[] {
       organizerEmails: ['demo.organizer@deloitte.de'],
       qrScannerNames: [],
       qrScannerEmails: [],
-      location: 'Restaurant „Zur Linde"',
+      location: 'Wolkenburg, Köln',
+      // v32.0: Anschrift laut wolkenburg.de (Kontakt), Stand 28.09.2026.
+      locationAddress: { street: 'Mauritiussteinweg', houseNo: '59-61', zip: '50676', city: 'Köln' },
       locationAudience: [],
       audienceFilter: [],
       filterMode: 'OR',
@@ -211,7 +213,7 @@ function demoSubEvents(parentId: string): DeloitteEvent[] {
 // client-seitig — kein SharePoint.
 const DEMO_FIRST_NAMES = ['Anna', 'Ben', 'Clara', 'David', 'Eva', 'Felix', 'Greta', 'Hannes', 'Ida', 'Jonas', 'Klara', 'Lukas', 'Mia', 'Noah', 'Olivia', 'Paul', 'Quirin', 'Rosa', 'Sophie', 'Tom', 'Ulrike', 'Viktor', 'Wanda', 'Xaver', 'Yara', 'Zoe'];
 const DEMO_LAST_NAMES = ['Müller', 'Schmidt', 'Schneider', 'Fischer', 'Weber', 'Meyer', 'Wagner', 'Becker', 'Schulz', 'Hoffmann', 'Koch', 'Bauer', 'Richter', 'Klein', 'Wolf', 'Schröder', 'Neumann', 'Braun', 'Werner', 'Krüger', 'Hofmann', 'Hartmann', 'Lange', 'Schmitt', 'Krause', 'Meier'];
-const DEMO_LOCATIONS = ['Düsseldorf', 'München', 'Berlin', 'Hamburg', 'Frankfurt', 'Stuttgart', 'Köln'];
+const DEMO_LOCATIONS = ['Köln', 'Düsseldorf', 'München', 'Berlin', 'Hamburg', 'Frankfurt', 'Stuttgart']; // v32.0: Köln zuerst
 
 const UMLAUT_MAP: Record<string, string> = { 'ä': 'ae', 'ö': 'oe', 'ü': 'ue', 'ß': 'ss' };
 function demoFirst(idx: number): string { return DEMO_FIRST_NAMES[idx % DEMO_FIRST_NAMES.length]; }
@@ -360,7 +362,7 @@ export function buildDemoMyRegistration(email: string, displayName: string): SPR
     Status: 'Angemeldet',
     RegistrationDate: new Date(Date.now() - 3 * 86400000).toISOString(),
     CancellationDate: '',
-    Location: 'Düsseldorf',
+    Location: 'Köln',
     CustomData: JSON.stringify({ demo_text: 'Demo User', demo_select: 'Vegetarisch', demo_multi: 'Gluten | Laktose', demo_checkbox: 'true' }),
   };
 }
@@ -384,8 +386,10 @@ export function buildDemoShowcaseEvents(locale: 'de' | 'en' = 'de'): DeloitteEve
     contactName: isDe ? 'Demo-Ansprechpartner' : 'Demo contact',
     contactEmail: 'demo.kontakt@deloitte.de',
     contactInfo: isDe ? 'Erreichbar Mo–Fr 9–17 Uhr' : 'Available Mon–Fri 9am–5pm',
-    location: isDe ? 'Deloitte Campus, Düsseldorf' : 'Deloitte Campus, Düsseldorf',
-    locationAddress: { street: 'Schwannstrasse', houseNo: '6', zip: '40476', city: 'Düsseldorf' },
+    // v32.0: Kölner Fokus (Nutzer-Ansage 28.09.2026 — die Admins sitzen im
+    // Kölner Office; Anschrift von Eike, Dinner in der Wolkenburg).
+    location: 'Deloitte Office Köln',
+    locationAddress: { street: 'Magnusstraße', houseNo: '11', zip: '50672', city: 'Köln' },
     locationAudience: [],
     audienceFilter: [],
     filterMode: 'OR',

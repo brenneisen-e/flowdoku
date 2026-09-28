@@ -43,6 +43,7 @@ import InviteDownloadHandler from './InviteDownloadHandler';
 // v31.63: Archivieren & Löschen ohne Rückfrage beim Admin-Start, Abzeichen oben rechts.
 import AdminAutoMaintenance from './AdminAutoMaintenance';
 import { KpiRow } from './LandingPage';
+import { deepLinkLadeText } from '../utils/deepLinkLabel';
 import { dlog } from '../utils/debugLog';
 
 // v20.0 (Audit): Route-Level-Code-Splitting. Die schweren Sekundär-Seiten
@@ -928,11 +929,16 @@ function AppContent(): React.ReactElement {
                 <DexLogo title="DEX" motion="oscillate" style={{ width: '100%' }} />
               </div>
               <div className="landing__text">
+                {/* v32.0: EINE Sprache auf dem Ladebildschirm (Nutzer-Frage
+                    28.09.2026: „warum sind hier 2 Sprachen?") — Überschrift,
+                    Zeile und Kacheln waren fest englisch, Phasenzeile und
+                    „Bisher genutzt für" folgten der App-Sprache. Und bei einem
+                    Deep-Link sagt die Zeile, WAS geladen wird. */}
                 <h1 style={{ lineHeight: 1.25 }}>
-                  Welcome to <strong style={{ whiteSpace: 'nowrap' }}>DEX.</strong>
+                  {appIsDe ? 'Willkommen bei' : 'Welcome to'} <strong style={{ whiteSpace: 'nowrap' }}>DEX.</strong>
                 </h1>
                 <p style={{ color: 'var(--dex-gray-500)', marginTop: 12, fontSize: '0.95rem' }}>
-                  Just a moment…
+                  {deepLinkLadeText(appIsDe) || (appIsDe ? 'Einen Moment…' : 'Just a moment…')}
                 </p>
               </div>
               {/* Determinate-Progress-Bar (v7.5). Die Phasen Rollen-Load
@@ -1024,7 +1030,7 @@ function AppContent(): React.ReactElement {
                   {appIsDe ? 'Bisher genutzt für…' : 'So far used for…'}
                 </div>
                 <KpiRow
-                  locale="en"
+                  locale={appIsDe ? 'de' : 'en'}
                   eventsLoading={kpiCache === null}
                   participantsLoading={kpiCache === null}
                   events={kpiHostedEvents}
@@ -1052,10 +1058,10 @@ function AppContent(): React.ReactElement {
             marginBottom: 20,
           }} />
           <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--dex-gray-800, #333)' }}>
-            Loading your registration…
+            {deepLinkLadeText(appIsDe) || (appIsDe ? 'Deine Anmeldung wird geladen…' : 'Loading your registration…')}
           </div>
           <div style={{ fontSize: 13, color: 'var(--dex-gray-500, #888)', marginTop: 6 }}>
-            Cancelling registration, please wait.
+            {appIsDe ? 'Die Abmeldung wird vorbereitet — einen Moment bitte.' : 'Cancelling registration, please wait.'}
           </div>
         </div>
       );

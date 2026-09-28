@@ -980,7 +980,10 @@ export function LanguageProvider(props: { children: React.ReactNode }): React.Re
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored === 'de' || stored === 'en') return stored;
     } catch { /* */ }
-    return 'en'; // Default: Englisch
+    // v32.0: Default Deutsch (Nutzer-Ansage 28.09.2026) — Englisch nur, wer es
+    // gewählt hat (gespeichert unter STORAGE_KEY). Dieselbe Vorgabe hatten
+    // useLocaleSafe und die Demo-Events schon; nur der Provider startete EN.
+    return 'de';
   });
 
   // v20.0 (Audit): Context-Value memoizen — vorher wurde bei jedem Re-Render

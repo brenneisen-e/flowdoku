@@ -55,7 +55,10 @@ interface ActionEntry { key: string; de: string; en: string; kw: string[]; gate:
 const ACTION_CATALOG: ActionEntry[] = [
   { key: 'export', de: 'Teilnehmerliste exportieren (Excel)', en: 'Export attendee list (Excel)', kw: ['export', 'exportieren', 'excel', 'csv', 'sharepoint', 'teilnehmerliste', 'liste', 'download', 'tabelle'], gate: 'manage' },
   { key: 'qr', de: 'QR-Codes versenden', en: 'Send QR codes', kw: ['qr', 'qr-code', 'qr code', 'checkin-code', 'code versenden'], gate: 'manage' },
-  { key: 'massmail', de: 'E-Mail versenden', en: 'Send email', kw: ['massenmail', 'mail', 'email', 'e-mail', 'nachricht', 'rundmail', 'anschreiben', 'senden', 'versenden'], gate: 'manage' },
+  { key: 'massmail', de: 'E-Mail versenden', en: 'Send email', kw: ['massenmail', 'mail', 'email', 'e-mail', 'nachricht', 'rundmail', 'anschreiben', 'senden', 'versenden',
+    // v32.0: Wer eine Erinnerung verschicken will, sucht „Reminder" — die Aktion
+    // fehlte dann in den Treffern (Nutzer-Befund 28.09.2026).
+    'reminder', 'erinnerung', 'erinnern', 'nachfassen', 'info-mail', 'update-mail', 'newsletter'], gate: 'manage' },
   { key: 'invite', de: 'Einladungsmail verschicken', en: 'Send invitation mail', kw: ['einladung', 'einladen', 'invite', 'anmelde-link', 'invitation'], gate: 'manage' },
   { key: 'audit', de: 'Audit-Log / Änderungsprotokoll', en: 'Audit log / change log', kw: ['audit', 'log', 'protokoll', 'historie', 'änderungen', 'changelog'], gate: 'manage' },
   { key: 'selfcheckin', de: 'Self-Check-in einstellen', en: 'Configure self-check-in', kw: ['self-check-in', 'selfcheckin', 'self check', 'qr-plakat', 'pdf', 'live-anzeige'], gate: 'manage' },

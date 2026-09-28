@@ -498,7 +498,7 @@ export function useWizardOptionState(ctx: UseWizardOptionStateCtx) {
     const deadline = beforeNextSaturday(1, 23, 59);
     setTitle('Demo-Meeting Standard');
     setDescription('Beispielhaftes einfaches Meeting ohne Gruppen und ohne Sub-Events.');
-    setLocation('Heinrich Campus Düsseldorf, 6. Etage');
+    setLocation('Deloitte Office Köln, Magnusstraße 11, 50672 Köln'); // v32.0: Kölner Fokus
     setStartDate(fmtDatetime(start));
     setEndDate(fmtDatetime(end));
     // v30.67: fmtDatetime statt fmtDate — der State trägt überall sonst das
@@ -526,7 +526,7 @@ export function useWizardOptionState(ctx: UseWizardOptionStateCtx) {
     const deadline = beforeNextSaturday(2, 23, 59);
     setTitle('Demo-Workshop mit Gruppen');
     setDescription('Workshop mit zwei Teilnehmer-Gruppen (Vormittag/Nachmittag) und gemeinsamer Warteliste.');
-    setLocation('Deloitte Office Köln');
+    setLocation('Deloitte Office Köln, Magnusstraße 11, 50672 Köln');
     setStartDate(fmtDatetime(start));
     setEndDate(fmtDatetime(end));
     setRegistrationDeadline(fmtDatetime(deadline)); // v30.67: s. loadDemoStandard

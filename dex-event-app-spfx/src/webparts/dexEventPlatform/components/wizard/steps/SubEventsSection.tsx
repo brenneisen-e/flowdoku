@@ -293,6 +293,19 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                   seit v22 Anzeige und wird hier zur Check-in-Liste. Nur
                   sichtbar, solange keine Sub-Events aktiv sind (entweder/oder). */}
               {!subEventsOptIn && (
+              <>
+              {/* v32.0: Eigene Zwischenüberschrift mit grauem Balken wie bei
+                  den Sub-Events (Nutzer-Ansage 28.09.2026) — Programmpunkte
+                  sind der zweite Weg, ein Event zu gliedern, und standen bis
+                  dahin optisch als Anhängsel unter der Sub-Event-Frage. */}
+              <h3 className="dex-step-sub-head">
+                {isDe ? 'Nutzung von Programmpunkten' : 'Using agenda items'}
+              </h3>
+              <p className="dex-step-sub-lead">
+                {isDe
+                  ? 'Soll sich jeder einmal fürs ganze Event anmelden — und du erfasst je Programmpunkt nur, wer da war?'
+                  : 'Should everyone register once for the whole event — while you only record who attended each agenda item?'}
+              </p>
               <div className="dex-ui-section">
                 <label className={cx('dex-ui-toggle-row', agendaCheckIn && 'is-active')}>
                   <input
@@ -408,6 +421,7 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                   );
                 })()}
               </div>
+              </>
               )}
 
               {/* v28.84: Bezeichnung und Anmelde-Modus gehoeren zur

@@ -93,8 +93,12 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
     if (queryText.length < 4) { setHits([]); return; }
     let alive = true;
     const tmr = window.setTimeout(() => {
-      searchManual(queryText, isDe ? 'de' : 'en', 4)
-        .then((r) => { if (alive) setHits(r); })
+      // v32.0: Den Artikel „Tickets" nicht vorschlagen — wer hier schreibt,
+      // stellt ja gerade ein Ticket (Nutzer-Befund 28.09.2026: „warum wird mir
+      // im Ticket empfohlen, ein Ticket zu erstellen?"). Einer mehr holen,
+      // damit nach dem Herausfiltern weiter bis zu vier Treffer stehen.
+      searchManual(queryText, isDe ? 'de' : 'en', 5)
+        .then((r) => { if (alive) setHits(r.filter((a) => a.id !== 'tickets').slice(0, 4)); })
         .catch(() => { if (alive) setHits([]); });
     }, 350);
     return () => { alive = false; window.clearTimeout(tmr); };
