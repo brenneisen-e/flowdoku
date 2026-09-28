@@ -255,24 +255,32 @@ export async function resolveAudienceMembersToCsv(
 ): Promise<string> {
   const items = (audienceCsv || '').split(',').map(s => s.trim()).filter(Boolean);
   if (items.length === 0) return '';
-  const out = new Set<string>();
-  for (const item of items) {
-    if (item.indexOf('@') < 0) continue; // Gruppen-Patterns (DEKOELN etc.) bleiben Runtime-Match
-    try {
-      const grp = await getGroupMembers(item);
-      if (grp && grp.members && grp.members.length > 0) {
-        for (const m of grp.members) {
-          const e = (m.email || '').toLowerCase().trim();
-          if (e) out.add(e);
-        }
-      } else {
-        // Keine Member zurückgeliefert → behandle als direkte User-Adresse.
-        out.add(item.toLowerCase());
+  // v32.8: Parallel statt nacheinander (höchstens 8 gleichzeitig). Jeder
+  // Eintrag — auch jede einzelne Personen-Adresse — kostet eine Graph-
+  // Anfrage; bei einer Zielgruppe mit ~90 Einträgen lag das Speichern 18 s
+  // allein hier (Tenant-Log 28.09.2026). Die Reihenfolge der Ausgabe folgt
+  // weiter der Zielgruppe, damit das Delta-Speichern keinen Unterschied sieht.
+  const adressen = items.filter(i => i.indexOf('@') >= 0); // Gruppen-Patterns (DEKOELN etc.) bleiben Runtime-Match
+  const ergebnis: string[][] = new Array(adressen.length);
+  let naechster = 0;
+  const arbeiter = async (): Promise<void> => {
+    while (naechster < adressen.length) {
+      const idx = naechster++;
+      const item = adressen[idx];
+      try {
+        const grp = await getGroupMembers(item);
+        ergebnis[idx] = (grp && grp.members && grp.members.length > 0)
+          ? grp.members.map(m => (m.email || '').toLowerCase().trim()).filter(Boolean)
+          // Keine Member zurückgeliefert → behandle als direkte User-Adresse.
+          : [item.toLowerCase()];
+      } catch {
+        ergebnis[idx] = [item.toLowerCase()];
       }
-    } catch {
-      out.add(item.toLowerCase());
     }
-  }
+  };
+  await Promise.all(Array.from({ length: Math.min(8, adressen.length) }, () => arbeiter()));
+  const out = new Set<string>();
+  for (const liste of ergebnis) for (const e of (liste || [])) out.add(e);
   return Array.from(out).join(';');
 }
 
