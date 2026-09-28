@@ -913,11 +913,23 @@ export async function getEventCustomFieldsHistory(svc: EventService, eventId: nu
  * ein anders formatiertes Datum ebenso (dann wird eben geschrieben). Eine
  * Spalte, die im Stand fehlt (nicht im $select), wird immer geschrieben.
  */
-function gleicherWert(alt: unknown, neu: unknown): boolean {
+function gleicherWert(spalte: string, alt: unknown, neu: unknown): boolean {
   if (alt === undefined) return false;
-  if (alt === null || neu === null || neu === undefined) return alt === neu;
+  const leer = (v: unknown): boolean => v === null || v === undefined || v === '';
+  // v32.6: null und "" sind für die App dasselbe — außer in den Outlook-
+  // Spalten, die der Flow per coalesce liest (dort ist "" kein Fehlen).
+  // Gemessen 28.09.2026: 27 „geänderte" Spalten ohne jede Änderung, der
+  // Großteil davon null gegen "" und Datumsformate.
+  if (leer(alt) && leer(neu)) return alt === neu || spalte.indexOf('Outlook') !== 0;
+  if (leer(alt) || leer(neu)) return false;
   if (typeof alt === 'object' || typeof neu === 'object') {
     try { return JSON.stringify(alt) === JSON.stringify(neu); } catch { return false; }
+  }
+  // Datumswerte: SharePoint liefert „…T10:00:00Z", die App schreibt „…T10:00:00.000Z".
+  const iso = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+  if (typeof alt === 'string' && typeof neu === 'string' && iso.test(alt) && iso.test(neu)) {
+    const ta = Date.parse(alt); const tn = Date.parse(neu);
+    return !isNaN(ta) && ta === tn;
   }
   return alt === neu;
 }
@@ -954,18 +966,24 @@ export async function updateEvent(svc: EventService, eventId: number, updates: R
       // älteren Sites, ein $select darauf wäre ein 400). Will logosAuslagern
       // sie schreiben, existiert sie — dann gezielt nachlesen, sonst ginge
       // das Kopfbild (bis 3,4 MB) bei jedem Speichern erneut hinaus.
-      if ('OutlookLogoBase64' in safeUpdates && !('OutlookLogoBase64' in baseline)) {
+      // v32.6: allgemein — jede zu schreibende Spalte, die im Stand fehlt
+      // (z. B. OutlookIsOnlineMeeting), in EINEM Request nachlesen. Sie
+      // existiert sicher, sonst schlüge der MERGE ohnehin fehl.
+      const fehlend = Object.keys(safeUpdates).filter(k => !(k in (baseline as Record<string, unknown>)));
+      if (fehlend.length > 0) {
         try {
-          const r = await svc._sp.get(`${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})?$select=OutlookLogoBase64`, SPHttpClient.configurations.v1);
+          const r = await svc._sp.get(`${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})?$select=${fehlend.join(',')}`, SPHttpClient.configurations.v1);
           if (r.ok) {
             const j = await r.json();
-            if (j && 'OutlookLogoBase64' in j) baseline = { ...baseline, OutlookLogoBase64: j.OutlookLogoBase64 };
+            const nach: Record<string, unknown> = {};
+            for (const k of fehlend) if (j && k in j) nach[k] = j[k];
+            baseline = { ...baseline, ...nach };
           }
-        } catch { /* ohne Grundlage wird die Spalte geschrieben */ }
+        } catch { /* ohne Grundlage werden die Spalten geschrieben */ }
       }
       const vorher = Object.keys(safeUpdates).length;
       for (const k of Object.keys(safeUpdates)) {
-        if (gleicherWert(baseline[k], safeUpdates[k])) delete safeUpdates[k];
+        if (gleicherWert(k, baseline[k], safeUpdates[k])) delete safeUpdates[k];
       }
       const nachher = Object.keys(safeUpdates).length;
       // eslint-disable-next-line no-console

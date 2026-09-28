@@ -1368,8 +1368,11 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
           .map((f: any) => [String(f.id || ''), String(f.label || '').trim(), String(f.type || ''),
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (Array.isArray(f.options) ? f.options : []).map((o: any) => String(o).trim()).filter(Boolean), !!f.multi]));
+        // v32.6: Dokument-Felder bekommen nie eine Spalte (regListRepair: Datei =
+        // Anhang) und damit nie einen spInternalName — sie hielten die Prüfung
+        // bei JEDEM Speichern wach (gemessen 28.09.2026: 8,3 von 10,2 s).
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const ohneSpalte = (arr: any[]): boolean => (arr || []).some((f: any) => f && String(f.label || '').trim() && !f.spInternalName);
+        const ohneSpalte = (arr: any[]): boolean => (arr || []).some((f: any) => f && String(f.label || '').trim() && f.type !== 'document' && !f.spInternalName);
         const vorherSplit = !!(editEvent && ((editEvent.durchstarterCapacity || 0) > 0 || (editEvent.funstarterCapacity || 0) > 0));
         const jetztSplit = useSplitCapacities && ((parseInt(durchstarterCapacity, 10) || 0) > 0 || (parseInt(funstarterCapacity, 10) || 0) > 0);
         const kinderVorher = editEvent ? childEventsOf(editEvent.id) : [];
@@ -1384,7 +1387,18 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
             if (!k) return true;
             return feldAbdruck(d.customFields || []) !== feldAbdruck(k.eventSpecificFields || []) || ohneSpalte(d.customFields || []);
           });
-        if (spaltenPruefen) setProgressLabel(isDe ? 'Teilnehmerlisten-Spalten werden geprüft...' : 'Verifying participant list columns...');
+        if (spaltenPruefen) {
+          setProgressLabel(isDe ? 'Teilnehmerlisten-Spalten werden geprüft...' : 'Verifying participant list columns...');
+          // v32.6: Welcher Grund die (teure) Prüfung ausgelöst hat — sonst ist
+          // „warum läuft das schon wieder" nicht zu beantworten.
+          dlog('perf', '[DEX][perf][save] Spalten-Prüfung läuft, Grund:', [
+            !editEvent ? 'neues Event' : '',
+            editEvent && feldAbdruck(customFields) !== feldAbdruck(editEvent.eventSpecificFields || []) ? 'Felder geändert' : '',
+            ohneSpalte(customFields) ? 'Feld ohne Spalte' : '',
+            editEvent && (quiz.length > 0) !== ((editEvent.quiz || []).length > 0) ? 'Quiz' : '',
+            jetztSplit !== vorherSplit ? 'Gruppen' : '',
+          ].filter(Boolean).join(', ') || 'Sub-Event-Felder');
+        }
         // Custom-Fields-Columns auf der Teilnehmerliste auto-sync: falls
         // neue Custom-Fields ohne spInternalName hinzugekommen sind oder
         // SP-Spalten fehlen, jetzt anlegen + spInternalName ins Event
