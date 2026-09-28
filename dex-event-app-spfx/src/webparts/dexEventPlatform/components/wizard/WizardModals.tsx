@@ -1318,6 +1318,9 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
           <Modal
             open={true}
             onClose={closeAndDispatch}
+            // v32.0.8: Nicht per Klick daneben schließen (Nutzer-Ansage
+            // 28.09.2026) — nur über X, Escape oder die Knöpfe.
+            backdropClose={false}
             maxWidth={580}
             ariaLabel={neu ? (isDe ? 'Event angelegt' : 'Event created') : (isDe ? 'Event gespeichert' : 'Event saved')}
             icon={<Check size={20} />}
@@ -1349,8 +1352,8 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                     : (isDe ? 'Das Event ist in DEX angelegt.' : 'The event is created in DEX.'))
                   : zeile(<Check size={16} />, isDe ? 'Die Änderungen sind in DEX gespeichert.' : 'The changes are saved in DEX.')}
                 {neu && ab && (ab.outlookAngelegt || ab.subOutlook > 0) && zeile(<Calendar size={16} />, isDe
-                  ? <>Der Outlook-Termin{ab.subOutlook > 0 ? <> (plus {ab.subOutlook} für die {childTermPlural || 'Sub-Events'})</> : null} wird angelegt — das übernimmt Power Automate, meist innerhalb weniger Minuten.</>
-                  : <>The Outlook appointment{ab.subOutlook > 0 ? <> (plus {ab.subOutlook} for the sub-events)</> : null} is being created by Power Automate, usually within a few minutes.</>)}
+                  ? <>Der Outlook-Termin{ab.subOutlook > 0 ? <> (plus {ab.subOutlook} für die {childTermPlural || 'Sub-Events'})</> : null} wird angelegt und geht an das Organizer-Team — meist innerhalb weniger Minuten.</>
+                  : <>The Outlook appointment{ab.subOutlook > 0 ? <> (plus {ab.subOutlook} for the sub-events)</> : null} is being created and sent to the organizer team, usually within a few minutes.</>)}
                 {neu && ab && !ab.outlookAngelegt && ab.subOutlook === 0 && zeile(<Info size={16} />, isDe
                   ? 'Kein Outlook-Termin — im Schritt Kommunikation abgeschaltet.'
                   : 'No Outlook appointment — switched off in the communication step.', 'info')}
@@ -1364,8 +1367,8 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                   ? 'Der Outlook-Termin bleibt unverändert.'
                   : 'The Outlook appointment stays unchanged.', 'info')}
                 {neu && mails.length > 0 && zeile(<Send size={16} />, isDe
-                  ? <>Eine Mail mit allen Infos und dem Link geht an {mails.length === 1 ? 'den Organizer' : `die ${mails.length} Organizer`} ({mails.join(', ')}).</>
-                  : <>An email with all details and the link goes to {mails.length === 1 ? 'the organizer' : `the ${mails.length} organizers`} ({mails.join(', ')}).</>)}
+                  ? 'Eine Mail mit allen Infos und dem Link ist an das Organizer-Team gegangen.'
+                  : 'An email with all details and the link has gone to the organizer team.')}
               </div>
               {neu && (
                 <div className="dex-ui-callout dex-ui-callout--info">

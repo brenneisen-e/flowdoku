@@ -69,6 +69,9 @@ export interface UseEventSelectionResult {
   setSciSaveMsg: React.Dispatch<React.SetStateAction<string>>;
   setSciTo: React.Dispatch<React.SetStateAction<string>>;
   toggleDraftStatus: () => Promise<void>;
+  /** v32.0.8: Event, das gerade live geschaltet wurde — öffnet LiveGeschaltetModal. */
+  liveGeschaltet: DeloitteEvent | null;
+  setLiveGeschaltet: React.Dispatch<React.SetStateAction<DeloitteEvent | null>>;
 }
 
 export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionResult {
@@ -78,6 +81,7 @@ export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionR
     setIsLoadingRegs, setRegLoadError, setRegistrations,
     regsCacheRef, setReservedDetailHeight, setSelectedEvent, showAlert, subEventRegsByEventId, updateEvent,
   } = ctx;
+  const [liveGeschaltet, setLiveGeschaltet] = React.useState<DeloitteEvent | null>(null);
   const handleSelectEvent = async (event: DeloitteEvent): Promise<void> => {
     // v31.25: Die Gesamtdauer des Klicks — die Zahl, die der Nutzer spuert.
     // Die Einzelteile (Abfrage, Groesse) loggt getAllRegistrations selbst;
@@ -420,6 +424,9 @@ export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionR
         }
       }
       await refreshEvents();
+      // v32.0.8: Nach dem Live-Schalten sagen, für wen es jetzt sichtbar ist,
+      // und die Einladungsmail anbieten (LiveGeschaltetModal).
+      if (!nextIsFictive) setLiveGeschaltet({ ...selectedEvent, isFictive: false, status: 'Active' });
     } else {
       // v22.14: vorher scheiterte der Klick STUMM — der Organizer dachte,
       // der Status lasse sich nicht ändern, ohne zu erfahren warum.
@@ -431,7 +438,7 @@ export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionR
   return {
     handleSelectEvent, openSelfCheckInModal, sciBusy, sciFrom, sciModalOpen, sciModalQr,
     sciSaveMsg, sciTo, sciToken, setSciBusy, setSciFrom, setSciModalOpen, setSciSaveMsg, setSciTo,
-    toggleDraftStatus,
+    toggleDraftStatus, liveGeschaltet, setLiveGeschaltet,
   };
 }
 

@@ -9,6 +9,7 @@
  *  laufen über die App.)
  */
 
+import { LiveGeschaltetModal } from './admin/modals/LiveGeschaltetModal';
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
@@ -1649,7 +1650,7 @@ export default function AdminPage(): React.ReactElement {
   const {
     handleSelectEvent, openSelfCheckInModal, sciBusy, sciFrom, sciModalOpen, sciModalQr,
     sciSaveMsg, sciTo, sciToken, setSciBusy, setSciFrom, setSciModalOpen, setSciSaveMsg, setSciTo,
-    toggleDraftStatus,
+    toggleDraftStatus, liveGeschaltet, setLiveGeschaltet,
   } = useEventSelection({
     adminEvents, childEventsOf, confirmDialog, detailCardRef, eventServiceRef, getAllRegistrations,
     isDe, navigate, refreshEvents, registrations, reloadRegistrations, selectedEvent, selectedEventId,
@@ -2743,6 +2744,13 @@ export default function AdminPage(): React.ReactElement {
           2. promoted   — grün, zeigt den Nachrücker
           3. no-promote — grau, Abmeldung ok, keiner auf der Warteliste */}
       {adminToast && <AdminToast {...adminToastProps} />}
+      {/* v32.0.8: Rückmeldung nach „Live schalten" mit Weg zur Einladungsmail. */}
+      <LiveGeschaltetModal
+        event={liveGeschaltet}
+        isDe={isDe}
+        onClose={() => setLiveGeschaltet(null)}
+        onInvite={() => { setLiveGeschaltet(null); openInviteModal(); }}
+      />
       {/* Keyframes für Spinner */}
       <style>{`@keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       {/* v9.29: Inline Zurück + Aktualisieren entfernt — beides liegt jetzt im Header.
