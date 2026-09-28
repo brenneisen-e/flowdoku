@@ -11,7 +11,6 @@
  * Bedingungen und Setter sind unverändert; die Datei schreibt weiterhin nur
  * customFields / subEvents[].customFields und die Formular-Schalter. */
 import * as React from 'react';
-import WizardHint from '../../WizardHint';
 import { b2runKoelnTemplateFields, isB2RunKoelnTitle } from '../../../data/b2runKoeln';
 import { CustomField } from '../../../services/EventService';
 import { AlertCircle, Check, ChevronDown, ChevronUp, Info, Plus, Trash2, X } from '../../Icons';
@@ -90,6 +89,17 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
   // (Nutzer-Ansage 28.09.2026: „das einklappen"). Weicht etwas vom Standard
   // ab, startet der Aufklapper offen — eine gesetzte Einstellung soll man
   // nicht erst suchen müssen.
+  // v32.0.3: Feldarten-Erklärung als dritter Chip neben „Frage hinzufügen"
+  // und „Vorgeschlagene Fragen" statt als eigener Aufklapp-Balken darunter.
+  const [typesOpen, setTypesOpen] = React.useState<boolean>(false);
+  // v32.0.3: Feldbeschreibung je Feld eingeklappt — offen sind nur die hier
+  // gemerkten Feld-Ids.
+  const [descOpen, setDescOpen] = React.useState<Set<string>>(() => new Set());
+  const toggleDescOpen = (id: string): void => setDescOpen(prev => {
+    const n = new Set(prev);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
   const [langOpen, setLangOpen] = React.useState<boolean>(() => !!p.bilingualFields || !!p.registrationLanguage);
   // v31.2: Wiederkehrende Bausteine des Schritts an EINER Stelle — Typ-
   // Beschriftung, Nummern-Kreis, Sprach-/Kategorie-Marke, Breite des Typ-
@@ -661,8 +671,8 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                 </h3>
                 <p className="dex-ui-section-desc">
                   {isDe
-                    ? <>Diese Fragen stellt jede Anmeldung — egal ob mit oder ohne Sub-Event.</>
-                    : <>Every registration asks these questions — with or without a sub-event.</>}
+                    ? <>Diese Informationen werden bei jeder Anmeldung mit abgefragt — egal ob mit oder ohne Sub-Event.</>
+                    : <>This information is requested with every registration — with or without a sub-event.</>}
                   <InfoTooltip text={isDe
                     ? <>
                         <strong>Automatisch erfasst</strong> (aus dem Deloitte-Profil, bei jeder Anmeldung): Vorname, Nachname, E-Mail, Job Title, Standort, Department.<br /><br />
@@ -679,9 +689,6 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                     Design der Anmeldeseite (Nutzer-Ansage 28.09.2026) — vorher
                     ein Satz mit sechs Feldnamen, den man leicht überlas und
                     der nicht zeigte, wie es beim Teilnehmer aussieht. */}
-                <div className="dex-ui-label" style={{ margin: '4px 0 6px' }}>
-                  {isDe ? 'Das kommt bei jeder Anmeldung automatisch — du musst es nicht abfragen:' : 'This comes automatically with every registration — no need to ask for it:'}
-                </div>
                 <div style={{ marginBottom: 14, maxWidth: 620 }}>
                   <ProfileDataCard
                     displayName="Max Mustermann"
@@ -719,6 +726,15 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                   >
                     {isDe ? 'Vorgeschlagene Fragen' : 'Suggested questions'}
                   </button>
+                  <button
+                    type="button"
+                    className={cx('dex-ui-chip', typesOpen && 'is-active')}
+                    aria-expanded={typesOpen}
+                    onClick={() => setTypesOpen(o => !o)}
+                    title={isDe ? 'Welche Feldarten gibt es — mit Beispielen' : 'Which field types exist — with examples'}
+                  >
+                    <Info size={12} /> {isDe ? 'Feldarten' : 'Field types'}
+                  </button>
                   {customFields.length > 1 && (
                     <button
                       type="button"
@@ -733,44 +749,51 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                     </button>
                   )}
                 </div>
-                {/* v24.25: Erklär-Box — welche Feldarten es gibt und was sie tun
-                    (aufklappbar, grau). */}
-                <WizardHint
-                  isDe={isDe}
-                  variant="description"
-                  title={isDe ? 'Welche Feldarten gibt es?' : 'Which field types are available?'}
-                  style={{ marginBottom: 12 }}
-                >
-                  {/* v31.100: Zeilen statt Aufzählung, alphabetisch nach Name,
-                      Name und Erklärung in zwei Spalten (Nutzer-Ansage
-                      28.09.2026: „besser darstellen und alphabetisch
-                      sortieren"). Der Übernachtungs-Zeitraum fehlte bis dahin. */}
-                  <div style={{ marginTop: 4 }}>
-                    {([
-                      ['text', isDe ? 'Freie Eingabe, z.B. eine Anmerkung.' : 'Free input, e.g. a note.'],
-                      ['select', isDe ? 'Auswahl aus festen Optionen; optional Mehrfachauswahl.' : 'Pick from preset options; optionally multi-select.'],
-                      ['number', isDe ? 'Nur Zahlen, z.B. eine Anzahl.' : 'Numbers only, e.g. a quantity.'],
-                      ['checkbox', isDe ? 'Einfache Ja/Nein-Bestätigung.' : 'Simple yes/no confirmation.'],
-                      ['date', isDe ? 'Datum über einen Kalender; optional zusätzlich die Uhrzeit.' : 'A date via a calendar; optionally with time.'],
-                      ['daterange', isDe ? 'Anreise und Abreise im Kalender, die Nächte werden berechnet — Grundlage der Hotelplanung.' : 'Arrival and departure in a calendar, nights are calculated — the basis for hotel planning.'],
-                      ['user', isDe ? 'Personensuche mit Foto und Standort; die gewählte Person kann die An-/Abmelde-Mail in Kopie (CC) bekommen.' : 'Person search with photo and location; the chosen person can be CC’d on the emails.'],
-                      ['roommate', isDe ? 'Wie „Person“, löst zusätzlich eine Zimmerpartner-Mail an die gewählte Person aus.' : 'Like “Person”, additionally sends a roommate email to the selected person.'],
-                      ['document', isDe ? 'Teilnehmer lädt eine Datei (PDF/Bild) hoch, die an die Anmeldung angehängt wird.' : 'Attendee uploads a file (PDF/image) attached to the registration.'],
-                    ] as Array<[CustomFieldInput['type'], string]>)
-                      .sort((a, b) => byLabel(a[0], b[0]))
-                      .map(([ty, desc]) => (
-                        <div key={ty} style={{ display: 'flex', gap: 12, padding: '6px 0', borderBottom: '1px solid var(--dex-gray-100, #f0f0f0)', fontSize: '0.84rem', lineHeight: 1.45 }}>
-                          <span style={{ width: 200, flexShrink: 0, fontWeight: 600, color: 'var(--dex-gray-800)' }}>{typeLabel(ty)}</span>
-                          <span style={{ color: 'var(--dex-gray-600)', minWidth: 0 }}>{desc}</span>
-                        </div>
-                      ))}
+                {/* v24.25: Erklär-Box — welche Feldarten es gibt und was sie tun.
+                    v32.0.3: hinter dem Chip „Feldarten" (Nutzer-Ansage
+                    28.09.2026), als Tabelle Feldart · Wofür · Beispiel — „bei
+                    den Feldern brauche ich auch immer ein Beispiel". */}
+                {typesOpen && (
+                  <div className="dex-ui-card dex-ui-card--soft" style={{ marginBottom: 12, padding: '10px 14px' }}>
+                    <div className="dex-ui-table-wrap">
+                      <table className="dex-ui-table dex-ui-table--compact">
+                        <thead>
+                          <tr>
+                            <th style={{ width: 200 }}>{isDe ? 'Feldart' : 'Field type'}</th>
+                            <th>{isDe ? 'Wofür' : 'What for'}</th>
+                            <th>{isDe ? 'Beispiel' : 'Example'}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {([
+                            ['text', isDe ? 'Freie Eingabe.' : 'Free input.', isDe ? '„Hast du Allergien oder Unverträglichkeiten?"' : '"Do you have any allergies or intolerances?"'],
+                            ['select', isDe ? 'Auswahl aus festen Optionen; optional Mehrfachauswahl.' : 'Pick from preset options; optionally multi-select.', isDe ? '„Welche T-Shirt-Größe brauchst du?" — S, M, L, XL' : '"Which T-shirt size do you need?" — S, M, L, XL'],
+                            ['number', isDe ? 'Nur Zahlen.' : 'Numbers only.', isDe ? '„Wie viele Begleitpersonen bringst du mit?"' : '"How many guests are you bringing?"'],
+                            ['checkbox', isDe ? 'Einfache Ja/Nein-Bestätigung.' : 'Simple yes/no confirmation.', isDe ? '„Ich habe die Datenschutzhinweise gelesen."' : '"I have read the privacy notice."'],
+                            ['date', isDe ? 'Datum im Kalender; optional mit Uhrzeit.' : 'A date in a calendar; optionally with time.', isDe ? '„Wann reist du an?"' : '"When do you arrive?"'],
+                            ['daterange', isDe ? 'Anreise und Abreise, die Nächte werden berechnet — Grundlage der Hotelplanung.' : 'Arrival and departure, nights are calculated — the basis for hotel planning.', isDe ? '„Für welche Nächte brauchst du ein Hotelzimmer?"' : '"Which nights do you need a hotel room for?"'],
+                            ['user', isDe ? 'Personensuche mit Foto; die gewählte Person bekommt die An-/Abmelde-Mail auf Wunsch in Kopie (CC).' : 'Person search with photo; the chosen person can be CC’d on the emails.', isDe ? '„Welche Assistenz soll über deine Anmeldung informiert werden?"' : '"Which assistant should be informed about your registration?"'],
+                            ['roommate', isDe ? 'Wie „Person“, schickt zusätzlich eine Zimmerpartner-Mail an die gewählte Person.' : 'Like “Person”, also sends a roommate email to the chosen person.', isDe ? '„Mit wem möchtest du dir das Zimmer teilen?"' : '"Who would you like to share the room with?"'],
+                            ['document', isDe ? 'Datei-Upload (PDF/Bild), hängt an der Anmeldung.' : 'File upload (PDF/image), attached to the registration.', isDe ? '„Lade bitte deine Bahnbuchung hoch."' : '"Please upload your train booking."'],
+                          ] as Array<[CustomFieldInput['type'], string, string]>)
+                            .sort((x, y) => byLabel(x[0], y[0]))
+                            .map(([ty, desc, bsp]) => (
+                              <tr key={ty}>
+                                <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{typeLabel(ty)}</td>
+                                <td>{desc}</td>
+                                <td style={{ color: 'var(--dex-gray-600)', fontStyle: 'italic' }}>{bsp}</td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="dex-ui-help" style={{ margin: '8px 0 0' }}>
+                      {isDe
+                        ? 'Pro Frage kannst du zusätzlich „Pflicht“ verlangen, eine Beschreibung hinterlegen und eine Sichtbarkeitsbedingung setzen — die Frage erscheint dann nur, wenn eine andere bestimmt beantwortet wurde.'
+                        : 'Per question you can also make it required, add a description and set a visibility condition — it then only appears when another question has a specific answer.'}
+                    </p>
                   </div>
-                  <p style={{ margin: '8px 0 0' }}>
-                    {isDe
-                      ? 'Pro Feld kannst du zusätzlich „Pflicht“ verlangen, eine Beschreibung hinterlegen (als „i“-Box oder als Text unter dem Feld) und eine Sichtbarkeitsbedingung setzen — das Feld erscheint dann nur, wenn eine andere Frage bestimmt beantwortet wurde.'
-                      : 'Per field you can also require it, add a description (as an „i“ box or text below the field) and set a visibility condition — the field then only appears when another question has a specific answer.'}
-                  </p>
-                </WizardHint>
+                )}
                 {/* v31.2: Leerer Zustand statt leerer Fläche — sagt, was das
                     Formular ohne eigene Fragen tut und wo es weitergeht. */}
                 {customFields.length === 0 && !askSalutation && (
@@ -807,6 +830,21 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                         <X size={16} />
                       </button>
                     </span>
+                  </div>
+                )}
+                {/* v32.0.3: Kopfzeile — die Fragen lesen sich als Tabelle
+                    (# · Feldart · Frage · Pflicht · Details), Nutzer-Ansage
+                    28.09.2026: „übersichtlicher, in einer Art Tabelle mit
+                    Spaltenüberschriften". Breiten wie in der Zeile darunter. */}
+                {customFields.length > 0 && (
+                  <div aria-hidden="true" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px 6px', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--dex-gray-500)' }}>
+                    {customFields.length > 1 && <span style={{ flex: '0 0 24px' }} />}
+                    <span style={{ flex: '0 0 26px', textAlign: 'center' }}>#</span>
+                    <span style={{ flex: '0 0 210px' }}>{isDe ? 'Feldart' : 'Field type'}</span>
+                    <span style={{ flex: '1 1 260px', minWidth: 180 }}>{isDe ? 'Frage' : 'Question'}</span>
+                    <span style={{ flex: '0 0 96px' }}>{isDe ? 'Pflicht' : 'Required'}</span>
+                    <span style={{ flex: '0 0 92px' }}>{isDe ? 'Details' : 'Details'}</span>
+                    <span style={{ flex: '0 0 32px' }} />
                   </div>
                 )}
                 {customFields.map((field, idx) => {
@@ -870,7 +908,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                       style={{ gap: 10, flexWrap: 'wrap', padding: '6px 8px', margin: '-6px -8px', cursor: 'pointer' }}
                     >
                       {reorderMode ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: '0 0 24px' }} onClick={e => e.stopPropagation()}>
                           <button
                             type="button"
                             className="dex-ui-iconbtn"
@@ -891,9 +929,20 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                           ><ChevronDown size={14} /></button>
                         </div>
                       ) : customFields.length > 1 && (
-                        <span className="dex-ui-drag-handle" title={isDe ? 'Ziehen, um die Reihenfolge zu ändern' : 'Drag to reorder'} aria-hidden="true" onClick={e => e.stopPropagation()}>≡</span>
+                        <span className="dex-ui-drag-handle" title={isDe ? 'Ziehen, um die Reihenfolge zu ändern' : 'Drag to reorder'} aria-hidden="true" onClick={e => e.stopPropagation()} style={{ flex: '0 0 24px', justifyContent: 'center', padding: 4, boxSizing: 'border-box' }}>≡</span>
                       )}
                       <span style={numBadge}>{idx + 1}</span>
+                      {/* v32.0.3: Feldart VOR der Frage (Spaltenfolge der Tabelle). */}
+                      <select
+                        className="dex-ui-select"
+                        value={field.type}
+                        onChange={e => updateCustomField(field.id, { type: e.target.value as CustomFieldInput['type'] })}
+                        onClick={e => e.stopPropagation()}
+                        title={isDe ? 'Art der Antwort' : 'Answer type'}
+                        style={typeSelectStyle}
+                      >
+                        {MAIN_TYPES.map(ty => <option key={ty} value={ty}>{typeLabel(ty)}</option>)}
+                      </select>
                       {/* v18.56: Textarea statt Input — lange Fragen brechen jetzt
                           um statt abgeschnitten zu werden. Auto-Höhe via ref
                           (height = scrollHeight). resize:none + overflow:hidden,
@@ -919,23 +968,10 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                           color: field.label ? 'var(--dex-gray-800)' : 'var(--dex-gray-400)',
                         }}
                       />
-                      {/* v11.4: feste Breite, damit Frage + Typ + Pflicht + X in
-                          einer Zeile bleiben — sonst drückte ein langer Typ-Text
-                          das X in die zweite Zeile. */}
-                      <select
-                        className="dex-ui-select"
-                        value={field.type}
-                        onChange={e => updateCustomField(field.id, { type: e.target.value as CustomFieldInput['type'] })}
-                        onClick={e => e.stopPropagation()}
-                        title={isDe ? 'Art der Antwort' : 'Answer type'}
-                        style={typeSelectStyle}
-                      >
-                        {MAIN_TYPES.map(ty => <option key={ty} value={ty}>{typeLabel(ty)}</option>)}
-                      </select>
                       {/* v31.2: Pflicht-Chip und „Details" gehören zur Frage und
                           stehen links direkt hinter Frage/Typ (gap 8) — nicht mehr
                           per margin-left:auto am rechten Rand. */}
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ flex: '0 0 96px', display: 'inline-flex' }} onClick={e => e.stopPropagation()}>
                         <label
                           className={cx('dex-ui-chip', field.required && 'is-active')}
                           title={isDe ? 'Pflicht: ohne Antwort lässt sich die Anmeldung nicht absenden' : 'Required: the registration cannot be submitted without an answer'}
@@ -950,6 +986,8 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                           {field.required && <Check size={12} />}
                           {t('create.required')}
                         </label>
+                      </span>
+                      <span style={{ flex: '0 0 92px', display: 'inline-flex' }}>
                         <button
                           type="button"
                           className="dex-ui-textbtn"
@@ -966,7 +1004,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                         onClick={e => { e.stopPropagation(); removeCustomField(field.id); }}
                         title={isDe ? 'Frage löschen' : 'Delete question'}
                         aria-label={isDe ? 'Frage löschen' : 'Delete question'}
-                        style={{ marginLeft: 'auto' }}
+                        style={{ flex: '0 0 32px', marginLeft: 'auto' }}
                       >
                         <X size={16} />
                       </button>
@@ -1035,6 +1073,75 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                         die Optionen unter der Beschreibung. */}
                     {isExpanded && (
                     <div className="dex-ui-stack" style={{ marginLeft: 36, marginTop: 12 }}>
+                    {/* v7.20: Beschreibung pro Feld. v18.18: Darstellung
+                        wählbar — „i"-Box neben dem Label ODER Erklär-Text
+                        unter dem Label. */}
+                    <div>
+                      {/* v32.0.3: „Feldbeschreibung" statt „Hilfetext", als ERSTES in
+                          den Details und je Feld eingeklappt (Nutzer-Ansage
+                          28.09.2026). Steht schon ein Text da, sagt die Zeile es. */}
+                      <button type="button" className={cx('dex-ui-disclosure', descOpen.has(field.id) && 'is-open')}
+                        aria-expanded={descOpen.has(field.id)} onClick={() => toggleDescOpen(field.id)}>
+                        <span className="dex-ui-disclosure-chevron"><ChevronDown size={14} /></span>
+                        {isDe ? 'Feldbeschreibung' : 'Field description'}
+                        <span className="dex-ui-muted" style={{ fontWeight: 400, marginLeft: 8 }}>
+                          {field.helpText && field.helpText.trim()
+                            ? (isDe ? 'vorhanden' : 'set')
+                            : (isDe ? 'optional' : 'optional')}
+                        </span>
+                      </button>
+                      {descOpen.has(field.id) && (
+                      <div className="dex-ui-disclosure-body">
+                      {/* v27.4: Kompakter Editor mit dauerhaft sichtbarer Leiste
+                          (Fett + Link) statt der pnp-RichText-Bubble. */}
+                      <FieldDescEditor
+                        value={field.helpText || ''}
+                        onChange={text => updateCustomField(field.id, { helpText: text })}
+                        isDe={isDe}
+                      />
+                      {field.helpText && field.helpText.trim() && (
+                        <div className="dex-ui-inline" style={{ marginTop: 8 }}>
+                          <span className="dex-ui-muted" style={{ fontWeight: 600 }}>{isDe ? 'Wo erscheint er?' : 'Where does it show?'}</span>
+                          <label className={cx('dex-ui-chip', (field.helpTextStyle || 'tooltip') !== 'inline' && 'is-active')}>
+                            <input
+                              type="radio"
+                              name={`helpStyle-${field.id}`}
+                              checked={(field.helpTextStyle || 'tooltip') !== 'inline'}
+                              onChange={() => updateCustomField(field.id, { helpTextStyle: 'tooltip' })}
+                              style={{ display: 'none' }}
+                            />
+                            {isDe ? 'Als „i"-Info-Box (Hover)' : 'As „i" info box (hover)'}
+                          </label>
+                          <label className={cx('dex-ui-chip', field.helpTextStyle === 'inline' && 'is-active')}>
+                            <input
+                              type="radio"
+                              name={`helpStyle-${field.id}`}
+                              checked={field.helpTextStyle === 'inline'}
+                              onChange={() => updateCustomField(field.id, { helpTextStyle: 'inline' })}
+                              style={{ display: 'none' }}
+                            />
+                            {isDe ? 'Als Text unter der Frage' : 'As text below the question'}
+                          </label>
+                        </div>
+                      )}
+                      {/* v17.20: EN-Variante der Beschreibung. */}
+                      {bilingualFields && (
+                        <div className="dex-ui-inline" style={{ flexWrap: 'nowrap', marginTop: 6 }}>
+                          {enBadge}
+                          <input
+                            className="dex-ui-input dex-ui-input--sm"
+                            value={field.helpTextEn || ''}
+                            placeholder={isDe
+                              ? 'Englische Beschreibung (optional)'
+                              : 'English description (optional)'}
+                            onChange={e => updateCustomField(field.id, { helpTextEn: e.target.value })}
+                            style={{ flex: 1, width: 'auto' }}
+                          />
+                        </div>
+                      )}
+                      </div>
+                      )}
+                    </div>
                     {/* v17.20: EN-Feld-Name — sichtbar wenn der Bilingual-
                         Toggle aktiviert wurde. */}
                     {bilingualFields && (
@@ -1585,62 +1692,6 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                         und muss vom Typ select oder checkbox sein. */}
                     {renderShowIfConfig(field, idx, customFields, (u) => updateCustomField(field.id, u))}
 
-                    {/* v7.20: Beschreibung pro Feld. v18.18: Darstellung
-                        wählbar — „i"-Box neben dem Label ODER Erklär-Text
-                        unter dem Label. */}
-                    <div>
-                      <div className="dex-ui-label" style={{ marginBottom: 6 }}>
-                        {isDe ? 'Hilfetext für Teilnehmer' : 'Help text for attendees'}
-                        <span className="dex-ui-label-optional">{isDe ? '(optional)' : '(optional)'}</span>
-                      </div>
-                      {/* v27.4: Kompakter Editor mit dauerhaft sichtbarer Leiste
-                          (Fett + Link) statt der pnp-RichText-Bubble. */}
-                      <FieldDescEditor
-                        value={field.helpText || ''}
-                        onChange={text => updateCustomField(field.id, { helpText: text })}
-                        isDe={isDe}
-                      />
-                      {field.helpText && field.helpText.trim() && (
-                        <div className="dex-ui-inline" style={{ marginTop: 8 }}>
-                          <span className="dex-ui-muted" style={{ fontWeight: 600 }}>{isDe ? 'Wo erscheint er?' : 'Where does it show?'}</span>
-                          <label className={cx('dex-ui-chip', (field.helpTextStyle || 'tooltip') !== 'inline' && 'is-active')}>
-                            <input
-                              type="radio"
-                              name={`helpStyle-${field.id}`}
-                              checked={(field.helpTextStyle || 'tooltip') !== 'inline'}
-                              onChange={() => updateCustomField(field.id, { helpTextStyle: 'tooltip' })}
-                              style={{ display: 'none' }}
-                            />
-                            {isDe ? 'Als „i"-Info-Box (Hover)' : 'As „i" info box (hover)'}
-                          </label>
-                          <label className={cx('dex-ui-chip', field.helpTextStyle === 'inline' && 'is-active')}>
-                            <input
-                              type="radio"
-                              name={`helpStyle-${field.id}`}
-                              checked={field.helpTextStyle === 'inline'}
-                              onChange={() => updateCustomField(field.id, { helpTextStyle: 'inline' })}
-                              style={{ display: 'none' }}
-                            />
-                            {isDe ? 'Als Text unter der Frage' : 'As text below the question'}
-                          </label>
-                        </div>
-                      )}
-                      {/* v17.20: EN-Variante der Beschreibung. */}
-                      {bilingualFields && (
-                        <div className="dex-ui-inline" style={{ flexWrap: 'nowrap', marginTop: 6 }}>
-                          {enBadge}
-                          <input
-                            className="dex-ui-input dex-ui-input--sm"
-                            value={field.helpTextEn || ''}
-                            placeholder={isDe
-                              ? 'Englische Beschreibung (optional)'
-                              : 'English description (optional)'}
-                            onChange={e => updateCustomField(field.id, { helpTextEn: e.target.value })}
-                            style={{ flex: 1, width: 'auto' }}
-                          />
-                        </div>
-                      )}
-                    </div>
                     </div>
                     )}
                   </div>

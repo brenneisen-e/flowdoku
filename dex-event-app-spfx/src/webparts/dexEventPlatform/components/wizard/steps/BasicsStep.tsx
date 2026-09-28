@@ -4,6 +4,7 @@
  * `visible` schaltet display:none statt unmount — Eingaben ueberleben den
  * Schrittwechsel genauso wie vorher. */
 import * as React from 'react';
+import DexLogo from '../../DexLogo';
 import WizardHint from '../../WizardHint';
 import { StepBadge } from '../../wizard/StepBadge';
 import { InfoTooltip } from '../../InfoTooltip';
@@ -1133,10 +1134,21 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                     kann). Ohne Bild groß und einladend, mit Bild eine schmale
                     Zeile „Anderes Bild wählen". */}
                 <label className="dex-ui-choice" style={{ borderStyle: 'dashed', alignItems: 'center', justifyContent: scImagePreview ? 'flex-start' : 'center', padding: scImagePreview ? '10px 14px' : '22px 16px', fontSize: '0.86rem', color: 'var(--dex-gray-600)', fontWeight: 600 }}>
-                  <Plus size={16} />
+                  {/* v32.0.3: Ohne Bild steht das DEX-Logo als Platzhalter
+                      in der Kachel (Nutzer 28.09.2026: „damit klar ist, dass
+                      das der Lückenfüller ist"). Standbild, keine Animation. */}
+                  {!scImagePreview && !(scopeSub ? scopeSub.imageFile : imageFile)
+                    ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 14 }}>
+                        <DexLogo size={56} paused pointerSpin={false} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <span className="dex-ui-muted" style={{ fontWeight: 400, fontSize: '0.74rem' }}>{isDe ? 'Platzhalter, bis du ein eigenes Bild wählst' : 'Placeholder until you choose your own image'}</span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Plus size={16} />{isDe ? 'Bild auswählen — bestmöglich Querformat, mind. 1200 px breit' : 'Choose an image — landscape if possible, at least 1200 px wide'}</span>
+                        </span>
+                      </span>
+                    : <Plus size={16} />}
                   {(scopeSub ? scopeSub.imageFile : imageFile)?.name || (scImagePreview
                     ? (isDe ? 'Anderes Bild wählen' : 'Choose a different image')
-                    : (isDe ? 'Bild auswählen — bestmöglich Querformat, mind. 1200 px breit' : 'Choose an image — landscape if possible, at least 1200 px wide'))}
+                    : null)}
                   <input
                     type="file"
                     accept="image/*"

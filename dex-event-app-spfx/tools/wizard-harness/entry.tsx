@@ -19,6 +19,7 @@ import { TicketContext } from '../../src/webparts/dexEventPlatform/context/Ticke
 import EventCreationPage from '../../src/webparts/dexEventPlatform/components/EventCreationPage';
 import LandingPage from '../../src/webparts/dexEventPlatform/components/LandingPage';
 import StartPage from '../../src/webparts/dexEventPlatform/components/StartPage';
+import GlobalSearch from '../../src/webparts/dexEventPlatform/components/GlobalSearch';
 import EventListPage from '../../src/webparts/dexEventPlatform/components/EventListPage';
 import RegistrationPage from '../../src/webparts/dexEventPlatform/components/RegistrationPage';
 import MyEventsPage from '../../src/webparts/dexEventPlatform/components/MyEventsPage';
@@ -78,7 +79,12 @@ const parent: any = {
     { id: 'a4', date: day(31), time: '13:00', endTime: '16:30', icon: 'Calendar', title: 'Post Merger Integration Theory', location: 'Plenum', cluster: 'Tag 2' },
   ],
   transferTimes: [], documents: [], quiz: [],
-  eventSpecificFields: [],
+  // v32.0.3: mit Fragen, damit Schritt 5 (Tabelle, Details, Feldarten) im
+  // Bild AUSGEFÜLLT steht — leer zeigt er nur den Platzhalter.
+  eventSpecificFields: [
+    ...sample.sommerFelder,
+    { id: 'assistenz', label: 'Welche Assistenz soll über deine Anmeldung informiert werden?', type: 'user', required: false },
+  ],
   teamRegistrationEnabled: false, teamSize: 4,
   childEventTermSingular: 'Session', childEventTermPlural: 'Sessions',
 };
@@ -237,6 +243,8 @@ const PageComponent: React.FC = () => {
   switch (page) {
     case 'landing': return <LandingPage />;
     case 'start': return <StartPage />;
+    // v32.0.3: Suchleiste allein — gruppierte Treffer (Aktion/Person → Hauptevent → Sub-Events).
+    case 'search': return <div style={{ display: 'flex', padding: 24, maxWidth: 520, height: 1300, overflow: 'visible', alignItems: 'flex-start' }}><GlobalSearch /></div>;
     case 'list': return <EventListPage />;
     case 'register': return <RegistrationPage />;
     case 'myevents': return <MyEventsPage />;

@@ -123,6 +123,9 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
   // die Chip-Zeile öffnet den passenden Reiter. Abmelde-Regel der Organizer-Kopie
   // eingeklappt, solange sie nur gelesen werden muss.
   const [advOpen, setAdvOpen] = React.useState<boolean>(false);
+  // v32.0.3: Vorschau „So geht es raus" eingeklappt (Nutzer-Ansage 28.09.2026:
+  // „einklappen") — die Mail-Vorschau ist groß und wird nur zum Prüfen gebraucht.
+  const [previewOpen, setPreviewOpen] = React.useState<boolean>(false);
   const [advTab, setAdvTab] = React.useState<'templates' | 'mailLogo' | 'outlook' | 'fine'>('templates');
   const [orgCancelOpen, setOrgCancelOpen] = React.useState<boolean>(false);
   // v30.71: Hilfen für den Schalter "gemeinsam / einzeln" (s. Box oben im Schritt).
@@ -671,6 +674,11 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                   return (
                     <div className="dex-ui-section">
                       <div className="dex-ui-section-title">{isDe ? 'So geht es raus' : 'What goes out'}</div>
+                      <button type="button" className={cx('dex-ui-disclosure', previewOpen && 'is-open')} aria-expanded={previewOpen} onClick={() => setPreviewOpen(o => !o)}>
+                        <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                        {isDe ? 'Vorschau von Mail und Outlook-Termin anzeigen' : 'Show email and Outlook invite preview'}
+                      </button>
+                      {previewOpen && (
                       <CommPreviewCard
                         isDe={isDe}
                         emailLanguage={emailLanguage}
@@ -694,6 +702,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                         eventId={p.editEventId}
                         agenda={activeCommTabIdx > 0 ? (slot.agenda || []) : p.agenda}
                       />
+                      )}
                       <div className="dex-ui-inline" style={{ marginTop: 14 }}>
                         <span className="dex-ui-muted" style={{ fontWeight: 600 }}>{isDe ? 'Stand:' : 'Status:'}</span>
                         {chips.map(c => (
@@ -1010,18 +1019,25 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                             las sich als Pfeil-Rätsel (Nutzer: „das versteht man
                             textuell nicht"). Jetzt steht da, WER was tut und was
                             ohne den Haken passiert. */}
-                        <label className={cx('dex-ui-toggle-row', autoDeregisterOnDecline && 'is-active')}>
-                          <input type="checkbox" checked={autoDeregisterOnDecline} onChange={e => setAutoDeregisterOnDecline(e.target.checked)} />
+                        {/* v32.0.3: GEPLANT, nicht gebaut (Nutzer-Ansage 28.09.2026:
+                            „diese Funktion haben wir noch gar nicht im Power-Flow
+                            gebaut … planen, aber nicht markierbar"). Weder die
+                            automatische Abmeldung noch die Erinnerungs-Mail bei
+                            einer Outlook-Absage laufen heute. Deshalb gesperrt;
+                            ein gespeicherter Wert bleibt unangetastet. */}
+                        <label className={cx('dex-ui-toggle-row', 'is-disabled')} title={isDe ? 'Geplant — noch nicht umgesetzt' : 'Planned — not implemented yet'}>
+                          <input type="checkbox" checked={autoDeregisterOnDecline} disabled onChange={e => setAutoDeregisterOnDecline(e.target.checked)} />
                           <span className="dex-ui-toggle-row-body">
                             <span className="dex-ui-toggle-row-title">
                               {isDe ? 'Outlook-Absage gilt als Abmeldung' : 'Declining in Outlook counts as cancelling'}
+                              <span className="dex-ui-pill dex-ui-pill--gray dex-ui-pill--sm" style={{ marginLeft: 8 }}>{isDe ? 'Geplant' : 'Planned'}</span>
                               <InfoTooltip text={isDe
                                 ? 'Wenn aktiv: Sagt ein Teilnehmer den Outlook-Termin ab, wird er automatisch auch vom Event abgemeldet — der Platz wird frei und die Warteliste rückt nach. Ohne diesen Haken bekommt die Person bei einer Outlook-Absage nur eine Erinnerung, sich bei Bedarf selbst abzumelden. Hinweis: Diese Automatik greift erst, sobald die einmalige Anpassung im Outlook-Absage-Verarbeitungsschritt im Tenant eingerichtet ist.'
                                 : 'When active: if an attendee declines the Outlook invite, they are automatically deregistered from the event — the spot is freed and the waitlist moves up. Without this, a decline only triggers a reminder asking the person to deregister themselves if needed. Note: this automation only takes effect once the one-time change in the Outlook-decline processing step is set up in the tenant.'} />
                             </span>
                             <span className="dex-ui-toggle-row-desc">{isDe
-                              ? 'Sagt ein Teilnehmer den Kalendertermin in Outlook ab, meldet DEX ihn automatisch vom Event ab: Sein Platz wird frei, die Warteliste rückt nach. Ohne diesen Haken bekommt er nur eine Erinnerung, sich in der App selbst abzumelden.'
-                              : 'If an attendee declines the calendar invite in Outlook, DEX automatically cancels their registration: the seat is freed and the waitlist moves up. Without this, they only get a reminder to cancel in the app themselves.'}</span>
+                              ? 'Geplant, noch nicht umgesetzt: Sagt jemand den Kalendertermin in Outlook ab, soll DEX ihn automatisch abmelden (Platz frei, Warteliste rückt nach) — sonst eine Erinnerung schicken. Der Flow dafür fehlt noch; heute hat eine Outlook-Absage in DEX keine Wirkung, abmelden geht nur in der App.'
+                              : 'Planned, not implemented yet: if someone declines the calendar invite in Outlook, DEX will cancel their registration (seat freed, waitlist moves up) — otherwise send a reminder. The flow for this does not exist yet; today an Outlook decline has no effect in DEX, cancelling only works in the app.'}</span>
                           </span>
                         </label>
                       </div>)}

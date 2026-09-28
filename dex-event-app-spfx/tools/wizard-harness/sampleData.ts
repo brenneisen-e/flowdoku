@@ -85,7 +85,7 @@ const base = (over: any): any => ({
 /* Eventspezifische Felder der Anmeldeseite: je Typ eins, ein Pflichtfeld
  * dabei, dazu ein abhängiges Feld (showIf) — das ist der Fall, der beim
  * Umbau der Formularsektion am ehesten verschwindet. */
-const sommerFelder: any[] = [
+export const sommerFelder: any[] = [
   {
     id: 'anreise', label: 'Wie kommst du zum Sommerfest?', type: 'select', required: true,
     options: ['Mit der Bahn', 'Mit dem Auto', 'Zu Fuß / Rad', 'Ich weiß es noch nicht'],

@@ -21,7 +21,7 @@
  * - Eingeklappt: nur ein Such-Icon; erst beim Klick klappt die Leiste auf.
  */
 import * as React from 'react';
-import { Search, X } from './Icons';
+import { ChevronDown, ChevronRight, Search, X } from './Icons';
 import { useNavigation, Page } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
@@ -68,10 +68,44 @@ const ACTION_CATALOG: ActionEntry[] = [
   { key: 'fixcols', de: 'Spalten fixen (Teilnehmerliste)', en: 'Fix columns (attendee list)', kw: ['spalten', 'spalte', 'fix', 'columns', 'felder'], gate: 'admin' },
 ];
 
-interface SearchHit { id: string; primary: string; secondary?: string; onSelect: () => void }
+/** v32.0.3: Ein Treffer kann eine Gruppe sein (`children`) — eingeklappt, per
+ *  Klick aufklappbar. Ohne `onSelect` klappt die Zeile nur auf/zu; mit
+ *  `onSelect` springt sie und der Pfeil klappt. `answer` = Kurzantwort, Text
+ *  darf umbrechen. */
+interface SearchHit { id: string; primary: string; secondary?: string; onSelect?: () => void; children?: SearchHit[]; answer?: boolean; evStart?: string }
+interface FlatRow { hit: SearchHit; depth: number }
 interface Cluster { key: string; label: string; hits: SearchHit[] }
 // Aus den Event-Teilnehmerlisten zusammengetragene Person (berechtigungs-gescoped).
 interface RegPart { name: string; email: string; status: string; eventId: string; eventTitle: string }
+
+/**
+ * v32.0.3: Kurzantworten auf die häufigsten Fragen — stehen über den Treffern,
+ * damit „Reminder" nicht nur zwölf Aktionszeilen liefert, sondern den Satz,
+ * WIE es geht (Nutzer-Ansage 28.09.2026). Nur Wege nennen, die es gibt.
+ */
+interface FaqEntry { key: string; de: string; en: string; aDe: string; aEn: string; kw: string[]; page: Page; gate: Gate }
+const FAQ_CATALOG: FaqEntry[] = [
+  { key: 'reminder', de: 'Wie verschicke ich einen Reminder?', en: 'How do I send a reminder?',
+    aDe: 'Über die Aktion „E-Mail versenden“: Organizer Center → Event wählen → Aktionen → E-Mail versenden. Dort wählst du die Empfänger, z.B. alle Angemeldeten.',
+    aEn: 'With the „Send email“ action: Organizer Center → choose the event → Actions → Send email. Pick the recipients there, e.g. everyone registered.',
+    kw: ['reminder', 'erinnerung', 'erinnern', 'nachfassen'], page: 'admin', gate: 'manage' },
+  { key: 'live', de: 'Wie schalte ich ein Event live?', en: 'How do I publish an event?',
+    aDe: 'Organizer Center → Event wählen → „Nächste Schritte“ → „Live schalten“. Oder im Assistenten in Schritt 1 den Haken „als Entwurf speichern“ entfernen.',
+    aEn: 'Organizer Center → choose the event → „Next steps“ → „Go live“. Or untick „save as draft“ in step 1 of the wizard.',
+    kw: ['live', 'veröffentlichen', 'freischalten', 'aktivieren', 'entwurf', 'publish'], page: 'admin', gate: 'manage' },
+  { key: 'waitlist', de: 'Wie rücken Personen von der Warteliste nach?', en: 'How do people move up from the waitlist?',
+    aDe: 'Bei jeder Abmeldung rückt automatisch die nächste Person nach. Hast du die Plätze erhöht, füllt die Aktion „Freie Plätze mit Warteliste füllen“ die neuen Plätze.',
+    aEn: 'With every cancellation the next person moves up automatically. After raising the capacity, the „Fill free seats from waitlist“ action fills the new seats.',
+    kw: ['warteliste', 'nachrücken', 'nachruecken', 'waitlist', 'nachrücker'], page: 'admin', gate: 'manage' },
+  { key: 'series', de: 'Wie lege ich eine Terminserie an?', en: 'How do I create a series?',
+    aDe: 'Im Event-Assistenten, Schritt 1, unter dem Zeitraum: „Als Serie anlegen“. Jeder Termin wird ein eigenes Sub-Event mit eigener Teilnehmerliste.',
+    aEn: 'In the event wizard, step 1, below the dates: „Create as series“. Every date becomes its own sub-event with its own attendee list.',
+    kw: ['serie', 'terminserie', 'wiederkehrend', 'wöchentlich', 'regelmäßig', 'series', 'recurring'], page: 'create-event', gate: 'manage' },
+  { key: 'qr', de: 'Wie funktioniert der Check-in?', en: 'How does check-in work?',
+    aDe: 'QR-Codes verschickst du über die Aktion „QR-Codes versenden“; am Event-Tag scannt das Check-in-Team unter „Check-in“. Ohne Kamera geht die Teilnehmer-ID, die unter jedem QR-Code steht.',
+    aEn: 'Send QR codes with the „Send QR codes“ action; on the day the check-in team scans under „Check-in“. Without a camera, use the attendee ID shown below every QR code.',
+    kw: ['check-in', 'checkin', 'einchecken', 'scannen', 'qr'], page: 'check-in', gate: 'manage' },
+];
 
 const norm = (s: string): string => (s || '').toLowerCase().trim();
 
@@ -285,50 +319,125 @@ export default function GlobalSearch(): React.ReactElement | null {
     fn();
   }, []);
 
+  const evById = React.useMemo(() => {
+    const m = new Map<string, DeloitteEvent>();
+    for (const e of events || []) m.set(e.id, e);
+    return m;
+  }, [events]);
+  /**
+   * v32.0.3: Treffer mit Event nach Hauptevent → Sub-Events schachteln. Ein
+   * Sub-Event, dessen Hauptevent selbst ein Treffer ist, hängt unter dessen
+   * Zeile; sonst entsteht eine reine Gruppenzeile mit dem Titel des
+   * Hauptevents. Die Reihenfolge folgt dem ersten Auftreten.
+   */
+  const eventTree = React.useCallback((items: Array<{ ev: DeloitteEvent; hit: SearchHit }>, prefix: string): SearchHit[] => {
+    const byEv = new Map<string, SearchHit>();
+    for (const it of items) byEv.set(it.ev.id, { ...it.hit, evStart: it.ev.startDate || '' });
+    const out: SearchHit[] = [];
+    const groups = new Map<string, SearchHit>();
+    for (const it of items) {
+      const pid = it.ev.parentEventId || '';
+      const node = byEv.get(it.ev.id) as SearchHit;
+      if (!pid) { if (out.indexOf(node) < 0) out.push(node); continue; }
+      let parent = byEv.get(pid) || groups.get(pid);
+      if (!parent) {
+        const pev = evById.get(pid);
+        parent = { id: `${prefix}-grp-${pid}`, primary: pev?.title || (isDe ? 'Hauptevent' : 'Main event') };
+        groups.set(pid, parent);
+        out.push(parent);
+      }
+      // Ist das Hauptevent selbst ein Treffer, kommt es über seinen eigenen
+      // Eintrag in die Liste (auch wenn der erst später folgt).
+      parent.children = [...(parent.children || []), node];
+    }
+    for (const n of out) {
+      // Sub-Events chronologisch (Tag 1 vor Tag 2), egal wie die Treffer kamen.
+      if (n.children && n.children.length > 1) {
+        n.children = n.children.slice().sort((a, b) => (a.evStart || '').localeCompare(b.evStart || ''));
+      }
+      if (n.children && n.children.length && !n.secondary) {
+        n.secondary = isDe ? `${n.children.length} Sub-Events` : `${n.children.length} sub-events`;
+      }
+    }
+    return out;
+  }, [evById, isDe]);
+
   const clusters = React.useMemo<Cluster[]>(() => {
     const q = norm(query);
     if (q.length < 2) return [];
     const tokens = q.split(/\s+/).filter(Boolean);
     const out: Cluster[] = [];
 
+    // ---- Kurzantworten ----
+    const faqHits: SearchHit[] = [];
+    for (const f of FAQ_CATALOG) {
+      if (f.gate === 'manage' && !canManageAny) continue;
+      const hay = norm(`${f.de} ${f.en} ${f.kw.join(' ')}`);
+      const kwHay = norm(f.kw.join(' '));
+      // Ein Suchwort muss ein Stichwort treffen — sonst stünde bei jedem „wie" eine Antwort.
+      if (!matchAll(tokens, hay, words(hay)) || !tokens.some(t => tokenMatches(t, kwHay, words(kwHay)))) continue;
+      faqHits.push({ id: `faq-${f.key}`, primary: isDe ? f.de : f.en, secondary: isDe ? f.aDe : f.aEn, answer: true, onSelect: () => navigate(f.page) });
+      if (faqHits.length >= 2) break;
+    }
+    if (faqHits.length) out.push({ key: 'faq', label: isDe ? 'Kurz beantwortet' : 'Quick answer', hits: faqHits });
+
     // ---- Events ----
-    const evHits: SearchHit[] = [];
+    // v32.0.3: Sub-Events stehen eingeklappt unter ihrem Hauptevent.
+    const evItems: Array<{ ev: DeloitteEvent; hit: SearchHit }> = [];
     for (const e of managedEvents) {
       const hay = norm(`${e.title} ${e.eventNumber || ''} ${e.location || ''}`);
       if (matchAll(tokens, hay, words(hay))) {
-        evHits.push({
+        evItems.push({ ev: e, hit: {
           id: `ev-${e.id}`,
           primary: e.title || (isDe ? 'Event ohne Titel' : 'Untitled event'),
           secondary: [e.eventNumber ? `Nr. ${e.eventNumber}` : '', e.location || '', e.isFictive ? (isDe ? 'Entwurf' : 'Draft') : ''].filter(Boolean).join(' · '),
           onSelect: () => navigate('admin', e.id),
-        });
+        } });
       }
-      if (evHits.length >= 6) break;
+      if (evItems.length >= 40) break;
     }
+    // Ein getroffenes Hauptevent nimmt alle seine Sub-Events mit (eingeklappt).
+    const evHitIds = new Set(evItems.map(x => x.ev.id));
+    for (const x of evItems.slice()) {
+      if (x.ev.parentEventId) continue;
+      for (const c of managedEvents) {
+        if (c.parentEventId !== x.ev.id || evHitIds.has(c.id)) continue;
+        evHitIds.add(c.id);
+        evItems.push({ ev: c, hit: { id: `ev-${c.id}`, primary: c.title || '', secondary: c.eventNumber ? `Nr. ${c.eventNumber}` : undefined, onSelect: () => navigate('admin', c.id) } });
+      }
+    }
+    const evHits = eventTree(evItems, 'ev').slice(0, 8);
     if (evHits.length) out.push({ key: 'events', label: 'Events', hits: evHits });
 
     // ---- Aktionen (kombiniert Aktion × verwaltbares Event) ----
+    // v32.0.3: EINE Zeile je Aktion, die Events darunter eingeklappt (Hauptevent
+    // → Sub-Events). Vorher zwölfmal „E-Mail versenden" untereinander.
     const actHits: SearchHit[] = [];
     const sortedEvents = managedEvents.slice().sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''));
-    outer:
     for (const a of ACTION_CATALOG) {
       if (a.gate === 'admin' && !adminLike) continue;
       const actLabel = isDe ? a.de : a.en;
       const actHay = norm(`${a.de} ${a.en} ${a.kw.join(' ')}`);
       const actWords = words(actHay);
+      const items: Array<{ ev: DeloitteEvent; hit: SearchHit }> = [];
       for (const e of sortedEvents) {
         const evHay = norm(`${e.title} ${e.eventNumber || ''} ${e.location || ''}`);
         const combined = `${actHay} ${evHay}`;
         if (!matchAll(tokens, combined, words(combined))) continue;
         // Mindestens ein Token muss die Aktion treffen (sonst reiner Event-Treffer).
         if (!tokens.some(t => tokenMatches(t, actHay, actWords))) continue;
-        actHits.push({
+        items.push({ ev: e, hit: {
           id: `act-${a.key}-${e.id}`,
-          primary: actLabel,
-          secondary: e.title,
+          primary: e.title,
           onSelect: () => { try { window.localStorage.setItem('dex_search_focus_action', a.key); } catch { /* */ } navigate('admin', e.id); },
-        });
-        if (actHits.length >= 12) break outer;
+        } });
+        if (items.length >= 80) break;
+      }
+      if (!items.length) continue;
+      if (items.length === 1) {
+        actHits.push({ ...items[0].hit, primary: actLabel, secondary: items[0].ev.title });
+      } else {
+        actHits.push({ id: `act-${a.key}`, primary: actLabel, secondary: isDe ? `${items.length} Events` : `${items.length} events`, children: eventTree(items, `act-${a.key}`) });
       }
     }
     if (actHits.length) out.push({ key: 'actions', label: isDe ? 'Aktionen' : 'Actions', hits: actHits });
@@ -400,32 +509,71 @@ export default function GlobalSearch(): React.ReactElement | null {
         seen.add(key);
         matched.push(rp);
       }
-      // Gleiche Person zusammen gruppieren (Name, dann Event-Titel).
-      matched.sort((a, b) => {
-        const pa = (a.name || a.email).toLowerCase();
-        const pb = (b.name || b.email).toLowerCase();
-        if (pa !== pb) return pa.localeCompare(pb);
-        return (a.eventTitle || '').localeCompare(b.eventTitle || '');
-      });
-      const partHits: SearchHit[] = [];
+      // v32.0.3: EINE Zeile je Person, ihre Events darunter eingeklappt
+      // (Hauptevent → Sub-Events). Vorher zwölfmal derselbe Name.
+      const byPerson = new Map<string, RegPart[]>();
       for (const rp of matched) {
-        partHits.push({
-          id: `part-${(rp.email || rp.name).toLowerCase()}-${rp.eventId}`,
-          primary: rp.name || rp.email,
-          secondary: [rp.email, rp.eventTitle, rp.status].filter(Boolean).join(' · '),
+        const k = (rp.email || rp.name).toLowerCase();
+        const arr = byPerson.get(k);
+        if (arr) arr.push(rp); else byPerson.set(k, [rp]);
+      }
+      const persons = Array.from(byPerson.entries()).sort((a, b) =>
+        (a[1][0].name || a[1][0].email).toLowerCase().localeCompare((b[1][0].name || b[1][0].email).toLowerCase()));
+      const partHits: SearchHit[] = [];
+      for (const [pk, rps] of persons) {
+        const first = rps[0];
+        const leaf = (rp: RegPart): SearchHit => ({
+          id: `part-${pk}-${rp.eventId}`,
+          primary: rp.eventTitle || rp.eventId,
+          secondary: rp.status || undefined,
           onSelect: () => navigate('admin', rp.eventId),
         });
+        if (rps.length === 1) {
+          partHits.push({ ...leaf(first), primary: first.name || first.email, secondary: [first.email, first.eventTitle, first.status].filter(Boolean).join(' · ') });
+        } else {
+          const items: Array<{ ev: DeloitteEvent; hit: SearchHit }> = [];
+          const loose: SearchHit[] = [];
+          for (const rp of rps) {
+            const ev = evById.get(rp.eventId);
+            if (ev) items.push({ ev, hit: leaf(rp) }); else loose.push(leaf(rp));
+          }
+          partHits.push({
+            id: `part-${pk}`,
+            primary: first.name || first.email,
+            secondary: [first.email, isDe ? `${rps.length} Events` : `${rps.length} events`].filter(Boolean).join(' · '),
+            children: [...eventTree(items, `part-${pk}`), ...loose],
+          });
+        }
         if (partHits.length >= 12) break;
       }
       if (partHits.length) out.push({ key: 'participants', label: isDe ? 'Teilnehmer' : 'Attendees', hits: partHits });
     }
 
     return out;
-  }, [query, managedEvents, adminLike, canManageAny, regParts, isDe, manualIndex, navigate]);
+  }, [query, managedEvents, adminLike, canManageAny, regParts, isDe, manualIndex, navigate, eventTree, evById]);
 
   // Flache Trefferliste für Tastatur-Navigation.
-  const flat = React.useMemo(() => clusters.reduce<SearchHit[]>((acc, c) => [...acc, ...c.hits], []), [clusters]);
-  React.useEffect(() => { setActiveIdx(0); }, [query]);
+  // v32.0.3: Nur die sichtbaren Zeilen — eingeklappte Kinder zählen nicht mit.
+  const [openGroups, setOpenGroups] = React.useState<Set<string>>(() => new Set());
+  const toggleGroup = (id: string): void => setOpenGroups(prev => {
+    const n = new Set(prev);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
+  const rowsOf = React.useCallback((hits: SearchHit[], depth: number): FlatRow[] => {
+    const acc: FlatRow[] = [];
+    for (const h of hits) {
+      acc.push({ hit: h, depth });
+      if (h.children && h.children.length && openGroups.has(h.id)) acc.push(...rowsOf(h.children, depth + 1));
+    }
+    return acc;
+  }, [openGroups]);
+  const flat = React.useMemo(() => clusters.reduce<FlatRow[]>((acc, c) => [...acc, ...rowsOf(c.hits, 0)], []), [clusters, rowsOf]);
+  const activate = (h: SearchHit): void => {
+    if (h.onSelect) go(h.onSelect);
+    else if (h.children && h.children.length) toggleGroup(h.id);
+  };
+  React.useEffect(() => { setActiveIdx(0); setOpenGroups(new Set()); }, [query]);
 
   if (!visible) return null;
 
@@ -480,7 +628,11 @@ export default function GlobalSearch(): React.ReactElement | null {
             if (!showPanel || flat.length === 0) return;
             if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => Math.min(i + 1, flat.length - 1)); }
             else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIdx(i => Math.max(i - 1, 0)); }
-            else if (e.key === 'Enter') { e.preventDefault(); const hit = flat[activeIdx]; if (hit) go(hit.onSelect); }
+            else if (e.key === 'Enter') { e.preventDefault(); const row = flat[activeIdx]; if (row) activate(row.hit); }
+            else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+              const row = flat[activeIdx];
+              if (row && row.hit.children && row.hit.children.length && (openGroups.has(row.hit.id) === (e.key === 'ArrowLeft'))) { e.preventDefault(); toggleGroup(row.hit.id); }
+            }
           }}
           style={{
             width: '100%', boxSizing: 'border-box',
@@ -519,28 +671,51 @@ export default function GlobalSearch(): React.ReactElement | null {
                 <div style={{ padding: '8px 16px 4px', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--dex-green-dark, #4a7c1f)' }}>
                   {c.label} <span style={{ color: 'var(--dex-gray-400)', fontWeight: 600 }}>({c.hits.length})</span>
                 </div>
-                {c.hits.map(h => {
+                {rowsOf(c.hits, 0).map(({ hit: h, depth }) => {
                   running++;
                   const idx = running;
                   const active = idx === activeIdx;
+                  const isGroup = !!(h.children && h.children.length);
+                  const isOpen = isGroup && openGroups.has(h.id);
                   return (
-                    <button
+                    <div
                       key={h.id}
-                      type="button"
                       onMouseEnter={() => setActiveIdx(idx)}
-                      onClick={() => go(h.onSelect)}
                       style={{
-                        display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer',
-                        border: 'none', background: active ? 'rgba(134,188,37,0.10)' : 'transparent',
-                        padding: '8px 16px', fontFamily: 'inherit',
+                        display: 'flex', alignItems: 'center', gap: 4,
+                        background: active ? 'rgba(134,188,37,0.10)' : 'transparent',
                         borderLeft: active ? '3px solid var(--dex-green, #86bc25)' : '3px solid transparent',
+                        paddingLeft: 16 + depth * 18,
                       }}
                     >
-                      <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 600, color: 'var(--dex-gray-800)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.primary}</span>
-                      {h.secondary && (
-                        <span style={{ display: 'block', fontSize: '0.74rem', color: 'var(--dex-gray-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.secondary}</span>
-                      )}
-                    </button>
+                      {isGroup
+                        ? (
+                          <button
+                            type="button"
+                            aria-expanded={isOpen}
+                            aria-label={isOpen ? (isDe ? 'Zuklappen' : 'Collapse') : (isDe ? 'Aufklappen' : 'Expand')}
+                            onClick={() => toggleGroup(h.id)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'inline-flex', color: 'var(--dex-gray-500)', flexShrink: 0 }}
+                          >
+                            {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                          </button>
+                        )
+                        : (depth > 0 ? <span style={{ width: 18, flexShrink: 0 }} /> : null)}
+                      <button
+                        type="button"
+                        onClick={() => activate(h)}
+                        style={{
+                          display: 'block', flex: 1, minWidth: 0, textAlign: 'left', cursor: 'pointer',
+                          border: 'none', background: 'transparent',
+                          padding: '8px 16px 8px 0', fontFamily: 'inherit',
+                        }}
+                      >
+                        <span style={{ display: 'block', fontSize: depth > 0 ? '0.82rem' : '0.86rem', fontWeight: 600, color: 'var(--dex-gray-800)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.primary}</span>
+                        {h.secondary && (
+                          <span style={{ display: 'block', fontSize: '0.74rem', color: h.answer ? 'var(--dex-gray-700)' : 'var(--dex-gray-500)', lineHeight: h.answer ? 1.45 : undefined, overflow: 'hidden', textOverflow: h.answer ? undefined : 'ellipsis', whiteSpace: h.answer ? 'normal' : 'nowrap' }}>{h.secondary}</span>
+                        )}
+                      </button>
+                    </div>
                   );
                 })}
               </div>
