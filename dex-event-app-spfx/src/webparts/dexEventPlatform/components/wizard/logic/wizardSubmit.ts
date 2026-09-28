@@ -528,8 +528,18 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
     // Rettet auch Events, bei denen früher ein unkomprimiertes Bild als
     // Logo übernommen wurde — die ließen sich sonst gar nicht mehr
     // speichern (SharePoint-2-MB-Limit, das Logo steckt bis zu 3× im Payload).
-    const effEmailLogo = await shrinkLogoB64(topComm.emailLogoBase64);
-    const effOutlookLogo = await shrinkLogoB64(topComm.outlookLogoBase64);
+    // v32.7: … aber nur, wenn das Logo NEU ist. Ein unverändert geladenes Logo
+    // wurde bei jedem Speichern erneut als JPEG kodiert — andere Bytes, also
+    // schrieb das Delta-Speichern das MB-große Kopfbild jedes Mal neu
+    // (Messung 28.09.2026), und die Bildqualität sank mit jedem Speichern.
+    const geladeneLogos: { _eventLogo?: unknown; _outlookLogo?: unknown } = (() => {
+      try { return JSON.parse((editEvent && editEvent.emailTemplateOverrides) || '{}') || {}; } catch { return {}; }
+    })();
+    const unveraendert = (b64: string, geladen: unknown): boolean => !!b64 && typeof geladen === 'string' && b64 === geladen;
+    const effEmailLogo = unveraendert(topComm.emailLogoBase64, geladeneLogos._eventLogo)
+      ? topComm.emailLogoBase64 : await shrinkLogoB64(topComm.emailLogoBase64);
+    const effOutlookLogo = unveraendert(topComm.outlookLogoBase64, geladeneLogos._outlookLogo)
+      ? topComm.outlookLogoBase64 : await shrinkLogoB64(topComm.outlookLogoBase64);
     const effOutlookBody = topComm.outlookBody;
     const effOutlookHeading = topComm.outlookHeading;
     const effOutlookSubheading = topComm.outlookSubheading;
