@@ -1039,7 +1039,13 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
       //   2. oder ob updates['CustomFields'] ohne helpText/onlyForGroup
       //      ankommt (= State zum Save-Zeitpunkt war schon kaputt).
       // v29.77: Debug-Log („updates.CustomFields about to POST") entfernt.
-      const success = await updateEvent(selectedEventId, updates);
+      // v31.100: skipReload — der Speicherpfad lud die komplette Event-Liste
+      // bis zu viermal neu (hier, nach dem Bild, nach dem Spalten-Abgleich,
+      // bei gescheitertem Outlook), jedes Mal alle Events samt Mail-Bildern.
+      // Der Code dazwischen liest aus der Closure, nicht aus dem frisch
+      // geladenen State — die Reloads kosteten nur. Geladen wird jetzt EINMAL,
+      // unbedingt, direkt vor „Änderungen gespeichert!" (s. u.).
+      const success = await updateEvent(selectedEventId, updates, { skipReload: true });
       if (success) {
         await schattenSicherstellen(selectedEventId, title);
         // v26.57: NEU zur Zielgruppe hinzugekommene Personen außerhalb von
@@ -1114,8 +1120,8 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
                 // try — ein Refresh-Fehler ist kein Upload-Fehler; vorher
                 // meldete er „Bild-Upload fehlgeschlagen", obwohl das Bild
                 // längst gespeichert war.
-                try { await refreshEvents(); }
-                catch (rErr) { console.warn('[DEX] Refresh nach Bild-Upload fehlgeschlagen (Bild ist gespeichert):', rErr); }
+                // v31.100: Der Refresh hier entfällt — das eine Nachladen am
+                // Ende des Speicherns zeigt das frische Bild.
               } else {
                 setImageUploadError('Bild-Upload fehlgeschlagen.');
                 showAlert(isDe
@@ -1160,7 +1166,17 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
             const permSites = [editEvent.subsiteUrl]
               .concat(childEventsOf(editEvent.id).map(k => k.subsiteUrl || ''))
               .filter(Boolean);
-            if (allOrgEmailsForPerm) {
+            // v31.100: Nur wenn sich der Organizer-Kreis geändert hat. Der Lauf
+            // vergibt UND liest nach, je Person und je Subsite — bei jedem
+            // Speichern, auch wenn nur ein Tippfehler in der Beschreibung
+            // korrigiert wurde (Nutzer 28.09.2026: „ich dachte, es wird nur
+            // geändert, was geändert wurde"). Rechte-Lücken im Bestand heilt
+            // „Organizer-Berechtigungen reparieren" bzw. die Sammel-Prüfung in
+            // der Rollenverwaltung — nicht mehr jedes Speichern nebenbei.
+            const orgSet = (xs: string[]): string => Array.from(new Set(xs.map(x => (x || '').trim().toLowerCase()).filter(Boolean))).sort().join(';');
+            const orgKreisGeaendert = orgSet(organizerEmails.concat(coOrganizerEmails))
+              !== orgSet((editEvent.organizerEmails || []).concat(editEvent.coOrganizerEmails || []));
+            if (allOrgEmailsForPerm && orgKreisGeaendert) {
               await svcPerm.ensureOrganizerPermissionsMulti(permSites, allOrgEmailsForPerm);
             }
             // v30.87: Check-in-Team auf den Teilnehmerlisten (Edit, nicht Web).
@@ -1208,6 +1224,10 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
         // v28.98: Der Abschnitt 75–82 % gehört den Sub-Events. Jeder gespeicherte
         // Termin schiebt den Balken ein Stück und sagt, welcher gerade dran war
         // („3 von 9 …") — sonst steht er bei neun Terminen minutenlang auf 75 %.
+        // v31.100: Vor dem Persistieren merken, ob dieses Speichern Termine
+        // NEU anlegt — die brauchen Check-in-Team-Rechte (s. u.), auch wenn
+        // sich das Team selbst nicht geändert hat.
+        const legtTermineAn = subEventsRef.current.some(s => !s.dbId);
         try {
           await persistSubEventsForParent(selectedEventId, (done, total, subTitle) => {
             setProgress(75 + Math.round((done / Math.max(total, 1)) * 7));
@@ -1237,7 +1257,12 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const ctxScan = (window as any).__dexSpfxContext;
           const prevScanners = (editEvent?.qrScannerEmails || []);
-          if (ctxScan && editEvent?.subsiteUrl && (qrScannerEmails.length > 0 || prevScanners.length > 0)) {
+          // v31.100: Nur bei geändertem Team oder neu angelegten Terminen —
+          // sonst vergab und prüfte jedes Speichern die Listen-Rechte des
+          // ganzen Teams auf Klammer und allen Terminen neu.
+          const scanSet = (xs: string[]): string => Array.from(new Set(xs.map(x => (x || '').trim().toLowerCase()).filter(Boolean))).sort().join(';');
+          const teamGeaendert = scanSet(qrScannerEmails) !== scanSet(prevScanners);
+          if (ctxScan && editEvent?.subsiteUrl && (qrScannerEmails.length > 0 || prevScanners.length > 0) && (teamGeaendert || legtTermineAn)) {
             const svcScan = new EventService(ctxScan);
             const keep = organizerEmails.concat(coOrganizerEmails);
             if (adminLike) {
@@ -1271,7 +1296,39 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
         } catch (err) { console.warn('[DEX] Check-in-Team-Rechte beim Speichern fehlgeschlagen:', err); }
 
         setProgress(82);
-        setProgressLabel(isDe ? 'Teilnehmerlisten-Spalten werden geprüft...' : 'Verifying participant list columns...');
+        // v31.100: Der Spalten-Abgleich (je Liste: Feldliste lesen, fehlende
+        // anlegen, Ansicht ergänzen, danach NACHSEHEN) lief bei jedem
+        // Speichern über Klammer und alle Termine. Nötig ist er nur, wenn sich
+        // die Felder geändert haben, ein Feld noch keine Spalte zugeordnet hat
+        // (fehlender spInternalName) oder Quiz bzw. geteilte Gruppen
+        // umgeschaltet wurden — neue Termine bekommen ihre Spalten bei der
+        // Anlage. Im Zweifel (irgendeine Abweichung im Fingerabdruck) läuft
+        // er; Bestandslücken heilt „Spalten fixen (alle Events)".
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const feldAbdruck = (arr: any[]): string => JSON.stringify((arr || [])
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .filter((f: any) => f && String(f.label || '').trim())
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .map((f: any) => [String(f.id || ''), String(f.label || '').trim(), String(f.type || ''),
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (Array.isArray(f.options) ? f.options : []).map((o: any) => String(o).trim()).filter(Boolean), !!f.multi]));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ohneSpalte = (arr: any[]): boolean => (arr || []).some((f: any) => f && String(f.label || '').trim() && !f.spInternalName);
+        const vorherSplit = !!(editEvent && ((editEvent.durchstarterCapacity || 0) > 0 || (editEvent.funstarterCapacity || 0) > 0));
+        const jetztSplit = useSplitCapacities && ((parseInt(durchstarterCapacity, 10) || 0) > 0 || (parseInt(funstarterCapacity, 10) || 0) > 0);
+        const kinderVorher = editEvent ? childEventsOf(editEvent.id) : [];
+        const spaltenPruefen = !editEvent
+          || feldAbdruck(customFields) !== feldAbdruck(editEvent.eventSpecificFields || [])
+          || ohneSpalte(customFields)
+          || (quiz.length > 0) !== ((editEvent.quiz || []).length > 0)
+          || jetztSplit !== vorherSplit
+          || subEventsRef.current.some(d => {
+            if (!d.dbId) return false;
+            const k = kinderVorher.find(c => String(c.id) === d.dbId);
+            if (!k) return true;
+            return feldAbdruck(d.customFields || []) !== feldAbdruck(k.eventSpecificFields || []) || ohneSpalte(d.customFields || []);
+          });
+        if (spaltenPruefen) setProgressLabel(isDe ? 'Teilnehmerlisten-Spalten werden geprüft...' : 'Verifying participant list columns...');
         // Custom-Fields-Columns auf der Teilnehmerliste auto-sync: falls
         // neue Custom-Fields ohne spInternalName hinzugekommen sind oder
         // SP-Spalten fehlen, jetzt anlegen + spInternalName ins Event
@@ -1279,7 +1336,7 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const ctx = (window as any).__dexSpfxContext;
-          if (ctx && editEvent?.subsiteUrl) {
+          if (ctx && editEvent?.subsiteUrl && spaltenPruefen) {
             const svc = new EventService(ctx);
             const cfForFix = customFields
               .filter(f => f.label && f.label.trim().length > 0)
@@ -1370,7 +1427,7 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
                 ...f,
                 spInternalName: fixResult.customFieldMap![f.id] || spById[f.id] || '',
               }));
-              await updateEvent(selectedEventId, { 'CustomFields': JSON.stringify(merged) });
+              await updateEvent(selectedEventId, { 'CustomFields': JSON.stringify(merged) }, { skipReload: true });
               freshFieldMaps[String(editEvent.id)] = merged.map(f => ({ id: f.id, label: f.label, spInternalName: f.spInternalName || '' }));
             }
             // v30.60: DIESELBE Behandlung für die Sub-Events.
@@ -1705,14 +1762,16 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
         } catch { /* */ }
         // v30.67: gescheiterte Outlook-Aufträge benennen statt still
         // „gespeichert" zu melden (s. failedOutlookTitles oben).
+        // v31.100: DAS eine Nachladen des Speicherns — unbedingt. Es war bis
+        // hierher das updateEvent-Reload ganz oben; seit dort skipReload gilt,
+        // muss es hier stehen, sonst zeigte die App den Stand von vorher
+        // (CLAUDE.md: ein Reload, der „nur Kosten" ist, kann das einzige sein).
+        // Es deckt auch den v30.67-Fall (OutlookDirty nach gescheitertem
+        // Outlook-Auftrag) ab, der vorher einen eigenen Refresh hatte.
+        setProgressLabel(isDe ? 'Ansicht wird aktualisiert...' : 'Refreshing view...');
+        try { await refreshEvents(); }
+        catch (err) { console.warn('[DEX] Reload nach dem Speichern fehlgeschlagen:', err); }
         if (failedOutlookTitles.length > 0) {
-          // v30.67 (Review): Die OutlookDirty:true-Schreibvorgänge oben laufen
-          // mit skipReload — der Context-State hält noch das false aus dem
-          // updateEvent davor. Öffnet der Organizer das Event sofort wieder,
-          // läse outlookChanges den alten Wert und böte nichts an. Einmal
-          // nachladen, damit „später erneut bestätigen" auch sofort gilt.
-          try { await refreshEvents(); }
-          catch (err) { console.warn('[DEX][v30.67] Reload nach gescheitertem Outlook-Update fehlgeschlagen:', err); }
           showAlert(isDe
             ? `Das Event ist gespeichert, aber für ${failedOutlookTitles.length} Termin${failedOutlookTitles.length === 1 ? '' : 'e'} konnte die Outlook-Aktualisierung nicht angestoßen werden: ${failedOutlookTitles.join(', ')}. Die Kalender der Teilnehmer zeigen dort noch den alten Stand — bitte öffne das Event später erneut und bestätige die Aktualisierung noch einmal.`
             : `The event is saved, but the Outlook update could not be queued for ${failedOutlookTitles.length} date${failedOutlookTitles.length === 1 ? '' : 's'}: ${failedOutlookTitles.join(', ')}. Attendees' calendars still show the old state there — please reopen the event later and confirm the update again.`, { variant: 'error' });

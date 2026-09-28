@@ -25,6 +25,7 @@ import { CustomFieldInput } from '../../wizard/customFieldInput';
 import { FieldTypeSuggestion } from '../../wizard/FieldTypeSuggestion';
 import { StepBadge } from '../../wizard/StepBadge';
 import { FieldDescEditor } from '../../wizard/FieldDescEditor';
+import { ProfileDataCard } from '../../registration/ProfileDataCard';
 export interface FieldsStepProps {
   visible: boolean;
   activeFieldsTabIdx: number;
@@ -85,6 +86,11 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
   // allen Konstanten und vor dem einzigen return; die Komponente hat keine
   // frühen Returns, die Hook-Reihenfolge ist damit fest.
   const [privacyOpen, setPrivacyOpen] = React.useState(false);
+  // v31.100: „Sprache des Formulars" ist Feineinstellung und deshalb zu
+  // (Nutzer-Ansage 28.09.2026: „das einklappen"). Weicht etwas vom Standard
+  // ab, startet der Aufklapper offen — eine gesetzte Einstellung soll man
+  // nicht erst suchen müssen.
+  const [langOpen, setLangOpen] = React.useState<boolean>(() => !!p.bilingualFields || !!p.registrationLanguage);
   // v31.2: Wiederkehrende Bausteine des Schritts an EINER Stelle — Typ-
   // Beschriftung, Nummern-Kreis, Sprach-/Kategorie-Marke, Breite des Typ-
   // Dropdowns. Vorher stand jeder davon drei- bis sechsmal als Inline-Style-
@@ -104,8 +110,12 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
     }
   };
   // Sub-Event-Felder kennen weder People-Picker noch Upload (v15.3).
-  const SUB_TYPES: CustomFieldInput['type'][] = ['text', 'select', 'number', 'checkbox', 'date', 'daterange'];
-  const MAIN_TYPES: CustomFieldInput['type'][] = [...SUB_TYPES, 'user', 'roommate', 'document'];
+  // v31.100: alphabetisch nach der ANGEZEIGTEN Beschriftung (Nutzer-Ansage
+  // 28.09.2026) — daher je Sprache sortiert, nicht nach dem Schlüssel.
+  const byLabel = (a: CustomFieldInput['type'], b: CustomFieldInput['type']): number =>
+    typeLabel(a).localeCompare(typeLabel(b), isDe ? 'de' : 'en', { sensitivity: 'base' });
+  const SUB_TYPES: CustomFieldInput['type'][] = (['text', 'select', 'number', 'checkbox', 'date', 'daterange'] as CustomFieldInput['type'][]).sort(byLabel);
+  const MAIN_TYPES: CustomFieldInput['type'][] = ([...SUB_TYPES, 'user', 'roommate', 'document'] as CustomFieldInput['type'][]).sort(byLabel);
   const numBadge: React.CSSProperties = {
     flexShrink: 0, width: 26, height: 26, borderRadius: '50%',
     background: 'var(--dex-green, #86bc25)', color: '#fff',
@@ -651,8 +661,8 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                 </h3>
                 <p className="dex-ui-section-desc">
                   {isDe
-                    ? <>Diese Fragen stellt jede Anmeldung — egal ob mit oder ohne Sub-Event. Vorname, Nachname, E-Mail, Job Title, Standort und Department kommen automatisch aus dem Deloitte-Profil und musst du nicht abfragen.</>
-                    : <>Every registration asks these questions — with or without a sub-event. First name, last name, email, job title, location and department come from the Deloitte profile automatically; no need to ask for them.</>}
+                    ? <>Diese Fragen stellt jede Anmeldung — egal ob mit oder ohne Sub-Event.</>
+                    : <>Every registration asks these questions — with or without a sub-event.</>}
                   <InfoTooltip text={isDe
                     ? <>
                         <strong>Automatisch erfasst</strong> (aus dem Deloitte-Profil, bei jeder Anmeldung): Vorname, Nachname, E-Mail, Job Title, Standort, Department.<br /><br />
@@ -665,6 +675,34 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                         Questions for one date only go into that sub-event&apos;s tab above.
                       </>} />
                 </p>
+                {/* v31.100: Was IMMER automatisch kommt, als Beispiel-Karte im
+                    Design der Anmeldeseite (Nutzer-Ansage 28.09.2026) — vorher
+                    ein Satz mit sechs Feldnamen, den man leicht überlas und
+                    der nicht zeigte, wie es beim Teilnehmer aussieht. */}
+                <div className="dex-ui-label" style={{ margin: '4px 0 6px' }}>
+                  {isDe ? 'Das kommt bei jeder Anmeldung automatisch — du musst es nicht abfragen:' : 'This comes automatically with every registration — no need to ask for it:'}
+                </div>
+                <div style={{ marginBottom: 14, maxWidth: 620 }}>
+                  <ProfileDataCard
+                    displayName="Max Mustermann"
+                    initials="MM"
+                    jobTitle="Manager"
+                    location="DE - Köln"
+                    rows={[
+                      { label: isDe ? 'E-Mail' : 'Email', value: 'mmustermann@deloitte.de' },
+                      { label: 'Position', value: 'Manager' },
+                      { label: isDe ? 'Geschäftsbereich' : 'Business Area', value: 'Technology & Transformation' },
+                      { label: isDe ? 'Unternehmen' : 'Company', value: 'Deloitte Consulting' },
+                      { label: isDe ? 'Büro' : 'Office', value: 'DE - Köln' },
+                    ]}
+                    rowsTitle={isDe ? 'Automatisch übernommene Daten (Beispiel)' : 'Automatically applied data (example)'}
+                    notSetLabel={isDe ? 'nicht hinterlegt' : 'not set'}
+                    expanded
+                    footer={isDe
+                      ? 'So sieht der Teilnehmer seine Daten auf der Anmeldeseite — sie kommen aus seinem Microsoft-Profil (M365). Hier ergänzt du nur zusätzliche Fragen.'
+                      : 'This is how attendees see their data on the registration page — it comes from their Microsoft profile (M365). Here you only add extra questions.'}
+                  />
+                </div>
 
                 <div className="dex-ui-inline" style={{ marginBottom: 12 }}>
                   {/* v31.2: Der Schritt heißt „Fragen im Anmeldeformular" — die Knöpfe
@@ -703,16 +741,30 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                   title={isDe ? 'Welche Feldarten gibt es?' : 'Which field types are available?'}
                   style={{ marginBottom: 12 }}
                 >
-                  <ul style={{ margin: '4px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
-                    <li><strong>{isDe ? 'Text (Freitext)' : 'Text (free text)'}</strong> — {isDe ? 'freie Eingabe, z.B. eine Anmerkung.' : 'free input, e.g. a note.'}</li>
-                    <li><strong>{isDe ? 'Dropdown' : 'Dropdown'}</strong> — {isDe ? 'Auswahl aus festen Optionen; optional Mehrfachauswahl.' : 'pick from preset options; optionally multi-select.'}</li>
-                    <li><strong>{isDe ? 'Zahl' : 'Number'}</strong> — {isDe ? 'nur Zahlen, z.B. eine Anzahl.' : 'numbers only, e.g. a quantity.'}</li>
-                    <li><strong>{isDe ? 'Checkbox' : 'Checkbox'}</strong> — {isDe ? 'einfache Ja/Nein-Bestätigung.' : 'simple yes/no confirmation.'}</li>
-                    <li><strong>{isDe ? 'Datum (Kalender)' : 'Date (calendar)'}</strong> — {isDe ? 'Datum über einen Kalender; optional zusätzlich die Uhrzeit.' : 'a date via a calendar; optionally with time.'}</li>
-                    <li><strong>{isDe ? 'Person' : 'Person'}</strong> — {isDe ? 'Personensuche mit Foto und Standort; die gewählte Person kann optional die An-/Abmelde-Mail in Kopie (CC) bekommen.' : 'person search with photo and location; the chosen person can optionally be CC’d on the emails.'}</li>
-                    <li><strong>{isDe ? 'Roommate' : 'Roommate'}</strong> — {isDe ? 'wie „Person“, löst zusätzlich eine Zimmerpartner-Mail an die gewählte Person aus.' : 'like „Person“, additionally triggers a roommate email to the selected person.'}</li>
-                    <li><strong>{isDe ? 'Dokument (Upload)' : 'Document (upload)'}</strong> — {isDe ? 'Teilnehmer lädt eine Datei (PDF/Bild) hoch, die an die Anmeldung angehängt wird.' : 'attendee uploads a file (PDF/image) attached to the registration.'}</li>
-                  </ul>
+                  {/* v31.100: Zeilen statt Aufzählung, alphabetisch nach Name,
+                      Name und Erklärung in zwei Spalten (Nutzer-Ansage
+                      28.09.2026: „besser darstellen und alphabetisch
+                      sortieren"). Der Übernachtungs-Zeitraum fehlte bis dahin. */}
+                  <div style={{ marginTop: 4 }}>
+                    {([
+                      ['text', isDe ? 'Freie Eingabe, z.B. eine Anmerkung.' : 'Free input, e.g. a note.'],
+                      ['select', isDe ? 'Auswahl aus festen Optionen; optional Mehrfachauswahl.' : 'Pick from preset options; optionally multi-select.'],
+                      ['number', isDe ? 'Nur Zahlen, z.B. eine Anzahl.' : 'Numbers only, e.g. a quantity.'],
+                      ['checkbox', isDe ? 'Einfache Ja/Nein-Bestätigung.' : 'Simple yes/no confirmation.'],
+                      ['date', isDe ? 'Datum über einen Kalender; optional zusätzlich die Uhrzeit.' : 'A date via a calendar; optionally with time.'],
+                      ['daterange', isDe ? 'Anreise und Abreise im Kalender, die Nächte werden berechnet — Grundlage der Hotelplanung.' : 'Arrival and departure in a calendar, nights are calculated — the basis for hotel planning.'],
+                      ['user', isDe ? 'Personensuche mit Foto und Standort; die gewählte Person kann die An-/Abmelde-Mail in Kopie (CC) bekommen.' : 'Person search with photo and location; the chosen person can be CC’d on the emails.'],
+                      ['roommate', isDe ? 'Wie „Person“, löst zusätzlich eine Zimmerpartner-Mail an die gewählte Person aus.' : 'Like “Person”, additionally sends a roommate email to the selected person.'],
+                      ['document', isDe ? 'Teilnehmer lädt eine Datei (PDF/Bild) hoch, die an die Anmeldung angehängt wird.' : 'Attendee uploads a file (PDF/image) attached to the registration.'],
+                    ] as Array<[CustomFieldInput['type'], string]>)
+                      .sort((a, b) => byLabel(a[0], b[0]))
+                      .map(([ty, desc]) => (
+                        <div key={ty} style={{ display: 'flex', gap: 12, padding: '6px 0', borderBottom: '1px solid var(--dex-gray-100, #f0f0f0)', fontSize: '0.84rem', lineHeight: 1.45 }}>
+                          <span style={{ width: 200, flexShrink: 0, fontWeight: 600, color: 'var(--dex-gray-800)' }}>{typeLabel(ty)}</span>
+                          <span style={{ color: 'var(--dex-gray-600)', minWidth: 0 }}>{desc}</span>
+                        </div>
+                      ))}
+                  </div>
                   <p style={{ margin: '8px 0 0' }}>
                     {isDe
                       ? 'Pro Feld kannst du zusätzlich „Pflicht“ verlangen, eine Beschreibung hinterlegen (als „i“-Box oder als Text unter dem Feld) und eine Sichtbarkeitsbedingung setzen — das Feld erscheint dann nur, wenn eine andere Frage bestimmt beantwortet wurde.'
@@ -1603,7 +1655,18 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                   im Katalog (Sonder-Key 'salutation'). */}
               <div className="dex-ui-section">
                 <h3 className="dex-ui-section-title">{isDe ? 'Sprache des Formulars' : 'Form language'}</h3>
-                <div className="dex-ui-stack" style={{ gap: 12 }}>
+                <button type="button" className={cx('dex-ui-disclosure', langOpen && 'is-open')} aria-expanded={langOpen} onClick={() => setLangOpen(o => !o)}>
+                  <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                  {isDe ? 'Sprache und Zweisprachigkeit einstellen' : 'Set language and bilingual questions'}
+                  <span className="dex-ui-muted" style={{ fontWeight: 400, marginLeft: 8 }}>
+                    {(registrationLanguage === 'de' ? (isDe ? 'Immer Deutsch' : 'Always German')
+                      : registrationLanguage === 'en' ? (isDe ? 'Immer Englisch' : 'Always English')
+                        : (isDe ? 'Automatisch' : 'Automatic'))
+                      + (bilingualFields ? (isDe ? ' · zweisprachig' : ' · bilingual') : '')}
+                  </span>
+                </button>
+                {langOpen && (
+                <div className="dex-ui-stack dex-ui-disclosure-body" style={{ gap: 12 }}>
                   <label className={cx('dex-ui-toggle-row', bilingualFields && 'is-active')}>
                     <input
                       type="checkbox"
@@ -1679,6 +1742,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                     </div>
                   </div>
                 </div>
+                )}
               </div>
 
               {/* v15.0/v31.2: Der frühere Bereich „Felder pro Sub-Event" stand

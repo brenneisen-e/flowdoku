@@ -16,6 +16,7 @@ import { DeloitteEvent, Salutation } from '../../types';
 import { Locale } from '../../context/LanguageContext';
 import { cx } from '../dexUi';
 import { ChevronDown } from '../Icons';
+import { ProfileDataCard } from './ProfileDataCard';
 
 /** Station 2 — Deine Daten: Profil aus M365, Stellvertreter-Einstieg, Team-Schalter. */
 export interface PersonalDataSectionProps {
@@ -320,74 +321,25 @@ export const PersonalDataSection: React.FC<PersonalDataSectionProps> = (p) => {
                 ];
                 return (
                   <div className="form-group">
-                    <div style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 12, padding: '16px 18px', background: '#fff' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                        {/* Foto: userphoto.aspx mit Initialen-Fallback (Bild
-                            liegt über dem Initialen-Kreis; bei Ladefehler
-                            wird es ausgeblendet und die Initialen bleiben). */}
-                        <div style={{ position: 'relative', width: 88, height: 88, borderRadius: '50%', background: 'var(--dex-gray-100)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '1.5rem', color: 'var(--dex-gray-500)', overflow: 'hidden' }}>
-                          {initials || '?'}
-                          <img
-                            src={`/_layouts/15/userphoto.aspx?size=L&accountname=${encodeURIComponent(email.trim())}`}
-                            alt=""
-                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-                            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                          />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, fontSize: '1.18rem', color: 'var(--dex-gray-800)' }}>{displayName}</div>
-                          {jt && (
-                            <div style={{ color: 'var(--dex-gray-600)', marginTop: 2 }}>{jt}</div>
-                          )}
-                          {loc && (
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--dex-gray-500)', fontSize: '0.88rem', marginTop: 3 }}>
-                              <Icon iconName="POI" style={{ fontSize: 14, color: 'var(--dex-green-dark, #4a7c1f)' }} />
-                              {loc}
-                            </div>
-                          )}
-                        </div>
-                        {/* Plus-Toggle: zeigt ALLE automatisch übernommenen Daten. */}
-                        <button
-                          type="button"
-                          onClick={() => setProfileCardExpanded(o => !o)}
-                          title={profileCardExpanded
-                            ? (locale === 'de' ? 'Details einklappen' : 'Collapse details')
-                            : (locale === 'de' ? 'Alle automatisch übernommenen Daten anzeigen' : 'Show all automatically applied data')}
-                          aria-expanded={profileCardExpanded}
-                          style={{
-                            width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-                            border: '1px solid var(--dex-gray-300)', background: profileCardExpanded ? 'var(--dex-gray-100)' : '#fff',
-                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '1.25rem', lineHeight: 1, color: 'var(--dex-gray-600)', fontWeight: 600,
-                          }}
-                        >
-                          {profileCardExpanded ? '−' : '+'}
-                        </button>
-                      </div>
-                      {profileCardExpanded && (
-                        <div style={{ marginTop: 14, borderTop: '1px solid var(--dex-gray-100)', paddingTop: 10 }}>
-                          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
-                            {locale === 'de' ? 'Automatisch übernommene Daten' : 'Automatically applied data'}
-                          </div>
-                          {detailRows.map(row => (
-                            <div key={row.label} style={{ display: 'flex', gap: 10, padding: '4px 0', fontSize: '0.86rem', borderBottom: '1px solid var(--dex-gray-50, #fafafa)' }}>
-                              <span style={{ width: 140, flexShrink: 0, color: 'var(--dex-gray-500)' }}>{row.label}</span>
-                              <span style={{ color: row.value ? 'var(--dex-gray-800)' : 'var(--dex-gray-400)', wordBreak: 'break-word' }}>
-                                {row.value || `— ${notSet}`}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {/* v28.1: Hinweis bewusst klein + kursiv, ohne
-                          ServiceNow-Verweis (Profildaten-Fehler sind selten;
-                          der Weg zur IT ist den Kolleg:innen bekannt). */}
-                      <div style={{ marginTop: 10, fontSize: '0.68rem', fontStyle: 'italic', color: 'var(--dex-gray-400)', lineHeight: 1.45 }}>
-                        {locale === 'de'
-                          ? <>Diese Angaben werden automatisch mit {registerForOther ? 'dem Microsoft-Profil (M365) der ausgewählten Person' : 'deinen Microsoft-Anmeldedaten (M365-Profil)'} abgeglichen und können hier nicht bearbeitet werden.</>
-                          : <>These details are automatically synced with {registerForOther ? 'the selected person’s Microsoft profile (M365)' : 'your Microsoft sign-in data (M365 profile)'} and cannot be edited here.</>}
-                      </div>
-                    </div>
+                    {/* v31.100: Die Karte ist eine eigene Komponente — der Wizard
+                        zeigt sie in Schritt 5 als Beispiel (ProfileDataCard). */}
+                    <ProfileDataCard
+                      displayName={displayName}
+                      initials={initials}
+                      photoEmail={email}
+                      jobTitle={jt}
+                      location={loc}
+                      rows={detailRows}
+                      rowsTitle={locale === 'de' ? 'Automatisch übernommene Daten' : 'Automatically applied data'}
+                      notSetLabel={notSet}
+                      expanded={profileCardExpanded}
+                      onToggle={() => setProfileCardExpanded(o => !o)}
+                      toggleTitleOpen={locale === 'de' ? 'Details einklappen' : 'Collapse details'}
+                      toggleTitleClosed={locale === 'de' ? 'Alle automatisch übernommenen Daten anzeigen' : 'Show all automatically applied data'}
+                      footer={locale === 'de'
+                        ? <>Diese Angaben werden automatisch mit {registerForOther ? 'dem Microsoft-Profil (M365) der ausgewählten Person' : 'deinen Microsoft-Anmeldedaten (M365-Profil)'} abgeglichen und können hier nicht bearbeitet werden.</>
+                        : <>These details are automatically synced with {registerForOther ? 'the selected person’s Microsoft profile (M365)' : 'your Microsoft sign-in data (M365 profile)'} and cannot be edited here.</>}
+                    />
                   </div>
                 );
               }

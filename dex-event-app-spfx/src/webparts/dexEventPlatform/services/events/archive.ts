@@ -103,7 +103,10 @@ async function setArchiveListPermissions(svc: EventService, listName: string): P
 /** Lädt alle Zeilen einer Liste (paged, nometadata). `select` schränkt die
  *  Felder ein (fürs Zählen leichtgewichtig); ohne select = alle Felder
  *  (für den Payload). */
-async function loadAllListRows(svc: EventService, listName: string, select?: string): Promise<Array<Record<string, unknown>>> {
+// v31.100: `onReadError` — der Abbruch bei HTTP-Fehler war stumm; das Ergebnis
+// sah aus wie „Liste leer". Wer das Ergebnis cacht, muss beides trennen
+// (CLAUDE.md: ein Lesefehler ist keine Null).
+async function loadAllListRows(svc: EventService, listName: string, select?: string, onReadError?: () => void): Promise<Array<Record<string, unknown>>> {
   const rows: Array<Record<string, unknown>> = [];
   let url = `${svc.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$top=500${select ? `&$select=${select}` : ''}`;
   let guard = 0;
@@ -112,7 +115,7 @@ async function loadAllListRows(svc: EventService, listName: string, select?: str
     const resp = await svc._sp.get(url, SPHttpClient.configurations.v1, {
       headers: { 'Accept': 'application/json;odata=nometadata' },
     });
-    if (!resp.ok) break;
+    if (!resp.ok) { if (onReadError) onReadError(); break; }
     const data = await resp.json();
     const arr: Array<Record<string, unknown>> = data.value || data.d?.results || [];
     rows.push(...arr);
@@ -172,7 +175,8 @@ function rowMatchesExpired(
  *  nur Id+EventId bzw. Id+SubsiteUrl). */
 export async function countArchivableRows(svc: EventService, 
   expiredEventIds: Set<string>, expiredSubsiteUrls: Set<string>,
-  allEventIds: Set<string> = new Set(), allSubsiteUrls: Set<string> = new Set()
+  allEventIds: Set<string> = new Set(), allSubsiteUrls: Set<string> = new Set(),
+  onReadError?: () => void
 ): Promise<{ total: number; perList: Record<string, number> }> {
   const perList: Record<string, number> = {};
   let total = 0;
@@ -185,11 +189,11 @@ export async function countArchivableRows(svc: EventService,
       // das Erstellungsdatum, sonst zählt die Box anders als der echte Lauf.
       const base = src.matchBy === 'eventId' ? 'Id,EventId,Created' : 'Id,SubsiteUrl,Created';
       const select = src.hasStatus ? `${base},Status` : base;
-      const rows = await loadAllListRows(svc, src.list, select);
+      const rows = await loadAllListRows(svc, src.list, select, onReadError);
       for (const r of rows) {
         if (rowMatchesExpired(r, src.matchBy, expiredEventIds, expiredSubsiteUrls, allEventIds, allSubsiteUrls)) c++;
       }
-    } catch { /* Liste evtl. nicht vorhanden */ }
+    } catch { if (onReadError) onReadError(); }
     perList[src.list] = c;
     total += c;
   }
@@ -287,18 +291,18 @@ export async function archiveExpiredRows(svc: EventService,
 // (v23.48: standardmäßig 1 Monat nach Ablauf). „ArchivedAt" ist der Ablage-Zeitpunkt.
 
 /** Zählt DEX_Archive-Zeilen mit ArchivedAt älter als `olderThanIso`. */
-export async function countDeletableArchiveRows(svc: EventService, olderThanIso: string): Promise<number> {
+export async function countDeletableArchiveRows(svc: EventService, olderThanIso: string, onReadError?: () => void): Promise<number> {
   try {
     const cutoff = new Date(olderThanIso).getTime();
     if (!isFinite(cutoff)) return 0;
-    const rows = await loadAllListRows(svc, 'DEX_Archive', 'Id,ArchivedAt');
+    const rows = await loadAllListRows(svc, 'DEX_Archive', 'Id,ArchivedAt', onReadError);
     let c = 0;
     for (const r of rows) {
       const a = r['ArchivedAt'] ? new Date(String(r['ArchivedAt'])).getTime() : 0;
       if (a > 0 && a < cutoff) c++;
     }
     return c;
-  } catch { return 0; }
+  } catch { if (onReadError) onReadError(); return 0; }
 }
 
 /** Löscht DEX_Archive-Zeilen älter als `olderThanIso` (sequentiell, mit
