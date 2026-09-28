@@ -16,7 +16,8 @@ import { CommunicationStep, CommunicationStepProps } from '../wizard/steps/Commu
 import { DocumentsStep } from '../wizard/steps/DocumentsStep';
 import { FunZoneStep } from '../wizard/steps/FunZoneStep';
 import { BillingStep } from '../wizard/steps/BillingStep';
-import { Send, Trash2 } from '../Icons';
+import { Send, Trash2, GraduationCap } from '../Icons';
+import { useTutorial } from '../tutorial/TutorialGuide';
 import { SubmitOverlay } from '../registration/RegistrationBanners';
 // v31.2: gemeinsame UI-Klassen (Karten, Chips, Schalter, Aufklapper …) —
 // dieselbe Quelle wie in den Modalen, siehe dexUi.ts und docs/ui-leitfaden.md.
@@ -110,6 +111,11 @@ export interface WizardFormShellProps {
 export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
   const { zeigeSchrittFehler } = p;
   const { actionRowRef, actionRowVisible, activeScopeIdx, addQuizQuestion, allowAttendeeUpload, askTeamName, attemptSubmitGuarded, attendeeUploadHint, attendeeUploadLabel, basicsStepProps, billingFields, billingPromptOpen, billingRelevant, billingSendMode, canBilling, capacityStepProps, communicationStepProps, currentStep, detailsStepProps, documents, draftSavedAt, draggedQuestionId, error, fieldsStepProps, getStepErrorsFor, goBack, hintStepIdx, isDe, isEditMode, isSubmitting, locationProgramStepProps, pendingSections, proceedNext, progress, progressLabel, quiz, removeQuizQuestion, renderGlobalScopeBar, renderStepIntro, setAllowAttendeeUpload, setAskTeamName, setAttendeeUploadHint, setAttendeeUploadLabel, setBillingFields, setBillingPromptOpen, setBillingRelevant, setBillingSendMode, setCurrentStep, setDocuments, setDraggedQuestionId, setHintStepIdx, setNewSectionError, setNewSectionModalOpen, setNewSectionName, setPendingSections, setShowConfigCheck, setShowRegisterPreview, setTeamJoinRequiresApproval, setTeamMembersCannotCreate, setTeamOpenSlotsVisible, setTeamPartialAllowed, setTeamRegistrationEnabled, setTeamSize, setTeamTermPlural, setTeamTermSingular, setTriedNext, steps, subEventsSectionProps, t, teamJoinRequiresApproval, teamMembersCannotCreate, teamOpenSlotsVisible, teamPartialAllowed, teamRegistrationEnabled, teamSize, teamTermPlural, teamTermSingular, title, updateQuizQuestion } = p;
+  // v32.1.0: Einstieg ins Mitmach-Tutorial oben im Assistenten (Nutzer-
+  // Ansage 28.09.2026: „bei Event Creation oben auch einen Button für das
+  // Tutorial"). Ohne Provider (Harness, Handbuch-Vorschau) liefert
+  // useTutorial einen No-op mit canCoach false — dann bleibt der Knopf weg.
+  const tutorial = useTutorial();
   // v31.2: Die gemeinsamen UI-Klassen einmal ins Dokument — die Schritte
   // (dex-ui-card, dex-ui-chip, dex-ui-toggle-row …) verlassen sich darauf.
   React.useEffect(() => { ensureDexUiStyles(); }, []);
@@ -224,6 +230,28 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
             Stil des gepinnten Kopfs (Nutzer-Ansage 28.09.2026: „die 10 Schritte
             in der Sticky-Box finde ich schöner — pack die immer in diese weiße
             Box"). Ungepinnt nur ohne fixed/Schatten-Kante. */}
+        {!isEditMode && tutorial.canCoach && !tutorial.coachActive && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <button type="button" className="dex-ui-chip" onClick={tutorial.startCoach}
+              title={isDe ? 'Wir legen zusammen ein Test-Event an — du tippst und klickst selbst. Nur du siehst es, am Ende löschst du es mit einem Klick.' : 'We create a test event together — you type and click yourself. Only you see it; delete it with one click at the end.'}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+              <GraduationCap size={14} /> {isDe ? 'Tutorial: Test-Event gemeinsam anlegen' : 'Tutorial: create a test event together'}
+            </button>
+          </div>
+        )}
+        {!isEditMode && tutorial.coachActive && (
+          <div className="dex-ui-callout dex-ui-callout--info" style={{ marginBottom: 10, alignItems: 'center' }}>
+            <span className="dex-ui-callout-icon"><GraduationCap size={16} /></span>
+            <span style={{ flex: 1 }}>
+              {isDe
+                ? <>Tutorial läuft: Du legst ein <strong>Test-Event</strong> an. Beim Anlegen wird es mit &bdquo;TEST –&ldquo; gekennzeichnet, bleibt Entwurf und geht nur an dich. Dein normaler Entwurf bleibt davon unberührt.</>
+                : <>Tutorial running: you are creating a <strong>test event</strong>. On creation it is marked “TEST – ”, stays a draft and goes only to you. Your regular draft is not affected.</>}
+            </span>
+            <button type="button" className="btn btn-secondary" style={{ fontSize: '0.78rem', padding: '6px 12px' }} onClick={tutorial.stopCoach}>
+              {isDe ? 'Tutorial beenden' : 'End tutorial'}
+            </button>
+          </div>
+        )}
         <div ref={stickyPhRef} style={stickyPin ? { height: stickyPin.height, marginBottom: 16 } : { marginBottom: 16 }}>
         <div
           className="dex-wizard-sticky is-pinned"
@@ -788,6 +816,7 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                 {!isEditMode && currentStep < steps.length - 1 && (
                   <button
                     className="btn btn-outline"
+                    data-tour="wizard-create-early"
                     onClick={() => {
                       const fehlt = ersterLueckenSchritt();
                       if (fehlt >= 0) { setTriedNext(true); setCurrentStep(fehlt); zeigeSchrittFehler(fehlt); return; }
@@ -805,6 +834,7 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                 {currentStep < steps.length - 1 ? (
                   <button
                     className="btn btn-primary"
+                    data-tour="wizard-next"
                     onClick={proceedNext}
                   >
                     {t('create.next')}
@@ -856,7 +886,7 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                 </button>
               )}
               {currentStep < steps.length - 1 && (
-                <button type="button" className="btn btn-outline" tabIndex={actionRowVisible ? -1 : 0}
+                <button type="button" className="btn btn-outline" data-tour={isEditMode ? undefined : 'wizard-create-early'} tabIndex={actionRowVisible ? -1 : 0}
                   disabled={isEditMode && !title}
                   style={{ opacity: isEditMode && !title ? 0.5 : 1 }}
                   onClick={() => {
@@ -870,11 +900,11 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                 </button>
               )}
               {currentStep < steps.length - 1 ? (
-                <button type="button" className="btn btn-primary" tabIndex={actionRowVisible ? -1 : 0} onClick={proceedNext}>
+                <button type="button" className="btn btn-primary" data-tour="wizard-next" tabIndex={actionRowVisible ? -1 : 0} onClick={proceedNext}>
                   {t('create.next')}
                 </button>
               ) : (
-                <button type="button" className="btn btn-primary" tabIndex={actionRowVisible ? -1 : 0}
+                <button type="button" className="btn btn-primary" data-tour="wizard-submit" tabIndex={actionRowVisible ? -1 : 0}
                   disabled={!title} style={{ opacity: !title ? 0.5 : 1 }} onClick={attemptSubmitGuarded}>
                   <Send size={16} /> {isEditMode ? t('create.save') : t('create.submit')}
                 </button>

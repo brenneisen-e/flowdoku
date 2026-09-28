@@ -40,6 +40,7 @@ import { AlertCircle, Check, ChevronDown, ChevronUp, Info, QrCode } from './Icon
 // eigentliche Bibliothek wird erst beim Kamera-Start dynamisch nachgeladen.
 import type QrScanner from 'qr-scanner';
 import { shortSubEventTitle } from '../utils/subEventTitle';
+import { monatKurz } from '../utils/monatKurz';
 
 
 /**
@@ -224,7 +225,13 @@ export default function CheckInPage(): React.ReactElement {
     // Top-Level = Events ohne sichtbaren Parent (echte Hauptevents ODER
     // verwaiste Sub-Events, deren Parent ausgeblendet/gefiltert ist).
     const topLevel = visibleCheckInEvents.filter(e => !(e.parentEventId && visibleIds.has(e.parentEventId)));
-    return topLevel.map(parent => ({ parent, children: childrenByParent[parent.id] || [] }));
+    // v32.1.1: Aufsteigend nach Beginn — wie „Aktuelle Events" (Nutzer-Ansage
+    // 28.09.2026: „Check-in gerne auch so darstellen wie Aktuelle Events, mit
+    // Datum aufsteigend und links der Monat"). Vorher kam die Reihenfolge der
+    // Eventliste (StartDate absteigend), das nächste Event stand also unten.
+    const ts = (e: { startDate?: string }): number => { const t = e.startDate ? new Date(e.startDate).getTime() : NaN; return isNaN(t) ? Number.MAX_SAFE_INTEGER : t; };
+    const aufsteigend = <T extends { startDate?: string }>(list: T[]): T[] => list.slice().sort((a, b) => ts(a) - ts(b));
+    return aufsteigend(topLevel).map(parent => ({ parent, children: aufsteigend(childrenByParent[parent.id] || []) }));
   }, [visibleCheckInEvents]);
   const [expandedCheckInParents, setExpandedCheckInParents] = React.useState<Record<string, boolean>>({});
   const scannerRef = React.useRef<QrScanner | null>(null);
@@ -2564,12 +2571,28 @@ export default function CheckInPage(): React.ReactElement {
               : (t('checkin.noevents') || 'Keine Events verfügbar.')}
           </p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {groupedCheckInEvents.map(({ parent, children }) => {
+          // v32.1.1: Derselbe Zeitstrahl wie „Aktuelle Events" (EventListPage,
+          // Klasse dex-tl): links der Monat, wo er wechselt, der Punkt je Event.
+          // Auf dem Handy ohne Schiene — dort wäre die Spalte breiter als der
+          // Gewinn (gleiche Regel wie in der Event-Übersicht).
+          <div className={isMobile ? undefined : 'dex-tl'} style={isMobile ? { display: 'flex', flexDirection: 'column', gap: 12 } : undefined}>
+            {(() => { let letzterMonat = ''; return groupedCheckInEvents.map(({ parent, children }) => {
               const expanded = !!expandedCheckInParents[parent.id];
               const hasChildren = children.length > 0;
+              const monat = monatKurz(parent.startDate, isDe ? 'de' : 'en');
+              const monatNeu = monat !== letzterMonat;
+              letzterMonat = monat;
+              const endTs = parent.endDate ? new Date(parent.endDate).getTime() : 0;
+              const vorbei = endTs > 0 && endTs < Date.now();
               return (
-                <div key={parent.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <React.Fragment key={parent.id}>
+                {!isMobile && (
+                  <div className="dex-tl-rail" aria-hidden="true">
+                    {monatNeu && <span className="dex-tl-month">{monat}</span>}
+                    <span className={`dex-tl-dot${vorbei ? ' is-past' : ' is-reg'}`} />
+                  </div>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
                   <div style={{ position: 'relative' }}>
                     {renderCheckInEventCard(parent, false)}
                     {hasChildren && (
@@ -2598,8 +2621,9 @@ export default function CheckInPage(): React.ReactElement {
                     </div>
                   )}
                 </div>
+                </React.Fragment>
               );
-            })}
+            }); })()}
           </div>
         )}
       </div>

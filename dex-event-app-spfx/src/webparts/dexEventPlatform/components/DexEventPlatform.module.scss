@@ -921,6 +921,12 @@
 
   /* ===== react-datepicker Styling ===== */
   :global {
+    /* v32.1.1: Der Kalender lag mit z-index 1 (Bibliothek) UNTER dem
+       Vorlagen-Fächer in Schritt 1 (Karten mit z-index 0-4, Screenshot
+       28.09.2026). 1000 = über Seiteninhalt, Sticky-Kopf (800) und
+       Weiter-Leiste (900), unter Modals (9999). In einem Modal gilt der
+       Wert innerhalb seines Stapels — dort ändert sich nichts. */
+    .react-datepicker-popper { z-index: 1000 !important; }
     .react-datepicker-wrapper { width: 100%; }
     .react-datepicker__input-container input { width: 100%; }
     .react-datepicker {

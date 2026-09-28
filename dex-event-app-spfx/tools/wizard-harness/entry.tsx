@@ -27,6 +27,8 @@ import MyEventsPage from '../../src/webparts/dexEventPlatform/components/MyEvent
 // für den Knopf „Entwurf weiter bearbeiten" und seinen Dialog.
 import { EventOverviewScreen } from '../../src/webparts/dexEventPlatform/components/admin/sections/EventOverviewScreen';
 import * as sample from './sampleData';
+// v32.1.0: Mitmach-Tutorial im Harness (?mode=create&coach=1).
+import { TutorialProvider, useTutorial } from '../../src/webparts/dexEventPlatform/components/tutorial/TutorialGuide';
 
 const params = new URLSearchParams(window.location.search);
 const mode = params.get('mode') || 'edit';
@@ -266,8 +268,18 @@ const PageComponent: React.FC = () => {
         />
       );
     }
-    default: return <EventCreationPage />;
+    default: return coach ? <CoachWizard /> : <EventCreationPage />;
   }
+};
+
+/* v32.1.0: Coach-Modus — startet das Mitmach-Tutorial einmal beim Laden und
+ * mountet den Assistenten wie DexEventPlatform mit key je Modus. */
+const coach = params.get('coach') === '1';
+const CoachWizard: React.FC = () => {
+  const tut = useTutorial();
+  const started = React.useRef(false);
+  React.useEffect(() => { if (!started.current) { started.current = true; tut.startCoach(); } }, []);
+  return <EventCreationPage key={tut.coachActive ? 'coach' : 'normal'} />;
 };
 
 const App: React.FC = () => (
@@ -279,7 +291,9 @@ const App: React.FC = () => (
             <NavigationContext.Provider value={navCtx}>
               <EventContext.Provider value={eventCtx}>
                 <TicketContext.Provider value={ticketCtx}>
-                  <div className="main-content"><PageComponent /></div>
+                  {coach
+                    ? <TutorialProvider><div className="main-content"><PageComponent /></div></TutorialProvider>
+                    : <div className="main-content"><PageComponent /></div>}
                 </TicketContext.Provider>
               </EventContext.Provider>
             </NavigationContext.Provider>

@@ -121,18 +121,18 @@ const USER_TOUR: TutorialTour = {
 
 const ORGANIZER_TOUR: TutorialTour = {
   id: 'organizer',
-  labelDe: 'Organizer-Tutorial',
-  labelEn: 'Organizer tutorial',
+  labelDe: 'Organizer-Rundgang',
+  labelEn: 'Organizer tour',
   // v30.67: „alle Schritte" statt „alle 9" — Admins haben zehn.
-  descDe: 'Events anlegen mit dem Wizard (alle Schritte), Teilnehmer verwalten im Organizer Center und der Check-in am Eventtag.',
-  descEn: 'Create events with the wizard (all steps), manage attendees in the Organizer Center and run check-in on the event day.',
+  descDe: 'Rundgang: Organizer Center, Teilnehmer verwalten und der Check-in am Eventtag.',
+  descEn: 'Tour: Organizer Center, managing attendees and check-in on the event day.',
   steps: [
     {
       page: 'start',
       titleDe: 'Willkommen, Organizer!',
       titleEn: 'Welcome, organizer!',
-      bodyDe: 'Diese Tour zeigt dir, wie du Events anlegst (mit allen Wizard-Schritten), Teilnehmer verwaltest und den Eventtag meisterst. Für die Dauer der Tour liegt ein Demo-Event in deiner Organizer-Liste — nur für dich sichtbar, zum gefahrlosen Anschauen.',
-      bodyEn: 'This tour shows you how to create events (with all wizard steps), manage attendees and run the event day. For the duration of the tour a demo event sits in your organizer list — visible only to you, safe to explore.',
+      bodyDe: 'Diese Tour zeigt dir, wo du deine Events verwaltest und wie du den Eventtag meisterst. Für die Dauer der Tour liegt ein Demo-Event in deiner Organizer-Liste — nur für dich sichtbar, zum gefahrlosen Anschauen.',
+      bodyEn: 'This tour shows you where you manage your events and how to run the event day. For the duration of the tour a demo event sits in your organizer list — visible only to you, safe to explore.',
     },
     {
       page: 'start',
@@ -150,109 +150,17 @@ const ORGANIZER_TOUR: TutorialTour = {
       bodyDe: 'Hier liegen alle Events, die du verwaltest. Während der Tour siehst du das Übungs-Event „Demo-Event — alle Funktionen" mit Beispiel-Teilnehmern — klick es nach der Tour gern an und probiere die Teilnehmer-Tabelle, die Statistiken und das Aktionen-Menü (QR-Versand, Massenmail, Excel-Export, Audit-Log) aus.',
       bodyEn: 'Here are all events you manage. During the tour you see the practice event “Demo event — all features” with sample attendees — after the tour, feel free to open it and try the attendee table, the statistics and the actions menu (QR sending, mass mail, Excel export, audit log).',
     },
+    // v32.1.0: Der Durchgang durch alle Assistenten-Schritte (elf Karten,
+    // nur Blättern) ist ersetzt — Nutzer-Entscheidung 28.09.2026: EIN Weg
+    // statt zwei. Das Anlegen lernt man im Mitmach-Tutorial (WizardCoach),
+    // das ein echtes Test-Event mit der Person zusammen anlegt.
     {
       page: 'admin',
       selector: '.page-container button.btn-primary',
-      titleDe: 'Neues Event in Minuten',
-      titleEn: 'A new event in minutes',
-      bodyDe: 'Über diesen Button startest du den Event-Wizard. Wir gehen jetzt gemeinsam alle Schritte durch — keine Sorge, es wird dabei nichts gespeichert.',
-      bodyEn: 'This button starts the event wizard. We will now walk through all steps together — don’t worry, nothing gets saved.',
-    },
-    {
-      page: 'create-event',
-      wizardStep: 0,
-      selector: '[data-tour="wizard-step-0"]',
-      titleDe: 'Schritt 1 — Grundlagen',
-      titleEn: 'Step 1 — Basics',
-      bodyDe: 'Titel, Zeitraum, Beschreibung und Event-Bild — und die Sub-Events: Hier legst du Programmpunkte oder Termine an und entscheidest, ob die Anmeldung nur über sie läuft. Auch der Entwurfs-Status wohnt hier — sichtbar wird das Event erst, wenn du es live schaltest.',
-      bodyEn: 'Title, dates, description and event image — plus the sub-events: create program items or dates here and decide whether registration runs only through them. The draft status lives here too — the event only becomes visible once you publish it.',
-    },
-    {
-      page: 'create-event',
-      wizardStep: 1,
-      selector: '[data-tour="wizard-step-1"]',
-      titleDe: 'Schritt 2 — Organizer & Team',
-      titleEn: 'Step 2 — Organizers & Team',
-      bodyDe: 'Wer verantwortet das Event (Organizer) — sie sehen die Teilnehmerliste und stellen das Event ein. Optional: ein externer Ansprechpartner, ein Test-Team (sieht den Entwurf vorab) und das Check-in-Team für den Event-Tag.',
-      bodyEn: 'Who runs the event (organizers) — they see the attendee list and configure the event. Optionally: an external contact, a test team (sees the draft in advance) and the check-in team for the event day.',
-    },
-    {
-      page: 'create-event',
-      wizardStep: 2,
-      selector: '[data-tour="wizard-step-2"]',
-      titleDe: 'Schritt 3 — Ort & Programm',
-      titleEn: 'Step 3 — Location & programme',
-      bodyDe: 'Veranstaltungsort und Adresse (landen automatisch im Outlook-Termin), dazu die Agenda für den Tagesablauf und optionale Transferzeiten (Bus, Bahn, Treffpunkt).',
-      bodyEn: 'Venue and address (automatically included in the Outlook invite), plus the agenda for the day and optional transfer times (bus, train, meeting point).',
-    },
-    {
-      page: 'create-event',
-      wizardStep: 3,
-      selector: '[data-tour="wizard-step-3"]',
-      titleDe: 'Schritt 4 — Kapazität & Sichtbarkeit',
-      titleEn: 'Step 4 — Capacity & visibility',
-      bodyDe: 'Wie viele Plätze gibt es (mit fairer Warteliste und automatischem Nachrücken), bis wann kann man sich an- und abmelden — und wer sieht das Event überhaupt: Standortfilter, Mailverteiler oder einzelne Personen.',
-      bodyEn: 'How many seats there are (with a fair waitlist and automatic promotion), the registration and cancellation deadlines — and who can see the event at all: location filter, distribution lists or individual people.',
-    },
-    {
-      page: 'create-event',
-      wizardStep: 4,
-      selector: '[data-tour="wizard-step-4"]',
-      titleDe: 'Schritt 5 — Felder',
-      titleEn: 'Step 5 — Fields',
-      bodyDe: 'Eigene Abfragen für das Anmeldeformular: Dropdowns, Checkboxen, Textfelder, Personen-Suche oder Dokument-Uploads — mit Pflichtfeld-Option und Sichtbarkeitsbedingungen. Die Antworten siehst du später pro Teilnehmer im Organizer Center.',
-      bodyEn: 'Custom questions for the registration form: dropdowns, checkboxes, text fields, people pickers or document uploads — with required-field options and visibility conditions. You see the answers per attendee in the Organizer Center.',
-    },
-    {
-      page: 'create-event',
-      wizardStep: 5,
-      selector: '[data-tour="wizard-step-5"]',
-      titleDe: 'Schritt 6 — Kommunikation',
-      titleEn: 'Step 6 — Communication',
-      bodyDe: 'Alles Automatische: Bestätigungs- und Abmelde-Mails, der Outlook-Termin, Mail-Sprache und das Design (Texte, Logos, Kopfbild) — bei Bedarf pro Sub-Event unterschiedlich. Eine Übersichtsbox zeigt dir, was aktuell automatisch rausgeht.',
-      bodyEn: 'Everything automatic: confirmation and cancellation emails, the Outlook invite, email language and the design (texts, logos, header image) — per sub-event if needed. A summary box shows what currently goes out automatically.',
-    },
-    {
-      page: 'create-event',
-      wizardStep: 6,
-      selector: '[data-tour="wizard-step-6"]',
-      titleDe: 'Schritt 7 — Team-Anmeldung',
-      titleEn: 'Step 7 — Team registration',
-      bodyDe: 'Für Events mit festen Teams (z.B. Quizabend, Sport): eine Person meldet ihr ganzes Team an. Du legst die Teamgröße fest und entscheidest, ob unvollständige Teams öffentlich beitretbar sind — auf Wunsch mit Bestätigung durch den Team-Kapitän.',
-      bodyEn: 'For events with fixed teams (e.g. quiz night, sports): one person registers the whole team. You set the team size and decide whether incomplete teams are open to join — optionally with team captain approval.',
-    },
-    {
-      page: 'create-event',
-      wizardStep: 7,
-      selector: '[data-tour="wizard-step-7"]',
-      titleDe: 'Schritt 8 — Dokumente',
-      titleEn: 'Step 8 — Documents',
-      bodyDe: 'PDFs für deine Teilnehmer — etwa Anfahrtsbeschreibung, Programmheft oder FAQ. Sie erscheinen direkt auf der Anmeldeseite zum Download.',
-      bodyEn: 'PDFs for your attendees — directions, programme booklet or an FAQ. They appear directly on the registration page for download.',
-    },
-    {
-      page: 'create-event',
-      wizardStep: 8,
-      selector: '[data-tour="wizard-step-8"]',
-      titleDe: 'Schritt 9 — Fun-Zone',
-      titleEn: 'Step 9 — Fun zone',
-      bodyDe: 'Das Sahnehäubchen: ein optionales Quiz rund um dein Event, das Teilnehmer vor Ort oder vorab spielen können — gut für Stimmung und Engagement.',
-      bodyEn: 'The cherry on top: an optional quiz around your event that attendees can play on site or beforehand — great for mood and engagement.',
-    },
-    {
-      page: 'create-event',
-      // v30.67: 9 statt 8 — seit v29.66 hat der Assistent für Admins/F&A zehn
-      // Schritte, und der Anlegen-Knopf rendert nur auf dem LETZTEN. Auf
-      // Index 8 stand für sie „Weiter", das Element fehlte, der Spotlight
-      // blieb aus. Der Empfänger (EventCreationPage, dex-tutorial-wizard-step)
-      // klemmt die 9 für alle ohne Abrechnungs-Schritt auf 8 — dort ist 8
-      // der letzte Schritt, der Knopf also ebenfalls da.
-      wizardStep: 9,
-      selector: '[data-tour="wizard-submit"]',
-      titleDe: 'Und was passiert beim Anlegen?',
-      titleEn: 'And what happens when you create it?',
-      bodyDe: 'Mit diesem Button wird dein Event gespeichert: Die App legt automatisch die Teilnehmerliste und die Mail-Vorlagen an — das dauert einen Moment. Danach landet das Event in deinem Organizer Center, zunächst als Entwurf. Live schalten, testweise anmelden, Einladungsmail verschicken: All das machst du dort über die „Nächste Schritte"-Box.',
-      bodyEn: 'This button saves your event: the app automatically creates the attendee list and the email templates — that takes a moment. The event then appears in your Organizer Center, initially as a draft. Publishing, test-registering, sending the invitation email: you do all that there via the “Next steps” box.',
+      titleDe: 'Neues Event — am besten einmal zum Üben',
+      titleEn: 'A new event — best practised once',
+      bodyDe: 'Über diesen Button startest du den Event-Assistenten. Für dein erstes Event gibt es ein eigenes Mitmach-Tutorial: Oben im Assistenten steht „Tutorial: Test-Event gemeinsam anlegen" — dort tippst und klickst du selbst, und am Ende steht ein echtes Test-Event, das nur du siehst und mit einem Klick wieder löschen kannst.',
+      bodyEn: 'This button starts the event wizard. For your first event there is a hands-on tutorial: at the top of the wizard you find “Tutorial: create a test event together” — you type and click yourself, and at the end there is a real test event that only you can see and delete with one click.',
     },
     {
       page: 'start',

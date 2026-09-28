@@ -21,6 +21,11 @@ import { useEvents } from '../../context/EventContext';
 import { useCurrentUser } from '../../context/UserContext';
 import Modal from '../Modal';
 import { TUTORIAL_TOURS, TutorialTour, TutorialTourId, TutorialStep } from './tutorialTours';
+import { WizardCoach, CoachSnapshot, COACH_STATIONS, StationBase } from './WizardCoach';
+
+/** v32.1.0: Eigener Entwurfsschlüssel des Mitmach-Tutorials — sonst
+ *  überschriebe der Autosave einen echten, unfertigen Entwurf. */
+export const COACH_DRAFT_KEY = 'dex_event_creation_draft_tutorial_v1';
 
 const TOUR_Z_INDEX = 10800;
 const CARD_WIDTH = 380;
@@ -30,6 +35,15 @@ interface TutorialContextType {
   openTutorial: () => void;
   startTour: (id: TutorialTourId) => void;
   availableTours: TutorialTourId[];
+  /** v32.1.0: Mitmach-Tutorial (WizardCoach) — darf die Person es starten? */
+  canCoach: boolean;
+  /** Läuft das Mitmach-Tutorial gerade? Der Assistent schaltet dann in den
+   *  Tutorial-Modus (eigener Entwurf, Sicherheitsnetz beim Anlegen). */
+  coachActive: boolean;
+  startCoach: () => void;
+  stopCoach: () => void;
+  /** Der Assistent meldet seinen Zustand; gesetzt wird nur bei Änderung. */
+  reportWizard: (snap: CoachSnapshot | null) => void;
 }
 
 const TutorialContext = React.createContext<TutorialContextType | undefined>(undefined);
@@ -38,17 +52,137 @@ export function useTutorial(): TutorialContextType {
   const ctx = React.useContext(TutorialContext);
   if (!ctx) {
     // Fallback (z.B. Handbuch-Previews ohne Provider): No-op statt Crash.
-    return { openTutorial: () => { /* kein Provider */ }, startTour: () => { /* kein Provider */ }, availableTours: ['user'] };
+    return {
+      openTutorial: () => { /* kein Provider */ }, startTour: () => { /* kein Provider */ }, availableTours: ['user'],
+      canCoach: false, coachActive: false, startCoach: () => { /* */ }, stopCoach: () => { /* */ }, reportWizard: () => { /* */ },
+    };
   }
   return ctx;
 }
 
 export function TutorialProvider(props: { children: React.ReactNode }): React.ReactElement {
   const { canCreateEvents, isAdmin, isImpersonating } = useRoles();
-  const { events, setTutorialDemoActive } = useEvents();
+  const { events, setTutorialDemoActive, deleteEvent, countExternalRegistrations, refreshEvents, getLastEventDeleteError } = useEvents();
   const { currentUser } = useCurrentUser();
+  const { currentPage, selectedEventId, navigate } = useNavigation();
+  const { locale } = useLanguage();
   const [chooserOpen, setChooserOpen] = React.useState(false);
   const [activeTour, setActiveTour] = React.useState<TutorialTour | null>(null);
+
+  // ---------- v32.1.0: Mitmach-Tutorial (WizardCoach) ----------
+  const canCoach = canCreateEvents || isAdmin;
+  const [coachActive, setCoachActive] = React.useState(false);
+  const [stationIdx, setStationIdxState] = React.useState(0);
+  const [snapshot, setSnapshot] = React.useState<CoachSnapshot | null>(null);
+  const [testEventId, setTestEventId] = React.useState('');
+  const [base, setBase] = React.useState<StationBase>({ customFieldCount: 0 });
+  const [deleteBusy, setDeleteBusy] = React.useState(false);
+  const [deleteError, setDeleteError] = React.useState<string | null>(null);
+  const [deleteDone, setDeleteDone] = React.useState(false);
+  const lastSnapJsonRef = React.useRef('');
+  const snapshotRef = React.useRef<CoachSnapshot | null>(null);
+  snapshotRef.current = snapshot;
+
+  const reportWizard = React.useCallback((snap: CoachSnapshot | null): void => {
+    const j = JSON.stringify(snap);
+    if (j === lastSnapJsonRef.current) return;
+    lastSnapJsonRef.current = j;
+    setSnapshot(snap);
+    if (snap && snap.createdEventId) setTestEventId(prev => prev || snap.createdEventId);
+  }, []);
+
+  // Beim Betreten einer Station den Ausgangsstand merken (z.B. wie viele
+  // Fragen es schon gab — „eine Frage hinzugefügt" heißt: eine MEHR).
+  const setStationIdx = React.useCallback((i: number): void => {
+    const snap = snapshotRef.current;
+    setBase({ customFieldCount: snap ? snap.customFieldCount : 0 });
+    setStationIdxState(Math.max(0, Math.min(i, COACH_STATIONS.length - 1)));
+  }, []);
+
+  const clearCoachDraft = (): void => { try { window.localStorage.removeItem(COACH_DRAFT_KEY); } catch { /* */ } };
+
+  const startCoach = React.useCallback((): void => {
+    setChooserOpen(false);
+    setActiveTour(null);
+    setTutorialDemoActive(false);
+    clearCoachDraft();
+    lastSnapJsonRef.current = '';
+    setSnapshot(null);
+    setTestEventId('');
+    setDeleteBusy(false); setDeleteError(null); setDeleteDone(false);
+    setStationIdxState(0);
+    setBase({ customFieldCount: 0 });
+    setCoachActive(true);
+    // Der Assistent startet im Tutorial-Modus neu (key-Wechsel in
+    // DexEventPlatform) — auch wenn er gerade schon offen ist.
+    navigate('create-event');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigate]);
+
+  const stopCoach = React.useCallback((): void => {
+    setCoachActive(false);
+    clearCoachDraft();
+    lastSnapJsonRef.current = '';
+    setSnapshot(null);
+  }, []);
+
+  // Die Id des angelegten Test-Events kommt sicher aus dem Erfolgs-Ereignis.
+  React.useEffect(() => {
+    if (!coachActive) return undefined;
+    const onOk = (e: Event): void => {
+      const d = (e as CustomEvent).detail as { eventId?: string; type?: string } | undefined;
+      if (d && d.type === 'create' && d.eventId) setTestEventId(String(d.eventId));
+    };
+    window.addEventListener('dex-event-submit-success', onOk);
+    return () => window.removeEventListener('dex-event-submit-success', onOk);
+  }, [coachActive]);
+
+  // Löschen erst, wenn der Outlook-Termin angelegt ist — sonst fehlt der
+  // `CalendarLink`, niemand sagt den Termin ab, und er bleibt im Kalender
+  // stehen. Solange er fehlt, alle 15 s nachladen (höchstens zwölfmal).
+  const testEvent = testEventId ? (events || []).find(e => e.id === testEventId) : undefined;
+  const onFinish = coachActive && COACH_STATIONS[stationIdx] && COACH_STATIONS[stationIdx].id === 'finish';
+  const outlookAusstehend = !!testEvent && !testEvent.disableOutlook && !(testEvent.calendarLink || '').trim();
+  const isDeCoach = locale === 'de';
+  const blockedReason = !testEventId ? null
+    : !testEvent ? (isDeCoach ? 'Dein Test-Event wird noch geladen …' : 'Your test event is still loading …')
+      : outlookAusstehend ? (isDeCoach ? 'Der Outlook-Termin wird gerade noch angelegt — Löschen geht in einem Moment, damit er mit abgesagt wird.' : 'The Outlook invite is still being created — deleting works in a moment so it gets cancelled too.')
+        : null;
+  React.useEffect(() => {
+    if (!onFinish || deleteDone || !blockedReason) return undefined;
+    let n = 0;
+    const iv = window.setInterval(() => {
+      n += 1;
+      if (n > 12) { window.clearInterval(iv); return; }
+      refreshEvents().catch(() => { /* nächster Versuch */ });
+    }, 15000);
+    return () => window.clearInterval(iv);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onFinish, deleteDone, !!blockedReason]);
+
+  const deleteTest = async (): Promise<void> => {
+    if (!testEvent || deleteBusy) return;
+    setDeleteBusy(true); setDeleteError(null);
+    try {
+      // Dieselbe Schranke wie beim Entwurf-Löschen auf der Startseite: Hat
+      // sich jemand außer dem Organizer-Team angemeldet, wird hier nicht gelöscht.
+      const ext = await countExternalRegistrations(testEvent);
+      if (ext > 0) {
+        setDeleteError(isDeCoach ? 'Am Test-Event sind Anmeldungen von anderen Personen — es wird hier nicht gelöscht.' : 'Other people registered for the test event — it is not deleted here.');
+        return;
+      }
+      const gone = await deleteEvent(testEvent.id);
+      if (!gone) {
+        setDeleteError(getLastEventDeleteError(isDeCoach ? 'de' : 'en') || (isDeCoach ? 'Löschen fehlgeschlagen — bitte erneut versuchen.' : 'Deletion failed — please try again.'));
+        return;
+      }
+      setDeleteDone(true);
+      try { await refreshEvents(); } catch { /* */ }
+      navigate('start');
+    } catch {
+      setDeleteError(isDeCoach ? 'Löschen fehlgeschlagen — bitte erneut versuchen.' : 'Deletion failed — please try again.');
+    } finally { setDeleteBusy(false); }
+  };
 
   // Organizer-Tour sichtbar für alle mit Organizer-Einstieg — gleiche Logik
   // wie die Organizer-Kachel der Startseite (inkl. Co-Organizer + Demo-Modus).
@@ -69,15 +203,31 @@ export function TutorialProvider(props: { children: React.ReactNode }): React.Re
       setActiveTour(TUTORIAL_TOURS[id]);
     };
     const openTutorial = (): void => {
-      if (availableTours.length === 1) {
+      if (availableTours.length === 1 && !canCoach) {
         startTour('user');
       } else {
         setChooserOpen(true);
       }
     };
-    return { openTutorial, startTour, availableTours };
+    return { openTutorial, startTour, availableTours, canCoach, coachActive, startCoach, stopCoach, reportWizard };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasOrganizerTour]);
+  }, [hasOrganizerTour, canCoach, coachActive, startCoach, stopCoach, reportWizard]);
+
+  // v32.0.14: Einstieg von außen (Deep-Link ?action=tutorial aus der
+  // Onboarding-Mail). Ein Fenster-Ereignis statt eines Props, damit
+  // DexEventPlatform die Tour starten kann, ohne im Provider zu stecken.
+  // detail 'organizer' startet die Organizer-Tour direkt, wenn verfügbar.
+  React.useEffect(() => {
+    const onOpen = (e: Event): void => {
+      const want = (e as CustomEvent).detail;
+      // v32.1.0: Wer Events anlegen darf, landet direkt im Mitmach-Tutorial.
+      if (want === 'organizer' && value.canCoach) value.startCoach();
+      else if (want === 'organizer' && value.availableTours.indexOf('organizer') >= 0) value.startTour('organizer');
+      else value.openTutorial();
+    };
+    window.addEventListener('dex-open-tutorial', onOpen);
+    return () => window.removeEventListener('dex-open-tutorial', onOpen);
+  }, [value]);
 
   const closeTour = React.useCallback((): void => {
     setActiveTour(null);
@@ -91,56 +241,68 @@ export function TutorialProvider(props: { children: React.ReactNode }): React.Re
       {chooserOpen && (
         <TourChooser
           onPick={value.startTour}
+          onPickCoach={canCoach ? startCoach : undefined}
+          tours={availableToursList(hasOrganizerTour)}
           onClose={() => setChooserOpen(false)}
         />
       )}
       {activeTour && (
         <TutorialOverlay tour={activeTour} onClose={closeTour} />
       )}
+      {coachActive && (
+        <WizardCoach
+          snapshot={snapshot}
+          env={{ page: currentPage, selectedEventId: selectedEventId || null, testEventId, myEmail: currentUser?.email || '', isDe: isDeCoach }}
+          stationIdx={stationIdx}
+          setStationIdx={setStationIdx}
+          base={base}
+          onClose={stopCoach}
+          onGoWizardStep={(n: number) => { try { window.dispatchEvent(new CustomEvent('dex-tutorial-wizard-step', { detail: n })); } catch { /* */ } }}
+          onGoToWizard={() => navigate('create-event')}
+          onDeleteTest={() => { void deleteTest(); }}
+          onKeepTest={stopCoach}
+          onRealEvent={() => { stopCoach(); window.setTimeout(() => navigate('create-event'), 0); }}
+          deleteState={{ busy: deleteBusy, blockedReason, error: deleteError, done: deleteDone }}
+        />
+      )}
     </TutorialContext.Provider>
   );
 }
 
-/** Auswahl-Dialog, wenn mehrere Touren verfügbar sind (Organizer/Admin). */
-function TourChooser(props: { onPick: (id: TutorialTourId) => void; onClose: () => void }): React.ReactElement {
+function availableToursList(hasOrganizerTour: boolean): TutorialTourId[] {
+  return hasOrganizerTour ? ['user', 'organizer'] : ['user'];
+}
+
+/** Auswahl-Dialog, wenn mehrere Touren verfügbar sind (Organizer/Admin).
+ *  v32.1.0: Wer Events anlegen darf, sieht zuerst das Mitmach-Tutorial
+ *  (empfohlen) — die beiden Rundgänge darunter. */
+function TourChooser(props: { onPick: (id: TutorialTourId) => void; onPickCoach?: () => void; tours: TutorialTourId[]; onClose: () => void }): React.ReactElement {
   const { locale } = useLanguage();
   const isDe = locale === 'de';
-  const tours: TutorialTourId[] = ['user', 'organizer'];
+  const tours = props.tours;
+  const kachel = (key: string, titel: string, text: string, onClick: () => void, empfohlen?: boolean): React.ReactElement => (
+    <button key={key} type="button" onClick={onClick} className={`dex-ui-choice${empfohlen ? ' is-active' : ''}`}
+      style={{ textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', width: '100%', display: 'block' }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: '0.95rem', color: 'var(--dex-gray-800)', marginBottom: 4 }}>
+        {titel}
+        {empfohlen && <span className="dex-ui-pill dex-ui-pill--green">{isDe ? 'Empfohlen' : 'Recommended'}</span>}
+      </span>
+      <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-500)', lineHeight: 1.5 }}>{text}</span>
+    </button>
+  );
   return (
-    <Modal open={true} onClose={props.onClose} maxWidth={560} ariaLabel={isDe ? 'Tutorial auswählen' : 'Choose tutorial'}>
-      <h3 style={{ margin: '0 0 4px', fontSize: '1.1rem' }}>
-        {isDe ? 'Welches Tutorial möchtest du starten?' : 'Which tutorial would you like to start?'}
-      </h3>
-      <p style={{ margin: '0 0 14px', fontSize: '0.84rem', color: 'var(--dex-gray-500)' }}>
-        {isDe
-          ? 'Beide dauern nur rund zwei Minuten — und du kannst sie jederzeit neu starten.'
-          : 'Both take only about two minutes — and you can restart them anytime.'}
-      </p>
+    <Modal open={true} onClose={props.onClose} maxWidth={560} ariaLabel={isDe ? 'Tutorial auswählen' : 'Choose tutorial'}
+      title={isDe ? 'Welches Tutorial möchtest du starten?' : 'Which tutorial would you like to start?'}
+      subtitle={isDe ? 'Du kannst jedes jederzeit neu starten.' : 'You can restart each of them anytime.'}>
       <div style={{ display: 'grid', gap: 10 }}>
+        {props.onPickCoach && kachel('coach',
+          isDe ? 'Test-Event gemeinsam anlegen' : 'Create a test event together',
+          isDe ? 'Mitmachen statt zuschauen: Du tippst und klickst selbst, ich zeige dir wo. Am Ende steht ein echtes Test-Event, das nur du siehst — und das du mit einem Klick wieder löschst. Etwa fünf Minuten.'
+            : 'Hands-on instead of watching: you type and click, I show you where. At the end there is a real test event only you can see — deleted again with one click. About five minutes.',
+          props.onPickCoach, true)}
         {tours.map(id => {
           const tour = TUTORIAL_TOURS[id];
-          return (
-            <button
-              key={id}
-              type="button"
-              onClick={() => props.onPick(id)}
-              style={{
-                textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
-                background: '#fff', border: '1.5px solid var(--dex-gray-200)',
-                borderRadius: 12, padding: '14px 16px',
-                transition: 'border-color 0.15s, box-shadow 0.15s',
-              }}
-              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--dex-green, #86bc25)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--dex-gray-200)'; }}
-            >
-              <span style={{ display: 'block', fontWeight: 700, fontSize: '0.95rem', color: 'var(--dex-gray-800)', marginBottom: 4 }}>
-                {isDe ? tour.labelDe : tour.labelEn}
-              </span>
-              <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-500)', lineHeight: 1.5 }}>
-                {isDe ? tour.descDe : tour.descEn}
-              </span>
-            </button>
-          );
+          return kachel(id, isDe ? tour.labelDe : tour.labelEn, isDe ? tour.descDe : tour.descEn, () => props.onPick(id));
         })}
       </div>
     </Modal>

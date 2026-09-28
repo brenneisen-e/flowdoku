@@ -405,9 +405,49 @@ export interface WizardSubmitCtx {
   /** v31.17: Wartelisten-Platzhalter im Kalender (Piggyback `_waitlistBlocker`). */
   waitlistBlocker: boolean;
   wizardImgAspect: number;
+  /** v32.1.0: Neu-Anlage aus dem Mitmach-Tutorial (s. `tutorialTestSicher`). */
+  tutorialTest?: boolean;
 }
 
-export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
+/** Präfix im Titel eines Tutorial-Test-Events. */
+export const TUTORIAL_TEST_PRAEFIX = 'TEST – ';
+
+/**
+ * v32.1.0: Zweites Netz für das Test-Event aus dem Mitmach-Tutorial.
+ *
+ * Das erste Netz setzt dieselben Werte sichtbar im Formular. Dieses hier
+ * erzwingt sie beim Speichern noch einmal, unabhängig davon, was die Person
+ * unterwegs umgestellt hat: Titel mit „TEST – ", Entwurf, kein Auto-Live,
+ * Organizer und Zielgruppe nur die Person selbst, kein Check-in-, Test- oder
+ * Co-Organizer-Team. Nutzer-Entscheidung 28.09.2026: Mails und Outlook-Termin
+ * laufen echt — „nur an mich". Genau deshalb darf niemand sonst Empfänger
+ * sein können. Gilt nur für die Neu-Anlage; ein späteres Bearbeiten des
+ * Test-Events ist ein normales Bearbeiten.
+ */
+function tutorialTestSicher(ctx: WizardSubmitCtx): WizardSubmitCtx {
+  if (!ctx.tutorialTest || ctx.isEditMode) return ctx;
+  const u = ctx.currentUser;
+  const email = (u.email || '').trim();
+  const name = `${u.firstName || ''} ${u.surname || ''}`.trim() || email;
+  const titel = (ctx.title || '').trim();
+  return {
+    ...ctx,
+    title: titel.indexOf(TUTORIAL_TEST_PRAEFIX) === 0 ? titel : TUTORIAL_TEST_PRAEFIX + titel,
+    isFictive: true,
+    activeFrom: '',
+    organizer: name,
+    organizerEmails: email ? [email] : [],
+    coOrganizerEmails: [], coOrganizerNames: [],
+    hiddenOrganizerEmails: [],
+    audience: email,
+    locationFilter: '',
+    qrScannerEmails: [], qrScannerNames: [], qrScannerNoList: [],
+    testTeamEmails: [], testTeamNames: [],
+  };
+}
+
+export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
+  const ctx = tutorialTestSicher(ctxIn);
   const { activeFrom, addRole, adminLike, addrCity, addrHouseNo, addrStreet, addrZip, agenda, allDay, allowAttendeeUpload, askSalutation, askTeamName, assistantsCanSee, attendeeUploadHint, attendeeUploadLabel, audience, berlinLocalToUtcIso, bilingualFields, billingPiggyback, bundledComm, commShared, childEventsOf, childGender, childTermPlural, childTermSingular, computeFormSnapshot, confirmDialog, confirmDialogEnabled, confirmDialogMode, confirmDialogText, contactEmail, contactInfo, contactName, contactOrganizerEmail, coOrganizerEmails, coOrganizerNames, createdEventIdRef, createEvent, currentUser, customFields, deadlineToEndOfDayIso, description, documents, DRAFT_KEY, durchstarterCapacity, durchstarterRequiresProof, durchstarterStartblock, editEvent, effTeamsLink, endDate, eventImageUrl, eventType, excludedUsers, filterMode, funstarterCapacity, funstarterStartblock, getGroupMembers, getLastEventUpdateError, headerImageLayoutConfig, headerLayoutFor, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly, imageBanner, imageDisplay, imageFile, imageOrigAspect, imageOrigFile, initialDocumentNames, initialFormSnapshotRef, initialOrgGetsSubInvitesRef, initialSubEventDbIds, isB2runTemplate, isDe, isEditMode, isFictive, klammerDeadline, lastDeregisterDate, lastDraftJsonRef, location, locationFilter, mainCommDisabledAck, mainEventLabel, mainEventLabelMode, maxParticipants, noCancelAfterDeadline, noDescription, notifyAdminsExternalAudienceAccess, notifyNewCoOrganizers, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, onlineMeetingMode, organizer, organizerDisplayLarge, organizerEmails, orgGetsSubInvites, outlookEndOverride, outlookLocationOverride, outlookStartOverride, outlookTeamsLink, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs, pendingOutlookInviteForEventsRef, pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, pendingSuccessDispatchRef, persistSubEventsForParent, previewBeforeActive, qrScannerEmails, qrScannerNoList, qrScannerNames, quiz, quizClusterSize, refreshEventDocuments, refreshEvents, registrationDeadline, registrationLanguage, regRuleEnabled, requestCoOrganizerApprovals, requireSubEventSelection, resolveTopLevelCommState, sanitizeOrganizerPairs, selectedEventId, sendOrganizerOnboarding, setDraftSavedAt, setError, setImageUploadError, setIsSubmitting, setNavigationGuard, setPendingDraft, setPendingSuccessDispatch, setProgress, setProgressLabel, setRemovedSavedSubs, setShowSummaryModal, showAlert, showAsFree, shrinkLogoB64, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitLabelA, splitLabelB, splitSectionTitle, splitSharedWaitlist, startDate, subDeadlineRulePiggyback, subEventCalendar, subEventOpenRulePiggyback, agendaCheckInPiggyback, seriesRule, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn, subEventsRef, teamJoinRequiresApproval, teamMembersCannotCreate, teamOpenSlotsVisible, teamPartialAllowed, teamRegistrationEnabled, teamSize, teamTermPlural, teamTermSingular, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, updateEvent, userCancelAllowed, useSplitCapacities, visAllSubsPiggyback, waitlistBlocker, waitlistEnabled, wizardImgAspect } = ctx;
   // v32.0.6: Was dieser Lauf tatsächlich auslöst — für den Abschluss-Dialog.
   const abschluss: import('../wizardTypes').AbschlussInfo = {
@@ -864,7 +904,7 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
           // sind eine Verpflichtung gegenüber dem Veranstalter (v30.54) und
           // entstehen im Organizer Center; ein Wizard-Save darf sie nicht
           // stillschweigend wegräumen, nur weil er sie nicht kennt.
-          for (const k of ['_hotels', '_hotelStays', '_hotelVisible', '_hotelRules', '_shirtStock', '_b2runTodo', '_b2runTodoDone', '_feedback']) {
+          for (const k of ['_hotels', '_hotelStays', '_hotelVisible', '_hotelRules', '_shirtStock', '_b2runTodo', '_b2runTodoDone', '_feedback', '_tutorialTest']) {
             if (raw && raw[k] !== undefined) out[k] = raw[k];
           }
           return out;
@@ -2066,6 +2106,8 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
             organizerDisplayLargeExtra, previewBeforeActiveExtra,
             imageDisplayExtra, hideOrganizerExtra, hiddenOrganizersExtra,
             hideOrgIndividualExtra, headerImageLayoutConfig,
+            // v32.1.0: Kennzeichnung des Tutorial-Test-Events (s. tutorialTestSicher).
+            (ctx.tutorialTest && !isEditMode ? { _tutorialTest: { by: currentUser.email || '', at: new Date().toISOString() } } : {}),
             // v28.79: „Keine Beschreibung nutzen" auch beim Anlegen merken.
             ((noDescription && !description.trim()) ? { _noDescription: true } : {}),
             // v28.91: Kalender-Modus der Sub-Events.
@@ -2160,7 +2202,8 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
         // Organizer, die noch kein Organizer/Admin sind, einen „Organizer
         // werden"-Antrag zur Admin-Freigabe anlegen. Best-effort.
         // v31.86: Als Admin direkt vergeben statt Antrag (s. coOrganizerFreigabe).
-        try {
+        // v32.1.0: Beim Tutorial-Test-Event gibt es niemanden freizugeben.
+        if (!ctx.tutorialTest) try {
           const frei = await coOrganizerFreigabe(
             { adminLike, addRole, sendOrganizerOnboarding, requestCoOrganizerApprovals, currentUser },
             sanitizedOrgPairCreate.orgString, sanitizedOrgPairCreate.orgEmailString, title);

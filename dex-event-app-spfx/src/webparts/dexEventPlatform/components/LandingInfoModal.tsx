@@ -19,10 +19,13 @@ import { Mail, Info, AlertCircle, ChevronDown } from './Icons';
 import Modal from './Modal';
 import { cx } from './dexUi';
 import { APP_VERSION } from '../version';
-import { DEX_TEAM_EMAIL } from '../utils/supportContact';
 import { useNavigation } from '../context/NavigationContext';
 import { EventContext } from '../context/EventContext';
 import { KpiRow } from './KpiRow';
+
+// v32.0.12: Dynamisch, weil InquiryModal selbst dieses Fenster rendert — ein
+// statischer Import in beide Richtungen wäre ein Modul-Zyklus.
+const InquiryModal = React.lazy(() => import('./InquiryModal'));
 
 interface Props {
   open: boolean;
@@ -30,6 +33,9 @@ interface Props {
   onClose: () => void;
   /** v30.25: Startet die geführte Tour (Header reicht openTutorial durch). */
   onStartTutorial?: () => void;
+  /** v32.0.12: Aus der Anfrage heraus geöffnet — „Kontakt aufnehmen" führt
+   *  dann nur zurück, statt eine zweite Anfrage darüberzulegen. */
+  onContact?: () => void;
 }
 
 interface Feature {
@@ -46,7 +52,7 @@ interface UseCase { icon: string; title: string; sub: string; }
 
 const EVENT_MGMT_URL = 'https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx';
 
-export default function LandingInfoModal({ open, locale, onClose, onStartTutorial }: Props): React.ReactElement | null {
+export default function LandingInfoModal({ open, locale, onClose, onStartTutorial, onContact }: Props): React.ReactElement | null {
   // v31.2: Die 15 Funktions-Kacheln sind der längste Block des Dialogs. Zum
   // Einstieg reichen Einsatzbereich und Ablauf; die Kacheln bleiben zu, bis
   // jemand sie sehen will — sonst zeigt der Dialog beim Öffnen drei Bildschirme.
@@ -65,7 +71,19 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
     return () => { weg = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
-  if (!open) return null;
+  // v32.0.12: „Kontakt aufnehmen" öffnet dieselbe Anfrage wie die Kachel
+  // „DEX für dein Event nutzen" auf der Startseite (Nutzer-Ansage
+  // 28.09.2026), statt eines mailto-Links. Das Info-Fenster schließt dabei;
+  // die Anfrage lebt hier weiter, deshalb rendert die Komponente sie auch
+  // bei `open === false`.
+  const [showInquiry, setShowInquiry] = React.useState(false);
+  if (!open) {
+    return showInquiry ? (
+      <React.Suspense fallback={null}>
+        <InquiryModal open onClose={() => setShowInquiry(false)} />
+      </React.Suspense>
+    ) : null;
+  }
 
   const isDE = locale === 'de';
   // v31.95: „Hast du Fragen?" direkt aus dem Self-Service-Kasten — derselbe
@@ -117,17 +135,17 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
   ];
 
   const useCases: UseCase[] = isDE ? [
-    { icon: 'Presentation', title: 'Leadership- & Strategie-Meetings', sub: 'z. B. SR&T P/MD/D Meeting mit 450 Teilnehmenden' },
+    { icon: 'Presentation', title: 'Leadership- & Strategie-Meetings', sub: 'z. B. SR&T P/MD/D Meeting, TG-Events' },
     { icon: 'Emoji2', title: 'Firmen-Events', sub: 'Sommerfeste, Weihnachtsfeiern, Bereichs-Offsites' },
     { icon: 'Hotel', title: 'Assistenz- & Team-Meetings', sub: 'mit Transfer- und Hotelbuchung' },
     { icon: 'Running', title: 'Lauf-Events', sub: 'B2Run, JPMorgan Corporate Challenge — mit Startblöcken und geteilten Kapazitäten' },
-    { icon: 'CalendarAgenda', title: 'Alles dazwischen', sub: 'vom Lunch mit 10 Personen bis zur Großveranstaltung mit über 500' },
+    { icon: 'CalendarAgenda', title: 'Alles dazwischen', sub: 'vom kleinen Lunch bis zur Großveranstaltung' },
   ] : [
-    { icon: 'Presentation', title: 'Leadership & strategy meetings', sub: 'e.g. SR&T P/MD/D meeting with 450 participants' },
+    { icon: 'Presentation', title: 'Leadership & strategy meetings', sub: 'e.g. SR&T P/MD/D meeting, TG events' },
     { icon: 'Emoji2', title: 'Company events', sub: 'summer parties, Christmas celebrations, team offsites' },
     { icon: 'Hotel', title: 'Assistant & team meetings', sub: 'with transfer and hotel booking' },
     { icon: 'Running', title: 'Running events', sub: 'B2Run, JPMorgan Corporate Challenge — with start blocks and split capacities' },
-    { icon: 'CalendarAgenda', title: 'Everything in between', sub: 'from a lunch with 10 people to a flagship event with 500+' },
+    { icon: 'CalendarAgenda', title: 'Everything in between', sub: 'from a small lunch to a flagship event' },
   ];
 
   // v31.2: Ablauf als nummerierte Schritt-Zeilen (Titel + Folge) statt einer
@@ -184,9 +202,9 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
           </span>
         )}
         <button type="button" className="btn btn-secondary" onClick={onClose}>{isDE ? 'Schließen' : 'Close'}</button>
-        <a className="btn btn-primary" href={`mailto:${DEX_TEAM_EMAIL}?subject=DEX Event Experience Platform – Interesse`}>
+        <button type="button" className="btn btn-primary" onClick={() => { if (onContact) { onContact(); return; } setShowInquiry(true); onClose(); }}>
           <Mail size={16} /> {isDE ? 'Kontakt aufnehmen' : 'Get in touch'}
-        </a>
+        </button>
       </>}
     >
       <div>
@@ -294,23 +312,13 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
           )}
         </section>
 
-        {/* Status */}
-        <section className="dex-ui-section">
-          <h4 className="dex-ui-section-title">{isDE ? 'Wo DEX heute steht' : 'Where DEX stands today'}</h4>
-          <p className="dex-ui-muted" style={{ margin: 0, fontSize: '0.86rem', lineHeight: 1.6 }}>
-            {isDE
-              ? 'DEX ist aktuell in der Pilotphase mit mehreren Flagship-Events: SAP All Hands Event (ca. 1000 Teilnehmer), SR&T P/MD/D Meeting (450 Teilnehmer), Assistenz Meeting 2026 (130 Teilnehmer), Sommerfest Berlin 2026, verschiedene B2Run-Läufe. Neue Events und Funktionen kommen laufend dazu.'
-              : 'DEX is currently in pilot with several flagship events: SAP All Hands Event (~1000 participants), SR&T P/MD/D Meeting (450 participants), Assistenz Meeting 2026 (130 participants), Summer party Berlin 2026, several B2Run races. New events and features are added continuously.'}
-          </p>
-        </section>
-
         {/* Interesse? — der Knopf dazu sitzt im Fuß */}
         <section className="dex-ui-section">
           <h4 className="dex-ui-section-title">{isDE ? 'Interesse?' : 'Interested?'}</h4>
           <p className="dex-ui-muted" style={{ margin: 0, fontSize: '0.86rem', lineHeight: 1.6 }}>
             {isDE
-              ? 'Dein Event oder dein Bereich möchte DEX nutzen? Der Knopf unten öffnet eine E-Mail an das DEX-Team. Wir schalten dich als Organizer frei — das Event legst du anschließend eigenständig an.'
-              : 'Your event or department would like to use DEX? The button below opens an email to the DEX team. We will set you up as an organizer — you then create the event independently.'}
+              ? 'Dein Event oder dein Bereich möchte DEX nutzen? Über den Knopf unten stellst du deine Anfrage an das DEX-Team. Wir schalten dich als Organizer frei — das Event legst du anschließend eigenständig an.'
+              : 'Your event or department would like to use DEX? Use the button below to send your request to the DEX team. We will set you up as an organizer — you then create the event independently.'}
           </p>
           <p className="dex-ui-muted" style={{ margin: '16px 0 0', fontSize: '0.76rem', textAlign: 'center' }}>
             {isDE ? 'Entwickelt von ' : 'Built by '}

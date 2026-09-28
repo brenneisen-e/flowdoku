@@ -477,6 +477,7 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
         open={showInfo}
         locale={locale === 'de' ? 'de' : 'en'}
         onClose={() => setShowInfo(false)}
+        onContact={() => setShowInfo(false)}
       />
     </Modal>
   );

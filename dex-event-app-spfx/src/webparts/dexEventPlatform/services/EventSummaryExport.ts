@@ -380,7 +380,7 @@ export function buildSummaryHtml(d: SummaryData): string {
   const fieldTypeLabel = (t: string): string => {
     switch (t) {
       case 'text': return T('Text', 'Text');
-      case 'select': return T('Dropdown', 'Dropdown');
+      case 'select': return T('Auswahl / Dropdown', 'Choice / dropdown');
       case 'number': return T('Zahl', 'Number');
       case 'checkbox': return T('Checkbox', 'Checkbox');
       case 'user': return T('Personen-Picker', 'Person picker');

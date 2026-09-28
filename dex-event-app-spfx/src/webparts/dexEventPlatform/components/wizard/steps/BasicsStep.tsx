@@ -4,6 +4,7 @@
  * `visible` schaltet display:none statt unmount — Eingaben ueberleben den
  * Schrittwechsel genauso wie vorher. */
 import * as React from 'react';
+import { eventDraftKey } from '../../../utils/eventDraft';
 import DexLogo from '../../DexLogo';
 import WizardHint from '../../WizardHint';
 import { StepBadge } from '../../wizard/StepBadge';
@@ -24,7 +25,7 @@ export interface BasicsStepProps {
   seriesSlot?: React.ReactNode;
   activeFrom: string;
   activeScopeIdx: number;
-  applyDraftPayload: (d: Record<string, unknown>) => void;
+  applyDraftPayload: (d: Record<string, unknown>, adoptId?: string) => void;
   applyEventTemplate: (ev: import("../../../types/index").DeloitteEvent) => Promise<void>;
   childEventsOf: (parentEventId: string) => import("../../../types/index").DeloitteEvent[];
   childTermSingular: string;
@@ -57,7 +58,7 @@ export interface BasicsStepProps {
   outlookLogoFromPhoto: boolean;
   outlookLogoPreview: string;
   patchScopeSub: (patch: Partial<SubEventDraft>) => void;
-  pendingDraft: { savedAt: number; data: Record<string, unknown>; };
+  pendingDraft: { savedAt: number; data: Record<string, unknown>; id?: string } | null;
   previewBeforeActive: boolean;
   renderStepIntro: (_bulletsDe: string[], _bulletsEn: string[]) => React.ReactElement | null;
   scAllDay: boolean;
@@ -101,6 +102,9 @@ export interface BasicsStepProps {
   setSubEvents: React.Dispatch<React.SetStateAction<SubEventDraft[]>>;
   setSubImageCropIdx: React.Dispatch<React.SetStateAction<number>>;
   showTemplatePicker: boolean;
+  /** v32.1.0: Mitmach-Tutorial — Vorlagen, Demo-Vorlage und Entwurfs-Kachel
+   *  ausblenden (sie würden Organizer und Teams fremder Events übernehmen). */
+  tutorialMode?: boolean;
   shrinkLogoB64: (b64: string) => Promise<string>;
   startDate: string;
   subEvents: SubEventDraft[];
@@ -113,7 +117,7 @@ export interface BasicsStepProps {
 }
 export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
   const { visible } = p;
-  const { activeFrom, activeScopeIdx, applyDraftPayload, applyEventTemplate, childEventsOf, childTermSingular, currentUser, dayKeyOfDate, description, DRAFT_KEY, draftSavedAt, editEvent, emailLogoFromPhoto, emailLogoPreview, errorBorderStyle, events, fieldHasError, fileToBase64, imageBanner, imageDisplay, imageDisplayOpen, imageEditOpen, imageFile, imageOrigFile, imagePreview, imageUploadError, isDe, isEditMode, isFictive, location, logoCropTarget, noDescription, outlookLogoFromPhoto, outlookLogoPreview, patchScopeSub, pendingDraft, previewBeforeActive, renderStepIntro, scAllDay, scDescription, scEnd, scImagePreview, scopeSub, scShowAsFree, scStart, scTitle, setActiveFrom, setDescription, setEmailLogoFromPhoto, setEmailLogoPreview, setEventImageUrl, setHtmlEditorMode, setHtmlEditorOpen, setImageBanner, setImageDisplay, setImageDisplayOpen, setImageEditOpen, setImageFile, setImageOrigAspect, setImageOrigFile, setImagePreview, setImageUploadError, setIsFictive, setLogoCropTarget, setNoDescription, setOutlookLogoFromPhoto, setOutlookLogoPreview, setPendingDraft, setPreviewBeforeActive, setScAllDay, setScEnd, setScShowAsFree, setScStart, setScTitle, setShowDemoVariantModal, setShowTemplatePicker, setSubEvents, setSubImageCropIdx, showTemplatePicker, shrinkLogoB64, startDate, subEvents, subEventsOnlyMode, t, templateLoadingId, title, wizardImgAspect } = p;
+  const { activeFrom, activeScopeIdx, applyDraftPayload, applyEventTemplate, childEventsOf, childTermSingular, currentUser, dayKeyOfDate, description, DRAFT_KEY, draftSavedAt, editEvent, emailLogoFromPhoto, emailLogoPreview, errorBorderStyle, events, fieldHasError, fileToBase64, imageBanner, imageDisplay, imageDisplayOpen, imageEditOpen, imageFile, imageOrigFile, imagePreview, imageUploadError, isDe, isEditMode, isFictive, location, logoCropTarget, noDescription, outlookLogoFromPhoto, outlookLogoPreview, patchScopeSub, pendingDraft, previewBeforeActive, renderStepIntro, scAllDay, scDescription, scEnd, scImagePreview, scopeSub, scShowAsFree, scStart, scTitle, setActiveFrom, setDescription, setEmailLogoFromPhoto, setEmailLogoPreview, setEventImageUrl, setHtmlEditorMode, setHtmlEditorOpen, setImageBanner, setImageDisplay, setImageDisplayOpen, setImageEditOpen, setImageFile, setImageOrigAspect, setImageOrigFile, setImagePreview, setImageUploadError, setIsFictive, setLogoCropTarget, setNoDescription, setOutlookLogoFromPhoto, setOutlookLogoPreview, setPendingDraft, setPreviewBeforeActive, setScAllDay, setScEnd, setScShowAsFree, setScStart, setScTitle, setShowDemoVariantModal, setShowTemplatePicker, setSubEvents, setSubImageCropIdx, showTemplatePicker, shrinkLogoB64, startDate, subEvents, subEventsOnlyMode, t, templateLoadingId, title, wizardImgAspect, tutorialMode } = p;
   // v31.2 (Leitfaden 2a′): Eine Kachel mit Hauptaktion ist selbst klickbar —
   // Enter/Leertaste lösen dieselbe Aktion aus wie der Klick. Nebenknöpfe in
   // der Kachel stoppen die Weitergabe (Klick UND Taste), damit „Verwerfen"
@@ -159,7 +163,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   <span className="dex-step-eyebrow">{isDe ? 'Schritt 1 von 9' : 'Step 1 of 9'}</span>
                   <span>{isDe ? 'Grundlagen' : 'Basics'}</span>
                 </span>
-                {!isEditMode && (
+                {!isEditMode && !tutorialMode && (
                   <button
                     type="button"
                     className="dex-ui-chip"
@@ -202,7 +206,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
               {/* v24.9 (E): „Eigenes Event als Vorlage" — prominenter Fächer aus
                   Bildern bisheriger Events. Nur im NEU-Modus, nur wenn der
                   Organizer schon eigene Events hat. */}
-              {!isEditMode && (() => {
+              {!isEditMode && !tutorialMode && (() => {
                 const meLc = (currentUser?.email || '').toLowerCase();
                 const tmpl = (events || []).filter(e => {
                   if (e.parentEventId || e.isDemoShowcase) return false;
@@ -305,13 +309,13 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   Vorlagen-Kachel — statt des Modal-Dialogs beim Öffnen.
                   Verschwindet, sobald der User fortsetzt, löscht oder durch
                   eigenes Tippen einen neuen Autosave erzeugt (draftSavedAt). */}
-              {!isEditMode && pendingDraft && draftSavedAt === null && (() => {
+              {!isEditMode && !tutorialMode && pendingDraft && draftSavedAt === null && (() => {
                 const when = new Date(pendingDraft.savedAt).toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
                 const dTitle = (typeof pendingDraft.data.title === 'string' && (pendingDraft.data.title as string).trim())
                   ? (pendingDraft.data.title as string).trim()
                   : (isDe ? '(ohne Titel)' : '(untitled)');
                 const continueDraft = (): void => {
-                  try { applyDraftPayload(pendingDraft.data); } catch (err) { console.warn('[DEX] Entwurf-Wiederherstellung fehlgeschlagen:', err); }
+                  try { applyDraftPayload(pendingDraft.data, pendingDraft.id); } catch (err) { console.warn('[DEX] Entwurf-Wiederherstellung fehlgeschlagen:', err); }
                   setPendingDraft(null);
                 };
                 // v31.2 (2a′): Die ganze Kachel öffnet den Entwurf (Hover,
@@ -351,7 +355,8 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                           className="dex-ui-textbtn dex-ui-textbtn--danger"
                           onClick={e => {
                             e.stopPropagation();
-                            try { localStorage.removeItem(DRAFT_KEY); } catch { /* */ }
+                            // v32.1.4: genau DIESEN Entwurf, nicht den eigenen Platz.
+                            try { localStorage.removeItem(pendingDraft.id ? eventDraftKey(pendingDraft.id) : DRAFT_KEY); } catch { /* */ }
                             setPendingDraft(null);
                           }}
                           onKeyDown={stopBubble}
@@ -462,6 +467,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   // v31.64: Sprungziel für „Bearbeiten" an der Sub-Event-Karte
                   // (goToScopeBar in EventCreationPage fokussiert das Feld).
                   id="dex-scope-title"
+                  data-tour="wizard-title"
                   className="form-input"
                   value={scTitle}
                   onChange={e => setScTitle(e.target.value)}
@@ -509,7 +515,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                     ? 'Berliner Zeit. Landet 1:1 im Outlook-Termin der Teilnehmer; Anmelde- und Abmeldefrist werden daraus vorgeschlagen.'
                     : 'Berlin time. Goes 1:1 into the attendees’ Outlook invite; registration and cancellation deadlines are suggested from it.'}
                 </p>
-              <div className="dex-ui-grid-2">
+              <div className="dex-ui-grid-2" data-tour="wizard-dates">
                 <div className="dex-ui-field">
                   <label className="dex-ui-label">
                     {!scopeSub && <span className="required">*</span>} {isDe ? 'Beginn' : 'Start'}
@@ -1290,7 +1296,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   jemand sieht. Bleibt event-weit (nur auf der Klammer-Ebene);
                   Badge 5 — die Nummern folgen der Reihenfolge (07.09.2026). */}
               {activeScopeIdx === 0 && (
-                <div className="dex-ui-section">
+                <div className="dex-ui-section" data-tour="wizard-draft">
                   <div className="dex-ui-section-title">{isDe ? 'Veröffentlichung' : 'Publishing'}</div>
                   <label className={cx('dex-ui-toggle-row', isFictive && 'is-active')} style={isFictive ? { borderColor: 'var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.06)' } : undefined}>
                     <input type="checkbox" checked={isFictive} onChange={e => setIsFictive(e.target.checked)} />

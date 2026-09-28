@@ -24,6 +24,7 @@ import InternationalSearchToggle from './InternationalSearchToggle';
 import BulkUserImportModal from './BulkUserImportModal';
 import WizardHint from './WizardHint';
 import { useRoles } from '../context/RoleContext';
+import { useDialog } from '../context/DialogContext';
 
 const EXCLUDE_PAGE_SIZE = 200;
 
@@ -119,6 +120,7 @@ export default function AudiencePicker({
   bodyOpen,
 }: Props): React.ReactElement {
   const { searchUsers, searchGroups, getGroupMembers, searchUsersByLocation } = useRoles();
+  const { confirmDialog } = useDialog();
 
   const audience = value;
   // v26.60 BUG-FIX: Funktions-Updates dürfen NICHT gegen das Closure-`value`
@@ -229,6 +231,21 @@ export default function AudiencePicker({
       list.push(val);
       return list.join(', ');
     });
+  };
+  // v32.1.2: Alle Einträge auf einmal entfernen (Nutzer-Befund 28.09.2026:
+  // 54 Personen per Massenimport, und entfernen ging nur Chip für Chip).
+  // Mit Rückfrage, weil es sich nicht rückgängig machen lässt; die
+  // Ausschluss-Liste bleibt bewusst stehen — sie ist eine eigene Entscheidung.
+  const removeAllAudience = async (count: number): Promise<void> => {
+    const ok = await confirmDialog(
+      isDe ? `Alle ${count} Einträge aus der Zielgruppe entfernen?` : `Remove all ${count} entries from the audience?`,
+      { danger: true, confirmLabel: isDe ? 'Alle entfernen' : 'Remove all' },
+    );
+    if (!ok) return;
+    setAudience('');
+    setAudienceGroupKeys(new Set());
+    setAudienceChipSearch('');
+    setAudienceShowAll(false);
   };
   const removeAudienceItem = (val: string): void => {
     setAudience(prev => prev.split(',').map(s => s.trim()).filter(Boolean).filter(x => x !== val).join(', '));
@@ -440,9 +457,10 @@ export default function AudiencePicker({
           return (
             <div style={{ marginBottom: 8 }}>
               {/* Meta-Zeile mit Anzahl + Such-Input (nur wenn viele Einträge) */}
-              {allEntries.length > visibleLimit && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
-                  <span>{allEntries.length} Einträge{chipSearchLc && ` — ${filtered.length} Treffer`}</span>
+              {allEntries.length >= 2 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: '0.8rem', color: 'var(--dex-gray-500)', flexWrap: 'wrap' }}>
+                  <span>{allEntries.length} {isDe ? 'Einträge' : 'entries'}{chipSearchLc && ` — ${filtered.length} ${isDe ? 'Treffer' : 'matches'}`}</span>
+                  {allEntries.length > visibleLimit && (<>
                   <input
                     type="text"
                     className="form-input"
@@ -461,6 +479,16 @@ export default function AudiencePicker({
                       <X size={14} />
                     </button>
                   )}
+                  </>)}
+                  <button
+                    type="button"
+                    className="btn btn-secondary dex-ui-btn-sm"
+                    onClick={() => { void removeAllAudience(allEntries.length); }}
+                    style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    title={isDe ? 'Alle Personen und Verteiler aus der Zielgruppe entfernen' : 'Remove all people and lists from the audience'}
+                  >
+                    <X size={12} /> {isDe ? 'Alle entfernen' : 'Remove all'}
+                  </button>
                 </div>
               )}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>

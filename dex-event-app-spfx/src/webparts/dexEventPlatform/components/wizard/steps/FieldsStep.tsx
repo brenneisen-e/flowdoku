@@ -24,7 +24,6 @@ import { CustomFieldInput } from '../../wizard/customFieldInput';
 import { FieldTypeSuggestion } from '../../wizard/FieldTypeSuggestion';
 import { StepBadge } from '../../wizard/StepBadge';
 import { FieldDescEditor } from '../../wizard/FieldDescEditor';
-import { ProfileDataCard } from '../../registration/ProfileDataCard';
 export interface FieldsStepProps {
   visible: boolean;
   activeFieldsTabIdx: number;
@@ -109,7 +108,9 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
   const typeLabel = (ty: CustomFieldInput['type']): string => {
     switch (ty) {
       case 'text': return isDe ? 'Text (Freitext)' : 'Text (free text)';
-      case 'select': return 'Dropdown';
+      // v32.1.3: „Auswahl / Dropdown" (Nutzer-Ansage 28.09.2026) — „Dropdown"
+      // allein sagt Nicht-Technikern nicht, dass man eine Antwort auswählt.
+      case 'select': return isDe ? 'Auswahl / Dropdown' : 'Choice / dropdown';
       case 'number': return isDe ? 'Zahl' : 'Number';
       case 'checkbox': return 'Checkbox';
       case 'date': return isDe ? 'Datum (Kalender)' : 'Date (calendar)';
@@ -132,6 +133,18 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     fontWeight: 700, fontSize: '0.78rem', lineHeight: 1,
   };
+  // v32.1.3: Die automatisch übernommenen Profildaten stehen als graue Zeilen
+  // IN der Fragen-Tabelle (Nutzer-Ansage 28.09.2026: „damit man klarer
+  // sieht, dass das mit abgefragt wird"). Grau = nicht bearbeitbar; die
+  // eigenen Fragen zählen danach weiter, wie die Anmeldeseite sie zeigt.
+  const AUTO_ROWS: Array<{ key: string; label: string; example: string }> = [
+    { key: 'mail', label: isDe ? 'E-Mail' : 'Email', example: 'mmustermann@deloitte.de' },
+    { key: 'pos', label: 'Position', example: 'Manager' },
+    { key: 'ga', label: isDe ? 'Geschäftsbereich' : 'Business area', example: 'Technology & Transformation' },
+    { key: 'comp', label: isDe ? 'Unternehmen' : 'Company', example: 'Deloitte Consulting' },
+    { key: 'office', label: isDe ? 'Büro' : 'Office', example: 'DE - Köln' },
+  ];
+  const autoBadge: React.CSSProperties = { ...numBadge, background: 'var(--dex-gray-300, #c4c4c4)' };
   const enBadge = <span className="dex-ui-pill dex-ui-pill--blue" style={{ fontSize: '0.66rem', padding: '2px 7px', flexShrink: 0 }}>EN</span>;
   const catBadge = <span className="dex-ui-pill dex-ui-pill--green" style={{ fontSize: '0.66rem', padding: '2px 7px', flexShrink: 0 }}>{isDe ? 'KAT' : 'CAT'}</span>;
   // v11.4: feste Breite, damit Frage + Typ + Pflicht + X in einer Zeile bleiben.
@@ -452,7 +465,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                               <input
                                 className="form-input"
                                 value={field.label}
-                                placeholder={isDe ? 'Wie lautet die Frage? (z.B. „Welche Strecke läufst du?")' : 'What is the question? (e.g. „Which distance will you run?")'}
+                                placeholder={isDe ? 'Frage eingeben – z. B. „Welche Strecke läufst du?"' : 'Enter the question – e.g. “Which distance will you run?”'}
                                 onChange={e => updateSubEventCustomField(se.id, field.id, { label: e.target.value })}
                                 disabled={inherit}
                                 style={{ flex: '1 1 260px', minWidth: 180, fontSize: '0.95rem', fontWeight: 600, padding: '8px 12px', minHeight: 0 }}
@@ -689,33 +702,15 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                     Design der Anmeldeseite (Nutzer-Ansage 28.09.2026) — vorher
                     ein Satz mit sechs Feldnamen, den man leicht überlas und
                     der nicht zeigte, wie es beim Teilnehmer aussieht. */}
-                <div style={{ marginBottom: 14, maxWidth: 620 }}>
-                  <ProfileDataCard
-                    displayName="Max Mustermann"
-                    initials="MM"
-                    jobTitle="Manager"
-                    location="DE - Köln"
-                    rows={[
-                      { label: isDe ? 'E-Mail' : 'Email', value: 'mmustermann@deloitte.de' },
-                      { label: 'Position', value: 'Manager' },
-                      { label: isDe ? 'Geschäftsbereich' : 'Business Area', value: 'Technology & Transformation' },
-                      { label: isDe ? 'Unternehmen' : 'Company', value: 'Deloitte Consulting' },
-                      { label: isDe ? 'Büro' : 'Office', value: 'DE - Köln' },
-                    ]}
-                    rowsTitle={isDe ? 'Automatisch übernommene Daten (Beispiel)' : 'Automatically applied data (example)'}
-                    notSetLabel={isDe ? 'nicht hinterlegt' : 'not set'}
-                    expanded
-                    footer={isDe
-                      ? 'So sieht der Teilnehmer seine Daten auf der Anmeldeseite — sie kommen aus seinem Microsoft-Profil (M365). Hier ergänzt du nur zusätzliche Fragen.'
-                      : 'This is how attendees see their data on the registration page — it comes from their Microsoft profile (M365). Here you only add extra questions.'}
-                  />
-                </div>
+                {/* v32.1.4: Die Beispiel-Profilkarte ist entfallen — die Profildaten
+                    stehen seit v32.1.3 als graue Zeilen in der Tabelle (Nutzer-
+                    Ansage 28.09.2026: „das kann dann natürlich weg"). */}
 
                 <div className="dex-ui-inline" style={{ marginBottom: 12 }}>
                   {/* v31.2: Der Schritt heißt „Fragen im Anmeldeformular" — die Knöpfe
                       sprechen dieselbe Sprache („Frage", nicht „Feld"). Lokal über isDe,
                       der i18n-Schlüssel create.addfield bleibt unangetastet. */}
-                  <button className="btn btn-primary dex-ui-btn-sm" onClick={addCustomField}>
+                  <button className="btn btn-primary dex-ui-btn-sm" data-tour="wizard-add-question" onClick={addCustomField}>
                     <Plus size={14} /> {isDe ? 'Frage hinzufügen' : 'Add question'}
                   </button>
                   <button
@@ -836,7 +831,6 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                     (# · Feldart · Frage · Pflicht · Details), Nutzer-Ansage
                     28.09.2026: „übersichtlicher, in einer Art Tabelle mit
                     Spaltenüberschriften". Breiten wie in der Zeile darunter. */}
-                {customFields.length > 0 && (
                   <div aria-hidden="true" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px 6px', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--dex-gray-500)' }}>
                     {customFields.length > 1 && <span style={{ flex: '0 0 24px' }} />}
                     <span style={{ flex: '0 0 26px', textAlign: 'center' }}>#</span>
@@ -846,7 +840,23 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                     <span style={{ flex: '0 0 92px' }}>{isDe ? 'Details' : 'Details'}</span>
                     <span style={{ flex: '0 0 32px' }} />
                   </div>
-                )}
+                {AUTO_ROWS.map((r, i) => (
+                  <div key={r.key} className="dex-ui-card" style={{ padding: '10px 16px', marginBottom: 8, background: 'var(--dex-gray-50, #fafafa)' }}
+                    title={isDe ? 'Wird automatisch aus dem Microsoft-Profil übernommen — nicht änderbar, verschiebbar oder löschbar.' : 'Taken automatically from the Microsoft profile — cannot be changed, moved or deleted.'}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      {customFields.length > 1 && <span style={{ flex: '0 0 24px' }} />}
+                      <span style={autoBadge}>{i + 1}</span>
+                      <span style={{ flex: '0 0 210px', fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'Wird automatisch vorbefüllt' : 'Filled in automatically'}</span>
+                      <span style={{ flex: '1 1 260px', minWidth: 180, fontSize: '0.9rem', color: 'var(--dex-gray-600)' }}>
+                        <strong style={{ fontWeight: 600 }}>{r.label}</strong>
+                        <span className="dex-ui-muted" style={{ marginLeft: 8, fontSize: '0.8rem' }}>{isDe ? 'z. B. ' : 'e.g. '}{r.example}</span>
+                      </span>
+                      <span style={{ flex: '0 0 96px', fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'automatisch' : 'automatic'}</span>
+                      <span style={{ flex: '0 0 92px' }} />
+                      <span style={{ flex: '0 0 32px' }} />
+                    </div>
+                  </div>
+                ))}
                 {customFields.map((field, idx) => {
                   const isExpanded = !!fieldExpandOverride[field.id];
                   const isPeople = field.type === 'user' || field.type === 'roommate';
@@ -931,7 +941,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                       ) : customFields.length > 1 && (
                         <span className="dex-ui-drag-handle" title={isDe ? 'Ziehen, um die Reihenfolge zu ändern' : 'Drag to reorder'} aria-hidden="true" onClick={e => e.stopPropagation()} style={{ flex: '0 0 24px', justifyContent: 'center', padding: 4, boxSizing: 'border-box' }}>≡</span>
                       )}
-                      <span style={numBadge}>{idx + 1}</span>
+                      <span style={numBadge}>{idx + 1 + AUTO_ROWS.length}</span>
                       {/* v32.0.3: Feldart VOR der Frage (Spaltenfolge der Tabelle). */}
                       <select
                         className="dex-ui-select"
@@ -949,9 +959,10 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                           damit es wie ein wachsendes Eingabefeld wirkt. */}
                       <textarea
                         className="form-input"
+                        data-tour={idx === customFields.length - 1 ? 'wizard-question-label' : undefined}
                         value={field.label}
                         rows={1}
-                        placeholder={isDe ? 'Wie lautet die Frage? (z.B. „Welche T-Shirt-Größe brauchst du?")' : 'What is the question? (e.g. „Which T-shirt size do you need?")'}
+                        placeholder={isDe ? 'Frage eingeben – z. B. „Welche T-Shirt-Größe?"' : 'Enter the question – e.g. “Which T-shirt size?”'}
                         onChange={e => updateCustomField(field.id, { label: e.target.value })}
                         onClick={e => e.stopPropagation()}
                         ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; } }}
@@ -961,7 +972,10 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                           // .form-input-Klasse auf — die Auto-Höhe (scrollHeight)
                           // umschließt den Text dann exakt.
                           minHeight: 0,
-                          fontSize: '0.95rem', fontWeight: 600,
+                          // v32.1.3: Leer = Platzhalter in normaler Stärke und
+                          // kleiner — fett und zweizeilig war er lauter als
+                          // die echten Fragen darunter (Screenshot 28.09.2026).
+                          fontSize: field.label ? '0.95rem' : '0.86rem', fontWeight: field.label ? 600 : 400,
                           padding: '10px 12px',
                           resize: 'none', overflow: 'hidden', lineHeight: 1.35,
                           fontFamily: 'inherit',

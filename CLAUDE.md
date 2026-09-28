@@ -827,6 +827,29 @@ prüfen, welche der Bedingungen den Fall wirklich erzeugt hat
 Und: leere Auswahl heißt nicht „nichts zu tun" — wer alle gebuchten Sub-Events
 abwählt, meldet sie ab (`sessionsChanged` in `RegistrationPage`).
 
+**Das Mitmach-Tutorial legt ein ECHTES Event an — mit zwei Netzen (v32.1.0).**
+`tutorial/WizardCoach.tsx` führt die Person durch den echten Assistenten
+(sie tippt und klickt selbst); am Ende steht ein Event mit Subsite, Liste,
+„Event angelegt"-Mail und Outlook-Termin. Nutzer-Entscheidung 28.09.2026:
+Kommunikation „nur an mich", nicht stumm. Deshalb erzwingt
+`wizardSubmit.tutorialTestSicher` beim Anlegen, unabhängig vom Formular:
+Präfix „TEST – ", Entwurf, `activeFrom` leer, Organizer und Zielgruppe nur
+die Person, kein Test-/Check-in-/Co-Organizer-Team, Piggyback `_tutorialTest`
+(gestrippt UND in `hotelCarryConfig` mitgetragen). Drei Regeln: (1) Der
+Coach sieht auf ZUSTÄNDE, nicht auf Klicks — `EventCreationPage` meldet
+einen Schnappschuss (`reportWizard`), jede Station sagt, wann sie erfüllt
+ist. Wer ein Feld umbaut, auf das eine Station zeigt, behält den
+`data-tour`-Anker (Liste in `docs/konzept-mitmach-tutorial.md`). (2) Das
+Tutorial schreibt in `COACH_DRAFT_KEY`, nie in den normalen Entwurf, und der
+Assistent wird per `key` neu gemountet. (3) Gelöscht wird erst, wenn
+`CalendarLink` da ist — sonst sagt niemand den Outlook-Termin ab. Nach
+jedem Umbau am Assistenten: `tools/wizard-harness/coach-shot.js` laufen
+lassen (0 × „FEHLT"; Chromium unter `/opt/pw-browsers/chromium`, der
+1194er-Pfad hängt). Der Harness-Lauf hat vor dem ersten Release drei
+Fehler gefunden, die kein `tsc` sieht: Abrechnungsfrage als Dialog ohne
+`role="dialog"`, Plätze-Vorgabe „Unbegrenzt" ohne Zahlenfeld, Puls-Animation
+überschrieb das Abdunkeln.
+
 ## Der Wizard, Stand v31.2
 
 **Seit v31.2 sind alle Schritte nach `docs/ui-leitfaden.md` gebaut:** weißer

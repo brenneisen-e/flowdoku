@@ -42,6 +42,18 @@ export default function GrantScannersHandler(): React.ReactElement | null {
   const [result, setResult] = React.useState<Ergebnis | null>(null);
   const [open, setOpen] = React.useState(false);
   const handledRef = React.useRef(false);
+  // v32.0.14: Was gerade passiert, und seit wann. Nutzer-Befund 28.09.2026:
+  // „hat echt lange gedauert — kein Spinner, der sagt, dass ich noch warten
+  // soll". Das Rechte-Setzen hat keinen Fortschritts-Rückruf; deshalb zwei
+  // benannte Phasen plus laufende Sekunden statt eines stehenden Satzes.
+  const [phase, setPhase] = React.useState<{ step: 'read' | 'grant'; sites: number; people: number }>({ step: 'read', sites: 0, people: 0 });
+  const [startedAt, setStartedAt] = React.useState(0);
+  const [, setTick] = React.useState(0);
+  React.useEffect(() => {
+    if (!running) return;
+    const t = window.setInterval(() => setTick(n => n + 1), 1000);
+    return () => window.clearInterval(t);
+  }, [running]);
 
   React.useEffect(() => {
     if (!adminLike || handledRef.current) return;
@@ -59,9 +71,15 @@ export default function GrantScannersHandler(): React.ReactElement | null {
     const svc = new EventService(ctx);
     setRunning(true);
     setOpen(true);
+    setStartedAt(Date.now());
+    setPhase({ step: 'read', sites: 0, people: 0 });
     void (async () => {
       try {
-        const rows = await svc.getEvents();
+        // v32.0.14: schlank lesen — Team, Organizer und Subsite-Adressen
+        // stehen alle in der schlanken Zeile. Die volle Zeile trug Outlook-
+        // Texte und Mail-Bilder aller Events mit (am 28.09.2026 rund 37 MB)
+        // und war der größte Teil der Wartezeit.
+        const rows = await svc.getEvents(undefined, true);
         const root = rows.find(r => String(r.Id) === eventId);
         if (!root) {
           setResult({ title: '', sites: 0, scanners: [], granted: 0, unresolved: [], failed: [], error: isDe ? 'Event nicht gefunden.' : 'Event not found.' });
@@ -94,6 +112,7 @@ export default function GrantScannersHandler(): React.ReactElement | null {
           setRunning(false);
           return;
         }
+        setPhase({ step: 'grant', sites: sites.length, people: scanners.length });
         const r = await svc.ensureScannerListPermissions(sites, scanners, [], organizers.concat(coOrgs));
         setResult({
           title: root.Title || '', sites: sites.length, scanners, granted: r.granted, unresolved: r.unresolved,
@@ -117,9 +136,23 @@ export default function GrantScannersHandler(): React.ReactElement | null {
         {isDe ? 'Check-in-Team berechtigen' : 'Grant check-in team access'}
       </h2>
       {running || !result ? (
-        <p style={{ fontSize: '0.9rem', color: 'var(--dex-gray-600)' }}>
-          {isDe ? 'Rechte werden gesetzt …' : 'Granting rights …'}
-        </p>
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: '0.92rem', color: 'var(--dex-gray-800)', marginBottom: 10 }}>
+            {phase.step === 'read'
+              ? (isDe ? 'Schritt 1 von 2: Event und Check-in-Team werden gelesen …' : 'Step 1 of 2: reading the event and check-in team …')
+              : (isDe
+                ? `Schritt 2 von 2: Rechte auf ${phase.sites} Teilnehmerliste${phase.sites === 1 ? '' : 'n'} für ${phase.people} Person${phase.people === 1 ? '' : 'en'} werden gesetzt und nachgeprüft …`
+                : `Step 2 of 2: granting and verifying rights on ${phase.sites} participant list${phase.sites === 1 ? '' : 's'} for ${phase.people} ${phase.people === 1 ? 'person' : 'people'} …`)}
+          </div>
+          <div className="dex-ui-progress dex-ui-progress--indeterminate" role="progressbar" aria-busy="true" aria-label={isDe ? 'Läuft' : 'Running'}>
+            <div className="dex-ui-progress-bar" />
+          </div>
+          <div className="dex-ui-muted" style={{ fontSize: '0.8rem', marginTop: 8 }}>
+            {isDe
+              ? `Läuft seit ${Math.max(0, Math.round((Date.now() - startedAt) / 1000))} s — bitte das Fenster offen lassen. Je Liste und Person wird die Vergabe bei SharePoint nachgelesen; bei vielen Terminen dauert das eine Weile.`
+              : `Running for ${Math.max(0, Math.round((Date.now() - startedAt) / 1000))} s — please keep this window open. Each grant is verified with SharePoint per list and person; with many sessions this takes a while.`}
+          </div>
+        </div>
       ) : (
         <>
           {result.title && (
