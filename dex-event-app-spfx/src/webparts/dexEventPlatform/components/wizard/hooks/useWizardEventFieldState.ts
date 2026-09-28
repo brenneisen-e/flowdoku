@@ -318,6 +318,13 @@ export function useWizardEventFieldState(ctx: UseWizardEventFieldStateCtx) {
       ...(f.rangeStart ? { rangeStart: f.rangeStart } : {}),
       ...(f.rangeEnd ? { rangeEnd: f.rangeEnd } : {}),
       ...(typeof f.maxNights === 'number' && f.maxNights > 0 ? { maxNights: f.maxNights } : {}),
+      // v32.7: Die Spalten-Zuordnung fehlte in DIESEM Mapper (der Sub-Event-
+      // Pfad in useWizardVisibilityState hatte sie). Jeder Edit-Save schrieb
+      // die Fragen deshalb erst OHNE Zuordnung, die Spalten-Prüfung hielt
+      // das für „Feld ohne Spalte", lief komplett durch (gemessen 8 s) und
+      // schrieb die Zuordnung in einem zweiten Vorgang zurück — dazwischen
+      // stand sie in SharePoint leer. Gleiche Drop-Klasse wie v29.20.
+      ...(f.spInternalName ? { spInternalName: f.spInternalName } : {}),
     })) : []
   );
   // v30.95: gebackene Programm-Tabelle wieder zu {{Programm}} (Roundtrip, s. utils/programPlaceholder).
