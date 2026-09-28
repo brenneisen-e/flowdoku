@@ -48,6 +48,7 @@ import { persistSubEventsForParentImpl } from './wizard/logic/persistSubEvents';
 import { WizardTermsModal } from './wizard/WizardTermsModal';
 import { WizardModals } from './wizard/WizardModals';
 import { StepErrorModal, StepErrorState, springeZumFehlerfeld } from './wizard/StepErrorModal';
+import { AnlegeCountdown, ANLEGE_SEKUNDEN } from './wizard/AnlegeCountdown';
 import { SeriesEditor } from './wizard/SeriesEditor';
 import { SeriesApplyModal, SeriesApplyState, SeriesPropagateModal, SeriesPropagateState } from './wizard/SeriesModals';
 import { applySeriesPlan, ApplySeriesChoice, changedSeriesGroups, propagateSeriesChange, seriesSnapshot, subDayKey, subTimes } from './wizard/logic/seriesActions';
@@ -596,6 +597,8 @@ export default function EventCreationPage(): React.ReactElement {
   // Kalender-Sub-Events (s. utils/seriesRule).
   const [seriesRule, setSeriesRuleState] = React.useState<SeriesRule | null>(() => (editEvent && editEvent.seriesRule) || null);
   const [seriesOn, setSeriesOn] = React.useState<boolean>(!!(editEvent && editEvent.seriesRule));
+  // v32.0.6: Countdown vor dem Anlegen (s. attemptSubmitGuarded); null = aus.
+  const [anlegeCountdown, setAnlegeCountdown] = React.useState<number | null>(null);
   // v32.0.6: s. zeigeSchrittFehler — oben, weil unten frühe Returns stehen.
   const [stepErr, setStepErr] = React.useState<StepErrorState | null>(null);
   const [seriesApply, setSeriesApply] = React.useState<SeriesApplyState | null>(null);
@@ -2446,7 +2449,18 @@ export default function EventCreationPage(): React.ReactElement {
     setTriedNext(false);
     interceptVisibilityCopy(() => setCurrentStep(s => s + 1));
   };
-  const attemptSubmitGuarded = (): void => { interceptVisibilityCopy(attemptSubmit); };
+  // v32.0.6: Beim ANLEGEN erst ein kurzer Countdown mit „Abbrechen"
+  // (Nutzer-Ansage 28.09.2026: „die ersten 3–5 Sekunden abbrechen können").
+  // Bewusst VOR dem Start: Mitten im Anlegen abzubrechen hinterließe eine
+  // halbe Subsite oder Liste. Beim Ändern kein Countdown.
+  const attemptSubmitGuarded = (): void => {
+    if (isEditMode || createdEventIdRef.current) { interceptVisibilityCopy(attemptSubmit); return; }
+    setAnlegeCountdown(ANLEGE_SEKUNDEN);
+  };
+  const anlegenJetzt = (): void => {
+    setAnlegeCountdown(null);
+    interceptVisibilityCopy(attemptSubmit);
+  };
   const closeVisCopy = (apply: boolean): void => {
     // Stand als abgehandelt merken — erst eine erneute Klammer-Änderung fragt
     // wieder. Bei „Übernehmen" matchen die Sub-Events danach ohnehin.
@@ -3335,6 +3349,13 @@ export default function EventCreationPage(): React.ReactElement {
       <WizardFormShell {...wizardFormShellProps} />
 
       <WizardModals {...wizardModalsProps} />
+      <AnlegeCountdown
+        sekunden={anlegeCountdown}
+        isDe={isDe}
+        onTick={() => setAnlegeCountdown(c => (c === null ? null : c - 1))}
+        onAbbrechen={() => setAnlegeCountdown(null)}
+        onJetzt={anlegenJetzt}
+      />
       <StepErrorModal
         state={stepErr}
         stepLabel={stepErr ? (steps[stepErr.step]?.label || '') : ''}

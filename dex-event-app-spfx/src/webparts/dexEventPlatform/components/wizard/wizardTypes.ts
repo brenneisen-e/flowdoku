@@ -139,3 +139,24 @@ export type OutlookConfirmItem = {
 export type SuggestedCategory = 'general' | 'b2run';
 
 export type SuggestedEntry = { key: string; label: string; description: string; category: SuggestedCategory; icon: string; tooltip?: string; build: (_now: number) => CustomFieldInput };
+
+/**
+ * v32.0.6: Was beim Speichern/Anlegen tatsächlich passiert ist — der
+ * Abschluss-Dialog nennt es (Nutzer-Ansage 28.09.2026: „hier sollte eher
+ * stehen, was nun passiert ist"). Gefüllt in runWizardSubmit an den Stellen,
+ * die die Aktion auslösen; nichts wird hier vermutet.
+ */
+export interface AbschlussInfo {
+  /** Anlegen: Hauptevent bekommt einen Outlook-Termin (nicht abgeschaltet, nicht nur Sub-Events). */
+  outlookAngelegt: boolean;
+  /** Anlegen: Sub-Events mit eigenem Outlook-Termin. */
+  subOutlook: number;
+  /** Speichern: Anzahl der Outlook-Termine, deren Aktualisierung angestoßen wurde. */
+  outlookAktualisiert: number;
+  /** Speichern: Termine, deren Aktualisierung NICHT angestoßen werden konnte. */
+  outlookFehler: string[];
+  /** Anlegen: Adressen, an die die Mail „Event angelegt" in die Warteschlange ging. */
+  organizerMails: string[];
+  /** Event steht als Entwurf (noch nicht sichtbar). */
+  entwurf: boolean;
+}

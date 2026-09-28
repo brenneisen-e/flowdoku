@@ -7,7 +7,7 @@
  * Details darunter, Aktionen im Fuß. Handler, Bedingungen und State-Bindungen
  * sind unverändert; nur Darstellung, Reihenfolge und Wortwahl. */
 import * as React from 'react';
-import { AlertCircle, Calendar, Check, ChevronDown, Copy, Download, FileText, Info, Pencil, Plus, RefreshCw, Save, Send, Star, Trash2, Users, X } from '../Icons';
+import { AlertCircle, Calendar, Check, ChevronDown, Copy, Download, Info, Pencil, Plus, RefreshCw, Save, Send, Star, Trash2, Users, X } from '../Icons';
 // v31.2: Gemeinsame UI-Klassen (Zeilen, Chips, Hinweiskästen) — siehe dexUi.ts
 // und docs/ui-leitfaden.md.
 import { cx } from '../dexUi';
@@ -109,8 +109,8 @@ export interface WizardModalsProps {
   outlookSubheading: string;
   outlookSubject: string;
   pendingSections: string[];
-  pendingSuccessDispatch: { title: string; eventId: string; type: "create" | "update"; };
-  pendingSuccessDispatchRef: React.MutableRefObject<{ title: string; eventId: string; type: 'create' | 'update'; }>;
+  pendingSuccessDispatch: { title: string; eventId: string; type: "create" | "update"; abschluss?: import('./wizardTypes').AbschlussInfo; };
+  pendingSuccessDispatchRef: React.MutableRefObject<{ title: string; eventId: string; type: 'create' | 'update'; abschluss?: import('./wizardTypes').AbschlussInfo; }>;
   previewSections: { id: string; label: string; }[];
   qrScannerEmails: string[];
   qrScannerNames: string[];
@@ -150,7 +150,7 @@ export interface WizardModalsProps {
   setOutlookSubheading: React.Dispatch<React.SetStateAction<string>>;
   setOutlookSubject: React.Dispatch<React.SetStateAction<string>>;
   setPendingSections: React.Dispatch<React.SetStateAction<string[]>>;
-  setPendingSuccessDispatch: React.Dispatch<React.SetStateAction<{ title: string; eventId: string; type: "create" | "update"; }>>;
+  setPendingSuccessDispatch: React.Dispatch<React.SetStateAction<{ title: string; eventId: string; type: "create" | "update"; abschluss?: import('./wizardTypes').AbschlussInfo; }>>;
   setPreviewSections: React.Dispatch<React.SetStateAction<{ id: string; label: string; }[]>>;
   setQrScannerEmails: React.Dispatch<React.SetStateAction<string[]>>;
   setQrScannerNames: React.Dispatch<React.SetStateAction<string[]>>;
@@ -1300,50 +1300,83 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
           }
           closeAndDispatch();
         };
+        // v32.0.6: Der Dialog sagt zuerst, WAS passiert ist (Nutzer-Ansage
+        // 28.09.2026) — angelegt, Outlook, Mail an die Organizer — dann den
+        // nächsten Schritt mit dem Weg ins Organizer Center; die Zusammen-
+        // fassung ist nur noch ein Angebot daneben. Alle Zeilen kommen aus
+        // `abschluss`, das runWizardSubmit an den auslösenden Stellen füllt.
+        const ab = pendingSuccessDispatch.abschluss;
+        const neu = pendingSuccessDispatch.type === 'create';
+        const zeile = (icon: React.ReactNode, text: React.ReactNode, ton: 'ok' | 'info' | 'warn' = 'ok'): React.ReactNode => (
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '6px 0' }}>
+            <span style={{ flexShrink: 0, marginTop: 2, color: ton === 'ok' ? 'var(--dex-green-dark, #4a7c1f)' : ton === 'warn' ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-500)' }}>{icon}</span>
+            <span>{text}</span>
+          </div>
+        );
+        const mails = ab ? ab.organizerMails : [];
         return (
           <Modal
             open={true}
             onClose={closeAndDispatch}
-            maxWidth={560}
-            ariaLabel={isDe ? 'Event-Zusammenfassung herunterladen' : 'Download event summary'}
-            icon={<FileText size={20} />}
-            title={isDe ? 'Gespeichert — Zusammenfassung herunterladen?' : 'Saved — download a summary?'}
-            subtitle={isDe
-              ? 'Eine A4-Seite mit allen Angaben zum Event — zum Beispiel für einen Partner zur Durchsicht.'
-              : 'A one-page A4 overview of the whole event — for example for a partner to review.'}
-            // v31.2: „Nein, danke" links mit Abstand, die beiden Export-Wege
-            // rechts; PDF ist der Hauptweg.
+            maxWidth={580}
+            ariaLabel={neu ? (isDe ? 'Event angelegt' : 'Event created') : (isDe ? 'Event gespeichert' : 'Event saved')}
+            icon={<Check size={20} />}
+            title={neu
+              ? (isDe ? 'Dein Event ist angelegt' : 'Your event has been created')
+              : (isDe ? 'Änderungen gespeichert' : 'Changes saved')}
+            subtitle={pendingSuccessDispatch.title}
             footer={<>
               <div className="dex-ui-modal-foot-left">
-                <button type="button" className="btn btn-secondary" onClick={closeAndDispatch}>
-                  {isDe ? 'Nein, danke' : 'No, thanks'}
+                <button type="button" className="btn btn-secondary" onClick={onPdf}
+                  title={isDe ? 'A4-Seite mit allen Angaben — der Druckdialog öffnet sich, dort „Als PDF speichern" wählen.' : 'A4 page with all details — the print dialog opens, choose “Save as PDF”.'}>
+                  <Download size={14} /> {isDe ? 'Zusammenfassung als PDF' : 'Summary as PDF'}
+                </button>
+                <button type="button" className="dex-ui-textbtn" onClick={onDoc} style={{ marginLeft: 8 }}>
+                  {isDe ? 'als Word' : 'as Word'}
                 </button>
               </div>
-              <button type="button" className="btn btn-outline" onClick={onDoc}>
-                <Download size={14} /> {isDe ? 'Als Word (.doc)' : 'As Word (.doc)'}
-              </button>
-              <button type="button" className="btn btn-primary" onClick={onPdf}>
-                <Download size={14} /> {isDe ? 'Als PDF' : 'As PDF'}
+              <button type="button" className="btn btn-primary" onClick={closeAndDispatch}>
+                {isDe ? 'Zum Organizer Center' : 'Go to Organizer Center'}
               </button>
             </>}
           >
             <div className="dex-ui-stack">
-              <div className="dex-ui-callout dex-ui-callout--success">
-                <span className="dex-ui-callout-icon"><Check size={16} /></span>
-                <span>
-                  {isDe
-                    ? <>Das Event wurde gespeichert. Die Zusammenfassung enthält <strong>alle Sektionen</strong>: Foto, Beschreibung, Sichtbarkeit, Felder, Kommunikation, Dokumente, Sub-Events …</>
-                    : <>The event has been saved. The summary contains <strong>every section</strong>: photo, description, visibility, fields, communication, documents, sub-events …</>}
-                </span>
+              <div className="dex-ui-section-title" style={{ marginBottom: 0 }}>{isDe ? 'Was passiert ist' : 'What happened'}</div>
+              <div>
+                {neu
+                  ? zeile(<Check size={16} />, ab && ab.entwurf
+                    ? (isDe ? <>Das Event ist in DEX angelegt — <strong>als Entwurf</strong>, noch nicht sichtbar.</> : <>The event is created in DEX — <strong>as a draft</strong>, not visible yet.</>)
+                    : (isDe ? 'Das Event ist in DEX angelegt.' : 'The event is created in DEX.'))
+                  : zeile(<Check size={16} />, isDe ? 'Die Änderungen sind in DEX gespeichert.' : 'The changes are saved in DEX.')}
+                {neu && ab && (ab.outlookAngelegt || ab.subOutlook > 0) && zeile(<Calendar size={16} />, isDe
+                  ? <>Der Outlook-Termin{ab.subOutlook > 0 ? <> (plus {ab.subOutlook} für die {childTermPlural || 'Sub-Events'})</> : null} wird angelegt — das übernimmt Power Automate, meist innerhalb weniger Minuten.</>
+                  : <>The Outlook appointment{ab.subOutlook > 0 ? <> (plus {ab.subOutlook} for the sub-events)</> : null} is being created by Power Automate, usually within a few minutes.</>)}
+                {neu && ab && !ab.outlookAngelegt && ab.subOutlook === 0 && zeile(<Info size={16} />, isDe
+                  ? 'Kein Outlook-Termin — im Schritt Kommunikation abgeschaltet.'
+                  : 'No Outlook appointment — switched off in the communication step.', 'info')}
+                {!neu && ab && ab.outlookAktualisiert > 0 && ab.outlookFehler.length === 0 && zeile(<Calendar size={16} />, isDe
+                  ? <>{ab.outlookAktualisiert === 1 ? 'Der Outlook-Termin wird' : `${ab.outlookAktualisiert} Outlook-Termine werden`} aktualisiert — alle Eingeladenen bekommen die Änderung.</>
+                  : <>{ab.outlookAktualisiert === 1 ? 'The Outlook appointment is' : `${ab.outlookAktualisiert} Outlook appointments are`} being updated — everyone invited gets the change.</>)}
+                {!neu && ab && ab.outlookFehler.length > 0 && zeile(<AlertCircle size={16} />, isDe
+                  ? <>Outlook konnte für <strong>{ab.outlookFehler.join(', ')}</strong> nicht aktualisiert werden — der nächste Speichervorgang bietet es wieder an.</>
+                  : <>Outlook could not be updated for <strong>{ab.outlookFehler.join(', ')}</strong> — the next save offers it again.</>, 'warn')}
+                {!neu && ab && ab.outlookAktualisiert === 0 && zeile(<Info size={16} />, isDe
+                  ? 'Der Outlook-Termin bleibt unverändert.'
+                  : 'The Outlook appointment stays unchanged.', 'info')}
+                {neu && mails.length > 0 && zeile(<Send size={16} />, isDe
+                  ? <>Eine Mail mit allen Infos und dem Link geht an {mails.length === 1 ? 'den Organizer' : `die ${mails.length} Organizer`} ({mails.join(', ')}).</>
+                  : <>An email with all details and the link goes to {mails.length === 1 ? 'the organizer' : `the ${mails.length} organizers`} ({mails.join(', ')}).</>)}
               </div>
-              <div className="dex-ui-callout dex-ui-callout--info">
-                <span className="dex-ui-callout-icon"><Info size={16} /></span>
-                <span>
-                  {isDe
-                    ? <><strong>PDF:</strong> Der Browser-Druckdialog öffnet sich — wähle dort <strong>&bdquo;Als PDF speichern&ldquo;</strong> als Ziel. <strong>Word:</strong> lädt direkt eine .doc-Datei herunter.</>
-                    : <><strong>PDF:</strong> the browser print dialog opens — pick <strong>&ldquo;Save as PDF&rdquo;</strong> as the destination. <strong>Word:</strong> downloads a .doc file directly.</>}
-                </span>
-              </div>
+              {neu && (
+                <div className="dex-ui-callout dex-ui-callout--info">
+                  <span className="dex-ui-callout-icon"><Info size={16} /></span>
+                  <span>
+                    {isDe
+                      ? <><strong>Nächster Schritt:</strong> Im Organizer Center findest du unter „Nächste Schritte“ die <strong>Einladungsmail</strong> mit Anmelde-Link{ab && ab.entwurf ? <> und den Knopf <strong>„Live schalten“</strong></> : null}.</>
+                      : <><strong>Next step:</strong> in the Organizer Center, „Next steps“ has the <strong>invitation email</strong> with the registration link{ab && ab.entwurf ? <> and the <strong>„Go live“</strong> button</> : null}.</>}
+                  </span>
+                </div>
+              )}
             </div>
           </Modal>
         );

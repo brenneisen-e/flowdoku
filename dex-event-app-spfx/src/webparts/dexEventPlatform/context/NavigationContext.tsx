@@ -96,6 +96,10 @@ export function fallbackFor(page: Page, eventId: string | null): { page: Page; e
       return { page: 'admin-hub' };
     case 'registration':
       return { page: 'register' };
+    // v32.0.6: Aus einem Event im Organizer Center zurück in dessen
+    // Kachel-Übersicht (nicht auf die Startseite).
+    case 'admin':
+      return eventId ? { page: 'admin' } : { page: 'start' };
     default:
       return { page: 'start' };
   }
@@ -184,9 +188,18 @@ export function NavigationProvider(props: { children: React.ReactNode }): React.
 
     const goBack = (fallback?: { page: Page; eventId?: string }): void => {
       const proceed = (): void => {
-        if (history.length > 0) {
-          const prev = history[history.length - 1];
-          const next = history.slice(0, -1);
+        // v32.0.6: Assistenten-Einträge überspringen. Nach dem Anlegen springt
+        // der Wizard ins Organizer Center, sein Eintrag blieb aber im Stapel —
+        // „Zurück" öffnete einen leeren Wizard samt Nutzungsbedingungen statt
+        // der Übersicht (Nutzer-Befund 28.09.2026). Ein verlassener Wizard
+        // ist nie ein sinnvolles Rückziel; sein Stand liegt im Entwurf.
+        let stapel = history;
+        while (stapel.length > 0 && (stapel[stapel.length - 1].page === 'create-event' || stapel[stapel.length - 1].page === 'edit-event')) {
+          stapel = stapel.slice(0, -1);
+        }
+        if (stapel.length > 0) {
+          const prev = stapel[stapel.length - 1];
+          const next = stapel.slice(0, -1);
           setHistory(next);
           setCurrentPage(prev.page);
           setSelectedEventId(prev.eventId);

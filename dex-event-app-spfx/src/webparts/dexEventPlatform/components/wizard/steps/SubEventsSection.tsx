@@ -1161,6 +1161,21 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                       </div>
                     </div>
                   )}
+                  {/* v32.0.6: Kopfzeile wie bei den Abfragen (Nutzer-Ansage
+                      28.09.2026: „kann Sub-Events nicht auch wie Felder eine
+                      Tabelle mit Überschriften bekommen?"). Breiten wie in der
+                      Zeile darunter. */}
+                  {subEvents.length > 0 && (
+                    <div aria-hidden="true" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px 6px', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--dex-gray-500)' }}>
+                      <span style={{ flex: '0 0 26px', textAlign: 'center' }}>#</span>
+                      <span style={{ flex: '1 1 220px', minWidth: 160 }}>{isDe ? 'Titel' : 'Title'}</span>
+                      <span style={{ flex: '0 0 150px' }}>{isDe ? 'Beginn' : 'Start'}</span>
+                      <span style={{ flex: '0 0 150px' }}>{isDe ? 'Ende' : 'End'}</span>
+                      <span style={{ flex: '0 0 90px' }}>{isDe ? 'Plätze' : 'Seats'}</span>
+                      <span style={{ flex: '0 0 118px' }} />
+                      <span style={{ flex: '0 0 32px' }} />
+                    </div>
+                  )}
                   <div className="dex-ui-stack">
                   {subEvents.map((se, idx) => {
                     // SubEvent-Daten werden intern als UTC-ISO gespeichert, für die
@@ -1219,22 +1234,27 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                             Zeitraum (kein flex:1 am Textblock mehr); nur das
                             Entfernen-× bleibt rechts außen. */}
                         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                          <div style={{ minWidth: 180 }}>
-                            <div className="dex-ui-row-title" style={{ whiteSpace: 'normal' }}>
-                              {shortSubEventTitle(se.title, title) || (isDe ? 'Ohne Titel' : 'Untitled')}
-                            </div>
-                            <div className="dex-ui-row-sub">
-                              {(() => {
-                                const fmt = (d: Date | null): string => (d
-                                  ? d.toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-                                  : '');
-                                const s = fmt(startDateObj);
-                                const e = fmt(endDateObj);
-                                if (!s && !e) return isDe ? 'Zeiten wie Hauptevent' : 'Times as main event';
-                                return `${s || '—'} – ${e || '—'}`;
-                              })()}
-                            </div>
-                          </div>
+                          {(() => {
+                            const fmt = (d: Date | null): string => (d
+                              ? d.toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                              : '');
+                            const ohneZeiten = !startDateObj && !endDateObj;
+                            const zelle: React.CSSProperties = { fontSize: '0.84rem', color: 'var(--dex-gray-700)' };
+                            return (
+                              <>
+                                <span style={{ flex: '0 0 26px', width: 26, height: 26, borderRadius: '50%', background: 'var(--dex-green, #86bc25)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.78rem' }}>{idx + 1}</span>
+                                <div style={{ flex: '1 1 220px', minWidth: 160 }}>
+                                  <div className="dex-ui-row-title" style={{ whiteSpace: 'normal' }}>
+                                    {shortSubEventTitle(se.title, title) || (isDe ? 'Ohne Titel' : 'Untitled')}
+                                    {se.mandatory && <span className="dex-ui-pill dex-ui-pill--green" style={{ marginLeft: 8, fontSize: '0.66rem' }}>{isDe ? 'Pflicht' : 'Required'}</span>}
+                                  </div>
+                                </div>
+                                <span style={{ ...zelle, flex: '0 0 150px' }}>{ohneZeiten ? (isDe ? 'wie Hauptevent' : 'as main event') : (fmt(startDateObj) || '—')}</span>
+                                <span style={{ ...zelle, flex: '0 0 150px' }}>{ohneZeiten ? '' : (fmt(endDateObj) || '—')}</span>
+                                <span style={{ ...zelle, flex: '0 0 90px' }}>{typeof se.maxParticipants === 'number' && se.maxParticipants > 0 ? se.maxParticipants : (isDe ? 'unbegrenzt' : 'unlimited')}</span>
+                              </>
+                            );
+                          })()}
                           <button
                             type="button"
                             className="btn btn-secondary dex-ui-btn-sm"
@@ -1249,7 +1269,7 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                           <button
                             type="button"
                             className="dex-ui-iconbtn dex-ui-iconbtn--danger"
-                            style={{ marginLeft: 'auto' }}
+                            style={{ marginLeft: 'auto', flex: '0 0 32px' }}
                             // v27.11: Entfernen bestätigen lassen — vorher
                             // löschte EIN Klick den Draft sofort; bei bereits
                             // gespeicherten Sub-Events wurden beim nächsten
