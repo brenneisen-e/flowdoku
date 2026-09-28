@@ -24,7 +24,6 @@ import { CustomFieldInput } from '../../wizard/customFieldInput';
 import { FieldTypeSuggestion } from '../../wizard/FieldTypeSuggestion';
 import { StepBadge } from '../../wizard/StepBadge';
 import { FieldDescEditor } from '../../wizard/FieldDescEditor';
-import { ProfileDataCard } from '../../registration/ProfileDataCard';
 export interface FieldsStepProps {
   visible: boolean;
   activeFieldsTabIdx: number;
@@ -703,27 +702,9 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                     Design der Anmeldeseite (Nutzer-Ansage 28.09.2026) — vorher
                     ein Satz mit sechs Feldnamen, den man leicht überlas und
                     der nicht zeigte, wie es beim Teilnehmer aussieht. */}
-                <div style={{ marginBottom: 14, maxWidth: 620 }}>
-                  <ProfileDataCard
-                    displayName="Max Mustermann"
-                    initials="MM"
-                    jobTitle="Manager"
-                    location="DE - Köln"
-                    rows={[
-                      { label: isDe ? 'E-Mail' : 'Email', value: 'mmustermann@deloitte.de' },
-                      { label: 'Position', value: 'Manager' },
-                      { label: isDe ? 'Geschäftsbereich' : 'Business Area', value: 'Technology & Transformation' },
-                      { label: isDe ? 'Unternehmen' : 'Company', value: 'Deloitte Consulting' },
-                      { label: isDe ? 'Büro' : 'Office', value: 'DE - Köln' },
-                    ]}
-                    rowsTitle={isDe ? 'Automatisch übernommene Daten (Beispiel)' : 'Automatically applied data (example)'}
-                    notSetLabel={isDe ? 'nicht hinterlegt' : 'not set'}
-                    expanded
-                    footer={isDe
-                      ? 'So sieht der Teilnehmer seine Daten auf der Anmeldeseite — sie kommen aus seinem Microsoft-Profil (M365). Hier ergänzt du nur zusätzliche Fragen.'
-                      : 'This is how attendees see their data on the registration page — it comes from their Microsoft profile (M365). Here you only add extra questions.'}
-                  />
-                </div>
+                {/* v32.1.4: Die Beispiel-Profilkarte ist entfallen — die Profildaten
+                    stehen seit v32.1.3 als graue Zeilen in der Tabelle (Nutzer-
+                    Ansage 28.09.2026: „das kann dann natürlich weg"). */}
 
                 <div className="dex-ui-inline" style={{ marginBottom: 12 }}>
                   {/* v31.2: Der Schritt heißt „Fragen im Anmeldeformular" — die Knöpfe
@@ -865,7 +846,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       {customFields.length > 1 && <span style={{ flex: '0 0 24px' }} />}
                       <span style={autoBadge}>{i + 1}</span>
-                      <span style={{ flex: '0 0 210px', fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>Auto</span>
+                      <span style={{ flex: '0 0 210px', fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'Wird automatisch vorbefüllt' : 'Filled in automatically'}</span>
                       <span style={{ flex: '1 1 260px', minWidth: 180, fontSize: '0.9rem', color: 'var(--dex-gray-600)' }}>
                         <strong style={{ fontWeight: 600 }}>{r.label}</strong>
                         <span className="dex-ui-muted" style={{ marginLeft: 8, fontSize: '0.8rem' }}>{isDe ? 'z. B. ' : 'e.g. '}{r.example}</span>

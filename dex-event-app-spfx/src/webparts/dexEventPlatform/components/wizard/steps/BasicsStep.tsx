@@ -4,6 +4,7 @@
  * `visible` schaltet display:none statt unmount — Eingaben ueberleben den
  * Schrittwechsel genauso wie vorher. */
 import * as React from 'react';
+import { eventDraftKey } from '../../../utils/eventDraft';
 import DexLogo from '../../DexLogo';
 import WizardHint from '../../WizardHint';
 import { StepBadge } from '../../wizard/StepBadge';
@@ -24,7 +25,7 @@ export interface BasicsStepProps {
   seriesSlot?: React.ReactNode;
   activeFrom: string;
   activeScopeIdx: number;
-  applyDraftPayload: (d: Record<string, unknown>) => void;
+  applyDraftPayload: (d: Record<string, unknown>, adoptId?: string) => void;
   applyEventTemplate: (ev: import("../../../types/index").DeloitteEvent) => Promise<void>;
   childEventsOf: (parentEventId: string) => import("../../../types/index").DeloitteEvent[];
   childTermSingular: string;
@@ -57,7 +58,7 @@ export interface BasicsStepProps {
   outlookLogoFromPhoto: boolean;
   outlookLogoPreview: string;
   patchScopeSub: (patch: Partial<SubEventDraft>) => void;
-  pendingDraft: { savedAt: number; data: Record<string, unknown>; };
+  pendingDraft: { savedAt: number; data: Record<string, unknown>; id?: string } | null;
   previewBeforeActive: boolean;
   renderStepIntro: (_bulletsDe: string[], _bulletsEn: string[]) => React.ReactElement | null;
   scAllDay: boolean;
@@ -314,7 +315,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   ? (pendingDraft.data.title as string).trim()
                   : (isDe ? '(ohne Titel)' : '(untitled)');
                 const continueDraft = (): void => {
-                  try { applyDraftPayload(pendingDraft.data); } catch (err) { console.warn('[DEX] Entwurf-Wiederherstellung fehlgeschlagen:', err); }
+                  try { applyDraftPayload(pendingDraft.data, pendingDraft.id); } catch (err) { console.warn('[DEX] Entwurf-Wiederherstellung fehlgeschlagen:', err); }
                   setPendingDraft(null);
                 };
                 // v31.2 (2a′): Die ganze Kachel öffnet den Entwurf (Hover,
@@ -354,7 +355,8 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                           className="dex-ui-textbtn dex-ui-textbtn--danger"
                           onClick={e => {
                             e.stopPropagation();
-                            try { localStorage.removeItem(DRAFT_KEY); } catch { /* */ }
+                            // v32.1.4: genau DIESEN Entwurf, nicht den eigenen Platz.
+                            try { localStorage.removeItem(pendingDraft.id ? eventDraftKey(pendingDraft.id) : DRAFT_KEY); } catch { /* */ }
                             setPendingDraft(null);
                           }}
                           onKeyDown={stopBubble}

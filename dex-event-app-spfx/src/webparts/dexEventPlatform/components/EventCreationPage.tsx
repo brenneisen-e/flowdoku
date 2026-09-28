@@ -14,7 +14,7 @@ import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
 import { useDialog } from '../context/DialogContext';
 import { EventService } from '../services/EventService';
-import { readEventDraft } from '../utils/eventDraft'; // v31.61
+import { readEventDraft, readEventDraftById, readEventDraftRaw, listEventDrafts, eventDraftKey, newEventDraftId, peekResumeDraftId, clearResumeDraftId } from '../utils/eventDraft'; // v31.61, v32.1.4
 // v26.48: zentrale B2Run-Köln-Vorlage (Titel-Erkennung + 7 Meldefelder mit
 // deterministischen IDs für den offiziellen Excel-Export).
 import { getCachedOrbBase64 } from '../services/EmailTemplates';
@@ -131,7 +131,12 @@ export default function EventCreationPage(): React.ReactElement {
   // gespeicherte Bestätigung schon beim ersten Render übernehmen — sonst
   // blitzt der Bedingungen-Dialog auf, bis der Lade-Effekt den Entwurf
   // anwendet. Die Bestätigung gilt je Entwurf, nicht je Sitzung.
-  const [tcAccepted, setTcAccepted] = React.useState<boolean>(() => navIntent === 'resume-draft' && !!(readEventDraft()?.tcAccepted));
+  // v32.1.4: WELCHER Entwurf fortgesetzt wird, kommt aus der Übergabe der
+  // Eventübersicht; ohne Übergabe (Alt-Pfad) der neueste.
+  const resumeIdRef = React.useRef<string | null>(navIntent === 'resume-draft'
+    ? (peekResumeDraftId() || (readEventDraft() ? (readEventDraft() as { id: string }).id : null))
+    : null);
+  const [tcAccepted, setTcAccepted] = React.useState<boolean>(() => !!resumeIdRef.current && !!(readEventDraftById(resumeIdRef.current)?.tcAccepted));
   const [tcCheckbox, setTcCheckbox] = React.useState(false);
   // v28.41: Zweite, bewusst getrennte Bestätigung — der Organizer muss aktiv
   // erklären, dass es ein internes Event ist bzw. die Deloitte-Teilnahme an
@@ -2002,7 +2007,11 @@ export default function EventCreationPage(): React.ReactElement {
   // ============================================================
   // v32.1.0: Das Tutorial schreibt in einen eigenen Schlüssel — sonst
   // überschriebe sein Autosave einen echten, unfertigen Entwurf.
-  const DRAFT_KEY = coachMode ? COACH_DRAFT_KEY : 'dex_event_creation_draft_v1';
+  // v32.1.4: Je Assistenten-Sitzung ein eigener Entwurfsplatz (utils/eventDraft).
+  // Vorher gab es EINEN Platz: Ein neues Event überschrieb den liegenden
+  // Entwurf beim ersten Tippen, „Event verwerfen" löschte dann beides.
+  const [draftId, setDraftId] = React.useState<string>(() => resumeIdRef.current || newEventDraftId());
+  const DRAFT_KEY = coachMode ? COACH_DRAFT_KEY : eventDraftKey(draftId);
   const draftPromptShownRef = React.useRef(false);
   // v30.1: Zeitpunkt der letzten Zwischenspeicherung — fuer die Anzeige
   // „Zwischengespeichert am …" ueber dem Formular. lastDraftJsonRef
@@ -2014,7 +2023,7 @@ export default function EventCreationPage(): React.ReactElement {
   // „Eigenes Event als Vorlage nutzen?" den gefundenen Entwurf — mit
   // Fortsetzen- und Löschen-Button. pendingDraft hält ihn, bis der User
   // entscheidet oder das eigene Tippen ihn überschreibt (draftSavedAt).
-  const [pendingDraft, setPendingDraft] = React.useState<{ savedAt: number; data: Record<string, unknown> } | null>(null);
+  const [pendingDraft, setPendingDraft] = React.useState<{ savedAt: number; data: Record<string, unknown>; id?: string } | null>(null);
   const buildDraftPayload = (): Record<string, unknown> => ({
     title, description, location, addrStreet, addrHouseNo, addrZip, addrCity,
     organizer, organizerEmails, contactName, contactEmail, contactInfo,
@@ -2038,7 +2047,10 @@ export default function EventCreationPage(): React.ReactElement {
     currentStep,
     tcAccepted, // v31.61: Bestätigung der Nutzungsbedingungen gehört zum Entwurf
   });
-  const applyDraftPayload = (d: Record<string, unknown>): void => {
+  const applyDraftPayload = (d: Record<string, unknown>, adoptId?: string): void => {
+    // v32.1.4: Wer einen liegenden Entwurf fortsetzt, schreibt ab jetzt in
+    // DESSEN Platz — sonst entstünde beim nächsten Autosave eine Kopie.
+    if (adoptId) setDraftId(adoptId);
     return applyDraftPayloadImpl({
       canBilling, setActiveFrom, setAddrCity, setAddrHouseNo, setAddrStreet, setAddrZip,
       setAgenda, setAgendaCheckIn, setAgendaTermPlural, setAgendaTermSingular, setAskSalutation, setAskTeamName, setAudience, setBillingFields, setBillingRelevant,
@@ -2062,8 +2074,19 @@ export default function EventCreationPage(): React.ReactElement {
     if (isEditMode || draftPromptShownRef.current) return;
     draftPromptShownRef.current = true;
     try {
+      // v32.1.4: Ausdrücklich „Neues Event" gewählt — keine Entwurfs-Kachel.
+      if (navIntent === 'fresh-event' && !coachMode) { clearIntent(); return; }
+      // Normale Neu-Anlage: der eigene Platz ist frisch; angeboten wird der
+      // neueste LIEGENDE Entwurf (mit seiner Id, damit Fortsetzen/Verwerfen
+      // genau ihn trifft).
+      if (!coachMode && navIntent !== 'resume-draft') {
+        const newest = listEventDrafts()[0];
+        const r = newest ? readEventDraftRaw(newest.id) : null;
+        if (newest && r) setPendingDraft({ savedAt: r.savedAt, data: r.data, id: newest.id });
+        return;
+      }
       const raw = localStorage.getItem(DRAFT_KEY);
-      if (!raw) return;
+      if (!raw) { if (navIntent === 'resume-draft') { clearIntent(); clearResumeDraftId(); } return; }
       const parsed = JSON.parse(raw) as { savedAt?: number; data?: Record<string, unknown> };
       const data = parsed?.data;
       const age = Date.now() - (parsed?.savedAt || 0);
@@ -2081,10 +2104,9 @@ export default function EventCreationPage(): React.ReactElement {
         applyDraftPayload(data);
         lastDraftJsonRef.current = JSON.stringify(data);
         setDraftSavedAt(parsed.savedAt || 0);
-        if (navIntent === 'resume-draft') clearIntent();
+        if (navIntent === 'resume-draft') { clearIntent(); clearResumeDraftId(); }
         return;
       }
-      setPendingDraft({ savedAt: parsed.savedAt || 0, data });
     } catch { /* localStorage gesperrt o.ä. — kein Entwurf, kein Drama */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditMode]);

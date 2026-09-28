@@ -17,7 +17,7 @@ import { formatDate } from '../../../utils/eventStatus';
 import OrganizerList from '../../OrganizerList';
 import Modal from '../../Modal';
 // v31.60: Entwurf der Event-Erstellung — Knopf + Dialog neben „Neues Event".
-import { EventDraftInfo, clearEventDraft, readEventDraft } from '../../../utils/eventDraft';
+import { EventDraftInfo, clearEventDraft, listEventDrafts, setResumeDraftId } from '../../../utils/eventDraft';
 // v31.73: Zeitstrahl mit Monaten links (wie „Aktuelle Events", Liste).
 import { useIsMobile } from '../../../utils/useIsMobile';
 import { monatKurz } from '../../../utils/monatKurz';
@@ -67,7 +67,8 @@ export const EventOverviewScreen: React.FC<EventOverviewScreenProps> = (p) => {
   // v31.60: Liegt ein Entwurf? Beim Mount gelesen und bei jeder Rückkehr in
   // den Tab (der Entwurf entsteht im Assistenten, also in einer anderen
   // Ansicht) — nicht bei jedem Render, localStorage ist synchron.
-  const [draft, setDraft] = React.useState<EventDraftInfo | null>(() => readEventDraft());
+  // v32.1.4: ALLE Entwürfe (je Assistenten-Sitzung einer, utils/eventDraft).
+  const [drafts, setDrafts] = React.useState<EventDraftInfo[]>(() => listEventDrafts());
   const [draftOpen, setDraftOpen] = React.useState(false);
   // v31.73: Zeitstrahl nur bei Sortierung nach Datum und nicht auf dem Handy
   // (Nutzer-Ansage 17.09.2026: „Organizer-Eventansicht bitte auch mit der
@@ -76,7 +77,7 @@ export const EventOverviewScreen: React.FC<EventOverviewScreenProps> = (p) => {
   const isMobile = useIsMobile();
   const zeitstrahl = eventSortMode === 'date' && !isMobile;
   React.useEffect(() => {
-    const refresh = (): void => setDraft(readEventDraft());
+    const refresh = (): void => setDrafts(listEventDrafts());
     refresh();
     window.addEventListener('focus', refresh);
     return () => window.removeEventListener('focus', refresh);
@@ -88,63 +89,75 @@ export const EventOverviewScreen: React.FC<EventOverviewScreenProps> = (p) => {
   };
   return (
       <div className="page-container" role="main" style={{ maxWidth: 1200, marginLeft: 'auto', marginRight: 'auto' }}>
-        {/* v31.60: Entwurf-Dialog — eine Karte je Entwurf (heute genau einer;
-            die Liste ist die Form, die mehrere tragen kann). Klick öffnet den
-            Assistenten mit angewendetem Entwurf (`resume-draft`). */}
+        {/* v31.60: Entwurf-Dialog. v32.1.4: Zwischendialog vor dem Anlegen —
+            Nutzer-Ansage 28.09.2026: „wenn es einen Entwurf gibt, dann nicht
+            zwei Knöpfe, sondern ‚Event erstellen / Entwurf fortsetzen' und
+            dann ein Zwischendialog: Entwurf fortsetzen oder neues Event."
+            Neues Event geht mit `fresh-event` in den Assistenten (keine
+            Entwurfs-Kachel mehr, die Nutzungsbedingungen kommen wie immer);
+            ein Entwurf mit `resume-draft` und seiner Id. */}
         {draftOpen && (
           <Modal
             open={true}
             onClose={() => setDraftOpen(false)}
-            maxWidth={520}
-            ariaLabel={isDe ? 'Entwurf weiter bearbeiten' : 'Continue draft'}
-            title={isDe ? 'Entwurf weiter bearbeiten' : 'Continue draft'}
+            maxWidth={560}
+            ariaLabel={isDe ? 'Event erstellen oder Entwurf fortsetzen' : 'Create event or continue draft'}
+            title={isDe ? 'Event erstellen oder Entwurf fortsetzen?' : 'Create an event or continue a draft?'}
             subtitle={isDe
-              ? 'Dein zwischengespeicherter Stand aus der Event-Erstellung. Klick ihn an, um genau dort weiterzumachen.'
-              : 'Your saved state from event creation. Click it to continue right where you left off.'}
+              ? 'Du hast unfertige Entwürfe. Mach dort weiter — oder leg ein neues Event an; die Entwürfe bleiben dabei erhalten.'
+              : 'You have unfinished drafts. Continue one — or create a new event; your drafts stay untouched.'}
             icon={<Pencil size={20} />}
-            footer={(
+            footer={(<>
               <button type="button" className="btn btn-secondary" onClick={() => setDraftOpen(false)}>
-                {isDe ? 'Schließen' : 'Close'}
+                {isDe ? 'Abbrechen' : 'Cancel'}
               </button>
-            )}
+              <button type="button" className="btn btn-primary" onClick={() => { setDraftOpen(false); navigate('create-event', undefined, 'fresh-event'); }}>
+                <Plus size={16} /> {isDe ? 'Neues Event anlegen' : 'Create new event'}
+              </button>
+            </>)}
           >
-            {!draft ? (
+            {drafts.length === 0 ? (
               <div className="dex-ui-empty">{isDe ? 'Kein Entwurf mehr vorhanden.' : 'No draft left.'}</div>
             ) : (
               <div className="dex-ui-stack">
-                <button
-                  type="button"
-                  className="dex-ui-choice is-active"
-                  // display:block — die Kachel-Klasse ist eine Zeile (Symbol +
-                  // Text); hier stehen Titel und Angaben untereinander.
-                  style={{ textAlign: 'left', width: '100%', cursor: 'pointer', display: 'block' }}
-                  onClick={() => { setDraftOpen(false); navigate('create-event', undefined, 'resume-draft'); }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <strong style={{ fontSize: '0.95rem' }}>{draft.title || (isDe ? 'Ohne Titel' : 'Untitled')}</strong>
-                    <span className="dex-ui-pill dex-ui-pill--orange dex-ui-pill--sm">{isDe ? 'Entwurf' : 'Draft'}</span>
-                    <span className="dex-ui-pill dex-ui-pill--gray dex-ui-pill--sm">{isDe ? `Schritt ${draft.step + 1}` : `Step ${draft.step + 1}`}</span>
+                <div className="dex-ui-section-title" style={{ margin: 0 }}>{isDe ? (drafts.length === 1 ? 'Dein Entwurf' : `Deine ${drafts.length} Entwürfe`) : (drafts.length === 1 ? 'Your draft' : `Your ${drafts.length} drafts`)}</div>
+                {drafts.map(draft => (
+                  <div key={draft.id} style={{ display: 'flex', alignItems: 'stretch', gap: 8 }}>
+                    <button
+                      type="button"
+                      className="dex-ui-choice"
+                      style={{ textAlign: 'left', flex: 1, minWidth: 0, cursor: 'pointer', display: 'block' }}
+                      onClick={() => { setDraftOpen(false); setResumeDraftId(draft.id); navigate('create-event', undefined, 'resume-draft'); }}
+                      title={isDe ? 'Diesen Entwurf fortsetzen' : 'Continue this draft'}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <strong style={{ fontSize: '0.95rem' }}>{draft.title || (isDe ? 'Ohne Titel' : 'Untitled')}</strong>
+                        <span className="dex-ui-pill dex-ui-pill--orange dex-ui-pill--sm">{isDe ? 'Entwurf' : 'Draft'}</span>
+                        <span className="dex-ui-pill dex-ui-pill--gray dex-ui-pill--sm">{isDe ? `Schritt ${draft.step + 1}` : `Step ${draft.step + 1}`}</span>
+                      </div>
+                      <div className="dex-ui-muted" style={{ marginTop: 4, fontSize: '0.82rem' }}>
+                        {isDe ? 'Zwischengespeichert' : 'Saved'} {fmtSaved(draft.savedAt)}
+                        {draft.startDate ? ` · ${isDe ? 'Beginn' : 'Start'} ${formatDate(draft.startDate)}` : ''}
+                        {draft.location ? ` · ${draft.location}` : ''}
+                        {draft.subEventCount > 0 ? ` · ${draft.subEventCount} ${isDe ? 'Sub-Events' : 'sub-events'}` : ''}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      className="dex-ui-iconbtn dex-ui-iconbtn--danger"
+                      onClick={() => { clearEventDraft(draft.id); setDrafts(listEventDrafts()); }}
+                      title={isDe ? 'Diesen Entwurf löschen' : 'Delete this draft'}
+                      aria-label={isDe ? 'Diesen Entwurf löschen' : 'Delete this draft'}
+                      style={{ alignSelf: 'center' }}
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </div>
-                  <div className="dex-ui-muted" style={{ marginTop: 4, fontSize: '0.82rem' }}>
-                    {isDe ? 'Zwischengespeichert' : 'Saved'} {fmtSaved(draft.savedAt)}
-                    {draft.startDate ? ` · ${isDe ? 'Beginn' : 'Start'} ${formatDate(draft.startDate)}` : ''}
-                    {draft.location ? ` · ${draft.location}` : ''}
-                    {draft.subEventCount > 0 ? ` · ${draft.subEventCount} ${isDe ? 'Sub-Events' : 'sub-events'}` : ''}
-                  </div>
-                </button>
+                ))}
                 <div className="dex-ui-muted" style={{ fontSize: '0.8rem' }}>
                   {isDe
                     ? 'Hochgeladene Bilder sind im Entwurf nicht enthalten. Entwürfe verfallen nach 14 Tagen.'
                     : 'Uploaded images are not part of the draft. Drafts expire after 14 days.'}
-                </div>
-                <div>
-                  <button
-                    type="button"
-                    className="btn btn-secondary dex-ui-btn-sm"
-                    onClick={() => { clearEventDraft(); setDraft(null); }}
-                  >
-                    <Trash2 size={14} /> {isDe ? 'Entwurf löschen' : 'Delete draft'}
-                  </button>
                 </div>
               </div>
             )}
@@ -166,14 +179,13 @@ export const EventOverviewScreen: React.FC<EventOverviewScreenProps> = (p) => {
               Audit-Log und SharePoint-Liste sind Admin-Funktionen und leben jetzt
               zentral in der Admin-Kachel (admin-hub). */}
           <div className="dex-ui-page-head-actions">
-            {/* v31.60: Nur wenn ein Entwurf liegt — sonst wäre es ein Knopf ins Leere. */}
-            {draft && (
-              <button className="btn btn-secondary" onClick={() => setDraftOpen(true)} style={{ fontSize: '0.85rem' }}>
-                <Pencil size={16} /> {isDe ? 'Entwurf weiter bearbeiten' : 'Continue draft'}
-              </button>
-            )}
-            <button className="btn btn-primary" onClick={() => navigate('create-event')} style={{ fontSize: '0.85rem' }}>
-              <Plus size={16} /> {t('admin.newevent')}
+            {/* v32.1.4: EIN Knopf. Liegt ein Entwurf, heißt er „Event erstellen /
+                Entwurf fortsetzen" und öffnet den Zwischendialog; sonst geht er
+                direkt in den Assistenten. */}
+            <button className="btn btn-primary" onClick={() => { if (drafts.length > 0) setDraftOpen(true); else navigate('create-event'); }} style={{ fontSize: '0.85rem' }}>
+              <Plus size={16} /> {drafts.length > 0
+                ? (isDe ? 'Event erstellen / Entwurf fortsetzen' : 'Create event / continue draft')
+                : t('admin.newevent')}
             </button>
           </div>
         </div>
