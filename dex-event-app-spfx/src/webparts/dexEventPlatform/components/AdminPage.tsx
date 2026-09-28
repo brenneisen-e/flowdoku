@@ -2772,7 +2772,10 @@ export default function AdminPage(): React.ReactElement {
         {/* 1. Seitenkopf: Detail-Card + „Nächste Schritte"-Box rechts daneben
             (Desktop; stapelt auf Mobile via flex-wrap). Die Box erscheint nur
             für Entwürfe und nur für Admin/Organizer. */}
-        <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 20 }}>
+        {/* v32.2.2: stretch statt flex-start — beide Kacheln gleich hoch
+            (Nutzer-Ansage 28.09.2026); der Inhalt der Detail-Karte bleibt
+            oben stehen, die Karte wird nur nach unten länger. */}
+        <div style={{ display: 'flex', gap: 24, alignItems: 'stretch', flexWrap: 'wrap', marginBottom: 20 }}>
         <EventDetailCard {...eventDetailCardProps} hintsSlot={zeigtNextSteps ? undefined : hintsSlot} />
         {/* v22.5: „Nächste Schritte"-Box rechts neben der Detail-Card — nur für
             Entwürfe (Admin/Organizer). Erklärt, was nach dem Anlegen noch zu tun

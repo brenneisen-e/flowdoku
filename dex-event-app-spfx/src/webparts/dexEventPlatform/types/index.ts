@@ -703,6 +703,8 @@ export interface EventSpecificField {
    *  Quell-Antworten in `values` enthalten ist. Bei Checkbox-Quelle ist
    *  values = ['true'] oder ['false']. */
   showIf?: { fieldId: string; values: string[] };
+  /** v32.2.2: Frage nur für bestimmte Positionen (utils/positionRule). */
+  showForPositions?: { mode: 'only' | 'except'; values: string[] };
   /** v10.24: Bei aktiver Split-Capacity (DurchstarterCapacity > 0 AND
    *  FunstarterCapacity > 0) kann der Organizer ein Feld auf eine der zwei
    *  Gruppen einschränken. 'A' = nur Gruppe A (intern: Durchstarter), 'B' =

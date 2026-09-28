@@ -26,6 +26,7 @@ import Modal from '../Modal';
 import StayRangePicker from '../StayRangePickerLazy';
 import { FieldAnswerTag, formatDateTimeRange } from './myEventsHelpers';
 import { groupSubEventTabs, stripGroupPrefix } from '../../utils/subEventGroups';
+import { positionRuleAllows } from '../../utils/positionRule';
 import { SubmitOverlay } from '../registration/RegistrationBanners';
 
 // ==================== Sub-Events im "My Events"-Tab ====================
@@ -1098,6 +1099,7 @@ export default function MyEventSubEvents(props: {
         // editDraft, damit das Umschalten des steuernden Felds die abhängigen
         // Felder sofort ein-/ausblendet (gleiche Logik wie das Anmelde-Modal).
         const isFieldVisible = (f: EventSpecificField): boolean => {
+          if (!positionRuleAllows(f.showForPositions, currentUser.jobTitle)) return false;
           if (!f.showIf || !f.showIf.fieldId) return true;
           const raw = (editDraft[f.showIf.fieldId] || '').trim();
           if (!raw) return false;
@@ -1228,6 +1230,7 @@ export default function MyEventSubEvents(props: {
         const ce = regFieldsModal.ce;
         const fields = (ce.eventSpecificFields || [])
           .filter(f => f && f.label)
+          .filter(f => positionRuleAllows(f.showForPositions, currentUser.jobTitle))
           .filter(f => {
             if (!f.showIf || !f.showIf.fieldId) return true;
             const raw = (regDraft[f.showIf.fieldId] || '').trim();

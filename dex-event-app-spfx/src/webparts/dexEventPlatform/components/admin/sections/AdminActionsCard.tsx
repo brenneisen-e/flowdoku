@@ -1585,6 +1585,7 @@ export const AdminActionsCard: React.FC<AdminActionsCardProps> = (p) => {
                           ...(f.helpText ? { helpText: f.helpText } : {}),
                           ...(f.multi ? { multi: true } : {}),
                           ...(f.showIf ? { showIf: f.showIf } : {}),
+                          ...(f.showForPositions ? { showForPositions: f.showForPositions } : {}),
                         }));
                         const splitActive = (selectedEvent.durchstarterCapacity || 0) > 0 && (selectedEvent.funstarterCapacity || 0) > 0;
                         await eventServiceRef.fixRegistrationListColumns(selectedEvent.subsiteUrl, {

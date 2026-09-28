@@ -4,10 +4,11 @@
  * dasselbe Muster wie `svc` bei den EventService-Modulen. Das Objekt wird beim
  * Aufruf gebaut, nicht memoisiert: damit sieht die Funktion exakt die Werte des
  * laufenden Renders, wie die Closure vorher auch. */
+import { cleanPositionRule } from '../../../utils/positionRule'; // v32.2.2
 import * as React from 'react';
 import { setSaveInProgress } from '../../../utils/saveGuard';
 import { buildOutlookLocation } from '../../../utils/eventFormat';
-import { outlookLogoPiggyback, resolveAudienceMembersToCsv, serializeCustomFields } from '../../wizard/wizardHelpers';
+import { externeZielgruppenPersonen, outlookLogoPiggyback, resolveAudienceMembersToCsv, serializeCustomFields } from '../../wizard/wizardHelpers';
 import { formatOrganizerList } from '../../../context/EventContext';
 import { buildOutlookBody, eventCreatedEmail, getCachedOrbBase64, replacePlaceholders, wrapTemplate } from '../../../services/EmailTemplates';
 import { buildHashDeepLink } from '../../../utils/deepLink';
@@ -1098,13 +1099,12 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
         // brauchen zusätzlich Site-Zugriff). Nur der Diff gegen den vorherigen
         // Stand, damit nicht bei jedem Save erneut gemailt wird. Fire-and-forget.
         try {
+          // v32.2.2: Verteiler auflösen, nur Personen melden (externeZielgruppenPersonen).
           const prevAudLc = new Set((editEvent?.audienceFilter || []).map(a => (a || '').trim().toLowerCase()));
-          const addedNonDe = audience.split(',')
-            .map(s => s.trim())
-            .filter(a => a.indexOf('@') > 0 && !a.toLowerCase().endsWith('@deloitte.de') && !prevAudLc.has(a.toLowerCase()));
-          if (addedNonDe.length > 0) {
-            void notifyAdminsExternalAudienceAccess(title, addedNonDe, `${currentUser.firstName} ${currentUser.surname}`.trim()).catch(() => { /* */ });
-          }
+          const who = `${currentUser.firstName} ${currentUser.surname}`.trim();
+          void externeZielgruppenPersonen(audience, getGroupMembers, prevAudLc)
+            .then(addedNonDe => { if (addedNonDe.length > 0) return notifyAdminsExternalAudienceAccess(title, addedNonDe, who); return undefined; })
+            .catch(() => { /* */ });
         } catch { /* darf den Save nie stören */ }
 
         try { await syncEventDocuments(); }
@@ -1411,6 +1411,7 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
                 // entfernt. Folge: „Text unter dem Feld-Titel" war direkt nach
                 // dem Speichern wieder weg und das Feld zeigte die „i"-Box.
                 ...(f.helpTextStyle === 'inline' ? { helpTextStyle: 'inline' as const } : {}),
+                ...(cleanPositionRule(f.showForPositions) ? { showForPositions: cleanPositionRule(f.showForPositions) } : {}),
                 ...(f.showIf && f.showIf.fieldId && f.showIf.values && f.showIf.values.length > 0
                   ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
                   : {}),
@@ -2215,12 +2216,11 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
         // an die Admins für den Site-Zugriff (SharePoint-Default: nur Deloitte
         // DE ALL). Beim Neu-Anlegen zählt jede Nicht-DE-Adresse. Fire-and-forget.
         try {
-          const nonDe = audience.split(',')
-            .map(s => s.trim())
-            .filter(a => a.indexOf('@') > 0 && !a.toLowerCase().endsWith('@deloitte.de'));
-          if (nonDe.length > 0) {
-            void notifyAdminsExternalAudienceAccess(title, nonDe, `${currentUser.firstName} ${currentUser.surname}`.trim()).catch(() => { /* */ });
-          }
+          // v32.2.2: Verteiler auflösen, nur Personen melden (externeZielgruppenPersonen).
+          const who = `${currentUser.firstName} ${currentUser.surname}`.trim();
+          void externeZielgruppenPersonen(audience, getGroupMembers)
+            .then(nonDe => { if (nonDe.length > 0) return notifyAdminsExternalAudienceAccess(title, nonDe, who); return undefined; })
+            .catch(() => { /* */ });
         } catch { /* darf den Save nie stören */ }
 
         // v29.17: Bild und Dokumente SOFORT nach dem Anlegen des Hauptevents

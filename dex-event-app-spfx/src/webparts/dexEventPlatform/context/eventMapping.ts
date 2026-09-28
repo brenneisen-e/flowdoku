@@ -538,6 +538,9 @@ export async function mapSPEventToDeloitteEvent(e: SPEvent, subsiteMap: { curren
       // anhand davon, ob das Feld angezeigt wird.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       showIf: (cf as any).showIf,
+      // v32.2.2: Positions-Regel (utils/positionRule).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      showForPositions: (cf as any).showForPositions,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       spInternalName: (cf as any).spInternalName || '',
       // v7.11: multi-Flag durchreichen, damit RegistrationPage Mehrfachauswahl rendern kann

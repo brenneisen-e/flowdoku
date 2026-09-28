@@ -13,7 +13,7 @@
 import * as React from 'react';
 import { b2runKoelnTemplateFields, isB2RunKoelnTitle } from '../../../data/b2runKoeln';
 import { CustomField } from '../../../services/EventService';
-import { AlertCircle, Check, ChevronDown, ChevronUp, Info, Plus, Trash2, X } from '../../Icons';
+import { AlertCircle, Calendar, Check, ChevronDown, ChevronUp, Info, Plus, Trash2, X } from '../../Icons';
 import { InfoTooltip } from '../../InfoTooltip';
 import { Icon } from '@fluentui/react/lib/Icon';
 // v31.2: Gemeinsame UI-Klassen (Karten, Chips, Schalter-Zeilen, Hover) —
@@ -24,6 +24,7 @@ import { CustomFieldInput } from '../../wizard/customFieldInput';
 import { FieldTypeSuggestion } from '../../wizard/FieldTypeSuggestion';
 import { StepBadge } from '../../wizard/StepBadge';
 import { FieldDescEditor } from '../../wizard/FieldDescEditor';
+import { optionsAsDates } from '../../../utils/optionDates';
 export interface FieldsStepProps {
   visible: boolean;
   activeFieldsTabIdx: number;
@@ -832,11 +833,11 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                     28.09.2026: „übersichtlicher, in einer Art Tabelle mit
                     Spaltenüberschriften". Breiten wie in der Zeile darunter. */}
                   <div aria-hidden="true" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px 6px', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--dex-gray-500)' }}>
-                    {customFields.length > 1 && <span style={{ flex: '0 0 24px' }} />}
+                    <span style={{ flex: '0 0 24px' }} />
                     <span style={{ flex: '0 0 26px', textAlign: 'center' }}>#</span>
                     <span style={{ flex: '0 0 210px' }}>{isDe ? 'Feldart' : 'Field type'}</span>
                     <span style={{ flex: '1 1 260px', minWidth: 180 }}>{isDe ? 'Frage' : 'Question'}</span>
-                    <span style={{ flex: '0 0 96px' }}>{isDe ? 'Pflicht' : 'Required'}</span>
+                    <span style={{ flex: '0 0 250px' }}>{isDe ? 'Pflicht' : 'Required'}</span>
                     <span style={{ flex: '0 0 92px' }}>{isDe ? 'Details' : 'Details'}</span>
                     <span style={{ flex: '0 0 32px' }} />
                   </div>
@@ -844,14 +845,14 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                   <div key={r.key} className="dex-ui-card" style={{ padding: '10px 16px', marginBottom: 8, background: 'var(--dex-gray-50, #fafafa)' }}
                     title={isDe ? 'Wird automatisch aus dem Microsoft-Profil übernommen — nicht änderbar, verschiebbar oder löschbar.' : 'Taken automatically from the Microsoft profile — cannot be changed, moved or deleted.'}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                      {customFields.length > 1 && <span style={{ flex: '0 0 24px' }} />}
+                      <span style={{ flex: '0 0 24px' }} />
                       <span style={autoBadge}>{i + 1}</span>
                       <span style={{ flex: '0 0 210px' }} />
                       <span style={{ flex: '1 1 260px', minWidth: 180, fontSize: '0.9rem', color: 'var(--dex-gray-600)' }}>
                         <strong style={{ fontWeight: 600 }}>{r.label}</strong>
                         <span className="dex-ui-muted" style={{ marginLeft: 8, fontSize: '0.8rem' }}>{isDe ? 'z. B. ' : 'e.g. '}{r.example}</span>
                       </span>
-                      <span style={{ flex: '0 0 96px', fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'automatisch' : 'automatic'}</span>
+                      <span style={{ flex: '0 0 250px', fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'automatisch' : 'automatic'}</span>
                       <span style={{ flex: '0 0 92px' }} />
                       <span style={{ flex: '0 0 32px' }} />
                     </div>
@@ -938,7 +939,12 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                             aria-label={isDe ? 'Nach unten' : 'Move down'}
                           ><ChevronDown size={14} /></button>
                         </div>
-                      ) : customFields.length > 1 && (
+                      ) : customFields.length <= 1 ? (
+                        // v32.2.2: Platz des Griffs auch bei nur einer Frage
+                        // reservieren — sonst springt die Tabelle beim
+                        // Hinzufügen der zweiten um 24 px nach rechts.
+                        <span style={{ flex: '0 0 24px' }} aria-hidden="true" />
+                      ) : (
                         <span className="dex-ui-drag-handle" title={isDe ? 'Ziehen, um die Reihenfolge zu ändern' : 'Drag to reorder'} aria-hidden="true" onClick={e => e.stopPropagation()} style={{ flex: '0 0 24px', justifyContent: 'center', padding: 4, boxSizing: 'border-box' }}>≡</span>
                       )}
                       <span style={numBadge}>{idx + 1 + AUTO_ROWS.length}</span>
@@ -985,7 +991,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                       {/* v31.2: Pflicht-Chip und „Details" gehören zur Frage und
                           stehen links direkt hinter Frage/Typ (gap 8) — nicht mehr
                           per margin-left:auto am rechten Rand. */}
-                      <span style={{ flex: '0 0 96px', display: 'inline-flex' }} onClick={e => e.stopPropagation()}>
+                      <span style={{ flex: '0 0 250px', display: 'inline-flex', gap: 6, flexWrap: 'nowrap' }} onClick={e => e.stopPropagation()}>
                         <label
                           className={cx('dex-ui-chip', field.required && 'is-active')}
                           title={isDe ? 'Pflicht: ohne Antwort lässt sich die Anmeldung nicht absenden' : 'Required: the registration cannot be submitted without an answer'}
@@ -1000,6 +1006,27 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                           {field.required && <Check size={12} />}
                           {t('create.required')}
                         </label>
+                        {/* v32.2.2: „Mehrfachauswahl" direkt neben „Pflicht"
+                            (Nutzer-Ansage 28.09.2026) — vorher stand der Chip
+                            versteckt über der Optionsliste in den Details. */}
+                        {field.type === 'select' && (
+                          <label
+                            className={cx('dex-ui-chip', !!field.multi && 'is-active')}
+                            title={isDe
+                              ? 'Wenn aktiv, kann der Teilnehmer mehrere Optionen gleichzeitig auswählen (z.B. mehrere Allergien).'
+                              : 'When enabled, attendees can select multiple options at the same time (e.g. multiple allergies).'}
+                            onClick={e => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={!!field.multi}
+                              onChange={e => updateCustomField(field.id, { multi: e.target.checked, ...(e.target.checked ? { optionCategories: undefined, prefilterLabel: undefined, defaultValue: undefined } : {}) })}
+                              style={{ display: 'none' }}
+                            />
+                            {field.multi && <Check size={12} />}
+                            {isDe ? 'Mehrfachauswahl' : 'Multiple'}
+                          </label>
+                        )}
                       </span>
                       <span style={{ flex: '0 0 92px', display: 'inline-flex' }}>
                         <button
@@ -1222,26 +1249,15 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                             {isDe ? 'Antwortmöglichkeiten' : 'Answer options'}
                           </span>
                           <span className="dex-ui-inline">
-                            <label
-                              className={cx('dex-ui-chip', !!field.multi && 'is-active')}
-                              title={isDe
-                                ? 'Wenn aktiv, kann der Teilnehmer mehrere Optionen gleichzeitig auswählen (z.B. mehrere Allergien).'
-                                : 'When enabled, attendees can select multiple options at the same time (e.g. multiple allergies).'}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={!!field.multi}
-                                onChange={e => updateCustomField(field.id, { multi: e.target.checked, ...(e.target.checked ? { optionCategories: undefined, prefilterLabel: undefined, defaultValue: undefined } : {}) })}
-                                style={{ display: 'none' }}
-                              />
-                              {field.multi && <Check size={12} />}
-                              {isDe ? 'Mehrfachauswahl möglich' : 'Allow multiple selection'}
-                            </label>
                             {/* v26.75: Vorfilter — nur bei Single-Select. Aktiviert
                                 pro Option ein Kategorie-Feld; die Anmeldeseite zeigt
                                 dann zuerst ein Kategorie-Dropdown und filtert die
                                 Optionsliste darauf (z.B. „Herren"/„Damen" → Größen). */}
-                            {!field.multi && (
+                            {/* v32.2.2: nur bei Größen-Fragen (Nutzer-Ansage 28.09.2026:
+                                „Vorfilter soll nur kommen, wenn das Feld T-Shirt-Größe
+                                abfragt — Herren/Damen"). Ist er schon an, bleibt er
+                                sichtbar, sonst käme man nicht mehr heraus. */}
+                            {!field.multi && (!!field.optionCategories || /shirt|trikot|gr(ö|oe)(ß|ss)e|\bsize\b|jersey/i.test(field.label || '')) && (
                               <label
                                 className={cx('dex-ui-chip', !!field.optionCategories && 'is-active')}
                                 title={isDe
@@ -1444,6 +1460,20 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                             <Plus size={12} /> {isDe ? 'Option hinzufügen' : 'Add option'}
                           </button>
                           </>}
+                          {/* v32.2.2: Sind alle Antworten Daten, zeigt die Anmeldeseite
+                              einen Kalender (utils/optionDates). Der Hinweis sagt es
+                              hier, sonst wäre die Umschaltung unsichtbare Magie. */}
+                          {optionsAsDates(field.options) ? (
+                            <div className="dex-ui-muted" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: '0.8rem', color: 'var(--dex-green-dark, #26890D)' }}>
+                              <Calendar size={14} strokeWidth={2} />
+                              {isDe ? 'Alle Antworten sind Daten — auf der Anmeldeseite erscheint ein Kalender.' : 'All answers are dates — the registration page shows a calendar.'}
+                            </div>
+                          ) : (/\b(days?|tage?|datum|date|termine?)\b/i.test(field.label || '') || (field.options || []).some(o => /\d{1,2}\.\d{1,2}\./.test(o || ''))) ? (
+                            <div className="dex-ui-muted" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: '0.8rem' }}>
+                              <Calendar size={14} strokeWidth={2} />
+                              {isDe ? 'Tipp: Trägst du nur Daten ein (z. B. 19.11.2026), erscheint auf der Anmeldeseite ein Kalender.' : 'Tip: enter dates only (e.g. 19.11.2026) and the registration page shows a calendar.'}
+                            </div>
+                          ) : null}
                           {/* v26.74: Vorauswahl (nur Single-Select) — optional
                               eine Option, die im Anmeldeformular vorausgewählt ist. */}
                           {!field.multi && (field.options || []).filter(o => (o || '').trim()).length > 0 && (

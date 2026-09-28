@@ -223,8 +223,8 @@ export const COACH_STATIONS: Station[] = [
   {
     id: 'creating', kind: 'click',
     titleDe: 'DEX legt dein Event an', titleEn: 'DEX is creating your event',
-    bodyDe: 'Erst vier Sekunden zum Abbrechen — lass sie laufen. Dann entstehen Teilnehmerliste und Rechte, das dauert 30 bis 60 Sekunden. Danach zeigt dir DEX eine Zusammenfassung; schließ sie, um zu deinem Event zu kommen.',
-    bodyEn: 'First four seconds to cancel — let them run. Then the participant list and rights are created, which takes 30 to 60 seconds. DEX then shows a summary; close it to go to your event.',
+    bodyDe: 'Erst zehn Sekunden zum Abbrechen — lass sie laufen. Dann entstehen Teilnehmerliste und Rechte, das dauert 30 bis 60 Sekunden. Danach zeigt dir DEX eine Zusammenfassung; schließ sie, um zu deinem Event zu kommen.',
+    bodyEn: 'First ten seconds to cancel — let them run. Then the participant list and rights are created, which takes 30 to 60 seconds. DEX then shows a summary; close it to go to your event.',
     done: (_s, env) => env.page === 'admin' && !!env.testEventId && env.selectedEventId === env.testEventId,
   },
   {

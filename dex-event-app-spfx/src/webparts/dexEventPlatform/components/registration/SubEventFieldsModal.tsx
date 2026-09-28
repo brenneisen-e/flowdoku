@@ -12,6 +12,9 @@ import { Locale } from '../../context/LanguageContext';
 // und die Optionen eines Multi-Select lasen sich vorher wie Beschriftungen.
 import { cx } from '../dexUi';
 import { MessageSquare, AlertCircle, Check } from '../Icons';
+import { positionRuleAllows } from '../../utils/positionRule';
+import { optionsAsDates } from '../../utils/optionDates';
+import { OptionDateCalendar } from './OptionDateCalendar';
 
 /** Custom-Fields eines Sub-Events (v10.12). */
 export interface SubEventFieldsModalProps {
@@ -22,9 +25,11 @@ export interface SubEventFieldsModalProps {
   setPendingSubEventModal: React.Dispatch<React.SetStateAction<{ subEventId: string; draftValues: Record<string, string>; }>>;
   setSelectedSessions: React.Dispatch<React.SetStateAction<Set<string>>>;
   setSessionFieldValues: React.Dispatch<React.SetStateAction<Record<string, Record<string, string>>>>;
+  /** v32.2.2: Position der angemeldeten Person (Fragen-Regel). */
+  zielPosition: string;
 }
 export const SubEventFieldsModal: React.FC<SubEventFieldsModalProps> = (p) => {
-  const { childEvents, childTermSingular, locale, pendingSubEventModal, setPendingSubEventModal, setSelectedSessions, setSessionFieldValues } = p;
+  const { childEvents, childTermSingular, locale, pendingSubEventModal, setPendingSubEventModal, setSelectedSessions, setSessionFieldValues, zielPosition } = p;
         const ce = childEvents.find(c => c.id === pendingSubEventModal.subEventId);
         if (!ce) return null;
         const draft = pendingSubEventModal.draftValues;
@@ -34,6 +39,7 @@ export const SubEventFieldsModal: React.FC<SubEventFieldsModalProps> = (p) => {
         // Sub-Event-eigenen `draft`.
         const fields = (ce.eventSpecificFields || [])
           .filter(f => f && f.label)
+          .filter(f => positionRuleAllows(f.showForPositions, zielPosition))
           .filter(f => {
             if (!f.showIf || !f.showIf.fieldId) return true;
             const raw = (draft[f.showIf.fieldId] || '').trim();
@@ -135,7 +141,18 @@ export const SubEventFieldsModal: React.FC<SubEventFieldsModalProps> = (p) => {
                   return (
                     <div key={f.id} className="dex-ui-field">
                       <label className="dex-ui-label">{labelBody(f)}</label>
-                      {f.type === 'select' && f.multi ? (
+                      {f.type === 'select' && optionsAsDates(f.options, ce.startDate) ? (
+                        // v32.2.2: Antworten sind Daten → Kalender (utils/optionDates).
+                        <OptionDateCalendar
+                          options={f.options || []}
+                          dates={optionsAsDates(f.options, ce.startDate) || []}
+                          labels={(f.options || []).map((o, i) => fOpt(f, o, i))}
+                          multi={!!f.multi}
+                          value={val}
+                          onChange={next => updateFieldValue(f.id, next)}
+                          isDe={isDe}
+                        />
+                      ) : f.type === 'select' && f.multi ? (
                         // v31.2: Mehrfachauswahl als Chips — jede Option ist ein
                         // Knopf mit Hover; der gespeicherte Wert bleibt „A | B".
                         <div className="dex-ui-inline" role="group" aria-label={fLabel(f)}>

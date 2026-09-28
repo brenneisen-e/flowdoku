@@ -10,7 +10,8 @@ import * as React from 'react';
 import Modal from '../Modal';
 import { Send } from '../Icons';
 
-export const ANLEGE_SEKUNDEN = 4;
+// v32.2.2: 10 statt 4 Sekunden (Nutzer-Ansage 28.09.2026).
+export const ANLEGE_SEKUNDEN = 10;
 
 export function AnlegeCountdown(p: {
   sekunden: number | null;
