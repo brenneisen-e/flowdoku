@@ -415,14 +415,16 @@ export interface RenderGlobalScopeBarCtx {
 export function renderGlobalScopeBarImpl(ctx: RenderGlobalScopeBarCtx): React.ReactElement | null {
   const { activeScopeIdx, childTermPlural, childTermSingular, currentStep, isDe, renderPerEventTabStrip, SCOPE_AWARE_STEPS, setScope, subEvents, subEventsOnlyMode, title } = ctx;
     if (subEvents.length === 0) return null;
-    const named = subEvents.filter(s => (s.title || '').trim());
     // v29.21 (Audit): Nicht mehr verstecken, wenn ein Sub-Reiter aktiv ist.
     // Sequenz vorher: „Hinzufügen" (Draft ohne Titel) → „Bearbeiten"
     // (setScope(1)) → die Leiste war null, die Sub-Event-Liste hängt an
     // activeScopeIdx === 0 — keine Bedienung mehr, um zurück auf die Klammer
     // zu kommen. Die Reiter tragen für unbenannte Drafts den Fallback
     // „Sub-Event ohne Titel".
-    if (named.length === 0 && activeScopeIdx === 0) return null;
+    // v32.0.12: Auch auf dem Hauptevent nicht mehr verstecken. Die Sperre
+    // „kein Sub-Event hat einen Titel" blieb dort stehen: Sub-Event ohne Titel
+    // angelegt, oben auf das Hauptevent geklickt — und die Leiste samt Reiter
+    // war weg (Nutzer-Befund 28.09.2026), als gäbe es das Sub-Event nicht.
     const applies = SCOPE_AWARE_STEPS.indexOf(currentStep) >= 0;
     const scopeIdx = Math.min(activeScopeIdx, subEvents.length);
     const mainLabel = `${subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt-Event' : 'Main event')}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`;
@@ -469,8 +471,8 @@ export function renderGlobalScopeBarImpl(ctx: RenderGlobalScopeBarCtx): React.Re
                   {isDe ? 'Dieser Schritt gilt für das gesamte Event' : 'This step applies to the entire event'}
                 </strong>
                 {isDe
-                  ? ` — ${subEventsOnlyMode ? 'Klammer' : 'Haupt-Event'} und alle ${named.length} ${named.length === 1 ? (childTermSingular || 'Sub-Event') : (childTermPlural || 'Sub-Events')} gemeinsam. Eine Auswahl gibt es hier nicht.`
-                  : ` — ${subEventsOnlyMode ? 'bracket' : 'main event'} and all ${named.length} sub-events together. There is nothing to pick here.`}
+                  ? ` — ${subEventsOnlyMode ? 'Klammer' : 'Haupt-Event'} und alle ${subEvents.length} ${subEvents.length === 1 ? (childTermSingular || 'Sub-Event') : (childTermPlural || 'Sub-Events')} gemeinsam. Eine Auswahl gibt es hier nicht.`
+                  : ` — ${subEventsOnlyMode ? 'bracket' : 'main event'} and all ${subEvents.length} sub-events together. There is nothing to pick here.`}
               </div>
             </div>
           </>
