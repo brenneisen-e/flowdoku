@@ -347,6 +347,20 @@ verwies).
 Wer eine neue Rolle mit Listenzugriff baut: Contribute reicht bei
 Item-Level-Security NIE für fremde Zeilen.
 
+**Der Start liest `DEX_Events` OHNE `OutlookBody` und `EmailImageBase64`
+(v32.0.6).** Gemessen am 28.09.2026: 36,7 MB für 100 Events, davon 23,5 MB
+Outlook-Text (eingebackene Bilder) und 4,5 MB Mail-Logo-Spalte — 18–20 s Boot
+für JEDE Rolle. Nur `EventContext.loadEvents` liest schlank
+(`getEvents(cb, true)`); der Outlook-Text kommt über `ensureOutlookBodies`
+im Hintergrund nach, bis dahin trägt das Event `outlookBodyPending`. Der
+Assistent (`create-event`/`edit-event` in `DexEventPlatform`) wartet darauf,
+„In Programmpunkte überführen" liest die Zeile frisch. Wer eine NEUE Stelle
+baut, die `event.outlookBody` aus dem State liest und zurückschreibt: erst
+`outlookBodyPending` prüfen bzw. `ensureOutlookBodies()` abwarten — sonst
+überschreibt sie den Termin-Text mit leer. Alle anderen `svc.getEvents()`-
+Aufrufer lesen weiter die volle Zeile. Die Messung steht in
+`[DEX][perf][getEvents] schwerste Spalten` (ab 2 MB).
+
 **Personen für Subsite-Rechte über `ensureuser` auflösen, nie nur über
 `siteusers/getbyemail` (v31.84).** Wer die Site-Collection nie besucht hat,
 steht nicht in der User Information List; die Suche antwortet 404, die
