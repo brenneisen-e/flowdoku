@@ -183,18 +183,16 @@ export default function CopyToAgendaModal(props: {
       ov._agendaCheckIn = true;
       if (event.childEventTermSingular || event.childEventTermPlural) ov._agendaTerm = { singular: event.childEventTermSingular || '', plural: event.childEventTermPlural || '' };
       const addr = event.locationAddress;
-      // v32.0.6: Der Outlook-Text steht nach dem Start erst nach dem
-      // Hintergrund-Nachlauf im State (Boot ohne OutlookBody). Deshalb hier
-      // frisch aus DEX_Events lesen — sonst bekäme das neue Event einen leeren
-      // Termin-Text. Nicht lesbar → abbrechen statt leer anlegen.
-      let outlookBodyFrisch = event.outlookBodyPending ? '' : (event.outlookBody || '');
+      // v32.0.6/v32.0.10: Outlook-Text und Mail-Bilder stehen nach dem Start
+      // erst nach dem Hintergrund-Nachlauf im State (Boot ohne OutlookBody,
+      // Bilder ausgelagert). Vorher kopieren hieße: neues Event ohne
+      // Termin-Text und ohne Logo. Also abbrechen und um einen Moment bitten.
       if (event.outlookBodyPending) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const spfxCtx = (window as any).__dexSpfxContext; // `ctx` weiter unten wäre hier noch nicht initialisiert (TDZ)
-        const zeile = spfxCtx ? await new EventService(spfxCtx).getEvent(Number(event.id)) : null;
-        if (!zeile) throw new Error(isDe ? 'Der Outlook-Text des Events konnte nicht gelesen werden — bitte erneut versuchen.' : 'Could not read the event\'s Outlook text — please try again.');
-        outlookBodyFrisch = zeile.OutlookBody || '';
+        throw new Error(isDe
+          ? 'Die Event-Daten werden gerade noch im Hintergrund geladen — bitte in ein paar Sekunden erneut versuchen.'
+          : 'The event data is still loading in the background — please try again in a few seconds.');
       }
+      const outlookBodyFrisch = event.outlookBody || '';
       const newId = await createEvent({
         title: newTitle.trim() || `${event.title} (Programmpunkte)`,
         type: event.type,

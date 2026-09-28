@@ -988,7 +988,7 @@ export class EventService {
     return eventsCrud.getEvents(this, onHttpError, slim);
   }
   /** v32.0.6: Outlook-Texte für den Hintergrund-Nachlauf (s. eventsCrud). */
-  public async getOutlookBodies(ids?: string[]): Promise<Record<string, { body: string; modified: string }> | null> {
+  public async getOutlookBodies(ids?: string[]): Promise<Record<string, { body: string; modified: string; mailLogo: string; outlookLogo: string }> | null> {
     return eventsCrud.getOutlookBodies(this, ids);
   }
 
@@ -1157,6 +1157,10 @@ export class EventService {
     return eventsCrud.getEventCustomFieldsHistory(this, eventId);
   }
 
+  /** v32.0.10: Bestand — Bilder aus EmailTemplateOverrides in ihre Spalten (s. eventsCrud). */
+  public async logosAuslagernAlle(vorschau: boolean, onProgress?: (_done: number, _total: number, _label: string) => void): Promise<{ zeilen: number; kb: number; umgestellt: number; fehler: string[]; abgebrochen: boolean; ohneSpalte: boolean }> {
+    return eventsCrud.logosAuslagernAlle(this, vorschau, onProgress);
+  }
   public async updateEvent(eventId: number, updates: Record<string, unknown>, retried?: boolean): Promise<boolean> {
     return eventsCrud.updateEvent(this, eventId, updates, retried);
   }

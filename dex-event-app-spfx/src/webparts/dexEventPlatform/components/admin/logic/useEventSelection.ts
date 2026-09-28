@@ -204,6 +204,28 @@ export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionR
   // Handbuch-Preview oder einem Deep-Link), direkt in die Detail-Ansicht
   // springen statt auf die Event-Auswahl-Liste.
   //
+  // v32.0.10: Das gewählte Event ist eine Kopie. Wurde es gewählt, bevor der
+  // Hintergrund-Nachlauf (Outlook-Text, ausgelagerte Mail-Bilder) fertig war,
+  // fehlten ihm beide dauerhaft — Einladungs-, Rund- und QR-Mail hätten ohne
+  // Logo gebaut. Sobald die Liste sie hat, nur DIESE Teile nachziehen; eigene
+  // Änderungen am Rest (z.B. QR-Vorlage) bleiben unberührt.
+  React.useEffect(() => {
+    if (!selectedEvent || !selectedEvent.outlookBodyPending) return;
+    const frisch = (adminEvents || []).find(e => e.id === selectedEvent.id);
+    if (!frisch || frisch.outlookBodyPending) return;
+    setSelectedEvent(prev => {
+      if (!prev || prev.id !== frisch.id || !prev.outlookBodyPending) return prev;
+      let ov: Record<string, unknown> = {};
+      let fr: Record<string, unknown> = {};
+      try { ov = JSON.parse(prev.emailTemplateOverrides || '{}') || {}; } catch { ov = {}; }
+      try { fr = JSON.parse(frisch.emailTemplateOverrides || '{}') || {}; } catch { fr = {}; }
+      if (typeof ov._eventLogo !== 'string' && typeof fr._eventLogo === 'string') ov._eventLogo = fr._eventLogo;
+      if (typeof ov._outlookLogo !== 'string' && typeof fr._outlookLogo === 'string') ov._outlookLogo = fr._outlookLogo;
+      return { ...prev, outlookBody: frisch.outlookBody, mailImageBase64: frisch.mailImageBase64, emailTemplateOverrides: JSON.stringify(ov), outlookBodyPending: false };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminEvents, selectedEvent?.id, selectedEvent?.outlookBodyPending]);
+
   // v31.77: Der Navigations-Stack führt — in BEIDE Richtungen. Bis hierher
   // sprang der Effekt nur einmal (Deep-Link) und nur, wenn noch nichts
   // gewählt war. „Zurück" (seit v31.59 über den Stack) setzte

@@ -36,6 +36,81 @@ const EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,Loca
 const EVENT_SELECT_SLIM = EVENT_SELECT.split(',').filter(c => c !== 'OutlookBody' && c !== 'EmailImageBase64').join(',');
 
 /**
+ * v32.0.10: Gibt es die Spalte auf DEX_Events? Einmal je Sitzung gefragt.
+ * Eine Spalte, die noch nicht angelegt ist (das Schema zieht ein Admin beim
+ * ersten Start einer neuen Version nach), darf in keinem Schreibvorgang
+ * stehen — SharePoint lehnt den GANZEN Save mit 400 ab.
+ */
+const spaltenCache: Record<string, Promise<boolean>> = {};
+export function hatEventsSpalte(svc: EventService, name: string): Promise<boolean> {
+  const key = `${svc.siteUrl}|${name}`;
+  if (!spaltenCache[key]) {
+    spaltenCache[key] = (async () => {
+      try {
+        const r = await svc._sp.get(
+          `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/fields/getbyinternalnameortitle('${name}')?$select=InternalName`,
+          SPHttpClient.configurations.v1
+        );
+        return r.ok;
+      } catch { return false; }
+    })();
+    // Ein Nein nicht für immer merken — nach dem Schema-Nachzug gilt es nicht mehr.
+    spaltenCache[key].then(ok => { if (!ok) setTimeout(() => { delete spaltenCache[key]; }, 60000); }).catch(() => { delete spaltenCache[key]; });
+  }
+  return spaltenCache[key];
+}
+
+/**
+ * v32.0.10: Die zwei Bilder aus EmailTemplateOverrides in ihre Spalten
+ * verlagern — am EINEN Engpass aller Schreibwege (createEvent/updateEvent).
+ *
+ * Messung 28.09.2026: Von 8,7 MB Start-Abfrage waren 4,5 MB `_eventLogo`
+ * (dasselbe Bild steht ohnehin in EmailImageBase64, das die Flows lesen) und
+ * 3,4 MB `_outlookLogo`. Beide braucht der Start nicht. Hier wandern sie in
+ * EmailImageBase64 bzw. OutlookLogoBase64; die Overrides tragen den Merker
+ * `_logosAusgelagert` (1 = Mail-Logo, 2 = beide). Der EventContext setzt die
+ * Bilder beim Hintergrund-Nachlauf wieder ins JSON im Speicher ein — der
+ * übrige Code liest weiter `o._eventLogo` und merkt davon nichts.
+ *
+ * Regeln, damit nie ein Bild verloren geht:
+ *  - Fehlt ein Bild im JSON, wird die Spalte NICHT geleert — außer bei einem
+ *    vollständigen Kommunikations-Write (Wizard: EmailImageBase64 steht mit
+ *    im Update). Nur dort heißt „fehlt" auch „entfernt".
+ *  - OutlookLogoBase64 nur, wenn die Spalte schon existiert; sonst bleibt
+ *    `_outlookLogo` wie bisher im JSON (Merker 1).
+ *  - Schreiber, die die Overrides roh aus SharePoint lesen und zurückschreiben
+ *    (patchEventOverridesKey/Value), sehen den Merker ohne Bilder und lassen
+ *    die Spalten in Ruhe.
+ */
+export async function logosAuslagern(svc: EventService, felder: Record<string, unknown>): Promise<void> {
+  const raw = felder['EmailTemplateOverrides'];
+  if (typeof raw !== 'string' || !raw) return;
+  let o: Record<string, unknown>;
+  try { o = JSON.parse(raw) || {}; } catch { return; }
+  if (!o || typeof o !== 'object' || Array.isArray(o)) return;
+  const vollerKommWrite = 'EmailImageBase64' in felder;
+  const hatBild = typeof o._eventLogo === 'string' || typeof o._outlookLogo === 'string';
+  if (!hatBild && !vollerKommWrite && !o._logosAusgelagert) return;
+  const outlookSpalte = await hatEventsSpalte(svc, 'OutlookLogoBase64');
+  if (typeof o._eventLogo === 'string') {
+    if (!vollerKommWrite && o._eventLogo) felder['EmailImageBase64'] = o._eventLogo;
+    delete o._eventLogo;
+  }
+  if (outlookSpalte) {
+    if (typeof o._outlookLogo === 'string') {
+      felder['OutlookLogoBase64'] = o._outlookLogo;
+      delete o._outlookLogo;
+    } else if (vollerKommWrite) {
+      felder['OutlookLogoBase64'] = '';
+    }
+  }
+  const merker = outlookSpalte ? 2 : 1;
+  // Ein bereits höherer Merker bleibt (Spalte kurz nicht erkannt ≠ zurückbauen).
+  o._logosAusgelagert = Math.max(merker, Number(o._logosAusgelagert) || 0);
+  felder['EmailTemplateOverrides'] = JSON.stringify(o);
+}
+
+/**
  * Seed-Events anlegen falls sie nicht existieren (einmalig beim ersten Start).
  */
 export async function seedEvents(svc: EventService): Promise<void> {
@@ -202,20 +277,26 @@ export async function getEvents(svc: EventService, onHttpError?: (_status: numbe
  * Hintergrund-Nachlauf nach dem Start. `null` = nicht lesbar (dann bleiben
  * die Sperren stehen; ein Lesefehler ist kein leerer Text).
  */
-export async function getOutlookBodies(svc: EventService, ids?: string[]): Promise<Record<string, { body: string; modified: string }> | null> {
+export async function getOutlookBodies(svc: EventService, ids?: string[]): Promise<Record<string, { body: string; modified: string; mailLogo: string; outlookLogo: string }> | null> {
   try {
     // Mit ids: nur diese Zeilen (nach einem Speichern), sonst dieselben 100 wie der Boot.
     const nummern = (ids || []).filter(id => /^\d+$/.test(id));
     const filter = nummern.length ? `&$filter=${encodeURIComponent(nummern.map(id => `Id eq ${id}`).join(' or '))}` : '';
+    // v32.0.10: dazu die ausgelagerten Bilder (s. logosAuslagern) — die
+    // Outlook-Spalte nur, wenn es sie gibt (sonst lehnt SharePoint ab).
+    const outlookSpalte = await hatEventsSpalte(svc, 'OutlookLogoBase64');
+    const sel = `Id,Modified,OutlookBody,EmailImageBase64${outlookSpalte ? ',OutlookLogoBase64' : ''}`;
     const response = await svc._sp.get(
-      `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=Id,Modified,OutlookBody${filter}&$orderby=StartDate desc&$top=100`,
+      `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=${sel}${filter}&$orderby=StartDate desc&$top=100`,
       SPHttpClient.configurations.v1
     );
     if (!response.ok) return null;
     const data = await response.json();
-    const out: Record<string, { body: string; modified: string }> = {};
+    const out: Record<string, { body: string; modified: string; mailLogo: string; outlookLogo: string }> = {};
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for (const r of (data.value || []) as any[]) out[String(r.Id)] = { body: r.OutlookBody || '', modified: r.Modified || '' };
+    for (const r of (data.value || []) as any[]) {
+      out[String(r.Id)] = { body: r.OutlookBody || '', modified: r.Modified || '', mailLogo: r.EmailImageBase64 || '', outlookLogo: r.OutlookLogoBase64 || '' };
+    }
     return out;
   } catch {
     return null;
@@ -695,6 +776,8 @@ export async function createEvent(svc: EventService, event: {
         if (fresh > nextEventNumber) { nextEventNumber = fresh; payload.EventNumber = fresh; }
       } catch { /* zu Beginn geprüfte Nummer behalten */ }
     }
+    // v32.0.10: Bilder aus den Overrides in ihre Spalten (s. logosAuslagern).
+    await logosAuslagern(svc, payload as unknown as Record<string, unknown>);
     // v28.10: gleicher 2-MB-Schutz wie in updateEvent — zu große Payloads
     // (eingebettete Logos/Bilder) sauber abfangen statt kryptischem 400.
     if (JSON.stringify(payload).length > 1_900_000) {
@@ -833,6 +916,8 @@ export async function updateEvent(svc: EventService, eventId: number, updates: R
     //  - sonst das Feld weglassen, statt einen gespeicherten Wert mit null
     //    zu überschreiben (leer war ohnehin nie ein gültiger Zustand).
     const safeUpdates: Record<string, unknown> = { ...updates };
+    // v32.0.10: Bilder aus den Overrides in ihre Spalten (s. logosAuslagern).
+    await logosAuslagern(svc, safeUpdates);
     if ('EndDate' in safeUpdates && !safeUpdates.EndDate) {
       if (safeUpdates.StartDate) {
         safeUpdates.EndDate = safeUpdates.StartDate;
@@ -1225,5 +1310,84 @@ export async function getEventCustomFieldsVersions(svc: EventService, itemId: nu
     console.warn('[DEX restore] versions fetch failed für Item', itemId, e);
   }
   out.sort((a, b) => (b.created || '').localeCompare(a.created || ''));
+  return out;
+}
+
+/**
+ * v32.0.10: Bestand umstellen — die Bilder aller Events aus
+ * EmailTemplateOverrides in ihre Spalten verlagern (s. logosAuslagern).
+ * Rollenverwaltung → „Mail-Bilder auslagern (alle Events)".
+ *
+ * `vorschau` liest nur und zählt. Sonst je Zeile, nacheinander: über
+ * updateEvent schreiben (derselbe Engpass wie jeder Save), danach die Zeile
+ * NACHLESEN und die Bildlängen vergleichen — stimmt etwas nicht, wird die
+ * alte Zeile zurückgeschrieben. Drei Fehler in Folge brechen ab (Drosselung
+ * oder Rechte; weiterzumachen hieße nur, dieselbe Ablehnung zu sammeln).
+ */
+export async function logosAuslagernAlle(
+  svc: EventService,
+  vorschau: boolean,
+  onProgress?: (_done: number, _total: number, _label: string) => void,
+): Promise<{ zeilen: number; kb: number; umgestellt: number; fehler: string[]; abgebrochen: boolean; ohneSpalte: boolean }> {
+  const out = { zeilen: 0, kb: 0, umgestellt: 0, fehler: [] as string[], abgebrochen: false, ohneSpalte: false };
+  if (!(await hatEventsSpalte(svc, 'OutlookLogoBase64'))) { out.ohneSpalte = true; return out; }
+  // Alle Zeilen, seitenweise — die Aktion soll auch Events jenseits der
+  // 100 des Starts erfassen.
+  const kandidaten: Array<{ id: number; title: string; raw: string; mail: number; outlook: number }> = [];
+  let url: string | null = `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=Id,Title,EmailTemplateOverrides&$top=200`;
+  while (url) {
+    const r = await svc._sp.get(url, SPHttpClient.configurations.v1);
+    if (!r.ok) { out.fehler.push(`DEX_Events nicht lesbar (HTTP ${r.status})`); out.abgebrochen = true; return out; }
+    const d = await r.json();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const row of (d.value || []) as any[]) {
+      let o: Record<string, unknown> = {};
+      try { o = JSON.parse(row.EmailTemplateOverrides || '{}') || {}; } catch { continue; }
+      const m = typeof o._eventLogo === 'string' ? o._eventLogo.length : -1;
+      const ol = typeof o._outlookLogo === 'string' ? o._outlookLogo.length : -1;
+      if (m < 0 && ol < 0) continue;
+      kandidaten.push({ id: Number(row.Id), title: String(row.Title || row.Id), raw: String(row.EmailTemplateOverrides || ''), mail: m, outlook: ol });
+      out.kb += (Math.max(0, m) + Math.max(0, ol)) / 1024;
+    }
+    url = d['odata.nextLink'] || d['@odata.nextLink'] || null;
+  }
+  out.zeilen = kandidaten.length;
+  out.kb = Math.round(out.kb);
+  if (vorschau) return out;
+  let inFolge = 0;
+  for (let i = 0; i < kandidaten.length; i++) {
+    const k = kandidaten[i];
+    if (onProgress) onProgress(i, kandidaten.length, k.title);
+    const ok = await updateEvent(svc, k.id, { 'EmailTemplateOverrides': k.raw });
+    let geprueft = false;
+    if (ok) {
+      try {
+        const r = await svc._sp.get(
+          `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${k.id})?$select=EmailTemplateOverrides,EmailImageBase64,OutlookLogoBase64`,
+          SPHttpClient.configurations.v1
+        );
+        if (r.ok) {
+          const z = await r.json();
+          let o: Record<string, unknown> = {};
+          try { o = JSON.parse(z.EmailTemplateOverrides || '{}') || {}; } catch { o = {}; }
+          const mailOk = k.mail <= 0 || String(z.EmailImageBase64 || '').length === k.mail;
+          const outlookOk = k.outlook <= 0 || String(z.OutlookLogoBase64 || '').length === k.outlook;
+          geprueft = mailOk && outlookOk && !!o._logosAusgelagert;
+        }
+      } catch { geprueft = false; }
+    }
+    if (ok && geprueft) { out.umgestellt++; inFolge = 0; continue; }
+    // Zurück auf den alten Stand: das JSON mit Bildern, Spalten unberührt lassen.
+    try { await svc._merge(`${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${k.id})`, { 'EmailTemplateOverrides': k.raw }); } catch { /* s. Fehlerliste */ }
+    out.fehler.push(k.title);
+    if (++inFolge >= 3) { out.abgebrochen = true; break; }
+  }
+  if (onProgress) onProgress(kandidaten.length, kandidaten.length, '');
+  try {
+    await svc.writeChangeLog({
+      action: 'LogosAusgelagert', targetType: 'Event', targetId: '', targetName: 'DEX_Events',
+      details: { zeilen: out.zeilen, umgestellt: out.umgestellt, fehler: out.fehler, abgebrochen: out.abgebrochen, kb: out.kb },
+    });
+  } catch { /* Protokoll best-effort */ }
   return out;
 }

@@ -143,6 +143,9 @@ export function getEventsFieldDefinitions(): Array<{ title: string; type: number
     // bzw. die Selbstheilung in updateEvent() beim ersten fehlschlagenden Save.
     { title: 'EventImageUrl', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 2 },
     { title: 'EmailImageBase64', type: 3 }, // Base64 Event-Bild für E-Mails/Outlook (Flow ersetzt {{ORB_URL}})
+    // v32.0.10: Kopfbild des Outlook-Termins, ausgelagert aus EmailTemplateOverrides._outlookLogo
+    // (s. eventsCrud.logosAuslagern). Die Flows lesen es nicht — nur die App.
+    { title: 'OutlookLogoBase64', type: 3 },
     // Organizer + OrganizerEmail sind Multi-Line-Text (Note) damit sie auch bei
     // 10+ Co-Organizern nicht abgeschnitten werden (Single-Line-Text ist auf 255
     // Zeichen limitiert — bei ~17 Personen mit Format `vorname.nachname@deloitte.de;`
