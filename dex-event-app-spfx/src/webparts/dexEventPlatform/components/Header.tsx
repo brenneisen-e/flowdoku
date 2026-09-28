@@ -70,8 +70,12 @@ export default function Header(): React.ReactElement {
   // bewusst IN der erzwungenen Sprache — passend zu dem, was der Teilnehmer
   // auf der Anmeldeseite sieht.
   const regHintEvent = events.find(e => e.id === selectedEventId);
+  // v32.4: Nur auf der Anmeldeseite. Bis v32.3 hing die Sperre allein am
+  // gewählten Event — im Assistenten (Bearbeiten) und im Organizer Center
+  // ließ sich die Sprache dann nicht mehr umstellen (Screenshot 28.09.2026:
+  // „Not possible here …" in Schritt 5 des Assistenten).
   const forcedRegLang: 'de' | 'en' | undefined =
-    (regHintEvent?.registrationLanguage === 'de' || regHintEvent?.registrationLanguage === 'en')
+    currentPage === 'registration' && (regHintEvent?.registrationLanguage === 'de' || regHintEvent?.registrationLanguage === 'en')
       ? regHintEvent.registrationLanguage : undefined;
   const showRegLangHint = currentPage === 'registration' && !!forcedRegLang;
   const regLangHintText = forcedRegLang === 'de'

@@ -10,6 +10,7 @@ import { setSaveInProgress } from '../../../utils/saveGuard';
 import { buildOutlookLocation } from '../../../utils/eventFormat';
 import { externeZielgruppenPersonen, outlookLogoPiggyback, resolveAudienceMembersToCsv, serializeCustomFields } from '../../wizard/wizardHelpers';
 import { formatOrganizerList } from '../../../context/EventContext';
+import { dlog } from '../../../utils/debugLog';
 import { anredeVorname, buildOutlookBody, eventCreatedEmail, getCachedOrbBase64, replacePlaceholders, wrapTemplate } from '../../../services/EmailTemplates';
 import { buildHashDeepLink } from '../../../utils/deepLink';
 import { DEX_TEAM_RECIPIENTS } from '../../../utils/supportContact';
@@ -629,6 +630,10 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
 
     if (isEditMode && selectedEventId) {
       setProgressLabel('Event wird aktualisiert...');
+      // v32.5: Zeitmessung je Phase — „es dauert lange" war bisher nicht
+      // zuzuordnen. Sichtbar mit Debug-Thema „perf" (utils/debugLog).
+      const tSave = performance.now();
+      const lap = (phase: string): void => { dlog('perf', `[DEX][perf][save] ${phase}: ${Math.round(performance.now() - tSave)} ms`); };
       // v29.77: v11.18-Debug-Trace („customFields state at save") entfernt —
       // der helpText-Roundtrip ist lange verifiziert, das Log war nur Laerm.
       // Sanitize: paart Organizer-Names + -Emails 1:1, droppt unvollständige
@@ -1090,7 +1095,9 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
       // Der Code dazwischen liest aus der Closure, nicht aus dem frisch
       // geladenen State — die Reloads kosteten nur. Geladen wird jetzt EINMAL,
       // unbedingt, direkt vor „Änderungen gespeichert!" (s. u.).
+      lap('Zeile vorbereitet (inkl. Zielgruppen-Auflösung, Dokumente)');
       const success = await updateEvent(selectedEventId, updates, { skipReload: true });
+      lap('Hauptzeile geschrieben');
       if (success) {
         await schattenSicherstellen(selectedEventId, title);
         // v26.57: NEU zur Zielgruppe hinzugekommene Personen außerhalb von
@@ -1266,6 +1273,7 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
           }
         } catch (err) { console.warn('[DEX] Co-Organizer-Benachrichtigung fehlgeschlagen:', err); }
 
+        lap('Bild, Rechte, Co-Organizer');
         setProgress(75);
         setProgressLabel(isDe ? 'Sub-Events werden gespeichert...' : 'Saving sub-events...');
         // Sub-Events persistieren (create/update/delete pro Draft). Seit v6.4.
@@ -1602,6 +1610,7 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
         // gerade dran ist (und seit v29.74 wartet die Drossel-Logik ehrlich,
         // also auch mal lange). Jetzt: Balken startet bei 90, jeder Queue-
         // Eintrag rueckt ihn vor und der Label nennt Termin und Zaehler.
+        lap('Sub-Events, Check-in-Team, Spalten');
         setProgress(90);
         setProgressLabel(isDe ? 'Outlook wird aktualisiert...' : 'Updating Outlook...');
         // v30.67: `effDisableOutlook` statt des rohen States — auf einem
@@ -1820,9 +1829,11 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
         // (CLAUDE.md: ein Reload, der „nur Kosten" ist, kann das einzige sein).
         // Es deckt auch den v30.67-Fall (OutlookDirty nach gescheitertem
         // Outlook-Auftrag) ab, der vorher einen eigenen Refresh hatte.
+        lap('Outlook');
         setProgressLabel(isDe ? 'Ansicht wird aktualisiert...' : 'Refreshing view...');
         try { await refreshEvents(); }
         catch (err) { console.warn('[DEX] Reload nach dem Speichern fehlgeschlagen:', err); }
+        lap('Ansicht nachgeladen — fertig');
         if (failedOutlookTitles.length > 0) {
           showAlert(isDe
             ? `Das Event ist gespeichert, aber für ${failedOutlookTitles.length} Termin${failedOutlookTitles.length === 1 ? '' : 'e'} konnte die Outlook-Aktualisierung nicht angestoßen werden: ${failedOutlookTitles.join(', ')}. Die Kalender der Teilnehmer zeigen dort noch den alten Stand — bitte öffne das Event später erneut und bestätige die Aktualisierung noch einmal.`

@@ -2925,7 +2925,9 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       const raw = await eventService.getEvent(Number(eventId));
       if (raw) oldItem = raw as unknown as Record<string, unknown>;
     } catch { /* Diff bleibt leer, Update läuft trotzdem */ }
-    const success = await eventService.updateEvent(Number(eventId), updates);
+    // v32.5: Derselbe Stand dient als Delta-Grundlage (s. eventsCrud.updateEvent) —
+    // kein zusätzlicher Request. Nicht lesbar = leer = volle Zeile wie bisher.
+    const success = await eventService.updateEvent(Number(eventId), updates, undefined, oldItem);
     if (success) {
       // v9.0/v19.33: Audit-Log (fire-and-forget — UI-Save soll nicht hängen
       // falls SP-ChangeLog-Liste fehlt oder Permissions fehlen). Nur die echten

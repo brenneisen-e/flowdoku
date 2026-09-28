@@ -912,6 +912,18 @@ function AppContent(): React.ReactElement {
     };
   }, []);
 
+  // v32.5: Ist der Assistent einmal eingehängt, bleibt er es bis zum
+  // Verlassen der Seite. Das Nachladen NACH dem Speichern (refreshEvents)
+  // macht die gespeicherte Zeile neuer als ihren Outlook-Text → „ausstehend"
+  // → der Warte-Zweig unten ersetzte den Assistenten durch den Ladekreis. Das
+  // warf den Abschluss-Dialog weg und hängte danach einen frischen Assistenten
+  // in Schritt 1 ein (Nutzer-Befund 28.09.2026: „ich klicke auf Event
+  // speichern und bin trotzdem weiter im Wizard"). Das Warten gilt nur vor
+  // dem ersten Einhängen — danach liest der Assistent nichts mehr aus dem
+  // Event-State nach (useState-Initializer).
+  const wizardMountedRef = React.useRef(false);
+  if (currentPage !== 'create-event' && currentPage !== 'edit-event') wizardMountedRef.current = false;
+
   // Seitenauswahl basierend auf dem aktuellen State
   const renderPage = (): React.ReactElement => {
     // v6.26: Boot-Loader. Auf der LandingPage entscheidet die Bubble "Jetzt
@@ -1159,7 +1171,7 @@ function AppContent(): React.ReactElement {
         // (s. EventContext.ensureOutlookBodies) — der Wizard übernimmt sie
         // beim Mount; ein leerer Text würde beim Speichern den gespeicherten
         // Termin-Text überschreiben. Beim Lesefehler: sagen und neu versuchen.
-        if (isEventsLoading || outlookBodiesPending) {
+        if (!wizardMountedRef.current && (isEventsLoading || outlookBodiesPending)) {
           const fehler = !isEventsLoading && outlookBodiesStatus === 'error';
           return (
             <div className="page-container text-center">
@@ -1188,6 +1200,7 @@ function AppContent(): React.ReactElement {
             </div>
           );
         }
+        wizardMountedRef.current = true;
         return <EventCreationPage key={coachActive ? 'coach' : 'normal'} />;
       case 'settings':
         return <SettingsPage />;

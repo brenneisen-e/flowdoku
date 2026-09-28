@@ -385,6 +385,22 @@ Text und Bilder nach (`useEventSelection`). Bestand: Rollenverwaltung →
 „Mail-Bilder auslagern (alle Events)". Die Flows lesen nur die Spalte
 `EmailImageBase64` — keine Flow-Änderung nötig.
 
+**Delta-Speichern seit v32.5: `EventContext.updateEvent` schreibt nur, was
+sich gegenüber der Zeile ÄNDERT.** Der alte Stand wird dort ohnehin gelesen
+(Änderungsprotokoll); `eventsCrud.updateEvent` streicht nach `logosAuslagern`
+und dem EndDate-Schutz jede Spalte, deren gespeicherter Wert STRENG gleich
+ist (`null` ≠ `""` wegen `coalesce` im Outlook-Flow), und lässt den MERGE
+ganz aus, wenn nichts übrig bleibt — dann wird die Zeile auch nicht neuer,
+und `ensureOutlookBodies` lädt nichts nach. Folge für neue Stellen: Wer
+einen MERGE nur schickt, um `Modified` hochzuzählen, bekommt keinen mehr;
+dafür den Service direkt (`eventService.updateEvent` ohne Grundlage) rufen.
+Zweite Lehre desselben Tages: `DexEventPlatform` ersetzte den Assistenten
+nach jedem Speichern durch den Ladekreis „Outlook-Texte werden geladen" —
+das Nachladen machte die gespeicherte Zeile „ausstehend", der Abschluss-
+Dialog verschwand, ein frischer Assistent stand in Schritt 1. Das Warten
+gilt seither nur vor dem ersten Einhängen (`wizardMountedRef`). Zeiten je
+Phase: `[DEX][perf][save]` (Debug-Thema „perf").
+
 **Personen für Subsite-Rechte über `ensureuser` auflösen, nie nur über
 `siteusers/getbyemail` (v31.84).** Wer die Site-Collection nie besucht hat,
 steht nicht in der User Information List; die Suche antwortet 404, die

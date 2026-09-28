@@ -905,7 +905,24 @@ export async function getEventCustomFieldsHistory(svc: EventService, eventId: nu
   }
 }
 
-export async function updateEvent(svc: EventService, eventId: number, updates: Record<string, unknown>, retried?: boolean): Promise<boolean> {
+/**
+ * v32.5: Delta-Speichern. Gleich heißt hier STRENG gleich mit dem Wert, der
+ * gerade in der Zeile steht — nur dann darf eine Spalte entfallen, denn dann
+ * ändert ihr Schreiben nichts. `null` und `""` gelten als verschieden (der
+ * Outlook-Flow rechnet mit coalesce, ein leerer String ist dort kein Fehlen),
+ * ein anders formatiertes Datum ebenso (dann wird eben geschrieben). Eine
+ * Spalte, die im Stand fehlt (nicht im $select), wird immer geschrieben.
+ */
+function gleicherWert(alt: unknown, neu: unknown): boolean {
+  if (alt === undefined) return false;
+  if (alt === null || neu === null || neu === undefined) return alt === neu;
+  if (typeof alt === 'object' || typeof neu === 'object') {
+    try { return JSON.stringify(alt) === JSON.stringify(neu); } catch { return false; }
+  }
+  return alt === neu;
+}
+
+export async function updateEvent(svc: EventService, eventId: number, updates: Record<string, unknown>, retried?: boolean, baseline?: Record<string, unknown>): Promise<boolean> {
   svc.lastUpdateEventError = '';
   try {
     // v28.66: zentraler Schutz für EndDate — analog zu createEvent. Ein
@@ -924,6 +941,36 @@ export async function updateEvent(svc: EventService, eventId: number, updates: R
       } else {
         delete safeUpdates.EndDate;
       }
+    }
+    // v32.5: Delta — nach allen Umformungen (Logos, EndDate) nur schreiben,
+    // was sich gegenüber dem gelesenen Stand wirklich ändert. Nutzer-Befund
+    // 28.09.2026: „warum dauert es überhaupt, wenn ich nichts geändert habe?"
+    // Der Wizard schickt immer die komplette Zeile, samt Outlook-Text mit
+    // eingebackenen Bildern (MB). Ohne Änderung entfällt der MERGE ganz —
+    // und damit auch das Neu-Laden des Outlook-Texts nach dem Speichern
+    // (die Zeile wird nicht neuer).
+    if (baseline && Object.keys(baseline).length > 0) {
+      // OutlookLogoBase64 steht nicht in EVENT_SELECT (die Spalte fehlt auf
+      // älteren Sites, ein $select darauf wäre ein 400). Will logosAuslagern
+      // sie schreiben, existiert sie — dann gezielt nachlesen, sonst ginge
+      // das Kopfbild (bis 3,4 MB) bei jedem Speichern erneut hinaus.
+      if ('OutlookLogoBase64' in safeUpdates && !('OutlookLogoBase64' in baseline)) {
+        try {
+          const r = await svc._sp.get(`${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})?$select=OutlookLogoBase64`, SPHttpClient.configurations.v1);
+          if (r.ok) {
+            const j = await r.json();
+            if (j && 'OutlookLogoBase64' in j) baseline = { ...baseline, OutlookLogoBase64: j.OutlookLogoBase64 };
+          }
+        } catch { /* ohne Grundlage wird die Spalte geschrieben */ }
+      }
+      const vorher = Object.keys(safeUpdates).length;
+      for (const k of Object.keys(safeUpdates)) {
+        if (gleicherWert(baseline[k], safeUpdates[k])) delete safeUpdates[k];
+      }
+      const nachher = Object.keys(safeUpdates).length;
+      // eslint-disable-next-line no-console
+      console.log(`[DEX][perf][updateEvent] Delta ${eventId}: ${nachher} von ${vorher} Spalten geändert${nachher ? ` (${Object.keys(safeUpdates).join(', ')})` : ' — kein Schreibvorgang'}`);
+      if (nachher === 0) return true;
     }
     const payload = {
       '__metadata': { 'type': 'SP.Data.DEX_x005f_EventsListItem' },
