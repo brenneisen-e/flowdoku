@@ -379,7 +379,7 @@ export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionR
           : `Set event from "${fromLabel}" back to Active? It will be visible and bookable for eligible users again. Note: if the end date is in the past, the automatic cleanup will set it back to "Completed" on the next app start — fix the date first in that case.`,
         { title: isDe ? 'Event reaktivieren' : 'Reactivate event', confirmLabel: isDe ? 'Auf Aktiv setzen' : 'Set to Active' },
       ))) return;
-      const ok = await updateEvent(selectedEvent.id, { 'EventStatus': 'Active' });
+      const ok = await updateEvent(selectedEvent.id, { 'EventStatus': 'Active' }, { skipReload: true });
       if (ok) {
         setSelectedEvent(prev => prev ? { ...prev, status: 'Active' } : prev);
         await refreshEvents();
@@ -397,7 +397,13 @@ export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionR
     if (!(await confirmDialog(confirmMsg, { title: isDe ? 'Event-Status ändern' : 'Change event status', confirmLabel: nextIsFictive ? (isDe ? 'Auf Entwurf setzen' : 'Set to draft') : (isDe ? 'Live schalten' : 'Publish') }))) return;
     const patch: Record<string, unknown> = { 'IsFictive': nextIsFictive };
     if (!nextIsFictive) patch['EventStatus'] = 'Active';
-    const ok = await updateEvent(selectedEvent.id, patch);
+    // v31.99.1: skipReload an JEDEM Schreibvorgang, EIN refreshEvents am Ende.
+    // Ohne den Schalter zog jedes updateEvent ein volles loadEvents nach sich
+    // (alle Events samt Mail-Bildern) — Klammer, jeder Termin und der
+    // Schluss-Refresh: drei Komplett-Reloads, und das Abzeichen sprang erst
+    // nach dem ersten um (Nutzer-Befund 28.09.2026: „nach 10 Sekunden immer
+    // noch nichts"). Dieselbe Bremse wie v29.77 im Wizard.
+    const ok = await updateEvent(selectedEvent.id, patch, { skipReload: true });
     if (ok) {
       // Badge sofort umschalten — selectedEvent ist lokaler State und wird
       // durch refreshEvents nicht automatisch ersetzt.
@@ -409,7 +415,7 @@ export function useEventSelection(ctx: UseEventSelectionCtx): UseEventSelectionR
       if (!nextIsFictive) {
         for (const c of childEventsOf(selectedEvent.id)) {
           if (c.isFictive) {
-            try { await updateEvent(c.id, { 'IsFictive': false, 'EventStatus': 'Active' }); } catch { /* best-effort */ }
+            try { await updateEvent(c.id, { 'IsFictive': false, 'EventStatus': 'Active' }, { skipReload: true }); } catch { /* best-effort */ }
           }
         }
       }

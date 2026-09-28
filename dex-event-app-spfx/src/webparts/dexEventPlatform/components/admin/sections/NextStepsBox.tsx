@@ -24,6 +24,8 @@ export interface NextStepsBoxProps {
   selectedEvent: DeloitteEvent;
   setVisListOpen: React.Dispatch<React.SetStateAction<boolean>>;
   visListOpen: boolean;
+  /** v31.99: Derselbe Umschalter wie der Textknopf neben dem Titel. */
+  toggleDraftStatus: () => Promise<void>;
 }
 
 export const NextStepsBox: React.FC<NextStepsBoxProps> = (p) => {
@@ -235,9 +237,24 @@ export const NextStepsBox: React.FC<NextStepsBoxProps> = (p) => {
                     },
                     {
                       title: isDe ? 'Event live schalten' : 'Publish the event',
+                      // v31.99: Hier stand nur ein Verweis auf ein „Status-
+                      // Häkchen", das es seit v31.3 nicht mehr gibt — die Zeile
+                      // sah klickbar aus und tat nichts (Nutzer-Befund
+                      // 28.09.2026: „der Klick auf live schalten hat nicht
+                      // funktioniert", Umweg über den Wizard). Jetzt ein
+                      // echter Knopf auf denselben Pfad wie neben dem Titel.
                       hint: isDe
-                        ? 'Schalte oben am Status-Häkchen von „Entwurf" auf „Aktiv" — danach sehen es die berechtigten Gruppen.'
-                        : 'Switch the status badge above from “Draft” to “Active” — it is then visible to the eligible groups.',
+                        ? 'Danach sehen die berechtigten Gruppen das Event und können sich anmelden. Zurück auf Entwurf geht jederzeit neben dem Titel.'
+                        : 'The eligible groups then see the event and can register. You can switch back to draft next to the title at any time.',
+                      action: (
+                        <button
+                          type="button"
+                          className="btn btn-primary dex-ui-btn-sm"
+                          onClick={() => { p.toggleDraftStatus().catch(() => { /* Fehler meldet toggleDraftStatus selbst */ }); }}
+                        >
+                          {isDe ? 'Live schalten' : 'Publish'}
+                        </button>
+                      ),
                       extra: (
                         <div className="dex-ui-stack">
                           <div className="dex-ui-callout dex-ui-callout--neutral dex-ui-callout--sm">

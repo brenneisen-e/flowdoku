@@ -2693,8 +2693,22 @@ export default function EventCreationPage(): React.ReactElement {
     if (end) c.setHours(23, 59, 0, 0); else c.setHours(0, 0, 0, 0);
     return c;
   };
-  const setScStart = (d: Date | null): void => { const v = clampAllDay(d, false); if (scopeSub) patchScopeSub({ startDate: subDateToIso(v) }); else setStartDate(dateToLocalStr(v)); };
   const scEnd = scopeSub ? subIsoToDate(scopeSub.endDate) : localStrToDate(endDate);
+  // v31.99.1: Rutscht der Beginn auf oder hinter das Ende, wandert das Ende
+  // mit derselben Dauer mit. Vorher sperrte ein maxDate am Sub-Event-Beginn
+  // jeden Tag nach dem Ende — verschieben ging nur „Ende zuerst".
+  const setScStart = (d: Date | null): void => {
+    const v = clampAllDay(d, false);
+    const oldStart = scStart;
+    const oldEnd = scEnd;
+    let newEnd: Date | null = null;
+    if (v && oldEnd && v.getTime() >= oldEnd.getTime()) {
+      const dur = (oldStart && oldEnd.getTime() > oldStart.getTime()) ? oldEnd.getTime() - oldStart.getTime() : 60 * 60 * 1000;
+      newEnd = clampAllDay(new Date(v.getTime() + dur), true);
+    }
+    if (scopeSub) patchScopeSub(newEnd ? { startDate: subDateToIso(v), endDate: subDateToIso(newEnd) } : { startDate: subDateToIso(v) });
+    else { setStartDate(dateToLocalStr(v)); if (newEnd) setEndDate(dateToLocalStr(newEnd)); }
+  };
   const setScEnd = (d: Date | null): void => { const v = clampAllDay(d, true); if (scopeSub) patchScopeSub({ endDate: subDateToIso(v) }); else setEndDate(dateToLocalStr(v)); };
   // v29.52: „Ganztägig" hängt am selben Scope wie Start/Ende — der Haken gilt
   // also für den oben gewählten Reiter, nicht global.

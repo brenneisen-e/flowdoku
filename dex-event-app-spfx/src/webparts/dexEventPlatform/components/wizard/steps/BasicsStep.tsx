@@ -539,7 +539,10 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                     wrapperClassName="dex-datepicker-wrapper"
                     calendarClassName="dex-datepicker-calendar"
                     popperPlacement="bottom-start"
-                    maxDate={scopeSub ? (scEnd || undefined) : undefined}
+                    // v31.99.1: kein maxDate mehr beim Sub-Event — es sperrte
+                    // jeden Tag nach dem Ende und damit das Verschieben des
+                    // Termins (Nutzer-Befund 28.09.2026). Rutscht der Beginn
+                    // hinter das Ende, zieht setScStart das Ende mit.
                     isClearable
                     autoComplete="off"
                   />

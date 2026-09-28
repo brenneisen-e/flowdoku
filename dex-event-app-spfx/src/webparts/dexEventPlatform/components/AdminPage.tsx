@@ -2644,6 +2644,7 @@ export default function AdminPage(): React.ReactElement {
   const nextStepsBoxProps = {
     childEventsOf, isDe, openInviteModal, selectedEvent,
     setVisListOpen, visListOpen,
+    toggleDraftStatus, // v31.99: Knopf „Live schalten" im Schritt 3
   };
   const billingStatusStripProps = {
     isAdmin, isDe, isFA, isOrganizerFor, navigate,
