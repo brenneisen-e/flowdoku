@@ -99,6 +99,12 @@ function migrateRole(spRole: string): UserRole {
   return 'User';
 }
 
+
+// v32.9: Cache für getGroupMembers (s. dort) — modulweit, überlebt Re-Renders.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const GRUPPEN_CACHE = new Map<string, { t: number; p: Promise<any> }>();
+const GRUPPEN_TTL_MS = 10 * 60 * 1000;
+
 export const RoleContext = React.createContext<RoleContextType | undefined>(undefined);
 
 export function RoleProvider(props: { context: WebPartContext; children: React.ReactNode }): React.ReactElement {
@@ -490,7 +496,17 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   }
 
   async function getGroupMembers(groupEmail: string): Promise<{ groupName: string; members: Array<{ email: string; displayName: string; firstName?: string; lastName?: string; jobTitle?: string; location?: string }> } | null> {
-    return spService.getGroupMembers(groupEmail);
+    // v32.9: 10 Minuten im Speicher. Jedes Speichern im Assistenten löst die
+    // ganze Zielgruppe auf (je Eintrag eine Graph-Anfrage, 2 s bei ~100
+    // Einträgen) und die Prüfung auf externe Personen direkt danach dieselbe
+    // noch einmal. Mitgliedschaften ändern sich nicht im Minutentakt.
+    const key = (groupEmail || '').trim().toLowerCase();
+    const hit = GRUPPEN_CACHE.get(key);
+    if (hit && Date.now() - hit.t < GRUPPEN_TTL_MS) return hit.p;
+    const p = spService.getGroupMembers(groupEmail);
+    GRUPPEN_CACHE.set(key, { t: Date.now(), p });
+    p.catch(() => { GRUPPEN_CACHE.delete(key); });
+    return p;
   }
 
   async function getEmployeeData(emails: string[]): Promise<Record<string, { employeeId?: string; costCenter?: string; companyName?: string; country?: string; department?: string }>> {

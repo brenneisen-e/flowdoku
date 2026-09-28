@@ -916,11 +916,13 @@ export async function getEventCustomFieldsHistory(svc: EventService, eventId: nu
 function gleicherWert(spalte: string, alt: unknown, neu: unknown): boolean {
   if (alt === undefined) return false;
   const leer = (v: unknown): boolean => v === null || v === undefined || v === '';
-  // v32.6: null und "" sind für die App dasselbe — außer in den Outlook-
-  // Spalten, die der Flow per coalesce liest (dort ist "" kein Fehlen).
-  // Gemessen 28.09.2026: 27 „geänderte" Spalten ohne jede Änderung, der
-  // Großteil davon null gegen "" und Datumsformate.
-  if (leer(alt) && leer(neu)) return alt === neu || spalte.indexOf('Outlook') !== 0;
+  // v32.6: null und "" sind für die App dasselbe. v32.9: auch in den
+  // Outlook-Spalten — SharePoint legt einen leeren Text ohnehin als null ab,
+  // ein geschriebenes "" liest der Flow also genauso als fehlend. Die
+  // Ausnahme aus v32.6 ließ OutlookSubject bei jedem Speichern „geändert"
+  // erscheinen (Tenant-Log 28.09.2026).
+  void spalte;
+  if (leer(alt) && leer(neu)) return true;
   if (leer(alt) || leer(neu)) return false;
   if (typeof alt === 'object' || typeof neu === 'object') {
     try { return JSON.stringify(alt) === JSON.stringify(neu); } catch { return false; }
@@ -988,6 +990,16 @@ export async function updateEvent(svc: EventService, eventId: number, updates: R
       const nachher = Object.keys(safeUpdates).length;
       // eslint-disable-next-line no-console
       console.log(`[DEX][perf][updateEvent] Delta ${eventId}: ${nachher} von ${vorher} Spalten geändert${nachher ? ` (${Object.keys(safeUpdates).join(', ')})` : ' — kein Schreibvorgang'}`);
+      // v32.9: Bei Textspalten zeigen, WO sich alt und neu unterscheiden —
+      // Spalten, die ohne Änderung jedes Mal „geändert" sind, lassen sich
+      // sonst nur raten.
+      for (const k of Object.keys(safeUpdates)) {
+        const a = baseline[k]; const n = safeUpdates[k];
+        if (typeof a !== 'string' || typeof n !== 'string') continue;
+        let i = 0; while (i < a.length && i < n.length && a.charCodeAt(i) === n.charCodeAt(i)) i++;
+        // eslint-disable-next-line no-console
+        console.log(`[DEX][perf][updateEvent] ${k}: Länge ${a.length} → ${n.length}, erster Unterschied bei ${i}: alt „${a.slice(Math.max(0, i - 30), i + 50)}" · neu „${n.slice(Math.max(0, i - 30), i + 50)}"`);
+      }
       if (nachher === 0) return true;
     }
     const payload = {
