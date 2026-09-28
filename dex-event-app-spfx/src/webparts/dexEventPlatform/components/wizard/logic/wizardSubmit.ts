@@ -666,7 +666,13 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
         'LocationFilter': locationFilter,
         'Audience': audience,
         // v16.4: Audience-DLs vor-aufgelöst mitschreiben.
-        'AudienceResolvedEmails': await resolveAudienceMembersToCsv(audience, getGroupMembers),
+        'AudienceResolvedEmails': await (async () => {
+          // v32.8: eigene Messung — die Zielgruppen-Auflösung war der Verdacht für 18 s.
+          const t = performance.now();
+          const r = await resolveAudienceMembersToCsv(audience, getGroupMembers);
+          dlog('perf', `[DEX][perf][save] Zielgruppe aufgelöst: ${Math.round(performance.now() - t)} ms (${(audience || '').split(',').filter(x => x.trim()).length} Einträge)`);
+          return r;
+        })(),
         'FilterMode': filterMode,
         'StartDate': startDate ? berlinLocalToUtcIso(startDate) : null,
         // v22.17: EndDate nie leer lassen (Outlook-Flow-Crash, s.o.) — Fallback Start.
@@ -1053,6 +1059,7 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
       // updateEvent, Berechtigungs-Sync, Sub-Event-Persistierung,
       // Teilnehmer-Spalten-Sync, Bild-Upload und Outlook-Update
       // nacheinander liefen — alles ohne Zwischen-Tick.
+      lap('Zeile aufgebaut (Logos, Zielgruppe, Texte)');
       setProgress(40);
       setProgressLabel(isDe ? 'Dokumente werden synchronisiert...' : 'Syncing documents...');
 
