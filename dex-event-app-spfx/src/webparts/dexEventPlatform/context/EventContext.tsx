@@ -2884,7 +2884,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     catch (e) { console.warn('[DEX] getEventStats failed:', e); return []; }
   }
 
-  async function deleteEvent(eventId: string): Promise<boolean> {
+  async function deleteEvent(eventId: string, onProgress?: (_done: number, _total: number, _label: string) => void): Promise<boolean> {
     // v18.3: Demo-Showcase-Event → No-Op (kein SP-Backend). Defense in depth;
     // die UI blendet den Löschen-Button für das Demo-Event ohnehin aus.
     if (isDemoShowcaseId(eventId)) return false;
@@ -2921,7 +2921,14 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     // alles noch bedienbar, und der Admin kann es später erneut versuchen.
     const failedChildren: string[] = [];
     const deletedChildren: DeloitteEvent[] = [];
+    // v32.0: Fortschritt — je Termin ein Schritt, dann Hauptevent, dann das
+    // Nachladen der Ansicht (der Lösch-Dialog zeigte bis dahin minutenlang
+    // nur „Wird gelöscht…").
+    const schritte = children.length + 2;
+    let erledigt = 0;
+    const melde = (label: string): void => { if (onProgress) { try { onProgress(erledigt, schritte, label); } catch { /* */ } } };
     for (const child of children) {
+      melde(child.title || `#${child.id}`);
       let okChild = false;
       try {
         okChild = await eventService.deleteEvent(Number(child.id));
@@ -2934,6 +2941,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       } else {
         failedChildren.push(child.title || child.id);
       }
+      erledigt++;
     }
     // v11.53: vor dem Löschen merken, wie viele aktive Anmeldungen wir
     // vom KPI-Counter abziehen müssen — Parent + alle Children, nur
@@ -2967,7 +2975,9 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     // mehreren Kalender-Events negativ), bis zufällig ein Admin die App
     // öffnete. recomputeEventKpiOnly zählt ebenfalls nur !parentEventId.
     const childEventsToDecrement = (ev && !ev.isFictive) ? 1 : 0;
+    melde(ev ? ev.title : `#${eventId}`);
     const success = await eventService.deleteEvent(Number(eventId));
+    erledigt++;
     delete subsiteMap.current[eventId];
     if (success) {
       if (childEventsToDecrement > 0) {
@@ -2984,7 +2994,10 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       };
     }
     // Events immer neu laden, auch wenn Subsite-Löschung fehlschlug
+    melde('');
     await loadEvents();
+    erledigt++;
+    melde('');
     return success;
   }
 
